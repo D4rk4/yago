@@ -21,6 +21,10 @@ func parseHashField(scope, field, raw string) (yacymodel.Hash, error) {
 }
 
 func joinHashes(hashes []yacymodel.Hash) string {
+	if len(hashes) == 0 {
+		return ""
+	}
+
 	parts := make([]string, len(hashes))
 	for i, h := range hashes {
 		parts[i] = h.String()
@@ -49,6 +53,10 @@ func splitHashes(scope, field, raw string) ([]yacymodel.Hash, error) {
 }
 
 func concatHashes(hashes []yacymodel.Hash) string {
+	if len(hashes) == 0 {
+		return ""
+	}
+
 	var b strings.Builder
 	for _, h := range hashes {
 		b.WriteString(h.String())
@@ -57,14 +65,14 @@ func concatHashes(hashes []yacymodel.Hash) string {
 	return b.String()
 }
 
-func splitConcatHashes(scope, field, raw string) ([]yacymodel.Hash, error) {
+func splitSearchHashes(field, raw string) ([]yacymodel.Hash, error) {
 	if len(raw)%yacymodel.HashLength != 0 {
-		return nil, fmt.Errorf("%w: %s %s=%q", ErrBadField, scope, field, raw)
+		return nil, fmt.Errorf("%w: search request %s=%q", ErrBadField, field, raw)
 	}
 
 	var hashes []yacymodel.Hash
 	for i := 0; i < len(raw); i += yacymodel.HashLength {
-		hash, err := parseHashField(scope, field, raw[i:i+yacymodel.HashLength])
+		hash, err := parseHashField("search request", field, raw[i:i+yacymodel.HashLength])
 		if err != nil {
 			return nil, err
 		}

@@ -2,8 +2,6 @@ package yacyproto
 
 import "github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 
-// ResponseHeader is the preamble every /yacy/* response carries: the responder's
-// YaCy version and its uptime in minutes.
 type ResponseHeader struct {
 	Version string
 	Uptime  int

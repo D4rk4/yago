@@ -1,6 +1,5 @@
 package yacyproto
 
-// Wire field names shared by more than one /yacy/* endpoint.
 const (
 	FieldNetworkName = "network.name"
 	FieldIam         = "iam"
@@ -11,7 +10,6 @@ const (
 	FieldUptime      = "uptime"
 )
 
-// Wire field names of the hello endpoint.
 const (
 	FieldSeed     = "seed"
 	FieldCount    = "count"
@@ -22,7 +20,6 @@ const (
 	prefixSeed    = "seed"
 )
 
-// Wire field names of the transferRWI endpoint.
 const (
 	FieldWordCount  = "wordc"
 	FieldEntryCount = "entryc"
@@ -30,16 +27,15 @@ const (
 	FieldResult     = "result"
 	FieldPause      = "pause"
 	FieldUnknownURL = "unknownURL"
+	FieldErrorURL   = "errorURL"
 )
 
-// Wire field names of the transferURL endpoint.
 const (
 	FieldURLCount = "urlc"
 	FieldDouble   = "double"
 	prefixURL     = "url"
 )
 
-// Wire field names of the search endpoint.
 const (
 	FieldMySeed           = "myseed"
 	FieldQuery            = "query"
@@ -67,12 +63,12 @@ const (
 	FieldSearchTime       = "searchtime"
 	FieldReferences       = "references"
 	FieldJoinCount        = "joincount"
+	FieldLinkCount        = "linkcount"
 	prefixResource        = "resource"
 	prefixIndexCount      = "indexcount."
 	prefixIndexAbstract   = "indexabstract."
 )
 
-// Wire field names of the query endpoint.
 const (
 	FieldObject   = "object"
 	FieldEnv      = "env"
@@ -80,7 +76,6 @@ const (
 	FieldMagic    = "magic"
 )
 
-// Wire field names of the crawlReceipt endpoint.
 const (
 	FieldReason    = "reason"
 	FieldLURLEntry = "lurlEntry"

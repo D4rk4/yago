@@ -8,15 +8,6 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-// transferRWI FieldResult values beyond the shared ResultOK and ResultWrongTarget.
-const (
-	ResultBusy        = "busy"
-	ResultNotGranted  = "not_granted"
-	ResultTooHighLoad = "too high load"
-)
-
-// TransferRWIRequest is the POST /yacy/transferRWI.html request: a batch of
-// reverse-word-index postings offered to a receiver.
 type TransferRWIRequest struct {
 	NetworkName string
 	Iam         yacymodel.Hash
@@ -27,16 +18,14 @@ type TransferRWIRequest struct {
 	Key         string
 }
 
-// TransferRWIResponse is the /yacy/transferRWI.html response. UnknownURL lists
-// the URL hashes the receiver wants delivered via transferURL.
 type TransferRWIResponse struct {
 	ResponseHeader
-	Result     string
+	Result     TransferRWIResult
 	Pause      int
 	UnknownURL []yacymodel.Hash
+	ErrorURL   []yacymodel.Hash
 }
 
-// Form renders the request as HTTP form fields.
 func (r TransferRWIRequest) Form() url.Values {
 	form := url.Values{}
 	putString(form, FieldNetworkName, r.NetworkName)
@@ -50,7 +39,6 @@ func (r TransferRWIRequest) Form() url.Values {
 	return form
 }
 
-// ParseTransferRWIRequest reads a TransferRWIRequest from HTTP form fields.
 func ParseTransferRWIRequest(form url.Values) (TransferRWIRequest, error) {
 	wordCount, err := optionalInt(FieldWordCount, form.Get(FieldWordCount))
 	if err != nil {
@@ -87,18 +75,17 @@ func ParseTransferRWIRequest(form url.Values) (TransferRWIRequest, error) {
 	return req, nil
 }
 
-// Encode renders the response as a key=value message.
 func (r TransferRWIResponse) Encode() yacymodel.Message {
 	msg := yacymodel.Message{}
 	r.write(msg)
-	setString(msg, FieldResult, r.Result)
+	setString(msg, FieldResult, string(r.Result))
 	setInt(msg, FieldPause, r.Pause)
 	setString(msg, FieldUnknownURL, joinHashes(r.UnknownURL))
+	setString(msg, FieldErrorURL, joinHashes(r.ErrorURL))
 
 	return msg
 }
 
-// ParseTransferRWIResponse reads a TransferRWIResponse from key=value lines.
 func ParseTransferRWIResponse(m yacymodel.Message) (TransferRWIResponse, error) {
 	header, err := parseResponseHeader(m)
 	if err != nil {
@@ -115,11 +102,22 @@ func ParseTransferRWIResponse(m yacymodel.Message) (TransferRWIResponse, error) 
 		return TransferRWIResponse{}, err
 	}
 
+	errorURL, err := splitHashes("transferRWI response", FieldErrorURL, m[FieldErrorURL])
+	if err != nil {
+		return TransferRWIResponse{}, err
+	}
+
+	result, err := parseTransferRWIResult(m[FieldResult])
+	if err != nil {
+		return TransferRWIResponse{}, err
+	}
+
 	return TransferRWIResponse{
 		ResponseHeader: header,
-		Result:         m[FieldResult],
+		Result:         result,
 		Pause:          pause,
 		UnknownURL:     unknown,
+		ErrorURL:       errorURL,
 	}, nil
 }
 

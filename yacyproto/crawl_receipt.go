@@ -6,9 +6,6 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-// CrawlReceiptRequest is the POST /yacy/crawlReceipt.html request: a sender's
-// acknowledgement or rejection of delegated crawl work. Result is the crawl
-// result the sender reports; LURLEntry is the encoded URL metadata entry.
 type CrawlReceiptRequest struct {
 	NetworkName string
 	Iam         yacymodel.Hash
@@ -18,14 +15,11 @@ type CrawlReceiptRequest struct {
 	LURLEntry   string
 }
 
-// CrawlReceiptResponse is the /yacy/crawlReceipt.html response. Delay is the
-// hint in seconds before further crawl delegation.
 type CrawlReceiptResponse struct {
 	ResponseHeader
 	Delay int
 }
 
-// Form renders the request as HTTP form fields.
 func (r CrawlReceiptRequest) Form() url.Values {
 	form := url.Values{}
 	putString(form, FieldNetworkName, r.NetworkName)
@@ -38,7 +32,6 @@ func (r CrawlReceiptRequest) Form() url.Values {
 	return form
 }
 
-// ParseCrawlReceiptRequest reads a CrawlReceiptRequest from HTTP form fields.
 func ParseCrawlReceiptRequest(form url.Values) (CrawlReceiptRequest, error) {
 	req := CrawlReceiptRequest{
 		NetworkName: form.Get(FieldNetworkName),
@@ -62,7 +55,6 @@ func ParseCrawlReceiptRequest(form url.Values) (CrawlReceiptRequest, error) {
 	return req, nil
 }
 
-// Encode renders the response as a key=value message.
 func (r CrawlReceiptResponse) Encode() yacymodel.Message {
 	msg := yacymodel.Message{}
 	r.write(msg)
@@ -71,7 +63,6 @@ func (r CrawlReceiptResponse) Encode() yacymodel.Message {
 	return msg
 }
 
-// ParseCrawlReceiptResponse reads a CrawlReceiptResponse from key=value lines.
 func ParseCrawlReceiptResponse(m yacymodel.Message) (CrawlReceiptResponse, error) {
 	header, err := parseResponseHeader(m)
 	if err != nil {

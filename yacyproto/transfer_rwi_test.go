@@ -46,6 +46,9 @@ func TestTransferRWIResponseRoundTrip(t *testing.T) {
 			sampleHash(t, "url-a"),
 			sampleHash(t, "url-b"),
 		},
+		ErrorURL: []yacymodel.Hash{
+			sampleHash(t, "url-c"),
+		},
 	}
 
 	got, err := yacyproto.ParseTransferRWIResponse(resp.Encode())
@@ -73,5 +76,14 @@ func TestParseTransferRWIResponseRejectsBadPause(t *testing.T) {
 	msg := yacymodel.Message{yacyproto.FieldPause: "soon"}
 	if _, err := yacyproto.ParseTransferRWIResponse(msg); err == nil {
 		t.Fatal("expected error for non-numeric pause")
+	}
+}
+
+func TestParseTransferRWIResponseRejectsUnknownResult(t *testing.T) {
+	t.Parallel()
+
+	msg := yacymodel.Message{yacyproto.FieldResult: "later"}
+	if _, err := yacyproto.ParseTransferRWIResponse(msg); err == nil {
+		t.Fatal("expected error for unknown transferRWI result")
 	}
 }

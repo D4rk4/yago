@@ -19,13 +19,23 @@ func TestSearchRequestRoundTrip(t *testing.T) {
 			sampleHash(t, "alpha"),
 			sampleHash(t, "beta"),
 		},
-		Count:      10,
-		Time:       3000,
-		MaxDist:    5,
-		Partitions: 30,
-		Language:   "en",
-		Author:     "ada",
-		Protocol:   "https",
+		Exclude: []yacymodel.Hash{
+			sampleHash(t, "gamma"),
+		},
+		URLs: []yacymodel.Hash{
+			sampleHash(t, "url-a"),
+		},
+		Count:            10,
+		Time:             3000,
+		MaxDist:          5,
+		Partitions:       30,
+		Abstracts:        yacyproto.SearchAbstractsAuto,
+		ContentDom:       yacyproto.ContentDomainText,
+		StrictContentDom: true,
+		TimezoneOffset:   120,
+		Language:         "en",
+		Author:           "ada",
+		Protocol:         "https",
 	}
 
 	got, err := yacyproto.ParseSearchRequest(req.Form())
@@ -72,5 +82,46 @@ func TestParseSearchRequestRejectsRaggedQuery(t *testing.T) {
 	form := url.Values{yacyproto.FieldQuery: {"tooshort"}}
 	if _, err := yacyproto.ParseSearchRequest(form); err == nil {
 		t.Fatal("expected error for query not a multiple of the hash length")
+	}
+}
+
+func TestParseSearchRequestRejectsRaggedExclude(t *testing.T) {
+	t.Parallel()
+
+	form := url.Values{yacyproto.FieldExclude: {"tooshort"}}
+	if _, err := yacyproto.ParseSearchRequest(form); err == nil {
+		t.Fatal("expected error for exclude not a multiple of the hash length")
+	}
+}
+
+func TestParseSearchRequestRejectsUnknownContentDomain(t *testing.T) {
+	t.Parallel()
+
+	form := url.Values{yacyproto.FieldContentDom: {"binary"}}
+	if _, err := yacyproto.ParseSearchRequest(form); err == nil {
+		t.Fatal("expected error for unknown content domain")
+	}
+}
+
+func TestParseSearchRequestRejectsUnknownStrictContentDom(t *testing.T) {
+	t.Parallel()
+
+	form := url.Values{yacyproto.FieldStrictContentDom: {"yes"}}
+	if _, err := yacyproto.ParseSearchRequest(form); err == nil {
+		t.Fatal("expected error for unknown boolean token")
+	}
+}
+
+func TestSearchResponseUsesYaCyLinkCountField(t *testing.T) {
+	t.Parallel()
+
+	msg := yacymodel.Message{yacyproto.FieldLinkCount: "5"}
+	got, err := yacyproto.ParseSearchResponse(msg)
+	if err != nil {
+		t.Fatalf("ParseSearchResponse: %v", err)
+	}
+
+	if got.Count != 5 {
+		t.Fatalf("count = %d, want 5", got.Count)
 	}
 }

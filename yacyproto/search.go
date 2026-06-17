@@ -8,22 +8,20 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-// SearchRequest is the GET|POST /yacy/search.html request: a remote search over
-// DHT word hashes. Query holds the concatenated 12-character word hashes.
 type SearchRequest struct {
 	NetworkName      string
 	MySeed           yacymodel.Seed
 	Query            []yacymodel.Hash
-	Exclude          string
-	URLs             string
+	Exclude          []yacymodel.Hash
+	URLs             []yacymodel.Hash
 	Count            int
 	Time             int
 	MaxDist          int
 	Partitions       int
-	Abstracts        string
-	ContentDom       string
-	StrictContentDom string
-	TimezoneOffset   string
+	Abstracts        SearchAbstracts
+	ContentDom       SearchContentDomain
+	StrictContentDom bool
+	TimezoneOffset   int
 	Language         string
 	Modifier         string
 	Prefer           string
@@ -38,8 +36,6 @@ type SearchRequest struct {
 	Protocol         string
 }
 
-// SearchResponse is the /yacy/search.html response. Resources are the returned
-// URL rows; IndexCount and IndexAbstract are keyed by queried word hash.
 type SearchResponse struct {
 	ResponseHeader
 	SearchTime    int
@@ -51,7 +47,6 @@ type SearchResponse struct {
 	IndexAbstract map[yacymodel.Hash]string
 }
 
-// Form renders the request as HTTP form fields.
 func (r SearchRequest) Form() url.Values {
 	form := url.Values{}
 	putString(form, FieldNetworkName, r.NetworkName)
@@ -59,16 +54,16 @@ func (r SearchRequest) Form() url.Values {
 		putString(form, FieldMySeed, yacymodel.EncodeSeedWireForm(r.MySeed.String()))
 	}
 	putString(form, FieldQuery, concatHashes(r.Query))
-	putString(form, FieldExclude, r.Exclude)
-	putString(form, FieldURLs, r.URLs)
+	putString(form, FieldExclude, concatHashes(r.Exclude))
+	putString(form, FieldURLs, concatHashes(r.URLs))
 	putIntOptional(form, FieldCount, r.Count)
 	putIntOptional(form, FieldTime, r.Time)
 	putIntOptional(form, FieldMaxDist, r.MaxDist)
 	putIntOptional(form, FieldPartitions, r.Partitions)
-	putString(form, FieldAbstracts, r.Abstracts)
-	putString(form, FieldContentDom, r.ContentDom)
-	putString(form, FieldStrictContentDom, r.StrictContentDom)
-	putString(form, FieldTimezoneOffset, r.TimezoneOffset)
+	putString(form, FieldAbstracts, string(r.Abstracts))
+	putString(form, FieldContentDom, string(r.ContentDom))
+	putBoolOptional(form, FieldStrictContentDom, r.StrictContentDom)
+	putIntOptional(form, FieldTimezoneOffset, r.TimezoneOffset)
 	putString(form, FieldLanguage, r.Language)
 	putString(form, FieldModifier, r.Modifier)
 	putString(form, FieldPrefer, r.Prefer)
@@ -85,7 +80,6 @@ func (r SearchRequest) Form() url.Values {
 	return form
 }
 
-// ParseSearchRequest reads a SearchRequest from HTTP form fields.
 func ParseSearchRequest(form url.Values) (SearchRequest, error) {
 	counts, err := searchRequestCounts(form)
 	if err != nil {
@@ -94,16 +88,12 @@ func ParseSearchRequest(form url.Values) (SearchRequest, error) {
 
 	req := SearchRequest{
 		NetworkName:      form.Get(FieldNetworkName),
-		Exclude:          form.Get(FieldExclude),
-		URLs:             form.Get(FieldURLs),
 		Count:            counts.count,
 		Time:             counts.time,
 		MaxDist:          counts.maxDist,
 		Partitions:       counts.partitions,
-		Abstracts:        form.Get(FieldAbstracts),
-		ContentDom:       form.Get(FieldContentDom),
-		StrictContentDom: form.Get(FieldStrictContentDom),
-		TimezoneOffset:   form.Get(FieldTimezoneOffset),
+		StrictContentDom: counts.strictContentDom,
+		TimezoneOffset:   counts.timezoneOffset,
 		Language:         form.Get(FieldLanguage),
 		Modifier:         form.Get(FieldModifier),
 		Prefer:           form.Get(FieldPrefer),
@@ -125,7 +115,27 @@ func ParseSearchRequest(form url.Values) (SearchRequest, error) {
 		}
 	}
 
-	req.Query, err = splitConcatHashes("search request", FieldQuery, form.Get(FieldQuery))
+	req.Query, err = splitSearchHashes(FieldQuery, form.Get(FieldQuery))
+	if err != nil {
+		return SearchRequest{}, err
+	}
+
+	req.Exclude, err = splitSearchHashes(FieldExclude, form.Get(FieldExclude))
+	if err != nil {
+		return SearchRequest{}, err
+	}
+
+	req.URLs, err = splitSearchHashes(FieldURLs, form.Get(FieldURLs))
+	if err != nil {
+		return SearchRequest{}, err
+	}
+
+	req.Abstracts, err = parseSearchAbstracts(form.Get(FieldAbstracts))
+	if err != nil {
+		return SearchRequest{}, err
+	}
+
+	req.ContentDom, err = parseSearchContentDomain(form.Get(FieldContentDom))
 	if err != nil {
 		return SearchRequest{}, err
 	}
@@ -134,10 +144,12 @@ func ParseSearchRequest(form url.Values) (SearchRequest, error) {
 }
 
 type searchCounts struct {
-	count      int
-	time       int
-	maxDist    int
-	partitions int
+	count            int
+	time             int
+	maxDist          int
+	partitions       int
+	timezoneOffset   int
+	strictContentDom bool
 }
 
 func searchRequestCounts(form url.Values) (searchCounts, error) {
@@ -165,17 +177,30 @@ func searchRequestCounts(form url.Values) (searchCounts, error) {
 		return searchCounts{}, err
 	}
 
+	if counts.timezoneOffset, err = optionalInt(
+		FieldTimezoneOffset,
+		form.Get(FieldTimezoneOffset),
+	); err != nil {
+		return searchCounts{}, err
+	}
+
+	if counts.strictContentDom, err = optionalBool(
+		FieldStrictContentDom,
+		form.Get(FieldStrictContentDom),
+	); err != nil {
+		return searchCounts{}, err
+	}
+
 	return counts, nil
 }
 
-// Encode renders the response as a key=value message.
 func (r SearchResponse) Encode() yacymodel.Message {
 	msg := yacymodel.Message{}
 	r.write(msg)
 	setInt(msg, FieldSearchTime, r.SearchTime)
 	setString(msg, FieldReferences, r.References)
 	setInt(msg, FieldJoinCount, r.JoinCount)
-	setInt(msg, FieldCount, r.Count)
+	setInt(msg, FieldLinkCount, r.Count)
 	for i, row := range r.Resources {
 		setString(msg, indexedKey(prefixResource, i), row.String())
 	}
@@ -189,7 +214,6 @@ func (r SearchResponse) Encode() yacymodel.Message {
 	return msg
 }
 
-// ParseSearchResponse reads a SearchResponse from key=value lines.
 func ParseSearchResponse(m yacymodel.Message) (SearchResponse, error) {
 	header, err := parseResponseHeader(m)
 	if err != nil {
@@ -209,7 +233,7 @@ func ParseSearchResponse(m yacymodel.Message) (SearchResponse, error) {
 		return SearchResponse{}, err
 	}
 
-	if resp.Count, err = optionalInt(FieldCount, m[FieldCount]); err != nil {
+	if resp.Count, err = optionalInt(FieldLinkCount, m[FieldLinkCount]); err != nil {
 		return SearchResponse{}, err
 	}
 

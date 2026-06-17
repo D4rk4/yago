@@ -1,7 +1,12 @@
 package yacyproto
 
-// Paths of the /yacy/* peer-to-peer endpoints. All use plain HTTP; requests are
-// HTTP form fields and responses are key=value lines.
+type EndpointMethodSet uint8
+
+const (
+	EndpointMethodGet EndpointMethodSet = 1 << iota
+	EndpointMethodPost
+)
+
 const (
 	PathHello        = "/yacy/hello.html"
 	PathTransferRWI  = "/yacy/transferRWI.html"
@@ -9,4 +14,18 @@ const (
 	PathSearch       = "/yacy/search.html"
 	PathQuery        = "/yacy/query.html"
 	PathCrawlReceipt = "/yacy/crawlReceipt.html"
+)
+
+const (
+	EndpointMethodsGetPost = EndpointMethodGet | EndpointMethodPost
+	EndpointMethodsPost    = EndpointMethodPost
+)
+
+const (
+	HelloEndpointMethods        = EndpointMethodsGetPost
+	TransferRWIEndpointMethods  = EndpointMethodsPost
+	TransferURLEndpointMethods  = EndpointMethodsPost
+	SearchEndpointMethods       = EndpointMethodsGetPost
+	QueryEndpointMethods        = EndpointMethodsGetPost
+	CrawlReceiptEndpointMethods = EndpointMethodsPost
 )

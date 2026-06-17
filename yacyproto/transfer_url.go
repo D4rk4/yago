@@ -7,12 +7,6 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-// ResultErrorNotGranted is the transferURL FieldResult value reporting a refused
-// transfer, beyond the shared ResultOK and ResultWrongTarget.
-const ResultErrorNotGranted = "error_not_granted"
-
-// TransferURLRequest is the POST /yacy/transferURL.html request: URL metadata
-// rows the receiver asked for via a prior transferRWI unknownURL list.
 type TransferURLRequest struct {
 	NetworkName string
 	Iam         yacymodel.Hash
@@ -21,15 +15,13 @@ type TransferURLRequest struct {
 	URLs        []yacymodel.URIMetadataRow
 }
 
-// TransferURLResponse is the /yacy/transferURL.html response. Double counts the
-// rows the receiver already knew.
 type TransferURLResponse struct {
 	ResponseHeader
-	Result string
-	Double int
+	Result   TransferURLResult
+	Double   int
+	ErrorURL []yacymodel.Hash
 }
 
-// Form renders the request as HTTP form fields.
 func (r TransferURLRequest) Form() url.Values {
 	form := url.Values{}
 	putString(form, FieldNetworkName, r.NetworkName)
@@ -43,7 +35,6 @@ func (r TransferURLRequest) Form() url.Values {
 	return form
 }
 
-// ParseTransferURLRequest reads a TransferURLRequest from HTTP form fields.
 func ParseTransferURLRequest(form url.Values) (TransferURLRequest, error) {
 	urlCount, err := optionalInt(FieldURLCount, form.Get(FieldURLCount))
 	if err != nil {
@@ -65,16 +56,21 @@ func ParseTransferURLRequest(form url.Values) (TransferURLRequest, error) {
 		return TransferURLRequest{}, err
 	}
 
-	for i := 0; ; i++ {
-		raw := form.Get(indexedKey(prefixURL, i))
+	for i := 0; i < req.URLCount; i++ {
+		key := indexedKey(prefixURL, i)
+		raw := form.Get(key)
 		if raw == "" {
-			break
+			return TransferURLRequest{}, fmt.Errorf(
+				"%w: transferURL request missing %s",
+				ErrBadField,
+				key,
+			)
 		}
 
 		row, err := yacymodel.ParseURIMetadataRow(raw)
 		if err != nil {
 			return TransferURLRequest{}, fmt.Errorf(
-				"transferURL request %s: %w", indexedKey(prefixURL, i), err,
+				"transferURL request %s: %w", key, err,
 			)
 		}
 
@@ -84,17 +80,16 @@ func ParseTransferURLRequest(form url.Values) (TransferURLRequest, error) {
 	return req, nil
 }
 
-// Encode renders the response as a key=value message.
 func (r TransferURLResponse) Encode() yacymodel.Message {
 	msg := yacymodel.Message{}
 	r.write(msg)
-	setString(msg, FieldResult, r.Result)
+	setString(msg, FieldResult, string(r.Result))
 	setInt(msg, FieldDouble, r.Double)
+	setString(msg, FieldErrorURL, joinHashes(r.ErrorURL))
 
 	return msg
 }
 
-// ParseTransferURLResponse reads a TransferURLResponse from key=value lines.
 func ParseTransferURLResponse(m yacymodel.Message) (TransferURLResponse, error) {
 	header, err := parseResponseHeader(m)
 	if err != nil {
@@ -106,9 +101,20 @@ func ParseTransferURLResponse(m yacymodel.Message) (TransferURLResponse, error) 
 		return TransferURLResponse{}, err
 	}
 
+	errorURL, err := splitHashes("transferURL response", FieldErrorURL, m[FieldErrorURL])
+	if err != nil {
+		return TransferURLResponse{}, err
+	}
+
+	result, err := parseTransferURLResult(m[FieldResult])
+	if err != nil {
+		return TransferURLResponse{}, err
+	}
+
 	return TransferURLResponse{
 		ResponseHeader: header,
-		Result:         m[FieldResult],
+		Result:         result,
 		Double:         double,
+		ErrorURL:       errorURL,
 	}, nil
 }

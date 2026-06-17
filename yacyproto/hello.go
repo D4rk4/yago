@@ -7,8 +7,6 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-// HelloRequest is the GET|POST /yacy/hello.html request: a peer handshake and
-// seed exchange.
 type HelloRequest struct {
 	NetworkName string
 	Key         string
@@ -19,8 +17,6 @@ type HelloRequest struct {
 	MyTime      string
 }
 
-// HelloResponse is the /yacy/hello.html response. Seeds[0] is always the
-// responder's own seed; the rest are additional known seeds.
 type HelloResponse struct {
 	ResponseHeader
 	YourIP   string
@@ -30,7 +26,22 @@ type HelloResponse struct {
 	Seeds    []yacymodel.Seed
 }
 
-// Form renders the request as HTTP form fields.
+func (r HelloResponse) OwnSeed() yacymodel.Seed {
+	if len(r.Seeds) == 0 {
+		return nil
+	}
+
+	return r.Seeds[0]
+}
+
+func (r HelloResponse) KnownSeeds() []yacymodel.Seed {
+	if len(r.Seeds) < 2 {
+		return nil
+	}
+
+	return r.Seeds[1:]
+}
+
 func (r HelloRequest) Form() url.Values {
 	form := url.Values{}
 	putString(form, FieldNetworkName, r.NetworkName)
@@ -46,7 +57,6 @@ func (r HelloRequest) Form() url.Values {
 	return form
 }
 
-// ParseHelloRequest reads a HelloRequest from HTTP form fields.
 func ParseHelloRequest(form url.Values) (HelloRequest, error) {
 	count, err := optionalInt(FieldCount, form.Get(FieldCount))
 	if err != nil {
@@ -78,7 +88,6 @@ func ParseHelloRequest(form url.Values) (HelloRequest, error) {
 	return req, nil
 }
 
-// Encode renders the response as a key=value message.
 func (r HelloResponse) Encode() yacymodel.Message {
 	msg := yacymodel.Message{}
 	r.write(msg)
@@ -93,7 +102,6 @@ func (r HelloResponse) Encode() yacymodel.Message {
 	return msg
 }
 
-// ParseHelloResponse reads a HelloResponse from key=value lines.
 func ParseHelloResponse(m yacymodel.Message) (HelloResponse, error) {
 	header, err := parseResponseHeader(m)
 	if err != nil {
