@@ -1,4 +1,4 @@
-package yacywire
+package yacymodel
 
 // MaxPosition is the largest DHT ring position, the cardinal of a hash whose
 // folded symbols are all the last alphabet entry.

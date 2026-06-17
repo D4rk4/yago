@@ -5,11 +5,14 @@ allow:
   depOnAnyVendor: false
 
 exclude:
-  - yacywire
+  - yacymodel
+  - yacyproto
 
 vendors:
-  yacywire:
-    in: github.com/nikitakarpei/yacy-rwi-node/yacywire/**
+  yacymodel:
+    in: github.com/nikitakarpei/yacy-rwi-node/yacymodel/**
+  yacyproto:
+    in: github.com/nikitakarpei/yacy-rwi-node/yacyproto/**
 
 components:
   api:
@@ -24,21 +27,24 @@ components:
 deps:
   core:
     canUse:
-      - yacywire
+      - yacymodel
   api:
     mayDependOn:
       - core
     canUse:
-      - yacywire
+      - yacymodel
+      - yacyproto
   infrastructure:
     mayDependOn:
       - core
     canUse:
-      - yacywire
+      - yacymodel
+      - yacyproto
   cmd:
     mayDependOn:
       - api
       - core
       - infrastructure
     canUse:
-      - yacywire
+      - yacymodel
+      - yacyproto

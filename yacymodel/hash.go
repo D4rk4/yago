@@ -1,4 +1,4 @@
-package yacywire
+package yacymodel
 
 import (
 	"crypto/md5" //nolint:gosec // YaCy word hashes are defined as MD5; not a security control.

@@ -1,5 +1,5 @@
 GO ?= go
-MODULES := . yacywire
+MODULES := . yacymodel yacyproto
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 0
 

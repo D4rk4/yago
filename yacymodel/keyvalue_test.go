@@ -1,4 +1,4 @@
-package yacywire
+package yacymodel
 
 import "testing"
 
