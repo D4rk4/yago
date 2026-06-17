@@ -6,7 +6,7 @@ import (
 )
 
 func TestParseURIMetadataRowRoundTrip(t *testing.T) {
-	row := "hash=MNOPQRSTUVWX,size=1024,title=Example"
+	row := "{flags=AAAAAA,fresh=20260101,hash=MNOPQRSTUVWX,load=20250101,mod=20250101,size=1024,url=b|aHR0cHM6Ly9leGFtcGxlLm9yZy8,wc=12}"
 	parsed, err := ParseURIMetadataRow(row)
 	if err != nil {
 		t.Fatal(err)
@@ -21,7 +21,7 @@ func TestParseURIMetadataRowRoundTrip(t *testing.T) {
 }
 
 func TestURLHashFallback(t *testing.T) {
-	parsed, err := ParseURIMetadataRow("h=MNOPQRSTUVWX,title=Example")
+	parsed, err := ParseURIMetadataRow("{h=MNOPQRSTUVWX,url=b|aHR0cHM6Ly9leGFtcGxlLm9yZy8}")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,17 +32,26 @@ func TestURLHashFallback(t *testing.T) {
 }
 
 func TestURLHashMissing(t *testing.T) {
-	parsed, err := ParseURIMetadataRow("title=Example")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := parsed.URLHash(); !errors.Is(err, ErrBadURLMetadata) {
-		t.Fatalf("URLHash() = %v, want ErrBadURLMetadata", err)
+	if _, err := ParseURIMetadataRow(
+		"{url=b|aHR0cHM6Ly9leGFtcGxlLm9yZy8}",
+	); !errors.Is(
+		err,
+		ErrBadURLMetadata,
+	) {
+		t.Fatalf("ParseURIMetadataRow() = %v, want ErrBadURLMetadata", err)
 	}
 }
 
 func TestParseURIMetadataRowErrors(t *testing.T) {
-	for _, bad := range []string{"", "=novalue"} {
+	for _, bad := range []string{
+		"",
+		"hash=MNOPQRSTUVWX",
+		"{=novalue}",
+		"{hash=short}",
+		"{hash=MNOPQRSTUVWX,flags=AAAAAAA}",
+		"{hash=MNOPQRSTUVWX,mod=20251301}",
+		"{hash=MNOPQRSTUVWX,size=-1}",
+	} {
 		if _, err := ParseURIMetadataRow(bad); !errors.Is(err, ErrBadURLMetadata) {
 			t.Errorf("ParseURIMetadataRow(%q) = %v, want ErrBadURLMetadata", bad, err)
 		}

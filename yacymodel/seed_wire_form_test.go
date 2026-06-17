@@ -38,8 +38,8 @@ func TestDecodeSeedWireFormExplicit(t *testing.T) {
 	if err != nil || plain != "Hash=ABCDEFGHIJKL" {
 		t.Errorf("plain decode = %q, %v", plain, err)
 	}
-	b64, err := DecodeSeedWireForm("b|" + Encode([]byte("Hash=ABCDEFGHIJKL")))
-	if err != nil || b64 != "Hash=ABCDEFGHIJKL" {
+	b64, err := DecodeSeedWireForm("b|" + Encode([]byte("{Hash=ABCDEFGHIJKL}")))
+	if err != nil || b64 != "{Hash=ABCDEFGHIJKL}" {
 		t.Errorf("b64 decode = %q, %v", b64, err)
 	}
 }

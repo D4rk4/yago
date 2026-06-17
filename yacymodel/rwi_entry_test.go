@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const sampleRWILine = "ABCDEFGHIJKL{c=1,h=MNOPQRSTUVWX,x=3}"
+const sampleRWILine = "ABCDEFGHIJKL{c=1,h=MNOPQRSTUVWX,x=3,z=AAAAAA}"
 
 func TestParseRWIEntryRoundTrip(t *testing.T) {
 	entry, err := ParseRWIEntry(sampleRWILine)
@@ -29,6 +29,8 @@ func TestParseRWIEntryErrors(t *testing.T) {
 		"ABCDEFGHIJKLnobraces",
 		"short{h=MNOPQRSTUVWX}",
 		"ABCDEFGHIJKL{=novalue}",
+		"ABCDEFGHIJKL{h=MNOPQRSTUVWX,x=256}",
+		"ABCDEFGHIJKL{h=MNOPQRSTUVWX,z=AAAAAAA}",
 	}
 	for _, c := range cases {
 		if _, err := ParseRWIEntry(c); !errors.Is(err, ErrBadRWIEntry) {

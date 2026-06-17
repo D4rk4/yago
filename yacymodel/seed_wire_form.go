@@ -8,8 +8,6 @@ import (
 	"io"
 )
 
-// Seed wire-form prefixes. A wire form is a one-character tag, a pipe, and the
-// encoded seed string.
 const (
 	wireFormPlain  = 'p'
 	wireFormBase64 = 'b'
@@ -17,12 +15,8 @@ const (
 	wireFormSep    = '|'
 )
 
-// ErrBadSeedWireForm reports a seed wire form with an unknown tag or a missing
-// separator.
 var ErrBadSeedWireForm = errors.New("bad seed wire form")
 
-// EncodeSeedWireForm renders a plaintext seed string in the shortest valid wire
-// form: plain, enhanced Base64, or gzip then enhanced Base64.
 func EncodeSeedWireForm(seed string) string {
 	shortest := tagged(wireFormPlain, seed)
 
@@ -43,7 +37,6 @@ func tagged(tag byte, body string) string {
 	return string([]byte{tag, wireFormSep}) + body
 }
 
-// DecodeSeedWireForm decodes a seed wire form back to its plaintext seed string.
 func DecodeSeedWireForm(form string) (string, error) {
 	if len(form) < 2 || form[1] != wireFormSep {
 		return "", ErrBadSeedWireForm

@@ -6,7 +6,7 @@ import (
 )
 
 func TestParsePeerType(t *testing.T) {
-	for _, valid := range []string{"virgin", "junior", "senior", "principal"} {
+	for _, valid := range []string{"virgin", "junior", "mentee", "senior", "mentor", "principal"} {
 		pt, err := ParsePeerType(valid)
 		if err != nil {
 			t.Errorf("ParsePeerType(%q) = %v", valid, err)

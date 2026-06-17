@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-// WordReference column keys carried in an RWI entry's property form.
 const (
 	ColURLHash           = "h"
 	ColLastModified      = "a"
@@ -35,22 +34,17 @@ const (
 	requiredColumn       = ColLocalLinkCount
 )
 
-// ErrBadRWIEntry reports an RWI posting line that is not well-formed.
 var ErrBadRWIEntry = errors.New("bad rwi entry")
 
-// RWIEntry is one reverse-word-index posting: a word hash and the property-form
-// WordReferenceRow that records a URL's relation to that word.
 type RWIEntry struct {
 	WordHash   Hash
 	Properties map[string]string
 }
 
-// URLHash returns the posting's URL hash field validated as a Hash.
 func (e RWIEntry) URLHash() (Hash, error) {
 	return ParseHash(e.Properties[ColURLHash])
 }
 
-// ParseRWIEntry parses one posting line of the form wordHash{col=value,...}.
 func ParseRWIEntry(line string) (RWIEntry, error) {
 	open := strings.IndexByte(line, propertyOpen)
 	if open < 0 || !strings.HasSuffix(line, string(propertyClose)) {
@@ -72,10 +66,12 @@ func ParseRWIEntry(line string) (RWIEntry, error) {
 		}
 		props[key] = value
 	}
+	if err := validateRWIProperties(props); err != nil {
+		return RWIEntry{}, fmt.Errorf("%w: %w", ErrBadRWIEntry, err)
+	}
 	return RWIEntry{WordHash: wordHash, Properties: props}, nil
 }
 
-// String renders the posting line with property keys in sorted order.
 func (e RWIEntry) String() string {
 	keys := make([]string, 0, len(e.Properties))
 	for k := range e.Properties {
@@ -97,9 +93,6 @@ func (e RWIEntry) String() string {
 	return b.String()
 }
 
-// AcceptableRWILine reports whether a receiver should accept a raw posting line:
-// it must carry a property form and the required column, must not carry the
-// corruption marker, and its word and URL hashes must both be well-formed.
 func AcceptableRWILine(line string) bool {
 	if !strings.ContainsRune(line, propertyOpen) ||
 		!strings.Contains(line, requiredColumn+"=") ||

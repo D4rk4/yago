@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const sampleSeed = "Flags=    ,Hash=ABCDEFGHIJKL,IP=192.0.2.1,Name=testpeer,PeerType=senior,Port=8090"
+const sampleSeed = "{Flags=    ,Hash=ABCDEFGHIJKL,IP=192.0.2.1,Name=testpeer,PeerType=senior,Port=8090}"
 
 func TestParseSeedRoundTrip(t *testing.T) {
 	seed, err := ParseSeed(sampleSeed)
@@ -46,12 +46,22 @@ func TestParseSeedBad(t *testing.T) {
 }
 
 func TestSeedSkipsEmptyPairs(t *testing.T) {
-	seed, err := ParseSeed("Hash=ABCDEFGHIJKL,,Port=8090")
+	seed, err := ParseSeed("{Hash=ABCDEFGHIJKL,,Port=8090}")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(seed) != 2 {
 		t.Errorf("expected 2 fields, got %d", len(seed))
+	}
+}
+
+func TestParseSeedAcceptsBareMap(t *testing.T) {
+	seed, err := ParseSeed("Hash=ABCDEFGHIJKL,Port=8090")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seed[SeedHash] != "ABCDEFGHIJKL" || seed[SeedPort] != "8090" {
+		t.Errorf("seed = %v", seed)
 	}
 }
 

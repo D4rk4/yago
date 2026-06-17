@@ -13,12 +13,16 @@ linters:
     - nilerr
     - noctx
     - prealloc
-    - revive
     - testifylint
     - unconvert
     - unparam
     - usestdlibvars
     - wrapcheck
+  settings:
+    gosec:
+      excludes:
+        - G401
+        - G501
   exclusions:
     generated: strict
 

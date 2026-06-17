@@ -5,12 +5,8 @@ import (
 	"fmt"
 )
 
-// Alphabet is the YaCy enhanced-Base64 alphabet: standard Base64 bit packing
-// with a URL-safe alphabet and no padding. Its order is also the DHT
-// collation and ring order.
 const Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 
-// ErrInvalidBase64 reports input that is not valid enhanced Base64.
 var ErrInvalidBase64 = errors.New("invalid enhanced base64")
 
 var decodeTable = newDecodeTable()
@@ -26,7 +22,6 @@ func newDecodeTable() [256]int8 {
 	return table
 }
 
-// Encode packs src into enhanced Base64 without padding.
 func Encode(src []byte) string {
 	if len(src) == 0 {
 		return ""
@@ -48,8 +43,6 @@ func Encode(src []byte) string {
 	return string(out)
 }
 
-// Decode reverses Encode. It returns ErrInvalidBase64 for symbols outside the
-// alphabet.
 func Decode(s string) ([]byte, error) {
 	if s == "" {
 		return nil, nil
@@ -72,15 +65,8 @@ func Decode(s string) ([]byte, error) {
 	return out, nil
 }
 
-// cardinalSymbols is the number of leading symbols YaCy folds into a DHT ring
-// position; the rest of the hash is ignored.
 const cardinalSymbols = 10
 
-// cardinal returns the YaCy DHT ring cardinal of s: the first cardinalSymbols
-// symbols packed six bits each, right-padded to cardinalSymbols, then shifted
-// left three bits with the low three bits set, yielding a value in
-// [0, MaxPosition]. It reports ErrInvalidBase64 for symbols outside the
-// alphabet.
 func cardinal(s string) (uint64, error) {
 	n := min(len(s), cardinalSymbols)
 	var c uint64

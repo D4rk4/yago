@@ -7,25 +7,24 @@ import (
 	"strings"
 )
 
-// URIMetadataRow column keys carrying the URL hash. YaCy commonly uses hash,
-// and some versions and paths use h.
 const (
 	URLMetaHash    = "hash"
 	URLMetaHashAlt = "h"
 )
 
-// ErrBadURLMetadata reports a URL metadata row that is not well-formed.
 var ErrBadURLMetadata = errors.New("bad url metadata")
 
-// URIMetadataRow is an indexed URL's metadata in comma-separated property form.
 type URIMetadataRow struct {
 	Properties map[string]string
 }
 
-// ParseURIMetadataRow parses one comma-separated col=value metadata row.
 func ParseURIMetadataRow(row string) (URIMetadataRow, error) {
+	if len(row) < 2 || row[0] != urlMetadataOpen || row[len(row)-1] != urlMetadataClose {
+		return URIMetadataRow{}, fmt.Errorf("%w: missing property form", ErrBadURLMetadata)
+	}
 	props := make(map[string]string)
-	for pair := range strings.SplitSeq(row, ",") {
+	body := row[1 : len(row)-1]
+	for pair := range strings.SplitSeq(body, ",") {
 		if pair == "" {
 			continue
 		}
@@ -38,22 +37,16 @@ func ParseURIMetadataRow(row string) (URIMetadataRow, error) {
 	if len(props) == 0 {
 		return URIMetadataRow{}, fmt.Errorf("%w: empty row", ErrBadURLMetadata)
 	}
+	if err := validateURLMetadataProperties(props); err != nil {
+		return URIMetadataRow{}, fmt.Errorf("%w: %w", ErrBadURLMetadata, err)
+	}
 	return URIMetadataRow{Properties: props}, nil
 }
 
-// URLHash returns the row's URL hash, preferring the hash column and falling
-// back to h, validated as a Hash.
 func (r URIMetadataRow) URLHash() (Hash, error) {
-	if v, ok := r.Properties[URLMetaHash]; ok {
-		return ParseHash(v)
-	}
-	if v, ok := r.Properties[URLMetaHashAlt]; ok {
-		return ParseHash(v)
-	}
-	return "", fmt.Errorf("%w: no url hash", ErrBadURLMetadata)
+	return urlMetadataHash(r.Properties)
 }
 
-// String renders the row with property keys in sorted order.
 func (r URIMetadataRow) String() string {
 	keys := make([]string, 0, len(r.Properties))
 	for k := range r.Properties {
@@ -61,6 +54,7 @@ func (r URIMetadataRow) String() string {
 	}
 	slices.Sort(keys)
 	var b strings.Builder
+	b.WriteByte(urlMetadataOpen)
 	for i, k := range keys {
 		if i > 0 {
 			b.WriteByte(',')
@@ -69,5 +63,6 @@ func (r URIMetadataRow) String() string {
 		b.WriteByte('=')
 		b.WriteString(r.Properties[k])
 	}
+	b.WriteByte(urlMetadataClose)
 	return b.String()
 }
