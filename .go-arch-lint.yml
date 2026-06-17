@@ -18,6 +18,10 @@ components:
   cmd:
     in: cmd/**
 
+vendors:
+  bbolt:
+    in: go.etcd.io/bbolt
+
 deps:
   yacymodel:
     mayDependOn:
@@ -43,6 +47,8 @@ deps:
       - core
       - yacymodel
       - yacyproto
+    canUse:
+      - bbolt
   cmd:
     mayDependOn:
       - api

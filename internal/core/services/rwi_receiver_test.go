@@ -88,6 +88,18 @@ func TestReceiveRWIPropagatesError(t *testing.T) {
 	}
 }
 
+func TestReceiveRWIWrapsStoreFailure(t *testing.T) {
+	store := &fakeRWIStore{appendErr: ports.ErrStoreFailure}
+	receiver := NewRWIReceiver(store, &fakeURLStore{}, 10, 15)
+
+	if _, err := receiver.ReceiveRWI(
+		context.Background(),
+		rwiEntries(1),
+	); !errors.Is(err, ports.ErrStoreFailure) {
+		t.Fatalf("got %v, want ErrStoreFailure", err)
+	}
+}
+
 func TestReceiveRWIPropagatesMissingURLsError(t *testing.T) {
 	wantErr := errors.New("boom")
 	receiver := NewRWIReceiver(&fakeRWIStore{}, &fakeURLStore{missingErr: wantErr}, 10, 15)

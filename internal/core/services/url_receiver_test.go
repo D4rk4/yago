@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/ports"
@@ -39,5 +40,17 @@ func TestReceiveURLsCapacityBusy(t *testing.T) {
 	}
 	if !receipt.Busy {
 		t.Error("expected busy on capacity error")
+	}
+}
+
+func TestReceiveURLsWrapsStoreFailure(t *testing.T) {
+	store := &fakeURLStore{storeErr: ports.ErrStoreFailure}
+	receiver := NewURLReceiver(store)
+
+	if _, err := receiver.ReceiveURLs(
+		context.Background(),
+		[]yacymodel.URIMetadataRow{{}},
+	); !errors.Is(err, ports.ErrStoreFailure) {
+		t.Fatalf("got %v, want ErrStoreFailure", err)
 	}
 }
