@@ -1,0 +1,44 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+
+exclude:
+  - yacywire
+
+vendors:
+  yacywire:
+    in: github.com/nikitakarpei/yacy-rwi-node/yacywire/**
+
+components:
+  api:
+    in: internal/api/**
+  core:
+    in: internal/core/**
+  infrastructure:
+    in: internal/infrastructure/**
+  cmd:
+    in: cmd/**
+
+deps:
+  core:
+    canUse:
+      - yacywire
+  api:
+    mayDependOn:
+      - core
+    canUse:
+      - yacywire
+  infrastructure:
+    mayDependOn:
+      - core
+    canUse:
+      - yacywire
+  cmd:
+    mayDependOn:
+      - api
+      - core
+      - infrastructure
+    canUse:
+      - yacywire

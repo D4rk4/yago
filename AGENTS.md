@@ -27,6 +27,27 @@ Each document must be self-contained, concise, and written in plain language for
 related docs for navigation only; avoid cross-document dependencies, duplicate facts, internal jargon,
 implementation details, and rationale.
 
+## File naming
+
+Every file name states its single responsibility, so the file has one reason to change and cannot
+quietly absorb unrelated concerns. Prefer long and bounded over short and generic; never `util.go`,
+`helpers.go`, `handler.go`, or `types.go`.
+
+## Dependencies
+
+Every newly introduced third-party dependency is recorded in its own ADR before use.
+
+## Version pinning
+
+All dependency versions are pinned: runtime dependencies through `go.mod`, build and lint tools through
+Go `tool` directives in `go.mod`. `make verify` runs only those pinned tool versions, never whatever is
+on `PATH`.
+
+## Testing
+
+Code lands with tests. `make verify` runs the test suite and a coverage scan; a change is not done
+until both are green and total coverage stays at or above the configured threshold.
+
 ## Feedback loop
 
 `make verify` is the single gate; a change is not done until it is green.
