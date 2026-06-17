@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/core"
+	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
@@ -30,7 +30,7 @@ func sampleEntry(tb testing.TB) yacymodel.RWIEntry {
 
 func TestTransferRWIHandlerHappyPath(t *testing.T) {
 	h := newTestHarness(t)
-	h.rwi.receipt = core.RWIReceipt{Pause: 5, UnknownURL: []yacymodel.Hash{testHash(t, "url")}}
+	h.rwi.receipt = contracts.RWIReceipt{Pause: 5, UnknownURL: []yacymodel.Hash{testHash(t, "url")}}
 
 	req := yacyproto.TransferRWIRequest{
 		YouAre:  h.ident.hash,
@@ -55,7 +55,7 @@ func TestTransferRWIHandlerHappyPath(t *testing.T) {
 
 func TestTransferRWIHandlerBusy(t *testing.T) {
 	h := newTestHarness(t)
-	h.rwi.receipt = core.RWIReceipt{Busy: true}
+	h.rwi.receipt = contracts.RWIReceipt{Busy: true}
 
 	req := yacyproto.TransferRWIRequest{
 		YouAre:  h.ident.hash,

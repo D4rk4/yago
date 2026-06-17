@@ -3,20 +3,20 @@ package api
 import (
 	"net/http"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/core"
+	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 type searchHandler struct {
 	guard    requestGuard
-	status   core.RuntimeStatus
-	searcher core.Searcher
+	status   contracts.RuntimeStatus
+	searcher contracts.Searcher
 }
 
 func newSearchHandler(
 	guard requestGuard,
-	status core.RuntimeStatus,
-	searcher core.Searcher,
+	status contracts.RuntimeStatus,
+	searcher contracts.Searcher,
 ) *searchHandler {
 	return &searchHandler{guard: guard, status: status, searcher: searcher}
 }
@@ -40,7 +40,7 @@ func (h *searchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.guard.networkMatches(form) {
-		result, err := h.searcher.Search(ctx, core.SearchQuery{
+		result, err := h.searcher.Search(ctx, contracts.SearchQuery{
 			Words:       req.Query,
 			Exclude:     req.Exclude,
 			URLs:        req.URLs,

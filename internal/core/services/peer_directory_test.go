@@ -1,0 +1,80 @@
+package services
+
+import (
+	"context"
+	"strconv"
+	"testing"
+	"time"
+
+	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+)
+
+func callerSeed(hash string, ip string, port int) yacymodel.Seed {
+	return yacymodel.Seed{
+		yacymodel.SeedHash: string(hashFor(hash)),
+		yacymodel.SeedIP:   ip,
+		yacymodel.SeedPort: strconv.Itoa(port),
+	}
+}
+
+func TestHelloClassifiesCaller(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(0, 0)}
+	cases := []struct {
+		name string
+		seed yacymodel.Seed
+		want yacymodel.PeerType
+	}{
+		{"reachable", callerSeed("a", "10.0.0.1", 8090), yacymodel.PeerSenior},
+		{"no ip", callerSeed("b", "", 8090), yacymodel.PeerJunior},
+		{"no port", callerSeed("c", "10.0.0.1", 0), yacymodel.PeerJunior},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := NewPeerDirectory(clock, 16)
+			outcome, err := dir.Hello(context.Background(), tc.seed)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if outcome.CallerType != tc.want {
+				t.Errorf("got %v, want %v", outcome.CallerType, tc.want)
+			}
+		})
+	}
+}
+
+func TestHelloStampsLastSeen(t *testing.T) {
+	clock := &fakeClock{now: time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)}
+	dir := NewPeerDirectory(clock, 16)
+
+	outcome, err := dir.Hello(context.Background(), callerSeed("a", "10.0.0.1", 8090))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(outcome.Known) != 1 {
+		t.Fatalf("got %d known, want 1", len(outcome.Known))
+	}
+	if got := outcome.Known[0][yacymodel.SeedLastSeen]; got != "2026-06-18T12:00:00" {
+		t.Errorf("last seen: got %q", got)
+	}
+}
+
+func TestHelloBoundedEviction(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(0, 0)}
+	dir := NewPeerDirectory(clock, 2)
+
+	for _, id := range []string{"a", "b", "c"} {
+		if _, err := dir.Hello(context.Background(), callerSeed(id, "10.0.0.1", 8090)); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	outcome, _ := dir.Hello(context.Background(), callerSeed("c", "10.0.0.1", 8090))
+	if len(outcome.Known) != 2 {
+		t.Fatalf("got %d known, want 2 (bounded)", len(outcome.Known))
+	}
+	for _, seed := range outcome.Known {
+		if seed[yacymodel.SeedHash] == string(hashFor("a")) {
+			t.Error("oldest peer should have been evicted")
+		}
+	}
+}

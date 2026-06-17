@@ -3,16 +3,19 @@ package api
 import (
 	"net/http"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/core"
+	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 type crawlReceiptHandler struct {
 	guard  requestGuard
-	status core.RuntimeStatus
+	status contracts.RuntimeStatus
 }
 
-func newCrawlReceiptHandler(guard requestGuard, status core.RuntimeStatus) *crawlReceiptHandler {
+func newCrawlReceiptHandler(
+	guard requestGuard,
+	status contracts.RuntimeStatus,
+) *crawlReceiptHandler {
 	return &crawlReceiptHandler{guard: guard, status: status}
 }
 

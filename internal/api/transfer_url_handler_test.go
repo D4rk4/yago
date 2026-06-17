@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/core"
+	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
@@ -26,7 +26,7 @@ func sampleURLRow(tb testing.TB) yacymodel.URIMetadataRow {
 
 func TestTransferURLHandlerHappyPath(t *testing.T) {
 	h := newTestHarness(t)
-	h.urls.receipt = core.URLReceipt{Double: 2}
+	h.urls.receipt = contracts.URLReceipt{Double: 2}
 
 	req := yacyproto.TransferURLRequest{
 		YouAre:   h.ident.hash,
@@ -52,7 +52,7 @@ func TestTransferURLHandlerHappyPath(t *testing.T) {
 
 func TestTransferURLHandlerBusy(t *testing.T) {
 	h := newTestHarness(t)
-	h.urls.receipt = core.URLReceipt{Busy: true}
+	h.urls.receipt = contracts.URLReceipt{Busy: true}
 
 	req := yacyproto.TransferURLRequest{
 		YouAre:   h.ident.hash,

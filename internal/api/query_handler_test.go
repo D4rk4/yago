@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/core"
+	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
@@ -19,7 +19,7 @@ func TestQueryHandlerSupportedObject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse response: %v", err)
 	}
-	if h.counter.kind != core.RWICount {
+	if h.counter.kind != contracts.RWICount {
 		t.Errorf("kind = %v, want RWICount", h.counter.kind)
 	}
 	if resp.Response != 42 {

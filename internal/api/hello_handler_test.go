@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/core"
+	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
@@ -13,7 +13,7 @@ import (
 func TestHelloHandlerHappyPath(t *testing.T) {
 	h := newTestHarness(t)
 	known := testSeed(t, "friend", "friend")
-	h.peers.outcome = core.HelloOutcome{
+	h.peers.outcome = contracts.HelloOutcome{
 		CallerType: yacymodel.PeerSenior,
 		Known:      []yacymodel.Seed{known},
 	}

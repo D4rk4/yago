@@ -7,13 +7,13 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/core"
+	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 type requestGuard struct {
-	ident        core.Identity
+	ident        contracts.Identity
 	maxBodyBytes int64
 	timeout      time.Duration
 }
@@ -65,6 +65,6 @@ func methodAllowed(method string, methods yacyproto.EndpointMethodSet) bool {
 	}
 }
 
-func responseHeader(snapshot core.StatusSnapshot) yacyproto.ResponseHeader {
+func responseHeader(snapshot contracts.StatusSnapshot) yacyproto.ResponseHeader {
 	return yacyproto.ResponseHeader{Version: snapshot.Version, Uptime: snapshot.Uptime}
 }

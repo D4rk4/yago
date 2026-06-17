@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/core"
+	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
@@ -12,7 +12,7 @@ import (
 func TestSearchHandlerHappyPath(t *testing.T) {
 	h := newTestHarness(t)
 	wordHash := testHash(t, "word")
-	h.searcher.result = core.SearchResult{
+	h.searcher.result = contracts.SearchResult{
 		Resources:  []yacymodel.URIMetadataRow{sampleURLRow(t)},
 		JoinCount:  9,
 		WordCounts: map[yacymodel.Hash]int{wordHash: 3},

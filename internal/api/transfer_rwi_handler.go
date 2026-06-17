@@ -3,20 +3,20 @@ package api
 import (
 	"net/http"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/core"
+	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 type transferRWIHandler struct {
 	guard    requestGuard
-	status   core.RuntimeStatus
-	receiver core.RWIReceiver
+	status   contracts.RuntimeStatus
+	receiver contracts.RWIReceiver
 }
 
 func newTransferRWIHandler(
 	guard requestGuard,
-	status core.RuntimeStatus,
-	receiver core.RWIReceiver,
+	status contracts.RuntimeStatus,
+	receiver contracts.RWIReceiver,
 ) *transferRWIHandler {
 	return &transferRWIHandler{guard: guard, status: status, receiver: receiver}
 }

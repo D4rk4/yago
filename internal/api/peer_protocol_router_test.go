@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/core"
+	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
@@ -49,19 +49,22 @@ func (f fakeIdentity) Hash() yacymodel.Hash { return f.hash }
 func (f fakeIdentity) NetworkName() string  { return f.network }
 
 type fakeStatus struct {
-	snapshot core.StatusSnapshot
+	snapshot contracts.StatusSnapshot
 }
 
-func (f fakeStatus) Snapshot(context.Context) core.StatusSnapshot { return f.snapshot }
+func (f fakeStatus) Snapshot(context.Context) contracts.StatusSnapshot { return f.snapshot }
 
 type fakePeers struct {
-	outcome core.HelloOutcome
+	outcome contracts.HelloOutcome
 	err     error
 	caller  yacymodel.Seed
 	called  bool
 }
 
-func (f *fakePeers) Hello(_ context.Context, caller yacymodel.Seed) (core.HelloOutcome, error) {
+func (f *fakePeers) Hello(
+	_ context.Context,
+	caller yacymodel.Seed,
+) (contracts.HelloOutcome, error) {
 	f.called = true
 	f.caller = caller
 
@@ -69,7 +72,7 @@ func (f *fakePeers) Hello(_ context.Context, caller yacymodel.Seed) (core.HelloO
 }
 
 type fakeRWIReceiver struct {
-	receipt core.RWIReceipt
+	receipt contracts.RWIReceipt
 	err     error
 	entries []yacymodel.RWIEntry
 	called  bool
@@ -78,7 +81,7 @@ type fakeRWIReceiver struct {
 func (f *fakeRWIReceiver) ReceiveRWI(
 	_ context.Context,
 	entries []yacymodel.RWIEntry,
-) (core.RWIReceipt, error) {
+) (contracts.RWIReceipt, error) {
 	f.called = true
 	f.entries = entries
 
@@ -86,7 +89,7 @@ func (f *fakeRWIReceiver) ReceiveRWI(
 }
 
 type fakeURLReceiver struct {
-	receipt core.URLReceipt
+	receipt contracts.URLReceipt
 	err     error
 	rows    []yacymodel.URIMetadataRow
 	called  bool
@@ -95,7 +98,7 @@ type fakeURLReceiver struct {
 func (f *fakeURLReceiver) ReceiveURLs(
 	_ context.Context,
 	rows []yacymodel.URIMetadataRow,
-) (core.URLReceipt, error) {
+) (contracts.URLReceipt, error) {
 	f.called = true
 	f.rows = rows
 
@@ -103,16 +106,16 @@ func (f *fakeURLReceiver) ReceiveURLs(
 }
 
 type fakeSearcher struct {
-	result core.SearchResult
+	result contracts.SearchResult
 	err    error
-	query  core.SearchQuery
+	query  contracts.SearchQuery
 	called bool
 }
 
 func (f *fakeSearcher) Search(
 	_ context.Context,
-	query core.SearchQuery,
-) (core.SearchResult, error) {
+	query contracts.SearchQuery,
+) (contracts.SearchResult, error) {
 	f.called = true
 	f.query = query
 
@@ -122,11 +125,11 @@ func (f *fakeSearcher) Search(
 type fakeCounter struct {
 	count  int
 	err    error
-	kind   core.CountKind
+	kind   contracts.CountKind
 	called bool
 }
 
-func (f *fakeCounter) Count(_ context.Context, kind core.CountKind) (int, error) {
+func (f *fakeCounter) Count(_ context.Context, kind contracts.CountKind) (int, error) {
 	f.called = true
 	f.kind = kind
 
@@ -148,7 +151,7 @@ func newTestHarness(tb testing.TB) *testHarness {
 
 	return &testHarness{
 		ident: fakeIdentity{hash: testHash(tb, "node"), network: ""},
-		status: fakeStatus{snapshot: core.StatusSnapshot{
+		status: fakeStatus{snapshot: contracts.StatusSnapshot{
 			Version: "1.0",
 			Uptime:  7,
 			Seed:    testSeed(tb, "node", "self"),

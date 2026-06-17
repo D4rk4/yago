@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/core"
+	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
@@ -45,13 +45,13 @@ func WithTrustedProxies(nets []*net.IPNet) Option {
 }
 
 func NewPeerProtocolMux(
-	ident core.Identity,
-	status core.RuntimeStatus,
-	peers core.PeerDirectory,
-	rwi core.RWIReceiver,
-	urls core.URLReceiver,
-	searcher core.Searcher,
-	counter core.Counter,
+	ident contracts.Identity,
+	status contracts.RuntimeStatus,
+	peers contracts.PeerDirectory,
+	rwi contracts.RWIReceiver,
+	urls contracts.URLReceiver,
+	searcher contracts.Searcher,
+	counter contracts.Counter,
 	opts ...Option,
 ) *http.ServeMux {
 	options := muxOptions{

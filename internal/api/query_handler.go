@@ -3,20 +3,20 @@ package api
 import (
 	"net/http"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/core"
+	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 type queryHandler struct {
 	guard   requestGuard
-	status  core.RuntimeStatus
-	counter core.Counter
+	status  contracts.RuntimeStatus
+	counter contracts.Counter
 }
 
 func newQueryHandler(
 	guard requestGuard,
-	status core.RuntimeStatus,
-	counter core.Counter,
+	status contracts.RuntimeStatus,
+	counter contracts.Counter,
 ) *queryHandler {
 	return &queryHandler{guard: guard, status: status, counter: counter}
 }
@@ -55,14 +55,14 @@ func (h *queryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	writeWireMessage(w, resp.Encode())
 }
 
-func countKind(object yacyproto.QueryObject) (core.CountKind, bool) {
+func countKind(object yacyproto.QueryObject) (contracts.CountKind, bool) {
 	switch object {
 	case yacyproto.ObjectRWICount:
-		return core.RWICount, true
+		return contracts.RWICount, true
 	case yacyproto.ObjectRWIURLCount:
-		return core.RWIURLCount, true
+		return contracts.RWIURLCount, true
 	case yacyproto.ObjectLURLCount:
-		return core.LURLCount, true
+		return contracts.LURLCount, true
 	default:
 		return 0, false
 	}

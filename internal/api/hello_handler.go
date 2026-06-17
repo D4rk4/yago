@@ -4,22 +4,22 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/core"
+	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 type helloHandler struct {
 	guard          requestGuard
-	status         core.RuntimeStatus
-	peers          core.PeerDirectory
+	status         contracts.RuntimeStatus
+	peers          contracts.PeerDirectory
 	trustedProxies []*net.IPNet
 }
 
 func newHelloHandler(
 	guard requestGuard,
-	status core.RuntimeStatus,
-	peers core.PeerDirectory,
+	status contracts.RuntimeStatus,
+	peers contracts.PeerDirectory,
 	trustedProxies []*net.IPNet,
 ) *helloHandler {
 	return &helloHandler{
