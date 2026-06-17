@@ -1,15 +1,21 @@
 GO ?= go
 MODULES := . yacymodel yacyproto
 COVER_PROFILE := coverage.out
-COVERAGE_MIN ?= 0
+COVERAGE_MIN ?= 80
 
 .PHONY: fmt fmt-check lint vet arch test cover cover-check build verify
 
 fmt:
-	$(GO) tool golangci-lint fmt
+	@set -e; for m in $(MODULES); do \
+		echo "==> fmt $$m"; \
+		( cd $$m && $(GO) tool golangci-lint fmt ); \
+	done
 
 fmt-check:
-	$(GO) tool golangci-lint fmt --diff
+	@set -e; for m in $(MODULES); do \
+		echo "==> fmt-check $$m"; \
+		( cd $$m && $(GO) tool golangci-lint fmt --diff ); \
+	done
 
 lint:
 	@set -e; for m in $(MODULES); do \
@@ -43,6 +49,8 @@ cover-check:
 	@set -e; for m in $(MODULES); do \
 		echo "==> cover-check $$m (min $(COVERAGE_MIN)%)"; \
 		( cd $$m && $(GO) test -race -coverprofile=$(COVER_PROFILE) ./... >/dev/null && \
+			stmts=$$(awk 'NR > 1 { sum += $$2 } END { print sum + 0 }' $(COVER_PROFILE)); \
+			if [ "$$stmts" -eq 0 ]; then echo "    no statements to cover"; exit 0; fi; \
 			total=$$($(GO) tool cover -func=$(COVER_PROFILE) | \
 				awk '/^total:/ { gsub(/%/, "", $$3); print $$3 }'); \
 			echo "    total: $${total:-0}%"; \
