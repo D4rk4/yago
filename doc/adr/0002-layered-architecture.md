@@ -22,7 +22,11 @@ peer-facing clients — validating any models it ingests from peers. Dependencie
 `api` and `infrastructure` depend on `core` and do not depend on each other; all three build on
 the shared `yacymodel` models. `cmd` is the only place they are wired together.
 
-The dependency rules are declared and enforced in `.go-arch-lint.yml`.
+The dependency rules are declared and enforced in `.go-arch-lint.yml`, where each layer and
+shared module is a component that lists the components it may depend on. `core` declares its
+ports as interfaces and never names a concrete adapter, so deep scanning is disabled for it:
+the inward import check still forbids `core` from depending on `api` or `infrastructure`, while
+allowing adapters to be injected at the `cmd` seam without tripping the analyzer.
 
 ## Consequences
 

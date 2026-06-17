@@ -4,17 +4,11 @@ workdir: .
 allow:
   depOnAnyVendor: false
 
-exclude:
-  - yacymodel
-  - yacyproto
-
-vendors:
-  yacymodel:
-    in: github.com/nikitakarpei/yacy-rwi-node/yacymodel/**
-  yacyproto:
-    in: github.com/nikitakarpei/yacy-rwi-node/yacyproto/**
-
 components:
+  yacymodel:
+    in: yacymodel/**
+  yacyproto:
+    in: yacyproto/**
   api:
     in: internal/api/**
   core:
@@ -25,19 +19,28 @@ components:
     in: cmd/**
 
 deps:
+  yacymodel:
+    mayDependOn:
+      - yacymodel
+  yacyproto:
+    mayDependOn:
+      - yacyproto
+      - yacymodel
   core:
-    canUse:
+    deepScan: false
+    mayDependOn:
+      - core
       - yacymodel
   api:
     mayDependOn:
+      - api
       - core
-    canUse:
       - yacymodel
       - yacyproto
   infrastructure:
     mayDependOn:
+      - infrastructure
       - core
-    canUse:
       - yacymodel
       - yacyproto
   cmd:
@@ -45,6 +48,5 @@ deps:
       - api
       - core
       - infrastructure
-    canUse:
       - yacymodel
       - yacyproto
