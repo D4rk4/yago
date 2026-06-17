@@ -3,7 +3,6 @@ package yacymodel
 import (
 	"errors"
 	"fmt"
-	"strconv"
 )
 
 const (
@@ -67,32 +66,28 @@ func validateRWIProperty(key, value string) error {
 		}
 	default:
 		if width, ok := rwiCardinalWidths[key]; ok {
-			return validateFixedWidthUnsignedDecimal(key, value, width)
+			return validateFixedWidthEncoded(key, value, width)
 		}
 		if width, ok := rwiBinaryWidths[key]; ok {
-			return validateFixedWidthUnsignedDecimal(key, value, width)
+			return validateFixedWidthEncoded(key, value, width)
 		}
 	}
 	return nil
 }
 
-func validateFixedWidthUnsignedDecimal(key, value string, byteWidth int) error {
-	n, err := strconv.ParseUint(value, 10, byteWidth*8)
+func validateFixedWidthEncoded(key, value string, byteWidth int) error {
+	raw, err := Decode(value)
 	if err != nil {
 		return fmt.Errorf("%w %s: %w", errInvalidRWIProperty, key, err)
 	}
-	if n > maxUnsigned(byteWidth) {
+	if len(raw) != byteWidth {
 		return fmt.Errorf(
-			"%w %s: %d exceeds %d-byte maximum",
+			"%w %s: length %d, want %d",
 			errInvalidRWIProperty,
 			key,
-			n,
+			len(raw),
 			byteWidth,
 		)
 	}
 	return nil
-}
-
-func maxUnsigned(byteWidth int) uint64 {
-	return 1<<(byteWidth*8) - 1
 }

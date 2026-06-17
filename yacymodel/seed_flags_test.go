@@ -41,8 +41,14 @@ func TestFlagsSetGet(t *testing.T) {
 }
 
 func TestParseFlags(t *testing.T) {
-	if _, err := ParseFlags("   "); !errors.Is(err, ErrInvalidFlags) {
-		t.Fatalf("ParseFlags short = %v, want ErrInvalidFlags", err)
+	if _, err := ParseFlags("     "); !errors.Is(err, ErrInvalidFlags) {
+		t.Fatalf("ParseFlags over-length = %v, want ErrInvalidFlags", err)
+	}
+	if f, err := ParseFlags(""); err != nil || f != ZeroFlags() {
+		t.Fatalf("ParseFlags empty = %v, %v; want ZeroFlags", f, err)
+	}
+	if f, err := ParseFlags("  "); err != nil || f != ZeroFlags() {
+		t.Fatalf("ParseFlags short = %v, %v; want ZeroFlags", f, err)
 	}
 	f, err := ParseFlags(FlagsZero)
 	if err != nil {

@@ -61,12 +61,17 @@ func TestTransferRWIResponseRoundTrip(t *testing.T) {
 	}
 }
 
-func TestParseTransferRWIRequestRejectsBadEntry(t *testing.T) {
+func TestParseTransferRWIRequestSkipsBadEntry(t *testing.T) {
 	t.Parallel()
 
-	form := url.Values{yacyproto.FieldIndexes: {"not-a-posting-line"}}
-	if _, err := yacyproto.ParseTransferRWIRequest(form); err == nil {
-		t.Fatal("expected error for malformed posting line")
+	good := sampleRWIEntry(t, "alpha", "url-a")
+	form := url.Values{yacyproto.FieldIndexes: {"not-a-posting-line\n" + good.String()}}
+	req, err := yacyproto.ParseTransferRWIRequest(form)
+	if err != nil {
+		t.Fatalf("ParseTransferRWIRequest: %v", err)
+	}
+	if len(req.Indexes) != 1 {
+		t.Fatalf("Indexes = %d, want 1 (malformed line skipped)", len(req.Indexes))
 	}
 }
 

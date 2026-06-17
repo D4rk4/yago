@@ -24,7 +24,6 @@ var urlMetadataIntegerKeys = map[string]struct{}{
 	"laudio": {},
 	"lvideo": {},
 	"lapp":   {},
-	"score":  {},
 }
 
 func validateURLMetadataProperties(props map[string]string) error {

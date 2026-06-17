@@ -1,7 +1,7 @@
 package yacyproto
 
 const (
-	FieldNetworkName = "network.name"
+	FieldNetworkName = "network.unit.name"
 	FieldIam         = "iam"
 	FieldYouAre      = "youare"
 	FieldKey         = "key"

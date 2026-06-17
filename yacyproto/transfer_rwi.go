@@ -1,7 +1,6 @@
 package yacyproto
 
 import (
-	"fmt"
 	"net/url"
 	"strings"
 
@@ -67,10 +66,7 @@ func ParseTransferRWIRequest(form url.Values) (TransferRWIRequest, error) {
 		return TransferRWIRequest{}, err
 	}
 
-	req.Indexes, err = parseRWILines(form.Get(FieldIndexes))
-	if err != nil {
-		return TransferRWIRequest{}, err
-	}
+	req.Indexes = parseRWILines(form.Get(FieldIndexes))
 
 	return req, nil
 }
@@ -130,9 +126,11 @@ func encodeRWILines(entries []yacymodel.RWIEntry) string {
 	return strings.Join(lines, "\n")
 }
 
-func parseRWILines(raw string) ([]yacymodel.RWIEntry, error) {
+const maxRWIEntries = 1000
+
+func parseRWILines(raw string) []yacymodel.RWIEntry {
 	if raw == "" {
-		return nil, nil
+		return nil
 	}
 
 	var entries []yacymodel.RWIEntry
@@ -141,14 +139,20 @@ func parseRWILines(raw string) ([]yacymodel.RWIEntry, error) {
 		if line == "" {
 			continue
 		}
+		if len(entries) >= maxRWIEntries {
+			break
+		}
+		if !yacymodel.AcceptableRWILine(line) {
+			continue
+		}
 
 		entry, err := yacymodel.ParseRWIEntry(line)
 		if err != nil {
-			return nil, fmt.Errorf("transferRWI request %s: %w", FieldIndexes, err)
+			continue
 		}
 
 		entries = append(entries, entry)
 	}
 
-	return entries, nil
+	return entries
 }

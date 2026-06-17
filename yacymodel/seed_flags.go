@@ -17,6 +17,11 @@ const (
 	FlagSSLAvailable
 )
 
+const (
+	flagBitsPerAtom      = 5
+	flagASCIIOffset byte = ' '
+)
+
 var ErrInvalidFlags = errors.New("invalid flags")
 
 type Flags [FlagsLength]byte
@@ -26,23 +31,44 @@ func ZeroFlags() Flags {
 }
 
 func ParseFlags(s string) (Flags, error) {
-	if len(s) != FlagsLength {
-		return Flags{}, fmt.Errorf("%w: length %d, want %d", ErrInvalidFlags, len(s), FlagsLength)
+	if len(s) > FlagsLength {
+		return Flags{}, fmt.Errorf(
+			"%w: length %d, want at most %d",
+			ErrInvalidFlags,
+			len(s),
+			FlagsLength,
+		)
 	}
-	return Flags([]byte(s)), nil
+	f := ZeroFlags()
+	copy(f[:], s)
+	return f, nil
 }
 
 func (f Flags) String() string { return string(f[:]) }
 
 func (f Flags) Get(bit int) bool {
-	return f[bit>>3]&(1<<(bit&7)) != 0
+	atoms := f[:]
+	slot := bit / flagBitsPerAtom
+	if bit < 0 || slot >= len(atoms) {
+		return false
+	}
+	mask := byte(1) << (bit % flagBitsPerAtom)
+	return (atoms[slot]-flagASCIIOffset)&mask != 0
 }
 
 func (f Flags) Set(bit int, value bool) Flags {
-	if value {
-		f[bit>>3] |= 1 << (bit & 7)
-	} else {
-		f[bit>>3] &^= 1 << (bit & 7)
+	atoms := f[:]
+	slot := bit / flagBitsPerAtom
+	if bit < 0 || slot >= len(atoms) {
+		return f
 	}
+	mask := byte(1) << (bit % flagBitsPerAtom)
+	atom := atoms[slot] - flagASCIIOffset
+	if value {
+		atom |= mask
+	} else {
+		atom &^= mask
+	}
+	atoms[slot] = atom + flagASCIIOffset
 	return f
 }

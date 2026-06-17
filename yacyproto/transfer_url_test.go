@@ -64,7 +64,7 @@ func TestParseTransferURLRequestRejectsBadYouAre(t *testing.T) {
 	}
 }
 
-func TestParseTransferURLRequestRejectsMissingDeclaredURL(t *testing.T) {
+func TestParseTransferURLRequestSkipsMissingDeclaredURL(t *testing.T) {
 	t.Parallel()
 
 	form := url.Values{
@@ -73,8 +73,12 @@ func TestParseTransferURLRequestRejectsMissingDeclaredURL(t *testing.T) {
 		yacyproto.FieldURLCount: {"2"},
 		"url0":                  {sampleURLRow(t, "url-a").String()},
 	}
-	if _, err := yacyproto.ParseTransferURLRequest(form); err == nil {
-		t.Fatal("expected error for missing url1")
+	req, err := yacyproto.ParseTransferURLRequest(form)
+	if err != nil {
+		t.Fatalf("ParseTransferURLRequest: %v", err)
+	}
+	if len(req.URLs) != 1 {
+		t.Fatalf("URLs = %d, want 1 (missing url1 skipped)", len(req.URLs))
 	}
 }
 

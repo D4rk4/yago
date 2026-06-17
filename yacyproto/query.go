@@ -14,6 +14,9 @@ type QueryRequest struct {
 	Iam         yacymodel.Hash
 	Object      QueryObject
 	Env         string
+	Key         string
+	MagicMD5    string
+	MyTime      string
 }
 
 type QueryResponse struct {
@@ -30,6 +33,9 @@ func (r QueryRequest) Form() url.Values {
 	putString(form, FieldIam, r.Iam.String())
 	putString(form, FieldObject, string(r.Object))
 	putString(form, FieldEnv, r.Env)
+	putString(form, FieldKey, r.Key)
+	putString(form, FieldMagicMD5, r.MagicMD5)
+	putString(form, FieldMyTime, r.MyTime)
 
 	return form
 }
@@ -38,6 +44,9 @@ func ParseQueryRequest(form url.Values) (QueryRequest, error) {
 	req := QueryRequest{
 		NetworkName: form.Get(FieldNetworkName),
 		Env:         form.Get(FieldEnv),
+		Key:         form.Get(FieldKey),
+		MagicMD5:    form.Get(FieldMagicMD5),
+		MyTime:      form.Get(FieldMyTime),
 	}
 
 	var err error

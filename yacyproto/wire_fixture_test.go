@@ -41,7 +41,7 @@ func sampleRWIEntry(tb testing.TB, word, urlWord string) yacymodel.RWIEntry {
 		WordHash: sampleHash(tb, word),
 		Properties: map[string]string{
 			yacymodel.ColURLHash:        sampleHash(tb, urlWord).String(),
-			yacymodel.ColLocalLinkCount: "1",
+			yacymodel.ColLocalLinkCount: "AB",
 		},
 	}
 

@@ -54,18 +54,7 @@ func ParseRWIEntry(line string) (RWIEntry, error) {
 	if err != nil {
 		return RWIEntry{}, fmt.Errorf("%w: word hash: %w", ErrBadRWIEntry, err)
 	}
-	props := make(map[string]string)
-	body := line[open+1 : len(line)-1]
-	for pair := range strings.SplitSeq(body, ",") {
-		if pair == "" {
-			continue
-		}
-		key, value, found := strings.Cut(pair, "=")
-		if !found || key == "" {
-			return RWIEntry{}, fmt.Errorf("%w: property %q", ErrBadRWIEntry, pair)
-		}
-		props[key] = value
-	}
+	props := parsePropertyPairs(line[open+1 : len(line)-1])
 	if err := validateRWIProperties(props); err != nil {
 		return RWIEntry{}, fmt.Errorf("%w: %w", ErrBadRWIEntry, err)
 	}

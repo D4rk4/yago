@@ -66,12 +66,8 @@ func concatHashes(hashes []yacymodel.Hash) string {
 }
 
 func splitSearchHashes(field, raw string) ([]yacymodel.Hash, error) {
-	if len(raw)%yacymodel.HashLength != 0 {
-		return nil, fmt.Errorf("%w: search request %s=%q", ErrBadField, field, raw)
-	}
-
 	var hashes []yacymodel.Hash
-	for i := 0; i < len(raw); i += yacymodel.HashLength {
+	for i := 0; i+yacymodel.HashLength <= len(raw); i += yacymodel.HashLength {
 		hash, err := parseHashField("search request", field, raw[i:i+yacymodel.HashLength])
 		if err != nil {
 			return nil, err

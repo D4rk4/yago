@@ -1,7 +1,6 @@
 package yacyproto
 
 import (
-	"fmt"
 	"net/url"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
@@ -57,21 +56,14 @@ func ParseTransferURLRequest(form url.Values) (TransferURLRequest, error) {
 	}
 
 	for i := 0; i < req.URLCount; i++ {
-		key := indexedKey(prefixURL, i)
-		raw := form.Get(key)
+		raw := form.Get(indexedKey(prefixURL, i))
 		if raw == "" {
-			return TransferURLRequest{}, fmt.Errorf(
-				"%w: transferURL request missing %s",
-				ErrBadField,
-				key,
-			)
+			continue
 		}
 
 		row, err := yacymodel.ParseURIMetadataRow(raw)
 		if err != nil {
-			return TransferURLRequest{}, fmt.Errorf(
-				"transferURL request %s: %w", key, err,
-			)
+			continue
 		}
 
 		req.URLs = append(req.URLs, row)

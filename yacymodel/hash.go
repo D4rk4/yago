@@ -40,5 +40,12 @@ func (h Hash) String() string { return string(h) }
 
 func WordHash(word string) Hash {
 	sum := md5.Sum([]byte(strings.ToLower(word)))
-	return Hash(Encode(sum[:])[:HashLength])
+	h := []byte(Encode(sum[:])[:HashLength])
+	lowByte, highByte := Alphabet[0], Alphabet[len(Alphabet)-1]
+	for h[0] == highByte && h[1] == highByte && h[2] == highByte &&
+		h[3] == highByte && h[4] == highByte {
+		copy(h, h[1:])
+		h[HashLength-1] = lowByte
+	}
+	return Hash(h)
 }

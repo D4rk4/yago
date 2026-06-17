@@ -76,21 +76,31 @@ func TestSearchResponseRoundTrip(t *testing.T) {
 	}
 }
 
-func TestParseSearchRequestRejectsRaggedQuery(t *testing.T) {
+func TestParseSearchRequestTruncatesRaggedQuery(t *testing.T) {
 	t.Parallel()
 
-	form := url.Values{yacyproto.FieldQuery: {"tooshort"}}
-	if _, err := yacyproto.ParseSearchRequest(form); err == nil {
-		t.Fatal("expected error for query not a multiple of the hash length")
+	full := sampleHash(t, "alpha").String()
+	form := url.Values{yacyproto.FieldQuery: {full + "tooshort"}}
+	req, err := yacyproto.ParseSearchRequest(form)
+	if err != nil {
+		t.Fatalf("ParseSearchRequest: %v", err)
+	}
+	if len(req.Query) != 1 {
+		t.Fatalf("Query = %d, want 1 (trailing partial ignored)", len(req.Query))
 	}
 }
 
-func TestParseSearchRequestRejectsRaggedExclude(t *testing.T) {
+func TestParseSearchRequestTruncatesRaggedExclude(t *testing.T) {
 	t.Parallel()
 
-	form := url.Values{yacyproto.FieldExclude: {"tooshort"}}
-	if _, err := yacyproto.ParseSearchRequest(form); err == nil {
-		t.Fatal("expected error for exclude not a multiple of the hash length")
+	full := sampleHash(t, "alpha").String()
+	form := url.Values{yacyproto.FieldExclude: {full + "tooshort"}}
+	req, err := yacyproto.ParseSearchRequest(form)
+	if err != nil {
+		t.Fatalf("ParseSearchRequest: %v", err)
+	}
+	if len(req.Exclude) != 1 {
+		t.Fatalf("Exclude = %d, want 1 (trailing partial ignored)", len(req.Exclude))
 	}
 }
 
