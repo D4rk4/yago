@@ -13,6 +13,7 @@ type StoreURLsResult struct {
 
 type URLStore interface {
 	StoreURLs(ctx context.Context, rows []yacymodel.URIMetadataRow) (StoreURLsResult, error)
+	MissingURLs(ctx context.Context, hashes []yacymodel.Hash) ([]yacymodel.Hash, error)
 	RowsByHash(ctx context.Context, hashes []yacymodel.Hash) ([]yacymodel.URIMetadataRow, error)
 	URLCount(ctx context.Context) (int, error)
 }

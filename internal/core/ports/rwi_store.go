@@ -6,13 +6,8 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-type AppendRWIResult struct {
-	Rejected    []yacymodel.Hash
-	UnknownURLs []yacymodel.Hash
-}
-
 type RWIStore interface {
-	AppendRWI(ctx context.Context, entries []yacymodel.RWIEntry) (AppendRWIResult, error)
+	AppendRWI(ctx context.Context, entries []yacymodel.RWIEntry) ([]yacymodel.Hash, error)
 	PostingsForWords(
 		ctx context.Context,
 		wordHashes []yacymodel.Hash,

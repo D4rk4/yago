@@ -21,15 +21,16 @@ func rwiEntries(n int) []yacymodel.RWIEntry {
 func TestReceiveRWIPersistsAndReports(t *testing.T) {
 	unknown := []yacymodel.Hash{hashFor("miss")}
 	rejected := []yacymodel.Hash{hashFor("bad")}
-	store := &fakeRWIStore{unknown: unknown, rejected: rejected}
-	receiver := NewRWIReceiver(store, 10, 30)
+	rwi := &fakeRWIStore{rejected: rejected}
+	urls := &fakeURLStore{missing: unknown}
+	receiver := NewRWIReceiver(rwi, urls, 10, 30)
 
 	receipt, err := receiver.ReceiveRWI(context.Background(), rwiEntries(2))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(store.appended) != 1 {
-		t.Fatalf("expected one append, got %d", len(store.appended))
+	if len(rwi.appended) != 1 {
+		t.Fatalf("expected one append, got %d", len(rwi.appended))
 	}
 	if len(receipt.UnknownURL) != 1 || receipt.UnknownURL[0] != unknown[0] {
 		t.Errorf("unknown url: got %v, want %v", receipt.UnknownURL, unknown)
@@ -44,7 +45,7 @@ func TestReceiveRWIPersistsAndReports(t *testing.T) {
 
 func TestReceiveRWIBatchCap(t *testing.T) {
 	store := &fakeRWIStore{}
-	receiver := NewRWIReceiver(store, 1, 30)
+	receiver := NewRWIReceiver(store, &fakeURLStore{}, 1, 30)
 
 	receipt, err := receiver.ReceiveRWI(context.Background(), rwiEntries(2))
 	if err != nil {
@@ -60,7 +61,7 @@ func TestReceiveRWIBatchCap(t *testing.T) {
 
 func TestReceiveRWICapacityBackpressure(t *testing.T) {
 	store := &fakeRWIStore{appendErr: ports.ErrAtCapacity}
-	receiver := NewRWIReceiver(store, 10, 15)
+	receiver := NewRWIReceiver(store, &fakeURLStore{}, 10, 15)
 
 	receipt, err := receiver.ReceiveRWI(context.Background(), rwiEntries(1))
 	if err != nil {
@@ -74,7 +75,7 @@ func TestReceiveRWICapacityBackpressure(t *testing.T) {
 func TestReceiveRWIPropagatesError(t *testing.T) {
 	wantErr := errors.New("boom")
 	store := &fakeRWIStore{appendErr: wantErr}
-	receiver := NewRWIReceiver(store, 10, 15)
+	receiver := NewRWIReceiver(store, &fakeURLStore{}, 10, 15)
 
 	if _, err := receiver.ReceiveRWI(
 		context.Background(),
@@ -83,6 +84,18 @@ func TestReceiveRWIPropagatesError(t *testing.T) {
 		err,
 		wantErr,
 	) {
+		t.Fatalf("got %v, want %v", err, wantErr)
+	}
+}
+
+func TestReceiveRWIPropagatesMissingURLsError(t *testing.T) {
+	wantErr := errors.New("boom")
+	receiver := NewRWIReceiver(&fakeRWIStore{}, &fakeURLStore{missingErr: wantErr}, 10, 15)
+
+	if _, err := receiver.ReceiveRWI(
+		context.Background(),
+		rwiEntries(1),
+	); !errors.Is(err, wantErr) {
 		t.Fatalf("got %v, want %v", err, wantErr)
 	}
 }

@@ -18,7 +18,6 @@ func (c *fakeClock) Now() time.Time { return c.now }
 type fakeRWIStore struct {
 	appended       [][]yacymodel.RWIEntry
 	rejected       []yacymodel.Hash
-	unknown        []yacymodel.Hash
 	appendErr      error
 	postings       map[yacymodel.Hash][]yacymodel.RWIEntry
 	postingsErr    error
@@ -32,13 +31,13 @@ type fakeRWIStore struct {
 func (s *fakeRWIStore) AppendRWI(
 	_ context.Context,
 	entries []yacymodel.RWIEntry,
-) (ports.AppendRWIResult, error) {
+) ([]yacymodel.Hash, error) {
 	if s.appendErr != nil {
-		return ports.AppendRWIResult{}, s.appendErr
+		return nil, s.appendErr
 	}
 	s.appended = append(s.appended, entries)
 
-	return ports.AppendRWIResult{Rejected: s.rejected, UnknownURLs: s.unknown}, nil
+	return s.rejected, nil
 }
 
 func (s *fakeRWIStore) PostingsForWords(
@@ -72,14 +71,23 @@ func (s *fakeRWIStore) ReferencedURLCount(_ context.Context) (int, error) {
 }
 
 type fakeURLStore struct {
-	stored   [][]yacymodel.URIMetadataRow
-	existing []yacymodel.Hash
-	rejected []yacymodel.Hash
-	storeErr error
-	rows     map[yacymodel.Hash]yacymodel.URIMetadataRow
-	rowsErr  error
-	urlCount int
-	countErr error
+	stored     [][]yacymodel.URIMetadataRow
+	existing   []yacymodel.Hash
+	rejected   []yacymodel.Hash
+	storeErr   error
+	missing    []yacymodel.Hash
+	missingErr error
+	rows       map[yacymodel.Hash]yacymodel.URIMetadataRow
+	rowsErr    error
+	urlCount   int
+	countErr   error
+}
+
+func (s *fakeURLStore) MissingURLs(
+	_ context.Context,
+	_ []yacymodel.Hash,
+) ([]yacymodel.Hash, error) {
+	return s.missing, s.missingErr
 }
 
 func (s *fakeURLStore) StoreURLs(

@@ -11,13 +11,14 @@ import (
 )
 
 type RWIReceiver struct {
-	store     ports.RWIStore
+	rwi       ports.RWIStore
+	urls      ports.URLStore
 	batchCap  int
 	pauseSecs int
 }
 
-func NewRWIReceiver(store ports.RWIStore, batchCap, pauseSecs int) RWIReceiver {
-	return RWIReceiver{store: store, batchCap: batchCap, pauseSecs: pauseSecs}
+func NewRWIReceiver(rwi ports.RWIStore, urls ports.URLStore, batchCap, pauseSecs int) RWIReceiver {
+	return RWIReceiver{rwi: rwi, urls: urls, batchCap: batchCap, pauseSecs: pauseSecs}
 }
 
 func (r RWIReceiver) ReceiveRWI(
@@ -28,7 +29,7 @@ func (r RWIReceiver) ReceiveRWI(
 		return contracts.RWIReceipt{Busy: true, Pause: r.pauseSecs}, nil
 	}
 
-	result, err := r.store.AppendRWI(ctx, entries)
+	rejected, err := r.rwi.AppendRWI(ctx, entries)
 	if errors.Is(err, ports.ErrAtCapacity) {
 		return contracts.RWIReceipt{Busy: true, Pause: r.pauseSecs}, nil
 	}
@@ -36,8 +37,23 @@ func (r RWIReceiver) ReceiveRWI(
 		return contracts.RWIReceipt{}, fmt.Errorf("append rwi: %w", err)
 	}
 
-	return contracts.RWIReceipt{
-		UnknownURL: result.UnknownURLs,
-		ErrorURL:   result.Rejected,
-	}, nil
+	unknown, err := r.urls.MissingURLs(ctx, referencedURLs(entries))
+	if err != nil {
+		return contracts.RWIReceipt{}, fmt.Errorf("missing urls: %w", err)
+	}
+
+	return contracts.RWIReceipt{UnknownURL: unknown, ErrorURL: rejected}, nil
+}
+
+func referencedURLs(entries []yacymodel.RWIEntry) []yacymodel.Hash {
+	hashes := make([]yacymodel.Hash, 0, len(entries))
+	for _, entry := range entries {
+		hash, err := entry.URLHash()
+		if err != nil {
+			continue
+		}
+		hashes = append(hashes, hash)
+	}
+
+	return hashes
 }
