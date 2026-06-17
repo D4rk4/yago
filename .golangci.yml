@@ -32,6 +32,6 @@ formatters:
       sections:
         - standard
         - default
-        - localmodule
+        - prefix(github.com/nikitakarpei/yacy-rwi-node)
     golines:
       max-len: 100

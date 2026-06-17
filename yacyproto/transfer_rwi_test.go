@@ -1,0 +1,77 @@
+package yacyproto_test
+
+import (
+	"net/url"
+	"reflect"
+	"testing"
+
+	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+)
+
+func TestTransferRWIRequestRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	req := yacyproto.TransferRWIRequest{
+		NetworkName: yacyproto.DefaultNetwork,
+		Iam:         sampleHash(t, "alpha"),
+		YouAre:      sampleHash(t, "beta"),
+		WordCount:   2,
+		EntryCount:  2,
+		Indexes: []yacymodel.RWIEntry{
+			sampleRWIEntry(t, "alpha", "url-a"),
+			sampleRWIEntry(t, "beta", "url-b"),
+		},
+		Key: "salt",
+	}
+
+	got, err := yacyproto.ParseTransferRWIRequest(req.Form())
+	if err != nil {
+		t.Fatalf("ParseTransferRWIRequest: %v", err)
+	}
+
+	if !reflect.DeepEqual(got, req) {
+		t.Fatalf("round-trip mismatch:\n got %#v\nwant %#v", got, req)
+	}
+}
+
+func TestTransferRWIResponseRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	resp := yacyproto.TransferRWIResponse{
+		ResponseHeader: yacyproto.ResponseHeader{Version: "1.0", Uptime: 7},
+		Result:         yacyproto.ResultOK,
+		Pause:          1500,
+		UnknownURL: []yacymodel.Hash{
+			sampleHash(t, "url-a"),
+			sampleHash(t, "url-b"),
+		},
+	}
+
+	got, err := yacyproto.ParseTransferRWIResponse(resp.Encode())
+	if err != nil {
+		t.Fatalf("ParseTransferRWIResponse: %v", err)
+	}
+
+	if !reflect.DeepEqual(got, resp) {
+		t.Fatalf("round-trip mismatch:\n got %#v\nwant %#v", got, resp)
+	}
+}
+
+func TestParseTransferRWIRequestRejectsBadEntry(t *testing.T) {
+	t.Parallel()
+
+	form := url.Values{yacyproto.FieldIndexes: {"not-a-posting-line"}}
+	if _, err := yacyproto.ParseTransferRWIRequest(form); err == nil {
+		t.Fatal("expected error for malformed posting line")
+	}
+}
+
+func TestParseTransferRWIResponseRejectsBadPause(t *testing.T) {
+	t.Parallel()
+
+	msg := yacymodel.Message{yacyproto.FieldPause: "soon"}
+	if _, err := yacyproto.ParseTransferRWIResponse(msg); err == nil {
+		t.Fatal("expected error for non-numeric pause")
+	}
+}
