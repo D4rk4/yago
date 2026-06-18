@@ -7,9 +7,10 @@ The node is configured through environment variables.
 | `LOG_LEVEL` | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARN`, or `ERROR`. |
 | `YACY_DATA_DIR` | `./data` | Where the node persists its data. |
 | `YACY_PEER_ADDR` | `:8090` | Listen address for the YaCy peer protocol. |
-| `YACY_OPS_ADDR` | `:9090` | Listen address for metrics and health endpoints. |
+| `YACY_OPS_ADDR` | `:9090` | Listen address for the `/health` and `/metrics` endpoints. |
 | `YACY_PEER_HASH` | _(required)_ | The 12-character enhanced-Base64 peer hash advertised to the network. |
 | `YACY_PEER_NAME` | _(required)_ | Peer name advertised to the network. |
+| `YACY_NETWORK_NAME` | `freeworld` | YaCy network to join. Only peers on the same network exchange data. |
 | `YACY_SEEDLIST_URLS` | _(empty)_ | Comma-separated YaCy seedlist URLs to discover peers from. |
 | `YACY_BOOTSTRAP_PEERS` | _(empty)_ | Comma-separated `host:port` peers to announce to, in addition to any discovered from `YACY_SEEDLIST_URLS`. |
 | `YACY_ADVERTISE_HOST` | _(empty)_ | Public IP or DNS name other peers use to reach you. Required when `YACY_SEEDLIST_URLS` or `YACY_BOOTSTRAP_PEERS` is set. |
