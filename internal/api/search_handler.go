@@ -39,7 +39,7 @@ func (h *searchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	req, err := yacyproto.ParseSearchRequest(form)
 	if err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		failBadRequest(ctx, w, err)
 
 		return
 	}
@@ -67,7 +67,7 @@ func (h *searchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		result, err := h.searcher.Search(searchCtx, query)
 		if err != nil {
-			http.Error(w, "search failed", http.StatusInternalServerError)
+			failInternal(ctx, w, "search failed", err)
 
 			return
 		}

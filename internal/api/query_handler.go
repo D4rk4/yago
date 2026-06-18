@@ -30,7 +30,7 @@ func (h *queryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	req, err := yacyproto.ParseQueryRequest(form)
 	if err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		failBadRequest(ctx, w, err)
 
 		return
 	}
@@ -44,7 +44,7 @@ func (h *queryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if supported && h.guard.networkMatches(form) && h.guard.youAreMatches(req.YouAre) {
 		count, err := h.counter.Count(ctx, kind)
 		if err != nil {
-			http.Error(w, "count failed", http.StatusInternalServerError)
+			failInternal(ctx, w, "count failed", err)
 
 			return
 		}

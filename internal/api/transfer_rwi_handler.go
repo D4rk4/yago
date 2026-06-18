@@ -30,7 +30,7 @@ func (h *transferRWIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	req, err := yacyproto.ParseTransferRWIRequest(form)
 	if err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		failBadRequest(ctx, w, err)
 
 		return
 	}
@@ -48,7 +48,7 @@ func (h *transferRWIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	receipt, err := h.receiver.ReceiveRWI(ctx, req.Indexes)
 	if err != nil {
-		http.Error(w, "receive failed", http.StatusInternalServerError)
+		failInternal(ctx, w, "receive failed", err)
 
 		return
 	}

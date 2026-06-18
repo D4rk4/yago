@@ -107,8 +107,13 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	return serve(ctx, announcement,
-		namedServer{"peer protocol", buildServer(config.PeerAddr, mux)},
+	return serve(
+		ctx,
+		announcement,
+		namedServer{
+			"peer protocol",
+			buildServer(config.PeerAddr, infrastructure.InstrumentHTTP(mux)),
+		},
 		namedServer{"ops", buildServer(config.OpsAddr, infrastructure.NewOpsMux())},
 	)
 }

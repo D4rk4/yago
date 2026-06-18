@@ -39,7 +39,7 @@ func (h *helloHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	req, err := yacyproto.ParseHelloRequest(form)
 	if err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		failBadRequest(ctx, w, err)
 
 		return
 	}
@@ -54,7 +54,7 @@ func (h *helloHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.guard.networkMatches(form) {
 		outcome, err := h.peers.Hello(ctx, req.Seed, req.Count)
 		if err != nil {
-			http.Error(w, "hello failed", http.StatusInternalServerError)
+			failInternal(ctx, w, "hello failed", err)
 
 			return
 		}
