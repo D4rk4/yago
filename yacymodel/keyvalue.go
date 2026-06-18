@@ -1,13 +1,17 @@
 package yacymodel
 
 import (
+	"errors"
+	"fmt"
 	"slices"
 	"strings"
 )
 
+var ErrBadMessage = errors.New("bad message")
+
 type Message map[string]string
 
-func ParseMessage(data string) Message {
+func ParseMessage(data string) (Message, error) {
 	msg := make(Message)
 	for line := range strings.SplitSeq(data, "\n") {
 		line = strings.TrimSuffix(line, "\r")
@@ -16,11 +20,11 @@ func ParseMessage(data string) Message {
 		}
 		key, value, found := strings.Cut(line, "=")
 		if !found || key == "" {
-			continue
+			return nil, fmt.Errorf("%w: %q", ErrBadMessage, line)
 		}
 		msg[key] = value
 	}
-	return msg
+	return msg, nil
 }
 
 func (m Message) Encode() string {

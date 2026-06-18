@@ -61,7 +61,7 @@ func (p *PeerBackPing) Ping(ctx context.Context, peer yacymodel.Seed) error {
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrBackPingUnreachable, err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer closeResponseBody(ctx, resp.Body, "peer back-ping response close failed")
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("%w: status %d", ErrBackPingUnreachable, resp.StatusCode)
@@ -72,7 +72,11 @@ func (p *PeerBackPing) Ping(ctx context.Context, peer yacymodel.Seed) error {
 		return fmt.Errorf("%w: %w", ErrBackPingUnreachable, err)
 	}
 
-	if _, err := yacyproto.ParseQueryResponse(yacymodel.ParseMessage(string(body))); err != nil {
+	msg, err := yacymodel.ParseMessage(string(body))
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrBackPingUnreachable, err)
+	}
+	if _, err := yacyproto.ParseQueryResponse(msg); err != nil {
 		return fmt.Errorf("%w: %w", ErrBackPingUnreachable, err)
 	}
 
@@ -86,7 +90,10 @@ func backPingURL(peer yacymodel.Seed) (*url.URL, error) {
 	}
 
 	port, err := peer.Port()
-	if err != nil || port <= 0 {
+	if err != nil {
+		return nil, fmt.Errorf("%w: bad port: %w", ErrBackPingUnreachable, err)
+	}
+	if port <= 0 {
 		return nil, fmt.Errorf("%w: bad port", ErrBackPingUnreachable)
 	}
 

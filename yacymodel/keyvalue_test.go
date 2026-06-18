@@ -3,7 +3,10 @@ package yacymodel
 import "testing"
 
 func TestParseMessage(t *testing.T) {
-	msg := ParseMessage("version=1.0\r\nuptime=42\n\nnoeq\n=novalue\nresult=ok\n")
+	msg, err := ParseMessage("version=1.0\r\nuptime=42\n\nresult=ok\n")
+	if err != nil {
+		t.Fatalf("ParseMessage() error = %v", err)
+	}
 	if msg["version"] != "1.0" {
 		t.Errorf("version = %q", msg["version"])
 	}
@@ -13,16 +16,24 @@ func TestParseMessage(t *testing.T) {
 	if msg["result"] != "ok" {
 		t.Errorf("result = %q", msg["result"])
 	}
-	if _, ok := msg["noeq"]; ok {
-		t.Error("line without = should be ignored")
-	}
 	if len(msg) != 3 {
 		t.Errorf("expected 3 fields, got %d", len(msg))
 	}
 }
 
+func TestParseMessageRejectsMalformedLine(t *testing.T) {
+	for _, input := range []string{"noeq\n", "=novalue\n"} {
+		if _, err := ParseMessage(input); err == nil {
+			t.Errorf("ParseMessage(%q) error = nil, want error", input)
+		}
+	}
+}
+
 func TestParseMessageLastWins(t *testing.T) {
-	msg := ParseMessage("k=first\nk=second\n")
+	msg, err := ParseMessage("k=first\nk=second\n")
+	if err != nil {
+		t.Fatalf("ParseMessage() error = %v", err)
+	}
 	if msg["k"] != "second" {
 		t.Errorf("k = %q, want second", msg["k"])
 	}
@@ -38,7 +49,10 @@ func TestMessageEncodeDeterministic(t *testing.T) {
 
 func TestMessageRoundTrip(t *testing.T) {
 	msg := Message{"version": "1.0", "result": "ok"}
-	got := ParseMessage(msg.Encode())
+	got, err := ParseMessage(msg.Encode())
+	if err != nil {
+		t.Fatalf("ParseMessage() error = %v", err)
+	}
 	if got["version"] != "1.0" || got["result"] != "ok" {
 		t.Errorf("round trip = %v", got)
 	}

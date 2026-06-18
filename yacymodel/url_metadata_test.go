@@ -47,6 +47,7 @@ func TestParseURIMetadataRowErrors(t *testing.T) {
 		"",
 		"hash=MNOPQRSTUVWX",
 		"{=novalue}",
+		"{hash=MNOPQRSTUVWX,badtoken}",
 		"{hash=short}",
 		"{hash=MNOPQRSTUVWX,flags=AAAAAAA}",
 		"{hash=MNOPQRSTUVWX,mod=20251301}",

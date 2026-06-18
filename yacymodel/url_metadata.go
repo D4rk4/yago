@@ -22,7 +22,10 @@ func ParseURIMetadataRow(row string) (URIMetadataRow, error) {
 	if len(row) < 2 || row[0] != urlMetadataOpen || row[len(row)-1] != urlMetadataClose {
 		return URIMetadataRow{}, fmt.Errorf("%w: missing property form", ErrBadURLMetadata)
 	}
-	props := parsePropertyPairs(row[1 : len(row)-1])
+	props, err := parsePropertyPairs(row[1 : len(row)-1])
+	if err != nil {
+		return URIMetadataRow{}, fmt.Errorf("%w: %w", ErrBadURLMetadata, err)
+	}
 	if len(props) == 0 {
 		return URIMetadataRow{}, fmt.Errorf("%w: empty row", ErrBadURLMetadata)
 	}

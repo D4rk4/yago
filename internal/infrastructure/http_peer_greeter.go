@@ -68,7 +68,7 @@ func (g *HTTPPeerGreeter) Greet(
 	if err != nil {
 		return ports.GreetResult{}, fmt.Errorf("%w: %w", ErrGreetFailed, err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer closeResponseBody(ctx, resp.Body, "peer greet response close failed")
 
 	if resp.StatusCode != http.StatusOK {
 		return ports.GreetResult{}, fmt.Errorf("%w: status %d", ErrGreetFailed, resp.StatusCode)
@@ -79,7 +79,11 @@ func (g *HTTPPeerGreeter) Greet(
 		return ports.GreetResult{}, fmt.Errorf("%w: %w", ErrGreetFailed, err)
 	}
 
-	parsed, err := yacyproto.ParseHelloResponse(yacymodel.ParseMessage(string(body)))
+	msg, err := yacymodel.ParseMessage(string(body))
+	if err != nil {
+		return ports.GreetResult{}, fmt.Errorf("%w: %w", ErrGreetFailed, err)
+	}
+	parsed, err := yacyproto.ParseHelloResponse(msg)
 	if err != nil {
 		return ports.GreetResult{}, fmt.Errorf("%w: %w", ErrGreetFailed, err)
 	}

@@ -226,5 +226,10 @@ func decodeResponse(tb testing.TB, rec *httptest.ResponseRecorder) yacymodel.Mes
 		tb.Fatalf("status = %d, want 200; body %q", rec.Code, rec.Body.String())
 	}
 
-	return yacymodel.ParseMessage(rec.Body.String())
+	msg, err := yacymodel.ParseMessage(rec.Body.String())
+	if err != nil {
+		tb.Fatalf("parse response: %v", err)
+	}
+
+	return msg
 }
