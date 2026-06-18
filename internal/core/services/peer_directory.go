@@ -8,15 +8,19 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
+type trustedSeedSource interface {
+	Trusted(ctx context.Context) []yacymodel.Seed
+}
+
 type PeerDirectory struct {
 	pinger  ports.PeerPinger
-	trusted ports.TrustedSeedSource
+	trusted trustedSeedSource
 	shuffle seedShuffler
 }
 
 func NewPeerDirectory(
 	pinger ports.PeerPinger,
-	trusted ports.TrustedSeedSource,
+	trusted trustedSeedSource,
 	shuffle seedShuffler,
 ) *PeerDirectory {
 	return &PeerDirectory{
