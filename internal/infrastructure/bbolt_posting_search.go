@@ -63,12 +63,12 @@ func excludedURLHashes(
 ) (map[yacymodel.Hash]struct{}, error) {
 	excluded := make(map[yacymodel.Hash]struct{})
 	for _, word := range words {
-		if err := ctx.Err(); err != nil {
-			return nil, wrapContextErr(err)
-		}
 		prefix := []byte(word)
 		cursor := bucket.Cursor()
 		for key, value := cursor.Seek(prefix); key != nil && bytes.HasPrefix(key, prefix); key, value = cursor.Next() {
+			if err := ctx.Err(); err != nil {
+				return nil, wrapContextErr(err)
+			}
 			entry, err := yacymodel.ParseRWIEntry(string(value))
 			if err != nil {
 				return nil, fmt.Errorf("parse rwi: %w", err)
