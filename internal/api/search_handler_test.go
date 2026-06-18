@@ -100,8 +100,8 @@ func TestSearchHandlerWrongNetwork(t *testing.T) {
 func TestSearchHandlerRejectsUnsupportedSearchOption(t *testing.T) {
 	h := newTestHarness(t)
 	req := yacyproto.SearchRequest{
-		Query:      []yacymodel.Hash{testHash(t, "word")},
-		ContentDom: yacyproto.ContentDomainText,
+		Query:    []yacymodel.Hash{testHash(t, "word")},
+		Modifier: "/language/de",
 	}
 	rec := h.do(t, http.MethodPost, yacyproto.PathSearch, req.Form())
 
