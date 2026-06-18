@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
@@ -21,6 +20,14 @@ func (p *fakePinger) Ping(_ context.Context, _ yacymodel.Seed) error {
 	return p.err
 }
 
+type fakeTrustedSeeds struct {
+	seeds []yacymodel.Seed
+}
+
+func (f fakeTrustedSeeds) Trusted(_ context.Context) []yacymodel.Seed {
+	return f.seeds
+}
+
 func callerSeed(hash string, ip string, port int) yacymodel.Seed {
 	return yacymodel.Seed{
 		yacymodel.SeedHash: string(hashFor(hash)),
@@ -30,7 +37,6 @@ func callerSeed(hash string, ip string, port int) yacymodel.Seed {
 }
 
 func TestHelloClassifiesCaller(t *testing.T) {
-	clock := &fakeClock{now: time.Unix(0, 0)}
 	cases := []struct {
 		name     string
 		seed     yacymodel.Seed
@@ -52,7 +58,7 @@ func TestHelloClassifiesCaller(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			pinger := &fakePinger{err: tc.pingErr}
-			dir := NewPeerDirectory(clock, pinger, 16)
+			dir := NewPeerDirectory(pinger, fakeTrustedSeeds{})
 			outcome, err := dir.Hello(context.Background(), tc.seed)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -67,39 +73,24 @@ func TestHelloClassifiesCaller(t *testing.T) {
 	}
 }
 
-func TestHelloStampsLastSeen(t *testing.T) {
-	clock := &fakeClock{now: time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)}
-	dir := NewPeerDirectory(clock, &fakePinger{}, 16)
+func TestHelloAnnouncesTrustedSeedsNotCaller(t *testing.T) {
+	trusted := callerSeed("trusted", "203.0.113.1", 8090)
+	caller := callerSeed("caller", "10.0.0.1", 8090)
+	dir := NewPeerDirectory(&fakePinger{}, fakeTrustedSeeds{seeds: []yacymodel.Seed{trusted}})
 
-	outcome, err := dir.Hello(context.Background(), callerSeed("a", "10.0.0.1", 8090))
+	outcome, err := dir.Hello(context.Background(), caller)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(outcome.Known) != 1 {
 		t.Fatalf("got %d known, want 1", len(outcome.Known))
 	}
-	if got := outcome.Known[0][yacymodel.SeedLastSeen]; got != "2026-06-18T12:00:00" {
-		t.Errorf("last seen: got %q", got)
-	}
-}
-
-func TestHelloBoundedEviction(t *testing.T) {
-	clock := &fakeClock{now: time.Unix(0, 0)}
-	dir := NewPeerDirectory(clock, &fakePinger{}, 2)
-
-	for _, id := range []string{"a", "b", "c"} {
-		if _, err := dir.Hello(context.Background(), callerSeed(id, "10.0.0.1", 8090)); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	}
-
-	outcome, _ := dir.Hello(context.Background(), callerSeed("c", "10.0.0.1", 8090))
-	if len(outcome.Known) != 2 {
-		t.Fatalf("got %d known, want 2 (bounded)", len(outcome.Known))
+	if outcome.Known[0][yacymodel.SeedHash] != string(hashFor("trusted")) {
+		t.Errorf("announced %q, want trusted seed", outcome.Known[0][yacymodel.SeedHash])
 	}
 	for _, seed := range outcome.Known {
-		if seed[yacymodel.SeedHash] == string(hashFor("a")) {
-			t.Error("oldest peer should have been evicted")
+		if seed[yacymodel.SeedHash] == string(hashFor("caller")) {
+			t.Error("self-reported caller must not be redistributed")
 		}
 	}
 }

@@ -26,6 +26,9 @@ storage and serving, suitable for low-resource Linux-class devices.
 * The node SHALL allow operators to configure a proxy for outbound connections.
 * The node SHALL be reachable through one stable public endpoint.
 * The node SHALL support peer discovery and peer liveness exchange.
+* The node SHALL announce in peer-liveness responses only its own seed and peers obtained from
+  configured seedlists and bootstrap peers, and SHALL NOT redistribute peers self-reported in
+  inbound requests.
 * The node SHALL receive inbound DHT RWI postings.
 * The node SHALL receive URL metadata associated with RWI postings.
 * The node SHALL serve remote RWI search requests.
