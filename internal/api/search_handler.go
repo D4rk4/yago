@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -53,6 +54,9 @@ func (h *searchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unsupported search option", http.StatusBadRequest)
 
 			return
+		}
+		if ignored := contracts.IgnoredSearchOptions(query); len(ignored) != 0 {
+			slog.DebugContext(ctx, "ignoring accepted search options", "options", ignored)
 		}
 		searchCtx := ctx
 		var searchCancel func()
