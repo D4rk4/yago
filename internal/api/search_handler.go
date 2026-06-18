@@ -49,6 +49,11 @@ func (h *searchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if h.guard.networkMatches(form) {
 		query := searchQueryFromRequest(req)
+		if len(contracts.UnsupportedSearchOptions(query)) != 0 {
+			http.Error(w, "unsupported search option", http.StatusBadRequest)
+
+			return
+		}
 		searchCtx := ctx
 		var searchCancel func()
 		if query.MaxTime > 0 {
@@ -84,6 +89,14 @@ func searchQueryFromRequest(req yacyproto.SearchRequest) contracts.SearchQuery {
 	if maxTime <= 0 {
 		maxTime = defaultSearchTime
 	}
+	contentDomain := ""
+	if req.ContentDom != "" && req.ContentDom != yacyproto.ContentDomainAll {
+		contentDomain = string(req.ContentDom)
+	}
+	filter := req.Filter
+	if filter == ".*" {
+		filter = ""
+	}
 
 	return contracts.SearchQuery{
 		Words:       req.Query,
@@ -94,13 +107,13 @@ func searchQueryFromRequest(req yacyproto.SearchRequest) contracts.SearchQuery {
 		MaxTime:     maxTime,
 		Abstracts:   searchAbstractRequest(req),
 		Filters: contracts.SearchFilters{
-			ContentDomain:    string(req.ContentDom),
+			ContentDomain:    contentDomain,
 			StrictContentDom: req.StrictContentDom,
 			TimezoneOffset:   req.TimezoneOffset,
 			Language:         req.Language,
 			Modifier:         req.Modifier,
 			Prefer:           req.Prefer,
-			Filter:           req.Filter,
+			Filter:           filter,
 			Constraint:       req.Constraint,
 			Profile:          req.Profile,
 			SiteHost:         req.SiteHost,

@@ -53,11 +53,8 @@ func TestSearchJoinsAndExcludes(t *testing.T) {
 	if result.WordCounts[word1] != 3 {
 		t.Errorf("word count w1: got %d, want 3", result.WordCounts[word1])
 	}
-	if len(result.Abstracts) != 0 {
-		t.Errorf(
-			"abstracts = %v, want none until compressed abstracts are supported",
-			result.Abstracts,
-		)
+	if got := result.Abstracts[word1]; got != "{AAAAAA:u1AAAAu2AAAAu3AAAA}" {
+		t.Errorf("abstract = %q, want compressed w1 abstract", got)
 	}
 }
 
@@ -208,6 +205,33 @@ func TestSearchExplicitAbstractOnlyCounts(t *testing.T) {
 	}
 	if result.WordCounts[word] != 2 {
 		t.Errorf("word count = %d, want 2", result.WordCounts[word])
+	}
+	if got := result.Abstracts[word]; got != "{AAAAAA:u1AAAAu2AAAA}" {
+		t.Errorf("abstract = %q, want compressed abstract", got)
+	}
+}
+
+func TestSearchExplicitAbstractWithQuery(t *testing.T) {
+	word, related := hashFor("w1"), hashFor("w2")
+	rwi := &fakeRWIStore{postings: map[yacymodel.Hash][]yacymodel.RWIEntry{
+		word:    {postingEntry(word, "u1", 0), postingEntry(word, "u2", 0)},
+		related: {postingEntry(related, "u2", 0), postingEntry(related, "u3", 0)},
+	}}
+	urls := &fakeURLStore{rows: urlRows("u1", "u2")}
+	searcher := NewSearcher(rwi, urls, 100)
+
+	result, err := searcher.Search(context.Background(), contracts.SearchQuery{
+		Words: []yacymodel.Hash{word},
+		Abstracts: contracts.SearchAbstractRequest{
+			Mode:  contracts.SearchAbstractExplicit,
+			Words: []yacymodel.Hash{related},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := result.Abstracts[related]; got != "{AAAAAA:u2AAAAu3AAAA}" {
+		t.Errorf("abstract = %q, want compressed related abstract", got)
 	}
 }
 

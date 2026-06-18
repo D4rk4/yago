@@ -23,27 +23,14 @@ func TestSearchHandlerHappyPath(t *testing.T) {
 	}
 
 	req := yacyproto.SearchRequest{
-		Query:            []yacymodel.Hash{wordHash},
-		Count:            10,
-		Time:             1200,
-		MaxDist:          4,
-		Partitions:       30,
-		Abstracts:        yacyproto.SearchAbstractsAuto,
-		ContentDom:       yacyproto.ContentDomainText,
-		StrictContentDom: true,
-		TimezoneOffset:   120,
-		Language:         "en",
-		Modifier:         "site:example.org",
-		Prefer:           ".*example.*",
-		Filter:           "https://.*",
-		Constraint:       "AAAA",
-		Profile:          "profile",
-		SiteHost:         "example.org",
-		SiteHash:         "sitehash",
-		Author:           "ada",
-		Collection:       "public",
-		FileType:         "html",
-		Protocol:         "https",
+		Query:      []yacymodel.Hash{wordHash},
+		Count:      10,
+		Time:       1200,
+		MaxDist:    4,
+		Partitions: 30,
+		Abstracts:  yacyproto.SearchAbstractsAuto,
+		ContentDom: yacyproto.ContentDomainAll,
+		Language:   "en",
 	}
 	rec := h.do(t, http.MethodPost, yacyproto.PathSearch, req.Form())
 
@@ -64,20 +51,7 @@ func TestSearchHandlerHappyPath(t *testing.T) {
 		t.Errorf("Abstracts = %+v, want auto", h.searcher.query.Abstracts)
 	}
 	if h.searcher.query.Filters.Language != "en" ||
-		h.searcher.query.Filters.ContentDomain != string(yacyproto.ContentDomainText) ||
-		!h.searcher.query.Filters.StrictContentDom ||
-		h.searcher.query.Filters.TimezoneOffset != 120 ||
-		h.searcher.query.Filters.Modifier != "site:example.org" ||
-		h.searcher.query.Filters.Prefer != ".*example.*" ||
-		h.searcher.query.Filters.Filter != "https://.*" ||
-		h.searcher.query.Filters.Constraint != "AAAA" ||
-		h.searcher.query.Filters.Profile != "profile" ||
-		h.searcher.query.Filters.SiteHost != "example.org" ||
-		h.searcher.query.Filters.SiteHash != "sitehash" ||
-		h.searcher.query.Filters.Author != "ada" ||
-		h.searcher.query.Filters.Collection != "public" ||
-		h.searcher.query.Filters.FileType != "html" ||
-		h.searcher.query.Filters.Protocol != "https" ||
+		h.searcher.query.Filters.ContentDomain != "" ||
 		h.searcher.query.Filters.Partitions != 30 {
 		t.Errorf("filters = %+v", h.searcher.query.Filters)
 	}
@@ -120,5 +94,21 @@ func TestSearchHandlerWrongNetwork(t *testing.T) {
 	decodeResponse(t, rec)
 	if h.searcher.called {
 		t.Fatal("searcher must not be called on network mismatch")
+	}
+}
+
+func TestSearchHandlerRejectsUnsupportedSearchOption(t *testing.T) {
+	h := newTestHarness(t)
+	req := yacyproto.SearchRequest{
+		Query:      []yacymodel.Hash{testHash(t, "word")},
+		ContentDom: yacyproto.ContentDomainText,
+	}
+	rec := h.do(t, http.MethodPost, yacyproto.PathSearch, req.Form())
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body %q", rec.Code, rec.Body.String())
+	}
+	if h.searcher.called {
+		t.Fatal("searcher must not be called")
 	}
 }

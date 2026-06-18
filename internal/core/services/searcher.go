@@ -39,12 +39,16 @@ func (s Searcher) Search(
 	if query.Abstracts.Mode != contracts.SearchAbstractNone {
 		wordCounts = make(map[yacymodel.Hash]int, len(query.Words))
 	}
+	abstractInputs := map[yacymodel.Hash]map[yacymodel.Hash]searchCandidate{}
 
 	var joined map[yacymodel.Hash]searchCandidate
 	for _, word := range query.Words {
 		matched := matchWord(postings[word], query.MaxDistance, query.Filters.Language)
 		if wordCounts != nil {
 			wordCounts[word] = len(matched)
+		}
+		if query.Abstracts.Mode == contracts.SearchAbstractAuto {
+			abstractInputs[word] = cloneCandidates(matched)
 		}
 		joined = intersect(joined, matched)
 	}
@@ -61,12 +65,17 @@ func (s Searcher) Search(
 	if err != nil {
 		return contracts.SearchResult{}, fmt.Errorf("rows by hash: %w", err)
 	}
+	abstracts, err := s.searchAbstracts(ctx, query, abstractInputs)
+	if err != nil {
+		return contracts.SearchResult{}, err
+	}
 
 	return contracts.SearchResult{
 		Resources:  rows,
 		JoinCount:  joinCount,
 		SearchTime: time.Since(start),
 		WordCounts: wordCounts,
+		Abstracts:  abstracts,
 	}, nil
 }
 
@@ -168,6 +177,14 @@ func restrictToURLs(joined map[yacymodel.Hash]searchCandidate, urls []yacymodel.
 	}
 }
 
+func cloneCandidates(in map[yacymodel.Hash]searchCandidate) map[yacymodel.Hash]searchCandidate {
+	out := make(map[yacymodel.Hash]searchCandidate, len(in))
+	for hash, candidate := range in {
+		out[hash] = candidate
+	}
+	return out
+}
+
 func wordDistance(entry yacymodel.RWIEntry) uint64 {
 	n, err := yacymodel.DecodeCardinal(entry.Properties[yacymodel.ColWordDistance])
 	if err != nil {
@@ -228,16 +245,81 @@ func (s Searcher) searchAbstractCounts(
 	}
 
 	wordCounts := make(map[yacymodel.Hash]int, len(query.Abstracts.Words))
+	abstracts := make(map[yacymodel.Hash]string, len(query.Abstracts.Words))
 	for _, word := range query.Abstracts.Words {
 		matched := matchWord(postings[word], query.MaxDistance, query.Filters.Language)
 		restrictToURLs(matched, query.URLs)
 		wordCounts[word] = len(matched)
+		abstracts[word] = yacymodel.EncodeSearchIndexAbstract(candidateHashes(matched))
 	}
 
 	return contracts.SearchResult{
 		SearchTime: time.Since(start),
 		WordCounts: wordCounts,
+		Abstracts:  abstracts,
 	}, nil
+}
+
+func (s Searcher) searchAbstracts(
+	ctx context.Context,
+	query contracts.SearchQuery,
+	autoInputs map[yacymodel.Hash]map[yacymodel.Hash]searchCandidate,
+) (map[yacymodel.Hash]string, error) {
+	switch query.Abstracts.Mode {
+	case contracts.SearchAbstractNone:
+		return nil, nil
+	case contracts.SearchAbstractAuto:
+		if len(query.Words) <= 1 || len(query.URLs) != 0 {
+			return nil, nil
+		}
+		word, ok := largestCandidateSet(autoInputs)
+		if !ok {
+			return nil, nil
+		}
+		return map[yacymodel.Hash]string{
+			word: yacymodel.EncodeSearchIndexAbstract(candidateHashes(autoInputs[word])),
+		}, nil
+	case contracts.SearchAbstractExplicit:
+		postings, err := s.rwi.PostingsForWords(ctx, query.Abstracts.Words, s.postingsPerWord)
+		if err != nil {
+			return nil, fmt.Errorf("postings for words: %w", err)
+		}
+		abstracts := make(map[yacymodel.Hash]string, len(query.Abstracts.Words))
+		for _, word := range query.Abstracts.Words {
+			matched := matchWord(postings[word], query.MaxDistance, query.Filters.Language)
+			restrictToURLs(matched, query.URLs)
+			abstracts[word] = yacymodel.EncodeSearchIndexAbstract(candidateHashes(matched))
+		}
+		return abstracts, nil
+	default:
+		return nil, nil
+	}
+}
+
+func largestCandidateSet(
+	sets map[yacymodel.Hash]map[yacymodel.Hash]searchCandidate,
+) (yacymodel.Hash, bool) {
+	var (
+		selected yacymodel.Hash
+		size     int
+		ok       bool
+	)
+	for word, set := range sets {
+		if !ok || len(set) > size || len(set) == size && compareAsc(word, selected) < 0 {
+			selected = word
+			size = len(set)
+			ok = true
+		}
+	}
+	return selected, ok
+}
+
+func candidateHashes(candidates map[yacymodel.Hash]searchCandidate) []yacymodel.Hash {
+	hashes := make([]yacymodel.Hash, 0, len(candidates))
+	for hash := range candidates {
+		hashes = append(hashes, hash)
+	}
+	return hashes
 }
 
 func compareDesc[T ~uint64](a, b T) int {
