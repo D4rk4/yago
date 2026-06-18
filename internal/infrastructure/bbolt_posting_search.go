@@ -145,6 +145,15 @@ func postingMatchesSearch(
 	if _, ok := excluded[urlHash]; ok {
 		return false
 	}
+	if !matchesSiteHash(urlHash, query.SiteHash) {
+		return false
+	}
+	if !matchesContentDomain(entry, query.ContentDomain, query.StrictContentDom) {
+		return false
+	}
+	if !matchesConstraint(entry, query.Constraint) {
+		return false
+	}
 	return true
 }
 

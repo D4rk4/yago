@@ -23,6 +23,11 @@ type PostingSearchQuery struct {
 	LimitPerWord  int
 	MaxDistance   int
 	Language      string
+
+	ContentDomain    string
+	StrictContentDom bool
+	Constraint       string
+	SiteHash         string
 }
 
 type PostingSearchResult struct {

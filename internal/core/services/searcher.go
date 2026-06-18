@@ -37,6 +37,11 @@ func (s Searcher) Search(
 		LimitPerWord:  s.postingsPerWord,
 		MaxDistance:   query.MaxDistance,
 		Language:      query.Filters.Language,
+
+		ContentDomain:    query.Filters.ContentDomain,
+		StrictContentDom: query.Filters.StrictContentDom,
+		Constraint:       query.Filters.Constraint,
+		SiteHash:         query.Filters.SiteHash,
 	})
 	if err != nil {
 		return contracts.SearchResult{}, fmt.Errorf("search postings: %w", err)
@@ -197,6 +202,11 @@ func (s Searcher) searchAbstractCounts(
 		LimitPerWord: s.postingsPerWord,
 		MaxDistance:  query.MaxDistance,
 		Language:     query.Filters.Language,
+
+		ContentDomain:    query.Filters.ContentDomain,
+		StrictContentDom: query.Filters.StrictContentDom,
+		Constraint:       query.Filters.Constraint,
+		SiteHash:         query.Filters.SiteHash,
 	})
 	if err != nil {
 		return contracts.SearchResult{}, fmt.Errorf("search postings: %w", err)
@@ -243,6 +253,11 @@ func (s Searcher) searchAbstracts(
 			LimitPerWord: s.postingsPerWord,
 			MaxDistance:  query.MaxDistance,
 			Language:     query.Filters.Language,
+
+			ContentDomain:    query.Filters.ContentDomain,
+			StrictContentDom: query.Filters.StrictContentDom,
+			Constraint:       query.Filters.Constraint,
+			SiteHash:         query.Filters.SiteHash,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("search postings: %w", err)
