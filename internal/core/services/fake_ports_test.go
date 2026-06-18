@@ -21,6 +21,7 @@ type fakeRWIStore struct {
 	postings       map[yacymodel.Hash][]yacymodel.RWIEntry
 	postingsErr    error
 	postingsLimit  int
+	postingsQuery  ports.PostingSearchQuery
 	rwiCount       int
 	rwiCountErr    error
 	referencedURLs int
@@ -39,26 +40,94 @@ func (s *fakeRWIStore) AppendRWI(
 	return s.rejected, nil
 }
 
-func (s *fakeRWIStore) PostingsForWords(
+func (s *fakeRWIStore) SearchPostings(
 	_ context.Context,
-	wordHashes []yacymodel.Hash,
-	limitPerWord int,
-) (map[yacymodel.Hash][]yacymodel.RWIEntry, error) {
+	query ports.PostingSearchQuery,
+) (ports.PostingSearchResult, error) {
 	if s.postingsErr != nil {
-		return nil, s.postingsErr
+		return ports.PostingSearchResult{}, s.postingsErr
 	}
-	s.postingsLimit = limitPerWord
+	s.postingsLimit = query.LimitPerWord
+	s.postingsQuery = query
 
-	out := make(map[yacymodel.Hash][]yacymodel.RWIEntry, len(wordHashes))
-	for _, word := range wordHashes {
-		entries := s.postings[word]
-		if limitPerWord > 0 && len(entries) > limitPerWord {
-			entries = entries[:limitPerWord]
+	excluded := fakeExcludedURLHashes(s.postings, query.ExcludeHashes)
+	allowed := fakeHashSet(query.URLHashes)
+	out := ports.PostingSearchResult{
+		Postings: make(map[yacymodel.Hash][]yacymodel.RWIEntry, len(query.WordHashes)),
+		Counts:   make(map[yacymodel.Hash]int, len(query.WordHashes)),
+	}
+	for _, word := range query.WordHashes {
+		for _, entry := range s.postings[word] {
+			if !fakePostingMatches(entry, query, allowed, excluded) {
+				continue
+			}
+			out.Counts[word]++
+			if query.LimitPerWord > 0 && len(out.Postings[word]) >= query.LimitPerWord {
+				out.Truncated = true
+				continue
+			}
+			out.Postings[word] = append(out.Postings[word], entry)
 		}
-		out[word] = entries
 	}
 
 	return out, nil
+}
+
+func fakeExcludedURLHashes(
+	postings map[yacymodel.Hash][]yacymodel.RWIEntry,
+	words []yacymodel.Hash,
+) map[yacymodel.Hash]struct{} {
+	out := make(map[yacymodel.Hash]struct{})
+	for _, word := range words {
+		for _, entry := range postings[word] {
+			if hash, err := entry.URLHash(); err == nil {
+				out[hash] = struct{}{}
+			}
+		}
+	}
+	return out
+}
+
+func fakePostingMatches(
+	entry yacymodel.RWIEntry,
+	query ports.PostingSearchQuery,
+	allowed map[yacymodel.Hash]struct{},
+	excluded map[yacymodel.Hash]struct{},
+) bool {
+	if query.Language != "" && entry.Properties[yacymodel.ColLanguage] != query.Language {
+		return false
+	}
+	distance, err := yacymodel.DecodeCardinal(entry.Properties[yacymodel.ColWordDistance])
+	if err != nil {
+		distance = 0
+	}
+	if query.MaxDistance > 0 && distance > uint64(query.MaxDistance) {
+		return false
+	}
+	urlHash, err := entry.URLHash()
+	if err != nil {
+		return false
+	}
+	if len(allowed) != 0 {
+		if _, ok := allowed[urlHash]; !ok {
+			return false
+		}
+	}
+	if _, ok := excluded[urlHash]; ok {
+		return false
+	}
+	return true
+}
+
+func fakeHashSet(hashes []yacymodel.Hash) map[yacymodel.Hash]struct{} {
+	if len(hashes) == 0 {
+		return nil
+	}
+	out := make(map[yacymodel.Hash]struct{}, len(hashes))
+	for _, hash := range hashes {
+		out[hash] = struct{}{}
+	}
+	return out
 }
 
 func (s *fakeRWIStore) RWICount(_ context.Context) (int, error) {

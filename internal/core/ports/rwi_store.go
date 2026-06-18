@@ -8,11 +8,25 @@ import (
 
 type RWIStore interface {
 	AppendRWI(ctx context.Context, entries []yacymodel.RWIEntry) ([]yacymodel.Hash, error)
-	PostingsForWords(
+	SearchPostings(
 		ctx context.Context,
-		wordHashes []yacymodel.Hash,
-		limitPerWord int,
-	) (map[yacymodel.Hash][]yacymodel.RWIEntry, error)
+		query PostingSearchQuery,
+	) (PostingSearchResult, error)
 	RWICount(ctx context.Context) (int, error)
 	ReferencedURLCount(ctx context.Context) (int, error)
+}
+
+type PostingSearchQuery struct {
+	WordHashes    []yacymodel.Hash
+	ExcludeHashes []yacymodel.Hash
+	URLHashes     []yacymodel.Hash
+	LimitPerWord  int
+	MaxDistance   int
+	Language      string
+}
+
+type PostingSearchResult struct {
+	Postings  map[yacymodel.Hash][]yacymodel.RWIEntry
+	Counts    map[yacymodel.Hash]int
+	Truncated bool
 }

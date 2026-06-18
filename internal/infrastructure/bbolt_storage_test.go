@@ -35,21 +35,23 @@ func TestBboltStorageStoresRWIAndSurvivesReopen(t *testing.T) {
 	store = openTestStorage(t, path, 0)
 	defer closeTestStorage(t, store)
 
-	postings, err := store.PostingsForWords(ctx, []yacymodel.Hash{word}, 0)
+	postings, err := store.SearchPostings(ctx, ports.PostingSearchQuery{
+		WordHashes: []yacymodel.Hash{word},
+	})
 	if err != nil {
-		t.Fatalf("PostingsForWords: %v", err)
+		t.Fatalf("SearchPostings: %v", err)
 	}
-	if len(postings[word]) != 2 {
-		t.Fatalf("postings = %d, want 2", len(postings[word]))
+	if len(postings.Postings[word]) != 2 {
+		t.Fatalf("postings = %d, want 2", len(postings.Postings[word]))
 	}
-	if postings[word][0].Properties[yacymodel.ColWordDistance] != encodedCardinal(3) {
-		t.Fatalf("duplicate did not overwrite first posting: %v", postings[word][0])
+	if postings.Postings[word][0].Properties[yacymodel.ColWordDistance] != encodedCardinal(3) {
+		t.Fatalf("duplicate did not overwrite first posting: %v", postings.Postings[word][0])
 	}
 	assertCount(t, "rwi count after reopen", store.RWICount, 2)
 	assertCount(t, "referenced url count after reopen", store.ReferencedURLCount, 2)
 }
 
-func TestBboltStorageBoundsPostingsPerWord(t *testing.T) {
+func TestBboltStorageSearchPostingsBoundsPerWord(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStorage(t, filepath.Join(t.TempDir(), "node.db"), 0)
 	defer closeTestStorage(t, store)
@@ -65,15 +67,61 @@ func TestBboltStorageBoundsPostingsPerWord(t *testing.T) {
 		t.Fatalf("AppendRWI: %v", err)
 	}
 
-	postings, err := store.PostingsForWords(ctx, []yacymodel.Hash{word, other}, 1)
+	postings, err := store.SearchPostings(ctx, ports.PostingSearchQuery{
+		WordHashes:   []yacymodel.Hash{word, other},
+		LimitPerWord: 1,
+	})
 	if err != nil {
-		t.Fatalf("PostingsForWords: %v", err)
+		t.Fatalf("SearchPostings: %v", err)
 	}
-	if len(postings[word]) != 1 {
-		t.Fatalf("bounded postings = %d, want 1", len(postings[word]))
+	if len(postings.Postings[word]) != 1 {
+		t.Fatalf("bounded postings = %d, want 1", len(postings.Postings[word]))
 	}
-	if len(postings[other]) != 1 {
-		t.Fatalf("other postings = %d, want 1", len(postings[other]))
+	if len(postings.Postings[other]) != 1 {
+		t.Fatalf("other postings = %d, want 1", len(postings.Postings[other]))
+	}
+	if !postings.Truncated {
+		t.Fatal("truncated = false, want true")
+	}
+	if postings.Counts[word] != 2 {
+		t.Fatalf("word count = %d, want 2", postings.Counts[word])
+	}
+}
+
+func TestBboltStorageSearchPostingsFilters(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStorage(t, filepath.Join(t.TempDir(), "node.db"), 0)
+	defer closeTestStorage(t, store)
+
+	word := hashForStorageTest("word")
+	stop := hashForStorageTest("stop")
+	english := rwiEntryForStorageTest(word, "url-a", 1)
+	english.Properties[yacymodel.ColLanguage] = "en"
+	german := rwiEntryForStorageTest(word, "url-b", 1)
+	german.Properties[yacymodel.ColLanguage] = "de"
+	far := rwiEntryForStorageTest(word, "url-c", 9)
+	far.Properties[yacymodel.ColLanguage] = "en"
+	excluded := rwiEntryForStorageTest(stop, "url-a", 1)
+	_, err := store.AppendRWI(ctx, []yacymodel.RWIEntry{english, german, far, excluded})
+	if err != nil {
+		t.Fatalf("AppendRWI: %v", err)
+	}
+
+	result, err := store.SearchPostings(ctx, ports.PostingSearchQuery{
+		WordHashes:    []yacymodel.Hash{word},
+		ExcludeHashes: []yacymodel.Hash{stop},
+		URLHashes:     []yacymodel.Hash{hashForStorageTest("url-a"), hashForStorageTest("url-c")},
+		MaxDistance:   5,
+		Language:      "en",
+	})
+	if err != nil {
+		t.Fatalf("SearchPostings: %v", err)
+	}
+	if result.Counts[word] != 0 {
+		t.Fatalf("count = %d, want 0", result.Counts[word])
+	}
+	if len(result.Postings[word]) != 0 {
+		t.Fatalf("postings = %d, want 0", len(result.Postings[word]))
 	}
 }
 

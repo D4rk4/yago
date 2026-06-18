@@ -50,10 +50,10 @@ func TestSearchJoinsAndExcludes(t *testing.T) {
 	if result.Resources[0].Properties[yacymodel.URLMetaHash] != string(hashFor("u2")) {
 		t.Errorf("unexpected resource %v", result.Resources[0])
 	}
-	if result.WordCounts[word1] != 3 {
-		t.Errorf("word count w1: got %d, want 3", result.WordCounts[word1])
+	if result.WordCounts[word1] != 2 {
+		t.Errorf("word count w1: got %d, want 2", result.WordCounts[word1])
 	}
-	if got := result.Abstracts[word1]; got != "{AAAAAA:u1AAAAu2AAAAu3AAAA}" {
+	if got := result.Abstracts[word1]; got != "{AAAAAA:u1AAAAu2AAAA}" {
 		t.Errorf("abstract = %q, want compressed w1 abstract", got)
 	}
 }

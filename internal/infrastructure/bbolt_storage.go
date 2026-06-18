@@ -1,7 +1,6 @@
 package infrastructure
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -129,50 +128,6 @@ func (s *BboltStorage) AppendRWI(
 	}
 
 	return rejected, nil
-}
-
-func (s *BboltStorage) PostingsForWords(
-	ctx context.Context,
-	wordHashes []yacymodel.Hash,
-	limitPerWord int,
-) (map[yacymodel.Hash][]yacymodel.RWIEntry, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, wrapContextErr(err)
-	}
-
-	out := make(map[yacymodel.Hash][]yacymodel.RWIEntry, len(wordHashes))
-	err := s.view(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(bucketRWI)
-		for _, word := range wordHashes {
-			if err := ctx.Err(); err != nil {
-				return wrapContextErr(err)
-			}
-
-			prefix := []byte(word)
-			cursor := bucket.Cursor()
-			for key, value := cursor.Seek(prefix); key != nil && bytes.HasPrefix(key, prefix); key, value = cursor.Next() {
-				if limitPerWord > 0 && len(out[word]) >= limitPerWord {
-					break
-				}
-
-				entry, err := yacymodel.ParseRWIEntry(string(value))
-				if err != nil {
-					return fmt.Errorf("parse rwi: %w", err)
-				}
-				out[word] = append(out[word], entry)
-			}
-			if _, ok := out[word]; !ok {
-				out[word] = nil
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return out, nil
 }
 
 func (s *BboltStorage) RWICount(ctx context.Context) (int, error) {
