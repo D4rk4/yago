@@ -6,14 +6,8 @@ type unsupportedSearchOption struct {
 }
 
 var unsupportedSearchOptions = []unsupportedSearchOption{
+	// rejected: its embedded /language/ token filters the RWI join, so silently ignoring it would inflate the returned count
 	{"modifier", func(query SearchQuery) bool { return query.Filters.Modifier != "" }},
-	{"prefer", func(query SearchQuery) bool { return query.Filters.Prefer != "" }},
-	{"filter", func(query SearchQuery) bool { return query.Filters.Filter != "" }},
-	{"sitehost", func(query SearchQuery) bool { return query.Filters.SiteHost != "" }},
-	{"author", func(query SearchQuery) bool { return query.Filters.Author != "" }},
-	{"collection", func(query SearchQuery) bool { return query.Filters.Collection != "" }},
-	{"filetype", func(query SearchQuery) bool { return query.Filters.FileType != "" }},
-	{"protocol", func(query SearchQuery) bool { return query.Filters.Protocol != "" }},
 }
 
 func UnsupportedSearchOptions(query SearchQuery) []string {

@@ -20,6 +20,13 @@ func TestUnsupportedSearchOptionsAllowsSupportedSubset(t *testing.T) {
 			SiteHash:         "abcdef",
 			TimezoneOffset:   120,
 			Profile:          "p",
+			Prefer:           "p",
+			Filter:           "f",
+			SiteHost:         "example.com",
+			Author:           "a",
+			Collection:       "c",
+			FileType:         "pdf",
+			Protocol:         "https",
 		},
 	})
 	if len(got) != 0 {
@@ -27,17 +34,11 @@ func TestUnsupportedSearchOptionsAllowsSupportedSubset(t *testing.T) {
 	}
 }
 
-func TestUnsupportedSearchOptionsRejectsUnsupported(t *testing.T) {
+func TestUnsupportedSearchOptionsRejectsModifier(t *testing.T) {
 	got := UnsupportedSearchOptions(SearchQuery{
-		Filters: SearchFilters{
-			Modifier: "m",
-			Prefer:   "p",
-			Filter:   "f",
-			SiteHost: "example.com",
-			Author:   "a",
-		},
+		Filters: SearchFilters{Modifier: "/language/de"},
 	})
-	if len(got) != 5 {
-		t.Fatalf("unsupported = %v, want 5 options", got)
+	if len(got) != 1 || got[0] != "modifier" {
+		t.Fatalf("unsupported = %v, want [modifier]", got)
 	}
 }
