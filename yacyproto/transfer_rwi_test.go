@@ -61,6 +61,20 @@ func TestTransferRWIResponseRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTransferRWIResponseIncludesEmptyURLFields(t *testing.T) {
+	t.Parallel()
+
+	resp := yacyproto.TransferRWIResponse{Result: yacyproto.ResultOK}
+	msg := resp.Encode()
+
+	if _, ok := msg[yacyproto.FieldUnknownURL]; !ok {
+		t.Fatal("missing empty unknownURL field")
+	}
+	if _, ok := msg[yacyproto.FieldErrorURL]; !ok {
+		t.Fatal("missing empty errorURL field")
+	}
+}
+
 func TestParseTransferRWIRequestSkipsBadEntry(t *testing.T) {
 	t.Parallel()
 

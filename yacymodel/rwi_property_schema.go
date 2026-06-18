@@ -30,11 +30,6 @@ var rwiCardinalWidths = map[string]int{
 	ColReserve:           1,
 }
 
-var rwiBinaryWidths = map[string]int{
-	ColDocType:  1,
-	ColWordType: 1,
-}
-
 func validateRWIProperties(props map[string]string) error {
 	for key, value := range props {
 		if err := validateRWIProperty(key, value); err != nil {
@@ -61,33 +56,29 @@ func validateRWIProperty(key, value string) error {
 			)
 		}
 	case ColFlags:
-		if err := validateEncodedBitfield(value, rwiByteFlagLength); err != nil {
-			return fmt.Errorf("%w %s: %w", errInvalidRWIProperty, key, err)
-		}
+		return validateOptionalEncoded(key, value)
+	case ColDocType, ColWordType:
+		return validateOptionalEncoded(key, value)
 	default:
-		if width, ok := rwiCardinalWidths[key]; ok {
-			return validateFixedWidthEncoded(key, value, width)
-		}
-		if width, ok := rwiBinaryWidths[key]; ok {
-			return validateFixedWidthEncoded(key, value, width)
+		if _, ok := rwiCardinalWidths[key]; ok {
+			return validateCardinalEncoded(key, value)
 		}
 	}
 	return nil
 }
 
-func validateFixedWidthEncoded(key, value string, byteWidth int) error {
-	raw, err := Decode(value)
-	if err != nil {
+func validateOptionalEncoded(key, value string) error {
+	if _, err := Decode(value); err != nil {
 		return fmt.Errorf("%w %s: %w", errInvalidRWIProperty, key, err)
 	}
-	if len(raw) != byteWidth {
-		return fmt.Errorf(
-			"%w %s: length %d, want %d",
-			errInvalidRWIProperty,
-			key,
-			len(raw),
-			byteWidth,
-		)
+
+	return nil
+}
+
+func validateCardinalEncoded(key, value string) error {
+	if _, err := DecodeCardinal(value); err != nil {
+		return fmt.Errorf("%w %s: %w", errInvalidRWIProperty, key, err)
 	}
+
 	return nil
 }

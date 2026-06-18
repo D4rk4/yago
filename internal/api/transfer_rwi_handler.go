@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
@@ -45,6 +46,14 @@ func (h *transferRWIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
+	slog.DebugContext(
+		ctx,
+		"transfer rwi request accepted",
+		"word_count", req.WordCount,
+		"entry_count", req.EntryCount,
+		"accepted_entry_count", len(req.Indexes),
+	)
 
 	receipt, err := h.receiver.ReceiveRWI(ctx, req.Indexes)
 	if err != nil {

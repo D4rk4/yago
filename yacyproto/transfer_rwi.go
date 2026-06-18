@@ -1,6 +1,7 @@
 package yacyproto
 
 import (
+	"log/slog"
 	"net/url"
 	"strings"
 
@@ -76,8 +77,8 @@ func (r TransferRWIResponse) Encode() yacymodel.Message {
 	r.write(msg)
 	setString(msg, FieldResult, string(r.Result))
 	setInt(msg, FieldPause, r.Pause)
-	setString(msg, FieldUnknownURL, joinHashes(r.UnknownURL))
-	setString(msg, FieldErrorURL, joinHashes(r.ErrorURL))
+	msg[FieldUnknownURL] = joinHashes(r.UnknownURL)
+	msg[FieldErrorURL] = joinHashes(r.ErrorURL)
 
 	return msg
 }
@@ -140,14 +141,17 @@ func parseRWILines(raw string) []yacymodel.RWIEntry {
 			continue
 		}
 		if len(entries) >= maxRWIEntries {
+			slog.Warn("transfer rwi entry limit reached", "limit", maxRWIEntries)
 			break
-		}
-		if !yacymodel.AcceptableRWILine(line) {
-			continue
 		}
 
 		entry, err := yacymodel.ParseRWIEntry(line)
 		if err != nil {
+			slog.Warn("transfer rwi entry discarded", "error", err, "line_length", len(line))
+			continue
+		}
+		if _, err := entry.URLHash(); err != nil {
+			slog.Warn("transfer rwi entry discarded", "error", err, "line_length", len(line))
 			continue
 		}
 

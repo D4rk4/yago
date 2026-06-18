@@ -28,8 +28,7 @@ func TestParseRWIEntryErrors(t *testing.T) {
 	cases := []string{
 		"ABCDEFGHIJKLnobraces",
 		"short{h=MNOPQRSTUVWX}",
-		"ABCDEFGHIJKL{h=MNOPQRSTUVWX,x=ABC}",
-		"ABCDEFGHIJKL{h=MNOPQRSTUVWX,z=AAAAAAA}",
+		"ABCDEFGHIJKL{h=MNOPQRSTUVWX,badtoken}",
 	}
 	for _, c := range cases {
 		if _, err := ParseRWIEntry(c); !errors.Is(err, ErrBadRWIEntry) {
@@ -44,6 +43,8 @@ func TestAcceptableRWILine(t *testing.T) {
 		want bool
 	}{
 		{sampleRWILine, true},
+		{"ABCDEFGHIJKL{a=AAAA,h=MNOPQRSTUVWX,x=CD}", true},
+		{"ABCDEFGHIJKL{d=ABC,g=,h=MNOPQRSTUVWX,x=CD,z=}", true},
 		{"ABCDEFGHIJKL{h=MNOPQRSTUVWX,c=1}", false},
 		{"ABCDEFGHIJKL{h=MNOPQRSTUVWX,x=[B@1f}", false},
 		{"ABCDEFGHIJKLnobraces", false},

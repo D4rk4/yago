@@ -33,6 +33,12 @@ func (g requestGuard) parse(
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, g.maxBodyBytes)
+	if err := decodeRequestBody(r); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+
+		return nil, nil, nil, false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, g.maxBodyBytes)
 
 	var err error
 	if strings.HasPrefix(r.Header.Get("Content-Type"), multipartContentType) {

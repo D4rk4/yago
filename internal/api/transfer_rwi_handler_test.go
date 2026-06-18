@@ -1,7 +1,10 @@
 package api
 
 import (
+	"bytes"
+	"compress/gzip"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
@@ -45,11 +48,53 @@ func TestTransferRWIHandlerHappyPath(t *testing.T) {
 	if !h.rwi.called {
 		t.Fatal("receiver not called")
 	}
+	if len(h.rwi.entries) != 1 {
+		t.Fatalf("receiver entries = %d, want 1", len(h.rwi.entries))
+	}
 	if resp.Result != yacyproto.TransferRWIResult(yacyproto.ResultOK) {
 		t.Errorf("Result = %q, want ok", resp.Result)
 	}
 	if resp.Pause != 5 {
 		t.Errorf("Pause = %d, want 5", resp.Pause)
+	}
+}
+
+func TestTransferRWIHandlerAcceptsGzipBody(t *testing.T) {
+	h := newTestHarness(t)
+	req := yacyproto.TransferRWIRequest{
+		YouAre:  h.ident.hash,
+		Indexes: []yacymodel.RWIEntry{sampleEntry(t)},
+	}
+
+	var body bytes.Buffer
+	zw := gzip.NewWriter(&body)
+	if _, err := zw.Write([]byte(req.Form().Encode())); err != nil {
+		t.Fatalf("write gzip body: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close gzip body: %v", err)
+	}
+
+	r := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		yacyproto.PathTransferRWI,
+		&body,
+	)
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Content-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	h.mux().ServeHTTP(rec, r)
+
+	resp, err := yacyproto.ParseTransferRWIResponse(decodeResponse(t, rec))
+	if err != nil {
+		t.Fatalf("parse response: %v", err)
+	}
+	if resp.Result != yacyproto.TransferRWIResult(yacyproto.ResultOK) {
+		t.Errorf("Result = %q, want ok", resp.Result)
+	}
+	if !h.rwi.called {
+		t.Fatal("receiver not called")
 	}
 }
 
