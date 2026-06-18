@@ -29,6 +29,8 @@ storage and serving, suitable for low-resource Linux-class devices.
 * The node SHALL announce in peer-liveness responses only its own seed and peers obtained from
   configured seedlists and bootstrap peers, and SHALL NOT redistribute peers self-reported in
   inbound requests.
+* The node SHALL honor the requested peer count in peer-liveness requests and select the announced
+  peers at random.
 * The node SHALL receive inbound DHT RWI postings.
 * The node SHALL receive URL metadata associated with RWI postings.
 * The node SHALL serve remote RWI search requests.

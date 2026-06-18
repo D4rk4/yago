@@ -52,7 +52,7 @@ func (h *helloHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.guard.networkMatches(form) {
-		outcome, err := h.peers.Hello(ctx, req.Seed)
+		outcome, err := h.peers.Hello(ctx, req.Seed, req.Count)
 		if err != nil {
 			http.Error(w, "hello failed", http.StatusInternalServerError)
 

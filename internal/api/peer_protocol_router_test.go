@@ -58,15 +58,18 @@ type fakePeers struct {
 	outcome contracts.HelloOutcome
 	err     error
 	caller  yacymodel.Seed
+	count   int
 	called  bool
 }
 
 func (f *fakePeers) Hello(
 	_ context.Context,
 	caller yacymodel.Seed,
+	count int,
 ) (contracts.HelloOutcome, error) {
 	f.called = true
 	f.caller = caller
+	f.count = count
 
 	return f.outcome, f.err
 }

@@ -11,22 +11,29 @@ import (
 type PeerDirectory struct {
 	pinger  ports.PeerPinger
 	trusted ports.TrustedSeedSource
+	shuffle seedShuffler
 }
 
-func NewPeerDirectory(pinger ports.PeerPinger, trusted ports.TrustedSeedSource) *PeerDirectory {
+func NewPeerDirectory(
+	pinger ports.PeerPinger,
+	trusted ports.TrustedSeedSource,
+	shuffle seedShuffler,
+) *PeerDirectory {
 	return &PeerDirectory{
 		pinger:  pinger,
 		trusted: trusted,
+		shuffle: shuffle,
 	}
 }
 
 func (d *PeerDirectory) Hello(
 	ctx context.Context,
 	caller yacymodel.Seed,
+	count int,
 ) (contracts.HelloOutcome, error) {
 	return contracts.HelloOutcome{
 		CallerType: d.classifyCaller(ctx, caller),
-		Known:      d.trusted.Trusted(ctx),
+		Known:      selectAnnouncedSeeds(d.trusted.Trusted(ctx), count, d.shuffle),
 	}, nil
 }
 

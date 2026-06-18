@@ -12,5 +12,5 @@ type HelloOutcome struct {
 }
 
 type PeerDirectory interface {
-	Hello(ctx context.Context, caller yacymodel.Seed) (HelloOutcome, error)
+	Hello(ctx context.Context, caller yacymodel.Seed, count int) (HelloOutcome, error)
 }
