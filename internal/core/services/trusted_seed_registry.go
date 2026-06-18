@@ -28,12 +28,19 @@ func (r *TrustedSeedRegistry) Absorb(ctx context.Context, seeds ...yacymodel.See
 	for _, seed := range seeds {
 		hash, err := seed.Hash()
 		if err != nil {
-			slog.DebugContext(ctx, "trusted seed discarded", "error", err)
+			slog.WarnContext(ctx, "trusted seed discarded", "error", err)
 
 			continue
 		}
 		if _, known := r.seeds[hash]; !known && len(r.seeds) >= r.capacity {
-			slog.DebugContext(ctx, "trusted seed registry at capacity", "capacity", r.capacity)
+			slog.WarnContext(
+				ctx,
+				"trusted seed discarded",
+				"reason",
+				"registry at capacity",
+				"capacity",
+				r.capacity,
+			)
 
 			continue
 		}

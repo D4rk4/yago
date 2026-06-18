@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -94,10 +95,27 @@ func (s *BboltStorage) AppendRWI(
 			}
 
 			urlHash, err := entry.URLHash()
-			if err != nil || !entry.WordHash.Valid() {
-				if err == nil {
-					rejected = append(rejected, urlHash)
-				}
+			if err != nil {
+				slog.WarnContext(
+					ctx,
+					"rwi entry discarded",
+					"reason",
+					"invalid url hash",
+					"error",
+					err,
+				)
+				continue
+			}
+			if !entry.WordHash.Valid() {
+				rejected = append(rejected, urlHash)
+				slog.WarnContext(
+					ctx,
+					"rwi entry discarded",
+					"reason",
+					"invalid word hash",
+					"word_hash",
+					entry.WordHash,
+				)
 				continue
 			}
 
@@ -160,6 +178,14 @@ func (s *BboltStorage) StoreURLs(
 
 			hash, err := row.URLHash()
 			if err != nil {
+				slog.WarnContext(
+					ctx,
+					"url row discarded",
+					"reason",
+					"invalid url hash",
+					"error",
+					err,
+				)
 				continue
 			}
 
@@ -170,6 +196,7 @@ func (s *BboltStorage) StoreURLs(
 			}
 			if err := urls.Put(key, []byte(row.String())); err != nil {
 				result.Rejected = append(result.Rejected, hash)
+				slog.WarnContext(ctx, "url row discarded", "reason", "store failed", "error", err)
 				continue
 			}
 			if err := incrementCount(counts, countURLs); err != nil {

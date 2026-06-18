@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 
 	bolt "go.etcd.io/bbolt"
 
@@ -75,6 +76,15 @@ func excludedURLHashes(
 			}
 			if urlHash, err := entry.URLHash(); err == nil {
 				excluded[urlHash] = struct{}{}
+			} else {
+				slog.WarnContext(
+					ctx,
+					"rwi exclude candidate discarded",
+					"reason",
+					"invalid url hash",
+					"error",
+					err,
+				)
 			}
 		}
 	}
@@ -104,7 +114,7 @@ func searchWordPostings(
 		if err != nil {
 			return nil, 0, false, fmt.Errorf("parse rwi: %w", err)
 		}
-		if !postingMatchesSearch(entry, query, allowed, excluded) {
+		if !postingMatchesSearch(ctx, entry, query, allowed, excluded) {
 			continue
 		}
 		count++
@@ -118,6 +128,7 @@ func searchWordPostings(
 }
 
 func postingMatchesSearch(
+	ctx context.Context,
 	entry yacymodel.RWIEntry,
 	query ports.PostingSearchQuery,
 	allowed map[yacymodel.Hash]struct{},
@@ -128,6 +139,14 @@ func postingMatchesSearch(
 	}
 	distance, err := yacymodel.DecodeCardinal(entry.Properties[yacymodel.ColWordDistance])
 	if err != nil {
+		slog.WarnContext(
+			ctx,
+			"rwi filter field discarded",
+			"field",
+			yacymodel.ColWordDistance,
+			"error",
+			err,
+		)
 		distance = 0
 	}
 	if query.MaxDistance > 0 && distance > uint64(query.MaxDistance) {
@@ -135,6 +154,14 @@ func postingMatchesSearch(
 	}
 	urlHash, err := entry.URLHash()
 	if err != nil {
+		slog.WarnContext(
+			ctx,
+			"rwi search posting discarded",
+			"reason",
+			"invalid url hash",
+			"error",
+			err,
+		)
 		return false
 	}
 	if len(allowed) != 0 {
@@ -148,10 +175,10 @@ func postingMatchesSearch(
 	if !matchesSiteHash(urlHash, query.SiteHash) {
 		return false
 	}
-	if !matchesContentDomain(entry, query.ContentDomain, query.StrictContentDom) {
+	if !matchesContentDomain(ctx, entry, query.ContentDomain, query.StrictContentDom) {
 		return false
 	}
-	if !matchesConstraint(entry, query.Constraint) {
+	if !matchesConstraint(ctx, entry, query.Constraint) {
 		return false
 	}
 	return true

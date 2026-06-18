@@ -1,6 +1,7 @@
 package infrastructure
 
 import (
+	"context"
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
@@ -34,60 +35,64 @@ func TestMatchesSiteHash(t *testing.T) {
 }
 
 func TestMatchesContentDomainStrict(t *testing.T) {
-	if !matchesContentDomain(entryWithDocType(yacymodel.DocTypeImage), "image", true) {
+	ctx := context.Background()
+	if !matchesContentDomain(ctx, entryWithDocType(yacymodel.DocTypeImage), "image", true) {
 		t.Fatal("image doctype should match strict image")
 	}
-	if matchesContentDomain(entryWithDocType(yacymodel.DocTypeAudio), "image", true) {
+	if matchesContentDomain(ctx, entryWithDocType(yacymodel.DocTypeAudio), "image", true) {
 		t.Fatal("audio doctype should not match strict image")
 	}
-	if !matchesContentDomain(entryWithDocType(yacymodel.DocTypeMovie), "video", true) {
+	if !matchesContentDomain(ctx, entryWithDocType(yacymodel.DocTypeMovie), "video", true) {
 		t.Fatal("movie doctype should match strict video")
 	}
 }
 
 func TestMatchesContentDomainNonStrict(t *testing.T) {
-	if !matchesContentDomain(entryWithFlag(yacymodel.RWIFlagHasAudio), "audio", false) {
+	ctx := context.Background()
+	if !matchesContentDomain(ctx, entryWithFlag(yacymodel.RWIFlagHasAudio), "audio", false) {
 		t.Fatal("audio flag should match non-strict audio")
 	}
-	if matchesContentDomain(entryWithFlag(yacymodel.RWIFlagHasImage), "audio", false) {
+	if matchesContentDomain(ctx, entryWithFlag(yacymodel.RWIFlagHasImage), "audio", false) {
 		t.Fatal("image flag should not match non-strict audio")
 	}
-	if !matchesContentDomain(entryWithFlag(yacymodel.RWIFlagHasApp), "app", false) {
+	if !matchesContentDomain(ctx, entryWithFlag(yacymodel.RWIFlagHasApp), "app", false) {
 		t.Fatal("app flag should match app")
 	}
 }
 
 func TestMatchesContentDomainPassthrough(t *testing.T) {
+	ctx := context.Background()
 	entry := entryWithDocType(yacymodel.DocTypeImage)
-	if !matchesContentDomain(entry, "", false) {
+	if !matchesContentDomain(ctx, entry, "", false) {
 		t.Fatal("empty domain should pass through")
 	}
-	if !matchesContentDomain(entry, "text", true) {
+	if !matchesContentDomain(ctx, entry, "text", true) {
 		t.Fatal("text domain should pass through")
 	}
 }
 
 func TestMatchesConstraint(t *testing.T) {
+	ctx := context.Background()
 	entry := entryWithFlag(yacymodel.RWIFlagHasImage)
 
-	if !matchesConstraint(entry, "") {
+	if !matchesConstraint(ctx, entry, "") {
 		t.Fatal("empty constraint should match")
 	}
 
 	allOn := yacymodel.Encode([]byte{0xff, 0xff, 0xff, 0xff})
-	if !matchesConstraint(entry, allOn) {
+	if !matchesConstraint(ctx, entry, allOn) {
 		t.Fatal("all-on constraint is a no-op and should match")
 	}
 
 	require := []byte{0, 0, 0, 0}
 	require[yacymodel.RWIFlagHasImage>>3] |= 1 << (yacymodel.RWIFlagHasImage % 8)
-	if !matchesConstraint(entry, yacymodel.Encode(require)) {
+	if !matchesConstraint(ctx, entry, yacymodel.Encode(require)) {
 		t.Fatal("constraint requiring a present flag should match")
 	}
 
 	other := []byte{0, 0, 0, 0}
 	other[yacymodel.RWIFlagHasVideo>>3] |= 1 << (yacymodel.RWIFlagHasVideo % 8)
-	if matchesConstraint(entry, yacymodel.Encode(other)) {
+	if matchesConstraint(ctx, entry, yacymodel.Encode(other)) {
 		t.Fatal("constraint requiring an absent flag should not match")
 	}
 }

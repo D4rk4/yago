@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -55,7 +56,7 @@ func (s Searcher) Search(
 
 	var joined map[yacymodel.Hash]searchCandidate
 	for _, word := range query.Words {
-		matched := matchWord(postingResult.Postings[word])
+		matched := matchWord(ctx, postingResult.Postings[word])
 		if wordCounts != nil {
 			wordCounts[word] = postingResult.Counts[word]
 		}
@@ -92,18 +93,50 @@ type searchCandidate struct {
 	distance uint64
 }
 
-func matchWord(entries []yacymodel.RWIEntry) map[yacymodel.Hash]searchCandidate {
+func matchWord(
+	ctx context.Context,
+	entries []yacymodel.RWIEntry,
+) map[yacymodel.Hash]searchCandidate {
 	matched := make(map[yacymodel.Hash]searchCandidate, len(entries))
 	for _, entry := range entries {
-		distance := wordDistance(entry)
+		distance, err := wordDistance(entry)
+		if err != nil {
+			slog.WarnContext(
+				ctx,
+				"rwi ranking field discarded",
+				"field",
+				yacymodel.ColWordDistance,
+				"error",
+				err,
+			)
+		}
+		hits, err := hitCount(entry)
+		if err != nil {
+			slog.WarnContext(
+				ctx,
+				"rwi ranking field discarded",
+				"field",
+				yacymodel.ColHitCount,
+				"error",
+				err,
+			)
+		}
 		urlHash, err := entry.URLHash()
 		if err != nil {
+			slog.WarnContext(
+				ctx,
+				"rwi search candidate discarded",
+				"reason",
+				"invalid url hash",
+				"error",
+				err,
+			)
 			continue
 		}
 		if _, seen := matched[urlHash]; !seen {
 			matched[urlHash] = searchCandidate{
 				hash:     urlHash,
-				hits:     hitCount(entry),
+				hits:     hits,
 				distance: distance,
 			}
 		}
@@ -142,22 +175,22 @@ func cloneCandidates(in map[yacymodel.Hash]searchCandidate) map[yacymodel.Hash]s
 	return out
 }
 
-func wordDistance(entry yacymodel.RWIEntry) uint64 {
+func wordDistance(entry yacymodel.RWIEntry) (uint64, error) {
 	n, err := yacymodel.DecodeCardinal(entry.Properties[yacymodel.ColWordDistance])
 	if err != nil {
-		return 0
+		return 0, err
 	}
 
-	return n
+	return n, nil
 }
 
-func hitCount(entry yacymodel.RWIEntry) uint64 {
+func hitCount(entry yacymodel.RWIEntry) (uint64, error) {
 	n, err := yacymodel.DecodeCardinal(entry.Properties[yacymodel.ColHitCount])
 	if err != nil {
-		return 0
+		return 0, err
 	}
 
-	return n
+	return n, nil
 }
 
 func rankedHashes(set map[yacymodel.Hash]searchCandidate) []yacymodel.Hash {
@@ -215,7 +248,7 @@ func (s Searcher) searchAbstractCounts(
 	wordCounts := make(map[yacymodel.Hash]int, len(query.Abstracts.Words))
 	abstracts := make(map[yacymodel.Hash]string, len(query.Abstracts.Words))
 	for _, word := range query.Abstracts.Words {
-		matched := matchWord(postingResult.Postings[word])
+		matched := matchWord(ctx, postingResult.Postings[word])
 		wordCounts[word] = postingResult.Counts[word]
 		abstracts[word] = yacymodel.EncodeSearchIndexAbstract(candidateHashes(matched))
 	}
@@ -264,7 +297,7 @@ func (s Searcher) searchAbstracts(
 		}
 		abstracts := make(map[yacymodel.Hash]string, len(query.Abstracts.Words))
 		for _, word := range query.Abstracts.Words {
-			matched := matchWord(postingResult.Postings[word])
+			matched := matchWord(ctx, postingResult.Postings[word])
 			abstracts[word] = yacymodel.EncodeSearchIndexAbstract(candidateHashes(matched))
 		}
 		return abstracts, nil

@@ -91,7 +91,7 @@ func (a *PeerAnnouncement) Announce(ctx context.Context) {
 
 		result, err := a.greeter.Greet(ctx, endpoint, self, announceHelloPeerCount)
 		if err != nil {
-			slog.DebugContext(ctx, "peer greet failed", "endpoint", endpoint, "error", err)
+			slog.WarnContext(ctx, "peer greet failed", "endpoint", endpoint, "error", err)
 
 			continue
 		}
@@ -111,7 +111,7 @@ func (a *PeerAnnouncement) discover(ctx context.Context) []string {
 		}
 		a.registry.Absorb(ctx, seeds...)
 		for _, seed := range seeds {
-			if endpoint, ok := seedEndpoint(seed); ok {
+			if endpoint, ok := seedEndpoint(ctx, seed); ok {
 				endpoints = append(endpoints, endpoint)
 			}
 		}
@@ -120,13 +120,18 @@ func (a *PeerAnnouncement) discover(ctx context.Context) []string {
 	return endpoints
 }
 
-func seedEndpoint(seed yacymodel.Seed) (string, bool) {
+func seedEndpoint(ctx context.Context, seed yacymodel.Seed) (string, bool) {
 	host := seed[yacymodel.SeedIP]
 	if host == "" {
 		return "", false
 	}
 	port, err := seed.Port()
-	if err != nil || port <= 0 {
+	if err != nil {
+		slog.WarnContext(ctx, "seed endpoint discarded", "reason", "invalid port", "error", err)
+		return "", false
+	}
+	if port <= 0 {
+		slog.WarnContext(ctx, "seed endpoint discarded", "reason", "invalid port", "port", port)
 		return "", false
 	}
 

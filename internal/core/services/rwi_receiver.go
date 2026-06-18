@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/ports"
@@ -37,7 +38,7 @@ func (r RWIReceiver) ReceiveRWI(
 		return contracts.RWIReceipt{}, fmt.Errorf("append rwi: %w", err)
 	}
 
-	unknown, err := r.urls.MissingURLs(ctx, referencedURLs(entries))
+	unknown, err := r.urls.MissingURLs(ctx, referencedURLs(ctx, entries))
 	if err != nil {
 		return contracts.RWIReceipt{}, fmt.Errorf("missing urls: %w", err)
 	}
@@ -45,11 +46,19 @@ func (r RWIReceiver) ReceiveRWI(
 	return contracts.RWIReceipt{UnknownURL: unknown, ErrorURL: rejected}, nil
 }
 
-func referencedURLs(entries []yacymodel.RWIEntry) []yacymodel.Hash {
+func referencedURLs(ctx context.Context, entries []yacymodel.RWIEntry) []yacymodel.Hash {
 	hashes := make([]yacymodel.Hash, 0, len(entries))
 	for _, entry := range entries {
 		hash, err := entry.URLHash()
 		if err != nil {
+			slog.WarnContext(
+				ctx,
+				"rwi reference discarded",
+				"reason",
+				"invalid url hash",
+				"error",
+				err,
+			)
 			continue
 		}
 		hashes = append(hashes, hash)

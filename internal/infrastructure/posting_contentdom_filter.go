@@ -1,26 +1,36 @@
 package infrastructure
 
-import "github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+import (
+	"context"
+	"log/slog"
 
-func matchesContentDomain(entry yacymodel.RWIEntry, domain string, strict bool) bool {
+	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+)
+
+func matchesContentDomain(
+	ctx context.Context,
+	entry yacymodel.RWIEntry,
+	domain string,
+	strict bool,
+) bool {
 	switch domain {
 	case "image":
 		if strict {
 			return hasDocType(entry, yacymodel.DocTypeImage)
 		}
-		return hasAppearanceFlag(entry, yacymodel.RWIFlagHasImage)
+		return hasAppearanceFlag(ctx, entry, yacymodel.RWIFlagHasImage)
 	case "audio":
 		if strict {
 			return hasDocType(entry, yacymodel.DocTypeAudio)
 		}
-		return hasAppearanceFlag(entry, yacymodel.RWIFlagHasAudio)
+		return hasAppearanceFlag(ctx, entry, yacymodel.RWIFlagHasAudio)
 	case "video":
 		if strict {
 			return hasDocType(entry, yacymodel.DocTypeMovie)
 		}
-		return hasAppearanceFlag(entry, yacymodel.RWIFlagHasVideo)
+		return hasAppearanceFlag(ctx, entry, yacymodel.RWIFlagHasVideo)
 	case "app":
-		return hasAppearanceFlag(entry, yacymodel.RWIFlagHasApp)
+		return hasAppearanceFlag(ctx, entry, yacymodel.RWIFlagHasApp)
 	default:
 		return true
 	}
@@ -31,9 +41,17 @@ func hasDocType(entry yacymodel.RWIEntry, want byte) bool {
 	return ok && got == want
 }
 
-func hasAppearanceFlag(entry yacymodel.RWIEntry, bit int) bool {
+func hasAppearanceFlag(ctx context.Context, entry yacymodel.RWIEntry, bit int) bool {
 	flags, err := entry.AppearanceFlags()
 	if err != nil {
+		slog.WarnContext(
+			ctx,
+			"rwi content domain candidate discarded",
+			"reason",
+			"appearance flags failed",
+			"error",
+			err,
+		)
 		return false
 	}
 	return flags.Get(bit)

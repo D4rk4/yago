@@ -38,7 +38,7 @@ func (f *HTTPSeedlistFetcher) Fetch(ctx context.Context, url string) ([]yacymode
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrSeedlistFetchFailed, err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer closeResponseBody(ctx, resp.Body, "seedlist response close failed")
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%w: status %d", ErrSeedlistFetchFailed, resp.StatusCode)
@@ -59,13 +59,13 @@ func decodeSeedlist(ctx context.Context, body io.Reader, url string) ([]yacymode
 
 		plain, err := yacymodel.DecodeSeedWireForm(line)
 		if err != nil {
-			slog.DebugContext(ctx, "seedlist line discarded", "url", url, "error", err)
+			slog.WarnContext(ctx, "seedlist line discarded", "url", url, "error", err)
 
 			continue
 		}
 		seed, err := yacymodel.ParseSeed(plain)
 		if err != nil {
-			slog.DebugContext(ctx, "seedlist line discarded", "url", url, "error", err)
+			slog.WarnContext(ctx, "seedlist line discarded", "url", url, "error", err)
 
 			continue
 		}

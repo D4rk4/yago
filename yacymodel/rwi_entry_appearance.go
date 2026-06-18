@@ -1,5 +1,7 @@
 package yacymodel
 
+import "log/slog"
+
 const RWIFlagBitCount = 32
 
 const (
@@ -17,7 +19,11 @@ const (
 
 func (e RWIEntry) DocType() (byte, bool) {
 	raw, err := Decode(e.Properties[ColDocType])
-	if err != nil || len(raw) != 1 {
+	if err != nil {
+		slog.Warn("rwi doctype discarded", "error", err)
+		return 0, false
+	}
+	if len(raw) != 1 {
 		return 0, false
 	}
 	return raw[0], true

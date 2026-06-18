@@ -1,6 +1,7 @@
 package yacyproto
 
 import (
+	"log/slog"
 	"net/url"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
@@ -58,11 +59,21 @@ func ParseTransferURLRequest(form url.Values) (TransferURLRequest, error) {
 	for i := 0; i < req.URLCount; i++ {
 		raw := form.Get(indexedKey(prefixURL, i))
 		if raw == "" {
+			slog.Warn("transfer url row discarded", "reason", "missing field", "index", i)
 			continue
 		}
 
 		row, err := yacymodel.ParseURIMetadataRow(raw)
 		if err != nil {
+			slog.Warn(
+				"transfer url row discarded",
+				"reason",
+				"parse failed",
+				"index",
+				i,
+				"error",
+				err,
+			)
 			continue
 		}
 

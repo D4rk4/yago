@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 )
 
 const (
@@ -83,7 +84,11 @@ func gzipDecompress(b []byte) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("gzip reader: %w", err)
 	}
-	defer func() { _ = r.Close() }()
+	defer func() {
+		if err := r.Close(); err != nil {
+			slog.Warn("gzip reader close failed", "error", err)
+		}
+	}()
 	out, err := io.ReadAll(r)
 	if err != nil {
 		return "", fmt.Errorf("gzip read: %w", err)
