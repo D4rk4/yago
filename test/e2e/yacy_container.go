@@ -1,0 +1,62 @@
+//go:build e2e
+
+package e2e
+
+import (
+	"context"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+)
+
+const defaultYaCyImage = "yacy/yacy_search_server:latest"
+
+func startYaCy(
+	t *testing.T,
+	ctx context.Context,
+	networkName, alias string,
+) testcontainers.Container {
+	t.Helper()
+	image := os.Getenv("YACY_YACY_IMAGE")
+	if image == "" {
+		image = defaultYaCyImage
+	}
+	const defaults = "/opt/yacy_search_server/defaults/"
+	const unitFile = defaults + "yacy.network.freeworld.unit"
+	setup := strings.Join([]string{
+		"sed -i 's#<auth-method>DIGEST</auth-method>#<auth-method>BASIC</auth-method>#' " + defaults + "web.xml",
+		"sed -i '/^network.unit.bootstrap.seedlist/d' " + unitFile,
+		"sed -i 's#^network.unit.domain.*#network.unit.domain = any#' " + unitFile,
+		"sed -i 's#^staticIP=.*#staticIP=" + alias + "#' " + defaults + "yacy.init",
+		"sed -i 's#^allowDistributeIndex=.*#allowDistributeIndex=true#' " + defaults + "yacy.init",
+		"sed -i 's#^allowDistributeIndexWhileCrawling=.*#allowDistributeIndexWhileCrawling=true#' " + defaults + "yacy.init",
+		"sed -i 's#^allowDistributeIndexWhileIndexing=.*#allowDistributeIndexWhileIndexing=true#' " + defaults + "yacy.init",
+		"sed -i 's#^20_dhtdistribution_idlesleep=.*#20_dhtdistribution_idlesleep=1000#' " + defaults + "yacy.init",
+		"sed -i 's#^20_dhtdistribution_busysleep=.*#20_dhtdistribution_busysleep=0#' " + defaults + "yacy.init",
+		"sed -i 's#^SWITCHBOARD.level = INFO#SWITCHBOARD.level = FINE#' " + defaults + "yacy.logging",
+	}, " && ")
+	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		Started: true,
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:          image,
+			ExposedPorts:   []string{httpPort},
+			Networks:       []string{networkName},
+			NetworkAliases: map[string][]string{networkName: {alias}},
+			WaitingFor:     wait.ForExec([]string{"true"}).WithStartupTimeout(2 * time.Minute),
+			Cmd: []string{
+				"/bin/sh", "-c",
+				setup + " && exec /bin/sh /opt/yacy_search_server/startYACY.sh -f",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("start YaCy container %s: %v", image, err)
+	}
+	t.Cleanup(func() { _ = c.Terminate(context.Background()) })
+	dumpLogsOnFailure(t, "yacy", c)
+	return c
+}

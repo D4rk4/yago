@@ -5,12 +5,15 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
+
+const multipartContentType = "multipart/form-data"
 
 type requestGuard struct {
 	ident        contracts.Identity
@@ -30,7 +33,16 @@ func (g requestGuard) parse(
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, g.maxBodyBytes)
-	if err := r.ParseForm(); err != nil {
+
+	var err error
+	if strings.HasPrefix(r.Header.Get("Content-Type"), multipartContentType) {
+		//nolint:gosec // G120: body is bounded by MaxBytesReader above.
+		err = r.ParseMultipartForm(g.maxBodyBytes)
+	} else {
+		err = r.ParseForm()
+	}
+
+	if err != nil {
 		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
 		} else {

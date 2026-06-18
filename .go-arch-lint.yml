@@ -56,3 +56,6 @@ deps:
       - infrastructure
       - yacymodel
       - yacyproto
+
+excludeFiles:
+  - "test/e2e"

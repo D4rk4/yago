@@ -3,7 +3,10 @@ MODULES := . yacymodel yacyproto
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 80
 
-.PHONY: fmt fmt-check lint vet arch test cover cover-check build verify
+.PHONY: fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-image
+
+E2E_TIMEOUT ?= 10m
+E2E_NODE_IMAGE ?= yacy-rwi-node:e2e
 
 fmt:
 	@set -e; for m in $(MODULES); do \
@@ -66,3 +69,10 @@ build:
 	done
 
 verify: fmt-check vet lint arch cover-check build
+
+e2e-image:
+	DOCKER_BUILDKIT=1 docker build -t $(E2E_NODE_IMAGE) .
+
+e2e:
+	cd test/e2e && GOWORK=off YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
+		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
