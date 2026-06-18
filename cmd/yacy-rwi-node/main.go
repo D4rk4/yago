@@ -63,6 +63,8 @@ func run() error {
 	}
 	defer closeStorage(storage)
 
+	infrastructure.PublishBboltStats(storage)
+
 	identity := services.NewIdentity(
 		config.Hash,
 		config.NetworkName,
