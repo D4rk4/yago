@@ -65,6 +65,20 @@ func Decode(s string) ([]byte, error) {
 	return out, nil
 }
 
+func DecodeCardinal(s string) (uint64, error) {
+	raw, err := Decode(s)
+	if err != nil {
+		return 0, err
+	}
+
+	var out uint64
+	for _, b := range raw {
+		out = out<<8 | uint64(b)
+	}
+
+	return out, nil
+}
+
 const cardinalSymbols = 10
 
 func cardinal(s string) (uint64, error) {

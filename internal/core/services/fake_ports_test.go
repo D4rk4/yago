@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"strconv"
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/ports"
@@ -132,14 +131,19 @@ func hashFor(base string) yacymodel.Hash {
 	return yacymodel.Hash(base + filler[len(base):])
 }
 
-func postingEntry(word yacymodel.Hash, url string, distance int) yacymodel.RWIEntry {
+func postingEntry(word yacymodel.Hash, url string, distance byte) yacymodel.RWIEntry {
 	return yacymodel.RWIEntry{
 		WordHash: word,
 		Properties: map[string]string{
 			yacymodel.ColURLHash:      string(hashFor(url)),
-			yacymodel.ColWordDistance: strconv.Itoa(distance),
+			yacymodel.ColHitCount:     encodedCardinalForTest(1),
+			yacymodel.ColWordDistance: encodedCardinalForTest(distance),
 		},
 	}
+}
+
+func encodedCardinalForTest(value byte) string {
+	return yacymodel.Encode([]byte{value})
 }
 
 var (

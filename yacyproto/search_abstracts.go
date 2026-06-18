@@ -1,5 +1,7 @@
 package yacyproto
 
+import "github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+
 type SearchAbstracts string
 
 const SearchAbstractsAuto SearchAbstracts = "auto"
@@ -14,4 +16,13 @@ func parseSearchAbstracts(raw string) (SearchAbstracts, error) {
 	}
 
 	return SearchAbstracts(raw), nil
+}
+
+func (a SearchAbstracts) Hashes() []yacymodel.Hash {
+	hashes, err := splitSearchHashes(FieldAbstracts, string(a))
+	if err != nil {
+		return nil
+	}
+
+	return hashes
 }

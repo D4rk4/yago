@@ -1,10 +1,18 @@
 package api
 
 import (
+	"context"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+)
+
+const (
+	defaultSearchCount = 10
+	defaultSearchTime  = 3 * time.Second
 )
 
 type searchHandler struct {
@@ -40,19 +48,23 @@ func (h *searchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.guard.networkMatches(form) {
-		result, err := h.searcher.Search(ctx, contracts.SearchQuery{
-			Words:       req.Query,
-			Exclude:     req.Exclude,
-			URLs:        req.URLs,
-			MaxResults:  req.Count,
-			MaxDistance: req.MaxDist,
-		})
+		query := searchQueryFromRequest(req)
+		searchCtx := ctx
+		var searchCancel func()
+		if query.MaxTime > 0 {
+			searchCtx, searchCancel = context.WithTimeout(ctx, query.MaxTime)
+			defer searchCancel()
+		}
+
+		result, err := h.searcher.Search(searchCtx, query)
 		if err != nil {
 			http.Error(w, "search failed", http.StatusInternalServerError)
 
 			return
 		}
 
+		resp.SearchTime = int(result.SearchTime / time.Millisecond)
+		resp.References = joinReferences(result.References)
 		resp.JoinCount = result.JoinCount
 		resp.Count = len(result.Resources)
 		resp.Resources = result.Resources
@@ -61,4 +73,65 @@ func (h *searchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeWireMessage(w, resp.Encode())
+}
+
+func searchQueryFromRequest(req yacyproto.SearchRequest) contracts.SearchQuery {
+	count := req.Count
+	if count <= 0 {
+		count = defaultSearchCount
+	}
+	maxTime := time.Duration(req.Time) * time.Millisecond
+	if maxTime <= 0 {
+		maxTime = defaultSearchTime
+	}
+
+	return contracts.SearchQuery{
+		Words:       req.Query,
+		Exclude:     req.Exclude,
+		URLs:        req.URLs,
+		MaxResults:  count,
+		MaxDistance: req.MaxDist,
+		MaxTime:     maxTime,
+		Abstracts:   searchAbstractRequest(req),
+		Filters: contracts.SearchFilters{
+			ContentDomain:    string(req.ContentDom),
+			StrictContentDom: req.StrictContentDom,
+			TimezoneOffset:   req.TimezoneOffset,
+			Language:         req.Language,
+			Modifier:         req.Modifier,
+			Prefer:           req.Prefer,
+			Filter:           req.Filter,
+			Constraint:       req.Constraint,
+			Profile:          req.Profile,
+			SiteHost:         req.SiteHost,
+			SiteHash:         req.SiteHash,
+			Author:           req.Author,
+			Collection:       req.Collection,
+			FileType:         req.FileType,
+			Protocol:         req.Protocol,
+			Partitions:       req.Partitions,
+		},
+	}
+}
+
+func searchAbstractRequest(req yacyproto.SearchRequest) contracts.SearchAbstractRequest {
+	switch req.Abstracts {
+	case "":
+		return contracts.SearchAbstractRequest{Mode: contracts.SearchAbstractNone}
+	case yacyproto.SearchAbstractsAuto:
+		return contracts.SearchAbstractRequest{Mode: contracts.SearchAbstractAuto}
+	default:
+		return contracts.SearchAbstractRequest{
+			Mode:  contracts.SearchAbstractExplicit,
+			Words: req.Abstracts.Hashes(),
+		}
+	}
+}
+
+func joinReferences(references []string) string {
+	if len(references) == 0 {
+		return ""
+	}
+
+	return strings.Join(references, ",")
 }

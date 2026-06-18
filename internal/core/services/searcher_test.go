@@ -34,8 +34,9 @@ func TestSearchJoinsAndExcludes(t *testing.T) {
 	searcher := NewSearcher(rwi, urls, 100)
 
 	result, err := searcher.Search(context.Background(), contracts.SearchQuery{
-		Words:   []yacymodel.Hash{word1, word2},
-		Exclude: []yacymodel.Hash{stop},
+		Words:     []yacymodel.Hash{word1, word2},
+		Exclude:   []yacymodel.Hash{stop},
+		Abstracts: contracts.SearchAbstractRequest{Mode: contracts.SearchAbstractAuto},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -51,6 +52,12 @@ func TestSearchJoinsAndExcludes(t *testing.T) {
 	}
 	if result.WordCounts[word1] != 3 {
 		t.Errorf("word count w1: got %d, want 3", result.WordCounts[word1])
+	}
+	if len(result.Abstracts) != 0 {
+		t.Errorf(
+			"abstracts = %v, want none until compressed abstracts are supported",
+			result.Abstracts,
+		)
 	}
 }
 
@@ -125,4 +132,96 @@ func TestSearchTruncatesToMaxResults(t *testing.T) {
 	if len(result.Resources) != 2 {
 		t.Errorf("resources: got %d, want 2", len(result.Resources))
 	}
+}
+
+func TestSearchRanksByHitsDistanceAndHash(t *testing.T) {
+	word := hashFor("w1")
+	rwi := &fakeRWIStore{postings: map[yacymodel.Hash][]yacymodel.RWIEntry{
+		word: {
+			postingEntryWith(word, "u1", 9, 1, ""),
+			postingEntryWith(word, "u2", 1, 3, ""),
+			postingEntryWith(word, "u3", 2, 3, ""),
+		},
+	}}
+	urls := &fakeURLStore{rows: urlRows("u1", "u2", "u3")}
+	searcher := NewSearcher(rwi, urls, 100)
+
+	result, err := searcher.Search(
+		context.Background(),
+		contracts.SearchQuery{Words: []yacymodel.Hash{word}},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := result.Resources[0].Properties[yacymodel.URLMetaHash]; got != string(hashFor("u2")) {
+		t.Errorf("first resource = %q, want u2 hash", got)
+	}
+}
+
+func TestSearchFiltersLanguage(t *testing.T) {
+	word := hashFor("w1")
+	rwi := &fakeRWIStore{postings: map[yacymodel.Hash][]yacymodel.RWIEntry{
+		word: {
+			postingEntryWith(word, "u1", 1, 1, "en"),
+			postingEntryWith(word, "u2", 1, 1, "de"),
+		},
+	}}
+	urls := &fakeURLStore{rows: urlRows("u1", "u2")}
+	searcher := NewSearcher(rwi, urls, 100)
+
+	result, err := searcher.Search(context.Background(), contracts.SearchQuery{
+		Words:   []yacymodel.Hash{word},
+		Filters: contracts.SearchFilters{Language: "en"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.JoinCount != 1 {
+		t.Fatalf("join count: got %d, want 1", result.JoinCount)
+	}
+	if got := result.Resources[0].Properties[yacymodel.URLMetaHash]; got != string(hashFor("u1")) {
+		t.Errorf("resource = %q, want u1 hash", got)
+	}
+}
+
+func TestSearchExplicitAbstractOnlyCounts(t *testing.T) {
+	word := hashFor("w1")
+	rwi := &fakeRWIStore{postings: map[yacymodel.Hash][]yacymodel.RWIEntry{
+		word: {
+			postingEntry(word, "u1", 1),
+			postingEntry(word, "u2", 1),
+		},
+	}}
+	searcher := NewSearcher(rwi, &fakeURLStore{}, 100)
+
+	result, err := searcher.Search(context.Background(), contracts.SearchQuery{
+		Abstracts: contracts.SearchAbstractRequest{
+			Mode:  contracts.SearchAbstractExplicit,
+			Words: []yacymodel.Hash{word},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.JoinCount != 0 || len(result.Resources) != 0 {
+		t.Fatalf("result = %+v, want counts only", result)
+	}
+	if result.WordCounts[word] != 2 {
+		t.Errorf("word count = %d, want 2", result.WordCounts[word])
+	}
+}
+
+func postingEntryWith(
+	word yacymodel.Hash,
+	url string,
+	distance byte,
+	hits byte,
+	language string,
+) yacymodel.RWIEntry {
+	entry := postingEntry(word, url, distance)
+	entry.Properties[yacymodel.ColHitCount] = encodedCardinalForTest(hits)
+	if language != "" {
+		entry.Properties[yacymodel.ColLanguage] = language
+	}
+	return entry
 }

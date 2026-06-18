@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
@@ -15,11 +16,35 @@ func TestSearchHandlerHappyPath(t *testing.T) {
 	h.searcher.result = contracts.SearchResult{
 		Resources:  []yacymodel.URIMetadataRow{sampleURLRow(t)},
 		JoinCount:  9,
+		SearchTime: 12 * time.Millisecond,
+		References: []string{"alpha", "beta"},
 		WordCounts: map[yacymodel.Hash]int{wordHash: 3},
 		Abstracts:  map[yacymodel.Hash]string{wordHash: "abc"},
 	}
 
-	req := yacyproto.SearchRequest{Query: []yacymodel.Hash{wordHash}, Count: 10, MaxDist: 4}
+	req := yacyproto.SearchRequest{
+		Query:            []yacymodel.Hash{wordHash},
+		Count:            10,
+		Time:             1200,
+		MaxDist:          4,
+		Partitions:       30,
+		Abstracts:        yacyproto.SearchAbstractsAuto,
+		ContentDom:       yacyproto.ContentDomainText,
+		StrictContentDom: true,
+		TimezoneOffset:   120,
+		Language:         "en",
+		Modifier:         "site:example.org",
+		Prefer:           ".*example.*",
+		Filter:           "https://.*",
+		Constraint:       "AAAA",
+		Profile:          "profile",
+		SiteHost:         "example.org",
+		SiteHash:         "sitehash",
+		Author:           "ada",
+		Collection:       "public",
+		FileType:         "html",
+		Protocol:         "https",
+	}
 	rec := h.do(t, http.MethodPost, yacyproto.PathSearch, req.Form())
 
 	resp, err := yacyproto.ParseSearchResponse(decodeResponse(t, rec))
@@ -32,14 +57,58 @@ func TestSearchHandlerHappyPath(t *testing.T) {
 	if h.searcher.query.MaxResults != 10 || h.searcher.query.MaxDistance != 4 {
 		t.Errorf("query honored fields = %+v", h.searcher.query)
 	}
+	if h.searcher.query.MaxTime != 1200*time.Millisecond {
+		t.Errorf("MaxTime = %s, want 1200ms", h.searcher.query.MaxTime)
+	}
+	if h.searcher.query.Abstracts.Mode != contracts.SearchAbstractAuto {
+		t.Errorf("Abstracts = %+v, want auto", h.searcher.query.Abstracts)
+	}
+	if h.searcher.query.Filters.Language != "en" ||
+		h.searcher.query.Filters.ContentDomain != string(yacyproto.ContentDomainText) ||
+		!h.searcher.query.Filters.StrictContentDom ||
+		h.searcher.query.Filters.TimezoneOffset != 120 ||
+		h.searcher.query.Filters.Modifier != "site:example.org" ||
+		h.searcher.query.Filters.Prefer != ".*example.*" ||
+		h.searcher.query.Filters.Filter != "https://.*" ||
+		h.searcher.query.Filters.Constraint != "AAAA" ||
+		h.searcher.query.Filters.Profile != "profile" ||
+		h.searcher.query.Filters.SiteHost != "example.org" ||
+		h.searcher.query.Filters.SiteHash != "sitehash" ||
+		h.searcher.query.Filters.Author != "ada" ||
+		h.searcher.query.Filters.Collection != "public" ||
+		h.searcher.query.Filters.FileType != "html" ||
+		h.searcher.query.Filters.Protocol != "https" ||
+		h.searcher.query.Filters.Partitions != 30 {
+		t.Errorf("filters = %+v", h.searcher.query.Filters)
+	}
 	if resp.JoinCount != 9 {
 		t.Errorf("JoinCount = %d, want 9", resp.JoinCount)
+	}
+	if resp.SearchTime != 12 {
+		t.Errorf("SearchTime = %d, want 12", resp.SearchTime)
+	}
+	if resp.References != "alpha,beta" {
+		t.Errorf("References = %q, want alpha,beta", resp.References)
 	}
 	if resp.Count != 1 {
 		t.Errorf("Count = %d, want 1", resp.Count)
 	}
 	if resp.IndexCount[wordHash] != 3 {
 		t.Errorf("IndexCount = %v", resp.IndexCount)
+	}
+}
+
+func TestSearchHandlerDefaultsCountAndTime(t *testing.T) {
+	h := newTestHarness(t)
+	wordHash := testHash(t, "word")
+	req := yacyproto.SearchRequest{Query: []yacymodel.Hash{wordHash}}
+	h.do(t, http.MethodPost, yacyproto.PathSearch, req.Form())
+
+	if h.searcher.query.MaxResults != defaultSearchCount {
+		t.Errorf("MaxResults = %d, want %d", h.searcher.query.MaxResults, defaultSearchCount)
+	}
+	if h.searcher.query.MaxTime != defaultSearchTime {
+		t.Errorf("MaxTime = %s, want %s", h.searcher.query.MaxTime, defaultSearchTime)
 	}
 }
 

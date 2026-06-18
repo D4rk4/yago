@@ -4,8 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strconv"
-	"strings"
+	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/ports"
@@ -26,19 +25,27 @@ func (s Searcher) Search(
 	ctx context.Context,
 	query contracts.SearchQuery,
 ) (contracts.SearchResult, error) {
+	start := time.Now()
+	if len(query.Words) == 0 && query.Abstracts.Mode == contracts.SearchAbstractExplicit {
+		return s.searchAbstractCounts(ctx, query, start)
+	}
+
 	postings, err := s.rwi.PostingsForWords(ctx, query.Words, s.postingsPerWord)
 	if err != nil {
 		return contracts.SearchResult{}, fmt.Errorf("postings for words: %w", err)
 	}
 
-	wordCounts := make(map[yacymodel.Hash]int, len(query.Words))
-	abstracts := make(map[yacymodel.Hash]string, len(query.Words))
+	var wordCounts map[yacymodel.Hash]int
+	if query.Abstracts.Mode != contracts.SearchAbstractNone {
+		wordCounts = make(map[yacymodel.Hash]int, len(query.Words))
+	}
 
-	var joined map[yacymodel.Hash]struct{}
+	var joined map[yacymodel.Hash]searchCandidate
 	for _, word := range query.Words {
-		matched, abstract := matchWord(postings[word], query.MaxDistance)
-		wordCounts[word] = len(matched)
-		abstracts[word] = abstract
+		matched := matchWord(postings[word], query.MaxDistance, query.Filters.Language)
+		if wordCounts != nil {
+			wordCounts[word] = len(matched)
+		}
 		joined = intersect(joined, matched)
 	}
 
@@ -48,7 +55,7 @@ func (s Searcher) Search(
 	restrictToURLs(joined, query.URLs)
 
 	joinCount := len(joined)
-	ordered := truncate(sortedHashes(joined), query.MaxResults)
+	ordered := truncate(rankedHashes(joined), query.MaxResults)
 
 	rows, err := s.urls.RowsByHash(ctx, ordered)
 	if err != nil {
@@ -58,19 +65,29 @@ func (s Searcher) Search(
 	return contracts.SearchResult{
 		Resources:  rows,
 		JoinCount:  joinCount,
+		SearchTime: time.Since(start),
 		WordCounts: wordCounts,
-		Abstracts:  abstracts,
 	}, nil
+}
+
+type searchCandidate struct {
+	hash     yacymodel.Hash
+	hits     uint64
+	distance uint64
 }
 
 func matchWord(
 	entries []yacymodel.RWIEntry,
 	maxDistance int,
-) (map[yacymodel.Hash]struct{}, string) {
-	matched := make(map[yacymodel.Hash]struct{}, len(entries))
-	var abstract strings.Builder
+	language string,
+) map[yacymodel.Hash]searchCandidate {
+	matched := make(map[yacymodel.Hash]searchCandidate, len(entries))
 	for _, entry := range entries {
-		if maxDistance > 0 && wordDistance(entry) > maxDistance {
+		if language != "" && entry.Properties[yacymodel.ColLanguage] != language {
+			continue
+		}
+		distance := wordDistance(entry)
+		if maxDistance > 0 && distance > uint64(maxDistance) {
 			continue
 		}
 		urlHash, err := entry.URLHash()
@@ -78,18 +95,21 @@ func matchWord(
 			continue
 		}
 		if _, seen := matched[urlHash]; !seen {
-			matched[urlHash] = struct{}{}
-			abstract.WriteString(string(urlHash))
+			matched[urlHash] = searchCandidate{
+				hash:     urlHash,
+				hits:     hitCount(entry),
+				distance: distance,
+			}
 		}
 	}
 
-	return matched, abstract.String()
+	return matched
 }
 
 func (s Searcher) applyExclusions(
 	ctx context.Context,
 	exclude []yacymodel.Hash,
-	joined map[yacymodel.Hash]struct{},
+	joined map[yacymodel.Hash]searchCandidate,
 ) error {
 	if len(exclude) == 0 {
 		return nil
@@ -111,23 +131,28 @@ func (s Searcher) applyExclusions(
 }
 
 func intersect(
-	joined map[yacymodel.Hash]struct{},
-	matched map[yacymodel.Hash]struct{},
-) map[yacymodel.Hash]struct{} {
+	joined map[yacymodel.Hash]searchCandidate,
+	matched map[yacymodel.Hash]searchCandidate,
+) map[yacymodel.Hash]searchCandidate {
 	if joined == nil {
 		return matched
 	}
 
-	for hash := range joined {
-		if _, ok := matched[hash]; !ok {
+	for hash, candidate := range joined {
+		next, ok := matched[hash]
+		if !ok {
 			delete(joined, hash)
+			continue
 		}
+		candidate.hits += next.hits
+		candidate.distance += next.distance
+		joined[hash] = candidate
 	}
 
 	return joined
 }
 
-func restrictToURLs(joined map[yacymodel.Hash]struct{}, urls []yacymodel.Hash) {
+func restrictToURLs(joined map[yacymodel.Hash]searchCandidate, urls []yacymodel.Hash) {
 	if len(urls) == 0 {
 		return
 	}
@@ -143,8 +168,8 @@ func restrictToURLs(joined map[yacymodel.Hash]struct{}, urls []yacymodel.Hash) {
 	}
 }
 
-func wordDistance(entry yacymodel.RWIEntry) int {
-	n, err := strconv.Atoi(entry.Properties[yacymodel.ColWordDistance])
+func wordDistance(entry yacymodel.RWIEntry) uint64 {
+	n, err := yacymodel.DecodeCardinal(entry.Properties[yacymodel.ColWordDistance])
 	if err != nil {
 		return 0
 	}
@@ -152,13 +177,35 @@ func wordDistance(entry yacymodel.RWIEntry) int {
 	return n
 }
 
-func sortedHashes(set map[yacymodel.Hash]struct{}) []yacymodel.Hash {
-	hashes := make([]yacymodel.Hash, 0, len(set))
-	for hash := range set {
-		hashes = append(hashes, hash)
+func hitCount(entry yacymodel.RWIEntry) uint64 {
+	n, err := yacymodel.DecodeCardinal(entry.Properties[yacymodel.ColHitCount])
+	if err != nil {
+		return 0
 	}
-	slices.Sort(hashes)
 
+	return n
+}
+
+func rankedHashes(set map[yacymodel.Hash]searchCandidate) []yacymodel.Hash {
+	candidates := make([]searchCandidate, 0, len(set))
+	for hash, candidate := range set {
+		candidate.hash = hash
+		candidates = append(candidates, candidate)
+	}
+	slices.SortFunc(candidates, func(a, b searchCandidate) int {
+		if a.hits != b.hits {
+			return compareDesc(a.hits, b.hits)
+		}
+		if a.distance != b.distance {
+			return compareAsc(a.distance, b.distance)
+		}
+		return compareAsc(a.hash, b.hash)
+	})
+
+	hashes := make([]yacymodel.Hash, 0, len(candidates))
+	for _, candidate := range candidates {
+		hashes = append(hashes, candidate.hash)
+	}
 	return hashes
 }
 
@@ -168,4 +215,49 @@ func truncate(hashes []yacymodel.Hash, maxResults int) []yacymodel.Hash {
 	}
 
 	return hashes
+}
+
+func (s Searcher) searchAbstractCounts(
+	ctx context.Context,
+	query contracts.SearchQuery,
+	start time.Time,
+) (contracts.SearchResult, error) {
+	postings, err := s.rwi.PostingsForWords(ctx, query.Abstracts.Words, s.postingsPerWord)
+	if err != nil {
+		return contracts.SearchResult{}, fmt.Errorf("postings for words: %w", err)
+	}
+
+	wordCounts := make(map[yacymodel.Hash]int, len(query.Abstracts.Words))
+	for _, word := range query.Abstracts.Words {
+		matched := matchWord(postings[word], query.MaxDistance, query.Filters.Language)
+		restrictToURLs(matched, query.URLs)
+		wordCounts[word] = len(matched)
+	}
+
+	return contracts.SearchResult{
+		SearchTime: time.Since(start),
+		WordCounts: wordCounts,
+	}, nil
+}
+
+func compareDesc[T ~uint64](a, b T) int {
+	switch {
+	case a > b:
+		return -1
+	case a < b:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func compareAsc[T ~uint64 | ~string](a, b T) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	default:
+		return 0
+	}
 }
