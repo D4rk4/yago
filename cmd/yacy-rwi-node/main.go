@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	version = "0.1.0"
+	version = "1.83"
 
 	receiveBatchCap       = 1000
 	receiveBusyPauseSecs  = 30
@@ -112,7 +112,10 @@ func run() error {
 		announcement,
 		namedServer{
 			"peer protocol",
-			buildServer(config.PeerAddr, infrastructure.InstrumentHTTP(mux)),
+			buildServer(
+				config.PeerAddr,
+				infrastructure.LogHTTPRequests(infrastructure.InstrumentHTTP(mux)),
+			),
 		},
 		namedServer{"ops", buildServer(config.OpsAddr, infrastructure.NewOpsMux())},
 	)
