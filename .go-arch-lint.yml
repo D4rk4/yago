@@ -37,6 +37,10 @@ vendors:
     in: github.com/markusmobius/go-trafilatura
   chromedp:
     in: github.com/chromedp/chromedp
+  go-shiori-dom:
+    in: github.com/go-shiori/dom
+  google-uuid:
+    in: github.com/google/uuid
   nats:
     in:
       - github.com/nats-io/nats.go
@@ -94,6 +98,8 @@ deps:
       - xtime-rate
       - trafilatura
       - chromedp
+      - go-shiori-dom
+      - google-uuid
       - nats
       - nats-server
 
