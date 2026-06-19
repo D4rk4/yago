@@ -70,8 +70,10 @@ func validateURLMetadataProperty(key, value string) error {
 			)
 		}
 	case "flags":
-		if err := validateEncodedBitfield(value, rwiByteFlagLength); err != nil {
-			return fmt.Errorf("%w %s: %w", errInvalidURLMetadataProperty, key, err)
+		if value != "" {
+			if err := validateEncodedBitfield(value, rwiByteFlagLength); err != nil {
+				return fmt.Errorf("%w %s: %w", errInvalidURLMetadataProperty, key, err)
+			}
 		}
 	case "url", "descr", "author", "tags", "publisher", "snippet", "favicon", "mime":
 		if err := validateSimpleEncodedValue(key, value); err != nil {

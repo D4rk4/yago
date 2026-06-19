@@ -20,6 +20,17 @@ func TestParseURIMetadataRowRoundTrip(t *testing.T) {
 	}
 }
 
+func TestParseURIMetadataRowEmptyFlags(t *testing.T) {
+	row := "{flags=,hash=MNOPQRSTUVWX}"
+	parsed, err := ParseURIMetadataRow(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := parsed.String(); got != row {
+		t.Errorf("round trip:\n got %q\nwant %q", got, row)
+	}
+}
+
 func TestURLHashFallback(t *testing.T) {
 	parsed, err := ParseURIMetadataRow("{h=MNOPQRSTUVWX,url=b|aHR0cHM6Ly9leGFtcGxlLm9yZy8}")
 	if err != nil {
