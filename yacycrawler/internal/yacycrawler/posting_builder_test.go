@@ -3,7 +3,7 @@ package yacycrawler_test
 import (
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/yacycrawler"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 

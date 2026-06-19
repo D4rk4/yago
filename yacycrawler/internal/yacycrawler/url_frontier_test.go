@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/yacycrawler"
 )
 
 func seedCrawl(

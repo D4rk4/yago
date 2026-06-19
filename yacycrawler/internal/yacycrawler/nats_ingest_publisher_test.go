@@ -9,7 +9,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/yacycrawler"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 

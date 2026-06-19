@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/yacycrawler"
 )
 
 type fakeNodeIngest struct {

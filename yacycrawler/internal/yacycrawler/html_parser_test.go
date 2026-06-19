@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/yacycrawler"
 )
 
 const sampleHTML = `<!DOCTYPE html>
