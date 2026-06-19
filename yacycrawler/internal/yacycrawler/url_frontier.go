@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/google/uuid"
+
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 )
 
@@ -17,52 +19,66 @@ type Frontier struct {
 	finish   func()
 	registry *CrawlProfileRegistry
 
-	mu        sync.Mutex
+	mu     sync.Mutex
+	runs   map[uuid.UUID]*crawlRun
+	closed bool
+}
+
+type crawlRun struct {
 	visited   map[string]struct{}
 	hostPages map[string]int
 	pending   int
-	closed    bool
+	finish    func()
 }
 
 func NewFrontier(jobs JobSink, finish func(), registry *CrawlProfileRegistry) *Frontier {
 	return &Frontier{
-		jobs:      jobs,
-		finish:    finish,
-		registry:  registry,
-		visited:   make(map[string]struct{}),
-		hostPages: make(map[string]int),
+		jobs:     jobs,
+		finish:   finish,
+		registry: registry,
+		runs:     make(map[uuid.UUID]*crawlRun),
 	}
 }
 
 func (f *Frontier) Hold() {
 	f.mu.Lock()
-	f.pending++
+	f.run(uuid.Nil, nil).pending++
 	f.mu.Unlock()
 }
 
 func (f *Frontier) Release() {
-	f.Done()
+	f.done(uuid.Nil)
 }
 
-func (f *Frontier) Seed(
+func (f *Frontier) SeedRun(
 	ctx context.Context,
 	requests []yacycrawlcontract.CrawlRequest,
 	provenance []byte,
-) {
-	f.Hold()
+	finish func(),
+) uuid.UUID {
+	runID := uuid.New()
+	f.mu.Lock()
+	f.run(runID, finish).pending++
+	f.mu.Unlock()
 	for _, req := range requests {
+		compiled, ok := f.registry.Lookup(req.ProfileHandle)
+		if !ok {
+			continue
+		}
 		if norm, ok := normalizeURL(req.URL); ok {
 			f.accept(
 				ctx,
+				runID,
 				norm,
 				req.Depth,
 				req.ProfileHandle,
 				provenance,
-				yacycrawlcontract.UnlimitedPagesPerHost,
+				compiled.Profile.MaxPagesPerHost,
 			)
 		}
 	}
-	f.Done()
+	f.done(runID)
+	return runID
 }
 
 func (f *Frontier) Submit(ctx context.Context, work CrawlJob, links []string) {
@@ -99,6 +115,7 @@ func (f *Frontier) Submit(ctx context.Context, work CrawlJob, links []string) {
 		if norm, ok := normalizeURL(resolved.String()); ok {
 			f.accept(
 				ctx,
+				work.RunID,
 				norm,
 				work.Depth+1,
 				work.ProfileHandle,
@@ -109,21 +126,34 @@ func (f *Frontier) Submit(ctx context.Context, work CrawlJob, links []string) {
 	}
 }
 
-func (f *Frontier) Done() {
+func (f *Frontier) Done(work CrawlJob) {
+	f.done(work.RunID)
+}
+
+func (f *Frontier) done(runID uuid.UUID) {
 	f.mu.Lock()
-	f.pending--
-	finished := f.pending == 0 && !f.closed
-	if finished {
+	run := f.run(runID, nil)
+	run.pending--
+	finishedRun := run.pending == 0
+	if finishedRun && runID != uuid.Nil {
+		delete(f.runs, runID)
+	}
+	finishedAll := runID == uuid.Nil && finishedRun && !f.closed
+	if finishedAll {
 		f.closed = true
 	}
 	f.mu.Unlock()
-	if finished {
+	if finishedRun && run.finish != nil {
+		run.finish()
+	}
+	if finishedAll {
 		f.finish()
 	}
 }
 
 func (f *Frontier) accept(
 	ctx context.Context,
+	runID uuid.UUID,
 	normURL string,
 	depth int,
 	profileHandle string,
@@ -132,18 +162,19 @@ func (f *Frontier) accept(
 ) {
 	host := hostOf(normURL)
 	f.mu.Lock()
-	if _, seen := f.visited[normURL]; seen {
+	run := f.run(runID, nil)
+	if _, seen := run.visited[normURL]; seen {
 		f.mu.Unlock()
 		return
 	}
 	if maxPagesPerHost != yacycrawlcontract.UnlimitedPagesPerHost &&
-		f.hostPages[host] >= maxPagesPerHost {
+		run.hostPages[host] >= maxPagesPerHost {
 		f.mu.Unlock()
 		return
 	}
-	f.visited[normURL] = struct{}{}
-	f.hostPages[host]++
-	f.pending++
+	run.visited[normURL] = struct{}{}
+	run.hostPages[host]++
+	run.pending++
 	f.mu.Unlock()
 
 	go func() {
@@ -152,12 +183,27 @@ func (f *Frontier) accept(
 			Depth:         depth,
 			ProfileHandle: profileHandle,
 			Provenance:    provenance,
+			RunID:         runID,
 		}
 		if err := f.jobs.Enqueue(ctx, job); err != nil {
 			slog.Warn(msgFrontierEnqueueFailed, "url", normURL, "error", err)
-			f.Done()
+			f.done(runID)
 		}
 	}()
+}
+
+func (f *Frontier) run(id uuid.UUID, finish func()) *crawlRun {
+	run, ok := f.runs[id]
+	if ok {
+		return run
+	}
+	run = &crawlRun{
+		visited:   make(map[string]struct{}),
+		hostPages: make(map[string]int),
+		finish:    finish,
+	}
+	f.runs[id] = run
+	return run
 }
 
 func scopeAllows(scope yacycrawlcontract.CrawlScope, base, resolved *url.URL) bool {

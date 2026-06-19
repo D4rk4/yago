@@ -1,6 +1,10 @@
 package yacycrawler
 
-import "github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+import (
+	"github.com/google/uuid"
+
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+)
 
 type IngestBatch = yacycrawlcontract.IngestBatch
 
@@ -9,6 +13,7 @@ type CrawlJob struct {
 	Depth         int
 	ProfileHandle string
 	Provenance    []byte
+	RunID         uuid.UUID
 }
 
 type FetchedPage struct {

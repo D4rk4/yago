@@ -13,7 +13,7 @@ type PageSource interface {
 
 type LinkFrontier interface {
 	Submit(ctx context.Context, work CrawlJob, links []string)
-	Done()
+	Done(work CrawlJob)
 }
 
 type BotWallScreen interface {
@@ -73,7 +73,7 @@ func (p *Pipeline) run(ctx context.Context) {
 }
 
 func (p *Pipeline) process(ctx context.Context, job CrawlJob) error {
-	defer p.frontier.Done()
+	defer p.frontier.Done(job)
 	fetched, err := p.fetcher.Fetch(ctx, job.URL)
 	if err != nil {
 		return fmt.Errorf("fetch: %w", err)
@@ -88,6 +88,7 @@ func (p *Pipeline) process(ctx context.Context, job CrawlJob) error {
 		Depth:         job.Depth,
 		ProfileHandle: job.ProfileHandle,
 		Provenance:    job.Provenance,
+		RunID:         job.RunID,
 	}
 	p.frontier.Submit(ctx, resolved, page.Links)
 	if err := p.publisher.Publish(ctx, page, job.ProfileHandle, job.Provenance); err != nil {

@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/chromedp/chromedp v0.15.1
+	github.com/google/uuid v1.6.0
 	github.com/markusmobius/go-trafilatura v1.12.2
 	github.com/nats-io/nats-server/v2 v2.14.2
 	github.com/nats-io/nats.go v1.52.0

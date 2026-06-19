@@ -44,5 +44,6 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, order yacycrawlcontract
 		slog.Warn(msgProfileRegisterFailed, "handle", order.Profile.Handle, "error", err)
 		return
 	}
-	c.frontier.Seed(ctx, order.Requests, order.Provenance)
+	c.frontier.Hold()
+	c.frontier.SeedRun(ctx, order.Requests, order.Provenance, c.frontier.Release)
 }
