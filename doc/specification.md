@@ -6,11 +6,12 @@ YaCy DHT RWI participation assumes globally reachable senior peers running the f
 implementation, which is heavy for low-resource hardware.
 The project provides a lightweight Go implementation of a senior YaCy node focused on DHT RWI
 storage and serving, suitable for low-resource Linux-class devices.
+Additional YaCy-related capabilities can be provided by separate services when needed.
 
 ## Non-Goals
 
-* Web crawling or remote crawl execution.
-* HTML parsing, proxying, or content fetching.
+* Built-in web crawling.
+* Built-in HTML parsing, proxying, or content fetching.
 * Full-text indexing or local search UI.
 * Solr, Lucene, Elasticsearch, or equivalent full-text integration.
 * Citation graphs, webgraph indexing, or media indexing.
