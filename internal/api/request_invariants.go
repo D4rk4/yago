@@ -27,14 +27,14 @@ func (g requestGuard) parse(
 	methods yacyproto.EndpointMethodSet,
 ) (url.Values, context.Context, context.CancelFunc, bool) {
 	if !methodAllowed(r.Method, methods) {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		failMethodNotAllowed(r.Context(), w, r.Method)
 
 		return nil, nil, nil, false
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, g.maxBodyBytes)
 	if err := decodeRequestBody(r); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		failBadRequest(r.Context(), w, err)
 
 		return nil, nil, nil, false
 	}
@@ -50,9 +50,9 @@ func (g requestGuard) parse(
 
 	if err != nil {
 		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
-			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			failRequestTooLarge(r.Context(), w, err)
 		} else {
-			http.Error(w, "bad request", http.StatusBadRequest)
+			failBadRequest(r.Context(), w, err)
 		}
 
 		return nil, nil, nil, false
