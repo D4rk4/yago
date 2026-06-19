@@ -1,6 +1,7 @@
 package yacymodel
 
 import (
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -28,68 +29,43 @@ var sessionIDNames = []string{"phpsessionid", "phpsessid", "jsessionid", "sid"}
 
 func parseURLAddress(raw string) urlAddress {
 	a := urlAddress{port: -1, path: "/"}
-	proto, rest, ok := strings.Cut(raw, "://")
-	if !ok {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" {
 		a.protocol = "http"
 		a.path = raw
 		return a
 	}
-	a.protocol = strings.ToLower(proto)
-
-	authority := rest
-	remainder := ""
-	if i := strings.IndexAny(rest, "/?#"); i >= 0 {
-		authority = rest[:i]
-		remainder = rest[i:]
+	a.protocol = strings.ToLower(u.Scheme)
+	if u.User != nil {
+		a.userInfo = u.User.String()
 	}
-
-	if at := strings.LastIndex(authority, "@"); at >= 0 {
-		a.userInfo = authority[:at]
-		authority = authority[at+1:]
+	a.host = toPunycode(u.Hostname())
+	if p := u.Port(); p != "" {
+		if n, err := strconv.Atoi(p); err == nil {
+			a.port = n
+		}
 	}
-	a.host, a.port = splitHostPort(authority)
 	if a.port < 0 {
 		if p, ok := defaultProtocolPort[a.protocol]; ok {
 			a.port = p
 		}
 	}
-
-	if h := strings.IndexByte(remainder, '#'); h >= 0 {
-		a.hasAnchor = true
-		a.anchor = remainder[h+1:]
-		remainder = remainder[:h]
+	if path := u.EscapedPath(); path != "" {
+		a.path = path
 	}
-	if q := strings.IndexByte(remainder, '?'); q >= 0 {
+	if u.RawQuery != "" || u.ForceQuery {
 		a.hasQuery = true
-		a.query = remainder[q+1:]
-		remainder = remainder[:q]
+		a.query = u.RawQuery
 	}
-	if remainder != "" {
-		a.path = remainder
+	if u.Fragment != "" {
+		a.hasAnchor = true
+		a.anchor = u.Fragment
+	}
+	switch a.protocol {
+	case "http", "https", "ftp":
+		a.path = resolveBackpath(a.path)
 	}
 	return a
-}
-
-func splitHostPort(authority string) (string, int) {
-	if strings.HasPrefix(authority, "[") {
-		end := strings.IndexByte(authority, ']')
-		if end < 0 {
-			return authority, -1
-		}
-		host := authority[1:end]
-		if rest := authority[end+1:]; strings.HasPrefix(rest, ":") {
-			if port, err := strconv.Atoi(rest[1:]); err == nil {
-				return host, port
-			}
-		}
-		return host, -1
-	}
-	if c := strings.LastIndex(authority, ":"); c >= 0 {
-		if port, err := strconv.Atoi(authority[c+1:]); err == nil {
-			return authority[:c], port
-		}
-	}
-	return authority, -1
 }
 
 func (a urlAddress) normalform() string {
