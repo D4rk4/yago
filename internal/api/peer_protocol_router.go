@@ -69,6 +69,7 @@ func NewPeerProtocolMux(
 	}
 
 	mux := http.NewServeMux()
+	mux.Handle("/{$}", newLandingPageHandler())
 	mux.Handle(yacyproto.PathHello, newHelloHandler(guard, status, peers, options.trustedProxies))
 	mux.Handle(yacyproto.PathTransferRWI, newTransferRWIHandler(guard, status, rwi))
 	mux.Handle(yacyproto.PathTransferURL, newTransferURLHandler(guard, status, urls))
