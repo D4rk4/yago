@@ -3,6 +3,7 @@ package api
 import (
 	"compress/gzip"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -10,10 +11,13 @@ import (
 const gzipContentEncoding = "gzip"
 
 func decodeRequestBody(r *http.Request) error {
-	if !strings.EqualFold(
-		strings.TrimSpace(r.Header.Get("Content-Encoding")),
-		gzipContentEncoding,
-	) {
+	encoding := strings.TrimSpace(r.Header.Get("Content-Encoding"))
+	if encoding == "" {
+		return nil
+	}
+	if !strings.EqualFold(encoding, gzipContentEncoding) {
+		slog.DebugContext(r.Context(), "unsupported content encoding", "encoding", encoding)
+
 		return nil
 	}
 
