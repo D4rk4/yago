@@ -11,13 +11,11 @@ import (
 )
 
 func seedCrawl(
-	ctx context.Context,
 	frontier *yacycrawler.Frontier,
-	registry *yacycrawler.CrawlProfileRegistry,
 	maxDepth int,
 	seeds ...string,
 ) error {
-	return seedProfile(ctx, frontier, registry, yacycrawlcontract.CrawlProfile{
+	return seedProfile(frontier, yacycrawlcontract.CrawlProfile{
 		Name:            "test",
 		Scope:           yacycrawlcontract.ScopeDomain,
 		URLMustMatch:    yacycrawlcontract.MatchAll,
@@ -27,29 +25,27 @@ func seedCrawl(
 }
 
 func seedProfile(
-	ctx context.Context,
 	frontier *yacycrawler.Frontier,
-	registry *yacycrawler.CrawlProfileRegistry,
 	profile yacycrawlcontract.CrawlProfile,
 	seeds ...string,
 ) error {
 	profile = yacycrawlcontract.NewCrawlProfile(profile)
-	if err := registry.Register(profile); err != nil {
-		return fmt.Errorf("register profile: %w", err)
+	compiled, err := yacycrawler.CompileProfile(profile)
+	if err != nil {
+		return fmt.Errorf("compile profile: %w", err)
 	}
 	reqs := make([]yacycrawlcontract.CrawlRequest, 0, len(seeds))
 	for _, s := range seeds {
 		reqs = append(reqs, yacycrawlcontract.CrawlRequest{URL: s, ProfileHandle: profile.Handle})
 	}
 	frontier.Hold()
-	frontier.SeedRun(ctx, reqs, []byte("test"), frontier.Release)
+	frontier.SeedRun(reqs, []byte("test"), compiled, frontier.Release)
 	return nil
 }
 
 func TestFrontierFollowsLinksWithinDepthAndHost(t *testing.T) {
 	baseURL := "http://example.test"
 
-	jobs := yacycrawler.NewJobQueue(16)
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](16)
 	fetcher := htmlPageSource(map[string]string{
 		"/": `<a href="/a">a</a><a href="/b">b</a>` +
@@ -59,10 +55,9 @@ func TestFrontierFollowsLinksWithinDepthAndHost(t *testing.T) {
 		"/c": `<a href="/deep">deep</a>`,
 	})
 	publisher := yacycrawler.NewIngestPublisher(ingest)
-	registry := yacycrawler.NewCrawlProfileRegistry()
-	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
+	frontier := yacycrawler.NewFrontier(16)
 	pipeline := yacycrawler.NewPipeline(
-		jobs,
+		frontier,
 		fetcher,
 		publisher,
 		frontier,
@@ -84,7 +79,7 @@ func TestFrontierFollowsLinksWithinDepthAndHost(t *testing.T) {
 		close(workersDone)
 	}()
 
-	if err := seedCrawl(ctx, frontier, registry, 2, baseURL); err != nil {
+	if err := seedCrawl(frontier, 2, baseURL); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	<-workersDone
@@ -108,17 +103,15 @@ func TestFrontierFollowsLinksWithinDepthAndHost(t *testing.T) {
 func TestFrontierProfileFiltersLinks(t *testing.T) {
 	baseURL := "http://example.test"
 
-	jobs := yacycrawler.NewJobQueue(16)
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](16)
 	fetcher := htmlPageSource(map[string]string{
 		"/":     `<a href="/keep">keep</a><a href="/skip-me">skip</a><a href="/query?x=1">query</a>`,
 		"/keep": `kept`,
 	})
 	publisher := yacycrawler.NewIngestPublisher(ingest)
-	registry := yacycrawler.NewCrawlProfileRegistry()
-	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
+	frontier := yacycrawler.NewFrontier(16)
 	pipeline := yacycrawler.NewPipeline(
-		jobs,
+		frontier,
 		fetcher,
 		publisher,
 		frontier,
@@ -140,7 +133,7 @@ func TestFrontierProfileFiltersLinks(t *testing.T) {
 		close(workersDone)
 	}()
 
-	err := seedProfile(ctx, frontier, registry, yacycrawlcontract.CrawlProfile{
+	err := seedProfile(frontier, yacycrawlcontract.CrawlProfile{
 		Name:            "filtered",
 		Scope:           yacycrawlcontract.ScopeDomain,
 		URLMustMatch:    yacycrawlcontract.MatchAll,
@@ -171,7 +164,6 @@ func TestFrontierProfileFiltersLinks(t *testing.T) {
 func TestFrontierAppliesHostLimitToSeeds(t *testing.T) {
 	baseURL := "http://example.test"
 
-	jobs := yacycrawler.NewJobQueue(16)
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](16)
 	fetcher := pageSourceFunc(
 		func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
@@ -183,10 +175,9 @@ func TestFrontierAppliesHostLimitToSeeds(t *testing.T) {
 		},
 	)
 	publisher := yacycrawler.NewIngestPublisher(ingest)
-	registry := yacycrawler.NewCrawlProfileRegistry()
-	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
+	frontier := yacycrawler.NewFrontier(16)
 	pipeline := yacycrawler.NewPipeline(
-		jobs,
+		frontier,
 		fetcher,
 		publisher,
 		frontier,
@@ -208,7 +199,7 @@ func TestFrontierAppliesHostLimitToSeeds(t *testing.T) {
 		close(workersDone)
 	}()
 
-	err := seedProfile(ctx, frontier, registry, yacycrawlcontract.CrawlProfile{
+	err := seedProfile(frontier, yacycrawlcontract.CrawlProfile{
 		Name:            "limited",
 		Scope:           yacycrawlcontract.ScopeDomain,
 		URLMustMatch:    yacycrawlcontract.MatchAll,
@@ -228,7 +219,6 @@ func TestFrontierAppliesHostLimitToSeeds(t *testing.T) {
 }
 
 func TestFrontierScopesVisitedURLsByRun(t *testing.T) {
-	jobs := yacycrawler.NewJobQueue(16)
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](16)
 	fetcher := pageSourceFunc(
 		func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
@@ -240,10 +230,9 @@ func TestFrontierScopesVisitedURLsByRun(t *testing.T) {
 		},
 	)
 	publisher := yacycrawler.NewIngestPublisher(ingest)
-	registry := yacycrawler.NewCrawlProfileRegistry()
-	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
+	frontier := yacycrawler.NewFrontier(16)
 	pipeline := yacycrawler.NewPipeline(
-		jobs,
+		frontier,
 		fetcher,
 		publisher,
 		frontier,
@@ -266,10 +255,10 @@ func TestFrontierScopesVisitedURLsByRun(t *testing.T) {
 	}()
 
 	frontier.Hold()
-	if err := seedCrawl(ctx, frontier, registry, 0, "http://example.test/"); err != nil {
+	if err := seedCrawl(frontier, 0, "http://example.test/"); err != nil {
 		t.Fatalf("first seed: %v", err)
 	}
-	if err := seedCrawl(ctx, frontier, registry, 0, "http://example.test/"); err != nil {
+	if err := seedCrawl(frontier, 0, "http://example.test/"); err != nil {
 		t.Fatalf("second seed: %v", err)
 	}
 	frontier.Release()

@@ -14,16 +14,14 @@ const (
 
 type CrawlOrderConsumer struct {
 	orders   Receiver[CrawlOrderDelivery]
-	registry *CrawlProfileRegistry
 	frontier *Frontier
 }
 
 func NewCrawlOrderConsumer(
 	orders Receiver[CrawlOrderDelivery],
-	registry *CrawlProfileRegistry,
 	frontier *Frontier,
 ) *CrawlOrderConsumer {
-	return &CrawlOrderConsumer{orders: orders, registry: registry, frontier: frontier}
+	return &CrawlOrderConsumer{orders: orders, frontier: frontier}
 }
 
 func (c *CrawlOrderConsumer) Run(ctx context.Context) {
@@ -44,7 +42,8 @@ func (c *CrawlOrderConsumer) Run(ctx context.Context) {
 
 func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDelivery) {
 	order := delivery.Order
-	if err := c.registry.Register(order.Profile); err != nil {
+	profile, err := CompileProfile(order.Profile)
+	if err != nil {
 		slog.Warn(msgProfileRegisterFailed, "handle", order.Profile.Handle, "error", err)
 		if err := delivery.Term(ctx); err != nil {
 			slog.Warn(msgOrderTermFailed, "handle", order.Profile.Handle, "error", err)
@@ -52,7 +51,7 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 		return
 	}
 	c.frontier.Hold()
-	c.frontier.SeedRun(ctx, order.Requests, order.Provenance, func() {
+	c.frontier.SeedRun(order.Requests, order.Provenance, profile, func() {
 		defer c.frontier.Release()
 		if ctx.Err() != nil {
 			if err := delivery.Nak(context.Background()); err != nil {

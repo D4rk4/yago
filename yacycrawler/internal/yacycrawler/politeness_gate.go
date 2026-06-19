@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"sync"
 	"time"
 
 	"github.com/temoto/robotstxt"
@@ -20,20 +19,35 @@ type PolitenessGate struct {
 	client    *http.Client
 	userAgent string
 	delay     time.Duration
+	requests  chan politenessRequest
+}
 
-	mu       sync.Mutex
-	robots   map[string]*robotstxt.Group
-	limiters map[string]*rate.Limiter
+type politenessRequest struct {
+	ctx      context.Context
+	target   *url.URL
+	response chan politenessResponse
+}
+
+type politenessResponse struct {
+	allowed bool
+	err     error
+}
+
+type politenessHost struct {
+	gate    *PolitenessGate
+	group   *robotstxt.Group
+	limiter *rate.Limiter
 }
 
 func NewPolitenessGate(client *http.Client, userAgent string, delay time.Duration) *PolitenessGate {
-	return &PolitenessGate{
+	gate := &PolitenessGate{
 		client:    client,
 		userAgent: userAgent,
 		delay:     delay,
-		robots:    make(map[string]*robotstxt.Group),
-		limiters:  make(map[string]*rate.Limiter),
+		requests:  make(chan politenessRequest),
 	}
+	go gate.run()
+	return gate
 }
 
 func (g *PolitenessGate) Allow(ctx context.Context, rawURL string) (bool, error) {
@@ -41,29 +55,35 @@ func (g *PolitenessGate) Allow(ctx context.Context, rawURL string) (bool, error)
 	if err != nil {
 		return false, fmt.Errorf("parse url: %w", err)
 	}
-	group := g.robotsGroup(ctx, target)
-	if !group.Test(target.Path) {
-		return false, nil
+	response := make(chan politenessResponse, 1)
+	request := politenessRequest{ctx: ctx, target: target, response: response}
+	select {
+	case g.requests <- request:
+	case <-ctx.Done():
+		return false, fmt.Errorf("politeness request: %w", ctx.Err())
 	}
-	if err := g.limiter(target.Host).Wait(ctx); err != nil {
-		return false, fmt.Errorf("rate limit wait: %w", err)
+	select {
+	case result := <-response:
+		return result.allowed, result.err
+	case <-ctx.Done():
+		return false, fmt.Errorf("politeness response: %w", ctx.Err())
 	}
-	return true, nil
 }
 
-func (g *PolitenessGate) robotsGroup(ctx context.Context, target *url.URL) *robotstxt.Group {
-	g.mu.Lock()
-	cached, ok := g.robots[target.Host]
-	g.mu.Unlock()
-	if ok {
-		return cached
+func (g *PolitenessGate) run() {
+	hosts := make(map[string]chan politenessRequest)
+	for request := range g.requests {
+		hostRequests, ok := hosts[request.target.Host]
+		if !ok {
+			hostRequests = make(chan politenessRequest, 1)
+			hosts[request.target.Host] = hostRequests
+			go (&politenessHost{
+				gate:    g,
+				limiter: rate.NewLimiter(rate.Every(g.delay), 1),
+			}).run(hostRequests)
+		}
+		hostRequests <- request
 	}
-
-	group := g.fetchRobotsGroup(ctx, target)
-	g.mu.Lock()
-	g.robots[target.Host] = group
-	g.mu.Unlock()
-	return group
 }
 
 func (g *PolitenessGate) fetchRobotsGroup(ctx context.Context, target *url.URL) *robotstxt.Group {
@@ -93,15 +113,23 @@ func (g *PolitenessGate) fetchRobotsGroup(ctx context.Context, target *url.URL) 
 	return data.FindGroup(g.userAgent)
 }
 
-func (g *PolitenessGate) limiter(host string) *rate.Limiter {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if existing, ok := g.limiters[host]; ok {
-		return existing
+func (h *politenessHost) run(requests <-chan politenessRequest) {
+	for request := range requests {
+		request.response <- h.allow(request.ctx, request.target)
 	}
-	limiter := rate.NewLimiter(rate.Every(g.delay), 1)
-	g.limiters[host] = limiter
-	return limiter
+}
+
+func (h *politenessHost) allow(ctx context.Context, target *url.URL) politenessResponse {
+	if h.group == nil {
+		h.group = h.gate.fetchRobotsGroup(ctx, target)
+	}
+	if !h.group.Test(target.Path) {
+		return politenessResponse{allowed: false}
+	}
+	if err := h.limiter.Wait(ctx); err != nil {
+		return politenessResponse{err: fmt.Errorf("rate limit wait: %w", err)}
+	}
+	return politenessResponse{allowed: true}
 }
 
 func allowAll() *robotstxt.Group {

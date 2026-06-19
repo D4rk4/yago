@@ -13,10 +13,8 @@ import (
 func TestCrawlOrderRoundTripCarriesProvenanceAndHandle(t *testing.T) {
 	rawURL := "http://example.test/"
 
-	jobs := yacycrawler.NewJobQueue(8)
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](8)
 	orders := yacycrawler.NewBoundedQueue[yacycrawler.CrawlOrderDelivery](2)
-	registry := yacycrawler.NewCrawlProfileRegistry()
 
 	fetcher := pageSourceFunc(
 		func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
@@ -28,15 +26,15 @@ func TestCrawlOrderRoundTripCarriesProvenanceAndHandle(t *testing.T) {
 		},
 	)
 	publisher := yacycrawler.NewIngestPublisher(ingest)
-	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
+	frontier := yacycrawler.NewFrontier(8)
 	pipeline := yacycrawler.NewPipeline(
-		jobs,
+		frontier,
 		fetcher,
 		publisher,
 		frontier,
 		yacycrawler.NewBotWallDetector(),
 	)
-	consumer := yacycrawler.NewCrawlOrderConsumer(orders, registry, frontier)
+	consumer := yacycrawler.NewCrawlOrderConsumer(orders, frontier)
 	node := newFakeNodeIngest(ingest)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -110,8 +108,6 @@ func TestIngestQueueFansInFromMultipleCrawlers(t *testing.T) {
 	done := make(chan struct{}, crawlers)
 	for range crawlers {
 		go func() {
-			jobs := yacycrawler.NewJobQueue(8)
-			registry := yacycrawler.NewCrawlProfileRegistry()
 			fetcher := pageSourceFunc(
 				func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
 					return yacycrawler.FetchedPage{
@@ -124,9 +120,9 @@ func TestIngestQueueFansInFromMultipleCrawlers(t *testing.T) {
 				},
 			)
 			publisher := yacycrawler.NewIngestPublisher(ingest)
-			frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
+			frontier := yacycrawler.NewFrontier(8)
 			pipeline := yacycrawler.NewPipeline(
-				jobs,
+				frontier,
 				fetcher,
 				publisher,
 				frontier,
@@ -135,7 +131,7 @@ func TestIngestQueueFansInFromMultipleCrawlers(t *testing.T) {
 
 			workersDone := make(chan struct{})
 			go func() { pipeline.RunWorkers(ctx, 1); close(workersDone) }()
-			if err := seedCrawl(ctx, frontier, registry, 0, rawURL); err != nil {
+			if err := seedCrawl(frontier, 0, rawURL); err != nil {
 				t.Errorf("seed: %v", err)
 			}
 			<-workersDone

@@ -15,7 +15,6 @@ const pageBody = `<html lang="en"><head><title>Platypus</title></head>
 func TestPipelineEndToEndDeliversBatch(t *testing.T) {
 	rawURL := "http://example.test/"
 
-	jobs := yacycrawler.NewJobQueue(4)
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](4)
 	fetcher := pageSourceFunc(
 		func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
@@ -27,10 +26,9 @@ func TestPipelineEndToEndDeliversBatch(t *testing.T) {
 		},
 	)
 	publisher := yacycrawler.NewIngestPublisher(ingest)
-	registry := yacycrawler.NewCrawlProfileRegistry()
-	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
+	frontier := yacycrawler.NewFrontier(4)
 	pipeline := yacycrawler.NewPipeline(
-		jobs,
+		frontier,
 		fetcher,
 		publisher,
 		frontier,
@@ -52,7 +50,7 @@ func TestPipelineEndToEndDeliversBatch(t *testing.T) {
 		close(workersDone)
 	}()
 
-	if err := seedCrawl(ctx, frontier, registry, 0, rawURL); err != nil {
+	if err := seedCrawl(frontier, 0, rawURL); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	<-workersDone
@@ -83,7 +81,6 @@ func TestPipelineEndToEndDeliversBatch(t *testing.T) {
 func TestPipelineDropsBotWall(t *testing.T) {
 	rawURL := "http://example.test/"
 
-	jobs := yacycrawler.NewJobQueue(4)
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](4)
 	fetcher := pageSourceFunc(
 		func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
@@ -95,10 +92,9 @@ func TestPipelineDropsBotWall(t *testing.T) {
 		},
 	)
 	publisher := yacycrawler.NewIngestPublisher(ingest)
-	registry := yacycrawler.NewCrawlProfileRegistry()
-	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
+	frontier := yacycrawler.NewFrontier(4)
 	pipeline := yacycrawler.NewPipeline(
-		jobs,
+		frontier,
 		fetcher,
 		publisher,
 		frontier,
@@ -120,7 +116,7 @@ func TestPipelineDropsBotWall(t *testing.T) {
 		close(workersDone)
 	}()
 
-	if err := seedCrawl(ctx, frontier, registry, 0, rawURL); err != nil {
+	if err := seedCrawl(frontier, 0, rawURL); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	<-workersDone

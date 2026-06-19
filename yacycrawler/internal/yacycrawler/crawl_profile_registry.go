@@ -3,7 +3,6 @@ package yacycrawler
 import (
 	"fmt"
 	"regexp"
-	"sync"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 )
@@ -24,34 +23,7 @@ func (c CompiledProfile) URLAllowed(rawURL string) bool {
 	return true
 }
 
-type CrawlProfileRegistry struct {
-	mu       sync.Mutex
-	profiles map[string]CompiledProfile
-}
-
-func NewCrawlProfileRegistry() *CrawlProfileRegistry {
-	return &CrawlProfileRegistry{profiles: make(map[string]CompiledProfile)}
-}
-
-func (r *CrawlProfileRegistry) Register(profile yacycrawlcontract.CrawlProfile) error {
-	compiled, err := compileProfile(profile)
-	if err != nil {
-		return err
-	}
-	r.mu.Lock()
-	r.profiles[profile.Handle] = compiled
-	r.mu.Unlock()
-	return nil
-}
-
-func (r *CrawlProfileRegistry) Lookup(handle string) (CompiledProfile, bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	compiled, ok := r.profiles[handle]
-	return compiled, ok
-}
-
-func compileProfile(profile yacycrawlcontract.CrawlProfile) (CompiledProfile, error) {
+func CompileProfile(profile yacycrawlcontract.CrawlProfile) (CompiledProfile, error) {
 	compiled := CompiledProfile{Profile: profile}
 	if profile.URLMustMatch != "" && profile.URLMustMatch != yacycrawlcontract.MatchAll {
 		re, err := regexp.Compile(profile.URLMustMatch)

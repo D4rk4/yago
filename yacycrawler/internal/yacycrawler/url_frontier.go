@@ -2,26 +2,17 @@ package yacycrawler
 
 import (
 	"context"
-	"log/slog"
 	"net/url"
 	"strings"
-	"sync"
 
 	"github.com/google/uuid"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 )
 
-const msgFrontierEnqueueFailed = "frontier enqueue failed"
-
 type Frontier struct {
-	jobs     JobSink
-	finish   func()
-	registry *CrawlProfileRegistry
-
-	mu     sync.Mutex
-	runs   map[uuid.UUID]*crawlRun
-	closed bool
+	jobs     chan CrawlJob
+	commands chan frontierCommand
 }
 
 type crawlRun struct {
@@ -29,60 +20,196 @@ type crawlRun struct {
 	hostPages map[string]int
 	pending   int
 	finish    func()
+	profiles  map[string]CompiledProfile
 }
 
-func NewFrontier(jobs JobSink, finish func(), registry *CrawlProfileRegistry) *Frontier {
-	return &Frontier{
-		jobs:     jobs,
-		finish:   finish,
-		registry: registry,
-		runs:     make(map[uuid.UUID]*crawlRun),
+type frontierCommand interface{}
+
+type frontierHold struct {
+	done chan struct{}
+}
+
+type frontierRelease struct {
+	done chan struct{}
+}
+
+type frontierSeedRun struct {
+	requests   []yacycrawlcontract.CrawlRequest
+	provenance []byte
+	profile    CompiledProfile
+	finish     func()
+	result     chan uuid.UUID
+}
+
+type frontierSubmit struct {
+	work  CrawlJob
+	links []string
+	done  chan struct{}
+}
+
+type frontierDone struct {
+	runID uuid.UUID
+	done  chan struct{}
+}
+
+func NewFrontier(capacity int) *Frontier {
+	frontier := &Frontier{
+		jobs:     make(chan CrawlJob, capacity),
+		commands: make(chan frontierCommand),
 	}
+	go frontier.run()
+	return frontier
+}
+
+func (f *Frontier) Jobs() <-chan CrawlJob {
+	return f.jobs
 }
 
 func (f *Frontier) Hold() {
-	f.mu.Lock()
-	f.run(uuid.Nil, nil).pending++
-	f.mu.Unlock()
+	done := make(chan struct{})
+	f.commands <- frontierHold{done: done}
+	<-done
 }
 
 func (f *Frontier) Release() {
-	f.done(uuid.Nil)
+	done := make(chan struct{})
+	f.commands <- frontierRelease{done: done}
+	<-done
 }
 
 func (f *Frontier) SeedRun(
-	ctx context.Context,
 	requests []yacycrawlcontract.CrawlRequest,
 	provenance []byte,
+	profile CompiledProfile,
 	finish func(),
 ) uuid.UUID {
+	result := make(chan uuid.UUID)
+	f.commands <- frontierSeedRun{
+		requests:   requests,
+		provenance: provenance,
+		profile:    profile,
+		finish:     finish,
+		result:     result,
+	}
+	return <-result
+}
+
+func (f *Frontier) Submit(_ context.Context, work CrawlJob, links []string) {
+	done := make(chan struct{})
+	f.commands <- frontierSubmit{work: work, links: links, done: done}
+	<-done
+}
+
+func (f *Frontier) Done(work CrawlJob) {
+	done := make(chan struct{})
+	f.commands <- frontierDone{runID: work.RunID, done: done}
+	<-done
+}
+
+func (f *Frontier) run() {
+	runs := make(map[uuid.UUID]*crawlRun)
+	var ready []CrawlJob
+	closed := false
+
+	for {
+		var send chan CrawlJob
+		var next CrawlJob
+		if len(ready) > 0 {
+			send = f.jobs
+			next = ready[0]
+		}
+
+		select {
+		case command := <-f.commands:
+			var finished []func()
+			closed, finished = f.handle(command, runs, &ready, closed)
+			for _, finish := range finished {
+				go finish()
+			}
+			if closed {
+				close(f.jobs)
+				return
+			}
+		case send <- next:
+			ready = ready[1:]
+		}
+	}
+}
+
+func (f *Frontier) handle(
+	command frontierCommand,
+	runs map[uuid.UUID]*crawlRun,
+	ready *[]CrawlJob,
+	closed bool,
+) (bool, []func()) {
+	switch c := command.(type) {
+	case frontierHold:
+		frontierRun(runs, uuid.Nil, nil, CompiledProfile{}).pending++
+		close(c.done)
+		return closed, nil
+	case frontierRelease:
+		closed, finished := finishFrontierJob(runs, uuid.Nil, closed)
+		close(c.done)
+		return closed, finished
+	case frontierSeedRun:
+		runID := seedFrontierRun(runs, ready, c)
+		c.result <- runID
+		return closed, nil
+	case frontierSubmit:
+		submitFrontierLinks(runs, ready, c.work, c.links)
+		close(c.done)
+		return closed, nil
+	case frontierDone:
+		closed, finished := finishFrontierJob(runs, c.runID, closed)
+		close(c.done)
+		return closed, finished
+	default:
+		return closed, nil
+	}
+}
+
+func seedFrontierRun(
+	runs map[uuid.UUID]*crawlRun,
+	ready *[]CrawlJob,
+	command frontierSeedRun,
+) uuid.UUID {
 	runID := uuid.New()
-	f.mu.Lock()
-	f.run(runID, finish).pending++
-	f.mu.Unlock()
-	for _, req := range requests {
-		compiled, ok := f.registry.Lookup(req.ProfileHandle)
-		if !ok {
+	run := frontierRun(runs, runID, command.finish, command.profile)
+	run.pending++
+	for _, req := range command.requests {
+		if req.ProfileHandle != command.profile.Profile.Handle {
 			continue
 		}
 		if norm, ok := normalizeURL(req.URL); ok {
-			f.accept(
-				ctx,
+			acceptFrontierJob(
+				runs,
+				ready,
 				runID,
 				norm,
 				req.Depth,
 				req.ProfileHandle,
-				provenance,
-				compiled.Profile.MaxPagesPerHost,
+				command.provenance,
 			)
 		}
 	}
-	f.done(runID)
+	_, finished := finishFrontierJob(runs, runID, false)
+	for _, finish := range finished {
+		go finish()
+	}
 	return runID
 }
 
-func (f *Frontier) Submit(ctx context.Context, work CrawlJob, links []string) {
-	compiled, ok := f.registry.Lookup(work.ProfileHandle)
+func submitFrontierLinks(
+	runs map[uuid.UUID]*crawlRun,
+	ready *[]CrawlJob,
+	work CrawlJob,
+	links []string,
+) {
+	run, ok := runs[work.RunID]
+	if !ok {
+		return
+	}
+	compiled, ok := run.profiles[work.ProfileHandle]
 	if !ok {
 		return
 	}
@@ -113,96 +240,98 @@ func (f *Frontier) Submit(ctx context.Context, work CrawlJob, links []string) {
 			continue
 		}
 		if norm, ok := normalizeURL(resolved.String()); ok {
-			f.accept(
-				ctx,
+			acceptFrontierJob(
+				runs,
+				ready,
 				work.RunID,
 				norm,
 				work.Depth+1,
 				work.ProfileHandle,
 				work.Provenance,
-				profile.MaxPagesPerHost,
 			)
 		}
 	}
 }
 
-func (f *Frontier) Done(work CrawlJob) {
-	f.done(work.RunID)
-}
-
-func (f *Frontier) done(runID uuid.UUID) {
-	f.mu.Lock()
-	run := f.run(runID, nil)
+func finishFrontierJob(
+	runs map[uuid.UUID]*crawlRun,
+	runID uuid.UUID,
+	closed bool,
+) (bool, []func()) {
+	run := frontierRun(runs, runID, nil, CompiledProfile{})
 	run.pending--
 	finishedRun := run.pending == 0
 	if finishedRun && runID != uuid.Nil {
-		delete(f.runs, runID)
+		delete(runs, runID)
 	}
-	finishedAll := runID == uuid.Nil && finishedRun && !f.closed
+	finishedAll := runID == uuid.Nil && finishedRun && !closed
 	if finishedAll {
-		f.closed = true
+		closed = true
 	}
-	f.mu.Unlock()
+	var finished []func()
 	if finishedRun && run.finish != nil {
-		run.finish()
+		finished = append(finished, run.finish)
 	}
-	if finishedAll {
-		f.finish()
-	}
+	return closed, finished
 }
 
-func (f *Frontier) accept(
-	ctx context.Context,
+func acceptFrontierJob(
+	runs map[uuid.UUID]*crawlRun,
+	ready *[]CrawlJob,
 	runID uuid.UUID,
 	normURL string,
 	depth int,
 	profileHandle string,
 	provenance []byte,
-	maxPagesPerHost int,
 ) {
 	host := hostOf(normURL)
-	f.mu.Lock()
-	run := f.run(runID, nil)
-	if _, seen := run.visited[normURL]; seen {
-		f.mu.Unlock()
+	run := frontierRun(runs, runID, nil, CompiledProfile{})
+	profile, ok := run.profiles[profileHandle]
+	if !ok {
 		return
 	}
-	if maxPagesPerHost != yacycrawlcontract.UnlimitedPagesPerHost &&
-		run.hostPages[host] >= maxPagesPerHost {
-		f.mu.Unlock()
+	if _, seen := run.visited[normURL]; seen {
+		return
+	}
+	if profile.Profile.MaxPagesPerHost != yacycrawlcontract.UnlimitedPagesPerHost &&
+		run.hostPages[host] >= profile.Profile.MaxPagesPerHost {
 		return
 	}
 	run.visited[normURL] = struct{}{}
 	run.hostPages[host]++
 	run.pending++
-	f.mu.Unlock()
-
-	go func() {
-		job := CrawlJob{
-			URL:           normURL,
-			Depth:         depth,
-			ProfileHandle: profileHandle,
-			Provenance:    provenance,
-			RunID:         runID,
-		}
-		if err := f.jobs.Enqueue(ctx, job); err != nil {
-			slog.Warn(msgFrontierEnqueueFailed, "url", normURL, "error", err)
-			f.done(runID)
-		}
-	}()
+	*ready = append(*ready, CrawlJob{
+		URL:           normURL,
+		Depth:         depth,
+		ProfileHandle: profileHandle,
+		Provenance:    provenance,
+		RunID:         runID,
+	})
 }
 
-func (f *Frontier) run(id uuid.UUID, finish func()) *crawlRun {
-	run, ok := f.runs[id]
+func frontierRun(
+	runs map[uuid.UUID]*crawlRun,
+	id uuid.UUID,
+	finish func(),
+	profile CompiledProfile,
+) *crawlRun {
+	run, ok := runs[id]
 	if ok {
+		if profile.Profile.Handle != "" {
+			run.profiles[profile.Profile.Handle] = profile
+		}
 		return run
 	}
 	run = &crawlRun{
 		visited:   make(map[string]struct{}),
 		hostPages: make(map[string]int),
 		finish:    finish,
+		profiles:  make(map[string]CompiledProfile),
 	}
-	f.runs[id] = run
+	if profile.Profile.Handle != "" {
+		run.profiles[profile.Profile.Handle] = profile
+	}
+	runs[id] = run
 	return run
 }
 

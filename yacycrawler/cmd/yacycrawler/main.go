@@ -57,8 +57,7 @@ func run(ctx context.Context, cfg yacycrawler.ServiceConfig) error {
 	ingest := yacycrawler.NewNATSIngestPublisher(js, cfg.IngestSubject)
 
 	crawl := cfg.Crawl
-	jobs := yacycrawler.NewJobQueue(crawl.JobQueueSize)
-	registry := yacycrawler.NewCrawlProfileRegistry()
+	frontier := yacycrawler.NewFrontier(crawl.JobQueueSize)
 
 	client := &http.Client{Timeout: crawl.RequestTimeout}
 	fetcher, closeBrowser := yacycrawler.NewBrowserPageFetcher(
@@ -70,10 +69,9 @@ func run(ctx context.Context, cfg yacycrawler.ServiceConfig) error {
 	gate := yacycrawler.NewPolitenessGate(client, crawl.UserAgent, crawl.CrawlDelay)
 	polite := yacycrawler.NewPolitePageFetcher(fetcher, gate)
 	publisher := yacycrawler.NewIngestPublisher(ingest)
-	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
 	botWall := yacycrawler.NewBotWallDetector()
-	pipeline := yacycrawler.NewPipeline(jobs, polite, publisher, frontier, botWall)
-	consumer := yacycrawler.NewCrawlOrderConsumer(orders, registry, frontier)
+	pipeline := yacycrawler.NewPipeline(frontier, polite, publisher, frontier, botWall)
+	consumer := yacycrawler.NewCrawlOrderConsumer(orders, frontier)
 
 	workersDone := make(chan struct{})
 	go func() {
