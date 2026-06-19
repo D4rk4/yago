@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const sampleRWILine = "ABCDEFGHIJKL{c=AB,h=MNOPQRSTUVWX,x=CD,z=AAAAAA}"
+const sampleRWILine = "ABCDEFGHIJKL{c=1,h=MNOPQRSTUVWX,x=2,z=AAAAAA}"
 
 func TestParseRWIEntryRoundTrip(t *testing.T) {
 	entry, err := ParseRWIEntry(sampleRWILine)
@@ -21,6 +21,31 @@ func TestParseRWIEntryRoundTrip(t *testing.T) {
 	}
 	if got := entry.String(); got != sampleRWILine {
 		t.Errorf("round trip:\n got %q\nwant %q", got, sampleRWILine)
+	}
+}
+
+func TestParseRWIEntryNormalizesYaCyPropertyForm(t *testing.T) {
+	entry, err := ParseRWIEntry("ABCDEFGHIJKL{c=1,d=104,h=MNOPQRSTUVWX,l=eng,t=258x,x=2,z=AAAAAAA}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.Properties[ColHitCount] != "1" {
+		t.Errorf("hit count = %q", entry.Properties[ColHitCount])
+	}
+	if entry.Properties[ColDocType] != "104" {
+		t.Errorf("doctype = %q", entry.Properties[ColDocType])
+	}
+	if entry.Properties[ColLanguage] != "en" {
+		t.Errorf("language = %q", entry.Properties[ColLanguage])
+	}
+	if entry.Properties[ColTextPosition] != "258" {
+		t.Errorf("text position = %q", entry.Properties[ColTextPosition])
+	}
+	if entry.Properties[ColLocalLinkCount] != "2" {
+		t.Errorf("local link count = %q", entry.Properties[ColLocalLinkCount])
+	}
+	if entry.Properties[ColFlags] != "AAAAAA" {
+		t.Errorf("flags = %q", entry.Properties[ColFlags])
 	}
 }
 
@@ -43,8 +68,9 @@ func TestAcceptableRWILine(t *testing.T) {
 		want bool
 	}{
 		{sampleRWILine, true},
-		{"ABCDEFGHIJKL{a=AAAA,h=MNOPQRSTUVWX,x=CD}", true},
-		{"ABCDEFGHIJKL{d=ABC,g=,h=MNOPQRSTUVWX,x=CD,z=}", true},
+		{"ABCDEFGHIJKL{a=1,h=MNOPQRSTUVWX,x=2}", true},
+		{"ABCDEFGHIJKL{d=104,g=0,h=MNOPQRSTUVWX,x=2,z=}", true},
+		{"ABCDEFGHIJKL{h=MNOPQRSTUVWX,c=1,x=2}", true},
 		{"ABCDEFGHIJKL{h=MNOPQRSTUVWX,c=1}", false},
 		{"ABCDEFGHIJKL{h=MNOPQRSTUVWX,x=[B@1f}", false},
 		{"ABCDEFGHIJKLnobraces", false},

@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/ports"
@@ -97,7 +98,7 @@ func fakePostingMatches(
 	if query.Language != "" && entry.Properties[yacymodel.ColLanguage] != query.Language {
 		return false
 	}
-	distance, err := yacymodel.DecodeCardinal(entry.Properties[yacymodel.ColWordDistance])
+	distance, err := entry.Cardinal(yacymodel.ColWordDistance)
 	if err != nil {
 		distance = 0
 	}
@@ -205,14 +206,14 @@ func postingEntry(word yacymodel.Hash, url string, distance byte) yacymodel.RWIE
 		WordHash: word,
 		Properties: map[string]string{
 			yacymodel.ColURLHash:      string(hashFor(url)),
-			yacymodel.ColHitCount:     encodedCardinalForTest(1),
-			yacymodel.ColWordDistance: encodedCardinalForTest(distance),
+			yacymodel.ColHitCount:     decimalForTest(1),
+			yacymodel.ColWordDistance: decimalForTest(distance),
 		},
 	}
 }
 
-func encodedCardinalForTest(value byte) string {
-	return yacymodel.Encode([]byte{value})
+func decimalForTest(value byte) string {
+	return strconv.FormatUint(uint64(value), 10)
 }
 
 var (

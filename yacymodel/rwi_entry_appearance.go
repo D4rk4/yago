@@ -18,15 +18,12 @@ const (
 )
 
 func (e RWIEntry) DocType() (byte, bool) {
-	raw, err := Decode(e.Properties[ColDocType])
+	value, err := e.ByteValue(ColDocType)
 	if err != nil {
 		slog.Warn("rwi doctype discarded", "error", err)
 		return 0, false
 	}
-	if len(raw) != 1 {
-		return 0, false
-	}
-	return raw[0], true
+	return value, true
 }
 
 func (e RWIEntry) AppearanceFlags() (Bitfield, error) {

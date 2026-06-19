@@ -1,9 +1,14 @@
 package yacymodel
 
-import "testing"
+import (
+	"strconv"
+	"testing"
+)
 
 func TestRWIEntryDocType(t *testing.T) {
-	entry := RWIEntry{Properties: map[string]string{ColDocType: Encode([]byte{DocTypeImage})}}
+	entry := RWIEntry{
+		Properties: map[string]string{ColDocType: strconv.FormatUint(uint64(DocTypeImage), 10)},
+	}
 	got, ok := entry.DocType()
 	if !ok || got != DocTypeImage {
 		t.Fatalf("DocType() = %q, %v, want %q, true", got, ok, DocTypeImage)

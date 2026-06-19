@@ -243,7 +243,7 @@ func postingEntryWith(
 	language string,
 ) yacymodel.RWIEntry {
 	entry := postingEntry(word, url, distance)
-	entry.Properties[yacymodel.ColHitCount] = encodedCardinalForTest(hits)
+	entry.Properties[yacymodel.ColHitCount] = decimalForTest(hits)
 	if language != "" {
 		entry.Properties[yacymodel.ColLanguage] = language
 	}

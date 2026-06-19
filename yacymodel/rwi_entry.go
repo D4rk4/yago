@@ -58,6 +58,10 @@ func ParseRWIEntry(line string) (RWIEntry, error) {
 	if err != nil {
 		return RWIEntry{}, fmt.Errorf("%w: %w", ErrBadRWIEntry, err)
 	}
+	props, err = normalizeRWIProperties(props)
+	if err != nil {
+		return RWIEntry{}, fmt.Errorf("%w: %w", ErrBadRWIEntry, err)
+	}
 	if err := validateRWIProperties(props); err != nil {
 		return RWIEntry{}, fmt.Errorf("%w: %w", ErrBadRWIEntry, err)
 	}

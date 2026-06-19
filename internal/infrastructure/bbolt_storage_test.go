@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"testing"
 
@@ -44,7 +45,7 @@ func TestBboltStorageStoresRWIAndSurvivesReopen(t *testing.T) {
 	if len(postings.Postings[word]) != 2 {
 		t.Fatalf("postings = %d, want 2", len(postings.Postings[word]))
 	}
-	if postings.Postings[word][0].Properties[yacymodel.ColWordDistance] != encodedCardinal(3) {
+	if postings.Postings[word][0].Properties[yacymodel.ColWordDistance] != decimalForTest(3) {
 		t.Fatalf("duplicate did not overwrite first posting: %v", postings.Postings[word][0])
 	}
 	assertCount(t, "rwi count after reopen", store.RWICount, 2)
@@ -282,8 +283,8 @@ func rwiEntryForStorageTest(
 		WordHash: word,
 		Properties: map[string]string{
 			yacymodel.ColURLHash:        hashForStorageTest(urlSeed).String(),
-			yacymodel.ColLocalLinkCount: encodedCardinal(1),
-			yacymodel.ColWordDistance:   encodedCardinal(distance),
+			yacymodel.ColLocalLinkCount: decimalForTest(1),
+			yacymodel.ColWordDistance:   decimalForTest(distance),
 		},
 	}
 }
@@ -296,6 +297,6 @@ func urlRowForStorageTest(seed string) yacymodel.URIMetadataRow {
 	}
 }
 
-func encodedCardinal(value byte) string {
-	return yacymodel.Encode([]byte{value})
+func decimalForTest(value byte) string {
+	return strconv.FormatUint(uint64(value), 10)
 }

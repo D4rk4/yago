@@ -137,7 +137,7 @@ func postingMatchesSearch(
 	if query.Language != "" && entry.Properties[yacymodel.ColLanguage] != query.Language {
 		return false
 	}
-	distance, err := yacymodel.DecodeCardinal(entry.Properties[yacymodel.ColWordDistance])
+	distance, err := entry.Cardinal(yacymodel.ColWordDistance)
 	if err != nil {
 		slog.WarnContext(
 			ctx,

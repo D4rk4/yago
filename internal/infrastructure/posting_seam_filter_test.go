@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
@@ -9,7 +10,7 @@ import (
 
 func entryWithDocType(doctype byte) yacymodel.RWIEntry {
 	return yacymodel.RWIEntry{Properties: map[string]string{
-		yacymodel.ColDocType: yacymodel.Encode([]byte{doctype}),
+		yacymodel.ColDocType: strconv.FormatUint(uint64(doctype), 10),
 	}}
 }
 

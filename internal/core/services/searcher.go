@@ -176,18 +176,18 @@ func cloneCandidates(in map[yacymodel.Hash]searchCandidate) map[yacymodel.Hash]s
 }
 
 func wordDistance(entry yacymodel.RWIEntry) (uint64, error) {
-	n, err := yacymodel.DecodeCardinal(entry.Properties[yacymodel.ColWordDistance])
+	n, err := entry.Cardinal(yacymodel.ColWordDistance)
 	if err != nil {
-		return 0, fmt.Errorf("decode word distance: %w", err)
+		return 0, fmt.Errorf("parse word distance: %w", err)
 	}
 
 	return n, nil
 }
 
 func hitCount(entry yacymodel.RWIEntry) (uint64, error) {
-	n, err := yacymodel.DecodeCardinal(entry.Properties[yacymodel.ColHitCount])
+	n, err := entry.Cardinal(yacymodel.ColHitCount)
 	if err != nil {
-		return 0, fmt.Errorf("decode hit count: %w", err)
+		return 0, fmt.Errorf("parse hit count: %w", err)
 	}
 
 	return n, nil

@@ -3,6 +3,7 @@ package yacymodel
 import (
 	"errors"
 	"fmt"
+	"strconv"
 )
 
 const (
@@ -58,10 +59,14 @@ func validateRWIProperty(key, value string) error {
 	case ColFlags:
 		return validateOptionalEncoded(key, value)
 	case ColDocType, ColWordType:
-		return validateOptionalEncoded(key, value)
+		if _, err := strconv.ParseUint(value, 10, 8); err != nil {
+			return fmt.Errorf("%w %s: %w", errInvalidRWIProperty, key, err)
+		}
 	default:
 		if _, ok := rwiCardinalWidths[key]; ok {
-			return validateCardinalEncoded(key, value)
+			if _, err := strconv.ParseUint(value, 10, 64); err != nil {
+				return fmt.Errorf("%w %s: %w", errInvalidRWIProperty, key, err)
+			}
 		}
 	}
 	return nil
@@ -69,14 +74,6 @@ func validateRWIProperty(key, value string) error {
 
 func validateOptionalEncoded(key, value string) error {
 	if _, err := Decode(value); err != nil {
-		return fmt.Errorf("%w %s: %w", errInvalidRWIProperty, key, err)
-	}
-
-	return nil
-}
-
-func validateCardinalEncoded(key, value string) error {
-	if _, err := DecodeCardinal(value); err != nil {
 		return fmt.Errorf("%w %s: %w", errInvalidRWIProperty, key, err)
 	}
 
