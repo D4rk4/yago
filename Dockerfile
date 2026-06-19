@@ -12,6 +12,8 @@ WORKDIR /src
 
 COPY go.work go.work.sum ./
 COPY go.mod go.sum ./
+COPY yacycrawlcontract/go.mod yacycrawlcontract/
+COPY yacycrawler/go.mod yacycrawler/
 COPY yacymodel/go.mod yacymodel/
 COPY yacyproto/go.mod yacyproto/
 
