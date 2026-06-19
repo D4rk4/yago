@@ -1,10 +1,14 @@
 package yacycrawler
 
-import "github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+import "github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+
+type IngestBatch = yacycrawlcontract.IngestBatch
 
 type CrawlJob struct {
-	URL   string
-	Depth int
+	URL           string
+	Depth         int
+	ProfileHandle string
+	Provenance    []byte
 }
 
 type FetchedPage struct {
@@ -19,10 +23,4 @@ type ParsedPage struct {
 	Language string
 	Text     string
 	Links    []string
-}
-
-type IngestBatch struct {
-	SourceURL string
-	Postings  []yacymodel.RWIEntry
-	Metadata  []yacymodel.URIMetadataRow
 }

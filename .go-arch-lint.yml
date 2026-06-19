@@ -17,6 +17,8 @@ components:
     in: internal/infrastructure/**
   cmd:
     in: cmd/**
+  yacycrawlcontract:
+    in: yacycrawlcontract/**
   yacycrawler:
     in: yacycrawler/**
 
@@ -70,9 +72,14 @@ deps:
       - infrastructure
       - yacymodel
       - yacyproto
+  yacycrawlcontract:
+    mayDependOn:
+      - yacycrawlcontract
+      - yacymodel
   yacycrawler:
     mayDependOn:
       - yacycrawler
+      - yacycrawlcontract
       - yacymodel
     canUse:
       - xnet-html

@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler"
 )
 
@@ -39,6 +41,8 @@ func run(cfg yacycrawler.Config) error {
 
 	jobs := yacycrawler.NewJobQueue(cfg.JobQueueSize)
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](cfg.IngestQueueSize)
+	orders := yacycrawler.NewBoundedQueue[yacycrawlcontract.CrawlOrder](cfg.JobQueueSize)
+	registry := yacycrawler.NewCrawlProfileRegistry()
 
 	client := &http.Client{Timeout: cfg.RequestTimeout}
 	fetcher, closeBrowser := yacycrawler.NewBrowserPageFetcher(cfg.UserAgent, cfg.RequestTimeout)
@@ -46,9 +50,10 @@ func run(cfg yacycrawler.Config) error {
 	gate := yacycrawler.NewPolitenessGate(client, cfg.UserAgent, cfg.CrawlDelay)
 	polite := yacycrawler.NewPolitePageFetcher(fetcher, gate)
 	publisher := yacycrawler.NewIngestPublisher(ingest)
-	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, cfg.MaxDepth, cfg.SameHostOnly)
+	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
 	botWall := yacycrawler.NewBotWallDetector()
 	pipeline := yacycrawler.NewPipeline(jobs, polite, publisher, frontier, botWall)
+	consumer := yacycrawler.NewCrawlOrderConsumer(orders, registry, frontier)
 	node := yacycrawler.NewFakeNodeIngest(ingest)
 
 	nodeDone := make(chan struct{})
@@ -63,7 +68,17 @@ func run(cfg yacycrawler.Config) error {
 		close(workersDone)
 	}()
 
-	frontier.Seed(ctx, cfg.SeedURLs)
+	consumerDone := make(chan struct{})
+	go func() {
+		consumer.Run(ctx)
+		close(consumerDone)
+	}()
+
+	if err := orders.Publish(ctx, cfg.DefaultOrder([]byte("admin"))); err != nil {
+		return fmt.Errorf("publish crawl order: %w", err)
+	}
+	orders.Close()
+	<-consumerDone
 	<-workersDone
 	ingest.Close()
 	<-nodeDone

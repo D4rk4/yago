@@ -8,7 +8,8 @@ postings and URL metadata, and publishes them toward a YaCy RWI node without sto
 document bodies.
 
 For what the package does and how the pieces fit together, see the package doc in
-[`doc.go`](doc.go).
+[`doc.go`](doc.go). For the messages the node and crawler exchange, see
+[`doc/crawl-contract.md`](../doc/crawl-contract.md).
 
 ## Why two separate services
 
@@ -22,41 +23,40 @@ a more powerful machine (a home PC you can freely turn off). It contributes exac
 the YaCy DHT natively exchanges — *references*, not documents: word-index postings plus
 URL metadata. No document bodies are stored or shipped anywhere.
 
-```
-                    ingest batches
-                  (postings + metadata)
-  ┌────────────┐  ───────────────────▶  ┌────────────────┐
-  │ yacycrawler│        message          │   RWI node     │
-  │ (this svc) │◀──────────────────────  │ (stores/serves │
-  └────────────┘    crawl requests +     │      RWI)      │
-   powerful host    backpressure          └────────────────┘
-   on-demand        (future)               Pi-class, always-on
+```mermaid
+flowchart LR
+    node["RWI node<br/>(Pi-class, always-on)"]
+    crawler["yacycrawler<br/>(powerful host, on-demand)"]
+    node -- crawl orders --> crawler
+    crawler -- "ingest batches (references)" --> node
 ```
 
 ## Target architecture
 
-The crawler is a pipeline of stages — frontier → fetch → parse → tokenize → build
-postings + metadata → publish — wired together in
-[`cmd/yacycrawler/main.go`](cmd/yacycrawler/main.go). Stages hand work to one another
-only through a small queue seam (`Publisher` / `Receiver` over a bounded queue), never by
-direct calls, so the topology can be reshaped or distributed without touching stage logic.
+The crawler is a pipeline of stages, wired together in
+[`cmd/yacycrawler/main.go`](cmd/yacycrawler/main.go):
 
-The same seam is the boundary between the crawler and the node. Today both ends live in
-one process and the node side is faked, but the shape is the target shape:
+```mermaid
+flowchart LR
+    orders([crawl orders]) --> frontier
+    frontier --> fetch --> parse --> build["build references"] --> publish
+    publish --> ingest([ingest batches])
+```
 
-- **Crawler → node (implemented, faked node):** each crawled page becomes an
-  `IngestBatch` (`[]RWIEntry` postings + `[]URIMetadataRow` metadata + source URL) and is
-  published to the ingest queue. A real node subscribes to that queue and merges the
-  postings into its DHT buckets — the same contribution a Java YaCy peer makes via
-  `transferRWI` / `transferURL`, minus the document body.
-- **Node → crawler (future):** the queue is intentionally not request/response-bound, so
-  the reverse direction is just more topics on the same seam — the node handing out crawl
-  requests and signalling backpressure when its ingest is saturated.
+Stages hand work to one another only through a small queue seam, never by direct calls, so
+the topology can be reshaped or distributed without touching stage logic. That same seam is
+the boundary between the crawler and the node: the node sends crawl orders down and the
+crawler sends references back up, each over its own one-way queue.
 
-This lets the prototype run **standalone**: no node, no network, no broker. The in-process
-bounded queue stub stands in for a message broker, and `FakeNodeIngest` drains the ingest
-queue and records what it received so the full fetch→publish path can be exercised in
-tests.
+The message types for both directions live in the standalone `yacycrawlcontract` module,
+so neither service depends on the other. For what those messages carry and why, see
+[`doc/crawl-contract.md`](../doc/crawl-contract.md).
+
+This lets the prototype run **standalone**: no node, no network, no broker. An in-process
+bounded queue stands in for a message broker, an order is built locally from config, and a
+fake node drains the ingest queue and records what it received, so the full path can be
+exercised in tests. The real node-side order producer, the remote-crawl receiver, and a
+real broker are future work.
 
 ### Why a message queue between them
 
@@ -64,8 +64,8 @@ tests.
   out) while the node stays up; queued batches decouple the two.
 - **Backpressure.** The queue is bounded, so a busy node naturally slows fast crawlers
   instead of being overwhelmed.
-- **Fan-in / fan-out.** Multiple crawler instances can feed one node, and the node can
-  later fan crawl requests back out, all over the same seam.
+- **Fan-in / fan-out.** Each direction is one-way, so multiple crawler instances can feed
+  one node and the node can fan crawl orders back out over the same seam.
 - **One swap point.** Replacing the in-process stub with a real broker is a single,
   well-isolated change that does not ripple into pipeline stages or the node.
 

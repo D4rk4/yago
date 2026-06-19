@@ -31,7 +31,8 @@ func TestPipelineEndToEndDeliversBatch(t *testing.T) {
 		yacycrawler.DefaultUserAgent,
 	)
 	publisher := yacycrawler.NewIngestPublisher(ingest)
-	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, 0, true)
+	registry := yacycrawler.NewCrawlProfileRegistry()
+	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
 	pipeline := yacycrawler.NewPipeline(
 		jobs,
 		fetcher,
@@ -55,7 +56,9 @@ func TestPipelineEndToEndDeliversBatch(t *testing.T) {
 		close(workersDone)
 	}()
 
-	frontier.Seed(ctx, []string{server.URL})
+	if err := seedCrawl(ctx, frontier, registry, 0, server.URL); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
 	<-workersDone
 	ingest.Close()
 	<-nodeDone
@@ -100,7 +103,8 @@ func TestPipelineDropsBotWall(t *testing.T) {
 		yacycrawler.DefaultUserAgent,
 	)
 	publisher := yacycrawler.NewIngestPublisher(ingest)
-	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, 0, true)
+	registry := yacycrawler.NewCrawlProfileRegistry()
+	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
 	pipeline := yacycrawler.NewPipeline(
 		jobs,
 		fetcher,
@@ -124,7 +128,9 @@ func TestPipelineDropsBotWall(t *testing.T) {
 		close(workersDone)
 	}()
 
-	frontier.Seed(ctx, []string{server.URL})
+	if err := seedCrawl(ctx, frontier, registry, 0, server.URL); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
 	<-workersDone
 	ingest.Close()
 	<-nodeDone

@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/chromedp/chromedp v0.15.1
 	github.com/markusmobius/go-trafilatura v1.12.2
+	github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract v0.0.0
 	github.com/nikitakarpei/yacy-rwi-node/yacymodel v0.0.0
 	github.com/temoto/robotstxt v1.1.2
 	golang.org/x/net v0.56.0
@@ -44,5 +45,7 @@ require (
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 )
+
+replace github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract => ../yacycrawlcontract
 
 replace github.com/nikitakarpei/yacy-rwi-node/yacymodel => ../yacymodel

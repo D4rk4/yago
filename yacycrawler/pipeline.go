@@ -12,7 +12,7 @@ type PageSource interface {
 }
 
 type LinkFrontier interface {
-	Submit(ctx context.Context, fromURL string, links []string, depth int)
+	Submit(ctx context.Context, work CrawlJob, links []string)
 	Done()
 }
 
@@ -83,8 +83,14 @@ func (p *Pipeline) process(ctx context.Context, job CrawlJob) error {
 		return nil
 	}
 	page := ParseHTML(fetched.URL, fetched.ContentType, fetched.Body)
-	p.frontier.Submit(ctx, page.URL, page.Links, job.Depth)
-	if err := p.publisher.Publish(ctx, page); err != nil {
+	resolved := CrawlJob{
+		URL:           page.URL,
+		Depth:         job.Depth,
+		ProfileHandle: job.ProfileHandle,
+		Provenance:    job.Provenance,
+	}
+	p.frontier.Submit(ctx, resolved, page.Links)
+	if err := p.publisher.Publish(ctx, page, job.ProfileHandle, job.Provenance); err != nil {
 		return fmt.Errorf("publish: %w", err)
 	}
 	return nil

@@ -1,6 +1,10 @@
 package yacycrawler
 
-import "time"
+import (
+	"time"
+
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+)
 
 type Config struct {
 	SeedURLs        []string
@@ -12,7 +16,8 @@ type Config struct {
 	UserAgent       string
 	CrawlDelay      time.Duration
 	MaxDepth        int
-	SameHostOnly    bool
+	Scope           yacycrawlcontract.CrawlScope
+	MaxPagesPerHost int
 }
 
 func DefaultConfig() Config {
@@ -26,6 +31,7 @@ func DefaultConfig() Config {
 		UserAgent:       DefaultUserAgent,
 		CrawlDelay:      DefaultCrawlDelay,
 		MaxDepth:        2,
-		SameHostOnly:    true,
+		Scope:           yacycrawlcontract.ScopeDomain,
+		MaxPagesPerHost: yacycrawlcontract.UnlimitedPagesPerHost,
 	}
 }
