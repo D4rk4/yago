@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log/slog"
 
 	bolt "go.etcd.io/bbolt"
 
@@ -26,19 +25,17 @@ func (s *BboltStorage) SearchPostings(
 	}
 	err := s.view(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(bucketRWI)
-		excluded, err := excludedURLHashes(ctx, bucket, query.ExcludeHashes)
+		matcher, err := newPostingSearchMatcher(ctx, bucket, query)
 		if err != nil {
 			return err
 		}
-		allowed := hashSet(query.URLHashes)
 		for _, word := range query.WordHashes {
 			postings, count, truncated, err := searchWordPostings(
 				ctx,
 				bucket,
 				word,
 				query,
-				allowed,
-				excluded,
+				matcher,
 			)
 			if err != nil {
 				return err
@@ -57,47 +54,12 @@ func (s *BboltStorage) SearchPostings(
 	return result, nil
 }
 
-func excludedURLHashes(
-	ctx context.Context,
-	bucket *bolt.Bucket,
-	words []yacymodel.Hash,
-) (map[yacymodel.Hash]struct{}, error) {
-	excluded := make(map[yacymodel.Hash]struct{})
-	for _, word := range words {
-		prefix := []byte(word)
-		cursor := bucket.Cursor()
-		for key, value := cursor.Seek(prefix); key != nil && bytes.HasPrefix(key, prefix); key, value = cursor.Next() {
-			if err := ctx.Err(); err != nil {
-				return nil, wrapContextErr(err)
-			}
-			entry, err := yacymodel.ParseRWIEntry(string(value))
-			if err != nil {
-				return nil, fmt.Errorf("parse rwi: %w", err)
-			}
-			if urlHash, err := entry.URLHash(); err == nil {
-				excluded[urlHash] = struct{}{}
-			} else {
-				slog.WarnContext(
-					ctx,
-					"rwi exclude candidate discarded",
-					"reason",
-					"invalid url hash",
-					"error",
-					err,
-				)
-			}
-		}
-	}
-	return excluded, nil
-}
-
 func searchWordPostings(
 	ctx context.Context,
 	bucket *bolt.Bucket,
 	word yacymodel.Hash,
 	query ports.PostingSearchQuery,
-	allowed map[yacymodel.Hash]struct{},
-	excluded map[yacymodel.Hash]struct{},
+	matcher postingSearchMatcher,
 ) ([]yacymodel.RWIEntry, int, bool, error) {
 	var (
 		postings  []yacymodel.RWIEntry
@@ -114,7 +76,7 @@ func searchWordPostings(
 		if err != nil {
 			return nil, 0, false, fmt.Errorf("parse rwi: %w", err)
 		}
-		if !postingMatchesSearch(ctx, entry, query, allowed, excluded) {
+		if !matcher.matches(ctx, entry) {
 			continue
 		}
 		count++
@@ -125,72 +87,4 @@ func searchWordPostings(
 		postings = append(postings, entry)
 	}
 	return postings, count, truncated, nil
-}
-
-func postingMatchesSearch(
-	ctx context.Context,
-	entry yacymodel.RWIEntry,
-	query ports.PostingSearchQuery,
-	allowed map[yacymodel.Hash]struct{},
-	excluded map[yacymodel.Hash]struct{},
-) bool {
-	if query.Language != "" && entry.Properties[yacymodel.ColLanguage] != query.Language {
-		return false
-	}
-	distance, err := entry.Cardinal(yacymodel.ColWordDistance)
-	if err != nil {
-		slog.WarnContext(
-			ctx,
-			"rwi filter field discarded",
-			"field",
-			yacymodel.ColWordDistance,
-			"error",
-			err,
-		)
-		distance = 0
-	}
-	if query.MaxDistance > 0 && distance > uint64(query.MaxDistance) {
-		return false
-	}
-	urlHash, err := entry.URLHash()
-	if err != nil {
-		slog.WarnContext(
-			ctx,
-			"rwi search posting discarded",
-			"reason",
-			"invalid url hash",
-			"error",
-			err,
-		)
-		return false
-	}
-	if len(allowed) != 0 {
-		if _, ok := allowed[urlHash]; !ok {
-			return false
-		}
-	}
-	if _, ok := excluded[urlHash]; ok {
-		return false
-	}
-	if !matchesSiteHash(urlHash, query.SiteHash) {
-		return false
-	}
-	if !matchesContentDomain(ctx, entry, query.ContentDomain, query.StrictContentDom) {
-		return false
-	}
-	if !matchesConstraint(ctx, entry, query.Constraint) {
-		return false
-	}
-	return true
-}
-
-func hashSet(hashes []yacymodel.Hash) map[yacymodel.Hash]struct{} {
-	if len(hashes) == 0 {
-		return nil
-	}
-	out := make(map[yacymodel.Hash]struct{}, len(hashes))
-	for _, hash := range hashes {
-		out[hash] = struct{}{}
-	}
-	return out
 }
