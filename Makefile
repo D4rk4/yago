@@ -68,7 +68,7 @@ build:
 		( cd $$m && $(GO) build ./... ); \
 	done
 
-verify: fmt-check vet lint arch cover-check build
+verify: fmt-check vet lint arch test cover-check build
 
 e2e-image:
 	DOCKER_BUILDKIT=1 docker build -t $(E2E_NODE_IMAGE) .
