@@ -9,8 +9,11 @@ import (
 
 func TestBrowserPageFetcherReturnsRenderedBody(t *testing.T) {
 	fetcher := &BrowserPageFetcher{
-		render: func(_ context.Context, rawURL string) (string, error) {
-			return "<html><body>" + rawURL + "</body></html>", nil
+		render: func(_ context.Context, rawURL string) (renderedPage, error) {
+			return renderedPage{
+				url:     rawURL,
+				content: "<html><body>" + rawURL + "</body></html>",
+			}, nil
 		},
 		timeout: time.Second,
 	}
@@ -33,8 +36,8 @@ func TestBrowserPageFetcherReturnsRenderedBody(t *testing.T) {
 func TestBrowserPageFetcherPropagatesRenderError(t *testing.T) {
 	sentinel := errors.New("render failed")
 	fetcher := &BrowserPageFetcher{
-		render: func(context.Context, string) (string, error) {
-			return "", sentinel
+		render: func(context.Context, string) (renderedPage, error) {
+			return renderedPage{}, sentinel
 		},
 	}
 
@@ -46,11 +49,11 @@ func TestBrowserPageFetcherPropagatesRenderError(t *testing.T) {
 
 func TestBrowserPageFetcherAppliesTimeout(t *testing.T) {
 	fetcher := &BrowserPageFetcher{
-		render: func(ctx context.Context, _ string) (string, error) {
+		render: func(ctx context.Context, _ string) (renderedPage, error) {
 			if _, ok := ctx.Deadline(); !ok {
 				t.Error("expected deadline on render context")
 			}
-			return "ok", nil
+			return renderedPage{url: "http://example.com/", content: "ok"}, nil
 		},
 		timeout: time.Second,
 	}
@@ -61,10 +64,49 @@ func TestBrowserPageFetcherAppliesTimeout(t *testing.T) {
 }
 
 func TestNewBrowserPageFetcherBuildsFetcher(t *testing.T) {
-	fetcher, cancel := NewBrowserPageFetcher("agent/1.0", time.Second)
+	fetcher, cancel := NewBrowserPageFetcher("agent/1.0", time.Second, DefaultMaxBodyBytes)
 	defer cancel()
 
 	if fetcher == nil || fetcher.render == nil {
 		t.Fatal("expected configured fetcher")
+	}
+}
+
+func TestBrowserPageFetcherReturnsFinalURL(t *testing.T) {
+	fetcher := &BrowserPageFetcher{
+		render: func(context.Context, string) (renderedPage, error) {
+			return renderedPage{
+				url:     "http://example.com/final",
+				content: "<html></html>",
+			}, nil
+		},
+	}
+
+	page, err := fetcher.Fetch(context.Background(), "http://example.com/start")
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if page.URL != "http://example.com/final" {
+		t.Errorf("url = %q", page.URL)
+	}
+}
+
+func TestBrowserPageFetcherCapsRenderedBody(t *testing.T) {
+	fetcher := &BrowserPageFetcher{
+		render: func(context.Context, string) (renderedPage, error) {
+			return renderedPage{
+				url:     "http://example.com/",
+				content: "abcdef",
+			}, nil
+		},
+		maxBytes: 3,
+	}
+
+	page, err := fetcher.Fetch(context.Background(), "http://example.com/")
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if string(page.Body) != "abc" {
+		t.Errorf("body = %q", page.Body)
 	}
 }

@@ -10,11 +10,6 @@ import (
 	"strings"
 )
 
-const (
-	DefaultMaxBodyBytes int64 = 4 << 20
-	DefaultUserAgent          = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
-)
-
 var (
 	ErrUnsupportedContentType = errors.New("unsupported content type")
 	ErrUnexpectedStatus       = errors.New("unexpected http status")

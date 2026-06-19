@@ -64,6 +64,7 @@ func run(ctx context.Context, cfg yacycrawler.ServiceConfig) error {
 	fetcher, closeBrowser := yacycrawler.NewBrowserPageFetcher(
 		crawl.UserAgent,
 		crawl.RequestTimeout,
+		crawl.MaxBodyBytes,
 	)
 	defer closeBrowser()
 	gate := yacycrawler.NewPolitenessGate(client, crawl.UserAgent, crawl.CrawlDelay)
