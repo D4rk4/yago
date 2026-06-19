@@ -71,7 +71,7 @@ func validateURLMetadataProperty(key, value string) error {
 		}
 	case "flags":
 		if value != "" {
-			if err := validateEncodedBitfield(value, rwiByteFlagLength); err != nil {
+			if err := validateEncodedBitfieldMaxBytes(value, rwiByteFlagLength); err != nil {
 				return fmt.Errorf("%w %s: %w", errInvalidURLMetadataProperty, key, err)
 			}
 		}
