@@ -2,8 +2,6 @@ package yacycrawler_test
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -15,21 +13,17 @@ const pageBody = `<html lang="en"><head><title>Platypus</title></head>
 <body><p>The platypus swims in rivers.</p></body></html>`
 
 func TestPipelineEndToEndDeliversBatch(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		if _, err := w.Write([]byte(pageBody)); err != nil {
-			t.Errorf("write body: %v", err)
-		}
-	}))
-	defer server.Close()
+	rawURL := "http://example.test/"
 
 	jobs := yacycrawler.NewJobQueue(4)
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](4)
-	fetcher := yacycrawler.NewPageFetcher(
-		server.Client(),
-		yacycrawler.DefaultMaxBodyBytes,
-		yacycrawler.DefaultUserAgent,
-	)
+	fetcher := pageSourceFunc(func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
+		return yacycrawler.FetchedPage{
+			URL:         rawURL,
+			ContentType: "text/html",
+			Body:        []byte(pageBody),
+		}, nil
+	})
 	publisher := yacycrawler.NewIngestPublisher(ingest)
 	registry := yacycrawler.NewCrawlProfileRegistry()
 	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
@@ -56,7 +50,7 @@ func TestPipelineEndToEndDeliversBatch(t *testing.T) {
 		close(workersDone)
 	}()
 
-	if err := seedCrawl(ctx, frontier, registry, 0, server.URL); err != nil {
+	if err := seedCrawl(ctx, frontier, registry, 0, rawURL); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	<-workersDone
@@ -85,23 +79,17 @@ func TestPipelineEndToEndDeliversBatch(t *testing.T) {
 }
 
 func TestPipelineDropsBotWall(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		if _, err := w.Write(
-			[]byte("<html><head><title>Just a moment...</title></head></html>"),
-		); err != nil {
-			t.Errorf("write body: %v", err)
-		}
-	}))
-	defer server.Close()
+	rawURL := "http://example.test/"
 
 	jobs := yacycrawler.NewJobQueue(4)
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](4)
-	fetcher := yacycrawler.NewPageFetcher(
-		server.Client(),
-		yacycrawler.DefaultMaxBodyBytes,
-		yacycrawler.DefaultUserAgent,
-	)
+	fetcher := pageSourceFunc(func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
+		return yacycrawler.FetchedPage{
+			URL:         rawURL,
+			ContentType: "text/html",
+			Body:        []byte("<html><head><title>Just a moment...</title></head></html>"),
+		}, nil
+	})
 	publisher := yacycrawler.NewIngestPublisher(ingest)
 	registry := yacycrawler.NewCrawlProfileRegistry()
 	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
@@ -128,7 +116,7 @@ func TestPipelineDropsBotWall(t *testing.T) {
 		close(workersDone)
 	}()
 
-	if err := seedCrawl(ctx, frontier, registry, 0, server.URL); err != nil {
+	if err := seedCrawl(ctx, frontier, registry, 0, rawURL); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	<-workersDone

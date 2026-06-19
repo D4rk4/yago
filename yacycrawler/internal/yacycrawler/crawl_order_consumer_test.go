@@ -3,8 +3,6 @@ package yacycrawler_test
 import (
 	"bytes"
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -13,24 +11,20 @@ import (
 )
 
 func TestCrawlOrderRoundTripCarriesProvenanceAndHandle(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		if _, err := w.Write(
-			[]byte(`<html lang="en"><title>Hi</title><body>words</body></html>`),
-		); err != nil {
-			t.Errorf("write: %v", err)
-		}
-	}))
-	defer server.Close()
+	rawURL := "http://example.test/"
 
 	jobs := yacycrawler.NewJobQueue(8)
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](8)
 	orders := yacycrawler.NewBoundedQueue[yacycrawler.CrawlOrderDelivery](2)
 	registry := yacycrawler.NewCrawlProfileRegistry()
 
-	fetcher := yacycrawler.NewPageFetcher(
-		server.Client(), yacycrawler.DefaultMaxBodyBytes, yacycrawler.DefaultUserAgent,
-	)
+	fetcher := pageSourceFunc(func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
+		return yacycrawler.FetchedPage{
+			URL:         rawURL,
+			ContentType: "text/html",
+			Body:        []byte(`<html lang="en"><title>Hi</title><body>words</body></html>`),
+		}, nil
+	})
 	publisher := yacycrawler.NewIngestPublisher(ingest)
 	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
 	pipeline := yacycrawler.NewPipeline(
@@ -56,7 +50,7 @@ func TestCrawlOrderRoundTripCarriesProvenanceAndHandle(t *testing.T) {
 	cfg := yacycrawler.DefaultCrawlConfig()
 	cfg.MaxDepth = 0
 	token := []byte("remote-peer:abc123")
-	order := defaultCrawlOrder(cfg, token, server.URL)
+	order := defaultCrawlOrder(cfg, token, rawURL)
 
 	if err := orders.Publish(ctx, yacycrawler.NewCrawlOrderDelivery(order)); err != nil {
 		t.Fatalf("publish order: %v", err)
@@ -93,15 +87,7 @@ func TestCrawlOrderQueueAppliesBackpressure(t *testing.T) {
 }
 
 func TestIngestQueueFansInFromMultipleCrawlers(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		if _, err := w.Write(
-			[]byte(`<html lang="en"><title>Hi</title><body>words</body></html>`),
-		); err != nil {
-			t.Errorf("write: %v", err)
-		}
-	}))
-	defer server.Close()
+	rawURL := "http://example.test/"
 
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](16)
 	node := newFakeNodeIngest(ingest)
@@ -118,9 +104,13 @@ func TestIngestQueueFansInFromMultipleCrawlers(t *testing.T) {
 		go func() {
 			jobs := yacycrawler.NewJobQueue(8)
 			registry := yacycrawler.NewCrawlProfileRegistry()
-			fetcher := yacycrawler.NewPageFetcher(
-				server.Client(), yacycrawler.DefaultMaxBodyBytes, yacycrawler.DefaultUserAgent,
-			)
+			fetcher := pageSourceFunc(func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
+				return yacycrawler.FetchedPage{
+					URL:         rawURL,
+					ContentType: "text/html",
+					Body:        []byte(`<html lang="en"><title>Hi</title><body>words</body></html>`),
+				}, nil
+			})
 			publisher := yacycrawler.NewIngestPublisher(ingest)
 			frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
 			pipeline := yacycrawler.NewPipeline(
@@ -133,7 +123,7 @@ func TestIngestQueueFansInFromMultipleCrawlers(t *testing.T) {
 
 			workersDone := make(chan struct{})
 			go func() { pipeline.RunWorkers(ctx, 1); close(workersDone) }()
-			if err := seedCrawl(ctx, frontier, registry, 0, server.URL); err != nil {
+			if err := seedCrawl(ctx, frontier, registry, 0, rawURL); err != nil {
 				t.Errorf("seed: %v", err)
 			}
 			<-workersDone
