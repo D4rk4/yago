@@ -35,28 +35,28 @@ func newHTTPProbe(t testing.TB) *httpProbe {
 	}
 }
 
-func (p *httpProbe) Get(ctx context.Context, u string) probeResult {
+func (p *httpProbe) Get(ctx context.Context, url string) probeResult {
 	p.t.Helper()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return probeResult{errMsg: err.Error()}
 	}
 	return p.do(req)
 }
 
-func (p *httpProbe) OK(ctx context.Context, u string) bool {
+func (p *httpProbe) OK(ctx context.Context, url string) bool {
 	p.t.Helper()
-	return p.Get(ctx, u).ok
+	return p.Get(ctx, url).ok
 }
 
-func (p *httpProbe) PostRaw(ctx context.Context, u, body string, headers ...string) probeResult {
+func (p *httpProbe) PostRaw(ctx context.Context, url, body string, headers ...string) probeResult {
 	p.t.Helper()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
 	if err != nil {
 		return probeResult{errMsg: err.Error()}
 	}
-	for _, h := range headers {
-		if name, value, found := strings.Cut(h, ":"); found {
+	for _, header := range headers {
+		if name, value, found := strings.Cut(header, ":"); found {
 			req.Header.Set(strings.TrimSpace(name), strings.TrimSpace(value))
 		}
 	}
@@ -90,15 +90,15 @@ func (p *httpProbe) do(req *http.Request) probeResult {
 	return result
 }
 
-func (p *httpProbe) logFailureChanged(u string, result probeResult) {
+func (p *httpProbe) logFailureChanged(url string, result probeResult) {
 	if result.ok {
-		delete(p.failDiag, u)
+		delete(p.failDiag, url)
 		return
 	}
 	diag := result.diag()
-	if p.failDiag[u] != diag {
-		p.t.Logf("e2e probe failed url=%s %s", u, diag)
-		p.failDiag[u] = diag
+	if p.failDiag[url] != diag {
+		p.t.Logf("e2e probe failed url=%s %s", url, diag)
+		p.failDiag[url] = diag
 	}
 }
 
@@ -107,12 +107,12 @@ func (r probeResult) diag() string {
 		r.httpStatus, r.contentType, r.errMsg, shortPreview(r.body))
 }
 
-func shortPreview(s string) string {
+func shortPreview(body string) string {
 	const limit = 240
-	s = strings.ReplaceAll(s, "\r\n", "\n")
-	s = strings.ReplaceAll(s, "\n", `\n`)
-	if len(s) <= limit {
-		return s
+	body = strings.ReplaceAll(body, "\r\n", "\n")
+	body = strings.ReplaceAll(body, "\n", `\n`)
+	if len(body) <= limit {
+		return body
 	}
-	return s[:limit] + "…"
+	return body[:limit] + "…"
 }

@@ -11,13 +11,13 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 )
 
-func dumpLogsOnFailure(t *testing.T, label string, c testcontainers.Container) {
+func dumpLogsOnFailure(t *testing.T, label string, container testcontainers.Container) {
 	t.Helper()
 	t.Cleanup(func() {
 		if !t.Failed() {
 			return
 		}
-		reader, err := c.Logs(context.Background())
+		reader, err := container.Logs(context.Background())
 		if err != nil {
 			t.Logf("%s logs unavailable: %v", label, err)
 			return

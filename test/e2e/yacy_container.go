@@ -18,8 +18,9 @@ const defaultYaCyImage = "yacy/yacy_search_server:latest"
 func startYaCy(
 	t *testing.T,
 	ctx context.Context,
+	probe *httpProbe,
 	networkName, alias string,
-) testcontainers.Container {
+) (testcontainers.Container, string) {
 	t.Helper()
 	image := os.Getenv("YACY_YACY_IMAGE")
 	if image == "" {
@@ -35,11 +36,12 @@ func startYaCy(
 		"sed -i 's#^allowDistributeIndex=.*#allowDistributeIndex=true#' " + defaults + "yacy.init",
 		"sed -i 's#^allowDistributeIndexWhileCrawling=.*#allowDistributeIndexWhileCrawling=true#' " + defaults + "yacy.init",
 		"sed -i 's#^allowDistributeIndexWhileIndexing=.*#allowDistributeIndexWhileIndexing=true#' " + defaults + "yacy.init",
+		"sed -i 's#^20_dhtdistribution_loadprereq=.*#20_dhtdistribution_loadprereq=9.0#' " + defaults + "yacy.init",
 		"sed -i 's#^20_dhtdistribution_idlesleep=.*#20_dhtdistribution_idlesleep=1000#' " + defaults + "yacy.init",
 		"sed -i 's#^20_dhtdistribution_busysleep=.*#20_dhtdistribution_busysleep=0#' " + defaults + "yacy.init",
-		"sed -i 's#^SWITCHBOARD.level = INFO#SWITCHBOARD.level = FINE#' " + defaults + "yacy.logging",
+		"sed -i 's#^.level=.*#.level=FINE#' " + defaults + "yacy.logging",
 	}, " && ")
-	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		Started: true,
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:          image,
@@ -56,7 +58,13 @@ func startYaCy(
 	if err != nil {
 		t.Fatalf("start YaCy container %s: %v", image, err)
 	}
-	t.Cleanup(func() { _ = c.Terminate(context.Background()) })
-	dumpLogsOnFailure(t, "yacy", c)
-	return c
+	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
+	dumpLogsOnFailure(t, "yacy", container)
+	yacyURL := hostURL(t, ctx, container)
+	if !waitFor(60*time.Second, func() bool {
+		return probe.OK(ctx, yacyURL+"/yacy/query.html?object=rwicount")
+	}) {
+		t.Fatal("YaCy never became reachable from the host")
+	}
+	return container, yacyURL
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	dockercontainer "github.com/docker/docker/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
@@ -26,7 +27,12 @@ type nodeConfig struct {
 	seedlistURL string
 }
 
-func startNode(t *testing.T, ctx context.Context, cfg nodeConfig) testcontainers.Container {
+func startNode(
+	t *testing.T,
+	ctx context.Context,
+	probe *httpProbe,
+	cfg nodeConfig,
+) (testcontainers.Container, string) {
 	t.Helper()
 	env := map[string]string{
 		"YACY_PEER_HASH":         cfg.hash.String(),
@@ -36,13 +42,13 @@ func startNode(t *testing.T, ctx context.Context, cfg nodeConfig) testcontainers
 		"YACY_ADVERTISE_HOST":    cfg.alias,
 		"YACY_ADVERTISE_PORT":    nodeContainerPort,
 		"YACY_DATA_DIR":          "/tmp/data",
-		"YACY_ANNOUNCE_INTERVAL": "2s",
+		"YACY_ANNOUNCE_INTERVAL": "10s",
 		"LOG_LEVEL":              "debug",
 	}
 	if cfg.seedlistURL != "" {
 		env["YACY_SEEDLIST_URLS"] = cfg.seedlistURL
 	}
-	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		Started: true,
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:          nodeImage(t),
@@ -52,19 +58,25 @@ func startNode(t *testing.T, ctx context.Context, cfg nodeConfig) testcontainers
 			Networks:       []string{cfg.networkName},
 			NetworkAliases: map[string][]string{cfg.networkName: {cfg.alias}},
 			Tmpfs:          map[string]string{"/tmp": "rw,mode=1777"},
-			HostConfigModifier: func(hc *dockercontainer.HostConfig) {
-				hc.ReadonlyRootfs = true
-				hc.CapDrop = []string{"ALL"}
-				hc.SecurityOpt = append(hc.SecurityOpt, "no-new-privileges")
+			HostConfigModifier: func(hostConfig *dockercontainer.HostConfig) {
+				hostConfig.ReadonlyRootfs = true
+				hostConfig.CapDrop = []string{"ALL"}
+				hostConfig.SecurityOpt = append(hostConfig.SecurityOpt, "no-new-privileges")
 			},
 		},
 	})
 	if err != nil {
 		t.Fatalf("start node container from Dockerfile: %v", err)
 	}
-	t.Cleanup(func() { _ = c.Terminate(context.Background()) })
-	dumpLogsOnFailure(t, "node", c)
-	return c
+	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
+	dumpLogsOnFailure(t, "node", container)
+	nodeURL := hostURL(t, ctx, container)
+	if !waitFor(20*time.Second, func() bool {
+		return probe.OK(ctx, nodeURL+"/yacy/query.html?object=rwicount")
+	}) {
+		t.Fatalf("node %s never became reachable from the host", cfg.alias)
+	}
+	return container, nodeURL
 }
 
 func nodeImage(t *testing.T) string {

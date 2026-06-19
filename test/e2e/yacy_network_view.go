@@ -21,31 +21,31 @@ func seedlistSeniorHashes(body []byte) (map[string]struct{}, error) {
 	if err := xml.Unmarshal(body, &doc); err != nil {
 		return out, err
 	}
-	for _, s := range doc.Seeds {
-		if s.Hash != "" && s.PeerType == "senior" {
-			out[s.Hash] = struct{}{}
+	for _, seed := range doc.Seeds {
+		if seed.Hash != "" && seed.PeerType == "senior" {
+			out[seed.Hash] = struct{}{}
 		}
 	}
 	return out, nil
 }
 
 func networkActivePeerHashes(body []byte) (map[string]struct{}, error) {
-	dec := xml.NewDecoder(bytes.NewReader(body))
+	decoder := xml.NewDecoder(bytes.NewReader(body))
 	out := map[string]struct{}{}
 	for {
-		tok, err := dec.Token()
+		token, err := decoder.Token()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			return map[string]struct{}{}, err
 		}
-		start, ok := tok.(xml.StartElement)
+		start, ok := token.(xml.StartElement)
 		if !ok || start.Name.Local != "hash" {
 			continue
 		}
 		var hash string
-		if err := dec.DecodeElement(&hash, &start); err != nil {
+		if err := decoder.DecodeElement(&hash, &start); err != nil {
 			return map[string]struct{}{}, err
 		}
 		hash = strings.TrimSpace(hash)

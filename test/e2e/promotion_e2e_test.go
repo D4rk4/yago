@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
@@ -19,30 +20,18 @@ func TestRealYaCyPromotesNodeToSenior(t *testing.T) {
 	ctx := context.Background()
 	probe := newHTTPProbe(t)
 
-	nw := newHermeticNetwork(t, ctx)
+	network := newHermeticNetwork(t, ctx)
 
-	yacyC := startYaCy(t, ctx, nw.Name, yacyAlias)
-	yacyURL := hostURL(t, ctx, yacyC)
-	if !waitFor(stageYaCyReady, func() bool {
-		return probe.OK(ctx, yacyURL+"/yacy/query.html?object=rwicount")
-	}) {
-		t.Fatal("YaCy never became reachable from the host")
-	}
+	_, yacyURL := startYaCy(t, ctx, probe, network.Name, yacyAlias)
 
-	nodeC := startNode(t, ctx, nodeConfig{
-		networkName: nw.Name,
+	startNode(t, ctx, probe, nodeConfig{
+		networkName: network.Name,
 		alias:       nodeAlias,
 		hash:        nodeHash,
 		seedlistURL: "http://" + yacyAlias + ":" + nodeContainerPort + "/yacy/seedlist.html",
 	})
-	nodeURL := hostURL(t, ctx, nodeC)
-	if !waitFor(stageNodeReady, func() bool {
-		return probe.OK(ctx, nodeURL+"/yacy/query.html?object=rwicount")
-	}) {
-		t.Fatal("node never became reachable from the host")
-	}
 
-	if !waitFor(stageHelloHandshake, func() bool {
+	if !waitFor(15*time.Second, func() bool {
 		result := probe.Get(ctx, yacyURL+"/Network.xml?page=1&maxCount=1000")
 		if !result.ok {
 			return false
@@ -57,7 +46,7 @@ func TestRealYaCyPromotesNodeToSenior(t *testing.T) {
 		t.Fatalf("YaCy never saw node hash %s as an active connected peer", nodeHash)
 	}
 
-	promoted := waitFor(stageSeniorPromotion, func() bool {
+	promoted := waitFor(45*time.Second, func() bool {
 		result := probe.Get(ctx, yacyURL+"/yacy/seedlist.xml")
 		if !result.ok {
 			return false
