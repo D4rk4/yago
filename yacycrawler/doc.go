@@ -6,6 +6,6 @@
 // Publisher and Receiver seam (an in-process bounded queue here), so a real
 // broker and the node's own consumer can replace the in-process pieces later.
 //
-// URL hashing in this package is provisional and not yet verified against the
-// YaCy Java reference; word hashing reuses yacymodel and is the conformant path.
+// URL and word hashing both delegate to yacymodel, which reproduces the YaCy
+// Java reference algorithms.
 package yacycrawler
