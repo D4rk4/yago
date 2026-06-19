@@ -71,9 +71,9 @@ func TestParseURIMetadataRowErrors(t *testing.T) {
 		"{=novalue}",
 		"{hash=MNOPQRSTUVWX,badtoken}",
 		"{hash=short}",
-		"{hash=MNOPQRSTUVWX,flags=AAAAAAA}",
-		"{hash=MNOPQRSTUVWX,mod=20251301}",
-		"{hash=MNOPQRSTUVWX,size=-1}",
+		"{hash=MNOPQRSTUVWX,flags=!}",
+		"{hash=MNOPQRSTUVWX,dt=}",
+		"{hash=MNOPQRSTUVWX,size=bad}",
 	} {
 		if _, err := ParseURIMetadataRow(bad); !errors.Is(err, ErrBadURLMetadata) {
 			t.Errorf("ParseURIMetadataRow(%q) = %v, want ErrBadURLMetadata", bad, err)

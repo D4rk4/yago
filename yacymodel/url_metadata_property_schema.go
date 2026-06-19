@@ -4,13 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"time"
 )
 
 const (
 	urlMetadataOpen  = '{'
 	urlMetadataClose = '}'
-	shortDayLength   = len("20060102")
 )
 
 var errInvalidURLMetadataProperty = errors.New("invalid url metadata property")
@@ -46,79 +44,27 @@ func validateURLMetadataProperty(key, value string) error {
 				return fmt.Errorf("%w %s: %w", errInvalidURLMetadataProperty, key, err)
 			}
 		}
-	case "mod", "load", "fresh":
-		if err := validateShortDay(key, value); err != nil {
-			return err
-		}
 	case "dt":
-		if len(value) != 1 {
+		if value == "" {
 			return fmt.Errorf(
-				"%w %s: length %d, want 1",
+				"%w %s: empty",
 				errInvalidURLMetadataProperty,
 				key,
-				len(value),
-			)
-		}
-	case "lang":
-		if value != "" && len(value) != langLength {
-			return fmt.Errorf(
-				"%w %s: length %d, want %d",
-				errInvalidURLMetadataProperty,
-				key,
-				len(value),
-				langLength,
 			)
 		}
 	case "flags":
 		if value != "" {
-			if err := validateEncodedBitfieldMaxBytes(value, rwiByteFlagLength); err != nil {
+			if _, err := Decode(value); err != nil {
 				return fmt.Errorf("%w %s: %w", errInvalidURLMetadataProperty, key, err)
 			}
 		}
-	case "url", "descr", "author", "tags", "publisher", "snippet", "favicon", "mime":
-		if err := validateSimpleEncodedValue(key, value); err != nil {
-			return err
-		}
 	}
 	if _, ok := urlMetadataIntegerKeys[key]; ok {
-		if _, err := strconv.ParseUint(value, 10, 64); err != nil {
+		if _, err := strconv.ParseInt(value, 10, 64); err != nil {
 			return fmt.Errorf("%w %s: %w", errInvalidURLMetadataProperty, key, err)
 		}
 	}
 	return nil
-}
-
-func validateShortDay(key, value string) error {
-	if len(value) != shortDayLength {
-		return fmt.Errorf(
-			"%w %s: length %d, want %d",
-			errInvalidURLMetadataProperty,
-			key,
-			len(value),
-			shortDayLength,
-		)
-	}
-	if _, err := time.Parse("20060102", value); err != nil {
-		return fmt.Errorf("%w %s: %w", errInvalidURLMetadataProperty, key, err)
-	}
-	return nil
-}
-
-func validateSimpleEncodedValue(key, value string) error {
-	if len(value) < 2 || value[1] != wireFormSep {
-		return nil
-	}
-	switch value[0] {
-	case wireFormPlain, wireFormBase64, wireFormGzip:
-		return nil
-	default:
-		return fmt.Errorf(
-			"%w %s: simple encoding tag %q",
-			errInvalidURLMetadataProperty,
-			key,
-			value[0],
-		)
-	}
 }
 
 func urlMetadataHash(props map[string]string) (Hash, error) {

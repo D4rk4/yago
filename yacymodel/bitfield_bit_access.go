@@ -1,6 +1,11 @@
 package yacymodel
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+var errInvalidBitfield = errors.New("invalid bitfield")
 
 type Bitfield []byte
 
