@@ -40,7 +40,7 @@ func tagged(tag byte, body string) string {
 
 func DecodeSeedWireForm(form string) (string, error) {
 	if len(form) < 2 || form[1] != wireFormSep {
-		return "", ErrBadSeedWireForm
+		return form, nil
 	}
 	body := form[2:]
 	switch form[0] {

@@ -21,11 +21,13 @@ func TestParseMessage(t *testing.T) {
 	}
 }
 
-func TestParseMessageRejectsMalformedLine(t *testing.T) {
-	for _, input := range []string{"noeq\n", "=novalue\n"} {
-		if _, err := ParseMessage(input); err == nil {
-			t.Errorf("ParseMessage(%q) error = nil, want error", input)
-		}
+func TestParseMessageIgnoresMalformedLines(t *testing.T) {
+	msg, err := ParseMessage("noeq\n=novalue\nok=yes\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msg) != 1 || msg["ok"] != "yes" {
+		t.Errorf("message = %v", msg)
 	}
 }
 
@@ -36,6 +38,19 @@ func TestParseMessageLastWins(t *testing.T) {
 	}
 	if msg["k"] != "second" {
 		t.Errorf("k = %q, want second", msg["k"])
+	}
+}
+
+func TestParseMessageUsesYaCyTableRules(t *testing.T) {
+	msg, err := ParseMessage("# ignored\n spaced = value \nkey\\=part=line\\nnext\\\\tail\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg["spaced"] != "value" {
+		t.Errorf("spaced = %q", msg["spaced"])
+	}
+	if msg["key=part"] != "line\nnext\\tail" {
+		t.Errorf("escaped = %q", msg["key=part"])
 	}
 }
 

@@ -2,7 +2,6 @@ package yacymodel
 
 import (
 	"errors"
-	"fmt"
 	"slices"
 	"strings"
 )
@@ -14,17 +13,42 @@ type Message map[string]string
 func ParseMessage(data string) (Message, error) {
 	msg := make(Message)
 	for line := range strings.SplitSeq(data, "\n") {
-		line = strings.TrimSuffix(line, "\r")
-		if line == "" {
+		line = strings.TrimSpace(line)
+		if line == "" || line[0] == '#' {
 			continue
 		}
-		key, value, found := strings.Cut(line, "=")
-		if !found || key == "" {
-			return nil, fmt.Errorf("%w: %q", ErrBadMessage, line)
+		pos := unescapedEquals(line)
+		if pos <= 0 {
+			continue
 		}
+		key := unescapeMessagePart(strings.TrimSpace(line[:pos]))
+		value := unescapeMessagePart(strings.TrimSpace(line[pos+1:]))
 		msg[key] = value
 	}
 	return msg, nil
+}
+
+func unescapedEquals(line string) int {
+	pos := 0
+	for {
+		next := strings.IndexByte(line[pos+1:], '=')
+		if next < 0 {
+			return -1
+		}
+		pos += next + 1
+		if line[pos-1] != '\\' {
+			return pos
+		}
+	}
+}
+
+func unescapeMessagePart(s string) string {
+	replacer := strings.NewReplacer(
+		`\\`, `\`,
+		`\n`, "\n",
+		`\=`, `=`,
+	)
+	return replacer.Replace(s)
 }
 
 func (m Message) Encode() string {

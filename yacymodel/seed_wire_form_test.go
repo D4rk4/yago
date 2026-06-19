@@ -44,8 +44,25 @@ func TestDecodeSeedWireFormExplicit(t *testing.T) {
 	}
 }
 
+func TestDecodeSeedWireFormAcceptsBareSeed(t *testing.T) {
+	for _, input := range []string{
+		"{Hash=ABCDEFGHIJKL}",
+		"Hash=ABCDEFGHIJKL",
+		"",
+		"x",
+	} {
+		got, err := DecodeSeedWireForm(input)
+		if err != nil {
+			t.Fatalf("DecodeSeedWireForm(%q) error = %v", input, err)
+		}
+		if got != input {
+			t.Errorf("DecodeSeedWireForm(%q) = %q", input, got)
+		}
+	}
+}
+
 func TestDecodeSeedWireFormErrors(t *testing.T) {
-	for _, bad := range []string{"", "x", "q|data", "b|==="} {
+	for _, bad := range []string{"q|data", "b|==="} {
 		if _, err := DecodeSeedWireForm(bad); err == nil {
 			t.Errorf("DecodeSeedWireForm(%q) = nil error", bad)
 		}
