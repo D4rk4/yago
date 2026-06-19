@@ -3,7 +3,7 @@ MODULES := . yacymodel yacyproto
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 80
 
-.PHONY: fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-image
+.PHONY: fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-image peer-hash
 
 E2E_TIMEOUT ?= 10m
 E2E_NODE_IMAGE ?= yacy-rwi-node:e2e
@@ -67,6 +67,9 @@ build:
 		echo "==> build $$m"; \
 		( cd $$m && $(GO) build ./... ); \
 	done
+
+peer-hash:
+	$(GO) run ./cmd/yacy-peer-hash
 
 verify: fmt-check vet lint arch test cover-check build
 
