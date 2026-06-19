@@ -1,0 +1,135 @@
+package yacycrawler_test
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler"
+	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+)
+
+const pageBody = `<html lang="en"><head><title>Platypus</title></head>
+<body><p>The platypus swims in rivers.</p></body></html>`
+
+func TestPipelineEndToEndDeliversBatch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		if _, err := w.Write([]byte(pageBody)); err != nil {
+			t.Errorf("write body: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	jobs := yacycrawler.NewJobQueue(4)
+	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](4)
+	fetcher := yacycrawler.NewPageFetcher(
+		server.Client(),
+		yacycrawler.DefaultMaxBodyBytes,
+		yacycrawler.DefaultUserAgent,
+	)
+	publisher := yacycrawler.NewIngestPublisher(ingest)
+	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, 0, true)
+	pipeline := yacycrawler.NewPipeline(
+		jobs,
+		fetcher,
+		publisher,
+		frontier,
+		yacycrawler.NewBotWallDetector(),
+	)
+	node := yacycrawler.NewFakeNodeIngest(ingest)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	nodeDone := make(chan struct{})
+	go func() {
+		node.Run(ctx)
+		close(nodeDone)
+	}()
+	workersDone := make(chan struct{})
+	go func() {
+		pipeline.RunWorkers(ctx, 2)
+		close(workersDone)
+	}()
+
+	frontier.Seed(ctx, []string{server.URL})
+	<-workersDone
+	ingest.Close()
+	<-nodeDone
+
+	batches := node.Batches()
+	if len(batches) != 1 {
+		t.Fatalf("got %d batches, want 1", len(batches))
+	}
+	batch := batches[0]
+	if len(batch.Metadata) != 1 {
+		t.Fatalf("got %d metadata rows, want 1", len(batch.Metadata))
+	}
+
+	want := yacymodel.WordHash("platypus")
+	found := false
+	for _, entry := range batch.Postings {
+		if entry.WordHash == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no posting for 'platypus' word hash %q", want)
+	}
+}
+
+func TestPipelineDropsBotWall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		if _, err := w.Write(
+			[]byte("<html><head><title>Just a moment...</title></head></html>"),
+		); err != nil {
+			t.Errorf("write body: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	jobs := yacycrawler.NewJobQueue(4)
+	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](4)
+	fetcher := yacycrawler.NewPageFetcher(
+		server.Client(),
+		yacycrawler.DefaultMaxBodyBytes,
+		yacycrawler.DefaultUserAgent,
+	)
+	publisher := yacycrawler.NewIngestPublisher(ingest)
+	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, 0, true)
+	pipeline := yacycrawler.NewPipeline(
+		jobs,
+		fetcher,
+		publisher,
+		frontier,
+		yacycrawler.NewBotWallDetector(),
+	)
+	node := yacycrawler.NewFakeNodeIngest(ingest)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	nodeDone := make(chan struct{})
+	go func() {
+		node.Run(ctx)
+		close(nodeDone)
+	}()
+	workersDone := make(chan struct{})
+	go func() {
+		pipeline.RunWorkers(ctx, 2)
+		close(workersDone)
+	}()
+
+	frontier.Seed(ctx, []string{server.URL})
+	<-workersDone
+	ingest.Close()
+	<-nodeDone
+
+	if len(node.Batches()) != 0 {
+		t.Errorf("bot wall page should not be ingested, got %d batches", len(node.Batches()))
+	}
+}

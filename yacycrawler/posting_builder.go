@@ -1,0 +1,74 @@
+package yacycrawler
+
+import (
+	"maps"
+
+	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+)
+
+func BuildPostings(page ParsedPage) []yacymodel.RWIEntry {
+	tokens := Tokenize(page.Text)
+	titleTokens := Tokenize(page.Title)
+
+	frequency := make(map[string]int)
+	firstPosition := make(map[string]int)
+	order := make([]string, 0)
+	for position, token := range tokens {
+		if _, seen := frequency[token]; !seen {
+			firstPosition[token] = position
+			order = append(order, token)
+		}
+		frequency[token]++
+	}
+
+	urlHash := string(URLHash(page.URL))
+	language := NormalizeLanguage(page.Language)
+	local, external := ResolveLinks(page.URL, page.Links)
+
+	shared := map[string]string{
+		yacymodel.ColURLHash:  urlHash,
+		yacymodel.ColLanguage: language,
+		yacymodel.ColTextWordCount: yacymodel.FormatRWICardinal(
+			cardinalValue(len(tokens), maxUint16),
+		),
+		yacymodel.ColTitleWordCount: yacymodel.FormatRWICardinal(
+			cardinalValue(len(titleTokens), maxUint8),
+		),
+		yacymodel.ColLocalLinkCount: yacymodel.FormatRWICardinal(
+			cardinalValue(len(local), maxUint8),
+		),
+		yacymodel.ColExternalLinkCount: yacymodel.FormatRWICardinal(
+			cardinalValue(len(external), maxUint8),
+		),
+	}
+
+	postings := make([]yacymodel.RWIEntry, 0, len(order))
+	for _, token := range order {
+		properties := make(map[string]string, len(shared)+2)
+		maps.Copy(properties, shared)
+		hits := cardinalValue(frequency[token], maxUint8)
+		position := cardinalValue(firstPosition[token], maxUint16)
+		properties[yacymodel.ColHitCount] = yacymodel.FormatRWICardinal(hits)
+		properties[yacymodel.ColTextPosition] = yacymodel.FormatRWICardinal(position)
+		postings = append(postings, yacymodel.RWIEntry{
+			WordHash:   yacymodel.WordHash(token),
+			Properties: properties,
+		})
+	}
+	return postings
+}
+
+const (
+	maxUint8  = 0xff
+	maxUint16 = 0xffff
+)
+
+func cardinalValue(value, maximum int) uint64 {
+	if value < 0 {
+		return 0
+	}
+	if value > maximum {
+		value = maximum
+	}
+	return uint64(value)
+}

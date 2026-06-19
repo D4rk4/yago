@@ -26,7 +26,7 @@ func normalizeRWIProperties(props map[string]string) (map[string]string, error) 
 func normalizeRWIProperty(key, value string) (string, error) {
 	if _, ok := rwiCardinalWidths[key]; ok {
 		n := parseRWIDecimalPrefix(value)
-		return strconv.FormatUint(fixedWidthUnsigned(n, rwiCardinalWidths[key]), 10), nil
+		return FormatRWICardinal(fixedWidthUnsigned(n, rwiCardinalWidths[key])), nil
 	}
 	switch key {
 	case ColDocType, ColWordType:

@@ -34,6 +34,10 @@ func EncodeSeedWireForm(seed string) string {
 	return shortest
 }
 
+func EncodeBase64WireForm(s string) string {
+	return tagged(wireFormBase64, Encode([]byte(s)))
+}
+
 func tagged(tag byte, body string) string {
 	return string([]byte{tag, wireFormSep}) + body
 }

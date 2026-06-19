@@ -33,6 +33,18 @@ func TestEncodeSeedWireFormPicksShortest(t *testing.T) {
 	}
 }
 
+func TestEncodeBase64WireFormIsPropertySafe(t *testing.T) {
+	raw := "http://example.com/p?a=b,c={x}&d=e"
+	form := EncodeBase64WireForm(raw)
+	if strings.ContainsAny(form[2:], ",={}") {
+		t.Errorf("base64 wire form must avoid property delimiters: %q", form)
+	}
+	got, err := DecodeSeedWireForm(form)
+	if err != nil || got != raw {
+		t.Errorf("round trip = %q, %v", got, err)
+	}
+}
+
 func TestDecodeSeedWireFormExplicit(t *testing.T) {
 	plain, err := DecodeSeedWireForm("p|Hash=ABCDEFGHIJKL")
 	if err != nil || plain != "Hash=ABCDEFGHIJKL" {

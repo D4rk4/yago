@@ -1,5 +1,5 @@
 GO ?= go
-MODULES := . yacymodel yacyproto
+MODULES := . yacymodel yacyproto yacycrawler
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 80
 

@@ -17,10 +17,24 @@ components:
     in: internal/infrastructure/**
   cmd:
     in: cmd/**
+  yacycrawler:
+    in: yacycrawler/**
 
 vendors:
   bbolt:
     in: go.etcd.io/bbolt
+  xnet-html:
+    in:
+      - golang.org/x/net/html
+      - golang.org/x/net/html/**
+  robotstxt:
+    in: github.com/temoto/robotstxt
+  xtime-rate:
+    in: golang.org/x/time/rate
+  trafilatura:
+    in: github.com/markusmobius/go-trafilatura
+  chromedp:
+    in: github.com/chromedp/chromedp
 
 deps:
   yacymodel:
@@ -56,6 +70,16 @@ deps:
       - infrastructure
       - yacymodel
       - yacyproto
+  yacycrawler:
+    mayDependOn:
+      - yacycrawler
+      - yacymodel
+    canUse:
+      - xnet-html
+      - robotstxt
+      - xtime-rate
+      - trafilatura
+      - chromedp
 
 excludeFiles:
   - "test/e2e"
