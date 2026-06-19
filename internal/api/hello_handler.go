@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net"
 	"net/http"
 
@@ -63,5 +64,6 @@ func (h *helloHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		resp.Seeds = append(resp.Seeds, outcome.Known...)
 	}
 
+	slog.DebugContext(ctx, "hello served", "seed_count", len(resp.Seeds))
 	writeWireMessage(w, resp.Encode())
 }

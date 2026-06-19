@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
@@ -52,6 +53,7 @@ func (h *queryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		resp.Response = count
 	}
 
+	slog.DebugContext(ctx, "count served", "object", req.Object, "count", resp.Response)
 	writeWireMessage(w, resp.Encode())
 }
 

@@ -82,6 +82,12 @@ func (h *searchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		resp.IndexAbstract = result.Abstracts
 	}
 
+	slog.DebugContext(
+		ctx,
+		"search completed",
+		"result_count", resp.Count,
+		"join_count", resp.JoinCount,
+	)
 	writeWireMessage(w, resp.Encode())
 }
 

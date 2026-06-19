@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
@@ -61,5 +62,12 @@ func (h *transferURLHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	resp.Double = receipt.Double
 	resp.ErrorURL = receipt.ErrorURL
 
+	slog.DebugContext(
+		ctx,
+		"transfer url stored",
+		"busy", receipt.Busy,
+		"double_count", receipt.Double,
+		"error_url_count", len(receipt.ErrorURL),
+	)
 	writeWireMessage(w, resp.Encode())
 }

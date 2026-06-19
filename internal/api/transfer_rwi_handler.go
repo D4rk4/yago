@@ -71,5 +71,12 @@ func (h *transferRWIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	resp.UnknownURL = receipt.UnknownURL
 	resp.ErrorURL = receipt.ErrorURL
 
+	slog.DebugContext(
+		ctx,
+		"transfer rwi stored",
+		"busy", receipt.Busy,
+		"unknown_url_count", len(receipt.UnknownURL),
+		"error_url_count", len(receipt.ErrorURL),
+	)
 	writeWireMessage(w, resp.Encode())
 }
