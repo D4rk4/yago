@@ -1,0 +1,27 @@
+services:
+  yacy-rwi-node:
+    build:
+      context: .
+    image: yacy-rwi-node:latest
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+      - "9090:9090"
+    environment:
+      YACY_PEER_HASH: ${YACY_PEER_HASH:?set YACY_PEER_HASH in .env}
+      YACY_PEER_NAME: ${YACY_PEER_NAME:?set YACY_PEER_NAME in .env}
+      YACY_ADVERTISE_HOST: ${YACY_ADVERTISE_HOST:?set YACY_ADVERTISE_HOST in .env}
+      YACY_NETWORK_NAME: ${YACY_NETWORK_NAME:-freeworld}
+      YACY_SEEDLIST_URLS: >-
+        http://sixcooler.de/yacy/seed.txt,
+        https://sonst.mifritscher.de/yacy/seed.txt,
+        http://5.45.105.16/yacyseed,
+        http://yacy.v16.de/seed/seed.txt,
+        https://frank-siebert.de/seed.txt,
+        http://seedlist.wertewesten.net/seed.txt
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - yacy-data:/data
+
+volumes:
+  yacy-data:
