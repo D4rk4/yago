@@ -1,7 +1,6 @@
 package yacyproto
 
 import (
-	"fmt"
 	"net/url"
 	"strings"
 
@@ -237,9 +236,7 @@ func ParseSearchResponse(m yacymodel.Message) (SearchResponse, error) {
 		return SearchResponse{}, err
 	}
 
-	if resp.Resources, err = parseSearchResources(m); err != nil {
-		return SearchResponse{}, err
-	}
+	resp.Resources = parseSearchResources(m, resp.Count)
 
 	if resp.IndexCount, resp.IndexAbstract, err = parseSearchIndexes(m); err != nil {
 		return SearchResponse{}, err
@@ -248,19 +245,32 @@ func ParseSearchResponse(m yacymodel.Message) (SearchResponse, error) {
 	return resp, nil
 }
 
-func parseSearchResources(m yacymodel.Message) ([]yacymodel.URIMetadataRow, error) {
+func parseSearchResources(m yacymodel.Message, count int) []yacymodel.URIMetadataRow {
 	var rows []yacymodel.URIMetadataRow
+	if count > 0 {
+		for i := range count {
+			raw, ok := m[indexedKey(prefixResource, i)]
+			if !ok {
+				continue
+			}
+			row, err := yacymodel.ParseURIMetadataRow(raw)
+			if err != nil {
+				continue
+			}
+			rows = append(rows, row)
+		}
+		return rows
+	}
+
 	for i := 0; ; i++ {
 		raw, ok := m[indexedKey(prefixResource, i)]
 		if !ok {
-			return rows, nil
+			return rows
 		}
 
 		row, err := yacymodel.ParseURIMetadataRow(raw)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"search response %s: %w", indexedKey(prefixResource, i), err,
-			)
+			continue
 		}
 
 		rows = append(rows, row)

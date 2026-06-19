@@ -51,6 +51,9 @@ func Decode(s string) ([]byte, error) {
 	var buf uint32
 	var bits uint
 	for i := range len(s) {
+		if s[i] == '\n' {
+			continue
+		}
 		v := decodeTable[s[i]]
 		if v < 0 {
 			return nil, fmt.Errorf("%w: %q", ErrInvalidBase64, s[i])

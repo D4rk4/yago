@@ -135,3 +135,24 @@ func TestSearchResponseUsesYaCyLinkCountField(t *testing.T) {
 		t.Fatalf("count = %d, want 5", got.Count)
 	}
 }
+
+func TestParseSearchResponseSkipsMissingAndBadResources(t *testing.T) {
+	t.Parallel()
+
+	valid := sampleURLRow(t, "url-a")
+	msg := yacymodel.Message{
+		yacyproto.FieldLinkCount: "3",
+		"resource0":              valid.String(),
+		"resource2":              "bad",
+	}
+	got, err := yacyproto.ParseSearchResponse(msg)
+	if err != nil {
+		t.Fatalf("ParseSearchResponse: %v", err)
+	}
+	if len(got.Resources) != 1 {
+		t.Fatalf("resources = %d, want 1", len(got.Resources))
+	}
+	if !reflect.DeepEqual(got.Resources[0], valid) {
+		t.Fatalf("resource = %#v, want %#v", got.Resources[0], valid)
+	}
+}

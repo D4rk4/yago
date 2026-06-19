@@ -52,6 +52,16 @@ func TestDecodeInvalid(t *testing.T) {
 	}
 }
 
+func TestDecodeIgnoresLineFeeds(t *testing.T) {
+	got, err := Decode("AQ\nID")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, []byte{1, 2, 3}) {
+		t.Fatalf("Decode with newline = %v", got)
+	}
+}
+
 func TestCardinalPaddingAndRange(t *testing.T) {
 	empty, err := cardinal("")
 	if err != nil {
