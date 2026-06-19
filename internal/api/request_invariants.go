@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -14,6 +15,8 @@ import (
 )
 
 const multipartContentType = "multipart/form-data"
+
+const requestAcceptedMessage = "request accepted"
 
 type requestGuard struct {
 	ident        contracts.Identity
@@ -59,6 +62,12 @@ func (g requestGuard) parse(
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), g.timeout)
+
+	slog.DebugContext(ctx, requestAcceptedMessage,
+		"method", r.Method,
+		"path", r.URL.Path,
+		"form", r.Form,
+	)
 
 	return r.Form, ctx, cancel, true
 }
