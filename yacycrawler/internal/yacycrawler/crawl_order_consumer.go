@@ -5,10 +5,12 @@ import (
 	"log/slog"
 )
 
-const msgProfileRegisterFailed = "crawl profile registration failed"
-const msgOrderAckFailed = "crawl order ack failed"
-const msgOrderNakFailed = "crawl order nak failed"
-const msgOrderTermFailed = "crawl order term failed"
+const (
+	msgProfileRegisterFailed = "crawl profile registration failed"
+	msgOrderAckFailed        = "crawl order ack failed"
+	msgOrderNakFailed        = "crawl order nak failed"
+	msgOrderTermFailed       = "crawl order term failed"
+)
 
 type CrawlOrderConsumer struct {
 	orders   Receiver[CrawlOrderDelivery]

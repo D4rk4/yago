@@ -17,13 +17,15 @@ func TestPipelineEndToEndDeliversBatch(t *testing.T) {
 
 	jobs := yacycrawler.NewJobQueue(4)
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](4)
-	fetcher := pageSourceFunc(func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
-		return yacycrawler.FetchedPage{
-			URL:         rawURL,
-			ContentType: "text/html",
-			Body:        []byte(pageBody),
-		}, nil
-	})
+	fetcher := pageSourceFunc(
+		func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
+			return yacycrawler.FetchedPage{
+				URL:         rawURL,
+				ContentType: "text/html",
+				Body:        []byte(pageBody),
+			}, nil
+		},
+	)
 	publisher := yacycrawler.NewIngestPublisher(ingest)
 	registry := yacycrawler.NewCrawlProfileRegistry()
 	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
@@ -83,13 +85,15 @@ func TestPipelineDropsBotWall(t *testing.T) {
 
 	jobs := yacycrawler.NewJobQueue(4)
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](4)
-	fetcher := pageSourceFunc(func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
-		return yacycrawler.FetchedPage{
-			URL:         rawURL,
-			ContentType: "text/html",
-			Body:        []byte("<html><head><title>Just a moment...</title></head></html>"),
-		}, nil
-	})
+	fetcher := pageSourceFunc(
+		func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
+			return yacycrawler.FetchedPage{
+				URL:         rawURL,
+				ContentType: "text/html",
+				Body:        []byte("<html><head><title>Just a moment...</title></head></html>"),
+			}, nil
+		},
+	)
 	publisher := yacycrawler.NewIngestPublisher(ingest)
 	registry := yacycrawler.NewCrawlProfileRegistry()
 	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)

@@ -58,9 +58,11 @@ func TestPolitePageFetcherRejectsDisallowed(t *testing.T) {
 	}))
 	defer server.Close()
 
-	fetcher := pageSourceFunc(func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
-		return yacycrawler.FetchedPage{URL: rawURL}, nil
-	})
+	fetcher := pageSourceFunc(
+		func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
+			return yacycrawler.FetchedPage{URL: rawURL}, nil
+		},
+	)
 	gate := yacycrawler.NewPolitenessGate(
 		server.Client(),
 		yacycrawler.DefaultUserAgent,

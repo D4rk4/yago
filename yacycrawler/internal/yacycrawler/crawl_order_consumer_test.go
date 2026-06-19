@@ -18,13 +18,15 @@ func TestCrawlOrderRoundTripCarriesProvenanceAndHandle(t *testing.T) {
 	orders := yacycrawler.NewBoundedQueue[yacycrawler.CrawlOrderDelivery](2)
 	registry := yacycrawler.NewCrawlProfileRegistry()
 
-	fetcher := pageSourceFunc(func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
-		return yacycrawler.FetchedPage{
-			URL:         rawURL,
-			ContentType: "text/html",
-			Body:        []byte(`<html lang="en"><title>Hi</title><body>words</body></html>`),
-		}, nil
-	})
+	fetcher := pageSourceFunc(
+		func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
+			return yacycrawler.FetchedPage{
+				URL:         rawURL,
+				ContentType: "text/html",
+				Body:        []byte(`<html lang="en"><title>Hi</title><body>words</body></html>`),
+			}, nil
+		},
+	)
 	publisher := yacycrawler.NewIngestPublisher(ingest)
 	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
 	pipeline := yacycrawler.NewPipeline(
@@ -76,12 +78,18 @@ func TestCrawlOrderRoundTripCarriesProvenanceAndHandle(t *testing.T) {
 
 func TestCrawlOrderQueueAppliesBackpressure(t *testing.T) {
 	orders := yacycrawler.NewBoundedQueue[yacycrawler.CrawlOrderDelivery](1)
-	if err := orders.Publish(context.Background(), yacycrawler.NewCrawlOrderDelivery(yacycrawlcontract.CrawlOrder{})); err != nil {
+	if err := orders.Publish(
+		context.Background(),
+		yacycrawler.NewCrawlOrderDelivery(yacycrawlcontract.CrawlOrder{}),
+	); err != nil {
 		t.Fatalf("first publish: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := orders.Publish(ctx, yacycrawler.NewCrawlOrderDelivery(yacycrawlcontract.CrawlOrder{})); err == nil {
+	if err := orders.Publish(
+		ctx,
+		yacycrawler.NewCrawlOrderDelivery(yacycrawlcontract.CrawlOrder{}),
+	); err == nil {
 		t.Error("expected blocked publish on saturated order queue, got nil error")
 	}
 }
@@ -104,13 +112,17 @@ func TestIngestQueueFansInFromMultipleCrawlers(t *testing.T) {
 		go func() {
 			jobs := yacycrawler.NewJobQueue(8)
 			registry := yacycrawler.NewCrawlProfileRegistry()
-			fetcher := pageSourceFunc(func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
-				return yacycrawler.FetchedPage{
-					URL:         rawURL,
-					ContentType: "text/html",
-					Body:        []byte(`<html lang="en"><title>Hi</title><body>words</body></html>`),
-				}, nil
-			})
+			fetcher := pageSourceFunc(
+				func(_ context.Context, rawURL string) (yacycrawler.FetchedPage, error) {
+					return yacycrawler.FetchedPage{
+						URL:         rawURL,
+						ContentType: "text/html",
+						Body: []byte(
+							`<html lang="en"><title>Hi</title><body>words</body></html>`,
+						),
+					}, nil
+				},
+			)
 			publisher := yacycrawler.NewIngestPublisher(ingest)
 			frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
 			pipeline := yacycrawler.NewPipeline(
