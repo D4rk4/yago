@@ -13,11 +13,9 @@ import (
 
 type fakeBootstrapConfig struct {
 	seedlists []string
-	peers     []string
 }
 
 func (c fakeBootstrapConfig) SeedlistURLs() []string          { return c.seedlists }
-func (c fakeBootstrapConfig) BootstrapPeers() []string        { return c.peers }
 func (c fakeBootstrapConfig) AnnounceInterval() time.Duration { return time.Hour }
 
 type fakeFetcher struct {
@@ -61,13 +59,12 @@ func (s fakeStatus) Snapshot(_ context.Context) contracts.StatusSnapshot {
 	return contracts.StatusSnapshot{Seed: s.seed}
 }
 
-func TestAnnounceGreetsConfiguredAndDiscoveredEndpoints(t *testing.T) {
+func TestAnnounceGreetsDiscoveredEndpoints(t *testing.T) {
 	greeter := &fakeGreeter{known: []yacymodel.Seed{callerSeed("known", "198.51.100.1", 8090)}}
 	reg := NewTrustedSeedRegistry(100)
 	announcement := NewPeerAnnouncement(
 		fakeBootstrapConfig{
 			seedlists: []string{"http://list"},
-			peers:     []string{"203.0.113.5:8090"},
 		},
 		fakeFetcher{seeds: map[string][]yacymodel.Seed{
 			"http://list": {callerSeed("disc", "203.0.113.6", 8090)},
@@ -79,7 +76,7 @@ func TestAnnounceGreetsConfiguredAndDiscoveredEndpoints(t *testing.T) {
 
 	announcement.Announce(context.Background())
 
-	wantEndpoints := []string{"203.0.113.5:8090", "203.0.113.6:8090"}
+	wantEndpoints := []string{"203.0.113.6:8090"}
 	if len(greeter.endpoints) != len(wantEndpoints) {
 		t.Fatalf("greeted %v, want %v", greeter.endpoints, wantEndpoints)
 	}
@@ -96,7 +93,6 @@ func TestAnnounceContinuesWhenSeedlistFails(t *testing.T) {
 	announcement := NewPeerAnnouncement(
 		fakeBootstrapConfig{
 			seedlists: []string{"http://list"},
-			peers:     []string{"203.0.113.5:8090"},
 		},
 		fakeFetcher{err: errors.New("offline")},
 		greeter,
@@ -106,8 +102,8 @@ func TestAnnounceContinuesWhenSeedlistFails(t *testing.T) {
 
 	announcement.Announce(context.Background())
 
-	if len(greeter.endpoints) != 1 || greeter.endpoints[0] != "203.0.113.5:8090" {
-		t.Fatalf("greeted %v, want bootstrap peer only", greeter.endpoints)
+	if len(greeter.endpoints) != 0 {
+		t.Fatalf("greeted %v, want none", greeter.endpoints)
 	}
 }
 

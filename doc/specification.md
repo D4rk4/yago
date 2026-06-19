@@ -22,13 +22,12 @@ storage and serving, suitable for low-resource Linux-class devices.
 * The node SHALL advertise one YaCy Senior peer identity.
 * The node SHALL require operators to configure the YaCy peer hash and peer name it advertises.
 * The node SHALL allow operators to configure the public host and port advertised in its YaCy seed.
-* The node SHALL announce itself through configured YaCy seedlists and bootstrap peers.
+* The node SHALL announce itself through configured YaCy seedlists.
 * The node SHALL allow operators to configure a proxy for outbound connections.
 * The node SHALL be reachable through one stable public endpoint.
 * The node SHALL support peer discovery and peer liveness exchange.
 * The node SHALL announce in peer-liveness responses only its own seed and peers obtained from
-  configured seedlists and bootstrap peers, and SHALL NOT redistribute peers self-reported in
-  inbound requests.
+  configured seedlists, and SHALL NOT redistribute peers self-reported in inbound requests.
 * The node SHALL honor the requested peer count in peer-liveness requests and select the announced
   peers at random.
 * The node SHALL receive inbound DHT RWI postings.

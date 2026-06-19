@@ -48,7 +48,7 @@ func run() error {
 		return fmt.Errorf("load bootstrap settings: %w", err)
 	}
 
-	announcing := len(bootstrap.SeedlistURLs()) > 0 || len(bootstrap.BootstrapPeers()) > 0
+	announcing := len(bootstrap.SeedlistURLs()) > 0
 
 	config, err := infrastructure.LoadNodeConfig(os.Getenv, announcing)
 	if err != nil {

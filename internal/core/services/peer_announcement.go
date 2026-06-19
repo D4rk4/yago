@@ -19,7 +19,6 @@ const (
 
 type bootstrapConfig interface {
 	SeedlistURLs() []string
-	BootstrapPeers() []string
 	AnnounceInterval() time.Duration
 }
 
@@ -100,7 +99,7 @@ func (a *PeerAnnouncement) Announce(ctx context.Context) {
 }
 
 func (a *PeerAnnouncement) discover(ctx context.Context) []string {
-	endpoints := append([]string(nil), a.config.BootstrapPeers()...)
+	var endpoints []string
 
 	for _, source := range a.config.SeedlistURLs() {
 		seeds, err := a.fetcher.Fetch(ctx, source)

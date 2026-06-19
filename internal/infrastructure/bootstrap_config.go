@@ -10,7 +10,6 @@ import (
 
 const (
 	EnvSeedlistURLs     = "YACY_SEEDLIST_URLS"
-	EnvBootstrapPeers   = "YACY_BOOTSTRAP_PEERS"
 	EnvAnnounceInterval = "YACY_ANNOUNCE_INTERVAL"
 
 	defaultAnnounceInterval = 10 * time.Minute
@@ -18,7 +17,6 @@ const (
 
 type BootstrapSettings struct {
 	seedlistURLs     []string
-	bootstrapPeers   []string
 	announceInterval time.Duration
 }
 
@@ -37,13 +35,11 @@ func LoadBootstrapSettings(getenv func(string) string) (BootstrapSettings, error
 
 	return BootstrapSettings{
 		seedlistURLs:     splitList(getenv(EnvSeedlistURLs)),
-		bootstrapPeers:   splitList(getenv(EnvBootstrapPeers)),
 		announceInterval: interval,
 	}, nil
 }
 
 func (s BootstrapSettings) SeedlistURLs() []string          { return s.seedlistURLs }
-func (s BootstrapSettings) BootstrapPeers() []string        { return s.bootstrapPeers }
 func (s BootstrapSettings) AnnounceInterval() time.Duration { return s.announceInterval }
 
 func splitList(raw string) []string {
