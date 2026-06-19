@@ -72,7 +72,7 @@ func searchWordPostings(
 		if err := ctx.Err(); err != nil {
 			return nil, 0, false, wrapContextErr(err)
 		}
-		entry, err := yacymodel.ParseRWIEntry(string(value))
+		entry, err := yacymodel.DecodeRWIPosting(word, value)
 		if err != nil {
 			return nil, 0, false, fmt.Errorf("parse rwi: %w", err)
 		}

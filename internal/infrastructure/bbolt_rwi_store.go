@@ -71,7 +71,7 @@ func (s *BboltStorage) AppendRWI(
 					return err
 				}
 			}
-			if err := rwi.Put(key, []byte(entry.String())); err != nil {
+			if err := rwi.Put(key, yacymodel.EncodeRWIPosting(entry)); err != nil {
 				return fmt.Errorf("store rwi: %w", err)
 			}
 		}

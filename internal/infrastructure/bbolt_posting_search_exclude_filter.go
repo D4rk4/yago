@@ -24,7 +24,7 @@ func excludedURLHashes(
 			if err := ctx.Err(); err != nil {
 				return nil, wrapContextErr(err)
 			}
-			entry, err := yacymodel.ParseRWIEntry(string(value))
+			entry, err := yacymodel.DecodeRWIPosting(word, value)
 			if err != nil {
 				return nil, fmt.Errorf("parse rwi: %w", err)
 			}

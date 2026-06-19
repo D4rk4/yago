@@ -89,10 +89,18 @@ func LoadNodeConfig(getenv func(string) string, announcing bool) (NodeConfig, er
 		Flags:            seniorFlags(),
 		PeerAddr:         peerAddr,
 		OpsAddr:          withDefault(getenv, EnvOpsAddr, defaultOpsAddr),
-		StoragePath:      filepath.Join(dataDir, storageFileName),
+		StoragePath:      storagePath(dataDir),
 		StorageQuotaByte: quota,
 		TrustedProxies:   proxies,
 	}, nil
+}
+
+func StoragePath(getenv func(string) string) string {
+	return storagePath(withDefault(getenv, EnvDataDir, defaultDataDir))
+}
+
+func storagePath(dataDir string) string {
+	return filepath.Join(dataDir, storageFileName)
 }
 
 func advertiseHost(getenv func(string) string, announcing bool) (string, error) {
