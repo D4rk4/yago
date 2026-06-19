@@ -2,7 +2,6 @@ package yacycrawler
 
 import (
 	"context"
-	"fmt"
 )
 
 type JobSink interface {
@@ -14,26 +13,21 @@ type JobSource interface {
 }
 
 type JobQueue struct {
-	ch chan CrawlJob
+	queue *BoundedQueue[CrawlJob]
 }
 
 func NewJobQueue(capacity int) *JobQueue {
-	return &JobQueue{ch: make(chan CrawlJob, capacity)}
+	return &JobQueue{queue: NewBoundedQueue[CrawlJob](capacity)}
 }
 
 func (q *JobQueue) Enqueue(ctx context.Context, job CrawlJob) error {
-	select {
-	case q.ch <- job:
-		return nil
-	case <-ctx.Done():
-		return fmt.Errorf("enqueue job: %w", ctx.Err())
-	}
+	return q.queue.Publish(ctx, job)
 }
 
 func (q *JobQueue) Jobs() <-chan CrawlJob {
-	return q.ch
+	return q.queue.Receive()
 }
 
 func (q *JobQueue) Close() {
-	close(q.ch)
+	q.queue.Close()
 }
