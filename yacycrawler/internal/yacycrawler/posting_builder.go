@@ -7,13 +7,14 @@ import (
 )
 
 func BuildPostings(page ParsedPage) []yacymodel.RWIEntry {
-	tokens := Tokenize(page.Text)
-	titleTokens := Tokenize(page.Title)
+	return buildPostings(page, BuildPageStats(page))
+}
 
+func buildPostings(page ParsedPage, stats PageStats) []yacymodel.RWIEntry {
 	frequency := make(map[string]int)
 	firstPosition := make(map[string]int)
 	order := make([]string, 0)
-	for position, token := range tokens {
+	for position, token := range stats.Tokens {
 		if _, seen := frequency[token]; !seen {
 			firstPosition[token] = position
 			order = append(order, token)
@@ -23,22 +24,21 @@ func BuildPostings(page ParsedPage) []yacymodel.RWIEntry {
 
 	urlHash := string(URLHash(page.URL))
 	language := NormalizeLanguage(page.Language)
-	local, external := ResolveLinks(page.URL, page.Links)
 
 	shared := map[string]string{
 		yacymodel.ColURLHash:  urlHash,
 		yacymodel.ColLanguage: language,
 		yacymodel.ColTextWordCount: yacymodel.FormatRWICardinal(
-			cardinalValue(len(tokens), maxUint16),
+			cardinalValue(len(stats.Tokens), maxUint16),
 		),
 		yacymodel.ColTitleWordCount: yacymodel.FormatRWICardinal(
-			cardinalValue(len(titleTokens), maxUint8),
+			cardinalValue(len(stats.TitleTokens), maxUint8),
 		),
 		yacymodel.ColLocalLinkCount: yacymodel.FormatRWICardinal(
-			cardinalValue(len(local), maxUint8),
+			cardinalValue(len(stats.LocalLinks), maxUint8),
 		),
 		yacymodel.ColExternalLinkCount: yacymodel.FormatRWICardinal(
-			cardinalValue(len(external), maxUint8),
+			cardinalValue(len(stats.ExternalLinks), maxUint8),
 		),
 	}
 
