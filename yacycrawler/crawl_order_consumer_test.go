@@ -41,7 +41,7 @@ func TestCrawlOrderRoundTripCarriesProvenanceAndHandle(t *testing.T) {
 		yacycrawler.NewBotWallDetector(),
 	)
 	consumer := yacycrawler.NewCrawlOrderConsumer(orders, registry, frontier)
-	node := yacycrawler.NewFakeNodeIngest(ingest)
+	node := newFakeNodeIngest(ingest)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -53,11 +53,10 @@ func TestCrawlOrderRoundTripCarriesProvenanceAndHandle(t *testing.T) {
 	consumerDone := make(chan struct{})
 	go func() { consumer.Run(ctx); close(consumerDone) }()
 
-	cfg := yacycrawler.DefaultConfig()
-	cfg.SeedURLs = []string{server.URL}
+	cfg := yacycrawler.DefaultCrawlConfig()
 	cfg.MaxDepth = 0
 	token := []byte("remote-peer:abc123")
-	order := cfg.DefaultOrder(token)
+	order := defaultCrawlOrder(cfg, token, server.URL)
 
 	if err := orders.Publish(ctx, order); err != nil {
 		t.Fatalf("publish order: %v", err)
@@ -105,7 +104,7 @@ func TestIngestQueueFansInFromMultipleCrawlers(t *testing.T) {
 	defer server.Close()
 
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](16)
-	node := yacycrawler.NewFakeNodeIngest(ingest)
+	node := newFakeNodeIngest(ingest)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

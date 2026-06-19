@@ -40,7 +40,7 @@ func TestPipelineEndToEndDeliversBatch(t *testing.T) {
 		frontier,
 		yacycrawler.NewBotWallDetector(),
 	)
-	node := yacycrawler.NewFakeNodeIngest(ingest)
+	node := newFakeNodeIngest(ingest)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -112,7 +112,7 @@ func TestPipelineDropsBotWall(t *testing.T) {
 		frontier,
 		yacycrawler.NewBotWallDetector(),
 	)
-	node := yacycrawler.NewFakeNodeIngest(ingest)
+	node := newFakeNodeIngest(ingest)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

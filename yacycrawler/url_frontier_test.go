@@ -85,7 +85,7 @@ func TestFrontierFollowsLinksWithinDepthAndHost(t *testing.T) {
 		frontier,
 		yacycrawler.NewBotWallDetector(),
 	)
-	node := yacycrawler.NewFakeNodeIngest(ingest)
+	node := newFakeNodeIngest(ingest)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -158,7 +158,7 @@ func TestFrontierProfileFiltersLinks(t *testing.T) {
 		frontier,
 		yacycrawler.NewBotWallDetector(),
 	)
-	node := yacycrawler.NewFakeNodeIngest(ingest)
+	node := newFakeNodeIngest(ingest)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

@@ -37,8 +37,8 @@ func TestBoundedQueueCloseEndsReceive(t *testing.T) {
 	}
 }
 
-func TestDefaultConfig(t *testing.T) {
-	cfg := yacycrawler.DefaultConfig()
+func TestDefaultCrawlConfig(t *testing.T) {
+	cfg := yacycrawler.DefaultCrawlConfig()
 	if cfg.Workers <= 0 || cfg.JobQueueSize <= 0 || cfg.MaxBodyBytes <= 0 {
 		t.Errorf("default config has non-positive bounds: %+v", cfg)
 	}

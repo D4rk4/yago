@@ -6,8 +6,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 )
 
-type Config struct {
-	SeedURLs        []string
+type CrawlConfig struct {
 	Workers         int
 	JobQueueSize    int
 	IngestQueueSize int
@@ -20,9 +19,8 @@ type Config struct {
 	MaxPagesPerHost int
 }
 
-func DefaultConfig() Config {
-	return Config{
-		SeedURLs:        nil,
+func DefaultCrawlConfig() CrawlConfig {
+	return CrawlConfig{
 		Workers:         4,
 		JobQueueSize:    256,
 		IngestQueueSize: 256,

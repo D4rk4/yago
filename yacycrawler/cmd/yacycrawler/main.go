@@ -2,69 +2,81 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
+
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler"
 )
 
 func main() {
-	workers := flag.Int("workers", yacycrawler.DefaultConfig().Workers, "number of crawl workers")
-	depth := flag.Int("depth", yacycrawler.DefaultConfig().MaxDepth, "maximum link-following depth")
-	flag.Parse()
-
-	seeds := flag.Args()
-	if len(seeds) == 0 {
-		slog.Error("no seed urls given", "usage", "yacycrawler [-workers N] url...")
-		os.Exit(2)
-	}
-
-	cfg := yacycrawler.DefaultConfig()
-	cfg.SeedURLs = seeds
-	cfg.Workers = *workers
-	cfg.MaxDepth = *depth
-
-	if err := run(cfg); err != nil {
-		slog.Error("crawler failed", "error", err)
-		os.Exit(1)
-	}
+	os.Exit(start())
 }
 
-func run(cfg yacycrawler.Config) error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+func start() int {
+	cfg, err := yacycrawler.LoadServiceConfig(os.Getenv)
+	if err != nil {
+		slog.Error("crawler config invalid", "error", err)
+		return 2
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	jobs := yacycrawler.NewJobQueue(cfg.JobQueueSize)
-	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](cfg.IngestQueueSize)
-	orders := yacycrawler.NewBoundedQueue[yacycrawlcontract.CrawlOrder](cfg.JobQueueSize)
+	if err := run(ctx, cfg); err != nil {
+		slog.Error("crawler failed", "error", err)
+		return 1
+	}
+	return 0
+}
+
+func run(ctx context.Context, cfg yacycrawler.ServiceConfig) error {
+	nc, err := nats.Connect(cfg.NATSURL)
+	if err != nil {
+		return fmt.Errorf("connect nats: %w", err)
+	}
+	defer nc.Close()
+
+	js, err := jetstream.New(nc)
+	if err != nil {
+		return fmt.Errorf("init jetstream: %w", err)
+	}
+	if err := yacycrawler.EnsureStreams(ctx, js, cfg.StreamSpec()); err != nil {
+		return fmt.Errorf("ensure streams: %w", err)
+	}
+
+	orders, err := yacycrawler.NewNATSOrderReceiver(ctx, js, cfg.OrdersDurable, cfg.OrdersSubject)
+	if err != nil {
+		return fmt.Errorf("create order receiver: %w", err)
+	}
+	ingest := yacycrawler.NewNATSIngestPublisher(js, cfg.IngestSubject)
+
+	crawl := cfg.Crawl
+	jobs := yacycrawler.NewJobQueue(crawl.JobQueueSize)
 	registry := yacycrawler.NewCrawlProfileRegistry()
 
-	client := &http.Client{Timeout: cfg.RequestTimeout}
-	fetcher, closeBrowser := yacycrawler.NewBrowserPageFetcher(cfg.UserAgent, cfg.RequestTimeout)
+	client := &http.Client{Timeout: crawl.RequestTimeout}
+	fetcher, closeBrowser := yacycrawler.NewBrowserPageFetcher(
+		crawl.UserAgent,
+		crawl.RequestTimeout,
+	)
 	defer closeBrowser()
-	gate := yacycrawler.NewPolitenessGate(client, cfg.UserAgent, cfg.CrawlDelay)
+	gate := yacycrawler.NewPolitenessGate(client, crawl.UserAgent, crawl.CrawlDelay)
 	polite := yacycrawler.NewPolitePageFetcher(fetcher, gate)
 	publisher := yacycrawler.NewIngestPublisher(ingest)
 	frontier := yacycrawler.NewFrontier(jobs, jobs.Close, registry)
 	botWall := yacycrawler.NewBotWallDetector()
 	pipeline := yacycrawler.NewPipeline(jobs, polite, publisher, frontier, botWall)
 	consumer := yacycrawler.NewCrawlOrderConsumer(orders, registry, frontier)
-	node := yacycrawler.NewFakeNodeIngest(ingest)
-
-	nodeDone := make(chan struct{})
-	go func() {
-		node.Run(ctx)
-		close(nodeDone)
-	}()
 
 	workersDone := make(chan struct{})
 	go func() {
-		pipeline.RunWorkers(ctx, cfg.Workers)
+		pipeline.RunWorkers(ctx, crawl.Workers)
 		close(workersDone)
 	}()
 
@@ -74,29 +86,13 @@ func run(cfg yacycrawler.Config) error {
 		close(consumerDone)
 	}()
 
-	if err := orders.Publish(ctx, cfg.DefaultOrder([]byte("admin"))); err != nil {
-		return fmt.Errorf("publish crawl order: %w", err)
-	}
-	orders.Close()
+	slog.Info("crawler started",
+		"orders_subject", cfg.OrdersSubject,
+		"ingest_subject", cfg.IngestSubject,
+		"workers", crawl.Workers,
+	)
 	<-consumerDone
 	<-workersDone
-	ingest.Close()
-	<-nodeDone
-
-	reportBatches(node.Batches())
+	slog.Info("crawler stopped")
 	return nil
-}
-
-func reportBatches(batches []yacycrawler.IngestBatch) {
-	postings := 0
-	metadata := 0
-	for _, batch := range batches {
-		postings += len(batch.Postings)
-		metadata += len(batch.Metadata)
-	}
-	slog.Info("crawl complete",
-		"batches", len(batches),
-		"postings", postings,
-		"metadata", metadata,
-	)
 }
