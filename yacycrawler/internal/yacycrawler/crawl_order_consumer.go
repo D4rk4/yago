@@ -3,20 +3,21 @@ package yacycrawler
 import (
 	"context"
 	"log/slog"
-
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 )
 
 const msgProfileRegisterFailed = "crawl profile registration failed"
+const msgOrderAckFailed = "crawl order ack failed"
+const msgOrderNakFailed = "crawl order nak failed"
+const msgOrderTermFailed = "crawl order term failed"
 
 type CrawlOrderConsumer struct {
-	orders   Receiver[yacycrawlcontract.CrawlOrder]
+	orders   Receiver[CrawlOrderDelivery]
 	registry *CrawlProfileRegistry
 	frontier *Frontier
 }
 
 func NewCrawlOrderConsumer(
-	orders Receiver[yacycrawlcontract.CrawlOrder],
+	orders Receiver[CrawlOrderDelivery],
 	registry *CrawlProfileRegistry,
 	frontier *Frontier,
 ) *CrawlOrderConsumer {
@@ -30,20 +31,35 @@ func (c *CrawlOrderConsumer) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case order, ok := <-c.orders.Receive():
+		case delivery, ok := <-c.orders.Receive():
 			if !ok {
 				return
 			}
-			c.accept(ctx, order)
+			c.accept(ctx, delivery)
 		}
 	}
 }
 
-func (c *CrawlOrderConsumer) accept(ctx context.Context, order yacycrawlcontract.CrawlOrder) {
+func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDelivery) {
+	order := delivery.Order
 	if err := c.registry.Register(order.Profile); err != nil {
 		slog.Warn(msgProfileRegisterFailed, "handle", order.Profile.Handle, "error", err)
+		if err := delivery.Term(ctx); err != nil {
+			slog.Warn(msgOrderTermFailed, "handle", order.Profile.Handle, "error", err)
+		}
 		return
 	}
 	c.frontier.Hold()
-	c.frontier.SeedRun(ctx, order.Requests, order.Provenance, c.frontier.Release)
+	c.frontier.SeedRun(ctx, order.Requests, order.Provenance, func() {
+		defer c.frontier.Release()
+		if ctx.Err() != nil {
+			if err := delivery.Nak(context.Background()); err != nil {
+				slog.Warn(msgOrderNakFailed, "handle", order.Profile.Handle, "error", err)
+			}
+			return
+		}
+		if err := delivery.Ack(context.Background()); err != nil {
+			slog.Warn(msgOrderAckFailed, "handle", order.Profile.Handle, "error", err)
+		}
+	})
 }

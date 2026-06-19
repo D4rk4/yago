@@ -13,7 +13,7 @@ import (
 const msgOrderDecodeFailed = "crawl order decode failed"
 
 type NATSOrderReceiver struct {
-	out chan yacycrawlcontract.CrawlOrder
+	out chan CrawlOrderDelivery
 }
 
 func NewNATSOrderReceiver(
@@ -31,7 +31,7 @@ func NewNATSOrderReceiver(
 		return nil, fmt.Errorf("create orders consumer: %w", err)
 	}
 
-	out := make(chan yacycrawlcontract.CrawlOrder)
+	out := make(chan CrawlOrderDelivery)
 	consume, err := consumer.Consume(func(msg jetstream.Msg) {
 		order, err := yacycrawlcontract.UnmarshalCrawlOrder(msg.Data())
 		if err != nil {
@@ -39,9 +39,20 @@ func NewNATSOrderReceiver(
 			_ = msg.Term()
 			return
 		}
+		delivery := CrawlOrderDelivery{
+			Order: order,
+			Ack: func(context.Context) error {
+				return msg.Ack()
+			},
+			Nak: func(context.Context) error {
+				return msg.Nak()
+			},
+			Term: func(context.Context) error {
+				return msg.Term()
+			},
+		}
 		select {
-		case out <- order:
-			_ = msg.Ack()
+		case out <- delivery:
 		case <-ctx.Done():
 			_ = msg.Nak()
 		}
@@ -58,6 +69,6 @@ func NewNATSOrderReceiver(
 	return &NATSOrderReceiver{out: out}, nil
 }
 
-func (r *NATSOrderReceiver) Receive() <-chan yacycrawlcontract.CrawlOrder {
+func (r *NATSOrderReceiver) Receive() <-chan CrawlOrderDelivery {
 	return r.out
 }

@@ -25,7 +25,7 @@ func TestCrawlOrderRoundTripCarriesProvenanceAndHandle(t *testing.T) {
 
 	jobs := yacycrawler.NewJobQueue(8)
 	ingest := yacycrawler.NewBoundedQueue[yacycrawler.IngestBatch](8)
-	orders := yacycrawler.NewBoundedQueue[yacycrawlcontract.CrawlOrder](2)
+	orders := yacycrawler.NewBoundedQueue[yacycrawler.CrawlOrderDelivery](2)
 	registry := yacycrawler.NewCrawlProfileRegistry()
 
 	fetcher := yacycrawler.NewPageFetcher(
@@ -58,7 +58,7 @@ func TestCrawlOrderRoundTripCarriesProvenanceAndHandle(t *testing.T) {
 	token := []byte("remote-peer:abc123")
 	order := defaultCrawlOrder(cfg, token, server.URL)
 
-	if err := orders.Publish(ctx, order); err != nil {
+	if err := orders.Publish(ctx, yacycrawler.NewCrawlOrderDelivery(order)); err != nil {
 		t.Fatalf("publish order: %v", err)
 	}
 	orders.Close()
@@ -81,13 +81,13 @@ func TestCrawlOrderRoundTripCarriesProvenanceAndHandle(t *testing.T) {
 }
 
 func TestCrawlOrderQueueAppliesBackpressure(t *testing.T) {
-	orders := yacycrawler.NewBoundedQueue[yacycrawlcontract.CrawlOrder](1)
-	if err := orders.Publish(context.Background(), yacycrawlcontract.CrawlOrder{}); err != nil {
+	orders := yacycrawler.NewBoundedQueue[yacycrawler.CrawlOrderDelivery](1)
+	if err := orders.Publish(context.Background(), yacycrawler.NewCrawlOrderDelivery(yacycrawlcontract.CrawlOrder{})); err != nil {
 		t.Fatalf("first publish: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := orders.Publish(ctx, yacycrawlcontract.CrawlOrder{}); err == nil {
+	if err := orders.Publish(ctx, yacycrawler.NewCrawlOrderDelivery(yacycrawlcontract.CrawlOrder{})); err == nil {
 		t.Error("expected blocked publish on saturated order queue, got nil error")
 	}
 }
