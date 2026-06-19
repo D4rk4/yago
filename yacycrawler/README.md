@@ -39,8 +39,9 @@ the node falls behind.
 Configuration comes from the environment (`NATS_URL` is required), and the service runs
 until it receives `SIGINT` or `SIGTERM`.
 
-The message types both services exchange live in the standalone `yacycrawlcontract`
-module, so neither service depends on the other.
+The message types both services exchange live in the standalone
+[`yacycrawlcontract`](../yacycrawlcontract/README.md) module, so neither service depends
+on the other.
 
 ## Known gaps
 
