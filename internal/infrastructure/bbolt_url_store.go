@@ -49,7 +49,13 @@ func (s *BboltStorage) StoreURLs(
 				result.Existing = append(result.Existing, hash)
 				continue
 			}
-			if err := urls.Put(key, []byte(row.String())); err != nil {
+			value, err := yacymodel.EncodeURIMetadata(row)
+			if err != nil {
+				result.Rejected = append(result.Rejected, hash)
+				slog.WarnContext(ctx, "url row discarded", "reason", "encode failed", "error", err)
+				continue
+			}
+			if err := urls.Put(key, value); err != nil {
 				result.Rejected = append(result.Rejected, hash)
 				slog.WarnContext(ctx, "url row discarded", "reason", "store failed", "error", err)
 				continue
@@ -122,9 +128,9 @@ func (s *BboltStorage) RowsByHash(
 			if raw == nil {
 				continue
 			}
-			row, err := yacymodel.ParseURIMetadataRow(string(raw))
+			row, err := yacymodel.DecodeURIMetadata(raw)
 			if err != nil {
-				return fmt.Errorf("parse url metadata: %w", err)
+				return fmt.Errorf("decode url metadata: %w", err)
 			}
 			rows = append(rows, row)
 		}
