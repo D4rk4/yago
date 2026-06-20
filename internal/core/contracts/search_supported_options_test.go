@@ -34,9 +34,18 @@ func TestUnsupportedSearchOptionsAllowsSupportedSubset(t *testing.T) {
 	}
 }
 
-func TestUnsupportedSearchOptionsRejectsModifier(t *testing.T) {
+func TestUnsupportedSearchOptionsAllowsLanguageModifier(t *testing.T) {
 	got := UnsupportedSearchOptions(SearchQuery{
-		Filters: SearchFilters{Modifier: "/language/de"},
+		Filters: SearchFilters{Modifier: "/language/de filetype:pdf author:foo"},
+	})
+	if len(got) != 0 {
+		t.Fatalf("unsupported = %v, want none", got)
+	}
+}
+
+func TestUnsupportedSearchOptionsRejectsSiteModifier(t *testing.T) {
+	got := UnsupportedSearchOptions(SearchQuery{
+		Filters: SearchFilters{Modifier: "site:example.com /language/de"},
 	})
 	if len(got) != 1 || got[0] != "modifier" {
 		t.Fatalf("unsupported = %v, want [modifier]", got)

@@ -8,6 +8,7 @@ import (
 func TestIgnoredSearchOptionsReportsAcceptedFilters(t *testing.T) {
 	got := IgnoredSearchOptions(SearchQuery{
 		Filters: SearchFilters{
+			Language:       "en",
 			Prefer:         "p",
 			Filter:         "f",
 			Profile:        "pr",
@@ -20,6 +21,7 @@ func TestIgnoredSearchOptionsReportsAcceptedFilters(t *testing.T) {
 		},
 	})
 	want := []string{
+		"language",
 		"prefer",
 		"filter",
 		"profile",

@@ -37,7 +37,7 @@ func (s Searcher) Search(
 		URLHashes:     query.URLs,
 		LimitPerWord:  s.postingsPerWord,
 		MaxDistance:   query.MaxDistance,
-		Language:      query.Filters.Language,
+		Language:      query.JoinLanguage(),
 
 		ContentDomain:    query.Filters.ContentDomain,
 		StrictContentDom: query.Filters.StrictContentDom,
@@ -234,7 +234,7 @@ func (s Searcher) searchAbstractCounts(
 		URLHashes:    query.URLs,
 		LimitPerWord: s.postingsPerWord,
 		MaxDistance:  query.MaxDistance,
-		Language:     query.Filters.Language,
+		Language:     query.JoinLanguage(),
 
 		ContentDomain:    query.Filters.ContentDomain,
 		StrictContentDom: query.Filters.StrictContentDom,
@@ -285,7 +285,7 @@ func (s Searcher) searchAbstracts(
 			URLHashes:    query.URLs,
 			LimitPerWord: s.postingsPerWord,
 			MaxDistance:  query.MaxDistance,
-			Language:     query.Filters.Language,
+			Language:     query.JoinLanguage(),
 
 			ContentDomain:    query.Filters.ContentDomain,
 			StrictContentDom: query.Filters.StrictContentDom,

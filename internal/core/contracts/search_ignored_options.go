@@ -4,6 +4,8 @@ package contracts
 // to our returned results, and none of them touch the RWI join, so the count we
 // report stays faithful to what the initiator will keep.
 var ignoredSearchOptions = []searchOptionPredicate{
+	// upstream uses it only as the ranking target language, never to narrow the join
+	{"language", func(query SearchQuery) bool { return query.Filters.Language != "" }},
 	// ranking-only hint, never narrows the result set
 	{"prefer", func(query SearchQuery) bool { return query.Filters.Prefer != "" }},
 	// URL-regex filter applied at the URL stage, after the join is counted

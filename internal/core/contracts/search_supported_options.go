@@ -16,8 +16,11 @@ func matchingSearchOptions(query SearchQuery, options []searchOptionPredicate) [
 }
 
 var unsupportedSearchOptions = []searchOptionPredicate{
-	// rejected: its embedded /language/ token filters the RWI join, so silently ignoring it would inflate the returned count
-	{"modifier", func(query SearchQuery) bool { return query.Filters.Modifier != "" }},
+	// its /language/ token feeds the RWI join via JoinLanguage; only a site: host stays unsupported because narrowing the join by host needs URL hashing this node does not do
+	{
+		"modifier",
+		func(query SearchQuery) bool { return ParseSearchModifier(query.Filters.Modifier).SiteHost != "" },
+	},
 }
 
 func UnsupportedSearchOptions(query SearchQuery) []string {
