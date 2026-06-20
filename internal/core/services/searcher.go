@@ -42,7 +42,7 @@ func (s Searcher) Search(
 		ContentDomain:    query.Filters.ContentDomain,
 		StrictContentDom: query.Filters.StrictContentDom,
 		Constraint:       query.Filters.Constraint,
-		SiteHash:         query.Filters.SiteHash,
+		SiteHash:         query.JoinSiteHash(),
 	})
 	if err != nil {
 		return contracts.SearchResult{}, fmt.Errorf("search postings: %w", err)
@@ -239,7 +239,7 @@ func (s Searcher) searchAbstractCounts(
 		ContentDomain:    query.Filters.ContentDomain,
 		StrictContentDom: query.Filters.StrictContentDom,
 		Constraint:       query.Filters.Constraint,
-		SiteHash:         query.Filters.SiteHash,
+		SiteHash:         query.JoinSiteHash(),
 	})
 	if err != nil {
 		return contracts.SearchResult{}, fmt.Errorf("search postings: %w", err)
@@ -290,7 +290,7 @@ func (s Searcher) searchAbstracts(
 			ContentDomain:    query.Filters.ContentDomain,
 			StrictContentDom: query.Filters.StrictContentDom,
 			Constraint:       query.Filters.Constraint,
-			SiteHash:         query.Filters.SiteHash,
+			SiteHash:         query.JoinSiteHash(),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("search postings: %w", err)

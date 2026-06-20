@@ -96,19 +96,3 @@ func TestSearchHandlerWrongNetwork(t *testing.T) {
 		t.Fatal("searcher must not be called on network mismatch")
 	}
 }
-
-func TestSearchHandlerRejectsUnsupportedSearchOption(t *testing.T) {
-	h := newTestHarness(t)
-	req := yacyproto.SearchRequest{
-		Query:    []yacymodel.Hash{testHash(t, "word")},
-		Modifier: "site:example.com",
-	}
-	rec := h.do(t, http.MethodPost, yacyproto.PathSearch, req.Form())
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400; body %q", rec.Code, rec.Body.String())
-	}
-	if h.searcher.called {
-		t.Fatal("searcher must not be called")
-	}
-}

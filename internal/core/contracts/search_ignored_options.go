@@ -12,7 +12,7 @@ var ignoredSearchOptions = []searchOptionPredicate{
 	{"filter", func(query SearchQuery) bool { return query.Filters.Filter != "" }},
 	// ranking profile carrier, not a membership filter
 	{"profile", func(query SearchQuery) bool { return query.Filters.Profile != "" }},
-	// initiator never transmits it; matching needs URL hashing this node does not do
+	// initiator never transmits it; the modifier's site: token carries host narrowing into the join instead
 	{"sitehost", func(query SearchQuery) bool { return query.Filters.SiteHost != "" }},
 	// URL-stage filter applied after the join is counted
 	{"author", func(query SearchQuery) bool { return query.Filters.Author != "" }},

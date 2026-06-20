@@ -50,12 +50,6 @@ func (h *searchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if h.guard.networkMatches(form) {
 		query := searchQueryFromRequest(req)
-		if unsupported := contracts.UnsupportedSearchOptions(query); len(unsupported) != 0 {
-			slog.DebugContext(ctx, "unsupported search option", "options", unsupported)
-			http.Error(w, "unsupported search option", http.StatusBadRequest)
-
-			return
-		}
 		if ignored := contracts.IgnoredSearchOptions(query); len(ignored) != 0 {
 			slog.DebugContext(ctx, "ignoring accepted search options", "options", ignored)
 		}

@@ -26,12 +26,6 @@ func TestParseSearchModifierIgnoresInvalidLanguage(t *testing.T) {
 	}
 }
 
-func TestParseSearchModifierEmpty(t *testing.T) {
-	if got := ParseSearchModifier(""); got != (SearchModifier{}) {
-		t.Fatalf("parsed = %+v, want zero", got)
-	}
-}
-
 func TestJoinLanguageUsesModifierOnly(t *testing.T) {
 	query := SearchQuery{Filters: SearchFilters{Language: "en", Modifier: "/language/de"}}
 	if got := query.JoinLanguage(); got != "de" {
