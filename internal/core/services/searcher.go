@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"time"
 
@@ -169,9 +170,7 @@ func intersect(
 
 func cloneCandidates(in map[yacymodel.Hash]searchCandidate) map[yacymodel.Hash]searchCandidate {
 	out := make(map[yacymodel.Hash]searchCandidate, len(in))
-	for hash, candidate := range in {
-		out[hash] = candidate
-	}
+	maps.Copy(out, in)
 	return out
 }
 
