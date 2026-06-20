@@ -43,6 +43,42 @@ func TestReceiveRWIPersistsAndReports(t *testing.T) {
 	}
 }
 
+func TestReceiveRWITriggersEvictionAfterAppend(t *testing.T) {
+	triggered := 0
+	receiver := NewRWIReceiver(
+		&fakeRWIStore{},
+		&fakeURLStore{},
+		10,
+		30,
+		WithEvictionTrigger(func() { triggered++ }),
+	)
+
+	if _, err := receiver.ReceiveRWI(context.Background(), rwiEntries(2)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if triggered != 1 {
+		t.Fatalf("trigger calls = %d, want 1", triggered)
+	}
+}
+
+func TestReceiveRWISkipsTriggerAtCapacity(t *testing.T) {
+	triggered := 0
+	receiver := NewRWIReceiver(
+		&fakeRWIStore{appendErr: ports.ErrAtCapacity},
+		&fakeURLStore{},
+		10,
+		30,
+		WithEvictionTrigger(func() { triggered++ }),
+	)
+
+	if _, err := receiver.ReceiveRWI(context.Background(), rwiEntries(2)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if triggered != 0 {
+		t.Fatalf("trigger calls = %d, want 0", triggered)
+	}
+}
+
 func TestReceiveRWIBatchCap(t *testing.T) {
 	store := &fakeRWIStore{}
 	receiver := NewRWIReceiver(store, &fakeURLStore{}, 1, 30)

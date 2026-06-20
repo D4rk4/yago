@@ -27,6 +27,11 @@ const (
 	searchPostingsPerWord = 1000
 	trustedSeedCapacity   = 4096
 
+	evictionHighWaterNum = 90
+	evictionLowWaterNum  = 80
+	evictionWaterDen     = 100
+	evictionBatch        = 256
+
 	serverReadHeaderTimeout = 10 * time.Second
 	shutdownTimeout         = 15 * time.Second
 )
@@ -65,6 +70,15 @@ func run() error {
 
 	infrastructure.PublishBboltStats(storage)
 
+	sweeper := services.NewRWIEvictionSweeper(
+		storage,
+		services.NewDropEvictionPolicy(storage),
+		config.StorageQuotaByte*evictionHighWaterNum/evictionWaterDen,
+		config.StorageQuotaByte*evictionLowWaterNum/evictionWaterDen,
+		evictionBatch,
+	)
+	infrastructure.PublishEvictionStats(sweeper)
+
 	identity := services.NewIdentity(
 		config.Hash,
 		config.NetworkName,
@@ -89,7 +103,13 @@ func run() error {
 		identity,
 		status,
 		peers,
-		services.NewRWIReceiver(storage, storage, receiveBatchCap, receiveBusyPauseSecs),
+		services.NewRWIReceiver(
+			storage,
+			storage,
+			receiveBatchCap,
+			receiveBusyPauseSecs,
+			services.WithEvictionTrigger(sweeper.Trigger),
+		),
 		services.NewURLReceiver(storage),
 		services.NewSearcher(storage, storage, searchPostingsPerWord),
 		services.NewCounter(storage, storage),

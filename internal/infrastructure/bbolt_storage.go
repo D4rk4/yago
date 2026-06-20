@@ -12,7 +12,6 @@ import (
 
 type BboltStorage struct {
 	db         *bolt.DB
-	path       string
 	quotaBytes int64
 }
 
@@ -26,7 +25,7 @@ func OpenBboltStorage(path string, quotaBytes int64) (*BboltStorage, error) {
 		return nil, fmt.Errorf("open storage: %w", err)
 	}
 
-	store := &BboltStorage{db: db, path: path, quotaBytes: quotaBytes}
+	store := &BboltStorage{db: db, quotaBytes: quotaBytes}
 	if err := store.ensureBuckets(); err != nil {
 		closeErr := db.Close()
 		if closeErr != nil {

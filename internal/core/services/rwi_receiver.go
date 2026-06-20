@@ -12,14 +12,33 @@ import (
 )
 
 type RWIReceiver struct {
-	rwi       ports.RWIStore
-	urls      ports.URLStore
-	batchCap  int
-	pauseSecs int
+	rwi         ports.RWIStore
+	urls        ports.URLStore
+	batchCap    int
+	pauseSecs   int
+	afterAppend func()
 }
 
-func NewRWIReceiver(rwi ports.RWIStore, urls ports.URLStore, batchCap, pauseSecs int) RWIReceiver {
-	return RWIReceiver{rwi: rwi, urls: urls, batchCap: batchCap, pauseSecs: pauseSecs}
+type RWIReceiverOption func(*RWIReceiver)
+
+func WithEvictionTrigger(trigger func()) RWIReceiverOption {
+	return func(r *RWIReceiver) {
+		r.afterAppend = trigger
+	}
+}
+
+func NewRWIReceiver(
+	rwi ports.RWIStore,
+	urls ports.URLStore,
+	batchCap, pauseSecs int,
+	opts ...RWIReceiverOption,
+) RWIReceiver {
+	receiver := RWIReceiver{rwi: rwi, urls: urls, batchCap: batchCap, pauseSecs: pauseSecs}
+	for _, opt := range opts {
+		opt(&receiver)
+	}
+
+	return receiver
 }
 
 func (r RWIReceiver) ReceiveRWI(
@@ -36,6 +55,10 @@ func (r RWIReceiver) ReceiveRWI(
 	}
 	if err != nil {
 		return contracts.RWIReceipt{}, fmt.Errorf("append rwi: %w", err)
+	}
+
+	if r.afterAppend != nil {
+		r.afterAppend()
 	}
 
 	unknown, err := r.urls.MissingURLs(ctx, referencedURLs(ctx, entries))

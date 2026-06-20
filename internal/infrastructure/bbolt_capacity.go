@@ -2,8 +2,6 @@ package infrastructure
 
 import (
 	"errors"
-	"fmt"
-	"os"
 	"strings"
 	"syscall"
 
@@ -15,15 +13,11 @@ func (s *BboltStorage) rejectAtCapacity() error {
 		return nil
 	}
 
-	info, err := os.Stat(s.path)
+	used, err := s.measureUsedBytes()
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-
-		return fmt.Errorf("stat storage: %w", err)
+		return err
 	}
-	if info.Size() >= s.quotaBytes {
+	if used >= s.quotaBytes {
 		return ports.ErrAtCapacity
 	}
 

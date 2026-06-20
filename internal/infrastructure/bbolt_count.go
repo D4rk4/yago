@@ -42,6 +42,18 @@ func incrementCount(bucket *bolt.Bucket, key []byte) error {
 	return putCount(bucket, key, n+1)
 }
 
+func decrementCount(bucket *bolt.Bucket, key []byte) error {
+	n, err := decodeCount(bucket.Get(key))
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil
+	}
+
+	return putCount(bucket, key, n-1)
+}
+
 func decodeCount(raw []byte) (int, error) {
 	if raw == nil {
 		return 0, nil
