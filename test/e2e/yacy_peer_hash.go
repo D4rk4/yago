@@ -41,28 +41,29 @@ func resolveYaCyHash(ctx context.Context, probe *httpProbe, yacyURL string) (yac
 	if err != nil {
 		return "", false
 	}
-	resp, err := yacyproto.ParseHelloResponse(msg)
+	resp, err := yacyproto.ParseHelloResponse(ctx, msg)
 	if err != nil {
 		return "", false
 	}
-	hash, err := resp.OwnSeed().Hash()
-	if err != nil {
+	seed, ok := resp.OwnSeed().Get()
+	if !ok {
 		return "", false
 	}
-	return hash, true
+	return seed.Hash, true
 }
 
 func helloProbeSeed() yacymodel.Seed {
 	flags := yacymodel.ZeroFlags()
 	flags = flags.Set(yacymodel.FlagDirectConnect, true)
 	flags = flags.Set(yacymodel.FlagAcceptRemoteIndex, true)
+	port, _ := yacymodel.ParsePort(nodeContainerPort)
 	return yacymodel.Seed{
-		yacymodel.SeedHash:     helloProbeHash,
-		yacymodel.SeedName:     "e2e-hello-probe",
-		yacymodel.SeedPeerType: "senior",
-		yacymodel.SeedPort:     nodeContainerPort,
-		yacymodel.SeedVersion:  "1.83",
-		yacymodel.SeedUTC:      time.Now().UTC().Format("20060102150405"),
-		yacymodel.SeedFlags:    flags.String(),
+		Hash:     yacymodel.Hash(helloProbeHash),
+		Name:     yacymodel.Some("e2e-hello-probe"),
+		PeerType: yacymodel.Some(yacymodel.PeerSenior),
+		Port:     yacymodel.Some(port),
+		Version:  yacymodel.Some("1.83"),
+		UTC:      yacymodel.Some(time.Now().UTC().Format("20060102150405")),
+		Flags:    yacymodel.Some(flags),
 	}
 }
