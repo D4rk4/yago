@@ -5,7 +5,6 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
@@ -30,7 +29,10 @@ func startNodeFleet(
 	fleet := make([]fleetNode, size)
 	for i := range fleet {
 		alias := fmt.Sprintf("node-tr-%02d", i)
-		hash := fleetNodeHash(i, size)
+		hash, err := yacymodel.NewHash()
+		if err != nil {
+			t.Fatalf("generate node hash: %v", err)
+		}
 		_, url := startNode(t, ctx, probe, nodeConfig{
 			networkName: networkName,
 			alias:       alias,
@@ -40,9 +42,4 @@ func startNodeFleet(
 		fleet[i] = fleetNode{alias: alias, hash: hash, url: url}
 	}
 	return fleet
-}
-
-func fleetNodeHash(i, size int) yacymodel.Hash {
-	lead := yacymodel.Alphabet[(i*len(yacymodel.Alphabet))/size]
-	return yacymodel.Hash(string(lead) + strings.Repeat("A", yacymodel.HashLength-1))
 }

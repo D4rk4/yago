@@ -20,7 +20,7 @@ func TestRealYaCyTransfersRWIToFleet(t *testing.T) {
 
 	yacyContainer, yacyURL := startYaCy(t, ctx, probe, network.Name, transferYaCyAlias)
 
-	yacyHash := requireYaCyHash(t, ctx, probe, yacyURL)
+	yacyHash := resolveYaCyHash(t, ctx, probe, yacyURL)
 
 	seedlistURL := "http://" + transferYaCyAlias + ":" + nodeContainerPort + "/yacy/seedlist.html"
 	fleet := startNodeFleet(t, ctx, probe, network.Name, seedlistURL, dhtMinConnectedPeers)

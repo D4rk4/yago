@@ -4,7 +4,6 @@ package e2e
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -14,25 +13,13 @@ import (
 
 const helloProbeHash = "REMOTEPEER12"
 
-func requireYaCyHash(
+func resolveYaCyHash(
 	t *testing.T,
 	ctx context.Context,
 	probe *httpProbe,
 	yacyURL string,
 ) yacymodel.Hash {
 	t.Helper()
-	hash, err := resolveYaCyHash(ctx, probe, yacyURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return hash
-}
-
-func resolveYaCyHash(
-	ctx context.Context,
-	probe *httpProbe,
-	yacyURL string,
-) (yacymodel.Hash, error) {
 	req := yacyproto.HelloRequest{
 		NetworkName: yacyproto.DefaultNetwork,
 		Iam:         yacymodel.Hash(helloProbeHash),
@@ -40,21 +27,21 @@ func resolveYaCyHash(
 	}
 	result := probe.Get(ctx, yacyURL+"/yacy/hello.html?"+req.Form().Encode())
 	if !result.ok {
-		return "", fmt.Errorf("hello request failed")
+		t.Fatal("hello request failed")
 	}
 	msg, err := yacymodel.ParseMessage(result.body)
 	if err != nil {
-		return "", fmt.Errorf("parse hello response: %w", err)
+		t.Fatalf("parse hello response: %v", err)
 	}
 	resp, err := yacyproto.ParseHelloResponse(ctx, msg)
 	if err != nil {
-		return "", fmt.Errorf("parse hello response: %w", err)
+		t.Fatalf("parse hello response: %v", err)
 	}
 	seed, ok := resp.OwnSeed().Get()
 	if !ok {
-		return "", fmt.Errorf("own seed not present in hello response")
+		t.Fatal("own seed not present in hello response")
 	}
-	return seed.Hash, nil
+	return seed.Hash
 }
 
 func helloProbeSeed() yacymodel.Seed {
