@@ -17,7 +17,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("migration terminated", "error", err)
+		slog.ErrorContext(context.Background(), "migration terminated", slog.Any("error", err))
 		os.Exit(1)
 	}
 }
@@ -37,12 +37,13 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	slog.Info("migration started", "path", path)
+	slog.InfoContext(ctx, "migration started", slog.String("path", path))
 	report, err := storage.MigrateURLMetadata(ctx)
-	slog.Info(
+	slog.InfoContext(
+		ctx,
 		"migration finished",
-		"scanned", report.Scanned,
-		"rewritten", report.Rewritten,
+		slog.Int("scanned", report.Scanned),
+		slog.Int("rewritten", report.Rewritten),
 	)
 	if err != nil {
 		return fmt.Errorf("migrate url metadata: %w", err)
@@ -53,6 +54,6 @@ func run() error {
 
 func closeStorage(storage *infrastructure.BboltStorage) {
 	if err := storage.Close(); err != nil {
-		slog.Error("storage close failed", "error", err)
+		slog.ErrorContext(context.Background(), "storage close failed", slog.Any("error", err))
 	}
 }

@@ -17,14 +17,17 @@ func TestRunMigratesExistingStorage(t *testing.T) {
 		t.Fatalf("open storage: %v", err)
 	}
 	word := yacymodel.WordHash("word")
-	entry := yacymodel.RWIEntry{
+	entry := yacymodel.RWIPosting{
 		WordHash: word,
 		Properties: map[string]string{
 			yacymodel.ColURLHash:        yacymodel.WordHash("url").String(),
 			yacymodel.ColLocalLinkCount: "1",
 		},
 	}
-	if _, err := storage.AppendRWI(context.Background(), []yacymodel.RWIEntry{entry}); err != nil {
+	if _, err := storage.AppendRWI(
+		context.Background(),
+		[]yacymodel.RWIPosting{entry},
+	); err != nil {
 		t.Fatalf("AppendRWI: %v", err)
 	}
 	if err := storage.Close(); err != nil {
