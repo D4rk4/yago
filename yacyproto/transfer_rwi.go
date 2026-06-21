@@ -40,7 +40,7 @@ func (r TransferRWIRequest) Form() url.Values {
 	return form
 }
 
-func ParseTransferRWIRequest(form url.Values) (TransferRWIRequest, error) {
+func ParseTransferRWIRequest(ctx context.Context, form url.Values) (TransferRWIRequest, error) {
 	wordCount, err := optionalInt(FieldWordCount, form.Get(FieldWordCount))
 	if err != nil {
 		return TransferRWIRequest{}, err
@@ -68,7 +68,7 @@ func ParseTransferRWIRequest(form url.Values) (TransferRWIRequest, error) {
 		return TransferRWIRequest{}, err
 	}
 
-	req.Indexes = parseRWILines(form.Get(FieldIndexes))
+	req.Indexes = parseRWILines(ctx, form.Get(FieldIndexes))
 
 	return req, nil
 }
@@ -130,7 +130,7 @@ func encodeRWILines(entries []yacymodel.RWIPosting) string {
 
 const maxRWIEntries = 1000
 
-func parseRWILines(raw string) []yacymodel.RWIPosting {
+func parseRWILines(ctx context.Context, raw string) []yacymodel.RWIPosting {
 	if raw == "" {
 		return nil
 	}
@@ -143,7 +143,7 @@ func parseRWILines(raw string) []yacymodel.RWIPosting {
 		}
 		if len(entries) >= maxRWIEntries {
 			slog.WarnContext(
-				context.Background(),
+				ctx,
 				"transfer rwi posting limit reached",
 				slog.Int("limit", maxRWIEntries),
 			)
@@ -153,16 +153,7 @@ func parseRWILines(raw string) []yacymodel.RWIPosting {
 		entry, err := yacymodel.ParseRWIPosting(line)
 		if err != nil {
 			slog.WarnContext(
-				context.Background(),
-				"transfer rwi posting discarded",
-				slog.Any("error", err),
-				slog.Int("lineLength", len(line)),
-			)
-			continue
-		}
-		if _, err := entry.URLHash(); err != nil {
-			slog.WarnContext(
-				context.Background(),
+				ctx,
 				"transfer rwi posting discarded",
 				slog.Any("error", err),
 				slog.Int("lineLength", len(line)),

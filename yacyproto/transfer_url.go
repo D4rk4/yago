@@ -36,7 +36,7 @@ func (r TransferURLRequest) Form() url.Values {
 	return form
 }
 
-func ParseTransferURLRequest(form url.Values) (TransferURLRequest, error) {
+func ParseTransferURLRequest(ctx context.Context, form url.Values) (TransferURLRequest, error) {
 	urlCount, err := optionalInt(FieldURLCount, form.Get(FieldURLCount))
 	if err != nil {
 		return TransferURLRequest{}, err
@@ -61,7 +61,7 @@ func ParseTransferURLRequest(form url.Values) (TransferURLRequest, error) {
 		raw := form.Get(indexedKey(prefixURL, i))
 		if raw == "" {
 			slog.WarnContext(
-				context.Background(),
+				ctx,
 				"transfer url row discarded",
 				slog.String("reason", "missing field"),
 				slog.Int("index", i),
@@ -72,7 +72,7 @@ func ParseTransferURLRequest(form url.Values) (TransferURLRequest, error) {
 		row, err := yacymodel.ParseURIMetadataRow(raw)
 		if err != nil {
 			slog.WarnContext(
-				context.Background(),
+				ctx,
 				"transfer url row discarded",
 				slog.String("reason", "parse failed"),
 				slog.Int("index", i),

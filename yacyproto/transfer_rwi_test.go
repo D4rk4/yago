@@ -1,6 +1,7 @@
 package yacyproto_test
 
 import (
+	"context"
 	"net/url"
 	"reflect"
 	"testing"
@@ -25,7 +26,7 @@ func TestTransferRWIRequestRoundTrip(t *testing.T) {
 		Key: "salt",
 	}
 
-	got, err := yacyproto.ParseTransferRWIRequest(req.Form())
+	got, err := yacyproto.ParseTransferRWIRequest(context.Background(), req.Form())
 	if err != nil {
 		t.Fatalf("ParseTransferRWIRequest: %v", err)
 	}
@@ -80,7 +81,7 @@ func TestParseTransferRWIRequestSkipsBadEntry(t *testing.T) {
 
 	good := sampleRWIPosting(t, "alpha", "url-a")
 	form := url.Values{yacyproto.FieldIndexes: {"not-a-posting-line\n" + good.String()}}
-	req, err := yacyproto.ParseTransferRWIRequest(form)
+	req, err := yacyproto.ParseTransferRWIRequest(context.Background(), form)
 	if err != nil {
 		t.Fatalf("ParseTransferRWIRequest: %v", err)
 	}

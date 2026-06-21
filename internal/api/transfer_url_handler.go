@@ -29,7 +29,7 @@ func (h *transferURLHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cancel()
 
-	req, err := yacyproto.ParseTransferURLRequest(form)
+	req, err := yacyproto.ParseTransferURLRequest(ctx, form)
 	if err != nil {
 		failBadRequest(ctx, w, err)
 

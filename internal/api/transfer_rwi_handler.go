@@ -29,7 +29,7 @@ func (h *transferRWIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cancel()
 
-	req, err := yacyproto.ParseTransferRWIRequest(form)
+	req, err := yacyproto.ParseTransferRWIRequest(ctx, form)
 	if err != nil {
 		failBadRequest(ctx, w, err)
 

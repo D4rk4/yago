@@ -1,6 +1,7 @@
 package yacyproto_test
 
 import (
+	"context"
 	"net/url"
 	"reflect"
 	"testing"
@@ -23,7 +24,7 @@ func TestTransferURLRequestRoundTrip(t *testing.T) {
 		},
 	}
 
-	got, err := yacyproto.ParseTransferURLRequest(req.Form())
+	got, err := yacyproto.ParseTransferURLRequest(context.Background(), req.Form())
 	if err != nil {
 		t.Fatalf("ParseTransferURLRequest: %v", err)
 	}
@@ -59,7 +60,7 @@ func TestParseTransferURLRequestRejectsBadYouAre(t *testing.T) {
 	t.Parallel()
 
 	form := url.Values{yacyproto.FieldYouAre: {"!!"}}
-	if _, err := yacyproto.ParseTransferURLRequest(form); err == nil {
+	if _, err := yacyproto.ParseTransferURLRequest(context.Background(), form); err == nil {
 		t.Fatal("expected error for malformed youare hash")
 	}
 }
@@ -73,7 +74,7 @@ func TestParseTransferURLRequestSkipsMissingDeclaredURL(t *testing.T) {
 		yacyproto.FieldURLCount: {"2"},
 		"url0":                  {sampleURLRow(t, "url-a").String()},
 	}
-	req, err := yacyproto.ParseTransferURLRequest(form)
+	req, err := yacyproto.ParseTransferURLRequest(context.Background(), form)
 	if err != nil {
 		t.Fatalf("ParseTransferURLRequest: %v", err)
 	}
