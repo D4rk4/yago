@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/api"
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/services"
 	"github.com/nikitakarpei/yacy-rwi-node/internal/infrastructure"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
@@ -34,16 +33,16 @@ func TestServeReturnsNilAfterCancel(t *testing.T) {
 
 	const network = "freeworld"
 	hash := yacymodel.Hash("0123456789AB")
-	identity := services.NewIdentity(
-		hash,
-		network,
-		"node",
-		"203.0.113.1",
-		8090,
-		yacymodel.ZeroFlags(),
-	)
+	config := infrastructure.NodeConfig{
+		Hash:          hash,
+		NetworkName:   network,
+		Name:          "node",
+		AdvertiseHost: "203.0.113.1",
+		AdvertisePort: 8090,
+		Flags:         yacymodel.ZeroFlags(),
+	}
 	status := services.NewRuntimeStatus(
-		identity,
+		nodeIdentity(config),
 		infrastructure.SystemClock{},
 		storage,
 		storage,
@@ -55,15 +54,14 @@ func TestServeReturnsNilAfterCancel(t *testing.T) {
 		registry,
 		rand.Shuffle,
 	)
-	mux := api.NewPeerProtocolMux(
-		identity,
-		status,
-		peers,
-		services.NewRWIReceiver(storage, storage, receiveBatchCap, receiveBusyPauseSecs),
-		services.NewURLReceiver(storage),
-		services.NewSearcher(storage, storage, searchPostingsPerWord),
-		services.NewCounter(storage, storage),
+	sweeper := services.NewRWIEvictionSweeper(
+		storage,
+		services.NewDropEvictionPolicy(storage),
+		0,
+		0,
+		evictionBatch,
 	)
+	mux := newPeerProtocolMux(config, status, peers, storage, sweeper)
 	announcement := services.NewPeerAnnouncement(
 		bootstrap,
 		infrastructure.NewHTTPSeedlistFetcher(client),

@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/internal/api"
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/services"
 	"github.com/nikitakarpei/yacy-rwi-node/internal/infrastructure"
 )
@@ -38,7 +37,7 @@ const (
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("node terminated", "error", err)
+		slog.ErrorContext(context.Background(), "node terminated", slog.Any("error", err))
 		os.Exit(1)
 	}
 }
@@ -78,18 +77,10 @@ func run() error {
 		evictionBatch,
 	)
 	infrastructure.PublishEvictionStats(sweeper)
-
-	identity := services.NewIdentity(
-		config.Hash,
-		config.NetworkName,
-		config.Name,
-		config.AdvertiseHost,
-		config.AdvertisePort,
-		config.Flags,
-	)
+	sweeper.Trigger()
 
 	status := services.NewRuntimeStatus(
-		identity,
+		nodeIdentity(config),
 		infrastructure.SystemClock{},
 		storage,
 		storage,
@@ -99,22 +90,7 @@ func run() error {
 	pinger := infrastructure.NewPeerBackPing(client, config.Hash, config.NetworkName)
 	peers := services.NewPeerDirectory(pinger, registry, rand.Shuffle)
 
-	mux := api.NewPeerProtocolMux(
-		identity,
-		status,
-		peers,
-		services.NewRWIReceiver(
-			storage,
-			storage,
-			receiveBatchCap,
-			receiveBusyPauseSecs,
-			services.WithEvictionTrigger(sweeper.Trigger),
-		),
-		services.NewURLReceiver(storage),
-		services.NewSearcher(storage, storage, searchPostingsPerWord),
-		services.NewCounter(storage, storage),
-		api.WithTrustedProxies(config.TrustedProxies),
-	)
+	mux := newPeerProtocolMux(config, status, peers, storage, sweeper)
 
 	announcement := services.NewPeerAnnouncement(
 		bootstrap,
@@ -164,7 +140,12 @@ func serve(
 	errs := make(chan error, len(servers))
 	for _, s := range servers {
 		go func(s namedServer) {
-			slog.Info("serving", "service", s.name, "addr", s.server.Addr)
+			slog.InfoContext(
+				ctx,
+				"serving",
+				slog.String("service", s.name),
+				slog.String("addr", s.server.Addr),
+			)
 			errs <- s.server.ListenAndServe()
 		}(s)
 	}
@@ -182,7 +163,7 @@ func serve(
 }
 
 func shutdown(servers []namedServer) error {
-	slog.Info("shutting down")
+	slog.InfoContext(context.Background(), "shutting down")
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
@@ -198,6 +179,6 @@ func shutdown(servers []namedServer) error {
 
 func closeStorage(storage *infrastructure.BboltStorage) {
 	if err := storage.Close(); err != nil {
-		slog.Error("storage close failed", "error", err)
+		slog.ErrorContext(context.Background(), "storage close failed", slog.Any("error", err))
 	}
 }
