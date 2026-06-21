@@ -67,16 +67,16 @@ func validateURLMetadataProperty(key, value string) error {
 	return nil
 }
 
-func urlMetadataHash(props map[string]string) (Hash, error) {
+func urlMetadataHash(props map[string]string) (URLHash, error) {
 	if v, ok := props[URLMetaHash]; ok {
-		hash, err := ParseHash(v)
+		hash, err := ParseURLHash(v)
 		if err != nil {
 			return "", fmt.Errorf("%w %s: %w", errInvalidURLMetadataProperty, URLMetaHash, err)
 		}
 		return hash, nil
 	}
 	if v, ok := props[URLMetaHashAlt]; ok {
-		hash, err := ParseHash(v)
+		hash, err := ParseURLHash(v)
 		if err != nil {
 			return "", fmt.Errorf("%w %s: %w", errInvalidURLMetadataProperty, URLMetaHashAlt, err)
 		}

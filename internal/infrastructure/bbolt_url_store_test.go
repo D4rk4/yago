@@ -23,6 +23,8 @@ func TestBboltStorageStoresURLsAndSurvivesReopen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second URLHash: %v", err)
 	}
+	firstStorageHash := firstHash.Hash()
+	secondStorageHash := secondHash.Hash()
 
 	result, err := store.StoreURLs(ctx, []yacymodel.URIMetadataRow{first, second})
 	if err != nil {
@@ -36,8 +38,8 @@ func TestBboltStorageStoresURLsAndSurvivesReopen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StoreURLs duplicate: %v", err)
 	}
-	if len(result.Existing) != 1 || result.Existing[0] != firstHash {
-		t.Fatalf("existing = %v, want %v", result.Existing, firstHash)
+	if len(result.Existing) != 1 || result.Existing[0] != firstStorageHash {
+		t.Fatalf("existing = %v, want %v", result.Existing, firstStorageHash)
 	}
 
 	closeTestStorage(t, store)
@@ -45,7 +47,7 @@ func TestBboltStorageStoresURLsAndSurvivesReopen(t *testing.T) {
 	defer closeTestStorage(t, store)
 
 	missing, err := store.MissingURLs(ctx, []yacymodel.Hash{
-		firstHash,
+		firstStorageHash,
 		hashForStorageTest("miss"),
 		hashForStorageTest("miss"),
 	})
@@ -56,15 +58,15 @@ func TestBboltStorageStoresURLsAndSurvivesReopen(t *testing.T) {
 		t.Fatalf("missing = %v, want miss", missing)
 	}
 
-	rows, err := store.RowsByHash(ctx, []yacymodel.Hash{secondHash, firstHash})
+	rows, err := store.RowsByHash(ctx, []yacymodel.Hash{secondStorageHash, firstStorageHash})
 	if err != nil {
 		t.Fatalf("RowsByHash: %v", err)
 	}
 	if len(rows) != 2 {
 		t.Fatalf("rows = %d, want 2", len(rows))
 	}
-	if got, _ := rows[0].URLHash(); got != secondHash {
-		t.Fatalf("first row hash = %v, want %v", got, secondHash)
+	if got, _ := rows[0].URLHash(); got.Hash() != secondStorageHash {
+		t.Fatalf("first row hash = %v, want %v", got, secondStorageHash)
 	}
 	assertCount(t, "url count", store.URLCount, 2)
 }

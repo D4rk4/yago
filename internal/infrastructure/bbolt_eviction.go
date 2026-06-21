@@ -66,7 +66,7 @@ func (s *BboltStorage) SelectEvictionCandidates(
 			if err != nil {
 				return fmt.Errorf("url metadata hash: %w", err)
 			}
-			staleest.offer(hash, row.Freshness())
+			staleest.offer(hash.Hash(), row.Freshness())
 		}
 
 		return nil

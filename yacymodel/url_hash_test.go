@@ -3,38 +3,98 @@ package yacymodel
 import "testing"
 
 func TestURLHashIsValidTwelveChar(t *testing.T) {
-	h := URLHash("http://example.com/path?q=1")
+	h, err := HashURL("http://example.com/path?q=1")
+	if err != nil {
+		t.Fatalf("HashURL: %v", err)
+	}
 	if len(h) != HashLength {
 		t.Fatalf("URLHash length = %d, want %d", len(h), HashLength)
 	}
-	if !h.Valid() {
-		t.Errorf("URLHash produced invalid hash %q", h)
+	if _, err := ParseURLHash(string(h)); err != nil {
+		t.Errorf("URLHash produced invalid hash %q: %v", h, err)
 	}
 }
 
 func TestURLHashDeterministic(t *testing.T) {
-	first := URLHash("http://example.com/")
-	second := URLHash("http://example.com/")
+	first, err := HashURL("http://example.com/")
+	if err != nil {
+		t.Fatalf("HashURL first: %v", err)
+	}
+	second, err := HashURL("http://example.com/")
+	if err != nil {
+		t.Fatalf("HashURL second: %v", err)
+	}
 	if first != second {
 		t.Error("URLHash must be deterministic")
 	}
 }
 
 func TestURLHashSharesHostHashAcrossPaths(t *testing.T) {
-	a := URLHash("http://example.com/one")
-	b := URLHash("http://example.com/two")
+	a, err := HashURL("http://example.com/one")
+	if err != nil {
+		t.Fatalf("HashURL a: %v", err)
+	}
+	b, err := HashURL("http://example.com/two")
+	if err != nil {
+		t.Fatalf("HashURL b: %v", err)
+	}
 	if a == b {
 		t.Error("different paths must yield different url hashes")
 	}
-	if a.HostHash() != b.HostHash() {
-		t.Errorf("same host must share host hash: %q vs %q", a.HostHash(), b.HostHash())
+	aHost, err := a.HostHash()
+	if err != nil {
+		t.Fatalf("HostHash(a): %v", err)
+	}
+	bHost, err := b.HostHash()
+	if err != nil {
+		t.Fatalf("HostHash(b): %v", err)
+	}
+	if aHost != bHost {
+		t.Errorf("same host must share host hash: %q vs %q", aHost, bHost)
 	}
 }
 
 func TestURLHashHostHashIsLastSixChars(t *testing.T) {
-	h := URLHash("http://example.com/path")
-	if h.HostHash() != string(h)[6:] {
-		t.Errorf("HostHash = %q, want %q", h.HostHash(), string(h)[6:])
+	h, err := HashURL("http://example.com/path")
+	if err != nil {
+		t.Fatalf("HashURL: %v", err)
+	}
+	hostHash, err := h.HostHash()
+	if err != nil {
+		t.Fatalf("HostHash: %v", err)
+	}
+	if hostHash != string(h)[6:] {
+		t.Errorf("HostHash = %q, want %q", hostHash, string(h)[6:])
+	}
+}
+
+func TestHashURLHostNormalizesCaseAndDots(t *testing.T) {
+	want, err := HashURLHost("example.com")
+	if err != nil {
+		t.Fatalf("HashURLHost: %v", err)
+	}
+	for _, in := range []string{"Example.COM", ".example.com.", "EXAMPLE.com"} {
+		got, err := HashURLHost(in)
+		if err != nil {
+			t.Fatalf("HashURLHost(%q): %v", in, err)
+		}
+		if got != want {
+			t.Errorf("HashURLHost(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestHashURLHostUsesFtpSchemeForFtpHosts(t *testing.T) {
+	got, err := HashURLHost("ftp.example.com")
+	if err != nil {
+		t.Fatalf("HashURLHost: %v", err)
+	}
+	want, err := HashURL("ftp://ftp.example.com/")
+	if err != nil {
+		t.Fatalf("HashURL: %v", err)
+	}
+	if got != want {
+		t.Fatalf("ftp host hash = %q, want %q", got, want)
 	}
 }
 
@@ -51,7 +111,10 @@ func TestURLHashFlagByteEncodesProtocolDomainAndLength(t *testing.T) {
 		{"http://longexampledomain.com/", byte(tldGenericID<<2) | 3},
 	}
 	for _, c := range cases {
-		h := URLHash(c.url)
+		h, err := HashURL(c.url)
+		if err != nil {
+			t.Fatalf("HashURL(%q): %v", c.url, err)
+		}
 		got := string(h)[11]
 		want := Alphabet[c.flag]
 		if got != want {
@@ -61,8 +124,14 @@ func TestURLHashFlagByteEncodesProtocolDomainAndLength(t *testing.T) {
 }
 
 func TestURLHashSubdomainChangesLocalAndHostHash(t *testing.T) {
-	bare := URLHash("http://example.com/")
-	sub := URLHash("http://www.example.com/")
+	bare, err := HashURL("http://example.com/")
+	if err != nil {
+		t.Fatalf("HashURL bare: %v", err)
+	}
+	sub, err := HashURL("http://www.example.com/")
+	if err != nil {
+		t.Fatalf("HashURL sub: %v", err)
+	}
 	if bare == sub {
 		t.Error("subdomain must change the url hash")
 	}

@@ -17,7 +17,7 @@ func singlePostingHash(t *testing.T, postings []yacymodel.RWIPosting) yacymodel.
 	if err != nil {
 		t.Fatalf("URLHash: %v", err)
 	}
-	return hash
+	return hash.Hash()
 }
 
 func rwiPostingWithDocType(doctype byte) func(yacymodel.RWIPosting) yacymodel.RWIPosting {

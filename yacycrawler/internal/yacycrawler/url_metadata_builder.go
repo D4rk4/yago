@@ -1,6 +1,7 @@
 package yacycrawler
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -9,7 +10,7 @@ import (
 
 const shortDayFormat = "20060102"
 
-func BuildMetadata(page ParsedPage, loadedAt time.Time) yacymodel.URIMetadataRow {
+func BuildMetadata(page ParsedPage, loadedAt time.Time) (yacymodel.URIMetadataRow, error) {
 	return buildMetadata(page, BuildPageStats(page), loadedAt)
 }
 
@@ -17,10 +18,14 @@ func buildMetadata(
 	page ParsedPage,
 	stats PageStats,
 	loadedAt time.Time,
-) yacymodel.URIMetadataRow {
+) (yacymodel.URIMetadataRow, error) {
 	day := loadedAt.UTC().Format(shortDayFormat)
+	urlHash, err := yacymodel.HashURL(page.URL)
+	if err != nil {
+		return yacymodel.URIMetadataRow{}, fmt.Errorf("hash url: %w", err)
+	}
 	properties := map[string]string{
-		yacymodel.URLMetaHash: string(URLHash(page.URL)),
+		yacymodel.URLMetaHash: urlHash.String(),
 		"url":                 yacymodel.EncodeBase64WireForm(page.URL),
 		"descr":               yacymodel.EncodeBase64WireForm(page.Title),
 		"dt":                  "t",
@@ -33,5 +38,5 @@ func buildMetadata(
 		"llocal":              strconv.Itoa(len(stats.LocalLinks)),
 		"lother":              strconv.Itoa(len(stats.ExternalLinks)),
 	}
-	return yacymodel.URIMetadataRow{Properties: properties}
+	return yacymodel.URIMetadataRow{Properties: properties}, nil
 }

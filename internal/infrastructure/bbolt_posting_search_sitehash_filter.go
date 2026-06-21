@@ -2,9 +2,10 @@ package infrastructure
 
 import "github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 
-func matchesSiteHash(urlHash yacymodel.Hash, siteHash string) bool {
+func matchesSiteHash(urlHash yacymodel.URLHash, siteHash string) bool {
 	if siteHash == "" {
 		return true
 	}
-	return urlHash.HostHash() == siteHash
+	hostHash, err := urlHash.HostHash()
+	return err == nil && hostHash == siteHash
 }

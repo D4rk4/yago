@@ -31,11 +31,11 @@ func TestMigrateURLMetadataRewritesLegacyValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("URLHash: %v", err)
 	}
-	if value := storedURLMetadata(t, store, []byte(hash)); !isCompressedURLMetadata(value) {
+	if value := storedURLMetadata(t, store, []byte(hash.Hash())); !isCompressedURLMetadata(value) {
 		t.Fatalf("value not migrated to compressed form: %q", value)
 	}
 
-	rows, err := store.RowsByHash(ctx, []yacymodel.Hash{hash})
+	rows, err := store.RowsByHash(ctx, []yacymodel.Hash{hash.Hash()})
 	if err != nil {
 		t.Fatalf("RowsByHash: %v", err)
 	}
@@ -98,7 +98,7 @@ func seedLegacyURLMetadata(t *testing.T, store *BboltStorage, row yacymodel.URIM
 		t.Fatalf("URLHash: %v", err)
 	}
 	err = store.update(func(tx *bolt.Tx) error {
-		return tx.Bucket(bucketURLs).Put([]byte(hash), []byte(row.String()))
+		return tx.Bucket(bucketURLs).Put([]byte(hash.Hash()), []byte(row.String()))
 	})
 	if err != nil {
 		t.Fatalf("seed legacy url metadata: %v", err)

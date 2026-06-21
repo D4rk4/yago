@@ -29,7 +29,7 @@ func excludedURLHashes(
 				return nil, fmt.Errorf("parse rwi: %w", err)
 			}
 			if urlHash, err := entry.URLHash(); err == nil {
-				excluded[urlHash] = struct{}{}
+				excluded[urlHash.Hash()] = struct{}{}
 			} else {
 				slog.WarnContext(
 					ctx,

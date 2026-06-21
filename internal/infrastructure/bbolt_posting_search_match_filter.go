@@ -64,11 +64,11 @@ func (m postingSearchMatcher) matches(
 		return false
 	}
 	if len(m.allowed) != 0 {
-		if _, ok := m.allowed[urlHash]; !ok {
+		if _, ok := m.allowed[urlHash.Hash()]; !ok {
 			return false
 		}
 	}
-	if _, ok := m.excluded[urlHash]; ok {
+	if _, ok := m.excluded[urlHash.Hash()]; ok {
 		return false
 	}
 	if !matchesSiteHash(urlHash, query.SiteHash) {

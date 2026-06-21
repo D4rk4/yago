@@ -24,12 +24,20 @@ func (p *IngestPublisher) Publish(
 	provenance []byte,
 ) error {
 	stats := BuildPageStats(page)
+	postings, err := buildPostings(page, stats)
+	if err != nil {
+		return err
+	}
+	metadata, err := buildMetadata(page, stats, p.clock())
+	if err != nil {
+		return err
+	}
 	batch := IngestBatch{
 		SourceURL:     page.URL,
 		Provenance:    provenance,
 		ProfileHandle: profileHandle,
-		Postings:      buildPostings(page, stats),
-		Metadata:      []yacymodel.URIMetadataRow{buildMetadata(page, stats, p.clock())},
+		Postings:      postings,
+		Metadata:      []yacymodel.URIMetadataRow{metadata},
 	}
 	if err := p.queue.Publish(ctx, batch); err != nil {
 		return fmt.Errorf("publish ingest batch %s: %w", page.URL, err)

@@ -15,7 +15,10 @@ func TestBuildPostingsUsesYaCyWordHash(t *testing.T) {
 		Text:     "Kangaroo kangaroo hops across the outback",
 		Links:    nil,
 	}
-	postings := yacycrawler.BuildPostings(page)
+	postings, err := yacycrawler.BuildPostings(page)
+	if err != nil {
+		t.Fatalf("BuildPostings: %v", err)
+	}
 
 	byHash := make(map[yacymodel.Hash]yacymodel.RWIPosting, len(postings))
 	for _, entry := range postings {
@@ -40,7 +43,10 @@ func TestBuildPostingsAreAcceptableRWILines(t *testing.T) {
 		Text:     "indexable words here",
 		Links:    []string{"http://example.com/local", "http://other.com/x"},
 	}
-	postings := yacycrawler.BuildPostings(page)
+	postings, err := yacycrawler.BuildPostings(page)
+	if err != nil {
+		t.Fatalf("BuildPostings: %v", err)
+	}
 	if len(postings) == 0 {
 		t.Fatal("expected postings")
 	}

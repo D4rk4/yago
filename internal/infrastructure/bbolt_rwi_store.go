@@ -43,7 +43,7 @@ func (s *BboltStorage) AppendRWI(
 				continue
 			}
 			if !entry.WordHash.Valid() {
-				rejected = append(rejected, urlHash)
+				rejected = append(rejected, urlHash.Hash())
 				slog.WarnContext(
 					ctx,
 					"rwi posting discarded",
@@ -53,15 +53,15 @@ func (s *BboltStorage) AppendRWI(
 				continue
 			}
 
-			key := rwiPostingKey(entry.WordHash, urlHash)
+			key := rwiPostingKey(entry.WordHash, urlHash.Hash())
 			existing := rwi.Get(key)
 			if existing == nil {
 				if err := incrementCount(counts, countRWI); err != nil {
 					return err
 				}
 			}
-			if refs.Get([]byte(urlHash)) == nil {
-				if err := refs.Put([]byte(urlHash), setMember); err != nil {
+			if refs.Get([]byte(urlHash.Hash())) == nil {
+				if err := refs.Put([]byte(urlHash.Hash()), setMember); err != nil {
 					return fmt.Errorf("store referenced url: %w", err)
 				}
 				if err := incrementCount(counts, countReferencedURLs); err != nil {

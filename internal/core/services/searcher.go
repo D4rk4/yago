@@ -32,6 +32,11 @@ func (s Searcher) Search(
 		return s.searchAbstractCounts(ctx, query, start)
 	}
 
+	siteHash, err := query.JoinSiteHash()
+	if err != nil {
+		return contracts.SearchResult{}, fmt.Errorf("join site hash: %w", err)
+	}
+
 	postingResult, err := s.rwi.SearchPostings(ctx, ports.PostingSearchQuery{
 		WordHashes:    query.Words,
 		ExcludeHashes: query.Exclude,
@@ -43,7 +48,7 @@ func (s Searcher) Search(
 		ContentDomain:    query.Filters.ContentDomain,
 		StrictContentDom: query.Filters.StrictContentDom,
 		Constraint:       query.Filters.Constraint,
-		SiteHash:         query.JoinSiteHash(),
+		SiteHash:         siteHash,
 	})
 	if err != nil {
 		return contracts.SearchResult{}, fmt.Errorf("search postings: %w", err)
@@ -128,9 +133,10 @@ func matchWord(
 			)
 			continue
 		}
-		if _, seen := matched[urlHash]; !seen {
-			matched[urlHash] = searchCandidate{
-				hash:     urlHash,
+		hash := urlHash.Hash()
+		if _, seen := matched[hash]; !seen {
+			matched[hash] = searchCandidate{
+				hash:     hash,
 				hits:     hits,
 				distance: distance,
 			}
@@ -222,6 +228,11 @@ func (s Searcher) searchAbstractCounts(
 	query contracts.SearchQuery,
 	start time.Time,
 ) (contracts.SearchResult, error) {
+	siteHash, err := query.JoinSiteHash()
+	if err != nil {
+		return contracts.SearchResult{}, fmt.Errorf("join site hash: %w", err)
+	}
+
 	postingResult, err := s.rwi.SearchPostings(ctx, ports.PostingSearchQuery{
 		WordHashes:   query.Abstracts.Words,
 		URLHashes:    query.URLs,
@@ -232,7 +243,7 @@ func (s Searcher) searchAbstractCounts(
 		ContentDomain:    query.Filters.ContentDomain,
 		StrictContentDom: query.Filters.StrictContentDom,
 		Constraint:       query.Filters.Constraint,
-		SiteHash:         query.JoinSiteHash(),
+		SiteHash:         siteHash,
 	})
 	if err != nil {
 		return contracts.SearchResult{}, fmt.Errorf("search postings: %w", err)
@@ -273,6 +284,10 @@ func (s Searcher) searchAbstracts(
 			word: yacymodel.EncodeSearchIndexAbstract(candidateHashes(autoInputs[word])),
 		}, nil
 	case contracts.SearchAbstractExplicit:
+		siteHash, err := query.JoinSiteHash()
+		if err != nil {
+			return nil, fmt.Errorf("join site hash: %w", err)
+		}
 		postingResult, err := s.rwi.SearchPostings(ctx, ports.PostingSearchQuery{
 			WordHashes:   query.Abstracts.Words,
 			URLHashes:    query.URLs,
@@ -283,7 +298,7 @@ func (s Searcher) searchAbstracts(
 			ContentDomain:    query.Filters.ContentDomain,
 			StrictContentDom: query.Filters.StrictContentDom,
 			Constraint:       query.Filters.Constraint,
-			SiteHash:         query.JoinSiteHash(),
+			SiteHash:         siteHash,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("search postings: %w", err)

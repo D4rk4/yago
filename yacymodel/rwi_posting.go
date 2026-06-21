@@ -51,8 +51,8 @@ type WordPostings struct {
 	Postings []RWIPosting
 }
 
-func (e RWIPosting) URLHash() (Hash, error) {
-	return ParseHash(e.Properties[ColURLHash])
+func (e RWIPosting) URLHash() (URLHash, error) {
+	return ParseURLHash(e.Properties[ColURLHash])
 }
 
 func ParseRWIPosting(line string) (RWIPosting, error) {

@@ -35,7 +35,7 @@ func ParseURIMetadataRow(row string) (URIMetadataRow, error) {
 	return URIMetadataRow{Properties: props}, nil
 }
 
-func (r URIMetadataRow) URLHash() (Hash, error) {
+func (r URIMetadataRow) URLHash() (URLHash, error) {
 	return urlMetadataHash(r.Properties)
 }
 

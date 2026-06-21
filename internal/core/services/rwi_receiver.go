@@ -88,7 +88,7 @@ func referencedURLs(ctx context.Context, entries []yacymodel.RWIPosting) []yacym
 			)
 			continue
 		}
-		hashes = append(hashes, hash)
+		hashes = append(hashes, hash.Hash())
 	}
 
 	return hashes

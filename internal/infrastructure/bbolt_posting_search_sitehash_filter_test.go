@@ -10,7 +10,7 @@ import (
 )
 
 func TestMatchesSiteHash(t *testing.T) {
-	const urlHash = yacymodel.Hash("0123456789AB")
+	const urlHash = yacymodel.URLHash("0123456789AB")
 	if !matchesSiteHash(urlHash, "") {
 		t.Fatal("empty site hash should match")
 	}
@@ -28,7 +28,8 @@ func TestBboltStorageSearchPostingsFiltersBySiteHash(t *testing.T) {
 	defer closeTestStorage(t, store)
 
 	word := hashForStorageTest("word")
-	first := hashForStorageTest("url-a")
+	firstHash := hashForStorageTest("url-a")
+	first := yacymodel.URLHash(firstHash.String())
 	_, err := store.AppendRWI(ctx, []yacymodel.RWIPosting{
 		rwiPostingForStorageTest(word, "url-a", 1),
 		rwiPostingForStorageTest(word, "url-b", 1),
@@ -39,7 +40,13 @@ func TestBboltStorageSearchPostingsFiltersBySiteHash(t *testing.T) {
 
 	result, err := store.SearchPostings(ctx, ports.PostingSearchQuery{
 		WordHashes: []yacymodel.Hash{word},
-		SiteHash:   first.HostHash(),
+		SiteHash: func() string {
+			got, err := yacymodel.URLHash(first.String()).HostHash()
+			if err != nil {
+				t.Fatalf("HostHash: %v", err)
+			}
+			return got
+		}(),
 	})
 	if err != nil {
 		t.Fatalf("SearchPostings: %v", err)
@@ -47,7 +54,7 @@ func TestBboltStorageSearchPostingsFiltersBySiteHash(t *testing.T) {
 	if result.Counts[word] != 1 {
 		t.Fatalf("count = %d, want 1", result.Counts[word])
 	}
-	if got := singlePostingHash(t, result.Postings[word]); got != first {
+	if got := singlePostingHash(t, result.Postings[word]); got != firstHash {
 		t.Fatalf("posting hash = %q, want url-a hash", got)
 	}
 }

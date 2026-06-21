@@ -33,7 +33,13 @@ func TestMigrateRWIPostingsRewritesLegacyValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("URLHash: %v", err)
 	}
-	if value := storedPosting(t, store, rwiPostingKey(word, urlHash)); !isBinaryPosting(value) {
+	if value := storedPosting(
+		t,
+		store,
+		rwiPostingKey(word, urlHash.Hash()),
+	); !isBinaryPosting(
+		value,
+	) {
 		t.Fatalf("value not migrated to binary: %q", value)
 	}
 
@@ -106,7 +112,7 @@ func seedLegacyPosting(t *testing.T, store *BboltStorage, entry yacymodel.RWIPos
 	if err != nil {
 		t.Fatalf("URLHash: %v", err)
 	}
-	key := rwiPostingKey(entry.WordHash, urlHash)
+	key := rwiPostingKey(entry.WordHash, urlHash.Hash())
 	err = store.update(func(tx *bolt.Tx) error {
 		return tx.Bucket(bucketRWI).Put(key, []byte(entry.String()))
 	})

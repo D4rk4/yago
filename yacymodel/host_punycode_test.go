@@ -19,8 +19,14 @@ func TestToPunycodeEncodesNonBasicLabelsPerLabel(t *testing.T) {
 }
 
 func TestURLHashUsesPunycodeHost(t *testing.T) {
-	unicode := URLHash("http://bücher.example/")
-	ascii := URLHash("http://xn--bcher-kva.example/")
+	unicode, err := HashURL("http://bücher.example/")
+	if err != nil {
+		t.Fatalf("HashURL unicode: %v", err)
+	}
+	ascii, err := HashURL("http://xn--bcher-kva.example/")
+	if err != nil {
+		t.Fatalf("HashURL ascii: %v", err)
+	}
 	if unicode != ascii {
 		t.Errorf("IDN url hash %q must equal punycode form %q", unicode, ascii)
 	}

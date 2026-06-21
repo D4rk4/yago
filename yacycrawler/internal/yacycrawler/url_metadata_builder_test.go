@@ -17,14 +17,20 @@ func TestBuildMetadataRoundTrips(t *testing.T) {
 		Links:    []string{"http://example.com/a", "http://other.com/b"},
 	}
 	loadedAt := time.Date(2026, 6, 19, 12, 0, 0, 0, time.UTC)
-	row := yacycrawler.BuildMetadata(page, loadedAt)
+	row, err := yacycrawler.BuildMetadata(page, loadedAt)
+	if err != nil {
+		t.Fatalf("BuildMetadata: %v", err)
+	}
 
 	parsed, err := yacymodel.ParseURIMetadataRow(row.String())
 	if err != nil {
 		t.Fatalf("ParseURIMetadataRow(%q): %v", row.String(), err)
 	}
 
-	wantHash := yacycrawler.URLHash(page.URL)
+	wantHash, err := yacymodel.HashURL(page.URL)
+	if err != nil {
+		t.Fatalf("HashURL: %v", err)
+	}
 	gotHash, err := parsed.URLHash()
 	if err != nil {
 		t.Fatalf("URLHash: %v", err)

@@ -23,8 +23,14 @@ func TestResolveBackpath(t *testing.T) {
 }
 
 func TestURLHashNormalizesDotSegments(t *testing.T) {
-	a := URLHash("http://example.com/a/b/../c")
-	b := URLHash("http://example.com/a/c")
+	a, err := HashURL("http://example.com/a/b/../c")
+	if err != nil {
+		t.Fatalf("HashURL a: %v", err)
+	}
+	b, err := HashURL("http://example.com/a/c")
+	if err != nil {
+		t.Fatalf("HashURL b: %v", err)
+	}
 	if a != b {
 		t.Errorf("dot-segment url hash %q must equal normalized %q", a, b)
 	}

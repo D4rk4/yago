@@ -1,16 +1,17 @@
 package yacycrawler
 
 import (
+	"fmt"
 	"maps"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-func BuildPostings(page ParsedPage) []yacymodel.RWIPosting {
+func BuildPostings(page ParsedPage) ([]yacymodel.RWIPosting, error) {
 	return buildPostings(page, BuildPageStats(page))
 }
 
-func buildPostings(page ParsedPage, stats PageStats) []yacymodel.RWIPosting {
+func buildPostings(page ParsedPage, stats PageStats) ([]yacymodel.RWIPosting, error) {
 	frequency := make(map[string]int)
 	firstPosition := make(map[string]int)
 	order := make([]string, 0)
@@ -22,11 +23,14 @@ func buildPostings(page ParsedPage, stats PageStats) []yacymodel.RWIPosting {
 		frequency[token]++
 	}
 
-	urlHash := string(URLHash(page.URL))
+	urlHash, err := yacymodel.HashURL(page.URL)
+	if err != nil {
+		return nil, fmt.Errorf("hash url: %w", err)
+	}
 	language := NormalizeLanguage(page.Language)
 
 	shared := map[string]string{
-		yacymodel.ColURLHash:  urlHash,
+		yacymodel.ColURLHash:  urlHash.String(),
 		yacymodel.ColLanguage: language,
 		yacymodel.ColTextWordCount: yacymodel.FormatRWICardinal(
 			cardinalValue(len(stats.Tokens), maxUint16),
@@ -55,7 +59,7 @@ func buildPostings(page ParsedPage, stats PageStats) []yacymodel.RWIPosting {
 			Properties: properties,
 		})
 	}
-	return postings
+	return postings, nil
 }
 
 const (
