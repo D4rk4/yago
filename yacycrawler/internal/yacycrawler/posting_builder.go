@@ -6,11 +6,11 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-func BuildPostings(page ParsedPage) []yacymodel.RWIEntry {
+func BuildPostings(page ParsedPage) []yacymodel.RWIPosting {
 	return buildPostings(page, BuildPageStats(page))
 }
 
-func buildPostings(page ParsedPage, stats PageStats) []yacymodel.RWIEntry {
+func buildPostings(page ParsedPage, stats PageStats) []yacymodel.RWIPosting {
 	frequency := make(map[string]int)
 	firstPosition := make(map[string]int)
 	order := make([]string, 0)
@@ -42,7 +42,7 @@ func buildPostings(page ParsedPage, stats PageStats) []yacymodel.RWIEntry {
 		),
 	}
 
-	postings := make([]yacymodel.RWIEntry, 0, len(order))
+	postings := make([]yacymodel.RWIPosting, 0, len(order))
 	for _, token := range order {
 		properties := make(map[string]string, len(shared)+2)
 		maps.Copy(properties, shared)
@@ -50,7 +50,7 @@ func buildPostings(page ParsedPage, stats PageStats) []yacymodel.RWIEntry {
 		position := cardinalValue(firstPosition[token], maxUint16)
 		properties[yacymodel.ColHitCount] = yacymodel.FormatRWICardinal(hits)
 		properties[yacymodel.ColTextPosition] = yacymodel.FormatRWICardinal(position)
-		postings = append(postings, yacymodel.RWIEntry{
+		postings = append(postings, yacymodel.RWIPosting{
 			WordHash:   yacymodel.WordHash(token),
 			Properties: properties,
 		})

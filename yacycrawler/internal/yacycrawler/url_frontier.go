@@ -181,15 +181,12 @@ func seedFrontierRun(
 			continue
 		}
 		if norm, ok := normalizeURL(req.URL); ok {
-			acceptFrontierJob(
-				runs,
-				ready,
-				runID,
-				norm,
-				req.Depth,
-				req.ProfileHandle,
-				command.provenance,
-			)
+			acceptFrontierJob(runs, ready, runID, frontierCandidate{
+				normURL:       norm,
+				depth:         req.Depth,
+				profileHandle: req.ProfileHandle,
+				provenance:    command.provenance,
+			})
 		}
 	}
 	_, finished := finishFrontierJob(runs, runID, false)
@@ -240,15 +237,12 @@ func submitFrontierLinks(
 			continue
 		}
 		if norm, ok := normalizeURL(resolved.String()); ok {
-			acceptFrontierJob(
-				runs,
-				ready,
-				work.RunID,
-				norm,
-				work.Depth+1,
-				work.ProfileHandle,
-				work.Provenance,
-			)
+			acceptFrontierJob(runs, ready, work.RunID, frontierCandidate{
+				normURL:       norm,
+				depth:         work.Depth + 1,
+				profileHandle: work.ProfileHandle,
+				provenance:    work.Provenance,
+			})
 		}
 	}
 }
@@ -275,36 +269,40 @@ func finishFrontierJob(
 	return closed, finished
 }
 
+type frontierCandidate struct {
+	normURL       string
+	depth         int
+	profileHandle string
+	provenance    []byte
+}
+
 func acceptFrontierJob(
 	runs map[uuid.UUID]*crawlRun,
 	ready *[]CrawlJob,
 	runID uuid.UUID,
-	normURL string,
-	depth int,
-	profileHandle string,
-	provenance []byte,
+	candidate frontierCandidate,
 ) {
-	host := hostOf(normURL)
+	host := hostOf(candidate.normURL)
 	run := frontierRun(runs, runID, nil, CompiledProfile{})
-	profile, ok := run.profiles[profileHandle]
+	profile, ok := run.profiles[candidate.profileHandle]
 	if !ok {
 		return
 	}
-	if _, seen := run.visited[normURL]; seen {
+	if _, seen := run.visited[candidate.normURL]; seen {
 		return
 	}
 	if profile.Profile.MaxPagesPerHost != yacycrawlcontract.UnlimitedPagesPerHost &&
 		run.hostPages[host] >= profile.Profile.MaxPagesPerHost {
 		return
 	}
-	run.visited[normURL] = struct{}{}
+	run.visited[candidate.normURL] = struct{}{}
 	run.hostPages[host]++
 	run.pending++
 	*ready = append(*ready, CrawlJob{
-		URL:           normURL,
-		Depth:         depth,
-		ProfileHandle: profileHandle,
-		Provenance:    provenance,
+		URL:           candidate.normURL,
+		Depth:         candidate.depth,
+		ProfileHandle: candidate.profileHandle,
+		Provenance:    candidate.provenance,
 		RunID:         runID,
 	})
 }

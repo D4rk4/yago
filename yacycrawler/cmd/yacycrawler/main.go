@@ -22,14 +22,14 @@ func main() {
 func start() int {
 	cfg, err := yacycrawler.LoadServiceConfig(os.Getenv)
 	if err != nil {
-		slog.Error("crawler config invalid", "error", err)
+		slog.ErrorContext(context.Background(), "crawler config invalid", slog.Any("error", err))
 		return 2
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	if err := run(ctx, cfg); err != nil {
-		slog.Error("crawler failed", "error", err)
+		slog.ErrorContext(ctx, "crawler failed", slog.Any("error", err))
 		return 1
 	}
 	return 0
@@ -85,13 +85,13 @@ func run(ctx context.Context, cfg yacycrawler.ServiceConfig) error {
 		close(consumerDone)
 	}()
 
-	slog.Info("crawler started",
-		"orders_subject", cfg.OrdersSubject,
-		"ingest_subject", cfg.IngestSubject,
-		"workers", crawl.Workers,
+	slog.InfoContext(ctx, "crawler started",
+		slog.String("ordersSubject", cfg.OrdersSubject),
+		slog.String("ingestSubject", cfg.IngestSubject),
+		slog.Int("workers", crawl.Workers),
 	)
 	<-consumerDone
 	<-workersDone
-	slog.Info("crawler stopped")
+	slog.InfoContext(ctx, "crawler stopped")
 	return nil
 }

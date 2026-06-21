@@ -94,12 +94,22 @@ func (g *PolitenessGate) fetchRobotsGroup(ctx context.Context, target *url.URL) 
 	}
 	response, err := g.client.Do(request)
 	if err != nil {
-		slog.Warn("robots fetch failed", "host", target.Host, "error", err)
+		slog.WarnContext(
+			ctx,
+			"robots fetch failed",
+			slog.String("host", target.Host),
+			slog.Any("error", err),
+		)
 		return allowAll()
 	}
 	defer func() {
 		if cerr := response.Body.Close(); cerr != nil {
-			slog.Warn("robots body close failed", "host", target.Host, "error", cerr)
+			slog.WarnContext(
+				ctx,
+				"robots body close failed",
+				slog.String("host", target.Host),
+				slog.Any("error", cerr),
+			)
 		}
 	}()
 	body, err := io.ReadAll(response.Body)

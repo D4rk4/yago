@@ -33,7 +33,7 @@ func TestBuildMetadataRoundTrips(t *testing.T) {
 		t.Errorf("url hash = %q, want %q", gotHash, wantHash)
 	}
 
-	decodedURL, err := yacymodel.DecodeSeedWireForm(parsed.Properties["url"])
+	decodedURL, err := yacymodel.DecodeWireForm(parsed.Properties["url"])
 	if err != nil {
 		t.Fatalf("decode url value: %v", err)
 	}

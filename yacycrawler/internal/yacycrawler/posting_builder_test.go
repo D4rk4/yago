@@ -17,7 +17,7 @@ func TestBuildPostingsUsesYaCyWordHash(t *testing.T) {
 	}
 	postings := yacycrawler.BuildPostings(page)
 
-	byHash := make(map[yacymodel.Hash]yacymodel.RWIEntry, len(postings))
+	byHash := make(map[yacymodel.Hash]yacymodel.RWIPosting, len(postings))
 	for _, entry := range postings {
 		byHash[entry.WordHash] = entry
 	}
@@ -49,9 +49,9 @@ func TestBuildPostingsAreAcceptableRWILines(t *testing.T) {
 		if !yacymodel.AcceptableRWILine(line) {
 			t.Errorf("posting not acceptable: %q", line)
 		}
-		parsed, err := yacymodel.ParseRWIEntry(line)
+		parsed, err := yacymodel.ParseRWIPosting(line)
 		if err != nil {
-			t.Errorf("ParseRWIEntry(%q): %v", line, err)
+			t.Errorf("ParseRWIPosting(%q): %v", line, err)
 			continue
 		}
 		if parsed.WordHash != entry.WordHash {

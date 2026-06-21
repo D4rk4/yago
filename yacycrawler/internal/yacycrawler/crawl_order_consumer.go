@@ -44,9 +44,19 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 	order := delivery.Order
 	profile, err := CompileProfile(order.Profile)
 	if err != nil {
-		slog.Warn(msgProfileRegisterFailed, "handle", order.Profile.Handle, "error", err)
+		slog.WarnContext(
+			ctx,
+			msgProfileRegisterFailed,
+			slog.String("handle", order.Profile.Handle),
+			slog.Any("error", err),
+		)
 		if err := delivery.Term(ctx); err != nil {
-			slog.Warn(msgOrderTermFailed, "handle", order.Profile.Handle, "error", err)
+			slog.WarnContext(
+				ctx,
+				msgOrderTermFailed,
+				slog.String("handle", order.Profile.Handle),
+				slog.Any("error", err),
+			)
 		}
 		return
 	}
@@ -55,12 +65,22 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 		defer c.frontier.Release()
 		if ctx.Err() != nil {
 			if err := delivery.Nak(context.Background()); err != nil {
-				slog.Warn(msgOrderNakFailed, "handle", order.Profile.Handle, "error", err)
+				slog.WarnContext(
+					context.Background(),
+					msgOrderNakFailed,
+					slog.String("handle", order.Profile.Handle),
+					slog.Any("error", err),
+				)
 			}
 			return
 		}
 		if err := delivery.Ack(context.Background()); err != nil {
-			slog.Warn(msgOrderAckFailed, "handle", order.Profile.Handle, "error", err)
+			slog.WarnContext(
+				context.Background(),
+				msgOrderAckFailed,
+				slog.String("handle", order.Profile.Handle),
+				slog.Any("error", err),
+			)
 		}
 	})
 }

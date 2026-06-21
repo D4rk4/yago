@@ -66,7 +66,12 @@ func (p *Pipeline) run(ctx context.Context) {
 				return
 			}
 			if err := p.process(ctx, job); err != nil {
-				slog.Warn("crawl job failed", "url", job.URL, "error", err)
+				slog.WarnContext(
+					ctx,
+					"crawl job failed",
+					slog.String("url", job.URL),
+					slog.Any("error", err),
+				)
 			}
 		}
 	}
@@ -79,7 +84,7 @@ func (p *Pipeline) process(ctx context.Context, job CrawlJob) error {
 		return fmt.Errorf("fetch: %w", err)
 	}
 	if p.botWall.IsBotWall(fetched) {
-		slog.Warn(msgBotWallDropped, "url", job.URL)
+		slog.WarnContext(ctx, msgBotWallDropped, slog.String("url", job.URL))
 		return nil
 	}
 	page := ParseHTML(fetched.URL, fetched.ContentType, fetched.Body)

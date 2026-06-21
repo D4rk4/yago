@@ -23,7 +23,7 @@ func testIngestBatch(url string) yacycrawler.IngestBatch {
 		SourceURL:     url,
 		Provenance:    []byte("admin"),
 		ProfileHandle: "abcdef012345",
-		Postings: []yacymodel.RWIEntry{
+		Postings: []yacymodel.RWIPosting{
 			{
 				WordHash:   yacymodel.Hash("wordhash0123"),
 				Properties: map[string]string{"u": "urlhash01234"},

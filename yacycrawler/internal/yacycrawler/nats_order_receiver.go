@@ -35,7 +35,7 @@ func NewNATSOrderReceiver(
 	consume, err := consumer.Consume(func(msg jetstream.Msg) {
 		order, err := yacycrawlcontract.UnmarshalCrawlOrder(msg.Data())
 		if err != nil {
-			slog.Warn(msgOrderDecodeFailed, "error", err)
+			slog.WarnContext(context.Background(), msgOrderDecodeFailed, slog.Any("error", err))
 			_ = msg.Term()
 			return
 		}
