@@ -27,11 +27,16 @@ Each document must be self-contained, concise, and written in plain language for
 related docs for navigation only; avoid cross-document dependencies, duplicate facts, internal jargon,
 implementation details, and rationale.
 
-## File naming
+## Naming
 
-Every file name states its single responsibility, so the file has one reason to change and cannot
-quietly absorb unrelated concerns. Prefer long and bounded over short and generic; never `util.go`,
-`helpers.go`, `handler.go`, or `types.go`.
+Every name — package, file, type, interface, port, function, method, field, variable —
+states a single bounded responsibility, so a reader can predict from the name alone what
+does and does not belong behind it, and the named thing cannot quietly absorb unrelated
+members. Prefer long and bounded over short and generic; never `util.go`, `helpers.go`,
+`handler.go`, or `types.go`. Reject vague umbrella nouns that name a topic or layer rather
+than a role (e.g. `Store`, `Manager`, `Service`, `Handler`, `Util`, or a domain topic such
+as `Distribution*` used as a catch-all). If a name's boundary cannot be stated in one
+sentence, the abstraction is wrong — fix the abstraction, not just the name.
 
 ## Dependencies
 
@@ -47,6 +52,13 @@ on `PATH`.
 
 Code lands with tests. `make verify` runs the test suite and a coverage scan; a change is not done
 until both are green and total coverage stays at or above the configured threshold.
+
+When coverage falls below the threshold, the default response is to remove or refactor code, not to
+add tests. First find the uncovered statements and branches and ask whether they should exist at all:
+delete dead or defensive-only code, collapse a branch that no caller exercises, or restructure so one
+covered path replaces several. Reduce code first; write tests only for behaviour that genuinely must
+exist and is not yet exercised. A test written solely to lift the number, asserting behaviour no caller
+depends on, is a filler test and counts as a failure, not a fix.
 
 ## Feedback loop
 

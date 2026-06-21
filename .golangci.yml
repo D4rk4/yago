@@ -7,22 +7,56 @@ linters:
     - copyloopvar
     - errname
     - errorlint
+    - funlen
     - gocritic
+    - gocognit
     - gosec
+    - iface
+    - interfacebloat
+    - loggercheck
+    - maintidx
     - misspell
     - nilerr
     - noctx
+    - nolintlint
     - prealloc
+    - revive
+    - sloglint
     - testifylint
     - unconvert
     - unparam
     - usestdlibvars
     - wrapcheck
   settings:
+    funlen:
+      lines: 80
+      statements: 50
+      ignore-comments: true
+    gocognit:
+      min-complexity: 20
     gosec:
       excludes:
         - G401
         - G501
+    maintidx:
+      under: 20
+    revive:
+      rules:
+        - name: argument-limit
+          arguments:
+            - 5
+        - name: cognitive-complexity
+          arguments:
+            - 20
+        - name: function-length
+          arguments:
+            - 50
+            - 80
+    sloglint:
+      attr-only: true
+      context: all
+      key-naming-case: camel
+      static-msg: true
   exclusions:
     generated: strict
 
