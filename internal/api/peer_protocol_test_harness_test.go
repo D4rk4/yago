@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 func testHash(tb testing.TB, word string) yacymodel.Hash {
@@ -27,26 +29,18 @@ func testSeed(tb testing.TB, word, name string) yacymodel.Seed {
 	tb.Helper()
 
 	seed := yacymodel.Seed{
-		yacymodel.SeedHash:     testHash(tb, word).String(),
-		yacymodel.SeedName:     name,
-		yacymodel.SeedPeerType: yacymodel.PeerSenior.String(),
+		Hash:     testHash(tb, word),
+		Name:     yacymodel.Some(name),
+		PeerType: yacymodel.Some(yacymodel.PeerSenior),
 	}
 
-	roundTrip, err := yacymodel.ParseSeed(seed.String())
+	roundTrip, err := yacymodel.ParseSeed(tb.Context(), seed.String())
 	if err != nil {
 		tb.Fatalf("seed does not round-trip: %v", err)
 	}
 
 	return roundTrip
 }
-
-type fakeIdentity struct {
-	hash    yacymodel.Hash
-	network string
-}
-
-func (f fakeIdentity) Hash() yacymodel.Hash { return f.hash }
-func (f fakeIdentity) NetworkName() string  { return f.network }
 
 type fakeStatus struct {
 	snapshot contracts.StatusSnapshot
@@ -77,13 +71,13 @@ func (f *fakePeers) Hello(
 type fakeRWIReceiver struct {
 	receipt contracts.RWIReceipt
 	err     error
-	entries []yacymodel.RWIEntry
+	entries []yacymodel.RWIPosting
 	called  bool
 }
 
 func (f *fakeRWIReceiver) ReceiveRWI(
 	_ context.Context,
-	entries []yacymodel.RWIEntry,
+	entries []yacymodel.RWIPosting,
 ) (contracts.RWIReceipt, error) {
 	f.called = true
 	f.entries = entries
@@ -140,7 +134,7 @@ func (f *fakeCounter) Count(_ context.Context, kind contracts.CountKind) (int, e
 }
 
 type testHarness struct {
-	ident    fakeIdentity
+	ident    yacymodel.PeerIdentity
 	status   fakeStatus
 	peers    *fakePeers
 	rwi      *fakeRWIReceiver
@@ -153,7 +147,7 @@ func newTestHarness(tb testing.TB) *testHarness {
 	tb.Helper()
 
 	return &testHarness{
-		ident: fakeIdentity{hash: testHash(tb, "node"), network: ""},
+		ident: yacymodel.PeerIdentity{Hash: testHash(tb, "node")},
 		status: fakeStatus{snapshot: contracts.StatusSnapshot{
 			Version: "1.0",
 			Uptime:  7,
@@ -167,17 +161,42 @@ func newTestHarness(tb testing.TB) *testHarness {
 	}
 }
 
-func (h *testHarness) mux(opts ...Option) *http.ServeMux {
-	return NewPeerProtocolMux(
-		h.ident, h.status, h.peers, h.rwi, h.urls, h.searcher, h.counter, opts...,
-	)
+func (h *testHarness) guard() RequestGuard {
+	return NewRequestGuard(h.ident, DefaultMaxBodyBytes, DefaultRequestTimeout)
+}
+
+func (h *testHarness) mux() *http.ServeMux {
+	return h.muxWith(h.guard(), nil)
+}
+
+func (h *testHarness) muxWith(guard RequestGuard, trustedProxies []*net.IPNet) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.Handle("/{$}", NewLandingPageHandler())
+	mux.Handle(yacyproto.PathHello, NewHelloHandler(guard, h.status, h.peers, trustedProxies))
+	mux.Handle(yacyproto.PathTransferRWI, NewTransferRWIHandler(guard, h.status, h.rwi))
+	mux.Handle(yacyproto.PathTransferURL, NewTransferURLHandler(guard, h.status, h.urls))
+	mux.Handle(yacyproto.PathSearch, NewSearchHandler(guard, h.status, h.searcher))
+	mux.Handle(yacyproto.PathQuery, NewQueryHandler(guard, h.status, h.counter))
+	mux.Handle(yacyproto.PathCrawlReceipt, NewCrawlReceiptHandler(guard, h.status))
+
+	return mux
 }
 
 func (h *testHarness) do(
 	tb testing.TB,
 	method, path string,
 	form url.Values,
-	opts ...Option,
+) *httptest.ResponseRecorder {
+	tb.Helper()
+
+	return h.doWith(tb, method, path, form, h.mux())
+}
+
+func (h *testHarness) doWith(
+	tb testing.TB,
+	method, path string,
+	form url.Values,
+	mux *http.ServeMux,
 ) *httptest.ResponseRecorder {
 	tb.Helper()
 
@@ -192,7 +211,7 @@ func (h *testHarness) do(
 	}
 
 	rec := httptest.NewRecorder()
-	h.mux(opts...).ServeHTTP(rec, req)
+	mux.ServeHTTP(rec, req)
 
 	return rec
 }

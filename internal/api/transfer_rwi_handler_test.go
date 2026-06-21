@@ -12,10 +12,10 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
-func sampleEntry(tb testing.TB) yacymodel.RWIEntry {
+func sampleEntry(tb testing.TB) yacymodel.RWIPosting {
 	tb.Helper()
 
-	entry := yacymodel.RWIEntry{
+	entry := yacymodel.RWIPosting{
 		WordHash: testHash(tb, "word"),
 		Properties: map[string]string{
 			yacymodel.ColURLHash:        testHash(tb, "url").String(),
@@ -23,7 +23,7 @@ func sampleEntry(tb testing.TB) yacymodel.RWIEntry {
 		},
 	}
 
-	roundTrip, err := yacymodel.ParseRWIEntry(entry.String())
+	roundTrip, err := yacymodel.ParseRWIPosting(entry.String())
 	if err != nil {
 		tb.Fatalf("entry does not round-trip: %v", err)
 	}
@@ -36,8 +36,8 @@ func TestTransferRWIHandlerHappyPath(t *testing.T) {
 	h.rwi.receipt = contracts.RWIReceipt{Pause: 5, UnknownURL: []yacymodel.Hash{testHash(t, "url")}}
 
 	req := yacyproto.TransferRWIRequest{
-		YouAre:  h.ident.hash,
-		Indexes: []yacymodel.RWIEntry{sampleEntry(t)},
+		YouAre:  h.ident.Hash,
+		Indexes: []yacymodel.RWIPosting{sampleEntry(t)},
 	}
 	rec := h.do(t, http.MethodPost, yacyproto.PathTransferRWI, req.Form())
 
@@ -62,8 +62,8 @@ func TestTransferRWIHandlerHappyPath(t *testing.T) {
 func TestTransferRWIHandlerAcceptsGzipBody(t *testing.T) {
 	h := newTestHarness(t)
 	req := yacyproto.TransferRWIRequest{
-		YouAre:  h.ident.hash,
-		Indexes: []yacymodel.RWIEntry{sampleEntry(t)},
+		YouAre:  h.ident.Hash,
+		Indexes: []yacymodel.RWIPosting{sampleEntry(t)},
 	}
 
 	var body bytes.Buffer
@@ -103,8 +103,8 @@ func TestTransferRWIHandlerBusy(t *testing.T) {
 	h.rwi.receipt = contracts.RWIReceipt{Busy: true}
 
 	req := yacyproto.TransferRWIRequest{
-		YouAre:  h.ident.hash,
-		Indexes: []yacymodel.RWIEntry{sampleEntry(t)},
+		YouAre:  h.ident.Hash,
+		Indexes: []yacymodel.RWIPosting{sampleEntry(t)},
 	}
 	rec := h.do(t, http.MethodPost, yacyproto.PathTransferRWI, req.Form())
 
@@ -140,10 +140,17 @@ func TestTransferRWIHandlerWrongMethod(t *testing.T) {
 func TestTransferRWIHandlerOversizedBody(t *testing.T) {
 	h := newTestHarness(t)
 	req := yacyproto.TransferRWIRequest{
-		YouAre:  h.ident.hash,
-		Indexes: []yacymodel.RWIEntry{sampleEntry(t)},
+		YouAre:  h.ident.Hash,
+		Indexes: []yacymodel.RWIPosting{sampleEntry(t)},
 	}
-	rec := h.do(t, http.MethodPost, yacyproto.PathTransferRWI, req.Form(), WithMaxBodyBytes(8))
+	guard := NewRequestGuard(h.ident, 8, DefaultRequestTimeout)
+	rec := h.doWith(
+		t,
+		http.MethodPost,
+		yacyproto.PathTransferRWI,
+		req.Form(),
+		h.muxWith(guard, nil),
+	)
 
 	if rec.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d, want 413", rec.Code)

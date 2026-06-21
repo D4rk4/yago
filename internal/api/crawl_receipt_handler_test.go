@@ -9,7 +9,7 @@ import (
 
 func TestCrawlReceiptHandlerRejects(t *testing.T) {
 	h := newTestHarness(t)
-	req := yacyproto.CrawlReceiptRequest{Iam: testHash(t, "caller"), YouAre: h.ident.hash}
+	req := yacyproto.CrawlReceiptRequest{Iam: testHash(t, "caller"), YouAre: h.ident.Hash}
 	rec := h.do(t, http.MethodPost, yacyproto.PathCrawlReceipt, req.Form())
 
 	resp, err := yacyproto.ParseCrawlReceiptResponse(decodeResponse(t, rec))

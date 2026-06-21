@@ -21,7 +21,7 @@ func TestHelloHandlerHappyPath(t *testing.T) {
 	req := yacyproto.HelloRequest{Seed: testSeed(t, "caller", "caller"), Iam: testHash(t, "caller")}
 	rec := h.do(t, http.MethodPost, yacyproto.PathHello, req.Form())
 
-	resp, err := yacyproto.ParseHelloResponse(decodeResponse(t, rec))
+	resp, err := yacyproto.ParseHelloResponse(t.Context(), decodeResponse(t, rec))
 	if err != nil {
 		t.Fatalf("parse response: %v", err)
 	}
@@ -74,9 +74,9 @@ func TestHelloHandlerForwardedFor(t *testing.T) {
 	)
 
 	rec := newRecorder()
-	h.mux(WithTrustedProxies([]*net.IPNet{trusted})).ServeHTTP(rec, httpReq)
+	h.muxWith(h.guard(), []*net.IPNet{trusted}).ServeHTTP(rec, httpReq)
 
-	resp, err := yacyproto.ParseHelloResponse(decodeResponse(t, rec))
+	resp, err := yacyproto.ParseHelloResponse(t.Context(), decodeResponse(t, rec))
 	if err != nil {
 		t.Fatalf("parse response: %v", err)
 	}

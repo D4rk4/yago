@@ -29,7 +29,7 @@ func TestTransferURLHandlerHappyPath(t *testing.T) {
 	h.urls.receipt = contracts.URLReceipt{Double: 2}
 
 	req := yacyproto.TransferURLRequest{
-		YouAre:   h.ident.hash,
+		YouAre:   h.ident.Hash,
 		URLCount: 1,
 		URLs:     []yacymodel.URIMetadataRow{sampleURLRow(t)},
 	}
@@ -55,7 +55,7 @@ func TestTransferURLHandlerBusy(t *testing.T) {
 	h.urls.receipt = contracts.URLReceipt{Busy: true}
 
 	req := yacyproto.TransferURLRequest{
-		YouAre:   h.ident.hash,
+		YouAre:   h.ident.Hash,
 		URLCount: 1,
 		URLs:     []yacymodel.URIMetadataRow{sampleURLRow(t)},
 	}
@@ -69,7 +69,7 @@ func TestTransferURLHandlerBusy(t *testing.T) {
 
 func TestTransferURLHandlerWrongNetwork(t *testing.T) {
 	h := newTestHarness(t)
-	req := yacyproto.TransferURLRequest{NetworkName: "othernet", YouAre: h.ident.hash}
+	req := yacyproto.TransferURLRequest{NetworkName: "othernet", YouAre: h.ident.Hash}
 	rec := h.do(t, http.MethodPost, yacyproto.PathTransferURL, req.Form())
 
 	resp, _ := yacyproto.ParseTransferURLResponse(decodeResponse(t, rec))

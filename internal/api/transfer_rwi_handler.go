@@ -9,13 +9,13 @@ import (
 )
 
 type transferRWIHandler struct {
-	guard    requestGuard
+	guard    RequestGuard
 	status   contracts.RuntimeStatus
 	receiver contracts.RWIReceiver
 }
 
-func newTransferRWIHandler(
-	guard requestGuard,
+func NewTransferRWIHandler(
+	guard RequestGuard,
 	status contracts.RuntimeStatus,
 	receiver contracts.RWIReceiver,
 ) *transferRWIHandler {
@@ -42,7 +42,7 @@ func (h *transferRWIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if !h.guard.networkMatches(form) || !h.guard.youAreMatches(req.YouAre) {
 		resp.Result = yacyproto.ResultWrongTarget
-		writeWireMessage(w, resp.Encode())
+		writeWireMessage(ctx, w, resp.Encode())
 
 		return
 	}
@@ -50,9 +50,9 @@ func (h *transferRWIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	slog.DebugContext(
 		ctx,
 		"transfer rwi request accepted",
-		"word_count", req.WordCount,
-		"entry_count", req.EntryCount,
-		"accepted_entry_count", len(req.Indexes),
+		slog.Int("wordCount", req.WordCount),
+		slog.Int("entryCount", req.EntryCount),
+		slog.Int("acceptedEntryCount", len(req.Indexes)),
 	)
 
 	receipt, err := h.receiver.ReceiveRWI(ctx, req.Indexes)
@@ -74,9 +74,9 @@ func (h *transferRWIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	slog.DebugContext(
 		ctx,
 		"transfer rwi stored",
-		"busy", receipt.Busy,
-		"unknown_url_count", len(receipt.UnknownURL),
-		"error_url_count", len(receipt.ErrorURL),
+		slog.Bool("busy", receipt.Busy),
+		slog.Int("unknownUrlCount", len(receipt.UnknownURL)),
+		slog.Int("errorUrlCount", len(receipt.ErrorURL)),
 	)
-	writeWireMessage(w, resp.Encode())
+	writeWireMessage(ctx, w, resp.Encode())
 }

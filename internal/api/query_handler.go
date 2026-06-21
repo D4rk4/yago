@@ -9,13 +9,13 @@ import (
 )
 
 type queryHandler struct {
-	guard   requestGuard
+	guard   RequestGuard
 	status  contracts.RuntimeStatus
 	counter contracts.Counter
 }
 
-func newQueryHandler(
-	guard requestGuard,
+func NewQueryHandler(
+	guard RequestGuard,
 	status contracts.RuntimeStatus,
 	counter contracts.Counter,
 ) *queryHandler {
@@ -53,8 +53,13 @@ func (h *queryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		resp.Response = count
 	}
 
-	slog.DebugContext(ctx, "count served", "object", req.Object, "count", resp.Response)
-	writeWireMessage(w, resp.Encode())
+	slog.DebugContext(
+		ctx,
+		"count served",
+		slog.String("object", string(req.Object)),
+		slog.Int("count", resp.Response),
+	)
+	writeWireMessage(ctx, w, resp.Encode())
 }
 
 func countKind(object yacyproto.QueryObject) (contracts.CountKind, bool) {

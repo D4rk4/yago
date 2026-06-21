@@ -13,7 +13,7 @@ const landingPageContentType = "text/html; charset=utf-8"
 
 type landingPageHandler struct{}
 
-func newLandingPageHandler() *landingPageHandler {
+func NewLandingPageHandler() *landingPageHandler {
 	return &landingPageHandler{}
 }
 
@@ -27,6 +27,6 @@ func (h *landingPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", landingPageContentType)
 	if _, err := w.Write(landingPageHTML); err != nil {
-		slog.Warn("landing page write failed", "error", err)
+		slog.WarnContext(r.Context(), "landing page write failed", slog.Any("error", err))
 	}
 }

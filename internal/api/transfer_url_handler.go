@@ -9,13 +9,13 @@ import (
 )
 
 type transferURLHandler struct {
-	guard    requestGuard
+	guard    RequestGuard
 	status   contracts.RuntimeStatus
 	receiver contracts.URLReceiver
 }
 
-func newTransferURLHandler(
-	guard requestGuard,
+func NewTransferURLHandler(
+	guard RequestGuard,
 	status contracts.RuntimeStatus,
 	receiver contracts.URLReceiver,
 ) *transferURLHandler {
@@ -42,7 +42,7 @@ func (h *transferURLHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if !h.guard.networkMatches(form) || !h.guard.youAreMatches(req.YouAre) {
 		resp.Result = yacyproto.ResultWrongTarget
-		writeWireMessage(w, resp.Encode())
+		writeWireMessage(ctx, w, resp.Encode())
 
 		return
 	}
@@ -65,9 +65,9 @@ func (h *transferURLHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	slog.DebugContext(
 		ctx,
 		"transfer url stored",
-		"busy", receipt.Busy,
-		"double_count", receipt.Double,
-		"error_url_count", len(receipt.ErrorURL),
+		slog.Bool("busy", receipt.Busy),
+		slog.Int("doubleCount", receipt.Double),
+		slog.Int("errorUrlCount", len(receipt.ErrorURL)),
 	)
-	writeWireMessage(w, resp.Encode())
+	writeWireMessage(ctx, w, resp.Encode())
 }

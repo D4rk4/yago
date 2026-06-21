@@ -16,7 +16,11 @@ func decodeRequestBody(r *http.Request) error {
 		return nil
 	}
 	if !strings.EqualFold(encoding, gzipContentEncoding) {
-		slog.DebugContext(r.Context(), "unsupported content encoding", "encoding", encoding)
+		slog.DebugContext(
+			r.Context(),
+			"unsupported content encoding",
+			slog.String("encoding", encoding),
+		)
 
 		return nil
 	}

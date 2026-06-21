@@ -17,13 +17,13 @@ const (
 )
 
 type searchHandler struct {
-	guard    requestGuard
+	guard    RequestGuard
 	status   contracts.RuntimeStatus
 	searcher contracts.Searcher
 }
 
-func newSearchHandler(
-	guard requestGuard,
+func NewSearchHandler(
+	guard RequestGuard,
 	status contracts.RuntimeStatus,
 	searcher contracts.Searcher,
 ) *searchHandler {
@@ -37,7 +37,7 @@ func (h *searchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cancel()
 
-	req, err := yacyproto.ParseSearchRequest(form)
+	req, err := yacyproto.ParseSearchRequest(ctx, form)
 	if err != nil {
 		failBadRequest(ctx, w, err)
 
@@ -51,7 +51,11 @@ func (h *searchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.guard.networkMatches(form) {
 		query := searchQueryFromRequest(req)
 		if ignored := contracts.IgnoredSearchOptions(query); len(ignored) != 0 {
-			slog.DebugContext(ctx, "ignoring accepted search options", "options", ignored)
+			slog.DebugContext(
+				ctx,
+				"ignoring accepted search options",
+				slog.Any("options", ignored),
+			)
 		}
 		searchCtx := ctx
 		var searchCancel func()
@@ -79,10 +83,10 @@ func (h *searchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	slog.DebugContext(
 		ctx,
 		"search completed",
-		"result_count", resp.Count,
-		"join_count", resp.JoinCount,
+		slog.Int("resultCount", resp.Count),
+		slog.Int("joinCount", resp.JoinCount),
 	)
-	writeWireMessage(w, resp.Encode())
+	writeWireMessage(ctx, w, resp.Encode())
 }
 
 func searchQueryFromRequest(req yacyproto.SearchRequest) contracts.SearchQuery {

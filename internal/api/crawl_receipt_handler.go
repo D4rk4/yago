@@ -8,12 +8,12 @@ import (
 )
 
 type crawlReceiptHandler struct {
-	guard  requestGuard
+	guard  RequestGuard
 	status contracts.RuntimeStatus
 }
 
-func newCrawlReceiptHandler(
-	guard requestGuard,
+func NewCrawlReceiptHandler(
+	guard RequestGuard,
 	status contracts.RuntimeStatus,
 ) *crawlReceiptHandler {
 	return &crawlReceiptHandler{guard: guard, status: status}
@@ -30,5 +30,5 @@ func (h *crawlReceiptHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		ResponseHeader: responseHeader(h.status.Snapshot(ctx)),
 	}
 
-	writeWireMessage(w, resp.Encode())
+	writeWireMessage(ctx, w, resp.Encode())
 }

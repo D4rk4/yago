@@ -12,7 +12,7 @@ func TestQueryHandlerSupportedObject(t *testing.T) {
 	h := newTestHarness(t)
 	h.counter.count = 42
 
-	req := yacyproto.QueryRequest{YouAre: h.ident.hash, Object: yacyproto.ObjectRWICount}
+	req := yacyproto.QueryRequest{YouAre: h.ident.Hash, Object: yacyproto.ObjectRWICount}
 	rec := h.do(t, http.MethodPost, yacyproto.PathQuery, req.Form())
 
 	resp, err := yacyproto.ParseQueryResponse(decodeResponse(t, rec))
@@ -29,7 +29,7 @@ func TestQueryHandlerSupportedObject(t *testing.T) {
 
 func TestQueryHandlerUnsupportedObject(t *testing.T) {
 	h := newTestHarness(t)
-	req := yacyproto.QueryRequest{YouAre: h.ident.hash, Object: yacyproto.ObjectWantedSeeds}
+	req := yacyproto.QueryRequest{YouAre: h.ident.Hash, Object: yacyproto.ObjectWantedSeeds}
 	rec := h.do(t, http.MethodPost, yacyproto.PathQuery, req.Form())
 
 	resp, _ := yacyproto.ParseQueryResponse(decodeResponse(t, rec))

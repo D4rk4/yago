@@ -14,7 +14,7 @@ func TestQueryHandlerParsesMultipartForm(t *testing.T) {
 	h := newTestHarness(t)
 	h.counter.count = 7
 
-	req := yacyproto.QueryRequest{YouAre: h.ident.hash, Object: yacyproto.ObjectRWICount}
+	req := yacyproto.QueryRequest{YouAre: h.ident.Hash, Object: yacyproto.ObjectRWICount}
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)

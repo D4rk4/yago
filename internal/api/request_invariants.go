@@ -18,13 +18,26 @@ const multipartContentType = "multipart/form-data"
 
 const requestAcceptedMessage = "request accepted"
 
-type requestGuard struct {
-	ident        contracts.Identity
+const (
+	DefaultMaxBodyBytes   int64 = 4 << 20
+	DefaultRequestTimeout       = 30 * time.Second
+)
+
+type RequestGuard struct {
+	ident        yacymodel.PeerIdentity
 	maxBodyBytes int64
 	timeout      time.Duration
 }
 
-func (g requestGuard) parse(
+func NewRequestGuard(
+	ident yacymodel.PeerIdentity,
+	maxBodyBytes int64,
+	timeout time.Duration,
+) RequestGuard {
+	return RequestGuard{ident: ident, maxBodyBytes: maxBodyBytes, timeout: timeout}
+}
+
+func (g RequestGuard) parse(
 	w http.ResponseWriter,
 	r *http.Request,
 	methods yacyproto.EndpointMethodSet,
@@ -64,21 +77,21 @@ func (g requestGuard) parse(
 	ctx, cancel := context.WithTimeout(r.Context(), g.timeout)
 
 	slog.DebugContext(ctx, requestAcceptedMessage,
-		"method", r.Method,
-		"path", r.URL.Path,
-		"form", r.Form,
+		slog.String("method", r.Method),
+		slog.String("path", r.URL.Path),
+		slog.Any("form", r.Form),
 	)
 
 	return r.Form, ctx, cancel, true
 }
 
-func (g requestGuard) networkMatches(form url.Values) bool {
+func (g RequestGuard) networkMatches(form url.Values) bool {
 	return yacyproto.NetworkUnit(form.Get(yacyproto.FieldNetworkName)) ==
-		yacyproto.NetworkUnit(g.ident.NetworkName())
+		yacyproto.NetworkUnit(g.ident.NetworkName)
 }
 
-func (g requestGuard) youAreMatches(youare yacymodel.Hash) bool {
-	return youare == g.ident.Hash()
+func (g RequestGuard) youAreMatches(youare yacymodel.Hash) bool {
+	return youare == g.ident.Hash
 }
 
 func methodAllowed(method string, methods yacyproto.EndpointMethodSet) bool {

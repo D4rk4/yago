@@ -11,14 +11,14 @@ import (
 )
 
 type helloHandler struct {
-	guard          requestGuard
+	guard          RequestGuard
 	status         contracts.RuntimeStatus
 	peers          contracts.PeerDirectory
 	trustedProxies []*net.IPNet
 }
 
-func newHelloHandler(
-	guard requestGuard,
+func NewHelloHandler(
+	guard RequestGuard,
 	status contracts.RuntimeStatus,
 	peers contracts.PeerDirectory,
 	trustedProxies []*net.IPNet,
@@ -38,7 +38,7 @@ func (h *helloHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cancel()
 
-	req, err := yacyproto.ParseHelloRequest(form)
+	req, err := yacyproto.ParseHelloRequest(ctx, form)
 	if err != nil {
 		failBadRequest(ctx, w, err)
 
@@ -64,6 +64,6 @@ func (h *helloHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		resp.Seeds = append(resp.Seeds, outcome.Known...)
 	}
 
-	slog.DebugContext(ctx, "hello served", "seed_count", len(resp.Seeds))
-	writeWireMessage(w, resp.Encode())
+	slog.DebugContext(ctx, "hello served", slog.Int("seedCount", len(resp.Seeds)))
+	writeWireMessage(ctx, w, resp.Encode())
 }
