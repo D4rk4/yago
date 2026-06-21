@@ -57,7 +57,7 @@ func decodeSeedlist(ctx context.Context, body io.Reader, url string) ([]yacymode
 			continue
 		}
 
-		plain, err := yacymodel.DecodeWireForm(line)
+		plain, err := yacymodel.DecodeWireForm(ctx, line)
 		if err != nil {
 			slog.WarnContext(
 				ctx,

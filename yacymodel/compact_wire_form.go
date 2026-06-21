@@ -43,7 +43,7 @@ func tagged(tag byte, body string) string {
 	return string([]byte{tag, wireFormSep}) + body
 }
 
-func DecodeWireForm(form string) (string, error) {
+func DecodeWireForm(ctx context.Context, form string) (string, error) {
 	if len(form) < 2 || form[1] != wireFormSep {
 		return form, nil
 	}
@@ -62,7 +62,7 @@ func DecodeWireForm(form string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("decode wire form body: %w", err)
 		}
-		plain, err := gzipDecompress(raw)
+		plain, err := gzipDecompress(ctx, raw)
 		if err != nil {
 			return "", fmt.Errorf("inflate wire form body: %w", err)
 		}
@@ -84,7 +84,7 @@ func gzipCompress(s string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func gzipDecompress(b []byte) (string, error) {
+func gzipDecompress(ctx context.Context, b []byte) (string, error) {
 	r, err := gzip.NewReader(bytes.NewReader(b))
 	if err != nil {
 		return "", fmt.Errorf("gzip reader: %w", err)
@@ -92,7 +92,7 @@ func gzipDecompress(b []byte) (string, error) {
 	defer func() {
 		if err := r.Close(); err != nil {
 			slog.WarnContext(
-				context.Background(),
+				ctx,
 				"gzip reader close failed",
 				slog.Any("error", err),
 			)

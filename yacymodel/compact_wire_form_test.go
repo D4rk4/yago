@@ -1,6 +1,7 @@
 package yacymodel
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -12,7 +13,7 @@ func TestCompactWireFormRoundTrip(t *testing.T) {
 		"",
 		strings.Repeat("Key=Value,", 100),
 	} {
-		got, err := DecodeWireForm(EncodeCompactWireForm(payload))
+		got, err := DecodeWireForm(context.Background(), EncodeCompactWireForm(payload))
 		if err != nil {
 			t.Fatalf("round trip %q: %v", payload, err)
 		}
@@ -39,18 +40,18 @@ func TestEncodeBase64WireFormIsPropertySafe(t *testing.T) {
 	if strings.ContainsAny(form[2:], ",={}") {
 		t.Errorf("base64 wire form must avoid property delimiters: %q", form)
 	}
-	got, err := DecodeWireForm(form)
+	got, err := DecodeWireForm(context.Background(), form)
 	if err != nil || got != raw {
 		t.Errorf("round trip = %q, %v", got, err)
 	}
 }
 
 func TestDecodeWireFormExplicit(t *testing.T) {
-	plain, err := DecodeWireForm("p|Hash=ABCDEFGHIJKL")
+	plain, err := DecodeWireForm(context.Background(), "p|Hash=ABCDEFGHIJKL")
 	if err != nil || plain != "Hash=ABCDEFGHIJKL" {
 		t.Errorf("plain decode = %q, %v", plain, err)
 	}
-	b64, err := DecodeWireForm("b|" + Encode([]byte("{Hash=ABCDEFGHIJKL}")))
+	b64, err := DecodeWireForm(context.Background(), "b|"+Encode([]byte("{Hash=ABCDEFGHIJKL}")))
 	if err != nil || b64 != "{Hash=ABCDEFGHIJKL}" {
 		t.Errorf("b64 decode = %q, %v", b64, err)
 	}
@@ -63,7 +64,7 @@ func TestDecodeWireFormAcceptsBarePayload(t *testing.T) {
 		"",
 		"x",
 	} {
-		got, err := DecodeWireForm(input)
+		got, err := DecodeWireForm(t.Context(), input)
 		if err != nil {
 			t.Fatalf("DecodeWireForm(%q) error = %v", input, err)
 		}
@@ -75,11 +76,11 @@ func TestDecodeWireFormAcceptsBarePayload(t *testing.T) {
 
 func TestDecodeWireFormErrors(t *testing.T) {
 	for _, bad := range []string{"q|data", "b|==="} {
-		if _, err := DecodeWireForm(bad); err == nil {
+		if _, err := DecodeWireForm(t.Context(), bad); err == nil {
 			t.Errorf("DecodeWireForm(%q) = nil error", bad)
 		}
 	}
-	if _, err := DecodeWireForm("q|data"); !errors.Is(err, ErrBadWireForm) {
+	if _, err := DecodeWireForm(t.Context(), "q|data"); !errors.Is(err, ErrBadWireForm) {
 		t.Errorf("unknown tag should be ErrBadWireForm")
 	}
 }

@@ -132,7 +132,7 @@ func ParseHelloResponse(ctx context.Context, m yacymodel.Message) (HelloResponse
 }
 
 func decodeSeed(ctx context.Context, raw string) (yacymodel.Seed, error) {
-	plain, err := yacymodel.DecodeWireForm(raw)
+	plain, err := yacymodel.DecodeWireForm(ctx, raw)
 	if err != nil {
 		return yacymodel.Seed{}, fmt.Errorf("seed wire form: %w", err)
 	}
