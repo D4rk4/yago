@@ -48,7 +48,7 @@ func (s *RWIEvictionSweeper) Trigger() {
 	go func() {
 		defer s.running.Store(false)
 		if err := s.Sweep(context.Background()); err != nil {
-			slog.Error("rwi eviction failed", "error", err)
+			slog.ErrorContext(context.Background(), "rwi eviction failed", slog.Any("error", err))
 		}
 	}()
 }
@@ -86,10 +86,11 @@ func (s *RWIEvictionSweeper) Sweep(ctx context.Context) error {
 		}
 		s.urlsEvicted.Add(int64(result.URLsDeleted))
 		s.postingsEvicted.Add(int64(result.PostingsDeleted))
-		slog.Debug(
+		slog.DebugContext(
+			ctx,
 			"rwi eviction progress",
-			"urls", result.URLsDeleted,
-			"postings", result.PostingsDeleted,
+			slog.Int("urls", result.URLsDeleted),
+			slog.Int("postings", result.PostingsDeleted),
 		)
 		if result.URLsDeleted == 0 && result.PostingsDeleted == 0 {
 			break

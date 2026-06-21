@@ -8,24 +8,14 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-func testIdentity() Identity {
-	return NewIdentity(
-		hashFor("self"),
-		"freeworld",
-		"node1",
-		"10.0.0.9",
-		8090,
-		yacymodel.ZeroFlags(),
-	)
-}
-
-func TestIdentityAccessors(t *testing.T) {
-	id := testIdentity()
-	if id.Hash() != hashFor("self") {
-		t.Errorf("hash: got %q", id.Hash())
-	}
-	if id.NetworkName() != "freeworld" {
-		t.Errorf("network: got %q", id.NetworkName())
+func testIdentity() yacymodel.PeerIdentity {
+	return yacymodel.PeerIdentity{
+		Hash:        hashFor("self"),
+		NetworkName: "freeworld",
+		Name:        "node1",
+		Host:        "10.0.0.9",
+		Port:        8090,
+		Flags:       yacymodel.ZeroFlags(),
 	}
 }
 
@@ -45,14 +35,17 @@ func TestSnapshotComposesSeed(t *testing.T) {
 	if snap.Uptime != 3 {
 		t.Errorf("uptime: got %d, want 3", snap.Uptime)
 	}
-	if snap.Seed[yacymodel.SeedHash] != string(hashFor("self")) {
-		t.Errorf("seed hash: got %q", snap.Seed[yacymodel.SeedHash])
+	if snap.Seed.Hash != hashFor("self") {
+		t.Errorf("seed hash: got %q", snap.Seed.Hash)
 	}
-	if snap.Seed[seedRWICount] != "11" || snap.Seed[seedURLCount] != "22" {
-		t.Errorf("seed counts: got rwi=%q url=%q", snap.Seed[seedRWICount], snap.Seed[seedURLCount])
+	if rwi, _ := snap.Seed.RWICount.Get(); rwi != 11 {
+		t.Errorf("seed rwi count: got %d, want 11", rwi)
 	}
-	if snap.Seed[yacymodel.SeedPeerType] != string(yacymodel.PeerSenior) {
-		t.Errorf("peer type: got %q", snap.Seed[yacymodel.SeedPeerType])
+	if url, _ := snap.Seed.URLCount.Get(); url != 22 {
+		t.Errorf("seed url count: got %d, want 22", url)
+	}
+	if pt, ok := snap.Seed.PeerType.Get(); !ok || pt != yacymodel.PeerSenior {
+		t.Errorf("peer type: got %q", pt)
 	}
 }
 
@@ -63,11 +56,13 @@ func TestSnapshotToleratesCountErrors(t *testing.T) {
 	status := NewRuntimeStatus(testIdentity(), clock, rwi, urls, "0.1.0")
 
 	snap := status.Snapshot(context.Background())
-	if snap.Seed[seedRWICount] != "0" || snap.Seed[seedURLCount] != "0" {
+	rwiCount, _ := snap.Seed.RWICount.Get()
+	urlCount, _ := snap.Seed.URLCount.Get()
+	if rwiCount != 0 || urlCount != 0 {
 		t.Errorf(
-			"expected zero counts on error, got rwi=%q url=%q",
-			snap.Seed[seedRWICount],
-			snap.Seed[seedURLCount],
+			"expected zero counts on error, got rwi=%d url=%d",
+			rwiCount,
+			urlCount,
 		)
 	}
 }

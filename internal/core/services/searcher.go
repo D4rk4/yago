@@ -96,7 +96,7 @@ type searchCandidate struct {
 
 func matchWord(
 	ctx context.Context,
-	entries []yacymodel.RWIEntry,
+	entries []yacymodel.RWIPosting,
 ) map[yacymodel.Hash]searchCandidate {
 	matched := make(map[yacymodel.Hash]searchCandidate, len(entries))
 	for _, entry := range entries {
@@ -105,10 +105,8 @@ func matchWord(
 			slog.WarnContext(
 				ctx,
 				"rwi ranking field discarded",
-				"field",
-				yacymodel.ColWordDistance,
-				"error",
-				err,
+				slog.String("field", yacymodel.ColWordDistance),
+				slog.Any("error", err),
 			)
 		}
 		hits, err := hitCount(entry)
@@ -116,10 +114,8 @@ func matchWord(
 			slog.WarnContext(
 				ctx,
 				"rwi ranking field discarded",
-				"field",
-				yacymodel.ColHitCount,
-				"error",
-				err,
+				slog.String("field", yacymodel.ColHitCount),
+				slog.Any("error", err),
 			)
 		}
 		urlHash, err := entry.URLHash()
@@ -127,10 +123,8 @@ func matchWord(
 			slog.WarnContext(
 				ctx,
 				"rwi search candidate discarded",
-				"reason",
-				"invalid url hash",
-				"error",
-				err,
+				slog.String("reason", "invalid url hash"),
+				slog.Any("error", err),
 			)
 			continue
 		}
@@ -174,7 +168,7 @@ func cloneCandidates(in map[yacymodel.Hash]searchCandidate) map[yacymodel.Hash]s
 	return out
 }
 
-func wordDistance(entry yacymodel.RWIEntry) (uint64, error) {
+func wordDistance(entry yacymodel.RWIPosting) (uint64, error) {
 	n, err := entry.Cardinal(yacymodel.ColWordDistance)
 	if err != nil {
 		return 0, fmt.Errorf("parse word distance: %w", err)
@@ -183,7 +177,7 @@ func wordDistance(entry yacymodel.RWIEntry) (uint64, error) {
 	return n, nil
 }
 
-func hitCount(entry yacymodel.RWIEntry) (uint64, error) {
+func hitCount(entry yacymodel.RWIPosting) (uint64, error) {
 	n, err := entry.Cardinal(yacymodel.ColHitCount)
 	if err != nil {
 		return 0, fmt.Errorf("parse hit count: %w", err)

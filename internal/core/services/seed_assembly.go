@@ -1,41 +1,41 @@
 package services
 
 import (
-	"strconv"
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-const (
-	seedRWICount  = "ICount"
-	seedURLCount  = "LCount"
-	seedUTCLayout = "2006-01-02T15:04:05"
-)
+const seedUTCLayout = "2006-01-02T15:04:05"
 
 type seedCounts struct {
 	rwi int
 	url int
 }
 
-func (i Identity) assembleSeed(
+func assembleSeed(
+	identity yacymodel.PeerIdentity,
 	now time.Time,
 	uptimeMinutes int,
 	version string,
 	counts seedCounts,
 ) yacymodel.Seed {
-	return yacymodel.Seed{
-		yacymodel.SeedHash:     string(i.hash),
-		yacymodel.SeedName:     i.name,
-		yacymodel.SeedIP:       i.host,
-		yacymodel.SeedPort:     strconv.Itoa(i.port),
-		yacymodel.SeedFlags:    i.flags.String(),
-		yacymodel.SeedPeerType: string(yacymodel.PeerSenior),
-		yacymodel.SeedVersion:  version,
-		yacymodel.SeedUptime:   strconv.Itoa(uptimeMinutes),
-		yacymodel.SeedUTC:      now.UTC().Format(seedUTCLayout),
-		yacymodel.SeedLastSeen: now.UTC().Format(seedUTCLayout),
-		seedRWICount:           strconv.Itoa(counts.rwi),
-		seedURLCount:           strconv.Itoa(counts.url),
+	timestamp := now.UTC().Format(seedUTCLayout)
+	seed := yacymodel.Seed{
+		Hash:     identity.Hash,
+		Name:     yacymodel.Some(identity.Name),
+		Port:     yacymodel.Some(yacymodel.Port(identity.Port)),
+		Flags:    yacymodel.Some(identity.Flags),
+		PeerType: yacymodel.Some(yacymodel.PeerSenior),
+		Version:  yacymodel.Some(version),
+		Uptime:   yacymodel.Some(uptimeMinutes),
+		UTC:      yacymodel.Some(timestamp),
+		LastSeen: yacymodel.Some(timestamp),
+		RWICount: yacymodel.Some(counts.rwi),
+		URLCount: yacymodel.Some(counts.url),
 	}
+	if host, err := yacymodel.ParseHost(identity.Host); err == nil {
+		seed.IP = yacymodel.Some(host)
+	}
+	return seed
 }

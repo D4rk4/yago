@@ -9,8 +9,8 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-func rwiEntries(n int) []yacymodel.RWIEntry {
-	entries := make([]yacymodel.RWIEntry, n)
+func rwiEntries(n int) []yacymodel.RWIPosting {
+	entries := make([]yacymodel.RWIPosting, n)
 	for i := range entries {
 		entries[i] = postingEntry(hashFor("word"), "url", 0)
 	}

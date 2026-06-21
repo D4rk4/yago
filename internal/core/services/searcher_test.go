@@ -21,7 +21,7 @@ func urlRows(ids ...string) map[yacymodel.Hash]yacymodel.URIMetadataRow {
 
 func TestSearchJoins(t *testing.T) {
 	word1, word2 := hashFor("w1"), hashFor("w2")
-	rwi := &fakeRWIStore{postings: map[yacymodel.Hash][]yacymodel.RWIEntry{
+	rwi := &fakeRWIStore{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
 		word1: {
 			postingEntry(word1, "u1", 0),
 			postingEntry(word1, "u2", 0),
@@ -57,7 +57,7 @@ func TestSearchJoins(t *testing.T) {
 
 func TestSearchTruncatesToMaxResults(t *testing.T) {
 	word := hashFor("w1")
-	rwi := &fakeRWIStore{postings: map[yacymodel.Hash][]yacymodel.RWIEntry{
+	rwi := &fakeRWIStore{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
 		word: {
 			postingEntry(word, "u1", 0),
 			postingEntry(word, "u2", 0),
@@ -84,7 +84,7 @@ func TestSearchTruncatesToMaxResults(t *testing.T) {
 
 func TestSearchRanksByHitsDistanceAndHash(t *testing.T) {
 	word := hashFor("w1")
-	rwi := &fakeRWIStore{postings: map[yacymodel.Hash][]yacymodel.RWIEntry{
+	rwi := &fakeRWIStore{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
 		word: {
 			postingEntryWith(word, "u1", 9, 1, ""),
 			postingEntryWith(word, "u2", 1, 3, ""),
@@ -108,7 +108,7 @@ func TestSearchRanksByHitsDistanceAndHash(t *testing.T) {
 
 func TestSearchExplicitAbstractOnlyCounts(t *testing.T) {
 	word := hashFor("w1")
-	rwi := &fakeRWIStore{postings: map[yacymodel.Hash][]yacymodel.RWIEntry{
+	rwi := &fakeRWIStore{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
 		word: {
 			postingEntry(word, "u1", 1),
 			postingEntry(word, "u2", 1),
@@ -138,7 +138,7 @@ func TestSearchExplicitAbstractOnlyCounts(t *testing.T) {
 
 func TestSearchExplicitAbstractWithQuery(t *testing.T) {
 	word, related := hashFor("w1"), hashFor("w2")
-	rwi := &fakeRWIStore{postings: map[yacymodel.Hash][]yacymodel.RWIEntry{
+	rwi := &fakeRWIStore{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
 		word:    {postingEntry(word, "u1", 0), postingEntry(word, "u2", 0)},
 		related: {postingEntry(related, "u2", 0), postingEntry(related, "u3", 0)},
 	}}
@@ -166,7 +166,7 @@ func postingEntryWith(
 	distance byte,
 	hits byte,
 	language string,
-) yacymodel.RWIEntry {
+) yacymodel.RWIPosting {
 	entry := postingEntry(word, url, distance)
 	entry.Properties[yacymodel.ColHitCount] = decimalForTest(hits)
 	if language != "" {

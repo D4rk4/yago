@@ -3,8 +3,6 @@ package services
 import (
 	"context"
 	"log/slog"
-	"net"
-	"strconv"
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
@@ -90,7 +88,12 @@ func (a *PeerAnnouncement) Announce(ctx context.Context) {
 
 		result, err := a.greeter.Greet(ctx, endpoint, self, announceHelloPeerCount)
 		if err != nil {
-			slog.WarnContext(ctx, "peer greet failed", "endpoint", endpoint, "error", err)
+			slog.WarnContext(
+				ctx,
+				"peer greet failed",
+				slog.String("endpoint", endpoint),
+				slog.Any("error", err),
+			)
 
 			continue
 		}
@@ -104,35 +107,22 @@ func (a *PeerAnnouncement) discover(ctx context.Context) []string {
 	for _, source := range a.config.SeedlistURLs() {
 		seeds, err := a.fetcher.Fetch(ctx, source)
 		if err != nil {
-			slog.WarnContext(ctx, "seedlist fetch failed", "url", source, "error", err)
+			slog.WarnContext(
+				ctx,
+				"seedlist fetch failed",
+				slog.String("url", source),
+				slog.Any("error", err),
+			)
 
 			continue
 		}
 		a.registry.Absorb(ctx, seeds...)
 		for _, seed := range seeds {
-			if endpoint, ok := seedEndpoint(ctx, seed); ok {
+			if endpoint, ok := seed.NetworkAddress(); ok {
 				endpoints = append(endpoints, endpoint)
 			}
 		}
 	}
 
 	return endpoints
-}
-
-func seedEndpoint(ctx context.Context, seed yacymodel.Seed) (string, bool) {
-	host := seed[yacymodel.SeedIP]
-	if host == "" {
-		return "", false
-	}
-	port, err := seed.Port()
-	if err != nil {
-		slog.WarnContext(ctx, "seed endpoint discarded", "reason", "invalid port", "error", err)
-		return "", false
-	}
-	if port <= 0 {
-		slog.WarnContext(ctx, "seed endpoint discarded", "reason", "invalid port", "port", port)
-		return "", false
-	}
-
-	return net.JoinHostPort(host, strconv.Itoa(port)), true
 }

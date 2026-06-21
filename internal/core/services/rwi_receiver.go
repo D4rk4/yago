@@ -16,14 +16,20 @@ type RWIReceiver struct {
 	urls        ports.URLStore
 	batchCap    int
 	pauseSecs   int
-	afterAppend func()
+	afterAppend []func()
 }
 
 type RWIReceiverOption func(*RWIReceiver)
 
 func WithEvictionTrigger(trigger func()) RWIReceiverOption {
+	return WithAfterAppend(trigger)
+}
+
+func WithAfterAppend(hook func()) RWIReceiverOption {
 	return func(r *RWIReceiver) {
-		r.afterAppend = trigger
+		if hook != nil {
+			r.afterAppend = append(r.afterAppend, hook)
+		}
 	}
 }
 
@@ -43,7 +49,7 @@ func NewRWIReceiver(
 
 func (r RWIReceiver) ReceiveRWI(
 	ctx context.Context,
-	entries []yacymodel.RWIEntry,
+	entries []yacymodel.RWIPosting,
 ) (contracts.RWIReceipt, error) {
 	if len(entries) > r.batchCap {
 		return contracts.RWIReceipt{Busy: true, Pause: r.pauseSecs}, nil
@@ -57,8 +63,8 @@ func (r RWIReceiver) ReceiveRWI(
 		return contracts.RWIReceipt{}, fmt.Errorf("append rwi: %w", err)
 	}
 
-	if r.afterAppend != nil {
-		r.afterAppend()
+	for _, hook := range r.afterAppend {
+		hook()
 	}
 
 	unknown, err := r.urls.MissingURLs(ctx, referencedURLs(ctx, entries))
@@ -69,7 +75,7 @@ func (r RWIReceiver) ReceiveRWI(
 	return contracts.RWIReceipt{UnknownURL: unknown, ErrorURL: rejected}, nil
 }
 
-func referencedURLs(ctx context.Context, entries []yacymodel.RWIEntry) []yacymodel.Hash {
+func referencedURLs(ctx context.Context, entries []yacymodel.RWIPosting) []yacymodel.Hash {
 	hashes := make([]yacymodel.Hash, 0, len(entries))
 	for _, entry := range entries {
 		hash, err := entry.URLHash()
@@ -77,10 +83,8 @@ func referencedURLs(ctx context.Context, entries []yacymodel.RWIEntry) []yacymod
 			slog.WarnContext(
 				ctx,
 				"rwi reference discarded",
-				"reason",
-				"invalid url hash",
-				"error",
-				err,
+				slog.String("reason", "invalid url hash"),
+				slog.Any("error", err),
 			)
 			continue
 		}

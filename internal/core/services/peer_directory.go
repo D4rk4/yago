@@ -45,7 +45,7 @@ func (d *PeerDirectory) classifyCaller(
 	ctx context.Context,
 	caller yacymodel.Seed,
 ) yacymodel.PeerType {
-	if !advertisesReachableEndpoint(caller) {
+	if _, ok := caller.NetworkAddress(); !ok {
 		return yacymodel.PeerJunior
 	}
 	if err := d.pinger.Ping(ctx, caller); err != nil {
@@ -53,13 +53,4 @@ func (d *PeerDirectory) classifyCaller(
 	}
 
 	return yacymodel.PeerSenior
-}
-
-func advertisesReachableEndpoint(caller yacymodel.Seed) bool {
-	if caller[yacymodel.SeedIP] == "" {
-		return false
-	}
-	port, err := caller.Port()
-
-	return err == nil && port > 0
 }

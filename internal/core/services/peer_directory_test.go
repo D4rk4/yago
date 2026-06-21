@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strconv"
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
@@ -39,11 +38,15 @@ func reverseShuffle(n int, swap func(i, j int)) {
 }
 
 func callerSeed(hash string, ip string, port int) yacymodel.Seed {
-	return yacymodel.Seed{
-		yacymodel.SeedHash: string(hashFor(hash)),
-		yacymodel.SeedIP:   ip,
-		yacymodel.SeedPort: strconv.Itoa(port),
+	seed := yacymodel.Seed{Hash: hashFor(hash)}
+	if ip != "" {
+		seed.IP = yacymodel.Some(yacymodel.Host(ip))
 	}
+	if port != 0 {
+		seed.Port = yacymodel.Some(yacymodel.Port(port))
+	}
+
+	return seed
 }
 
 func TestHelloClassifiesCaller(t *testing.T) {
@@ -99,11 +102,11 @@ func TestHelloAnnouncesTrustedSeedsNotCaller(t *testing.T) {
 	if len(outcome.Known) != 1 {
 		t.Fatalf("got %d known, want 1", len(outcome.Known))
 	}
-	if outcome.Known[0][yacymodel.SeedHash] != string(hashFor("trusted")) {
-		t.Errorf("announced %q, want trusted seed", outcome.Known[0][yacymodel.SeedHash])
+	if outcome.Known[0].Hash != hashFor("trusted") {
+		t.Errorf("announced %q, want trusted seed", outcome.Known[0].Hash)
 	}
 	for _, seed := range outcome.Known {
-		if seed[yacymodel.SeedHash] == string(hashFor("caller")) {
+		if seed.Hash == hashFor("caller") {
 			t.Error("self-reported caller must not be redistributed")
 		}
 	}
@@ -121,7 +124,7 @@ func trustedSet(hashes ...string) []yacymodel.Seed {
 func announcedHashes(outcome contracts.HelloOutcome) []string {
 	hashes := make([]string, len(outcome.Known))
 	for i, seed := range outcome.Known {
-		hashes[i] = seed[yacymodel.SeedHash]
+		hashes[i] = string(seed.Hash)
 	}
 
 	return hashes

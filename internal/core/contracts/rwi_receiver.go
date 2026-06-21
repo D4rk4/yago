@@ -14,5 +14,5 @@ type RWIReceipt struct {
 }
 
 type RWIReceiver interface {
-	ReceiveRWI(ctx context.Context, entries []yacymodel.RWIEntry) (RWIReceipt, error)
+	ReceiveRWI(ctx context.Context, entries []yacymodel.RWIPosting) (RWIReceipt, error)
 }

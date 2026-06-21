@@ -30,6 +30,38 @@ func TestReceiveURLsReportsDoublesAndRejects(t *testing.T) {
 	}
 }
 
+func TestReceiveURLsTriggersEvictionAfterStore(t *testing.T) {
+	store := &fakeURLStore{}
+	triggered := 0
+	receiver := NewURLReceiver(store, WithURLEvictionTrigger(func() { triggered++ }))
+
+	if _, err := receiver.ReceiveURLs(
+		context.Background(),
+		[]yacymodel.URIMetadataRow{{}},
+	); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if triggered != 1 {
+		t.Fatalf("trigger calls: got %d, want 1", triggered)
+	}
+}
+
+func TestReceiveURLsSkipsEvictionTriggerOnFailure(t *testing.T) {
+	store := &fakeURLStore{storeErr: ports.ErrStoreFailure}
+	triggered := 0
+	receiver := NewURLReceiver(store, WithURLEvictionTrigger(func() { triggered++ }))
+
+	if _, err := receiver.ReceiveURLs(
+		context.Background(),
+		[]yacymodel.URIMetadataRow{{}},
+	); !errors.Is(err, ports.ErrStoreFailure) {
+		t.Fatalf("got %v, want ErrStoreFailure", err)
+	}
+	if triggered != 0 {
+		t.Fatalf("trigger calls: got %d, want 0", triggered)
+	}
+}
+
 func TestReceiveURLsCapacityBusy(t *testing.T) {
 	store := &fakeURLStore{storeErr: ports.ErrAtCapacity}
 	receiver := NewURLReceiver(store)

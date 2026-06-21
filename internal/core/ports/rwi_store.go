@@ -7,7 +7,7 @@ import (
 )
 
 type RWIStore interface {
-	AppendRWI(ctx context.Context, entries []yacymodel.RWIEntry) ([]yacymodel.Hash, error)
+	AppendRWI(ctx context.Context, entries []yacymodel.RWIPosting) ([]yacymodel.Hash, error)
 	SearchPostings(
 		ctx context.Context,
 		query PostingSearchQuery,
@@ -31,7 +31,7 @@ type PostingSearchQuery struct {
 }
 
 type PostingSearchResult struct {
-	Postings  map[yacymodel.Hash][]yacymodel.RWIEntry
+	Postings  map[yacymodel.Hash][]yacymodel.RWIPosting
 	Counts    map[yacymodel.Hash]int
 	Truncated bool
 }

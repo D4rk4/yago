@@ -11,11 +11,27 @@ import (
 )
 
 type URLReceiver struct {
-	store ports.URLStore
+	store      ports.URLStore
+	afterStore []func()
 }
 
-func NewURLReceiver(store ports.URLStore) URLReceiver {
-	return URLReceiver{store: store}
+type URLReceiverOption func(*URLReceiver)
+
+func WithURLEvictionTrigger(trigger func()) URLReceiverOption {
+	return func(r *URLReceiver) {
+		if trigger != nil {
+			r.afterStore = append(r.afterStore, trigger)
+		}
+	}
+}
+
+func NewURLReceiver(store ports.URLStore, opts ...URLReceiverOption) URLReceiver {
+	receiver := URLReceiver{store: store}
+	for _, opt := range opts {
+		opt(&receiver)
+	}
+
+	return receiver
 }
 
 func (r URLReceiver) ReceiveURLs(
@@ -28,6 +44,10 @@ func (r URLReceiver) ReceiveURLs(
 	}
 	if err != nil {
 		return contracts.URLReceipt{}, fmt.Errorf("store urls: %w", err)
+	}
+
+	for _, hook := range r.afterStore {
+		hook()
 	}
 
 	return contracts.URLReceipt{Double: len(result.Existing), ErrorURL: result.Rejected}, nil

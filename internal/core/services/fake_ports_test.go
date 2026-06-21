@@ -16,10 +16,10 @@ type fakeClock struct {
 func (c *fakeClock) Now() time.Time { return c.now }
 
 type fakeRWIStore struct {
-	appended       [][]yacymodel.RWIEntry
+	appended       [][]yacymodel.RWIPosting
 	rejected       []yacymodel.Hash
 	appendErr      error
-	postings       map[yacymodel.Hash][]yacymodel.RWIEntry
+	postings       map[yacymodel.Hash][]yacymodel.RWIPosting
 	postingsErr    error
 	rwiCount       int
 	rwiCountErr    error
@@ -29,7 +29,7 @@ type fakeRWIStore struct {
 
 func (s *fakeRWIStore) AppendRWI(
 	_ context.Context,
-	entries []yacymodel.RWIEntry,
+	entries []yacymodel.RWIPosting,
 ) ([]yacymodel.Hash, error) {
 	if s.appendErr != nil {
 		return nil, s.appendErr
@@ -48,7 +48,7 @@ func (s *fakeRWIStore) SearchPostings(
 	}
 
 	out := ports.PostingSearchResult{
-		Postings: make(map[yacymodel.Hash][]yacymodel.RWIEntry, len(query.WordHashes)),
+		Postings: make(map[yacymodel.Hash][]yacymodel.RWIPosting, len(query.WordHashes)),
 		Counts:   make(map[yacymodel.Hash]int, len(query.WordHashes)),
 	}
 	for _, word := range query.WordHashes {
@@ -129,8 +129,8 @@ func hashFor(base string) yacymodel.Hash {
 	return yacymodel.Hash(base + filler[len(base):])
 }
 
-func postingEntry(word yacymodel.Hash, url string, distance byte) yacymodel.RWIEntry {
-	return yacymodel.RWIEntry{
+func postingEntry(word yacymodel.Hash, url string, distance byte) yacymodel.RWIPosting {
+	return yacymodel.RWIPosting{
 		WordHash: word,
 		Properties: map[string]string{
 			yacymodel.ColURLHash:      string(hashFor(url)),

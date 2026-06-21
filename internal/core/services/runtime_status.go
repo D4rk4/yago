@@ -7,10 +7,11 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/contracts"
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/ports"
+	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
 type RuntimeStatus struct {
-	identity Identity
+	identity yacymodel.PeerIdentity
 	clock    ports.Clock
 	rwi      ports.RWIStore
 	urls     ports.URLStore
@@ -19,7 +20,7 @@ type RuntimeStatus struct {
 }
 
 func NewRuntimeStatus(
-	identity Identity,
+	identity yacymodel.PeerIdentity,
 	clock ports.Clock,
 	rwi ports.RWIStore,
 	urls ports.URLStore,
@@ -47,14 +48,14 @@ func (s RuntimeStatus) Snapshot(ctx context.Context) contracts.StatusSnapshot {
 	return contracts.StatusSnapshot{
 		Version: s.version,
 		Uptime:  uptime,
-		Seed:    s.identity.assembleSeed(now, uptime, s.version, counts),
+		Seed:    assembleSeed(s.identity, now, uptime, s.version, counts),
 	}
 }
 
 func (s RuntimeStatus) count(ctx context.Context, fn func(context.Context) (int, error)) int {
 	n, err := fn(ctx)
 	if err != nil {
-		slog.WarnContext(ctx, "count unavailable for status snapshot", "error", err)
+		slog.WarnContext(ctx, "count unavailable for status snapshot", slog.Any("error", err))
 
 		return 0
 	}
