@@ -11,10 +11,10 @@ import (
 
 func TestMatchesConstraint(t *testing.T) {
 	ctx := context.Background()
-	entry := rwiEntryWithFlag(
+	entry := rwiPostingWithFlag(
 		yacymodel.RWIFlagHasImage,
 	)(
-		yacymodel.RWIEntry{Properties: map[string]string{}},
+		yacymodel.RWIPosting{Properties: map[string]string{}},
 	)
 
 	if !matchesConstraint(ctx, entry, "") {
@@ -41,9 +41,9 @@ func TestBboltStorageSearchPostingsFiltersByConstraint(t *testing.T) {
 	defer closeTestStorage(t, store)
 
 	word := hashForStorageTest("word")
-	_, err := store.AppendRWI(ctx, []yacymodel.RWIEntry{
-		rwiEntryWithFlag(yacymodel.RWIFlagHasImage)(rwiEntryForStorageTest(word, "url-a", 1)),
-		rwiEntryWithFlag(yacymodel.RWIFlagHasVideo)(rwiEntryForStorageTest(word, "url-b", 1)),
+	_, err := store.AppendRWI(ctx, []yacymodel.RWIPosting{
+		rwiPostingWithFlag(yacymodel.RWIFlagHasImage)(rwiPostingForStorageTest(word, "url-a", 1)),
+		rwiPostingWithFlag(yacymodel.RWIFlagHasVideo)(rwiPostingForStorageTest(word, "url-b", 1)),
 	})
 	if err != nil {
 		t.Fatalf("AppendRWI: %v", err)

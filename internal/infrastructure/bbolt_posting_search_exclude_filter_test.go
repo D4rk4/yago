@@ -16,10 +16,10 @@ func TestBboltStorageSearchPostingsFiltersByExcludeHash(t *testing.T) {
 
 	word := hashForStorageTest("word")
 	stop := hashForStorageTest("stop")
-	_, err := store.AppendRWI(ctx, []yacymodel.RWIEntry{
-		rwiEntryForStorageTest(word, "url-a", 1),
-		rwiEntryForStorageTest(word, "url-b", 1),
-		rwiEntryForStorageTest(stop, "url-b", 1),
+	_, err := store.AppendRWI(ctx, []yacymodel.RWIPosting{
+		rwiPostingForStorageTest(word, "url-a", 1),
+		rwiPostingForStorageTest(word, "url-b", 1),
+		rwiPostingForStorageTest(stop, "url-b", 1),
 	})
 	if err != nil {
 		t.Fatalf("AppendRWI: %v", err)

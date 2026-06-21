@@ -34,10 +34,8 @@ func excludedURLHashes(
 				slog.WarnContext(
 					ctx,
 					"rwi exclude candidate discarded",
-					"reason",
-					"invalid url hash",
-					"error",
-					err,
+					slog.String("reason", "invalid url hash"),
+					slog.Any("error", err),
 				)
 			}
 		}

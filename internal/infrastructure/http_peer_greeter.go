@@ -36,11 +36,6 @@ func (g *HTTPPeerGreeter) Greet(
 	self yacymodel.Seed,
 	count int,
 ) (ports.GreetResult, error) {
-	iam, err := self.Hash()
-	if err != nil {
-		return ports.GreetResult{}, fmt.Errorf("%w: %w", ErrGreetFailed, err)
-	}
-
 	target, err := greetURL(endpoint)
 	if err != nil {
 		return ports.GreetResult{}, err
@@ -50,7 +45,7 @@ func (g *HTTPPeerGreeter) Greet(
 		NetworkName: g.networkName,
 		Seed:        self,
 		Count:       count,
-		Iam:         iam,
+		Iam:         self.Hash,
 	}
 
 	req, err := http.NewRequestWithContext(
@@ -68,7 +63,7 @@ func (g *HTTPPeerGreeter) Greet(
 	if err != nil {
 		return ports.GreetResult{}, fmt.Errorf("%w: %w", ErrGreetFailed, err)
 	}
-	defer closeResponseBody(ctx, resp.Body, "peer greet response close failed")
+	defer closeResponseBody(ctx, resp.Body, "peerGreet")
 
 	if resp.StatusCode != http.StatusOK {
 		return ports.GreetResult{}, fmt.Errorf("%w: status %d", ErrGreetFailed, resp.StatusCode)
@@ -83,7 +78,7 @@ func (g *HTTPPeerGreeter) Greet(
 	if err != nil {
 		return ports.GreetResult{}, fmt.Errorf("%w: %w", ErrGreetFailed, err)
 	}
-	parsed, err := yacyproto.ParseHelloResponse(msg)
+	parsed, err := yacyproto.ParseHelloResponse(ctx, msg)
 	if err != nil {
 		return ports.GreetResult{}, fmt.Errorf("%w: %w", ErrGreetFailed, err)
 	}

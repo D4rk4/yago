@@ -6,8 +6,15 @@ import (
 	"log/slog"
 )
 
-func closeResponseBody(ctx context.Context, body io.Closer, message string) {
+const responseBodyCloseFailedMessage = "response body close failed"
+
+func closeResponseBody(ctx context.Context, body io.Closer, operation string) {
 	if err := body.Close(); err != nil {
-		slog.WarnContext(ctx, message, "error", err)
+		slog.WarnContext(
+			ctx,
+			responseBodyCloseFailedMessage,
+			slog.String("operation", operation),
+			slog.Any("error", err),
+		)
 	}
 }

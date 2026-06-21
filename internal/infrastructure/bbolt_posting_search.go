@@ -20,7 +20,7 @@ func (s *BboltStorage) SearchPostings(
 	}
 
 	result := ports.PostingSearchResult{
-		Postings: make(map[yacymodel.Hash][]yacymodel.RWIEntry, len(query.WordHashes)),
+		Postings: make(map[yacymodel.Hash][]yacymodel.RWIPosting, len(query.WordHashes)),
 		Counts:   make(map[yacymodel.Hash]int, len(query.WordHashes)),
 	}
 	err := s.view(func(tx *bolt.Tx) error {
@@ -60,9 +60,9 @@ func searchWordPostings(
 	word yacymodel.Hash,
 	query ports.PostingSearchQuery,
 	matcher postingSearchMatcher,
-) ([]yacymodel.RWIEntry, int, bool, error) {
+) ([]yacymodel.RWIPosting, int, bool, error) {
 	var (
-		postings  []yacymodel.RWIEntry
+		postings  []yacymodel.RWIPosting
 		count     int
 		truncated bool
 	)

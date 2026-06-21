@@ -9,7 +9,7 @@ import (
 
 func matchesContentDomain(
 	ctx context.Context,
-	entry yacymodel.RWIEntry,
+	entry yacymodel.RWIPosting,
 	domain string,
 	strict bool,
 ) bool {
@@ -36,21 +36,19 @@ func matchesContentDomain(
 	}
 }
 
-func hasDocType(entry yacymodel.RWIEntry, want byte) bool {
+func hasDocType(entry yacymodel.RWIPosting, want byte) bool {
 	got, ok := entry.DocType()
 	return ok && got == want
 }
 
-func hasAppearanceFlag(ctx context.Context, entry yacymodel.RWIEntry, bit int) bool {
+func hasAppearanceFlag(ctx context.Context, entry yacymodel.RWIPosting, bit int) bool {
 	flags, err := entry.AppearanceFlags()
 	if err != nil {
 		slog.WarnContext(
 			ctx,
 			"rwi content domain candidate discarded",
-			"reason",
-			"appearance flags failed",
-			"error",
-			err,
+			slog.String("reason", "appearance flags failed"),
+			slog.Any("error", err),
 		)
 		return false
 	}

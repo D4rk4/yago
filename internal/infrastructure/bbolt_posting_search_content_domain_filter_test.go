@@ -13,10 +13,10 @@ func TestMatchesContentDomainStrict(t *testing.T) {
 	ctx := context.Background()
 	if !matchesContentDomain(
 		ctx,
-		rwiEntryWithDocType(
+		rwiPostingWithDocType(
 			yacymodel.DocTypeImage,
 		)(
-			yacymodel.RWIEntry{Properties: map[string]string{}},
+			yacymodel.RWIPosting{Properties: map[string]string{}},
 		),
 		"image",
 		true,
@@ -25,10 +25,10 @@ func TestMatchesContentDomainStrict(t *testing.T) {
 	}
 	if matchesContentDomain(
 		ctx,
-		rwiEntryWithDocType(
+		rwiPostingWithDocType(
 			yacymodel.DocTypeAudio,
 		)(
-			yacymodel.RWIEntry{Properties: map[string]string{}},
+			yacymodel.RWIPosting{Properties: map[string]string{}},
 		),
 		"image",
 		true,
@@ -37,10 +37,10 @@ func TestMatchesContentDomainStrict(t *testing.T) {
 	}
 	if !matchesContentDomain(
 		ctx,
-		rwiEntryWithDocType(
+		rwiPostingWithDocType(
 			yacymodel.DocTypeMovie,
 		)(
-			yacymodel.RWIEntry{Properties: map[string]string{}},
+			yacymodel.RWIPosting{Properties: map[string]string{}},
 		),
 		"video",
 		true,
@@ -53,10 +53,10 @@ func TestMatchesContentDomainNonStrict(t *testing.T) {
 	ctx := context.Background()
 	if !matchesContentDomain(
 		ctx,
-		rwiEntryWithFlag(
+		rwiPostingWithFlag(
 			yacymodel.RWIFlagHasAudio,
 		)(
-			yacymodel.RWIEntry{Properties: map[string]string{}},
+			yacymodel.RWIPosting{Properties: map[string]string{}},
 		),
 		"audio",
 		false,
@@ -65,10 +65,10 @@ func TestMatchesContentDomainNonStrict(t *testing.T) {
 	}
 	if matchesContentDomain(
 		ctx,
-		rwiEntryWithFlag(
+		rwiPostingWithFlag(
 			yacymodel.RWIFlagHasImage,
 		)(
-			yacymodel.RWIEntry{Properties: map[string]string{}},
+			yacymodel.RWIPosting{Properties: map[string]string{}},
 		),
 		"audio",
 		false,
@@ -77,10 +77,10 @@ func TestMatchesContentDomainNonStrict(t *testing.T) {
 	}
 	if !matchesContentDomain(
 		ctx,
-		rwiEntryWithFlag(
+		rwiPostingWithFlag(
 			yacymodel.RWIFlagHasApp,
 		)(
-			yacymodel.RWIEntry{Properties: map[string]string{}},
+			yacymodel.RWIPosting{Properties: map[string]string{}},
 		),
 		"app",
 		false,
@@ -91,10 +91,10 @@ func TestMatchesContentDomainNonStrict(t *testing.T) {
 
 func TestMatchesContentDomainPassthrough(t *testing.T) {
 	ctx := context.Background()
-	entry := rwiEntryWithDocType(
+	entry := rwiPostingWithDocType(
 		yacymodel.DocTypeImage,
 	)(
-		yacymodel.RWIEntry{Properties: map[string]string{}},
+		yacymodel.RWIPosting{Properties: map[string]string{}},
 	)
 	if !matchesContentDomain(ctx, entry, "", false) {
 		t.Fatal("empty domain should pass through")
@@ -110,16 +110,16 @@ func TestBboltStorageSearchPostingsFiltersByContentDomain(t *testing.T) {
 	tests := []struct {
 		name   string
 		query  ports.PostingSearchQuery
-		first  func(yacymodel.RWIEntry) yacymodel.RWIEntry
-		second func(yacymodel.RWIEntry) yacymodel.RWIEntry
+		first  func(yacymodel.RWIPosting) yacymodel.RWIPosting
+		second func(yacymodel.RWIPosting) yacymodel.RWIPosting
 	}{
 		{
 			name: "non-strict",
 			query: ports.PostingSearchQuery{
 				ContentDomain: "image",
 			},
-			first:  rwiEntryWithFlag(yacymodel.RWIFlagHasImage),
-			second: rwiEntryWithFlag(yacymodel.RWIFlagHasAudio),
+			first:  rwiPostingWithFlag(yacymodel.RWIFlagHasImage),
+			second: rwiPostingWithFlag(yacymodel.RWIFlagHasAudio),
 		},
 		{
 			name: "strict",
@@ -127,8 +127,8 @@ func TestBboltStorageSearchPostingsFiltersByContentDomain(t *testing.T) {
 				ContentDomain:    "image",
 				StrictContentDom: true,
 			},
-			first:  rwiEntryWithDocType(yacymodel.DocTypeImage),
-			second: rwiEntryWithDocType(yacymodel.DocTypeAudio),
+			first:  rwiPostingWithDocType(yacymodel.DocTypeImage),
+			second: rwiPostingWithDocType(yacymodel.DocTypeAudio),
 		},
 	}
 
@@ -138,9 +138,9 @@ func TestBboltStorageSearchPostingsFiltersByContentDomain(t *testing.T) {
 			defer closeTestStorage(t, store)
 
 			word := hashForStorageTest("word")
-			first := tt.first(rwiEntryForStorageTest(word, "url-a", 1))
-			second := tt.second(rwiEntryForStorageTest(word, "url-b", 1))
-			_, err := store.AppendRWI(ctx, []yacymodel.RWIEntry{first, second})
+			first := tt.first(rwiPostingForStorageTest(word, "url-a", 1))
+			second := tt.second(rwiPostingForStorageTest(word, "url-b", 1))
+			_, err := store.AppendRWI(ctx, []yacymodel.RWIPosting{first, second})
 			if err != nil {
 				t.Fatalf("AppendRWI: %v", err)
 			}

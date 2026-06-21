@@ -15,11 +15,11 @@ func TestBboltStorageStoresRWIAndSurvivesReopen(t *testing.T) {
 	store := openTestStorage(t, path, 0)
 
 	word := hashForStorageTest("word")
-	first := rwiEntryForStorageTest(word, "url-a", 1)
-	duplicate := rwiEntryForStorageTest(word, "url-a", 3)
-	second := rwiEntryForStorageTest(word, "url-b", 2)
+	first := rwiPostingForStorageTest(word, "url-a", 1)
+	duplicate := rwiPostingForStorageTest(word, "url-a", 3)
+	second := rwiPostingForStorageTest(word, "url-b", 2)
 
-	rejected, err := store.AppendRWI(ctx, []yacymodel.RWIEntry{first, second, duplicate})
+	rejected, err := store.AppendRWI(ctx, []yacymodel.RWIPosting{first, second, duplicate})
 	if err != nil {
 		t.Fatalf("AppendRWI: %v", err)
 	}

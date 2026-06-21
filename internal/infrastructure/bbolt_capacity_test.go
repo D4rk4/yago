@@ -24,7 +24,7 @@ func TestBboltStorageRejectsAtCapacity(t *testing.T) {
 
 	_, err = store.AppendRWI(
 		ctx,
-		[]yacymodel.RWIEntry{rwiEntryForStorageTest(hashForStorageTest("word"), "url-a", 1)},
+		[]yacymodel.RWIPosting{rwiPostingForStorageTest(hashForStorageTest("word"), "url-a", 1)},
 	)
 	if !errors.Is(err, ports.ErrAtCapacity) {
 		t.Fatalf("AppendRWI error = %v, want ErrAtCapacity", err)

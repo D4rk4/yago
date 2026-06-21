@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strconv"
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
@@ -19,11 +18,19 @@ func backPingPeer(t *testing.T, server *httptest.Server) yacymodel.Seed {
 	if err != nil {
 		t.Fatalf("parse server url: %v", err)
 	}
+	host, err := yacymodel.ParseHost(parsed.Hostname())
+	if err != nil {
+		t.Fatalf("parse host: %v", err)
+	}
+	port, err := yacymodel.ParsePort(parsed.Port())
+	if err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
 
 	return yacymodel.Seed{
-		yacymodel.SeedHash: string(hashForTest(t)),
-		yacymodel.SeedIP:   parsed.Hostname(),
-		yacymodel.SeedPort: parsed.Port(),
+		Hash: hashForTest(t),
+		IP:   yacymodel.Some(host),
+		Port: yacymodel.Some(port),
 	}
 }
 
@@ -68,14 +75,10 @@ func TestPeerBackPingNon200(t *testing.T) {
 	}
 }
 
-func TestPeerBackPingBadEndpoint(t *testing.T) {
+func TestPeerBackPingNoAddress(t *testing.T) {
 	pinger := NewPeerBackPing(http.DefaultClient, hashForTest(t), "freeworld")
-	peer := yacymodel.Seed{
-		yacymodel.SeedHash: string(hashForTest(t)),
-		yacymodel.SeedIP:   "not-an-ip",
-		yacymodel.SeedPort: strconv.Itoa(8090),
-	}
+	peer := yacymodel.Seed{Hash: hashForTest(t)}
 	if err := pinger.Ping(context.Background(), peer); err == nil {
-		t.Fatal("expected error on bad ip")
+		t.Fatal("expected error when peer has no address")
 	}
 }

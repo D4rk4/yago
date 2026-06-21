@@ -18,7 +18,7 @@ func TestMigrateRWIPostingsRewritesLegacyValues(t *testing.T) {
 	defer closeTestStorage(t, store)
 
 	word := hashForStorageTest("word")
-	entry := rwiEntryForStorageTest(word, "url-a", 3)
+	entry := rwiPostingForStorageTest(word, "url-a", 3)
 	seedLegacyPosting(t, store, entry)
 
 	report, err := store.MigrateRWIPostings(ctx)
@@ -33,7 +33,7 @@ func TestMigrateRWIPostingsRewritesLegacyValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("URLHash: %v", err)
 	}
-	if value := storedPosting(t, store, rwiKey(word, urlHash)); !isBinaryPosting(value) {
+	if value := storedPosting(t, store, rwiPostingKey(word, urlHash)); !isBinaryPosting(value) {
 		t.Fatalf("value not migrated to binary: %q", value)
 	}
 
@@ -68,7 +68,7 @@ func TestMigrateRWIPostingsCrossesBatchBoundary(t *testing.T) {
 	word := hashForStorageTest("word")
 	const total = rwiMigrationBatch + 5
 	for i := range total {
-		seedLegacyPosting(t, store, rwiEntryForStorageTest(word, fmt.Sprintf("url-%d", i), 1))
+		seedLegacyPosting(t, store, rwiPostingForStorageTest(word, fmt.Sprintf("url-%d", i), 1))
 	}
 
 	report, err := store.MigrateRWIPostings(ctx)
@@ -99,14 +99,14 @@ func TestMigrateRWIPostingsHonorsCancellation(t *testing.T) {
 	}
 }
 
-func seedLegacyPosting(t *testing.T, store *BboltStorage, entry yacymodel.RWIEntry) {
+func seedLegacyPosting(t *testing.T, store *BboltStorage, entry yacymodel.RWIPosting) {
 	t.Helper()
 
 	urlHash, err := entry.URLHash()
 	if err != nil {
 		t.Fatalf("URLHash: %v", err)
 	}
-	key := rwiKey(entry.WordHash, urlHash)
+	key := rwiPostingKey(entry.WordHash, urlHash)
 	err = store.update(func(tx *bolt.Tx) error {
 		return tx.Bucket(bucketRWI).Put(key, []byte(entry.String()))
 	})

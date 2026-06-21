@@ -15,10 +15,10 @@ func selfSeed(t *testing.T) yacymodel.Seed {
 	t.Helper()
 
 	return yacymodel.Seed{
-		yacymodel.SeedHash: string(hashForTest(t)),
-		yacymodel.SeedName: "self",
-		yacymodel.SeedIP:   "203.0.113.9",
-		yacymodel.SeedPort: "8090",
+		Hash: hashForTest(t),
+		Name: yacymodel.Some("self"),
+		IP:   yacymodel.Some(yacymodel.Host("203.0.113.9")),
+		Port: yacymodel.Some(yacymodel.Port(8090)),
 	}
 }
 
@@ -41,9 +41,9 @@ func TestPeerGreeterLearnsTypeAndKnownSeeds(t *testing.T) {
 		gotIam = r.PostForm.Get(yacyproto.FieldIam)
 
 		known := yacymodel.Seed{
-			yacymodel.SeedHash: string(hashForTest(t)),
-			yacymodel.SeedIP:   "198.51.100.7",
-			yacymodel.SeedPort: "8090",
+			Hash: hashForTest(t),
+			IP:   yacymodel.Some(yacymodel.Host("198.51.100.7")),
+			Port: yacymodel.Some(yacymodel.Port(8090)),
 		}
 		resp := yacyproto.HelloResponse{
 			YourIP:   "203.0.113.9",
@@ -90,13 +90,5 @@ func TestPeerGreeterRejectsNon200(t *testing.T) {
 		0,
 	); err == nil {
 		t.Fatal("expected error on non-200")
-	}
-}
-
-func TestPeerGreeterRejectsSeedWithoutHash(t *testing.T) {
-	greeter := NewHTTPPeerGreeter(http.DefaultClient, "freeworld")
-	_, err := greeter.Greet(context.Background(), "127.0.0.1:8090", yacymodel.Seed{}, 0)
-	if err == nil {
-		t.Fatal("expected error when self seed has no hash")
 	}
 }

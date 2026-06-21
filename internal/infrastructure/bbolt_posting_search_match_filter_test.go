@@ -15,9 +15,9 @@ func TestBboltStorageSearchPostingsFiltersByDistance(t *testing.T) {
 	defer closeTestStorage(t, store)
 
 	word := hashForStorageTest("word")
-	near := rwiEntryForStorageTest(word, "url-a", 1)
-	far := rwiEntryForStorageTest(word, "url-b", 9)
-	_, err := store.AppendRWI(ctx, []yacymodel.RWIEntry{near, far})
+	near := rwiPostingForStorageTest(word, "url-a", 1)
+	far := rwiPostingForStorageTest(word, "url-b", 9)
+	_, err := store.AppendRWI(ctx, []yacymodel.RWIPosting{near, far})
 	if err != nil {
 		t.Fatalf("AppendRWI: %v", err)
 	}
@@ -43,11 +43,11 @@ func TestBboltStorageSearchPostingsFiltersByLanguage(t *testing.T) {
 	defer closeTestStorage(t, store)
 
 	word := hashForStorageTest("word")
-	english := rwiEntryForStorageTest(word, "url-a", 1)
+	english := rwiPostingForStorageTest(word, "url-a", 1)
 	english.Properties[yacymodel.ColLanguage] = "en"
-	german := rwiEntryForStorageTest(word, "url-b", 1)
+	german := rwiPostingForStorageTest(word, "url-b", 1)
 	german.Properties[yacymodel.ColLanguage] = "de"
-	_, err := store.AppendRWI(ctx, []yacymodel.RWIEntry{english, german})
+	_, err := store.AppendRWI(ctx, []yacymodel.RWIPosting{english, german})
 	if err != nil {
 		t.Fatalf("AppendRWI: %v", err)
 	}
@@ -73,10 +73,10 @@ func TestBboltStorageSearchPostingsFiltersByURLHash(t *testing.T) {
 	defer closeTestStorage(t, store)
 
 	word := hashForStorageTest("word")
-	_, err := store.AppendRWI(ctx, []yacymodel.RWIEntry{
-		rwiEntryForStorageTest(word, "url-a", 1),
-		rwiEntryForStorageTest(word, "url-b", 1),
-		rwiEntryForStorageTest(word, "url-c", 1),
+	_, err := store.AppendRWI(ctx, []yacymodel.RWIPosting{
+		rwiPostingForStorageTest(word, "url-a", 1),
+		rwiPostingForStorageTest(word, "url-b", 1),
+		rwiPostingForStorageTest(word, "url-c", 1),
 	})
 	if err != nil {
 		t.Fatalf("AppendRWI: %v", err)

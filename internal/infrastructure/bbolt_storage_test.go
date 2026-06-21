@@ -48,12 +48,12 @@ func hashForStorageTest(seed string) yacymodel.Hash {
 	return yacymodel.WordHash(seed)
 }
 
-func rwiEntryForStorageTest(
+func rwiPostingForStorageTest(
 	word yacymodel.Hash,
 	urlSeed string,
 	distance byte,
-) yacymodel.RWIEntry {
-	return yacymodel.RWIEntry{
+) yacymodel.RWIPosting {
+	return yacymodel.RWIPosting{
 		WordHash: word,
 		Properties: map[string]string{
 			yacymodel.ColURLHash:        hashForStorageTest(urlSeed).String(),

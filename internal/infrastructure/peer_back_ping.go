@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"github.com/nikitakarpei/yacy-rwi-node/internal/core/ports"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
@@ -39,14 +37,9 @@ func (p *PeerBackPing) Ping(ctx context.Context, peer yacymodel.Seed) error {
 		return err
 	}
 
-	youAre, err := peer.Hash()
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrBackPingUnreachable, err)
-	}
-
 	query := yacyproto.QueryRequest{
 		NetworkName: p.networkName,
-		YouAre:      youAre,
+		YouAre:      peer.Hash,
 		Iam:         p.self,
 		Object:      yacyproto.ObjectRWICount,
 	}
@@ -61,7 +54,7 @@ func (p *PeerBackPing) Ping(ctx context.Context, peer yacymodel.Seed) error {
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrBackPingUnreachable, err)
 	}
-	defer closeResponseBody(ctx, resp.Body, "peer back-ping response close failed")
+	defer closeResponseBody(ctx, resp.Body, "peerBackPing")
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("%w: status %d", ErrBackPingUnreachable, resp.StatusCode)
@@ -84,24 +77,12 @@ func (p *PeerBackPing) Ping(ctx context.Context, peer yacymodel.Seed) error {
 }
 
 func backPingURL(peer yacymodel.Seed) (*url.URL, error) {
-	host := peer[yacymodel.SeedIP]
-	if net.ParseIP(host) == nil {
-		return nil, fmt.Errorf("%w: bad ip %q", ErrBackPingUnreachable, host)
-	}
-
-	port, err := peer.Port()
+	target, err := peer.HTTPEndpoint(yacyproto.PathQuery)
 	if err != nil {
-		return nil, fmt.Errorf("%w: bad port: %w", ErrBackPingUnreachable, err)
-	}
-	if port <= 0 {
-		return nil, fmt.Errorf("%w: bad port", ErrBackPingUnreachable)
+		return nil, fmt.Errorf("%w: %w", ErrBackPingUnreachable, err)
 	}
 
-	return &url.URL{
-		Scheme: "http",
-		Host:   net.JoinHostPort(host, strconv.Itoa(port)),
-		Path:   yacyproto.PathQuery,
-	}, nil
+	return target, nil
 }
 
 var _ ports.PeerPinger = (*PeerBackPing)(nil)

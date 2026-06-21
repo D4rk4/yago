@@ -11,6 +11,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
+//nolint:gocognit,revive // FIXME: break it into smaller functions
 func (s *BboltStorage) StoreURLs(
 	ctx context.Context,
 	rows []yacymodel.URIMetadataRow,
@@ -36,10 +37,8 @@ func (s *BboltStorage) StoreURLs(
 				slog.WarnContext(
 					ctx,
 					"url row discarded",
-					"reason",
-					"invalid url hash",
-					"error",
-					err,
+					slog.String("reason", "invalid url hash"),
+					slog.Any("error", err),
 				)
 				continue
 			}
@@ -52,12 +51,22 @@ func (s *BboltStorage) StoreURLs(
 			value, err := yacymodel.EncodeURIMetadata(row)
 			if err != nil {
 				result.Rejected = append(result.Rejected, hash)
-				slog.WarnContext(ctx, "url row discarded", "reason", "encode failed", "error", err)
+				slog.WarnContext(
+					ctx,
+					"url row discarded",
+					slog.String("reason", "encode failed"),
+					slog.Any("error", err),
+				)
 				continue
 			}
 			if err := urls.Put(key, value); err != nil {
 				result.Rejected = append(result.Rejected, hash)
-				slog.WarnContext(ctx, "url row discarded", "reason", "store failed", "error", err)
+				slog.WarnContext(
+					ctx,
+					"url row discarded",
+					slog.String("reason", "store failed"),
+					slog.Any("error", err),
+				)
 				continue
 			}
 			if err := incrementCount(counts, countURLs); err != nil {

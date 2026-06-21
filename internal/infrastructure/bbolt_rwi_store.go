@@ -10,9 +10,10 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
+//nolint:gocognit,revive // FIXME: split posting validation, encoding, and quota handling after rules are committed.
 func (s *BboltStorage) AppendRWI(
 	ctx context.Context,
-	entries []yacymodel.RWIEntry,
+	entries []yacymodel.RWIPosting,
 ) ([]yacymodel.Hash, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, wrapContextErr(err)
@@ -35,11 +36,9 @@ func (s *BboltStorage) AppendRWI(
 			if err != nil {
 				slog.WarnContext(
 					ctx,
-					"rwi entry discarded",
-					"reason",
-					"invalid url hash",
-					"error",
-					err,
+					"rwi posting discarded",
+					slog.String("reason", "invalid url hash"),
+					slog.Any("error", err),
 				)
 				continue
 			}
@@ -47,16 +46,14 @@ func (s *BboltStorage) AppendRWI(
 				rejected = append(rejected, urlHash)
 				slog.WarnContext(
 					ctx,
-					"rwi entry discarded",
-					"reason",
-					"invalid word hash",
-					"word_hash",
-					entry.WordHash,
+					"rwi posting discarded",
+					slog.String("reason", "invalid word hash"),
+					slog.String("wordHash", entry.WordHash.String()),
 				)
 				continue
 			}
 
-			key := rwiKey(entry.WordHash, urlHash)
+			key := rwiPostingKey(entry.WordHash, urlHash)
 			existing := rwi.Get(key)
 			if existing == nil {
 				if err := incrementCount(counts, countRWI); err != nil {
@@ -93,10 +90,16 @@ func (s *BboltStorage) ReferencedURLCount(ctx context.Context) (int, error) {
 	return s.count(ctx, countReferencedURLs)
 }
 
-func rwiKey(wordHash yacymodel.Hash, urlHash yacymodel.Hash) []byte {
-	key := make([]byte, 0, yacymodel.HashLength*2)
-	key = append(key, wordHash.String()...)
-	key = append(key, urlHash.String()...)
+func deleteRWIPosting(rwi, counts *bolt.Bucket, key []byte) (bool, error) {
+	if rwi.Get(key) == nil {
+		return false, nil
+	}
+	if err := rwi.Delete(key); err != nil {
+		return false, fmt.Errorf("delete rwi: %w", err)
+	}
+	if err := decrementCount(counts, countRWI); err != nil {
+		return false, err
+	}
 
-	return key
+	return true, nil
 }

@@ -16,10 +16,10 @@ func TestBboltStorageSearchPostingsBoundsPerWord(t *testing.T) {
 
 	word := hashForStorageTest("word")
 	other := hashForStorageTest("other")
-	_, err := store.AppendRWI(ctx, []yacymodel.RWIEntry{
-		rwiEntryForStorageTest(word, "url-a", 1),
-		rwiEntryForStorageTest(word, "url-b", 2),
-		rwiEntryForStorageTest(other, "url-c", 3),
+	_, err := store.AppendRWI(ctx, []yacymodel.RWIPosting{
+		rwiPostingForStorageTest(word, "url-a", 1),
+		rwiPostingForStorageTest(word, "url-b", 2),
+		rwiPostingForStorageTest(other, "url-c", 3),
 	})
 	if err != nil {
 		t.Fatalf("AppendRWI: %v", err)

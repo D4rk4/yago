@@ -13,13 +13,17 @@ import (
 func seedlistLine(t *testing.T, hash, ip string) string {
 	t.Helper()
 
+	host, err := yacymodel.ParseHost(ip)
+	if err != nil {
+		t.Fatalf("parse host: %v", err)
+	}
 	seed := yacymodel.Seed{
-		yacymodel.SeedHash: hash,
-		yacymodel.SeedIP:   ip,
-		yacymodel.SeedPort: "8090",
+		Hash: yacymodel.Hash(hash),
+		IP:   yacymodel.Some(host),
+		Port: yacymodel.Some(yacymodel.Port(8090)),
 	}
 
-	return yacymodel.EncodeSeedWireForm(seed.String())
+	return yacymodel.EncodeCompactWireForm(seed.String())
 }
 
 func TestSeedlistFetcherDecodesLines(t *testing.T) {
@@ -42,8 +46,8 @@ func TestSeedlistFetcherDecodesLines(t *testing.T) {
 	if len(seeds) != 2 {
 		t.Fatalf("got %d seeds, want 2 (bad line skipped)", len(seeds))
 	}
-	if seeds[0][yacymodel.SeedIP] != "203.0.113.1" {
-		t.Errorf("first ip = %q", seeds[0][yacymodel.SeedIP])
+	if ip, ok := seeds[0].IP.Get(); !ok || ip != "203.0.113.1" {
+		t.Errorf("first ip = %q, %v", ip, ok)
 	}
 }
 

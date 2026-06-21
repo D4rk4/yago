@@ -7,7 +7,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-func singlePostingHash(t *testing.T, postings []yacymodel.RWIEntry) yacymodel.Hash {
+func singlePostingHash(t *testing.T, postings []yacymodel.RWIPosting) yacymodel.Hash {
 	t.Helper()
 
 	if len(postings) != 1 {
@@ -20,15 +20,15 @@ func singlePostingHash(t *testing.T, postings []yacymodel.RWIEntry) yacymodel.Ha
 	return hash
 }
 
-func rwiEntryWithDocType(doctype byte) func(yacymodel.RWIEntry) yacymodel.RWIEntry {
-	return func(entry yacymodel.RWIEntry) yacymodel.RWIEntry {
+func rwiPostingWithDocType(doctype byte) func(yacymodel.RWIPosting) yacymodel.RWIPosting {
+	return func(entry yacymodel.RWIPosting) yacymodel.RWIPosting {
 		entry.Properties[yacymodel.ColDocType] = strconv.FormatUint(uint64(doctype), 10)
 		return entry
 	}
 }
 
-func rwiEntryWithFlag(bit int) func(yacymodel.RWIEntry) yacymodel.RWIEntry {
-	return func(entry yacymodel.RWIEntry) yacymodel.RWIEntry {
+func rwiPostingWithFlag(bit int) func(yacymodel.RWIPosting) yacymodel.RWIPosting {
+	return func(entry yacymodel.RWIPosting) yacymodel.RWIPosting {
 		entry.Properties[yacymodel.ColFlags] = rwiConstraintWithFlag(bit)
 		return entry
 	}

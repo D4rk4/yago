@@ -78,6 +78,7 @@ func (s *BboltStorage) SelectEvictionCandidates(
 	return staleest.drain(), nil
 }
 
+//nolint:gocognit,revive // FIXME: split URL deletion from posting cleanup after rules are committed.
 func (s *BboltStorage) DeleteURLs(
 	ctx context.Context,
 	urls []yacymodel.Hash,
@@ -106,13 +107,13 @@ func (s *BboltStorage) DeleteURLs(
 			return err
 		}
 		for _, key := range stale {
-			if err := rwi.Delete(key); err != nil {
-				return fmt.Errorf("delete rwi: %w", err)
-			}
-			if err := decrementCount(counts, countRWI); err != nil {
+			deleted, err := deleteRWIPosting(rwi, counts, key)
+			if err != nil {
 				return err
 			}
-			result.PostingsDeleted++
+			if deleted {
+				result.PostingsDeleted++
+			}
 		}
 
 		for _, hash := range urls {
@@ -156,10 +157,11 @@ func postingsForURLs(
 		if err := ctx.Err(); err != nil {
 			return nil, wrapContextErr(err)
 		}
-		if len(key) < yacymodel.HashLength {
+		id, err := parseRWIPostingKey(key)
+		if err != nil {
 			continue
 		}
-		if _, ok := targets[string(key[len(key)-yacymodel.HashLength:])]; !ok {
+		if _, ok := targets[id.URLHash.String()]; !ok {
 			continue
 		}
 		stale = append(stale, append([]byte(nil), key...))

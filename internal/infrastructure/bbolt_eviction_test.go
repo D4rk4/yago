@@ -52,9 +52,9 @@ func TestDeleteURLsRemovesPostingsAndMetadata(t *testing.T) {
 	defer closeTestStorage(t, store)
 
 	word := hashForStorageTest("word")
-	if _, err := store.AppendRWI(ctx, []yacymodel.RWIEntry{
-		rwiEntryForStorageTest(word, "drop-me", 1),
-		rwiEntryForStorageTest(word, "keep-me", 1),
+	if _, err := store.AppendRWI(ctx, []yacymodel.RWIPosting{
+		rwiPostingForStorageTest(word, "drop-me", 1),
+		rwiPostingForStorageTest(word, "keep-me", 1),
 	}); err != nil {
 		t.Fatalf("AppendRWI: %v", err)
 	}
@@ -92,11 +92,11 @@ func TestUsedBytesDropsAfterDelete(t *testing.T) {
 	defer closeTestStorage(t, store)
 
 	word := hashForStorageTest("word")
-	entries := make([]yacymodel.RWIEntry, 0, 512)
+	entries := make([]yacymodel.RWIPosting, 0, 512)
 	rows := make([]yacymodel.URIMetadataRow, 0, 512)
 	for i := range 512 {
 		seed := "url-" + decimalForTest(byte(i)) + "-" + decimalForTest(byte(i/256))
-		entries = append(entries, rwiEntryForStorageTest(word, seed, 1))
+		entries = append(entries, rwiPostingForStorageTest(word, seed, 1))
 		rows = append(rows, urlRowForStorageTest(seed))
 	}
 	if _, err := store.AppendRWI(ctx, entries); err != nil {

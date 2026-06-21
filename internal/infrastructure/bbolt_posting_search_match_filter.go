@@ -34,7 +34,7 @@ func newPostingSearchMatcher(
 
 func (m postingSearchMatcher) matches(
 	ctx context.Context,
-	entry yacymodel.RWIEntry,
+	entry yacymodel.RWIPosting,
 ) bool {
 	query := m.query
 	if query.Language != "" && entry.Properties[yacymodel.ColLanguage] != query.Language {
@@ -45,10 +45,8 @@ func (m postingSearchMatcher) matches(
 		slog.WarnContext(
 			ctx,
 			"rwi filter field discarded",
-			"field",
-			yacymodel.ColWordDistance,
-			"error",
-			err,
+			slog.String("field", yacymodel.ColWordDistance),
+			slog.Any("error", err),
 		)
 		distance = 0
 	}
@@ -60,10 +58,8 @@ func (m postingSearchMatcher) matches(
 		slog.WarnContext(
 			ctx,
 			"rwi search posting discarded",
-			"reason",
-			"invalid url hash",
-			"error",
-			err,
+			slog.String("reason", "invalid url hash"),
+			slog.Any("error", err),
 		)
 		return false
 	}

@@ -29,9 +29,9 @@ func TestBboltStorageSearchPostingsFiltersBySiteHash(t *testing.T) {
 
 	word := hashForStorageTest("word")
 	first := hashForStorageTest("url-a")
-	_, err := store.AppendRWI(ctx, []yacymodel.RWIEntry{
-		rwiEntryForStorageTest(word, "url-a", 1),
-		rwiEntryForStorageTest(word, "url-b", 1),
+	_, err := store.AppendRWI(ctx, []yacymodel.RWIPosting{
+		rwiPostingForStorageTest(word, "url-a", 1),
+		rwiPostingForStorageTest(word, "url-b", 1),
 	})
 	if err != nil {
 		t.Fatalf("AppendRWI: %v", err)

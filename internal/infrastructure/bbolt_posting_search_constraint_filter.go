@@ -7,13 +7,18 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-func matchesConstraint(ctx context.Context, entry yacymodel.RWIEntry, constraint string) bool {
+func matchesConstraint(ctx context.Context, entry yacymodel.RWIPosting, constraint string) bool {
 	if constraint == "" {
 		return true
 	}
 	required, err := yacymodel.DecodeBitfield(constraint)
 	if err != nil {
-		slog.WarnContext(ctx, "rwi constraint discarded", "reason", "decode failed", "error", err)
+		slog.WarnContext(
+			ctx,
+			"rwi constraint discarded",
+			slog.String("reason", "decode failed"),
+			slog.Any("error", err),
+		)
 		return true
 	}
 	if required.AllSet(yacymodel.RWIFlagBitCount) {
@@ -24,10 +29,8 @@ func matchesConstraint(ctx context.Context, entry yacymodel.RWIEntry, constraint
 		slog.WarnContext(
 			ctx,
 			"rwi constraint candidate discarded",
-			"reason",
-			"appearance flags failed",
-			"error",
-			err,
+			slog.String("reason", "appearance flags failed"),
+			slog.Any("error", err),
 		)
 		return false
 	}
