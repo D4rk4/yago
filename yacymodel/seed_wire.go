@@ -61,9 +61,13 @@ func parseSeedField(ctx context.Context, seed *Seed, key, value string) error {
 	case SeedName:
 		seed.Name = Some(value)
 	case SeedIP:
-		err = parseInto(&seed.IP, ParseHost, value)
+		if value != "" {
+			err = parseInto(&seed.IP, ParseHost, value)
+		}
 	case SeedIP6:
-		err = parseInto(&seed.IP6, ParseHost, value)
+		if value != "" {
+			err = parseInto(&seed.IP6, ParseHost, value)
+		}
 	case SeedPort:
 		err = parseInto(&seed.Port, ParsePort, value)
 	case SeedPortSSL:
