@@ -12,7 +12,7 @@ func TestIngestBatchRoundTrip(t *testing.T) {
 		SourceURL:     "https://example.org/a",
 		Provenance:    []byte("admin"),
 		ProfileHandle: "abcdef012345",
-		Postings: []yacymodel.RWIEntry{
+		Postings: []yacymodel.RWIPosting{
 			{
 				WordHash:   yacymodel.Hash("wordhash0123"),
 				Properties: map[string]string{"u": "urlhash01234"},
