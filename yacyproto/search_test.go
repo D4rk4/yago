@@ -14,7 +14,7 @@ func TestSearchRequestRoundTrip(t *testing.T) {
 
 	req := yacyproto.SearchRequest{
 		NetworkName: yacyproto.DefaultNetwork,
-		MySeed:      sampleSeed(t, "alpha", "peer-a"),
+		MySeed:      yacymodel.Some(sampleSeed(t, "alpha", "peer-a")),
 		Query: []yacymodel.Hash{
 			sampleHash(t, "alpha"),
 			sampleHash(t, "beta"),
@@ -38,7 +38,7 @@ func TestSearchRequestRoundTrip(t *testing.T) {
 		Protocol:         "https",
 	}
 
-	got, err := yacyproto.ParseSearchRequest(req.Form())
+	got, err := yacyproto.ParseSearchRequest(t.Context(), req.Form())
 	if err != nil {
 		t.Fatalf("ParseSearchRequest: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestParseSearchRequestTruncatesRaggedQuery(t *testing.T) {
 
 	full := sampleHash(t, "alpha").String()
 	form := url.Values{yacyproto.FieldQuery: {full + "tooshort"}}
-	req, err := yacyproto.ParseSearchRequest(form)
+	req, err := yacyproto.ParseSearchRequest(t.Context(), form)
 	if err != nil {
 		t.Fatalf("ParseSearchRequest: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestParseSearchRequestTruncatesRaggedExclude(t *testing.T) {
 
 	full := sampleHash(t, "alpha").String()
 	form := url.Values{yacyproto.FieldExclude: {full + "tooshort"}}
-	req, err := yacyproto.ParseSearchRequest(form)
+	req, err := yacyproto.ParseSearchRequest(t.Context(), form)
 	if err != nil {
 		t.Fatalf("ParseSearchRequest: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestParseSearchRequestRejectsUnknownContentDomain(t *testing.T) {
 	t.Parallel()
 
 	form := url.Values{yacyproto.FieldContentDom: {"binary"}}
-	if _, err := yacyproto.ParseSearchRequest(form); err == nil {
+	if _, err := yacyproto.ParseSearchRequest(t.Context(), form); err == nil {
 		t.Fatal("expected error for unknown content domain")
 	}
 }
@@ -117,7 +117,7 @@ func TestParseSearchRequestRejectsUnknownStrictContentDom(t *testing.T) {
 	t.Parallel()
 
 	form := url.Values{yacyproto.FieldStrictContentDom: {"yes"}}
-	if _, err := yacyproto.ParseSearchRequest(form); err == nil {
+	if _, err := yacyproto.ParseSearchRequest(t.Context(), form); err == nil {
 		t.Fatal("expected error for unknown boolean token")
 	}
 }

@@ -1,6 +1,7 @@
 package yacyproto
 
 import (
+	"context"
 	"log/slog"
 	"net/url"
 	"strings"
@@ -14,7 +15,7 @@ type TransferRWIRequest struct {
 	YouAre      yacymodel.Hash
 	WordCount   int
 	EntryCount  int
-	Indexes     []yacymodel.RWIEntry
+	Indexes     []yacymodel.RWIPosting
 	Key         string
 }
 
@@ -118,7 +119,7 @@ func ParseTransferRWIResponse(m yacymodel.Message) (TransferRWIResponse, error) 
 	}, nil
 }
 
-func encodeRWILines(entries []yacymodel.RWIEntry) string {
+func encodeRWILines(entries []yacymodel.RWIPosting) string {
 	lines := make([]string, len(entries))
 	for i, entry := range entries {
 		lines[i] = entry.String()
@@ -129,29 +130,43 @@ func encodeRWILines(entries []yacymodel.RWIEntry) string {
 
 const maxRWIEntries = 1000
 
-func parseRWILines(raw string) []yacymodel.RWIEntry {
+func parseRWILines(raw string) []yacymodel.RWIPosting {
 	if raw == "" {
 		return nil
 	}
 
-	var entries []yacymodel.RWIEntry
+	var entries []yacymodel.RWIPosting
 	for line := range strings.SplitSeq(raw, "\n") {
 		line = strings.TrimRight(line, "\r")
 		if line == "" {
 			continue
 		}
 		if len(entries) >= maxRWIEntries {
-			slog.Warn("transfer rwi entry limit reached", "limit", maxRWIEntries)
+			slog.WarnContext(
+				context.Background(),
+				"transfer rwi posting limit reached",
+				slog.Int("limit", maxRWIEntries),
+			)
 			break
 		}
 
-		entry, err := yacymodel.ParseRWIEntry(line)
+		entry, err := yacymodel.ParseRWIPosting(line)
 		if err != nil {
-			slog.Warn("transfer rwi entry discarded", "error", err, "line_length", len(line))
+			slog.WarnContext(
+				context.Background(),
+				"transfer rwi posting discarded",
+				slog.Any("error", err),
+				slog.Int("lineLength", len(line)),
+			)
 			continue
 		}
 		if _, err := entry.URLHash(); err != nil {
-			slog.Warn("transfer rwi entry discarded", "error", err, "line_length", len(line))
+			slog.WarnContext(
+				context.Background(),
+				"transfer rwi posting discarded",
+				slog.Any("error", err),
+				slog.Int("lineLength", len(line)),
+			)
 			continue
 		}
 

@@ -21,12 +21,12 @@ func sampleSeed(tb testing.TB, word, name string) yacymodel.Seed {
 	tb.Helper()
 
 	seed := yacymodel.Seed{
-		yacymodel.SeedHash:     sampleHash(tb, word).String(),
-		yacymodel.SeedName:     name,
-		yacymodel.SeedPeerType: yacymodel.PeerSenior.String(),
+		Hash:     sampleHash(tb, word),
+		Name:     yacymodel.Some(name),
+		PeerType: yacymodel.Some(yacymodel.PeerSenior),
 	}
 
-	roundTrip, err := yacymodel.ParseSeed(seed.String())
+	roundTrip, err := yacymodel.ParseSeed(tb.Context(), seed.String())
 	if err != nil {
 		tb.Fatalf("sample seed does not round-trip: %v", err)
 	}
@@ -34,10 +34,10 @@ func sampleSeed(tb testing.TB, word, name string) yacymodel.Seed {
 	return roundTrip
 }
 
-func sampleRWIEntry(tb testing.TB, word, urlWord string) yacymodel.RWIEntry {
+func sampleRWIPosting(tb testing.TB, word, urlWord string) yacymodel.RWIPosting {
 	tb.Helper()
 
-	entry := yacymodel.RWIEntry{
+	entry := yacymodel.RWIPosting{
 		WordHash: sampleHash(tb, word),
 		Properties: map[string]string{
 			yacymodel.ColURLHash:        sampleHash(tb, urlWord).String(),
@@ -45,9 +45,9 @@ func sampleRWIEntry(tb testing.TB, word, urlWord string) yacymodel.RWIEntry {
 		},
 	}
 
-	roundTrip, err := yacymodel.ParseRWIEntry(entry.String())
+	roundTrip, err := yacymodel.ParseRWIPosting(entry.String())
 	if err != nil {
-		tb.Fatalf("sample rwi entry does not round-trip: %v", err)
+		tb.Fatalf("sample rwi posting does not round-trip: %v", err)
 	}
 
 	return roundTrip

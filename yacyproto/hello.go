@@ -1,6 +1,7 @@
 package yacyproto
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 
@@ -26,12 +27,12 @@ type HelloResponse struct {
 	Seeds    []yacymodel.Seed
 }
 
-func (r HelloResponse) OwnSeed() yacymodel.Seed {
+func (r HelloResponse) OwnSeed() yacymodel.Optional[yacymodel.Seed] {
 	if len(r.Seeds) == 0 {
-		return nil
+		return yacymodel.None[yacymodel.Seed]()
 	}
 
-	return r.Seeds[0]
+	return yacymodel.Some(r.Seeds[0])
 }
 
 func (r HelloResponse) KnownSeeds() []yacymodel.Seed {
@@ -46,9 +47,7 @@ func (r HelloRequest) Form() url.Values {
 	form := url.Values{}
 	putString(form, FieldNetworkName, r.NetworkName)
 	putString(form, FieldKey, r.Key)
-	if r.Seed != nil {
-		putString(form, FieldSeed, yacymodel.EncodeSeedWireForm(r.Seed.String()))
-	}
+	putString(form, FieldSeed, yacymodel.EncodeCompactWireForm(r.Seed.String()))
 	putInt(form, FieldCount, r.Count)
 	putString(form, FieldIam, r.Iam.String())
 	putString(form, FieldMagicMD5, r.MagicMD5)
@@ -57,7 +56,7 @@ func (r HelloRequest) Form() url.Values {
 	return form
 }
 
-func ParseHelloRequest(form url.Values) (HelloRequest, error) {
+func ParseHelloRequest(ctx context.Context, form url.Values) (HelloRequest, error) {
 	count, err := optionalInt(FieldCount, form.Get(FieldCount))
 	if err != nil {
 		return HelloRequest{}, err
@@ -71,11 +70,13 @@ func ParseHelloRequest(form url.Values) (HelloRequest, error) {
 		MyTime:      form.Get(FieldMyTime),
 	}
 
-	if raw := form.Get(FieldSeed); raw != "" {
-		req.Seed, err = decodeSeed(raw)
-		if err != nil {
-			return HelloRequest{}, err
-		}
+	raw := form.Get(FieldSeed)
+	if raw == "" {
+		return HelloRequest{}, fmt.Errorf("hello request: missing %s", FieldSeed)
+	}
+	req.Seed, err = decodeSeed(ctx, raw)
+	if err != nil {
+		return HelloRequest{}, err
 	}
 
 	if raw := form.Get(FieldIam); raw != "" {
@@ -96,13 +97,13 @@ func (r HelloResponse) Encode() yacymodel.Message {
 	setString(msg, FieldMyTime, r.MyTime)
 	setString(msg, FieldMessage, r.Message)
 	for i, seed := range r.Seeds {
-		setString(msg, indexedKey(prefixSeed, i), yacymodel.EncodeSeedWireForm(seed.String()))
+		setString(msg, indexedKey(prefixSeed, i), yacymodel.EncodeCompactWireForm(seed.String()))
 	}
 
 	return msg
 }
 
-func ParseHelloResponse(m yacymodel.Message) (HelloResponse, error) {
+func ParseHelloResponse(ctx context.Context, m yacymodel.Message) (HelloResponse, error) {
 	header, err := parseResponseHeader(m)
 	if err != nil {
 		return HelloResponse{}, err
@@ -122,7 +123,7 @@ func ParseHelloResponse(m yacymodel.Message) (HelloResponse, error) {
 		}
 	}
 
-	resp.Seeds, err = decodeSeeds(m)
+	resp.Seeds, err = decodeSeeds(ctx, m)
 	if err != nil {
 		return HelloResponse{}, err
 	}
@@ -130,21 +131,21 @@ func ParseHelloResponse(m yacymodel.Message) (HelloResponse, error) {
 	return resp, nil
 }
 
-func decodeSeed(raw string) (yacymodel.Seed, error) {
-	plain, err := yacymodel.DecodeSeedWireForm(raw)
+func decodeSeed(ctx context.Context, raw string) (yacymodel.Seed, error) {
+	plain, err := yacymodel.DecodeWireForm(raw)
 	if err != nil {
-		return nil, fmt.Errorf("seed wire form: %w", err)
+		return yacymodel.Seed{}, fmt.Errorf("seed wire form: %w", err)
 	}
 
-	seed, err := yacymodel.ParseSeed(plain)
+	seed, err := yacymodel.ParseSeed(ctx, plain)
 	if err != nil {
-		return nil, fmt.Errorf("seed: %w", err)
+		return yacymodel.Seed{}, fmt.Errorf("seed: %w", err)
 	}
 
 	return seed, nil
 }
 
-func decodeSeeds(m yacymodel.Message) ([]yacymodel.Seed, error) {
+func decodeSeeds(ctx context.Context, m yacymodel.Message) ([]yacymodel.Seed, error) {
 	var seeds []yacymodel.Seed
 	for i := 0; ; i++ {
 		raw, ok := m[indexedKey(prefixSeed, i)]
@@ -152,7 +153,7 @@ func decodeSeeds(m yacymodel.Message) ([]yacymodel.Seed, error) {
 			return seeds, nil
 		}
 
-		seed, err := decodeSeed(raw)
+		seed, err := decodeSeed(ctx, raw)
 		if err != nil {
 			return nil, err
 		}

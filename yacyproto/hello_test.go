@@ -22,7 +22,7 @@ func TestHelloRequestRoundTrip(t *testing.T) {
 		MyTime:      "20260617120000",
 	}
 
-	got, err := yacyproto.ParseHelloRequest(req.Form())
+	got, err := yacyproto.ParseHelloRequest(t.Context(), req.Form())
 	if err != nil {
 		t.Fatalf("ParseHelloRequest: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestHelloResponseRoundTrip(t *testing.T) {
 		},
 	}
 
-	got, err := yacyproto.ParseHelloResponse(resp.Encode())
+	got, err := yacyproto.ParseHelloResponse(t.Context(), resp.Encode())
 	if err != nil {
 		t.Fatalf("ParseHelloResponse: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestParseHelloRequestRejectsBadIam(t *testing.T) {
 	t.Parallel()
 
 	form := url.Values{yacyproto.FieldIam: {"short"}}
-	if _, err := yacyproto.ParseHelloRequest(form); err == nil {
+	if _, err := yacyproto.ParseHelloRequest(t.Context(), form); err == nil {
 		t.Fatal("expected error for malformed iam hash")
 	}
 }
@@ -70,7 +70,7 @@ func TestParseHelloResponseRejectsBadPeerType(t *testing.T) {
 	t.Parallel()
 
 	msg := yacymodel.Message{yacyproto.FieldYourType: "overlord"}
-	if _, err := yacyproto.ParseHelloResponse(msg); err == nil {
+	if _, err := yacyproto.ParseHelloResponse(t.Context(), msg); err == nil {
 		t.Fatal("expected error for unknown peer type")
 	}
 }

@@ -18,9 +18,9 @@ func TestTransferRWIRequestRoundTrip(t *testing.T) {
 		YouAre:      sampleHash(t, "beta"),
 		WordCount:   2,
 		EntryCount:  2,
-		Indexes: []yacymodel.RWIEntry{
-			sampleRWIEntry(t, "alpha", "url-a"),
-			sampleRWIEntry(t, "beta", "url-b"),
+		Indexes: []yacymodel.RWIPosting{
+			sampleRWIPosting(t, "alpha", "url-a"),
+			sampleRWIPosting(t, "beta", "url-b"),
 		},
 		Key: "salt",
 	}
@@ -78,7 +78,7 @@ func TestTransferRWIResponseIncludesEmptyURLFields(t *testing.T) {
 func TestParseTransferRWIRequestSkipsBadEntry(t *testing.T) {
 	t.Parallel()
 
-	good := sampleRWIEntry(t, "alpha", "url-a")
+	good := sampleRWIPosting(t, "alpha", "url-a")
 	form := url.Values{yacyproto.FieldIndexes: {"not-a-posting-line\n" + good.String()}}
 	req, err := yacyproto.ParseTransferRWIRequest(form)
 	if err != nil {

@@ -1,6 +1,7 @@
 package yacyproto
 
 import (
+	"context"
 	"net/url"
 	"strings"
 
@@ -9,7 +10,7 @@ import (
 
 type SearchRequest struct {
 	NetworkName      string
-	MySeed           yacymodel.Seed
+	MySeed           yacymodel.Optional[yacymodel.Seed]
 	Query            []yacymodel.Hash
 	Exclude          []yacymodel.Hash
 	URLs             []yacymodel.Hash
@@ -49,8 +50,8 @@ type SearchResponse struct {
 func (r SearchRequest) Form() url.Values {
 	form := url.Values{}
 	putString(form, FieldNetworkName, r.NetworkName)
-	if r.MySeed != nil {
-		putString(form, FieldMySeed, yacymodel.EncodeSeedWireForm(r.MySeed.String()))
+	if seed, ok := r.MySeed.Get(); ok {
+		putString(form, FieldMySeed, yacymodel.EncodeCompactWireForm(seed.String()))
 	}
 	putString(form, FieldQuery, concatHashes(r.Query))
 	putString(form, FieldExclude, concatHashes(r.Exclude))
@@ -79,7 +80,7 @@ func (r SearchRequest) Form() url.Values {
 	return form
 }
 
-func ParseSearchRequest(form url.Values) (SearchRequest, error) {
+func ParseSearchRequest(ctx context.Context, form url.Values) (SearchRequest, error) {
 	counts, err := searchRequestCounts(form)
 	if err != nil {
 		return SearchRequest{}, err
@@ -108,10 +109,11 @@ func ParseSearchRequest(form url.Values) (SearchRequest, error) {
 	}
 
 	if raw := form.Get(FieldMySeed); raw != "" {
-		req.MySeed, err = decodeSeed(raw)
+		seed, err := decodeSeed(ctx, raw)
 		if err != nil {
 			return SearchRequest{}, err
 		}
+		req.MySeed = yacymodel.Some(seed)
 	}
 
 	req.Query, err = splitSearchHashes(FieldQuery, form.Get(FieldQuery))
