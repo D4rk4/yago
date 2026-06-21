@@ -7,8 +7,8 @@ import (
 
 const sampleRWILine = "ABCDEFGHIJKL{c=1,h=MNOPQRSTUVWX,x=2,z=AAAAAA}"
 
-func TestParseRWIEntryRoundTrip(t *testing.T) {
-	entry, err := ParseRWIEntry(sampleRWILine)
+func TestParseRWIPostingRoundTrip(t *testing.T) {
+	entry, err := ParseRWIPosting(sampleRWILine)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,8 +24,10 @@ func TestParseRWIEntryRoundTrip(t *testing.T) {
 	}
 }
 
-func TestParseRWIEntryNormalizesYaCyPropertyForm(t *testing.T) {
-	entry, err := ParseRWIEntry("ABCDEFGHIJKL{c=1,d=104,h=MNOPQRSTUVWX,l=eng,t=258x,x=2,z=AAAAAAA}")
+func TestParseRWIPostingNormalizesYaCyPropertyForm(t *testing.T) {
+	entry, err := ParseRWIPosting(
+		"ABCDEFGHIJKL{c=1,d=104,h=MNOPQRSTUVWX,l=eng,t=258x,x=2,z=AAAAAAA}",
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,15 +51,15 @@ func TestParseRWIEntryNormalizesYaCyPropertyForm(t *testing.T) {
 	}
 }
 
-func TestParseRWIEntryErrors(t *testing.T) {
+func TestParseRWIPostingErrors(t *testing.T) {
 	cases := []string{
 		"ABCDEFGHIJKLnobraces",
 		"short{h=MNOPQRSTUVWX}",
 		"ABCDEFGHIJKL{h=MNOPQRSTUVWX,badtoken}",
 	}
 	for _, c := range cases {
-		if _, err := ParseRWIEntry(c); !errors.Is(err, ErrBadRWIEntry) {
-			t.Errorf("ParseRWIEntry(%q) = %v, want ErrBadRWIEntry", c, err)
+		if _, err := ParseRWIPosting(c); !errors.Is(err, ErrBadRWIPosting) {
+			t.Errorf("ParseRWIPosting(%q) = %v, want ErrBadRWIPosting", c, err)
 		}
 	}
 }

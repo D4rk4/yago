@@ -7,7 +7,7 @@ import (
 )
 
 func TestEncodeRWIPostingRoundTrip(t *testing.T) {
-	entry, err := ParseRWIEntry(
+	entry, err := ParseRWIPosting(
 		"ABCDEFGHIJKL{a=AAE,c=1,d=104,g=1,h=MNOPQRSTUVWX,l=en,s=AAI,t=258,x=2,z=AAAAAAA}",
 	)
 	if err != nil {
@@ -29,7 +29,7 @@ func TestEncodeRWIPostingRoundTrip(t *testing.T) {
 }
 
 func TestEncodeRWIPostingPreservesExtraColumns(t *testing.T) {
-	entry := RWIEntry{
+	entry := RWIPosting{
 		WordHash: "ABCDEFGHIJKL",
 		Properties: map[string]string{
 			ColURLHash:   "MNOPQRSTUVWX",
@@ -48,7 +48,7 @@ func TestEncodeRWIPostingPreservesExtraColumns(t *testing.T) {
 }
 
 func TestEncodeRWIPostingOmitsWordHash(t *testing.T) {
-	entry := RWIEntry{
+	entry := RWIPosting{
 		WordHash:   "ABCDEFGHIJKL",
 		Properties: map[string]string{ColURLHash: "MNOPQRSTUVWX"},
 	}
@@ -64,7 +64,7 @@ func TestEncodeRWIPostingOmitsWordHash(t *testing.T) {
 }
 
 func TestEncodeRWIPostingIsSmallerThanPropertyForm(t *testing.T) {
-	entry, err := ParseRWIEntry(sampleRWILine)
+	entry, err := ParseRWIPosting(sampleRWILine)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,21 +87,21 @@ func TestDecodeRWIPostingFallsBackToPropertyForm(t *testing.T) {
 }
 
 func TestDecodeRWIPostingRejectsEmptyValue(t *testing.T) {
-	if _, err := DecodeRWIPosting("ABCDEFGHIJKL", nil); !errors.Is(err, ErrBadRWIEntry) {
-		t.Errorf("err = %v, want ErrBadRWIEntry", err)
+	if _, err := DecodeRWIPosting("ABCDEFGHIJKL", nil); !errors.Is(err, ErrBadRWIPosting) {
+		t.Errorf("err = %v, want ErrBadRWIPosting", err)
 	}
 }
 
 func TestDecodeRWIPostingRejectsTruncatedBinary(t *testing.T) {
-	entry, err := ParseRWIEntry(sampleRWILine)
+	entry, err := ParseRWIPosting(sampleRWILine)
 	if err != nil {
 		t.Fatal(err)
 	}
 	encoded := EncodeRWIPosting(entry)
 	for length := 1; length < len(encoded); length++ {
 		_, err := DecodeRWIPosting(entry.WordHash, encoded[:length])
-		if !errors.Is(err, ErrBadRWIEntry) {
-			t.Errorf("truncated to %d bytes: err = %v, want ErrBadRWIEntry", length, err)
+		if !errors.Is(err, ErrBadRWIPosting) {
+			t.Errorf("truncated to %d bytes: err = %v, want ErrBadRWIPosting", length, err)
 		}
 	}
 }

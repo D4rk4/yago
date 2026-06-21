@@ -28,7 +28,7 @@ func indexRWIPostingColumns() map[string]int {
 	return index
 }
 
-func EncodeRWIPosting(entry RWIEntry) []byte {
+func EncodeRWIPosting(entry RWIPosting) []byte {
 	var buf bytes.Buffer
 	buf.WriteByte(RWIPostingFormatV1)
 
@@ -84,21 +84,21 @@ func encodeRWIExtras(buf *bytes.Buffer, props map[string]string) {
 	}
 }
 
-func DecodeRWIPosting(wordHash Hash, data []byte) (RWIEntry, error) {
+func DecodeRWIPosting(wordHash Hash, data []byte) (RWIPosting, error) {
 	if len(data) == 0 {
-		return RWIEntry{}, fmt.Errorf("%w: empty posting value", ErrBadRWIEntry)
+		return RWIPosting{}, fmt.Errorf("%w: empty posting value", ErrBadRWIPosting)
 	}
 	if data[0] != RWIPostingFormatV1 {
-		return ParseRWIEntry(string(data))
+		return ParseRWIPosting(string(data))
 	}
 	return decodeRWIPostingV1(wordHash, data[1:])
 }
 
-func decodeRWIPostingV1(wordHash Hash, data []byte) (RWIEntry, error) {
+func decodeRWIPostingV1(wordHash Hash, data []byte) (RWIPosting, error) {
 	reader := bytes.NewReader(data)
 	var mask uint32
 	if err := binary.Read(reader, binary.LittleEndian, &mask); err != nil {
-		return RWIEntry{}, fmt.Errorf("%w: posting mask: %w", ErrBadRWIEntry, err)
+		return RWIPosting{}, fmt.Errorf("%w: posting mask: %w", ErrBadRWIPosting, err)
 	}
 	props := make(map[string]string)
 	for position, column := range rwiPostingColumns {
@@ -107,14 +107,14 @@ func decodeRWIPostingV1(wordHash Hash, data []byte) (RWIEntry, error) {
 		}
 		value, err := decodeRWIColumn(reader, column)
 		if err != nil {
-			return RWIEntry{}, fmt.Errorf("%w: column %s: %w", ErrBadRWIEntry, column, err)
+			return RWIPosting{}, fmt.Errorf("%w: column %s: %w", ErrBadRWIPosting, column, err)
 		}
 		props[column] = value
 	}
 	if err := decodeRWIExtras(reader, props); err != nil {
-		return RWIEntry{}, fmt.Errorf("%w: %w", ErrBadRWIEntry, err)
+		return RWIPosting{}, fmt.Errorf("%w: %w", ErrBadRWIPosting, err)
 	}
-	return RWIEntry{WordHash: wordHash, Properties: props}, nil
+	return RWIPosting{WordHash: wordHash, Properties: props}, nil
 }
 
 func decodeRWIColumn(reader *bytes.Reader, column string) (string, error) {
@@ -122,7 +122,7 @@ func decodeRWIColumn(reader *bytes.Reader, column string) (string, error) {
 	case ColURLHash:
 		raw := make([]byte, HashLength)
 		if _, err := io.ReadFull(reader, raw); err != nil {
-			return "", fmt.Errorf("%w: read hash: %w", ErrBadRWIEntry, err)
+			return "", fmt.Errorf("%w: read hash: %w", ErrBadRWIPosting, err)
 		}
 		return string(raw), nil
 	case ColLanguage:
@@ -140,7 +140,7 @@ func decodeRWIColumn(reader *bytes.Reader, column string) (string, error) {
 	default:
 		number, err := binary.ReadUvarint(reader)
 		if err != nil {
-			return "", fmt.Errorf("%w: read cardinal: %w", ErrBadRWIEntry, err)
+			return "", fmt.Errorf("%w: read cardinal: %w", ErrBadRWIPosting, err)
 		}
 		return FormatRWICardinal(number), nil
 	}
@@ -149,10 +149,10 @@ func decodeRWIColumn(reader *bytes.Reader, column string) (string, error) {
 func decodeRWIExtras(reader *bytes.Reader, props map[string]string) error {
 	count, err := binary.ReadUvarint(reader)
 	if err != nil {
-		return fmt.Errorf("%w: read extras count: %w", ErrBadRWIEntry, err)
+		return fmt.Errorf("%w: read extras count: %w", ErrBadRWIPosting, err)
 	}
 	if remaining := reader.Len(); remaining < 0 || count > uint64(remaining) {
-		return fmt.Errorf("%w: extras count %d exceeds remaining bytes", ErrBadRWIEntry, count)
+		return fmt.Errorf("%w: extras count %d exceeds remaining bytes", ErrBadRWIPosting, count)
 	}
 	for range count {
 		key, err := readLengthPrefixed(reader)
@@ -182,14 +182,14 @@ func writeLengthPrefixed(buf *bytes.Buffer, data []byte) {
 func readLengthPrefixed(reader *bytes.Reader) ([]byte, error) {
 	length, err := binary.ReadUvarint(reader)
 	if err != nil {
-		return nil, fmt.Errorf("%w: read length: %w", ErrBadRWIEntry, err)
+		return nil, fmt.Errorf("%w: read length: %w", ErrBadRWIPosting, err)
 	}
 	if remaining := reader.Len(); remaining < 0 || length > uint64(remaining) {
-		return nil, fmt.Errorf("%w: length %d exceeds remaining bytes", ErrBadRWIEntry, length)
+		return nil, fmt.Errorf("%w: length %d exceeds remaining bytes", ErrBadRWIPosting, length)
 	}
 	raw := make([]byte, length)
 	if _, err := io.ReadFull(reader, raw); err != nil {
-		return nil, fmt.Errorf("%w: read bytes: %w", ErrBadRWIEntry, err)
+		return nil, fmt.Errorf("%w: read bytes: %w", ErrBadRWIPosting, err)
 	}
 	return raw, nil
 }

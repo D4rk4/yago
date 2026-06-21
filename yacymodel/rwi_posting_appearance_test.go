@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-func TestRWIEntryDocType(t *testing.T) {
-	entry := RWIEntry{
+func TestRWIPostingDocType(t *testing.T) {
+	entry := RWIPosting{
 		Properties: map[string]string{ColDocType: strconv.FormatUint(uint64(DocTypeImage), 10)},
 	}
 	got, ok := entry.DocType()
@@ -15,17 +15,17 @@ func TestRWIEntryDocType(t *testing.T) {
 	}
 }
 
-func TestRWIEntryDocTypeMissing(t *testing.T) {
-	entry := RWIEntry{Properties: map[string]string{}}
+func TestRWIPostingDocTypeMissing(t *testing.T) {
+	entry := RWIPosting{Properties: map[string]string{}}
 	if _, ok := entry.DocType(); ok {
 		t.Fatal("DocType() ok = true for missing column, want false")
 	}
 }
 
-func TestRWIEntryAppearanceFlags(t *testing.T) {
+func TestRWIPostingAppearanceFlags(t *testing.T) {
 	flags := []byte{0, 0, 0, 0}
 	flags[RWIFlagHasVideo>>3] |= 1 << (RWIFlagHasVideo % 8)
-	entry := RWIEntry{Properties: map[string]string{ColFlags: Encode(flags)}}
+	entry := RWIPosting{Properties: map[string]string{ColFlags: Encode(flags)}}
 	got, err := entry.AppearanceFlags()
 	if err != nil {
 		t.Fatalf("AppearanceFlags() error = %v", err)
@@ -38,8 +38,8 @@ func TestRWIEntryAppearanceFlags(t *testing.T) {
 	}
 }
 
-func TestRWIEntryAppearanceFlagsMissing(t *testing.T) {
-	entry := RWIEntry{Properties: map[string]string{}}
+func TestRWIPostingAppearanceFlagsMissing(t *testing.T) {
+	entry := RWIPosting{Properties: map[string]string{}}
 	got, err := entry.AppearanceFlags()
 	if err != nil || got != nil {
 		t.Fatalf("AppearanceFlags() = %v, %v, want nil, nil", got, err)

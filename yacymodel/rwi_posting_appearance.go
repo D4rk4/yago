@@ -1,6 +1,9 @@
 package yacymodel
 
-import "log/slog"
+import (
+	"context"
+	"log/slog"
+)
 
 const RWIFlagBitCount = 32
 
@@ -17,16 +20,16 @@ const (
 	DocTypeMovie = 'm'
 )
 
-func (e RWIEntry) DocType() (byte, bool) {
+func (e RWIPosting) DocType() (byte, bool) {
 	value, err := e.ByteValue(ColDocType)
 	if err != nil {
-		slog.Warn("rwi doctype discarded", "error", err)
+		slog.WarnContext(context.Background(), "rwi doctype discarded", slog.Any("error", err))
 		return 0, false
 	}
 	return value, true
 }
 
-func (e RWIEntry) AppearanceFlags() (Bitfield, error) {
+func (e RWIPosting) AppearanceFlags() (Bitfield, error) {
 	value, ok := e.Properties[ColFlags]
 	if !ok {
 		return nil, nil

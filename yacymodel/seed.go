@@ -2,84 +2,51 @@ package yacymodel
 
 import (
 	"errors"
-	"slices"
-	"strconv"
-	"strings"
-)
-
-const (
-	SeedHash     = "Hash"
-	SeedName     = "Name"
-	SeedIP       = "IP"
-	SeedIP6      = "IP6"
-	SeedPort     = "Port"
-	SeedPortSSL  = "PortSSL"
-	SeedPeerType = "PeerType"
-	SeedVersion  = "Version"
-	SeedUptime   = "Uptime"
-	SeedUTC      = "UTC"
-	SeedLastSeen = "LastSeen"
-	SeedFlags    = "Flags"
+	"fmt"
+	"net"
+	"net/url"
 )
 
 var ErrBadSeed = errors.New("bad seed")
 
-type Seed map[string]string
-
-func ParseSeed(s string) (Seed, error) {
-	if strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}") {
-		s = s[1 : len(s)-1]
-	}
-	seed := make(Seed)
-	for pair := range strings.SplitSeq(s, ",") {
-		if pair == "" {
-			continue
-		}
-		key, value, found := strings.Cut(pair, "=")
-		if !found || key == "" {
-			return nil, ErrBadSeed
-		}
-		seed[key] = value
-	}
-	return seed, nil
+type Seed struct {
+	Hash     Hash
+	Name     Optional[string]
+	IP       Optional[Host]
+	IP6      Optional[Host]
+	Port     Optional[Port]
+	PortSSL  Optional[Port]
+	PeerType Optional[PeerType]
+	Flags    Optional[Flags]
+	Version  Optional[string]
+	Uptime   Optional[int]
+	UTC      Optional[string]
+	LastSeen Optional[string]
+	RWICount Optional[int]
+	URLCount Optional[int]
 }
 
-func (s Seed) String() string {
-	keys := make([]string, 0, len(s))
-	for k := range s {
-		keys = append(keys, k)
+func (s Seed) NetworkAddress() (string, bool) {
+	host, ok := s.IP.Get()
+	if !ok {
+		return "", false
 	}
-	slices.Sort(keys)
-	var b strings.Builder
-	b.WriteByte('{')
-	for i, k := range keys {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString(k)
-		b.WriteByte('=')
-		b.WriteString(s[k])
+	port, ok := s.Port.Get()
+	if !ok {
+		return "", false
 	}
-	b.WriteByte('}')
-	return b.String()
+	return net.JoinHostPort(host.String(), port.String()), true
 }
 
-func (s Seed) Hash() (Hash, error) {
-	return ParseHash(s[SeedHash])
-}
-
-func (s Seed) PeerType() (PeerType, error) {
-	return ParsePeerType(s[SeedPeerType])
-}
-
-func (s Seed) Flags() (Flags, error) {
-	return ParseFlags(s[SeedFlags])
-}
-
-func (s Seed) Port() (int, error) {
-	n, err := strconv.Atoi(s[SeedPort])
-	if err != nil {
-		return 0, ErrBadSeed
+func (s Seed) HTTPEndpoint(path string) (*url.URL, error) {
+	address, ok := s.NetworkAddress()
+	if !ok {
+		return nil, fmt.Errorf("%w: no reachable address", ErrBadSeed)
 	}
-	return n, nil
+
+	return &url.URL{
+		Scheme: "http",
+		Host:   address,
+		Path:   path,
+	}, nil
 }

@@ -34,41 +34,51 @@ const (
 	requiredColumn       = ColLocalLinkCount
 )
 
-var ErrBadRWIEntry = errors.New("bad rwi entry")
+var ErrBadRWIPosting = errors.New("bad rwi posting")
 
-type RWIEntry struct {
+type RWIPosting struct {
 	WordHash   Hash
 	Properties map[string]string
 }
 
-func (e RWIEntry) URLHash() (Hash, error) {
+type RWIPostingID struct {
+	WordHash Hash
+	URLHash  Hash
+}
+
+type WordPostings struct {
+	WordHash Hash
+	Postings []RWIPosting
+}
+
+func (e RWIPosting) URLHash() (Hash, error) {
 	return ParseHash(e.Properties[ColURLHash])
 }
 
-func ParseRWIEntry(line string) (RWIEntry, error) {
+func ParseRWIPosting(line string) (RWIPosting, error) {
 	open := strings.IndexByte(line, propertyOpen)
 	if open < 0 || !strings.HasSuffix(line, string(propertyClose)) {
-		return RWIEntry{}, fmt.Errorf("%w: missing property form", ErrBadRWIEntry)
+		return RWIPosting{}, fmt.Errorf("%w: missing property form", ErrBadRWIPosting)
 	}
 	wordHash, err := ParseHash(line[:open])
 	if err != nil {
-		return RWIEntry{}, fmt.Errorf("%w: word hash: %w", ErrBadRWIEntry, err)
+		return RWIPosting{}, fmt.Errorf("%w: word hash: %w", ErrBadRWIPosting, err)
 	}
 	props, err := parsePropertyPairs(line[open+1 : len(line)-1])
 	if err != nil {
-		return RWIEntry{}, fmt.Errorf("%w: %w", ErrBadRWIEntry, err)
+		return RWIPosting{}, fmt.Errorf("%w: %w", ErrBadRWIPosting, err)
 	}
 	props, err = normalizeRWIProperties(props)
 	if err != nil {
-		return RWIEntry{}, fmt.Errorf("%w: %w", ErrBadRWIEntry, err)
+		return RWIPosting{}, fmt.Errorf("%w: %w", ErrBadRWIPosting, err)
 	}
 	if err := validateRWIProperties(props); err != nil {
-		return RWIEntry{}, fmt.Errorf("%w: %w", ErrBadRWIEntry, err)
+		return RWIPosting{}, fmt.Errorf("%w: %w", ErrBadRWIPosting, err)
 	}
-	return RWIEntry{WordHash: wordHash, Properties: props}, nil
+	return RWIPosting{WordHash: wordHash, Properties: props}, nil
 }
 
-func (e RWIEntry) String() string {
+func (e RWIPosting) String() string {
 	keys := make([]string, 0, len(e.Properties))
 	for k := range e.Properties {
 		keys = append(keys, k)
@@ -95,7 +105,7 @@ func AcceptableRWILine(line string) bool {
 		strings.Contains(line, corruptMarker) {
 		return false
 	}
-	entry, err := ParseRWIEntry(line)
+	entry, err := ParseRWIPosting(line)
 	if err != nil {
 		return false
 	}

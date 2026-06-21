@@ -8,7 +8,7 @@ import (
 const sampleSeed = "{Flags=    ,Hash=ABCDEFGHIJKL,IP=192.0.2.1,Name=testpeer,PeerType=senior,Port=8090}"
 
 func TestParseSeedRoundTrip(t *testing.T) {
-	seed, err := ParseSeed(sampleSeed)
+	seed, err := ParseSeed(t.Context(), sampleSeed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -17,57 +17,68 @@ func TestParseSeedRoundTrip(t *testing.T) {
 	}
 }
 
-func TestSeedTypedAccessors(t *testing.T) {
-	seed, err := ParseSeed(sampleSeed)
+func TestSeedTypedFields(t *testing.T) {
+	seed, err := ParseSeed(t.Context(), sampleSeed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := seed.Hash()
-	if err != nil || h != "ABCDEFGHIJKL" {
-		t.Errorf("Hash() = %q, %v", h, err)
+	if seed.Hash != "ABCDEFGHIJKL" {
+		t.Errorf("Hash = %q", seed.Hash)
 	}
-	pt, err := seed.PeerType()
-	if err != nil || pt != PeerSenior {
-		t.Errorf("PeerType() = %q, %v", pt, err)
+	if pt, ok := seed.PeerType.Get(); !ok || pt != PeerSenior {
+		t.Errorf("PeerType = %q, %v", pt, ok)
 	}
-	if _, err := seed.Flags(); err != nil {
-		t.Errorf("Flags() = %v", err)
+	if _, ok := seed.Flags.Get(); !ok {
+		t.Errorf("Flags absent")
 	}
-	port, err := seed.Port()
-	if err != nil || port != 8090 {
-		t.Errorf("Port() = %d, %v", port, err)
+	if port, ok := seed.Port.Get(); !ok || port != 8090 {
+		t.Errorf("Port = %d, %v", port, ok)
 	}
 }
 
 func TestParseSeedBad(t *testing.T) {
-	if _, err := ParseSeed("=novalue"); !errors.Is(err, ErrBadSeed) {
+	if _, err := ParseSeed(t.Context(), "=novalue"); !errors.Is(err, ErrBadSeed) {
 		t.Fatalf("ParseSeed bad = %v, want ErrBadSeed", err)
 	}
 }
 
-func TestSeedSkipsEmptyPairs(t *testing.T) {
-	seed, err := ParseSeed("{Hash=ABCDEFGHIJKL,,Port=8090}")
+func TestParseSeedMissingHash(t *testing.T) {
+	if _, err := ParseSeed(t.Context(), "{Port=8090}"); !errors.Is(err, ErrBadSeed) {
+		t.Fatalf("ParseSeed missing hash = %v, want ErrBadSeed", err)
+	}
+}
+
+func TestParseSeedSkipsEmptyPairs(t *testing.T) {
+	seed, err := ParseSeed(t.Context(), "{Hash=ABCDEFGHIJKL,,Port=8090}")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(seed) != 2 {
-		t.Errorf("expected 2 fields, got %d", len(seed))
+	if seed.Hash != "ABCDEFGHIJKL" {
+		t.Errorf("Hash = %q", seed.Hash)
+	}
+	if port, ok := seed.Port.Get(); !ok || port != 8090 {
+		t.Errorf("Port = %d, %v", port, ok)
 	}
 }
 
 func TestParseSeedAcceptsBareMap(t *testing.T) {
-	seed, err := ParseSeed("Hash=ABCDEFGHIJKL,Port=8090")
+	seed, err := ParseSeed(t.Context(), "Hash=ABCDEFGHIJKL,Port=8090")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if seed[SeedHash] != "ABCDEFGHIJKL" || seed[SeedPort] != "8090" {
+	if port, ok := seed.Port.Get(); seed.Hash != "ABCDEFGHIJKL" || !ok || port != 8090 {
 		t.Errorf("seed = %v", seed)
 	}
 }
 
-func TestSeedPortInvalid(t *testing.T) {
-	seed := Seed{SeedPort: "notnum"}
-	if _, err := seed.Port(); !errors.Is(err, ErrBadSeed) {
-		t.Fatalf("Port() = %v, want ErrBadSeed", err)
+func TestParseSeedPortInvalid(t *testing.T) {
+	if _, err := ParseSeed(
+		t.Context(),
+		"Hash=ABCDEFGHIJKL,Port=notnum",
+	); !errors.Is(
+		err,
+		ErrBadSeed,
+	) {
+		t.Fatalf("ParseSeed bad port = %v, want ErrBadSeed", err)
 	}
 }

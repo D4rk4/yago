@@ -3,6 +3,7 @@ package yacymodel
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -16,16 +17,16 @@ const (
 	wireFormSep    = '|'
 )
 
-var ErrBadSeedWireForm = errors.New("bad seed wire form")
+var ErrBadWireForm = errors.New("bad wire form")
 
-func EncodeSeedWireForm(seed string) string {
-	shortest := tagged(wireFormPlain, seed)
+func EncodeCompactWireForm(payload string) string {
+	shortest := tagged(wireFormPlain, payload)
 
-	if b64 := tagged(wireFormBase64, Encode([]byte(seed))); len(b64) < len(shortest) {
+	if b64 := tagged(wireFormBase64, Encode([]byte(payload))); len(b64) < len(shortest) {
 		shortest = b64
 	}
 
-	if zipped, err := gzipCompress(seed); err == nil {
+	if zipped, err := gzipCompress(payload); err == nil {
 		if z := tagged(wireFormGzip, Encode(zipped)); len(z) < len(shortest) {
 			shortest = z
 		}
@@ -34,15 +35,15 @@ func EncodeSeedWireForm(seed string) string {
 	return shortest
 }
 
-func EncodeBase64WireForm(s string) string {
-	return tagged(wireFormBase64, Encode([]byte(s)))
+func EncodeBase64WireForm(payload string) string {
+	return tagged(wireFormBase64, Encode([]byte(payload)))
 }
 
 func tagged(tag byte, body string) string {
 	return string([]byte{tag, wireFormSep}) + body
 }
 
-func DecodeSeedWireForm(form string) (string, error) {
+func DecodeWireForm(form string) (string, error) {
 	if len(form) < 2 || form[1] != wireFormSep {
 		return form, nil
 	}
@@ -53,21 +54,21 @@ func DecodeSeedWireForm(form string) (string, error) {
 	case wireFormBase64:
 		raw, err := Decode(body)
 		if err != nil {
-			return "", fmt.Errorf("decode seed body: %w", err)
+			return "", fmt.Errorf("decode wire form body: %w", err)
 		}
 		return string(raw), nil
 	case wireFormGzip:
 		raw, err := Decode(body)
 		if err != nil {
-			return "", fmt.Errorf("decode seed body: %w", err)
+			return "", fmt.Errorf("decode wire form body: %w", err)
 		}
 		plain, err := gzipDecompress(raw)
 		if err != nil {
-			return "", fmt.Errorf("inflate seed body: %w", err)
+			return "", fmt.Errorf("inflate wire form body: %w", err)
 		}
 		return plain, nil
 	default:
-		return "", fmt.Errorf("%w: tag %q", ErrBadSeedWireForm, form[0])
+		return "", fmt.Errorf("%w: tag %q", ErrBadWireForm, form[0])
 	}
 }
 
@@ -90,7 +91,11 @@ func gzipDecompress(b []byte) (string, error) {
 	}
 	defer func() {
 		if err := r.Close(); err != nil {
-			slog.Warn("gzip reader close failed", "error", err)
+			slog.WarnContext(
+				context.Background(),
+				"gzip reader close failed",
+				slog.Any("error", err),
+			)
 		}
 	}()
 	out, err := io.ReadAll(r)

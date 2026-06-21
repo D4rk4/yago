@@ -40,6 +40,7 @@ func isBasicString(s string) bool {
 	return true
 }
 
+//nolint:gocognit,revive // FIXME: split RFC 3492 encode steps after the new lint rules are committed.
 func punycodeEncode(input []rune) string {
 	n := punyInitialN
 	delta := 0

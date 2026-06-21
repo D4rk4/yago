@@ -5,7 +5,7 @@ import (
 	"strconv"
 )
 
-func (e RWIEntry) Cardinal(key string) (uint64, error) {
+func (e RWIPosting) Cardinal(key string) (uint64, error) {
 	value := e.Properties[key]
 	n, err := strconv.ParseUint(value, 10, 64)
 	if err != nil {
@@ -14,7 +14,7 @@ func (e RWIEntry) Cardinal(key string) (uint64, error) {
 	return n, nil
 }
 
-func (e RWIEntry) ByteValue(key string) (byte, error) {
+func (e RWIPosting) ByteValue(key string) (byte, error) {
 	value := e.Properties[key]
 	n, err := strconv.ParseUint(value, 10, 8)
 	if err != nil {
