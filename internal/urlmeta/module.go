@@ -11,6 +11,7 @@ import (
 
 type Module struct {
 	Directory URLDirectory
+	Evictor   URLEvictor
 	Endpoint  http.Handler
 	intake    urlIntake
 }
@@ -35,6 +36,7 @@ func New(
 	// registerCollection) instead of returning it in Module.Endpoint for cmd to mount.
 	return Module{
 		Directory: urlDirectory{vault: vault, collection: collection},
+		Evictor:   urlEvictor{vault: vault, collection: collection},
 		Endpoint:  transferURLEndpoint{guard: guard, status: status, intake: intake},
 		intake:    intake,
 	}, nil

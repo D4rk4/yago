@@ -25,6 +25,8 @@ components:
     in: internal/rwi/**
   search:
     in: internal/search/**
+  eviction:
+    in: internal/eviction/**
   cmd:
     in: cmd/**
   yacycrawlcontract:
@@ -120,6 +122,13 @@ deps:
       - httpguard
       - yacymodel
       - yacyproto
+  eviction:
+    mayDependOn:
+      - eviction
+      - rwi
+      - urlmeta
+      - boltvault
+      - yacymodel
   cmd:
     mayDependOn:
       - api
@@ -130,6 +139,7 @@ deps:
       - urlmeta
       - rwi
       - search
+      - eviction
       - yacymodel
       - yacyproto
   yacycrawlcontract:
