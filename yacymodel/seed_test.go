@@ -36,7 +36,7 @@ func TestSeedTypedFields(t *testing.T) {
 	}
 }
 
-func TestSeedTrafficFieldsRoundTrip(t *testing.T) {
+func TestSeedLegacyPropertiesRoundTrip(t *testing.T) {
 	seed, err := ParseSeed(
 		t.Context(),
 		"{Hash=ABCDEFGHIJKL,sI=1,rI=2,sU=3,rU=4,USpeed=5,BDate=20260622012208,ISpeed=6,RSpeed=7.5,NCount=8,RCount=9,SCount=10,CCount=11.25}",
@@ -47,25 +47,48 @@ func TestSeedTrafficFieldsRoundTrip(t *testing.T) {
 	if got := seed.String(); got != "{BDate=20260622012208,CCount=11.25,Hash=ABCDEFGHIJKL,ISpeed=6,NCount=8,RCount=9,RSpeed=7.5,SCount=10,USpeed=5,rI=2,rU=4,sI=1,sU=3}" {
 		t.Errorf("round trip:\n got %q", got)
 	}
-	assertOptional(t, "IndexOut", seed.IndexOut, int64(1))
-	assertOptional(t, "IndexIn", seed.IndexIn, int64(2))
-	assertOptional(t, "URLOut", seed.URLOut, int64(3))
-	assertOptional(t, "URLIn", seed.URLIn, int64(4))
-	assertOptional(t, "UploadSpeed", seed.UploadSpeed, int64(5))
-	assertOptional(t, "BirthDate", seed.BirthDate, "20260622012208")
-	assertOptional(t, "IndexSpeed", seed.IndexSpeed, int64(6))
-	assertOptional(t, "RetrievalSpeed", seed.RetrievalSpeed, 7.5)
-	assertOptional(t, "NoticedURLCount", seed.NoticedURLCount, int64(8))
-	assertOptional(t, "RemoteCrawlURLCount", seed.RemoteCrawlURLCount, int64(9))
-	assertOptional(t, "SeedCount", seed.SeedCount, int64(10))
-	assertOptional(t, "ClientConnectCount", seed.ClientConnectCount, 11.25)
 }
 
-func assertOptional[T comparable](t *testing.T, name string, got Optional[T], want T) {
-	t.Helper()
-	value, ok := got.Get()
-	if !ok || value != want {
-		t.Errorf("%s = %v, %v", name, value, ok)
+func TestSeedCustomPropertiesRoundTrip(t *testing.T) {
+	seed, err := ParseSeed(
+		t.Context(),
+		"{Hash=ABCDEFGHIJKL,Country=DE,CRTCnt=2,CRWCnt=3,dct=4,IPType=ipv4,JRE=21,news=hello,seedURL=https://example.org/seed.txt,SorlAvail=OK,Tags=foo|bar}",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := seed.String(); got != "{CRTCnt=2,CRWCnt=3,Country=DE,Hash=ABCDEFGHIJKL,IPType=ipv4,JRE=21,SorlAvail=OK,Tags=foo|bar,dct=4,news=hello,seedURL=https://example.org/seed.txt}" {
+		t.Fatalf("round trip:\n got %q", got)
+	}
+	if got := seed.customProperties["Country"]; got != "DE" {
+		t.Fatalf("Country = %q", got)
+	}
+	if got := seed.customProperties["CRTCnt"]; got != "2" {
+		t.Fatalf("CRTCnt = %q", got)
+	}
+	if got := seed.customProperties["CRWCnt"]; got != "3" {
+		t.Fatalf("CRWCnt = %q", got)
+	}
+	if got := seed.customProperties["dct"]; got != "4" {
+		t.Fatalf("dct = %q", got)
+	}
+	if got := seed.customProperties["IPType"]; got != "ipv4" {
+		t.Fatalf("IPType = %q", got)
+	}
+	if got := seed.customProperties["JRE"]; got != "21" {
+		t.Fatalf("JRE = %q", got)
+	}
+	if got := seed.customProperties["news"]; got != "hello" {
+		t.Fatalf("news = %q", got)
+	}
+	if got := seed.customProperties["seedURL"]; got != "https://example.org/seed.txt" {
+		t.Fatalf("seedURL = %q", got)
+	}
+	if got := seed.customProperties["SorlAvail"]; got != "OK" {
+		t.Fatalf("SorlAvail = %q", got)
+	}
+	if got := seed.customProperties["Tags"]; got != "foo|bar" {
+		t.Fatalf("Tags = %q", got)
 	}
 }
 
