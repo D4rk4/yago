@@ -21,6 +21,10 @@ components:
     in: internal/httpguard/**
   urlmeta:
     in: internal/urlmeta/**
+  rwi:
+    in: internal/rwi/**
+  search:
+    in: internal/search/**
   cmd:
     in: cmd/**
   yacycrawlcontract:
@@ -100,6 +104,22 @@ deps:
       - httpguard
       - yacymodel
       - yacyproto
+  rwi:
+    mayDependOn:
+      - rwi
+      - urlmeta
+      - boltvault
+      - httpguard
+      - yacymodel
+      - yacyproto
+  search:
+    mayDependOn:
+      - search
+      - rwi
+      - urlmeta
+      - httpguard
+      - yacymodel
+      - yacyproto
   cmd:
     mayDependOn:
       - api
@@ -108,6 +128,8 @@ deps:
       - boltvault
       - httpguard
       - urlmeta
+      - rwi
+      - search
       - yacymodel
       - yacyproto
   yacycrawlcontract:
