@@ -18,8 +18,8 @@ func (fixedStatus) Snapshot(context.Context) StatusSnapshot {
 	return StatusSnapshot{Version: "1.0", Uptime: 7}
 }
 
-func searchIdentity() yacymodel.PeerIdentity {
-	return yacymodel.PeerIdentity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
+func searchIdentity() httpguard.LocalPeer {
+	return httpguard.LocalPeer{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
 }
 
 func newEndpoint(index fakeScanner, urls fakeDirectory) http.Handler {

@@ -29,8 +29,8 @@ func (urlStatus) Snapshot(context.Context) urlmeta.StatusSnapshot {
 	return urlmeta.StatusSnapshot{Version: "1.0", Uptime: 7}
 }
 
-func localIdentity() yacymodel.PeerIdentity {
-	return yacymodel.PeerIdentity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
+func localIdentity() httpguard.LocalPeer {
+	return httpguard.LocalPeer{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
 }
 
 type harness struct {

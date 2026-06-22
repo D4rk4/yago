@@ -15,7 +15,7 @@ import (
 
 func testGuard() httpguard.RequestGuard {
 	return httpguard.NewRequestGuard(
-		yacymodel.PeerIdentity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"},
+		httpguard.LocalPeer{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"},
 		32,
 		time.Second,
 	)

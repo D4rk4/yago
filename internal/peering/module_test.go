@@ -81,7 +81,7 @@ func (d *stubDirectory) Hello(context.Context, yacymodel.Seed, int) (HelloOutcom
 }
 
 func newGuard() httpguard.RequestGuard {
-	ident := yacymodel.PeerIdentity{Hash: hashFor("self"), NetworkName: "freeworld"}
+	ident := httpguard.LocalPeer{Hash: hashFor("self"), NetworkName: "freeworld"}
 
 	return httpguard.NewRequestGuard(ident, httpguard.DefaultMaxBodyBytes, time.Second)
 }

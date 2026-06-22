@@ -19,8 +19,8 @@ func (fixedStatus) Snapshot(context.Context) crawling.StatusSnapshot {
 	return crawling.StatusSnapshot{Version: "1.0", Uptime: 7}
 }
 
-func localIdentity() yacymodel.PeerIdentity {
-	return yacymodel.PeerIdentity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
+func localIdentity() httpguard.LocalPeer {
+	return httpguard.LocalPeer{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
 }
 
 func newModule() crawling.Module {

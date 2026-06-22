@@ -15,7 +15,7 @@ import (
 
 func newQueryEndpoint(counts stubCounter) queryEndpoint {
 	guard := httpguard.NewRequestGuard(
-		yacymodel.PeerIdentity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"},
+		httpguard.LocalPeer{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"},
 		httpguard.DefaultMaxBodyBytes,
 		time.Second,
 	)

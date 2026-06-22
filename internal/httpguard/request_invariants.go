@@ -25,18 +25,23 @@ const (
 	DefaultRequestTimeout       = 30 * time.Second
 )
 
+type LocalPeer struct {
+	Hash        yacymodel.Hash
+	NetworkName string
+}
+
 type RequestGuard struct {
-	ident        yacymodel.PeerIdentity
+	local        LocalPeer
 	maxBodyBytes int64
 	timeout      time.Duration
 }
 
 func NewRequestGuard(
-	ident yacymodel.PeerIdentity,
+	local LocalPeer,
 	maxBodyBytes int64,
 	timeout time.Duration,
 ) RequestGuard {
-	return RequestGuard{ident: ident, maxBodyBytes: maxBodyBytes, timeout: timeout}
+	return RequestGuard{local: local, maxBodyBytes: maxBodyBytes, timeout: timeout}
 }
 
 func (g RequestGuard) Parse(
@@ -89,11 +94,11 @@ func (g RequestGuard) Parse(
 
 func (g RequestGuard) NetworkMatches(form url.Values) bool {
 	return yacyproto.NetworkUnit(form.Get(yacyproto.FieldNetworkName)) ==
-		yacyproto.NetworkUnit(g.ident.NetworkName)
+		yacyproto.NetworkUnit(g.local.NetworkName)
 }
 
 func (g RequestGuard) YouAreMatches(youare yacymodel.Hash) bool {
-	return youare == g.ident.Hash
+	return youare == g.local.Hash
 }
 
 func methodAllowed(method string, methods yacyproto.EndpointMethodSet) bool {
