@@ -171,10 +171,33 @@ func TestParseSeedIP6List(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ip6, ok := seed.IP6.Get(); !ok || ip6.String() != value {
+	if ip6, ok := seed.IP6.Get(); !ok || len(ip6) != 2 || ip6[0].String() != "2001:db8::1" ||
+		ip6[1].String() != "2001:db8::2" {
 		t.Fatalf("IP6 = %q, %v", ip6, ok)
 	}
 	if got := seed.String(); got != "{Hash=ABCDEFGHIJKL,IP6="+value+"}" {
 		t.Fatalf("round trip = %q", got)
+	}
+}
+
+func TestParseSeedIP6AcceptsIPv4(t *testing.T) {
+	seed, err := ParseSeed(t.Context(), "Hash=ABCDEFGHIJKL,IP6=192.0.2.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ip6, ok := seed.IP6.Get(); !ok || len(ip6) != 1 || ip6[0].String() != "192.0.2.1" {
+		t.Fatalf("IP6 = %q, %v", ip6, ok)
+	}
+}
+
+func TestParseSeedIP6RejectsEmptySegment(t *testing.T) {
+	if _, err := ParseSeed(
+		t.Context(),
+		"Hash=ABCDEFGHIJKL,IP6=2001:db8::1|",
+	); !errors.Is(
+		err,
+		ErrBadSeed,
+	) {
+		t.Fatalf("ParseSeed bad ip6 = %v, want ErrBadSeed", err)
 	}
 }

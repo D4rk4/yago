@@ -46,7 +46,7 @@ func TestSeedlistFetcherDecodesLines(t *testing.T) {
 	if len(seeds) != 2 {
 		t.Fatalf("got %d seeds, want 2 (bad line skipped)", len(seeds))
 	}
-	if ip, ok := seeds[0].IP.Get(); !ok || ip != "203.0.113.1" {
+	if ip, ok := seeds[0].IP.Get(); !ok || ip.String() != "203.0.113.1" {
 		t.Errorf("first ip = %q, %v", ip, ok)
 	}
 }

@@ -17,9 +17,18 @@ func selfSeed(t *testing.T) yacymodel.Seed {
 	return yacymodel.Seed{
 		Hash: hashForTest(t),
 		Name: yacymodel.Some("self"),
-		IP:   yacymodel.Some(yacymodel.Host("203.0.113.9")),
+		IP:   yacymodel.Some(hostForTest(t, "203.0.113.9")),
 		Port: yacymodel.Some(yacymodel.Port(8090)),
 	}
+}
+
+func hostForTest(t *testing.T, value string) yacymodel.Host {
+	t.Helper()
+	host, err := yacymodel.ParseHost(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return host
 }
 
 func endpointOf(t *testing.T, server *httptest.Server) string {
@@ -42,7 +51,7 @@ func TestPeerGreeterLearnsTypeAndKnownSeeds(t *testing.T) {
 
 		known := yacymodel.Seed{
 			Hash: hashForTest(t),
-			IP:   yacymodel.Some(yacymodel.Host("198.51.100.7")),
+			IP:   yacymodel.Some(hostForTest(t, "198.51.100.7")),
 			Port: yacymodel.Some(yacymodel.Port(8090)),
 		}
 		resp := yacyproto.HelloResponse{

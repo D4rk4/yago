@@ -60,17 +60,17 @@ func (s fakeStatus) Snapshot(_ context.Context) contracts.StatusSnapshot {
 }
 
 func TestAnnounceGreetsDiscoveredEndpoints(t *testing.T) {
-	greeter := &fakeGreeter{known: []yacymodel.Seed{callerSeed("known", "198.51.100.1", 8090)}}
+	greeter := &fakeGreeter{known: []yacymodel.Seed{callerSeed(t, "known", "198.51.100.1", 8090)}}
 	reg := NewTrustedSeedRegistry(100)
 	announcement := NewPeerAnnouncement(
 		fakeBootstrapConfig{
 			seedlists: []string{"http://list"},
 		},
 		fakeFetcher{seeds: map[string][]yacymodel.Seed{
-			"http://list": {callerSeed("disc", "203.0.113.6", 8090)},
+			"http://list": {callerSeed(t, "disc", "203.0.113.6", 8090)},
 		}},
 		greeter,
-		fakeStatus{seed: callerSeed("self", "203.0.113.9", 8090)},
+		fakeStatus{seed: callerSeed(t, "self", "203.0.113.9", 8090)},
 		reg,
 	)
 
@@ -96,7 +96,7 @@ func TestAnnounceContinuesWhenSeedlistFails(t *testing.T) {
 		},
 		fakeFetcher{err: errors.New("offline")},
 		greeter,
-		fakeStatus{seed: callerSeed("self", "203.0.113.9", 8090)},
+		fakeStatus{seed: callerSeed(t, "self", "203.0.113.9", 8090)},
 		reg,
 	)
 
@@ -110,14 +110,14 @@ func TestAnnounceContinuesWhenSeedlistFails(t *testing.T) {
 func TestAnnounceCapsGreetCount(t *testing.T) {
 	seeds := make([]yacymodel.Seed, announceMaxGreets+5)
 	for i := range seeds {
-		seeds[i] = callerSeed(string(rune('a'+i)), "203.0.113.6", 8090+i)
+		seeds[i] = callerSeed(t, string(rune('a'+i)), "203.0.113.6", 8090+i)
 	}
 	greeter := &fakeGreeter{}
 	announcement := NewPeerAnnouncement(
 		fakeBootstrapConfig{seedlists: []string{"http://list"}},
 		fakeFetcher{seeds: map[string][]yacymodel.Seed{"http://list": seeds}},
 		greeter,
-		fakeStatus{seed: callerSeed("self", "203.0.113.9", 8090)},
+		fakeStatus{seed: callerSeed(t, "self", "203.0.113.9", 8090)},
 		NewTrustedSeedRegistry(100),
 	)
 

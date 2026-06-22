@@ -123,7 +123,7 @@ func parseInto[T any](target *Optional[T], parse func(string) (T, error), value 
 func (s Seed) String() string {
 	fields := map[string]string{SeedHash: s.Hash.String()}
 	putStringer(fields, SeedIP, s.IP)
-	putStringer(fields, SeedIP6, s.IP6)
+	putHostList(fields, SeedIP6, s.IP6)
 	putStringer(fields, SeedPort, s.Port)
 	putStringer(fields, SeedPortSSL, s.PortSSL)
 	putStringer(fields, SeedPeerType, s.PeerType)
@@ -163,6 +163,16 @@ func (s Seed) String() string {
 func putStringer[T fmt.Stringer](fields map[string]string, key string, opt Optional[T]) {
 	if v, ok := opt.Get(); ok {
 		fields[key] = v.String()
+	}
+}
+
+func putHostList(fields map[string]string, key string, opt Optional[[]Host]) {
+	if hosts, ok := opt.Get(); ok {
+		values := make([]string, 0, len(hosts))
+		for _, host := range hosts {
+			values = append(values, host.String())
+		}
+		fields[key] = strings.Join(values, "|")
 	}
 }
 

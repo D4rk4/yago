@@ -37,10 +37,14 @@ func reverseShuffle(n int, swap func(i, j int)) {
 	}
 }
 
-func callerSeed(hash string, ip string, port int) yacymodel.Seed {
+func callerSeed(t testing.TB, hash string, ip string, port int) yacymodel.Seed {
 	seed := yacymodel.Seed{Hash: hashFor(hash)}
 	if ip != "" {
-		seed.IP = yacymodel.Some(yacymodel.Host(ip))
+		host, err := yacymodel.ParseHost(ip)
+		if err != nil {
+			t.Fatalf("parse host: %v", err)
+		}
+		seed.IP = yacymodel.Some(host)
 	}
 	if port != 0 {
 		seed.Port = yacymodel.Some(yacymodel.Port(port))
@@ -57,16 +61,16 @@ func TestHelloClassifiesCaller(t *testing.T) {
 		want     yacymodel.PeerType
 		wantPing bool
 	}{
-		{"reachable", callerSeed("a", "10.0.0.1", 8090), nil, yacymodel.PeerSenior, true},
+		{"reachable", callerSeed(t, "a", "10.0.0.1", 8090), nil, yacymodel.PeerSenior, true},
 		{
 			"unreachable",
-			callerSeed("a", "10.0.0.1", 8090),
+			callerSeed(t, "a", "10.0.0.1", 8090),
 			errors.New("dial failed"),
 			yacymodel.PeerJunior,
 			true,
 		},
-		{"no ip", callerSeed("b", "", 8090), nil, yacymodel.PeerJunior, false},
-		{"no port", callerSeed("c", "10.0.0.1", 0), nil, yacymodel.PeerJunior, false},
+		{"no ip", callerSeed(t, "b", "", 8090), nil, yacymodel.PeerJunior, false},
+		{"no port", callerSeed(t, "c", "10.0.0.1", 0), nil, yacymodel.PeerJunior, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -87,8 +91,8 @@ func TestHelloClassifiesCaller(t *testing.T) {
 }
 
 func TestHelloAnnouncesTrustedSeedsNotCaller(t *testing.T) {
-	trusted := callerSeed("trusted", "203.0.113.1", 8090)
-	caller := callerSeed("caller", "10.0.0.1", 8090)
+	trusted := callerSeed(t, "trusted", "203.0.113.1", 8090)
+	caller := callerSeed(t, "caller", "10.0.0.1", 8090)
 	dir := NewPeerDirectory(
 		&fakePinger{},
 		fakeTrustedSeeds{seeds: []yacymodel.Seed{trusted}},
@@ -112,10 +116,10 @@ func TestHelloAnnouncesTrustedSeedsNotCaller(t *testing.T) {
 	}
 }
 
-func trustedSet(hashes ...string) []yacymodel.Seed {
+func trustedSet(t testing.TB, hashes ...string) []yacymodel.Seed {
 	seeds := make([]yacymodel.Seed, len(hashes))
 	for i, h := range hashes {
-		seeds[i] = callerSeed(h, "203.0.113.1", 8090)
+		seeds[i] = callerSeed(t, h, "203.0.113.1", 8090)
 	}
 
 	return seeds
@@ -133,11 +137,11 @@ func announcedHashes(outcome contracts.HelloOutcome) []string {
 func TestHelloLimitsToRequestedCount(t *testing.T) {
 	dir := NewPeerDirectory(
 		&fakePinger{},
-		fakeTrustedSeeds{seeds: trustedSet("a", "b", "c")},
+		fakeTrustedSeeds{seeds: trustedSet(t, "a", "b", "c")},
 		noShuffle,
 	)
 
-	outcome, err := dir.Hello(context.Background(), callerSeed("caller", "10.0.0.1", 8090), 2)
+	outcome, err := dir.Hello(context.Background(), callerSeed(t, "caller", "10.0.0.1", 8090), 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -149,11 +153,11 @@ func TestHelloLimitsToRequestedCount(t *testing.T) {
 func TestHelloCountZeroReturnsAll(t *testing.T) {
 	dir := NewPeerDirectory(
 		&fakePinger{},
-		fakeTrustedSeeds{seeds: trustedSet("a", "b", "c")},
+		fakeTrustedSeeds{seeds: trustedSet(t, "a", "b", "c")},
 		noShuffle,
 	)
 
-	outcome, err := dir.Hello(context.Background(), callerSeed("caller", "10.0.0.1", 8090), 0)
+	outcome, err := dir.Hello(context.Background(), callerSeed(t, "caller", "10.0.0.1", 8090), 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -165,11 +169,11 @@ func TestHelloCountZeroReturnsAll(t *testing.T) {
 func TestHelloSelectsViaShuffle(t *testing.T) {
 	dir := NewPeerDirectory(
 		&fakePinger{},
-		fakeTrustedSeeds{seeds: trustedSet("a", "b", "c")},
+		fakeTrustedSeeds{seeds: trustedSet(t, "a", "b", "c")},
 		reverseShuffle,
 	)
 
-	outcome, err := dir.Hello(context.Background(), callerSeed("caller", "10.0.0.1", 8090), 2)
+	outcome, err := dir.Hello(context.Background(), callerSeed(t, "caller", "10.0.0.1", 8090), 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

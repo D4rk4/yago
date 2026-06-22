@@ -11,20 +11,26 @@ const hostLabelMaxLength = 63
 
 var ErrBadHost = errors.New("bad host")
 
-type Host string
+type Host struct {
+	addr     netip.Addr
+	hostname string
+}
 
 func ParseHost(s string) (Host, error) {
-	if _, err := netip.ParseAddr(s); err == nil {
-		return Host(s), nil
+	if addr, err := netip.ParseAddr(s); err == nil {
+		return Host{addr: addr}, nil
 	}
 	if isHostname(s) {
-		return Host(s), nil
+		return Host{hostname: s}, nil
 	}
-	return "", fmt.Errorf("%w: %q", ErrBadHost, s)
+	return Host{}, fmt.Errorf("%w: %q", ErrBadHost, s)
 }
 
 func (h Host) String() string {
-	return string(h)
+	if h.addr.IsValid() {
+		return h.addr.String()
+	}
+	return h.hostname
 }
 
 func isHostname(s string) bool {

@@ -13,7 +13,7 @@ type Seed struct {
 	Hash             Hash
 	Name             Optional[string]
 	IP               Optional[Host]
-	IP6              Optional[Host]
+	IP6              Optional[[]Host]
 	Port             Optional[Port]
 	PortSSL          Optional[Port]
 	PeerType         Optional[PeerType]
