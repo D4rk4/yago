@@ -19,6 +19,8 @@ components:
     in: internal/boltvault/**
   httpguard:
     in: internal/httpguard/**
+  peering:
+    in: internal/peering/**
   crawling:
     in: internal/crawling/**
   urlmeta:
@@ -101,6 +103,12 @@ deps:
       - httpguard
       - yacymodel
       - yacyproto
+  peering:
+    mayDependOn:
+      - peering
+      - httpguard
+      - yacymodel
+      - yacyproto
   crawling:
     mayDependOn:
       - crawling
@@ -144,6 +152,7 @@ deps:
       - infrastructure
       - boltvault
       - httpguard
+      - peering
       - crawling
       - urlmeta
       - rwi
