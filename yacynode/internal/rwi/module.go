@@ -29,7 +29,7 @@ func (m Module) Intake(ctx context.Context, entries []yacymodel.RWIPosting) (Rec
 func New(
 	vault *boltvault.Vault,
 	guard httpguard.RequestGuard,
-	status RuntimeStatus,
+	respond httpguard.WireResponder,
 	urls urlmeta.URLDirectory,
 	cfg Config,
 ) (Module, error) {
@@ -57,7 +57,7 @@ func New(
 	return Module{
 		Directory:   directory,
 		Index:       directory,
-		TransferRWI: transferRWIEndpoint{guard: guard, status: status, intake: intake},
+		TransferRWI: transferRWIEndpoint{guard: guard, respond: respond, intake: intake},
 		intake:      intake,
 	}, nil
 }

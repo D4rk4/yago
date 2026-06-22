@@ -17,9 +17,9 @@ import (
 
 type fixedStatus struct{}
 
-func (fixedStatus) Snapshot(context.Context) urlmeta.StatusSnapshot {
-	return urlmeta.StatusSnapshot{Version: "1.0", Uptime: 7}
-}
+func (fixedStatus) Version(context.Context) string { return "1.0" }
+
+func (fixedStatus) Uptime(context.Context) int { return 7 }
 
 func localIdentity() httpguard.LocalPeer {
 	return httpguard.LocalPeer{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
@@ -39,7 +39,7 @@ func openModule(t *testing.T, quotaBytes int64) urlmeta.Module {
 	})
 
 	guard := httpguard.NewRequestGuard(localIdentity(), httpguard.DefaultMaxBodyBytes, time.Second)
-	module, err := urlmeta.New(vault, guard, fixedStatus{})
+	module, err := urlmeta.New(vault, guard, httpguard.NewWireResponder(fixedStatus{}))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

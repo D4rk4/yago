@@ -9,9 +9,9 @@ import (
 )
 
 type transferRWIEndpoint struct {
-	guard  httpguard.RequestGuard
-	status RuntimeStatus
-	intake postingIntake
+	guard   httpguard.RequestGuard
+	respond httpguard.WireResponder
+	intake  postingIntake
 }
 
 func (e transferRWIEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -28,17 +28,11 @@ func (e transferRWIEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshot := e.status.Snapshot(ctx)
-	resp := yacyproto.TransferRWIResponse{
-		ResponseHeader: yacyproto.ResponseHeader{
-			Version: snapshot.Version,
-			Uptime:  snapshot.Uptime,
-		},
-	}
+	resp := yacyproto.TransferRWIResponse{}
 
 	if !e.guard.NetworkMatches(form) || !e.guard.YouAreMatches(req.YouAre) {
 		resp.Result = yacyproto.ResultWrongTarget
-		httpguard.WriteWireMessage(ctx, w, resp.Encode())
+		e.respond.Write(ctx, w, resp.Encode())
 
 		return
 	}
@@ -68,5 +62,5 @@ func (e transferRWIEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.Bool("busy", receipt.Busy),
 		slog.Int("unknownUrlCount", len(receipt.UnknownURL)),
 	)
-	httpguard.WriteWireMessage(ctx, w, resp.Encode())
+	e.respond.Write(ctx, w, resp.Encode())
 }

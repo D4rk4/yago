@@ -6,12 +6,8 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-type StatusSnapshot struct {
-	Seed yacymodel.Seed
-}
-
 type RuntimeStatus interface {
-	Snapshot(ctx context.Context) StatusSnapshot
+	SelfSeed(ctx context.Context) yacymodel.Seed
 }
 
 type TrustedSeedSink interface {

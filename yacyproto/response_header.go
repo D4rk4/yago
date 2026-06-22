@@ -7,9 +7,9 @@ type ResponseHeader struct {
 	Uptime  int
 }
 
-func (h ResponseHeader) write(dst yacymodel.Message) {
-	setString(dst, FieldVersion, h.Version)
-	setInt(dst, FieldUptime, h.Uptime)
+func InjectResponseHeader(dst yacymodel.Message, version string, uptime int) {
+	setString(dst, FieldVersion, version)
+	setInt(dst, FieldUptime, uptime)
 }
 
 func parseResponseHeader(m yacymodel.Message) (ResponseHeader, error) {

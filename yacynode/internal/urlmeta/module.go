@@ -23,7 +23,7 @@ func (m Module) Intake(ctx context.Context, rows []yacymodel.URIMetadataRow) (Re
 func New(
 	vault *boltvault.Vault,
 	guard httpguard.RequestGuard,
-	status RuntimeStatus,
+	respond httpguard.WireResponder,
 ) (Module, error) {
 	collection, err := registerCollection(vault)
 	if err != nil {
@@ -37,7 +37,7 @@ func New(
 	return Module{
 		Directory: urlDirectory{vault: vault, collection: collection},
 		Evictor:   urlEvictor{vault: vault, collection: collection},
-		Endpoint:  transferURLEndpoint{guard: guard, status: status, intake: intake},
+		Endpoint:  transferURLEndpoint{guard: guard, respond: respond, intake: intake},
 		intake:    intake,
 	}, nil
 }

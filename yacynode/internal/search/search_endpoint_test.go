@@ -14,9 +14,9 @@ import (
 
 type fixedStatus struct{}
 
-func (fixedStatus) Snapshot(context.Context) StatusSnapshot {
-	return StatusSnapshot{Version: "1.0", Uptime: 7}
-}
+func (fixedStatus) Version(context.Context) string { return "1.0" }
+
+func (fixedStatus) Uptime(context.Context) int { return 7 }
 
 func searchIdentity() httpguard.LocalPeer {
 	return httpguard.LocalPeer{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
@@ -29,7 +29,7 @@ func newEndpoint(index fakeScanner, urls fakeDirectory) http.Handler {
 		time.Second,
 	)
 
-	return New(guard, fixedStatus{}, index, urls, 100).Endpoint
+	return New(guard, httpguard.NewWireResponder(fixedStatus{}), index, urls, 100).Endpoint
 }
 
 func serveSearch(

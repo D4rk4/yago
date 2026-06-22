@@ -43,10 +43,20 @@ func fixedClock(start time.Time, elapsed time.Duration) func() time.Time {
 	}
 }
 
+func fixedLiveness(version string, start time.Time, elapsed time.Duration) Liveness {
+	now := fixedClock(start, elapsed)
+	return Liveness{version: version, start: now(), now: now}
+}
+
 func TestSelfSeedRefreshesDynamicFields(t *testing.T) {
 	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
 	counts := stubCounter{rwi: 7, urls: 3}
-	report := newReport(testIdentity(), counts, counts, fixedClock(start, 90*time.Minute))
+	report := newReport(
+		testIdentity(),
+		fixedLiveness(testIdentity().Version, start, 90*time.Minute),
+		counts,
+		counts,
+	)
 
 	seed := report.SelfSeed(context.Background())
 
@@ -70,7 +80,12 @@ func TestSelfSeedRefreshesDynamicFields(t *testing.T) {
 func TestSelfSeedKeepsIdentityFields(t *testing.T) {
 	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
 	counts := stubCounter{}
-	report := newReport(testIdentity(), counts, counts, fixedClock(start, 0))
+	report := newReport(
+		testIdentity(),
+		fixedLiveness(testIdentity().Version, start, 0),
+		counts,
+		counts,
+	)
 
 	seed := report.SelfSeed(context.Background())
 
@@ -95,7 +110,12 @@ func TestSelfSeedKeepsIdentityFields(t *testing.T) {
 func TestSelfSeedCountErrorsReportZero(t *testing.T) {
 	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
 	counts := stubCounter{rwi: 5, urls: 9, err: errors.New("boom")}
-	report := newReport(testIdentity(), counts, counts, fixedClock(start, time.Hour))
+	report := newReport(
+		testIdentity(),
+		fixedLiveness(testIdentity().Version, start, time.Hour),
+		counts,
+		counts,
+	)
 
 	seed := report.SelfSeed(context.Background())
 
@@ -111,17 +131,17 @@ func TestHeaderReportsVersionAndUptime(t *testing.T) {
 	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
 	report := newReport(
 		testIdentity(),
+		fixedLiveness(testIdentity().Version, start, 45*time.Minute),
 		stubCounter{},
 		stubCounter{},
-		fixedClock(start, 45*time.Minute),
 	)
 
-	header := report.Header(context.Background())
+	ctx := context.Background()
 
-	if header.Version != "1.2" {
-		t.Fatalf("Version = %q, want 1.2", header.Version)
+	if got := report.Version(ctx); got != "1.2" {
+		t.Fatalf("Version = %q, want 1.2", got)
 	}
-	if header.Uptime != 45 {
-		t.Fatalf("Uptime = %d, want 45", header.Uptime)
+	if got := report.Uptime(ctx); got != 45 {
+		t.Fatalf("Uptime = %d, want 45", got)
 	}
 }

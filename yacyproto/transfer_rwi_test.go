@@ -52,7 +52,9 @@ func TestTransferRWIResponseRoundTrip(t *testing.T) {
 		},
 	}
 
-	got, err := yacyproto.ParseTransferRWIResponse(resp.Encode())
+	msg := resp.Encode()
+	yacyproto.InjectResponseHeader(msg, resp.Version, resp.Uptime)
+	got, err := yacyproto.ParseTransferRWIResponse(msg)
 	if err != nil {
 		t.Fatalf("ParseTransferRWIResponse: %v", err)
 	}

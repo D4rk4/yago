@@ -15,9 +15,9 @@ import (
 
 type fixedStatus struct{}
 
-func (fixedStatus) Snapshot(context.Context) crawling.StatusSnapshot {
-	return crawling.StatusSnapshot{Version: "1.0", Uptime: 7}
-}
+func (fixedStatus) Version(context.Context) string { return "1.0" }
+
+func (fixedStatus) Uptime(context.Context) int { return 7 }
 
 func localIdentity() httpguard.LocalPeer {
 	return httpguard.LocalPeer{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
@@ -26,7 +26,7 @@ func localIdentity() httpguard.LocalPeer {
 func newModule() crawling.Module {
 	guard := httpguard.NewRequestGuard(localIdentity(), httpguard.DefaultMaxBodyBytes, time.Second)
 
-	return crawling.New(guard, fixedStatus{})
+	return crawling.New(guard, httpguard.NewWireResponder(fixedStatus{}))
 }
 
 func TestEndpointRejectsCrawl(t *testing.T) {

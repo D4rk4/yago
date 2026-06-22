@@ -10,8 +10,8 @@ type Module struct {
 	Endpoint http.Handler
 }
 
-func New(guard httpguard.RequestGuard, status RuntimeStatus) Module {
+func New(guard httpguard.RequestGuard, respond httpguard.WireResponder) Module {
 	return Module{
-		Endpoint: crawlReceiptEndpoint{guard: guard, status: status},
+		Endpoint: crawlReceiptEndpoint{guard: guard, respond: respond},
 	}
 }

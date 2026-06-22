@@ -19,9 +19,19 @@ func newQueryEndpoint(counts stubCounter) queryEndpoint {
 		httpguard.DefaultMaxBodyBytes,
 		time.Second,
 	)
-	report := newReport(testIdentity(), counts, counts, fixedClock(time.Unix(0, 0).UTC(), 0))
+	report := newReport(
+		testIdentity(),
+		fixedLiveness(testIdentity().Version, time.Unix(0, 0).UTC(), 0),
+		counts,
+		counts,
+	)
 
-	return queryEndpoint{guard: guard, report: report, rwi: counts, urls: counts}
+	return queryEndpoint{
+		guard:   guard,
+		respond: httpguard.NewWireResponder(report),
+		rwi:     counts,
+		urls:    counts,
+	}
 }
 
 func serveQuery(

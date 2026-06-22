@@ -11,19 +11,14 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
-type StatusSnapshot struct {
-	Version     string
-	Uptime      int
-	NetworkName string
-	Seed        yacymodel.Seed
-}
-
 type RuntimeStatus interface {
-	Snapshot(ctx context.Context) StatusSnapshot
+	NetworkName(ctx context.Context) string
+	SelfSeed(ctx context.Context) yacymodel.Seed
 }
 
 type helloEndpoint struct {
 	guard          httpguard.RequestGuard
+	respond        httpguard.WireResponder
 	status         RuntimeStatus
 	peers          PeerDirectory
 	trustedProxies []*net.IPNet
@@ -43,14 +38,9 @@ func (e helloEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshot := e.status.Snapshot(ctx)
 	resp := yacyproto.HelloResponse{
-		ResponseHeader: yacyproto.ResponseHeader{
-			Version: snapshot.Version,
-			Uptime:  snapshot.Uptime,
-		},
 		YourIP: clientAddress(r, e.trustedProxies),
-		Seeds:  []yacymodel.Seed{snapshot.Seed},
+		Seeds:  []yacymodel.Seed{e.status.SelfSeed(ctx)},
 	}
 
 	if e.guard.NetworkMatches(form) {
@@ -66,5 +56,5 @@ func (e helloEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.DebugContext(ctx, "hello served", slog.Int("seedCount", len(resp.Seeds)))
-	httpguard.WriteWireMessage(ctx, w, resp.Encode())
+	e.respond.Write(ctx, w, resp.Encode())
 }

@@ -8,7 +8,6 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodestatus"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 func TestConfigureLogging(t *testing.T) {
@@ -48,37 +47,24 @@ func TestStatusRecorderKeepsFirstStatus(t *testing.T) {
 
 type stubReport struct{ seed yacymodel.Seed }
 
-func (s stubReport) Header(context.Context) yacyproto.ResponseHeader {
-	return yacyproto.ResponseHeader{Version: "1.83", Uptime: 5}
-}
+func (s stubReport) Version(context.Context) string { return "1.83" }
+
+func (s stubReport) Uptime(context.Context) int { return 5 }
 
 func (s stubReport) SelfSeed(context.Context) yacymodel.Seed { return s.seed }
 
 var _ nodestatus.Report = stubReport{}
 
 func TestRuntimeStatusAdapters(t *testing.T) {
-	holder := &reportHolder{report: stubReport{seed: yacymodel.Seed{Hash: "0123456789AB"}}}
+	report := stubReport{seed: yacymodel.Seed{Hash: "0123456789AB"}}
 	ctx := context.Background()
 
-	if got := (rwiStatus{holder}).Snapshot(ctx); got.Version != "1.83" || got.Uptime != 5 {
-		t.Errorf("rwi snapshot = %+v", got)
+	peer := peeringStatus{report: report, networkName: "freeworld"}
+	if got := peer.NetworkName(ctx); got != "freeworld" {
+		t.Errorf("peering network = %q", got)
 	}
-	if got := (urlmetaStatus{holder}).Snapshot(ctx); got.Uptime != 5 {
-		t.Errorf("urlmeta snapshot = %+v", got)
-	}
-	if got := (searchStatus{holder}).Snapshot(ctx); got.Version != "1.83" {
-		t.Errorf("search snapshot = %+v", got)
-	}
-	if got := (crawlingStatus{holder}).Snapshot(ctx); got.Uptime != 5 {
-		t.Errorf("crawling snapshot = %+v", got)
-	}
-
-	peer := (peeringStatus{holder: holder, networkName: "freeworld"}).Snapshot(ctx)
-	if peer.NetworkName != "freeworld" || peer.Seed.Hash != "0123456789AB" {
-		t.Errorf("peering snapshot = %+v", peer)
-	}
-	if boot := (bootstrapStatus{holder}).Snapshot(ctx); boot.Seed.Hash != "0123456789AB" {
-		t.Errorf("bootstrap snapshot = %+v", boot)
+	if got := peer.SelfSeed(ctx); got.Hash != "0123456789AB" {
+		t.Errorf("peering self seed = %+v", got)
 	}
 }
 

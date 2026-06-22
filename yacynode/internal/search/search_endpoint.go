@@ -18,7 +18,7 @@ const (
 
 type searchEndpoint struct {
 	guard    httpguard.RequestGuard
-	status   RuntimeStatus
+	respond  httpguard.WireResponder
 	searcher searcher
 }
 
@@ -36,13 +36,7 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshot := e.status.Snapshot(ctx)
-	resp := yacyproto.SearchResponse{
-		ResponseHeader: yacyproto.ResponseHeader{
-			Version: snapshot.Version,
-			Uptime:  snapshot.Uptime,
-		},
-	}
+	resp := yacyproto.SearchResponse{}
 
 	if e.guard.NetworkMatches(form) {
 		query := queryFromRequest(req)
@@ -78,7 +72,7 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.Int("resultCount", resp.Count),
 		slog.Int("joinCount", resp.JoinCount),
 	)
-	httpguard.WriteWireMessage(ctx, w, resp.Encode())
+	e.respond.Write(ctx, w, resp.Encode())
 }
 
 func queryFromRequest(req yacyproto.SearchRequest) Query {

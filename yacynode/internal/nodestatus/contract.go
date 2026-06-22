@@ -9,11 +9,11 @@ import (
 	"context"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 type Report interface {
-	Header(ctx context.Context) yacyproto.ResponseHeader
+	Version(ctx context.Context) string
+	Uptime(ctx context.Context) int
 	SelfSeed(ctx context.Context) yacymodel.Seed
 }
 

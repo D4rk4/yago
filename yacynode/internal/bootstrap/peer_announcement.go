@@ -72,7 +72,7 @@ func (a *PeerAnnouncement) Run(ctx context.Context) {
 }
 
 func (a *PeerAnnouncement) Announce(ctx context.Context) {
-	self := a.status.Snapshot(ctx).Seed
+	self := a.status.SelfSeed(ctx)
 	endpoints := a.discover(ctx)
 
 	for i, endpoint := range endpoints {

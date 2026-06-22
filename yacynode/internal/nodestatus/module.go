@@ -2,7 +2,6 @@ package nodestatus
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
 )
@@ -14,14 +13,20 @@ type Module struct {
 
 func New(
 	id Identity,
+	live Liveness,
 	guard httpguard.RequestGuard,
 	rwi RWICounter,
 	urls URLCounter,
 ) Module {
-	report := newReport(id, rwi, urls, time.Now)
+	report := newReport(id, live, rwi, urls)
 
 	return Module{
 		Report: report,
-		Query:  queryEndpoint{guard: guard, report: report, rwi: rwi, urls: urls},
+		Query: queryEndpoint{
+			guard:   guard,
+			respond: httpguard.NewWireResponder(report),
+			rwi:     rwi,
+			urls:    urls,
+		},
 	}
 }

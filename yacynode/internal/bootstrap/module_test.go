@@ -50,8 +50,8 @@ type stubStatus struct {
 	seed yacymodel.Seed
 }
 
-func (s stubStatus) Snapshot(context.Context) StatusSnapshot {
-	return StatusSnapshot{Seed: s.seed}
+func (s stubStatus) SelfSeed(context.Context) yacymodel.Seed {
+	return s.seed
 }
 
 type recordingSink struct {

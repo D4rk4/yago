@@ -23,10 +23,10 @@ var (
 )
 
 type queryEndpoint struct {
-	guard  httpguard.RequestGuard
-	report Report
-	rwi    RWICounter
-	urls   URLCounter
+	guard   httpguard.RequestGuard
+	respond httpguard.WireResponder
+	rwi     RWICounter
+	urls    URLCounter
 }
 
 func (e queryEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -43,10 +43,7 @@ func (e queryEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := yacyproto.QueryResponse{
-		ResponseHeader: e.report.Header(ctx),
-		Response:       yacyproto.QueryResponseRejected,
-	}
+	resp := yacyproto.QueryResponse{Response: yacyproto.QueryResponseRejected}
 
 	if e.guard.NetworkMatches(form) && e.guard.YouAreMatches(req.YouAre) {
 		count, supported, err := e.count(ctx, req.Object)
@@ -64,7 +61,7 @@ func (e queryEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.String("object", string(req.Object)),
 		slog.Int("count", resp.Response),
 	)
-	httpguard.WriteWireMessage(ctx, w, resp.Encode())
+	e.respond.Write(ctx, w, resp.Encode())
 }
 
 func (e queryEndpoint) count(ctx context.Context, object yacyproto.QueryObject) (int, bool, error) {

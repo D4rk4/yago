@@ -17,17 +17,11 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
-type rwiStatus struct{}
+type fixedStatus struct{}
 
-func (rwiStatus) Snapshot(context.Context) rwi.StatusSnapshot {
-	return rwi.StatusSnapshot{Version: "1.0", Uptime: 7}
-}
+func (fixedStatus) Version(context.Context) string { return "1.0" }
 
-type urlStatus struct{}
-
-func (urlStatus) Snapshot(context.Context) urlmeta.StatusSnapshot {
-	return urlmeta.StatusSnapshot{Version: "1.0", Uptime: 7}
-}
+func (fixedStatus) Uptime(context.Context) int { return 7 }
 
 func localIdentity() httpguard.LocalPeer {
 	return httpguard.LocalPeer{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
@@ -53,14 +47,15 @@ func openHarness(t *testing.T, quotaBytes int64, batchCap int) harness {
 	})
 
 	guard := httpguard.NewRequestGuard(localIdentity(), httpguard.DefaultMaxBodyBytes, time.Second)
-	urls, err := urlmeta.New(vault, guard, urlStatus{})
+	respond := httpguard.NewWireResponder(fixedStatus{})
+	urls, err := urlmeta.New(vault, guard, respond)
 	if err != nil {
 		t.Fatalf("urlmeta.New: %v", err)
 	}
 	module, err := rwi.New(
 		vault,
 		guard,
-		rwiStatus{},
+		respond,
 		urls.Directory,
 		rwi.Config{BatchCap: batchCap, PauseSeconds: 5},
 	)

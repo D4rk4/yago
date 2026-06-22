@@ -39,7 +39,9 @@ func TestCrawlReceiptResponseRoundTrip(t *testing.T) {
 		Delay:          60,
 	}
 
-	got, err := yacyproto.ParseCrawlReceiptResponse(resp.Encode())
+	msg := resp.Encode()
+	yacyproto.InjectResponseHeader(msg, resp.Version, resp.Uptime)
+	got, err := yacyproto.ParseCrawlReceiptResponse(msg)
 	if err != nil {
 		t.Fatalf("ParseCrawlReceiptResponse: %v", err)
 	}

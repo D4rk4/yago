@@ -66,7 +66,9 @@ func TestSearchResponseRoundTrip(t *testing.T) {
 		IndexAbstract: map[yacymodel.Hash]string{alpha: "abc"},
 	}
 
-	got, err := yacyproto.ParseSearchResponse(resp.Encode())
+	msg := resp.Encode()
+	yacyproto.InjectResponseHeader(msg, resp.Version, resp.Uptime)
+	got, err := yacyproto.ParseSearchResponse(msg)
 	if err != nil {
 		t.Fatalf("ParseSearchResponse: %v", err)
 	}

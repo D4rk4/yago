@@ -71,7 +71,6 @@ func ParseQueryRequest(form url.Values) (QueryRequest, error) {
 
 func (r QueryResponse) Encode() yacymodel.Message {
 	msg := yacymodel.Message{}
-	r.write(msg)
 	setInt(msg, FieldResponse, r.Response)
 	setString(msg, FieldMyTime, r.MyTime)
 	setString(msg, FieldMagic, r.Magic)

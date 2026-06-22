@@ -56,8 +56,7 @@ func (d peerDirectory) classifyCaller(
 		return yacymodel.PeerJunior
 	}
 
-	self := d.status.Snapshot(ctx)
-	if !d.probe.Reachable(ctx, caller, self.Seed.Hash, self.NetworkName) {
+	if !d.probe.Reachable(ctx, caller, d.status.SelfSeed(ctx).Hash, d.status.NetworkName(ctx)) {
 		return yacymodel.PeerJunior
 	}
 

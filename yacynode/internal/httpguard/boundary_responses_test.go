@@ -47,9 +47,19 @@ func TestFailureResponsesSetStatus(t *testing.T) {
 	}
 }
 
-func TestWriteWireMessageEncodesBody(t *testing.T) {
+type stubStatus struct{}
+
+func (stubStatus) Version(context.Context) string { return "1.0" }
+
+func (stubStatus) Uptime(context.Context) int { return 0 }
+
+func TestWireResponderEncodesBody(t *testing.T) {
 	rec := httptest.NewRecorder()
-	httpguard.WriteWireMessage(context.Background(), rec, yacymodel.Message{"k": "v"})
+	httpguard.NewWireResponder(stubStatus{}).Write(
+		context.Background(),
+		rec,
+		yacymodel.Message{"k": "v"},
+	)
 
 	if got := rec.Header().Get("Content-Type"); got != "text/plain; charset=UTF-8" {
 		t.Fatalf("Content-Type = %q", got)

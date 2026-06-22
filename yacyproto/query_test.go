@@ -40,7 +40,9 @@ func TestQueryResponseRoundTrip(t *testing.T) {
 		Magic:          "deadbeef",
 	}
 
-	got, err := yacyproto.ParseQueryResponse(resp.Encode())
+	msg := resp.Encode()
+	yacyproto.InjectResponseHeader(msg, resp.Version, resp.Uptime)
+	got, err := yacyproto.ParseQueryResponse(msg)
 	if err != nil {
 		t.Fatalf("ParseQueryResponse: %v", err)
 	}

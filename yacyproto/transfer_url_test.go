@@ -46,7 +46,9 @@ func TestTransferURLResponseRoundTrip(t *testing.T) {
 		},
 	}
 
-	got, err := yacyproto.ParseTransferURLResponse(resp.Encode())
+	msg := resp.Encode()
+	yacyproto.InjectResponseHeader(msg, resp.Version, resp.Uptime)
+	got, err := yacyproto.ParseTransferURLResponse(msg)
 	if err != nil {
 		t.Fatalf("ParseTransferURLResponse: %v", err)
 	}

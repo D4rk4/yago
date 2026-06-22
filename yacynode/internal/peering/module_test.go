@@ -61,11 +61,26 @@ func reverseShuffle(n int, swap func(i, j int)) {
 }
 
 type stubStatus struct {
-	snap StatusSnapshot
+	networkName string
+	seed        yacymodel.Seed
 }
 
-func (s stubStatus) Snapshot(context.Context) StatusSnapshot {
-	return s.snap
+func (s stubStatus) NetworkName(context.Context) string {
+	return s.networkName
+}
+
+func (s stubStatus) SelfSeed(context.Context) yacymodel.Seed {
+	return s.seed
+}
+
+type headerStatus struct{}
+
+func (headerStatus) Version(context.Context) string { return "1.0" }
+
+func (headerStatus) Uptime(context.Context) int { return 5 }
+
+func newResponder() httpguard.WireResponder {
+	return httpguard.NewWireResponder(headerStatus{})
 }
 
 type stubDirectory struct {
@@ -86,20 +101,19 @@ func newGuard() httpguard.RequestGuard {
 	return httpguard.NewRequestGuard(ident, httpguard.DefaultMaxBodyBytes, time.Second)
 }
 
-func selfSnapshot(t testing.TB) StatusSnapshot {
-	return StatusSnapshot{
-		Version:     "1.0",
-		Uptime:      5,
-		NetworkName: "freeworld",
-		Seed:        callerSeed(t, "self", "203.0.113.9", 8090),
+func selfStatus(t testing.TB) stubStatus {
+	return stubStatus{
+		networkName: "freeworld",
+		seed:        callerSeed(t, "self", "203.0.113.9", 8090),
 	}
 }
 
 func newEndpoint(t testing.TB, peers PeerDirectory) helloEndpoint {
 	return helloEndpoint{
-		guard:  newGuard(),
-		status: stubStatus{snap: selfSnapshot(t)},
-		peers:  peers,
+		guard:   newGuard(),
+		respond: newResponder(),
+		status:  selfStatus(t),
+		peers:   peers,
 	}
 }
 
@@ -137,10 +151,7 @@ func parseResponse(t *testing.T, body string) yacyproto.HelloResponse {
 
 func queryServer() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		resp := yacyproto.QueryResponse{
-			ResponseHeader: yacyproto.ResponseHeader{Version: "1.0"},
-			Response:       3,
-		}
+		resp := yacyproto.QueryResponse{Response: 3}
 		_, _ = io.WriteString(w, resp.Encode().Encode())
 	}))
 }
@@ -259,7 +270,13 @@ func helloThrough(
 ) yacyproto.HelloResponse {
 	t.Helper()
 
-	module := New(newGuard(), stubStatus{snap: selfSnapshot(t)}, client, 10, nil)
+	module := New(
+		newGuard(),
+		newResponder(),
+		selfStatus(t),
+		client,
+		Config{TrustedSeedCapacity: 10},
+	)
 	module.Registry.Absorb(context.Background(), callerSeed(t, "trusted", "203.0.113.1", 8090))
 
 	rec := httptest.NewRecorder()

@@ -91,7 +91,6 @@ func ParseHelloRequest(ctx context.Context, form url.Values) (HelloRequest, erro
 
 func (r HelloResponse) Encode() yacymodel.Message {
 	msg := yacymodel.Message{}
-	r.write(msg)
 	setString(msg, FieldYourIP, r.YourIP)
 	setString(msg, FieldYourType, r.YourType.String())
 	setString(msg, FieldMyTime, r.MyTime)

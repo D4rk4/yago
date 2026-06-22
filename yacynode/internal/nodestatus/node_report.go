@@ -3,52 +3,46 @@ package nodestatus
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 const msgCountUnavailable = "count unavailable for self seed"
 
 type nodeReport struct {
-	base    yacymodel.Seed
-	version string
-	start   time.Time
-	now     func() time.Time
-	rwi     RWICounter
-	urls    URLCounter
+	base     yacymodel.Seed
+	liveness Liveness
+	rwi      RWICounter
+	urls     URLCounter
 }
 
-func newReport(id Identity, rwi RWICounter, urls URLCounter, now func() time.Time) nodeReport {
+func newReport(id Identity, live Liveness, rwi RWICounter, urls URLCounter) nodeReport {
 	return nodeReport{
-		base:    baseSeed(id),
-		version: id.Version,
-		start:   now(),
-		now:     now,
-		rwi:     rwi,
-		urls:    urls,
+		base:     baseSeed(id),
+		liveness: live,
+		rwi:      rwi,
+		urls:     urls,
 	}
 }
 
-func (r nodeReport) Header(context.Context) yacyproto.ResponseHeader {
-	return yacyproto.ResponseHeader{Version: r.version, Uptime: r.uptimeMinutes(r.now())}
+func (r nodeReport) Version(ctx context.Context) string {
+	return r.liveness.Version(ctx)
+}
+
+func (r nodeReport) Uptime(ctx context.Context) int {
+	return r.liveness.Uptime(ctx)
 }
 
 func (r nodeReport) SelfSeed(ctx context.Context) yacymodel.Seed {
-	now := r.now()
+	now := r.liveness.now()
 	seed := r.base
-	seed.Uptime = yacymodel.Some(r.uptimeMinutes(now))
+	seed.Uptime = yacymodel.Some(r.liveness.uptimeMinutes(now))
 	seed.UTC = yacymodel.Some(yacymodel.SeedUTCOffsetFromTime(now))
 	seed.LastSeen = yacymodel.Some(yacymodel.NewSeedLastSeenUTC(now))
 	seed.RWICount = yacymodel.Some(countOrZero(ctx, r.rwi.RWICount))
 	seed.URLCount = yacymodel.Some(countOrZero(ctx, r.urls.Count))
 
 	return seed
-}
-
-func (r nodeReport) uptimeMinutes(now time.Time) int {
-	return int(now.Sub(r.start).Minutes())
 }
 
 func baseSeed(id Identity) yacymodel.Seed {

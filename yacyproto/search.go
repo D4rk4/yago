@@ -197,7 +197,6 @@ func searchRequestCounts(form url.Values) (searchCounts, error) {
 
 func (r SearchResponse) Encode() yacymodel.Message {
 	msg := yacymodel.Message{}
-	r.write(msg)
 	setInt(msg, FieldSearchTime, r.SearchTime)
 	setString(msg, FieldReferences, r.References)
 	setInt(msg, FieldJoinCount, r.JoinCount)

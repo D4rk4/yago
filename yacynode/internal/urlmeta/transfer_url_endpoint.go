@@ -1,7 +1,6 @@
 package urlmeta
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 
@@ -9,19 +8,10 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
-type StatusSnapshot struct {
-	Version string
-	Uptime  int
-}
-
-type RuntimeStatus interface {
-	Snapshot(ctx context.Context) StatusSnapshot
-}
-
 type transferURLEndpoint struct {
-	guard  httpguard.RequestGuard
-	status RuntimeStatus
-	intake urlIntake
+	guard   httpguard.RequestGuard
+	respond httpguard.WireResponder
+	intake  urlIntake
 }
 
 func (e transferURLEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -38,17 +28,11 @@ func (e transferURLEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshot := e.status.Snapshot(ctx)
-	resp := yacyproto.TransferURLResponse{
-		ResponseHeader: yacyproto.ResponseHeader{
-			Version: snapshot.Version,
-			Uptime:  snapshot.Uptime,
-		},
-	}
+	resp := yacyproto.TransferURLResponse{}
 
 	if !e.guard.NetworkMatches(form) || !e.guard.YouAreMatches(req.YouAre) {
 		resp.Result = yacyproto.ResultWrongTarget
-		httpguard.WriteWireMessage(ctx, w, resp.Encode())
+		e.respond.Write(ctx, w, resp.Encode())
 
 		return
 	}
@@ -73,5 +57,5 @@ func (e transferURLEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.Int("doubleCount", receipt.Double),
 		slog.Int("errorUrlCount", len(receipt.ErrorURL)),
 	)
-	httpguard.WriteWireMessage(ctx, w, resp.Encode())
+	e.respond.Write(ctx, w, resp.Encode())
 }

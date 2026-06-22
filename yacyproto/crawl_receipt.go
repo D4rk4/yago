@@ -57,7 +57,6 @@ func ParseCrawlReceiptRequest(form url.Values) (CrawlReceiptRequest, error) {
 
 func (r CrawlReceiptResponse) Encode() yacymodel.Message {
 	msg := yacymodel.Message{}
-	r.write(msg)
 	setInt(msg, FieldDelay, r.Delay)
 
 	return msg

@@ -14,22 +14,28 @@ type Module struct {
 	Registry      *TrustedSeedRegistry
 }
 
+type Config struct {
+	TrustedSeedCapacity int
+	TrustedProxies      []*net.IPNet
+}
+
 func New(
 	guard httpguard.RequestGuard,
+	respond httpguard.WireResponder,
 	status RuntimeStatus,
 	client *http.Client,
-	trustedSeedCapacity int,
-	trustedProxies []*net.IPNet,
+	cfg Config,
 ) Module {
-	registry := NewTrustedSeedRegistry(trustedSeedCapacity)
+	registry := NewTrustedSeedRegistry(cfg.TrustedSeedCapacity)
 	directory := newPeerDirectory(newCallerBackPing(client), registry, rand.Shuffle, status)
 
 	return Module{
 		HelloEndpoint: helloEndpoint{
 			guard:          guard,
+			respond:        respond,
 			status:         status,
 			peers:          directory,
-			trustedProxies: trustedProxies,
+			trustedProxies: cfg.TrustedProxies,
 		},
 		Directory: directory,
 		Registry:  registry,

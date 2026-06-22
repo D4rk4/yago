@@ -1,7 +1,6 @@
 package crawling
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 
@@ -9,18 +8,9 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
-type StatusSnapshot struct {
-	Version string
-	Uptime  int
-}
-
-type RuntimeStatus interface {
-	Snapshot(ctx context.Context) StatusSnapshot
-}
-
 type crawlReceiptEndpoint struct {
-	guard  httpguard.RequestGuard
-	status RuntimeStatus
+	guard   httpguard.RequestGuard
+	respond httpguard.WireResponder
 }
 
 func (e crawlReceiptEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -30,14 +20,6 @@ func (e crawlReceiptEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 	defer cancel()
 
-	snapshot := e.status.Snapshot(ctx)
-	resp := yacyproto.CrawlReceiptResponse{
-		ResponseHeader: yacyproto.ResponseHeader{
-			Version: snapshot.Version,
-			Uptime:  snapshot.Uptime,
-		},
-	}
-
 	slog.DebugContext(ctx, "crawl receipt rejected")
-	httpguard.WriteWireMessage(ctx, w, resp.Encode())
+	e.respond.Write(ctx, w, yacyproto.CrawlReceiptResponse{}.Encode())
 }

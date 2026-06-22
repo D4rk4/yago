@@ -47,7 +47,9 @@ func TestHelloResponseRoundTrip(t *testing.T) {
 		},
 	}
 
-	got, err := yacyproto.ParseHelloResponse(t.Context(), resp.Encode())
+	msg := resp.Encode()
+	yacyproto.InjectResponseHeader(msg, resp.Version, resp.Uptime)
+	got, err := yacyproto.ParseHelloResponse(t.Context(), msg)
 	if err != nil {
 		t.Fatalf("ParseHelloResponse: %v", err)
 	}

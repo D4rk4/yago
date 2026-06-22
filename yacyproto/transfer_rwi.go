@@ -75,7 +75,6 @@ func ParseTransferRWIRequest(ctx context.Context, form url.Values) (TransferRWIR
 
 func (r TransferRWIResponse) Encode() yacymodel.Message {
 	msg := yacymodel.Message{}
-	r.write(msg)
 	setString(msg, FieldResult, string(r.Result))
 	setInt(msg, FieldPause, r.Pause)
 	msg[FieldUnknownURL] = joinHashes(r.UnknownURL)

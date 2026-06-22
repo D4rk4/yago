@@ -27,7 +27,7 @@ func openVaultAndModule(t *testing.T) (*boltvault.Vault, urlmeta.Module) {
 	})
 
 	guard := httpguard.NewRequestGuard(localIdentity(), httpguard.DefaultMaxBodyBytes, time.Second)
-	module, err := urlmeta.New(vault, guard, fixedStatus{})
+	module, err := urlmeta.New(vault, guard, httpguard.NewWireResponder(fixedStatus{}))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

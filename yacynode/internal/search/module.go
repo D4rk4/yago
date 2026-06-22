@@ -14,7 +14,7 @@ type Module struct {
 
 func New(
 	guard httpguard.RequestGuard,
-	status RuntimeStatus,
+	respond httpguard.WireResponder,
 	index rwi.PostingScanner,
 	urls urlmeta.URLDirectory,
 	postingsPerWord int,
@@ -23,8 +23,8 @@ func New(
 	// storage-owning modules) instead of returning it in Module for cmd to mount.
 	return Module{
 		Endpoint: searchEndpoint{
-			guard:  guard,
-			status: status,
+			guard:   guard,
+			respond: respond,
 			searcher: searcher{
 				index:           index,
 				urls:            urls,

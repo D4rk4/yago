@@ -24,6 +24,7 @@ type node struct {
 	announcer bootstrap.Module
 }
 
+//nolint:funlen // composition root wiring every module into one mux
 func assembleNode(
 	config nodeConfig,
 	settings bootstrap.BootstrapSettings,
@@ -36,9 +37,10 @@ func assembleNode(
 		httpguard.DefaultRequestTimeout,
 	)
 
-	holder := &reportHolder{}
+	liveness := nodestatus.NewLiveness(version)
+	respond := httpguard.NewWireResponder(liveness)
 
-	urlModule, err := urlmeta.New(vault, guard, urlmetaStatus{holder})
+	urlModule, err := urlmeta.New(vault, guard, respond)
 	if err != nil {
 		return node{}, fmt.Errorf("urlmeta module: %w", err)
 	}
@@ -46,7 +48,7 @@ func assembleNode(
 	rwiModule, err := rwi.New(
 		vault,
 		guard,
-		rwiStatus{holder},
+		respond,
 		urlModule.Directory,
 		rwi.Config{BatchCap: receiveBatchCap, PauseSeconds: receiveBusyPauseSecs},
 	)
@@ -56,27 +58,30 @@ func assembleNode(
 
 	statusModule := nodestatus.New(
 		nodeIdentity(config),
+		liveness,
 		guard,
 		rwiModule.Directory,
 		urlModule.Directory,
 	)
-	holder.report = statusModule.Report
 
 	searchModule := search.New(
 		guard,
-		searchStatus{holder},
+		respond,
 		rwiModule.Index,
 		urlModule.Directory,
 		searchPostingsPerWord,
 	)
 	peeringModule := peering.New(
 		guard,
-		peeringStatus{holder: holder, networkName: config.NetworkName},
+		respond,
+		peeringStatus{report: statusModule.Report, networkName: config.NetworkName},
 		client,
-		trustedSeedCapacity,
-		config.TrustedProxies,
+		peering.Config{
+			TrustedSeedCapacity: trustedSeedCapacity,
+			TrustedProxies:      config.TrustedProxies,
+		},
 	)
-	crawlingModule := crawling.New(guard, crawlingStatus{holder})
+	crawlingModule := crawling.New(guard, respond)
 	landingModule := landing.New()
 
 	sweeper := eviction.New(
@@ -90,7 +95,7 @@ func assembleNode(
 		client,
 		config.NetworkName,
 		settings,
-		bootstrapStatus{holder},
+		statusModule.Report,
 		peeringModule.Registry,
 	)
 
