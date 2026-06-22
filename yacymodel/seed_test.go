@@ -141,3 +141,17 @@ func TestParseSeedEmptyIP(t *testing.T) {
 		t.Error("IP should not be present when empty")
 	}
 }
+
+func TestParseSeedIP6List(t *testing.T) {
+	value := "2001:db8::1|2001:db8::2"
+	seed, err := ParseSeed(t.Context(), "Hash=ABCDEFGHIJKL,IP6="+value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ip6, ok := seed.IP6.Get(); !ok || ip6.String() != value {
+		t.Fatalf("IP6 = %q, %v", ip6, ok)
+	}
+	if got := seed.String(); got != "{Hash=ABCDEFGHIJKL,IP6="+value+"}" {
+		t.Fatalf("round trip = %q", got)
+	}
+}

@@ -89,7 +89,7 @@ func parseCoreSeedField(seed *Seed, key, value string) (bool, error) {
 		}
 	case SeedIP6:
 		if value != "" {
-			err = parseInto(&seed.IP6, ParseHost, value)
+			err = parseInto(&seed.IP6, ParseIP6, value)
 		}
 	case SeedPort:
 		err = parseInto(&seed.Port, ParsePort, value)
