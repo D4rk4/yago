@@ -33,7 +33,11 @@ components:
   eviction:
     in: yacynode/internal/eviction/**
   cmd:
-    in: yacynode/cmd/**
+    in:
+      - yacynode/cmd/yacy-peer-hash/**
+      - yacynode/cmd/yacy-rwi-node/**
+  dbmigrate:
+    in: yacynode/cmd/yacy-db-migrate/**
   yacycrawlcontract:
     in: yacycrawlcontract/**
   yacycrawler:
@@ -156,6 +160,9 @@ deps:
       - nodestatus
       - yacymodel
       - yacyproto
+  dbmigrate:
+    canUse:
+      - bbolt
   yacycrawlcontract:
     mayDependOn:
       - yacycrawlcontract

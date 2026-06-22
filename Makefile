@@ -3,7 +3,7 @@ MODULES := yacynode yacymodel yacyproto yacycrawlcontract yacycrawler
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 80
 
-.PHONY: fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-image peer-hash
+.PHONY: fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-image peer-hash db-migrate
 
 E2E_TIMEOUT ?= 10m
 E2E_NODE_IMAGE ?= yacy-rwi-node:e2e
@@ -70,6 +70,9 @@ build:
 
 peer-hash:
 	cd yacynode && $(GO) run ./cmd/yacy-peer-hash
+
+db-migrate:
+	cd yacynode && $(GO) run ./cmd/yacy-db-migrate -db $(DB)
 
 verify: fmt-check vet lint arch test cover-check build
 
