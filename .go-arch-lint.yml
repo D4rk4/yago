@@ -10,12 +10,6 @@ components:
     in: yacymodel/**
   yacyproto:
     in: yacyproto/**
-  api:
-    in: internal/api/**
-  core:
-    in: internal/core/**
-  infrastructure:
-    in: internal/infrastructure/**
   boltvault:
     in: internal/boltvault/**
   httpguard:
@@ -80,25 +74,6 @@ deps:
     mayDependOn:
       - yacyproto
       - yacymodel
-  core:
-    deepScan: false
-    mayDependOn:
-      - core
-      - yacymodel
-  api:
-    mayDependOn:
-      - api
-      - core
-      - yacymodel
-      - yacyproto
-  infrastructure:
-    mayDependOn:
-      - infrastructure
-      - core
-      - yacymodel
-      - yacyproto
-    canUse:
-      - bbolt
   boltvault:
     deepScan: false
     mayDependOn:
@@ -168,9 +143,6 @@ deps:
       - yacymodel
   cmd:
     mayDependOn:
-      - api
-      - core
-      - infrastructure
       - boltvault
       - httpguard
       - peering
