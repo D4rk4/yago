@@ -185,3 +185,4 @@ deps:
 
 excludeFiles:
   - "yacynode/test/e2e"
+  - "yacycrawler/test/e2e"

@@ -1,4 +1,6 @@
-package main
+//go:build e2e
+
+package e2e
 
 import (
 	"context"
@@ -36,11 +38,19 @@ func TestServiceIsOrderDrivenEndToEnd(t *testing.T) {
 		t.Fatalf("load config: %v", err)
 	}
 
+	crawl := cfg.Crawl
+	fetcher, closeBrowser := yacycrawler.NewBrowserPageFetcher(
+		crawl.UserAgent,
+		crawl.RequestTimeout,
+		crawl.MaxBodyBytes,
+	)
+	defer closeBrowser()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	runDone := make(chan error, 1)
-	go func() { runDone <- run(ctx, cfg) }()
+	go func() { runDone <- yacycrawler.RunService(ctx, cfg, fetcher) }()
 
 	js := connectJetStream(t, url)
 	waitForStream(t, js, yacycrawler.OrdersStreamName)
