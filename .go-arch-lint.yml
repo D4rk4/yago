@@ -23,6 +23,8 @@ components:
     in: internal/peering/**
   bootstrap:
     in: internal/bootstrap/**
+  landing:
+    in: internal/landing/**
   crawling:
     in: internal/crawling/**
   urlmeta:
@@ -116,6 +118,9 @@ deps:
       - bootstrap
       - yacymodel
       - yacyproto
+  landing:
+    mayDependOn:
+      - landing
   crawling:
     mayDependOn:
       - crawling
@@ -161,6 +166,7 @@ deps:
       - httpguard
       - peering
       - bootstrap
+      - landing
       - crawling
       - urlmeta
       - rwi
