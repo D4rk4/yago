@@ -3,6 +3,7 @@ workdir: .
 
 allow:
   depOnAnyVendor: false
+  deepScan: false
 
 components:
   yacymodel:
@@ -180,6 +181,7 @@ deps:
       - rwi
       - search
       - eviction
+      - nodestatus
       - yacymodel
       - yacyproto
   yacycrawlcontract:
