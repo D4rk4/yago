@@ -33,6 +33,8 @@ components:
     in: internal/rwi/**
   search:
     in: internal/search/**
+  nodestatus:
+    in: internal/nodestatus/**
   eviction:
     in: internal/eviction/**
   cmd:
@@ -147,6 +149,12 @@ deps:
       - search
       - rwi
       - urlmeta
+      - httpguard
+      - yacymodel
+      - yacyproto
+  nodestatus:
+    mayDependOn:
+      - nodestatus
       - httpguard
       - yacymodel
       - yacyproto
