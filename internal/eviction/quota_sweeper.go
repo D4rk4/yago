@@ -57,7 +57,7 @@ func (s Sweeper) Sweep(ctx context.Context) (Result, error) {
 
 func (s Sweeper) purge(ctx context.Context, urls []yacymodel.Hash) (Result, error) {
 	var result Result
-	err := s.vault.Reclaim(ctx, func(tx *boltvault.Txn) error {
+	err := s.vault.Update(ctx, func(tx *boltvault.Txn) error {
 		postingResult, err := s.postings.PurgeReferences(tx, urls)
 		if err != nil {
 			return fmt.Errorf("purge references: %w", err)

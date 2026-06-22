@@ -33,8 +33,16 @@ func (i postingIntake) Receive(
 		return Receipt{Busy: true, Pause: i.pauseSeconds}, nil
 	}
 
+	atCapacity, err := i.vault.AtCapacity(ctx)
+	if err != nil {
+		return Receipt{}, fmt.Errorf("check capacity: %w", err)
+	}
+	if atCapacity {
+		return Receipt{Busy: true, Pause: i.pauseSeconds}, nil
+	}
+
 	referenced := make([]yacymodel.Hash, 0, len(entries))
-	err := i.vault.Update(ctx, func(tx *boltvault.Txn) error {
+	err = i.vault.Update(ctx, func(tx *boltvault.Txn) error {
 		for _, entry := range entries {
 			if err := ctx.Err(); err != nil {
 				return fmt.Errorf("context: %w", err)

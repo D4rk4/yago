@@ -99,7 +99,7 @@ func TestPurgeDeletesRows(t *testing.T) {
 	}
 
 	var result urlmeta.PurgeResult
-	if err := vault.Reclaim(ctx, func(tx *boltvault.Txn) error {
+	if err := vault.Update(ctx, func(tx *boltvault.Txn) error {
 		purged, purgeErr := module.Evictor.Purge(tx, []yacymodel.Hash{rowHash(t, row)})
 		result = purged
 		if purgeErr != nil {
@@ -108,7 +108,7 @@ func TestPurgeDeletesRows(t *testing.T) {
 
 		return nil
 	}); err != nil {
-		t.Fatalf("Reclaim: %v", err)
+		t.Fatalf("Update: %v", err)
 	}
 	if result.URLsDeleted != 1 {
 		t.Fatalf("URLsDeleted = %d, want 1", result.URLsDeleted)

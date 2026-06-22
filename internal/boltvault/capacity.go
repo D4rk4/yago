@@ -27,20 +27,20 @@ func (v *Vault) UsedBytes(ctx context.Context) (int64, error) {
 	return v.measureUsedBytes()
 }
 
-func (v *Vault) rejectAtCapacity() error {
+func (v *Vault) AtCapacity(ctx context.Context) (bool, error) {
+	if v == nil || v.db == nil {
+		return false, errVaultClosed
+	}
 	if v.quotaBytes <= 0 {
-		return nil
+		return false, nil
 	}
 
-	used, err := v.measureUsedBytes()
+	used, err := v.UsedBytes(ctx)
 	if err != nil {
-		return err
-	}
-	if used >= v.quotaBytes {
-		return ErrAtCapacity
+		return false, err
 	}
 
-	return nil
+	return used >= v.quotaBytes, nil
 }
 
 func (v *Vault) measureUsedBytes() (int64, error) {

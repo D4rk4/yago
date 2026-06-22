@@ -160,16 +160,33 @@ func TestScanVisitsPrefix(t *testing.T) {
 	}
 }
 
-func TestRejectsAtCapacity(t *testing.T) {
+func TestAtCapacityReportsOverQuota(t *testing.T) {
 	ctx := context.Background()
 	vault := openVault(t, 1)
 	words := register(t, vault, "words")
 
-	err := vault.Update(ctx, func(tx *boltvault.Txn) error {
+	atCapacity, err := vault.AtCapacity(ctx)
+	if err != nil {
+		t.Fatalf("AtCapacity: %v", err)
+	}
+	if !atCapacity {
+		t.Fatalf("AtCapacity = false, want true over quota")
+	}
+
+	if err := vault.Update(ctx, func(tx *boltvault.Txn) error {
 		return words.Put(tx, boltvault.Key("a"), "alpha")
-	})
-	if !errors.Is(err, boltvault.ErrAtCapacity) {
-		t.Fatalf("Update error = %v, want ErrAtCapacity", err)
+	}); err != nil {
+		t.Fatalf("Update over quota = %v, want nil (kernel does not gate writes)", err)
+	}
+}
+
+func TestAtCapacityIgnoresUnsetQuota(t *testing.T) {
+	atCapacity, err := openVault(t, 0).AtCapacity(context.Background())
+	if err != nil {
+		t.Fatalf("AtCapacity: %v", err)
+	}
+	if atCapacity {
+		t.Fatalf("AtCapacity = true, want false without a quota")
 	}
 }
 

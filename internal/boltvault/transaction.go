@@ -20,9 +20,6 @@ func (v *Vault) Update(ctx context.Context, fn func(*Txn) error) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
-	if err := v.rejectAtCapacity(); err != nil {
-		return err
-	}
 
 	if err := v.db.Update(func(tx *bolt.Tx) error {
 		return fn(&Txn{tx: tx, writable: true})
