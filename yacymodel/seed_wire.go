@@ -87,13 +87,13 @@ func parseCoreSeedField(seed *Seed, key, value string) (bool, error) {
 	case SeedFlags:
 		err = parseInto(&seed.Flags, ParseFlags, value)
 	case SeedVersion:
-		seed.Version = Some(value)
+		err = parseInto(&seed.Version, ParseYaCyVersion, value)
 	case SeedUptime:
 		err = parseInto(&seed.Uptime, strconv.Atoi, value)
 	case SeedUTC:
-		seed.UTC = Some(value)
+		err = parseInto(&seed.UTC, ParseSeedUTCOffset, value)
 	case SeedLastSeen:
-		seed.LastSeen = Some(value)
+		err = parseInto(&seed.LastSeen, ParseSeedLastSeenUTC, value)
 	case SeedRWICount:
 		err = parseInto(&seed.RWICount, strconv.Atoi, value)
 	case SeedURLCount:
@@ -129,9 +129,9 @@ func (s Seed) String() string {
 	putStringer(fields, SeedPeerType, s.PeerType)
 	putStringer(fields, SeedFlags, s.Flags)
 	putText(fields, SeedName, s.Name)
-	putText(fields, SeedVersion, s.Version)
-	putText(fields, SeedUTC, s.UTC)
-	putText(fields, SeedLastSeen, s.LastSeen)
+	putStringer(fields, SeedVersion, s.Version)
+	putStringer(fields, SeedUTC, s.UTC)
+	putStringer(fields, SeedLastSeen, s.LastSeen)
 	putInt(fields, SeedUptime, s.Uptime)
 	putInt(fields, SeedRWICount, s.RWICount)
 	putInt(fields, SeedURLCount, s.URLCount)

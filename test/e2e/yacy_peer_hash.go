@@ -54,8 +54,8 @@ func helloProbeSeed() yacymodel.Seed {
 		Name:     yacymodel.Some("e2e-hello-probe"),
 		PeerType: yacymodel.Some(yacymodel.PeerSenior),
 		Port:     yacymodel.Some(port),
-		Version:  yacymodel.Some("1.83"),
-		UTC:      yacymodel.Some(time.Now().UTC().Format("20060102150405")),
+		Version:  yacymodel.Some(yacymodel.YaCyVersion("1.83")),
+		UTC:      yacymodel.Some(yacymodel.SeedUTCOffsetFromTime(time.Now())),
 		Flags:    yacymodel.Some(flags),
 	}
 }

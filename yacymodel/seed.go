@@ -18,10 +18,10 @@ type Seed struct {
 	PortSSL          Optional[Port]
 	PeerType         Optional[PeerType]
 	Flags            Optional[Flags]
-	Version          Optional[string]
+	Version          Optional[YaCyVersion]
 	Uptime           Optional[int]
-	UTC              Optional[string]
-	LastSeen         Optional[string]
+	UTC              Optional[SeedUTCOffset]
+	LastSeen         Optional[SeedLastSeenUTC]
 	RWICount         Optional[int]
 	URLCount         Optional[int]
 	customProperties map[string]string

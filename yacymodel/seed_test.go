@@ -3,6 +3,7 @@ package yacymodel
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 const sampleSeed = "{Flags=    ,Hash=ABCDEFGHIJKL,IP=192.0.2.1,Name=testpeer,PeerType=senior,Port=8090}"
@@ -33,6 +34,49 @@ func TestSeedTypedFields(t *testing.T) {
 	}
 	if port, ok := seed.Port.Get(); !ok || port != 8090 {
 		t.Errorf("Port = %d, %v", port, ok)
+	}
+}
+
+func TestSeedDomainFieldsRoundTrip(t *testing.T) {
+	seed, err := ParseSeed(
+		t.Context(),
+		"{Hash=ABCDEFGHIJKL,LastSeen=20260622012208,UTC=+0230,Version=1.83}",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, ok := seed.Version.Get()
+	if !ok || version.String() != "1.83" {
+		t.Errorf("Version = %q, %v", version, ok)
+	}
+	utc, ok := seed.UTC.Get()
+	if !ok || utc.String() != "+0230" {
+		t.Errorf("UTC = %q, %v", utc, ok)
+	}
+	lastSeen, ok := seed.LastSeen.Get()
+	if !ok || !lastSeen.Time().Equal(time.Date(2026, 6, 22, 1, 22, 8, 0, time.UTC)) {
+		t.Errorf("LastSeen = %q, %v", lastSeen, ok)
+	}
+	if got := seed.String(); got != "{Hash=ABCDEFGHIJKL,LastSeen=20260622012208,UTC=+0230,Version=1.83}" {
+		t.Errorf("round trip:\n got %q", got)
+	}
+}
+
+func TestParseSeedRejectsBadUTCOffset(t *testing.T) {
+	if _, err := ParseSeed(t.Context(), "Hash=ABCDEFGHIJKL,UTC=0200"); !errors.Is(err, ErrBadSeed) {
+		t.Fatalf("ParseSeed bad utc = %v, want ErrBadSeed", err)
+	}
+}
+
+func TestParseSeedRejectsBadLastSeen(t *testing.T) {
+	if _, err := ParseSeed(
+		t.Context(),
+		"Hash=ABCDEFGHIJKL,LastSeen=2026-06-22",
+	); !errors.Is(
+		err,
+		ErrBadSeed,
+	) {
+		t.Fatalf("ParseSeed bad last seen = %v, want ErrBadSeed", err)
 	}
 }
 
