@@ -15,6 +15,12 @@ components:
     in: internal/core/**
   infrastructure:
     in: internal/infrastructure/**
+  boltvault:
+    in: internal/boltvault/**
+  httpguard:
+    in: internal/httpguard/**
+  urlmeta:
+    in: internal/urlmeta/**
   cmd:
     in: cmd/**
   yacycrawlcontract:
@@ -76,11 +82,32 @@ deps:
       - yacyproto
     canUse:
       - bbolt
+  boltvault:
+    deepScan: false
+    mayDependOn:
+      - boltvault
+    canUse:
+      - bbolt
+  httpguard:
+    mayDependOn:
+      - httpguard
+      - yacymodel
+      - yacyproto
+  urlmeta:
+    mayDependOn:
+      - urlmeta
+      - boltvault
+      - httpguard
+      - yacymodel
+      - yacyproto
   cmd:
     mayDependOn:
       - api
       - core
       - infrastructure
+      - boltvault
+      - httpguard
+      - urlmeta
       - yacymodel
       - yacyproto
   yacycrawlcontract:
