@@ -1,10 +1,10 @@
-Lightweight Go senior YaCy node for DHT RWI storage and serving. Spec: `doc/specification.md`.
+Lightweight Go senior YaCy node for DHT RWI storage and serving. Spec: `yacynode/doc/specification.md`.
 
 Code structure: Follow OCP: add features in new files and connect them through the smallest seam; do not grow existing files.
 
 Logging: Use stable message constants; put variable data in key/value fields. Happy paths: DEBUG. Sad paths: WARN if recoverable, ERROR if action is needed.
 
-Comments: No comments without explicit user approval. Use naming and structure instead. Put required prose in doc/. Godoc package docs are allowed. If a comment seems unavoidable, ask first.
+Comments: No comments without explicit user approval. Use naming and structure instead. Put required prose in yacynode/doc/. Godoc package docs are allowed. If a comment seems unavoidable, ask first.
 
 Single source of truth: Do not duplicate facts in comments, errors, logs, or similar text when they already exist in constants, config, or docs.
 

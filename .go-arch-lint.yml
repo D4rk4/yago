@@ -11,29 +11,29 @@ components:
   yacyproto:
     in: yacyproto/**
   boltvault:
-    in: internal/boltvault/**
+    in: yacynode/internal/boltvault/**
   httpguard:
-    in: internal/httpguard/**
+    in: yacynode/internal/httpguard/**
   peering:
-    in: internal/peering/**
+    in: yacynode/internal/peering/**
   bootstrap:
-    in: internal/bootstrap/**
+    in: yacynode/internal/bootstrap/**
   landing:
-    in: internal/landing/**
+    in: yacynode/internal/landing/**
   crawling:
-    in: internal/crawling/**
+    in: yacynode/internal/crawling/**
   urlmeta:
-    in: internal/urlmeta/**
+    in: yacynode/internal/urlmeta/**
   rwi:
-    in: internal/rwi/**
+    in: yacynode/internal/rwi/**
   search:
-    in: internal/search/**
+    in: yacynode/internal/search/**
   nodestatus:
-    in: internal/nodestatus/**
+    in: yacynode/internal/nodestatus/**
   eviction:
-    in: internal/eviction/**
+    in: yacynode/internal/eviction/**
   cmd:
-    in: cmd/**
+    in: yacynode/cmd/**
   yacycrawlcontract:
     in: yacycrawlcontract/**
   yacycrawler:
@@ -177,4 +177,4 @@ deps:
       - nats-server
 
 excludeFiles:
-  - "test/e2e"
+  - "yacynode/test/e2e"

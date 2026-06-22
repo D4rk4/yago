@@ -12,6 +12,7 @@ WORKDIR /src
 
 COPY go.work go.work.sum ./
 COPY go.mod go.sum ./
+COPY yacynode/go.mod yacynode/go.sum yacynode/
 COPY yacycrawlcontract/go.mod yacycrawlcontract/
 COPY yacycrawler/go.mod yacycrawler/
 COPY yacymodel/go.mod yacymodel/
@@ -29,7 +30,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go build \
         -ldflags="-s -w -X main.version=${VERSION}" \
         -o /out/yacy-rwi-node \
-        ./cmd/yacy-rwi-node
+        ./yacynode/cmd/yacy-rwi-node
 
 RUN mkdir -p /out/data
 

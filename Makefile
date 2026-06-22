@@ -1,5 +1,5 @@
 GO ?= go
-MODULES := . yacymodel yacyproto yacycrawlcontract yacycrawler
+MODULES := yacynode yacymodel yacyproto yacycrawlcontract yacycrawler
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 80
 
@@ -69,7 +69,7 @@ build:
 	done
 
 peer-hash:
-	$(GO) run ./cmd/yacy-peer-hash
+	cd yacynode && $(GO) run ./cmd/yacy-peer-hash
 
 verify: fmt-check vet lint arch test cover-check build
 
@@ -77,5 +77,5 @@ e2e-image:
 	DOCKER_BUILDKIT=1 docker build -t $(E2E_NODE_IMAGE) .
 
 e2e:
-	cd test/e2e && GOWORK=off YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
+	cd yacynode/test/e2e && GOWORK=off YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...

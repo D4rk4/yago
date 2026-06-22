@@ -1,0 +1,81 @@
+package rwi
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
+)
+
+type Receipt struct {
+	Busy       bool
+	Pause      int
+	UnknownURL []yacymodel.Hash
+}
+
+type postingIntake struct {
+	vault        *boltvault.Vault
+	postings     *boltvault.Collection[yacymodel.RWIPosting]
+	references   *boltvault.Collection[struct{}]
+	urls         urlmeta.URLDirectory
+	batchCap     int
+	pauseSeconds int
+}
+
+func (i postingIntake) Receive(
+	ctx context.Context,
+	entries []yacymodel.RWIPosting,
+) (Receipt, error) {
+	if len(entries) > i.batchCap {
+		return Receipt{Busy: true, Pause: i.pauseSeconds}, nil
+	}
+
+	atCapacity, err := i.vault.AtCapacity(ctx)
+	if err != nil {
+		return Receipt{}, fmt.Errorf("check capacity: %w", err)
+	}
+	if atCapacity {
+		return Receipt{Busy: true, Pause: i.pauseSeconds}, nil
+	}
+
+	referenced := make([]yacymodel.Hash, 0, len(entries))
+	err = i.vault.Update(ctx, func(tx *boltvault.Txn) error {
+		for _, entry := range entries {
+			if err := ctx.Err(); err != nil {
+				return fmt.Errorf("context: %w", err)
+			}
+
+			urlHash, err := entry.URLHash()
+			if err != nil {
+				return fmt.Errorf("rwi posting url hash: %w", err)
+			}
+			hash := urlHash.Hash()
+
+			if err := i.postings.Put(tx, postingKey(entry.WordHash, hash), entry); err != nil {
+				return fmt.Errorf("store rwi posting: %w", err)
+			}
+			if err := i.references.Put(tx, boltvault.Key(hash), struct{}{}); err != nil {
+				return fmt.Errorf("store referenced url: %w", err)
+			}
+			referenced = append(referenced, hash)
+		}
+
+		return nil
+	})
+	if errors.Is(err, boltvault.ErrAtCapacity) {
+		return Receipt{Busy: true, Pause: i.pauseSeconds}, nil
+	}
+	if err != nil {
+		return Receipt{}, fmt.Errorf("store rwi: %w", err)
+	}
+
+	unknown, err := i.urls.MissingURLs(ctx, referenced)
+	if err != nil {
+		return Receipt{}, fmt.Errorf("missing urls: %w", err)
+	}
+
+	return Receipt{UnknownURL: unknown}, nil
+}
