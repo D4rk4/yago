@@ -24,12 +24,20 @@ func hashFor(base string) yacymodel.Hash {
 	return yacymodel.Hash(base + hashFiller[len(base):])
 }
 
-func callerSeed(hash, ip string, port int) yacymodel.Seed {
-	return yacymodel.Seed{
-		Hash: hashFor(hash),
-		IP:   yacymodel.Some(yacymodel.Host(ip)),
-		Port: yacymodel.Some(yacymodel.Port(port)),
+func callerSeed(t testing.TB, hash, ip string, port int) yacymodel.Seed {
+	seed := yacymodel.Seed{Hash: hashFor(hash)}
+	if ip != "" {
+		host, err := yacymodel.ParseHost(ip)
+		if err != nil {
+			t.Fatalf("parse host: %v", err)
+		}
+		seed.IP = yacymodel.Some(host)
 	}
+	if port != 0 {
+		seed.Port = yacymodel.Some(yacymodel.Port(port))
+	}
+
+	return seed
 }
 
 func envFrom(values map[string]string) func(string) string {
@@ -206,8 +214,8 @@ func TestPeerGreeterLearnsTypeAndKnownSeeds(t *testing.T) {
 			YourIP:   "203.0.113.9",
 			YourType: yacymodel.PeerSenior,
 			Seeds: []yacymodel.Seed{
-				callerSeed("self", "203.0.113.9", 8090),
-				callerSeed("known", "198.51.100.7", 8090),
+				callerSeed(t, "self", "203.0.113.9", 8090),
+				callerSeed(t, "known", "198.51.100.7", 8090),
 			},
 		}
 		_, _ = w.Write([]byte(resp.Encode().Encode()))
@@ -218,7 +226,7 @@ func TestPeerGreeterLearnsTypeAndKnownSeeds(t *testing.T) {
 	result, err := greeter.Greet(
 		context.Background(),
 		endpointOf(t, server),
-		callerSeed("self", "203.0.113.9", 8090),
+		callerSeed(t, "self", "203.0.113.9", 8090),
 		0,
 	)
 	if err != nil {
@@ -245,7 +253,7 @@ func TestPeerGreeterRejectsNon200(t *testing.T) {
 	if _, err := greeter.Greet(
 		context.Background(),
 		endpointOf(t, server),
-		callerSeed("self", "203.0.113.9", 8090),
+		callerSeed(t, "self", "203.0.113.9", 8090),
 		0,
 	); err == nil {
 		t.Fatal("expected error on non-200")
@@ -257,7 +265,7 @@ func TestPeerGreeterRejectsEmptyEndpoint(t *testing.T) {
 	if _, err := greeter.Greet(
 		context.Background(),
 		"  ",
-		callerSeed("self", "203.0.113.9", 8090),
+		callerSeed(t, "self", "203.0.113.9", 8090),
 		0,
 	); err == nil {
 		t.Fatal("expected error for empty endpoint")
@@ -265,15 +273,15 @@ func TestPeerGreeterRejectsEmptyEndpoint(t *testing.T) {
 }
 
 func TestAnnounceGreetsDiscoveredEndpoints(t *testing.T) {
-	greeter := &fakeGreeter{known: []yacymodel.Seed{callerSeed("known", "198.51.100.1", 8090)}}
+	greeter := &fakeGreeter{known: []yacymodel.Seed{callerSeed(t, "known", "198.51.100.1", 8090)}}
 	sink := &recordingSink{}
 	announcement := newPeerAnnouncement(
 		fakeConfig{seedlists: []string{"http://list"}},
 		fakeFetcher{seeds: map[string][]yacymodel.Seed{
-			"http://list": {callerSeed("disc", "203.0.113.6", 8090)},
+			"http://list": {callerSeed(t, "disc", "203.0.113.6", 8090)},
 		}},
 		greeter,
-		stubStatus{seed: callerSeed("self", "203.0.113.9", 8090)},
+		stubStatus{seed: callerSeed(t, "self", "203.0.113.9", 8090)},
 		sink,
 	)
 
@@ -294,7 +302,7 @@ func TestAnnounceContinuesWhenSeedlistFails(t *testing.T) {
 		fakeConfig{seedlists: []string{"http://list"}},
 		fakeFetcher{err: errors.New("offline")},
 		greeter,
-		stubStatus{seed: callerSeed("self", "203.0.113.9", 8090)},
+		stubStatus{seed: callerSeed(t, "self", "203.0.113.9", 8090)},
 		&recordingSink{},
 	)
 
@@ -308,14 +316,14 @@ func TestAnnounceContinuesWhenSeedlistFails(t *testing.T) {
 func TestAnnounceCapsGreetCount(t *testing.T) {
 	seeds := make([]yacymodel.Seed, announceMaxGreets+5)
 	for i := range seeds {
-		seeds[i] = callerSeed(string(rune('a'+i)), "203.0.113.6", 8090+i)
+		seeds[i] = callerSeed(t, string(rune('a'+i)), "203.0.113.6", 8090+i)
 	}
 	greeter := &fakeGreeter{}
 	announcement := newPeerAnnouncement(
 		fakeConfig{seedlists: []string{"http://list"}},
 		fakeFetcher{seeds: map[string][]yacymodel.Seed{"http://list": seeds}},
 		greeter,
-		stubStatus{seed: callerSeed("self", "203.0.113.9", 8090)},
+		stubStatus{seed: callerSeed(t, "self", "203.0.113.9", 8090)},
 		&recordingSink{},
 	)
 
@@ -331,7 +339,7 @@ func TestModuleRunStopsOnContextCancel(t *testing.T) {
 		http.DefaultClient,
 		"freeworld",
 		BootstrapSettings{announceInterval: time.Hour},
-		stubStatus{seed: callerSeed("self", "203.0.113.9", 8090)},
+		stubStatus{seed: callerSeed(t, "self", "203.0.113.9", 8090)},
 		&recordingSink{},
 	)
 

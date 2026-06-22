@@ -28,10 +28,14 @@ func hashFor(base string) yacymodel.Hash {
 	return yacymodel.Hash(base + hashFiller[len(base):])
 }
 
-func callerSeed(hash, ip string, port int) yacymodel.Seed {
+func callerSeed(t testing.TB, hash, ip string, port int) yacymodel.Seed {
 	seed := yacymodel.Seed{Hash: hashFor(hash)}
 	if ip != "" {
-		seed.IP = yacymodel.Some(yacymodel.Host(ip))
+		host, err := yacymodel.ParseHost(ip)
+		if err != nil {
+			t.Fatalf("parse host: %v", err)
+		}
+		seed.IP = yacymodel.Some(host)
 	}
 	if port != 0 {
 		seed.Port = yacymodel.Some(yacymodel.Port(port))
@@ -82,19 +86,19 @@ func newGuard() httpguard.RequestGuard {
 	return httpguard.NewRequestGuard(ident, httpguard.DefaultMaxBodyBytes, time.Second)
 }
 
-func selfSnapshot() StatusSnapshot {
+func selfSnapshot(t testing.TB) StatusSnapshot {
 	return StatusSnapshot{
 		Version:     "1.0",
 		Uptime:      5,
 		NetworkName: "freeworld",
-		Seed:        callerSeed("self", "203.0.113.9", 8090),
+		Seed:        callerSeed(t, "self", "203.0.113.9", 8090),
 	}
 }
 
-func newEndpoint(peers PeerDirectory) helloEndpoint {
+func newEndpoint(t testing.TB, peers PeerDirectory) helloEndpoint {
 	return helloEndpoint{
 		guard:  newGuard(),
-		status: stubStatus{snap: selfSnapshot()},
+		status: stubStatus{snap: selfSnapshot(t)},
 		peers:  peers,
 	}
 }
@@ -157,17 +161,17 @@ func serverSeed(t *testing.T, rawURL string) yacymodel.Seed {
 		t.Fatalf("parse server port: %v", err)
 	}
 
-	return callerSeed("peer", host, port)
+	return callerSeed(t, "peer", host, port)
 }
 
 func TestHelloServesSelfAndKnownSeeds(t *testing.T) {
-	known := callerSeed("trusted", "203.0.113.1", 8090)
-	endpoint := newEndpoint(&stubDirectory{
+	known := callerSeed(t, "trusted", "203.0.113.1", 8090)
+	endpoint := newEndpoint(t, &stubDirectory{
 		outcome: HelloOutcome{CallerType: yacymodel.PeerSenior, Known: []yacymodel.Seed{known}},
 	})
 
 	rec := httptest.NewRecorder()
-	endpoint.ServeHTTP(rec, helloRequest("freeworld", callerSeed("caller", "10.0.0.1", 8090)))
+	endpoint.ServeHTTP(rec, helloRequest("freeworld", callerSeed(t, "caller", "10.0.0.1", 8090)))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -189,10 +193,10 @@ func TestHelloServesSelfAndKnownSeeds(t *testing.T) {
 
 func TestHelloOnForeignNetworkOmitsDirectory(t *testing.T) {
 	directory := &stubDirectory{}
-	endpoint := newEndpoint(directory)
+	endpoint := newEndpoint(t, directory)
 
 	rec := httptest.NewRecorder()
-	endpoint.ServeHTTP(rec, helloRequest("otherworld", callerSeed("caller", "10.0.0.1", 8090)))
+	endpoint.ServeHTTP(rec, helloRequest("otherworld", callerSeed(t, "caller", "10.0.0.1", 8090)))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -214,7 +218,7 @@ func TestHelloRejectsWrongMethod(t *testing.T) {
 		yacyproto.PathHello,
 		nil,
 	)
-	newEndpoint(&stubDirectory{}).ServeHTTP(rec, req)
+	newEndpoint(t, &stubDirectory{}).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want 405", rec.Code)
@@ -230,7 +234,7 @@ func TestHelloRejectsMissingSeed(t *testing.T) {
 		nil,
 	)
 	req.PostForm = yacyproto.HelloRequest{NetworkName: "freeworld"}.Form()
-	newEndpoint(&stubDirectory{}).ServeHTTP(rec, req)
+	newEndpoint(t, &stubDirectory{}).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
@@ -238,10 +242,10 @@ func TestHelloRejectsMissingSeed(t *testing.T) {
 }
 
 func TestHelloReportsDirectoryFailure(t *testing.T) {
-	endpoint := newEndpoint(&stubDirectory{err: errors.New("directory down")})
+	endpoint := newEndpoint(t, &stubDirectory{err: errors.New("directory down")})
 
 	rec := httptest.NewRecorder()
-	endpoint.ServeHTTP(rec, helloRequest("freeworld", callerSeed("caller", "10.0.0.1", 8090)))
+	endpoint.ServeHTTP(rec, helloRequest("freeworld", callerSeed(t, "caller", "10.0.0.1", 8090)))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", rec.Code)
@@ -255,8 +259,8 @@ func helloThrough(
 ) yacyproto.HelloResponse {
 	t.Helper()
 
-	module := New(newGuard(), stubStatus{snap: selfSnapshot()}, client, 10, nil)
-	module.Registry.Absorb(context.Background(), callerSeed("trusted", "203.0.113.1", 8090))
+	module := New(newGuard(), stubStatus{snap: selfSnapshot(t)}, client, 10, nil)
+	module.Registry.Absorb(context.Background(), callerSeed(t, "trusted", "203.0.113.1", 8090))
 
 	rec := httptest.NewRecorder()
 	module.HelloEndpoint.ServeHTTP(rec, helloRequest("freeworld", caller))
@@ -296,7 +300,7 @@ func TestHelloClassifiesUnreachableCallerAsJunior(t *testing.T) {
 }
 
 func TestHelloClassifiesAddresslessCallerAsJunior(t *testing.T) {
-	resp := helloThrough(t, http.DefaultClient, callerSeed("caller", "", 0))
+	resp := helloThrough(t, http.DefaultClient, callerSeed(t, "caller", "", 0))
 
 	if resp.YourType != yacymodel.PeerJunior {
 		t.Fatalf("YourType = %q, want junior", resp.YourType)
@@ -305,9 +309,9 @@ func TestHelloClassifiesAddresslessCallerAsJunior(t *testing.T) {
 
 func TestSampleSeedsLimitsAndShuffles(t *testing.T) {
 	seeds := []yacymodel.Seed{
-		callerSeed("a", "", 0),
-		callerSeed("b", "", 0),
-		callerSeed("c", "", 0),
+		callerSeed(t, "a", "", 0),
+		callerSeed(t, "b", "", 0),
+		callerSeed(t, "c", "", 0),
 	}
 	dir := newPeerDirectory(
 		stubProbe{},
@@ -326,7 +330,7 @@ func TestSampleSeedsLimitsAndShuffles(t *testing.T) {
 }
 
 func TestSampleSeedsCountZeroReturnsAll(t *testing.T) {
-	seeds := []yacymodel.Seed{callerSeed("a", "", 0), callerSeed("b", "", 0)}
+	seeds := []yacymodel.Seed{callerSeed(t, "a", "", 0), callerSeed(t, "b", "", 0)}
 	dir := newPeerDirectory(
 		stubProbe{},
 		NewTrustedSeedRegistry(10),
@@ -344,7 +348,7 @@ func TestCallerBackPingRejectsUnaddressableSeed(t *testing.T) {
 
 	if probe.Reachable(
 		context.Background(),
-		callerSeed("peer", "", 0),
+		callerSeed(t, "peer", "", 0),
 		hashFor("self"),
 		"freeworld",
 	) {
@@ -354,8 +358,8 @@ func TestCallerBackPingRejectsUnaddressableSeed(t *testing.T) {
 
 func TestRegistryDiscardsBeyondCapacity(t *testing.T) {
 	registry := NewTrustedSeedRegistry(1)
-	registry.Absorb(context.Background(), callerSeed("a", "", 0))
-	registry.Absorb(context.Background(), callerSeed("b", "", 0))
+	registry.Absorb(context.Background(), callerSeed(t, "a", "", 0))
+	registry.Absorb(context.Background(), callerSeed(t, "b", "", 0))
 
 	trusted := registry.Trusted(context.Background())
 	if len(trusted) != 1 {
