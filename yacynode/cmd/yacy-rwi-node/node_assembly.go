@@ -7,13 +7,13 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/bootstrap"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/crawling"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/documentsearch"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/eviction"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/landing"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodestatus"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/peering"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/search"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
 )
 
@@ -65,7 +65,7 @@ func assembleNode(
 	rwi.MountTransferRWI(router, peer, postingReceiver)
 	nodestatus.MountQuery(router, peer, postings, urlDirectory)
 
-	search.MountSearch(router, peer, postings, urlDirectory, searchPostingsPerWord)
+	documentsearch.MountSearch(router, peer, postings, urlDirectory, searchPostingsPerWord)
 
 	registry := peering.NewTrustedSeeds(trustedSeedCapacity)
 	peering.MountHello(

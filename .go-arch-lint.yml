@@ -26,8 +26,6 @@ components:
     in: yacynode/internal/urlmeta/**
   rwi:
     in: yacynode/internal/rwi/**
-  search:
-    in: yacynode/internal/search/**
   documentsearch:
     in: yacynode/internal/documentsearch/**
   nodestatus:
@@ -126,14 +124,6 @@ deps:
       - httpguard
       - yacymodel
       - yacyproto
-  search:
-    mayDependOn:
-      - search
-      - rwi
-      - urlmeta
-      - httpguard
-      - yacymodel
-      - yacyproto
   documentsearch:
     mayDependOn:
       - documentsearch
@@ -165,7 +155,7 @@ deps:
       - crawling
       - urlmeta
       - rwi
-      - search
+      - documentsearch
       - eviction
       - nodestatus
       - yacymodel
