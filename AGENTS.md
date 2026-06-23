@@ -12,6 +12,8 @@ Documentation: Each doc is self-contained, concise, plain-language, and user-fac
 
 Naming: Every package, file, type, interface, port, function, method, field, and variable has one bounded responsibility. Prefer explicit bounded names over short generic ones. Never use util.go, helpers.go, handler.go, or types.go. Reject umbrella names such as Store, Manager, Service, Handler, Util, or catch-all domain names like Distribution*. If the boundary cannot be stated in one sentence, fix the abstraction.
 
+Naming style: Name a thing for what it is in the problem domain, never for how it is built or what it is for. Use the words a domain expert would say out loud; the same word holds in conversation, code, and docs. Strip implementation terms (count, map, hash, digest, buffer) and destination terms (shared, peer, abstract, response) from names; keep the domain noun. Spell names in full, readable English; length is free, abbreviation is not. Confine protocol- and transport-specific vocabulary to the edge that translates to and from it; inner code speaks plain domain language. Test every name by reading it aloud in a sentence to someone who knows the domain but not the code: if they nod, it passes.
+
 Dependencies: Record each new third-party dependency in its own ADR before use.
 
 Version pinning: Pin all versions. Runtime deps: go.mod. Build/lint tools: Go tool directives in go.mod. make verify uses only pinned tools, never PATH versions.
