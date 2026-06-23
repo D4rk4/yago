@@ -32,6 +32,8 @@ components:
     in: yacynode/internal/nodestatus/**
   eviction:
     in: yacynode/internal/eviction/**
+  metrics:
+    in: yacynode/internal/metrics/**
   cmd:
     in:
       - yacynode/cmd/yacy-peer-hash/**
@@ -149,6 +151,12 @@ deps:
       - urlmeta
       - boltvault
       - yacymodel
+  metrics:
+    mayDependOn:
+      - metrics
+      - eviction
+    canUse:
+      - prometheus
   cmd:
     mayDependOn:
       - boltvault
@@ -161,6 +169,7 @@ deps:
       - rwi
       - documentsearch
       - eviction
+      - metrics
       - nodestatus
       - yacymodel
       - yacyproto

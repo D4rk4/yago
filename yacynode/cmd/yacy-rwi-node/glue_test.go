@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/metrics"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodestatus"
 )
 
@@ -79,6 +80,7 @@ func TestPublishStorageMetricsAndSweepLoop(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	runEvictionLoop(ctx, assembled.sweeper)
-	sweepOnce(context.Background(), assembled.sweeper)
+	observer := metrics.NewEviction(prometheus.NewRegistry())
+	runEvictionLoop(ctx, assembled.sweeper, observer)
+	sweepOnce(context.Background(), assembled.sweeper, observer)
 }

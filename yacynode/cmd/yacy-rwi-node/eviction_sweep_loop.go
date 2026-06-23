@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/eviction"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/metrics"
 )
 
 const (
@@ -14,8 +15,8 @@ const (
 	evictionFailedMessage = "storage eviction failed"
 )
 
-func runEvictionLoop(ctx context.Context, sweeper eviction.Sweeper) {
-	sweepOnce(ctx, sweeper)
+func runEvictionLoop(ctx context.Context, sweeper eviction.Sweeper, observer *metrics.Eviction) {
+	sweepOnce(ctx, sweeper, observer)
 
 	ticker := time.NewTicker(evictionInterval)
 	defer ticker.Stop()
@@ -24,18 +25,20 @@ func runEvictionLoop(ctx context.Context, sweeper eviction.Sweeper) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			sweepOnce(ctx, sweeper)
+			sweepOnce(ctx, sweeper, observer)
 		}
 	}
 }
 
-func sweepOnce(ctx context.Context, sweeper eviction.Sweeper) {
+func sweepOnce(ctx context.Context, sweeper eviction.Sweeper, observer *metrics.Eviction) {
 	result, err := sweeper.Sweep(ctx)
 	if err != nil {
+		observer.ObserveFailure()
 		slog.ErrorContext(ctx, evictionFailedMessage, slog.Any("error", err))
 
 		return
 	}
+	observer.Observe(result)
 	if result.URLsDeleted == 0 && result.PostingsDeleted == 0 {
 		return
 	}

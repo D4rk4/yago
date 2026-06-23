@@ -7,7 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/metrics"
 )
 
 func TestRunRejectsInvalidConfig(t *testing.T) {
@@ -74,7 +77,7 @@ func TestServeReturnsNilAfterCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := serve(ctx, assembled,
+	err := serve(ctx, assembled, metrics.NewEviction(prometheus.NewRegistry()),
 		namedServer{"peer protocol", buildServer("127.0.0.1:0", assembled.peerMux)},
 		namedServer{"ops", buildServer("127.0.0.1:0", newOpsMux(newEndpointMetrics().handler()))},
 	)
@@ -86,7 +89,7 @@ func TestServeReturnsNilAfterCancel(t *testing.T) {
 func TestServeShutsDownOnListenError(t *testing.T) {
 	assembled := assembleTestNode(t, testConfig(t), openTestVault(t))
 
-	err := serve(context.Background(), assembled,
+	err := serve(context.Background(), assembled, metrics.NewEviction(prometheus.NewRegistry()),
 		namedServer{"peer protocol", buildServer("203.0.113.255:-1", assembled.peerMux)},
 	)
 	if err == nil {

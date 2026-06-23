@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/metrics"
 )
 
 const (
@@ -62,8 +63,9 @@ func run() error {
 	}
 	defer closeVault(vault)
 
-	metrics := newEndpointMetrics()
-	publishStorageMetrics(metrics.registry, vault)
+	endpoints := newEndpointMetrics()
+	publishStorageMetrics(endpoints.registry, vault)
+	evictionMetrics := metrics.NewEviction(endpoints.registry)
 
 	assembled, err := assembleNode(config, settings, vault, client)
 	if err != nil {
@@ -76,14 +78,15 @@ func run() error {
 	return serve(
 		ctx,
 		assembled,
+		evictionMetrics,
 		namedServer{
 			"peer protocol",
 			buildServer(
 				config.PeerAddr,
-				logHTTPRequests(instrumentHTTP(metrics, assembled.peerMux)),
+				logHTTPRequests(instrumentHTTP(endpoints, assembled.peerMux)),
 			),
 		},
-		namedServer{"ops", buildServer(config.OpsAddr, newOpsMux(metrics.handler()))},
+		namedServer{"ops", buildServer(config.OpsAddr, newOpsMux(endpoints.handler()))},
 	)
 }
 
@@ -100,7 +103,12 @@ func buildServer(addr string, handler http.Handler) *http.Server {
 	}
 }
 
-func serve(ctx context.Context, assembled node, servers ...namedServer) error {
+func serve(
+	ctx context.Context,
+	assembled node,
+	evictionMetrics *metrics.Eviction,
+	servers ...namedServer,
+) error {
 	ctx, cancel := context.WithCancel(ctx)
 
 	var background sync.WaitGroup
@@ -111,7 +119,7 @@ func serve(ctx context.Context, assembled node, servers ...namedServer) error {
 	}()
 	go func() {
 		defer background.Done()
-		runEvictionLoop(ctx, assembled.sweeper)
+		runEvictionLoop(ctx, assembled.sweeper, evictionMetrics)
 	}()
 	defer background.Wait()
 	defer cancel()
