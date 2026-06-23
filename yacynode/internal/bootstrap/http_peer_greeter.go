@@ -15,7 +15,13 @@ import (
 
 const greetMaxBodyBytes int64 = 256 << 10
 
-var ErrGreetFailed = errors.New("peer greet failed")
+var errGreetFailed = errors.New("peer greet failed")
+
+type greetResult struct {
+	YourIP   string
+	YourType yacymodel.PeerType
+	Known    []yacymodel.Seed
+}
 
 type httpPeerGreeter struct {
 	client      *http.Client
@@ -31,10 +37,10 @@ func (g httpPeerGreeter) Greet(
 	endpoint string,
 	self yacymodel.Seed,
 	count int,
-) (GreetResult, error) {
+) (greetResult, error) {
 	target, err := greetURL(endpoint)
 	if err != nil {
-		return GreetResult{}, err
+		return greetResult{}, err
 	}
 
 	request := yacyproto.HelloRequest{
@@ -51,39 +57,39 @@ func (g httpPeerGreeter) Greet(
 		strings.NewReader(request.Form().Encode()),
 	)
 	if err != nil {
-		return GreetResult{}, fmt.Errorf("%w: %w", ErrGreetFailed, err)
+		return greetResult{}, fmt.Errorf("%w: %w", errGreetFailed, err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := g.client.Do(req)
 	if err != nil {
-		return GreetResult{}, fmt.Errorf("%w: %w", ErrGreetFailed, err)
+		return greetResult{}, fmt.Errorf("%w: %w", errGreetFailed, err)
 	}
 	defer closeResponseBody(ctx, resp.Body, "peerGreet")
 
 	if resp.StatusCode != http.StatusOK {
-		return GreetResult{}, fmt.Errorf("%w: status %d", ErrGreetFailed, resp.StatusCode)
+		return greetResult{}, fmt.Errorf("%w: status %d", errGreetFailed, resp.StatusCode)
 	}
 
 	return parseGreetResponse(ctx, io.LimitReader(resp.Body, greetMaxBodyBytes))
 }
 
-func parseGreetResponse(ctx context.Context, body io.Reader) (GreetResult, error) {
+func parseGreetResponse(ctx context.Context, body io.Reader) (greetResult, error) {
 	raw, err := io.ReadAll(body)
 	if err != nil {
-		return GreetResult{}, fmt.Errorf("%w: %w", ErrGreetFailed, err)
+		return greetResult{}, fmt.Errorf("%w: %w", errGreetFailed, err)
 	}
 
 	msg, err := yacymodel.ParseMessage(string(raw))
 	if err != nil {
-		return GreetResult{}, fmt.Errorf("%w: %w", ErrGreetFailed, err)
+		return greetResult{}, fmt.Errorf("%w: %w", errGreetFailed, err)
 	}
 	parsed, err := yacyproto.ParseHelloResponse(ctx, msg)
 	if err != nil {
-		return GreetResult{}, fmt.Errorf("%w: %w", ErrGreetFailed, err)
+		return greetResult{}, fmt.Errorf("%w: %w", errGreetFailed, err)
 	}
 
-	return GreetResult{
+	return greetResult{
 		YourIP:   parsed.YourIP,
 		YourType: parsed.YourType,
 		Known:    parsed.KnownSeeds(),
@@ -93,7 +99,7 @@ func parseGreetResponse(ctx context.Context, body io.Reader) (GreetResult, error
 func greetURL(endpoint string) (*url.URL, error) {
 	endpoint = strings.TrimSpace(endpoint)
 	if endpoint == "" {
-		return nil, fmt.Errorf("%w: empty endpoint", ErrGreetFailed)
+		return nil, fmt.Errorf("%w: empty endpoint", errGreetFailed)
 	}
 
 	return &url.URL{

@@ -103,9 +103,9 @@ func TestSearchJoinsAndCountsAndAbstracts(t *testing.T) {
 		postingsPerWord: 100,
 	}
 
-	result, err := s.Search(context.Background(), Query{
+	result, err := s.Search(context.Background(), searchQuery{
 		Words:     []yacymodel.Hash{word1, word2},
-		Abstracts: AbstractRequest{Mode: AbstractAuto},
+		Abstracts: abstractSpec{Mode: abstractAuto},
 	})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -144,7 +144,7 @@ func TestSearchTruncatesToMaxResults(t *testing.T) {
 
 	result, err := s.Search(
 		context.Background(),
-		Query{Words: []yacymodel.Hash{word}, MaxResults: 2},
+		searchQuery{Words: []yacymodel.Hash{word}, MaxResults: 2},
 	)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -172,7 +172,7 @@ func TestSearchRanksByHitsThenDistance(t *testing.T) {
 		postingsPerWord: 100,
 	}
 
-	result, err := s.Search(context.Background(), Query{Words: []yacymodel.Hash{word}})
+	result, err := s.Search(context.Background(), searchQuery{Words: []yacymodel.Hash{word}})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestSearchExcludesWords(t *testing.T) {
 		postingsPerWord: 100,
 	}
 
-	result, err := s.Search(context.Background(), Query{
+	result, err := s.Search(context.Background(), searchQuery{
 		Words:   []yacymodel.Hash{word},
 		Exclude: []yacymodel.Hash{ban},
 	})
@@ -213,8 +213,8 @@ func TestSearchExplicitAbstractOnlyCounts(t *testing.T) {
 	}}
 	s := searcher{index: index, urls: fakeDirectory{}, postingsPerWord: 100}
 
-	result, err := s.Search(context.Background(), Query{
-		Abstracts: AbstractRequest{Mode: AbstractExplicit, Words: []yacymodel.Hash{word}},
+	result, err := s.Search(context.Background(), searchQuery{
+		Abstracts: abstractSpec{Mode: abstractExplicit, Words: []yacymodel.Hash{word}},
 	})
 	if err != nil {
 		t.Fatalf("Search: %v", err)

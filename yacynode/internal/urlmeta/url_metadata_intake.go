@@ -12,12 +12,6 @@ import (
 
 const urlRowDiscarded = "url row discarded"
 
-type Receipt struct {
-	Busy     bool
-	Double   int
-	ErrorURL []yacymodel.Hash
-}
-
 type urlIntake struct {
 	vault      *boltvault.Vault
 	collection *boltvault.Collection[yacymodel.URIMetadataRow]

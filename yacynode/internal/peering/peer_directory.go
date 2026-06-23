@@ -6,6 +6,11 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
+type helloOutcome struct {
+	CallerType yacymodel.PeerType
+	Known      []yacymodel.Seed
+}
+
 type trustedSeedSource interface {
 	Trusted(ctx context.Context) []yacymodel.Seed
 }
@@ -41,8 +46,8 @@ func (d peerDirectory) Hello(
 	ctx context.Context,
 	caller yacymodel.Seed,
 	count int,
-) (HelloOutcome, error) {
-	return HelloOutcome{
+) (helloOutcome, error) {
+	return helloOutcome{
 		CallerType: d.classifyCaller(ctx, caller),
 		Known:      d.sampleSeeds(d.trusted.Trusted(ctx), count),
 	}, nil

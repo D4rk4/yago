@@ -31,9 +31,6 @@ func TestFailureResponsesSetStatus(t *testing.T) {
 		{"method", func(rec *httptest.ResponseRecorder) {
 			httpguard.FailMethodNotAllowed(ctx, rec, http.MethodPut)
 		}, http.StatusMethodNotAllowed},
-		{"internal", func(rec *httptest.ResponseRecorder) {
-			httpguard.FailInternal(ctx, rec, "op", errors.New("boom"))
-		}, http.StatusInternalServerError},
 	}
 
 	for _, tc := range cases {

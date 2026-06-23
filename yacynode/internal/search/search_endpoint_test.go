@@ -2,63 +2,41 @@ package search
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
-type fixedStatus struct{}
-
-func (fixedStatus) Version(context.Context) string { return "1.0" }
-
-func (fixedStatus) Uptime(context.Context) int { return 7 }
-
-func searchIdentity() httpguard.LocalPeer {
-	return httpguard.LocalPeer{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
+func searchIdentity() httpguard.PeerIdentity {
+	return httpguard.PeerIdentity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
 }
 
-func newEndpoint(index fakeScanner, urls fakeDirectory) http.Handler {
-	guard := httpguard.NewRequestGuard(
-		searchIdentity(),
-		httpguard.DefaultMaxBodyBytes,
-		time.Second,
-	)
-
-	return New(guard, httpguard.NewWireResponder(fixedStatus{}), index, urls, 100).Endpoint
+func newEndpoint(
+	index fakeScanner,
+	urls fakeDirectory,
+) func(context.Context, yacyproto.SearchRequest) (yacyproto.SearchResponse, error) {
+	return searchEndpoint{
+		peer: searchIdentity(),
+		searcher: searcher{
+			index:           index,
+			urls:            urls,
+			postingsPerWord: 100,
+		},
+	}.Serve
 }
 
 func serveSearch(
 	t *testing.T,
-	endpoint http.Handler,
+	endpoint func(context.Context, yacyproto.SearchRequest) (yacyproto.SearchResponse, error),
 	req yacyproto.SearchRequest,
 ) yacyproto.SearchResponse {
 	t.Helper()
 
-	rec := httptest.NewRecorder()
-	httpReq := httptest.NewRequestWithContext(
-		context.Background(),
-		http.MethodPost,
-		yacyproto.PathSearch,
-		nil,
-	)
-	httpReq.PostForm = req.Form()
-	endpoint.ServeHTTP(rec, httpReq)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	message, err := yacymodel.ParseMessage(rec.Body.String())
+	resp, err := endpoint(context.Background(), req)
 	if err != nil {
-		t.Fatalf("ParseMessage: %v", err)
-	}
-	resp, err := yacyproto.ParseSearchResponse(message)
-	if err != nil {
-		t.Fatalf("ParseSearchResponse: %v", err)
+		t.Fatalf("Serve: %v", err)
 	}
 
 	return resp
@@ -78,9 +56,6 @@ func TestEndpointJoinsAndAnswers(t *testing.T) {
 		Language:    "en",
 	})
 
-	if resp.Version != "1.0" {
-		t.Errorf("Version = %q, want 1.0", resp.Version)
-	}
 	if resp.Count != 2 || resp.JoinCount != 2 {
 		t.Errorf("Count = %d, JoinCount = %d, want 2/2", resp.Count, resp.JoinCount)
 	}

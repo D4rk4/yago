@@ -7,8 +7,11 @@ package nodestatus
 
 import (
 	"context"
+	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
+	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 type Report interface {
@@ -34,4 +37,28 @@ type Identity struct {
 	Port        int
 	Flags       yacymodel.Flags
 	Version     string
+	Start       time.Time
+}
+
+func (id Identity) Uptime(now time.Time) int {
+	return int(now.Sub(id.Start).Minutes())
+}
+
+func NewReport(id Identity, rwi RWICounter, urls URLCounter) Report {
+	return newReport(id, time.Now, rwi, urls)
+}
+
+func MountQuery(
+	router httpguard.WireRouter,
+	peer httpguard.PeerIdentity,
+	rwi RWICounter,
+	urls URLCounter,
+) {
+	httpguard.Mount(
+		router,
+		yacyproto.PathQuery,
+		yacyproto.QueryEndpointMethods,
+		yacyproto.ParseQueryRequest,
+		queryEndpoint{peer: peer, rwi: rwi, urls: urls}.Serve,
+	)
 }

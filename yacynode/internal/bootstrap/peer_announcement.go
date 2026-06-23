@@ -13,11 +13,6 @@ const (
 	announceMaxGreets      = 16
 )
 
-type bootstrapConfig interface {
-	SeedlistURLs() []string
-	AnnounceInterval() time.Duration
-}
-
 type seedlistFetcher interface {
 	Fetch(ctx context.Context, url string) ([]yacymodel.Seed, error)
 }
@@ -28,11 +23,11 @@ type peerGreeter interface {
 		endpoint string,
 		self yacymodel.Seed,
 		count int,
-	) (GreetResult, error)
+	) (greetResult, error)
 }
 
-type PeerAnnouncement struct {
-	config   bootstrapConfig
+type peerAnnouncement struct {
+	settings BootstrapSettings
 	fetcher  seedlistFetcher
 	greeter  peerGreeter
 	status   RuntimeStatus
@@ -40,14 +35,14 @@ type PeerAnnouncement struct {
 }
 
 func newPeerAnnouncement(
-	config bootstrapConfig,
+	settings BootstrapSettings,
 	fetcher seedlistFetcher,
 	greeter peerGreeter,
 	status RuntimeStatus,
 	registry TrustedSeedSink,
-) *PeerAnnouncement {
-	return &PeerAnnouncement{
-		config:   config,
+) *peerAnnouncement {
+	return &peerAnnouncement{
+		settings: settings,
 		fetcher:  fetcher,
 		greeter:  greeter,
 		status:   status,
@@ -55,10 +50,10 @@ func newPeerAnnouncement(
 	}
 }
 
-func (a *PeerAnnouncement) Run(ctx context.Context) {
+func (a *peerAnnouncement) Run(ctx context.Context) {
 	a.Announce(ctx)
 
-	ticker := time.NewTicker(a.config.AnnounceInterval())
+	ticker := time.NewTicker(a.settings.AnnounceInterval)
 	defer ticker.Stop()
 
 	for {
@@ -71,7 +66,7 @@ func (a *PeerAnnouncement) Run(ctx context.Context) {
 	}
 }
 
-func (a *PeerAnnouncement) Announce(ctx context.Context) {
+func (a *peerAnnouncement) Announce(ctx context.Context) {
 	self := a.status.SelfSeed(ctx)
 	endpoints := a.discover(ctx)
 
@@ -95,10 +90,10 @@ func (a *PeerAnnouncement) Announce(ctx context.Context) {
 	}
 }
 
-func (a *PeerAnnouncement) discover(ctx context.Context) []string {
+func (a *peerAnnouncement) discover(ctx context.Context) []string {
 	var endpoints []string
 
-	for _, source := range a.config.SeedlistURLs() {
+	for _, source := range a.settings.SeedlistURLs {
 		seeds, err := a.fetcher.Fetch(ctx, source)
 		if err != nil {
 			slog.WarnContext(

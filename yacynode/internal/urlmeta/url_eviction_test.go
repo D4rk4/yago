@@ -1,19 +1,16 @@
-package urlmeta_test
+package urlmeta
 
 import (
 	"context"
 	"fmt"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
 )
 
-func openVaultAndModule(t *testing.T) (*boltvault.Vault, urlmeta.Module) {
+func openVaultAndModule(t *testing.T) (*boltvault.Vault, urlPorts) {
 	t.Helper()
 
 	vault, err := boltvault.Open(filepath.Join(t.TempDir(), "node.db"), 0)
@@ -26,13 +23,12 @@ func openVaultAndModule(t *testing.T) (*boltvault.Vault, urlmeta.Module) {
 		}
 	})
 
-	guard := httpguard.NewRequestGuard(localIdentity(), httpguard.DefaultMaxBodyBytes, time.Second)
-	module, err := urlmeta.New(vault, guard, httpguard.NewWireResponder(fixedStatus{}))
+	directory, evictor, receiver, err := Open(vault)
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatalf("Open: %v", err)
 	}
 
-	return vault, module
+	return vault, urlPorts{Directory: directory, Evictor: evictor, Receiver: receiver}
 }
 
 func urlRowWithFreshness(t *testing.T, seed, freshness string) yacymodel.URIMetadataRow {
@@ -61,7 +57,7 @@ func TestSelectStaleReturnsStalestFirst(t *testing.T) {
 		urlRowWithFreshness(t, "stale", "20200101"),
 		urlRowWithFreshness(t, "middle", "20230101"),
 	}
-	if _, err := module.Intake(ctx, rows); err != nil {
+	if _, err := module.Receiver.Receive(ctx, rows); err != nil {
 		t.Fatalf("Intake: %v", err)
 	}
 
@@ -94,11 +90,14 @@ func TestPurgeDeletesRows(t *testing.T) {
 	ctx := context.Background()
 	vault, module := openVaultAndModule(t)
 	row := urlRow(t, "a")
-	if _, err := module.Intake(ctx, []yacymodel.URIMetadataRow{row, urlRow(t, "b")}); err != nil {
+	if _, err := module.Receiver.Receive(
+		ctx,
+		[]yacymodel.URIMetadataRow{row, urlRow(t, "b")},
+	); err != nil {
 		t.Fatalf("Intake: %v", err)
 	}
 
-	var result urlmeta.PurgeResult
+	var result PurgeResult
 	if err := vault.Update(ctx, func(tx *boltvault.Txn) error {
 		purged, purgeErr := module.Evictor.Purge(tx, []yacymodel.Hash{rowHash(t, row)})
 		result = purged

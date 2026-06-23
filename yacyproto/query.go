@@ -1,6 +1,7 @@
 package yacyproto
 
 import (
+	"context"
 	"net/url"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
@@ -40,7 +41,7 @@ func (r QueryRequest) Form() url.Values {
 	return form
 }
 
-func ParseQueryRequest(form url.Values) (QueryRequest, error) {
+func ParseQueryRequest(_ context.Context, form url.Values) (QueryRequest, error) {
 	req := QueryRequest{
 		NetworkName: form.Get(FieldNetworkName),
 		Env:         form.Get(FieldEnv),

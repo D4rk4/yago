@@ -90,7 +90,7 @@ func newSweeper(
 	target float64,
 	batch int,
 ) eviction.Sweeper {
-	return eviction.New(
+	return eviction.NewSweeper(
 		vault,
 		postings,
 		urls,

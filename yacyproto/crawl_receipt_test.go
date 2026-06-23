@@ -1,6 +1,7 @@
 package yacyproto_test
 
 import (
+	"context"
 	"net/url"
 	"reflect"
 	"testing"
@@ -21,7 +22,7 @@ func TestCrawlReceiptRequestRoundTrip(t *testing.T) {
 		LURLEntry:   "encoded-entry",
 	}
 
-	got, err := yacyproto.ParseCrawlReceiptRequest(req.Form())
+	got, err := yacyproto.ParseCrawlReceiptRequest(context.Background(), req.Form())
 	if err != nil {
 		t.Fatalf("ParseCrawlReceiptRequest: %v", err)
 	}
@@ -55,7 +56,7 @@ func TestParseCrawlReceiptRequestRejectsBadIam(t *testing.T) {
 	t.Parallel()
 
 	form := url.Values{yacyproto.FieldIam: {"x"}}
-	if _, err := yacyproto.ParseCrawlReceiptRequest(form); err == nil {
+	if _, err := yacyproto.ParseCrawlReceiptRequest(context.Background(), form); err == nil {
 		t.Fatal("expected error for malformed iam hash")
 	}
 }

@@ -2,8 +2,8 @@ package search
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
-	"net/http"
 	"strings"
 	"time"
 
@@ -17,28 +17,17 @@ const (
 )
 
 type searchEndpoint struct {
-	guard    httpguard.RequestGuard
-	respond  httpguard.WireResponder
+	peer     httpguard.PeerIdentity
 	searcher searcher
 }
 
-func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	form, ctx, cancel, ok := e.guard.Parse(w, r, yacyproto.SearchEndpointMethods)
-	if !ok {
-		return
-	}
-	defer cancel()
-
-	req, err := yacyproto.ParseSearchRequest(ctx, form)
-	if err != nil {
-		httpguard.FailBadRequest(ctx, w, err)
-
-		return
-	}
-
+func (e searchEndpoint) Serve(
+	ctx context.Context,
+	req yacyproto.SearchRequest,
+) (yacyproto.SearchResponse, error) {
 	resp := yacyproto.SearchResponse{}
 
-	if e.guard.NetworkMatches(form) {
+	if e.peer.NetworkMatches(req.NetworkName) {
 		query := queryFromRequest(req)
 		if ignored := ignoredOptionNames(query); len(ignored) != 0 {
 			slog.DebugContext(ctx, "ignoring accepted search options",
@@ -54,9 +43,7 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		result, err := e.searcher.Search(searchCtx, query)
 		if err != nil {
-			httpguard.FailInternal(ctx, w, "search failed", err)
-
-			return
+			return yacyproto.SearchResponse{}, fmt.Errorf("search: %w", err)
 		}
 
 		resp.SearchTime = int(result.SearchTime / time.Millisecond)
@@ -72,10 +59,11 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.Int("resultCount", resp.Count),
 		slog.Int("joinCount", resp.JoinCount),
 	)
-	e.respond.Write(ctx, w, resp.Encode())
+
+	return resp, nil
 }
 
-func queryFromRequest(req yacyproto.SearchRequest) Query {
+func queryFromRequest(req yacyproto.SearchRequest) searchQuery {
 	count := req.Count
 	if count <= 0 {
 		count = defaultSearchCount
@@ -93,7 +81,7 @@ func queryFromRequest(req yacyproto.SearchRequest) Query {
 		filter = ""
 	}
 
-	return Query{
+	return searchQuery{
 		Words:       req.Query,
 		Exclude:     req.Exclude,
 		URLs:        req.URLs,
@@ -101,7 +89,7 @@ func queryFromRequest(req yacyproto.SearchRequest) Query {
 		MaxDistance: req.MaxDist,
 		MaxTime:     maxTime,
 		Abstracts:   abstractRequest(req),
-		Filters: Filters{
+		searchFilters: searchFilters{
 			ContentDomain:    contentDomain,
 			StrictContentDom: req.StrictContentDom,
 			TimezoneOffset:   req.TimezoneOffset,
@@ -122,15 +110,15 @@ func queryFromRequest(req yacyproto.SearchRequest) Query {
 	}
 }
 
-func abstractRequest(req yacyproto.SearchRequest) AbstractRequest {
+func abstractRequest(req yacyproto.SearchRequest) abstractSpec {
 	switch req.Abstracts {
 	case "":
-		return AbstractRequest{Mode: AbstractNone}
+		return abstractSpec{Mode: abstractNone}
 	case yacyproto.SearchAbstractsAuto:
-		return AbstractRequest{Mode: AbstractAuto}
+		return abstractSpec{Mode: abstractAuto}
 	default:
-		return AbstractRequest{
-			Mode:  AbstractExplicit,
+		return abstractSpec{
+			Mode:  abstractExplicit,
 			Words: req.Abstracts.Hashes(),
 		}
 	}

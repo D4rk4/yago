@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
@@ -23,34 +22,21 @@ var (
 )
 
 type queryEndpoint struct {
-	guard   httpguard.RequestGuard
-	respond httpguard.WireResponder
-	rwi     RWICounter
-	urls    URLCounter
+	peer httpguard.PeerIdentity
+	rwi  RWICounter
+	urls URLCounter
 }
 
-func (e queryEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	form, ctx, cancel, ok := e.guard.Parse(w, r, yacyproto.QueryEndpointMethods)
-	if !ok {
-		return
-	}
-	defer cancel()
-
-	req, err := yacyproto.ParseQueryRequest(form)
-	if err != nil {
-		httpguard.FailBadRequest(ctx, w, err)
-
-		return
-	}
-
+func (e queryEndpoint) Serve(
+	ctx context.Context,
+	req yacyproto.QueryRequest,
+) (yacyproto.QueryResponse, error) {
 	resp := yacyproto.QueryResponse{Response: yacyproto.QueryResponseRejected}
 
-	if e.guard.NetworkMatches(form) && e.guard.YouAreMatches(req.YouAre) {
+	if e.peer.NetworkMatches(req.NetworkName) && e.peer.YouAreMatches(req.YouAre) {
 		count, supported, err := e.count(ctx, req.Object)
 		if err != nil {
-			httpguard.FailInternal(ctx, w, msgCountFailed, err)
-
-			return
+			return yacyproto.QueryResponse{}, fmt.Errorf("%s: %w", msgCountFailed, err)
 		}
 		if supported {
 			resp.Response = count
@@ -61,7 +47,8 @@ func (e queryEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.String("object", string(req.Object)),
 		slog.Int("count", resp.Response),
 	)
-	e.respond.Write(ctx, w, resp.Encode())
+
+	return resp, nil
 }
 
 func (e queryEndpoint) count(ctx context.Context, object yacyproto.QueryObject) (int, bool, error) {

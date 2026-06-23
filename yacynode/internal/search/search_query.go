@@ -1,7 +1,3 @@
-// Package search owns the search endpoint: it maps the wire request to a query,
-// filters and ranks postings drawn from the rwi posting scanner, joins matching
-// URL metadata from urlmeta, and encodes the wire response. It holds no storage of
-// its own and reaches every collection only through published module ports.
 package search
 
 import (
@@ -11,20 +7,20 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-type AbstractMode int
+type abstractMode int
 
 const (
-	AbstractNone AbstractMode = iota
-	AbstractAuto
-	AbstractExplicit
+	abstractNone abstractMode = iota
+	abstractAuto
+	abstractExplicit
 )
 
-type AbstractRequest struct {
-	Mode  AbstractMode
+type abstractSpec struct {
+	Mode  abstractMode
 	Words []yacymodel.Hash
 }
 
-type Filters struct {
+type searchFilters struct {
 	ContentDomain    string
 	StrictContentDom bool
 	TimezoneOffset   int
@@ -43,18 +39,18 @@ type Filters struct {
 	Partitions       int
 }
 
-type Query struct {
-	Words       []yacymodel.Hash
-	Exclude     []yacymodel.Hash
-	URLs        []yacymodel.Hash
-	MaxResults  int
-	MaxDistance int
-	MaxTime     time.Duration
-	Abstracts   AbstractRequest
-	Filters     Filters
+type searchQuery struct {
+	Words         []yacymodel.Hash
+	Exclude       []yacymodel.Hash
+	URLs          []yacymodel.Hash
+	MaxResults    int
+	MaxDistance   int
+	MaxTime       time.Duration
+	Abstracts     abstractSpec
+	searchFilters searchFilters
 }
 
-type Result struct {
+type searchResult struct {
 	Resources  []yacymodel.URIMetadataRow
 	JoinCount  int
 	SearchTime time.Duration
@@ -63,15 +59,15 @@ type Result struct {
 	Abstracts  map[yacymodel.Hash]string
 }
 
-func (q Query) joinLanguage() string {
-	return parseSearchModifier(q.Filters.Modifier).Language
+func (q searchQuery) joinLanguage() string {
+	return parseSearchModifier(q.searchFilters.Modifier).Language
 }
 
-func (q Query) joinSiteHash() (string, error) {
-	if q.Filters.SiteHash != "" {
-		return q.Filters.SiteHash, nil
+func (q searchQuery) joinSiteHash() (string, error) {
+	if q.searchFilters.SiteHash != "" {
+		return q.searchFilters.SiteHash, nil
 	}
-	siteHost := parseSearchModifier(q.Filters.Modifier).SiteHost
+	siteHost := parseSearchModifier(q.searchFilters.Modifier).SiteHost
 	if siteHost == "" {
 		return "", nil
 	}

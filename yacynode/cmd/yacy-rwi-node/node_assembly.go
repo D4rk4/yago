@@ -15,16 +15,14 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/search"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 type node struct {
 	peerMux   *http.ServeMux
 	sweeper   eviction.Sweeper
-	announcer bootstrap.Module
+	announcer bootstrap.Announcer
 }
 
-//nolint:funlen // composition root wiring every module into one mux
 func assembleNode(
 	config nodeConfig,
 	settings bootstrap.BootstrapSettings,
@@ -32,81 +30,68 @@ func assembleNode(
 	client *http.Client,
 ) (node, error) {
 	guard := httpguard.NewRequestGuard(
-		httpguard.LocalPeer{Hash: config.Hash, NetworkName: config.NetworkName},
 		httpguard.DefaultMaxBodyBytes,
 		httpguard.DefaultRequestTimeout,
 	)
+	peer := httpguard.PeerIdentity{Hash: config.Hash, NetworkName: config.NetworkName}
 
-	liveness := nodestatus.NewLiveness(version)
-	respond := httpguard.NewWireResponder(liveness)
-
-	urlModule, err := urlmeta.New(vault, guard, respond)
+	urlDirectory, urlEvictor, urlReceiver, err := urlmeta.Open(vault)
 	if err != nil {
-		return node{}, fmt.Errorf("urlmeta module: %w", err)
+		return node{}, fmt.Errorf("urlmeta storage: %w", err)
 	}
 
-	rwiModule, err := rwi.New(
+	postings, postingReceiver, err := rwi.Open(
 		vault,
-		guard,
-		respond,
-		urlModule.Directory,
+		urlDirectory,
 		rwi.Config{BatchCap: receiveBatchCap, PauseSeconds: receiveBusyPauseSecs},
 	)
 	if err != nil {
-		return node{}, fmt.Errorf("rwi module: %w", err)
+		return node{}, fmt.Errorf("rwi storage: %w", err)
 	}
 
-	statusModule := nodestatus.New(
-		nodeIdentity(config),
-		liveness,
-		guard,
-		rwiModule.Directory,
-		urlModule.Directory,
-	)
+	report := nodestatus.NewReport(nodeIdentity(config), postings, urlDirectory)
 
-	searchModule := search.New(
-		guard,
-		respond,
-		rwiModule.Index,
-		urlModule.Directory,
-		searchPostingsPerWord,
-	)
-	peeringModule := peering.New(
-		guard,
-		respond,
-		peeringStatus{report: statusModule.Report, networkName: config.NetworkName},
+	gate := httpguard.WireGate{
+		Guard:   guard,
+		Respond: httpguard.NewWireResponder(report),
+		Address: httpguard.NewClientAddressResolver(config.TrustedProxies),
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/{$}", landing.NewEndpoint())
+	router := httpguard.NewWireRouter(mux, gate)
+
+	urlmeta.MountTransferURL(router, peer, urlReceiver)
+	rwi.MountTransferRWI(router, peer, postingReceiver)
+	nodestatus.MountQuery(router, peer, postings, urlDirectory)
+
+	search.MountSearch(router, peer, postings, urlDirectory, searchPostingsPerWord)
+
+	registry := peering.NewTrustedSeeds(trustedSeedCapacity)
+	peering.MountHello(
+		router,
+		peer,
+		peeringStatus{report: report, networkName: config.NetworkName},
+		registry,
 		client,
-		peering.Config{
-			TrustedSeedCapacity: trustedSeedCapacity,
-			TrustedProxies:      config.TrustedProxies,
-		},
 	)
-	crawlingModule := crawling.New(guard, respond)
-	landingModule := landing.New()
 
-	sweeper := eviction.New(
+	crawling.MountCrawlReceipt(router)
+
+	sweeper := eviction.NewSweeper(
 		vault,
-		rwiModule.Directory,
-		urlModule.Evictor,
+		postings,
+		urlEvictor,
 		eviction.Config{TargetFraction: evictionTargetFraction, BatchSize: evictionBatch},
 	)
 
-	announcer := bootstrap.New(
+	announcer := bootstrap.NewAnnouncer(
 		client,
 		config.NetworkName,
 		settings,
-		statusModule.Report,
-		peeringModule.Registry,
+		report,
+		registry,
 	)
-
-	mux := http.NewServeMux()
-	mux.Handle("/{$}", landingModule.Endpoint)
-	mux.Handle(yacyproto.PathHello, peeringModule.HelloEndpoint)
-	mux.Handle(yacyproto.PathTransferRWI, rwiModule.TransferRWI)
-	mux.Handle(yacyproto.PathTransferURL, urlModule.Endpoint)
-	mux.Handle(yacyproto.PathSearch, searchModule.Endpoint)
-	mux.Handle(yacyproto.PathQuery, statusModule.Query)
-	mux.Handle(yacyproto.PathCrawlReceipt, crawlingModule.Endpoint)
 
 	return node{peerMux: mux, sweeper: sweeper, announcer: announcer}, nil
 }

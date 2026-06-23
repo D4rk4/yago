@@ -6,17 +6,7 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
 )
-
-type Sweeper struct {
-	vault    *boltvault.Vault
-	postings rwi.PostingDirectory
-	urls     urlmeta.URLEvictor
-	target   float64
-	batch    int
-}
 
 func (s Sweeper) Sweep(ctx context.Context) (Result, error) {
 	quota := s.vault.QuotaBytes()

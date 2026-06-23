@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
@@ -25,23 +24,16 @@ const (
 	DefaultRequestTimeout       = 30 * time.Second
 )
 
-type LocalPeer struct {
-	Hash        yacymodel.Hash
-	NetworkName string
-}
-
 type RequestGuard struct {
-	local        LocalPeer
 	maxBodyBytes int64
 	timeout      time.Duration
 }
 
 func NewRequestGuard(
-	local LocalPeer,
 	maxBodyBytes int64,
 	timeout time.Duration,
 ) RequestGuard {
-	return RequestGuard{local: local, maxBodyBytes: maxBodyBytes, timeout: timeout}
+	return RequestGuard{maxBodyBytes: maxBodyBytes, timeout: timeout}
 }
 
 func (g RequestGuard) Parse(
@@ -90,15 +82,6 @@ func (g RequestGuard) Parse(
 	)
 
 	return r.Form, ctx, cancel, true
-}
-
-func (g RequestGuard) NetworkMatches(form url.Values) bool {
-	return yacyproto.NetworkUnit(form.Get(yacyproto.FieldNetworkName)) ==
-		yacyproto.NetworkUnit(g.local.NetworkName)
-}
-
-func (g RequestGuard) YouAreMatches(youare yacymodel.Hash) bool {
-	return youare == g.local.Hash
 }
 
 func methodAllowed(method string, methods yacyproto.EndpointMethodSet) bool {

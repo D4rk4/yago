@@ -3,7 +3,6 @@ package httpguard_test
 import (
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -14,11 +13,7 @@ import (
 )
 
 func testGuard() httpguard.RequestGuard {
-	return httpguard.NewRequestGuard(
-		httpguard.LocalPeer{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"},
-		32,
-		time.Second,
-	)
+	return httpguard.NewRequestGuard(32, time.Second)
 }
 
 func TestParseRejectsDisallowedMethod(t *testing.T) {
@@ -87,18 +82,18 @@ func TestParseAcceptsValidPost(t *testing.T) {
 }
 
 func TestNetworkAndYouAreMatch(t *testing.T) {
-	guard := testGuard()
+	peer := httpguard.PeerIdentity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
 
-	if !guard.NetworkMatches(url.Values{yacyproto.FieldNetworkName: {"freeworld"}}) {
+	if !peer.NetworkMatches("freeworld") {
 		t.Fatal("NetworkMatches rejected the configured network")
 	}
-	if guard.NetworkMatches(url.Values{yacyproto.FieldNetworkName: {"othernet"}}) {
+	if peer.NetworkMatches("othernet") {
 		t.Fatal("NetworkMatches accepted a foreign network")
 	}
-	if !guard.YouAreMatches(yacymodel.WordHash("self")) {
+	if !peer.YouAreMatches(yacymodel.WordHash("self")) {
 		t.Fatal("YouAreMatches rejected the local hash")
 	}
-	if guard.YouAreMatches(yacymodel.WordHash("other")) {
+	if peer.YouAreMatches(yacymodel.WordHash("other")) {
 		t.Fatal("YouAreMatches accepted a foreign hash")
 	}
 }

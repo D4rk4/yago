@@ -26,13 +26,3 @@ func FailMethodNotAllowed(ctx context.Context, w http.ResponseWriter, method str
 	slog.DebugContext(ctx, responseMethodNotAllowed, slog.String("method", method))
 	http.Error(w, responseMethodNotAllowed, http.StatusMethodNotAllowed)
 }
-
-func FailInternal(ctx context.Context, w http.ResponseWriter, operation string, err error) {
-	slog.ErrorContext(
-		ctx,
-		"request failed",
-		slog.String("operation", operation),
-		slog.Any("error", err),
-	)
-	http.Error(w, operation, http.StatusInternalServerError)
-}

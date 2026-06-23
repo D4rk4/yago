@@ -3,10 +3,7 @@ package nodestatus
 import (
 	"context"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
@@ -14,23 +11,10 @@ import (
 )
 
 func newQueryEndpoint(counts stubCounter) queryEndpoint {
-	guard := httpguard.NewRequestGuard(
-		httpguard.LocalPeer{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"},
-		httpguard.DefaultMaxBodyBytes,
-		time.Second,
-	)
-	report := newReport(
-		testIdentity(),
-		fixedLiveness(testIdentity().Version, time.Unix(0, 0).UTC(), 0),
-		counts,
-		counts,
-	)
-
 	return queryEndpoint{
-		guard:   guard,
-		respond: httpguard.NewWireResponder(report),
-		rwi:     counts,
-		urls:    counts,
+		peer: httpguard.PeerIdentity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"},
+		rwi:  counts,
+		urls: counts,
 	}
 }
 
@@ -38,20 +22,15 @@ func serveQuery(
 	t *testing.T,
 	e queryEndpoint,
 	req yacyproto.QueryRequest,
-) *httptest.ResponseRecorder {
+) yacyproto.QueryResponse {
 	t.Helper()
 
-	rec := httptest.NewRecorder()
-	httpReq := httptest.NewRequestWithContext(
-		context.Background(),
-		http.MethodPost,
-		yacyproto.PathQuery,
-		nil,
-	)
-	httpReq.PostForm = req.Form()
-	e.ServeHTTP(rec, httpReq)
+	resp, err := e.Serve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
 
-	return rec
+	return resp
 }
 
 func queryRequest(object yacyproto.QueryObject) yacyproto.QueryRequest {
@@ -61,21 +40,6 @@ func queryRequest(object yacyproto.QueryObject) yacyproto.QueryRequest {
 		Iam:         yacymodel.WordHash("caller"),
 		Object:      object,
 	}
-}
-
-func parseResponse(t *testing.T, rec *httptest.ResponseRecorder) yacyproto.QueryResponse {
-	t.Helper()
-
-	message, err := yacymodel.ParseMessage(rec.Body.String())
-	if err != nil {
-		t.Fatalf("ParseMessage: %v", err)
-	}
-	resp, err := yacyproto.ParseQueryResponse(message)
-	if err != nil {
-		t.Fatalf("ParseQueryResponse: %v", err)
-	}
-
-	return resp
 }
 
 func TestQueryAnswersSupportedObjects(t *testing.T) {
@@ -90,16 +54,9 @@ func TestQueryAnswersSupportedObjects(t *testing.T) {
 		{yacyproto.ObjectLURLCount, 6},
 	}
 	for _, c := range cases {
-		rec := serveQuery(t, endpoint, queryRequest(c.object))
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s: status = %d, want 200", c.object, rec.Code)
-		}
-		resp := parseResponse(t, rec)
+		resp := serveQuery(t, endpoint, queryRequest(c.object))
 		if resp.Response != c.want {
 			t.Fatalf("%s: Response = %d, want %d", c.object, resp.Response, c.want)
-		}
-		if resp.Version != "1.2" {
-			t.Fatalf("%s: Version = %q, want 1.2", c.object, resp.Version)
 		}
 	}
 }
@@ -107,9 +64,7 @@ func TestQueryAnswersSupportedObjects(t *testing.T) {
 func TestQueryRejectsUnsupportedObject(t *testing.T) {
 	endpoint := newQueryEndpoint(stubCounter{rwi: 11})
 
-	rec := serveQuery(t, endpoint, queryRequest(yacyproto.ObjectWantedSeeds))
-
-	resp := parseResponse(t, rec)
+	resp := serveQuery(t, endpoint, queryRequest(yacyproto.ObjectWantedSeeds))
 	if resp.Response != yacyproto.QueryResponseRejected {
 		t.Fatalf("Response = %d, want rejected", resp.Response)
 	}
@@ -120,9 +75,8 @@ func TestQueryRejectsWrongTarget(t *testing.T) {
 
 	req := queryRequest(yacyproto.ObjectRWICount)
 	req.YouAre = yacymodel.WordHash("other")
-	rec := serveQuery(t, endpoint, req)
+	resp := serveQuery(t, endpoint, req)
 
-	resp := parseResponse(t, rec)
 	if resp.Response != yacyproto.QueryResponseRejected {
 		t.Fatalf("Response = %d, want rejected for wrong target", resp.Response)
 	}
@@ -131,9 +85,10 @@ func TestQueryRejectsWrongTarget(t *testing.T) {
 func TestQueryFailsOnCountError(t *testing.T) {
 	endpoint := newQueryEndpoint(stubCounter{err: errors.New("boom")})
 
-	rec := serveQuery(t, endpoint, queryRequest(yacyproto.ObjectRWICount))
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", rec.Code)
+	if _, err := endpoint.Serve(
+		context.Background(),
+		queryRequest(yacyproto.ObjectRWICount),
+	); err == nil {
+		t.Fatal("Serve returned nil error, want count failure")
 	}
 }

@@ -169,10 +169,10 @@ func TestSearchFiltersByLanguageAndDistanceAndURL(t *testing.T) {
 		postingsPerWord: 100,
 	}
 
-	result, err := s.Search(context.Background(), Query{
-		Words:       []yacymodel.Hash{word},
-		MaxDistance: 5,
-		Filters:     Filters{Modifier: "/language/en"},
+	result, err := s.Search(context.Background(), searchQuery{
+		Words:         []yacymodel.Hash{word},
+		MaxDistance:   5,
+		searchFilters: searchFilters{Modifier: "/language/en"},
 	})
 	if err != nil {
 		t.Fatalf("Search: %v", err)

@@ -10,12 +10,6 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
 )
 
-type Receipt struct {
-	Busy       bool
-	Pause      int
-	UnknownURL []yacymodel.Hash
-}
-
 type postingIntake struct {
 	vault        *boltvault.Vault
 	postings     *boltvault.Collection[yacymodel.RWIPosting]

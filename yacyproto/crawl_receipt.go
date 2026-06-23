@@ -1,6 +1,7 @@
 package yacyproto
 
 import (
+	"context"
 	"net/url"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
@@ -32,7 +33,7 @@ func (r CrawlReceiptRequest) Form() url.Values {
 	return form
 }
 
-func ParseCrawlReceiptRequest(form url.Values) (CrawlReceiptRequest, error) {
+func ParseCrawlReceiptRequest(_ context.Context, form url.Values) (CrawlReceiptRequest, error) {
 	req := CrawlReceiptRequest{
 		NetworkName: form.Get(FieldNetworkName),
 		Result:      form.Get(FieldResult),

@@ -2,53 +2,37 @@ package peering
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
-	"net"
-	"net/http"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
-type RuntimeStatus interface {
-	NetworkName(ctx context.Context) string
-	SelfSeed(ctx context.Context) yacymodel.Seed
+type helloDirectory interface {
+	Hello(ctx context.Context, caller yacymodel.Seed, count int) (helloOutcome, error)
 }
 
 type helloEndpoint struct {
-	guard          httpguard.RequestGuard
-	respond        httpguard.WireResponder
-	status         RuntimeStatus
-	peers          PeerDirectory
-	trustedProxies []*net.IPNet
+	peer   httpguard.PeerIdentity
+	status RuntimeStatus
+	peers  helloDirectory
 }
 
-func (e helloEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	form, ctx, cancel, ok := e.guard.Parse(w, r, yacyproto.HelloEndpointMethods)
-	if !ok {
-		return
-	}
-	defer cancel()
-
-	req, err := yacyproto.ParseHelloRequest(ctx, form)
-	if err != nil {
-		httpguard.FailBadRequest(ctx, w, err)
-
-		return
-	}
-
+func (e helloEndpoint) Serve(
+	ctx context.Context,
+	req yacyproto.HelloRequest,
+) (yacyproto.HelloResponse, error) {
 	resp := yacyproto.HelloResponse{
-		YourIP: clientAddress(r, e.trustedProxies),
+		YourIP: httpguard.RemoteAddr(ctx),
 		Seeds:  []yacymodel.Seed{e.status.SelfSeed(ctx)},
 	}
 
-	if e.guard.NetworkMatches(form) {
+	if e.peer.NetworkMatches(req.NetworkName) {
 		outcome, err := e.peers.Hello(ctx, req.Seed, req.Count)
 		if err != nil {
-			httpguard.FailInternal(ctx, w, "hello failed", err)
-
-			return
+			return yacyproto.HelloResponse{}, fmt.Errorf("hello: %w", err)
 		}
 
 		resp.YourType = outcome.CallerType
@@ -56,5 +40,6 @@ func (e helloEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.DebugContext(ctx, "hello served", slog.Int("seedCount", len(resp.Seeds)))
-	e.respond.Write(ctx, w, resp.Encode())
+
+	return resp, nil
 }

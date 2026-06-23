@@ -32,31 +32,21 @@ func testIdentity() Identity {
 	}
 }
 
-func fixedClock(start time.Time, elapsed time.Duration) func() time.Time {
-	calls := 0
-	return func() time.Time {
-		defer func() { calls++ }()
-		if calls == 0 {
-			return start
-		}
-		return start.Add(elapsed)
-	}
+func clockAt(t time.Time) func() time.Time {
+	return func() time.Time { return t }
 }
 
-func fixedLiveness(version string, start time.Time, elapsed time.Duration) Liveness {
-	now := fixedClock(start, elapsed)
-	return Liveness{version: version, start: now(), now: now}
+func reportAt(start time.Time, elapsed time.Duration, rwi, urls stubCounter) nodeReport {
+	id := testIdentity()
+	id.Start = start
+
+	return newReport(id, clockAt(start.Add(elapsed)), rwi, urls)
 }
 
 func TestSelfSeedRefreshesDynamicFields(t *testing.T) {
 	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
 	counts := stubCounter{rwi: 7, urls: 3}
-	report := newReport(
-		testIdentity(),
-		fixedLiveness(testIdentity().Version, start, 90*time.Minute),
-		counts,
-		counts,
-	)
+	report := reportAt(start, 90*time.Minute, counts, counts)
 
 	seed := report.SelfSeed(context.Background())
 
@@ -80,12 +70,7 @@ func TestSelfSeedRefreshesDynamicFields(t *testing.T) {
 func TestSelfSeedKeepsIdentityFields(t *testing.T) {
 	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
 	counts := stubCounter{}
-	report := newReport(
-		testIdentity(),
-		fixedLiveness(testIdentity().Version, start, 0),
-		counts,
-		counts,
-	)
+	report := reportAt(start, 0, counts, counts)
 
 	seed := report.SelfSeed(context.Background())
 
@@ -110,12 +95,7 @@ func TestSelfSeedKeepsIdentityFields(t *testing.T) {
 func TestSelfSeedCountErrorsReportZero(t *testing.T) {
 	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
 	counts := stubCounter{rwi: 5, urls: 9, err: errors.New("boom")}
-	report := newReport(
-		testIdentity(),
-		fixedLiveness(testIdentity().Version, start, time.Hour),
-		counts,
-		counts,
-	)
+	report := reportAt(start, time.Hour, counts, counts)
 
 	seed := report.SelfSeed(context.Background())
 
@@ -129,12 +109,7 @@ func TestSelfSeedCountErrorsReportZero(t *testing.T) {
 
 func TestHeaderReportsVersionAndUptime(t *testing.T) {
 	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
-	report := newReport(
-		testIdentity(),
-		fixedLiveness(testIdentity().Version, start, 45*time.Minute),
-		stubCounter{},
-		stubCounter{},
-	)
+	report := reportAt(start, 45*time.Minute, stubCounter{}, stubCounter{})
 
 	ctx := context.Background()
 

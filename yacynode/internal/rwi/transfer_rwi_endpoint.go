@@ -1,40 +1,29 @@
 package rwi
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
-	"net/http"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 type transferRWIEndpoint struct {
-	guard   httpguard.RequestGuard
-	respond httpguard.WireResponder
-	intake  postingIntake
+	peer   httpguard.PeerIdentity
+	intake PostingReceiver
 }
 
-func (e transferRWIEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	form, ctx, cancel, ok := e.guard.Parse(w, r, yacyproto.TransferRWIEndpointMethods)
-	if !ok {
-		return
-	}
-	defer cancel()
-
-	req, err := yacyproto.ParseTransferRWIRequest(ctx, form)
-	if err != nil {
-		httpguard.FailBadRequest(ctx, w, err)
-
-		return
-	}
-
+func (e transferRWIEndpoint) Serve(
+	ctx context.Context,
+	req yacyproto.TransferRWIRequest,
+) (yacyproto.TransferRWIResponse, error) {
 	resp := yacyproto.TransferRWIResponse{}
 
-	if !e.guard.NetworkMatches(form) || !e.guard.YouAreMatches(req.YouAre) {
+	if !e.peer.NetworkMatches(req.NetworkName) || !e.peer.YouAreMatches(req.YouAre) {
 		resp.Result = yacyproto.ResultWrongTarget
-		e.respond.Write(ctx, w, resp.Encode())
 
-		return
+		return resp, nil
 	}
 
 	slog.DebugContext(ctx, "transfer rwi request accepted",
@@ -45,9 +34,7 @@ func (e transferRWIEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	receipt, err := e.intake.Receive(ctx, req.Indexes)
 	if err != nil {
-		httpguard.FailInternal(ctx, w, "receive failed", err)
-
-		return
+		return yacyproto.TransferRWIResponse{}, fmt.Errorf("receive rwi: %w", err)
 	}
 
 	if receipt.Busy {
@@ -62,5 +49,6 @@ func (e transferRWIEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.Bool("busy", receipt.Busy),
 		slog.Int("unknownUrlCount", len(receipt.UnknownURL)),
 	)
-	e.respond.Write(ctx, w, resp.Encode())
+
+	return resp, nil
 }

@@ -2,23 +2,26 @@ package search
 
 type optionPredicate struct {
 	name    string
-	present func(Query) bool
+	present func(searchQuery) bool
 }
 
 var ignoredOptions = []optionPredicate{
-	{"language", func(query Query) bool { return query.Filters.Language != "" }},
-	{"prefer", func(query Query) bool { return query.Filters.Prefer != "" }},
-	{"filter", func(query Query) bool { return query.Filters.Filter != "" }},
-	{"profile", func(query Query) bool { return query.Filters.Profile != "" }},
-	{"sitehost", func(query Query) bool { return query.Filters.SiteHost != "" }},
-	{"author", func(query Query) bool { return query.Filters.Author != "" }},
-	{"collection", func(query Query) bool { return query.Filters.Collection != "" }},
-	{"filetype", func(query Query) bool { return query.Filters.FileType != "" }},
-	{"protocol", func(query Query) bool { return query.Filters.Protocol != "" }},
-	{"timezoneOffset", func(query Query) bool { return query.Filters.TimezoneOffset != 0 }},
+	{"language", func(query searchQuery) bool { return query.searchFilters.Language != "" }},
+	{"prefer", func(query searchQuery) bool { return query.searchFilters.Prefer != "" }},
+	{"filter", func(query searchQuery) bool { return query.searchFilters.Filter != "" }},
+	{"profile", func(query searchQuery) bool { return query.searchFilters.Profile != "" }},
+	{"sitehost", func(query searchQuery) bool { return query.searchFilters.SiteHost != "" }},
+	{"author", func(query searchQuery) bool { return query.searchFilters.Author != "" }},
+	{"collection", func(query searchQuery) bool { return query.searchFilters.Collection != "" }},
+	{"filetype", func(query searchQuery) bool { return query.searchFilters.FileType != "" }},
+	{"protocol", func(query searchQuery) bool { return query.searchFilters.Protocol != "" }},
+	{
+		"timezoneOffset",
+		func(query searchQuery) bool { return query.searchFilters.TimezoneOffset != 0 },
+	},
 }
 
-func ignoredOptionNames(query Query) []string {
+func ignoredOptionNames(query searchQuery) []string {
 	var names []string
 	for _, option := range ignoredOptions {
 		if option.present(query) {

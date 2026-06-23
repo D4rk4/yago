@@ -17,7 +17,7 @@ const (
 	seedlistMaxLineBytes       = 1 << 20
 )
 
-var ErrSeedlistFetchFailed = errors.New("seedlist fetch failed")
+var errSeedlistFetchFailed = errors.New("seedlist fetch failed")
 
 type httpSeedlistFetcher struct {
 	client *http.Client
@@ -30,17 +30,17 @@ func newHTTPSeedlistFetcher(client *http.Client) httpSeedlistFetcher {
 func (f httpSeedlistFetcher) Fetch(ctx context.Context, url string) ([]yacymodel.Seed, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrSeedlistFetchFailed, err)
+		return nil, fmt.Errorf("%w: %w", errSeedlistFetchFailed, err)
 	}
 
 	resp, err := f.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrSeedlistFetchFailed, err)
+		return nil, fmt.Errorf("%w: %w", errSeedlistFetchFailed, err)
 	}
 	defer closeResponseBody(ctx, resp.Body, "seedlistFetch")
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: status %d", ErrSeedlistFetchFailed, resp.StatusCode)
+		return nil, fmt.Errorf("%w: status %d", errSeedlistFetchFailed, resp.StatusCode)
 	}
 
 	return decodeSeedlist(ctx, io.LimitReader(resp.Body, seedlistMaxBodyBytes), url)
@@ -82,7 +82,7 @@ func decodeSeedlist(ctx context.Context, body io.Reader, url string) ([]yacymode
 		seeds = append(seeds, seed)
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrSeedlistFetchFailed, err)
+		return nil, fmt.Errorf("%w: %w", errSeedlistFetchFailed, err)
 	}
 
 	return seeds, nil

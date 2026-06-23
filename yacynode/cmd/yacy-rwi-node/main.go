@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/bootstrap"
 )
 
 const (
@@ -43,12 +42,12 @@ func run() error {
 		return fmt.Errorf("configure logging: %w", err)
 	}
 
-	settings, err := bootstrap.LoadBootstrapSettings(os.Getenv)
+	settings, err := loadBootstrapSettings(os.Getenv)
 	if err != nil {
 		return fmt.Errorf("load bootstrap settings: %w", err)
 	}
 
-	announcing := len(settings.SeedlistURLs()) > 0
+	announcing := len(settings.SeedlistURLs) > 0
 
 	config, err := loadNodeConfig(os.Getenv, announcing)
 	if err != nil {

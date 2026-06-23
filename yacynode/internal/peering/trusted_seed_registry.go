@@ -8,20 +8,20 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-type TrustedSeedRegistry struct {
+type trustedSeedRegistry struct {
 	capacity int
 	mu       sync.RWMutex
 	seeds    map[yacymodel.Hash]yacymodel.Seed
 }
 
-func NewTrustedSeedRegistry(capacity int) *TrustedSeedRegistry {
-	return &TrustedSeedRegistry{
+func newTrustedSeedRegistry(capacity int) *trustedSeedRegistry {
+	return &trustedSeedRegistry{
 		capacity: capacity,
 		seeds:    make(map[yacymodel.Hash]yacymodel.Seed),
 	}
 }
 
-func (r *TrustedSeedRegistry) Absorb(ctx context.Context, seeds ...yacymodel.Seed) {
+func (r *trustedSeedRegistry) Absorb(ctx context.Context, seeds ...yacymodel.Seed) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -41,7 +41,7 @@ func (r *TrustedSeedRegistry) Absorb(ctx context.Context, seeds ...yacymodel.See
 	}
 }
 
-func (r *TrustedSeedRegistry) Trusted(_ context.Context) []yacymodel.Seed {
+func (r *trustedSeedRegistry) Trusted(_ context.Context) []yacymodel.Seed {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -53,4 +53,4 @@ func (r *TrustedSeedRegistry) Trusted(_ context.Context) []yacymodel.Seed {
 	return out
 }
 
-var _ trustedSeedSource = (*TrustedSeedRegistry)(nil)
+var _ trustedSeedSource = (*trustedSeedRegistry)(nil)

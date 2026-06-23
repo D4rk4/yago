@@ -1,47 +1,34 @@
 package urlmeta
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
-	"net/http"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 type transferURLEndpoint struct {
-	guard   httpguard.RequestGuard
-	respond httpguard.WireResponder
-	intake  urlIntake
+	peer   httpguard.PeerIdentity
+	intake URLReceiver
 }
 
-func (e transferURLEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	form, ctx, cancel, ok := e.guard.Parse(w, r, yacyproto.TransferURLEndpointMethods)
-	if !ok {
-		return
-	}
-	defer cancel()
-
-	req, err := yacyproto.ParseTransferURLRequest(ctx, form)
-	if err != nil {
-		httpguard.FailBadRequest(ctx, w, err)
-
-		return
-	}
-
+func (e transferURLEndpoint) Serve(
+	ctx context.Context,
+	req yacyproto.TransferURLRequest,
+) (yacyproto.TransferURLResponse, error) {
 	resp := yacyproto.TransferURLResponse{}
 
-	if !e.guard.NetworkMatches(form) || !e.guard.YouAreMatches(req.YouAre) {
+	if !e.peer.NetworkMatches(req.NetworkName) || !e.peer.YouAreMatches(req.YouAre) {
 		resp.Result = yacyproto.ResultWrongTarget
-		e.respond.Write(ctx, w, resp.Encode())
 
-		return
+		return resp, nil
 	}
 
 	receipt, err := e.intake.Receive(ctx, req.URLs)
 	if err != nil {
-		httpguard.FailInternal(ctx, w, "receive failed", err)
-
-		return
+		return yacyproto.TransferURLResponse{}, fmt.Errorf("receive url: %w", err)
 	}
 
 	if receipt.Busy {
@@ -57,5 +44,6 @@ func (e transferURLEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.Int("doubleCount", receipt.Double),
 		slog.Int("errorUrlCount", len(receipt.ErrorURL)),
 	)
-	e.respond.Write(ctx, w, resp.Encode())
+
+	return resp, nil
 }

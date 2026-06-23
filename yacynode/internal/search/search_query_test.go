@@ -8,7 +8,7 @@ import (
 )
 
 func TestJoinSiteHashFromHash(t *testing.T) {
-	q := Query{Filters: Filters{SiteHash: "ABCDEF"}}
+	q := searchQuery{searchFilters: searchFilters{SiteHash: "ABCDEF"}}
 	got, err := q.joinSiteHash()
 	if err != nil {
 		t.Fatalf("joinSiteHash: %v", err)
@@ -19,7 +19,7 @@ func TestJoinSiteHashFromHash(t *testing.T) {
 }
 
 func TestJoinSiteHashFromModifier(t *testing.T) {
-	q := Query{Filters: Filters{Modifier: "site:example.com"}}
+	q := searchQuery{searchFilters: searchFilters{Modifier: "site:example.com"}}
 	got, err := q.joinSiteHash()
 	if err != nil {
 		t.Fatalf("joinSiteHash: %v", err)
@@ -39,7 +39,7 @@ func TestJoinSiteHashFromModifier(t *testing.T) {
 }
 
 func TestJoinSiteHashEmpty(t *testing.T) {
-	got, err := Query{}.joinSiteHash()
+	got, err := searchQuery{}.joinSiteHash()
 	if err != nil {
 		t.Fatalf("joinSiteHash: %v", err)
 	}
@@ -60,9 +60,9 @@ func TestSearchExplicitAbstractWithQuery(t *testing.T) {
 		postingsPerWord: 100,
 	}
 
-	result, err := s.Search(context.Background(), Query{
+	result, err := s.Search(context.Background(), searchQuery{
 		Words:     []yacymodel.Hash{word},
-		Abstracts: AbstractRequest{Mode: AbstractExplicit, Words: []yacymodel.Hash{related}},
+		Abstracts: abstractSpec{Mode: abstractExplicit, Words: []yacymodel.Hash{related}},
 	})
 	if err != nil {
 		t.Fatalf("Search: %v", err)

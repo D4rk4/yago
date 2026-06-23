@@ -12,7 +12,7 @@ func TestLandingEndpointServesHTML(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 
-	New().Endpoint.ServeHTTP(rec, req)
+	landingEndpoint{}.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -32,7 +32,7 @@ func TestLandingEndpointRejectsPost(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", nil)
 
-	New().Endpoint.ServeHTTP(rec, req)
+	landingEndpoint{}.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)

@@ -1,6 +1,7 @@
 package yacyproto_test
 
 import (
+	"context"
 	"net/url"
 	"reflect"
 	"testing"
@@ -20,7 +21,7 @@ func TestQueryRequestRoundTrip(t *testing.T) {
 		Env:         sampleHash(t, "alpha").String(),
 	}
 
-	got, err := yacyproto.ParseQueryRequest(req.Form())
+	got, err := yacyproto.ParseQueryRequest(context.Background(), req.Form())
 	if err != nil {
 		t.Fatalf("ParseQueryRequest: %v", err)
 	}
@@ -59,7 +60,7 @@ func TestParseQueryRequestRejectsBadIam(t *testing.T) {
 		yacyproto.FieldObject: {string(yacyproto.ObjectRWICount)},
 		yacyproto.FieldIam:    {"nope"},
 	}
-	if _, err := yacyproto.ParseQueryRequest(form); err == nil {
+	if _, err := yacyproto.ParseQueryRequest(context.Background(), form); err == nil {
 		t.Fatal("expected error for malformed iam hash")
 	}
 }
@@ -68,7 +69,7 @@ func TestParseQueryRequestRejectsUnknownObject(t *testing.T) {
 	t.Parallel()
 
 	form := url.Values{yacyproto.FieldObject: {"whatever"}}
-	if _, err := yacyproto.ParseQueryRequest(form); err == nil {
+	if _, err := yacyproto.ParseQueryRequest(context.Background(), form); err == nil {
 		t.Fatal("expected error for unknown query object")
 	}
 }

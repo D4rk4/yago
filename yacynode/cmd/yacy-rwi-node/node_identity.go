@@ -1,6 +1,10 @@
 package main
 
-import "github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodestatus"
+import (
+	"time"
+
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodestatus"
+)
 
 func nodeIdentity(config nodeConfig) nodestatus.Identity {
 	return nodestatus.Identity{
@@ -11,5 +15,6 @@ func nodeIdentity(config nodeConfig) nodestatus.Identity {
 		Port:        config.AdvertisePort,
 		Flags:       config.Flags,
 		Version:     version,
+		Start:       time.Now(),
 	}
 }

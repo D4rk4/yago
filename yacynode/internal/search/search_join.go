@@ -16,23 +16,23 @@ type searcher struct {
 	postingsPerWord int
 }
 
-func (s searcher) Search(ctx context.Context, query Query) (Result, error) {
+func (s searcher) Search(ctx context.Context, query searchQuery) (searchResult, error) {
 	start := time.Now()
-	if len(query.Words) == 0 && query.Abstracts.Mode == AbstractExplicit {
+	if len(query.Words) == 0 && query.Abstracts.Mode == abstractExplicit {
 		return s.abstractCounts(ctx, query, start)
 	}
 
 	scanQuery, err := s.postingQuery(query, query.Words, query.Exclude)
 	if err != nil {
-		return Result{}, err
+		return searchResult{}, err
 	}
 	scanned, err := scanPostings(ctx, s.index, scanQuery)
 	if err != nil {
-		return Result{}, err
+		return searchResult{}, err
 	}
 
 	var wordCounts map[yacymodel.Hash]int
-	if query.Abstracts.Mode != AbstractNone {
+	if query.Abstracts.Mode != abstractNone {
 		wordCounts = make(map[yacymodel.Hash]int, len(query.Words))
 	}
 	abstractInputs := map[yacymodel.Hash]map[yacymodel.Hash]candidate{}
@@ -43,7 +43,7 @@ func (s searcher) Search(ctx context.Context, query Query) (Result, error) {
 		if wordCounts != nil {
 			wordCounts[word] = scanned.counts[word]
 		}
-		if query.Abstracts.Mode == AbstractAuto {
+		if query.Abstracts.Mode == abstractAuto {
 			abstractInputs[word] = cloneCandidates(matched)
 		}
 		joined = intersect(joined, matched)
@@ -54,14 +54,14 @@ func (s searcher) Search(ctx context.Context, query Query) (Result, error) {
 
 	rows, err := s.urls.RowsByHash(ctx, ordered)
 	if err != nil {
-		return Result{}, fmt.Errorf("rows by hash: %w", err)
+		return searchResult{}, fmt.Errorf("rows by hash: %w", err)
 	}
 	abstracts, err := s.abstracts(ctx, query, abstractInputs)
 	if err != nil {
-		return Result{}, err
+		return searchResult{}, err
 	}
 
-	return Result{
+	return searchResult{
 		Resources:  rows,
 		JoinCount:  joinCount,
 		SearchTime: time.Since(start),
@@ -71,7 +71,7 @@ func (s searcher) Search(ctx context.Context, query Query) (Result, error) {
 }
 
 func (s searcher) postingQuery(
-	query Query,
+	query searchQuery,
 	words, exclude []yacymodel.Hash,
 ) (postingQuery, error) {
 	siteHash, err := query.joinSiteHash()
@@ -86,25 +86,25 @@ func (s searcher) postingQuery(
 		limitPerWord:     s.postingsPerWord,
 		maxDistance:      query.MaxDistance,
 		language:         query.joinLanguage(),
-		contentDomain:    query.Filters.ContentDomain,
-		strictContentDom: query.Filters.StrictContentDom,
-		constraint:       query.Filters.Constraint,
+		contentDomain:    query.searchFilters.ContentDomain,
+		strictContentDom: query.searchFilters.StrictContentDom,
+		constraint:       query.searchFilters.Constraint,
 		siteHash:         siteHash,
 	}, nil
 }
 
 func (s searcher) abstractCounts(
 	ctx context.Context,
-	query Query,
+	query searchQuery,
 	start time.Time,
-) (Result, error) {
+) (searchResult, error) {
 	scanQuery, err := s.postingQuery(query, query.Abstracts.Words, nil)
 	if err != nil {
-		return Result{}, err
+		return searchResult{}, err
 	}
 	scanned, err := scanPostings(ctx, s.index, scanQuery)
 	if err != nil {
-		return Result{}, err
+		return searchResult{}, err
 	}
 
 	wordCounts := make(map[yacymodel.Hash]int, len(query.Abstracts.Words))
@@ -115,7 +115,7 @@ func (s searcher) abstractCounts(
 		abstracts[word] = yacymodel.EncodeSearchIndexAbstract(candidateHashes(matched))
 	}
 
-	return Result{
+	return searchResult{
 		SearchTime: time.Since(start),
 		WordCounts: wordCounts,
 		Abstracts:  abstracts,
@@ -124,13 +124,13 @@ func (s searcher) abstractCounts(
 
 func (s searcher) abstracts(
 	ctx context.Context,
-	query Query,
+	query searchQuery,
 	autoInputs map[yacymodel.Hash]map[yacymodel.Hash]candidate,
 ) (map[yacymodel.Hash]string, error) {
 	switch query.Abstracts.Mode {
-	case AbstractNone:
+	case abstractNone:
 		return nil, nil
-	case AbstractAuto:
+	case abstractAuto:
 		if len(query.Words) <= 1 || len(query.URLs) != 0 {
 			return nil, nil
 		}
@@ -142,7 +142,7 @@ func (s searcher) abstracts(
 		return map[yacymodel.Hash]string{
 			word: yacymodel.EncodeSearchIndexAbstract(candidateHashes(autoInputs[word])),
 		}, nil
-	case AbstractExplicit:
+	case abstractExplicit:
 		scanQuery, err := s.postingQuery(query, query.Abstracts.Words, nil)
 		if err != nil {
 			return nil, err

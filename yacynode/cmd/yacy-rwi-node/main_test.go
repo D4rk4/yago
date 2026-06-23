@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/bootstrap"
 )
 
 func TestRunRejectsInvalidConfig(t *testing.T) {
@@ -57,7 +56,7 @@ func openTestVault(t *testing.T) *boltvault.Vault {
 func assembleTestNode(t *testing.T, config nodeConfig, vault *boltvault.Vault) node {
 	t.Helper()
 
-	settings, err := bootstrap.LoadBootstrapSettings(func(string) string { return "" })
+	settings, err := loadBootstrapSettings(func(string) string { return "" })
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
