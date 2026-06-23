@@ -77,9 +77,15 @@ func TestServeReturnsNilAfterCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := serve(ctx, assembled, metrics.NewEviction(prometheus.NewRegistry()),
+	err := serve(
+		ctx,
+		assembled,
+		metrics.NewEvictionMetrics(prometheus.NewRegistry()),
 		namedServer{"peer protocol", buildServer("127.0.0.1:0", assembled.peerMux)},
-		namedServer{"ops", buildServer("127.0.0.1:0", newOpsMux(newEndpointMetrics().handler()))},
+		namedServer{
+			"ops",
+			buildServer("127.0.0.1:0", newOpsMux(metrics.NewHTTPEndpointMetrics().Handler())),
+		},
 	)
 	if err != nil {
 		t.Fatalf("serve: %v", err)
@@ -89,7 +95,10 @@ func TestServeReturnsNilAfterCancel(t *testing.T) {
 func TestServeShutsDownOnListenError(t *testing.T) {
 	assembled := assembleTestNode(t, testConfig(t), openTestVault(t))
 
-	err := serve(context.Background(), assembled, metrics.NewEviction(prometheus.NewRegistry()),
+	err := serve(
+		context.Background(),
+		assembled,
+		metrics.NewEvictionMetrics(prometheus.NewRegistry()),
 		namedServer{"peer protocol", buildServer("203.0.113.255:-1", assembled.peerMux)},
 	)
 	if err == nil {
@@ -100,7 +109,7 @@ func TestServeShutsDownOnListenError(t *testing.T) {
 func TestOpsMuxAnswersHealth(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, pathHealth, nil)
-	newOpsMux(newEndpointMetrics().handler()).ServeHTTP(rec, req)
+	newOpsMux(metrics.NewHTTPEndpointMetrics().Handler()).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("health status = %d, want 200", rec.Code)

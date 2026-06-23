@@ -23,7 +23,7 @@ func TestConfigureLogging(t *testing.T) {
 }
 
 func TestMiddlewareRecordsStatus(t *testing.T) {
-	handler := logHTTPRequests(instrumentHTTP(newEndpointMetrics(), http.HandlerFunc(
+	handler := logHTTPRequests(instrumentHTTP(metrics.NewHTTPEndpointMetrics(), http.HandlerFunc(
 		func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 		},
@@ -74,13 +74,13 @@ func TestRuntimeStatusAdapters(t *testing.T) {
 func TestPublishStorageMetricsAndSweepLoop(t *testing.T) {
 	config := testConfig(t)
 	vault := openTestVault(t)
-	publishStorageMetrics(prometheus.NewRegistry(), vault)
+	metrics.NewStorageMetrics(prometheus.NewRegistry(), vault)
 
 	assembled := assembleTestNode(t, config, vault)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	observer := metrics.NewEviction(prometheus.NewRegistry())
+	observer := metrics.NewEvictionMetrics(prometheus.NewRegistry())
 	runEvictionLoop(ctx, assembled.sweeper, observer)
 	sweepOnce(context.Background(), assembled.sweeper, observer)
 }

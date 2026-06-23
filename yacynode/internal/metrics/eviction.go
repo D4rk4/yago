@@ -9,13 +9,13 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/eviction"
 )
 
-type Eviction struct {
+type EvictionMetrics struct {
 	urls     prometheus.Counter
 	postings prometheus.Counter
 	failures prometheus.Counter
 }
 
-func NewEviction(registry prometheus.Registerer) *Eviction {
+func NewEvictionMetrics(registry prometheus.Registerer) *EvictionMetrics {
 	urls := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "eviction_urls_evicted_total",
 		Help: "URLs purged by storage eviction.",
@@ -30,14 +30,14 @@ func NewEviction(registry prometheus.Registerer) *Eviction {
 	})
 	registry.MustRegister(urls, postings, failures)
 
-	return &Eviction{urls: urls, postings: postings, failures: failures}
+	return &EvictionMetrics{urls: urls, postings: postings, failures: failures}
 }
 
-func (e *Eviction) Observe(result eviction.Result) {
+func (e *EvictionMetrics) Observe(result eviction.Result) {
 	e.urls.Add(float64(result.URLsDeleted))
 	e.postings.Add(float64(result.PostingsDeleted))
 }
 
-func (e *Eviction) ObserveFailure() {
+func (e *EvictionMetrics) ObserveFailure() {
 	e.failures.Inc()
 }

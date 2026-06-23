@@ -10,7 +10,7 @@ import (
 )
 
 func TestEvictionCountsSweptWork(t *testing.T) {
-	observer := NewEviction(prometheus.NewRegistry())
+	observer := NewEvictionMetrics(prometheus.NewRegistry())
 
 	observer.Observe(eviction.Result{URLsDeleted: 3, PostingsDeleted: 7})
 	observer.Observe(eviction.Result{URLsDeleted: 2, PostingsDeleted: 1})
@@ -24,7 +24,7 @@ func TestEvictionCountsSweptWork(t *testing.T) {
 }
 
 func TestEvictionCountsFailures(t *testing.T) {
-	observer := NewEviction(prometheus.NewRegistry())
+	observer := NewEvictionMetrics(prometheus.NewRegistry())
 
 	observer.ObserveFailure()
 	observer.ObserveFailure()

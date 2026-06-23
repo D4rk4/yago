@@ -63,9 +63,9 @@ func run() error {
 	}
 	defer closeVault(vault)
 
-	endpoints := newEndpointMetrics()
-	publishStorageMetrics(endpoints.registry, vault)
-	evictionMetrics := metrics.NewEviction(endpoints.registry)
+	endpoints := metrics.NewHTTPEndpointMetrics()
+	metrics.NewStorageMetrics(endpoints.Registry(), vault)
+	evictionMetrics := metrics.NewEvictionMetrics(endpoints.Registry())
 
 	assembled, err := assembleNode(config, settings, vault, client)
 	if err != nil {
@@ -86,7 +86,7 @@ func run() error {
 				logHTTPRequests(instrumentHTTP(endpoints, assembled.peerMux)),
 			),
 		},
-		namedServer{"ops", buildServer(config.OpsAddr, newOpsMux(endpoints.handler()))},
+		namedServer{"ops", buildServer(config.OpsAddr, newOpsMux(endpoints.Handler()))},
 	)
 }
 
@@ -106,7 +106,7 @@ func buildServer(addr string, handler http.Handler) *http.Server {
 func serve(
 	ctx context.Context,
 	assembled node,
-	evictionMetrics *metrics.Eviction,
+	evictionMetrics *metrics.EvictionMetrics,
 	servers ...namedServer,
 ) error {
 	ctx, cancel := context.WithCancel(ctx)

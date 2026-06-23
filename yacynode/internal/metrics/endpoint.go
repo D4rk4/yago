@@ -1,4 +1,4 @@
-package main
+package metrics
 
 import (
 	"net/http"
@@ -15,13 +15,13 @@ const (
 	unmatchedEndpoint = "unmatched"
 )
 
-type endpointMetrics struct {
+type HTTPEndpointMetrics struct {
 	registry  *prometheus.Registry
 	requests  *prometheus.CounterVec
 	durations *prometheus.HistogramVec
 }
 
-func newEndpointMetrics() *endpointMetrics {
+func NewHTTPEndpointMetrics() *HTTPEndpointMetrics {
 	registry := prometheus.NewRegistry()
 	requests := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -40,17 +40,21 @@ func newEndpointMetrics() *endpointMetrics {
 	)
 	registry.MustRegister(requests, durations)
 
-	return &endpointMetrics{registry: registry, requests: requests, durations: durations}
+	return &HTTPEndpointMetrics{registry: registry, requests: requests, durations: durations}
 }
 
-func (m *endpointMetrics) observe(endpoint string, status int, elapsed time.Duration) {
+func (e *HTTPEndpointMetrics) Registry() *prometheus.Registry {
+	return e.registry
+}
+
+func (e *HTTPEndpointMetrics) Observe(endpoint string, status int, elapsed time.Duration) {
 	if endpoint == "" {
 		endpoint = unmatchedEndpoint
 	}
-	m.requests.WithLabelValues(endpoint, strconv.Itoa(status)).Inc()
-	m.durations.WithLabelValues(endpoint).Observe(elapsed.Seconds())
+	e.requests.WithLabelValues(endpoint, strconv.Itoa(status)).Inc()
+	e.durations.WithLabelValues(endpoint).Observe(elapsed.Seconds())
 }
 
-func (m *endpointMetrics) handler() http.Handler {
-	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
+func (e *HTTPEndpointMetrics) Handler() http.Handler {
+	return promhttp.HandlerFor(e.registry, promhttp.HandlerOpts{})
 }

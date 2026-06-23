@@ -15,7 +15,11 @@ const (
 	evictionFailedMessage = "storage eviction failed"
 )
 
-func runEvictionLoop(ctx context.Context, sweeper eviction.Sweeper, observer *metrics.Eviction) {
+func runEvictionLoop(
+	ctx context.Context,
+	sweeper eviction.Sweeper,
+	observer *metrics.EvictionMetrics,
+) {
 	sweepOnce(ctx, sweeper, observer)
 
 	ticker := time.NewTicker(evictionInterval)
@@ -30,7 +34,7 @@ func runEvictionLoop(ctx context.Context, sweeper eviction.Sweeper, observer *me
 	}
 }
 
-func sweepOnce(ctx context.Context, sweeper eviction.Sweeper, observer *metrics.Eviction) {
+func sweepOnce(ctx context.Context, sweeper eviction.Sweeper, observer *metrics.EvictionMetrics) {
 	result, err := sweeper.Sweep(ctx)
 	if err != nil {
 		observer.ObserveFailure()
