@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 )
 
 type stubCounter struct {
@@ -20,8 +21,8 @@ func (c stubCounter) RWICount(context.Context) (int, error)           { return c
 func (c stubCounter) ReferencedURLCount(context.Context) (int, error) { return c.refs, c.err }
 func (c stubCounter) Count(context.Context) (int, error)              { return c.urls, c.err }
 
-func testIdentity() Identity {
-	return Identity{
+func testIdentity() nodeidentity.Identity {
+	return nodeidentity.Identity{
 		Hash:        yacymodel.WordHash("self"),
 		NetworkName: "freeworld",
 		Name:        "node",

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
@@ -17,7 +17,7 @@ const (
 )
 
 type searchEndpoint struct {
-	peer     httpguard.PeerIdentity
+	identity nodeidentity.Identity
 	searcher searcher
 }
 
@@ -27,7 +27,7 @@ func (e searchEndpoint) Serve(
 ) (yacyproto.SearchResponse, error) {
 	resp := yacyproto.SearchResponse{}
 
-	if e.peer.NetworkMatches(req.NetworkName) {
+	if e.identity.NetworkMatches(req.NetworkName) {
 		criteria, err := searchCriteriaFromRequest(req)
 		if err != nil {
 			return yacyproto.SearchResponse{}, fmt.Errorf("search criteria: %w", err)

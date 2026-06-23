@@ -14,6 +14,8 @@ components:
     in: yacynode/internal/boltvault/**
   httpguard:
     in: yacynode/internal/httpguard/**
+  nodeidentity:
+    in: yacynode/internal/nodeidentity/**
   peering:
     in: yacynode/internal/peering/**
   bootstrap:
@@ -95,10 +97,15 @@ deps:
       - httpguard
       - yacymodel
       - yacyproto
+  nodeidentity:
+    mayDependOn:
+      - yacymodel
+      - yacyproto
   peering:
     mayDependOn:
       - peering
       - httpguard
+      - nodeidentity
       - yacymodel
       - yacyproto
   bootstrap:
@@ -120,6 +127,7 @@ deps:
       - urlmeta
       - boltvault
       - httpguard
+      - nodeidentity
       - yacymodel
       - yacyproto
   rwi:
@@ -128,6 +136,7 @@ deps:
       - urlmeta
       - boltvault
       - httpguard
+      - nodeidentity
       - yacymodel
       - yacyproto
   documentsearch:
@@ -136,12 +145,14 @@ deps:
       - rwi
       - urlmeta
       - httpguard
+      - nodeidentity
       - yacymodel
       - yacyproto
   nodestatus:
     mayDependOn:
       - nodestatus
       - httpguard
+      - nodeidentity
       - yacymodel
       - yacyproto
   eviction:
@@ -170,6 +181,7 @@ deps:
       - documentsearch
       - eviction
       - metrics
+      - nodeidentity
       - nodestatus
       - yacymodel
       - yacyproto

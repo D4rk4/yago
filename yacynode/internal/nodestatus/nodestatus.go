@@ -11,6 +11,7 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
@@ -29,28 +30,13 @@ type URLCounter interface {
 	Count(ctx context.Context) (int, error)
 }
 
-type Identity struct {
-	Hash        yacymodel.Hash
-	NetworkName string
-	Name        string
-	Host        string
-	Port        int
-	Flags       yacymodel.Flags
-	Version     string
-	Start       time.Time
-}
-
-func (id Identity) Uptime(now time.Time) int {
-	return int(now.Sub(id.Start).Minutes())
-}
-
-func NewReport(id Identity, rwi RWICounter, urls URLCounter) Report {
+func NewReport(id nodeidentity.Identity, rwi RWICounter, urls URLCounter) Report {
 	return newReport(id, time.Now, rwi, urls)
 }
 
 func MountQuery(
 	router httpguard.WireRouter,
-	peer httpguard.PeerIdentity,
+	identity nodeidentity.Identity,
 	rwi RWICounter,
 	urls URLCounter,
 ) {
@@ -59,6 +45,6 @@ func MountQuery(
 		yacyproto.PathQuery,
 		yacyproto.QueryEndpointMethods,
 		yacyproto.ParseQueryRequest,
-		queryEndpoint{peer: peer, rwi: rwi, urls: urls}.Serve,
+		queryEndpoint{identity: identity, rwi: rwi, urls: urls}.Serve,
 	)
 }

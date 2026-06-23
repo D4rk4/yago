@@ -3,11 +3,11 @@ package main
 import (
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodestatus"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 )
 
-func nodeIdentity(config nodeConfig) nodestatus.Identity {
-	return nodestatus.Identity{
+func nodeIdentity(config nodeConfig) nodeidentity.Identity {
+	return nodeidentity.Identity{
 		Hash:        config.Hash,
 		NetworkName: config.NetworkName,
 		Name:        config.Name,

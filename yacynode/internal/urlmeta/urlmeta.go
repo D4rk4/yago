@@ -9,6 +9,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
@@ -51,7 +52,7 @@ func Open(vault *boltvault.Vault) (URLDirectory, URLEvictor, URLReceiver, error)
 
 func MountTransferURL(
 	router httpguard.WireRouter,
-	peer httpguard.PeerIdentity,
+	identity nodeidentity.Identity,
 	receiver URLReceiver,
 ) {
 	httpguard.Mount(
@@ -59,6 +60,6 @@ func MountTransferURL(
 		yacyproto.PathTransferURL,
 		yacyproto.TransferURLEndpointMethods,
 		yacyproto.ParseTransferURLRequest,
-		transferURLEndpoint{peer: peer, intake: receiver}.Serve,
+		transferURLEndpoint{identity: identity, intake: receiver}.Serve,
 	)
 }

@@ -7,11 +7,11 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 )
 
-func localIdentity() httpguard.PeerIdentity {
-	return httpguard.PeerIdentity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
+func localIdentity() nodeidentity.Identity {
+	return nodeidentity.Identity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
 }
 
 type urlPorts struct {

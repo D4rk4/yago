@@ -7,6 +7,7 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
@@ -15,9 +16,9 @@ type helloDirectory interface {
 }
 
 type helloEndpoint struct {
-	peer   httpguard.PeerIdentity
-	status RuntimeStatus
-	peers  helloDirectory
+	identity nodeidentity.Identity
+	status   RuntimeStatus
+	peers    helloDirectory
 }
 
 func (e helloEndpoint) Serve(
@@ -29,7 +30,7 @@ func (e helloEndpoint) Serve(
 		Seeds:  []yacymodel.Seed{e.status.SelfSeed(ctx)},
 	}
 
-	if e.peer.NetworkMatches(req.NetworkName) {
+	if e.identity.NetworkMatches(req.NetworkName) {
 		outcome, err := e.peers.Hello(ctx, req.Seed, req.Count)
 		if err != nil {
 			return yacyproto.HelloResponse{}, fmt.Errorf("hello: %w", err)

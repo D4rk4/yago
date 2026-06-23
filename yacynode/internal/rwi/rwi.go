@@ -11,6 +11,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
@@ -83,7 +84,7 @@ func Open(
 
 func MountTransferRWI(
 	router httpguard.WireRouter,
-	peer httpguard.PeerIdentity,
+	identity nodeidentity.Identity,
 	receiver PostingReceiver,
 ) {
 	httpguard.Mount(
@@ -91,6 +92,6 @@ func MountTransferRWI(
 		yacyproto.PathTransferRWI,
 		yacyproto.TransferRWIEndpointMethods,
 		yacyproto.ParseTransferRWIRequest,
-		transferRWIEndpoint{peer: peer, intake: receiver}.Serve,
+		transferRWIEndpoint{identity: identity, intake: receiver}.Serve,
 	)
 }

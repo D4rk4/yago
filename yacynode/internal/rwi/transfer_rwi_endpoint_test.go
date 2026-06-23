@@ -9,7 +9,7 @@ import (
 )
 
 func (h harness) endpoint() transferRWIEndpoint {
-	return transferRWIEndpoint{peer: localIdentity(), intake: h.rwi.Receiver}
+	return transferRWIEndpoint{identity: localIdentity(), intake: h.rwi.Receiver}
 }
 
 func TestTransferRWIReportsBusy(t *testing.T) {

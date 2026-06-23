@@ -6,15 +6,15 @@ import (
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 func newQueryEndpoint(counts stubCounter) queryEndpoint {
 	return queryEndpoint{
-		peer: httpguard.PeerIdentity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"},
-		rwi:  counts,
-		urls: counts,
+		identity: nodeidentity.Identity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"},
+		rwi:      counts,
+		urls:     counts,
 	}
 }
 

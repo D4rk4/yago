@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
@@ -22,9 +22,9 @@ var (
 )
 
 type queryEndpoint struct {
-	peer httpguard.PeerIdentity
-	rwi  RWICounter
-	urls URLCounter
+	identity nodeidentity.Identity
+	rwi      RWICounter
+	urls     URLCounter
 }
 
 func (e queryEndpoint) Serve(
@@ -33,7 +33,7 @@ func (e queryEndpoint) Serve(
 ) (yacyproto.QueryResponse, error) {
 	resp := yacyproto.QueryResponse{Response: yacyproto.QueryResponseRejected}
 
-	if e.peer.NetworkMatches(req.NetworkName) && e.peer.YouAreMatches(req.YouAre) {
+	if e.identity.Addresses(req.NetworkName, req.YouAre) {
 		count, supported, err := e.count(ctx, req.Object)
 		if err != nil {
 			return yacyproto.QueryResponse{}, fmt.Errorf("%s: %w", msgCountFailed, err)

@@ -6,19 +6,25 @@ import (
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 )
 
 const msgCountUnavailable = "count unavailable for self seed"
 
 type nodeReport struct {
-	id   Identity
+	id   nodeidentity.Identity
 	base yacymodel.Seed
 	now  func() time.Time
 	rwi  RWICounter
 	urls URLCounter
 }
 
-func newReport(id Identity, now func() time.Time, rwi RWICounter, urls URLCounter) nodeReport {
+func newReport(
+	id nodeidentity.Identity,
+	now func() time.Time,
+	rwi RWICounter,
+	urls URLCounter,
+) nodeReport {
 	return nodeReport{
 		id:   id,
 		base: baseSeed(id),
@@ -48,7 +54,7 @@ func (r nodeReport) SelfSeed(ctx context.Context) yacymodel.Seed {
 	return seed
 }
 
-func baseSeed(id Identity) yacymodel.Seed {
+func baseSeed(id nodeidentity.Identity) yacymodel.Seed {
 	seed := yacymodel.Seed{
 		Hash:     id.Hash,
 		Name:     yacymodel.Some(id.Name),

@@ -11,6 +11,7 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
@@ -30,7 +31,7 @@ func NewTrustedSeeds(capacity int) TrustedSeeds {
 
 func MountHello(
 	router httpguard.WireRouter,
-	peer httpguard.PeerIdentity,
+	identity nodeidentity.Identity,
 	status RuntimeStatus,
 	seeds TrustedSeeds,
 	client *http.Client,
@@ -41,6 +42,6 @@ func MountHello(
 		yacyproto.PathHello,
 		yacyproto.HelloEndpointMethods,
 		yacyproto.ParseHelloRequest,
-		helloEndpoint{peer: peer, status: status, peers: directory}.Serve,
+		helloEndpoint{identity: identity, status: status, peers: directory}.Serve,
 	)
 }

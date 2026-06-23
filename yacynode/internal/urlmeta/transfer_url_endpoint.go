@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 type transferURLEndpoint struct {
-	peer   httpguard.PeerIdentity
-	intake URLReceiver
+	identity nodeidentity.Identity
+	intake   URLReceiver
 }
 
 func (e transferURLEndpoint) Serve(
@@ -20,7 +20,7 @@ func (e transferURLEndpoint) Serve(
 ) (yacyproto.TransferURLResponse, error) {
 	resp := yacyproto.TransferURLResponse{}
 
-	if !e.peer.NetworkMatches(req.NetworkName) || !e.peer.YouAreMatches(req.YouAre) {
+	if !e.identity.Addresses(req.NetworkName, req.YouAre) {
 		resp.Result = yacyproto.ResultWrongTarget
 
 		return resp, nil

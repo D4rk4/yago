@@ -1,6 +1,6 @@
 // Package httpguard enforces the HTTP request invariants every module endpoint
-// shares: method set, body limit, request timeout, and peer authentication match.
-// It carries no feature logic and depends only on the wire vocabulary.
+// shares: method set, body limit, and request timeout. It carries no feature
+// logic and depends only on the wire vocabulary.
 package httpguard
 
 import (

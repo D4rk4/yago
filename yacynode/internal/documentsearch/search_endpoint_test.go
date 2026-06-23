@@ -5,12 +5,12 @@ import (
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
-func searchIdentity() httpguard.PeerIdentity {
-	return httpguard.PeerIdentity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
+func searchIdentity() nodeidentity.Identity {
+	return nodeidentity.Identity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
 }
 
 func newEndpoint(
@@ -18,7 +18,7 @@ func newEndpoint(
 	documents fakeDirectory,
 ) func(context.Context, yacyproto.SearchRequest) (yacyproto.SearchResponse, error) {
 	return searchEndpoint{
-		peer: searchIdentity(),
+		identity: searchIdentity(),
 		searcher: searcher{
 			index:          index,
 			documents:      documents,

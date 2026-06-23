@@ -33,7 +33,7 @@ func assembleNode(
 		httpguard.DefaultMaxBodyBytes,
 		httpguard.DefaultRequestTimeout,
 	)
-	peer := httpguard.PeerIdentity{Hash: config.Hash, NetworkName: config.NetworkName}
+	identity := nodeIdentity(config)
 
 	urlDirectory, urlEvictor, urlReceiver, err := urlmeta.Open(vault)
 	if err != nil {
@@ -49,7 +49,7 @@ func assembleNode(
 		return node{}, fmt.Errorf("rwi storage: %w", err)
 	}
 
-	report := nodestatus.NewReport(nodeIdentity(config), postings, urlDirectory)
+	report := nodestatus.NewReport(identity, postings, urlDirectory)
 
 	gate := httpguard.WireGate{
 		Guard:   guard,
@@ -61,16 +61,16 @@ func assembleNode(
 	mux.Handle("/{$}", landing.NewEndpoint())
 	router := httpguard.NewWireRouter(mux, gate)
 
-	urlmeta.MountTransferURL(router, peer, urlReceiver)
-	rwi.MountTransferRWI(router, peer, postingReceiver)
-	nodestatus.MountQuery(router, peer, postings, urlDirectory)
+	urlmeta.MountTransferURL(router, identity, urlReceiver)
+	rwi.MountTransferRWI(router, identity, postingReceiver)
+	nodestatus.MountQuery(router, identity, postings, urlDirectory)
 
-	documentsearch.MountSearch(router, peer, postings, urlDirectory, searchPostingsPerWord)
+	documentsearch.MountSearch(router, identity, postings, urlDirectory, searchPostingsPerWord)
 
 	registry := peering.NewTrustedSeeds(trustedSeedCapacity)
 	peering.MountHello(
 		router,
-		peer,
+		identity,
 		peeringStatus{report: report, networkName: config.NetworkName},
 		registry,
 		client,

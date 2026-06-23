@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
@@ -78,22 +77,5 @@ func TestParseAcceptsValidPost(t *testing.T) {
 	}
 	if form.Get("a") != "b" {
 		t.Fatalf("form[a] = %q, want b", form.Get("a"))
-	}
-}
-
-func TestNetworkAndYouAreMatch(t *testing.T) {
-	peer := httpguard.PeerIdentity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"}
-
-	if !peer.NetworkMatches("freeworld") {
-		t.Fatal("NetworkMatches rejected the configured network")
-	}
-	if peer.NetworkMatches("othernet") {
-		t.Fatal("NetworkMatches accepted a foreign network")
-	}
-	if !peer.YouAreMatches(yacymodel.WordHash("self")) {
-		t.Fatal("YouAreMatches rejected the local hash")
-	}
-	if peer.YouAreMatches(yacymodel.WordHash("other")) {
-		t.Fatal("YouAreMatches accepted a foreign hash")
 	}
 }

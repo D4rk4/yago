@@ -4,6 +4,7 @@ package documentsearch
 
 import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
@@ -11,13 +12,13 @@ import (
 
 func MountSearch(
 	router httpguard.WireRouter,
-	peer httpguard.PeerIdentity,
+	identity nodeidentity.Identity,
 	index rwi.PostingScanner,
 	documents urlmeta.URLDirectory,
 	matchesPerTerm int,
 ) {
 	endpoint := searchEndpoint{
-		peer: peer,
+		identity: identity,
 		searcher: searcher{
 			index:          index,
 			documents:      documents,

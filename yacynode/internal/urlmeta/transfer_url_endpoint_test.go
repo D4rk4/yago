@@ -9,7 +9,7 @@ import (
 )
 
 func (m urlPorts) endpoint() transferURLEndpoint {
-	return transferURLEndpoint{peer: localIdentity(), intake: m.Receiver}
+	return transferURLEndpoint{identity: localIdentity(), intake: m.Receiver}
 }
 
 func TestTransferURLStoresAndAnswers(t *testing.T) {

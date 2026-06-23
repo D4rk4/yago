@@ -23,9 +23,9 @@ func (d *stubDirectory) Hello(context.Context, yacymodel.Seed, int) (helloOutcom
 
 func newEndpoint(t testing.TB, peers helloDirectory) helloEndpoint {
 	return helloEndpoint{
-		peer:   localPeer(),
-		status: selfStatus(t),
-		peers:  peers,
+		identity: localPeer(),
+		status:   selfStatus(t),
+		peers:    peers,
 	}
 }
 

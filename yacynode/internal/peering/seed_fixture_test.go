@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 )
 
 const hashFiller = "AAAAAAAAAAAA"
@@ -47,8 +47,8 @@ func (s stubStatus) SelfSeed(context.Context) yacymodel.Seed {
 	return s.seed
 }
 
-func localPeer() httpguard.PeerIdentity {
-	return httpguard.PeerIdentity{Hash: hashFor("self"), NetworkName: "freeworld"}
+func localPeer() nodeidentity.Identity {
+	return nodeidentity.Identity{Hash: hashFor("self"), NetworkName: "freeworld"}
 }
 
 func selfStatus(t testing.TB) stubStatus {
