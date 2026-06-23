@@ -67,11 +67,26 @@ func TestResultTopicsCapsAtFive(t *testing.T) {
 	}
 }
 
-func TestResultTopicsEmptyBelowUsefulThreshold(t *testing.T) {
+func TestResultTopicsReturnsSingleWord(t *testing.T) {
 	resources := []yacymodel.URIMetadataRow{titled("alpha alpha alpha")}
 
-	if got := resultTopics(context.Background(), resources, nil); got != nil {
-		t.Fatalf("topics = %v, want nil", got)
+	got := resultTopics(context.Background(), resources, nil)
+	want := []string{"alpha"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("topics = %v, want %v", got, want)
+	}
+}
+
+func TestResultTopicsDropsUnhelpfulWords(t *testing.T) {
+	resources := []yacymodel.URIMetadataRow{
+		titled("the alpha and beta"),
+		titled("the alpha"),
+	}
+
+	got := resultTopics(context.Background(), resources, nil)
+	want := []string{"alpha", "beta"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("topics = %v, want %v", got, want)
 	}
 }
 

@@ -39,6 +39,8 @@ func keepDocumentsMatchingEveryTerm(
 	return matchingEvery
 }
 
+// Deliberate divergence from YaCy: documents are ordered by occurrences and term
+// spread alone, not YaCy's normalized multi-factor ranking profile.
 func documentsOrderedByRelevance(documents map[yacymodel.Hash]matchedDocument) []yacymodel.Hash {
 	ranked := make([]matchedDocument, 0, len(documents))
 	for _, document := range documents {

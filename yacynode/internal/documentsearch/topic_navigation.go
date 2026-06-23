@@ -12,7 +12,6 @@ import (
 const (
 	maxTopics           = 5
 	minWordLength       = 3
-	leastUsefulTopics   = 2
 	msgTitleUndecodable = "rwi result title undecodable"
 )
 
@@ -37,6 +36,9 @@ func resultTopics(
 		}
 		for _, word := range titleWords(title) {
 			if _, isQueryTerm := excluded[yacymodel.WordHash(word)]; isQueryTerm {
+				continue
+			}
+			if isUnhelpfulTopicWord(word) {
 				continue
 			}
 			frequency[word]++
@@ -71,10 +73,6 @@ func onlyLetters(word string) bool {
 }
 
 func mostFrequentTopics(frequency map[string]int) []string {
-	// A single recurring word is not a useful navigation hint, matching YaCy.
-	if len(frequency) < leastUsefulTopics {
-		return nil
-	}
 	words := make([]string, 0, len(frequency))
 	for word := range frequency {
 		words = append(words, word)

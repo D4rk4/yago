@@ -72,13 +72,13 @@ func TestLanguageFromOperatorBeforeStructured(t *testing.T) {
 	}
 }
 
-func TestLanguageFromStructuredFallback(t *testing.T) {
+func TestStructuredLanguageDoesNotFilter(t *testing.T) {
 	criteria, err := searchCriteriaFromRequest(yacyproto.SearchRequest{Language: "en"})
 	if err != nil {
 		t.Fatalf("searchCriteriaFromRequest: %v", err)
 	}
-	if criteria.language != "en" {
-		t.Fatalf("language = %q, want en", criteria.language)
+	if criteria.language != "" {
+		t.Fatalf("language = %q, want empty", criteria.language)
 	}
 }
 

@@ -66,8 +66,10 @@ func searchCriteriaFromRequest(req yacyproto.SearchRequest) (searchCriteria, err
 		contentKind:        contentKindFromDomain(req.ContentDom),
 		strictContentKind:  req.StrictContentDom,
 		requiredProperties: required,
-		language:           firstNonEmpty(operators.Language, req.Language),
-		siteHash:           siteHash,
+		// Deliberate divergence from YaCy: only the /language/ modifier filters; the
+		// plain language field drives YaCy's ranking boost, which this node omits.
+		language: operators.Language,
+		siteHash: siteHash,
 	}, nil
 }
 
