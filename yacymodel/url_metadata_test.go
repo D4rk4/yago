@@ -1,6 +1,7 @@
 package yacymodel
 
 import (
+	"context"
 	"errors"
 	"testing"
 )
@@ -78,5 +79,37 @@ func TestParseURIMetadataRowErrors(t *testing.T) {
 		if _, err := ParseURIMetadataRow(bad); !errors.Is(err, ErrBadURLMetadata) {
 			t.Errorf("ParseURIMetadataRow(%q) = %v, want ErrBadURLMetadata", bad, err)
 		}
+	}
+}
+
+func TestTitleDecodesDescription(t *testing.T) {
+	const title = "Quarterly Earnings Report"
+	row := URIMetadataRow{Properties: map[string]string{
+		URLMetaColDescription: EncodeBase64WireForm(title),
+	}}
+
+	got, err := row.Title(context.Background())
+	if err != nil {
+		t.Fatalf("Title: %v", err)
+	}
+	if got != title {
+		t.Fatalf("title = %q, want %q", got, title)
+	}
+}
+
+func TestTitleEmptyWhenAbsent(t *testing.T) {
+	got, err := URIMetadataRow{Properties: map[string]string{}}.Title(context.Background())
+	if err != nil {
+		t.Fatalf("Title: %v", err)
+	}
+	if got != "" {
+		t.Fatalf("title = %q, want empty", got)
+	}
+}
+
+func TestTitleRejectsCorruptDescription(t *testing.T) {
+	row := URIMetadataRow{Properties: map[string]string{URLMetaColDescription: "z|@@@"}}
+	if _, err := row.Title(context.Background()); err == nil {
+		t.Fatal("corrupt description should fail")
 	}
 }

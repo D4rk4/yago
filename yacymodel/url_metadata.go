@@ -1,6 +1,7 @@
 package yacymodel
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -8,8 +9,9 @@ import (
 )
 
 const (
-	URLMetaHash    = "hash"
-	URLMetaHashAlt = "h"
+	URLMetaHash           = "hash"
+	URLMetaHashAlt        = "h"
+	URLMetaColDescription = "descr"
 )
 
 var ErrBadURLMetadata = errors.New("bad url metadata")
@@ -37,6 +39,10 @@ func ParseURIMetadataRow(row string) (URIMetadataRow, error) {
 
 func (r URIMetadataRow) URLHash() (URLHash, error) {
 	return urlMetadataHash(r.Properties)
+}
+
+func (r URIMetadataRow) Title(ctx context.Context) (string, error) {
+	return DecodeWireForm(ctx, r.Properties[URLMetaColDescription])
 }
 
 func (r URIMetadataRow) String() string {

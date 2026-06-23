@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
@@ -49,6 +50,7 @@ func (e searchEndpoint) Serve(
 		}
 
 		resp.SearchTime = int(result.searchDuration / time.Millisecond)
+		resp.References = strings.Join(result.topics, ",")
 		resp.JoinCount = result.totalDocumentsMatchingEveryTerm
 		resp.Count = len(result.resources)
 		resp.Resources = result.resources

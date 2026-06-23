@@ -18,6 +18,7 @@ type searcher struct {
 
 type searchResult struct {
 	resources                         []yacymodel.URIMetadataRow
+	topics                            []string
 	totalDocumentsMatchingEveryTerm   int
 	searchDuration                    time.Duration
 	totalMatchesPerTerm               map[yacymodel.Hash]int
@@ -55,6 +56,7 @@ func (s searcher) search(ctx context.Context, criteria searchCriteria) (searchRe
 
 	return searchResult{
 		resources:                         resources,
+		topics:                            resultTopics(ctx, resources, criteria.terms),
 		totalDocumentsMatchingEveryTerm:   len(matchingEveryTerm),
 		searchDuration:                    time.Since(start),
 		totalMatchesPerTerm:               report.totalMatchesPerTerm,
