@@ -46,6 +46,10 @@ components:
 vendors:
   bbolt:
     in: go.etcd.io/bbolt
+  prometheus:
+    in:
+      - github.com/prometheus/client_golang/prometheus
+      - github.com/prometheus/client_golang/prometheus/**
   xnet-html:
     in:
       - golang.org/x/net/html
@@ -160,6 +164,8 @@ deps:
       - nodestatus
       - yacymodel
       - yacyproto
+    canUse:
+      - prometheus
   dbmigrate:
     canUse:
       - bbolt

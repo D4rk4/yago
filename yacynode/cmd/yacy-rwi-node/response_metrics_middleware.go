@@ -1,27 +1,15 @@
 package main
 
 import (
-	"expvar"
 	"net/http"
-	"strconv"
+	"time"
 )
 
-const metricHTTPResponses = "http_responses"
-
-func instrumentHTTP(next http.Handler) http.Handler {
-	responses := httpResponsesMap()
-
+func instrumentHTTP(metrics *endpointMetrics, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(recorder, r)
-		responses.Add(strconv.Itoa(recorder.status), 1)
+		metrics.observe(r.Pattern, recorder.status, time.Since(started))
 	})
-}
-
-func httpResponsesMap() *expvar.Map {
-	if existing, ok := expvar.Get(metricHTTPResponses).(*expvar.Map); ok {
-		return existing
-	}
-
-	return expvar.NewMap(metricHTTPResponses)
 }

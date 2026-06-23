@@ -76,7 +76,7 @@ func TestServeReturnsNilAfterCancel(t *testing.T) {
 
 	err := serve(ctx, assembled,
 		namedServer{"peer protocol", buildServer("127.0.0.1:0", assembled.peerMux)},
-		namedServer{"ops", buildServer("127.0.0.1:0", newOpsMux())},
+		namedServer{"ops", buildServer("127.0.0.1:0", newOpsMux(newEndpointMetrics().handler()))},
 	)
 	if err != nil {
 		t.Fatalf("serve: %v", err)
@@ -97,7 +97,7 @@ func TestServeShutsDownOnListenError(t *testing.T) {
 func TestOpsMuxAnswersHealth(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, pathHealth, nil)
-	newOpsMux().ServeHTTP(rec, req)
+	newOpsMux(newEndpointMetrics().handler()).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("health status = %d, want 200", rec.Code)

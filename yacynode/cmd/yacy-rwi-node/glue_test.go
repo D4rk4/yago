@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodestatus"
 )
@@ -20,7 +22,7 @@ func TestConfigureLogging(t *testing.T) {
 }
 
 func TestMiddlewareRecordsStatus(t *testing.T) {
-	handler := logHTTPRequests(instrumentHTTP(http.HandlerFunc(
+	handler := logHTTPRequests(instrumentHTTP(newEndpointMetrics(), http.HandlerFunc(
 		func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 		},
@@ -71,8 +73,7 @@ func TestRuntimeStatusAdapters(t *testing.T) {
 func TestPublishStorageMetricsAndSweepLoop(t *testing.T) {
 	config := testConfig(t)
 	vault := openTestVault(t)
-	publishStorageMetrics(vault)
-	publishStorageMetrics(vault)
+	publishStorageMetrics(prometheus.NewRegistry(), vault)
 
 	assembled := assembleTestNode(t, config, vault)
 

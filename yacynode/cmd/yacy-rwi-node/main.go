@@ -62,7 +62,8 @@ func run() error {
 	}
 	defer closeVault(vault)
 
-	publishStorageMetrics(vault)
+	metrics := newEndpointMetrics()
+	publishStorageMetrics(metrics.registry, vault)
 
 	assembled, err := assembleNode(config, settings, vault, client)
 	if err != nil {
@@ -77,9 +78,12 @@ func run() error {
 		assembled,
 		namedServer{
 			"peer protocol",
-			buildServer(config.PeerAddr, logHTTPRequests(instrumentHTTP(assembled.peerMux))),
+			buildServer(
+				config.PeerAddr,
+				logHTTPRequests(instrumentHTTP(metrics, assembled.peerMux)),
+			),
 		},
-		namedServer{"ops", buildServer(config.OpsAddr, newOpsMux())},
+		namedServer{"ops", buildServer(config.OpsAddr, newOpsMux(metrics.handler()))},
 	)
 }
 
