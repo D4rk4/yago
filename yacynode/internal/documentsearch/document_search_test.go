@@ -12,6 +12,10 @@ type fakeScanner struct {
 	postings map[yacymodel.Hash][]yacymodel.RWIPosting
 }
 
+func (s fakeScanner) RWICount(context.Context) (int, error) {
+	return len(s.postings), nil
+}
+
 func (s fakeScanner) ScanWord(
 	_ context.Context,
 	word yacymodel.Hash,

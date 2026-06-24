@@ -52,9 +52,10 @@ func Open(
 	}
 
 	watched := observers(watchers)
+	directory := urlDirectory{vault: vault, collection: collection, observers: watched}
 
-	return urlDirectory{vault: vault, collection: collection},
-		urlEvictor{vault: vault, collection: collection, observers: watched},
+	return directory,
+		directory,
 		urlIntake{vault: vault, collection: collection, observers: watched},
 		nil
 }

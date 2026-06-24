@@ -10,7 +10,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmetastaleness"
 )
 
-func openOrder(t *testing.T) (*boltvault.Vault, urlmetastaleness.Order) {
+func openOrder(t *testing.T) (*boltvault.Vault, urlmetastaleness.StalenessRanking) {
 	t.Helper()
 
 	vault, err := boltvault.Open(filepath.Join(t.TempDir(), "node.db"), 0)
@@ -34,7 +34,7 @@ func openOrder(t *testing.T) (*boltvault.Vault, urlmetastaleness.Order) {
 func store(
 	t *testing.T,
 	vault *boltvault.Vault,
-	order urlmetastaleness.Order,
+	order urlmetastaleness.StalenessRanking,
 	hash yacymodel.Hash,
 	freshness string,
 ) {

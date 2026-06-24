@@ -11,6 +11,7 @@ import (
 type urlDirectory struct {
 	vault      *boltvault.Vault
 	collection *boltvault.Collection[yacymodel.URIMetadataRow]
+	observers  observers
 }
 
 func (d urlDirectory) RowsByHash(
@@ -88,4 +89,28 @@ func (d urlDirectory) Count(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-var _ URLDirectory = urlDirectory{}
+func (d urlDirectory) Purge(
+	ctx context.Context,
+	tx *boltvault.Txn,
+	urls []yacymodel.Hash,
+) (PurgeResult, error) {
+	var result PurgeResult
+	for _, hash := range urls {
+		deleted, err := d.collection.Delete(tx, boltvault.Key(hash))
+		if err != nil {
+			return PurgeResult{}, fmt.Errorf("delete url metadata: %w", err)
+		}
+		if !deleted {
+			continue
+		}
+		d.observers.purged(ctx, tx, hash)
+		result.URLsDeleted++
+	}
+
+	return result, nil
+}
+
+var (
+	_ URLDirectory = urlDirectory{}
+	_ URLEvictor   = urlDirectory{}
+)

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
@@ -15,7 +14,6 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/peering"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmetastaleness"
 )
 
 type node struct {
@@ -36,26 +34,12 @@ func assembleNode(
 	)
 	identity := nodeIdentity(config)
 
-	staleness, err := urlmetastaleness.Open(vault)
+	storage, err := openNodeStorage(vault)
 	if err != nil {
-		return node{}, fmt.Errorf("url metadata staleness: %w", err)
+		return node{}, err
 	}
 
-	urlDirectory, urlEvictor, urlReceiver, err := urlmeta.Open(vault, staleness)
-	if err != nil {
-		return node{}, fmt.Errorf("urlmeta storage: %w", err)
-	}
-
-	postings, postingReceiver, err := rwi.Open(
-		vault,
-		urlDirectory,
-		rwi.Config{BatchCap: receiveBatchCap, PauseSeconds: receiveBusyPauseSecs},
-	)
-	if err != nil {
-		return node{}, fmt.Errorf("rwi storage: %w", err)
-	}
-
-	report := nodestatus.NewReport(identity, postings, urlDirectory)
+	report := nodestatus.NewReport(identity, storage.postings, storage.urlDirectory)
 
 	gate := httpguard.WireGate{
 		Guard:   guard,
@@ -67,11 +51,23 @@ func assembleNode(
 	mux.Handle("/{$}", landing.NewEndpoint())
 	router := httpguard.NewWireRouter(mux, gate)
 
-	urlmeta.MountTransferURL(router, identity, urlReceiver)
-	rwi.MountTransferRWI(router, identity, postingReceiver)
-	nodestatus.MountQuery(router, identity, postings, urlDirectory)
+	urlmeta.MountTransferURL(router, identity, storage.urlReceiver)
+	rwi.MountTransferRWI(router, identity, storage.postingReceiver)
+	nodestatus.MountQuery(
+		router,
+		identity,
+		storage.postings,
+		storage.references,
+		storage.urlDirectory,
+	)
 
-	documentsearch.MountSearch(router, identity, postings, urlDirectory, searchPostingsPerWord)
+	documentsearch.MountSearch(
+		router,
+		identity,
+		storage.postings,
+		storage.urlDirectory,
+		searchPostingsPerWord,
+	)
 
 	registry := peering.NewTrustedSeeds(trustedSeedCapacity)
 	peering.MountHello(
@@ -86,9 +82,10 @@ func assembleNode(
 
 	sweeper := eviction.NewSweeper(
 		vault,
-		postings,
-		urlEvictor,
-		staleness,
+		storage.postingPurger,
+		storage.references,
+		storage.urlEvictor,
+		storage.staleness,
 		eviction.Config{TargetFraction: evictionTargetFraction, BatchSize: evictionBatch},
 	)
 

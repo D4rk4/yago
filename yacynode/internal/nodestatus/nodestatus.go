@@ -23,6 +23,9 @@ type Report interface {
 
 type RWICounter interface {
 	RWICount(ctx context.Context) (int, error)
+}
+
+type ReferencedURLCounter interface {
 	ReferencedURLCount(ctx context.Context) (int, error)
 }
 
@@ -38,6 +41,7 @@ func MountQuery(
 	router httpguard.WireRouter,
 	identity nodeidentity.Identity,
 	rwi RWICounter,
+	references ReferencedURLCounter,
 	urls URLCounter,
 ) {
 	httpguard.Mount(
@@ -45,6 +49,6 @@ func MountQuery(
 		yacyproto.PathQuery,
 		yacyproto.QueryEndpointMethods,
 		yacyproto.ParseQueryRequest,
-		queryEndpoint{identity: identity, rwi: rwi, urls: urls}.Serve,
+		queryEndpoint{identity: identity, rwi: rwi, references: references, urls: urls}.Serve,
 	)
 }

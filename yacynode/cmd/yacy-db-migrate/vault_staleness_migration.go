@@ -10,8 +10,6 @@ import (
 )
 
 const (
-	schemaStaleness = "vault-2"
-
 	urlMetadataBucket        = "urlmeta"
 	stalenessOrderBucket     = "urlmeta_staleness_order"
 	stalenessFreshnessBucket = "urlmeta_staleness_freshness"

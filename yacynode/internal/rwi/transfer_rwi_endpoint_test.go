@@ -55,7 +55,7 @@ func TestTransferRWIStoresAndAnswers(t *testing.T) {
 		t.Fatalf("Result = %q, want ok", resp.Result)
 	}
 
-	rwiCount, err := h.rwi.Directory.RWICount(ctx)
+	rwiCount, err := h.rwi.Index.RWICount(ctx)
 	if err != nil {
 		t.Fatalf("RWICount: %v", err)
 	}

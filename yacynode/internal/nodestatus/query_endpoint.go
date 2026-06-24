@@ -22,9 +22,10 @@ var (
 )
 
 type queryEndpoint struct {
-	identity nodeidentity.Identity
-	rwi      RWICounter
-	urls     URLCounter
+	identity   nodeidentity.Identity
+	rwi        RWICounter
+	references ReferencedURLCounter
+	urls       URLCounter
 }
 
 func (e queryEndpoint) Serve(
@@ -58,7 +59,7 @@ func (e queryEndpoint) count(ctx context.Context, object yacyproto.QueryObject) 
 
 		return n, true, wrapCount(errRWICount, err)
 	case yacyproto.ObjectRWIURLCount:
-		n, err := e.rwi.ReferencedURLCount(ctx)
+		n, err := e.references.ReferencedURLCount(ctx)
 
 		return n, true, wrapCount(errRWIURLCount, err)
 	case yacyproto.ObjectLURLCount:

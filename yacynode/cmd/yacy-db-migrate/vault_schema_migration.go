@@ -12,7 +12,7 @@ const (
 	lengthBucket = "__lengths__"
 	schemaKey    = "__schema__"
 	schemaVault  = "vault-1"
-	schemaLatest = schemaStaleness
+	schemaLatest = schemaReferences
 
 	legacyCountsBucket = "counts"
 )
@@ -49,6 +49,9 @@ func migrate(db *bolt.DB) (bool, error) {
 			}
 		}
 		if err := buildStalenessOrder(tx, lengths); err != nil {
+			return err
+		}
+		if err := buildReferenceIndex(tx, lengths); err != nil {
 			return err
 		}
 		if err := lengths.Put([]byte(schemaKey), []byte(schemaLatest)); err != nil {

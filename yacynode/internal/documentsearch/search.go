@@ -13,7 +13,7 @@ import (
 func MountSearch(
 	router httpguard.WireRouter,
 	identity nodeidentity.Identity,
-	index rwi.PostingScanner,
+	index rwi.PostingIndex,
 	documents urlmeta.URLDirectory,
 	matchesPerTerm int,
 ) {

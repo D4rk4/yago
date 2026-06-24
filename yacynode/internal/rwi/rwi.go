@@ -1,7 +1,8 @@
-// Package rwi owns the transferRWI and search endpoints, RWI posting intake,
-// posting storage with the referenced-URL set, and search. Its published port,
-// PostingDirectory, is the only surface other modules import; it speaks the
-// yacymodel vocabulary and lends cross-module purges a shared transaction, so the
+// Package rwi owns RWI posting intake, storage, search, and eviction. It is the
+// only writer of postings: callers read through PostingIndex, hand postings in
+// through PostingReceiver, and drop them through PostingPurger, while projections
+// follow arrivals and departures through PostingObserver. Every port speaks the
+// yacymodel vocabulary and lends cross-module work a shared transaction, so the
 // schema never leaks.
 package rwi
 
@@ -16,28 +17,22 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
-type PurgeResult struct {
-	PostingsDeleted   int
-	ReferencesDeleted int
+type PostingObserver interface {
+	PostingStored(tx *boltvault.Txn, word, url yacymodel.Hash) error
+	PostingPurged(tx *boltvault.Txn, word, url yacymodel.Hash) error
 }
 
-type PostingDirectory interface {
+type PostingPurger interface {
+	PurgePosting(tx *boltvault.Txn, word, url yacymodel.Hash) (bool, error)
+}
+
+type PostingIndex interface {
 	RWICount(ctx context.Context) (int, error)
-	ReferencedURLCount(ctx context.Context) (int, error)
-	PurgeReferences(tx *boltvault.Txn, urls []yacymodel.Hash) (PurgeResult, error)
-}
-
-type PostingScanner interface {
 	ScanWord(
 		ctx context.Context,
 		word yacymodel.Hash,
 		visit func(yacymodel.RWIPosting) (bool, error),
 	) error
-}
-
-type PostingIndex interface {
-	PostingDirectory
-	PostingScanner
 }
 
 type PostingReceiver interface {
@@ -59,27 +54,25 @@ func Open(
 	vault *boltvault.Vault,
 	urls urlmeta.URLDirectory,
 	cfg Config,
-) (PostingIndex, PostingReceiver, error) {
+	observers ...PostingObserver,
+) (PostingIndex, PostingReceiver, PostingPurger, error) {
 	postings, err := registerPostings(vault)
 	if err != nil {
-		return nil, nil, err
-	}
-	references, err := registerReferences(vault)
-	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	directory := postingDirectory{vault: vault, postings: postings, references: references}
+	watched := postingObservers(observers)
+	directory := postingDirectory{vault: vault, postings: postings, observers: watched}
 	intake := postingIntake{
 		vault:        vault,
 		postings:     postings,
-		references:   references,
+		observers:    watched,
 		urls:         urls,
 		batchCap:     cfg.BatchCap,
 		pauseSeconds: cfg.PauseSeconds,
 	}
 
-	return directory, intake, nil
+	return directory, intake, directory, nil
 }
 
 func MountTransferRWI(

@@ -28,6 +28,8 @@ components:
     in: yacynode/internal/urlmeta/**
   urlmetastaleness:
     in: yacynode/internal/urlmetastaleness/**
+  urlreferences:
+    in: yacynode/internal/urlreferences/**
   rwi:
     in: yacynode/internal/rwi/**
   documentsearch:
@@ -135,6 +137,13 @@ deps:
   urlmetastaleness:
     mayDependOn:
       - urlmetastaleness
+      - urlmeta
+      - boltvault
+      - yacymodel
+  urlreferences:
+    mayDependOn:
+      - urlreferences
+      - rwi
       - boltvault
       - yacymodel
   rwi:
@@ -167,6 +176,8 @@ deps:
       - eviction
       - rwi
       - urlmeta
+      - urlmetastaleness
+      - urlreferences
       - boltvault
       - yacymodel
   metrics:
@@ -191,6 +202,7 @@ deps:
       - nodeidentity
       - nodestatus
       - urlmetastaleness
+      - urlreferences
       - yacymodel
       - yacyproto
     canUse:

@@ -8,15 +8,18 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmetastaleness"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlreferences"
 )
 
 type quotaSweeper struct {
-	vault    *boltvault.Vault
-	postings rwi.PostingDirectory
-	urls     urlmeta.URLEvictor
-	stale    StaleURLSource
-	target   float64
-	batch    int
+	vault      *boltvault.Vault
+	postings   rwi.PostingPurger
+	references urlreferences.ReferenceQuery
+	urls       urlmeta.URLEvictor
+	stale      urlmetastaleness.StaleURLSource
+	target     float64
+	batch      int
 }
 
 func (s quotaSweeper) Sweep(ctx context.Context) (Result, error) {
@@ -59,18 +62,27 @@ func (s quotaSweeper) Sweep(ctx context.Context) (Result, error) {
 func (s quotaSweeper) purge(ctx context.Context, urls []yacymodel.Hash) (Result, error) {
 	var result Result
 	err := s.vault.Update(ctx, func(tx *boltvault.Txn) error {
-		postingResult, err := s.postings.PurgeReferences(tx, urls)
-		if err != nil {
-			return fmt.Errorf("purge references: %w", err)
+		for _, url := range urls {
+			words, err := s.references.WordsReferencing(tx, url)
+			if err != nil {
+				return fmt.Errorf("words referencing url: %w", err)
+			}
+			for _, word := range words {
+				deleted, err := s.postings.PurgePosting(tx, word, url)
+				if err != nil {
+					return fmt.Errorf("purge posting: %w", err)
+				}
+				if deleted {
+					result.PostingsDeleted++
+				}
+			}
 		}
+
 		urlResult, err := s.urls.Purge(ctx, tx, urls)
 		if err != nil {
 			return fmt.Errorf("purge urls: %w", err)
 		}
-		result = Result{
-			URLsDeleted:     urlResult.URLsDeleted,
-			PostingsDeleted: postingResult.PostingsDeleted,
-		}
+		result.URLsDeleted = urlResult.URLsDeleted
 
 		return nil
 	})

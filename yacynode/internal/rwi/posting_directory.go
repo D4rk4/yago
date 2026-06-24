@@ -9,64 +9,28 @@ import (
 )
 
 type postingDirectory struct {
-	vault      *boltvault.Vault
-	postings   *boltvault.Collection[yacymodel.RWIPosting]
-	references *boltvault.Collection[struct{}]
+	vault     *boltvault.Vault
+	postings  *boltvault.Collection[yacymodel.RWIPosting]
+	observers postingObservers
 }
 
 func (d postingDirectory) RWICount(ctx context.Context) (int, error) {
 	return collectionLength(ctx, d.vault, d.postings)
 }
 
-func (d postingDirectory) ReferencedURLCount(ctx context.Context) (int, error) {
-	return collectionLength(ctx, d.vault, d.references)
-}
-
-func (d postingDirectory) PurgeReferences(
+func (d postingDirectory) PurgePosting(
 	tx *boltvault.Txn,
-	urls []yacymodel.Hash,
-) (PurgeResult, error) {
-	targets := make(map[yacymodel.Hash]struct{}, len(urls))
-	for _, hash := range urls {
-		targets[hash] = struct{}{}
-	}
-
-	var stale []boltvault.Key
-	err := d.postings.Scan(tx, nil, func(key boltvault.Key, _ yacymodel.RWIPosting) (bool, error) {
-		id, parseErr := parsePostingKey(key)
-		if parseErr == nil {
-			if _, ok := targets[id.URLHash]; ok {
-				stale = append(stale, key)
-			}
-		}
-
-		return true, nil
-	})
+	word, url yacymodel.Hash,
+) (bool, error) {
+	deleted, err := d.postings.Delete(tx, postingKey(word, url))
 	if err != nil {
-		return PurgeResult{}, fmt.Errorf("scan rwi postings: %w", err)
+		return false, fmt.Errorf("delete rwi posting: %w", err)
+	}
+	if err := d.observers.purged(tx, word, url); err != nil {
+		return false, err
 	}
 
-	var result PurgeResult
-	for _, key := range stale {
-		deleted, err := d.postings.Delete(tx, key)
-		if err != nil {
-			return PurgeResult{}, fmt.Errorf("delete rwi posting: %w", err)
-		}
-		if deleted {
-			result.PostingsDeleted++
-		}
-	}
-	for _, hash := range urls {
-		deleted, err := d.references.Delete(tx, boltvault.Key(hash))
-		if err != nil {
-			return PurgeResult{}, fmt.Errorf("delete referenced url: %w", err)
-		}
-		if deleted {
-			result.ReferencesDeleted++
-		}
-	}
-
-	return result, nil
+	return deleted, nil
 }
 
 func (d postingDirectory) ScanWord(
@@ -118,6 +82,6 @@ func collectionLength[V any](
 }
 
 var (
-	_ PostingDirectory = postingDirectory{}
-	_ PostingScanner   = postingDirectory{}
+	_ PostingIndex  = postingDirectory{}
+	_ PostingPurger = postingDirectory{}
 )

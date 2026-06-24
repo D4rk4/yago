@@ -9,14 +9,18 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
 )
 
-type Order interface {
+type StaleURLSource interface {
 	StalestURLs(ctx context.Context, limit int) ([]yacymodel.Hash, error)
-	URLStored(tx *boltvault.Txn, hash yacymodel.Hash, freshness string) error
-	URLPurged(tx *boltvault.Txn, hash yacymodel.Hash) error
 }
 
-func Open(vault *boltvault.Vault) (Order, error) {
-	return openStalenessOrder(vault)
+type StalenessRanking interface {
+	StaleURLSource
+	urlmeta.URLMetadataObserver
+}
+
+func Open(vault *boltvault.Vault) (StalenessRanking, error) {
+	return openStalenessRanking(vault)
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/eviction"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
 )
 
@@ -29,20 +28,32 @@ func openVault(t *testing.T, quotaBytes int64) *boltvault.Vault {
 	return vault
 }
 
+type fakeReferences struct {
+	word yacymodel.Hash
+}
+
+func (f fakeReferences) WordsReferencing(
+	_ *boltvault.Txn,
+	_ yacymodel.Hash,
+) ([]yacymodel.Hash, error) {
+	return []yacymodel.Hash{f.word}, nil
+}
+
+func (f fakeReferences) ReferencedURLCount(context.Context) (int, error) {
+	return 0, nil
+}
+
 type fakePostings struct {
 	purged []yacymodel.Hash
 }
 
-func (f *fakePostings) RWICount(context.Context) (int, error)           { return 0, nil }
-func (f *fakePostings) ReferencedURLCount(context.Context) (int, error) { return 0, nil }
-
-func (f *fakePostings) PurgeReferences(
+func (f *fakePostings) PurgePosting(
 	_ *boltvault.Txn,
-	urls []yacymodel.Hash,
-) (rwi.PurgeResult, error) {
-	f.purged = append(f.purged, urls...)
+	_, url yacymodel.Hash,
+) (bool, error) {
+	f.purged = append(f.purged, url)
 
-	return rwi.PurgeResult{PostingsDeleted: len(urls)}, nil
+	return true, nil
 }
 
 type fakeURLs struct {
@@ -97,6 +108,7 @@ func newSweeper(
 	return eviction.NewSweeper(
 		vault,
 		postings,
+		fakeReferences{word: yacymodel.WordHash("w")},
 		urls,
 		urls,
 		eviction.Config{TargetFraction: target, BatchSize: batch},

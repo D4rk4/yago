@@ -44,14 +44,3 @@ func postingKey(wordHash, urlHash yacymodel.Hash) boltvault.Key {
 
 	return key
 }
-
-func parsePostingKey(key boltvault.Key) (yacymodel.RWIPostingID, error) {
-	if len(key) != postingKeyLength {
-		return yacymodel.RWIPostingID{}, fmt.Errorf("rwi posting key length %d", len(key))
-	}
-
-	return yacymodel.RWIPostingID{
-		WordHash: yacymodel.Hash(key[:yacymodel.HashLength]),
-		URLHash:  yacymodel.Hash(key[yacymodel.HashLength:]),
-	}, nil
-}

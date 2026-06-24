@@ -12,9 +12,13 @@ import (
 
 func newQueryEndpoint(counts stubCounter) queryEndpoint {
 	return queryEndpoint{
-		identity: nodeidentity.Identity{Hash: yacymodel.WordHash("self"), NetworkName: "freeworld"},
-		rwi:      counts,
-		urls:     counts,
+		identity: nodeidentity.Identity{
+			Hash:        yacymodel.WordHash("self"),
+			NetworkName: "freeworld",
+		},
+		rwi:        counts,
+		references: counts,
+		urls:       counts,
 	}
 }
 

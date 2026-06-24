@@ -16,15 +16,16 @@ func localIdentity() nodeidentity.Identity {
 }
 
 type rwiPorts struct {
-	Directory PostingDirectory
-	Index     PostingScanner
-	Receiver  PostingReceiver
+	Index    PostingIndex
+	Receiver PostingReceiver
+	Purger   PostingPurger
 }
 
 type harness struct {
-	vault *boltvault.Vault
-	urls  urlmeta.URLReceiver
-	rwi   rwiPorts
+	vault    *boltvault.Vault
+	urls     urlmeta.URLReceiver
+	rwi      rwiPorts
+	observer *recordingObserver
 }
 
 func openHarness(t *testing.T, quotaBytes int64, batchCap int) harness {
@@ -44,19 +45,22 @@ func openHarness(t *testing.T, quotaBytes int64, batchCap int) harness {
 	if err != nil {
 		t.Fatalf("urlmeta.Open: %v", err)
 	}
-	index, receiver, err := Open(
+	observer := &recordingObserver{}
+	index, receiver, purger, err := Open(
 		vault,
 		directory,
 		Config{BatchCap: batchCap, PauseSeconds: 5},
+		observer,
 	)
 	if err != nil {
 		t.Fatalf("rwi.Open: %v", err)
 	}
 
 	return harness{
-		vault: vault,
-		urls:  urlReceiver,
-		rwi:   rwiPorts{Directory: index, Index: index, Receiver: receiver},
+		vault:    vault,
+		urls:     urlReceiver,
+		rwi:      rwiPorts{Index: index, Receiver: receiver, Purger: purger},
+		observer: observer,
 	}
 }
 
@@ -112,20 +116,12 @@ func TestIntakePersistsAndCounts(t *testing.T) {
 		t.Fatalf("receipt = %+v, want empty", receipt)
 	}
 
-	rwiCount, err := h.rwi.Directory.RWICount(ctx)
+	rwiCount, err := h.rwi.Index.RWICount(ctx)
 	if err != nil {
 		t.Fatalf("RWICount: %v", err)
 	}
 	if rwiCount != 2 {
 		t.Fatalf("RWICount = %d, want 2", rwiCount)
-	}
-
-	refCount, err := h.rwi.Directory.ReferencedURLCount(ctx)
-	if err != nil {
-		t.Fatalf("ReferencedURLCount: %v", err)
-	}
-	if refCount != 2 {
-		t.Fatalf("ReferencedURLCount = %d, want 2", refCount)
 	}
 }
 

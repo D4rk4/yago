@@ -13,7 +13,7 @@ import (
 type postingIntake struct {
 	vault        *boltvault.Vault
 	postings     *boltvault.Collection[yacymodel.RWIPosting]
-	references   *boltvault.Collection[struct{}]
+	observers    postingObservers
 	urls         urlmeta.URLDirectory
 	batchCap     int
 	pauseSeconds int
@@ -51,8 +51,8 @@ func (i postingIntake) Receive(
 			if err := i.postings.Put(tx, postingKey(entry.WordHash, hash), entry); err != nil {
 				return fmt.Errorf("store rwi posting: %w", err)
 			}
-			if err := i.references.Put(tx, boltvault.Key(hash), struct{}{}); err != nil {
-				return fmt.Errorf("store referenced url: %w", err)
+			if err := i.observers.stored(tx, entry.WordHash, hash); err != nil {
+				return fmt.Errorf("note referenced url: %w", err)
 			}
 			referenced = append(referenced, hash)
 		}

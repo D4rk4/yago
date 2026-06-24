@@ -11,7 +11,7 @@ import (
 )
 
 type searcher struct {
-	index          rwi.PostingScanner
+	index          rwi.PostingIndex
 	documents      urlmeta.URLDirectory
 	matchesPerTerm int
 }

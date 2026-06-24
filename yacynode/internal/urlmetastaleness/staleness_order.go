@@ -13,13 +13,13 @@ const (
 	freshnessBucket boltvault.Name = "urlmeta_staleness_freshness"
 )
 
-type stalenessOrder struct {
+type stalenessRanking struct {
 	vault     *boltvault.Vault
 	order     *boltvault.Collection[struct{}]
 	freshness *boltvault.Collection[string]
 }
 
-func openStalenessOrder(vault *boltvault.Vault) (*stalenessOrder, error) {
+func openStalenessRanking(vault *boltvault.Vault) (*stalenessRanking, error) {
 	order, err := boltvault.Register(vault, orderBucket, presenceCodec{})
 	if err != nil {
 		return nil, fmt.Errorf("register staleness order: %w", err)
@@ -29,10 +29,10 @@ func openStalenessOrder(vault *boltvault.Vault) (*stalenessOrder, error) {
 		return nil, fmt.Errorf("register staleness freshness: %w", err)
 	}
 
-	return &stalenessOrder{vault: vault, order: order, freshness: freshness}, nil
+	return &stalenessRanking{vault: vault, order: order, freshness: freshness}, nil
 }
 
-func (o *stalenessOrder) StalestURLs(ctx context.Context, limit int) ([]yacymodel.Hash, error) {
+func (o *stalenessRanking) StalestURLs(ctx context.Context, limit int) ([]yacymodel.Hash, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
@@ -60,7 +60,11 @@ func (o *stalenessOrder) StalestURLs(ctx context.Context, limit int) ([]yacymode
 	return stalest, nil
 }
 
-func (o *stalenessOrder) URLStored(tx *boltvault.Txn, hash yacymodel.Hash, freshness string) error {
+func (o *stalenessRanking) URLStored(
+	tx *boltvault.Txn,
+	hash yacymodel.Hash,
+	freshness string,
+) error {
 	if err := o.order.Put(
 		tx,
 		rankedURL{freshness: freshness, hash: hash}.orderKey(),
@@ -75,7 +79,9 @@ func (o *stalenessOrder) URLStored(tx *boltvault.Txn, hash yacymodel.Hash, fresh
 	return nil
 }
 
-func (o *stalenessOrder) URLPurged(tx *boltvault.Txn, hash yacymodel.Hash) error {
+var _ StalenessRanking = (*stalenessRanking)(nil)
+
+func (o *stalenessRanking) URLPurged(tx *boltvault.Txn, hash yacymodel.Hash) error {
 	freshness, found, err := o.freshness.Get(tx, boltvault.Key(hash))
 	if err != nil {
 		return fmt.Errorf("read staleness freshness: %w", err)
