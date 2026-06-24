@@ -52,7 +52,7 @@ type fakeURLs struct {
 	purgeErr  error
 }
 
-func (f *fakeURLs) SelectStale(_ context.Context, limit int) ([]yacymodel.Hash, error) {
+func (f *fakeURLs) StalestURLs(_ context.Context, limit int) ([]yacymodel.Hash, error) {
 	if limit > len(f.remaining) {
 		limit = len(f.remaining)
 	}
@@ -62,7 +62,11 @@ func (f *fakeURLs) SelectStale(_ context.Context, limit int) ([]yacymodel.Hash, 
 	return batch, nil
 }
 
-func (f *fakeURLs) Purge(_ *boltvault.Txn, urls []yacymodel.Hash) (urlmeta.PurgeResult, error) {
+func (f *fakeURLs) Purge(
+	_ context.Context,
+	_ *boltvault.Txn,
+	urls []yacymodel.Hash,
+) (urlmeta.PurgeResult, error) {
 	if f.purgeErr != nil {
 		return urlmeta.PurgeResult{}, f.purgeErr
 	}
@@ -93,6 +97,7 @@ func newSweeper(
 	return eviction.NewSweeper(
 		vault,
 		postings,
+		urls,
 		urls,
 		eviction.Config{TargetFraction: target, BatchSize: batch},
 	)

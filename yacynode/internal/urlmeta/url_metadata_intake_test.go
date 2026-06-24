@@ -140,3 +140,37 @@ func TestIntakeBusyAtCapacity(t *testing.T) {
 		t.Fatalf("receipt = %+v, want Busy", receipt)
 	}
 }
+
+func TestIntakeNotifiesObserverOfStoredURLs(t *testing.T) {
+	ctx := context.Background()
+	observer := &recordingObserver{}
+	_, module := openObservedModule(t, observer)
+	row := urlRow(t, "a")
+
+	if _, err := module.Receiver.Receive(ctx, []yacymodel.URIMetadataRow{row}); err != nil {
+		t.Fatalf("Intake: %v", err)
+	}
+	if len(observer.stored) != 1 || observer.stored[0] != rowHash(t, row) {
+		t.Fatalf("stored = %v, want one matching hash", observer.stored)
+	}
+}
+
+func TestIntakeSurvivesObserverFailure(t *testing.T) {
+	ctx := context.Background()
+	observer := &recordingObserver{fail: true}
+	_, module := openObservedModule(t, observer)
+
+	if _, err := module.Receiver.Receive(
+		ctx,
+		[]yacymodel.URIMetadataRow{urlRow(t, "a")},
+	); err != nil {
+		t.Fatalf("Intake: %v", err)
+	}
+	count, err := module.Directory.Count(ctx)
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Count = %d, want 1 despite observer failure", count)
+	}
+}

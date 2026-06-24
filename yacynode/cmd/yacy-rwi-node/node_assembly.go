@@ -15,6 +15,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/peering"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmetastaleness"
 )
 
 type node struct {
@@ -35,7 +36,12 @@ func assembleNode(
 	)
 	identity := nodeIdentity(config)
 
-	urlDirectory, urlEvictor, urlReceiver, err := urlmeta.Open(vault)
+	staleness, err := urlmetastaleness.Open(vault)
+	if err != nil {
+		return node{}, fmt.Errorf("url metadata staleness: %w", err)
+	}
+
+	urlDirectory, urlEvictor, urlReceiver, err := urlmeta.Open(vault, staleness)
 	if err != nil {
 		return node{}, fmt.Errorf("urlmeta storage: %w", err)
 	}
@@ -82,6 +88,7 @@ func assembleNode(
 		vault,
 		postings,
 		urlEvictor,
+		staleness,
 		eviction.Config{TargetFraction: evictionTargetFraction, BatchSize: evictionBatch},
 	)
 

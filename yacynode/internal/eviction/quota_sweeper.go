@@ -6,9 +6,20 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
 )
 
-func (s Sweeper) Sweep(ctx context.Context) (Result, error) {
+type quotaSweeper struct {
+	vault    *boltvault.Vault
+	postings rwi.PostingDirectory
+	urls     urlmeta.URLEvictor
+	stale    StaleURLSource
+	target   float64
+	batch    int
+}
+
+func (s quotaSweeper) Sweep(ctx context.Context) (Result, error) {
 	quota := s.vault.QuotaBytes()
 	if quota <= 0 || s.batch <= 0 {
 		return Result{}, nil
@@ -25,7 +36,7 @@ func (s Sweeper) Sweep(ctx context.Context) (Result, error) {
 			return total, nil
 		}
 
-		candidates, err := s.urls.SelectStale(ctx, s.batch)
+		candidates, err := s.stale.StalestURLs(ctx, s.batch)
 		if err != nil {
 			return total, fmt.Errorf("select stale urls: %w", err)
 		}
@@ -45,14 +56,14 @@ func (s Sweeper) Sweep(ctx context.Context) (Result, error) {
 	}
 }
 
-func (s Sweeper) purge(ctx context.Context, urls []yacymodel.Hash) (Result, error) {
+func (s quotaSweeper) purge(ctx context.Context, urls []yacymodel.Hash) (Result, error) {
 	var result Result
 	err := s.vault.Update(ctx, func(tx *boltvault.Txn) error {
 		postingResult, err := s.postings.PurgeReferences(tx, urls)
 		if err != nil {
 			return fmt.Errorf("purge references: %w", err)
 		}
-		urlResult, err := s.urls.Purge(tx, urls)
+		urlResult, err := s.urls.Purge(ctx, tx, urls)
 		if err != nil {
 			return fmt.Errorf("purge urls: %w", err)
 		}

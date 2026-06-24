@@ -12,6 +12,7 @@ const (
 	lengthBucket = "__lengths__"
 	schemaKey    = "__schema__"
 	schemaVault  = "vault-1"
+	schemaLatest = schemaStaleness
 
 	legacyCountsBucket = "counts"
 )
@@ -37,12 +38,21 @@ func migrate(db *bolt.DB) (bool, error) {
 			return fmt.Errorf("create length bucket: %w", err)
 		}
 
-		if string(lengths.Get([]byte(schemaKey))) == schemaVault {
+		schema := string(lengths.Get([]byte(schemaKey)))
+		if schema == schemaLatest {
 			return nil
 		}
 
-		if err := relocateLegacySchema(tx, lengths); err != nil {
+		if schema != schemaVault {
+			if err := relocateLegacySchema(tx, lengths); err != nil {
+				return err
+			}
+		}
+		if err := buildStalenessOrder(tx, lengths); err != nil {
 			return err
+		}
+		if err := lengths.Put([]byte(schemaKey), []byte(schemaLatest)); err != nil {
+			return fmt.Errorf("mark schema %s: %w", schemaLatest, err)
 		}
 
 		migrated = true
@@ -70,10 +80,6 @@ func relocateLegacySchema(tx *bolt.Tx, lengths *bolt.Bucket) error {
 		if err := tx.DeleteBucket([]byte(legacyCountsBucket)); err != nil {
 			return fmt.Errorf("delete legacy counts bucket: %w", err)
 		}
-	}
-
-	if err := lengths.Put([]byte(schemaKey), []byte(schemaVault)); err != nil {
-		return fmt.Errorf("mark vault schema: %w", err)
 	}
 
 	return nil

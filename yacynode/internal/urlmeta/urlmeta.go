@@ -24,8 +24,12 @@ type URLReceiver interface {
 }
 
 type URLEvictor interface {
-	SelectStale(ctx context.Context, limit int) ([]yacymodel.Hash, error)
-	Purge(tx *boltvault.Txn, urls []yacymodel.Hash) (PurgeResult, error)
+	Purge(ctx context.Context, tx *boltvault.Txn, urls []yacymodel.Hash) (PurgeResult, error)
+}
+
+type URLMetadataObserver interface {
+	URLStored(tx *boltvault.Txn, hash yacymodel.Hash, freshness string) error
+	URLPurged(tx *boltvault.Txn, hash yacymodel.Hash) error
 }
 
 type Receipt struct {
@@ -38,15 +42,20 @@ type PurgeResult struct {
 	URLsDeleted int
 }
 
-func Open(vault *boltvault.Vault) (URLDirectory, URLEvictor, URLReceiver, error) {
+func Open(
+	vault *boltvault.Vault,
+	watchers ...URLMetadataObserver,
+) (URLDirectory, URLEvictor, URLReceiver, error) {
 	collection, err := registerCollection(vault)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
+	watched := observers(watchers)
+
 	return urlDirectory{vault: vault, collection: collection},
-		urlEvictor{vault: vault, collection: collection},
-		urlIntake{vault: vault, collection: collection},
+		urlEvictor{vault: vault, collection: collection, observers: watched},
+		urlIntake{vault: vault, collection: collection, observers: watched},
 		nil
 }
 

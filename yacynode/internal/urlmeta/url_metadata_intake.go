@@ -15,6 +15,7 @@ const urlRowDiscarded = "url row discarded"
 type urlIntake struct {
 	vault      *boltvault.Vault
 	collection *boltvault.Collection[yacymodel.URIMetadataRow]
+	observers  observers
 }
 
 func (i urlIntake) Receive(
@@ -83,7 +84,10 @@ func (i urlIntake) store(
 				slog.String("reason", "store failed"),
 				slog.Any("error", err),
 			)
+
+			continue
 		}
+		i.observers.stored(ctx, tx, hash.Hash(), row.Freshness())
 	}
 
 	return existing, rejected, nil

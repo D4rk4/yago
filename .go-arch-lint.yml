@@ -26,6 +26,8 @@ components:
     in: yacynode/internal/crawling/**
   urlmeta:
     in: yacynode/internal/urlmeta/**
+  urlmetastaleness:
+    in: yacynode/internal/urlmetastaleness/**
   rwi:
     in: yacynode/internal/rwi/**
   documentsearch:
@@ -130,6 +132,11 @@ deps:
       - nodeidentity
       - yacymodel
       - yacyproto
+  urlmetastaleness:
+    mayDependOn:
+      - urlmetastaleness
+      - boltvault
+      - yacymodel
   rwi:
     mayDependOn:
       - rwi
@@ -183,11 +190,14 @@ deps:
       - metrics
       - nodeidentity
       - nodestatus
+      - urlmetastaleness
       - yacymodel
       - yacyproto
     canUse:
       - prometheus
   dbmigrate:
+    mayDependOn:
+      - yacymodel
     canUse:
       - bbolt
   yacycrawlcontract:

@@ -7,7 +7,26 @@ import (
 	"testing"
 
 	bolt "go.etcd.io/bbolt"
+
+	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
+
+func encodedRow(t *testing.T, seed, freshness string) []byte {
+	t.Helper()
+
+	row := yacymodel.URIMetadataRow{
+		Properties: map[string]string{
+			yacymodel.URLMetaHash: yacymodel.WordHash(seed).String(),
+			yacymodel.ColLoadDate: freshness,
+		},
+	}
+	raw, err := yacymodel.EncodeURIMetadata(row)
+	if err != nil {
+		t.Fatalf("encode row: %v", err)
+	}
+
+	return raw
+}
 
 func seedLegacyDB(t *testing.T) (string, map[string]uint64) {
 	t.Helper()
@@ -21,7 +40,7 @@ func seedLegacyDB(t *testing.T) (string, map[string]uint64) {
 	legacy := map[string]map[string][]byte{
 		"rwi":             {"w1u1": {1}, "w1u2": {2}, "w2u1": {3}},
 		"referenced_urls": {"u1": {1}, "u2": {1}},
-		"urls":            {"u1": {9}},
+		"urls":            {"u1": encodedRow(t, "u1", "20200101")},
 		"counts":          {"rwi": le(7), "referenced_urls": le(5), "urls": le(3)},
 	}
 
@@ -107,7 +126,7 @@ func assertLengths(t *testing.T, tx *bolt.Tx, want map[string]uint64) {
 			t.Errorf("length %s = %d, want %d", name, got, wantLength)
 		}
 	}
-	if string(lengths.Get([]byte(schemaKey))) != schemaVault {
+	if string(lengths.Get([]byte(schemaKey))) != schemaLatest {
 		t.Error("schema marker not written")
 	}
 }
