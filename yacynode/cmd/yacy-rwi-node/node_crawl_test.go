@@ -63,7 +63,7 @@ func TestCrawlRuntimeDispatchAndConsume(t *testing.T) {
 		ctx,
 		http.MethodPost,
 		crawldispatch.PathCrawlDispatch,
-		strings.NewReader(`{"name":"docs","seeds":["https://example.org"]}`),
+		strings.NewReader(`{"name":"docs","seeds":["https://example.org"],"maxPagesPerHost":-1}`),
 	)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)

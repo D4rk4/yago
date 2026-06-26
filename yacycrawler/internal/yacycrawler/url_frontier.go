@@ -2,12 +2,23 @@ package yacycrawler
 
 import (
 	"context"
+	"log/slog"
 	"net/url"
 	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+)
+
+const (
+	msgSeedURLRejected      = "seed url rejected"
+	msgSubmitRunUnknown     = "links submitted for unknown run"
+	msgSubmitProfileUnknown = "links submitted for unknown profile"
+	msgJobURLUnparsable     = "crawl job url unparsable"
+	msgLinkUnparsable       = "discovered link unparsable"
+	msgAcceptProfileUnknown = "crawl job accepted for unknown profile"
+	msgSeedProfileMismatch  = "seed profile handle does not match order"
 )
 
 type Frontier struct {
@@ -34,14 +45,21 @@ type frontierRelease struct {
 }
 
 type frontierSeedRun struct {
+	ctx        context.Context
 	requests   []yacycrawlcontract.CrawlRequest
 	provenance []byte
 	profile    CompiledProfile
 	finish     func()
-	result     chan uuid.UUID
+	result     chan SeededRun
+}
+
+type SeededRun struct {
+	RunID  uuid.UUID
+	Queued int
 }
 
 type frontierSubmit struct {
+	ctx   context.Context
 	work  CrawlJob
 	links []string
 	done  chan struct{}
@@ -78,13 +96,15 @@ func (f *Frontier) Release() {
 }
 
 func (f *Frontier) SeedRun(
+	ctx context.Context,
 	requests []yacycrawlcontract.CrawlRequest,
 	provenance []byte,
 	profile CompiledProfile,
 	finish func(),
-) uuid.UUID {
-	result := make(chan uuid.UUID)
+) SeededRun {
+	result := make(chan SeededRun)
 	f.commands <- frontierSeedRun{
+		ctx:        ctx,
 		requests:   requests,
 		provenance: provenance,
 		profile:    profile,
@@ -94,9 +114,9 @@ func (f *Frontier) SeedRun(
 	return <-result
 }
 
-func (f *Frontier) Submit(_ context.Context, work CrawlJob, links []string) {
+func (f *Frontier) Submit(ctx context.Context, work CrawlJob, links []string) {
 	done := make(chan struct{})
-	f.commands <- frontierSubmit{work: work, links: links, done: done}
+	f.commands <- frontierSubmit{ctx: ctx, work: work, links: links, done: done}
 	<-done
 }
 
@@ -152,11 +172,10 @@ func (f *Frontier) handle(
 		close(c.done)
 		return closed, finished
 	case frontierSeedRun:
-		runID := seedFrontierRun(runs, ready, c)
-		c.result <- runID
+		c.result <- seedFrontierRun(runs, ready, c)
 		return closed, nil
 	case frontierSubmit:
-		submitFrontierLinks(runs, ready, c.work, c.links)
+		submitFrontierLinks(c.ctx, runs, ready, c.work, c.links)
 		close(c.done)
 		return closed, nil
 	case frontierDone:
@@ -172,31 +191,46 @@ func seedFrontierRun(
 	runs map[uuid.UUID]*crawlRun,
 	ready *[]CrawlJob,
 	command frontierSeedRun,
-) uuid.UUID {
+) SeededRun {
 	runID := uuid.New()
 	run := frontierRun(runs, runID, command.finish, command.profile)
 	run.pending++
+	queued := 0
 	for _, req := range command.requests {
 		if req.ProfileHandle != command.profile.Profile.Handle {
+			slog.WarnContext(command.ctx, msgSeedProfileMismatch,
+				slog.String("url", req.URL),
+				slog.String("seedProfileHandle", req.ProfileHandle),
+				slog.String("orderProfileHandle", command.profile.Profile.Handle),
+			)
 			continue
 		}
-		if norm, ok := normalizeURL(req.URL); ok {
-			acceptFrontierJob(runs, ready, runID, frontierCandidate{
-				normURL:       norm,
-				depth:         req.Depth,
-				profileHandle: req.ProfileHandle,
-				provenance:    command.provenance,
-			})
+		norm, ok := normalizeURL(req.URL)
+		if !ok {
+			slog.WarnContext(command.ctx, msgSeedURLRejected,
+				slog.String("url", req.URL),
+				slog.String("profileHandle", req.ProfileHandle),
+			)
+			continue
+		}
+		if acceptFrontierJob(command.ctx, runs, ready, runID, frontierCandidate{
+			normURL:       norm,
+			depth:         req.Depth,
+			profileHandle: req.ProfileHandle,
+			provenance:    command.provenance,
+		}) {
+			queued++
 		}
 	}
 	_, finished := finishFrontierJob(runs, runID, false)
 	for _, finish := range finished {
 		go finish()
 	}
-	return runID
+	return SeededRun{RunID: runID, Queued: queued}
 }
 
 func submitFrontierLinks(
+	ctx context.Context,
 	runs map[uuid.UUID]*crawlRun,
 	ready *[]CrawlJob,
 	work CrawlJob,
@@ -204,10 +238,15 @@ func submitFrontierLinks(
 ) {
 	run, ok := runs[work.RunID]
 	if !ok {
+		slog.WarnContext(ctx, msgSubmitRunUnknown, slog.String("runId", work.RunID.String()))
 		return
 	}
 	compiled, ok := run.profiles[work.ProfileHandle]
 	if !ok {
+		slog.WarnContext(ctx, msgSubmitProfileUnknown,
+			slog.String("runId", work.RunID.String()),
+			slog.String("profileHandle", work.ProfileHandle),
+		)
 		return
 	}
 	profile := compiled.Profile
@@ -216,11 +255,20 @@ func submitFrontierLinks(
 	}
 	base, err := url.Parse(work.URL)
 	if err != nil {
+		slog.WarnContext(ctx, msgJobURLUnparsable,
+			slog.String("url", work.URL),
+			slog.Any("error", err),
+		)
 		return
 	}
 	for _, link := range links {
 		ref, err := url.Parse(link)
 		if err != nil {
+			slog.WarnContext(ctx, msgLinkUnparsable,
+				slog.String("link", link),
+				slog.String("base", work.URL),
+				slog.Any("error", err),
+			)
 			continue
 		}
 		resolved := base.ResolveReference(ref)
@@ -237,7 +285,7 @@ func submitFrontierLinks(
 			continue
 		}
 		if norm, ok := normalizeURL(resolved.String()); ok {
-			acceptFrontierJob(runs, ready, work.RunID, frontierCandidate{
+			acceptFrontierJob(ctx, runs, ready, work.RunID, frontierCandidate{
 				normURL:       norm,
 				depth:         work.Depth + 1,
 				profileHandle: work.ProfileHandle,
@@ -277,23 +325,28 @@ type frontierCandidate struct {
 }
 
 func acceptFrontierJob(
+	ctx context.Context,
 	runs map[uuid.UUID]*crawlRun,
 	ready *[]CrawlJob,
 	runID uuid.UUID,
 	candidate frontierCandidate,
-) {
+) bool {
 	host := hostOf(candidate.normURL)
 	run := frontierRun(runs, runID, nil, CompiledProfile{})
 	profile, ok := run.profiles[candidate.profileHandle]
 	if !ok {
-		return
+		slog.WarnContext(ctx, msgAcceptProfileUnknown,
+			slog.String("url", candidate.normURL),
+			slog.String("profileHandle", candidate.profileHandle),
+		)
+		return false
 	}
 	if _, seen := run.visited[candidate.normURL]; seen {
-		return
+		return false
 	}
 	if profile.Profile.MaxPagesPerHost != yacycrawlcontract.UnlimitedPagesPerHost &&
 		run.hostPages[host] >= profile.Profile.MaxPagesPerHost {
-		return
+		return false
 	}
 	run.visited[candidate.normURL] = struct{}{}
 	run.hostPages[host]++
@@ -305,6 +358,7 @@ func acceptFrontierJob(
 		Provenance:    candidate.provenance,
 		RunID:         runID,
 	})
+	return true
 }
 
 func frontierRun(

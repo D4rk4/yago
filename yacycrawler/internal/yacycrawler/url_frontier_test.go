@@ -39,7 +39,7 @@ func seedProfile(
 		reqs = append(reqs, yacycrawlcontract.CrawlRequest{URL: s, ProfileHandle: profile.Handle})
 	}
 	frontier.Hold()
-	frontier.SeedRun(reqs, []byte("test"), compiled, frontier.Release)
+	frontier.SeedRun(context.Background(), reqs, []byte("test"), compiled, frontier.Release)
 	return nil
 }
 

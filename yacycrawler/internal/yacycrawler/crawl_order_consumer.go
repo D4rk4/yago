@@ -6,6 +6,8 @@ import (
 )
 
 const (
+	msgOrderReceived         = "crawl order received"
+	msgRunSeeded             = "crawl run seeded"
 	msgProfileRegisterFailed = "crawl profile registration failed"
 	msgOrderAckFailed        = "crawl order ack failed"
 	msgOrderNakFailed        = "crawl order nak failed"
@@ -42,6 +44,12 @@ func (c *CrawlOrderConsumer) Run(ctx context.Context) {
 
 func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDelivery) {
 	order := delivery.Order
+	slog.InfoContext(
+		ctx,
+		msgOrderReceived,
+		slog.String("handle", order.Profile.Handle),
+		slog.Int("seeds", len(order.Requests)),
+	)
 	profile, err := CompileProfile(order.Profile)
 	if err != nil {
 		slog.WarnContext(
@@ -61,7 +69,7 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 		return
 	}
 	c.frontier.Hold()
-	c.frontier.SeedRun(order.Requests, order.Provenance, profile, func() {
+	seeded := c.frontier.SeedRun(ctx, order.Requests, order.Provenance, profile, func() {
 		defer c.frontier.Release()
 		if ctx.Err() != nil {
 			if err := delivery.Nak(context.Background()); err != nil {
@@ -83,4 +91,11 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 			)
 		}
 	})
+	slog.InfoContext(
+		ctx,
+		msgRunSeeded,
+		slog.String("handle", order.Profile.Handle),
+		slog.String("runId", seeded.RunID.String()),
+		slog.Int("queued", seeded.Queued),
+	)
 }

@@ -20,7 +20,11 @@ type BotWallScreen interface {
 	IsBotWall(page FetchedPage) bool
 }
 
-const msgBotWallDropped = "bot wall page dropped"
+const (
+	msgBotWallDropped = "bot wall page dropped"
+	msgJobFetching    = "crawl job fetching"
+	msgPageCrawled    = "crawl page crawled"
+)
 
 type Pipeline struct {
 	jobs      JobSource
@@ -79,6 +83,10 @@ func (p *Pipeline) run(ctx context.Context) {
 
 func (p *Pipeline) process(ctx context.Context, job CrawlJob) error {
 	defer p.frontier.Done(job)
+	slog.DebugContext(ctx, msgJobFetching,
+		slog.String("url", job.URL),
+		slog.Int("depth", job.Depth),
+	)
 	fetched, err := p.fetcher.Fetch(ctx, job.URL)
 	if err != nil {
 		return fmt.Errorf("fetch: %w", err)
@@ -88,6 +96,10 @@ func (p *Pipeline) process(ctx context.Context, job CrawlJob) error {
 		return nil
 	}
 	page := ParseHTML(fetched.URL, fetched.ContentType, fetched.Body)
+	slog.DebugContext(ctx, msgPageCrawled,
+		slog.String("url", page.URL),
+		slog.Int("links", len(page.Links)),
+	)
 	resolved := CrawlJob{
 		URL:           page.URL,
 		Depth:         job.Depth,

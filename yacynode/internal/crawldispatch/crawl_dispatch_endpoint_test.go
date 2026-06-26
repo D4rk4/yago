@@ -61,6 +61,7 @@ func TestDispatchBuildsOrderFromOperatorInput(t *testing.T) {
 		"seeds": ["https://example.org/a", "https://example.org/b"],
 		"scope": "domain",
 		"maxDepth": 3,
+		"maxPagesPerHost": 50,
 		"crawlDelay": "1s"
 	}`)
 
@@ -117,8 +118,23 @@ func TestDispatchRejectsUnknownScope(t *testing.T) {
 	}
 }
 
+func TestDispatchRejectsZeroMaxPagesPerHost(t *testing.T) {
+	queue := &recordingQueue{}
+	rec := post(t, mount(t, queue), `{"seeds":["x"],"maxPagesPerHost":0}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if queue.published {
+		t.Fatal("order should not have been published")
+	}
+}
+
 func TestDispatchRejectsBadDuration(t *testing.T) {
-	rec := post(t, mount(t, &recordingQueue{}), `{"seeds":["x"],"crawlDelay":"soon"}`)
+	rec := post(
+		t,
+		mount(t, &recordingQueue{}),
+		`{"seeds":["x"],"maxPagesPerHost":-1,"crawlDelay":"soon"}`,
+	)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
@@ -148,7 +164,7 @@ func TestDispatchRejectsNonPost(t *testing.T) {
 
 func TestDispatchReportsPublishFailure(t *testing.T) {
 	queue := &recordingQueue{err: errors.New("broker down")}
-	rec := post(t, mount(t, queue), `{"seeds":["https://example.org"]}`)
+	rec := post(t, mount(t, queue), `{"seeds":["https://example.org"],"maxPagesPerHost":-1}`)
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", rec.Code)
 	}

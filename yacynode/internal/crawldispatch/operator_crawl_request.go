@@ -42,6 +42,13 @@ func (r operatorCrawlRequest) order(
 		return yacycrawlcontract.CrawlOrder{}, fmt.Errorf("unknown crawl scope %q", r.Scope)
 	}
 
+	if r.MaxPagesPerHost != yacycrawlcontract.UnlimitedPagesPerHost && r.MaxPagesPerHost <= 0 {
+		return yacycrawlcontract.CrawlOrder{}, fmt.Errorf(
+			"maxPagesPerHost must be positive or %d for unlimited",
+			yacycrawlcontract.UnlimitedPagesPerHost,
+		)
+	}
+
 	recrawl, err := optionalDuration(r.RecrawlIfOlder)
 	if err != nil {
 		return yacycrawlcontract.CrawlOrder{}, fmt.Errorf("recrawlIfOlder: %w", err)
