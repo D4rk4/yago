@@ -1,4 +1,4 @@
-package crawlscope
+package crawladmission
 
 import (
 	"fmt"
@@ -7,13 +7,13 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 )
 
-type CompiledProfile struct {
+type AdmissionProfile struct {
 	Profile      yacycrawlcontract.CrawlProfile
 	mustMatch    *regexp.Regexp
 	mustNotMatch *regexp.Regexp
 }
 
-func (c CompiledProfile) URLAllowed(rawURL string) bool {
+func (c AdmissionProfile) URLAllowed(rawURL string) bool {
 	if c.mustMatch != nil && !c.mustMatch.MatchString(rawURL) {
 		return false
 	}
@@ -23,19 +23,19 @@ func (c CompiledProfile) URLAllowed(rawURL string) bool {
 	return true
 }
 
-func CompileProfile(profile yacycrawlcontract.CrawlProfile) (CompiledProfile, error) {
-	compiled := CompiledProfile{Profile: profile}
+func CompileProfile(profile yacycrawlcontract.CrawlProfile) (AdmissionProfile, error) {
+	compiled := AdmissionProfile{Profile: profile}
 	if profile.URLMustMatch != "" && profile.URLMustMatch != yacycrawlcontract.MatchAll {
 		re, err := regexp.Compile(profile.URLMustMatch)
 		if err != nil {
-			return CompiledProfile{}, fmt.Errorf("compile URLMustMatch: %w", err)
+			return AdmissionProfile{}, fmt.Errorf("compile URLMustMatch: %w", err)
 		}
 		compiled.mustMatch = re
 	}
 	if profile.URLMustNotMatch != "" {
 		re, err := regexp.Compile(profile.URLMustNotMatch)
 		if err != nil {
-			return CompiledProfile{}, fmt.Errorf("compile URLMustNotMatch: %w", err)
+			return AdmissionProfile{}, fmt.Errorf("compile URLMustNotMatch: %w", err)
 		}
 		compiled.mustNotMatch = re
 	}

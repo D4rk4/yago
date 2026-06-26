@@ -7,8 +7,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawladmission"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlscope"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/weburl"
 )
 
@@ -30,7 +30,7 @@ type crawlRun struct {
 	hostPages map[string]int
 	pending   int
 	finish    func()
-	profiles  map[string]crawlscope.CompiledProfile
+	profiles  map[string]crawladmission.AdmissionProfile
 }
 
 type frontierCommand interface{}
@@ -47,7 +47,7 @@ type frontierSeedRun struct {
 	ctx        context.Context
 	requests   []yacycrawlcontract.CrawlRequest
 	provenance []byte
-	profile    crawlscope.CompiledProfile
+	profile    crawladmission.AdmissionProfile
 	finish     func()
 	result     chan SeededRun
 }
@@ -98,7 +98,7 @@ func (f *Frontier) SeedRun(
 	ctx context.Context,
 	requests []yacycrawlcontract.CrawlRequest,
 	provenance []byte,
-	profile crawlscope.CompiledProfile,
+	profile crawladmission.AdmissionProfile,
 	finish func(),
 ) SeededRun {
 	result := make(chan SeededRun)
@@ -163,7 +163,7 @@ func (f *Frontier) handle(
 ) (bool, []func()) {
 	switch c := command.(type) {
 	case frontierHold:
-		frontierRun(runs, uuid.Nil, nil, crawlscope.CompiledProfile{}).pending++
+		frontierRun(runs, uuid.Nil, nil, crawladmission.AdmissionProfile{}).pending++
 		close(c.done)
 		return closed, nil
 	case frontierRelease:
@@ -266,7 +266,7 @@ func finishFrontierJob(
 	runID uuid.UUID,
 	closed bool,
 ) (bool, []func()) {
-	run := frontierRun(runs, runID, nil, crawlscope.CompiledProfile{})
+	run := frontierRun(runs, runID, nil, crawladmission.AdmissionProfile{})
 	run.pending--
 	finishedRun := run.pending == 0
 	if finishedRun && runID != uuid.Nil {
@@ -298,7 +298,7 @@ func acceptFrontierJob(
 	candidate frontierCandidate,
 ) bool {
 	host := weburl.Host(candidate.normURL)
-	run := frontierRun(runs, runID, nil, crawlscope.CompiledProfile{})
+	run := frontierRun(runs, runID, nil, crawladmission.AdmissionProfile{})
 	profile, ok := run.profiles[candidate.profileHandle]
 	if !ok {
 		slog.WarnContext(ctx, msgAcceptProfileUnknown,
@@ -331,7 +331,7 @@ func frontierRun(
 	runs map[uuid.UUID]*crawlRun,
 	id uuid.UUID,
 	finish func(),
-	profile crawlscope.CompiledProfile,
+	profile crawladmission.AdmissionProfile,
 ) *crawlRun {
 	run, ok := runs[id]
 	if ok {
@@ -344,7 +344,7 @@ func frontierRun(
 		visited:   make(map[string]struct{}),
 		hostPages: make(map[string]int),
 		finish:    finish,
-		profiles:  make(map[string]crawlscope.CompiledProfile),
+		profiles:  make(map[string]crawladmission.AdmissionProfile),
 	}
 	if profile.Profile.Handle != "" {
 		run.profiles[profile.Profile.Handle] = profile

@@ -1,4 +1,4 @@
-package crawlscope
+package crawladmission
 
 import (
 	"net/url"
@@ -8,7 +8,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/weburl"
 )
 
-func (c CompiledProfile) AdmitLinks(baseRawURL string, links []string) []string {
+func (c AdmissionProfile) AdmitLinks(baseRawURL string, links []string) []string {
 	base, ok := weburl.ParseBase(baseRawURL)
 	if !ok {
 		return nil
@@ -22,7 +22,7 @@ func (c CompiledProfile) AdmitLinks(baseRawURL string, links []string) []string 
 	return admitted
 }
 
-func (c CompiledProfile) admit(base *url.URL, link string) (string, bool) {
+func (c AdmissionProfile) admit(base *url.URL, link string) (string, bool) {
 	resolved, ok := weburl.Resolve(base, link)
 	if !ok {
 		return "", false

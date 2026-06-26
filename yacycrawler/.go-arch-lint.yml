@@ -22,8 +22,8 @@ components:
     in: internal/politeness/**
   crawlorder:
     in: internal/crawlorder/**
-  crawlscope:
-    in: internal/crawlscope/**
+  crawladmission:
+    in: internal/crawladmission/**
   frontier:
     in: internal/frontier/**
   pageparse:
@@ -101,16 +101,16 @@ deps:
     canUse:
       - robotstxt
       - xtime-rate
-  crawlscope:
+  crawladmission:
     mayDependOn:
-      - crawlscope
+      - crawladmission
       - weburl
     canUse:
       - yacycrawlcontract
   frontier:
     mayDependOn:
       - frontier
-      - crawlscope
+      - crawladmission
       - crawljob
       - weburl
     canUse:
@@ -143,7 +143,7 @@ deps:
     mayDependOn:
       - crawlorder
       - boundedqueue
-      - crawlscope
+      - crawladmission
       - frontier
     canUse:
       - yacycrawlcontract

@@ -6,14 +6,17 @@ import (
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawladmission"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlscope"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
 )
 
-func compiled(t *testing.T, profile yacycrawlcontract.CrawlProfile) crawlscope.CompiledProfile {
+func compiled(
+	t *testing.T,
+	profile yacycrawlcontract.CrawlProfile,
+) crawladmission.AdmissionProfile {
 	t.Helper()
-	c, err := crawlscope.CompileProfile(yacycrawlcontract.NewCrawlProfile(profile))
+	c, err := crawladmission.CompileProfile(yacycrawlcontract.NewCrawlProfile(profile))
 	if err != nil {
 		t.Fatalf("compile profile: %v", err)
 	}

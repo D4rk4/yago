@@ -1,20 +1,20 @@
-package crawlscope_test
+package crawladmission_test
 
 import (
 	"slices"
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlscope"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawladmission"
 )
 
 func TestCompileProfileRejectsBadRegex(t *testing.T) {
-	if _, err := crawlscope.CompileProfile(
+	if _, err := crawladmission.CompileProfile(
 		yacycrawlcontract.CrawlProfile{URLMustMatch: "("},
 	); err == nil {
 		t.Error("expected error for bad URLMustMatch")
 	}
-	if _, err := crawlscope.CompileProfile(
+	if _, err := crawladmission.CompileProfile(
 		yacycrawlcontract.CrawlProfile{URLMustNotMatch: "("},
 	); err == nil {
 		t.Error("expected error for bad URLMustNotMatch")
@@ -22,7 +22,7 @@ func TestCompileProfileRejectsBadRegex(t *testing.T) {
 }
 
 func TestURLAllowed(t *testing.T) {
-	compiled, err := crawlscope.CompileProfile(yacycrawlcontract.CrawlProfile{
+	compiled, err := crawladmission.CompileProfile(yacycrawlcontract.CrawlProfile{
 		URLMustMatch:    `example\.com`,
 		URLMustNotMatch: `/private`,
 	})
@@ -41,7 +41,7 @@ func TestURLAllowed(t *testing.T) {
 }
 
 func TestURLAllowedMatchAllSkipsRegex(t *testing.T) {
-	compiled, err := crawlscope.CompileProfile(yacycrawlcontract.CrawlProfile{
+	compiled, err := crawladmission.CompileProfile(yacycrawlcontract.CrawlProfile{
 		URLMustMatch: yacycrawlcontract.MatchAll,
 	})
 	if err != nil {
@@ -53,7 +53,7 @@ func TestURLAllowedMatchAllSkipsRegex(t *testing.T) {
 }
 
 func TestAdmitLinksScope(t *testing.T) {
-	domain, _ := crawlscope.CompileProfile(yacycrawlcontract.CrawlProfile{
+	domain, _ := crawladmission.CompileProfile(yacycrawlcontract.CrawlProfile{
 		Scope:        yacycrawlcontract.ScopeDomain,
 		URLMustMatch: yacycrawlcontract.MatchAll,
 	})
@@ -71,7 +71,7 @@ func TestAdmitLinksScope(t *testing.T) {
 }
 
 func TestAdmitLinksSubpath(t *testing.T) {
-	sub, _ := crawlscope.CompileProfile(yacycrawlcontract.CrawlProfile{
+	sub, _ := crawladmission.CompileProfile(yacycrawlcontract.CrawlProfile{
 		Scope:        yacycrawlcontract.ScopeSubpath,
 		URLMustMatch: yacycrawlcontract.MatchAll,
 	})
@@ -86,7 +86,7 @@ func TestAdmitLinksSubpath(t *testing.T) {
 }
 
 func TestAdmitLinksWideAndQuery(t *testing.T) {
-	wide, _ := crawlscope.CompileProfile(yacycrawlcontract.CrawlProfile{
+	wide, _ := crawladmission.CompileProfile(yacycrawlcontract.CrawlProfile{
 		Scope:        yacycrawlcontract.ScopeWide,
 		URLMustMatch: yacycrawlcontract.MatchAll,
 	})
@@ -99,7 +99,7 @@ func TestAdmitLinksWideAndQuery(t *testing.T) {
 		t.Errorf("wide admit (query filtered) = %v want %v", got, want)
 	}
 
-	allowQuery, _ := crawlscope.CompileProfile(yacycrawlcontract.CrawlProfile{
+	allowQuery, _ := crawladmission.CompileProfile(yacycrawlcontract.CrawlProfile{
 		Scope:          yacycrawlcontract.ScopeWide,
 		URLMustMatch:   yacycrawlcontract.MatchAll,
 		AllowQueryURLs: true,
@@ -112,7 +112,7 @@ func TestAdmitLinksWideAndQuery(t *testing.T) {
 }
 
 func TestAdmitLinksBadBaseURL(t *testing.T) {
-	c, _ := crawlscope.CompileProfile(
+	c, _ := crawladmission.CompileProfile(
 		yacycrawlcontract.CrawlProfile{URLMustMatch: yacycrawlcontract.MatchAll},
 	)
 	if got := c.AdmitLinks("://bad", []string{"https://example.com/"}); got != nil {

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/boundedqueue"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlscope"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawladmission"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
 )
 
@@ -54,7 +54,7 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 		slog.String("handle", order.Profile.Handle),
 		slog.Int("seeds", len(order.Requests)),
 	)
-	profile, err := crawlscope.CompileProfile(order.Profile)
+	profile, err := crawladmission.CompileProfile(order.Profile)
 	if err != nil {
 		slog.WarnContext(
 			ctx,
