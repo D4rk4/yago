@@ -8,35 +8,6 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlscope"
 )
 
-func TestNormalizeSeed(t *testing.T) {
-	cases := []struct {
-		raw  string
-		want string
-		ok   bool
-	}{
-		{"https://example.com/path#frag", "https://example.com/path", true},
-		{"http://example.com/", "http://example.com/", true},
-		{"ftp://example.com/", "", false},
-		{"https:///nohost", "", false},
-		{"://bad", "", false},
-	}
-	for _, c := range cases {
-		got, ok := crawlscope.NormalizeSeed(c.raw)
-		if ok != c.ok || got != c.want {
-			t.Errorf("NormalizeSeed(%q) = %q,%v want %q,%v", c.raw, got, ok, c.want, c.ok)
-		}
-	}
-}
-
-func TestHostOf(t *testing.T) {
-	if got := crawlscope.HostOf("https://example.com:8080/path"); got != "example.com:8080" {
-		t.Errorf("HostOf = %q", got)
-	}
-	if got := crawlscope.HostOf("://bad"); got != "" {
-		t.Errorf("HostOf(bad) = %q, want empty", got)
-	}
-}
-
 func TestCompileProfileRejectsBadRegex(t *testing.T) {
 	if _, err := crawlscope.CompileProfile(
 		yacycrawlcontract.CrawlProfile{URLMustMatch: "("},

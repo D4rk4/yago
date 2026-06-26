@@ -8,6 +8,8 @@ allow:
 components:
   crawljob:
     in: internal/crawljob/**
+  weburl:
+    in: internal/weburl/**
   boundedqueue:
     in: internal/boundedqueue/**
   pagefetch:
@@ -74,6 +76,9 @@ deps:
       - crawljob
     canUse:
       - google-uuid
+  weburl:
+    mayDependOn:
+      - weburl
   boundedqueue:
     mayDependOn:
       - boundedqueue
@@ -99,6 +104,7 @@ deps:
   crawlscope:
     mayDependOn:
       - crawlscope
+      - weburl
     canUse:
       - yacycrawlcontract
   frontier:
@@ -106,12 +112,14 @@ deps:
       - frontier
       - crawlscope
       - crawljob
+      - weburl
     canUse:
       - yacycrawlcontract
       - google-uuid
   pageparse:
     mayDependOn:
       - pageparse
+      - weburl
     canUse:
       - xnet-html
       - trafilatura

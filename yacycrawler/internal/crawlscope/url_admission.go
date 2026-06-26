@@ -5,34 +5,12 @@ import (
 	"strings"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/weburl"
 )
 
-func NormalizeSeed(raw string) (string, bool) {
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return "", false
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return "", false
-	}
-	if parsed.Host == "" {
-		return "", false
-	}
-	parsed.Fragment = ""
-	return parsed.String(), true
-}
-
-func HostOf(rawURL string) string {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return ""
-	}
-	return parsed.Host
-}
-
 func (c CompiledProfile) AdmitLinks(baseRawURL string, links []string) []string {
-	base, err := url.Parse(baseRawURL)
-	if err != nil {
+	base, ok := weburl.ParseBase(baseRawURL)
+	if !ok {
 		return nil
 	}
 	admitted := make([]string, 0, len(links))
@@ -45,12 +23,8 @@ func (c CompiledProfile) AdmitLinks(baseRawURL string, links []string) []string 
 }
 
 func (c CompiledProfile) admit(base *url.URL, link string) (string, bool) {
-	ref, err := url.Parse(link)
-	if err != nil {
-		return "", false
-	}
-	resolved := base.ResolveReference(ref)
-	if resolved.Scheme != "http" && resolved.Scheme != "https" {
+	resolved, ok := weburl.Resolve(base, link)
+	if !ok {
 		return "", false
 	}
 	if !scopeAllows(c.Profile.Scope, base, resolved) {
@@ -62,7 +36,7 @@ func (c CompiledProfile) admit(base *url.URL, link string) (string, bool) {
 	if !c.URLAllowed(resolved.String()) {
 		return "", false
 	}
-	return NormalizeSeed(resolved.String())
+	return weburl.Normalize(resolved.String())
 }
 
 func scopeAllows(scope yacycrawlcontract.CrawlScope, base, resolved *url.URL) bool {

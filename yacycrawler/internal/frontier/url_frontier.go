@@ -9,6 +9,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlscope"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/weburl"
 )
 
 const (
@@ -203,7 +204,7 @@ func seedFrontierRun(
 			)
 			continue
 		}
-		norm, ok := crawlscope.NormalizeSeed(req.URL)
+		norm, ok := weburl.Normalize(req.URL)
 		if !ok {
 			slog.WarnContext(command.ctx, msgSeedURLRejected,
 				slog.String("url", req.URL),
@@ -296,7 +297,7 @@ func acceptFrontierJob(
 	runID uuid.UUID,
 	candidate frontierCandidate,
 ) bool {
-	host := crawlscope.HostOf(candidate.normURL)
+	host := weburl.Host(candidate.normURL)
 	run := frontierRun(runs, runID, nil, crawlscope.CompiledProfile{})
 	profile, ok := run.profiles[candidate.profileHandle]
 	if !ok {

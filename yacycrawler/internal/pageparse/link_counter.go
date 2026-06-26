@@ -1,21 +1,17 @@
 package pageparse
 
-import "net/url"
+import "github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/weburl"
 
 func ResolveLinks(base string, links []string) (local, external []string) {
-	baseURL, err := url.Parse(base)
-	if err != nil {
+	baseURL, ok := weburl.ParseBase(base)
+	if !ok {
 		return nil, nil
 	}
 	local = make([]string, 0, len(links))
 	external = make([]string, 0, len(links))
 	for _, raw := range links {
-		ref, err := url.Parse(raw)
-		if err != nil {
-			continue
-		}
-		resolved := baseURL.ResolveReference(ref)
-		if resolved.Scheme != "http" && resolved.Scheme != "https" {
+		resolved, ok := weburl.Resolve(baseURL, raw)
+		if !ok {
 			continue
 		}
 		if resolved.Host == baseURL.Host {
