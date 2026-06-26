@@ -10,6 +10,8 @@ components:
     in: internal/crawljob/**
   weburl:
     in: internal/weburl/**
+  crawlrun:
+    in: internal/crawlrun/**
   boundedqueue:
     in: internal/boundedqueue/**
   pagefetch:
@@ -79,6 +81,11 @@ deps:
   weburl:
     mayDependOn:
       - weburl
+  crawlrun:
+    mayDependOn:
+      - crawlrun
+    canUse:
+      - google-uuid
   boundedqueue:
     mayDependOn:
       - boundedqueue
@@ -112,6 +119,7 @@ deps:
       - frontier
       - crawladmission
       - crawljob
+      - crawlrun
       - weburl
     canUse:
       - yacycrawlcontract
