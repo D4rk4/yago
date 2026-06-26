@@ -25,7 +25,7 @@ Use `github.com/testcontainers/testcontainers-go` to manage the YaCy and node co
 The module is isolated from the main module so testcontainers and its transitive Docker client
 dependencies never enter the runtime dependency graph, the `make verify` gate, or the architecture
 linter scope. The e2e module imports only the published `yacymodel` and `yacyproto` modules for wire
-encoding and parsing; the node under test runs as a container built from the project `Dockerfile`.
+encoding and parsing; the node under test runs as a container built from `yacynode/Dockerfile`.
 
 ## Considered alternatives
 

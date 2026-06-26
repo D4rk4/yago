@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/bootstrap"
@@ -20,9 +21,11 @@ type node struct {
 	peerMux   *http.ServeMux
 	sweeper   eviction.Sweeper
 	announcer bootstrap.Announcer
+	crawl     *crawlRuntime
 }
 
 func assembleNode(
+	ctx context.Context,
 	config nodeConfig,
 	settings bootstrap.BootstrapSettings,
 	vault *vault.Vault,
@@ -80,14 +83,7 @@ func assembleNode(
 
 	crawling.MountCrawlReceipt(router)
 
-	sweeper := eviction.NewSweeper(
-		vault,
-		storage.postingPurger,
-		storage.references,
-		storage.urlEvictor,
-		storage.staleness,
-		eviction.Config{TargetFraction: evictionTargetFraction, BatchSize: evictionBatch},
-	)
+	sweeper := newStorageSweeper(vault, storage)
 
 	announcer := bootstrap.NewAnnouncer(
 		client,
@@ -97,5 +93,26 @@ func assembleNode(
 		registry,
 	)
 
-	return node{peerMux: mux, sweeper: sweeper, announcer: announcer}, nil
+	runtime, err := buildCrawlRuntime(ctx, config.Crawl, identity, storage)
+	if err != nil {
+		return node{}, err
+	}
+
+	return node{
+		peerMux:   mux,
+		sweeper:   sweeper,
+		announcer: announcer,
+		crawl:     runtime,
+	}, nil
+}
+
+func newStorageSweeper(vault *vault.Vault, storage nodeStorage) eviction.Sweeper {
+	return eviction.NewSweeper(
+		vault,
+		storage.postingPurger,
+		storage.references,
+		storage.urlEvictor,
+		storage.staleness,
+		eviction.Config{TargetFraction: evictionTargetFraction, BatchSize: evictionBatch},
+	)
 }

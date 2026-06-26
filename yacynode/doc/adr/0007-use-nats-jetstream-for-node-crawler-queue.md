@@ -4,7 +4,7 @@ Date: 2026-06-19
 
 ## Status
 
-Draft
+Accepted
 
 ## Context
 
@@ -65,8 +65,9 @@ advantage for this seam.
 
 ## Consequences
 
-NATS becomes a runtime dependency of the crawler and the node's order and ingest adapters;
-this ADR is its dependency record. Operators run one NATS process with JetStream, a single
+NATS becomes a runtime dependency of the crawler, the node's order and ingest adapters, and
+the shared contract that binds the two streams both sides provision; this ADR is its
+dependency record. Operators run one NATS process with JetStream, a single
 static binary that suits Pi-class hardware. Plain NATS alone is fire-and-forget and would drop
 on a slow consumer, violating the backpressure requirement, so JetStream is required, not
 optional. The broker sits behind the existing queue seam, so pipeline stages, the node, and

@@ -43,6 +43,7 @@ type nodeConfig struct {
 	StoragePath      string
 	StorageQuotaByte int64
 	TrustedProxies   []*net.IPNet
+	Crawl            crawlConfig
 }
 
 func loadNodeConfig(getenv func(string) string, announcing bool) (nodeConfig, error) {

@@ -1,9 +1,19 @@
 services:
+  nats:
+    image: nats:2.14.2
+    restart: unless-stopped
+    command: ["-js"]
+    ports:
+      - "4222:4222"
+
   yacy-rwi-node:
     build:
       context: .
+      dockerfile: yacynode/Dockerfile
     image: yacy-rwi-node:latest
     restart: unless-stopped
+    depends_on:
+      - nats
     ports:
       - "8090:8090"
       - "9090:9090"
@@ -19,9 +29,22 @@ services:
         http://yacy.v16.de/seed/seed.txt,
         https://frank-siebert.de/seed.txt,
         http://seedlist.wertewesten.net/seed.txt
+      NATS_URL: nats://nats:4222
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - yacy-data:/data
+
+  yacycrawler:
+    build:
+      context: .
+      dockerfile: yacycrawler/Dockerfile
+    image: yacycrawler:latest
+    restart: unless-stopped
+    depends_on:
+      - nats
+    environment:
+      NATS_URL: nats://nats:4222
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
 volumes:
   yacy-data:

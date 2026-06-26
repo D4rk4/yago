@@ -49,6 +49,12 @@ components:
     in: yacynode/internal/eviction/**
   metrics:
     in: yacynode/internal/metrics/**
+  crawldispatch:
+    in: yacynode/internal/crawldispatch/**
+  crawlresults:
+    in: yacynode/internal/crawlresults/**
+  crawlbroker:
+    in: yacynode/internal/crawlbroker/**
   cmd:
     in:
       - yacynode/cmd/yacy-peer-hash/**
@@ -234,19 +240,48 @@ deps:
       - nodestatus
       - urlmetastaleness
       - urlreferences
+      - crawldispatch
+      - crawlresults
+      - crawlbroker
+      - yacycrawlcontract
       - yacymodel
       - yacyproto
     canUse:
       - prometheus
+      - nats-server
   dbmigrate:
     mayDependOn:
       - yacymodel
     canUse:
       - bbolt
+  crawldispatch:
+    mayDependOn:
+      - crawldispatch
+      - yacycrawlcontract
+      - yacymodel
+  crawlresults:
+    mayDependOn:
+      - crawlresults
+      - urlmeta
+      - rwi
+      - yacycrawlcontract
+      - yacymodel
+  crawlbroker:
+    mayDependOn:
+      - crawlbroker
+      - crawlresults
+      - yacycrawlcontract
+      - yacymodel
+    canUse:
+      - nats
+      - nats-server
   yacycrawlcontract:
     mayDependOn:
       - yacycrawlcontract
       - yacymodel
+    canUse:
+      - nats
+      - nats-server
   yacycrawler:
     mayDependOn:
       - yacycrawler

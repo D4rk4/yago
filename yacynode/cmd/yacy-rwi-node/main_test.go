@@ -63,7 +63,13 @@ func assembleTestNode(t *testing.T, config nodeConfig, vault *vault.Vault) node 
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
-	assembled, err := assembleNode(config, settings, vault, newOutboundHTTPClient())
+	assembled, err := assembleNode(
+		context.Background(),
+		config,
+		settings,
+		vault,
+		newOutboundHTTPClient(),
+	)
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}

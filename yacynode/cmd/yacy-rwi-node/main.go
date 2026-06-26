@@ -56,6 +56,11 @@ func run() error {
 		return fmt.Errorf("load node config: %w", err)
 	}
 
+	config.Crawl, err = loadCrawlConfig(os.Getenv)
+	if err != nil {
+		return fmt.Errorf("load crawl config: %w", err)
+	}
+
 	client := newOutboundHTTPClient()
 
 	vault, err := boltvault.Open(config.StoragePath, config.StorageQuotaByte)
@@ -68,13 +73,18 @@ func run() error {
 	metrics.NewStorageMetrics(endpoints.Registry(), vault)
 	evictionMetrics := metrics.NewEvictionMetrics(endpoints.Registry())
 
-	assembled, err := assembleNode(config, settings, vault, client)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	assembled, err := assembleNode(ctx, config, settings, vault, client)
 	if err != nil {
 		return fmt.Errorf("assemble node: %w", err)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	opsMux := newOpsMux(endpoints.Handler())
+	if assembled.crawl != nil {
+		assembled.crawl.mountDispatch(opsMux)
+	}
 
 	return serve(
 		ctx,
@@ -87,7 +97,7 @@ func run() error {
 				logHTTPRequests(instrumentHTTP(endpoints, assembled.peerMux)),
 			),
 		},
-		namedServer{"ops", buildServer(config.OpsAddr, newOpsMux(endpoints.Handler()))},
+		namedServer{"ops", buildServer(config.OpsAddr, opsMux)},
 	)
 }
 
@@ -122,6 +132,14 @@ func serve(
 		defer background.Done()
 		runEvictionLoop(ctx, assembled.sweeper, evictionMetrics)
 	}()
+	if assembled.crawl != nil {
+		defer assembled.crawl.Close()
+		background.Add(1)
+		go func() {
+			defer background.Done()
+			assembled.crawl.Run(ctx)
+		}()
+	}
 	defer background.Wait()
 	defer cancel()
 

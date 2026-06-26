@@ -80,7 +80,7 @@ db-migrate:
 verify: fmt-check vet lint arch test cover-check build
 
 e2e-image:
-	DOCKER_BUILDKIT=1 docker build -t $(E2E_NODE_IMAGE) .
+	DOCKER_BUILDKIT=1 docker build -f yacynode/Dockerfile -t $(E2E_NODE_IMAGE) .
 
 e2e:
 	cd yacynode/test/e2e && GOWORK=off YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
