@@ -32,7 +32,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -o /out/yacycrawler \
         ./yacycrawler/cmd/yacycrawler
 
-FROM chromedp/headless-shell:131.0.6778.85
+FROM chromedp/headless-shell:148.0.7778.97
 
 COPY --from=build /out/yacycrawler /usr/local/bin/yacycrawler
 
