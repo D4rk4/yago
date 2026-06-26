@@ -23,7 +23,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: yacynode/go.mod
+
+      - name: Cache tool binaries
+        uses: actions/cache@v4
+        with:
+          path: .toolchain/bin
+          key: tools-${{ runner.os }}-${{ hashFiles('tools/tools.lock') }}
 
       - name: Run make verify
         run: make verify

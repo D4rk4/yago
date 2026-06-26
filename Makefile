@@ -4,27 +4,38 @@ COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 80
 COVER_EXCLUDE := /internal/vaulttest/|/test/e2e/
 
-.PHONY: fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-image peer-hash db-migrate
+TOOLS_BIN := $(CURDIR)/.toolchain/bin
+TOOLS_STAMP := $(TOOLS_BIN)/.installed
+GOLANGCI_LINT := $(TOOLS_BIN)/golangci-lint
+GO_ARCH_LINT := $(TOOLS_BIN)/go-arch-lint
+
+.PHONY: tools fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-image peer-hash db-migrate
 
 E2E_TIMEOUT ?= 10m
 E2E_NODE_IMAGE ?= yacy-rwi-node:e2e
 
-fmt:
+$(TOOLS_STAMP): tools/install tools/tools.lock
+	./tools/install
+	@touch $@
+
+tools: $(TOOLS_STAMP)
+
+fmt: $(TOOLS_STAMP)
 	@set -e; for m in $(MODULES); do \
 		echo "==> fmt $$m"; \
-		( cd $$m && $(GO) tool golangci-lint fmt ); \
+		( cd $$m && $(GOLANGCI_LINT) fmt ); \
 	done
 
-fmt-check:
+fmt-check: $(TOOLS_STAMP)
 	@set -e; for m in $(MODULES); do \
 		echo "==> fmt-check $$m"; \
-		( cd $$m && $(GO) tool golangci-lint fmt --diff ); \
+		( cd $$m && $(GOLANGCI_LINT) fmt --diff ); \
 	done
 
-lint:
+lint: $(TOOLS_STAMP)
 	@set -e; for m in $(MODULES); do \
 		echo "==> lint $$m"; \
-		( cd $$m && $(GO) tool golangci-lint run ./... ); \
+		( cd $$m && $(GOLANGCI_LINT) run ./... ); \
 	done
 
 vet:
@@ -33,8 +44,8 @@ vet:
 		( cd $$m && $(GO) vet ./... ); \
 	done
 
-arch:
-	$(GO) tool go-arch-lint check
+arch: $(TOOLS_STAMP)
+	$(GO_ARCH_LINT) check
 
 test:
 	@set -e; for m in $(MODULES); do \

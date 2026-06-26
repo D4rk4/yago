@@ -11,7 +11,6 @@ ENV CGO_ENABLED=0 GOFLAGS=-trimpath
 WORKDIR /src
 
 COPY go.work go.work.sum ./
-COPY go.mod go.sum ./
 COPY yacynode/go.mod yacynode/go.sum yacynode/
 COPY yacycrawlcontract/go.mod yacycrawlcontract/
 COPY yacycrawler/go.mod yacycrawler/

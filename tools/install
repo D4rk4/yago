@@ -1,0 +1,66 @@
+#!/bin/sh
+# Download the pinned tool binaries from their official releases into
+# .toolchain/bin, verifying each archive against tools/tools.lock.
+# No `go install` / `go tool`: nothing is compiled and the project module
+# graph is untouched.
+set -eu
+
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+lock="$root/tools/tools.lock"
+bin="$root/.toolchain/bin"
+
+case "$(uname -s)" in
+	Linux) os=linux ;;
+	Darwin) os=darwin ;;
+	*) echo "unsupported OS: $(uname -s)" >&2; exit 1 ;;
+esac
+case "$(uname -m)" in
+	x86_64 | amd64) arch=amd64 ;;
+	aarch64 | arm64) arch=arm64 ;;
+	*) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+platform="$os-$arch"
+
+lookup() {
+	awk -v tool="$1" -v plat="$platform" \
+		'$1 == tool && $3 == plat { print $2, $4 }' "$lock"
+}
+
+sha256() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$1" | cut -d' ' -f1
+	else
+		shasum -a 256 "$1" | cut -d' ' -f1
+	fi
+}
+
+fetch() {
+	tool="$1"; url="$2"; want="$3"; member="$4"
+	tmp=$(mktemp -d)
+	trap 'rm -rf "$tmp"' EXIT
+	echo "==> $tool $platform"
+	curl -fsSL "$url" -o "$tmp/archive.tar.gz"
+	got=$(sha256 "$tmp/archive.tar.gz")
+	if [ "$got" != "$want" ]; then
+		echo "checksum mismatch for $tool: expected $want, got $got" >&2
+		exit 1
+	fi
+	tar -xzf "$tmp/archive.tar.gz" -C "$tmp"
+	install -m 0755 "$tmp/$member" "$bin/$tool"
+	rm -rf "$tmp"
+	trap - EXIT
+}
+
+mkdir -p "$bin"
+
+set -- $(lookup golangci-lint)
+ver="$1"; sum="$2"
+fetch golangci-lint \
+	"https://github.com/golangci/golangci-lint/releases/download/v$ver/golangci-lint-$ver-$platform.tar.gz" \
+	"$sum" "golangci-lint-$ver-$platform/golangci-lint"
+
+set -- $(lookup go-arch-lint)
+ver="$1"; sum="$2"
+fetch go-arch-lint \
+	"https://github.com/fe3dback/go-arch-lint/releases/download/v$ver/go-arch-lint_${ver}_${os}_${arch}.tar.gz" \
+	"$sum" "go-arch-lint"
