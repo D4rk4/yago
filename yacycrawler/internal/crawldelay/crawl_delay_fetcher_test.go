@@ -2,6 +2,7 @@ package crawldelay_test
 
 import (
 	"context"
+	"net/url"
 	"testing"
 	"time"
 
@@ -9,16 +10,16 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
 )
 
-type pageSourceFunc func(context.Context, string) (pagefetch.FetchedPage, error)
+type pageSourceFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
 
-func (f pageSourceFunc) Fetch(ctx context.Context, rawURL string) (pagefetch.FetchedPage, error) {
-	return f(ctx, rawURL)
+func (f pageSourceFunc) Fetch(ctx context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
+	return f(ctx, target)
 }
 
 func countingSource(calls *int) pageSourceFunc {
-	return func(_ context.Context, rawURL string) (pagefetch.FetchedPage, error) {
+	return func(_ context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
 		*calls++
-		return pagefetch.FetchedPage{URL: rawURL}, nil
+		return pagefetch.FetchedPage{URL: target}, nil
 	}
 }
 
@@ -36,6 +37,15 @@ func newFetcher(
 	return fetcher
 }
 
+func mustParse(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse url %q: %v", raw, err)
+	}
+	return parsed
+}
+
 func TestCrawlDelayPacesPerHost(t *testing.T) {
 	var calls int
 	fetcher := newFetcher(t, countingSource(&calls), 40*time.Millisecond, 8)
@@ -43,7 +53,7 @@ func TestCrawlDelayPacesPerHost(t *testing.T) {
 
 	start := time.Now()
 	for range 3 {
-		if _, err := fetcher.Fetch(ctx, "https://example.com/page"); err != nil {
+		if _, err := fetcher.Fetch(ctx, mustParse(t, "https://example.com/page")); err != nil {
 			t.Fatalf("fetch: %v", err)
 		}
 	}
@@ -60,10 +70,10 @@ func TestCrawlDelayPacesIndependentHosts(t *testing.T) {
 	ctx := context.Background()
 
 	start := time.Now()
-	if _, err := fetcher.Fetch(ctx, "https://a.example/x"); err != nil {
+	if _, err := fetcher.Fetch(ctx, mustParse(t, "https://a.example/x")); err != nil {
 		t.Fatalf("fetch a: %v", err)
 	}
-	if _, err := fetcher.Fetch(ctx, "https://b.example/x"); err != nil {
+	if _, err := fetcher.Fetch(ctx, mustParse(t, "https://b.example/x")); err != nil {
 		t.Fatalf("fetch b: %v", err)
 	}
 	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
@@ -74,11 +84,11 @@ func TestCrawlDelayPacesIndependentHosts(t *testing.T) {
 func TestCrawlDelayRejectsCancelledContext(t *testing.T) {
 	fetcher := newFetcher(t, countingSource(new(int)), time.Hour, 8)
 	ctx, cancel := context.WithCancel(context.Background())
-	if _, err := fetcher.Fetch(ctx, "https://example.com/first"); err != nil {
+	if _, err := fetcher.Fetch(ctx, mustParse(t, "https://example.com/first")); err != nil {
 		t.Fatalf("first fetch: %v", err)
 	}
 	cancel()
-	if _, err := fetcher.Fetch(ctx, "https://example.com/second"); err == nil {
+	if _, err := fetcher.Fetch(ctx, mustParse(t, "https://example.com/second")); err == nil {
 		t.Error("expected cancelled context to abort the paced wait")
 	}
 }

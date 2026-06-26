@@ -3,16 +3,17 @@ package pagefetch
 import (
 	"context"
 	"errors"
+	"net/url"
 )
 
 var ErrPageRejected = errors.New("page rejected")
 
 type FetchedPage struct {
-	URL         string
+	URL         *url.URL
 	ContentType string
 	Body        []byte
 }
 
 type PageSource interface {
-	Fetch(ctx context.Context, rawURL string) (FetchedPage, error)
+	Fetch(ctx context.Context, target *url.URL) (FetchedPage, error)
 }

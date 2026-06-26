@@ -3,6 +3,7 @@ package botwall
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
@@ -32,9 +33,9 @@ func NewBotWallScreeningFetcher(inner pagefetch.PageSource) *BotWallScreeningFet
 
 func (f *BotWallScreeningFetcher) Fetch(
 	ctx context.Context,
-	rawURL string,
+	target *url.URL,
 ) (pagefetch.FetchedPage, error) {
-	page, err := f.inner.Fetch(ctx, rawURL)
+	page, err := f.inner.Fetch(ctx, target)
 	if err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("inner fetch: %w", err)
 	}

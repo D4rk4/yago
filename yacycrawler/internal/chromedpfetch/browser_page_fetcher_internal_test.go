@@ -3,9 +3,19 @@ package chromedpfetch
 import (
 	"context"
 	"errors"
+	"net/url"
 	"testing"
 	"time"
 )
+
+func mustParse(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse url %q: %v", raw, err)
+	}
+	return parsed
+}
 
 func TestBrowserPageFetcherReturnsRenderedBody(t *testing.T) {
 	fetcher := &BrowserPageFetcher{
@@ -18,11 +28,11 @@ func TestBrowserPageFetcherReturnsRenderedBody(t *testing.T) {
 		timeout: time.Second,
 	}
 
-	page, err := fetcher.Fetch(context.Background(), "http://example.com/")
+	page, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/"))
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if page.URL != "http://example.com/" {
+	if page.URL.String() != "http://example.com/" {
 		t.Errorf("url = %q", page.URL)
 	}
 	if page.ContentType != BrowserContentType {
@@ -41,7 +51,7 @@ func TestBrowserPageFetcherPropagatesRenderError(t *testing.T) {
 		},
 	}
 
-	_, err := fetcher.Fetch(context.Background(), "http://example.com/")
+	_, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/"))
 	if !errors.Is(err, sentinel) {
 		t.Errorf("error = %v, want %v", err, sentinel)
 	}
@@ -58,7 +68,10 @@ func TestBrowserPageFetcherAppliesTimeout(t *testing.T) {
 		timeout: time.Second,
 	}
 
-	if _, err := fetcher.Fetch(context.Background(), "http://example.com/"); err != nil {
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		mustParse(t, "http://example.com/"),
+	); err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
 }
@@ -82,11 +95,11 @@ func TestBrowserPageFetcherReturnsFinalURL(t *testing.T) {
 		},
 	}
 
-	page, err := fetcher.Fetch(context.Background(), "http://example.com/start")
+	page, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/start"))
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if page.URL != "http://example.com/final" {
+	if page.URL.String() != "http://example.com/final" {
 		t.Errorf("url = %q", page.URL)
 	}
 }
@@ -102,7 +115,7 @@ func TestBrowserPageFetcherCapsRenderedBody(t *testing.T) {
 		maxBytes: 3,
 	}
 
-	page, err := fetcher.Fetch(context.Background(), "http://example.com/")
+	page, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/"))
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"testing"
 	"time"
 
@@ -37,10 +38,10 @@ func (f *recordingFrontier) Submit(_ context.Context, _ crawljob.CrawlJob, links
 
 func (f *recordingFrontier) Done(work crawljob.CrawlJob) { f.done <- work }
 
-type fetchFunc func(context.Context, string) (pagefetch.FetchedPage, error)
+type fetchFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
 
-func (f fetchFunc) Fetch(ctx context.Context, rawURL string) (pagefetch.FetchedPage, error) {
-	return f(ctx, rawURL)
+func (f fetchFunc) Fetch(ctx context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
+	return f(ctx, target)
 }
 
 type indexFunc func(pageparse.ParsedPage, pageparse.PageStats) (pageindex.Artifacts, error)
@@ -64,8 +65,9 @@ func (f emitFunc) Emit(
 }
 
 func htmlPage() pagefetch.FetchedPage {
+	target, _ := url.Parse("https://example.com/")
 	return pagefetch.FetchedPage{
-		URL:         "https://example.com/",
+		URL:         target,
 		ContentType: "text/html",
 		Body:        []byte(`<html><body><a href="/next">go</a> words here</body></html>`),
 	}
@@ -94,7 +96,7 @@ func TestPipelineDeliversIngestBatch(t *testing.T) {
 	p := pipeline.NewPipeline(
 		frontier,
 		fetchFunc(
-			func(context.Context, string) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
+			func(context.Context, *url.URL) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
 		),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
@@ -122,7 +124,7 @@ func TestPipelineDropsRejectedPages(t *testing.T) {
 	frontier := newRecordingFrontier()
 	p := pipeline.NewPipeline(
 		frontier,
-		fetchFunc(func(context.Context, string) (pagefetch.FetchedPage, error) {
+		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
 			return pagefetch.FetchedPage{}, fmt.Errorf("bot wall: %w", pagefetch.ErrPageRejected)
 		}),
 		indexFunc(func(pageparse.ParsedPage, pageparse.PageStats) (pageindex.Artifacts, error) {
@@ -146,7 +148,7 @@ func TestPipelineFinishesJobOnFetchError(t *testing.T) {
 	frontier := newRecordingFrontier()
 	p := pipeline.NewPipeline(
 		frontier,
-		fetchFunc(func(context.Context, string) (pagefetch.FetchedPage, error) {
+		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
 			return pagefetch.FetchedPage{}, errors.New("boom")
 		}),
 		pageindex.NewIndexBuilder(),
@@ -164,7 +166,7 @@ func TestPipelineFinishesJobOnEmitError(t *testing.T) {
 	p := pipeline.NewPipeline(
 		frontier,
 		fetchFunc(
-			func(context.Context, string) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
+			func(context.Context, *url.URL) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
 		),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
@@ -181,7 +183,7 @@ func TestPipelineFinishesJobOnIndexError(t *testing.T) {
 	p := pipeline.NewPipeline(
 		frontier,
 		fetchFunc(
-			func(context.Context, string) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
+			func(context.Context, *url.URL) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
 		),
 		indexFunc(func(pageparse.ParsedPage, pageparse.PageStats) (pageindex.Artifacts, error) {
 			return pageindex.Artifacts{}, errors.New("index failed")

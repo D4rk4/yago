@@ -3,6 +3,7 @@ package chromedpfetch
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -65,23 +66,27 @@ func chromedpRenderer(allocCtx context.Context) pageRenderer {
 
 func (f *BrowserPageFetcher) Fetch(
 	ctx context.Context,
-	rawURL string,
+	target *url.URL,
 ) (pagefetch.FetchedPage, error) {
 	if f.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, f.timeout)
 		defer cancel()
 	}
-	rendered, err := f.render(ctx, rawURL)
+	rendered, err := f.render(ctx, target.String())
 	if err != nil {
-		return pagefetch.FetchedPage{}, fmt.Errorf("browser fetch %s: %w", rawURL, err)
+		return pagefetch.FetchedPage{}, fmt.Errorf("browser fetch %s: %w", target, err)
 	}
 	body := []byte(rendered.content)
 	if f.maxBytes > 0 && int64(len(body)) > f.maxBytes {
 		body = body[:f.maxBytes]
 	}
+	final, err := url.Parse(rendered.url)
+	if err != nil {
+		return pagefetch.FetchedPage{}, fmt.Errorf("browser final url %s: %w", rendered.url, err)
+	}
 	return pagefetch.FetchedPage{
-		URL:         rendered.url,
+		URL:         final,
 		ContentType: BrowserContentType,
 		Body:        body,
 	}, nil

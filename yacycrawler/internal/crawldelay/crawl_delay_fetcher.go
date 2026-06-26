@@ -34,16 +34,12 @@ func NewCrawlDelayFetcher(
 
 func (f *CrawlDelayFetcher) Fetch(
 	ctx context.Context,
-	rawURL string,
+	target *url.URL,
 ) (pagefetch.FetchedPage, error) {
-	target, err := url.Parse(rawURL)
-	if err != nil {
-		return pagefetch.FetchedPage{}, fmt.Errorf("parse url: %w", err)
-	}
 	if err := f.limiter(target.Host).Wait(ctx); err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("rate limit wait: %w", err)
 	}
-	page, err := f.inner.Fetch(ctx, rawURL)
+	page, err := f.inner.Fetch(ctx, target)
 	if err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("inner fetch: %w", err)
 	}

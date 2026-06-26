@@ -12,6 +12,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/weburl"
 )
 
 type Frontier interface {
@@ -94,11 +95,15 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 		slog.String("url", job.URL),
 		slog.Int("depth", job.Depth),
 	)
-	fetched, err := p.fetcher.Fetch(ctx, job.URL)
+	target, ok := weburl.ParseBase(job.URL)
+	if !ok {
+		return fmt.Errorf("parse url: %s", job.URL)
+	}
+	fetched, err := p.fetcher.Fetch(ctx, target)
 	if err != nil {
 		return fmt.Errorf("fetch: %w", err)
 	}
-	page := pageparse.ParseHTML(fetched.URL, fetched.ContentType, fetched.Body)
+	page := pageparse.ParseHTML(fetched.URL.String(), fetched.ContentType, fetched.Body)
 	slog.DebugContext(ctx, msgPageCrawled,
 		slog.String("url", page.URL),
 		slog.Int("links", len(page.Links)),

@@ -179,6 +179,7 @@ deps:
       - pagefetch
       - pageindex
       - pageparse
+      - weburl
     canUse:
       - yacymodel
   crawlercmd:

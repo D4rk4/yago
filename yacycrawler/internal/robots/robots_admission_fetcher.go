@@ -43,17 +43,13 @@ func NewRobotsAdmissionFetcher(
 
 func (f *RobotsAdmissionFetcher) Fetch(
 	ctx context.Context,
-	rawURL string,
+	target *url.URL,
 ) (pagefetch.FetchedPage, error) {
-	target, err := url.Parse(rawURL)
-	if err != nil {
-		return pagefetch.FetchedPage{}, fmt.Errorf("parse url: %w", err)
-	}
 	group := f.group(ctx, target)
 	if !group.Test(target.Path) {
 		return pagefetch.FetchedPage{}, fmt.Errorf("robots disallow: %w", pagefetch.ErrPageRejected)
 	}
-	page, err := f.inner.Fetch(ctx, rawURL)
+	page, err := f.inner.Fetch(ctx, target)
 	if err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("inner fetch: %w", err)
 	}

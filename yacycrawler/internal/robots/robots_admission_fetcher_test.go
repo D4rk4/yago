@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync/atomic"
 	"testing"
 
@@ -14,16 +15,25 @@ import (
 
 const testUserAgent = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
 
-type pageSourceFunc func(context.Context, string) (pagefetch.FetchedPage, error)
+type pageSourceFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
 
-func (f pageSourceFunc) Fetch(ctx context.Context, rawURL string) (pagefetch.FetchedPage, error) {
-	return f(ctx, rawURL)
+func (f pageSourceFunc) Fetch(ctx context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
+	return f(ctx, target)
 }
 
 func deliveringSource() pageSourceFunc {
-	return func(_ context.Context, rawURL string) (pagefetch.FetchedPage, error) {
-		return pagefetch.FetchedPage{URL: rawURL}, nil
+	return func(_ context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
+		return pagefetch.FetchedPage{URL: target}, nil
 	}
+}
+
+func mustParse(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse url %q: %v", raw, err)
+	}
+	return parsed
 }
 
 func robotsServer(t *testing.T, rule string, robotsHits *int32) *httptest.Server {
@@ -63,18 +73,18 @@ func TestRobotsAdmissionBlocksDisallowedPath(t *testing.T) {
 
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		server.URL+"/private/secret",
+		mustParse(t, server.URL+"/private/secret"),
 	); !errors.Is(
 		err,
 		pagefetch.ErrPageRejected,
 	) {
 		t.Errorf("err = %v, want ErrPageRejected", err)
 	}
-	page, err := fetcher.Fetch(context.Background(), server.URL+"/public")
+	page, err := fetcher.Fetch(context.Background(), mustParse(t, server.URL+"/public"))
 	if err != nil {
 		t.Fatalf("allow public: %v", err)
 	}
-	if page.URL != server.URL+"/public" {
+	if page.URL.String() != server.URL+"/public" {
 		t.Errorf("page not delegated: %+v", page)
 	}
 }
@@ -86,7 +96,10 @@ func TestRobotsAdmissionFetchesRobotsOncePerHost(t *testing.T) {
 	fetcher := newFetcher(t, deliveringSource(), server.Client(), 8)
 
 	for range 3 {
-		if _, err := fetcher.Fetch(context.Background(), server.URL+"/public"); err != nil {
+		if _, err := fetcher.Fetch(
+			context.Background(),
+			mustParse(t, server.URL+"/public"),
+		); err != nil {
 			t.Fatalf("fetch: %v", err)
 		}
 	}
@@ -97,7 +110,10 @@ func TestRobotsAdmissionFetchesRobotsOncePerHost(t *testing.T) {
 
 func TestRobotsAdmissionAllowsOnFetchFailure(t *testing.T) {
 	fetcher := newFetcher(t, deliveringSource(), http.DefaultClient, 8)
-	if _, err := fetcher.Fetch(context.Background(), "http://127.0.0.1:0/page"); err != nil {
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		mustParse(t, "http://127.0.0.1:0/page"),
+	); err != nil {
 		t.Errorf("unreachable robots should allow, got %v", err)
 	}
 }
@@ -112,7 +128,7 @@ func TestRobotsAdmissionReFetchesAfterEviction(t *testing.T) {
 
 	steps := []string{server.URL + "/public", other.URL + "/public", server.URL + "/public"}
 	for _, u := range steps {
-		if _, err := fetcher.Fetch(context.Background(), u); err != nil {
+		if _, err := fetcher.Fetch(context.Background(), mustParse(t, u)); err != nil {
 			t.Fatalf("fetch %s: %v", u, err)
 		}
 	}

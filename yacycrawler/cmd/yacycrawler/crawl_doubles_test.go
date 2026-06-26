@@ -8,19 +8,15 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
 )
 
-type pageSourceFunc func(context.Context, string) (pagefetch.FetchedPage, error)
+type pageSourceFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
 
-func (f pageSourceFunc) Fetch(ctx context.Context, rawURL string) (pagefetch.FetchedPage, error) {
-	return f(ctx, rawURL)
+func (f pageSourceFunc) Fetch(ctx context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
+	return f(ctx, target)
 }
 
 func htmlPageSource(pages map[string]string) pageSourceFunc {
-	return func(_ context.Context, rawURL string) (pagefetch.FetchedPage, error) {
-		parsed, err := url.Parse(rawURL)
-		if err != nil {
-			return pagefetch.FetchedPage{}, fmt.Errorf("parse url: %w", err)
-		}
-		path := parsed.Path
+	return func(_ context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
+		path := target.Path
 		if path == "" {
 			path = "/"
 		}
@@ -29,7 +25,7 @@ func htmlPageSource(pages map[string]string) pageSourceFunc {
 			return pagefetch.FetchedPage{}, fmt.Errorf("missing test page: %s", path)
 		}
 		return pagefetch.FetchedPage{
-			URL:         rawURL,
+			URL:         target,
 			ContentType: "text/html",
 			Body:        []byte("<html><body>" + body + "</body></html>"),
 		}, nil
