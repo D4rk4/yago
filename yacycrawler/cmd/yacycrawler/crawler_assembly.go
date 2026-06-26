@@ -11,13 +11,14 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/botwall"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawldelay"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlorder"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pipeline"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/politeness"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/robots"
 )
 
 func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSource) error {
@@ -45,12 +46,23 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	frontier := frontier.NewFrontier(crawl.JobQueueSize)
 
 	client := &http.Client{Timeout: crawl.RequestTimeout}
-	gate := politeness.NewPolitenessGate(client, crawl.UserAgent, crawl.CrawlDelay)
-	polite := politeness.NewPolitePageFetcher(source, gate)
+	admitted, err := robots.NewRobotsAdmissionFetcher(
+		source,
+		client,
+		crawl.UserAgent,
+		crawl.HostCacheSize,
+	)
+	if err != nil {
+		return fmt.Errorf("create robots admission: %w", err)
+	}
+	paced, err := crawldelay.NewCrawlDelayFetcher(admitted, crawl.CrawlDelay, crawl.HostCacheSize)
+	if err != nil {
+		return fmt.Errorf("create crawl delay: %w", err)
+	}
+	screened := botwall.NewBotWallScreeningFetcher(paced)
 	worker := pipeline.NewPipeline(
 		frontier,
-		polite,
-		botwall.NewBotWallDetector(),
+		screened,
 		pageindex.NewIndexBuilder(),
 		emitter,
 	)

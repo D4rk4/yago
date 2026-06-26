@@ -1,6 +1,11 @@
 package pagefetch
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+var ErrPageRejected = errors.New("page rejected")
 
 type FetchedPage struct {
 	URL         string

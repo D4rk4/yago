@@ -20,8 +20,10 @@ components:
     in: internal/chromedpfetch/**
   botwall:
     in: internal/botwall/**
-  politeness:
-    in: internal/politeness/**
+  robots:
+    in: internal/robots/**
+  crawldelay:
+    in: internal/crawldelay/**
   crawlorder:
     in: internal/crawlorder/**
   crawladmission:
@@ -56,6 +58,10 @@ vendors:
     in: github.com/temoto/robotstxt
   xtime-rate:
     in: golang.org/x/time/rate
+  golang-lru:
+    in: github.com/hashicorp/golang-lru/v2
+  singleflight:
+    in: golang.org/x/sync/singleflight
   trafilatura:
     in: github.com/markusmobius/go-trafilatura
   chromedp:
@@ -101,13 +107,21 @@ deps:
     mayDependOn:
       - botwall
       - pagefetch
-  politeness:
+  robots:
     mayDependOn:
-      - politeness
+      - robots
       - pagefetch
     canUse:
       - robotstxt
+      - golang-lru
+      - singleflight
+  crawldelay:
+    mayDependOn:
+      - crawldelay
+      - pagefetch
+    canUse:
       - xtime-rate
+      - golang-lru
   crawladmission:
     mayDependOn:
       - crawladmission
@@ -160,7 +174,6 @@ deps:
   pipeline:
     mayDependOn:
       - pipeline
-      - botwall
       - crawljob
       - ingest
       - pagefetch
@@ -172,13 +185,14 @@ deps:
     mayDependOn:
       - botwall
       - chromedpfetch
+      - crawldelay
       - crawlorder
       - frontier
       - ingest
       - pagefetch
       - pageindex
       - pipeline
-      - politeness
+      - robots
     canUse:
       - yacycrawlcontract
       - nats

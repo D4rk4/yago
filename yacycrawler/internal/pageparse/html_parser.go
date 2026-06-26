@@ -32,6 +32,8 @@ func selectText(contentType string, body []byte, fallback string) string {
 	if main, err := extractMainContent(contentType, body); err == nil && main != "" {
 		return main
 	}
+	// Trafilatura yields no main content on non-article pages (listings, search
+	// results); the full DOM-text walk is this indexer's coverage path for them.
 	return collapseSpaces(fallback)
 }
 

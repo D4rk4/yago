@@ -3,6 +3,7 @@ package frontier
 import (
 	"context"
 	"log/slog"
+	"sync"
 
 	"github.com/google/uuid"
 
@@ -22,8 +23,12 @@ const (
 )
 
 type Frontier struct {
-	jobs     chan crawljob.CrawlJob
-	commands chan frontierCommand
+	jobs   chan crawljob.CrawlJob
+	signal chan struct{}
+
+	mu      sync.Mutex
+	state   *frontierState
+	closing bool
 }
 
 type frontierState struct {
@@ -38,46 +43,19 @@ type crawlRun struct {
 	profiles  map[string]crawladmission.AdmissionProfile
 }
 
-type frontierCommand interface{}
-
-type frontierHold struct {
-	done chan struct{}
-}
-
-type frontierRelease struct {
-	done chan struct{}
-}
-
-type frontierSeedRun struct {
-	ctx        context.Context
-	requests   []yacycrawlcontract.CrawlRequest
-	provenance []byte
-	profile    crawladmission.AdmissionProfile
-	finish     func()
-	result     chan SeededRun
-}
-
 type SeededRun struct {
 	RunID  uuid.UUID
 	Queued int
 }
 
-type frontierSubmit struct {
-	ctx   context.Context
-	work  crawljob.CrawlJob
-	links []string
-	done  chan struct{}
-}
-
-type frontierDone struct {
-	runID uuid.UUID
-	done  chan struct{}
-}
-
 func NewFrontier(capacity int) *Frontier {
 	frontier := &Frontier{
-		jobs:     make(chan crawljob.CrawlJob, capacity),
-		commands: make(chan frontierCommand),
+		jobs:   make(chan crawljob.CrawlJob, capacity),
+		signal: make(chan struct{}, 1),
+		state: &frontierState{
+			runs:       make(map[uuid.UUID]*crawlRun),
+			completion: crawlrun.NewCompletion(),
+		},
 	}
 	go frontier.run()
 	return frontier
@@ -88,15 +66,18 @@ func (f *Frontier) Jobs() <-chan crawljob.CrawlJob {
 }
 
 func (f *Frontier) Hold() {
-	done := make(chan struct{})
-	f.commands <- frontierHold{done: done}
-	<-done
+	f.mu.Lock()
+	f.state.completion.Hold()
+	f.mu.Unlock()
 }
 
 func (f *Frontier) Release() {
-	done := make(chan struct{})
-	f.commands <- frontierRelease{done: done}
-	<-done
+	f.mu.Lock()
+	if f.state.completion.Release() {
+		f.closing = true
+	}
+	f.mu.Unlock()
+	f.wake()
 }
 
 func (f *Frontier) SeedRun(
@@ -106,124 +87,107 @@ func (f *Frontier) SeedRun(
 	profile crawladmission.AdmissionProfile,
 	finish func(),
 ) SeededRun {
-	result := make(chan SeededRun)
-	f.commands <- frontierSeedRun{
-		ctx:        ctx,
-		requests:   requests,
-		provenance: provenance,
-		profile:    profile,
-		finish:     finish,
-		result:     result,
+	f.mu.Lock()
+	seeded, settled := f.state.seed(ctx, requests, provenance, profile, finish)
+	f.mu.Unlock()
+	f.wake()
+	if settled != nil {
+		go settled()
 	}
-	return <-result
+	return seeded
 }
 
 func (f *Frontier) Submit(ctx context.Context, work crawljob.CrawlJob, links []string) {
-	done := make(chan struct{})
-	f.commands <- frontierSubmit{ctx: ctx, work: work, links: links, done: done}
-	<-done
+	f.mu.Lock()
+	f.state.submit(ctx, work, links)
+	f.mu.Unlock()
+	f.wake()
 }
 
 func (f *Frontier) Done(work crawljob.CrawlJob) {
-	done := make(chan struct{})
-	f.commands <- frontierDone{runID: work.RunID, done: done}
-	<-done
+	f.mu.Lock()
+	finish, drained := f.state.completion.Settle(work.RunID)
+	f.mu.Unlock()
+	if drained && finish != nil {
+		go finish()
+	}
+}
+
+func (f *Frontier) wake() {
+	select {
+	case f.signal <- struct{}{}:
+	default:
+	}
 }
 
 func (f *Frontier) run() {
-	state := &frontierState{
-		runs:       make(map[uuid.UUID]*crawlRun),
-		completion: crawlrun.NewCompletion(),
-	}
-
 	for {
+		f.mu.Lock()
 		var send chan crawljob.CrawlJob
 		var next crawljob.CrawlJob
-		if len(state.ready) > 0 {
+		if len(f.state.ready) > 0 {
 			send = f.jobs
-			next = state.ready[0]
+			next = f.state.ready[0]
+		}
+		closeJobs := f.closing && len(f.state.ready) == 0
+		f.mu.Unlock()
+
+		if closeJobs {
+			close(f.jobs)
+			return
 		}
 
 		select {
-		case command := <-f.commands:
-			closeJobs, finished := f.handle(command, state)
-			for _, finish := range finished {
-				go finish()
-			}
-			if closeJobs {
-				close(f.jobs)
-				return
-			}
+		case <-f.signal:
 		case send <- next:
-			state.ready = state.ready[1:]
+			f.mu.Lock()
+			f.state.ready = f.state.ready[1:]
+			f.mu.Unlock()
 		}
 	}
 }
 
-func (f *Frontier) handle(command frontierCommand, state *frontierState) (bool, []func()) {
-	switch c := command.(type) {
-	case frontierHold:
-		state.completion.Hold()
-		close(c.done)
-		return false, nil
-	case frontierRelease:
-		drained := state.completion.Release()
-		close(c.done)
-		return drained, nil
-	case frontierSeedRun:
-		c.result <- state.seed(c)
-		return false, nil
-	case frontierSubmit:
-		state.submit(c.ctx, c.work, c.links)
-		close(c.done)
-		return false, nil
-	case frontierDone:
-		finish, drained := state.completion.Settle(c.runID)
-		close(c.done)
-		if drained && finish != nil {
-			return false, []func(){finish}
-		}
-		return false, nil
-	default:
-		return false, nil
-	}
-}
-
-func (s *frontierState) seed(command frontierSeedRun) SeededRun {
+func (s *frontierState) seed(
+	ctx context.Context,
+	requests []yacycrawlcontract.CrawlRequest,
+	provenance []byte,
+	profile crawladmission.AdmissionProfile,
+	finish func(),
+) (SeededRun, func()) {
 	runID := uuid.New()
-	s.runDedup(runID, command.profile)
-	s.completion.Begin(runID, command.finish)
+	s.runDedup(runID, profile)
+	s.completion.Begin(runID, finish)
 	queued := 0
-	for _, req := range command.requests {
-		if req.ProfileHandle != command.profile.Profile.Handle {
-			slog.WarnContext(command.ctx, msgSeedProfileMismatch,
+	for _, req := range requests {
+		if req.ProfileHandle != profile.Profile.Handle {
+			slog.WarnContext(ctx, msgSeedProfileMismatch,
 				slog.String("url", req.URL),
 				slog.String("seedProfileHandle", req.ProfileHandle),
-				slog.String("orderProfileHandle", command.profile.Profile.Handle),
+				slog.String("orderProfileHandle", profile.Profile.Handle),
 			)
 			continue
 		}
 		norm, ok := weburl.Normalize(req.URL)
 		if !ok {
-			slog.WarnContext(command.ctx, msgSeedURLRejected,
+			slog.WarnContext(ctx, msgSeedURLRejected,
 				slog.String("url", req.URL),
 				slog.String("profileHandle", req.ProfileHandle),
 			)
 			continue
 		}
-		if s.accept(command.ctx, runID, frontierCandidate{
+		if s.accept(ctx, runID, frontierCandidate{
 			normURL:       norm,
 			depth:         req.Depth,
 			profileHandle: req.ProfileHandle,
-			provenance:    command.provenance,
+			provenance:    provenance,
 		}) {
 			queued++
 		}
 	}
 	if finish, drained := s.completion.Settle(runID); drained && finish != nil {
-		go finish()
+		return SeededRun{RunID: runID, Queued: queued}, finish
 	}
-	return SeededRun{RunID: runID, Queued: queued}
+	return SeededRun{RunID: runID, Queued: queued}, nil
 }
 
 func (s *frontierState) submit(ctx context.Context, work crawljob.CrawlJob, links []string) {

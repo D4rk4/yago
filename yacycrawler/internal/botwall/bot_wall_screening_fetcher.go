@@ -1,6 +1,8 @@
 package botwall
 
 import (
+	"context"
+	"fmt"
 	"strings"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
@@ -20,18 +22,29 @@ var botWallMarkers = []string{
 	"hcaptcha.com/captcha",
 }
 
-type BotWallScreen interface {
-	IsBotWall(page pagefetch.FetchedPage) bool
+type BotWallScreeningFetcher struct {
+	inner pagefetch.PageSource
 }
 
-type BotWallDetector struct{}
-
-func NewBotWallDetector() *BotWallDetector {
-	return &BotWallDetector{}
+func NewBotWallScreeningFetcher(inner pagefetch.PageSource) *BotWallScreeningFetcher {
+	return &BotWallScreeningFetcher{inner: inner}
 }
 
-func (d *BotWallDetector) IsBotWall(page pagefetch.FetchedPage) bool {
-	body := page.Body
+func (f *BotWallScreeningFetcher) Fetch(
+	ctx context.Context,
+	rawURL string,
+) (pagefetch.FetchedPage, error) {
+	page, err := f.inner.Fetch(ctx, rawURL)
+	if err != nil {
+		return pagefetch.FetchedPage{}, fmt.Errorf("inner fetch: %w", err)
+	}
+	if showsBotWall(page.Body) {
+		return pagefetch.FetchedPage{}, fmt.Errorf("bot wall: %w", pagefetch.ErrPageRejected)
+	}
+	return page, nil
+}
+
+func showsBotWall(body []byte) bool {
 	if len(body) > botWallScanLimit {
 		body = body[:botWallScanLimit]
 	}

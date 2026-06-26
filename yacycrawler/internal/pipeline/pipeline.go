@@ -2,11 +2,11 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/botwall"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
@@ -21,15 +21,14 @@ type Frontier interface {
 }
 
 const (
-	msgBotWallDropped = "bot wall page dropped"
-	msgJobFetching    = "crawl job fetching"
-	msgPageCrawled    = "crawl page crawled"
+	msgPageRejected = "crawl page rejected"
+	msgJobFetching  = "crawl job fetching"
+	msgPageCrawled  = "crawl page crawled"
 )
 
 type Pipeline struct {
 	frontier Frontier
 	fetcher  pagefetch.PageSource
-	botWall  botwall.BotWallScreen
 	index    pageindex.IndexBuilder
 	emitter  ingest.BatchEmitter
 }
@@ -37,14 +36,12 @@ type Pipeline struct {
 func NewPipeline(
 	frontier Frontier,
 	fetcher pagefetch.PageSource,
-	botWall botwall.BotWallScreen,
 	index pageindex.IndexBuilder,
 	emitter ingest.BatchEmitter,
 ) *Pipeline {
 	return &Pipeline{
 		frontier: frontier,
 		fetcher:  fetcher,
-		botWall:  botWall,
 		index:    index,
 		emitter:  emitter,
 	}
@@ -69,7 +66,17 @@ func (p *Pipeline) run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			if err := p.process(ctx, job); err != nil {
+			err := p.process(ctx, job)
+			switch {
+			case err == nil:
+			case errors.Is(err, pagefetch.ErrPageRejected):
+				slog.DebugContext(
+					ctx,
+					msgPageRejected,
+					slog.String("url", job.URL),
+					slog.Any("reason", err),
+				)
+			default:
 				slog.WarnContext(
 					ctx,
 					"crawl job failed",
@@ -90,10 +97,6 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	fetched, err := p.fetcher.Fetch(ctx, job.URL)
 	if err != nil {
 		return fmt.Errorf("fetch: %w", err)
-	}
-	if p.botWall.IsBotWall(fetched) {
-		slog.WarnContext(ctx, msgBotWallDropped, slog.String("url", job.URL))
-		return nil
 	}
 	page := pageparse.ParseHTML(fetched.URL, fetched.ContentType, fetched.Body)
 	slog.DebugContext(ctx, msgPageCrawled,

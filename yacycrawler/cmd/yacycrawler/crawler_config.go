@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/politeness"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawldelay"
 )
 
 const (
@@ -26,8 +26,9 @@ const (
 	DefaultOrdersDurable = "yacy-crawlers"
 	DefaultIngestMaxMsgs = 1024
 
-	DefaultMaxBodyBytes int64 = 4 << 20
-	DefaultUserAgent          = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
+	DefaultMaxBodyBytes  int64 = 4 << 20
+	DefaultUserAgent           = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
+	DefaultHostCacheSize       = 4096
 )
 
 type CrawlConfig struct {
@@ -40,6 +41,7 @@ type CrawlConfig struct {
 	MaxDepth        int
 	Scope           yacycrawlcontract.CrawlScope
 	MaxPagesPerHost int
+	HostCacheSize   int
 }
 
 func DefaultCrawlConfig() CrawlConfig {
@@ -49,10 +51,11 @@ func DefaultCrawlConfig() CrawlConfig {
 		MaxBodyBytes:    DefaultMaxBodyBytes,
 		RequestTimeout:  15 * time.Second,
 		UserAgent:       DefaultUserAgent,
-		CrawlDelay:      politeness.DefaultCrawlDelay,
+		CrawlDelay:      crawldelay.DefaultCrawlDelay,
 		MaxDepth:        2,
 		Scope:           yacycrawlcontract.ScopeDomain,
 		MaxPagesPerHost: yacycrawlcontract.UnlimitedPagesPerHost,
+		HostCacheSize:   DefaultHostCacheSize,
 	}
 }
 

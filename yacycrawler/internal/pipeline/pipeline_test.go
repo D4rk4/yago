@@ -3,6 +3,7 @@ package pipeline_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -41,10 +42,6 @@ type fetchFunc func(context.Context, string) (pagefetch.FetchedPage, error)
 func (f fetchFunc) Fetch(ctx context.Context, rawURL string) (pagefetch.FetchedPage, error) {
 	return f(ctx, rawURL)
 }
-
-type botWallFunc func(pagefetch.FetchedPage) bool
-
-func (f botWallFunc) IsBotWall(page pagefetch.FetchedPage) bool { return f(page) }
 
 type indexFunc func(pageparse.ParsedPage, pageparse.PageStats) (pageindex.Artifacts, error)
 
@@ -99,7 +96,6 @@ func TestPipelineDeliversIngestBatch(t *testing.T) {
 		fetchFunc(
 			func(context.Context, string) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
 		),
-		botWallFunc(func(pagefetch.FetchedPage) bool { return false }),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
 			func(_ context.Context, _ []yacymodel.RWIPosting, _ yacymodel.URIMetadataRow, e ingest.Envelope) error {
@@ -122,28 +118,27 @@ func TestPipelineDeliversIngestBatch(t *testing.T) {
 	}
 }
 
-func TestPipelineDropsBotWallPages(t *testing.T) {
+func TestPipelineDropsRejectedPages(t *testing.T) {
 	frontier := newRecordingFrontier()
 	p := pipeline.NewPipeline(
 		frontier,
-		fetchFunc(
-			func(context.Context, string) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
-		),
-		botWallFunc(func(pagefetch.FetchedPage) bool { return true }),
+		fetchFunc(func(context.Context, string) (pagefetch.FetchedPage, error) {
+			return pagefetch.FetchedPage{}, fmt.Errorf("bot wall: %w", pagefetch.ErrPageRejected)
+		}),
 		indexFunc(func(pageparse.ParsedPage, pageparse.PageStats) (pageindex.Artifacts, error) {
-			t.Error("index should not run for bot wall page")
+			t.Error("index should not run for rejected page")
 			return pageindex.Artifacts{}, nil
 		}),
 		emitFunc(
 			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
-				t.Error("emit should not run for bot wall page")
+				t.Error("emit should not run for rejected page")
 				return nil
 			},
 		),
 	)
 	runOneJob(t, p, frontier)
 	if len(frontier.submitted) != 0 {
-		t.Errorf("bot wall page should submit no links, got %v", frontier.submitted)
+		t.Errorf("rejected page should submit no links, got %v", frontier.submitted)
 	}
 }
 
@@ -154,7 +149,6 @@ func TestPipelineFinishesJobOnFetchError(t *testing.T) {
 		fetchFunc(func(context.Context, string) (pagefetch.FetchedPage, error) {
 			return pagefetch.FetchedPage{}, errors.New("boom")
 		}),
-		botWallFunc(func(pagefetch.FetchedPage) bool { return false }),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
 			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
@@ -172,7 +166,6 @@ func TestPipelineFinishesJobOnEmitError(t *testing.T) {
 		fetchFunc(
 			func(context.Context, string) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
 		),
-		botWallFunc(func(pagefetch.FetchedPage) bool { return false }),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
 			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
@@ -190,7 +183,6 @@ func TestPipelineFinishesJobOnIndexError(t *testing.T) {
 		fetchFunc(
 			func(context.Context, string) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
 		),
-		botWallFunc(func(pagefetch.FetchedPage) bool { return false }),
 		indexFunc(func(pageparse.ParsedPage, pageparse.PageStats) (pageindex.Artifacts, error) {
 			return pageindex.Artifacts{}, errors.New("index failed")
 		}),
