@@ -1,10 +1,8 @@
 package pageparse
 
-import "github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
-
-func BuildPageStats(page crawlwork.ParsedPage) crawlwork.PageStats {
+func BuildPageStats(page ParsedPage) PageStats {
 	local, external := ResolveLinks(page.URL, page.Links)
-	return crawlwork.PageStats{
+	return PageStats{
 		Tokens:        Tokenize(page.Text),
 		TitleTokens:   Tokenize(page.Title),
 		LocalLinks:    local,

@@ -4,7 +4,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
 )
 
@@ -34,7 +33,7 @@ func TestResolveLinksBadBase(t *testing.T) {
 }
 
 func TestBuildPageStats(t *testing.T) {
-	stats := pageparse.BuildPageStats(crawlwork.ParsedPage{
+	stats := pageparse.BuildPageStats(pageparse.ParsedPage{
 		URL:   "https://example.com/",
 		Title: "Hello World",
 		Text:  "some indexed words here",

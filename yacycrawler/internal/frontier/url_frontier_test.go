@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlscope"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
 )
 
@@ -20,14 +20,14 @@ func compiled(t *testing.T, profile yacycrawlcontract.CrawlProfile) crawlscope.C
 	return c
 }
 
-func receiveJob(t *testing.T, f *frontier.Frontier) crawlwork.CrawlJob {
+func receiveJob(t *testing.T, f *frontier.Frontier) crawljob.CrawlJob {
 	t.Helper()
 	select {
 	case job := <-f.Jobs():
 		return job
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for job")
-		return crawlwork.CrawlJob{}
+		return crawljob.CrawlJob{}
 	}
 }
 
@@ -176,7 +176,7 @@ func TestSubmitForUnknownRunIsIgnored(t *testing.T) {
 	f := frontier.NewFrontier(8)
 	f.Submit(
 		context.Background(),
-		crawlwork.CrawlJob{URL: "https://example.com/"},
+		crawljob.CrawlJob{URL: "https://example.com/"},
 		[]string{"https://example.com/x"},
 	)
 	select {

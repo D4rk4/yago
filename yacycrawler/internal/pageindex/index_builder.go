@@ -3,7 +3,7 @@ package pageindex
 import (
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
@@ -13,7 +13,7 @@ type Artifacts struct {
 }
 
 type IndexBuilder interface {
-	Build(page crawlwork.ParsedPage, stats crawlwork.PageStats) (Artifacts, error)
+	Build(page pageparse.ParsedPage, stats pageparse.PageStats) (Artifacts, error)
 }
 
 type contentIndexBuilder struct {
@@ -25,8 +25,8 @@ func NewIndexBuilder() IndexBuilder {
 }
 
 func (b *contentIndexBuilder) Build(
-	page crawlwork.ParsedPage,
-	stats crawlwork.PageStats,
+	page pageparse.ParsedPage,
+	stats pageparse.PageStats,
 ) (Artifacts, error) {
 	postings, err := BuildPostings(page, stats)
 	if err != nil {

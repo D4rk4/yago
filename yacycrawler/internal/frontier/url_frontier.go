@@ -7,8 +7,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlscope"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 )
 
 type Frontier struct {
-	jobs     chan crawlwork.CrawlJob
+	jobs     chan crawljob.CrawlJob
 	commands chan frontierCommand
 }
 
@@ -58,7 +58,7 @@ type SeededRun struct {
 
 type frontierSubmit struct {
 	ctx   context.Context
-	work  crawlwork.CrawlJob
+	work  crawljob.CrawlJob
 	links []string
 	done  chan struct{}
 }
@@ -70,14 +70,14 @@ type frontierDone struct {
 
 func NewFrontier(capacity int) *Frontier {
 	frontier := &Frontier{
-		jobs:     make(chan crawlwork.CrawlJob, capacity),
+		jobs:     make(chan crawljob.CrawlJob, capacity),
 		commands: make(chan frontierCommand),
 	}
 	go frontier.run()
 	return frontier
 }
 
-func (f *Frontier) Jobs() <-chan crawlwork.CrawlJob {
+func (f *Frontier) Jobs() <-chan crawljob.CrawlJob {
 	return f.jobs
 }
 
@@ -112,13 +112,13 @@ func (f *Frontier) SeedRun(
 	return <-result
 }
 
-func (f *Frontier) Submit(ctx context.Context, work crawlwork.CrawlJob, links []string) {
+func (f *Frontier) Submit(ctx context.Context, work crawljob.CrawlJob, links []string) {
 	done := make(chan struct{})
 	f.commands <- frontierSubmit{ctx: ctx, work: work, links: links, done: done}
 	<-done
 }
 
-func (f *Frontier) Done(work crawlwork.CrawlJob) {
+func (f *Frontier) Done(work crawljob.CrawlJob) {
 	done := make(chan struct{})
 	f.commands <- frontierDone{runID: work.RunID, done: done}
 	<-done
@@ -126,12 +126,12 @@ func (f *Frontier) Done(work crawlwork.CrawlJob) {
 
 func (f *Frontier) run() {
 	runs := make(map[uuid.UUID]*crawlRun)
-	var ready []crawlwork.CrawlJob
+	var ready []crawljob.CrawlJob
 	closed := false
 
 	for {
-		var send chan crawlwork.CrawlJob
-		var next crawlwork.CrawlJob
+		var send chan crawljob.CrawlJob
+		var next crawljob.CrawlJob
 		if len(ready) > 0 {
 			send = f.jobs
 			next = ready[0]
@@ -157,7 +157,7 @@ func (f *Frontier) run() {
 func (f *Frontier) handle(
 	command frontierCommand,
 	runs map[uuid.UUID]*crawlRun,
-	ready *[]crawlwork.CrawlJob,
+	ready *[]crawljob.CrawlJob,
 	closed bool,
 ) (bool, []func()) {
 	switch c := command.(type) {
@@ -187,7 +187,7 @@ func (f *Frontier) handle(
 
 func seedFrontierRun(
 	runs map[uuid.UUID]*crawlRun,
-	ready *[]crawlwork.CrawlJob,
+	ready *[]crawljob.CrawlJob,
 	command frontierSeedRun,
 ) SeededRun {
 	runID := uuid.New()
@@ -230,8 +230,8 @@ func seedFrontierRun(
 func submitFrontierLinks(
 	ctx context.Context,
 	runs map[uuid.UUID]*crawlRun,
-	ready *[]crawlwork.CrawlJob,
-	work crawlwork.CrawlJob,
+	ready *[]crawljob.CrawlJob,
+	work crawljob.CrawlJob,
 	links []string,
 ) {
 	run, ok := runs[work.RunID]
@@ -292,7 +292,7 @@ type frontierCandidate struct {
 func acceptFrontierJob(
 	ctx context.Context,
 	runs map[uuid.UUID]*crawlRun,
-	ready *[]crawlwork.CrawlJob,
+	ready *[]crawljob.CrawlJob,
 	runID uuid.UUID,
 	candidate frontierCandidate,
 ) bool {
@@ -316,7 +316,7 @@ func acceptFrontierJob(
 	run.visited[candidate.normURL] = struct{}{}
 	run.hostPages[host]++
 	run.pending++
-	*ready = append(*ready, crawlwork.CrawlJob{
+	*ready = append(*ready, crawljob.CrawlJob{
 		URL:           candidate.normURL,
 		Depth:         candidate.depth,
 		ProfileHandle: candidate.profileHandle,

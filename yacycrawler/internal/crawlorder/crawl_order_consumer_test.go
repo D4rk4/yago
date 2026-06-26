@@ -8,12 +8,11 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/boundedqueue"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlorder"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
 )
 
 func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
-	queue := boundedqueue.NewBoundedQueue[crawlwork.CrawlOrderDelivery](4)
+	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
 	f := frontier.NewFrontier(8)
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f)
 
@@ -34,7 +33,7 @@ func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
 		},
 	}
 	acked := make(chan struct{})
-	delivery := crawlwork.NewCrawlOrderDelivery(order)
+	delivery := crawlorder.NewCrawlOrderDelivery(order)
 	delivery.Ack = func(context.Context) error { close(acked); return nil }
 	if err := queue.Publish(ctx, delivery); err != nil {
 		t.Fatalf("publish delivery: %v", err)
@@ -64,7 +63,7 @@ func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
 }
 
 func TestConsumerTermsUncompilableProfile(t *testing.T) {
-	queue := boundedqueue.NewBoundedQueue[crawlwork.CrawlOrderDelivery](4)
+	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
 	f := frontier.NewFrontier(8)
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f)
 
@@ -76,7 +75,7 @@ func TestConsumerTermsUncompilableProfile(t *testing.T) {
 		Profile: yacycrawlcontract.CrawlProfile{URLMustMatch: "("},
 	}
 	termed := make(chan struct{})
-	delivery := crawlwork.NewCrawlOrderDelivery(order)
+	delivery := crawlorder.NewCrawlOrderDelivery(order)
 	delivery.Term = func(context.Context) error { close(termed); return nil }
 	delivery.Ack = func(context.Context) error {
 		t.Error("uncompilable profile must not ack")

@@ -3,13 +3,12 @@ package pageindex_test
 import (
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
 )
 
 func TestIndexBuilderBuildsPostingsAndMetadata(t *testing.T) {
-	page := crawlwork.ParsedPage{
+	page := pageparse.ParsedPage{
 		URL:      "http://example.com/path",
 		Title:    "Kangaroo facts",
 		Language: "en",

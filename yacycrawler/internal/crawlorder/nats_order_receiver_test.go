@@ -9,7 +9,6 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlorder"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
 )
 
 const (
@@ -126,7 +125,7 @@ func TestNATSOrderReceiverLeavesDeliveredOrderPendingUntilAck(t *testing.T) {
 		t.Fatalf("publish order: %v", err)
 	}
 
-	var delivery crawlwork.CrawlOrderDelivery
+	var delivery crawlorder.CrawlOrderDelivery
 	select {
 	case delivery = <-receiver.Receive():
 	case <-time.After(5 * time.Second):

@@ -4,14 +4,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
 func TestBuildMetadataRoundTrips(t *testing.T) {
-	page := crawlwork.ParsedPage{
+	page := pageparse.ParsedPage{
 		URL:      "http://example.com/path?q=a,b={c}&d=e",
 		Title:    "Title, with {special}=chars",
 		Language: "en",

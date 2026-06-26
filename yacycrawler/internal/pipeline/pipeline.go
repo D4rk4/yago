@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/botwall"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
@@ -15,9 +15,9 @@ import (
 )
 
 type Frontier interface {
-	Jobs() <-chan crawlwork.CrawlJob
-	Submit(ctx context.Context, work crawlwork.CrawlJob, links []string)
-	Done(work crawlwork.CrawlJob)
+	Jobs() <-chan crawljob.CrawlJob
+	Submit(ctx context.Context, work crawljob.CrawlJob, links []string)
+	Done(work crawljob.CrawlJob)
 }
 
 const (
@@ -81,7 +81,7 @@ func (p *Pipeline) run(ctx context.Context) {
 	}
 }
 
-func (p *Pipeline) process(ctx context.Context, job crawlwork.CrawlJob) error {
+func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	defer p.frontier.Done(job)
 	slog.DebugContext(ctx, msgJobFetching,
 		slog.String("url", job.URL),
@@ -100,7 +100,7 @@ func (p *Pipeline) process(ctx context.Context, job crawlwork.CrawlJob) error {
 		slog.String("url", page.URL),
 		slog.Int("links", len(page.Links)),
 	)
-	resolved := crawlwork.CrawlJob{
+	resolved := crawljob.CrawlJob{
 		URL:           page.URL,
 		Depth:         job.Depth,
 		ProfileHandle: job.ProfileHandle,

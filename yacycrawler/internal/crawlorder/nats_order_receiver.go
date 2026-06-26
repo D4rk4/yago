@@ -8,13 +8,12 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
 )
 
 const msgOrderDecodeFailed = "crawl order decode failed"
 
 type NATSOrderReceiver struct {
-	out chan crawlwork.CrawlOrderDelivery
+	out chan CrawlOrderDelivery
 }
 
 func NewNATSOrderReceiver(
@@ -36,7 +35,7 @@ func NewNATSOrderReceiver(
 		return nil, fmt.Errorf("create orders consumer: %w", err)
 	}
 
-	out := make(chan crawlwork.CrawlOrderDelivery)
+	out := make(chan CrawlOrderDelivery)
 	consume, err := consumer.Consume(func(msg jetstream.Msg) {
 		order, err := yacycrawlcontract.UnmarshalCrawlOrder(msg.Data())
 		if err != nil {
@@ -44,7 +43,7 @@ func NewNATSOrderReceiver(
 			_ = msg.Term()
 			return
 		}
-		delivery := crawlwork.CrawlOrderDelivery{
+		delivery := CrawlOrderDelivery{
 			Order: order,
 			Ack: func(context.Context) error {
 				return msg.Ack()
@@ -74,6 +73,6 @@ func NewNATSOrderReceiver(
 	return &NATSOrderReceiver{out: out}, nil
 }
 
-func (r *NATSOrderReceiver) Receive() <-chan crawlwork.CrawlOrderDelivery {
+func (r *NATSOrderReceiver) Receive() <-chan CrawlOrderDelivery {
 	return r.out
 }

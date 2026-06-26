@@ -6,8 +6,8 @@ allow:
   deepScan: false
 
 components:
-  crawlwork:
-    in: internal/crawlwork/**
+  crawljob:
+    in: internal/crawljob/**
   boundedqueue:
     in: internal/boundedqueue/**
   pagefetch:
@@ -69,11 +69,10 @@ vendors:
       - github.com/nats-io/nats-server/v2/server
 
 deps:
-  crawlwork:
+  crawljob:
     mayDependOn:
-      - crawlwork
+      - crawljob
     canUse:
-      - yacycrawlcontract
       - google-uuid
   boundedqueue:
     mayDependOn:
@@ -106,14 +105,13 @@ deps:
     mayDependOn:
       - frontier
       - crawlscope
-      - crawlwork
+      - crawljob
     canUse:
       - yacycrawlcontract
       - google-uuid
   pageparse:
     mayDependOn:
       - pageparse
-      - crawlwork
     canUse:
       - xnet-html
       - trafilatura
@@ -122,7 +120,6 @@ deps:
     mayDependOn:
       - pageindex
       - pageparse
-      - crawlwork
     canUse:
       - yacymodel
   ingest:
@@ -139,7 +136,6 @@ deps:
       - crawlorder
       - boundedqueue
       - crawlscope
-      - crawlwork
       - frontier
     canUse:
       - yacycrawlcontract
@@ -149,7 +145,7 @@ deps:
     mayDependOn:
       - pipeline
       - botwall
-      - crawlwork
+      - crawljob
       - ingest
       - pagefetch
       - pageindex

@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
 func BuildPostings(
-	page crawlwork.ParsedPage,
-	stats crawlwork.PageStats,
+	page pageparse.ParsedPage,
+	stats pageparse.PageStats,
 ) ([]yacymodel.RWIPosting, error) {
 	frequency := make(map[string]int)
 	firstPosition := make(map[string]int)

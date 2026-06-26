@@ -6,34 +6,35 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pipeline"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
 type recordingFrontier struct {
-	jobs      chan crawlwork.CrawlJob
+	jobs      chan crawljob.CrawlJob
 	submitted [][]string
-	done      chan crawlwork.CrawlJob
+	done      chan crawljob.CrawlJob
 }
 
 func newRecordingFrontier() *recordingFrontier {
 	return &recordingFrontier{
-		jobs: make(chan crawlwork.CrawlJob, 1),
-		done: make(chan crawlwork.CrawlJob, 8),
+		jobs: make(chan crawljob.CrawlJob, 1),
+		done: make(chan crawljob.CrawlJob, 8),
 	}
 }
 
-func (f *recordingFrontier) Jobs() <-chan crawlwork.CrawlJob { return f.jobs }
+func (f *recordingFrontier) Jobs() <-chan crawljob.CrawlJob { return f.jobs }
 
-func (f *recordingFrontier) Submit(_ context.Context, _ crawlwork.CrawlJob, links []string) {
+func (f *recordingFrontier) Submit(_ context.Context, _ crawljob.CrawlJob, links []string) {
 	f.submitted = append(f.submitted, links)
 }
 
-func (f *recordingFrontier) Done(work crawlwork.CrawlJob) { f.done <- work }
+func (f *recordingFrontier) Done(work crawljob.CrawlJob) { f.done <- work }
 
 type fetchFunc func(context.Context, string) (pagefetch.FetchedPage, error)
 
@@ -45,11 +46,11 @@ type botWallFunc func(pagefetch.FetchedPage) bool
 
 func (f botWallFunc) IsBotWall(page pagefetch.FetchedPage) bool { return f(page) }
 
-type indexFunc func(crawlwork.ParsedPage, crawlwork.PageStats) (pageindex.Artifacts, error)
+type indexFunc func(pageparse.ParsedPage, pageparse.PageStats) (pageindex.Artifacts, error)
 
 func (f indexFunc) Build(
-	p crawlwork.ParsedPage,
-	s crawlwork.PageStats,
+	p pageparse.ParsedPage,
+	s pageparse.PageStats,
 ) (pageindex.Artifacts, error) {
 	return f(p, s)
 }
@@ -82,7 +83,7 @@ func runOneJob(
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go p.RunWorkers(ctx, 1)
-	frontier.jobs <- crawlwork.CrawlJob{URL: "https://example.com/", ProfileHandle: "h"}
+	frontier.jobs <- crawljob.CrawlJob{URL: "https://example.com/", ProfileHandle: "h"}
 	select {
 	case <-frontier.done:
 	case <-time.After(2 * time.Second):
@@ -129,7 +130,7 @@ func TestPipelineDropsBotWallPages(t *testing.T) {
 			func(context.Context, string) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
 		),
 		botWallFunc(func(pagefetch.FetchedPage) bool { return true }),
-		indexFunc(func(crawlwork.ParsedPage, crawlwork.PageStats) (pageindex.Artifacts, error) {
+		indexFunc(func(pageparse.ParsedPage, pageparse.PageStats) (pageindex.Artifacts, error) {
 			t.Error("index should not run for bot wall page")
 			return pageindex.Artifacts{}, nil
 		}),
@@ -190,7 +191,7 @@ func TestPipelineFinishesJobOnIndexError(t *testing.T) {
 			func(context.Context, string) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
 		),
 		botWallFunc(func(pagefetch.FetchedPage) bool { return false }),
-		indexFunc(func(crawlwork.ParsedPage, crawlwork.PageStats) (pageindex.Artifacts, error) {
+		indexFunc(func(pageparse.ParsedPage, pageparse.PageStats) (pageindex.Artifacts, error) {
 			return pageindex.Artifacts{}, errors.New("index failed")
 		}),
 		emitFunc(

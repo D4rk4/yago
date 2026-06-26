@@ -3,13 +3,12 @@ package pageindex_test
 import (
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-func buildPostings(t *testing.T, page crawlwork.ParsedPage) []yacymodel.RWIPosting {
+func buildPostings(t *testing.T, page pageparse.ParsedPage) []yacymodel.RWIPosting {
 	t.Helper()
 	postings, err := pageindex.BuildPostings(page, pageparse.BuildPageStats(page))
 	if err != nil {
@@ -19,7 +18,7 @@ func buildPostings(t *testing.T, page crawlwork.ParsedPage) []yacymodel.RWIPosti
 }
 
 func TestBuildPostingsUsesYaCyWordHash(t *testing.T) {
-	page := crawlwork.ParsedPage{
+	page := pageparse.ParsedPage{
 		URL:      "http://example.com/",
 		Title:    "Kangaroo facts",
 		Language: "en",
@@ -44,7 +43,7 @@ func TestBuildPostingsUsesYaCyWordHash(t *testing.T) {
 }
 
 func TestBuildPostingsAreAcceptableRWILines(t *testing.T) {
-	page := crawlwork.ParsedPage{
+	page := pageparse.ParsedPage{
 		URL:      "http://example.com/path?q=a&b=c",
 		Title:    "Title",
 		Language: "en",

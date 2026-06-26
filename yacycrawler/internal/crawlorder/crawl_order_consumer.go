@@ -6,7 +6,6 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/boundedqueue"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlscope"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
 )
 
@@ -20,12 +19,12 @@ const (
 )
 
 type CrawlOrderConsumer struct {
-	orders   boundedqueue.Receiver[crawlwork.CrawlOrderDelivery]
+	orders   boundedqueue.Receiver[CrawlOrderDelivery]
 	frontier *frontier.Frontier
 }
 
 func NewCrawlOrderConsumer(
-	orders boundedqueue.Receiver[crawlwork.CrawlOrderDelivery],
+	orders boundedqueue.Receiver[CrawlOrderDelivery],
 	frontier *frontier.Frontier,
 ) *CrawlOrderConsumer {
 	return &CrawlOrderConsumer{orders: orders, frontier: frontier}
@@ -47,7 +46,7 @@ func (c *CrawlOrderConsumer) Run(ctx context.Context) {
 	}
 }
 
-func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery crawlwork.CrawlOrderDelivery) {
+func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDelivery) {
 	order := delivery.Order
 	slog.InfoContext(
 		ctx,

@@ -5,15 +5,15 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlwork"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
 const shortDayFormat = "20060102"
 
 func BuildMetadata(
-	page crawlwork.ParsedPage,
-	stats crawlwork.PageStats,
+	page pageparse.ParsedPage,
+	stats pageparse.PageStats,
 	loadedAt time.Time,
 ) (yacymodel.URIMetadataRow, error) {
 	day := loadedAt.UTC().Format(shortDayFormat)
