@@ -5,15 +5,15 @@ import (
 	"fmt"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmetastaleness"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlreferences"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 type quotaSweeper struct {
-	vault      *boltvault.Vault
+	vault      *vault.Vault
 	postings   rwi.PostingPurger
 	references urlreferences.ReferenceQuery
 	urls       urlmeta.URLEvictor
@@ -61,7 +61,7 @@ func (s quotaSweeper) Sweep(ctx context.Context) (Result, error) {
 
 func (s quotaSweeper) purge(ctx context.Context, urls []yacymodel.Hash) (Result, error) {
 	var result Result
-	err := s.vault.Update(ctx, func(tx *boltvault.Txn) error {
+	err := s.vault.Update(ctx, func(tx *vault.Txn) error {
 		for _, url := range urls {
 			words, err := s.references.WordsReferencing(tx, url)
 			if err != nil {

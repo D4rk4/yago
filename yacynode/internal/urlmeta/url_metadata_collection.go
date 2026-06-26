@@ -4,10 +4,10 @@ import (
 	"fmt"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
-const bucketName boltvault.Name = "urlmeta"
+const bucketName vault.Name = "urlmeta"
 
 type uriMetadataCodec struct{}
 
@@ -30,9 +30,9 @@ func (uriMetadataCodec) Decode(raw []byte) (yacymodel.URIMetadataRow, error) {
 }
 
 func registerCollection(
-	vault *boltvault.Vault,
-) (*boltvault.Collection[yacymodel.URIMetadataRow], error) {
-	collection, err := boltvault.Register(vault, bucketName, uriMetadataCodec{})
+	v *vault.Vault,
+) (*vault.Collection[yacymodel.URIMetadataRow], error) {
+	collection, err := vault.Register(v, bucketName, uriMetadataCodec{})
 	if err != nil {
 		return nil, fmt.Errorf("register url metadata collection: %w", err)
 	}

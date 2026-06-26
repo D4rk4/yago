@@ -14,6 +14,7 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/metrics"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 const (
@@ -164,7 +165,7 @@ func shutdown(servers []namedServer) error {
 	return failures
 }
 
-func closeVault(vault *boltvault.Vault) {
+func closeVault(vault *vault.Vault) {
 	if err := vault.Close(); err != nil {
 		slog.ErrorContext(context.Background(), "storage close failed", slog.Any("error", err))
 	}

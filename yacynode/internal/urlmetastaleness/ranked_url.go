@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 const freshnessHashSeparator = 0x00
@@ -15,7 +15,7 @@ type rankedURL struct {
 	hash      yacymodel.Hash
 }
 
-func (r rankedURL) orderKey() boltvault.Key {
+func (r rankedURL) orderKey() vault.Key {
 	var key bytes.Buffer
 	key.WriteString(r.freshness)
 	key.WriteByte(freshnessHashSeparator)
@@ -24,7 +24,7 @@ func (r rankedURL) orderKey() boltvault.Key {
 	return key.Bytes()
 }
 
-func hashFromOrderKey(key boltvault.Key) (yacymodel.Hash, error) {
+func hashFromOrderKey(key vault.Key) (yacymodel.Hash, error) {
 	_, encodedHash, found := bytes.Cut(key, []byte{freshnessHashSeparator})
 	if !found {
 		return "", fmt.Errorf("staleness order key without separator")

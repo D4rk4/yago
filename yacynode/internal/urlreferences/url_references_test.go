@@ -3,44 +3,44 @@ package urlreferences_test
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/memvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlreferences"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
-func openReferences(t *testing.T) (*boltvault.Vault, urlreferences.ReferenceProjection) {
+func openReferences(t *testing.T) (*vault.Vault, urlreferences.ReferenceProjection) {
 	t.Helper()
 
-	vault, err := boltvault.Open(filepath.Join(t.TempDir(), "node.db"), 0)
+	v, err := memvault.Open(0)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := vault.Close(); err != nil {
+		if err := v.Close(); err != nil {
 			t.Fatalf("Close: %v", err)
 		}
 	})
 
-	index, err := urlreferences.Open(vault)
+	index, err := urlreferences.Open(v)
 	if err != nil {
 		t.Fatalf("urlreferences.Open: %v", err)
 	}
 
-	return vault, index
+	return v, index
 }
 
 func store(
 	t *testing.T,
-	vault *boltvault.Vault,
+	v *vault.Vault,
 	index urlreferences.ReferenceProjection,
 	word, url yacymodel.Hash,
 ) {
 	t.Helper()
 
-	if err := vault.Update(context.Background(), func(tx *boltvault.Txn) error {
+	if err := v.Update(context.Background(), func(tx *vault.Txn) error {
 		return index.PostingStored(tx, word, url)
 	}); err != nil {
 		t.Fatalf("PostingStored: %v", err)
@@ -49,13 +49,13 @@ func store(
 
 func purge(
 	t *testing.T,
-	vault *boltvault.Vault,
+	v *vault.Vault,
 	index urlreferences.ReferenceProjection,
 	word, url yacymodel.Hash,
 ) {
 	t.Helper()
 
-	if err := vault.Update(context.Background(), func(tx *boltvault.Txn) error {
+	if err := v.Update(context.Background(), func(tx *vault.Txn) error {
 		return index.PostingPurged(tx, word, url)
 	}); err != nil {
 		t.Fatalf("PostingPurged: %v", err)
@@ -64,14 +64,14 @@ func purge(
 
 func wordsReferencing(
 	t *testing.T,
-	vault *boltvault.Vault,
+	v *vault.Vault,
 	index urlreferences.ReferenceProjection,
 	url yacymodel.Hash,
 ) []yacymodel.Hash {
 	t.Helper()
 
 	var words []yacymodel.Hash
-	if err := vault.View(context.Background(), func(tx *boltvault.Txn) error {
+	if err := v.View(context.Background(), func(tx *vault.Txn) error {
 		found, err := index.WordsReferencing(tx, url)
 		if err != nil {
 			return fmt.Errorf("words referencing: %w", err)

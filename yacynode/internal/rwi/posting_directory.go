@@ -5,12 +5,12 @@ import (
 	"fmt"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 type postingDirectory struct {
-	vault     *boltvault.Vault
-	postings  *boltvault.Collection[yacymodel.RWIPosting]
+	vault     *vault.Vault
+	postings  *vault.Collection[yacymodel.RWIPosting]
 	observers postingObservers
 }
 
@@ -19,7 +19,7 @@ func (d postingDirectory) RWICount(ctx context.Context) (int, error) {
 }
 
 func (d postingDirectory) PurgePosting(
-	tx *boltvault.Txn,
+	tx *vault.Txn,
 	word, url yacymodel.Hash,
 ) (bool, error) {
 	deleted, err := d.postings.Delete(tx, postingKey(word, url))
@@ -38,11 +38,11 @@ func (d postingDirectory) ScanWord(
 	word yacymodel.Hash,
 	visit func(yacymodel.RWIPosting) (bool, error),
 ) error {
-	err := d.vault.View(ctx, func(tx *boltvault.Txn) error {
+	err := d.vault.View(ctx, func(tx *vault.Txn) error {
 		return d.postings.Scan(
 			tx,
-			boltvault.Key(word),
-			func(_ boltvault.Key, entry yacymodel.RWIPosting) (bool, error) {
+			vault.Key(word),
+			func(_ vault.Key, entry yacymodel.RWIPosting) (bool, error) {
 				if err := ctx.Err(); err != nil {
 					return false, fmt.Errorf("context: %w", err)
 				}
@@ -61,11 +61,11 @@ func (d postingDirectory) ScanWord(
 
 func collectionLength[V any](
 	ctx context.Context,
-	vault *boltvault.Vault,
-	collection *boltvault.Collection[V],
+	v *vault.Vault,
+	collection *vault.Collection[V],
 ) (int, error) {
 	var length int
-	err := vault.View(ctx, func(tx *boltvault.Txn) error {
+	err := v.View(ctx, func(tx *vault.Txn) error {
 		measured, err := collection.Len(tx)
 		if err != nil {
 			return fmt.Errorf("read length: %w", err)

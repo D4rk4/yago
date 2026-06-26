@@ -7,9 +7,9 @@ import (
 	"context"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
@@ -24,12 +24,12 @@ type URLReceiver interface {
 }
 
 type URLEvictor interface {
-	Purge(ctx context.Context, tx *boltvault.Txn, urls []yacymodel.Hash) (PurgeResult, error)
+	Purge(ctx context.Context, tx *vault.Txn, urls []yacymodel.Hash) (PurgeResult, error)
 }
 
 type URLMetadataObserver interface {
-	URLStored(tx *boltvault.Txn, hash yacymodel.Hash, freshness string) error
-	URLPurged(tx *boltvault.Txn, hash yacymodel.Hash) error
+	URLStored(tx *vault.Txn, hash yacymodel.Hash, freshness string) error
+	URLPurged(tx *vault.Txn, hash yacymodel.Hash) error
 }
 
 type Receipt struct {
@@ -43,7 +43,7 @@ type PurgeResult struct {
 }
 
 func Open(
-	vault *boltvault.Vault,
+	vault *vault.Vault,
 	watchers ...URLMetadataObserver,
 ) (URLDirectory, URLEvictor, URLReceiver, error) {
 	collection, err := registerCollection(vault)

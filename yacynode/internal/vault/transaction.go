@@ -1,28 +1,25 @@
-package boltvault
+package vault
 
 import (
 	"context"
 	"errors"
 	"fmt"
-
-	bolt "go.etcd.io/bbolt"
 )
 
 type Txn struct {
-	tx       *bolt.Tx
-	writable bool
+	etx EngineTxn
 }
 
 func (v *Vault) Update(ctx context.Context, fn func(*Txn) error) error {
-	if v == nil || v.db == nil {
+	if v == nil || v.engine == nil {
 		return errVaultClosed
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
 
-	if err := v.db.Update(func(tx *bolt.Tx) error {
-		return fn(&Txn{tx: tx, writable: true})
+	if err := v.engine.Update(ctx, func(etx EngineTxn) error {
+		return fn(&Txn{etx: etx})
 	}); err != nil {
 		return wrapTxnError("write storage", err)
 	}
@@ -31,15 +28,15 @@ func (v *Vault) Update(ctx context.Context, fn func(*Txn) error) error {
 }
 
 func (v *Vault) View(ctx context.Context, fn func(*Txn) error) error {
-	if v == nil || v.db == nil {
+	if v == nil || v.engine == nil {
 		return errVaultClosed
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
 
-	if err := v.db.View(func(tx *bolt.Tx) error {
-		return fn(&Txn{tx: tx, writable: false})
+	if err := v.engine.View(ctx, func(etx EngineTxn) error {
+		return fn(&Txn{etx: etx})
 	}); err != nil {
 		return wrapTxnError("read storage", err)
 	}
@@ -54,8 +51,8 @@ func wrapTxnError(operation string, err error) error {
 	if errors.Is(err, errReadOnly) {
 		return err
 	}
-	if storageAtCapacityError(err) {
-		return fmt.Errorf("%s: %w", operation, ErrAtCapacity)
+	if errors.Is(err, ErrAtCapacity) {
+		return err
 	}
 
 	return fmt.Errorf("%s: %w", operation, err)

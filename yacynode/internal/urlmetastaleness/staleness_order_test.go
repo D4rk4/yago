@@ -2,45 +2,45 @@ package urlmetastaleness_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/memvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmetastaleness"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
-func openOrder(t *testing.T) (*boltvault.Vault, urlmetastaleness.StalenessRanking) {
+func openOrder(t *testing.T) (*vault.Vault, urlmetastaleness.StalenessRanking) {
 	t.Helper()
 
-	vault, err := boltvault.Open(filepath.Join(t.TempDir(), "node.db"), 0)
+	v, err := memvault.Open(0)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := vault.Close(); err != nil {
+		if err := v.Close(); err != nil {
 			t.Fatalf("Close: %v", err)
 		}
 	})
 
-	order, err := urlmetastaleness.Open(vault)
+	order, err := urlmetastaleness.Open(v)
 	if err != nil {
 		t.Fatalf("Open order: %v", err)
 	}
 
-	return vault, order
+	return v, order
 }
 
 func store(
 	t *testing.T,
-	vault *boltvault.Vault,
+	v *vault.Vault,
 	order urlmetastaleness.StalenessRanking,
 	hash yacymodel.Hash,
 	freshness string,
 ) {
 	t.Helper()
 
-	if err := vault.Update(context.Background(), func(tx *boltvault.Txn) error {
+	if err := v.Update(context.Background(), func(tx *vault.Txn) error {
 		return order.URLStored(tx, hash, freshness)
 	}); err != nil {
 		t.Fatalf("URLStored: %v", err)
@@ -94,13 +94,13 @@ func TestStalestURLsZeroLimit(t *testing.T) {
 }
 
 func TestPurgedURLLeavesOrder(t *testing.T) {
-	vault, order := openOrder(t)
+	v, order := openOrder(t)
 	kept := yacymodel.WordHash("kept")
 	gone := yacymodel.WordHash("gone")
-	store(t, vault, order, kept, "20250101")
-	store(t, vault, order, gone, "20200101")
+	store(t, v, order, kept, "20250101")
+	store(t, v, order, gone, "20200101")
 
-	if err := vault.Update(context.Background(), func(tx *boltvault.Txn) error {
+	if err := v.Update(context.Background(), func(tx *vault.Txn) error {
 		return order.URLPurged(tx, gone)
 	}); err != nil {
 		t.Fatalf("URLPurged: %v", err)
@@ -116,9 +116,9 @@ func TestPurgedURLLeavesOrder(t *testing.T) {
 }
 
 func TestPurgeUnknownURLIsHarmless(t *testing.T) {
-	vault, order := openOrder(t)
+	v, order := openOrder(t)
 
-	if err := vault.Update(context.Background(), func(tx *boltvault.Txn) error {
+	if err := v.Update(context.Background(), func(tx *vault.Txn) error {
 		return order.URLPurged(tx, yacymodel.WordHash("absent"))
 	}); err != nil {
 		t.Fatalf("URLPurged: %v", err)

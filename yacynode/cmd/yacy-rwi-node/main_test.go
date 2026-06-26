@@ -4,13 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/memvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/metrics"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 func TestRunRejectsInvalidConfig(t *testing.T) {
@@ -44,19 +44,19 @@ func testConfig(t *testing.T) nodeConfig {
 	return config
 }
 
-func openTestVault(t *testing.T) *boltvault.Vault {
+func openTestVault(t *testing.T) *vault.Vault {
 	t.Helper()
 
-	vault, err := boltvault.Open(filepath.Join(t.TempDir(), "db"), 0)
+	v, err := memvault.Open(0)
 	if err != nil {
 		t.Fatalf("open storage: %v", err)
 	}
-	t.Cleanup(func() { _ = vault.Close() })
+	t.Cleanup(func() { _ = v.Close() })
 
-	return vault
+	return v
 }
 
-func assembleTestNode(t *testing.T, config nodeConfig, vault *boltvault.Vault) node {
+func assembleTestNode(t *testing.T, config nodeConfig, vault *vault.Vault) node {
 	t.Helper()
 
 	settings, err := loadBootstrapSettings(func(string) string { return "" })

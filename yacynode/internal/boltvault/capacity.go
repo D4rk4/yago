@@ -10,50 +10,25 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
-var ErrAtCapacity = errors.New("vault at capacity")
-
-func (v *Vault) QuotaBytes() int64 {
-	return v.quotaBytes
+func (e *engine) QuotaBytes() int64 {
+	return e.quotaBytes
 }
 
-func (v *Vault) UsedBytes(ctx context.Context) (int64, error) {
-	if v == nil || v.db == nil {
-		return 0, errVaultClosed
-	}
+func (e *engine) UsedBytes(ctx context.Context) (int64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, fmt.Errorf("context: %w", err)
 	}
 
-	return v.measureUsedBytes()
-}
-
-func (v *Vault) AtCapacity(ctx context.Context) (bool, error) {
-	if v == nil || v.db == nil {
-		return false, errVaultClosed
-	}
-	if v.quotaBytes <= 0 {
-		return false, nil
-	}
-
-	used, err := v.UsedBytes(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	return used >= v.quotaBytes, nil
-}
-
-func (v *Vault) measureUsedBytes() (int64, error) {
 	var used int64
-	if err := v.db.View(func(tx *bolt.Tx) error {
-		stats := v.db.Stats()
-		pageSize := int64(v.db.Info().PageSize)
+	if err := e.db.View(func(tx *bolt.Tx) error {
+		stats := e.db.Stats()
+		pageSize := int64(e.db.Info().PageSize)
 		free := int64(stats.FreePageN+stats.PendingPageN) * pageSize
 		used = tx.Size() - free
 
 		return nil
 	}); err != nil {
-		return 0, fmt.Errorf("measure used bytes: %w", err)
+		return 0, fmt.Errorf("read storage stats: %w", err)
 	}
 	if used < 0 {
 		used = 0

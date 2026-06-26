@@ -6,19 +6,19 @@ import (
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 func TestPurgeNotifiesObserverOfDeletedURLs(t *testing.T) {
 	ctx := context.Background()
 	observer := &recordingObserver{}
-	vault, module := openObservedModule(t, observer)
+	v, module := openObservedModule(t, observer)
 	row := urlRow(t, "a")
 	if _, err := module.Receiver.Receive(ctx, []yacymodel.URIMetadataRow{row}); err != nil {
 		t.Fatalf("Intake: %v", err)
 	}
 
-	if err := vault.Update(ctx, func(tx *boltvault.Txn) error {
+	if err := v.Update(ctx, func(tx *vault.Txn) error {
 		if _, purgeErr := module.Evictor.Purge(
 			ctx,
 			tx,
@@ -39,14 +39,14 @@ func TestPurgeNotifiesObserverOfDeletedURLs(t *testing.T) {
 func TestPurgeSurvivesObserverFailure(t *testing.T) {
 	ctx := context.Background()
 	observer := &recordingObserver{fail: true}
-	vault, module := openObservedModule(t, observer)
+	v, module := openObservedModule(t, observer)
 	row := urlRow(t, "a")
 	if _, err := module.Receiver.Receive(ctx, []yacymodel.URIMetadataRow{row}); err != nil {
 		t.Fatalf("Intake: %v", err)
 	}
 
 	var result PurgeResult
-	if err := vault.Update(ctx, func(tx *boltvault.Txn) error {
+	if err := v.Update(ctx, func(tx *vault.Txn) error {
 		purged, purgeErr := module.Evictor.Purge(ctx, tx, []yacymodel.Hash{rowHash(t, row)})
 		result = purged
 		if purgeErr != nil {
@@ -64,7 +64,7 @@ func TestPurgeSurvivesObserverFailure(t *testing.T) {
 
 func TestPurgeDeletesRows(t *testing.T) {
 	ctx := context.Background()
-	vault, module := openObservedModule(t)
+	v, module := openObservedModule(t)
 	row := urlRow(t, "a")
 	if _, err := module.Receiver.Receive(
 		ctx,
@@ -74,7 +74,7 @@ func TestPurgeDeletesRows(t *testing.T) {
 	}
 
 	var result PurgeResult
-	if err := vault.Update(ctx, func(tx *boltvault.Txn) error {
+	if err := v.Update(ctx, func(tx *vault.Txn) error {
 		purged, purgeErr := module.Evictor.Purge(ctx, tx, []yacymodel.Hash{rowHash(t, row)})
 		result = purged
 		if purgeErr != nil {

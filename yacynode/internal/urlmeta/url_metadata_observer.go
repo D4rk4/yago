@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 const urlObserverFailed = "url metadata observer failed"
@@ -14,7 +14,7 @@ type observers []URLMetadataObserver
 
 func (o observers) stored(
 	ctx context.Context,
-	tx *boltvault.Txn,
+	tx *vault.Txn,
 	hash yacymodel.Hash,
 	freshness string,
 ) {
@@ -28,7 +28,7 @@ func (o observers) stored(
 	}
 }
 
-func (o observers) purged(ctx context.Context, tx *boltvault.Txn, hash yacymodel.Hash) {
+func (o observers) purged(ctx context.Context, tx *vault.Txn, hash yacymodel.Hash) {
 	for _, observer := range o {
 		if err := observer.URLPurged(tx, hash); err != nil {
 			slog.WarnContext(ctx, urlObserverFailed,

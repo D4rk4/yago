@@ -8,8 +8,8 @@ import (
 	"context"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 type StaleURLSource interface {
@@ -21,6 +21,6 @@ type StalenessRanking interface {
 	urlmeta.URLMetadataObserver
 }
 
-func Open(vault *boltvault.Vault) (StalenessRanking, error) {
+func Open(vault *vault.Vault) (StalenessRanking, error) {
 	return openStalenessRanking(vault)
 }

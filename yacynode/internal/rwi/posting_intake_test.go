@@ -2,13 +2,13 @@ package rwi
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/memvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 func localIdentity() nodeidentity.Identity {
@@ -22,7 +22,7 @@ type rwiPorts struct {
 }
 
 type harness struct {
-	vault    *boltvault.Vault
+	vault    *vault.Vault
 	urls     urlmeta.URLReceiver
 	rwi      rwiPorts
 	observer *recordingObserver
@@ -31,23 +31,23 @@ type harness struct {
 func openHarness(t *testing.T, quotaBytes int64, batchCap int) harness {
 	t.Helper()
 
-	vault, err := boltvault.Open(filepath.Join(t.TempDir(), "node.db"), quotaBytes)
+	v, err := memvault.Open(quotaBytes)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := vault.Close(); err != nil {
+		if err := v.Close(); err != nil {
 			t.Fatalf("Close: %v", err)
 		}
 	})
 
-	directory, _, urlReceiver, err := urlmeta.Open(vault)
+	directory, _, urlReceiver, err := urlmeta.Open(v)
 	if err != nil {
 		t.Fatalf("urlmeta.Open: %v", err)
 	}
 	observer := &recordingObserver{}
 	index, receiver, purger, err := Open(
-		vault,
+		v,
 		directory,
 		Config{BatchCap: batchCap, PauseSeconds: 5},
 		observer,
@@ -57,7 +57,7 @@ func openHarness(t *testing.T, quotaBytes int64, batchCap int) harness {
 	}
 
 	return harness{
-		vault:    vault,
+		vault:    v,
 		urls:     urlReceiver,
 		rwi:      rwiPorts{Index: index, Receiver: receiver, Purger: purger},
 		observer: observer,
@@ -158,6 +158,14 @@ func TestIntakeBusyAtCapacity(t *testing.T) {
 	receipt, err := h.rwi.Receiver.Receive(ctx, []yacymodel.RWIPosting{posting("w1", "u1")})
 	if err != nil {
 		t.Fatalf("Intake: %v", err)
+	}
+	if receipt.Busy {
+		t.Fatalf("first receipt = %+v, want stored", receipt)
+	}
+
+	receipt, err = h.rwi.Receiver.Receive(ctx, []yacymodel.RWIPosting{posting("w2", "u2")})
+	if err != nil {
+		t.Fatalf("Intake over capacity: %v", err)
 	}
 	if !receipt.Busy || receipt.Pause != 5 {
 		t.Fatalf("receipt = %+v, want Busy with pause 5", receipt)

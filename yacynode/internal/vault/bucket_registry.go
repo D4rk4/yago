@@ -1,15 +1,13 @@
-package boltvault
+package vault
 
 import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-
-	bolt "go.etcd.io/bbolt"
 )
 
 func Register[V any](v *Vault, bucket Name, codec Codec[V]) (*Collection[V], error) {
-	if v == nil || v.db == nil {
+	if v == nil || v.engine == nil {
 		return nil, errVaultClosed
 	}
 
@@ -20,17 +18,7 @@ func Register[V any](v *Vault, bucket Name, codec Codec[V]) (*Collection[V], err
 		return nil, fmt.Errorf("%w: %s", errDuplicateBucket, bucket)
 	}
 
-	if err := v.db.Update(func(tx *bolt.Tx) error {
-		if _, createErr := tx.CreateBucketIfNotExists([]byte(bucket)); createErr != nil {
-			return fmt.Errorf("create bucket: %w", createErr)
-		}
-		lengths := tx.Bucket(lengthBucket)
-		if lengths.Get([]byte(bucket)) == nil {
-			return putLength(lengths, []byte(bucket), 0)
-		}
-
-		return nil
-	}); err != nil {
+	if err := v.engine.Provision(bucket); err != nil {
 		return nil, fmt.Errorf("register bucket %s: %w", bucket, err)
 	}
 
@@ -39,18 +27,18 @@ func Register[V any](v *Vault, bucket Name, codec Codec[V]) (*Collection[V], err
 	return &Collection[V]{vault: v, name: bucket, codec: codec}, nil
 }
 
-func readLength(tx *bolt.Tx, bucket Name) (int, error) {
-	return decodeLength(tx.Bucket(lengthBucket).Get([]byte(bucket)))
+func readLength(tx *Txn, bucket Name) (int, error) {
+	return decodeLength(tx.etx.Bucket(lengthBucket).Get(Key(bucket)))
 }
 
-func adjustLength(tx *bolt.Tx, bucket Name, delta int) error {
-	lengths := tx.Bucket(lengthBucket)
-	current, err := decodeLength(lengths.Get([]byte(bucket)))
+func adjustLength(tx *Txn, bucket Name, delta int) error {
+	lengths := tx.etx.Bucket(lengthBucket)
+	current, err := decodeLength(lengths.Get(Key(bucket)))
 	if err != nil {
 		return err
 	}
 
-	return putLength(lengths, []byte(bucket), max(current+delta, 0))
+	return putLength(lengths, Key(bucket), max(current+delta, 0))
 }
 
 func decodeLength(raw []byte) (int, error) {
@@ -69,7 +57,7 @@ func decodeLength(raw []byte) (int, error) {
 	return int(n), nil
 }
 
-func putLength(lengths *bolt.Bucket, key []byte, n int) error {
+func putLength(lengths EngineBucket, key Key, n int) error {
 	if n < 0 {
 		return errors.New("negative length counter")
 	}

@@ -6,13 +6,13 @@ import (
 	"fmt"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 type postingIntake struct {
-	vault        *boltvault.Vault
-	postings     *boltvault.Collection[yacymodel.RWIPosting]
+	vault        *vault.Vault
+	postings     *vault.Collection[yacymodel.RWIPosting]
 	observers    postingObservers
 	urls         urlmeta.URLDirectory
 	batchCap     int
@@ -36,7 +36,7 @@ func (i postingIntake) Receive(
 	}
 
 	referenced := make([]yacymodel.Hash, 0, len(entries))
-	err = i.vault.Update(ctx, func(tx *boltvault.Txn) error {
+	err = i.vault.Update(ctx, func(tx *vault.Txn) error {
 		for _, entry := range entries {
 			if err := ctx.Err(); err != nil {
 				return fmt.Errorf("context: %w", err)
@@ -59,7 +59,7 @@ func (i postingIntake) Receive(
 
 		return nil
 	})
-	if errors.Is(err, boltvault.ErrAtCapacity) {
+	if errors.Is(err, vault.ErrAtCapacity) {
 		return Receipt{Busy: true, Pause: i.pauseSeconds}, nil
 	}
 	if err != nil {

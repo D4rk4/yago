@@ -3,29 +3,54 @@ package eviction_test
 import (
 	"context"
 	"errors"
-	"path/filepath"
+	"fmt"
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/eviction"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/memvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
-func openVault(t *testing.T, quotaBytes int64) *boltvault.Vault {
+type seedCodec struct{}
+
+func (seedCodec) Encode(value []byte) ([]byte, error) { return value, nil }
+func (seedCodec) Decode(raw []byte) ([]byte, error)   { return raw, nil }
+
+func openVault(t *testing.T, quotaBytes int64) *vault.Vault {
 	t.Helper()
 
-	vault, err := boltvault.Open(filepath.Join(t.TempDir(), "node.db"), quotaBytes)
+	v, err := memvault.Open(quotaBytes)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := vault.Close(); err != nil {
+		if err := v.Close(); err != nil {
 			t.Fatalf("Close: %v", err)
 		}
 	})
+	seedUsage(t, v)
 
-	return vault
+	return v
+}
+
+func seedUsage(t *testing.T, v *vault.Vault) {
+	t.Helper()
+
+	collection, err := vault.Register(v, vault.Name("seed"), seedCodec{})
+	if err != nil {
+		t.Fatalf("Register seed: %v", err)
+	}
+	if err := v.Update(context.Background(), func(tx *vault.Txn) error {
+		if err := collection.Put(tx, vault.Key("seed"), make([]byte, 64)); err != nil {
+			return fmt.Errorf("put seed: %w", err)
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatalf("seed usage: %v", err)
+	}
 }
 
 type fakeReferences struct {
@@ -33,7 +58,7 @@ type fakeReferences struct {
 }
 
 func (f fakeReferences) WordsReferencing(
-	_ *boltvault.Txn,
+	_ *vault.Txn,
 	_ yacymodel.Hash,
 ) ([]yacymodel.Hash, error) {
 	return []yacymodel.Hash{f.word}, nil
@@ -48,7 +73,7 @@ type fakePostings struct {
 }
 
 func (f *fakePostings) PurgePosting(
-	_ *boltvault.Txn,
+	_ *vault.Txn,
 	_, url yacymodel.Hash,
 ) (bool, error) {
 	f.purged = append(f.purged, url)
@@ -75,7 +100,7 @@ func (f *fakeURLs) StalestURLs(_ context.Context, limit int) ([]yacymodel.Hash, 
 
 func (f *fakeURLs) Purge(
 	_ context.Context,
-	_ *boltvault.Txn,
+	_ *vault.Txn,
 	urls []yacymodel.Hash,
 ) (urlmeta.PurgeResult, error) {
 	if f.purgeErr != nil {
@@ -99,7 +124,7 @@ func hashes(n int) []yacymodel.Hash {
 }
 
 func newSweeper(
-	vault *boltvault.Vault,
+	vault *vault.Vault,
 	postings *fakePostings,
 	urls *fakeURLs,
 	target float64,

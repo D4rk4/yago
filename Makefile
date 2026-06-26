@@ -2,6 +2,7 @@ GO ?= go
 MODULES := yacynode yacymodel yacyproto yacycrawlcontract yacycrawler
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 80
+COVER_EXCLUDE := /internal/vaulttest/|/test/e2e/
 
 .PHONY: fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-image peer-hash db-migrate
 
@@ -45,16 +46,18 @@ cover:
 	@set -e; for m in $(MODULES); do \
 		echo "==> cover $$m"; \
 		( cd $$m && $(GO) test -coverprofile=$(COVER_PROFILE) ./... && \
-			$(GO) tool cover -func=$(COVER_PROFILE) ); \
+			grep -vE '$(COVER_EXCLUDE)' $(COVER_PROFILE) > $(COVER_PROFILE).gated; \
+			$(GO) tool cover -func=$(COVER_PROFILE).gated ); \
 	done
 
 cover-check:
 	@set -e; for m in $(MODULES); do \
 		echo "==> cover-check $$m (min $(COVERAGE_MIN)%)"; \
 		( cd $$m && $(GO) test -race -coverprofile=$(COVER_PROFILE) ./... >/dev/null && \
-			stmts=$$(awk 'NR > 1 { sum += $$2 } END { print sum + 0 }' $(COVER_PROFILE)); \
+			grep -vE '$(COVER_EXCLUDE)' $(COVER_PROFILE) > $(COVER_PROFILE).gated; \
+			stmts=$$(awk 'NR > 1 { sum += $$2 } END { print sum + 0 }' $(COVER_PROFILE).gated); \
 			if [ "$$stmts" -eq 0 ]; then echo "    no statements to cover"; exit 0; fi; \
-			total=$$($(GO) tool cover -func=$(COVER_PROFILE) | \
+			total=$$($(GO) tool cover -func=$(COVER_PROFILE).gated | \
 				awk '/^total:/ { gsub(/%/, "", $$3); print $$3 }'); \
 			echo "    total: $${total:-0}%"; \
 			awk -v c="$${total:-0}" -v min="$(COVERAGE_MIN)" \

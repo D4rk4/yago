@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmetastaleness"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlreferences"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 type nodeStorage struct {
@@ -21,7 +21,7 @@ type nodeStorage struct {
 	postingPurger   rwi.PostingPurger
 }
 
-func openNodeStorage(vault *boltvault.Vault) (nodeStorage, error) {
+func openNodeStorage(vault *vault.Vault) (nodeStorage, error) {
 	staleness, err := urlmetastaleness.Open(vault)
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("url metadata staleness: %w", err)

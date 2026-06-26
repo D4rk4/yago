@@ -2,11 +2,10 @@ package urlmeta
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/memvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 )
 
@@ -23,17 +22,17 @@ type urlPorts struct {
 func openModule(t *testing.T, quotaBytes int64) urlPorts {
 	t.Helper()
 
-	vault, err := boltvault.Open(filepath.Join(t.TempDir(), "node.db"), quotaBytes)
+	v, err := memvault.Open(quotaBytes)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := vault.Close(); err != nil {
+		if err := v.Close(); err != nil {
 			t.Fatalf("Close: %v", err)
 		}
 	})
 
-	directory, evictor, receiver, err := Open(vault)
+	directory, evictor, receiver, err := Open(v)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -135,6 +134,14 @@ func TestIntakeBusyAtCapacity(t *testing.T) {
 	receipt, err := module.Receiver.Receive(ctx, []yacymodel.URIMetadataRow{urlRow(t, "a")})
 	if err != nil {
 		t.Fatalf("Intake: %v", err)
+	}
+	if receipt.Busy {
+		t.Fatalf("first receipt = %+v, want stored", receipt)
+	}
+
+	receipt, err = module.Receiver.Receive(ctx, []yacymodel.URIMetadataRow{urlRow(t, "b")})
+	if err != nil {
+		t.Fatalf("Intake over capacity: %v", err)
 	}
 	if !receipt.Busy {
 		t.Fatalf("receipt = %+v, want Busy", receipt)

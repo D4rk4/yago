@@ -5,12 +5,12 @@ import (
 	"fmt"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 type urlDirectory struct {
-	vault      *boltvault.Vault
-	collection *boltvault.Collection[yacymodel.URIMetadataRow]
+	vault      *vault.Vault
+	collection *vault.Collection[yacymodel.URIMetadataRow]
 	observers  observers
 }
 
@@ -19,9 +19,9 @@ func (d urlDirectory) RowsByHash(
 	hashes []yacymodel.Hash,
 ) ([]yacymodel.URIMetadataRow, error) {
 	rows := make([]yacymodel.URIMetadataRow, 0, len(hashes))
-	err := d.vault.View(ctx, func(tx *boltvault.Txn) error {
+	err := d.vault.View(ctx, func(tx *vault.Txn) error {
 		for _, hash := range hashes {
-			row, ok, err := d.collection.Get(tx, boltvault.Key(hash))
+			row, ok, err := d.collection.Get(tx, vault.Key(hash))
 			if err != nil {
 				return fmt.Errorf("read url metadata: %w", err)
 			}
@@ -46,14 +46,14 @@ func (d urlDirectory) MissingURLs(
 ) ([]yacymodel.Hash, error) {
 	missing := make([]yacymodel.Hash, 0)
 	seen := make(map[yacymodel.Hash]struct{}, len(hashes))
-	err := d.vault.View(ctx, func(tx *boltvault.Txn) error {
+	err := d.vault.View(ctx, func(tx *vault.Txn) error {
 		for _, hash := range hashes {
 			if _, ok := seen[hash]; ok {
 				continue
 			}
 			seen[hash] = struct{}{}
 
-			_, ok, err := d.collection.Get(tx, boltvault.Key(hash))
+			_, ok, err := d.collection.Get(tx, vault.Key(hash))
 			if err != nil {
 				return fmt.Errorf("read url metadata: %w", err)
 			}
@@ -73,7 +73,7 @@ func (d urlDirectory) MissingURLs(
 
 func (d urlDirectory) Count(ctx context.Context) (int, error) {
 	var count int
-	err := d.vault.View(ctx, func(tx *boltvault.Txn) error {
+	err := d.vault.View(ctx, func(tx *vault.Txn) error {
 		length, err := d.collection.Len(tx)
 		if err != nil {
 			return fmt.Errorf("read url metadata length: %w", err)
@@ -91,12 +91,12 @@ func (d urlDirectory) Count(ctx context.Context) (int, error) {
 
 func (d urlDirectory) Purge(
 	ctx context.Context,
-	tx *boltvault.Txn,
+	tx *vault.Txn,
 	urls []yacymodel.Hash,
 ) (PurgeResult, error) {
 	var result PurgeResult
 	for _, hash := range urls {
-		deleted, err := d.collection.Delete(tx, boltvault.Key(hash))
+		deleted, err := d.collection.Delete(tx, vault.Key(hash))
 		if err != nil {
 			return PurgeResult{}, fmt.Errorf("delete url metadata: %w", err)
 		}

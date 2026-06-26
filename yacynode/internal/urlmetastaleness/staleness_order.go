@@ -5,31 +5,31 @@ import (
 	"fmt"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 const (
-	orderBucket     boltvault.Name = "urlmeta_staleness_order"
-	freshnessBucket boltvault.Name = "urlmeta_staleness_freshness"
+	orderBucket     vault.Name = "urlmeta_staleness_order"
+	freshnessBucket vault.Name = "urlmeta_staleness_freshness"
 )
 
 type stalenessRanking struct {
-	vault     *boltvault.Vault
-	order     *boltvault.Collection[struct{}]
-	freshness *boltvault.Collection[string]
+	vault     *vault.Vault
+	order     *vault.Collection[struct{}]
+	freshness *vault.Collection[string]
 }
 
-func openStalenessRanking(vault *boltvault.Vault) (*stalenessRanking, error) {
-	order, err := boltvault.Register(vault, orderBucket, presenceCodec{})
+func openStalenessRanking(v *vault.Vault) (*stalenessRanking, error) {
+	order, err := vault.Register(v, orderBucket, presenceCodec{})
 	if err != nil {
 		return nil, fmt.Errorf("register staleness order: %w", err)
 	}
-	freshness, err := boltvault.Register(vault, freshnessBucket, freshnessCodec{})
+	freshness, err := vault.Register(v, freshnessBucket, freshnessCodec{})
 	if err != nil {
 		return nil, fmt.Errorf("register staleness freshness: %w", err)
 	}
 
-	return &stalenessRanking{vault: vault, order: order, freshness: freshness}, nil
+	return &stalenessRanking{vault: v, order: order, freshness: freshness}, nil
 }
 
 func (o *stalenessRanking) StalestURLs(ctx context.Context, limit int) ([]yacymodel.Hash, error) {
@@ -38,11 +38,11 @@ func (o *stalenessRanking) StalestURLs(ctx context.Context, limit int) ([]yacymo
 	}
 
 	stalest := make([]yacymodel.Hash, 0, limit)
-	err := o.vault.View(ctx, func(tx *boltvault.Txn) error {
+	err := o.vault.View(ctx, func(tx *vault.Txn) error {
 		return o.order.Scan(
 			tx,
 			nil,
-			func(key boltvault.Key, _ struct{}) (bool, error) {
+			func(key vault.Key, _ struct{}) (bool, error) {
 				hash, err := hashFromOrderKey(key)
 				if err != nil {
 					return false, err
@@ -61,7 +61,7 @@ func (o *stalenessRanking) StalestURLs(ctx context.Context, limit int) ([]yacymo
 }
 
 func (o *stalenessRanking) URLStored(
-	tx *boltvault.Txn,
+	tx *vault.Txn,
 	hash yacymodel.Hash,
 	freshness string,
 ) error {
@@ -72,7 +72,7 @@ func (o *stalenessRanking) URLStored(
 	); err != nil {
 		return fmt.Errorf("record staleness order: %w", err)
 	}
-	if err := o.freshness.Put(tx, boltvault.Key(hash), freshness); err != nil {
+	if err := o.freshness.Put(tx, vault.Key(hash), freshness); err != nil {
 		return fmt.Errorf("record staleness freshness: %w", err)
 	}
 
@@ -81,8 +81,8 @@ func (o *stalenessRanking) URLStored(
 
 var _ StalenessRanking = (*stalenessRanking)(nil)
 
-func (o *stalenessRanking) URLPurged(tx *boltvault.Txn, hash yacymodel.Hash) error {
-	freshness, found, err := o.freshness.Get(tx, boltvault.Key(hash))
+func (o *stalenessRanking) URLPurged(tx *vault.Txn, hash yacymodel.Hash) error {
+	freshness, found, err := o.freshness.Get(tx, vault.Key(hash))
 	if err != nil {
 		return fmt.Errorf("read staleness freshness: %w", err)
 	}
@@ -95,7 +95,7 @@ func (o *stalenessRanking) URLPurged(tx *boltvault.Txn, hash yacymodel.Hash) err
 	); err != nil {
 		return fmt.Errorf("drop staleness order: %w", err)
 	}
-	if _, err := o.freshness.Delete(tx, boltvault.Key(hash)); err != nil {
+	if _, err := o.freshness.Delete(tx, vault.Key(hash)); err != nil {
 		return fmt.Errorf("drop staleness freshness: %w", err)
 	}
 

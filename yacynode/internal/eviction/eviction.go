@@ -8,11 +8,11 @@ package eviction
 import (
 	"context"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmetastaleness"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlreferences"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 type Config struct {
@@ -31,7 +31,7 @@ type Sweeper interface {
 
 //nolint:revive // each argument is a distinct collection the sweep prunes; bundling them would invent a hollow type
 func NewSweeper(
-	vault *boltvault.Vault,
+	vault *vault.Vault,
 	postings rwi.PostingPurger,
 	references urlreferences.ReferenceQuery,
 	urls urlmeta.URLEvictor,

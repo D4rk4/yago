@@ -9,12 +9,12 @@ import (
 	"context"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 type ReferenceQuery interface {
-	WordsReferencing(tx *boltvault.Txn, url yacymodel.Hash) ([]yacymodel.Hash, error)
+	WordsReferencing(tx *vault.Txn, url yacymodel.Hash) ([]yacymodel.Hash, error)
 	ReferencedURLCount(ctx context.Context) (int, error)
 }
 
@@ -23,6 +23,6 @@ type ReferenceProjection interface {
 	rwi.PostingObserver
 }
 
-func Open(vault *boltvault.Vault) (ReferenceProjection, error) {
+func Open(vault *vault.Vault) (ReferenceProjection, error) {
 	return openURLReferences(vault)
 }

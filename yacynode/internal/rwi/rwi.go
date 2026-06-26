@@ -10,20 +10,20 @@ import (
 	"context"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 type PostingObserver interface {
-	PostingStored(tx *boltvault.Txn, word, url yacymodel.Hash) error
-	PostingPurged(tx *boltvault.Txn, word, url yacymodel.Hash) error
+	PostingStored(tx *vault.Txn, word, url yacymodel.Hash) error
+	PostingPurged(tx *vault.Txn, word, url yacymodel.Hash) error
 }
 
 type PostingPurger interface {
-	PurgePosting(tx *boltvault.Txn, word, url yacymodel.Hash) (bool, error)
+	PurgePosting(tx *vault.Txn, word, url yacymodel.Hash) (bool, error)
 }
 
 type PostingIndex interface {
@@ -51,7 +51,7 @@ type Config struct {
 }
 
 func Open(
-	vault *boltvault.Vault,
+	vault *vault.Vault,
 	urls urlmeta.URLDirectory,
 	cfg Config,
 	observers ...PostingObserver,

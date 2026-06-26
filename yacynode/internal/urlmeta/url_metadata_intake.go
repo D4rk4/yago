@@ -7,14 +7,14 @@ import (
 	"log/slog"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 const urlRowDiscarded = "url row discarded"
 
 type urlIntake struct {
-	vault      *boltvault.Vault
-	collection *boltvault.Collection[yacymodel.URIMetadataRow]
+	vault      *vault.Vault
+	collection *vault.Collection[yacymodel.URIMetadataRow]
 	observers  observers
 }
 
@@ -32,13 +32,13 @@ func (i urlIntake) Receive(
 
 	var existing, rejected []yacymodel.Hash
 
-	err = i.vault.Update(ctx, func(tx *boltvault.Txn) error {
+	err = i.vault.Update(ctx, func(tx *vault.Txn) error {
 		var storeErr error
 		existing, rejected, storeErr = i.store(ctx, tx, rows)
 
 		return storeErr
 	})
-	if errors.Is(err, boltvault.ErrAtCapacity) {
+	if errors.Is(err, vault.ErrAtCapacity) {
 		return Receipt{Busy: true}, nil
 	}
 	if err != nil {
@@ -50,7 +50,7 @@ func (i urlIntake) Receive(
 
 func (i urlIntake) store(
 	ctx context.Context,
-	tx *boltvault.Txn,
+	tx *vault.Txn,
 	rows []yacymodel.URIMetadataRow,
 ) (existing, rejected []yacymodel.Hash, err error) {
 	for _, row := range rows {
@@ -68,7 +68,7 @@ func (i urlIntake) store(
 			continue
 		}
 
-		key := boltvault.Key(hash.Hash())
+		key := vault.Key(hash.Hash())
 		_, found, err := i.collection.Get(tx, key)
 		if err != nil {
 			return nil, nil, fmt.Errorf("read url metadata: %w", err)

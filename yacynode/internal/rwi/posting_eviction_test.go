@@ -6,18 +6,18 @@ import (
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 type recordingObserver struct {
 	purged []yacymodel.Hash
 }
 
-func (o *recordingObserver) PostingStored(_ *boltvault.Txn, _, _ yacymodel.Hash) error {
+func (o *recordingObserver) PostingStored(_ *vault.Txn, _, _ yacymodel.Hash) error {
 	return nil
 }
 
-func (o *recordingObserver) PostingPurged(_ *boltvault.Txn, word, _ yacymodel.Hash) error {
+func (o *recordingObserver) PostingPurged(_ *vault.Txn, word, _ yacymodel.Hash) error {
 	o.purged = append(o.purged, word)
 
 	return nil
@@ -38,7 +38,7 @@ func TestPurgePostingDropsPostingAndNotifies(t *testing.T) {
 	word := yacymodel.WordHash("w1")
 	url := referencedHash(t, posting("w1", "u1"))
 	var deleted bool
-	if err := h.vault.Update(ctx, func(tx *boltvault.Txn) error {
+	if err := h.vault.Update(ctx, func(tx *vault.Txn) error {
 		dropped, err := h.rwi.Purger.PurgePosting(tx, word, url)
 		if err != nil {
 			return fmt.Errorf("purge posting: %w", err)

@@ -1,6 +1,9 @@
 version: 3
 workdir: .
 
+exclude:
+  - .toolchain
+
 allow:
   depOnAnyVendor: false
   deepScan: false
@@ -10,8 +13,14 @@ components:
     in: yacymodel/**
   yacyproto:
     in: yacyproto/**
+  vault:
+    in: yacynode/internal/vault/**
   boltvault:
     in: yacynode/internal/boltvault/**
+  memvault:
+    in: yacynode/internal/memvault/**
+  vaulttest:
+    in: yacynode/internal/vaulttest/**
   httpguard:
     in: yacynode/internal/httpguard/**
   nodeidentity:
@@ -90,12 +99,27 @@ deps:
     mayDependOn:
       - yacyproto
       - yacymodel
+  vault:
+    mayDependOn:
+      - vault
+      - vaulttest
   boltvault:
     deepScan: false
     mayDependOn:
       - boltvault
+      - vault
+      - vaulttest
     canUse:
       - bbolt
+  memvault:
+    mayDependOn:
+      - memvault
+      - vault
+      - vaulttest
+  vaulttest:
+    mayDependOn:
+      - vaulttest
+      - vault
   httpguard:
     mayDependOn:
       - httpguard
@@ -129,7 +153,8 @@ deps:
   urlmeta:
     mayDependOn:
       - urlmeta
-      - boltvault
+      - vault
+      - memvault
       - httpguard
       - nodeidentity
       - yacymodel
@@ -138,19 +163,22 @@ deps:
     mayDependOn:
       - urlmetastaleness
       - urlmeta
-      - boltvault
+      - vault
+      - memvault
       - yacymodel
   urlreferences:
     mayDependOn:
       - urlreferences
       - rwi
-      - boltvault
+      - vault
+      - memvault
       - yacymodel
   rwi:
     mayDependOn:
       - rwi
       - urlmeta
-      - boltvault
+      - vault
+      - memvault
       - httpguard
       - nodeidentity
       - yacymodel
@@ -178,7 +206,8 @@ deps:
       - urlmeta
       - urlmetastaleness
       - urlreferences
-      - boltvault
+      - vault
+      - memvault
       - yacymodel
   metrics:
     mayDependOn:
@@ -188,7 +217,9 @@ deps:
       - prometheus
   cmd:
     mayDependOn:
+      - vault
       - boltvault
+      - memvault
       - httpguard
       - peering
       - bootstrap

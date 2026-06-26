@@ -3,7 +3,6 @@ package main
 import (
 	"net/http"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/bootstrap"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/crawling"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/documentsearch"
@@ -14,6 +13,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/peering"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
 
 type node struct {
@@ -25,7 +25,7 @@ type node struct {
 func assembleNode(
 	config nodeConfig,
 	settings bootstrap.BootstrapSettings,
-	vault *boltvault.Vault,
+	vault *vault.Vault,
 	client *http.Client,
 ) (node, error) {
 	guard := httpguard.NewRequestGuard(
