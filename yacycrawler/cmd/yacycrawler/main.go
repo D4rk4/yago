@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/yacycrawler"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/chromedpfetch"
 )
 
 func main() {
@@ -16,7 +16,7 @@ func main() {
 }
 
 func start() int {
-	cfg, err := yacycrawler.LoadServiceConfig(os.Getenv)
+	cfg, err := LoadServiceConfig(os.Getenv)
 	if err != nil {
 		slog.ErrorContext(context.Background(), "crawler config invalid", slog.Any("error", err))
 		return 2
@@ -31,16 +31,16 @@ func start() int {
 	return 0
 }
 
-func run(ctx context.Context, cfg yacycrawler.ServiceConfig) error {
+func run(ctx context.Context, cfg ServiceConfig) error {
 	crawl := cfg.Crawl
-	fetcher, closeBrowser := yacycrawler.NewBrowserPageFetcher(
+	fetcher, closeBrowser := chromedpfetch.NewBrowserPageFetcher(
 		crawl.UserAgent,
 		crawl.RequestTimeout,
 		crawl.MaxBodyBytes,
 	)
 	defer closeBrowser()
 
-	if err := yacycrawler.RunService(ctx, cfg, fetcher); err != nil {
+	if err := RunService(ctx, cfg, fetcher); err != nil {
 		return fmt.Errorf("run crawler service: %w", err)
 	}
 	return nil

@@ -63,8 +63,34 @@ components:
     in: yacynode/cmd/yacy-db-migrate/**
   yacycrawlcontract:
     in: yacycrawlcontract/**
-  yacycrawler:
-    in: yacycrawler/**
+  crawlwork:
+    in: yacycrawler/internal/crawlwork/**
+  boundedqueue:
+    in: yacycrawler/internal/boundedqueue/**
+  pagefetch:
+    in: yacycrawler/internal/pagefetch/**
+  chromedpfetch:
+    in: yacycrawler/internal/chromedpfetch/**
+  botwall:
+    in: yacycrawler/internal/botwall/**
+  politeness:
+    in: yacycrawler/internal/politeness/**
+  crawlorder:
+    in: yacycrawler/internal/crawlorder/**
+  crawlscope:
+    in: yacycrawler/internal/crawlscope/**
+  frontier:
+    in: yacycrawler/internal/frontier/**
+  pageparse:
+    in: yacycrawler/internal/pageparse/**
+  pageindex:
+    in: yacycrawler/internal/pageindex/**
+  ingest:
+    in: yacycrawler/internal/ingest/**
+  pipeline:
+    in: yacycrawler/internal/pipeline/**
+  crawlercmd:
+    in: yacycrawler/cmd/yacycrawler/**
 
 vendors:
   bbolt:
@@ -282,19 +308,103 @@ deps:
     canUse:
       - nats
       - nats-server
-  yacycrawler:
+  crawlwork:
     mayDependOn:
-      - yacycrawler
+      - crawlwork
+      - yacycrawlcontract
+    canUse:
+      - google-uuid
+  boundedqueue:
+    mayDependOn:
+      - boundedqueue
+  pagefetch:
+    mayDependOn:
+      - pagefetch
+  chromedpfetch:
+    mayDependOn:
+      - pagefetch
+    canUse:
+      - chromedp
+  botwall:
+    mayDependOn:
+      - botwall
+      - pagefetch
+  politeness:
+    mayDependOn:
+      - politeness
+      - pagefetch
+    canUse:
+      - robotstxt
+      - xtime-rate
+  crawlscope:
+    mayDependOn:
+      - crawlscope
+      - yacycrawlcontract
+  frontier:
+    mayDependOn:
+      - frontier
+      - crawlscope
+      - crawlwork
+      - yacycrawlcontract
+    canUse:
+      - google-uuid
+  pageparse:
+    mayDependOn:
+      - pageparse
+      - crawlwork
+    canUse:
+      - xnet-html
+      - trafilatura
+      - go-shiori-dom
+  pageindex:
+    mayDependOn:
+      - pageindex
+      - pageparse
+      - crawlwork
+      - yacymodel
+  ingest:
+    mayDependOn:
+      - ingest
+      - boundedqueue
       - yacycrawlcontract
       - yacymodel
     canUse:
-      - xnet-html
-      - robotstxt
-      - xtime-rate
-      - trafilatura
-      - chromedp
-      - go-shiori-dom
-      - google-uuid
+      - nats
+      - nats-server
+  crawlorder:
+    mayDependOn:
+      - crawlorder
+      - boundedqueue
+      - crawlscope
+      - crawlwork
+      - frontier
+      - yacycrawlcontract
+    canUse:
+      - nats
+      - nats-server
+  pipeline:
+    mayDependOn:
+      - pipeline
+      - botwall
+      - crawlwork
+      - ingest
+      - pagefetch
+      - pageindex
+      - pageparse
+      - yacymodel
+  crawlercmd:
+    mayDependOn:
+      - botwall
+      - chromedpfetch
+      - crawlorder
+      - frontier
+      - ingest
+      - pagefetch
+      - pageindex
+      - pipeline
+      - politeness
+      - yacycrawlcontract
+    canUse:
       - nats
       - nats-server
 
