@@ -1,0 +1,270 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  vault:
+    in: internal/vault/**
+  boltvault:
+    in: internal/boltvault/**
+  memvault:
+    in: internal/memvault/**
+  vaulttest:
+    in: internal/vaulttest/**
+  httpguard:
+    in: internal/httpguard/**
+  nodeidentity:
+    in: internal/nodeidentity/**
+  peering:
+    in: internal/peering/**
+  bootstrap:
+    in: internal/bootstrap/**
+  landing:
+    in: internal/landing/**
+  crawling:
+    in: internal/crawling/**
+  urlmeta:
+    in: internal/urlmeta/**
+  urlmetastaleness:
+    in: internal/urlmetastaleness/**
+  urlreferences:
+    in: internal/urlreferences/**
+  rwi:
+    in: internal/rwi/**
+  documentsearch:
+    in: internal/documentsearch/**
+  nodestatus:
+    in: internal/nodestatus/**
+  eviction:
+    in: internal/eviction/**
+  metrics:
+    in: internal/metrics/**
+  crawldispatch:
+    in: internal/crawldispatch/**
+  crawlresults:
+    in: internal/crawlresults/**
+  crawlbroker:
+    in: internal/crawlbroker/**
+  cmd:
+    in:
+      - cmd/yacy-peer-hash/**
+      - cmd/yacy-rwi-node/**
+  dbmigrate:
+    in: cmd/yacy-db-migrate/**
+
+vendors:
+  yacymodel:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/yacymodel
+      - github.com/nikitakarpei/yacy-rwi-node/yacymodel/**
+  yacyproto:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/yacyproto
+      - github.com/nikitakarpei/yacy-rwi-node/yacyproto/**
+  yacycrawlcontract:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract
+      - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract/**
+  bbolt:
+    in: go.etcd.io/bbolt
+  prometheus:
+    in:
+      - github.com/prometheus/client_golang/prometheus
+      - github.com/prometheus/client_golang/prometheus/**
+  nats:
+    in:
+      - github.com/nats-io/nats.go
+      - github.com/nats-io/nats.go/**
+  nats-server:
+    in:
+      - github.com/nats-io/nats-server/v2/server
+
+deps:
+  vault:
+    mayDependOn:
+      - vault
+      - vaulttest
+  boltvault:
+    deepScan: false
+    mayDependOn:
+      - boltvault
+      - vault
+      - vaulttest
+    canUse:
+      - bbolt
+  memvault:
+    mayDependOn:
+      - memvault
+      - vault
+      - vaulttest
+  vaulttest:
+    mayDependOn:
+      - vaulttest
+      - vault
+  httpguard:
+    mayDependOn:
+      - httpguard
+    canUse:
+      - yacymodel
+      - yacyproto
+  nodeidentity:
+    canUse:
+      - yacymodel
+      - yacyproto
+  peering:
+    mayDependOn:
+      - peering
+      - httpguard
+      - nodeidentity
+    canUse:
+      - yacymodel
+      - yacyproto
+  bootstrap:
+    mayDependOn:
+      - bootstrap
+    canUse:
+      - yacymodel
+      - yacyproto
+  landing:
+    mayDependOn:
+      - landing
+  crawling:
+    mayDependOn:
+      - crawling
+      - httpguard
+    canUse:
+      - yacymodel
+      - yacyproto
+  urlmeta:
+    mayDependOn:
+      - urlmeta
+      - vault
+      - memvault
+      - httpguard
+      - nodeidentity
+    canUse:
+      - yacymodel
+      - yacyproto
+  urlmetastaleness:
+    mayDependOn:
+      - urlmetastaleness
+      - urlmeta
+      - vault
+      - memvault
+    canUse:
+      - yacymodel
+  urlreferences:
+    mayDependOn:
+      - urlreferences
+      - rwi
+      - vault
+      - memvault
+    canUse:
+      - yacymodel
+  rwi:
+    mayDependOn:
+      - rwi
+      - urlmeta
+      - vault
+      - memvault
+      - httpguard
+      - nodeidentity
+    canUse:
+      - yacymodel
+      - yacyproto
+  documentsearch:
+    mayDependOn:
+      - documentsearch
+      - rwi
+      - urlmeta
+      - httpguard
+      - nodeidentity
+    canUse:
+      - yacymodel
+      - yacyproto
+  nodestatus:
+    mayDependOn:
+      - nodestatus
+      - httpguard
+      - nodeidentity
+    canUse:
+      - yacymodel
+      - yacyproto
+  eviction:
+    mayDependOn:
+      - eviction
+      - rwi
+      - urlmeta
+      - urlmetastaleness
+      - urlreferences
+      - vault
+      - memvault
+    canUse:
+      - yacymodel
+  metrics:
+    mayDependOn:
+      - metrics
+      - eviction
+    canUse:
+      - prometheus
+  crawldispatch:
+    mayDependOn:
+      - crawldispatch
+    canUse:
+      - yacycrawlcontract
+      - yacymodel
+  crawlresults:
+    mayDependOn:
+      - crawlresults
+      - urlmeta
+      - rwi
+    canUse:
+      - yacycrawlcontract
+      - yacymodel
+  crawlbroker:
+    mayDependOn:
+      - crawlbroker
+      - crawlresults
+    canUse:
+      - yacycrawlcontract
+      - yacymodel
+      - nats
+      - nats-server
+  cmd:
+    mayDependOn:
+      - vault
+      - boltvault
+      - memvault
+      - httpguard
+      - peering
+      - bootstrap
+      - landing
+      - crawling
+      - urlmeta
+      - rwi
+      - documentsearch
+      - eviction
+      - metrics
+      - nodeidentity
+      - nodestatus
+      - urlmetastaleness
+      - urlreferences
+      - crawldispatch
+      - crawlresults
+      - crawlbroker
+    canUse:
+      - yacycrawlcontract
+      - yacymodel
+      - yacyproto
+      - prometheus
+      - nats-server
+  dbmigrate:
+    canUse:
+      - yacymodel
+      - bbolt
+
+excludeFiles:
+  - "test/e2e"

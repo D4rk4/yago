@@ -1,0 +1,34 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  yacycrawlcontract:
+    in:
+      - .
+      - "**"
+
+vendors:
+  yacymodel:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/yacymodel
+      - github.com/nikitakarpei/yacy-rwi-node/yacymodel/**
+  nats:
+    in:
+      - github.com/nats-io/nats.go
+      - github.com/nats-io/nats.go/**
+  nats-server:
+    in:
+      - github.com/nats-io/nats-server/v2/server
+
+deps:
+  yacycrawlcontract:
+    mayDependOn:
+      - yacycrawlcontract
+    canUse:
+      - yacymodel
+      - nats
+      - nats-server

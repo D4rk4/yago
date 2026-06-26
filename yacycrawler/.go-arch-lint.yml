@@ -1,0 +1,176 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  crawlwork:
+    in: internal/crawlwork/**
+  boundedqueue:
+    in: internal/boundedqueue/**
+  pagefetch:
+    in: internal/pagefetch/**
+  chromedpfetch:
+    in: internal/chromedpfetch/**
+  botwall:
+    in: internal/botwall/**
+  politeness:
+    in: internal/politeness/**
+  crawlorder:
+    in: internal/crawlorder/**
+  crawlscope:
+    in: internal/crawlscope/**
+  frontier:
+    in: internal/frontier/**
+  pageparse:
+    in: internal/pageparse/**
+  pageindex:
+    in: internal/pageindex/**
+  ingest:
+    in: internal/ingest/**
+  pipeline:
+    in: internal/pipeline/**
+  crawlercmd:
+    in: cmd/yacycrawler/**
+
+vendors:
+  yacymodel:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/yacymodel
+      - github.com/nikitakarpei/yacy-rwi-node/yacymodel/**
+  yacycrawlcontract:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract
+      - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract/**
+  xnet-html:
+    in:
+      - golang.org/x/net/html
+      - golang.org/x/net/html/**
+  robotstxt:
+    in: github.com/temoto/robotstxt
+  xtime-rate:
+    in: golang.org/x/time/rate
+  trafilatura:
+    in: github.com/markusmobius/go-trafilatura
+  chromedp:
+    in: github.com/chromedp/chromedp
+  go-shiori-dom:
+    in: github.com/go-shiori/dom
+  google-uuid:
+    in: github.com/google/uuid
+  nats:
+    in:
+      - github.com/nats-io/nats.go
+      - github.com/nats-io/nats.go/**
+  nats-server:
+    in:
+      - github.com/nats-io/nats-server/v2/server
+
+deps:
+  crawlwork:
+    mayDependOn:
+      - crawlwork
+    canUse:
+      - yacycrawlcontract
+      - google-uuid
+  boundedqueue:
+    mayDependOn:
+      - boundedqueue
+  pagefetch:
+    mayDependOn:
+      - pagefetch
+  chromedpfetch:
+    mayDependOn:
+      - pagefetch
+    canUse:
+      - chromedp
+  botwall:
+    mayDependOn:
+      - botwall
+      - pagefetch
+  politeness:
+    mayDependOn:
+      - politeness
+      - pagefetch
+    canUse:
+      - robotstxt
+      - xtime-rate
+  crawlscope:
+    mayDependOn:
+      - crawlscope
+    canUse:
+      - yacycrawlcontract
+  frontier:
+    mayDependOn:
+      - frontier
+      - crawlscope
+      - crawlwork
+    canUse:
+      - yacycrawlcontract
+      - google-uuid
+  pageparse:
+    mayDependOn:
+      - pageparse
+      - crawlwork
+    canUse:
+      - xnet-html
+      - trafilatura
+      - go-shiori-dom
+  pageindex:
+    mayDependOn:
+      - pageindex
+      - pageparse
+      - crawlwork
+    canUse:
+      - yacymodel
+  ingest:
+    mayDependOn:
+      - ingest
+      - boundedqueue
+    canUse:
+      - yacycrawlcontract
+      - yacymodel
+      - nats
+      - nats-server
+  crawlorder:
+    mayDependOn:
+      - crawlorder
+      - boundedqueue
+      - crawlscope
+      - crawlwork
+      - frontier
+    canUse:
+      - yacycrawlcontract
+      - nats
+      - nats-server
+  pipeline:
+    mayDependOn:
+      - pipeline
+      - botwall
+      - crawlwork
+      - ingest
+      - pagefetch
+      - pageindex
+      - pageparse
+    canUse:
+      - yacymodel
+  crawlercmd:
+    mayDependOn:
+      - botwall
+      - chromedpfetch
+      - crawlorder
+      - frontier
+      - ingest
+      - pagefetch
+      - pageindex
+      - pipeline
+      - politeness
+    canUse:
+      - yacycrawlcontract
+      - nats
+      - nats-server
+
+excludeFiles:
+  - "test/e2e"

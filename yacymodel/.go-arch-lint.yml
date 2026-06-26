@@ -1,0 +1,17 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  yacymodel:
+    in:
+      - .
+      - "**"
+
+deps:
+  yacymodel:
+    mayDependOn:
+      - yacymodel

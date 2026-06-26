@@ -1,0 +1,25 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  yacyproto:
+    in:
+      - .
+      - "**"
+
+vendors:
+  yacymodel:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/yacymodel
+      - github.com/nikitakarpei/yacy-rwi-node/yacymodel/**
+
+deps:
+  yacyproto:
+    mayDependOn:
+      - yacyproto
+    canUse:
+      - yacymodel

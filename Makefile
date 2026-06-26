@@ -45,7 +45,10 @@ vet:
 	done
 
 arch: $(TOOLS_STAMP)
-	$(GO_ARCH_LINT) check
+	@set -e; for m in $(MODULES); do \
+		echo "==> arch $$m"; \
+		( cd $$m && $(GO_ARCH_LINT) check ); \
+	done
 
 test:
 	@set -e; for m in $(MODULES); do \
