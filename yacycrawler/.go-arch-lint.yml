@@ -56,8 +56,6 @@ vendors:
       - golang.org/x/net/html/**
   robotstxt:
     in: github.com/temoto/robotstxt
-  xtime-rate:
-    in: golang.org/x/time/rate
   golang-lru:
     in: github.com/hashicorp/golang-lru/v2
   singleflight:
@@ -118,9 +116,9 @@ deps:
   crawldelay:
     mayDependOn:
       - crawldelay
-      - pagefetch
+      - crawljob
+      - weburl
     canUse:
-      - xtime-rate
       - golang-lru
   crawladmission:
     mayDependOn:

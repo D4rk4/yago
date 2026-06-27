@@ -43,7 +43,7 @@ func requestsFor(handle string, urls ...string) []yacycrawlcontract.CrawlRequest
 }
 
 func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
-	f := frontier.NewFrontier(8)
+	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yacycrawlcontract.CrawlProfile{
 		Scope:           yacycrawlcontract.ScopeDomain,
 		URLMustMatch:    yacycrawlcontract.MatchAll,
@@ -75,7 +75,7 @@ func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
 }
 
 func TestSeedRunSkipsMismatchedProfileHandle(t *testing.T) {
-	f := frontier.NewFrontier(8)
+	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yacycrawlcontract.CrawlProfile{
 		Scope:           yacycrawlcontract.ScopeDomain,
 		URLMustMatch:    yacycrawlcontract.MatchAll,
@@ -100,7 +100,7 @@ func TestSeedRunSkipsMismatchedProfileHandle(t *testing.T) {
 }
 
 func TestSeedRunRejectsUnparsableSeed(t *testing.T) {
-	f := frontier.NewFrontier(8)
+	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yacycrawlcontract.CrawlProfile{
 		Scope:           yacycrawlcontract.ScopeDomain,
 		URLMustMatch:    yacycrawlcontract.MatchAll,
@@ -119,7 +119,7 @@ func TestSeedRunRejectsUnparsableSeed(t *testing.T) {
 }
 
 func TestSeedRunHonoursHostCap(t *testing.T) {
-	f := frontier.NewFrontier(8)
+	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yacycrawlcontract.CrawlProfile{
 		Scope:           yacycrawlcontract.ScopeDomain,
 		URLMustMatch:    yacycrawlcontract.MatchAll,
@@ -142,7 +142,7 @@ func TestSeedRunHonoursHostCap(t *testing.T) {
 }
 
 func TestSubmitFollowsLinksWithinDepth(t *testing.T) {
-	f := frontier.NewFrontier(8)
+	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yacycrawlcontract.CrawlProfile{
 		Scope:           yacycrawlcontract.ScopeDomain,
 		URLMustMatch:    yacycrawlcontract.MatchAll,
@@ -176,7 +176,7 @@ func TestSubmitFollowsLinksWithinDepth(t *testing.T) {
 }
 
 func TestSubmitForUnknownRunIsIgnored(t *testing.T) {
-	f := frontier.NewFrontier(8)
+	f := frontier.NewFrontier(8, nil)
 	f.Submit(
 		context.Background(),
 		crawljob.CrawlJob{URL: "https://example.com/"},

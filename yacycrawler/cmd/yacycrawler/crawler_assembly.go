@@ -43,7 +43,11 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	emitter := ingest.NewBatchEmitter(ingest.NewNATSIngestPublisher(js, cfg.IngestSubject))
 
 	crawl := cfg.Crawl
-	frontier := frontier.NewFrontier(crawl.JobQueueSize)
+	pace, err := crawldelay.NewHostPace(crawl.CrawlDelay, crawl.HostCacheSize)
+	if err != nil {
+		return fmt.Errorf("create crawl pace: %w", err)
+	}
+	frontier := frontier.NewFrontier(crawl.JobQueueSize, pace)
 
 	client := &http.Client{Timeout: crawl.RequestTimeout}
 	admitted, err := robots.NewRobotsAdmissionFetcher(
@@ -55,11 +59,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	if err != nil {
 		return fmt.Errorf("create robots admission: %w", err)
 	}
-	paced, err := crawldelay.NewCrawlDelayFetcher(admitted, crawl.CrawlDelay, crawl.HostCacheSize)
-	if err != nil {
-		return fmt.Errorf("create crawl delay: %w", err)
-	}
-	screened := botwall.NewBotWallScreeningFetcher(paced)
+	screened := botwall.NewBotWallScreeningFetcher(admitted)
 	worker := pipeline.NewPipeline(
 		frontier,
 		screened,

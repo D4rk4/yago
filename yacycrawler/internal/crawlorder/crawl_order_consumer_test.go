@@ -13,7 +13,7 @@ import (
 
 func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
 	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
-	f := frontier.NewFrontier(8)
+	f := frontier.NewFrontier(8, nil)
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -66,7 +66,7 @@ func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
 
 func TestConsumerTermsUncompilableProfile(t *testing.T) {
 	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
-	f := frontier.NewFrontier(8)
+	f := frontier.NewFrontier(8, nil)
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f)
 
 	ctx, cancel := context.WithCancel(context.Background())

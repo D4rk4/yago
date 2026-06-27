@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -25,6 +26,7 @@ const (
 type Frontier struct {
 	jobs   chan crawljob.CrawlJob
 	signal chan struct{}
+	pace   CrawlPace
 
 	mu      sync.Mutex
 	state   *frontierState
@@ -48,10 +50,14 @@ type SeededRun struct {
 	Queued int
 }
 
-func NewFrontier(capacity int) *Frontier {
+func NewFrontier(capacity int, pace CrawlPace) *Frontier {
+	if pace == nil {
+		pace = alwaysDuePace{}
+	}
 	frontier := &Frontier{
 		jobs:   make(chan crawljob.CrawlJob, capacity),
 		signal: make(chan struct{}, 1),
+		pace:   pace,
 		state: &frontierState{
 			runs:       make(map[uuid.UUID]*crawlRun),
 			completion: crawlrun.NewCompletion(),
@@ -122,12 +128,12 @@ func (f *Frontier) wake() {
 
 func (f *Frontier) run() {
 	for {
+		now := time.Now()
 		f.mu.Lock()
+		next, index, wait, due := f.nextDue(now)
 		var send chan crawljob.CrawlJob
-		var next crawljob.CrawlJob
-		if len(f.state.ready) > 0 {
+		if due {
 			send = f.jobs
-			next = f.state.ready[0]
 		}
 		closeJobs := f.closing && len(f.state.ready) == 0
 		f.mu.Unlock()
@@ -137,14 +143,41 @@ func (f *Frontier) run() {
 			return
 		}
 
+		var wakeup <-chan time.Time
+		var timer *time.Timer
+		if !due && wait > 0 {
+			timer = time.NewTimer(wait)
+			wakeup = timer.C
+		}
+
 		select {
 		case <-f.signal:
+		case <-wakeup:
 		case send <- next:
 			f.mu.Lock()
-			f.state.ready = f.state.ready[1:]
+			f.pace.Visited(next, time.Now())
+			f.state.ready = append(f.state.ready[:index], f.state.ready[index+1:]...)
 			f.mu.Unlock()
 		}
+
+		if timer != nil {
+			timer.Stop()
+		}
 	}
+}
+
+func (f *Frontier) nextDue(now time.Time) (crawljob.CrawlJob, int, time.Duration, bool) {
+	var soonest time.Duration
+	for i, job := range f.state.ready {
+		wait := f.pace.DueAt(job, now).Sub(now)
+		if wait <= 0 {
+			return job, i, 0, true
+		}
+		if soonest == 0 || wait < soonest {
+			soonest = wait
+		}
+	}
+	return crawljob.CrawlJob{}, 0, soonest, false
 }
 
 func (s *frontierState) seed(
