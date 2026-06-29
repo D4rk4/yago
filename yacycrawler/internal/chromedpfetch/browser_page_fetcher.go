@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -34,6 +35,7 @@ func NewBrowserPageFetcher(
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.UserAgent(userAgent),
 	)
+	opts = append(opts, proxyExecAllocatorOptions(os.Getenv)...)
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	fetcher := &BrowserPageFetcher{
 		render:   chromedpRenderer(allocCtx),

@@ -37,7 +37,8 @@ the orders subject to load-balance, and a bounded ingest stream applies backpres
 the node falls behind.
 
 Configuration comes from the environment (`NATS_URL` is required), and the service runs
-until it receives `SIGINT` or `SIGTERM`.
+until it receives `SIGINT` or `SIGTERM`. Outbound fetches, including the headless browser,
+honor the standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables.
 
 The message types both services exchange live in the standalone
 [`yacycrawlcontract`](../yacycrawlcontract/README.md) module, so neither service depends
