@@ -86,6 +86,13 @@ func (a *peerAnnouncement) Announce(ctx context.Context) {
 
 			continue
 		}
+		if result.YourType == yacymodel.PeerJunior {
+			slog.WarnContext(
+				ctx,
+				"peer reported us as junior",
+				slog.String("endpoint", endpoint),
+			)
+		}
 		a.registry.Absorb(ctx, result.Known...)
 	}
 }
