@@ -13,7 +13,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-const defaultYaCyImage = "yacy/yacy_search_server:latest"
+const defaultYaCyImage = "docker.io/yacy/yacy_search_server:latest"
 
 func startYaCy(
 	t *testing.T,

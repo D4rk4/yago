@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM --platform=$BUILDPLATFORM golang:1.26 AS build
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.26 AS build
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -o /out/yacycrawler \
         ./yacycrawler/cmd/yacycrawler
 
-FROM chromedp/headless-shell:148.0.7778.97
+FROM docker.io/chromedp/headless-shell:148.0.7778.97
 
 COPY --from=build /out/yacycrawler /usr/local/bin/yacycrawler
 

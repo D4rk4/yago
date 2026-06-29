@@ -9,10 +9,16 @@ TOOLS_STAMP := $(TOOLS_BIN)/.installed
 GOLANGCI_LINT := $(TOOLS_BIN)/golangci-lint
 GO_ARCH_LINT := $(TOOLS_BIN)/go-arch-lint
 
-.PHONY: tools fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-image peer-hash db-migrate
+.PHONY: tools fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-image e2e-crawler-image peer-hash db-migrate
 
 E2E_TIMEOUT ?= 10m
 E2E_NODE_IMAGE ?= yacy-rwi-node:e2e
+E2E_CRAWLER_IMAGE ?= yacy-rwi-crawler:e2e
+
+E2E_CONTAINER_CLI := $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
+E2E_RUNTIME_DIR := $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))
+E2E_DOCKER_HOST := $(or $(DOCKER_HOST),unix://$(E2E_RUNTIME_DIR)/podman/podman.sock)
+E2E_DOCKER_ENV := DOCKER_HOST=$(E2E_DOCKER_HOST) TESTCONTAINERS_RYUK_DISABLED=true
 
 $(TOOLS_STAMP): tools/install tools/tools.lock
 	./tools/install
@@ -94,10 +100,17 @@ db-migrate:
 verify: fmt-check vet lint arch test cover-check build
 
 e2e-image:
-	DOCKER_BUILDKIT=1 docker build -f yacynode/Dockerfile -t $(E2E_NODE_IMAGE) .
+	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacynode/Dockerfile -t $(E2E_NODE_IMAGE) .
 
-e2e:
-	cd yacynode/test/e2e && GOWORK=off YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
+e2e-crawler-image:
+	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacycrawler/Dockerfile -t $(E2E_CRAWLER_IMAGE) .
+
+e2e-node: e2e-image
+	cd yacynode/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
-	cd yacycrawler/test/e2e && GOWORK=off \
+
+e2e-crawler: e2e-crawler-image
+	cd yacycrawler/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YACYCRAWLER_IMAGE=$(E2E_CRAWLER_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
+
+e2e: e2e-node e2e-crawler
