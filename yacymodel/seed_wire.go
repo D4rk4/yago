@@ -32,7 +32,7 @@ func ParseSeed(ctx context.Context, s string) (Seed, error) {
 	var seed Seed
 	hashSet := false
 	for pair := range strings.SplitSeq(s, ",") {
-		if pair == "" {
+		if strings.TrimSpace(pair) == "" {
 			continue
 		}
 		key, value, found := strings.Cut(pair, "=")

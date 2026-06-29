@@ -149,7 +149,7 @@ func TestParseSeedMissingHash(t *testing.T) {
 }
 
 func TestParseSeedSkipsEmptyPairs(t *testing.T) {
-	seed, err := ParseSeed(t.Context(), "{Hash=ABCDEFGHIJKL,,Port=8090}")
+	seed, err := ParseSeed(t.Context(), "{Hash=ABCDEFGHIJKL,   ,Port=8090}")
 	if err != nil {
 		t.Fatal(err)
 	}
