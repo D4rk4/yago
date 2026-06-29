@@ -63,24 +63,3 @@ func TestParseRWIPostingErrors(t *testing.T) {
 		}
 	}
 }
-
-func TestAcceptableRWILine(t *testing.T) {
-	cases := []struct {
-		line string
-		want bool
-	}{
-		{sampleRWILine, true},
-		{"ABCDEFGHIJKL{a=1,h=MNOPQRSTUVWX,x=2}", true},
-		{"ABCDEFGHIJKL{d=104,g=0,h=MNOPQRSTUVWX,x=2,z=}", true},
-		{"ABCDEFGHIJKL{h=MNOPQRSTUVWX,c=1,x=2}", true},
-		{"ABCDEFGHIJKL{h=MNOPQRSTUVWX,c=1}", false},
-		{"ABCDEFGHIJKL{h=MNOPQRSTUVWX,x=[B@1f}", false},
-		{"ABCDEFGHIJKLnobraces", false},
-		{"ABCDEFGHIJKL{h=short,x=3}", false},
-	}
-	for _, c := range cases {
-		if got := AcceptableRWILine(c.line); got != c.want {
-			t.Errorf("AcceptableRWILine(%q) = %v, want %v", c.line, got, c.want)
-		}
-	}
-}

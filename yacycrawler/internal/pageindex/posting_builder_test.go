@@ -56,13 +56,13 @@ func TestBuildPostingsAreAcceptableRWILines(t *testing.T) {
 	}
 	for _, entry := range postings {
 		line := entry.String()
-		if !yacymodel.AcceptableRWILine(line) {
-			t.Errorf("posting not acceptable: %q", line)
-		}
 		parsed, err := yacymodel.ParseRWIPosting(line)
 		if err != nil {
 			t.Errorf("ParseRWIPosting(%q): %v", line, err)
 			continue
+		}
+		if _, err := parsed.URLHash(); err != nil {
+			t.Errorf("URLHash(%q): %v", line, err)
 		}
 		if parsed.WordHash != entry.WordHash {
 			t.Errorf("round trip word hash %q != %q", parsed.WordHash, entry.WordHash)

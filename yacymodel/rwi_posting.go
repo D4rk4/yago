@@ -28,10 +28,8 @@ const (
 	ColPhrasePosition    = "o"
 	ColWordDistance      = "i"
 	ColReserve           = "k"
-	corruptMarker        = "[B@"
 	propertyOpen         = '{'
 	propertyClose        = '}'
-	requiredColumn       = ColLocalLinkCount
 )
 
 var ErrBadRWIPosting = errors.New("bad rwi posting")
@@ -97,18 +95,4 @@ func (e RWIPosting) String() string {
 	}
 	b.WriteByte(propertyClose)
 	return b.String()
-}
-
-func AcceptableRWILine(line string) bool {
-	if !strings.ContainsRune(line, propertyOpen) ||
-		!strings.Contains(line, requiredColumn+"=") ||
-		strings.Contains(line, corruptMarker) {
-		return false
-	}
-	entry, err := ParseRWIPosting(line)
-	if err != nil {
-		return false
-	}
-	_, err = entry.URLHash()
-	return err == nil
 }
