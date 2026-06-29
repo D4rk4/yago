@@ -68,19 +68,20 @@ func (a *peerAnnouncement) Run(ctx context.Context) {
 
 func (a *peerAnnouncement) Announce(ctx context.Context) {
 	self := a.status.SelfSeed(ctx)
-	endpoints := a.discover(ctx)
+	targets := a.discover(ctx)
 
-	for i, endpoint := range endpoints {
+	for i, target := range targets {
 		if i >= announceMaxGreets {
 			break
 		}
 
-		result, err := a.greeter.Greet(ctx, endpoint, self, announceHelloPeerCount)
+		result, err := a.greeter.Greet(ctx, target.endpoint, self, announceHelloPeerCount)
 		if err != nil {
 			slog.WarnContext(
 				ctx,
 				"peer greet failed",
-				slog.String("endpoint", endpoint),
+				slog.String("peer", target.hash.String()),
+				slog.String("endpoint", target.endpoint),
 				slog.Any("error", err),
 			)
 
@@ -90,15 +91,17 @@ func (a *peerAnnouncement) Announce(ctx context.Context) {
 			slog.WarnContext(
 				ctx,
 				"peer reported us as junior",
-				slog.String("endpoint", endpoint),
+				slog.String("peer", target.hash.String()),
+				slog.String("endpoint", target.endpoint),
+				slog.String("reportedAddress", result.YourIP),
 			)
 		}
 		a.registry.Absorb(ctx, result.Known...)
 	}
 }
 
-func (a *peerAnnouncement) discover(ctx context.Context) []string {
-	var endpoints []string
+func (a *peerAnnouncement) discover(ctx context.Context) []greetTarget {
+	var targets []greetTarget
 
 	for _, source := range a.settings.SeedlistURLs {
 		seeds, err := a.fetcher.Fetch(ctx, source)
@@ -115,10 +118,10 @@ func (a *peerAnnouncement) discover(ctx context.Context) []string {
 		a.registry.Absorb(ctx, seeds...)
 		for _, seed := range seeds {
 			if endpoint, ok := seed.NetworkAddress(); ok {
-				endpoints = append(endpoints, endpoint)
+				targets = append(targets, greetTarget{hash: seed.Hash, endpoint: endpoint})
 			}
 		}
 	}
 
-	return endpoints
+	return targets
 }
