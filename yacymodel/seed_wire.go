@@ -37,7 +37,7 @@ func ParseSeed(ctx context.Context, s string) (Seed, error) {
 		}
 		key, value, found := strings.Cut(pair, "=")
 		if !found || key == "" {
-			return Seed{}, ErrBadSeed
+			return Seed{}, fmt.Errorf("%w: malformed field %q", ErrBadSeed, pair)
 		}
 		if key == SeedHash {
 			hashSet = true
