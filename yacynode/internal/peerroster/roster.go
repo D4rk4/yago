@@ -121,6 +121,8 @@ func (r *roster) ConfirmUnreachable(ctx context.Context, peer yacymodel.Hash) {
 	delete(r.active, peer)
 	r.mu.Unlock()
 
+	slog.DebugContext(ctx, "peer dropped as unreachable", slog.String("peer", peer.String()))
+
 	if err := r.vault.Update(ctx, func(tx *vault.Txn) error {
 		if _, err := r.peers.Delete(tx, r.key(peer)); err != nil {
 			return fmt.Errorf("delete peer: %w", err)
