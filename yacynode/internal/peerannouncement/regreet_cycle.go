@@ -7,7 +7,6 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/bootstrap"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/peerroster"
 )
 
 const (
@@ -24,14 +23,19 @@ type peerGreeter interface {
 	) (greetResult, error)
 }
 
+type peerRoster interface {
+	Discover(ctx context.Context, seeds ...yacymodel.Seed)
+	ConfirmReachable(ctx context.Context, peer yacymodel.Hash)
+	ConfirmUnreachable(ctx context.Context, peer yacymodel.Hash)
+	FreshestPeers(ctx context.Context, limit int) []yacymodel.Seed
+}
+
 type announcer struct {
-	interval     time.Duration
-	self         SelfSeed
-	seeds        bootstrap.SeedSource
-	discovery    peerroster.PeerDiscovery
-	reachability peerroster.PeerReachability
-	targets      peerroster.GreetTargetSource
-	greeter      peerGreeter
+	interval time.Duration
+	self     SelfSeed
+	seeds    bootstrap.SeedSource
+	roster   peerRoster
+	greeter  peerGreeter
 }
 
 func (a *announcer) Run(ctx context.Context) {
@@ -52,16 +56,13 @@ func (a *announcer) Run(ctx context.Context) {
 
 func (a *announcer) Announce(ctx context.Context) {
 	self := a.self.SelfSeed(ctx)
-	targets := a.targets.GreetTargets(ctx)
+	targets := a.roster.FreshestPeers(ctx, announceMaxGreets)
 	if len(targets) == 0 {
-		a.discovery.Discover(ctx, a.seeds.Fetch(ctx)...)
-		targets = a.targets.GreetTargets(ctx)
+		a.roster.Discover(ctx, a.seeds.Fetch(ctx)...)
+		targets = a.roster.FreshestPeers(ctx, announceMaxGreets)
 	}
 
-	for i, target := range targets {
-		if i >= announceMaxGreets {
-			break
-		}
+	for _, target := range targets {
 		endpoint, ok := target.NetworkAddress()
 		if !ok {
 			continue
@@ -69,7 +70,7 @@ func (a *announcer) Announce(ctx context.Context) {
 
 		result, err := a.greeter.Greet(ctx, endpoint, self, announceHelloPeerCount)
 		if err != nil {
-			a.reachability.Unreachable(ctx, target.Hash)
+			a.roster.ConfirmUnreachable(ctx, target.Hash)
 			slog.WarnContext(
 				ctx,
 				"peer greet failed",
@@ -90,7 +91,7 @@ func (a *announcer) Announce(ctx context.Context) {
 			)
 		}
 
-		a.reachability.Reachable(ctx, target.Hash)
-		a.discovery.Discover(ctx, result.Known...)
+		a.roster.ConfirmReachable(ctx, target.Hash)
+		a.roster.Discover(ctx, result.Known...)
 	}
 }

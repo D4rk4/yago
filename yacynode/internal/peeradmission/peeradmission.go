@@ -7,13 +7,11 @@ package peeradmission
 
 import (
 	"context"
-	"math/rand/v2"
 	"net/http"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/peerroster"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
@@ -26,21 +24,19 @@ func MountHello(
 	router httpguard.WireRouter,
 	identity nodeidentity.Identity,
 	status RuntimeStatus,
-	roster *peerroster.Roster,
+	reachability reachableRoster,
 	client *http.Client,
 ) {
-	directory := newPeerDirectory(
-		newCallerBackPing(client),
-		roster,
-		roster,
-		rand.Shuffle,
-		status,
-	)
 	httpguard.Mount(
 		router,
 		yacyproto.PathHello,
 		yacyproto.HelloEndpointMethods,
 		yacyproto.ParseHelloRequest,
-		helloEndpoint{identity: identity, status: status, peers: directory}.Serve,
+		helloEndpoint{
+			identity:     identity,
+			status:       status,
+			probe:        newCallerBackPing(client),
+			reachability: reachability,
+		}.Serve,
 	)
 }

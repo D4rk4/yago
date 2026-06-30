@@ -11,7 +11,6 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/bootstrap"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/peerroster"
 )
 
 type SelfSeed interface {
@@ -32,15 +31,13 @@ func New(
 	cfg Config,
 	self SelfSeed,
 	seeds bootstrap.SeedSource,
-	roster *peerroster.Roster,
+	roster peerRoster,
 ) Announcer {
 	return &announcer{
-		interval:     cfg.Interval,
-		self:         self,
-		seeds:        seeds,
-		discovery:    roster,
-		reachability: roster,
-		targets:      roster,
-		greeter:      newHTTPPeerGreeter(cfg.Client, cfg.NetworkName),
+		interval: cfg.Interval,
+		self:     self,
+		seeds:    seeds,
+		roster:   roster,
+		greeter:  newHTTPPeerGreeter(cfg.Client, cfg.NetworkName),
 	}
 }

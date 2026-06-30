@@ -2,51 +2,67 @@ package peeradmission
 
 import (
 	"context"
-	"errors"
+	"slices"
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
-type stubDirectory struct {
-	outcome helloOutcome
-	err     error
-	called  bool
+type stubProbe struct {
+	reachable bool
+	called    bool
 }
 
-func (d *stubDirectory) Hello(context.Context, yacymodel.Seed, int) (helloOutcome, error) {
-	d.called = true
+func (p *stubProbe) Reachable(context.Context, yacymodel.Seed, yacymodel.Hash, string) bool {
+	p.called = true
 
-	return d.outcome, d.err
+	return p.reachable
 }
 
-func newEndpoint(t testing.TB, peers helloDirectory) helloEndpoint {
+type stubReachability struct {
+	seeds     []yacymodel.Seed
+	refreshed []yacymodel.Hash
+}
+
+func (s *stubReachability) ReachablePeers(context.Context) []yacymodel.Seed {
+	return s.seeds
+}
+
+func (s *stubReachability) ConfirmReachable(_ context.Context, peer yacymodel.Hash) {
+	s.refreshed = append(s.refreshed, peer)
+}
+
+func newEndpoint(
+	t testing.TB,
+	probe callerReachabilityProbe,
+	reachability *stubReachability,
+) helloEndpoint {
 	return helloEndpoint{
-		identity: localPeer(),
-		status:   selfStatus(t),
-		peers:    peers,
+		identity:     localPeer(),
+		status:       selfStatus(t),
+		probe:        probe,
+		reachability: reachability,
 	}
 }
 
-func helloRequest(network string, caller yacymodel.Seed) yacyproto.HelloRequest {
+func helloRequest(network string, caller yacymodel.Seed, count int) yacyproto.HelloRequest {
 	return yacyproto.HelloRequest{
 		NetworkName: network,
 		Seed:        caller,
 		Iam:         caller.Hash,
+		Count:       count,
 	}
 }
 
-func TestHelloServesSelfAndKnownSeeds(t *testing.T) {
-	known := callerSeed(t, "trusted", "203.0.113.1", 8090)
-	endpoint := newEndpoint(t, &stubDirectory{
-		outcome: helloOutcome{CallerType: yacymodel.PeerSenior, Known: []yacymodel.Seed{known}},
-	})
+func TestHelloClassifiesReachableAddressedCallerAsSenior(t *testing.T) {
+	reachability := &stubReachability{
+		seeds: []yacymodel.Seed{callerSeed(t, "trusted", "203.0.113.1", 8090)},
+	}
+	endpoint := newEndpoint(t, &stubProbe{reachable: true}, reachability)
 
-	resp, err := endpoint.Serve(
-		context.Background(),
-		helloRequest("freeworld", callerSeed(t, "caller", "10.0.0.1", 8090)),
-	)
+	caller := callerSeed(t, "caller", "10.0.0.1", 8090)
+	resp, err := endpoint.Serve(context.Background(), helloRequest("freeworld", caller, 0))
 	if err != nil {
 		t.Fatalf("Serve: %v", err)
 	}
@@ -54,20 +70,69 @@ func TestHelloServesSelfAndKnownSeeds(t *testing.T) {
 		t.Fatalf("YourType = %q, want senior", resp.YourType)
 	}
 	if got := len(resp.Seeds); got != 2 {
-		t.Fatalf("Seeds = %d, want 2 (self + known)", got)
+		t.Fatalf("Seeds = %d, want 2 (self + trusted)", got)
 	}
 	if resp.Seeds[0].Hash != hashFor("self") {
 		t.Fatalf("first seed = %q, want self", resp.Seeds[0].Hash)
 	}
+	if !slices.Equal(reachability.refreshed, []yacymodel.Hash{caller.Hash}) {
+		t.Fatalf("refreshed = %v, want senior caller refreshed", reachability.refreshed)
+	}
 }
 
-func TestHelloOnForeignNetworkOmitsDirectory(t *testing.T) {
-	directory := &stubDirectory{}
-	endpoint := newEndpoint(t, directory)
+func TestHelloClassifiesUnreachableCallerAsJunior(t *testing.T) {
+	reachability := &stubReachability{}
+	endpoint := newEndpoint(t, &stubProbe{reachable: false}, reachability)
 
 	resp, err := endpoint.Serve(
 		context.Background(),
-		helloRequest("otherworld", callerSeed(t, "caller", "10.0.0.1", 8090)),
+		helloRequest("freeworld", callerSeed(t, "caller", "10.0.0.1", 8090), 0),
+	)
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if resp.YourType != yacymodel.PeerJunior {
+		t.Fatalf("YourType = %q, want junior", resp.YourType)
+	}
+	if len(reachability.refreshed) != 0 {
+		t.Fatalf("refreshed = %v, want no refresh for junior caller", reachability.refreshed)
+	}
+}
+
+func TestHelloClassifiesAddresslessCallerAsJunior(t *testing.T) {
+	reachability := &stubReachability{}
+	probe := &stubProbe{reachable: true}
+	endpoint := newEndpoint(t, probe, reachability)
+
+	resp, err := endpoint.Serve(
+		context.Background(),
+		helloRequest("freeworld", callerSeed(t, "caller", "", 0), 0),
+	)
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if resp.YourType != yacymodel.PeerJunior {
+		t.Fatalf("YourType = %q, want junior for addressless caller", resp.YourType)
+	}
+	if probe.called {
+		t.Fatal("probe consulted for addressless caller")
+	}
+	if len(reachability.refreshed) != 0 {
+		t.Fatalf("refreshed = %v, want no refresh for addressless caller", reachability.refreshed)
+	}
+}
+
+func TestHelloOnForeignNetworkOmitsAdmission(t *testing.T) {
+	probe := &stubProbe{reachable: true}
+	endpoint := newEndpoint(
+		t,
+		probe,
+		&stubReachability{seeds: []yacymodel.Seed{callerSeed(t, "trusted", "203.0.113.1", 8090)}},
+	)
+
+	resp, err := endpoint.Serve(
+		context.Background(),
+		helloRequest("otherworld", callerSeed(t, "caller", "10.0.0.1", 8090), 0),
 	)
 	if err != nil {
 		t.Fatalf("Serve: %v", err)
@@ -75,19 +140,53 @@ func TestHelloOnForeignNetworkOmitsDirectory(t *testing.T) {
 	if got := len(resp.Seeds); got != 1 {
 		t.Fatalf("Seeds = %d, want 1 (self only)", got)
 	}
-	if directory.called {
-		t.Fatal("directory consulted despite foreign network")
+	if probe.called {
+		t.Fatal("probe consulted despite foreign network")
 	}
 }
 
-func TestHelloReportsDirectoryFailure(t *testing.T) {
-	endpoint := newEndpoint(t, &stubDirectory{err: errors.New("directory down")})
+func TestHelloLimitsKnownPeersToCount(t *testing.T) {
+	reachability := &stubReachability{seeds: []yacymodel.Seed{
+		callerSeed(t, "a", "203.0.113.1", 8090),
+		callerSeed(t, "b", "203.0.113.2", 8090),
+		callerSeed(t, "c", "203.0.113.3", 8090),
+	}}
+	endpoint := newEndpoint(t, &stubProbe{reachable: true}, reachability)
 
-	_, err := endpoint.Serve(
+	resp, err := endpoint.Serve(
 		context.Background(),
-		helloRequest("freeworld", callerSeed(t, "caller", "10.0.0.1", 8090)),
+		helloRequest("freeworld", callerSeed(t, "caller", "10.0.0.1", 8090), 2),
 	)
-	if err == nil {
-		t.Fatal("Serve returned nil error, want directory failure")
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+
+	if got := len(resp.Seeds); got != 3 {
+		t.Fatalf("Seeds = %d, want 3 (self + two of three known)", got)
+	}
+	known := []yacymodel.Hash{hashFor("a"), hashFor("b"), hashFor("c")}
+	for _, seed := range resp.Seeds[1:] {
+		if !slices.Contains(known, seed.Hash) {
+			t.Fatalf("known peer %q not from roster %v", seed.Hash, known)
+		}
+	}
+}
+
+func TestHelloCountZeroReturnsAllKnownPeers(t *testing.T) {
+	reachability := &stubReachability{seeds: []yacymodel.Seed{
+		callerSeed(t, "a", "203.0.113.1", 8090),
+		callerSeed(t, "b", "203.0.113.2", 8090),
+	}}
+	endpoint := newEndpoint(t, &stubProbe{reachable: true}, reachability)
+
+	resp, err := endpoint.Serve(
+		context.Background(),
+		helloRequest("freeworld", callerSeed(t, "caller", "10.0.0.1", 8090), 0),
+	)
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if got := len(resp.Seeds); got != 3 {
+		t.Fatalf("Seeds = %d, want 3 (self + two known)", got)
 	}
 }
