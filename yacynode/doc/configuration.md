@@ -18,8 +18,7 @@ The node is configured through environment variables.
 | `YACY_GREETS_PER_CYCLE` | `16` | How many peers to greet in each announce cycle. |
 | `YACY_TRUSTED_PROXIES` | _(empty)_ | Comma-separated CIDRs or IPs of reverse proxies fronting the node. Set this when running behind a reverse proxy so peers are not told the proxy's address. |
 | `YACY_STORAGE_QUOTA` | `1GB` | Storage quota, as a human-readable size (e.g. `512MB`, `1GB`, `20GB`). |
-
-Outbound connections honor the standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables.
+| `YACY_PROXY_URL` | _(required)_ | `http` or `https` URL of the proxy all outbound connections are routed through. |
 
 ## Crawling
 
