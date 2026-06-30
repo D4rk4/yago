@@ -37,6 +37,7 @@ type announcer struct {
 }
 
 func (a *announcer) Run(ctx context.Context) {
+	a.roster.Discover(ctx, a.seeds.Fetch(ctx)...)
 	a.Announce(ctx)
 
 	ticker := time.NewTicker(a.interval)
@@ -55,10 +56,6 @@ func (a *announcer) Run(ctx context.Context) {
 func (a *announcer) Announce(ctx context.Context) {
 	self := a.self.SelfSeed(ctx)
 	targets := a.roster.FreshestPeers(ctx, a.greetsPerCycle)
-	if len(targets) == 0 {
-		a.roster.Discover(ctx, a.seeds.Fetch(ctx)...)
-		targets = a.roster.FreshestPeers(ctx, a.greetsPerCycle)
-	}
 
 	for _, target := range targets {
 		if target.Hash == self.Hash {

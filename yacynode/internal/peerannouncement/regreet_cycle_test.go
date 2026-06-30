@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
@@ -139,29 +140,24 @@ func TestAnnounceMarksFailedGreetUnreachable(t *testing.T) {
 	}
 }
 
-func TestAnnounceColdStartFetchesSeedSource(t *testing.T) {
-	ctx := context.Background()
-	seed := callerSeed(t, "seed", "203.0.113.1")
+func TestRunFetchesSeedSourceOnStart(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
+	seed := callerSeed(t, "seed", "203.0.113.1")
 	source := &stubSeedSource{seeds: []yacymodel.Seed{seed}}
-	roster := &stubRoster{rounds: [][]yacymodel.Seed{{}, {seed}}}
-	greeter := &stubGreeter{result: greetResult{YourType: yacymodel.PeerSenior}}
+	roster := &stubRoster{rounds: [][]yacymodel.Seed{{seed}}}
 	a := &announcer{
-		self:    stubSelf{seed: callerSeed(t, "self", "203.0.113.9")},
-		seeds:   source,
-		roster:  roster,
-		greeter: greeter,
+		interval: time.Hour,
+		self:     stubSelf{seed: callerSeed(t, "self", "203.0.113.9")},
+		seeds:    source,
+		roster:   roster,
+		greeter:  &stubGreeter{result: greetResult{YourType: yacymodel.PeerSenior}},
 	}
 
-	a.Announce(ctx)
+	a.Run(ctx)
 
 	if source.calls != 1 {
-		t.Fatalf("seed source calls = %d, want 1 on cold start", source.calls)
-	}
-	if len(roster.discovered) != 1 || roster.discovered[0].Hash != seed.Hash {
-		t.Fatalf("discovered = %v, want seed source seed", roster.discovered)
-	}
-	if greeter.calls != 1 {
-		t.Fatalf("greeter calls = %d, want 1 after top-up", greeter.calls)
+		t.Fatalf("seed source calls = %d, want 1 on start", source.calls)
 	}
 }
