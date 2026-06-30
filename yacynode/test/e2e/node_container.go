@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -43,6 +44,7 @@ func startNode(
 		"YACY_ADVERTISE_PORT":    nodeContainerPort,
 		"YACY_DATA_DIR":          "/tmp/data",
 		"YACY_ANNOUNCE_INTERVAL": "10s",
+		"YACY_GREETS_PER_CYCLE":  strconv.Itoa(dhtMinConnectedPeers + 8),
 		"YACY_PROXY_URL":         egressProxyNetworkURL(),
 		"LOG_LEVEL":              "debug",
 	}

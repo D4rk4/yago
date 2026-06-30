@@ -22,9 +22,10 @@ type Announcer interface {
 }
 
 type Config struct {
-	Client      *http.Client
-	NetworkName string
-	Interval    time.Duration
+	Client         *http.Client
+	NetworkName    string
+	Interval       time.Duration
+	GreetsPerCycle int
 }
 
 func New(
@@ -34,10 +35,11 @@ func New(
 	roster peerRoster,
 ) Announcer {
 	return &announcer{
-		interval: cfg.Interval,
-		self:     self,
-		seeds:    seeds,
-		roster:   roster,
-		greeter:  newHTTPPeerGreeter(cfg.Client, cfg.NetworkName),
+		interval:       cfg.Interval,
+		greetsPerCycle: cfg.GreetsPerCycle,
+		self:           self,
+		seeds:          seeds,
+		roster:         roster,
+		greeter:        newHTTPPeerGreeter(cfg.Client, cfg.NetworkName),
 	}
 }

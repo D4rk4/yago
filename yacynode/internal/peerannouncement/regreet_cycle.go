@@ -9,10 +9,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/bootstrap"
 )
 
-const (
-	announceHelloPeerCount = 30
-	announceMaxGreets      = 16
-)
+const announceHelloPeerCount = 30
 
 type peerGreeter interface {
 	Greet(
@@ -31,11 +28,12 @@ type peerRoster interface {
 }
 
 type announcer struct {
-	interval time.Duration
-	self     SelfSeed
-	seeds    bootstrap.SeedSource
-	roster   peerRoster
-	greeter  peerGreeter
+	interval       time.Duration
+	greetsPerCycle int
+	self           SelfSeed
+	seeds          bootstrap.SeedSource
+	roster         peerRoster
+	greeter        peerGreeter
 }
 
 func (a *announcer) Run(ctx context.Context) {
@@ -56,10 +54,10 @@ func (a *announcer) Run(ctx context.Context) {
 
 func (a *announcer) Announce(ctx context.Context) {
 	self := a.self.SelfSeed(ctx)
-	targets := a.roster.FreshestPeers(ctx, announceMaxGreets)
+	targets := a.roster.FreshestPeers(ctx, a.greetsPerCycle)
 	if len(targets) == 0 {
 		a.roster.Discover(ctx, a.seeds.Fetch(ctx)...)
-		targets = a.roster.FreshestPeers(ctx, announceMaxGreets)
+		targets = a.roster.FreshestPeers(ctx, a.greetsPerCycle)
 	}
 
 	for _, target := range targets {

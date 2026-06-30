@@ -40,9 +40,10 @@ func (p peerExchange) assemble() (peerannouncement.Announcer, error) {
 
 	return peerannouncement.New(
 		peerannouncement.Config{
-			Client:      p.client,
-			NetworkName: p.config.NetworkName,
-			Interval:    p.config.AnnounceInterval,
+			Client:         p.client,
+			NetworkName:    p.config.NetworkName,
+			Interval:       p.config.AnnounceInterval,
+			GreetsPerCycle: p.config.GreetsPerCycle,
 		},
 		p.report,
 		bootstrap.New(p.client, p.config.SeedlistURLs),

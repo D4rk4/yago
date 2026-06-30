@@ -26,12 +26,14 @@ const (
 	envTrustedProxies   = "YACY_TRUSTED_PROXIES"
 	envSeedlistURLs     = "YACY_SEEDLIST_URLS"
 	envAnnounceInterval = "YACY_ANNOUNCE_INTERVAL"
+	envGreetsPerCycle   = "YACY_GREETS_PER_CYCLE"
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"
 	defaultDataDir          = "./data"
 	defaultQuota            = "1GB"
 	defaultAnnounceInterval = 10 * time.Minute
+	defaultGreetsPerCycle   = 16
 
 	storageFileName = "yacy-rwi.db"
 )
@@ -51,6 +53,7 @@ type nodeConfig struct {
 	ProxyURL         *url.URL
 	SeedlistURLs     []string
 	AnnounceInterval time.Duration
+	GreetsPerCycle   int
 	Crawl            crawlConfig
 }
 
@@ -70,6 +73,14 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	seedlistURLs := splitList(getenv(envSeedlistURLs))
 
 	announceInterval, err := announceInterval(getenv)
+	if err != nil {
+		return nodeConfig{}, err
+	}
+
+	greetsPerCycle, err := positiveInt(
+		envGreetsPerCycle,
+		envWithDefault(getenv, envGreetsPerCycle, strconv.Itoa(defaultGreetsPerCycle)),
+	)
 	if err != nil {
 		return nodeConfig{}, err
 	}
@@ -116,6 +127,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		ProxyURL:         proxyURL,
 		SeedlistURLs:     seedlistURLs,
 		AnnounceInterval: announceInterval,
+		GreetsPerCycle:   greetsPerCycle,
 	}, nil
 }
 
