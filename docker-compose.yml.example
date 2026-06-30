@@ -34,6 +34,11 @@ services:
     volumes:
       - yacy-data:/data
 
+  smokescreen:
+    image: pretix/smokescreen:latest
+    restart: unless-stopped
+    command: ["--listen-ip", "0.0.0.0"]
+
   yacycrawler:
     build:
       context: .
@@ -42,8 +47,10 @@ services:
     restart: unless-stopped
     depends_on:
       - nats
+      - smokescreen
     environment:
       NATS_URL: nats://nats:4222
+      YACYCRAWLER_PROXY_URL: http://smokescreen:4750
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
 volumes:

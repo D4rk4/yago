@@ -77,7 +77,7 @@ func TestBrowserPageFetcherAppliesTimeout(t *testing.T) {
 }
 
 func TestNewBrowserPageFetcherBuildsFetcher(t *testing.T) {
-	fetcher, cancel := NewBrowserPageFetcher("agent/1.0", time.Second, 4<<20)
+	fetcher, cancel := NewBrowserPageFetcher("agent/1.0", "http://proxy:4750", time.Second, 4<<20)
 	defer cancel()
 
 	if fetcher == nil || fetcher.render == nil {

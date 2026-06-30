@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -49,7 +48,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	}
 	frontier := frontier.NewFrontier(crawl.JobQueueSize, pace)
 
-	client := &http.Client{Timeout: crawl.RequestTimeout}
+	client := newEgressProxyClient(cfg.ProxyURL, crawl.RequestTimeout)
 	admitted, err := robots.NewRobotsAdmissionFetcher(
 		source,
 		client,

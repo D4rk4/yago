@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ const (
 	EnvMaxDepth          = "YACYCRAWLER_MAX_DEPTH"
 	EnvCrawlDelay        = "YACYCRAWLER_CRAWL_DELAY"
 	EnvUserAgent         = "YACYCRAWLER_USER_AGENT"
+	EnvProxyURL          = "YACYCRAWLER_PROXY_URL"
 
 	DefaultOrdersSubject = "yacy.crawl.orders"
 	DefaultIngestSubject = "yacy.crawl.ingest"
@@ -62,6 +64,7 @@ func DefaultCrawlConfig() CrawlConfig {
 type ServiceConfig struct {
 	Crawl         CrawlConfig
 	NATSURL       string
+	ProxyURL      *url.URL
 	OrdersSubject string
 	IngestSubject string
 	OrdersDurable string
@@ -80,6 +83,11 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 	natsURL := strings.TrimSpace(getenv(EnvNATSURL))
 	if natsURL == "" {
 		return ServiceConfig{}, fmt.Errorf("%s: must be set", EnvNATSURL)
+	}
+
+	proxyURL, err := egressProxyURL(getenv)
+	if err != nil {
+		return ServiceConfig{}, err
 	}
 
 	crawl := DefaultCrawlConfig()
@@ -112,6 +120,7 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 	return ServiceConfig{
 		Crawl:         crawl,
 		NATSURL:       natsURL,
+		ProxyURL:      proxyURL,
 		OrdersSubject: envString(getenv, EnvNATSOrdersSubject, DefaultOrdersSubject),
 		IngestSubject: envString(getenv, EnvNATSIngestSubject, DefaultIngestSubject),
 		OrdersDurable: envString(getenv, EnvNATSDurable, DefaultOrdersDurable),

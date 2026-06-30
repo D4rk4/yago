@@ -22,12 +22,33 @@ func TestLoadServiceConfigRequiresNATSURL(t *testing.T) {
 	}
 }
 
+func TestLoadServiceConfigRequiresProxyURL(t *testing.T) {
+	if _, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNATSURL: "nats://localhost:4222",
+	})); err == nil {
+		t.Fatal("expected error when YACYCRAWLER_PROXY_URL is unset")
+	}
+}
+
+func TestLoadServiceConfigRejectsNonHTTPProxyURL(t *testing.T) {
+	if _, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNATSURL:  "nats://localhost:4222",
+		EnvProxyURL: "socks5://proxy:1080",
+	})); err == nil {
+		t.Fatal("expected error for non-http proxy scheme")
+	}
+}
+
 func TestLoadServiceConfigDefaults(t *testing.T) {
 	cfg, err := LoadServiceConfig(envFrom(map[string]string{
-		EnvNATSURL: "nats://localhost:4222",
+		EnvNATSURL:  "nats://localhost:4222",
+		EnvProxyURL: "http://proxy:4750",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
+	}
+	if cfg.ProxyURL == nil || cfg.ProxyURL.String() != "http://proxy:4750" {
+		t.Errorf("proxy url = %v", cfg.ProxyURL)
 	}
 	if cfg.OrdersSubject != DefaultOrdersSubject {
 		t.Errorf("orders subject = %q", cfg.OrdersSubject)
@@ -52,6 +73,7 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 func TestLoadServiceConfigOverrides(t *testing.T) {
 	cfg, err := LoadServiceConfig(envFrom(map[string]string{
 		EnvNATSURL:           "nats://localhost:4222",
+		EnvProxyURL:          "http://proxy:4750",
 		EnvNATSOrdersSubject: "o.subject",
 		EnvNATSIngestSubject: "i.subject",
 		EnvNATSDurable:       "dur",
@@ -82,7 +104,10 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 }
 
 func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
-	base := map[string]string{EnvNATSURL: "nats://localhost:4222"}
+	base := map[string]string{
+		EnvNATSURL:  "nats://localhost:4222",
+		EnvProxyURL: "http://proxy:4750",
+	}
 	cases := map[string]string{
 		EnvWorkers:           "0",
 		EnvMaxDepth:          "abc",

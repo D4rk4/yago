@@ -35,6 +35,7 @@ func run(ctx context.Context, cfg ServiceConfig) error {
 	crawl := cfg.Crawl
 	fetcher, closeBrowser := chromedpfetch.NewBrowserPageFetcher(
 		crawl.UserAgent,
+		cfg.ProxyURL.String(),
 		crawl.RequestTimeout,
 		crawl.MaxBodyBytes,
 	)

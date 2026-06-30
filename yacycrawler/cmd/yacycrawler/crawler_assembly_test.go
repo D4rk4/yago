@@ -55,6 +55,8 @@ func serviceConfig(natsURL string) ServiceConfig {
 		switch key {
 		case EnvNATSURL:
 			return natsURL
+		case EnvProxyURL:
+			return "http://127.0.0.1:1"
 		case EnvWorkers:
 			return "1"
 		default:
