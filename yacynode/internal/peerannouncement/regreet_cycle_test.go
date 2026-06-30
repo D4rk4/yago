@@ -94,6 +94,29 @@ func TestAnnounceRecordsReachableAndGossip(t *testing.T) {
 	}
 }
 
+func TestAnnounceSkipsSelfInTargets(t *testing.T) {
+	ctx := context.Background()
+	self := callerSeed(t, "self", "203.0.113.9")
+
+	roster := &stubRoster{rounds: [][]yacymodel.Seed{{self}}}
+	greeter := &stubGreeter{result: greetResult{YourType: yacymodel.PeerSenior}}
+	a := &announcer{
+		self:    stubSelf{seed: self},
+		seeds:   &stubSeedSource{},
+		roster:  roster,
+		greeter: greeter,
+	}
+
+	a.Announce(ctx)
+
+	if greeter.calls != 0 {
+		t.Fatalf("greeter calls = %d, want 0 when only self is a target", greeter.calls)
+	}
+	if len(roster.reachable) != 0 {
+		t.Fatalf("reachable = %v, want none for self", roster.reachable)
+	}
+}
+
 func TestAnnounceMarksFailedGreetUnreachable(t *testing.T) {
 	ctx := context.Background()
 	peer := callerSeed(t, "peer", "203.0.113.1")

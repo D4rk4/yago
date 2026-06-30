@@ -63,6 +63,16 @@ func (a *announcer) Announce(ctx context.Context) {
 	}
 
 	for _, target := range targets {
+		if target.Hash == self.Hash {
+			slog.DebugContext(
+				ctx,
+				"skipped self in greet targets",
+				slog.String("peer", target.Hash.String()),
+			)
+
+			continue
+		}
+
 		endpoint, ok := target.NetworkAddress()
 		if !ok {
 			continue
