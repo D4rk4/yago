@@ -1,47 +1,47 @@
-// Package bootstrap owns outbound peer announcement: it fetches seeds from the
-// configured sources, greets peers, and feeds discovered seeds into a
-// TrustedSeedSink. RuntimeStatus and TrustedSeedSink are the ports the
-// composition root supplies; BootstrapSettings carries the seedlist sources and
-// announce interval the composition root has already resolved.
+// Package bootstrap fetches the configured YaCy seed lists and returns the seeds
+// they advertise. It is the cold-start seed source the peer roster consults when
+// it holds no peers yet; once the roster is populated it is no longer needed.
 package bootstrap
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-type RuntimeStatus interface {
-	SelfSeed(ctx context.Context) yacymodel.Seed
+type SeedSource interface {
+	Fetch(ctx context.Context) []yacymodel.Seed
 }
 
-type TrustedSeedSink interface {
-	Absorb(ctx context.Context, seeds ...yacymodel.Seed)
+type SeedlistSource struct {
+	fetcher httpSeedlistFetcher
+	urls    []string
 }
 
-type BootstrapSettings struct {
-	SeedlistURLs     []string
-	AnnounceInterval time.Duration
+var _ SeedSource = (*SeedlistSource)(nil)
+
+func New(client *http.Client, urls []string) *SeedlistSource {
+	return &SeedlistSource{fetcher: newHTTPSeedlistFetcher(client), urls: urls}
 }
 
-type Announcer interface {
-	Run(ctx context.Context)
-}
+func (s *SeedlistSource) Fetch(ctx context.Context) []yacymodel.Seed {
+	var seeds []yacymodel.Seed
+	for _, url := range s.urls {
+		fetched, err := s.fetcher.Fetch(ctx, url)
+		if err != nil {
+			slog.WarnContext(
+				ctx,
+				"seedlist fetch failed",
+				slog.String("url", url),
+				slog.Any("error", err),
+			)
 
-func NewAnnouncer(
-	client *http.Client,
-	networkName string,
-	settings BootstrapSettings,
-	status RuntimeStatus,
-	sink TrustedSeedSink,
-) Announcer {
-	return newPeerAnnouncement(
-		settings,
-		newHTTPSeedlistFetcher(client),
-		newHTTPPeerGreeter(client, networkName),
-		status,
-		sink,
-	)
+			continue
+		}
+		seeds = append(seeds, fetched...)
+	}
+
+	return seeds
 }

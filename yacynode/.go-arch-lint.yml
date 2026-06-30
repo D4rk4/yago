@@ -18,8 +18,12 @@ components:
     in: internal/httpguard/**
   nodeidentity:
     in: internal/nodeidentity/**
-  peering:
-    in: internal/peering/**
+  peeradmission:
+    in: internal/peeradmission/**
+  peerroster:
+    in: internal/peerroster/**
+  peerannouncement:
+    in: internal/peerannouncement/**
   bootstrap:
     in: internal/bootstrap/**
   landing:
@@ -112,11 +116,27 @@ deps:
     canUse:
       - yacymodel
       - yacyproto
-  peering:
+  peeradmission:
     mayDependOn:
-      - peering
+      - peeradmission
+      - peerroster
       - httpguard
       - nodeidentity
+    canUse:
+      - yacymodel
+      - yacyproto
+  peerroster:
+    mayDependOn:
+      - peerroster
+      - vault
+      - memvault
+    canUse:
+      - yacymodel
+  peerannouncement:
+    mayDependOn:
+      - peerannouncement
+      - peerroster
+      - bootstrap
     canUse:
       - yacymodel
       - yacyproto
@@ -237,7 +257,9 @@ deps:
       - boltvault
       - memvault
       - httpguard
-      - peering
+      - peeradmission
+      - peerroster
+      - peerannouncement
       - bootstrap
       - landing
       - crawling

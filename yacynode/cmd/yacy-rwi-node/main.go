@@ -23,7 +23,8 @@ const (
 	receiveBatchCap       = 1000
 	receiveBusyPauseSecs  = 30
 	searchPostingsPerWord = 1000
-	trustedSeedCapacity   = 4096
+	reservoirCapacity     = 4096
+	activeSetCapacity     = 256
 
 	evictionTargetFraction = 0.9
 	evictionBatch          = 256
@@ -44,14 +45,7 @@ func run() error {
 		return fmt.Errorf("configure logging: %w", err)
 	}
 
-	settings, err := loadBootstrapSettings(os.Getenv)
-	if err != nil {
-		return fmt.Errorf("load bootstrap settings: %w", err)
-	}
-
-	announcing := len(settings.SeedlistURLs) > 0
-
-	config, err := loadNodeConfig(os.Getenv, announcing)
+	config, err := loadNodeConfig(os.Getenv)
 	if err != nil {
 		return fmt.Errorf("load node config: %w", err)
 	}
@@ -76,7 +70,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	assembled, err := assembleNode(ctx, config, settings, vault, client)
+	assembled, err := assembleNode(ctx, config, vault, client)
 	if err != nil {
 		return fmt.Errorf("assemble node: %w", err)
 	}

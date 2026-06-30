@@ -4,14 +4,13 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/bootstrap"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/crawling"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/documentsearch"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/eviction"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/landing"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodestatus"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/peering"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/peerannouncement"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
@@ -20,14 +19,13 @@ import (
 type node struct {
 	peerMux   *http.ServeMux
 	sweeper   eviction.Sweeper
-	announcer bootstrap.Announcer
+	announcer peerannouncement.Announcer
 	crawl     *crawlRuntime
 }
 
 func assembleNode(
 	ctx context.Context,
 	config nodeConfig,
-	settings bootstrap.BootstrapSettings,
 	vault *vault.Vault,
 	client *http.Client,
 ) (node, error) {
@@ -72,26 +70,21 @@ func assembleNode(
 		searchPostingsPerWord,
 	)
 
-	registry := peering.NewTrustedSeeds(trustedSeedCapacity)
-	peering.MountHello(
-		router,
-		identity,
-		peeringStatus{report: report, networkName: config.NetworkName},
-		registry,
-		client,
-	)
+	announcer, err := peerExchange{
+		router:   router,
+		identity: identity,
+		report:   report,
+		config:   config,
+		vault:    vault,
+		client:   client,
+	}.assemble()
+	if err != nil {
+		return node{}, err
+	}
 
 	crawling.MountCrawlReceipt(router)
 
 	sweeper := newStorageSweeper(vault, storage)
-
-	announcer := bootstrap.NewAnnouncer(
-		client,
-		config.NetworkName,
-		settings,
-		report,
-		registry,
-	)
 
 	runtime, err := buildCrawlRuntime(ctx, config.Crawl, identity, storage)
 	if err != nil {

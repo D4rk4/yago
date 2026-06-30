@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func envFrom(values map[string]string) func(string) string {
@@ -14,7 +15,7 @@ func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 		envPeerHash: "0123456789AB",
 		envPeerName: "node",
 		envProxyURL: "http://proxy:4750",
-	}), false)
+	}))
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -41,17 +42,19 @@ func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 
 func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
-		envPeerHash:       "0123456789AB",
-		envPeerName:       "node",
-		envProxyURL:       "http://proxy:4750",
-		envNetworkName:    "testnet",
-		envPeerAddr:       ":7000",
-		envOpsAddr:        ":7001",
-		envAdvertiseHost:  "203.0.113.1",
-		envAdvertisePort:  "9999",
-		envStorageQuota:   "2MB",
-		envTrustedProxies: "10.0.0.0/8",
-	}), true)
+		envPeerHash:         "0123456789AB",
+		envPeerName:         "node",
+		envProxyURL:         "http://proxy:4750",
+		envNetworkName:      "testnet",
+		envPeerAddr:         ":7000",
+		envOpsAddr:          ":7001",
+		envAdvertiseHost:    "203.0.113.1",
+		envAdvertisePort:    "9999",
+		envStorageQuota:     "2MB",
+		envTrustedProxies:   "10.0.0.0/8",
+		envSeedlistURLs:     " http://a , http://b ,",
+		envAnnounceInterval: "30s",
+	}))
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -68,15 +71,59 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 	if len(config.TrustedProxies) != 1 {
 		t.Errorf("TrustedProxies = %d, want 1", len(config.TrustedProxies))
 	}
+	if got := config.SeedlistURLs; len(got) != 2 || got[0] != "http://a" || got[1] != "http://b" {
+		t.Errorf("SeedlistURLs = %v, want trimmed pair", got)
+	}
+	if config.AnnounceInterval != 30*time.Second {
+		t.Errorf("AnnounceInterval = %v, want 30s", config.AnnounceInterval)
+	}
+}
+
+func TestLoadNodeConfigDefaultsAnnounceInterval(t *testing.T) {
+	config, err := loadNodeConfig(envFrom(map[string]string{
+		envPeerHash: "0123456789AB",
+		envPeerName: "node",
+		envProxyURL: "http://proxy:4750",
+	}))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if config.AnnounceInterval != defaultAnnounceInterval {
+		t.Errorf("AnnounceInterval = %v, want default", config.AnnounceInterval)
+	}
+	if config.SeedlistURLs != nil {
+		t.Errorf("SeedlistURLs = %v, want nil", config.SeedlistURLs)
+	}
+}
+
+func TestLoadNodeConfigRejectsBadAnnounceInterval(t *testing.T) {
+	base := map[string]string{
+		envPeerHash: "0123456789AB",
+		envPeerName: "node",
+		envProxyURL: "http://proxy:4750",
+	}
+	for _, bad := range []string{"nope", "-1s"} {
+		env := map[string]string{envAnnounceInterval: bad}
+		for k, v := range base {
+			env[k] = v
+		}
+		if _, err := loadNodeConfig(envFrom(env)); err == nil {
+			t.Fatalf("%q: expected error", bad)
+		}
+	}
 }
 
 func TestLoadNodeConfigRejects(t *testing.T) {
 	cases := map[string]map[string]string{
-		"bad hash":         {envPeerHash: "short"},
-		"missing name":     {envPeerHash: "0123456789AB"},
-		"announce no host": {envPeerHash: "0123456789AB", envPeerName: "n"},
-		"bad port":         {envPeerHash: "0123456789AB", envPeerName: "n", envAdvertisePort: "-3"},
-		"bad quota":        {envPeerHash: "0123456789AB", envPeerName: "n", envStorageQuota: "big"},
+		"bad hash":     {envPeerHash: "short"},
+		"missing name": {envPeerHash: "0123456789AB"},
+		"announce no host": {
+			envPeerHash:     "0123456789AB",
+			envPeerName:     "n",
+			envSeedlistURLs: "http://seed",
+		},
+		"bad port":  {envPeerHash: "0123456789AB", envPeerName: "n", envAdvertisePort: "-3"},
+		"bad quota": {envPeerHash: "0123456789AB", envPeerName: "n", envStorageQuota: "big"},
 		"bad proxies": {
 			envPeerHash:       "0123456789AB",
 			envPeerName:       "n",
@@ -91,8 +138,7 @@ func TestLoadNodeConfigRejects(t *testing.T) {
 	}
 	for name, env := range cases {
 		t.Run(name, func(t *testing.T) {
-			announcing := name == "announce no host"
-			if _, err := loadNodeConfig(envFrom(env), announcing); err == nil {
+			if _, err := loadNodeConfig(envFrom(env)); err == nil {
 				t.Fatal("expected error")
 			}
 		})

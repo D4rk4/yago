@@ -7,27 +7,31 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 const (
-	envPeerHash       = "YACY_PEER_HASH"
-	envPeerName       = "YACY_PEER_NAME"
-	envNetworkName    = "YACY_NETWORK_NAME"
-	envPeerAddr       = "YACY_PEER_ADDR"
-	envOpsAddr        = "YACY_OPS_ADDR"
-	envAdvertiseHost  = "YACY_ADVERTISE_HOST"
-	envAdvertisePort  = "YACY_ADVERTISE_PORT"
-	envDataDir        = "YACY_DATA_DIR"
-	envStorageQuota   = "YACY_STORAGE_QUOTA"
-	envTrustedProxies = "YACY_TRUSTED_PROXIES"
+	envPeerHash         = "YACY_PEER_HASH"
+	envPeerName         = "YACY_PEER_NAME"
+	envNetworkName      = "YACY_NETWORK_NAME"
+	envPeerAddr         = "YACY_PEER_ADDR"
+	envOpsAddr          = "YACY_OPS_ADDR"
+	envAdvertiseHost    = "YACY_ADVERTISE_HOST"
+	envAdvertisePort    = "YACY_ADVERTISE_PORT"
+	envDataDir          = "YACY_DATA_DIR"
+	envStorageQuota     = "YACY_STORAGE_QUOTA"
+	envTrustedProxies   = "YACY_TRUSTED_PROXIES"
+	envSeedlistURLs     = "YACY_SEEDLIST_URLS"
+	envAnnounceInterval = "YACY_ANNOUNCE_INTERVAL"
 
-	defaultPeerAddr = ":8090"
-	defaultOpsAddr  = ":9090"
-	defaultDataDir  = "./data"
-	defaultQuota    = "1GB"
+	defaultPeerAddr         = ":8090"
+	defaultOpsAddr          = ":9090"
+	defaultDataDir          = "./data"
+	defaultQuota            = "1GB"
+	defaultAnnounceInterval = 10 * time.Minute
 
 	storageFileName = "yacy-rwi.db"
 )
@@ -45,10 +49,12 @@ type nodeConfig struct {
 	StorageQuotaByte int64
 	TrustedProxies   []*net.IPNet
 	ProxyURL         *url.URL
+	SeedlistURLs     []string
+	AnnounceInterval time.Duration
 	Crawl            crawlConfig
 }
 
-func loadNodeConfig(getenv func(string) string, announcing bool) (nodeConfig, error) {
+func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	hash, err := yacymodel.ParseHash(strings.TrimSpace(getenv(envPeerHash)))
 	if err != nil {
 		return nodeConfig{}, fmt.Errorf("%s: %w", envPeerHash, err)
@@ -61,7 +67,14 @@ func loadNodeConfig(getenv func(string) string, announcing bool) (nodeConfig, er
 
 	peerAddr := envWithDefault(getenv, envPeerAddr, defaultPeerAddr)
 
-	host, err := advertiseHost(getenv, announcing)
+	seedlistURLs := splitList(getenv(envSeedlistURLs))
+
+	announceInterval, err := announceInterval(getenv)
+	if err != nil {
+		return nodeConfig{}, err
+	}
+
+	host, err := advertiseHost(getenv, len(seedlistURLs) > 0)
 	if err != nil {
 		return nodeConfig{}, err
 	}
@@ -101,7 +114,37 @@ func loadNodeConfig(getenv func(string) string, announcing bool) (nodeConfig, er
 		StorageQuotaByte: quota,
 		TrustedProxies:   proxies,
 		ProxyURL:         proxyURL,
+		SeedlistURLs:     seedlistURLs,
+		AnnounceInterval: announceInterval,
 	}, nil
+}
+
+func announceInterval(getenv func(string) string) (time.Duration, error) {
+	raw := strings.TrimSpace(getenv(envAnnounceInterval))
+	if raw == "" {
+		return defaultAnnounceInterval, nil
+	}
+
+	interval, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", envAnnounceInterval, err)
+	}
+	if interval <= 0 {
+		return 0, fmt.Errorf("%s: must be positive", envAnnounceInterval)
+	}
+
+	return interval, nil
+}
+
+func splitList(raw string) []string {
+	var out []string
+	for item := range strings.SplitSeq(raw, ",") {
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+
+	return out
 }
 
 func advertiseHost(getenv func(string) string, announcing bool) (string, error) {

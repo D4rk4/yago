@@ -1,8 +1,9 @@
-// Package peering owns the hello endpoint and the trusted-seed store that seeds
-// outbound greetings. Its published ports, RuntimeStatus and TrustedSeeds,
-// describe what the endpoint needs and the shared seed store the composition root
-// hands to both the endpoint and the bootstrap announcer.
-package peering
+// Package peeradmission answers inbound hello requests: it classifies the calling
+// peer as senior or junior by probing it back, and returns a random sample of the
+// reachable peers it reads from the roster. On a confirmed back-ping it refreshes
+// that caller's recency in the roster, but it never introduces a peer learned from
+// an inbound request.
+package peeradmission
 
 import (
 	"context"
@@ -12,6 +13,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/peerroster"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
@@ -20,23 +22,20 @@ type RuntimeStatus interface {
 	SelfSeed(ctx context.Context) yacymodel.Seed
 }
 
-type TrustedSeeds interface {
-	Absorb(ctx context.Context, seeds ...yacymodel.Seed)
-	Trusted(ctx context.Context) []yacymodel.Seed
-}
-
-func NewTrustedSeeds(capacity int) TrustedSeeds {
-	return newTrustedSeedRegistry(capacity)
-}
-
 func MountHello(
 	router httpguard.WireRouter,
 	identity nodeidentity.Identity,
 	status RuntimeStatus,
-	seeds TrustedSeeds,
+	roster *peerroster.Roster,
 	client *http.Client,
 ) {
-	directory := newPeerDirectory(newCallerBackPing(client), seeds, rand.Shuffle, status)
+	directory := newPeerDirectory(
+		newCallerBackPing(client),
+		roster,
+		roster,
+		rand.Shuffle,
+		status,
+	)
 	httpguard.Mount(
 		router,
 		yacyproto.PathHello,

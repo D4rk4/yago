@@ -1,4 +1,4 @@
-package bootstrap
+package peerannouncement
 
 import (
 	"context"
@@ -30,8 +30,8 @@ func TestPeerGreeterLearnsTypeAndKnownSeeds(t *testing.T) {
 			YourIP:   "203.0.113.9",
 			YourType: yacymodel.PeerSenior,
 			Seeds: []yacymodel.Seed{
-				callerSeed(t, "self", "203.0.113.9", 8090),
-				callerSeed(t, "known", "198.51.100.7", 8090),
+				callerSeed(t, "self", "203.0.113.9"),
+				callerSeed(t, "known", "198.51.100.7"),
 			},
 		}
 		_, _ = w.Write([]byte(resp.Encode().Encode()))
@@ -42,7 +42,7 @@ func TestPeerGreeterLearnsTypeAndKnownSeeds(t *testing.T) {
 	result, err := greeter.Greet(
 		context.Background(),
 		endpointOf(t, server),
-		callerSeed(t, "self", "203.0.113.9", 8090),
+		callerSeed(t, "self", "203.0.113.9"),
 		0,
 	)
 	if err != nil {
@@ -69,7 +69,7 @@ func TestPeerGreeterRejectsNon200(t *testing.T) {
 	if _, err := greeter.Greet(
 		context.Background(),
 		endpointOf(t, server),
-		callerSeed(t, "self", "203.0.113.9", 8090),
+		callerSeed(t, "self", "203.0.113.9"),
 		0,
 	); err == nil {
 		t.Fatal("expected error on non-200")
@@ -81,7 +81,7 @@ func TestPeerGreeterRejectsEmptyEndpoint(t *testing.T) {
 	if _, err := greeter.Greet(
 		context.Background(),
 		"  ",
-		callerSeed(t, "self", "203.0.113.9", 8090),
+		callerSeed(t, "self", "203.0.113.9"),
 		0,
 	); err == nil {
 		t.Fatal("expected error for empty endpoint")

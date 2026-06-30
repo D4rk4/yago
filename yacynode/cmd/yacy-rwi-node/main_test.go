@@ -38,7 +38,7 @@ func testConfig(t *testing.T) nodeConfig {
 		default:
 			return ""
 		}
-	}, false)
+	})
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -61,14 +61,9 @@ func openTestVault(t *testing.T) *vault.Vault {
 func assembleTestNode(t *testing.T, config nodeConfig, vault *vault.Vault) node {
 	t.Helper()
 
-	settings, err := loadBootstrapSettings(func(string) string { return "" })
-	if err != nil {
-		t.Fatalf("bootstrap: %v", err)
-	}
 	assembled, err := assembleNode(
 		context.Background(),
 		config,
-		settings,
 		vault,
 		newEgressProxyClient(config.ProxyURL, outboundRequestTimeout),
 	)

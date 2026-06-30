@@ -1,18 +1,15 @@
-package peering
+package peeradmission
 
 import (
 	"context"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/peerroster"
 )
 
 type helloOutcome struct {
 	CallerType yacymodel.PeerType
 	Known      []yacymodel.Seed
-}
-
-type trustedSeedSource interface {
-	Trusted(ctx context.Context) []yacymodel.Seed
 }
 
 type seedShuffler func(n int, swap func(i, j int))
@@ -27,19 +24,27 @@ type callerReachabilityProbe interface {
 }
 
 type peerDirectory struct {
-	probe   callerReachabilityProbe
-	trusted trustedSeedSource
-	shuffle seedShuffler
-	status  RuntimeStatus
+	probe     callerReachabilityProbe
+	reachable peerroster.ReachablePeerSource
+	refresher peerroster.ReachabilityRefresher
+	shuffle   seedShuffler
+	status    RuntimeStatus
 }
 
 func newPeerDirectory(
 	probe callerReachabilityProbe,
-	trusted trustedSeedSource,
+	reachable peerroster.ReachablePeerSource,
+	refresher peerroster.ReachabilityRefresher,
 	shuffle seedShuffler,
 	status RuntimeStatus,
 ) peerDirectory {
-	return peerDirectory{probe: probe, trusted: trusted, shuffle: shuffle, status: status}
+	return peerDirectory{
+		probe:     probe,
+		reachable: reachable,
+		refresher: refresher,
+		shuffle:   shuffle,
+		status:    status,
+	}
 }
 
 func (d peerDirectory) Hello(
@@ -49,7 +54,7 @@ func (d peerDirectory) Hello(
 ) (helloOutcome, error) {
 	return helloOutcome{
 		CallerType: d.classifyCaller(ctx, caller),
-		Known:      d.sampleSeeds(d.trusted.Trusted(ctx), count),
+		Known:      d.sampleSeeds(d.reachable.ReachablePeers(ctx), count),
 	}, nil
 }
 
@@ -64,6 +69,8 @@ func (d peerDirectory) classifyCaller(
 	if !d.probe.Reachable(ctx, caller, d.status.SelfSeed(ctx).Hash, d.status.NetworkName(ctx)) {
 		return yacymodel.PeerJunior
 	}
+
+	d.refresher.Reachable(ctx, caller.Hash)
 
 	return yacymodel.PeerSenior
 }
