@@ -61,7 +61,7 @@ func run() error {
 		return fmt.Errorf("load crawl config: %w", err)
 	}
 
-	client := newOutboundHTTPClient()
+	client := newEgressProxyClient(config.ProxyURL, outboundRequestTimeout)
 
 	vault, err := boltvault.Open(config.StoragePath, config.StorageQuotaByte)
 	if err != nil {

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -43,6 +44,7 @@ type nodeConfig struct {
 	StoragePath      string
 	StorageQuotaByte int64
 	TrustedProxies   []*net.IPNet
+	ProxyURL         *url.URL
 	Crawl            crawlConfig
 }
 
@@ -79,6 +81,11 @@ func loadNodeConfig(getenv func(string) string, announcing bool) (nodeConfig, er
 		return nodeConfig{}, fmt.Errorf("%s: %w", envTrustedProxies, err)
 	}
 
+	proxyURL, err := egressProxyURL(getenv)
+	if err != nil {
+		return nodeConfig{}, err
+	}
+
 	dataDir := envWithDefault(getenv, envDataDir, defaultDataDir)
 
 	return nodeConfig{
@@ -93,6 +100,7 @@ func loadNodeConfig(getenv func(string) string, announcing bool) (nodeConfig, er
 		StoragePath:      filepath.Join(dataDir, storageFileName),
 		StorageQuotaByte: quota,
 		TrustedProxies:   proxies,
+		ProxyURL:         proxyURL,
 	}, nil
 }
 

@@ -18,6 +18,8 @@ func TestRealYaCyTransfersRWIToFleet(t *testing.T) {
 
 	network := newHermeticNetwork(t, ctx)
 
+	startEgressProxy(t, ctx, network.Name)
+
 	yacyContainer, yacyURL := startYaCy(t, ctx, probe, network.Name, transferYaCyAlias)
 
 	yacyHash := resolveYaCyHash(t, ctx, probe, yacyURL)

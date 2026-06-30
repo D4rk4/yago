@@ -33,6 +33,8 @@ func testConfig(t *testing.T) nodeConfig {
 			return "203.0.113.1"
 		case envDataDir:
 			return t.TempDir()
+		case envProxyURL:
+			return "http://proxy:4750"
 		default:
 			return ""
 		}
@@ -68,7 +70,7 @@ func assembleTestNode(t *testing.T, config nodeConfig, vault *vault.Vault) node 
 		config,
 		settings,
 		vault,
-		newOutboundHTTPClient(),
+		newEgressProxyClient(config.ProxyURL, outboundRequestTimeout),
 	)
 	if err != nil {
 		t.Fatalf("assemble: %v", err)

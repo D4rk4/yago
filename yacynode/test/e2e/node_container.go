@@ -43,6 +43,7 @@ func startNode(
 		"YACY_ADVERTISE_PORT":    nodeContainerPort,
 		"YACY_DATA_DIR":          "/tmp/data",
 		"YACY_ANNOUNCE_INTERVAL": "10s",
+		"YACY_PROXY_URL":         egressProxyNetworkURL(),
 		"LOG_LEVEL":              "debug",
 	}
 	if cfg.seedlistURL != "" {

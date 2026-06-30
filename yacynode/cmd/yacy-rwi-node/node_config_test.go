@@ -13,11 +13,15 @@ func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
 		envPeerHash: "0123456789AB",
 		envPeerName: "node",
+		envProxyURL: "http://proxy:4750",
 	}), false)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
 
+	if config.ProxyURL == nil || config.ProxyURL.String() != "http://proxy:4750" {
+		t.Errorf("ProxyURL = %v", config.ProxyURL)
+	}
 	if config.PeerAddr != defaultPeerAddr {
 		t.Errorf("PeerAddr = %q, want %q", config.PeerAddr, defaultPeerAddr)
 	}
@@ -39,6 +43,7 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
 		envPeerHash:       "0123456789AB",
 		envPeerName:       "node",
+		envProxyURL:       "http://proxy:4750",
 		envNetworkName:    "testnet",
 		envPeerAddr:       ":7000",
 		envOpsAddr:        ":7001",
@@ -76,6 +81,12 @@ func TestLoadNodeConfigRejects(t *testing.T) {
 			envPeerHash:       "0123456789AB",
 			envPeerName:       "n",
 			envTrustedProxies: "not-an-ip",
+		},
+		"missing proxy url": {envPeerHash: "0123456789AB", envPeerName: "n"},
+		"non-http proxy url": {
+			envPeerHash: "0123456789AB",
+			envPeerName: "n",
+			envProxyURL: "socks5://proxy:1080",
 		},
 	}
 	for name, env := range cases {

@@ -22,6 +22,8 @@ func TestRealYaCyPromotesNodeToSenior(t *testing.T) {
 
 	network := newHermeticNetwork(t, ctx)
 
+	startEgressProxy(t, ctx, network.Name)
+
 	_, yacyURL := startYaCy(t, ctx, probe, network.Name, yacyAlias)
 
 	startNode(t, ctx, probe, nodeConfig{
