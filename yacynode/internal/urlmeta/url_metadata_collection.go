@@ -12,7 +12,7 @@ const bucketName vault.Name = "urlmeta"
 type uriMetadataCodec struct{}
 
 func (uriMetadataCodec) Encode(row yacymodel.URIMetadataRow) ([]byte, error) {
-	raw, err := yacymodel.EncodeURIMetadata(row)
+	raw, err := encodeStoredURLMetadata(row)
 	if err != nil {
 		return nil, fmt.Errorf("encode url metadata: %w", err)
 	}
@@ -21,7 +21,7 @@ func (uriMetadataCodec) Encode(row yacymodel.URIMetadataRow) ([]byte, error) {
 }
 
 func (uriMetadataCodec) Decode(raw []byte) (yacymodel.URIMetadataRow, error) {
-	row, err := yacymodel.DecodeURIMetadata(raw)
+	row, err := decodeStoredURLMetadata(raw)
 	if err != nil {
 		return yacymodel.URIMetadataRow{}, fmt.Errorf("decode url metadata: %w", err)
 	}

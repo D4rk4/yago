@@ -14,11 +14,11 @@ const postingKeyLength = yacymodel.HashLength + yacymodel.HashLength
 type postingCodec struct{}
 
 func (postingCodec) Encode(entry yacymodel.RWIPosting) ([]byte, error) {
-	return yacymodel.EncodeRWIPosting(entry), nil
+	return encodeStoredPosting(entry), nil
 }
 
 func (postingCodec) Decode(raw []byte) (yacymodel.RWIPosting, error) {
-	entry, err := yacymodel.DecodeRWIPosting("", raw)
+	entry, err := decodeStoredPosting("", raw)
 	if err != nil {
 		return yacymodel.RWIPosting{}, fmt.Errorf("decode rwi posting: %w", err)
 	}

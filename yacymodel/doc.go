@@ -1,3 +1,3 @@
 // Package yacymodel holds the YaCy value-level data types, their validation
-// rules, and the codecs that encode and decode them.
+// rules, and their canonical wire forms.
 package yacymodel

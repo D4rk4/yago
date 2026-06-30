@@ -52,8 +52,6 @@ components:
     in:
       - cmd/yacy-peer-hash/**
       - cmd/yacy-rwi-node/**
-  dbmigrate:
-    in: cmd/yacy-db-migrate/**
 
 vendors:
   yacymodel:
@@ -261,10 +259,6 @@ deps:
       - yacyproto
       - prometheus
       - nats-server
-  dbmigrate:
-    canUse:
-      - yacymodel
-      - bbolt
 
 excludeFiles:
   - "test/e2e"
