@@ -5,7 +5,6 @@ package bootstrap
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
@@ -15,33 +14,6 @@ type SeedSource interface {
 	Fetch(ctx context.Context) []yacymodel.Seed
 }
 
-type SeedlistSource struct {
-	fetcher httpSeedlistFetcher
-	urls    []string
-}
-
-var _ SeedSource = (*SeedlistSource)(nil)
-
-func New(client *http.Client, urls []string) *SeedlistSource {
-	return &SeedlistSource{fetcher: newHTTPSeedlistFetcher(client), urls: urls}
-}
-
-func (s *SeedlistSource) Fetch(ctx context.Context) []yacymodel.Seed {
-	var seeds []yacymodel.Seed
-	for _, url := range s.urls {
-		fetched, err := s.fetcher.Fetch(ctx, url)
-		if err != nil {
-			slog.WarnContext(
-				ctx,
-				"seedlist fetch failed",
-				slog.String("url", url),
-				slog.Any("error", err),
-			)
-
-			continue
-		}
-		seeds = append(seeds, fetched...)
-	}
-
-	return seeds
+func New(client *http.Client, urls []string) SeedSource {
+	return &seedlists{fetcher: newHTTPSeedlistFetcher(client), urls: urls}
 }

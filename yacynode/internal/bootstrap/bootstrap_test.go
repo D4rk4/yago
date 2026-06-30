@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestSeedlistSourceFetchesAllURLsAndSkipsFailures(t *testing.T) {
+func TestSeedlistsFetchAllURLsAndSkipFailures(t *testing.T) {
 	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(seedlistLine(t, "AAAAAAAAAAAA", "203.0.113.1")))
 	}))

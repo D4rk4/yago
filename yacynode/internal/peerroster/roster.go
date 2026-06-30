@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"slices"
 	"sync"
 	"time"
 
@@ -34,7 +33,7 @@ func (r *roster) Discover(ctx context.Context, seeds ...yacymodel.Seed) {
 		if _, reachable := seed.NetworkAddress(); !reachable {
 			continue
 		}
-		if err := r.discover(ctx, seed); err != nil {
+		if err := r.discoverOne(ctx, seed); err != nil {
 			slog.WarnContext(
 				ctx,
 				"peer discovery discarded",
@@ -47,7 +46,7 @@ func (r *roster) Discover(ctx context.Context, seeds ...yacymodel.Seed) {
 	r.evictOverflow(ctx)
 }
 
-func (r *roster) discover(ctx context.Context, seed yacymodel.Seed) error {
+func (r *roster) discoverOne(ctx context.Context, seed yacymodel.Seed) error {
 	key := r.key(seed.Hash)
 	if err := r.vault.Update(ctx, func(tx *vault.Txn) error {
 		_, known, err := r.peers.Get(tx, key)
@@ -163,9 +162,8 @@ func (r *roster) FreshestPeers(ctx context.Context, limit int) []yacymodel.Seed 
 		return targets
 	}
 
-	fresh, _ := r.inactiveByFreshness(ctx, active)
-	for i := 0; i < need && i < len(fresh); i++ {
-		targets = append(targets, fresh[i].seed)
+	for _, entry := range r.freshestInactive(ctx, active, need) {
+		targets = append(targets, entry.seed)
 	}
 
 	return targets
@@ -206,45 +204,97 @@ func (r *roster) evictOverflow(ctx context.Context) {
 
 func (r *roster) stalestBeyondCapacity(ctx context.Context) []yacymodel.Hash {
 	_, active := r.activeSnapshot()
-	fresh, total := r.inactiveByFreshness(ctx, active)
 
-	excess := total - r.reservoirCap
+	excess := r.peerCount(ctx) - r.reservoirCap
 	if excess <= 0 {
 		return nil
 	}
 
-	victims := make([]yacymodel.Hash, 0, excess)
-	for i := 0; i < excess && i < len(fresh); i++ {
-		victims = append(victims, fresh[len(fresh)-1-i].seed.Hash)
+	stale := r.stalestInactive(ctx, active, excess)
+	victims := make([]yacymodel.Hash, 0, len(stale))
+	for _, entry := range stale {
+		victims = append(victims, entry.seed.Hash)
 	}
 
 	return victims
 }
 
-func (r *roster) inactiveByFreshness(
+func (r *roster) freshestInactive(
 	ctx context.Context,
 	active map[yacymodel.Hash]struct{},
-) ([]rosterEntry, int) {
-	var fresh []rosterEntry
-	total := 0
+	limit int,
+) []rosterEntry {
+	return r.selectInactive(ctx, active, limit, func(a, b rosterEntry) bool {
+		return a.lastSeen.Compare(b.lastSeen) > 0
+	})
+}
+
+func (r *roster) stalestInactive(
+	ctx context.Context,
+	active map[yacymodel.Hash]struct{},
+	limit int,
+) []rosterEntry {
+	return r.selectInactive(ctx, active, limit, func(a, b rosterEntry) bool {
+		return a.lastSeen.Compare(b.lastSeen) < 0
+	})
+}
+
+func (r *roster) selectInactive(
+	ctx context.Context,
+	active map[yacymodel.Hash]struct{},
+	limit int,
+	precedes func(a, b rosterEntry) bool,
+) []rosterEntry {
+	if limit <= 0 {
+		return nil
+	}
+
+	kept := make([]rosterEntry, 0, limit)
 	if err := r.vault.View(ctx, func(tx *vault.Txn) error {
 		return r.peers.Scan(tx, nil, func(_ vault.Key, entry rosterEntry) (bool, error) {
-			total++
-			if _, ok := active[entry.seed.Hash]; !ok {
-				fresh = append(fresh, entry)
+			if _, ok := active[entry.seed.Hash]; ok {
+				return true, nil
 			}
+
+			pos := 0
+			for pos < len(kept) && !precedes(entry, kept[pos]) {
+				pos++
+			}
+			if pos >= limit {
+				return true, nil
+			}
+			if len(kept) < limit {
+				kept = append(kept, rosterEntry{})
+			}
+			copy(kept[pos+1:], kept[pos:])
+			kept[pos] = entry
 
 			return true, nil
 		})
 	}); err != nil {
 		slog.WarnContext(ctx, "peer roster scan failed", slog.Any("error", err))
 
-		return nil, 0
+		return nil
 	}
 
-	slices.SortFunc(fresh, func(a, b rosterEntry) int {
-		return b.lastSeen.Compare(a.lastSeen)
-	})
+	return kept
+}
 
-	return fresh, total
+func (r *roster) peerCount(ctx context.Context) int {
+	total := 0
+	if err := r.vault.View(ctx, func(tx *vault.Txn) error {
+		count, err := r.peers.Len(tx)
+		if err != nil {
+			return fmt.Errorf("count peers: %w", err)
+		}
+		total = count
+
+		return nil
+	}); err != nil {
+		slog.WarnContext(ctx, "peer roster count failed", slog.Any("error", err))
+
+		return 0
+	}
+
+	return total
 }
