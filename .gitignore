@@ -1,7 +1,21 @@
 .env
+.env.*
+!.env.example
+
 docker-compose.yml
+docker-compose.override.yml
+
+CONTINUITY.md
+
+data/
+tmp/
+.tmp/
+logs/
+*.log
+
 coverage.out
 coverage.out.gated
+*.coverprofile
+*.test
 
-# Project-local Go toolchain (venv-style)
 .toolchain/
