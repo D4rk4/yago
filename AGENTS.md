@@ -28,7 +28,7 @@ Dependencies: Record each new third-party dependency in its own ADR before use.
 
 Version pinning: Pin all versions. Runtime deps: `go.mod`. Build/lint tools: Go tool directives in `go.mod` or the pinned tool lock. `make verify` uses only pinned tools, never PATH versions.
 
-Research: For non-trivial architecture, protocol, dependency, security, search, crawling, ranking, or storage decisions, do a short research pass using primary sources such as specifications, official docs, source code, and papers. If internet access is unavailable, record that in `CONTINUITY.md` and proceed from local context. Research does not create runtime internet dependencies.
+Research: During planning for every task, do a short internet and arXiv research pass for relevant best practices, recent research, and implementation options, including but not limited to optimal architecture. Prefer primary sources such as specifications, official docs, source code, standards, and papers. If internet access is unavailable, record that in `CONTINUITY.md` and proceed from local context. Research does not create runtime internet dependencies.
 
 Semantic behavior: Do not fix search, crawl routing, ranking, evidence selection, or compatibility behavior with ad hoc word lists, vendor facts, localized synonym buckets, or regexes that recognize specific meanings. Prefer protocol/data structures, parsed metadata, bounded model or ranking signals where such systems exist, and evidence from stored data. Regex is allowed for syntax-level parsing, protocol formats, numeric/unit tokenization, stable identifier normalization, security redaction, and file/URL/schema handling.
 
@@ -36,4 +36,6 @@ Testing: Code lands with tests. Pure documentation/configuration changes need li
 
 Coverage: If coverage drops, first remove or refactor code. Find uncovered statements/branches and ask whether they should exist. Delete dead or defensive-only code, collapse unexercised branches, or replace several paths with one covered path. Add tests only for required behavior. Filler tests written only to raise coverage fail the change.
 
-Gate: `make verify` is the only gate. A code change is not done until it is green.
+Feature closure: Closing a feature requires the tests to be written with the code, then a full test run, Semgrep, container builds, sanity tests, and smoke tests. If all feature-closure checks pass, commit the change and push it to `main`.
+
+Gate: `make verify` is the mandatory code gate. A code change is not done until it is green. Feature closure adds the required Semgrep, container, sanity, smoke, commit, and push checks.
