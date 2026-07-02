@@ -45,7 +45,8 @@ The node currently targets these responsibilities:
 - answer YaCy `/yacy/urls.xml` remote crawl URL requests with an empty queue,
   target-check and reject remote crawl receipts with YaCy retry delay, and serve
   URL-hash metadata requests from locally stored metadata;
-- receive inbound RWI postings through `/yacy/transferRWI.html`;
+- receive inbound RWI postings through `/yacy/transferRWI.html`, including YaCy
+  preflight result strings for wrong network units and missing required fields;
 - receive URL metadata through `/yacy/transferURL.html`;
 - run retry-aware outbound DHT handoff cycles fed from stored RWI postings, with
   YaCy-style sender gates, target selection, local deletion, restart recovery,

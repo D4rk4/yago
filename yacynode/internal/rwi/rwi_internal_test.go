@@ -457,6 +457,9 @@ func TestTransferRWIReportsReceiveError(t *testing.T) {
 	}).Serve(t.Context(), yacyproto.TransferRWIRequest{
 		NetworkName: "freeworld",
 		YouAre:      localIdentity().Hash,
+		WordCount:   1,
+		EntryCount:  1,
+		Indexes:     []yacymodel.RWIPosting{posting("w1", "u1")},
 	})
 	if err == nil {
 		t.Fatal("expected receive error")

@@ -32,8 +32,8 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:    yacyproto.PathTransferRWI,
 		Methods: methods(yacyproto.TransferRWIEndpointMethods),
 		State:   Implemented,
-		Behavior: "Accepts RWI postings durably before acknowledgement and reports missing URL metadata " +
-			"with YaCy transferRWI fields.",
+		Behavior: "Checks the YaCy network unit and required transfer fields before intake, accepts RWI postings " +
+			"durably before acknowledgement, and reports missing URL metadata with YaCy transferRWI fields.",
 		Evidence: []string{
 			"yacynode/internal/rwi/*_test.go",
 			"yacynode/test/fixtures/yacywire/transfer-rwi-*",

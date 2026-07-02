@@ -16,8 +16,9 @@ A receiver that wants YaCy peers to treat it as DHT-capable needs:
 4. `query.html object=rwicount` returning a numeric `response`; original YaCy
    requires `youare` and tolerates a missing `iam` field; per-word
    `rwiurlcount` uses `env=<wordhash>`;
-5. `transferRWI.html` enforcing `youare`, accepting `wordHash{row}` entries, and
-   reporting missing URL hashes with `unknownURL`;
+5. `transferRWI.html` enforcing `network.unit.name`, required transfer fields,
+   and `youare`, accepting `wordHash{row}` entries, and reporting missing URL
+   hashes with `unknownURL`;
 6. `transferURL.html` accepting indexed `url0..urlN` metadata rows;
 7. `search.html` returning `joincount`, `count`, and `resourceN` rows when remote
    search is supported.
@@ -135,7 +136,9 @@ live DHT traffic as stored RWI rows are fed into the outbound queue.
 YaCy sends an index handoff in two phases. The sender posts RWI rows to
 `/yacy/transferRWI.html`; when the receiver reports hashes in `unknownURL`, the
 sender loads the matching local URL metadata rows and posts them to
-`/yacy/transferURL.html`.
+`/yacy/transferURL.html`. The receiver preserves upstream preflight result
+strings such as `not authentified`, `missing wordc`, `missing entryc`, and
+`missing indexes` before RWI intake.
 
 Before enqueue, the Go sender selects a bounded set of stored RWI postings in
 one storage update, journals the selected rows for restart recovery, and removes

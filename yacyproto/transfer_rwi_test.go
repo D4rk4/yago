@@ -32,8 +32,36 @@ func TestTransferRWIRequestRoundTrip(t *testing.T) {
 		t.Fatalf("ParseTransferRWIRequest: %v", err)
 	}
 
-	if !reflect.DeepEqual(got, req) {
-		t.Fatalf("round-trip mismatch:\n got %#v\nwant %#v", got, req)
+	assertTransferRWIRequest(t, got, req)
+	if got.MissingWordCountField() ||
+		got.MissingEntryCountField() ||
+		got.MissingIndexesField() {
+		t.Fatalf("required fields reported missing: %#v", got)
+	}
+}
+
+func assertTransferRWIRequest(
+	t *testing.T,
+	got yacyproto.TransferRWIRequest,
+	want yacyproto.TransferRWIRequest,
+) {
+	t.Helper()
+
+	if got.NetworkName != want.NetworkName ||
+		got.Iam != want.Iam ||
+		got.YouAre != want.YouAre ||
+		got.WordCount != want.WordCount ||
+		got.EntryCount != want.EntryCount ||
+		got.Key != want.Key {
+		t.Fatalf("request fields:\n got %#v\nwant %#v", got, want)
+	}
+	if len(got.Indexes) != len(want.Indexes) {
+		t.Fatalf("indexes = %d, want %d", len(got.Indexes), len(want.Indexes))
+	}
+	for i := range got.Indexes {
+		if !reflect.DeepEqual(got.Indexes[i], want.Indexes[i]) {
+			t.Fatalf("index %d:\n got %#v\nwant %#v", i, got.Indexes[i], want.Indexes[i])
+		}
 	}
 }
 
@@ -116,6 +144,32 @@ func TestParseTransferRWIRequestHandlesEmptyIndexes(t *testing.T) {
 	}
 	if req.Indexes != nil {
 		t.Fatalf("Indexes = %+v, want nil", req.Indexes)
+	}
+	if !req.MissingWordCountField() ||
+		!req.MissingEntryCountField() ||
+		!req.MissingIndexesField() {
+		t.Fatalf("required fields not reported missing: %#v", req)
+	}
+}
+
+func TestTransferRWIRequestFormIncludesEmptyIndexesField(t *testing.T) {
+	t.Parallel()
+
+	req, err := yacyproto.ParseTransferRWIRequest(
+		context.Background(),
+		yacyproto.TransferRWIRequest{
+			NetworkName: yacyproto.DefaultNetwork,
+			WordCount:   0,
+			EntryCount:  0,
+		}.Form(),
+	)
+	if err != nil {
+		t.Fatalf("ParseTransferRWIRequest: %v", err)
+	}
+	if req.MissingWordCountField() ||
+		req.MissingEntryCountField() ||
+		req.MissingIndexesField() {
+		t.Fatalf("form fields reported missing: %#v", req)
 	}
 }
 

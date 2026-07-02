@@ -78,7 +78,87 @@ func TestTransferRWIRejectsWrongNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Serve: %v", err)
 	}
-	if resp.Result != yacyproto.TransferRWIResult(yacyproto.ResultWrongTarget) {
+	if resp.Result != yacyproto.ResultNotAuthentified {
+		t.Fatalf("Result = %q, want not authentified", resp.Result)
+	}
+	if resp.Pause != transferRWIDefaultPause {
+		t.Fatalf("Pause = %d, want default", resp.Pause)
+	}
+}
+
+func TestTransferRWIRejectsWrongTargetAfterRequiredFields(t *testing.T) {
+	h := openHarness(t, 0, 100)
+
+	req := yacyproto.TransferRWIRequest{
+		NetworkName: "freeworld",
+		YouAre:      yacymodel.Hash("BBBBBBBBBBBB"),
+		WordCount:   1,
+		EntryCount:  1,
+		Indexes:     []yacymodel.RWIPosting{posting("w1", "u1")},
+	}
+
+	resp, err := h.endpoint().Serve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if resp.Result != yacyproto.ResultWrongTarget {
 		t.Fatalf("Result = %q, want wrong_target", resp.Result)
+	}
+	if resp.Pause != 0 {
+		t.Fatalf("Pause = %d, want 0", resp.Pause)
+	}
+}
+
+func TestTransferRWIReportsMissingRequiredFields(t *testing.T) {
+	endpoint := transferRWIEndpoint{identity: localIdentity(), intake: fakePostingReceiver{}}
+
+	for _, item := range []struct {
+		name string
+		req  yacyproto.TransferRWIRequest
+		want yacyproto.TransferRWIResult
+	}{
+		{
+			name: "wordc",
+			req: yacyproto.TransferRWIRequest{
+				NetworkName: "freeworld",
+				YouAre:      localIdentity().Hash,
+				EntryCount:  1,
+				Indexes:     []yacymodel.RWIPosting{posting("w1", "u1")},
+			},
+			want: yacyproto.ResultMissingWordC,
+		},
+		{
+			name: "entryc",
+			req: yacyproto.TransferRWIRequest{
+				NetworkName: "freeworld",
+				YouAre:      localIdentity().Hash,
+				WordCount:   1,
+				Indexes:     []yacymodel.RWIPosting{posting("w1", "u1")},
+			},
+			want: yacyproto.ResultMissingEntryC,
+		},
+		{
+			name: "indexes",
+			req: yacyproto.TransferRWIRequest{
+				NetworkName: "freeworld",
+				YouAre:      localIdentity().Hash,
+				WordCount:   1,
+				EntryCount:  1,
+			},
+			want: yacyproto.ResultMissingIndexes,
+		},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			resp, err := endpoint.Serve(context.Background(), item.req)
+			if err != nil {
+				t.Fatalf("Serve: %v", err)
+			}
+			if resp.Result != item.want {
+				t.Fatalf("Result = %q, want %q", resp.Result, item.want)
+			}
+			if resp.Pause != transferRWIDefaultPause {
+				t.Fatalf("Pause = %d, want default", resp.Pause)
+			}
+		})
 	}
 }

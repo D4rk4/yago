@@ -96,3 +96,6 @@ plain request and response forms for `hello.html`, `query.html`,
 `transferRWI.html`, `transferURL.html`, and `search.html`, and tests parse and
 encode them through `yacyproto` so future protocol changes are checked against
 stable YaCy wire shapes.
+
+`/yacy/transferRWI.html` preserves upstream preflight result strings for network
+authentication failure and missing required fields before accepting RWI rows.

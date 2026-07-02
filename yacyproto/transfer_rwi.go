@@ -17,6 +17,10 @@ type TransferRWIRequest struct {
 	EntryCount  int
 	Indexes     []yacymodel.RWIPosting
 	Key         string
+
+	wordCountPresent  bool
+	entryCountPresent bool
+	indexesPresent    bool
 }
 
 type TransferRWIResponse struct {
@@ -34,7 +38,7 @@ func (r TransferRWIRequest) Form() url.Values {
 	putString(form, FieldYouAre, r.YouAre.String())
 	putInt(form, FieldWordCount, r.WordCount)
 	putInt(form, FieldEntryCount, r.EntryCount)
-	putString(form, FieldIndexes, encodeRWILines(r.Indexes))
+	form.Set(FieldIndexes, encodeRWILines(r.Indexes))
 	putString(form, FieldKey, r.Key)
 
 	return form
@@ -57,6 +61,9 @@ func ParseTransferRWIRequest(ctx context.Context, form url.Values) (TransferRWIR
 		EntryCount:  entryCount,
 		Key:         form.Get(FieldKey),
 	}
+	_, req.wordCountPresent = form[FieldWordCount]
+	_, req.entryCountPresent = form[FieldEntryCount]
+	_, req.indexesPresent = form[FieldIndexes]
 
 	req.Iam, err = parseHashField("transferRWI request", FieldIam, form.Get(FieldIam))
 	if err != nil {
@@ -71,6 +78,18 @@ func ParseTransferRWIRequest(ctx context.Context, form url.Values) (TransferRWIR
 	req.Indexes = parseRWILines(ctx, form.Get(FieldIndexes))
 
 	return req, nil
+}
+
+func (r TransferRWIRequest) MissingWordCountField() bool {
+	return !r.wordCountPresent && r.WordCount == 0
+}
+
+func (r TransferRWIRequest) MissingEntryCountField() bool {
+	return !r.entryCountPresent && r.EntryCount == 0
+}
+
+func (r TransferRWIRequest) MissingIndexesField() bool {
+	return !r.indexesPresent && len(r.Indexes) == 0
 }
 
 func (r TransferRWIResponse) Encode() yacymodel.Message {
