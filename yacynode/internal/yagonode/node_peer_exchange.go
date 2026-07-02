@@ -31,11 +31,11 @@ type peerExchange struct {
 	client   *http.Client
 	peer     *metrics.PeerMetrics
 	host     hostlinks.IncomingHostLinks
+	roster   peerroster.Roster
 }
 
 type peerExchangeRuntime struct {
 	announcer peerannouncement.Announcer
-	roster    peerroster.Roster
 }
 
 var (
@@ -43,20 +43,29 @@ var (
 	openPeerMailbox = peermessage.OpenMailbox
 )
 
-func (p peerExchange) assemble() (peerExchangeRuntime, error) {
-	roster, err := openPeerRoster(p.vault, time.Now, reservoirCapacity, activeSetCapacity)
+func openObservedPeerRoster(
+	vault *vault.Vault,
+	peer *metrics.PeerMetrics,
+) (peerroster.Roster, error) {
+	roster, err := openPeerRoster(vault, time.Now, reservoirCapacity, activeSetCapacity)
 	if err != nil {
-		return peerExchangeRuntime{}, fmt.Errorf("open peer roster: %w", err)
+		return nil, fmt.Errorf("open peer roster: %w", err)
 	}
-	var rosterObserver peerMetricsObserver
+	var observer peerMetricsObserver
+	if peer != nil {
+		observer = peer
+	}
+
+	return observePeerRoster(context.Background(), roster, observer), nil
+}
+
+func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 	var announceObserver peerannouncement.Observer
 	var seedObserver bootstrap.SeedImportObserver
 	if p.peer != nil {
-		rosterObserver = p.peer
 		announceObserver = p.peer
 		seedObserver = p.peer
 	}
-	roster = observePeerRoster(context.Background(), roster, rosterObserver)
 	mailbox, err := openPeerMailbox(p.vault, time.Now)
 	if err != nil {
 		return peerExchangeRuntime{}, fmt.Errorf("open peer message mailbox: %w", err)
@@ -66,10 +75,10 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 		p.router,
 		p.identity,
 		peeringStatus{report: p.report, networkName: p.config.NetworkName},
-		roster,
+		p.roster,
 		p.client,
 	)
-	seedlist.Mount(p.router, p.report, roster)
+	seedlist.Mount(p.router, p.report, p.roster)
 	hostlinks.Mount(p.router, p.config.NetworkName, p.report, p.host)
 	peermessage.Mount(p.router, p.identity, mailbox)
 	peerprofile.Mount(p.router, p.identity, peerprofile.NewProfileFile(p.config.DataDir))
@@ -90,8 +99,7 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 			},
 			p.report,
 			bootstrap.NewObserved(p.client, p.config.SeedlistURLs, seedObserver),
-			roster,
+			p.roster,
 		),
-		roster: roster,
 	}, nil
 }

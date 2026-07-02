@@ -19,6 +19,7 @@ type Identity struct {
 	Flags       yacymodel.Flags
 	Version     string
 	Start       time.Time
+	BirthDate   time.Time
 }
 
 func (id Identity) Uptime(now time.Time) int {

@@ -161,6 +161,7 @@ func (s Seed) Properties() map[string]string {
 	putInt(fields, SeedUptime, s.Uptime)
 	putInt(fields, SeedRWICount, s.RWICount)
 	putInt(fields, SeedURLCount, s.URLCount)
+	putSeedStatistics(fields, s)
 	for key, value := range s.customProperties {
 		if _, ok := fields[key]; !ok {
 			fields[key] = value

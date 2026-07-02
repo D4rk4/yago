@@ -30,8 +30,17 @@ type URLCounter interface {
 	Count(ctx context.Context) (int, error)
 }
 
-func NewReport(id nodeidentity.Identity, rwi RWICounter, urls URLCounter) Report {
-	return newReport(id, time.Now, rwi, urls)
+type KnownPeerCounter interface {
+	KnownPeerCount(ctx context.Context) int
+}
+
+func NewReport(
+	id nodeidentity.Identity,
+	rwi RWICounter,
+	urls URLCounter,
+	peers KnownPeerCounter,
+) Report {
+	return newReport(id, time.Now, rwi, urls, peers)
 }
 
 func MountQuery(

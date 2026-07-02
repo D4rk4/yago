@@ -20,6 +20,8 @@ components:
     in: internal/nodeidentity/**
   peeradmission:
     in: internal/peeradmission/**
+  peerbirth:
+    in: internal/peerbirth/**
   peerroster:
     in: internal/peerroster/**
   peerannouncement:
@@ -165,6 +167,10 @@ deps:
     canUse:
       - yacymodel
       - yacyproto
+  peerbirth:
+    mayDependOn:
+      - peerbirth
+      - vault
   peerroster:
     mayDependOn:
       - peerroster
@@ -412,6 +418,7 @@ deps:
       - memvault
       - httpguard
       - peeradmission
+      - peerbirth
       - peerroster
       - peerannouncement
       - hostlinks

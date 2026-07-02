@@ -15,6 +15,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yacynode/internal/nodestatus"
 	"github.com/D4rk4/yago/yacynode/internal/peerannouncement"
+	"github.com/D4rk4/yago/yacynode/internal/peerbirth"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
 	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 	"github.com/D4rk4/yago/yacynode/internal/vault"
@@ -38,6 +39,7 @@ type nodeTelemetry struct {
 
 var (
 	openRuntimeNodeStorage      = openNodeStorage
+	openRuntimePeerBirthDate    = peerbirth.Open
 	assembleRuntimePeerExchange = func(exchange peerExchange) (peerExchangeRuntime, error) {
 		return exchange.assemble()
 	}
@@ -64,14 +66,22 @@ func assembleNode(
 	client *http.Client,
 	telemetry nodeTelemetry,
 ) (node, error) {
-	identity := nodeIdentity(config)
+	identity, err := nodeIdentityWithBirthDate(ctx, config, vault)
+	if err != nil {
+		return node{}, err
+	}
 
 	storage, err := openRuntimeNodeStorage(vault, config.SearchIndexPath)
 	if err != nil {
 		return node{}, err
 	}
 
-	report := nodestatus.NewReport(identity, storage.postings, storage.urlDirectory)
+	roster, err := openObservedPeerRoster(vault, telemetry.peer)
+	if err != nil {
+		return node{}, err
+	}
+
+	report := nodestatus.NewReport(identity, storage.postings, storage.urlDirectory, roster)
 	storage = observeDHTInboundStorage(storage, telemetry.dhtInbound)
 
 	mux := http.NewServeMux()
@@ -89,13 +99,14 @@ func assembleNode(
 		client:   client,
 		peer:     telemetry.peer,
 		host:     storedURLHostLinks{rows: storage.urlMetadataRows},
+		roster:   roster,
 	})
 	if err != nil {
 		return node{}, err
 	}
 	mountNodePublicSearch(mux, publicSearchAssembly{
 		storage:      storage,
-		roster:       exchange.roster,
+		roster:       roster,
 		identity:     identity,
 		dht:          config.DHT,
 		client:       client,
@@ -104,14 +115,13 @@ func assembleNode(
 
 	mountNodeCrawlCompatibility(router, identity, storage)
 
-	sweeper := newStorageSweeper(vault, storage)
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
 		ctx:         ctx,
 		config:      config,
 		storage:     vault,
 		nodeStorage: storage,
 		report:      report,
-		roster:      exchange.roster,
+		roster:      roster,
 		client:      client,
 		observer:    telemetry.dhtOutbound,
 	})
@@ -125,7 +135,7 @@ func assembleNode(
 		peerMux:    mux,
 		readiness:  newReadinessEndpoint(storage.searchIndex),
 		indexStats: newIndexStatsEndpoint(storage.searchIndex),
-		sweeper:    sweeper,
+		sweeper:    newStorageSweeper(vault, storage),
 		announcer:  exchange.announcer,
 		crawl:      runtime,
 		dht:        dht,

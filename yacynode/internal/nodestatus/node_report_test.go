@@ -25,6 +25,12 @@ func (c stubCounter) RWIURLCount(context.Context, yacymodel.Hash) (int, error) {
 
 func (c stubCounter) Count(context.Context) (int, error) { return c.urls, c.err }
 
+type stubPeers struct {
+	known int
+}
+
+func (p stubPeers) KnownPeerCount(context.Context) int { return p.known }
+
 func testIdentity() nodeidentity.Identity {
 	return nodeidentity.Identity{
 		Hash:        yacymodel.WordHash("self"),
@@ -45,7 +51,7 @@ func reportAt(start time.Time, elapsed time.Duration, rwi, urls stubCounter) nod
 	id := testIdentity()
 	id.Start = start
 
-	return newReport(id, clockAt(start.Add(elapsed)), rwi, urls)
+	return newReport(id, clockAt(start.Add(elapsed)), rwi, urls, stubPeers{known: 4})
 }
 
 func TestSelfSeedRefreshesDynamicFields(t *testing.T) {
@@ -69,6 +75,38 @@ func TestSelfSeedRefreshesDynamicFields(t *testing.T) {
 	}
 	if _, ok := seed.UTC.Get(); !ok {
 		t.Fatal("UTC unset")
+	}
+	if got, _ := seed.KnownSeedCount.Get(); got != 4 {
+		t.Fatalf("KnownSeedCount = %d, want 4", got)
+	}
+	for name, field := range map[string]yacymodel.Optional[int]{
+		yacymodel.SeedNoticedURLCount: seed.NoticedURLCount,
+		yacymodel.SeedOfferedURLCount: seed.OfferedURLCount,
+		yacymodel.SeedConnectsPerHour: seed.ConnectsPerHour,
+		yacymodel.SeedIndexingSpeed:   seed.IndexingSpeed,
+		yacymodel.SeedRequestSpeed:    seed.RequestSpeed,
+		yacymodel.SeedUplinkSpeed:     seed.UplinkSpeed,
+	} {
+		got, ok := field.Get()
+		if !ok || got != 0 {
+			t.Fatalf("%s = %d (set %v), want reported 0", name, got, ok)
+		}
+	}
+}
+
+func TestSelfSeedCarriesPersistentBirthDate(t *testing.T) {
+	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
+	birth := time.Date(2025, time.January, 5, 12, 0, 0, 0, time.UTC)
+	id := testIdentity()
+	id.Start = start
+	id.BirthDate = birth
+	report := newReport(id, clockAt(start), stubCounter{}, stubCounter{}, stubPeers{})
+
+	seed := report.SelfSeed(context.Background())
+
+	got, ok := seed.BirthDate.Get()
+	if !ok || !got.Time().Equal(birth) {
+		t.Fatalf("BirthDate = %v (set %v), want %v", got, ok, birth)
 	}
 }
 
@@ -94,6 +132,9 @@ func TestSelfSeedKeepsIdentityFields(t *testing.T) {
 	host, ok := seed.IP.Get()
 	if !ok || host.String() != "192.0.2.1" {
 		t.Fatalf("IP = %q (set %v), want 192.0.2.1", host, ok)
+	}
+	if _, ok := seed.BirthDate.Get(); ok {
+		t.Fatal("BirthDate set without a persistent identity birth date")
 	}
 }
 
@@ -129,7 +170,7 @@ func TestHeaderReportsVersionAndUptime(t *testing.T) {
 func TestNewReportReturnsRuntimeReport(t *testing.T) {
 	id := testIdentity()
 	id.Start = time.Now().Add(-time.Minute)
-	report := NewReport(id, stubCounter{}, stubCounter{})
+	report := NewReport(id, stubCounter{}, stubCounter{}, stubPeers{})
 
 	if got := report.Version(context.Background()); got != "1.2" {
 		t.Fatalf("Version = %q, want 1.2", got)

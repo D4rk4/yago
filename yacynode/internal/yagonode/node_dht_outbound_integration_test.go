@@ -136,6 +136,7 @@ func startDHTSenderRuntime(
 		nodeIdentity(senderConfig),
 		senderStorage.postings,
 		senderStorage.urlDirectory,
+		fakeRoster{},
 	)
 	process := buildDHTOutboundRuntime(dhtOutboundRuntimeAssembly{
 		ctx:         ctx,
@@ -269,7 +270,7 @@ func startDHTReceiverNode(
 	}
 
 	identity := nodeIdentity(config)
-	report := nodestatus.NewReport(identity, storage.postings, storage.urlDirectory)
+	report := nodestatus.NewReport(identity, storage.postings, storage.urlDirectory, fakeRoster{})
 	guard := httpguard.NewRequestGuard(
 		httpguard.DefaultMaxBodyBytes,
 		httpguard.DefaultRequestTimeout,

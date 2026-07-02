@@ -12,11 +12,12 @@ import (
 const msgCountUnavailable = "count unavailable for self seed"
 
 type nodeReport struct {
-	id   nodeidentity.Identity
-	base yacymodel.Seed
-	now  func() time.Time
-	rwi  RWICounter
-	urls URLCounter
+	id    nodeidentity.Identity
+	base  yacymodel.Seed
+	now   func() time.Time
+	rwi   RWICounter
+	urls  URLCounter
+	peers KnownPeerCounter
 }
 
 func newReport(
@@ -24,13 +25,15 @@ func newReport(
 	now func() time.Time,
 	rwi RWICounter,
 	urls URLCounter,
+	peers KnownPeerCounter,
 ) nodeReport {
 	return nodeReport{
-		id:   id,
-		base: baseSeed(id),
-		now:  now,
-		rwi:  rwi,
-		urls: urls,
+		id:    id,
+		base:  baseSeed(id),
+		now:   now,
+		rwi:   rwi,
+		urls:  urls,
+		peers: peers,
 	}
 }
 
@@ -50,6 +53,13 @@ func (r nodeReport) SelfSeed(ctx context.Context) yacymodel.Seed {
 	seed.LastSeen = yacymodel.Some(yacymodel.NewSeedLastSeenUTC(now))
 	seed.RWICount = yacymodel.Some(countOrZero(ctx, r.rwi.RWICount))
 	seed.URLCount = yacymodel.Some(countOrZero(ctx, r.urls.Count))
+	seed.KnownSeedCount = yacymodel.Some(r.peers.KnownPeerCount(ctx))
+	seed.NoticedURLCount = yacymodel.Some(0)
+	seed.OfferedURLCount = yacymodel.Some(0)
+	seed.ConnectsPerHour = yacymodel.Some(0)
+	seed.IndexingSpeed = yacymodel.Some(0)
+	seed.RequestSpeed = yacymodel.Some(0)
+	seed.UplinkSpeed = yacymodel.Some(0)
 
 	return seed
 }
@@ -65,6 +75,9 @@ func baseSeed(id nodeidentity.Identity) yacymodel.Seed {
 	}
 	if host, err := yacymodel.ParseHost(id.Host); err == nil {
 		seed.IP = yacymodel.Some(host)
+	}
+	if !id.BirthDate.IsZero() {
+		seed.BirthDate = yacymodel.Some(yacymodel.NewSeedBirthDateUTC(id.BirthDate))
 	}
 
 	return seed

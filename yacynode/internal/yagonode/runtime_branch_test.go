@@ -209,11 +209,13 @@ func restoreMainSeams(t *testing.T) {
 func restoreAssemblySeams(t *testing.T) {
 	t.Helper()
 	oldOpenRuntimeNodeStorage := openRuntimeNodeStorage
+	oldOpenRuntimePeerBirthDate := openRuntimePeerBirthDate
 	oldAssembleRuntimePeerExchange := assembleRuntimePeerExchange
 	oldBuildRuntimeDHTOutbound := buildRuntimeDHTOutbound
 	oldBuildRuntimeCrawl := buildRuntimeCrawl
 	t.Cleanup(func() {
 		openRuntimeNodeStorage = oldOpenRuntimeNodeStorage
+		openRuntimePeerBirthDate = oldOpenRuntimePeerBirthDate
 		assembleRuntimePeerExchange = oldAssembleRuntimePeerExchange
 		buildRuntimeDHTOutbound = oldBuildRuntimeDHTOutbound
 		buildRuntimeCrawl = oldBuildRuntimeCrawl
@@ -785,6 +787,7 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 			nodeTelemetry{
 				dhtOutbound: metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
 				dhtInbound:  metrics.NewDHTInboundMetrics(prometheus.NewRegistry()),
+				peer:        metrics.NewPeerMetrics(prometheus.NewRegistry()),
 			},
 		)
 		if !errors.Is(err, sentinel) {
@@ -795,7 +798,7 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 	t.Run("crawl", func(t *testing.T) {
 		restoreAssemblySeams(t)
 		assembleRuntimePeerExchange = func(peerExchange) (peerExchangeRuntime, error) {
-			return peerExchangeRuntime{announcer: fakeAnnouncer{}, roster: fakeRoster{}}, nil
+			return peerExchangeRuntime{announcer: fakeAnnouncer{}}, nil
 		}
 		buildRuntimeCrawl = func(
 			context.Context,
@@ -821,6 +824,27 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 	})
 }
 
+func TestAssembleNodeReturnsPeerBirthDateError(t *testing.T) {
+	sentinel := errors.New("birth date failed")
+	restoreAssemblySeams(t)
+	openRuntimePeerBirthDate = func(context.Context, *vault.Vault, func() time.Time) (time.Time, error) {
+		return time.Time{}, sentinel
+	}
+	_, err := assembleNode(
+		context.Background(),
+		testConfig(t),
+		openTestVault(t),
+		http.DefaultClient,
+		nodeTelemetry{
+			dhtOutbound: metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
+			dhtInbound:  metrics.NewDHTInboundMetrics(prometheus.NewRegistry()),
+		},
+	)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("assemble error = %v, want %v", err, sentinel)
+	}
+}
+
 func TestPeerExchangeReturnsOpenErrors(t *testing.T) {
 	sentinel := errors.New("peer exchange failed")
 
@@ -829,7 +853,16 @@ func TestPeerExchangeReturnsOpenErrors(t *testing.T) {
 		openPeerRoster = func(*vault.Vault, func() time.Time, int, int) (peerroster.Roster, error) {
 			return nil, sentinel
 		}
-		_, err := (peerExchange{vault: openTestVault(t)}).assemble()
+		_, err := assembleNode(
+			context.Background(),
+			testConfig(t),
+			openTestVault(t),
+			http.DefaultClient,
+			nodeTelemetry{
+				dhtOutbound: metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
+				dhtInbound:  metrics.NewDHTInboundMetrics(prometheus.NewRegistry()),
+			},
+		)
 		if !errors.Is(err, sentinel) {
 			t.Fatalf("assemble error = %v, want %v", err, sentinel)
 		}
@@ -837,15 +870,13 @@ func TestPeerExchangeReturnsOpenErrors(t *testing.T) {
 
 	t.Run("mailbox", func(t *testing.T) {
 		restorePeerExchangeSeams(t)
-		openPeerRoster = func(*vault.Vault, func() time.Time, int, int) (peerroster.Roster, error) {
-			return fakeRoster{}, nil
-		}
 		openPeerMailbox = func(*vault.Vault, func() time.Time) (*peermessage.Mailbox, error) {
 			return nil, sentinel
 		}
 		_, err := (peerExchange{
-			vault: openTestVault(t),
-			peer:  metrics.NewPeerMetrics(prometheus.NewRegistry()),
+			vault:  openTestVault(t),
+			peer:   metrics.NewPeerMetrics(prometheus.NewRegistry()),
+			roster: fakeRoster{},
 		}).assemble()
 		if !errors.Is(err, sentinel) {
 			t.Fatalf("assemble error = %v, want %v", err, sentinel)

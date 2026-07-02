@@ -162,7 +162,10 @@ YaCy selects DHT distribution targets by computing the word's YaCy DHT position,
 walking connected peers in YaCy hash order from that position, wrapping at the
 end of the hash ring, and keeping only peers that advertise
 `FLAG_ACCEPT_REMOTE_INDEX`. The distribution path also skips peers younger than
-three days according to their seed `BDate`. The Go selector preserves that
+three days according to their seed `BDate`. The node's own advertised `BDate`
+is stored on first start and survives restarts, so remote YaCy peers judge this
+node's age from its real history when they select it as a distribution target.
+The Go selector preserves that
 target order and eligibility logic for the peer-routing step. The runtime
 defaults to YaCy freeworld senior redundancy `3` and vertical partition exponent
 `4`, and operators can override those network-unit values for private networks.

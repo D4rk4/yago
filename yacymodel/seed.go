@@ -26,6 +26,13 @@ type Seed struct {
 	LastSeen         Optional[SeedLastSeenUTC]
 	RWICount         Optional[int]
 	URLCount         Optional[int]
+	NoticedURLCount  Optional[int]
+	OfferedURLCount  Optional[int]
+	KnownSeedCount   Optional[int]
+	ConnectsPerHour  Optional[int]
+	IndexingSpeed    Optional[int]
+	RequestSpeed     Optional[int]
+	UplinkSpeed      Optional[int]
 	customProperties map[string]string
 }
 
