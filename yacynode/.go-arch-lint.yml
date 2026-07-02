@@ -92,7 +92,6 @@ components:
     in:
       - cmd/yacy-peer-hash/**
       - cmd/yago-node/**
-      - cmd/yacy-rwi-node/**
 
 vendors:
   yacymodel:

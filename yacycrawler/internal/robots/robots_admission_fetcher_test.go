@@ -15,7 +15,7 @@ import (
 	"github.com/D4rk4/yago/yacycrawler/internal/robots"
 )
 
-const testUserAgent = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
+const testUserAgent = "yago-crawler/0.1 (+https://github.com/D4rk4/yago/)"
 
 type pageSourceFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
 

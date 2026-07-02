@@ -41,7 +41,7 @@ const (
 	DefaultHeaderTimeout         = 10 * time.Second
 	DefaultMaxRedirects          = 10
 	DefaultSitemapURLLimit       = 10000
-	DefaultUserAgent             = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
+	DefaultUserAgent             = "yago-crawler/0.1 (+https://github.com/D4rk4/yago/)"
 	DefaultHostCacheSize         = 4096
 )
 

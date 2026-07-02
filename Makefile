@@ -13,7 +13,7 @@ GO_ARCH_LINT := $(TOOLS_BIN)/go-arch-lint
 
 E2E_TIMEOUT ?= 10m
 E2E_NODE_IMAGE ?= yago-node:e2e
-E2E_CRAWLER_IMAGE ?= yacy-rwi-crawler:e2e
+E2E_CRAWLER_IMAGE ?= yago-crawler:e2e
 
 E2E_CONTAINER_CLI := $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
 E2E_RUNTIME_DIR := $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))

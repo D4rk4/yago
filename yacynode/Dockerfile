@@ -31,8 +31,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -o /out/yago-node \
         ./yacynode/cmd/yago-node
 
-RUN cp /out/yago-node /out/yacy-rwi-node
-
 RUN mkdir -p /out/data
 
 FROM gcr.io/distroless/static-debian12:nonroot
@@ -43,7 +41,6 @@ ENV YACY_DATA_DIR=/data \
 
 COPY --from=build --chown=nonroot:nonroot /out/data /data
 COPY --from=build /out/yago-node /usr/local/bin/yago-node
-COPY --from=build /out/yacy-rwi-node /usr/local/bin/yacy-rwi-node
 
 EXPOSE 8090 9090
 
