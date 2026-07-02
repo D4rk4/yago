@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/url"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 type TransferURLRequest struct {

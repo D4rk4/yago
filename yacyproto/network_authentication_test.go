@@ -3,7 +3,7 @@ package yacyproto_test
 import (
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 func TestNetworkUnitDefaultsToFreeworld(t *testing.T) {

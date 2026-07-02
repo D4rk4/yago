@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 type engine struct {
@@ -16,13 +16,10 @@ type engine struct {
 }
 
 func Open(quotaBytes int64) (*vault.Vault, error) {
-	vaulted, err := vault.New(&engine{
+	vaulted, _ := vault.New(&engine{
 		buckets:    map[vault.Name]map[string][]byte{},
 		quotaBytes: quotaBytes,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("initialize storage: %w", err)
-	}
 
 	return vaulted, nil
 }

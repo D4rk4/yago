@@ -4,12 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
 func TestSeedlistsFetchAllURLsAndSkipFailures(t *testing.T) {
 	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(seedlistLine(t, "AAAAAAAAAAAA", "203.0.113.1")))
+		_, _ = strings.NewReader(seedlistLine(t, "AAAAAAAAAAAA", "203.0.113.1")).WriteTo(w)
 	}))
 	defer good.Close()
 	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

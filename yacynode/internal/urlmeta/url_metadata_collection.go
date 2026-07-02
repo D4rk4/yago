@@ -3,8 +3,8 @@ package urlmeta
 import (
 	"fmt"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 const bucketName vault.Name = "urlmeta"
@@ -12,12 +12,7 @@ const bucketName vault.Name = "urlmeta"
 type uriMetadataCodec struct{}
 
 func (uriMetadataCodec) Encode(row yacymodel.URIMetadataRow) ([]byte, error) {
-	raw, err := encodeStoredURLMetadata(row)
-	if err != nil {
-		return nil, fmt.Errorf("encode url metadata: %w", err)
-	}
-
-	return raw, nil
+	return encodeStoredURLMetadata(row), nil
 }
 
 func (uriMetadataCodec) Decode(raw []byte) (yacymodel.URIMetadataRow, error) {

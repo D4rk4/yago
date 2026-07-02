@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
+	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
 )
 
 const botWallScanLimit = 64 << 10

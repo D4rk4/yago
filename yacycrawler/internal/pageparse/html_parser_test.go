@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageparse"
 )
 
 const sampleHTML = `<!DOCTYPE html>
@@ -76,5 +76,29 @@ func TestParseHTMLTranscodesCharset(t *testing.T) {
 
 	if !strings.Contains(page.Text, "café") {
 		t.Errorf("expected transcoded 'café', got %q", page.Text)
+	}
+}
+
+func TestParseHTMLFallsBackOnBadCharset(t *testing.T) {
+	page := pageparse.ParseHTML(
+		"http://example.com/",
+		"text/html; charset=does-not-exist",
+		[]byte("<html><body>fallback text</body></html>"),
+	)
+
+	if !strings.Contains(page.Text, "fallback text") {
+		t.Fatalf("fallback text missing: %q", page.Text)
+	}
+}
+
+func TestParseHTMLUsesDOMTextWhenMainContentIsEmpty(t *testing.T) {
+	page := pageparse.ParseHTML(
+		"http://example.com/",
+		"text/html",
+		[]byte("<html><body><button>Login</button><span>Menu</span></body></html>"),
+	)
+
+	if !strings.Contains(page.Text, "LoginMenu") {
+		t.Fatalf("DOM fallback text missing: %q", page.Text)
 	}
 }

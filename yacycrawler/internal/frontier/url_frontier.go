@@ -8,11 +8,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawladmission"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlrun"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/weburl"
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawladmission"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawljob"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawlrun"
+	"github.com/D4rk4/yago/yacycrawler/internal/weburl"
 )
 
 const (

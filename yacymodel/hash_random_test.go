@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 func TestGenerateHashIsValidAndDeterministicPerEntropy(t *testing.T) {

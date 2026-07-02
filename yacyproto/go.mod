@@ -1,7 +1,7 @@
-module github.com/nikitakarpei/yacy-rwi-node/yacyproto
+module github.com/D4rk4/yago/yacyproto
 
 go 1.26
 
-require github.com/nikitakarpei/yacy-rwi-node/yacymodel v0.0.0
+require github.com/D4rk4/yago/yacymodel v0.0.0
 
-replace github.com/nikitakarpei/yacy-rwi-node/yacymodel => ../yacymodel
+replace github.com/D4rk4/yago/yacymodel => ../yacymodel

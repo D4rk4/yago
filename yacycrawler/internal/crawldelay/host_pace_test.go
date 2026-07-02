@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawldelay"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawldelay"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawljob"
 )
 
 func jobFor(url string) crawljob.CrawlJob {
@@ -45,5 +45,11 @@ func TestHostPaceIndependentHosts(t *testing.T) {
 	pace.Visited(jobFor("https://a.example/x"), now)
 	if due := pace.DueAt(jobFor("https://b.example/x"), now); !due.Equal(now) {
 		t.Errorf("other host due = %v, want %v", due, now)
+	}
+}
+
+func TestNewHostPaceRejectsInvalidCacheSize(t *testing.T) {
+	if _, err := crawldelay.NewHostPace(time.Second, 0); err == nil {
+		t.Fatal("zero host cache size should fail")
 	}
 }

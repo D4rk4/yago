@@ -2,6 +2,7 @@ package yacymodel
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -40,6 +41,16 @@ func TestWordHash(t *testing.T) {
 	}
 	if WordHash("hello") == WordHash("world") {
 		t.Error("distinct words must hash distinctly")
+	}
+}
+
+func TestAvoidReservedWordHash(t *testing.T) {
+	high := string(Alphabet[len(Alphabet)-1])
+	low := string(Alphabet[0])
+	h := []byte(strings.Repeat(high, 5) + "BCDEFG0")
+	avoidReservedWordHash(h)
+	if string(h) != strings.Repeat(high, 4)+"BCDEFG0"+low {
+		t.Fatalf("reserved word hash correction = %q", h)
 	}
 }
 

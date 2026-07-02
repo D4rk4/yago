@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 const freshnessHashSeparator = 0x00

@@ -10,12 +10,16 @@ import (
 	"golang.org/x/net/html/charset"
 )
 
+var newHTMLCharsetReader = charset.NewReader
+
+var parseHTMLDocument = html.Parse
+
 func ParseHTML(rawURL, contentType string, body []byte) ParsedPage {
-	reader, err := charset.NewReader(bytes.NewReader(body), contentType)
+	reader, err := newHTMLCharsetReader(bytes.NewReader(body), contentType)
 	if err != nil {
 		reader = bytes.NewReader(body)
 	}
-	root, err := html.Parse(reader)
+	root, err := parseHTMLDocument(reader)
 	if err != nil {
 		return ParsedPage{URL: rawURL}
 	}
@@ -32,8 +36,6 @@ func selectText(contentType string, body []byte, fallback string) string {
 	if main, err := extractMainContent(contentType, body); err == nil && main != "" {
 		return main
 	}
-	// Trafilatura yields no main content on non-article pages (listings, search
-	// results); the full DOM-text walk is this indexer's coverage path for them.
 	return collapseSpaces(fallback)
 }
 

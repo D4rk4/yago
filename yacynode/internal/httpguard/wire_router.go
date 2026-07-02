@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 type WireRouter struct {

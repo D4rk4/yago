@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
+	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
 )
 
 type pageSourceFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)

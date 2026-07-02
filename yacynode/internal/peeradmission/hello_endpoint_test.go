@@ -2,11 +2,18 @@ package peeradmission
 
 import (
 	"context"
+	"errors"
+	"io"
+	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"testing"
+	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/httpguard"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 type stubProbe struct {
@@ -188,5 +195,67 @@ func TestHelloCountZeroReturnsAllKnownPeers(t *testing.T) {
 	}
 	if got := len(resp.Seeds); got != 3 {
 		t.Fatalf("Seeds = %d, want 3 (self + two known)", got)
+	}
+}
+
+func TestShuffleKnownPeersReturnsOnRandomError(t *testing.T) {
+	saved := randomPeerIndex
+	t.Cleanup(func() { randomPeerIndex = saved })
+	randomPeerIndex = func(io.Reader, *big.Int) (*big.Int, error) {
+		return nil, errors.New("entropy failed")
+	}
+	peers := []yacymodel.Seed{
+		callerSeed(t, "a", "203.0.113.1", 8090),
+		callerSeed(t, "b", "203.0.113.2", 8090),
+	}
+
+	shuffleKnownPeers(peers)
+
+	if peers[0].Hash != hashFor("a") || peers[1].Hash != hashFor("b") {
+		t.Fatalf("peers were shuffled despite entropy error: %#v", peers)
+	}
+}
+
+type helloWireStatus struct{}
+
+func (helloWireStatus) Version(context.Context) string { return "1.940" }
+func (helloWireStatus) Uptime(context.Context) int     { return 42 }
+
+func helloGate() httpguard.WireGate {
+	return httpguard.WireGate{
+		Guard:   httpguard.NewRequestGuard(4096, time.Second),
+		Respond: httpguard.NewWireResponder(helloWireStatus{}),
+		Address: httpguard.NewClientAddressResolver(nil),
+	}
+}
+
+func TestMountHelloServesRoute(t *testing.T) {
+	mux := http.NewServeMux()
+	identity := localPeer()
+	status := selfStatus(t)
+	MountHello(
+		httpguard.NewWireRouter(mux, helloGate()),
+		identity,
+		status,
+		&stubReachability{},
+		http.DefaultClient,
+	)
+	req := yacyproto.HelloRequest{
+		NetworkName: "otherworld",
+		Seed:        callerSeed(t, "caller", "10.0.0.1", 8090),
+		Iam:         hashFor("caller"),
+	}
+
+	rec := httptest.NewRecorder()
+	httpReq := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		yacyproto.PathHello+"?"+req.Form().Encode(),
+		nil,
+	)
+	mux.ServeHTTP(rec, httpReq)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
 }

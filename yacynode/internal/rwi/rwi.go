@@ -9,12 +9,12 @@ package rwi
 import (
 	"context"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/httpguard"
+	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 type PostingObserver interface {

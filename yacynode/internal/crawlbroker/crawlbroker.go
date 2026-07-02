@@ -11,7 +11,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawlcontract"
 )
 
 type Config struct {
@@ -28,30 +28,38 @@ type CrawlBroker struct {
 	Ingest *IngestReceiver
 }
 
+var (
+	connectNATS        = nats.Connect
+	closeNATS          = func(conn *nats.Conn) { conn.Close() }
+	newJetStream       = jetstream.New
+	ensureCrawlStreams = yacycrawlcontract.EnsureStreams
+	openIngestReceiver = newIngestReceiver
+)
+
 func Open(ctx context.Context, cfg Config) (*CrawlBroker, error) {
-	conn, err := nats.Connect(cfg.NATSURL)
+	conn, err := connectNATS(cfg.NATSURL)
 	if err != nil {
 		return nil, fmt.Errorf("connect nats: %w", err)
 	}
 
-	js, err := jetstream.New(conn)
+	js, err := newJetStream(conn)
 	if err != nil {
-		conn.Close()
+		closeNATS(conn)
 		return nil, fmt.Errorf("init jetstream: %w", err)
 	}
 
-	if err := yacycrawlcontract.EnsureStreams(ctx, js, yacycrawlcontract.StreamSpec{
+	if err := ensureCrawlStreams(ctx, js, yacycrawlcontract.StreamSpec{
 		OrdersSubject: cfg.OrdersSubject,
 		IngestSubject: cfg.IngestSubject,
 		IngestMaxMsgs: cfg.IngestMaxMsgs,
 	}); err != nil {
-		conn.Close()
+		closeNATS(conn)
 		return nil, fmt.Errorf("ensure streams: %w", err)
 	}
 
-	ingest, err := newIngestReceiver(ctx, js, cfg.IngestDurable, cfg.IngestSubject)
+	ingest, err := openIngestReceiver(ctx, js, cfg.IngestDurable, cfg.IngestSubject)
 	if err != nil {
-		conn.Close()
+		closeNATS(conn)
 		return nil, err
 	}
 
@@ -63,5 +71,5 @@ func Open(ctx context.Context, cfg Config) (*CrawlBroker, error) {
 }
 
 func (b *CrawlBroker) Close() {
-	b.conn.Close()
+	closeNATS(b.conn)
 }

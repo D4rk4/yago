@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 func appearanceWithContentKind(kind byte) termAppearance {

@@ -6,7 +6,7 @@ package metrics
 import (
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/eviction"
+	"github.com/D4rk4/yago/yacynode/internal/eviction"
 )
 
 type EvictionMetrics struct {

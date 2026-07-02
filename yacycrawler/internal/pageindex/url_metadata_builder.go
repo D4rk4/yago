@@ -1,12 +1,11 @@
 package pageindex
 
 import (
-	"fmt"
 	"strconv"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageparse"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 const shortDayFormat = "20060102"
@@ -15,15 +14,12 @@ func BuildMetadata(
 	page pageparse.ParsedPage,
 	stats pageparse.PageStats,
 	loadedAt time.Time,
-) (yacymodel.URIMetadataRow, error) {
+) yacymodel.URIMetadataRow {
 	day := loadedAt.UTC().Format(shortDayFormat)
-	urlHash, err := yacymodel.HashURL(page.URL)
-	if err != nil {
-		return yacymodel.URIMetadataRow{}, fmt.Errorf("hash url: %w", err)
-	}
+	urlHash, _ := yacymodel.HashURL(page.URL)
 	properties := map[string]string{
 		yacymodel.URLMetaHash: urlHash.String(),
-		"url":                 yacymodel.EncodeBase64WireForm(page.URL),
+		yacymodel.URLMetaURL:  yacymodel.EncodeBase64WireForm(page.URL),
 		"descr":               yacymodel.EncodeBase64WireForm(page.Title),
 		"dt":                  "t",
 		"lang":                NormalizeLanguage(page.Language),
@@ -35,5 +31,5 @@ func BuildMetadata(
 		"llocal":              strconv.Itoa(len(stats.LocalLinks)),
 		"lother":              strconv.Itoa(len(stats.ExternalLinks)),
 	}
-	return yacymodel.URIMetadataRow{Properties: properties}, nil
+	return yacymodel.URIMetadataRow{Properties: properties}
 }

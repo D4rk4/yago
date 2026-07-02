@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 const transferYaCyAlias = "yacy-tr-e2e"

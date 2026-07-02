@@ -4,7 +4,7 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 type matchedDocument struct {

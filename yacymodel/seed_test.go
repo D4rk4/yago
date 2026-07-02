@@ -62,6 +62,31 @@ func TestSeedDomainFieldsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSeedOperationalFieldsRoundTrip(t *testing.T) {
+	seed, err := ParseSeed(
+		t.Context(),
+		"{Hash=ABCDEFGHIJKL,PortSSL=8443,Uptime=12,ICount=34,LCount=56}",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port, ok := seed.PortSSL.Get(); !ok || port.String() != "8443" {
+		t.Fatalf("PortSSL = %q, %v", port, ok)
+	}
+	if uptime, ok := seed.Uptime.Get(); !ok || uptime != 12 {
+		t.Fatalf("Uptime = %d, %v", uptime, ok)
+	}
+	if count, ok := seed.RWICount.Get(); !ok || count != 34 {
+		t.Fatalf("ICount = %d, %v", count, ok)
+	}
+	if count, ok := seed.URLCount.Get(); !ok || count != 56 {
+		t.Fatalf("LCount = %d, %v", count, ok)
+	}
+	if got := seed.String(); got != "{Hash=ABCDEFGHIJKL,ICount=34,LCount=56,PortSSL=8443,Uptime=12}" {
+		t.Fatalf("seed string = %q", got)
+	}
+}
+
 func TestParseSeedRejectsBadUTCOffset(t *testing.T) {
 	if _, err := ParseSeed(t.Context(), "Hash=ABCDEFGHIJKL,UTC=0200"); !errors.Is(err, ErrBadSeed) {
 		t.Fatalf("ParseSeed bad utc = %v, want ErrBadSeed", err)
@@ -133,6 +158,34 @@ func TestSeedCustomPropertiesRoundTrip(t *testing.T) {
 	}
 	if got := seed.customProperties["Tags"]; got != "foo|bar" {
 		t.Fatalf("Tags = %q", got)
+	}
+}
+
+func TestSeedPropertiesIncludeCoreAndCustomValues(t *testing.T) {
+	seed, err := ParseSeed(
+		t.Context(),
+		"{Hash=ABCDEFGHIJKL,IP=192.0.2.1,Port=8090,Country=DE}",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	props := seed.Properties()
+	if got := props[SeedHash]; got != "ABCDEFGHIJKL" {
+		t.Fatalf("Hash = %q", got)
+	}
+	if got := props[SeedIP]; got != "192.0.2.1" {
+		t.Fatalf("IP = %q", got)
+	}
+	if got := props[SeedPort]; got != "8090" {
+		t.Fatalf("Port = %q", got)
+	}
+	if got := props["Country"]; got != "DE" {
+		t.Fatalf("Country = %q", got)
+	}
+	props[SeedHash] = "changed"
+	if seed.Hash != "ABCDEFGHIJKL" {
+		t.Fatalf("seed Hash changed to %q", seed.Hash)
 	}
 }
 

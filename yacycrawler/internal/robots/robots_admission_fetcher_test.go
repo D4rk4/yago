@@ -3,14 +3,16 @@ package robots_test
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/robots"
+	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
+	"github.com/D4rk4/yago/yacycrawler/internal/robots"
 )
 
 const testUserAgent = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
@@ -19,6 +21,25 @@ type pageSourceFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, erro
 
 func (f pageSourceFunc) Fetch(ctx context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
 	return f(ctx, target)
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+type readCloserFunc struct {
+	read  func([]byte) (int, error)
+	close func() error
+}
+
+func (b readCloserFunc) Read(p []byte) (int, error) {
+	return b.read(p)
+}
+
+func (b readCloserFunc) Close() error {
+	return b.close()
 }
 
 func deliveringSource() pageSourceFunc {
@@ -43,7 +64,7 @@ func robotsServer(t *testing.T, rule string, robotsHits *int32) *httptest.Server
 			if robotsHits != nil {
 				atomic.AddInt32(robotsHits, 1)
 			}
-			if _, err := w.Write([]byte(rule)); err != nil {
+			if _, err := strings.NewReader(rule).WriteTo(w); err != nil {
 				t.Errorf("write robots: %v", err)
 			}
 			return
@@ -115,6 +136,107 @@ func TestRobotsAdmissionAllowsOnFetchFailure(t *testing.T) {
 		mustParse(t, "http://127.0.0.1:0/page"),
 	); err != nil {
 		t.Errorf("unreachable robots should allow, got %v", err)
+	}
+}
+
+func TestNewRobotsAdmissionFetcherRejectsInvalidCacheSize(t *testing.T) {
+	if _, err := robots.NewRobotsAdmissionFetcher(
+		deliveringSource(),
+		http.DefaultClient,
+		testUserAgent,
+		0,
+	); err == nil {
+		t.Fatal("expected error for zero cache size")
+	}
+}
+
+func TestRobotsAdmissionPropagatesInnerFetchError(t *testing.T) {
+	server := robotsServer(t, "User-agent: *\nAllow: /\n", nil)
+	defer server.Close()
+	sentinel := errors.New("origin down")
+	fetcher := newFetcher(t, pageSourceFunc(
+		func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			return pagefetch.FetchedPage{}, sentinel
+		},
+	), server.Client(), 8)
+
+	_, err := fetcher.Fetch(context.Background(), mustParse(t, server.URL+"/public"))
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("Fetch error = %v, want %v", err, sentinel)
+	}
+}
+
+func TestRobotsAdmissionAllowsOnBadRobotsRequestURL(t *testing.T) {
+	fetcher := newFetcher(t, deliveringSource(), http.DefaultClient, 8)
+
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		&url.URL{Scheme: "http", Host: "bad host", Path: "/page"},
+	); err != nil {
+		t.Fatalf("bad robots request URL should fail open, got %v", err)
+	}
+}
+
+func TestRobotsAdmissionAllowsOnRobotsReadError(t *testing.T) {
+	sentinel := errors.New("read failed")
+	client := &http.Client{Transport: roundTripFunc(
+		func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: readCloserFunc{
+					read:  func([]byte) (int, error) { return 0, sentinel },
+					close: func() error { return nil },
+				},
+			}, nil
+		},
+	)}
+	fetcher := newFetcher(t, deliveringSource(), client, 8)
+
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		mustParse(t, "http://example.com/page"),
+	); err != nil {
+		t.Fatalf("robots read error should fail open, got %v", err)
+	}
+}
+
+func TestRobotsAdmissionAllowsOnUnexpectedRobotsStatus(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(
+		func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusFound,
+				Body:       io.NopCloser(strings.NewReader("redirect")),
+			}, nil
+		},
+	)}
+	fetcher := newFetcher(t, deliveringSource(), client, 8)
+
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		mustParse(t, "http://example.com/page"),
+	); err != nil {
+		t.Fatalf("unexpected robots status should fail open, got %v", err)
+	}
+}
+
+func TestRobotsAdmissionLogsBodyCloseErrorAndUsesRules(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(
+		func(*http.Request) (*http.Response, error) {
+			reader := strings.NewReader("User-agent: *\nDisallow: /private\n")
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: readCloserFunc{
+					read:  reader.Read,
+					close: func() error { return errors.New("close failed") },
+				},
+			}, nil
+		},
+	)}
+	fetcher := newFetcher(t, deliveringSource(), client, 8)
+
+	_, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/private"))
+	if !errors.Is(err, pagefetch.ErrPageRejected) {
+		t.Fatalf("Fetch error = %v, want ErrPageRejected", err)
 	}
 }
 

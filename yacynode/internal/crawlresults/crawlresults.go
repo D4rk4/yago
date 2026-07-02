@@ -7,9 +7,9 @@ package crawlresults
 import (
 	"context"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacynode/internal/rwi"
+	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 )
 
 type IngestDelivery struct {

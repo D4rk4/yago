@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
 )
 
 type stubCounter struct {
@@ -119,5 +119,15 @@ func TestHeaderReportsVersionAndUptime(t *testing.T) {
 	}
 	if got := report.Uptime(ctx); got != 45 {
 		t.Fatalf("Uptime = %d, want 45", got)
+	}
+}
+
+func TestNewReportReturnsRuntimeReport(t *testing.T) {
+	id := testIdentity()
+	id.Start = time.Now().Add(-time.Minute)
+	report := NewReport(id, stubCounter{}, stubCounter{})
+
+	if got := report.Version(context.Background()); got != "1.2" {
+		t.Fatalf("Version = %q, want 1.2", got)
 	}
 }

@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlrun"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawlrun"
 )
 
 func TestRunFinishFiresWhenLastJobSettles(t *testing.T) {

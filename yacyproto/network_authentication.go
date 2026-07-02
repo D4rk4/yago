@@ -1,8 +1,7 @@
 package yacyproto
 
 import (
-	"crypto/md5"
-	"encoding/hex"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 const DefaultNetwork = "freeworld"
@@ -16,7 +15,5 @@ func NetworkUnit(name string) string {
 }
 
 func MagicMD5(key, iam, essentials string) string {
-	sum := md5.Sum([]byte(key + iam + essentials))
-
-	return hex.EncodeToString(sum[:])
+	return yacymodel.YaCyHashHex(key + iam + essentials)
 }

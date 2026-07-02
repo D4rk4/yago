@@ -1,6 +1,6 @@
 package documentsearch
 
-import "github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+import "github.com/D4rk4/yago/yacyproto"
 
 type ignoredOption struct {
 	name    string

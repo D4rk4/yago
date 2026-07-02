@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 const storedURLMetadataFormatV1 byte = 0x01
@@ -15,20 +15,13 @@ const storedURLMetadataFormatV1 byte = 0x01
 //go:embed url_metadata_dictionary.bin
 var urlMetadataDictionary []byte
 
-func encodeStoredURLMetadata(row yacymodel.URIMetadataRow) ([]byte, error) {
+func encodeStoredURLMetadata(row yacymodel.URIMetadataRow) []byte {
 	var buf bytes.Buffer
 	buf.WriteByte(storedURLMetadataFormatV1)
-	writer, err := flate.NewWriterDict(&buf, flate.BestCompression, urlMetadataDictionary)
-	if err != nil {
-		return nil, fmt.Errorf("%w: new flate writer: %w", yacymodel.ErrBadURLMetadata, err)
-	}
-	if _, err := writer.Write([]byte(row.String())); err != nil {
-		return nil, fmt.Errorf("%w: flate write: %w", yacymodel.ErrBadURLMetadata, err)
-	}
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("%w: flate close: %w", yacymodel.ErrBadURLMetadata, err)
-	}
-	return buf.Bytes(), nil
+	writer, _ := flate.NewWriterDict(&buf, flate.BestCompression, urlMetadataDictionary)
+	_, _ = writer.Write([]byte(row.String()))
+	_ = writer.Close()
+	return buf.Bytes()
 }
 
 func decodeStoredURLMetadata(data []byte) (yacymodel.URIMetadataRow, error) {

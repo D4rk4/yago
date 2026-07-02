@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/boundedqueue"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlorder"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawler/internal/boundedqueue"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawlorder"
+	"github.com/D4rk4/yago/yacycrawler/internal/frontier"
 )
 
 func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
@@ -93,5 +93,44 @@ func TestConsumerTermsUncompilableProfile(t *testing.T) {
 	case <-termed:
 	case <-time.After(3 * time.Second):
 		t.Fatal("uncompilable profile was not termed")
+	}
+}
+
+func TestConsumerRunReturnsWhenContextIsCanceled(t *testing.T) {
+	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](1)
+	f := frontier.NewFrontier(1, nil)
+	consumer := crawlorder.NewCrawlOrderConsumer(queue, f)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		consumer.Run(ctx)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("consumer did not return after context cancellation")
+	}
+}
+
+func TestConsumerRunReturnsWhenOrdersClose(t *testing.T) {
+	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](1)
+	f := frontier.NewFrontier(1, nil)
+	consumer := crawlorder.NewCrawlOrderConsumer(queue, f)
+	queue.Close()
+
+	done := make(chan struct{})
+	go func() {
+		consumer.Run(context.Background())
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("consumer did not return after order receiver closed")
 	}
 }

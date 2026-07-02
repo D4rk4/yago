@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageindex"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageparse"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 func TestBuildMetadataRoundTrips(t *testing.T) {
@@ -18,10 +18,7 @@ func TestBuildMetadataRoundTrips(t *testing.T) {
 		Links:    []string{"http://example.com/a", "http://other.com/b"},
 	}
 	loadedAt := time.Date(2026, 6, 19, 12, 0, 0, 0, time.UTC)
-	row, err := pageindex.BuildMetadata(page, pageparse.BuildPageStats(page), loadedAt)
-	if err != nil {
-		t.Fatalf("BuildMetadata: %v", err)
-	}
+	row := pageindex.BuildMetadata(page, pageparse.BuildPageStats(page), loadedAt)
 
 	parsed, err := yacymodel.ParseURIMetadataRow(row.String())
 	if err != nil {

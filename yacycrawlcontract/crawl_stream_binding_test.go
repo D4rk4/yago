@@ -9,7 +9,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawlcontract"
 )
 
 func TestEnsureStreamsCreatesBoundedStreams(t *testing.T) {
@@ -80,6 +80,19 @@ func TestEnsureStreamsReportsBrokerFailure(t *testing.T) {
 	}
 	if err := yacycrawlcontract.EnsureStreams(context.Background(), js, spec); err == nil {
 		t.Fatal("ensure streams on closed connection should fail")
+	}
+}
+
+func TestEnsureStreamsReportsIngestStreamFailure(t *testing.T) {
+	js := connectJetStream(t, startNATS(t))
+
+	spec := yacycrawlcontract.StreamSpec{
+		OrdersSubject: "yacy.crawl.orders",
+		IngestSubject: "",
+		IngestMaxMsgs: 8,
+	}
+	if err := yacycrawlcontract.EnsureStreams(context.Background(), js, spec); err == nil {
+		t.Fatal("invalid ingest stream subject should fail")
 	}
 }
 

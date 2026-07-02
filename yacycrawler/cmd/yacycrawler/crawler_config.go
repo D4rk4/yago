@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawldelay"
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawldelay"
 )
 
 const (

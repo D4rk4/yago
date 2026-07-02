@@ -8,23 +8,35 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/chromedpfetch"
+	"github.com/D4rk4/yago/yacycrawler/internal/chromedpfetch"
 )
 
+var exitProcess = os.Exit
+
+var loadCrawlerServiceConfig = LoadServiceConfig
+
+var notifyProcessContext = signal.NotifyContext
+
+var runConfiguredCrawler = run
+
+var newCrawlerBrowserFetcher = chromedpfetch.NewBrowserPageFetcher
+
+var runCrawlerService = RunService
+
 func main() {
-	os.Exit(start())
+	exitProcess(start())
 }
 
 func start() int {
-	cfg, err := LoadServiceConfig(os.Getenv)
+	cfg, err := loadCrawlerServiceConfig(os.Getenv)
 	if err != nil {
 		slog.ErrorContext(context.Background(), "crawler config invalid", slog.Any("error", err))
 		return 2
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := notifyProcessContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := run(ctx, cfg); err != nil {
+	if err := runConfiguredCrawler(ctx, cfg); err != nil {
 		slog.ErrorContext(ctx, "crawler failed", slog.Any("error", err))
 		return 1
 	}
@@ -33,7 +45,7 @@ func start() int {
 
 func run(ctx context.Context, cfg ServiceConfig) error {
 	crawl := cfg.Crawl
-	fetcher, closeBrowser := chromedpfetch.NewBrowserPageFetcher(
+	fetcher, closeBrowser := newCrawlerBrowserFetcher(
 		crawl.UserAgent,
 		cfg.ProxyURL.String(),
 		crawl.RequestTimeout,
@@ -41,7 +53,7 @@ func run(ctx context.Context, cfg ServiceConfig) error {
 	)
 	defer closeBrowser()
 
-	if err := RunService(ctx, cfg, fetcher); err != nil {
+	if err := runCrawlerService(ctx, cfg, fetcher); err != nil {
 		return fmt.Errorf("run crawler service: %w", err)
 	}
 	return nil

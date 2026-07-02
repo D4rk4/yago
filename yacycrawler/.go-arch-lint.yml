@@ -44,12 +44,12 @@ components:
 vendors:
   yacymodel:
     in:
-      - github.com/nikitakarpei/yacy-rwi-node/yacymodel
-      - github.com/nikitakarpei/yacy-rwi-node/yacymodel/**
+      - github.com/D4rk4/yago/yacymodel
+      - github.com/D4rk4/yago/yacymodel/**
   yacycrawlcontract:
     in:
-      - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract
-      - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract/**
+      - github.com/D4rk4/yago/yacycrawlcontract
+      - github.com/D4rk4/yago/yacycrawlcontract/**
   xnet-html:
     in:
       - golang.org/x/net/html

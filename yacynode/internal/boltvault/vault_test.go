@@ -7,9 +7,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vaulttest"
+	"github.com/D4rk4/yago/yacynode/internal/boltvault"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacynode/internal/vaulttest"
 )
 
 type stringCodec struct{}

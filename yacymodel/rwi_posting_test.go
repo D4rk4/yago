@@ -56,10 +56,22 @@ func TestParseRWIPostingErrors(t *testing.T) {
 		"ABCDEFGHIJKLnobraces",
 		"short{h=MNOPQRSTUVWX}",
 		"ABCDEFGHIJKL{h=MNOPQRSTUVWX,badtoken}",
+		"ABCDEFGHIJKL{h=MNOPQRSTUVWX,z===}",
+		"ABCDEFGHIJKL{h=short}",
 	}
 	for _, c := range cases {
 		if _, err := ParseRWIPosting(c); !errors.Is(err, ErrBadRWIPosting) {
 			t.Errorf("ParseRWIPosting(%q) = %v, want ErrBadRWIPosting", c, err)
 		}
+	}
+}
+
+func TestParseRWIPostingSkipsEmptyPropertyTokens(t *testing.T) {
+	entry, err := ParseRWIPosting("ABCDEFGHIJKL{h=MNOPQRSTUVWX,}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := entry.Properties[ColURLHash]; got != "MNOPQRSTUVWX" {
+		t.Fatalf("url hash property = %q", got)
 	}
 }

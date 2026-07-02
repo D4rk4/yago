@@ -8,7 +8,7 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawlcontract"
 )
 
 type IngestBatch = yacycrawlcontract.IngestBatch
@@ -28,10 +28,7 @@ func NewNATSIngestPublisher(js jetstream.JetStream, subject string) *NATSIngestP
 }
 
 func (p *NATSIngestPublisher) Publish(ctx context.Context, batch IngestBatch) error {
-	data, err := yacycrawlcontract.MarshalIngestBatch(batch)
-	if err != nil {
-		return fmt.Errorf("encode ingest batch %s: %w", batch.SourceURL, err)
-	}
+	data, _ := yacycrawlcontract.MarshalIngestBatch(batch)
 	for {
 		if _, err := p.js.Publish(ctx, p.subject, data); err == nil {
 			return nil

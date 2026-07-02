@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawlcontract"
 )
 
 func TestCrawlerIsOrderDrivenEndToEnd(t *testing.T) {

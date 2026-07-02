@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 const greetMaxBodyBytes int64 = 256 << 10
@@ -27,6 +27,11 @@ type httpPeerGreeter struct {
 	client      *http.Client
 	networkName string
 }
+
+var (
+	newGreetRequest   = http.NewRequestWithContext
+	parseGreetMessage = yacymodel.ParseMessage
+)
 
 func newHTTPPeerGreeter(client *http.Client, networkName string) httpPeerGreeter {
 	return httpPeerGreeter{client: client, networkName: networkName}
@@ -50,7 +55,7 @@ func (g httpPeerGreeter) Greet(
 		Iam:         self.Hash,
 	}
 
-	req, err := http.NewRequestWithContext(
+	req, err := newGreetRequest(
 		ctx,
 		http.MethodPost,
 		target.String(),
@@ -80,7 +85,7 @@ func parseGreetResponse(ctx context.Context, body io.Reader) (greetResult, error
 		return greetResult{}, fmt.Errorf("%w: %w", errGreetFailed, err)
 	}
 
-	msg, err := yacymodel.ParseMessage(string(raw))
+	msg, err := parseGreetMessage(string(raw))
 	if err != nil {
 		return greetResult{}, fmt.Errorf("%w: %w", errGreetFailed, err)
 	}

@@ -1,6 +1,6 @@
 package yacyproto
 
-import "github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+import "github.com/D4rk4/yago/yacymodel"
 
 type ResponseHeader struct {
 	Version string

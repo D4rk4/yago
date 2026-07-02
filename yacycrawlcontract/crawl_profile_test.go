@@ -3,8 +3,8 @@ package yacycrawlcontract_test
 import (
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 func baseProfile() yacycrawlcontract.CrawlProfile {

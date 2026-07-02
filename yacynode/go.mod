@@ -1,13 +1,13 @@
-module github.com/nikitakarpei/yacy-rwi-node/yacynode
+module github.com/D4rk4/yago/yacynode
 
 go 1.26
 
 require (
+	github.com/D4rk4/yago/yacycrawlcontract v0.0.0
+	github.com/D4rk4/yago/yacymodel v0.0.0
+	github.com/D4rk4/yago/yacyproto v0.0.0
 	github.com/nats-io/nats-server/v2 v2.14.2
 	github.com/nats-io/nats.go v1.52.0
-	github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract v0.0.0
-	github.com/nikitakarpei/yacy-rwi-node/yacymodel v0.0.0
-	github.com/nikitakarpei/yacy-rwi-node/yacyproto v0.0.0
 	github.com/prometheus/client_golang v1.20.5
 	go.etcd.io/bbolt v1.4.3
 )
@@ -27,14 +27,15 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.55.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
-	golang.org/x/crypto v0.52.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 )
 
-replace github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract => ../yacycrawlcontract
+replace github.com/D4rk4/yago/yacycrawlcontract => ../yacycrawlcontract
 
-replace github.com/nikitakarpei/yacy-rwi-node/yacymodel => ../yacymodel
+replace github.com/D4rk4/yago/yacymodel => ../yacymodel
 
-replace github.com/nikitakarpei/yacy-rwi-node/yacyproto => ../yacyproto
+replace github.com/D4rk4/yago/yacyproto => ../yacyproto

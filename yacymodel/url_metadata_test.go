@@ -69,9 +69,12 @@ func TestParseURIMetadataRowErrors(t *testing.T) {
 	for _, bad := range []string{
 		"",
 		"hash=MNOPQRSTUVWX",
+		"{}",
 		"{=novalue}",
 		"{hash=MNOPQRSTUVWX,badtoken}",
 		"{hash=short}",
+		"{h=short}",
+		"{hash=MNOPQRSTUVWX,referrer=short}",
 		"{hash=MNOPQRSTUVWX,flags=!}",
 		"{hash=MNOPQRSTUVWX,dt=}",
 		"{hash=MNOPQRSTUVWX,size=bad}",
@@ -79,6 +82,16 @@ func TestParseURIMetadataRowErrors(t *testing.T) {
 		if _, err := ParseURIMetadataRow(bad); !errors.Is(err, ErrBadURLMetadata) {
 			t.Errorf("ParseURIMetadataRow(%q) = %v, want ErrBadURLMetadata", bad, err)
 		}
+	}
+}
+
+func TestParseURIMetadataRowSkipsEmptyPropertyTokens(t *testing.T) {
+	row, err := ParseURIMetadataRow("{hash=MNOPQRSTUVWX,}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := row.Properties[URLMetaHash]; got != "MNOPQRSTUVWX" {
+		t.Fatalf("hash = %q", got)
 	}
 }
 

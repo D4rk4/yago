@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
 )
 
 const msgCountUnavailable = "count unavailable for self seed"

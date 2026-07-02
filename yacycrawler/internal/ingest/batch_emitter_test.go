@@ -2,12 +2,21 @@ package ingest_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/boundedqueue"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacycrawler/internal/boundedqueue"
+	"github.com/D4rk4/yago/yacycrawler/internal/ingest"
+	"github.com/D4rk4/yago/yacymodel"
 )
+
+type failingPublisher struct {
+	err error
+}
+
+func (p failingPublisher) Publish(context.Context, ingest.IngestBatch) error {
+	return p.err
+}
 
 func TestBatchEmitterAssemblesEnvelope(t *testing.T) {
 	queue := boundedqueue.NewBoundedQueue[ingest.IngestBatch](1)
@@ -37,5 +46,20 @@ func TestBatchEmitterAssemblesEnvelope(t *testing.T) {
 	}
 	if len(batch.Metadata) != 1 {
 		t.Errorf("metadata rows = %d, want 1", len(batch.Metadata))
+	}
+}
+
+func TestBatchEmitterReturnsPublishError(t *testing.T) {
+	sentinel := errors.New("queue closed")
+	emitter := ingest.NewBatchEmitter(failingPublisher{err: sentinel})
+
+	err := emitter.Emit(
+		context.Background(),
+		nil,
+		yacymodel.URIMetadataRow{},
+		ingest.Envelope{SourceURL: "http://example.com/"},
+	)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("Emit error = %v, want %v", err, sentinel)
 	}
 }

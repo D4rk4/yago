@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 const (
@@ -82,10 +82,7 @@ func (o *stalenessRanking) URLStored(
 var _ StalenessRanking = (*stalenessRanking)(nil)
 
 func (o *stalenessRanking) URLPurged(tx *vault.Txn, hash yacymodel.Hash) error {
-	freshness, found, err := o.freshness.Get(tx, vault.Key(hash))
-	if err != nil {
-		return fmt.Errorf("read staleness freshness: %w", err)
-	}
+	freshness, found, _ := o.freshness.Get(tx, vault.Key(hash))
 	if !found {
 		return nil
 	}

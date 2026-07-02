@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 const (
@@ -115,11 +115,7 @@ func resolveSiteHash(req yacyproto.SearchRequest, operators queryOperators) (str
 	if err != nil {
 		return "", fmt.Errorf("site hash: %w", err)
 	}
-	hostHash, err := hash.HostHash()
-	if err != nil {
-		return "", fmt.Errorf("site hash: %w", err)
-	}
-
+	hostHash, _ := hash.HostHash()
 	return hostHash, nil
 }
 

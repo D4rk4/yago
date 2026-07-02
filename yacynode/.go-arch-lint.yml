@@ -24,12 +24,24 @@ components:
     in: internal/peerroster/**
   peerannouncement:
     in: internal/peerannouncement/**
+  hostlinks:
+    in: internal/hostlinks/**
+  peermessage:
+    in: internal/peermessage/**
+  peerprofile:
+    in: internal/peerprofile/**
+  seedlist:
+    in: internal/seedlist/**
+  sharedblacklist:
+    in: internal/sharedblacklist/**
   bootstrap:
     in: internal/bootstrap/**
   landing:
     in: internal/landing/**
   crawling:
     in: internal/crawling/**
+  crawlurls:
+    in: internal/crawlurls/**
   urlmeta:
     in: internal/urlmeta/**
   urlmetastaleness:
@@ -60,16 +72,16 @@ components:
 vendors:
   yacymodel:
     in:
-      - github.com/nikitakarpei/yacy-rwi-node/yacymodel
-      - github.com/nikitakarpei/yacy-rwi-node/yacymodel/**
+      - github.com/D4rk4/yago/yacymodel
+      - github.com/D4rk4/yago/yacymodel/**
   yacyproto:
     in:
-      - github.com/nikitakarpei/yacy-rwi-node/yacyproto
-      - github.com/nikitakarpei/yacy-rwi-node/yacyproto/**
+      - github.com/D4rk4/yago/yacyproto
+      - github.com/D4rk4/yago/yacyproto/**
   yacycrawlcontract:
     in:
-      - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract
-      - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract/**
+      - github.com/D4rk4/yago/yacycrawlcontract
+      - github.com/D4rk4/yago/yacycrawlcontract/**
   bbolt:
     in: go.etcd.io/bbolt
   prometheus:
@@ -140,6 +152,42 @@ deps:
     canUse:
       - yacymodel
       - yacyproto
+  hostlinks:
+    mayDependOn:
+      - hostlinks
+      - httpguard
+    canUse:
+      - yacyproto
+  peermessage:
+    mayDependOn:
+      - peermessage
+      - httpguard
+      - nodeidentity
+      - vault
+      - memvault
+    canUse:
+      - yacymodel
+      - yacyproto
+  peerprofile:
+    mayDependOn:
+      - peerprofile
+      - httpguard
+      - nodeidentity
+    canUse:
+      - yacyproto
+  seedlist:
+    mayDependOn:
+      - seedlist
+      - httpguard
+    canUse:
+      - yacymodel
+      - yacyproto
+  sharedblacklist:
+    mayDependOn:
+      - sharedblacklist
+      - httpguard
+    canUse:
+      - yacyproto
   bootstrap:
     mayDependOn:
       - bootstrap
@@ -153,6 +201,14 @@ deps:
     mayDependOn:
       - crawling
       - httpguard
+    canUse:
+      - yacymodel
+      - yacyproto
+  crawlurls:
+    mayDependOn:
+      - crawlurls
+      - httpguard
+      - nodeidentity
     canUse:
       - yacymodel
       - yacyproto
@@ -260,9 +316,15 @@ deps:
       - peeradmission
       - peerroster
       - peerannouncement
+      - hostlinks
+      - peermessage
+      - peerprofile
+      - seedlist
+      - sharedblacklist
       - bootstrap
       - landing
       - crawling
+      - crawlurls
       - urlmeta
       - rwi
       - documentsearch

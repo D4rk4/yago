@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawladmission"
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawladmission"
 )
 
 func TestCompileProfileRejectsBadRegex(t *testing.T) {
@@ -85,6 +85,21 @@ func TestAdmitLinksSubpath(t *testing.T) {
 	}
 }
 
+func TestAdmitLinksSubpathWithoutSlash(t *testing.T) {
+	sub, _ := crawladmission.CompileProfile(yacycrawlcontract.CrawlProfile{
+		Scope:        yacycrawlcontract.ScopeSubpath,
+		URLMustMatch: yacycrawlcontract.MatchAll,
+	})
+	got := sub.AdmitLinks("https://example.com", []string{
+		"https://example.com/path",
+		"https://elsewhere.com/path",
+	})
+	want := []string{"https://example.com/path"}
+	if !slices.Equal(got, want) {
+		t.Errorf("subpath root admit = %v want %v", got, want)
+	}
+}
+
 func TestAdmitLinksWideAndQuery(t *testing.T) {
 	wide, _ := crawladmission.CompileProfile(yacycrawlcontract.CrawlProfile{
 		Scope:        yacycrawlcontract.ScopeWide,
@@ -108,6 +123,22 @@ func TestAdmitLinksWideAndQuery(t *testing.T) {
 	want = []string{"https://elsewhere.com/y?a=1"}
 	if !slices.Equal(got, want) {
 		t.Errorf("allow-query admit = %v want %v", got, want)
+	}
+}
+
+func TestAdmitLinksRejectsURLPatternMismatch(t *testing.T) {
+	compiled, _ := crawladmission.CompileProfile(yacycrawlcontract.CrawlProfile{
+		Scope:        yacycrawlcontract.ScopeWide,
+		URLMustMatch: `allowed\.example`,
+	})
+
+	got := compiled.AdmitLinks("https://source.example/", []string{
+		"https://allowed.example/page",
+		"https://blocked.example/page",
+	})
+	want := []string{"https://allowed.example/page"}
+	if !slices.Equal(got, want) {
+		t.Errorf("pattern admit = %v want %v", got, want)
 	}
 }
 

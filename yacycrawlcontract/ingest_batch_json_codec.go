@@ -7,10 +7,7 @@ import (
 
 func MarshalIngestBatch(batch IngestBatch) ([]byte, error) {
 	data, err := json.Marshal(batch)
-	if err != nil {
-		return nil, fmt.Errorf("marshal ingest batch: %w", err)
-	}
-	return data, nil
+	return data, wrapMarshalError("marshal ingest batch", err)
 }
 
 func UnmarshalIngestBatch(data []byte) (IngestBatch, error) {

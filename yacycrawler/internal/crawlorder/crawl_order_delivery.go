@@ -3,7 +3,7 @@ package crawlorder
 import (
 	"context"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawlcontract"
 )
 
 type CrawlOrderDelivery struct {

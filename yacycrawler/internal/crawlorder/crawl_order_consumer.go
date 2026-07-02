@@ -4,9 +4,9 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/boundedqueue"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawladmission"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
+	"github.com/D4rk4/yago/yacycrawler/internal/boundedqueue"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawladmission"
+	"github.com/D4rk4/yago/yacycrawler/internal/frontier"
 )
 
 const (

@@ -3,6 +3,8 @@
 `yago` is a Go workspace for a lightweight YaCy-compatible Reverse Word Index
 node and an optional crawler pipeline.
 
+Project repository: https://github.com/D4rk4/yago/.
+
 This repository is a fork of https://github.com/nikitakarpei/yacy-rwi-node.
 The original author is Nikita Karpei.
 
@@ -24,6 +26,19 @@ The node currently targets these responsibilities:
 
 - advertise one YaCy senior peer identity;
 - answer YaCy peer liveness and RWI capacity/status requests;
+- serve YaCy seed lists through `/yacy/seedlist.html`, `/yacy/seedlist.json`,
+  and `/yacy/seedlist.xml`;
+- answer YaCy shared blacklist export requests through `/yacy/list.html` with
+  an empty list unless shared blacklists are configured in a future storage
+  source;
+- answer YaCy peer profile export requests through `/yacy/profile.html` with
+  an empty profile unless peer profile fields are configured in a future source;
+- answer YaCy host-link index requests through `/yacy/idx.json?object=host` with
+  an empty index unless host-link data is configured in a future source;
+- answer YaCy peer message permission requests and store inbound
+  `/yacy/message.html` posts without attachment support;
+- answer YaCy `/yacy/urls.xml` remote crawl URL requests with an empty queue and
+  URL-hash metadata requests from locally stored metadata;
 - receive inbound RWI postings through `/yacy/transferRWI.html`;
 - receive URL metadata through `/yacy/transferURL.html`;
 - serve remote RWI search requests through `/yacy/search.html`;
@@ -122,6 +137,14 @@ Useful checks:
 curl -fsS http://127.0.0.1:9090/health
 curl -fsS http://127.0.0.1:9090/metrics
 curl -fsS http://127.0.0.1:8090/
+curl -fsS http://127.0.0.1:8090/yacy/seedlist.html
+curl -fsS http://127.0.0.1:8090/yacy/seedlist.json
+curl -fsS http://127.0.0.1:8090/yacy/seedlist.xml
+curl -fsS http://127.0.0.1:8090/yacy/profile.html
+curl -fsS 'http://127.0.0.1:8090/yacy/idx.json?object=host'
+curl -fsS 'http://127.0.0.1:8090/yacy/message.html?process=permission'
+curl -fsS 'http://127.0.0.1:8090/yacy/list.html?col=black'
+curl -fsS 'http://127.0.0.1:8090/yacy/urls.xml?network.unit.name=freeworld&call=remotecrawl'
 ```
 
 ## Development

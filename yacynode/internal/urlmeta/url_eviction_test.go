@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 func TestPurgeNotifiesObserverOfDeletedURLs(t *testing.T) {

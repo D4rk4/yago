@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 func TestTransferURLRequestRoundTrip(t *testing.T) {
@@ -58,12 +58,38 @@ func TestTransferURLResponseRoundTrip(t *testing.T) {
 	}
 }
 
+func TestParseTransferURLResponseAcceptsEmptyResult(t *testing.T) {
+	t.Parallel()
+
+	got, err := yacyproto.ParseTransferURLResponse(yacymodel.Message{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Result != "" {
+		t.Fatalf("Result = %q, want empty", got.Result)
+	}
+}
+
 func TestParseTransferURLRequestRejectsBadYouAre(t *testing.T) {
 	t.Parallel()
 
 	form := url.Values{yacyproto.FieldYouAre: {"!!"}}
 	if _, err := yacyproto.ParseTransferURLRequest(context.Background(), form); err == nil {
 		t.Fatal("expected error for malformed youare hash")
+	}
+}
+
+func TestParseTransferURLRequestRejectsBadFields(t *testing.T) {
+	t.Parallel()
+
+	cases := []url.Values{
+		{yacyproto.FieldURLCount: {"many"}},
+		{yacyproto.FieldIam: {"short"}},
+	}
+	for _, form := range cases {
+		if _, err := yacyproto.ParseTransferURLRequest(context.Background(), form); err == nil {
+			t.Fatalf("ParseTransferURLRequest(%v) should fail", form)
+		}
 	}
 }
 
@@ -82,6 +108,40 @@ func TestParseTransferURLRequestSkipsMissingDeclaredURL(t *testing.T) {
 	}
 	if len(req.URLs) != 1 {
 		t.Fatalf("URLs = %d, want 1 (missing url1 skipped)", len(req.URLs))
+	}
+}
+
+func TestParseTransferURLRequestSkipsBadDeclaredURL(t *testing.T) {
+	t.Parallel()
+
+	form := url.Values{
+		yacyproto.FieldIam:      {sampleHash(t, "alpha").String()},
+		yacyproto.FieldYouAre:   {sampleHash(t, "beta").String()},
+		yacyproto.FieldURLCount: {"2"},
+		"url0":                  {sampleURLRow(t, "url-a").String()},
+		"url1":                  {"bad"},
+	}
+	req, err := yacyproto.ParseTransferURLRequest(context.Background(), form)
+	if err != nil {
+		t.Fatalf("ParseTransferURLRequest: %v", err)
+	}
+	if len(req.URLs) != 1 {
+		t.Fatalf("URLs = %d, want 1 (bad url1 skipped)", len(req.URLs))
+	}
+}
+
+func TestParseTransferURLResponseRejectsBadFields(t *testing.T) {
+	t.Parallel()
+
+	cases := []yacymodel.Message{
+		{yacyproto.FieldUptime: "soon"},
+		{yacyproto.FieldDouble: "many"},
+		{yacyproto.FieldErrorURL: "short"},
+	}
+	for _, msg := range cases {
+		if _, err := yacyproto.ParseTransferURLResponse(msg); err == nil {
+			t.Fatalf("ParseTransferURLResponse(%v) should fail", msg)
+		}
 	}
 }
 

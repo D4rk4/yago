@@ -6,8 +6,8 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 func peerQueryCount(

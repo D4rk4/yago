@@ -1,8 +1,10 @@
-module github.com/nikitakarpei/yacy-rwi-node/yacycrawler
+module github.com/D4rk4/yago/yacycrawler
 
 go 1.26
 
 require (
+	github.com/D4rk4/yago/yacycrawlcontract v0.0.0
+	github.com/D4rk4/yago/yacymodel v0.0.0
 	github.com/chromedp/chromedp v0.15.1
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c
 	github.com/google/uuid v1.6.0
@@ -10,8 +12,6 @@ require (
 	github.com/markusmobius/go-trafilatura v1.12.2
 	github.com/nats-io/nats-server/v2 v2.14.2
 	github.com/nats-io/nats.go v1.52.0
-	github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract v0.0.0
-	github.com/nikitakarpei/yacy-rwi-node/yacymodel v0.0.0
 	github.com/temoto/robotstxt v1.1.2
 	golang.org/x/net v0.56.0
 	golang.org/x/sync v0.21.0
@@ -48,6 +48,7 @@ require (
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/zerolog v1.33.0 // indirect
+	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/tetratelabs/wazero v1.8.1 // indirect
 	github.com/wasilibs/go-re2 v1.7.0 // indirect
 	github.com/wasilibs/wazero-helpers v0.0.0-20240620070341-3dff1577cd52 // indirect
@@ -59,6 +60,6 @@ require (
 	golang.org/x/time v0.15.0 // indirect
 )
 
-replace github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract => ../yacycrawlcontract
+replace github.com/D4rk4/yago/yacycrawlcontract => ../yacycrawlcontract
 
-replace github.com/nikitakarpei/yacy-rwi-node/yacymodel => ../yacymodel
+replace github.com/D4rk4/yago/yacymodel => ../yacymodel

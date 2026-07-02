@@ -8,10 +8,14 @@ import (
 
 	"github.com/chromedp/chromedp"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
+	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
 )
 
 const BrowserContentType = "text/html; charset=utf-8"
+
+var newChromedpTabContext = chromedp.NewContext
+
+var runChromedpActions = chromedp.Run
 
 type pageRenderer func(ctx context.Context, rawURL string) (renderedPage, error)
 
@@ -47,14 +51,14 @@ func NewBrowserPageFetcher(
 
 func chromedpRenderer(allocCtx context.Context) pageRenderer {
 	return func(ctx context.Context, rawURL string) (renderedPage, error) {
-		tabCtx, cancel := chromedp.NewContext(allocCtx)
+		tabCtx, cancel := newChromedpTabContext(allocCtx)
 		defer cancel()
 		stop := context.AfterFunc(ctx, cancel)
 		defer stop()
 
 		var content string
 		finalURL := rawURL
-		err := chromedp.Run(tabCtx,
+		err := runChromedpActions(tabCtx,
 			chromedp.Navigate(rawURL),
 			chromedp.OuterHTML("html", &content, chromedp.ByQuery),
 			chromedp.Location(&finalURL),

@@ -2,12 +2,15 @@ package landing
 
 import (
 	_ "embed"
+	"html/template"
 	"log/slog"
 	"net/http"
 )
 
 //go:embed landing_page.html
-var landingPageHTML []byte
+var landingPageHTML string
+
+var landingPageTemplate = template.Must(template.New("landing").Parse(landingPageHTML))
 
 const landingPageContentType = "text/html; charset=utf-8"
 
@@ -22,7 +25,7 @@ func (landingEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", landingPageContentType)
-	if _, err := w.Write(landingPageHTML); err != nil {
+	if err := landingPageTemplate.Execute(w, nil); err != nil {
 		slog.WarnContext(r.Context(), "landing page write failed", slog.Any("error", err))
 	}
 }

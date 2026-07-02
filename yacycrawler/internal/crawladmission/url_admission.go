@@ -4,8 +4,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/weburl"
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawler/internal/weburl"
 )
 
 func (c AdmissionProfile) AdmitLinks(baseRawURL string, links []string) []string {

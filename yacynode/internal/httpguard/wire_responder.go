@@ -2,15 +2,16 @@ package httpguard
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"net/http"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 const wireContentType = "text/plain; charset=UTF-8"
+
+const msgWireResponseWriteFailed = "wire response write failed"
 
 type RuntimeStatus interface {
 	Version(ctx context.Context) string
@@ -32,7 +33,7 @@ func (r WireResponder) Write(ctx context.Context, w http.ResponseWriter, msg yac
 
 func writeWireMessage(ctx context.Context, w http.ResponseWriter, msg yacymodel.Message) {
 	w.Header().Set("Content-Type", wireContentType)
-	if _, err := io.WriteString(w, msg.Encode()); err != nil {
-		slog.WarnContext(ctx, "wire response write failed", slog.Any("error", err))
+	if err := writeResponseText(w, msg.Encode()); err != nil {
+		slog.WarnContext(ctx, msgWireResponseWriteFailed, slog.Any("error", err))
 	}
 }

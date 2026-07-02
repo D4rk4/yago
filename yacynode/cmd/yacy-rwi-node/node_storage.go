@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmetastaleness"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlreferences"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacynode/internal/rwi"
+	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
+	"github.com/D4rk4/yago/yacynode/internal/urlmetastaleness"
+	"github.com/D4rk4/yago/yacynode/internal/urlreferences"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 type nodeStorage struct {
@@ -21,23 +21,30 @@ type nodeStorage struct {
 	postingPurger   rwi.PostingPurger
 }
 
+var (
+	openStalenessRanking = urlmetastaleness.Open
+	openURLMetadata      = urlmeta.Open
+	openURLReferences    = urlreferences.Open
+	openRWIStorage       = rwi.Open
+)
+
 func openNodeStorage(vault *vault.Vault) (nodeStorage, error) {
-	staleness, err := urlmetastaleness.Open(vault)
+	staleness, err := openStalenessRanking(vault)
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("url metadata staleness: %w", err)
 	}
 
-	urlDirectory, urlEvictor, urlReceiver, err := urlmeta.Open(vault, staleness)
+	urlDirectory, urlEvictor, urlReceiver, err := openURLMetadata(vault, staleness)
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("urlmeta storage: %w", err)
 	}
 
-	references, err := urlreferences.Open(vault)
+	references, err := openURLReferences(vault)
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("url references: %w", err)
 	}
 
-	postings, postingReceiver, postingPurger, err := rwi.Open(
+	postings, postingReceiver, postingPurger, err := openRWIStorage(
 		vault,
 		urlDirectory,
 		rwi.Config{BatchCap: receiveBatchCap, PauseSeconds: receiveBusyPauseSecs},

@@ -75,10 +75,15 @@ func TestDecodeWireFormAcceptsBarePayload(t *testing.T) {
 }
 
 func TestDecodeWireFormErrors(t *testing.T) {
-	for _, bad := range []string{"q|data", "b|==="} {
+	for _, bad := range []string{"q|data", "b|===", "z|" + Encode([]byte("not gzip"))} {
 		if _, err := DecodeWireForm(t.Context(), bad); err == nil {
 			t.Errorf("DecodeWireForm(%q) = nil error", bad)
 		}
+	}
+	corrupt := gzipCompress("payload")
+	corrupt[len(corrupt)-1] ^= 0xff
+	if _, err := DecodeWireForm(t.Context(), "z|"+Encode(corrupt)); err == nil {
+		t.Error("corrupt gzip payload should fail")
 	}
 	if _, err := DecodeWireForm(t.Context(), "q|data"); !errors.Is(err, ErrBadWireForm) {
 		t.Errorf("unknown tag should be ErrBadWireForm")

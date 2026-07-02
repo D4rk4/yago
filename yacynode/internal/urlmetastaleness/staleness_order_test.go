@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/memvault"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmetastaleness"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/memvault"
+	"github.com/D4rk4/yago/yacynode/internal/urlmetastaleness"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 func openOrder(t *testing.T) (*vault.Vault, urlmetastaleness.StalenessRanking) {

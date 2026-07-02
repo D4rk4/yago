@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageparse"
 )
 
 func TestTokenizeLowercasesAndSplits(t *testing.T) {

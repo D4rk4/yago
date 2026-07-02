@@ -7,8 +7,8 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlorder"
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawlorder"
 )
 
 const (
@@ -137,6 +137,19 @@ func TestNATSOrderReceiverLeavesDeliveredOrderPendingUntilAck(t *testing.T) {
 		t.Fatalf("ack: %v", err)
 	}
 	waitForAckPending(t, js, "test-durable", 0)
+}
+
+func TestNATSOrderReceiverReturnsCreateConsumerError(t *testing.T) {
+	js := connectJetStream(t, startNATS(t))
+
+	if _, err := crawlorder.NewNATSOrderReceiver(
+		context.Background(),
+		js,
+		"missing-stream",
+		testOrdersSubject,
+	); err == nil {
+		t.Fatal("expected error without orders stream")
+	}
 }
 
 func waitForAckPending(

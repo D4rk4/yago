@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/memvault"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vaulttest"
+	"github.com/D4rk4/yago/yacynode/internal/memvault"
+	"github.com/D4rk4/yago/yacynode/internal/vaulttest"
 )
 
 func TestConformance(t *testing.T) {

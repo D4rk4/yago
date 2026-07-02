@@ -7,13 +7,20 @@ import (
 	"io"
 	"os"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
+)
+
+var (
+	commandOutput  io.Writer = os.Stdout
+	commandErrors  io.Writer = os.Stderr
+	commandEntropy io.Reader = rand.Reader
+	exitProcess              = os.Exit
 )
 
 func main() {
-	if err := run(os.Stdout, rand.Reader); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	if err := run(commandOutput, commandEntropy); err != nil {
+		_, _ = fmt.Fprintln(commandErrors, err)
+		exitProcess(1)
 	}
 }
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/boundedqueue"
+	"github.com/D4rk4/yago/yacycrawler/internal/boundedqueue"
 )
 
 func TestBoundedQueuePublishReceive(t *testing.T) {

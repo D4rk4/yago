@@ -3,7 +3,7 @@ package vault_test
 import (
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 func TestNilEngineRejected(t *testing.T) {

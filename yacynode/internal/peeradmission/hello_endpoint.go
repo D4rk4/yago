@@ -2,14 +2,15 @@ package peeradmission
 
 import (
 	"context"
+	"crypto/rand"
 	"log/slog"
-	"math/rand/v2"
+	"math/big"
 	"slices"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/httpguard"
+	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 type callerReachabilityProbe interface {
@@ -25,6 +26,8 @@ type reachableRoster interface {
 	ReachablePeers(ctx context.Context) []yacymodel.Seed
 	ConfirmReachable(ctx context.Context, peer yacymodel.Hash)
 }
+
+var randomPeerIndex = rand.Int
 
 type helloEndpoint struct {
 	identity     nodeidentity.Identity
@@ -72,13 +75,22 @@ func (e helloEndpoint) classifyCaller(
 func (e helloEndpoint) knownPeers(ctx context.Context, count int) []yacymodel.Seed {
 	known := slices.Clone(e.reachability.ReachablePeers(ctx))
 
-	rand.Shuffle(len(known), func(i, j int) {
-		known[i], known[j] = known[j], known[i]
-	})
+	shuffleKnownPeers(known)
 
 	if count > 0 && count < len(known) {
 		known = known[:count]
 	}
 
 	return known
+}
+
+func shuffleKnownPeers(peers []yacymodel.Seed) {
+	for last := len(peers) - 1; last > 0; last-- {
+		selected, err := randomPeerIndex(rand.Reader, big.NewInt(int64(last+1)))
+		if err != nil {
+			return
+		}
+		current := int(selected.Int64())
+		peers[last], peers[current] = peers[current], peers[last]
+	}
 }

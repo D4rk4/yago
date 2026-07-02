@@ -3,8 +3,8 @@
 package crawling
 
 import (
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacynode/internal/httpguard"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 func MountCrawlReceipt(router httpguard.WireRouter) {

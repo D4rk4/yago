@@ -1,11 +1,10 @@
 package yacycrawlcontract
 
 import (
-	"crypto/md5"
 	"fmt"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 type CrawlScope int
@@ -43,6 +42,5 @@ func (p CrawlProfile) ComputeHandle() string {
 		"%s\x00%s\x00%d\x00%s\x00%d",
 		p.Name, p.URLMustMatch, p.MaxDepth, p.URLMustNotMatch, p.MaxPagesPerHost,
 	)
-	sum := md5.Sum([]byte(raw))
-	return yacymodel.Encode(sum[:])[:yacymodel.HashLength]
+	return yacymodel.YaCyHashBase64(raw)[:yacymodel.HashLength]
 }

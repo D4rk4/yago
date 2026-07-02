@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/bootstrap"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/bootstrap"
 )
 
 const announceHelloPeerCount = 30

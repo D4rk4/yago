@@ -7,12 +7,12 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/weburl"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawljob"
+	"github.com/D4rk4/yago/yacycrawler/internal/ingest"
+	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageindex"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageparse"
+	"github.com/D4rk4/yago/yacycrawler/internal/weburl"
 )
 
 type Frontier interface {

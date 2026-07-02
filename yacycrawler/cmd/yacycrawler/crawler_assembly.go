@@ -8,26 +8,32 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/botwall"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawldelay"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlorder"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pipeline"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/robots"
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawler/internal/botwall"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawldelay"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawlorder"
+	"github.com/D4rk4/yago/yacycrawler/internal/frontier"
+	"github.com/D4rk4/yago/yacycrawler/internal/ingest"
+	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageindex"
+	"github.com/D4rk4/yago/yacycrawler/internal/pipeline"
+	"github.com/D4rk4/yago/yacycrawler/internal/robots"
 )
 
+var connectCrawlerNATS = nats.Connect
+
+var newCrawlerJetStream = jetstream.New
+
+var newCrawlerRobotsAdmissionFetcher = robots.NewRobotsAdmissionFetcher
+
 func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSource) error {
-	nc, err := nats.Connect(cfg.NATSURL)
+	nc, err := connectCrawlerNATS(cfg.NATSURL)
 	if err != nil {
 		return fmt.Errorf("connect nats: %w", err)
 	}
 	defer nc.Close()
 
-	js, err := jetstream.New(nc)
+	js, err := newCrawlerJetStream(nc)
 	if err != nil {
 		return fmt.Errorf("init jetstream: %w", err)
 	}
@@ -49,7 +55,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	frontier := frontier.NewFrontier(crawl.JobQueueSize, pace)
 
 	client := newEgressProxyClient(cfg.ProxyURL, crawl.RequestTimeout)
-	admitted, err := robots.NewRobotsAdmissionFetcher(
+	admitted, err := newCrawlerRobotsAdmissionFetcher(
 		source,
 		client,
 		crawl.UserAgent,

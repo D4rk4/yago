@@ -4,10 +4,11 @@ import (
 	"context"
 	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 func TestTransferRWIRequestRoundTrip(t *testing.T) {
@@ -92,12 +93,88 @@ func TestParseTransferRWIRequestSkipsBadEntry(t *testing.T) {
 	}
 }
 
+func TestParseTransferRWIRequestHandlesEmptyIndexLines(t *testing.T) {
+	t.Parallel()
+
+	good := sampleRWIPosting(t, "alpha", "url-a")
+	form := url.Values{yacyproto.FieldIndexes: {"\n" + good.String()}}
+	req, err := yacyproto.ParseTransferRWIRequest(context.Background(), form)
+	if err != nil {
+		t.Fatalf("ParseTransferRWIRequest: %v", err)
+	}
+	if len(req.Indexes) != 1 {
+		t.Fatalf("Indexes = %d, want 1", len(req.Indexes))
+	}
+}
+
+func TestParseTransferRWIRequestHandlesEmptyIndexes(t *testing.T) {
+	t.Parallel()
+
+	req, err := yacyproto.ParseTransferRWIRequest(context.Background(), url.Values{})
+	if err != nil {
+		t.Fatalf("ParseTransferRWIRequest: %v", err)
+	}
+	if req.Indexes != nil {
+		t.Fatalf("Indexes = %+v, want nil", req.Indexes)
+	}
+}
+
+func TestParseTransferRWIRequestRejectsBadFields(t *testing.T) {
+	t.Parallel()
+
+	cases := []url.Values{
+		{yacyproto.FieldWordCount: {"many"}},
+		{yacyproto.FieldEntryCount: {"many"}},
+		{yacyproto.FieldIam: {"short"}},
+		{
+			yacyproto.FieldIam:    {sampleHash(t, "alpha").String()},
+			yacyproto.FieldYouAre: {"short"},
+		},
+	}
+	for _, form := range cases {
+		if _, err := yacyproto.ParseTransferRWIRequest(context.Background(), form); err == nil {
+			t.Fatalf("ParseTransferRWIRequest(%v) should fail", form)
+		}
+	}
+}
+
+func TestParseTransferRWIRequestLimitsEntries(t *testing.T) {
+	posting := sampleRWIPosting(t, "alpha", "url-a").String()
+	lines := make([]string, 1001)
+	for i := range lines {
+		lines[i] = posting
+	}
+	form := url.Values{yacyproto.FieldIndexes: {strings.Join(lines, "\n")}}
+	req, err := yacyproto.ParseTransferRWIRequest(context.Background(), form)
+	if err != nil {
+		t.Fatalf("ParseTransferRWIRequest: %v", err)
+	}
+	if len(req.Indexes) != 1000 {
+		t.Fatalf("Indexes = %d, want 1000", len(req.Indexes))
+	}
+}
+
 func TestParseTransferRWIResponseRejectsBadPause(t *testing.T) {
 	t.Parallel()
 
 	msg := yacymodel.Message{yacyproto.FieldPause: "soon"}
 	if _, err := yacyproto.ParseTransferRWIResponse(msg); err == nil {
 		t.Fatal("expected error for non-numeric pause")
+	}
+}
+
+func TestParseTransferRWIResponseRejectsBadFields(t *testing.T) {
+	t.Parallel()
+
+	cases := []yacymodel.Message{
+		{yacyproto.FieldUptime: "soon"},
+		{yacyproto.FieldUnknownURL: "short"},
+		{yacyproto.FieldErrorURL: "short"},
+	}
+	for _, msg := range cases {
+		if _, err := yacyproto.ParseTransferRWIResponse(msg); err == nil {
+			t.Fatalf("ParseTransferRWIResponse(%v) should fail", msg)
+		}
 	}
 }
 

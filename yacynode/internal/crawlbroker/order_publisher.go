@@ -6,7 +6,7 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawlcontract"
 )
 
 type OrderPublisher struct {
@@ -14,16 +14,37 @@ type OrderPublisher struct {
 	subject string
 }
 
+type crawlOrderPublisher interface {
+	Publish(context.Context, string, []byte, ...jetstream.PublishOpt) (*jetstream.PubAck, error)
+}
+
+var (
+	marshalCrawlOrder = yacycrawlcontract.MarshalCrawlOrder
+	publishCrawlOrder = func(
+		ctx context.Context,
+		js crawlOrderPublisher,
+		subject string,
+		data []byte,
+	) error {
+		_, err := js.Publish(ctx, subject, data)
+		if err != nil {
+			return fmt.Errorf("publish crawl order: %w", err)
+		}
+
+		return nil
+	}
+)
+
 func newOrderPublisher(js jetstream.JetStream, subject string) *OrderPublisher {
 	return &OrderPublisher{js: js, subject: subject}
 }
 
 func (p *OrderPublisher) Publish(ctx context.Context, order yacycrawlcontract.CrawlOrder) error {
-	data, err := yacycrawlcontract.MarshalCrawlOrder(order)
+	data, err := marshalCrawlOrder(order)
 	if err != nil {
 		return fmt.Errorf("encode crawl order: %w", err)
 	}
-	if _, err := p.js.Publish(ctx, p.subject, data); err != nil {
+	if err := publishCrawlOrder(ctx, p.js, p.subject, data); err != nil {
 		return fmt.Errorf("publish crawl order: %w", err)
 	}
 	return nil

@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 func TestHelloRequestRoundTrip(t *testing.T) {
@@ -57,14 +57,52 @@ func TestHelloResponseRoundTrip(t *testing.T) {
 	if !reflect.DeepEqual(got, resp) {
 		t.Fatalf("round-trip mismatch:\n got %#v\nwant %#v", got, resp)
 	}
+
+	if own, ok := got.OwnSeed().Get(); !ok || own.Hash != resp.Seeds[0].Hash {
+		t.Fatalf("OwnSeed = %v, %v", own, ok)
+	}
+	if known := got.KnownSeeds(); len(known) != 1 || known[0].Hash != resp.Seeds[1].Hash {
+		t.Fatalf("KnownSeeds = %+v", known)
+	}
+}
+
+func TestHelloResponseSeedAccessorsOnEmptyResponse(t *testing.T) {
+	resp := yacyproto.HelloResponse{}
+	if _, ok := resp.OwnSeed().Get(); ok {
+		t.Fatal("empty response OwnSeed should be absent")
+	}
+	if known := resp.KnownSeeds(); known != nil {
+		t.Fatalf("empty response KnownSeeds = %+v", known)
+	}
 }
 
 func TestParseHelloRequestRejectsBadIam(t *testing.T) {
 	t.Parallel()
 
-	form := url.Values{yacyproto.FieldIam: {"short"}}
+	form := url.Values{
+		yacyproto.FieldSeed: {
+			yacymodel.EncodeCompactWireForm(sampleSeed(t, "alpha", "peer-a").String()),
+		},
+		yacyproto.FieldIam: {"short"},
+	}
 	if _, err := yacyproto.ParseHelloRequest(t.Context(), form); err == nil {
 		t.Fatal("expected error for malformed iam hash")
+	}
+}
+
+func TestParseHelloRequestRejectsBadFields(t *testing.T) {
+	t.Parallel()
+
+	cases := []url.Values{
+		{yacyproto.FieldCount: {"many"}},
+		{},
+		{yacyproto.FieldSeed: {"z|@@@"}},
+		{yacyproto.FieldSeed: {yacymodel.EncodeCompactWireForm("{Hash=short}")}},
+	}
+	for _, form := range cases {
+		if _, err := yacyproto.ParseHelloRequest(t.Context(), form); err == nil {
+			t.Fatalf("ParseHelloRequest(%v) should fail", form)
+		}
 	}
 }
 
@@ -74,5 +112,20 @@ func TestParseHelloResponseRejectsBadPeerType(t *testing.T) {
 	msg := yacymodel.Message{yacyproto.FieldYourType: "overlord"}
 	if _, err := yacyproto.ParseHelloResponse(t.Context(), msg); err == nil {
 		t.Fatal("expected error for unknown peer type")
+	}
+}
+
+func TestParseHelloResponseRejectsBadFields(t *testing.T) {
+	t.Parallel()
+
+	cases := []yacymodel.Message{
+		{yacyproto.FieldUptime: "soon"},
+		{"seed0": "z|@@@"},
+		{"seed0": yacymodel.EncodeCompactWireForm("{Hash=short}")},
+	}
+	for _, msg := range cases {
+		if _, err := yacyproto.ParseHelloResponse(t.Context(), msg); err == nil {
+			t.Fatalf("ParseHelloResponse(%v) should fail", msg)
+		}
 	}
 }

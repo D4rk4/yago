@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawladmission"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawladmission"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawljob"
+	"github.com/D4rk4/yago/yacycrawler/internal/frontier"
 )
 
 func compiled(
@@ -185,6 +185,33 @@ func TestSubmitForUnknownRunIsIgnored(t *testing.T) {
 	select {
 	case job := <-f.Jobs():
 		t.Errorf("unknown run should produce no jobs, got %+v", job)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestSubmitForUnknownProfileIsIgnored(t *testing.T) {
+	f := frontier.NewFrontier(8, nil)
+	profile := compiled(t, yacycrawlcontract.CrawlProfile{
+		Scope:           yacycrawlcontract.ScopeDomain,
+		URLMustMatch:    yacycrawlcontract.MatchAll,
+		MaxDepth:        1,
+		MaxPagesPerHost: yacycrawlcontract.UnlimitedPagesPerHost,
+	})
+	seeded := f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle, "https://example.com/"),
+		nil,
+		profile,
+		func() {},
+	)
+	root := receiveJob(t, f)
+	root.ProfileHandle = "missing"
+
+	f.Submit(context.Background(), root, []string{"https://example.com/child"})
+	f.Done(crawljob.CrawlJob{RunID: seeded.RunID})
+	select {
+	case job := <-f.Jobs():
+		t.Errorf("unknown profile should produce no jobs, got %+v", job)
 	case <-time.After(200 * time.Millisecond):
 	}
 }

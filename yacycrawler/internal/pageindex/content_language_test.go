@@ -3,7 +3,7 @@ package pageindex_test
 import (
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageindex"
 )
 
 func TestNormalizeLanguage(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 // Deliberate divergence from YaCy: maxTermSpread filters each term's own word

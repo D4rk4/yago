@@ -7,10 +7,7 @@ import (
 
 func MarshalCrawlOrder(order CrawlOrder) ([]byte, error) {
 	data, err := json.Marshal(order)
-	if err != nil {
-		return nil, fmt.Errorf("marshal crawl order: %w", err)
-	}
-	return data, nil
+	return data, wrapMarshalError("marshal crawl order", err)
 }
 
 func UnmarshalCrawlOrder(data []byte) (CrawlOrder, error) {

@@ -2,15 +2,32 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
+	"github.com/D4rk4/yago/yacycrawler/internal/robots"
 )
+
+func restoreAssemblySeams(t *testing.T) {
+	t.Helper()
+	savedConnect := connectCrawlerNATS
+	savedJetStream := newCrawlerJetStream
+	savedRobots := newCrawlerRobotsAdmissionFetcher
+	t.Cleanup(func() {
+		connectCrawlerNATS = savedConnect
+		newCrawlerJetStream = savedJetStream
+		newCrawlerRobotsAdmissionFetcher = savedRobots
+	})
+}
 
 func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -47,6 +64,80 @@ func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("service did not shut down after cancel")
+	}
+}
+
+func TestRunServiceReturnsNATSConnectError(t *testing.T) {
+	cfg := serviceConfig("://bad")
+
+	err := RunService(context.Background(), cfg, htmlPageSource(map[string]string{}))
+	if err == nil || !strings.Contains(err.Error(), "connect nats") {
+		t.Fatalf("error = %v, want connect nats error", err)
+	}
+}
+
+func TestRunServiceReturnsJetStreamInitError(t *testing.T) {
+	restoreAssemblySeams(t)
+	sentinel := errors.New("jetstream failed")
+	newCrawlerJetStream = func(*nats.Conn, ...jetstream.JetStreamOpt) (jetstream.JetStream, error) {
+		return nil, sentinel
+	}
+	cfg := serviceConfig(startNATS(t))
+
+	err := RunService(context.Background(), cfg, htmlPageSource(map[string]string{}))
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("error = %v, want %v", err, sentinel)
+	}
+}
+
+func TestRunServiceReturnsStreamSetupError(t *testing.T) {
+	cfg := serviceConfig(startNATS(t))
+	cfg.OrdersSubject = "bad subject"
+
+	err := RunService(context.Background(), cfg, htmlPageSource(map[string]string{}))
+	if err == nil || !strings.Contains(err.Error(), "ensure streams") {
+		t.Fatalf("error = %v, want ensure streams error", err)
+	}
+}
+
+func TestRunServiceReturnsOrderReceiverError(t *testing.T) {
+	cfg := serviceConfig(startNATS(t))
+	cfg.OrdersDurable = "bad durable"
+
+	err := RunService(context.Background(), cfg, htmlPageSource(map[string]string{}))
+	if err == nil || !strings.Contains(err.Error(), "create order receiver") {
+		t.Fatalf("error = %v, want create order receiver error", err)
+	}
+}
+
+func TestRunServiceReturnsCrawlPaceError(t *testing.T) {
+	cfg := serviceConfig(startNATS(t))
+	cfg.Crawl.HostCacheSize = 0
+
+	err := RunService(context.Background(), cfg, htmlPageSource(map[string]string{}))
+	if err == nil || !strings.Contains(err.Error(), "create crawl pace") {
+		t.Fatalf("error = %v, want create crawl pace error", err)
+	}
+}
+
+func TestRunServiceReturnsRobotsAdmissionError(t *testing.T) {
+	restoreAssemblySeams(t)
+	sentinel := errors.New("robots failed")
+	newCrawlerRobotsAdmissionFetcher = func(
+		pagefetch.PageSource,
+		*http.Client,
+		string,
+		int,
+	) (*robots.RobotsAdmissionFetcher, error) {
+		return nil, sentinel
+	}
+	cfg := serviceConfig(startNATS(t))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := RunService(ctx, cfg, htmlPageSource(map[string]string{}))
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("error = %v, want %v", err, sentinel)
 	}
 }
 

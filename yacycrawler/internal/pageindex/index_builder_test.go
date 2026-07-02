@@ -3,8 +3,8 @@ package pageindex_test
 import (
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageindex"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageparse"
 )
 
 func TestIndexBuilderBuildsPostingsAndMetadata(t *testing.T) {

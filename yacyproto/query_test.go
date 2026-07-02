@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 func TestQueryRequestRoundTrip(t *testing.T) {
@@ -65,6 +65,18 @@ func TestParseQueryRequestRejectsBadIam(t *testing.T) {
 	}
 }
 
+func TestParseQueryRequestRejectsBadYouAre(t *testing.T) {
+	t.Parallel()
+
+	form := url.Values{
+		yacyproto.FieldObject: {string(yacyproto.ObjectRWICount)},
+		yacyproto.FieldYouAre: {"nope"},
+	}
+	if _, err := yacyproto.ParseQueryRequest(context.Background(), form); err == nil {
+		t.Fatal("expected error for malformed youare hash")
+	}
+}
+
 func TestParseQueryRequestRejectsUnknownObject(t *testing.T) {
 	t.Parallel()
 
@@ -80,5 +92,14 @@ func TestParseQueryResponseRejectsBadResponse(t *testing.T) {
 	msg := yacymodel.Message{yacyproto.FieldResponse: "many"}
 	if _, err := yacyproto.ParseQueryResponse(msg); err == nil {
 		t.Fatal("expected error for non-numeric response")
+	}
+}
+
+func TestParseQueryResponseRejectsBadHeader(t *testing.T) {
+	t.Parallel()
+
+	msg := yacymodel.Message{yacyproto.FieldUptime: "later"}
+	if _, err := yacyproto.ParseQueryResponse(msg); err == nil {
+		t.Fatal("expected error for non-numeric uptime")
 	}
 }

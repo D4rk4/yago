@@ -1,6 +1,6 @@
 package yacycrawlcontract
 
-import "github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+import "github.com/D4rk4/yago/yacymodel"
 
 type IngestBatch struct {
 	SourceURL     string

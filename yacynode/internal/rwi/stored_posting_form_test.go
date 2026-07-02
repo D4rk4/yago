@@ -5,7 +5,7 @@ import (
 	"maps"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 const sampleRWILine = "ABCDEFGHIJKL{c=1,h=MNOPQRSTUVWX,x=2,z=AAAAAA}"

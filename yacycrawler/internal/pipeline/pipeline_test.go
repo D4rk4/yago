@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pipeline"
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawljob"
+	"github.com/D4rk4/yago/yacycrawler/internal/ingest"
+	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageindex"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageparse"
+	"github.com/D4rk4/yago/yacycrawler/internal/pipeline"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 type recordingFrontier struct {
@@ -196,4 +196,95 @@ func TestPipelineFinishesJobOnIndexError(t *testing.T) {
 		),
 	)
 	runOneJob(t, p, frontier)
+}
+
+func TestPipelineStopsWhenJobsClose(t *testing.T) {
+	frontier := newRecordingFrontier()
+	close(frontier.jobs)
+	p := pipeline.NewPipeline(
+		frontier,
+		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			t.Error("fetch should not run after jobs close")
+			return pagefetch.FetchedPage{}, nil
+		}),
+		pageindex.NewIndexBuilder(),
+		emitFunc(
+			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+				t.Error("emit should not run after jobs close")
+				return nil
+			},
+		),
+	)
+
+	done := make(chan struct{})
+	go func() {
+		p.RunWorkers(context.Background(), 1)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("pipeline did not stop after jobs close")
+	}
+}
+
+func TestPipelineStopsWhenContextIsCanceled(t *testing.T) {
+	frontier := newRecordingFrontier()
+	p := pipeline.NewPipeline(
+		frontier,
+		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			t.Error("fetch should not run after context cancellation")
+			return pagefetch.FetchedPage{}, nil
+		}),
+		pageindex.NewIndexBuilder(),
+		emitFunc(
+			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+				t.Error("emit should not run after context cancellation")
+				return nil
+			},
+		),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		p.RunWorkers(ctx, 1)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("pipeline did not stop after context cancellation")
+	}
+}
+
+func TestPipelineFinishesJobOnBadURL(t *testing.T) {
+	frontier := newRecordingFrontier()
+	p := pipeline.NewPipeline(
+		frontier,
+		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			t.Error("fetch should not run for bad job URL")
+			return pagefetch.FetchedPage{}, nil
+		}),
+		pageindex.NewIndexBuilder(),
+		emitFunc(
+			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+				t.Error("emit should not run for bad job URL")
+				return nil
+			},
+		),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go p.RunWorkers(ctx, 1)
+	frontier.jobs <- crawljob.CrawlJob{URL: "://bad"}
+
+	select {
+	case <-frontier.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("bad URL job was not marked done")
+	}
 }

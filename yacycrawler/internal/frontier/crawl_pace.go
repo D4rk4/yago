@@ -3,7 +3,7 @@ package frontier
 import (
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawljob"
 )
 
 type CrawlPace interface {

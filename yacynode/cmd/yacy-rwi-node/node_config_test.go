@@ -122,7 +122,13 @@ func TestLoadNodeConfigRejects(t *testing.T) {
 			envPeerName:     "n",
 			envSeedlistURLs: "http://seed",
 		},
-		"bad port":  {envPeerHash: "0123456789AB", envPeerName: "n", envAdvertisePort: "-3"},
+		"bad port":         {envPeerHash: "0123456789AB", envPeerName: "n", envAdvertisePort: "-3"},
+		"bad peer address": {envPeerHash: "0123456789AB", envPeerName: "n", envPeerAddr: "bad"},
+		"bad greet count": {
+			envPeerHash:       "0123456789AB",
+			envPeerName:       "n",
+			envGreetsPerCycle: "many",
+		},
 		"bad quota": {envPeerHash: "0123456789AB", envPeerName: "n", envStorageQuota: "big"},
 		"bad proxies": {
 			envPeerHash:       "0123456789AB",

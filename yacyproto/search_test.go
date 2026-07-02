@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 func TestSearchRequestRoundTrip(t *testing.T) {
@@ -92,6 +92,16 @@ func TestParseSearchRequestTruncatesRaggedQuery(t *testing.T) {
 	}
 }
 
+func TestSearchRequestFormOmitsEmptyHashLists(t *testing.T) {
+	t.Parallel()
+
+	form := (yacyproto.SearchRequest{}).Form()
+	if form.Has(yacyproto.FieldQuery) || form.Has(yacyproto.FieldExclude) ||
+		form.Has(yacyproto.FieldURLs) {
+		t.Fatalf("empty hash fields should be omitted: %v", form)
+	}
+}
+
 func TestParseSearchRequestTruncatesRaggedExclude(t *testing.T) {
 	t.Parallel()
 
@@ -124,6 +134,59 @@ func TestParseSearchRequestRejectsUnknownStrictContentDom(t *testing.T) {
 	}
 }
 
+func TestParseSearchRequestRejectsBadFields(t *testing.T) {
+	t.Parallel()
+
+	cases := []url.Values{
+		{yacyproto.FieldMySeed: {"z|@@@"}},
+		{yacyproto.FieldQuery: {"!!!!!!!!!!!!"}},
+		{yacyproto.FieldExclude: {"!!!!!!!!!!!!"}},
+		{yacyproto.FieldURLs: {"!!!!!!!!!!!!"}},
+		{yacyproto.FieldAbstracts: {"!!!!!!!!!!!!"}},
+		{yacyproto.FieldCount: {"many"}},
+		{yacyproto.FieldTime: {"many"}},
+		{yacyproto.FieldMaxDist: {"many"}},
+		{yacyproto.FieldPartitions: {"many"}},
+		{yacyproto.FieldTimezoneOffset: {"many"}},
+	}
+	for _, form := range cases {
+		if _, err := yacyproto.ParseSearchRequest(t.Context(), form); err == nil {
+			t.Fatalf("ParseSearchRequest(%v) should fail", form)
+		}
+	}
+}
+
+func TestSearchAbstractHashes(t *testing.T) {
+	t.Parallel()
+
+	alpha := sampleHash(t, "alpha")
+	beta := sampleHash(t, "beta")
+	abstracts := yacyproto.SearchAbstracts(alpha.String() + beta.String())
+	got := abstracts.Hashes()
+	if len(got) != 2 || got[0] != alpha || got[1] != beta {
+		t.Fatalf("Hashes = %v", got)
+	}
+	if got := yacyproto.SearchAbstracts("!!!!!!!!!!!!").Hashes(); got != nil {
+		t.Fatalf("bad abstract hashes = %v", got)
+	}
+}
+
+func TestParseSearchRequestAcceptsExplicitAbstractHashes(t *testing.T) {
+	t.Parallel()
+
+	alpha := sampleHash(t, "alpha")
+	req, err := yacyproto.ParseSearchRequest(
+		t.Context(),
+		url.Values{yacyproto.FieldAbstracts: {alpha.String()}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Abstracts != yacyproto.SearchAbstracts(alpha.String()) {
+		t.Fatalf("Abstracts = %q", req.Abstracts)
+	}
+}
+
 func TestSearchResponseUsesYaCyLinkCountField(t *testing.T) {
 	t.Parallel()
 
@@ -135,6 +198,26 @@ func TestSearchResponseUsesYaCyLinkCountField(t *testing.T) {
 
 	if got.Count != 5 {
 		t.Fatalf("count = %d, want 5", got.Count)
+	}
+}
+
+func TestParseSearchResponseRejectsBadFields(t *testing.T) {
+	t.Parallel()
+
+	alpha := sampleHash(t, "alpha")
+	cases := []yacymodel.Message{
+		{yacyproto.FieldUptime: "soon"},
+		{yacyproto.FieldSearchTime: "soon"},
+		{yacyproto.FieldJoinCount: "many"},
+		{yacyproto.FieldLinkCount: "many"},
+		{"indexcount.short": "1"},
+		{"indexcount." + alpha.String(): "many"},
+		{"indexabstract.short": "abc"},
+	}
+	for _, msg := range cases {
+		if _, err := yacyproto.ParseSearchResponse(msg); err == nil {
+			t.Fatalf("ParseSearchResponse(%v) should fail", msg)
+		}
 	}
 }
 
@@ -156,5 +239,22 @@ func TestParseSearchResponseSkipsMissingAndBadResources(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.Resources[0], valid) {
 		t.Fatalf("resource = %#v, want %#v", got.Resources[0], valid)
+	}
+}
+
+func TestParseSearchResponseReadsOpenEndedResources(t *testing.T) {
+	t.Parallel()
+
+	valid := sampleURLRow(t, "url-a")
+	msg := yacymodel.Message{
+		"resource0": valid.String(),
+		"resource1": "bad",
+	}
+	got, err := yacyproto.ParseSearchResponse(msg)
+	if err != nil {
+		t.Fatalf("ParseSearchResponse: %v", err)
+	}
+	if len(got.Resources) != 1 || !reflect.DeepEqual(got.Resources[0], valid) {
+		t.Fatalf("resources = %+v", got.Resources)
 	}
 }

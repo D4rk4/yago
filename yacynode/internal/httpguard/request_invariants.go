@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 const multipartContentType = "multipart/form-data"

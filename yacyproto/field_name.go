@@ -77,7 +77,40 @@ const (
 )
 
 const (
+	IndexObjectHost = "host"
+)
+
+const (
+	FieldMessageProcess        = "process"
+	FieldMessageSize           = "messagesize"
+	FieldMessageAttachmentSize = "attachmentsize"
+	FieldMessageSubject        = "subject"
+)
+
+const (
 	FieldReason    = "reason"
 	FieldLURLEntry = "lurlEntry"
 	FieldDelay     = "delay"
+)
+
+const (
+	FieldCall   = "call"
+	FieldHashes = "hashes"
+)
+
+const (
+	FieldSeedlistMaxCount = "maxcount"
+	FieldSeedlistNode     = "node"
+	FieldSeedlistMe       = "me"
+	FieldSeedlistMy       = "my"
+	FieldSeedlistID       = "id"
+	FieldSeedlistName     = "name"
+	FieldSeedlistAddress  = "address"
+	FieldSeedlistCallback = "callback"
+	FieldSeedlistPeerName = "peername"
+)
+
+const (
+	FieldListColumn = "col"
+	FieldListName   = "listname"
 )

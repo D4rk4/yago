@@ -8,9 +8,9 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawler/internal/ingest"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 const (
@@ -124,6 +124,18 @@ func TestNATSIngestPublisherBackpressureRespectsDeadline(t *testing.T) {
 	defer cancel()
 	if err := publisher.Publish(ctx, testIngestBatch("https://example.org/second")); err == nil {
 		t.Fatal("expected deadline error on saturated ingest stream, got nil")
+	}
+}
+
+func TestNATSIngestPublisherReturnsNonBackpressureError(t *testing.T) {
+	js := connectJetStream(t, startNATS(t))
+	publisher := ingest.NewNATSIngestPublisher(js, testIngestSubject)
+
+	if err := publisher.Publish(
+		context.Background(),
+		testIngestBatch("https://example.org/missing-stream"),
+	); err == nil {
+		t.Fatal("expected publish error without an ingest stream")
 	}
 }
 

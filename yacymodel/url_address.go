@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 type urlAddress struct {
@@ -28,6 +29,8 @@ var defaultProtocolPort = map[string]int{
 var sessionIDNames = []string{"phpsessionid", "phpsessid", "jsessionid", "sid"}
 
 func parseURLAddress(raw string) urlAddress {
+	raw = cleanFileURL(raw)
+	raw = cleanMalformedDefaultPort(raw)
 	a := urlAddress{port: -1, path: "/"}
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme == "" {
@@ -61,11 +64,86 @@ func parseURLAddress(raw string) urlAddress {
 		a.hasAnchor = true
 		a.anchor = u.Fragment
 	}
+	if a.protocol == "file" {
+		a.host = ""
+		a.path = normalizeFilePath(u.Host, u.Path)
+		return a
+	}
 	switch a.protocol {
 	case "http", "https", "ftp":
 		a.path = resolveBackpath(a.path)
 	}
 	return a
+}
+
+func cleanFileURL(raw string) string {
+	const filePrefix = "file://"
+	if !strings.HasPrefix(strings.ToLower(raw), filePrefix) {
+		return raw
+	}
+	rest := strings.ReplaceAll(raw[len(filePrefix):], "\\", "/")
+	trimmed := strings.TrimPrefix(rest, "/")
+	if drivePrefix(trimmed) {
+		return filePrefix + "/" + cleanDrivePath(trimmed)
+	}
+	return filePrefix + rest
+}
+
+func cleanMalformedDefaultPort(raw string) string {
+	schemeEnd := strings.Index(raw, "://")
+	if schemeEnd < 0 {
+		return raw
+	}
+	if strings.EqualFold(raw[:schemeEnd], "file") {
+		return raw
+	}
+	authorityStart := schemeEnd + len("://")
+	rest := raw[authorityStart:]
+	pathStart := strings.IndexByte(rest, '/')
+	if pathStart < 0 {
+		pathStart = len(rest)
+	}
+	authority := rest[:pathStart]
+	if !strings.HasSuffix(authority, ": ") && !strings.HasSuffix(authority, ":") {
+		return raw
+	}
+	return raw[:authorityStart] + strings.TrimRight(
+		strings.TrimSuffix(authority, ":"),
+		" ",
+	) + rest[pathStart:]
+}
+
+func normalizeFilePath(host string, path string) string {
+	if host != "" {
+		if path != "" && !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		path = host + path
+	}
+	path = strings.ReplaceAll(path, "\\", "/")
+	if path == "" {
+		return "/"
+	}
+	switch {
+	case strings.HasPrefix(path, "/") && len(path) >= 3 && drivePrefix(path[1:]):
+		path = "/" + cleanDrivePath(path[1:])
+	case drivePrefix(path):
+		path = "/" + cleanDrivePath(path)
+	case !strings.HasPrefix(path, "/"):
+		path = "/" + path
+	}
+	return path
+}
+
+func drivePrefix(path string) bool {
+	return len(path) >= 2 && unicode.IsLetter(rune(path[0])) && path[1] == ':'
+}
+
+func cleanDrivePath(path string) string {
+	if len(path) > 2 && path[2] != '/' {
+		return path[:2] + "/" + path[2:]
+	}
+	return path
 }
 
 func (a urlAddress) normalform() string {

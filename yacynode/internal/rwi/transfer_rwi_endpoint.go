@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 type transferRWIEndpoint struct {

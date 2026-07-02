@@ -1,7 +1,6 @@
 package yacymodel
 
 import (
-	"crypto/md5"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -40,9 +39,9 @@ func HashURL(rawURL string) (URLHash, error) {
 	port := strconv.Itoa(a.port)
 
 	var h strings.Builder
-	h.WriteString(md5Base64(a.normalform())[:5])
-	h.WriteByte(md5Base64(subdom + ":" + port + ":" + rootpath)[0])
-	h.WriteString(md5Base64(a.protocol + ":" + hostForHash(a.host) + ":" + port)[:5])
+	h.WriteString(YaCyHashBase64(a.normalform())[:5])
+	h.WriteByte(YaCyHashBase64(subdom + ":" + port + ":" + rootpath)[0])
+	h.WriteString(YaCyHashBase64(a.protocol + ":" + hostForHash(a.host) + ":" + port)[:5])
 	h.WriteByte(Alphabet[flag&0x3f])
 	return ParseURLHash(h.String())
 }
@@ -83,11 +82,6 @@ func (h URLHash) HostHash() (string, error) {
 	}
 
 	return string(parsed)[HashLength-hostHashLength:], nil
-}
-
-func md5Base64(s string) string {
-	sum := md5.Sum([]byte(s))
-	return Encode(sum[:])
 }
 
 func hostForHash(host string) string {

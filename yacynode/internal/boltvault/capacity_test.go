@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/D4rk4/yago/yacynode/internal/boltvault"
 )
 
 func TestQuotaAndUsedBytes(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 func TestCrawlOrderRoundTrip(t *testing.T) {
@@ -45,5 +45,11 @@ func TestCrawlOrderRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(order, got) {
 		t.Errorf("round-trip mismatch:\nwant %#v\ngot  %#v", order, got)
+	}
+}
+
+func TestUnmarshalCrawlOrderRejectsInvalidJSON(t *testing.T) {
+	if _, err := UnmarshalCrawlOrder([]byte("{")); err == nil {
+		t.Fatal("invalid JSON should fail")
 	}
 }

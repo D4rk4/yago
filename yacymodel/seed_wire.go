@@ -121,6 +121,28 @@ func parseInto[T any](target *Optional[T], parse func(string) (T, error), value 
 }
 
 func (s Seed) String() string {
+	fields := s.Properties()
+
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	var b strings.Builder
+	b.WriteByte('{')
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(fields[k])
+	}
+	b.WriteByte('}')
+	return b.String()
+}
+
+func (s Seed) Properties() map[string]string {
 	fields := map[string]string{SeedHash: s.Hash.String()}
 	putStringer(fields, SeedIP, s.IP)
 	putHostList(fields, SeedIP6, s.IP6)
@@ -141,23 +163,7 @@ func (s Seed) String() string {
 		}
 	}
 
-	keys := make([]string, 0, len(fields))
-	for k := range fields {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	var b strings.Builder
-	b.WriteByte('{')
-	for i, k := range keys {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString(k)
-		b.WriteByte('=')
-		b.WriteString(fields[k])
-	}
-	b.WriteByte('}')
-	return b.String()
+	return fields
 }
 
 func putStringer[T fmt.Stringer](fields map[string]string, key string, opt Optional[T]) {

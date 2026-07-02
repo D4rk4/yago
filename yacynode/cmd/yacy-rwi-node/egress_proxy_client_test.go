@@ -38,3 +38,11 @@ func TestNewEgressProxyClientPinsProxy(t *testing.T) {
 		t.Errorf("proxy = %v", resolved)
 	}
 }
+
+func TestEgressProxyURLRejectsMalformedAndHostlessURLs(t *testing.T) {
+	for _, raw := range []string{"http://[::1", "http:///proxy"} {
+		if _, err := egressProxyURL(envFrom(map[string]string{envProxyURL: raw})); err == nil {
+			t.Fatalf("%q: expected error", raw)
+		}
+	}
+}

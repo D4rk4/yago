@@ -2,17 +2,22 @@ package documentsearch
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 type fakeScanner struct {
 	postings map[yacymodel.Hash][]yacymodel.RWIPosting
+	err      error
 }
 
 func (s fakeScanner) RWICount(context.Context) (int, error) {
+	if s.err != nil {
+		return 0, s.err
+	}
 	return len(s.postings), nil
 }
 
@@ -21,6 +26,9 @@ func (s fakeScanner) ScanWord(
 	word yacymodel.Hash,
 	visit func(yacymodel.RWIPosting) (bool, error),
 ) error {
+	if s.err != nil {
+		return s.err
+	}
 	for _, entry := range s.postings[word] {
 		entry.WordHash = word
 		keepGoing, err := visit(entry)
@@ -37,12 +45,16 @@ func (s fakeScanner) ScanWord(
 
 type fakeDirectory struct {
 	rows map[yacymodel.Hash]yacymodel.URIMetadataRow
+	err  error
 }
 
 func (d fakeDirectory) RowsByHash(
 	_ context.Context,
 	hashes []yacymodel.Hash,
 ) ([]yacymodel.URIMetadataRow, error) {
+	if d.err != nil {
+		return nil, d.err
+	}
 	out := make([]yacymodel.URIMetadataRow, 0, len(hashes))
 	for _, hash := range hashes {
 		if row, ok := d.rows[hash]; ok {
@@ -61,6 +73,9 @@ func (d fakeDirectory) MissingURLs(
 }
 
 func (d fakeDirectory) Count(context.Context) (int, error) {
+	if d.err != nil {
+		return 0, d.err
+	}
 	return len(d.rows), nil
 }
 
@@ -269,5 +284,44 @@ func TestSearchQualifiesByLanguageAndTermSpread(t *testing.T) {
 	if len(result.resources) != 1 ||
 		result.resources[0].Properties[yacymodel.URLMetaHash] != string(hashFor("u1")) {
 		t.Fatalf("resources = %v, want only u1", result.resources)
+	}
+}
+
+func TestSearchReturnsPipelineErrors(t *testing.T) {
+	sentinel := errors.New("scan failed")
+	word := hashFor("w1")
+	if _, err := (searcher{index: fakeScanner{err: sentinel}}).search(
+		context.Background(),
+		searchCriteria{excludedTerms: []yacymodel.Hash{word}},
+	); !errors.Is(err, sentinel) {
+		t.Fatalf("excluded term error = %v, want %v", err, sentinel)
+	}
+
+	if _, err := (searcher{index: fakeScanner{err: sentinel}}).search(
+		context.Background(),
+		searchCriteria{terms: []yacymodel.Hash{word}},
+	); !errors.Is(err, sentinel) {
+		t.Fatalf("wanted term error = %v, want %v", err, sentinel)
+	}
+
+	if _, err := (searcher{
+		index: fakeScanner{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
+			word: {postingEntry(word, "u1", 0, 1)},
+		}},
+		documents: fakeDirectory{err: sentinel},
+	}).search(context.Background(), searchCriteria{terms: []yacymodel.Hash{word}}); !errors.Is(err, sentinel) {
+		t.Fatalf("rows error = %v, want %v", err, sentinel)
+	}
+
+	if _, err := (searcher{index: fakeScanner{err: sentinel}, documents: fakeDirectory{rows: map[yacymodel.Hash]yacymodel.URIMetadataRow{}}}).search(
+		context.Background(),
+		searchCriteria{
+			reporting: matchReporting{mode: reportRequestedTerms, terms: []yacymodel.Hash{word}},
+		},
+	); !errors.Is(
+		err,
+		sentinel,
+	) {
+		t.Fatalf("report error = %v, want %v", err, sentinel)
 	}
 }

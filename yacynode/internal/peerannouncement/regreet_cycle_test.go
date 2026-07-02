@@ -3,10 +3,11 @@ package peerannouncement
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 type stubGreeter struct {
@@ -19,6 +20,25 @@ func (g *stubGreeter) Greet(context.Context, string, yacymodel.Seed, int) (greet
 	g.calls++
 
 	return g.result, g.err
+}
+
+type cancelingGreeter struct {
+	cancel context.CancelFunc
+	calls  int
+}
+
+func (g *cancelingGreeter) Greet(
+	context.Context,
+	string,
+	yacymodel.Seed,
+	int,
+) (greetResult, error) {
+	g.calls++
+	if g.calls == 2 {
+		g.cancel()
+	}
+
+	return greetResult{YourType: yacymodel.PeerSenior}, nil
 }
 
 type stubRoster struct {
@@ -137,6 +157,100 @@ func TestAnnounceMarksFailedGreetUnreachable(t *testing.T) {
 	}
 	if len(roster.reachable) != 0 {
 		t.Fatalf("reachable = %v, want none on failure", roster.reachable)
+	}
+}
+
+func TestAnnounceSkipsAddresslessTargets(t *testing.T) {
+	ctx := context.Background()
+	peer := yacymodel.Seed{Hash: hashFor("peer")}
+	greeter := &stubGreeter{result: greetResult{YourType: yacymodel.PeerSenior}}
+	roster := &stubRoster{rounds: [][]yacymodel.Seed{{peer}}}
+	a := &announcer{
+		self:    stubSelf{seed: callerSeed(t, "self", "203.0.113.9")},
+		seeds:   &stubSeedSource{},
+		roster:  roster,
+		greeter: greeter,
+	}
+
+	a.Announce(ctx)
+
+	if greeter.calls != 0 {
+		t.Fatalf("greeter calls = %d, want 0 for addressless target", greeter.calls)
+	}
+	if len(roster.reachable) != 0 || len(roster.unreachable) != 0 {
+		t.Fatalf(
+			"roster updates = reachable %v unreachable %v, want none",
+			roster.reachable,
+			roster.unreachable,
+		)
+	}
+}
+
+func TestAnnounceRecordsReachableWhenPeerReportsJunior(t *testing.T) {
+	ctx := context.Background()
+	peer := callerSeed(t, "peer", "203.0.113.1")
+	roster := &stubRoster{rounds: [][]yacymodel.Seed{{peer}}}
+	a := &announcer{
+		self:   stubSelf{seed: callerSeed(t, "self", "203.0.113.9")},
+		seeds:  &stubSeedSource{},
+		roster: roster,
+		greeter: &stubGreeter{
+			result: greetResult{YourType: yacymodel.PeerJunior, YourIP: "198.51.100.1"},
+		},
+	}
+
+	a.Announce(ctx)
+
+	if len(roster.reachable) != 1 || roster.reachable[0] != peer.Hash {
+		t.Fatalf("reachable = %v, want [%v]", roster.reachable, peer.Hash)
+	}
+}
+
+func TestNewReturnsAnnouncer(t *testing.T) {
+	announced := New(
+		Config{
+			Client:         http.DefaultClient,
+			NetworkName:    "freeworld",
+			Interval:       time.Hour,
+			GreetsPerCycle: 3,
+		},
+		stubSelf{seed: callerSeed(t, "self", "203.0.113.9")},
+		&stubSeedSource{},
+		&stubRoster{},
+	)
+
+	if _, ok := announced.(*announcer); !ok {
+		t.Fatalf("New returned %T, want *announcer", announced)
+	}
+}
+
+func TestRunAnnouncesOnTicker(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	peer := callerSeed(t, "peer", "203.0.113.1")
+	roster := &stubRoster{rounds: [][]yacymodel.Seed{{peer}, {peer}}}
+	greeter := &cancelingGreeter{cancel: cancel}
+	a := &announcer{
+		interval: time.Millisecond,
+		self:     stubSelf{seed: callerSeed(t, "self", "203.0.113.9")},
+		seeds:    &stubSeedSource{},
+		roster:   roster,
+		greeter:  greeter,
+	}
+
+	done := make(chan struct{})
+	go func() {
+		a.Run(ctx)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("Run did not stop after ticker announce")
+	}
+	if greeter.calls < 2 {
+		t.Fatalf("greeter calls = %d, want at least 2", greeter.calls)
 	}
 }
 

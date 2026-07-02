@@ -12,9 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/metrics"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacynode/internal/boltvault"
+	"github.com/D4rk4/yago/yacynode/internal/metrics"
 )
 
 const (
@@ -33,10 +32,20 @@ const (
 	shutdownTimeout         = 15 * time.Second
 )
 
+var (
+	exitProcess         = os.Exit
+	runNode             = run
+	openRuntimeVault    = boltvault.Open
+	assembleRuntimeNode = assembleNode
+	serveRuntimeNode    = serve
+	listenAndServeHTTP  = func(server *http.Server) error { return server.ListenAndServe() }
+	shutdownHTTPServer  = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
+)
+
 func main() {
-	if err := run(); err != nil {
+	if err := runNode(); err != nil {
 		slog.ErrorContext(context.Background(), "node terminated", slog.Any("error", err))
-		os.Exit(1)
+		exitProcess(1)
 	}
 }
 
@@ -57,7 +66,7 @@ func run() error {
 
 	client := newEgressProxyClient(config.ProxyURL, outboundRequestTimeout)
 
-	vault, err := boltvault.Open(config.StoragePath, config.StorageQuotaByte)
+	vault, err := openRuntimeVault(config.StoragePath, config.StorageQuotaByte)
 	if err != nil {
 		return fmt.Errorf("open storage: %w", err)
 	}
@@ -70,7 +79,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	assembled, err := assembleNode(ctx, config, vault, client)
+	assembled, err := assembleRuntimeNode(ctx, config, vault, client)
 	if err != nil {
 		return fmt.Errorf("assemble node: %w", err)
 	}
@@ -80,7 +89,7 @@ func run() error {
 		assembled.crawl.mountDispatch(opsMux)
 	}
 
-	return serve(
+	return serveRuntimeNode(
 		ctx,
 		assembled,
 		evictionMetrics,
@@ -146,7 +155,7 @@ func serve(
 				slog.String("service", s.name),
 				slog.String("addr", s.server.Addr),
 			)
-			errs <- s.server.ListenAndServe()
+			errs <- listenAndServeHTTP(s.server)
 		}(s)
 	}
 
@@ -169,7 +178,7 @@ func shutdown(servers []namedServer) error {
 
 	var failures error
 	for _, s := range servers {
-		if err := s.server.Shutdown(ctx); err != nil {
+		if err := shutdownHTTPServer(s.server, ctx); err != nil {
 			failures = errors.Join(failures, fmt.Errorf("shutdown %s: %w", s.name, err))
 		}
 	}
@@ -177,8 +186,12 @@ func shutdown(servers []namedServer) error {
 	return failures
 }
 
-func closeVault(vault *vault.Vault) {
-	if err := vault.Close(); err != nil {
+type vaultCloser interface {
+	Close() error
+}
+
+func closeVault(storage vaultCloser) {
+	if err := storage.Close(); err != nil {
 		slog.ErrorContext(context.Background(), "storage close failed", slog.Any("error", err))
 	}
 }

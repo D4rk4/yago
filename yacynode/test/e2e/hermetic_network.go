@@ -7,7 +7,7 @@ import (
 	"net"
 	"testing"
 
-	dockernetwork "github.com/docker/docker/api/types/network"
+	dockernetwork "github.com/moby/moby/api/types/network"
 	"github.com/testcontainers/testcontainers-go"
 	tcnetwork "github.com/testcontainers/testcontainers-go/network"
 )

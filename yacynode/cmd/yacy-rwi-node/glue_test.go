@@ -8,9 +8,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/metrics"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodestatus"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/metrics"
+	"github.com/D4rk4/yago/yacynode/internal/nodestatus"
 )
 
 func TestConfigureLogging(t *testing.T) {
@@ -35,6 +35,22 @@ func TestMiddlewareRecordsStatus(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestMiddlewareRecordsSuccess(t *testing.T) {
+	handler := logHTTPRequests(http.HandlerFunc(
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		},
+	))
+
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "/x", nil)
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", rec.Code)
 	}
 }
 

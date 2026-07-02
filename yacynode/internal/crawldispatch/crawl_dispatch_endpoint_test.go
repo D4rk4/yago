@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/crawldispatch"
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/crawldispatch"
 )
 
 type recordingQueue struct {
@@ -100,6 +100,28 @@ func TestDispatchBuildsOrderFromOperatorInput(t *testing.T) {
 	}
 }
 
+func TestDispatchBuildsOrderWithExplicitMatchAndRecrawl(t *testing.T) {
+	queue := &recordingQueue{}
+	rec := post(t, mount(t, queue), `{
+		"name": "docs",
+		"seeds": ["https://example.org/a"],
+		"scope": "wide",
+		"urlMustMatch": "https://example.org/.*",
+		"maxPagesPerHost": -1,
+		"recrawlIfOlder": "24h"
+	}`)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202; body=%s", rec.Code, rec.Body.String())
+	}
+	if queue.order.Profile.Scope != yacycrawlcontract.ScopeWide {
+		t.Fatalf("scope = %v, want wide", queue.order.Profile.Scope)
+	}
+	if queue.order.Profile.URLMustMatch != "https://example.org/.*" {
+		t.Fatalf("urlMustMatch = %q", queue.order.Profile.URLMustMatch)
+	}
+}
+
 func TestDispatchRejectsEmptySeeds(t *testing.T) {
 	queue := &recordingQueue{}
 	rec := post(t, mount(t, queue), `{"name":"x","seeds":[]}`)
@@ -134,6 +156,17 @@ func TestDispatchRejectsBadDuration(t *testing.T) {
 		t,
 		mount(t, &recordingQueue{}),
 		`{"seeds":["x"],"maxPagesPerHost":-1,"crawlDelay":"soon"}`,
+	)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestDispatchRejectsBadRecrawlDuration(t *testing.T) {
+	rec := post(
+		t,
+		mount(t, &recordingQueue{}),
+		`{"seeds":["x"],"maxPagesPerHost":-1,"recrawlIfOlder":"eventually"}`,
 	)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)

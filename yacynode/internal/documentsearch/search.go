@@ -3,11 +3,11 @@
 package documentsearch
 
 import (
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/httpguard"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacynode/internal/httpguard"
+	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yacynode/internal/rwi"
+	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 func MountSearch(

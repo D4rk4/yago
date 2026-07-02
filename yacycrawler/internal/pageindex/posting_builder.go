@@ -1,17 +1,16 @@
 package pageindex
 
 import (
-	"fmt"
 	"maps"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageparse"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 func BuildPostings(
 	page pageparse.ParsedPage,
 	stats pageparse.PageStats,
-) ([]yacymodel.RWIPosting, error) {
+) []yacymodel.RWIPosting {
 	frequency := make(map[string]int)
 	firstPosition := make(map[string]int)
 	order := make([]string, 0)
@@ -23,10 +22,7 @@ func BuildPostings(
 		frequency[token]++
 	}
 
-	urlHash, err := yacymodel.HashURL(page.URL)
-	if err != nil {
-		return nil, fmt.Errorf("hash url: %w", err)
-	}
+	urlHash, _ := yacymodel.HashURL(page.URL)
 	language := NormalizeLanguage(page.Language)
 
 	shared := map[string]string{
@@ -59,7 +55,7 @@ func BuildPostings(
 			Properties: properties,
 		})
 	}
-	return postings, nil
+	return postings
 }
 
 const (

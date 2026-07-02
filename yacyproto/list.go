@@ -1,0 +1,28 @@
+package yacyproto
+
+import (
+	"context"
+	"net/url"
+)
+
+const ListColumnBlack = "black"
+
+type ListRequest struct {
+	Column string
+	Name   string
+}
+
+func (r ListRequest) Form() url.Values {
+	form := url.Values{}
+	putString(form, FieldListColumn, r.Column)
+	putString(form, FieldListName, r.Name)
+
+	return form
+}
+
+func ParseListRequest(_ context.Context, form url.Values) (ListRequest, error) {
+	return ListRequest{
+		Column: form.Get(FieldListColumn),
+		Name:   form.Get(FieldListName),
+	}, nil
+}

@@ -3,8 +3,8 @@ package pageindex
 import (
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageparse"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 type Artifacts struct {
@@ -28,13 +28,7 @@ func (b *contentIndexBuilder) Build(
 	page pageparse.ParsedPage,
 	stats pageparse.PageStats,
 ) (Artifacts, error) {
-	postings, err := BuildPostings(page, stats)
-	if err != nil {
-		return Artifacts{}, err
-	}
-	metadata, err := BuildMetadata(page, stats, b.clock())
-	if err != nil {
-		return Artifacts{}, err
-	}
+	postings := BuildPostings(page, stats)
+	metadata := BuildMetadata(page, stats, b.clock())
 	return Artifacts{Postings: postings, Metadata: metadata}, nil
 }

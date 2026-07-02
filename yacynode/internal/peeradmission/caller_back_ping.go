@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 const backPingMaxBodyBytes int64 = 64 << 10
@@ -21,6 +21,8 @@ func newCallerBackPing(client *http.Client) callerBackPing {
 }
 
 var _ callerReachabilityProbe = callerBackPing{}
+
+var parseBackPingMessage = yacymodel.ParseMessage
 
 func (p callerBackPing) Reachable(
 	ctx context.Context,
@@ -43,13 +45,7 @@ func (p callerBackPing) Reachable(
 	}
 	target.RawQuery = query.Form().Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
-	if err != nil {
-		slog.DebugContext(ctx, "caller back-ping unreachable", slog.Any("error", err))
-
-		return false
-	}
-
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	resp, err := p.client.Do(req)
 	if err != nil {
 		slog.DebugContext(ctx, "caller back-ping unreachable", slog.Any("error", err))
@@ -75,7 +71,7 @@ func (p callerBackPing) confirms(ctx context.Context, resp *http.Response) bool 
 		return false
 	}
 
-	msg, err := yacymodel.ParseMessage(string(body))
+	msg, err := parseBackPingMessage(string(body))
 	if err != nil {
 		slog.DebugContext(ctx, "caller back-ping unreachable", slog.Any("error", err))
 

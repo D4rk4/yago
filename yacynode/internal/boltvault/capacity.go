@@ -30,11 +30,7 @@ func (e *engine) UsedBytes(ctx context.Context) (int64, error) {
 	}); err != nil {
 		return 0, fmt.Errorf("read storage stats: %w", err)
 	}
-	if used < 0 {
-		used = 0
-	}
-
-	return used, nil
+	return max(used, 0), nil
 }
 
 func storageAtCapacityError(err error) bool {

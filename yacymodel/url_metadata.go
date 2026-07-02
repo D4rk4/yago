@@ -11,7 +11,10 @@ import (
 const (
 	URLMetaHash           = "hash"
 	URLMetaHashAlt        = "h"
+	URLMetaURL            = "url"
 	URLMetaColDescription = "descr"
+	URLMetaAuthor         = "author"
+	URLMetaReferrer       = "referrer"
 )
 
 var ErrBadURLMetadata = errors.New("bad url metadata")

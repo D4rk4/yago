@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 type stringCodec struct{}

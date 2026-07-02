@@ -3,7 +3,7 @@ package documentsearch
 import (
 	"context"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 type matchReport struct {
@@ -51,10 +51,7 @@ func (s searcher) reportRequestedTerms(
 	criteria searchCriteria,
 	wanted termMatches,
 ) (matchReport, error) {
-	appearanceCriteria, err := s.appearanceCriteria(ctx, criteria, nil)
-	if err != nil {
-		return matchReport{}, err
-	}
+	appearanceCriteria, _ := s.appearanceCriteria(ctx, criteria, nil)
 	requested, err := s.documentsMatchingTerms(ctx, criteria.reporting.terms, appearanceCriteria)
 	if err != nil {
 		return matchReport{}, err

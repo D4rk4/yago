@@ -14,8 +14,8 @@ components:
 vendors:
   yacymodel:
     in:
-      - github.com/nikitakarpei/yacy-rwi-node/yacymodel
-      - github.com/nikitakarpei/yacy-rwi-node/yacymodel/**
+      - github.com/D4rk4/yago/yacymodel
+      - github.com/D4rk4/yago/yacymodel/**
 
 deps:
   yacyproto:

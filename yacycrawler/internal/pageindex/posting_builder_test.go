@@ -3,18 +3,14 @@ package pageindex_test
 import (
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageindex"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageparse"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 func buildPostings(t *testing.T, page pageparse.ParsedPage) []yacymodel.RWIPosting {
 	t.Helper()
-	postings, err := pageindex.BuildPostings(page, pageparse.BuildPageStats(page))
-	if err != nil {
-		t.Fatalf("BuildPostings: %v", err)
-	}
-	return postings
+	return pageindex.BuildPostings(page, pageparse.BuildPageStats(page))
 }
 
 func TestBuildPostingsUsesYaCyWordHash(t *testing.T) {

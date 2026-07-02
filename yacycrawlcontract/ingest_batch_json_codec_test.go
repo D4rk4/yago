@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 func TestIngestBatchRoundTrip(t *testing.T) {
@@ -33,5 +33,11 @@ func TestIngestBatchRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(batch, got) {
 		t.Errorf("round-trip mismatch:\nwant %#v\ngot  %#v", batch, got)
+	}
+}
+
+func TestUnmarshalIngestBatchRejectsInvalidJSON(t *testing.T) {
+	if _, err := UnmarshalIngestBatch([]byte("{")); err == nil {
+		t.Fatal("invalid JSON should fail")
 	}
 }

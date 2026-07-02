@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/crawlresults"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/crawlresults"
+	"github.com/D4rk4/yago/yacynode/internal/rwi"
+	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 )
 
 type fakeStream struct {
@@ -74,6 +74,35 @@ func deliver(
 	return acked, naked
 }
 
+func deliverWithCallbacks(
+	t *testing.T,
+	urls *recordingURLReceiver,
+	postings *recordingPostingReceiver,
+	ack func(context.Context) error,
+	nak func(context.Context) error,
+) {
+	t.Helper()
+	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery, 1)}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	stream.out <- crawlresults.IngestDelivery{
+		Batch: yacycrawlcontract.IngestBatch{SourceURL: "https://example.org"},
+		Ack: func(ctx context.Context) error {
+			defer wg.Done()
+			return ack(ctx)
+		},
+		Nak: func(ctx context.Context) error {
+			defer wg.Done()
+			return nak(ctx)
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	consumer := crawlresults.NewIngestConsumer(stream, urls, postings)
+	go consumer.Run(ctx)
+	wg.Wait()
+}
+
 func TestAbsorbStoresMetadataBeforePostingsAndAcks(t *testing.T) {
 	urls := &recordingURLReceiver{}
 	postings := &recordingPostingReceiver{}
@@ -88,6 +117,19 @@ func TestAbsorbStoresMetadataBeforePostingsAndAcks(t *testing.T) {
 	if !urls.at.Before(postings.at) {
 		t.Fatal("metadata must be stored before postings")
 	}
+}
+
+func TestAbsorbLogsAckFailure(t *testing.T) {
+	deliverWithCallbacks(
+		t,
+		&recordingURLReceiver{},
+		&recordingPostingReceiver{},
+		func(context.Context) error { return errors.New("ack failed") },
+		func(context.Context) error {
+			t.Fatal("unexpected nak")
+			return nil
+		},
+	)
 }
 
 func TestAbsorbNaksWhenURLReceiverBusy(t *testing.T) {
@@ -113,6 +155,19 @@ func TestAbsorbNaksWhenPostingReceiverErrors(t *testing.T) {
 	}
 }
 
+func TestAbsorbLogsNakFailure(t *testing.T) {
+	deliverWithCallbacks(
+		t,
+		&recordingURLReceiver{err: errors.New("url failed")},
+		&recordingPostingReceiver{},
+		func(context.Context) error {
+			t.Fatal("unexpected ack")
+			return nil
+		},
+		func(context.Context) error { return errors.New("nak failed") },
+	)
+}
+
 func TestRunStopsWhenStreamCloses(t *testing.T) {
 	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery)}
 	close(stream.out)
@@ -127,5 +182,23 @@ func TestRunStopsWhenStreamCloses(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Run did not return when stream closed")
+	}
+}
+
+func TestRunStopsWhenContextEnds(t *testing.T) {
+	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery)}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	done := make(chan struct{})
+	consumer := crawlresults.NewIngestConsumer(
+		stream,
+		&recordingURLReceiver{},
+		&recordingPostingReceiver{},
+	)
+	go func() { consumer.Run(ctx); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Run did not return when context ended")
 	}
 }

@@ -38,6 +38,15 @@ func TestFlagsSetGet(t *testing.T) {
 	if f.Get(FlagAcceptRemoteIndex) {
 		t.Error("expected FlagAcceptRemoteIndex cleared")
 	}
+	if f.Get(-1) || f.Get(FlagsLength*flagBitsPerAtom) {
+		t.Error("out-of-range flags should be false")
+	}
+	if got := f.Set(-1, true); got != f {
+		t.Error("negative flag set should be ignored")
+	}
+	if got := f.Set(FlagsLength*flagBitsPerAtom, true); got != f {
+		t.Error("overflow flag set should be ignored")
+	}
 }
 
 func TestParseFlags(t *testing.T) {

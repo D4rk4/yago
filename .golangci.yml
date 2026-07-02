@@ -70,6 +70,6 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(github.com/nikitakarpei/yacy-rwi-node)
+        - prefix(github.com/D4rk4/yago)
     golines:
       max-len: 100

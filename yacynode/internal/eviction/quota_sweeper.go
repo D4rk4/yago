@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/rwi"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmetastaleness"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlreferences"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/rwi"
+	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
+	"github.com/D4rk4/yago/yacynode/internal/urlmetastaleness"
+	"github.com/D4rk4/yago/yacynode/internal/urlreferences"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 type quotaSweeper struct {

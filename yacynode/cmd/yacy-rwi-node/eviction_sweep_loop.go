@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/eviction"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/metrics"
+	"github.com/D4rk4/yago/yacynode/internal/eviction"
+	"github.com/D4rk4/yago/yacynode/internal/metrics"
 )
 
 const (
@@ -15,6 +15,12 @@ const (
 	evictionFailedMessage = "storage eviction failed"
 )
 
+var newEvictionTicks = func(interval time.Duration) (<-chan time.Time, func()) {
+	ticker := time.NewTicker(interval)
+
+	return ticker.C, ticker.Stop
+}
+
 func runEvictionLoop(
 	ctx context.Context,
 	sweeper eviction.Sweeper,
@@ -22,13 +28,13 @@ func runEvictionLoop(
 ) {
 	sweepOnce(ctx, sweeper, observer)
 
-	ticker := time.NewTicker(evictionInterval)
-	defer ticker.Stop()
+	ticks, stop := newEvictionTicks(evictionInterval)
+	defer stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticks:
 			sweepOnce(ctx, sweeper, observer)
 		}
 	}

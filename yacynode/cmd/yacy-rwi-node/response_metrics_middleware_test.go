@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/metrics"
+	"github.com/D4rk4/yago/yacynode/internal/metrics"
 )
 
 func TestInstrumentHTTPCountsThroughMiddleware(t *testing.T) {

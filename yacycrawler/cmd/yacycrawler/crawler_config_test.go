@@ -125,3 +125,42 @@ func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadServiceConfigRejectsParseErrors(t *testing.T) {
+	base := map[string]string{
+		EnvNATSURL:  "nats://localhost:4222",
+		EnvProxyURL: "http://proxy:4750",
+	}
+	cases := map[string]string{
+		EnvNATSIngestMaxMsgs: "abc",
+		EnvCrawlDelay:        "not-a-duration",
+	}
+	for key, bad := range cases {
+		env := map[string]string{}
+		for k, v := range base {
+			env[k] = v
+		}
+		env[key] = bad
+		if _, err := LoadServiceConfig(envFrom(env)); err == nil {
+			t.Errorf("%s=%q: expected error", key, bad)
+		}
+	}
+}
+
+func TestLoadServiceConfigRejectsMalformedProxyURL(t *testing.T) {
+	if _, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNATSURL:  "nats://localhost:4222",
+		EnvProxyURL: "http://[bad",
+	})); err == nil {
+		t.Fatal("expected error for malformed proxy URL")
+	}
+}
+
+func TestLoadServiceConfigRejectsProxyURLWithoutHost(t *testing.T) {
+	if _, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNATSURL:  "nats://localhost:4222",
+		EnvProxyURL: "http:/path",
+	})); err == nil {
+		t.Fatal("expected error for proxy URL without host")
+	}
+}

@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/memvault"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/peerroster"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/memvault"
+	"github.com/D4rk4/yago/yacynode/internal/peerroster"
 )
 
 const hashFiller = "AAAAAAAAAAAA"

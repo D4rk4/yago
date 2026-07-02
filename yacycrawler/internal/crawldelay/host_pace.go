@@ -6,8 +6,8 @@ import (
 
 	lru "github.com/hashicorp/golang-lru/v2"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/weburl"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawljob"
+	"github.com/D4rk4/yago/yacycrawler/internal/weburl"
 )
 
 const DefaultCrawlDelay = 1 * time.Second

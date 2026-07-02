@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/memvault"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlreferences"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/memvault"
+	"github.com/D4rk4/yago/yacynode/internal/urlreferences"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 func openReferences(t *testing.T) (*vault.Vault, urlreferences.ReferenceProjection) {

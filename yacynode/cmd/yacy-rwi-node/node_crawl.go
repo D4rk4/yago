@@ -6,18 +6,26 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/crawlbroker"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/crawldispatch"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/crawlresults"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/crawlbroker"
+	"github.com/D4rk4/yago/yacynode/internal/crawldispatch"
+	"github.com/D4rk4/yago/yacynode/internal/crawlresults"
+	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
 )
+
+type crawlProcess interface {
+	mountDispatch(mux *http.ServeMux)
+	Run(ctx context.Context)
+	Close()
+}
 
 type crawlRuntime struct {
 	broker    *crawlbroker.CrawlBroker
 	consumer  *crawlresults.IngestConsumer
 	initiator yacymodel.Hash
 }
+
+var openCrawlBroker = crawlbroker.Open
 
 func buildCrawlRuntime(
 	ctx context.Context,
@@ -29,7 +37,7 @@ func buildCrawlRuntime(
 		return nil, nil
 	}
 
-	broker, err := crawlbroker.Open(ctx, crawlbroker.Config{
+	broker, err := openCrawlBroker(ctx, crawlbroker.Config{
 		NATSURL:       config.NATSURL,
 		OrdersSubject: config.OrdersSubject,
 		IngestSubject: config.IngestSubject,

@@ -39,6 +39,7 @@ the node falls behind.
 Configuration comes from the environment (`NATS_URL` is required), and the service runs
 until it receives `SIGINT` or `SIGTERM`. Outbound fetches, including the headless browser,
 honor the standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables.
+The container image embeds the pinned headless-shell runtime in a scratch non-root image.
 
 The message types both services exchange live in the standalone
 [`yacycrawlcontract`](../yacycrawlcontract/README.md) module, so neither service depends

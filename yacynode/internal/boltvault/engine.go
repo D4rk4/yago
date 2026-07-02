@@ -13,13 +13,15 @@ import (
 
 	bolt "go.etcd.io/bbolt"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 type engine struct {
 	db         *bolt.DB
 	quotaBytes int64
 }
+
+var newVault = vault.New
 
 func Open(path string, quotaBytes int64) (*vault.Vault, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
@@ -31,11 +33,9 @@ func Open(path string, quotaBytes int64) (*vault.Vault, error) {
 		return nil, fmt.Errorf("open storage: %w", err)
 	}
 
-	vaulted, err := vault.New(&engine{db: db, quotaBytes: quotaBytes})
+	vaulted, err := newVault(&engine{db: db, quotaBytes: quotaBytes})
 	if err != nil {
-		if closeErr := db.Close(); closeErr != nil {
-			return nil, fmt.Errorf("initialize storage: %w: %w", err, closeErr)
-		}
+		_ = db.Close()
 
 		return nil, fmt.Errorf("initialize storage: %w", err)
 	}
@@ -82,7 +82,10 @@ func (e *engine) View(_ context.Context, fn func(vault.EngineTxn) error) error {
 }
 
 func (e *engine) Close() error {
-	err := e.db.Close()
+	return wrapCloseError(e.db.Close())
+}
+
+func wrapCloseError(err error) error {
 	if err != nil {
 		return fmt.Errorf("close storage: %w", err)
 	}

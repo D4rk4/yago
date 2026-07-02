@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
+	"github.com/D4rk4/yago/yacycrawler/internal/pageparse"
 )
 
 func TestResolveLinksSplitsLocalAndExternal(t *testing.T) {

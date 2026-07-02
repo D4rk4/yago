@@ -12,7 +12,7 @@ import (
 	"github.com/temoto/robotstxt"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
+	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
 )
 
 type RobotsAdmissionFetcher struct {

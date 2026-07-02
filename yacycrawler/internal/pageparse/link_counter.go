@@ -1,6 +1,6 @@
 package pageparse
 
-import "github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/weburl"
+import "github.com/D4rk4/yago/yacycrawler/internal/weburl"
 
 func ResolveLinks(base string, links []string) (local, external []string) {
 	baseURL, ok := weburl.ParseBase(base)

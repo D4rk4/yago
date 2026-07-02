@@ -5,15 +5,16 @@ import (
 	"fmt"
 
 	"github.com/markusmobius/go-trafilatura"
-	"golang.org/x/net/html/charset"
 )
 
+var extractReadableContent = trafilatura.Extract
+
 func extractMainContent(contentType string, body []byte) (string, error) {
-	reader, err := charset.NewReader(bytes.NewReader(body), contentType)
+	reader, err := newHTMLCharsetReader(bytes.NewReader(body), contentType)
 	if err != nil {
 		reader = bytes.NewReader(body)
 	}
-	result, err := trafilatura.Extract(reader, trafilatura.Options{
+	result, err := extractReadableContent(reader, trafilatura.Options{
 		ExcludeComments: true,
 		EnableFallback:  true,
 		Focus:           trafilatura.Balanced,

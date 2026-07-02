@@ -5,7 +5,7 @@ import (
 	"maps"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 const sampleURLMetadataRow = "{flags=AAAAAA,fresh=20260101,hash=MNOPQRSTUVWX,load=20250101,mod=20250101,size=1024,url=b|aHR0cHM6Ly9leGFtcGxlLm9yZy8,wc=12}"
@@ -16,10 +16,7 @@ func TestEncodeStoredURLMetadataRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	encoded, err := encodeStoredURLMetadata(row)
-	if err != nil {
-		t.Fatal(err)
-	}
+	encoded := encodeStoredURLMetadata(row)
 	decoded, err := decodeStoredURLMetadata(encoded)
 	if err != nil {
 		t.Fatal(err)
@@ -34,10 +31,7 @@ func TestEncodeStoredURLMetadataIsSmallerThanPropertyForm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := encodeStoredURLMetadata(row)
-	if err != nil {
-		t.Fatal(err)
-	}
+	encoded := encodeStoredURLMetadata(row)
 	if got, legacy := len(encoded), len(row.String()); got >= legacy {
 		t.Errorf("compressed %d bytes, property form %d bytes", got, legacy)
 	}
@@ -64,10 +58,7 @@ func TestDecodeStoredURLMetadataRejectsTruncatedCompressed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := encodeStoredURLMetadata(row)
-	if err != nil {
-		t.Fatal(err)
-	}
+	encoded := encodeStoredURLMetadata(row)
 	if _, err := decodeStoredURLMetadata(encoded[:len(encoded)-1]); err == nil {
 		t.Error("expected error for truncated compressed value")
 	}

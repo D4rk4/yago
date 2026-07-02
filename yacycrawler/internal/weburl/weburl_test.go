@@ -3,7 +3,7 @@ package weburl_test
 import (
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/weburl"
+	"github.com/D4rk4/yago/yacycrawler/internal/weburl"
 )
 
 func TestNormalize(t *testing.T) {
@@ -39,6 +39,12 @@ func TestParseBaseRejectsInvalid(t *testing.T) {
 	if _, ok := weburl.ParseBase("://bad"); ok {
 		t.Error("ParseBase(bad) should fail")
 	}
+	if base, ok := weburl.ParseBase(
+		"https://example.com/dir/page",
+	); !ok ||
+		base.Host != "example.com" {
+		t.Fatalf("ParseBase(valid) = %v, %v", base, ok)
+	}
 }
 
 func TestResolve(t *testing.T) {
@@ -51,5 +57,8 @@ func TestResolve(t *testing.T) {
 	}
 	if _, ok := weburl.Resolve(base, "mailto:a@b.com"); ok {
 		t.Error("Resolve(mailto) should reject non-http scheme")
+	}
+	if _, ok := weburl.Resolve(base, "://bad"); ok {
+		t.Error("Resolve(bad) should reject malformed reference")
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 )
 
 const (
@@ -22,14 +21,8 @@ var ErrBadWireForm = errors.New("bad wire form")
 func EncodeCompactWireForm(payload string) string {
 	shortest := tagged(wireFormPlain, payload)
 
-	if b64 := tagged(wireFormBase64, Encode([]byte(payload))); len(b64) < len(shortest) {
-		shortest = b64
-	}
-
-	if zipped, err := gzipCompress(payload); err == nil {
-		if z := tagged(wireFormGzip, Encode(zipped)); len(z) < len(shortest) {
-			shortest = z
-		}
+	if z := tagged(wireFormGzip, Encode(gzipCompress(payload))); len(z) < len(shortest) {
+		shortest = z
 	}
 
 	return shortest
@@ -43,7 +36,7 @@ func tagged(tag byte, body string) string {
 	return string([]byte{tag, wireFormSep}) + body
 }
 
-func DecodeWireForm(ctx context.Context, form string) (string, error) {
+func DecodeWireForm(_ context.Context, form string) (string, error) {
 	if len(form) < 2 || form[1] != wireFormSep {
 		return form, nil
 	}
@@ -62,7 +55,7 @@ func DecodeWireForm(ctx context.Context, form string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("decode wire form body: %w", err)
 		}
-		plain, err := gzipDecompress(ctx, raw)
+		plain, err := gzipDecompress(raw)
 		if err != nil {
 			return "", fmt.Errorf("inflate wire form body: %w", err)
 		}
@@ -72,32 +65,20 @@ func DecodeWireForm(ctx context.Context, form string) (string, error) {
 	}
 }
 
-func gzipCompress(s string) ([]byte, error) {
+func gzipCompress(s string) []byte {
 	var buf bytes.Buffer
 	w := gzip.NewWriter(&buf)
-	if _, err := io.WriteString(w, s); err != nil {
-		return nil, fmt.Errorf("gzip write: %w", err)
-	}
-	if err := w.Close(); err != nil {
-		return nil, fmt.Errorf("gzip close: %w", err)
-	}
-	return buf.Bytes(), nil
+	_, _ = io.WriteString(w, s)
+	_ = w.Close()
+	return buf.Bytes()
 }
 
-func gzipDecompress(ctx context.Context, b []byte) (string, error) {
+func gzipDecompress(b []byte) (string, error) {
 	r, err := gzip.NewReader(bytes.NewReader(b))
 	if err != nil {
 		return "", fmt.Errorf("gzip reader: %w", err)
 	}
-	defer func() {
-		if err := r.Close(); err != nil {
-			slog.WarnContext(
-				ctx,
-				"gzip reader close failed",
-				slog.Any("error", err),
-			)
-		}
-	}()
+	defer func() { _ = r.Close() }()
 	out, err := io.ReadAll(r)
 	if err != nil {
 		return "", fmt.Errorf("gzip read: %w", err)

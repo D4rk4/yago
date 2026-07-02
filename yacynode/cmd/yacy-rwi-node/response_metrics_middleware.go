@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/metrics"
+	"github.com/D4rk4/yago/yacynode/internal/metrics"
 )
 
 func instrumentHTTP(endpoints *metrics.HTTPEndpointMetrics, next http.Handler) http.Handler {

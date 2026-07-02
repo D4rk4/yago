@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/eviction"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/memvault"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/urlmeta"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/eviction"
+	"github.com/D4rk4/yago/yacynode/internal/memvault"
+	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 type seedCodec struct{}
@@ -55,12 +55,16 @@ func seedUsage(t *testing.T, v *vault.Vault) {
 
 type fakeReferences struct {
 	word yacymodel.Hash
+	err  error
 }
 
 func (f fakeReferences) WordsReferencing(
 	_ *vault.Txn,
 	_ yacymodel.Hash,
 ) ([]yacymodel.Hash, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
 	return []yacymodel.Hash{f.word}, nil
 }
 
@@ -70,12 +74,16 @@ func (f fakeReferences) ReferencedURLCount(context.Context) (int, error) {
 
 type fakePostings struct {
 	purged []yacymodel.Hash
+	err    error
 }
 
 func (f *fakePostings) PurgePosting(
 	_ *vault.Txn,
 	_, url yacymodel.Hash,
 ) (bool, error) {
+	if f.err != nil {
+		return false, f.err
+	}
 	f.purged = append(f.purged, url)
 
 	return true, nil
@@ -84,11 +92,15 @@ func (f *fakePostings) PurgePosting(
 type fakeURLs struct {
 	remaining []yacymodel.Hash
 	selected  [][]yacymodel.Hash
+	selectErr error
 	noDelete  bool
 	purgeErr  error
 }
 
 func (f *fakeURLs) StalestURLs(_ context.Context, limit int) ([]yacymodel.Hash, error) {
+	if f.selectErr != nil {
+		return nil, f.selectErr
+	}
 	if limit > len(f.remaining) {
 		limit = len(f.remaining)
 	}
@@ -137,6 +149,22 @@ func newSweeper(
 		urls,
 		urls,
 		eviction.Config{TargetFraction: target, BatchSize: batch},
+	)
+}
+
+func newSweeperWithReferences(
+	vault *vault.Vault,
+	postings *fakePostings,
+	references fakeReferences,
+	urls *fakeURLs,
+) eviction.Sweeper {
+	return eviction.NewSweeper(
+		vault,
+		postings,
+		references,
+		urls,
+		urls,
+		eviction.Config{TargetFraction: 1, BatchSize: 1},
 	)
 }
 
@@ -209,11 +237,84 @@ func TestSweepNoopWithoutQuota(t *testing.T) {
 	}
 }
 
+func TestSweepNoopWithoutBatch(t *testing.T) {
+	result, err := newSweeper(
+		openVault(t, 1),
+		&fakePostings{},
+		&fakeURLs{remaining: hashes(4)},
+		0.5,
+		0,
+	).
+		Sweep(context.Background())
+	if err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+	if result != (eviction.Result{}) {
+		t.Fatalf("result = %+v, want empty", result)
+	}
+}
+
+func TestSweepReportsUsageError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := newSweeper(openVault(t, 1), &fakePostings{}, &fakeURLs{remaining: hashes(1)}, 1, 1).
+		Sweep(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+}
+
+func TestSweepReportsCandidateSelectionError(t *testing.T) {
+	wantErr := errors.New("selection failed")
+
+	_, err := newSweeper(
+		openVault(t, 1),
+		&fakePostings{},
+		&fakeURLs{remaining: hashes(1), selectErr: wantErr},
+		1,
+		1,
+	).
+		Sweep(context.Background())
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("err = %v, want %v", err, wantErr)
+	}
+}
+
 func TestSweepReportsPurgeError(t *testing.T) {
 	wantErr := errors.New("boom")
 	urls := &fakeURLs{remaining: hashes(4), purgeErr: wantErr}
 
 	_, err := newSweeper(openVault(t, 1), &fakePostings{}, urls, 1, 1).Sweep(context.Background())
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("err = %v, want %v", err, wantErr)
+	}
+}
+
+func TestSweepReportsReferenceError(t *testing.T) {
+	wantErr := errors.New("references failed")
+
+	_, err := newSweeperWithReferences(
+		openVault(t, 1),
+		&fakePostings{},
+		fakeReferences{err: wantErr},
+		&fakeURLs{remaining: hashes(1)},
+	).Sweep(context.Background())
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("err = %v, want %v", err, wantErr)
+	}
+}
+
+func TestSweepReportsPostingError(t *testing.T) {
+	wantErr := errors.New("posting failed")
+
+	_, err := newSweeper(
+		openVault(t, 1),
+		&fakePostings{err: wantErr},
+		&fakeURLs{remaining: hashes(1)},
+		1,
+		1,
+	).Sweep(context.Background())
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("err = %v, want %v", err, wantErr)
 	}

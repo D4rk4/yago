@@ -3,7 +3,7 @@ package main
 import (
 	"time"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
 )
 
 func nodeIdentity(config nodeConfig) nodeidentity.Identity {

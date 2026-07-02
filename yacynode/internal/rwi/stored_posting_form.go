@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 const storedPostingFormatV1 byte = 0x01
@@ -230,8 +230,6 @@ func readLengthPrefixed(reader *bytes.Reader) ([]byte, error) {
 		)
 	}
 	raw := make([]byte, length)
-	if _, err := io.ReadFull(reader, raw); err != nil {
-		return nil, fmt.Errorf("%w: read bytes: %w", yacymodel.ErrBadRWIPosting, err)
-	}
+	_, _ = io.ReadFull(reader, raw)
 	return raw, nil
 }

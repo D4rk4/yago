@@ -10,7 +10,7 @@ import (
 
 	natsserver "github.com/nats-io/nats-server/v2/server"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/crawldispatch"
+	"github.com/D4rk4/yago/yacynode/internal/crawldispatch"
 )
 
 func startTestNATS(t *testing.T) string {
@@ -48,9 +48,13 @@ func TestCrawlRuntimeDispatchAndConsume(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	runtime, err := buildCrawlRuntime(ctx, cfg, nodeIdentity(testConfig(t)), storage)
+	runtimeProcess, err := buildRuntimeCrawl(ctx, cfg, nodeIdentity(testConfig(t)), storage)
 	if err != nil {
 		t.Fatalf("build crawl runtime: %v", err)
+	}
+	runtime, ok := runtimeProcess.(*crawlRuntime)
+	if !ok {
+		t.Fatalf("runtime type = %T, want *crawlRuntime", runtimeProcess)
 	}
 
 	done := make(chan struct{})

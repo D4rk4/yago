@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
-	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacyproto"
 )
 
 func TestCrawlReceiptRequestRoundTrip(t *testing.T) {
@@ -58,6 +58,27 @@ func TestParseCrawlReceiptRequestRejectsBadIam(t *testing.T) {
 	form := url.Values{yacyproto.FieldIam: {"x"}}
 	if _, err := yacyproto.ParseCrawlReceiptRequest(context.Background(), form); err == nil {
 		t.Fatal("expected error for malformed iam hash")
+	}
+}
+
+func TestParseCrawlReceiptRequestRejectsBadYouAre(t *testing.T) {
+	t.Parallel()
+
+	form := url.Values{
+		yacyproto.FieldIam:    {sampleHash(t, "alpha").String()},
+		yacyproto.FieldYouAre: {"x"},
+	}
+	if _, err := yacyproto.ParseCrawlReceiptRequest(context.Background(), form); err == nil {
+		t.Fatal("expected error for malformed youare hash")
+	}
+}
+
+func TestParseCrawlReceiptResponseRejectsBadHeader(t *testing.T) {
+	t.Parallel()
+
+	msg := yacymodel.Message{yacyproto.FieldUptime: "later"}
+	if _, err := yacyproto.ParseCrawlReceiptResponse(msg); err == nil {
+		t.Fatal("expected error for non-numeric uptime")
 	}
 }
 

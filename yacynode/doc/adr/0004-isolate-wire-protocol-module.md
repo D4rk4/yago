@@ -20,10 +20,10 @@ copy either the models or the messages around.
 
 The YaCy types live in two standalone Go modules, joined to the node by a `go.work` workspace.
 
-`github.com/nikitakarpei/yacy-rwi-node/yacymodel` holds the value-level models, their validation
+`github.com/D4rk4/yago/yacymodel` holds the value-level models, their validation
 rules, and their codecs. It depends on the standard library only.
 
-`github.com/nikitakarpei/yacy-rwi-node/yacyproto` holds the peer-to-peer message types: the
+`github.com/D4rk4/yago/yacyproto` holds the peer-to-peer message types: the
 per-endpoint request and response data transfer objects of the `/yacy/*` protocol. It builds on
 `yacymodel` and the standard library, nothing more.
 
