@@ -99,6 +99,8 @@ func (fakeRoster) ConfirmReachable(context.Context, yacymodel.Hash) {}
 
 func (fakeRoster) ConfirmUnreachable(context.Context, yacymodel.Hash) {}
 
+func (fakeRoster) RejectRemoteIndex(context.Context, yacymodel.Seed) {}
+
 func (fakeRoster) FreshestPeers(context.Context, int) []yacymodel.Seed { return nil }
 
 func (fakeRoster) ReachablePeers(context.Context) []yacymodel.Seed { return nil }
@@ -116,6 +118,8 @@ func (r reachableRoster) Discover(context.Context, ...yacymodel.Seed) {}
 func (r reachableRoster) ConfirmReachable(context.Context, yacymodel.Hash) {}
 
 func (r reachableRoster) ConfirmUnreachable(context.Context, yacymodel.Hash) {}
+
+func (r reachableRoster) RejectRemoteIndex(context.Context, yacymodel.Seed) {}
 
 func (r reachableRoster) FreshestPeers(context.Context, int) []yacymodel.Seed { return r.peers }
 

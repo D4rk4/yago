@@ -11,8 +11,9 @@ import (
 )
 
 type recordingDHTRoster struct {
-	reachable   []yacymodel.Hash
-	unreachable []yacymodel.Hash
+	reachable           []yacymodel.Hash
+	unreachable         []yacymodel.Hash
+	remoteIndexRejected []yacymodel.Seed
 }
 
 func (r *recordingDHTRoster) ConfirmReachable(_ context.Context, peer yacymodel.Hash) {
@@ -21,6 +22,10 @@ func (r *recordingDHTRoster) ConfirmReachable(_ context.Context, peer yacymodel.
 
 func (r *recordingDHTRoster) ConfirmUnreachable(_ context.Context, peer yacymodel.Hash) {
 	r.unreachable = append(r.unreachable, peer)
+}
+
+func (r *recordingDHTRoster) RejectRemoteIndex(_ context.Context, peer yacymodel.Seed) {
+	r.remoteIndexRejected = append(r.remoteIndexRejected, peer)
 }
 
 func TestDHTOutboundRosterCycleConfirmsSentPeer(t *testing.T) {
@@ -87,6 +92,38 @@ func TestDHTOutboundRosterCycleQuarantinesPeerOnRepeatedFailure(t *testing.T) {
 		len(roster.unreachable) != 1 ||
 		roster.unreachable[0] != peer ||
 		len(roster.reachable) != 0 {
+		t.Fatalf("receipt/roster = %#v/%#v", receipt, roster)
+	}
+}
+
+func TestDHTOutboundRosterCycleRejectsRemoteIndexOnRejectedHandoff(t *testing.T) {
+	t.Parallel()
+
+	target := dhtOutboundPeer(t)
+	roster := &recordingDHTRoster{}
+	receipt, err := (dhtOutboundRosterCycle{
+		cycle: &scriptedDHTOutboundCycle{
+			receipt: dhtexchange.ScheduledDistributionReceipt{
+				Distribution: dhtexchange.DistributionReceipt{
+					State:  dhtexchange.DistributionHandoffRejected,
+					Peer:   target.Hash,
+					Target: target,
+				},
+				Retry: dhtexchange.OutboundRetryDecision{
+					Status: dhtexchange.OutboundRetryDelayed,
+					Peer:   target.Hash,
+				},
+			},
+		},
+		roster: roster,
+	}).RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if receipt.Distribution.State != dhtexchange.DistributionHandoffRejected ||
+		len(roster.remoteIndexRejected) != 1 ||
+		roster.remoteIndexRejected[0].Hash != target.Hash ||
+		len(roster.unreachable) != 0 {
 		t.Fatalf("receipt/roster = %#v/%#v", receipt, roster)
 	}
 }

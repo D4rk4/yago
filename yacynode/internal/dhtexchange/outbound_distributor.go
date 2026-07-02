@@ -40,6 +40,7 @@ type DistributionReceipt struct {
 	State             DistributionState
 	Gates             GateReport
 	Peer              yacymodel.Hash
+	Target            yacymodel.Seed
 	PostingCount      int
 	RemoteRWIWords    int
 	Handoff           indextransfer.HandoffReceipt
@@ -123,6 +124,7 @@ func (d OutboundDistributor) distribute(
 	}
 
 	receipt.Peer = chunk.Peer.Hash
+	receipt.Target = chunk.Peer
 	receipt.PostingCount = len(chunk.Postings)
 
 	count, err := d.probe.RWICount(ctx, chunk.Peer)

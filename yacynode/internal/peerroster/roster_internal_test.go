@@ -243,6 +243,29 @@ func TestConfirmUnreachableLogsDeleteError(t *testing.T) {
 	r.ConfirmUnreachable(t.Context(), peer.Hash)
 }
 
+func TestRejectRemoteIndexLogsReadAndStoreErrors(t *testing.T) {
+	r, engine := openScriptedRoster(t, 8, 4)
+	peer := internalSeed(t, "peer", "203.0.113.1")
+	peer.Flags = yacymodel.Some(
+		yacymodel.ZeroFlags().Set(yacymodel.FlagAcceptRemoteIndex, true),
+	)
+	r.Discover(t.Context(), peer)
+
+	corruptPeerRecord(t, r, engine, peer.Hash)
+	r.RejectRemoteIndex(t.Context(), peer)
+
+	engine.buckets[peersBucket] = map[string][]byte{}
+	engine.putErrors[peersBucket] = nil
+	r.Discover(t.Context(), peer)
+	engine.putErrors[peersBucket] = errors.New("put failed")
+	r.RejectRemoteIndex(t.Context(), peer)
+}
+
+func TestRejectRemoteIndexNoopsForUnknownPeer(t *testing.T) {
+	r, _ := openScriptedRoster(t, 8, 4)
+	r.RejectRemoteIndex(t.Context(), internalSeed(t, "ghost", "203.0.113.1"))
+}
+
 func TestFreshestPeersLimitsActiveSnapshot(t *testing.T) {
 	r, _ := openScriptedRoster(t, 8, 4)
 	first := internalSeed(t, "first", "203.0.113.1")

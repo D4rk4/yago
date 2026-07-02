@@ -19,6 +19,7 @@ type Roster interface {
 	Discover(ctx context.Context, seeds ...yacymodel.Seed)
 	ConfirmReachable(ctx context.Context, peer yacymodel.Hash)
 	ConfirmUnreachable(ctx context.Context, peer yacymodel.Hash)
+	RejectRemoteIndex(ctx context.Context, peer yacymodel.Seed)
 	FreshestPeers(ctx context.Context, limit int) []yacymodel.Seed
 	ReachablePeers(ctx context.Context) []yacymodel.Seed
 	KnownPeerCount(ctx context.Context) int

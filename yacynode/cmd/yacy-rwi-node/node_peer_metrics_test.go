@@ -25,6 +25,8 @@ func (r *countingPeerRoster) ConfirmUnreachable(context.Context, yacymodel.Hash)
 	r.reachable--
 }
 
+func (r *countingPeerRoster) RejectRemoteIndex(context.Context, yacymodel.Seed) {}
+
 func (r *countingPeerRoster) FreshestPeers(context.Context, int) []yacymodel.Seed { return nil }
 
 func (r *countingPeerRoster) ReachablePeers(context.Context) []yacymodel.Seed { return nil }

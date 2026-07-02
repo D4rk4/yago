@@ -10,13 +10,15 @@ import (
 )
 
 const (
-	dhtOutboundPeerConfirmedMessage   = "dht outbound peer confirmed"
-	dhtOutboundPeerQuarantinedMessage = "dht outbound peer quarantined"
+	dhtOutboundPeerConfirmedMessage           = "dht outbound peer confirmed"
+	dhtOutboundPeerRemoteIndexRejectedMessage = "dht outbound peer remote index rejected"
+	dhtOutboundPeerQuarantinedMessage         = "dht outbound peer quarantined"
 )
 
 type dhtOutboundPeerRoster interface {
 	ConfirmReachable(context.Context, yacymodel.Hash)
 	ConfirmUnreachable(context.Context, yacymodel.Hash)
+	RejectRemoteIndex(context.Context, yacymodel.Seed)
 }
 
 type dhtOutboundRosterCycle struct {
@@ -53,6 +55,15 @@ func (c dhtOutboundRosterCycle) observe(
 		)
 
 		return
+	}
+	if receipt.Distribution.State == dhtexchange.DistributionHandoffRejected &&
+		receipt.Distribution.Target.Hash != "" {
+		c.roster.RejectRemoteIndex(ctx, receipt.Distribution.Target)
+		slog.WarnContext(
+			ctx,
+			dhtOutboundPeerRemoteIndexRejectedMessage,
+			slog.String("peer", peer.String()),
+		)
 	}
 	if receipt.Retry.Status == dhtexchange.OutboundRetryQuarantined {
 		c.roster.ConfirmUnreachable(ctx, peer)

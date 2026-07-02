@@ -145,6 +145,7 @@ func TestOutboundDistributorProbesAndSendsLargestChunk(t *testing.T) {
 
 	if receipt.State != DistributionSent ||
 		receipt.Peer != queueHash(t, "AAAAAAAAAAAA") ||
+		receipt.Target.Hash != queueHash(t, "AAAAAAAAAAAA") ||
 		receipt.PostingCount != 2 ||
 		receipt.RemoteRWIWords != 321 ||
 		receipt.Handoff.State != indextransfer.HandoffURLSent {

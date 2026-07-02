@@ -13,6 +13,11 @@ import (
 
 const peersBucket vault.Name = "peerroster"
 
+const (
+	peerRemoteIndexRejectedMessage        = "peer remote index rejected"
+	peerRemoteIndexRejectionFailedMessage = "peer remote index rejection failed"
+)
+
 type roster struct {
 	vault        *vault.Vault
 	peers        *vault.Collection[rosterEntry]
@@ -139,6 +144,48 @@ func (r *roster) ConfirmUnreachable(ctx context.Context, peer yacymodel.Hash) {
 	}
 }
 
+func (r *roster) RejectRemoteIndex(ctx context.Context, failed yacymodel.Seed) {
+	var updated yacymodel.Seed
+	changed := false
+	if err := r.vault.Update(ctx, func(tx *vault.Txn) error {
+		entry, known, err := r.peers.Get(tx, r.key(failed.Hash))
+		if err != nil {
+			return fmt.Errorf("read peer: %w", err)
+		}
+		if !known || !entry.seed.SharesAddress(failed) {
+			return nil
+		}
+		entry.seed = withoutRemoteIndex(entry.seed)
+		if err := r.peers.Put(tx, r.key(failed.Hash), entry); err != nil {
+			return fmt.Errorf("store peer: %w", err)
+		}
+		updated = entry.seed
+		changed = true
+
+		return nil
+	}); err != nil {
+		slog.WarnContext(
+			ctx,
+			peerRemoteIndexRejectionFailedMessage,
+			slog.String("peer", failed.Hash.String()),
+			slog.Any("error", err),
+		)
+
+		return
+	}
+	if !changed {
+		return
+	}
+
+	r.mu.Lock()
+	if _, active := r.active[failed.Hash]; active {
+		r.active[failed.Hash] = updated
+	}
+	r.mu.Unlock()
+
+	slog.WarnContext(ctx, peerRemoteIndexRejectedMessage, slog.String("peer", failed.Hash.String()))
+}
+
 func (r *roster) ReachablePeers(_ context.Context) []yacymodel.Seed {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -149,6 +196,16 @@ func (r *roster) ReachablePeers(_ context.Context) []yacymodel.Seed {
 	}
 
 	return peers
+}
+
+func withoutRemoteIndex(seed yacymodel.Seed) yacymodel.Seed {
+	flags, ok := seed.Flags.Get()
+	if !ok {
+		flags = yacymodel.ZeroFlags()
+	}
+	seed.Flags = yacymodel.Some(flags.Set(yacymodel.FlagAcceptRemoteIndex, false))
+
+	return seed
 }
 
 func (r *roster) KnownPeerCount(ctx context.Context) int {

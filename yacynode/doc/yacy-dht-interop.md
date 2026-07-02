@@ -159,7 +159,10 @@ three days according to their seed `BDate`. The Go selector preserves that
 target order and eligibility logic for the peer-routing step. The runtime
 defaults to YaCy freeworld senior redundancy `3` and vertical partition exponent
 `4`, and operators can override those network-unit values for private networks.
-Batch splitting, retry decision, and deletion are handled by dispatcher work.
+When a transfer target rejects the handoff and the current roster entry still
+shares the failed target's advertised address, the Go scheduler clears that
+peer's remote-index flag so future DHT target selection skips it. The peer can
+stay reachable for other P2P operations.
 
 Before transfer, YaCy splits a word's RWI rows by the URL hash's vertical DHT
 partition, accumulates each partition into the chunk for its primary target,
@@ -168,8 +171,7 @@ dequeues the largest buffered chunk first. The Go exchange queue preserves that
 batch shape. The runtime scheduler feeds an empty outbound queue from stored RWI
 selections. A two-local-Go-node integration test covers stored RWI selection,
 `transferRWI.html`, `unknownURL`, `transferURL.html`, sender deletion, and
-receiver durability. Remaining dispatcher work is explicit remote-index flag
-mutation on address-clash rejection and end-to-end Java YaCy interop
+receiver durability. Remaining dispatcher work is end-to-end Java YaCy interop
 distribution tests.
 
 ---

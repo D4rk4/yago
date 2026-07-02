@@ -3,6 +3,8 @@ package peerroster_test
 import (
 	"context"
 	"testing"
+
+	"github.com/D4rk4/yago/yacymodel"
 )
 
 func TestDiscoverKeepsSeniorsAndDropsJuniors(t *testing.T) {
@@ -100,6 +102,62 @@ func TestUnreachableDropsFromReachableAndReservoir(t *testing.T) {
 	}
 	if got := roster.FreshestPeers(ctx, 4); len(got) != 0 {
 		t.Fatalf("greet targets = %d, want 0 after drop", len(got))
+	}
+}
+
+func TestRejectRemoteIndexClearsFlagForClashingAddress(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 8, 4)
+	peer := seniorSeed(t, "senior", "203.0.113.1", 8090)
+	peer.Flags = yacymodel.Some(
+		yacymodel.ZeroFlags().Set(yacymodel.FlagAcceptRemoteIndex, true),
+	)
+	roster.Discover(ctx, peer)
+	roster.ConfirmReachable(ctx, peer.Hash)
+
+	roster.RejectRemoteIndex(ctx, seniorSeed(t, "senior", "203.0.113.1", 8091))
+
+	reachable := roster.ReachablePeers(ctx)
+	if len(reachable) != 1 || reachable[0].Hash != peer.Hash {
+		t.Fatalf("reachable = %#v, want peer retained", reachable)
+	}
+	flags, ok := reachable[0].Flags.Get()
+	if !ok || flags.Get(yacymodel.FlagAcceptRemoteIndex) {
+		t.Fatalf("flags = %q, %v; want remote-index disabled", flags, ok)
+	}
+}
+
+func TestRejectRemoteIndexKeepsFlagForDifferentCurrentAddress(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 8, 4)
+	peer := seniorSeed(t, "senior", "203.0.113.2", 8090)
+	peer.Flags = yacymodel.Some(
+		yacymodel.ZeroFlags().Set(yacymodel.FlagAcceptRemoteIndex, true),
+	)
+	roster.Discover(ctx, peer)
+	roster.ConfirmReachable(ctx, peer.Hash)
+
+	roster.RejectRemoteIndex(ctx, seniorSeed(t, "senior", "203.0.113.1", 8090))
+
+	reachable := roster.ReachablePeers(ctx)
+	flags, ok := reachable[0].Flags.Get()
+	if !ok || !flags.Get(yacymodel.FlagAcceptRemoteIndex) {
+		t.Fatalf("flags = %q, %v; want remote-index retained", flags, ok)
+	}
+}
+
+func TestRejectRemoteIndexSetsMissingFlagsToDisabled(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 8, 4)
+	peer := seniorSeed(t, "senior", "203.0.113.1", 8090)
+	roster.Discover(ctx, peer)
+	roster.ConfirmReachable(ctx, peer.Hash)
+
+	roster.RejectRemoteIndex(ctx, peer)
+
+	flags, ok := roster.ReachablePeers(ctx)[0].Flags.Get()
+	if !ok || flags.Get(yacymodel.FlagAcceptRemoteIndex) {
+		t.Fatalf("flags = %q, %v; want explicit remote-index disabled", flags, ok)
 	}
 }
 

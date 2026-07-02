@@ -91,10 +91,48 @@ func TestSeedOperationalFieldsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSeedSharesAddress(t *testing.T) {
+	left := seedWithAddress(t, "AAAAAAAAAAAA", "192.0.2.1", "2001:db8::1")
+	if !left.SharesAddress(seedWithAddress(t, "BBBBBBBBBBBB", "192.0.2.1", "")) {
+		t.Fatal("expected IPv4 address match")
+	}
+	if !left.SharesAddress(seedWithAddress(t, "BBBBBBBBBBBB", "", "2001:db8::1")) {
+		t.Fatal("expected IPv6 address match")
+	}
+	if left.SharesAddress(seedWithAddress(t, "BBBBBBBBBBBB", "192.0.2.2", "2001:db8::2")) {
+		t.Fatal("different addresses should not match")
+	}
+	if (Seed{}).SharesAddress(left) {
+		t.Fatal("empty seed should not match")
+	}
+}
+
 func TestParseSeedRejectsBadUTCOffset(t *testing.T) {
 	if _, err := ParseSeed(t.Context(), "Hash=ABCDEFGHIJKL,UTC=0200"); !errors.Is(err, ErrBadSeed) {
 		t.Fatalf("ParseSeed bad utc = %v, want ErrBadSeed", err)
 	}
+}
+
+func seedWithAddress(t *testing.T, hash, ip, ip6 string) Seed {
+	t.Helper()
+
+	seed := Seed{Hash: Hash(hash)}
+	if ip != "" {
+		host, err := ParseHost(ip)
+		if err != nil {
+			t.Fatalf("ParseHost: %v", err)
+		}
+		seed.IP = Some(host)
+	}
+	if ip6 != "" {
+		hosts, err := ParseIP6(ip6)
+		if err != nil {
+			t.Fatalf("ParseIP6: %v", err)
+		}
+		seed.IP6 = Some(hosts)
+	}
+
+	return seed
 }
 
 func TestParseSeedRejectsBadLastSeen(t *testing.T) {
