@@ -52,8 +52,9 @@ published a specific batch.
 ## Crawl profile scope
 
 The profile carries the subset of YaCy crawl settings that affect URL selection and
-reference generation. Crawler process settings, such as the browser User-Agent, are not
-profile fields because an order cannot safely override process-wide browser identity.
+reference generation, including whether links marked `rel=nofollow` may be followed.
+Crawler process settings, such as the browser User-Agent, are not profile fields because
+an order cannot safely override process-wide browser identity.
 
 Raw HTML bodies, media indexing, snapshots, vocabulary scraping, country and IP
 filters, HTTP caching, direct document loading, and onward crawl redistribution

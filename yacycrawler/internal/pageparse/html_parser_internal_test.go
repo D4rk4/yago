@@ -103,6 +103,9 @@ func TestHasLinkRelation(t *testing.T) {
 	if !hasLinkRelation("alternate CANONICAL", "canonical") {
 		t.Fatal("canonical token should match case-insensitively")
 	}
+	if !hasLinkRelation("ugc,nofollow", "nofollow") {
+		t.Fatal("comma-separated nofollow token should match")
+	}
 	if hasLinkRelation("canonicalized", "canonical") {
 		t.Fatal("partial token should not match")
 	}

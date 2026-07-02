@@ -42,6 +42,10 @@ func requestsFor(handle string, urls ...string) []yacycrawlcontract.CrawlRequest
 	return reqs
 }
 
+func discoveredLinks(urls ...string) crawljob.DiscoveredLinks {
+	return crawljob.DiscoveredLinks{Followable: urls}
+}
+
 func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
 	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yacycrawlcontract.CrawlProfile{
@@ -160,12 +164,12 @@ func TestSubmitFollowsLinksWithinDepth(t *testing.T) {
 		t.Fatalf("queued = %d, want 1", seeded.Queued)
 	}
 	root := receiveJob(t, f)
-	f.Submit(context.Background(), root, []string{"https://example.com/child"})
+	f.Submit(context.Background(), root, discoveredLinks("https://example.com/child"))
 	child := receiveJob(t, f)
 	if child.Depth != 1 {
 		t.Errorf("child depth = %d, want 1", child.Depth)
 	}
-	f.Submit(context.Background(), child, []string{"https://example.com/grandchild"})
+	f.Submit(context.Background(), child, discoveredLinks("https://example.com/grandchild"))
 	f.Done(child)
 	f.Done(root)
 	select {
@@ -180,7 +184,7 @@ func TestSubmitForUnknownRunIsIgnored(t *testing.T) {
 	f.Submit(
 		context.Background(),
 		crawljob.CrawlJob{URL: "https://example.com/"},
-		[]string{"https://example.com/x"},
+		discoveredLinks("https://example.com/x"),
 	)
 	select {
 	case job := <-f.Jobs():
@@ -207,11 +211,68 @@ func TestSubmitForUnknownProfileIsIgnored(t *testing.T) {
 	root := receiveJob(t, f)
 	root.ProfileHandle = "missing"
 
-	f.Submit(context.Background(), root, []string{"https://example.com/child"})
+	f.Submit(context.Background(), root, discoveredLinks("https://example.com/child"))
 	f.Done(crawljob.CrawlJob{RunID: seeded.RunID})
 	select {
 	case job := <-f.Jobs():
 		t.Errorf("unknown profile should produce no jobs, got %+v", job)
 	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestSubmitSkipsNoFollowLinksByDefault(t *testing.T) {
+	f := frontier.NewFrontier(8, nil)
+	profile := compiled(t, yacycrawlcontract.CrawlProfile{
+		Scope:           yacycrawlcontract.ScopeDomain,
+		URLMustMatch:    yacycrawlcontract.MatchAll,
+		MaxDepth:        1,
+		MaxPagesPerHost: yacycrawlcontract.UnlimitedPagesPerHost,
+	})
+	f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle, "https://example.com/"),
+		nil,
+		profile,
+		func() {},
+	)
+	root := receiveJob(t, f)
+	f.Submit(context.Background(), root, crawljob.DiscoveredLinks{
+		Followable: []string{"https://example.com/child"},
+		NoFollow:   []string{"https://example.com/blocked"},
+	})
+	child := receiveJob(t, f)
+	if child.URL != "https://example.com/child" {
+		t.Fatalf("child URL = %q", child.URL)
+	}
+	select {
+	case extra := <-f.Jobs():
+		t.Fatalf("nofollow link should not be queued by default: %+v", extra)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestSubmitFollowsNoFollowLinksWhenProfileAllows(t *testing.T) {
+	f := frontier.NewFrontier(8, nil)
+	profile := compiled(t, yacycrawlcontract.CrawlProfile{
+		Scope:               yacycrawlcontract.ScopeDomain,
+		URLMustMatch:        yacycrawlcontract.MatchAll,
+		MaxDepth:            1,
+		FollowNoFollowLinks: true,
+		MaxPagesPerHost:     yacycrawlcontract.UnlimitedPagesPerHost,
+	})
+	f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle, "https://example.com/"),
+		nil,
+		profile,
+		func() {},
+	)
+	root := receiveJob(t, f)
+	f.Submit(context.Background(), root, crawljob.DiscoveredLinks{
+		NoFollow: []string{"https://example.com/blocked"},
+	})
+	child := receiveJob(t, f)
+	if child.URL != "https://example.com/blocked" {
+		t.Fatalf("child URL = %q", child.URL)
 	}
 }

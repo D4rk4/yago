@@ -61,6 +61,7 @@ func TestDispatchBuildsOrderFromOperatorInput(t *testing.T) {
 		"seeds": ["https://example.org/a", "https://example.org/b"],
 		"scope": "domain",
 		"maxDepth": 3,
+		"followNoFollowLinks": true,
 		"maxPagesPerHost": 50,
 		"crawlDelay": "1s"
 	}`)
@@ -97,6 +98,9 @@ func TestDispatchBuildsOrderFromOperatorInput(t *testing.T) {
 	}
 	if order.Profile.URLMustMatch != yacycrawlcontract.MatchAll {
 		t.Fatalf("urlMustMatch = %q, want MatchAll", order.Profile.URLMustMatch)
+	}
+	if !order.Profile.FollowNoFollowLinks {
+		t.Fatal("followNoFollowLinks should be enabled")
 	}
 }
 

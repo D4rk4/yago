@@ -103,7 +103,11 @@ func (f *Frontier) SeedRun(
 	return seeded
 }
 
-func (f *Frontier) Submit(ctx context.Context, work crawljob.CrawlJob, links []string) {
+func (f *Frontier) Submit(
+	ctx context.Context,
+	work crawljob.CrawlJob,
+	links crawljob.DiscoveredLinks,
+) {
 	f.mu.Lock()
 	f.state.submit(ctx, work, links)
 	f.mu.Unlock()
@@ -223,7 +227,11 @@ func (s *frontierState) seed(
 	return SeededRun{RunID: runID, Queued: queued}, nil
 }
 
-func (s *frontierState) submit(ctx context.Context, work crawljob.CrawlJob, links []string) {
+func (s *frontierState) submit(
+	ctx context.Context,
+	work crawljob.CrawlJob,
+	links crawljob.DiscoveredLinks,
+) {
 	run, ok := s.runs[work.RunID]
 	if !ok {
 		slog.WarnContext(ctx, msgSubmitRunUnknown, slog.String("runId", work.RunID.String()))
@@ -240,7 +248,10 @@ func (s *frontierState) submit(ctx context.Context, work crawljob.CrawlJob, link
 	if work.Depth >= compiled.Profile.MaxDepth {
 		return
 	}
-	for _, norm := range compiled.AdmitLinks(work.URL, links) {
+	for _, norm := range compiled.AdmitLinks(
+		work.URL,
+		links.ByPolicy(compiled.Profile.FollowNoFollowLinks),
+	) {
 		s.accept(ctx, work.RunID, frontierCandidate{
 			normURL:       norm,
 			depth:         work.Depth + 1,

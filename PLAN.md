@@ -1160,10 +1160,12 @@ Acceptance:
 Status: partial implementation exists. The crawler extracts title, canonical
 URL hints, meta descriptions, language, headings, visible text, and links from
 HTML; resolves the canonical URL against the fetched page; carries page
-description into document ingest metadata; produces document ingest, RWI
+description into document ingest metadata; splits followable and `rel=nofollow`
+links; excludes nofollow links from frontier expansion and local outlink
+evidence unless the crawl profile opts in; produces document ingest, RWI
 postings, URL metadata, and content hashes; and keeps extracted text bounded by
-the node document store. Nofollow policy, image metadata, and richer golden
-fixtures remain planned.
+the node document store. Image metadata and richer golden fixtures remain
+planned.
 
 Dependency candidates require ADR first. Prefer `golang.org/x/net/html` initially if enough. Add `goquery` only with ADR.
 

@@ -20,7 +20,7 @@ import (
 
 type recordingFrontier struct {
 	jobs      chan crawljob.CrawlJob
-	submitted [][]string
+	submitted []crawljob.DiscoveredLinks
 	done      chan crawljob.CrawlJob
 }
 
@@ -33,7 +33,11 @@ func newRecordingFrontier() *recordingFrontier {
 
 func (f *recordingFrontier) Jobs() <-chan crawljob.CrawlJob { return f.jobs }
 
-func (f *recordingFrontier) Submit(_ context.Context, _ crawljob.CrawlJob, links []string) {
+func (f *recordingFrontier) Submit(
+	_ context.Context,
+	_ crawljob.CrawlJob,
+	links crawljob.DiscoveredLinks,
+) {
 	f.submitted = append(f.submitted, links)
 }
 
@@ -78,6 +82,19 @@ func htmlPage() pagefetch.FetchedPage {
 		URL:         target,
 		ContentType: "text/html",
 		Body:        []byte(`<html><body><a href="/next">go</a> words here</body></html>`),
+	}
+}
+
+func htmlPageWithNoFollow() pagefetch.FetchedPage {
+	target, _ := url.Parse("https://example.com/")
+	return pagefetch.FetchedPage{
+		URL:         target,
+		ContentType: "text/html",
+		Body: []byte(`<html><body>
+<a href="/next">go</a>
+<a rel="nofollow" href="/blocked">blocked</a>
+words here
+</body></html>`),
 	}
 }
 
@@ -138,8 +155,37 @@ func TestPipelineDeliversIngestBatch(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("no batch emitted")
 	}
-	if len(frontier.submitted) != 1 || len(frontier.submitted[0]) != 1 {
+	if len(frontier.submitted) != 1 || len(frontier.submitted[0].Followable) != 1 {
 		t.Errorf("expected one submitted link set, got %v", frontier.submitted)
+	}
+}
+
+func TestPipelineSubmitsNoFollowLinksSeparately(t *testing.T) {
+	frontier := newRecordingFrontier()
+	p := pipeline.NewPipeline(
+		frontier,
+		fetchFunc(
+			func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+				return htmlPageWithNoFollow(), nil
+			},
+		),
+		pageindex.NewIndexBuilder(),
+		emitFunc(
+			func(context.Context, yacycrawlcontract.DocumentIngest, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+				return nil
+			},
+		),
+	)
+	runOneJob(t, p, frontier)
+	if len(frontier.submitted) != 1 {
+		t.Fatalf("submitted = %v", frontier.submitted)
+	}
+	got := frontier.submitted[0]
+	if len(got.Followable) != 1 || got.Followable[0] != "/next" {
+		t.Fatalf("followable links = %v", got.Followable)
+	}
+	if len(got.NoFollow) != 1 || got.NoFollow[0] != "/blocked" {
+		t.Fatalf("nofollow links = %v", got.NoFollow)
 	}
 }
 

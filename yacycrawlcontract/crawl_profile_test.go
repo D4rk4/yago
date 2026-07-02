@@ -49,6 +49,7 @@ func TestNonRulesetFieldsDoNotChangeHandle(t *testing.T) {
 
 	cosmetic := baseProfile()
 	cosmetic.AllowQueryURLs = true
+	cosmetic.FollowNoFollowLinks = true
 	cosmetic.RecrawlIfOlder = 1
 	cosmetic.CrawlDelay = 1
 	b := yacycrawlcontract.NewCrawlProfile(cosmetic)

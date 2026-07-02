@@ -61,6 +61,27 @@ func TestParseHTMLUsesFirstNonEmptyMetaDescription(t *testing.T) {
 	}
 }
 
+func TestParseHTMLSplitsNoFollowLinks(t *testing.T) {
+	page := pageparse.ParseHTML(
+		"https://example.com/page",
+		"text/html",
+		[]byte(`<html><body>
+<a href="/follow">follow</a>
+<a rel="UGC,nofollow" href="/blocked">blocked</a>
+</body></html>`),
+	)
+
+	if len(page.Links) != 2 {
+		t.Fatalf("all links = %v", page.Links)
+	}
+	if len(page.FollowableLinks) != 1 || page.FollowableLinks[0] != "/follow" {
+		t.Fatalf("followable links = %v", page.FollowableLinks)
+	}
+	if len(page.NoFollowLinks) != 1 || page.NoFollowLinks[0] != "/blocked" {
+		t.Fatalf("nofollow links = %v", page.NoFollowLinks)
+	}
+}
+
 func TestParseHTMLExtractsCanonicalURL(t *testing.T) {
 	page := pageparse.ParseHTML(
 		"https://example.com/dir/page?ref=1",

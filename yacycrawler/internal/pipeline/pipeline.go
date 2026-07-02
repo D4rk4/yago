@@ -18,7 +18,7 @@ import (
 
 type Frontier interface {
 	Jobs() <-chan crawljob.CrawlJob
-	Submit(ctx context.Context, work crawljob.CrawlJob, links []string)
+	Submit(ctx context.Context, work crawljob.CrawlJob, links crawljob.DiscoveredLinks)
 	Done(work crawljob.CrawlJob)
 }
 
@@ -116,7 +116,10 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 		Provenance:    job.Provenance,
 		RunID:         job.RunID,
 	}
-	p.frontier.Submit(ctx, resolved, page.Links)
+	p.frontier.Submit(ctx, resolved, crawljob.DiscoveredLinks{
+		Followable: page.FollowableLinks,
+		NoFollow:   page.NoFollowLinks,
+	})
 	stats := pageparse.BuildPageStats(page)
 	artifacts, err := p.index.Build(page, stats)
 	if err != nil {

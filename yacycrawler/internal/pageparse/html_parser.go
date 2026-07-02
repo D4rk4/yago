@@ -61,6 +61,11 @@ func readHTMLFields(root *html.Node, page *ParsedPage) {
 	for _, link := range dom.GetElementsByTagName(root, "a") {
 		if href := dom.GetAttribute(link, "href"); href != "" {
 			page.Links = append(page.Links, href)
+			if hasLinkRelation(dom.GetAttribute(link, "rel"), "nofollow") {
+				page.NoFollowLinks = append(page.NoFollowLinks, href)
+				continue
+			}
+			page.FollowableLinks = append(page.FollowableLinks, href)
 		}
 	}
 }
@@ -95,15 +100,6 @@ func readMetaDescription(root *html.Node) string {
 		}
 	}
 	return ""
-}
-
-func hasLinkRelation(value string, relation string) bool {
-	for _, token := range strings.Fields(value) {
-		if strings.EqualFold(token, relation) {
-			return true
-		}
-	}
-	return false
 }
 
 func collectText(node *html.Node, text *strings.Builder) {

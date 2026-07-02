@@ -49,3 +49,19 @@ func TestBuildPageStats(t *testing.T) {
 		t.Errorf("links = %v / %v", stats.LocalLinks, stats.ExternalLinks)
 	}
 }
+
+func TestBuildPageStatsUsesFollowableLinks(t *testing.T) {
+	stats := pageparse.BuildPageStats(pageparse.ParsedPage{
+		URL:             "https://example.com/",
+		Text:            "some indexed words here",
+		Links:           []string{"https://example.com/follow", "https://example.com/blocked"},
+		FollowableLinks: []string{"https://example.com/follow"},
+		NoFollowLinks:   []string{"https://example.com/blocked"},
+	})
+	if len(stats.LocalLinks) != 1 || stats.LocalLinks[0] != "https://example.com/follow" {
+		t.Fatalf("local links = %v", stats.LocalLinks)
+	}
+	if len(stats.ExternalLinks) != 0 {
+		t.Fatalf("external links = %v", stats.ExternalLinks)
+	}
+}
