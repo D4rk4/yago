@@ -12,20 +12,17 @@ func (s searcher) scanTerm(
 	term yacymodel.Hash,
 	appearanceCriteria termAppearanceCriteria,
 ) ([]termAppearance, int, error) {
-	var (
-		kept  []termAppearance
-		total int
-	)
+	// The per-term cap keeps the most frequent appearances rather than the first
+	// scanned; an exact join under a memory bound would instead pivot on the rarest term.
+	kept := mostFrequentAppearances{limit: s.matchesPerTerm}
+	var total int
 	err := s.index.ScanWord(ctx, term, func(posting yacymodel.RWIPosting) (bool, error) {
 		appearance, ok := translateAppearance(ctx, posting)
 		if !ok || !appearanceCriteria.matches(ctx, appearance) {
 			return true, nil
 		}
 		total++
-		if s.matchesPerTerm > 0 && len(kept) >= s.matchesPerTerm {
-			return true, nil
-		}
-		kept = append(kept, appearance)
+		kept.consider(appearance)
 
 		return true, nil
 	})
@@ -33,7 +30,7 @@ func (s searcher) scanTerm(
 		return nil, 0, fmt.Errorf("scan word: %w", err)
 	}
 
-	return kept, total, nil
+	return kept.collected(), total, nil
 }
 
 func (s searcher) excludedDocuments(

@@ -42,9 +42,10 @@ func (s searcher) search(ctx context.Context, criteria searchCriteria) (searchRe
 			documentsInTermOrder(criteria.terms, wanted.documentsPerTerm),
 		),
 		criteria.maxTermSpread,
+		len(criteria.terms),
 	)
 	mostRelevant := takeMostRelevant(
-		documentsOrderedByRelevance(matchingEveryTerm),
+		documentsOrderedByRelevance(matchingEveryTerm, len(criteria.terms)),
 		criteria.maxResults,
 	)
 	resources, err := s.documents.RowsByHash(ctx, mostRelevant)

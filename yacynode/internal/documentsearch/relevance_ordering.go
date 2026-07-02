@@ -14,8 +14,12 @@ type matchedDocument struct {
 	maxPosition uint64
 }
 
-func (d matchedDocument) termSpread() uint64 {
-	return d.maxPosition - d.minPosition
+func (d matchedDocument) termSpread(termCount int) uint64 {
+	if termCount <= 1 {
+		return 0
+	}
+
+	return (d.maxPosition - d.minPosition) / uint64(termCount-1)
 }
 
 func keepDocumentsMatchingEveryTerm(
@@ -35,6 +39,9 @@ func keepDocumentsMatchingEveryTerm(
 
 				continue
 			}
+			// Deliberate divergence from YaCy, which takes the max: summing per-word
+			// hit counts across the query terms ranks by total query-term frequency,
+			// the relevance signal this node orders on.
 			document.occurrences += alsoHere.occurrences
 			document.minPosition = min(document.minPosition, alsoHere.minPosition)
 			document.maxPosition = max(document.maxPosition, alsoHere.maxPosition)
@@ -47,9 +54,13 @@ func keepDocumentsMatchingEveryTerm(
 
 // Deliberate divergence from YaCy: documents are ordered by occurrences and term
 // spread alone, not YaCy's normalized multi-factor ranking profile. Term spread is
-// the span (max-min) of the query terms' text positions, where YaCy averages the
-// consecutive positional gaps.
-func documentsOrderedByRelevance(documents map[yacymodel.Hash]matchedDocument) []yacymodel.Hash {
+// the average gap between the query terms' text positions; it matches YaCy's value
+// where YaCy's is deterministic, without depending on YaCy's join-order-sensitive
+// position queue.
+func documentsOrderedByRelevance(
+	documents map[yacymodel.Hash]matchedDocument,
+	termCount int,
+) []yacymodel.Hash {
 	ranked := make([]matchedDocument, 0, len(documents))
 	for _, document := range documents {
 		ranked = append(ranked, document)
@@ -58,8 +69,8 @@ func documentsOrderedByRelevance(documents map[yacymodel.Hash]matchedDocument) [
 		if a.occurrences != b.occurrences {
 			return compareDescending(a.occurrences, b.occurrences)
 		}
-		if a.termSpread() != b.termSpread() {
-			return compareAscending(a.termSpread(), b.termSpread())
+		if a.termSpread(termCount) != b.termSpread(termCount) {
+			return compareAscending(a.termSpread(termCount), b.termSpread(termCount))
 		}
 
 		return compareAscending(a.identifier, b.identifier)
@@ -76,12 +87,13 @@ func documentsOrderedByRelevance(documents map[yacymodel.Hash]matchedDocument) [
 func documentsWithinTermSpread(
 	documents map[yacymodel.Hash]matchedDocument,
 	maxTermSpread int,
+	termCount int,
 ) map[yacymodel.Hash]matchedDocument {
 	if maxTermSpread <= 0 {
 		return documents
 	}
 	for identifier, document := range documents {
-		if document.termSpread() > uint64(maxTermSpread) {
+		if document.termSpread(termCount) > uint64(maxTermSpread) {
 			delete(documents, identifier)
 		}
 	}

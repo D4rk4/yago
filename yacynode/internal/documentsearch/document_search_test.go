@@ -191,6 +191,59 @@ func TestSearchOrdersByOccurrencesThenTermSpread(t *testing.T) {
 	}
 }
 
+func TestSearchFiltersByAverageGapNotSpan(t *testing.T) {
+	word1, word2, word3 := hashFor("w1"), hashFor("w2"), hashFor("w3")
+	index := fakeScanner{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
+		word1: {postingEntry(word1, "uA", 1, 1), postingEntry(word1, "uB", 1, 1)},
+		word2: {postingEntry(word2, "uA", 5, 1), postingEntry(word2, "uB", 10, 1)},
+		word3: {postingEntry(word3, "uA", 9, 1), postingEntry(word3, "uB", 20, 1)},
+	}}
+	s := searcher{
+		index:          index,
+		documents:      fakeDirectory{rows: urlRows("uA", "uB")},
+		matchesPerTerm: 100,
+	}
+
+	result, err := s.search(context.Background(), searchCriteria{
+		terms:         []yacymodel.Hash{word1, word2, word3},
+		maxTermSpread: 5,
+	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(result.resources) != 1 ||
+		result.resources[0].Properties[yacymodel.URLMetaHash] != string(hashFor("uA")) {
+		t.Fatalf("resources = %v, want only uA (span 8, average gap 4)", result.resources)
+	}
+}
+
+func TestSearchCapKeepsMostFrequentAppearances(t *testing.T) {
+	word := hashFor("w1")
+	index := fakeScanner{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
+		word: {postingEntry(word, "u1", 1, 1), postingEntry(word, "u2", 1, 5)},
+	}}
+	s := searcher{
+		index:          index,
+		documents:      fakeDirectory{rows: urlRows("u1", "u2")},
+		matchesPerTerm: 1,
+	}
+
+	result, err := s.search(
+		context.Background(),
+		searchCriteria{terms: []yacymodel.Hash{word}},
+	)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(result.resources) != 1 ||
+		result.resources[0].Properties[yacymodel.URLMetaHash] != string(hashFor("u2")) {
+		t.Fatalf(
+			"resources = %v, want only u2 (highest hit count kept under cap)",
+			result.resources,
+		)
+	}
+}
+
 func TestSearchExcludesTerms(t *testing.T) {
 	word, ban := hashFor("w1"), hashFor("ban")
 	index := fakeScanner{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
