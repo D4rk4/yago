@@ -21,11 +21,12 @@ import (
 )
 
 type node struct {
-	peerMux   *http.ServeMux
-	sweeper   eviction.Sweeper
-	announcer peerannouncement.Announcer
-	crawl     crawlProcess
-	dht       dhtOutboundProcess
+	peerMux    *http.ServeMux
+	indexStats http.Handler
+	sweeper    eviction.Sweeper
+	announcer  peerannouncement.Announcer
+	crawl      crawlProcess
+	dht        dhtOutboundProcess
 }
 
 type nodeTelemetry struct {
@@ -109,8 +110,7 @@ func assembleNode(
 		client:   client,
 	})
 
-	crawling.MountCrawlReceipt(router, identity)
-	crawlurls.Mount(router, identity, storage.urlDirectory, crawlurls.DisabledRemoteCrawlURLs{})
+	mountNodeCrawlCompatibility(router, identity, storage)
 
 	sweeper := newStorageSweeper(vault, storage)
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
@@ -130,12 +130,22 @@ func assembleNode(
 	}
 
 	return node{
-		peerMux:   mux,
-		sweeper:   sweeper,
-		announcer: exchange.announcer,
-		crawl:     runtime,
-		dht:       dht,
+		peerMux:    mux,
+		indexStats: newIndexStatsEndpoint(storage.searchIndex),
+		sweeper:    sweeper,
+		announcer:  exchange.announcer,
+		crawl:      runtime,
+		dht:        dht,
 	}, nil
+}
+
+func mountNodeCrawlCompatibility(
+	router httpguard.WireRouter,
+	identity nodeidentity.Identity,
+	storage nodeStorage,
+) {
+	crawling.MountCrawlReceipt(router, identity)
+	crawlurls.Mount(router, identity, storage.urlDirectory, crawlurls.DisabledRemoteCrawlURLs{})
 }
 
 func mountNodeProtocol(

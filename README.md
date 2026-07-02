@@ -68,7 +68,8 @@ The node currently targets these responsibilities:
   durably;
 - expose `/health`, `/metrics`, and DHT gate status on the ops listener,
   including inbound and outbound DHT transfer series, peer discovery
-  gauges/counters, and a machine-readable compatibility catalog;
+  gauges/counters, local search index stats, and a machine-readable
+  compatibility catalog;
 - optionally publish crawl orders and consume crawler ingest batches over NATS
   JetStream when crawling is configured.
 
@@ -170,6 +171,7 @@ curl -fsS http://127.0.0.1:9090/health
 curl -fsS http://127.0.0.1:9090/metrics
 curl -fsS http://127.0.0.1:9090/api/admin/v1/compatibility
 curl -fsS http://127.0.0.1:9090/api/admin/v1/network/dht/gates
+curl -fsS http://127.0.0.1:9090/api/admin/v1/index/stats
 curl -fsS http://127.0.0.1:8090/
 curl -fsS 'http://127.0.0.1:8090/yacysearch.json?query=test&resource=local&maximumRecords=10'
 curl -fsS 'http://127.0.0.1:8090/yacysearch.json?query=test&resource=global&maximumRecords=10'

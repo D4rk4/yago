@@ -27,6 +27,15 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Notes:    "Authentication is not implemented yet.",
 	},
 	{
+		Name:     "Search index stats",
+		Path:     "/api/admin/v1/index/stats",
+		Methods:  []string{"GET"},
+		State:    Implemented,
+		Behavior: "Serves current local search backend availability, backend name, document count, and last index update time.",
+		Evidence: []string{"yacynode/internal/yagonode/index_stats_endpoint_test.go"},
+		Notes:    "Authentication is not implemented yet.",
+	},
+	{
 		Name:     "Crawl dispatch",
 		Path:     "/api/admin/v1/crawl/jobs",
 		Methods:  []string{"POST"},

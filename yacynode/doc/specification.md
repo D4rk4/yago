@@ -113,6 +113,8 @@ yago-admin-ui
 * The node SHALL allow operators to configure its storage quota.
 * The node SHALL expose operator controls for network, crawl, index, search, and security settings.
 * The node SHALL expose stable typed admin APIs for the administration UI.
+* The node SHALL expose local search index availability, backend, document count,
+  and update time through a stable typed admin API.
 * The admin UI SHALL use IBM Carbon and SHALL be comparable by category to original YaCy administration without copying the legacy servlet UI.
 * Native `yago-v2` P2P, if added, SHALL be optional and SHALL NOT change legacy `/yacy/*` compatibility behavior.
 

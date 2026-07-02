@@ -66,6 +66,7 @@ Status values:
 | Health | `/health` | GET | implemented | Returns a successful status when the ops listener is running. |
 | Metrics | `/metrics` | GET | implemented | Serves Prometheus metrics for node operations. |
 | DHT gate report | `/api/admin/v1/network/dht/gates` | GET | implemented | Serves outbound DHT gate state, configuration, and gate results. |
+| Search index stats | `/api/admin/v1/index/stats` | GET | implemented | Serves local search backend availability, backend name, indexed document count, and last index update time. |
 | Crawl dispatch | `/api/admin/v1/crawl/jobs` | POST | partial | Publishes local crawl orders only when crawler integration is configured. |
 | Compatibility report | `/api/admin/v1/compatibility` | GET | implemented | Serves the machine-readable compatibility catalog. |
 | Java YaCy admin page clone set | `/*_p.html` | GET, POST | unsupported | Java YaCy administration pages are not cloned into the Go peer. |

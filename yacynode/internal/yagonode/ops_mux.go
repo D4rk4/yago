@@ -7,7 +7,11 @@ const (
 	pathMetrics = "/metrics"
 )
 
-func newOpsMux(metrics http.Handler, dhtGates http.Handler) *http.ServeMux {
+func newOpsMux(
+	metrics http.Handler,
+	dhtGates http.Handler,
+	indexStats http.Handler,
+) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc(pathHealth, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -16,6 +20,9 @@ func newOpsMux(metrics http.Handler, dhtGates http.Handler) *http.ServeMux {
 	mux.Handle(pathCompatibility, newCompatibilityEndpoint())
 	if dhtGates != nil {
 		mux.Handle(pathDHTGates, dhtGates)
+	}
+	if indexStats != nil {
+		mux.Handle(pathIndexStats, indexStats)
 	}
 
 	return mux

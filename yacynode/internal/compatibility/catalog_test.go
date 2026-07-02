@@ -62,6 +62,26 @@ func TestCatalogIncludesPlannedCompatibilityGaps(t *testing.T) {
 	}
 }
 
+func TestCatalogIncludesCurrentAdminSurfaces(t *testing.T) {
+	report := Catalog()
+	paths := map[string]Surface{}
+	for _, surface := range report.Surfaces {
+		paths[surface.Path] = surface
+	}
+
+	for _, path := range []string{
+		"/health",
+		"/metrics",
+		"/api/admin/v1/compatibility",
+		"/api/admin/v1/network/dht/gates",
+		"/api/admin/v1/index/stats",
+	} {
+		if got := paths[path]; got.State != Implemented {
+			t.Fatalf("%s state = %q, want implemented", path, got.State)
+		}
+	}
+}
+
 func TestCatalogCountsMatchSurfaces(t *testing.T) {
 	report := Catalog()
 	totals := map[State]int{}
