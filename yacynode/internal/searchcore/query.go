@@ -14,31 +14,39 @@ const (
 )
 
 type ParsedQuery struct {
-	Terms         []string
-	ExcludedTerms []string
-	Language      string
-	SiteHost      string
-	InURL         string
-	TLD           string
-	FileType      string
-	SortByDate    bool
-	Near          bool
+	Terms          []string
+	ExcludedTerms  []string
+	IncludePhrases []string
+	ExcludePhrases []string
+	Language       string
+	SiteHost       string
+	InURL          string
+	TLD            string
+	FileType       string
+	SortByDate     bool
+	Near           bool
 }
 
 func ParseTextQuery(raw string) ParsedQuery {
 	var parsed ParsedQuery
+	var words []string
 	for _, token := range queryTokens(raw) {
-		parsed.addToken(token)
+		if !parsed.addModifier(token) {
+			words = append(words, token)
+		}
 	}
+	parsed.addQueryWords(strings.Join(words, " "))
 
 	return parsed
 }
 
-func (p *ParsedQuery) addToken(token string) {
-	excluded := strings.HasPrefix(token, "-")
+func (p *ParsedQuery) addModifier(token string) bool {
+	if strings.HasPrefix(token, `"`) || strings.HasPrefix(token, "'") {
+		return false
+	}
 	token = strings.TrimPrefix(token, "-")
 	if token == "" {
-		return
+		return false
 	}
 
 	lower := strings.ToLower(token)
@@ -60,32 +68,29 @@ func (p *ParsedQuery) addToken(token string) {
 	case strings.HasPrefix(lower, operatorFileType):
 		p.FileType = strings.ToLower(strings.TrimPrefix(token[len(operatorFileType):], "."))
 	default:
-		p.addTerms(token, excluded)
+		return false
 	}
-}
 
-func (p *ParsedQuery) addTerms(raw string, excluded bool) {
-	for _, term := range strings.Fields(raw) {
-		if excluded {
-			p.ExcludedTerms = append(p.ExcludedTerms, term)
-		} else {
-			p.Terms = append(p.Terms, term)
-		}
-	}
+	return true
 }
 
 func queryTokens(raw string) []string {
-	clean := strings.NewReplacer("<", " ", ">", " ").Replace(raw)
 	var (
 		tokens []string
 		token  strings.Builder
-		quoted bool
+		quote  rune
 	)
-	for _, r := range clean {
+	for _, r := range raw {
 		switch {
-		case r == '"':
-			quoted = !quoted
-		case !quoted && isQuerySpace(r):
+		case quote != 0:
+			token.WriteRune(r)
+			if r == quote {
+				quote = 0
+			}
+		case (r == '"' || r == '\'') && token.Len() == 0:
+			quote = r
+			token.WriteRune(r)
+		case isQuerySpace(r):
 			tokens = appendToken(tokens, &token)
 		default:
 			token.WriteRune(r)

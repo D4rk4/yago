@@ -14,6 +14,12 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
+func (s nodeStorage) storedDocuments() documentstore.StoredDocuments {
+	stored, _ := s.documentDirectory.(documentstore.StoredDocuments)
+
+	return stored
+}
+
 type nodeStorage struct {
 	documentDirectory documentstore.DocumentDirectory
 	documentReceiver  documentstore.DocumentReceiver

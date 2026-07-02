@@ -93,7 +93,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:     yacyproto.PathIndex,
 		Methods:  methods(yacyproto.IndexEndpointMethods),
 		State:    Partial,
-		Behavior: "Serves the YaCy idx.json host object shape with a bounded incoming host-link index inferred from stored URL metadata referrers.",
+		Behavior: "Serves the YaCy idx.json host object shape with a bounded incoming host-link index counted from stored document outlinks per source host.",
 		Evidence: []string{
 			"yacynode/internal/hostlinks/*_test.go",
 			"yacynode/internal/urlmeta/*_test.go",

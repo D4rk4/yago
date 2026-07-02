@@ -98,7 +98,7 @@ func assembleNode(
 		vault:    vault,
 		client:   client,
 		peer:     telemetry.peer,
-		host:     storedURLHostLinks{rows: storage.urlMetadataRows},
+		host:     storedDocumentHostLinks{documents: storage.storedDocuments()},
 		roster:   roster,
 	})
 	if err != nil {

@@ -39,7 +39,7 @@ The node currently targets these responsibilities:
 - answer YaCy peer profile export requests through `/yacy/profile.html` with
   properties from `YACY_DATA_DIR/SETTINGS/profile.txt` when that file exists;
 - answer YaCy host-link index requests through `/yacy/idx.json?object=host` with
-  a bounded incoming host graph inferred from stored URL metadata referrers;
+  a bounded incoming host graph counted from stored document outlinks;
 - answer YaCy peer message permission requests without requiring `iam` or
   parsing post-only body fields and store inbound `/yacy/message.html` posts
   without attachment support;

@@ -7,24 +7,23 @@ import (
 	"log/slog"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/documentstore"
 	"github.com/D4rk4/yago/yacynode/internal/hostlinks"
-	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 )
 
 const (
 	hostLinkGraphScanFailedMessage = "host link graph scan failed"
 	hostLinkMaxLinkedHosts         = 10000
 	hostLinkMaxReferencesPerHost   = 200
-	hostLinkShortDayLayout         = "20060102"
-	hostReferenceHostHashLength    = 6
 	secondsPerDay                  = 86400
 )
 
-type storedURLHostLinks struct {
-	rows urlmeta.StoredURLMetadataRows
+type storedDocumentHostLinks struct {
+	documents documentstore.StoredDocuments
 }
 
 type hostLinkReference struct {
@@ -32,29 +31,15 @@ type hostLinkReference struct {
 	Count       int
 }
 
-func (s storedURLHostLinks) IncomingHostLinks(ctx context.Context) hostlinks.Graph {
+func (s storedDocumentHostLinks) IncomingHostLinks(ctx context.Context) hostlinks.Graph {
 	graph := hostlinks.Graph{RowDefinition: hostlinks.HostReferenceRowDefinition}
-	if s.rows == nil {
+	if s.documents == nil {
 		return graph
 	}
 
 	incoming := map[string]map[string]hostLinkReference{}
-	err := s.rows.StoredURLMetadataRows(ctx, func(row yacymodel.URIMetadataRow) (bool, error) {
-		target, source, ok := hostLinkEdge(row)
-		if !ok {
-			return true, nil
-		}
-
-		references := incoming[target]
-		if references == nil {
-			references = map[string]hostLinkReference{}
-			incoming[target] = references
-		}
-
-		reference := references[source]
-		reference.Count++
-		reference.ModifiedDay = max(reference.ModifiedDay, hostLinkModifiedDay(row))
-		references[source] = reference
+	err := s.documents.StoredDocuments(ctx, func(doc documentstore.Document) (bool, error) {
+		collectDocumentHostLinks(incoming, doc)
 
 		return true, nil
 	})
@@ -69,43 +54,52 @@ func (s storedURLHostLinks) IncomingHostLinks(ctx context.Context) hostlinks.Gra
 	return graph
 }
 
-func hostLinkEdge(row yacymodel.URIMetadataRow) (string, string, bool) {
-	targetURLHash, err := row.URLHash()
-	if err != nil {
-		return "", "", false
+func collectDocumentHostLinks(
+	incoming map[string]map[string]hostLinkReference,
+	doc documentstore.Document,
+) {
+	source, ok := documentHostHash(doc.NormalizedURL)
+	if !ok {
+		return
 	}
+	day := documentModifiedDay(doc)
 
-	referrerURLHash, err := yacymodel.ParseURLHash(row.Properties[yacymodel.URLMetaReferrer])
-	if err != nil {
-		return "", "", false
+	for _, outlink := range doc.Outlinks {
+		target, ok := documentHostHash(outlink)
+		if !ok || target == source {
+			continue
+		}
+
+		references := incoming[target]
+		if references == nil {
+			references = map[string]hostLinkReference{}
+			incoming[target] = references
+		}
+
+		reference := references[source]
+		reference.Count++
+		reference.ModifiedDay = max(reference.ModifiedDay, day)
+		references[source] = reference
 	}
-
-	targetHostHash := string(targetURLHash)[yacymodel.HashLength-hostReferenceHostHashLength:]
-	sourceHostHash := string(referrerURLHash)[yacymodel.HashLength-hostReferenceHostHashLength:]
-
-	if targetHostHash == sourceHostHash {
-		return "", "", false
-	}
-
-	return targetHostHash, sourceHostHash, true
 }
 
-func hostLinkModifiedDay(row yacymodel.URIMetadataRow) int64 {
-	freshness := row.Freshness()
-	if len(freshness) < len(hostLinkShortDayLayout) {
+func documentHostHash(rawURL string) (string, bool) {
+	urlHash, hashErr := yacymodel.HashURL(rawURL)
+	hostHash, hostErr := urlHash.HostHash()
+
+	return hostHash, strings.TrimSpace(rawURL) != "" && hashErr == nil && hostErr == nil
+}
+
+func documentModifiedDay(doc documentstore.Document) int64 {
+	moment := doc.FetchedAt
+	if moment.IsZero() {
+		moment = doc.IndexedAt
+	}
+	if moment.IsZero() {
 		return 0
 	}
 
-	day, err := time.ParseInLocation(
-		hostLinkShortDayLayout,
-		freshness[:len(hostLinkShortDayLayout)],
-		time.UTC,
-	)
-	if err != nil {
-		return 0
-	}
-
-	return day.Unix() / secondsPerDay
+	return moment.UTC().Truncate(24*time.Hour).Unix() / secondsPerDay
 }
 
 func hostLinkGraphHosts(

@@ -97,7 +97,7 @@ yago-admin-ui
 * The node SHALL answer YaCy-compatible RWI capacity and status queries, including per-word RWI URL counts and zero-valued wanted-object probes.
 * The node SHALL export YaCy-compatible shared blacklist files named in its configured data directory's YaCy settings after peer network-unit authentication.
 * The node SHALL export YaCy-compatible peer profile properties from its configured data directory when a profile file exists.
-* The node SHALL export a YaCy-compatible bounded host-link index from stored URL metadata referrer relationships.
+* The node SHALL export a YaCy-compatible bounded host-link index counted from stored document outlinks per source host.
 * The node SHALL run configured crawl jobs and ingest crawler-produced documents, metadata, and postings.
 * The node SHALL let local crawl dispatch jobs mark start seeds as normal URLs,
   explicit sitemaps, or explicit sitelists.

@@ -2,213 +2,168 @@ package yagonode
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"testing"
+	"time"
 
-	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/documentstore"
 	"github.com/D4rk4/yago/yacynode/internal/hostlinks"
 )
 
-type storedURLMetadataRowsScript struct {
-	rows []yacymodel.URIMetadataRow
+type scriptedStoredDocuments struct {
+	docs []documentstore.Document
 	err  error
 }
 
-func (s storedURLMetadataRowsScript) StoredURLMetadataRows(
-	ctx context.Context,
-	visit func(yacymodel.URIMetadataRow) (bool, error),
+func (s scriptedStoredDocuments) StoredDocuments(
+	_ context.Context,
+	visit func(documentstore.Document) (bool, error),
 ) error {
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("context: %w", err)
-	}
 	if s.err != nil {
 		return s.err
 	}
-	for _, row := range s.rows {
-		again, err := visit(row)
-		if err != nil {
+	for _, doc := range s.docs {
+		again, err := visit(doc)
+		if err != nil || !again {
 			return err
-		}
-		if !again {
-			return nil
 		}
 	}
 
 	return nil
 }
 
-func TestStoredURLHostLinksReturnsRowDefinitionWithoutRows(t *testing.T) {
-	graph := storedURLHostLinks{}.IncomingHostLinks(t.Context())
-
-	if graph.RowDefinition != hostlinks.HostReferenceRowDefinition {
-		t.Fatalf(
-			"RowDefinition = %q, want %q",
-			graph.RowDefinition,
-			hostlinks.HostReferenceRowDefinition,
-		)
-	}
-	if len(graph.LinkedHosts) != 0 {
-		t.Fatalf("LinkedHosts = %v, want empty", graph.LinkedHosts)
-	}
-}
-
-func TestStoredURLHostLinksBuildsIncomingGraph(t *testing.T) {
-	targetA := urlHashForTest(t, "https://target.example/a")
-	targetB := urlHashForTest(t, "https://target.example/b")
-	sourceA := urlHashForTest(t, "https://source.example/home")
-	sourceB := urlHashForTest(t, "https://other.example/home")
-	rows := []yacymodel.URIMetadataRow{
-		hostLinkRow(targetA, sourceA, map[string]string{yacymodel.ColLoadDate: "20260102"}),
-		hostLinkRow(targetB, sourceA, map[string]string{yacymodel.ColModDate: "20260103"}),
-		hostLinkRow(targetA, sourceB, map[string]string{yacymodel.ColFreshDate: "20260104"}),
-		hostLinkRow(targetA, targetB, nil),
-		{Properties: map[string]string{}},
-		hostLinkRow(targetA, "", nil),
-	}
-
-	graph := storedURLHostLinks{
-		rows: storedURLMetadataRowsScript{rows: rows},
-	}.IncomingHostLinks(t.Context())
-
-	targetHost := hostHashForTest(t, targetA)
-	sourceAHost := hostHashForTest(t, sourceA)
-	sourceBHost := hostHashForTest(t, sourceB)
-	if len(graph.LinkedHosts) != 1 {
-		t.Fatalf("LinkedHosts = %v, want one target host", graph.LinkedHosts)
-	}
-	if graph.LinkedHosts[0].HostHash != targetHost {
-		t.Fatalf("HostHash = %q, want %q", graph.LinkedHosts[0].HostHash, targetHost)
-	}
-	got := decodedHostReferences(t, graph.LinkedHosts[0].References)
-	if got[sourceAHost].Count != "2" {
-		t.Fatalf("source A count = %q, want 2", got[sourceAHost].Count)
-	}
-	if got[sourceAHost].ModifiedDay != fmt.Sprint(hostLinkModifiedDay(rows[1])) {
-		t.Fatalf("source A modified day = %q", got[sourceAHost].ModifiedDay)
-	}
-	if got[sourceBHost].Count != "1" {
-		t.Fatalf("source B count = %q, want 1", got[sourceBHost].Count)
-	}
-	if got[sourceBHost].ModifiedDay != fmt.Sprint(hostLinkModifiedDay(rows[2])) {
-		t.Fatalf("source B modified day = %q", got[sourceBHost].ModifiedDay)
-	}
-}
-
-func TestStoredURLHostLinksCapsGraphResponse(t *testing.T) {
-	target := urlHashForTest(t, "https://target.example/a")
-	rows := make([]yacymodel.URIMetadataRow, 0, hostLinkMaxReferencesPerHost+1)
-	for i := range hostLinkMaxReferencesPerHost + 1 {
-		source := urlHashForTest(t, fmt.Sprintf("https://source-%03d.example/", i))
-		rows = append(rows, hostLinkRow(target, source, nil))
-	}
-	for i := range hostLinkMaxLinkedHosts + 1 {
-		rowTarget := urlHashForTest(t, fmt.Sprintf("https://target-%05d.example/", i))
-		source := urlHashForTest(t, fmt.Sprintf("https://overflow-source-%05d.example/", i))
-		rows = append(rows, hostLinkRow(rowTarget, source, nil))
-	}
-
-	graph := storedURLHostLinks{
-		rows: storedURLMetadataRowsScript{rows: rows},
-	}.IncomingHostLinks(t.Context())
-
-	if len(graph.LinkedHosts) != hostLinkMaxLinkedHosts {
-		t.Fatalf("LinkedHosts = %d, want %d", len(graph.LinkedHosts), hostLinkMaxLinkedHosts)
-	}
-	for _, linked := range graph.LinkedHosts {
-		if linked.HostHash == hostHashForTest(t, target) &&
-			len(linked.References) != hostLinkMaxReferencesPerHost {
-			t.Fatalf(
-				"references = %d, want %d",
-				len(linked.References),
-				hostLinkMaxReferencesPerHost,
-			)
-		}
-	}
-}
-
-func TestStoredURLHostLinksReturnsEmptyGraphOnScanError(t *testing.T) {
-	graph := storedURLHostLinks{
-		rows: storedURLMetadataRowsScript{err: errors.New("scan failed")},
-	}.IncomingHostLinks(t.Context())
-
-	if graph.RowDefinition != hostlinks.HostReferenceRowDefinition {
-		t.Fatalf("RowDefinition = %q", graph.RowDefinition)
-	}
-	if len(graph.LinkedHosts) != 0 {
-		t.Fatalf("LinkedHosts = %v, want empty after scan error", graph.LinkedHosts)
-	}
-}
-
-func TestHostLinkModifiedDayRejectsBadFreshness(t *testing.T) {
-	row := yacymodel.URIMetadataRow{
-		Properties: map[string]string{yacymodel.ColLoadDate: "not-a-day"},
-	}
-
-	if got := hostLinkModifiedDay(row); got != 0 {
-		t.Fatalf("ModifiedDay = %d, want 0", got)
-	}
-}
-
-type decodedHostReference struct {
-	HostHash    string `json:"h"`
-	ModifiedDay string `json:"m"`
-	Count       string `json:"c"`
-}
-
-func decodedHostReferences(
-	t *testing.T,
-	messages []json.RawMessage,
-) map[string]decodedHostReference {
+func testHostHash(t *testing.T, rawURL string) string {
 	t.Helper()
-
-	decoded := map[string]decodedHostReference{}
-	for _, message := range messages {
-		var reference decodedHostReference
-		if err := json.Unmarshal(message, &reference); err != nil {
-			t.Fatalf("decode reference: %v", err)
-		}
-		decoded[reference.HostHash] = reference
-	}
-
-	return decoded
-}
-
-func hostLinkRow(
-	hash yacymodel.URLHash,
-	referrer yacymodel.URLHash,
-	extra map[string]string,
-) yacymodel.URIMetadataRow {
-	props := map[string]string{yacymodel.URLMetaHash: hash.String()}
-	if referrer != "" {
-		props[yacymodel.URLMetaReferrer] = referrer.String()
-	}
-	for key, value := range extra {
-		props[key] = value
-	}
-
-	return yacymodel.URIMetadataRow{Properties: props}
-}
-
-func urlHashForTest(t *testing.T, rawURL string) yacymodel.URLHash {
-	t.Helper()
-
-	hash, err := yacymodel.HashURL(rawURL)
-	if err != nil {
-		t.Fatalf("HashURL(%q): %v", rawURL, err)
+	hash, ok := documentHostHash(rawURL)
+	if !ok {
+		t.Fatalf("documentHostHash(%q) failed", rawURL)
 	}
 
 	return hash
 }
 
-func hostHashForTest(t *testing.T, hash yacymodel.URLHash) string {
-	t.Helper()
+func TestStoredDocumentHostLinksReturnsRowDefinitionWithoutDocuments(t *testing.T) {
+	graph := storedDocumentHostLinks{}.IncomingHostLinks(context.Background())
 
-	host, err := hash.HostHash()
-	if err != nil {
-		t.Fatalf("HostHash(%q): %v", hash, err)
+	if graph.RowDefinition != hostlinks.HostReferenceRowDefinition {
+		t.Fatalf("row definition = %q", graph.RowDefinition)
+	}
+	if len(graph.LinkedHosts) != 0 {
+		t.Fatalf("linked hosts = %d, want 0", len(graph.LinkedHosts))
+	}
+}
+
+func TestStoredDocumentHostLinksCountsOutlinksPerSourceHost(t *testing.T) {
+	fetched := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	source := scriptedStoredDocuments{docs: []documentstore.Document{{
+		NormalizedURL: "http://source.net/page.html",
+		FetchedAt:     fetched,
+		Outlinks: []string{
+			"http://target.com/one.html",
+			"http://target.com/two.html",
+			"http://target.com/three.html",
+			"http://source.net/internal.html",
+			"",
+		},
+	}}}
+
+	graph := storedDocumentHostLinks{documents: source}.IncomingHostLinks(context.Background())
+
+	if len(graph.LinkedHosts) != 1 {
+		t.Fatalf("linked hosts = %d, want 1", len(graph.LinkedHosts))
+	}
+	host := graph.LinkedHosts[0]
+	if want := testHostHash(t, "http://target.com/"); host.HostHash != want {
+		t.Fatalf("host hash = %q, want %q", host.HostHash, want)
+	}
+	if len(host.References) != 1 {
+		t.Fatalf("references = %d, want 1", len(host.References))
+	}
+	day := fetched.Unix() / secondsPerDay
+	want := fmt.Sprintf(
+		`{"h":%q,"m":%q,"c":"3"}`,
+		testHostHash(t, "http://source.net/"),
+		strconv.FormatInt(day, 10),
+	)
+	if string(host.References[0]) != want {
+		t.Fatalf("reference = %s, want %s", host.References[0], want)
+	}
+}
+
+func TestStoredDocumentHostLinksAccumulatesAcrossDocuments(t *testing.T) {
+	source := scriptedStoredDocuments{docs: []documentstore.Document{
+		{
+			NormalizedURL: "http://source.net/a.html",
+			IndexedAt:     time.Date(2026, 7, 1, 8, 0, 0, 0, time.UTC),
+			Outlinks:      []string{"http://target.com/one.html"},
+		},
+		{
+			NormalizedURL: "http://source.net/b.html",
+			Outlinks:      []string{"http://target.com/two.html"},
+		},
+		{
+			NormalizedURL: "http://other.org/c.html",
+			Outlinks:      []string{"http://target.com/three.html"},
+		},
+	}}
+
+	graph := storedDocumentHostLinks{documents: source}.IncomingHostLinks(context.Background())
+
+	if len(graph.LinkedHosts) != 1 {
+		t.Fatalf("linked hosts = %d, want 1", len(graph.LinkedHosts))
+	}
+	if got := len(graph.LinkedHosts[0].References); got != 2 {
+		t.Fatalf("references = %d, want 2", got)
+	}
+}
+
+func TestStoredDocumentHostLinksReturnsEmptyGraphOnScanError(t *testing.T) {
+	source := scriptedStoredDocuments{err: errors.New("scan failed")}
+
+	graph := storedDocumentHostLinks{documents: source}.IncomingHostLinks(context.Background())
+
+	if len(graph.LinkedHosts) != 0 {
+		t.Fatalf("linked hosts = %d, want 0 on scan error", len(graph.LinkedHosts))
+	}
+}
+
+func TestDocumentModifiedDayUsesFetchedThenIndexedThenZero(t *testing.T) {
+	fetched := time.Date(2026, 7, 2, 23, 59, 0, 0, time.UTC)
+	fetchedDoc := documentstore.Document{FetchedAt: fetched}
+	if got := documentModifiedDay(fetchedDoc); got != fetched.Unix()/secondsPerDay {
+		t.Fatalf("fetched day = %d", got)
 	}
 
-	return host
+	indexed := time.Date(2026, 6, 30, 1, 0, 0, 0, time.UTC)
+	indexedDoc := documentstore.Document{IndexedAt: indexed}
+	if got := documentModifiedDay(indexedDoc); got != indexed.Unix()/secondsPerDay {
+		t.Fatalf("indexed day = %d", got)
+	}
+
+	if got := documentModifiedDay(documentstore.Document{}); got != 0 {
+		t.Fatalf("zero-time day = %d, want 0", got)
+	}
+}
+
+func TestFirstSortedKeysCapsResults(t *testing.T) {
+	keys := firstSortedKeys(map[string]int{"c": 1, "a": 2, "b": 3}, 2)
+
+	if len(keys) != 2 || keys[0] != "a" || keys[1] != "b" {
+		t.Fatalf("keys = %v, want [a b]", keys)
+	}
+}
+
+func TestStoredDocumentHostLinksSkipsDocumentsWithoutValidHost(t *testing.T) {
+	source := scriptedStoredDocuments{docs: []documentstore.Document{{
+		NormalizedURL: "   ",
+		Outlinks:      []string{"http://target.com/one.html"},
+	}}}
+
+	graph := storedDocumentHostLinks{documents: source}.IncomingHostLinks(context.Background())
+
+	if len(graph.LinkedHosts) != 0 {
+		t.Fatalf("linked hosts = %d, want 0", len(graph.LinkedHosts))
+	}
 }
