@@ -1,12 +1,13 @@
 package pageparse
 
 type ParsedPage struct {
-	URL      string
-	Title    string
-	Headings []string
-	Language string
-	Text     string
-	Links    []string
+	URL          string
+	CanonicalURL string
+	Title        string
+	Headings     []string
+	Language     string
+	Text         string
+	Links        []string
 }
 
 type PageStats struct {

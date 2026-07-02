@@ -60,6 +60,41 @@ func TestParseHTMLReturnsURLWhenHTMLParserFails(t *testing.T) {
 	}
 }
 
+func TestReadCanonicalURLRejectsInvalidBase(t *testing.T) {
+	root, err := html.Parse(strings.NewReader(`<html><head>
+<link rel="canonical" href="https://example.com/preferred">
+</head></html>`))
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+
+	if got := readCanonicalURL(root, "://bad"); got != "" {
+		t.Fatalf("canonical URL = %q, want empty", got)
+	}
+}
+
+func TestReadCanonicalURLReturnsEmptyWhenMissing(t *testing.T) {
+	root, err := html.Parse(strings.NewReader(`<html><head>
+<link rel="alternate" href="https://example.com/alternate">
+</head></html>`))
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+
+	if got := readCanonicalURL(root, "https://example.com/page"); got != "" {
+		t.Fatalf("canonical URL = %q, want empty", got)
+	}
+}
+
+func TestHasLinkRelation(t *testing.T) {
+	if !hasLinkRelation("alternate CANONICAL", "canonical") {
+		t.Fatal("canonical token should match case-insensitively")
+	}
+	if hasLinkRelation("canonicalized", "canonical") {
+		t.Fatal("partial token should not match")
+	}
+}
+
 func TestSelectTextFallsBackWhenExtractorFails(t *testing.T) {
 	restoreParserSeams(t, newHTMLCharsetReader, parseHTMLDocument, extractReadableContent)
 	extractReadableContent = func(io.Reader, trafilatura.Options) (*trafilatura.ExtractResult, error) {

@@ -1157,6 +1157,13 @@ Acceptance:
 
 ### CRAWL-05: HTML parsing and extraction
 
+Status: partial implementation exists. The crawler extracts title, canonical
+URL hints, language, headings, visible text, and links from HTML; resolves the
+canonical URL against the fetched page; produces document ingest, RWI postings,
+URL metadata, and content hashes; and keeps extracted text bounded by the node
+document store. Meta description, nofollow policy, image metadata, and richer
+golden fixtures remain planned.
+
 Dependency candidates require ADR first. Prefer `golang.org/x/net/html` initially if enough. Add `goquery` only with ADR.
 
 Tasks:

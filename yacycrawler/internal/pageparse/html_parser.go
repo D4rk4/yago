@@ -8,6 +8,8 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 	"golang.org/x/net/html/charset"
+
+	"github.com/D4rk4/yago/yacycrawler/internal/weburl"
 )
 
 var newHTMLCharsetReader = charset.NewReader
@@ -27,6 +29,7 @@ func ParseHTML(rawURL, contentType string, body []byte) ParsedPage {
 	page := ParsedPage{URL: rawURL}
 	var text strings.Builder
 	readHTMLFields(root, &page)
+	page.CanonicalURL = readCanonicalURL(root, rawURL)
 	collectText(root, &text)
 	page.Text = selectText(contentType, body, text.String())
 	return page
@@ -59,6 +62,35 @@ func readHTMLFields(root *html.Node, page *ParsedPage) {
 			page.Links = append(page.Links, href)
 		}
 	}
+}
+
+func readCanonicalURL(root *html.Node, rawURL string) string {
+	base, ok := weburl.ParseBase(rawURL)
+	if !ok {
+		return ""
+	}
+	for _, link := range dom.GetElementsByTagName(root, "link") {
+		if !hasLinkRelation(dom.GetAttribute(link, "rel"), "canonical") {
+			continue
+		}
+		resolved, ok := weburl.Resolve(base, dom.GetAttribute(link, "href"))
+		if !ok {
+			continue
+		}
+		if normalized, ok := weburl.Normalize(resolved.String()); ok {
+			return normalized
+		}
+	}
+	return ""
+}
+
+func hasLinkRelation(value string, relation string) bool {
+	for _, token := range strings.Fields(value) {
+		if strings.EqualFold(token, relation) {
+			return true
+		}
+	}
+	return false
 }
 
 func collectText(node *html.Node, text *strings.Builder) {

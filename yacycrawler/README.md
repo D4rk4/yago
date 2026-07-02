@@ -37,7 +37,8 @@ the orders subject, the crawler fetches pages, builds document/RWI/URL metadata
 artifacts, and publishes ingest batches back to the node over the ingest
 subject. Multiple crawler instances can share the orders subject to
 load-balance, and a bounded ingest stream applies backpressure when the node
-falls behind.
+falls behind. Document ingest includes the fetched URL and any resolved
+`rel=canonical` URL found in the page.
 
 Configuration comes from the environment (`NATS_URL` and `YACYCRAWLER_PROXY_URL`
 are required), and the service runs until it receives `SIGINT` or `SIGTERM`.

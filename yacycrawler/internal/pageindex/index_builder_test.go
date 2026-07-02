@@ -27,10 +27,32 @@ func TestIndexBuilderBuildsPostingsAndMetadata(t *testing.T) {
 	if artifacts.Document.NormalizedURL != page.URL {
 		t.Errorf("document URL = %q", artifacts.Document.NormalizedURL)
 	}
+	if artifacts.Document.CanonicalURL != page.URL {
+		t.Errorf("canonical URL = %q", artifacts.Document.CanonicalURL)
+	}
 	if artifacts.Document.ExtractedText != page.Text {
 		t.Errorf("document text = %q", artifacts.Document.ExtractedText)
 	}
 	if artifacts.Document.ContentHash == "" {
 		t.Error("expected document content hash")
+	}
+}
+
+func TestIndexBuilderPreservesCanonicalURL(t *testing.T) {
+	page := pageparse.ParsedPage{
+		URL:          "https://example.com/page?utm=1",
+		CanonicalURL: "https://example.com/page",
+		Title:        "Canonical page",
+		Text:         "canonical page text",
+	}
+	artifacts, err := pageindex.NewIndexBuilder().Build(page, pageparse.BuildPageStats(page))
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if artifacts.Document.CanonicalURL != page.CanonicalURL {
+		t.Fatalf("canonical URL = %q", artifacts.Document.CanonicalURL)
+	}
+	if artifacts.Document.NormalizedURL != page.URL {
+		t.Fatalf("normalized URL = %q", artifacts.Document.NormalizedURL)
 	}
 }

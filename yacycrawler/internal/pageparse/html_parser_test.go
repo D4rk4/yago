@@ -42,6 +42,33 @@ func TestParseHTMLExtractsFields(t *testing.T) {
 	}
 }
 
+func TestParseHTMLExtractsCanonicalURL(t *testing.T) {
+	page := pageparse.ParseHTML(
+		"https://example.com/dir/page?ref=1",
+		"text/html",
+		[]byte(`<html><head><link rel="canonical" href="/canonical#fragment"></head></html>`),
+	)
+
+	if page.CanonicalURL != "https://example.com/canonical" {
+		t.Fatalf("canonical URL = %q", page.CanonicalURL)
+	}
+}
+
+func TestParseHTMLUsesFirstValidCanonicalURL(t *testing.T) {
+	page := pageparse.ParseHTML(
+		"https://example.com/dir/page",
+		"text/html",
+		[]byte(`<html><head>
+<link rel="canonical" href="mailto:editor@example.com">
+<link rel="alternate canonical" href="../preferred">
+</head></html>`),
+	)
+
+	if page.CanonicalURL != "https://example.com/preferred" {
+		t.Fatalf("canonical URL = %q", page.CanonicalURL)
+	}
+}
+
 const articleHTML = `<!DOCTYPE html>
 <html lang="en">
 <head><title>Real Article</title></head>

@@ -51,7 +51,7 @@ func BuildDocument(
 	outlinks = append(outlinks, stats.ExternalLinks...)
 
 	return yacycrawlcontract.DocumentIngest{
-		CanonicalURL:  page.URL,
+		CanonicalURL:  documentCanonicalURL(page),
 		NormalizedURL: page.URL,
 		Title:         page.Title,
 		Headings:      append([]string(nil), page.Headings...),
@@ -65,4 +65,11 @@ func BuildDocument(
 			"url_hash": metadata.Properties[yacymodel.URLMetaHash],
 		},
 	}
+}
+
+func documentCanonicalURL(page pageparse.ParsedPage) string {
+	if page.CanonicalURL != "" {
+		return page.CanonicalURL
+	}
+	return page.URL
 }
