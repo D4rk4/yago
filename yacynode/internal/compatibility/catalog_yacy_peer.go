@@ -125,9 +125,13 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:     yacyproto.PathProfile,
 		Methods:  methods(yacyproto.ProfileEndpointMethods),
 		State:    Partial,
-		Behavior: "Serves the YaCy profile text shape with configured properties when a profile source exists.",
-		Evidence: []string{"yacynode/internal/peerprofile/*_test.go", "yacyproto/profile_test.go"},
-		Notes:    "The default runtime profile source is empty.",
+		Behavior: "Serves the YaCy profile text shape with properties loaded from YACY_DATA_DIR/SETTINGS/profile.txt when that file exists.",
+		Evidence: []string{
+			"yacynode/internal/peerprofile/*_test.go",
+			"yacynode/cmd/yacy-rwi-node/node_profile_test.go",
+			"yacyproto/profile_test.go",
+		},
+		Notes: "Missing profile files produce an empty profile.",
 	},
 	{
 		Name:     "Remote crawl URL feed",

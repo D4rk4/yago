@@ -34,7 +34,7 @@ Status values:
 | Host-link index | `/yacy/idx.json` | GET, POST | partial | Serves the host object shape with a bounded incoming host-link index inferred from stored URL metadata referrers. |
 | Shared blacklist export | `/yacy/list.html` | GET, POST | partial | Serves `col=black` with an empty source until shared blacklist storage is populated. |
 | Peer message inbox | `/yacy/message.html` | GET, POST | partial | Accepts permission checks and inbound message posts; attachments are not stored. |
-| Peer profile export | `/yacy/profile.html` | GET, POST | partial | Serves profile properties when a profile source exists; default runtime source is empty. |
+| Peer profile export | `/yacy/profile.html` | GET, POST | partial | Serves profile properties from `YACY_DATA_DIR/SETTINGS/profile.txt` when that YaCy-compatible file exists. |
 | Remote crawl URL feed | `/yacy/urls.xml` | GET, POST | partial | Serves URL-hash metadata feeds and safe empty remote-crawl feeds. |
 | Remote crawl receipt | `/yacy/crawlReceipt.html` | POST | partial | Accepts the wire shape and returns no scheduled delay while remote crawl execution is disabled. |
 

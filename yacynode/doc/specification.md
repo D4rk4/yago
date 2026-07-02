@@ -50,6 +50,7 @@ Go internals do not need to copy Java source code or Java storage engines.
 * The node SHALL expose YaCy-compatible public search JSON, RSS, HTML, OpenSearch description, and suggestion subsets backed by local search and DHT-selected reachable-peer search where applicable.
 * The node SHALL support federated search across local and DHT-selected reachable peer results, using YaCy index abstracts for multi-term remote result conjunctions, filtering remote targets by advertised RWI inventory, and balancing redundant DHT candidates randomly.
 * The node SHALL answer YaCy-compatible RWI capacity and status queries, including per-word RWI URL counts and zero-valued wanted-object probes.
+* The node SHALL export YaCy-compatible peer profile properties from its configured data directory when a profile file exists.
 * The node SHALL export a YaCy-compatible bounded host-link index from stored URL metadata referrer relationships.
 * The node SHALL run configured crawl jobs and ingest crawler-produced metadata and postings.
 * The node SHALL reject remote crawl work unless a configured policy explicitly allows it.

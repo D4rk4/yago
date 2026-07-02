@@ -14,7 +14,8 @@ remote seed carries.
 The shared blacklist endpoint `/yacy/list.html` is also raw text and returns
 CRLF-terminated blacklist entries for `col=black`. The peer profile endpoint
 `/yacy/profile.html` is raw text as well and returns CRLF-terminated `key=value`
-profile properties. The host-link endpoint `/yacy/idx.json?object=host` returns
+profile properties loaded from `YACY_DATA_DIR/SETTINGS/profile.txt` when present.
+The host-link endpoint `/yacy/idx.json?object=host` returns
 JSON with version, uptime, YaCy's host-reference row definition, and a bounded
 incoming host-link index inferred from stored URL metadata referrers.
 The peer message endpoint `/yacy/message.html` supports permission checks and

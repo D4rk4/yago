@@ -5,7 +5,7 @@ The node is configured through environment variables.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `LOG_LEVEL` | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARN`, or `ERROR`. |
-| `YACY_DATA_DIR` | `./data` | Where the node persists its data. |
+| `YACY_DATA_DIR` | `./data` | Where the node persists its data. The YaCy-compatible peer profile file is `SETTINGS/profile.txt` inside this directory. |
 | `YACY_PEER_ADDR` | `:8090` | Listen address for the YaCy peer protocol. |
 | `YACY_OPS_ADDR` | `:9090` | Listen address for `/health`, `/metrics`, and ops JSON endpoints. |
 | `YACY_PEER_HASH` | _(required)_ | The 12-character enhanced-Base64 peer hash advertised to the network. |

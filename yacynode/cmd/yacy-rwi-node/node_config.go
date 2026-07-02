@@ -43,6 +43,7 @@ type nodeConfig struct {
 	Hash              yacymodel.Hash
 	NetworkName       string
 	Name              string
+	DataDir           string
 	AdvertiseHost     string
 	AdvertisePort     int
 	PublicSelfTestURL *url.URL
@@ -58,6 +59,12 @@ type nodeConfig struct {
 	GreetsPerCycle    int
 	Crawl             crawlConfig
 	DHT               dhtDistributionConfig
+}
+
+type configuredNodeData struct {
+	directory    string
+	databasePath string
+	quotaByte    int64
 }
 
 func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
@@ -100,9 +107,9 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		return nodeConfig{}, err
 	}
 
-	quota, err := parseByteSize(envWithDefault(getenv, envStorageQuota, defaultQuota))
+	data, err := loadConfiguredNodeData(getenv)
 	if err != nil {
-		return nodeConfig{}, fmt.Errorf("%s: %w", envStorageQuota, err)
+		return nodeConfig{}, err
 	}
 
 	proxies, err := parseTrustedProxies(getenv(envTrustedProxies))
@@ -120,26 +127,39 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		return nodeConfig{}, err
 	}
 
-	dataDir := envWithDefault(getenv, envDataDir, defaultDataDir)
-
 	return nodeConfig{
 		Hash:              hash,
 		NetworkName:       envWithDefault(getenv, envNetworkName, yacyproto.DefaultNetwork),
 		Name:              name,
+		DataDir:           data.directory,
 		AdvertiseHost:     host,
 		AdvertisePort:     port,
 		PublicSelfTestURL: selfTestURL,
 		Flags:             seniorFlags(),
 		PeerAddr:          peerAddr,
 		OpsAddr:           envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
-		StoragePath:       filepath.Join(dataDir, storageFileName),
-		StorageQuotaByte:  quota,
+		StoragePath:       data.databasePath,
+		StorageQuotaByte:  data.quotaByte,
 		TrustedProxies:    proxies,
 		ProxyURL:          proxyURL,
 		SeedlistURLs:      seedlistURLs,
 		AnnounceInterval:  announceInterval,
 		GreetsPerCycle:    greetsPerCycle,
 		DHT:               dht,
+	}, nil
+}
+
+func loadConfiguredNodeData(getenv func(string) string) (configuredNodeData, error) {
+	directory := envWithDefault(getenv, envDataDir, defaultDataDir)
+	quota, err := parseByteSize(envWithDefault(getenv, envStorageQuota, defaultQuota))
+	if err != nil {
+		return configuredNodeData{}, fmt.Errorf("%s: %w", envStorageQuota, err)
+	}
+
+	return configuredNodeData{
+		directory:    directory,
+		databasePath: filepath.Join(directory, storageFileName),
+		quotaByte:    quota,
 	}, nil
 }
 

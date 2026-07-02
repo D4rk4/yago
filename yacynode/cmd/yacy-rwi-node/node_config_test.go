@@ -39,6 +39,9 @@ func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 	if !strings.HasSuffix(config.StoragePath, storageFileName) {
 		t.Errorf("StoragePath = %q, want suffix %q", config.StoragePath, storageFileName)
 	}
+	if config.DataDir != defaultDataDir {
+		t.Errorf("DataDir = %q, want %q", config.DataDir, defaultDataDir)
+	}
 	if config.StorageQuotaByte != 1<<30 {
 		t.Errorf("StorageQuotaByte = %d, want 1GB", config.StorageQuotaByte)
 	}
@@ -65,6 +68,7 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 		envAdvertiseHost:           "203.0.113.1",
 		envAdvertisePort:           "9999",
 		envPublicSelfTestURL:       "https://public.example:9443",
+		envDataDir:                 "/var/lib/yago",
 		envStorageQuota:            "2MB",
 		envTrustedProxies:          "10.0.0.0/8",
 		envSeedlistURLs:            " http://a , http://b ,",
@@ -94,6 +98,9 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 	}
 	if config.StorageQuotaByte != 2<<20 {
 		t.Errorf("StorageQuotaByte = %d, want 2MB", config.StorageQuotaByte)
+	}
+	if config.DataDir != "/var/lib/yago" {
+		t.Errorf("DataDir = %q, want /var/lib/yago", config.DataDir)
 	}
 	if len(config.TrustedProxies) != 1 {
 		t.Errorf("TrustedProxies = %d, want 1", len(config.TrustedProxies))
