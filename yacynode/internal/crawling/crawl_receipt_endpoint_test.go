@@ -30,7 +30,7 @@ func TestCrawlReceiptRejectsCrawl(t *testing.T) {
 		YouAre:      yacymodel.WordHash("self"),
 	}
 
-	resp, err := crawlReceiptEndpoint{}.Serve(context.Background(), req)
+	resp, err := disabledCrawlReceiptEndpoint{}.Serve(context.Background(), req)
 	if err != nil {
 		t.Fatalf("Serve: %v", err)
 	}

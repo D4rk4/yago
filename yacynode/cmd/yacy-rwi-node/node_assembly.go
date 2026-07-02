@@ -102,7 +102,7 @@ func assembleNode(
 	}
 
 	crawling.MountCrawlReceipt(router)
-	crawlurls.Mount(router, identity, storage.urlDirectory, crawlurls.NoRemoteCrawlURLs{})
+	crawlurls.Mount(router, identity, storage.urlDirectory, crawlurls.DisabledRemoteCrawlURLs{})
 
 	sweeper := newStorageSweeper(vault, storage)
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{

@@ -7,13 +7,15 @@ import (
 	"github.com/D4rk4/yago/yacyproto"
 )
 
-type crawlReceiptEndpoint struct{}
+const logCrawlReceiptRejected = "crawl receipt rejected"
 
-func (crawlReceiptEndpoint) Serve(
+type disabledCrawlReceiptEndpoint struct{}
+
+func (disabledCrawlReceiptEndpoint) Serve(
 	ctx context.Context,
 	_ yacyproto.CrawlReceiptRequest,
 ) (yacyproto.CrawlReceiptResponse, error) {
-	slog.DebugContext(ctx, "crawl receipt rejected")
+	slog.DebugContext(ctx, logCrawlReceiptRejected)
 
 	return yacyproto.CrawlReceiptResponse{}, nil
 }

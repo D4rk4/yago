@@ -26,9 +26,9 @@ type RemoteCrawlURL struct {
 	GUID        yacymodel.Hash
 }
 
-type NoRemoteCrawlURLs struct{}
+type DisabledRemoteCrawlURLs struct{}
 
-func (NoRemoteCrawlURLs) URLsForRemoteCrawl(
+func (DisabledRemoteCrawlURLs) URLsForRemoteCrawl(
 	context.Context,
 	int,
 	time.Duration,

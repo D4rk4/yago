@@ -37,8 +37,9 @@ The node currently targets these responsibilities:
   an empty index unless host-link data is configured in a future source;
 - answer YaCy peer message permission requests and store inbound
   `/yacy/message.html` posts without attachment support;
-- answer YaCy `/yacy/urls.xml` remote crawl URL requests with an empty queue and
-  URL-hash metadata requests from locally stored metadata;
+- answer YaCy `/yacy/urls.xml` remote crawl URL requests with an empty queue,
+  reject remote crawl receipts without scheduling work, and serve URL-hash
+  metadata requests from locally stored metadata;
 - receive inbound RWI postings through `/yacy/transferRWI.html`;
 - receive URL metadata through `/yacy/transferURL.html`;
 - run retry-aware outbound DHT handoff cycles fed from stored RWI postings, with
@@ -193,6 +194,8 @@ Start with these documents:
   DHT interoperability notes;
 - [yacynode/doc/yacy-wire-protocol.md](yacynode/doc/yacy-wire-protocol.md) for
   peer protocol details;
+- [yacynode/doc/remote-crawl-policy.md](yacynode/doc/remote-crawl-policy.md) for
+  the disabled-by-default remote crawl security policy;
 - [yacycrawler/README.md](yacycrawler/README.md) for crawler behavior;
 - [yacycrawlcontract/README.md](yacycrawlcontract/README.md) for node-crawler
   message flow.

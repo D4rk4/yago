@@ -47,6 +47,7 @@ Go internals do not need to copy Java source code or Java storage engines.
 * The node SHALL answer RWI capacity and status queries.
 * The node SHALL run configured crawl jobs and ingest crawler-produced metadata and postings.
 * The node SHALL reject remote crawl work unless a configured policy explicitly allows it.
+* The node SHALL return YaCy-compatible empty remote-crawl responses while remote crawl work is disabled.
 * The node SHALL store accepted RWI postings and the URL metadata those postings reference.
 * The node SHALL expose machine-readable compatibility status for implemented and missing YaCy surfaces.
 * The node SHALL allow operators to configure its storage quota.

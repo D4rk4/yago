@@ -33,7 +33,7 @@ func newEndpoint(
 	remote RemoteCrawlURLs,
 ) endpoint {
 	if remote == nil {
-		remote = NoRemoteCrawlURLs{}
+		remote = DisabledRemoteCrawlURLs{}
 	}
 
 	return endpoint{identity: identity, urls: urls, remote: remote, now: time.Now}

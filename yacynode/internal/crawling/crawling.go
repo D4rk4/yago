@@ -1,5 +1,5 @@
-// Package crawling owns the crawlReceipt endpoint, which acknowledges crawl
-// receipts from peers. MountCrawlReceipt is its only surface.
+// Package crawling owns the crawlReceipt endpoint, which rejects remote crawl
+// receipts until an operator policy enables remote crawl work.
 package crawling
 
 import (
@@ -13,6 +13,6 @@ func MountCrawlReceipt(router httpguard.WireRouter) {
 		yacyproto.PathCrawlReceipt,
 		yacyproto.CrawlReceiptEndpointMethods,
 		yacyproto.ParseCrawlReceiptRequest,
-		crawlReceiptEndpoint{}.Serve,
+		disabledCrawlReceiptEndpoint{}.Serve,
 	)
 }

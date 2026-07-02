@@ -61,6 +61,20 @@ func (r *recordingRemoteCrawlURLs) URLsForRemoteCrawl(
 	return r.items, r.err
 }
 
+func TestDisabledRemoteCrawlURLsReturnsNoWork(t *testing.T) {
+	items, err := DisabledRemoteCrawlURLs{}.URLsForRemoteCrawl(
+		t.Context(),
+		remoteDefaultCount,
+		remoteDefaultTime*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("items = %v, want none", items)
+	}
+}
+
 func TestRemoteCrawlReturnsEmptySuccessByDefault(t *testing.T) {
 	endpoint := newEndpoint(localIdentity(), &recordingURLDirectory{}, nil)
 	endpoint.now = fixedNow

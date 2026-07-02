@@ -19,8 +19,11 @@ match the public P2P surfaces exposed by original YaCy peers.
 
 The crawl URL feed endpoint `/yacy/urls.xml` returns YaCy's RSS-like XML shape.
 `call=remotecrawl` currently returns `ok` with no items because remote crawl
-delegation is disabled by default. `call=urlhashlist` accepts concatenated
-12-byte URL hashes and returns the locally stored metadata rows it knows.
+delegation is disabled by default. `/yacy/crawlReceipt.html` accepts the YaCy
+wire shape and returns no scheduled delay while remote crawl is disabled.
+`call=urlhashlist` accepts concatenated 12-byte URL hashes and returns the
+locally stored metadata rows it knows. The execution policy is documented in
+[Remote Crawl Policy](remote-crawl-policy.md).
 
 Two modules hold the definitions, each browsable with `go doc`:
 
