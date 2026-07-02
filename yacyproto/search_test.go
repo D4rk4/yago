@@ -67,6 +67,12 @@ func TestSearchResponseRoundTrip(t *testing.T) {
 	}
 
 	msg := resp.Encode()
+	if _, ok := msg[yacyproto.FieldCount]; !ok {
+		t.Fatalf("encoded response missing %q: %v", yacyproto.FieldCount, msg)
+	}
+	if _, ok := msg[yacyproto.FieldLinkCount]; ok {
+		t.Fatalf("encoded response should not expose %q: %v", yacyproto.FieldLinkCount, msg)
+	}
 	yacyproto.InjectResponseHeader(msg, resp.Version, resp.Uptime)
 	got, err := yacyproto.ParseSearchResponse(msg)
 	if err != nil {
@@ -187,7 +193,21 @@ func TestParseSearchRequestAcceptsExplicitAbstractHashes(t *testing.T) {
 	}
 }
 
-func TestSearchResponseUsesYaCyLinkCountField(t *testing.T) {
+func TestSearchResponseUsesYaCyCountField(t *testing.T) {
+	t.Parallel()
+
+	msg := yacymodel.Message{yacyproto.FieldCount: "5"}
+	got, err := yacyproto.ParseSearchResponse(msg)
+	if err != nil {
+		t.Fatalf("ParseSearchResponse: %v", err)
+	}
+
+	if got.Count != 5 {
+		t.Fatalf("count = %d, want 5", got.Count)
+	}
+}
+
+func TestSearchResponseParsesLegacyLinkCountField(t *testing.T) {
 	t.Parallel()
 
 	msg := yacymodel.Message{yacyproto.FieldLinkCount: "5"}
@@ -209,6 +229,7 @@ func TestParseSearchResponseRejectsBadFields(t *testing.T) {
 		{yacyproto.FieldUptime: "soon"},
 		{yacyproto.FieldSearchTime: "soon"},
 		{yacyproto.FieldJoinCount: "many"},
+		{yacyproto.FieldCount: "many"},
 		{yacyproto.FieldLinkCount: "many"},
 		{"indexcount.short": "1"},
 		{"indexcount." + alpha.String(): "many"},
@@ -226,9 +247,9 @@ func TestParseSearchResponseSkipsMissingAndBadResources(t *testing.T) {
 
 	valid := sampleURLRow(t, "url-a")
 	msg := yacymodel.Message{
-		yacyproto.FieldLinkCount: "3",
-		"resource0":              valid.String(),
-		"resource2":              "bad",
+		yacyproto.FieldCount: "3",
+		"resource0":          valid.String(),
+		"resource2":          "bad",
 	}
 	got, err := yacyproto.ParseSearchResponse(msg)
 	if err != nil {

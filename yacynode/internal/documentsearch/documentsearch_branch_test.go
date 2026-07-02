@@ -340,4 +340,14 @@ func TestMountSearchServesRoute(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
+	msg, err := yacymodel.ParseMessage(rec.Body.String())
+	if err != nil {
+		t.Fatalf("parse body: %v", err)
+	}
+	if msg[yacyproto.FieldCount] != "1" {
+		t.Fatalf("count = %q, want 1 in %v", msg[yacyproto.FieldCount], msg)
+	}
+	if _, ok := msg[yacyproto.FieldLinkCount]; ok {
+		t.Fatalf("body exposes internal linkcount field: %v", msg)
+	}
 }

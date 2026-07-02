@@ -17,6 +17,11 @@ The peer message endpoint `/yacy/message.html` supports permission checks and
 stores inbound peer messages; attachments are advertised as size `0`. These
 match the public P2P surfaces exposed by original YaCy peers.
 
+The remote search endpoint `/yacy/search.html` returns YaCy key-value rows with
+`searchtime`, `references`, `joincount`, `count`, `resourceN`, `indexcount.*`,
+and `indexabstract.*` fields. `count` is the number of `resourceN` rows carried
+in the response.
+
 The crawl URL feed endpoint `/yacy/urls.xml` returns YaCy's RSS-like XML shape.
 `call=remotecrawl` currently returns `ok` with no items because remote crawl
 delegation is disabled by default. `/yacy/crawlReceipt.html` accepts the YaCy
