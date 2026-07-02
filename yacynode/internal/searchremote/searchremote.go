@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ const (
 	DefaultMinimumPeerAgeDays = 3
 	DefaultMinimumPeerRWIs    = 1
 	maxPartitionExponent      = 8
+	secondaryURLCap           = 128
 	remoteSearchBodyCap       = 512 << 10
 )
 
@@ -67,9 +69,21 @@ type searcher struct {
 }
 
 type peerSearchResult struct {
+	term     yacymodel.Hash
 	peer     yacymodel.Seed
 	response yacyproto.SearchResponse
 	err      error
+}
+
+type peerSearchJob struct {
+	term    yacymodel.Hash
+	peer    yacymodel.Seed
+	request yacyproto.SearchRequest
+}
+
+type termPeerTargets struct {
+	term  yacymodel.Hash
+	peers []yacymodel.Seed
 }
 
 var newRemoteSearchRequest = http.NewRequestWithContext
@@ -102,7 +116,12 @@ func (s searcher) Search(
 	ctx, cancel := s.overallContext(ctx)
 	defer cancel()
 
-	peers, noPeersReason := s.remotePeers(ctx, req)
+	hashes := termHashes(req.Terms)
+	if len(hashes) > 1 {
+		return s.searchWithAbstracts(ctx, req, hashes), nil
+	}
+
+	peers, noPeersReason := s.remotePeers(ctx, hashes)
 	if len(peers) == 0 {
 		return searchcore.Response{
 			Request: req,
@@ -124,7 +143,7 @@ func (s searcher) overallContext(ctx context.Context) (context.Context, context.
 
 func (s searcher) remotePeers(
 	ctx context.Context,
-	req searchcore.Request,
+	hashes []yacymodel.Hash,
 ) ([]yacymodel.Seed, string) {
 	if s.peers == nil {
 		return nil, "no reachable peers"
@@ -134,7 +153,6 @@ func (s searcher) remotePeers(
 		return nil, "no reachable peers"
 	}
 
-	hashes := termHashes(req.Terms)
 	if len(hashes) == 0 {
 		return nil, "no query terms"
 	}
@@ -162,27 +180,44 @@ func (s searcher) queryPeers(
 	peers []yacymodel.Seed,
 	req searchcore.Request,
 ) []peerSearchResult {
-	workerCount := min(s.concurrency, len(peers))
-	jobs := make(chan yacymodel.Seed)
-	results := make(chan peerSearchResult, len(peers))
+	searchReq := remoteSearchRequest(req, s.networkName, s.perPeerTimeout)
+	jobs := make([]peerSearchJob, 0, len(peers))
+	for _, peer := range peers {
+		jobs = append(jobs, peerSearchJob{peer: peer, request: searchReq})
+	}
+
+	return s.queryPeerJobs(ctx, jobs)
+}
+
+func (s searcher) queryPeerJobs(
+	ctx context.Context,
+	requests []peerSearchJob,
+) []peerSearchResult {
+	if len(requests) == 0 {
+		return nil
+	}
+
+	workerCount := min(s.concurrency, len(requests))
+	jobs := make(chan peerSearchJob)
+	results := make(chan peerSearchResult, len(requests))
 	var wg sync.WaitGroup
 	for range workerCount {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for peer := range jobs {
-				results <- s.queryPeer(ctx, peer, req)
+			for job := range jobs {
+				results <- s.queryPeerJob(ctx, job)
 			}
 		}()
 	}
-	for _, peer := range peers {
-		jobs <- peer
+	for _, job := range requests {
+		jobs <- job
 	}
 	close(jobs)
 	wg.Wait()
 	close(results)
 
-	out := make([]peerSearchResult, 0, len(peers))
+	out := make([]peerSearchResult, 0, len(requests))
 	for result := range results {
 		out = append(out, result)
 	}
@@ -190,16 +225,223 @@ func (s searcher) queryPeers(
 	return out
 }
 
-func (s searcher) queryPeer(
+func (s searcher) queryPeerJob(
 	ctx context.Context,
-	peer yacymodel.Seed,
-	req searchcore.Request,
+	job peerSearchJob,
 ) peerSearchResult {
 	peerCtx, cancel := context.WithTimeout(ctx, s.perPeerTimeout)
 	defer cancel()
 
-	resp, err := s.remoteSearch(peerCtx, peer, req)
-	return peerSearchResult{peer: peer, response: resp, err: err}
+	resp, err := s.sendRemoteSearch(peerCtx, job.peer, job.request)
+	return peerSearchResult{
+		term:     job.term,
+		peer:     job.peer,
+		response: resp,
+		err:      err,
+	}
+}
+
+func (s searcher) searchWithAbstracts(
+	ctx context.Context,
+	req searchcore.Request,
+	terms []yacymodel.Hash,
+) searchcore.Response {
+	targets, failures := s.termTargets(ctx, terms)
+	if len(targets) != len(terms) {
+		return searchcore.Response{Request: req, PartialFailures: failures}
+	}
+
+	abstracts, abstractFailures := s.termAbstracts(ctx, req, targets)
+	failures = append(failures, abstractFailures...)
+	urls := intersectTermAbstracts(terms, abstracts)
+	if len(urls) == 0 {
+		return searchcore.Response{Request: req, PartialFailures: failures}
+	}
+
+	results := s.queryPeerJobs(ctx, secondarySearchJobs(
+		req,
+		targets,
+		limitSecondaryURLs(req, urls),
+		s.networkName,
+		s.perPeerTimeout,
+	))
+	resp := s.response(ctx, req, results)
+	resp.PartialFailures = append(failures, resp.PartialFailures...)
+
+	return resp
+}
+
+func (s searcher) termTargets(
+	ctx context.Context,
+	terms []yacymodel.Hash,
+) ([]termPeerTargets, []searchcore.PartialFailure) {
+	targets := make([]termPeerTargets, 0, len(terms))
+	var failures []searchcore.PartialFailure
+	for _, term := range terms {
+		peers, reason := s.remotePeers(ctx, []yacymodel.Hash{term})
+		if len(peers) == 0 {
+			failures = append(failures, searchcore.PartialFailure{
+				Source: "remote-yacy",
+				Reason: fmt.Sprintf("no dht search targets for %s: %s", term, reason),
+			})
+			continue
+		}
+		targets = append(targets, termPeerTargets{term: term, peers: peers})
+	}
+
+	return targets, failures
+}
+
+func (s searcher) termAbstracts(
+	ctx context.Context,
+	req searchcore.Request,
+	targets []termPeerTargets,
+) (map[yacymodel.Hash]map[yacymodel.Hash]struct{}, []searchcore.PartialFailure) {
+	results := s.queryPeerJobs(ctx, abstractSearchJobs(
+		req,
+		targets,
+		s.networkName,
+		s.perPeerTimeout,
+	))
+	abstracts := make(map[yacymodel.Hash]map[yacymodel.Hash]struct{}, len(targets))
+	successes := make(map[yacymodel.Hash]int, len(targets))
+	var failures []searchcore.PartialFailure
+	for _, result := range results {
+		if result.err != nil {
+			failures = append(failures, peerFailure(result.peer, result.err))
+			continue
+		}
+		successes[result.term]++
+		urls, err := yacymodel.DecodeSearchIndexAbstract(
+			result.response.IndexAbstract[result.term],
+		)
+		if err != nil {
+			failures = append(failures, peerFailure(result.peer, err))
+			continue
+		}
+		if abstracts[result.term] == nil {
+			abstracts[result.term] = map[yacymodel.Hash]struct{}{}
+		}
+		for _, url := range urls {
+			abstracts[result.term][url] = struct{}{}
+		}
+	}
+	for _, target := range targets {
+		if successes[target.term] == 0 {
+			failures = append(failures, searchcore.PartialFailure{
+				Source: "remote-yacy",
+				Reason: fmt.Sprintf("no index abstract responses for %s", target.term),
+			})
+		}
+	}
+
+	return abstracts, failures
+}
+
+func abstractSearchJobs(
+	req searchcore.Request,
+	targets []termPeerTargets,
+	networkName string,
+	perPeerTimeout time.Duration,
+) []peerSearchJob {
+	var jobs []peerSearchJob
+	for _, target := range targets {
+		searchReq := abstractRemoteSearchRequest(req, target.term, networkName, perPeerTimeout)
+		for _, peer := range target.peers {
+			jobs = append(jobs, peerSearchJob{
+				term:    target.term,
+				peer:    peer,
+				request: searchReq,
+			})
+		}
+	}
+
+	return jobs
+}
+
+func secondarySearchJobs(
+	req searchcore.Request,
+	targets []termPeerTargets,
+	urls []yacymodel.Hash,
+	networkName string,
+	perPeerTimeout time.Duration,
+) []peerSearchJob {
+	var jobs []peerSearchJob
+	for _, target := range targets {
+		searchReq := secondaryRemoteSearchRequest(
+			req,
+			target.term,
+			urls,
+			networkName,
+			perPeerTimeout,
+		)
+		for _, peer := range target.peers {
+			jobs = append(jobs, peerSearchJob{
+				term:    target.term,
+				peer:    peer,
+				request: searchReq,
+			})
+		}
+	}
+
+	return jobs
+}
+
+func intersectTermAbstracts(
+	terms []yacymodel.Hash,
+	abstracts map[yacymodel.Hash]map[yacymodel.Hash]struct{},
+) []yacymodel.Hash {
+	first := abstracts[terms[0]]
+	if len(first) == 0 {
+		return nil
+	}
+	intersection := make(map[yacymodel.Hash]struct{}, len(first))
+	for hash := range first {
+		intersection[hash] = struct{}{}
+	}
+	for _, term := range terms[1:] {
+		next := abstracts[term]
+		if len(next) == 0 {
+			return nil
+		}
+		for hash := range intersection {
+			if _, ok := next[hash]; !ok {
+				delete(intersection, hash)
+			}
+		}
+	}
+
+	return sortedHashes(intersection)
+}
+
+func sortedHashes(hashes map[yacymodel.Hash]struct{}) []yacymodel.Hash {
+	out := make([]yacymodel.Hash, 0, len(hashes))
+	for hash := range hashes {
+		out = append(out, hash)
+	}
+	slices.SortFunc(out, func(a, b yacymodel.Hash) int {
+		return strings.Compare(a.String(), b.String())
+	})
+
+	return out
+}
+
+func limitSecondaryURLs(
+	req searchcore.Request,
+	urls []yacymodel.Hash,
+) []yacymodel.Hash {
+	limit := req.Offset + req.Limit
+	if limit <= 0 {
+		limit = searchcore.DefaultPublicLimit
+	}
+	if limit > secondaryURLCap {
+		limit = secondaryURLCap
+	}
+	if len(urls) <= limit {
+		return urls
+	}
+
+	return urls[:limit]
 }
 
 func (s searcher) remoteSearch(
@@ -207,11 +449,22 @@ func (s searcher) remoteSearch(
 	peer yacymodel.Seed,
 	req searchcore.Request,
 ) (yacyproto.SearchResponse, error) {
+	return s.sendRemoteSearch(
+		ctx,
+		peer,
+		remoteSearchRequest(req, s.networkName, s.perPeerTimeout),
+	)
+}
+
+func (s searcher) sendRemoteSearch(
+	ctx context.Context,
+	peer yacymodel.Seed,
+	searchReq yacyproto.SearchRequest,
+) (yacyproto.SearchResponse, error) {
 	target, err := peer.HTTPEndpoint(yacyproto.PathSearch)
 	if err != nil {
 		return yacyproto.SearchResponse{}, fmt.Errorf("%w: target: %w", errRemoteSearchFailed, err)
 	}
-	searchReq := remoteSearchRequest(req, s.networkName, s.perPeerTimeout)
 	target.RawQuery = searchReq.Form().Encode()
 
 	httpReq, err := newRemoteSearchRequest(ctx, http.MethodGet, target.String(), nil)
@@ -234,14 +487,13 @@ func (s searcher) remoteSearch(
 	return readRemoteSearchResponse(httpResp.Body)
 }
 
-func remoteSearchRequest(
+func baseRemoteSearchRequest(
 	req searchcore.Request,
 	networkName string,
 	perPeerTimeout time.Duration,
 ) yacyproto.SearchRequest {
 	return yacyproto.SearchRequest{
 		NetworkName: networkName,
-		Query:       termHashes(req.Terms),
 		Exclude:     termHashes(req.ExcludedTerms),
 		Count:       req.Limit,
 		Time:        int(perPeerTimeout / time.Millisecond),
@@ -252,6 +504,44 @@ func remoteSearchRequest(
 		SiteHost:    req.SiteHost,
 		FileType:    req.FileType,
 	}
+}
+
+func abstractRemoteSearchRequest(
+	req searchcore.Request,
+	term yacymodel.Hash,
+	networkName string,
+	perPeerTimeout time.Duration,
+) yacyproto.SearchRequest {
+	searchReq := baseRemoteSearchRequest(req, networkName, perPeerTimeout)
+	searchReq.Abstracts = yacyproto.SearchAbstracts(term.String())
+
+	return searchReq
+}
+
+func secondaryRemoteSearchRequest(
+	req searchcore.Request,
+	term yacymodel.Hash,
+	urls []yacymodel.Hash,
+	networkName string,
+	perPeerTimeout time.Duration,
+) yacyproto.SearchRequest {
+	searchReq := baseRemoteSearchRequest(req, networkName, perPeerTimeout)
+	searchReq.Query = []yacymodel.Hash{term}
+	searchReq.URLs = urls
+	searchReq.Count = len(urls)
+
+	return searchReq
+}
+
+func remoteSearchRequest(
+	req searchcore.Request,
+	networkName string,
+	perPeerTimeout time.Duration,
+) yacyproto.SearchRequest {
+	searchReq := baseRemoteSearchRequest(req, networkName, perPeerTimeout)
+	searchReq.Query = termHashes(req.Terms)
+
+	return searchReq
 }
 
 func termHashes(terms []string) []yacymodel.Hash {
@@ -314,9 +604,32 @@ func (s searcher) response(
 		}
 		resp.Results = append(resp.Results, normalized...)
 	}
-	resp.Results = offsetResults(resp.Results, req.Offset, req.Limit)
+	resp.Results = offsetResults(dedupeSearchResults(resp.Results), req.Offset, req.Limit)
 
 	return resp
+}
+
+func dedupeSearchResults(results []searchcore.Result) []searchcore.Result {
+	out := make([]searchcore.Result, 0, len(results))
+	seen := map[string]struct{}{}
+	for _, result := range results {
+		identity := remoteResultIdentity(result)
+		if _, ok := seen[identity]; ok {
+			continue
+		}
+		seen[identity] = struct{}{}
+		out = append(out, result)
+	}
+
+	return out
+}
+
+func remoteResultIdentity(result searchcore.Result) string {
+	if result.URLHash != "" {
+		return "hash:" + result.URLHash
+	}
+
+	return "url:" + result.URL
 }
 
 func peerFailure(peer yacymodel.Seed, err error) searchcore.PartialFailure {

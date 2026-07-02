@@ -48,8 +48,9 @@ The node currently targets these responsibilities:
 - serve remote RWI search requests through `/yacy/search.html`;
 - serve local and DHT-targeted reachable-peer public search requests through
   `/yacysearch.json`, `/yacysearch.rss`, and `/yacysearch.html`, filtering
-  remote targets by advertised RWI inventory and balancing redundant DHT
-  candidates randomly;
+  remote targets by advertised RWI inventory, using YaCy index abstracts for
+  multi-term remote result conjunctions, and balancing redundant DHT candidates
+  randomly;
 - expose `/opensearchdescription.xml`, `/suggest.json`, and `/suggest.xml` for
   browser search integration and recent-query suggestions;
 - store accepted RWI postings and URL metadata durably;

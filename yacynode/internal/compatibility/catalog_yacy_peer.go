@@ -57,7 +57,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Methods: methods(yacyproto.SearchEndpointMethods),
 		State:   Implemented,
 		Behavior: "Serves key-value YaCy remote search responses with count, joincount, resource rows, " +
-			"and index metadata from local RWI storage.",
+			"indexcount, and indexabstract metadata from local RWI storage.",
 		Evidence: []string{
 			"yacynode/internal/documentsearch/*_test.go",
 			"yacynode/test/fixtures/yacywire/search-*",

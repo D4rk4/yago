@@ -12,7 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
@@ -115,28 +115,121 @@ func TestRemoteSearcherSelectsDHTTargetByWordHash(t *testing.T) {
 	}
 }
 
-func TestRemoteSearcherDeduplicatesDHTTargetsAcrossTerms(t *testing.T) {
-	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		calls.Add(1)
-		writeFixtureResponse(t, w, yacyproto.SearchResponse{}.Encode().Encode())
-	}))
+func TestRemoteSearcherUsesIndexAbstractsForMultiTermSearch(t *testing.T) {
+	fixture := newMultiTermAbstractFixture(t)
+	server := httptest.NewServer(http.HandlerFunc(fixture.serve))
 	defer server.Close()
 
-	_, err := NewSearcher(Config{
-		Client:     server.Client(),
-		Peers:      fakePeerSource{peers: []yacymodel.Seed{serverSeed(t, server.URL)}},
-		Redundancy: 1,
+	resp, err := NewSearcher(Config{
+		Client:      server.Client(),
+		NetworkName: "freeworld",
+		Peers:       fakePeerSource{peers: []yacymodel.Seed{serverSeed(t, server.URL)}},
+		MaxPeers:    1,
+		Redundancy:  1,
+		Concurrency: 1,
 	}).Search(t.Context(), searchcore.Request{
-		Terms: []string{"golang", "yacy"},
-		Limit: 10,
+		Terms:  []string{"alpha", "beta"},
+		Source: searchcore.SourceGlobal,
+		Limit:  10,
 	})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if calls.Load() != 1 {
-		t.Fatalf("calls = %d, want 1", calls.Load())
+	if resp.TotalResults != 2 ||
+		len(resp.Results) != 1 ||
+		resp.Results[0].URLHash != fixture.shared.String() ||
+		len(resp.PartialFailures) != 0 {
+		t.Fatalf("response = %#v", resp)
 	}
+	if requests := fixture.recordedRequests(); len(requests) != 4 {
+		t.Fatalf("request count = %d, want 4; requests=%v", len(requests), requests)
+	}
+}
+
+type multiTermAbstractFixture struct {
+	tb        testing.TB
+	alpha     yacymodel.Hash
+	beta      yacymodel.Hash
+	shared    yacymodel.Hash
+	alphaOnly yacymodel.Hash
+	betaOnly  yacymodel.Hash
+	requests  []url.Values
+	mu        sync.Mutex
+}
+
+func newMultiTermAbstractFixture(tb testing.TB) *multiTermAbstractFixture {
+	tb.Helper()
+
+	return &multiTermAbstractFixture{
+		tb:        tb,
+		alpha:     yacymodel.WordHash("alpha"),
+		beta:      yacymodel.WordHash("beta"),
+		shared:    hashFor("shared"),
+		alphaOnly: hashFor("alpha-only"),
+		betaOnly:  hashFor("beta-only"),
+	}
+}
+
+func (f *multiTermAbstractFixture) serve(w http.ResponseWriter, r *http.Request) {
+	form := r.URL.Query()
+	f.record(form)
+
+	switch {
+	case form.Get(yacyproto.FieldQuery) == "" &&
+		form.Get(yacyproto.FieldAbstracts) == f.alpha.String():
+		f.writeAbstract(w, f.alpha, f.alphaOnly)
+	case form.Get(yacyproto.FieldQuery) == "" &&
+		form.Get(yacyproto.FieldAbstracts) == f.beta.String():
+		f.writeAbstract(w, f.beta, f.betaOnly)
+	case form.Get(yacyproto.FieldQuery) == f.alpha.String() &&
+		form.Get(yacyproto.FieldURLs) == f.shared.String():
+		f.writeSecondary(w)
+	case form.Get(yacyproto.FieldQuery) == f.beta.String() &&
+		form.Get(yacyproto.FieldURLs) == f.shared.String():
+		f.writeSecondary(w)
+	default:
+		f.tb.Fatalf("unexpected remote search request: %s", r.URL.RawQuery)
+	}
+}
+
+func (f *multiTermAbstractFixture) record(form url.Values) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.requests = append(f.requests, form)
+}
+
+func (f *multiTermAbstractFixture) recordedRequests() []url.Values {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]url.Values(nil), f.requests...)
+}
+
+func (f *multiTermAbstractFixture) writeAbstract(
+	w http.ResponseWriter,
+	term yacymodel.Hash,
+	termOnly yacymodel.Hash,
+) {
+	writeFixtureResponse(f.tb, w, yacyproto.SearchResponse{
+		IndexCount: map[yacymodel.Hash]int{term: 2},
+		IndexAbstract: map[yacymodel.Hash]string{
+			term: yacymodel.EncodeSearchIndexAbstract([]yacymodel.Hash{
+				termOnly,
+				f.shared,
+			}),
+		},
+	}.Encode().Encode())
+}
+
+func (f *multiTermAbstractFixture) writeSecondary(w http.ResponseWriter) {
+	writeFixtureResponse(f.tb, w, yacyproto.SearchResponse{
+		JoinCount: 1,
+		Count:     1,
+		Resources: []yacymodel.URIMetadataRow{
+			metadataRow(f.tb, f.shared, "https://example.org/shared", "Shared"),
+		},
+	}.Encode().Encode())
 }
 
 func TestRemoteSearcherReportsNoPeers(t *testing.T) {
@@ -181,6 +274,20 @@ func TestRemoteSearcherReportsNoQueryTerms(t *testing.T) {
 	}
 }
 
+func TestRemoteSearcherReportsNoTargetsForMultiTermSearch(t *testing.T) {
+	resp, err := NewSearcher(Config{}).Search(
+		t.Context(),
+		searchcore.Request{Terms: []string{"golang", "yacy"}, Limit: 10},
+	)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.PartialFailures) != 2 ||
+		!strings.Contains(resp.PartialFailures[0].Reason, "no dht search targets") {
+		t.Fatalf("response = %#v", resp)
+	}
+}
+
 func TestRemoteSearcherReportsNoDHTTargets(t *testing.T) {
 	unused := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Fatal("ineligible peer should not be queried")
@@ -202,6 +309,87 @@ func TestRemoteSearcherReportsNoDHTTargets(t *testing.T) {
 	}
 	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0].Reason != "no dht search targets" {
 		t.Fatalf("response = %#v", resp)
+	}
+}
+
+func TestRemoteSearcherReportsMalformedIndexAbstract(t *testing.T) {
+	alpha := yacymodel.WordHash("alpha")
+	beta := yacymodel.WordHash("beta")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get(yacyproto.FieldAbstracts) {
+		case alpha.String():
+			writeFixtureResponse(t, w, yacyproto.SearchResponse{
+				IndexAbstract: map[yacymodel.Hash]string{alpha: "{bad"},
+			}.Encode().Encode())
+		case beta.String():
+			writeFixtureResponse(t, w, yacyproto.SearchResponse{
+				IndexAbstract: map[yacymodel.Hash]string{
+					beta: yacymodel.EncodeSearchIndexAbstract([]yacymodel.Hash{hashFor("beta")}),
+				},
+			}.Encode().Encode())
+		default:
+			t.Fatalf("unexpected request: %s", r.URL.RawQuery)
+		}
+	}))
+	defer server.Close()
+
+	resp, err := NewSearcher(Config{
+		Client:      server.Client(),
+		Peers:       fakePeerSource{peers: []yacymodel.Seed{serverSeed(t, server.URL)}},
+		MaxPeers:    1,
+		Redundancy:  1,
+		Concurrency: 1,
+	}).Search(t.Context(), searchcore.Request{
+		Terms: []string{"alpha", "beta"},
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.Results) != 0 ||
+		len(resp.PartialFailures) != 1 ||
+		!strings.Contains(resp.PartialFailures[0].Reason, "index abstract") {
+		t.Fatalf("response = %#v", resp)
+	}
+}
+
+func TestRemoteSearcherReportsIndexAbstractPeerFailures(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	resp, err := NewSearcher(Config{
+		Client:      server.Client(),
+		Peers:       fakePeerSource{peers: []yacymodel.Seed{serverSeed(t, server.URL)}},
+		MaxPeers:    1,
+		Redundancy:  1,
+		Concurrency: 1,
+	}).Search(t.Context(), searchcore.Request{
+		Terms: []string{"alpha", "beta"},
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.Results) != 0 ||
+		len(resp.PartialFailures) != 4 ||
+		!strings.Contains(resp.PartialFailures[0].Reason, "status 502") {
+		t.Fatalf("response = %#v", resp)
+	}
+}
+
+func TestRemoteSearcherReportsMissingIndexAbstractResponses(t *testing.T) {
+	term := yacymodel.WordHash("alpha")
+	abstracts, failures := (searcher{}).termAbstracts(
+		t.Context(),
+		searchcore.Request{},
+		[]termPeerTargets{{term: term}},
+	)
+	if len(abstracts) != 0 ||
+		len(failures) != 1 ||
+		!strings.Contains(failures[0].Reason, "no index abstract responses") {
+		t.Fatalf("abstracts=%#v failures=%#v", abstracts, failures)
 	}
 }
 
@@ -447,7 +635,7 @@ func TestReadRemoteSearchResponseRejectsOversizedBody(t *testing.T) {
 	}
 }
 
-func TestRemoteSearchHelpers(t *testing.T) {
+func TestRemoteSearchRequestHelpers(t *testing.T) {
 	req := remoteSearchRequest(searchcore.Request{
 		Terms:            []string{"a"},
 		ExcludedTerms:    []string{"b"},
@@ -493,6 +681,76 @@ func TestRemoteSearchHelpers(t *testing.T) {
 	}
 }
 
+func TestRemoteSearchAbstractHelpers(t *testing.T) {
+	first := yacymodel.Hash("AAAAAA000000")
+	second := yacymodel.Hash("AAAAAA000001")
+	if got := intersectTermAbstracts(
+		[]yacymodel.Hash{hashFor("a"), hashFor("b")},
+		map[yacymodel.Hash]map[yacymodel.Hash]struct{}{
+			hashFor("a"): {first: {}, second: {}},
+			hashFor("b"): {second: {}},
+		},
+	); len(got) != 1 || got[0] != second {
+		t.Fatalf("intersection = %v, want %s", got, second)
+	}
+	if got := intersectTermAbstracts(
+		[]yacymodel.Hash{hashFor("a"), hashFor("b")},
+		map[yacymodel.Hash]map[yacymodel.Hash]struct{}{
+			hashFor("a"): {first: {}},
+		},
+	); got != nil {
+		t.Fatalf("missing term intersection = %v, want nil", got)
+	}
+	if got := sortedHashes(map[yacymodel.Hash]struct{}{
+		second: {},
+		first:  {},
+	}); len(got) != 2 || got[0] != first || got[1] != second {
+		t.Fatalf("sorted hashes = %v", got)
+	}
+}
+
+func TestRemoteSearchSecondaryURLLimits(t *testing.T) {
+	many := make([]yacymodel.Hash, 0, secondaryURLCap+1)
+	for i := range secondaryURLCap + 1 {
+		many = append(many, hashFor(strconv.Itoa(i)))
+	}
+	if got := limitSecondaryURLs(
+		searchcore.Request{},
+		many,
+	); len(
+		got,
+	) != searchcore.DefaultPublicLimit {
+		t.Fatalf("default secondary urls = %d", len(got))
+	}
+	if got := limitSecondaryURLs(searchcore.Request{
+		Offset: secondaryURLCap,
+		Limit:  1,
+	}, many); len(got) != secondaryURLCap {
+		t.Fatalf("capped secondary urls = %d", len(got))
+	}
+	if got := limitSecondaryURLs(searchcore.Request{Limit: len(many)}, many[:1]); len(got) != 1 {
+		t.Fatalf("uncapped secondary urls = %d", len(got))
+	}
+}
+
+func TestRemoteSearchResultHelpers(t *testing.T) {
+	first := yacymodel.Hash("AAAAAA000000")
+	if got := remoteResultIdentity(
+		searchcore.Result{URL: "https://example.org"},
+	); got != "url:https://example.org" {
+		t.Fatalf("remote result identity = %q", got)
+	}
+	deduped := dedupeSearchResults([]searchcore.Result{
+		{URL: "https://example.org/a", URLHash: first.String()},
+		{URL: "https://example.org/b", URLHash: first.String()},
+		{URL: "https://example.org/a"},
+		{URL: "https://example.org/a"},
+	})
+	if len(deduped) != 2 {
+		t.Fatalf("deduped results = %#v", deduped)
+	}
+}
+
 func TestDHTSearchPeerSelectionSkipsInvalidWordHash(t *testing.T) {
 	peer := yacymodel.Seed{
 		Hash:  hashFor("BBBBBBBBBBBB"),
@@ -510,6 +768,26 @@ func TestDHTSearchPeerSelectionSkipsInvalidWordHash(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Hash != peer.Hash {
 		t.Fatalf("selected peers = %#v", got)
+	}
+}
+
+func TestDHTSearchPeerSelectionSkipsAlreadySeenTarget(t *testing.T) {
+	peer := searchSeed(t, "BBBBBBBBBBBB")
+	selected := []yacymodel.Seed{peer}
+	seen := map[yacymodel.Hash]struct{}{peer.Hash: {}}
+
+	err := appendDHTSearchPeers(
+		&selected,
+		seen,
+		0,
+		[]yacymodel.Seed{peer},
+		dhtSearchPeerConfig{redundancy: 1, minimumPeerAgeDays: -1},
+	)
+	if err != nil {
+		t.Fatalf("appendDHTSearchPeers: %v", err)
+	}
+	if len(selected) != 1 {
+		t.Fatalf("selected = %#v, want existing peer only", selected)
 	}
 }
 

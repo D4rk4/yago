@@ -9,7 +9,7 @@ var searchSurfaceSpecs = []surfaceSpec{
 		Methods: []string{"GET"},
 		State:   Partial,
 		Behavior: "Serves an upstream-like JSON search response backed by local and DHT-selected " +
-			"reachable-peer search.",
+			"reachable-peer search with YaCy indexabstract negotiation for multi-term remote searches.",
 		Evidence: []string{
 			"yacynode/internal/yacysearch/*_test.go",
 			"yacynode/internal/searchremote/*_test.go",

@@ -1,6 +1,7 @@
 package yacymodel
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 )
@@ -46,6 +47,36 @@ func EncodeSearchIndexAbstract(urlHashes []Hash) string {
 	}
 	b.WriteByte('}')
 	return b.String()
+}
+
+func DecodeSearchIndexAbstract(raw string) ([]Hash, error) {
+	if raw == "" || raw == "{}" {
+		return nil, nil
+	}
+	if !strings.HasPrefix(raw, "{") || !strings.HasSuffix(raw, "}") {
+		return nil, fmt.Errorf("%w: index abstract envelope", ErrInvalidHash)
+	}
+
+	body := strings.TrimSuffix(strings.TrimPrefix(raw, "{"), "}")
+	var hashes []Hash
+	for _, group := range strings.Split(body, ",") {
+		domain, paths, ok := strings.Cut(group, ":")
+		if !ok || len(domain) != hostHashLength || len(paths)%hostHashLength != 0 {
+			return nil, fmt.Errorf("%w: index abstract group %q", ErrInvalidHash, group)
+		}
+		if _, err := ParseHash(domain + domain); err != nil {
+			return nil, fmt.Errorf("%w: index abstract host %q", err, domain)
+		}
+		for start := 0; start < len(paths); start += hostHashLength {
+			hash, err := ParseHash(paths[start:start+hostHashLength] + domain)
+			if err != nil {
+				return nil, fmt.Errorf("%w: index abstract path", err)
+			}
+			hashes = append(hashes, hash)
+		}
+	}
+
+	return hashes, nil
 }
 
 func compareBase64Strings(a, b string) int {

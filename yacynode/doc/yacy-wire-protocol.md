@@ -38,11 +38,14 @@ For public search, `resource=local` searches local RWI and URL metadata only.
 `resource=global` searches the local node and performs bounded YaCy
 `/yacy/search.html` fanout to reachable peers selected by the query term hashes'
 YaCy DHT positions, configured redundancy, and configured vertical partition
-exponent. Peers must have a reachable address, advertise remote-index intake,
-pass the upstream age gate, and advertise non-empty RWI inventory before they
-are eligible remote search targets. When more redundant DHT candidates are
-eligible than the query fanout will use, the node samples the target set
-randomly to spread repeated searches across compatible peers.
+exponent. Multi-term remote searches first request YaCy `indexabstract` rows for
+each term, intersect the returned URL hashes locally, and then perform bounded
+secondary `urls=` retrieval for the intersected hashes. Peers must have a
+reachable address, advertise remote-index intake, pass the upstream age gate,
+and advertise non-empty RWI inventory before they are eligible remote search
+targets. When more redundant DHT candidates are eligible than the query fanout
+will use, the node samples the target set randomly to spread repeated searches
+across compatible peers.
 Remote peer failures, malformed responses, missing reachable peers, and missing
 DHT targets are returned as partial-failure metadata instead of turning the
 whole public search request into an HTTP error.

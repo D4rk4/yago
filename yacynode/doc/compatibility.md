@@ -42,7 +42,7 @@ Status values:
 
 | Surface | Path | Methods | Status | Behavior |
 | --- | --- | --- | --- | --- |
-| YaCy search JSON | `/yacysearch.json` | GET | partial | Serves local and DHT-selected reachable-peer search results in an upstream-like JSON shape. |
+| YaCy search JSON | `/yacysearch.json` | GET | partial | Serves local and DHT-selected reachable-peer search results in an upstream-like JSON shape; multi-term remote search uses YaCy index abstracts before secondary URL retrieval. |
 | YaCy search RSS | `/yacysearch.rss` | GET | partial | Serves OpenSearch-flavored RSS from the same search backend. |
 | YaCy search HTML | `/yacysearch.html` | GET | partial | Serves a simple public search form and result list. |
 | OpenSearch description | `/opensearchdescription.xml` | GET | implemented | Advertises HTML, RSS, JSON suggestion, and XML suggestion URLs. |
