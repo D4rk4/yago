@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/D4rk4/yago/yacycrawlcontract"
 	"github.com/D4rk4/yago/yacycrawler/internal/boundedqueue"
 	"github.com/D4rk4/yago/yacymodel"
 )
@@ -17,6 +18,7 @@ type Envelope struct {
 type BatchEmitter interface {
 	Emit(
 		ctx context.Context,
+		document yacycrawlcontract.DocumentIngest,
 		postings []yacymodel.RWIPosting,
 		metadata yacymodel.URIMetadataRow,
 		envelope Envelope,
@@ -33,6 +35,7 @@ func NewBatchEmitter(queue boundedqueue.Publisher[IngestBatch]) BatchEmitter {
 
 func (e *batchEmitter) Emit(
 	ctx context.Context,
+	document yacycrawlcontract.DocumentIngest,
 	postings []yacymodel.RWIPosting,
 	metadata yacymodel.URIMetadataRow,
 	envelope Envelope,
@@ -41,6 +44,7 @@ func (e *batchEmitter) Emit(
 		SourceURL:     envelope.SourceURL,
 		Provenance:    envelope.Provenance,
 		ProfileHandle: envelope.ProfileHandle,
+		Document:      document,
 		Postings:      postings,
 		Metadata:      []yacymodel.URIMetadataRow{metadata},
 	}

@@ -3,6 +3,9 @@ package crawlresults
 import (
 	"context"
 	"log/slog"
+
+	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacynode/internal/documentstore"
 )
 
 const (
@@ -29,6 +32,16 @@ func (c *IngestConsumer) Run(ctx context.Context) {
 func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 	batch := delivery.Batch
 
+	if c.documents != nil && hasDocument(batch.Document) {
+		documentReceipt, err := c.documents.Receive(ctx, []documentstore.Document{
+			documentFromIngest(batch.Document),
+		})
+		if err != nil || documentReceipt.Busy {
+			c.redeliver(ctx, delivery, batch.SourceURL, err)
+			return
+		}
+	}
+
 	urlReceipt, err := c.urls.Receive(ctx, batch.Metadata)
 	if err != nil || urlReceipt.Busy {
 		c.redeliver(ctx, delivery, batch.SourceURL, err)
@@ -48,8 +61,41 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 	}
 	slog.DebugContext(ctx, msgIngestBatchAbsorbed,
 		slog.String("sourceUrl", batch.SourceURL),
+		slog.Bool("document", hasDocument(batch.Document)),
 		slog.Int("metadata", len(batch.Metadata)),
 		slog.Int("postings", len(batch.Postings)))
+}
+
+func hasDocument(doc yacycrawlcontract.DocumentIngest) bool {
+	return doc.NormalizedURL != "" || doc.CanonicalURL != "" || doc.ExtractedText != ""
+}
+
+func documentFromIngest(doc yacycrawlcontract.DocumentIngest) documentstore.Document {
+	return documentstore.Document{
+		CanonicalURL:        doc.CanonicalURL,
+		NormalizedURL:       doc.NormalizedURL,
+		Title:               doc.Title,
+		Headings:            doc.Headings,
+		ExtractedText:       doc.ExtractedText,
+		RawContentReference: doc.RawContentReference,
+		Language:            doc.Language,
+		ContentType:         doc.ContentType,
+		FetchStatus:         doc.FetchStatus,
+		FetchedAt:           doc.FetchedAt,
+		IndexedAt:           doc.IndexedAt,
+		ContentHash:         doc.ContentHash,
+		Outlinks:            doc.Outlinks,
+		Inlinks:             anchorTextFromIngest(doc.Inlinks),
+		Metadata:            doc.Metadata,
+	}
+}
+
+func anchorTextFromIngest(in []yacycrawlcontract.AnchorText) []documentstore.AnchorText {
+	out := make([]documentstore.AnchorText, 0, len(in))
+	for _, anchor := range in {
+		out = append(out, documentstore.AnchorText{URL: anchor.URL, Text: anchor.Text})
+	}
+	return out
 }
 
 func (c *IngestConsumer) redeliver(

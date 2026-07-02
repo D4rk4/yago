@@ -97,7 +97,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Evidence: []string{
 			"yacynode/internal/hostlinks/*_test.go",
 			"yacynode/internal/urlmeta/*_test.go",
-			"yacynode/cmd/yacy-rwi-node/host_link_source_test.go",
+			"yacynode/internal/yagonode/host_link_source_test.go",
 			"yacyproto/index_test.go",
 		},
 		Notes: "Only object=host is implemented.",
@@ -110,7 +110,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Behavior: "Checks the YaCy network unit and serves shared blacklist col=black responses from files named in YACY_DATA_DIR/SETTINGS/yacy.conf BlackLists.Shared under YACY_DATA_DIR/LISTS.",
 		Evidence: []string{
 			"yacynode/internal/sharedblacklist/*_test.go",
-			"yacynode/cmd/yacy-rwi-node/node_shared_blacklist_test.go",
+			"yacynode/internal/yagonode/node_shared_blacklist_test.go",
 			"yacyproto/list_test.go",
 		},
 		Notes: "Only col=black is implemented.",
@@ -132,7 +132,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Behavior: "Serves the YaCy profile text shape with properties loaded from YACY_DATA_DIR/SETTINGS/profile.txt when that file exists.",
 		Evidence: []string{
 			"yacynode/internal/peerprofile/*_test.go",
-			"yacynode/cmd/yacy-rwi-node/node_profile_test.go",
+			"yacynode/internal/yagonode/node_profile_test.go",
 			"yacyproto/profile_test.go",
 		},
 		Notes: "Missing profile files produce an empty profile.",
@@ -151,7 +151,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:     yacyproto.PathCrawlReceipt,
 		Methods:  methods(yacyproto.CrawlReceiptEndpointMethods),
 		State:    Partial,
-		Behavior: "Accepts the YaCy crawl receipt wire shape, checks the target peer hash, and returns YaCy's rejected-receipt retry delay while remote crawl execution is disabled.",
+		Behavior: "Accepts the YaCy crawl receipt wire shape, returns no delay field on network-auth failure, and returns YaCy's rejected-receipt retry delay for same-network malformed or wrong target hashes while remote crawl execution is disabled.",
 		Evidence: []string{
 			"yacynode/internal/crawling/*_test.go",
 			"yacyproto/crawl_receipt_test.go",

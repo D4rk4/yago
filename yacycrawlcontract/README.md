@@ -1,7 +1,7 @@
 # yacycrawlcontract
 
-`yacycrawlcontract` is the shared message contract between the YaCy RWI node and
-the optional crawler service. It exists as a separate Go module so both services can
+`yacycrawlcontract` is the shared message contract between `yago-node` and the
+optional crawler service. It exists as a separate Go module so both services can
 exchange crawl work and crawl results without importing each other.
 
 The Go types and JSON codec tests in this module are the source of truth for field
@@ -23,8 +23,9 @@ node <------------------ crawler
 `CrawlOrder` carries crawl work from the node to crawler instances. The order includes
 the crawl profile and seed requests needed to start or continue a crawl.
 
-`IngestBatch` carries references back to the node for one fetched page: RWI postings,
-URL metadata, and the attribution data needed by the node.
+`IngestBatch` carries references back to the node for one fetched page: document
+content metadata, RWI postings, URL metadata, and the attribution data needed by
+the node.
 
 Each flow is one-way so multiple crawler instances can share the same work stream and
 publish results back to one node without per-crawler addressing.
@@ -54,6 +55,6 @@ The profile carries the subset of YaCy crawl settings that affect URL selection 
 reference generation. Crawler process settings, such as the browser User-Agent, are not
 profile fields because an order cannot safely override process-wide browser identity.
 
-Content indexing options, media indexing, snapshots, vocabulary scraping, country and
-IP filters, HTTP caching, direct document loading, and onward crawl redistribution are
-outside this contract.
+Raw HTML bodies, media indexing, snapshots, vocabulary scraping, country and IP
+filters, HTTP caching, direct document loading, and onward crawl redistribution
+are outside this contract.

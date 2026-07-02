@@ -41,16 +41,16 @@ func ParseCrawlReceiptRequest(_ context.Context, form url.Values) (CrawlReceiptR
 		LURLEntry:   form.Get(FieldLURLEntry),
 	}
 
-	var err error
-
-	req.Iam, err = parseHashField("crawlReceipt request", FieldIam, form.Get(FieldIam))
-	if err != nil {
-		return CrawlReceiptRequest{}, err
+	if raw := form.Get(FieldIam); raw != "" {
+		if iam, err := yacymodel.ParseHash(raw); err == nil {
+			req.Iam = iam
+		}
 	}
 
-	req.YouAre, err = parseHashField("crawlReceipt request", FieldYouAre, form.Get(FieldYouAre))
-	if err != nil {
-		return CrawlReceiptRequest{}, err
+	if raw := form.Get(FieldYouAre); raw != "" {
+		if youare, err := yacymodel.ParseHash(raw); err == nil {
+			req.YouAre = youare
+		}
 	}
 
 	return req, nil
@@ -58,6 +58,10 @@ func ParseCrawlReceiptRequest(_ context.Context, form url.Values) (CrawlReceiptR
 
 func (r CrawlReceiptResponse) Encode() yacymodel.Message {
 	msg := yacymodel.Message{}
+	if r.Delay == 0 {
+		return msg
+	}
+
 	setInt(msg, FieldDelay, r.Delay)
 
 	return msg

@@ -69,8 +69,9 @@ whole public search request into an HTTP error.
 The crawl URL feed endpoint `/yacy/urls.xml` returns YaCy's RSS-like XML shape.
 `call=remotecrawl` currently returns `ok` with no items because remote crawl
 delegation is disabled by default. `/yacy/crawlReceipt.html` accepts the YaCy
-wire shape, checks the target peer hash, and returns the YaCy rejected-receipt
-retry delay while remote crawl is disabled.
+wire shape, returns no delay field on network-auth failure, and returns the YaCy
+rejected-receipt retry delay for same-network malformed, wrong-target, and
+addressed receipts while remote crawl is disabled.
 `call=urlhashlist` accepts concatenated 12-byte URL hashes and returns the
 locally stored metadata rows it knows. The execution policy is documented in
 [Remote Crawl Policy](remote-crawl-policy.md).

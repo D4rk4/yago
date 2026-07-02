@@ -7,7 +7,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Methods:  []string{"GET"},
 		State:    Implemented,
 		Behavior: "Returns a successful status when the ops listener is running.",
-		Evidence: []string{"yacynode/cmd/yacy-rwi-node/main_test.go"},
+		Evidence: []string{"yacynode/internal/yagonode/main_test.go"},
 	},
 	{
 		Name:     "Metrics",
@@ -23,7 +23,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Methods:  []string{"GET"},
 		State:    Implemented,
 		Behavior: "Serves current outbound DHT gate state, configuration, and named gate results.",
-		Evidence: []string{"yacynode/cmd/yacy-rwi-node/dht_gate_status_endpoint_test.go"},
+		Evidence: []string{"yacynode/internal/yagonode/dht_gate_status_endpoint_test.go"},
 		Notes:    "Authentication is not implemented yet.",
 	},
 	{
@@ -34,7 +34,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Behavior: "Publishes local crawl orders when crawler integration is configured.",
 		Evidence: []string{
 			"yacynode/internal/crawldispatch/*_test.go",
-			"yacynode/cmd/yacy-rwi-node/node_crawl_test.go",
+			"yacynode/internal/yagonode/node_crawl_test.go",
 		},
 		Notes: "Mounted only when NATS-backed crawling is configured; authentication is not implemented yet.",
 	},
@@ -46,7 +46,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Behavior: "Serves this machine-readable compatibility catalog.",
 		Evidence: []string{
 			"yacynode/internal/compatibility/*_test.go",
-			"yacynode/cmd/yacy-rwi-node/compatibility_endpoint_test.go",
+			"yacynode/internal/yagonode/compatibility_endpoint_test.go",
 		},
 		Notes: "Authentication is not implemented yet.",
 	},

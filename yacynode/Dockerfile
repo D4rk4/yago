@@ -27,9 +27,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build \
-        -ldflags="-s -w -X main.version=${VERSION}" \
-        -o /out/yacy-rwi-node \
-        ./yacynode/cmd/yacy-rwi-node
+        -ldflags="-s -w -X github.com/D4rk4/yago/yacynode/internal/yagonode.version=${VERSION}" \
+        -o /out/yago-node \
+        ./yacynode/cmd/yago-node
+
+RUN cp /out/yago-node /out/yacy-rwi-node
 
 RUN mkdir -p /out/data
 
@@ -40,6 +42,7 @@ ENV YACY_DATA_DIR=/data \
     YACY_OPS_ADDR=:9090
 
 COPY --from=build --chown=nonroot:nonroot /out/data /data
+COPY --from=build /out/yago-node /usr/local/bin/yago-node
 COPY --from=build /out/yacy-rwi-node /usr/local/bin/yacy-rwi-node
 
 EXPOSE 8090 9090
@@ -48,4 +51,4 @@ VOLUME ["/data"]
 
 USER nonroot:nonroot
 
-ENTRYPOINT ["/usr/local/bin/yacy-rwi-node"]
+ENTRYPOINT ["/usr/local/bin/yago-node"]

@@ -1,7 +1,7 @@
 # yago
 
-`yago` is a Go workspace for a lightweight YaCy-compatible Reverse Word Index
-node and an optional crawler pipeline.
+`yago` is a Go workspace for `yago-node`, a YaCy-compatible P2P search node,
+and an optional crawler pipeline.
 
 Project repository: https://github.com/D4rk4/yago/.
 
@@ -10,9 +10,10 @@ The original author is Nikita Karpei.
 
 ## Status
 
-This is alpha-stage software. The current implementation focuses on YaCy RWI/DHT
-storage and serving, plus an optional crawler-to-node ingest path. It is not a
-drop-in replacement for the Java YaCy Search Server.
+This is alpha-stage software. The current `yago-node` implementation focuses on
+YaCy RWI/DHT compatibility, durable document, RWI, and URL metadata vaults,
+local and federated search surfaces, and an optional crawler-to-node ingest
+path. It is not a drop-in replacement for the Java YaCy Search Server.
 
 The project roadmap in [PLAN.md](PLAN.md) describes a broader target: a practical
 self-hosted YaCy-like search peer with P2P participation, crawler integration,
@@ -43,8 +44,8 @@ The node currently targets these responsibilities:
   parsing post-only body fields and store inbound `/yacy/message.html` posts
   without attachment support;
 - answer YaCy `/yacy/urls.xml` remote crawl URL requests with an empty queue,
-  target-check and reject remote crawl receipts with YaCy retry delay, and serve
-  URL-hash metadata requests from locally stored metadata;
+  network-check and target-check remote crawl receipts with YaCy retry delay,
+  and serve URL-hash metadata requests from locally stored metadata;
 - receive inbound RWI postings through `/yacy/transferRWI.html`, including YaCy
   preflight result strings for wrong network units and missing required fields;
 - receive URL metadata through `/yacy/transferURL.html` with YaCy network-auth
@@ -60,23 +61,26 @@ The node currently targets these responsibilities:
   randomly;
 - expose `/opensearchdescription.xml`, `/suggest.json`, and `/suggest.xml` for
   browser search integration and recent-query suggestions;
-- store accepted RWI postings and URL metadata durably;
+- store accepted document ingest payloads, RWI postings, and URL metadata
+  durably;
 - expose `/health`, `/metrics`, and DHT gate status on the ops listener,
   including inbound and outbound DHT transfer series, peer discovery
   gauges/counters, and a machine-readable compatibility catalog;
 - optionally publish crawl orders and consume crawler ingest batches over NATS
   JetStream when crawling is configured.
 
-The node deliberately does not store full document bodies. The crawler is a
-separate, optional worker process that can fetch pages, build YaCy-compatible
-references, and publish ingest batches back to the node.
+The node stores bounded extracted document text and metadata for local search
+building blocks, but it does not store unbounded raw HTML bodies. The crawler is
+a separate, optional worker process that can fetch pages, build document ingest
+payloads and YaCy-compatible references, and publish ingest batches back to the
+node.
 
 ## Repository Layout
 
 | Path | Purpose |
 | --- | --- |
-| `yacynode` | The RWI node daemon, peer protocol endpoints, storage, metrics, peer exchange, and node-side crawl orchestration. |
-| `yacycrawler` | Optional crawler worker that fetches pages and emits RWI postings plus URL metadata. |
+| `yacynode` | The `yago-node` daemon, YaCy peer protocol endpoints, document, RWI, and URL metadata vaults, search surfaces, metrics, peer exchange, and node-side crawl orchestration. |
+| `yacycrawler` | Optional crawler worker that fetches pages and emits document ingest payloads, RWI postings, and URL metadata. |
 | `yacycrawlcontract` | Shared JSON message contract between the node and crawler. |
 | `yacymodel` | YaCy domain values and codecs. |
 | `yacyproto` | YaCy peer-to-peer endpoint paths, request/response DTOs, and wire protocol helpers. |
@@ -150,7 +154,7 @@ docker compose up --build
 The example stack starts:
 
 - `nats` with JetStream enabled;
-- `yacy-rwi-node` on ports `8090` and `9090`;
+- `yago-node` on ports `8090` and `9090`;
 - `smokescreen` as the outbound proxy;
 - `yacycrawler` as the optional crawler worker.
 

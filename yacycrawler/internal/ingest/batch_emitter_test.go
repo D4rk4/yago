@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/D4rk4/yago/yacycrawlcontract"
 	"github.com/D4rk4/yago/yacycrawler/internal/boundedqueue"
 	"github.com/D4rk4/yago/yacycrawler/internal/ingest"
 	"github.com/D4rk4/yago/yacymodel"
@@ -24,13 +25,20 @@ func TestBatchEmitterAssemblesEnvelope(t *testing.T) {
 
 	postings := []yacymodel.RWIPosting{{WordHash: yacymodel.WordHash("kangaroo")}}
 	metadata := yacymodel.URIMetadataRow{Properties: map[string]string{"u": "x"}}
+	document := yacycrawlcontract.DocumentIngest{NormalizedURL: "http://example.com/"}
 	envelope := ingest.Envelope{
 		SourceURL:     "http://example.com/",
 		Provenance:    []byte("peer"),
 		ProfileHandle: "handle",
 	}
 
-	if err := emitter.Emit(context.Background(), postings, metadata, envelope); err != nil {
+	if err := emitter.Emit(
+		context.Background(),
+		document,
+		postings,
+		metadata,
+		envelope,
+	); err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
 
@@ -47,6 +55,9 @@ func TestBatchEmitterAssemblesEnvelope(t *testing.T) {
 	if len(batch.Metadata) != 1 {
 		t.Errorf("metadata rows = %d, want 1", len(batch.Metadata))
 	}
+	if batch.Document.NormalizedURL != document.NormalizedURL {
+		t.Errorf("document = %#v", batch.Document)
+	}
 }
 
 func TestBatchEmitterReturnsPublishError(t *testing.T) {
@@ -55,6 +66,7 @@ func TestBatchEmitterReturnsPublishError(t *testing.T) {
 
 	err := emitter.Emit(
 		context.Background(),
+		yacycrawlcontract.DocumentIngest{},
 		nil,
 		yacymodel.URIMetadataRow{},
 		ingest.Envelope{SourceURL: "http://example.com/"},

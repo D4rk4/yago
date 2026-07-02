@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacynode/internal/documentstore"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
 	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 )
@@ -23,15 +24,22 @@ type IngestStream interface {
 }
 
 type IngestConsumer struct {
-	stream   IngestStream
-	urls     urlmeta.URLReceiver
-	postings rwi.PostingReceiver
+	stream    IngestStream
+	documents documentstore.DocumentReceiver
+	urls      urlmeta.URLReceiver
+	postings  rwi.PostingReceiver
 }
 
 func NewIngestConsumer(
 	stream IngestStream,
+	documents documentstore.DocumentReceiver,
 	urls urlmeta.URLReceiver,
 	postings rwi.PostingReceiver,
 ) *IngestConsumer {
-	return &IngestConsumer{stream: stream, urls: urls, postings: postings}
+	return &IngestConsumer{
+		stream:    stream,
+		documents: documents,
+		urls:      urls,
+		postings:  postings,
+	}
 }

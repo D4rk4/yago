@@ -23,7 +23,11 @@ func (e disabledCrawlReceiptEndpoint) Serve(
 	ctx context.Context,
 	req yacyproto.CrawlReceiptRequest,
 ) (yacyproto.CrawlReceiptResponse, error) {
-	if e.local == nil || !e.local.Addresses(req.NetworkName, req.YouAre) {
+	if e.local == nil || !e.local.NetworkMatches(req.NetworkName) {
+		return yacyproto.CrawlReceiptResponse{}, nil
+	}
+
+	if !e.local.Addresses(req.NetworkName, req.YouAre) {
 		slog.DebugContext(
 			ctx,
 			logCrawlReceiptRejected,

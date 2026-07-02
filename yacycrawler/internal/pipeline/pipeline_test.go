@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/D4rk4/yago/yacycrawlcontract"
 	"github.com/D4rk4/yago/yacycrawler/internal/crawljob"
 	"github.com/D4rk4/yago/yacycrawler/internal/ingest"
 	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
@@ -53,15 +54,22 @@ func (f indexFunc) Build(
 	return f(p, s)
 }
 
-type emitFunc func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error
+type emitFunc func(
+	context.Context,
+	yacycrawlcontract.DocumentIngest,
+	[]yacymodel.RWIPosting,
+	yacymodel.URIMetadataRow,
+	ingest.Envelope,
+) error
 
 func (f emitFunc) Emit(
 	ctx context.Context,
+	document yacycrawlcontract.DocumentIngest,
 	postings []yacymodel.RWIPosting,
 	metadata yacymodel.URIMetadataRow,
 	envelope ingest.Envelope,
 ) error {
-	return f(ctx, postings, metadata, envelope)
+	return f(ctx, document, postings, metadata, envelope)
 }
 
 func htmlPage() pagefetch.FetchedPage {
@@ -92,7 +100,7 @@ func runOneJob(
 
 func TestPipelineDeliversIngestBatch(t *testing.T) {
 	frontier := newRecordingFrontier()
-	emitted := make(chan ingest.Envelope, 1)
+	emitted := make(chan yacycrawlcontract.DocumentIngest, 1)
 	p := pipeline.NewPipeline(
 		frontier,
 		fetchFunc(
@@ -100,17 +108,32 @@ func TestPipelineDeliversIngestBatch(t *testing.T) {
 		),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
-			func(_ context.Context, _ []yacymodel.RWIPosting, _ yacymodel.URIMetadataRow, e ingest.Envelope) error {
-				emitted <- e
+			func(
+				_ context.Context,
+				document yacycrawlcontract.DocumentIngest,
+				_ []yacymodel.RWIPosting,
+				_ yacymodel.URIMetadataRow,
+				e ingest.Envelope,
+			) error {
+				if e.SourceURL != "https://example.com/" {
+					t.Errorf("envelope source = %q", e.SourceURL)
+				}
+				emitted <- document
 				return nil
 			},
 		),
 	)
 	runOneJob(t, p, frontier)
 	select {
-	case e := <-emitted:
-		if e.SourceURL != "https://example.com/" {
-			t.Errorf("envelope source = %q", e.SourceURL)
+	case document := <-emitted:
+		if document.NormalizedURL != "https://example.com/" {
+			t.Errorf("document URL = %q", document.NormalizedURL)
+		}
+		if document.ContentType != "text/html" {
+			t.Errorf("document content type = %q", document.ContentType)
+		}
+		if document.ExtractedText == "" {
+			t.Fatal("document extracted text is empty")
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no batch emitted")
@@ -132,7 +155,7 @@ func TestPipelineDropsRejectedPages(t *testing.T) {
 			return pageindex.Artifacts{}, nil
 		}),
 		emitFunc(
-			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+			func(context.Context, yacycrawlcontract.DocumentIngest, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
 				t.Error("emit should not run for rejected page")
 				return nil
 			},
@@ -153,7 +176,7 @@ func TestPipelineFinishesJobOnFetchError(t *testing.T) {
 		}),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
-			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+			func(context.Context, yacycrawlcontract.DocumentIngest, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
 				return nil
 			},
 		),
@@ -170,7 +193,7 @@ func TestPipelineFinishesJobOnEmitError(t *testing.T) {
 		),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
-			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+			func(context.Context, yacycrawlcontract.DocumentIngest, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
 				return errors.New("emit failed")
 			},
 		),
@@ -189,7 +212,7 @@ func TestPipelineFinishesJobOnIndexError(t *testing.T) {
 			return pageindex.Artifacts{}, errors.New("index failed")
 		}),
 		emitFunc(
-			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+			func(context.Context, yacycrawlcontract.DocumentIngest, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
 				t.Error("emit should not run after index error")
 				return nil
 			},
@@ -209,7 +232,7 @@ func TestPipelineStopsWhenJobsClose(t *testing.T) {
 		}),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
-			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+			func(context.Context, yacycrawlcontract.DocumentIngest, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
 				t.Error("emit should not run after jobs close")
 				return nil
 			},
@@ -239,7 +262,7 @@ func TestPipelineStopsWhenContextIsCanceled(t *testing.T) {
 		}),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
-			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+			func(context.Context, yacycrawlcontract.DocumentIngest, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
 				t.Error("emit should not run after context cancellation")
 				return nil
 			},
@@ -271,7 +294,7 @@ func TestPipelineFinishesJobOnBadURL(t *testing.T) {
 		}),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
-			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+			func(context.Context, yacycrawlcontract.DocumentIngest, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
 				t.Error("emit should not run for bad job URL")
 				return nil
 			},

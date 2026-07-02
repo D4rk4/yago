@@ -3,6 +3,7 @@ package yacycrawlcontract
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yacymodel"
 )
@@ -12,6 +13,22 @@ func TestIngestBatchRoundTrip(t *testing.T) {
 		SourceURL:     "https://example.org/a",
 		Provenance:    []byte("admin"),
 		ProfileHandle: "abcdef012345",
+		Document: DocumentIngest{
+			CanonicalURL:  "https://example.org/a",
+			NormalizedURL: "https://example.org/a",
+			Title:         "Title",
+			Headings:      []string{"Heading"},
+			ExtractedText: "body text",
+			Language:      "en",
+			ContentType:   "text/html",
+			FetchStatus:   "fetched",
+			FetchedAt:     time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC),
+			IndexedAt:     time.Date(2026, 7, 2, 10, 0, 1, 0, time.UTC),
+			ContentHash:   "abc",
+			Outlinks:      []string{"https://example.org/b"},
+			Inlinks:       []AnchorText{{URL: "https://example.org/", Text: "anchor"}},
+			Metadata:      map[string]string{"profile": "abcdef012345"},
+		},
 		Postings: []yacymodel.RWIPosting{
 			{
 				WordHash:   yacymodel.Hash("wordhash0123"),

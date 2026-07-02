@@ -24,4 +24,13 @@ func TestIndexBuilderBuildsPostingsAndMetadata(t *testing.T) {
 	if len(artifacts.Metadata.Properties) == 0 {
 		t.Error("expected metadata properties")
 	}
+	if artifacts.Document.NormalizedURL != page.URL {
+		t.Errorf("document URL = %q", artifacts.Document.NormalizedURL)
+	}
+	if artifacts.Document.ExtractedText != page.Text {
+		t.Errorf("document text = %q", artifacts.Document.ExtractedText)
+	}
+	if artifacts.Document.ContentHash == "" {
+		t.Error("expected document content hash")
+	}
 }

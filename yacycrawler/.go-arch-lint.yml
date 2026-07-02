@@ -149,6 +149,7 @@ deps:
       - pageindex
       - pageparse
     canUse:
+      - yacycrawlcontract
       - yacymodel
   ingest:
     mayDependOn:
@@ -179,6 +180,7 @@ deps:
       - pageparse
       - weburl
     canUse:
+      - yacycrawlcontract
       - yacymodel
   crawlercmd:
     mayDependOn:

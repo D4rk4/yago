@@ -9,6 +9,7 @@ import (
 )
 
 type LocalPeer interface {
+	NetworkMatches(network string) bool
 	Addresses(network string, youare yacymodel.Hash) bool
 }
 

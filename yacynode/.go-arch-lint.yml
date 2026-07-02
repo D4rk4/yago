@@ -56,10 +56,14 @@ components:
     in: internal/urlreferences/**
   rwi:
     in: internal/rwi/**
+  documentstore:
+    in: internal/documentstore/**
   documentsearch:
     in: internal/documentsearch/**
   searchcore:
     in: internal/searchcore/**
+  searchindex:
+    in: internal/searchindex/**
   searchremote:
     in: internal/searchremote/**
   yacysearch:
@@ -78,9 +82,12 @@ components:
     in: internal/crawlbroker/**
   compatibility:
     in: internal/compatibility/**
+  yagonode:
+    in: internal/yagonode/**
   cmd:
     in:
       - cmd/yacy-peer-hash/**
+      - cmd/yago-node/**
       - cmd/yacy-rwi-node/**
 
 vendors:
@@ -281,6 +288,11 @@ deps:
     canUse:
       - yacymodel
       - yacyproto
+  documentstore:
+    mayDependOn:
+      - documentstore
+      - vault
+      - memvault
   documentsearch:
     mayDependOn:
       - documentsearch
@@ -295,6 +307,10 @@ deps:
   searchcore:
     mayDependOn:
       - searchcore
+  searchindex:
+    mayDependOn:
+      - searchindex
+      - documentstore
   searchremote:
     mayDependOn:
       - searchremote
@@ -345,6 +361,7 @@ deps:
   crawlresults:
     mayDependOn:
       - crawlresults
+      - documentstore
       - urlmeta
       - rwi
     canUse:
@@ -364,7 +381,7 @@ deps:
       - compatibility
     canUse:
       - yacyproto
-  cmd:
+  yagonode:
     mayDependOn:
       - vault
       - boltvault
@@ -386,6 +403,7 @@ deps:
       - dhtexchange
       - indextransfer
       - urlmeta
+      - documentstore
       - rwi
       - documentsearch
       - eviction
@@ -399,6 +417,7 @@ deps:
       - crawlbroker
       - compatibility
       - searchcore
+      - searchindex
       - searchremote
       - yacysearch
     canUse:
@@ -407,6 +426,11 @@ deps:
       - yacyproto
       - prometheus
       - nats-server
+  cmd:
+    mayDependOn:
+      - yagonode
+    canUse:
+      - yacymodel
 
 excludeFiles:
   - "test/e2e"

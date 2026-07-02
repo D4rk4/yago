@@ -6,11 +6,11 @@ services:
     ports:
       - "4222:4222"
 
-  yacy-rwi-node:
+  yago-node:
     build:
       context: .
       dockerfile: yacynode/Dockerfile
-    image: yacy-rwi-node:latest
+    image: yago-node:latest
     restart: unless-stopped
     depends_on:
       - nats

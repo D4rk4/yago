@@ -52,24 +52,29 @@ func TestCrawlReceiptResponseRoundTrip(t *testing.T) {
 	}
 }
 
-func TestParseCrawlReceiptRequestRejectsBadIam(t *testing.T) {
-	t.Parallel()
-
-	form := url.Values{yacyproto.FieldIam: {"x"}}
-	if _, err := yacyproto.ParseCrawlReceiptRequest(context.Background(), form); err == nil {
-		t.Fatal("expected error for malformed iam hash")
-	}
-}
-
-func TestParseCrawlReceiptRequestRejectsBadYouAre(t *testing.T) {
+func TestParseCrawlReceiptRequestIgnoresMalformedHashes(t *testing.T) {
 	t.Parallel()
 
 	form := url.Values{
-		yacyproto.FieldIam:    {sampleHash(t, "alpha").String()},
+		yacyproto.FieldIam:    {"x"},
 		yacyproto.FieldYouAre: {"x"},
 	}
-	if _, err := yacyproto.ParseCrawlReceiptRequest(context.Background(), form); err == nil {
-		t.Fatal("expected error for malformed youare hash")
+	got, err := yacyproto.ParseCrawlReceiptRequest(context.Background(), form)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Iam != "" || got.YouAre != "" {
+		t.Fatalf("hashes = %q/%q, want empty", got.Iam, got.YouAre)
+	}
+}
+
+func TestCrawlReceiptResponseOmitsEmptyDelay(t *testing.T) {
+	t.Parallel()
+
+	msg := yacyproto.CrawlReceiptResponse{}.Encode()
+	if _, ok := msg[yacyproto.FieldDelay]; ok {
+		t.Fatalf("delay encoded for empty response: %v", msg)
 	}
 }
 

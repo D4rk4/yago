@@ -6,6 +6,7 @@ type IngestBatch struct {
 	SourceURL     string
 	Provenance    []byte
 	ProfileHandle string
+	Document      DocumentIngest
 	Postings      []yacymodel.RWIPosting
 	Metadata      []yacymodel.URIMetadataRow
 }

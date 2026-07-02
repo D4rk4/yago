@@ -12,7 +12,7 @@ GO_ARCH_LINT := $(TOOLS_BIN)/go-arch-lint
 .PHONY: tools fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-node-image e2e-crawler-image peer-hash
 
 E2E_TIMEOUT ?= 10m
-E2E_NODE_IMAGE ?= yacy-rwi-node:e2e
+E2E_NODE_IMAGE ?= yago-node:e2e
 E2E_CRAWLER_IMAGE ?= yacy-rwi-crawler:e2e
 
 E2E_CONTAINER_CLI := $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)

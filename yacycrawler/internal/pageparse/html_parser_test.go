@@ -12,6 +12,8 @@ const sampleHTML = `<!DOCTYPE html>
 <head><title>Sample &amp; Title</title><style>.x{color:red}</style></head>
 <body>
 <script>var ignored = "noise";</script>
+<h1>Primary Heading</h1>
+<h2>Secondary Heading</h2>
 <p>Hello indexable world.</p>
 <a href="/local">local</a>
 <a href="http://other.com/x">external</a>
@@ -34,6 +36,9 @@ func TestParseHTMLExtractsFields(t *testing.T) {
 	}
 	if len(page.Links) != 2 {
 		t.Errorf("links = %v", page.Links)
+	}
+	if len(page.Headings) != 2 || page.Headings[0] != "Primary Heading" {
+		t.Errorf("headings = %v", page.Headings)
 	}
 }
 

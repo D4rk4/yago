@@ -46,6 +46,14 @@ func readHTMLFields(root *html.Node, page *ParsedPage) {
 	if title := dom.QuerySelector(root, "title"); title != nil {
 		page.Title = strings.TrimSpace(dom.TextContent(title))
 	}
+	for _, name := range []string{"h1", "h2", "h3", "h4", "h5", "h6"} {
+		for _, heading := range dom.GetElementsByTagName(root, name) {
+			text := collapseSpaces(dom.TextContent(heading))
+			if text != "" {
+				page.Headings = append(page.Headings, text)
+			}
+		}
+	}
 	for _, link := range dom.GetElementsByTagName(root, "a") {
 		if href := dom.GetAttribute(link, "href"); href != "" {
 			page.Links = append(page.Links, href)

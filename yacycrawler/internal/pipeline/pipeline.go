@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/D4rk4/yago/yacycrawler/internal/crawljob"
 	"github.com/D4rk4/yago/yacycrawler/internal/ingest"
@@ -121,11 +122,19 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	if err != nil {
 		return fmt.Errorf("index: %w", err)
 	}
-	if err := p.emitter.Emit(ctx, artifacts.Postings, artifacts.Metadata, ingest.Envelope{
-		SourceURL:     page.URL,
-		Provenance:    job.Provenance,
-		ProfileHandle: job.ProfileHandle,
-	}); err != nil {
+	artifacts.Document.ContentType = fetched.ContentType
+	artifacts.Document.FetchedAt = time.Now().UTC()
+	if err := p.emitter.Emit(
+		ctx,
+		artifacts.Document,
+		artifacts.Postings,
+		artifacts.Metadata,
+		ingest.Envelope{
+			SourceURL:     page.URL,
+			Provenance:    job.Provenance,
+			ProfileHandle: job.ProfileHandle,
+		},
+	); err != nil {
 		return fmt.Errorf("emit: %w", err)
 	}
 	return nil
