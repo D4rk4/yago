@@ -34,9 +34,12 @@ JSON array shape from bounded in-memory recent queries.
 
 For public search, `resource=local` searches local RWI and URL metadata only.
 `resource=global` searches the local node and performs bounded YaCy
-`/yacy/search.html` fanout to reachable peers. Remote peer failures, malformed
-responses, and missing reachable peers are returned as partial-failure metadata
-instead of turning the whole public search request into an HTTP error.
+`/yacy/search.html` fanout to reachable peers selected by the query term hashes'
+YaCy DHT positions. Peers must have a reachable address, advertise remote-index
+intake, and pass the upstream age gate before they are eligible remote search
+targets. Remote peer failures, malformed responses, missing reachable peers, and
+missing DHT targets are returned as partial-failure metadata instead of turning
+the whole public search request into an HTTP error.
 
 The crawl URL feed endpoint `/yacy/urls.xml` returns YaCy's RSS-like XML shape.
 `call=remotecrawl` currently returns `ok` with no items because remote crawl

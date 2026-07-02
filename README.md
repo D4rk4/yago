@@ -46,7 +46,7 @@ The node currently targets these responsibilities:
   YaCy-style sender gates, target selection, local deletion, restore, peer
   quarantine, metrics, and a JSON gate status endpoint;
 - serve remote RWI search requests through `/yacy/search.html`;
-- serve local and reachable-peer public search requests through
+- serve local and DHT-targeted reachable-peer public search requests through
   `/yacysearch.json`, `/yacysearch.rss`, and `/yacysearch.html`;
 - expose `/opensearchdescription.xml` and `/suggest.json` for browser search
   integration and recent-query suggestions;

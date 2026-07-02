@@ -42,6 +42,8 @@ components:
     in: internal/crawling/**
   crawlurls:
     in: internal/crawlurls/**
+  dhttarget:
+    in: internal/dhttarget/**
   indextransfer:
     in: internal/indextransfer/**
   dhtexchange:
@@ -222,9 +224,15 @@ deps:
     canUse:
       - yacymodel
       - yacyproto
+  dhttarget:
+    mayDependOn:
+      - dhttarget
+    canUse:
+      - yacymodel
   indextransfer:
     mayDependOn:
       - indextransfer
+      - dhttarget
     canUse:
       - yacymodel
       - yacyproto
@@ -289,6 +297,7 @@ deps:
     mayDependOn:
       - searchremote
       - searchcore
+      - dhttarget
     canUse:
       - yacymodel
       - yacyproto
@@ -366,6 +375,7 @@ deps:
       - landing
       - crawling
       - crawlurls
+      - dhttarget
       - dhtexchange
       - indextransfer
       - urlmeta

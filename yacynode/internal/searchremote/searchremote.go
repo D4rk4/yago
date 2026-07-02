@@ -14,16 +14,20 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/dhttarget"
 	"github.com/D4rk4/yago/yacynode/internal/searchcore"
 	"github.com/D4rk4/yago/yacyproto"
 )
 
 const (
-	DefaultMaxPeers       = 8
-	DefaultConcurrency    = 4
-	DefaultPerPeerTimeout = time.Second
-	DefaultOverallTimeout = 2 * time.Second
-	remoteSearchBodyCap   = 512 << 10
+	DefaultMaxPeers           = 8
+	DefaultRedundancy         = 3
+	DefaultConcurrency        = 4
+	DefaultPerPeerTimeout     = time.Second
+	DefaultOverallTimeout     = 2 * time.Second
+	DefaultMinimumPeerAgeDays = 3
+	maxPartitionExponent      = 8
+	remoteSearchBodyCap       = 512 << 10
 )
 
 var errRemoteSearchFailed = errors.New("remote search failed")
@@ -33,23 +37,29 @@ type PeerSource interface {
 }
 
 type Config struct {
-	Client         *http.Client
-	NetworkName    string
-	Peers          PeerSource
-	MaxPeers       int
-	Concurrency    int
-	PerPeerTimeout time.Duration
-	OverallTimeout time.Duration
+	Client             *http.Client
+	NetworkName        string
+	Peers              PeerSource
+	MaxPeers           int
+	Redundancy         int
+	MinimumPeerAgeDays int
+	PartitionExponent  int
+	Concurrency        int
+	PerPeerTimeout     time.Duration
+	OverallTimeout     time.Duration
 }
 
 type searcher struct {
-	client         *http.Client
-	networkName    string
-	peers          PeerSource
-	maxPeers       int
-	concurrency    int
-	perPeerTimeout time.Duration
-	overallTimeout time.Duration
+	client             *http.Client
+	networkName        string
+	peers              PeerSource
+	maxPeers           int
+	redundancy         int
+	minimumPeerAgeDays int
+	partitionExponent  int
+	concurrency        int
+	perPeerTimeout     time.Duration
+	overallTimeout     time.Duration
 }
 
 type peerSearchResult struct {
@@ -66,13 +76,16 @@ func NewSearcher(config Config) searchcore.Searcher {
 		client = http.DefaultClient
 	}
 	return searcher{
-		client:         client,
-		networkName:    config.NetworkName,
-		peers:          config.Peers,
-		maxPeers:       positiveOrDefault(config.MaxPeers, DefaultMaxPeers),
-		concurrency:    positiveOrDefault(config.Concurrency, DefaultConcurrency),
-		perPeerTimeout: durationOrDefault(config.PerPeerTimeout, DefaultPerPeerTimeout),
-		overallTimeout: durationOrDefault(config.OverallTimeout, DefaultOverallTimeout),
+		client:             client,
+		networkName:        config.NetworkName,
+		peers:              config.Peers,
+		maxPeers:           positiveOrDefault(config.MaxPeers, DefaultMaxPeers),
+		redundancy:         positiveOrDefault(config.Redundancy, DefaultRedundancy),
+		minimumPeerAgeDays: defaultMinimumPeerAgeDays(config.MinimumPeerAgeDays),
+		partitionExponent:  normalizedPartitionExponent(config.PartitionExponent),
+		concurrency:        positiveOrDefault(config.Concurrency, DefaultConcurrency),
+		perPeerTimeout:     durationOrDefault(config.PerPeerTimeout, DefaultPerPeerTimeout),
+		overallTimeout:     durationOrDefault(config.OverallTimeout, DefaultOverallTimeout),
 	}
 }
 
@@ -83,13 +96,13 @@ func (s searcher) Search(
 	ctx, cancel := s.overallContext(ctx)
 	defer cancel()
 
-	peers := s.remotePeers(ctx)
+	peers, noPeersReason := s.remotePeers(ctx, req)
 	if len(peers) == 0 {
 		return searchcore.Response{
 			Request: req,
 			PartialFailures: []searchcore.PartialFailure{{
 				Source: "remote-yacy",
-				Reason: "no reachable peers",
+				Reason: noPeersReason,
 			}},
 		}, nil
 	}
@@ -103,16 +116,79 @@ func (s searcher) overallContext(ctx context.Context) (context.Context, context.
 	return context.WithTimeout(ctx, s.overallTimeout)
 }
 
-func (s searcher) remotePeers(ctx context.Context) []yacymodel.Seed {
+func (s searcher) remotePeers(
+	ctx context.Context,
+	req searchcore.Request,
+) ([]yacymodel.Seed, string) {
 	if s.peers == nil {
-		return nil
+		return nil, "no reachable peers"
 	}
 	peers := s.peers.ReachablePeers(ctx)
-	if len(peers) > s.maxPeers {
-		peers = peers[:s.maxPeers]
+	if len(peers) == 0 {
+		return nil, "no reachable peers"
 	}
 
-	return peers
+	hashes := termHashes(req.Terms)
+	if len(hashes) == 0 {
+		return nil, "no query terms"
+	}
+
+	selected := selectDHTSearchPeers(hashes, peers, dhtSearchPeerConfig{
+		maxPeers:           s.maxPeers,
+		redundancy:         s.redundancy,
+		minimumPeerAgeDays: s.minimumPeerAgeDays,
+		partitionExponent:  s.partitionExponent,
+	})
+	if len(selected) == 0 {
+		return nil, "no dht search targets"
+	}
+
+	return selected, ""
+}
+
+type dhtSearchPeerConfig struct {
+	maxPeers           int
+	redundancy         int
+	minimumPeerAgeDays int
+	partitionExponent  int
+}
+
+func selectDHTSearchPeers(
+	hashes []yacymodel.Hash,
+	peers []yacymodel.Seed,
+	config dhtSearchPeerConfig,
+) []yacymodel.Seed {
+	selected := make([]yacymodel.Seed, 0, config.maxPeers)
+	seen := make(map[yacymodel.Hash]struct{})
+	partitions := 1 << config.partitionExponent
+	for _, hash := range hashes {
+		for partition := range partitions {
+			position, err := yacymodel.VerticalPosition(
+				hash,
+				uint64(partition),
+				config.partitionExponent,
+			)
+			if err != nil {
+				continue
+			}
+			targets, _ := dhttarget.SelectAtPosition(position, peers, dhttarget.Config{
+				Redundancy:     config.redundancy,
+				MinimumAgeDays: config.minimumPeerAgeDays,
+			})
+			for _, target := range targets {
+				if _, ok := seen[target.Peer.Hash]; ok {
+					continue
+				}
+				seen[target.Peer.Hash] = struct{}{}
+				selected = append(selected, target.Peer)
+				if len(selected) >= config.maxPeers {
+					return selected
+				}
+			}
+		}
+	}
+
+	return selected
 }
 
 func (s searcher) queryPeers(
@@ -416,4 +492,23 @@ func durationOrDefault(value time.Duration, fallback time.Duration) time.Duratio
 	}
 
 	return fallback
+}
+
+func defaultMinimumPeerAgeDays(value int) int {
+	if value != 0 {
+		return value
+	}
+
+	return DefaultMinimumPeerAgeDays
+}
+
+func normalizedPartitionExponent(value int) int {
+	if value < 0 {
+		return 0
+	}
+	if value > maxPartitionExponent {
+		return maxPartitionExponent
+	}
+
+	return value
 }

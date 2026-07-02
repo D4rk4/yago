@@ -1,4 +1,4 @@
-package indextransfer
+package dhttarget
 
 import (
 	"errors"
@@ -51,21 +51,21 @@ func withBirthDate(t time.Time) func(*yacymodel.Seed) {
 	}
 }
 
-func TestSelectDHTTargetsOrdersEligiblePeersFromStartHash(t *testing.T) {
+func TestSelectOrdersEligiblePeersFromStartHash(t *testing.T) {
 	t.Parallel()
 
 	start := dhtHash(t, "__________AA")
-	targets, err := SelectDHTTargets(
+	targets, err := Select(
 		start,
 		[]yacymodel.Seed{
 			dhtSeed(t, "BBBBBBBBBBBB"),
 			dhtSeed(t, "AAAAAAAAAAAA"),
 			dhtSeed(t, "__________AA"),
 		},
-		DHTTargetConfig{Redundancy: 3},
+		Config{Redundancy: 3},
 	)
 	if err != nil {
-		t.Fatalf("SelectDHTTargets: %v", err)
+		t.Fatalf("Select: %v", err)
 	}
 
 	got := []yacymodel.Hash{
@@ -86,12 +86,12 @@ func TestSelectDHTTargetsOrdersEligiblePeersFromStartHash(t *testing.T) {
 	}
 }
 
-func TestSelectDHTTargetsFiltersReachabilityFlagsAgeAndLimit(t *testing.T) {
+func TestSelectFiltersReachabilityFlagsAgeAndLimit(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	disabledFlags := yacymodel.ZeroFlags()
-	targets, err := SelectDHTTargets(
+	targets, err := Select(
 		dhtHash(t, "AAAAAAAAAAAA"),
 		[]yacymodel.Seed{
 			dhtSeed(t, "CCCCCCCCCCCC", withBirthDate(now.AddDate(0, 0, -5))),
@@ -110,14 +110,14 @@ func TestSelectDHTTargetsFiltersReachabilityFlagsAgeAndLimit(t *testing.T) {
 				Flags: yacymodel.Some(dhtAcceptFlags()),
 			},
 		},
-		DHTTargetConfig{
+		Config{
 			Redundancy:     2,
 			MinimumAgeDays: 3,
 			Now:            now,
 		},
 	)
 	if err != nil {
-		t.Fatalf("SelectDHTTargets: %v", err)
+		t.Fatalf("Select: %v", err)
 	}
 
 	got := []yacymodel.Hash{targets[0].Peer.Hash, targets[1].Peer.Hash}
@@ -127,20 +127,20 @@ func TestSelectDHTTargetsFiltersReachabilityFlagsAgeAndLimit(t *testing.T) {
 	}
 }
 
-func TestSelectDHTTargetsBreaksPositionTiesAndTruncates(t *testing.T) {
+func TestSelectBreaksPositionTiesAndTruncates(t *testing.T) {
 	t.Parallel()
 
-	targets, err := SelectDHTTargets(
+	targets, err := Select(
 		dhtHash(t, "AAAAAAAAAAAA"),
 		[]yacymodel.Seed{
 			dhtSeed(t, "DDDDDDDDDDDD"),
 			dhtSeed(t, "CCCCCCCCCCBB"),
 			dhtSeed(t, "CCCCCCCCCCAA"),
 		},
-		DHTTargetConfig{Redundancy: 2},
+		Config{Redundancy: 2},
 	)
 	if err != nil {
-		t.Fatalf("SelectDHTTargets: %v", err)
+		t.Fatalf("Select: %v", err)
 	}
 
 	got := []yacymodel.Hash{targets[0].Peer.Hash, targets[1].Peer.Hash}
@@ -150,67 +150,44 @@ func TestSelectDHTTargetsBreaksPositionTiesAndTruncates(t *testing.T) {
 	}
 }
 
-func TestSelectDHTTargetsAtPositionRejectsInvalidPosition(t *testing.T) {
+func TestSelectAtPositionRejectsInvalidPosition(t *testing.T) {
 	t.Parallel()
 
-	_, err := SelectDHTTargetsAtPosition(
+	_, err := SelectAtPosition(
 		yacymodel.MaxPosition+1,
 		[]yacymodel.Seed{dhtSeed(t, "BBBBBBBBBBBB")},
-		DHTTargetConfig{Redundancy: 1},
+		Config{Redundancy: 1},
 	)
 	if err == nil {
 		t.Fatal("expected invalid dht position error")
 	}
 }
 
-func TestSelectDHTTargetsAtPositionOrdersEligiblePeers(t *testing.T) {
+func TestSelectReturnsNoTargetsWhenRedundancyIsDisabled(t *testing.T) {
 	t.Parallel()
 
-	start, err := yacymodel.Position(dhtHash(t, "AAAAAAAAAAAA"))
-	if err != nil {
-		t.Fatalf("dht position: %v", err)
-	}
-	targets, err := SelectDHTTargetsAtPosition(
-		start,
-		[]yacymodel.Seed{
-			dhtSeed(t, "CCCCCCCCCCCC"),
-			dhtSeed(t, "BBBBBBBBBBBB"),
-		},
-		DHTTargetConfig{Redundancy: 1},
-	)
-	if err != nil {
-		t.Fatalf("SelectDHTTargetsAtPosition: %v", err)
-	}
-	if len(targets) != 1 || targets[0].Peer.Hash != dhtHash(t, "BBBBBBBBBBBB") {
-		t.Fatalf("targets = %#v", targets)
-	}
-}
-
-func TestSelectDHTTargetsReturnsNoTargetsWhenRedundancyIsDisabled(t *testing.T) {
-	t.Parallel()
-
-	targets, err := SelectDHTTargets(
+	targets, err := Select(
 		dhtHash(t, "AAAAAAAAAAAA"),
 		[]yacymodel.Seed{dhtSeed(t, "BBBBBBBBBBBB")},
-		DHTTargetConfig{},
+		Config{},
 	)
 	if err != nil {
-		t.Fatalf("SelectDHTTargets: %v", err)
+		t.Fatalf("Select: %v", err)
 	}
 	if len(targets) != 0 {
 		t.Fatalf("targets = %#v, want none", targets)
 	}
 }
 
-func TestSelectDHTTargetsRejectsInvalidStartHash(t *testing.T) {
+func TestSelectRejectsInvalidStartHash(t *testing.T) {
 	t.Parallel()
 
-	_, err := SelectDHTTargets(
+	_, err := Select(
 		yacymodel.Hash("bad"),
 		[]yacymodel.Seed{dhtSeed(t, "BBBBBBBBBBBB")},
-		DHTTargetConfig{Redundancy: 1},
+		Config{Redundancy: 1},
 	)
 	if !errors.Is(err, yacymodel.ErrInvalidHash) {
-		t.Fatalf("SelectDHTTargets invalid start = %v, want ErrInvalidHash", err)
+		t.Fatalf("Select invalid start = %v, want ErrInvalidHash", err)
 	}
 }

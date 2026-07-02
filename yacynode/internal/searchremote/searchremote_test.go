@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -77,6 +78,66 @@ func TestRemoteSearcherQueriesPeersAndNormalizesResults(t *testing.T) {
 	}
 }
 
+func TestRemoteSearcherSelectsDHTTargetByWordHash(t *testing.T) {
+	word := yacymodel.WordHash("golang")
+	unused := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("peer outside the DHT target set should not be queried")
+	}))
+	defer unused.Close()
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get(yacyproto.FieldQuery) != word.String() {
+			t.Fatalf("query = %q, want %q", r.URL.Query().Get(yacyproto.FieldQuery), word)
+		}
+		writeFixtureResponse(t, w, yacyproto.SearchResponse{}.Encode().Encode())
+	}))
+	defer target.Close()
+
+	resp, err := NewSearcher(Config{
+		Client:      target.Client(),
+		NetworkName: "freeworld",
+		Peers: fakePeerSource{peers: []yacymodel.Seed{
+			serverSeedWithHash(t, unused.URL, hashFor("ZZZZZZZZZZZZ")),
+			serverSeedWithHash(t, target.URL, word),
+		}},
+		MaxPeers:   1,
+		Redundancy: 1,
+	}).Search(t.Context(), searchcore.Request{
+		Terms:  []string{"golang"},
+		Source: searchcore.SourceGlobal,
+		Limit:  10,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.PartialFailures) != 0 {
+		t.Fatalf("partial failures = %#v", resp.PartialFailures)
+	}
+}
+
+func TestRemoteSearcherDeduplicatesDHTTargetsAcrossTerms(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		writeFixtureResponse(t, w, yacyproto.SearchResponse{}.Encode().Encode())
+	}))
+	defer server.Close()
+
+	_, err := NewSearcher(Config{
+		Client:     server.Client(),
+		Peers:      fakePeerSource{peers: []yacymodel.Seed{serverSeed(t, server.URL)}},
+		Redundancy: 1,
+	}).Search(t.Context(), searchcore.Request{
+		Terms: []string{"golang", "yacy"},
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("calls = %d, want 1", calls.Load())
+	}
+}
+
 func TestRemoteSearcherReportsNoPeers(t *testing.T) {
 	resp, err := NewSearcher(Config{}).Search(
 		t.Context(),
@@ -86,6 +147,59 @@ func TestRemoteSearcherReportsNoPeers(t *testing.T) {
 		t.Fatalf("Search: %v", err)
 	}
 	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0].Reason != "no reachable peers" {
+		t.Fatalf("response = %#v", resp)
+	}
+
+	resp, err = NewSearcher(Config{Peers: fakePeerSource{}}).Search(
+		t.Context(),
+		searchcore.Request{Terms: []string{"golang"}, Source: searchcore.SourceGlobal, Limit: 10},
+	)
+	if err != nil {
+		t.Fatalf("Search with empty roster: %v", err)
+	}
+	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0].Reason != "no reachable peers" {
+		t.Fatalf("empty roster response = %#v", resp)
+	}
+}
+
+func TestRemoteSearcherReportsNoQueryTerms(t *testing.T) {
+	unused := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("empty query should not trigger remote search")
+	}))
+	defer unused.Close()
+
+	resp, err := NewSearcher(Config{
+		Client: unused.Client(),
+		Peers:  fakePeerSource{peers: []yacymodel.Seed{serverSeed(t, unused.URL)}},
+	}).Search(t.Context(), searchcore.Request{Source: searchcore.SourceGlobal, Limit: 10})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0].Reason != "no query terms" {
+		t.Fatalf("response = %#v", resp)
+	}
+}
+
+func TestRemoteSearcherReportsNoDHTTargets(t *testing.T) {
+	unused := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("ineligible peer should not be queried")
+	}))
+	defer unused.Close()
+	peer := serverSeed(t, unused.URL)
+	peer.Flags = yacymodel.Some(yacymodel.ZeroFlags())
+
+	resp, err := NewSearcher(Config{
+		Client: unused.Client(),
+		Peers:  fakePeerSource{peers: []yacymodel.Seed{peer}},
+	}).Search(t.Context(), searchcore.Request{
+		Terms:  []string{"golang"},
+		Source: searchcore.SourceGlobal,
+		Limit:  10,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0].Reason != "no dht search targets" {
 		t.Fatalf("response = %#v", resp)
 	}
 }
@@ -106,10 +220,14 @@ func TestRemoteSearcherReportsPeerFailures(t *testing.T) {
 		Peers: fakePeerSource{peers: []yacymodel.Seed{
 			serverSeed(t, badStatus.URL),
 			serverSeed(t, malformed.URL),
-			{Hash: hashFor("missing")},
+			serverSeedWithHash(t, "http://127.0.0.1:1", yacymodel.WordHash("golang")),
 		}},
 		Concurrency: 2,
-	}).Search(t.Context(), searchcore.Request{Source: searchcore.SourceGlobal, Limit: 10})
+	}).Search(t.Context(), searchcore.Request{
+		Terms:  []string{"golang"},
+		Source: searchcore.SourceGlobal,
+		Limit:  10,
+	})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -138,7 +256,7 @@ func TestRemoteSearcherHonorsLimitAndOffset(t *testing.T) {
 		Client:      server.Client(),
 		NetworkName: "freeworld",
 		Peers:       fakePeerSource{peers: []yacymodel.Seed{serverSeed(t, server.URL)}},
-	}).Search(t.Context(), searchcore.Request{Limit: 1, Offset: 1})
+	}).Search(t.Context(), searchcore.Request{Terms: []string{"golang"}, Limit: 1, Offset: 1})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -170,7 +288,7 @@ func TestRemoteSearcherReportsNormalizationFailure(t *testing.T) {
 		Client:      server.Client(),
 		NetworkName: "freeworld",
 		Peers:       fakePeerSource{peers: []yacymodel.Seed{serverSeed(t, server.URL)}},
-	}).Search(t.Context(), searchcore.Request{Limit: 10})
+	}).Search(t.Context(), searchcore.Request{Terms: []string{"golang"}, Limit: 10})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -180,6 +298,7 @@ func TestRemoteSearcherReportsNormalizationFailure(t *testing.T) {
 }
 
 func TestRemoteSearcherUsesTimeoutsAndPeerCap(t *testing.T) {
+	word := yacymodel.WordHash("slow")
 	slow := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		time.Sleep(50 * time.Millisecond)
 	}))
@@ -192,12 +311,16 @@ func TestRemoteSearcherUsesTimeoutsAndPeerCap(t *testing.T) {
 	resp, err := NewSearcher(Config{
 		Client: slow.Client(),
 		Peers: fakePeerSource{
-			peers: []yacymodel.Seed{serverSeed(t, slow.URL), serverSeed(t, unused.URL)},
+			peers: []yacymodel.Seed{
+				serverSeedWithHash(t, slow.URL, word),
+				serverSeedWithHash(t, unused.URL, hashFor("ZZZZZZZZZZZZ")),
+			},
 		},
 		MaxPeers:       1,
+		Redundancy:     1,
 		PerPeerTimeout: 5 * time.Millisecond,
 		OverallTimeout: 20 * time.Millisecond,
-	}).Search(t.Context(), searchcore.Request{Limit: 10})
+	}).Search(t.Context(), searchcore.Request{Terms: []string{"slow"}, Limit: 10})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -225,6 +348,17 @@ func TestRemoteSearchReportsRequestConstructionFailure(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("expected request construction error")
+	}
+}
+
+func TestRemoteSearchReportsTargetFailure(t *testing.T) {
+	_, err := NewSearcher(Config{}).(searcher).remoteSearch(
+		t.Context(),
+		yacymodel.Seed{Hash: hashFor("missing")},
+		searchcore.Request{Limit: 1},
+	)
+	if err == nil {
+		t.Fatal("expected target error")
 	}
 }
 
@@ -283,8 +417,34 @@ func TestRemoteSearchHelpers(t *testing.T) {
 		durationOrDefault(time.Millisecond, time.Second) != time.Millisecond {
 		t.Fatal("durationOrDefault failed")
 	}
+	if defaultMinimumPeerAgeDays(0) != DefaultMinimumPeerAgeDays ||
+		defaultMinimumPeerAgeDays(-1) != -1 {
+		t.Fatal("defaultMinimumPeerAgeDays failed")
+	}
+	if normalizedPartitionExponent(-1) != 0 ||
+		normalizedPartitionExponent(maxPartitionExponent+1) != maxPartitionExponent ||
+		normalizedPartitionExponent(2) != 2 {
+		t.Fatal("normalizedPartitionExponent failed")
+	}
 	if got := peerFailure(yacymodel.Seed{}, context.Canceled); got.Source != "remote-yacy" {
 		t.Fatalf("peer failure = %#v", got)
+	}
+}
+
+func TestDHTSearchPeerSelectionSkipsInvalidWordHash(t *testing.T) {
+	peer := yacymodel.Seed{
+		Hash:  hashFor("BBBBBBBBBBBB"),
+		IP:    yacymodel.Some(mustHost(t, "192.0.2.1")),
+		Port:  yacymodel.Some(yacymodel.Port(8090)),
+		Flags: yacymodel.Some(acceptRemoteIndexFlags()),
+	}
+	got := selectDHTSearchPeers(
+		[]yacymodel.Hash{yacymodel.Hash("bad"), peer.Hash},
+		[]yacymodel.Seed{peer},
+		dhtSearchPeerConfig{maxPeers: 1, redundancy: 1},
+	)
+	if len(got) != 1 || got[0].Hash != peer.Hash {
+		t.Fatalf("selected peers = %#v", got)
 	}
 }
 
@@ -394,10 +554,19 @@ func serverSeed(tb testing.TB, raw string) yacymodel.Seed {
 	}
 
 	return yacymodel.Seed{
-		Hash: hashFor(parsed.Host),
-		IP:   yacymodel.Some(parsedHost),
-		Port: yacymodel.Some(yacymodel.Port(parsedPort)),
+		Hash:  hashFor("Peer" + port),
+		IP:    yacymodel.Some(parsedHost),
+		Port:  yacymodel.Some(yacymodel.Port(parsedPort)),
+		Flags: yacymodel.Some(acceptRemoteIndexFlags()),
 	}
+}
+
+func serverSeedWithHash(tb testing.TB, raw string, hash yacymodel.Hash) yacymodel.Seed {
+	tb.Helper()
+	seed := serverSeed(tb, raw)
+	seed.Hash = hash
+
+	return seed
 }
 
 func metadataRow(
@@ -422,4 +591,18 @@ func hashFor(base string) yacymodel.Hash {
 	}
 
 	return yacymodel.Hash(base + filler[len(base):])
+}
+
+func acceptRemoteIndexFlags() yacymodel.Flags {
+	return yacymodel.ZeroFlags().Set(yacymodel.FlagAcceptRemoteIndex, true)
+}
+
+func mustHost(tb testing.TB, raw string) yacymodel.Host {
+	tb.Helper()
+	host, err := yacymodel.ParseHost(raw)
+	if err != nil {
+		tb.Fatalf("parse host %q: %v", raw, err)
+	}
+
+	return host
 }

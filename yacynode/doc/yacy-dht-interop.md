@@ -25,6 +25,12 @@ To receive index transfer, the seed `Flags` field must set bit 2
 (`FLAG_ACCEPT_REMOTE_INDEX`). Without that bit, YaCy's sender-side DHT target
 selection skips the peer even if its `PeerType` is `senior`.
 
+Public `resource=global` search uses the same DHT target selector as outbound
+index distribution. For each query term hash, the node computes YaCy DHT
+positions and queries only reachable peers that advertise remote-index intake
+and pass the age gate. Missing DHT targets are reported as partial search
+failures instead of broad-fanning the query to arbitrary reachable peers.
+
 Inbound DHT transfer metrics are exposed on the ops listener. The RWI receiver
 publishes `yacy_rwi_received_postings_total`,
 `yacy_rwi_rejected_postings_total`, `yacy_rwi_unknown_url_total`, and
