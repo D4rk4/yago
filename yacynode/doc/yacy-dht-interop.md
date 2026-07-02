@@ -64,7 +64,7 @@ A YaCy node originates DHT transfer only when all of these are true:
 
 The Go gate evaluator keeps the same sender-side decision as named gate results
 with stable reason text. Runtime distribution remains disabled until the
-scheduler, retry policy, metrics, and deletion semantics are wired.
+scheduler and deletion semantics are wired.
 
 The Go outbound transfer layer can probe a target peer's `rwicount` through
 `/yacy/query.html` and treats `response=-1`, missing responses, malformed
@@ -74,8 +74,13 @@ the runtime scheduler is still pending.
 The Go outbound distributor can run one transfer cycle: evaluate sender gates,
 dequeue the largest buffered chunk, probe target RWI capacity, and perform the
 two-phase handoff. If capacity probing, transfer, or protocol acceptance fails,
-the chunk is returned to the outbound buffer. The long-running scheduler,
-backoff, peer quarantine, metrics, and deletion policy are still pending.
+the chunk is returned to the outbound buffer.
+
+The Go outbound retry policy turns capacity failures, handoff transport errors,
+and protocol rejections into bounded exponential retry delays with jitter.
+Successful handoffs clear the peer's retry state. Repeated failed cycles produce
+a quarantine decision for the peer. The long-running scheduler still needs to
+apply these decisions to the peer roster and distribution loop.
 
 The Prometheus edge registers outbound DHT counters for batches, postings,
 failures, and unknown URL requests using the names from `PLAN.md`. The
@@ -87,8 +92,9 @@ counters reflect live DHT traffic.
 YaCy sends an index handoff in two phases. The sender posts RWI rows to
 `/yacy/transferRWI.html`; when the receiver reports hashes in `unknownURL`, the
 sender loads the matching local URL metadata rows and posts them to
-`/yacy/transferURL.html`. Peer selection, retry, and local deletion after enough
-successful recipients are separate dispatcher responsibilities.
+`/yacy/transferURL.html`. Peer selection and retry decisions are available to
+the dispatcher; local deletion after enough successful recipients is still a
+separate responsibility.
 
 ## Sender-side target order
 
@@ -98,14 +104,14 @@ end of the hash ring, and keeping only peers that advertise
 `FLAG_ACCEPT_REMOTE_INDEX`. The distribution path also skips peers younger than
 three days according to their seed `BDate`. The Go selector preserves that
 target order and eligibility logic for the peer-routing step; batch splitting,
-retry, and deletion are handled by later dispatcher work.
+retry decision, and deletion are handled by dispatcher work.
 
 Before transfer, YaCy splits a word's RWI rows by the URL hash's vertical DHT
 partition, accumulates each partition into the chunk for its primary target,
 drops rows without local URL metadata, caps a chunk at 1000 RWI rows, and
 dequeues the largest buffered chunk first. The Go exchange queue preserves that
-batch shape while leaving runtime scheduling disabled until DHT gates and retry
-policy are wired.
+batch shape while leaving runtime scheduling disabled until the distributor
+scheduler is wired.
 
 ---
 
