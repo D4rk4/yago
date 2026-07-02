@@ -135,6 +135,18 @@ func (c rwiCounter) RWICount(context.Context) (int, error) {
 	return c.count, c.err
 }
 
+type postingIndexOnly struct{}
+
+func (postingIndexOnly) RWICount(context.Context) (int, error) { return 0, nil }
+
+func (postingIndexOnly) ScanWord(
+	context.Context,
+	yacymodel.Hash,
+	func(yacymodel.RWIPosting) (bool, error),
+) error {
+	return nil
+}
+
 type failingCloser struct{}
 
 func (failingCloser) Close() error { return errors.New("close failed") }
@@ -603,6 +615,21 @@ func TestOpenNodeStorageReturnsOpenErrors(t *testing.T) {
 		}
 		if _, err := openNodeStorage(openTestVault(t)); !errors.Is(err, sentinel) {
 			t.Fatalf("open error = %v, want %v", err, sentinel)
+		}
+	})
+
+	t.Run("rwi outbound", func(t *testing.T) {
+		restoreStorageSeams(t)
+		openRWIStorage = func(
+			*vault.Vault,
+			urlmeta.URLDirectory,
+			rwi.Config,
+			...rwi.PostingObserver,
+		) (rwi.PostingIndex, rwi.PostingReceiver, rwi.PostingPurger, error) {
+			return postingIndexOnly{}, nil, nil, nil
+		}
+		if _, err := openNodeStorage(openTestVault(t)); err == nil {
+			t.Fatal("expected outbound rwi storage error")
 		}
 	})
 }

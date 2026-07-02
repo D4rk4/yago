@@ -2,6 +2,7 @@ package dhtexchange
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/D4rk4/yago/yacymodel"
@@ -16,9 +17,11 @@ type GateStateSnapshot func(context.Context) GateState
 type OutboundSchedulerConfig struct {
 	Gates GateConfig
 	Now   func() time.Time
+	Feed  OutboundQueueFeeder
 }
 
 type ScheduledDistributionReceipt struct {
+	Feed         OutboundFeedReceipt
 	Distribution DistributionReceipt
 	Retry        OutboundRetryDecision
 }
@@ -55,6 +58,17 @@ func (s OutboundScheduler) RunOnce(
 	ctx context.Context,
 ) (ScheduledDistributionReceipt, error) {
 	at := s.config.Now()
+	var feed OutboundFeedReceipt
+	if s.config.Feed != nil {
+		var err error
+		feed, err = s.config.Feed.Feed(ctx)
+		if err != nil {
+			return ScheduledDistributionReceipt{Feed: feed}, fmt.Errorf(
+				"feed outbound queue: %w",
+				err,
+			)
+		}
+	}
 	receipt, err := s.distributor.DistributeReady(
 		ctx,
 		s.gates(ctx),
@@ -64,5 +78,5 @@ func (s OutboundScheduler) RunOnce(
 	s.observer.Observe(receipt)
 	retry := s.retry.Observe(receipt, at)
 
-	return ScheduledDistributionReceipt{Distribution: receipt, Retry: retry}, err
+	return ScheduledDistributionReceipt{Feed: feed, Distribution: receipt, Retry: retry}, err
 }

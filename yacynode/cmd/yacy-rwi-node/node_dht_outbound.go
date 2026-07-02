@@ -46,8 +46,20 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 		assembly.config.NetworkName,
 		self,
 	)
+	queue := dhtexchange.NewOutboundQueue()
+	feeder := dhtexchange.NewOutboundFeeder(
+		queue,
+		dhtOutboundRWIWords{postings: assembly.nodeStorage.outboundPostings},
+		assembly.nodeStorage.urlDirectory,
+		assembly.roster.ReachablePeers,
+		dhtexchange.OutboundFeederConfig{
+			MaxWords:    1,
+			MaxPostings: dhtexchange.MaxChunkPostings,
+			Redundancy:  1,
+		},
+	)
 	distributor := dhtexchange.NewOutboundDistributor(
-		dhtexchange.NewOutboundQueue(),
+		queue,
 		indextransfer.NewRemoteRWICountProbe(
 			assembly.client,
 			assembly.config.NetworkName,
@@ -65,7 +77,7 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 			postings:        assembly.nodeStorage.postings,
 			roster:          assembly.roster,
 		}.Snapshot,
-		dhtexchange.OutboundSchedulerConfig{Gates: assembly.config.DHT.Gates},
+		dhtexchange.OutboundSchedulerConfig{Gates: assembly.config.DHT.Gates, Feed: feeder},
 	)
 
 	return dhtOutboundProcess{cycle: scheduler, interval: assembly.config.DHT.Interval}

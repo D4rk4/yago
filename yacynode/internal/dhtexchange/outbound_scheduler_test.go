@@ -18,6 +18,18 @@ func (o *observedDistributions) Observe(receipt DistributionReceipt) {
 	o.receipts = append(o.receipts, receipt)
 }
 
+type feedScript struct {
+	receipt OutboundFeedReceipt
+	err     error
+	calls   int
+}
+
+func (s *feedScript) Feed(context.Context) (OutboundFeedReceipt, error) {
+	s.calls++
+
+	return s.receipt, s.err
+}
+
 func TestOutboundSchedulerSendsReadyChunkAndObservesSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -151,5 +163,71 @@ func TestOutboundSchedulerObservesFailureAndRetryDecision(t *testing.T) {
 	}
 	if len(observer.receipts) != 1 || observer.receipts[0].State != DistributionCapacityFailed {
 		t.Fatalf("observed = %#v", observer.receipts)
+	}
+}
+
+func TestOutboundSchedulerRunsFeederBeforeDistribution(t *testing.T) {
+	t.Parallel()
+
+	feed := &feedScript{receipt: OutboundFeedReceipt{State: OutboundFeedEmpty}}
+	observer := &observedDistributions{}
+	scheduler := NewOutboundScheduler(
+		NewOutboundDistributor(
+			NewOutboundQueue(),
+			&capacityScript{count: 11},
+			&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)},
+		),
+		NewOutboundRetryPolicy(OutboundRetryConfig{}),
+		observer,
+		func(context.Context) GateState { return openGateState() },
+		OutboundSchedulerConfig{
+			Gates: DefaultGateConfig(),
+			Feed:  feed,
+		},
+	)
+
+	receipt, err := scheduler.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if feed.calls != 1 ||
+		receipt.Feed.State != OutboundFeedEmpty ||
+		receipt.Distribution.State != DistributionQueueEmpty {
+		t.Fatalf("receipt/feed = %#v/%d", receipt, feed.calls)
+	}
+}
+
+func TestOutboundSchedulerReturnsFeederErrorBeforeDistribution(t *testing.T) {
+	t.Parallel()
+
+	sentinel := errors.New("feed failed")
+	feed := &feedScript{
+		receipt: OutboundFeedReceipt{State: OutboundFeedRestored, RestoredPostings: 2},
+		err:     sentinel,
+	}
+	observer := &observedDistributions{}
+	scheduler := NewOutboundScheduler(
+		NewOutboundDistributor(
+			NewOutboundQueue(),
+			&capacityScript{count: 11},
+			&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)},
+		),
+		NewOutboundRetryPolicy(OutboundRetryConfig{}),
+		observer,
+		func(context.Context) GateState { return openGateState() },
+		OutboundSchedulerConfig{
+			Gates: DefaultGateConfig(),
+			Feed:  feed,
+		},
+	)
+
+	receipt, err := scheduler.RunOnce(context.Background())
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("RunOnce error = %v, want %v", err, sentinel)
+	}
+	if receipt.Feed.State != OutboundFeedRestored ||
+		receipt.Feed.RestoredPostings != 2 ||
+		len(observer.receipts) != 0 {
+		t.Fatalf("receipt/observer = %#v/%#v", receipt, observer)
 	}
 }

@@ -6,11 +6,13 @@ package memvault
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 type engine struct {
+	mu         sync.RWMutex
 	buckets    map[vault.Name]map[string][]byte
 	quotaBytes int64
 }
@@ -25,6 +27,9 @@ func Open(quotaBytes int64) (*vault.Vault, error) {
 }
 
 func (e *engine) Provision(name vault.Name) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	if _, ok := e.buckets[name]; !ok {
 		e.buckets[name] = map[string][]byte{}
 	}
@@ -36,6 +41,9 @@ func (e *engine) Update(ctx context.Context, fn func(vault.EngineTxn) error) err
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
 
 	staged := snapshot(e.buckets)
 	if err := fn(memTxn{buckets: staged, writable: true}); err != nil {
@@ -51,10 +59,16 @@ func (e *engine) View(ctx context.Context, fn func(vault.EngineTxn) error) error
 		return fmt.Errorf("context: %w", err)
 	}
 
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
 	return fn(memTxn{buckets: e.buckets, writable: false})
 }
 
 func (e *engine) Close() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	e.buckets = nil
 
 	return nil
@@ -68,6 +82,9 @@ func (e *engine) UsedBytes(ctx context.Context) (int64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, fmt.Errorf("context: %w", err)
 	}
+
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 
 	var used int64
 	for _, bucket := range e.buckets {

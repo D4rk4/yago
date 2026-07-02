@@ -11,14 +11,15 @@ import (
 )
 
 type nodeStorage struct {
-	urlDirectory    urlmeta.URLDirectory
-	urlEvictor      urlmeta.URLEvictor
-	urlReceiver     urlmeta.URLReceiver
-	staleness       urlmetastaleness.StalenessRanking
-	references      urlreferences.ReferenceProjection
-	postings        rwi.PostingIndex
-	postingReceiver rwi.PostingReceiver
-	postingPurger   rwi.PostingPurger
+	urlDirectory     urlmeta.URLDirectory
+	urlEvictor       urlmeta.URLEvictor
+	urlReceiver      urlmeta.URLReceiver
+	staleness        urlmetastaleness.StalenessRanking
+	references       urlreferences.ReferenceProjection
+	postings         rwi.PostingIndex
+	outboundPostings rwi.OutboundPostingStore
+	postingReceiver  rwi.PostingReceiver
+	postingPurger    rwi.PostingPurger
 }
 
 var (
@@ -53,15 +54,20 @@ func openNodeStorage(vault *vault.Vault) (nodeStorage, error) {
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("rwi storage: %w", err)
 	}
+	outboundPostings, ok := postings.(rwi.OutboundPostingStore)
+	if !ok {
+		return nodeStorage{}, fmt.Errorf("rwi outbound storage unavailable")
+	}
 
 	return nodeStorage{
-		urlDirectory:    urlDirectory,
-		urlEvictor:      urlEvictor,
-		urlReceiver:     urlReceiver,
-		staleness:       staleness,
-		references:      references,
-		postings:        postings,
-		postingReceiver: postingReceiver,
-		postingPurger:   postingPurger,
+		urlDirectory:     urlDirectory,
+		urlEvictor:       urlEvictor,
+		urlReceiver:      urlReceiver,
+		staleness:        staleness,
+		references:       references,
+		postings:         postings,
+		outboundPostings: outboundPostings,
+		postingReceiver:  postingReceiver,
+		postingPurger:    postingPurger,
 	}, nil
 }

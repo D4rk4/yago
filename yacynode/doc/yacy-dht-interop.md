@@ -86,16 +86,21 @@ Prometheus counters. Peer-roster quarantine mutation is still pending.
 The Prometheus edge registers outbound DHT counters for batches, postings,
 failures, and unknown URL requests using the names from `PLAN.md`. The
 runtime scheduler observes each distribution receipt, so these counters reflect
-live DHT traffic once stored RWI rows are fed into the outbound queue.
+live DHT traffic as stored RWI rows are fed into the outbound queue.
 
 ## Sender-side transfer shape
 
 YaCy sends an index handoff in two phases. The sender posts RWI rows to
 `/yacy/transferRWI.html`; when the receiver reports hashes in `unknownURL`, the
 sender loads the matching local URL metadata rows and posts them to
-`/yacy/transferURL.html`. Peer selection and retry decisions are available to
-the dispatcher; local deletion after enough successful recipients is still a
-separate responsibility.
+`/yacy/transferURL.html`.
+
+Before enqueue, the Go sender selects a bounded set of stored RWI postings in
+one storage update and removes those postings from local RWI storage. If enqueue
+cannot safely keep transferable rows, the sender restores those rows. Rows that
+no longer have local URL metadata remain dropped, matching YaCy's sender-side
+filtering. Once a chunk is queued, successful transfer leaves the selected
+postings deleted; transfer failures stay in the outbound queue for retry.
 
 ## Sender-side target order
 
@@ -111,9 +116,10 @@ Before transfer, YaCy splits a word's RWI rows by the URL hash's vertical DHT
 partition, accumulates each partition into the chunk for its primary target,
 drops rows without local URL metadata, caps a chunk at 1000 RWI rows, and
 dequeues the largest buffered chunk first. The Go exchange queue preserves that
-batch shape. The runtime scheduler is wired with an empty queue; the remaining
-dispatcher work is feeding stored RWI words into the queue and deleting local
-postings after enough successful recipients.
+batch shape. The runtime scheduler feeds an empty outbound queue from stored RWI
+selections. Remaining dispatcher work is peer-roster quarantine mutation,
+restart recovery for selected queued rows, and end-to-end Java YaCy interop
+distribution tests.
 
 ---
 

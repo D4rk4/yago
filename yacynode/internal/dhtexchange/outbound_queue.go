@@ -33,6 +33,7 @@ type EnqueueReceipt struct {
 	TargetCopies     int
 	OverflowCopies   int
 	TouchedChunks    int
+	acceptedRows     []yacymodel.RWIPosting
 }
 
 type OutboundChunk struct {
@@ -64,6 +65,7 @@ func (q *OutboundQueue) EnqueueWord(
 	if err != nil {
 		return EnqueueReceipt{}, err
 	}
+	receipt.acceptedRows = acceptedRows(accepted)
 
 	touched := make(map[yacymodel.Hash]struct{})
 	partitions, err := partitionPostings(accepted, config.PartitionExponent)
@@ -184,6 +186,15 @@ func postingCandidates(postings []yacymodel.RWIPosting) ([]acceptedPosting, Enqu
 	}
 
 	return candidates, receipt
+}
+
+func acceptedRows(postings []acceptedPosting) []yacymodel.RWIPosting {
+	rows := make([]yacymodel.RWIPosting, 0, len(postings))
+	for _, posting := range postings {
+		rows = append(rows, posting.entry)
+	}
+
+	return rows
 }
 
 func partitionPostings(
