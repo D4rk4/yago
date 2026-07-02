@@ -57,8 +57,8 @@ The node currently targets these responsibilities:
 - serve local and DHT-targeted reachable-peer public search requests through
   `/yacysearch.json`, `/yacysearch.rss`, and `/yacysearch.html`, filtering
   remote targets by advertised RWI inventory, using YaCy index abstracts for
-  multi-term remote result conjunctions, and balancing redundant DHT candidates
-  randomly;
+  multi-term remote result conjunctions, using locally stored document text for
+  local snippets when available, and balancing redundant DHT candidates randomly;
 - serve Tavily-like `POST /search` responses over the same search core, with
   local search for `search_depth=basic` and DHT-selected reachable-peer search
   for `search_depth=advanced`;

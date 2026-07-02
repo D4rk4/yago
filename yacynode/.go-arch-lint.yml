@@ -298,6 +298,7 @@ deps:
   documentsearch:
     mayDependOn:
       - documentsearch
+      - documentstore
       - searchcore
       - rwi
       - urlmeta

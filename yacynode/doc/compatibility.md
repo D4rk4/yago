@@ -42,9 +42,9 @@ Status values:
 
 | Surface | Path | Methods | Status | Behavior |
 | --- | --- | --- | --- | --- |
-| YaCy search JSON | `/yacysearch.json` | GET | partial | Serves local and DHT-selected reachable-peer search results in an upstream-like JSON shape; multi-term remote search uses YaCy index abstracts before secondary URL retrieval. |
-| YaCy search RSS | `/yacysearch.rss` | GET | partial | Serves OpenSearch-flavored RSS from the same search backend. |
-| YaCy search HTML | `/yacysearch.html` | GET | partial | Serves a simple public search form and result list. |
+| YaCy search JSON | `/yacysearch.json` | GET | partial | Serves local and DHT-selected reachable-peer search results in an upstream-like JSON shape; local snippets use document-store text when available; multi-term remote search uses YaCy index abstracts before secondary URL retrieval. |
+| YaCy search RSS | `/yacysearch.rss` | GET | partial | Serves OpenSearch-flavored RSS from the same search backend, including document-store-backed local snippets when available. |
+| YaCy search HTML | `/yacysearch.html` | GET | partial | Serves a simple public search form and result list, including document-store-backed local snippets when available. |
 | OpenSearch description | `/opensearchdescription.xml` | GET | implemented | Advertises HTML, RSS, JSON suggestion, and XML suggestion URLs. |
 | JSON suggestions | `/suggest.json` | GET | partial | Serves suggestions from bounded in-memory recent queries. |
 | XML suggestions | `/suggest.xml` | GET | partial | Serves YaCy-compatible `SearchSuggestion` XML from the same recent-query source. |

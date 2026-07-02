@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/documentstore"
 	"github.com/D4rk4/yago/yacynode/internal/searchcore"
 )
 
@@ -44,6 +46,146 @@ func TestCoreLocalSearcherReturnsLocalResults(t *testing.T) {
 		result.URLHash != urlHash.String() ||
 		result.Score != 1 {
 		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestCoreLocalSearcherUsesDocumentStoreSnippet(t *testing.T) {
+	word := yacymodel.WordHash("golang")
+	urlHash := hashFor("doc1")
+	rawURL := "https://example.org/docs/page.html"
+	searcher := NewLocalSearcherWithDocuments(
+		fakeScanner{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
+			word: {postingEntry(word, "doc1", 0, 3)},
+		}},
+		fakeDirectory{rows: map[yacymodel.Hash]yacymodel.URIMetadataRow{
+			urlHash: metadataRow(t, urlHash, rawURL, "Metadata title"),
+		}},
+		fakeDocumentDirectory{documents: map[string]documentstore.Document{
+			rawURL: {
+				Title:         "Stored document title",
+				ExtractedText: "First line\n\nsecond\tline with  spaces.",
+			},
+		}},
+		100,
+	)
+
+	resp, err := searcher.Search(t.Context(), searchcore.Request{
+		Terms:         []string{"golang"},
+		Source:        searchcore.SourceLocal,
+		Limit:         10,
+		ContentDomain: searchcore.ContentDomainText,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("results = %#v", resp.Results)
+	}
+	result := resp.Results[0]
+	if result.Title != "Stored document title" ||
+		result.Snippet != "First line second line with spaces." ||
+		result.URL != rawURL ||
+		result.URLHash != urlHash.String() {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestCoreLocalSearcherFallsBackWhenDocumentMissing(t *testing.T) {
+	word := yacymodel.WordHash("golang")
+	urlHash := hashFor("doc1")
+	searcher := NewLocalSearcherWithDocuments(
+		fakeScanner{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
+			word: {postingEntry(word, "doc1", 0, 3)},
+		}},
+		fakeDirectory{rows: map[yacymodel.Hash]yacymodel.URIMetadataRow{
+			urlHash: metadataRow(
+				t,
+				urlHash,
+				"https://example.org/docs/page.html",
+				"Metadata title",
+			),
+		}},
+		fakeDocumentDirectory{},
+		100,
+	)
+
+	resp, err := searcher.Search(t.Context(), searchcore.Request{
+		Terms: []string{"golang"},
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].Snippet != "Metadata title" {
+		t.Fatalf("results = %#v", resp.Results)
+	}
+}
+
+func TestCoreLocalSearcherUsesDocumentTitleWhenTextEmpty(t *testing.T) {
+	word := yacymodel.WordHash("golang")
+	urlHash := hashFor("doc1")
+	rawURL := "https://example.org/docs/page.html"
+	searcher := NewLocalSearcherWithDocuments(
+		fakeScanner{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
+			word: {postingEntry(word, "doc1", 0, 3)},
+		}},
+		fakeDirectory{rows: map[yacymodel.Hash]yacymodel.URIMetadataRow{
+			urlHash: metadataRow(t, urlHash, rawURL, "Metadata title"),
+		}},
+		fakeDocumentDirectory{documents: map[string]documentstore.Document{
+			rawURL: {Title: "Stored title"},
+		}},
+		100,
+	)
+
+	resp, err := searcher.Search(t.Context(), searchcore.Request{
+		Terms: []string{"golang"},
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.Results) != 1 ||
+		resp.Results[0].Title != "Stored title" ||
+		resp.Results[0].Snippet != "Stored title" {
+		t.Fatalf("results = %#v", resp.Results)
+	}
+}
+
+func TestCoreLocalSearcherRejectsDocumentLookupError(t *testing.T) {
+	word := yacymodel.WordHash("golang")
+	urlHash := hashFor("doc1")
+	sentinel := errors.New("document down")
+	searcher := NewLocalSearcherWithDocuments(
+		fakeScanner{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
+			word: {postingEntry(word, "doc1", 0, 3)},
+		}},
+		fakeDirectory{rows: map[yacymodel.Hash]yacymodel.URIMetadataRow{
+			urlHash: metadataRow(
+				t,
+				urlHash,
+				"https://example.org/docs/page.html",
+				"Metadata title",
+			),
+		}},
+		fakeDocumentDirectory{err: sentinel},
+		100,
+	)
+
+	_, err := searcher.Search(t.Context(), searchcore.Request{
+		Terms: []string{"golang"},
+		Limit: 10,
+	})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("Search error = %v, want %v", err, sentinel)
+	}
+}
+
+func TestCoreSearchSnippetBoundsText(t *testing.T) {
+	text := strings.Repeat("å", searchCoreSnippetRuneCap+1)
+	got := searchCoreSnippet("prefix\n" + text)
+	if len([]rune(got)) != searchCoreSnippetRuneCap {
+		t.Fatalf("snippet runes = %d, want %d", len([]rune(got)), searchCoreSnippetRuneCap)
 	}
 }
 
@@ -179,8 +321,10 @@ func TestCoreLocalSearcherReturnsErrors(t *testing.T) {
 func TestCoreResultFallbacks(t *testing.T) {
 	hash := hashFor("doc1")
 	result, err := searchCoreResult(
-		t.Context(),
-		searchcore.Request{Source: searchcore.SourceLocal},
+		searchCoreResultContext{
+			ctx: t.Context(),
+			req: searchcore.Request{Source: searchcore.SourceLocal},
+		},
 		yacymodel.URIMetadataRow{Properties: map[string]string{
 			yacymodel.URLMetaHash: hash.String(),
 			yacymodel.URLMetaURL:  yacymodel.EncodeBase64WireForm("not a url"),
@@ -204,8 +348,7 @@ func TestCoreResultFallbacks(t *testing.T) {
 
 func TestCoreResultRejectsBadHash(t *testing.T) {
 	_, err := searchCoreResult(
-		t.Context(),
-		searchcore.Request{},
+		searchCoreResultContext{ctx: t.Context()},
 		yacymodel.URIMetadataRow{Properties: map[string]string{
 			yacymodel.URLMetaHash: "bad",
 		}},
@@ -219,8 +362,7 @@ func TestCoreResultRejectsBadHash(t *testing.T) {
 
 func TestCoreResultRejectsBadTitle(t *testing.T) {
 	_, err := searchCoreResult(
-		t.Context(),
-		searchcore.Request{},
+		searchCoreResultContext{ctx: t.Context()},
 		yacymodel.URIMetadataRow{Properties: map[string]string{
 			yacymodel.URLMetaHash:           hashFor("doc1").String(),
 			yacymodel.URLMetaURL:            yacymodel.EncodeBase64WireForm("https://example.org/"),
@@ -313,4 +455,25 @@ func metadataRow(
 		yacymodel.URLMetaURL:            yacymodel.EncodeBase64WireForm(rawURL),
 		yacymodel.URLMetaColDescription: yacymodel.EncodeBase64WireForm(title),
 	}}
+}
+
+type fakeDocumentDirectory struct {
+	documents map[string]documentstore.Document
+	err       error
+}
+
+func (d fakeDocumentDirectory) Document(
+	_ context.Context,
+	normalizedURL string,
+) (documentstore.Document, bool, error) {
+	if d.err != nil {
+		return documentstore.Document{}, false, d.err
+	}
+	doc, found := d.documents[normalizedURL]
+
+	return doc, found, nil
+}
+
+func (d fakeDocumentDirectory) Count(context.Context) (int, error) {
+	return len(d.documents), d.err
 }

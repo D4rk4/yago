@@ -25,9 +25,10 @@ func mountNodePublicSearch(
 	mux *http.ServeMux,
 	assembly publicSearchAssembly,
 ) {
-	local := documentsearch.NewLocalSearcher(
+	local := documentsearch.NewLocalSearcherWithDocuments(
 		assembly.storage.postings,
 		assembly.storage.urlDirectory,
+		assembly.storage.documentDirectory,
 		searchPostingsPerWord,
 	)
 	remote := searchremote.NewSearcher(searchremote.Config{

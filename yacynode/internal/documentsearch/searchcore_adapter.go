@@ -10,26 +10,46 @@ import (
 	"strings"
 
 	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/documentstore"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
 	"github.com/D4rk4/yago/yacynode/internal/searchcore"
 	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 )
 
+const searchCoreSnippetRuneCap = 320
+
 type coreLocalSearcher struct {
-	searcher searcher
+	searcher  searcher
+	documents documentstore.DocumentDirectory
+}
+
+type searchCoreResultContext struct {
+	ctx       context.Context
+	req       searchcore.Request
+	documents documentstore.DocumentDirectory
 }
 
 func NewLocalSearcher(
 	index rwi.PostingIndex,
-	documents urlmeta.URLDirectory,
+	urls urlmeta.URLDirectory,
+	matchesPerTerm int,
+) searchcore.Searcher {
+	return NewLocalSearcherWithDocuments(index, urls, nil, matchesPerTerm)
+}
+
+func NewLocalSearcherWithDocuments(
+	index rwi.PostingIndex,
+	urls urlmeta.URLDirectory,
+	documents documentstore.DocumentDirectory,
 	matchesPerTerm int,
 ) searchcore.Searcher {
 	return coreLocalSearcher{
 		searcher: searcher{
 			index:          index,
-			documents:      documents,
+			documents:      urls,
 			matchesPerTerm: matchesPerTerm,
 		},
+		documents: documents,
 	}
 }
 
@@ -45,7 +65,7 @@ func (s coreLocalSearcher) Search(
 	if err != nil {
 		return searchcore.Response{}, fmt.Errorf("local search: %w", err)
 	}
-	resp, err := searchCoreResponse(ctx, req, result)
+	resp, err := searchCoreResponse(ctx, req, result, s.documents)
 	if err != nil {
 		return searchcore.Response{}, err
 	}
@@ -112,8 +132,9 @@ func searchCoreResponse(
 	ctx context.Context,
 	req searchcore.Request,
 	result searchResult,
+	documents documentstore.DocumentDirectory,
 ) (searchcore.Response, error) {
-	results, err := searchCoreResults(ctx, req, result.resources)
+	results, err := searchCoreResults(ctx, req, result.resources, documents)
 	if err != nil {
 		return searchcore.Response{}, err
 	}
@@ -131,14 +152,20 @@ func searchCoreResults(
 	ctx context.Context,
 	req searchcore.Request,
 	rows []yacymodel.URIMetadataRow,
+	documents documentstore.DocumentDirectory,
 ) ([]searchcore.Result, error) {
 	matchers, err := newCoreResultMatchers(req)
 	if err != nil {
 		return nil, err
 	}
+	conversion := searchCoreResultContext{
+		ctx:       ctx,
+		req:       req,
+		documents: documents,
+	}
 	results := make([]searchcore.Result, 0, len(rows))
 	for i, row := range rows {
-		result, err := searchCoreResult(ctx, req, row, i, len(rows))
+		result, err := searchCoreResult(conversion, row, i, len(rows))
 		if err != nil {
 			return nil, err
 		}
@@ -152,17 +179,16 @@ func searchCoreResults(
 }
 
 func searchCoreResult(
-	ctx context.Context,
-	req searchcore.Request,
+	conversion searchCoreResultContext,
 	row yacymodel.URIMetadataRow,
 	rank int,
 	total int,
 ) (searchcore.Result, error) {
-	rawURL, err := decodedMetadataProperty(ctx, row, yacymodel.URLMetaURL)
+	rawURL, err := decodedMetadataProperty(conversion.ctx, row, yacymodel.URLMetaURL)
 	if err != nil {
 		return searchcore.Result{}, err
 	}
-	title, err := decodedMetadataProperty(ctx, row, yacymodel.URLMetaColDescription)
+	title, err := decodedMetadataProperty(conversion.ctx, row, yacymodel.URLMetaColDescription)
 	if err != nil {
 		return searchcore.Result{}, err
 	}
@@ -175,23 +201,50 @@ func searchCoreResult(
 	if title == "" {
 		title = rawURL
 	}
+	snippet := title
+	if conversion.documents != nil && rawURL != "" {
+		doc, found, err := conversion.documents.Document(conversion.ctx, rawURL)
+		if err != nil {
+			return searchcore.Result{}, fmt.Errorf("document snippet: %w", err)
+		}
+		if found {
+			if doc.Title != "" {
+				title = doc.Title
+			}
+			if doc.ExtractedText != "" {
+				snippet = searchCoreSnippet(doc.ExtractedText)
+			} else {
+				snippet = title
+			}
+		}
+	}
 
 	return searchcore.Result{
 		Title:         title,
 		URL:           rawURL,
 		DisplayURL:    displayURL(host, pathValue),
-		Snippet:       title,
+		Snippet:       snippet,
 		Score:         float64(total - rank),
-		Source:        req.Source,
+		Source:        conversion.req.Source,
 		Host:          host,
 		Path:          pathValue,
 		File:          file,
 		URLHash:       hash.String(),
 		Size:          metadataSize(row),
 		Date:          row.Freshness(),
-		ContentDomain: req.ContentDomain,
-		Language:      req.Language,
+		ContentDomain: conversion.req.ContentDomain,
+		Language:      conversion.req.Language,
 	}, nil
+}
+
+func searchCoreSnippet(text string) string {
+	text = strings.Join(strings.Fields(text), " ")
+	runes := []rune(text)
+	if len(runes) <= searchCoreSnippetRuneCap {
+		return text
+	}
+
+	return string(runes[:searchCoreSnippetRuneCap])
 }
 
 func decodedMetadataProperty(
