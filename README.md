@@ -66,7 +66,7 @@ The node currently targets these responsibilities:
   browser search integration and recent-query suggestions;
 - store accepted document ingest payloads, RWI postings, and URL metadata
   durably;
-- expose `/health`, `/metrics`, and DHT gate status on the ops listener,
+- expose `/health`, `/ready`, `/metrics`, and DHT gate status on the ops listener,
   including inbound and outbound DHT transfer series, peer discovery
   gauges/counters, local search index stats, and a machine-readable
   compatibility catalog;
@@ -168,6 +168,7 @@ Useful checks:
 
 ```sh
 curl -fsS http://127.0.0.1:9090/health
+curl -fsS http://127.0.0.1:9090/ready
 curl -fsS http://127.0.0.1:9090/metrics
 curl -fsS http://127.0.0.1:9090/api/admin/v1/compatibility
 curl -fsS http://127.0.0.1:9090/api/admin/v1/network/dht/gates

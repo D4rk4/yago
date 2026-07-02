@@ -64,6 +64,7 @@ Status values:
 | Surface | Path | Methods | Status | Behavior |
 | --- | --- | --- | --- | --- |
 | Health | `/health` | GET | implemented | Returns a successful status when the ops listener is running. |
+| Readiness | `/ready` | GET | implemented | Reports whether local node dependencies are ready to serve traffic, starting with the local search index. |
 | Metrics | `/metrics` | GET | implemented | Serves Prometheus metrics for node operations. |
 | DHT gate report | `/api/admin/v1/network/dht/gates` | GET | implemented | Serves outbound DHT gate state, configuration, and gate results. |
 | Search index stats | `/api/admin/v1/index/stats` | GET | implemented | Serves local search backend availability, backend name, indexed document count, and last index update time. |

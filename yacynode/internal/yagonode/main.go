@@ -99,6 +99,7 @@ func run() error {
 
 	opsMux := newOpsMux(
 		endpoints.Handler(),
+		assembled.readiness,
 		assembled.dht.gates,
 		assembled.indexStats,
 	)

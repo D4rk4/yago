@@ -71,6 +71,7 @@ func TestCatalogIncludesCurrentAdminSurfaces(t *testing.T) {
 
 	for _, path := range []string{
 		"/health",
+		"/ready",
 		"/metrics",
 		"/api/admin/v1/compatibility",
 		"/api/admin/v1/network/dht/gates",

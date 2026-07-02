@@ -10,6 +10,14 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Evidence: []string{"yacynode/internal/yagonode/main_test.go"},
 	},
 	{
+		Name:     "Readiness",
+		Path:     "/ready",
+		Methods:  []string{"GET"},
+		State:    Implemented,
+		Behavior: "Reports whether local node dependencies are ready to serve traffic, starting with the local search index.",
+		Evidence: []string{"yacynode/internal/yagonode/readiness_endpoint_test.go"},
+	},
+	{
 		Name:     "Metrics",
 		Path:     "/metrics",
 		Methods:  []string{"GET"},

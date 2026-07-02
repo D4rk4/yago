@@ -22,6 +22,7 @@ import (
 
 type node struct {
 	peerMux    *http.ServeMux
+	readiness  http.Handler
 	indexStats http.Handler
 	sweeper    eviction.Sweeper
 	announcer  peerannouncement.Announcer
@@ -63,10 +64,6 @@ func assembleNode(
 	client *http.Client,
 	telemetry nodeTelemetry,
 ) (node, error) {
-	guard := httpguard.NewRequestGuard(
-		httpguard.DefaultMaxBodyBytes,
-		httpguard.DefaultRequestTimeout,
-	)
 	identity := nodeIdentity(config)
 
 	storage, err := openRuntimeNodeStorage(vault)
@@ -77,15 +74,9 @@ func assembleNode(
 	report := nodestatus.NewReport(identity, storage.postings, storage.urlDirectory)
 	storage = observeDHTInboundStorage(storage, telemetry.dhtInbound)
 
-	gate := httpguard.WireGate{
-		Guard:   guard,
-		Respond: httpguard.NewWireResponder(report),
-		Address: httpguard.NewClientAddressResolver(config.TrustedProxies),
-	}
-
 	mux := http.NewServeMux()
 	mux.Handle("/{$}", landing.NewEndpoint())
-	router := httpguard.NewWireRouter(mux, gate)
+	router := httpguard.NewWireRouter(mux, newRuntimeWireGate(config, report))
 
 	mountNodeProtocol(router, identity, storage)
 
@@ -131,12 +122,27 @@ func assembleNode(
 
 	return node{
 		peerMux:    mux,
+		readiness:  newReadinessEndpoint(storage.searchIndex),
 		indexStats: newIndexStatsEndpoint(storage.searchIndex),
 		sweeper:    sweeper,
 		announcer:  exchange.announcer,
 		crawl:      runtime,
 		dht:        dht,
 	}, nil
+}
+
+func newRuntimeWireGate(
+	config nodeConfig,
+	report nodestatus.Report,
+) httpguard.WireGate {
+	return httpguard.WireGate{
+		Guard: httpguard.NewRequestGuard(
+			httpguard.DefaultMaxBodyBytes,
+			httpguard.DefaultRequestTimeout,
+		),
+		Respond: httpguard.NewWireResponder(report),
+		Address: httpguard.NewClientAddressResolver(config.TrustedProxies),
+	}
 }
 
 func mountNodeCrawlCompatibility(
