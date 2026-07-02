@@ -298,7 +298,9 @@ deps:
     mayDependOn:
       - metrics
       - eviction
+      - dhtexchange
     canUse:
+      - yacymodel
       - prometheus
   crawldispatch:
     mayDependOn:

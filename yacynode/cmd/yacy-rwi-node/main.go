@@ -75,6 +75,7 @@ func run() error {
 	endpoints := metrics.NewHTTPEndpointMetrics()
 	metrics.NewStorageMetrics(endpoints.Registry(), vault)
 	evictionMetrics := metrics.NewEvictionMetrics(endpoints.Registry())
+	metrics.NewDHTOutboundMetrics(endpoints.Registry())
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

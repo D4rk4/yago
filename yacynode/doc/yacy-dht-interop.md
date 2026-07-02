@@ -77,6 +77,11 @@ two-phase handoff. If capacity probing, transfer, or protocol acceptance fails,
 the chunk is returned to the outbound buffer. The long-running scheduler,
 backoff, peer quarantine, metrics, and deletion policy are still pending.
 
+The Prometheus edge registers outbound DHT counters for batches, postings,
+failures, and unknown URL requests using the names from `PLAN.md`. The
+long-running scheduler still needs to observe each distribution receipt so these
+counters reflect live DHT traffic.
+
 ## Sender-side transfer shape
 
 YaCy sends an index handoff in two phases. The sender posts RWI rows to
