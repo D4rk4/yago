@@ -3,6 +3,7 @@ package tavilyapi
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +28,12 @@ const (
 type searchEndpoint struct {
 	search    searchcore.Searcher
 	documents documentstore.DocumentDirectory
+	access    SearchAccessPolicy
 	now       func() time.Time
+}
+
+type SearchAccessPolicy struct {
+	BearerToken string
 }
 
 type SearchRequest struct {
@@ -103,17 +109,27 @@ func Mount(
 	mux *http.ServeMux,
 	search searchcore.Searcher,
 	documents documentstore.DocumentDirectory,
+	access SearchAccessPolicy,
 ) {
-	mux.Handle(PathSearch, NewSearchEndpoint(search, documents))
+	mux.Handle(PathSearch, NewSearchEndpointWithAccess(search, documents, access))
 }
 
 func NewSearchEndpoint(
 	search searchcore.Searcher,
 	documents documentstore.DocumentDirectory,
 ) http.Handler {
+	return NewSearchEndpointWithAccess(search, documents, SearchAccessPolicy{})
+}
+
+func NewSearchEndpointWithAccess(
+	search searchcore.Searcher,
+	documents documentstore.DocumentDirectory,
+	access SearchAccessPolicy,
+) http.Handler {
 	return searchEndpoint{
 		search:    search,
 		documents: documents,
+		access:    access,
 		now:       time.Now,
 	}
 }
@@ -123,6 +139,17 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", id)
+		return
+	}
+	if !e.access.Allows(r) {
+		w.Header().Set("WWW-Authenticate", "Bearer")
+		writeError(
+			w,
+			http.StatusUnauthorized,
+			"unauthorized",
+			"missing or invalid bearer token",
+			id,
+		)
 		return
 	}
 
@@ -153,6 +180,28 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (p SearchAccessPolicy) Allows(r *http.Request) bool {
+	token := strings.TrimSpace(p.BearerToken)
+	if token == "" {
+		return true
+	}
+	got, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		return false
+	}
+
+	return subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
+}
+
+func bearerToken(header string) (string, bool) {
+	parts := strings.Fields(header)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return "", false
+	}
+
+	return parts[1], true
 }
 
 func (e searchEndpoint) searchResponse(

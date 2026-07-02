@@ -20,6 +20,7 @@ type publicSearchAssembly struct {
 	dht                  dhtDistributionConfig
 	client               *http.Client
 	dhtSearchTargetIndex func(int) (int, error)
+	searchAPIKey         string
 }
 
 func mountNodePublicSearch(
@@ -46,5 +47,10 @@ func mountNodePublicSearch(
 	})
 	search := searchcore.NewFederatedSearcher(local, remote)
 	yacysearch.Mount(mux, search)
-	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory)
+	tavilyapi.Mount(
+		mux,
+		search,
+		assembly.storage.documentDirectory,
+		tavilyapi.SearchAccessPolicy{BearerToken: assembly.searchAPIKey},
+	)
 }

@@ -56,7 +56,7 @@ Status values:
 
 | Surface | Path | Methods | Status | Behavior |
 | --- | --- | --- | --- | --- |
-| Tavily-compatible search | `/search` | POST | partial | Serves a Tavily-like response over the shared search core; accepts current search contract fields, ignores unknown fields for forward compatibility, returns request IDs and JSON error envelopes, uses local full-text search for basic/fast depths, and includes DHT-selected reachable peer search for `search_depth=advanced`. |
+| Tavily-compatible search | `/search` | POST | partial | Serves a Tavily-like response over the shared search core; accepts current search contract fields, ignores unknown fields for forward compatibility, optionally requires `Authorization: Bearer <YAGO_SEARCH_API_KEY>`, returns request IDs and JSON error envelopes, uses local full-text search for basic/fast depths, and includes DHT-selected reachable peer search for `search_depth=advanced`. |
 | Tavily-compatible extract | `/extract` | POST | planned | Not mounted. |
 
 ## Admin And Operations
@@ -74,5 +74,5 @@ Status values:
 
 Admin authentication, Carbon UI pages, richer admin APIs, full Java YaCy page
 parity, Solr/GSA compatibility, Tavily answer generation, image search, real
-usage accounting, auth/scopes, optional upstream Tavily, and Tavily-compatible
-extract APIs remain planned work.
+usage accounting, hashed API key storage, scopes, rate limits, optional upstream
+Tavily, and Tavily-compatible extract APIs remain planned work.

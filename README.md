@@ -61,8 +61,9 @@ The node currently targets these responsibilities:
   remote result conjunctions, and balancing redundant DHT candidates randomly;
 - serve Tavily-like `POST /search` responses over the same search core, accepting
   the current search contract fields, returning JSON error envelopes and request
-  IDs, using local search for basic/fast depths, and using DHT-selected
-  reachable-peer search for `search_depth=advanced`;
+  IDs, optionally requiring a local bearer token, using local search for
+  basic/fast depths, and using DHT-selected reachable-peer search for
+  `search_depth=advanced`;
 - expose `/opensearchdescription.xml`, `/suggest.json`, and `/suggest.xml` for
   browser search integration and recent-query suggestions;
 - store accepted document ingest payloads, RWI postings, and URL metadata
@@ -139,6 +140,7 @@ Common node variables:
 | `YACY_DHT_REDUNDANCY` | `3` | Redundant DHT targets per vertical partition, matching YaCy freeworld senior peers. |
 | `YACY_DHT_PARTITION_EXPONENT` | `4` | YaCy vertical DHT partition exponent used for outbound transfer and global remote search. |
 | `YACY_STORAGE_QUOTA` | `1GB` | Node storage quota. |
+| `YAGO_SEARCH_API_KEY` | empty | Optional local bearer token required by Tavily-compatible `POST /search` when set. |
 | `NATS_URL` | empty | Enables node-crawler integration when set. |
 
 See [yacynode/doc/configuration.md](yacynode/doc/configuration.md) for the full

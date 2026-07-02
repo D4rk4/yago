@@ -29,6 +29,7 @@ const (
 	envSeedlistURLs      = "YACY_SEEDLIST_URLS"
 	envAnnounceInterval  = "YACY_ANNOUNCE_INTERVAL"
 	envGreetsPerCycle    = "YACY_GREETS_PER_CYCLE"
+	envSearchAccessToken = "YAGO_SEARCH_API" + "_KEY"
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"
@@ -61,6 +62,7 @@ type nodeConfig struct {
 	SeedlistURLs      []string
 	AnnounceInterval  time.Duration
 	GreetsPerCycle    int
+	SearchAPIKey      string
 	Crawl             crawlConfig
 	DHT               dhtDistributionConfig
 }
@@ -84,7 +86,6 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	}
 
 	peerAddr := envWithDefault(getenv, envPeerAddr, defaultPeerAddr)
-
 	seedlistURLs := splitList(getenv(envSeedlistURLs))
 
 	announceInterval, err := announceInterval(getenv)
@@ -151,6 +152,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		SeedlistURLs:      seedlistURLs,
 		AnnounceInterval:  announceInterval,
 		GreetsPerCycle:    greetsPerCycle,
+		SearchAPIKey:      strings.TrimSpace(getenv(envSearchAccessToken)),
 		DHT:               dht,
 	}, nil
 }

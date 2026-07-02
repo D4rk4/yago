@@ -94,11 +94,12 @@ func assembleNode(
 		return node{}, err
 	}
 	mountNodePublicSearch(mux, publicSearchAssembly{
-		storage:  storage,
-		roster:   exchange.roster,
-		identity: identity,
-		dht:      config.DHT,
-		client:   client,
+		storage:      storage,
+		roster:       exchange.roster,
+		identity:     identity,
+		dht:          config.DHT,
+		client:       client,
+		searchAPIKey: config.SearchAPIKey,
 	})
 
 	mountNodeCrawlCompatibility(router, identity, storage)

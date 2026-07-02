@@ -51,6 +51,9 @@ func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 	if config.DataDir != defaultDataDir {
 		t.Errorf("DataDir = %q, want %q", config.DataDir, defaultDataDir)
 	}
+	if config.SearchAPIKey != "" {
+		t.Errorf("SearchAPIKey = %q, want empty default", config.SearchAPIKey)
+	}
 	if config.StorageQuotaByte != 1<<30 {
 		t.Errorf("StorageQuotaByte = %d, want 1GB", config.StorageQuotaByte)
 	}
@@ -90,6 +93,7 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 		envDHTRedundancy:           "5",
 		envDHTPartitionExponent:    "2",
 		envDHTMinimumPeerAgeDays:   "1",
+		envSearchAccessToken:       " search-secret ",
 	}))
 	if err != nil {
 		t.Fatalf("load config: %v", err)
@@ -122,6 +126,9 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 	}
 	if config.AnnounceInterval != 30*time.Second {
 		t.Errorf("AnnounceInterval = %v, want 30s", config.AnnounceInterval)
+	}
+	if config.SearchAPIKey != "search-secret" {
+		t.Errorf("SearchAPIKey = %q", config.SearchAPIKey)
 	}
 	if config.DHT.Gates.NetworkDHTEnabled ||
 		config.DHT.Gates.DistributionEnabled ||

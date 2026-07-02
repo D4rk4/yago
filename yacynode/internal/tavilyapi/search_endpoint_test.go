@@ -306,6 +306,73 @@ func TestSearchEndpointIgnoresUnknownFields(t *testing.T) {
 	}
 }
 
+func TestSearchEndpointRequiresConfiguredBearerToken(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		authorization string
+		code          int
+		calls         int
+	}{
+		{name: "missing", code: http.StatusUnauthorized},
+		{name: "basic", authorization: "Basic secret", code: http.StatusUnauthorized},
+		{name: "wrong", authorization: "Bearer wrong", code: http.StatusUnauthorized},
+		{name: "malformed", authorization: "Bearer secret extra", code: http.StatusUnauthorized},
+		{name: "valid", authorization: "bearer secret", code: http.StatusOK, calls: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			search := &fakeSearcher{}
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequestWithContext(
+				t.Context(),
+				http.MethodPost,
+				PathSearch,
+				strings.NewReader(`{"query":"go"}`),
+			)
+			req.Header.Set(requestIDHeader, tc.name)
+			if tc.authorization != "" {
+				req.Header.Set("Authorization", tc.authorization)
+			}
+
+			NewSearchEndpointWithAccess(
+				search,
+				nil,
+				SearchAccessPolicy{BearerToken: "secret"},
+			).ServeHTTP(rec, req)
+
+			if rec.Code != tc.code {
+				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+			}
+			if search.calls != tc.calls {
+				t.Fatalf("search calls = %d", search.calls)
+			}
+			if tc.code == http.StatusUnauthorized {
+				assertUnauthorizedResponse(t, rec, tc.name)
+			}
+		})
+	}
+}
+
+func assertUnauthorizedResponse(
+	t *testing.T,
+	rec *httptest.ResponseRecorder,
+	requestID string,
+) {
+	t.Helper()
+
+	if rec.Header().Get("WWW-Authenticate") != "Bearer" {
+		t.Fatalf("www-authenticate = %q", rec.Header().Get("WWW-Authenticate"))
+	}
+	var got ErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if got.Error.Code != "unauthorized" ||
+		got.Error.Message != "missing or invalid bearer token" ||
+		got.RequestID != requestID {
+		t.Fatalf("error response = %#v", got)
+	}
+}
+
 func TestSearchEndpointFiltersExactMatches(t *testing.T) {
 	search := &fakeSearcher{response: searchcore.Response{Results: []searchcore.Result{
 		{
@@ -521,7 +588,7 @@ func TestSearchEndpointReturnsSearchAndDocumentErrors(t *testing.T) {
 
 func TestSearchEndpointMountsRoute(t *testing.T) {
 	mux := http.NewServeMux()
-	Mount(mux, &fakeSearcher{}, nil)
+	Mount(mux, &fakeSearcher{}, nil, SearchAccessPolicy{})
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(

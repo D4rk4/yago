@@ -98,6 +98,57 @@ func TestNodePublicSearchMountsYaCySearchSurfaces(t *testing.T) {
 	}
 }
 
+func TestNodePublicSearchAppliesSearchAPIKeyOnlyToAgentSearch(t *testing.T) {
+	mux := http.NewServeMux()
+	mountNodePublicSearch(mux, publicSearchAssembly{
+		storage: nodeStorage{
+			postings:     publicSearchPostingIndex{},
+			urlDirectory: publicSearchURLDirectory{},
+		},
+		identity:     nodeidentity.Identity{NetworkName: "freeworld"},
+		dht:          defaultPublicSearchDHTConfig(),
+		client:       http.DefaultClient,
+		searchAPIKey: "secret",
+	})
+
+	yacyRec := httptest.NewRecorder()
+	yacyReq := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		yacyproto.PathYaCySearchJSON+"?query=absent",
+		nil,
+	)
+	mux.ServeHTTP(yacyRec, yacyReq)
+	if yacyRec.Code != http.StatusOK {
+		t.Fatalf("YaCy search status = %d body=%s", yacyRec.Code, yacyRec.Body.String())
+	}
+
+	missingRec := httptest.NewRecorder()
+	missingReq := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/search",
+		strings.NewReader(`{"query":"absent"}`),
+	)
+	mux.ServeHTTP(missingRec, missingReq)
+	if missingRec.Code != http.StatusUnauthorized {
+		t.Fatalf("missing auth status = %d body=%s", missingRec.Code, missingRec.Body.String())
+	}
+
+	authorizedRec := httptest.NewRecorder()
+	authorizedReq := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/search",
+		strings.NewReader(`{"query":"absent"}`),
+	)
+	authorizedReq.Header.Set("Authorization", "Bearer secret")
+	mux.ServeHTTP(authorizedRec, authorizedReq)
+	if authorizedRec.Code != http.StatusOK {
+		t.Fatalf("authorized status = %d body=%s", authorizedRec.Code, authorizedRec.Body.String())
+	}
+}
+
 func TestNodePublicSearchUsesDHTRedundancyConfig(t *testing.T) {
 	word := yacymodel.WordHash("golang")
 	unused := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {

@@ -33,6 +33,7 @@ services:
         http://seedlist.wertewesten.net/seed.txt
       NATS_URL: nats://nats:4222
       YACY_PROXY_URL: http://smokescreen:4750
+      YAGO_SEARCH_API_KEY: ${YAGO_SEARCH_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - yacy-data:/data

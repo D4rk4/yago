@@ -900,8 +900,10 @@ Important interpretation:
 Status: partial implementation exists in `yacynode/internal/tavilyapi`.
 `POST /search` accepts the current field set, ignores unknown fields for forward
 compatibility, validates bounded options, returns `request_id`, and uses stable
-JSON error envelopes. Auth/scopes, generated answers, image search, real usage
-accounting, and upstream Tavily remain separate tasks.
+JSON error envelopes. Opt-in local bearer auth is implemented through
+`YAGO_SEARCH_API_KEY`. Scopes, generated answers, image search, real usage
+accounting, hashed key storage, rate limits, and upstream Tavily remain separate
+tasks.
 
 Implement `tavilyapi` DTOs for `POST /search`.
 
@@ -976,6 +978,12 @@ Acceptance:
 - Tests compare response shape to Tavily docs examples without copying example content.
 
 ### TAVILY-03: Auth for Tavily-compatible endpoint
+
+Status: partial implementation exists. When `YAGO_SEARCH_API_KEY` is set,
+`POST /search` requires `Authorization: Bearer <token>` and returns a stable
+JSON `unauthorized` envelope with `WWW-Authenticate: Bearer` on failure. When
+the variable is empty, `/search` remains public. Scopes, hashed key storage,
+per-key rate limits, and audit events remain planned.
 
 Tasks:
 
