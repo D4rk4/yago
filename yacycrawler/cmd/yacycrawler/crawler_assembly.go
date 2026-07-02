@@ -13,6 +13,7 @@ import (
 	"github.com/D4rk4/yago/yacycrawler/internal/crawldelay"
 	"github.com/D4rk4/yago/yacycrawler/internal/crawlorder"
 	"github.com/D4rk4/yago/yacycrawler/internal/frontier"
+	"github.com/D4rk4/yago/yacycrawler/internal/httpfetch"
 	"github.com/D4rk4/yago/yacycrawler/internal/ingest"
 	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yacycrawler/internal/pageindex"
@@ -26,6 +27,8 @@ var connectCrawlerNATS = nats.Connect
 var newCrawlerJetStream = jetstream.New
 
 var newCrawlerRobotsAdmissionFetcher = robots.NewRobotsAdmissionFetcher
+
+var newCrawlerHTTPPageFetcher = httpfetch.NewPageFetcher
 
 var newCrawlerPublicWebAdmissionFetcher = func(
 	inner pagefetch.PageSource,
@@ -63,8 +66,14 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	frontier := frontier.NewFrontier(crawl.JobQueueSize, pace)
 
 	client := newEgressProxyClient(cfg.ProxyURL, crawl.RequestTimeout)
+	fastSource := botwall.NewBotWallScreeningFetcher(
+		newCrawlerHTTPPageFetcher(client, crawl.UserAgent, crawl.MaxBodyBytes),
+	)
+	slowSource := botwall.NewBotWallScreeningFetcher(source)
+	selectedSource := pagefetch.NewFallbackPageSource(fastSource, slowSource)
+
 	admitted, err := newCrawlerRobotsAdmissionFetcher(
-		source,
+		selectedSource,
 		client,
 		crawl.UserAgent,
 		crawl.HostCacheSize,
@@ -72,8 +81,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	if err != nil {
 		return fmt.Errorf("create robots admission: %w", err)
 	}
-	screened := botwall.NewBotWallScreeningFetcher(admitted)
-	publicOnly := newCrawlerPublicWebAdmissionFetcher(screened, nil)
+	publicOnly := newCrawlerPublicWebAdmissionFetcher(admitted, nil)
 	worker := pipeline.NewPipeline(
 		frontier,
 		publicOnly,

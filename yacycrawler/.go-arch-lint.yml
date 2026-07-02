@@ -16,6 +16,8 @@ components:
     in: internal/boundedqueue/**
   pagefetch:
     in: internal/pagefetch/**
+  httpfetch:
+    in: internal/httpfetch/**
   chromedpfetch:
     in: internal/chromedpfetch/**
   botwall:
@@ -97,6 +99,10 @@ deps:
       - boundedqueue
   pagefetch:
     mayDependOn:
+      - pagefetch
+  httpfetch:
+    mayDependOn:
+      - httpfetch
       - pagefetch
   chromedpfetch:
     mayDependOn:
@@ -195,6 +201,7 @@ deps:
       - crawldelay
       - crawlorder
       - frontier
+      - httpfetch
       - ingest
       - pagefetch
       - pageindex

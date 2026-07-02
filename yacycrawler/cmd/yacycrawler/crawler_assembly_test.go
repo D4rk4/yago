@@ -13,6 +13,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawler/internal/httpfetch"
 	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yacycrawler/internal/publicweb"
 	"github.com/D4rk4/yago/yacycrawler/internal/robots"
@@ -23,17 +24,22 @@ func restoreAssemblySeams(t *testing.T) {
 	savedConnect := connectCrawlerNATS
 	savedJetStream := newCrawlerJetStream
 	savedRobots := newCrawlerRobotsAdmissionFetcher
+	savedHTTP := newCrawlerHTTPPageFetcher
 	savedPublicWeb := newCrawlerPublicWebAdmissionFetcher
 	t.Cleanup(func() {
 		connectCrawlerNATS = savedConnect
 		newCrawlerJetStream = savedJetStream
 		newCrawlerRobotsAdmissionFetcher = savedRobots
+		newCrawlerHTTPPageFetcher = savedHTTP
 		newCrawlerPublicWebAdmissionFetcher = savedPublicWeb
 	})
 }
 
 func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
 	restoreAssemblySeams(t)
+	newCrawlerHTTPPageFetcher = func(*http.Client, string, int64) *httpfetch.PageFetcher {
+		return httpfetch.NewPageFetcher(http.DefaultClient, "", 0)
+	}
 	newCrawlerPublicWebAdmissionFetcher = func(
 		inner pagefetch.PageSource,
 		_ publicweb.Resolver,
@@ -159,6 +165,13 @@ func TestDefaultPublicWebAdmissionFetcherBuildsFetcher(t *testing.T) {
 	)
 	if got == nil {
 		t.Fatal("public web admission fetcher is nil")
+	}
+}
+
+func TestDefaultHTTPPageFetcherBuildsFetcher(t *testing.T) {
+	got := newCrawlerHTTPPageFetcher(http.DefaultClient, "agent/1.0", 1<<20)
+	if got == nil {
+		t.Fatal("http page fetcher is nil")
 	}
 }
 

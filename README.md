@@ -89,7 +89,7 @@ publish ingest batches back to the node.
 | Path | Purpose |
 | --- | --- |
 | `yacynode` | The `yago-node` daemon, YaCy peer protocol endpoints, document, RWI, and URL metadata vaults, search surfaces, metrics, peer exchange, and node-side crawl orchestration. |
-| `yacycrawler` | Optional crawler worker that fetches pages and emits document ingest payloads, RWI postings, and URL metadata. |
+| `yacycrawler` | Optional crawler worker that fetches pages through a bounded HTTP fast path with browser fallback, then emits document ingest payloads, RWI postings, and URL metadata. |
 | `yacycrawlcontract` | Shared JSON message contract between the node and crawler. |
 | `yacymodel` | YaCy domain values and codecs. |
 | `yacyproto` | YaCy peer-to-peer endpoint paths, request/response DTOs, and wire protocol helpers. |
