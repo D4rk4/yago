@@ -97,6 +97,10 @@ func openSearchDescriptionFor(r *http.Request) openSearchDescription {
 				Type:     "application/x-suggestions+json",
 				Template: base + "/suggest.json?query={searchTerms}",
 			},
+			{
+				Type:     "application/x-suggestions+xml",
+				Template: base + "/suggest.xml?query={searchTerms}",
+			},
 		},
 		Developer:        "See https://github.com/D4rk4/yago",
 		Query:            openSearchQuery{Role: "example", SearchTerms: "yacy free software"},

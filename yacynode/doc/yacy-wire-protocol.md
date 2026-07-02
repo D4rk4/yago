@@ -28,9 +28,11 @@ The public search endpoints `/yacysearch.json`, `/yacysearch.rss`, and
 `totalResults` fields following the original YaCy template shape.
 `/yacysearch.rss` returns OpenSearch-flavored RSS 2.0 with YaCy item metadata.
 `/yacysearch.html` returns a simple HTML search form and result list.
-`/opensearchdescription.xml` advertises the HTML, RSS, and suggestion URLs for
-the current public base URL. `/suggest.json` returns the OpenSearch suggestions
-JSON array shape from bounded in-memory recent queries.
+`/opensearchdescription.xml` advertises the HTML, RSS, JSON suggestion, and XML
+suggestion URLs for the current public base URL. `/suggest.json` returns the
+OpenSearch suggestions JSON array shape from bounded in-memory recent queries.
+`/suggest.xml` returns the YaCy-compatible `SearchSuggestion` XML shape with
+the same suggestion source.
 
 For public search, `resource=local` searches local RWI and URL metadata only.
 `resource=global` searches the local node and performs bounded YaCy

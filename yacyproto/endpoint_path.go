@@ -27,6 +27,7 @@ const (
 	PathYaCySearchRSS  = "/yacysearch.rss"
 	PathOpenSearch     = "/opensearchdescription.xml"
 	PathSuggestJSON    = "/suggest.json"
+	PathSuggestXML     = "/suggest.xml"
 )
 
 const (

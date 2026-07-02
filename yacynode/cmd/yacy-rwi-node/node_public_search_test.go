@@ -69,6 +69,7 @@ func TestNodePublicSearchMountsYaCySearchSurfaces(t *testing.T) {
 		yacyproto.PathYaCySearchHTML + "?query=absent",
 		yacyproto.PathOpenSearch,
 		yacyproto.PathSuggestJSON + "?query=absent",
+		yacyproto.PathSuggestXML + "?query=absent",
 	} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)

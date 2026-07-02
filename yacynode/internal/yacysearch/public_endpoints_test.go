@@ -3,6 +3,7 @@ package yacysearch
 import (
 	"crypto/tls"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -24,6 +25,7 @@ func TestMountRegistersPublicSearchEndpoints(t *testing.T) {
 		yacyproto.PathYaCySearchHTML,
 		yacyproto.PathOpenSearch,
 		yacyproto.PathSuggestJSON,
+		yacyproto.PathSuggestXML,
 	} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
@@ -134,6 +136,7 @@ func TestOpenSearchDescriptionUsesRequestBaseURL(t *testing.T) {
 		`https://node.test/yacysearch.html?query={searchTerms}&amp;startRecord={startIndex?}&amp;maximumRecords={count?}`,
 		`https://node.test/yacysearch.rss?query={searchTerms}&amp;startRecord={startIndex?}&amp;maximumRecords={count?}`,
 		`https://node.test/suggest.json?query={searchTerms}`,
+		`https://node.test/suggest.xml?query={searchTerms}`,
 	} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("missing %q in %s", expected, body)
@@ -222,6 +225,71 @@ func TestSuggestEndpointAcceptsQueryParameterAndRejectsNonGET(t *testing.T) {
 	}
 }
 
+func TestSuggestXMLEndpointReturnsYaCySuggestionShape(t *testing.T) {
+	suggestions := newRecentQueries()
+	suggestions.Record("golang <yacy>")
+	suggestions.Record("go dht")
+	suggestions.Record("java yacy")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		yacyproto.PathSuggestXML+"?q=go",
+		nil,
+	)
+
+	suggestXMLEndpoint{suggestions: suggestions}.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "application/x-suggestions+xml; charset=utf-8" {
+		t.Fatalf("content type = %q", rec.Header().Get("Content-Type"))
+	}
+	var got searchSuggestionXML
+	if err := xml.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode suggestions: %v", err)
+	}
+	values := suggestionTexts(got.Section.Items)
+	if got.Query != "go" ||
+		got.XMLNS != searchSuggestionNamespace ||
+		len(values) != 2 ||
+		values[0] != "go dht" ||
+		values[1] != "golang <yacy>" {
+		t.Fatalf("suggestions = %#v values=%#v", got, values)
+	}
+	if !strings.Contains(rec.Body.String(), "golang &lt;yacy&gt;") {
+		t.Fatalf("body was not escaped: %s", rec.Body.String())
+	}
+}
+
+func TestSuggestXMLEndpointAcceptsQueryParameterAndRejectsNonGET(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		yacyproto.PathSuggestXML+"?query=go",
+		nil,
+	)
+	suggestXMLEndpoint{suggestions: nil}.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<Query>go</Query>") {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		yacyproto.PathSuggestXML,
+		nil,
+	)
+	suggestXMLEndpoint{suggestions: newRecentQueries()}.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed || rec.Header().Get("Allow") != http.MethodGet {
+		t.Fatalf("status=%d allow=%q", rec.Code, rec.Header().Get("Allow"))
+	}
+}
+
 func TestHTMLEndpointReturnsSearchPage(t *testing.T) {
 	suggestions := newRecentQueries()
 	search := &fakeSearch{response: searchcore.Response{
@@ -267,6 +335,15 @@ func TestHTMLEndpointReturnsSearchPage(t *testing.T) {
 	if got := suggestions.Suggest("go", 1); len(got) != 1 || got[0] != "golang" {
 		t.Fatalf("suggestions = %#v", got)
 	}
+}
+
+func suggestionTexts(items []suggestionItem) []string {
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		values = append(values, item.Text)
+	}
+
+	return values
 }
 
 func TestHTMLEndpointRejectsInvalidRequests(t *testing.T) {

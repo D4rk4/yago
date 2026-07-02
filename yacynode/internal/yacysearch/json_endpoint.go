@@ -33,6 +33,7 @@ func Mount(mux *http.ServeMux, search searchcore.Searcher) {
 	})
 	mux.Handle(yacyproto.PathOpenSearch, openSearchEndpoint{})
 	mux.Handle(yacyproto.PathSuggestJSON, suggestEndpoint{suggestions: suggestions})
+	mux.Handle(yacyproto.PathSuggestXML, suggestXMLEndpoint{suggestions: suggestions})
 }
 
 func (e jsonEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {

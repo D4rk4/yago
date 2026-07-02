@@ -205,7 +205,7 @@ Implement and test these in stages:
 | `/yacysearch.rss` | P1 | OpenSearch/RSS compatibility subset | Enough for RSS/OpenSearch clients. |
 | `/opensearchdescription.xml` | P1 | Browser search integration | Must reflect public base URL. |
 | `/suggest.json` | P2 | Suggestions | From query logs/local index. |
-| `/suggest.xml` | P3 | OpenSearch suggestions | Optional. |
+| `/suggest.xml` | P3 | OpenSearch suggestions | Implemented from the current recent-query suggestion source. |
 | `/solr/select` | P3 | Solr compatibility subset | Do not attempt full Solr. Return controlled subset or 501 with docs. |
 | `/gsa/search` or `/gsa/searchresult` | P3 | GSA compatibility subset | Optional. |
 | `POST /search` | P0 | Tavily-compatible Search API | Primary agent/RAG integration target. |
