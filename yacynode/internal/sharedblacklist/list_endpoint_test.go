@@ -27,9 +27,13 @@ func (r *recordingBlacklists) SharedList(_ context.Context, name string) string 
 
 func TestListExportsSharedBlacklistEntries(t *testing.T) {
 	blacklists := &recordingBlacklists{}
-	resp, err := endpoint{blacklists: blacklists}.Serve(
+	resp, err := endpoint{networkName: "freeworld", blacklists: blacklists}.Serve(
 		t.Context(),
-		yacyproto.ListRequest{Column: yacyproto.ListColumnBlack, Name: "url.default.black"},
+		yacyproto.ListRequest{
+			NetworkName: "freeworld",
+			Column:      yacyproto.ListColumnBlack,
+			Name:        "url.default.black",
+		},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -48,9 +52,13 @@ func TestListExportsSharedBlacklistEntries(t *testing.T) {
 
 func TestListIgnoresUnsupportedColumn(t *testing.T) {
 	blacklists := &recordingBlacklists{}
-	resp, err := endpoint{blacklists: blacklists}.Serve(
+	resp, err := endpoint{networkName: "freeworld", blacklists: blacklists}.Serve(
 		t.Context(),
-		yacyproto.ListRequest{Column: "blue", Name: "url.default.black"},
+		yacyproto.ListRequest{
+			NetworkName: "freeworld",
+			Column:      "blue",
+			Name:        "url.default.black",
+		},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -61,6 +69,28 @@ func TestListIgnoresUnsupportedColumn(t *testing.T) {
 	}
 	if blacklists.name != "" {
 		t.Fatalf("blacklists consulted for unsupported column: %q", blacklists.name)
+	}
+}
+
+func TestListRejectsForeignNetwork(t *testing.T) {
+	blacklists := &recordingBlacklists{}
+	resp, err := endpoint{networkName: "freeworld", blacklists: blacklists}.Serve(
+		t.Context(),
+		yacyproto.ListRequest{
+			NetworkName: "othernet",
+			Column:      yacyproto.ListColumnBlack,
+			Name:        "url.default.black",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.Body != "" {
+		t.Fatalf("Body = %q, want empty auth failure response", resp.Body)
+	}
+	if blacklists.name != "" {
+		t.Fatalf("blacklists consulted for foreign network: %q", blacklists.name)
 	}
 }
 
@@ -78,10 +108,11 @@ func TestMountServesSharedBlacklistRoute(t *testing.T) {
 		Address: httpguard.NewClientAddressResolver(nil),
 	})
 	blacklists := &recordingBlacklists{}
-	Mount(router, blacklists)
+	Mount(router, "freeworld", blacklists)
 	form := yacyproto.ListRequest{
-		Column: yacyproto.ListColumnBlack,
-		Name:   "url.default.black",
+		NetworkName: "freeworld",
+		Column:      yacyproto.ListColumnBlack,
+		Name:        "url.default.black",
 	}.Form()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(

@@ -17,12 +17,12 @@ func (NoSharedBlacklists) SharedList(context.Context, string) string {
 	return ""
 }
 
-func Mount(router httpguard.WireRouter, blacklists Blacklists) {
+func Mount(router httpguard.WireRouter, networkName string, blacklists Blacklists) {
 	httpguard.MountRaw(
 		router,
 		yacyproto.PathList,
 		yacyproto.ListEndpointMethods,
 		yacyproto.ParseListRequest,
-		endpoint{blacklists: blacklists}.Serve,
+		endpoint{networkName: networkName, blacklists: blacklists}.Serve,
 	)
 }

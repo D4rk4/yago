@@ -107,7 +107,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:     yacyproto.PathList,
 		Methods:  methods(yacyproto.ListEndpointMethods),
 		State:    Partial,
-		Behavior: "Serves YaCy shared blacklist text shape for col=black from files named in YACY_DATA_DIR/SETTINGS/yacy.conf BlackLists.Shared under YACY_DATA_DIR/LISTS.",
+		Behavior: "Checks the YaCy network unit and serves shared blacklist col=black responses from files named in YACY_DATA_DIR/SETTINGS/yacy.conf BlackLists.Shared under YACY_DATA_DIR/LISTS.",
 		Evidence: []string{
 			"yacynode/internal/sharedblacklist/*_test.go",
 			"yacynode/cmd/yacy-rwi-node/node_shared_blacklist_test.go",

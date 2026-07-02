@@ -73,7 +73,11 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 	hostlinks.Mount(p.router, p.config.NetworkName, p.report, p.host)
 	peermessage.Mount(p.router, p.identity, mailbox)
 	peerprofile.Mount(p.router, p.identity, peerprofile.NewProfileFile(p.config.DataDir))
-	sharedblacklist.Mount(p.router, sharedblacklist.NewFileBlacklists(p.config.DataDir))
+	sharedblacklist.Mount(
+		p.router,
+		p.config.NetworkName,
+		sharedblacklist.NewFileBlacklists(p.config.DataDir),
+	)
 
 	return peerExchangeRuntime{
 		announcer: peerannouncement.New(

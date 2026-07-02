@@ -12,13 +12,18 @@ const (
 )
 
 type endpoint struct {
-	blacklists Blacklists
+	networkName string
+	blacklists  Blacklists
 }
 
 func (e endpoint) Serve(
 	ctx context.Context,
 	req yacyproto.ListRequest,
 ) (httpguard.RawResponse, error) {
+	if yacyproto.NetworkUnit(req.NetworkName) != yacyproto.NetworkUnit(e.networkName) {
+		return httpguard.RawResponse{ContentType: listContentType}, nil
+	}
+
 	if req.Column != yacyproto.ListColumnBlack {
 		return httpguard.RawResponse{ContentType: listContentType}, nil
 	}

@@ -33,8 +33,8 @@ The node currently targets these responsibilities:
 - bootstrap peers from configured YaCy seedlists, including seeds with either
   offset or timestamp `UTC` wire values;
 - answer YaCy shared blacklist export requests through `/yacy/list.html` with
-  entries from list files named in `YACY_DATA_DIR/SETTINGS/yacy.conf`
-  `BlackLists.Shared`;
+  YaCy network-unit checks and entries from list files named in
+  `YACY_DATA_DIR/SETTINGS/yacy.conf` `BlackLists.Shared`;
 - answer YaCy peer profile export requests through `/yacy/profile.html` with
   properties from `YACY_DATA_DIR/SETTINGS/profile.txt` when that file exists;
 - answer YaCy host-link index requests through `/yacy/idx.json?object=host` with

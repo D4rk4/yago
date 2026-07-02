@@ -31,8 +31,9 @@ func TestAssembledNodeServesDataDirectorySharedBlacklist(t *testing.T) {
 	}
 
 	form := yacyproto.ListRequest{
-		Column: yacyproto.ListColumnBlack,
-		Name:   "url.default.black",
+		NetworkName: "freeworld",
+		Column:      yacyproto.ListColumnBlack,
+		Name:        "url.default.black",
 	}.Form()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(

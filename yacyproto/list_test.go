@@ -8,7 +8,11 @@ import (
 )
 
 func TestListRequestFormRoundTrip(t *testing.T) {
-	req := yacyproto.ListRequest{Column: yacyproto.ListColumnBlack, Name: "url.default.black"}
+	req := yacyproto.ListRequest{
+		NetworkName: yacyproto.DefaultNetwork,
+		Column:      yacyproto.ListColumnBlack,
+		Name:        "url.default.black",
+	}
 
 	got, err := yacyproto.ParseListRequest(t.Context(), req.Form())
 	if err != nil {
@@ -28,6 +32,9 @@ func TestListRequestDefaultsToEmptyValues(t *testing.T) {
 
 	if got.Column != "" {
 		t.Fatalf("Column = %q, want empty", got.Column)
+	}
+	if got.NetworkName != "" {
+		t.Fatalf("NetworkName = %q, want empty", got.NetworkName)
 	}
 	if got.Name != "" {
 		t.Fatalf("Name = %q, want empty", got.Name)
