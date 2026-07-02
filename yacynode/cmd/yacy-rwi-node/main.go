@@ -97,7 +97,7 @@ func run() error {
 		return fmt.Errorf("assemble node: %w", err)
 	}
 
-	opsMux := newOpsMux(endpoints.Handler())
+	opsMux := newOpsMux(endpoints.Handler(), assembled.dht.gates)
 	if assembled.crawl != nil {
 		assembled.crawl.mountDispatch(opsMux)
 	}

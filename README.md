@@ -44,11 +44,12 @@ The node currently targets these responsibilities:
 - receive URL metadata through `/yacy/transferURL.html`;
 - run retry-aware outbound DHT handoff cycles fed from stored RWI postings, with
   YaCy-style sender gates, target selection, local deletion, restore, peer
-  quarantine, and metrics;
+  quarantine, metrics, and a JSON gate status endpoint;
 - serve remote RWI search requests through `/yacy/search.html`;
 - store accepted RWI postings and URL metadata durably;
-- expose `/health` and `/metrics` on the ops listener, including inbound and
-  outbound DHT transfer series and peer discovery gauges/counters;
+- expose `/health`, `/metrics`, and DHT gate status on the ops listener,
+  including inbound and outbound DHT transfer series and peer discovery
+  gauges/counters;
 - optionally publish crawl orders and consume crawler ingest batches over NATS
   JetStream when crawling is configured.
 
@@ -142,6 +143,7 @@ Useful checks:
 ```sh
 curl -fsS http://127.0.0.1:9090/health
 curl -fsS http://127.0.0.1:9090/metrics
+curl -fsS http://127.0.0.1:9090/api/admin/v1/network/dht/gates
 curl -fsS http://127.0.0.1:8090/
 curl -fsS http://127.0.0.1:8090/yacy/seedlist.html
 curl -fsS http://127.0.0.1:8090/yacy/seedlist.json

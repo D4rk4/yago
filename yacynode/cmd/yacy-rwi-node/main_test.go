@@ -91,7 +91,10 @@ func TestServeReturnsNilAfterCancel(t *testing.T) {
 		namedServer{"peer protocol", buildServer("127.0.0.1:0", assembled.peerMux)},
 		namedServer{
 			"ops",
-			buildServer("127.0.0.1:0", newOpsMux(metrics.NewHTTPEndpointMetrics().Handler())),
+			buildServer(
+				"127.0.0.1:0",
+				newOpsMux(metrics.NewHTTPEndpointMetrics().Handler(), nil),
+			),
 		},
 	)
 	if err != nil {
@@ -116,9 +119,24 @@ func TestServeShutsDownOnListenError(t *testing.T) {
 func TestOpsMuxAnswersHealth(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, pathHealth, nil)
-	newOpsMux(metrics.NewHTTPEndpointMetrics().Handler()).ServeHTTP(rec, req)
+	newOpsMux(metrics.NewHTTPEndpointMetrics().Handler(), nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("health status = %d, want 200", rec.Code)
+	}
+}
+
+func TestOpsMuxServesDHTGates(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, pathDHTGates, nil)
+	newOpsMux(
+		metrics.NewHTTPEndpointMetrics().Handler(),
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusAccepted)
+		}),
+	).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("dht gate status = %d, want 202", rec.Code)
 	}
 }

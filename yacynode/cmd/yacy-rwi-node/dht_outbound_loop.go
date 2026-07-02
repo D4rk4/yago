@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/D4rk4/yago/yacynode/internal/dhtexchange"
@@ -20,6 +21,7 @@ type dhtOutboundCycle interface {
 type dhtOutboundProcess struct {
 	cycle    dhtOutboundCycle
 	interval time.Duration
+	gates    http.Handler
 }
 
 var newDHTOutboundTicks = func(interval time.Duration) (<-chan time.Time, func()) {

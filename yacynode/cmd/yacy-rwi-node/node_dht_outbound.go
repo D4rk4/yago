@@ -51,6 +51,12 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 			assembly.config.PublicSelfTestURL,
 		)
 	}
+	gateSource := dhtGateStateSource{
+		reachability: reachability,
+		storage:      assembly.storage,
+		postings:     assembly.nodeStorage.postings,
+		roster:       assembly.roster,
+	}
 	writer := indextransfer.NewHTTPPeerWriter(
 		assembly.client,
 		assembly.config.NetworkName,
@@ -81,18 +87,17 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 		distributor,
 		dhtexchange.NewOutboundRetryPolicy(dhtexchange.DefaultOutboundRetryConfig()),
 		assembly.observer,
-		dhtGateStateSource{
-			reachability: reachability,
-			storage:      assembly.storage,
-			postings:     assembly.nodeStorage.postings,
-			roster:       assembly.roster,
-		}.Snapshot,
+		gateSource.Snapshot,
 		dhtexchange.OutboundSchedulerConfig{Gates: assembly.config.DHT.Gates, Feed: feeder},
 	)
 
 	return dhtOutboundProcess{
 		cycle:    dhtOutboundRosterCycle{cycle: scheduler, roster: assembly.roster},
 		interval: assembly.config.DHT.Interval,
+		gates: newDHTGateStatusEndpoint(dhtGateStatusSource{
+			snapshot: gateSource.Snapshot,
+			config:   assembly.config.DHT.Gates,
+		}),
 	}
 }
 

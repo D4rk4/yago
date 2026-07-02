@@ -81,6 +81,12 @@ with stable reason text. The runtime scheduler feeds these gates from the local
 YaCy-compatible public endpoint self-test, reachable peer count, local RWI word
 count, storage capacity, and DHT distribution environment flags.
 
+The ops listener exposes the current sender-side gate report at
+`/api/admin/v1/network/dht/gates`. The JSON response includes the overall open
+state, the first blocking reason, raw gate inputs, configured thresholds, and
+each named gate result. This is the current machine-readable surface for future
+admin UI work.
+
 The public endpoint self-test calls
 `/yacy/query.html?object=rwicount&youare=<local-peer-hash>`. By default it uses
 the local peer listener with loopback substituted for wildcard listen addresses.
