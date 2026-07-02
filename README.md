@@ -103,10 +103,13 @@ publish ingest batches back to the node.
 
 - Go 1.26.
 - Docker or Podman for container and end-to-end workflows.
-- A proxy for outbound node and crawler traffic. The example stack uses
-  Smokescreen, and the crawler also rejects non-public destinations before
-  fetch.
 - NATS JetStream when crawler integration is enabled.
+
+Outbound node and crawler connections are screened in-process at dial time, so
+no external forward proxy is required. Private networks are blocked by default;
+set `YACY_EGRESS_ALLOW_PRIVATE_NETWORKS=true` (node) or
+`YACYCRAWLER_ALLOW_PRIVATE_NETWORKS=true` (crawler) for LAN and private-network
+deployments.
 
 Build and lint tools are pinned through the repository toolchain flow and are
 installed under `.toolchain/` by `make tools` or `make verify`.
@@ -119,7 +122,6 @@ values for a local node process are:
 ```sh
 YACY_PEER_HASH=...
 YACY_PEER_NAME=...
-YACY_PROXY_URL=http://127.0.0.1:4750
 ```
 
 Generate a peer hash with:
@@ -179,7 +181,6 @@ The example stack starts:
 
 - `nats` with JetStream enabled;
 - `yago-node` on ports `8090` and `9090`;
-- `smokescreen` as the outbound proxy;
 - `yacycrawler` as the optional crawler worker.
 
 When `NATS_URL` is configured, the ops listener accepts local crawl dispatch

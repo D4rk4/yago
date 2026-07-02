@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -27,7 +26,7 @@ const (
 	EnvHeaderTimeout     = "YACYCRAWLER_HEADER_TIMEOUT"
 	EnvMaxRedirects      = "YACYCRAWLER_MAX_REDIRECTS"
 	EnvSitemapURLLimit   = "YACYCRAWLER_SITEMAP_URL_LIMIT"
-	EnvProxyURL          = "YACYCRAWLER_PROXY_URL"
+	EnvEgressAllowLAN    = "YACYCRAWLER_ALLOW_PRIVATE_NETWORKS"
 
 	DefaultOrdersSubject = "yacy.crawl.orders"
 	DefaultIngestSubject = "yacy.crawl.ingest"
@@ -84,13 +83,13 @@ func DefaultCrawlConfig() CrawlConfig {
 }
 
 type ServiceConfig struct {
-	Crawl         CrawlConfig
-	NATSURL       string
-	ProxyURL      *url.URL
-	OrdersSubject string
-	IngestSubject string
-	OrdersDurable string
-	IngestMaxMsgs int64
+	Crawl          CrawlConfig
+	NATSURL        string
+	EgressAllowLAN bool
+	OrdersSubject  string
+	IngestSubject  string
+	OrdersDurable  string
+	IngestMaxMsgs  int64
 }
 
 func (c ServiceConfig) StreamSpec() yacycrawlcontract.StreamSpec {
@@ -107,7 +106,7 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		return ServiceConfig{}, fmt.Errorf("%s: must be set", EnvNATSURL)
 	}
 
-	proxyURL, err := egressProxyURL(getenv)
+	egressAllowLAN, err := envBool(getenv, EnvEgressAllowLAN, false)
 	if err != nil {
 		return ServiceConfig{}, err
 	}
@@ -123,13 +122,13 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 	}
 
 	return ServiceConfig{
-		Crawl:         crawl,
-		NATSURL:       natsURL,
-		ProxyURL:      proxyURL,
-		OrdersSubject: envString(getenv, EnvNATSOrdersSubject, DefaultOrdersSubject),
-		IngestSubject: envString(getenv, EnvNATSIngestSubject, DefaultIngestSubject),
-		OrdersDurable: envString(getenv, EnvNATSDurable, DefaultOrdersDurable),
-		IngestMaxMsgs: maxMsgs,
+		Crawl:          crawl,
+		NATSURL:        natsURL,
+		EgressAllowLAN: egressAllowLAN,
+		OrdersSubject:  envString(getenv, EnvNATSOrdersSubject, DefaultOrdersSubject),
+		IngestSubject:  envString(getenv, EnvNATSIngestSubject, DefaultIngestSubject),
+		OrdersDurable:  envString(getenv, EnvNATSDurable, DefaultOrdersDurable),
+		IngestMaxMsgs:  maxMsgs,
 	}, nil
 }
 
@@ -193,6 +192,18 @@ func loadCrawlConfig(getenv func(string) string) (CrawlConfig, error) {
 	crawl.SitemapURLLimit = sitemapURLLimit
 
 	return crawl, nil
+}
+
+func envBool(getenv func(string) string, key string, fallback bool) (bool, error) {
+	raw := strings.TrimSpace(getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", key, err)
+	}
+	return value, nil
 }
 
 func envString(getenv func(string) string, key, fallback string) string {

@@ -3,12 +3,14 @@ package chromedpfetch
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/url"
 	"time"
 
 	"github.com/chromedp/chromedp"
 
 	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
+	"github.com/D4rk4/yago/yacyegress"
 )
 
 const BrowserContentType = "text/html; charset=utf-8"
@@ -32,21 +34,30 @@ type BrowserPageFetcher struct {
 
 func NewBrowserPageFetcher(
 	userAgent string,
-	proxyURL string,
+	guard yacyegress.Guard,
 	timeout time.Duration,
 	maxBytes int64,
-) (*BrowserPageFetcher, func()) {
+) (*BrowserPageFetcher, func(), error) {
+	proxy, err := startGuardedForwardProxy((&net.Dialer{Control: guard.DialControl}).DialContext)
+	if err != nil {
+		return nil, nil, fmt.Errorf("start browser egress proxy: %w", err)
+	}
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.UserAgent(userAgent),
 	)
-	opts = append(opts, proxyExecAllocatorOptions(proxyURL)...)
+	opts = append(opts, proxyExecAllocatorOptions(proxy.url)...)
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	fetcher := &BrowserPageFetcher{
 		render:   chromedpRenderer(allocCtx),
 		timeout:  timeout,
 		maxBytes: maxBytes,
 	}
-	return fetcher, allocCancel
+	closeFetcher := func() {
+		allocCancel()
+		proxy.Close()
+	}
+
+	return fetcher, closeFetcher, nil
 }
 
 func chromedpRenderer(allocCtx context.Context) pageRenderer {

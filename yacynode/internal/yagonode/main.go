@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/D4rk4/yago/yacyegress"
 	"github.com/D4rk4/yago/yacynode/internal/boltvault"
 	"github.com/D4rk4/yago/yacynode/internal/metrics"
 )
@@ -64,7 +65,7 @@ func run() error {
 		return fmt.Errorf("load crawl config: %w", err)
 	}
 
-	client := newEgressProxyClient(config.ProxyURL, outboundRequestTimeout)
+	client := newGuardedEgressClient(yacyegress.NewGuard(config.EgressAllowLAN))
 
 	vault, err := openRuntimeVault(config.StoragePath, config.StorageQuotaByte)
 	if err != nil {

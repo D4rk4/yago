@@ -24,10 +24,10 @@ func startCrawler(t *testing.T, ctx context.Context, networkName string) {
 			Networks:       []string{networkName},
 			NetworkAliases: map[string][]string{networkName: {crawlerAlias}},
 			Env: map[string]string{
-				"NATS_URL":              natsNetworkURL(),
-				"YACYCRAWLER_PROXY_URL": egressProxyNetworkURL(),
-				"YACYCRAWLER_WORKERS":   "1",
-				"LOG_LEVEL":             "debug",
+				"NATS_URL":                           natsNetworkURL(),
+				"YACYCRAWLER_ALLOW_PRIVATE_NETWORKS": "true",
+				"YACYCRAWLER_WORKERS":                "1",
+				"LOG_LEVEL":                          "debug",
 			},
 		},
 	})

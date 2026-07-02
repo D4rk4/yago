@@ -14,6 +14,7 @@ COPY go.work go.work.sum ./
 COPY yacynode/go.mod yacynode/go.sum yacynode/
 COPY yacycrawlcontract/go.mod yacycrawlcontract/
 COPY yacycrawler/go.mod yacycrawler/
+COPY yacyegress/go.mod yacyegress/
 COPY yacymodel/go.mod yacymodel/
 COPY yacyproto/go.mod yacyproto/
 

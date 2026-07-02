@@ -37,18 +37,18 @@ func startNode(
 ) (testcontainers.Container, string) {
 	t.Helper()
 	env := map[string]string{
-		"YACY_PEER_BIRTH_DATE":   time.Now().AddDate(0, 0, -5).UTC().Format("20060102"),
-		"YACY_PEER_HASH":         cfg.hash.String(),
-		"YACY_PEER_NAME":         cfg.alias,
-		"YACY_NETWORK_NAME":      yacyproto.DefaultNetwork,
-		"YACY_PEER_ADDR":         ":" + nodeContainerPort,
-		"YACY_ADVERTISE_HOST":    cfg.alias,
-		"YACY_ADVERTISE_PORT":    nodeContainerPort,
-		"YACY_DATA_DIR":          "/tmp/data",
-		"YACY_ANNOUNCE_INTERVAL": "10s",
-		"YACY_GREETS_PER_CYCLE":  strconv.Itoa(dhtMinConnectedPeers + 8),
-		"YACY_PROXY_URL":         egressProxyNetworkURL(),
-		"LOG_LEVEL":              "debug",
+		"YACY_PEER_BIRTH_DATE":               time.Now().AddDate(0, 0, -5).UTC().Format("20060102"),
+		"YACY_PEER_HASH":                     cfg.hash.String(),
+		"YACY_PEER_NAME":                     cfg.alias,
+		"YACY_NETWORK_NAME":                  yacyproto.DefaultNetwork,
+		"YACY_PEER_ADDR":                     ":" + nodeContainerPort,
+		"YACY_ADVERTISE_HOST":                cfg.alias,
+		"YACY_ADVERTISE_PORT":                nodeContainerPort,
+		"YACY_DATA_DIR":                      "/tmp/data",
+		"YACY_ANNOUNCE_INTERVAL":             "10s",
+		"YACY_GREETS_PER_CYCLE":              strconv.Itoa(dhtMinConnectedPeers + 8),
+		"YACY_EGRESS_ALLOW_PRIVATE_NETWORKS": "true",
+		"LOG_LEVEL":                          "debug",
 	}
 	if cfg.seedlistURL != "" {
 		env["YACY_SEEDLIST_URLS"] = cfg.seedlistURL

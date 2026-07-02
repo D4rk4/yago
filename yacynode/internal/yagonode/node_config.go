@@ -26,6 +26,7 @@ const (
 	envDataDir           = "YACY_DATA_DIR"
 	envStorageQuota      = "YACY_STORAGE_QUOTA"
 	envTrustedProxies    = "YACY_TRUSTED_PROXIES"
+	envEgressAllowLAN    = "YACY_EGRESS_ALLOW_PRIVATE_NETWORKS"
 	envSeedlistURLs      = "YACY_SEEDLIST_URLS"
 	envAnnounceInterval  = "YACY_ANNOUNCE_INTERVAL"
 	envGreetsPerCycle    = "YACY_GREETS_PER_CYCLE"
@@ -60,7 +61,7 @@ type nodeConfig struct {
 	SearchIndexPath   string
 	StorageQuotaByte  int64
 	TrustedProxies    []*net.IPNet
-	ProxyURL          *url.URL
+	EgressAllowLAN    bool
 	SeedlistURLs      []string
 	AnnounceInterval  time.Duration
 	GreetsPerCycle    int
@@ -116,7 +117,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		return nodeConfig{}, err
 	}
 
-	proxies, proxyURL, err := proxyConfig(getenv)
+	proxies, egressAllowLAN, err := egressConfig(getenv)
 	if err != nil {
 		return nodeConfig{}, err
 	}
@@ -146,7 +147,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		SearchIndexPath:   data.searchIndexPath,
 		StorageQuotaByte:  data.quotaByte,
 		TrustedProxies:    proxies,
-		ProxyURL:          proxyURL,
+		EgressAllowLAN:    egressAllowLAN,
 		SeedlistURLs:      seedlistURLs,
 		AnnounceInterval:  announceInterval,
 		GreetsPerCycle:    greetsPerCycle,
@@ -156,17 +157,17 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	}, nil
 }
 
-func proxyConfig(getenv func(string) string) ([]*net.IPNet, *url.URL, error) {
+func egressConfig(getenv func(string) string) ([]*net.IPNet, bool, error) {
 	proxies, err := parseTrustedProxies(getenv(envTrustedProxies))
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", envTrustedProxies, err)
+		return nil, false, fmt.Errorf("%s: %w", envTrustedProxies, err)
 	}
-	proxyURL, err := egressProxyURL(getenv)
+	allowLAN, err := boolEnv(getenv, envEgressAllowLAN, false)
 	if err != nil {
-		return nil, nil, err
+		return nil, false, fmt.Errorf("%s: %w", envEgressAllowLAN, err)
 	}
 
-	return proxies, proxyURL, nil
+	return proxies, allowLAN, nil
 }
 
 func declaredBirthDate(getenv func(string) string) (time.Time, error) {

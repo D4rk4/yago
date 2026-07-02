@@ -36,7 +36,6 @@ func TestNodeDistributesRWIToRealYaCy(t *testing.T) {
 	probe := newHTTPProbe(t)
 
 	network := newHermeticNetwork(t, ctx)
-	startEgressProxy(t, ctx, network.Name)
 
 	_, yacyURL := startYaCy(t, ctx, probe, network.Name, outboundYaCyAlias)
 	yacyHash := resolveYaCyHash(t, ctx, probe, yacyURL)
@@ -87,7 +86,6 @@ func TestGlobalSearchFindsRealYaCyResults(t *testing.T) {
 	probe := newHTTPProbe(t)
 
 	network := newHermeticNetwork(t, ctx)
-	startEgressProxy(t, ctx, network.Name)
 
 	_, yacyURL := startYaCy(t, ctx, probe, network.Name, searchYaCyAlias)
 	yacyHash := resolveYaCyHash(t, ctx, probe, yacyURL)

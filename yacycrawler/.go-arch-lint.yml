@@ -58,6 +58,10 @@ vendors:
     in:
       - github.com/D4rk4/yago/yacycrawlcontract
       - github.com/D4rk4/yago/yacycrawlcontract/**
+  yacyegress:
+    in:
+      - github.com/D4rk4/yago/yacyegress
+      - github.com/D4rk4/yago/yacyegress/**
   xnet-html:
     in:
       - golang.org/x/net/html
@@ -124,6 +128,7 @@ deps:
       - pagefetch
     canUse:
       - chromedp
+      - yacyegress
   botwall:
     mayDependOn:
       - botwall
@@ -132,6 +137,8 @@ deps:
     mayDependOn:
       - publicweb
       - pagefetch
+    canUse:
+      - yacyegress
   robots:
     mayDependOn:
       - robots
@@ -226,6 +233,7 @@ deps:
       - robots
     canUse:
       - yacycrawlcontract
+      - yacyegress
       - nats
       - nats-server
 

@@ -10,7 +10,15 @@ import (
 
 	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yacycrawler/internal/publicweb"
+	"github.com/D4rk4/yago/yacyegress"
 )
+
+func admissionFetcher(
+	inner pagefetch.PageSource,
+	resolver publicweb.Resolver,
+) *publicweb.AdmissionFetcher {
+	return publicweb.NewAdmissionFetcher(inner, resolver, yacyegress.NewGuard(false))
+}
 
 type resolverFunc func(context.Context, string, string) ([]netip.Addr, error)
 
@@ -30,7 +38,7 @@ func (f fetchFunc) Fetch(ctx context.Context, target *url.URL) (pagefetch.Fetche
 
 func TestAdmissionFetcherAllowsPublicWebTargets(t *testing.T) {
 	innerCalls := 0
-	fetcher := publicweb.NewAdmissionFetcher(
+	fetcher := admissionFetcher(
 		fetchFunc(func(_ context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
 			innerCalls++
 			return pagefetch.FetchedPage{
@@ -59,8 +67,32 @@ func TestAdmissionFetcherAllowsPublicWebTargets(t *testing.T) {
 	}
 }
 
-func TestNewAdmissionFetcherAcceptsDefaultResolver(t *testing.T) {
+func TestAdmissionFetcherAllowsPrivateWhenGuardPermits(t *testing.T) {
+	innerCalls := 0
 	fetcher := publicweb.NewAdmissionFetcher(
+		fetchFunc(func(_ context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
+			innerCalls++
+			return pagefetch.FetchedPage{URL: target}, nil
+		}),
+		resolverFunc(func(context.Context, string, string) ([]netip.Addr, error) {
+			return []netip.Addr{netip.MustParseAddr("10.0.0.2")}, nil
+		}),
+		yacyegress.NewGuard(true),
+	)
+
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		mustParse(t, "http://intranet.example/"),
+	); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if innerCalls != 1 {
+		t.Fatalf("inner calls = %d", innerCalls)
+	}
+}
+
+func TestNewAdmissionFetcherAcceptsDefaultResolver(t *testing.T) {
+	fetcher := admissionFetcher(
 		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
 			return pagefetch.FetchedPage{}, nil
 		}),
@@ -73,7 +105,7 @@ func TestNewAdmissionFetcherAcceptsDefaultResolver(t *testing.T) {
 
 func TestAdmissionFetcherAllowsPublicLiteralAddress(t *testing.T) {
 	innerCalls := 0
-	fetcher := publicweb.NewAdmissionFetcher(
+	fetcher := admissionFetcher(
 		fetchFunc(func(_ context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
 			innerCalls++
 			return pagefetch.FetchedPage{URL: target}, nil
@@ -108,7 +140,7 @@ func TestAdmissionFetcherRejectsUnsafeTargetsBeforeInnerFetch(t *testing.T) {
 		"http://[fe80::1%25eth0]/",
 	} {
 		t.Run(raw, func(t *testing.T) {
-			fetcher := publicweb.NewAdmissionFetcher(
+			fetcher := admissionFetcher(
 				fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
 					t.Fatal("inner fetch must not run")
 					return pagefetch.FetchedPage{}, nil
@@ -133,7 +165,7 @@ func TestAdmissionFetcherRejectsMalformedTargetsBeforeInnerFetch(t *testing.T) {
 		{Scheme: "http"},
 		{Scheme: "http", Host: ":"},
 	} {
-		fetcher := publicweb.NewAdmissionFetcher(
+		fetcher := admissionFetcher(
 			fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
 				t.Fatal("inner fetch must not run")
 				return pagefetch.FetchedPage{}, nil
@@ -159,7 +191,7 @@ func TestAdmissionFetcherRejectsUnsafeDNSAnswersBeforeInnerFetch(t *testing.T) {
 		{},
 	} {
 		innerCalls := 0
-		fetcher := publicweb.NewAdmissionFetcher(
+		fetcher := admissionFetcher(
 			fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
 				innerCalls++
 				return pagefetch.FetchedPage{}, nil
@@ -181,7 +213,7 @@ func TestAdmissionFetcherRejectsUnsafeDNSAnswersBeforeInnerFetch(t *testing.T) {
 
 func TestAdmissionFetcherReturnsInnerFetchError(t *testing.T) {
 	sentinel := errors.New("fetch failed")
-	fetcher := publicweb.NewAdmissionFetcher(
+	fetcher := admissionFetcher(
 		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
 			return pagefetch.FetchedPage{}, sentinel
 		}),
@@ -198,7 +230,7 @@ func TestAdmissionFetcherReturnsInnerFetchError(t *testing.T) {
 
 func TestAdmissionFetcherRejectsResolverFailureBeforeInnerFetch(t *testing.T) {
 	innerCalls := 0
-	fetcher := publicweb.NewAdmissionFetcher(
+	fetcher := admissionFetcher(
 		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
 			innerCalls++
 			return pagefetch.FetchedPage{}, nil
@@ -220,7 +252,7 @@ func TestAdmissionFetcherRejectsResolverFailureBeforeInnerFetch(t *testing.T) {
 
 func TestAdmissionFetcherRejectsUnsafeFinalURL(t *testing.T) {
 	innerCalls := 0
-	fetcher := publicweb.NewAdmissionFetcher(
+	fetcher := admissionFetcher(
 		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
 			innerCalls++
 			return pagefetch.FetchedPage{

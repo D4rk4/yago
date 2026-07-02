@@ -112,6 +112,10 @@ vendors:
     in:
       - github.com/D4rk4/yago/yacycrawlcontract
       - github.com/D4rk4/yago/yacycrawlcontract/**
+  yacyegress:
+    in:
+      - github.com/D4rk4/yago/yacyegress
+      - github.com/D4rk4/yago/yacyegress/**
   bbolt:
     in: go.etcd.io/bbolt
   bleve:
@@ -473,6 +477,7 @@ deps:
       - yacysearch
     canUse:
       - yacycrawlcontract
+      - yacyegress
       - yacymodel
       - yacyproto
       - prometheus

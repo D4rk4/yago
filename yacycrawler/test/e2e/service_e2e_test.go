@@ -16,7 +16,6 @@ func TestCrawlerIsOrderDrivenEndToEnd(t *testing.T) {
 
 	natsURL := startNATS(t, ctx, network.Name)
 	originURL := startOrigin(t, ctx, network.Name)
-	startEgressProxy(t, ctx, network.Name)
 	startCrawler(t, ctx, network.Name)
 
 	js := connectJetStream(t, natsURL)

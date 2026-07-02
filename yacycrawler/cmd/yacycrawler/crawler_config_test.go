@@ -34,33 +34,36 @@ func TestLoadServiceConfigRequiresNATSURL(t *testing.T) {
 	}
 }
 
-func TestLoadServiceConfigRequiresProxyURL(t *testing.T) {
-	if _, err := LoadServiceConfig(envFrom(map[string]string{
+func TestLoadServiceConfigAllowsMissingEgressVars(t *testing.T) {
+	cfg, err := LoadServiceConfig(envFrom(map[string]string{
 		EnvNATSURL: "nats://localhost:4222",
-	})); err == nil {
-		t.Fatal("expected error when YACYCRAWLER_PROXY_URL is unset")
+	}))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.EgressAllowLAN {
+		t.Error("EgressAllowLAN must default to false")
 	}
 }
 
-func TestLoadServiceConfigRejectsNonHTTPProxyURL(t *testing.T) {
+func TestLoadServiceConfigRejectsBadEgressAllowLAN(t *testing.T) {
 	if _, err := LoadServiceConfig(envFrom(map[string]string{
-		EnvNATSURL:  "nats://localhost:4222",
-		EnvProxyURL: "socks5://proxy:1080",
+		EnvNATSURL:        "nats://localhost:4222",
+		EnvEgressAllowLAN: "maybe",
 	})); err == nil {
-		t.Fatal("expected error for non-http proxy scheme")
+		t.Fatal("expected error for malformed egress toggle")
 	}
 }
 
 func TestLoadServiceConfigDefaults(t *testing.T) {
 	cfg, err := LoadServiceConfig(envFrom(map[string]string{
-		EnvNATSURL:  "nats://localhost:4222",
-		EnvProxyURL: "http://proxy:4750",
+		EnvNATSURL: "nats://localhost:4222",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if cfg.ProxyURL == nil || cfg.ProxyURL.String() != "http://proxy:4750" {
-		t.Errorf("proxy url = %v", cfg.ProxyURL)
+	if cfg.EgressAllowLAN {
+		t.Error("EgressAllowLAN must default to false")
 	}
 	if cfg.OrdersSubject != DefaultOrdersSubject {
 		t.Errorf("orders subject = %q", cfg.OrdersSubject)
@@ -97,7 +100,7 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 func TestLoadServiceConfigOverrides(t *testing.T) {
 	cfg, err := LoadServiceConfig(envFrom(map[string]string{
 		EnvNATSURL:           "nats://localhost:4222",
-		EnvProxyURL:          "http://proxy:4750",
+		EnvEgressAllowLAN:    "true",
 		EnvNATSOrdersSubject: "o.subject",
 		EnvNATSIngestSubject: "i.subject",
 		EnvNATSDurable:       "dur",
@@ -115,6 +118,9 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
+	}
+	if !cfg.EgressAllowLAN {
+		t.Error("EgressAllowLAN = false, want true")
 	}
 	if cfg.OrdersSubject != "o.subject" || cfg.IngestSubject != "i.subject" {
 		t.Errorf("subjects = %q %q", cfg.OrdersSubject, cfg.IngestSubject)
@@ -147,8 +153,7 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 
 func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 	base := map[string]string{
-		EnvNATSURL:  "nats://localhost:4222",
-		EnvProxyURL: "http://proxy:4750",
+		EnvNATSURL: "nats://localhost:4222",
 	}
 	cases := map[string]string{
 		EnvWorkers:           "0",
@@ -176,8 +181,7 @@ func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 
 func TestLoadServiceConfigRejectsParseErrors(t *testing.T) {
 	base := map[string]string{
-		EnvNATSURL:  "nats://localhost:4222",
-		EnvProxyURL: "http://proxy:4750",
+		EnvNATSURL: "nats://localhost:4222",
 	}
 	cases := map[string]string{
 		EnvNATSIngestMaxMsgs: "abc",
@@ -198,23 +202,5 @@ func TestLoadServiceConfigRejectsParseErrors(t *testing.T) {
 		if _, err := LoadServiceConfig(envFrom(env)); err == nil {
 			t.Errorf("%s=%q: expected error", key, bad)
 		}
-	}
-}
-
-func TestLoadServiceConfigRejectsMalformedProxyURL(t *testing.T) {
-	if _, err := LoadServiceConfig(envFrom(map[string]string{
-		EnvNATSURL:  "nats://localhost:4222",
-		EnvProxyURL: "http://[bad",
-	})); err == nil {
-		t.Fatal("expected error for malformed proxy URL")
-	}
-}
-
-func TestLoadServiceConfigRejectsProxyURLWithoutHost(t *testing.T) {
-	if _, err := LoadServiceConfig(envFrom(map[string]string{
-		EnvNATSURL:  "nats://localhost:4222",
-		EnvProxyURL: "http:/path",
-	})); err == nil {
-		t.Fatal("expected error for proxy URL without host")
 	}
 }

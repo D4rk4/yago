@@ -1,0 +1,17 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  yacyegress:
+    in:
+      - .
+      - "**"
+
+deps:
+  yacyegress:
+    mayDependOn:
+      - yacyegress

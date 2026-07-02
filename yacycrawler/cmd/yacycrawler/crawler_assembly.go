@@ -22,6 +22,7 @@ import (
 	"github.com/D4rk4/yago/yacycrawler/internal/pipeline"
 	"github.com/D4rk4/yago/yacycrawler/internal/publicweb"
 	"github.com/D4rk4/yago/yacycrawler/internal/robots"
+	"github.com/D4rk4/yago/yacyegress"
 )
 
 var connectCrawlerNATS = nats.Connect
@@ -37,8 +38,9 @@ var newCrawlerSeedSource = crawlseed.NewHTTPSource
 var newCrawlerPublicWebAdmissionFetcher = func(
 	inner pagefetch.PageSource,
 	resolver publicweb.Resolver,
+	guard yacyegress.Guard,
 ) pagefetch.PageSource {
-	return publicweb.NewAdmissionFetcher(inner, resolver)
+	return publicweb.NewAdmissionFetcher(inner, resolver, guard)
 }
 
 func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSource) error {
@@ -69,7 +71,8 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	}
 	frontier := frontier.NewFrontier(crawl.JobQueueSize, pace)
 
-	client := newEgressProxyClient(cfg.ProxyURL, crawl)
+	guard := yacyegress.NewGuard(cfg.EgressAllowLAN)
+	client := newGuardedEgressClient(guard, crawl)
 	fastSource := botwall.NewBotWallScreeningFetcher(
 		newCrawlerHTTPPageFetcher(client, crawl.UserAgent, crawl.MaxBodyBytes),
 	)
@@ -85,7 +88,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	if err != nil {
 		return fmt.Errorf("create robots admission: %w", err)
 	}
-	publicOnly := newCrawlerPublicWebAdmissionFetcher(admitted, nil)
+	publicOnly := newCrawlerPublicWebAdmissionFetcher(admitted, nil, guard)
 	worker := pipeline.NewPipeline(
 		frontier,
 		publicOnly,
@@ -95,7 +98,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	consumer := crawlorder.NewCrawlOrderConsumer(
 		orders,
 		frontier,
-		newCrawlRequestExpander(client, crawl),
+		newCrawlRequestExpander(client, crawl, guard),
 	)
 
 	workersDone := make(chan struct{})
@@ -121,10 +124,15 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	return nil
 }
 
-func newCrawlRequestExpander(client *http.Client, crawl CrawlConfig) *crawlseed.Expander {
+func newCrawlRequestExpander(
+	client *http.Client,
+	crawl CrawlConfig,
+	guard yacyegress.Guard,
+) *crawlseed.Expander {
 	seedSource := newCrawlerPublicWebAdmissionFetcher(
 		newCrawlerSeedSource(client, crawl.UserAgent, crawl.MaxBodyBytes),
 		nil,
+		guard,
 	)
 	return crawlseed.NewExpander(seedSource, crawl.SitemapURLLimit)
 }

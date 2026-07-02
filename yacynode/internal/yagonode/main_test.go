@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/D4rk4/yago/yacyegress"
 	"github.com/D4rk4/yago/yacynode/internal/memvault"
 	"github.com/D4rk4/yago/yacynode/internal/metrics"
 	"github.com/D4rk4/yago/yacynode/internal/vault"
@@ -33,8 +34,6 @@ func testConfig(t *testing.T) nodeConfig {
 			return "203.0.113.1"
 		case envDataDir:
 			return t.TempDir()
-		case envProxyURL:
-			return "http://proxy:4750"
 		default:
 			return ""
 		}
@@ -65,7 +64,7 @@ func assembleTestNode(t *testing.T, config nodeConfig, vault *vault.Vault) node 
 		context.Background(),
 		config,
 		vault,
-		newEgressProxyClient(config.ProxyURL, outboundRequestTimeout),
+		newGuardedEgressClient(yacyegress.NewGuard(config.EgressAllowLAN)),
 		nodeTelemetry{
 			dhtOutbound: metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
 			dhtInbound:  metrics.NewDHTInboundMetrics(prometheus.NewRegistry()),

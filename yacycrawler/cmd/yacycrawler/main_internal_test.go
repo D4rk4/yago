@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"errors"
-	"net/url"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/D4rk4/yago/yacycrawler/internal/chromedpfetch"
 	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
+	"github.com/D4rk4/yago/yacyegress"
 )
 
 func restoreMainSeams(t *testing.T) {
@@ -32,16 +32,10 @@ func restoreMainSeams(t *testing.T) {
 
 func minimalServiceConfig(t *testing.T) ServiceConfig {
 	t.Helper()
-	proxyURL, err := url.Parse("http://proxy:4750")
-	if err != nil {
-		t.Fatalf("parse proxy: %v", err)
+	return ServiceConfig{
+		Crawl:   DefaultCrawlConfig(),
+		NATSURL: "nats://localhost:4222",
 	}
-	cfg := ServiceConfig{
-		Crawl:    DefaultCrawlConfig(),
-		NATSURL:  "nats://localhost:4222",
-		ProxyURL: proxyURL,
-	}
-	return cfg
 }
 
 func TestMainExitsWithStartCode(t *testing.T) {
@@ -114,8 +108,10 @@ func TestStartReturnsSuccessCode(t *testing.T) {
 func TestRunClosesBrowserOnSuccess(t *testing.T) {
 	restoreMainSeams(t)
 	closed := false
-	newCrawlerBrowserFetcher = func(string, string, time.Duration, int64) (*chromedpfetch.BrowserPageFetcher, func()) {
-		return &chromedpfetch.BrowserPageFetcher{}, func() { closed = true }
+	newCrawlerBrowserFetcher = func(
+		string, yacyegress.Guard, time.Duration, int64,
+	) (*chromedpfetch.BrowserPageFetcher, func(), error) {
+		return &chromedpfetch.BrowserPageFetcher{}, func() { closed = true }, nil
 	}
 	runCrawlerService = func(context.Context, ServiceConfig, pagefetch.PageSource) error {
 		return nil
@@ -133,8 +129,10 @@ func TestRunClosesBrowserOnServiceError(t *testing.T) {
 	restoreMainSeams(t)
 	sentinel := errors.New("service failed")
 	closed := false
-	newCrawlerBrowserFetcher = func(string, string, time.Duration, int64) (*chromedpfetch.BrowserPageFetcher, func()) {
-		return &chromedpfetch.BrowserPageFetcher{}, func() { closed = true }
+	newCrawlerBrowserFetcher = func(
+		string, yacyegress.Guard, time.Duration, int64,
+	) (*chromedpfetch.BrowserPageFetcher, func(), error) {
+		return &chromedpfetch.BrowserPageFetcher{}, func() { closed = true }, nil
 	}
 	runCrawlerService = func(context.Context, ServiceConfig, pagefetch.PageSource) error {
 		return sentinel
@@ -146,5 +144,19 @@ func TestRunClosesBrowserOnServiceError(t *testing.T) {
 	}
 	if !closed {
 		t.Fatal("browser cleanup was not called")
+	}
+}
+
+func TestRunReturnsBrowserStartError(t *testing.T) {
+	restoreMainSeams(t)
+	sentinel := errors.New("browser start failed")
+	newCrawlerBrowserFetcher = func(
+		string, yacyegress.Guard, time.Duration, int64,
+	) (*chromedpfetch.BrowserPageFetcher, func(), error) {
+		return nil, nil, sentinel
+	}
+
+	if err := run(context.Background(), minimalServiceConfig(t)); !errors.Is(err, sentinel) {
+		t.Fatalf("error = %v, want %v", err, sentinel)
 	}
 }

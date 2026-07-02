@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/D4rk4/yago/yacycrawler/internal/chromedpfetch"
+	"github.com/D4rk4/yago/yacyegress"
 )
 
 var exitProcess = os.Exit
@@ -45,12 +46,15 @@ func start() int {
 
 func run(ctx context.Context, cfg ServiceConfig) error {
 	crawl := cfg.Crawl
-	fetcher, closeBrowser := newCrawlerBrowserFetcher(
+	fetcher, closeBrowser, err := newCrawlerBrowserFetcher(
 		crawl.UserAgent,
-		cfg.ProxyURL.String(),
+		yacyegress.NewGuard(cfg.EgressAllowLAN),
 		crawl.RequestTimeout,
 		crawl.MaxBodyBytes,
 	)
+	if err != nil {
+		return fmt.Errorf("start browser fetcher: %w", err)
+	}
 	defer closeBrowser()
 
 	if err := runCrawlerService(ctx, cfg, fetcher); err != nil {

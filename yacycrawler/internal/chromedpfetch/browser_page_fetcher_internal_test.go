@@ -3,11 +3,14 @@ package chromedpfetch
 import (
 	"context"
 	"errors"
+	"net"
 	"net/url"
 	"testing"
 	"time"
 
 	"github.com/chromedp/chromedp"
+
+	"github.com/D4rk4/yago/yacyegress"
 )
 
 func mustParse(t *testing.T, raw string) *url.URL {
@@ -130,11 +133,36 @@ func TestBrowserPageFetcherAppliesTimeout(t *testing.T) {
 }
 
 func TestNewBrowserPageFetcherBuildsFetcher(t *testing.T) {
-	fetcher, cancel := NewBrowserPageFetcher("agent/1.0", "http://proxy:4750", time.Second, 4<<20)
+	fetcher, cancel, err := NewBrowserPageFetcher(
+		"agent/1.0",
+		yacyegress.NewGuard(false),
+		time.Second,
+		4<<20,
+	)
+	if err != nil {
+		t.Fatalf("new fetcher: %v", err)
+	}
 	defer cancel()
 
 	if fetcher == nil || fetcher.render == nil {
 		t.Fatal("expected configured fetcher")
+	}
+}
+
+func TestNewBrowserPageFetcherFailsWhenProxyCannotListen(t *testing.T) {
+	restore := listenBrowserProxy
+	t.Cleanup(func() { listenBrowserProxy = restore })
+	listenBrowserProxy = func() (net.Listener, error) {
+		return nil, errors.New("listen refused")
+	}
+
+	if _, _, err := NewBrowserPageFetcher(
+		"agent/1.0",
+		yacyegress.NewGuard(false),
+		time.Second,
+		4<<20,
+	); err == nil {
+		t.Fatal("expected error when the browser proxy cannot listen")
 	}
 }
 

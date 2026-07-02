@@ -3,18 +3,17 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
-	"net/url"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/D4rk4/yago/yacyegress"
 )
 
-func TestNewEgressProxyClientPinsProxy(t *testing.T) {
-	proxyURL, err := url.Parse("http://proxy:4750")
-	if err != nil {
-		t.Fatalf("parse proxy: %v", err)
-	}
-	client := newEgressProxyClient(proxyURL, CrawlConfig{
+func TestNewGuardedEgressClientAppliesTimeoutsAndGuard(t *testing.T) {
+	client := newGuardedEgressClient(yacyegress.NewGuard(false), CrawlConfig{
 		RequestTimeout: 5 * time.Second,
 		ConnectTimeout: 4 * time.Second,
 		TLSTimeout:     3 * time.Second,
@@ -31,6 +30,9 @@ func TestNewEgressProxyClientPinsProxy(t *testing.T) {
 	if !ok {
 		t.Fatalf("transport type = %T", client.Transport)
 	}
+	if transport.Proxy != nil {
+		t.Error("transport must not carry an external proxy")
+	}
 	if transport.DialContext == nil {
 		t.Fatal("dial context is nil")
 	}
@@ -40,21 +42,51 @@ func TestNewEgressProxyClientPinsProxy(t *testing.T) {
 	if transport.ResponseHeaderTimeout != 2*time.Second {
 		t.Errorf("header timeout = %v", transport.ResponseHeaderTimeout)
 	}
-	request, err := http.NewRequestWithContext(
-		context.Background(),
-		http.MethodGet,
-		"http://example.com/",
-		nil,
-	)
+}
+
+func getThroughClient(t *testing.T, client *http.Client, target string) error {
+	t.Helper()
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, target, nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	resolved, err := transport.Proxy(request)
-	if err != nil {
-		t.Fatalf("proxy: %v", err)
+	response, err := client.Do(request)
+	if response != nil {
+		_ = response.Body.Close()
 	}
-	if resolved.String() != "http://proxy:4750" {
-		t.Errorf("proxy = %v", resolved)
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	return nil
+}
+
+func TestGuardedEgressClientBlocksNonPublicDial(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := newGuardedEgressClient(yacyegress.NewGuard(false), CrawlConfig{
+		RequestTimeout: time.Second,
+		MaxRedirects:   1,
+	})
+	if err := getThroughClient(t, client, server.URL); !errors.Is(err, yacyegress.ErrBlocked) {
+		t.Fatalf("error = %v, want ErrBlocked for a loopback target", err)
+	}
+}
+
+func TestGuardedEgressClientKeepsBlockingLoopbackWhenPrivateAllowed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := newGuardedEgressClient(yacyegress.NewGuard(true), CrawlConfig{
+		RequestTimeout: time.Second,
+		MaxRedirects:   1,
+	})
+	if err := getThroughClient(t, client, server.URL); !errors.Is(err, yacyegress.ErrBlocked) {
+		t.Fatalf("error = %v, want ErrBlocked (loopback stays blocked)", err)
 	}
 }
 
@@ -75,10 +107,7 @@ func TestLimitedRedirectPolicy(t *testing.T) {
 	if err := policy(
 		request,
 		[]*http.Request{request, request},
-	); !errors.Is(
-		err,
-		errRedirectLimitReached,
-	) {
+	); !errors.Is(err, errRedirectLimitReached) {
 		t.Fatalf("error = %v, want redirect limit", err)
 	}
 }

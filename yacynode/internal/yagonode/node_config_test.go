@@ -16,14 +16,13 @@ func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
 		envPeerHash: "0123456789AB",
 		envPeerName: "node",
-		envProxyURL: "http://proxy:4750",
 	}))
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
 
-	if config.ProxyURL == nil || config.ProxyURL.String() != "http://proxy:4750" {
-		t.Errorf("ProxyURL = %v", config.ProxyURL)
+	if config.EgressAllowLAN {
+		t.Errorf("EgressAllowLAN = %v, want false by default", config.EgressAllowLAN)
 	}
 	if config.PeerAddr != defaultPeerAddr {
 		t.Errorf("PeerAddr = %q, want %q", config.PeerAddr, defaultPeerAddr)
@@ -75,7 +74,6 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
 		envPeerHash:                 "0123456789AB",
 		envPeerName:                 "node",
-		envProxyURL:                 "http://proxy:4750",
 		envNetworkName:              "testnet",
 		envPeerAddr:                 ":7000",
 		envOpsAddr:                  ":7001",
@@ -152,6 +150,20 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadNodeConfigReadsEgressAllowLAN(t *testing.T) {
+	config, err := loadNodeConfig(envFrom(map[string]string{
+		envPeerHash:       "0123456789AB",
+		envPeerName:       "node",
+		envEgressAllowLAN: "true",
+	}))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !config.EgressAllowLAN {
+		t.Errorf("EgressAllowLAN = %v, want true", config.EgressAllowLAN)
+	}
+}
+
 func TestLoadNodeConfigUsesExistingLegacyDatabase(t *testing.T) {
 	directory := t.TempDir()
 	legacyPath := filepath.Join(directory, legacyStorageFileName)
@@ -162,7 +174,6 @@ func TestLoadNodeConfigUsesExistingLegacyDatabase(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
 		envPeerHash: "0123456789AB",
 		envPeerName: "node",
-		envProxyURL: "http://proxy:4750",
 		envDataDir:  directory,
 	}))
 	if err != nil {
@@ -191,7 +202,6 @@ func TestLoadNodeConfigPrefersCurrentDatabase(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
 		envPeerHash: "0123456789AB",
 		envPeerName: "node",
-		envProxyURL: "http://proxy:4750",
 		envDataDir:  directory,
 	}))
 	if err != nil {
@@ -207,7 +217,6 @@ func TestLoadNodeConfigDefaultsAnnounceInterval(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
 		envPeerHash: "0123456789AB",
 		envPeerName: "node",
-		envProxyURL: "http://proxy:4750",
 	}))
 	if err != nil {
 		t.Fatalf("load config: %v", err)
@@ -224,7 +233,6 @@ func TestLoadNodeConfigRejectsBadAnnounceInterval(t *testing.T) {
 	base := map[string]string{
 		envPeerHash: "0123456789AB",
 		envPeerName: "node",
-		envProxyURL: "http://proxy:4750",
 	}
 	for _, bad := range []string{"nope", "-1s"} {
 		env := map[string]string{envAnnounceInterval: bad}
@@ -264,46 +272,39 @@ func TestLoadNodeConfigRejects(t *testing.T) {
 			envPeerName:       "n",
 			envTrustedProxies: "not-an-ip",
 		},
-		"missing proxy url": {envPeerHash: "0123456789AB", envPeerName: "n"},
-		"non-http proxy url": {
-			envPeerHash: "0123456789AB",
-			envPeerName: "n",
-			envProxyURL: "socks5://proxy:1080",
+		"bad egress lan bool": {
+			envPeerHash:       "0123456789AB",
+			envPeerName:       "n",
+			envEgressAllowLAN: "maybe",
 		},
 		"bad dht bool": {
 			envPeerHash:   "0123456789AB",
 			envPeerName:   "n",
-			envProxyURL:   "http://proxy:4750",
 			envNetworkDHT: "maybe",
 		},
 		"bad dht distribution bool": {
 			envPeerHash:        "0123456789AB",
 			envPeerName:        "n",
-			envProxyURL:        "http://proxy:4750",
 			envDHTDistribution: "maybe",
 		},
 		"bad dht crawling bool": {
 			envPeerHash:              "0123456789AB",
 			envPeerName:              "n",
-			envProxyURL:              "http://proxy:4750",
 			envDHTAllowWhileCrawling: "maybe",
 		},
 		"bad dht indexing bool": {
 			envPeerHash:              "0123456789AB",
 			envPeerName:              "n",
-			envProxyURL:              "http://proxy:4750",
 			envDHTAllowWhileIndexing: "maybe",
 		},
 		"bad dht interval": {
 			envPeerHash:                "0123456789AB",
 			envPeerName:                "n",
-			envProxyURL:                "http://proxy:4750",
 			envDHTDistributionInterval: "-1s",
 		},
 		"malformed dht interval": {
 			envPeerHash:                "0123456789AB",
 			envPeerName:                "n",
-			envProxyURL:                "http://proxy:4750",
 			envDHTDistributionInterval: "often",
 		},
 	}
@@ -320,7 +321,6 @@ func TestLoadNodeConfigRejectsBadDHTUnitConfig(t *testing.T) {
 	base := map[string]string{
 		envPeerHash: "0123456789AB",
 		envPeerName: "n",
-		envProxyURL: "http://proxy:4750",
 	}
 	cases := map[string]map[string]string{
 		"bad dht redundancy": {

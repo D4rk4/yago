@@ -313,7 +313,6 @@ func setValidRunEnv(t *testing.T) {
 	}
 	t.Setenv(envPeerHash, "0123456789AB")
 	t.Setenv(envPeerName, "node")
-	t.Setenv(envProxyURL, "http://proxy:4750")
 	t.Setenv(envDataDir, t.TempDir())
 }
 

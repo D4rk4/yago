@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
+	"github.com/D4rk4/yago/yacyegress"
 )
 
 type Resolver interface {
@@ -18,37 +19,18 @@ type Resolver interface {
 type AdmissionFetcher struct {
 	inner    pagefetch.PageSource
 	resolver Resolver
+	guard    yacyegress.Guard
 }
 
-var nonPublicAddressPrefixes = []netip.Prefix{
-	netip.MustParsePrefix("0.0.0.0/8"),
-	netip.MustParsePrefix("10.0.0.0/8"),
-	netip.MustParsePrefix("100.64.0.0/10"),
-	netip.MustParsePrefix("127.0.0.0/8"),
-	netip.MustParsePrefix("169.254.0.0/16"),
-	netip.MustParsePrefix("172.16.0.0/12"),
-	netip.MustParsePrefix("192.0.0.0/24"),
-	netip.MustParsePrefix("192.0.2.0/24"),
-	netip.MustParsePrefix("192.168.0.0/16"),
-	netip.MustParsePrefix("198.18.0.0/15"),
-	netip.MustParsePrefix("198.51.100.0/24"),
-	netip.MustParsePrefix("203.0.113.0/24"),
-	netip.MustParsePrefix("224.0.0.0/4"),
-	netip.MustParsePrefix("240.0.0.0/4"),
-	netip.MustParsePrefix("::/128"),
-	netip.MustParsePrefix("::1/128"),
-	netip.MustParsePrefix("100::/64"),
-	netip.MustParsePrefix("2001:db8::/32"),
-	netip.MustParsePrefix("fc00::/7"),
-	netip.MustParsePrefix("fe80::/10"),
-	netip.MustParsePrefix("ff00::/8"),
-}
-
-func NewAdmissionFetcher(inner pagefetch.PageSource, resolver Resolver) *AdmissionFetcher {
+func NewAdmissionFetcher(
+	inner pagefetch.PageSource,
+	resolver Resolver,
+	guard yacyegress.Guard,
+) *AdmissionFetcher {
 	if resolver == nil {
 		resolver = net.DefaultResolver
 	}
-	return &AdmissionFetcher{inner: inner, resolver: resolver}
+	return &AdmissionFetcher{inner: inner, resolver: resolver, guard: guard}
 }
 
 func (f *AdmissionFetcher) Fetch(
@@ -84,7 +66,7 @@ func (f *AdmissionFetcher) admit(ctx context.Context, target *url.URL) error {
 		return reject("local host")
 	}
 	if addr, ok := parseHostAddress(host); ok {
-		return admitAddress(addr)
+		return f.admitAddress(addr)
 	}
 
 	addresses, err := f.resolver.LookupNetIP(ctx, "ip", host)
@@ -95,9 +77,16 @@ func (f *AdmissionFetcher) admit(ctx context.Context, target *url.URL) error {
 		return reject("empty resolution")
 	}
 	for _, address := range addresses {
-		if err := admitAddress(address); err != nil {
+		if err := f.admitAddress(address); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (f *AdmissionFetcher) admitAddress(addr netip.Addr) error {
+	if err := f.guard.AdmitAddr(addr); err != nil {
+		return fmt.Errorf("%w: %w", err, pagefetch.ErrPageRejected)
 	}
 	return nil
 }
@@ -114,27 +103,6 @@ func parseHostAddress(host string) (netip.Addr, bool) {
 func localHostName(host string) bool {
 	normalized := strings.TrimSuffix(strings.ToLower(host), ".")
 	return normalized == "localhost" || strings.HasSuffix(normalized, ".localhost")
-}
-
-func admitAddress(addr netip.Addr) error {
-	addr = addr.Unmap()
-	if !addr.IsValid() {
-		return reject("invalid address")
-	}
-	if addr.IsLoopback() ||
-		addr.IsPrivate() ||
-		addr.IsLinkLocalUnicast() ||
-		addr.IsLinkLocalMulticast() ||
-		addr.IsMulticast() ||
-		addr.IsUnspecified() {
-		return reject("non-public address")
-	}
-	for _, prefix := range nonPublicAddressPrefixes {
-		if prefix.Contains(addr) {
-			return reject("non-public address")
-		}
-	}
-	return nil
 }
 
 func reject(reason string) error {

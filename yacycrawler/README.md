@@ -49,12 +49,16 @@ proxied public-web egress path as page fetches, parsed before frontier
 admission, and expanded into bounded URL roots. Sitemap `lastmod` values are
 carried as crawl request hints for later recrawl scheduling.
 
-Configuration comes from the environment (`NATS_URL` and `YACYCRAWLER_PROXY_URL`
-are required), and the service runs until it receives `SIGINT` or `SIGTERM`.
-Outbound fetches, including the headless browser, use the configured proxy. Before
-robots.txt or browser navigation starts, the crawler rejects non-HTTP(S), loopback,
-private, link-local, multicast, unspecified, documentation/test, and metadata-local
-destinations. The final rendered URL is checked against the same public-web policy.
+Configuration comes from the environment (`NATS_URL` is required;
+`YACYCRAWLER_ALLOW_PRIVATE_NETWORKS` opts into LAN and private-network targets),
+and the service runs until it receives `SIGINT` or `SIGTERM`.
+Outbound fetches, including the headless browser, are screened in-process at dial
+time against the connected IP address, so no external forward proxy is required;
+the browser routes through a loopback-bound guarded proxy that resolves and dials
+targets under the same policy. Before robots.txt or browser navigation starts, the
+crawler also rejects non-HTTP(S), loopback, private, link-local, multicast,
+unspecified, documentation/test, and metadata-local destinations. The final
+rendered URL is checked against the same public-web policy.
 The default fetch path uses a bounded HTTP GET first and falls back to the
 headless browser only when that fast path rejects the page. The HTTP fast path
 follows at most `YACYCRAWLER_MAX_REDIRECTS` redirect hops and uses explicit

@@ -1,5 +1,5 @@
 GO ?= go
-MODULES := yacynode yacymodel yacyproto yacycrawlcontract yacycrawler
+MODULES := yacynode yacymodel yacyproto yacycrawlcontract yacyegress yacycrawler
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 80
 COVER_EXCLUDE := /internal/vaulttest/|/test/e2e/

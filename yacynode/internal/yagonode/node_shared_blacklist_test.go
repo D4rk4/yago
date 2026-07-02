@@ -9,6 +9,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/D4rk4/yago/yacyegress"
 	"github.com/D4rk4/yago/yacynode/internal/metrics"
 	"github.com/D4rk4/yago/yacyproto"
 )
@@ -20,7 +21,7 @@ func TestAssembledNodeServesDataDirectorySharedBlacklist(t *testing.T) {
 		t.Context(),
 		config,
 		openTestVault(t),
-		newEgressProxyClient(config.ProxyURL, outboundRequestTimeout),
+		newGuardedEgressClient(yacyegress.NewGuard(config.EgressAllowLAN)),
 		nodeTelemetry{
 			dhtOutbound: metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
 			dhtInbound:  metrics.NewDHTInboundMetrics(prometheus.NewRegistry()),

@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/D4rk4/yago/yacycrawlcontract v0.0.0
+	github.com/D4rk4/yago/yacyegress v0.0.0
 	github.com/D4rk4/yago/yacymodel v0.0.0
 	github.com/D4rk4/yago/yacyproto v0.0.0
 	github.com/blevesearch/bleve/v2 v2.6.0
@@ -61,6 +62,8 @@ require (
 )
 
 replace github.com/D4rk4/yago/yacycrawlcontract => ../yacycrawlcontract
+
+replace github.com/D4rk4/yago/yacyegress => ../yacyegress
 
 replace github.com/D4rk4/yago/yacymodel => ../yacymodel
 

@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/D4rk4/yago/yacycrawlcontract v0.0.0
+	github.com/D4rk4/yago/yacyegress v0.0.0
 	github.com/D4rk4/yago/yacymodel v0.0.0
 	github.com/chromedp/chromedp v0.15.1
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c
@@ -61,5 +62,7 @@ require (
 )
 
 replace github.com/D4rk4/yago/yacycrawlcontract => ../yacycrawlcontract
+
+replace github.com/D4rk4/yago/yacyegress => ../yacyegress
 
 replace github.com/D4rk4/yago/yacymodel => ../yacymodel

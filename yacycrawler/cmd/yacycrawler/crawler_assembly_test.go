@@ -17,6 +17,7 @@ import (
 	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yacycrawler/internal/publicweb"
 	"github.com/D4rk4/yago/yacycrawler/internal/robots"
+	"github.com/D4rk4/yago/yacyegress"
 )
 
 func restoreAssemblySeams(t *testing.T) {
@@ -45,6 +46,7 @@ func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
 	newCrawlerPublicWebAdmissionFetcher = func(
 		inner pagefetch.PageSource,
 		_ publicweb.Resolver,
+		_ yacyegress.Guard,
 	) pagefetch.PageSource {
 		return inner
 	}
@@ -164,6 +166,7 @@ func TestDefaultPublicWebAdmissionFetcherBuildsFetcher(t *testing.T) {
 	got := newCrawlerPublicWebAdmissionFetcher(
 		htmlPageSource(map[string]string{}),
 		nil,
+		yacyegress.NewGuard(false),
 	)
 	if got == nil {
 		t.Fatal("public web admission fetcher is nil")
@@ -189,8 +192,6 @@ func serviceConfig(natsURL string) ServiceConfig {
 		switch key {
 		case EnvNATSURL:
 			return natsURL
-		case EnvProxyURL:
-			return "http://127.0.0.1:1"
 		case EnvWorkers:
 			return "1"
 		default:
