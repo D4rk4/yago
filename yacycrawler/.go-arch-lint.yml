@@ -20,6 +20,8 @@ components:
     in: internal/chromedpfetch/**
   botwall:
     in: internal/botwall/**
+  publicweb:
+    in: internal/publicweb/**
   robots:
     in: internal/robots/**
   crawldelay:
@@ -104,6 +106,10 @@ deps:
   botwall:
     mayDependOn:
       - botwall
+      - pagefetch
+  publicweb:
+    mayDependOn:
+      - publicweb
       - pagefetch
   robots:
     mayDependOn:
@@ -193,6 +199,7 @@ deps:
       - pagefetch
       - pageindex
       - pipeline
+      - publicweb
       - robots
     canUse:
       - yacycrawlcontract

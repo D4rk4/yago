@@ -39,10 +39,14 @@ subject. Multiple crawler instances can share the orders subject to
 load-balance, and a bounded ingest stream applies backpressure when the node
 falls behind.
 
-Configuration comes from the environment (`NATS_URL` is required), and the service runs
-until it receives `SIGINT` or `SIGTERM`. Outbound fetches, including the headless browser,
-honor the standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables.
-The container image embeds the pinned headless-shell runtime in a scratch non-root image.
+Configuration comes from the environment (`NATS_URL` and `YACYCRAWLER_PROXY_URL`
+are required), and the service runs until it receives `SIGINT` or `SIGTERM`.
+Outbound fetches, including the headless browser, use the configured proxy. Before
+robots.txt or browser navigation starts, the crawler rejects non-HTTP(S), loopback,
+private, link-local, multicast, unspecified, documentation/test, and metadata-local
+destinations. The final rendered URL is checked against the same public-web policy.
+The container image embeds the pinned headless-shell runtime in a scratch non-root
+image.
 
 The message types both services exchange live in the standalone
 [`yacycrawlcontract`](../yacycrawlcontract/README.md) module, so neither service depends
@@ -52,5 +56,7 @@ on the other.
 
 - The persistent frontier, politeness model, and recrawl scheduler are still
   prototype-grade.
+- Browser-level redirect interception is still planned; the current public-web
+  admission check is an application-layer guard plus proxy defense in depth.
 - Bot-wall handling remains a minimal heuristic, not hardened production
   behavior.

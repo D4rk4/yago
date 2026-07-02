@@ -17,6 +17,7 @@ import (
 	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yacycrawler/internal/pageindex"
 	"github.com/D4rk4/yago/yacycrawler/internal/pipeline"
+	"github.com/D4rk4/yago/yacycrawler/internal/publicweb"
 	"github.com/D4rk4/yago/yacycrawler/internal/robots"
 )
 
@@ -25,6 +26,13 @@ var connectCrawlerNATS = nats.Connect
 var newCrawlerJetStream = jetstream.New
 
 var newCrawlerRobotsAdmissionFetcher = robots.NewRobotsAdmissionFetcher
+
+var newCrawlerPublicWebAdmissionFetcher = func(
+	inner pagefetch.PageSource,
+	resolver publicweb.Resolver,
+) pagefetch.PageSource {
+	return publicweb.NewAdmissionFetcher(inner, resolver)
+}
 
 func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSource) error {
 	nc, err := connectCrawlerNATS(cfg.NATSURL)
@@ -65,9 +73,10 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		return fmt.Errorf("create robots admission: %w", err)
 	}
 	screened := botwall.NewBotWallScreeningFetcher(admitted)
+	publicOnly := newCrawlerPublicWebAdmissionFetcher(screened, nil)
 	worker := pipeline.NewPipeline(
 		frontier,
-		screened,
+		publicOnly,
 		pageindex.NewIndexBuilder(),
 		emitter,
 	)

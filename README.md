@@ -102,7 +102,8 @@ publish ingest batches back to the node.
 - Go 1.26.
 - Docker or Podman for container and end-to-end workflows.
 - A proxy for outbound node and crawler traffic. The example stack uses
-  Smokescreen.
+  Smokescreen, and the crawler also rejects non-public destinations before
+  fetch.
 - NATS JetStream when crawler integration is enabled.
 
 Build and lint tools are pinned through the repository toolchain flow and are

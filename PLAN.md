@@ -1126,6 +1126,13 @@ Acceptance:
 
 ### CRAWL-04: Fetch safety and politeness
 
+Status: partial implementation exists. The crawler now enforces HTTP(S)-only
+public-web target admission before robots.txt and browser fetch, blocks literal
+and DNS-resolved non-public destinations, fails closed on DNS resolution errors,
+and checks the final rendered URL against the same policy. Full browser request
+interception for redirect-before-fetch blocking, explicit max redirects, MIME
+allowlists, and detailed timeout budgets remain planned.
+
 Tasks:
 
 1. Enforce allowed schemes: default `http`, `https` only.

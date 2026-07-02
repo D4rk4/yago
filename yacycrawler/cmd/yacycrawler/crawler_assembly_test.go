@@ -14,6 +14,7 @@ import (
 
 	"github.com/D4rk4/yago/yacycrawlcontract"
 	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
+	"github.com/D4rk4/yago/yacycrawler/internal/publicweb"
 	"github.com/D4rk4/yago/yacycrawler/internal/robots"
 )
 
@@ -22,14 +23,24 @@ func restoreAssemblySeams(t *testing.T) {
 	savedConnect := connectCrawlerNATS
 	savedJetStream := newCrawlerJetStream
 	savedRobots := newCrawlerRobotsAdmissionFetcher
+	savedPublicWeb := newCrawlerPublicWebAdmissionFetcher
 	t.Cleanup(func() {
 		connectCrawlerNATS = savedConnect
 		newCrawlerJetStream = savedJetStream
 		newCrawlerRobotsAdmissionFetcher = savedRobots
+		newCrawlerPublicWebAdmissionFetcher = savedPublicWeb
 	})
 }
 
 func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
+	restoreAssemblySeams(t)
+	newCrawlerPublicWebAdmissionFetcher = func(
+		inner pagefetch.PageSource,
+		_ publicweb.Resolver,
+	) pagefetch.PageSource {
+		return inner
+	}
+
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "no robots", http.StatusNotFound)
 	}))
@@ -138,6 +149,16 @@ func TestRunServiceReturnsRobotsAdmissionError(t *testing.T) {
 	err := RunService(ctx, cfg, htmlPageSource(map[string]string{}))
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
+	}
+}
+
+func TestDefaultPublicWebAdmissionFetcherBuildsFetcher(t *testing.T) {
+	got := newCrawlerPublicWebAdmissionFetcher(
+		htmlPageSource(map[string]string{}),
+		nil,
+	)
+	if got == nil {
+		t.Fatal("public web admission fetcher is nil")
 	}
 }
 
