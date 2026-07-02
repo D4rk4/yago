@@ -22,6 +22,8 @@ components:
     in: internal/peeradmission/**
   peerbirth:
     in: internal/peerbirth/**
+  peernews:
+    in: internal/peernews/**
   peerroster:
     in: internal/peerroster/**
   peerannouncement:
@@ -171,6 +173,13 @@ deps:
     mayDependOn:
       - peerbirth
       - vault
+  peernews:
+    mayDependOn:
+      - peernews
+      - vault
+      - memvault
+    canUse:
+      - yacymodel
   peerroster:
     mayDependOn:
       - peerroster
