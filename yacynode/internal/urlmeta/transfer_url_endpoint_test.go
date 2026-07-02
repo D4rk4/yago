@@ -40,6 +40,26 @@ func TestTransferURLRejectsWrongNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Serve: %v", err)
 	}
+	if resp.Result != "" {
+		t.Fatalf("Result = %q, want empty auth failure response", resp.Result)
+	}
+	if len(resp.Encode()) != 0 {
+		t.Fatalf("encoded response = %+v, want empty transfer fields", resp.Encode())
+	}
+}
+
+func TestTransferURLRejectsWrongTargetAfterNetworkAuth(t *testing.T) {
+	module := openModule(t, 0)
+
+	req := yacyproto.TransferURLRequest{
+		NetworkName: "freeworld",
+		YouAre:      yacymodel.Hash("BBBBBBBBBBBB"),
+	}
+
+	resp, err := module.endpoint().Serve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
 	if resp.Result != yacyproto.TransferURLResult(yacyproto.ResultWrongTarget) {
 		t.Fatalf("Result = %q, want wrong_target", resp.Result)
 	}

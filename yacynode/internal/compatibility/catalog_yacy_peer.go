@@ -44,8 +44,8 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:    yacyproto.PathTransferURL,
 		Methods: methods(yacyproto.TransferURLEndpointMethods),
 		State:   Implemented,
-		Behavior: "Accepts URL metadata rows, reconciles RWI references, and returns YaCy transferURL " +
-			"result fields.",
+		Behavior: "Checks the YaCy network unit before target handling, accepts URL metadata rows, reconciles RWI " +
+			"references, and returns YaCy transferURL result fields.",
 		Evidence: []string{
 			"yacynode/internal/urlmeta/*_test.go",
 			"yacynode/test/fixtures/yacywire/transfer-url-*",

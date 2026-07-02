@@ -42,6 +42,7 @@ Go internals do not need to copy Java source code or Java storage engines.
   peers at random.
 * The node SHALL receive inbound DHT RWI postings.
 * The node SHALL receive URL metadata associated with RWI postings.
+* The node SHALL preserve YaCy network-unit authentication behavior for inbound DHT transfer endpoints.
 * The node SHALL distribute stored RWI postings and URL metadata to compatible peers when configured.
 * The node SHALL verify its DHT reachability through a YaCy-compatible RWI capacity self-test before outbound DHT distribution.
 * The node SHALL choose outbound DHT transfer targets using YaCy DHT ring ordering and advertised remote-index capability.

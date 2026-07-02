@@ -99,3 +99,5 @@ stable YaCy wire shapes.
 
 `/yacy/transferRWI.html` preserves upstream preflight result strings for network
 authentication failure and missing required fields before accepting RWI rows.
+`/yacy/transferURL.html` preserves upstream network-auth failure behavior by
+returning no transferURL result fields before target handling.

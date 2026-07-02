@@ -58,6 +58,14 @@ func TestTransferURLResponseRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTransferURLResponseEncodeOmitsEmptyTransferFields(t *testing.T) {
+	t.Parallel()
+
+	if got := (yacyproto.TransferURLResponse{}).Encode(); len(got) != 0 {
+		t.Fatalf("Encode = %+v, want empty message", got)
+	}
+}
+
 func TestParseTransferURLResponseAcceptsEmptyResult(t *testing.T) {
 	t.Parallel()
 

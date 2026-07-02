@@ -47,7 +47,8 @@ The node currently targets these responsibilities:
   URL-hash metadata requests from locally stored metadata;
 - receive inbound RWI postings through `/yacy/transferRWI.html`, including YaCy
   preflight result strings for wrong network units and missing required fields;
-- receive URL metadata through `/yacy/transferURL.html`;
+- receive URL metadata through `/yacy/transferURL.html` with YaCy network-auth
+  preflight behavior;
 - run retry-aware outbound DHT handoff cycles fed from stored RWI postings, with
   YaCy-style sender gates, target selection, local deletion, restart recovery,
   restore, peer quarantine, metrics, and a JSON gate status endpoint;

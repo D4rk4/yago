@@ -20,7 +20,10 @@ func (e transferURLEndpoint) Serve(
 ) (yacyproto.TransferURLResponse, error) {
 	resp := yacyproto.TransferURLResponse{}
 
-	if !e.identity.Addresses(req.NetworkName, req.YouAre) {
+	if !e.identity.NetworkMatches(req.NetworkName) {
+		return resp, nil
+	}
+	if req.YouAre != e.identity.Hash {
 		resp.Result = yacyproto.ResultWrongTarget
 
 		return resp, nil
