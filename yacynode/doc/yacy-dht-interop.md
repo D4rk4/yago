@@ -81,7 +81,9 @@ and protocol rejections into bounded exponential retry delays with jitter.
 Successful handoffs clear the peer's retry state. Repeated failed cycles produce
 a quarantine decision for the peer. The runtime scheduler honors retry readiness
 when dequeuing chunks and records every scheduler receipt in the outbound DHT
-Prometheus counters. Peer-roster quarantine mutation is still pending.
+Prometheus counters. Successful outbound handoffs confirm the peer as reachable
+in the local roster, and quarantine decisions remove the peer from the reachable
+and known peer sets so target selection stops using it.
 
 The Prometheus edge registers outbound DHT counters for batches, postings,
 failures, and unknown URL requests using the names from `PLAN.md`. The
@@ -117,9 +119,9 @@ partition, accumulates each partition into the chunk for its primary target,
 drops rows without local URL metadata, caps a chunk at 1000 RWI rows, and
 dequeues the largest buffered chunk first. The Go exchange queue preserves that
 batch shape. The runtime scheduler feeds an empty outbound queue from stored RWI
-selections. Remaining dispatcher work is peer-roster quarantine mutation,
-restart recovery for selected queued rows, and end-to-end Java YaCy interop
-distribution tests.
+selections. Remaining dispatcher work is restart recovery for selected queued
+rows, explicit remote-index flag mutation on address-clash rejection, and
+end-to-end Java YaCy interop distribution tests.
 
 ---
 
