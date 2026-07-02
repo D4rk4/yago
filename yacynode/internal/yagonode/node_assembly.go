@@ -18,6 +18,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/peerbirth"
 	"github.com/D4rk4/yago/yacynode/internal/peernews"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
+	"github.com/D4rk4/yago/yacynode/internal/transfertally"
 	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
@@ -42,6 +43,7 @@ var (
 	openRuntimeNodeStorage      = openNodeStorage
 	openRuntimePeerBirthDate    = peerbirth.Open
 	openRuntimePeerNews         = peernews.Open
+	openRuntimeTransferTally    = transfertally.Open
 	assembleRuntimePeerExchange = func(exchange peerExchange) (peerExchangeRuntime, error) {
 		return exchange.assemble()
 	}
@@ -78,13 +80,13 @@ func assembleNode(
 		return node{}, err
 	}
 
-	roster, news, err := openPeerRosterAndNews(vault, telemetry.peer)
+	roster, news, tally, err := openPeerStores(vault, telemetry.peer)
 	if err != nil {
 		return node{}, err
 	}
 
-	report := newNodeStatusReport(identity, storage, roster, news)
-	storage = observeDHTInboundStorage(storage, telemetry.dhtInbound)
+	report := newNodeStatusReport(identity, storage, roster, news, tally)
+	storage = observeDHTInboundStorage(storage, telemetry.dhtInbound, tally)
 
 	mux := http.NewServeMux()
 	mux.Handle("/{$}", landing.NewEndpoint())
@@ -125,7 +127,7 @@ func assembleNode(
 		report:      report,
 		roster:      roster,
 		client:      client,
-		observer:    telemetry.dhtOutbound,
+		observer:    tallyOutboundObserver{next: telemetry.dhtOutbound, tally: tally},
 	})
 
 	runtime, err := buildRuntimeCrawl(ctx, config.Crawl, identity, storage)

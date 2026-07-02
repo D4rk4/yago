@@ -8,6 +8,7 @@ import (
 	"github.com/D4rk4/yago/yacymodel"
 	"github.com/D4rk4/yago/yacynode/internal/metrics"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
+	"github.com/D4rk4/yago/yacynode/internal/transfertally"
 	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 )
 
@@ -22,13 +23,15 @@ type inboundURLMissingChecker interface {
 func observeDHTInboundStorage(
 	storage nodeStorage,
 	observer *metrics.DHTInboundMetrics,
+	tally *transfertally.Tally,
 ) nodeStorage {
-	if observer == nil {
+	if observer == nil && tally == nil {
 		return storage
 	}
 	storage.postingReceiver = dhtInboundPostingReceiver{
 		next:     storage.postingReceiver,
 		observer: observer,
+		tally:    tally,
 		now:      time.Now,
 	}
 	storage.urlReceiver = dhtInboundURLReceiver{
@@ -36,6 +39,7 @@ func observeDHTInboundStorage(
 		missing:    storage.urlDirectory,
 		references: storage.references,
 		observer:   observer,
+		tally:      tally,
 	}
 
 	return storage
@@ -44,6 +48,7 @@ func observeDHTInboundStorage(
 type dhtInboundPostingReceiver struct {
 	next     rwi.PostingReceiver
 	observer *metrics.DHTInboundMetrics
+	tally    *transfertally.Tally
 	now      func() time.Time
 }
 
@@ -56,7 +61,7 @@ func (r dhtInboundPostingReceiver) Receive(
 	result := metrics.DHTInboundRWIResult{Duration: r.now().Sub(started)}
 	if err != nil || receipt.Busy {
 		result.RejectedPostings = len(entries)
-		r.observer.ObserveRWI(result)
+		r.observeRWI(result)
 		if err != nil {
 			return receipt, fmt.Errorf("receive rwi: %w", err)
 		}
@@ -65,9 +70,18 @@ func (r dhtInboundPostingReceiver) Receive(
 	}
 	result.ReceivedPostings = len(entries)
 	result.UnknownURLs = len(receipt.UnknownURL)
-	r.observer.ObserveRWI(result)
+	r.observeRWI(result)
+	if r.tally != nil {
+		tallyTransfer(ctx, r.tally.AddReceivedWords, result.ReceivedPostings)
+	}
 
 	return receipt, nil
+}
+
+func (r dhtInboundPostingReceiver) observeRWI(result metrics.DHTInboundRWIResult) {
+	if r.observer != nil {
+		r.observer.ObserveRWI(result)
+	}
 }
 
 type dhtInboundURLReceiver struct {
@@ -75,6 +89,7 @@ type dhtInboundURLReceiver struct {
 	missing    inboundURLMissingChecker
 	references inboundURLReferenceMatcher
 	observer   *metrics.DHTInboundMetrics
+	tally      *transfertally.Tally
 }
 
 func (r dhtInboundURLReceiver) Receive(
@@ -85,7 +100,7 @@ func (r dhtInboundURLReceiver) Receive(
 	reconcileCandidates := r.reconcileCandidates(ctx, hashes)
 	receipt, err := r.next.Receive(ctx, rows)
 	if err != nil || receipt.Busy {
-		r.observer.ObserveURL(metrics.DHTInboundURLResult{RejectedRows: len(rows)})
+		r.observeURL(metrics.DHTInboundURLResult{RejectedRows: len(rows)})
 		if err != nil {
 			return receipt, fmt.Errorf("receive url metadata: %w", err)
 		}
@@ -94,13 +109,23 @@ func (r dhtInboundURLReceiver) Receive(
 	}
 
 	rejected := invalid + len(receipt.ErrorURL)
-	r.observer.ObserveURL(metrics.DHTInboundURLResult{
-		ReceivedRows:   len(rows) - rejected,
+	received := len(rows) - rejected
+	r.observeURL(metrics.DHTInboundURLResult{
+		ReceivedRows:   received,
 		RejectedRows:   rejected,
 		ReconciledRows: reconciledURLRows(reconcileCandidates, receipt.ErrorURL),
 	})
+	if r.tally != nil {
+		tallyTransfer(ctx, r.tally.AddReceivedURLs, received)
+	}
 
 	return receipt, nil
+}
+
+func (r dhtInboundURLReceiver) observeURL(result metrics.DHTInboundURLResult) {
+	if r.observer != nil {
+		r.observer.ObserveURL(result)
+	}
 }
 
 func (r dhtInboundURLReceiver) reconcileCandidates(

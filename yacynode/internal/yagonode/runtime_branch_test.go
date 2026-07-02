@@ -20,11 +20,13 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/memvault"
 	"github.com/D4rk4/yago/yacynode/internal/metrics"
 	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yacynode/internal/nodestatus"
 	"github.com/D4rk4/yago/yacynode/internal/peermessage"
 	"github.com/D4rk4/yago/yacynode/internal/peernews"
 	"github.com/D4rk4/yago/yacynode/internal/peerroster"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
 	"github.com/D4rk4/yago/yacynode/internal/searchindex"
+	"github.com/D4rk4/yago/yacynode/internal/transfertally"
 	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 	"github.com/D4rk4/yago/yacynode/internal/urlmetastaleness"
 	"github.com/D4rk4/yago/yacynode/internal/urlreferences"
@@ -117,6 +119,12 @@ func (fakeRoster) ReachablePeerCount(context.Context) int { return 0 }
 type fakeSeedNews struct{}
 
 func (fakeSeedNews) SeedNews(context.Context) string { return "" }
+
+type fakeTransferTotals struct{}
+
+func (fakeTransferTotals) TransferTotals(context.Context) nodestatus.TransferTotals {
+	return nodestatus.TransferTotals{}
+}
 
 type reachableRoster struct {
 	peers []yacymodel.Seed
@@ -216,6 +224,7 @@ func restoreAssemblySeams(t *testing.T) {
 	oldOpenRuntimeNodeStorage := openRuntimeNodeStorage
 	oldOpenRuntimePeerBirthDate := openRuntimePeerBirthDate
 	oldOpenRuntimePeerNews := openRuntimePeerNews
+	oldOpenRuntimeTransferTally := openRuntimeTransferTally
 	oldAssembleRuntimePeerExchange := assembleRuntimePeerExchange
 	oldBuildRuntimeDHTOutbound := buildRuntimeDHTOutbound
 	oldBuildRuntimeCrawl := buildRuntimeCrawl
@@ -223,6 +232,7 @@ func restoreAssemblySeams(t *testing.T) {
 		openRuntimeNodeStorage = oldOpenRuntimeNodeStorage
 		openRuntimePeerBirthDate = oldOpenRuntimePeerBirthDate
 		openRuntimePeerNews = oldOpenRuntimePeerNews
+		openRuntimeTransferTally = oldOpenRuntimeTransferTally
 		assembleRuntimePeerExchange = oldAssembleRuntimePeerExchange
 		buildRuntimeDHTOutbound = oldBuildRuntimeDHTOutbound
 		buildRuntimeCrawl = oldBuildRuntimeCrawl
@@ -856,6 +866,27 @@ func TestAssembleNodeReturnsPeerNewsError(t *testing.T) {
 	sentinel := errors.New("news failed")
 	restoreAssemblySeams(t)
 	openRuntimePeerNews = func(*vault.Vault, func() time.Time) (*peernews.Pool, error) {
+		return nil, sentinel
+	}
+	_, err := assembleNode(
+		context.Background(),
+		testConfig(t),
+		openTestVault(t),
+		http.DefaultClient,
+		nodeTelemetry{
+			dhtOutbound: metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
+			dhtInbound:  metrics.NewDHTInboundMetrics(prometheus.NewRegistry()),
+		},
+	)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("assemble error = %v, want %v", err, sentinel)
+	}
+}
+
+func TestAssembleNodeReturnsTransferTallyError(t *testing.T) {
+	sentinel := errors.New("tally failed")
+	restoreAssemblySeams(t)
+	openRuntimeTransferTally = func(*vault.Vault) (*transfertally.Tally, error) {
 		return nil, sentinel
 	}
 	_, err := assembleNode(

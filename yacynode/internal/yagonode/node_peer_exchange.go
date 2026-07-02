@@ -20,6 +20,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/peerroster"
 	"github.com/D4rk4/yago/yacynode/internal/seedlist"
 	"github.com/D4rk4/yago/yacynode/internal/sharedblacklist"
+	"github.com/D4rk4/yago/yacynode/internal/transfertally"
 	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
@@ -66,29 +67,35 @@ func newNodeStatusReport(
 	storage nodeStorage,
 	roster peerroster.Roster,
 	news *peernews.Pool,
+	tally *transfertally.Tally,
 ) nodestatus.Report {
 	return nodestatus.NewReport(identity, nodestatus.ReportSources{
-		RWI:   storage.postings,
-		URLs:  storage.urlDirectory,
-		Peers: roster,
-		News:  news,
+		RWI:       storage.postings,
+		URLs:      storage.urlDirectory,
+		Peers:     roster,
+		News:      news,
+		Transfers: reportedTransferTally{tally: tally},
 	})
 }
 
-func openPeerRosterAndNews(
+func openPeerStores(
 	vault *vault.Vault,
 	peer *metrics.PeerMetrics,
-) (peerroster.Roster, *peernews.Pool, error) {
+) (peerroster.Roster, *peernews.Pool, *transfertally.Tally, error) {
 	roster, err := openObservedPeerRoster(vault, peer)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	news, err := openRuntimePeerNews(vault, time.Now)
 	if err != nil {
-		return nil, nil, fmt.Errorf("open peer news: %w", err)
+		return nil, nil, nil, fmt.Errorf("open peer news: %w", err)
+	}
+	tally, err := openRuntimeTransferTally(vault)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("open transfer tally: %w", err)
 	}
 
-	return roster, news, nil
+	return roster, news, tally, nil
 }
 
 func (p peerExchange) assemble() (peerExchangeRuntime, error) {

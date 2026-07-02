@@ -56,6 +56,12 @@ func (r nodeReport) SelfSeed(ctx context.Context) yacymodel.Seed {
 	seed.RequestSpeed = yacymodel.Some(0)
 	seed.UplinkSpeed = yacymodel.Some(0)
 
+	transfers := r.sources.Transfers.TransferTotals(ctx)
+	seed.SentWordCount = yacymodel.Some(transfers.SentWords)
+	seed.ReceivedWordCount = yacymodel.Some(transfers.ReceivedWords)
+	seed.SentURLCount = yacymodel.Some(transfers.SentURLs)
+	seed.ReceivedURLCount = yacymodel.Some(transfers.ReceivedURLs)
+
 	return seed
 }
 

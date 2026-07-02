@@ -24,6 +24,8 @@ components:
     in: internal/peerbirth/**
   peernews:
     in: internal/peernews/**
+  transfertally:
+    in: internal/transfertally/**
   peerroster:
     in: internal/peerroster/**
   peerannouncement:
@@ -180,6 +182,11 @@ deps:
       - memvault
     canUse:
       - yacymodel
+  transfertally:
+    mayDependOn:
+      - transfertally
+      - vault
+      - memvault
   peerroster:
     mayDependOn:
       - peerroster
@@ -451,6 +458,7 @@ deps:
       - nodeidentity
       - nodestatus
       - peernews
+      - transfertally
       - urlmetastaleness
       - urlreferences
       - crawldispatch

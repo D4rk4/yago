@@ -37,6 +37,12 @@ type stubNews struct {
 
 func (n stubNews) SeedNews(context.Context) string { return n.attachment }
 
+type stubTransfers struct {
+	totals TransferTotals
+}
+
+func (s stubTransfers) TransferTotals(context.Context) TransferTotals { return s.totals }
+
 func testIdentity() nodeidentity.Identity {
 	return nodeidentity.Identity{
 		Hash:        yacymodel.WordHash("self"),
@@ -62,6 +68,12 @@ func reportAt(start time.Time, elapsed time.Duration, rwi, urls stubCounter) nod
 		URLs:  urls,
 		Peers: stubPeers{known: 4},
 		News:  stubNews{attachment: "b|news"},
+		Transfers: stubTransfers{totals: TransferTotals{
+			SentWords:     11,
+			ReceivedWords: 22,
+			SentURLs:      33,
+			ReceivedURLs:  44,
+		}},
 	})
 }
 
@@ -93,6 +105,20 @@ func TestSelfSeedRefreshesDynamicFields(t *testing.T) {
 	if got, ok := seed.News.Get(); !ok || got != "b|news" {
 		t.Fatalf("News = %q (set %v), want current attachment", got, ok)
 	}
+	for name, want := range map[string]struct {
+		field yacymodel.Optional[int64]
+		value int64
+	}{
+		yacymodel.SeedSentWordCount:     {seed.SentWordCount, 11},
+		yacymodel.SeedReceivedWordCount: {seed.ReceivedWordCount, 22},
+		yacymodel.SeedSentURLCount:      {seed.SentURLCount, 33},
+		yacymodel.SeedReceivedURLCount:  {seed.ReceivedURLCount, 44},
+	} {
+		got, ok := want.field.Get()
+		if !ok || got != want.value {
+			t.Fatalf("%s = %d (set %v), want %d", name, got, ok, want.value)
+		}
+	}
 	for name, field := range map[string]yacymodel.Optional[int]{
 		yacymodel.SeedNoticedURLCount: seed.NoticedURLCount,
 		yacymodel.SeedOfferedURLCount: seed.OfferedURLCount,
@@ -115,10 +141,11 @@ func TestSelfSeedCarriesPersistentBirthDate(t *testing.T) {
 	id.Start = start
 	id.BirthDate = birth
 	report := newReport(id, clockAt(start), ReportSources{
-		RWI:   stubCounter{},
-		URLs:  stubCounter{},
-		Peers: stubPeers{},
-		News:  stubNews{},
+		RWI:       stubCounter{},
+		URLs:      stubCounter{},
+		Peers:     stubPeers{},
+		News:      stubNews{},
+		Transfers: stubTransfers{},
 	})
 
 	seed := report.SelfSeed(context.Background())
@@ -190,10 +217,11 @@ func TestNewReportReturnsRuntimeReport(t *testing.T) {
 	id := testIdentity()
 	id.Start = time.Now().Add(-time.Minute)
 	report := NewReport(id, ReportSources{
-		RWI:   stubCounter{},
-		URLs:  stubCounter{},
-		Peers: stubPeers{},
-		News:  stubNews{},
+		RWI:       stubCounter{},
+		URLs:      stubCounter{},
+		Peers:     stubPeers{},
+		News:      stubNews{},
+		Transfers: stubTransfers{},
 	})
 
 	if got := report.Version(context.Background()); got != "1.2" {

@@ -71,7 +71,7 @@ func (s inboundReferencesScript) ReferencedURLs(
 func TestObserveDHTInboundStorageKeepsStorageWithoutObserver(t *testing.T) {
 	storage := nodeStorage{postingReceiver: &inboundPostingReceiverScript{}}
 
-	got := observeDHTInboundStorage(storage, nil)
+	got := observeDHTInboundStorage(storage, nil, nil)
 
 	if got.postingReceiver != storage.postingReceiver {
 		t.Fatal("posting receiver changed without observer")

@@ -207,10 +207,11 @@ func TestBuildDHTOutboundRuntimeSkipsFeederWhenGatesAreClosed(t *testing.T) {
 	config.DHT.Gates.MinimumRWIWord = 1
 	metadata := urlDirectoryScript{count: 1}
 	report := nodestatus.NewReport(nodeIdentity(config), nodestatus.ReportSources{
-		RWI:   postings,
-		URLs:  metadata,
-		Peers: fakeRoster{},
-		News:  fakeSeedNews{},
+		RWI:       postings,
+		URLs:      metadata,
+		Peers:     fakeRoster{},
+		News:      fakeSeedNews{},
+		Transfers: fakeTransferTotals{},
 	})
 	process := buildDHTOutboundRuntime(dhtOutboundRuntimeAssembly{
 		ctx:     context.Background(),

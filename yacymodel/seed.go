@@ -11,30 +11,34 @@ import (
 var ErrBadSeed = errors.New("bad seed")
 
 type Seed struct {
-	Hash             Hash
-	Name             Optional[string]
-	IP               Optional[Host]
-	IP6              Optional[[]Host]
-	Port             Optional[Port]
-	PortSSL          Optional[Port]
-	PeerType         Optional[PeerType]
-	Flags            Optional[Flags]
-	Version          Optional[YaCyVersion]
-	Uptime           Optional[int]
-	UTC              Optional[SeedUTCValue]
-	BirthDate        Optional[SeedBirthDateUTC]
-	LastSeen         Optional[SeedLastSeenUTC]
-	RWICount         Optional[int]
-	URLCount         Optional[int]
-	NoticedURLCount  Optional[int]
-	OfferedURLCount  Optional[int]
-	KnownSeedCount   Optional[int]
-	ConnectsPerHour  Optional[int]
-	IndexingSpeed    Optional[int]
-	RequestSpeed     Optional[int]
-	UplinkSpeed      Optional[int]
-	News             Optional[string]
-	customProperties map[string]string
+	Hash              Hash
+	Name              Optional[string]
+	IP                Optional[Host]
+	IP6               Optional[[]Host]
+	Port              Optional[Port]
+	PortSSL           Optional[Port]
+	PeerType          Optional[PeerType]
+	Flags             Optional[Flags]
+	Version           Optional[YaCyVersion]
+	Uptime            Optional[int]
+	UTC               Optional[SeedUTCValue]
+	BirthDate         Optional[SeedBirthDateUTC]
+	LastSeen          Optional[SeedLastSeenUTC]
+	RWICount          Optional[int]
+	URLCount          Optional[int]
+	NoticedURLCount   Optional[int]
+	OfferedURLCount   Optional[int]
+	KnownSeedCount    Optional[int]
+	ConnectsPerHour   Optional[int]
+	IndexingSpeed     Optional[int]
+	RequestSpeed      Optional[int]
+	UplinkSpeed       Optional[int]
+	SentWordCount     Optional[int64]
+	ReceivedWordCount Optional[int64]
+	SentURLCount      Optional[int64]
+	ReceivedURLCount  Optional[int64]
+	News              Optional[string]
+	customProperties  map[string]string
 }
 
 func (s Seed) NetworkAddress() (string, bool) {

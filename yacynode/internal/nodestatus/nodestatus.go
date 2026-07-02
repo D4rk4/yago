@@ -38,11 +38,23 @@ type SeedNewsSource interface {
 	SeedNews(ctx context.Context) string
 }
 
+type TransferTotals struct {
+	SentWords     int64
+	ReceivedWords int64
+	SentURLs      int64
+	ReceivedURLs  int64
+}
+
+type TransferTotalsSource interface {
+	TransferTotals(ctx context.Context) TransferTotals
+}
+
 type ReportSources struct {
-	RWI   RWICounter
-	URLs  URLCounter
-	Peers KnownPeerCounter
-	News  SeedNewsSource
+	RWI       RWICounter
+	URLs      URLCounter
+	Peers     KnownPeerCounter
+	News      SeedNewsSource
+	Transfers TransferTotalsSource
 }
 
 func NewReport(id nodeidentity.Identity, sources ReportSources) Report {
