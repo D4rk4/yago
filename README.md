@@ -73,8 +73,8 @@ The node currently targets these responsibilities:
   including inbound and outbound DHT transfer series, peer discovery
   gauges/counters, local search index stats, and a machine-readable
   compatibility catalog;
-- optionally publish crawl orders and consume crawler ingest batches over NATS
-  JetStream when crawling is configured.
+- optionally publish `url`, `sitemap`, or `sitelist` crawl orders and consume
+  crawler ingest batches over NATS JetStream when crawling is configured.
 
 The node stores bounded extracted document text, page description metadata,
 bounded image URL/alt metadata, and other document metadata, and maintains an
@@ -155,6 +155,7 @@ Common crawler variables:
 | `YACYCRAWLER_TLS_TIMEOUT` | `5s` | TLS handshake timeout for crawler HTTPS requests. |
 | `YACYCRAWLER_HEADER_TIMEOUT` | `10s` | Time allowed for crawler HTTP response headers after the request is written. |
 | `YACYCRAWLER_MAX_REDIRECTS` | `10` | Maximum HTTP redirect hops followed by the crawler fast fetch path. Set `0` to reject the first redirect. |
+| `YACYCRAWLER_SITEMAP_URL_LIMIT` | `10000` | Maximum URLs imported from one sitemap or sitelist crawl seed before frontier admission. |
 
 See [yacynode/doc/configuration.md](yacynode/doc/configuration.md) for the full
 configuration reference.
@@ -180,6 +181,13 @@ The example stack starts:
 - `yago-node` on ports `8090` and `9090`;
 - `smokescreen` as the outbound proxy;
 - `yacycrawler` as the optional crawler worker.
+
+When `NATS_URL` is configured, the ops listener accepts local crawl dispatch
+requests at `POST /crawl`. The request body includes `seeds` and optional
+`startMode`; supported modes are `url`, `sitemap`, and `sitelist`. Sitemap and
+sitelist seeds are fetched by the crawler through the same public-web egress
+guards as normal pages and expanded into bounded URL roots before frontier
+admission.
 
 Useful checks:
 

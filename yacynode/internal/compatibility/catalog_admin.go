@@ -45,10 +45,10 @@ var adminSurfaceSpecs = []surfaceSpec{
 	},
 	{
 		Name:     "Crawl dispatch",
-		Path:     "/api/admin/v1/crawl/jobs",
+		Path:     "/crawl",
 		Methods:  []string{"POST"},
 		State:    Partial,
-		Behavior: "Publishes local crawl orders when crawler integration is configured.",
+		Behavior: "Publishes local crawl orders when crawler integration is configured; supports url, sitemap, and sitelist start modes.",
 		Evidence: []string{
 			"yacynode/internal/crawldispatch/*_test.go",
 			"yacynode/internal/yagonode/node_crawl_test.go",

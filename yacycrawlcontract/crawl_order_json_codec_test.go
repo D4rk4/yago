@@ -26,12 +26,14 @@ func TestCrawlOrderRoundTrip(t *testing.T) {
 		Requests: []CrawlRequest{
 			{
 				URL:           "https://example.org/a",
+				Mode:          CrawlRequestModeSitemap,
 				ReferrerURL:   "https://example.org/",
 				AnchorName:    "link",
 				Depth:         1,
 				ProfileHandle: "abcdef012345",
 				Initiator:     yacymodel.Hash("0123456789AB"),
 				AppDate:       time.Date(2026, 6, 19, 12, 0, 0, 0, time.UTC),
+				LastModified:  time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC),
 			},
 		},
 	}
@@ -52,5 +54,23 @@ func TestCrawlOrderRoundTrip(t *testing.T) {
 func TestUnmarshalCrawlOrderRejectsInvalidJSON(t *testing.T) {
 	if _, err := UnmarshalCrawlOrder([]byte("{")); err == nil {
 		t.Fatal("invalid JSON should fail")
+	}
+}
+
+func TestNormalizeCrawlRequestMode(t *testing.T) {
+	cases := map[CrawlRequestMode]CrawlRequestMode{
+		"":                       CrawlRequestModeURL,
+		CrawlRequestModeURL:      CrawlRequestModeURL,
+		CrawlRequestModeSitemap:  CrawlRequestModeSitemap,
+		CrawlRequestModeSitelist: CrawlRequestModeSitelist,
+	}
+	for input, want := range cases {
+		got, ok := NormalizeCrawlRequestMode(input)
+		if !ok || got != want {
+			t.Fatalf("mode %q = %q/%v, want %q/true", input, got, ok, want)
+		}
+	}
+	if _, ok := NormalizeCrawlRequestMode("archive"); ok {
+		t.Fatal("unknown mode should be rejected")
 	}
 }

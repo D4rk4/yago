@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -12,6 +13,7 @@ import (
 	"github.com/D4rk4/yago/yacycrawler/internal/botwall"
 	"github.com/D4rk4/yago/yacycrawler/internal/crawldelay"
 	"github.com/D4rk4/yago/yacycrawler/internal/crawlorder"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawlseed"
 	"github.com/D4rk4/yago/yacycrawler/internal/frontier"
 	"github.com/D4rk4/yago/yacycrawler/internal/httpfetch"
 	"github.com/D4rk4/yago/yacycrawler/internal/ingest"
@@ -29,6 +31,8 @@ var newCrawlerJetStream = jetstream.New
 var newCrawlerRobotsAdmissionFetcher = robots.NewRobotsAdmissionFetcher
 
 var newCrawlerHTTPPageFetcher = httpfetch.NewPageFetcher
+
+var newCrawlerSeedSource = crawlseed.NewHTTPSource
 
 var newCrawlerPublicWebAdmissionFetcher = func(
 	inner pagefetch.PageSource,
@@ -88,7 +92,11 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		pageindex.NewIndexBuilder(),
 		emitter,
 	)
-	consumer := crawlorder.NewCrawlOrderConsumer(orders, frontier)
+	consumer := crawlorder.NewCrawlOrderConsumer(
+		orders,
+		frontier,
+		newCrawlRequestExpander(client, crawl),
+	)
 
 	workersDone := make(chan struct{})
 	go func() {
@@ -111,4 +119,12 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	<-workersDone
 	slog.InfoContext(ctx, "crawler stopped")
 	return nil
+}
+
+func newCrawlRequestExpander(client *http.Client, crawl CrawlConfig) *crawlseed.Expander {
+	seedSource := newCrawlerPublicWebAdmissionFetcher(
+		newCrawlerSeedSource(client, crawl.UserAgent, crawl.MaxBodyBytes),
+		nil,
+	)
+	return crawlseed.NewExpander(seedSource, crawl.SitemapURLLimit)
 }

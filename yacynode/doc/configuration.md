@@ -34,6 +34,11 @@ The node is configured through environment variables.
 
 The node can drive a crawl fleet over NATS JetStream: operators start a crawl by posting seed URLs to `/crawl` on the ops address, and crawled pages flow back in as ingest batches. Crawling is off until `NATS_URL` is set; without it the node behaves as a pure peer.
 
+The `/crawl` request body accepts `seeds` and optional `startMode`. Supported
+start modes are `url`, `sitemap`, and `sitelist`; empty mode is treated as
+`url`. Sitemap and sitelist starts are expanded by the crawler into bounded URL
+roots before normal frontier admission.
+
 | Variable | Default | Description |
 | --- | --- | --- |
 | `NATS_URL` | _(empty)_ | NATS server to reach the crawl fleet (e.g. `nats://nats:4222`). Empty disables crawling. |

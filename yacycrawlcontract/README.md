@@ -22,6 +22,10 @@ node <------------------ crawler
 
 `CrawlOrder` carries crawl work from the node to crawler instances. The order includes
 the crawl profile and seed requests needed to start or continue a crawl.
+Each seed request has a mode. Empty mode and `url` mean a normal page URL.
+`sitemap` means an XML sitemap or sitemap index. `sitelist` means a plain text
+URL list. Crawlers expand sitemap and sitelist starts into normal URL requests
+before frontier admission.
 
 `IngestBatch` carries references back to the node for one fetched page: document
 content metadata, bounded image metadata, RWI postings, URL metadata, and the
@@ -38,6 +42,12 @@ order source.
 
 Because attribution stays inside that token, local operator crawls and remotely
 requested crawls use the same message shape.
+
+## Request hints
+
+`LastModified` on a crawl request is a scheduling hint carried from sitemap
+`lastmod` values. It does not make the crawler trust page freshness by itself;
+recrawl policy remains a crawler/frontier decision.
 
 ## Backpressure
 

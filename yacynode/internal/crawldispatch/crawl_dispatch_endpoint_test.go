@@ -59,6 +59,7 @@ func TestDispatchBuildsOrderFromOperatorInput(t *testing.T) {
 	rec := post(t, mux, `{
 		"name": "docs",
 		"seeds": ["https://example.org/a", "https://example.org/b"],
+		"startMode": "sitemap",
 		"scope": "domain",
 		"maxDepth": 3,
 		"followNoFollowLinks": true,
@@ -85,6 +86,9 @@ func TestDispatchBuildsOrderFromOperatorInput(t *testing.T) {
 	for _, r := range order.Requests {
 		if r.ProfileHandle != order.Profile.Handle {
 			t.Fatalf("request handle = %q, want %q", r.ProfileHandle, order.Profile.Handle)
+		}
+		if r.Mode != yacycrawlcontract.CrawlRequestModeSitemap {
+			t.Fatalf("request mode = %q, want sitemap", r.Mode)
 		}
 		if r.Initiator != initiator {
 			t.Fatalf("initiator = %q, want %q", r.Initiator, initiator)
@@ -139,6 +143,13 @@ func TestDispatchRejectsEmptySeeds(t *testing.T) {
 
 func TestDispatchRejectsUnknownScope(t *testing.T) {
 	rec := post(t, mount(t, &recordingQueue{}), `{"seeds":["x"],"scope":"galaxy"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestDispatchRejectsUnknownStartMode(t *testing.T) {
+	rec := post(t, mount(t, &recordingQueue{}), `{"seeds":["x"],"startMode":"archive"}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}

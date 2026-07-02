@@ -17,6 +17,9 @@ func TestDefaultCrawlConfig(t *testing.T) {
 	if cfg.MaxRedirects != DefaultMaxRedirects {
 		t.Errorf("redirects = %d", cfg.MaxRedirects)
 	}
+	if cfg.SitemapURLLimit != DefaultSitemapURLLimit {
+		t.Errorf("sitemap URL limit = %d", cfg.SitemapURLLimit)
+	}
 	if cfg.RequestTimeout != DefaultRequestTimeout ||
 		cfg.ConnectTimeout != DefaultConnectTimeout ||
 		cfg.TLSTimeout != DefaultTLSTimeout ||
@@ -74,6 +77,9 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	if cfg.Crawl.MaxRedirects != DefaultMaxRedirects {
 		t.Errorf("redirects = %d", cfg.Crawl.MaxRedirects)
 	}
+	if cfg.Crawl.SitemapURLLimit != DefaultSitemapURLLimit {
+		t.Errorf("sitemap URL limit = %d", cfg.Crawl.SitemapURLLimit)
+	}
 	if cfg.Crawl.RequestTimeout != DefaultRequestTimeout ||
 		cfg.Crawl.ConnectTimeout != DefaultConnectTimeout ||
 		cfg.Crawl.TLSTimeout != DefaultTLSTimeout ||
@@ -105,6 +111,7 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 		EnvTLSTimeout:        "3s",
 		EnvHeaderTimeout:     "2s",
 		EnvMaxRedirects:      "2",
+		EnvSitemapURLLimit:   "9",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -126,6 +133,9 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	}
 	if cfg.Crawl.MaxRedirects != 2 {
 		t.Errorf("redirects = %d", cfg.Crawl.MaxRedirects)
+	}
+	if cfg.Crawl.SitemapURLLimit != 9 {
+		t.Errorf("sitemap URL limit = %d", cfg.Crawl.SitemapURLLimit)
 	}
 	if cfg.Crawl.RequestTimeout != 20*time.Second ||
 		cfg.Crawl.ConnectTimeout != 4*time.Second ||
@@ -150,6 +160,7 @@ func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 		EnvConnectTimeout:    "0s",
 		EnvTLSTimeout:        "0s",
 		EnvHeaderTimeout:     "0s",
+		EnvSitemapURLLimit:   "0",
 	}
 	for key, bad := range cases {
 		env := map[string]string{}
@@ -176,6 +187,7 @@ func TestLoadServiceConfigRejectsParseErrors(t *testing.T) {
 		EnvTLSTimeout:        "not-a-duration",
 		EnvHeaderTimeout:     "not-a-duration",
 		EnvMaxRedirects:      "not-a-number",
+		EnvSitemapURLLimit:   "not-a-number",
 	}
 	for key, bad := range cases {
 		env := map[string]string{}

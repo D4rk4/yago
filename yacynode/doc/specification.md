@@ -99,6 +99,8 @@ yago-admin-ui
 * The node SHALL export YaCy-compatible peer profile properties from its configured data directory when a profile file exists.
 * The node SHALL export a YaCy-compatible bounded host-link index from stored URL metadata referrer relationships.
 * The node SHALL run configured crawl jobs and ingest crawler-produced documents, metadata, and postings.
+* The node SHALL let local crawl dispatch jobs mark start seeds as normal URLs,
+  explicit sitemaps, or explicit sitelists.
 * The node SHALL reject remote crawl work unless a configured policy explicitly allows it.
 * The node SHALL return YaCy-compatible empty remote-crawl responses while remote crawl work is disabled.
 * The node SHALL return YaCy-compatible crawl receipt retry delays while remote crawl work is disabled.
@@ -145,3 +147,7 @@ yago-admin-ui
 * Security-sensitive behavior SHALL default closed until configured by an operator.
 * The crawler SHALL deny private, loopback, link-local, multicast, unspecified, and metadata destinations by default.
 * The crawler SHALL protect against DNS rebinding by validating destinations at admission and fetch time.
+* The crawler SHALL expand explicit XML sitemap URL sets, sitemap indexes, and
+  plain text sitelists into bounded normal URL crawl requests before frontier
+  admission.
+* The crawler SHALL carry sitemap `lastmod` values as recrawl scheduling hints.

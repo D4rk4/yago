@@ -43,6 +43,12 @@ metadata and bounded image URL/alt metadata when available. Links marked
 `rel=nofollow` are not submitted for frontier expansion or local outlink
 evidence unless the crawl profile opts in.
 
+Crawl requests can start from normal URLs, XML sitemaps, sitemap indexes, or
+plain text sitelists. Sitemap and sitelist starts are fetched through the same
+proxied public-web egress path as page fetches, parsed before frontier
+admission, and expanded into bounded URL roots. Sitemap `lastmod` values are
+carried as crawl request hints for later recrawl scheduling.
+
 Configuration comes from the environment (`NATS_URL` and `YACYCRAWLER_PROXY_URL`
 are required), and the service runs until it receives `SIGINT` or `SIGTERM`.
 Outbound fetches, including the headless browser, use the configured proxy. Before
@@ -52,7 +58,9 @@ destinations. The final rendered URL is checked against the same public-web poli
 The default fetch path uses a bounded HTTP GET first and falls back to the
 headless browser only when that fast path rejects the page. The HTTP fast path
 follows at most `YACYCRAWLER_MAX_REDIRECTS` redirect hops and uses explicit
-request, connect, TLS, and response-header timeout budgets. The container image
+request, connect, TLS, and response-header timeout budgets. Sitemap and
+sitelist expansion imports at most `YACYCRAWLER_SITEMAP_URL_LIMIT` URLs per
+seed. The container image
 embeds the pinned headless-shell runtime in a scratch non-root image.
 
 The message types both services exchange live in the standalone
@@ -63,6 +71,8 @@ on the other.
 
 - The persistent frontier, politeness model, and recrawl scheduler are still
   prototype-grade.
+- Robots.txt sitemap discovery is still planned; sitemap and sitelist starts
+  currently come from explicit crawl order `startMode` values.
 - Browser-level redirect interception is still planned; the current public-web
   admission check, HTTP redirect cap, HTTP timeout budgets, and HTTP final-URL check are
   application-layer guards plus proxy defense in depth.

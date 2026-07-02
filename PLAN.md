@@ -1189,17 +1189,31 @@ Acceptance:
 
 ### CRAWL-06: Sitemap and sitelist support
 
+Status: partial implementation exists. Local crawl dispatch accepts `startMode`
+values `url`, `sitemap`, and `sitelist`. The crawler fetches explicit sitemap
+and sitelist seeds through the same proxied public-web admission path used for
+page fetches, parses XML `urlset` documents, XML `sitemapindex` documents, and
+plain text sitelists, carries sitemap `lastmod` as a crawl request hint, and
+imports at most `YACYCRAWLER_SITEMAP_URL_LIMIT` URLs per seed before frontier
+admission. Robots.txt sitemap discovery, persistent frontier scheduling from
+`lastmod`, and richer recrawl policy remain planned.
+
 Tasks:
 
-1. Fetch and parse XML sitemaps.
-2. Support sitemap indexes.
-3. Respect lastmod as recrawl hint.
-4. Support plain text sitelist files.
-5. Bound number of URLs imported from sitemap/sitelist.
+1. Fetch and parse XML sitemaps. Implemented for explicit `sitemap` starts.
+2. Support sitemap indexes. Implemented for bounded recursive expansion.
+3. Respect lastmod as recrawl hint. Partial: carried on expanded requests.
+4. Support plain text sitelist files. Implemented for explicit `sitelist` starts.
+5. Bound number of URLs imported from sitemap/sitelist. Implemented through
+   `YACYCRAWLER_SITEMAP_URL_LIMIT`.
+6. Discover sitemap URLs from robots.txt where allowed by profile.
+7. Feed `lastmod` into persistent frontier recrawl scheduling.
 
 Acceptance:
 
-- Tests cover sitemap index, invalid XML, huge sitemap truncation.
+- Tests cover sitemap URL sets, sitemap indexes, invalid XML, huge sitemap
+  truncation, fetch failures, bad expanded URLs, duplicate/capped sitemap files,
+  invalid seed URLs, and sitelist expansion.
 - Sitelist mode creates independent roots.
 
 ### CRAWL-07: Crawler worker hardening

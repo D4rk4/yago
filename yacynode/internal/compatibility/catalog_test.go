@@ -81,6 +81,9 @@ func TestCatalogIncludesCurrentAdminSurfaces(t *testing.T) {
 			t.Fatalf("%s state = %q, want implemented", path, got.State)
 		}
 	}
+	if got := paths["/crawl"]; got.State != Partial {
+		t.Fatalf("/crawl state = %q, want partial", got.State)
+	}
 }
 
 func TestCatalogCountsMatchSurfaces(t *testing.T) {

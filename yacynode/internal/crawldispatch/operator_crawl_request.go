@@ -11,6 +11,7 @@ import (
 type operatorCrawlRequest struct {
 	Name                string   `json:"name"`
 	Seeds               []string `json:"seeds"`
+	StartMode           string   `json:"startMode"`
 	Scope               string   `json:"scope"`
 	URLMustMatch        string   `json:"urlMustMatch"`
 	URLMustNotMatch     string   `json:"urlMustNotMatch"`
@@ -36,6 +37,11 @@ func (r operatorCrawlRequest) order(
 ) (yacycrawlcontract.CrawlOrder, error) {
 	if len(r.Seeds) == 0 {
 		return yacycrawlcontract.CrawlOrder{}, fmt.Errorf("at least one seed url is required")
+	}
+
+	mode, ok := crawlRequestModeByName[r.StartMode]
+	if !ok {
+		return yacycrawlcontract.CrawlOrder{}, fmt.Errorf("unknown crawl startMode %q", r.StartMode)
 	}
 
 	scope, ok := crawlScopeByName[r.Scope]
@@ -76,6 +82,7 @@ func (r operatorCrawlRequest) order(
 	for _, seed := range r.Seeds {
 		requests = append(requests, yacycrawlcontract.CrawlRequest{
 			URL:           seed,
+			Mode:          mode,
 			ProfileHandle: profile.Handle,
 			Initiator:     initiator,
 			AppDate:       now,
@@ -87,6 +94,13 @@ func (r operatorCrawlRequest) order(
 		Profile:    profile,
 		Requests:   requests,
 	}, nil
+}
+
+var crawlRequestModeByName = map[string]yacycrawlcontract.CrawlRequestMode{
+	"":         yacycrawlcontract.CrawlRequestModeURL,
+	"url":      yacycrawlcontract.CrawlRequestModeURL,
+	"sitemap":  yacycrawlcontract.CrawlRequestModeSitemap,
+	"sitelist": yacycrawlcontract.CrawlRequestModeSitelist,
 }
 
 func matchOrAll(pattern string) string {

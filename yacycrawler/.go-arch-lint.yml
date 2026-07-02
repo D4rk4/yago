@@ -12,6 +12,10 @@ components:
     in: internal/weburl/**
   crawlrun:
     in: internal/crawlrun/**
+  sitemap:
+    in: internal/sitemap/**
+  crawlseed:
+    in: internal/crawlseed/**
   boundedqueue:
     in: internal/boundedqueue/**
   pagefetch:
@@ -94,6 +98,17 @@ deps:
       - crawlrun
     canUse:
       - google-uuid
+  sitemap:
+    mayDependOn:
+      - sitemap
+  crawlseed:
+    mayDependOn:
+      - crawlseed
+      - pagefetch
+      - sitemap
+      - weburl
+    canUse:
+      - yacycrawlcontract
   boundedqueue:
     mayDependOn:
       - boundedqueue
@@ -200,6 +215,7 @@ deps:
       - chromedpfetch
       - crawldelay
       - crawlorder
+      - crawlseed
       - frontier
       - httpfetch
       - ingest

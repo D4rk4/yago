@@ -25,12 +25,14 @@ func restoreAssemblySeams(t *testing.T) {
 	savedJetStream := newCrawlerJetStream
 	savedRobots := newCrawlerRobotsAdmissionFetcher
 	savedHTTP := newCrawlerHTTPPageFetcher
+	savedSeed := newCrawlerSeedSource
 	savedPublicWeb := newCrawlerPublicWebAdmissionFetcher
 	t.Cleanup(func() {
 		connectCrawlerNATS = savedConnect
 		newCrawlerJetStream = savedJetStream
 		newCrawlerRobotsAdmissionFetcher = savedRobots
 		newCrawlerHTTPPageFetcher = savedHTTP
+		newCrawlerSeedSource = savedSeed
 		newCrawlerPublicWebAdmissionFetcher = savedPublicWeb
 	})
 }
@@ -172,6 +174,13 @@ func TestDefaultHTTPPageFetcherBuildsFetcher(t *testing.T) {
 	got := newCrawlerHTTPPageFetcher(http.DefaultClient, "agent/1.0", 1<<20)
 	if got == nil {
 		t.Fatal("http page fetcher is nil")
+	}
+}
+
+func TestDefaultSeedSourceBuildsFetcher(t *testing.T) {
+	got := newCrawlerSeedSource(http.DefaultClient, "agent/1.0", 1<<20)
+	if got == nil {
+		t.Fatal("seed source is nil")
 	}
 }
 

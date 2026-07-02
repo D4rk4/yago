@@ -26,6 +26,7 @@ const (
 	EnvTLSTimeout        = "YACYCRAWLER_TLS_TIMEOUT"
 	EnvHeaderTimeout     = "YACYCRAWLER_HEADER_TIMEOUT"
 	EnvMaxRedirects      = "YACYCRAWLER_MAX_REDIRECTS"
+	EnvSitemapURLLimit   = "YACYCRAWLER_SITEMAP_URL_LIMIT"
 	EnvProxyURL          = "YACYCRAWLER_PROXY_URL"
 
 	DefaultOrdersSubject = "yacy.crawl.orders"
@@ -33,14 +34,15 @@ const (
 	DefaultOrdersDurable = "yacy-crawlers"
 	DefaultIngestMaxMsgs = 1024
 
-	DefaultMaxBodyBytes   int64 = 4 << 20
-	DefaultRequestTimeout       = 15 * time.Second
-	DefaultConnectTimeout       = 5 * time.Second
-	DefaultTLSTimeout           = 5 * time.Second
-	DefaultHeaderTimeout        = 10 * time.Second
-	DefaultMaxRedirects         = 10
-	DefaultUserAgent            = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
-	DefaultHostCacheSize        = 4096
+	DefaultMaxBodyBytes    int64 = 4 << 20
+	DefaultRequestTimeout        = 15 * time.Second
+	DefaultConnectTimeout        = 5 * time.Second
+	DefaultTLSTimeout            = 5 * time.Second
+	DefaultHeaderTimeout         = 10 * time.Second
+	DefaultMaxRedirects          = 10
+	DefaultSitemapURLLimit       = 10000
+	DefaultUserAgent             = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
+	DefaultHostCacheSize         = 4096
 )
 
 type CrawlConfig struct {
@@ -53,6 +55,7 @@ type CrawlConfig struct {
 	HeaderTimeout   time.Duration
 	UserAgent       string
 	MaxRedirects    int
+	SitemapURLLimit int
 	CrawlDelay      time.Duration
 	MaxDepth        int
 	Scope           yacycrawlcontract.CrawlScope
@@ -70,6 +73,7 @@ func DefaultCrawlConfig() CrawlConfig {
 		TLSTimeout:      DefaultTLSTimeout,
 		HeaderTimeout:   DefaultHeaderTimeout,
 		MaxRedirects:    DefaultMaxRedirects,
+		SitemapURLLimit: DefaultSitemapURLLimit,
 		UserAgent:       DefaultUserAgent,
 		CrawlDelay:      crawldelay.DefaultCrawlDelay,
 		MaxDepth:        2,
@@ -108,57 +112,10 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		return ServiceConfig{}, err
 	}
 
-	crawl := DefaultCrawlConfig()
-
-	workers, err := envPositiveInt(getenv, EnvWorkers, crawl.Workers)
+	crawl, err := loadCrawlConfig(getenv)
 	if err != nil {
 		return ServiceConfig{}, err
 	}
-	crawl.Workers = workers
-
-	depth, err := envPositiveInt(getenv, EnvMaxDepth, crawl.MaxDepth)
-	if err != nil {
-		return ServiceConfig{}, err
-	}
-	crawl.MaxDepth = depth
-
-	delay, err := envDuration(getenv, EnvCrawlDelay, crawl.CrawlDelay)
-	if err != nil {
-		return ServiceConfig{}, err
-	}
-	crawl.CrawlDelay = delay
-
-	crawl.UserAgent = envString(getenv, EnvUserAgent, crawl.UserAgent)
-
-	requestTimeout, err := envPositiveDuration(getenv, EnvRequestTimeout, crawl.RequestTimeout)
-	if err != nil {
-		return ServiceConfig{}, err
-	}
-	crawl.RequestTimeout = requestTimeout
-
-	connectTimeout, err := envPositiveDuration(getenv, EnvConnectTimeout, crawl.ConnectTimeout)
-	if err != nil {
-		return ServiceConfig{}, err
-	}
-	crawl.ConnectTimeout = connectTimeout
-
-	tlsTimeout, err := envPositiveDuration(getenv, EnvTLSTimeout, crawl.TLSTimeout)
-	if err != nil {
-		return ServiceConfig{}, err
-	}
-	crawl.TLSTimeout = tlsTimeout
-
-	headerTimeout, err := envPositiveDuration(getenv, EnvHeaderTimeout, crawl.HeaderTimeout)
-	if err != nil {
-		return ServiceConfig{}, err
-	}
-	crawl.HeaderTimeout = headerTimeout
-
-	redirects, err := envNonNegativeInt(getenv, EnvMaxRedirects, crawl.MaxRedirects)
-	if err != nil {
-		return ServiceConfig{}, err
-	}
-	crawl.MaxRedirects = redirects
 
 	maxMsgs, err := envPositiveInt64(getenv, EnvNATSIngestMaxMsgs, DefaultIngestMaxMsgs)
 	if err != nil {
@@ -174,6 +131,68 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		OrdersDurable: envString(getenv, EnvNATSDurable, DefaultOrdersDurable),
 		IngestMaxMsgs: maxMsgs,
 	}, nil
+}
+
+func loadCrawlConfig(getenv func(string) string) (CrawlConfig, error) {
+	crawl := DefaultCrawlConfig()
+
+	workers, err := envPositiveInt(getenv, EnvWorkers, crawl.Workers)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.Workers = workers
+
+	depth, err := envPositiveInt(getenv, EnvMaxDepth, crawl.MaxDepth)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.MaxDepth = depth
+
+	delay, err := envDuration(getenv, EnvCrawlDelay, crawl.CrawlDelay)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.CrawlDelay = delay
+
+	crawl.UserAgent = envString(getenv, EnvUserAgent, crawl.UserAgent)
+
+	requestTimeout, err := envPositiveDuration(getenv, EnvRequestTimeout, crawl.RequestTimeout)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.RequestTimeout = requestTimeout
+
+	connectTimeout, err := envPositiveDuration(getenv, EnvConnectTimeout, crawl.ConnectTimeout)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.ConnectTimeout = connectTimeout
+
+	tlsTimeout, err := envPositiveDuration(getenv, EnvTLSTimeout, crawl.TLSTimeout)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.TLSTimeout = tlsTimeout
+
+	headerTimeout, err := envPositiveDuration(getenv, EnvHeaderTimeout, crawl.HeaderTimeout)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.HeaderTimeout = headerTimeout
+
+	redirects, err := envNonNegativeInt(getenv, EnvMaxRedirects, crawl.MaxRedirects)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.MaxRedirects = redirects
+
+	sitemapURLLimit, err := envPositiveInt(getenv, EnvSitemapURLLimit, crawl.SitemapURLLimit)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.SitemapURLLimit = sitemapURLLimit
+
+	return crawl, nil
 }
 
 func envString(getenv func(string) string, key, fallback string) string {
