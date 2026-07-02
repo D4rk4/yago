@@ -66,6 +66,23 @@ func TestSeedDomainFieldsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSeedAcceptsTimestampUTCField(t *testing.T) {
+	seed, err := ParseSeed(
+		t.Context(),
+		"{Hash=ABCDEFGHIJKL,LastSeen=20260622012208,UTC=20260614000329}",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	utc, ok := seed.UTC.Get()
+	if !ok || utc.String() != "20260614000329" {
+		t.Fatalf("UTC = %q, %v", utc, ok)
+	}
+	if got := seed.String(); got != "{Hash=ABCDEFGHIJKL,LastSeen=20260622012208,UTC=20260614000329}" {
+		t.Fatalf("seed string = %q", got)
+	}
+}
+
 func TestSeedOperationalFieldsRoundTrip(t *testing.T) {
 	seed, err := ParseSeed(
 		t.Context(),
@@ -107,7 +124,7 @@ func TestSeedSharesAddress(t *testing.T) {
 	}
 }
 
-func TestParseSeedRejectsBadUTCOffset(t *testing.T) {
+func TestParseSeedRejectsBadUTC(t *testing.T) {
 	if _, err := ParseSeed(t.Context(), "Hash=ABCDEFGHIJKL,UTC=0200"); !errors.Is(err, ErrBadSeed) {
 		t.Fatalf("ParseSeed bad utc = %v, want ErrBadSeed", err)
 	}

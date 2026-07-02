@@ -92,7 +92,7 @@ func parseCoreSeedField(seed *Seed, key, value string) (bool, error) {
 	case SeedUptime:
 		err = parseInto(&seed.Uptime, strconv.Atoi, value)
 	case SeedUTC:
-		err = parseInto(&seed.UTC, ParseSeedUTCOffset, value)
+		err = parseInto(&seed.UTC, ParseSeedUTC, value)
 	case SeedBirthDate:
 		err = parseInto(&seed.BirthDate, ParseSeedBirthDateUTC, value)
 	case SeedLastSeen:

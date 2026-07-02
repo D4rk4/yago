@@ -21,7 +21,7 @@ type Seed struct {
 	Flags            Optional[Flags]
 	Version          Optional[YaCyVersion]
 	Uptime           Optional[int]
-	UTC              Optional[SeedUTCOffset]
+	UTC              Optional[SeedUTCValue]
 	BirthDate        Optional[SeedBirthDateUTC]
 	LastSeen         Optional[SeedLastSeenUTC]
 	RWICount         Optional[int]

@@ -30,10 +30,22 @@ func TestSeedUTCOffsetFromTime(t *testing.T) {
 	}
 }
 
-func TestParseSeedUTCOffsetRejectsBadNumbers(t *testing.T) {
-	for _, raw := range []string{"+aa00", "+00aa", "+2400", "+0060"} {
-		if _, err := ParseSeedUTCOffset(raw); !errors.Is(err, ErrBadSeedUTCOffset) {
-			t.Fatalf("ParseSeedUTCOffset(%q) = %v, want ErrBadSeedUTCOffset", raw, err)
+func TestParseSeedUTCAcceptsOffsetAndTimestamp(t *testing.T) {
+	for _, raw := range []string{"+0230", "-0345", "20260614000329"} {
+		got, err := ParseSeedUTC(raw)
+		if err != nil {
+			t.Fatalf("ParseSeedUTC(%q): %v", raw, err)
+		}
+		if got.String() != raw {
+			t.Fatalf("ParseSeedUTC(%q) = %q", raw, got)
+		}
+	}
+}
+
+func TestParseSeedUTCRejectsBadValues(t *testing.T) {
+	for _, raw := range []string{"+aa00", "+00aa", "+2400", "+0060", "2026061400032", "20261314000329"} {
+		if _, err := ParseSeedUTC(raw); !errors.Is(err, ErrBadSeedUTC) {
+			t.Fatalf("ParseSeedUTC(%q) = %v, want ErrBadSeedUTC", raw, err)
 		}
 	}
 }

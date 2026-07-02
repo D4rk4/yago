@@ -29,6 +29,7 @@ Go internals do not need to copy Java source code or Java storage engines.
 * The node SHALL allow operators to configure the public host and port advertised in its YaCy seed.
 * The node SHALL allow operators to configure the public endpoint used for YaCy-compatible reachability self-tests.
 * The node SHALL announce itself through configured YaCy seedlists.
+* The node SHALL parse YaCy seed wire forms from configured seedlists without discarding otherwise valid peers over documented or observed `UTC` field variants.
 * The node SHALL allow operators to configure a proxy for outbound connections.
 * The node SHALL be reachable through one stable public endpoint.
 * The node SHALL support peer discovery and peer liveness exchange.

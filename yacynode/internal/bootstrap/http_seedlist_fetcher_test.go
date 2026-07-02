@@ -52,6 +52,9 @@ func TestSeedlistFetcherDecodesLines(t *testing.T) {
 		"q|data",
 		"!!! not a seed line",
 		yacymodel.EncodeCompactWireForm("not a seed"),
+		yacymodel.EncodeCompactWireForm(
+			"{Hash=CCCCCCCCCCCC,IP=203.0.113.3,Port=8090,UTC=20260614000329}",
+		),
 		seedlistLine(t, "BBBBBBBBBBBB", "203.0.113.2"),
 	}, "\n")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -64,8 +67,11 @@ func TestSeedlistFetcherDecodesLines(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(seeds) != 2 {
-		t.Fatalf("got %d seeds, want 2 (bad line skipped)", len(seeds))
+	if len(seeds) != 3 {
+		t.Fatalf("got %d seeds, want 3 (bad line skipped)", len(seeds))
+	}
+	if utc, ok := seeds[1].UTC.Get(); !ok || utc.String() != "20260614000329" {
+		t.Fatalf("timestamp UTC seed = %q, %v", utc, ok)
 	}
 }
 

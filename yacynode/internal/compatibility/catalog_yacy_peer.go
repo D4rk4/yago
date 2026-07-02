@@ -64,11 +64,12 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		},
 	},
 	{
-		Name:     "Plain seed list",
-		Path:     yacyproto.PathSeedlist,
-		Methods:  methods(yacyproto.SeedlistEndpointMethods),
-		State:    Implemented,
-		Behavior: "Serves own and confirmed reachable seeds in plain YaCy seed-list form.",
+		Name:    "Plain seed list",
+		Path:    yacyproto.PathSeedlist,
+		Methods: methods(yacyproto.SeedlistEndpointMethods),
+		State:   Implemented,
+		Behavior: "Serves own and confirmed reachable seeds in plain YaCy seed-list form; " +
+			"configured bootstrap import accepts seed UTC offset and timestamp wire values.",
 		Evidence: []string{"yacynode/internal/seedlist/*_test.go"},
 	},
 	{

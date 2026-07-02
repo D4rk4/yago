@@ -8,6 +8,9 @@ XML when original YaCy uses those formats.
 The bootstrap seed-list endpoints are exceptions: `/yacy/seedlist.html`
 returns plain YaCy seed lines, one per CRLF-terminated line, while
 `/yacy/seedlist.json` and `/yacy/seedlist.xml` return clear-text peer maps.
+Seed import accepts the documented signed `UTC` offset form and the timestamp
+form observed in current freeworld seedlists, preserving whichever value the
+remote seed carries.
 The shared blacklist endpoint `/yacy/list.html` is also raw text and returns
 CRLF-terminated blacklist entries for `col=black`. The peer profile endpoint
 `/yacy/profile.html` is raw text as well and returns CRLF-terminated `key=value`

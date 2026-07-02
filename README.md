@@ -29,6 +29,8 @@ The node currently targets these responsibilities:
   capacity/status requests;
 - serve YaCy seed lists through `/yacy/seedlist.html`, `/yacy/seedlist.json`,
   and `/yacy/seedlist.xml`;
+- bootstrap peers from configured YaCy seedlists, including seeds with either
+  offset or timestamp `UTC` wire values;
 - answer YaCy shared blacklist export requests through `/yacy/list.html` with
   an empty list unless shared blacklists are configured in a future storage
   source;

@@ -28,7 +28,7 @@ Status values:
 | Inbound RWI transfer | `/yacy/transferRWI.html` | POST | implemented | Accepts RWI postings durably and reports missing URL metadata. |
 | Inbound URL metadata transfer | `/yacy/transferURL.html` | POST | implemented | Accepts URL metadata and reconciles RWI references. |
 | Remote RWI search | `/yacy/search.html` | GET, POST | implemented | Serves key-value YaCy remote search responses from local RWI storage. |
-| Seed list | `/yacy/seedlist.html` | GET, POST | implemented | Serves own and confirmed reachable seeds in plain seed-list form. |
+| Seed list | `/yacy/seedlist.html` | GET, POST | implemented | Serves own and confirmed reachable seeds in plain seed-list form; configured bootstrap import accepts seed `UTC` offset and timestamp wire values. |
 | Seed list JSON | `/yacy/seedlist.json` | GET, POST | implemented | Serves own and confirmed reachable seeds in JSON seed-list form. |
 | Seed list XML | `/yacy/seedlist.xml` | GET, POST | implemented | Serves own and confirmed reachable seeds in XML seed-list form. |
 | Host-link index | `/yacy/idx.json` | GET, POST | partial | Serves the host object shape with an empty host-link index until host-link storage is populated. |
