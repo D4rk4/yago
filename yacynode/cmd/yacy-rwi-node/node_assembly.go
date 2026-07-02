@@ -100,7 +100,13 @@ func assembleNode(
 	if err != nil {
 		return node{}, err
 	}
-	mountNodePublicSearch(mux, storage, exchange.roster, identity, client)
+	mountNodePublicSearch(mux, publicSearchAssembly{
+		storage:  storage,
+		roster:   exchange.roster,
+		identity: identity,
+		dht:      config.DHT,
+		client:   client,
+	})
 
 	crawling.MountCrawlReceipt(router)
 	crawlurls.Mount(router, identity, storage.urlDirectory, crawlurls.DisabledRemoteCrawlURLs{})

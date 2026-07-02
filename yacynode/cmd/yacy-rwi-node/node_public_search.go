@@ -11,22 +11,30 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/yacysearch"
 )
 
+type publicSearchAssembly struct {
+	storage  nodeStorage
+	roster   peerroster.Roster
+	identity nodeidentity.Identity
+	dht      dhtDistributionConfig
+	client   *http.Client
+}
+
 func mountNodePublicSearch(
 	mux *http.ServeMux,
-	storage nodeStorage,
-	roster peerroster.Roster,
-	identity nodeidentity.Identity,
-	client *http.Client,
+	assembly publicSearchAssembly,
 ) {
 	local := documentsearch.NewLocalSearcher(
-		storage.postings,
-		storage.urlDirectory,
+		assembly.storage.postings,
+		assembly.storage.urlDirectory,
 		searchPostingsPerWord,
 	)
 	remote := searchremote.NewSearcher(searchremote.Config{
-		Client:      client,
-		NetworkName: identity.NetworkName,
-		Peers:       roster,
+		Client:             assembly.client,
+		NetworkName:        assembly.identity.NetworkName,
+		Peers:              assembly.roster,
+		Redundancy:         assembly.dht.Redundancy,
+		MinimumPeerAgeDays: assembly.dht.MinimumPeerAgeDays,
+		PartitionExponent:  assembly.dht.PartitionExponent,
 	})
 	yacysearch.Mount(
 		mux,

@@ -15,12 +15,22 @@ const (
 	envDHTAllowWhileCrawling       = "YACY_DHT_ALLOW_WHILE_CRAWLING"
 	envDHTAllowWhileIndexing       = "YACY_DHT_ALLOW_WHILE_INDEXING"
 	envDHTDistributionInterval     = "YACY_DHT_DISTRIBUTION_INTERVAL"
+	envDHTRedundancy               = "YACY_DHT_REDUNDANCY"
+	envDHTPartitionExponent        = "YACY_DHT_PARTITION_EXPONENT"
+	envDHTMinimumPeerAgeDays       = "YACY_DHT_MINIMUM_PEER_AGE_DAYS"
 	defaultDHTDistributionInterval = 10 * time.Second
+	defaultDHTRedundancy           = 3
+	defaultDHTPartitionExponent    = 4
+	maxDHTRedundancy               = 16
+	maxDHTPartitionExponent        = 8
 )
 
 type dhtDistributionConfig struct {
-	Gates    dhtexchange.GateConfig
-	Interval time.Duration
+	Gates              dhtexchange.GateConfig
+	Interval           time.Duration
+	Redundancy         int
+	PartitionExponent  int
+	MinimumPeerAgeDays int
 }
 
 func loadDHTDistributionConfig(getenv func(string) string) (dhtDistributionConfig, error) {
@@ -50,13 +60,48 @@ func loadDHTDistributionConfig(getenv func(string) string) (dhtDistributionConfi
 	if err != nil {
 		return dhtDistributionConfig{}, err
 	}
+	redundancy, err := intRangeEnv(
+		getenv,
+		envDHTRedundancy,
+		defaultDHTRedundancy,
+		1,
+		maxDHTRedundancy,
+	)
+	if err != nil {
+		return dhtDistributionConfig{}, err
+	}
+	partitionExponent, err := intRangeEnv(
+		getenv,
+		envDHTPartitionExponent,
+		defaultDHTPartitionExponent,
+		0,
+		maxDHTPartitionExponent,
+	)
+	if err != nil {
+		return dhtDistributionConfig{}, err
+	}
+	minimumPeerAgeDays, err := intAtLeastEnv(
+		getenv,
+		envDHTMinimumPeerAgeDays,
+		dhtexchange.DefaultMinimumPeerAgeDay,
+		-1,
+	)
+	if err != nil {
+		return dhtDistributionConfig{}, err
+	}
 
 	gates.NetworkDHTEnabled = networkDHT
 	gates.DistributionEnabled = distribution
 	gates.AllowWhileCrawling = crawling
 	gates.AllowWhileIndexing = indexing
 
-	return dhtDistributionConfig{Gates: gates, Interval: interval}, nil
+	return dhtDistributionConfig{
+		Gates:              gates,
+		Interval:           interval,
+		Redundancy:         redundancy,
+		PartitionExponent:  partitionExponent,
+		MinimumPeerAgeDays: minimumPeerAgeDays,
+	}, nil
 }
 
 func boolEnv(getenv func(string) string, key string, fallback bool) (bool, error) {
@@ -92,4 +137,56 @@ func durationEnv(
 	}
 
 	return value, nil
+}
+
+func intRangeEnv(
+	getenv func(string) string,
+	key string,
+	fallback int,
+	minimum int,
+	maximum int,
+) (int, error) {
+	value, ok, err := intEnv(getenv, key, fallback)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return value, nil
+	}
+	if value < minimum || value > maximum {
+		return 0, fmt.Errorf("%s: must be between %d and %d", key, minimum, maximum)
+	}
+
+	return value, nil
+}
+
+func intAtLeastEnv(
+	getenv func(string) string,
+	key string,
+	fallback int,
+	minimum int,
+) (int, error) {
+	value, ok, err := intEnv(getenv, key, fallback)
+	if err != nil {
+		return 0, err
+	}
+	if !ok || value >= minimum {
+		return value, nil
+	}
+
+	return 0, fmt.Errorf("%s: must be at least %d", key, minimum)
+}
+
+func intEnv(getenv func(string) string, key string, fallback int) (int, bool, error) {
+	raw := strings.TrimSpace(getenv(key))
+	if raw == "" {
+		return fallback, false, nil
+	}
+
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, true, fmt.Errorf("%s: %w", key, err)
+	}
+
+	return value, true, nil
 }

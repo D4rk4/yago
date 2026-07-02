@@ -46,7 +46,10 @@ func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 		!config.DHT.Gates.DistributionEnabled ||
 		config.DHT.Gates.AllowWhileCrawling ||
 		!config.DHT.Gates.AllowWhileIndexing ||
-		config.DHT.Interval != defaultDHTDistributionInterval {
+		config.DHT.Interval != defaultDHTDistributionInterval ||
+		config.DHT.Redundancy != defaultDHTRedundancy ||
+		config.DHT.PartitionExponent != defaultDHTPartitionExponent ||
+		config.DHT.MinimumPeerAgeDays != 3 {
 		t.Errorf("DHT config = %#v", config.DHT)
 	}
 }
@@ -71,6 +74,9 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 		envDHTAllowWhileCrawling:   "true",
 		envDHTAllowWhileIndexing:   "false",
 		envDHTDistributionInterval: "45s",
+		envDHTRedundancy:           "5",
+		envDHTPartitionExponent:    "2",
+		envDHTMinimumPeerAgeDays:   "1",
 	}))
 	if err != nil {
 		t.Fatalf("load config: %v", err)
@@ -102,7 +108,10 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 		config.DHT.Gates.DistributionEnabled ||
 		!config.DHT.Gates.AllowWhileCrawling ||
 		config.DHT.Gates.AllowWhileIndexing ||
-		config.DHT.Interval != 45*time.Second {
+		config.DHT.Interval != 45*time.Second ||
+		config.DHT.Redundancy != 5 ||
+		config.DHT.PartitionExponent != 2 ||
+		config.DHT.MinimumPeerAgeDays != 1 {
 		t.Errorf("DHT config = %#v", config.DHT)
 	}
 }
@@ -213,6 +222,47 @@ func TestLoadNodeConfigRejects(t *testing.T) {
 	}
 	for name, env := range cases {
 		t.Run(name, func(t *testing.T) {
+			if _, err := loadNodeConfig(envFrom(env)); err == nil {
+				t.Fatal("expected error")
+			}
+		})
+	}
+}
+
+func TestLoadNodeConfigRejectsBadDHTUnitConfig(t *testing.T) {
+	base := map[string]string{
+		envPeerHash: "0123456789AB",
+		envPeerName: "n",
+		envProxyURL: "http://proxy:4750",
+	}
+	cases := map[string]map[string]string{
+		"bad dht redundancy": {
+			envDHTRedundancy: "many",
+		},
+		"zero dht redundancy": {
+			envDHTRedundancy: "0",
+		},
+		"huge dht redundancy": {
+			envDHTRedundancy: "17",
+		},
+		"bad dht partition exponent": {
+			envDHTPartitionExponent: "many",
+		},
+		"huge dht partition exponent": {
+			envDHTPartitionExponent: "9",
+		},
+		"bad dht minimum peer age": {
+			envDHTMinimumPeerAgeDays: "old",
+		},
+		"too small dht minimum peer age": {
+			envDHTMinimumPeerAgeDays: "-2",
+		},
+	}
+	for name, env := range cases {
+		t.Run(name, func(t *testing.T) {
+			for key, value := range base {
+				env[key] = value
+			}
 			if _, err := loadNodeConfig(envFrom(env)); err == nil {
 				t.Fatal("expected error")
 			}

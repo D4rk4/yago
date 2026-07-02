@@ -69,9 +69,11 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 		assembly.nodeStorage.urlDirectory,
 		assembly.roster.ReachablePeers,
 		dhtexchange.OutboundFeederConfig{
-			MaxWords:    1,
-			MaxPostings: dhtexchange.MaxChunkPostings,
-			Redundancy:  1,
+			MaxWords:           1,
+			MaxPostings:        dhtexchange.MaxChunkPostings,
+			Redundancy:         assembly.config.DHT.Redundancy,
+			PartitionExponent:  assembly.config.DHT.PartitionExponent,
+			MinimumPeerAgeDays: assembly.config.DHT.MinimumPeerAgeDays,
 		},
 	)
 	distributor := dhtexchange.NewOutboundDistributor(

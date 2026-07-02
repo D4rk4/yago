@@ -147,8 +147,10 @@ walking connected peers in YaCy hash order from that position, wrapping at the
 end of the hash ring, and keeping only peers that advertise
 `FLAG_ACCEPT_REMOTE_INDEX`. The distribution path also skips peers younger than
 three days according to their seed `BDate`. The Go selector preserves that
-target order and eligibility logic for the peer-routing step; batch splitting,
-retry decision, and deletion are handled by dispatcher work.
+target order and eligibility logic for the peer-routing step. The runtime
+defaults to YaCy freeworld senior redundancy `3` and vertical partition exponent
+`4`, and operators can override those network-unit values for private networks.
+Batch splitting, retry decision, and deletion are handled by dispatcher work.
 
 Before transfer, YaCy splits a word's RWI rows by the URL hash's vertical DHT
 partition, accumulates each partition into the chunk for its primary target,

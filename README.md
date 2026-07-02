@@ -114,6 +114,8 @@ Common node variables:
 | `YACY_ADVERTISE_PORT` | peer listener port | Public port advertised to peers. |
 | `YACY_PUBLIC_SELF_TEST_URL` | local peer URL | Base URL used by outbound DHT gates to self-test `/yacy/query.html?object=rwicount`. |
 | `YACY_SEEDLIST_URLS` | empty | Comma-separated YaCy seedlist URLs. |
+| `YACY_DHT_REDUNDANCY` | `3` | Redundant DHT targets per vertical partition, matching YaCy freeworld senior peers. |
+| `YACY_DHT_PARTITION_EXPONENT` | `4` | YaCy vertical DHT partition exponent used for outbound transfer and global remote search. |
 | `YACY_STORAGE_QUOTA` | `1GB` | Node storage quota. |
 | `NATS_URL` | empty | Enables node-crawler integration when set. |
 
