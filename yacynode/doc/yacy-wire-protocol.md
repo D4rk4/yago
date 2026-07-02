@@ -22,9 +22,17 @@ The remote search endpoint `/yacy/search.html` returns YaCy key-value rows with
 and `indexabstract.*` fields. `count` is the number of `resourceN` rows carried
 in the response.
 
-The public search endpoint `/yacysearch.json` returns JSON with `channels`,
-`items`, `navigation`, and `totalResults` fields following the original YaCy
-template shape. `resource=local` searches local RWI and URL metadata only.
+The public search endpoints `/yacysearch.json`, `/yacysearch.rss`, and
+`/yacysearch.html` share the same request parsing and search backend.
+`/yacysearch.json` returns JSON with `channels`, `items`, `navigation`, and
+`totalResults` fields following the original YaCy template shape.
+`/yacysearch.rss` returns OpenSearch-flavored RSS 2.0 with YaCy item metadata.
+`/yacysearch.html` returns a simple HTML search form and result list.
+`/opensearchdescription.xml` advertises the HTML, RSS, and suggestion URLs for
+the current public base URL. `/suggest.json` returns the OpenSearch suggestions
+JSON array shape from bounded in-memory recent queries.
+
+For public search, `resource=local` searches local RWI and URL metadata only.
 `resource=global` searches the local node and performs bounded YaCy
 `/yacy/search.html` fanout to reachable peers. Remote peer failures, malformed
 responses, and missing reachable peers are returned as partial-failure metadata

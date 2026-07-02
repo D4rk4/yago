@@ -47,7 +47,9 @@ The node currently targets these responsibilities:
   quarantine, metrics, and a JSON gate status endpoint;
 - serve remote RWI search requests through `/yacy/search.html`;
 - serve local and reachable-peer public search requests through
-  `/yacysearch.json`;
+  `/yacysearch.json`, `/yacysearch.rss`, and `/yacysearch.html`;
+- expose `/opensearchdescription.xml` and `/suggest.json` for browser search
+  integration and recent-query suggestions;
 - store accepted RWI postings and URL metadata durably;
 - expose `/health`, `/metrics`, and DHT gate status on the ops listener,
   including inbound and outbound DHT transfer series and peer discovery
@@ -149,6 +151,10 @@ curl -fsS http://127.0.0.1:9090/api/admin/v1/network/dht/gates
 curl -fsS http://127.0.0.1:8090/
 curl -fsS 'http://127.0.0.1:8090/yacysearch.json?query=test&resource=local&maximumRecords=10'
 curl -fsS 'http://127.0.0.1:8090/yacysearch.json?query=test&resource=global&maximumRecords=10'
+curl -fsS 'http://127.0.0.1:8090/yacysearch.rss?query=test&resource=local&maximumRecords=10'
+curl -fsS 'http://127.0.0.1:8090/yacysearch.html?query=test&resource=local&maximumRecords=10'
+curl -fsS http://127.0.0.1:8090/opensearchdescription.xml
+curl -fsS 'http://127.0.0.1:8090/suggest.json?query=test'
 curl -fsS http://127.0.0.1:8090/yacy/seedlist.html
 curl -fsS http://127.0.0.1:8090/yacy/seedlist.json
 curl -fsS http://127.0.0.1:8090/yacy/seedlist.xml

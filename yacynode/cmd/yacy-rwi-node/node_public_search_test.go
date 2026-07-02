@@ -45,23 +45,26 @@ func (publicSearchURLDirectory) Count(context.Context) (int, error) {
 	return 0, nil
 }
 
-func TestNodePublicSearchMountsYaCySearchJSON(t *testing.T) {
+func TestNodePublicSearchMountsYaCySearchSurfaces(t *testing.T) {
 	mux := http.NewServeMux()
 	mountNodePublicSearch(mux, nodeStorage{
 		postings:     publicSearchPostingIndex{},
 		urlDirectory: publicSearchURLDirectory{},
 	}, nil, nodeidentity.Identity{NetworkName: "freeworld"}, http.DefaultClient)
 
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(
-		t.Context(),
-		http.MethodGet,
-		yacyproto.PathYaCySearchJSON+"?query=absent",
-		nil,
-	)
-	mux.ServeHTTP(rec, req)
+	for _, path := range []string{
+		yacyproto.PathYaCySearchJSON + "?query=absent",
+		yacyproto.PathYaCySearchRSS + "?query=absent",
+		yacyproto.PathYaCySearchHTML + "?query=absent",
+		yacyproto.PathOpenSearch,
+		yacyproto.PathSuggestJSON + "?query=absent",
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+		mux.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d, body=%s", path, rec.Code, rec.Body.String())
+		}
 	}
 }

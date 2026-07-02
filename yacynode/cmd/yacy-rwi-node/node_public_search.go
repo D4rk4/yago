@@ -28,7 +28,7 @@ func mountNodePublicSearch(
 		NetworkName: identity.NetworkName,
 		Peers:       roster,
 	})
-	yacysearch.MountJSON(
+	yacysearch.Mount(
 		mux,
 		searchcore.NewFederatedSearcher(local, remote),
 	)

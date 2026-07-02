@@ -9,11 +9,30 @@ import (
 )
 
 type jsonEndpoint struct {
-	search searchcore.Searcher
+	search      searchcore.Searcher
+	suggestions *recentQueries
 }
 
 func MountJSON(mux *http.ServeMux, search searchcore.Searcher) {
 	mux.Handle(yacyproto.PathYaCySearchJSON, jsonEndpoint{search: search})
+}
+
+func Mount(mux *http.ServeMux, search searchcore.Searcher) {
+	suggestions := newRecentQueries()
+	mux.Handle(yacyproto.PathYaCySearchJSON, jsonEndpoint{
+		search:      search,
+		suggestions: suggestions,
+	})
+	mux.Handle(yacyproto.PathYaCySearchRSS, rssEndpoint{
+		search:      search,
+		suggestions: suggestions,
+	})
+	mux.Handle(yacyproto.PathYaCySearchHTML, htmlEndpoint{
+		search:      search,
+		suggestions: suggestions,
+	})
+	mux.Handle(yacyproto.PathOpenSearch, openSearchEndpoint{})
+	mux.Handle(yacyproto.PathSuggestJSON, suggestEndpoint{suggestions: suggestions})
 }
 
 func (e jsonEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +52,7 @@ func (e jsonEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "search failed", http.StatusInternalServerError)
 		return
 	}
+	e.suggestions.Record(req.Query)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

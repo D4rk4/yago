@@ -22,7 +22,11 @@ const (
 	PathSeedlistJSON   = "/yacy/seedlist.json"
 	PathSeedlistXML    = "/yacy/seedlist.xml"
 	PathCrawlReceipt   = "/yacy/crawlReceipt.html"
+	PathYaCySearchHTML = "/yacysearch.html"
 	PathYaCySearchJSON = "/yacysearch.json"
+	PathYaCySearchRSS  = "/yacysearch.rss"
+	PathOpenSearch     = "/opensearchdescription.xml"
+	PathSuggestJSON    = "/suggest.json"
 )
 
 const (

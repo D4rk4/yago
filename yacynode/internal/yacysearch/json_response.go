@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/D4rk4/yago/yacynode/internal/searchcore"
 )
@@ -107,9 +108,17 @@ func responseItems(results []searchcore.Result) []jsonItem {
 }
 
 func searchLink(base string, req searchcore.Request) string {
+	return htmlEscapedURL(searchURL(base, req))
+}
+
+func searchURL(base string, req searchcore.Request) string {
 	return base + "?query=" + url.QueryEscape(req.Query) +
-		"&amp;resource=" + url.QueryEscape(string(req.Source)) +
-		"&amp;contentdom=" + url.QueryEscape(string(req.ContentDomain))
+		"&resource=" + url.QueryEscape(string(req.Source)) +
+		"&contentdom=" + url.QueryEscape(string(req.ContentDomain))
+}
+
+func htmlEscapedURL(raw string) string {
+	return strings.ReplaceAll(raw, "&", "&amp;")
 }
 
 func searchBaseURL(r *http.Request) string {
