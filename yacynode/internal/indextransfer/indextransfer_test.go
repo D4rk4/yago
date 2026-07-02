@@ -60,7 +60,7 @@ func peerSeed(tb testing.TB) yacymodel.Seed {
 	}
 }
 
-func serverSeed(tb testing.TB, word string, server *httptest.Server) yacymodel.Seed {
+func serverSeed(tb testing.TB, server *httptest.Server) yacymodel.Seed {
 	tb.Helper()
 
 	parsed, err := url.Parse(server.URL)
@@ -81,7 +81,7 @@ func serverSeed(tb testing.TB, word string, server *httptest.Server) yacymodel.S
 	}
 
 	return yacymodel.Seed{
-		Hash: hashOf(tb, word),
+		Hash: hashOf(tb, "peer"),
 		IP:   yacymodel.Some(host),
 		Port: yacymodel.Some(port),
 	}
@@ -190,7 +190,7 @@ func TestTransferRWIPostsYaCyFormAndParsesResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	peer := serverSeed(t, "peer", server)
+	peer := serverSeed(t, server)
 	resp, err := NewHTTPPeerWriter(server.Client(), yacyproto.DefaultNetwork, self).
 		TransferRWI(context.Background(), peer, postings)
 	if err != nil {
@@ -245,7 +245,7 @@ func TestTransferURLPostsYaCyFormAndParsesResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	peer := serverSeed(t, "peer", server)
+	peer := serverSeed(t, server)
 	resp, err := NewHTTPPeerWriter(server.Client(), yacyproto.DefaultNetwork, self).
 		TransferURL(context.Background(), peer, rows)
 	if err != nil {
@@ -321,7 +321,7 @@ func TestTransferRejectsNonOKStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	peer := serverSeed(t, "peer", server)
+	peer := serverSeed(t, server)
 	writer := NewHTTPPeerWriter(server.Client(), yacyproto.DefaultNetwork, yacymodel.Seed{})
 	if _, err := writer.TransferURL(context.Background(), peer, nil); err == nil {
 		t.Fatal("expected status error")

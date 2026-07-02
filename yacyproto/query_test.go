@@ -31,6 +31,25 @@ func TestQueryRequestRoundTrip(t *testing.T) {
 	}
 }
 
+func TestQueryRequestAcceptsMissingIam(t *testing.T) {
+	t.Parallel()
+
+	req := yacyproto.QueryRequest{
+		NetworkName: yacyproto.DefaultNetwork,
+		YouAre:      sampleHash(t, "alpha"),
+		Object:      yacyproto.ObjectRWICount,
+	}
+
+	got, err := yacyproto.ParseQueryRequest(context.Background(), req.Form())
+	if err != nil {
+		t.Fatalf("ParseQueryRequest: %v", err)
+	}
+
+	if !reflect.DeepEqual(got, req) {
+		t.Fatalf("round-trip mismatch:\n got %#v\nwant %#v", got, req)
+	}
+}
+
 func TestQueryResponseRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -58,6 +77,7 @@ func TestParseQueryRequestRejectsBadIam(t *testing.T) {
 
 	form := url.Values{
 		yacyproto.FieldObject: {string(yacyproto.ObjectRWICount)},
+		yacyproto.FieldYouAre: {sampleHash(t, "alpha").String()},
 		yacyproto.FieldIam:    {"nope"},
 	}
 	if _, err := yacyproto.ParseQueryRequest(context.Background(), form); err == nil {
@@ -92,6 +112,14 @@ func TestParseQueryResponseRejectsBadResponse(t *testing.T) {
 	msg := yacymodel.Message{yacyproto.FieldResponse: "many"}
 	if _, err := yacyproto.ParseQueryResponse(msg); err == nil {
 		t.Fatal("expected error for non-numeric response")
+	}
+}
+
+func TestParseQueryResponseRejectsMissingResponse(t *testing.T) {
+	t.Parallel()
+
+	if _, err := yacyproto.ParseQueryResponse(yacymodel.Message{}); err == nil {
+		t.Fatal("expected error for missing response")
 	}
 }
 

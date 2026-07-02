@@ -62,9 +62,11 @@ func ParseQueryRequest(_ context.Context, form url.Values) (QueryRequest, error)
 		return QueryRequest{}, err
 	}
 
-	req.Iam, err = parseHashField("query request", FieldIam, form.Get(FieldIam))
-	if err != nil {
-		return QueryRequest{}, err
+	if raw := form.Get(FieldIam); raw != "" {
+		req.Iam, err = parseHashField("query request", FieldIam, raw)
+		if err != nil {
+			return QueryRequest{}, err
+		}
 	}
 
 	return req, nil
@@ -85,7 +87,7 @@ func ParseQueryResponse(m yacymodel.Message) (QueryResponse, error) {
 		return QueryResponse{}, err
 	}
 
-	response, err := optionalInt(FieldResponse, m[FieldResponse])
+	response, err := readInt(FieldResponse, m[FieldResponse])
 	if err != nil {
 		return QueryResponse{}, err
 	}

@@ -13,7 +13,8 @@ A receiver that wants YaCy peers to treat it as DHT-capable needs:
 1. a stable 12-character peer hash;
 2. a seed advertising reachable host and port information;
 3. `hello.html` returning `yourip`, `yourtype`, and `seed0`;
-4. `query.html object=rwicount` returning a numeric `response`;
+4. `query.html object=rwicount` returning a numeric `response`; original YaCy
+   requires `youare` and tolerates a missing `iam` field;
 5. `transferRWI.html` enforcing `youare`, accepting `wordHash{row}` entries, and
    reporting missing URL hashes with `unknownURL`;
 6. `transferURL.html` accepting indexed `url0..urlN` metadata rows;
@@ -64,6 +65,11 @@ A YaCy node originates DHT transfer only when all of these are true:
 The Go gate evaluator keeps the same sender-side decision as named gate results
 with stable reason text. Runtime distribution remains disabled until the
 scheduler, retry policy, metrics, and deletion semantics are wired.
+
+The Go outbound transfer layer can probe a target peer's `rwicount` through
+`/yacy/query.html` and treats `response=-1`, missing responses, malformed
+responses, and negative values as failed capacity probes. Automatic probing from
+the runtime scheduler is still pending.
 
 ## Sender-side transfer shape
 
