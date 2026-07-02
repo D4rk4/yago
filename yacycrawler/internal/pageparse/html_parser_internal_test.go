@@ -99,6 +99,36 @@ func TestReadMetaDescriptionReturnsEmptyWhenMissing(t *testing.T) {
 	}
 }
 
+func TestReadImageMetadataRejectsInvalidBase(t *testing.T) {
+	root, err := html.Parse(strings.NewReader(`<html><body>
+<img src="https://example.com/image.png" alt="image">
+</body></html>`))
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+
+	if got := readImageMetadata(root, "://bad"); got != nil {
+		t.Fatalf("images = %#v, want nil", got)
+	}
+}
+
+func TestReadImageMetadataCapsImages(t *testing.T) {
+	var fixture strings.Builder
+	fixture.WriteString("<html><body>")
+	for i := 0; i < maxPageImages+1; i++ {
+		fixture.WriteString(`<img src="/image.png" alt="image">`)
+	}
+	fixture.WriteString("</body></html>")
+	root, err := html.Parse(strings.NewReader(fixture.String()))
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+
+	if got := readImageMetadata(root, "https://example.com/page"); len(got) != maxPageImages {
+		t.Fatalf("images = %d, want %d", len(got), maxPageImages)
+	}
+}
+
 func TestHasLinkRelation(t *testing.T) {
 	if !hasLinkRelation("alternate CANONICAL", "canonical") {
 		t.Fatal("canonical token should match case-insensitively")

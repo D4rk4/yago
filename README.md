@@ -62,8 +62,9 @@ The node currently targets these responsibilities:
 - serve Tavily-like `POST /search` responses over the same search core, accepting
   the current search contract fields, returning JSON error envelopes and request
   IDs, optionally requiring a local bearer token, using local search for
-  basic/fast depths, and using DHT-selected reachable-peer search for
-  `search_depth=advanced`;
+  basic/fast depths, using DHT-selected reachable-peer search for
+  `search_depth=advanced`, and returning stored page image metadata when
+  `include_images` is requested;
 - expose `/opensearchdescription.xml`, `/suggest.json`, and `/suggest.xml` for
   browser search integration and recent-query suggestions;
 - store accepted document ingest payloads, RWI postings, and URL metadata
@@ -75,9 +76,9 @@ The node currently targets these responsibilities:
 - optionally publish crawl orders and consume crawler ingest batches over NATS
   JetStream when crawling is configured.
 
-The node stores bounded extracted document text, page description metadata, and
-other document metadata, and maintains an embedded persistent Bleve full-text
-fallback index for local public search under
+The node stores bounded extracted document text, page description metadata,
+bounded image URL/alt metadata, and other document metadata, and maintains an
+embedded persistent Bleve full-text fallback index for local public search under
 `YACY_DATA_DIR/search.bleve`. The fallback index is opened on startup and is
 rebuilt from the document store only when missing or unusable; the Tantivy
 production sidecar remains roadmap work. The node does not store unbounded raw

@@ -16,6 +16,11 @@ var newHTMLCharsetReader = charset.NewReader
 
 var parseHTMLDocument = html.Parse
 
+const (
+	maxPageImages   = 32
+	imageAltRuneCap = 160
+)
+
 func ParseHTML(rawURL, contentType string, body []byte) ParsedPage {
 	reader, err := newHTMLCharsetReader(bytes.NewReader(body), contentType)
 	if err != nil {
@@ -28,7 +33,7 @@ func ParseHTML(rawURL, contentType string, body []byte) ParsedPage {
 
 	page := ParsedPage{URL: rawURL}
 	var text strings.Builder
-	readHTMLFields(root, &page)
+	readHTMLFields(root, rawURL, &page)
 	page.CanonicalURL = readCanonicalURL(root, rawURL)
 	collectText(root, &text)
 	page.Text = selectText(contentType, body, text.String())
@@ -42,7 +47,7 @@ func selectText(contentType string, body []byte, fallback string) string {
 	return collapseSpaces(fallback)
 }
 
-func readHTMLFields(root *html.Node, page *ParsedPage) {
+func readHTMLFields(root *html.Node, rawURL string, page *ParsedPage) {
 	if htmlNode := dom.QuerySelector(root, "html"); htmlNode != nil {
 		page.Language = dom.GetAttribute(htmlNode, "lang")
 	}
@@ -68,6 +73,7 @@ func readHTMLFields(root *html.Node, page *ParsedPage) {
 			page.FollowableLinks = append(page.FollowableLinks, href)
 		}
 	}
+	page.Images = readImageMetadata(root, rawURL)
 }
 
 func readCanonicalURL(root *html.Node, rawURL string) string {
@@ -100,6 +106,46 @@ func readMetaDescription(root *html.Node) string {
 		}
 	}
 	return ""
+}
+
+func readImageMetadata(root *html.Node, rawURL string) []ImageMetadata {
+	base, ok := weburl.ParseBase(rawURL)
+	if !ok {
+		return nil
+	}
+	images := make([]ImageMetadata, 0)
+	for _, img := range dom.GetElementsByTagName(root, "img") {
+		if len(images) >= maxPageImages {
+			break
+		}
+		src := strings.TrimSpace(dom.GetAttribute(img, "src"))
+		if src == "" {
+			continue
+		}
+		resolved, ok := weburl.Resolve(base, src)
+		if !ok {
+			continue
+		}
+		normalized, ok := weburl.Normalize(resolved.String())
+		if !ok {
+			continue
+		}
+		images = append(images, ImageMetadata{
+			URL:     normalized,
+			AltText: boundedImageAltText(dom.GetAttribute(img, "alt")),
+		})
+	}
+	return images
+}
+
+func boundedImageAltText(text string) string {
+	text = collapseSpaces(text)
+	runes := []rune(text)
+	if len(runes) <= imageAltRuneCap {
+		return text
+	}
+
+	return string(runes[:imageAltRuneCap])
 }
 
 func collectText(node *html.Node, text *strings.Builder) {

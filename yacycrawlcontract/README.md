@@ -24,8 +24,8 @@ node <------------------ crawler
 the crawl profile and seed requests needed to start or continue a crawl.
 
 `IngestBatch` carries references back to the node for one fetched page: document
-content metadata, RWI postings, URL metadata, and the attribution data needed by
-the node.
+content metadata, bounded image metadata, RWI postings, URL metadata, and the
+attribution data needed by the node.
 
 Each flow is one-way so multiple crawler instances can share the same work stream and
 publish results back to one node without per-crawler addressing.
@@ -56,6 +56,6 @@ reference generation, including whether links marked `rel=nofollow` may be follo
 Crawler process settings, such as the browser User-Agent, are not profile fields because
 an order cannot safely override process-wide browser identity.
 
-Raw HTML bodies, media indexing, snapshots, vocabulary scraping, country and IP
-filters, HTTP caching, direct document loading, and onward crawl redistribution
-are outside this contract.
+Raw HTML bodies, binary image bodies, media indexing, snapshots, vocabulary
+scraping, country and IP filters, HTTP caching, direct document loading, and
+onward crawl redistribution are outside this contract.

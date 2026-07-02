@@ -124,6 +124,10 @@ func richSearchEndpoint() (searchEndpoint, *fakeSearcher, *fakeDocuments) {
 		"https://example.org/doc": {
 			Title:         "Document title",
 			ExtractedText: "Document text with enough local content for an agent response.",
+			Images: []documentstore.ImageMetadata{{
+				URL:     "https://example.org/image.png",
+				AltText: "Document image",
+			}},
 		},
 	}}
 
@@ -157,7 +161,11 @@ func assertRichSearchResponse(
 		got.Answer == nil ||
 		*got.Answer != "" ||
 		got.Images == nil ||
-		len(*got.Images) != 0 ||
+		len(*got.Images) != 1 ||
+		(*got.Images)[0].URL != "https://example.org/image.png" ||
+		(*got.Images)[0].Description != "Document image" ||
+		len(got.Results[0].Images) != 1 ||
+		got.Results[0].Images[0] != "https://example.org/image.png" ||
 		got.Usage == nil ||
 		got.Usage.Credits != 0 ||
 		got.AutoParameters["topic"] != "general" ||
@@ -669,10 +677,14 @@ func TestSnippetAndModeHelpers(t *testing.T) {
 
 func TestResponseOptionHelpers(t *testing.T) {
 	if responseAnswer(SearchRequest{}) != nil ||
-		responseImages(SearchRequest{}) != nil ||
+		responseImages(SearchRequest{}, nil) != nil ||
 		responseUsage(SearchRequest{}) != nil ||
 		responseAutoParameters(SearchRequest{}, searchcore.Request{}) != nil {
 		t.Fatal("disabled response option mismatch")
+	}
+	emptyImages := responseImages(SearchRequest{IncludeImages: true}, nil)
+	if emptyImages == nil || len(*emptyImages) != 0 {
+		t.Fatalf("empty images = %#v", emptyImages)
 	}
 	defaultAuto := responseAutoParameters(
 		SearchRequest{AutoParameters: true},
@@ -690,6 +702,48 @@ func TestResponseOptionHelpers(t *testing.T) {
 		responseFavicon(SearchRequest{IncludeFavicon: true}, ":bad") != "" ||
 		responseFavicon(SearchRequest{IncludeFavicon: true}, "/relative") != "" {
 		t.Fatal("favicon helper mismatch")
+	}
+}
+
+func TestImageResponseHelpers(t *testing.T) {
+	doc := documentstore.Document{
+		Images: []documentstore.ImageMetadata{
+			{URL: "", AltText: "ignored"},
+			{URL: "https://example.org/a.png", AltText: "A"},
+			{URL: "https://example.org/b.png", AltText: "B"},
+			{URL: "https://example.org/c.png", AltText: "C"},
+			{URL: "https://example.org/d.png", AltText: "D"},
+			{URL: "https://example.org/e.png", AltText: "E"},
+			{URL: "https://example.org/f.png", AltText: "F"},
+		},
+	}
+	urls, images := resultImagesFromDocument(
+		SearchRequest{IncludeImages: true, IncludeImageDescriptions: true},
+		doc,
+	)
+	if len(urls) != maxResultImages ||
+		len(images) != maxResultImages ||
+		images[0].Description != "A" {
+		t.Fatalf("images urls=%#v details=%#v", urls, images)
+	}
+	_, withoutDescriptions := resultImagesFromDocument(SearchRequest{IncludeImages: true}, doc)
+	if withoutDescriptions[0].Description != "" {
+		t.Fatalf("unexpected description = %#v", withoutDescriptions[0])
+	}
+	if urls, images := resultImagesFromDocument(
+		SearchRequest{},
+		doc,
+	); urls != nil ||
+		images != nil {
+		t.Fatalf("disabled images urls=%#v details=%#v", urls, images)
+	}
+	out := make([]SearchImage, maxResponseImages-1)
+	got := appendResponseImages(out, []SearchImage{
+		{URL: "https://example.org/one.png"},
+		{URL: "https://example.org/two.png"},
+	})
+	if len(got) != maxResponseImages {
+		t.Fatalf("response image cap len=%d", len(got))
 	}
 }
 

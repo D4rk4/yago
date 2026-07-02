@@ -27,7 +27,11 @@ func TestIngestBatchRoundTrip(t *testing.T) {
 			ContentHash:   "abc",
 			Outlinks:      []string{"https://example.org/b"},
 			Inlinks:       []AnchorText{{URL: "https://example.org/", Text: "anchor"}},
-			Metadata:      map[string]string{"profile": "abcdef012345"},
+			Images: []ImageMetadata{{
+				URL:     "https://example.org/image.png",
+				AltText: "Example image",
+			}},
+			Metadata: map[string]string{"profile": "abcdef012345"},
 		},
 		Postings: []yacymodel.RWIPosting{
 			{

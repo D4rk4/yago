@@ -162,6 +162,7 @@ func normalizedDocument(doc Document) Document {
 	doc.Headings = append([]string(nil), doc.Headings...)
 	doc.Outlinks = append([]string(nil), doc.Outlinks...)
 	doc.Inlinks = append([]AnchorText(nil), doc.Inlinks...)
+	doc.Images = append([]ImageMetadata(nil), doc.Images...)
 	if doc.Metadata != nil {
 		metadata := make(map[string]string, len(doc.Metadata))
 		for key, value := range doc.Metadata {

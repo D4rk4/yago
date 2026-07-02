@@ -27,14 +27,18 @@ type recordingDocumentReceiver struct {
 	err     error
 	calls   int
 	at      time.Time
+	doc     documentstore.Document
 }
 
 func (r *recordingDocumentReceiver) Receive(
 	_ context.Context,
-	_ []documentstore.Document,
+	docs []documentstore.Document,
 ) (documentstore.Receipt, error) {
 	r.calls++
 	r.at = time.Now()
+	if len(docs) > 0 {
+		r.doc = docs[0]
+	}
 	return r.receipt, r.err
 }
 
@@ -124,6 +128,10 @@ func deliver(
 				Inlinks: []yacycrawlcontract.AnchorText{
 					{URL: "https://source.example/", Text: "source"},
 				},
+				Images: []yacycrawlcontract.ImageMetadata{{
+					URL:     "https://example.org/image.png",
+					AltText: "Example image",
+				}},
 			},
 		},
 		Ack: func(context.Context) error { acked = true; wg.Done(); return nil },
@@ -191,6 +199,11 @@ func TestAbsorbStoresMetadataBeforePostingsAndAcks(t *testing.T) {
 	}
 	if !documents.at.Before(urls.at) || !urls.at.Before(postings.at) {
 		t.Fatal("documents, metadata, and postings must be stored in order")
+	}
+	if len(documents.doc.Images) != 1 ||
+		documents.doc.Images[0].URL != "https://example.org/image.png" ||
+		documents.doc.Images[0].AltText != "Example image" {
+		t.Fatalf("document images = %#v", documents.doc.Images)
 	}
 }
 

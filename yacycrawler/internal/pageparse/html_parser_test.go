@@ -82,6 +82,33 @@ func TestParseHTMLSplitsNoFollowLinks(t *testing.T) {
 	}
 }
 
+func TestParseHTMLExtractsImageMetadata(t *testing.T) {
+	longAlt := strings.Repeat("x", 180)
+	page := pageparse.ParseHTML(
+		"https://example.com/dir/page",
+		"text/html",
+		[]byte(`<html><body>
+<img src="/img/cat.png#hero" alt=" Cat image ">
+<img src="https://cdn.example.net/dog.webp" alt="`+longAlt+`">
+<img src="data:image/png;base64,ignored" alt="ignored">
+<img src="http:/missing-host.png" alt="ignored">
+<img src="" alt="empty source">
+</body></html>`),
+	)
+
+	if len(page.Images) != 2 {
+		t.Fatalf("images = %#v", page.Images)
+	}
+	if page.Images[0].URL != "https://example.com/img/cat.png" ||
+		page.Images[0].AltText != "Cat image" {
+		t.Fatalf("first image = %#v", page.Images[0])
+	}
+	if page.Images[1].URL != "https://cdn.example.net/dog.webp" ||
+		len([]rune(page.Images[1].AltText)) != 160 {
+		t.Fatalf("second image = %#v", page.Images[1])
+	}
+}
+
 func TestParseHTMLExtractsCanonicalURL(t *testing.T) {
 	page := pageparse.ParseHTML(
 		"https://example.com/dir/page?ref=1",

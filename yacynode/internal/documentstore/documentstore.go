@@ -22,12 +22,18 @@ type Document struct {
 	ContentHash         string
 	Outlinks            []string
 	Inlinks             []AnchorText
+	Images              []ImageMetadata
 	Metadata            map[string]string
 }
 
 type AnchorText struct {
 	URL  string
 	Text string
+}
+
+type ImageMetadata struct {
+	URL     string
+	AltText string
 }
 
 type DocumentDirectory interface {

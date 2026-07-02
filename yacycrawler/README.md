@@ -39,8 +39,9 @@ subject. Multiple crawler instances can share the orders subject to
 load-balance, and a bounded ingest stream applies backpressure when the node
 falls behind. Document ingest includes the fetched URL and any resolved
 `rel=canonical` URL found in the page, plus page-provided description
-metadata when available. Links marked `rel=nofollow` are not submitted for
-frontier expansion or local outlink evidence unless the crawl profile opts in.
+metadata and bounded image URL/alt metadata when available. Links marked
+`rel=nofollow` are not submitted for frontier expansion or local outlink
+evidence unless the crawl profile opts in.
 
 Configuration comes from the environment (`NATS_URL` and `YACYCRAWLER_PROXY_URL`
 are required), and the service runs until it receives `SIGINT` or `SIGTERM`.

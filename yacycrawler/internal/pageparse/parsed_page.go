@@ -11,6 +11,7 @@ type ParsedPage struct {
 	Links           []string
 	FollowableLinks []string
 	NoFollowLinks   []string
+	Images          []ImageMetadata
 }
 
 type PageStats struct {
@@ -18,4 +19,9 @@ type PageStats struct {
 	TitleTokens   []string
 	LocalLinks    []string
 	ExternalLinks []string
+}
+
+type ImageMetadata struct {
+	URL     string
+	AltText string
 }

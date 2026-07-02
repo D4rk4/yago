@@ -14,6 +14,10 @@ func TestIndexBuilderBuildsPostingsAndMetadata(t *testing.T) {
 		Description: "A compact kangaroo page description.",
 		Language:    "en",
 		Text:        "kangaroo hops across the outback",
+		Images: []pageparse.ImageMetadata{{
+			URL:     "https://example.com/kangaroo.jpg",
+			AltText: "Kangaroo",
+		}},
 	}
 	artifacts, err := pageindex.NewIndexBuilder().Build(page, pageparse.BuildPageStats(page))
 	if err != nil {
@@ -39,6 +43,11 @@ func TestIndexBuilderBuildsPostingsAndMetadata(t *testing.T) {
 	}
 	if artifacts.Document.Metadata["description"] != page.Description {
 		t.Errorf("document description metadata = %q", artifacts.Document.Metadata["description"])
+	}
+	if len(artifacts.Document.Images) != 1 ||
+		artifacts.Document.Images[0].URL != "https://example.com/kangaroo.jpg" ||
+		artifacts.Document.Images[0].AltText != "Kangaroo" {
+		t.Errorf("document images = %#v", artifacts.Document.Images)
 	}
 }
 

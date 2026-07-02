@@ -91,6 +91,7 @@ func documentFromIngest(doc yacycrawlcontract.DocumentIngest) documentstore.Docu
 		ContentHash:         doc.ContentHash,
 		Outlinks:            doc.Outlinks,
 		Inlinks:             anchorTextFromIngest(doc.Inlinks),
+		Images:              imageMetadataFromIngest(doc.Images),
 		Metadata:            doc.Metadata,
 	}
 }
@@ -99,6 +100,17 @@ func anchorTextFromIngest(in []yacycrawlcontract.AnchorText) []documentstore.Anc
 	out := make([]documentstore.AnchorText, 0, len(in))
 	for _, anchor := range in {
 		out = append(out, documentstore.AnchorText{URL: anchor.URL, Text: anchor.Text})
+	}
+	return out
+}
+
+func imageMetadataFromIngest(in []yacycrawlcontract.ImageMetadata) []documentstore.ImageMetadata {
+	out := make([]documentstore.ImageMetadata, 0, len(in))
+	for _, image := range in {
+		out = append(out, documentstore.ImageMetadata{
+			URL:     image.URL,
+			AltText: image.AltText,
+		})
 	}
 	return out
 }

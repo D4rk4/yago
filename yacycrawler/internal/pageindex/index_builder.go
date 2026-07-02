@@ -61,8 +61,21 @@ func BuildDocument(
 		IndexedAt:     indexedAt.UTC(),
 		ContentHash:   hex.EncodeToString(hash[:]),
 		Outlinks:      outlinks,
+		Images:        imageMetadataFromPage(page.Images),
 		Metadata:      documentMetadata(page, metadata),
 	}
+}
+
+func imageMetadataFromPage(in []pageparse.ImageMetadata) []yacycrawlcontract.ImageMetadata {
+	out := make([]yacycrawlcontract.ImageMetadata, 0, len(in))
+	for _, image := range in {
+		out = append(out, yacycrawlcontract.ImageMetadata{
+			URL:     image.URL,
+			AltText: image.AltText,
+		})
+	}
+
+	return out
 }
 
 func documentCanonicalURL(page pageparse.ParsedPage) string {

@@ -205,6 +205,7 @@ func TestReceiveDefaultsCanonicalURLAndCopiesValues(t *testing.T) {
 		Headings:      []string{"Heading"},
 		Outlinks:      []string{"https://example.org/a"},
 		Inlinks:       []AnchorText{{URL: "https://example.org/from", Text: "anchor"}},
+		Images:        []ImageMetadata{{URL: "https://example.org/image.png", AltText: "image"}},
 		Metadata:      map[string]string{"url_hash": "abc"},
 	}
 
@@ -214,6 +215,7 @@ func TestReceiveDefaultsCanonicalURLAndCopiesValues(t *testing.T) {
 	doc.Headings[0] = "Changed"
 	doc.Outlinks[0] = "https://changed.example/"
 	doc.Inlinks[0].Text = "changed"
+	doc.Images[0].AltText = "changed"
 	doc.Metadata["url_hash"] = "changed"
 
 	got, ok, err := directory.Document(context.Background(), doc.NormalizedURL)
@@ -227,7 +229,8 @@ func TestReceiveDefaultsCanonicalURLAndCopiesValues(t *testing.T) {
 		t.Fatalf("canonical URL = %q", got.CanonicalURL)
 	}
 	if got.Headings[0] != "Heading" || got.Outlinks[0] != "https://example.org/a" ||
-		got.Inlinks[0].Text != "anchor" || got.Metadata["url_hash"] != "abc" {
+		got.Inlinks[0].Text != "anchor" || got.Images[0].AltText != "image" ||
+		got.Metadata["url_hash"] != "abc" {
 		t.Fatalf("document retained caller mutation: %#v", got)
 	}
 }

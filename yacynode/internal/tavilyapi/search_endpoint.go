@@ -23,6 +23,8 @@ const (
 	maxResultsCap     = 20
 	snippetRuneCap    = 320
 	tavilyDateLayout  = "2006-01-02"
+	maxResultImages   = 5
+	maxResponseImages = 20
 )
 
 type searchEndpoint struct {
@@ -229,7 +231,7 @@ func (e searchEndpoint) searchResponse(
 		return SearchResponse{}, fmt.Errorf("search failed: %w", err)
 	}
 
-	results, err := e.responseResults(ctx, req, coreReq, resp.Results)
+	results, images, err := e.responseResults(ctx, req, coreReq, resp.Results)
 	if err != nil {
 		return SearchResponse{}, err
 	}
@@ -237,7 +239,7 @@ func (e searchEndpoint) searchResponse(
 	return SearchResponse{
 		Query:          coreReq.Query,
 		Answer:         responseAnswer(req),
-		Images:         responseImages(req),
+		Images:         responseImages(req, images),
 		Results:        results,
 		ResponseTime:   e.now().Sub(start).Seconds(),
 		AutoParameters: responseAutoParameters(req, coreReq),
@@ -410,24 +412,26 @@ func (e searchEndpoint) responseResults(
 	req SearchRequest,
 	coreReq searchcore.Request,
 	results []searchcore.Result,
-) ([]SearchResult, error) {
+) ([]SearchResult, []SearchImage, error) {
 	out := make([]SearchResult, 0, len(results))
+	images := make([]SearchImage, 0)
 	for _, result := range results {
 		if !allowsDomain(result, req.IncludeDomains, req.ExcludeDomains) {
 			continue
 		}
 
-		item, include, err := e.responseResult(ctx, req, coreReq, result)
+		item, itemImages, include, err := e.responseResult(ctx, req, coreReq, result)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if !include {
 			continue
 		}
 		out = append(out, item)
+		images = appendResponseImages(images, itemImages)
 	}
 
-	return out, nil
+	return out, images, nil
 }
 
 func (e searchEndpoint) responseResult(
@@ -435,12 +439,14 @@ func (e searchEndpoint) responseResult(
 	req SearchRequest,
 	coreReq searchcore.Request,
 	result searchcore.Result,
-) (SearchResult, bool, error) {
+) (SearchResult, []SearchImage, bool, error) {
 	content := result.Snippet
 	var raw *string
+	var resultImages []string
+	var imageDetails []SearchImage
 	doc, found, err := e.document(ctx, result.URL)
 	if err != nil {
-		return SearchResult{}, false, err
+		return SearchResult{}, nil, false, err
 	}
 	if found {
 		if doc.Title != "" {
@@ -452,12 +458,13 @@ func (e searchEndpoint) responseResult(
 				raw = &doc.ExtractedText
 			}
 		}
+		resultImages, imageDetails = resultImagesFromDocument(req, doc)
 	}
 	if content == "" {
 		content = result.Title
 	}
 	if req.ExactMatch && !matchesExactQuery(req.Query, result.Title, content, raw) {
-		return SearchResult{}, false, nil
+		return SearchResult{}, nil, false, nil
 	}
 
 	return SearchResult{
@@ -469,7 +476,8 @@ func (e searchEndpoint) responseResult(
 		PublishedDate: result.Date,
 		Favicon:       responseFavicon(req, result.URL),
 		Source:        string(coreReq.Source),
-	}, true, nil
+		Images:        resultImages,
+	}, imageDetails, true, nil
 }
 
 func (e searchEndpoint) document(
@@ -583,13 +591,53 @@ func responseAnswer(req SearchRequest) *string {
 	return &answer
 }
 
-func responseImages(req SearchRequest) *[]SearchImage {
+func responseImages(req SearchRequest, images []SearchImage) *[]SearchImage {
 	if !req.IncludeImages {
 		return nil
 	}
-	images := []SearchImage{}
+	if images == nil {
+		images = []SearchImage{}
+	}
 
 	return &images
+}
+
+func resultImagesFromDocument(
+	req SearchRequest,
+	doc documentstore.Document,
+) ([]string, []SearchImage) {
+	if !req.IncludeImages {
+		return nil, nil
+	}
+	urls := make([]string, 0)
+	images := make([]SearchImage, 0)
+	for _, image := range doc.Images {
+		if len(urls) >= maxResultImages {
+			break
+		}
+		if image.URL == "" {
+			continue
+		}
+		urls = append(urls, image.URL)
+		item := SearchImage{URL: image.URL}
+		if req.IncludeImageDescriptions {
+			item.Description = image.AltText
+		}
+		images = append(images, item)
+	}
+
+	return urls, images
+}
+
+func appendResponseImages(out, in []SearchImage) []SearchImage {
+	for _, image := range in {
+		if len(out) >= maxResponseImages {
+			return out
+		}
+		out = append(out, image)
+	}
+
+	return out
 }
 
 func responseAutoParameters(

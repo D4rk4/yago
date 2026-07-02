@@ -901,9 +901,10 @@ Status: partial implementation exists in `yacynode/internal/tavilyapi`.
 `POST /search` accepts the current field set, ignores unknown fields for forward
 compatibility, validates bounded options, returns `request_id`, and uses stable
 JSON error envelopes. Opt-in local bearer auth is implemented through
-`YAGO_SEARCH_API_KEY`. Scopes, generated answers, image search, real usage
-accounting, hashed key storage, rate limits, and upstream Tavily remain separate
-tasks.
+`YAGO_SEARCH_API_KEY`. Stored page image metadata is returned when
+`include_images` is requested. Scopes, generated answers, image ranking/search,
+real usage accounting, hashed key storage, rate limits, and upstream Tavily
+remain separate tasks.
 
 Implement `tavilyapi` DTOs for `POST /search`.
 
@@ -1162,9 +1163,10 @@ URL hints, meta descriptions, language, headings, visible text, and links from
 HTML; resolves the canonical URL against the fetched page; carries page
 description into document ingest metadata; splits followable and `rel=nofollow`
 links; excludes nofollow links from frontier expansion and local outlink
-evidence unless the crawl profile opts in; produces document ingest, RWI
+evidence unless the crawl profile opts in; extracts normalized image URLs and
+bounded alt text into document ingest metadata; produces document ingest, RWI
 postings, URL metadata, and content hashes; and keeps extracted text bounded by
-the node document store. Image metadata and richer golden fixtures remain
+the node document store. Image ranking/search and richer golden fixtures remain
 planned.
 
 Dependency candidates require ADR first. Prefer `golang.org/x/net/html` initially if enough. Add `goquery` only with ADR.
