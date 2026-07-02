@@ -36,6 +36,7 @@ services:
     volumes:
       - yacy-data:/data
 
+  # Egress proxy: blocks outbound connections to private/internal IPs (RFC1918, loopback, link-local) to prevent SSRF into the internal network.
   smokescreen:
     image: pretix/smokescreen:latest
     restart: unless-stopped
