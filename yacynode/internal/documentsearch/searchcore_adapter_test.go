@@ -1,0 +1,316 @@
+package documentsearch
+
+import (
+	"context"
+	"errors"
+	"net/url"
+	"testing"
+
+	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/searchcore"
+)
+
+func TestCoreLocalSearcherReturnsLocalResults(t *testing.T) {
+	word := yacymodel.WordHash("golang")
+	urlHash := hashFor("doc1")
+	searcher := NewLocalSearcher(
+		fakeScanner{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
+			word: {postingEntry(word, "doc1", 0, 3)},
+		}},
+		fakeDirectory{rows: map[yacymodel.Hash]yacymodel.URIMetadataRow{
+			urlHash: metadataRow(t, urlHash, "https://example.org/docs/page.html", "Go YaCy"),
+		}},
+		100,
+	)
+
+	resp, err := searcher.Search(t.Context(), searchcore.Request{
+		Query:         "golang",
+		Terms:         []string{"golang"},
+		Source:        searchcore.SourceLocal,
+		Limit:         10,
+		ContentDomain: searchcore.ContentDomainText,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if resp.TotalResults != 1 || len(resp.Results) != 1 {
+		t.Fatalf("response = %#v", resp)
+	}
+	result := resp.Results[0]
+	if result.Title != "Go YaCy" ||
+		result.URL != "https://example.org/docs/page.html" ||
+		result.DisplayURL != "example.org/docs/page.html" ||
+		result.File != "page.html" ||
+		result.URLHash != urlHash.String() ||
+		result.Score != 1 {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestCoreLocalSearcherFiltersOffsetsAndReportsGlobalGap(t *testing.T) {
+	word := yacymodel.WordHash("golang")
+	first := hashFor("doc1")
+	second := hashFor("doc2")
+	third := hashFor("doc3")
+	searcher := NewLocalSearcher(
+		fakeScanner{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
+			word: {
+				postingEntry(word, "doc1", 0, 3),
+				postingEntry(word, "doc2", 0, 2),
+				postingEntry(word, "doc3", 0, 1),
+			},
+		}},
+		fakeDirectory{rows: map[yacymodel.Hash]yacymodel.URIMetadataRow{
+			first:  metadataRow(t, first, "https://example.org/a.pdf", "First"),
+			second: metadataRow(t, second, "https://docs.example.org/b.pdf", "Second"),
+			third:  metadataRow(t, third, "https://example.net/c.txt", "Third"),
+		}},
+		100,
+	)
+
+	resp, err := searcher.Search(t.Context(), searchcore.Request{
+		Terms:            []string{"golang"},
+		Source:           searchcore.SourceGlobal,
+		Limit:            1,
+		Offset:           1,
+		ContentDomain:    searchcore.ContentDomainText,
+		InURL:            "example",
+		TLD:              "org",
+		FileType:         "pdf",
+		URLMaskFilter:    `https://.*`,
+		PreferMaskFilter: `docs`,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].URL != "https://example.org/a.pdf" {
+		t.Fatalf("results = %#v", resp.Results)
+	}
+	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0].Source != "remote-yacy" {
+		t.Fatalf("partial failures = %#v", resp.PartialFailures)
+	}
+}
+
+func TestCoreLocalSearcherHandlesEmptyOffsetWindow(t *testing.T) {
+	resp, err := NewLocalSearcher(
+		fakeScanner{},
+		fakeDirectory{},
+		100,
+	).Search(t.Context(), searchcore.Request{Offset: 10, Limit: 5})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.Results) != 0 {
+		t.Fatalf("results = %#v", resp.Results)
+	}
+}
+
+func TestCoreLocalSearcherReturnsErrors(t *testing.T) {
+	sentinel := errors.New("boom")
+	cases := []struct {
+		name     string
+		searcher searchcore.Searcher
+		req      searchcore.Request
+	}{
+		{
+			name: "bad site",
+			searcher: NewLocalSearcher(
+				fakeScanner{},
+				fakeDirectory{},
+				100,
+			),
+			req: searchcore.Request{SiteHost: "."},
+		},
+		{
+			name: "scan",
+			searcher: NewLocalSearcher(
+				fakeScanner{err: sentinel},
+				fakeDirectory{},
+				100,
+			),
+			req: searchcore.Request{Terms: []string{"w1"}},
+		},
+		{
+			name: "bad url metadata url",
+			searcher: NewLocalSearcher(
+				fakeScanner{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
+					yacymodel.WordHash("w1"): {
+						postingEntry(yacymodel.WordHash("w1"), "u1", 0, 1),
+					},
+				}},
+				fakeDirectory{rows: map[yacymodel.Hash]yacymodel.URIMetadataRow{
+					hashFor("u1"): {
+						Properties: map[string]string{
+							yacymodel.URLMetaHash: hashFor("u1").String(),
+							yacymodel.URLMetaURL:  "z|@@@",
+						},
+					},
+				}},
+				100,
+			),
+			req: searchcore.Request{Terms: []string{"w1"}},
+		},
+		{
+			name: "bad url mask",
+			searcher: NewLocalSearcher(
+				fakeScanner{},
+				fakeDirectory{},
+				100,
+			),
+			req: searchcore.Request{URLMaskFilter: "["},
+		},
+		{
+			name: "bad prefer mask",
+			searcher: NewLocalSearcher(
+				fakeScanner{},
+				fakeDirectory{},
+				100,
+			),
+			req: searchcore.Request{PreferMaskFilter: "["},
+		},
+	}
+	for _, tc := range cases {
+		if _, err := tc.searcher.Search(context.Background(), tc.req); err == nil {
+			t.Fatalf("%s: expected error", tc.name)
+		}
+	}
+}
+
+func TestCoreResultFallbacks(t *testing.T) {
+	hash := hashFor("doc1")
+	result, err := searchCoreResult(
+		t.Context(),
+		searchcore.Request{Source: searchcore.SourceLocal},
+		yacymodel.URIMetadataRow{Properties: map[string]string{
+			yacymodel.URLMetaHash: hash.String(),
+			yacymodel.URLMetaURL:  yacymodel.EncodeBase64WireForm("not a url"),
+			"size":                "12",
+			yacymodel.ColModDate:  "20260101",
+		}},
+		0,
+		1,
+	)
+	if err != nil {
+		t.Fatalf("searchCoreResult: %v", err)
+	}
+	if result.Title != "not a url" ||
+		result.Host != "" ||
+		result.DisplayURL != "not%20a%20url" ||
+		result.File != "not a url" ||
+		result.Size != 12 {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestCoreResultRejectsBadHash(t *testing.T) {
+	_, err := searchCoreResult(
+		t.Context(),
+		searchcore.Request{},
+		yacymodel.URIMetadataRow{Properties: map[string]string{
+			yacymodel.URLMetaHash: "bad",
+		}},
+		0,
+		1,
+	)
+	if err == nil {
+		t.Fatal("expected hash error")
+	}
+}
+
+func TestCoreResultRejectsBadTitle(t *testing.T) {
+	_, err := searchCoreResult(
+		t.Context(),
+		searchcore.Request{},
+		yacymodel.URIMetadataRow{Properties: map[string]string{
+			yacymodel.URLMetaHash:           hashFor("doc1").String(),
+			yacymodel.URLMetaURL:            yacymodel.EncodeBase64WireForm("https://example.org/"),
+			yacymodel.URLMetaColDescription: "z|@@@",
+		}},
+		0,
+		1,
+	)
+	if err == nil {
+		t.Fatal("expected title error")
+	}
+}
+
+func TestCoreCriteriaCoversContentKindsAndSiteHash(t *testing.T) {
+	kinds := map[searchcore.ContentDomain]contentKind{
+		searchcore.ContentDomainImage: imageContent,
+		searchcore.ContentDomainAudio: audioContent,
+		searchcore.ContentDomainVideo: videoContent,
+		searchcore.ContentDomainApp:   applicationContent,
+		searchcore.ContentDomainAll:   anyContent,
+	}
+	for domain, want := range kinds {
+		got, err := searchCoreCriteria(searchcore.Request{
+			ContentDomain: domain,
+			SiteHost:      "example.org",
+		})
+		if err != nil {
+			t.Fatalf("searchCoreCriteria(%s): %v", domain, err)
+		}
+		if got.contentKind != want || got.siteHash == "" {
+			t.Fatalf("criteria(%s) = %#v, want kind %d and site hash", domain, got, want)
+		}
+	}
+}
+
+func TestParsedURLPartsHandlesNilAndDirectories(t *testing.T) {
+	host, pathValue, file := parsedURLParts(nil)
+	if host != "" || pathValue != "" || file != "" {
+		t.Fatalf("nil parts = %q %q %q", host, pathValue, file)
+	}
+
+	_, _, file = parsedURLParts(mustParseURL(t, "https://example.org/"))
+	if file != "" {
+		t.Fatalf("file = %q, want empty", file)
+	}
+}
+
+func TestCoreResultMatchersRejectEachFilter(t *testing.T) {
+	cases := []searchcore.Request{
+		{URLMaskFilter: "allowed"},
+		{InURL: "allowed"},
+		{TLD: "net"},
+		{FileType: "pdf"},
+	}
+	for _, req := range cases {
+		matchers, err := newCoreResultMatchers(req)
+		if err != nil {
+			t.Fatalf("newCoreResultMatchers: %v", err)
+		}
+		if matchers.match(searchcore.Result{
+			URL:  "https://example.org/file.html",
+			Host: "example.org",
+			File: "file.html",
+		}) {
+			t.Fatalf("matchers(%#v) accepted result", req)
+		}
+	}
+}
+
+func mustParseURL(tb testing.TB, raw string) *url.URL {
+	tb.Helper()
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		tb.Fatalf("url.Parse: %v", err)
+	}
+
+	return parsed
+}
+
+func metadataRow(
+	tb testing.TB,
+	hash yacymodel.Hash,
+	rawURL string,
+	title string,
+) yacymodel.URIMetadataRow {
+	tb.Helper()
+
+	return yacymodel.URIMetadataRow{Properties: map[string]string{
+		yacymodel.URLMetaHash:           hash.String(),
+		yacymodel.URLMetaURL:            yacymodel.EncodeBase64WireForm(rawURL),
+		yacymodel.URLMetaColDescription: yacymodel.EncodeBase64WireForm(title),
+	}}
+}

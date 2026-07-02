@@ -22,6 +22,12 @@ The remote search endpoint `/yacy/search.html` returns YaCy key-value rows with
 and `indexabstract.*` fields. `count` is the number of `resourceN` rows carried
 in the response.
 
+The public search endpoint `/yacysearch.json` returns JSON with `channels`,
+`items`, `navigation`, and `totalResults` fields following the original YaCy
+template shape. The current implementation searches local RWI and URL metadata.
+`resource=global` is accepted and reports partial remote-fanout metadata until
+federated YaCy search is implemented.
+
 The crawl URL feed endpoint `/yacy/urls.xml` returns YaCy's RSS-like XML shape.
 `call=remotecrawl` currently returns `ok` with no items because remote crawl
 delegation is disabled by default. `/yacy/crawlReceipt.html` accepts the YaCy

@@ -87,6 +87,7 @@ func assembleNode(
 	router := httpguard.NewWireRouter(mux, gate)
 
 	mountNodeProtocol(router, identity, storage)
+	mountNodePublicSearch(mux, storage)
 
 	exchange, err := assembleRuntimePeerExchange(peerExchange{
 		router:   router,

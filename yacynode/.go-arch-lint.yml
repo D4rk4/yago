@@ -56,6 +56,10 @@ components:
     in: internal/rwi/**
   documentsearch:
     in: internal/documentsearch/**
+  searchcore:
+    in: internal/searchcore/**
+  yacysearch:
+    in: internal/yacysearch/**
   nodestatus:
     in: internal/nodestatus/**
   eviction:
@@ -268,12 +272,22 @@ deps:
   documentsearch:
     mayDependOn:
       - documentsearch
+      - searchcore
       - rwi
       - urlmeta
       - httpguard
       - nodeidentity
     canUse:
       - yacymodel
+      - yacyproto
+  searchcore:
+    mayDependOn:
+      - searchcore
+  yacysearch:
+    mayDependOn:
+      - yacysearch
+      - searchcore
+    canUse:
       - yacyproto
   nodestatus:
     mayDependOn:
@@ -357,6 +371,7 @@ deps:
       - crawldispatch
       - crawlresults
       - crawlbroker
+      - yacysearch
     canUse:
       - yacycrawlcontract
       - yacymodel
