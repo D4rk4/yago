@@ -63,13 +63,13 @@ A YaCy node originates DHT transfer only when all of these are true:
 `INFO` logging hides it.
 
 The Go gate evaluator keeps the same sender-side decision as named gate results
-with stable reason text. Runtime distribution remains disabled until the
-scheduler and deletion semantics are wired.
+with stable reason text. The runtime scheduler feeds these gates from the local
+advertised address, reachable peer count, local RWI word count, storage capacity,
+and DHT distribution environment flags.
 
 The Go outbound transfer layer can probe a target peer's `rwicount` through
 `/yacy/query.html` and treats `response=-1`, missing responses, malformed
-responses, and negative values as failed capacity probes. Automatic probing from
-the runtime scheduler is still pending.
+responses, and negative values as failed capacity probes.
 
 The Go outbound distributor can run one transfer cycle: evaluate sender gates,
 dequeue the largest buffered chunk, probe target RWI capacity, and perform the
@@ -79,13 +79,14 @@ the chunk is returned to the outbound buffer.
 The Go outbound retry policy turns capacity failures, handoff transport errors,
 and protocol rejections into bounded exponential retry delays with jitter.
 Successful handoffs clear the peer's retry state. Repeated failed cycles produce
-a quarantine decision for the peer. The long-running scheduler still needs to
-apply these decisions to the peer roster and distribution loop.
+a quarantine decision for the peer. The runtime scheduler honors retry readiness
+when dequeuing chunks and records every scheduler receipt in the outbound DHT
+Prometheus counters. Peer-roster quarantine mutation is still pending.
 
 The Prometheus edge registers outbound DHT counters for batches, postings,
 failures, and unknown URL requests using the names from `PLAN.md`. The
-long-running scheduler still needs to observe each distribution receipt so these
-counters reflect live DHT traffic.
+runtime scheduler observes each distribution receipt, so these counters reflect
+live DHT traffic once stored RWI rows are fed into the outbound queue.
 
 ## Sender-side transfer shape
 
@@ -110,8 +111,9 @@ Before transfer, YaCy splits a word's RWI rows by the URL hash's vertical DHT
 partition, accumulates each partition into the chunk for its primary target,
 drops rows without local URL metadata, caps a chunk at 1000 RWI rows, and
 dequeues the largest buffered chunk first. The Go exchange queue preserves that
-batch shape while leaving runtime scheduling disabled until the distributor
-scheduler is wired.
+batch shape. The runtime scheduler is wired with an empty queue; the remaining
+dispatcher work is feeding stored RWI words into the queue and deleting local
+postings after enough successful recipients.
 
 ---
 

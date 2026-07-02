@@ -261,6 +261,39 @@ func TestOutboundQueueDequeueLargestRemovesLargestChunk(t *testing.T) {
 	}
 }
 
+func TestOutboundQueueDequeueLargestReadySkipsDelayedPeers(t *testing.T) {
+	t.Parallel()
+
+	word := yacymodel.WordHash("word")
+	delayed := queueHash(t, "AAAAAAAAAAAA")
+	ready := queueHash(t, "BBBBBBBBBBBB")
+	queue := NewOutboundQueue()
+	queue.add(queueSeed(t, delayed.String()), []yacymodel.RWIPosting{
+		queuePosting(word, yacymodel.WordHash("a1")),
+		queuePosting(word, yacymodel.WordHash("a2")),
+	})
+	queue.add(queueSeed(t, ready.String()), []yacymodel.RWIPosting{
+		queuePosting(word, yacymodel.WordHash("b")),
+	})
+
+	chunk, ok := queue.DequeueLargestReady(func(peer yacymodel.Hash) bool {
+		return peer == ready
+	})
+	if !ok || chunk.Peer.Hash != ready || len(chunk.Postings) != 1 {
+		t.Fatalf("chunk = %#v ok=%t", chunk, ok)
+	}
+	if queue.PostingCount() != 2 {
+		t.Fatalf("queue postings = %d, want delayed peer retained", queue.PostingCount())
+	}
+	if _, ok := queue.DequeueLargestReady(func(yacymodel.Hash) bool { return false }); ok {
+		t.Fatal("expected no ready chunk")
+	}
+	chunk, ok = queue.DequeueLargestReady(nil)
+	if !ok || chunk.Peer.Hash != delayed || len(chunk.Postings) != 2 {
+		t.Fatalf("nil ready chunk = %#v ok=%t", chunk, ok)
+	}
+}
+
 func TestOutboundQueueDefaultAgeGateFiltersYoungPeers(t *testing.T) {
 	t.Parallel()
 

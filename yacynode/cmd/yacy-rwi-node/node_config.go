@@ -55,6 +55,7 @@ type nodeConfig struct {
 	AnnounceInterval time.Duration
 	GreetsPerCycle   int
 	Crawl            crawlConfig
+	DHT              dhtDistributionConfig
 }
 
 func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
@@ -110,6 +111,11 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		return nodeConfig{}, err
 	}
 
+	dht, err := loadDHTDistributionConfig(getenv)
+	if err != nil {
+		return nodeConfig{}, err
+	}
+
 	dataDir := envWithDefault(getenv, envDataDir, defaultDataDir)
 
 	return nodeConfig{
@@ -128,6 +134,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		SeedlistURLs:     seedlistURLs,
 		AnnounceInterval: announceInterval,
 		GreetsPerCycle:   greetsPerCycle,
+		DHT:              dht,
 	}, nil
 }
 

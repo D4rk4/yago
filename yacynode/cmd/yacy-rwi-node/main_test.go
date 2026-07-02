@@ -66,6 +66,7 @@ func assembleTestNode(t *testing.T, config nodeConfig, vault *vault.Vault) node 
 		config,
 		vault,
 		newEgressProxyClient(config.ProxyURL, outboundRequestTimeout),
+		metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
 	)
 	if err != nil {
 		t.Fatalf("assemble: %v", err)

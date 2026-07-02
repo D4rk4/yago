@@ -12,11 +12,11 @@ import (
 
 	"github.com/D4rk4/yago/yacymodel"
 	"github.com/D4rk4/yago/yacynode/internal/crawlbroker"
+	"github.com/D4rk4/yago/yacynode/internal/dhtexchange"
 	"github.com/D4rk4/yago/yacynode/internal/eviction"
 	"github.com/D4rk4/yago/yacynode/internal/memvault"
 	"github.com/D4rk4/yago/yacynode/internal/metrics"
 	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
-	"github.com/D4rk4/yago/yacynode/internal/peerannouncement"
 	"github.com/D4rk4/yago/yacynode/internal/peermessage"
 	"github.com/D4rk4/yago/yacynode/internal/peerroster"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
@@ -39,6 +39,29 @@ type scriptedSweeper struct {
 	called   chan int32
 	cancel   context.CancelFunc
 	cancelOn int32
+}
+
+type scriptedDHTOutboundCycle struct {
+	receipt  dhtexchange.ScheduledDistributionReceipt
+	err      error
+	calls    atomic.Int32
+	called   chan int32
+	cancel   context.CancelFunc
+	cancelOn int32
+}
+
+func (s *scriptedDHTOutboundCycle) RunOnce(
+	context.Context,
+) (dhtexchange.ScheduledDistributionReceipt, error) {
+	call := s.calls.Add(1)
+	if s.called != nil {
+		s.called <- call
+	}
+	if s.cancel != nil && s.cancelOn == call {
+		s.cancel()
+	}
+
+	return s.receipt, s.err
 }
 
 func (s *scriptedSweeper) Sweep(context.Context) (eviction.Result, error) {
@@ -80,6 +103,38 @@ func (fakeRoster) FreshestPeers(context.Context, int) []yacymodel.Seed { return 
 
 func (fakeRoster) ReachablePeers(context.Context) []yacymodel.Seed { return nil }
 
+type reachableRoster struct {
+	peers []yacymodel.Seed
+}
+
+func (r reachableRoster) Discover(context.Context, ...yacymodel.Seed) {}
+
+func (r reachableRoster) ConfirmReachable(context.Context, yacymodel.Hash) {}
+
+func (r reachableRoster) ConfirmUnreachable(context.Context, yacymodel.Hash) {}
+
+func (r reachableRoster) FreshestPeers(context.Context, int) []yacymodel.Seed { return r.peers }
+
+func (r reachableRoster) ReachablePeers(context.Context) []yacymodel.Seed { return r.peers }
+
+type capacityProbe struct {
+	atCapacity bool
+	err        error
+}
+
+func (p capacityProbe) AtCapacity(context.Context) (bool, error) {
+	return p.atCapacity, p.err
+}
+
+type rwiCounter struct {
+	count int
+	err   error
+}
+
+func (c rwiCounter) RWICount(context.Context) (int, error) {
+	return c.count, c.err
+}
+
 type failingCloser struct{}
 
 func (failingCloser) Close() error { return errors.New("close failed") }
@@ -108,10 +163,12 @@ func restoreAssemblySeams(t *testing.T) {
 	t.Helper()
 	oldOpenRuntimeNodeStorage := openRuntimeNodeStorage
 	oldAssembleRuntimePeerExchange := assembleRuntimePeerExchange
+	oldBuildRuntimeDHTOutbound := buildRuntimeDHTOutbound
 	oldBuildRuntimeCrawl := buildRuntimeCrawl
 	t.Cleanup(func() {
 		openRuntimeNodeStorage = oldOpenRuntimeNodeStorage
 		assembleRuntimePeerExchange = oldAssembleRuntimePeerExchange
+		buildRuntimeDHTOutbound = oldBuildRuntimeDHTOutbound
 		buildRuntimeCrawl = oldBuildRuntimeCrawl
 	})
 }
@@ -152,6 +209,12 @@ func restoreEvictionTickerSeam(t *testing.T) {
 	t.Cleanup(func() { newEvictionTicks = oldNewEvictionTicks })
 }
 
+func restoreDHTOutboundTickerSeam(t *testing.T) {
+	t.Helper()
+	oldNewDHTOutboundTicks := newDHTOutboundTicks
+	t.Cleanup(func() { newDHTOutboundTicks = oldNewDHTOutboundTicks })
+}
+
 func setValidRunEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
@@ -170,6 +233,11 @@ func setValidRunEnv(t *testing.T) {
 		envNATSIngestSubject,
 		envNATSIngestDurable,
 		envNATSIngestMaxMsgs,
+		envNetworkDHT,
+		envDHTDistribution,
+		envDHTAllowWhileCrawling,
+		envDHTAllowWhileIndexing,
+		envDHTDistributionInterval,
 	} {
 		t.Setenv(key, "")
 	}
@@ -230,7 +298,13 @@ func TestRunReturnsStageErrors(t *testing.T) {
 		setValidRunEnv(t)
 		sentinel := errors.New("assemble failed")
 		openRuntimeVault = func(string, int64) (*vault.Vault, error) { return openTestVault(t), nil }
-		assembleRuntimeNode = func(context.Context, nodeConfig, *vault.Vault, *http.Client) (node, error) {
+		assembleRuntimeNode = func(
+			context.Context,
+			nodeConfig,
+			*vault.Vault,
+			*http.Client,
+			dhtexchange.DistributionObserver,
+		) (node, error) {
 			return node{}, sentinel
 		}
 		if err := run(); !errors.Is(err, sentinel) {
@@ -244,7 +318,13 @@ func TestRunMountsCrawlDispatchAndServes(t *testing.T) {
 	setValidRunEnv(t)
 	crawl := &recordingCrawl{}
 	openRuntimeVault = func(string, int64) (*vault.Vault, error) { return openTestVault(t), nil }
-	assembleRuntimeNode = func(context.Context, nodeConfig, *vault.Vault, *http.Client) (node, error) {
+	assembleRuntimeNode = func(
+		context.Context,
+		nodeConfig,
+		*vault.Vault,
+		*http.Client,
+		dhtexchange.DistributionObserver,
+	) (node, error) {
 		return node{announcer: fakeAnnouncer{}, sweeper: &scriptedSweeper{}, crawl: crawl}, nil
 	}
 	serveRuntimeNode = func(
@@ -373,6 +453,108 @@ func TestEvictionLoopAndSweepBranches(t *testing.T) {
 	})
 }
 
+func TestDHTOutboundLoopAndCycleBranches(t *testing.T) {
+	t.Run("ticker", func(t *testing.T) {
+		restoreDHTOutboundTickerSeam(t)
+		ticks := make(chan time.Time, 1)
+		var stopped atomic.Bool
+		newDHTOutboundTicks = func(time.Duration) (<-chan time.Time, func()) {
+			return ticks, func() { stopped.Store(true) }
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cycle := &scriptedDHTOutboundCycle{
+			called:   make(chan int32, 2),
+			cancel:   cancel,
+			cancelOn: 2,
+		}
+		done := make(chan struct{})
+		go func() {
+			runDHTOutboundLoop(
+				ctx,
+				dhtOutboundProcess{cycle: cycle, interval: defaultDHTDistributionInterval},
+			)
+			close(done)
+		}()
+		if call := <-cycle.called; call != 1 {
+			t.Fatalf("first call = %d, want 1", call)
+		}
+		ticks <- time.Now()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("dht outbound loop did not stop")
+		}
+		if cycle.calls.Load() != 2 || !stopped.Load() {
+			t.Fatalf("calls=%d stopped=%v, want 2/true", cycle.calls.Load(), stopped.Load())
+		}
+	})
+
+	t.Run("failure", func(t *testing.T) {
+		runDHTOutboundOnce(
+			context.Background(),
+			&scriptedDHTOutboundCycle{
+				receipt: dhtexchange.ScheduledDistributionReceipt{
+					Distribution: dhtexchange.DistributionReceipt{
+						State: dhtexchange.DistributionCapacityFailed,
+						Peer:  yacymodel.Hash("AAAAAAAAAAAA"),
+					},
+				},
+				err: errors.New("dht failed"),
+			},
+		)
+	})
+
+	t.Run("sent", func(t *testing.T) {
+		runDHTOutboundOnce(
+			context.Background(),
+			&scriptedDHTOutboundCycle{
+				receipt: dhtexchange.ScheduledDistributionReceipt{
+					Distribution: dhtexchange.DistributionReceipt{
+						State:        dhtexchange.DistributionSent,
+						Peer:         yacymodel.Hash("BBBBBBBBBBBB"),
+						PostingCount: 2,
+					},
+				},
+			},
+		)
+	})
+}
+
+func TestDHTGateStateSnapshot(t *testing.T) {
+	source := dhtGateStateSource{
+		publicReachable: true,
+		storage:         capacityProbe{},
+		postings:        rwiCounter{count: 123},
+		roster: reachableRoster{peers: []yacymodel.Seed{
+			{Hash: yacymodel.Hash("AAAAAAAAAAAA")},
+			{Hash: yacymodel.Hash("BBBBBBBBBBBB")},
+		}},
+	}
+
+	state := source.Snapshot(context.Background())
+	if !state.PublicReachable ||
+		!state.LocalPeerKnown ||
+		state.LocalPeerVirgin ||
+		state.ConnectedPeers != 2 ||
+		state.LocalRWIWords != 123 ||
+		!state.StorageAvailable {
+		t.Fatalf("state = %#v", state)
+	}
+
+	source.storage = capacityProbe{atCapacity: true}
+	source.postings = rwiCounter{err: errors.New("count failed")}
+	state = source.Snapshot(context.Background())
+	if state.LocalRWIWords != 0 || state.StorageAvailable {
+		t.Fatalf("at capacity state = %#v", state)
+	}
+
+	source.storage = capacityProbe{err: errors.New("capacity failed")}
+	state = source.Snapshot(context.Background())
+	if state.StorageAvailable {
+		t.Fatalf("storage error state = %#v", state)
+	}
+}
+
 func TestOpenNodeStorageReturnsOpenErrors(t *testing.T) {
 	sentinel := errors.New("open failed")
 
@@ -438,6 +620,7 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 			testConfig(t),
 			openTestVault(t),
 			http.DefaultClient,
+			metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
 		)
 		if !errors.Is(err, sentinel) {
 			t.Fatalf("assemble error = %v, want %v", err, sentinel)
@@ -446,14 +629,15 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 
 	t.Run("peer exchange", func(t *testing.T) {
 		restoreAssemblySeams(t)
-		assembleRuntimePeerExchange = func(peerExchange) (peerannouncement.Announcer, error) {
-			return nil, sentinel
+		assembleRuntimePeerExchange = func(peerExchange) (peerExchangeRuntime, error) {
+			return peerExchangeRuntime{}, sentinel
 		}
 		_, err := assembleNode(
 			context.Background(),
 			testConfig(t),
 			openTestVault(t),
 			http.DefaultClient,
+			metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
 		)
 		if !errors.Is(err, sentinel) {
 			t.Fatalf("assemble error = %v, want %v", err, sentinel)
@@ -462,8 +646,8 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 
 	t.Run("crawl", func(t *testing.T) {
 		restoreAssemblySeams(t)
-		assembleRuntimePeerExchange = func(peerExchange) (peerannouncement.Announcer, error) {
-			return fakeAnnouncer{}, nil
+		assembleRuntimePeerExchange = func(peerExchange) (peerExchangeRuntime, error) {
+			return peerExchangeRuntime{announcer: fakeAnnouncer{}, roster: fakeRoster{}}, nil
 		}
 		buildRuntimeCrawl = func(
 			context.Context,
@@ -478,6 +662,7 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 			testConfig(t),
 			openTestVault(t),
 			http.DefaultClient,
+			metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
 		)
 		if !errors.Is(err, sentinel) {
 			t.Fatalf("assemble error = %v, want %v", err, sentinel)

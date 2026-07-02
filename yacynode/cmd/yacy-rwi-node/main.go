@@ -75,12 +75,12 @@ func run() error {
 	endpoints := metrics.NewHTTPEndpointMetrics()
 	metrics.NewStorageMetrics(endpoints.Registry(), vault)
 	evictionMetrics := metrics.NewEvictionMetrics(endpoints.Registry())
-	metrics.NewDHTOutboundMetrics(endpoints.Registry())
+	dhtOutboundMetrics := metrics.NewDHTOutboundMetrics(endpoints.Registry())
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	assembled, err := assembleRuntimeNode(ctx, config, vault, client)
+	assembled, err := assembleRuntimeNode(ctx, config, vault, client, dhtOutboundMetrics)
 	if err != nil {
 		return fmt.Errorf("assemble node: %w", err)
 	}
@@ -142,6 +142,13 @@ func serve(
 		go func() {
 			defer background.Done()
 			assembled.crawl.Run(ctx)
+		}()
+	}
+	if assembled.dht.cycle != nil {
+		background.Add(1)
+		go func() {
+			defer background.Done()
+			runDHTOutboundLoop(ctx, assembled.dht)
 		}()
 	}
 	defer background.Wait()

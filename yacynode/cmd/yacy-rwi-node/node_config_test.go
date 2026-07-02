@@ -38,22 +38,34 @@ func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 	if config.StorageQuotaByte != 1<<30 {
 		t.Errorf("StorageQuotaByte = %d, want 1GB", config.StorageQuotaByte)
 	}
+	if !config.DHT.Gates.NetworkDHTEnabled ||
+		!config.DHT.Gates.DistributionEnabled ||
+		config.DHT.Gates.AllowWhileCrawling ||
+		!config.DHT.Gates.AllowWhileIndexing ||
+		config.DHT.Interval != defaultDHTDistributionInterval {
+		t.Errorf("DHT config = %#v", config.DHT)
+	}
 }
 
 func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
-		envPeerHash:         "0123456789AB",
-		envPeerName:         "node",
-		envProxyURL:         "http://proxy:4750",
-		envNetworkName:      "testnet",
-		envPeerAddr:         ":7000",
-		envOpsAddr:          ":7001",
-		envAdvertiseHost:    "203.0.113.1",
-		envAdvertisePort:    "9999",
-		envStorageQuota:     "2MB",
-		envTrustedProxies:   "10.0.0.0/8",
-		envSeedlistURLs:     " http://a , http://b ,",
-		envAnnounceInterval: "30s",
+		envPeerHash:                "0123456789AB",
+		envPeerName:                "node",
+		envProxyURL:                "http://proxy:4750",
+		envNetworkName:             "testnet",
+		envPeerAddr:                ":7000",
+		envOpsAddr:                 ":7001",
+		envAdvertiseHost:           "203.0.113.1",
+		envAdvertisePort:           "9999",
+		envStorageQuota:            "2MB",
+		envTrustedProxies:          "10.0.0.0/8",
+		envSeedlistURLs:            " http://a , http://b ,",
+		envAnnounceInterval:        "30s",
+		envNetworkDHT:              "false",
+		envDHTDistribution:         "false",
+		envDHTAllowWhileCrawling:   "true",
+		envDHTAllowWhileIndexing:   "false",
+		envDHTDistributionInterval: "45s",
 	}))
 	if err != nil {
 		t.Fatalf("load config: %v", err)
@@ -76,6 +88,13 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 	}
 	if config.AnnounceInterval != 30*time.Second {
 		t.Errorf("AnnounceInterval = %v, want 30s", config.AnnounceInterval)
+	}
+	if config.DHT.Gates.NetworkDHTEnabled ||
+		config.DHT.Gates.DistributionEnabled ||
+		!config.DHT.Gates.AllowWhileCrawling ||
+		config.DHT.Gates.AllowWhileIndexing ||
+		config.DHT.Interval != 45*time.Second {
+		t.Errorf("DHT config = %#v", config.DHT)
 	}
 }
 
@@ -140,6 +159,42 @@ func TestLoadNodeConfigRejects(t *testing.T) {
 			envPeerHash: "0123456789AB",
 			envPeerName: "n",
 			envProxyURL: "socks5://proxy:1080",
+		},
+		"bad dht bool": {
+			envPeerHash:   "0123456789AB",
+			envPeerName:   "n",
+			envProxyURL:   "http://proxy:4750",
+			envNetworkDHT: "maybe",
+		},
+		"bad dht distribution bool": {
+			envPeerHash:        "0123456789AB",
+			envPeerName:        "n",
+			envProxyURL:        "http://proxy:4750",
+			envDHTDistribution: "maybe",
+		},
+		"bad dht crawling bool": {
+			envPeerHash:              "0123456789AB",
+			envPeerName:              "n",
+			envProxyURL:              "http://proxy:4750",
+			envDHTAllowWhileCrawling: "maybe",
+		},
+		"bad dht indexing bool": {
+			envPeerHash:              "0123456789AB",
+			envPeerName:              "n",
+			envProxyURL:              "http://proxy:4750",
+			envDHTAllowWhileIndexing: "maybe",
+		},
+		"bad dht interval": {
+			envPeerHash:                "0123456789AB",
+			envPeerName:                "n",
+			envProxyURL:                "http://proxy:4750",
+			envDHTDistributionInterval: "-1s",
+		},
+		"malformed dht interval": {
+			envPeerHash:                "0123456789AB",
+			envPeerName:                "n",
+			envProxyURL:                "http://proxy:4750",
+			envDHTDistributionInterval: "often",
 		},
 	}
 	for name, env := range cases {

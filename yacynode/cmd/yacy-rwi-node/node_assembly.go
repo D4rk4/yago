@@ -6,6 +6,7 @@ import (
 
 	"github.com/D4rk4/yago/yacynode/internal/crawling"
 	"github.com/D4rk4/yago/yacynode/internal/crawlurls"
+	"github.com/D4rk4/yago/yacynode/internal/dhtexchange"
 	"github.com/D4rk4/yago/yacynode/internal/documentsearch"
 	"github.com/D4rk4/yago/yacynode/internal/eviction"
 	"github.com/D4rk4/yago/yacynode/internal/httpguard"
@@ -23,14 +24,16 @@ type node struct {
 	sweeper   eviction.Sweeper
 	announcer peerannouncement.Announcer
 	crawl     crawlProcess
+	dht       dhtOutboundProcess
 }
 
 var (
 	openRuntimeNodeStorage      = openNodeStorage
-	assembleRuntimePeerExchange = func(exchange peerExchange) (peerannouncement.Announcer, error) {
+	assembleRuntimePeerExchange = func(exchange peerExchange) (peerExchangeRuntime, error) {
 		return exchange.assemble()
 	}
-	buildRuntimeCrawl = func(
+	buildRuntimeDHTOutbound = buildDHTOutboundRuntime
+	buildRuntimeCrawl       = func(
 		ctx context.Context,
 		config crawlConfig,
 		identity nodeidentity.Identity,
@@ -50,6 +53,7 @@ func assembleNode(
 	config nodeConfig,
 	vault *vault.Vault,
 	client *http.Client,
+	dhtObserver dhtexchange.DistributionObserver,
 ) (node, error) {
 	guard := httpguard.NewRequestGuard(
 		httpguard.DefaultMaxBodyBytes,
@@ -74,25 +78,9 @@ func assembleNode(
 	mux.Handle("/{$}", landing.NewEndpoint())
 	router := httpguard.NewWireRouter(mux, gate)
 
-	urlmeta.MountTransferURL(router, identity, storage.urlReceiver)
-	rwi.MountTransferRWI(router, identity, storage.postingReceiver)
-	nodestatus.MountQuery(
-		router,
-		identity,
-		storage.postings,
-		storage.references,
-		storage.urlDirectory,
-	)
+	mountNodeProtocol(router, identity, storage)
 
-	documentsearch.MountSearch(
-		router,
-		identity,
-		storage.postings,
-		storage.urlDirectory,
-		searchPostingsPerWord,
-	)
-
-	announcer, err := assembleRuntimePeerExchange(peerExchange{
+	exchange, err := assembleRuntimePeerExchange(peerExchange{
 		router:   router,
 		identity: identity,
 		report:   report,
@@ -108,6 +96,16 @@ func assembleNode(
 	crawlurls.Mount(router, identity, storage.urlDirectory, crawlurls.NoRemoteCrawlURLs{})
 
 	sweeper := newStorageSweeper(vault, storage)
+	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
+		ctx:         ctx,
+		config:      config,
+		storage:     vault,
+		nodeStorage: storage,
+		report:      report,
+		roster:      exchange.roster,
+		client:      client,
+		observer:    dhtObserver,
+	})
 
 	runtime, err := buildRuntimeCrawl(ctx, config.Crawl, identity, storage)
 	if err != nil {
@@ -117,9 +115,33 @@ func assembleNode(
 	return node{
 		peerMux:   mux,
 		sweeper:   sweeper,
-		announcer: announcer,
+		announcer: exchange.announcer,
 		crawl:     runtime,
+		dht:       dht,
 	}, nil
+}
+
+func mountNodeProtocol(
+	router httpguard.WireRouter,
+	identity nodeidentity.Identity,
+	storage nodeStorage,
+) {
+	urlmeta.MountTransferURL(router, identity, storage.urlReceiver)
+	rwi.MountTransferRWI(router, identity, storage.postingReceiver)
+	nodestatus.MountQuery(
+		router,
+		identity,
+		storage.postings,
+		storage.references,
+		storage.urlDirectory,
+	)
+	documentsearch.MountSearch(
+		router,
+		identity,
+		storage.postings,
+		storage.urlDirectory,
+		searchPostingsPerWord,
+	)
 }
 
 func newStorageSweeper(vault *vault.Vault, storage nodeStorage) eviction.Sweeper {

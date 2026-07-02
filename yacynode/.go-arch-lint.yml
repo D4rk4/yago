@@ -343,6 +343,7 @@ deps:
       - landing
       - crawling
       - crawlurls
+      - dhtexchange
       - indextransfer
       - urlmeta
       - rwi

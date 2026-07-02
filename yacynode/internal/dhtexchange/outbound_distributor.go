@@ -28,6 +28,7 @@ const (
 	DistributionCapacityFailed  DistributionState = "capacity_failed"
 	DistributionHandoffFailed   DistributionState = "handoff_failed"
 	DistributionHandoffRejected DistributionState = "handoff_rejected"
+	DistributionRetryDeferred   DistributionState = "retry_deferred"
 	DistributionSent            DistributionState = "sent"
 )
 
@@ -60,6 +61,29 @@ func (d OutboundDistributor) Distribute(
 	state GateState,
 	config GateConfig,
 ) (DistributionReceipt, error) {
+	return d.distribute(ctx, state, config, d.queue.DequeueLargest)
+}
+
+func (d OutboundDistributor) DistributeReady(
+	ctx context.Context,
+	state GateState,
+	config GateConfig,
+	ready OutboundPeerReady,
+) (DistributionReceipt, error) {
+	return d.distribute(
+		ctx,
+		state,
+		config,
+		func() (OutboundChunk, bool) { return d.queue.DequeueLargestReady(ready) },
+	)
+}
+
+func (d OutboundDistributor) distribute(
+	ctx context.Context,
+	state GateState,
+	config GateConfig,
+	dequeue func() (OutboundChunk, bool),
+) (DistributionReceipt, error) {
 	gates := EvaluateGates(state, config)
 	receipt := DistributionReceipt{Gates: gates}
 	if !gates.Open {
@@ -68,9 +92,12 @@ func (d OutboundDistributor) Distribute(
 		return receipt, nil
 	}
 
-	chunk, ok := d.queue.DequeueLargest()
+	chunk, ok := dequeue()
 	if !ok {
 		receipt.State = DistributionQueueEmpty
+		if d.queue.Len() > 0 {
+			receipt.State = DistributionRetryDeferred
+		}
 
 		return receipt, nil
 	}

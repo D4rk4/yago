@@ -29,19 +29,24 @@ type peerExchange struct {
 	client   *http.Client
 }
 
+type peerExchangeRuntime struct {
+	announcer peerannouncement.Announcer
+	roster    peerroster.Roster
+}
+
 var (
 	openPeerRoster  = peerroster.Open
 	openPeerMailbox = peermessage.OpenMailbox
 )
 
-func (p peerExchange) assemble() (peerannouncement.Announcer, error) {
+func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 	roster, err := openPeerRoster(p.vault, time.Now, reservoirCapacity, activeSetCapacity)
 	if err != nil {
-		return nil, fmt.Errorf("open peer roster: %w", err)
+		return peerExchangeRuntime{}, fmt.Errorf("open peer roster: %w", err)
 	}
 	mailbox, err := openPeerMailbox(p.vault, time.Now)
 	if err != nil {
-		return nil, fmt.Errorf("open peer message mailbox: %w", err)
+		return peerExchangeRuntime{}, fmt.Errorf("open peer message mailbox: %w", err)
 	}
 
 	peeradmission.MountHello(
@@ -57,15 +62,18 @@ func (p peerExchange) assemble() (peerannouncement.Announcer, error) {
 	peerprofile.Mount(p.router, p.identity, peerprofile.NoPeerProfile{})
 	sharedblacklist.Mount(p.router, sharedblacklist.NoSharedBlacklists{})
 
-	return peerannouncement.New(
-		peerannouncement.Config{
-			Client:         p.client,
-			NetworkName:    p.config.NetworkName,
-			Interval:       p.config.AnnounceInterval,
-			GreetsPerCycle: p.config.GreetsPerCycle,
-		},
-		p.report,
-		bootstrap.New(p.client, p.config.SeedlistURLs),
-		roster,
-	), nil
+	return peerExchangeRuntime{
+		announcer: peerannouncement.New(
+			peerannouncement.Config{
+				Client:         p.client,
+				NetworkName:    p.config.NetworkName,
+				Interval:       p.config.AnnounceInterval,
+				GreetsPerCycle: p.config.GreetsPerCycle,
+			},
+			p.report,
+			bootstrap.New(p.client, p.config.SeedlistURLs),
+			roster,
+		),
+		roster: roster,
+	}, nil
 }
