@@ -7,6 +7,7 @@ type Source string
 const (
 	SourceLocal  Source = "local"
 	SourceGlobal Source = "global"
+	SourceRemote Source = "remote"
 )
 
 type ContentDomain string

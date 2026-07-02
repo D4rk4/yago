@@ -24,9 +24,11 @@ in the response.
 
 The public search endpoint `/yacysearch.json` returns JSON with `channels`,
 `items`, `navigation`, and `totalResults` fields following the original YaCy
-template shape. The current implementation searches local RWI and URL metadata.
-`resource=global` is accepted and reports partial remote-fanout metadata until
-federated YaCy search is implemented.
+template shape. `resource=local` searches local RWI and URL metadata only.
+`resource=global` searches the local node and performs bounded YaCy
+`/yacy/search.html` fanout to reachable peers. Remote peer failures, malformed
+responses, and missing reachable peers are returned as partial-failure metadata
+instead of turning the whole public search request into an HTTP error.
 
 The crawl URL feed endpoint `/yacy/urls.xml` returns YaCy's RSS-like XML shape.
 `call=remotecrawl` currently returns `ok` with no items because remote crawl

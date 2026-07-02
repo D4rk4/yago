@@ -43,7 +43,7 @@ Go internals do not need to copy Java source code or Java storage engines.
 * The node SHALL choose outbound DHT transfer targets using YaCy DHT ring ordering and advertised remote-index capability.
 * The node SHALL serve remote RWI search requests.
 * The node SHALL serve local search requests through YaCy-compatible search surfaces.
-* The node SHALL expose `/yacysearch.json` as a YaCy-compatible public search JSON subset backed by local search and later federated search.
+* The node SHALL expose `/yacysearch.json` as a YaCy-compatible public search JSON subset backed by local search and federated reachable-peer search.
 * The node SHALL support federated search across local and reachable peer results.
 * The node SHALL answer RWI capacity and status queries.
 * The node SHALL run configured crawl jobs and ingest crawler-produced metadata and postings.

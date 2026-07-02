@@ -47,7 +47,7 @@ func TestCoreLocalSearcherReturnsLocalResults(t *testing.T) {
 	}
 }
 
-func TestCoreLocalSearcherFiltersOffsetsAndReportsGlobalGap(t *testing.T) {
+func TestCoreLocalSearcherFiltersAndOffsets(t *testing.T) {
 	word := yacymodel.WordHash("golang")
 	first := hashFor("doc1")
 	second := hashFor("doc2")
@@ -86,7 +86,7 @@ func TestCoreLocalSearcherFiltersOffsetsAndReportsGlobalGap(t *testing.T) {
 	if len(resp.Results) != 1 || resp.Results[0].URL != "https://example.org/a.pdf" {
 		t.Fatalf("results = %#v", resp.Results)
 	}
-	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0].Source != "remote-yacy" {
+	if len(resp.PartialFailures) != 0 {
 		t.Fatalf("partial failures = %#v", resp.PartialFailures)
 	}
 }

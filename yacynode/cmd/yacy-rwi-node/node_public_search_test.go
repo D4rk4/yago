@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/D4rk4/yago/yacymodel"
+	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yacyproto"
 )
 
@@ -49,7 +50,7 @@ func TestNodePublicSearchMountsYaCySearchJSON(t *testing.T) {
 	mountNodePublicSearch(mux, nodeStorage{
 		postings:     publicSearchPostingIndex{},
 		urlDirectory: publicSearchURLDirectory{},
-	})
+	}, nil, nodeidentity.Identity{NetworkName: "freeworld"}, http.DefaultClient)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(

@@ -58,6 +58,8 @@ components:
     in: internal/documentsearch/**
   searchcore:
     in: internal/searchcore/**
+  searchremote:
+    in: internal/searchremote/**
   yacysearch:
     in: internal/yacysearch/**
   nodestatus:
@@ -283,6 +285,13 @@ deps:
   searchcore:
     mayDependOn:
       - searchcore
+  searchremote:
+    mayDependOn:
+      - searchremote
+      - searchcore
+    canUse:
+      - yacymodel
+      - yacyproto
   yacysearch:
     mayDependOn:
       - yacysearch
@@ -371,6 +380,8 @@ deps:
       - crawldispatch
       - crawlresults
       - crawlbroker
+      - searchcore
+      - searchremote
       - yacysearch
     canUse:
       - yacycrawlcontract

@@ -46,7 +46,8 @@ The node currently targets these responsibilities:
   YaCy-style sender gates, target selection, local deletion, restore, peer
   quarantine, metrics, and a JSON gate status endpoint;
 - serve remote RWI search requests through `/yacy/search.html`;
-- serve local public search requests through `/yacysearch.json`;
+- serve local and reachable-peer public search requests through
+  `/yacysearch.json`;
 - store accepted RWI postings and URL metadata durably;
 - expose `/health`, `/metrics`, and DHT gate status on the ops listener,
   including inbound and outbound DHT transfer series and peer discovery
@@ -147,6 +148,7 @@ curl -fsS http://127.0.0.1:9090/metrics
 curl -fsS http://127.0.0.1:9090/api/admin/v1/network/dht/gates
 curl -fsS http://127.0.0.1:8090/
 curl -fsS 'http://127.0.0.1:8090/yacysearch.json?query=test&resource=local&maximumRecords=10'
+curl -fsS 'http://127.0.0.1:8090/yacysearch.json?query=test&resource=global&maximumRecords=10'
 curl -fsS http://127.0.0.1:8090/yacy/seedlist.html
 curl -fsS http://127.0.0.1:8090/yacy/seedlist.json
 curl -fsS http://127.0.0.1:8090/yacy/seedlist.xml

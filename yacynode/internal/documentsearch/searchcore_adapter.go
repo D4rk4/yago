@@ -123,12 +123,6 @@ func searchCoreResponse(
 		TotalResults: result.totalDocumentsMatchingEveryTerm,
 		Results:      offsetSearchCoreResults(results, req.Offset, req.Limit),
 	}
-	if req.Source == searchcore.SourceGlobal {
-		resp.PartialFailures = append(resp.PartialFailures, searchcore.PartialFailure{
-			Source: "remote-yacy",
-			Reason: "remote fanout not implemented",
-		})
-	}
 
 	return resp, nil
 }

@@ -87,7 +87,6 @@ func assembleNode(
 	router := httpguard.NewWireRouter(mux, gate)
 
 	mountNodeProtocol(router, identity, storage)
-	mountNodePublicSearch(mux, storage)
 
 	exchange, err := assembleRuntimePeerExchange(peerExchange{
 		router:   router,
@@ -101,6 +100,7 @@ func assembleNode(
 	if err != nil {
 		return node{}, err
 	}
+	mountNodePublicSearch(mux, storage, exchange.roster, identity, client)
 
 	crawling.MountCrawlReceipt(router)
 	crawlurls.Mount(router, identity, storage.urlDirectory, crawlurls.DisabledRemoteCrawlURLs{})
