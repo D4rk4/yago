@@ -76,6 +76,10 @@ dequeue the largest buffered chunk, probe target RWI capacity, and perform the
 two-phase handoff. If capacity probing, transfer, or protocol acceptance fails,
 the chunk is returned to the outbound buffer.
 
+The runtime scheduler snapshots sender gates before selecting stored RWI rows.
+If gates are closed, it does not remove postings from local storage for outbound
+queue feeding.
+
 The Go outbound retry policy turns capacity failures, handoff transport errors,
 and protocol rejections into bounded exponential retry delays with jitter.
 Successful handoffs clear the peer's retry state. Repeated failed cycles produce
@@ -119,8 +123,10 @@ partition, accumulates each partition into the chunk for its primary target,
 drops rows without local URL metadata, caps a chunk at 1000 RWI rows, and
 dequeues the largest buffered chunk first. The Go exchange queue preserves that
 batch shape. The runtime scheduler feeds an empty outbound queue from stored RWI
-selections. Remaining dispatcher work is restart recovery for selected queued
-rows, explicit remote-index flag mutation on address-clash rejection, and
+selections. A two-local-Go-node integration test covers stored RWI selection,
+`transferRWI.html`, `unknownURL`, `transferURL.html`, sender deletion, and
+receiver durability. Remaining dispatcher work is restart recovery for selected
+queued rows, explicit remote-index flag mutation on address-clash rejection, and
 end-to-end Java YaCy interop distribution tests.
 
 ---

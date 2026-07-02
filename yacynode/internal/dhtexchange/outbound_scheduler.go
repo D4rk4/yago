@@ -58,8 +58,9 @@ func (s OutboundScheduler) RunOnce(
 	ctx context.Context,
 ) (ScheduledDistributionReceipt, error) {
 	at := s.config.Now()
+	state := s.gates(ctx)
 	var feed OutboundFeedReceipt
-	if s.config.Feed != nil {
+	if s.config.Feed != nil && EvaluateGates(state, s.config.Gates).Open {
 		var err error
 		feed, err = s.config.Feed.Feed(ctx)
 		if err != nil {
@@ -71,7 +72,7 @@ func (s OutboundScheduler) RunOnce(
 	}
 	receipt, err := s.distributor.DistributeReady(
 		ctx,
-		s.gates(ctx),
+		state,
 		s.config.Gates,
 		func(peer yacymodel.Hash) bool { return s.retry.Ready(peer, at) },
 	)

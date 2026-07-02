@@ -143,7 +143,7 @@ func TestDHTOutboundRWIWordsReturnsStoreErrors(t *testing.T) {
 	}
 }
 
-func TestBuildDHTOutboundRuntimeFeedsStoredRWI(t *testing.T) {
+func TestBuildDHTOutboundRuntimeSkipsFeederWhenGatesAreClosed(t *testing.T) {
 	t.Parallel()
 
 	word := yacymodel.Hash("CCCCCCCCCCCC")
@@ -181,11 +181,9 @@ func TestBuildDHTOutboundRuntimeFeedsStoredRWI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunOnce: %v", err)
 	}
-	if receipt.Feed.State != dhtexchange.OutboundFeedEnqueued ||
-		receipt.Feed.SelectedPostings != 1 ||
+	if receipt.Feed.State != "" ||
 		receipt.Distribution.State != dhtexchange.DistributionGateClosed ||
-		postings.selectCalls != 1 ||
-		postings.selectConfig.MaxPostings != dhtexchange.MaxChunkPostings {
+		postings.selectCalls != 0 {
 		t.Fatalf("receipt/postings = %#v/%#v", receipt, postings)
 	}
 }

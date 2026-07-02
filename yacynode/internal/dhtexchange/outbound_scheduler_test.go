@@ -197,6 +197,39 @@ func TestOutboundSchedulerRunsFeederBeforeDistribution(t *testing.T) {
 	}
 }
 
+func TestOutboundSchedulerDoesNotFeedWhenGatesAreClosed(t *testing.T) {
+	t.Parallel()
+
+	feed := &feedScript{receipt: OutboundFeedReceipt{State: OutboundFeedEnqueued}}
+	observer := &observedDistributions{}
+	closed := openGateState()
+	closed.PublicReachable = false
+	scheduler := NewOutboundScheduler(
+		NewOutboundDistributor(
+			NewOutboundQueue(),
+			&capacityScript{count: 11},
+			&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)},
+		),
+		NewOutboundRetryPolicy(OutboundRetryConfig{}),
+		observer,
+		func(context.Context) GateState { return closed },
+		OutboundSchedulerConfig{
+			Gates: DefaultGateConfig(),
+			Feed:  feed,
+		},
+	)
+
+	receipt, err := scheduler.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if feed.calls != 0 ||
+		receipt.Feed.State != "" ||
+		receipt.Distribution.State != DistributionGateClosed {
+		t.Fatalf("receipt/feed = %#v/%d", receipt, feed.calls)
+	}
+}
+
 func TestOutboundSchedulerReturnsFeederErrorBeforeDistribution(t *testing.T) {
 	t.Parallel()
 
