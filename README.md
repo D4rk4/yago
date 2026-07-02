@@ -39,9 +39,9 @@ The node currently targets these responsibilities:
   properties from `YACY_DATA_DIR/SETTINGS/profile.txt` when that file exists;
 - answer YaCy host-link index requests through `/yacy/idx.json?object=host` with
   a bounded incoming host graph inferred from stored URL metadata referrers;
-- answer YaCy peer message permission requests without parsing post-only body
-  fields and store inbound `/yacy/message.html` posts without attachment
-  support;
+- answer YaCy peer message permission requests without requiring `iam` or
+  parsing post-only body fields and store inbound `/yacy/message.html` posts
+  without attachment support;
 - answer YaCy `/yacy/urls.xml` remote crawl URL requests with an empty queue,
   target-check and reject remote crawl receipts with YaCy retry delay, and serve
   URL-hash metadata requests from locally stored metadata;

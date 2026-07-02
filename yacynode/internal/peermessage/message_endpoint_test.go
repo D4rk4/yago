@@ -218,6 +218,7 @@ func TestMountServesMessageRoute(t *testing.T) {
 		Process:     yacyproto.MessageProcessPermission,
 	}
 	form := req.Form()
+	form.Set(yacyproto.FieldIam, "short")
 	form.Set(yacyproto.FieldMySeed, yacymodel.EncodeCompactWireForm("{Hash=short}"))
 	form.Set(yacyproto.FieldMessageSubject, "z|@@@")
 	form.Set(yacyproto.FieldMessage, "z|@@@")

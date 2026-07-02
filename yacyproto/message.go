@@ -77,9 +77,10 @@ func ParseMessageRequest(ctx context.Context, form url.Values) (MessageRequest, 
 		return MessageRequest{}, err
 	}
 
-	req.Iam, err = parseHashField("message request", FieldIam, form.Get(FieldIam))
-	if err != nil {
-		return MessageRequest{}, err
+	if raw := form.Get(FieldIam); raw != "" {
+		if iam, err := yacymodel.ParseHash(raw); err == nil {
+			req.Iam = iam
+		}
 	}
 
 	if req.Process == MessageProcessPost {

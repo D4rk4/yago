@@ -94,6 +94,26 @@ func TestMessageRequestPermissionIgnoresPostFields(t *testing.T) {
 	}
 }
 
+func TestMessageRequestIgnoresMalformedIam(t *testing.T) {
+	form := url.Values{
+		yacyproto.FieldYouAre:         {hashFor(t, "youare").String()},
+		yacyproto.FieldIam:            {"short"},
+		yacyproto.FieldMessageProcess: {string(yacyproto.MessageProcessPermission)},
+	}
+
+	got, err := yacyproto.ParseMessageRequest(t.Context(), form)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Iam != "" {
+		t.Fatalf("Iam = %q, want empty", got.Iam)
+	}
+	if got.Process != yacyproto.MessageProcessPermission {
+		t.Fatalf("Process = %q, want permission", got.Process)
+	}
+}
+
 func TestMessageRequestDefaultsToPermission(t *testing.T) {
 	got, err := yacyproto.ParseMessageRequest(t.Context(), url.Values{})
 	if err != nil {
@@ -128,10 +148,6 @@ func TestMessageResponseEncodeRoundTrip(t *testing.T) {
 func TestParseMessageRequestRejectsBadFields(t *testing.T) {
 	cases := []url.Values{
 		{yacyproto.FieldYouAre: {"short"}},
-		{
-			yacyproto.FieldYouAre: {hashFor(t, "youare").String()},
-			yacyproto.FieldIam:    {"short"},
-		},
 		{
 			yacyproto.FieldYouAre:         {hashFor(t, "youare").String()},
 			yacyproto.FieldIam:            {hashFor(t, "sender").String()},

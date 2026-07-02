@@ -24,9 +24,9 @@ The host-link endpoint `/yacy/idx.json?object=host` returns
 JSON with version, uptime, YaCy's host-reference row definition, and a bounded
 incoming host-link index inferred from stored URL metadata referrers.
 The peer message endpoint `/yacy/message.html` supports permission checks and
-stores inbound peer messages; permission checks ignore post-only body fields and
-attachments are advertised as size `0`. These match the public P2P surfaces
-exposed by original YaCy peers.
+stores inbound peer messages; `iam` is optional, permission checks ignore
+post-only body fields, and attachments are advertised as size `0`. These match
+the public P2P surfaces exposed by original YaCy peers.
 
 The remote search endpoint `/yacy/search.html` returns YaCy key-value rows with
 `searchtime`, `references`, `joincount`, `count`, `resourceN`, `indexcount.*`,
