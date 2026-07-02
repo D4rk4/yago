@@ -14,7 +14,13 @@ func TestNewEgressProxyClientPinsProxy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse proxy: %v", err)
 	}
-	client := newEgressProxyClient(proxyURL, 5*time.Second, 3)
+	client := newEgressProxyClient(proxyURL, CrawlConfig{
+		RequestTimeout: 5 * time.Second,
+		ConnectTimeout: 4 * time.Second,
+		TLSTimeout:     3 * time.Second,
+		HeaderTimeout:  2 * time.Second,
+		MaxRedirects:   3,
+	})
 	if client.Timeout != 5*time.Second {
 		t.Errorf("timeout = %v", client.Timeout)
 	}
@@ -24,6 +30,15 @@ func TestNewEgressProxyClientPinsProxy(t *testing.T) {
 	transport, ok := client.Transport.(*http.Transport)
 	if !ok {
 		t.Fatalf("transport type = %T", client.Transport)
+	}
+	if transport.DialContext == nil {
+		t.Fatal("dial context is nil")
+	}
+	if transport.TLSHandshakeTimeout != 3*time.Second {
+		t.Errorf("tls timeout = %v", transport.TLSHandshakeTimeout)
+	}
+	if transport.ResponseHeaderTimeout != 2*time.Second {
+		t.Errorf("header timeout = %v", transport.ResponseHeaderTimeout)
 	}
 	request, err := http.NewRequestWithContext(
 		context.Background(),

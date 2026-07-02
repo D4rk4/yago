@@ -21,6 +21,10 @@ const (
 	EnvMaxDepth          = "YACYCRAWLER_MAX_DEPTH"
 	EnvCrawlDelay        = "YACYCRAWLER_CRAWL_DELAY"
 	EnvUserAgent         = "YACYCRAWLER_USER_AGENT"
+	EnvRequestTimeout    = "YACYCRAWLER_REQUEST_TIMEOUT"
+	EnvConnectTimeout    = "YACYCRAWLER_CONNECT_TIMEOUT"
+	EnvTLSTimeout        = "YACYCRAWLER_TLS_TIMEOUT"
+	EnvHeaderTimeout     = "YACYCRAWLER_HEADER_TIMEOUT"
 	EnvMaxRedirects      = "YACYCRAWLER_MAX_REDIRECTS"
 	EnvProxyURL          = "YACYCRAWLER_PROXY_URL"
 
@@ -29,10 +33,14 @@ const (
 	DefaultOrdersDurable = "yacy-crawlers"
 	DefaultIngestMaxMsgs = 1024
 
-	DefaultMaxBodyBytes  int64 = 4 << 20
-	DefaultMaxRedirects        = 10
-	DefaultUserAgent           = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
-	DefaultHostCacheSize       = 4096
+	DefaultMaxBodyBytes   int64 = 4 << 20
+	DefaultRequestTimeout       = 15 * time.Second
+	DefaultConnectTimeout       = 5 * time.Second
+	DefaultTLSTimeout           = 5 * time.Second
+	DefaultHeaderTimeout        = 10 * time.Second
+	DefaultMaxRedirects         = 10
+	DefaultUserAgent            = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
+	DefaultHostCacheSize        = 4096
 )
 
 type CrawlConfig struct {
@@ -40,6 +48,9 @@ type CrawlConfig struct {
 	JobQueueSize    int
 	MaxBodyBytes    int64
 	RequestTimeout  time.Duration
+	ConnectTimeout  time.Duration
+	TLSTimeout      time.Duration
+	HeaderTimeout   time.Duration
 	UserAgent       string
 	MaxRedirects    int
 	CrawlDelay      time.Duration
@@ -54,8 +65,11 @@ func DefaultCrawlConfig() CrawlConfig {
 		Workers:         4,
 		JobQueueSize:    256,
 		MaxBodyBytes:    DefaultMaxBodyBytes,
+		RequestTimeout:  DefaultRequestTimeout,
+		ConnectTimeout:  DefaultConnectTimeout,
+		TLSTimeout:      DefaultTLSTimeout,
+		HeaderTimeout:   DefaultHeaderTimeout,
 		MaxRedirects:    DefaultMaxRedirects,
-		RequestTimeout:  15 * time.Second,
 		UserAgent:       DefaultUserAgent,
 		CrawlDelay:      crawldelay.DefaultCrawlDelay,
 		MaxDepth:        2,
@@ -116,6 +130,30 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 
 	crawl.UserAgent = envString(getenv, EnvUserAgent, crawl.UserAgent)
 
+	requestTimeout, err := envPositiveDuration(getenv, EnvRequestTimeout, crawl.RequestTimeout)
+	if err != nil {
+		return ServiceConfig{}, err
+	}
+	crawl.RequestTimeout = requestTimeout
+
+	connectTimeout, err := envPositiveDuration(getenv, EnvConnectTimeout, crawl.ConnectTimeout)
+	if err != nil {
+		return ServiceConfig{}, err
+	}
+	crawl.ConnectTimeout = connectTimeout
+
+	tlsTimeout, err := envPositiveDuration(getenv, EnvTLSTimeout, crawl.TLSTimeout)
+	if err != nil {
+		return ServiceConfig{}, err
+	}
+	crawl.TLSTimeout = tlsTimeout
+
+	headerTimeout, err := envPositiveDuration(getenv, EnvHeaderTimeout, crawl.HeaderTimeout)
+	if err != nil {
+		return ServiceConfig{}, err
+	}
+	crawl.HeaderTimeout = headerTimeout
+
 	redirects, err := envNonNegativeInt(getenv, EnvMaxRedirects, crawl.MaxRedirects)
 	if err != nil {
 		return ServiceConfig{}, err
@@ -151,6 +189,25 @@ func envPositiveInt(getenv func(string) string, key string, fallback int) (int, 
 		return fallback, nil
 	}
 	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+	if value <= 0 {
+		return 0, fmt.Errorf("%s: must be positive", key)
+	}
+	return value, nil
+}
+
+func envPositiveDuration(
+	getenv func(string) string,
+	key string,
+	fallback time.Duration,
+) (time.Duration, error) {
+	raw := strings.TrimSpace(getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := time.ParseDuration(raw)
 	if err != nil {
 		return 0, fmt.Errorf("%s: %w", key, err)
 	}

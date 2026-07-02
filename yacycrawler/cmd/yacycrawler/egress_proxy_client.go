@@ -3,10 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 )
 
 var errRedirectLimitReached = errors.New("redirect limit reached")
@@ -29,11 +29,20 @@ func egressProxyURL(getenv func(string) string) (*url.URL, error) {
 	return parsed, nil
 }
 
-func newEgressProxyClient(proxyURL *url.URL, timeout time.Duration, maxRedirects int) *http.Client {
+func newEgressProxyClient(
+	proxyURL *url.URL,
+	config CrawlConfig,
+) *http.Client {
+	dialer := &net.Dialer{Timeout: config.ConnectTimeout}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = http.ProxyURL(proxyURL)
+	transport.DialContext = dialer.DialContext
+	transport.TLSHandshakeTimeout = config.TLSTimeout
+	transport.ResponseHeaderTimeout = config.HeaderTimeout
 	return &http.Client{
-		Timeout:       timeout,
-		Transport:     &http.Transport{Proxy: http.ProxyURL(proxyURL)},
-		CheckRedirect: limitedRedirectPolicy(maxRedirects),
+		Timeout:       config.RequestTimeout,
+		Transport:     transport,
+		CheckRedirect: limitedRedirectPolicy(config.MaxRedirects),
 	}
 }
 

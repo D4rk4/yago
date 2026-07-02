@@ -17,6 +17,12 @@ func TestDefaultCrawlConfig(t *testing.T) {
 	if cfg.MaxRedirects != DefaultMaxRedirects {
 		t.Errorf("redirects = %d", cfg.MaxRedirects)
 	}
+	if cfg.RequestTimeout != DefaultRequestTimeout ||
+		cfg.ConnectTimeout != DefaultConnectTimeout ||
+		cfg.TLSTimeout != DefaultTLSTimeout ||
+		cfg.HeaderTimeout != DefaultHeaderTimeout {
+		t.Errorf("default timeouts = %+v", cfg)
+	}
 }
 
 func TestLoadServiceConfigRequiresNATSURL(t *testing.T) {
@@ -68,6 +74,12 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	if cfg.Crawl.MaxRedirects != DefaultMaxRedirects {
 		t.Errorf("redirects = %d", cfg.Crawl.MaxRedirects)
 	}
+	if cfg.Crawl.RequestTimeout != DefaultRequestTimeout ||
+		cfg.Crawl.ConnectTimeout != DefaultConnectTimeout ||
+		cfg.Crawl.TLSTimeout != DefaultTLSTimeout ||
+		cfg.Crawl.HeaderTimeout != DefaultHeaderTimeout {
+		t.Errorf("timeouts = %+v", cfg.Crawl)
+	}
 	spec := cfg.StreamSpec()
 	if spec.OrdersSubject != cfg.OrdersSubject ||
 		spec.IngestSubject != cfg.IngestSubject ||
@@ -88,6 +100,10 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 		EnvMaxDepth:          "5",
 		EnvCrawlDelay:        "250ms",
 		EnvUserAgent:         "test-agent",
+		EnvRequestTimeout:    "20s",
+		EnvConnectTimeout:    "4s",
+		EnvTLSTimeout:        "3s",
+		EnvHeaderTimeout:     "2s",
 		EnvMaxRedirects:      "2",
 	}))
 	if err != nil {
@@ -111,6 +127,12 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	if cfg.Crawl.MaxRedirects != 2 {
 		t.Errorf("redirects = %d", cfg.Crawl.MaxRedirects)
 	}
+	if cfg.Crawl.RequestTimeout != 20*time.Second ||
+		cfg.Crawl.ConnectTimeout != 4*time.Second ||
+		cfg.Crawl.TLSTimeout != 3*time.Second ||
+		cfg.Crawl.HeaderTimeout != 2*time.Second {
+		t.Errorf("timeouts = %+v", cfg.Crawl)
+	}
 }
 
 func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
@@ -124,6 +146,10 @@ func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 		EnvCrawlDelay:        "-1s",
 		EnvNATSIngestMaxMsgs: "0",
 		EnvMaxRedirects:      "-1",
+		EnvRequestTimeout:    "0s",
+		EnvConnectTimeout:    "0s",
+		EnvTLSTimeout:        "0s",
+		EnvHeaderTimeout:     "0s",
 	}
 	for key, bad := range cases {
 		env := map[string]string{}
@@ -145,6 +171,10 @@ func TestLoadServiceConfigRejectsParseErrors(t *testing.T) {
 	cases := map[string]string{
 		EnvNATSIngestMaxMsgs: "abc",
 		EnvCrawlDelay:        "not-a-duration",
+		EnvRequestTimeout:    "not-a-duration",
+		EnvConnectTimeout:    "not-a-duration",
+		EnvTLSTimeout:        "not-a-duration",
+		EnvHeaderTimeout:     "not-a-duration",
 		EnvMaxRedirects:      "not-a-number",
 	}
 	for key, bad := range cases {

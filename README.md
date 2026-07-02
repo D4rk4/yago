@@ -148,6 +148,10 @@ Common crawler variables:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
+| `YACYCRAWLER_REQUEST_TIMEOUT` | `15s` | Whole-request deadline for crawler HTTP requests, including body reads. |
+| `YACYCRAWLER_CONNECT_TIMEOUT` | `5s` | Dial timeout for crawler HTTP connections, including DNS and multi-address dialing. |
+| `YACYCRAWLER_TLS_TIMEOUT` | `5s` | TLS handshake timeout for crawler HTTPS requests. |
+| `YACYCRAWLER_HEADER_TIMEOUT` | `10s` | Time allowed for crawler HTTP response headers after the request is written. |
 | `YACYCRAWLER_MAX_REDIRECTS` | `10` | Maximum HTTP redirect hops followed by the crawler fast fetch path. Set `0` to reject the first redirect. |
 
 See [yacynode/doc/configuration.md](yacynode/doc/configuration.md) for the full
