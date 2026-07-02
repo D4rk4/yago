@@ -1130,9 +1130,10 @@ Status: partial implementation exists. The crawler now enforces HTTP(S)-only
 public-web target admission before robots.txt and browser fetch, blocks literal
 and DNS-resolved non-public destinations, fails closed on DNS resolution errors,
 uses a bounded HTTP fast fetch path for ordinary HTML pages, falls back to the
-browser only when the fast path rejects the page, and checks the final fetched
-URL against the same public-web policy. Full browser request interception for
-redirect-before-fetch blocking, explicit max redirects, richer MIME policy, and
+browser only when the fast path rejects the page, enforces an explicit
+configurable redirect-hop limit on the HTTP fast path, and checks the final
+fetched URL against the same public-web policy. Full browser request
+interception for redirect-before-fetch blocking, richer MIME policy, and
 detailed timeout budgets remain planned.
 
 Tasks:

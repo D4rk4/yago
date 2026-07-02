@@ -65,7 +65,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	}
 	frontier := frontier.NewFrontier(crawl.JobQueueSize, pace)
 
-	client := newEgressProxyClient(cfg.ProxyURL, crawl.RequestTimeout)
+	client := newEgressProxyClient(cfg.ProxyURL, crawl.RequestTimeout, crawl.MaxRedirects)
 	fastSource := botwall.NewBotWallScreeningFetcher(
 		newCrawlerHTTPPageFetcher(client, crawl.UserAgent, crawl.MaxBodyBytes),
 	)

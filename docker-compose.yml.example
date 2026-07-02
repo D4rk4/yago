@@ -55,6 +55,7 @@ services:
     environment:
       NATS_URL: nats://nats:4222
       YACYCRAWLER_PROXY_URL: http://smokescreen:4750
+      YACYCRAWLER_MAX_REDIRECTS: ${YACYCRAWLER_MAX_REDIRECTS:-10}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
 volumes:

@@ -14,6 +14,9 @@ func TestDefaultCrawlConfig(t *testing.T) {
 	if cfg.Workers <= 0 || cfg.JobQueueSize <= 0 || cfg.MaxBodyBytes <= 0 {
 		t.Errorf("default config has non-positive bounds: %+v", cfg)
 	}
+	if cfg.MaxRedirects != DefaultMaxRedirects {
+		t.Errorf("redirects = %d", cfg.MaxRedirects)
+	}
 }
 
 func TestLoadServiceConfigRequiresNATSURL(t *testing.T) {
@@ -62,6 +65,9 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	if cfg.IngestMaxMsgs != DefaultIngestMaxMsgs {
 		t.Errorf("max msgs = %d", cfg.IngestMaxMsgs)
 	}
+	if cfg.Crawl.MaxRedirects != DefaultMaxRedirects {
+		t.Errorf("redirects = %d", cfg.Crawl.MaxRedirects)
+	}
 	spec := cfg.StreamSpec()
 	if spec.OrdersSubject != cfg.OrdersSubject ||
 		spec.IngestSubject != cfg.IngestSubject ||
@@ -82,6 +88,7 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 		EnvMaxDepth:          "5",
 		EnvCrawlDelay:        "250ms",
 		EnvUserAgent:         "test-agent",
+		EnvMaxRedirects:      "2",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -101,6 +108,9 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	if cfg.Crawl.UserAgent != "test-agent" {
 		t.Errorf("user agent = %q", cfg.Crawl.UserAgent)
 	}
+	if cfg.Crawl.MaxRedirects != 2 {
+		t.Errorf("redirects = %d", cfg.Crawl.MaxRedirects)
+	}
 }
 
 func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
@@ -113,6 +123,7 @@ func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 		EnvMaxDepth:          "abc",
 		EnvCrawlDelay:        "-1s",
 		EnvNATSIngestMaxMsgs: "0",
+		EnvMaxRedirects:      "-1",
 	}
 	for key, bad := range cases {
 		env := map[string]string{}
@@ -134,6 +145,7 @@ func TestLoadServiceConfigRejectsParseErrors(t *testing.T) {
 	cases := map[string]string{
 		EnvNATSIngestMaxMsgs: "abc",
 		EnvCrawlDelay:        "not-a-duration",
+		EnvMaxRedirects:      "not-a-number",
 	}
 	for key, bad := range cases {
 		env := map[string]string{}

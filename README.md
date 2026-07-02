@@ -144,6 +144,12 @@ Common node variables:
 | `YAGO_SEARCH_API_KEY` | empty | Optional local bearer token required by Tavily-compatible `POST /search` when set. |
 | `NATS_URL` | empty | Enables node-crawler integration when set. |
 
+Common crawler variables:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `YACYCRAWLER_MAX_REDIRECTS` | `10` | Maximum HTTP redirect hops followed by the crawler fast fetch path. Set `0` to reject the first redirect. |
+
 See [yacynode/doc/configuration.md](yacynode/doc/configuration.md) for the full
 configuration reference.
 

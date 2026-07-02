@@ -1,12 +1,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 )
+
+var errRedirectLimitReached = errors.New("redirect limit reached")
 
 func egressProxyURL(getenv func(string) string) (*url.URL, error) {
 	raw := strings.TrimSpace(getenv(EnvProxyURL))
@@ -26,9 +29,24 @@ func egressProxyURL(getenv func(string) string) (*url.URL, error) {
 	return parsed, nil
 }
 
-func newEgressProxyClient(proxyURL *url.URL, timeout time.Duration) *http.Client {
+func newEgressProxyClient(proxyURL *url.URL, timeout time.Duration, maxRedirects int) *http.Client {
 	return &http.Client{
-		Timeout:   timeout,
-		Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
+		Timeout:       timeout,
+		Transport:     &http.Transport{Proxy: http.ProxyURL(proxyURL)},
+		CheckRedirect: limitedRedirectPolicy(maxRedirects),
+	}
+}
+
+func limitedRedirectPolicy(maxRedirects int) func(*http.Request, []*http.Request) error {
+	return func(_ *http.Request, previous []*http.Request) error {
+		if len(previous) > maxRedirects {
+			return fmt.Errorf(
+				"%w: attempted %d redirects, limit %d",
+				errRedirectLimitReached,
+				len(previous),
+				maxRedirects,
+			)
+		}
+		return nil
 	}
 }

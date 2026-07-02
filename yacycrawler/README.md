@@ -46,7 +46,8 @@ robots.txt or browser navigation starts, the crawler rejects non-HTTP(S), loopba
 private, link-local, multicast, unspecified, documentation/test, and metadata-local
 destinations. The final rendered URL is checked against the same public-web policy.
 The default fetch path uses a bounded HTTP GET first and falls back to the
-headless browser only when that fast path rejects the page. The container image
+headless browser only when that fast path rejects the page. The HTTP fast path
+follows at most `YACYCRAWLER_MAX_REDIRECTS` redirect hops. The container image
 embeds the pinned headless-shell runtime in a scratch non-root image.
 
 The message types both services exchange live in the standalone
@@ -58,7 +59,7 @@ on the other.
 - The persistent frontier, politeness model, and recrawl scheduler are still
   prototype-grade.
 - Browser-level redirect interception is still planned; the current public-web
-  admission check and HTTP final-URL check are application-layer guards plus
-  proxy defense in depth.
+  admission check, HTTP redirect cap, and HTTP final-URL check are
+  application-layer guards plus proxy defense in depth.
 - Bot-wall handling remains a minimal heuristic, not hardened production
   behavior.

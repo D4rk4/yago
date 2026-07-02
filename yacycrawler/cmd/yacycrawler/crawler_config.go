@@ -21,6 +21,7 @@ const (
 	EnvMaxDepth          = "YACYCRAWLER_MAX_DEPTH"
 	EnvCrawlDelay        = "YACYCRAWLER_CRAWL_DELAY"
 	EnvUserAgent         = "YACYCRAWLER_USER_AGENT"
+	EnvMaxRedirects      = "YACYCRAWLER_MAX_REDIRECTS"
 	EnvProxyURL          = "YACYCRAWLER_PROXY_URL"
 
 	DefaultOrdersSubject = "yacy.crawl.orders"
@@ -29,6 +30,7 @@ const (
 	DefaultIngestMaxMsgs = 1024
 
 	DefaultMaxBodyBytes  int64 = 4 << 20
+	DefaultMaxRedirects        = 10
 	DefaultUserAgent           = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
 	DefaultHostCacheSize       = 4096
 )
@@ -39,6 +41,7 @@ type CrawlConfig struct {
 	MaxBodyBytes    int64
 	RequestTimeout  time.Duration
 	UserAgent       string
+	MaxRedirects    int
 	CrawlDelay      time.Duration
 	MaxDepth        int
 	Scope           yacycrawlcontract.CrawlScope
@@ -51,6 +54,7 @@ func DefaultCrawlConfig() CrawlConfig {
 		Workers:         4,
 		JobQueueSize:    256,
 		MaxBodyBytes:    DefaultMaxBodyBytes,
+		MaxRedirects:    DefaultMaxRedirects,
 		RequestTimeout:  15 * time.Second,
 		UserAgent:       DefaultUserAgent,
 		CrawlDelay:      crawldelay.DefaultCrawlDelay,
@@ -112,6 +116,12 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 
 	crawl.UserAgent = envString(getenv, EnvUserAgent, crawl.UserAgent)
 
+	redirects, err := envNonNegativeInt(getenv, EnvMaxRedirects, crawl.MaxRedirects)
+	if err != nil {
+		return ServiceConfig{}, err
+	}
+	crawl.MaxRedirects = redirects
+
 	maxMsgs, err := envPositiveInt64(getenv, EnvNATSIngestMaxMsgs, DefaultIngestMaxMsgs)
 	if err != nil {
 		return ServiceConfig{}, err
@@ -146,6 +156,21 @@ func envPositiveInt(getenv func(string) string, key string, fallback int) (int, 
 	}
 	if value <= 0 {
 		return 0, fmt.Errorf("%s: must be positive", key)
+	}
+	return value, nil
+}
+
+func envNonNegativeInt(getenv func(string) string, key string, fallback int) (int, error) {
+	raw := strings.TrimSpace(getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("%s: must not be negative", key)
 	}
 	return value, nil
 }
