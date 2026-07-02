@@ -2,6 +2,7 @@ package dhttarget
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -48,6 +49,12 @@ func dhtSeed(tb testing.TB, raw string, options ...func(*yacymodel.Seed)) yacymo
 func withBirthDate(t time.Time) func(*yacymodel.Seed) {
 	return func(seed *yacymodel.Seed) {
 		seed.BirthDate = yacymodel.Some(yacymodel.NewSeedBirthDateUTC(t))
+	}
+}
+
+func withRWICount(value int) func(*yacymodel.Seed) {
+	return func(seed *yacymodel.Seed) {
+		seed.RWICount = yacymodel.Some(value)
 	}
 }
 
@@ -150,6 +157,126 @@ func TestSelectBreaksPositionTiesAndTruncates(t *testing.T) {
 	}
 }
 
+func TestSelectFiltersPeerRWIInventory(t *testing.T) {
+	t.Parallel()
+
+	targets, err := Select(
+		dhtHash(t, "AAAAAAAAAAAA"),
+		[]yacymodel.Seed{
+			dhtSeed(t, "BBBBBBBBBBBB"),
+			dhtSeed(t, "CCCCCCCCCCCC", withRWICount(0)),
+			dhtSeed(t, "DDDDDDDDDDDD", withRWICount(1)),
+			dhtSeed(t, "EEEEEEEEEEEE", withRWICount(3)),
+		},
+		Config{
+			Redundancy:      3,
+			MinimumRWICount: 1,
+		},
+	)
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+
+	got := []yacymodel.Hash{targets[0].Peer.Hash, targets[1].Peer.Hash}
+	want := []yacymodel.Hash{dhtHash(t, "DDDDDDDDDDDD"), dhtHash(t, "EEEEEEEEEEEE")}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("target order = %#v, want %#v", got, want)
+	}
+}
+
+func TestSelectSamplesCandidateRedundancy(t *testing.T) {
+	t.Parallel()
+
+	script := &targetIndexScript{values: []int{2, 0}}
+	targets, err := Select(
+		dhtHash(t, "AAAAAAAAAAAA"),
+		[]yacymodel.Seed{
+			dhtSeed(t, "BBBBBBBBBBBB"),
+			dhtSeed(t, "CCCCCCCCCCCC"),
+			dhtSeed(t, "DDDDDDDDDDDD"),
+			dhtSeed(t, "EEEEEEEEEEEE"),
+		},
+		Config{
+			Redundancy:          2,
+			CandidateRedundancy: 4,
+			RandomTargetIndex:   script.next,
+		},
+	)
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+
+	got := []yacymodel.Hash{targets[0].Peer.Hash, targets[1].Peer.Hash}
+	want := []yacymodel.Hash{dhtHash(t, "DDDDDDDDDDDD"), dhtHash(t, "BBBBBBBBBBBB")}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("target order = %#v, want %#v", got, want)
+	}
+}
+
+func TestSelectTruncatesCandidateRedundancyWithoutRandomTargetIndex(t *testing.T) {
+	t.Parallel()
+
+	targets, err := Select(
+		dhtHash(t, "AAAAAAAAAAAA"),
+		[]yacymodel.Seed{
+			dhtSeed(t, "BBBBBBBBBBBB"),
+			dhtSeed(t, "CCCCCCCCCCCC"),
+			dhtSeed(t, "DDDDDDDDDDDD"),
+		},
+		Config{Redundancy: 1, CandidateRedundancy: 3},
+	)
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+	if len(targets) != 1 || targets[0].Peer.Hash != dhtHash(t, "BBBBBBBBBBBB") {
+		t.Fatalf("targets = %#v", targets)
+	}
+}
+
+func TestSelectRejectsRandomTargetFailure(t *testing.T) {
+	t.Parallel()
+
+	_, err := Select(
+		dhtHash(t, "AAAAAAAAAAAA"),
+		[]yacymodel.Seed{
+			dhtSeed(t, "BBBBBBBBBBBB"),
+			dhtSeed(t, "CCCCCCCCCCCC"),
+		},
+		Config{
+			Redundancy:          1,
+			CandidateRedundancy: 2,
+			RandomTargetIndex: func(int) (int, error) {
+				return 0, errors.New("entropy failed")
+			},
+		},
+	)
+	if err == nil {
+		t.Fatal("expected random target error")
+	}
+}
+
+func TestSelectRejectsInvalidRandomTargetIndex(t *testing.T) {
+	t.Parallel()
+
+	_, err := Select(
+		dhtHash(t, "AAAAAAAAAAAA"),
+		[]yacymodel.Seed{
+			dhtSeed(t, "BBBBBBBBBBBB"),
+			dhtSeed(t, "CCCCCCCCCCCC"),
+		},
+		Config{
+			Redundancy:          1,
+			CandidateRedundancy: 2,
+			RandomTargetIndex: func(int) (int, error) {
+				return 2, nil
+			},
+		},
+	)
+	if err == nil {
+		t.Fatal("expected invalid random target index error")
+	}
+}
+
 func TestSelectAtPositionRejectsInvalidPosition(t *testing.T) {
 	t.Parallel()
 
@@ -190,4 +317,18 @@ func TestSelectRejectsInvalidStartHash(t *testing.T) {
 	if !errors.Is(err, yacymodel.ErrInvalidHash) {
 		t.Fatalf("Select invalid start = %v, want ErrInvalidHash", err)
 	}
+}
+
+type targetIndexScript struct {
+	values []int
+}
+
+func (s *targetIndexScript) next(upper int) (int, error) {
+	if len(s.values) == 0 {
+		return 0, fmt.Errorf("empty script for %d candidates", upper)
+	}
+	value := s.values[0]
+	s.values = s.values[1:]
+
+	return value, nil
 }

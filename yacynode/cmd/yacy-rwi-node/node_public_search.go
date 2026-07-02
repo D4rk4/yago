@@ -12,11 +12,12 @@ import (
 )
 
 type publicSearchAssembly struct {
-	storage  nodeStorage
-	roster   peerroster.Roster
-	identity nodeidentity.Identity
-	dht      dhtDistributionConfig
-	client   *http.Client
+	storage              nodeStorage
+	roster               peerroster.Roster
+	identity             nodeidentity.Identity
+	dht                  dhtDistributionConfig
+	client               *http.Client
+	dhtSearchTargetIndex func(int) (int, error)
 }
 
 func mountNodePublicSearch(
@@ -35,6 +36,7 @@ func mountNodePublicSearch(
 		Redundancy:         assembly.dht.Redundancy,
 		MinimumPeerAgeDays: assembly.dht.MinimumPeerAgeDays,
 		PartitionExponent:  assembly.dht.PartitionExponent,
+		RandomTargetIndex:  assembly.dhtSearchTargetIndex,
 	})
 	yacysearch.Mount(
 		mux,

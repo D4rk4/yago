@@ -28,8 +28,11 @@ selection skips the peer even if its `PeerType` is `senior`.
 Public `resource=global` search uses the same DHT target selector as outbound
 index distribution. For each query term hash, the node computes YaCy DHT
 positions and queries only reachable peers that advertise remote-index intake
-and pass the age gate. Missing DHT targets are reported as partial search
-failures instead of broad-fanning the query to arbitrary reachable peers.
+pass the age gate, and advertise non-empty RWI inventory. When the DHT position
+has more redundant eligible candidates than the configured query fanout will
+use, the node samples the target set randomly. Missing DHT targets are reported
+as partial search failures instead of broad-fanning the query to arbitrary
+reachable peers.
 
 Inbound DHT transfer metrics are exposed on the ops listener. The RWI receiver
 publishes `yacy_rwi_received_postings_total`,

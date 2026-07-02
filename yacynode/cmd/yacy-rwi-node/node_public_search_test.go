@@ -116,6 +116,9 @@ func TestNodePublicSearchUsesDHTRedundancyConfig(t *testing.T) {
 			MinimumPeerAgeDays: -1,
 		},
 		client: target.Client(),
+		dhtSearchTargetIndex: func(int) (int, error) {
+			return 0, nil
+		},
 	})
 
 	rec := httptest.NewRecorder()
@@ -164,10 +167,11 @@ func publicSearchSeed(
 	}
 
 	return yacymodel.Seed{
-		Hash:  hash,
-		IP:    yacymodel.Some(parsedHost),
-		Port:  yacymodel.Some(yacymodel.Port(parsedPort)),
-		Flags: yacymodel.Some(publicSearchAcceptRemoteIndexFlags()),
+		Hash:     hash,
+		IP:       yacymodel.Some(parsedHost),
+		Port:     yacymodel.Some(yacymodel.Port(parsedPort)),
+		Flags:    yacymodel.Some(publicSearchAcceptRemoteIndexFlags()),
+		RWICount: yacymodel.Some(1),
 	}
 }
 

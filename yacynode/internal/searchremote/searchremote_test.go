@@ -5,6 +5,7 @@ import (
 	"errors"
 	"html/template"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -200,6 +201,63 @@ func TestRemoteSearcherReportsNoDHTTargets(t *testing.T) {
 		t.Fatalf("Search: %v", err)
 	}
 	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0].Reason != "no dht search targets" {
+		t.Fatalf("response = %#v", resp)
+	}
+}
+
+func TestRemoteSearcherSkipsPeersWithoutRWIInventory(t *testing.T) {
+	empty := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("empty RWI peer should not be queried")
+	}))
+	defer empty.Close()
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeFixtureResponse(t, w, yacyproto.SearchResponse{}.Encode().Encode())
+	}))
+	defer target.Close()
+
+	emptySeed := serverSeed(t, empty.URL)
+	emptySeed.RWICount = yacymodel.Some(0)
+
+	resp, err := NewSearcher(Config{
+		Client: target.Client(),
+		Peers: fakePeerSource{peers: []yacymodel.Seed{
+			emptySeed,
+			serverSeedWithHash(t, target.URL, yacymodel.WordHash("golang")),
+		}},
+		MaxPeers:   1,
+		Redundancy: 1,
+	}).Search(t.Context(), searchcore.Request{
+		Terms: []string{"golang"},
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.PartialFailures) != 0 {
+		t.Fatalf("response = %#v", resp)
+	}
+}
+
+func TestRemoteSearcherReportsDHTSelectionFailure(t *testing.T) {
+	resp, err := NewSearcher(Config{
+		Peers: fakePeerSource{peers: []yacymodel.Seed{
+			searchSeed(t, "AAAAAAAAAAAA"),
+			searchSeed(t, "BBBBBBBBBBBB"),
+		}},
+		MaxPeers:   2,
+		Redundancy: 1,
+		RandomTargetIndex: func(int) (int, error) {
+			return 0, errors.New("entropy failed")
+		},
+	}).Search(t.Context(), searchcore.Request{
+		Terms: []string{"golang"},
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.PartialFailures) != 1 ||
+		!strings.Contains(resp.PartialFailures[0].Reason, "entropy failed") {
 		t.Fatalf("response = %#v", resp)
 	}
 }
@@ -421,6 +479,10 @@ func TestRemoteSearchHelpers(t *testing.T) {
 		defaultMinimumPeerAgeDays(-1) != -1 {
 		t.Fatal("defaultMinimumPeerAgeDays failed")
 	}
+	if defaultMinimumPeerRWIs(0) != DefaultMinimumPeerRWIs ||
+		defaultMinimumPeerRWIs(-1) != -1 {
+		t.Fatal("defaultMinimumPeerRWIs failed")
+	}
 	if normalizedPartitionExponent(-1) != 0 ||
 		normalizedPartitionExponent(maxPartitionExponent+1) != maxPartitionExponent ||
 		normalizedPartitionExponent(2) != 2 {
@@ -438,13 +500,79 @@ func TestDHTSearchPeerSelectionSkipsInvalidWordHash(t *testing.T) {
 		Port:  yacymodel.Some(yacymodel.Port(8090)),
 		Flags: yacymodel.Some(acceptRemoteIndexFlags()),
 	}
-	got := selectDHTSearchPeers(
+	got, err := selectDHTSearchPeers(
 		[]yacymodel.Hash{yacymodel.Hash("bad"), peer.Hash},
 		[]yacymodel.Seed{peer},
 		dhtSearchPeerConfig{maxPeers: 1, redundancy: 1},
 	)
+	if err != nil {
+		t.Fatalf("selectDHTSearchPeers: %v", err)
+	}
 	if len(got) != 1 || got[0].Hash != peer.Hash {
 		t.Fatalf("selected peers = %#v", got)
+	}
+}
+
+func TestDHTSearchPeerSelectionRandomizesPeerCap(t *testing.T) {
+	peers := []yacymodel.Seed{
+		searchSeed(t, "AAAAAAAAAAAA"),
+		searchSeed(t, "BBBBBBBBBBBB"),
+		searchSeed(t, "CCCCCCCCCCCC"),
+	}
+	script := &searchTargetScript{values: []int{1}}
+	got, err := limitDHTSearchPeers(peers, dhtSearchPeerConfig{
+		maxPeers:          1,
+		randomTargetIndex: script.next,
+	})
+	if err != nil {
+		t.Fatalf("limitDHTSearchPeers: %v", err)
+	}
+	if len(got) != 1 || got[0].Hash != hashFor("BBBBBBBBBBBB") {
+		t.Fatalf("selected peers = %#v", got)
+	}
+}
+
+func TestDHTSearchPeerSelectionRejectsRandomErrors(t *testing.T) {
+	peers := []yacymodel.Seed{
+		searchSeed(t, "AAAAAAAAAAAA"),
+		searchSeed(t, "BBBBBBBBBBBB"),
+	}
+	_, err := limitDHTSearchPeers(peers, dhtSearchPeerConfig{
+		maxPeers: 1,
+		randomTargetIndex: func(int) (int, error) {
+			return 0, errors.New("entropy failed")
+		},
+	})
+	if err == nil {
+		t.Fatal("expected random target error")
+	}
+	_, err = limitDHTSearchPeers(peers, dhtSearchPeerConfig{
+		maxPeers: 1,
+		randomTargetIndex: func(int) (int, error) {
+			return 2, nil
+		},
+	})
+	if err == nil {
+		t.Fatal("expected invalid random target index error")
+	}
+}
+
+func TestSecureRandomTargetIndex(t *testing.T) {
+	index, err := secureRandomTargetIndex(1)
+	if err != nil {
+		t.Fatalf("secureRandomTargetIndex: %v", err)
+	}
+	if index != 0 {
+		t.Fatalf("index = %d, want 0", index)
+	}
+
+	saved := randomInteger
+	randomInteger = func(io.Reader, *big.Int) (*big.Int, error) {
+		return nil, errors.New("entropy failed")
+	}
+	t.Cleanup(func() { randomInteger = saved })
+	if _, err := secureRandomTargetIndex(1); err == nil {
+		t.Fatal("expected secure random error")
 	}
 }
 
@@ -554,10 +682,11 @@ func serverSeed(tb testing.TB, raw string) yacymodel.Seed {
 	}
 
 	return yacymodel.Seed{
-		Hash:  hashFor("Peer" + port),
-		IP:    yacymodel.Some(parsedHost),
-		Port:  yacymodel.Some(yacymodel.Port(parsedPort)),
-		Flags: yacymodel.Some(acceptRemoteIndexFlags()),
+		Hash:     hashFor("Peer" + port),
+		IP:       yacymodel.Some(parsedHost),
+		Port:     yacymodel.Some(yacymodel.Port(parsedPort)),
+		Flags:    yacymodel.Some(acceptRemoteIndexFlags()),
+		RWICount: yacymodel.Some(1),
 	}
 }
 
@@ -595,6 +724,29 @@ func hashFor(base string) yacymodel.Hash {
 
 func acceptRemoteIndexFlags() yacymodel.Flags {
 	return yacymodel.ZeroFlags().Set(yacymodel.FlagAcceptRemoteIndex, true)
+}
+
+func searchSeed(tb testing.TB, raw string) yacymodel.Seed {
+	tb.Helper()
+
+	return yacymodel.Seed{
+		Hash:     hashFor(raw),
+		IP:       yacymodel.Some(mustHost(tb, "192.0.2.1")),
+		Port:     yacymodel.Some(yacymodel.Port(8090)),
+		Flags:    yacymodel.Some(acceptRemoteIndexFlags()),
+		RWICount: yacymodel.Some(1),
+	}
+}
+
+type searchTargetScript struct {
+	values []int
+}
+
+func (s *searchTargetScript) next(int) (int, error) {
+	value := s.values[0]
+	s.values = s.values[1:]
+
+	return value, nil
 }
 
 func mustHost(tb testing.TB, raw string) yacymodel.Host {

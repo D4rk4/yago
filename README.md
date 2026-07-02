@@ -47,7 +47,9 @@ The node currently targets these responsibilities:
   quarantine, metrics, and a JSON gate status endpoint;
 - serve remote RWI search requests through `/yacy/search.html`;
 - serve local and DHT-targeted reachable-peer public search requests through
-  `/yacysearch.json`, `/yacysearch.rss`, and `/yacysearch.html`;
+  `/yacysearch.json`, `/yacysearch.rss`, and `/yacysearch.html`, filtering
+  remote targets by advertised RWI inventory and balancing redundant DHT
+  candidates randomly;
 - expose `/opensearchdescription.xml` and `/suggest.json` for browser search
   integration and recent-query suggestions;
 - store accepted RWI postings and URL metadata durably;
