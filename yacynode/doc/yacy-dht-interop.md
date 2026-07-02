@@ -61,6 +61,14 @@ A YaCy node originates DHT transfer only when all of these are true:
 `Switchboard.dhtShallTransfer` logs the blocking reason at `FINE`; default
 `INFO` logging hides it.
 
+## Sender-side transfer shape
+
+YaCy sends an index handoff in two phases. The sender posts RWI rows to
+`/yacy/transferRWI.html`; when the receiver reports hashes in `unknownURL`, the
+sender loads the matching local URL metadata rows and posts them to
+`/yacy/transferURL.html`. Peer selection, retry, and local deletion after enough
+successful recipients are separate dispatcher responsibilities.
+
 ---
 
 ## Dispatcher startup caveat
