@@ -22,25 +22,35 @@ type storageCapacity interface {
 }
 
 type dhtGateStateSource struct {
-	publicReachable bool
-	storage         storageCapacity
-	postings        nodestatus.RWICounter
-	roster          peerroster.Roster
+	reachability publicReachability
+	storage      storageCapacity
+	postings     nodestatus.RWICounter
+	roster       peerroster.Roster
 }
 
 type dhtOutboundRuntimeAssembly struct {
-	ctx         context.Context
-	config      nodeConfig
-	storage     *vault.Vault
-	nodeStorage nodeStorage
-	report      nodestatus.Report
-	roster      peerroster.Roster
-	client      *http.Client
-	observer    dhtexchange.DistributionObserver
+	ctx          context.Context
+	config       nodeConfig
+	storage      *vault.Vault
+	nodeStorage  nodeStorage
+	report       nodestatus.Report
+	roster       peerroster.Roster
+	client       *http.Client
+	observer     dhtexchange.DistributionObserver
+	reachability publicReachability
 }
 
 func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundProcess {
 	self := assembly.report.SelfSeed(assembly.ctx)
+	reachability := assembly.reachability
+	if reachability == nil {
+		reachability = newPublicEndpointSelfTest(
+			assembly.client,
+			assembly.config.NetworkName,
+			self.Hash,
+			assembly.config.PublicSelfTestURL,
+		)
+	}
 	writer := indextransfer.NewHTTPPeerWriter(
 		assembly.client,
 		assembly.config.NetworkName,
@@ -72,10 +82,10 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 		dhtexchange.NewOutboundRetryPolicy(dhtexchange.DefaultOutboundRetryConfig()),
 		assembly.observer,
 		dhtGateStateSource{
-			publicReachable: assembly.config.AdvertiseHost != "",
-			storage:         assembly.storage,
-			postings:        assembly.nodeStorage.postings,
-			roster:          assembly.roster,
+			reachability: reachability,
+			storage:      assembly.storage,
+			postings:     assembly.nodeStorage.postings,
+			roster:       assembly.roster,
 		}.Snapshot,
 		dhtexchange.OutboundSchedulerConfig{Gates: assembly.config.DHT.Gates, Feed: feeder},
 	)
@@ -98,8 +108,13 @@ func (s dhtGateStateSource) Snapshot(ctx context.Context) dhtexchange.GateState 
 		slog.WarnContext(ctx, dhtStorageCapacityUnavailableMessage, slog.Any("error", err))
 	}
 
+	publicReachable := false
+	if s.reachability != nil {
+		publicReachable = s.reachability.Reachable(ctx)
+	}
+
 	return dhtexchange.GateState{
-		PublicReachable:  s.publicReachable,
+		PublicReachable:  publicReachable,
 		LocalPeerKnown:   true,
 		ConnectedPeers:   len(s.roster.ReachablePeers(ctx)),
 		LocalRWIWords:    words,

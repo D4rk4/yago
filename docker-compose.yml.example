@@ -22,6 +22,7 @@ services:
       YACY_PEER_HASH: ${YACY_PEER_HASH:?set YACY_PEER_HASH in .env}
       YACY_PEER_NAME: ${YACY_PEER_NAME:?set YACY_PEER_NAME in .env}
       YACY_ADVERTISE_HOST: ${YACY_ADVERTISE_HOST:?set YACY_ADVERTISE_HOST in .env}
+      YACY_PUBLIC_SELF_TEST_URL: ${YACY_PUBLIC_SELF_TEST_URL:-}
       YACY_NETWORK_NAME: ${YACY_NETWORK_NAME:-freeworld}
       YACY_SEEDLIST_URLS: >-
         http://sixcooler.de/yacy/seed.txt,

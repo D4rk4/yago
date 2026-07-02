@@ -72,8 +72,14 @@ A YaCy node originates DHT transfer only when all of these are true:
 
 The Go gate evaluator keeps the same sender-side decision as named gate results
 with stable reason text. The runtime scheduler feeds these gates from the local
-advertised address, reachable peer count, local RWI word count, storage capacity,
-and DHT distribution environment flags.
+YaCy-compatible public endpoint self-test, reachable peer count, local RWI word
+count, storage capacity, and DHT distribution environment flags.
+
+The public endpoint self-test calls
+`/yacy/query.html?object=rwicount&youare=<local-peer-hash>`. By default it uses
+the local peer listener with loopback substituted for wildcard listen addresses.
+Set `YACY_PUBLIC_SELF_TEST_URL` to the externally reachable peer base URL when a
+reverse proxy or NAT path should be tested instead.
 
 The Go outbound transfer layer can probe a target peer's `rwicount` through
 `/yacy/query.html` and treats `response=-1`, missing responses, malformed

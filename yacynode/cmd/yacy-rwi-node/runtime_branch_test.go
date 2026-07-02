@@ -135,6 +135,17 @@ func (c rwiCounter) RWICount(context.Context) (int, error) {
 	return c.count, c.err
 }
 
+type publicReachabilityScript struct {
+	reachable bool
+	calls     atomic.Int32
+}
+
+func (s *publicReachabilityScript) Reachable(context.Context) bool {
+	s.calls.Add(1)
+
+	return s.reachable
+}
+
 type postingIndexOnly struct{}
 
 func (postingIndexOnly) RWICount(context.Context) (int, error) { return 0, nil }
@@ -533,10 +544,11 @@ func TestDHTOutboundLoopAndCycleBranches(t *testing.T) {
 }
 
 func TestDHTGateStateSnapshot(t *testing.T) {
+	reachability := &publicReachabilityScript{reachable: true}
 	source := dhtGateStateSource{
-		publicReachable: true,
-		storage:         capacityProbe{},
-		postings:        rwiCounter{count: 123},
+		reachability: reachability,
+		storage:      capacityProbe{},
+		postings:     rwiCounter{count: 123},
 		roster: reachableRoster{peers: []yacymodel.Seed{
 			{Hash: yacymodel.Hash("AAAAAAAAAAAA")},
 			{Hash: yacymodel.Hash("BBBBBBBBBBBB")},
@@ -552,6 +564,9 @@ func TestDHTGateStateSnapshot(t *testing.T) {
 		!state.StorageAvailable {
 		t.Fatalf("state = %#v", state)
 	}
+	if reachability.calls.Load() != 1 {
+		t.Fatalf("reachability calls = %d, want 1", reachability.calls.Load())
+	}
 
 	source.storage = capacityProbe{atCapacity: true}
 	source.postings = rwiCounter{err: errors.New("count failed")}
@@ -564,6 +579,12 @@ func TestDHTGateStateSnapshot(t *testing.T) {
 	state = source.Snapshot(context.Background())
 	if state.StorageAvailable {
 		t.Fatalf("storage error state = %#v", state)
+	}
+
+	source.reachability = nil
+	state = source.Snapshot(context.Background())
+	if state.PublicReachable {
+		t.Fatalf("nil reachability state = %#v", state)
 	}
 }
 

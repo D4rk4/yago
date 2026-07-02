@@ -106,6 +106,7 @@ Common node variables:
 | `YACY_NETWORK_NAME` | `freeworld` | YaCy network name. |
 | `YACY_ADVERTISE_HOST` | empty | Public host advertised to peers. Required when seedlists are configured. |
 | `YACY_ADVERTISE_PORT` | peer listener port | Public port advertised to peers. |
+| `YACY_PUBLIC_SELF_TEST_URL` | local peer URL | Base URL used by outbound DHT gates to self-test `/yacy/query.html?object=rwicount`. |
 | `YACY_SEEDLIST_URLS` | empty | Comma-separated YaCy seedlist URLs. |
 | `YACY_STORAGE_QUOTA` | `1GB` | Node storage quota. |
 | `NATS_URL` | empty | Enables node-crawler integration when set. |

@@ -32,6 +32,10 @@ func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 	if config.AdvertisePort != 8090 {
 		t.Errorf("AdvertisePort = %d, want 8090 (from peer addr)", config.AdvertisePort)
 	}
+	if config.PublicSelfTestURL == nil ||
+		config.PublicSelfTestURL.String() != "http://127.0.0.1:8090" {
+		t.Errorf("PublicSelfTestURL = %v", config.PublicSelfTestURL)
+	}
 	if !strings.HasSuffix(config.StoragePath, storageFileName) {
 		t.Errorf("StoragePath = %q, want suffix %q", config.StoragePath, storageFileName)
 	}
@@ -57,6 +61,7 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 		envOpsAddr:                 ":7001",
 		envAdvertiseHost:           "203.0.113.1",
 		envAdvertisePort:           "9999",
+		envPublicSelfTestURL:       "https://public.example:9443",
 		envStorageQuota:            "2MB",
 		envTrustedProxies:          "10.0.0.0/8",
 		envSeedlistURLs:            " http://a , http://b ,",
@@ -76,6 +81,10 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 	}
 	if config.AdvertisePort != 9999 {
 		t.Errorf("AdvertisePort = %d, want 9999", config.AdvertisePort)
+	}
+	if config.PublicSelfTestURL == nil ||
+		config.PublicSelfTestURL.String() != "https://public.example:9443" {
+		t.Errorf("PublicSelfTestURL = %v", config.PublicSelfTestURL)
 	}
 	if config.StorageQuotaByte != 2<<20 {
 		t.Errorf("StorageQuotaByte = %d, want 2MB", config.StorageQuotaByte)
@@ -143,6 +152,11 @@ func TestLoadNodeConfigRejects(t *testing.T) {
 		},
 		"bad port":         {envPeerHash: "0123456789AB", envPeerName: "n", envAdvertisePort: "-3"},
 		"bad peer address": {envPeerHash: "0123456789AB", envPeerName: "n", envPeerAddr: "bad"},
+		"bad public self-test url": {
+			envPeerHash:          "0123456789AB",
+			envPeerName:          "n",
+			envPublicSelfTestURL: "file:///tmp/node",
+		},
 		"bad greet count": {
 			envPeerHash:       "0123456789AB",
 			envPeerName:       "n",
@@ -203,6 +217,37 @@ func TestLoadNodeConfigRejects(t *testing.T) {
 				t.Fatal("expected error")
 			}
 		})
+	}
+}
+
+func TestPublicSelfTestURLHelpers(t *testing.T) {
+	localhost, err := localSelfTestURL("localhost:8091")
+	if err != nil {
+		t.Fatalf("local host: %v", err)
+	}
+	if localhost.String() != "http://localhost:8091" {
+		t.Fatalf("localhost URL = %s", localhost.String())
+	}
+
+	wildcard, err := localSelfTestURL("0.0.0.0:8092")
+	if err != nil {
+		t.Fatalf("wildcard host: %v", err)
+	}
+	if wildcard.String() != "http://127.0.0.1:8092" {
+		t.Fatalf("wildcard URL = %s", wildcard.String())
+	}
+
+	if _, err := localSelfTestURL("bad"); err == nil {
+		t.Fatal("bad peer address: expected error")
+	}
+
+	for _, raw := range []string{"http://", "%"} {
+		if _, err := publicSelfTestURL(
+			envFrom(map[string]string{envPublicSelfTestURL: raw}),
+			defaultPeerAddr,
+		); err == nil {
+			t.Fatalf("%q: expected error", raw)
+		}
 	}
 }
 

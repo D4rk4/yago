@@ -14,19 +14,20 @@ import (
 )
 
 const (
-	envPeerHash         = "YACY_PEER_HASH"
-	envPeerName         = "YACY_PEER_NAME"
-	envNetworkName      = "YACY_NETWORK_NAME"
-	envPeerAddr         = "YACY_PEER_ADDR"
-	envOpsAddr          = "YACY_OPS_ADDR"
-	envAdvertiseHost    = "YACY_ADVERTISE_HOST"
-	envAdvertisePort    = "YACY_ADVERTISE_PORT"
-	envDataDir          = "YACY_DATA_DIR"
-	envStorageQuota     = "YACY_STORAGE_QUOTA"
-	envTrustedProxies   = "YACY_TRUSTED_PROXIES"
-	envSeedlistURLs     = "YACY_SEEDLIST_URLS"
-	envAnnounceInterval = "YACY_ANNOUNCE_INTERVAL"
-	envGreetsPerCycle   = "YACY_GREETS_PER_CYCLE"
+	envPeerHash          = "YACY_PEER_HASH"
+	envPeerName          = "YACY_PEER_NAME"
+	envNetworkName       = "YACY_NETWORK_NAME"
+	envPeerAddr          = "YACY_PEER_ADDR"
+	envOpsAddr           = "YACY_OPS_ADDR"
+	envAdvertiseHost     = "YACY_ADVERTISE_HOST"
+	envAdvertisePort     = "YACY_ADVERTISE_PORT"
+	envPublicSelfTestURL = "YACY_PUBLIC_SELF_TEST_URL"
+	envDataDir           = "YACY_DATA_DIR"
+	envStorageQuota      = "YACY_STORAGE_QUOTA"
+	envTrustedProxies    = "YACY_TRUSTED_PROXIES"
+	envSeedlistURLs      = "YACY_SEEDLIST_URLS"
+	envAnnounceInterval  = "YACY_ANNOUNCE_INTERVAL"
+	envGreetsPerCycle    = "YACY_GREETS_PER_CYCLE"
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"
@@ -39,23 +40,24 @@ const (
 )
 
 type nodeConfig struct {
-	Hash             yacymodel.Hash
-	NetworkName      string
-	Name             string
-	AdvertiseHost    string
-	AdvertisePort    int
-	Flags            yacymodel.Flags
-	PeerAddr         string
-	OpsAddr          string
-	StoragePath      string
-	StorageQuotaByte int64
-	TrustedProxies   []*net.IPNet
-	ProxyURL         *url.URL
-	SeedlistURLs     []string
-	AnnounceInterval time.Duration
-	GreetsPerCycle   int
-	Crawl            crawlConfig
-	DHT              dhtDistributionConfig
+	Hash              yacymodel.Hash
+	NetworkName       string
+	Name              string
+	AdvertiseHost     string
+	AdvertisePort     int
+	PublicSelfTestURL *url.URL
+	Flags             yacymodel.Flags
+	PeerAddr          string
+	OpsAddr           string
+	StoragePath       string
+	StorageQuotaByte  int64
+	TrustedProxies    []*net.IPNet
+	ProxyURL          *url.URL
+	SeedlistURLs      []string
+	AnnounceInterval  time.Duration
+	GreetsPerCycle    int
+	Crawl             crawlConfig
+	DHT               dhtDistributionConfig
 }
 
 func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
@@ -78,10 +80,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		return nodeConfig{}, err
 	}
 
-	greetsPerCycle, err := positiveInt(
-		envGreetsPerCycle,
-		envWithDefault(getenv, envGreetsPerCycle, strconv.Itoa(defaultGreetsPerCycle)),
-	)
+	greetsPerCycle, err := greetsPerCycle(getenv)
 	if err != nil {
 		return nodeConfig{}, err
 	}
@@ -92,6 +91,11 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	}
 
 	port, err := advertisePort(getenv, peerAddr)
+	if err != nil {
+		return nodeConfig{}, err
+	}
+
+	selfTestURL, err := publicSelfTestURL(getenv, peerAddr)
 	if err != nil {
 		return nodeConfig{}, err
 	}
@@ -119,23 +123,63 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	dataDir := envWithDefault(getenv, envDataDir, defaultDataDir)
 
 	return nodeConfig{
-		Hash:             hash,
-		NetworkName:      envWithDefault(getenv, envNetworkName, yacyproto.DefaultNetwork),
-		Name:             name,
-		AdvertiseHost:    host,
-		AdvertisePort:    port,
-		Flags:            seniorFlags(),
-		PeerAddr:         peerAddr,
-		OpsAddr:          envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
-		StoragePath:      filepath.Join(dataDir, storageFileName),
-		StorageQuotaByte: quota,
-		TrustedProxies:   proxies,
-		ProxyURL:         proxyURL,
-		SeedlistURLs:     seedlistURLs,
-		AnnounceInterval: announceInterval,
-		GreetsPerCycle:   greetsPerCycle,
-		DHT:              dht,
+		Hash:              hash,
+		NetworkName:       envWithDefault(getenv, envNetworkName, yacyproto.DefaultNetwork),
+		Name:              name,
+		AdvertiseHost:     host,
+		AdvertisePort:     port,
+		PublicSelfTestURL: selfTestURL,
+		Flags:             seniorFlags(),
+		PeerAddr:          peerAddr,
+		OpsAddr:           envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
+		StoragePath:       filepath.Join(dataDir, storageFileName),
+		StorageQuotaByte:  quota,
+		TrustedProxies:    proxies,
+		ProxyURL:          proxyURL,
+		SeedlistURLs:      seedlistURLs,
+		AnnounceInterval:  announceInterval,
+		GreetsPerCycle:    greetsPerCycle,
+		DHT:               dht,
 	}, nil
+}
+
+func publicSelfTestURL(getenv func(string) string, peerAddr string) (*url.URL, error) {
+	raw := strings.TrimSpace(getenv(envPublicSelfTestURL))
+	if raw == "" {
+		return localSelfTestURL(peerAddr)
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", envPublicSelfTestURL, err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, fmt.Errorf("%s: scheme must be http or https", envPublicSelfTestURL)
+	}
+	if parsed.Host == "" {
+		return nil, fmt.Errorf("%s: host must be set", envPublicSelfTestURL)
+	}
+
+	return parsed, nil
+}
+
+func localSelfTestURL(peerAddr string) (*url.URL, error) {
+	host, port, err := net.SplitHostPort(peerAddr)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", envPeerAddr, err)
+	}
+	if ip := net.ParseIP(host); host == "" || ip != nil && ip.IsUnspecified() {
+		host = "127.0.0.1"
+	}
+
+	return &url.URL{Scheme: "http", Host: net.JoinHostPort(host, port)}, nil
+}
+
+func greetsPerCycle(getenv func(string) string) (int, error) {
+	return positiveInt(
+		envGreetsPerCycle,
+		envWithDefault(getenv, envGreetsPerCycle, strconv.Itoa(defaultGreetsPerCycle)),
+	)
 }
 
 func announceInterval(getenv func(string) string) (time.Duration, error) {

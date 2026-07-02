@@ -92,6 +92,9 @@ func startDHTSenderRuntime(
 		roster:      reachableRoster{peers: []yacymodel.Seed{receiverSeed}},
 		client:      fixture.receiverServer.Client(),
 		observer:    metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
+		reachability: &publicReachabilityScript{
+			reachable: true,
+		},
 	})
 
 	return senderStorage, process

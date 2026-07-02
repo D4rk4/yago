@@ -27,6 +27,7 @@ Go internals do not need to copy Java source code or Java storage engines.
 * The node SHALL advertise one YaCy Senior peer identity.
 * The node SHALL require operators to configure the YaCy peer hash and peer name it advertises.
 * The node SHALL allow operators to configure the public host and port advertised in its YaCy seed.
+* The node SHALL allow operators to configure the public endpoint used for YaCy-compatible reachability self-tests.
 * The node SHALL announce itself through configured YaCy seedlists.
 * The node SHALL allow operators to configure a proxy for outbound connections.
 * The node SHALL be reachable through one stable public endpoint.
@@ -38,6 +39,7 @@ Go internals do not need to copy Java source code or Java storage engines.
 * The node SHALL receive inbound DHT RWI postings.
 * The node SHALL receive URL metadata associated with RWI postings.
 * The node SHALL distribute stored RWI postings and URL metadata to compatible peers when configured.
+* The node SHALL verify its DHT reachability through a YaCy-compatible RWI capacity self-test before outbound DHT distribution.
 * The node SHALL choose outbound DHT transfer targets using YaCy DHT ring ordering and advertised remote-index capability.
 * The node SHALL serve remote RWI search requests.
 * The node SHALL serve local search requests through YaCy-compatible search surfaces.
