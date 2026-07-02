@@ -25,7 +25,8 @@ capability is already complete.
 The node currently targets these responsibilities:
 
 - advertise one YaCy senior peer identity;
-- answer YaCy peer liveness and RWI capacity/status requests;
+- answer YaCy peer liveness requests with self-identity rejection and answer RWI
+  capacity/status requests;
 - serve YaCy seed lists through `/yacy/seedlist.html`, `/yacy/seedlist.json`,
   and `/yacy/seedlist.xml`;
 - answer YaCy shared blacklist export requests through `/yacy/list.html` with

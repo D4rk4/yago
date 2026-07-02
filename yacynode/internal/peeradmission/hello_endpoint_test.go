@@ -129,6 +129,76 @@ func TestHelloClassifiesAddresslessCallerAsJunior(t *testing.T) {
 	}
 }
 
+func TestHelloRejectsCallerUsingSelfHash(t *testing.T) {
+	reachability := &stubReachability{}
+	probe := &stubProbe{reachable: true}
+	endpoint := newEndpoint(t, probe, reachability)
+
+	resp, err := endpoint.Serve(
+		context.Background(),
+		helloRequest("freeworld", callerSeed(t, "self", "10.0.0.1", 8090), 0),
+	)
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if resp.YourType != yacymodel.PeerVirgin {
+		t.Fatalf("YourType = %q, want virgin for self hash", resp.YourType)
+	}
+	if probe.called {
+		t.Fatal("probe consulted for caller using self hash")
+	}
+	if len(reachability.refreshed) != 0 {
+		t.Fatalf("refreshed = %v, want no refresh for self hash", reachability.refreshed)
+	}
+}
+
+func TestHelloRejectsCallerUsingSelfEndpoint(t *testing.T) {
+	reachability := &stubReachability{}
+	probe := &stubProbe{reachable: true}
+	endpoint := newEndpoint(t, probe, reachability)
+
+	resp, err := endpoint.Serve(
+		context.Background(),
+		helloRequest("freeworld", callerSeed(t, "caller", "203.0.113.9", 8090), 0),
+	)
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if resp.YourType != yacymodel.PeerVirgin {
+		t.Fatalf("YourType = %q, want virgin for self endpoint", resp.YourType)
+	}
+	if probe.called {
+		t.Fatal("probe consulted for caller using self endpoint")
+	}
+	if len(reachability.refreshed) != 0 {
+		t.Fatalf("refreshed = %v, want no refresh for self endpoint", reachability.refreshed)
+	}
+}
+
+func TestHelloAcceptsSameHostOnDifferentPort(t *testing.T) {
+	reachability := &stubReachability{}
+	probe := &stubProbe{reachable: true}
+	endpoint := newEndpoint(t, probe, reachability)
+	caller := callerSeed(t, "caller", "203.0.113.9", 8091)
+
+	resp, err := endpoint.Serve(
+		context.Background(),
+		helloRequest("freeworld", caller, 0),
+	)
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if resp.YourType != yacymodel.PeerSenior {
+		t.Fatalf("YourType = %q, want senior for different port", resp.YourType)
+	}
+	if !probe.called {
+		t.Fatal("probe was not consulted for different-port caller")
+	}
+	if !slices.Equal(reachability.refreshed, []yacymodel.Hash{caller.Hash}) {
+		t.Fatalf("refreshed = %v, want caller refreshed", reachability.refreshed)
+	}
+}
+
 func TestHelloOnForeignNetworkOmitsAdmission(t *testing.T) {
 	probe := &stubProbe{reachable: true}
 	endpoint := newEndpoint(

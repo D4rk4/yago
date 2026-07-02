@@ -12,7 +12,7 @@ A receiver that wants YaCy peers to treat it as DHT-capable needs:
 
 1. a stable 12-character peer hash;
 2. a seed advertising reachable host and port information;
-3. `hello.html` returning `yourip`, `yourtype`, and `seed0`;
+3. `hello.html` returning `yourip`, `yourtype`, and `seed0` for valid callers while rejecting self-pings and callers using the receiver's peer hash;
 4. `query.html object=rwicount` returning a numeric `response`; original YaCy
    requires `youare` and tolerates a missing `iam` field;
 5. `transferRWI.html` enforcing `youare`, accepting `wordHash{row}` entries, and

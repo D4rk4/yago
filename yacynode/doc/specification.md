@@ -32,6 +32,7 @@ Go internals do not need to copy Java source code or Java storage engines.
 * The node SHALL allow operators to configure a proxy for outbound connections.
 * The node SHALL be reachable through one stable public endpoint.
 * The node SHALL support peer discovery and peer liveness exchange.
+* The node SHALL reject peer-liveness callers that present this node's peer hash or advertised endpoint as their own identity.
 * The node SHALL announce in peer-liveness responses only its own seed and peers obtained from
   configured seedlists, and SHALL NOT redistribute peers self-reported in inbound requests.
 * The node SHALL honor the requested peer count in peer-liveness requests and select the announced

@@ -59,6 +59,10 @@ func (e helloEndpoint) classifyCaller(
 	ctx context.Context,
 	caller yacymodel.Seed,
 ) yacymodel.PeerType {
+	if samePeerIdentity(caller, e.status.SelfSeed(ctx)) {
+		return yacymodel.PeerVirgin
+	}
+
 	if _, ok := caller.NetworkAddress(); !ok {
 		return yacymodel.PeerJunior
 	}
@@ -70,6 +74,20 @@ func (e helloEndpoint) classifyCaller(
 	e.reachability.ConfirmReachable(ctx, caller.Hash)
 
 	return yacymodel.PeerSenior
+}
+
+func samePeerIdentity(caller, self yacymodel.Seed) bool {
+	if caller.Hash == self.Hash {
+		return true
+	}
+
+	callerPort, callerPortOK := caller.Port.Get()
+	selfPort, selfPortOK := self.Port.Get()
+	if !callerPortOK || !selfPortOK || callerPort != selfPort {
+		return false
+	}
+
+	return caller.SharesAddress(self)
 }
 
 func (e helloEndpoint) knownPeers(ctx context.Context, count int) []yacymodel.Seed {

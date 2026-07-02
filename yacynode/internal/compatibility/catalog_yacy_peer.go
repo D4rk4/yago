@@ -9,7 +9,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Methods: methods(yacyproto.HelloEndpointMethods),
 		State:   Implemented,
 		Behavior: "Returns caller IP, caller peer type, own seed, and bounded known seed list after " +
-			"back-ping classification.",
+			"back-ping classification, while rejecting self-pings and callers using this peer hash.",
 		Evidence: []string{
 			"yacynode/internal/peeradmission/*_test.go",
 			"yacynode/test/fixtures/yacywire/hello-*",
