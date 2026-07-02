@@ -262,6 +262,9 @@ Start with these documents:
   peer protocol details;
 - [yacynode/doc/compatibility.md](yacynode/doc/compatibility.md) for supported,
   partial, planned, and unsupported YaCy/Tavily surfaces;
+- [yacynode/doc/yacy-upstream-test-parity.md](yacynode/doc/yacy-upstream-test-parity.md)
+  for the mapping between upstream YaCy JUnit tests and this repository's
+  compatibility tests;
 - [yacynode/doc/remote-crawl-policy.md](yacynode/doc/remote-crawl-policy.md) for
   the disabled-by-default remote crawl security policy;
 - [yacycrawler/README.md](yacycrawler/README.md) for crawler behavior;
