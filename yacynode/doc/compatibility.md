@@ -36,7 +36,7 @@ Status values:
 | Peer message inbox | `/yacy/message.html` | GET, POST | partial | Accepts permission checks without parsing post-only body fields and stores inbound message posts; attachments are not stored. |
 | Peer profile export | `/yacy/profile.html` | GET, POST | partial | Serves profile properties from `YACY_DATA_DIR/SETTINGS/profile.txt` when that YaCy-compatible file exists. |
 | Remote crawl URL feed | `/yacy/urls.xml` | GET, POST | partial | Serves URL-hash metadata feeds and safe empty remote-crawl feeds. |
-| Remote crawl receipt | `/yacy/crawlReceipt.html` | POST | partial | Accepts the wire shape and returns no scheduled delay while remote crawl execution is disabled. |
+| Remote crawl receipt | `/yacy/crawlReceipt.html` | POST | partial | Accepts the wire shape, checks the target peer hash, and returns YaCy's rejected-receipt retry delay while remote crawl execution is disabled. |
 
 ## Search Surfaces
 

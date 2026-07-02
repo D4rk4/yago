@@ -193,7 +193,7 @@ Implement and test these in stages:
 | `/yacy/message.html` | P3 | Peer messages | Partial: permission checks and post storage are implemented; post-only body fields are ignored during permission checks; attachments remain unsupported. |
 | `/yacy/list.html` | P3 | Shared blacklists | Optional, but useful after blacklist support. |
 | `/yacy/urls.xml` | P3 | Remote crawl URL lists | Implement only after safe remote crawl policy exists. |
-| `/yacy/crawlReceipt.html` | P3 | Remote crawl receipt | Implement only with remote crawl. |
+| `/yacy/crawlReceipt.html` | P3 | Remote crawl receipt | Partial: target-checks and rejects receipts with YaCy retry delay while remote crawl execution is disabled. |
 
 ### 3.2 User/search endpoints
 

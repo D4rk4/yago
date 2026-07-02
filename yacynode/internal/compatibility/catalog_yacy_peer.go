@@ -151,7 +151,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:     yacyproto.PathCrawlReceipt,
 		Methods:  methods(yacyproto.CrawlReceiptEndpointMethods),
 		State:    Partial,
-		Behavior: "Accepts the YaCy crawl receipt wire shape and returns no scheduled delay while remote crawl execution is disabled.",
+		Behavior: "Accepts the YaCy crawl receipt wire shape, checks the target peer hash, and returns YaCy's rejected-receipt retry delay while remote crawl execution is disabled.",
 		Evidence: []string{
 			"yacynode/internal/crawling/*_test.go",
 			"yacyproto/crawl_receipt_test.go",

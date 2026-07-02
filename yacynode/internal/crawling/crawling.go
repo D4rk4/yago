@@ -3,16 +3,21 @@
 package crawling
 
 import (
+	"github.com/D4rk4/yago/yacymodel"
 	"github.com/D4rk4/yago/yacynode/internal/httpguard"
 	"github.com/D4rk4/yago/yacyproto"
 )
 
-func MountCrawlReceipt(router httpguard.WireRouter) {
+type LocalPeer interface {
+	Addresses(network string, youare yacymodel.Hash) bool
+}
+
+func MountCrawlReceipt(router httpguard.WireRouter, local LocalPeer) {
 	httpguard.Mount(
 		router,
 		yacyproto.PathCrawlReceipt,
 		yacyproto.CrawlReceiptEndpointMethods,
 		yacyproto.ParseCrawlReceiptRequest,
-		disabledCrawlReceiptEndpoint{}.Serve,
+		disabledCrawlReceiptEndpoint{local: local}.Serve,
 	)
 }

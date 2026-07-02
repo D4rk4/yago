@@ -23,6 +23,12 @@ func (mountedReceiptStatus) Uptime(context.Context) int {
 	return 12
 }
 
+type localPeer struct{}
+
+func (localPeer) Addresses(network string, youare yacymodel.Hash) bool {
+	return network == "freeworld" && youare == yacymodel.WordHash("self")
+}
+
 func TestCrawlReceiptRejectsCrawl(t *testing.T) {
 	req := yacyproto.CrawlReceiptRequest{
 		NetworkName: "freeworld",
@@ -30,12 +36,38 @@ func TestCrawlReceiptRejectsCrawl(t *testing.T) {
 		YouAre:      yacymodel.WordHash("self"),
 	}
 
-	resp, err := disabledCrawlReceiptEndpoint{}.Serve(context.Background(), req)
+	resp, err := disabledCrawlReceiptEndpoint{
+		local: localPeer{},
+	}.Serve(
+		context.Background(),
+		req,
+	)
 	if err != nil {
 		t.Fatalf("Serve: %v", err)
 	}
-	if resp.Delay != 0 {
-		t.Fatalf("Delay = %d, want 0 (no crawl accepted)", resp.Delay)
+	if resp.Delay != disabledCrawlReceiptRetryDelay {
+		t.Fatalf("Delay = %d, want retry delay", resp.Delay)
+	}
+}
+
+func TestCrawlReceiptDelaysWrongTarget(t *testing.T) {
+	req := yacyproto.CrawlReceiptRequest{
+		NetworkName: "freeworld",
+		Iam:         yacymodel.WordHash("caller"),
+		YouAre:      yacymodel.WordHash("other"),
+	}
+
+	resp, err := disabledCrawlReceiptEndpoint{
+		local: localPeer{},
+	}.Serve(
+		context.Background(),
+		req,
+	)
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if resp.Delay != disabledCrawlReceiptRetryDelay {
+		t.Fatalf("Delay = %d, want retry delay", resp.Delay)
 	}
 }
 
@@ -46,7 +78,7 @@ func TestMountCrawlReceiptServesRoute(t *testing.T) {
 		Respond: httpguard.NewWireResponder(mountedReceiptStatus{}),
 		Address: httpguard.NewClientAddressResolver(nil),
 	})
-	MountCrawlReceipt(router)
+	MountCrawlReceipt(router, localPeer{})
 	form := yacyproto.CrawlReceiptRequest{
 		NetworkName: "freeworld",
 		Iam:         yacymodel.WordHash("caller"),
@@ -74,7 +106,7 @@ func TestMountCrawlReceiptServesRoute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse crawl receipt response: %v", err)
 	}
-	if resp.Delay != 0 {
-		t.Fatalf("Delay = %d, want 0", resp.Delay)
+	if resp.Delay != disabledCrawlReceiptRetryDelay {
+		t.Fatalf("Delay = %d, want retry delay", resp.Delay)
 	}
 }

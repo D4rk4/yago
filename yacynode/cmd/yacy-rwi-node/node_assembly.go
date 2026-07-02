@@ -109,7 +109,7 @@ func assembleNode(
 		client:   client,
 	})
 
-	crawling.MountCrawlReceipt(router)
+	crawling.MountCrawlReceipt(router, identity)
 	crawlurls.Mount(router, identity, storage.urlDirectory, crawlurls.DisabledRemoteCrawlURLs{})
 
 	sweeper := newStorageSweeper(vault, storage)

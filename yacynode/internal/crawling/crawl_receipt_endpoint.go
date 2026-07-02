@@ -7,15 +7,37 @@ import (
 	"github.com/D4rk4/yago/yacyproto"
 )
 
-const logCrawlReceiptRejected = "crawl receipt rejected"
+const (
+	logCrawlReceiptRejected        = "crawl receipt rejected"
+	crawlReceiptRejectReasonKey    = "reason"
+	crawlReceiptRejectWrongTarget  = "wrong_target"
+	crawlReceiptRejectDisabled     = "remote_crawl_disabled"
+	disabledCrawlReceiptRetryDelay = 3600
+)
 
-type disabledCrawlReceiptEndpoint struct{}
+type disabledCrawlReceiptEndpoint struct {
+	local LocalPeer
+}
 
-func (disabledCrawlReceiptEndpoint) Serve(
+func (e disabledCrawlReceiptEndpoint) Serve(
 	ctx context.Context,
-	_ yacyproto.CrawlReceiptRequest,
+	req yacyproto.CrawlReceiptRequest,
 ) (yacyproto.CrawlReceiptResponse, error) {
-	slog.DebugContext(ctx, logCrawlReceiptRejected)
+	if e.local == nil || !e.local.Addresses(req.NetworkName, req.YouAre) {
+		slog.DebugContext(
+			ctx,
+			logCrawlReceiptRejected,
+			slog.String(crawlReceiptRejectReasonKey, crawlReceiptRejectWrongTarget),
+		)
 
-	return yacyproto.CrawlReceiptResponse{}, nil
+		return yacyproto.CrawlReceiptResponse{Delay: disabledCrawlReceiptRetryDelay}, nil
+	}
+
+	slog.DebugContext(
+		ctx,
+		logCrawlReceiptRejected,
+		slog.String(crawlReceiptRejectReasonKey, crawlReceiptRejectDisabled),
+	)
+
+	return yacyproto.CrawlReceiptResponse{Delay: disabledCrawlReceiptRetryDelay}, nil
 }

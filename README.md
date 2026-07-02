@@ -42,8 +42,8 @@ The node currently targets these responsibilities:
   fields and store inbound `/yacy/message.html` posts without attachment
   support;
 - answer YaCy `/yacy/urls.xml` remote crawl URL requests with an empty queue,
-  reject remote crawl receipts without scheduling work, and serve URL-hash
-  metadata requests from locally stored metadata;
+  target-check and reject remote crawl receipts with YaCy retry delay, and serve
+  URL-hash metadata requests from locally stored metadata;
 - receive inbound RWI postings through `/yacy/transferRWI.html`;
 - receive URL metadata through `/yacy/transferURL.html`;
 - run retry-aware outbound DHT handoff cycles fed from stored RWI postings, with
