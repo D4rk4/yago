@@ -13,6 +13,7 @@ func newOpsMux(metrics http.Handler, dhtGates http.Handler) *http.ServeMux {
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.Handle(pathMetrics, metrics)
+	mux.Handle(pathCompatibility, newCompatibilityEndpoint())
 	if dhtGates != nil {
 		mux.Handle(pathDHTGates, dhtGates)
 	}

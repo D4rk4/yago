@@ -140,3 +140,18 @@ func TestOpsMuxServesDHTGates(t *testing.T) {
 		t.Fatalf("dht gate status = %d, want 202", rec.Code)
 	}
 }
+
+func TestOpsMuxServesCompatibility(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		pathCompatibility,
+		nil,
+	)
+	newOpsMux(metrics.NewHTTPEndpointMetrics().Handler(), nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("compatibility status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+}

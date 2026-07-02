@@ -1,0 +1,61 @@
+package compatibility
+
+var adminSurfaceSpecs = []surfaceSpec{
+	{
+		Name:     "Health",
+		Path:     "/health",
+		Methods:  []string{"GET"},
+		State:    Implemented,
+		Behavior: "Returns a successful status when the ops listener is running.",
+		Evidence: []string{"yacynode/cmd/yacy-rwi-node/main_test.go"},
+	},
+	{
+		Name:     "Metrics",
+		Path:     "/metrics",
+		Methods:  []string{"GET"},
+		State:    Implemented,
+		Behavior: "Serves Prometheus metrics for node operations.",
+		Evidence: []string{"yacynode/internal/metrics/*_test.go"},
+	},
+	{
+		Name:     "DHT gate report",
+		Path:     "/api/admin/v1/network/dht/gates",
+		Methods:  []string{"GET"},
+		State:    Implemented,
+		Behavior: "Serves current outbound DHT gate state, configuration, and named gate results.",
+		Evidence: []string{"yacynode/cmd/yacy-rwi-node/dht_gate_status_endpoint_test.go"},
+		Notes:    "Authentication is not implemented yet.",
+	},
+	{
+		Name:     "Crawl dispatch",
+		Path:     "/api/admin/v1/crawl/jobs",
+		Methods:  []string{"POST"},
+		State:    Partial,
+		Behavior: "Publishes local crawl orders when crawler integration is configured.",
+		Evidence: []string{
+			"yacynode/internal/crawldispatch/*_test.go",
+			"yacynode/cmd/yacy-rwi-node/node_crawl_test.go",
+		},
+		Notes: "Mounted only when NATS-backed crawling is configured; authentication is not implemented yet.",
+	},
+	{
+		Name:     "Compatibility report",
+		Path:     "/api/admin/v1/compatibility",
+		Methods:  []string{"GET"},
+		State:    Implemented,
+		Behavior: "Serves this machine-readable compatibility catalog.",
+		Evidence: []string{
+			"yacynode/internal/compatibility/*_test.go",
+			"yacynode/cmd/yacy-rwi-node/compatibility_endpoint_test.go",
+		},
+		Notes: "Authentication is not implemented yet.",
+	},
+	{
+		Name:     "Java YaCy admin page clone set",
+		Path:     "/*_p.html",
+		Methods:  []string{"GET", "POST"},
+		State:    Unsupported,
+		Behavior: "Java YaCy administration pages are not cloned into the Go peer.",
+		Notes:    "The project target is a Go admin API and Carbon UI rather than Java servlet page parity.",
+	},
+}

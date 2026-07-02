@@ -76,6 +76,8 @@ components:
     in: internal/crawlresults/**
   crawlbroker:
     in: internal/crawlbroker/**
+  compatibility:
+    in: internal/compatibility/**
   cmd:
     in:
       - cmd/yacy-peer-hash/**
@@ -357,6 +359,11 @@ deps:
       - yacymodel
       - nats
       - nats-server
+  compatibility:
+    mayDependOn:
+      - compatibility
+    canUse:
+      - yacyproto
   cmd:
     mayDependOn:
       - vault
@@ -390,6 +397,7 @@ deps:
       - crawldispatch
       - crawlresults
       - crawlbroker
+      - compatibility
       - searchcore
       - searchremote
       - yacysearch

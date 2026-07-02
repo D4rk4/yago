@@ -54,8 +54,8 @@ The node currently targets these responsibilities:
   browser search integration and recent-query suggestions;
 - store accepted RWI postings and URL metadata durably;
 - expose `/health`, `/metrics`, and DHT gate status on the ops listener,
-  including inbound and outbound DHT transfer series and peer discovery
-  gauges/counters;
+  including inbound and outbound DHT transfer series, peer discovery
+  gauges/counters, and a machine-readable compatibility catalog;
 - optionally publish crawl orders and consume crawler ingest batches over NATS
   JetStream when crawling is configured.
 
@@ -151,6 +151,7 @@ Useful checks:
 ```sh
 curl -fsS http://127.0.0.1:9090/health
 curl -fsS http://127.0.0.1:9090/metrics
+curl -fsS http://127.0.0.1:9090/api/admin/v1/compatibility
 curl -fsS http://127.0.0.1:9090/api/admin/v1/network/dht/gates
 curl -fsS http://127.0.0.1:8090/
 curl -fsS 'http://127.0.0.1:8090/yacysearch.json?query=test&resource=local&maximumRecords=10'
@@ -211,6 +212,8 @@ Start with these documents:
   DHT interoperability notes;
 - [yacynode/doc/yacy-wire-protocol.md](yacynode/doc/yacy-wire-protocol.md) for
   peer protocol details;
+- [yacynode/doc/compatibility.md](yacynode/doc/compatibility.md) for supported,
+  partial, planned, and unsupported YaCy/Tavily surfaces;
 - [yacynode/doc/remote-crawl-policy.md](yacynode/doc/remote-crawl-policy.md) for
   the disabled-by-default remote crawl security policy;
 - [yacycrawler/README.md](yacycrawler/README.md) for crawler behavior;
