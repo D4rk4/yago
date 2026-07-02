@@ -9,7 +9,7 @@ import (
 
 const sampleHTML = `<!DOCTYPE html>
 <html lang="de">
-<head><title>Sample &amp; Title</title><style>.x{color:red}</style></head>
+<head><title>Sample &amp; Title</title><meta name="description" content=" Sample page description. "><style>.x{color:red}</style></head>
 <body>
 <script>var ignored = "noise";</script>
 <h1>Primary Heading</h1>
@@ -28,6 +28,9 @@ func TestParseHTMLExtractsFields(t *testing.T) {
 	if page.Language != "de" {
 		t.Errorf("language = %q", page.Language)
 	}
+	if page.Description != "Sample page description." {
+		t.Errorf("description = %q", page.Description)
+	}
 	if strings.Contains(page.Text, "ignored") || strings.Contains(page.Text, "color") {
 		t.Errorf("text should drop script/style: %q", page.Text)
 	}
@@ -39,6 +42,22 @@ func TestParseHTMLExtractsFields(t *testing.T) {
 	}
 	if len(page.Headings) != 2 || page.Headings[0] != "Primary Heading" {
 		t.Errorf("headings = %v", page.Headings)
+	}
+}
+
+func TestParseHTMLUsesFirstNonEmptyMetaDescription(t *testing.T) {
+	page := pageparse.ParseHTML(
+		"https://example.com/page",
+		"text/html",
+		[]byte(`<html><head>
+<meta name="description" content="   ">
+<meta name="DESCRIPTION" content="First useful description.">
+<meta name="description" content="Second description.">
+</head></html>`),
+	)
+
+	if page.Description != "First useful description." {
+		t.Fatalf("description = %q", page.Description)
 	}
 }
 

@@ -3,6 +3,7 @@ package pageparse
 type ParsedPage struct {
 	URL          string
 	CanonicalURL string
+	Description  string
 	Title        string
 	Headings     []string
 	Language     string

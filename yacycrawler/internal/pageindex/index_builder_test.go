@@ -9,10 +9,11 @@ import (
 
 func TestIndexBuilderBuildsPostingsAndMetadata(t *testing.T) {
 	page := pageparse.ParsedPage{
-		URL:      "http://example.com/path",
-		Title:    "Kangaroo facts",
-		Language: "en",
-		Text:     "kangaroo hops across the outback",
+		URL:         "http://example.com/path",
+		Title:       "Kangaroo facts",
+		Description: "A compact kangaroo page description.",
+		Language:    "en",
+		Text:        "kangaroo hops across the outback",
 	}
 	artifacts, err := pageindex.NewIndexBuilder().Build(page, pageparse.BuildPageStats(page))
 	if err != nil {
@@ -36,6 +37,9 @@ func TestIndexBuilderBuildsPostingsAndMetadata(t *testing.T) {
 	if artifacts.Document.ContentHash == "" {
 		t.Error("expected document content hash")
 	}
+	if artifacts.Document.Metadata["description"] != page.Description {
+		t.Errorf("document description metadata = %q", artifacts.Document.Metadata["description"])
+	}
 }
 
 func TestIndexBuilderPreservesCanonicalURL(t *testing.T) {
@@ -54,5 +58,20 @@ func TestIndexBuilderPreservesCanonicalURL(t *testing.T) {
 	}
 	if artifacts.Document.NormalizedURL != page.URL {
 		t.Fatalf("normalized URL = %q", artifacts.Document.NormalizedURL)
+	}
+}
+
+func TestIndexBuilderOmitsEmptyDescriptionMetadata(t *testing.T) {
+	page := pageparse.ParsedPage{
+		URL:   "https://example.com/page",
+		Title: "Page without description",
+		Text:  "page body",
+	}
+	artifacts, err := pageindex.NewIndexBuilder().Build(page, pageparse.BuildPageStats(page))
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if _, ok := artifacts.Document.Metadata["description"]; ok {
+		t.Fatalf("unexpected description metadata: %v", artifacts.Document.Metadata)
 	}
 }

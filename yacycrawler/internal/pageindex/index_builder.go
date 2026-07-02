@@ -61,9 +61,7 @@ func BuildDocument(
 		IndexedAt:     indexedAt.UTC(),
 		ContentHash:   hex.EncodeToString(hash[:]),
 		Outlinks:      outlinks,
-		Metadata: map[string]string{
-			"url_hash": metadata.Properties[yacymodel.URLMetaHash],
-		},
+		Metadata:      documentMetadata(page, metadata),
 	}
 }
 
@@ -72,4 +70,15 @@ func documentCanonicalURL(page pageparse.ParsedPage) string {
 		return page.CanonicalURL
 	}
 	return page.URL
+}
+
+func documentMetadata(
+	page pageparse.ParsedPage,
+	metadata yacymodel.URIMetadataRow,
+) map[string]string {
+	values := map[string]string{"url_hash": metadata.Properties[yacymodel.URLMetaHash]}
+	if page.Description != "" {
+		values["description"] = page.Description
+	}
+	return values
 }

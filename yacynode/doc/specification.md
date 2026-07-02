@@ -103,7 +103,7 @@ yago-admin-ui
 * The node SHALL return YaCy-compatible empty remote-crawl responses while remote crawl work is disabled.
 * The node SHALL return YaCy-compatible crawl receipt retry delays while remote crawl work is disabled.
 * The node SHALL store accepted RWI postings and the URL metadata those postings reference.
-* The node SHALL store canonical URL, normalized URL, title, headings, extracted text, language, content type, fetch status, fetch timestamps, content hash, outlinks, and available inlink or anchor metadata for locally indexed documents.
+* The node SHALL store canonical URL, normalized URL, title, page description metadata, headings, extracted text, language, content type, fetch status, fetch timestamps, content hash, outlinks, and available inlink or anchor metadata for locally indexed documents.
 * The node SHALL support a full-text search backend abstraction with indexing, deletion, search, and stats operations.
 * The node SHOULD support Tantivy as the recommended production full-text backend through a bounded sidecar boundary.
 * The node SHOULD support Bleve or Bluge as a pure-Go full-text fallback.

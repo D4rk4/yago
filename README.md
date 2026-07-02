@@ -75,8 +75,9 @@ The node currently targets these responsibilities:
 - optionally publish crawl orders and consume crawler ingest batches over NATS
   JetStream when crawling is configured.
 
-The node stores bounded extracted document text and metadata and maintains an
-embedded persistent Bleve full-text fallback index for local public search under
+The node stores bounded extracted document text, page description metadata, and
+other document metadata, and maintains an embedded persistent Bleve full-text
+fallback index for local public search under
 `YACY_DATA_DIR/search.bleve`. The fallback index is opened on startup and is
 rebuilt from the document store only when missing or unusable; the Tantivy
 production sidecar remains roadmap work. The node does not store unbounded raw

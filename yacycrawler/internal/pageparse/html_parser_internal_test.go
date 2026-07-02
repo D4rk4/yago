@@ -86,6 +86,19 @@ func TestReadCanonicalURLReturnsEmptyWhenMissing(t *testing.T) {
 	}
 }
 
+func TestReadMetaDescriptionReturnsEmptyWhenMissing(t *testing.T) {
+	root, err := html.Parse(strings.NewReader(`<html><head>
+<meta name="author" content="Example">
+</head></html>`))
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+
+	if got := readMetaDescription(root); got != "" {
+		t.Fatalf("description = %q, want empty", got)
+	}
+}
+
 func TestHasLinkRelation(t *testing.T) {
 	if !hasLinkRelation("alternate CANONICAL", "canonical") {
 		t.Fatal("canonical token should match case-insensitively")

@@ -49,6 +49,7 @@ func readHTMLFields(root *html.Node, page *ParsedPage) {
 	if title := dom.QuerySelector(root, "title"); title != nil {
 		page.Title = strings.TrimSpace(dom.TextContent(title))
 	}
+	page.Description = readMetaDescription(root)
 	for _, name := range []string{"h1", "h2", "h3", "h4", "h5", "h6"} {
 		for _, heading := range dom.GetElementsByTagName(root, name) {
 			text := collapseSpaces(dom.TextContent(heading))
@@ -79,6 +80,18 @@ func readCanonicalURL(root *html.Node, rawURL string) string {
 		}
 		if normalized, ok := weburl.Normalize(resolved.String()); ok {
 			return normalized
+		}
+	}
+	return ""
+}
+
+func readMetaDescription(root *html.Node) string {
+	for _, meta := range dom.GetElementsByTagName(root, "meta") {
+		if !strings.EqualFold(dom.GetAttribute(meta, "name"), "description") {
+			continue
+		}
+		if description := collapseSpaces(dom.GetAttribute(meta, "content")); description != "" {
+			return description
 		}
 	}
 	return ""
