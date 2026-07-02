@@ -71,3 +71,9 @@ go doc ./yacyproto
 
 For the reasoning behind the two-module split, see
 [ADR 0004](adr/0004-isolate-wire-protocol-module.md).
+
+Golden peer-wire fixtures live in `yacynode/test/fixtures/yacywire/`. They keep
+plain request and response forms for `hello.html`, `query.html`,
+`transferRWI.html`, `transferURL.html`, and `search.html`, and tests parse and
+encode them through `yacyproto` so future protocol changes are checked against
+stable YaCy wire shapes.

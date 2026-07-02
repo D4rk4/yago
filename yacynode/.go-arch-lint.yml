@@ -402,3 +402,4 @@ deps:
 
 excludeFiles:
   - "test/e2e"
+  - "test/fixtures"
