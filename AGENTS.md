@@ -38,6 +38,8 @@ Testing: Code lands with tests. Pure documentation/configuration changes need li
 
 Coverage: If coverage drops, first remove or refactor code. Find uncovered statements/branches and ask whether they should exist. Delete dead or defensive-only code, collapse unexercised branches, or replace several paths with one covered path. Add tests only for required behavior. Filler tests written only to raise coverage fail the change.
 
+Commits: Every commit needs both a short subject and a body. The body must briefly describe the changes and include a `What's new:` summary. Keep commit text in English.
+
 Feature closure: Closing a feature requires the tests to be written with the code, then a full test run, Dockerized Semgrep, Dockerized Trivy source and container-image scans, container builds, sanity tests, and smoke tests. If all feature-closure checks pass, commit the change and push it to `main`.
 
 Gate: `make verify` is the mandatory code gate. A code change is not done until it is green. Feature closure adds the required Dockerized Semgrep, Dockerized Trivy, container, sanity, smoke, commit, and push checks.
