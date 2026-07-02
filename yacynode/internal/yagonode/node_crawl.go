@@ -48,9 +48,10 @@ func buildCrawlRuntime(
 		return nil, fmt.Errorf("open crawl broker: %w", err)
 	}
 
-	consumer := crawlresults.NewIngestConsumer(
+	consumer := crawlresults.NewIngestConsumerWithIndex(
 		broker.Ingest,
 		storage.documentReceiver,
+		storage.searchIndex,
 		storage.urlReceiver,
 		storage.postingReceiver,
 	)

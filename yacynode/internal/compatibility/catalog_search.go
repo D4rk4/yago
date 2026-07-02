@@ -8,10 +8,12 @@ var searchSurfaceSpecs = []surfaceSpec{
 		Path:    yacyproto.PathYaCySearchJSON,
 		Methods: []string{"GET"},
 		State:   Partial,
-		Behavior: "Serves an upstream-like JSON search response backed by local and DHT-selected " +
-			"reachable-peer search with YaCy indexabstract negotiation for multi-term remote searches.",
+		Behavior: "Serves an upstream-like JSON search response backed by local full-text search " +
+			"and DHT-selected reachable-peer search with YaCy indexabstract negotiation for multi-term remote searches.",
 		Evidence: []string{
 			"yacynode/internal/yacysearch/*_test.go",
+			"yacynode/internal/searchlocal/*_test.go",
+			"yacynode/internal/searchindex/*_test.go",
 			"yacynode/internal/searchremote/*_test.go",
 		},
 		Notes: "HTML parity, richer navigation, and persistent suggestions remain incomplete.",
@@ -21,18 +23,24 @@ var searchSurfaceSpecs = []surfaceSpec{
 		Path:     yacyproto.PathYaCySearchRSS,
 		Methods:  []string{"GET"},
 		State:    Partial,
-		Behavior: "Serves OpenSearch-flavored RSS search responses backed by the same search backend as JSON search.",
-		Evidence: []string{"yacynode/internal/yacysearch/*_test.go"},
-		Notes:    "HTML parity and richer YaCy RSS fields remain incomplete.",
+		Behavior: "Serves OpenSearch-flavored RSS search responses backed by the same local full-text and federated search backend as JSON search.",
+		Evidence: []string{
+			"yacynode/internal/yacysearch/*_test.go",
+			"yacynode/internal/searchlocal/*_test.go",
+		},
+		Notes: "HTML parity and richer YaCy RSS fields remain incomplete.",
 	},
 	{
 		Name:     "YaCy search HTML",
 		Path:     yacyproto.PathYaCySearchHTML,
 		Methods:  []string{"GET"},
 		State:    Partial,
-		Behavior: "Serves a simple YaCy-compatible public search form and result list.",
-		Evidence: []string{"yacynode/internal/yacysearch/*_test.go"},
-		Notes:    "Full Java YaCy page parity remains incomplete.",
+		Behavior: "Serves a simple YaCy-compatible public search form and result list backed by the local full-text and federated search backend.",
+		Evidence: []string{
+			"yacynode/internal/yacysearch/*_test.go",
+			"yacynode/internal/searchlocal/*_test.go",
+		},
+		Notes: "Full Java YaCy page parity remains incomplete.",
 	},
 	{
 		Name:     "OpenSearch description",

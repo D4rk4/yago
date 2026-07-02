@@ -21,6 +21,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/peermessage"
 	"github.com/D4rk4/yago/yacynode/internal/peerroster"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
+	"github.com/D4rk4/yago/yacynode/internal/searchindex"
 	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 	"github.com/D4rk4/yago/yacynode/internal/urlmetastaleness"
 	"github.com/D4rk4/yago/yacynode/internal/urlreferences"
@@ -220,12 +221,14 @@ func restoreAssemblySeams(t *testing.T) {
 func restoreStorageSeams(t *testing.T) {
 	t.Helper()
 	oldOpenDocuments := openDocuments
+	oldOpenSearchIndex := openSearchIndex
 	oldOpenStalenessRanking := openStalenessRanking
 	oldOpenURLMetadata := openURLMetadata
 	oldOpenURLReferences := openURLReferences
 	oldOpenRWIStorage := openRWIStorage
 	t.Cleanup(func() {
 		openDocuments = oldOpenDocuments
+		openSearchIndex = oldOpenSearchIndex
 		openStalenessRanking = oldOpenStalenessRanking
 		openURLMetadata = oldOpenURLMetadata
 		openURLReferences = oldOpenURLReferences
@@ -691,6 +694,20 @@ func TestOpenNodeStorageReturnsOpenErrors(t *testing.T) {
 			t.Fatalf("open error = %v, want %v", err, sentinel)
 		}
 	})
+}
+
+func TestOpenNodeStorageReturnsSearchIndexOpenError(t *testing.T) {
+	sentinel := errors.New("open failed")
+	restoreStorageSeams(t)
+	openSearchIndex = func(
+		context.Context,
+		documentstore.DocumentDirectory,
+	) (searchindex.SearchIndex, error) {
+		return nil, sentinel
+	}
+	if _, err := openNodeStorage(openTestVault(t)); !errors.Is(err, sentinel) {
+		t.Fatalf("open error = %v, want %v", err, sentinel)
+	}
 }
 
 func TestOpenNodeStorageReturnsDocumentOpenError(t *testing.T) {

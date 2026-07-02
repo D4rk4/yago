@@ -64,6 +64,8 @@ components:
     in: internal/searchcore/**
   searchindex:
     in: internal/searchindex/**
+  searchlocal:
+    in: internal/searchlocal/**
   searchremote:
     in: internal/searchremote/**
   tavilyapi:
@@ -107,6 +109,10 @@ vendors:
       - github.com/D4rk4/yago/yacycrawlcontract/**
   bbolt:
     in: go.etcd.io/bbolt
+  bleve:
+    in:
+      - github.com/blevesearch/bleve/v2
+      - github.com/blevesearch/bleve/v2/**
   prometheus:
     in:
       - github.com/prometheus/client_golang/prometheus
@@ -314,6 +320,16 @@ deps:
     mayDependOn:
       - searchindex
       - documentstore
+    canUse:
+      - bleve
+  searchlocal:
+    mayDependOn:
+      - searchlocal
+      - searchcore
+      - searchindex
+      - documentstore
+    canUse:
+      - yacymodel
   searchremote:
     mayDependOn:
       - searchremote
@@ -370,6 +386,7 @@ deps:
     mayDependOn:
       - crawlresults
       - documentstore
+      - searchindex
       - urlmeta
       - rwi
     canUse:
@@ -426,6 +443,7 @@ deps:
       - compatibility
       - searchcore
       - searchindex
+      - searchlocal
       - searchremote
       - tavilyapi
       - yacysearch

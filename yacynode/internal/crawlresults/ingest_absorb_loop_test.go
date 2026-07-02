@@ -12,6 +12,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/crawlresults"
 	"github.com/D4rk4/yago/yacynode/internal/documentstore"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
+	"github.com/D4rk4/yago/yacynode/internal/searchindex"
 	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 )
 
@@ -51,6 +52,36 @@ func (r *recordingURLReceiver) Receive(
 	r.calls++
 	r.at = time.Now()
 	return r.receipt, r.err
+}
+
+type recordingSearchIndex struct {
+	err   error
+	calls int
+	at    time.Time
+	doc   documentstore.Document
+}
+
+func (i *recordingSearchIndex) Index(
+	_ context.Context,
+	doc documentstore.Document,
+) error {
+	i.calls++
+	i.at = time.Now()
+	i.doc = doc
+	return i.err
+}
+
+func (i *recordingSearchIndex) Delete(context.Context, string) error { return nil }
+
+func (i *recordingSearchIndex) Search(
+	context.Context,
+	searchindex.SearchRequest,
+) (searchindex.SearchResultSet, error) {
+	return searchindex.SearchResultSet{}, nil
+}
+
+func (i *recordingSearchIndex) Stats(context.Context) (searchindex.IndexStats, error) {
+	return searchindex.IndexStats{}, nil
 }
 
 type recordingPostingReceiver struct {
@@ -160,6 +191,97 @@ func TestAbsorbStoresMetadataBeforePostingsAndAcks(t *testing.T) {
 	}
 	if !documents.at.Before(urls.at) || !urls.at.Before(postings.at) {
 		t.Fatal("documents, metadata, and postings must be stored in order")
+	}
+}
+
+func TestAbsorbIndexesDocumentBeforeMetadataAndPostings(t *testing.T) {
+	documents := &recordingDocumentReceiver{}
+	index := &recordingSearchIndex{}
+	urls := &recordingURLReceiver{}
+	postings := &recordingPostingReceiver{}
+	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery, 1)}
+	var acked bool
+	var wg sync.WaitGroup
+	wg.Add(1)
+	stream.out <- crawlresults.IngestDelivery{
+		Batch: yacycrawlcontract.IngestBatch{
+			SourceURL: "https://example.org",
+			Document: yacycrawlcontract.DocumentIngest{
+				NormalizedURL: "https://example.org",
+				Title:         "Example",
+				ExtractedText: "body",
+			},
+		},
+		Ack: func(context.Context) error { acked = true; wg.Done(); return nil },
+		Nak: func(context.Context) error {
+			t.Fatal("unexpected nak")
+			wg.Done()
+			return nil
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	consumer := crawlresults.NewIngestConsumerWithIndex(
+		stream,
+		documents,
+		index,
+		urls,
+		postings,
+	)
+	go consumer.Run(ctx)
+	wg.Wait()
+
+	if !acked || index.calls != 1 {
+		t.Fatalf("acked=%v index.calls=%d, want true/1", acked, index.calls)
+	}
+	if index.doc.Title != "Example" || index.doc.NormalizedURL != "https://example.org" {
+		t.Fatalf("indexed doc = %#v", index.doc)
+	}
+	if !documents.at.Before(index.at) || !index.at.Before(urls.at) || !urls.at.Before(postings.at) {
+		t.Fatal("document, index, metadata, and postings must be stored in order")
+	}
+}
+
+func TestAbsorbNaksWhenSearchIndexErrors(t *testing.T) {
+	documents := &recordingDocumentReceiver{}
+	index := &recordingSearchIndex{err: errors.New("index failed")}
+	urls := &recordingURLReceiver{}
+	postings := &recordingPostingReceiver{}
+	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery, 1)}
+	var acked bool
+	var naked bool
+	var wg sync.WaitGroup
+	wg.Add(1)
+	stream.out <- crawlresults.IngestDelivery{
+		Batch: yacycrawlcontract.IngestBatch{
+			SourceURL: "https://example.org",
+			Document: yacycrawlcontract.DocumentIngest{
+				NormalizedURL: "https://example.org",
+				ExtractedText: "body",
+			},
+		},
+		Ack: func(context.Context) error { acked = true; wg.Done(); return nil },
+		Nak: func(context.Context) error { naked = true; wg.Done(); return nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	consumer := crawlresults.NewIngestConsumerWithIndex(
+		stream,
+		documents,
+		index,
+		urls,
+		postings,
+	)
+	go consumer.Run(ctx)
+	wg.Wait()
+
+	if acked || !naked {
+		t.Fatalf("acked=%v naked=%v, want naked", acked, naked)
+	}
+	if urls.calls != 0 || postings.calls != 0 {
+		t.Fatalf("urls.calls=%d postings.calls=%d, want 0/0", urls.calls, postings.calls)
 	}
 }
 

@@ -16,6 +16,7 @@ type SearchIndex interface {
 
 type SearchRequest struct {
 	Query         string
+	ExcludeTerms  []string
 	MaxResults    int
 	IncludeRaw    bool
 	IncludeDomain []string

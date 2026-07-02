@@ -804,12 +804,15 @@ Acceptance:
 
 ### SEARCH-04: Optional embedded full-text index ADR
 
-Do not add a full-text dependency before this ADR.
+Status: accepted in `yacynode/doc/adr/0012-use-bleve-for-embedded-full-text-fallback.md`.
+The current fallback is an in-memory Bleve v2 `SearchIndex` rebuilt from the
+document store on node startup. Tantivy remains the preferred future production
+sidecar.
 
-Decision candidates:
+Decision considered:
 
 1. Use existing RWI only, no embedded full-text dependency.
-2. Add Bleve v2 for embedded full-text in pure Go.
+2. Add Bleve v2 for embedded full-text in pure Go. Selected for the first fallback.
 3. Add SQLite FTS5, noting CGO/runtime tradeoffs.
 4. Add external search backend adapter, keeping default RWI-only.
 

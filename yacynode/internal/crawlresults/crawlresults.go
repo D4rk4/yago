@@ -10,6 +10,7 @@ import (
 	"github.com/D4rk4/yago/yacycrawlcontract"
 	"github.com/D4rk4/yago/yacynode/internal/documentstore"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
+	"github.com/D4rk4/yago/yacynode/internal/searchindex"
 	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 )
 
@@ -26,6 +27,7 @@ type IngestStream interface {
 type IngestConsumer struct {
 	stream    IngestStream
 	documents documentstore.DocumentReceiver
+	index     searchindex.SearchIndex
 	urls      urlmeta.URLReceiver
 	postings  rwi.PostingReceiver
 }
@@ -36,9 +38,20 @@ func NewIngestConsumer(
 	urls urlmeta.URLReceiver,
 	postings rwi.PostingReceiver,
 ) *IngestConsumer {
+	return NewIngestConsumerWithIndex(stream, documents, nil, urls, postings)
+}
+
+func NewIngestConsumerWithIndex(
+	stream IngestStream,
+	documents documentstore.DocumentReceiver,
+	index searchindex.SearchIndex,
+	urls urlmeta.URLReceiver,
+	postings rwi.PostingReceiver,
+) *IngestConsumer {
 	return &IngestConsumer{
 		stream:    stream,
 		documents: documents,
+		index:     index,
 		urls:      urls,
 		postings:  postings,
 	}

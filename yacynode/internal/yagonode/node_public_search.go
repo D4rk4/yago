@@ -7,6 +7,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yacynode/internal/peerroster"
 	"github.com/D4rk4/yago/yacynode/internal/searchcore"
+	"github.com/D4rk4/yago/yacynode/internal/searchlocal"
 	"github.com/D4rk4/yago/yacynode/internal/searchremote"
 	"github.com/D4rk4/yago/yacynode/internal/tavilyapi"
 	"github.com/D4rk4/yago/yacynode/internal/yacysearch"
@@ -25,12 +26,15 @@ func mountNodePublicSearch(
 	mux *http.ServeMux,
 	assembly publicSearchAssembly,
 ) {
-	local := documentsearch.NewLocalSearcherWithDocuments(
-		assembly.storage.postings,
-		assembly.storage.urlDirectory,
-		assembly.storage.documentDirectory,
-		searchPostingsPerWord,
-	)
+	local := searchlocal.NewSearcher(assembly.storage.searchIndex)
+	if assembly.storage.searchIndex == nil {
+		local = documentsearch.NewLocalSearcherWithDocuments(
+			assembly.storage.postings,
+			assembly.storage.urlDirectory,
+			assembly.storage.documentDirectory,
+			searchPostingsPerWord,
+		)
+	}
 	remote := searchremote.NewSearcher(searchremote.Config{
 		Client:             assembly.client,
 		NetworkName:        assembly.identity.NetworkName,

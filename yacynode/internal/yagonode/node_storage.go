@@ -6,6 +6,7 @@ import (
 
 	"github.com/D4rk4/yago/yacynode/internal/documentstore"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
+	"github.com/D4rk4/yago/yacynode/internal/searchindex"
 	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 	"github.com/D4rk4/yago/yacynode/internal/urlmetastaleness"
 	"github.com/D4rk4/yago/yacynode/internal/urlreferences"
@@ -15,6 +16,7 @@ import (
 type nodeStorage struct {
 	documentDirectory documentstore.DocumentDirectory
 	documentReceiver  documentstore.DocumentReceiver
+	searchIndex       searchindex.SearchIndex
 	urlDirectory      urlmeta.URLDirectory
 	urlMetadataRows   urlmeta.StoredURLMetadataRows
 	urlEvictor        urlmeta.URLEvictor
@@ -30,15 +32,27 @@ type nodeStorage struct {
 var (
 	openStalenessRanking = urlmetastaleness.Open
 	openDocuments        = documentstore.Open
-	openURLMetadata      = urlmeta.Open
-	openURLReferences    = urlreferences.Open
-	openRWIStorage       = rwi.Open
+	openSearchIndex      = func(
+		ctx context.Context,
+		documents documentstore.DocumentDirectory,
+	) (searchindex.SearchIndex, error) {
+		stored, _ := documents.(documentstore.StoredDocuments)
+		return searchindex.NewBleveMemoryIndex(ctx, stored)
+	}
+	openURLMetadata   = urlmeta.Open
+	openURLReferences = urlreferences.Open
+	openRWIStorage    = rwi.Open
 )
 
 func openNodeStorage(vault *vault.Vault) (nodeStorage, error) {
 	documentDirectory, documentReceiver, err := openDocuments(vault)
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("document storage: %w", err)
+	}
+
+	searchIndex, err := openSearchIndex(context.Background(), documentDirectory)
+	if err != nil {
+		return nodeStorage{}, fmt.Errorf("search index: %w", err)
 	}
 
 	staleness, err := openStalenessRanking(vault)
@@ -77,6 +91,7 @@ func openNodeStorage(vault *vault.Vault) (nodeStorage, error) {
 	return nodeStorage{
 		documentDirectory: documentDirectory,
 		documentReceiver:  documentReceiver,
+		searchIndex:       searchIndex,
 		urlDirectory:      urlDirectory,
 		urlMetadataRows:   urlMetadataRows,
 		urlEvictor:        urlEvictor,

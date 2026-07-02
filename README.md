@@ -55,10 +55,10 @@ The node currently targets these responsibilities:
   restore, peer quarantine, metrics, and a JSON gate status endpoint;
 - serve remote RWI search requests through `/yacy/search.html`;
 - serve local and DHT-targeted reachable-peer public search requests through
-  `/yacysearch.json`, `/yacysearch.rss`, and `/yacysearch.html`, filtering
-  remote targets by advertised RWI inventory, using YaCy index abstracts for
-  multi-term remote result conjunctions, using locally stored document text for
-  local snippets when available, and balancing redundant DHT candidates randomly;
+  `/yacysearch.json`, `/yacysearch.rss`, and `/yacysearch.html`, using the
+  local full-text `SearchIndex` path for `resource=local`, filtering remote
+  targets by advertised RWI inventory, using YaCy index abstracts for multi-term
+  remote result conjunctions, and balancing redundant DHT candidates randomly;
 - serve Tavily-like `POST /search` responses over the same search core, with
   local search for `search_depth=basic` and DHT-selected reachable-peer search
   for `search_depth=advanced`;
@@ -72,11 +72,13 @@ The node currently targets these responsibilities:
 - optionally publish crawl orders and consume crawler ingest batches over NATS
   JetStream when crawling is configured.
 
-The node stores bounded extracted document text and metadata for local search
-building blocks, but it does not store unbounded raw HTML bodies. The crawler is
-a separate, optional worker process that can fetch pages, build document ingest
-payloads and YaCy-compatible references, and publish ingest batches back to the
-node.
+The node stores bounded extracted document text and metadata and maintains an
+embedded in-memory Bleve full-text fallback index for local public search. The
+fallback index is rebuilt from the document store on startup; persistent
+full-text storage and the Tantivy production sidecar remain roadmap work. The
+node does not store unbounded raw HTML bodies. The crawler is a separate,
+optional worker process that can fetch pages, build document ingest payloads and
+YaCy-compatible references, and publish ingest batches back to the node.
 
 ## Repository Layout
 
