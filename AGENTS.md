@@ -117,7 +117,24 @@ Testing: Code lands with tests. Pure documentation/configuration changes need li
 
 Coverage: If coverage drops, first remove or refactor code. Find uncovered statements/branches and ask whether they should exist. Delete dead or defensive-only code, collapse unexercised branches, or replace several paths with one covered path. Add tests only for required behavior. Filler tests written only to raise coverage fail the change.
 
-Commits: Every commit needs both a short subject and a body. The body must include `Motivation:`, `Summary:`, `What's new:`, and `Validation:` sections when applicable. Use real line breaks in commit bodies; do not embed literal `\n` escape sequences. Do not pass one shell-quoted string containing `\n` to `git commit -m`, because Git records those characters literally. When creating commits from the shell, use repeated `-m` arguments, an editor, or a commit message file so formatting is preserved. Before pushing, inspect the new commit with `git log -1 --format=%B`; if the body contains literal `\n` text or is missing `Motivation:`, amend it locally before push. Keep commit text in English.
+Commits: Every commit needs both a short subject and a body. The body must include `Motivation:`, `Summary:`, `What's new:`, and `Validation:` sections, and each heading must start on its own physical line. Use real line breaks in commit bodies; do not embed literal `\n` escape sequences. Do not pass one shell-quoted string containing `\n` to `git commit -m`, because Git records those characters literally. When creating commits from the shell, use repeated `-m` arguments, an editor, or a commit message file so formatting is preserved. Preferred shell form:
+
+```sh
+git commit -m "Subject in imperative mood" \
+  -m "Motivation: Why this change is needed." \
+  -m "Summary: What changed." \
+  -m "What's new: User-visible or operational changes." \
+  -m "Validation: Commands and results."
+```
+
+Before pushing, inspect the new commit with `git log -1 --format=%B`; if the body contains literal `\n` text or is missing `Motivation:`, amend it locally before push. Required pre-push checks:
+
+```sh
+git log -1 --format=%B | grep -F "Motivation:"
+! git log -1 --format=%B | grep -F "\\n"
+```
+
+Keep commit text in English.
 
 Feature closure: Closing a feature requires the tests to be written with the code, then a full test run, Dockerized Semgrep, Dockerized Trivy source and container-image scans, container builds, sanity tests, and smoke tests. If all feature-closure checks pass, commit the change and push it to `main`.
 
