@@ -7,7 +7,10 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
-const postingsBucket vault.Name = "rwi"
+const (
+	postingsBucket         vault.Name = "rwi"
+	outboundSelectedBucket vault.Name = "rwi_outbound_selected"
+)
 
 const postingKeyLength = yacymodel.HashLength + yacymodel.HashLength
 
@@ -32,6 +35,17 @@ func registerPostings(
 	collection, err := vault.Register(v, postingsBucket, postingCodec{})
 	if err != nil {
 		return nil, fmt.Errorf("register rwi posting collection: %w", err)
+	}
+
+	return collection, nil
+}
+
+func registerOutboundSelectedPostings(
+	v *vault.Vault,
+) (*vault.Collection[yacymodel.RWIPosting], error) {
+	collection, err := vault.Register(v, outboundSelectedBucket, postingCodec{})
+	if err != nil {
+		return nil, fmt.Errorf("register outbound selected rwi collection: %w", err)
 	}
 
 	return collection, nil

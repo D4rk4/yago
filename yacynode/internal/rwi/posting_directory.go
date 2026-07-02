@@ -9,9 +9,10 @@ import (
 )
 
 type postingDirectory struct {
-	vault     *vault.Vault
-	postings  *vault.Collection[yacymodel.RWIPosting]
-	observers postingObservers
+	vault            *vault.Vault
+	postings         *vault.Collection[yacymodel.RWIPosting]
+	outboundSelected *vault.Collection[yacymodel.RWIPosting]
+	observers        postingObservers
 }
 
 func (d postingDirectory) RWICount(ctx context.Context) (int, error) {

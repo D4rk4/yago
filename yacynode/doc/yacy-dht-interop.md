@@ -137,11 +137,17 @@ sender loads the matching local URL metadata rows and posts them to
 `/yacy/transferURL.html`.
 
 Before enqueue, the Go sender selects a bounded set of stored RWI postings in
-one storage update and removes those postings from local RWI storage. If enqueue
-cannot safely keep transferable rows, the sender restores those rows. Rows that
-no longer have local URL metadata remain dropped, matching YaCy's sender-side
-filtering. Once a chunk is queued, successful transfer leaves the selected
-postings deleted; transfer failures stay in the outbound queue for retry.
+one storage update, journals the selected rows for restart recovery, and removes
+those postings from local RWI storage. If enqueue cannot safely keep
+transferable rows, the sender restores those rows and clears their recovery
+records. Rows that no longer have local URL metadata remain dropped, matching
+YaCy's sender-side filtering.
+
+Once a chunk is queued, successful accepted transfer leaves the selected postings
+deleted and clears their recovery records. Capacity failures, transfer errors,
+and protocol rejections stay in the outbound queue for retry. If the process
+stops with selected rows still pending in the recovery collection, storage
+startup restores them to the local RWI index before the next outbound feed.
 
 ## Sender-side target order
 
@@ -162,9 +168,9 @@ dequeues the largest buffered chunk first. The Go exchange queue preserves that
 batch shape. The runtime scheduler feeds an empty outbound queue from stored RWI
 selections. A two-local-Go-node integration test covers stored RWI selection,
 `transferRWI.html`, `unknownURL`, `transferURL.html`, sender deletion, and
-receiver durability. Remaining dispatcher work is restart recovery for selected
-queued rows, explicit remote-index flag mutation on address-clash rejection, and
-end-to-end Java YaCy interop distribution tests.
+receiver durability. Remaining dispatcher work is explicit remote-index flag
+mutation on address-clash rejection and end-to-end Java YaCy interop
+distribution tests.
 
 ---
 

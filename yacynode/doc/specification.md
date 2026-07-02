@@ -41,6 +41,7 @@ Go internals do not need to copy Java source code or Java storage engines.
 * The node SHALL distribute stored RWI postings and URL metadata to compatible peers when configured.
 * The node SHALL verify its DHT reachability through a YaCy-compatible RWI capacity self-test before outbound DHT distribution.
 * The node SHALL choose outbound DHT transfer targets using YaCy DHT ring ordering and advertised remote-index capability.
+* The node SHALL recover outbound RWI postings selected for DHT handoff after restart when they have not been confirmed as accepted by a compatible peer.
 * The node SHALL serve remote RWI search requests.
 * The node SHALL serve local search requests through YaCy-compatible search surfaces.
 * The node SHALL expose YaCy-compatible public search JSON, RSS, HTML, OpenSearch description, and suggestion subsets backed by local search and DHT-selected reachable-peer search where applicable.

@@ -53,6 +53,26 @@ func (s *handoffScript) Send(
 	return s.receipt, nil
 }
 
+type sentPostingConfirmerScript struct {
+	confirmed int
+	err       error
+	calls     int
+	postings  []yacymodel.RWIPosting
+}
+
+func (s *sentPostingConfirmerScript) ConfirmTransferred(
+	_ context.Context,
+	postings []yacymodel.RWIPosting,
+) (int, error) {
+	s.calls++
+	s.postings = append([]yacymodel.RWIPosting(nil), postings...)
+	if s.err != nil {
+		return 0, s.err
+	}
+
+	return s.confirmed, nil
+}
+
 func TestOutboundDistributorStopsWhenGatesAreClosed(t *testing.T) {
 	t.Parallel()
 
@@ -145,6 +165,68 @@ func TestOutboundDistributorProbesAndSendsLargestChunk(t *testing.T) {
 	}
 	if queue.PostingCount() != 1 {
 		t.Fatalf("remaining queue postings = %d, want 1", queue.PostingCount())
+	}
+}
+
+func TestOutboundDistributorConfirmsSentChunk(t *testing.T) {
+	t.Parallel()
+
+	word := yacymodel.WordHash("word")
+	chunk := []yacymodel.RWIPosting{
+		queuePosting(word, yacymodel.WordHash("url-a")),
+	}
+	queue := NewOutboundQueue()
+	queue.add(queueSeed(t, "AAAAAAAAAAAA"), chunk)
+	confirmer := &sentPostingConfirmerScript{confirmed: 1}
+
+	receipt, err := NewConfirmingOutboundDistributor(
+		queue,
+		&capacityScript{count: 1},
+		&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)},
+		confirmer,
+	).Distribute(context.Background(), openGateState(), DefaultGateConfig())
+	if err != nil {
+		t.Fatalf("Distribute: %v", err)
+	}
+
+	if receipt.State != DistributionSent || receipt.ConfirmedPostings != 1 {
+		t.Fatalf("receipt = %#v", receipt)
+	}
+	if confirmer.calls != 1 || !reflect.DeepEqual(confirmer.postings, chunk) {
+		t.Fatalf("confirmer = calls %d postings %#v", confirmer.calls, confirmer.postings)
+	}
+	if queue.PostingCount() != 0 {
+		t.Fatalf("queue postings = %d, want sent chunk removed", queue.PostingCount())
+	}
+}
+
+func TestOutboundDistributorConfirmationErrorDoesNotRequeueSentChunk(t *testing.T) {
+	t.Parallel()
+
+	word := yacymodel.WordHash("word")
+	queue := NewOutboundQueue()
+	queue.add(queueSeed(t, "AAAAAAAAAAAA"), []yacymodel.RWIPosting{
+		queuePosting(word, yacymodel.WordHash("url-a")),
+	})
+	confirmErr := errors.New("confirm failed")
+
+	receipt, err := NewConfirmingOutboundDistributor(
+		queue,
+		&capacityScript{count: 1},
+		&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffURLSent)},
+		&sentPostingConfirmerScript{err: confirmErr},
+	).Distribute(context.Background(), openGateState(), DefaultGateConfig())
+	if !errors.Is(err, confirmErr) {
+		t.Fatalf("Distribute error = %v, want %v", err, confirmErr)
+	}
+	if receipt.State != DistributionSent || receipt.RequeuedPostings != 0 {
+		t.Fatalf("receipt = %#v", receipt)
+	}
+	if queue.PostingCount() != 0 {
+		t.Fatalf(
+			"queue postings = %d, want no requeue after accepted handoff",
+			queue.PostingCount(),
+		)
 	}
 }
 

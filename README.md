@@ -43,8 +43,8 @@ The node currently targets these responsibilities:
 - receive inbound RWI postings through `/yacy/transferRWI.html`;
 - receive URL metadata through `/yacy/transferURL.html`;
 - run retry-aware outbound DHT handoff cycles fed from stored RWI postings, with
-  YaCy-style sender gates, target selection, local deletion, restore, peer
-  quarantine, metrics, and a JSON gate status endpoint;
+  YaCy-style sender gates, target selection, local deletion, restart recovery,
+  restore, peer quarantine, metrics, and a JSON gate status endpoint;
 - serve remote RWI search requests through `/yacy/search.html`;
 - serve local and DHT-targeted reachable-peer public search requests through
   `/yacysearch.json`, `/yacysearch.rss`, and `/yacysearch.html`, filtering

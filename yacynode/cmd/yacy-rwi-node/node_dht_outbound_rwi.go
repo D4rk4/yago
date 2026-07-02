@@ -39,3 +39,15 @@ func (w dhtOutboundRWIWords) RestoreOutboundWords(
 
 	return restored, nil
 }
+
+func (w dhtOutboundRWIWords) ConfirmTransferred(
+	ctx context.Context,
+	postings []yacymodel.RWIPosting,
+) (int, error) {
+	confirmed, err := w.postings.ConfirmOutbound(ctx, postings)
+	if err != nil {
+		return 0, fmt.Errorf("confirm transferred outbound rwi words: %w", err)
+	}
+
+	return confirmed, nil
+}

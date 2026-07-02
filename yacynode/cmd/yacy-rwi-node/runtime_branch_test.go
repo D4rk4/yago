@@ -661,6 +661,21 @@ func TestOpenNodeStorageReturnsOpenErrors(t *testing.T) {
 			t.Fatal("expected outbound rwi storage error")
 		}
 	})
+
+	t.Run("rwi outbound recovery", func(t *testing.T) {
+		restoreStorageSeams(t)
+		openRWIStorage = func(
+			*vault.Vault,
+			urlmeta.URLDirectory,
+			rwi.Config,
+			...rwi.PostingObserver,
+		) (rwi.PostingIndex, rwi.PostingReceiver, rwi.PostingPurger, error) {
+			return &outboundPostingStoreScript{recoverErr: sentinel}, nil, nil, nil
+		}
+		if _, err := openNodeStorage(openTestVault(t)); !errors.Is(err, sentinel) {
+			t.Fatalf("open error = %v, want %v", err, sentinel)
+		}
+	})
 }
 
 func TestAssembleNodeReturnsSetupErrors(t *testing.T) {

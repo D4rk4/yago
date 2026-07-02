@@ -20,18 +20,20 @@ import (
 )
 
 type scriptedEngine struct {
-	buckets      map[vault.Name]map[string][]byte
-	putErrors    map[vault.Name]error
-	deleteErrors map[vault.Name]error
-	scanErrors   map[vault.Name]error
+	buckets         map[vault.Name]map[string][]byte
+	provisionErrors map[vault.Name]error
+	putErrors       map[vault.Name]error
+	deleteErrors    map[vault.Name]error
+	scanErrors      map[vault.Name]error
 }
 
 func newScriptedEngine() *scriptedEngine {
 	return &scriptedEngine{
-		buckets:      map[vault.Name]map[string][]byte{},
-		putErrors:    map[vault.Name]error{},
-		deleteErrors: map[vault.Name]error{},
-		scanErrors:   map[vault.Name]error{},
+		buckets:         map[vault.Name]map[string][]byte{},
+		provisionErrors: map[vault.Name]error{},
+		putErrors:       map[vault.Name]error{},
+		deleteErrors:    map[vault.Name]error{},
+		scanErrors:      map[vault.Name]error{},
 	}
 }
 
@@ -50,6 +52,9 @@ func (e *scriptedEngine) View(ctx context.Context, fn func(vault.EngineTxn) erro
 }
 
 func (e *scriptedEngine) Provision(name vault.Name) error {
+	if err := e.provisionErrors[name]; err != nil {
+		return err
+	}
 	if e.buckets[name] == nil {
 		e.buckets[name] = map[string][]byte{}
 	}
@@ -197,11 +202,10 @@ func openScriptedRWI(
 
 func corruptLength(t *testing.T, engine *scriptedEngine) {
 	t.Helper()
-	for name, bucket := range engine.buckets {
-		if name != postingsBucket {
-			bucket[string(postingsBucket)] = []byte("bad")
-			return
-		}
+	bucket, ok := engine.buckets[vault.Name("__lengths__")]
+	if ok {
+		bucket[string(postingsBucket)] = []byte("bad")
+		return
 	}
 	t.Fatal("length bucket not found")
 }
@@ -209,6 +213,16 @@ func corruptLength(t *testing.T, engine *scriptedEngine) {
 func TestOpenReturnsRegisterError(t *testing.T) {
 	if _, _, _, err := Open(nil, fakeURLDirectory{}, Config{}); err == nil {
 		t.Fatal("expected register error")
+	}
+
+	engine := newScriptedEngine()
+	storage, err := vault.New(engine)
+	if err != nil {
+		t.Fatalf("vault.New: %v", err)
+	}
+	engine.provisionErrors[outboundSelectedBucket] = errors.New("provision failed")
+	if _, _, _, err := Open(storage, fakeURLDirectory{}, Config{}); err == nil {
+		t.Fatal("expected outbound selected register error")
 	}
 }
 

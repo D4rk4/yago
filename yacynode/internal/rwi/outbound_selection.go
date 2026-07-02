@@ -20,6 +20,8 @@ type OutboundSelection struct {
 type OutboundPostingStore interface {
 	SelectOutbound(ctx context.Context, config OutboundSelectionConfig) (OutboundSelection, error)
 	RestoreOutbound(ctx context.Context, words []yacymodel.WordPostings) (int, error)
+	ConfirmOutbound(ctx context.Context, postings []yacymodel.RWIPosting) (int, error)
+	RecoverOutbound(ctx context.Context) (int, error)
 }
 
 type selectedPosting struct {
@@ -152,6 +154,9 @@ func (d postingDirectory) restoreOutboundPosting(
 	if err := d.observers.stored(tx, word, hash); err != nil {
 		return fmt.Errorf("observe outbound rwi restore: %w", err)
 	}
+	if _, err := d.outboundSelected.Delete(tx, postingKey(word, hash)); err != nil {
+		return fmt.Errorf("delete outbound selected rwi: %w", err)
+	}
 
 	return nil
 }
@@ -169,6 +174,9 @@ func (d postingDirectory) selectOutboundPostings(
 			return selector.visit(ctx, key, entry)
 		}); err != nil {
 			return fmt.Errorf("scan outbound rwi postings: %w", err)
+		}
+		if err := d.journalOutboundSelection(tx, selector.selected); err != nil {
+			return err
 		}
 
 		return d.deleteOutboundSelection(tx, selector.selected)

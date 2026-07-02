@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/indextransfer"
 	"github.com/D4rk4/yago/yacynode/internal/metrics"
 	"github.com/D4rk4/yago/yacynode/internal/nodestatus"
+	"github.com/D4rk4/yago/yacynode/internal/rwi"
 )
 
 type dhtOutboundTransferFixture struct {
@@ -55,6 +57,58 @@ func TestOutboundDHTTransfersStoredRWIAndURLToPeer(t *testing.T) {
 	assertDHTTransferReceipt(t, receipt, urlHash)
 	assertDHTTransferCounts(t, ctx, senderStorage, receiverStorage)
 	assertDHTReceiverPosting(t, ctx, receiverStorage, word, urlHash)
+}
+
+func TestOpenNodeStorageRecoversPendingOutboundSelectionAfterRestart(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "node.db")
+	word := yacymodel.Hash("CCCCCCCCCCCC")
+	urlHash := yacymodel.Hash("DDDDDDDDDDDD")
+
+	firstVault, err := openRuntimeVault(path, 0)
+	if err != nil {
+		t.Fatalf("open first vault: %v", err)
+	}
+	firstStorage, err := openNodeStorage(firstVault)
+	if err != nil {
+		t.Fatalf("open first storage: %v", err)
+	}
+	storeSenderDHTRows(t, ctx, firstStorage, word, urlHash)
+	selection, err := firstStorage.outboundPostings.SelectOutbound(
+		ctx,
+		rwi.OutboundSelectionConfig{},
+	)
+	if err != nil {
+		t.Fatalf("SelectOutbound: %v", err)
+	}
+	if selection.PostingCount() != 1 {
+		t.Fatalf("selection count = %d, want 1", selection.PostingCount())
+	}
+	if err := firstVault.Close(); err != nil {
+		t.Fatalf("close first vault: %v", err)
+	}
+
+	reopenedVault, err := openRuntimeVault(path, 0)
+	if err != nil {
+		t.Fatalf("open reopened vault: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := reopenedVault.Close(); err != nil {
+			t.Fatalf("close reopened vault: %v", err)
+		}
+	})
+	recoveredStorage, err := openNodeStorage(reopenedVault)
+	if err != nil {
+		t.Fatalf("open recovered storage: %v", err)
+	}
+	count, err := recoveredStorage.postings.RWICount(ctx)
+	if err != nil {
+		t.Fatalf("RWICount: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("recovered rwi count = %d, want 1", count)
+	}
+	assertDHTReceiverPosting(t, ctx, recoveredStorage, word, urlHash)
 }
 
 func startDHTSenderRuntime(

@@ -60,9 +60,18 @@ func Open(
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	outboundSelected, err := registerOutboundSelectedPostings(vault)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	watched := postingObservers(observers)
-	directory := postingDirectory{vault: vault, postings: postings, observers: watched}
+	directory := postingDirectory{
+		vault:            vault,
+		postings:         postings,
+		outboundSelected: outboundSelected,
+		observers:        watched,
+	}
 	intake := postingIntake{
 		vault:        vault,
 		postings:     postings,

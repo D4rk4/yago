@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
@@ -57,6 +58,9 @@ func openNodeStorage(vault *vault.Vault) (nodeStorage, error) {
 	outboundPostings, ok := postings.(rwi.OutboundPostingStore)
 	if !ok {
 		return nodeStorage{}, fmt.Errorf("rwi outbound storage unavailable")
+	}
+	if _, err := outboundPostings.RecoverOutbound(context.Background()); err != nil {
+		return nodeStorage{}, fmt.Errorf("recover outbound rwi: %w", err)
 	}
 
 	return nodeStorage{

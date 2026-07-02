@@ -22,9 +22,14 @@ type outboundPostingStoreScript struct {
 	selectConfig rwi.OutboundSelectionConfig
 	selectCalls  int
 	restoreCalls int
+	confirmCalls int
+	recoverCalls int
 	restoreWords []yacymodel.WordPostings
+	confirmRows  []yacymodel.RWIPosting
 	selectErr    error
 	restoreErr   error
+	confirmErr   error
+	recoverErr   error
 }
 
 func (s *outboundPostingStoreScript) RWICount(context.Context) (int, error) {
@@ -68,6 +73,28 @@ func (s *outboundPostingStoreScript) RestoreOutbound(
 	}
 
 	return count, nil
+}
+
+func (s *outboundPostingStoreScript) ConfirmOutbound(
+	_ context.Context,
+	postings []yacymodel.RWIPosting,
+) (int, error) {
+	s.confirmCalls++
+	s.confirmRows = append([]yacymodel.RWIPosting(nil), postings...)
+	if s.confirmErr != nil {
+		return 0, s.confirmErr
+	}
+
+	return len(postings), nil
+}
+
+func (s *outboundPostingStoreScript) RecoverOutbound(context.Context) (int, error) {
+	s.recoverCalls++
+	if s.recoverErr != nil {
+		return 0, s.recoverErr
+	}
+
+	return 0, nil
 }
 
 type urlDirectoryScript struct {
@@ -121,6 +148,14 @@ func TestDHTOutboundRWIWordsAdaptsSelectionAndRestore(t *testing.T) {
 	if restored != 1 || source.restoreCalls != 1 {
 		t.Fatalf("restored/source = %d/%#v", restored, source)
 	}
+
+	confirmed, err := adapter.ConfirmTransferred(context.Background(), words[0].Postings)
+	if err != nil {
+		t.Fatalf("ConfirmTransferred: %v", err)
+	}
+	if confirmed != 1 || source.confirmCalls != 1 {
+		t.Fatalf("confirmed/source = %d/%#v", confirmed, source)
+	}
 }
 
 func TestDHTOutboundRWIWordsReturnsStoreErrors(t *testing.T) {
@@ -140,6 +175,14 @@ func TestDHTOutboundRWIWordsReturnsStoreErrors(t *testing.T) {
 	}).RestoreOutboundWords(context.Background(), []yacymodel.WordPostings{{}})
 	if !errors.Is(err, restoreErr) {
 		t.Fatalf("restore error = %v, want %v", err, restoreErr)
+	}
+
+	confirmErr := errors.New("confirm failed")
+	_, err = (dhtOutboundRWIWords{
+		postings: &outboundPostingStoreScript{confirmErr: confirmErr},
+	}).ConfirmTransferred(context.Background(), []yacymodel.RWIPosting{{}})
+	if !errors.Is(err, confirmErr) {
+		t.Fatalf("confirm error = %v, want %v", err, confirmErr)
 	}
 }
 

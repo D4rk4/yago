@@ -76,7 +76,7 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 			MinimumPeerAgeDays: assembly.config.DHT.MinimumPeerAgeDays,
 		},
 	)
-	distributor := dhtexchange.NewOutboundDistributor(
+	distributor := dhtexchange.NewConfirmingOutboundDistributor(
 		queue,
 		indextransfer.NewRemoteRWICountProbe(
 			assembly.client,
@@ -84,6 +84,7 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 			self,
 		),
 		indextransfer.NewHandoff(writer, assembly.nodeStorage.urlDirectory),
+		dhtOutboundRWIWords{postings: assembly.nodeStorage.outboundPostings},
 	)
 	scheduler := dhtexchange.NewOutboundScheduler(
 		distributor,

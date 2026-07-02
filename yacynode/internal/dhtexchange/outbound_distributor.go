@@ -20,6 +20,10 @@ type IndexHandoff interface {
 	) (indextransfer.HandoffReceipt, error)
 }
 
+type SentPostingConfirmer interface {
+	ConfirmTransferred(ctx context.Context, postings []yacymodel.RWIPosting) (int, error)
+}
+
 type DistributionState string
 
 const (
@@ -33,19 +37,21 @@ const (
 )
 
 type DistributionReceipt struct {
-	State            DistributionState
-	Gates            GateReport
-	Peer             yacymodel.Hash
-	PostingCount     int
-	RemoteRWIWords   int
-	Handoff          indextransfer.HandoffReceipt
-	RequeuedPostings int
+	State             DistributionState
+	Gates             GateReport
+	Peer              yacymodel.Hash
+	PostingCount      int
+	RemoteRWIWords    int
+	Handoff           indextransfer.HandoffReceipt
+	RequeuedPostings  int
+	ConfirmedPostings int
 }
 
 type OutboundDistributor struct {
-	queue   *OutboundQueue
-	probe   RemoteCapacity
-	handoff IndexHandoff
+	queue     *OutboundQueue
+	probe     RemoteCapacity
+	handoff   IndexHandoff
+	confirmer SentPostingConfirmer
 }
 
 func NewOutboundDistributor(
@@ -54,6 +60,20 @@ func NewOutboundDistributor(
 	handoff IndexHandoff,
 ) OutboundDistributor {
 	return OutboundDistributor{queue: queue, probe: probe, handoff: handoff}
+}
+
+func NewConfirmingOutboundDistributor(
+	queue *OutboundQueue,
+	probe RemoteCapacity,
+	handoff IndexHandoff,
+	confirmer SentPostingConfirmer,
+) OutboundDistributor {
+	return OutboundDistributor{
+		queue:     queue,
+		probe:     probe,
+		handoff:   handoff,
+		confirmer: confirmer,
+	}
 }
 
 func (d OutboundDistributor) Distribute(
@@ -130,6 +150,13 @@ func (d OutboundDistributor) distribute(
 	}
 
 	receipt.State = DistributionSent
+	if d.confirmer != nil {
+		confirmed, err := d.confirmer.ConfirmTransferred(ctx, chunk.Postings)
+		receipt.ConfirmedPostings = confirmed
+		if err != nil {
+			return receipt, fmt.Errorf("confirm sent dht chunk: %w", err)
+		}
+	}
 
 	return receipt, nil
 }
