@@ -71,6 +71,12 @@ The Go outbound transfer layer can probe a target peer's `rwicount` through
 responses, and negative values as failed capacity probes. Automatic probing from
 the runtime scheduler is still pending.
 
+The Go outbound distributor can run one transfer cycle: evaluate sender gates,
+dequeue the largest buffered chunk, probe target RWI capacity, and perform the
+two-phase handoff. If capacity probing, transfer, or protocol acceptance fails,
+the chunk is returned to the outbound buffer. The long-running scheduler,
+backoff, peer quarantine, metrics, and deletion policy are still pending.
+
 ## Sender-side transfer shape
 
 YaCy sends an index handoff in two phases. The sender posts RWI rows to
