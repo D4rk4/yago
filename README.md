@@ -28,7 +28,8 @@ The node currently targets these responsibilities:
 - answer YaCy peer liveness requests with self-identity rejection and answer RWI
   capacity/status requests, including per-word RWI URL counts;
 - serve YaCy seed lists through `/yacy/seedlist.html`, `/yacy/seedlist.json`,
-  and `/yacy/seedlist.xml`;
+  and `/yacy/seedlist.xml`, including upstream request filters such as
+  `minversion`;
 - bootstrap peers from configured YaCy seedlists, including seeds with either
   offset or timestamp `UTC` wire values;
 - answer YaCy shared blacklist export requests through `/yacy/list.html` with

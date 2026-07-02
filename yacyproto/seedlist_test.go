@@ -29,20 +29,24 @@ func TestSeedlistRequestDefaultsToIncludingSelf(t *testing.T) {
 	if _, ok := req.MaxCount.Get(); ok {
 		t.Fatal("MaxCount present")
 	}
+	if _, ok := req.MinVersion.Get(); ok {
+		t.Fatal("MinVersion present")
+	}
 }
 
 func TestSeedlistRequestParsesFilters(t *testing.T) {
 	id := yacymodel.WordHash("peer")
 	form := url.Values{
-		yacyproto.FieldSeedlistMaxCount: {"3"},
-		yacyproto.FieldSeedlistNode:     {"true"},
-		yacyproto.FieldSeedlistMe:       {"false"},
-		yacyproto.FieldSeedlistMy:       {"true"},
-		yacyproto.FieldSeedlistID:       {id.String()},
-		yacyproto.FieldSeedlistName:     {"peer-a"},
-		yacyproto.FieldSeedlistAddress:  {"true"},
-		yacyproto.FieldSeedlistCallback: {"seedlist"},
-		yacyproto.FieldSeedlistPeerName: {"peer-b"},
+		yacyproto.FieldSeedlistMaxCount:   {"3"},
+		yacyproto.FieldSeedlistMinVersion: {"1.8"},
+		yacyproto.FieldSeedlistNode:       {"true"},
+		yacyproto.FieldSeedlistMe:         {"false"},
+		yacyproto.FieldSeedlistMy:         {"true"},
+		yacyproto.FieldSeedlistID:         {id.String()},
+		yacyproto.FieldSeedlistName:       {"peer-a"},
+		yacyproto.FieldSeedlistAddress:    {"true"},
+		yacyproto.FieldSeedlistCallback:   {"seedlist"},
+		yacyproto.FieldSeedlistPeerName:   {"peer-b"},
 	}
 
 	req, err := yacyproto.ParseSeedlistRequest(t.Context(), form)
@@ -53,6 +57,10 @@ func TestSeedlistRequestParsesFilters(t *testing.T) {
 	maxCount, ok := req.MaxCount.Get()
 	if !ok || maxCount != 3 {
 		t.Fatalf("MaxCount = %d, %v; want 3, true", maxCount, ok)
+	}
+	minVersion, ok := req.MinVersion.Get()
+	if !ok || minVersion != 1.8 {
+		t.Fatalf("MinVersion = %v, %v; want 1.8, true", minVersion, ok)
 	}
 	parsedID, ok := req.ID.Get()
 	if !ok || parsedID != id {
@@ -85,6 +93,7 @@ func TestSeedlistRequestFormRoundTrip(t *testing.T) {
 	id := yacymodel.WordHash("peer")
 	original := yacyproto.SeedlistRequest{
 		MaxCount:    yacymodel.Some(4),
+		MinVersion:  yacymodel.Some(1.9),
 		NodeOnly:    true,
 		IncludeSelf: false,
 		OwnSeedOnly: true,
@@ -104,6 +113,10 @@ func TestSeedlistRequestFormRoundTrip(t *testing.T) {
 	if !ok || maxCount != 4 {
 		t.Fatalf("MaxCount = %d, %v; want 4, true", maxCount, ok)
 	}
+	minVersion, ok := parsed.MinVersion.Get()
+	if !ok || minVersion != 1.9 {
+		t.Fatalf("MinVersion = %v, %v; want 1.9, true", minVersion, ok)
+	}
 	parsedID, ok := parsed.ID.Get()
 	if !ok || parsedID != id {
 		t.Fatalf("ID = %q, %v; want %q, true", parsedID, ok, id)
@@ -121,6 +134,13 @@ func TestSeedlistRequestRejectsBadFields(t *testing.T) {
 		url.Values{yacyproto.FieldSeedlistMaxCount: {"many"}},
 	); err == nil {
 		t.Fatal("expected bad maxcount error")
+	}
+
+	if _, err := yacyproto.ParseSeedlistRequest(
+		t.Context(),
+		url.Values{yacyproto.FieldSeedlistMinVersion: {"many"}},
+	); err == nil {
+		t.Fatal("expected bad minversion error")
 	}
 
 	if _, err := yacyproto.ParseSeedlistRequest(

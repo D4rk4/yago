@@ -68,7 +68,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:    yacyproto.PathSeedlist,
 		Methods: methods(yacyproto.SeedlistEndpointMethods),
 		State:   Implemented,
-		Behavior: "Serves own and confirmed reachable seeds in plain YaCy seed-list form; " +
+		Behavior: "Serves own and confirmed reachable seeds in plain YaCy seed-list form with upstream filters, including minversion; " +
 			"configured bootstrap import accepts seed UTC offset and timestamp wire values.",
 		Evidence: []string{"yacynode/internal/seedlist/*_test.go"},
 	},
@@ -77,7 +77,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:     yacyproto.PathSeedlistJSON,
 		Methods:  methods(yacyproto.SeedlistEndpointMethods),
 		State:    Implemented,
-		Behavior: "Serves own and confirmed reachable seeds in JSON seed-list form.",
+		Behavior: "Serves own and confirmed reachable seeds in JSON seed-list form with the same YaCy request filters as the plain seed list.",
 		Evidence: []string{"yacynode/internal/seedlist/*_test.go"},
 	},
 	{
@@ -85,7 +85,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:     yacyproto.PathSeedlistXML,
 		Methods:  methods(yacyproto.SeedlistEndpointMethods),
 		State:    Implemented,
-		Behavior: "Serves own and confirmed reachable seeds in XML seed-list form.",
+		Behavior: "Serves own and confirmed reachable seeds in XML seed-list form with the same YaCy request filters as the plain seed list.",
 		Evidence: []string{"yacynode/internal/seedlist/*_test.go"},
 	},
 	{

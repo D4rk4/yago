@@ -28,9 +28,9 @@ Status values:
 | Inbound RWI transfer | `/yacy/transferRWI.html` | POST | implemented | Accepts RWI postings durably and reports missing URL metadata. |
 | Inbound URL metadata transfer | `/yacy/transferURL.html` | POST | implemented | Accepts URL metadata and reconciles RWI references. |
 | Remote RWI search | `/yacy/search.html` | GET, POST | implemented | Serves key-value YaCy remote search responses from local RWI storage. |
-| Seed list | `/yacy/seedlist.html` | GET, POST | implemented | Serves own and confirmed reachable seeds in plain seed-list form; configured bootstrap import accepts seed `UTC` offset and timestamp wire values. |
-| Seed list JSON | `/yacy/seedlist.json` | GET, POST | implemented | Serves own and confirmed reachable seeds in JSON seed-list form. |
-| Seed list XML | `/yacy/seedlist.xml` | GET, POST | implemented | Serves own and confirmed reachable seeds in XML seed-list form. |
+| Seed list | `/yacy/seedlist.html` | GET, POST | implemented | Serves own and confirmed reachable seeds in plain seed-list form with YaCy request filters, including `minversion`; configured bootstrap import accepts seed `UTC` offset and timestamp wire values. |
+| Seed list JSON | `/yacy/seedlist.json` | GET, POST | implemented | Serves own and confirmed reachable seeds in JSON seed-list form with the same YaCy request filters as the plain seed list. |
+| Seed list XML | `/yacy/seedlist.xml` | GET, POST | implemented | Serves own and confirmed reachable seeds in XML seed-list form with the same YaCy request filters as the plain seed list. |
 | Host-link index | `/yacy/idx.json` | GET, POST | partial | Serves the host object shape with a bounded incoming host-link index inferred from stored URL metadata referrers. |
 | Shared blacklist export | `/yacy/list.html` | GET, POST | partial | Serves `col=black` from files named in `YACY_DATA_DIR/SETTINGS/yacy.conf` `BlackLists.Shared`, under `YACY_DATA_DIR/LISTS`. |
 | Peer message inbox | `/yacy/message.html` | GET, POST | partial | Accepts permission checks without parsing post-only body fields and stores inbound message posts; attachments are not stored. |

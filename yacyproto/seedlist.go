@@ -10,6 +10,7 @@ import (
 
 type SeedlistRequest struct {
 	MaxCount    yacymodel.Optional[int]
+	MinVersion  yacymodel.Optional[float64]
 	NodeOnly    bool
 	IncludeSelf bool
 	OwnSeedOnly bool
@@ -24,6 +25,9 @@ func (r SeedlistRequest) Form() url.Values {
 	form := url.Values{}
 	if maxCount, ok := r.MaxCount.Get(); ok {
 		putInt(form, FieldSeedlistMaxCount, maxCount)
+	}
+	if minVersion, ok := r.MinVersion.Get(); ok {
+		putFloat(form, FieldSeedlistMinVersion, minVersion)
 	}
 	if r.NodeOnly {
 		form.Set(FieldSeedlistNode, strconv.FormatBool(true))
@@ -56,6 +60,13 @@ func ParseSeedlistRequest(_ context.Context, form url.Values) (SeedlistRequest, 
 			return SeedlistRequest{}, err
 		}
 		req.MaxCount = yacymodel.Some(maxCount)
+	}
+	if raw := form.Get(FieldSeedlistMinVersion); raw != "" {
+		minVersion, err := readFloat(FieldSeedlistMinVersion, raw)
+		if err != nil {
+			return SeedlistRequest{}, err
+		}
+		req.MinVersion = yacymodel.Some(minVersion)
 	}
 
 	nodeOnly, err := seedlistBool(FieldSeedlistNode, form.Get(FieldSeedlistNode), false)

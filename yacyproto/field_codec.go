@@ -3,6 +3,7 @@ package yacyproto
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -20,6 +21,10 @@ func putString(dst url.Values, key, value string) {
 
 func putInt(dst url.Values, key string, value int) {
 	dst.Set(key, strconv.Itoa(value))
+}
+
+func putFloat(dst url.Values, key string, value float64) {
+	dst.Set(key, strconv.FormatFloat(value, 'f', -1, 64))
 }
 
 func putIntOptional(dst url.Values, key string, value int) {
@@ -47,6 +52,15 @@ func setInt(dst yacymodel.Message, key string, value int) {
 func readInt(key, value string) (int, error) {
 	n, err := strconv.Atoi(value)
 	if err != nil {
+		return 0, fmt.Errorf("%w: %s=%q", ErrBadField, key, value)
+	}
+
+	return n, nil
+}
+
+func readFloat(key, value string) (float64, error) {
+	n, err := strconv.ParseFloat(value, 64)
+	if err != nil || math.IsInf(n, 0) || math.IsNaN(n) {
 		return 0, fmt.Errorf("%w: %s=%q", ErrBadField, key, value)
 	}
 

@@ -106,15 +106,16 @@ const (
 )
 
 const (
-	FieldSeedlistMaxCount = "maxcount"
-	FieldSeedlistNode     = "node"
-	FieldSeedlistMe       = "me"
-	FieldSeedlistMy       = "my"
-	FieldSeedlistID       = "id"
-	FieldSeedlistName     = "name"
-	FieldSeedlistAddress  = "address"
-	FieldSeedlistCallback = "callback"
-	FieldSeedlistPeerName = "peername"
+	FieldSeedlistMaxCount   = "maxcount"
+	FieldSeedlistMinVersion = "minversion"
+	FieldSeedlistNode       = "node"
+	FieldSeedlistMe         = "me"
+	FieldSeedlistMy         = "my"
+	FieldSeedlistID         = "id"
+	FieldSeedlistName       = "name"
+	FieldSeedlistAddress    = "address"
+	FieldSeedlistCallback   = "callback"
+	FieldSeedlistPeerName   = "peername"
 )
 
 const (

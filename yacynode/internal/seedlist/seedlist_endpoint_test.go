@@ -65,6 +65,19 @@ func seed(tb interface {
 	}
 }
 
+func versionedSeed(tb interface {
+	Helper()
+	Fatalf(string, ...any)
+}, word, name, host, version string,
+) yacymodel.Seed {
+	tb.Helper()
+
+	seed := seed(tb, word, name, host)
+	seed.Version = yacymodel.Some(yacymodel.YaCyVersion(version))
+
+	return seed
+}
+
 func seedWithIPv6(tb interface {
 	Helper()
 	Fatalf(string, ...any)
@@ -265,6 +278,41 @@ func TestSeedlistNegativeMaxCountReturnsNoSeeds(t *testing.T) {
 
 	if resp.Body != "" {
 		t.Fatalf("body = %q, want empty", resp.Body)
+	}
+}
+
+func TestSeedlistFiltersByMinimumVersion(t *testing.T) {
+	malformed := seed(t, "badversion", "badversion-peer", "192.0.2.14")
+	malformed.Version = yacymodel.Some(yacymodel.YaCyVersion("current"))
+	endpoint := endpoint{
+		status: seedStatus{
+			seed: versionedSeed(t, "self", "self-peer", "192.0.2.10", "1.82"),
+		},
+		reachability: seedReachability{seeds: []yacymodel.Seed{
+			versionedSeed(t, "alpha", "alpha-peer", "192.0.2.11", "1.83"),
+			versionedSeed(t, "beta", "beta-peer", "192.0.2.12", "1.91"),
+			seed(t, "missing", "missing-peer", "192.0.2.13"),
+			malformed,
+		}},
+	}
+
+	resp, err := endpoint.ServeHTML(
+		t.Context(),
+		yacyproto.SeedlistRequest{
+			IncludeSelf: true,
+			MinVersion:  yacymodel.Some(1.85),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seeds := responseLines(t, resp.Body)
+	if got := len(seeds); got != 1 {
+		t.Fatalf("seed count = %d, want 1", got)
+	}
+	if seeds[0].Hash != yacymodel.WordHash("beta") {
+		t.Fatalf("seed = %q, want beta", seeds[0].Hash)
 	}
 }
 

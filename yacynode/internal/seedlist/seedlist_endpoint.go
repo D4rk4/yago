@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/D4rk4/yago/yacymodel"
@@ -75,6 +76,7 @@ func (e endpoint) seeds(ctx context.Context, req yacyproto.SeedlistRequest) []ya
 	candidates = filterByID(candidates, req.ID)
 	candidates = filterByName(candidates, req.Name)
 	candidates = filterByName(candidates, req.PeerName)
+	candidates = filterByMinVersion(candidates, req.MinVersion)
 
 	return limitSeeds(candidates, req.MaxCount)
 }
@@ -139,6 +141,36 @@ func filterAddressed(seeds []yacymodel.Seed) []yacymodel.Seed {
 	}
 
 	return filtered
+}
+
+func filterByMinVersion(
+	seeds []yacymodel.Seed,
+	minVersion yacymodel.Optional[float64],
+) []yacymodel.Seed {
+	floor, ok := minVersion.Get()
+	if !ok || floor <= 0 {
+		return seeds
+	}
+
+	filtered := seeds[:0]
+	for _, seed := range seeds {
+		if seedVersionAtLeast(seed, floor) {
+			filtered = append(filtered, seed)
+		}
+	}
+
+	return filtered
+}
+
+func seedVersionAtLeast(seed yacymodel.Seed, floor float64) bool {
+	version, ok := seed.Version.Get()
+	if !ok {
+		return false
+	}
+
+	value, err := strconv.ParseFloat(version.String(), 64)
+
+	return err == nil && value >= floor
 }
 
 func seedNameMatches(seed yacymodel.Seed, name string) bool {

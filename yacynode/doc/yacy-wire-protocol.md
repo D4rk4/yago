@@ -8,6 +8,9 @@ XML when original YaCy uses those formats.
 The bootstrap seed-list endpoints are exceptions: `/yacy/seedlist.html`
 returns plain YaCy seed lines, one per CRLF-terminated line, while
 `/yacy/seedlist.json` and `/yacy/seedlist.xml` return clear-text peer maps.
+The seed-list request supports YaCy filters for count, peer type, self
+inclusion, own seed selection, peer hash, peer name, address-only output,
+JSONP callback, and minimum peer version.
 Seed import accepts the documented signed `UTC` offset form and the timestamp
 form observed in current freeworld seedlists, preserving whichever value the
 remote seed carries.
