@@ -61,6 +61,10 @@ A YaCy node originates DHT transfer only when all of these are true:
 `Switchboard.dhtShallTransfer` logs the blocking reason at `FINE`; default
 `INFO` logging hides it.
 
+The Go gate evaluator keeps the same sender-side decision as named gate results
+with stable reason text. Runtime distribution remains disabled until the
+scheduler, retry policy, metrics, and deletion semantics are wired.
+
 ## Sender-side transfer shape
 
 YaCy sends an index handoff in two phases. The sender posts RWI rows to
