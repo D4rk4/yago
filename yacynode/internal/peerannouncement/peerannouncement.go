@@ -25,12 +25,18 @@ type Observer interface {
 	ObservePeerProbeFailure()
 }
 
+type PeerNews interface {
+	RotateSeedNews(ctx context.Context)
+	AcceptNewsAttachment(ctx context.Context, encoded string)
+}
+
 type Config struct {
 	Client         *http.Client
 	NetworkName    string
 	Interval       time.Duration
 	GreetsPerCycle int
 	Observer       Observer
+	News           PeerNews
 }
 
 func New(
@@ -47,5 +53,6 @@ func New(
 		roster:         roster,
 		greeter:        newHTTPPeerGreeter(cfg.Client, cfg.NetworkName),
 		observer:       cfg.Observer,
+		news:           cfg.News,
 	}
 }

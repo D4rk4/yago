@@ -12,28 +12,22 @@ import (
 const msgCountUnavailable = "count unavailable for self seed"
 
 type nodeReport struct {
-	id    nodeidentity.Identity
-	base  yacymodel.Seed
-	now   func() time.Time
-	rwi   RWICounter
-	urls  URLCounter
-	peers KnownPeerCounter
+	id      nodeidentity.Identity
+	base    yacymodel.Seed
+	now     func() time.Time
+	sources ReportSources
 }
 
 func newReport(
 	id nodeidentity.Identity,
 	now func() time.Time,
-	rwi RWICounter,
-	urls URLCounter,
-	peers KnownPeerCounter,
+	sources ReportSources,
 ) nodeReport {
 	return nodeReport{
-		id:    id,
-		base:  baseSeed(id),
-		now:   now,
-		rwi:   rwi,
-		urls:  urls,
-		peers: peers,
+		id:      id,
+		base:    baseSeed(id),
+		now:     now,
+		sources: sources,
 	}
 }
 
@@ -51,9 +45,10 @@ func (r nodeReport) SelfSeed(ctx context.Context) yacymodel.Seed {
 	seed.Uptime = yacymodel.Some(r.id.Uptime(now))
 	seed.UTC = yacymodel.Some(yacymodel.SeedUTCOffsetFromTime(now))
 	seed.LastSeen = yacymodel.Some(yacymodel.NewSeedLastSeenUTC(now))
-	seed.RWICount = yacymodel.Some(countOrZero(ctx, r.rwi.RWICount))
-	seed.URLCount = yacymodel.Some(countOrZero(ctx, r.urls.Count))
-	seed.KnownSeedCount = yacymodel.Some(r.peers.KnownPeerCount(ctx))
+	seed.RWICount = yacymodel.Some(countOrZero(ctx, r.sources.RWI.RWICount))
+	seed.URLCount = yacymodel.Some(countOrZero(ctx, r.sources.URLs.Count))
+	seed.KnownSeedCount = yacymodel.Some(r.sources.Peers.KnownPeerCount(ctx))
+	seed.News = yacymodel.Some(r.sources.News.SeedNews(ctx))
 	seed.NoticedURLCount = yacymodel.Some(0)
 	seed.OfferedURLCount = yacymodel.Some(0)
 	seed.ConnectsPerHour = yacymodel.Some(0)

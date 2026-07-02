@@ -33,6 +33,7 @@ type Seed struct {
 	IndexingSpeed    Optional[int]
 	RequestSpeed     Optional[int]
 	UplinkSpeed      Optional[int]
+	News             Optional[string]
 	customProperties map[string]string
 }
 

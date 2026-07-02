@@ -306,9 +306,11 @@ func TestMountHelloServesRoute(t *testing.T) {
 	MountHello(
 		httpguard.NewWireRouter(mux, helloGate()),
 		identity,
-		status,
-		&stubReachability{},
-		http.DefaultClient,
+		HelloExchange{
+			Status:       status,
+			Reachability: &stubReachability{},
+			Client:       http.DefaultClient,
+		},
 	)
 	req := yacyproto.HelloRequest{
 		NetworkName: "otherworld",

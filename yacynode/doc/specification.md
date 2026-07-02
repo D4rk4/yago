@@ -76,6 +76,7 @@ yago-admin-ui
 * The node SHALL allow operators to configure a proxy for outbound connections.
 * The node SHALL be reachable through one stable public endpoint.
 * The node SHALL support peer discovery and peer liveness exchange.
+* The node SHALL rotate its next peer news publication into the advertised seed news attribute once per announcement cycle and SHALL accept valid same-network news attachments from arriving peer seeds into its incoming news queue.
 * The node SHALL reject peer-liveness callers that present this node's peer hash or advertised endpoint as their own identity.
 * The node SHALL announce in peer-liveness responses only its own seed and peers obtained from
   configured seedlists, and SHALL NOT redistribute peers self-reported in inbound requests.

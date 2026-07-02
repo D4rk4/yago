@@ -21,6 +21,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/metrics"
 	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yacynode/internal/peermessage"
+	"github.com/D4rk4/yago/yacynode/internal/peernews"
 	"github.com/D4rk4/yago/yacynode/internal/peerroster"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
 	"github.com/D4rk4/yago/yacynode/internal/searchindex"
@@ -112,6 +113,10 @@ func (fakeRoster) ReachablePeers(context.Context) []yacymodel.Seed { return nil 
 func (fakeRoster) KnownPeerCount(context.Context) int { return 0 }
 
 func (fakeRoster) ReachablePeerCount(context.Context) int { return 0 }
+
+type fakeSeedNews struct{}
+
+func (fakeSeedNews) SeedNews(context.Context) string { return "" }
 
 type reachableRoster struct {
 	peers []yacymodel.Seed
@@ -210,12 +215,14 @@ func restoreAssemblySeams(t *testing.T) {
 	t.Helper()
 	oldOpenRuntimeNodeStorage := openRuntimeNodeStorage
 	oldOpenRuntimePeerBirthDate := openRuntimePeerBirthDate
+	oldOpenRuntimePeerNews := openRuntimePeerNews
 	oldAssembleRuntimePeerExchange := assembleRuntimePeerExchange
 	oldBuildRuntimeDHTOutbound := buildRuntimeDHTOutbound
 	oldBuildRuntimeCrawl := buildRuntimeCrawl
 	t.Cleanup(func() {
 		openRuntimeNodeStorage = oldOpenRuntimeNodeStorage
 		openRuntimePeerBirthDate = oldOpenRuntimePeerBirthDate
+		openRuntimePeerNews = oldOpenRuntimePeerNews
 		assembleRuntimePeerExchange = oldAssembleRuntimePeerExchange
 		buildRuntimeDHTOutbound = oldBuildRuntimeDHTOutbound
 		buildRuntimeCrawl = oldBuildRuntimeCrawl
@@ -829,6 +836,27 @@ func TestAssembleNodeReturnsPeerBirthDateError(t *testing.T) {
 	restoreAssemblySeams(t)
 	openRuntimePeerBirthDate = func(context.Context, *vault.Vault, func() time.Time) (time.Time, error) {
 		return time.Time{}, sentinel
+	}
+	_, err := assembleNode(
+		context.Background(),
+		testConfig(t),
+		openTestVault(t),
+		http.DefaultClient,
+		nodeTelemetry{
+			dhtOutbound: metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
+			dhtInbound:  metrics.NewDHTInboundMetrics(prometheus.NewRegistry()),
+		},
+	)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("assemble error = %v, want %v", err, sentinel)
+	}
+}
+
+func TestAssembleNodeReturnsPeerNewsError(t *testing.T) {
+	sentinel := errors.New("news failed")
+	restoreAssemblySeams(t)
+	openRuntimePeerNews = func(*vault.Vault, func() time.Time) (*peernews.Pool, error) {
+		return nil, sentinel
 	}
 	_, err := assembleNode(
 		context.Background(),

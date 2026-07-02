@@ -63,11 +63,12 @@ func (cursorCodec) Decode(raw []byte) (uint64, error) {
 }
 
 type Pool struct {
-	queue  *vault.Collection[string]
-	known  *vault.Collection[string]
-	cursor *vault.Collection[uint64]
-	vault  *vault.Vault
-	now    func() time.Time
+	queue      *vault.Collection[string]
+	known      *vault.Collection[string]
+	cursor     *vault.Collection[uint64]
+	vault      *vault.Vault
+	now        func() time.Time
+	attachment seedAttachment
 }
 
 func Open(v *vault.Vault, now func() time.Time) (*Pool, error) {

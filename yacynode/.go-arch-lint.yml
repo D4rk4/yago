@@ -450,6 +450,7 @@ deps:
       - metrics
       - nodeidentity
       - nodestatus
+      - peernews
       - urlmetastaleness
       - urlreferences
       - crawldispatch

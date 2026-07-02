@@ -35,6 +35,7 @@ type announcer struct {
 	roster         peerRoster
 	greeter        peerGreeter
 	observer       Observer
+	news           PeerNews
 }
 
 func (a *announcer) Run(ctx context.Context) {
@@ -55,6 +56,9 @@ func (a *announcer) Run(ctx context.Context) {
 }
 
 func (a *announcer) Announce(ctx context.Context) {
+	if a.news != nil {
+		a.news.RotateSeedNews(ctx)
+	}
 	self := a.self.SelfSeed(ctx)
 	targets := a.roster.FreshestPeers(ctx, a.greetsPerCycle)
 
@@ -102,5 +106,17 @@ func (a *announcer) Announce(ctx context.Context) {
 
 		a.roster.ConfirmReachable(ctx, target.Hash)
 		a.roster.Discover(ctx, result.Known...)
+		a.acceptGreetedNews(ctx, result.Known)
+	}
+}
+
+func (a *announcer) acceptGreetedNews(ctx context.Context, seeds []yacymodel.Seed) {
+	if a.news == nil {
+		return
+	}
+	for _, seed := range seeds {
+		if attachment := seed.Properties()[yacymodel.SeedNews]; attachment != "" {
+			a.news.AcceptNewsAttachment(ctx, attachment)
+		}
 	}
 }

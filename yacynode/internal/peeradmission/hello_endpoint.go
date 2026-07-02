@@ -22,7 +22,7 @@ type callerReachabilityProbe interface {
 	) bool
 }
 
-type reachableRoster interface {
+type ReachableRoster interface {
 	ReachablePeers(ctx context.Context) []yacymodel.Seed
 	ConfirmReachable(ctx context.Context, peer yacymodel.Hash)
 }
@@ -33,7 +33,8 @@ type helloEndpoint struct {
 	identity     nodeidentity.Identity
 	status       RuntimeStatus
 	probe        callerReachabilityProbe
-	reachability reachableRoster
+	reachability ReachableRoster
+	news         NewsIntake
 }
 
 func (e helloEndpoint) Serve(
@@ -48,11 +49,25 @@ func (e helloEndpoint) Serve(
 	if e.identity.NetworkMatches(req.NetworkName) {
 		resp.YourType = e.classifyCaller(ctx, req.Seed)
 		resp.Seeds = append(resp.Seeds, e.knownPeers(ctx, req.Count)...)
+		e.acceptCallerNews(ctx, req.Seed, resp.YourType)
 	}
 
 	slog.DebugContext(ctx, "hello served", slog.Int("seedCount", len(resp.Seeds)))
 
 	return resp, nil
+}
+
+func (e helloEndpoint) acceptCallerNews(
+	ctx context.Context,
+	caller yacymodel.Seed,
+	callerType yacymodel.PeerType,
+) {
+	if e.news == nil || callerType == yacymodel.PeerVirgin {
+		return
+	}
+	if attachment := caller.Properties()[yacymodel.SeedNews]; attachment != "" {
+		e.news.AcceptNewsAttachment(ctx, attachment)
+	}
 }
 
 func (e helloEndpoint) classifyCaller(

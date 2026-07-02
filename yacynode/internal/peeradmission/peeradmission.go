@@ -20,12 +20,21 @@ type RuntimeStatus interface {
 	SelfSeed(ctx context.Context) yacymodel.Seed
 }
 
+type NewsIntake interface {
+	AcceptNewsAttachment(ctx context.Context, encoded string)
+}
+
+type HelloExchange struct {
+	Status       RuntimeStatus
+	Reachability ReachableRoster
+	Client       *http.Client
+	News         NewsIntake
+}
+
 func MountHello(
 	router httpguard.WireRouter,
 	identity nodeidentity.Identity,
-	status RuntimeStatus,
-	reachability reachableRoster,
-	client *http.Client,
+	exchange HelloExchange,
 ) {
 	httpguard.Mount(
 		router,
@@ -34,9 +43,10 @@ func MountHello(
 		yacyproto.ParseHelloRequest,
 		helloEndpoint{
 			identity:     identity,
-			status:       status,
-			probe:        newCallerBackPing(client),
-			reachability: reachability,
+			status:       exchange.Status,
+			probe:        newCallerBackPing(exchange.Client),
+			reachability: exchange.Reachability,
+			news:         exchange.News,
 		}.Serve,
 	)
 }

@@ -34,13 +34,19 @@ type KnownPeerCounter interface {
 	KnownPeerCount(ctx context.Context) int
 }
 
-func NewReport(
-	id nodeidentity.Identity,
-	rwi RWICounter,
-	urls URLCounter,
-	peers KnownPeerCounter,
-) Report {
-	return newReport(id, time.Now, rwi, urls, peers)
+type SeedNewsSource interface {
+	SeedNews(ctx context.Context) string
+}
+
+type ReportSources struct {
+	RWI   RWICounter
+	URLs  URLCounter
+	Peers KnownPeerCounter
+	News  SeedNewsSource
+}
+
+func NewReport(id nodeidentity.Identity, sources ReportSources) Report {
+	return newReport(id, time.Now, sources)
 }
 
 func MountQuery(

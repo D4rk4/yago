@@ -132,12 +132,12 @@ func startDHTSenderRuntime(
 	storeSenderDHTRows(t, ctx, senderStorage, fixture.word, fixture.urlHash)
 
 	receiverSeed := dhtOutboundServerSeed(t, fixture.receiverHash, fixture.receiverServer)
-	report := nodestatus.NewReport(
-		nodeIdentity(senderConfig),
-		senderStorage.postings,
-		senderStorage.urlDirectory,
-		fakeRoster{},
-	)
+	report := nodestatus.NewReport(nodeIdentity(senderConfig), nodestatus.ReportSources{
+		RWI:   senderStorage.postings,
+		URLs:  senderStorage.urlDirectory,
+		Peers: fakeRoster{},
+		News:  fakeSeedNews{},
+	})
 	process := buildDHTOutboundRuntime(dhtOutboundRuntimeAssembly{
 		ctx:         ctx,
 		config:      senderConfig,
@@ -270,7 +270,12 @@ func startDHTReceiverNode(
 	}
 
 	identity := nodeIdentity(config)
-	report := nodestatus.NewReport(identity, storage.postings, storage.urlDirectory, fakeRoster{})
+	report := nodestatus.NewReport(identity, nodestatus.ReportSources{
+		RWI:   storage.postings,
+		URLs:  storage.urlDirectory,
+		Peers: fakeRoster{},
+		News:  fakeSeedNews{},
+	})
 	guard := httpguard.NewRequestGuard(
 		httpguard.DefaultMaxBodyBytes,
 		httpguard.DefaultRequestTimeout,

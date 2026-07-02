@@ -16,6 +16,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/nodestatus"
 	"github.com/D4rk4/yago/yacynode/internal/peerannouncement"
 	"github.com/D4rk4/yago/yacynode/internal/peerbirth"
+	"github.com/D4rk4/yago/yacynode/internal/peernews"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
 	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 	"github.com/D4rk4/yago/yacynode/internal/vault"
@@ -40,6 +41,7 @@ type nodeTelemetry struct {
 var (
 	openRuntimeNodeStorage      = openNodeStorage
 	openRuntimePeerBirthDate    = peerbirth.Open
+	openRuntimePeerNews         = peernews.Open
 	assembleRuntimePeerExchange = func(exchange peerExchange) (peerExchangeRuntime, error) {
 		return exchange.assemble()
 	}
@@ -76,12 +78,12 @@ func assembleNode(
 		return node{}, err
 	}
 
-	roster, err := openObservedPeerRoster(vault, telemetry.peer)
+	roster, news, err := openPeerRosterAndNews(vault, telemetry.peer)
 	if err != nil {
 		return node{}, err
 	}
 
-	report := nodestatus.NewReport(identity, storage.postings, storage.urlDirectory, roster)
+	report := newNodeStatusReport(identity, storage, roster, news)
 	storage = observeDHTInboundStorage(storage, telemetry.dhtInbound)
 
 	mux := http.NewServeMux()
@@ -89,6 +91,7 @@ func assembleNode(
 	router := httpguard.NewWireRouter(mux, newRuntimeWireGate(config, report))
 
 	mountNodeProtocol(router, identity, storage)
+	mountNodeCrawlCompatibility(router, identity, storage)
 
 	exchange, err := assembleRuntimePeerExchange(peerExchange{
 		router:   router,
@@ -100,6 +103,7 @@ func assembleNode(
 		peer:     telemetry.peer,
 		host:     storedDocumentHostLinks{documents: storage.storedDocuments()},
 		roster:   roster,
+		news:     news,
 	})
 	if err != nil {
 		return node{}, err
@@ -112,8 +116,6 @@ func assembleNode(
 		client:       client,
 		searchAPIKey: config.SearchAPIKey,
 	})
-
-	mountNodeCrawlCompatibility(router, identity, storage)
 
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
 		ctx:         ctx,

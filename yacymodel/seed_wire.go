@@ -24,6 +24,7 @@ const (
 	SeedLastSeen  = "LastSeen"
 	SeedRWICount  = "ICount"
 	SeedURLCount  = "LCount"
+	SeedNews      = "news"
 )
 
 func ParseSeed(ctx context.Context, s string) (Seed, error) {
@@ -161,6 +162,7 @@ func (s Seed) Properties() map[string]string {
 	putInt(fields, SeedUptime, s.Uptime)
 	putInt(fields, SeedRWICount, s.RWICount)
 	putInt(fields, SeedURLCount, s.URLCount)
+	putText(fields, SeedNews, s.News)
 	putSeedStatistics(fields, s)
 	for key, value := range s.customProperties {
 		if _, ok := fields[key]; !ok {
