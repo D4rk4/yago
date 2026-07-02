@@ -8,6 +8,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/peerroster"
 	"github.com/D4rk4/yago/yacynode/internal/searchcore"
 	"github.com/D4rk4/yago/yacynode/internal/searchremote"
+	"github.com/D4rk4/yago/yacynode/internal/tavilyapi"
 	"github.com/D4rk4/yago/yacynode/internal/yacysearch"
 )
 
@@ -38,8 +39,7 @@ func mountNodePublicSearch(
 		PartitionExponent:  assembly.dht.PartitionExponent,
 		RandomTargetIndex:  assembly.dhtSearchTargetIndex,
 	})
-	yacysearch.Mount(
-		mux,
-		searchcore.NewFederatedSearcher(local, remote),
-	)
+	search := searchcore.NewFederatedSearcher(local, remote)
+	yacysearch.Mount(mux, search)
+	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory)
 }

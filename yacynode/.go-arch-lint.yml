@@ -66,6 +66,8 @@ components:
     in: internal/searchindex/**
   searchremote:
     in: internal/searchremote/**
+  tavilyapi:
+    in: internal/tavilyapi/**
   yacysearch:
     in: internal/yacysearch/**
   nodestatus:
@@ -319,6 +321,11 @@ deps:
     canUse:
       - yacymodel
       - yacyproto
+  tavilyapi:
+    mayDependOn:
+      - tavilyapi
+      - searchcore
+      - documentstore
   yacysearch:
     mayDependOn:
       - yacysearch
@@ -419,6 +426,7 @@ deps:
       - searchcore
       - searchindex
       - searchremote
+      - tavilyapi
       - yacysearch
     canUse:
       - yacycrawlcontract

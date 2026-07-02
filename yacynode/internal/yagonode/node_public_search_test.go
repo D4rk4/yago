@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yacymodel"
@@ -82,6 +83,18 @@ func TestNodePublicSearchMountsYaCySearchSurfaces(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("%s: status = %d, body=%s", path, rec.Code, rec.Body.String())
 		}
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/search",
+		strings.NewReader(`{"query":"absent","max_results":1}`),
+	)
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/search: status = %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
