@@ -77,6 +77,7 @@ func run() error {
 	evictionMetrics := metrics.NewEvictionMetrics(endpoints.Registry())
 	dhtOutboundMetrics := metrics.NewDHTOutboundMetrics(endpoints.Registry())
 	dhtInboundMetrics := metrics.NewDHTInboundMetrics(endpoints.Registry())
+	peerMetrics := metrics.NewPeerMetrics(endpoints.Registry())
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -89,6 +90,7 @@ func run() error {
 		nodeTelemetry{
 			dhtOutbound: dhtOutboundMetrics,
 			dhtInbound:  dhtInboundMetrics,
+			peer:        peerMetrics,
 		},
 	)
 	if err != nil {

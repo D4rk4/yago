@@ -21,11 +21,16 @@ type Announcer interface {
 	Run(ctx context.Context)
 }
 
+type Observer interface {
+	ObservePeerProbeFailure()
+}
+
 type Config struct {
 	Client         *http.Client
 	NetworkName    string
 	Interval       time.Duration
 	GreetsPerCycle int
+	Observer       Observer
 }
 
 func New(
@@ -41,5 +46,6 @@ func New(
 		seeds:          seeds,
 		roster:         roster,
 		greeter:        newHTTPPeerGreeter(cfg.Client, cfg.NetworkName),
+		observer:       cfg.Observer,
 	}
 }

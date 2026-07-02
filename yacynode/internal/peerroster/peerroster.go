@@ -21,6 +21,8 @@ type Roster interface {
 	ConfirmUnreachable(ctx context.Context, peer yacymodel.Hash)
 	FreshestPeers(ctx context.Context, limit int) []yacymodel.Seed
 	ReachablePeers(ctx context.Context) []yacymodel.Seed
+	KnownPeerCount(ctx context.Context) int
+	ReachablePeerCount(ctx context.Context) int
 }
 
 var _ Roster = (*roster)(nil)

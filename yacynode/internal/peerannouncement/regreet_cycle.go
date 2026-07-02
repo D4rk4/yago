@@ -34,6 +34,7 @@ type announcer struct {
 	seeds          bootstrap.SeedSource
 	roster         peerRoster
 	greeter        peerGreeter
+	observer       Observer
 }
 
 func (a *announcer) Run(ctx context.Context) {
@@ -75,6 +76,9 @@ func (a *announcer) Announce(ctx context.Context) {
 
 		result, err := a.greeter.Greet(ctx, endpoint, self, announceHelloPeerCount)
 		if err != nil {
+			if a.observer != nil {
+				a.observer.ObservePeerProbeFailure()
+			}
 			a.roster.ConfirmUnreachable(ctx, target.Hash)
 			slog.WarnContext(
 				ctx,

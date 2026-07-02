@@ -14,6 +14,14 @@ type SeedSource interface {
 	Fetch(ctx context.Context) []yacymodel.Seed
 }
 
+type SeedImportObserver interface {
+	ObserveSeedlistImport(seedCount int)
+}
+
 func New(client *http.Client, urls []string) SeedSource {
-	return &seedlists{fetcher: newHTTPSeedlistFetcher(client), urls: urls}
+	return NewObserved(client, urls, nil)
+}
+
+func NewObserved(client *http.Client, urls []string, observer SeedImportObserver) SeedSource {
+	return &seedlists{fetcher: newHTTPSeedlistFetcher(client), urls: urls, observer: observer}
 }

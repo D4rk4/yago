@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -89,6 +90,14 @@ func (s *stubSeedSource) Fetch(context.Context) []yacymodel.Seed {
 	return s.seeds
 }
 
+type recordingObserver struct {
+	failures atomic.Int32
+}
+
+func (o *recordingObserver) ObservePeerProbeFailure() {
+	o.failures.Add(1)
+}
+
 func TestAnnounceRecordsReachableAndGossip(t *testing.T) {
 	ctx := context.Background()
 	peer := callerSeed(t, "peer", "203.0.113.1")
@@ -142,12 +151,14 @@ func TestAnnounceMarksFailedGreetUnreachable(t *testing.T) {
 	ctx := context.Background()
 	peer := callerSeed(t, "peer", "203.0.113.1")
 
+	observer := &recordingObserver{}
 	roster := &stubRoster{rounds: [][]yacymodel.Seed{{peer}}}
 	a := &announcer{
-		self:    stubSelf{seed: callerSeed(t, "self", "203.0.113.9")},
-		seeds:   &stubSeedSource{},
-		roster:  roster,
-		greeter: &stubGreeter{err: errors.New("boom")},
+		self:     stubSelf{seed: callerSeed(t, "self", "203.0.113.9")},
+		seeds:    &stubSeedSource{},
+		roster:   roster,
+		greeter:  &stubGreeter{err: errors.New("boom")},
+		observer: observer,
 	}
 
 	a.Announce(ctx)
@@ -157,6 +168,9 @@ func TestAnnounceMarksFailedGreetUnreachable(t *testing.T) {
 	}
 	if len(roster.reachable) != 0 {
 		t.Fatalf("reachable = %v, want none on failure", roster.reachable)
+	}
+	if observer.failures.Load() != 1 {
+		t.Fatalf("probe failures = %d, want 1", observer.failures.Load())
 	}
 }
 
@@ -221,6 +235,20 @@ func TestNewReturnsAnnouncer(t *testing.T) {
 
 	if _, ok := announced.(*announcer); !ok {
 		t.Fatalf("New returned %T, want *announcer", announced)
+	}
+}
+
+func TestNewDefaultsObserver(t *testing.T) {
+	announced := New(
+		Config{},
+		stubSelf{seed: callerSeed(t, "self", "203.0.113.9")},
+		&stubSeedSource{},
+		&stubRoster{},
+	)
+
+	got := announced.(*announcer)
+	if got.observer != nil {
+		t.Fatalf("observer = %T, want nil", got.observer)
 	}
 }
 

@@ -8,8 +8,9 @@ import (
 )
 
 type seedlists struct {
-	fetcher httpSeedlistFetcher
-	urls    []string
+	fetcher  httpSeedlistFetcher
+	urls     []string
+	observer SeedImportObserver
 }
 
 var _ SeedSource = (*seedlists)(nil)
@@ -27,6 +28,9 @@ func (s *seedlists) Fetch(ctx context.Context) []yacymodel.Seed {
 			)
 
 			continue
+		}
+		if s.observer != nil {
+			s.observer.ObserveSeedlistImport(len(fetched))
 		}
 		seeds = append(seeds, fetched...)
 	}

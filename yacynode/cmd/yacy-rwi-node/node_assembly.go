@@ -31,6 +31,7 @@ type node struct {
 type nodeTelemetry struct {
 	dhtOutbound dhtexchange.DistributionObserver
 	dhtInbound  *metrics.DHTInboundMetrics
+	peer        *metrics.PeerMetrics
 }
 
 var (
@@ -94,6 +95,7 @@ func assembleNode(
 		config:   config,
 		vault:    vault,
 		client:   client,
+		peer:     telemetry.peer,
 	})
 	if err != nil {
 		return node{}, err

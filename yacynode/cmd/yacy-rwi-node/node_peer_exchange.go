@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/bootstrap"
 	"github.com/D4rk4/yago/yacynode/internal/hostlinks"
 	"github.com/D4rk4/yago/yacynode/internal/httpguard"
+	"github.com/D4rk4/yago/yacynode/internal/metrics"
 	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yacynode/internal/nodestatus"
 	"github.com/D4rk4/yago/yacynode/internal/peeradmission"
@@ -27,6 +29,7 @@ type peerExchange struct {
 	config   nodeConfig
 	vault    *vault.Vault
 	client   *http.Client
+	peer     *metrics.PeerMetrics
 }
 
 type peerExchangeRuntime struct {
@@ -44,6 +47,15 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 	if err != nil {
 		return peerExchangeRuntime{}, fmt.Errorf("open peer roster: %w", err)
 	}
+	var rosterObserver peerMetricsObserver
+	var announceObserver peerannouncement.Observer
+	var seedObserver bootstrap.SeedImportObserver
+	if p.peer != nil {
+		rosterObserver = p.peer
+		announceObserver = p.peer
+		seedObserver = p.peer
+	}
+	roster = observePeerRoster(context.Background(), roster, rosterObserver)
 	mailbox, err := openPeerMailbox(p.vault, time.Now)
 	if err != nil {
 		return peerExchangeRuntime{}, fmt.Errorf("open peer message mailbox: %w", err)
@@ -69,9 +81,10 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 				NetworkName:    p.config.NetworkName,
 				Interval:       p.config.AnnounceInterval,
 				GreetsPerCycle: p.config.GreetsPerCycle,
+				Observer:       announceObserver,
 			},
 			p.report,
-			bootstrap.New(p.client, p.config.SeedlistURLs),
+			bootstrap.NewObserved(p.client, p.config.SeedlistURLs, seedObserver),
 			roster,
 		),
 		roster: roster,

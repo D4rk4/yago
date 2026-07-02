@@ -103,6 +103,10 @@ func (fakeRoster) FreshestPeers(context.Context, int) []yacymodel.Seed { return 
 
 func (fakeRoster) ReachablePeers(context.Context) []yacymodel.Seed { return nil }
 
+func (fakeRoster) KnownPeerCount(context.Context) int { return 0 }
+
+func (fakeRoster) ReachablePeerCount(context.Context) int { return 0 }
+
 type reachableRoster struct {
 	peers []yacymodel.Seed
 }
@@ -116,6 +120,10 @@ func (r reachableRoster) ConfirmUnreachable(context.Context, yacymodel.Hash) {}
 func (r reachableRoster) FreshestPeers(context.Context, int) []yacymodel.Seed { return r.peers }
 
 func (r reachableRoster) ReachablePeers(context.Context) []yacymodel.Seed { return r.peers }
+
+func (r reachableRoster) KnownPeerCount(context.Context) int { return len(r.peers) }
+
+func (r reachableRoster) ReachablePeerCount(context.Context) int { return len(r.peers) }
 
 type capacityProbe struct {
 	atCapacity bool
@@ -749,7 +757,10 @@ func TestPeerExchangeReturnsOpenErrors(t *testing.T) {
 		openPeerMailbox = func(*vault.Vault, func() time.Time) (*peermessage.Mailbox, error) {
 			return nil, sentinel
 		}
-		_, err := (peerExchange{vault: openTestVault(t)}).assemble()
+		_, err := (peerExchange{
+			vault: openTestVault(t),
+			peer:  metrics.NewPeerMetrics(prometheus.NewRegistry()),
+		}).assemble()
 		if !errors.Is(err, sentinel) {
 			t.Fatalf("assemble error = %v, want %v", err, sentinel)
 		}

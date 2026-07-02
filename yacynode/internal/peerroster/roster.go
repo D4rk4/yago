@@ -151,6 +151,17 @@ func (r *roster) ReachablePeers(_ context.Context) []yacymodel.Seed {
 	return peers
 }
 
+func (r *roster) KnownPeerCount(ctx context.Context) int {
+	return r.peerCount(ctx)
+}
+
+func (r *roster) ReachablePeerCount(_ context.Context) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return len(r.active)
+}
+
 // Future: a recency index would replace this scan with a bounded range read.
 func (r *roster) FreshestPeers(ctx context.Context, limit int) []yacymodel.Seed {
 	targets, active := r.activeSnapshot()

@@ -40,6 +40,40 @@ func TestReachablePromotesAndIsServed(t *testing.T) {
 	}
 }
 
+func TestPeerCountsFollowRosterState(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 8, 4)
+
+	first := seniorSeed(t, "first", "203.0.113.1", 8090)
+	second := seniorSeed(t, "second", "203.0.113.2", 8090)
+	roster.Discover(ctx, first, second)
+	if roster.KnownPeerCount(ctx) != 2 || roster.ReachablePeerCount(ctx) != 0 {
+		t.Fatalf(
+			"counts after discovery = %d/%d, want 2/0",
+			roster.KnownPeerCount(ctx),
+			roster.ReachablePeerCount(ctx),
+		)
+	}
+
+	roster.ConfirmReachable(ctx, first.Hash)
+	if roster.KnownPeerCount(ctx) != 2 || roster.ReachablePeerCount(ctx) != 1 {
+		t.Fatalf(
+			"counts after reachability = %d/%d, want 2/1",
+			roster.KnownPeerCount(ctx),
+			roster.ReachablePeerCount(ctx),
+		)
+	}
+
+	roster.ConfirmUnreachable(ctx, first.Hash)
+	if roster.KnownPeerCount(ctx) != 1 || roster.ReachablePeerCount(ctx) != 0 {
+		t.Fatalf(
+			"counts after unreachable = %d/%d, want 1/0",
+			roster.KnownPeerCount(ctx),
+			roster.ReachablePeerCount(ctx),
+		)
+	}
+}
+
 func TestReachableUnknownPeerIsNoop(t *testing.T) {
 	ctx := context.Background()
 	roster := openRoster(t, 8, 4)

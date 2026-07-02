@@ -51,6 +51,12 @@ For sender-side readiness, check the active network view, for example:
 /Network.xml?page=1&maxCount=1000
 ```
 
+The Go node exposes peer discovery metrics on the ops listener:
+`yacy_peer_known_total`, `yacy_peer_active_total`,
+`yacy_peer_probe_failures_total`, and `yacy_seedlist_imports_total`. The known
+and active series are gauges with the planned compatibility names; the failure
+and import series are counters.
+
 ---
 
 ## Sender-side DHT gates
