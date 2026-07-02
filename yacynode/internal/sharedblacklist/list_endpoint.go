@@ -2,7 +2,6 @@ package sharedblacklist
 
 import (
 	"context"
-	"strings"
 
 	"github.com/D4rk4/yago/yacynode/internal/httpguard"
 	"github.com/D4rk4/yago/yacyproto"
@@ -10,7 +9,6 @@ import (
 
 const (
 	listContentType = "text/plain; charset=UTF-8"
-	listLineBreak   = "\r\n"
 )
 
 type endpoint struct {
@@ -27,14 +25,6 @@ func (e endpoint) Serve(
 
 	return httpguard.RawResponse{
 		ContentType: listContentType,
-		Body:        encodeEntries(e.blacklists.Entries(ctx, req.Name)),
+		Body:        e.blacklists.SharedList(ctx, req.Name),
 	}, nil
-}
-
-func encodeEntries(entries []string) string {
-	if len(entries) == 0 {
-		return ""
-	}
-
-	return strings.Join(entries, listLineBreak) + listLineBreak
 }

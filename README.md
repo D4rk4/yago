@@ -32,8 +32,8 @@ The node currently targets these responsibilities:
 - bootstrap peers from configured YaCy seedlists, including seeds with either
   offset or timestamp `UTC` wire values;
 - answer YaCy shared blacklist export requests through `/yacy/list.html` with
-  an empty list unless shared blacklists are configured in a future storage
-  source;
+  entries from list files named in `YACY_DATA_DIR/SETTINGS/yacy.conf`
+  `BlackLists.Shared`;
 - answer YaCy peer profile export requests through `/yacy/profile.html` with
   properties from `YACY_DATA_DIR/SETTINGS/profile.txt` when that file exists;
 - answer YaCy host-link index requests through `/yacy/idx.json?object=host` with
@@ -114,7 +114,7 @@ Common node variables:
 | --- | --- | --- |
 | `YACY_PEER_ADDR` | `:8090` | YaCy peer protocol listener. |
 | `YACY_OPS_ADDR` | `:9090` | Ops listener for `/health`, `/metrics`, and node-side crawl dispatch. |
-| `YACY_DATA_DIR` | `./data` | Directory for persistent node storage and YaCy-compatible `SETTINGS/profile.txt`. |
+| `YACY_DATA_DIR` | `./data` | Directory for persistent node storage, YaCy-compatible `SETTINGS/profile.txt`, and shared blacklist files configured by `SETTINGS/yacy.conf`. |
 | `YACY_NETWORK_NAME` | `freeworld` | YaCy network name. |
 | `YACY_ADVERTISE_HOST` | empty | Public host advertised to peers. Required when seedlists are configured. |
 | `YACY_ADVERTISE_PORT` | peer listener port | Public port advertised to peers. |

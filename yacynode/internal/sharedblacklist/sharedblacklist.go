@@ -8,13 +8,13 @@ import (
 )
 
 type Blacklists interface {
-	Entries(ctx context.Context, name string) []string
+	SharedList(ctx context.Context, name string) string
 }
 
 type NoSharedBlacklists struct{}
 
-func (NoSharedBlacklists) Entries(context.Context, string) []string {
-	return nil
+func (NoSharedBlacklists) SharedList(context.Context, string) string {
+	return ""
 }
 
 func Mount(router httpguard.WireRouter, blacklists Blacklists) {

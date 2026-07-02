@@ -12,7 +12,8 @@ Seed import accepts the documented signed `UTC` offset form and the timestamp
 form observed in current freeworld seedlists, preserving whichever value the
 remote seed carries.
 The shared blacklist endpoint `/yacy/list.html` is also raw text and returns
-CRLF-terminated blacklist entries for `col=black`. The peer profile endpoint
+the `col=black` list files named by `YACY_DATA_DIR/SETTINGS/yacy.conf`
+`BlackLists.Shared`, read from `YACY_DATA_DIR/LISTS`. The peer profile endpoint
 `/yacy/profile.html` is raw text as well and returns CRLF-terminated `key=value`
 profile properties loaded from `YACY_DATA_DIR/SETTINGS/profile.txt` when present.
 The host-link endpoint `/yacy/idx.json?object=host` returns

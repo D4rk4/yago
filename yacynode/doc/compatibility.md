@@ -32,7 +32,7 @@ Status values:
 | Seed list JSON | `/yacy/seedlist.json` | GET, POST | implemented | Serves own and confirmed reachable seeds in JSON seed-list form. |
 | Seed list XML | `/yacy/seedlist.xml` | GET, POST | implemented | Serves own and confirmed reachable seeds in XML seed-list form. |
 | Host-link index | `/yacy/idx.json` | GET, POST | partial | Serves the host object shape with a bounded incoming host-link index inferred from stored URL metadata referrers. |
-| Shared blacklist export | `/yacy/list.html` | GET, POST | partial | Serves `col=black` with an empty source until shared blacklist storage is populated. |
+| Shared blacklist export | `/yacy/list.html` | GET, POST | partial | Serves `col=black` from files named in `YACY_DATA_DIR/SETTINGS/yacy.conf` `BlackLists.Shared`, under `YACY_DATA_DIR/LISTS`. |
 | Peer message inbox | `/yacy/message.html` | GET, POST | partial | Accepts permission checks and inbound message posts; attachments are not stored. |
 | Peer profile export | `/yacy/profile.html` | GET, POST | partial | Serves profile properties from `YACY_DATA_DIR/SETTINGS/profile.txt` when that YaCy-compatible file exists. |
 | Remote crawl URL feed | `/yacy/urls.xml` | GET, POST | partial | Serves URL-hash metadata feeds and safe empty remote-crawl feeds. |

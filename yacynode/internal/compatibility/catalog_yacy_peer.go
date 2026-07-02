@@ -107,9 +107,13 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:     yacyproto.PathList,
 		Methods:  methods(yacyproto.ListEndpointMethods),
 		State:    Partial,
-		Behavior: "Serves YaCy shared blacklist text shape for col=black with an empty source until shared blacklist storage is populated.",
-		Evidence: []string{"yacynode/internal/sharedblacklist/*_test.go", "yacyproto/list_test.go"},
-		Notes:    "Only col=black is implemented.",
+		Behavior: "Serves YaCy shared blacklist text shape for col=black from files named in YACY_DATA_DIR/SETTINGS/yacy.conf BlackLists.Shared under YACY_DATA_DIR/LISTS.",
+		Evidence: []string{
+			"yacynode/internal/sharedblacklist/*_test.go",
+			"yacynode/cmd/yacy-rwi-node/node_shared_blacklist_test.go",
+			"yacyproto/list_test.go",
+		},
+		Notes: "Only col=black is implemented.",
 	},
 	{
 		Name:     "Peer message inbox",
