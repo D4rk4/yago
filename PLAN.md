@@ -190,7 +190,7 @@ Implement and test these in stages:
 | `/yacy/seedlist.xml` | P1 | Peer bootstrap | XML shape for tools/UI compatibility. |
 | `/yacy/seedlist.json` | P1 | Peer bootstrap | JSON shape for tools/UI compatibility. |
 | `/yacy/profile.html` | P2 | Peer profile | Minimal public profile. |
-| `/yacy/message.html` | P3 | Peer messages | Optional; UI can mark unsupported until implemented. |
+| `/yacy/message.html` | P3 | Peer messages | Partial: permission checks and post storage are implemented; post-only body fields are ignored during permission checks; attachments remain unsupported. |
 | `/yacy/list.html` | P3 | Shared blacklists | Optional, but useful after blacklist support. |
 | `/yacy/urls.xml` | P3 | Remote crawl URL lists | Implement only after safe remote crawl policy exists. |
 | `/yacy/crawlReceipt.html` | P3 | Remote crawl receipt | Implement only with remote crawl. |

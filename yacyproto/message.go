@@ -82,22 +82,28 @@ func ParseMessageRequest(ctx context.Context, form url.Values) (MessageRequest, 
 		return MessageRequest{}, err
 	}
 
-	if raw := form.Get(FieldMySeed); raw != "" {
-		seed, err := decodeSeed(ctx, raw)
-		if err != nil {
-			return MessageRequest{}, fmt.Errorf("message request %s: %w", FieldMySeed, err)
+	if req.Process == MessageProcessPost {
+		if raw := form.Get(FieldMySeed); raw != "" {
+			seed, err := decodeSeed(ctx, raw)
+			if err != nil {
+				return MessageRequest{}, fmt.Errorf("message request %s: %w", FieldMySeed, err)
+			}
+			req.MySeed = yacymodel.Some(seed)
 		}
-		req.MySeed = yacymodel.Some(seed)
-	}
 
-	req.Subject, err = decodeMessageField(ctx, FieldMessageSubject, form.Get(FieldMessageSubject))
-	if err != nil {
-		return MessageRequest{}, err
-	}
+		req.Subject, err = decodeMessageField(
+			ctx,
+			FieldMessageSubject,
+			form.Get(FieldMessageSubject),
+		)
+		if err != nil {
+			return MessageRequest{}, err
+		}
 
-	req.Body, err = decodeMessageField(ctx, FieldMessage, form.Get(FieldMessage))
-	if err != nil {
-		return MessageRequest{}, err
+		req.Body, err = decodeMessageField(ctx, FieldMessage, form.Get(FieldMessage))
+		if err != nil {
+			return MessageRequest{}, err
+		}
 	}
 
 	return req, nil

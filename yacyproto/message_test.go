@@ -68,6 +68,32 @@ func TestMessageRequestPostDecodesSeedAndMessageFields(t *testing.T) {
 	}
 }
 
+func TestMessageRequestPermissionIgnoresPostFields(t *testing.T) {
+	form := url.Values{
+		yacyproto.FieldYouAre:         {hashFor(t, "youare").String()},
+		yacyproto.FieldIam:            {hashFor(t, "sender").String()},
+		yacyproto.FieldMessageProcess: {string(yacyproto.MessageProcessPermission)},
+		yacyproto.FieldMySeed:         {yacymodel.EncodeCompactWireForm("{Hash=short}")},
+		yacyproto.FieldMessageSubject: {"z|@@@"},
+		yacyproto.FieldMessage:        {"z|@@@"},
+	}
+
+	got, err := yacyproto.ParseMessageRequest(t.Context(), form)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Process != yacyproto.MessageProcessPermission {
+		t.Fatalf("Process = %q, want permission", got.Process)
+	}
+	if _, ok := got.MySeed.Get(); ok {
+		t.Fatal("MySeed should be ignored for permission")
+	}
+	if got.Subject != "" || got.Body != "" {
+		t.Fatalf("Subject/Body = %q/%q, want empty", got.Subject, got.Body)
+	}
+}
+
 func TestMessageRequestDefaultsToPermission(t *testing.T) {
 	got, err := yacyproto.ParseMessageRequest(t.Context(), url.Values{})
 	if err != nil {
@@ -107,19 +133,22 @@ func TestParseMessageRequestRejectsBadFields(t *testing.T) {
 			yacyproto.FieldIam:    {"short"},
 		},
 		{
-			yacyproto.FieldYouAre: {hashFor(t, "youare").String()},
-			yacyproto.FieldIam:    {hashFor(t, "sender").String()},
-			yacyproto.FieldMySeed: {yacymodel.EncodeCompactWireForm("{Hash=short}")},
+			yacyproto.FieldYouAre:         {hashFor(t, "youare").String()},
+			yacyproto.FieldIam:            {hashFor(t, "sender").String()},
+			yacyproto.FieldMessageProcess: {string(yacyproto.MessageProcessPost)},
+			yacyproto.FieldMySeed:         {yacymodel.EncodeCompactWireForm("{Hash=short}")},
 		},
 		{
 			yacyproto.FieldYouAre:         {hashFor(t, "youare").String()},
 			yacyproto.FieldIam:            {hashFor(t, "sender").String()},
+			yacyproto.FieldMessageProcess: {string(yacyproto.MessageProcessPost)},
 			yacyproto.FieldMessageSubject: {"z|@@@"},
 		},
 		{
-			yacyproto.FieldYouAre:  {hashFor(t, "youare").String()},
-			yacyproto.FieldIam:     {hashFor(t, "sender").String()},
-			yacyproto.FieldMessage: {"z|@@@"},
+			yacyproto.FieldYouAre:         {hashFor(t, "youare").String()},
+			yacyproto.FieldIam:            {hashFor(t, "sender").String()},
+			yacyproto.FieldMessageProcess: {string(yacyproto.MessageProcessPost)},
+			yacyproto.FieldMessage:        {"z|@@@"},
 		},
 	}
 	for _, form := range cases {

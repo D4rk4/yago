@@ -215,21 +215,31 @@ func TestMountServesMessageRoute(t *testing.T) {
 	req := yacyproto.MessageRequest{
 		NetworkName: "freeworld",
 		YouAre:      hashFor("self"),
-		Iam:         hashFor("sender"),
 		Process:     yacyproto.MessageProcessPermission,
 	}
+	form := req.Form()
+	form.Set(yacyproto.FieldMySeed, yacymodel.EncodeCompactWireForm("{Hash=short}"))
+	form.Set(yacyproto.FieldMessageSubject, "z|@@@")
+	form.Set(yacyproto.FieldMessage, "z|@@@")
 
 	rec := httptest.NewRecorder()
 	httpReq := httptest.NewRequestWithContext(
 		t.Context(),
 		http.MethodGet,
-		yacyproto.PathMessage+"?"+req.Form().Encode(),
+		yacyproto.PathMessage+"?"+form.Encode(),
 		nil,
 	)
 	mux.ServeHTTP(rec, httpReq)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	msg, err := yacymodel.ParseMessage(rec.Body.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg[yacyproto.FieldResponse] != yacyproto.MessageResponsePermission {
+		t.Fatalf("response = %q, want permission", msg[yacyproto.FieldResponse])
 	}
 }
 

@@ -120,7 +120,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:     yacyproto.PathMessage,
 		Methods:  methods(yacyproto.MessageEndpointMethods),
 		State:    Partial,
-		Behavior: "Accepts permission checks and inbound peer message posts into a durable inbox.",
+		Behavior: "Accepts permission checks without parsing post-only body fields and inbound peer message posts into a durable inbox.",
 		Evidence: []string{"yacynode/internal/peermessage/*_test.go", "yacyproto/message_test.go"},
 		Notes:    "Attachments are advertised as size 0 and are not stored.",
 	},
