@@ -1,8 +1,11 @@
-# PLAN.md - Fork `yacy-rwi-node` into a full Go YaCy-like peer
+# PLAN.md - Evolve `yago` into a YaCy-compatible Go search peer
 
 Prepared: 2026-07-01
 
-Goal: evolve the `nikitakarpei/yacy-rwi-node` fork from a lightweight Go DHT/RWI node into a practical self-hosted YaCy-like search peer with P2P participation, crawler integration, local and federated search, a Tavily-compatible Search API, and an IBM Carbon administration UI.
+Goal: evolve `yago` from a lightweight Go YaCy RWI/DHT node into a practical
+self-hosted YaCy-compatible search peer with P2P participation, crawler
+integration, local and federated full-text search, a Tavily-compatible Search
+API, and an IBM Carbon administration UI.
 
 This file is the project development roadmap. Work should move in small patch-sized steps, avoid whole-project rewrites, and keep `make verify` green.
 
@@ -39,9 +42,174 @@ Important baseline facts:
 
 - Upstream `yacy-rwi-node` is intentionally a lightweight Go senior YaCy node for DHT/RWI storage and serving, not a full YaCy port.
 - Current upstream spec explicitly lists these non-goals: built-in web crawling, built-in HTML parsing/fetching, full-text indexing, local search UI, Solr/Lucene/Elastic integration, outbound DHT distribution, full-scale Go YaCy node.
-- Current `yacycrawler` is marked experimental and not production-ready. It can fetch URLs, build YaCy-compatible RWI postings and URL metadata, and publish them toward the node, but the node-side order producer and ingest consumer are listed as missing.
+- Current `yacycrawler` is marked experimental and not production-ready. It can fetch URLs, build YaCy-compatible RWI postings and URL metadata, and publish them toward the node. Verify current node-side order producer and ingest consumer status from code before repeating older documentation claims.
 - The fork intentionally reverses part of those non-goals: crawler, search UI, local search, outbound DHT distribution and admin UI become product goals of this fork.
 - Do not copy Java YaCy source code into this repository. Reimplement behavior from public protocols, API docs, observed wire fixtures and interoperability tests.
+- `yago` is not a literal port of Java YaCy, Solr, Lucene, or Kelondro internals.
+- RWI is a compatibility and exchange layer, not the primary local search engine.
+- Java, Solr, Lucene, Kelondro, and servlet-style YaCy UI must not become required internal runtime dependencies.
+
+---
+
+## 0.5 Strategic course
+
+The architectural target is a modern Go search appliance that preserves YaCy
+wire protocol compatibility and observable peer behavior where implemented.
+YaCy compatibility remains a stable external contract, but the local search,
+crawler, storage, UI, and future native P2P layers should be designed as modern
+bounded components.
+
+Core principles:
+
+1. Preserve YaCy `/yacy/*` wire protocol shapes, network-unit behavior, DHT
+   handoff semantics, seedlists, peer liveness, and observable compatibility
+   behavior where implemented.
+2. Keep RWI generation, storage, and exchange for YaCy P2P compatibility.
+3. Do not use RWI as the only or primary local full-text search engine.
+4. Add a document store and full-text backend abstraction for local search.
+5. Prefer Tantivy as the production full-text sidecar backend.
+6. Keep Bleve or Bluge as a pure-Go/simple deployment fallback.
+7. Build Tavily-compatible and YaCy-compatible public search APIs over `yago`'s
+   own search core, not as mandatory upstream proxies.
+8. Keep remote crawl disabled by default until trust, destination allowlists,
+   quotas, and SSRF protections are enforced.
+9. Keep native `yago-v2` P2P optional and experimental; it must not break legacy
+   YaCy P2P compatibility.
+
+Target runtime architecture:
+
+```text
+yago-node
+  - YaCy /yacy/* compatibility
+  - peer roster, seedlists, liveness, DHT inbound/outbound
+  - RWI vault + URL metadata vault
+  - P2P policy, quotas, metrics
+
+yago-searchd
+  - local full-text index
+  - default recommended backend: Tantivy sidecar
+  - fallback pure-Go backend: Bleve or Bluge
+  - document store
+  - snippets, phrase/proximity, filters, facets
+  - Tavily-compatible POST /search
+  - YaCy-compatible /yacysearch.json and /yacysearch.rss adapter
+
+yago-crawld
+  - persistent crawl frontier
+  - HTTP fast fetch path
+  - optional browser slow fetch path
+  - robots.txt, sitemap, canonicalization, politeness
+  - content extraction and deduplication
+  - emits DocumentIngest + RWI postings + URL metadata
+
+yago-admin-ui
+  - React/Next.js or Vite React
+  - IBM Carbon UI framework
+  - admin functionality comparable to original YaCy categories
+```
+
+Agent workstreams:
+
+- Architecture Agent: boundaries between node, searchd, crawld, and admin UI;
+  internal interfaces; dependency policy; migration from current RWI node to
+  search appliance.
+- P2P Compatibility Agent: `/yacy/hello.html`, seedlists, peer liveness,
+  `/yacy/query.html`, `/yacy/transferRWI.html`, `/yacy/transferURL.html`,
+  `/yacy/search.html`, `/yacy/urls.xml`, inbound/outbound DHT, batching, retry,
+  peer selection, peer reputation, rate limits, and Java YaCy compatibility
+  matrix.
+- Native P2P v2 Agent: optional go-libp2p, Kademlia/provider records, signed
+  peer metadata, discovery, result federation, and events without changing
+  `/yacy/*`.
+- Search Core Agent: full-text backend abstraction, document store integration,
+  Tantivy sidecar, Bleve/Bluge fallback, BM25, field boosts, phrase/proximity,
+  snippets, language analyzers, filters, facets, freshness, and domain quality.
+  Target search backend seam:
+
+  ```go
+  type SearchIndex interface {
+      Index(ctx context.Context, doc Document) error
+      Delete(ctx context.Context, docID string) error
+      Search(ctx context.Context, req SearchRequest) (SearchResultSet, error)
+      Stats(ctx context.Context) (IndexStats, error)
+  }
+  ```
+- Document Store Agent: canonical URL, normalized URL, title, headings,
+  extracted text, optional raw HTML/WARC reference, language, content type,
+  fetch status, fetch timestamps, content hash, outlinks, inlinks/anchor text,
+  and snippet/Tavily raw-content metadata.
+- Tavily API Agent: Tavily-compatible `POST /search` over local full-text,
+  optional local semantic/vector search, yago/yacy peers, and optional upstream
+  Tavily only when explicitly configured.
+- YaCy Search API Agent: `/yacysearch.json`, `/yacysearch.rss`, OpenSearch-style
+  compatibility, `resource=local|global`, query translation, filters, and
+  compatibility notes for unsupported YaCy-specific ranking/profile fields.
+- Crawler Agent: persistent frontier, states, robots, politeness, sitemap,
+  canonicalization, deduplication, HTTP fast fetch, browser fallback, extraction,
+  limits, retry, recrawl scheduling, backpressure, and NATS JetStream if used.
+- Security Agent: SSRF protections, private/local network denial, DNS rebinding
+  protection, crawl sandboxing, size/redirect/scheme limits, API/admin auth,
+  remote crawl default-deny, peer quotas, and spam/index poisoning protections.
+- Admin UI Agent: IBM Carbon React UI with typed admin APIs, covering search,
+  crawl, P2P network, DHT, index/storage, document browser, search backend,
+  Tavily API settings, security, remote crawl policy, metrics, logs, and
+  configuration.
+- Observability Agent: `/health`, `/ready`, Prometheus metrics, structured logs,
+  tracing where practical, crawl/fetch/index/search/P2P/storage metrics.
+- QA / Compatibility Agent: unit, integration, local multi-peer e2e, race,
+  golden YaCy wire, Java YaCy matrix, crawler safety, search relevance, Tavily
+  contract, and UI smoke tests.
+
+Roadmap priorities:
+
+- P0 - turn the RWI node into a search engine: align documentation status across
+  README, FEATURES, crawler README, and plan files; add document store; add
+  search backend abstraction; add first full-text backend; prefer Tantivy
+  sidecar for production; add Bleve/Bluge fallback; implement local Tavily
+  `/search`; implement `/yacysearch.json` and `/yacysearch.rss` over search
+  core; make snippets come from document store; keep RWI generation and YaCy P2P
+  compatibility working.
+- P1 - production crawler: persistent frontier, robots/politeness, sitemap
+  ingestion, canonicalization, deduplication, browser fallback, backpressure,
+  SSRF protection, and recrawl scheduler.
+- P1 - P2P/DHT: outbound DHT scheduler, peer selection, batching, retry policy,
+  redundancy, delete-after-success policy where safe, peer reputation, strict
+  remote crawl policy, and compatibility status endpoint.
+- P1 - Carbon admin UI: Search console, Crawl management, P2P network,
+  Index/storage, Security, Metrics, Logs/events, and Settings.
+- P2 - modern relevance and federation: positional phrase/proximity search,
+  domain quality/freshness ranking, optional Qdrant vector/semantic rerank,
+  optional local answer generation from snippets, federated result fusion across
+  peers, and native libp2p-based `yago-v2` network.
+
+Guardrails:
+
+- Do not reimplement Java YaCy internals blindly.
+- Do not introduce JVM, Solr, Lucene, or Kelondro as required runtime
+  dependencies.
+- Do not make upstream Tavily mandatory.
+- Do not use RWI as the only local search index.
+- Do not store raw crawled content without size limits and security policy.
+- Do not allow remote crawl by default.
+- Do not crawl private or local networks.
+- Do not let UI drive unstable internal APIs directly; expose typed admin APIs.
+- Do not break existing YaCy wire compatibility endpoints.
+- Do not delete existing compatibility docs; update them with status notes.
+
+Acceptance criteria for the modern roadmap:
+
+1. Documentation consistently states that `yago` is a modern Go search appliance
+   with YaCy wire compatibility, not a Java YaCy/Solr/Kelondro port.
+2. RWI remains implemented and tested as compatibility and exchange format.
+3. Local search uses a document store and full-text backend abstraction.
+4. Crawler output updates document store, RWI postings, and URL metadata.
+5. Tavily-compatible `/search` works locally without external Tavily.
+6. `/yacysearch.json` and `/yacysearch.rss` adapt the same search core.
+7. YaCy `/yacy/*` peer compatibility remains covered by parser, encoder,
+   endpoint, integration, and compatibility matrix tests.
+8. Remote crawl remains default-deny.
+9. Admin UI uses Carbon and stable typed admin APIs.
+10. Observability covers health, readiness, search, crawl, storage, and P2P.
 
 ---
 
@@ -109,7 +277,8 @@ The fork is minimally acceptable when all are true:
 
 ## 2. Target product shape
 
-Working name: `yacy-go-peer` or `go-yacy-peer`. Do not rename the Go module in the first patch. Module rename is a separate ADR and migration task.
+Working name: `yago`. Do not rename Go modules or binaries without an ADR and
+explicit migration plan.
 
 ### 2.1 Product modes
 
@@ -135,16 +304,30 @@ Keep the existing modules unless an ADR approves splitting/renaming:
 
 - `yacymodel`: YaCy value types and codecs.
 - `yacyproto`: `/yacy/*` wire protocol DTOs, endpoint names and auth translation.
-- `yacynode`: daemon, P2P endpoints, storage, search coordinator, admin API, static frontend serving.
-- `yacycrawler`: crawler worker process.
-- `yacycrawlcontract`: NATS/JetStream message contract between node and crawler.
+- `yacynode`: current node daemon and future `yago-node` host for YaCy
+  compatibility, peer roster, seedlists, liveness, DHT inbound/outbound, RWI
+  vault, URL metadata vault, P2P policy, quotas, and metrics.
+- `yacycrawler`: current crawler worker and future `yago-crawld` implementation
+  for persistent frontier, fetch, robots, sitemap, canonicalization, extraction,
+  deduplication, and `DocumentIngest`/RWI/URL metadata emission.
+- `yacycrawlcontract`: NATS/JetStream message contract between node and crawler,
+  to be extended for document ingest without coupling node and crawler packages.
+
+Target components may become separate binaries after ADRs:
+
+- `yago-searchd`: document store, local full-text index, Tantivy sidecar
+  integration, Bleve/Bluge fallback, snippets, phrase/proximity, filters,
+  facets, Tavily-compatible `/search`, and YaCy search adapters.
+- `yago-admin-ui`: Carbon React admin UI served through stable typed admin APIs.
 
 Add package boundaries inside modules, not catch-all modules:
 
 - `yacynode/internal/peerregistry` - discovered peers, liveness, seedlist import/export, active/known/quarantined state.
 - `yacynode/internal/dhtexchange` - inbound/outbound RWI and URL transfer orchestration.
 - `yacynode/internal/searchcore` - query parsing, result model, ranking, result merging.
-- `yacynode/internal/searchlocal` - local RWI/full-text lookup adapter.
+- `yacynode/internal/searchindex` - full-text backend abstraction and backend adapters.
+- `yacynode/internal/documentstore` - canonical URL, text, metadata, link, snippet, and raw-content references.
+- `yacynode/internal/searchlocal` - local full-text lookup adapter with RWI compatibility support.
 - `yacynode/internal/searchremote` - YaCy remote search fanout and response normalization.
 - `yacynode/internal/tavilyapi` - Tavily-compatible request/response contract and adapter.
 - `yacynode/internal/adminapi` - authenticated JSON API for Carbon UI.
