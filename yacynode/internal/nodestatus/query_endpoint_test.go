@@ -30,9 +30,8 @@ func newQueryEndpoint(counts stubCounter) queryEndpoint {
 			Hash:        yacymodel.WordHash("self"),
 			NetworkName: "freeworld",
 		},
-		rwi:        counts,
-		references: counts,
-		urls:       counts,
+		rwi:  counts,
+		urls: counts,
 	}
 }
 
@@ -61,28 +60,58 @@ func queryRequest(object yacyproto.QueryObject) yacyproto.QueryRequest {
 }
 
 func TestQueryAnswersSupportedObjects(t *testing.T) {
-	endpoint := newQueryEndpoint(stubCounter{rwi: 11, refs: 4, urls: 6})
+	endpoint := newQueryEndpoint(stubCounter{rwi: 11, rwiURLs: 4, urls: 6})
+	word := yacymodel.WordHash("term")
 
 	cases := []struct {
 		object yacyproto.QueryObject
+		env    string
 		want   int
 	}{
-		{yacyproto.ObjectRWICount, 11},
-		{yacyproto.ObjectRWIURLCount, 4},
-		{yacyproto.ObjectLURLCount, 6},
+		{object: yacyproto.ObjectRWICount, want: 11},
+		{object: yacyproto.ObjectRWIURLCount, env: word.String(), want: 4},
+		{object: yacyproto.ObjectLURLCount, want: 6},
 	}
 	for _, c := range cases {
-		resp := serveQuery(t, endpoint, queryRequest(c.object))
+		req := queryRequest(c.object)
+		req.Env = c.env
+		resp := serveQuery(t, endpoint, req)
 		if resp.Response != c.want {
 			t.Fatalf("%s: Response = %d, want %d", c.object, resp.Response, c.want)
 		}
 	}
 }
 
-func TestQueryRejectsUnsupportedObject(t *testing.T) {
+func TestQueryAnswersWantedObjectsWithZero(t *testing.T) {
 	endpoint := newQueryEndpoint(stubCounter{rwi: 11})
 
-	resp := serveQuery(t, endpoint, queryRequest(yacyproto.ObjectWantedSeeds))
+	for _, object := range []yacyproto.QueryObject{
+		yacyproto.ObjectWantedLURLs,
+		yacyproto.ObjectWantedPURLs,
+		yacyproto.ObjectWantedWord,
+		yacyproto.ObjectWantedRWI,
+		yacyproto.ObjectWantedSeeds,
+	} {
+		resp := serveQuery(t, endpoint, queryRequest(object))
+		if resp.Response != 0 {
+			t.Fatalf("%s: Response = %d, want 0", object, resp.Response)
+		}
+	}
+}
+
+func TestQueryAnswersMalformedRWIURLCountEnvWithZero(t *testing.T) {
+	endpoint := newQueryEndpoint(stubCounter{rwiURLs: 4})
+
+	resp := serveQuery(t, endpoint, queryRequest(yacyproto.ObjectRWIURLCount))
+	if resp.Response != 0 {
+		t.Fatalf("Response = %d, want 0", resp.Response)
+	}
+}
+
+func TestQueryRejectsUnknownObject(t *testing.T) {
+	endpoint := newQueryEndpoint(stubCounter{rwi: 11})
+
+	resp := serveQuery(t, endpoint, queryRequest(yacyproto.QueryObject("unknown")))
 	if resp.Response != yacyproto.QueryResponseRejected {
 		t.Fatalf("Response = %d, want rejected", resp.Response)
 	}
@@ -123,7 +152,7 @@ func TestMountQueryServesWireRoute(t *testing.T) {
 		Hash:        yacymodel.WordHash("self"),
 		NetworkName: "freeworld",
 	}
-	MountQuery(router, identity, counts, counts, counts)
+	MountQuery(router, identity, counts, counts)
 	form := queryRequest(yacyproto.ObjectRWICount).Form()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(

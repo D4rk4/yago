@@ -25,6 +25,11 @@ The remote search endpoint `/yacy/search.html` returns YaCy key-value rows with
 and `indexabstract.*` fields. `count` is the number of `resourceN` rows carried
 in the response.
 
+The peer query endpoint `/yacy/query.html` requires the called peer hash in
+`youare`. It answers `rwicount`, `rwiurlcount` with `env=<wordhash>`,
+`lurlcount`, and the upstream `wanted*` probe names with numeric `response`
+values.
+
 The public search endpoints `/yacysearch.json`, `/yacysearch.rss`, and
 `/yacysearch.html` share the same request parsing and search backend.
 `/yacysearch.json` returns JSON with `channels`, `items`, `navigation`, and

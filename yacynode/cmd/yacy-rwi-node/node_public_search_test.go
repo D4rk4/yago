@@ -23,6 +23,10 @@ func (publicSearchPostingIndex) RWICount(context.Context) (int, error) {
 	return 0, nil
 }
 
+func (publicSearchPostingIndex) RWIURLCount(context.Context, yacymodel.Hash) (int, error) {
+	return 0, nil
+}
+
 func (publicSearchPostingIndex) ScanWord(
 	context.Context,
 	yacymodel.Hash,

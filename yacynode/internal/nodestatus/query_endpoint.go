@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/D4rk4/yago/yacymodel"
 	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yacyproto"
 )
@@ -17,15 +18,14 @@ const (
 
 var (
 	errRWICount    = errors.New("count stored RWI words")
-	errRWIURLCount = errors.New("count URLs referenced by stored RWI")
+	errRWIURLCount = errors.New("count URLs for stored RWI word")
 	errLURLCount   = errors.New("count stored URL metadata records")
 )
 
 type queryEndpoint struct {
-	identity   nodeidentity.Identity
-	rwi        RWICounter
-	references ReferencedURLCounter
-	urls       URLCounter
+	identity nodeidentity.Identity
+	rwi      RWICounter
+	urls     URLCounter
 }
 
 func (e queryEndpoint) Serve(
@@ -35,7 +35,7 @@ func (e queryEndpoint) Serve(
 	resp := yacyproto.QueryResponse{Response: yacyproto.QueryResponseRejected}
 
 	if e.identity.Addresses(req.NetworkName, req.YouAre) {
-		count, supported, err := e.count(ctx, req.Object)
+		count, supported, err := e.count(ctx, req)
 		if err != nil {
 			return yacyproto.QueryResponse{}, fmt.Errorf("%s: %w", msgCountFailed, err)
 		}
@@ -52,23 +52,42 @@ func (e queryEndpoint) Serve(
 	return resp, nil
 }
 
-func (e queryEndpoint) count(ctx context.Context, object yacyproto.QueryObject) (int, bool, error) {
-	switch object {
+func (e queryEndpoint) count(ctx context.Context, req yacyproto.QueryRequest) (int, bool, error) {
+	switch req.Object {
 	case yacyproto.ObjectRWICount:
 		n, err := e.rwi.RWICount(ctx)
 
 		return n, true, wrapCount(errRWICount, err)
 	case yacyproto.ObjectRWIURLCount:
-		n, err := e.references.ReferencedURLCount(ctx)
+		word, ok := queryWordHash(req.Env)
+		if !ok {
+			return 0, true, nil
+		}
+
+		n, err := e.rwi.RWIURLCount(ctx, word)
 
 		return n, true, wrapCount(errRWIURLCount, err)
 	case yacyproto.ObjectLURLCount:
 		n, err := e.urls.Count(ctx)
 
 		return n, true, wrapCount(errLURLCount, err)
+	case yacyproto.ObjectWantedLURLs,
+		yacyproto.ObjectWantedPURLs,
+		yacyproto.ObjectWantedWord,
+		yacyproto.ObjectWantedRWI,
+		yacyproto.ObjectWantedSeeds:
+		return 0, true, nil
 	default:
 		return 0, false, nil
 	}
+}
+
+func queryWordHash(raw string) (yacymodel.Hash, bool) {
+	if len(raw) != yacymodel.HashLength {
+		return "", false
+	}
+
+	return yacymodel.Hash(raw), true
 }
 
 func wrapCount(sentinel error, err error) error {

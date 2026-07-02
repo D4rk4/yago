@@ -19,6 +19,20 @@ func (d postingDirectory) RWICount(ctx context.Context) (int, error) {
 	return collectionLength(ctx, d.vault, d.postings)
 }
 
+func (d postingDirectory) RWIURLCount(ctx context.Context, word yacymodel.Hash) (int, error) {
+	var count int
+	err := d.ScanWord(ctx, word, func(yacymodel.RWIPosting) (bool, error) {
+		count++
+
+		return true, nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count rwi word urls: %w", err)
+	}
+
+	return count, nil
+}
+
 func (d postingDirectory) PurgePosting(
 	tx *vault.Txn,
 	word, url yacymodel.Hash,

@@ -24,7 +24,7 @@ Status values:
 | Surface | Path | Methods | Status | Behavior |
 | --- | --- | --- | --- | --- |
 | Peer liveness handshake | `/yacy/hello.html` | GET, POST | implemented | Returns caller IP, caller peer type, own seed, and a bounded known seed list after rejecting self-pings and callers using this peer hash. |
-| RWI and URL count query | `/yacy/query.html` | GET, POST | implemented | Answers YaCy-compatible count probes with target identity checks. |
+| RWI and URL count query | `/yacy/query.html` | GET, POST | implemented | Answers YaCy-compatible `rwicount`, per-word `rwiurlcount`, `lurlcount`, and zero-valued `wanted*` probes with target identity checks. |
 | Inbound RWI transfer | `/yacy/transferRWI.html` | POST | implemented | Accepts RWI postings durably and reports missing URL metadata. |
 | Inbound URL metadata transfer | `/yacy/transferURL.html` | POST | implemented | Accepts URL metadata and reconciles RWI references. |
 | Remote RWI search | `/yacy/search.html` | GET, POST | implemented | Serves key-value YaCy remote search responses from local RWI storage. |

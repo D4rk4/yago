@@ -11,15 +11,19 @@ import (
 )
 
 type stubCounter struct {
-	rwi  int
-	refs int
-	urls int
-	err  error
+	rwi     int
+	rwiURLs int
+	urls    int
+	err     error
 }
 
-func (c stubCounter) RWICount(context.Context) (int, error)           { return c.rwi, c.err }
-func (c stubCounter) ReferencedURLCount(context.Context) (int, error) { return c.refs, c.err }
-func (c stubCounter) Count(context.Context) (int, error)              { return c.urls, c.err }
+func (c stubCounter) RWICount(context.Context) (int, error) { return c.rwi, c.err }
+
+func (c stubCounter) RWIURLCount(context.Context, yacymodel.Hash) (int, error) {
+	return c.rwiURLs, c.err
+}
+
+func (c stubCounter) Count(context.Context) (int, error) { return c.urls, c.err }
 
 func testIdentity() nodeidentity.Identity {
 	return nodeidentity.Identity{

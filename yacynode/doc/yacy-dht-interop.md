@@ -14,7 +14,8 @@ A receiver that wants YaCy peers to treat it as DHT-capable needs:
 2. a seed advertising reachable host and port information;
 3. `hello.html` returning `yourip`, `yourtype`, and `seed0` for valid callers while rejecting self-pings and callers using the receiver's peer hash;
 4. `query.html object=rwicount` returning a numeric `response`; original YaCy
-   requires `youare` and tolerates a missing `iam` field;
+   requires `youare` and tolerates a missing `iam` field; per-word
+   `rwiurlcount` uses `env=<wordhash>`;
 5. `transferRWI.html` enforcing `youare`, accepting `wordHash{row}` entries, and
    reporting missing URL hashes with `unknownURL`;
 6. `transferURL.html` accepting indexed `url0..urlN` metadata rows;

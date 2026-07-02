@@ -20,8 +20,8 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:    yacyproto.PathQuery,
 		Methods: methods(yacyproto.QueryEndpointMethods),
 		State:   Implemented,
-		Behavior: "Answers YaCy-compatible rwicount, rwiurlcount, and lurlcount status probes with " +
-			"target identity checks.",
+		Behavior: "Answers YaCy-compatible rwicount, per-word rwiurlcount, lurlcount, and " +
+			"zero-valued wanted* status probes with target identity checks.",
 		Evidence: []string{
 			"yacynode/internal/nodestatus/*_test.go",
 			"yacynode/test/fixtures/yacywire/query-*",

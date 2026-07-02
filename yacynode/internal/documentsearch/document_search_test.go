@@ -21,6 +21,14 @@ func (s fakeScanner) RWICount(context.Context) (int, error) {
 	return len(s.postings), nil
 }
 
+func (s fakeScanner) RWIURLCount(_ context.Context, word yacymodel.Hash) (int, error) {
+	if s.err != nil {
+		return 0, s.err
+	}
+
+	return len(s.postings[word]), nil
+}
+
 func (s fakeScanner) ScanWord(
 	_ context.Context,
 	word yacymodel.Hash,

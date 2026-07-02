@@ -147,6 +147,10 @@ func (c rwiCounter) RWICount(context.Context) (int, error) {
 	return c.count, c.err
 }
 
+func (c rwiCounter) RWIURLCount(context.Context, yacymodel.Hash) (int, error) {
+	return 0, c.err
+}
+
 type publicReachabilityScript struct {
 	reachable bool
 	calls     atomic.Int32
@@ -161,6 +165,10 @@ func (s *publicReachabilityScript) Reachable(context.Context) bool {
 type postingIndexOnly struct{}
 
 func (postingIndexOnly) RWICount(context.Context) (int, error) { return 0, nil }
+
+func (postingIndexOnly) RWIURLCount(context.Context, yacymodel.Hash) (int, error) {
+	return 0, nil
+}
 
 func (postingIndexOnly) ScanWord(
 	context.Context,

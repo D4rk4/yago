@@ -36,6 +36,10 @@ func (s *outboundPostingStoreScript) RWICount(context.Context) (int, error) {
 	return s.count, nil
 }
 
+func (s *outboundPostingStoreScript) RWIURLCount(context.Context, yacymodel.Hash) (int, error) {
+	return 0, nil
+}
+
 func (s *outboundPostingStoreScript) ScanWord(
 	context.Context,
 	yacymodel.Hash,

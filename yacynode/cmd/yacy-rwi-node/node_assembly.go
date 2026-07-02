@@ -148,7 +148,6 @@ func mountNodeProtocol(
 		router,
 		identity,
 		storage.postings,
-		storage.references,
 		storage.urlDirectory,
 	)
 	documentsearch.MountSearch(

@@ -26,7 +26,7 @@ The node currently targets these responsibilities:
 
 - advertise one YaCy senior peer identity;
 - answer YaCy peer liveness requests with self-identity rejection and answer RWI
-  capacity/status requests;
+  capacity/status requests, including per-word RWI URL counts;
 - serve YaCy seed lists through `/yacy/seedlist.html`, `/yacy/seedlist.json`,
   and `/yacy/seedlist.xml`;
 - bootstrap peers from configured YaCy seedlists, including seeds with either
