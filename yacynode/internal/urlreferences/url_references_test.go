@@ -135,6 +135,28 @@ func TestReferencedURLCountTracksDistinctURLs(t *testing.T) {
 	}
 }
 
+func TestReferencedURLsListsInputURLsWithStoredReferences(t *testing.T) {
+	vault, index := openReferences(t)
+	first := yacymodel.WordHash("u1")
+	second := yacymodel.WordHash("u2")
+	store(t, vault, index, yacymodel.WordHash("w1"), first)
+	store(t, vault, index, yacymodel.WordHash("w2"), first)
+	store(t, vault, index, yacymodel.WordHash("w3"), second)
+
+	got, err := index.ReferencedURLs(context.Background(), []yacymodel.Hash{
+		first,
+		yacymodel.WordHash("absent"),
+		first,
+		second,
+	})
+	if err != nil {
+		t.Fatalf("ReferencedURLs: %v", err)
+	}
+	if len(got) != 2 || got[0] != first || got[1] != second {
+		t.Fatalf("ReferencedURLs = %v, want %s then %s", got, first, second)
+	}
+}
+
 func referencedURLCount(t *testing.T, index urlreferences.ReferenceProjection) int {
 	t.Helper()
 

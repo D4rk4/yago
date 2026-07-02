@@ -68,6 +68,13 @@ func (f fakeReferences) WordsReferencing(
 	return []yacymodel.Hash{f.word}, nil
 }
 
+func (f fakeReferences) ReferencedURLs(
+	context.Context,
+	[]yacymodel.Hash,
+) ([]yacymodel.Hash, error) {
+	return nil, f.err
+}
+
 func (f fakeReferences) ReferencedURLCount(context.Context) (int, error) {
 	return 0, nil
 }

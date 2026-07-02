@@ -11,6 +11,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/eviction"
 	"github.com/D4rk4/yago/yacynode/internal/httpguard"
 	"github.com/D4rk4/yago/yacynode/internal/landing"
+	"github.com/D4rk4/yago/yacynode/internal/metrics"
 	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yacynode/internal/nodestatus"
 	"github.com/D4rk4/yago/yacynode/internal/peerannouncement"
@@ -25,6 +26,11 @@ type node struct {
 	announcer peerannouncement.Announcer
 	crawl     crawlProcess
 	dht       dhtOutboundProcess
+}
+
+type nodeTelemetry struct {
+	dhtOutbound dhtexchange.DistributionObserver
+	dhtInbound  *metrics.DHTInboundMetrics
 }
 
 var (
@@ -53,7 +59,7 @@ func assembleNode(
 	config nodeConfig,
 	vault *vault.Vault,
 	client *http.Client,
-	dhtObserver dhtexchange.DistributionObserver,
+	telemetry nodeTelemetry,
 ) (node, error) {
 	guard := httpguard.NewRequestGuard(
 		httpguard.DefaultMaxBodyBytes,
@@ -67,6 +73,7 @@ func assembleNode(
 	}
 
 	report := nodestatus.NewReport(identity, storage.postings, storage.urlDirectory)
+	storage = observeDHTInboundStorage(storage, telemetry.dhtInbound)
 
 	gate := httpguard.WireGate{
 		Guard:   guard,
@@ -104,7 +111,7 @@ func assembleNode(
 		report:      report,
 		roster:      exchange.roster,
 		client:      client,
-		observer:    dhtObserver,
+		observer:    telemetry.dhtOutbound,
 	})
 
 	runtime, err := buildRuntimeCrawl(ctx, config.Crawl, identity, storage)

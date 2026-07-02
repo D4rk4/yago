@@ -315,7 +315,7 @@ func TestRunReturnsStageErrors(t *testing.T) {
 			nodeConfig,
 			*vault.Vault,
 			*http.Client,
-			dhtexchange.DistributionObserver,
+			nodeTelemetry,
 		) (node, error) {
 			return node{}, sentinel
 		}
@@ -335,7 +335,7 @@ func TestRunMountsCrawlDispatchAndServes(t *testing.T) {
 		nodeConfig,
 		*vault.Vault,
 		*http.Client,
-		dhtexchange.DistributionObserver,
+		nodeTelemetry,
 	) (node, error) {
 		return node{announcer: fakeAnnouncer{}, sweeper: &scriptedSweeper{}, crawl: crawl}, nil
 	}
@@ -647,7 +647,10 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 			testConfig(t),
 			openTestVault(t),
 			http.DefaultClient,
-			metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
+			nodeTelemetry{
+				dhtOutbound: metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
+				dhtInbound:  metrics.NewDHTInboundMetrics(prometheus.NewRegistry()),
+			},
 		)
 		if !errors.Is(err, sentinel) {
 			t.Fatalf("assemble error = %v, want %v", err, sentinel)
@@ -664,7 +667,10 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 			testConfig(t),
 			openTestVault(t),
 			http.DefaultClient,
-			metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
+			nodeTelemetry{
+				dhtOutbound: metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
+				dhtInbound:  metrics.NewDHTInboundMetrics(prometheus.NewRegistry()),
+			},
 		)
 		if !errors.Is(err, sentinel) {
 			t.Fatalf("assemble error = %v, want %v", err, sentinel)
@@ -689,7 +695,10 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 			testConfig(t),
 			openTestVault(t),
 			http.DefaultClient,
-			metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
+			nodeTelemetry{
+				dhtOutbound: metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
+				dhtInbound:  metrics.NewDHTInboundMetrics(prometheus.NewRegistry()),
+			},
 		)
 		if !errors.Is(err, sentinel) {
 			t.Fatalf("assemble error = %v, want %v", err, sentinel)

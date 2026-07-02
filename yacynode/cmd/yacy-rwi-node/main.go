@@ -76,11 +76,21 @@ func run() error {
 	metrics.NewStorageMetrics(endpoints.Registry(), vault)
 	evictionMetrics := metrics.NewEvictionMetrics(endpoints.Registry())
 	dhtOutboundMetrics := metrics.NewDHTOutboundMetrics(endpoints.Registry())
+	dhtInboundMetrics := metrics.NewDHTInboundMetrics(endpoints.Registry())
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	assembled, err := assembleRuntimeNode(ctx, config, vault, client, dhtOutboundMetrics)
+	assembled, err := assembleRuntimeNode(
+		ctx,
+		config,
+		vault,
+		client,
+		nodeTelemetry{
+			dhtOutbound: dhtOutboundMetrics,
+			dhtInbound:  dhtInboundMetrics,
+		},
+	)
 	if err != nil {
 		return fmt.Errorf("assemble node: %w", err)
 	}

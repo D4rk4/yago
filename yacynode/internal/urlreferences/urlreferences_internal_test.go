@@ -258,6 +258,24 @@ func TestReferencedURLCountReturnsErrors(t *testing.T) {
 	}
 }
 
+func TestReferencedURLsReturnsScanAndViewErrors(t *testing.T) {
+	storage, references, engine := openScriptedReferences(t)
+	url := yacymodel.WordHash("u1")
+
+	engine.scanErrors[wordsByURLBucket] = errors.New("scan failed")
+	if _, err := references.ReferencedURLs(t.Context(), []yacymodel.Hash{url}); err == nil {
+		t.Fatal("expected scan error")
+	}
+
+	engine.scanErrors[wordsByURLBucket] = nil
+	if err := storage.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := references.ReferencedURLs(t.Context(), []yacymodel.Hash{url}); err == nil {
+		t.Fatal("expected view error")
+	}
+}
+
 func TestWordFromKeyRejectsBadLength(t *testing.T) {
 	if _, err := wordFromKey(vault.Key("bad")); err == nil {
 		t.Fatal("expected key length error")

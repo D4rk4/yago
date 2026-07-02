@@ -46,7 +46,8 @@ The node currently targets these responsibilities:
   quarantine, and metrics;
 - serve remote RWI search requests through `/yacy/search.html`;
 - store accepted RWI postings and URL metadata durably;
-- expose `/health` and `/metrics` on the ops listener;
+- expose `/health` and `/metrics` on the ops listener, including inbound and
+  outbound DHT transfer series;
 - optionally publish crawl orders and consume crawler ingest batches over NATS
   JetStream when crawling is configured.
 

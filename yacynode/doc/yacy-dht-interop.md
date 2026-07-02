@@ -25,6 +25,14 @@ To receive index transfer, the seed `Flags` field must set bit 2
 (`FLAG_ACCEPT_REMOTE_INDEX`). Without that bit, YaCy's sender-side DHT target
 selection skips the peer even if its `PeerType` is `senior`.
 
+Inbound DHT transfer metrics are exposed on the ops listener. The RWI receiver
+publishes `yacy_rwi_received_postings_total`,
+`yacy_rwi_rejected_postings_total`, `yacy_rwi_unknown_url_total`, and
+`yacy_rwi_ingest_duration_seconds`. The URL metadata receiver publishes
+`yacy_url_metadata_received_total`, `yacy_url_metadata_rejected_total`, and
+`yacy_url_metadata_reconciled_total`. A URL row is reconciled when metadata
+arrives for a URL hash already referenced by stored RWI postings.
+
 YaCy promotes a requester to `senior` or `principal` only after a successful
 callback to the requester's advertised `/yacy/query.html?object=rwicount`. A
 failed callback leaves the requester `junior` or potential/disconnected.
