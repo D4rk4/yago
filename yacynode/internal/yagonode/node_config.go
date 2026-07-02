@@ -39,6 +39,7 @@ const (
 
 	storageFileName       = "yago-node.db"
 	legacyStorageFileName = "yacy-rwi.db"
+	searchIndexDirName    = "search.bleve"
 )
 
 type nodeConfig struct {
@@ -53,6 +54,7 @@ type nodeConfig struct {
 	PeerAddr          string
 	OpsAddr           string
 	StoragePath       string
+	SearchIndexPath   string
 	StorageQuotaByte  int64
 	TrustedProxies    []*net.IPNet
 	ProxyURL          *url.URL
@@ -64,9 +66,10 @@ type nodeConfig struct {
 }
 
 type configuredNodeData struct {
-	directory    string
-	databasePath string
-	quotaByte    int64
+	directory       string
+	databasePath    string
+	searchIndexPath string
+	quotaByte       int64
 }
 
 func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
@@ -141,6 +144,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		PeerAddr:          peerAddr,
 		OpsAddr:           envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
 		StoragePath:       data.databasePath,
+		SearchIndexPath:   data.searchIndexPath,
 		StorageQuotaByte:  data.quotaByte,
 		TrustedProxies:    proxies,
 		ProxyURL:          proxyURL,
@@ -159,9 +163,10 @@ func loadConfiguredNodeData(getenv func(string) string) (configuredNodeData, err
 	}
 
 	return configuredNodeData{
-		directory:    directory,
-		databasePath: configuredDatabasePath(directory),
-		quotaByte:    quota,
+		directory:       directory,
+		databasePath:    configuredDatabasePath(directory),
+		searchIndexPath: filepath.Join(directory, searchIndexDirName),
+		quotaByte:       quota,
 	}, nil
 }
 

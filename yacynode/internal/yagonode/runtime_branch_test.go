@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -622,7 +624,7 @@ func TestOpenNodeStorageReturnsOpenErrors(t *testing.T) {
 		openStalenessRanking = func(*vault.Vault) (urlmetastaleness.StalenessRanking, error) {
 			return nil, sentinel
 		}
-		if _, err := openNodeStorage(openTestVault(t)); !errors.Is(err, sentinel) {
+		if _, err := openNodeStorage(openTestVault(t), ""); !errors.Is(err, sentinel) {
 			t.Fatalf("open error = %v, want %v", err, sentinel)
 		}
 	})
@@ -635,7 +637,7 @@ func TestOpenNodeStorageReturnsOpenErrors(t *testing.T) {
 		) (urlmeta.URLDirectory, urlmeta.URLEvictor, urlmeta.URLReceiver, error) {
 			return nil, nil, nil, sentinel
 		}
-		if _, err := openNodeStorage(openTestVault(t)); !errors.Is(err, sentinel) {
+		if _, err := openNodeStorage(openTestVault(t), ""); !errors.Is(err, sentinel) {
 			t.Fatalf("open error = %v, want %v", err, sentinel)
 		}
 	})
@@ -645,7 +647,7 @@ func TestOpenNodeStorageReturnsOpenErrors(t *testing.T) {
 		openURLReferences = func(*vault.Vault) (urlreferences.ReferenceProjection, error) {
 			return nil, sentinel
 		}
-		if _, err := openNodeStorage(openTestVault(t)); !errors.Is(err, sentinel) {
+		if _, err := openNodeStorage(openTestVault(t), ""); !errors.Is(err, sentinel) {
 			t.Fatalf("open error = %v, want %v", err, sentinel)
 		}
 	})
@@ -660,7 +662,7 @@ func TestOpenNodeStorageReturnsOpenErrors(t *testing.T) {
 		) (rwi.PostingIndex, rwi.PostingReceiver, rwi.PostingPurger, error) {
 			return nil, nil, nil, sentinel
 		}
-		if _, err := openNodeStorage(openTestVault(t)); !errors.Is(err, sentinel) {
+		if _, err := openNodeStorage(openTestVault(t), ""); !errors.Is(err, sentinel) {
 			t.Fatalf("open error = %v, want %v", err, sentinel)
 		}
 	})
@@ -675,7 +677,7 @@ func TestOpenNodeStorageReturnsOpenErrors(t *testing.T) {
 		) (rwi.PostingIndex, rwi.PostingReceiver, rwi.PostingPurger, error) {
 			return postingIndexOnly{}, nil, nil, nil
 		}
-		if _, err := openNodeStorage(openTestVault(t)); err == nil {
+		if _, err := openNodeStorage(openTestVault(t), ""); err == nil {
 			t.Fatal("expected outbound rwi storage error")
 		}
 	})
@@ -690,7 +692,7 @@ func TestOpenNodeStorageReturnsOpenErrors(t *testing.T) {
 		) (rwi.PostingIndex, rwi.PostingReceiver, rwi.PostingPurger, error) {
 			return &outboundPostingStoreScript{recoverErr: sentinel}, nil, nil, nil
 		}
-		if _, err := openNodeStorage(openTestVault(t)); !errors.Is(err, sentinel) {
+		if _, err := openNodeStorage(openTestVault(t), ""); !errors.Is(err, sentinel) {
 			t.Fatalf("open error = %v, want %v", err, sentinel)
 		}
 	})
@@ -701,12 +703,34 @@ func TestOpenNodeStorageReturnsSearchIndexOpenError(t *testing.T) {
 	restoreStorageSeams(t)
 	openSearchIndex = func(
 		context.Context,
+		string,
 		documentstore.DocumentDirectory,
 	) (searchindex.SearchIndex, error) {
 		return nil, sentinel
 	}
-	if _, err := openNodeStorage(openTestVault(t)); !errors.Is(err, sentinel) {
+	if _, err := openNodeStorage(openTestVault(t), ""); !errors.Is(err, sentinel) {
 		t.Fatalf("open error = %v, want %v", err, sentinel)
+	}
+}
+
+func TestOpenNodeStorageUsesConfiguredSearchIndexPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), searchIndexDirName)
+	storage, err := openNodeStorage(openTestVault(t), path)
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	if closer, ok := storage.searchIndex.(interface{ Close() error }); ok {
+		t.Cleanup(func() { _ = closer.Close() })
+	}
+	stats, err := storage.searchIndex.Stats(t.Context())
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if stats.Backend != "bleve-disk" {
+		t.Fatalf("backend = %q, want bleve-disk", stats.Backend)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("stat search index path: %v", err)
 	}
 }
 
@@ -720,7 +744,7 @@ func TestOpenNodeStorageReturnsDocumentOpenError(t *testing.T) {
 	) {
 		return nil, nil, sentinel
 	}
-	if _, err := openNodeStorage(openTestVault(t)); !errors.Is(err, sentinel) {
+	if _, err := openNodeStorage(openTestVault(t), ""); !errors.Is(err, sentinel) {
 		t.Fatalf("open error = %v, want %v", err, sentinel)
 	}
 }
@@ -730,7 +754,7 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 
 	t.Run("storage", func(t *testing.T) {
 		restoreAssemblySeams(t)
-		openRuntimeNodeStorage = func(*vault.Vault) (nodeStorage, error) {
+		openRuntimeNodeStorage = func(*vault.Vault, string) (nodeStorage, error) {
 			return nodeStorage{}, sentinel
 		}
 		_, err := assembleNode(

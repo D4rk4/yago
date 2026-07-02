@@ -66,7 +66,7 @@ func assembleNode(
 ) (node, error) {
 	identity := nodeIdentity(config)
 
-	storage, err := openRuntimeNodeStorage(vault)
+	storage, err := openRuntimeNodeStorage(vault, config.SearchIndexPath)
 	if err != nil {
 		return node{}, err
 	}

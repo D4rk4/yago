@@ -32,7 +32,7 @@ func startTestNATS(t *testing.T) string {
 }
 
 func TestCrawlRuntimeDispatchAndConsume(t *testing.T) {
-	storage, err := openNodeStorage(openTestVault(t))
+	storage, err := openNodeStorage(openTestVault(t), "")
 	if err != nil {
 		t.Fatalf("open storage: %v", err)
 	}

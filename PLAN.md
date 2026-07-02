@@ -403,7 +403,7 @@ Base: `/api/admin/v1`.
 | Area | Endpoints |
 |---|---|
 | Auth | `/auth/login`, `/auth/logout`, `/auth/session`, `/auth/password`, `/api-keys` |
-| Overview | `/overview`, `/health`, `/metrics/summary`, `/events` |
+| Overview | `/overview`, `/health`, `/ready`, `/metrics/summary`, `/events` |
 | Search | `/search`, `/search/explain`, `/search/settings`, `/search/ranking` |
 | Tavily | `/tavily/settings`, `/tavily/probe`, `/tavily/usage` |
 | Crawl | `/crawl/profiles`, `/crawl/jobs`, `/crawl/jobs/{id}`, `/crawl/jobs/{id}/pause`, `/crawl/jobs/{id}/resume`, `/crawl/jobs/{id}/cancel`, `/crawl/results`, `/crawl/frontier` |
@@ -805,9 +805,10 @@ Acceptance:
 ### SEARCH-04: Optional embedded full-text index ADR
 
 Status: accepted in `yacynode/doc/adr/0012-use-bleve-for-embedded-full-text-fallback.md`.
-The current fallback is an in-memory Bleve v2 `SearchIndex` rebuilt from the
-document store on node startup. Tantivy remains the preferred future production
-sidecar.
+The current fallback is a persistent Bleve v2 `SearchIndex` stored under
+`YACY_DATA_DIR/search.bleve`. It opens the existing index on startup and rebuilds
+from the document store only when the index is missing or unusable. Tantivy
+remains the preferred future production sidecar.
 
 Decision considered:
 

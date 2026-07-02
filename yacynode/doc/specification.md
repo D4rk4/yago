@@ -107,6 +107,10 @@ yago-admin-ui
 * The node SHALL support a full-text search backend abstraction with indexing, deletion, search, and stats operations.
 * The node SHOULD support Tantivy as the recommended production full-text backend through a bounded sidecar boundary.
 * The node SHOULD support Bleve or Bluge as a pure-Go full-text fallback.
+* The embedded pure-Go full-text fallback, when selected, SHALL persist its own
+  index under the configured node data directory.
+* The embedded pure-Go full-text fallback SHALL rebuild from the document store
+  only when its own persistent index is missing or unusable.
 * The node SHALL generate snippets from the document store where document text is available.
 * The node SHOULD support phrase/proximity search when the selected search backend provides positional indexes.
 * The node SHALL expose machine-readable compatibility status for implemented and missing YaCy surfaces.

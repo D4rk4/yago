@@ -24,12 +24,13 @@ ranking parity.
 Use `github.com/blevesearch/bleve/v2` as the first embedded full-text fallback
 backend.
 
-The initial adapter is in-memory and rebuilt from the document store on node
-startup. Crawler ingest updates the document store first and then updates the
-full-text index before URL metadata and RWI postings are acknowledged. Local
-public search uses this `SearchIndex` path, while `/yacy/search.html`,
-`/yacy/transferRWI.html`, and `/yacy/transferURL.html` keep using the YaCy RWI
-and URL metadata compatibility stores.
+The adapter persists its index under `YACY_DATA_DIR/search.bleve`. Startup opens
+the existing index and rebuilds from the document store only when the index is
+missing or unusable. Crawler ingest updates the document store first and then
+updates the full-text index before URL metadata and RWI postings are
+acknowledged. Local public search uses this `SearchIndex` path, while
+`/yacy/search.html`, `/yacy/transferRWI.html`, and `/yacy/transferURL.html` keep
+using the YaCy RWI and URL metadata compatibility stores.
 
 ## Considered alternatives
 
@@ -52,12 +53,13 @@ compatibility and exchange layer, not the primary local search engine.
 ## Consequences
 
 Bleve v2 becomes a runtime dependency of `yacynode` and is pinned in
-`yacynode/go.mod`. The first adapter does not persist its own index; it rebuilds
-from bounded stored documents on startup. That keeps backup and migration policy
-simple while the project validates search behavior and later adds the Tantivy
-sidecar or a persistent embedded profile.
+`yacynode/go.mod`. The embedded fallback now writes a separate persistent search
+index next to the node vault. Backup and restore must include both
+`yago-node.db` and `search.bleve` when this backend is in use. The document store
+remains the source of truth for repair rebuilds and future backend migrations.
 
 Memory usage now depends on the number and size of stored document fields that
-are indexed. The existing document-store size limit and storage quota remain the
-primary guardrails. Large deployments should move to the Tantivy sidecar or a
-persistent indexed backend before increasing crawl volume.
+are indexed. Disk usage now includes the Bleve index in addition to the document
+store. The existing document-store size limit and storage quota remain the
+primary ingest guardrails, but large deployments should move to the Tantivy
+sidecar before increasing crawl volume.

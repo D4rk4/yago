@@ -74,12 +74,13 @@ The node currently targets these responsibilities:
   JetStream when crawling is configured.
 
 The node stores bounded extracted document text and metadata and maintains an
-embedded in-memory Bleve full-text fallback index for local public search. The
-fallback index is rebuilt from the document store on startup; persistent
-full-text storage and the Tantivy production sidecar remain roadmap work. The
-node does not store unbounded raw HTML bodies. The crawler is a separate,
-optional worker process that can fetch pages, build document ingest payloads and
-YaCy-compatible references, and publish ingest batches back to the node.
+embedded persistent Bleve full-text fallback index for local public search under
+`YACY_DATA_DIR/search.bleve`. The fallback index is opened on startup and is
+rebuilt from the document store only when missing or unusable; the Tantivy
+production sidecar remains roadmap work. The node does not store unbounded raw
+HTML bodies. The crawler is a separate, optional worker process that can fetch
+pages, build document ingest payloads and YaCy-compatible references, and
+publish ingest batches back to the node.
 
 ## Repository Layout
 
@@ -127,8 +128,8 @@ Common node variables:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `YACY_PEER_ADDR` | `:8090` | YaCy peer protocol listener. |
-| `YACY_OPS_ADDR` | `:9090` | Ops listener for `/health`, `/metrics`, and node-side crawl dispatch. |
-| `YACY_DATA_DIR` | `./data` | Directory for persistent node storage, YaCy-compatible `SETTINGS/profile.txt`, and shared blacklist files configured by `SETTINGS/yacy.conf`. |
+| `YACY_OPS_ADDR` | `:9090` | Ops listener for `/health`, `/ready`, `/metrics`, and node-side crawl dispatch. |
+| `YACY_DATA_DIR` | `./data` | Directory for persistent node storage, `search.bleve`, YaCy-compatible `SETTINGS/profile.txt`, and shared blacklist files configured by `SETTINGS/yacy.conf`. |
 | `YACY_NETWORK_NAME` | `freeworld` | YaCy network name. |
 | `YACY_ADVERTISE_HOST` | empty | Public host advertised to peers. Required when seedlists are configured. |
 | `YACY_ADVERTISE_PORT` | peer listener port | Public port advertised to peers. |

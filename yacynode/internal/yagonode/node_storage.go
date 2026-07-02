@@ -3,6 +3,7 @@ package yagonode
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/D4rk4/yago/yacynode/internal/documentstore"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
@@ -34,23 +35,28 @@ var (
 	openDocuments        = documentstore.Open
 	openSearchIndex      = func(
 		ctx context.Context,
+		path string,
 		documents documentstore.DocumentDirectory,
 	) (searchindex.SearchIndex, error) {
 		stored, _ := documents.(documentstore.StoredDocuments)
-		return searchindex.NewBleveMemoryIndex(ctx, stored)
+		if strings.TrimSpace(path) == "" {
+			return searchindex.NewBleveMemoryIndex(ctx, stored)
+		}
+
+		return searchindex.NewBleveDiskIndex(ctx, path, documents, stored)
 	}
 	openURLMetadata   = urlmeta.Open
 	openURLReferences = urlreferences.Open
 	openRWIStorage    = rwi.Open
 )
 
-func openNodeStorage(vault *vault.Vault) (nodeStorage, error) {
+func openNodeStorage(vault *vault.Vault, searchIndexPath string) (nodeStorage, error) {
 	documentDirectory, documentReceiver, err := openDocuments(vault)
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("document storage: %w", err)
 	}
 
-	searchIndex, err := openSearchIndex(context.Background(), documentDirectory)
+	searchIndex, err := openSearchIndex(context.Background(), searchIndexPath, documentDirectory)
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("search index: %w", err)
 	}

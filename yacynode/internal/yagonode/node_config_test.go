@@ -41,6 +41,13 @@ func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 	if !strings.HasSuffix(config.StoragePath, storageFileName) {
 		t.Errorf("StoragePath = %q, want suffix %q", config.StoragePath, storageFileName)
 	}
+	if !strings.HasSuffix(config.SearchIndexPath, searchIndexDirName) {
+		t.Errorf(
+			"SearchIndexPath = %q, want suffix %q",
+			config.SearchIndexPath,
+			searchIndexDirName,
+		)
+	}
 	if config.DataDir != defaultDataDir {
 		t.Errorf("DataDir = %q, want %q", config.DataDir, defaultDataDir)
 	}
@@ -103,6 +110,9 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 	}
 	if config.DataDir != "/var/lib/yago" {
 		t.Errorf("DataDir = %q, want /var/lib/yago", config.DataDir)
+	}
+	if config.SearchIndexPath != filepath.Join("/var/lib/yago", searchIndexDirName) {
+		t.Errorf("SearchIndexPath = %q", config.SearchIndexPath)
 	}
 	if len(config.TrustedProxies) != 1 {
 		t.Errorf("TrustedProxies = %d, want 1", len(config.TrustedProxies))

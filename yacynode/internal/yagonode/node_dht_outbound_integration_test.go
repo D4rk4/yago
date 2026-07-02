@@ -69,7 +69,7 @@ func TestOpenNodeStorageRecoversPendingOutboundSelectionAfterRestart(t *testing.
 	if err != nil {
 		t.Fatalf("open first vault: %v", err)
 	}
-	firstStorage, err := openNodeStorage(firstVault)
+	firstStorage, err := openNodeStorage(firstVault, "")
 	if err != nil {
 		t.Fatalf("open first storage: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestOpenNodeStorageRecoversPendingOutboundSelectionAfterRestart(t *testing.
 			t.Fatalf("close reopened vault: %v", err)
 		}
 	})
-	recoveredStorage, err := openNodeStorage(reopenedVault)
+	recoveredStorage, err := openNodeStorage(reopenedVault, "")
 	if err != nil {
 		t.Fatalf("open recovered storage: %v", err)
 	}
@@ -124,7 +124,7 @@ func startDHTSenderRuntime(
 	senderConfig.DHT.Gates.MinimumConnectedPeer = 1
 	senderConfig.DHT.Gates.MinimumRWIWord = 1
 	senderVault := openTestVault(t)
-	senderStorage, err := openNodeStorage(senderVault)
+	senderStorage, err := openNodeStorage(senderVault, "")
 	if err != nil {
 		t.Fatalf("open sender storage: %v", err)
 	}
@@ -263,7 +263,7 @@ func startDHTReceiverNode(
 ) (nodeStorage, *httptest.Server) {
 	t.Helper()
 
-	storage, err := openNodeStorage(openTestVault(t))
+	storage, err := openNodeStorage(openTestVault(t), "")
 	if err != nil {
 		t.Fatalf("open receiver storage: %v", err)
 	}

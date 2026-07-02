@@ -42,12 +42,14 @@ func TestSearchIndexContract(t *testing.T) {
 type fakeStoredDocuments struct {
 	documents []documentstore.Document
 	err       error
+	scans     int
 }
 
-func (s fakeStoredDocuments) StoredDocuments(
+func (s *fakeStoredDocuments) StoredDocuments(
 	_ context.Context,
 	visit func(documentstore.Document) (bool, error),
 ) error {
+	s.scans++
 	if s.err != nil {
 		return s.err
 	}
@@ -63,7 +65,7 @@ func (s fakeStoredDocuments) StoredDocuments(
 
 func TestBleveMemoryIndexRebuildsAndSearchesDocuments(t *testing.T) {
 	fetched := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
-	index, err := NewBleveMemoryIndex(t.Context(), fakeStoredDocuments{
+	index, err := NewBleveMemoryIndex(t.Context(), &fakeStoredDocuments{
 		documents: []documentstore.Document{
 			{
 				NormalizedURL: "https://example.org/go",
@@ -235,14 +237,16 @@ func TestBleveMemoryIndexHandlesEmptyAndFailedSearches(t *testing.T) {
 
 func TestNewBleveMemoryIndexReturnsRebuildError(t *testing.T) {
 	sentinel := errors.New("scan failed")
-	_, err := NewBleveMemoryIndex(t.Context(), fakeStoredDocuments{err: sentinel})
+	_, err := NewBleveMemoryIndex(t.Context(), &fakeStoredDocuments{err: sentinel})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
 	}
 
 	_, err = NewBleveMemoryIndex(
 		t.Context(),
-		fakeStoredDocuments{documents: []documentstore.Document{{ExtractedText: "missing id"}}},
+		&fakeStoredDocuments{
+			documents: []documentstore.Document{{ExtractedText: "missing id"}},
+		},
 	)
 	if err == nil {
 		t.Fatal("expected missing id rebuild error")
