@@ -6,9 +6,9 @@ var agentAPISurfaceSpecs = []surfaceSpec{
 		Path:     "/search",
 		Methods:  []string{"POST"},
 		State:    Partial,
-		Behavior: "Serves a Tavily-like search response over the local search core, with basic local search by default and DHT-selected peer search when search_depth is advanced.",
+		Behavior: "Serves a Tavily-like search response over the shared search core, accepts current search contract fields, returns request IDs and JSON error envelopes, uses local search for basic, fast, and ultra-fast depths, and includes DHT-selected peer search when search_depth is advanced.",
 		Evidence: []string{"yacynode/internal/tavilyapi/*_test.go"},
-		Notes:    "Local answer generation, images, usage accounting, and external Tavily upstream mode are not implemented.",
+		Notes:    "Local answer generation, image search, real usage accounting, auth/scopes, and external Tavily upstream mode are not implemented.",
 	},
 	{
 		Name:     "Tavily-compatible extract",

@@ -59,9 +59,10 @@ The node currently targets these responsibilities:
   local full-text `SearchIndex` path for `resource=local`, filtering remote
   targets by advertised RWI inventory, using YaCy index abstracts for multi-term
   remote result conjunctions, and balancing redundant DHT candidates randomly;
-- serve Tavily-like `POST /search` responses over the same search core, with
-  local search for `search_depth=basic` and DHT-selected reachable-peer search
-  for `search_depth=advanced`;
+- serve Tavily-like `POST /search` responses over the same search core, accepting
+  the current search contract fields, returning JSON error envelopes and request
+  IDs, using local search for basic/fast depths, and using DHT-selected
+  reachable-peer search for `search_depth=advanced`;
 - expose `/opensearchdescription.xml`, `/suggest.json`, and `/suggest.xml` for
   browser search integration and recent-query suggestions;
 - store accepted document ingest payloads, RWI postings, and URL metadata

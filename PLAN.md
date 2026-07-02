@@ -897,6 +897,12 @@ Important interpretation:
 
 ### TAVILY-01: Contract DTOs and validation
 
+Status: partial implementation exists in `yacynode/internal/tavilyapi`.
+`POST /search` accepts the current field set, ignores unknown fields for forward
+compatibility, validates bounded options, returns `request_id`, and uses stable
+JSON error envelopes. Auth/scopes, generated answers, image search, real usage
+accounting, and upstream Tavily remain separate tasks.
+
 Implement `tavilyapi` DTOs for `POST /search`.
 
 Request fields to support:
@@ -1860,7 +1866,7 @@ Notes:
 
 - `usage.credits` is local synthetic usage. Use `0` for local/P2P-only mode; use upstream value only when real Tavily upstream is called and `include_usage` is enabled.
 - `answer` appears only when requested.
-- `raw_content` is `null` unless raw content cache is enabled and caller has `search:raw` scope.
+- `raw_content` is omitted unless stored extracted document text is available and requested.
 - `safe_search` is not a magic classifier. Map it to local blacklist/content policy and document limitations.
 
 ### 15.3 Admin API response envelope

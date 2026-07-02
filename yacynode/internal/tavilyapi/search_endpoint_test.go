@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -60,13 +61,22 @@ func TestSearchEndpointReturnsTavilyShape(t *testing.T) {
 	body := `{
 		"query":"golang site:ignored.example",
 		"search_depth":"advanced",
+		"chunks_per_source":2,
 		"max_results":2,
 		"include_answer":"basic",
-		"include_raw_content":true,
+		"include_raw_content":"text",
+		"include_images":true,
+		"include_image_descriptions":true,
+		"include_favicon":true,
 		"include_domains":["https://example.org"],
 		"exclude_domains":["blocked.example"],
 		"topic":"general",
 		"time_range":"week",
+		"start_date":"2026-01-01",
+		"end_date":"2026-07-02",
+		"country":"united states",
+		"auto_parameters":true,
+		"include_usage":true,
 		"safe_search":true
 	}`
 
@@ -77,6 +87,7 @@ func TestSearchEndpointReturnsTavilyShape(t *testing.T) {
 		PathSearch,
 		strings.NewReader(body),
 	)
+	req.Header.Set(requestIDHeader, "request-123")
 	endpoint.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -139,8 +150,19 @@ func assertRichSearchResponse(
 		*got.Results[0].RawContent != "Document text with enough local content for an agent response." ||
 		got.Results[0].Score != 9.5 ||
 		got.Results[0].PublishedDate != "2026-07-02" ||
+		got.Results[0].Favicon != "https://example.org/favicon.ico" ||
 		got.Results[0].Source != "global" ||
-		got.ResponseTime != 0.25 {
+		got.ResponseTime != 0.25 ||
+		got.RequestID != "request-123" ||
+		got.Answer == nil ||
+		*got.Answer != "" ||
+		got.Images == nil ||
+		len(*got.Images) != 0 ||
+		got.Usage == nil ||
+		got.Usage.Credits != 0 ||
+		got.AutoParameters["topic"] != "general" ||
+		got.AutoParameters["search_depth"] != "advanced" ||
+		got.AutoParameters["source"] != "global" {
 		t.Fatalf("response = %#v", got)
 	}
 	if search.got.Source != searchcore.SourceGlobal ||
@@ -264,6 +286,58 @@ func TestSearchEndpointHandlesEmptyResultLimit(t *testing.T) {
 	}
 }
 
+func TestSearchEndpointIgnoresUnknownFields(t *testing.T) {
+	search := &fakeSearcher{}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		PathSearch,
+		strings.NewReader(`{"query":"go","future_option":true}`),
+	)
+
+	NewSearchEndpoint(search, nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if search.calls != 1 {
+		t.Fatalf("search calls = %d", search.calls)
+	}
+}
+
+func TestSearchEndpointFiltersExactMatches(t *testing.T) {
+	search := &fakeSearcher{response: searchcore.Response{Results: []searchcore.Result{
+		{
+			Title:   "Matched",
+			URL:     "https://example.org/matched",
+			Snippet: "John Smith founded the company",
+		},
+		{
+			Title:   "Missed",
+			URL:     "https://example.org/missed",
+			Snippet: "John Smyth founded the company",
+		},
+	}}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		PathSearch,
+		strings.NewReader(`{"query":"\"John Smith\" company","exact_match":true}`),
+	)
+
+	NewSearchEndpoint(search, nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	got := decodeSearchResponse(t, rec)
+	if len(got.Results) != 1 || got.Results[0].URL != "https://example.org/matched" {
+		t.Fatalf("response = %#v", got)
+	}
+}
+
 func TestSearchEndpointRejectsBadRequests(t *testing.T) {
 	for _, tc := range badRequestCases() {
 		rec := httptest.NewRecorder()
@@ -293,21 +367,28 @@ type badRequestCase struct {
 }
 
 func badRequestCases() []badRequestCase {
+	out := badRequestProtocolCases()
+	out = append(out, badRequestOptionCases()...)
+	out = append(out, badRequestModeCases()...)
+
+	return out
+}
+
+func badRequestProtocolCases() []badRequestCase {
 	return []badRequestCase{
 		{name: "method", method: http.MethodGet, body: `{}`, code: http.StatusMethodNotAllowed},
 		{name: "json", method: http.MethodPost, body: `{`, code: http.StatusBadRequest},
-		{
-			name:   "unknown",
-			method: http.MethodPost,
-			body:   `{"query":"go","unknown":true}`,
-			code:   http.StatusBadRequest,
-		},
 		{
 			name:   "query",
 			method: http.MethodPost,
 			body:   `{"query":" "}`,
 			code:   http.StatusBadRequest,
 		},
+	}
+}
+
+func badRequestOptionCases() []badRequestCase {
+	return []badRequestCase{
 		{
 			name:   "depth",
 			method: http.MethodPost,
@@ -318,6 +399,12 @@ func badRequestCases() []badRequestCase {
 			name:   "max",
 			method: http.MethodPost,
 			body:   `{"query":"go","max_results":21}`,
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "chunks",
+			method: http.MethodPost,
+			body:   `{"query":"go","chunks_per_source":4}`,
 			code:   http.StatusBadRequest,
 		},
 		{
@@ -333,11 +420,40 @@ func badRequestCases() []badRequestCase {
 			code:   http.StatusBadRequest,
 		},
 		{
-			name:   "domain",
+			name:   "date",
 			method: http.MethodPost,
-			body:   `{"query":"go","include_domains":["bad/path"]}`,
+			body:   `{"query":"go","start_date":"2026-7-2"}`,
 			code:   http.StatusBadRequest,
 		},
+		{
+			name:   "end date",
+			method: http.MethodPost,
+			body:   `{"query":"go","end_date":"2026-7-2"}`,
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "date order",
+			method: http.MethodPost,
+			body:   `{"query":"go","start_date":"2026-07-03","end_date":"2026-07-02"}`,
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "country",
+			method: http.MethodPost,
+			body:   "{\"query\":\"go\",\"country\":\"bad\\ncountry\"}",
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "domain",
+			method: http.MethodPost,
+			body:   `{"query":"go","include_domains":["bad/path?query"]}`,
+			code:   http.StatusBadRequest,
+		},
+	}
+}
+
+func badRequestModeCases() []badRequestCase {
+	return []badRequestCase{
 		{
 			name:   "answer",
 			method: http.MethodPost,
@@ -348,6 +464,18 @@ func badRequestCases() []badRequestCase {
 			name:   "answer type",
 			method: http.MethodPost,
 			body:   `{"query":"go","include_answer":7}`,
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "raw",
+			method: http.MethodPost,
+			body:   `{"query":"go","include_raw_content":"full"}`,
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "raw type",
+			method: http.MethodPost,
+			body:   `{"query":"go","include_raw_content":7}`,
 			code:   http.StatusBadRequest,
 		},
 	}
@@ -409,7 +537,7 @@ func TestSearchEndpointMountsRoute(t *testing.T) {
 	}
 }
 
-func TestHelpersCoverAliasesAndBounds(t *testing.T) {
+func TestSearchDepthAndValidationHelpers(t *testing.T) {
 	for _, depth := range []string{"", "basic", "fast", "ultra-fast"} {
 		source, err := sourceForDepth(depth)
 		if err != nil || source != searchcore.SourceLocal {
@@ -426,18 +554,29 @@ func TestHelpersCoverAliasesAndBounds(t *testing.T) {
 			t.Fatalf("validateTimeRange(%q): %v", span, err)
 		}
 	}
+}
+
+func TestDomainHelpers(t *testing.T) {
 	if !domainMatches("docs.example.org", ".example.org") ||
 		domainMatches("example.net", "example.org") ||
 		domainMatches("", "example.org") ||
 		domainMatches("example.org", "") ||
-		normalizeDomain("https://example.org/path") != "" {
+		normalizeDomain("https://example.org/path") != "example.org" ||
+		normalizeDomain("linkedin.com/in") != "linkedin.com" ||
+		normalizeDomain("*.com") != "com" {
 		t.Fatal("domain helper mismatch")
 	}
-	if firstDomain([]string{"", "bad/path"}) != "" ||
+	if firstDomain([]string{"", "bad/path?query"}) != "" ||
 		normalizeDomain("") != "" ||
-		normalizeDomain("://bad") != "" {
+		normalizeDomain("://bad") != "" ||
+		normalizeDomain("https://example.org/path?query") != "" ||
+		normalizeDomain("https:///path") != "" ||
+		normalizeDomain("example.org?query") != "" {
 		t.Fatal("invalid domain helper mismatch")
 	}
+}
+
+func TestSnippetAndModeHelpers(t *testing.T) {
 	long := strings.Repeat("x", snippetRuneCap+10)
 	if len([]rune(snippet(long))) != snippetRuneCap {
 		t.Fatal("snippet was not bounded")
@@ -445,6 +584,66 @@ func TestHelpersCoverAliasesAndBounds(t *testing.T) {
 	var mode inclusionMode
 	if err := json.Unmarshal([]byte(`false`), &mode); err != nil || mode != "false" {
 		t.Fatalf("boolean mode = %q, %v", mode, err)
+	}
+	if !inclusionMode("advanced").Enabled() || inclusionMode("false").Enabled() {
+		t.Fatal("answer mode enabled mismatch")
+	}
+	var raw rawContentMode
+	if err := json.Unmarshal([]byte(`"markdown"`), &raw); err != nil || !raw.Enabled() {
+		t.Fatalf("raw mode = %q, %v", raw, err)
+	}
+	if err := json.Unmarshal([]byte(`true`), &raw); err != nil || !raw.Enabled() {
+		t.Fatalf("raw true mode = %q, %v", raw, err)
+	}
+	if err := json.Unmarshal([]byte(`false`), &raw); err != nil || raw.Enabled() {
+		t.Fatalf("raw false mode = %q, %v", raw, err)
+	}
+}
+
+func TestResponseOptionHelpers(t *testing.T) {
+	if responseAnswer(SearchRequest{}) != nil ||
+		responseImages(SearchRequest{}) != nil ||
+		responseUsage(SearchRequest{}) != nil ||
+		responseAutoParameters(SearchRequest{}, searchcore.Request{}) != nil {
+		t.Fatal("disabled response option mismatch")
+	}
+	defaultAuto := responseAutoParameters(
+		SearchRequest{AutoParameters: true},
+		searchcore.Request{Source: searchcore.SourceLocal},
+	)
+	if defaultAuto["topic"] != "general" ||
+		defaultAuto["search_depth"] != "basic" ||
+		defaultAuto["source"] != "local" {
+		t.Fatalf("default auto parameters = %#v", defaultAuto)
+	}
+	if responseFavicon(SearchRequest{IncludeFavicon: true}, "ftp://example.org") != "" {
+		t.Fatal("unexpected favicon for unsupported scheme")
+	}
+	if responseFavicon(SearchRequest{}, "https://example.org/doc") != "" ||
+		responseFavicon(SearchRequest{IncludeFavicon: true}, ":bad") != "" ||
+		responseFavicon(SearchRequest{IncludeFavicon: true}, "/relative") != "" {
+		t.Fatal("favicon helper mismatch")
+	}
+}
+
+func TestExactAndRawHelpers(t *testing.T) {
+	rawValue := "raw"
+	if len(exactNeedles(`alpha "beta gamma"`)) != 1 ||
+		len(exactNeedles("alpha beta")) != 1 ||
+		exactNeedles("  ") != nil ||
+		rawContent(nil) != "" ||
+		rawContent(&rawValue) != "raw" {
+		t.Fatal("exact helper mismatch")
+	}
+}
+
+func TestGeneratedRequestIDFallback(t *testing.T) {
+	previous := randomRead
+	randomRead = func([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
+	t.Cleanup(func() { randomRead = previous })
+
+	if !strings.HasPrefix(generatedRequestID(), "local-") {
+		t.Fatal("fallback request id missing local prefix")
 	}
 }
 

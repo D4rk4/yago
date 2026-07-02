@@ -2,6 +2,7 @@ package tavilyapi
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,9 +17,11 @@ import (
 
 const (
 	PathSearch        = "/search"
+	requestIDHeader   = "X-Request-ID"
 	defaultMaxResults = 5
 	maxResultsCap     = 20
 	snippetRuneCap    = 320
+	tavilyDateLayout  = "2006-01-02"
 )
 
 type searchEndpoint struct {
@@ -28,25 +31,39 @@ type searchEndpoint struct {
 }
 
 type SearchRequest struct {
-	Query             string        `json:"query"`
-	SearchDepth       string        `json:"search_depth,omitempty"`
-	MaxResults        *int          `json:"max_results,omitempty"`
-	IncludeAnswer     inclusionMode `json:"include_answer,omitempty"`
-	IncludeRawContent bool          `json:"include_raw_content,omitempty"`
-	IncludeDomains    []string      `json:"include_domains,omitempty"`
-	ExcludeDomains    []string      `json:"exclude_domains,omitempty"`
-	Topic             string        `json:"topic,omitempty"`
-	TimeRange         string        `json:"time_range,omitempty"`
-	SafeSearch        bool          `json:"safe_search,omitempty"`
+	Query                    string         `json:"query"`
+	SearchDepth              string         `json:"search_depth,omitempty"`
+	ChunksPerSource          *int           `json:"chunks_per_source,omitempty"`
+	MaxResults               *int           `json:"max_results,omitempty"`
+	Topic                    string         `json:"topic,omitempty"`
+	TimeRange                string         `json:"time_range,omitempty"`
+	StartDate                string         `json:"start_date,omitempty"`
+	EndDate                  string         `json:"end_date,omitempty"`
+	IncludeAnswer            inclusionMode  `json:"include_answer,omitempty"`
+	IncludeRawContent        rawContentMode `json:"include_raw_content,omitempty"`
+	IncludeImages            bool           `json:"include_images,omitempty"`
+	IncludeImageDescriptions bool           `json:"include_image_descriptions,omitempty"`
+	IncludeFavicon           bool           `json:"include_favicon,omitempty"`
+	IncludeDomains           []string       `json:"include_domains,omitempty"`
+	ExcludeDomains           []string       `json:"exclude_domains,omitempty"`
+	Country                  string         `json:"country,omitempty"`
+	AutoParameters           bool           `json:"auto_parameters,omitempty"`
+	ExactMatch               bool           `json:"exact_match,omitempty"`
+	IncludeUsage             bool           `json:"include_usage,omitempty"`
+	SafeSearch               bool           `json:"safe_search,omitempty"`
 }
 
 type inclusionMode string
 
 type SearchResponse struct {
-	Query        string         `json:"query"`
-	Answer       string         `json:"answer,omitempty"`
-	Results      []SearchResult `json:"results"`
-	ResponseTime float64        `json:"response_time"`
+	Query          string            `json:"query"`
+	Answer         *string           `json:"answer,omitempty"`
+	Images         *[]SearchImage    `json:"images,omitempty"`
+	Results        []SearchResult    `json:"results"`
+	ResponseTime   float64           `json:"response_time"`
+	AutoParameters map[string]string `json:"auto_parameters,omitempty"`
+	Usage          *SearchUsage      `json:"usage,omitempty"`
+	RequestID      string            `json:"request_id"`
 }
 
 type SearchResult struct {
@@ -56,9 +73,31 @@ type SearchResult struct {
 	RawContent    *string  `json:"raw_content,omitempty"`
 	Score         float64  `json:"score"`
 	PublishedDate string   `json:"published_date,omitempty"`
+	Favicon       string   `json:"favicon,omitempty"`
 	Source        string   `json:"source,omitempty"`
 	Images        []string `json:"images,omitempty"`
 }
+
+type SearchImage struct {
+	URL         string `json:"url"`
+	Description string `json:"description,omitempty"`
+}
+
+type SearchUsage struct {
+	Credits int `json:"credits"`
+}
+
+type ErrorResponse struct {
+	Error     ErrorBody `json:"error"`
+	RequestID string    `json:"request_id"`
+}
+
+type ErrorBody struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+var randomRead = rand.Read
 
 func Mount(
 	mux *http.ServeMux,
@@ -80,28 +119,34 @@ func NewSearchEndpoint(
 }
 
 func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	id := requestID(r)
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", id)
 		return
 	}
 
 	var req SearchRequest
 	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&req); err != nil {
-		http.Error(w, "invalid search request", http.StatusBadRequest)
+		message := "invalid search request"
+		if isBadRequest(err) {
+			message = err.Error()
+		}
+		writeError(w, http.StatusBadRequest, "invalid_search_request", message, id)
 		return
 	}
 
 	start := e.now()
-	resp, err := e.searchResponse(r.Context(), req, start)
+	resp, err := e.searchResponse(r.Context(), req, start, id)
 	if err != nil {
 		status := http.StatusInternalServerError
+		code := "search_failed"
 		if isBadRequest(err) {
 			status = http.StatusBadRequest
+			code = "invalid_search_request"
 		}
-		http.Error(w, err.Error(), status)
+		writeError(w, status, code, err.Error(), id)
 		return
 	}
 
@@ -114,6 +159,7 @@ func (e searchEndpoint) searchResponse(
 	ctx context.Context,
 	req SearchRequest,
 	start time.Time,
+	id string,
 ) (SearchResponse, error) {
 	coreReq, err := coreRequest(req)
 	if err != nil {
@@ -124,6 +170,8 @@ func (e searchEndpoint) searchResponse(
 			Query:        strings.TrimSpace(req.Query),
 			Results:      []SearchResult{},
 			ResponseTime: e.now().Sub(start).Seconds(),
+			Usage:        responseUsage(req),
+			RequestID:    id,
 		}, nil
 	}
 
@@ -138,9 +186,14 @@ func (e searchEndpoint) searchResponse(
 	}
 
 	return SearchResponse{
-		Query:        coreReq.Query,
-		Results:      results,
-		ResponseTime: e.now().Sub(start).Seconds(),
+		Query:          coreReq.Query,
+		Answer:         responseAnswer(req),
+		Images:         responseImages(req),
+		Results:        results,
+		ResponseTime:   e.now().Sub(start).Seconds(),
+		AutoParameters: responseAutoParameters(req, coreReq),
+		Usage:          responseUsage(req),
+		RequestID:      id,
 	}, nil
 }
 
@@ -215,10 +268,30 @@ func validateRequestOptions(req SearchRequest) error {
 	if err := validateTimeRange(req.TimeRange); err != nil {
 		return err
 	}
+	if err := validateChunksPerSource(req.ChunksPerSource); err != nil {
+		return err
+	}
+	if err := validateDateRange(req.StartDate, req.EndDate); err != nil {
+		return err
+	}
+	if err := validateCountry(req.Country); err != nil {
+		return err
+	}
 	for _, domain := range append(req.IncludeDomains, req.ExcludeDomains...) {
 		if normalizeDomain(domain) == "" {
 			return badRequest("domain filters must be host names")
 		}
+	}
+
+	return nil
+}
+
+func validateChunksPerSource(value *int) error {
+	if value == nil {
+		return nil
+	}
+	if *value < 1 || *value > 3 {
+		return badRequest("chunks_per_source must be between 1 and 3")
 	}
 
 	return nil
@@ -242,6 +315,47 @@ func validateTimeRange(value string) error {
 	}
 }
 
+func validateDateRange(start, end string) error {
+	startTime, err := parseOptionalDate(start, "start_date")
+	if err != nil {
+		return err
+	}
+	endTime, err := parseOptionalDate(end, "end_date")
+	if err != nil {
+		return err
+	}
+	if !startTime.IsZero() && !endTime.IsZero() && startTime.After(endTime) {
+		return badRequest("start_date must not be after end_date")
+	}
+
+	return nil
+}
+
+func parseOptionalDate(value, field string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, nil
+	}
+	parsed, err := time.Parse(tavilyDateLayout, value)
+	if err != nil {
+		return time.Time{}, badRequest(field + " must use YYYY-MM-DD")
+	}
+
+	return parsed, nil
+}
+
+func validateCountry(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if len([]rune(value)) > 64 || strings.ContainsAny(value, "\r\n\t") {
+		return badRequest("country must be a country name")
+	}
+
+	return nil
+}
+
 func (e searchEndpoint) responseResults(
 	ctx context.Context,
 	req SearchRequest,
@@ -254,9 +368,12 @@ func (e searchEndpoint) responseResults(
 			continue
 		}
 
-		item, err := e.responseResult(ctx, req, coreReq, result)
+		item, include, err := e.responseResult(ctx, req, coreReq, result)
 		if err != nil {
 			return nil, err
+		}
+		if !include {
+			continue
 		}
 		out = append(out, item)
 	}
@@ -269,12 +386,12 @@ func (e searchEndpoint) responseResult(
 	req SearchRequest,
 	coreReq searchcore.Request,
 	result searchcore.Result,
-) (SearchResult, error) {
+) (SearchResult, bool, error) {
 	content := result.Snippet
 	var raw *string
 	doc, found, err := e.document(ctx, result.URL)
 	if err != nil {
-		return SearchResult{}, err
+		return SearchResult{}, false, err
 	}
 	if found {
 		if doc.Title != "" {
@@ -282,13 +399,16 @@ func (e searchEndpoint) responseResult(
 		}
 		if doc.ExtractedText != "" {
 			content = snippet(doc.ExtractedText)
-			if req.IncludeRawContent {
+			if req.IncludeRawContent.Enabled() {
 				raw = &doc.ExtractedText
 			}
 		}
 	}
 	if content == "" {
 		content = result.Title
+	}
+	if req.ExactMatch && !matchesExactQuery(req.Query, result.Title, content, raw) {
+		return SearchResult{}, false, nil
 	}
 
 	return SearchResult{
@@ -298,8 +418,9 @@ func (e searchEndpoint) responseResult(
 		RawContent:    raw,
 		Score:         result.Score,
 		PublishedDate: result.Date,
+		Favicon:       responseFavicon(req, result.URL),
 		Source:        string(coreReq.Source),
-	}, nil
+	}, true, nil
 }
 
 func (e searchEndpoint) document(
@@ -374,14 +495,19 @@ func normalizeDomain(domain string) string {
 		if err != nil {
 			return ""
 		}
-		if parsed.EscapedPath() != "" && parsed.EscapedPath() != "/" ||
-			parsed.RawQuery != "" ||
-			parsed.Fragment != "" {
+		if parsed.RawQuery != "" || parsed.Fragment != "" {
 			return ""
 		}
 		domain = parsed.Hostname()
+	} else if strings.Contains(domain, "/") {
+		parts := strings.SplitN(domain, "/", 2)
+		if parts[0] == "" || strings.ContainsAny(parts[1], "?#") {
+			return ""
+		}
+		domain = parts[0]
 	}
 	domain = strings.TrimPrefix(domain, ".")
+	domain = strings.TrimPrefix(domain, "*.")
 	if strings.ContainsAny(domain, "/?#") {
 		return ""
 	}
@@ -397,6 +523,128 @@ func snippet(text string) string {
 	}
 
 	return string(runes[:snippetRuneCap])
+}
+
+func responseAnswer(req SearchRequest) *string {
+	if !req.IncludeAnswer.Enabled() {
+		return nil
+	}
+	answer := ""
+
+	return &answer
+}
+
+func responseImages(req SearchRequest) *[]SearchImage {
+	if !req.IncludeImages {
+		return nil
+	}
+	images := []SearchImage{}
+
+	return &images
+}
+
+func responseAutoParameters(
+	req SearchRequest,
+	coreReq searchcore.Request,
+) map[string]string {
+	if !req.AutoParameters {
+		return nil
+	}
+	topic := strings.ToLower(strings.TrimSpace(req.Topic))
+	if topic == "" {
+		topic = "general"
+	}
+	depth := strings.ToLower(strings.TrimSpace(req.SearchDepth))
+	if depth == "" {
+		depth = "basic"
+	}
+
+	return map[string]string{
+		"topic":        topic,
+		"search_depth": depth,
+		"source":       string(coreReq.Source),
+	}
+}
+
+func responseUsage(req SearchRequest) *SearchUsage {
+	if !req.IncludeUsage {
+		return nil
+	}
+
+	return &SearchUsage{Credits: 0}
+}
+
+func responseFavicon(req SearchRequest, rawURL string) string {
+	if !req.IncludeFavicon {
+		return ""
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return ""
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return ""
+	}
+
+	return parsed.Scheme + "://" + parsed.Host + "/favicon.ico"
+}
+
+func matchesExactQuery(query, title, content string, raw *string) bool {
+	haystack := strings.ToLower(title + " " + content + " " + rawContent(raw))
+	for _, phrase := range exactNeedles(query) {
+		if !strings.Contains(haystack, strings.ToLower(phrase)) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func rawContent(value *string) string {
+	if value == nil {
+		return ""
+	}
+
+	return *value
+}
+
+func exactNeedles(query string) []string {
+	quoted := quotedPhrases(query)
+	if len(quoted) > 0 {
+		return quoted
+	}
+	query = strings.Join(strings.Fields(query), " ")
+	if query == "" {
+		return nil
+	}
+
+	return []string{query}
+}
+
+func quotedPhrases(query string) []string {
+	var (
+		out    []string
+		token  strings.Builder
+		quoted bool
+	)
+	for _, r := range query {
+		switch {
+		case r == '"' && quoted:
+			value := strings.TrimSpace(token.String())
+			token.Reset()
+			quoted = false
+			if value != "" {
+				out = append(out, value)
+			}
+		case r == '"':
+			token.Reset()
+			quoted = true
+		case quoted:
+			token.WriteRune(r)
+		}
+	}
+
+	return out
 }
 
 func (m *inclusionMode) UnmarshalJSON(raw []byte) error {
@@ -421,6 +669,86 @@ func (m *inclusionMode) UnmarshalJSON(raw []byte) error {
 	default:
 		return badRequest("unsupported include_answer")
 	}
+}
+
+func (m inclusionMode) Enabled() bool {
+	switch strings.ToLower(strings.TrimSpace(string(m))) {
+	case "true", "basic", "advanced":
+		return true
+	default:
+		return false
+	}
+}
+
+type rawContentMode string
+
+func (m *rawContentMode) UnmarshalJSON(raw []byte) error {
+	var enabled bool
+	if err := json.Unmarshal(raw, &enabled); err == nil {
+		if enabled {
+			*m = "true"
+		} else {
+			*m = "false"
+		}
+		return nil
+	}
+
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return fmt.Errorf("include_raw_content: %w", err)
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "false", "true", "markdown", "text":
+		*m = rawContentMode(strings.ToLower(strings.TrimSpace(value)))
+		return nil
+	default:
+		return badRequest("unsupported include_raw_content")
+	}
+}
+
+func (m rawContentMode) Enabled() bool {
+	switch strings.ToLower(strings.TrimSpace(string(m))) {
+	case "true", "markdown", "text":
+		return true
+	default:
+		return false
+	}
+}
+
+func requestID(r *http.Request) string {
+	if id := strings.TrimSpace(r.Header.Get(requestIDHeader)); id != "" {
+		return id
+	}
+
+	return generatedRequestID()
+}
+
+func generatedRequestID() string {
+	var value [16]byte
+	if _, err := randomRead(value[:]); err != nil {
+		return fmt.Sprintf("local-%d", time.Now().UnixNano())
+	}
+
+	return fmt.Sprintf(
+		"%x-%x-%x-%x-%x",
+		value[0:4],
+		value[4:6],
+		value[6:8],
+		value[8:10],
+		value[10:16],
+	)
+}
+
+func writeError(w http.ResponseWriter, status int, code, message, requestID string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
+		Error: ErrorBody{
+			Code:    code,
+			Message: message,
+		},
+		RequestID: requestID,
+	})
 }
 
 type requestError string

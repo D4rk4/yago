@@ -56,7 +56,7 @@ Status values:
 
 | Surface | Path | Methods | Status | Behavior |
 | --- | --- | --- | --- | --- |
-| Tavily-compatible search | `/search` | POST | partial | Serves a Tavily-like response over the shared search core; `search_depth=basic` uses local full-text search and `search_depth=advanced` includes DHT-selected reachable peer search. |
+| Tavily-compatible search | `/search` | POST | partial | Serves a Tavily-like response over the shared search core; accepts current search contract fields, ignores unknown fields for forward compatibility, returns request IDs and JSON error envelopes, uses local full-text search for basic/fast depths, and includes DHT-selected reachable peer search for `search_depth=advanced`. |
 | Tavily-compatible extract | `/extract` | POST | planned | Not mounted. |
 
 ## Admin And Operations
@@ -73,5 +73,6 @@ Status values:
 | Java YaCy admin page clone set | `/*_p.html` | GET, POST | unsupported | Java YaCy administration pages are not cloned into the Go peer. |
 
 Admin authentication, Carbon UI pages, richer admin APIs, full Java YaCy page
-parity, Solr/GSA compatibility, Tavily answer generation, Tavily usage
-accounting, and Tavily-compatible extract APIs remain planned work.
+parity, Solr/GSA compatibility, Tavily answer generation, image search, real
+usage accounting, auth/scopes, optional upstream Tavily, and Tavily-compatible
+extract APIs remain planned work.
