@@ -9,20 +9,21 @@ import (
 )
 
 const (
-	SeedHash     = "Hash"
-	SeedName     = "Name"
-	SeedIP       = "IP"
-	SeedIP6      = "IP6"
-	SeedPort     = "Port"
-	SeedPortSSL  = "PortSSL"
-	SeedPeerType = "PeerType"
-	SeedFlags    = "Flags"
-	SeedVersion  = "Version"
-	SeedUptime   = "Uptime"
-	SeedUTC      = "UTC"
-	SeedLastSeen = "LastSeen"
-	SeedRWICount = "ICount"
-	SeedURLCount = "LCount"
+	SeedHash      = "Hash"
+	SeedName      = "Name"
+	SeedIP        = "IP"
+	SeedIP6       = "IP6"
+	SeedPort      = "Port"
+	SeedPortSSL   = "PortSSL"
+	SeedPeerType  = "PeerType"
+	SeedFlags     = "Flags"
+	SeedVersion   = "Version"
+	SeedUptime    = "Uptime"
+	SeedUTC       = "UTC"
+	SeedBirthDate = "BDate"
+	SeedLastSeen  = "LastSeen"
+	SeedRWICount  = "ICount"
+	SeedURLCount  = "LCount"
 )
 
 func ParseSeed(ctx context.Context, s string) (Seed, error) {
@@ -92,6 +93,8 @@ func parseCoreSeedField(seed *Seed, key, value string) (bool, error) {
 		err = parseInto(&seed.Uptime, strconv.Atoi, value)
 	case SeedUTC:
 		err = parseInto(&seed.UTC, ParseSeedUTCOffset, value)
+	case SeedBirthDate:
+		err = parseInto(&seed.BirthDate, ParseSeedBirthDateUTC, value)
 	case SeedLastSeen:
 		err = parseInto(&seed.LastSeen, ParseSeedLastSeenUTC, value)
 	case SeedRWICount:
@@ -153,6 +156,7 @@ func (s Seed) Properties() map[string]string {
 	putText(fields, SeedName, s.Name)
 	putStringer(fields, SeedVersion, s.Version)
 	putStringer(fields, SeedUTC, s.UTC)
+	putStringer(fields, SeedBirthDate, s.BirthDate)
 	putStringer(fields, SeedLastSeen, s.LastSeen)
 	putInt(fields, SeedUptime, s.Uptime)
 	putInt(fields, SeedRWICount, s.RWICount)

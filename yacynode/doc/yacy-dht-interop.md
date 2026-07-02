@@ -69,6 +69,16 @@ sender loads the matching local URL metadata rows and posts them to
 `/yacy/transferURL.html`. Peer selection, retry, and local deletion after enough
 successful recipients are separate dispatcher responsibilities.
 
+## Sender-side target order
+
+YaCy selects DHT distribution targets by computing the word's YaCy DHT position,
+walking connected peers in YaCy hash order from that position, wrapping at the
+end of the hash ring, and keeping only peers that advertise
+`FLAG_ACCEPT_REMOTE_INDEX`. The distribution path also skips peers younger than
+three days according to their seed `BDate`. The Go selector preserves that
+target order and eligibility logic for the peer-routing step; batch splitting,
+retry, and deletion are handled by later dispatcher work.
+
 ---
 
 ## Dispatcher startup caveat

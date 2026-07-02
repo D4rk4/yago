@@ -40,7 +40,7 @@ func TestSeedTypedFields(t *testing.T) {
 func TestSeedDomainFieldsRoundTrip(t *testing.T) {
 	seed, err := ParseSeed(
 		t.Context(),
-		"{Hash=ABCDEFGHIJKL,LastSeen=20260622012208,UTC=+0230,Version=1.83}",
+		"{BDate=20260621012208,Hash=ABCDEFGHIJKL,LastSeen=20260622012208,UTC=+0230,Version=1.83}",
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +57,11 @@ func TestSeedDomainFieldsRoundTrip(t *testing.T) {
 	if !ok || !lastSeen.Time().Equal(time.Date(2026, 6, 22, 1, 22, 8, 0, time.UTC)) {
 		t.Errorf("LastSeen = %q, %v", lastSeen, ok)
 	}
-	if got := seed.String(); got != "{Hash=ABCDEFGHIJKL,LastSeen=20260622012208,UTC=+0230,Version=1.83}" {
+	birthDate, ok := seed.BirthDate.Get()
+	if !ok || !birthDate.Time().Equal(time.Date(2026, 6, 21, 1, 22, 8, 0, time.UTC)) {
+		t.Errorf("BirthDate = %q, %v", birthDate, ok)
+	}
+	if got := seed.String(); got != "{BDate=20260621012208,Hash=ABCDEFGHIJKL,LastSeen=20260622012208,UTC=+0230,Version=1.83}" {
 		t.Errorf("round trip:\n got %q", got)
 	}
 }
@@ -102,6 +106,47 @@ func TestParseSeedRejectsBadLastSeen(t *testing.T) {
 		ErrBadSeed,
 	) {
 		t.Fatalf("ParseSeed bad last seen = %v, want ErrBadSeed", err)
+	}
+}
+
+func TestParseSeedRejectsBadBirthDate(t *testing.T) {
+	if _, err := ParseSeed(
+		t.Context(),
+		"Hash=ABCDEFGHIJKL,BDate=2026-06-22",
+	); !errors.Is(
+		err,
+		ErrBadSeed,
+	) {
+		t.Fatalf("ParseSeed bad birth date = %v, want ErrBadSeed", err)
+	}
+}
+
+func TestSeedAgeDaysUsesBirthDate(t *testing.T) {
+	birthDate := NewSeedBirthDateUTC(time.Date(2026, 6, 20, 12, 0, 0, 900, time.UTC))
+	seed := Seed{Hash: "ABCDEFGHIJKL", BirthDate: Some(birthDate)}
+	now := time.Date(2026, 6, 23, 12, 0, 0, 0, time.UTC)
+
+	if got := seed.AgeDays(now); got != 3 {
+		t.Fatalf("AgeDays = %d, want 3", got)
+	}
+}
+
+func TestSeedAgeDaysDefaultsToLegacyYaCyBirthDate(t *testing.T) {
+	seed := Seed{Hash: "ABCDEFGHIJKL"}
+	now := time.Date(2004, 1, 4, 0, 0, 0, 0, time.UTC)
+
+	if got := seed.AgeDays(now); got != 3 {
+		t.Fatalf("AgeDays default = %d, want 3", got)
+	}
+}
+
+func TestSeedAgeDaysMatchesYaCyAbsoluteDelta(t *testing.T) {
+	birthDate := NewSeedBirthDateUTC(time.Date(2026, 6, 24, 12, 0, 0, 0, time.UTC))
+	seed := Seed{Hash: "ABCDEFGHIJKL", BirthDate: Some(birthDate)}
+	now := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+
+	if got := seed.AgeDays(now); got != 4 {
+		t.Fatalf("AgeDays future birth date = %d, want 4", got)
 	}
 }
 

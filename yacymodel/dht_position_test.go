@@ -23,6 +23,9 @@ func TestPositionInvalid(t *testing.T) {
 	if _, err := Position("===========A"); err == nil {
 		t.Fatal("expected error for invalid hash symbols")
 	}
+	if _, err := Position(""); err == nil {
+		t.Fatal("expected error for empty hash")
+	}
 }
 
 func TestDistance(t *testing.T) {

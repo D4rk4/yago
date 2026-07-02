@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const seedLastSeenLayout = "20060102150405"
+const seedTimestampLayout = "20060102150405"
 
 var ErrBadSeedLastSeenUTC = errors.New("bad seed last seen utc")
 
@@ -15,7 +15,7 @@ type SeedLastSeenUTC struct {
 }
 
 func ParseSeedLastSeenUTC(s string) (SeedLastSeenUTC, error) {
-	parsed, err := time.ParseInLocation(seedLastSeenLayout, s, time.UTC)
+	parsed, err := time.ParseInLocation(seedTimestampLayout, s, time.UTC)
 	if err != nil {
 		return SeedLastSeenUTC{}, fmt.Errorf("%w: %w", ErrBadSeedLastSeenUTC, err)
 	}
@@ -31,5 +31,5 @@ func (s SeedLastSeenUTC) Time() time.Time {
 }
 
 func (s SeedLastSeenUTC) String() string {
-	return s.value.UTC().Format(seedLastSeenLayout)
+	return s.value.UTC().Format(seedTimestampLayout)
 }

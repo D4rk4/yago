@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"time"
 )
 
 var ErrBadSeed = errors.New("bad seed")
@@ -21,6 +22,7 @@ type Seed struct {
 	Version          Optional[YaCyVersion]
 	Uptime           Optional[int]
 	UTC              Optional[SeedUTCOffset]
+	BirthDate        Optional[SeedBirthDateUTC]
 	LastSeen         Optional[SeedLastSeenUTC]
 	RWICount         Optional[int]
 	URLCount         Optional[int]
@@ -50,4 +52,18 @@ func (s Seed) HTTPEndpoint(path string) (*url.URL, error) {
 		Host:   address,
 		Path:   path,
 	}, nil
+}
+
+func (s Seed) AgeDays(now time.Time) int {
+	birth := time.Date(2004, 1, 1, 0, 0, 0, 0, time.UTC)
+	if value, ok := s.BirthDate.Get(); ok {
+		birth = value.Time()
+	}
+
+	delta := now.UTC().Sub(birth)
+	if delta < 0 {
+		delta = -delta
+	}
+
+	return int(delta / (24 * time.Hour))
 }
