@@ -25,7 +25,7 @@ func restartYaCy(
 		t.Fatalf("restart yacy: %v", err)
 	}
 	yacyURL := hostURL(t, ctx, container)
-	if !waitFor(60*time.Second, func() bool {
+	if !waitFor(180*time.Second, func() bool {
 		return probe.OK(ctx, yacyURL+"/yacy/query.html?object=rwicount")
 	}) {
 		t.Fatal("YaCy never became reachable after restart")

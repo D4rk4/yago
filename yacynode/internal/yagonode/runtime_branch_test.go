@@ -844,7 +844,12 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 func TestAssembleNodeReturnsPeerBirthDateError(t *testing.T) {
 	sentinel := errors.New("birth date failed")
 	restoreAssemblySeams(t)
-	openRuntimePeerBirthDate = func(context.Context, *vault.Vault, func() time.Time) (time.Time, error) {
+	openRuntimePeerBirthDate = func(
+		context.Context,
+		*vault.Vault,
+		func() time.Time,
+		time.Time,
+	) (time.Time, error) {
 		return time.Time{}, sentinel
 	}
 	_, err := assembleNode(

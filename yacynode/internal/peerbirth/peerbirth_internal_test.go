@@ -100,6 +100,7 @@ func TestOpenKeepsBirthDateAcrossRestarts(t *testing.T) {
 		context.Background(),
 		openStubVault(t, engine),
 		func() time.Time { return first },
+		time.Time{},
 	)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -113,6 +114,7 @@ func TestOpenKeepsBirthDateAcrossRestarts(t *testing.T) {
 		context.Background(),
 		openStubVault(t, engine),
 		func() time.Time { return later },
+		time.Time{},
 	)
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
@@ -126,10 +128,10 @@ func TestOpenRejectsSecondRegistration(t *testing.T) {
 	storage := openStubVault(t, newStubEngine())
 	now := func() time.Time { return time.Unix(100, 0) }
 
-	if _, err := Open(context.Background(), storage, now); err != nil {
+	if _, err := Open(context.Background(), storage, now, time.Time{}); err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	if _, err := Open(context.Background(), storage, now); err == nil {
+	if _, err := Open(context.Background(), storage, now, time.Time{}); err == nil {
 		t.Fatal("second Open on one vault did not fail")
 	}
 }
@@ -145,6 +147,7 @@ func TestOpenRejectsCorruptBirthDate(t *testing.T) {
 		context.Background(),
 		openStubVault(t, engine),
 		func() time.Time { return time.Unix(100, 0) },
+		time.Time{},
 	)
 	if err == nil {
 		t.Fatal("corrupt stored birth date did not fail")
@@ -159,8 +162,40 @@ func TestOpenReportsStoreFailure(t *testing.T) {
 		context.Background(),
 		openStubVault(t, engine),
 		func() time.Time { return time.Unix(100, 0) },
+		time.Time{},
 	)
 	if err == nil {
 		t.Fatal("store failure did not fail")
+	}
+}
+
+func TestOpenStoresDeclaredBirthDate(t *testing.T) {
+	engine := newStubEngine()
+	declared := time.Date(2020, 5, 1, 8, 0, 0, 300, time.UTC)
+
+	birth, err := Open(
+		context.Background(),
+		openStubVault(t, engine),
+		func() time.Time { return time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC) },
+		declared,
+	)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if want := declared.Truncate(time.Second); !birth.Equal(want) {
+		t.Fatalf("birth = %v, want declared %v", birth, want)
+	}
+
+	kept, err := Open(
+		context.Background(),
+		openStubVault(t, engine),
+		func() time.Time { return time.Date(2026, 7, 3, 0, 0, 0, 0, time.UTC) },
+		time.Time{},
+	)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if !kept.Equal(birth) {
+		t.Fatalf("kept birth = %v, want stored %v", kept, birth)
 	}
 }

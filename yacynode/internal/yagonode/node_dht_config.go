@@ -18,6 +18,8 @@ const (
 	envDHTRedundancy               = "YACY_DHT_REDUNDANCY"
 	envDHTPartitionExponent        = "YACY_DHT_PARTITION_EXPONENT"
 	envDHTMinimumPeerAgeDays       = "YACY_DHT_MINIMUM_PEER_AGE_DAYS"
+	envDHTMinimumConnectedPeers    = "YACY_DHT_MINIMUM_CONNECTED_PEERS"
+	envDHTMinimumRWIWords          = "YACY_DHT_MINIMUM_RWI_WORDS"
 	defaultDHTDistributionInterval = 10 * time.Second
 	defaultDHTRedundancy           = 3
 	defaultDHTPartitionExponent    = 4
@@ -34,21 +36,7 @@ type dhtDistributionConfig struct {
 }
 
 func loadDHTDistributionConfig(getenv func(string) string) (dhtDistributionConfig, error) {
-	gates := dhtexchange.DefaultGateConfig()
-
-	networkDHT, err := boolEnv(getenv, envNetworkDHT, gates.NetworkDHTEnabled)
-	if err != nil {
-		return dhtDistributionConfig{}, err
-	}
-	distribution, err := boolEnv(getenv, envDHTDistribution, gates.DistributionEnabled)
-	if err != nil {
-		return dhtDistributionConfig{}, err
-	}
-	crawling, err := boolEnv(getenv, envDHTAllowWhileCrawling, gates.AllowWhileCrawling)
-	if err != nil {
-		return dhtDistributionConfig{}, err
-	}
-	indexing, err := boolEnv(getenv, envDHTAllowWhileIndexing, gates.AllowWhileIndexing)
+	gates, err := loadDHTGateConfig(getenv)
 	if err != nil {
 		return dhtDistributionConfig{}, err
 	}
@@ -90,11 +78,6 @@ func loadDHTDistributionConfig(getenv func(string) string) (dhtDistributionConfi
 		return dhtDistributionConfig{}, err
 	}
 
-	gates.NetworkDHTEnabled = networkDHT
-	gates.DistributionEnabled = distribution
-	gates.AllowWhileCrawling = crawling
-	gates.AllowWhileIndexing = indexing
-
 	return dhtDistributionConfig{
 		Gates:              gates,
 		Interval:           interval,
@@ -102,6 +85,54 @@ func loadDHTDistributionConfig(getenv func(string) string) (dhtDistributionConfi
 		PartitionExponent:  partitionExponent,
 		MinimumPeerAgeDays: minimumPeerAgeDays,
 	}, nil
+}
+
+func loadDHTGateConfig(getenv func(string) string) (dhtexchange.GateConfig, error) {
+	gates := dhtexchange.DefaultGateConfig()
+
+	networkDHT, err := boolEnv(getenv, envNetworkDHT, gates.NetworkDHTEnabled)
+	if err != nil {
+		return dhtexchange.GateConfig{}, err
+	}
+	distribution, err := boolEnv(getenv, envDHTDistribution, gates.DistributionEnabled)
+	if err != nil {
+		return dhtexchange.GateConfig{}, err
+	}
+	crawling, err := boolEnv(getenv, envDHTAllowWhileCrawling, gates.AllowWhileCrawling)
+	if err != nil {
+		return dhtexchange.GateConfig{}, err
+	}
+	indexing, err := boolEnv(getenv, envDHTAllowWhileIndexing, gates.AllowWhileIndexing)
+	if err != nil {
+		return dhtexchange.GateConfig{}, err
+	}
+	minimumConnectedPeers, err := intAtLeastEnv(
+		getenv,
+		envDHTMinimumConnectedPeers,
+		dhtexchange.DefaultMinimumConnectedPeers,
+		1,
+	)
+	if err != nil {
+		return dhtexchange.GateConfig{}, err
+	}
+	minimumRWIWords, err := intAtLeastEnv(
+		getenv,
+		envDHTMinimumRWIWords,
+		dhtexchange.DefaultMinimumRWIWords,
+		1,
+	)
+	if err != nil {
+		return dhtexchange.GateConfig{}, err
+	}
+
+	gates.NetworkDHTEnabled = networkDHT
+	gates.DistributionEnabled = distribution
+	gates.AllowWhileCrawling = crawling
+	gates.AllowWhileIndexing = indexing
+	gates.MinimumConnectedPeer = minimumConnectedPeers
+	gates.MinimumRWIWord = minimumRWIWords
+
+	return gates, nil
 }
 
 func boolEnv(getenv func(string) string, key string, fallback bool) (bool, error) {

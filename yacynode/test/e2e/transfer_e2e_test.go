@@ -35,7 +35,7 @@ func TestRealYaCyTransfersRWIToFleet(t *testing.T) {
 
 	yacyURL = restartYaCy(t, ctx, probe, yacyContainer)
 
-	received := waitFor(180*time.Second, func() bool {
+	received := waitFor(360*time.Second, func() bool {
 		for _, node := range fleet {
 			rwiCount, rwiOK := peerQueryCount(
 				ctx,

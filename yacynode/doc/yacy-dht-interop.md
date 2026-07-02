@@ -165,6 +165,9 @@ end of the hash ring, and keeping only peers that advertise
 three days according to their seed `BDate`. The node's own advertised `BDate`
 is stored on first start and survives restarts, so remote YaCy peers judge this
 node's age from its real history when they select it as a distribution target.
+A freshly started peer therefore receives no DHT transfers from YaCy peers for
+its first three days; operators migrating an established peer identity can
+declare the original birth date through `YACY_PEER_BIRTH_DATE`.
 The Go selector preserves that
 target order and eligibility logic for the peer-routing step. The runtime
 defaults to YaCy freeworld senior redundancy `3` and vertical partition exponent

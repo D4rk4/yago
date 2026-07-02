@@ -31,7 +31,12 @@ func (birthCodec) Decode(raw []byte) (time.Time, error) {
 	return t, nil
 }
 
-func Open(ctx context.Context, v *vault.Vault, now func() time.Time) (time.Time, error) {
+func Open(
+	ctx context.Context,
+	v *vault.Vault,
+	now func() time.Time,
+	declared time.Time,
+) (time.Time, error) {
 	births, err := vault.Register(v, birthBucket, birthCodec{})
 	if err != nil {
 		return time.Time{}, fmt.Errorf("register peer birth date: %w", err)
@@ -49,6 +54,9 @@ func Open(ctx context.Context, v *vault.Vault, now func() time.Time) (time.Time,
 			return nil
 		}
 		birth = now().UTC().Truncate(time.Second)
+		if !declared.IsZero() {
+			birth = declared.UTC().Truncate(time.Second)
+		}
 
 		return births.Put(tx, birthKey, birth)
 	})

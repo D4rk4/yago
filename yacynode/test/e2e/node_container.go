@@ -26,6 +26,7 @@ type nodeConfig struct {
 	alias       string
 	hash        yacymodel.Hash
 	seedlistURL string
+	extraEnv    map[string]string
 }
 
 func startNode(
@@ -36,6 +37,7 @@ func startNode(
 ) (testcontainers.Container, string) {
 	t.Helper()
 	env := map[string]string{
+		"YACY_PEER_BIRTH_DATE":   time.Now().AddDate(0, 0, -5).UTC().Format("20060102"),
 		"YACY_PEER_HASH":         cfg.hash.String(),
 		"YACY_PEER_NAME":         cfg.alias,
 		"YACY_NETWORK_NAME":      yacyproto.DefaultNetwork,
@@ -50,6 +52,9 @@ func startNode(
 	}
 	if cfg.seedlistURL != "" {
 		env["YACY_SEEDLIST_URLS"] = cfg.seedlistURL
+	}
+	for key, value := range cfg.extraEnv {
+		env[key] = value
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		Started: true,

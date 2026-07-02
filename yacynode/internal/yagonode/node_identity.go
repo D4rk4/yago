@@ -28,7 +28,7 @@ func nodeIdentityWithBirthDate(
 	vault *vault.Vault,
 ) (nodeidentity.Identity, error) {
 	identity := nodeIdentity(config)
-	birth, err := openRuntimePeerBirthDate(ctx, vault, time.Now)
+	birth, err := openRuntimePeerBirthDate(ctx, vault, time.Now, config.DeclaredBirthDate)
 	if err != nil {
 		return nodeidentity.Identity{}, fmt.Errorf("open peer birth date: %w", err)
 	}

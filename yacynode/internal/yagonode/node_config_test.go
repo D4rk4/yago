@@ -64,36 +64,41 @@ func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 		config.DHT.Interval != defaultDHTDistributionInterval ||
 		config.DHT.Redundancy != defaultDHTRedundancy ||
 		config.DHT.PartitionExponent != defaultDHTPartitionExponent ||
-		config.DHT.MinimumPeerAgeDays != 3 {
+		config.DHT.MinimumPeerAgeDays != 3 ||
+		config.DHT.Gates.MinimumConnectedPeer != 33 ||
+		config.DHT.Gates.MinimumRWIWord != 100 {
 		t.Errorf("DHT config = %#v", config.DHT)
 	}
 }
 
 func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
-		envPeerHash:                "0123456789AB",
-		envPeerName:                "node",
-		envProxyURL:                "http://proxy:4750",
-		envNetworkName:             "testnet",
-		envPeerAddr:                ":7000",
-		envOpsAddr:                 ":7001",
-		envAdvertiseHost:           "203.0.113.1",
-		envAdvertisePort:           "9999",
-		envPublicSelfTestURL:       "https://public.example:9443",
-		envDataDir:                 "/var/lib/yago",
-		envStorageQuota:            "2MB",
-		envTrustedProxies:          "10.0.0.0/8",
-		envSeedlistURLs:            " http://a , http://b ,",
-		envAnnounceInterval:        "30s",
-		envNetworkDHT:              "false",
-		envDHTDistribution:         "false",
-		envDHTAllowWhileCrawling:   "true",
-		envDHTAllowWhileIndexing:   "false",
-		envDHTDistributionInterval: "45s",
-		envDHTRedundancy:           "5",
-		envDHTPartitionExponent:    "2",
-		envDHTMinimumPeerAgeDays:   "1",
-		envSearchAccessToken:       " search-secret ",
+		envPeerHash:                 "0123456789AB",
+		envPeerName:                 "node",
+		envProxyURL:                 "http://proxy:4750",
+		envNetworkName:              "testnet",
+		envPeerAddr:                 ":7000",
+		envOpsAddr:                  ":7001",
+		envAdvertiseHost:            "203.0.113.1",
+		envAdvertisePort:            "9999",
+		envPublicSelfTestURL:        "https://public.example:9443",
+		envDataDir:                  "/var/lib/yago",
+		envStorageQuota:             "2MB",
+		envTrustedProxies:           "10.0.0.0/8",
+		envSeedlistURLs:             " http://a , http://b ,",
+		envAnnounceInterval:         "30s",
+		envNetworkDHT:               "false",
+		envDHTDistribution:          "false",
+		envDHTAllowWhileCrawling:    "true",
+		envDHTAllowWhileIndexing:    "false",
+		envDHTDistributionInterval:  "45s",
+		envDHTRedundancy:            "5",
+		envDHTPartitionExponent:     "2",
+		envDHTMinimumPeerAgeDays:    "1",
+		envDHTMinimumConnectedPeers: "2",
+		envDHTMinimumRWIWords:       "10",
+		envPeerBirthDate:            "20240115",
+		envSearchAccessToken:        " search-secret ",
 	}))
 	if err != nil {
 		t.Fatalf("load config: %v", err)
@@ -130,6 +135,9 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 	if config.SearchAPIKey != "search-secret" {
 		t.Errorf("SearchAPIKey = %q", config.SearchAPIKey)
 	}
+	if want := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC); !config.DeclaredBirthDate.Equal(want) {
+		t.Errorf("DeclaredBirthDate = %v, want %v", config.DeclaredBirthDate, want)
+	}
 	if config.DHT.Gates.NetworkDHTEnabled ||
 		config.DHT.Gates.DistributionEnabled ||
 		!config.DHT.Gates.AllowWhileCrawling ||
@@ -137,7 +145,9 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 		config.DHT.Interval != 45*time.Second ||
 		config.DHT.Redundancy != 5 ||
 		config.DHT.PartitionExponent != 2 ||
-		config.DHT.MinimumPeerAgeDays != 1 {
+		config.DHT.MinimumPeerAgeDays != 1 ||
+		config.DHT.Gates.MinimumConnectedPeer != 2 ||
+		config.DHT.Gates.MinimumRWIWord != 10 {
 		t.Errorf("DHT config = %#v", config.DHT)
 	}
 }
@@ -333,6 +343,15 @@ func TestLoadNodeConfigRejectsBadDHTUnitConfig(t *testing.T) {
 		},
 		"too small dht minimum peer age": {
 			envDHTMinimumPeerAgeDays: "-2",
+		},
+		"bad dht minimum connected peers": {
+			envDHTMinimumConnectedPeers: "0",
+		},
+		"bad dht minimum rwi words": {
+			envDHTMinimumRWIWords: "none",
+		},
+		"bad peer birth date": {
+			envPeerBirthDate: "someday",
 		},
 	}
 	for name, env := range cases {

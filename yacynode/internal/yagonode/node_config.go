@@ -30,6 +30,7 @@ const (
 	envAnnounceInterval  = "YACY_ANNOUNCE_INTERVAL"
 	envGreetsPerCycle    = "YACY_GREETS_PER_CYCLE"
 	envSearchAccessToken = "YAGO_SEARCH_API" + "_KEY"
+	envPeerBirthDate     = "YACY_PEER_BIRTH_DATE"
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"
@@ -41,6 +42,7 @@ const (
 	storageFileName       = "yago-node.db"
 	legacyStorageFileName = "yacy-rwi.db"
 	searchIndexDirName    = "search.bleve"
+	peerBirthDateLayout   = "20060102"
 )
 
 type nodeConfig struct {
@@ -63,6 +65,7 @@ type nodeConfig struct {
 	AnnounceInterval  time.Duration
 	GreetsPerCycle    int
 	SearchAPIKey      string
+	DeclaredBirthDate time.Time
 	Crawl             crawlConfig
 	DHT               dhtDistributionConfig
 }
@@ -88,12 +91,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	peerAddr := envWithDefault(getenv, envPeerAddr, defaultPeerAddr)
 	seedlistURLs := splitList(getenv(envSeedlistURLs))
 
-	announceInterval, err := announceInterval(getenv)
-	if err != nil {
-		return nodeConfig{}, err
-	}
-
-	greetsPerCycle, err := greetsPerCycle(getenv)
+	announceInterval, greetsPerCycle, err := announceCadence(getenv)
 	if err != nil {
 		return nodeConfig{}, err
 	}
@@ -118,17 +116,17 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		return nodeConfig{}, err
 	}
 
-	proxies, err := parseTrustedProxies(getenv(envTrustedProxies))
-	if err != nil {
-		return nodeConfig{}, fmt.Errorf("%s: %w", envTrustedProxies, err)
-	}
-
-	proxyURL, err := egressProxyURL(getenv)
+	proxies, proxyURL, err := proxyConfig(getenv)
 	if err != nil {
 		return nodeConfig{}, err
 	}
 
 	dht, err := loadDHTDistributionConfig(getenv)
+	if err != nil {
+		return nodeConfig{}, err
+	}
+
+	declaredBirthDate, err := declaredBirthDate(getenv)
 	if err != nil {
 		return nodeConfig{}, err
 	}
@@ -153,8 +151,36 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		AnnounceInterval:  announceInterval,
 		GreetsPerCycle:    greetsPerCycle,
 		SearchAPIKey:      strings.TrimSpace(getenv(envSearchAccessToken)),
+		DeclaredBirthDate: declaredBirthDate,
 		DHT:               dht,
 	}, nil
+}
+
+func proxyConfig(getenv func(string) string) ([]*net.IPNet, *url.URL, error) {
+	proxies, err := parseTrustedProxies(getenv(envTrustedProxies))
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", envTrustedProxies, err)
+	}
+	proxyURL, err := egressProxyURL(getenv)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return proxies, proxyURL, nil
+}
+
+func declaredBirthDate(getenv func(string) string) (time.Time, error) {
+	raw := strings.TrimSpace(getenv(envPeerBirthDate))
+	if raw == "" {
+		return time.Time{}, nil
+	}
+
+	birth, err := time.ParseInLocation(peerBirthDateLayout, raw, time.UTC)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%s: %w", envPeerBirthDate, err)
+	}
+
+	return birth, nil
 }
 
 func loadConfiguredNodeData(getenv func(string) string) (configuredNodeData, error) {
@@ -216,6 +242,19 @@ func localSelfTestURL(peerAddr string) (*url.URL, error) {
 	}
 
 	return &url.URL{Scheme: "http", Host: net.JoinHostPort(host, port)}, nil
+}
+
+func announceCadence(getenv func(string) string) (time.Duration, int, error) {
+	interval, err := announceInterval(getenv)
+	if err != nil {
+		return 0, 0, err
+	}
+	greets, err := greetsPerCycle(getenv)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return interval, greets, nil
 }
 
 func greetsPerCycle(getenv func(string) string) (int, error) {

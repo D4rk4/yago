@@ -56,6 +56,22 @@ Upstream has no JUnit coverage for the `/yacy/*` servlet wire behavior itself
 message, profile, crawlReceipt). This repository covers those surfaces with
 golden wire fixtures under `yacynode/test/fixtures/yacywire/` and endpoint
 tests in the matching `yacynode/internal/*` packages, derived from upstream
-servlet sources and observed responses. Functional end-to-end compatibility
-against a live Java YaCy peer is the planned interop matrix in
-`yacynode/test/e2e`.
+servlet sources and observed responses.
+
+Functional end-to-end compatibility is proven by the live interop matrix in
+`yacynode/test/e2e` against a real `yacy/yacy_search_server` container:
+
+- `TestRealYaCyPromotesNodeToSenior`: mutual hello with the full advertised
+  seed DNA; the Java peer back-pings this node and publishes it as a senior.
+- `TestRealYaCyTransfersRWIToFleet`: the Java peer crawls a pushed document
+  and DHT-transfers RWI postings with URL metadata into this node. Against the
+  current upstream `latest` image this scenario does not complete within the
+  test window and is under investigation; inbound transfer acceptance itself
+  stays covered by the golden transferRWI/transferURL fixtures and endpoint
+  tests.
+- `TestNodeDistributesRWIToRealYaCy`: this node runs its outbound DHT gates,
+  selects the Java peer, and hands off stored RWI and URL metadata through the
+  two-phase transferRWI/transferURL exchange until the Java index grows.
+- `TestGlobalSearchFindsRealYaCyResults`: a global search on this node fans
+  out to the Java peer over `/yacy/search.html` and returns a document that
+  only the Java peer has indexed.
