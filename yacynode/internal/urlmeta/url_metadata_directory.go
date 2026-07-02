@@ -89,6 +89,35 @@ func (d urlDirectory) Count(ctx context.Context) (int, error) {
 	return count, nil
 }
 
+func (d urlDirectory) StoredURLMetadataRows(
+	ctx context.Context,
+	visit func(yacymodel.URIMetadataRow) (bool, error),
+) error {
+	err := d.vault.View(ctx, func(tx *vault.Txn) error {
+		return d.collection.Scan(
+			tx,
+			nil,
+			func(_ vault.Key, row yacymodel.URIMetadataRow) (bool, error) {
+				if err := ctx.Err(); err != nil {
+					return false, fmt.Errorf("context: %w", err)
+				}
+
+				again, err := visit(row)
+				if err != nil {
+					return false, err
+				}
+
+				return again, nil
+			},
+		)
+	})
+	if err != nil {
+		return fmt.Errorf("stored url metadata rows: %w", err)
+	}
+
+	return nil
+}
+
 func (d urlDirectory) Purge(
 	ctx context.Context,
 	tx *vault.Txn,
@@ -111,6 +140,7 @@ func (d urlDirectory) Purge(
 }
 
 var (
-	_ URLDirectory = urlDirectory{}
-	_ URLEvictor   = urlDirectory{}
+	_ URLDirectory          = urlDirectory{}
+	_ StoredURLMetadataRows = urlDirectory{}
+	_ URLEvictor            = urlDirectory{}
 )

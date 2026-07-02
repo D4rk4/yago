@@ -30,6 +30,7 @@ type peerExchange struct {
 	vault    *vault.Vault
 	client   *http.Client
 	peer     *metrics.PeerMetrics
+	host     hostlinks.IncomingHostLinks
 }
 
 type peerExchangeRuntime struct {
@@ -69,7 +70,7 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 		p.client,
 	)
 	seedlist.Mount(p.router, p.report, roster)
-	hostlinks.Mount(p.router, p.config.NetworkName, p.report, hostlinks.NoIncomingHostLinks{})
+	hostlinks.Mount(p.router, p.config.NetworkName, p.report, p.host)
 	peermessage.Mount(p.router, p.identity, mailbox)
 	peerprofile.Mount(p.router, p.identity, peerprofile.NoPeerProfile{})
 	sharedblacklist.Mount(p.router, sharedblacklist.NoSharedBlacklists{})

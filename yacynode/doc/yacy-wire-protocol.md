@@ -15,7 +15,8 @@ The shared blacklist endpoint `/yacy/list.html` is also raw text and returns
 CRLF-terminated blacklist entries for `col=black`. The peer profile endpoint
 `/yacy/profile.html` is raw text as well and returns CRLF-terminated `key=value`
 profile properties. The host-link endpoint `/yacy/idx.json?object=host` returns
-JSON with version, uptime, host row definition, and the known host-link index.
+JSON with version, uptime, YaCy's host-reference row definition, and a bounded
+incoming host-link index inferred from stored URL metadata referrers.
 The peer message endpoint `/yacy/message.html` supports permission checks and
 stores inbound peer messages; attachments are advertised as size `0`. These
 match the public P2P surfaces exposed by original YaCy peers.

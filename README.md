@@ -37,7 +37,7 @@ The node currently targets these responsibilities:
 - answer YaCy peer profile export requests through `/yacy/profile.html` with
   an empty profile unless peer profile fields are configured in a future source;
 - answer YaCy host-link index requests through `/yacy/idx.json?object=host` with
-  an empty index unless host-link data is configured in a future source;
+  a bounded incoming host graph inferred from stored URL metadata referrers;
 - answer YaCy peer message permission requests and store inbound
   `/yacy/message.html` posts without attachment support;
 - answer YaCy `/yacy/urls.xml` remote crawl URL requests with an empty queue,

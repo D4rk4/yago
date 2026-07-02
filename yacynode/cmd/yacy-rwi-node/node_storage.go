@@ -13,6 +13,7 @@ import (
 
 type nodeStorage struct {
 	urlDirectory     urlmeta.URLDirectory
+	urlMetadataRows  urlmeta.StoredURLMetadataRows
 	urlEvictor       urlmeta.URLEvictor
 	urlReceiver      urlmeta.URLReceiver
 	staleness        urlmetastaleness.StalenessRanking
@@ -40,6 +41,7 @@ func openNodeStorage(vault *vault.Vault) (nodeStorage, error) {
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("urlmeta storage: %w", err)
 	}
+	urlMetadataRows, _ := urlDirectory.(urlmeta.StoredURLMetadataRows)
 
 	references, err := openURLReferences(vault)
 	if err != nil {
@@ -65,6 +67,7 @@ func openNodeStorage(vault *vault.Vault) (nodeStorage, error) {
 
 	return nodeStorage{
 		urlDirectory:     urlDirectory,
+		urlMetadataRows:  urlMetadataRows,
 		urlEvictor:       urlEvictor,
 		urlReceiver:      urlReceiver,
 		staleness:        staleness,

@@ -93,9 +93,14 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:     yacyproto.PathIndex,
 		Methods:  methods(yacyproto.IndexEndpointMethods),
 		State:    Partial,
-		Behavior: "Serves the YaCy idx.json host object shape with an empty host-link index until host-link storage is populated.",
-		Evidence: []string{"yacynode/internal/hostlinks/*_test.go", "yacyproto/index_test.go"},
-		Notes:    "Only object=host is implemented.",
+		Behavior: "Serves the YaCy idx.json host object shape with a bounded incoming host-link index inferred from stored URL metadata referrers.",
+		Evidence: []string{
+			"yacynode/internal/hostlinks/*_test.go",
+			"yacynode/internal/urlmeta/*_test.go",
+			"yacynode/cmd/yacy-rwi-node/host_link_source_test.go",
+			"yacyproto/index_test.go",
+		},
+		Notes: "Only object=host is implemented.",
 	},
 	{
 		Name:     "Shared blacklist export",

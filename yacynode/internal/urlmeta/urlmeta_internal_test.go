@@ -321,6 +321,130 @@ func TestDirectoryHandlesMissingRowsAndViewErrors(t *testing.T) {
 	}
 }
 
+func TestDirectoryVisitsStoredURLMetadataRows(t *testing.T) {
+	module := openModule(t, 0)
+	first := urlRow(t, "a")
+	second := urlRow(t, "b")
+	if _, err := module.Receiver.Receive(
+		t.Context(),
+		[]yacymodel.URIMetadataRow{second, first},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	rows := storedMetadataRows(t, module.Directory)
+	var visited []yacymodel.Hash
+	if err := rows.StoredURLMetadataRows(
+		t.Context(),
+		func(row yacymodel.URIMetadataRow) (bool, error) {
+			hash, err := row.URLHash()
+			if err != nil {
+				t.Fatalf("URLHash: %v", err)
+			}
+			visited = append(visited, hash.Hash())
+
+			return true, nil
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []yacymodel.Hash{rowHash(t, first), rowHash(t, second)}
+	if !slices.Equal(visited, want) {
+		t.Fatalf("visited = %v, want %v", visited, want)
+	}
+}
+
+func TestDirectoryStopsStoredURLMetadataRows(t *testing.T) {
+	module := openModule(t, 0)
+	if _, err := module.Receiver.Receive(
+		t.Context(),
+		[]yacymodel.URIMetadataRow{urlRow(t, "a"), urlRow(t, "b")},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	rows := storedMetadataRows(t, module.Directory)
+	var visits int
+	if err := rows.StoredURLMetadataRows(
+		t.Context(),
+		func(yacymodel.URIMetadataRow) (bool, error) {
+			visits++
+
+			return false, nil
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if visits != 1 {
+		t.Fatalf("visits = %d, want 1", visits)
+	}
+}
+
+func TestDirectoryStoredURLMetadataRowsReturnsErrors(t *testing.T) {
+	t.Run("visitor", func(t *testing.T) {
+		module := openModule(t, 0)
+		if _, err := module.Receiver.Receive(
+			t.Context(),
+			[]yacymodel.URIMetadataRow{urlRow(t, "a")},
+		); err != nil {
+			t.Fatal(err)
+		}
+		sentinel := errors.New("visitor failed")
+		rows := storedMetadataRows(t, module.Directory)
+		err := rows.StoredURLMetadataRows(
+			t.Context(),
+			func(yacymodel.URIMetadataRow) (bool, error) {
+				return false, sentinel
+			},
+		)
+		if !errors.Is(err, sentinel) {
+			t.Fatalf("StoredURLMetadataRows error = %v, want %v", err, sentinel)
+		}
+	})
+
+	t.Run("context", func(t *testing.T) {
+		_, module, _ := openScriptedModule(t)
+		if _, err := module.Receiver.Receive(
+			t.Context(),
+			[]yacymodel.URIMetadataRow{urlRow(t, "a")},
+		); err != nil {
+			t.Fatal(err)
+		}
+		ctx := &errAfterContext{Context: context.Background(), remaining: 2, err: context.Canceled}
+		rows := storedMetadataRows(t, module.Directory)
+		err := rows.StoredURLMetadataRows(ctx, func(yacymodel.URIMetadataRow) (bool, error) {
+			return true, nil
+		})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("StoredURLMetadataRows error = %v, want context.Canceled", err)
+		}
+	})
+
+	t.Run("decode", func(t *testing.T) {
+		_, module, engine := openScriptedModule(t)
+		row := urlRow(t, "a")
+		if _, err := module.Receiver.Receive(
+			t.Context(),
+			[]yacymodel.URIMetadataRow{row},
+		); err != nil {
+			t.Fatal(err)
+		}
+		engine.buckets[bucketName][rowHash(t, row).String()] = []byte("bad")
+		rows := storedMetadataRows(t, module.Directory)
+		err := rows.StoredURLMetadataRows(
+			t.Context(),
+			func(yacymodel.URIMetadataRow) (bool, error) {
+				return true, nil
+			},
+		)
+		if err == nil {
+			t.Fatal("expected decode error")
+		}
+	})
+}
+
 func TestCountReturnsLengthError(t *testing.T) {
 	_, module, engine := openScriptedModule(t)
 	if _, err := module.Receiver.Receive(
@@ -374,6 +498,17 @@ func TestPurgeReportsDeleteErrorAndAbsentRows(t *testing.T) {
 	if result.URLsDeleted != 0 {
 		t.Fatalf("URLsDeleted = %d, want 0", result.URLsDeleted)
 	}
+}
+
+func storedMetadataRows(t *testing.T, directory URLDirectory) StoredURLMetadataRows {
+	t.Helper()
+
+	rows, ok := directory.(StoredURLMetadataRows)
+	if !ok {
+		t.Fatal("directory does not expose stored URL metadata rows")
+	}
+
+	return rows
 }
 
 type failingURLReceiver struct{}

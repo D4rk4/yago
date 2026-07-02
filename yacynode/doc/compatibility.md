@@ -31,7 +31,7 @@ Status values:
 | Seed list | `/yacy/seedlist.html` | GET, POST | implemented | Serves own and confirmed reachable seeds in plain seed-list form; configured bootstrap import accepts seed `UTC` offset and timestamp wire values. |
 | Seed list JSON | `/yacy/seedlist.json` | GET, POST | implemented | Serves own and confirmed reachable seeds in JSON seed-list form. |
 | Seed list XML | `/yacy/seedlist.xml` | GET, POST | implemented | Serves own and confirmed reachable seeds in XML seed-list form. |
-| Host-link index | `/yacy/idx.json` | GET, POST | partial | Serves the host object shape with an empty host-link index until host-link storage is populated. |
+| Host-link index | `/yacy/idx.json` | GET, POST | partial | Serves the host object shape with a bounded incoming host-link index inferred from stored URL metadata referrers. |
 | Shared blacklist export | `/yacy/list.html` | GET, POST | partial | Serves `col=black` with an empty source until shared blacklist storage is populated. |
 | Peer message inbox | `/yacy/message.html` | GET, POST | partial | Accepts permission checks and inbound message posts; attachments are not stored. |
 | Peer profile export | `/yacy/profile.html` | GET, POST | partial | Serves profile properties when a profile source exists; default runtime source is empty. |

@@ -8,6 +8,8 @@ import (
 	"github.com/D4rk4/yago/yacyproto"
 )
 
+const HostReferenceRowDefinition = "String h-6 {b256}, Cardinal m-4 {b256}, Cardinal c-4 {b256}"
+
 type RuntimeStatus interface {
 	Version(ctx context.Context) string
 	Uptime(ctx context.Context) int
