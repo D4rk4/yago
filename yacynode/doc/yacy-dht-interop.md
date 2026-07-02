@@ -79,6 +79,13 @@ three days according to their seed `BDate`. The Go selector preserves that
 target order and eligibility logic for the peer-routing step; batch splitting,
 retry, and deletion are handled by later dispatcher work.
 
+Before transfer, YaCy splits a word's RWI rows by the URL hash's vertical DHT
+partition, accumulates each partition into the chunk for its primary target,
+drops rows without local URL metadata, caps a chunk at 1000 RWI rows, and
+dequeues the largest buffered chunk first. The Go exchange queue preserves that
+batch shape while leaving runtime scheduling disabled until DHT gates and retry
+policy are wired.
+
 ---
 
 ## Dispatcher startup caveat

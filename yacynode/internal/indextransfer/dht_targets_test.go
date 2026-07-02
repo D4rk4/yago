@@ -150,6 +150,19 @@ func TestSelectDHTTargetsBreaksPositionTiesAndTruncates(t *testing.T) {
 	}
 }
 
+func TestSelectDHTTargetsAtPositionRejectsInvalidPosition(t *testing.T) {
+	t.Parallel()
+
+	_, err := SelectDHTTargetsAtPosition(
+		yacymodel.MaxPosition+1,
+		[]yacymodel.Seed{dhtSeed(t, "BBBBBBBBBBBB")},
+		DHTTargetConfig{Redundancy: 1},
+	)
+	if err == nil {
+		t.Fatal("expected invalid dht position error")
+	}
+}
+
 func TestSelectDHTTargetsReturnsNoTargetsWhenRedundancyIsDisabled(t *testing.T) {
 	t.Parallel()
 

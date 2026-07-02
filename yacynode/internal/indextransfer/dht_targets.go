@@ -2,6 +2,7 @@ package indextransfer
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -20,6 +21,8 @@ type DHTTarget struct {
 	Distance uint64
 }
 
+var errInvalidDHTPosition = errors.New("invalid dht position")
+
 func SelectDHTTargets(
 	start yacymodel.Hash,
 	peers []yacymodel.Seed,
@@ -28,6 +31,18 @@ func SelectDHTTargets(
 	startPosition, err := yacymodel.Position(start)
 	if err != nil {
 		return nil, fmt.Errorf("dht start: %w", err)
+	}
+
+	return SelectDHTTargetsAtPosition(startPosition, peers, config)
+}
+
+func SelectDHTTargetsAtPosition(
+	startPosition uint64,
+	peers []yacymodel.Seed,
+	config DHTTargetConfig,
+) ([]DHTTarget, error) {
+	if startPosition > yacymodel.MaxPosition {
+		return nil, fmt.Errorf("%w: %d", errInvalidDHTPosition, startPosition)
 	}
 	if config.Redundancy <= 0 || len(peers) == 0 {
 		return nil, nil

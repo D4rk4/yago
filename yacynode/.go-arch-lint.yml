@@ -44,6 +44,8 @@ components:
     in: internal/crawlurls/**
   indextransfer:
     in: internal/indextransfer/**
+  dhtexchange:
+    in: internal/dhtexchange/**
   urlmeta:
     in: internal/urlmeta/**
   urlmetastaleness:
@@ -220,6 +222,12 @@ deps:
     canUse:
       - yacymodel
       - yacyproto
+  dhtexchange:
+    mayDependOn:
+      - dhtexchange
+      - indextransfer
+    canUse:
+      - yacymodel
   urlmeta:
     mayDependOn:
       - urlmeta

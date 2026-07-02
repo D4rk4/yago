@@ -1,6 +1,9 @@
 package yacymodel
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestPosition(t *testing.T) {
 	low, err := Position("AAAAAAAAAAAA")
@@ -37,5 +40,84 @@ func TestDistance(t *testing.T) {
 	}
 	if d := Distance(5, 5); d != 0 {
 		t.Errorf("Distance(5,5) = %d, want 0", d)
+	}
+}
+
+func TestVerticalPartition(t *testing.T) {
+	low, err := VerticalPartition("AAAAAAAAAAAA", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if low != 0 {
+		t.Fatalf("VerticalPartition low = %d, want 0", low)
+	}
+
+	high, err := VerticalPartition("__________AA", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if high != 3 {
+		t.Fatalf("VerticalPartition high = %d, want 3", high)
+	}
+
+	only, err := VerticalPartition("__________AA", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if only != 0 {
+		t.Fatalf("VerticalPartition exponent 0 = %d, want 0", only)
+	}
+}
+
+func TestVerticalPosition(t *testing.T) {
+	word := Hash("AAAAAAAAAAAA")
+	position, err := VerticalPosition(word, 2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := position >> 61; got != 2 {
+		t.Fatalf("VerticalPosition partition = %d, want 2", got)
+	}
+
+	base, err := Position(word)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zero, err := VerticalPosition(word, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if zero != base {
+		t.Fatalf("VerticalPosition exponent 0 = %d, want %d", zero, base)
+	}
+}
+
+func TestVerticalPartitionRejectsInvalidInput(t *testing.T) {
+	if _, err := VerticalPartition("bad", 0); !errors.Is(err, ErrInvalidHash) {
+		t.Fatalf("VerticalPartition bad hash = %v, want ErrInvalidHash", err)
+	}
+	if _, err := VerticalPartition("AAAAAAAAAAAA", -1); !errors.Is(err, ErrInvalidDHTPartition) {
+		t.Fatalf("VerticalPartition bad exponent = %v, want ErrInvalidDHTPartition", err)
+	}
+	if _, err := VerticalPartition("AAAAAAAAAAAA", 63); !errors.Is(err, ErrInvalidDHTPartition) {
+		t.Fatalf("VerticalPartition high exponent = %v, want ErrInvalidDHTPartition", err)
+	}
+}
+
+func TestVerticalPositionRejectsInvalidInput(t *testing.T) {
+	if _, err := VerticalPosition("bad", 0, 0); !errors.Is(err, ErrInvalidHash) {
+		t.Fatalf("VerticalPosition bad hash = %v, want ErrInvalidHash", err)
+	}
+	if _, err := VerticalPosition("AAAAAAAAAAAA", 0, -1); !errors.Is(
+		err,
+		ErrInvalidDHTPartition,
+	) {
+		t.Fatalf("VerticalPosition bad exponent = %v, want ErrInvalidDHTPartition", err)
+	}
+	if _, err := VerticalPosition("AAAAAAAAAAAA", 4, 2); !errors.Is(
+		err,
+		ErrInvalidDHTPartition,
+	) {
+		t.Fatalf("VerticalPosition bad vertical = %v, want ErrInvalidDHTPartition", err)
 	}
 }
