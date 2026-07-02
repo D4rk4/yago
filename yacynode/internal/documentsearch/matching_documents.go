@@ -44,7 +44,8 @@ func dedupeDocuments(appearances []termAppearance) map[yacymodel.Hash]matchedDoc
 		documents[appearance.documentIdentifier] = matchedDocument{
 			identifier:  appearance.documentIdentifier,
 			occurrences: appearance.occurrences,
-			termSpread:  appearance.termSpread,
+			minPosition: appearance.textPosition,
+			maxPosition: appearance.textPosition,
 		}
 	}
 

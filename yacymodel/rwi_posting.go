@@ -26,10 +26,11 @@ const (
 	ColTextPosition      = "t"
 	ColPhraseRelativePos = "r"
 	ColPhrasePosition    = "o"
-	ColWordDistance      = "i"
-	ColReserve           = "k"
-	propertyOpen         = '{'
-	propertyClose        = '}'
+	// ColWordDistance is a query-time term-distance signal, always 0 in a stored posting; the node derives it from ColTextPosition and never reads this column.
+	ColWordDistance = "i"
+	ColReserve      = "k"
+	propertyOpen    = '{'
+	propertyClose   = '}'
 )
 
 var ErrBadRWIPosting = errors.New("bad rwi posting")

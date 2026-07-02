@@ -73,13 +73,13 @@ func hashFor(base string) yacymodel.Hash {
 	return yacymodel.Hash(base + filler[len(base):])
 }
 
-func postingEntry(word yacymodel.Hash, url string, distance, hits int) yacymodel.RWIPosting {
+func postingEntry(word yacymodel.Hash, url string, position, hits int) yacymodel.RWIPosting {
 	return yacymodel.RWIPosting{
 		WordHash: word,
 		Properties: map[string]string{
 			yacymodel.ColURLHash:      string(hashFor(url)),
 			yacymodel.ColHitCount:     strconv.Itoa(hits),
-			yacymodel.ColWordDistance: strconv.Itoa(distance),
+			yacymodel.ColTextPosition: strconv.Itoa(position),
 		},
 	}
 }
@@ -168,21 +168,21 @@ func TestSearchTakesMostRelevantUpToLimit(t *testing.T) {
 }
 
 func TestSearchOrdersByOccurrencesThenTermSpread(t *testing.T) {
-	word := hashFor("w1")
+	word1, word2 := hashFor("w1"), hashFor("w2")
 	index := fakeScanner{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
-		word: {
-			postingEntry(word, "u1", 9, 1),
-			postingEntry(word, "u2", 1, 3),
-			postingEntry(word, "u3", 2, 3),
-		},
+		word1: {postingEntry(word1, "u2", 1, 1), postingEntry(word1, "u3", 1, 1)},
+		word2: {postingEntry(word2, "u2", 2, 2), postingEntry(word2, "u3", 5, 2)},
 	}}
 	s := searcher{
 		index:          index,
-		documents:      fakeDirectory{rows: urlRows("u1", "u2", "u3")},
+		documents:      fakeDirectory{rows: urlRows("u2", "u3")},
 		matchesPerTerm: 100,
 	}
 
-	result, err := s.search(context.Background(), searchCriteria{terms: []yacymodel.Hash{word}})
+	result, err := s.search(
+		context.Background(),
+		searchCriteria{terms: []yacymodel.Hash{word1, word2}},
+	)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -241,16 +241,30 @@ func TestSearchReportsRequestedTermsWithoutWantedTerms(t *testing.T) {
 }
 
 func TestSearchQualifiesByLanguageAndTermSpread(t *testing.T) {
-	word := hashFor("w1")
-	english := postingEntry(word, "u1", 1, 1)
-	english.Properties[yacymodel.ColLanguage] = "en"
-	german := postingEntry(word, "u2", 1, 1)
-	german.Properties[yacymodel.ColLanguage] = "de"
-	far := postingEntry(word, "u3", 9, 1)
-	far.Properties[yacymodel.ColLanguage] = "en"
+	word1, word2 := hashFor("w1"), hashFor("w2")
+	english := func(url string, position int) yacymodel.RWIPosting {
+		posting := postingEntry(word1, url, position, 1)
+		posting.Properties[yacymodel.ColLanguage] = "en"
+
+		return posting
+	}
+	inLanguage := func(word yacymodel.Hash, url, language string, position int) yacymodel.RWIPosting {
+		posting := postingEntry(word, url, position, 1)
+		posting.Properties[yacymodel.ColLanguage] = language
+
+		return posting
+	}
+
+	near := english("u1", 1)
+	nearOther := inLanguage(word2, "u1", "en", 2)
+	german := inLanguage(word1, "u2", "de", 1)
+	germanOther := inLanguage(word2, "u2", "de", 2)
+	far := english("u3", 1)
+	farOther := inLanguage(word2, "u3", "en", 9)
 
 	index := fakeScanner{postings: map[yacymodel.Hash][]yacymodel.RWIPosting{
-		word: {english, german, far},
+		word1: {near, german, far},
+		word2: {nearOther, germanOther, farOther},
 	}}
 	s := searcher{
 		index:          index,
@@ -259,7 +273,7 @@ func TestSearchQualifiesByLanguageAndTermSpread(t *testing.T) {
 	}
 
 	result, err := s.search(context.Background(), searchCriteria{
-		terms:         []yacymodel.Hash{word},
+		terms:         []yacymodel.Hash{word1, word2},
 		maxTermSpread: 5,
 		language:      "en",
 	})

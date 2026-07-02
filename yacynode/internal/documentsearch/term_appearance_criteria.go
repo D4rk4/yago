@@ -14,7 +14,6 @@ const (
 
 type termAppearanceCriteria struct {
 	language           string
-	maxTermSpread      int
 	requiredDocuments  map[yacymodel.Hash]struct{}
 	excludedDocuments  map[yacymodel.Hash]struct{}
 	siteHash           string
@@ -35,7 +34,6 @@ func (s searcher) appearanceCriteria(
 
 	return termAppearanceCriteria{
 		language:           criteria.language,
-		maxTermSpread:      criteria.maxTermSpread,
 		requiredDocuments:  documentSet(criteria.requiredDocuments),
 		excludedDocuments:  excluded,
 		siteHash:           criteria.siteHash,
@@ -47,9 +45,6 @@ func (s searcher) appearanceCriteria(
 
 func (c termAppearanceCriteria) matches(ctx context.Context, appearance termAppearance) bool {
 	if c.language != "" && appearance.language != c.language {
-		return false
-	}
-	if c.maxTermSpread > 0 && appearance.termSpread > uint64(c.maxTermSpread) {
 		return false
 	}
 	if len(c.requiredDocuments) != 0 {

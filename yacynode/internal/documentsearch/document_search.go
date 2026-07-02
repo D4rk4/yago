@@ -37,8 +37,11 @@ func (s searcher) search(ctx context.Context, criteria searchCriteria) (searchRe
 		return searchResult{}, err
 	}
 
-	matchingEveryTerm := keepDocumentsMatchingEveryTerm(
-		documentsInTermOrder(criteria.terms, wanted.documentsPerTerm),
+	matchingEveryTerm := documentsWithinTermSpread(
+		keepDocumentsMatchingEveryTerm(
+			documentsInTermOrder(criteria.terms, wanted.documentsPerTerm),
+		),
+		criteria.maxTermSpread,
 	)
 	mostRelevant := takeMostRelevant(
 		documentsOrderedByRelevance(matchingEveryTerm),
