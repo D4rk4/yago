@@ -80,6 +80,14 @@ func TestValidateRejectsDangerousDefaults(t *testing.T) {
 			mutate: func(p *yacycrawlcontract.CrawlProfile) { p.URLMustNotMatch = "[" },
 			want:   "urlMustNotMatch is not a valid regular expression",
 		},
+		"impossible index must-match": {
+			mutate: func(p *yacycrawlcontract.CrawlProfile) { p.IndexURLMustMatch = "(" },
+			want:   "indexMustMatch is not a valid regular expression",
+		},
+		"impossible index must-not-match": {
+			mutate: func(p *yacycrawlcontract.CrawlProfile) { p.IndexURLMustNotMatch = "[" },
+			want:   "indexMustNotMatch is not a valid regular expression",
+		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

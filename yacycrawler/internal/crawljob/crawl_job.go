@@ -10,6 +10,7 @@ type CrawlJob struct {
 	ProfileHandle string
 	Provenance    []byte
 	RunID         uuid.UUID
+	Index         bool
 }
 
 type DiscoveredLinks struct {

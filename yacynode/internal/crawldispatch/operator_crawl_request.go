@@ -9,18 +9,20 @@ import (
 )
 
 type operatorCrawlRequest struct {
-	Name                string   `json:"name"`
-	Seeds               []string `json:"seeds"`
-	StartMode           string   `json:"startMode"`
-	Scope               string   `json:"scope"`
-	URLMustMatch        string   `json:"urlMustMatch"`
-	URLMustNotMatch     string   `json:"urlMustNotMatch"`
-	MaxDepth            int      `json:"maxDepth"`
-	AllowQueryURLs      bool     `json:"allowQueryURLs"`
-	FollowNoFollowLinks bool     `json:"followNoFollowLinks"`
-	MaxPagesPerHost     int      `json:"maxPagesPerHost"`
-	RecrawlIfOlder      string   `json:"recrawlIfOlder"`
-	CrawlDelay          string   `json:"crawlDelay"`
+	Name                 string   `json:"name"`
+	Seeds                []string `json:"seeds"`
+	StartMode            string   `json:"startMode"`
+	Scope                string   `json:"scope"`
+	URLMustMatch         string   `json:"urlMustMatch"`
+	URLMustNotMatch      string   `json:"urlMustNotMatch"`
+	IndexURLMustMatch    string   `json:"indexMustMatch"`
+	IndexURLMustNotMatch string   `json:"indexMustNotMatch"`
+	MaxDepth             int      `json:"maxDepth"`
+	AllowQueryURLs       bool     `json:"allowQueryURLs"`
+	FollowNoFollowLinks  bool     `json:"followNoFollowLinks"`
+	MaxPagesPerHost      int      `json:"maxPagesPerHost"`
+	RecrawlIfOlder       string   `json:"recrawlIfOlder"`
+	CrawlDelay           string   `json:"crawlDelay"`
 }
 
 var crawlScopeByName = map[string]yacycrawlcontract.CrawlScope{
@@ -59,16 +61,18 @@ func (r operatorCrawlRequest) order(
 	}
 
 	profile := yacycrawlcontract.NewCrawlProfile(yacycrawlcontract.CrawlProfile{
-		Name:                r.Name,
-		Scope:               scope,
-		URLMustMatch:        matchOrAll(r.URLMustMatch),
-		URLMustNotMatch:     r.URLMustNotMatch,
-		MaxDepth:            r.MaxDepth,
-		AllowQueryURLs:      r.AllowQueryURLs,
-		FollowNoFollowLinks: r.FollowNoFollowLinks,
-		MaxPagesPerHost:     r.MaxPagesPerHost,
-		RecrawlIfOlder:      recrawl,
-		CrawlDelay:          delay,
+		Name:                 r.Name,
+		Scope:                scope,
+		URLMustMatch:         matchOrAll(r.URLMustMatch),
+		URLMustNotMatch:      r.URLMustNotMatch,
+		IndexURLMustMatch:    matchOrAll(r.IndexURLMustMatch),
+		IndexURLMustNotMatch: r.IndexURLMustNotMatch,
+		MaxDepth:             r.MaxDepth,
+		AllowQueryURLs:       r.AllowQueryURLs,
+		FollowNoFollowLinks:  r.FollowNoFollowLinks,
+		MaxPagesPerHost:      r.MaxPagesPerHost,
+		RecrawlIfOlder:       recrawl,
+		CrawlDelay:           delay,
 	})
 	if err := profile.Validate(); err != nil {
 		return yacycrawlcontract.CrawlOrder{}, fmt.Errorf("invalid crawl profile: %w", err)

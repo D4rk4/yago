@@ -107,7 +107,7 @@ func runOneJob(
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go p.RunWorkers(ctx, ctx, 1)
-	frontier.jobs <- crawljob.CrawlJob{URL: "https://example.com/", ProfileHandle: "h"}
+	frontier.jobs <- crawljob.CrawlJob{URL: "https://example.com/", ProfileHandle: "h", Index: true}
 	select {
 	case <-frontier.done:
 	case <-time.After(2 * time.Second):
@@ -186,6 +186,38 @@ func TestPipelineSubmitsNoFollowLinksSeparately(t *testing.T) {
 	}
 	if len(got.NoFollow) != 1 || got.NoFollow[0] != "/blocked" {
 		t.Fatalf("nofollow links = %v", got.NoFollow)
+	}
+}
+
+func TestPipelineFollowsButDoesNotIndexNonIndexablePage(t *testing.T) {
+	frontier := newRecordingFrontier()
+	p := pipeline.NewPipeline(
+		frontier,
+		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			return htmlPage(), nil
+		}),
+		indexFunc(func(pageparse.ParsedPage, pageparse.PageStats) (pageindex.Artifacts, error) {
+			t.Error("index should not run for a non-indexable page")
+			return pageindex.Artifacts{}, nil
+		}),
+		emitFunc(
+			func(context.Context, yacycrawlcontract.DocumentIngest, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+				t.Error("emit should not run for a non-indexable page")
+				return nil
+			},
+		),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go p.RunWorkers(ctx, ctx, 1)
+	frontier.jobs <- crawljob.CrawlJob{URL: "https://example.com/", ProfileHandle: "h", Index: false}
+	select {
+	case <-frontier.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("job never reached Done")
+	}
+	if len(frontier.submitted) != 1 {
+		t.Fatalf("non-indexable page should still follow links, submitted = %v", frontier.submitted)
 	}
 }
 

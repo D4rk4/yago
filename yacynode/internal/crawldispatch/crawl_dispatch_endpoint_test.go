@@ -220,6 +220,38 @@ func TestDispatchRejectsImpossibleRegex(t *testing.T) {
 	}
 }
 
+func TestDispatchCarriesIndexRules(t *testing.T) {
+	queue := &recordingQueue{}
+	rec := post(t, mount(t, queue), `{
+		"seeds": ["https://example.org/"],
+		"maxPagesPerHost": -1,
+		"indexMustMatch": "https://example.org/articles/.*",
+		"indexMustNotMatch": "/draft"
+	}`)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202; body=%s", rec.Code, rec.Body.String())
+	}
+	if queue.order.Profile.IndexURLMustMatch != "https://example.org/articles/.*" ||
+		queue.order.Profile.IndexURLMustNotMatch != "/draft" {
+		t.Fatalf(
+			"index rules = %q / %q",
+			queue.order.Profile.IndexURLMustMatch,
+			queue.order.Profile.IndexURLMustNotMatch,
+		)
+	}
+}
+
+func TestDispatchRejectsImpossibleIndexRegex(t *testing.T) {
+	queue := &recordingQueue{}
+	rec := post(t, mount(t, queue), `{"seeds":["x"],"maxPagesPerHost":-1,"indexMustMatch":"("}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if queue.published {
+		t.Fatal("order with an impossible index regex should not have been published")
+	}
+}
+
 func TestDispatchRejectsUnboundedDepth(t *testing.T) {
 	queue := &recordingQueue{}
 	rec := post(t, mount(t, queue), `{"seeds":["x"],"maxPagesPerHost":-1,"maxDepth":1000}`)

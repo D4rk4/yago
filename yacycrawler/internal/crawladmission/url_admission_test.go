@@ -19,6 +19,47 @@ func TestCompileProfileRejectsBadRegex(t *testing.T) {
 	); err == nil {
 		t.Error("expected error for bad URLMustNotMatch")
 	}
+	if _, err := crawladmission.CompileProfile(
+		yacycrawlcontract.CrawlProfile{IndexURLMustMatch: "("},
+	); err == nil {
+		t.Error("expected error for bad IndexURLMustMatch")
+	}
+	if _, err := crawladmission.CompileProfile(
+		yacycrawlcontract.CrawlProfile{IndexURLMustNotMatch: "("},
+	); err == nil {
+		t.Error("expected error for bad IndexURLMustNotMatch")
+	}
+}
+
+func TestIndexAllowed(t *testing.T) {
+	compiled, err := crawladmission.CompileProfile(yacycrawlcontract.CrawlProfile{
+		IndexURLMustMatch:    `/articles/`,
+		IndexURLMustNotMatch: `/draft`,
+	})
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !compiled.IndexAllowed("https://example.com/articles/1") {
+		t.Error("expected indexable")
+	}
+	if compiled.IndexAllowed("https://example.com/about") {
+		t.Error("expected rejected by indexMustMatch")
+	}
+	if compiled.IndexAllowed("https://example.com/articles/draft") {
+		t.Error("expected rejected by indexMustNotMatch")
+	}
+}
+
+func TestIndexAllowedDefaultsToAll(t *testing.T) {
+	compiled, err := crawladmission.CompileProfile(yacycrawlcontract.CrawlProfile{
+		IndexURLMustMatch: yacycrawlcontract.MatchAll,
+	})
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !compiled.IndexAllowed("https://anything.test/x") {
+		t.Error("default index rules should allow any url")
+	}
 }
 
 func TestURLAllowed(t *testing.T) {

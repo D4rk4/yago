@@ -299,6 +299,7 @@ func (s *frontierState) accept(
 		ProfileHandle: candidate.profileHandle,
 		Provenance:    candidate.provenance,
 		RunID:         runID,
+		Index:         profile.IndexAllowed(candidate.normURL),
 	})
 	return true
 }

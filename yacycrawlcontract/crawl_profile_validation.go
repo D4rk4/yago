@@ -29,8 +29,14 @@ func (p CrawlProfile) Validate() error {
 	if err := validateURLPattern("urlMustMatch", p.URLMustMatch); err != nil {
 		return err
 	}
+	if err := validateURLPattern("urlMustNotMatch", p.URLMustNotMatch); err != nil {
+		return err
+	}
+	if err := validateURLPattern("indexMustMatch", p.IndexURLMustMatch); err != nil {
+		return err
+	}
 
-	return validateURLPattern("urlMustNotMatch", p.URLMustNotMatch)
+	return validateURLPattern("indexMustNotMatch", p.IndexURLMustNotMatch)
 }
 
 func validateURLPattern(field, pattern string) error {

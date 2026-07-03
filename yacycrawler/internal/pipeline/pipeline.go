@@ -23,9 +23,10 @@ type Frontier interface {
 }
 
 const (
-	msgPageRejected = "crawl page rejected"
-	msgJobFetching  = "crawl job fetching"
-	msgPageCrawled  = "crawl page crawled"
+	msgPageRejected   = "crawl page rejected"
+	msgJobFetching    = "crawl job fetching"
+	msgPageCrawled    = "crawl page crawled"
+	msgPageNotIndexed = "crawl page not indexed"
 )
 
 type Pipeline struct {
@@ -140,6 +141,11 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 		Followable: page.FollowableLinks,
 		NoFollow:   page.NoFollowLinks,
 	})
+	if !job.Index {
+		slog.DebugContext(ctx, msgPageNotIndexed, slog.String("url", page.URL))
+
+		return nil
+	}
 	stats := pageparse.BuildPageStats(page)
 	artifacts, err := p.index.Build(page, stats)
 	if err != nil {

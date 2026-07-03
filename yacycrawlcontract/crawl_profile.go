@@ -20,17 +20,19 @@ const MatchAll = ".*"
 const UnlimitedPagesPerHost = -1
 
 type CrawlProfile struct {
-	Handle              string
-	Name                string
-	Scope               CrawlScope
-	URLMustMatch        string
-	URLMustNotMatch     string
-	MaxDepth            int
-	AllowQueryURLs      bool
-	FollowNoFollowLinks bool
-	MaxPagesPerHost     int
-	RecrawlIfOlder      time.Duration
-	CrawlDelay          time.Duration
+	Handle               string
+	Name                 string
+	Scope                CrawlScope
+	URLMustMatch         string
+	URLMustNotMatch      string
+	IndexURLMustMatch    string
+	IndexURLMustNotMatch string
+	MaxDepth             int
+	AllowQueryURLs       bool
+	FollowNoFollowLinks  bool
+	MaxPagesPerHost      int
+	RecrawlIfOlder       time.Duration
+	CrawlDelay           time.Duration
 }
 
 func NewCrawlProfile(profile CrawlProfile) CrawlProfile {
@@ -40,8 +42,9 @@ func NewCrawlProfile(profile CrawlProfile) CrawlProfile {
 
 func (p CrawlProfile) ComputeHandle() string {
 	raw := fmt.Sprintf(
-		"%s\x00%s\x00%d\x00%s\x00%d",
+		"%s\x00%s\x00%d\x00%s\x00%d\x00%s\x00%s",
 		p.Name, p.URLMustMatch, p.MaxDepth, p.URLMustNotMatch, p.MaxPagesPerHost,
+		p.IndexURLMustMatch, p.IndexURLMustNotMatch,
 	)
 	return yacymodel.YaCyHashBase64(raw)[:yacymodel.HashLength]
 }
