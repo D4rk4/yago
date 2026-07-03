@@ -1295,8 +1295,11 @@ links; excludes nofollow links from frontier expansion and local outlink
 evidence unless the crawl profile opts in; extracts normalized image URLs and
 bounded alt text into document ingest metadata; produces document ingest, RWI
 postings, URL metadata, and content hashes; and keeps extracted text bounded by
-the node document store. Image ranking/search and richer golden fixtures remain
-planned.
+the node document store. Golden `testdata/` HTML fixtures now cover relative-link
+resolution, malformed tag soup, UTF-8 multibyte content, and non-UTF-8
+(`windows-1252`) declared through the HTTP `Content-Type` header only, alongside
+the existing canonical, nofollow, and `<meta charset>` cases. Image
+ranking/search is a search-side feature and remains planned separately.
 
 Dependency candidates require ADR first. Prefer `golang.org/x/net/html` initially if enough. Add `goquery` only with ADR.
 
