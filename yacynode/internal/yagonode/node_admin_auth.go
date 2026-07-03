@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/D4rk4/yago/yacynode/internal/adminauth"
+	"github.com/D4rk4/yago/yacynode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
@@ -35,6 +36,7 @@ func guardAdminSurface(
 
 	return service.Guard(
 		[]string{pathHealth, pathReady, adminauth.PathLogin, adminauth.PathSetup},
+		map[string]adminauth.Scope{crawldispatch.PathCrawlDispatch: adminauth.ScopeCrawlWrite},
 		opsMux,
 	), nil
 }

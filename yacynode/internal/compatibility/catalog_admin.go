@@ -27,7 +27,20 @@ var adminSurfaceSpecs = []surfaceSpec{
 			"yacynode/internal/adminauth/*_test.go",
 			"yacynode/internal/yagonode/node_admin_auth_test.go",
 		},
-		Notes: "Every operations endpoint except /health and /ready requires a valid admin session, and unsafe methods also require the CSRF token. Provision the admin with YAGO_ADMIN_USER and YAGO_ADMIN_PASSWORD, or POST /api/admin/v1/auth/setup on first run.",
+		Notes: "Every operations endpoint except /health and /ready requires a valid admin session or an API key with the scope for the path, and cookie-authenticated unsafe methods also require the CSRF token. Provision the admin with YAGO_ADMIN_USER and YAGO_ADMIN_PASSWORD, or POST /api/admin/v1/auth/setup on first run.",
+	},
+	{
+		Name:     "Admin API keys",
+		Path:     "/api/admin/v1/auth/api-keys",
+		Methods:  []string{"GET", "POST", "DELETE"},
+		State:    Implemented,
+		Behavior: "Mints high-entropy API keys with explicit scopes, returning the secret once and storing only its SHA-256 hash with a public identifier, lists key metadata and last-used time without the secret, and revokes keys by identifier. A Bearer API key authenticates operations requests as an alternative to a session cookie, is checked against the scope required for the path, is rate limited per key, and needs no CSRF token.",
+		Evidence: []string{
+			"yacynode/internal/adminauth/api_key_store_test.go",
+			"yacynode/internal/adminauth/api_key_endpoints_test.go",
+			"yacynode/internal/adminauth/guard_apikey_test.go",
+		},
+		Notes: "Scopes are admin:read, admin:write, crawl:write, search:read, and search:raw; search scopes are reserved for the public search API. Managing keys requires admin:write or a session.",
 	},
 	{
 		Name:     "Metrics",
@@ -36,7 +49,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 		State:    Implemented,
 		Behavior: "Serves Prometheus metrics for node operations.",
 		Evidence: []string{"yacynode/internal/metrics/*_test.go"},
-		Notes:    "Requires a valid admin session; scrape with a logged-in session cookie or bind the ops listener to a trusted network.",
+		Notes:    "Requires a valid admin session or an API key with the admin:read scope; scrape with a session cookie or a Bearer API key, or bind the ops listener to a trusted network.",
 	},
 	{
 		Name:     "DHT gate report",
@@ -45,7 +58,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 		State:    Implemented,
 		Behavior: "Serves current outbound DHT gate state, configuration, and named gate results.",
 		Evidence: []string{"yacynode/internal/yagonode/dht_gate_status_endpoint_test.go"},
-		Notes:    "Requires a valid admin session.",
+		Notes:    "Requires a valid admin session or an API key with the admin:read scope.",
 	},
 	{
 		Name:     "Search index stats",
@@ -54,7 +67,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 		State:    Implemented,
 		Behavior: "Serves current local search backend availability, backend name, document count, and last index update time.",
 		Evidence: []string{"yacynode/internal/yagonode/index_stats_endpoint_test.go"},
-		Notes:    "Requires a valid admin session.",
+		Notes:    "Requires a valid admin session or an API key with the admin:read scope.",
 	},
 	{
 		Name:     "Crawl dispatch",
@@ -66,7 +79,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 			"yacynode/internal/crawldispatch/*_test.go",
 			"yacynode/internal/yagonode/node_crawl_test.go",
 		},
-		Notes: "Mounted only when gRPC-backed crawling is configured; requires a valid admin session and a CSRF token.",
+		Notes: "Mounted only when gRPC-backed crawling is configured; requires a valid admin session with a CSRF token, or an API key with the crawl:write scope.",
 	},
 	{
 		Name:     "Compatibility report",
@@ -78,7 +91,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 			"yacynode/internal/compatibility/*_test.go",
 			"yacynode/internal/yagonode/compatibility_endpoint_test.go",
 		},
-		Notes: "Requires a valid admin session.",
+		Notes: "Requires a valid admin session or an API key with the admin:read scope.",
 	},
 	{
 		Name:     "Java YaCy admin page clone set",

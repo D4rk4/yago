@@ -9,16 +9,20 @@ import (
 )
 
 const (
-	DefaultSessionTTL       = 12 * time.Hour
-	DefaultLoginMaxFailures = 5
-	DefaultLoginWindow      = 15 * time.Minute
+	DefaultSessionTTL         = 12 * time.Hour
+	DefaultLoginMaxFailures   = 5
+	DefaultLoginWindow        = 15 * time.Minute
+	DefaultAPIKeyMaxPerWindow = 120
+	DefaultAPIKeyWindow       = time.Minute
 )
 
 type Config struct {
-	SessionTTL       time.Duration
-	LoginMaxFailures int
-	LoginWindow      time.Duration
-	Now              func() time.Time
+	SessionTTL         time.Duration
+	LoginMaxFailures   int
+	LoginWindow        time.Duration
+	APIKeyMaxPerWindow int
+	APIKeyWindow       time.Duration
+	Now                func() time.Time
 }
 
 func (c Config) withDefaults() Config {
@@ -31,6 +35,12 @@ func (c Config) withDefaults() Config {
 	if c.LoginWindow <= 0 {
 		c.LoginWindow = DefaultLoginWindow
 	}
+	if c.APIKeyMaxPerWindow <= 0 {
+		c.APIKeyMaxPerWindow = DefaultAPIKeyMaxPerWindow
+	}
+	if c.APIKeyWindow <= 0 {
+		c.APIKeyWindow = DefaultAPIKeyWindow
+	}
 	if c.Now == nil {
 		c.Now = time.Now
 	}
@@ -39,10 +49,12 @@ func (c Config) withDefaults() Config {
 }
 
 type Service struct {
-	creds    *credentialStore
-	sessions *sessionStore
-	limiter  *loginRateLimiter
-	now      func() time.Time
+	creds      *credentialStore
+	sessions   *sessionStore
+	apiKeys    *apiKeyStore
+	limiter    *loginRateLimiter
+	keyLimiter *apiKeyRateLimiter
+	now        func() time.Time
 }
 
 func New(storage *vault.Vault, cfg Config) (*Service, error) {
@@ -55,12 +67,18 @@ func New(storage *vault.Vault, cfg Config) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	apiKeys, err := newAPIKeyStore(storage, cfg.Now)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Service{
-		creds:    creds,
-		sessions: sessions,
-		limiter:  newLoginRateLimiter(cfg.LoginMaxFailures, cfg.LoginWindow, cfg.Now),
-		now:      cfg.Now,
+		creds:      creds,
+		sessions:   sessions,
+		apiKeys:    apiKeys,
+		limiter:    newLoginRateLimiter(cfg.LoginMaxFailures, cfg.LoginWindow, cfg.Now),
+		keyLimiter: newAPIKeyRateLimiter(cfg.APIKeyMaxPerWindow, cfg.APIKeyWindow, cfg.Now),
+		now:        cfg.Now,
 	}, nil
 }
 

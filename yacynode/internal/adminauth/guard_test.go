@@ -22,7 +22,7 @@ func guardedSurface(t *testing.T, service *Service) http.Handler {
 	Mount(mux, service)
 	mux.Handle("/protected", okHandler())
 
-	return service.Guard([]string{PathLogin, PathSetup}, mux)
+	return service.Guard([]string{PathLogin, PathSetup}, nil, mux)
 }
 
 func loginThroughGuard(t *testing.T, handler http.Handler) (*http.Cookie, string) {
@@ -49,7 +49,7 @@ func loginThroughGuard(t *testing.T, handler http.Handler) (*http.Cookie, string
 
 func TestGuardPassesExemptPaths(t *testing.T) {
 	service := testService(t)
-	handler := service.Guard([]string{PathSetup}, mountAuth(t, service))
+	handler := service.Guard([]string{PathSetup}, nil, mountAuth(t, service))
 	rec := doRequest(handler, http.MethodPost, PathSetup, `{"username":"admin","password":"pw"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("exempt path = %d, want 201", rec.Code)

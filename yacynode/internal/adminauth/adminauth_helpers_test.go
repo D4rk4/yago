@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -127,7 +128,24 @@ func (b scriptedBucket) Delete(key vault.Key) error {
 	return nil
 }
 
-func (b scriptedBucket) Scan(_ vault.Key, _ func(vault.Key, []byte) (bool, error)) error {
+func (b scriptedBucket) Scan(prefix vault.Key, fn func(vault.Key, []byte) (bool, error)) error {
+	ordered := make([]string, 0, len(b.data))
+	for key := range b.data {
+		if strings.HasPrefix(key, string(prefix)) {
+			ordered = append(ordered, key)
+		}
+	}
+	sort.Strings(ordered)
+	for _, key := range ordered {
+		keep, err := fn(vault.Key(key), b.data[key])
+		if err != nil {
+			return err
+		}
+		if !keep {
+			return nil
+		}
+	}
+
 	return nil
 }
 
@@ -150,6 +168,39 @@ func mountAuth(t *testing.T, service *Service) *http.ServeMux {
 	Mount(mux, service)
 
 	return mux
+}
+
+func scriptedService(t *testing.T) (*Service, *scriptedEngine) {
+	t.Helper()
+	engine := newScriptedEngine()
+	service, err := New(scriptedVault(t, engine), Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	return service, engine
+}
+
+func createKey(t *testing.T, service *Service, scopes ...Scope) createdAPIKey {
+	t.Helper()
+	created, err := service.apiKeys.create(context.Background(), "ci key", scopes)
+	if err != nil {
+		t.Fatalf("create api key: %v", err)
+	}
+
+	return created
+}
+
+func doBearerRequest(
+	handler http.Handler,
+	method, path, token string,
+) *httptest.ResponseRecorder {
+	req := httptest.NewRequestWithContext(context.Background(), method, path, strings.NewReader(""))
+	req.Header.Set(authzHeader, bearerScheme+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	return rec
 }
 
 func doRequest(

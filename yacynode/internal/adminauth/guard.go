@@ -4,9 +4,14 @@ import (
 	"context"
 	"crypto/subtle"
 	"net/http"
+	"strings"
 )
 
-const csrfHeader = "X-CSRF-Token"
+const (
+	csrfHeader   = "X-CSRF-Token"
+	bearerScheme = "Bearer "
+	authzHeader  = "Authorization"
+)
 
 type contextKey int
 
@@ -22,11 +27,18 @@ func sessionFromContext(ctx context.Context) (sessionRecord, bool) {
 	return record, ok
 }
 
-// Guard wraps next so that every request outside the exempt path set requires a
-// valid admin session cookie, and every unsafe-method request additionally
-// carries a matching CSRF token. The validated session is placed on the request
-// context for downstream handlers.
-func (s *Service) Guard(exempt []string, next http.Handler) http.Handler {
+// Guard wraps next so that every request outside the exempt path set is
+// authenticated. A request carrying an Authorization bearer token is
+// authenticated as an API key and must hold the scope required for the path; a
+// cookie request is authenticated as an admin session and must carry a matching
+// CSRF token on unsafe methods. scopeOverrides maps a path to the scope it
+// requires; paths without an override require admin:read for safe methods and
+// admin:write otherwise.
+func (s *Service) Guard(
+	exempt []string,
+	scopeOverrides map[string]Scope,
+	next http.Handler,
+) http.Handler {
 	exemptSet := make(map[string]struct{}, len(exempt))
 	for _, path := range exempt {
 		exemptSet[path] = struct{}{}
@@ -38,36 +50,107 @@ func (s *Service) Guard(exempt []string, next http.Handler) http.Handler {
 
 			return
 		}
-
-		cookie, err := r.Cookie(sessionCookieName)
-		if err != nil {
-			writeError(w, http.StatusUnauthorized, "authentication required")
+		if token, ok := bearerToken(r); ok {
+			s.guardAPIKey(w, r, token, requiredScope(r.URL.Path, r.Method, scopeOverrides), next)
 
 			return
 		}
-		record, ok, err := s.sessions.lookup(r.Context(), cookie.Value)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "authentication failed")
-
-			return
-		}
-		if !ok {
-			writeError(w, http.StatusUnauthorized, "authentication required")
-
-			return
-		}
-		if !isSafeMethod(r.Method) &&
-			subtle.ConstantTimeCompare(
-				[]byte(r.Header.Get(csrfHeader)),
-				[]byte(record.CSRFToken),
-			) != 1 {
-			writeError(w, http.StatusForbidden, "missing or invalid CSRF token")
-
-			return
-		}
-
-		next.ServeHTTP(w, r.WithContext(contextWithSession(r.Context(), record)))
+		s.guardSession(w, r, next)
 	})
+}
+
+func (s *Service) guardSession(w http.ResponseWriter, r *http.Request, next http.Handler) {
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+
+		return
+	}
+	record, ok, err := s.sessions.lookup(r.Context(), cookie.Value)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "authentication failed")
+
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+
+		return
+	}
+	if !isSafeMethod(r.Method) &&
+		subtle.ConstantTimeCompare(
+			[]byte(r.Header.Get(csrfHeader)),
+			[]byte(record.CSRFToken),
+		) != 1 {
+		writeError(w, http.StatusForbidden, "missing or invalid CSRF token")
+
+		return
+	}
+
+	next.ServeHTTP(w, r.WithContext(contextWithSession(r.Context(), record)))
+}
+
+func (s *Service) guardAPIKey(
+	w http.ResponseWriter,
+	r *http.Request,
+	token string,
+	required Scope,
+	next http.Handler,
+) {
+	id, _, ok := parseAPIKey(token)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+
+		return
+	}
+	if !s.keyLimiter.allow(id) {
+		writeError(w, http.StatusTooManyRequests, "too many requests, try again later")
+
+		return
+	}
+	info, ok, err := s.apiKeys.authenticate(r.Context(), token)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "authentication failed")
+
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+
+		return
+	}
+	if !info.hasScope(required) {
+		writeError(w, http.StatusForbidden, "insufficient scope")
+
+		return
+	}
+
+	next.ServeHTTP(w, r)
+}
+
+func bearerToken(r *http.Request) (string, bool) {
+	header := r.Header.Get(authzHeader)
+	if len(header) <= len(bearerScheme) ||
+		!strings.EqualFold(header[:len(bearerScheme)], bearerScheme) {
+		return "", false
+	}
+	token := strings.TrimSpace(header[len(bearerScheme):])
+	if token == "" {
+		return "", false
+	}
+
+	return token, true
+}
+
+func requiredScope(path, method string, overrides map[string]Scope) Scope {
+	if scope, ok := overrides[path]; ok {
+		return scope
+	}
+	if isSafeMethod(method) {
+		return ScopeAdminRead
+	}
+
+	return ScopeAdminWrite
 }
 
 func isSafeMethod(method string) bool {

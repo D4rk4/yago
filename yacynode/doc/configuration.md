@@ -49,8 +49,20 @@ server-side session, `GET /api/admin/v1/auth/session` returns the current
 administrator, login is rate limited per client, and a failed login does not reveal
 whether the account exists. The session cookie is marked `Secure` only when the
 request arrives over TLS, so terminate TLS at the node or a trusted reverse proxy.
-Prometheus must scrape `/metrics` with a logged-in session cookie, or bind
-`YACY_OPS_ADDR` to a trusted network.
+
+For non-interactive clients, create an API key with
+`POST /api/admin/v1/auth/api-keys` (a session or an `admin:write` key is required
+to manage keys). The response returns the secret exactly once; the node stores
+only its SHA-256 hash alongside a public identifier. Send the key as
+`Authorization: Bearer <key>` instead of a cookie; it is checked against the scope
+the path requires, is rate limited per key, and needs no CSRF token. Scopes are
+`admin:read` (read-only operations such as `/metrics`), `admin:write` (state
+changes and key management), `crawl:write` (`POST /crawl`), and the reserved
+`search:read` and `search:raw` for the public search API. `GET
+/api/admin/v1/auth/api-keys` lists key metadata and last-used time without the
+secret, and `DELETE /api/admin/v1/auth/api-keys/{id}` revokes a key. Prometheus
+can scrape `/metrics` with an `admin:read` key or a logged-in session cookie;
+otherwise bind `YACY_OPS_ADDR` to a trusted network.
 
 ## Crawling
 

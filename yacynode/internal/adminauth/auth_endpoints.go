@@ -40,6 +40,7 @@ func Mount(mux *http.ServeMux, service *Service) {
 	mux.HandleFunc(PathLogout, service.handleLogout)
 	mux.HandleFunc(PathSetup, service.handleSetup)
 	mux.HandleFunc(PathSession, service.handleSession)
+	mountAPIKeys(mux, service)
 }
 
 func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
