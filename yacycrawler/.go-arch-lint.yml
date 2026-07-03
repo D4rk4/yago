@@ -46,6 +46,8 @@ components:
     in: internal/ingest/**
   pipeline:
     in: internal/pipeline/**
+  crawlermetrics:
+    in: internal/crawlermetrics/**
   crawlercmd:
     in: cmd/yacycrawler/**
 
@@ -88,6 +90,10 @@ vendors:
     in:
       - google.golang.org/protobuf
       - google.golang.org/protobuf/**
+  prometheus:
+    in:
+      - github.com/prometheus/client_golang/prometheus
+      - github.com/prometheus/client_golang/prometheus/**
 
 deps:
   crawljob:
@@ -217,11 +223,17 @@ deps:
     canUse:
       - yacycrawlcontract
       - yacymodel
+  crawlermetrics:
+    mayDependOn:
+      - crawlermetrics
+    canUse:
+      - prometheus
   crawlercmd:
     mayDependOn:
       - botwall
       - chromedpfetch
       - crawldelay
+      - crawlermetrics
       - crawlorder
       - crawlseed
       - frontier

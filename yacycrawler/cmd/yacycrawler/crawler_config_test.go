@@ -100,6 +100,9 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	if cfg.WorkerID != DefaultWorkerID {
 		t.Errorf("worker id = %q, want %q", cfg.WorkerID, DefaultWorkerID)
 	}
+	if cfg.MetricsAddr != "" {
+		t.Errorf("metrics addr = %q, want empty", cfg.MetricsAddr)
+	}
 	if cfg.EgressAllowLAN {
 		t.Error("EgressAllowLAN must default to false")
 	}
@@ -121,6 +124,7 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	cfg, err := LoadServiceConfig(envFrom(map[string]string{
 		EnvNodeRPCAddr:     "node:9091",
 		EnvWorkerID:        "worker-7",
+		EnvMetricsAddr:     "127.0.0.1:9100",
 		EnvEgressAllowLAN:  "true",
 		EnvWorkers:         "3",
 		EnvMaxDepth:        "5",
@@ -138,6 +142,9 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	}
 	if cfg.WorkerID != "worker-7" {
 		t.Errorf("worker id = %q, want worker-7", cfg.WorkerID)
+	}
+	if cfg.MetricsAddr != "127.0.0.1:9100" {
+		t.Errorf("metrics addr = %q, want 127.0.0.1:9100", cfg.MetricsAddr)
 	}
 	if !cfg.EgressAllowLAN {
 		t.Error("EgressAllowLAN = false, want true")

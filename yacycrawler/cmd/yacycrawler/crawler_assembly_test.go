@@ -187,6 +187,7 @@ func TestRunServiceReturnsRobotsAdmissionError(t *testing.T) {
 		*http.Client,
 		string,
 		int,
+		...robots.Option,
 	) (*robots.RobotsAdmissionFetcher, error) {
 		return nil, sentinel
 	}
@@ -196,6 +197,19 @@ func TestRunServiceReturnsRobotsAdmissionError(t *testing.T) {
 	err := RunService(ctx, serviceConfig(), htmlPageSource(map[string]string{}))
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
+	}
+}
+
+func TestRunServiceReturnsMetricsBindError(t *testing.T) {
+	restoreAssemblySeams(t)
+	stubExchange(t, &fakeExchange{ingested: make(chan *crawlrpc.IngestBatchMessage, 1)})
+	cfg := serviceConfig()
+	cfg.MetricsAddr = "not-an-address"
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := RunService(ctx, cfg, htmlPageSource(map[string]string{})); err == nil {
+		t.Fatal("expected crawler metrics bind error")
 	}
 }
 

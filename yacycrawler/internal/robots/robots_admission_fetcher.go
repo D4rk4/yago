@@ -21,6 +21,7 @@ type RobotsAdmissionFetcher struct {
 	userAgent string
 	groups    *lru.Cache[string, *robotstxt.Group]
 	fetches   singleflight.Group
+	observer  DenialObserver
 }
 
 func NewRobotsAdmissionFetcher(
@@ -28,17 +29,24 @@ func NewRobotsAdmissionFetcher(
 	client *http.Client,
 	userAgent string,
 	hostCacheSize int,
+	opts ...Option,
 ) (*RobotsAdmissionFetcher, error) {
 	groups, err := lru.New[string, *robotstxt.Group](hostCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("robots host cache: %w", err)
 	}
-	return &RobotsAdmissionFetcher{
+	fetcher := &RobotsAdmissionFetcher{
 		inner:     inner,
 		client:    client,
 		userAgent: userAgent,
 		groups:    groups,
-	}, nil
+		observer:  noopDenialObserver{},
+	}
+	for _, opt := range opts {
+		opt(fetcher)
+	}
+
+	return fetcher, nil
 }
 
 func (f *RobotsAdmissionFetcher) Fetch(
@@ -47,6 +55,8 @@ func (f *RobotsAdmissionFetcher) Fetch(
 ) (pagefetch.FetchedPage, error) {
 	group := f.group(ctx, target)
 	if !group.Test(target.Path) {
+		f.observer.RobotsDenied()
+
 		return pagefetch.FetchedPage{}, fmt.Errorf("robots disallow: %w", pagefetch.ErrPageRejected)
 	}
 	page, err := f.inner.Fetch(ctx, target)

@@ -25,6 +25,7 @@ const (
 	EnvMaxRedirects    = "YACYCRAWLER_MAX_REDIRECTS"
 	EnvSitemapURLLimit = "YACYCRAWLER_SITEMAP_URL_LIMIT"
 	EnvEgressAllowLAN  = "YACYCRAWLER_ALLOW_PRIVATE_NETWORKS"
+	EnvMetricsAddr     = "YACYCRAWLER_METRICS_ADDR"
 
 	DefaultWorkerID = "yacycrawler"
 
@@ -81,6 +82,7 @@ type ServiceConfig struct {
 	Crawl              CrawlConfig
 	NodeRPCAddr        string
 	WorkerID           string
+	MetricsAddr        string
 	EgressAllowLAN     bool
 	EgressAllowedCIDRs []netip.Prefix
 }
@@ -110,6 +112,7 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		Crawl:              crawl,
 		NodeRPCAddr:        nodeAddr,
 		WorkerID:           envString(getenv, EnvWorkerID, DefaultWorkerID),
+		MetricsAddr:        strings.TrimSpace(getenv(EnvMetricsAddr)),
 		EgressAllowLAN:     egressAllowLAN,
 		EgressAllowedCIDRs: egressAllowedCIDRs,
 	}, nil

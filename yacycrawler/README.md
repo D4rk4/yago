@@ -73,6 +73,13 @@ sitelist expansion imports at most `YACYCRAWLER_SITEMAP_URL_LIMIT` URLs per
 seed. The container image
 embeds the pinned headless-shell runtime in a scratch non-root image.
 
+When `YACYCRAWLER_METRICS_ADDR` is set (for example `:9101`), the crawler serves
+Prometheus metrics at `/metrics` on that address: `yacy_crawler_jobs_active`,
+`yacy_crawler_fetches_total`, `yacy_crawler_fetch_failures_total`,
+`yacy_crawler_bytes_total`, `yacy_crawler_robots_denied_total`, and
+`yacy_crawler_ingest_batches_total`. When the variable is empty the crawler starts
+no metrics server and opens no port.
+
 The message types both services exchange live in the standalone
 [`yacycrawlcontract`](../yacycrawlcontract/README.md) module, so neither service depends
 on the other.

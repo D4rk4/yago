@@ -33,6 +33,7 @@ type Pipeline struct {
 	fetcher  pagefetch.PageSource
 	index    pageindex.IndexBuilder
 	emitter  ingest.BatchEmitter
+	observer Observer
 }
 
 func NewPipeline(
@@ -40,13 +41,20 @@ func NewPipeline(
 	fetcher pagefetch.PageSource,
 	index pageindex.IndexBuilder,
 	emitter ingest.BatchEmitter,
+	opts ...Option,
 ) *Pipeline {
-	return &Pipeline{
+	pipeline := &Pipeline{
 		frontier: frontier,
 		fetcher:  fetcher,
 		index:    index,
 		emitter:  emitter,
+		observer: noopObserver{},
 	}
+	for _, opt := range opts {
+		opt(pipeline)
+	}
+
+	return pipeline
 }
 
 func (p *Pipeline) RunWorkers(ctx context.Context, workers int) {
@@ -91,7 +99,9 @@ func (p *Pipeline) run(ctx context.Context) {
 }
 
 func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
+	p.observer.JobStarted()
 	defer p.frontier.Done(job)
+	defer p.observer.JobFinished()
 	slog.DebugContext(ctx, msgJobFetching,
 		slog.String("url", job.URL),
 		slog.Int("depth", job.Depth),
@@ -100,10 +110,16 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	if !ok {
 		return fmt.Errorf("parse url: %s", job.URL)
 	}
+	p.observer.FetchAttempted()
 	fetched, err := p.fetcher.Fetch(ctx, target)
 	if err != nil {
+		if !errors.Is(err, pagefetch.ErrPageRejected) {
+			p.observer.FetchFailed()
+		}
+
 		return fmt.Errorf("fetch: %w", err)
 	}
+	p.observer.FetchSucceeded(len(fetched.Body))
 	page := pageparse.ParseHTML(fetched.URL.String(), fetched.ContentType, fetched.Body)
 	slog.DebugContext(ctx, msgPageCrawled,
 		slog.String("url", page.URL),
@@ -140,5 +156,7 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	); err != nil {
 		return fmt.Errorf("emit: %w", err)
 	}
+	p.observer.IngestPublished()
+
 	return nil
 }

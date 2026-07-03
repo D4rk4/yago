@@ -13,6 +13,7 @@ import (
 	"github.com/D4rk4/yago/yacycrawlcontract/crawlrpc"
 	"github.com/D4rk4/yago/yacycrawler/internal/botwall"
 	"github.com/D4rk4/yago/yacycrawler/internal/crawldelay"
+	"github.com/D4rk4/yago/yacycrawler/internal/crawlermetrics"
 	"github.com/D4rk4/yago/yacycrawler/internal/crawlorder"
 	"github.com/D4rk4/yago/yacycrawler/internal/crawlseed"
 	"github.com/D4rk4/yago/yacycrawler/internal/frontier"
@@ -59,6 +60,13 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	orders := crawlorder.NewGRPCOrderReceiver(ctx, exchange, cfg.WorkerID)
 	emitter := ingest.NewBatchEmitter(ingest.NewGRPCIngestPublisher(exchange))
 
+	metrics := crawlermetrics.New()
+	metricsCloser, err := startCrawlerMetrics(ctx, cfg.MetricsAddr, metrics.Handler())
+	if err != nil {
+		return fmt.Errorf("start crawler metrics: %w", err)
+	}
+	defer func() { _ = metricsCloser.Close() }()
+
 	crawl := cfg.Crawl
 	pace, err := crawldelay.NewHostPace(crawl.CrawlDelay, crawl.HostCacheSize)
 	if err != nil {
@@ -82,6 +90,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		client,
 		crawl.UserAgent,
 		crawl.HostCacheSize,
+		robots.WithDenialObserver(metrics),
 	)
 	if err != nil {
 		return fmt.Errorf("create robots admission: %w", err)
@@ -92,6 +101,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		publicOnly,
 		pageindex.NewIndexBuilder(),
 		emitter,
+		pipeline.WithObserver(metrics),
 	)
 	consumer := crawlorder.NewCrawlOrderConsumer(
 		orders,
