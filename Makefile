@@ -1,5 +1,5 @@
 GO ?= go
-MODULES := yacynode yacymodel yacyproto yacycrawlcontract yacycrawler
+MODULES := yacynode yacymodel yacyproto yacycrawlcontract yacycrawler yacytextindexer
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 80
 COVER_EXCLUDE := /internal/vaulttest/|/test/e2e/
@@ -9,11 +9,12 @@ TOOLS_STAMP := $(TOOLS_BIN)/.installed
 GOLANGCI_LINT := $(TOOLS_BIN)/golangci-lint
 GO_ARCH_LINT := $(TOOLS_BIN)/go-arch-lint
 
-.PHONY: tools fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-node-image e2e-crawler-image peer-hash
+.PHONY: tools fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-textindexer e2e-node-image e2e-crawler-image e2e-textindexer-image peer-hash
 
 E2E_TIMEOUT ?= 10m
 E2E_NODE_IMAGE ?= yacy-rwi-node:e2e
 E2E_CRAWLER_IMAGE ?= yacy-rwi-crawler:e2e
+E2E_TEXTINDEXER_IMAGE ?= yacy-rwi-textindexer:e2e
 
 E2E_CONTAINER_CLI := $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
 E2E_RUNTIME_DIR := $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))
@@ -102,6 +103,9 @@ e2e-node-image:
 e2e-crawler-image:
 	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacycrawler/Dockerfile -t $(E2E_CRAWLER_IMAGE) .
 
+e2e-textindexer-image:
+	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacytextindexer/Dockerfile -t $(E2E_TEXTINDEXER_IMAGE) .
+
 e2e-node:
 	cd yacynode/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
@@ -110,4 +114,11 @@ e2e-crawler:
 	cd yacycrawler/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YACYCRAWLER_IMAGE=$(E2E_CRAWLER_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
 
-e2e: e2e-node e2e-crawler
+e2e-textindexer:
+	cd yacytextindexer/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) \
+		YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
+		YACYCRAWLER_IMAGE=$(E2E_CRAWLER_IMAGE) \
+		YACYTEXTINDEXER_IMAGE=$(E2E_TEXTINDEXER_IMAGE) \
+		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
+
+e2e: e2e-node e2e-crawler e2e-textindexer

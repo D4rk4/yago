@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/extractedtext"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
@@ -64,6 +65,12 @@ func (f emitFunc) Emit(
 	return f(ctx, postings, metadata, envelope)
 }
 
+type textEmitFunc func(context.Context, pageparse.ParsedPage, time.Time) error
+
+func (f textEmitFunc) Emit(ctx context.Context, page pageparse.ParsedPage, crawledAt time.Time) error {
+	return f(ctx, page, crawledAt)
+}
+
 func htmlPage() pagefetch.FetchedPage {
 	target, _ := url.Parse("https://example.com/")
 	return pagefetch.FetchedPage{
@@ -105,6 +112,7 @@ func TestPipelineDeliversIngestBatch(t *testing.T) {
 				return nil
 			},
 		),
+		extractedtext.NewNoopArtifactEmitter(),
 	)
 	runOneJob(t, p, frontier)
 	select {
@@ -137,6 +145,7 @@ func TestPipelineDropsRejectedPages(t *testing.T) {
 				return nil
 			},
 		),
+		extractedtext.NewNoopArtifactEmitter(),
 	)
 	runOneJob(t, p, frontier)
 	if len(frontier.submitted) != 0 {
@@ -157,6 +166,7 @@ func TestPipelineFinishesJobOnFetchError(t *testing.T) {
 				return nil
 			},
 		),
+		extractedtext.NewNoopArtifactEmitter(),
 	)
 	runOneJob(t, p, frontier)
 }
@@ -174,6 +184,57 @@ func TestPipelineFinishesJobOnEmitError(t *testing.T) {
 				return errors.New("emit failed")
 			},
 		),
+		extractedtext.NewNoopArtifactEmitter(),
+	)
+	runOneJob(t, p, frontier)
+}
+
+func TestPipelineDeliversExtractedText(t *testing.T) {
+	frontier := newRecordingFrontier()
+	emitted := make(chan string, 1)
+	p := pipeline.NewPipeline(
+		frontier,
+		fetchFunc(
+			func(context.Context, *url.URL) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
+		),
+		pageindex.NewIndexBuilder(),
+		emitFunc(
+			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+				return nil
+			},
+		),
+		textEmitFunc(func(_ context.Context, p pageparse.ParsedPage, _ time.Time) error {
+			emitted <- p.URL
+			return nil
+		}),
+	)
+	runOneJob(t, p, frontier)
+	select {
+	case url := <-emitted:
+		if url != "https://example.com/" {
+			t.Errorf("emitted text url = %q", url)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no extracted text emitted")
+	}
+}
+
+func TestPipelineFinishesJobOnTextEmitError(t *testing.T) {
+	frontier := newRecordingFrontier()
+	p := pipeline.NewPipeline(
+		frontier,
+		fetchFunc(
+			func(context.Context, *url.URL) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
+		),
+		pageindex.NewIndexBuilder(),
+		emitFunc(
+			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+				return nil
+			},
+		),
+		textEmitFunc(func(context.Context, pageparse.ParsedPage, time.Time) error {
+			return errors.New("text emit failed")
+		}),
 	)
 	runOneJob(t, p, frontier)
 }
@@ -194,6 +255,7 @@ func TestPipelineFinishesJobOnIndexError(t *testing.T) {
 				return nil
 			},
 		),
+		extractedtext.NewNoopArtifactEmitter(),
 	)
 	runOneJob(t, p, frontier)
 }

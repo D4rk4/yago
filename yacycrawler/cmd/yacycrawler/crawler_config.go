@@ -23,10 +23,18 @@ const (
 	EnvUserAgent         = "YACYCRAWLER_USER_AGENT"
 	EnvProxyURL          = "YACYCRAWLER_PROXY_URL"
 
-	DefaultOrdersSubject = "yacy.crawl.orders"
-	DefaultIngestSubject = "yacy.crawl.ingest"
-	DefaultOrdersDurable = "yacy-crawlers"
-	DefaultIngestMaxMsgs = 1024
+	EnvExtractedTextEnabled  = "YACYCRAWLER_EXTRACTED_TEXT_ENABLED"
+	EnvExtractedTextSubject  = "NATS_EXTRACTED_TEXT_SUBJECT"
+	EnvExtractedTextMaxMsgs  = "NATS_EXTRACTED_TEXT_MAX_MSGS"
+	EnvExtractedTextMaxBytes = "YACYCRAWLER_EXTRACTED_TEXT_MAX_BYTES"
+
+	DefaultOrdersSubject         = "yacy.crawl.orders"
+	DefaultIngestSubject         = "yacy.crawl.ingest"
+	DefaultOrdersDurable         = "yacy-crawlers"
+	DefaultIngestMaxMsgs         = 1024
+	DefaultExtractedTextSubject  = "yacy.crawl.extracted-text"
+	DefaultExtractedTextMaxMsgs  = 1024
+	DefaultExtractedTextMaxBytes = 1 << 20
 
 	DefaultMaxBodyBytes  int64 = 4 << 20
 	DefaultUserAgent           = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
@@ -62,13 +70,17 @@ func DefaultCrawlConfig() CrawlConfig {
 }
 
 type ServiceConfig struct {
-	Crawl         CrawlConfig
-	NATSURL       string
-	ProxyURL      *url.URL
-	OrdersSubject string
-	IngestSubject string
-	OrdersDurable string
-	IngestMaxMsgs int64
+	Crawl                 CrawlConfig
+	NATSURL               string
+	ProxyURL              *url.URL
+	OrdersSubject         string
+	IngestSubject         string
+	OrdersDurable         string
+	IngestMaxMsgs         int64
+	ExtractedTextEnabled  bool
+	ExtractedTextSubject  string
+	ExtractedTextMaxMsgs  int64
+	ExtractedTextMaxBytes int
 }
 
 func (c ServiceConfig) StreamSpec() yacycrawlcontract.StreamSpec {
@@ -76,6 +88,13 @@ func (c ServiceConfig) StreamSpec() yacycrawlcontract.StreamSpec {
 		OrdersSubject: c.OrdersSubject,
 		IngestSubject: c.IngestSubject,
 		IngestMaxMsgs: c.IngestMaxMsgs,
+	}
+}
+
+func (c ServiceConfig) ExtractedTextStreamSpec() yacycrawlcontract.ExtractedTextStreamSpec {
+	return yacycrawlcontract.ExtractedTextStreamSpec{
+		Subject: c.ExtractedTextSubject,
+		MaxMsgs: c.ExtractedTextMaxMsgs,
 	}
 }
 
@@ -117,15 +136,41 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		return ServiceConfig{}, err
 	}
 
+	textMaxMsgs, err := envPositiveInt64(getenv, EnvExtractedTextMaxMsgs, DefaultExtractedTextMaxMsgs)
+	if err != nil {
+		return ServiceConfig{}, err
+	}
+
+	textMaxBytes, err := envPositiveInt(getenv, EnvExtractedTextMaxBytes, DefaultExtractedTextMaxBytes)
+	if err != nil {
+		return ServiceConfig{}, err
+	}
+
 	return ServiceConfig{
-		Crawl:         crawl,
-		NATSURL:       natsURL,
-		ProxyURL:      proxyURL,
-		OrdersSubject: envString(getenv, EnvNATSOrdersSubject, DefaultOrdersSubject),
-		IngestSubject: envString(getenv, EnvNATSIngestSubject, DefaultIngestSubject),
-		OrdersDurable: envString(getenv, EnvNATSDurable, DefaultOrdersDurable),
-		IngestMaxMsgs: maxMsgs,
+		Crawl:                 crawl,
+		NATSURL:               natsURL,
+		ProxyURL:              proxyURL,
+		OrdersSubject:         envString(getenv, EnvNATSOrdersSubject, DefaultOrdersSubject),
+		IngestSubject:         envString(getenv, EnvNATSIngestSubject, DefaultIngestSubject),
+		OrdersDurable:         envString(getenv, EnvNATSDurable, DefaultOrdersDurable),
+		IngestMaxMsgs:         maxMsgs,
+		ExtractedTextEnabled:  envBool(getenv, EnvExtractedTextEnabled, false),
+		ExtractedTextSubject:  envString(getenv, EnvExtractedTextSubject, DefaultExtractedTextSubject),
+		ExtractedTextMaxMsgs:  textMaxMsgs,
+		ExtractedTextMaxBytes: textMaxBytes,
 	}, nil
+}
+
+func envBool(getenv func(string) string, key string, fallback bool) bool {
+	raw := strings.TrimSpace(getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return fallback
+	}
+	return value
 }
 
 func envString(getenv func(string) string, key, fallback string) string {

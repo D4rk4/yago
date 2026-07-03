@@ -16,6 +16,7 @@ COPY yacycrawlcontract/go.mod yacycrawlcontract/
 COPY yacycrawler/go.mod yacycrawler/
 COPY yacymodel/go.mod yacymodel/
 COPY yacyproto/go.mod yacyproto/
+COPY yacytextindexer/go.mod yacytextindexer/
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \

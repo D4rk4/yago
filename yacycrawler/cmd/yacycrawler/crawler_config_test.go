@@ -68,6 +68,42 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 		spec.IngestMaxMsgs != cfg.IngestMaxMsgs {
 		t.Errorf("stream spec mismatch: %+v", spec)
 	}
+	if cfg.ExtractedTextEnabled {
+		t.Error("extracted text sink should default to disabled")
+	}
+	if cfg.ExtractedTextSubject != DefaultExtractedTextSubject {
+		t.Errorf("extracted text subject = %q", cfg.ExtractedTextSubject)
+	}
+	if cfg.ExtractedTextMaxMsgs != DefaultExtractedTextMaxMsgs {
+		t.Errorf("extracted text max msgs = %d", cfg.ExtractedTextMaxMsgs)
+	}
+	if cfg.ExtractedTextMaxBytes != DefaultExtractedTextMaxBytes {
+		t.Errorf("extracted text max bytes = %d", cfg.ExtractedTextMaxBytes)
+	}
+	textSpec := cfg.ExtractedTextStreamSpec()
+	if textSpec.Subject != cfg.ExtractedTextSubject || textSpec.MaxMsgs != cfg.ExtractedTextMaxMsgs {
+		t.Errorf("extracted text stream spec mismatch: %+v", textSpec)
+	}
+}
+
+func TestLoadServiceConfigExtractedTextOverrides(t *testing.T) {
+	cfg, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNATSURL:               "nats://localhost:4222",
+		EnvProxyURL:              "http://proxy:4750",
+		EnvExtractedTextEnabled:  "true",
+		EnvExtractedTextSubject:  "t.subject",
+		EnvExtractedTextMaxMsgs:  "3",
+		EnvExtractedTextMaxBytes: "1024",
+	}))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !cfg.ExtractedTextEnabled {
+		t.Error("expected extracted text sink enabled")
+	}
+	if cfg.ExtractedTextSubject != "t.subject" || cfg.ExtractedTextMaxMsgs != 3 || cfg.ExtractedTextMaxBytes != 1024 {
+		t.Errorf("extracted text overrides = %+v", cfg)
+	}
 }
 
 func TestLoadServiceConfigOverrides(t *testing.T) {

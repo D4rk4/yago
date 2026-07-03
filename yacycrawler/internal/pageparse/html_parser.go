@@ -55,7 +55,7 @@ func collectText(node *html.Node, text *strings.Builder) {
 	switch node.Type {
 	case html.ElementNode:
 		switch node.DataAtom {
-		case atom.Script, atom.Style, atom.Noscript, atom.Template:
+		case atom.Head, atom.Script, atom.Style, atom.Noscript, atom.Template:
 			return
 		}
 	case html.TextNode:

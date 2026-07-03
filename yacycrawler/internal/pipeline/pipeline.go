@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/extractedtext"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
@@ -22,16 +24,18 @@ type Frontier interface {
 }
 
 const (
-	msgPageRejected = "crawl page rejected"
-	msgJobFetching  = "crawl job fetching"
-	msgPageCrawled  = "crawl page crawled"
+	msgPageRejected   = "crawl page rejected"
+	msgJobFetching    = "crawl job fetching"
+	msgPageCrawled    = "crawl page crawled"
+	msgTextEmitFailed = "extracted text emit failed"
 )
 
 type Pipeline struct {
-	frontier Frontier
-	fetcher  pagefetch.PageSource
-	index    pageindex.IndexBuilder
-	emitter  ingest.BatchEmitter
+	frontier    Frontier
+	fetcher     pagefetch.PageSource
+	index       pageindex.IndexBuilder
+	emitter     ingest.BatchEmitter
+	textEmitter extractedtext.ArtifactEmitter
 }
 
 func NewPipeline(
@@ -39,12 +43,14 @@ func NewPipeline(
 	fetcher pagefetch.PageSource,
 	index pageindex.IndexBuilder,
 	emitter ingest.BatchEmitter,
+	textEmitter extractedtext.ArtifactEmitter,
 ) *Pipeline {
 	return &Pipeline{
-		frontier: frontier,
-		fetcher:  fetcher,
-		index:    index,
-		emitter:  emitter,
+		frontier:    frontier,
+		fetcher:     fetcher,
+		index:       index,
+		emitter:     emitter,
+		textEmitter: textEmitter,
 	}
 }
 
@@ -127,6 +133,12 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 		ProfileHandle: job.ProfileHandle,
 	}); err != nil {
 		return fmt.Errorf("emit: %w", err)
+	}
+	if err := p.textEmitter.Emit(ctx, page, time.Now()); err != nil {
+		slog.WarnContext(ctx, msgTextEmitFailed,
+			slog.String("url", page.URL),
+			slog.Any("error", err),
+		)
 	}
 	return nil
 }

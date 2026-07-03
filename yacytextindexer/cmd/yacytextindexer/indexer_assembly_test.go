@@ -1,0 +1,98 @@
+package main
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/nats-io/nats.go/jetstream"
+
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+)
+
+func TestRunServiceIndexesExtractedTextIntoElasticsearch(t *testing.T) {
+	var mu sync.Mutex
+	var gotPath string
+	elasticsearch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotPath = r.URL.Path
+		mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer elasticsearch.Close()
+
+	url := startNATS(t)
+	cfg := ServiceConfig{
+		NATSURL:              url,
+		ExtractedTextSubject: "yacy.crawl.extracted-text",
+		ExtractedTextMaxMsgs: DefaultExtractedTextMaxMsgs,
+		Durable:              DefaultDurable,
+		Concurrency:          DefaultConcurrency,
+		ElasticsearchURL:     elasticsearch.URL,
+		ElasticsearchIndex:   "yacy-text",
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- RunService(ctx, cfg) }()
+
+	js := connectJetStream(t, url)
+	waitForExtractedTextStream(t, js)
+
+	data, err := yacycrawlcontract.MarshalExtractedText(yacycrawlcontract.ExtractedText{
+		CanonicalURL: "https://example.com/",
+		DocumentID:   "abc123",
+		Title:        "Hi",
+		Text:         "words here",
+	})
+	if err != nil {
+		t.Fatalf("marshal extracted text: %v", err)
+	}
+	if _, err := js.Publish(ctx, cfg.ExtractedTextSubject, data); err != nil {
+		t.Fatalf("publish extracted text: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		path := gotPath
+		mu.Unlock()
+		if path == "/yacy-text/_doc/abc123" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	mu.Lock()
+	path := gotPath
+	mu.Unlock()
+	if path != "/yacy-text/_doc/abc123" {
+		t.Fatalf("elasticsearch never received the indexed document, last path = %q", path)
+	}
+
+	cancel()
+	select {
+	case err := <-runDone:
+		if err != nil {
+			t.Errorf("run: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("service did not shut down after cancel")
+	}
+}
+
+func waitForExtractedTextStream(t *testing.T, js jetstream.JetStream) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := js.Stream(context.Background(), yacycrawlcontract.ExtractedTextStreamName); err == nil {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("stream %s not created in time", yacycrawlcontract.ExtractedTextStreamName)
+}

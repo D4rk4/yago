@@ -12,6 +12,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/botwall"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawldelay"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlorder"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/extractedtext"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
@@ -33,6 +34,18 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	}
 	if err := yacycrawlcontract.EnsureStreams(ctx, js, cfg.StreamSpec()); err != nil {
 		return fmt.Errorf("ensure streams: %w", err)
+	}
+
+	textEmitter := extractedtext.NewNoopArtifactEmitter()
+	if cfg.ExtractedTextEnabled {
+		if err := yacycrawlcontract.EnsureExtractedTextStream(ctx, js, cfg.ExtractedTextStreamSpec()); err != nil {
+			return fmt.Errorf("ensure extracted text stream: %w", err)
+		}
+		textEmitter = extractedtext.NewArtifactEmitter(
+			extractedtext.NewNATSArtifactPublisher(js, cfg.ExtractedTextSubject),
+			nil,
+			cfg.ExtractedTextMaxBytes,
+		)
 	}
 
 	orders, err := crawlorder.NewNATSOrderReceiver(ctx, js, cfg.OrdersDurable, cfg.OrdersSubject)
@@ -64,6 +77,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		screened,
 		pageindex.NewIndexBuilder(),
 		emitter,
+		textEmitter,
 	)
 	consumer := crawlorder.NewCrawlOrderConsumer(orders, frontier)
 

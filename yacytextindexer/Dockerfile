@@ -29,11 +29,13 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build \
         -ldflags="-s -w -X main.version=${VERSION}" \
-        -o /out/yacycrawler \
-        ./yacycrawler/cmd/yacycrawler
+        -o /out/yacytextindexer \
+        ./yacytextindexer/cmd/yacytextindexer
 
-FROM docker.io/chromedp/headless-shell:148.0.7778.97
+FROM gcr.io/distroless/static-debian12:nonroot
 
-COPY --from=build /out/yacycrawler /usr/local/bin/yacycrawler
+COPY --from=build /out/yacytextindexer /usr/local/bin/yacytextindexer
 
-ENTRYPOINT ["/usr/local/bin/yacycrawler"]
+USER nonroot:nonroot
+
+ENTRYPOINT ["/usr/local/bin/yacytextindexer"]
