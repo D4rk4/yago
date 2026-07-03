@@ -294,7 +294,7 @@ func TestExtractNilDirectoryMissesEveryURL(t *testing.T) {
 func TestMountExtractRegistersRoute(t *testing.T) {
 	mux := http.NewServeMux()
 	rows := map[string]documentstore.Document{"http://ex.com/a": {ExtractedText: "hi"}}
-	MountExtract(mux, &fakeDocuments{rows: rows}, SearchAccessPolicy{})
+	MountExtract(mux, &fakeDocuments{rows: rows}, SearchAccessPolicy{}, nil)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(
 		context.Background(),

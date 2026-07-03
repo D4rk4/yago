@@ -76,6 +76,7 @@ type nodeConfig struct {
 	CrossOrigin         crossOriginConfig
 	DHT                 dhtDistributionConfig
 	WebFallback         webFallbackConfig
+	ExtractFetch        extractFetchConfig
 }
 
 type configuredNodeData struct {
@@ -129,7 +130,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		return nodeConfig{}, err
 	}
 
-	dht, webFallback, declaredBirthDate, searchRequireAPIKey, err := loadDerivedConfigs(getenv)
+	derived, err := loadDerivedConfigs(getenv)
 	if err != nil {
 		return nodeConfig{}, err
 	}
@@ -155,35 +156,51 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		AnnounceInterval:    announceInterval,
 		GreetsPerCycle:      greetsPerCycle,
 		SearchAPIKey:        strings.TrimSpace(getenv(envSearchAccessToken)),
-		SearchRequireAPIKey: searchRequireAPIKey,
-		DeclaredBirthDate:   declaredBirthDate,
-		DHT:                 dht,
-		WebFallback:         webFallback,
+		SearchRequireAPIKey: derived.requireAPIKey,
+		DeclaredBirthDate:   derived.birthDate,
+		DHT:                 derived.dht,
+		WebFallback:         derived.webFallback,
+		ExtractFetch:        derived.extractFetch,
 	}, nil
 }
 
-func loadDerivedConfigs(getenv func(string) string) (
-	dhtDistributionConfig, webFallbackConfig, time.Time, bool, error,
-) {
+type derivedConfigs struct {
+	dht           dhtDistributionConfig
+	webFallback   webFallbackConfig
+	birthDate     time.Time
+	requireAPIKey bool
+	extractFetch  extractFetchConfig
+}
+
+func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	dht, err := loadDHTDistributionConfig(getenv)
 	if err != nil {
-		return dhtDistributionConfig{}, webFallbackConfig{}, time.Time{}, false, err
+		return derivedConfigs{}, err
 	}
 	webFallback, err := loadWebFallbackConfig(getenv)
 	if err != nil {
-		return dhtDistributionConfig{}, webFallbackConfig{}, time.Time{}, false, err
+		return derivedConfigs{}, err
 	}
 	birthDate, err := declaredBirthDate(getenv)
 	if err != nil {
-		return dhtDistributionConfig{}, webFallbackConfig{}, time.Time{}, false, err
+		return derivedConfigs{}, err
 	}
 	requireAPIKey, err := boolEnv(getenv, envSearchRequireAPIKey, false)
 	if err != nil {
-		return dhtDistributionConfig{}, webFallbackConfig{}, time.Time{}, false,
-			fmt.Errorf("%s: %w", envSearchRequireAPIKey, err)
+		return derivedConfigs{}, fmt.Errorf("%s: %w", envSearchRequireAPIKey, err)
+	}
+	extractFetch, err := loadExtractFetchConfig(getenv)
+	if err != nil {
+		return derivedConfigs{}, err
 	}
 
-	return dht, webFallback, birthDate, requireAPIKey, nil
+	return derivedConfigs{
+		dht:           dht,
+		webFallback:   webFallback,
+		birthDate:     birthDate,
+		requireAPIKey: requireAPIKey,
+		extractFetch:  extractFetch,
+	}, nil
 }
 
 func egressConfig(getenv func(string) string) ([]*net.IPNet, bool, []netip.Prefix, error) {

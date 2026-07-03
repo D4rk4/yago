@@ -24,6 +24,7 @@ type publicSearchAssembly struct {
 	dhtSearchTargetIndex func(int) (int, error)
 	searchAPIKey         string
 	searchAuthorizer     tavilyapi.ScopeAuthorizer
+	extractFetcher       tavilyapi.ContentFetcher
 	webFallback          webFallbackConfig
 	seedQueue            crawldispatch.CrawlOrderQueue
 }
@@ -54,7 +55,7 @@ func mountNodePublicSearch(
 	access := searchAccessPolicy(assembly)
 	yacysearch.Mount(mux, search)
 	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
-	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access)
+	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access, assembly.extractFetcher)
 }
 
 // searchAccessPolicy prefers scoped API-key auth when the operator requires it,

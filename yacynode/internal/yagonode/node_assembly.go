@@ -173,6 +173,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		client:           in.client,
 		searchAPIKey:     in.config.SearchAPIKey,
 		searchAuthorizer: in.telemetry.searchAuthorizer,
+		extractFetcher:   buildExtractFetcher(in.config, in.client),
 		webFallback:      in.config.WebFallback,
 		seedQueue:        crawlOrderQueue(runtime),
 	})

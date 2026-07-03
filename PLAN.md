@@ -1211,7 +1211,20 @@ Acceptance:
 
 ### TAVILY-05: Tavily `/extract` compatibility subset
 
-Optional after content extraction exists.
+Status: acceptance met. `POST /extract` returns Tavily-shaped results for URLs
+already in the document store, and an uncached URL becomes a controlled
+`failed_result`. Fetch-on-extract is now available as an opt-in
+(`YAGO_EXTRACT_FETCH_ENABLED`, off by default): when on, an uncached URL is
+fetched through the shared egress-guarded client (so private networks stay
+default-denied — no SSRF), bounded by `YAGO_EXTRACT_FETCH_MAX_BYTES` and
+`YAGO_EXTRACT_FETCH_TIMEOUT`, and its title and visible text are extracted with
+`golang.org/x/net/html` (a new `internal/extractfetch` package;
+`script`/`style`/`noscript` stripped, whitespace collapsed). Non-`200` or
+non-HTML responses and any fetch error degrade to a generic `failed_result`
+(the internal error is never reflected, avoiding an SSRF oracle). Image
+extraction and readability-grade boilerplate removal on fetched pages remain a
+future refinement. Off by default, so there is no outbound request or SSRF
+surface unless an operator opts in.
 
 Tasks:
 

@@ -80,6 +80,8 @@ components:
     in: internal/yacysearch/**
   websearch:
     in: internal/websearch/**
+  extractfetch:
+    in: internal/extractfetch/**
   nodestatus:
     in: internal/nodestatus/**
   eviction:
@@ -397,6 +399,11 @@ deps:
       - searchcore
     canUse:
       - xnet
+  extractfetch:
+    mayDependOn:
+      - extractfetch
+    canUse:
+      - xnet
   nodestatus:
     mayDependOn:
       - nodestatus
@@ -517,6 +524,7 @@ deps:
       - tavilyapi
       - yacysearch
       - websearch
+      - extractfetch
     canUse:
       - yacycrawlcontract
       - yacyegress

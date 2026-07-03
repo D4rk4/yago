@@ -63,9 +63,24 @@ type ExtractFailure struct {
 	Error string `json:"error"`
 }
 
+// FetchedContent is the title and text a ContentFetcher extracted from a URL not
+// present in the index.
+type FetchedContent struct {
+	Title string
+	Text  string
+}
+
+// ContentFetcher fetches and extracts a URL that is not in the index. It is
+// satisfied by an egress-guarded adapter so this package stays independent of
+// the HTTP client and HTML parser; a nil fetcher means fetch-on-extract is off.
+type ContentFetcher interface {
+	Fetch(ctx context.Context, url string) (FetchedContent, error)
+}
+
 type extractEndpoint struct {
 	documents documentstore.DocumentDirectory
 	access    SearchAccessPolicy
+	fetcher   ContentFetcher
 	now       func() time.Time
 }
 
@@ -73,19 +88,28 @@ func MountExtract(
 	mux *http.ServeMux,
 	documents documentstore.DocumentDirectory,
 	access SearchAccessPolicy,
+	fetcher ContentFetcher,
 ) {
-	mux.Handle(PathExtract, NewExtractEndpointWithAccess(documents, access))
+	mux.Handle(PathExtract, NewExtractEndpointWithFetcher(documents, access, fetcher))
 }
 
 func NewExtractEndpoint(documents documentstore.DocumentDirectory) http.Handler {
-	return NewExtractEndpointWithAccess(documents, SearchAccessPolicy{})
+	return NewExtractEndpointWithFetcher(documents, SearchAccessPolicy{}, nil)
 }
 
 func NewExtractEndpointWithAccess(
 	documents documentstore.DocumentDirectory,
 	access SearchAccessPolicy,
 ) http.Handler {
-	return extractEndpoint{documents: documents, access: access, now: time.Now}
+	return NewExtractEndpointWithFetcher(documents, access, nil)
+}
+
+func NewExtractEndpointWithFetcher(
+	documents documentstore.DocumentDirectory,
+	access SearchAccessPolicy,
+	fetcher ContentFetcher,
+) http.Handler {
+	return extractEndpoint{documents: documents, access: access, fetcher: fetcher, now: time.Now}
 }
 
 func (e extractEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -144,28 +168,16 @@ func (e extractEndpoint) extractResponse(
 	results := make([]ExtractResult, 0, len(req.URLs))
 	failures := make([]ExtractFailure, 0)
 	for _, raw := range req.URLs {
-		normalized, ok := normalizeExtractURL(raw)
-		if !ok {
-			failures = append(failures, ExtractFailure{
-				URL:   raw,
-				Error: "url must be an absolute http or https URL",
-			})
-
-			continue
-		}
-		doc, found, err := e.lookup(ctx, normalized)
+		result, failure, err := e.extractOne(ctx, req, raw)
 		if err != nil {
 			return ExtractResponse{}, err
 		}
-		if !found {
-			failures = append(failures, ExtractFailure{
-				URL:   raw,
-				Error: "url is not in the index and fetch-on-extract is disabled",
-			})
+		if failure != nil {
+			failures = append(failures, *failure)
 
 			continue
 		}
-		results = append(results, extractResult(req, raw, doc))
+		results = append(results, result)
 	}
 
 	return ExtractResponse{
@@ -174,6 +186,69 @@ func (e extractEndpoint) extractResponse(
 		ResponseTime:  e.now().Sub(start).Seconds(),
 		RequestID:     id,
 	}, nil
+}
+
+func (e extractEndpoint) extractOne(
+	ctx context.Context,
+	req ExtractRequest,
+	raw string,
+) (ExtractResult, *ExtractFailure, error) {
+	normalized, ok := normalizeExtractURL(raw)
+	if !ok {
+		return ExtractResult{}, &ExtractFailure{
+			URL:   raw,
+			Error: "url must be an absolute http or https URL",
+		}, nil
+	}
+	doc, found, err := e.lookup(ctx, normalized)
+	if err != nil {
+		return ExtractResult{}, nil, err
+	}
+	if found {
+		return extractResult(req, raw, doc), nil, nil
+	}
+	if e.fetcher == nil {
+		return ExtractResult{}, &ExtractFailure{
+			URL:   raw,
+			Error: "url is not in the index and fetch-on-extract is disabled",
+		}, nil
+	}
+
+	fetched, err := e.fetcher.Fetch(ctx, normalized)
+	if err != nil {
+		//nolint:nilerr // a fetch failure is a per-URL failed_result, not a fatal request error.
+		return ExtractResult{}, &ExtractFailure{
+			URL:   raw,
+			Error: "fetch-on-extract failed",
+		}, nil
+	}
+
+	return fetchedExtractResult(req, raw, fetched), nil, nil
+}
+
+func fetchedExtractResult(
+	req ExtractRequest,
+	requestedURL string,
+	content FetchedContent,
+) ExtractResult {
+	raw := content.Text
+	if strings.EqualFold(strings.TrimSpace(req.Format), "markdown") {
+		raw = fetchedMarkdown(content)
+	}
+	result := ExtractResult{URL: requestedURL, RawContent: raw}
+	if req.IncludeFavicon {
+		result.Favicon = faviconURL(requestedURL)
+	}
+
+	return result
+}
+
+func fetchedMarkdown(content FetchedContent) string {
+	if content.Title == "" {
+		return content.Text
+	}
+
+	return "# " + content.Title + "\n\n" + content.Text
 }
 
 func (e extractEndpoint) lookup(

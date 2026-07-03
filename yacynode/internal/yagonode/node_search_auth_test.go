@@ -74,11 +74,11 @@ func TestLoadDerivedConfigsRequireAPIKey(t *testing.T) {
 
 		return ""
 	}
-	_, _, _, requireAPIKey, err := loadDerivedConfigs(getenv)
+	derived, err := loadDerivedConfigs(getenv)
 	if err != nil {
 		t.Fatalf("loadDerivedConfigs: %v", err)
 	}
-	if !requireAPIKey {
+	if !derived.requireAPIKey {
 		t.Fatal("YAGO_SEARCH_REQUIRE_API_KEY=true should require API keys")
 	}
 }
