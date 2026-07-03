@@ -117,7 +117,7 @@ func responseRSSItems(results []searchcore.Result) []rssItem {
 	items := make([]rssItem, 0, len(results))
 	for _, result := range results {
 		items = append(items, rssItem{
-			Title:       result.Title,
+			Title:       markWebResultTitle(result.Source, result.Title),
 			Link:        result.URL,
 			Description: result.Snippet,
 			PubDate:     rssDate(result.Date),

@@ -8,6 +8,7 @@ const (
 	SourceLocal  Source = "local"
 	SourceGlobal Source = "global"
 	SourceRemote Source = "remote"
+	SourceWeb    Source = "ddgs"
 )
 
 type ContentDomain string

@@ -88,7 +88,7 @@ func responseItems(results []searchcore.Result) []jsonItem {
 	items := make([]jsonItem, 0, len(results))
 	for _, result := range results {
 		items = append(items, jsonItem{
-			Title:       result.Title,
+			Title:       markWebResultTitle(result.Source, result.Title),
 			Link:        result.URL,
 			Code:        result.URLHash,
 			Description: result.Snippet,

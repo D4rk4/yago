@@ -1093,19 +1093,30 @@ Acceptance:
 
 ### TAVILY-04: Optional DDGS web-search fallback provider
 
+Status: core implemented, env-gated. A `websearch.FallbackSearcher` decorator
+wraps the federated searcher (`node_public_search.go`) so both the Tavily API and
+the human search surfaces share one fallback: on a true miss (zero results) and
+only while enabled, it queries a keyless multi-engine metasearch provider and
+stamps results `searchcore.SourceWeb`. The provider (`websearch.DDGSProvider`)
+routes through the egress guard, caches responses briefly, backs off on
+`202`/`429`, and degrades to empty on failure. Configured via `YAGO_WEB_FALLBACK_*`
+(off by default). The runtime admin toggle (flip without restart) and the SEC-05
+tri-state privacy mode remain planned; today the enable flag is read from config.
+
 Supersedes the earlier "optional real Tavily upstream provider" idea. There is no
 outbound commercial Tavily integration. When the node cannot answer a query from
 its own index or its federated peers, an operator may opt in to a DDGS-style
-web-search fallback (DuckDuckGo/DDGS-family metasearch) so the caller still gets
-results, tagged so they are never confused with owned index hits.
+web-search fallback (DDGS-family metasearch) so the caller still gets results,
+tagged so they are never confused with owned index hits.
 
-DDGS is a keyless, unofficial metasearch scraper (DuckDuckGo, and in the DDGS
-family also other engines) with real rate limits (`202 Ratelimit`) and its own
-terms of service. It is a Python library; the Go node needs its own provider, so
-the concrete backend (an in-house `html.duckduckgo.com/html` + `lite.duckduckgo.com/lite`
-client with `auto`-style backend fallback, versus a vetted third-party Go
-dependency) is fixed in the implementation ADR. Any third-party dependency needs
-its own ADR before use.
+DDGS is a keyless, unofficial metasearch idea (rotate across public engines) with
+real rate limits (`202 Ratelimit`) and per-engine terms of service. The Go node
+ships its own provider; the concrete backend is fixed in ADR-0021: an in-house,
+structure-driven multi-engine client whose default `auto` backend **excludes
+DuckDuckGo** (it aggressively blocks automated queries) and uses Mojeek then Bing,
+with DuckDuckGo (`html`/`lite`) available only when selected explicitly. It
+promotes `golang.org/x/net` to a direct dependency for HTML parsing (recorded in
+ADR-0021). Any further third-party dependency needs its own ADR before use.
 
 Tasks:
 
@@ -2218,10 +2229,12 @@ Prefer environment variables for boot-critical settings and persistent settings 
 
 - `YAGO_WEB_FALLBACK_ENABLED=false`.
 - `YAGO_WEB_FALLBACK_PROVIDER=ddgs`.
-- `YAGO_WEB_FALLBACK_BACKEND=auto`.
+- `YAGO_WEB_FALLBACK_BACKEND=auto` (`auto` excludes DuckDuckGo — Mojeek then Bing;
+  `mojeek`, `bing`, or `duckduckgo` select one engine explicitly; see ADR-0021).
 - `YAGO_WEB_FALLBACK_MAX_RESULTS`.
 - `YAGO_WEB_FALLBACK_TIMEOUT`.
 - `YAGO_WEB_FALLBACK_SAFESEARCH`.
+- `YAGO_WEB_FALLBACK_CACHE_TTL` (short-TTL provider response cache).
 - `YAGO_WEB_FALLBACK_SEED_CRAWL=false` (seed the crawler from discovered URLs).
 
 ### 16.3 Runtime settings

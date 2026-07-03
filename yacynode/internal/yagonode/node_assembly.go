@@ -118,6 +118,7 @@ func assembleNode(
 		dht:          config.DHT,
 		client:       client,
 		searchAPIKey: config.SearchAPIKey,
+		webFallback:  config.WebFallback,
 	})
 
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{

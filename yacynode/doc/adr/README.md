@@ -39,3 +39,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0018](0018-commit-to-bleve-web-search-backend.md) | Commit to Bleve as the web-search backend | Accepted |
 | [0019](0019-ddgs-web-search-fallback.md) | Optional DDGS web-search fallback instead of an upstream Tavily provider | Accepted |
 | [0020](0020-public-search-portal.md) | Public search portal as a progressively-enhanced surface separate from the admin SPA | Accepted |
+| [0021](0021-in-house-metasearch-backend.md) | In-house multi-engine metasearch backend for the DDGS fallback | Accepted |

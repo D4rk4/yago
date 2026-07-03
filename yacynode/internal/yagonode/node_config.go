@@ -73,6 +73,7 @@ type nodeConfig struct {
 	Admin              adminConfig
 	CrossOrigin        crossOriginConfig
 	DHT                dhtDistributionConfig
+	WebFallback        webFallbackConfig
 }
 
 type configuredNodeData struct {
@@ -131,6 +132,11 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		return nodeConfig{}, err
 	}
 
+	webFallback, err := loadWebFallbackConfig(getenv)
+	if err != nil {
+		return nodeConfig{}, err
+	}
+
 	declaredBirthDate, err := declaredBirthDate(getenv)
 	if err != nil {
 		return nodeConfig{}, err
@@ -159,6 +165,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		SearchAPIKey:       strings.TrimSpace(getenv(envSearchAccessToken)),
 		DeclaredBirthDate:  declaredBirthDate,
 		DHT:                dht,
+		WebFallback:        webFallback,
 	}, nil
 }
 

@@ -37,6 +37,13 @@ The node is configured through environment variables.
 | `YAGO_ADMIN_PASSWORD` | _(empty)_ | Administrator password, stored as an Argon2id hash. Leave both admin variables empty to create the first admin with `POST /api/admin/v1/auth/setup` on first run. There is no default password. |
 | `YAGO_ADMIN_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the operations surface. Empty denies all cross-origin requests. Use `*` to echo any origin (required for a credentialed admin UI on an unknown origin, but broad). |
 | `YAGO_SEARCH_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the public search endpoints on the peer listener. Empty denies all cross-origin requests; `*` allows any origin without credentials. |
+| `YAGO_WEB_FALLBACK_ENABLED` | `false` | Enable the optional DDGS web-search fallback. Off by default; while off, no query is ever sent to an external engine. When on, a query that returns nothing locally and across peers is answered by an external keyless metasearch and the results are marked `[ddgs]` on the human search surfaces (never on the Tavily `POST /search` drop-in). |
+| `YAGO_WEB_FALLBACK_BACKEND` | `auto` | Engine selection for the fallback. `auto` excludes DuckDuckGo (which hard-blocks automated queries) and uses Mojeek then Bing; `mojeek`, `bing`, or `duckduckgo` pick a single engine. See `doc/adr/0021-in-house-metasearch-backend.md`. |
+| `YAGO_WEB_FALLBACK_MAX_RESULTS` | `10` | Maximum fallback results (1–20). |
+| `YAGO_WEB_FALLBACK_TIMEOUT` | `10s` | Per-request timeout for an outbound fallback query. |
+| `YAGO_WEB_FALLBACK_SAFESEARCH` | `moderate` | Safe-search preference passed to engines that support it (`strict`, `moderate`, `off`). |
+| `YAGO_WEB_FALLBACK_CACHE_TTL` | `5m` | How long to cache a fallback response to respect engine rate limits and reduce repeat egress. |
+| `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | Reserved for search-miss crawl seeding (TAVILY-06); no effect yet. |
 
 ## Admin authentication
 

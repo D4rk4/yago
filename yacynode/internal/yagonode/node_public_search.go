@@ -10,6 +10,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/searchlocal"
 	"github.com/D4rk4/yago/yacynode/internal/searchremote"
 	"github.com/D4rk4/yago/yacynode/internal/tavilyapi"
+	"github.com/D4rk4/yago/yacynode/internal/websearch"
 	"github.com/D4rk4/yago/yacynode/internal/yacysearch"
 )
 
@@ -21,6 +22,7 @@ type publicSearchAssembly struct {
 	client               *http.Client
 	dhtSearchTargetIndex func(int) (int, error)
 	searchAPIKey         string
+	webFallback          webFallbackConfig
 }
 
 func mountNodePublicSearch(
@@ -45,7 +47,7 @@ func mountNodePublicSearch(
 		PartitionExponent:  assembly.dht.PartitionExponent,
 		RandomTargetIndex:  assembly.dhtSearchTargetIndex,
 	})
-	search := searchcore.NewFederatedSearcher(local, remote)
+	search := withWebFallback(searchcore.NewFederatedSearcher(local, remote), assembly)
 	yacysearch.Mount(mux, search)
 	tavilyapi.Mount(
 		mux,
@@ -58,4 +60,28 @@ func mountNodePublicSearch(
 		assembly.storage.documentDirectory,
 		tavilyapi.SearchAccessPolicy{BearerToken: assembly.searchAPIKey},
 	)
+}
+
+// withWebFallback wraps the searcher with the optional DDGS web-search fallback.
+// The decorator is installed whenever the DDGS provider is configured and gates
+// itself on the runtime enable flag, so both the Tavily API and the human search
+// surfaces share one fallback path.
+func withWebFallback(
+	search searchcore.Searcher,
+	assembly publicSearchAssembly,
+) searchcore.Searcher {
+	config := assembly.webFallback
+	if config.Provider != webFallbackProviderDDGS {
+		return search
+	}
+	provider := websearch.NewDDGSProvider(websearch.DDGSConfig{
+		Client:     assembly.client,
+		Backend:    config.Backend,
+		MaxResults: config.MaxResults,
+		SafeSearch: config.SafeSearch,
+		Timeout:    config.Timeout,
+		CacheTTL:   config.CacheTTL,
+	})
+
+	return websearch.NewFallbackSearcher(search, provider, func() bool { return config.Enabled })
 }

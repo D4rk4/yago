@@ -123,7 +123,7 @@ func responseHTMLItems(results []searchcore.Result) []htmlSearchItem {
 	items := make([]htmlSearchItem, 0, len(results))
 	for _, result := range results {
 		items = append(items, htmlSearchItem{
-			Title:       result.Title,
+			Title:       markWebResultTitle(result.Source, result.Title),
 			URL:         result.URL,
 			DisplayURL:  result.DisplayURL,
 			Description: result.Snippet,
