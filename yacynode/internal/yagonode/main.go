@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yacynode/internal/boltvault"
+	"github.com/D4rk4/yago/yacynode/internal/events"
 	"github.com/D4rk4/yago/yacynode/internal/metrics"
 )
 
@@ -78,6 +79,8 @@ func run() error {
 	dhtInboundMetrics := metrics.NewDHTInboundMetrics(endpoints.Registry())
 	peerMetrics := metrics.NewPeerMetrics(endpoints.Registry())
 	authMetrics := metrics.NewAuthMetrics(endpoints.Registry())
+	eventRecorder := events.NewRecorder(events.DefaultCapacity)
+	authObserver := authObserverFanOut{authMetrics, authEventObserver{recorder: eventRecorder}}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -97,17 +100,9 @@ func run() error {
 		return fmt.Errorf("assemble node: %w", err)
 	}
 
-	opsMux := newOpsMux(
-		endpoints.Handler(),
-		assembled.readiness,
-		assembled.dht.gates,
-		assembled.indexStats,
-	)
-	if assembled.crawl != nil {
-		assembled.crawl.mountDispatch(opsMux)
-	}
+	opsMux := buildOpsMux(endpoints, assembled, eventRecorder)
 
-	opsHandler, err := guardAdminSurface(ctx, config, vault, authMetrics, opsMux)
+	opsHandler, err := guardAdminSurface(ctx, config, vault, authObserver, opsMux)
 	if err != nil {
 		return fmt.Errorf("configure admin auth: %w", err)
 	}

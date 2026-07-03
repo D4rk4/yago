@@ -84,6 +84,8 @@ components:
     in: internal/eviction/**
   metrics:
     in: internal/metrics/**
+  events:
+    in: internal/events/**
   crawldispatch:
     in: internal/crawldispatch/**
   crawlresults:
@@ -410,6 +412,9 @@ deps:
     canUse:
       - yacymodel
       - prometheus
+  events:
+    mayDependOn:
+      - events
   crawldispatch:
     mayDependOn:
       - crawldispatch
@@ -480,6 +485,7 @@ deps:
       - documentsearch
       - eviction
       - metrics
+      - events
       - nodeidentity
       - nodestatus
       - peernews

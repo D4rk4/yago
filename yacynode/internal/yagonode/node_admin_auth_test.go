@@ -44,7 +44,7 @@ func adminRequestCode(t *testing.T, handler http.Handler, method, path, body str
 }
 
 func testOpsMux() *http.ServeMux {
-	return newOpsMux(metrics.NewHTTPEndpointMetrics().Handler(), nil, nil, nil)
+	return newOpsMux(metrics.NewHTTPEndpointMetrics().Handler(), nil, nil, nil, nil)
 }
 
 func TestGuardAdminSurfaceGatesAndBootstraps(t *testing.T) {

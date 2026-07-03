@@ -52,6 +52,18 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Notes:    "Requires a valid admin session or an API key with the admin:read scope; scrape with a session cookie or a Bearer API key, or bind the ops listener to a trusted network.",
 	},
 	{
+		Name:     "Recent events",
+		Path:     "/api/admin/v1/events",
+		Methods:  []string{"GET"},
+		State:    Implemented,
+		Behavior: "Serves recent structured node events newest-first from a bounded in-memory ring, each with a UTC time, severity, category, name, and message; an optional limit query parameter bounds the count and a non-positive or non-numeric limit is rejected with 400.",
+		Evidence: []string{
+			"yacynode/internal/events/*_test.go",
+			"yacynode/internal/yagonode/events_endpoint_test.go",
+		},
+		Notes: "Requires a valid admin session or an API key with the admin:read scope. Events are in-memory only and do not survive a restart. Security-category events cover admin login and API key auth outcomes without revealing credentials.",
+	},
+	{
 		Name:     "DHT gate report",
 		Path:     "/api/admin/v1/network/dht/gates",
 		Methods:  []string{"GET"},

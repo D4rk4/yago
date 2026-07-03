@@ -69,7 +69,11 @@ changes and key management), `crawl:write` (`POST /crawl`), and the reserved
 /api/admin/v1/auth/api-keys` lists key metadata and last-used time without the
 secret, and `DELETE /api/admin/v1/auth/api-keys/{id}` revokes a key. Prometheus
 can scrape `/metrics` with an `admin:read` key or a logged-in session cookie;
-otherwise bind `YACY_OPS_ADDR` to a trusted network.
+otherwise bind `YACY_OPS_ADDR` to a trusted network. `GET
+/api/admin/v1/events` returns a bounded, in-memory log of recent structured
+events (severity and category, newest first, optional `limit`) under the same
+`admin:read` scope, including a node-started event and admin login and API key
+auth outcomes; the log is not persisted across restarts.
 
 ## Cross-origin requests and network binding
 

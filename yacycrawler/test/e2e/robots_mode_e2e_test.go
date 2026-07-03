@@ -42,6 +42,10 @@ func TestRobotsModeDiscoversSitemapEndToEnd(t *testing.T) {
 		t.Errorf("batch handle = %q, want %q", batch.ProfileHandle, order.Profile.Handle)
 	}
 	if batch.SourceURL != originURL {
-		t.Fatalf("ingested SourceURL = %q, want the sitemap-discovered %q", batch.SourceURL, originURL)
+		t.Fatalf(
+			"ingested SourceURL = %q, want the sitemap-discovered %q",
+			batch.SourceURL,
+			originURL,
+		)
 	}
 }

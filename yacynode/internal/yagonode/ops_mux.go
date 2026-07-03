@@ -1,17 +1,43 @@
 package yagonode
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/D4rk4/yago/yacynode/internal/events"
+	"github.com/D4rk4/yago/yacynode/internal/metrics"
+)
 
 const (
 	pathHealth  = "/health"
 	pathMetrics = "/metrics"
 )
 
+func buildOpsMux(
+	endpoints *metrics.HTTPEndpointMetrics,
+	assembled node,
+	recorder *events.Recorder,
+) *http.ServeMux {
+	opsMux := newOpsMux(
+		endpoints.Handler(),
+		assembled.readiness,
+		assembled.dht.gates,
+		assembled.indexStats,
+		newEventsEndpoint(recorder),
+	)
+	if assembled.crawl != nil {
+		assembled.crawl.mountDispatch(opsMux)
+	}
+	recorder.Record(events.SeverityInfo, events.CategoryConfig, "node.started", "node started")
+
+	return opsMux
+}
+
 func newOpsMux(
 	metrics http.Handler,
 	readiness http.Handler,
 	dhtGates http.Handler,
 	indexStats http.Handler,
+	recentEvents http.Handler,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc(pathHealth, func(w http.ResponseWriter, _ *http.Request) {
@@ -27,6 +53,9 @@ func newOpsMux(
 	}
 	if indexStats != nil {
 		mux.Handle(pathIndexStats, indexStats)
+	}
+	if recentEvents != nil {
+		mux.Handle(pathEvents, recentEvents)
 	}
 
 	return mux

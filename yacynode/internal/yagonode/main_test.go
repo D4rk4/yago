@@ -92,7 +92,7 @@ func TestServeReturnsNilAfterCancel(t *testing.T) {
 			"ops",
 			buildServer(
 				"127.0.0.1:0",
-				newOpsMux(metrics.NewHTTPEndpointMetrics().Handler(), nil, nil, nil),
+				newOpsMux(metrics.NewHTTPEndpointMetrics().Handler(), nil, nil, nil, nil),
 			),
 		},
 	)
@@ -118,7 +118,7 @@ func TestServeShutsDownOnListenError(t *testing.T) {
 func TestOpsMuxAnswersHealth(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, pathHealth, nil)
-	newOpsMux(metrics.NewHTTPEndpointMetrics().Handler(), nil, nil, nil).ServeHTTP(rec, req)
+	newOpsMux(metrics.NewHTTPEndpointMetrics().Handler(), nil, nil, nil, nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("health status = %d, want 200", rec.Code)
@@ -133,6 +133,7 @@ func TestOpsMuxServesReadiness(t *testing.T) {
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusAccepted)
 		}),
+		nil,
 		nil,
 		nil,
 	).ServeHTTP(rec, req)
@@ -152,6 +153,7 @@ func TestOpsMuxServesDHTGates(t *testing.T) {
 			w.WriteHeader(http.StatusAccepted)
 		}),
 		nil,
+		nil,
 	).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusAccepted {
@@ -167,7 +169,7 @@ func TestOpsMuxServesCompatibility(t *testing.T) {
 		pathCompatibility,
 		nil,
 	)
-	newOpsMux(metrics.NewHTTPEndpointMetrics().Handler(), nil, nil, nil).ServeHTTP(rec, req)
+	newOpsMux(metrics.NewHTTPEndpointMetrics().Handler(), nil, nil, nil, nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("compatibility status = %d, want 200; body=%s", rec.Code, rec.Body.String())
@@ -184,9 +186,28 @@ func TestOpsMuxServesIndexStats(t *testing.T) {
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusAccepted)
 		}),
+		nil,
 	).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("index stats status = %d, want 202", rec.Code)
+	}
+}
+
+func TestOpsMuxServesEvents(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, pathEvents, nil)
+	newOpsMux(
+		metrics.NewHTTPEndpointMetrics().Handler(),
+		nil,
+		nil,
+		nil,
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusAccepted)
+		}),
+	).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("events status = %d, want 202", rec.Code)
 	}
 }
