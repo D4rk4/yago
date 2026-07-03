@@ -21,8 +21,10 @@ UI.
   keep RWI as the exchange and DHT-interop format, and merge local results with
   federated results from reachable peers.
 - **Tavily-compatible API.** Serve a Tavily-shaped search and extract API from the
-  node's own search core. An optional real upstream Tavily mode is planned but off
-  by default.
+  node's own search core. An optional, admin-toggled DDGS web-search fallback —
+  used only when local and federated search return nothing, tagged `[ddgs]`, and
+  able to seed the crawler from discovered URLs — is planned but off by default.
+  There is no outbound upstream Tavily provider.
 - **Crawler.** Run the crawler as a separate, optional worker that fetches pages
   under strict safety and politeness rules and streams results back to the node
   for indexing.
@@ -40,4 +42,4 @@ UI.
 - A drop-in replacement for the Java YaCy Search Server.
 - Cloning Java YaCy administration pages (`/*_p.html`).
 - Requiring a JVM, Solr, Lucene, or Kelondro runtime.
-- Requiring an external Tavily service.
+- Requiring any external or paid search service.

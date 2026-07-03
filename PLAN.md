@@ -138,8 +138,8 @@ Agent workstreams:
   fetch status, fetch timestamps, content hash, outlinks, inlinks/anchor text,
   and snippet/Tavily raw-content metadata.
 - Tavily API Agent: Tavily-compatible `POST /search` over local full-text,
-  optional local semantic/vector search, yago/yacy peers, and optional upstream
-  Tavily only when explicitly configured.
+  optional local semantic/vector search, yago/yacy peers, and an optional
+  admin-toggled DDGS web-search fallback only when explicitly enabled.
 - YaCy Search API Agent: `/yacysearch.json`, `/yacysearch.rss`, OpenSearch-style
   compatibility, `resource=local|global`, query translation, filters, and
   compatibility notes for unsupported YaCy-specific ranking/profile fields.
@@ -186,7 +186,8 @@ Guardrails:
 - Do not reimplement Java YaCy internals blindly.
 - Do not introduce JVM, Solr, Lucene, or Kelondro as required runtime
   dependencies.
-- Do not make upstream Tavily mandatory.
+- Do not query any external web-search provider by default; the DDGS fallback is
+  admin-opt-in only.
 - Do not use RWI as the only local search index.
 - Do not store raw crawled content without size limits and security policy.
 - Do not allow remote crawl by default.
@@ -202,7 +203,7 @@ Acceptance criteria for the modern roadmap:
 2. RWI remains implemented and tested as compatibility and exchange format.
 3. Local search uses a document store and full-text backend abstraction.
 4. Crawler output updates document store, RWI postings, and URL metadata.
-5. Tavily-compatible `/search` works locally without external Tavily.
+5. Tavily-compatible `/search` works locally with no external search provider.
 6. `/yacysearch.json` and `/yacysearch.rss` adapt the same search core.
 7. YaCy `/yacy/*` peer compatibility remains covered by parser, encoder,
    endpoint, integration, and compatibility matrix tests.
@@ -266,8 +267,8 @@ The fork is minimally acceptable when all are true:
 4. The node can answer local and P2P federated search queries.
 5. The node can run crawler jobs, ingest crawler batches and update local search/RWI state.
 6. `/yacysearch.json`, `/yacysearch.rss`, `/opensearchdescription.xml` and `/suggest.json` exist with a useful compatibility subset.
-7. A Tavily-compatible `POST /search` endpoint exists and works against local/P2P results without requiring an external Tavily key.
-8. Optional external Tavily upstream search can be configured without leaking secrets.
+7. A Tavily-compatible `POST /search` endpoint exists and works against local/P2P results without requiring any external provider key.
+8. The optional DDGS web-search fallback is admin-opt-in, off by default, and sends no query externally until enabled.
 9. A Carbon-based admin UI supports search, crawler, network, index, performance, configuration and security pages.
 10. `make verify` and e2e tests pass on a clean checkout.
 11. Documentation explains configuration, security model, storage model, and compatibility gaps.
@@ -713,7 +714,7 @@ Tasks:
    - query text
    - parsed terms
    - filters
-   - source selection: local, p2p, tavily-upstream
+   - source selection: local, p2p, ddgs-fallback
    - limit/offset
    - sort mode
    - content domain
@@ -953,8 +954,8 @@ Goal: make the fork usable by agents/RAG tools that expect Tavily's Search API s
 Important interpretation:
 
 - Implement an inbound Tavily-compatible API surface: `POST /search` with Tavily-like request/response JSON.
-- Also implement optional outbound Tavily upstream provider mode, disabled by default, for users who want fallback/meta-search from the real Tavily API.
-- Do not require a Tavily API key for local/P2P search.
+- Do not integrate any external commercial search API; there is no outbound upstream Tavily provider. Instead, offer an optional, admin-toggled DDGS web-search fallback that triggers only on a local-plus-federated miss, tags its results `[ddgs]`, and can seed the crawler from the discovered URLs so the next identical query is answered locally. It is disabled by default and needs no API key.
+- Do not require a Tavily API key for local/P2P search, and never send the user query to any external provider by default.
 
 ### TAVILY-01: Contract DTOs and validation
 
@@ -964,8 +965,8 @@ compatibility, validates bounded options, returns `request_id`, and uses stable
 JSON error envelopes. Opt-in local bearer auth is implemented through
 `YAGO_SEARCH_API_KEY`. Stored page image metadata is returned when
 `include_images` is requested. Scopes, generated answers, image ranking/search,
-real usage accounting, hashed key storage, rate limits, and upstream Tavily
-remain separate tasks.
+real usage accounting, hashed key storage, rate limits, and the optional DDGS
+web-search fallback remain separate tasks.
 
 Implement `tavilyapi` DTOs for `POST /search`.
 
@@ -1064,33 +1065,81 @@ Acceptance:
 - Scope failure returns 403.
 - API key value appears only once at creation and never in logs.
 
-### TAVILY-04: Optional real Tavily upstream provider
+### TAVILY-04: Optional DDGS web-search fallback provider
+
+Supersedes the earlier "optional real Tavily upstream provider" idea. There is no
+outbound commercial Tavily integration. When the node cannot answer a query from
+its own index or its federated peers, an operator may opt in to a DDGS-style
+web-search fallback (DuckDuckGo/DDGS-family metasearch) so the caller still gets
+results, tagged so they are never confused with owned index hits.
+
+DDGS is a keyless, unofficial metasearch scraper (DuckDuckGo, and in the DDGS
+family also other engines) with real rate limits (`202 Ratelimit`) and its own
+terms of service. It is a Python library; the Go node needs its own provider, so
+the concrete backend (an in-house `html.duckduckgo.com/html` + `lite.duckduckgo.com/lite`
+client with `auto`-style backend fallback, versus a vetted third-party Go
+dependency) is fixed in the implementation ADR. Any third-party dependency needs
+its own ADR before use.
 
 Tasks:
 
-1. Add config:
-   - `TAVILY_UPSTREAM_ENABLED=false`
-   - `TAVILY_API_KEY`
-   - `TAVILY_BASE_URL=https://api.tavily.com`
-   - `TAVILY_PROJECT_ID`
-   - `TAVILY_TIMEOUT`
-   - `TAVILY_MAX_MONTHLY_CREDITS` or local budget guard.
-2. Implement outbound client with Bearer auth.
-3. Map request fields without sending unsupported private fields.
-4. Redact query logs when privacy mode is enabled.
-5. Add circuit breaker and budget limiter.
-6. Merge upstream results with local/P2P or expose provider mode:
-   - `local`
-   - `p2p`
-   - `upstream_tavily`
-   - `hybrid`
+1. Add a pluggable `WebSearchProvider` port behind a narrow interface; a
+   DDGS/DuckDuckGo backend is the first (and only planned) implementation. No API
+   key.
+2. Add config, defaulting to disabled, plus an admin toggle so operators flip it
+   at runtime without a restart:
+   - `YAGO_WEB_FALLBACK_ENABLED=false`
+   - `YAGO_WEB_FALLBACK_PROVIDER=ddgs`
+   - `YAGO_WEB_FALLBACK_BACKEND=auto`
+   - `YAGO_WEB_FALLBACK_MAX_RESULTS`
+   - `YAGO_WEB_FALLBACK_TIMEOUT`
+   - `YAGO_WEB_FALLBACK_SAFESEARCH`
+3. Invoke the provider only on a true miss: after both the local search and the
+   federated peer/cache search return zero results for the request window. Never
+   as a primary source and never mixed silently.
+4. Tag every fallback result with source `ddgs` so responses carry a `[ddgs]`
+   marker; owned local/federated hits keep their existing sources.
+5. Route the outbound query through the in-process egress guard; enforce
+   rate-limit backoff and cache provider responses (short TTL) to respect
+   DuckDuckGo/DDGS limits and reduce repeat egress.
+6. Privacy: gate behind SEC-05 (off / explicit-per-request / enabled); never send
+   the user query externally by default; redact query logs and provider errors
+   per the active privacy mode.
 
 Acceptance:
 
-- Upstream mode is disabled by default.
-- Tests use httptest fake Tavily server only.
-- No real Tavily call in CI.
-- Logs never include `TAVILY_API_KEY`.
+- Fallback is disabled by default; with it disabled, `/search` and
+  `/yacysearch.json` behavior is unchanged (a miss stays a miss).
+- Tests use an httptest fake provider only; no real DuckDuckGo/DDGS call in CI.
+- With the fallback enabled, a local-plus-federated miss returns `[ddgs]`-tagged
+  results, and the rate-limit/backoff and egress-guard paths are covered.
+
+### TAVILY-06: Seed crawl from DDGS-discovered URLs
+
+Closes the loop for the DDGS fallback: when the fallback surfaces URLs the node
+has never seen, hand them to the crawler so the pages are fetched and indexed and
+the next identical query is answered from the local index instead of hitting the
+external provider again.
+
+Tasks:
+
+1. When the DDGS fallback returns URLs, publish a crawl order through
+   `crawldispatch.CrawlOrderQueue` seeding those URLs.
+2. Deduplicate and rate-limit seed submissions: idempotency by normalized URL; do
+   not re-seed URLs already in the document store or recently queued.
+3. Use a conservative default crawl profile (shallow depth, domain range,
+   politeness, robots-respecting, egress-guarded) so search-driven seeding cannot
+   amplify into unbounded crawls; make it admin-configurable.
+4. Gate behind the DDGS fallback admin toggle, with a separate sub-toggle to allow
+   fallback search without auto-seeding.
+
+Acceptance:
+
+- With seeding enabled, a fallback miss enqueues a durable crawl order for the
+  discovered URLs; disabled, there are no crawl side effects.
+- Seeding respects robots, egress deny, and per-host caps; duplicates are not
+  re-seeded.
+- Tests use the embedded/fake broker; no live crawl in CI.
 
 ### TAVILY-05: Tavily `/extract` compatibility subset
 
@@ -1563,8 +1612,9 @@ Pages:
    - NO_PROXY.
 5. Tavily:
    - Local/P2P compatible API settings.
-   - Optional upstream Tavily settings.
-   - API key status without revealing key.
+   - Optional DDGS web-search fallback settings (enable/disable, backend, limits,
+     safesearch, crawl-seeding).
+   - Local search API key status without revealing key.
 6. Security:
    - Admin password.
    - API keys.
@@ -1648,16 +1698,18 @@ Tasks:
    - off
    - aggregate only
    - full local logs
-2. Add setting for upstream Tavily privacy:
-   - disabled
-   - explicit per request
+2. Add setting for the external DDGS web-search fallback (TAVILY-04) privacy:
+   - disabled (default; no query leaves the node)
+   - explicit per request (only when the request opts in)
    - enabled
 3. Add retention settings for query logs, snippets, raw cache and crawl logs.
 
 Acceptance:
 
-- Default query logs are privacy-preserving.
-- UI explains when external upstream receives queries.
+- Default query logs are privacy-preserving and no query is sent to any external
+  provider.
+- UI explains when the external DDGS provider (DuckDuckGo/DDGS) receives a query
+  and that discovered URLs may be crawled.
 
 ---
 
@@ -1840,13 +1892,14 @@ Ship when:
 1. TAVILY-01 DTOs.
 2. TAVILY-02 local/P2P adapter.
 3. TAVILY-03 auth/scopes.
-4. TAVILY-04 optional upstream provider.
+4. TAVILY-04 optional DDGS web-search fallback provider.
 5. TAVILY-05 optional extract subset.
+6. TAVILY-06 search-miss crawl seeding.
 
 Ship when:
 
 - API clients expecting the Tavily Search API can call `POST /search` and get useful results.
-- No external Tavily key is required for local/P2P mode.
+- No external provider or key is required for local/P2P mode.
 
 ### Milestone D: Crawler wiring
 
@@ -1978,7 +2031,7 @@ Response example shape:
 
 Notes:
 
-- `usage.credits` is local synthetic usage. Use `0` for local/P2P-only mode; use upstream value only when real Tavily upstream is called and `include_usage` is enabled.
+- `usage.credits` is local synthetic usage and stays `0`; the node calls no metered external provider. The DDGS web-search fallback is keyless and unmetered.
 - `answer` appears only when requested.
 - `raw_content` is omitted unless stored extracted document text is available and requested.
 - `safe_search` is not a magic classifier. Map it to local blacklist/content policy and document limitations.
@@ -2028,13 +2081,15 @@ Prefer environment variables for boot-critical settings and persistent settings 
 - `YACY_NODE_ADMIN_BIND_ADDR` if split binding is supported.
 - `YACY_CRAWL_RPC_ADDR` for crawler integration.
 
-### 16.2 Optional Tavily upstream
+### 16.2 Optional DDGS web-search fallback
 
-- `TAVILY_UPSTREAM_ENABLED=false`.
-- `TAVILY_API_KEY`.
-- `TAVILY_BASE_URL=https://api.tavily.com`.
-- `TAVILY_PROJECT_ID`.
-- `TAVILY_TIMEOUT`.
+- `YAGO_WEB_FALLBACK_ENABLED=false`.
+- `YAGO_WEB_FALLBACK_PROVIDER=ddgs`.
+- `YAGO_WEB_FALLBACK_BACKEND=auto`.
+- `YAGO_WEB_FALLBACK_MAX_RESULTS`.
+- `YAGO_WEB_FALLBACK_TIMEOUT`.
+- `YAGO_WEB_FALLBACK_SAFESEARCH`.
+- `YAGO_WEB_FALLBACK_SEED_CRAWL=false` (seed the crawler from discovered URLs).
 
 ### 16.3 Runtime settings
 
@@ -2089,12 +2144,18 @@ Mitigation:
 - Backpressure before disk is full.
 - Delete tools by domain/profile/age.
 
-### Risk: external Tavily privacy leakage
+### Risk: external DDGS privacy leakage and crawl amplification
 
 Mitigation:
 
-- Upstream disabled by default.
-- Explicit UI indicators.
+- DDGS web-search fallback disabled by default; queries never leave the node until
+  an operator opts in, and the SEC-05 privacy mode can require per-request opt-in.
+- Explicit UI indicators when a query reaches DuckDuckGo/DDGS and when discovered
+  URLs may be crawled.
+- Outbound queries pass the egress guard; fallback responses are rate-limited,
+  backed off, and cached.
+- Search-miss crawl seeding uses a conservative, robots-respecting profile with
+  per-host caps and URL deduplication so it cannot amplify into unbounded crawls.
 - Redacted logs.
 - Per-request/provider selection.
 
@@ -2247,7 +2308,7 @@ This project is a Go YaCy-compatible peer focused on RWI/DHT interoperability, l
 For Tavily:
 
 ```text
-The /search endpoint implements a Tavily-compatible JSON shape for local/P2P search. It does not call Tavily unless the optional upstream Tavily provider is enabled and configured with an API key.
+The /search endpoint implements a Tavily-compatible JSON shape for local/P2P search. It calls no external search provider unless the optional DDGS web-search fallback is enabled by an operator; even then it is used only when local and federated search return nothing, its results are tagged [ddgs], and it needs no API key.
 ```
 
 For crawler:
@@ -2274,7 +2335,7 @@ Before tagging a release:
 - [ ] Public search can be disabled.
 - [ ] Admin bind can be private/loopback.
 - [ ] P2P bind/public endpoint documented.
-- [ ] Tavily upstream disabled by default.
+- [ ] DDGS web-search fallback disabled by default.
 - [ ] No secrets in logs.
 - [ ] AGPL source/legal notice visible in UI.
 - [ ] Release notes list known unsupported YaCy features.

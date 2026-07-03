@@ -14,8 +14,8 @@ the legal notices it must carry.
   interoperates with Java YaCy peers on the same network.
 - Build a modern Go search, crawler, and P2P stack behind explicit component
   boundaries instead of porting Java YaCy, Solr, Lucene, or Kelondro internals.
-- Never require a JVM, Solr, Lucene, or Kelondro runtime, and never require an
-  external Tavily service.
+- Never require a JVM, Solr, Lucene, or Kelondro runtime, and never require any
+  external or paid search service.
 
 The user-facing roadmap is in
 [yacynode/doc/fork-roadmap.md](yacynode/doc/fork-roadmap.md). The full engineering

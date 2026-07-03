@@ -37,3 +37,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0016](0016-crawler-prometheus-metrics.md) | Expose crawler metrics through the Prometheus client | Accepted |
 | [0017](0017-crawl-order-lease-delivery.md) | Deliver crawl orders through durable leases with worker heartbeats | Accepted |
 | [0018](0018-commit-to-bleve-web-search-backend.md) | Commit to Bleve as the web-search backend | Accepted |
+| [0019](0019-ddgs-web-search-fallback.md) | Optional DDGS web-search fallback instead of an upstream Tavily provider | Accepted |

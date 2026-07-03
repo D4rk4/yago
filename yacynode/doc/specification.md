@@ -56,7 +56,8 @@ yago-admin-ui
 * Requiring Java, Solr, Lucene, Elasticsearch, Kelondro, or Java runtime
   services for core Go peer operation.
 * Treating RWI as the only or primary local full-text search index.
-* Turning the Tavily-compatible API into a mandatory upstream Tavily proxy.
+* Turning the Tavily-compatible API into a proxy for a paid external search
+  service; there is no outbound upstream Tavily integration.
 * Copying servlet-style YaCy UI internals into the admin UI.
 * Claiming unsupported YaCy endpoints as compatible; incomplete surfaces must be
   explicit in documentation and status output.
@@ -94,7 +95,8 @@ yago-admin-ui
 * The node SHALL serve local search requests through YaCy-compatible search surfaces.
 * The node SHALL expose YaCy-compatible public search JSON, RSS, HTML, OpenSearch description, and suggestion subsets backed by local full-text search and DHT-selected reachable-peer search where applicable.
 * The node SHALL support federated search across local and DHT-selected reachable peer results, using YaCy index abstracts for multi-term remote result conjunctions, filtering remote targets by advertised RWI inventory, and balancing redundant DHT candidates randomly.
-* The node SHALL expose a Tavily-compatible `POST /search` endpoint backed by local search first, optional local semantic/vector search second, YaCy/yago peers third, and optional upstream Tavily only when explicitly configured.
+* The node SHALL expose a Tavily-compatible `POST /search` endpoint backed by local search first, optional local semantic/vector search second, YaCy/yago peers third, and an optional, admin-toggled DDGS web-search fallback only when explicitly enabled.
+* The node MAY, only when an operator explicitly enables the fallback, answer a query that local and federated search leave empty from an external DDGS web-search provider, returning those results tagged `ddgs`, and MAY seed the crawler with the discovered URLs. The fallback SHALL be disabled by default, SHALL send no query to any external provider until enabled, SHALL route outbound queries through the egress guard, and SHALL be governed by the configured query-privacy mode.
 * The node SHALL answer YaCy-compatible RWI capacity and status queries, including per-word RWI URL counts and zero-valued wanted-object probes.
 * The node SHALL export YaCy-compatible shared blacklist files named in its configured data directory's YaCy settings after peer network-unit authentication.
 * The node SHALL export YaCy-compatible peer profile properties from its configured data directory when a profile file exists.
