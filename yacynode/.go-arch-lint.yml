@@ -78,6 +78,8 @@ components:
     in: internal/tavilyapi/**
   yacysearch:
     in: internal/yacysearch/**
+  websearch:
+    in: internal/websearch/**
   nodestatus:
     in: internal/nodestatus/**
   eviction:
@@ -144,6 +146,10 @@ vendors:
     in:
       - golang.org/x/crypto
       - golang.org/x/crypto/**
+  xnet:
+    in:
+      - golang.org/x/net
+      - golang.org/x/net/**
 
 deps:
   vault:
@@ -385,6 +391,12 @@ deps:
       - searchcore
     canUse:
       - yacyproto
+  websearch:
+    mayDependOn:
+      - websearch
+      - searchcore
+    canUse:
+      - xnet
   nodestatus:
     mayDependOn:
       - nodestatus
@@ -504,6 +516,7 @@ deps:
       - searchremote
       - tavilyapi
       - yacysearch
+      - websearch
     canUse:
       - yacycrawlcontract
       - yacyegress

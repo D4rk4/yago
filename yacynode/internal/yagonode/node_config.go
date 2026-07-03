@@ -127,17 +127,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		return nodeConfig{}, err
 	}
 
-	dht, err := loadDHTDistributionConfig(getenv)
-	if err != nil {
-		return nodeConfig{}, err
-	}
-
-	webFallback, err := loadWebFallbackConfig(getenv)
-	if err != nil {
-		return nodeConfig{}, err
-	}
-
-	declaredBirthDate, err := declaredBirthDate(getenv)
+	dht, webFallback, declaredBirthDate, err := loadDerivedConfigs(getenv)
 	if err != nil {
 		return nodeConfig{}, err
 	}
@@ -167,6 +157,25 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		DHT:                dht,
 		WebFallback:        webFallback,
 	}, nil
+}
+
+func loadDerivedConfigs(getenv func(string) string) (
+	dhtDistributionConfig, webFallbackConfig, time.Time, error,
+) {
+	dht, err := loadDHTDistributionConfig(getenv)
+	if err != nil {
+		return dhtDistributionConfig{}, webFallbackConfig{}, time.Time{}, err
+	}
+	webFallback, err := loadWebFallbackConfig(getenv)
+	if err != nil {
+		return dhtDistributionConfig{}, webFallbackConfig{}, time.Time{}, err
+	}
+	birthDate, err := declaredBirthDate(getenv)
+	if err != nil {
+		return dhtDistributionConfig{}, webFallbackConfig{}, time.Time{}, err
+	}
+
+	return dht, webFallback, birthDate, nil
 }
 
 func egressConfig(getenv func(string) string) ([]*net.IPNet, bool, []netip.Prefix, error) {
