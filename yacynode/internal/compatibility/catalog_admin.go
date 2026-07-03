@@ -53,7 +53,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 			"yacynode/internal/crawldispatch/*_test.go",
 			"yacynode/internal/yagonode/node_crawl_test.go",
 		},
-		Notes: "Mounted only when NATS-backed crawling is configured; authentication is not implemented yet.",
+		Notes: "Mounted only when gRPC-backed crawling is configured; authentication is not implemented yet.",
 	},
 	{
 		Name:     "Compatibility report",

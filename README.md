@@ -74,7 +74,7 @@ The node currently targets these responsibilities:
   gauges/counters, local search index stats, and a machine-readable
   compatibility catalog;
 - optionally publish `url`, `sitemap`, or `sitelist` crawl orders and consume
-  crawler ingest batches over NATS JetStream when crawling is configured.
+  crawler ingest batches over gRPC when crawling is configured.
 
 The node stores bounded extracted document text, page description metadata,
 bounded image URL/alt metadata, and other document metadata, and maintains an
@@ -103,7 +103,6 @@ publish ingest batches back to the node.
 
 - Go 1.26.
 - Docker or Podman for container and end-to-end workflows.
-- NATS JetStream when crawler integration is enabled.
 
 Outbound node and crawler connections are screened in-process at dial time, so
 no external forward proxy is required. Private networks are blocked by default;
@@ -146,7 +145,7 @@ Common node variables:
 | `YACY_DHT_PARTITION_EXPONENT` | `4` | YaCy vertical DHT partition exponent used for outbound transfer and global remote search. |
 | `YACY_STORAGE_QUOTA` | `1GB` | Node storage quota. |
 | `YAGO_SEARCH_API_KEY` | empty | Optional local bearer token required by Tavily-compatible `POST /search` when set. |
-| `NATS_URL` | empty | Enables node-crawler integration when set. |
+| `YACY_CRAWL_RPC_ADDR` | empty | Enables node-crawler integration when set; the address the node serves the crawl gRPC endpoint on (e.g. `:9091`). |
 
 Common crawler variables:
 
@@ -179,11 +178,10 @@ docker compose up --build
 
 The example stack starts:
 
-- `nats` with JetStream enabled;
 - `yago-node` on ports `8090` and `9090`;
 - `yacycrawler` as the optional crawler worker.
 
-When `NATS_URL` is configured, the ops listener accepts local crawl dispatch
+When `YACY_CRAWL_RPC_ADDR` is configured, the ops listener accepts local crawl dispatch
 requests at `POST /crawl`. The request body includes `seeds` and optional
 `startMode`; supported modes are `url`, `sitemap`, and `sitelist`. Sitemap and
 sitelist seeds are fetched by the crawler through the same public-web egress

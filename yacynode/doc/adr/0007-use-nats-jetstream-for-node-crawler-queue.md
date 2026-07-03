@@ -4,7 +4,7 @@ Date: 2026-06-19
 
 ## Status
 
-Accepted
+Superseded by [ADR-0014](0014-grpc-node-crawler-transport.md)
 
 ## Context
 

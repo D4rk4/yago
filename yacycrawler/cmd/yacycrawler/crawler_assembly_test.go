@@ -3,16 +3,18 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nats.go/jetstream"
+	grpc "google.golang.org/grpc"
 
 	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawlcontract/crawlrpc"
 	"github.com/D4rk4/yago/yacycrawler/internal/httpfetch"
 	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yacycrawler/internal/publicweb"
@@ -20,22 +22,80 @@ import (
 	"github.com/D4rk4/yago/yacyegress"
 )
 
+type fakeExchange struct {
+	orders    []*crawlrpc.CrawlOrderMessage
+	ingested  chan *crawlrpc.IngestBatchMessage
+	streamErr error
+}
+
+func (f *fakeExchange) StreamOrders(
+	ctx context.Context,
+	_ *crawlrpc.WorkerRegistration,
+	_ ...grpc.CallOption,
+) (grpc.ServerStreamingClient[crawlrpc.CrawlOrderMessage], error) {
+	if f.streamErr != nil {
+		return nil, f.streamErr
+	}
+
+	return &fakeOrderClientStream{ctx: ctx, orders: f.orders}, nil
+}
+
+func (f *fakeExchange) SubmitIngest(
+	ctx context.Context,
+	in *crawlrpc.IngestBatchMessage,
+	_ ...grpc.CallOption,
+) (*crawlrpc.IngestAck, error) {
+	select {
+	case f.ingested <- in:
+	case <-ctx.Done():
+		return nil, fmt.Errorf("submit ingest: %w", ctx.Err())
+	}
+
+	return &crawlrpc.IngestAck{}, nil
+}
+
+type fakeOrderClientStream struct {
+	grpc.ClientStream
+	ctx    context.Context
+	orders []*crawlrpc.CrawlOrderMessage
+	index  int
+}
+
+func (s *fakeOrderClientStream) Recv() (*crawlrpc.CrawlOrderMessage, error) {
+	if s.index < len(s.orders) {
+		msg := s.orders[s.index]
+		s.index++
+
+		return msg, nil
+	}
+	<-s.ctx.Done()
+
+	return nil, io.EOF
+}
+
+func (s *fakeOrderClientStream) Context() context.Context { return s.ctx }
+
 func restoreAssemblySeams(t *testing.T) {
 	t.Helper()
-	savedConnect := connectCrawlerNATS
-	savedJetStream := newCrawlerJetStream
+	savedExchange := newCrawlerExchange
 	savedRobots := newCrawlerRobotsAdmissionFetcher
 	savedHTTP := newCrawlerHTTPPageFetcher
 	savedSeed := newCrawlerSeedSource
 	savedPublicWeb := newCrawlerPublicWebAdmissionFetcher
 	t.Cleanup(func() {
-		connectCrawlerNATS = savedConnect
-		newCrawlerJetStream = savedJetStream
+		newCrawlerExchange = savedExchange
 		newCrawlerRobotsAdmissionFetcher = savedRobots
 		newCrawlerHTTPPageFetcher = savedHTTP
 		newCrawlerSeedSource = savedSeed
 		newCrawlerPublicWebAdmissionFetcher = savedPublicWeb
 	})
+}
+
+func stubExchange(t *testing.T, exchange *fakeExchange) {
+	t.Helper()
+	newCrawlerExchange = func(string) (crawlrpc.CrawlExchangeClient, io.Closer, error) {
+		return exchange, io.NopCloser(nil), nil
+	}
 }
 
 func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
@@ -56,25 +116,30 @@ func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
 	}))
 	defer origin.Close()
 
-	url := startNATS(t)
-	cfg := serviceConfig(url)
+	exchange := &fakeExchange{
+		orders:   []*crawlrpc.CrawlOrderMessage{orderMessage(t, origin.URL)},
+		ingested: make(chan *crawlrpc.IngestBatchMessage, 1),
+	}
+	stubExchange(t, exchange)
 
 	source := htmlPageSource(map[string]string{"/": "words here"})
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	runDone := make(chan error, 1)
-	go func() { runDone <- RunService(ctx, cfg, source) }()
+	go func() { runDone <- RunService(ctx, serviceConfig(), source) }()
 
-	js := connectJetStream(t, url)
-	waitForStream(t, js, yacycrawlcontract.OrdersStreamName)
-
-	publishDefaultOrder(t, ctx, js, cfg.OrdersSubject, origin.URL)
-
-	batch := fetchOneIngest(t, js, cfg.IngestSubject)
-	if string(batch.Provenance) != "admin" {
-		t.Errorf("batch provenance = %q, want admin", batch.Provenance)
+	select {
+	case msg := <-exchange.ingested:
+		batch, err := yacycrawlcontract.UnmarshalIngestBatch(msg.GetBatchJson())
+		if err != nil {
+			t.Fatalf("decode ingest: %v", err)
+		}
+		if string(batch.Provenance) != "admin" {
+			t.Errorf("batch provenance = %q, want admin", batch.Provenance)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("no ingest batch submitted")
 	}
 
 	cancel()
@@ -88,51 +153,23 @@ func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
 	}
 }
 
-func TestRunServiceReturnsNATSConnectError(t *testing.T) {
-	cfg := serviceConfig("://bad")
-
-	err := RunService(context.Background(), cfg, htmlPageSource(map[string]string{}))
-	if err == nil || !strings.Contains(err.Error(), "connect nats") {
-		t.Fatalf("error = %v, want connect nats error", err)
-	}
-}
-
-func TestRunServiceReturnsJetStreamInitError(t *testing.T) {
+func TestRunServiceReturnsDialError(t *testing.T) {
 	restoreAssemblySeams(t)
-	sentinel := errors.New("jetstream failed")
-	newCrawlerJetStream = func(*nats.Conn, ...jetstream.JetStreamOpt) (jetstream.JetStream, error) {
-		return nil, sentinel
+	sentinel := errors.New("dial failed")
+	newCrawlerExchange = func(string) (crawlrpc.CrawlExchangeClient, io.Closer, error) {
+		return nil, nil, sentinel
 	}
-	cfg := serviceConfig(startNATS(t))
 
-	err := RunService(context.Background(), cfg, htmlPageSource(map[string]string{}))
-	if !errors.Is(err, sentinel) {
-		t.Fatalf("error = %v, want %v", err, sentinel)
-	}
-}
-
-func TestRunServiceReturnsStreamSetupError(t *testing.T) {
-	cfg := serviceConfig(startNATS(t))
-	cfg.OrdersSubject = "bad subject"
-
-	err := RunService(context.Background(), cfg, htmlPageSource(map[string]string{}))
-	if err == nil || !strings.Contains(err.Error(), "ensure streams") {
-		t.Fatalf("error = %v, want ensure streams error", err)
-	}
-}
-
-func TestRunServiceReturnsOrderReceiverError(t *testing.T) {
-	cfg := serviceConfig(startNATS(t))
-	cfg.OrdersDurable = "bad durable"
-
-	err := RunService(context.Background(), cfg, htmlPageSource(map[string]string{}))
-	if err == nil || !strings.Contains(err.Error(), "create order receiver") {
-		t.Fatalf("error = %v, want create order receiver error", err)
+	err := RunService(context.Background(), serviceConfig(), htmlPageSource(map[string]string{}))
+	if err == nil || !strings.Contains(err.Error(), "dial node rpc") {
+		t.Fatalf("error = %v, want dial node rpc error", err)
 	}
 }
 
 func TestRunServiceReturnsCrawlPaceError(t *testing.T) {
-	cfg := serviceConfig(startNATS(t))
+	restoreAssemblySeams(t)
+	stubExchange(t, &fakeExchange{ingested: make(chan *crawlrpc.IngestBatchMessage, 1)})
+	cfg := serviceConfig()
 	cfg.Crawl.HostCacheSize = 0
 
 	err := RunService(context.Background(), cfg, htmlPageSource(map[string]string{}))
@@ -143,6 +180,7 @@ func TestRunServiceReturnsCrawlPaceError(t *testing.T) {
 
 func TestRunServiceReturnsRobotsAdmissionError(t *testing.T) {
 	restoreAssemblySeams(t)
+	stubExchange(t, &fakeExchange{ingested: make(chan *crawlrpc.IngestBatchMessage, 1)})
 	sentinel := errors.New("robots failed")
 	newCrawlerRobotsAdmissionFetcher = func(
 		pagefetch.PageSource,
@@ -152,11 +190,10 @@ func TestRunServiceReturnsRobotsAdmissionError(t *testing.T) {
 	) (*robots.RobotsAdmissionFetcher, error) {
 		return nil, sentinel
 	}
-	cfg := serviceConfig(startNATS(t))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := RunService(ctx, cfg, htmlPageSource(map[string]string{}))
+	err := RunService(ctx, serviceConfig(), htmlPageSource(map[string]string{}))
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
 	}
@@ -187,11 +224,11 @@ func TestDefaultSeedSourceBuildsFetcher(t *testing.T) {
 	}
 }
 
-func serviceConfig(natsURL string) ServiceConfig {
+func serviceConfig() ServiceConfig {
 	getenv := func(key string) string {
 		switch key {
-		case EnvNATSURL:
-			return natsURL
+		case EnvNodeRPCAddr:
+			return "node.invalid:9091"
 		case EnvWorkers:
 			return "1"
 		default:
@@ -202,15 +239,11 @@ func serviceConfig(natsURL string) ServiceConfig {
 	if err != nil {
 		panic(err)
 	}
+
 	return cfg
 }
 
-func publishDefaultOrder(
-	t *testing.T,
-	ctx context.Context,
-	js jetstream.JetStream,
-	subject, target string,
-) {
+func orderMessage(t *testing.T, target string) *crawlrpc.CrawlOrderMessage {
 	t.Helper()
 	order := yacycrawlcontract.CrawlOrder{
 		Provenance: []byte("admin"),
@@ -229,57 +262,6 @@ func publishDefaultOrder(
 	if err != nil {
 		t.Fatalf("marshal order: %v", err)
 	}
-	if _, err := js.Publish(ctx, subject, data); err != nil {
-		t.Fatalf("publish order: %v", err)
-	}
-}
 
-func waitForStream(t *testing.T, js jetstream.JetStream, name string) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := js.Stream(context.Background(), name); err == nil {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatalf("stream %s not created in time", name)
-}
-
-func fetchOneIngest(
-	t *testing.T,
-	js jetstream.JetStream,
-	subject string,
-) yacycrawlcontract.IngestBatch {
-	t.Helper()
-	stream, err := js.Stream(context.Background(), yacycrawlcontract.IngestStreamName)
-	if err != nil {
-		t.Fatalf("lookup ingest stream: %v", err)
-	}
-	consumer, err := stream.CreateOrUpdateConsumer(context.Background(), jetstream.ConsumerConfig{
-		FilterSubject: subject,
-		AckPolicy:     jetstream.AckExplicitPolicy,
-	})
-	if err != nil {
-		t.Fatalf("create ingest consumer: %v", err)
-	}
-	msgs, err := consumer.Fetch(1, jetstream.FetchMaxWait(15*time.Second))
-	if err != nil {
-		t.Fatalf("fetch ingest: %v", err)
-	}
-	msg, ok := <-msgs.Messages()
-	if !ok {
-		if err := msgs.Error(); err != nil {
-			t.Fatalf("fetch error: %v", err)
-		}
-		t.Fatal("no ingest batch received")
-	}
-	batch, err := yacycrawlcontract.UnmarshalIngestBatch(msg.Data())
-	if err != nil {
-		t.Fatalf("decode ingest: %v", err)
-	}
-	if err := msg.Ack(); err != nil {
-		t.Fatalf("ack: %v", err)
-	}
-	return batch
+	return &crawlrpc.CrawlOrderMessage{OrderJson: data}
 }

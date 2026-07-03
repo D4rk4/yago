@@ -49,12 +49,12 @@ var (
 	}
 	buildRuntimeDHTOutbound = buildDHTOutboundRuntime
 	buildRuntimeCrawl       = func(
-		ctx context.Context,
 		config crawlConfig,
 		identity nodeidentity.Identity,
 		storage nodeStorage,
+		storageVault *vault.Vault,
 	) (crawlProcess, error) {
-		runtime, err := buildCrawlRuntime(ctx, config, identity, storage)
+		runtime, err := buildCrawlRuntime(config, identity, storage, storageVault)
 		if runtime == nil || err != nil {
 			return nil, err
 		}
@@ -130,7 +130,7 @@ func assembleNode(
 		observer:    tallyOutboundObserver{next: telemetry.dhtOutbound, tally: tally},
 	})
 
-	runtime, err := buildRuntimeCrawl(ctx, config.Crawl, identity, storage)
+	runtime, err := buildRuntimeCrawl(config.Crawl, identity, storage, vault)
 	if err != nil {
 		return node{}, err
 	}

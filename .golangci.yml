@@ -57,6 +57,9 @@ linters:
       context: all
       key-naming-case: camel
       static-msg: true
+    wrapcheck:
+      ignore-package-globs:
+        - google.golang.org/grpc/**
   exclusions:
     generated: strict
 

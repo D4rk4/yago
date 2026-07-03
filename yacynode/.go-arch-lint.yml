@@ -126,13 +126,14 @@ vendors:
     in:
       - github.com/prometheus/client_golang/prometheus
       - github.com/prometheus/client_golang/prometheus/**
-  nats:
+  grpc:
     in:
-      - github.com/nats-io/nats.go
-      - github.com/nats-io/nats.go/**
-  nats-server:
+      - google.golang.org/grpc
+      - google.golang.org/grpc/**
+  protobuf:
     in:
-      - github.com/nats-io/nats-server/v2/server
+      - google.golang.org/protobuf
+      - google.golang.org/protobuf/**
 
 deps:
   vault:
@@ -421,11 +422,13 @@ deps:
     mayDependOn:
       - crawlbroker
       - crawlresults
+      - vault
+      - memvault
     canUse:
       - yacycrawlcontract
       - yacymodel
-      - nats
-      - nats-server
+      - grpc
+      - protobuf
   compatibility:
     mayDependOn:
       - compatibility
@@ -481,7 +484,7 @@ deps:
       - yacymodel
       - yacyproto
       - prometheus
-      - nats-server
+      - grpc
   cmd:
     mayDependOn:
       - yagonode

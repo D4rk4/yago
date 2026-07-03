@@ -1,4 +1,4 @@
-# 10. Screen outbound connections with an in-process dial-time guard
+# 13. Screen outbound connections with an in-process dial-time guard
 
 Date: 2026-07-03
 

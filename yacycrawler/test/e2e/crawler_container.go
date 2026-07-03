@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -13,18 +14,24 @@ import (
 const (
 	crawlerAlias    = "crawler"
 	envCrawlerImage = "YACYCRAWLER_IMAGE"
+	hostInternal    = "host.testcontainers.internal"
 )
 
-func startCrawler(t *testing.T, ctx context.Context, networkName string) {
+func startCrawler(t *testing.T, ctx context.Context, networkName string, exchangePort int) {
 	t.Helper()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		Started: true,
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:          crawlerImage(t),
-			Networks:       []string{networkName},
-			NetworkAliases: map[string][]string{networkName: {crawlerAlias}},
+			Image:           crawlerImage(t),
+			Networks:        []string{networkName},
+			NetworkAliases:  map[string][]string{networkName: {crawlerAlias}},
+			HostAccessPorts: []int{exchangePort},
 			Env: map[string]string{
-				"NATS_URL":                           natsNetworkURL(),
+				"YACYCRAWLER_NODE_RPC_ADDR": fmt.Sprintf(
+					"%s:%d",
+					hostInternal,
+					exchangePort,
+				),
 				"YACYCRAWLER_ALLOW_PRIVATE_NETWORKS": "true",
 				"YACYCRAWLER_WORKERS":                "1",
 				"LOG_LEVEL":                          "debug",

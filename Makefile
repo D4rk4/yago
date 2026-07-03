@@ -2,14 +2,19 @@ GO ?= go
 MODULES := yacynode yacymodel yacyproto yacycrawlcontract yacyegress yacycrawler
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 80
-COVER_EXCLUDE := /internal/vaulttest/|/test/e2e/
+COVER_EXCLUDE := /internal/vaulttest/|/test/e2e/|/crawlrpc/
 
 TOOLS_BIN := $(CURDIR)/.toolchain/bin
 TOOLS_STAMP := $(TOOLS_BIN)/.installed
 GOLANGCI_LINT := $(TOOLS_BIN)/golangci-lint
 GO_ARCH_LINT := $(TOOLS_BIN)/go-arch-lint
 
-.PHONY: tools fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-node-image e2e-crawler-image peer-hash
+.PHONY: tools proto-tools proto fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-node-image e2e-crawler-image peer-hash
+
+PROTOC ?= protoc
+PROTO_MODULE := github.com/D4rk4/yago/yacycrawlcontract
+PROTOC_GEN_GO_VERSION ?= v1.36.6
+PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
 
 E2E_TIMEOUT ?= 10m
 E2E_NODE_IMAGE ?= yago-node:e2e
@@ -90,6 +95,16 @@ build:
 		echo "==> build $$m"; \
 		( cd $$m && $(GO) build ./... ); \
 	done
+
+proto-tools:
+	GOBIN=$(TOOLS_BIN) $(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
+	GOBIN=$(TOOLS_BIN) $(GO) install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
+
+proto:
+	cd yacycrawlcontract && PATH="$(TOOLS_BIN):$$PATH" $(PROTOC) \
+		--go_out=. --go_opt=module=$(PROTO_MODULE) \
+		--go-grpc_out=. --go-grpc_opt=module=$(PROTO_MODULE) \
+		-I proto proto/crawlexchange.proto
 
 peer-hash:
 	cd yacynode && $(GO) run ./cmd/yacy-peer-hash

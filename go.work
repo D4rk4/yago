@@ -2,8 +2,8 @@ go 1.26
 
 use (
 	./yacycrawlcontract
-	./yacyegress
 	./yacycrawler
+	./yacyegress
 	./yacymodel
 	./yacynode
 	./yacyproto

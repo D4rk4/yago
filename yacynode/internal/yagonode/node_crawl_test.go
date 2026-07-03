@@ -8,47 +8,27 @@ import (
 	"testing"
 	"time"
 
-	natsserver "github.com/nats-io/nats-server/v2/server"
-
 	"github.com/D4rk4/yago/yacynode/internal/crawldispatch"
 )
 
-func startTestNATS(t *testing.T) string {
-	t.Helper()
-	srv, err := natsserver.NewServer(&natsserver.Options{
-		Port:      -1,
-		JetStream: true,
-		StoreDir:  t.TempDir(),
-	})
-	if err != nil {
-		t.Fatalf("new nats server: %v", err)
-	}
-	go srv.Start()
-	if !srv.ReadyForConnections(10 * time.Second) {
-		t.Fatal("nats server not ready")
-	}
-	t.Cleanup(srv.Shutdown)
-	return srv.ClientURL()
-}
-
 func TestCrawlRuntimeDispatchAndConsume(t *testing.T) {
-	storage, err := openNodeStorage(openTestVault(t), "")
+	storageVault := openTestVault(t)
+	storage, err := openNodeStorage(storageVault, "")
 	if err != nil {
 		t.Fatalf("open storage: %v", err)
 	}
 
-	cfg := crawlConfig{
-		NATSURL:       startTestNATS(t),
-		OrdersSubject: defaultOrdersSubject,
-		IngestSubject: defaultIngestSubject,
-		IngestDurable: defaultIngestDurable,
-		IngestMaxMsgs: defaultIngestMaxMsgs,
-	}
+	cfg := crawlConfig{ListenAddr: "127.0.0.1:0"}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	runtimeProcess, err := buildRuntimeCrawl(ctx, cfg, nodeIdentity(testConfig(t)), storage)
+	runtimeProcess, err := buildRuntimeCrawl(
+		cfg,
+		nodeIdentity(testConfig(t)),
+		storage,
+		storageVault,
+	)
 	if err != nil {
 		t.Fatalf("build crawl runtime: %v", err)
 	}
@@ -56,6 +36,7 @@ func TestCrawlRuntimeDispatchAndConsume(t *testing.T) {
 	if !ok {
 		t.Fatalf("runtime type = %T, want *crawlRuntime", runtimeProcess)
 	}
+	defer runtime.Close()
 
 	done := make(chan struct{})
 	go func() { runtime.Run(ctx); close(done) }()
@@ -81,5 +62,4 @@ func TestCrawlRuntimeDispatchAndConsume(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("consumer did not stop after cancel")
 	}
-	runtime.Close()
 }

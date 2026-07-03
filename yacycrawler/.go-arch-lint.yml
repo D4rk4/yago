@@ -80,13 +80,14 @@ vendors:
     in: github.com/go-shiori/dom
   google-uuid:
     in: github.com/google/uuid
-  nats:
+  grpc:
     in:
-      - github.com/nats-io/nats.go
-      - github.com/nats-io/nats.go/**
-  nats-server:
+      - google.golang.org/grpc
+      - google.golang.org/grpc/**
+  protobuf:
     in:
-      - github.com/nats-io/nats-server/v2/server
+      - google.golang.org/protobuf
+      - google.golang.org/protobuf/**
 
 deps:
   crawljob:
@@ -192,8 +193,8 @@ deps:
     canUse:
       - yacycrawlcontract
       - yacymodel
-      - nats
-      - nats-server
+      - grpc
+      - protobuf
   crawlorder:
     mayDependOn:
       - crawlorder
@@ -202,8 +203,8 @@ deps:
       - frontier
     canUse:
       - yacycrawlcontract
-      - nats
-      - nats-server
+      - grpc
+      - protobuf
   pipeline:
     mayDependOn:
       - pipeline
@@ -234,8 +235,8 @@ deps:
     canUse:
       - yacycrawlcontract
       - yacyegress
-      - nats
-      - nats-server
+      - grpc
+      - protobuf
 
 excludeFiles:
   - "test/e2e"

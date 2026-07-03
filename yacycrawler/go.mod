@@ -11,17 +11,15 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/markusmobius/go-trafilatura v1.12.2
-	github.com/nats-io/nats-server/v2 v2.14.2
-	github.com/nats-io/nats.go v1.52.0
 	github.com/temoto/robotstxt v1.1.2
 	golang.org/x/net v0.56.0
 	golang.org/x/sync v0.21.0
+	google.golang.org/grpc v1.79.3
 )
 
 require (
 	github.com/RadhiFadlillah/whatlanggo v0.0.0-20240916001553-aac1f0f737fc // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect
-	github.com/antithesishq/antithesis-sdk-go v0.7.0-default-no-op // indirect
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de // indirect
 	github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
@@ -33,32 +31,26 @@ require (
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f // indirect
-	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/hablullah/go-hijri v1.0.2 // indirect
 	github.com/hablullah/go-juliandays v1.0.0 // indirect
 	github.com/jalaali/go-jalaali v0.0.0-20210801064154-80525e88d958 // indirect
-	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/markusmobius/go-dateparser v1.2.3 // indirect
 	github.com/markusmobius/go-domdistiller v0.0.0-20240926050704-25b8d046ffb4 // indirect
 	github.com/markusmobius/go-htmldate v1.9.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/minio/highwayhash v1.0.4 // indirect
-	github.com/nats-io/jwt/v2 v2.8.2 // indirect
-	github.com/nats-io/nkeys v0.4.16 // indirect
-	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/zerolog v1.33.0 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tetratelabs/wazero v1.8.1 // indirect
 	github.com/wasilibs/go-re2 v1.7.0 // indirect
 	github.com/wasilibs/wazero-helpers v0.0.0-20240620070341-3dff1577cd52 // indirect
 	github.com/yosssi/gohtml v0.0.0-20201013000340-ee4748c638f4 // indirect
-	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
-	golang.org/x/time v0.15.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
+	google.golang.org/protobuf v1.36.10 // indirect
 )
 
 replace github.com/D4rk4/yago/yacycrawlcontract => ../yacycrawlcontract

@@ -146,7 +146,7 @@ Agent workstreams:
   compatibility notes for unsupported YaCy-specific ranking/profile fields.
 - Crawler Agent: persistent frontier, states, robots, politeness, sitemap,
   canonicalization, deduplication, HTTP fast fetch, browser fallback, extraction,
-  limits, retry, recrawl scheduling, backpressure, and NATS JetStream if used.
+  limits, retry, recrawl scheduling, backpressure, and the node's gRPC crawl transport if used.
 - Security Agent: SSRF protections, private/local network denial, DNS rebinding
   protection, crawl sandboxing, size/redirect/scheme limits, API/admin auth,
   remote crawl default-deny, peer quotas, and spam/index poisoning protections.
@@ -310,7 +310,7 @@ Keep the existing modules unless an ADR approves splitting/renaming:
 - `yacycrawler`: current crawler worker and future `yago-crawld` implementation
   for persistent frontier, fetch, robots, sitemap, canonicalization, extraction,
   deduplication, and `DocumentIngest`/RWI/URL metadata emission.
-- `yacycrawlcontract`: NATS/JetStream message contract between node and crawler,
+- `yacycrawlcontract`: gRPC/protobuf message contract between node and crawler,
   to be extended for document ingest without coupling node and crawler packages.
 
 Target components may become separate binaries after ADRs:
@@ -1059,7 +1059,7 @@ Tasks:
 
 1. Implement `crawlorders` in `yacynode`.
 2. Accept crawl job requests through admin API and YaCy-compatible `/Crawler_p.html` subset.
-3. Persist crawl job before publishing order to NATS JetStream.
+3. Persist crawl job before enqueuing order to the node's durable crawl queue.
 4. Publish orders using `yacycrawlcontract` message types.
 5. Include job ID, profile ID, start URLs, depth, range, filters and politeness hints.
 6. Add idempotency key for duplicate start requests.
@@ -1075,7 +1075,7 @@ Acceptance:
 Tasks:
 
 1. Implement `crawlingest` in `yacynode`.
-2. Consume crawler ingest batches from NATS JetStream.
+2. Consume crawler ingest batches over the node's gRPC crawl endpoint.
 3. Validate batch schema and job ownership.
 4. Write URL metadata, RWI postings, snippets and crawl result state durably.
 5. Ack broker message only after durable commit.
@@ -1649,7 +1649,6 @@ Tasks:
 2. Update `docker-compose.yml.example` with:
    - node
    - crawler
-   - NATS JetStream
    - persistent volumes
    - reverse proxy example optional
 3. Add systemd unit example.
@@ -1957,7 +1956,7 @@ Prefer environment variables for boot-critical settings and persistent settings 
 - `YACY_NODE_PEER_NAME`.
 - `YACY_NODE_MODE`.
 - `YACY_NODE_ADMIN_BIND_ADDR` if split binding is supported.
-- `NATS_URL` for crawler integration.
+- `YACY_CRAWL_RPC_ADDR` for crawler integration.
 
 ### 16.2 Optional Tavily upstream
 

@@ -16,13 +16,14 @@ vendors:
     in:
       - github.com/D4rk4/yago/yacymodel
       - github.com/D4rk4/yago/yacymodel/**
-  nats:
+  grpc:
     in:
-      - github.com/nats-io/nats.go
-      - github.com/nats-io/nats.go/**
-  nats-server:
+      - google.golang.org/grpc
+      - google.golang.org/grpc/**
+  protobuf:
     in:
-      - github.com/nats-io/nats-server/v2/server
+      - google.golang.org/protobuf
+      - google.golang.org/protobuf/**
 
 deps:
   yacycrawlcontract:
@@ -30,5 +31,5 @@ deps:
       - yacycrawlcontract
     canUse:
       - yacymodel
-      - nats
-      - nats-server
+      - grpc
+      - protobuf

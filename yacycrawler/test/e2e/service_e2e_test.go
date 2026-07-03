@@ -14,12 +14,9 @@ func TestCrawlerIsOrderDrivenEndToEnd(t *testing.T) {
 
 	network := newNetwork(t, ctx)
 
-	natsURL := startNATS(t, ctx, network.Name)
 	originURL := startOrigin(t, ctx, network.Name)
-	startCrawler(t, ctx, network.Name)
-
-	js := connectJetStream(t, natsURL)
-	ensureStreams(t, ctx, js)
+	exchangePort, exchange := startExchange(t)
+	startCrawler(t, ctx, network.Name, exchangePort)
 
 	order := yacycrawlcontract.CrawlOrder{
 		Provenance: []byte("admin"),
@@ -34,15 +31,9 @@ func TestCrawlerIsOrderDrivenEndToEnd(t *testing.T) {
 	order.Requests = []yacycrawlcontract.CrawlRequest{
 		{URL: originURL, ProfileHandle: order.Profile.Handle},
 	}
-	data, err := yacycrawlcontract.MarshalCrawlOrder(order)
-	if err != nil {
-		t.Fatalf("marshal order: %v", err)
-	}
-	if _, err := js.Publish(ctx, ordersSubject, data); err != nil {
-		t.Fatalf("publish order: %v", err)
-	}
+	exchange.enqueue(t, order)
 
-	batch := fetchOneIngest(t, ctx, js)
+	batch := exchange.awaitIngest(t)
 	if batch.ProfileHandle != order.Profile.Handle {
 		t.Errorf("batch handle = %q, want %q", batch.ProfileHandle, order.Profile.Handle)
 	}

@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 
-	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nats.go/jetstream"
+	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawlcontract/crawlrpc"
 	"github.com/D4rk4/yago/yacycrawler/internal/botwall"
 	"github.com/D4rk4/yago/yacycrawler/internal/crawldelay"
 	"github.com/D4rk4/yago/yacycrawler/internal/crawlorder"
@@ -25,9 +26,14 @@ import (
 	"github.com/D4rk4/yago/yacyegress"
 )
 
-var connectCrawlerNATS = nats.Connect
+var newCrawlerExchange = func(addr string) (crawlrpc.CrawlExchangeClient, io.Closer, error) {
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, nil, fmt.Errorf("new crawl exchange client: %w", err)
+	}
 
-var newCrawlerJetStream = jetstream.New
+	return crawlrpc.NewCrawlExchangeClient(conn), conn, nil
+}
 
 var newCrawlerRobotsAdmissionFetcher = robots.NewRobotsAdmissionFetcher
 
@@ -44,25 +50,14 @@ var newCrawlerPublicWebAdmissionFetcher = func(
 }
 
 func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSource) error {
-	nc, err := connectCrawlerNATS(cfg.NATSURL)
+	exchange, closer, err := newCrawlerExchange(cfg.NodeRPCAddr)
 	if err != nil {
-		return fmt.Errorf("connect nats: %w", err)
+		return fmt.Errorf("dial node rpc: %w", err)
 	}
-	defer nc.Close()
+	defer func() { _ = closer.Close() }()
 
-	js, err := newCrawlerJetStream(nc)
-	if err != nil {
-		return fmt.Errorf("init jetstream: %w", err)
-	}
-	if err := yacycrawlcontract.EnsureStreams(ctx, js, cfg.StreamSpec()); err != nil {
-		return fmt.Errorf("ensure streams: %w", err)
-	}
-
-	orders, err := crawlorder.NewNATSOrderReceiver(ctx, js, cfg.OrdersDurable, cfg.OrdersSubject)
-	if err != nil {
-		return fmt.Errorf("create order receiver: %w", err)
-	}
-	emitter := ingest.NewBatchEmitter(ingest.NewNATSIngestPublisher(js, cfg.IngestSubject))
+	orders := crawlorder.NewGRPCOrderReceiver(ctx, exchange, cfg.WorkerID)
+	emitter := ingest.NewBatchEmitter(ingest.NewGRPCIngestPublisher(exchange))
 
 	crawl := cfg.Crawl
 	pace, err := crawldelay.NewHostPace(crawl.CrawlDelay, crawl.HostCacheSize)
@@ -114,8 +109,8 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	}()
 
 	slog.InfoContext(ctx, "crawler started",
-		slog.String("ordersSubject", cfg.OrdersSubject),
-		slog.String("ingestSubject", cfg.IngestSubject),
+		slog.String("nodeRpcAddr", cfg.NodeRPCAddr),
+		slog.String("workerId", cfg.WorkerID),
 		slog.Int("workers", crawl.Workers),
 	)
 	<-consumerDone

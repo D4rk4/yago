@@ -63,7 +63,7 @@ Tavily API Agent: Owns Tavily-compatible `POST /search`. Minimum request fields 
 
 YaCy Search API Agent: Owns `/yacysearch.json`, `/yacysearch.rss`, OpenSearch-style compatibility, `resource=local|global`, query parameter translation, feasible filters by site/domain/filetype/protocol/language/date, and compatibility notes for unsupported YaCy-specific ranking/profile fields.
 
-Crawler Agent: Owns a production-grade crawler with persistent frontier, states `queued`, `fetching`, `fetched`, `failed`, `deferred`, `blocked`, robots.txt, crawl-delay, per-host token bucket, sitemap ingestion, URL normalization, redirects, canonical link handling, content hash deduplication, HTTP fast fetch path, browser fallback only when needed, content extraction, MIME/size/time limits, retry policy, recrawl scheduling, backpressure from index/searchd, and NATS JetStream integration if used.
+Crawler Agent: Owns a production-grade crawler with persistent frontier, states `queued`, `fetching`, `fetched`, `failed`, `deferred`, `blocked`, robots.txt, crawl-delay, per-host token bucket, sitemap ingestion, URL normalization, redirects, canonical link handling, content hash deduplication, HTTP fast fetch path, browser fallback only when needed, content extraction, MIME/size/time limits, retry policy, recrawl scheduling, backpressure from index/searchd, and the node's gRPC crawl transport integration if used.
 
 Security Agent: Owns SSRF protection, denial of private CIDR/localhost/link-local/multicast/metadata IPs, DNS rebinding protection, crawl sandboxing, max body size, max redirects, allowed schemes, API auth, admin auth, remote crawl default-deny, peer quotas, and spam/index poisoning protections.
 

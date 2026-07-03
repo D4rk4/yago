@@ -35,7 +35,7 @@ The node is configured through environment variables.
 
 ## Crawling
 
-The node can drive a crawl fleet over NATS JetStream: operators start a crawl by posting seed URLs to `/crawl` on the ops address, and crawled pages flow back in as ingest batches. Crawling is off until `NATS_URL` is set; without it the node behaves as a pure peer.
+The node can drive a crawl fleet over gRPC: it serves a `CrawlExchange` endpoint that crawlers dial. Operators start a crawl by posting seed URLs to `/crawl` on the ops address; the node enqueues orders in a durable, store-backed FIFO and streams them to connected crawlers, and crawled pages flow back in as ingest batches. Crawling is off until `YACY_CRAWL_RPC_ADDR` is set; without it the node behaves as a pure peer.
 
 The `/crawl` request body accepts `seeds` and optional `startMode`. Supported
 start modes are `url`, `sitemap`, and `sitelist`; empty mode is treated as
@@ -44,8 +44,4 @@ roots before normal frontier admission.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `NATS_URL` | _(empty)_ | NATS server to reach the crawl fleet (e.g. `nats://nats:4222`). Empty disables crawling. |
-| `NATS_ORDERS_SUBJECT` | `yacy.crawl.orders` | Subject crawl orders are published to. Must match the crawler. |
-| `NATS_INGEST_SUBJECT` | `yacy.crawl.ingest` | Subject crawled batches arrive on. Must match the crawler. |
-| `NATS_INGEST_DURABLE` | `yacy-node` | Durable consumer name for reading ingest batches. |
-| `NATS_INGEST_MAX_MSGS` | `1024` | Maximum undelivered ingest batches buffered before the fleet is paused. |
+| `YACY_CRAWL_RPC_ADDR` | _(empty)_ | Address the node serves the crawl gRPC endpoint on (e.g. `:9091`). Empty disables crawling. |

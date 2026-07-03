@@ -11,6 +11,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yacynode/internal/crawlresults"
 	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 type crawlProcess interface {
@@ -28,22 +29,16 @@ type crawlRuntime struct {
 var openCrawlBroker = crawlbroker.Open
 
 func buildCrawlRuntime(
-	ctx context.Context,
 	config crawlConfig,
 	identity nodeidentity.Identity,
 	storage nodeStorage,
+	storageVault *vault.Vault,
 ) (*crawlRuntime, error) {
 	if !config.Enabled() {
 		return nil, nil
 	}
 
-	broker, err := openCrawlBroker(ctx, crawlbroker.Config{
-		NATSURL:       config.NATSURL,
-		OrdersSubject: config.OrdersSubject,
-		IngestSubject: config.IngestSubject,
-		IngestDurable: config.IngestDurable,
-		IngestMaxMsgs: config.IngestMaxMsgs,
-	})
+	broker, err := openCrawlBroker(crawlbroker.Config{ListenAddr: config.ListenAddr}, storageVault)
 	if err != nil {
 		return nil, fmt.Errorf("open crawl broker: %w", err)
 	}

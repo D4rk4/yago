@@ -60,10 +60,7 @@ func run() error {
 		return fmt.Errorf("load node config: %w", err)
 	}
 
-	config.Crawl, err = loadCrawlConfig(os.Getenv)
-	if err != nil {
-		return fmt.Errorf("load crawl config: %w", err)
-	}
+	config.Crawl = loadCrawlConfig(os.Getenv)
 
 	client := newGuardedEgressClient(yacyegress.NewGuard(config.EgressAllowLAN))
 

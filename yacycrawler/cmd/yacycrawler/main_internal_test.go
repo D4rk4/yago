@@ -33,8 +33,9 @@ func restoreMainSeams(t *testing.T) {
 func minimalServiceConfig(t *testing.T) ServiceConfig {
 	t.Helper()
 	return ServiceConfig{
-		Crawl:   DefaultCrawlConfig(),
-		NATSURL: "nats://localhost:4222",
+		Crawl:       DefaultCrawlConfig(),
+		NodeRPCAddr: "node:9091",
+		WorkerID:    DefaultWorkerID,
 	}
 }
 

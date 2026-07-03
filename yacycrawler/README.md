@@ -31,12 +31,12 @@ flowchart LR
 
 ## How it runs
 
-The crawler is a long-running, order-driven service. It connects to a NATS JetStream
-broker on startup and then idles until work arrives: the node publishes crawl orders to
-the orders subject, the crawler fetches pages, builds document/RWI/URL metadata
-artifacts, and publishes ingest batches back to the node over the ingest
-subject. Multiple crawler instances can share the orders subject to
-load-balance, and a bounded ingest stream applies backpressure when the node
+The crawler is a long-running, order-driven service. It dials the node's crawl gRPC
+endpoint on startup and then idles until work arrives: the node streams crawl orders
+to the crawler, the crawler fetches pages, builds document/RWI/URL metadata
+artifacts, and submits ingest batches back to the node over the same connection.
+Multiple crawler instances can each stream orders from the node to load-balance,
+and the node's blocking ingest call applies backpressure when it
 falls behind. Document ingest includes the fetched URL and any resolved
 `rel=canonical` URL found in the page, plus page-provided description
 metadata and bounded image URL/alt metadata when available. Links marked
@@ -49,7 +49,7 @@ proxied public-web egress path as page fetches, parsed before frontier
 admission, and expanded into bounded URL roots. Sitemap `lastmod` values are
 carried as crawl request hints for later recrawl scheduling.
 
-Configuration comes from the environment (`NATS_URL` is required;
+Configuration comes from the environment (`YACYCRAWLER_NODE_RPC_ADDR` is required;
 `YACYCRAWLER_ALLOW_PRIVATE_NETWORKS` opts into LAN and private-network targets),
 and the service runs until it receives `SIGINT` or `SIGTERM`.
 Outbound fetches, including the headless browser, are screened in-process at dial

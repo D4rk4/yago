@@ -1,19 +1,10 @@
 services:
-  nats:
-    image: nats:2.14.2
-    restart: unless-stopped
-    command: ["-js"]
-    ports:
-      - "4222:4222"
-
   yago-node:
     build:
       context: .
       dockerfile: yacynode/Dockerfile
     image: yago-node:latest
     restart: unless-stopped
-    depends_on:
-      - nats
     ports:
       - "8090:8090"
       - "9090:9090"
@@ -30,7 +21,7 @@ services:
         http://yacy.v16.de/seed/seed.txt,
         https://frank-siebert.de/seed.txt,
         http://seedlist.wertewesten.net/seed.txt
-      NATS_URL: nats://nats:4222
+      YACY_CRAWL_RPC_ADDR: ${YACY_CRAWL_RPC_ADDR:-:9091}
       YACY_EGRESS_ALLOW_PRIVATE_NETWORKS: ${YACY_EGRESS_ALLOW_PRIVATE_NETWORKS:-false}
       YAGO_SEARCH_API_KEY: ${YAGO_SEARCH_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -44,9 +35,10 @@ services:
     image: yacycrawler:latest
     restart: unless-stopped
     depends_on:
-      - nats
+      - yago-node
     environment:
-      NATS_URL: nats://nats:4222
+      YACYCRAWLER_NODE_RPC_ADDR: ${YACYCRAWLER_NODE_RPC_ADDR:-yago-node:9091}
+      YACYCRAWLER_WORKER_ID: ${YACYCRAWLER_WORKER_ID:-}
       YACYCRAWLER_ALLOW_PRIVATE_NETWORKS: ${YACYCRAWLER_ALLOW_PRIVATE_NETWORKS:-false}
       YACYCRAWLER_REQUEST_TIMEOUT: ${YACYCRAWLER_REQUEST_TIMEOUT:-15s}
       YACYCRAWLER_CONNECT_TIMEOUT: ${YACYCRAWLER_CONNECT_TIMEOUT:-5s}

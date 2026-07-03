@@ -1,75 +1,57 @@
-// Package crawlbroker is the node's NATS JetStream edge to the crawl fleet. It is
-// the only place that speaks the broker protocol: it publishes crawl orders and
-// receives ingest batches, exposing them as the plain ports the inner packages
-// consume. Open wires the connection; Close releases it.
+// Package crawlbroker is the node's gRPC edge to the crawl fleet. It is the only
+// place that speaks the CrawlExchange service: it serves a durable queue of
+// crawl orders to crawler streams and receives ingest batches back, exposing
+// them as the plain ports the inner packages consume. Open starts the server;
+// Close stops it.
 package crawlbroker
 
 import (
-	"context"
 	"fmt"
+	"net"
 
-	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nats.go/jetstream"
+	"google.golang.org/grpc"
 
-	"github.com/D4rk4/yago/yacycrawlcontract"
+	"github.com/D4rk4/yago/yacycrawlcontract/crawlrpc"
+	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
 type Config struct {
-	NATSURL       string
-	OrdersSubject string
-	IngestSubject string
-	IngestDurable string
-	IngestMaxMsgs int64
+	ListenAddr string
 }
 
 type CrawlBroker struct {
-	conn   *nats.Conn
-	Orders *OrderPublisher
-	Ingest *IngestReceiver
+	Orders   *DurableOrderQueue
+	Ingest   *IngestReceiver
+	server   *grpc.Server
+	listener net.Listener
 }
 
 var (
-	connectNATS        = nats.Connect
-	closeNATS          = func(conn *nats.Conn) { conn.Close() }
-	newJetStream       = jetstream.New
-	ensureCrawlStreams = yacycrawlcontract.EnsureStreams
-	openIngestReceiver = newIngestReceiver
+	listenCrawlRPC = func(addr string) (net.Listener, error) {
+		return net.Listen("tcp", addr)
+	}
+	// nosemgrep: go.grpc.security.grpc-server-insecure-connection.grpc-server-insecure-connection -- internal node-crawler control plane on a trusted network; transport security is deferred (ADR-0014).
+	newGRPCServer = func() *grpc.Server { return grpc.NewServer() }
 )
 
-func Open(ctx context.Context, cfg Config) (*CrawlBroker, error) {
-	conn, err := connectNATS(cfg.NATSURL)
+func Open(cfg Config, storage *vault.Vault) (*CrawlBroker, error) {
+	queue, err := newDurableOrderQueue(storage)
 	if err != nil {
-		return nil, fmt.Errorf("connect nats: %w", err)
-	}
-
-	js, err := newJetStream(conn)
-	if err != nil {
-		closeNATS(conn)
-		return nil, fmt.Errorf("init jetstream: %w", err)
-	}
-
-	if err := ensureCrawlStreams(ctx, js, yacycrawlcontract.StreamSpec{
-		OrdersSubject: cfg.OrdersSubject,
-		IngestSubject: cfg.IngestSubject,
-		IngestMaxMsgs: cfg.IngestMaxMsgs,
-	}); err != nil {
-		closeNATS(conn)
-		return nil, fmt.Errorf("ensure streams: %w", err)
-	}
-
-	ingest, err := openIngestReceiver(ctx, js, cfg.IngestDurable, cfg.IngestSubject)
-	if err != nil {
-		closeNATS(conn)
 		return nil, err
 	}
+	listener, err := listenCrawlRPC(cfg.ListenAddr)
+	if err != nil {
+		return nil, fmt.Errorf("listen crawl rpc %q: %w", cfg.ListenAddr, err)
+	}
 
-	return &CrawlBroker{
-		conn:   conn,
-		Orders: newOrderPublisher(js, cfg.OrdersSubject),
-		Ingest: ingest,
-	}, nil
+	ingest := newIngestReceiver()
+	server := newGRPCServer()
+	crawlrpc.RegisterCrawlExchangeServer(server, newExchangeServer(queue, ingest.out))
+	go func() { _ = server.Serve(listener) }()
+
+	return &CrawlBroker{Orders: queue, Ingest: ingest, server: server, listener: listener}, nil
 }
 
 func (b *CrawlBroker) Close() {
-	closeNATS(b.conn)
+	b.server.Stop()
 }

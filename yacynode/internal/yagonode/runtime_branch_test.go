@@ -298,11 +298,7 @@ func setValidRunEnv(t *testing.T) {
 		envSeedlistURLs,
 		envAnnounceInterval,
 		envGreetsPerCycle,
-		envNATSURL,
-		envNATSOrdersSubject,
-		envNATSIngestSubject,
-		envNATSIngestDurable,
-		envNATSIngestMaxMsgs,
+		envCrawlRPCAddr,
 		envNetworkDHT,
 		envDHTDistribution,
 		envDHTAllowWhileCrawling,
@@ -339,16 +335,6 @@ func TestRunReturnsStageErrors(t *testing.T) {
 		t.Setenv(envLogLevel, "invalid")
 		if err := run(); err == nil {
 			t.Fatal("expected logging error")
-		}
-	})
-
-	t.Run("crawl config", func(t *testing.T) {
-		restoreMainSeams(t)
-		setValidRunEnv(t)
-		t.Setenv(envNATSURL, "nats://127.0.0.1:4222")
-		t.Setenv(envNATSIngestMaxMsgs, "many")
-		if err := run(); err == nil {
-			t.Fatal("expected crawl config error")
 		}
 	})
 
@@ -817,10 +803,10 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 			return peerExchangeRuntime{announcer: fakeAnnouncer{}}, nil
 		}
 		buildRuntimeCrawl = func(
-			context.Context,
 			crawlConfig,
 			nodeidentity.Identity,
 			nodeStorage,
+			*vault.Vault,
 		) (crawlProcess, error) {
 			return nil, sentinel
 		}
@@ -950,14 +936,14 @@ func TestPeerExchangeReturnsOpenErrors(t *testing.T) {
 func TestBuildCrawlRuntimeReturnsBrokerError(t *testing.T) {
 	restoreCrawlBrokerSeam(t)
 	sentinel := errors.New("broker failed")
-	openCrawlBroker = func(context.Context, crawlbroker.Config) (*crawlbroker.CrawlBroker, error) {
+	openCrawlBroker = func(crawlbroker.Config, *vault.Vault) (*crawlbroker.CrawlBroker, error) {
 		return nil, sentinel
 	}
 	_, err := buildCrawlRuntime(
-		context.Background(),
-		crawlConfig{NATSURL: "nats://127.0.0.1:4222"},
+		crawlConfig{ListenAddr: "127.0.0.1:0"},
 		nodeIdentity(testConfig(t)),
 		nodeStorage{},
+		nil,
 	)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("build error = %v, want %v", err, sentinel)

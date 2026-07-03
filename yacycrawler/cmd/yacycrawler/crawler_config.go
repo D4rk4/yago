@@ -11,27 +11,21 @@ import (
 )
 
 const (
-	EnvNATSURL           = "NATS_URL"
-	EnvNATSOrdersSubject = "NATS_ORDERS_SUBJECT"
-	EnvNATSIngestSubject = "NATS_INGEST_SUBJECT"
-	EnvNATSIngestMaxMsgs = "NATS_INGEST_MAX_MSGS"
-	EnvNATSDurable       = "NATS_ORDERS_DURABLE"
-	EnvWorkers           = "YACYCRAWLER_WORKERS"
-	EnvMaxDepth          = "YACYCRAWLER_MAX_DEPTH"
-	EnvCrawlDelay        = "YACYCRAWLER_CRAWL_DELAY"
-	EnvUserAgent         = "YACYCRAWLER_USER_AGENT"
-	EnvRequestTimeout    = "YACYCRAWLER_REQUEST_TIMEOUT"
-	EnvConnectTimeout    = "YACYCRAWLER_CONNECT_TIMEOUT"
-	EnvTLSTimeout        = "YACYCRAWLER_TLS_TIMEOUT"
-	EnvHeaderTimeout     = "YACYCRAWLER_HEADER_TIMEOUT"
-	EnvMaxRedirects      = "YACYCRAWLER_MAX_REDIRECTS"
-	EnvSitemapURLLimit   = "YACYCRAWLER_SITEMAP_URL_LIMIT"
-	EnvEgressAllowLAN    = "YACYCRAWLER_ALLOW_PRIVATE_NETWORKS"
+	EnvNodeRPCAddr     = "YACYCRAWLER_NODE_RPC_ADDR"
+	EnvWorkerID        = "YACYCRAWLER_WORKER_ID"
+	EnvWorkers         = "YACYCRAWLER_WORKERS"
+	EnvMaxDepth        = "YACYCRAWLER_MAX_DEPTH"
+	EnvCrawlDelay      = "YACYCRAWLER_CRAWL_DELAY"
+	EnvUserAgent       = "YACYCRAWLER_USER_AGENT"
+	EnvRequestTimeout  = "YACYCRAWLER_REQUEST_TIMEOUT"
+	EnvConnectTimeout  = "YACYCRAWLER_CONNECT_TIMEOUT"
+	EnvTLSTimeout      = "YACYCRAWLER_TLS_TIMEOUT"
+	EnvHeaderTimeout   = "YACYCRAWLER_HEADER_TIMEOUT"
+	EnvMaxRedirects    = "YACYCRAWLER_MAX_REDIRECTS"
+	EnvSitemapURLLimit = "YACYCRAWLER_SITEMAP_URL_LIMIT"
+	EnvEgressAllowLAN  = "YACYCRAWLER_ALLOW_PRIVATE_NETWORKS"
 
-	DefaultOrdersSubject = "yacy.crawl.orders"
-	DefaultIngestSubject = "yacy.crawl.ingest"
-	DefaultOrdersDurable = "yacy-crawlers"
-	DefaultIngestMaxMsgs = 1024
+	DefaultWorkerID = "yacycrawler"
 
 	DefaultMaxBodyBytes    int64 = 4 << 20
 	DefaultRequestTimeout        = 15 * time.Second
@@ -84,26 +78,15 @@ func DefaultCrawlConfig() CrawlConfig {
 
 type ServiceConfig struct {
 	Crawl          CrawlConfig
-	NATSURL        string
+	NodeRPCAddr    string
+	WorkerID       string
 	EgressAllowLAN bool
-	OrdersSubject  string
-	IngestSubject  string
-	OrdersDurable  string
-	IngestMaxMsgs  int64
-}
-
-func (c ServiceConfig) StreamSpec() yacycrawlcontract.StreamSpec {
-	return yacycrawlcontract.StreamSpec{
-		OrdersSubject: c.OrdersSubject,
-		IngestSubject: c.IngestSubject,
-		IngestMaxMsgs: c.IngestMaxMsgs,
-	}
 }
 
 func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
-	natsURL := strings.TrimSpace(getenv(EnvNATSURL))
-	if natsURL == "" {
-		return ServiceConfig{}, fmt.Errorf("%s: must be set", EnvNATSURL)
+	nodeAddr := strings.TrimSpace(getenv(EnvNodeRPCAddr))
+	if nodeAddr == "" {
+		return ServiceConfig{}, fmt.Errorf("%s: must be set", EnvNodeRPCAddr)
 	}
 
 	egressAllowLAN, err := envBool(getenv, EnvEgressAllowLAN, false)
@@ -116,19 +99,11 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		return ServiceConfig{}, err
 	}
 
-	maxMsgs, err := envPositiveInt64(getenv, EnvNATSIngestMaxMsgs, DefaultIngestMaxMsgs)
-	if err != nil {
-		return ServiceConfig{}, err
-	}
-
 	return ServiceConfig{
 		Crawl:          crawl,
-		NATSURL:        natsURL,
+		NodeRPCAddr:    nodeAddr,
+		WorkerID:       envString(getenv, EnvWorkerID, DefaultWorkerID),
 		EgressAllowLAN: egressAllowLAN,
-		OrdersSubject:  envString(getenv, EnvNATSOrdersSubject, DefaultOrdersSubject),
-		IngestSubject:  envString(getenv, EnvNATSIngestSubject, DefaultIngestSubject),
-		OrdersDurable:  envString(getenv, EnvNATSDurable, DefaultOrdersDurable),
-		IngestMaxMsgs:  maxMsgs,
 	}, nil
 }
 
@@ -258,21 +233,6 @@ func envNonNegativeInt(getenv func(string) string, key string, fallback int) (in
 	}
 	if value < 0 {
 		return 0, fmt.Errorf("%s: must not be negative", key)
-	}
-	return value, nil
-}
-
-func envPositiveInt64(getenv func(string) string, key string, fallback int64) (int64, error) {
-	raw := strings.TrimSpace(getenv(key))
-	if raw == "" {
-		return fallback, nil
-	}
-	value, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("%s: %w", key, err)
-	}
-	if value <= 0 {
-		return 0, fmt.Errorf("%s: must be positive", key)
 	}
 	return value, nil
 }
