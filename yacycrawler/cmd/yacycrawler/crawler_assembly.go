@@ -109,26 +109,14 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		newCrawlRequestExpander(client, crawl, guard),
 	)
 
-	workersDone := make(chan struct{})
-	go func() {
-		worker.RunWorkers(ctx, crawl.Workers)
-		close(workersDone)
-	}()
-
-	consumerDone := make(chan struct{})
-	go func() {
-		consumer.Run(ctx)
-		close(consumerDone)
-	}()
-
 	slog.InfoContext(ctx, "crawler started",
 		slog.String("nodeRpcAddr", cfg.NodeRPCAddr),
 		slog.String("workerId", cfg.WorkerID),
 		slog.Int("workers", crawl.Workers),
 	)
-	<-consumerDone
-	<-workersDone
+	superviseCrawl(ctx, worker, consumer, crawl.Workers, cfg.ShutdownGrace)
 	slog.InfoContext(ctx, "crawler stopped")
+
 	return nil
 }
 

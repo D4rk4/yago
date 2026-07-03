@@ -44,6 +44,15 @@ func TestLoadServiceConfigRejectsBadEgressAllowLAN(t *testing.T) {
 	}
 }
 
+func TestLoadServiceConfigRejectsBadShutdownGrace(t *testing.T) {
+	if _, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNodeRPCAddr:   "node:9091",
+		EnvShutdownGrace: "soon",
+	})); err == nil {
+		t.Fatal("expected error for a bad shutdown grace")
+	}
+}
+
 func TestLoadServiceConfigRejectsBadEgressCIDR(t *testing.T) {
 	if _, err := LoadServiceConfig(envFrom(map[string]string{
 		EnvNodeRPCAddr:      "node:9091",
@@ -103,6 +112,9 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	if cfg.MetricsAddr != "" {
 		t.Errorf("metrics addr = %q, want empty", cfg.MetricsAddr)
 	}
+	if cfg.ShutdownGrace != DefaultShutdownGrace {
+		t.Errorf("shutdown grace = %v, want %v", cfg.ShutdownGrace, DefaultShutdownGrace)
+	}
 	if cfg.EgressAllowLAN {
 		t.Error("EgressAllowLAN must default to false")
 	}
@@ -125,6 +137,7 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 		EnvNodeRPCAddr:     "node:9091",
 		EnvWorkerID:        "worker-7",
 		EnvMetricsAddr:     "127.0.0.1:9100",
+		EnvShutdownGrace:   "5s",
 		EnvEgressAllowLAN:  "true",
 		EnvWorkers:         "3",
 		EnvMaxDepth:        "5",
@@ -145,6 +158,9 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	}
 	if cfg.MetricsAddr != "127.0.0.1:9100" {
 		t.Errorf("metrics addr = %q, want 127.0.0.1:9100", cfg.MetricsAddr)
+	}
+	if cfg.ShutdownGrace != 5*time.Second {
+		t.Errorf("shutdown grace = %v, want 5s", cfg.ShutdownGrace)
 	}
 	if !cfg.EgressAllowLAN {
 		t.Error("EgressAllowLAN = false, want true")

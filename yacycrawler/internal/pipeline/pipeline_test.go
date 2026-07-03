@@ -106,7 +106,7 @@ func runOneJob(
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go p.RunWorkers(ctx, 1)
+	go p.RunWorkers(ctx, ctx, 1)
 	frontier.jobs <- crawljob.CrawlJob{URL: "https://example.com/", ProfileHandle: "h"}
 	select {
 	case <-frontier.done:
@@ -287,7 +287,7 @@ func TestPipelineStopsWhenJobsClose(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		p.RunWorkers(context.Background(), 1)
+		p.RunWorkers(context.Background(), context.Background(), 1)
 		close(done)
 	}()
 
@@ -319,7 +319,7 @@ func TestPipelineStopsWhenContextIsCanceled(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		p.RunWorkers(ctx, 1)
+		p.RunWorkers(ctx, ctx, 1)
 		close(done)
 	}()
 
@@ -348,7 +348,7 @@ func TestPipelineFinishesJobOnBadURL(t *testing.T) {
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go p.RunWorkers(ctx, 1)
+	go p.RunWorkers(ctx, ctx, 1)
 	frontier.jobs <- crawljob.CrawlJob{URL: "://bad"}
 
 	select {

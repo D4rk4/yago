@@ -26,8 +26,10 @@ const (
 	EnvSitemapURLLimit = "YACYCRAWLER_SITEMAP_URL_LIMIT"
 	EnvEgressAllowLAN  = "YACYCRAWLER_ALLOW_PRIVATE_NETWORKS"
 	EnvMetricsAddr     = "YACYCRAWLER_METRICS_ADDR"
+	EnvShutdownGrace   = "YACYCRAWLER_SHUTDOWN_GRACE"
 
-	DefaultWorkerID = "yacycrawler"
+	DefaultWorkerID      = "yacycrawler"
+	DefaultShutdownGrace = 10 * time.Second
 
 	DefaultMaxBodyBytes    int64 = 4 << 20
 	DefaultRequestTimeout        = 15 * time.Second
@@ -83,6 +85,7 @@ type ServiceConfig struct {
 	NodeRPCAddr        string
 	WorkerID           string
 	MetricsAddr        string
+	ShutdownGrace      time.Duration
 	EgressAllowLAN     bool
 	EgressAllowedCIDRs []netip.Prefix
 }
@@ -108,11 +111,17 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		return ServiceConfig{}, err
 	}
 
+	shutdownGrace, err := envPositiveDuration(getenv, EnvShutdownGrace, DefaultShutdownGrace)
+	if err != nil {
+		return ServiceConfig{}, err
+	}
+
 	return ServiceConfig{
 		Crawl:              crawl,
 		NodeRPCAddr:        nodeAddr,
 		WorkerID:           envString(getenv, EnvWorkerID, DefaultWorkerID),
 		MetricsAddr:        strings.TrimSpace(getenv(EnvMetricsAddr)),
+		ShutdownGrace:      shutdownGrace,
 		EgressAllowLAN:     egressAllowLAN,
 		EgressAllowedCIDRs: egressAllowedCIDRs,
 	}, nil

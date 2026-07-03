@@ -56,8 +56,10 @@ Configuration comes from the environment (`YACYCRAWLER_NODE_RPC_ADDR` is require
 `YACYCRAWLER_ALLOW_PRIVATE_NETWORKS` opts into all LAN and private-network targets,
 while `YACYCRAWLER_ALLOW_CIDRS` is a comma-separated list of private CIDRs to admit
 instead of opening all private space; loopback, link-local, and reserved ranges
-stay blocked either way), and the service runs until it receives `SIGINT` or
-`SIGTERM`.
+stay blocked either way). The service runs until it receives `SIGINT` or
+`SIGTERM`, then shuts down gracefully: it stops pulling new jobs but lets
+in-flight page fetches finish, waiting up to `YACYCRAWLER_SHUTDOWN_GRACE`
+(default `10s`) before aborting any still running.
 Outbound fetches, including the headless browser, are screened in-process at dial
 time against the connected IP address, so no external forward proxy is required;
 the browser routes through a loopback-bound guarded proxy that resolves and dials

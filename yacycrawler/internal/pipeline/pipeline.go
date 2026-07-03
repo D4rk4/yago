@@ -57,38 +57,42 @@ func NewPipeline(
 	return pipeline
 }
 
-func (p *Pipeline) RunWorkers(ctx context.Context, workers int) {
+// RunWorkers processes jobs until acceptCtx is cancelled or the frontier closes.
+// acceptCtx governs whether a worker pulls the next job; fetchCtx governs the work
+// already in flight, so cancelling acceptCtx alone lets current fetches finish
+// before the worker stops, and cancelling fetchCtx aborts them.
+func (p *Pipeline) RunWorkers(acceptCtx, fetchCtx context.Context, workers int) {
 	var group sync.WaitGroup
 	for range workers {
 		group.Go(func() {
-			p.run(ctx)
+			p.run(acceptCtx, fetchCtx)
 		})
 	}
 	group.Wait()
 }
 
-func (p *Pipeline) run(ctx context.Context) {
+func (p *Pipeline) run(acceptCtx, fetchCtx context.Context) {
 	for {
 		select {
-		case <-ctx.Done():
+		case <-acceptCtx.Done():
 			return
 		case job, ok := <-p.frontier.Jobs():
 			if !ok {
 				return
 			}
-			err := p.process(ctx, job)
+			err := p.process(fetchCtx, job)
 			switch {
 			case err == nil:
 			case errors.Is(err, pagefetch.ErrPageRejected):
 				slog.DebugContext(
-					ctx,
+					fetchCtx,
 					msgPageRejected,
 					slog.String("url", job.URL),
 					slog.Any("reason", err),
 				)
 			default:
 				slog.WarnContext(
-					ctx,
+					fetchCtx,
 					"crawl job failed",
 					slog.String("url", job.URL),
 					slog.Any("error", err),
