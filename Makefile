@@ -122,7 +122,8 @@ e2e-node:
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
 
 e2e-crawler:
-	cd yacycrawler/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YACYCRAWLER_IMAGE=$(E2E_CRAWLER_IMAGE) \
+	cd yacycrawler/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) \
+		YACYCRAWLER_IMAGE=$(E2E_CRAWLER_IMAGE) YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
 
 e2e: e2e-node e2e-crawler
