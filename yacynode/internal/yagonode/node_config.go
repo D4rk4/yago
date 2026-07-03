@@ -69,6 +69,7 @@ type nodeConfig struct {
 	DeclaredBirthDate time.Time
 	Crawl             crawlConfig
 	Admin             adminConfig
+	CrossOrigin       crossOriginConfig
 	DHT               dhtDistributionConfig
 }
 

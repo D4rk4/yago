@@ -62,6 +62,7 @@ func run() error {
 
 	config.Crawl = loadCrawlConfig(os.Getenv)
 	config.Admin = loadAdminConfig(os.Getenv)
+	config.CrossOrigin = loadCrossOriginConfig(os.Getenv)
 
 	client := newGuardedEgressClient(yacyegress.NewGuard(config.EgressAllowLAN))
 
@@ -110,6 +111,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure admin auth: %w", err)
 	}
+	opsHandler = wrapAdminCORS(config.CrossOrigin.AdminOrigins, opsHandler)
 
 	return serveRuntimeNode(
 		ctx,
@@ -119,7 +121,10 @@ func run() error {
 			"peer protocol",
 			buildServer(
 				config.PeerAddr,
-				logHTTPRequests(instrumentHTTP(endpoints, assembled.peerMux)),
+				wrapSearchCORS(
+					config.CrossOrigin.SearchOrigins,
+					logHTTPRequests(instrumentHTTP(endpoints, assembled.peerMux)),
+				),
 			),
 		},
 		namedServer{"ops", buildServer(config.OpsAddr, opsHandler)},

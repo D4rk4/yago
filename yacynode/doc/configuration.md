@@ -34,6 +34,8 @@ The node is configured through environment variables.
 | `YAGO_SEARCH_API_KEY` | _(empty)_ | Optional local bearer token for the Tavily-compatible `POST /search` endpoint. When set, callers must send `Authorization: Bearer <token>`. This is not an upstream Tavily API key. |
 | `YAGO_ADMIN_USER` | _(empty)_ | Administrator username. When set with `YAGO_ADMIN_PASSWORD`, the admin is provisioned on every start and those credentials are authoritative. |
 | `YAGO_ADMIN_PASSWORD` | _(empty)_ | Administrator password, stored as an Argon2id hash. Leave both admin variables empty to create the first admin with `POST /api/admin/v1/auth/setup` on first run. There is no default password. |
+| `YAGO_ADMIN_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the operations surface. Empty denies all cross-origin requests. Use `*` to echo any origin (required for a credentialed admin UI on an unknown origin, but broad). |
+| `YAGO_SEARCH_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the public search endpoints on the peer listener. Empty denies all cross-origin requests; `*` allows any origin without credentials. |
 
 ## Admin authentication
 
@@ -63,6 +65,24 @@ changes and key management), `crawl:write` (`POST /crawl`), and the reserved
 secret, and `DELETE /api/admin/v1/auth/api-keys/{id}` revokes a key. Prometheus
 can scrape `/metrics` with an `admin:read` key or a logged-in session cookie;
 otherwise bind `YACY_OPS_ADDR` to a trusted network.
+
+## Cross-origin requests and network binding
+
+Cross-origin requests are denied by default. Browser code on another origin can
+call the operations surface only when its origin is listed in
+`YAGO_ADMIN_CORS_ORIGINS`, and the public search endpoints only when its origin is
+listed in `YAGO_SEARCH_CORS_ORIGINS`. A request without an `Origin` header — every
+peer-to-peer `/yacy/*` call and any same-origin call — is never affected, so
+enabling search CORS does not change peer behavior. The admin policy is
+credentialed and echoes an allowlisted origin (a literal `*` cannot be combined
+with credentials), so cookies flow only to origins you name; the search policy is
+uncredentialed and may use `*`.
+
+The operations surface and the peer protocol listen on separate addresses, so the
+admin surface can be kept off the public network. Bind `YACY_OPS_ADDR` to loopback
+(for example `127.0.0.1:9090`) or a private interface and reach it through a
+trusted reverse proxy, while `YACY_PEER_ADDR` stays on the public interface for
+P2P. Terminate TLS at that proxy so the session cookie is marked `Secure`.
 
 ## Crawling
 

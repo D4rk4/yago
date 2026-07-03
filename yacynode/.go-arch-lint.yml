@@ -92,6 +92,8 @@ components:
     in: internal/crawlbroker/**
   adminauth:
     in: internal/adminauth/**
+  crossorigin:
+    in: internal/crossorigin/**
   compatibility:
     in: internal/compatibility/**
   yagonode:
@@ -442,6 +444,9 @@ deps:
       - memvault
     canUse:
       - crypto
+  crossorigin:
+    mayDependOn:
+      - crossorigin
   compatibility:
     mayDependOn:
       - compatibility
@@ -485,6 +490,7 @@ deps:
       - crawlresults
       - crawlbroker
       - adminauth
+      - crossorigin
       - compatibility
       - searchcore
       - searchindex

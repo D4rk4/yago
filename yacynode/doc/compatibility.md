@@ -83,6 +83,14 @@ default password. API keys are created with `POST /api/admin/v1/auth/api-keys`, 
 shown only once, and carry scopes `admin:read`, `admin:write`, `crawl:write`,
 `search:read`, or `search:raw`.
 
+Cross-origin browser requests are denied by default. Allowlist origins for the
+operations surface with `YAGO_ADMIN_CORS_ORIGINS` and for the public search
+endpoints with `YAGO_SEARCH_CORS_ORIGINS`; requests without an `Origin` header,
+including all `/yacy/*` peer traffic, are unaffected. The operations listener
+(`YACY_OPS_ADDR`) and the peer listener (`YACY_PEER_ADDR`) bind separately, so the
+admin surface can be kept on loopback behind a reverse proxy while P2P stays
+public.
+
 Carbon UI pages, richer admin APIs, full Java YaCy page parity, Solr/GSA
 compatibility, Tavily answer generation, image ranking/search, real usage
 accounting, hashed API key storage, scopes, per-key rate limits, optional upstream
