@@ -10,6 +10,7 @@ import (
 
 	"github.com/chromedp/chromedp"
 
+	"github.com/D4rk4/yago/yacycrawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yacyegress"
 )
 
@@ -96,6 +97,43 @@ func TestBrowserPageFetcherReturnsRenderedBody(t *testing.T) {
 	}
 	if string(page.Body) != "<html><body>http://example.com/</body></html>" {
 		t.Errorf("body = %q", page.Body)
+	}
+}
+
+func TestBrowserPageFetcherReportsCapturedContentType(t *testing.T) {
+	fetcher := &BrowserPageFetcher{
+		render: func(_ context.Context, rawURL string) (renderedPage, error) {
+			return renderedPage{
+				url:         rawURL,
+				content:     "<html></html>",
+				contentType: "application/xhtml+xml",
+			}, nil
+		},
+	}
+
+	page, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/"))
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if page.ContentType != "application/xhtml+xml" {
+		t.Errorf("content type = %q, want the captured type", page.ContentType)
+	}
+}
+
+func TestBrowserPageFetcherRejectsDisallowedContentType(t *testing.T) {
+	fetcher := &BrowserPageFetcher{
+		render: func(_ context.Context, rawURL string) (renderedPage, error) {
+			return renderedPage{
+				url:         rawURL,
+				content:     "%PDF-1.7 ...",
+				contentType: "application/pdf",
+			}, nil
+		},
+	}
+
+	_, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/doc.pdf"))
+	if !errors.Is(err, pagefetch.ErrPageRejected) {
+		t.Fatalf("error = %v, want ErrPageRejected", err)
 	}
 }
 

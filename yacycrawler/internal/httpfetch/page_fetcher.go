@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -60,7 +59,7 @@ func (f *PageFetcher) Fetch(
 		return pagefetch.FetchedPage{}, fmt.Errorf("read body: %w", err)
 	}
 	contentType := responseContentType(response.Header.Get("Content-Type"), body)
-	if !acceptedContentType(contentType) {
+	if !pagefetch.AllowedContentType(contentType) {
 		return pagefetch.FetchedPage{}, fmt.Errorf(
 			"content type %q: %w",
 			contentType,
@@ -103,17 +102,4 @@ func responseContentType(header string, body []byte) string {
 		return ""
 	}
 	return http.DetectContentType(body)
-}
-
-func acceptedContentType(value string) bool {
-	mediaType, _, err := mime.ParseMediaType(value)
-	if err != nil {
-		mediaType, _, _ = strings.Cut(value, ";")
-	}
-	switch strings.ToLower(strings.TrimSpace(mediaType)) {
-	case "text/html", "application/xhtml+xml":
-		return true
-	default:
-		return false
-	}
 }

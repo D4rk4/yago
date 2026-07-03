@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -13,7 +14,10 @@ import (
 	"github.com/D4rk4/yago/yacyegress"
 )
 
-const BrowserContentType = "text/html; charset=utf-8"
+const (
+	BrowserContentType    = "text/html; charset=utf-8"
+	jsDocumentContentType = "document.contentType"
+)
 
 var newChromedpTabContext = chromedp.NewContext
 
@@ -22,8 +26,9 @@ var runChromedpActions = chromedp.Run
 type pageRenderer func(ctx context.Context, rawURL string) (renderedPage, error)
 
 type renderedPage struct {
-	url     string
-	content string
+	url         string
+	content     string
+	contentType string
 }
 
 type BrowserPageFetcher struct {
@@ -67,17 +72,18 @@ func chromedpRenderer(allocCtx context.Context) pageRenderer {
 		stop := context.AfterFunc(ctx, cancel)
 		defer stop()
 
-		var content string
+		var content, contentType string
 		finalURL := rawURL
 		err := runChromedpActions(tabCtx,
 			chromedp.Navigate(rawURL),
 			chromedp.OuterHTML("html", &content, chromedp.ByQuery),
 			chromedp.Location(&finalURL),
+			chromedp.Evaluate(jsDocumentContentType, &contentType),
 		)
 		if err != nil {
 			return renderedPage{}, fmt.Errorf("chromedp run %s: %w", rawURL, err)
 		}
-		return renderedPage{url: finalURL, content: content}, nil
+		return renderedPage{url: finalURL, content: content, contentType: contentType}, nil
 	}
 }
 
@@ -94,6 +100,18 @@ func (f *BrowserPageFetcher) Fetch(
 	if err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("browser fetch %s: %w", target, err)
 	}
+	contentType := rendered.contentType
+	if strings.TrimSpace(contentType) == "" {
+		contentType = BrowserContentType
+	}
+	if !pagefetch.AllowedContentType(contentType) {
+		return pagefetch.FetchedPage{}, fmt.Errorf(
+			"browser fetch %s content type %q: %w",
+			target,
+			contentType,
+			pagefetch.ErrPageRejected,
+		)
+	}
 	body := []byte(rendered.content)
 	if f.maxBytes > 0 && int64(len(body)) > f.maxBytes {
 		body = body[:f.maxBytes]
@@ -104,7 +122,7 @@ func (f *BrowserPageFetcher) Fetch(
 	}
 	return pagefetch.FetchedPage{
 		URL:         final,
-		ContentType: BrowserContentType,
+		ContentType: contentType,
 		Body:        body,
 	}, nil
 }

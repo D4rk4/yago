@@ -1269,9 +1269,17 @@ uses a bounded HTTP fast fetch path for ordinary HTML pages, falls back to the
 browser only when the fast path rejects the page, enforces an explicit
 configurable redirect-hop limit on the HTTP fast path, applies explicit
 request, connect, TLS, and response-header timeout budgets, and checks the final
-fetched URL against the same public-web policy. Full browser request
-interception for redirect-before-fetch blocking and richer MIME policy remain
-planned.
+fetched URL against the same public-web policy. Redirect-to-private is already
+blocked on both fetch paths at dial time by the in-process egress guard
+(ADR-0013), so a public URL that redirects to a private address fails to connect
+on the HTTP path and through the browser's guarded forward proxy alike. The MIME
+allowlist is now a single shared policy (`pagefetch.AllowedContentType`, HTML and
+XHTML only) enforced on both paths: the browser fallback captures the rendered
+document's `document.contentType` and rejects non-HTML media the same way the
+HTTP path does, closing the gap where a browser-rendered PDF or image was
+indexed as if it were HTML. Full browser network-event interception of
+intermediate redirect URLs remains a planned refinement on top of the dial-time
+guard.
 
 Tasks:
 
