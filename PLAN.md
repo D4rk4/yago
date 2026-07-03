@@ -1090,6 +1090,15 @@ Acceptance:
 
 ### CRAWL-03: Crawl profile model
 
+Status: partial implementation exists. `CrawlProfile.Validate()` in the shared
+crawl contract blocks the dangerous defaults called out below - an impossible
+must-match or must-not-match URL regex, negative or unbounded crawl depth (capped
+at `MaxCrawlDepth`), a non-positive pages-per-host cap, and negative recrawl or
+delay durations - and the node crawl dispatch rejects such requests with a `400`
+before publishing. Private-network destinations are already blocked by the
+crawler fetch-safety path (CRAWL-04). The expanded expert field set below and the
+UI profile editor remain planned; fields are added as downstream consumers land.
+
 Implement profile fields comparable to YaCy advanced crawler where practical:
 
 - Start mode: `url`, `sitemap`, `sitelist`, `file`.

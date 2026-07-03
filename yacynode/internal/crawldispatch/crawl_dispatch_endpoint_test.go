@@ -166,6 +166,34 @@ func TestDispatchRejectsZeroMaxPagesPerHost(t *testing.T) {
 	}
 }
 
+func TestDispatchRejectsImpossibleRegex(t *testing.T) {
+	queue := &recordingQueue{}
+	rec := post(t, mount(t, queue), `{"seeds":["x"],"maxPagesPerHost":-1,"urlMustMatch":"("}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "urlMustMatch is not a valid") {
+		t.Fatalf("body = %q, want an impossible-regex error", rec.Body.String())
+	}
+	if queue.published {
+		t.Fatal("order with an impossible regex should not have been published")
+	}
+}
+
+func TestDispatchRejectsUnboundedDepth(t *testing.T) {
+	queue := &recordingQueue{}
+	rec := post(t, mount(t, queue), `{"seeds":["x"],"maxPagesPerHost":-1,"maxDepth":1000}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "maxDepth must not exceed") {
+		t.Fatalf("body = %q, want an unbounded-depth error", rec.Body.String())
+	}
+	if queue.published {
+		t.Fatal("order with unbounded depth should not have been published")
+	}
+}
+
 func TestDispatchRejectsBadDuration(t *testing.T) {
 	rec := post(
 		t,

@@ -49,13 +49,6 @@ func (r operatorCrawlRequest) order(
 		return yacycrawlcontract.CrawlOrder{}, fmt.Errorf("unknown crawl scope %q", r.Scope)
 	}
 
-	if r.MaxPagesPerHost != yacycrawlcontract.UnlimitedPagesPerHost && r.MaxPagesPerHost <= 0 {
-		return yacycrawlcontract.CrawlOrder{}, fmt.Errorf(
-			"maxPagesPerHost must be positive or %d for unlimited",
-			yacycrawlcontract.UnlimitedPagesPerHost,
-		)
-	}
-
 	recrawl, err := optionalDuration(r.RecrawlIfOlder)
 	if err != nil {
 		return yacycrawlcontract.CrawlOrder{}, fmt.Errorf("recrawlIfOlder: %w", err)
@@ -77,6 +70,9 @@ func (r operatorCrawlRequest) order(
 		RecrawlIfOlder:      recrawl,
 		CrawlDelay:          delay,
 	})
+	if err := profile.Validate(); err != nil {
+		return yacycrawlcontract.CrawlOrder{}, fmt.Errorf("invalid crawl profile: %w", err)
+	}
 
 	requests := make([]yacycrawlcontract.CrawlRequest, 0, len(r.Seeds))
 	for _, seed := range r.Seeds {
