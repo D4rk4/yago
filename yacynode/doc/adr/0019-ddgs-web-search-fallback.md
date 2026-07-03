@@ -36,8 +36,14 @@ optional, admin-toggled **DDGS web-search fallback**:
   `html.duckduckgo.com/html` + `lite.duckduckgo.com/lite` client with `auto`-style
   backend fallback, or a vetted third-party Go dependency that would need its own
   ADR) is chosen when TAVILY-04 is implemented.
-- Its results are tagged with source `ddgs` (a `[ddgs]` marker) so callers never
-  confuse external hits with owned local or federated hits.
+- Its results carry an internal `ddgs` provenance so external hits are never
+  confused with owned local or federated hits. The provenance is a shared
+  mechanism with surface-specific presentation: the human search surfaces (the
+  public search portal, the admin search UI, and the `/yacysearch.*` endpoints
+  they call) render it as a visible `[ddgs]` marker, while the Tavily-compatible
+  `POST /search` API strips it and returns the same results unmarked and
+  Tavily-shaped, so that surface stays a drop-in replacement for the Tavily
+  Search API. The Tavily surface is search-only and does not browse result pages.
 - Discovered URLs the node has never seen are handed to the crawler through the
   existing crawl-order queue (TAVILY-06), using a conservative, robots-respecting,
   egress-guarded profile with per-host caps and URL deduplication, so the next
@@ -52,8 +58,9 @@ guard; responses are rate-limit backed off and briefly cached.
 
 The node no longer depends on a paid, keyed external search API, and never sends a
 user query outside the node by default. When an operator opts in, misses become
-useful — both by returning `[ddgs]`-tagged results and by seeding the crawler so
-the index grows toward the operator's real query traffic.
+useful — both by returning `[ddgs]`-marked results on the human search surfaces
+(the Tavily drop-in API returns them unmarked) and by seeding the crawler so the
+index grows toward the operator's real query traffic.
 
 The costs are external: DuckDuckGo/DDGS is an unofficial, rate-limited surface with
 its own terms of service, so the provider must back off on `202 Ratelimit`, cache,

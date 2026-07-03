@@ -29,9 +29,14 @@ plan is in [PLAN.md](PLAN.md).
   [yacynode/doc/compatibility.md](yacynode/doc/compatibility.md), also served at
   `GET /api/admin/v1/compatibility`.
 - The `POST /search` and `POST /extract` endpoints are a Tavily-compatible API
-  surface served from this node's own search core. They are not the Tavily
-  service and do not call Tavily, unless an external upstream mode is explicitly
-  enabled. No upstream mode is enabled by default.
+  surface served from this node's own search core. They are not the Tavily service
+  and never call it; there is no outbound upstream Tavily provider (see
+  [ADR-0019](yacynode/doc/adr/0019-ddgs-web-search-fallback.md)). `POST /search` is
+  a drop-in Tavily Search API: it returns only Tavily-shaped fields, carries no
+  yago-specific provenance markers, and is search-only. The one optional external
+  augmentation is the admin-toggled DDGS web-search fallback, off by default; its
+  `[ddgs]` marker appears only on the human search surfaces (the public search
+  portal, the admin search UI, and `/yacysearch.*`), never on the Tavily drop-in.
 - Java YaCy administration pages (`/*_p.html`) are not cloned. The Go
   administration API and UI are the intended replacement.
 

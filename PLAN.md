@@ -354,6 +354,15 @@ Preferred stack:
 
 Rationale: the node is an appliance-like Go server. A Vite static SPA is easier to embed and serve than SSR. If Next.js is chosen because Carbon's tutorial demonstrates it, add an ADR explaining SSR/build/runtime tradeoffs.
 
+There are two distinct frontends, both Carbon-based but with different runtime
+budgets. The authenticated **admin UI** (UI-02..UI-10) is the Carbon React SPA
+above, targeting evergreen browsers. The optional **public search portal** (UI-11)
+is a separate, admin-toggleable surface on the public port, styled after
+early-2000s Yandex and progressively enhanced so it renders and searches in old
+browsers and on mobile even with JavaScript disabled — it uses Carbon design
+tokens and server-rendered HTML rather than depending on the full `@carbon/react`
+runtime. ADR-0020 records that split and the legacy-browser strategy.
+
 ---
 
 ## 3. Compatibility matrix
@@ -382,7 +391,7 @@ Implement and test these in stages:
 
 | Endpoint | Priority | Purpose | Notes |
 |---|---:|---|---|
-| `/` | P1 | Public search home | Can serve Carbon or minimal public UI. |
+| `/` | P1 | Public search home | Admin-toggleable Yandex-style public search portal on the public port (UI-11); Carbon-based, progressively enhanced for legacy browsers and mobile. Off by default. |
 | `/yacysearch.html` | P1 | YaCy-like result page | Public HTML page. |
 | `/yacysearch.json` | P0 | YaCy JSON compatibility subset | Must support `query`, `resource`, `maximumRecords`, `startRecord`, filters. |
 | `/yacysearch.rss` | P1 | OpenSearch/RSS compatibility subset | Enough for RSS/OpenSearch clients. |
@@ -954,7 +963,7 @@ Goal: make the fork usable by agents/RAG tools that expect Tavily's Search API s
 Important interpretation:
 
 - Implement an inbound Tavily-compatible API surface: `POST /search` with Tavily-like request/response JSON.
-- Do not integrate any external commercial search API; there is no outbound upstream Tavily provider. Instead, offer an optional, admin-toggled DDGS web-search fallback that triggers only on a local-plus-federated miss, tags its results `[ddgs]`, and can seed the crawler from the discovered URLs so the next identical query is answered locally. It is disabled by default and needs no API key.
+- Do not integrate any external commercial search API; there is no outbound upstream Tavily provider. Instead, offer an optional, admin-toggled DDGS web-search fallback that triggers only on a local-plus-federated miss, records a `ddgs` provenance on each fallback result, and can seed the crawler from the discovered URLs so the next identical query is answered locally. It is disabled by default and needs no API key. The `[ddgs]` marker is a presentation concern rendered only on the human search surfaces (the public and admin search UI and the `/yacysearch.*` endpoints they call); the Tavily-compatible `POST /search` API is a drop-in and returns the same fallback results unmarked and Tavily-shaped.
 - Do not require a Tavily API key for local/P2P search, and never send the user query to any external provider by default.
 
 ### TAVILY-01: Contract DTOs and validation
@@ -967,6 +976,16 @@ JSON error envelopes. Opt-in local bearer auth is implemented through
 `include_images` is requested. Scopes, generated answers, image ranking/search,
 real usage accounting, hashed key storage, rate limits, and the optional DDGS
 web-search fallback remain separate tasks.
+
+`POST /search` is a **drop-in replacement for the Tavily Search API** and stays
+maximally compatible with it: the response carries only Tavily-shaped fields and
+never yago-specific provenance markers (no `[ddgs]` tag, no owned-vs-federated
+source labels). It is search-only and does not browse or fetch result pages
+inline (that is `POST /extract`, TAVILY-05). When the optional DDGS fallback
+(TAVILY-04) is enabled and a query misses locally and across peers, this endpoint
+returns the fallback results unmarked and shaped like native Tavily results; the
+`[ddgs]` marker belongs to the human search surfaces (UI and `/yacysearch.*`),
+not here.
 
 Implement `tavilyapi` DTOs for `POST /search`.
 
@@ -1033,12 +1052,19 @@ Tasks:
 6. `include_raw_content` returns `null` unless raw content cache is enabled and entry exists.
 7. `include_answer` returns an extractive answer from top snippets when configured; otherwise return empty string with metadata warning or omit based on compatibility tests.
 8. `include_usage` returns local synthetic usage, not Tavily billing usage.
+9. When the DDGS fallback (TAVILY-04) supplies results, strip the internal `ddgs`
+   provenance before serialization so the Tavily response stays drop-in: no
+   `[ddgs]` marker and no extra source fields. The same fallback results keep
+   their `ddgs` provenance when rendered on the human search surfaces.
 
 Acceptance:
 
 - `curl -X POST localhost:<port>/search -H 'Authorization: Bearer <local-api-key>' -d '{"query":"test"}'` works.
 - No external network call occurs in local/P2P mode.
 - Tests compare response shape to Tavily docs examples without copying example content.
+- With the DDGS fallback enabled, a `POST /search` response over fallback results
+  is byte-shape-identical to an owned-result response of the same size: no
+  provenance markers leak into the Tavily surface.
 
 ### TAVILY-03: Auth for Tavily-compatible endpoint
 
@@ -1097,8 +1123,15 @@ Tasks:
 3. Invoke the provider only on a true miss: after both the local search and the
    federated peer/cache search return zero results for the request window. Never
    as a primary source and never mixed silently.
-4. Tag every fallback result with source `ddgs` so responses carry a `[ddgs]`
-   marker; owned local/federated hits keep their existing sources.
+4. Record source `ddgs` on every fallback result as an internal provenance;
+   owned local/federated hits keep their existing sources. This provenance is a
+   shared mechanism consumed by two surfaces with different presentation rules:
+   - The human search surfaces (the public search portal, the admin search UI,
+     and the `/yacysearch.*` endpoints they call) render it as a visible
+     `[ddgs]` marker so users never confuse external hits with owned index hits.
+   - The Tavily-compatible `POST /search` API (TAVILY-01) strips the provenance
+     and returns the results unmarked and Tavily-shaped, preserving drop-in
+     compatibility. The marker never appears on that surface.
 5. Route the outbound query through the in-process egress guard; enforce
    rate-limit backoff and cache provider responses (short TTL) to respect
    DuckDuckGo/DDGS limits and reduce repeat egress.
@@ -1111,8 +1144,11 @@ Acceptance:
 - Fallback is disabled by default; with it disabled, `/search` and
   `/yacysearch.json` behavior is unchanged (a miss stays a miss).
 - Tests use an httptest fake provider only; no real DuckDuckGo/DDGS call in CI.
-- With the fallback enabled, a local-plus-federated miss returns `[ddgs]`-tagged
-  results, and the rate-limit/backoff and egress-guard paths are covered.
+- With the fallback enabled, a local-plus-federated miss on the human search
+  surfaces (public portal, admin UI, `/yacysearch.*`) returns `[ddgs]`-marked
+  results, while the Tavily-compatible `POST /search` returns the same results
+  unmarked and Tavily-shaped; the rate-limit/backoff and egress-guard paths are
+  covered.
 
 ### TAVILY-06: Seed crawl from DDGS-discovered URLs
 
@@ -1679,6 +1715,51 @@ Acceptance:
 - Settings validate before save.
 - Settings that require restart are clearly marked.
 
+### UI-11: Public search portal (port 80)
+
+A separate, admin-toggleable **public** search UI served on the node's public
+HTTP port (`80` in appliance mode) — distinct from the authenticated Carbon admin
+SPA (UI-02..UI-10). It is the anonymous front door for search-portal and intranet
+deployments and is off by default (the "Public search enabled" runtime setting
+and the `YAGO_PUBLIC_SEARCH_UI_ENABLED` toggle gate it). It renders the same
+search that the admin UI and `/yacysearch.*` endpoints do, so DDGS-fallback hits
+appear here with the visible `[ddgs]` marker (TAVILY-04); the Tavily-compatible
+`POST /search` API stays a separate, unmarked drop-in surface.
+
+Design and delivery constraints:
+
+- **Look:** deliberately minimal, evoking early-2000s Yandex — a centered
+  wordmark, one prominent search box with a single search button, almost no
+  chrome above the fold, and a plain results list (title, URL, snippet, source
+  tag) below the query on the results page. No dashboard density; this is a
+  consumer search page, not an operator console.
+- **Framework:** built on IBM Carbon (design tokens and, where they degrade
+  gracefully, components) so it shares the visual language and theming of the
+  admin UI.
+- **Legacy-browser support:** the page must render and be usable in old browsers
+  as far as Carbon allows. Because `@carbon/react` targets evergreen browsers,
+  the portal is a progressively-enhanced, server-rendered surface: semantic HTML
+  plus `@carbon/styles` tokens that work without JavaScript, with interactive
+  Carbon enhancements layered on only where they degrade cleanly. Search must
+  work with a plain form GET/POST and no client JavaScript.
+- **Mobile:** responsive down to small phone widths; the search box and results
+  reflow without horizontal scrolling.
+- **Boundary:** the public portal exposes only search (and, if enabled, OpenSearch
+  description and suggestions); it never exposes admin APIs, and it honors the
+  SEC-05 privacy mode for query logging.
+- The progressive-enhancement / how-far-to-push-Carbon-for-legacy-browsers
+  decision and the public-vs-admin listener split are recorded in an ADR
+  (ADR-0020) before build.
+
+Acceptance:
+
+- With the toggle off, port 80 serves no public search UI; with it on, `/` serves
+  the Yandex-style portal and a query returns a results page.
+- The portal renders a usable search box and results with JavaScript disabled.
+- Layout is legible on a narrow mobile viewport without horizontal scrolling.
+- DDGS-fallback results show the `[ddgs]` marker on the portal; the Tavily
+  `POST /search` surface returns the same results unmarked.
+
 ---
 
 ## 11. Phase 6 - Security, privacy and abuse controls
@@ -2151,6 +2232,7 @@ Prefer environment variables for boot-critical settings and persistent settings 
 - Remote search enabled.
 - Remote crawl enabled.
 - Public search enabled.
+- Public search portal UI enabled (Yandex-style, served on the public port; UI-11).
 - Tavily-compatible endpoint enabled.
 - Raw content cache enabled.
 - Snippet retention.

@@ -21,16 +21,22 @@ UI.
   keep RWI as the exchange and DHT-interop format, and merge local results with
   federated results from reachable peers.
 - **Tavily-compatible API.** Serve a Tavily-shaped search and extract API from the
-  node's own search core. An optional, admin-toggled DDGS web-search fallback —
-  used only when local and federated search return nothing, tagged `[ddgs]`, and
-  able to seed the crawler from discovered URLs — is planned but off by default.
-  There is no outbound upstream Tavily provider.
+  node's own search core. `POST /search` is a drop-in Tavily Search API: unmarked,
+  Tavily-shaped, and search-only. An optional, admin-toggled DDGS web-search
+  fallback — used only when local and federated search return nothing, and able to
+  seed the crawler from discovered URLs — is planned but off by default. Its
+  `[ddgs]` marker is shown only on the human search surfaces (the public portal,
+  the admin search UI, and `/yacysearch.*`), never on the Tavily drop-in. There is
+  no outbound upstream Tavily provider.
 - **Crawler.** Run the crawler as a separate, optional worker that fetches pages
   under strict safety and politeness rules and streams results back to the node
   for indexing.
 - **Administration UI.** Provide a web UI for setup, search, crawler control,
   network status, and index and configuration management, built on the typed
-  admin API.
+  admin API. Separately, a public, admin-toggleable search portal — styled after
+  early-2000s Yandex and progressively enhanced to render in legacy browsers and
+  on mobile — can be exposed on the node's public port
+  (see [ADR-0020](adr/0020-public-search-portal.md)).
 - **Security and privacy.** Authenticated administration, scoped API keys,
   default-deny cross-origin and egress policy, crawler SSRF protection, and
   configurable query-logging privacy modes.

@@ -44,7 +44,7 @@ Status values:
 | --- | --- | --- | --- | --- |
 | YaCy search JSON | `/yacysearch.json` | GET | partial | Serves local full-text and DHT-selected reachable-peer search results in an upstream-like JSON shape; multi-term remote search uses YaCy index abstracts before secondary URL retrieval. |
 | YaCy search RSS | `/yacysearch.rss` | GET | partial | Serves OpenSearch-flavored RSS from the same local full-text and federated search backend. |
-| YaCy search HTML | `/yacysearch.html` | GET | partial | Serves a simple public search form and result list from the same local full-text and federated search backend. |
+| YaCy search HTML | `/yacysearch.html` | GET | partial | Serves a simple public search form and result list from the same local full-text and federated search backend. As a human search surface, it is where DDGS web-search fallback hits (when enabled) show their `[ddgs]` marker, unlike the unmarked Tavily `/search` drop-in. |
 | OpenSearch description | `/opensearchdescription.xml` | GET | implemented | Advertises HTML, RSS, JSON suggestion, and XML suggestion URLs. |
 | JSON suggestions | `/suggest.json` | GET | partial | Serves suggestions from bounded in-memory recent queries. |
 | XML suggestions | `/suggest.xml` | GET | partial | Serves YaCy-compatible `SearchSuggestion` XML from the same recent-query source. |
@@ -56,7 +56,7 @@ Status values:
 
 | Surface | Path | Methods | Status | Behavior |
 | --- | --- | --- | --- | --- |
-| Tavily-compatible search | `/search` | POST | partial | Serves a Tavily-like response over the shared search core; accepts current search contract fields, ignores unknown fields for forward compatibility, optionally requires `Authorization: Bearer <YAGO_SEARCH_API_KEY>`, returns request IDs and JSON error envelopes, returns stored page image metadata when `include_images` is requested, uses local full-text search for basic/fast depths, and includes DHT-selected reachable peer search for `search_depth=advanced`. |
+| Tavily-compatible search | `/search` | POST | partial | Serves a Tavily-like response over the shared search core; accepts current search contract fields, ignores unknown fields for forward compatibility, optionally requires `Authorization: Bearer <YAGO_SEARCH_API_KEY>`, returns request IDs and JSON error envelopes, returns stored page image metadata when `include_images` is requested, uses local full-text search for basic/fast depths, and includes DHT-selected reachable peer search for `search_depth=advanced`. This is a drop-in Tavily surface: responses carry only Tavily-shaped fields and no yago-specific provenance markers. When the optional DDGS web-search fallback is enabled, its results are returned here unmarked (search-only, no page browsing); the `[ddgs]` marker appears only on the human search surfaces. |
 | Tavily-compatible extract | `/extract` | POST | partial | Returns Tavily-like extract results for URLs already in the document store; accepts `urls` as a string or array plus `extract_depth`, `format`, `include_images`, and `include_favicon`, optionally requires `Authorization: Bearer <YAGO_SEARCH_API_KEY>`, and returns request IDs and JSON error envelopes. Fetch-on-extract is disabled, so URLs absent from the store return controlled `failed_results` entries with no private-network fetch. |
 
 ## Admin And Operations
