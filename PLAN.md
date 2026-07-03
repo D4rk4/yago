@@ -1321,32 +1321,57 @@ Acceptance:
 
 ### CRAWL-06: Sitemap and sitelist support
 
-Status: partial implementation exists. Local crawl dispatch accepts `startMode`
-values `url`, `sitemap`, and `sitelist`. The crawler fetches explicit sitemap
-and sitelist seeds through the same proxied public-web admission path used for
-page fetches, parses XML `urlset` documents, XML `sitemapindex` documents, and
-plain text sitelists, carries sitemap `lastmod` as a crawl request hint, and
-imports at most `YACYCRAWLER_SITEMAP_URL_LIMIT` URLs per seed before frontier
-admission. Robots.txt sitemap discovery, persistent frontier scheduling from
-`lastmod`, and richer recrawl policy remain planned.
+Status: acceptance met. Local crawl dispatch accepts `startMode` values `url`,
+`sitemap`, `sitelist`, and `robots`. The crawler fetches explicit sitemap and
+sitelist seeds through the same proxied public-web admission path used for page
+fetches, parses XML `urlset` documents, XML `sitemapindex` documents, and plain
+text sitelists, carries sitemap `lastmod` as a crawl request hint, and imports at
+most `YACYCRAWLER_SITEMAP_URL_LIMIT` URLs per seed before frontier admission. A
+`robots` start fetches the seed host's `robots.txt`, extracts its `Sitemap:`
+directives (`sitemap.ParseRobotsSitemaps`), and expands them through the same
+bounded sitemap pipeline, failing open on a missing or unreadable file. Feeding
+`lastmod` into a persistent-frontier recrawl scheduler is a distinct node-side
+subsystem tracked as CRAWL-09.
 
 Tasks:
 
-1. Fetch and parse XML sitemaps. Implemented for explicit `sitemap` starts.
-2. Support sitemap indexes. Implemented for bounded recursive expansion.
-3. Respect lastmod as recrawl hint. Partial: carried on expanded requests.
-4. Support plain text sitelist files. Implemented for explicit `sitelist` starts.
-5. Bound number of URLs imported from sitemap/sitelist. Implemented through
+1. Fetch and parse XML sitemaps. Done for explicit `sitemap` starts.
+2. Support sitemap indexes. Done for bounded recursive expansion.
+3. Respect lastmod as recrawl hint. Done: carried on expanded requests
+   (`CrawlRequest.LastModified`); consumption by a recrawl scheduler is CRAWL-09.
+4. Support plain text sitelist files. Done for explicit `sitelist` starts.
+5. Bound number of URLs imported from sitemap/sitelist. Done through
    `YACYCRAWLER_SITEMAP_URL_LIMIT`.
-6. Discover sitemap URLs from robots.txt where allowed by profile.
-7. Feed `lastmod` into persistent frontier recrawl scheduling.
+6. Discover sitemap URLs from robots.txt. Done for `robots` starts.
+7. Feed `lastmod` into persistent frontier recrawl scheduling. Deferred to
+   CRAWL-09 (persistent frontier is a separate node-side subsystem).
 
 Acceptance:
 
 - Tests cover sitemap URL sets, sitemap indexes, invalid XML, huge sitemap
   truncation, fetch failures, bad expanded URLs, duplicate/capped sitemap files,
-  invalid seed URLs, and sitelist expansion.
-- Sitelist mode creates independent roots.
+  invalid seed URLs, sitelist expansion, and robots.txt sitemap discovery
+  (including fail-open on a missing file). Met.
+- Sitelist mode creates independent roots. Met.
+
+### CRAWL-09: Persistent frontier and recrawl scheduling
+
+Split out of CRAWL-06. The crawler carries sitemap/robots `lastmod` onto
+`CrawlRequest.LastModified`, but no component consumes it for recrawl decisions
+yet; the crawler frontier is in-memory per run.
+
+Tasks:
+
+1. Add a durable, node-side frontier that records per-URL last-fetch time and
+   next-eligible-recrawl time.
+2. Feed sitemap `lastmod` and the profile `RecrawlIfOlder` into the recrawl
+   schedule so unchanged pages are not refetched before they are due.
+3. Survive node and crawler restarts without losing scheduled recrawls.
+
+Acceptance:
+
+- A page with a future `lastmod`-derived due time is not re-dispatched early.
+- Scheduled recrawls survive a restart.
 
 ### CRAWL-07: Crawler worker hardening
 
