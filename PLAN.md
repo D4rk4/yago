@@ -1068,11 +1068,20 @@ Acceptance:
 
 ### TAVILY-03: Auth for Tavily-compatible endpoint
 
-Status: partial implementation exists. When `YAGO_SEARCH_API_KEY` is set,
-`POST /search` requires `Authorization: Bearer <token>` and returns a stable
-JSON `unauthorized` envelope with `WWW-Authenticate: Bearer` on failure. When
-the variable is empty, `/search` remains public. Scopes, hashed key storage,
-per-key rate limits, and audit events remain planned.
+Status: acceptance met. Two auth modes back the Tavily surface. The legacy
+static mode (`YAGO_SEARCH_API_KEY`) keeps a single bearer token; the scoped mode
+(`YAGO_SEARCH_REQUIRE_API_KEY=true`) routes `POST /search` and `POST /extract`
+through the admin auth service's vault-backed, hashed API-key store via a
+bearer-only `adminauth.APIKeyAuthorizer` (never a session cookie). The admin
+service is now provisioned once and shared, so keys minted on the operations
+surface authenticate on the public surface with the same per-key rate limiter and
+audit observer. `/search` needs `search:read`, upgraded to `search:raw` when the
+request asks for raw content; `/extract` needs `search:raw`. Missing or malformed
+credentials return a Tavily-shaped `401` with `WWW-Authenticate: Bearer`,
+insufficient scope returns `403`, and a throttled key returns `429`. When neither
+mode is configured the surface stays public. API keys are hashed at rest and shown
+once at creation; auth headers are never logged. The `search:admin` scope and a
+public-mode strict rate limit remain planned; see the notes below.
 
 Tasks:
 

@@ -49,16 +49,11 @@ func testOpsMux() *http.ServeMux {
 
 func TestGuardAdminSurfaceGatesAndBootstraps(t *testing.T) {
 	config := nodeConfig{Admin: adminConfig{Username: "admin", Password: "pw"}}
-	handler, err := guardAdminSurface(
-		context.Background(),
-		config,
-		openTestVault(t),
-		nil,
-		testOpsMux(),
-	)
+	service, err := provisionAdminAuth(context.Background(), config, openTestVault(t), nil)
 	if err != nil {
-		t.Fatalf("guardAdminSurface: %v", err)
+		t.Fatalf("provisionAdminAuth: %v", err)
 	}
+	handler := guardAdminSurface(service, testOpsMux())
 
 	if code := adminRequestCode(t, handler, http.MethodGet, pathHealth, ""); code != http.StatusOK {
 		t.Fatalf("%s = %d, want 200 (exempt)", pathHealth, code)
@@ -84,36 +79,34 @@ func TestGuardAdminSurfaceGatesAndBootstraps(t *testing.T) {
 	}
 }
 
-func TestGuardAdminSurfaceSurfacesServiceError(t *testing.T) {
+func TestProvisionAdminAuthSurfacesServiceError(t *testing.T) {
 	storage := openTestVault(t)
 	if _, err := adminauth.New(storage, adminauth.Config{}); err != nil {
 		t.Fatalf("pre-register admin auth: %v", err)
 	}
-	if _, err := guardAdminSurface(
+	if _, err := provisionAdminAuth(
 		context.Background(),
 		nodeConfig{},
 		storage,
 		nil,
-		testOpsMux(),
 	); err == nil {
-		t.Fatal("guardAdminSurface should fail when the service cannot be built")
+		t.Fatal("provisionAdminAuth should fail when the service cannot be built")
 	}
 }
 
-func TestGuardAdminSurfaceSurfacesBootstrapError(t *testing.T) {
+func TestProvisionAdminAuthSurfacesBootstrapError(t *testing.T) {
 	storage, err := vault.New(failUpdateEngine{})
 	if err != nil {
 		t.Fatalf("vault.New: %v", err)
 	}
 	config := nodeConfig{Admin: adminConfig{Username: "admin", Password: "pw"}}
-	if _, err := guardAdminSurface(
+	if _, err := provisionAdminAuth(
 		context.Background(),
 		config,
 		storage,
 		nil,
-		testOpsMux(),
 	); err == nil {
-		t.Fatal("guardAdminSurface should surface a bootstrap error")
+		t.Fatal("provisionAdminAuth should surface a bootstrap error")
 	}
 }
 

@@ -96,15 +96,8 @@ func (e extractEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	if !e.access.Allows(r) {
-		w.Header().Set("WWW-Authenticate", "Bearer")
-		writeError(
-			w,
-			http.StatusUnauthorized,
-			"unauthorized",
-			"missing or invalid bearer token",
-			id,
-		)
+	if decision := e.access.authorize(r, ScopeRaw); decision != DecisionAllow {
+		writeAuthDecision(w, decision, id)
 
 		return
 	}

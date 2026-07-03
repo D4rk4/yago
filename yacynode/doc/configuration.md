@@ -32,7 +32,8 @@ The node is configured through environment variables.
 | `YACY_STORAGE_QUOTA` | `1GB` | Storage quota, as a human-readable size (e.g. `512MB`, `1GB`, `20GB`). |
 | `YACY_EGRESS_ALLOW_PRIVATE_NETWORKS` | `false` | Allow outbound connections to RFC 1918 and unique-local addresses. Enable only for LAN or private-network deployments; loopback, link-local, and reserved ranges stay blocked. |
 | `YACY_EGRESS_ALLOW_CIDRS` | _(empty)_ | Comma-separated private CIDRs the egress guard admits even when `YACY_EGRESS_ALLOW_PRIVATE_NETWORKS` is false, so intranet mode reaches only named ranges instead of all private space. Only relaxes the private check: loopback, link-local (including the cloud metadata range), and reserved ranges stay blocked, so a non-private entry never grants access to them. |
-| `YAGO_SEARCH_API_KEY` | _(empty)_ | Optional local bearer token for the Tavily-compatible `POST /search` endpoint. When set, callers must send `Authorization: Bearer <token>`. This is a local key for the node's own endpoint, not a key for any external search service; the node uses no keyed external search API. |
+| `YAGO_SEARCH_API_KEY` | _(empty)_ | Optional legacy static bearer token for the Tavily-compatible `POST /search` and `POST /extract` endpoints. When set, callers must send `Authorization: Bearer <token>`. This is a local key for the node's own endpoint, not a key for any external search service; the node uses no keyed external search API. Ignored when `YAGO_SEARCH_REQUIRE_API_KEY` is on. |
+| `YAGO_SEARCH_REQUIRE_API_KEY` | `false` | Require scoped API keys on the Tavily-compatible surface. When on, `POST /search` and `POST /extract` accept only admin-minted API keys (`Authorization: Bearer <key>`): `/search` needs `search:read` (or `search:raw` for raw content) and `/extract` needs `search:raw`. Missing/invalid keys return `401`, insufficient scope `403`, and rate-limited keys `429`. Takes precedence over `YAGO_SEARCH_API_KEY`; when both are unset the surface is public. |
 | `YAGO_ADMIN_USER` | _(empty)_ | Administrator username. When set with `YAGO_ADMIN_PASSWORD`, the admin is provisioned on every start and those credentials are authoritative. |
 | `YAGO_ADMIN_PASSWORD` | _(empty)_ | Administrator password, stored as an Argon2id hash. Leave both admin variables empty to create the first admin with `POST /api/admin/v1/auth/setup` on first run. There is no default password. |
 | `YAGO_ADMIN_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the operations surface. Empty denies all cross-origin requests. Use `*` to echo any origin (required for a credentialed admin UI on an unknown origin, but broad). |
@@ -73,8 +74,9 @@ only its SHA-256 hash alongside a public identifier. Send the key as
 `Authorization: Bearer <key>` instead of a cookie; it is checked against the scope
 the path requires, is rate limited per key, and needs no CSRF token. Scopes are
 `admin:read` (read-only operations such as `/metrics`), `admin:write` (state
-changes and key management), `crawl:write` (`POST /crawl`), and the reserved
-`search:read` and `search:raw` for the public search API. `GET
+changes and key management), `crawl:write` (`POST /crawl`), and `search:read` /
+`search:raw`, which gate the public Tavily-compatible search API when
+`YAGO_SEARCH_REQUIRE_API_KEY` is on. `GET
 /api/admin/v1/auth/api-keys` lists key metadata and last-used time without the
 secret, and `DELETE /api/admin/v1/auth/api-keys/{id}` revokes a key. Prometheus
 can scrape `/metrics` with an `admin:read` key or a logged-in session cookie;

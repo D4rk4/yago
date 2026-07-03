@@ -17,7 +17,9 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/peerannouncement"
 	"github.com/D4rk4/yago/yacynode/internal/peerbirth"
 	"github.com/D4rk4/yago/yacynode/internal/peernews"
+	"github.com/D4rk4/yago/yacynode/internal/peerroster"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
+	"github.com/D4rk4/yago/yacynode/internal/tavilyapi"
 	"github.com/D4rk4/yago/yacynode/internal/transfertally"
 	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
 	"github.com/D4rk4/yago/yacynode/internal/vault"
@@ -35,9 +37,10 @@ type node struct {
 }
 
 type nodeTelemetry struct {
-	dhtOutbound dhtexchange.DistributionObserver
-	dhtInbound  *metrics.DHTInboundMetrics
-	peer        *metrics.PeerMetrics
+	dhtOutbound      dhtexchange.DistributionObserver
+	dhtInbound       *metrics.DHTInboundMetrics
+	peer             *metrics.PeerMetrics
+	searchAuthorizer tavilyapi.ScopeAuthorizer
 }
 
 var (
@@ -111,40 +114,80 @@ func assembleNode(
 	if err != nil {
 		return node{}, err
 	}
-	runtime, err := buildRuntimeCrawl(config.Crawl, identity, storage, vault)
+	surfaces, err := assembleNodeSurfaces(assembleSurfacesInput{
+		ctx:       ctx,
+		config:    config,
+		vault:     vault,
+		client:    client,
+		mux:       mux,
+		storage:   storage,
+		roster:    roster,
+		identity:  identity,
+		report:    report,
+		tally:     tally,
+		telemetry: telemetry,
+	})
 	if err != nil {
 		return node{}, err
 	}
-	mountNodePublicSearch(mux, publicSearchAssembly{
-		storage:      storage,
-		roster:       roster,
-		identity:     identity,
-		dht:          config.DHT,
-		client:       client,
-		searchAPIKey: config.SearchAPIKey,
-		webFallback:  config.WebFallback,
-		seedQueue:    crawlOrderQueue(runtime),
-	})
-
-	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
-		ctx:         ctx,
-		config:      config,
-		storage:     vault,
-		nodeStorage: storage,
-		report:      report,
-		roster:      roster,
-		client:      client,
-		observer:    tallyOutboundObserver{next: telemetry.dhtOutbound, tally: tally},
-	})
 
 	return newAssembledNode(nodeParts{
 		mux:       mux,
 		storage:   storage,
 		announcer: exchange.announcer,
-		crawl:     runtime,
-		dht:       dht,
+		crawl:     surfaces.crawl,
+		dht:       surfaces.dht,
 		vault:     vault,
 	}), nil
+}
+
+type assembleSurfacesInput struct {
+	ctx       context.Context
+	config    nodeConfig
+	vault     *vault.Vault
+	client    *http.Client
+	mux       *http.ServeMux
+	storage   nodeStorage
+	roster    peerroster.Roster
+	identity  nodeidentity.Identity
+	report    nodestatus.Report
+	tally     *transfertally.Tally
+	telemetry nodeTelemetry
+}
+
+type nodeSurfaces struct {
+	crawl crawlProcess
+	dht   dhtOutboundProcess
+}
+
+func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
+	runtime, err := buildRuntimeCrawl(in.config.Crawl, in.identity, in.storage, in.vault)
+	if err != nil {
+		return nodeSurfaces{}, err
+	}
+	mountNodePublicSearch(in.mux, publicSearchAssembly{
+		storage:          in.storage,
+		roster:           in.roster,
+		identity:         in.identity,
+		dht:              in.config.DHT,
+		client:           in.client,
+		searchAPIKey:     in.config.SearchAPIKey,
+		searchAuthorizer: in.telemetry.searchAuthorizer,
+		webFallback:      in.config.WebFallback,
+		seedQueue:        crawlOrderQueue(runtime),
+	})
+	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
+		ctx:         in.ctx,
+		config:      in.config,
+		storage:     in.vault,
+		nodeStorage: in.storage,
+		report:      in.report,
+		roster:      in.roster,
+		client:      in.client,
+		observer:    tallyOutboundObserver{next: in.telemetry.dhtOutbound, tally: in.tally},
+	})
+
+	return nodeSurfaces{crawl: runtime, dht: dht}, nil
 }
 
 type nodeParts struct {

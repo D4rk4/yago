@@ -85,15 +85,21 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	authService, err := provisionAdminAuth(ctx, config, vault, authObserver)
+	if err != nil {
+		return fmt.Errorf("configure admin auth: %w", err)
+	}
+
 	assembled, err := assembleRuntimeNode(
 		ctx,
 		config,
 		vault,
 		client,
 		nodeTelemetry{
-			dhtOutbound: dhtOutboundMetrics,
-			dhtInbound:  dhtInboundMetrics,
-			peer:        peerMetrics,
+			dhtOutbound:      dhtOutboundMetrics,
+			dhtInbound:       dhtInboundMetrics,
+			peer:             peerMetrics,
+			searchAuthorizer: searchScopeAuthorizerFor(config, authService),
 		},
 	)
 	if err != nil {
@@ -101,12 +107,10 @@ func run() error {
 	}
 
 	opsMux := buildOpsMux(endpoints, assembled, eventRecorder)
-
-	opsHandler, err := guardAdminSurface(ctx, config, vault, authObserver, opsMux)
-	if err != nil {
-		return fmt.Errorf("configure admin auth: %w", err)
-	}
-	opsHandler = wrapAdminCORS(config.CrossOrigin.AdminOrigins, opsHandler)
+	opsHandler := wrapAdminCORS(
+		config.CrossOrigin.AdminOrigins,
+		guardAdminSurface(authService, opsMux),
+	)
 
 	return serveRuntimeNode(
 		ctx,

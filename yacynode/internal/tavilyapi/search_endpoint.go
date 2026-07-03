@@ -3,7 +3,6 @@ package tavilyapi
 import (
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,6 +35,7 @@ type searchEndpoint struct {
 
 type SearchAccessPolicy struct {
 	BearerToken string
+	Authorizer  ScopeAuthorizer
 }
 
 type SearchRequest struct {
@@ -143,17 +143,6 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", id)
 		return
 	}
-	if !e.access.Allows(r) {
-		w.Header().Set("WWW-Authenticate", "Bearer")
-		writeError(
-			w,
-			http.StatusUnauthorized,
-			"unauthorized",
-			"missing or invalid bearer token",
-			id,
-		)
-		return
-	}
 
 	var req SearchRequest
 	decoder := json.NewDecoder(r.Body)
@@ -163,6 +152,10 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			message = err.Error()
 		}
 		writeError(w, http.StatusBadRequest, "invalid_search_request", message, id)
+		return
+	}
+	if decision := e.access.authorize(r, searchScope(req)); decision != DecisionAllow {
+		writeAuthDecision(w, decision, id)
 		return
 	}
 
@@ -184,17 +177,12 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-func (p SearchAccessPolicy) Allows(r *http.Request) bool {
-	token := strings.TrimSpace(p.BearerToken)
-	if token == "" {
-		return true
-	}
-	got, ok := bearerToken(r.Header.Get("Authorization"))
-	if !ok {
-		return false
+func searchScope(req SearchRequest) SearchScope {
+	if req.IncludeRawContent.Enabled() {
+		return ScopeRaw
 	}
 
-	return subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
+	return ScopeRead
 }
 
 func bearerToken(header string) (string, bool) {

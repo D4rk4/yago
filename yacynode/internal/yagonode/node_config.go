@@ -16,23 +16,24 @@ import (
 )
 
 const (
-	envPeerHash          = "YACY_PEER_HASH"
-	envPeerName          = "YACY_PEER_NAME"
-	envNetworkName       = "YACY_NETWORK_NAME"
-	envPeerAddr          = "YACY_PEER_ADDR"
-	envOpsAddr           = "YACY_OPS_ADDR"
-	envAdvertiseHost     = "YACY_ADVERTISE_HOST"
-	envAdvertisePort     = "YACY_ADVERTISE_PORT"
-	envPublicSelfTestURL = "YACY_PUBLIC_SELF_TEST_URL"
-	envDataDir           = "YACY_DATA_DIR"
-	envStorageQuota      = "YACY_STORAGE_QUOTA"
-	envTrustedProxies    = "YACY_TRUSTED_PROXIES"
-	envEgressAllowLAN    = "YACY_EGRESS_ALLOW_PRIVATE_NETWORKS"
-	envSeedlistURLs      = "YACY_SEEDLIST_URLS"
-	envAnnounceInterval  = "YACY_ANNOUNCE_INTERVAL"
-	envGreetsPerCycle    = "YACY_GREETS_PER_CYCLE"
-	envSearchAccessToken = "YAGO_SEARCH_API" + "_KEY"
-	envPeerBirthDate     = "YACY_PEER_BIRTH_DATE"
+	envPeerHash            = "YACY_PEER_HASH"
+	envPeerName            = "YACY_PEER_NAME"
+	envNetworkName         = "YACY_NETWORK_NAME"
+	envPeerAddr            = "YACY_PEER_ADDR"
+	envOpsAddr             = "YACY_OPS_ADDR"
+	envAdvertiseHost       = "YACY_ADVERTISE_HOST"
+	envAdvertisePort       = "YACY_ADVERTISE_PORT"
+	envPublicSelfTestURL   = "YACY_PUBLIC_SELF_TEST_URL"
+	envDataDir             = "YACY_DATA_DIR"
+	envStorageQuota        = "YACY_STORAGE_QUOTA"
+	envTrustedProxies      = "YACY_TRUSTED_PROXIES"
+	envEgressAllowLAN      = "YACY_EGRESS_ALLOW_PRIVATE_NETWORKS"
+	envSeedlistURLs        = "YACY_SEEDLIST_URLS"
+	envAnnounceInterval    = "YACY_ANNOUNCE_INTERVAL"
+	envGreetsPerCycle      = "YACY_GREETS_PER_CYCLE"
+	envSearchAccessToken   = "YAGO_SEARCH_API" + "_KEY"
+	envSearchRequireAPIKey = "YAGO_SEARCH_REQUIRE_API" + "_KEY"
+	envPeerBirthDate       = "YACY_PEER_BIRTH_DATE"
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"
@@ -48,32 +49,33 @@ const (
 )
 
 type nodeConfig struct {
-	Hash               yacymodel.Hash
-	NetworkName        string
-	Name               string
-	DataDir            string
-	AdvertiseHost      string
-	AdvertisePort      int
-	PublicSelfTestURL  *url.URL
-	Flags              yacymodel.Flags
-	PeerAddr           string
-	OpsAddr            string
-	StoragePath        string
-	SearchIndexPath    string
-	StorageQuotaByte   int64
-	TrustedProxies     []*net.IPNet
-	EgressAllowLAN     bool
-	EgressAllowedCIDRs []netip.Prefix
-	SeedlistURLs       []string
-	AnnounceInterval   time.Duration
-	GreetsPerCycle     int
-	SearchAPIKey       string
-	DeclaredBirthDate  time.Time
-	Crawl              crawlConfig
-	Admin              adminConfig
-	CrossOrigin        crossOriginConfig
-	DHT                dhtDistributionConfig
-	WebFallback        webFallbackConfig
+	Hash                yacymodel.Hash
+	NetworkName         string
+	Name                string
+	DataDir             string
+	AdvertiseHost       string
+	AdvertisePort       int
+	PublicSelfTestURL   *url.URL
+	Flags               yacymodel.Flags
+	PeerAddr            string
+	OpsAddr             string
+	StoragePath         string
+	SearchIndexPath     string
+	StorageQuotaByte    int64
+	TrustedProxies      []*net.IPNet
+	EgressAllowLAN      bool
+	EgressAllowedCIDRs  []netip.Prefix
+	SeedlistURLs        []string
+	AnnounceInterval    time.Duration
+	GreetsPerCycle      int
+	SearchAPIKey        string
+	SearchRequireAPIKey bool
+	DeclaredBirthDate   time.Time
+	Crawl               crawlConfig
+	Admin               adminConfig
+	CrossOrigin         crossOriginConfig
+	DHT                 dhtDistributionConfig
+	WebFallback         webFallbackConfig
 }
 
 type configuredNodeData struct {
@@ -127,55 +129,61 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		return nodeConfig{}, err
 	}
 
-	dht, webFallback, declaredBirthDate, err := loadDerivedConfigs(getenv)
+	dht, webFallback, declaredBirthDate, searchRequireAPIKey, err := loadDerivedConfigs(getenv)
 	if err != nil {
 		return nodeConfig{}, err
 	}
 
 	return nodeConfig{
-		Hash:               hash,
-		NetworkName:        envWithDefault(getenv, envNetworkName, yacyproto.DefaultNetwork),
-		Name:               name,
-		DataDir:            data.directory,
-		AdvertiseHost:      host,
-		AdvertisePort:      port,
-		PublicSelfTestURL:  selfTestURL,
-		Flags:              seniorFlags(),
-		PeerAddr:           peerAddr,
-		OpsAddr:            envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
-		StoragePath:        data.databasePath,
-		SearchIndexPath:    data.searchIndexPath,
-		StorageQuotaByte:   data.quotaByte,
-		TrustedProxies:     proxies,
-		EgressAllowLAN:     egressAllowLAN,
-		EgressAllowedCIDRs: egressAllowedCIDRs,
-		SeedlistURLs:       seedlistURLs,
-		AnnounceInterval:   announceInterval,
-		GreetsPerCycle:     greetsPerCycle,
-		SearchAPIKey:       strings.TrimSpace(getenv(envSearchAccessToken)),
-		DeclaredBirthDate:  declaredBirthDate,
-		DHT:                dht,
-		WebFallback:        webFallback,
+		Hash:                hash,
+		NetworkName:         envWithDefault(getenv, envNetworkName, yacyproto.DefaultNetwork),
+		Name:                name,
+		DataDir:             data.directory,
+		AdvertiseHost:       host,
+		AdvertisePort:       port,
+		PublicSelfTestURL:   selfTestURL,
+		Flags:               seniorFlags(),
+		PeerAddr:            peerAddr,
+		OpsAddr:             envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
+		StoragePath:         data.databasePath,
+		SearchIndexPath:     data.searchIndexPath,
+		StorageQuotaByte:    data.quotaByte,
+		TrustedProxies:      proxies,
+		EgressAllowLAN:      egressAllowLAN,
+		EgressAllowedCIDRs:  egressAllowedCIDRs,
+		SeedlistURLs:        seedlistURLs,
+		AnnounceInterval:    announceInterval,
+		GreetsPerCycle:      greetsPerCycle,
+		SearchAPIKey:        strings.TrimSpace(getenv(envSearchAccessToken)),
+		SearchRequireAPIKey: searchRequireAPIKey,
+		DeclaredBirthDate:   declaredBirthDate,
+		DHT:                 dht,
+		WebFallback:         webFallback,
 	}, nil
 }
 
 func loadDerivedConfigs(getenv func(string) string) (
-	dhtDistributionConfig, webFallbackConfig, time.Time, error,
+	dhtDistributionConfig, webFallbackConfig, time.Time, bool, error,
 ) {
 	dht, err := loadDHTDistributionConfig(getenv)
 	if err != nil {
-		return dhtDistributionConfig{}, webFallbackConfig{}, time.Time{}, err
+		return dhtDistributionConfig{}, webFallbackConfig{}, time.Time{}, false, err
 	}
 	webFallback, err := loadWebFallbackConfig(getenv)
 	if err != nil {
-		return dhtDistributionConfig{}, webFallbackConfig{}, time.Time{}, err
+		return dhtDistributionConfig{}, webFallbackConfig{}, time.Time{}, false, err
 	}
 	birthDate, err := declaredBirthDate(getenv)
 	if err != nil {
-		return dhtDistributionConfig{}, webFallbackConfig{}, time.Time{}, err
+		return dhtDistributionConfig{}, webFallbackConfig{}, time.Time{}, false, err
+	}
+	requireAPIKey, err := boolEnv(getenv, envSearchRequireAPIKey, false)
+	if err != nil {
+		return dhtDistributionConfig{}, webFallbackConfig{}, time.Time{}, false,
+			fmt.Errorf("%s: %w", envSearchRequireAPIKey, err)
 	}
 
-	return dht, webFallback, birthDate, nil
+	return dht, webFallback, birthDate, requireAPIKey, nil
 }
 
 func egressConfig(getenv func(string) string) ([]*net.IPNet, bool, []netip.Prefix, error) {

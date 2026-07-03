@@ -23,6 +23,7 @@ type publicSearchAssembly struct {
 	client               *http.Client
 	dhtSearchTargetIndex func(int) (int, error)
 	searchAPIKey         string
+	searchAuthorizer     tavilyapi.ScopeAuthorizer
 	webFallback          webFallbackConfig
 	seedQueue            crawldispatch.CrawlOrderQueue
 }
@@ -50,18 +51,21 @@ func mountNodePublicSearch(
 		RandomTargetIndex:  assembly.dhtSearchTargetIndex,
 	})
 	search := withWebFallback(searchcore.NewFederatedSearcher(local, remote), assembly)
+	access := searchAccessPolicy(assembly)
 	yacysearch.Mount(mux, search)
-	tavilyapi.Mount(
-		mux,
-		search,
-		assembly.storage.documentDirectory,
-		tavilyapi.SearchAccessPolicy{BearerToken: assembly.searchAPIKey},
-	)
-	tavilyapi.MountExtract(
-		mux,
-		assembly.storage.documentDirectory,
-		tavilyapi.SearchAccessPolicy{BearerToken: assembly.searchAPIKey},
-	)
+	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
+	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access)
+}
+
+// searchAccessPolicy prefers scoped API-key auth when the operator requires it,
+// falling back to the legacy static bearer token (or public access when neither
+// is configured).
+func searchAccessPolicy(assembly publicSearchAssembly) tavilyapi.SearchAccessPolicy {
+	if assembly.searchAuthorizer != nil {
+		return tavilyapi.SearchAccessPolicy{Authorizer: assembly.searchAuthorizer}
+	}
+
+	return tavilyapi.SearchAccessPolicy{BearerToken: assembly.searchAPIKey}
 }
 
 // withWebFallback wraps the searcher with the optional DDGS web-search fallback.
