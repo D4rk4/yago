@@ -66,6 +66,7 @@ func openNodeStorage(vault *vault.Vault, searchIndexPath string) (nodeStorage, e
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("search index: %w", err)
 	}
+	searchIndex = searchindex.NewCachedSearchIndex(searchIndex, 0)
 
 	staleness, err := openStalenessRanking(vault)
 	if err != nil {
