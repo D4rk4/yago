@@ -54,6 +54,22 @@ func (f *fakeExchange) SubmitIngest(
 	return &crawlrpc.IngestAck{}, nil
 }
 
+func (f *fakeExchange) AckOrder(
+	context.Context,
+	*crawlrpc.OrderAck,
+	...grpc.CallOption,
+) (*crawlrpc.OrderAckResult, error) {
+	return &crawlrpc.OrderAckResult{}, nil
+}
+
+func (f *fakeExchange) Heartbeat(
+	context.Context,
+	*crawlrpc.WorkerHeartbeat,
+	...grpc.CallOption,
+) (*crawlrpc.WorkerHeartbeatResult, error) {
+	return &crawlrpc.WorkerHeartbeatResult{}, nil
+}
+
 type fakeOrderClientStream struct {
 	grpc.ClientStream
 	ctx    context.Context

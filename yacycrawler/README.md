@@ -37,7 +37,11 @@ to the crawler, the crawler fetches pages, builds document/RWI/URL metadata
 artifacts, and submits ingest batches back to the node over the same connection.
 Multiple crawler instances can each stream orders from the node to load-balance,
 and the node's blocking ingest call applies backpressure when it
-falls behind. Document ingest includes the fetched URL and any resolved
+falls behind. Each order is leased rather than handed off: the crawler acks a
+finished order, naks a cancelled one back to the node for redelivery, and
+heartbeats its in-flight leases, so an order held by a worker that crashes or
+disconnects is reclaimed by the node and retried on another worker. Because an
+order can therefore be delivered more than once, ingest is idempotent per URL. Document ingest includes the fetched URL and any resolved
 `rel=canonical` URL found in the page, plus page-provided description
 metadata and bounded image URL/alt metadata when available. Links marked
 `rel=nofollow` are not submitted for frontier expansion or local outlink

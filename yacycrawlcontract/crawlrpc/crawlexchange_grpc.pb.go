@@ -20,6 +20,8 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	CrawlExchange_StreamOrders_FullMethodName = "/yacycrawl.v1.CrawlExchange/StreamOrders"
+	CrawlExchange_AckOrder_FullMethodName     = "/yacycrawl.v1.CrawlExchange/AckOrder"
+	CrawlExchange_Heartbeat_FullMethodName    = "/yacycrawl.v1.CrawlExchange/Heartbeat"
 	CrawlExchange_SubmitIngest_FullMethodName = "/yacycrawl.v1.CrawlExchange/SubmitIngest"
 )
 
@@ -34,9 +36,16 @@ const (
 // service is stable while the crawl data model stays authoritative in Go.
 type CrawlExchangeClient interface {
 	// StreamOrders delivers claimed crawl orders to one crawler as they become
-	// available. Each queued order is claimed by exactly one worker; the node
-	// holds an order in its durable queue until it is written to a worker stream.
+	// available. Each order is leased to the receiving worker: the node holds it
+	// in a durable leased state, tagged with a lease id, until the worker acks it
+	// or the lease expires, at which point it is redelivered.
 	StreamOrders(ctx context.Context, in *WorkerRegistration, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CrawlOrderMessage], error)
+	// AckOrder settles a leased order: a plain ack deletes it, and an ack with
+	// requeue returns it to the pending queue for another worker.
+	AckOrder(ctx context.Context, in *OrderAck, opts ...grpc.CallOption) (*OrderAckResult, error)
+	// Heartbeat extends the lease deadline on every order currently leased to the
+	// worker, so a live worker keeps its in-flight orders from being redelivered.
+	Heartbeat(ctx context.Context, in *WorkerHeartbeat, opts ...grpc.CallOption) (*WorkerHeartbeatResult, error)
 	// SubmitIngest hands one ingest batch to the node and blocks until the node
 	// absorbs it. The node returns an error when its ingest pipeline is saturated
 	// so the crawler retries, which is the backpressure signal.
@@ -70,6 +79,26 @@ func (c *crawlExchangeClient) StreamOrders(ctx context.Context, in *WorkerRegist
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type CrawlExchange_StreamOrdersClient = grpc.ServerStreamingClient[CrawlOrderMessage]
 
+func (c *crawlExchangeClient) AckOrder(ctx context.Context, in *OrderAck, opts ...grpc.CallOption) (*OrderAckResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OrderAckResult)
+	err := c.cc.Invoke(ctx, CrawlExchange_AckOrder_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *crawlExchangeClient) Heartbeat(ctx context.Context, in *WorkerHeartbeat, opts ...grpc.CallOption) (*WorkerHeartbeatResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkerHeartbeatResult)
+	err := c.cc.Invoke(ctx, CrawlExchange_Heartbeat_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *crawlExchangeClient) SubmitIngest(ctx context.Context, in *IngestBatchMessage, opts ...grpc.CallOption) (*IngestAck, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(IngestAck)
@@ -91,9 +120,16 @@ func (c *crawlExchangeClient) SubmitIngest(ctx context.Context, in *IngestBatchM
 // service is stable while the crawl data model stays authoritative in Go.
 type CrawlExchangeServer interface {
 	// StreamOrders delivers claimed crawl orders to one crawler as they become
-	// available. Each queued order is claimed by exactly one worker; the node
-	// holds an order in its durable queue until it is written to a worker stream.
+	// available. Each order is leased to the receiving worker: the node holds it
+	// in a durable leased state, tagged with a lease id, until the worker acks it
+	// or the lease expires, at which point it is redelivered.
 	StreamOrders(*WorkerRegistration, grpc.ServerStreamingServer[CrawlOrderMessage]) error
+	// AckOrder settles a leased order: a plain ack deletes it, and an ack with
+	// requeue returns it to the pending queue for another worker.
+	AckOrder(context.Context, *OrderAck) (*OrderAckResult, error)
+	// Heartbeat extends the lease deadline on every order currently leased to the
+	// worker, so a live worker keeps its in-flight orders from being redelivered.
+	Heartbeat(context.Context, *WorkerHeartbeat) (*WorkerHeartbeatResult, error)
 	// SubmitIngest hands one ingest batch to the node and blocks until the node
 	// absorbs it. The node returns an error when its ingest pipeline is saturated
 	// so the crawler retries, which is the backpressure signal.
@@ -110,6 +146,12 @@ type UnimplementedCrawlExchangeServer struct{}
 
 func (UnimplementedCrawlExchangeServer) StreamOrders(*WorkerRegistration, grpc.ServerStreamingServer[CrawlOrderMessage]) error {
 	return status.Errorf(codes.Unimplemented, "method StreamOrders not implemented")
+}
+func (UnimplementedCrawlExchangeServer) AckOrder(context.Context, *OrderAck) (*OrderAckResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AckOrder not implemented")
+}
+func (UnimplementedCrawlExchangeServer) Heartbeat(context.Context, *WorkerHeartbeat) (*WorkerHeartbeatResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Heartbeat not implemented")
 }
 func (UnimplementedCrawlExchangeServer) SubmitIngest(context.Context, *IngestBatchMessage) (*IngestAck, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitIngest not implemented")
@@ -146,6 +188,42 @@ func _CrawlExchange_StreamOrders_Handler(srv interface{}, stream grpc.ServerStre
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type CrawlExchange_StreamOrdersServer = grpc.ServerStreamingServer[CrawlOrderMessage]
 
+func _CrawlExchange_AckOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OrderAck)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CrawlExchangeServer).AckOrder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CrawlExchange_AckOrder_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CrawlExchangeServer).AckOrder(ctx, req.(*OrderAck))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CrawlExchange_Heartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WorkerHeartbeat)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CrawlExchangeServer).Heartbeat(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CrawlExchange_Heartbeat_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CrawlExchangeServer).Heartbeat(ctx, req.(*WorkerHeartbeat))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _CrawlExchange_SubmitIngest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IngestBatchMessage)
 	if err := dec(in); err != nil {
@@ -171,6 +249,14 @@ var CrawlExchange_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "yacycrawl.v1.CrawlExchange",
 	HandlerType: (*CrawlExchangeServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "AckOrder",
+			Handler:    _CrawlExchange_AckOrder_Handler,
+		},
+		{
+			MethodName: "Heartbeat",
+			Handler:    _CrawlExchange_Heartbeat_Handler,
+		},
 		{
 			MethodName: "SubmitIngest",
 			Handler:    _CrawlExchange_SubmitIngest_Handler,

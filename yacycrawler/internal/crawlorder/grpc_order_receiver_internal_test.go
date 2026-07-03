@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,6 +49,13 @@ type fakeStreamer struct {
 	ctx      context.Context
 	attempts []streamAttempt
 	index    int
+
+	mu         sync.Mutex
+	acks       []*crawlrpc.OrderAck
+	heartbeats []string
+	beatCalls  int
+	ackErr     error
+	beatErr    error
 }
 
 func (f *fakeStreamer) StreamOrders(
@@ -68,11 +76,70 @@ func (f *fakeStreamer) StreamOrders(
 	return &fakeOrderStream{ctx: f.ctx}, nil
 }
 
+func (f *fakeStreamer) AckOrder(
+	_ context.Context,
+	in *crawlrpc.OrderAck,
+	_ ...grpc.CallOption,
+) (*crawlrpc.OrderAckResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ackErr != nil {
+		return nil, f.ackErr
+	}
+	f.acks = append(f.acks, in)
+
+	return &crawlrpc.OrderAckResult{}, nil
+}
+
+func (f *fakeStreamer) Heartbeat(
+	_ context.Context,
+	in *crawlrpc.WorkerHeartbeat,
+	_ ...grpc.CallOption,
+) (*crawlrpc.WorkerHeartbeatResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.beatCalls++
+	if f.beatErr != nil {
+		return nil, f.beatErr
+	}
+	f.heartbeats = append(f.heartbeats, in.GetWorkerId())
+
+	return &crawlrpc.WorkerHeartbeatResult{}, nil
+}
+
+func (f *fakeStreamer) ackedLeases() []*crawlrpc.OrderAck {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]*crawlrpc.OrderAck(nil), f.acks...)
+}
+
+func (f *fakeStreamer) beats() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]string(nil), f.heartbeats...)
+}
+
+func (f *fakeStreamer) beatCallCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.beatCalls
+}
+
 func fastRetry(t *testing.T) {
 	t.Helper()
 	restore := orderStreamRetryWait
 	t.Cleanup(func() { orderStreamRetryWait = restore })
 	orderStreamRetryWait = time.Millisecond
+}
+
+func fastHeartbeat(t *testing.T) {
+	t.Helper()
+	restore := orderHeartbeatInterval
+	t.Cleanup(func() { orderHeartbeatInterval = restore })
+	orderHeartbeatInterval = time.Millisecond
 }
 
 func orderResult(t *testing.T, name string) recvResult {
@@ -85,10 +152,10 @@ func orderResult(t *testing.T, name string) recvResult {
 		t.Fatalf("marshal order: %v", err)
 	}
 
-	return recvResult{msg: &crawlrpc.CrawlOrderMessage{OrderJson: data}}
+	return recvResult{msg: &crawlrpc.CrawlOrderMessage{OrderJson: data, LeaseId: "lease-" + name}}
 }
 
-func TestGRPCOrderReceiverDeliversOrder(t *testing.T) {
+func TestGRPCOrderReceiverDeliversOrderAndSettlesLease(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	client := &fakeStreamer{
 		ctx:      ctx,
@@ -105,8 +172,74 @@ func TestGRPCOrderReceiverDeliversOrder(t *testing.T) {
 			t.Fatalf("acknowledgement returned %v, want nil", err)
 		}
 	}
+	acks := client.ackedLeases()
+	if len(acks) != 3 {
+		t.Fatalf("recorded %d acks, want 3", len(acks))
+	}
+	if acks[0].GetLeaseId() != "lease-docs" || acks[0].GetRequeue() {
+		t.Fatalf("ack = %+v, want lease-docs without requeue", acks[0])
+	}
+	if !acks[1].GetRequeue() {
+		t.Fatalf("nak = %+v, want requeue", acks[1])
+	}
+	if acks[2].GetRequeue() {
+		t.Fatalf("term = %+v, want no requeue", acks[2])
+	}
 	cancel()
 	drainUntilClosed(t, receiver)
+}
+
+func TestSettleLeaseReportsAckError(t *testing.T) {
+	client := &fakeStreamer{ctx: context.Background(), ackErr: errors.New("ack rejected")}
+	if err := settleLease(client, "lease-x", false)(context.Background()); err == nil {
+		t.Fatal("expected settleLease to surface the ack error")
+	}
+}
+
+func TestGRPCOrderReceiverHeartbeatsWorker(t *testing.T) {
+	fastHeartbeat(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &fakeStreamer{ctx: ctx}
+
+	receiver := NewGRPCOrderReceiver(ctx, client, "worker-9")
+	deadline := time.After(2 * time.Second)
+	for len(client.beats()) == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("no heartbeat observed")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if got := client.beats()[0]; got != "worker-9" {
+		t.Fatalf("heartbeat worker = %q, want worker-9", got)
+	}
+	cancel()
+	drainUntilClosed(t, receiver)
+}
+
+func TestHeartbeatOrdersLogsError(t *testing.T) {
+	fastHeartbeat(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &fakeStreamer{ctx: ctx, beatErr: errors.New("heartbeat rejected")}
+	done := make(chan struct{})
+	go func() {
+		heartbeatOrders(ctx, client, "worker-1")
+		close(done)
+	}()
+	deadline := time.After(2 * time.Second)
+	for client.beatCallCount() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("heartbeat was never attempted")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("heartbeatOrders did not stop on cancel")
+	}
 }
 
 func TestGRPCOrderReceiverReconnectsAfterStreamError(t *testing.T) {
@@ -180,7 +313,7 @@ func TestDrainOrderStreamStopsOnRecvError(t *testing.T) {
 	ctx := context.Background()
 	stream := &fakeOrderStream{ctx: ctx, results: []recvResult{{err: errors.New("recv broken")}}}
 	out := make(chan CrawlOrderDelivery)
-	drainOrderStream(ctx, stream, out)
+	drainOrderStream(ctx, &fakeStreamer{ctx: ctx}, stream, out)
 }
 
 func TestDrainOrderStreamStopsWhenCancelledMidSend(t *testing.T) {
@@ -188,16 +321,23 @@ func TestDrainOrderStreamStopsWhenCancelledMidSend(t *testing.T) {
 	cancel()
 	stream := &fakeOrderStream{ctx: ctx, results: []recvResult{orderResult(t, "unread")}}
 	out := make(chan CrawlOrderDelivery)
-	drainOrderStream(ctx, stream, out)
+	drainOrderStream(ctx, &fakeStreamer{ctx: ctx}, stream, out)
 }
 
 func TestDeliverOrderSendsWhenReadable(t *testing.T) {
+	client := &fakeStreamer{ctx: context.Background()}
 	out := make(chan CrawlOrderDelivery, 1)
-	if !deliverOrder(context.Background(), out, yacycrawlcontract.CrawlOrder{}) {
+	if !deliverOrder(context.Background(), client, out, yacycrawlcontract.CrawlOrder{}, "lease-x") {
 		t.Fatal("deliverOrder returned false, want true for a readable channel")
 	}
 	if len(out) != 1 {
 		t.Fatal("delivery was not enqueued")
+	}
+	if err := (<-out).Ack(context.Background()); err != nil {
+		t.Fatalf("ack: %v", err)
+	}
+	if acks := client.ackedLeases(); len(acks) != 1 || acks[0].GetLeaseId() != "lease-x" {
+		t.Fatalf("acks = %+v, want one lease-x ack", acks)
 	}
 }
 

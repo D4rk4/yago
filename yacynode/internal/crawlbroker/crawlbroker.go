@@ -6,8 +6,11 @@
 package crawlbroker
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"net"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -15,8 +18,11 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/vault"
 )
 
+const msgSweepFailed = "crawl lease sweep failed"
+
 type Config struct {
 	ListenAddr string
+	LeaseTTL   time.Duration
 }
 
 type CrawlBroker struct {
@@ -24,6 +30,8 @@ type CrawlBroker struct {
 	Ingest   *IngestReceiver
 	server   *grpc.Server
 	listener net.Listener
+	sweep    *time.Ticker
+	cancel   context.CancelFunc
 }
 
 var (
@@ -35,12 +43,25 @@ var (
 )
 
 func Open(cfg Config, storage *vault.Vault) (*CrawlBroker, error) {
-	queue, err := newDurableOrderQueue(storage)
+	leaseTTL := cfg.LeaseTTL
+	if leaseTTL <= 0 {
+		leaseTTL = DefaultLeaseTTL
+	}
+	queue, err := newDurableOrderQueue(storage, leaseTTL)
 	if err != nil {
 		return nil, err
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := queue.requeueAllLeases(ctx); err != nil {
+		cancel()
+
+		return nil, fmt.Errorf("reclaim crawl leases: %w", err)
+	}
 	listener, err := listenCrawlRPC(cfg.ListenAddr)
 	if err != nil {
+		cancel()
+
 		return nil, fmt.Errorf("listen crawl rpc %q: %w", cfg.ListenAddr, err)
 	}
 
@@ -49,9 +70,34 @@ func Open(cfg Config, storage *vault.Vault) (*CrawlBroker, error) {
 	crawlrpc.RegisterCrawlExchangeServer(server, newExchangeServer(queue, ingest.out))
 	go func() { _ = server.Serve(listener) }()
 
-	return &CrawlBroker{Orders: queue, Ingest: ingest, server: server, listener: listener}, nil
+	sweep := time.NewTicker(max(leaseTTL/4, time.Second))
+	go sweepLeases(ctx, queue, sweep.C)
+
+	return &CrawlBroker{
+		Orders:   queue,
+		Ingest:   ingest,
+		server:   server,
+		listener: listener,
+		sweep:    sweep,
+		cancel:   cancel,
+	}, nil
 }
 
 func (b *CrawlBroker) Close() {
+	b.cancel()
+	b.sweep.Stop()
 	b.server.Stop()
+}
+
+func sweepLeases(ctx context.Context, queue *DurableOrderQueue, tick <-chan time.Time) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick:
+			if err := queue.sweepExpired(context.WithoutCancel(ctx)); err != nil {
+				slog.WarnContext(ctx, msgSweepFailed, slog.Any("error", err))
+			}
+		}
+	}
 }

@@ -11,9 +11,18 @@ option go_package = "github.com/D4rk4/yago/yacycrawlcontract/crawlrpc";
 // service is stable while the crawl data model stays authoritative in Go.
 service CrawlExchange {
   // StreamOrders delivers claimed crawl orders to one crawler as they become
-  // available. Each queued order is claimed by exactly one worker; the node
-  // holds an order in its durable queue until it is written to a worker stream.
+  // available. Each order is leased to the receiving worker: the node holds it
+  // in a durable leased state, tagged with a lease id, until the worker acks it
+  // or the lease expires, at which point it is redelivered.
   rpc StreamOrders(WorkerRegistration) returns (stream CrawlOrderMessage);
+
+  // AckOrder settles a leased order: a plain ack deletes it, and an ack with
+  // requeue returns it to the pending queue for another worker.
+  rpc AckOrder(OrderAck) returns (OrderAckResult);
+
+  // Heartbeat extends the lease deadline on every order currently leased to the
+  // worker, so a live worker keeps its in-flight orders from being redelivered.
+  rpc Heartbeat(WorkerHeartbeat) returns (WorkerHeartbeatResult);
 
   // SubmitIngest hands one ingest batch to the node and blocks until the node
   // absorbs it. The node returns an error when its ingest pipeline is saturated
@@ -27,7 +36,21 @@ message WorkerRegistration {
 
 message CrawlOrderMessage {
   bytes order_json = 1;
+  string lease_id = 2;
 }
+
+message OrderAck {
+  string lease_id = 1;
+  bool requeue = 2;
+}
+
+message OrderAckResult {}
+
+message WorkerHeartbeat {
+  string worker_id = 1;
+}
+
+message WorkerHeartbeatResult {}
 
 message IngestBatchMessage {
   bytes batch_json = 1;

@@ -68,6 +68,7 @@ func (x *WorkerRegistration) GetWorkerId() string {
 type CrawlOrderMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OrderJson     []byte                 `protobuf:"bytes,1,opt,name=order_json,json=orderJson,proto3" json:"order_json,omitempty"`
+	LeaseId       string                 `protobuf:"bytes,2,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -109,6 +110,181 @@ func (x *CrawlOrderMessage) GetOrderJson() []byte {
 	return nil
 }
 
+func (x *CrawlOrderMessage) GetLeaseId() string {
+	if x != nil {
+		return x.LeaseId
+	}
+	return ""
+}
+
+type OrderAck struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LeaseId       string                 `protobuf:"bytes,1,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
+	Requeue       bool                   `protobuf:"varint,2,opt,name=requeue,proto3" json:"requeue,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OrderAck) Reset() {
+	*x = OrderAck{}
+	mi := &file_crawlexchange_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OrderAck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OrderAck) ProtoMessage() {}
+
+func (x *OrderAck) ProtoReflect() protoreflect.Message {
+	mi := &file_crawlexchange_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OrderAck.ProtoReflect.Descriptor instead.
+func (*OrderAck) Descriptor() ([]byte, []int) {
+	return file_crawlexchange_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *OrderAck) GetLeaseId() string {
+	if x != nil {
+		return x.LeaseId
+	}
+	return ""
+}
+
+func (x *OrderAck) GetRequeue() bool {
+	if x != nil {
+		return x.Requeue
+	}
+	return false
+}
+
+type OrderAckResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OrderAckResult) Reset() {
+	*x = OrderAckResult{}
+	mi := &file_crawlexchange_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OrderAckResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OrderAckResult) ProtoMessage() {}
+
+func (x *OrderAckResult) ProtoReflect() protoreflect.Message {
+	mi := &file_crawlexchange_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OrderAckResult.ProtoReflect.Descriptor instead.
+func (*OrderAckResult) Descriptor() ([]byte, []int) {
+	return file_crawlexchange_proto_rawDescGZIP(), []int{3}
+}
+
+type WorkerHeartbeat struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerHeartbeat) Reset() {
+	*x = WorkerHeartbeat{}
+	mi := &file_crawlexchange_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerHeartbeat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerHeartbeat) ProtoMessage() {}
+
+func (x *WorkerHeartbeat) ProtoReflect() protoreflect.Message {
+	mi := &file_crawlexchange_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerHeartbeat.ProtoReflect.Descriptor instead.
+func (*WorkerHeartbeat) Descriptor() ([]byte, []int) {
+	return file_crawlexchange_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *WorkerHeartbeat) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+type WorkerHeartbeatResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerHeartbeatResult) Reset() {
+	*x = WorkerHeartbeatResult{}
+	mi := &file_crawlexchange_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerHeartbeatResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerHeartbeatResult) ProtoMessage() {}
+
+func (x *WorkerHeartbeatResult) ProtoReflect() protoreflect.Message {
+	mi := &file_crawlexchange_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerHeartbeatResult.ProtoReflect.Descriptor instead.
+func (*WorkerHeartbeatResult) Descriptor() ([]byte, []int) {
+	return file_crawlexchange_proto_rawDescGZIP(), []int{5}
+}
+
 type IngestBatchMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BatchJson     []byte                 `protobuf:"bytes,1,opt,name=batch_json,json=batchJson,proto3" json:"batch_json,omitempty"`
@@ -118,7 +294,7 @@ type IngestBatchMessage struct {
 
 func (x *IngestBatchMessage) Reset() {
 	*x = IngestBatchMessage{}
-	mi := &file_crawlexchange_proto_msgTypes[2]
+	mi := &file_crawlexchange_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -130,7 +306,7 @@ func (x *IngestBatchMessage) String() string {
 func (*IngestBatchMessage) ProtoMessage() {}
 
 func (x *IngestBatchMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_crawlexchange_proto_msgTypes[2]
+	mi := &file_crawlexchange_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -143,7 +319,7 @@ func (x *IngestBatchMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IngestBatchMessage.ProtoReflect.Descriptor instead.
 func (*IngestBatchMessage) Descriptor() ([]byte, []int) {
-	return file_crawlexchange_proto_rawDescGZIP(), []int{2}
+	return file_crawlexchange_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *IngestBatchMessage) GetBatchJson() []byte {
@@ -161,7 +337,7 @@ type IngestAck struct {
 
 func (x *IngestAck) Reset() {
 	*x = IngestAck{}
-	mi := &file_crawlexchange_proto_msgTypes[3]
+	mi := &file_crawlexchange_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -173,7 +349,7 @@ func (x *IngestAck) String() string {
 func (*IngestAck) ProtoMessage() {}
 
 func (x *IngestAck) ProtoReflect() protoreflect.Message {
-	mi := &file_crawlexchange_proto_msgTypes[3]
+	mi := &file_crawlexchange_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -186,7 +362,7 @@ func (x *IngestAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IngestAck.ProtoReflect.Descriptor instead.
 func (*IngestAck) Descriptor() ([]byte, []int) {
-	return file_crawlexchange_proto_rawDescGZIP(), []int{3}
+	return file_crawlexchange_proto_rawDescGZIP(), []int{7}
 }
 
 var File_crawlexchange_proto protoreflect.FileDescriptor
@@ -195,16 +371,26 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\n" +
 	"\x13crawlexchange.proto\x12\fyacycrawl.v1\"1\n" +
 	"\x12WorkerRegistration\x12\x1b\n" +
-	"\tworker_id\x18\x01 \x01(\tR\bworkerId\"2\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\"M\n" +
 	"\x11CrawlOrderMessage\x12\x1d\n" +
 	"\n" +
-	"order_json\x18\x01 \x01(\fR\torderJson\"3\n" +
+	"order_json\x18\x01 \x01(\fR\torderJson\x12\x19\n" +
+	"\blease_id\x18\x02 \x01(\tR\aleaseId\"?\n" +
+	"\bOrderAck\x12\x19\n" +
+	"\blease_id\x18\x01 \x01(\tR\aleaseId\x12\x18\n" +
+	"\arequeue\x18\x02 \x01(\bR\arequeue\"\x10\n" +
+	"\x0eOrderAckResult\".\n" +
+	"\x0fWorkerHeartbeat\x12\x1b\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\"\x17\n" +
+	"\x15WorkerHeartbeatResult\"3\n" +
 	"\x12IngestBatchMessage\x12\x1d\n" +
 	"\n" +
 	"batch_json\x18\x01 \x01(\fR\tbatchJson\"\v\n" +
-	"\tIngestAck2\xaf\x01\n" +
+	"\tIngestAck2\xc2\x02\n" +
 	"\rCrawlExchange\x12S\n" +
-	"\fStreamOrders\x12 .yacycrawl.v1.WorkerRegistration\x1a\x1f.yacycrawl.v1.CrawlOrderMessage0\x01\x12I\n" +
+	"\fStreamOrders\x12 .yacycrawl.v1.WorkerRegistration\x1a\x1f.yacycrawl.v1.CrawlOrderMessage0\x01\x12@\n" +
+	"\bAckOrder\x12\x16.yacycrawl.v1.OrderAck\x1a\x1c.yacycrawl.v1.OrderAckResult\x12O\n" +
+	"\tHeartbeat\x12\x1d.yacycrawl.v1.WorkerHeartbeat\x1a#.yacycrawl.v1.WorkerHeartbeatResult\x12I\n" +
 	"\fSubmitIngest\x12 .yacycrawl.v1.IngestBatchMessage\x1a\x17.yacycrawl.v1.IngestAckB2Z0github.com/D4rk4/yago/yacycrawlcontract/crawlrpcb\x06proto3"
 
 var (
@@ -219,20 +405,28 @@ func file_crawlexchange_proto_rawDescGZIP() []byte {
 	return file_crawlexchange_proto_rawDescData
 }
 
-var file_crawlexchange_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_crawlexchange_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_crawlexchange_proto_goTypes = []any{
-	(*WorkerRegistration)(nil), // 0: yacycrawl.v1.WorkerRegistration
-	(*CrawlOrderMessage)(nil),  // 1: yacycrawl.v1.CrawlOrderMessage
-	(*IngestBatchMessage)(nil), // 2: yacycrawl.v1.IngestBatchMessage
-	(*IngestAck)(nil),          // 3: yacycrawl.v1.IngestAck
+	(*WorkerRegistration)(nil),    // 0: yacycrawl.v1.WorkerRegistration
+	(*CrawlOrderMessage)(nil),     // 1: yacycrawl.v1.CrawlOrderMessage
+	(*OrderAck)(nil),              // 2: yacycrawl.v1.OrderAck
+	(*OrderAckResult)(nil),        // 3: yacycrawl.v1.OrderAckResult
+	(*WorkerHeartbeat)(nil),       // 4: yacycrawl.v1.WorkerHeartbeat
+	(*WorkerHeartbeatResult)(nil), // 5: yacycrawl.v1.WorkerHeartbeatResult
+	(*IngestBatchMessage)(nil),    // 6: yacycrawl.v1.IngestBatchMessage
+	(*IngestAck)(nil),             // 7: yacycrawl.v1.IngestAck
 }
 var file_crawlexchange_proto_depIdxs = []int32{
 	0, // 0: yacycrawl.v1.CrawlExchange.StreamOrders:input_type -> yacycrawl.v1.WorkerRegistration
-	2, // 1: yacycrawl.v1.CrawlExchange.SubmitIngest:input_type -> yacycrawl.v1.IngestBatchMessage
-	1, // 2: yacycrawl.v1.CrawlExchange.StreamOrders:output_type -> yacycrawl.v1.CrawlOrderMessage
-	3, // 3: yacycrawl.v1.CrawlExchange.SubmitIngest:output_type -> yacycrawl.v1.IngestAck
-	2, // [2:4] is the sub-list for method output_type
-	0, // [0:2] is the sub-list for method input_type
+	2, // 1: yacycrawl.v1.CrawlExchange.AckOrder:input_type -> yacycrawl.v1.OrderAck
+	4, // 2: yacycrawl.v1.CrawlExchange.Heartbeat:input_type -> yacycrawl.v1.WorkerHeartbeat
+	6, // 3: yacycrawl.v1.CrawlExchange.SubmitIngest:input_type -> yacycrawl.v1.IngestBatchMessage
+	1, // 4: yacycrawl.v1.CrawlExchange.StreamOrders:output_type -> yacycrawl.v1.CrawlOrderMessage
+	3, // 5: yacycrawl.v1.CrawlExchange.AckOrder:output_type -> yacycrawl.v1.OrderAckResult
+	5, // 6: yacycrawl.v1.CrawlExchange.Heartbeat:output_type -> yacycrawl.v1.WorkerHeartbeatResult
+	7, // 7: yacycrawl.v1.CrawlExchange.SubmitIngest:output_type -> yacycrawl.v1.IngestAck
+	4, // [4:8] is the sub-list for method output_type
+	0, // [0:4] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -249,7 +443,7 @@ func file_crawlexchange_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_crawlexchange_proto_rawDesc), len(file_crawlexchange_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

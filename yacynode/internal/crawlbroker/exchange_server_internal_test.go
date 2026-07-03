@@ -72,9 +72,9 @@ func TestStreamOrdersRequeuesOnSendError(t *testing.T) {
 		t.Fatal("expected send error")
 	}
 
-	data, _, err := queue.pop(context.Background())
+	data, _, _, err := queue.leasePop(context.Background(), "worker")
 	if err != nil {
-		t.Fatalf("pop: %v", err)
+		t.Fatalf("lease pop: %v", err)
 	}
 	if data == nil {
 		t.Fatal("order was not requeued after send failure")
@@ -165,6 +165,75 @@ func ingestMessage(t *testing.T, sourceURL string) *crawlrpc.IngestBatchMessage 
 	}
 
 	return &crawlrpc.IngestBatchMessage{BatchJson: data}
+}
+
+func TestAckOrderAcksLease(t *testing.T) {
+	queue := memQueue(t)
+	leaseID := leaseOne(t, queue, "ack", "w1")
+	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
+	if _, err := server.AckOrder(
+		context.Background(),
+		&crawlrpc.OrderAck{LeaseId: leaseID},
+	); err != nil {
+		t.Fatalf("ack order: %v", err)
+	}
+	if n := pendingCount(t, queue); n != 0 {
+		t.Fatalf("pending = %d, want 0 after ack", n)
+	}
+}
+
+func TestAckOrderRequeuesLease(t *testing.T) {
+	queue := memQueue(t)
+	leaseID := leaseOne(t, queue, "nak", "w1")
+	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
+	if _, err := server.AckOrder(
+		context.Background(),
+		&crawlrpc.OrderAck{LeaseId: leaseID, Requeue: true},
+	); err != nil {
+		t.Fatalf("nak order: %v", err)
+	}
+	if n := pendingCount(t, queue); n != 1 {
+		t.Fatalf("pending = %d, want 1 after nak", n)
+	}
+}
+
+func TestAckOrderRejectsEmptyLease(t *testing.T) {
+	server := newExchangeServer(memQueue(t), make(chan crawlresults.IngestDelivery))
+	_, err := server.AckOrder(context.Background(), &crawlrpc.OrderAck{})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("error = %v, want InvalidArgument", err)
+	}
+}
+
+func TestAckOrderSurfacesInternalError(t *testing.T) {
+	fixture := scriptedQueue(t)
+	leaseID := leaseOne(t, fixture.queue, "boom", "w1")
+	fixture.engine.deleteErrors[leaseBucket] = errors.New("delete failed")
+	server := newExchangeServer(fixture.queue, make(chan crawlresults.IngestDelivery))
+	_, err := server.AckOrder(context.Background(), &crawlrpc.OrderAck{LeaseId: leaseID})
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("error = %v, want Internal", err)
+	}
+}
+
+func TestHeartbeatSettlesLeases(t *testing.T) {
+	server := newExchangeServer(memQueue(t), make(chan crawlresults.IngestDelivery))
+	if _, err := server.Heartbeat(
+		context.Background(),
+		&crawlrpc.WorkerHeartbeat{WorkerId: "w1"},
+	); err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+}
+
+func TestHeartbeatSurfacesInternalError(t *testing.T) {
+	fixture := scriptedQueue(t)
+	fixture.engine.scanErrors[leaseBucket] = errors.New("scan failed")
+	server := newExchangeServer(fixture.queue, make(chan crawlresults.IngestDelivery))
+	_, err := server.Heartbeat(context.Background(), &crawlrpc.WorkerHeartbeat{WorkerId: "w1"})
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("error = %v, want Internal", err)
+	}
 }
 
 func TestIngestReceiverReceives(t *testing.T) {

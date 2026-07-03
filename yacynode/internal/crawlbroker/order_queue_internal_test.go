@@ -145,7 +145,7 @@ func memQueue(t *testing.T) *DurableOrderQueue {
 		t.Fatalf("open memvault: %v", err)
 	}
 	t.Cleanup(func() { _ = v.Close() })
-	queue, err := newDurableOrderQueue(v)
+	queue, err := newDurableOrderQueue(v, DefaultLeaseTTL)
 	if err != nil {
 		t.Fatalf("new queue: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestDurableOrderQueueFIFO(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"a", "b", "c"} {
-		data, err := queue.dequeue(ctx)
+		data, _, err := queue.leaseNext(ctx, "worker")
 		if err != nil {
 			t.Fatalf("dequeue: %v", err)
 		}
@@ -183,7 +183,7 @@ func TestDurableOrderQueueDequeueBlocksThenWakes(t *testing.T) {
 
 	got := make(chan string, 1)
 	go func() {
-		data, err := queue.dequeue(ctx)
+		data, _, err := queue.leaseNext(ctx, "worker")
 		if err != nil {
 			got <- "error"
 
@@ -214,7 +214,7 @@ func TestDurableOrderQueueDequeueCancelledWhileBlocked(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := queue.dequeue(ctx)
+		_, _, err := queue.leaseNext(ctx, "worker")
 		done <- err
 	}()
 
@@ -234,7 +234,7 @@ func TestDurableOrderQueueDequeueHonorsContext(t *testing.T) {
 	queue := memQueue(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := queue.dequeue(ctx); err == nil {
+	if _, _, err := queue.leaseNext(ctx, "worker"); err == nil {
 		t.Fatal("expected dequeue to fail on cancelled context")
 	}
 }
@@ -264,14 +264,14 @@ func TestSequenceCodecRejectsBadLength(t *testing.T) {
 }
 
 func TestNewDurableOrderQueueRegisterErrors(t *testing.T) {
-	for _, bucket := range []vault.Name{orderBucket, seqBucket} {
+	for _, bucket := range []vault.Name{orderBucket, seqBucket, leaseBucket} {
 		engine := newScriptedEngine()
 		engine.provisionErrors[bucket] = errors.New("provision failed")
 		v, err := vault.New(engine)
 		if err != nil {
 			t.Fatalf("vault.New: %v", err)
 		}
-		if _, err := newDurableOrderQueue(v); err == nil {
+		if _, err := newDurableOrderQueue(v, DefaultLeaseTTL); err == nil {
 			t.Fatalf("expected register error for bucket %s", bucket)
 		}
 	}
@@ -312,14 +312,14 @@ func TestDurableOrderQueueSurfaceVaultErrors(t *testing.T) {
 	scanFail := scriptedQueue(t)
 	_ = scanFail.queue.Publish(ctx, testOrder("y"))
 	scanFail.engine.scanErrors[orderBucket] = errors.New("scan failed")
-	if _, _, err := scanFail.queue.pop(ctx); err == nil {
+	if _, _, _, err := scanFail.queue.leasePop(ctx, "worker"); err == nil {
 		t.Fatal("expected pop error on scan failure")
 	}
 
 	deleteFail := scriptedQueue(t)
 	_ = deleteFail.queue.Publish(ctx, testOrder("z"))
 	deleteFail.engine.deleteErrors[orderBucket] = errors.New("delete failed")
-	if _, _, err := deleteFail.queue.pop(ctx); err == nil {
+	if _, _, _, err := deleteFail.queue.leasePop(ctx, "worker"); err == nil {
 		t.Fatal("expected pop error on delete failure")
 	}
 }
@@ -336,7 +336,7 @@ func scriptedQueue(t *testing.T) scriptedQueueFixture {
 	if err != nil {
 		t.Fatalf("vault.New: %v", err)
 	}
-	queue, err := newDurableOrderQueue(v)
+	queue, err := newDurableOrderQueue(v, DefaultLeaseTTL)
 	if err != nil {
 		t.Fatalf("new queue: %v", err)
 	}

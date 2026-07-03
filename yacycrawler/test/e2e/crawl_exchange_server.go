@@ -24,6 +24,7 @@ type crawlExchange struct {
 	crawlrpc.UnimplementedCrawlExchangeServer
 	orders   chan *crawlrpc.CrawlOrderMessage
 	ingested chan yacycrawlcontract.IngestBatch
+	acked    chan *crawlrpc.OrderAck
 }
 
 func (e *crawlExchange) StreamOrders(
@@ -59,13 +60,33 @@ func (e *crawlExchange) SubmitIngest(
 	return &crawlrpc.IngestAck{}, nil
 }
 
+func (e *crawlExchange) AckOrder(
+	ctx context.Context,
+	req *crawlrpc.OrderAck,
+) (*crawlrpc.OrderAckResult, error) {
+	select {
+	case e.acked <- req:
+	case <-ctx.Done():
+		return nil, status.FromContextError(ctx.Err()).Err()
+	}
+
+	return &crawlrpc.OrderAckResult{}, nil
+}
+
+func (e *crawlExchange) Heartbeat(
+	context.Context,
+	*crawlrpc.WorkerHeartbeat,
+) (*crawlrpc.WorkerHeartbeatResult, error) {
+	return &crawlrpc.WorkerHeartbeatResult{}, nil
+}
+
 func (e *crawlExchange) enqueue(t *testing.T, order yacycrawlcontract.CrawlOrder) {
 	t.Helper()
 	data, err := yacycrawlcontract.MarshalCrawlOrder(order)
 	if err != nil {
 		t.Fatalf("marshal order: %v", err)
 	}
-	e.orders <- &crawlrpc.CrawlOrderMessage{OrderJson: data}
+	e.orders <- &crawlrpc.CrawlOrderMessage{OrderJson: data, LeaseId: "e2e-lease"}
 }
 
 func (e *crawlExchange) awaitIngest(t *testing.T) yacycrawlcontract.IngestBatch {
@@ -89,6 +110,7 @@ func startExchange(t *testing.T) (int, *crawlExchange) {
 	exchange := &crawlExchange{
 		orders:   make(chan *crawlrpc.CrawlOrderMessage, 16),
 		ingested: make(chan yacycrawlcontract.IngestBatch, 16),
+		acked:    make(chan *crawlrpc.OrderAck, 16),
 	}
 	// nosemgrep: go.grpc.security.grpc-server-insecure-connection.grpc-server-insecure-connection -- host-side e2e stand-in on loopback; matches the node's insecure internal transport (ADR-0014).
 	server := grpc.NewServer()

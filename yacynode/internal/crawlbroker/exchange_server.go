@@ -29,21 +29,54 @@ func newExchangeServer(
 }
 
 func (s *exchangeServer) StreamOrders(
-	_ *crawlrpc.WorkerRegistration,
+	reg *crawlrpc.WorkerRegistration,
 	stream crawlrpc.CrawlExchange_StreamOrdersServer,
 ) error {
 	ctx := stream.Context()
+	workerID := reg.GetWorkerId()
 	for {
-		data, err := s.queue.dequeue(ctx)
+		data, leaseID, err := s.queue.leaseNext(ctx, workerID)
 		if err != nil {
 			return status.FromContextError(ctx.Err()).Err()
 		}
-		if err := stream.Send(&crawlrpc.CrawlOrderMessage{OrderJson: data}); err != nil {
-			_ = s.queue.enqueue(context.WithoutCancel(ctx), data)
+		if err := stream.Send(
+			&crawlrpc.CrawlOrderMessage{OrderJson: data, LeaseId: leaseID},
+		); err != nil {
+			_ = s.queue.requeueLease(context.WithoutCancel(ctx), leaseID)
 
 			return fmt.Errorf("send crawl order: %w", err)
 		}
 	}
+}
+
+func (s *exchangeServer) AckOrder(
+	ctx context.Context,
+	req *crawlrpc.OrderAck,
+) (*crawlrpc.OrderAckResult, error) {
+	leaseID := req.GetLeaseId()
+	if leaseID == "" {
+		return nil, status.Error(codes.InvalidArgument, "empty lease id")
+	}
+	settle := s.queue.ackLease
+	if req.GetRequeue() {
+		settle = s.queue.requeueLease
+	}
+	if err := settle(ctx, leaseID); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &crawlrpc.OrderAckResult{}, nil
+}
+
+func (s *exchangeServer) Heartbeat(
+	ctx context.Context,
+	req *crawlrpc.WorkerHeartbeat,
+) (*crawlrpc.WorkerHeartbeatResult, error) {
+	if err := s.queue.heartbeat(ctx, req.GetWorkerId()); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &crawlrpc.WorkerHeartbeatResult{}, nil
 }
 
 func (s *exchangeServer) SubmitIngest(
