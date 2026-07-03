@@ -56,6 +56,7 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	caller := clientIP(r)
 	if !s.limiter.allow(caller) {
+		s.observer.LoginThrottled()
 		writeError(w, http.StatusTooManyRequests, "too many login attempts, try again later")
 
 		return
@@ -69,6 +70,7 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if !valid {
 		s.limiter.recordFailure(caller)
+		s.observer.LoginFailed()
 		writeError(w, http.StatusUnauthorized, "invalid username or password")
 
 		return
@@ -81,6 +83,7 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	s.observer.LoginSucceeded()
 	http.SetCookie(w, sessionCookie(created.Token, r.TLS != nil, created.ExpiresAt))
 	writeJSON(w, http.StatusOK, loginResponse{
 		Username:  created.Username,

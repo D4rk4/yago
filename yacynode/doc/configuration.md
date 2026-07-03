@@ -52,6 +52,10 @@ server-side session, `GET /api/admin/v1/auth/session` returns the current
 administrator, login is rate limited per client, and a failed login does not reveal
 whether the account exists. The session cookie is marked `Secure` only when the
 request arrives over TLS, so terminate TLS at the node or a trusted reverse proxy.
+Login and API-key outcomes are exported on `/metrics` as
+`admin_login_attempts_total` (results `success`, `failure`, `throttled`) and
+`admin_api_key_auth_total` (results `rejected`, `throttled`, `forbidden`) so
+operators can alert on brute-force pressure.
 
 For non-interactive clients, create an API key with
 `POST /api/admin/v1/auth/api-keys` (a session or an `admin:write` key is required

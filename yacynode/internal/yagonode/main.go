@@ -77,6 +77,7 @@ func run() error {
 	dhtOutboundMetrics := metrics.NewDHTOutboundMetrics(endpoints.Registry())
 	dhtInboundMetrics := metrics.NewDHTInboundMetrics(endpoints.Registry())
 	peerMetrics := metrics.NewPeerMetrics(endpoints.Registry())
+	authMetrics := metrics.NewAuthMetrics(endpoints.Registry())
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -106,7 +107,7 @@ func run() error {
 		assembled.crawl.mountDispatch(opsMux)
 	}
 
-	opsHandler, err := guardAdminSurface(ctx, config, vault, opsMux)
+	opsHandler, err := guardAdminSurface(ctx, config, vault, authMetrics, opsMux)
 	if err != nil {
 		return fmt.Errorf("configure admin auth: %w", err)
 	}

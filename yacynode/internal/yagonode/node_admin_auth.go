@@ -19,9 +19,10 @@ func guardAdminSurface(
 	ctx context.Context,
 	config nodeConfig,
 	storage *vault.Vault,
+	observer adminauth.AuthObserver,
 	opsMux *http.ServeMux,
 ) (http.Handler, error) {
-	service, err := adminauth.New(storage, adminauth.Config{})
+	service, err := adminauth.New(storage, adminauth.Config{Observer: observer})
 	if err != nil {
 		return nil, fmt.Errorf("build admin auth: %w", err)
 	}

@@ -22,6 +22,7 @@ type Config struct {
 	LoginWindow        time.Duration
 	APIKeyMaxPerWindow int
 	APIKeyWindow       time.Duration
+	Observer           AuthObserver
 	Now                func() time.Time
 }
 
@@ -41,6 +42,9 @@ func (c Config) withDefaults() Config {
 	if c.APIKeyWindow <= 0 {
 		c.APIKeyWindow = DefaultAPIKeyWindow
 	}
+	if c.Observer == nil {
+		c.Observer = noopAuthObserver{}
+	}
 	if c.Now == nil {
 		c.Now = time.Now
 	}
@@ -54,6 +58,7 @@ type Service struct {
 	apiKeys    *apiKeyStore
 	limiter    *loginRateLimiter
 	keyLimiter *apiKeyRateLimiter
+	observer   AuthObserver
 	now        func() time.Time
 }
 
@@ -78,6 +83,7 @@ func New(storage *vault.Vault, cfg Config) (*Service, error) {
 		apiKeys:    apiKeys,
 		limiter:    newLoginRateLimiter(cfg.LoginMaxFailures, cfg.LoginWindow, cfg.Now),
 		keyLimiter: newAPIKeyRateLimiter(cfg.APIKeyMaxPerWindow, cfg.APIKeyWindow, cfg.Now),
+		observer:   cfg.Observer,
 		now:        cfg.Now,
 	}, nil
 }

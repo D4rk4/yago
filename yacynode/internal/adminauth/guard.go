@@ -99,11 +99,13 @@ func (s *Service) guardAPIKey(
 ) {
 	id, _, ok := parseAPIKey(token)
 	if !ok {
+		s.observer.APIKeyRejected()
 		writeError(w, http.StatusUnauthorized, "authentication required")
 
 		return
 	}
 	if !s.keyLimiter.allow(id) {
+		s.observer.APIKeyThrottled()
 		writeError(w, http.StatusTooManyRequests, "too many requests, try again later")
 
 		return
@@ -115,11 +117,13 @@ func (s *Service) guardAPIKey(
 		return
 	}
 	if !ok {
+		s.observer.APIKeyRejected()
 		writeError(w, http.StatusUnauthorized, "authentication required")
 
 		return
 	}
 	if !info.hasScope(required) {
+		s.observer.APIKeyForbidden()
 		writeError(w, http.StatusForbidden, "insufficient scope")
 
 		return

@@ -47,7 +47,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Path:     "/metrics",
 		Methods:  []string{"GET"},
 		State:    Implemented,
-		Behavior: "Serves Prometheus metrics for node operations.",
+		Behavior: "Serves Prometheus metrics for node operations, including admin_login_attempts_total and admin_api_key_auth_total counters labelled by result.",
 		Evidence: []string{"yacynode/internal/metrics/*_test.go"},
 		Notes:    "Requires a valid admin session or an API key with the admin:read scope; scrape with a session cookie or a Bearer API key, or bind the ops listener to a trusted network.",
 	},
