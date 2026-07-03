@@ -94,9 +94,12 @@ P2P. Terminate TLS at that proxy so the session cookie is marked `Secure`.
 The node can drive a crawl fleet over gRPC: it serves a `CrawlExchange` endpoint that crawlers dial. Operators start a crawl by posting seed URLs to `/crawl` on the ops address; the node enqueues orders in a durable, store-backed FIFO and streams them to connected crawlers, and crawled pages flow back in as ingest batches. Crawling is off until `YACY_CRAWL_RPC_ADDR` is set; without it the node behaves as a pure peer.
 
 The `/crawl` request body accepts `seeds` and optional `startMode`. Supported
-start modes are `url`, `sitemap`, and `sitelist`; empty mode is treated as
-`url`. Sitemap and sitelist starts are expanded by the crawler into bounded URL
-roots before normal frontier admission.
+start modes are `url`, `sitemap`, `sitelist`, and `robots`; empty mode is treated
+as `url`. Sitemap and sitelist starts are expanded by the crawler into bounded URL
+roots before normal frontier admission. A `robots` start reads each seed host's
+`robots.txt`, expands the sitemaps named in its `Sitemap:` directives, and admits
+those URLs; a missing or unreadable `robots.txt` discovers nothing rather than
+failing the crawl.
 
 | Variable | Default | Description |
 | --- | --- | --- |

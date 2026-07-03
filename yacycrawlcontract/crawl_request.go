@@ -24,13 +24,14 @@ const (
 	CrawlRequestModeURL      CrawlRequestMode = "url"
 	CrawlRequestModeSitemap  CrawlRequestMode = "sitemap"
 	CrawlRequestModeSitelist CrawlRequestMode = "sitelist"
+	CrawlRequestModeRobots   CrawlRequestMode = "robots"
 )
 
 func NormalizeCrawlRequestMode(mode CrawlRequestMode) (CrawlRequestMode, bool) {
 	switch mode {
 	case "", CrawlRequestModeURL:
 		return CrawlRequestModeURL, true
-	case CrawlRequestModeSitemap, CrawlRequestModeSitelist:
+	case CrawlRequestModeSitemap, CrawlRequestModeSitelist, CrawlRequestModeRobots:
 		return mode, true
 	default:
 		return "", false

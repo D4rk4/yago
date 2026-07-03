@@ -155,6 +155,22 @@ func TestDispatchRejectsUnknownStartMode(t *testing.T) {
 	}
 }
 
+func TestDispatchAcceptsRobotsStartMode(t *testing.T) {
+	queue := &recordingQueue{}
+	rec := post(
+		t,
+		mount(t, queue),
+		`{"seeds":["https://example.org/"],"startMode":"robots","maxPagesPerHost":50}`,
+	)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202; body=%s", rec.Code, rec.Body.String())
+	}
+	if len(queue.order.Requests) != 1 ||
+		queue.order.Requests[0].Mode != yacycrawlcontract.CrawlRequestModeRobots {
+		t.Fatalf("requests = %#v", queue.order.Requests)
+	}
+}
+
 func TestDispatchRejectsZeroMaxPagesPerHost(t *testing.T) {
 	queue := &recordingQueue{}
 	rec := post(t, mount(t, queue), `{"seeds":["x"],"maxPagesPerHost":0}`)

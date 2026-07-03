@@ -74,7 +74,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Path:     "/crawl",
 		Methods:  []string{"POST"},
 		State:    Partial,
-		Behavior: "Publishes local crawl orders when crawler integration is configured; supports url, sitemap, and sitelist start modes, and validates the crawl profile before publishing so an impossible URL regex or an out-of-range depth, pages-per-host, or duration is rejected with 400.",
+		Behavior: "Publishes local crawl orders when crawler integration is configured; supports url, sitemap, sitelist, and robots start modes, and validates the crawl profile before publishing so an impossible URL regex or an out-of-range depth, pages-per-host, or duration is rejected with 400.",
 		Evidence: []string{
 			"yacynode/internal/crawldispatch/*_test.go",
 			"yacynode/internal/yagonode/node_crawl_test.go",

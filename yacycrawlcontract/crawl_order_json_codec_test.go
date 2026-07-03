@@ -63,6 +63,7 @@ func TestNormalizeCrawlRequestMode(t *testing.T) {
 		CrawlRequestModeURL:      CrawlRequestModeURL,
 		CrawlRequestModeSitemap:  CrawlRequestModeSitemap,
 		CrawlRequestModeSitelist: CrawlRequestModeSitelist,
+		CrawlRequestModeRobots:   CrawlRequestModeRobots,
 	}
 	for input, want := range cases {
 		got, ok := NormalizeCrawlRequestMode(input)

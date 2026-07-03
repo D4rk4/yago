@@ -47,6 +47,12 @@ func (e *Expander) Expand(
 				return nil, err
 			}
 			out = append(out, expanded...)
+		case yacycrawlcontract.CrawlRequestModeRobots:
+			expanded, err := e.expandRobots(ctx, request)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, expanded...)
 		}
 	}
 	return out, nil
@@ -59,8 +65,51 @@ func (e *Expander) expandSitemap(
 	if e.source == nil {
 		return nil, fmt.Errorf("sitemap source is not configured")
 	}
+	return e.expandSitemapQueue(ctx, []yacycrawlcontract.CrawlRequest{request})
+}
+
+func (e *Expander) expandRobots(
+	ctx context.Context,
+	request yacycrawlcontract.CrawlRequest,
+) ([]yacycrawlcontract.CrawlRequest, error) {
+	if e.source == nil {
+		return nil, fmt.Errorf("robots source is not configured")
+	}
+	robotsURL, ok := weburl.RobotsURL(request.URL)
+	if !ok {
+		return nil, fmt.Errorf("derive robots URL from %q", request.URL)
+	}
+	queue, ok := e.robotsSitemapQueue(ctx, request, robotsURL)
+	if !ok {
+		return nil, nil
+	}
+	return e.expandSitemapQueue(ctx, queue)
+}
+
+func (e *Expander) robotsSitemapQueue(
+	ctx context.Context,
+	parent yacycrawlcontract.CrawlRequest,
+	robotsURL string,
+) ([]yacycrawlcontract.CrawlRequest, bool) {
+	page, err := e.fetch(ctx, robotsURL)
+	if err != nil {
+		return nil, false
+	}
+	discovered := sitemap.ParseRobotsSitemaps(page.Body, maxSitemapFiles)
+	queue := make([]yacycrawlcontract.CrawlRequest, 0, len(discovered))
+	for _, rawURL := range discovered {
+		if next, ok := e.sitemapRequestFromEntry(parent, page, sitemap.Entry{URL: rawURL}); ok {
+			queue = append(queue, next)
+		}
+	}
+	return queue, true
+}
+
+func (e *Expander) expandSitemapQueue(
+	ctx context.Context,
+	queue []yacycrawlcontract.CrawlRequest,
+) ([]yacycrawlcontract.CrawlRequest, error) {
 	var out []yacycrawlcontract.CrawlRequest
-	queue := []yacycrawlcontract.CrawlRequest{request}
 	seen := map[string]struct{}{}
 	for len(queue) > 0 && len(out) < e.limit {
 		if len(seen) >= maxSitemapFiles {

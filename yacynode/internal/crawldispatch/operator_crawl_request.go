@@ -97,6 +97,7 @@ var crawlRequestModeByName = map[string]yacycrawlcontract.CrawlRequestMode{
 	"url":      yacycrawlcontract.CrawlRequestModeURL,
 	"sitemap":  yacycrawlcontract.CrawlRequestModeSitemap,
 	"sitelist": yacycrawlcontract.CrawlRequestModeSitelist,
+	"robots":   yacycrawlcontract.CrawlRequestModeRobots,
 }
 
 func matchOrAll(pattern string) string {

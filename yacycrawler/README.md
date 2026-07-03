@@ -43,11 +43,14 @@ metadata and bounded image URL/alt metadata when available. Links marked
 `rel=nofollow` are not submitted for frontier expansion or local outlink
 evidence unless the crawl profile opts in.
 
-Crawl requests can start from normal URLs, XML sitemaps, sitemap indexes, or
-plain text sitelists. Sitemap and sitelist starts are fetched through the same
-proxied public-web egress path as page fetches, parsed before frontier
-admission, and expanded into bounded URL roots. Sitemap `lastmod` values are
-carried as crawl request hints for later recrawl scheduling.
+Crawl requests can start from normal URLs, XML sitemaps, sitemap indexes, plain
+text sitelists, or a host's `robots.txt`. Sitemap and sitelist starts are fetched
+through the same proxied public-web egress path as page fetches, parsed before
+frontier admission, and expanded into bounded URL roots. A `robots` start fetches
+the seed host's `robots.txt` over that same path and expands the sitemaps named in
+its `Sitemap:` directives; a missing or unreadable `robots.txt` discovers nothing
+rather than failing the crawl. Sitemap `lastmod` values are carried as crawl
+request hints for later recrawl scheduling.
 
 Configuration comes from the environment (`YACYCRAWLER_NODE_RPC_ADDR` is required;
 `YACYCRAWLER_ALLOW_PRIVATE_NETWORKS` opts into all LAN and private-network targets,
@@ -78,8 +81,9 @@ on the other.
 
 - The persistent frontier, politeness model, and recrawl scheduler are still
   prototype-grade.
-- Robots.txt sitemap discovery is still planned; sitemap and sitelist starts
-  currently come from explicit crawl order `startMode` values.
+- Feeding sitemap `lastmod` into persistent frontier recrawl scheduling is still
+  planned; discovery from explicit sitemap or sitelist starts and from `robots.txt`
+  `Sitemap:` directives (the `robots` start mode) is implemented.
 - Browser-level redirect interception is still planned; the current public-web
   admission check, HTTP redirect cap, HTTP timeout budgets, and HTTP final-URL check are
   application-layer guards plus proxy defense in depth.

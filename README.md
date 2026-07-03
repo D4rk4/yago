@@ -76,8 +76,8 @@ The node currently targets these responsibilities:
   including inbound and outbound DHT transfer series, peer discovery
   gauges/counters, local search index stats, and a machine-readable
   compatibility catalog;
-- optionally publish `url`, `sitemap`, or `sitelist` crawl orders and consume
-  crawler ingest batches over gRPC when crawling is configured.
+- optionally publish `url`, `sitemap`, `sitelist`, or `robots` crawl orders and
+  consume crawler ingest batches over gRPC when crawling is configured.
 
 The node stores bounded extracted document text, page description metadata,
 bounded image URL/alt metadata, and other document metadata, and maintains an
@@ -193,10 +193,11 @@ The example stack starts:
 
 When `YACY_CRAWL_RPC_ADDR` is configured, the ops listener accepts local crawl dispatch
 requests at `POST /crawl`. The request body includes `seeds` and optional
-`startMode`; supported modes are `url`, `sitemap`, and `sitelist`. Sitemap and
-sitelist seeds are fetched by the crawler through the same public-web egress
-guards as normal pages and expanded into bounded URL roots before frontier
-admission.
+`startMode`; supported modes are `url`, `sitemap`, `sitelist`, and `robots`.
+Sitemap and sitelist seeds are fetched by the crawler through the same public-web
+egress guards as normal pages and expanded into bounded URL roots before frontier
+admission. A `robots` start reads each seed host's `robots.txt` and expands the
+sitemaps named in its `Sitemap:` directives.
 
 Useful checks:
 
