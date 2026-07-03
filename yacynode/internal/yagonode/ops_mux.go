@@ -27,6 +27,9 @@ func buildOpsMux(
 	if assembled.crawl != nil {
 		assembled.crawl.mountDispatch(opsMux)
 	}
+	if assembled.searchExplain != nil {
+		opsMux.Handle(pathSearchExplain, assembled.searchExplain)
+	}
 	recorder.Record(events.SeverityInfo, events.CategoryConfig, "node.started", "node started")
 
 	return opsMux

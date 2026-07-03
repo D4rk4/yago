@@ -37,7 +37,10 @@ func guardAdminSurface(
 
 	return service.Guard(
 		[]string{pathHealth, pathReady, adminauth.PathLogin, adminauth.PathSetup},
-		map[string]adminauth.Scope{crawldispatch.PathCrawlDispatch: adminauth.ScopeCrawlWrite},
+		map[string]adminauth.Scope{
+			crawldispatch.PathCrawlDispatch: adminauth.ScopeCrawlWrite,
+			pathSearchExplain:               adminauth.ScopeSearchRead,
+		},
 		opsMux,
 	), nil
 }

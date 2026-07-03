@@ -253,7 +253,11 @@ func TestSearcherLimitsResultsPerHost(t *testing.T) {
 		t.Fatalf("search: %v", err)
 	}
 	if len(resp.Results) != len(results) {
-		t.Fatalf("results = %d, want %d (diversity must not drop results)", len(resp.Results), len(results))
+		t.Fatalf(
+			"results = %d, want %d (diversity must not drop results)",
+			len(resp.Results),
+			len(results),
+		)
 	}
 
 	fromHostA := 0

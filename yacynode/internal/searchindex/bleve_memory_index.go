@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/blevesearch/bleve/v2"
+	"github.com/blevesearch/bleve/v2/search"
 	blevequery "github.com/blevesearch/bleve/v2/search/query"
 
 	"github.com/D4rk4/yago/yacynode/internal/documentstore"
@@ -130,6 +131,7 @@ func (b *BleveMemoryIndex) Search(
 
 	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req))
 	searchRequest.Size = len(b.documents)
+	searchRequest.Explain = req.Explain
 	result, err := b.index.SearchInContext(ctx, searchRequest)
 	if err != nil {
 		return SearchResultSet{}, fmt.Errorf("search documents: %w", err)
@@ -144,7 +146,10 @@ func (b *BleveMemoryIndex) Search(
 		}
 		total++
 		if len(results) < req.MaxResults {
-			results = append(results, searchResultFromDocument(hit.ID, doc, req, hit.Score))
+			results = append(
+				results,
+				searchResultFromDocument(hit.ID, doc, req, hit.Score, hitExplanation(req, hit)),
+			)
 		}
 	}
 
@@ -163,12 +168,13 @@ func (b *BleveMemoryIndex) Stats(context.Context) (IndexStats, error) {
 }
 
 func bleveSearchQuery(req SearchRequest) blevequery.Query {
+	weights := req.Weights.orDefault()
 	main := bleve.NewDisjunctionQuery(
-		fieldMatch("title", req.Query, 4),
-		fieldMatch("headings", req.Query, 3),
-		fieldMatch("anchors", req.Query, 2),
-		fieldMatch("body", req.Query, 1),
-		fieldMatch("url", req.Query, 1),
+		fieldMatch("title", req.Query, weights.Title),
+		fieldMatch("headings", req.Query, weights.Headings),
+		fieldMatch("anchors", req.Query, weights.Anchors),
+		fieldMatch("body", req.Query, weights.Body),
+		fieldMatch("url", req.Query, weights.URL),
 	)
 	if len(req.ExcludeTerms) == 0 {
 		return main
@@ -212,6 +218,7 @@ func searchResultFromDocument(
 	doc documentstore.Document,
 	req SearchRequest,
 	score float64,
+	explanation string,
 ) SearchResult {
 	rawContent := ""
 	if req.IncludeRaw {
@@ -225,8 +232,17 @@ func searchResultFromDocument(
 		Snippet:       snippet(doc.ExtractedText, documentTitle(doc)),
 		RawContent:    rawContent,
 		Score:         score,
+		Explanation:   explanation,
 		PublishedDate: documentTime(doc),
 	}
+}
+
+func hitExplanation(req SearchRequest, hit *search.DocumentMatch) string {
+	if !req.Explain || hit.Expl == nil {
+		return ""
+	}
+
+	return hit.Expl.String()
 }
 
 func allowsDocument(doc documentstore.Document, req SearchRequest) bool {

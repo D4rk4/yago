@@ -28,12 +28,22 @@ func TestNewSearchIndexMappingTunesFields(t *testing.T) {
 		}
 		if fieldMapping.Store || fieldMapping.IncludeInAll ||
 			fieldMapping.IncludeTermVectors || fieldMapping.DocValues {
-			t.Fatalf("field %q store=%v includeInAll=%v termVectors=%v docValues=%v, want all false",
-				field, fieldMapping.Store, fieldMapping.IncludeInAll,
-				fieldMapping.IncludeTermVectors, fieldMapping.DocValues)
+			t.Fatalf(
+				"field %q store=%v includeInAll=%v termVectors=%v docValues=%v, want all false",
+				field,
+				fieldMapping.Store,
+				fieldMapping.IncludeInAll,
+				fieldMapping.IncludeTermVectors,
+				fieldMapping.DocValues,
+			)
 		}
 		if fieldMapping.Analyzer != searchFieldAnalyzer(field) {
-			t.Fatalf("field %q analyzer = %q, want %q", field, fieldMapping.Analyzer, searchFieldAnalyzer(field))
+			t.Fatalf(
+				"field %q analyzer = %q, want %q",
+				field,
+				fieldMapping.Analyzer,
+				searchFieldAnalyzer(field),
+			)
 		}
 	}
 
@@ -59,6 +69,9 @@ func TestSearchMatchesHostKeywordInURL(t *testing.T) {
 		t.Fatalf("Search: %v", err)
 	}
 	if results.Total != 1 || len(results.Results) != 1 {
-		t.Fatalf("results = %#v, want the host keyword to match through the tuned url analyzer", results)
+		t.Fatalf(
+			"results = %#v, want the host keyword to match through the tuned url analyzer",
+			results,
+		)
 	}
 }

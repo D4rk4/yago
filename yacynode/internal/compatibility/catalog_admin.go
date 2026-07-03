@@ -82,6 +82,15 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Notes:    "Requires a valid admin session or an API key with the admin:read scope.",
 	},
 	{
+		Name:     "Search ranking explain",
+		Path:     "/api/admin/v1/search/explain",
+		Methods:  []string{"POST"},
+		State:    Implemented,
+		Behavior: "Previews a local search query under caller-supplied ranking weights and returns each result's score and Bleve score explanation without saving the weights; missing weights fall back to the default profile and non-finite or negative weights are rejected with 400.",
+		Evidence: []string{"yacynode/internal/yagonode/search_explain_endpoint_test.go"},
+		Notes:    "Requires a valid admin session with a CSRF token, or an API key with the search:read scope.",
+	},
+	{
 		Name:     "Crawl dispatch",
 		Path:     "/crawl",
 		Methods:  []string{"POST"},

@@ -24,6 +24,8 @@ type SearchRequest struct {
 	Language      string
 	Since         time.Time
 	Until         time.Time
+	Weights       RankingWeights
+	Explain       bool
 }
 
 type SearchResultSet struct {
@@ -38,6 +40,7 @@ type SearchResult struct {
 	Snippet       string
 	RawContent    string
 	Score         float64
+	Explanation   string
 	PublishedDate time.Time
 }
 

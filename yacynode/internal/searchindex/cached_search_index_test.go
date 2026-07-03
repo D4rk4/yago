@@ -17,6 +17,7 @@ type countingIndex struct {
 	searchErr error
 	writeErr  error
 	closeErr  error
+	statsErr  error
 	onSearch  func()
 }
 
@@ -42,7 +43,7 @@ func (c *countingIndex) Search(context.Context, SearchRequest) (SearchResultSet,
 }
 
 func (c *countingIndex) Stats(context.Context) (IndexStats, error) {
-	return IndexStats{Documents: 7, Backend: "counting"}, nil
+	return IndexStats{Documents: 7, Backend: "counting"}, c.statsErr
 }
 
 func (c *countingIndex) Close() error {
@@ -171,6 +172,17 @@ func TestCachedSearchIndexForwardsStats(t *testing.T) {
 	}
 	if stats.Documents != 7 || stats.Backend != "counting" {
 		t.Fatalf("stats = %#v", stats)
+	}
+
+	sentinel := errors.New("stats boom")
+	if _, err := NewCachedSearchIndex(
+		&countingIndex{statsErr: sentinel},
+		4,
+	).Stats(t.Context()); !errors.Is(
+		err,
+		sentinel,
+	) {
+		t.Fatalf("stats error = %v, want sentinel", err)
 	}
 }
 

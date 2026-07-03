@@ -24,13 +24,14 @@ import (
 )
 
 type node struct {
-	peerMux    *http.ServeMux
-	readiness  http.Handler
-	indexStats http.Handler
-	sweeper    eviction.Sweeper
-	announcer  peerannouncement.Announcer
-	crawl      crawlProcess
-	dht        dhtOutboundProcess
+	peerMux       *http.ServeMux
+	readiness     http.Handler
+	indexStats    http.Handler
+	searchExplain http.Handler
+	sweeper       eviction.Sweeper
+	announcer     peerannouncement.Announcer
+	crawl         crawlProcess
+	dht           dhtOutboundProcess
 }
 
 type nodeTelemetry struct {
@@ -135,15 +136,36 @@ func assembleNode(
 		return node{}, err
 	}
 
+	return newAssembledNode(nodeParts{
+		mux:       mux,
+		storage:   storage,
+		announcer: exchange.announcer,
+		crawl:     runtime,
+		dht:       dht,
+		vault:     vault,
+	}), nil
+}
+
+type nodeParts struct {
+	mux       *http.ServeMux
+	storage   nodeStorage
+	announcer peerannouncement.Announcer
+	crawl     crawlProcess
+	dht       dhtOutboundProcess
+	vault     *vault.Vault
+}
+
+func newAssembledNode(parts nodeParts) node {
 	return node{
-		peerMux:    mux,
-		readiness:  newReadinessEndpoint(storage.searchIndex),
-		indexStats: newIndexStatsEndpoint(storage.searchIndex),
-		sweeper:    newStorageSweeper(vault, storage),
-		announcer:  exchange.announcer,
-		crawl:      runtime,
-		dht:        dht,
-	}, nil
+		peerMux:       parts.mux,
+		readiness:     newReadinessEndpoint(parts.storage.searchIndex),
+		indexStats:    newIndexStatsEndpoint(parts.storage.searchIndex),
+		searchExplain: newSearchExplainEndpoint(parts.storage.searchIndex),
+		sweeper:       newStorageSweeper(parts.vault, parts.storage),
+		announcer:     parts.announcer,
+		crawl:         parts.crawl,
+		dht:           parts.dht,
+	}
 }
 
 func newRuntimeWireGate(

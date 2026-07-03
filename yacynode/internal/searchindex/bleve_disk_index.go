@@ -148,6 +148,7 @@ func (b *BleveDiskIndex) Search(
 
 	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req))
 	searchRequest.Size = diskSearchSize(req.MaxResults, bleveDocumentCount(count))
+	searchRequest.Explain = req.Explain
 	result, err := b.index.SearchInContext(ctx, searchRequest)
 	if err != nil {
 		return SearchResultSet{}, fmt.Errorf("search documents: %w", err)
@@ -165,7 +166,10 @@ func (b *BleveDiskIndex) Search(
 		}
 		total++
 		if len(results) < req.MaxResults {
-			results = append(results, searchResultFromDocument(hit.ID, doc, req, hit.Score))
+			results = append(
+				results,
+				searchResultFromDocument(hit.ID, doc, req, hit.Score, hitExplanation(req, hit)),
+			)
 		}
 	}
 

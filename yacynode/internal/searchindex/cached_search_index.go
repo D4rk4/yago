@@ -41,24 +41,27 @@ func NewCachedSearchIndex(inner SearchIndex, capacity int) *CachedSearchIndex {
 }
 
 func (c *CachedSearchIndex) Index(ctx context.Context, doc documentstore.Document) error {
-	err := c.inner.Index(ctx, doc)
-	if err == nil {
-		c.invalidate()
+	if err := c.inner.Index(ctx, doc); err != nil {
+		return fmt.Errorf("cached index: %w", err)
 	}
+	c.invalidate()
 
-	return err
+	return nil
 }
 
 func (c *CachedSearchIndex) Delete(ctx context.Context, docID string) error {
-	err := c.inner.Delete(ctx, docID)
-	if err == nil {
-		c.invalidate()
+	if err := c.inner.Delete(ctx, docID); err != nil {
+		return fmt.Errorf("cached delete: %w", err)
 	}
+	c.invalidate()
 
-	return err
+	return nil
 }
 
-func (c *CachedSearchIndex) Search(ctx context.Context, req SearchRequest) (SearchResultSet, error) {
+func (c *CachedSearchIndex) Search(
+	ctx context.Context,
+	req SearchRequest,
+) (SearchResultSet, error) {
 	key := cacheKey(req)
 
 	c.mu.Lock()
@@ -73,7 +76,7 @@ func (c *CachedSearchIndex) Search(ctx context.Context, req SearchRequest) (Sear
 
 	results, err := c.inner.Search(ctx, req)
 	if err != nil {
-		return SearchResultSet{}, err
+		return SearchResultSet{}, fmt.Errorf("cached search: %w", err)
 	}
 	c.store(key, generation, results)
 
@@ -81,7 +84,12 @@ func (c *CachedSearchIndex) Search(ctx context.Context, req SearchRequest) (Sear
 }
 
 func (c *CachedSearchIndex) Stats(ctx context.Context) (IndexStats, error) {
-	return c.inner.Stats(ctx)
+	stats, err := c.inner.Stats(ctx)
+	if err != nil {
+		return IndexStats{}, fmt.Errorf("cached stats: %w", err)
+	}
+
+	return stats, nil
 }
 
 func (c *CachedSearchIndex) Close() error {

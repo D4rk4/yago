@@ -380,7 +380,12 @@ func TestRunMountsCrawlDispatchAndServes(t *testing.T) {
 		*http.Client,
 		nodeTelemetry,
 	) (node, error) {
-		return node{announcer: fakeAnnouncer{}, sweeper: &scriptedSweeper{}, crawl: crawl}, nil
+		return node{
+			announcer:     fakeAnnouncer{},
+			sweeper:       &scriptedSweeper{},
+			crawl:         crawl,
+			searchExplain: newSearchExplainEndpoint(nil),
+		}, nil
 	}
 	serveRuntimeNode = func(
 		_ context.Context,
