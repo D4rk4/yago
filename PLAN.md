@@ -67,8 +67,7 @@ Core principles:
 2. Keep RWI generation, storage, and exchange for YaCy P2P compatibility.
 3. Do not use RWI as the only or primary local full-text search engine.
 4. Add a document store and full-text backend abstraction for local search.
-5. Prefer Tantivy as the production full-text sidecar backend.
-6. Keep Bleve or Bluge as a pure-Go/simple deployment fallback.
+5. Use an embedded pure-Go Bleve full-text backend, tuned for web search.
 7. Build Tavily-compatible and YaCy-compatible public search APIs over `yago`'s
    own search core, not as mandatory upstream proxies.
 8. Keep remote crawl disabled by default until trust, destination allowlists,
@@ -87,8 +86,7 @@ yago-node
 
 yago-searchd
   - local full-text index
-  - default recommended backend: Tantivy sidecar
-  - fallback pure-Go backend: Bleve or Bluge
+  - search backend: embedded Bleve (pure Go), tuned for web search
   - document store
   - snippets, phrase/proximity, filters, facets
   - Tavily-compatible POST /search
@@ -122,8 +120,9 @@ Agent workstreams:
   peer metadata, discovery, result federation, and events without changing
   `/yacy/*`.
 - Search Core Agent: full-text backend abstraction, document store integration,
-  Tantivy sidecar, Bleve/Bluge fallback, BM25, field boosts, phrase/proximity,
-  snippets, language analyzers, filters, facets, freshness, and domain quality.
+  the embedded pure-Go Bleve backend tuned for web search, BM25, field boosts,
+  phrase/proximity, snippets, language analyzers, filters, facets, freshness, and
+  domain quality.
   Target search backend seam:
 
   ```go
@@ -164,8 +163,8 @@ Roadmap priorities:
 
 - P0 - turn the RWI node into a search engine: align documentation status across
   README, FEATURES, crawler README, and plan files; add document store; add
-  search backend abstraction; add first full-text backend; prefer Tantivy
-  sidecar for production; add Bleve/Bluge fallback; implement local Tavily
+  search backend abstraction; use an embedded pure-Go Bleve full-text backend
+  tuned for web search; implement local Tavily
   `/search`; implement `/yacysearch.json` and `/yacysearch.rss` over search
   core; make snippets come from document store; keep RWI generation and YaCy P2P
   compatibility working.
@@ -315,8 +314,8 @@ Keep the existing modules unless an ADR approves splitting/renaming:
 
 Target components may become separate binaries after ADRs:
 
-- `yago-searchd`: document store, local full-text index, Tantivy sidecar
-  integration, Bleve/Bluge fallback, snippets, phrase/proximity, filters,
+- `yago-searchd`: document store, local full-text index on the embedded Bleve
+  backend tuned for web search, snippets, phrase/proximity, filters,
   facets, Tavily-compatible `/search`, and YaCy search adapters.
 - `yago-admin-ui`: Carbon React admin UI served through stable typed admin APIs.
 
@@ -804,11 +803,13 @@ Acceptance:
 
 ### SEARCH-04: Optional embedded full-text index ADR
 
-Status: accepted in `yacynode/doc/adr/0012-use-bleve-for-embedded-full-text-fallback.md`.
-The current fallback is a persistent Bleve v2 `SearchIndex` stored under
+Status: accepted in `yacynode/doc/adr/0012-use-bleve-for-embedded-full-text-fallback.md`,
+amended by `yacynode/doc/adr/0018-commit-to-bleve-web-search-backend.md`.
+The local search backend is a persistent Bleve v2 `SearchIndex` stored under
 `YACY_DATA_DIR/search.bleve`. It opens the existing index on startup and rebuilds
-from the document store only when the index is missing or unusable. Tantivy
-remains the preferred future production sidecar.
+from the document store only when the index is missing or unusable. Bleve is the
+committed web-search backend, tuned for web search (SEARCH-09 through SEARCH-11);
+the Tantivy production sidecar is dropped from the roadmap.
 
 Decision considered:
 
@@ -882,6 +883,56 @@ Acceptance:
 
 - Admin API can preview ranking changes without saving.
 - Tests cover config validation and deterministic scoring.
+
+### SEARCH-08: Commit to Bleve as the web-search backend
+
+Status: accepted in `yacynode/doc/adr/0018-commit-to-bleve-web-search-backend.md`.
+
+Tasks:
+
+1. Commit to the embedded Bleve backend for local web search; drop the Tantivy production sidecar from the roadmap.
+2. Remove the Tantivy migration framing from README, FEATURES, specification, ADR-0012, AGENTS, and this plan.
+
+Acceptance:
+
+- Docs describe Bleve as the committed backend tuned for web search, with RWI exchange-only.
+- `make verify` passes; no dependency added.
+
+### SEARCH-09: Tune the Bleve index mapping for web search
+
+Tasks:
+
+1. Replace the default index mapping with a shared custom mapping for the memory and disk indexes.
+2. Index only the queried fields, without the `_all` composite field, stored fields, term vectors, or doc values the node does not use.
+
+Acceptance:
+
+- Query semantics are unchanged; existing search behavior tests stay green.
+- Index size and per-query work drop; `make verify` passes.
+
+### SEARCH-10: Hot-query cache and index warmup
+
+Tasks:
+
+1. Add a bounded hot-query result cache as a decorator over `SearchIndex`, invalidated on index writes.
+2. Warm the disk index on open.
+
+Acceptance:
+
+- Cache never returns stale results after an index write.
+- Tests cover cache hit, invalidation, and eviction; `make verify` passes.
+
+### SEARCH-11: Web-search relevance and analyzer tuning
+
+Tasks:
+
+1. Tune analyzers for web content, including URL and host tokenization and language-aware text analysis where language is known.
+2. Improve result quality with phrase/proximity support and per-host result diversity.
+
+Acceptance:
+
+- Representative queries improve or hold on a before/after relevance check.
+- Tests cover the analyzer and diversity behavior; `make verify` passes.
 
 ---
 

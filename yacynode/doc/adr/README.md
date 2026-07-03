@@ -36,3 +36,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0015](0015-argon2id-admin-password-hashing.md) | Hash admin passwords with Argon2id | Accepted |
 | [0016](0016-crawler-prometheus-metrics.md) | Expose crawler metrics through the Prometheus client | Accepted |
 | [0017](0017-crawl-order-lease-delivery.md) | Deliver crawl orders through durable leases with worker heartbeats | Accepted |
+| [0018](0018-commit-to-bleve-web-search-backend.md) | Commit to Bleve as the web-search backend | Accepted |

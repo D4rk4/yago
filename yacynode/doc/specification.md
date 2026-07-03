@@ -30,8 +30,7 @@ yago-node
 
 yago-searchd
   - local full-text index
-  - default recommended backend: Tantivy sidecar
-  - fallback pure-Go backend: Bleve or Bluge
+  - search backend: embedded Bleve (pure Go), tuned for web search
   - document store
   - snippets, phrase/proximity, filters, facets
   - Tavily-compatible POST /search
@@ -109,8 +108,7 @@ yago-admin-ui
 * The node SHALL store accepted RWI postings and the URL metadata those postings reference.
 * The node SHALL store canonical URL, normalized URL, title, page description metadata, headings, extracted text, language, content type, fetch status, fetch timestamps, content hash, outlinks, available inlink or anchor metadata, and bounded image URL/alt metadata for locally indexed documents.
 * The node SHALL support a full-text search backend abstraction with indexing, deletion, search, and stats operations.
-* The node SHOULD support Tantivy as the recommended production full-text backend through a bounded sidecar boundary.
-* The node SHOULD support Bleve or Bluge as a pure-Go full-text fallback.
+* The node SHALL use an embedded pure-Go Bleve full-text backend, tuned for web search, behind that abstraction.
 * The embedded pure-Go full-text fallback, when selected, SHALL persist its own
   index under the configured node data directory.
 * The embedded pure-Go full-text fallback SHALL rebuild from the document store

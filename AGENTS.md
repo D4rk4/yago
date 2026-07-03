@@ -19,8 +19,7 @@ yago-node
 
 yago-searchd
   - local full-text index
-  - default recommended backend: Tantivy sidecar
-  - fallback pure-Go backend: Bleve or Bluge
+  - search backend: embedded Bleve (pure Go), tuned for web search
   - document store
   - snippets, phrase/proximity, filters, facets
   - Tavily-compatible POST /search
@@ -46,7 +45,7 @@ P2P Compatibility Agent: Owns `/yacy/hello.html`, seedlists, peer liveness, `/ya
 
 Native P2P v2 Agent: Owns optional experimental go-libp2p, Kademlia/provider records, signed peer metadata, peer discovery, result federation, and gossipsub/events if needed. Native P2P v2 must be optional/experimental and must not break `/yacy/*` compatibility.
 
-Search Core Agent: Owns full-text backend abstraction, document store integration, Tantivy sidecar integration as the preferred production backend, Bleve/Bluge pure-Go fallback, BM25, field boosts (`title > headings > anchor text > body`), phrase/proximity search through positional indexes, snippets/highlighting, language analyzers, filters/facets, freshness signals, and domain quality signals. Target interface:
+Search Core Agent: Owns full-text backend abstraction, document store integration, the embedded pure-Go Bleve backend tuned for web search, BM25, field boosts (`title > headings > anchor text > body`), phrase/proximity search through positional indexes, snippets/highlighting, language analyzers, filters/facets, freshness signals, and domain quality signals. Target interface:
 
 ```go
 type SearchIndex interface {
@@ -75,7 +74,7 @@ QA / Compatibility Agent: Owns unit tests, integration tests, e2e tests with loc
 
 Roadmap priorities:
 
-- P0: Align documentation status across README, FEATURES, crawler README, and plan files; add document store; add search backend abstraction; add first full-text backend; prefer Tantivy sidecar for the production profile; add Bleve/Bluge fallback for pure-Go/simple profile; implement local Tavily-compatible `/search`; implement `/yacysearch.json` and `/yacysearch.rss` on the search core; make snippets come from document store, not only URL metadata; keep RWI generation and YaCy P2P compatibility working.
+- P0: Align documentation status across README, FEATURES, crawler README, and plan files; add document store; add search backend abstraction; use an embedded pure-Go Bleve full-text backend tuned for web search; implement local Tavily-compatible `/search`; implement `/yacysearch.json` and `/yacysearch.rss` on the search core; make snippets come from document store, not only URL metadata; keep RWI generation and YaCy P2P compatibility working.
 - P1 crawler: persistent frontier, robots/politeness, sitemap ingestion, canonicalization, deduplication, browser fallback, backpressure, SSRF protection, and recrawl scheduler.
 - P1 P2P/DHT: outbound DHT scheduler, peer selection, batching, retry policy, redundancy, delete-after-success policy where safe, peer reputation, strict remote crawl policy, and compatibility status endpoint.
 - P1 admin UI: Search console, Crawl management, P2P network, Index/storage, Security, Metrics, Logs/events, and Settings.

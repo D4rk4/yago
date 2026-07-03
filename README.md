@@ -83,8 +83,8 @@ The node stores bounded extracted document text, page description metadata,
 bounded image URL/alt metadata, and other document metadata, and maintains an
 embedded persistent Bleve full-text fallback index for local public search under
 `YACY_DATA_DIR/search.bleve`. The fallback index is opened on startup and is
-rebuilt from the document store only when missing or unusable; the Tantivy
-production sidecar remains roadmap work. The node does not store unbounded raw
+rebuilt from the document store only when missing or unusable. Bleve is the
+committed local search backend, tuned for web search. The node does not store unbounded raw
 HTML bodies. The crawler is a separate, optional worker process that can fetch
 pages, build document ingest payloads and YaCy-compatible references, and
 publish ingest batches back to the node.

@@ -6,6 +6,10 @@ Date: 2026-07-02
 
 Accepted
 
+Amended by [ADR-0018](0018-commit-to-bleve-web-search-backend.md): Bleve is the
+committed web-search backend and the Tantivy production sidecar is dropped from the
+roadmap.
+
 ## Context
 
 `yago-node` must not use YaCy RWI as the primary local full-text search engine.
@@ -61,5 +65,6 @@ remains the source of truth for repair rebuilds and future backend migrations.
 Memory usage now depends on the number and size of stored document fields that
 are indexed. Disk usage now includes the Bleve index in addition to the document
 store. The existing document-store size limit and storage quota remain the
-primary ingest guardrails, but large deployments should move to the Tantivy
-sidecar before increasing crawl volume.
+primary ingest guardrails, but large deployments should apply the Bleve tuning in
+[ADR-0018](0018-commit-to-bleve-web-search-backend.md) and keep the working set in
+memory before increasing crawl volume.
