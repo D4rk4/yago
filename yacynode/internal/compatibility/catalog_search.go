@@ -72,9 +72,9 @@ var searchSurfaceSpecs = []surfaceSpec{
 		Name:     "Solr select compatibility",
 		Path:     "/solr/select",
 		Methods:  []string{"GET", "POST"},
-		State:    Planned,
-		Behavior: "No Solr-compatible endpoint is mounted yet.",
-		Notes:    "Do not claim full Solr compatibility.",
+		State:    Unsupported,
+		Behavior: "No Solr-compatible endpoint is mounted; Solr query compatibility is dropped.",
+		Notes:    "Local full-text search uses the native Go backend instead; see ADR 0012.",
 	},
 	{
 		Name:     "Full embedded Solr API",
@@ -82,7 +82,7 @@ var searchSurfaceSpecs = []surfaceSpec{
 		Methods:  []string{"GET", "POST"},
 		State:    Unsupported,
 		Behavior: "Full embedded Solr server compatibility is not a Go peer target.",
-		Notes:    "Only a bounded /solr/select subset is planned.",
+		Notes:    "No Solr subset is planned; the native Go search backend replaces it.",
 	},
 	{
 		Name:     "GSA search compatibility",

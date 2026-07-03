@@ -46,10 +46,8 @@ func TestCatalogIncludesPlannedCompatibilityGaps(t *testing.T) {
 		paths[surface.Path] = surface
 	}
 
-	for _, path := range []string{"/solr/select", "/gsa/searchresult"} {
-		if got := paths[path]; got.State != Planned {
-			t.Fatalf("%s state = %q, want planned", path, got.State)
-		}
+	if got := paths["/gsa/searchresult"]; got.State != Planned {
+		t.Fatalf("gsa state = %q, want planned", got.State)
 	}
 	for _, path := range []string{"/search", "/extract"} {
 		if got := paths[path]; got.State != Partial {
@@ -59,8 +57,10 @@ func TestCatalogIncludesPlannedCompatibilityGaps(t *testing.T) {
 	if got := paths["/*_p.html"]; got.State != Unsupported {
 		t.Fatalf("admin clone state = %q, want unsupported", got.State)
 	}
-	if got := paths["/solr/*"]; got.State != Unsupported {
-		t.Fatalf("solr api state = %q, want unsupported", got.State)
+	for _, path := range []string{"/solr/select", "/solr/*"} {
+		if got := paths[path]; got.State != Unsupported {
+			t.Fatalf("%s state = %q, want unsupported", path, got.State)
+		}
 	}
 }
 

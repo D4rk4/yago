@@ -48,9 +48,9 @@ Status values:
 | OpenSearch description | `/opensearchdescription.xml` | GET | implemented | Advertises HTML, RSS, JSON suggestion, and XML suggestion URLs. |
 | JSON suggestions | `/suggest.json` | GET | partial | Serves suggestions from bounded in-memory recent queries. |
 | XML suggestions | `/suggest.xml` | GET | partial | Serves YaCy-compatible `SearchSuggestion` XML from the same recent-query source. |
-| Solr select compatibility | `/solr/select` | GET, POST | planned | Not mounted. Full Solr compatibility is not claimed. |
+| Solr select compatibility | `/solr/select` | GET, POST | unsupported | Not mounted. Solr query compatibility is dropped; local full-text search uses the native Go backend (see `doc/adr/0012-use-bleve-for-embedded-full-text-fallback.md`). |
 | GSA search compatibility | `/gsa/searchresult` | GET | planned | Not mounted. |
-| Full embedded Solr API | `/solr/*` | GET, POST | unsupported | Full Solr server compatibility is not a Go peer target. Only a bounded `/solr/select` subset is planned. |
+| Full embedded Solr API | `/solr/*` | GET, POST | unsupported | Full Solr server compatibility is not a Go peer target. No Solr subset is planned. |
 
 ## Agent API Targets
 
@@ -91,7 +91,7 @@ including all `/yacy/*` peer traffic, are unaffected. The operations listener
 admin surface can be kept on loopback behind a reverse proxy while P2P stays
 public.
 
-Carbon UI pages, richer admin APIs, full Java YaCy page parity, Solr/GSA
+Carbon UI pages, richer admin APIs, full Java YaCy page parity, GSA
 compatibility, Tavily answer generation, image ranking/search, real usage
 accounting, hashed API key storage, scopes, per-key rate limits, optional upstream
 Tavily, and fetch-on-extract for uncached URLs remain planned work.
