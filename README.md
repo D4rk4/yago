@@ -65,6 +65,9 @@ The node currently targets these responsibilities:
   basic/fast depths, using DHT-selected reachable-peer search for
   `search_depth=advanced`, and returning stored page image metadata when
   `include_images` is requested;
+- serve Tavily-like `POST /extract` responses that return stored-document content
+  for URLs already in the index, with controlled `failed_results` for uncached
+  URLs and no fetch-on-extract;
 - expose `/opensearchdescription.xml`, `/suggest.json`, and `/suggest.xml` for
   browser search integration and recent-query suggestions;
 - store accepted document ingest payloads, RWI postings, and URL metadata

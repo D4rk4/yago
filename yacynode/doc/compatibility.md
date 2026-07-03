@@ -57,7 +57,7 @@ Status values:
 | Surface | Path | Methods | Status | Behavior |
 | --- | --- | --- | --- | --- |
 | Tavily-compatible search | `/search` | POST | partial | Serves a Tavily-like response over the shared search core; accepts current search contract fields, ignores unknown fields for forward compatibility, optionally requires `Authorization: Bearer <YAGO_SEARCH_API_KEY>`, returns request IDs and JSON error envelopes, returns stored page image metadata when `include_images` is requested, uses local full-text search for basic/fast depths, and includes DHT-selected reachable peer search for `search_depth=advanced`. |
-| Tavily-compatible extract | `/extract` | POST | planned | Not mounted. |
+| Tavily-compatible extract | `/extract` | POST | partial | Returns Tavily-like extract results for URLs already in the document store; accepts `urls` as a string or array plus `extract_depth`, `format`, `include_images`, and `include_favicon`, optionally requires `Authorization: Bearer <YAGO_SEARCH_API_KEY>`, and returns request IDs and JSON error envelopes. Fetch-on-extract is disabled, so URLs absent from the store return controlled `failed_results` entries with no private-network fetch. |
 
 ## Admin And Operations
 
@@ -75,4 +75,4 @@ Status values:
 Admin authentication, Carbon UI pages, richer admin APIs, full Java YaCy page
 parity, Solr/GSA compatibility, Tavily answer generation, image ranking/search,
 real usage accounting, hashed API key storage, scopes, rate limits, optional upstream
-Tavily, and Tavily-compatible extract APIs remain planned work.
+Tavily, and fetch-on-extract for uncached URLs remain planned work.

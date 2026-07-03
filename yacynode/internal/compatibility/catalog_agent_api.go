@@ -14,7 +14,9 @@ var agentAPISurfaceSpecs = []surfaceSpec{
 		Name:     "Tavily-compatible extract",
 		Path:     "/extract",
 		Methods:  []string{"POST"},
-		State:    Planned,
-		Behavior: "No Tavily-compatible extract endpoint is mounted yet.",
+		State:    Partial,
+		Behavior: "Returns Tavily-like extract results for URLs already in the document store, accepts urls as a string or array plus extract_depth, format, include_images, and include_favicon, optionally requires local bearer auth when YAGO_SEARCH_API_KEY is set, and returns request IDs and JSON error envelopes. Fetch-on-extract is disabled, so URLs absent from the store return controlled failed_results entries and no private-network fetch occurs.",
+		Evidence: []string{"yacynode/internal/tavilyapi/extract_endpoint_test.go"},
+		Notes:    "Fetch-on-extract for uncached URLs, markdown fidelity beyond a title heading, and image ranking remain planned.",
 	},
 }

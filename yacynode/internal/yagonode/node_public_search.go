@@ -53,4 +53,9 @@ func mountNodePublicSearch(
 		assembly.storage.documentDirectory,
 		tavilyapi.SearchAccessPolicy{BearerToken: assembly.searchAPIKey},
 	)
+	tavilyapi.MountExtract(
+		mux,
+		assembly.storage.documentDirectory,
+		tavilyapi.SearchAccessPolicy{BearerToken: assembly.searchAPIKey},
+	)
 }
