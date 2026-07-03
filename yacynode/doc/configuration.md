@@ -32,6 +32,25 @@ The node is configured through environment variables.
 | `YACY_STORAGE_QUOTA` | `1GB` | Storage quota, as a human-readable size (e.g. `512MB`, `1GB`, `20GB`). |
 | `YACY_EGRESS_ALLOW_PRIVATE_NETWORKS` | `false` | Allow outbound connections to RFC 1918 and unique-local addresses. Enable only for LAN or private-network deployments; loopback, link-local, and reserved ranges stay blocked. |
 | `YAGO_SEARCH_API_KEY` | _(empty)_ | Optional local bearer token for the Tavily-compatible `POST /search` endpoint. When set, callers must send `Authorization: Bearer <token>`. This is not an upstream Tavily API key. |
+| `YAGO_ADMIN_USER` | _(empty)_ | Administrator username. When set with `YAGO_ADMIN_PASSWORD`, the admin is provisioned on every start and those credentials are authoritative. |
+| `YAGO_ADMIN_PASSWORD` | _(empty)_ | Administrator password, stored as an Argon2id hash. Leave both admin variables empty to create the first admin with `POST /api/admin/v1/auth/setup` on first run. There is no default password. |
+
+## Admin authentication
+
+Every operations endpoint except `/health` and `/ready` requires a valid admin
+session. Provision the administrator with `YAGO_ADMIN_USER` and
+`YAGO_ADMIN_PASSWORD`, or, when those are unset, create the first administrator on
+first run with `POST /api/admin/v1/auth/setup` (allowed only while no admin
+exists). `POST /api/admin/v1/auth/login` verifies the Argon2id-hashed password and
+returns an `HttpOnly`, `SameSite=Strict` session cookie plus a CSRF token; send the
+cookie on later requests and the `X-CSRF-Token` header on unsafe methods (`POST`,
+`PUT`, `PATCH`, `DELETE`). `POST /api/admin/v1/auth/logout` invalidates the
+server-side session, `GET /api/admin/v1/auth/session` returns the current
+administrator, login is rate limited per client, and a failed login does not reveal
+whether the account exists. The session cookie is marked `Secure` only when the
+request arrives over TLS, so terminate TLS at the node or a trusted reverse proxy.
+Prometheus must scrape `/metrics` with a logged-in session cookie, or bind
+`YACY_OPS_ADDR` to a trusted network.
 
 ## Crawling
 

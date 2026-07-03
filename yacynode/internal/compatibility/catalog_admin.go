@@ -18,12 +18,25 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Evidence: []string{"yacynode/internal/yagonode/readiness_endpoint_test.go"},
 	},
 	{
+		Name:     "Admin authentication",
+		Path:     "/api/admin/v1/auth/*",
+		Methods:  []string{"GET", "POST"},
+		State:    Implemented,
+		Behavior: "Provides first-run admin setup, Argon2id-verified login issuing an HttpOnly SameSite=Strict session cookie plus a CSRF token, session introspection, and logout that invalidates the server-side session. Login is rate limited per client and a failed login does not reveal whether the account exists.",
+		Evidence: []string{
+			"yacynode/internal/adminauth/*_test.go",
+			"yacynode/internal/yagonode/node_admin_auth_test.go",
+		},
+		Notes: "Every operations endpoint except /health and /ready requires a valid admin session, and unsafe methods also require the CSRF token. Provision the admin with YAGO_ADMIN_USER and YAGO_ADMIN_PASSWORD, or POST /api/admin/v1/auth/setup on first run.",
+	},
+	{
 		Name:     "Metrics",
 		Path:     "/metrics",
 		Methods:  []string{"GET"},
 		State:    Implemented,
 		Behavior: "Serves Prometheus metrics for node operations.",
 		Evidence: []string{"yacynode/internal/metrics/*_test.go"},
+		Notes:    "Requires a valid admin session; scrape with a logged-in session cookie or bind the ops listener to a trusted network.",
 	},
 	{
 		Name:     "DHT gate report",
@@ -32,7 +45,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 		State:    Implemented,
 		Behavior: "Serves current outbound DHT gate state, configuration, and named gate results.",
 		Evidence: []string{"yacynode/internal/yagonode/dht_gate_status_endpoint_test.go"},
-		Notes:    "Authentication is not implemented yet.",
+		Notes:    "Requires a valid admin session.",
 	},
 	{
 		Name:     "Search index stats",
@@ -41,7 +54,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 		State:    Implemented,
 		Behavior: "Serves current local search backend availability, backend name, document count, and last index update time.",
 		Evidence: []string{"yacynode/internal/yagonode/index_stats_endpoint_test.go"},
-		Notes:    "Authentication is not implemented yet.",
+		Notes:    "Requires a valid admin session.",
 	},
 	{
 		Name:     "Crawl dispatch",
@@ -53,7 +66,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 			"yacynode/internal/crawldispatch/*_test.go",
 			"yacynode/internal/yagonode/node_crawl_test.go",
 		},
-		Notes: "Mounted only when gRPC-backed crawling is configured; authentication is not implemented yet.",
+		Notes: "Mounted only when gRPC-backed crawling is configured; requires a valid admin session and a CSRF token.",
 	},
 	{
 		Name:     "Compatibility report",
@@ -65,7 +78,7 @@ var adminSurfaceSpecs = []surfaceSpec{
 			"yacynode/internal/compatibility/*_test.go",
 			"yacynode/internal/yagonode/compatibility_endpoint_test.go",
 		},
-		Notes: "Authentication is not implemented yet.",
+		Notes: "Requires a valid admin session.",
 	},
 	{
 		Name:     "Java YaCy admin page clone set",

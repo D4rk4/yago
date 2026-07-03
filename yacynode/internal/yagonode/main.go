@@ -61,6 +61,7 @@ func run() error {
 	}
 
 	config.Crawl = loadCrawlConfig(os.Getenv)
+	config.Admin = loadAdminConfig(os.Getenv)
 
 	client := newGuardedEgressClient(yacyegress.NewGuard(config.EgressAllowLAN))
 
@@ -105,6 +106,11 @@ func run() error {
 		assembled.crawl.mountDispatch(opsMux)
 	}
 
+	opsHandler, err := guardAdminSurface(ctx, config, vault, opsMux)
+	if err != nil {
+		return fmt.Errorf("configure admin auth: %w", err)
+	}
+
 	return serveRuntimeNode(
 		ctx,
 		assembled,
@@ -116,7 +122,7 @@ func run() error {
 				logHTTPRequests(instrumentHTTP(endpoints, assembled.peerMux)),
 			),
 		},
-		namedServer{"ops", buildServer(config.OpsAddr, opsMux)},
+		namedServer{"ops", buildServer(config.OpsAddr, opsHandler)},
 	)
 }
 

@@ -90,6 +90,8 @@ components:
     in: internal/crawlresults/**
   crawlbroker:
     in: internal/crawlbroker/**
+  adminauth:
+    in: internal/adminauth/**
   compatibility:
     in: internal/compatibility/**
   yagonode:
@@ -134,6 +136,10 @@ vendors:
     in:
       - google.golang.org/protobuf
       - google.golang.org/protobuf/**
+  crypto:
+    in:
+      - golang.org/x/crypto
+      - golang.org/x/crypto/**
 
 deps:
   vault:
@@ -429,6 +435,13 @@ deps:
       - yacymodel
       - grpc
       - protobuf
+  adminauth:
+    mayDependOn:
+      - adminauth
+      - vault
+      - memvault
+    canUse:
+      - crypto
   compatibility:
     mayDependOn:
       - compatibility
@@ -471,6 +484,7 @@ deps:
       - crawldispatch
       - crawlresults
       - crawlbroker
+      - adminauth
       - compatibility
       - searchcore
       - searchindex

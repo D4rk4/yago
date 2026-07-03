@@ -68,6 +68,7 @@ type nodeConfig struct {
 	SearchAPIKey      string
 	DeclaredBirthDate time.Time
 	Crawl             crawlConfig
+	Admin             adminConfig
 	DHT               dhtDistributionConfig
 }
 

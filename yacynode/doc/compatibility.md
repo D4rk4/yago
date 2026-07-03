@@ -65,14 +65,20 @@ Status values:
 | --- | --- | --- | --- | --- |
 | Health | `/health` | GET | implemented | Returns a successful status when the ops listener is running. |
 | Readiness | `/ready` | GET | implemented | Reports whether local node dependencies are ready to serve traffic, starting with the local search index. |
-| Metrics | `/metrics` | GET | implemented | Serves Prometheus metrics for node operations. |
-| DHT gate report | `/api/admin/v1/network/dht/gates` | GET | implemented | Serves outbound DHT gate state, configuration, and gate results. |
-| Search index stats | `/api/admin/v1/index/stats` | GET | implemented | Serves local search backend availability, backend name, indexed document count, and last index update time. |
-| Crawl dispatch | `/crawl` | POST | partial | Publishes local crawl orders only when crawler integration is configured; supports `startMode` values `url`, `sitemap`, and `sitelist`; validates the crawl profile before publishing, rejecting an impossible URL regex or an out-of-range depth, pages-per-host, or duration with `400`. |
-| Compatibility report | `/api/admin/v1/compatibility` | GET | implemented | Serves the machine-readable compatibility catalog. |
+| Admin authentication | `/api/admin/v1/auth/*` | GET, POST | implemented | First-run admin setup, Argon2id-verified login issuing an HttpOnly `SameSite=Strict` session cookie plus a CSRF token, session introspection, and logout that invalidates the server-side session. Login is rate limited and a failed login does not reveal whether the account exists. |
+| Metrics | `/metrics` | GET | implemented | Serves Prometheus metrics for node operations. Requires a valid admin session. |
+| DHT gate report | `/api/admin/v1/network/dht/gates` | GET | implemented | Serves outbound DHT gate state, configuration, and gate results. Requires a valid admin session. |
+| Search index stats | `/api/admin/v1/index/stats` | GET | implemented | Serves local search backend availability, backend name, indexed document count, and last index update time. Requires a valid admin session. |
+| Crawl dispatch | `/crawl` | POST | partial | Publishes local crawl orders only when crawler integration is configured; supports `startMode` values `url`, `sitemap`, and `sitelist`; validates the crawl profile before publishing, rejecting an impossible URL regex or an out-of-range depth, pages-per-host, or duration with `400`. Requires a valid admin session and a CSRF token. |
+| Compatibility report | `/api/admin/v1/compatibility` | GET | implemented | Serves the machine-readable compatibility catalog. Requires a valid admin session. |
 | Java YaCy admin page clone set | `/*_p.html` | GET, POST | unsupported | Java YaCy administration pages are not cloned into the Go peer. |
 
-Admin authentication, Carbon UI pages, richer admin APIs, full Java YaCy page
-parity, Solr/GSA compatibility, Tavily answer generation, image ranking/search,
-real usage accounting, hashed API key storage, scopes, rate limits, optional upstream
+Every operations endpoint except `/health` and `/ready` requires a valid admin
+session; unsafe methods additionally require the CSRF token returned at login.
+Provision the administrator with `YAGO_ADMIN_USER` and `YAGO_ADMIN_PASSWORD`, or
+`POST /api/admin/v1/auth/setup` on first run. There is no default password.
+
+Carbon UI pages, richer admin APIs, full Java YaCy page parity, Solr/GSA
+compatibility, Tavily answer generation, image ranking/search, real usage
+accounting, hashed API key storage, scopes, per-key rate limits, optional upstream
 Tavily, and fetch-on-extract for uncached URLs remain planned work.
