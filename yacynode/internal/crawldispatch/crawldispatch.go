@@ -13,8 +13,15 @@ import (
 
 const PathCrawlDispatch = "/crawl"
 
+// CrawlOrderQueue accepts crawl orders for durable delivery. When key is
+// non-empty and was already accepted, the order is not enqueued again and
+// duplicate is true; an empty key disables idempotency.
 type CrawlOrderQueue interface {
-	Publish(ctx context.Context, order yacycrawlcontract.CrawlOrder) error
+	PublishOnce(
+		ctx context.Context,
+		key string,
+		order yacycrawlcontract.CrawlOrder,
+	) (duplicate bool, err error)
 }
 
 type ProvenanceMint func() []byte

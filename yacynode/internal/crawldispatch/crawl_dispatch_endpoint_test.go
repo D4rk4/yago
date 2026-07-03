@@ -17,12 +17,26 @@ type recordingQueue struct {
 	order     yacycrawlcontract.CrawlOrder
 	published bool
 	err       error
+	duplicate bool
+	keys      []string
 }
 
-func (q *recordingQueue) Publish(_ context.Context, order yacycrawlcontract.CrawlOrder) error {
+func (q *recordingQueue) PublishOnce(
+	_ context.Context,
+	key string,
+	order yacycrawlcontract.CrawlOrder,
+) (bool, error) {
+	q.keys = append(q.keys, key)
+	if q.err != nil {
+		return false, q.err
+	}
+	if q.duplicate {
+		return true, nil
+	}
 	q.order = order
 	q.published = true
-	return q.err
+
+	return false, nil
 }
 
 const initiator = yacymodel.Hash("abcdefABCDEF")
@@ -41,14 +55,24 @@ func mount(t *testing.T, queue crawldispatch.CrawlOrderQueue) *http.ServeMux {
 
 func post(t *testing.T, mux *http.ServeMux, body string) *httptest.ResponseRecorder {
 	t.Helper()
+
+	return postWithKey(t, mux, "", body)
+}
+
+func postWithKey(t *testing.T, mux *http.ServeMux, key, body string) *httptest.ResponseRecorder {
+	t.Helper()
 	req := httptest.NewRequestWithContext(
 		context.Background(),
 		http.MethodPost,
 		crawldispatch.PathCrawlDispatch,
 		strings.NewReader(body),
 	)
+	if key != "" {
+		req.Header.Set(crawldispatch.IdempotencyKeyHeader, key)
+	}
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
+
 	return rec
 }
 
@@ -259,5 +283,56 @@ func TestDispatchReportsPublishFailure(t *testing.T) {
 	rec := post(t, mount(t, queue), `{"seeds":["https://example.org"],"maxPagesPerHost":-1}`)
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", rec.Code)
+	}
+}
+
+func TestDispatchForwardsIdempotencyKey(t *testing.T) {
+	queue := &recordingQueue{}
+	rec := postWithKey(
+		t,
+		mount(t, queue),
+		"start-123",
+		`{"seeds":["https://example.org/"],"maxPagesPerHost":-1}`,
+	)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202; body=%s", rec.Code, rec.Body.String())
+	}
+	if len(queue.keys) != 1 || queue.keys[0] != "start-123" {
+		t.Fatalf("forwarded keys = %#v, want [start-123]", queue.keys)
+	}
+}
+
+func TestDispatchReportsDuplicateStart(t *testing.T) {
+	queue := &recordingQueue{duplicate: true}
+	rec := postWithKey(
+		t,
+		mount(t, queue),
+		"start-123",
+		`{"seeds":["https://example.org/"],"maxPagesPerHost":-1}`,
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if queue.published {
+		t.Fatal("duplicate start must not publish a new order")
+	}
+	if !strings.Contains(rec.Body.String(), `"duplicate":true`) {
+		t.Fatalf("body = %q, want duplicate:true", rec.Body.String())
+	}
+}
+
+func TestDispatchRejectsOverlongIdempotencyKey(t *testing.T) {
+	queue := &recordingQueue{}
+	rec := postWithKey(
+		t,
+		mount(t, queue),
+		strings.Repeat("k", 201),
+		`{"seeds":["https://example.org/"],"maxPagesPerHost":-1}`,
+	)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if len(queue.keys) != 0 {
+		t.Fatal("overlong idempotency key must be rejected before publish")
 	}
 }

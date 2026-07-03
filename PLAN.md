@@ -1165,20 +1165,30 @@ Goal: make `yacycrawler` usable as a real crawler worker and wire it to the node
 
 ### CRAWL-01: Node-side order producer
 
+Status: acceptance met. The node's crawl dispatch persists an order in the durable
+vault-backed queue before delivery, and a repeated crawl-start request carrying the
+same `Idempotency-Key` header enqueues at most one order (`DurableOrderQueue.PublishOnce`
+checks and records the key in the same transaction as the enqueue, so a retry does
+not create a second order; the response reports `duplicate: true` with `200`). The
+YaCy `/Crawler_p.html` intake stays Unsupported by design (CRAWL-08).
+
 Tasks:
 
-1. Implement `crawlorders` in `yacynode`.
-2. Accept crawl job requests through admin API and YaCy-compatible `/Crawler_p.html` subset.
-3. Persist crawl job before enqueuing order to the node's durable crawl queue.
-4. Publish orders using `yacycrawlcontract` message types.
-5. Include job ID, profile ID, start URLs, depth, range, filters and politeness hints.
-6. Add idempotency key for duplicate start requests.
+1. Implement `crawlorders` in `yacynode`. Done via `crawldispatch` + `crawlbroker`.
+2. Accept crawl job requests through admin API. Done (`POST /crawl`); the
+   YaCy-compatible `/Crawler_p.html` subset stays Unsupported by design (CRAWL-08).
+3. Persist crawl job before enqueuing order to the node's durable crawl queue. Done.
+4. Publish orders using `yacycrawlcontract` message types. Done.
+5. Include job ID, profile ID, start URLs, depth, range, filters and politeness
+   hints. Done through the crawl profile and requests.
+6. Add idempotency key for duplicate start requests. Done (`Idempotency-Key`
+   header; atomic check-and-record in the durable queue).
 
 Acceptance:
 
-- A crawl job survives node restart before crawler picks it up.
-- Duplicate submit with same idempotency key does not create duplicate jobs.
-- Tests use embedded/fake broker when possible.
+- A crawl job survives node restart before crawler picks it up. Met.
+- Duplicate submit with same idempotency key does not create duplicate jobs. Met.
+- Tests use embedded/fake broker when possible. Met.
 
 ### CRAWL-02: Node-side ingest consumer
 

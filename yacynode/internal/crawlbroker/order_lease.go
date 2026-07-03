@@ -160,7 +160,7 @@ func (q *DurableOrderQueue) requeueLease(ctx context.Context, leaseID string) er
 		if _, err := q.leases.Delete(tx, vault.Key(leaseID)); err != nil {
 			return fmt.Errorf("delete crawl lease: %w", err)
 		}
-		if err := q.enqueueTx(tx, record.OrderData); err != nil {
+		if _, err := q.enqueueTx(tx, record.OrderData); err != nil {
 			return err
 		}
 		requeued = true
@@ -244,7 +244,7 @@ func (q *DurableOrderQueue) requeueLeasesMatching(
 			if _, err := q.leases.Delete(tx, key); err != nil {
 				return fmt.Errorf("delete crawl lease: %w", err)
 			}
-			if err := q.enqueueTx(tx, payloads[i]); err != nil {
+			if _, err := q.enqueueTx(tx, payloads[i]); err != nil {
 				return err
 			}
 			requeued = true

@@ -176,6 +176,53 @@ func TestDurableOrderQueueFIFO(t *testing.T) {
 	}
 }
 
+func TestPublishOnceIsIdempotent(t *testing.T) {
+	queue := memQueue(t)
+	ctx := context.Background()
+
+	dup, err := queue.PublishOnce(ctx, "start", testOrder("x"))
+	if err != nil || dup {
+		t.Fatalf("first publish dup=%v err=%v, want false/nil", dup, err)
+	}
+	dup, err = queue.PublishOnce(ctx, "start", testOrder("y"))
+	if err != nil || !dup {
+		t.Fatalf("second publish dup=%v err=%v, want true/nil", dup, err)
+	}
+	if _, err := queue.PublishOnce(ctx, "", testOrder("z")); err != nil {
+		t.Fatalf("keyless publish: %v", err)
+	}
+
+	for _, want := range []string{"x", "z"} {
+		data, _, err := queue.leaseNext(ctx, "worker")
+		if err != nil {
+			t.Fatalf("dequeue: %v", err)
+		}
+		order, err := yacycrawlcontract.UnmarshalCrawlOrder(data)
+		if err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if order.Profile.Name != want {
+			t.Fatalf("order = %q, want %q (duplicate y must be dropped)", order.Profile.Name, want)
+		}
+	}
+}
+
+func TestPublishOnceSurfacesKeyErrors(t *testing.T) {
+	ctx := context.Background()
+
+	putFail := scriptedQueue(t)
+	putFail.engine.putErrors[idempotencyBucket] = errors.New("key put failed")
+	if _, err := putFail.queue.PublishOnce(ctx, "k", testOrder("x")); err == nil {
+		t.Fatal("expected error on idempotency key put failure")
+	}
+
+	getDecode := scriptedQueue(t)
+	getDecode.engine.buckets[idempotencyBucket]["k"] = []byte{1, 2, 3}
+	if _, err := getDecode.queue.PublishOnce(ctx, "k", testOrder("y")); err == nil {
+		t.Fatal("expected error on idempotency key decode failure")
+	}
+}
+
 func TestDurableOrderQueueDequeueBlocksThenWakes(t *testing.T) {
 	queue := memQueue(t)
 	ctx := context.Background()
@@ -264,7 +311,7 @@ func TestSequenceCodecRejectsBadLength(t *testing.T) {
 }
 
 func TestNewDurableOrderQueueRegisterErrors(t *testing.T) {
-	for _, bucket := range []vault.Name{orderBucket, seqBucket, leaseBucket} {
+	for _, bucket := range []vault.Name{orderBucket, seqBucket, idempotencyBucket, leaseBucket} {
 		engine := newScriptedEngine()
 		engine.provisionErrors[bucket] = errors.New("provision failed")
 		v, err := vault.New(engine)

@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	orderBucket vault.Name = "crawlorders"
-	seqBucket   vault.Name = "crawlorderseq"
+	orderBucket       vault.Name = "crawlorders"
+	seqBucket         vault.Name = "crawlorderseq"
+	idempotencyBucket vault.Name = "crawlorderkeys"
 )
 
 var (
@@ -53,6 +54,7 @@ type DurableOrderQueue struct {
 	vault    *vault.Vault
 	orders   *vault.Collection[[]byte]
 	seq      *vault.Collection[uint64]
+	keys     *vault.Collection[uint64]
 	leases   *vault.Collection[leaseRecord]
 	leaseTTL time.Duration
 	notify   chan struct{}
@@ -67,6 +69,10 @@ func newDurableOrderQueue(v *vault.Vault, leaseTTL time.Duration) (*DurableOrder
 	if err != nil {
 		return nil, fmt.Errorf("register crawl order sequence: %w", err)
 	}
+	keys, err := vault.Register(v, idempotencyBucket, sequenceCodec{})
+	if err != nil {
+		return nil, fmt.Errorf("register crawl order idempotency keys: %w", err)
+	}
 	leases, err := vault.Register(v, leaseBucket, leaseRecordCodec{})
 	if err != nil {
 		return nil, fmt.Errorf("register crawl order leases: %w", err)
@@ -76,47 +82,82 @@ func newDurableOrderQueue(v *vault.Vault, leaseTTL time.Duration) (*DurableOrder
 		vault:    v,
 		orders:   orders,
 		seq:      seq,
+		keys:     keys,
 		leases:   leases,
 		leaseTTL: leaseTTL,
 		notify:   make(chan struct{}, 1),
 	}, nil
 }
 
-// Publish enqueues a crawl order for delivery. It satisfies the crawl dispatch
-// endpoint's order queue port.
+// Publish enqueues a crawl order for delivery without idempotency. It satisfies
+// the crawl dispatch endpoint's order queue port through PublishOnce.
 func (q *DurableOrderQueue) Publish(ctx context.Context, order yacycrawlcontract.CrawlOrder) error {
+	_, err := q.PublishOnce(ctx, "", order)
+
+	return err
+}
+
+// PublishOnce enqueues a crawl order for delivery. When key is non-empty and has
+// already been accepted, nothing is enqueued and duplicate is true, so a retried
+// crawl-start request with the same idempotency key does not create a second
+// order. An empty key disables idempotency and always enqueues.
+func (q *DurableOrderQueue) PublishOnce(
+	ctx context.Context,
+	key string,
+	order yacycrawlcontract.CrawlOrder,
+) (bool, error) {
 	data, err := marshalCrawlOrder(order)
 	if err != nil {
-		return fmt.Errorf("encode crawl order: %w", err)
+		return false, fmt.Errorf("encode crawl order: %w", err)
 	}
 
-	return q.enqueue(ctx, data)
-}
-
-func (q *DurableOrderQueue) enqueue(ctx context.Context, data []byte) error {
+	duplicate := false
 	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
-		return q.enqueueTx(tx, data)
-	}); err != nil {
-		return fmt.Errorf("enqueue crawl order: %w", err)
-	}
-	q.signal()
+		if key != "" {
+			_, seen, err := q.keys.Get(tx, vault.Key(key))
+			if err != nil {
+				return fmt.Errorf("read idempotency key: %w", err)
+			}
+			if seen {
+				duplicate = true
 
-	return nil
+				return nil
+			}
+		}
+		seq, err := q.enqueueTx(tx, data)
+		if err != nil {
+			return err
+		}
+		if key != "" {
+			if err := q.keys.Put(tx, vault.Key(key), seq); err != nil {
+				return fmt.Errorf("record idempotency key: %w", err)
+			}
+		}
+
+		return nil
+	}); err != nil {
+		return false, fmt.Errorf("enqueue crawl order: %w", err)
+	}
+	if !duplicate {
+		q.signal()
+	}
+
+	return duplicate, nil
 }
 
-func (q *DurableOrderQueue) enqueueTx(tx *vault.Txn, data []byte) error {
+func (q *DurableOrderQueue) enqueueTx(tx *vault.Txn, data []byte) (uint64, error) {
 	next, _, err := q.seq.Get(tx, seqKey)
 	if err != nil {
-		return fmt.Errorf("read order sequence: %w", err)
+		return 0, fmt.Errorf("read order sequence: %w", err)
 	}
 	if err := q.orders.Put(tx, orderKey(next), data); err != nil {
-		return fmt.Errorf("store crawl order: %w", err)
+		return 0, fmt.Errorf("store crawl order: %w", err)
 	}
 	if err := q.seq.Put(tx, seqKey, next+1); err != nil {
-		return fmt.Errorf("advance order sequence: %w", err)
+		return 0, fmt.Errorf("advance order sequence: %w", err)
 	}
 
-	return nil
+	return next, nil
 }
 
 func (q *DurableOrderQueue) signal() {
