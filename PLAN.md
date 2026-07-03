@@ -1945,19 +1945,102 @@ Acceptance:
 
 Tasks:
 
-1. Update Dockerfiles for node, crawler and optional all-in-one dev setup.
-2. Update `docker-compose.yml.example` with:
-   - node
-   - crawler
-   - persistent volumes
-   - reverse proxy example optional
-3. Add systemd unit example.
-4. Add config reference.
+1. Update Dockerfiles for node, crawler and optional all-in-one dev setup to the
+   shared `/opt/yago` layout: binaries under `/opt/yago/bin`, mutable data under
+   `/opt/yago/data`, config under `/opt/yago/etc`, running as a non-root `yago`
+   user.
+2. Update `docker-compose.yml.example` with node, crawler, named volumes for
+   `/opt/yago/data` and `/opt/yago/etc` (persistent across container recreation),
+   and an optional reverse-proxy example.
+3. Add a systemd unit example that runs the same binary against `/opt/yago`.
+4. Add a config reference documenting every environment variable and its default,
+   cross-linking `doc/configuration.md`.
 
 Acceptance:
 
-- `docker compose up` can run a local demo crawl/search.
-- Production docs explain public P2P port and admin binding.
+- `docker compose up` runs a local demo crawl/search with data and config
+  surviving `docker compose down && up` via named volumes.
+- Production docs explain the per-surface bind addresses (NET-01) and the
+  `/opt/yago` layout shared by Docker, systemd, and the Debian package (OPS-05).
+
+---
+
+### OPS-05: Debian package builds
+
+Ship installable `.deb` packages so operators can install yago on common
+Debian-family distributions without Docker.
+
+Tasks:
+
+1. Add Debian packaging metadata (an `nfpm` config or `debian/` control files)
+   that installs binaries to `/opt/yago/bin`, ships the systemd units, seeds
+   default config under `/opt/yago/etc`, and creates a system `yago` user whose
+   data lives under `/opt/yago/data`.
+2. Target Debian 12 (bookworm), Debian 13 (trixie), and Ubuntu 24.04 LTS and
+   newer; build per target in CI (matrix) and name artifacts by distro, arch, and
+   version.
+3. postinst/prerm scripts create the user and directories, set ownership, and
+   enable but do not force-start the service; purge must not delete operator data.
+4. Document `apt`/`dpkg -i` install, config location, and upgrade behavior.
+
+Acceptance:
+
+- A produced `.deb` installs on a clean Debian 12/13 and Ubuntu 24.04 container,
+  the service starts against `/opt/yago`, and removal leaves operator data intact.
+- No secrets or keys are baked into the package.
+
+---
+
+### OPS-06: Tag-driven release automation
+
+Publish binaries, `.deb` packages, and generated release notes automatically when
+a version tag is pushed.
+
+Tasks:
+
+1. Add a GitHub Actions workflow triggered on tags matching `v*` that builds the
+   release binaries and the OPS-05 `.deb` matrix.
+2. Generate release notes from the commits since the previous tag (grouped by the
+   structured commit `Summary`/type where possible) and attach them to the Release.
+3. Create a GitHub Release for the tag and upload the binaries and `.deb` files as
+   assets; keep `container-image.yml` in sync so the tag also produces a matching
+   image.
+4. Reuse the standing verification gate (`make verify`) as a required check before
+   any artifact is published.
+
+Acceptance:
+
+- Pushing `v0.0.1` produces a GitHub Release with generated notes plus binary and
+  `.deb` assets for every target, and fails closed if `make verify` fails.
+- Release notes list changes since the previous tag and known unsupported YaCy
+  features (§20/§21).
+
+---
+
+### NET-01: Per-surface configurable bind addresses
+
+Let operators choose the interface (IP) and port each externally reachable
+surface binds to, so the public P2P port, the admin/ops surface, the Tavily API,
+and the public search portal can be exposed or restricted independently.
+
+Tasks:
+
+1. Give each surface its own `host:port` bind setting via environment: the peer
+   P2P listener, the admin/ops listener, and — where they are split out — the
+   Tavily-compatible API and the public search portal (UI-11, default `:80`). The
+   `host` part may be empty (all interfaces) or a specific IP (e.g. loopback).
+2. Reconcile the §16.1 spec names with the implemented variables (see BRAND-02) so
+   there is one documented, `YAGO_`-prefixed name per surface.
+3. Keep sensible defaults: peer public, admin loopback-friendly, Tavily API and
+   public portal off/opt-in as they exist today.
+4. Validate bind strings at boot with clear errors and document exposure guidance.
+
+Acceptance:
+
+- Each surface binds to a specific IP and port independently through configuration,
+  verified by tests over the config loader.
+- Binding the admin surface to loopback is documented and works; the public search
+  portal binds to its configured port only when enabled.
 
 ---
 
@@ -2259,6 +2342,12 @@ Prefer environment variables for boot-critical settings and persistent settings 
 - `YACY_NODE_ADMIN_BIND_ADDR` if split binding is supported.
 - `YACY_CRAWL_RPC_ADDR` for crawler integration.
 
+> These names are aspirational and predate the implementation, which uses
+> `YACY_PEER_ADDR` / `YACY_OPS_ADDR` and a growing set of `YAGO_*` variables.
+> BRAND-02 converges them onto one documented `YAGO_*` name per setting, and
+> NET-01 adds a per-surface `host:port` bind for the peer, admin, Tavily API, and
+> public search portal listeners.
+
 ### 16.2 Optional DDGS web-search fallback
 
 - `YAGO_WEB_FALLBACK_ENABLED=false`.
@@ -2523,3 +2612,76 @@ Before tagging a release:
 - [ ] No secrets in logs.
 - [ ] AGPL source/legal notice visible in UI.
 - [ ] Release notes list known unsupported YaCy features.
+- [ ] Debian packages build and install on supported distros (OPS-05).
+- [ ] Tag-driven release publishes generated notes and artifacts (OPS-06).
+
+## 22. Rebrand (yacy -> yago)
+
+Unify the project's own naming on `yago` across Go modules, files, environment
+variables, and containers, while preserving every wire-level YaCy compatibility
+point. This is presentation and naming only: nothing a Java YaCy peer or a YaCy
+client observes on the network may change.
+
+Invariants for every BRAND task (must NOT be renamed):
+
+- YaCy protocol endpoint paths: `/yacy/*` (hello, transferURL, transferRWI,
+  crawlReceipt, list, ...) and the human search paths
+  `/yacysearch.{json,rss,html}`.
+- The `/Crawler_p.html` Unsupported-by-design marker (CRAWL-08) and any other
+  YaCy-named path kept for client compatibility.
+- On-wire vocabulary and DTO field names in `yacyproto` payloads.
+- The legacy `yacy-rwi.db` data-file open fallback (existing installs).
+- The `YaCy`/AGPL attribution required by the license.
+
+### BRAND-01: Rename Go modules, import paths, and directories
+
+Tasks:
+
+1. Rename the module directories and `go.mod` module paths
+   `github.com/D4rk4/yago/yacy{node,model,proto,crawlcontract,egress,crawler}` to
+   `.../yago{node,model,proto,crawlcontract,egress,crawler}`, and update `go.work`,
+   every import, and `go.work.sum`/`go.sum`.
+2. Update `.go-arch-lint.yml` vendor globs, the `Makefile` module lists, Dockerfile
+   build paths, and any tooling that hard-codes the old paths.
+3. Do this as one mechanical, scripted change per module with `make verify` green
+   after each, isolated from any behavior change.
+4. Record the rename and the preserved-compatibility invariants in an ADR.
+
+Acceptance:
+
+- No `yacy`-prefixed Go module path or directory remains; `make verify` is green.
+- Every invariant above is untouched; the Java-compatibility e2e still passes.
+
+### BRAND-02: Rename environment variables YACY_* -> YAGO_*
+
+Tasks:
+
+1. Rename every `YACY_*` variable to a `YAGO_*` name and converge the §16.1 spec
+   names with the implemented ones (one documented name per setting).
+2. Decide and document the compatibility policy: accept the old `YACY_*` names as
+   deprecated aliases for one release with a startup warning, or a clean break;
+   default to the alias grace period unless a clean break is requested.
+3. Update `doc/configuration.md`, the compose/systemd/deb examples, and tests.
+
+Acceptance:
+
+- Configuration loads through `YAGO_*` names (plus documented deprecated aliases
+  if the grace period is chosen); docs and examples match the code.
+- No endpoint path or wire field is affected.
+
+### BRAND-03: Rename containers, images, binaries, and default paths
+
+Tasks:
+
+1. Rename container images, compose service names, and binaries from `yacy*` to
+   `yago*`, aligned with the `/opt/yago` layout (OPS-04/05); keep the legacy
+   `yacy-rwi.db` open fallback.
+2. Update Dockerfiles, `docker-compose.yml.example`, systemd units, and the Debian
+   packaging metadata.
+3. Update README and docs image/command references.
+
+Acceptance:
+
+- Built images, compose services, and binaries use `yago*` names; a clean
+  `docker compose up` works.
+- Existing data directories containing `yacy-rwi.db` still open.
