@@ -222,7 +222,7 @@ func (b *BleveDiskIndex) rebuild(
 func openOrCreateBleveDisk(path string) (bleve.Index, bool, time.Time, error) {
 	info, statErr := os.Stat(path)
 	if errors.Is(statErr, os.ErrNotExist) {
-		index, err := newBleveDisk(path, bleve.NewIndexMapping())
+		index, err := newBleveDisk(path, newSearchIndexMapping())
 		if err != nil {
 			return nil, false, time.Time{}, fmt.Errorf("create bleve disk index: %w", err)
 		}
@@ -239,7 +239,7 @@ func openOrCreateBleveDisk(path string) (bleve.Index, bool, time.Time, error) {
 	if err := removeBleveDisk(path); err != nil {
 		return nil, false, time.Time{}, fmt.Errorf("repair bleve disk index: %w", err)
 	}
-	index, err = newBleveDisk(path, bleve.NewIndexMapping())
+	index, err = newBleveDisk(path, newSearchIndexMapping())
 	if err != nil {
 		return nil, false, time.Time{}, fmt.Errorf("recreate bleve disk index: %w", err)
 	}
