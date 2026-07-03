@@ -110,8 +110,11 @@ publish ingest batches back to the node.
 Outbound node and crawler connections are screened in-process at dial time, so
 no external forward proxy is required. Private networks are blocked by default;
 set `YACY_EGRESS_ALLOW_PRIVATE_NETWORKS=true` (node) or
-`YACYCRAWLER_ALLOW_PRIVATE_NETWORKS=true` (crawler) for LAN and private-network
-deployments.
+`YACYCRAWLER_ALLOW_PRIVATE_NETWORKS=true` (crawler) to open all private space, or
+name specific ranges with `YACY_EGRESS_ALLOW_CIDRS` / `YACYCRAWLER_ALLOW_CIDRS`
+(comma-separated CIDRs) to reach only those private networks. Loopback,
+link-local (including the cloud metadata range), and reserved ranges stay blocked
+either way.
 
 Build and lint tools are pinned through the repository toolchain flow and are
 installed under `.toolchain/` by `make tools` or `make verify`.

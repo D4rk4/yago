@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -77,10 +78,11 @@ func DefaultCrawlConfig() CrawlConfig {
 }
 
 type ServiceConfig struct {
-	Crawl          CrawlConfig
-	NodeRPCAddr    string
-	WorkerID       string
-	EgressAllowLAN bool
+	Crawl              CrawlConfig
+	NodeRPCAddr        string
+	WorkerID           string
+	EgressAllowLAN     bool
+	EgressAllowedCIDRs []netip.Prefix
 }
 
 func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
@@ -94,16 +96,22 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		return ServiceConfig{}, err
 	}
 
+	egressAllowedCIDRs, err := parseEgressAllowCIDRs(getenv(EnvEgressAllowCIDRs))
+	if err != nil {
+		return ServiceConfig{}, fmt.Errorf("%s: %w", EnvEgressAllowCIDRs, err)
+	}
+
 	crawl, err := loadCrawlConfig(getenv)
 	if err != nil {
 		return ServiceConfig{}, err
 	}
 
 	return ServiceConfig{
-		Crawl:          crawl,
-		NodeRPCAddr:    nodeAddr,
-		WorkerID:       envString(getenv, EnvWorkerID, DefaultWorkerID),
-		EgressAllowLAN: egressAllowLAN,
+		Crawl:              crawl,
+		NodeRPCAddr:        nodeAddr,
+		WorkerID:           envString(getenv, EnvWorkerID, DefaultWorkerID),
+		EgressAllowLAN:     egressAllowLAN,
+		EgressAllowedCIDRs: egressAllowedCIDRs,
 	}, nil
 }
 

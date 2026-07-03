@@ -48,7 +48,10 @@ func run(ctx context.Context, cfg ServiceConfig) error {
 	crawl := cfg.Crawl
 	fetcher, closeBrowser, err := newCrawlerBrowserFetcher(
 		crawl.UserAgent,
-		yacyegress.NewGuard(cfg.EgressAllowLAN),
+		yacyegress.NewGuard(
+			cfg.EgressAllowLAN,
+			yacyegress.WithPrivateAllowlist(cfg.EgressAllowedCIDRs),
+		),
 		crawl.RequestTimeout,
 		crawl.MaxBodyBytes,
 	)

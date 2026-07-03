@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/D4rk4/yago/yacyegress"
 	"github.com/D4rk4/yago/yacynode/internal/boltvault"
 	"github.com/D4rk4/yago/yacynode/internal/metrics"
 )
@@ -64,7 +63,7 @@ func run() error {
 	config.Admin = loadAdminConfig(os.Getenv)
 	config.CrossOrigin = loadCrossOriginConfig(os.Getenv)
 
-	client := newGuardedEgressClient(yacyegress.NewGuard(config.EgressAllowLAN))
+	client := newRuntimeEgressClient(config)
 
 	vault, err := openRuntimeVault(config.StoragePath, config.StorageQuotaByte)
 	if err != nil {

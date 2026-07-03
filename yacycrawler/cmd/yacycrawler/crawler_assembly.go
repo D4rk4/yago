@@ -66,7 +66,10 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	}
 	frontier := frontier.NewFrontier(crawl.JobQueueSize, pace)
 
-	guard := yacyegress.NewGuard(cfg.EgressAllowLAN)
+	guard := yacyegress.NewGuard(
+		cfg.EgressAllowLAN,
+		yacyegress.WithPrivateAllowlist(cfg.EgressAllowedCIDRs),
+	)
 	client := newGuardedEgressClient(guard, crawl)
 	fastSource := botwall.NewBotWallScreeningFetcher(
 		newCrawlerHTTPPageFetcher(client, crawl.UserAgent, crawl.MaxBodyBytes),

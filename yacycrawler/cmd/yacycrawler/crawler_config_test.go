@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/netip"
 	"testing"
 	"time"
 )
@@ -40,6 +41,49 @@ func TestLoadServiceConfigRejectsBadEgressAllowLAN(t *testing.T) {
 		EnvEgressAllowLAN: "maybe",
 	})); err == nil {
 		t.Fatal("expected error for malformed egress toggle")
+	}
+}
+
+func TestLoadServiceConfigRejectsBadEgressCIDR(t *testing.T) {
+	if _, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNodeRPCAddr:      "node:9091",
+		EnvEgressAllowCIDRs: "10.0.0.0/8,not-a-cidr",
+	})); err == nil {
+		t.Fatal("expected error for malformed egress CIDR")
+	}
+}
+
+func TestLoadServiceConfigReadsEgressCIDRs(t *testing.T) {
+	cfg, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNodeRPCAddr:      "node:9091",
+		EnvEgressAllowCIDRs: " 10.10.5.0/16 , 192.168.0.0/24 ",
+	}))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	want := []netip.Prefix{
+		netip.MustParsePrefix("10.10.0.0/16"),
+		netip.MustParsePrefix("192.168.0.0/24"),
+	}
+	if len(cfg.EgressAllowedCIDRs) != len(want) {
+		t.Fatalf("EgressAllowedCIDRs = %v, want %v", cfg.EgressAllowedCIDRs, want)
+	}
+	for i, prefix := range want {
+		if cfg.EgressAllowedCIDRs[i] != prefix {
+			t.Errorf("cidr[%d] = %v, want %v", i, cfg.EgressAllowedCIDRs[i], prefix)
+		}
+	}
+}
+
+func TestLoadServiceConfigDefaultsEgressCIDRsEmpty(t *testing.T) {
+	cfg, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNodeRPCAddr: "node:9091",
+	}))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.EgressAllowedCIDRs != nil {
+		t.Errorf("EgressAllowedCIDRs = %v, want nil by default", cfg.EgressAllowedCIDRs)
 	}
 }
 

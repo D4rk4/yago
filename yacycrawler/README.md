@@ -50,8 +50,11 @@ admission, and expanded into bounded URL roots. Sitemap `lastmod` values are
 carried as crawl request hints for later recrawl scheduling.
 
 Configuration comes from the environment (`YACYCRAWLER_NODE_RPC_ADDR` is required;
-`YACYCRAWLER_ALLOW_PRIVATE_NETWORKS` opts into LAN and private-network targets),
-and the service runs until it receives `SIGINT` or `SIGTERM`.
+`YACYCRAWLER_ALLOW_PRIVATE_NETWORKS` opts into all LAN and private-network targets,
+while `YACYCRAWLER_ALLOW_CIDRS` is a comma-separated list of private CIDRs to admit
+instead of opening all private space; loopback, link-local, and reserved ranges
+stay blocked either way), and the service runs until it receives `SIGINT` or
+`SIGTERM`.
 Outbound fetches, including the headless browser, are screened in-process at dial
 time against the connected IP address, so no external forward proxy is required;
 the browser routes through a loopback-bound guarded proxy that resolves and dials

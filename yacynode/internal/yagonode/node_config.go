@@ -3,6 +3,7 @@ package yagonode
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -47,30 +48,31 @@ const (
 )
 
 type nodeConfig struct {
-	Hash              yacymodel.Hash
-	NetworkName       string
-	Name              string
-	DataDir           string
-	AdvertiseHost     string
-	AdvertisePort     int
-	PublicSelfTestURL *url.URL
-	Flags             yacymodel.Flags
-	PeerAddr          string
-	OpsAddr           string
-	StoragePath       string
-	SearchIndexPath   string
-	StorageQuotaByte  int64
-	TrustedProxies    []*net.IPNet
-	EgressAllowLAN    bool
-	SeedlistURLs      []string
-	AnnounceInterval  time.Duration
-	GreetsPerCycle    int
-	SearchAPIKey      string
-	DeclaredBirthDate time.Time
-	Crawl             crawlConfig
-	Admin             adminConfig
-	CrossOrigin       crossOriginConfig
-	DHT               dhtDistributionConfig
+	Hash               yacymodel.Hash
+	NetworkName        string
+	Name               string
+	DataDir            string
+	AdvertiseHost      string
+	AdvertisePort      int
+	PublicSelfTestURL  *url.URL
+	Flags              yacymodel.Flags
+	PeerAddr           string
+	OpsAddr            string
+	StoragePath        string
+	SearchIndexPath    string
+	StorageQuotaByte   int64
+	TrustedProxies     []*net.IPNet
+	EgressAllowLAN     bool
+	EgressAllowedCIDRs []netip.Prefix
+	SeedlistURLs       []string
+	AnnounceInterval   time.Duration
+	GreetsPerCycle     int
+	SearchAPIKey       string
+	DeclaredBirthDate  time.Time
+	Crawl              crawlConfig
+	Admin              adminConfig
+	CrossOrigin        crossOriginConfig
+	DHT                dhtDistributionConfig
 }
 
 type configuredNodeData struct {
@@ -119,7 +121,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		return nodeConfig{}, err
 	}
 
-	proxies, egressAllowLAN, err := egressConfig(getenv)
+	proxies, egressAllowLAN, egressAllowedCIDRs, err := egressConfig(getenv)
 	if err != nil {
 		return nodeConfig{}, err
 	}
@@ -135,41 +137,46 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	}
 
 	return nodeConfig{
-		Hash:              hash,
-		NetworkName:       envWithDefault(getenv, envNetworkName, yacyproto.DefaultNetwork),
-		Name:              name,
-		DataDir:           data.directory,
-		AdvertiseHost:     host,
-		AdvertisePort:     port,
-		PublicSelfTestURL: selfTestURL,
-		Flags:             seniorFlags(),
-		PeerAddr:          peerAddr,
-		OpsAddr:           envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
-		StoragePath:       data.databasePath,
-		SearchIndexPath:   data.searchIndexPath,
-		StorageQuotaByte:  data.quotaByte,
-		TrustedProxies:    proxies,
-		EgressAllowLAN:    egressAllowLAN,
-		SeedlistURLs:      seedlistURLs,
-		AnnounceInterval:  announceInterval,
-		GreetsPerCycle:    greetsPerCycle,
-		SearchAPIKey:      strings.TrimSpace(getenv(envSearchAccessToken)),
-		DeclaredBirthDate: declaredBirthDate,
-		DHT:               dht,
+		Hash:               hash,
+		NetworkName:        envWithDefault(getenv, envNetworkName, yacyproto.DefaultNetwork),
+		Name:               name,
+		DataDir:            data.directory,
+		AdvertiseHost:      host,
+		AdvertisePort:      port,
+		PublicSelfTestURL:  selfTestURL,
+		Flags:              seniorFlags(),
+		PeerAddr:           peerAddr,
+		OpsAddr:            envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
+		StoragePath:        data.databasePath,
+		SearchIndexPath:    data.searchIndexPath,
+		StorageQuotaByte:   data.quotaByte,
+		TrustedProxies:     proxies,
+		EgressAllowLAN:     egressAllowLAN,
+		EgressAllowedCIDRs: egressAllowedCIDRs,
+		SeedlistURLs:       seedlistURLs,
+		AnnounceInterval:   announceInterval,
+		GreetsPerCycle:     greetsPerCycle,
+		SearchAPIKey:       strings.TrimSpace(getenv(envSearchAccessToken)),
+		DeclaredBirthDate:  declaredBirthDate,
+		DHT:                dht,
 	}, nil
 }
 
-func egressConfig(getenv func(string) string) ([]*net.IPNet, bool, error) {
+func egressConfig(getenv func(string) string) ([]*net.IPNet, bool, []netip.Prefix, error) {
 	proxies, err := parseTrustedProxies(getenv(envTrustedProxies))
 	if err != nil {
-		return nil, false, fmt.Errorf("%s: %w", envTrustedProxies, err)
+		return nil, false, nil, fmt.Errorf("%s: %w", envTrustedProxies, err)
 	}
 	allowLAN, err := boolEnv(getenv, envEgressAllowLAN, false)
 	if err != nil {
-		return nil, false, fmt.Errorf("%s: %w", envEgressAllowLAN, err)
+		return nil, false, nil, fmt.Errorf("%s: %w", envEgressAllowLAN, err)
+	}
+	allowedCIDRs, err := parseEgressAllowCIDRs(getenv(envEgressAllowCIDRs))
+	if err != nil {
+		return nil, false, nil, fmt.Errorf("%s: %w", envEgressAllowCIDRs, err)
 	}
 
-	return proxies, allowLAN, nil
+	return proxies, allowLAN, allowedCIDRs, nil
 }
 
 func declaredBirthDate(getenv func(string) string) (time.Time, error) {

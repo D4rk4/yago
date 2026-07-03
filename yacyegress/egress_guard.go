@@ -39,13 +39,20 @@ var blockedPrefixes = []netip.Prefix{
 
 // Guard admits or rejects an outbound target by its resolved IP address.
 type Guard struct {
-	allowPrivateNetworks bool
+	allowPrivateNetworks   bool
+	allowedPrivatePrefixes []netip.Prefix
 }
 
 // NewGuard builds a guard. When allowPrivateNetworks is true the guard permits
 // RFC 1918 and unique-local addresses for LAN and private-network deployments.
-func NewGuard(allowPrivateNetworks bool) Guard {
-	return Guard{allowPrivateNetworks: allowPrivateNetworks}
+// Options such as WithPrivateAllowlist narrow that trust to named ranges.
+func NewGuard(allowPrivateNetworks bool, opts ...Option) Guard {
+	guard := Guard{allowPrivateNetworks: allowPrivateNetworks}
+	for _, opt := range opts {
+		opt(&guard)
+	}
+
+	return guard
 }
 
 // AdmitAddr reports whether a connection to addr is allowed, returning an error
@@ -56,7 +63,7 @@ func (g Guard) AdmitAddr(addr netip.Addr) error {
 		return fmt.Errorf("invalid address: %w", ErrBlocked)
 	}
 	if addr.IsPrivate() {
-		if g.allowPrivateNetworks {
+		if g.allowPrivateNetworks || g.allowlisted(addr) {
 			return nil
 		}
 		return fmt.Errorf("private address %s: %w", addr, ErrBlocked)

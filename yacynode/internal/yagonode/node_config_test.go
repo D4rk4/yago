@@ -1,6 +1,7 @@
 package yagonode
 
 import (
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -164,6 +165,42 @@ func TestLoadNodeConfigReadsEgressAllowLAN(t *testing.T) {
 	}
 }
 
+func TestLoadNodeConfigReadsEgressAllowCIDRs(t *testing.T) {
+	config, err := loadNodeConfig(envFrom(map[string]string{
+		envPeerHash:         "0123456789AB",
+		envPeerName:         "node",
+		envEgressAllowCIDRs: " 10.10.5.0/16 , 192.168.0.0/24 ",
+	}))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	want := []netip.Prefix{
+		netip.MustParsePrefix("10.10.0.0/16"),
+		netip.MustParsePrefix("192.168.0.0/24"),
+	}
+	if len(config.EgressAllowedCIDRs) != len(want) {
+		t.Fatalf("EgressAllowedCIDRs = %v, want %v", config.EgressAllowedCIDRs, want)
+	}
+	for i, prefix := range want {
+		if config.EgressAllowedCIDRs[i] != prefix {
+			t.Errorf("cidr[%d] = %v, want %v (masked)", i, config.EgressAllowedCIDRs[i], prefix)
+		}
+	}
+}
+
+func TestLoadNodeConfigDefaultsEgressAllowCIDRsEmpty(t *testing.T) {
+	config, err := loadNodeConfig(envFrom(map[string]string{
+		envPeerHash: "0123456789AB",
+		envPeerName: "node",
+	}))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if config.EgressAllowedCIDRs != nil {
+		t.Errorf("EgressAllowedCIDRs = %v, want nil by default", config.EgressAllowedCIDRs)
+	}
+}
+
 func TestLoadNodeConfigUsesExistingLegacyDatabase(t *testing.T) {
 	directory := t.TempDir()
 	legacyPath := filepath.Join(directory, legacyStorageFileName)
@@ -276,6 +313,11 @@ func TestLoadNodeConfigRejects(t *testing.T) {
 			envPeerHash:       "0123456789AB",
 			envPeerName:       "n",
 			envEgressAllowLAN: "maybe",
+		},
+		"bad egress cidr": {
+			envPeerHash:         "0123456789AB",
+			envPeerName:         "n",
+			envEgressAllowCIDRs: "10.0.0.0/8,not-a-cidr",
 		},
 		"bad dht bool": {
 			envPeerHash:   "0123456789AB",
