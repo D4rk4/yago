@@ -1,6 +1,10 @@
 package searchindex
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/D4rk4/yago/yacynode/internal/documentstore"
+)
 
 func TestNewSearchIndexMappingTunesFields(t *testing.T) {
 	indexMapping := newSearchIndexMapping()
@@ -28,12 +32,33 @@ func TestNewSearchIndexMappingTunesFields(t *testing.T) {
 				field, fieldMapping.Store, fieldMapping.IncludeInAll,
 				fieldMapping.IncludeTermVectors, fieldMapping.DocValues)
 		}
-		if fieldMapping.Analyzer != searchTextAnalyzer {
-			t.Fatalf("field %q analyzer = %q, want %q", field, fieldMapping.Analyzer, searchTextAnalyzer)
+		if fieldMapping.Analyzer != searchFieldAnalyzer(field) {
+			t.Fatalf("field %q analyzer = %q, want %q", field, fieldMapping.Analyzer, searchFieldAnalyzer(field))
 		}
 	}
 
 	if host := indexMapping.DefaultMapping.Properties["host"]; host != nil {
 		t.Fatalf("host field should not be mapped, got %#v", host)
+	}
+}
+
+func TestSearchMatchesHostKeywordInURL(t *testing.T) {
+	index, err := NewBleveMemoryIndex(t.Context(), &fakeStoredDocuments{
+		documents: []documentstore.Document{{
+			NormalizedURL: "https://searchengine.example.net/page",
+			Title:         "Unrelated",
+			ExtractedText: "Body without the host word.",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewBleveMemoryIndex: %v", err)
+	}
+
+	results, err := index.Search(t.Context(), SearchRequest{Query: "searchengine", MaxResults: 5})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if results.Total != 1 || len(results.Results) != 1 {
+		t.Fatalf("results = %#v, want the host keyword to match through the tuned url analyzer", results)
 	}
 }

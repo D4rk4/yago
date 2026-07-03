@@ -2,13 +2,25 @@ package searchindex
 
 import (
 	"github.com/blevesearch/bleve/v2"
+	_ "github.com/blevesearch/bleve/v2/analysis/analyzer/simple"
 	"github.com/blevesearch/bleve/v2/mapping"
 )
 
-const searchTextAnalyzer = "standard"
+const (
+	searchTextAnalyzer = "standard"
+	searchURLAnalyzer  = "simple"
+)
 
 func searchIndexedFields() []string {
 	return []string{"title", "headings", "anchors", "body", "url"}
+}
+
+func searchFieldAnalyzer(field string) string {
+	if field == "url" {
+		return searchURLAnalyzer
+	}
+
+	return searchTextAnalyzer
 }
 
 func newSearchIndexMapping() *mapping.IndexMappingImpl {
@@ -17,7 +29,7 @@ func newSearchIndexMapping() *mapping.IndexMappingImpl {
 	document := bleve.NewDocumentMapping()
 	document.Dynamic = false
 	for _, field := range searchIndexedFields() {
-		document.AddFieldMappingsAt(field, newSearchTextField())
+		document.AddFieldMappingsAt(field, newSearchTextField(searchFieldAnalyzer(field)))
 	}
 
 	indexMapping.DefaultMapping = document
@@ -28,9 +40,9 @@ func newSearchIndexMapping() *mapping.IndexMappingImpl {
 	return indexMapping
 }
 
-func newSearchTextField() *mapping.FieldMapping {
+func newSearchTextField(analyzer string) *mapping.FieldMapping {
 	field := bleve.NewTextFieldMapping()
-	field.Analyzer = searchTextAnalyzer
+	field.Analyzer = analyzer
 	field.Store = false
 	field.IncludeInAll = false
 	field.IncludeTermVectors = false

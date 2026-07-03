@@ -234,6 +234,42 @@ func TestResultFiltersRejectEachCondition(t *testing.T) {
 	}
 }
 
+func TestSearcherLimitsResultsPerHost(t *testing.T) {
+	results := []searchindex.SearchResult{
+		{Title: "a1", URL: "https://a.example/1"},
+		{Title: "a2", URL: "https://a.example/2"},
+		{Title: "a3", URL: "https://a.example/3"},
+		{Title: "a4", URL: "https://a.example/4"},
+		{Title: "a5", URL: "https://a.example/5"},
+		{Title: "a6", URL: "https://a.example/6"},
+		{Title: "empty", URL: ""},
+		{Title: "b1", URL: "https://b.example/1"},
+	}
+	resp, err := NewSearcher(&fakeIndex{response: searchindex.SearchResultSet{
+		Total:   len(results),
+		Results: results,
+	}}).Search(t.Context(), searchcore.Request{Query: "golang", Limit: 20})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(resp.Results) != len(results) {
+		t.Fatalf("results = %d, want %d (diversity must not drop results)", len(resp.Results), len(results))
+	}
+
+	fromHostA := 0
+	for _, result := range resp.Results[:len(resp.Results)-1] {
+		if result.Host == "a.example" {
+			fromHostA++
+		}
+	}
+	if fromHostA != 5 {
+		t.Fatalf("a.example in the kept results = %d, want 5 (capped)", fromHostA)
+	}
+	if last := resp.Results[len(resp.Results)-1]; last.Host != "a.example" {
+		t.Fatalf("last result host = %q, want the demoted a.example overflow", last.Host)
+	}
+}
+
 func mustParseURL(tb testing.TB, raw string) *url.URL {
 	tb.Helper()
 	parsed, err := url.Parse(raw)

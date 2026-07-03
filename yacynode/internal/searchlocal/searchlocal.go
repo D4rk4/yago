@@ -14,6 +14,8 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/searchindex"
 )
 
+const defaultMaxResultsPerHost = 5
+
 type localSearcher struct {
 	index searchindex.SearchIndex
 }
@@ -95,7 +97,25 @@ func coreResults(
 	}
 	filters.prefer(out)
 
-	return out, nil
+	return diversifyByHost(out, defaultMaxResultsPerHost), nil
+}
+
+func diversifyByHost(results []searchcore.Result, maxPerHost int) []searchcore.Result {
+	counts := make(map[string]int, len(results))
+	kept := make([]searchcore.Result, 0, len(results))
+	var overflow []searchcore.Result
+	for _, result := range results {
+		host := strings.ToLower(result.Host)
+		if host == "" || counts[host] < maxPerHost {
+			counts[host]++
+			kept = append(kept, result)
+
+			continue
+		}
+		overflow = append(overflow, result)
+	}
+
+	return append(kept, overflow...)
 }
 
 func coreResult(
