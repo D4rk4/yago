@@ -3,6 +3,7 @@ package yagonode
 import (
 	"net/http"
 
+	"github.com/D4rk4/yago/yacynode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yacynode/internal/documentsearch"
 	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yacynode/internal/peerroster"
@@ -23,6 +24,7 @@ type publicSearchAssembly struct {
 	dhtSearchTargetIndex func(int) (int, error)
 	searchAPIKey         string
 	webFallback          webFallbackConfig
+	seedQueue            crawldispatch.CrawlOrderQueue
 }
 
 func mountNodePublicSearch(
@@ -83,5 +85,20 @@ func withWebFallback(
 		CacheTTL:   config.CacheTTL,
 	})
 
-	return websearch.NewFallbackSearcher(search, provider, func() bool { return config.Enabled })
+	var opts []websearch.Option
+	if config.SeedCrawl && assembly.seedQueue != nil {
+		opts = append(opts, websearch.WithSeeder(newWebCrawlSeeder(
+			assembly.seedQueue,
+			assembly.storage.documentDirectory,
+			assembly.identity.Hash,
+			config,
+		)))
+	}
+
+	return websearch.NewFallbackSearcher(
+		search,
+		provider,
+		func() bool { return config.Enabled },
+		opts...,
+	)
 }

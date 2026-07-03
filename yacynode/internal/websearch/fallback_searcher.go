@@ -21,14 +21,21 @@ type FallbackSearcher struct {
 	primary  searchcore.Searcher
 	provider Provider
 	enabled  func() bool
+	seeder   CrawlSeeder
 }
 
 func NewFallbackSearcher(
 	primary searchcore.Searcher,
 	provider Provider,
 	enabled func() bool,
+	opts ...Option,
 ) *FallbackSearcher {
-	return &FallbackSearcher{primary: primary, provider: provider, enabled: enabled}
+	searcher := &FallbackSearcher{primary: primary, provider: provider, enabled: enabled}
+	for _, opt := range opts {
+		opt(searcher)
+	}
+
+	return searcher
 }
 
 func (s *FallbackSearcher) Search(
@@ -50,8 +57,22 @@ func (s *FallbackSearcher) Search(
 	}
 	resp.Results = toCoreResults(results, req.Limit)
 	resp.TotalResults = len(resp.Results)
+	if s.seeder != nil && len(results) > 0 {
+		s.seeder.Seed(ctx, resultURLs(results))
+	}
 
 	return resp, nil
+}
+
+func resultURLs(results []Result) []string {
+	urls := make([]string, 0, len(results))
+	for _, result := range results {
+		if result.URL != "" {
+			urls = append(urls, result.URL)
+		}
+	}
+
+	return urls
 }
 
 func (s *FallbackSearcher) shouldFallback(resp searchcore.Response, req searchcore.Request) bool {

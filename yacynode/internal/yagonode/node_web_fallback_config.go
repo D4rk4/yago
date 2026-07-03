@@ -6,37 +6,44 @@ import (
 )
 
 const (
-	envWebFallbackEnabled    = "YAGO_WEB_FALLBACK_ENABLED"
-	envWebFallbackProvider   = "YAGO_WEB_FALLBACK_PROVIDER"
-	envWebFallbackBackend    = "YAGO_WEB_FALLBACK_BACKEND"
-	envWebFallbackMaxResults = "YAGO_WEB_FALLBACK_MAX_RESULTS"
-	envWebFallbackTimeout    = "YAGO_WEB_FALLBACK_TIMEOUT"
-	envWebFallbackSafeSearch = "YAGO_WEB_FALLBACK_SAFESEARCH"
-	envWebFallbackCacheTTL   = "YAGO_WEB_FALLBACK_CACHE_TTL"
-	envWebFallbackSeedCrawl  = "YAGO_WEB_FALLBACK_SEED_CRAWL"
+	envWebFallbackEnabled     = "YAGO_WEB_FALLBACK_ENABLED"
+	envWebFallbackProvider    = "YAGO_WEB_FALLBACK_PROVIDER"
+	envWebFallbackBackend     = "YAGO_WEB_FALLBACK_BACKEND"
+	envWebFallbackMaxResults  = "YAGO_WEB_FALLBACK_MAX_RESULTS"
+	envWebFallbackTimeout     = "YAGO_WEB_FALLBACK_TIMEOUT"
+	envWebFallbackSafeSearch  = "YAGO_WEB_FALLBACK_SAFESEARCH"
+	envWebFallbackCacheTTL    = "YAGO_WEB_FALLBACK_CACHE_TTL"
+	envWebFallbackSeedCrawl   = "YAGO_WEB_FALLBACK_SEED_CRAWL"
+	envWebFallbackSeedDepth   = "YAGO_WEB_FALLBACK_SEED_DEPTH"
+	envWebFallbackSeedMaxPage = "YAGO_WEB_FALLBACK_SEED_MAX_PAGES"
 
 	webFallbackProviderDDGS = "ddgs"
 
-	defaultWebFallbackBackend    = "auto"
-	defaultWebFallbackMaxResults = 10
-	defaultWebFallbackTimeout    = 10 * time.Second
-	defaultWebFallbackSafeSearch = "moderate"
-	defaultWebFallbackCacheTTL   = 5 * time.Minute
-	minWebFallbackResults        = 1
-	maxWebFallbackResults        = 20
+	defaultWebFallbackBackend      = "auto"
+	defaultWebFallbackMaxResults   = 10
+	defaultWebFallbackTimeout      = 10 * time.Second
+	defaultWebFallbackSafeSearch   = "moderate"
+	defaultWebFallbackCacheTTL     = 5 * time.Minute
+	defaultWebFallbackSeedDepth    = 1
+	defaultWebFallbackSeedMaxPages = 20
+	minWebFallbackResults          = 1
+	maxWebFallbackResults          = 20
+	maxWebFallbackSeedDepth        = 8
 )
 
 // webFallbackConfig holds the optional DDGS web-search fallback settings. The
 // fallback is off unless Enabled, and never sends a query externally until then.
 type webFallbackConfig struct {
-	Enabled    bool
-	Provider   string
-	Backend    string
-	MaxResults int
-	Timeout    time.Duration
-	SafeSearch string
-	CacheTTL   time.Duration
-	SeedCrawl  bool
+	Enabled      bool
+	Provider     string
+	Backend      string
+	MaxResults   int
+	Timeout      time.Duration
+	SafeSearch   string
+	CacheTTL     time.Duration
+	SeedCrawl    bool
+	SeedDepth    int
+	SeedMaxPages int
 }
 
 func loadWebFallbackConfig(getenv func(string) string) (webFallbackConfig, error) {
@@ -63,6 +70,19 @@ func loadWebFallbackConfig(getenv func(string) string) (webFallbackConfig, error
 	if err != nil {
 		return webFallbackConfig{}, fmt.Errorf("%s: %w", envWebFallbackSeedCrawl, err)
 	}
+	seedDepth, err := intRangeEnv(
+		getenv, envWebFallbackSeedDepth,
+		defaultWebFallbackSeedDepth, 0, maxWebFallbackSeedDepth,
+	)
+	if err != nil {
+		return webFallbackConfig{}, fmt.Errorf("%s: %w", envWebFallbackSeedDepth, err)
+	}
+	seedMaxPages, err := intAtLeastEnv(
+		getenv, envWebFallbackSeedMaxPage, defaultWebFallbackSeedMaxPages, 1,
+	)
+	if err != nil {
+		return webFallbackConfig{}, fmt.Errorf("%s: %w", envWebFallbackSeedMaxPage, err)
+	}
 
 	return webFallbackConfig{
 		Enabled:    enabled,
@@ -70,8 +90,14 @@ func loadWebFallbackConfig(getenv func(string) string) (webFallbackConfig, error
 		Backend:    envWithDefault(getenv, envWebFallbackBackend, defaultWebFallbackBackend),
 		MaxResults: maxResults,
 		Timeout:    timeout,
-		SafeSearch: envWithDefault(getenv, envWebFallbackSafeSearch, defaultWebFallbackSafeSearch),
-		CacheTTL:   cacheTTL,
-		SeedCrawl:  seedCrawl,
+		SafeSearch: envWithDefault(
+			getenv,
+			envWebFallbackSafeSearch,
+			defaultWebFallbackSafeSearch,
+		),
+		CacheTTL:     cacheTTL,
+		SeedCrawl:    seedCrawl,
+		SeedDepth:    seedDepth,
+		SeedMaxPages: seedMaxPages,
 	}, nil
 }

@@ -111,6 +111,10 @@ func assembleNode(
 	if err != nil {
 		return node{}, err
 	}
+	runtime, err := buildRuntimeCrawl(config.Crawl, identity, storage, vault)
+	if err != nil {
+		return node{}, err
+	}
 	mountNodePublicSearch(mux, publicSearchAssembly{
 		storage:      storage,
 		roster:       roster,
@@ -119,6 +123,7 @@ func assembleNode(
 		client:       client,
 		searchAPIKey: config.SearchAPIKey,
 		webFallback:  config.WebFallback,
+		seedQueue:    crawlOrderQueue(runtime),
 	})
 
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
@@ -131,11 +136,6 @@ func assembleNode(
 		client:      client,
 		observer:    tallyOutboundObserver{next: telemetry.dhtOutbound, tally: tally},
 	})
-
-	runtime, err := buildRuntimeCrawl(config.Crawl, identity, storage, vault)
-	if err != nil {
-		return node{}, err
-	}
 
 	return newAssembledNode(nodeParts{
 		mux:       mux,

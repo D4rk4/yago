@@ -43,7 +43,9 @@ The node is configured through environment variables.
 | `YAGO_WEB_FALLBACK_TIMEOUT` | `10s` | Per-request timeout for an outbound fallback query. |
 | `YAGO_WEB_FALLBACK_SAFESEARCH` | `moderate` | Safe-search preference passed to engines that support it (`strict`, `moderate`, `off`). |
 | `YAGO_WEB_FALLBACK_CACHE_TTL` | `5m` | How long to cache a fallback response to respect engine rate limits and reduce repeat egress. |
-| `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | Reserved for search-miss crawl seeding (TAVILY-06); no effect yet. |
+| `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | When on (and crawling is enabled), URLs surfaced by the fallback are published as conservative crawl orders so the next identical query can be answered locally. URLs already in the document store are skipped; the durable queue deduplicates by URL. No effect when crawling is disabled. |
+| `YAGO_WEB_FALLBACK_SEED_DEPTH` | `1` | Crawl depth for seeded orders (0–8). Kept shallow to bound amplification. |
+| `YAGO_WEB_FALLBACK_SEED_MAX_PAGES` | `20` | Per-host page cap for seeded crawl orders. |
 
 ## Admin authentication
 

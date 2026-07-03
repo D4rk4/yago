@@ -1163,6 +1163,18 @@ Acceptance:
 
 ### TAVILY-06: Seed crawl from DDGS-discovered URLs
 
+Status: acceptance met. A `webCrawlSeeder` (`node_web_seed.go`) is installed on the
+`websearch.FallbackSearcher` via `WithSeeder` whenever `YAGO_WEB_FALLBACK_SEED_CRAWL`
+is on and the crawl runtime is active (`crawlOrderQueue` extracts the durable queue;
+nil when crawling is disabled, so there are no side effects). On a fallback miss the
+seeder publishes one conservative crawl order per new URL through
+`crawldispatch.CrawlOrderQueue.PublishOnce` keyed by URL (idempotent across
+restarts), skipping URLs already in the document store and non-HTTP(S) URLs. The
+seed profile is `ScopeDomain`, shallow (`YAGO_WEB_FALLBACK_SEED_DEPTH`, default 1)
+with a per-host cap (`YAGO_WEB_FALLBACK_SEED_MAX_PAGES`, default 20); robots, egress
+deny, and per-host limits are enforced downstream by the crawler. Tests use a fake
+queue and fake document directory; no live crawl in CI.
+
 Closes the loop for the DDGS fallback: when the fallback surfaces URLs the node
 has never seen, hand them to the crawler so the pages are fetched and indexed and
 the next identical query is answered from the local index instead of hitting the
@@ -2235,7 +2247,10 @@ Prefer environment variables for boot-critical settings and persistent settings 
 - `YAGO_WEB_FALLBACK_TIMEOUT`.
 - `YAGO_WEB_FALLBACK_SAFESEARCH`.
 - `YAGO_WEB_FALLBACK_CACHE_TTL` (short-TTL provider response cache).
-- `YAGO_WEB_FALLBACK_SEED_CRAWL=false` (seed the crawler from discovered URLs).
+- `YAGO_WEB_FALLBACK_SEED_CRAWL=false` (seed the crawler from discovered URLs;
+  effective only when crawling is enabled).
+- `YAGO_WEB_FALLBACK_SEED_DEPTH=1` (shallow seed-crawl depth, 0–8).
+- `YAGO_WEB_FALLBACK_SEED_MAX_PAGES=20` (per-host page cap for seeded orders).
 
 ### 16.3 Runtime settings
 

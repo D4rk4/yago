@@ -56,6 +56,57 @@ func TestWithWebFallbackWrapsWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestWithWebFallbackInstallsSeeder(t *testing.T) {
+	client := &http.Client{
+		Transport: fallbackRoundTrip(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(mojeekListFixture)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+	queue := &fakeCrawlQueue{}
+	assembly := publicSearchAssembly{
+		client:    client,
+		storage:   nodeStorage{documentDirectory: fakeSeedDocuments{stored: map[string]bool{}}},
+		seedQueue: queue,
+		webFallback: webFallbackConfig{
+			Enabled:      true,
+			Provider:     webFallbackProviderDDGS,
+			Backend:      "mojeek",
+			SeedCrawl:    true,
+			SeedDepth:    1,
+			SeedMaxPages: 20,
+		},
+	}
+
+	search := withWebFallback(stubPrimarySearcher{}, assembly)
+	if _, err := search.Search(
+		context.Background(),
+		searchcore.Request{Query: "gap", Limit: 10},
+	); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(queue.orders) != 1 || queue.keys[0] != "https://web.example/x" {
+		t.Fatalf("seeded orders = %#v keys = %#v", queue.orders, queue.keys)
+	}
+}
+
+func TestWithWebFallbackNoSeederWhenQueueMissing(t *testing.T) {
+	assembly := publicSearchAssembly{
+		webFallback: webFallbackConfig{
+			Provider:  webFallbackProviderDDGS,
+			Backend:   "mojeek",
+			SeedCrawl: true,
+		},
+	}
+
+	if withWebFallback(stubPrimarySearcher{}, assembly) == nil {
+		t.Fatal("expected a wrapped searcher even without a seed queue")
+	}
+}
+
 func TestWithWebFallbackPassthroughWhenProviderUnset(t *testing.T) {
 	assembly := publicSearchAssembly{webFallback: webFallbackConfig{Provider: ""}}
 

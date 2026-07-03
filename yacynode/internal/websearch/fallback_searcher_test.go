@@ -152,6 +152,54 @@ func TestFallbackPropagatesPrimaryError(t *testing.T) {
 	}
 }
 
+type stubSeeder struct {
+	urls  []string
+	calls int
+}
+
+func (s *stubSeeder) Seed(_ context.Context, urls []string) {
+	s.calls++
+	s.urls = urls
+}
+
+func TestFallbackSeedsProviderURLs(t *testing.T) {
+	primary := &stubSearcher{}
+	provider := &stubProvider{results: []Result{
+		{URL: "https://a.example/x"},
+		{URL: "https://b.example/y"},
+	}}
+	seeder := &stubSeeder{}
+	searcher := NewFallbackSearcher(primary, provider, enabled, WithSeeder(seeder))
+
+	if _, err := searcher.Search(
+		context.Background(),
+		searchcore.Request{Query: "gap", Limit: 10},
+	); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if seeder.calls != 1 || len(seeder.urls) != 2 {
+		t.Fatalf("seeder = %#v", seeder)
+	}
+}
+
+func TestFallbackDoesNotSeedWhenPrimaryAnswers(t *testing.T) {
+	primary := &stubSearcher{
+		resp: searchcore.Response{Results: []searchcore.Result{{Title: "owned"}}},
+	}
+	seeder := &stubSeeder{}
+	searcher := NewFallbackSearcher(primary, &stubProvider{}, enabled, WithSeeder(seeder))
+
+	if _, err := searcher.Search(
+		context.Background(),
+		searchcore.Request{Query: "x", Limit: 10},
+	); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if seeder.calls != 0 {
+		t.Error("must not seed when the primary already answered")
+	}
+}
+
 func TestToCoreResultsCapsToLimit(t *testing.T) {
 	results := toCoreResults([]Result{
 		{URL: "https://a/"}, {URL: "https://b/"}, {URL: "https://c/"},
