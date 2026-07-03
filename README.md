@@ -100,6 +100,7 @@ publish ingest batches back to the node.
 | `yacyproto` | YaCy peer-to-peer endpoint paths, request/response DTOs, and wire protocol helpers. |
 | `yacynode/doc` | User-facing node specification, configuration, protocol, interoperability, and ADR documentation. |
 | `FEATURES.md` | Markdown feature catalog for implemented, partial, and planned capabilities. |
+| `FORK.md` | Fork goals, compatibility claims, and AGPL and UI legal notices. |
 | `PLAN.md` | Development roadmap for the fork. |
 
 ## Requirements
@@ -264,6 +265,11 @@ make e2e
 
 Start with these documents:
 
+- [FORK.md](FORK.md) for the fork's goals, compatibility claims, and legal
+  notices, and [yacynode/doc/fork-roadmap.md](yacynode/doc/fork-roadmap.md) for a
+  plain-language roadmap;
+- [yacynode/doc/adr/README.md](yacynode/doc/adr/README.md) for the architecture
+  decision records and the new-dependency rule;
 - [yacynode/doc/specification.md](yacynode/doc/specification.md) for the current
   node contract and non-goals;
 - [yacynode/doc/yacy-dht-interop.md](yacynode/doc/yacy-dht-interop.md) for YaCy
