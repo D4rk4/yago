@@ -15,7 +15,11 @@ import (
 const (
 	originImage = "docker.io/library/nginx:alpine"
 	originAlias = "origin"
-	originPage  = `<html lang="en"><title>Hi</title><body>words here</body></html>`
+	originPage  = `<!DOCTYPE html>
+<html lang="en">
+  <head><title>Hi</title></head>
+  <body><p>words here</p></body>
+</html>`
 )
 
 func startOrigin(t *testing.T, ctx context.Context, networkName string) string {

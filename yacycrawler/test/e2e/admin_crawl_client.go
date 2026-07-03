@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -16,6 +17,7 @@ const (
 	pathAdminLogin = "/api/admin/v1/auth/login"
 	pathCrawl      = "/crawl"
 	pathIndexStats = "/api/admin/v1/index/stats"
+	pathSearchJSON = "/yacysearch.json"
 	sessionCookie  = "yago_admin_session"
 	csrfHeader     = "X-CSRF-Token"
 )
@@ -91,7 +93,7 @@ func dispatchCrawl(
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(csrfHeader, session.csrf)
-	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: session.cookie})
+	req.Header.Set("Cookie", sessionCookie+"="+session.cookie)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("dispatch crawl: %v", err)
@@ -109,7 +111,7 @@ func indexedDocuments(t *testing.T, ctx context.Context, opsURL string, session 
 	if err != nil {
 		return 0
 	}
-	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: session.cookie})
+	req.Header.Set("Cookie", sessionCookie+"="+session.cookie)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return 0
@@ -128,13 +130,44 @@ func indexedDocuments(t *testing.T, ctx context.Context, opsURL string, session 
 	return decoded.Documents
 }
 
+func searchFindsTerm(ctx context.Context, peerURL, term string) bool {
+	endpoint := peerURL + pathSearchJSON + "?query=" + url.QueryEscape(term)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	var decoded struct {
+		Channels []struct {
+			TotalResults string            `json:"totalResults"`
+			Items        []json.RawMessage `json:"items"`
+		} `json:"channels"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		return false
+	}
+	if len(decoded.Channels) == 0 {
+		return false
+	}
+	channel := decoded.Channels[0]
+
+	return len(channel.Items) > 0 || (channel.TotalResults != "" && channel.TotalResults != "0")
+}
+
 func rawGet(ctx context.Context, endpoint, cookie string) string {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return "request error: " + err.Error()
 	}
 	if cookie != "" {
-		req.AddCookie(&http.Cookie{Name: sessionCookie, Value: cookie})
+		req.Header.Set("Cookie", sessionCookie+"="+cookie)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

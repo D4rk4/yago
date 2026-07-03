@@ -12,8 +12,8 @@ import (
 // binaries: a node container (durable lease broker + admin API), a crawler
 // container that streams and leases orders from it, and an origin to fetch. It
 // dispatches one crawl through the node's authenticated admin API and asserts the
-// node ends up with an indexed document — proving the order, lease, stream,
-// fetch, ingest, index path end to end over the gRPC wire.
+// crawled page becomes an indexed, searchable document — proving the order,
+// lease, stream, fetch, ingest, index path end to end over the gRPC wire.
 func TestNodeBrokerDrivesCrawlerToIndex(t *testing.T) {
 	ctx := context.Background()
 
@@ -30,5 +30,12 @@ func TestNodeBrokerDrivesCrawlerToIndex(t *testing.T) {
 	}) {
 		t.Logf("index stats: %s", rawGet(ctx, node.opsURL+pathIndexStats, session.cookie))
 		t.Fatal("dispatched crawl never produced an indexed document on the node")
+	}
+
+	if !waitFor(30*time.Second, func() bool {
+		return searchFindsTerm(ctx, node.peerURL, "words")
+	}) {
+		t.Logf("search: %s", rawGet(ctx, node.peerURL+pathSearchJSON+"?query=words", ""))
+		t.Fatal("indexed document was not returned by a body-term search")
 	}
 }
