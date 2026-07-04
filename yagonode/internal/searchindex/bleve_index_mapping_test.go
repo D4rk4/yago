@@ -7,7 +7,10 @@ import (
 )
 
 func TestNewSearchIndexMappingTunesFields(t *testing.T) {
-	indexMapping := newSearchIndexMapping()
+	indexMapping, err := newSearchIndexMapping()
+	if err != nil {
+		t.Fatalf("newSearchIndexMapping: %v", err)
+	}
 
 	if indexMapping.StoreDynamic || indexMapping.IndexDynamic || indexMapping.DocValuesDynamic {
 		t.Fatalf("dynamic flags store=%v index=%v docvalues=%v, want all false",
@@ -73,5 +76,70 @@ func TestSearchMatchesHostKeywordInURL(t *testing.T) {
 			"results = %#v, want the host keyword to match through the tuned url analyzer",
 			results,
 		)
+	}
+}
+
+func TestSearchStemsEnglishText(t *testing.T) {
+	index, err := NewBleveMemoryIndex(t.Context(), &fakeStoredDocuments{
+		documents: []documentstore.Document{{
+			NormalizedURL: "https://example.net/guide",
+			Title:         "Guide",
+			ExtractedText: "Developers enjoy running marathons.",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewBleveMemoryIndex: %v", err)
+	}
+
+	results, err := index.Search(t.Context(), SearchRequest{Query: "run", MaxResults: 5})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if results.Total != 1 {
+		t.Fatalf(`results = %#v, want stemmed "run" to match indexed "running"`, results)
+	}
+}
+
+func TestSearchMatchesDigitInURL(t *testing.T) {
+	index, err := NewBleveMemoryIndex(t.Context(), &fakeStoredDocuments{
+		documents: []documentstore.Document{{
+			NormalizedURL: "https://example.net/reports/2024/q1",
+			Title:         "Report",
+			ExtractedText: "Body without the year.",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewBleveMemoryIndex: %v", err)
+	}
+
+	results, err := index.Search(t.Context(), SearchRequest{Query: "2024", MaxResults: 5})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if results.Total != 1 {
+		t.Fatalf("results = %#v, want the URL year digit to tokenize and match", results)
+	}
+}
+
+func TestSearchMatchesUnicodeHostLabel(t *testing.T) {
+	index, err := NewBleveMemoryIndex(t.Context(), &fakeStoredDocuments{
+		documents: []documentstore.Document{{
+			NormalizedURL: "https://поиск.example.net/страница",
+			Title:         "Unrelated",
+			ExtractedText: "Body without the host word.",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewBleveMemoryIndex: %v", err)
+	}
+
+	// An ASCII-only tokenizer would drop the Cyrillic labels; the Unicode regexp
+	// keeps them, so internationalized hosts and paths stay searchable.
+	results, err := index.Search(t.Context(), SearchRequest{Query: "поиск", MaxResults: 5})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if results.Total != 1 {
+		t.Fatalf("results = %#v, want the Cyrillic host label to tokenize and match", results)
 	}
 }

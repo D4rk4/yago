@@ -44,7 +44,11 @@ func NewBleveMemoryIndex(
 	ctx context.Context,
 	stored documentstore.StoredDocuments,
 ) (*BleveMemoryIndex, error) {
-	index, err := newBleveMemory(newSearchIndexMapping())
+	indexMapping, err := newSearchIndexMapping()
+	if err != nil {
+		return nil, fmt.Errorf("build search index mapping: %w", err)
+	}
+	index, err := newBleveMemory(indexMapping)
 	if err != nil {
 		return nil, fmt.Errorf("open bleve memory index: %w", err)
 	}
