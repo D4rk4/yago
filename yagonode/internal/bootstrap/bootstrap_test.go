@@ -18,6 +18,22 @@ func (o *recordingSeedImportObserver) ObserveSeedlistImport(seedCount int) {
 	o.seeds += seedCount
 }
 
+func TestSeedlistImporterFetchesOneURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = strings.NewReader(seedlistLine(t, "BBBBBBBBBBBB", "203.0.113.2")).WriteTo(w)
+	}))
+	defer server.Close()
+
+	importer := NewSeedlistImporter(server.Client())
+	seeds, err := importer.Import(context.Background(), server.URL)
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if len(seeds) != 1 {
+		t.Fatalf("got %d seeds, want 1", len(seeds))
+	}
+}
+
 func TestSeedlistsFetchAllURLsAndSkipFailures(t *testing.T) {
 	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = strings.NewReader(seedlistLine(t, "AAAAAAAAAAAA", "203.0.113.1")).WriteTo(w)

@@ -46,6 +46,8 @@ type node struct {
 	announcer     peerannouncement.Announcer
 	crawl         crawlProcess
 	dht           dhtOutboundProcess
+	vault         *vault.Vault
+	client        *http.Client
 }
 
 type nodeTelemetry struct {
@@ -159,6 +161,7 @@ func assembleNode(
 		roster:    roster,
 		news:      news,
 		vault:     vault,
+		client:    client,
 		ranking:   surfaces.ranking,
 	}), nil
 }
@@ -237,6 +240,7 @@ type nodeParts struct {
 	roster    peerroster.Roster
 	news      *peernews.Pool
 	vault     *vault.Vault
+	client    *http.Client
 	ranking   *rankingprofile.Holder
 }
 
@@ -258,6 +262,8 @@ func newAssembledNode(parts nodeParts) node {
 		announcer:     parts.announcer,
 		crawl:         parts.crawl,
 		dht:           parts.dht,
+		vault:         parts.vault,
+		client:        parts.client,
 	}
 }
 

@@ -2261,12 +2261,22 @@ restart and removes the peer from fan-out; anti-lockout guardrails; tests +
 
 ### UI-16: Seedlist operations
 
-Follow-up to UI-07 (the Network section lists configured seedlist URLs but cannot
-act on them). Add a durable last-import status per seedlist URL and an operator
-"refresh now" action that re-fetches a seedlist through the egress guard and
-records the outcome as a structured event. Acceptance: last-import time/result is
-shown per seedlist; a manual refresh updates it and is auditable; tests +
-`make verify`.
+Status: Done (2026-07-04). The Network section's seedlist list becomes a table
+carrying, per configured URL, the last-import time and result plus an operator
+"Refresh now" action. A new durable `seedimport.Store` (a JSON-codec vault
+collection keyed by URL) records the outcome of each import (timestamp, seed
+count, ok/error). The refresh is a CSRF-guarded `POST /admin/network/seedlist/
+refresh`: the node's `seedlistRefreshSource` rejects any URL not in the configured
+set (so the action cannot be turned into an arbitrary outbound fetch), re-fetches
+the one list through the same egress-screened client via a newly exported
+`bootstrap.SeedlistImporter`, feeds the discovered seeds to the roster
+(`Discover`), records the outcome in the store, and emits a structured `p2p`
+event (`seedlist.refreshed` / `seedlist.refresh.failed`) for the audit trail. The
+network source reads the store to show each URL's history; a store-open failure
+degrades gracefully to no history/no action. The refresh button only renders when
+a refresh source is wired. Cross-layer tests (store incl. corrupt-record/failing-
+engine branches, refresh adapter, network status mapping, the handler, and the
+importer) — all six modules 100%, Semgrep + Trivy clean.
 
 ### UI-17: Peer messaging and news console
 

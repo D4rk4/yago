@@ -42,6 +42,8 @@ components:
     in: internal/peerprofile/**
   seedlist:
     in: internal/seedlist/**
+  seedimport:
+    in: internal/seedimport/**
   sharedblacklist:
     in: internal/sharedblacklist/**
   bootstrap:
@@ -227,6 +229,11 @@ deps:
   settingsstore:
     mayDependOn:
       - settingsstore
+      - vault
+      - memvault
+  seedimport:
+    mayDependOn:
+      - seedimport
       - vault
       - memvault
   eventstore:
@@ -567,6 +574,7 @@ deps:
       - peernews
       - transfertally
       - settingsstore
+      - seedimport
       - eventstore
       - urlmetastaleness
       - urlreferences

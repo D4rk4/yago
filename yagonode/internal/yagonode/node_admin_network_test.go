@@ -33,7 +33,7 @@ func networkTestSeed(t *testing.T) yagomodel.Seed {
 }
 
 func TestNetworkSourceMapsPeerDetail(t *testing.T) {
-	source := newNetworkSource(dhtGateStatusSource{}, nil, nil)
+	source := newNetworkSource(dhtGateStatusSource{}, nil, nil, nil)
 	peers := source.adminNetworkPeers([]yagomodel.Seed{networkTestSeed(t)})
 	if len(peers) != 1 {
 		t.Fatalf("peers = %d", len(peers))
@@ -60,14 +60,17 @@ func TestNetworkSourceSurfacesReachabilityAndSeedlists(t *testing.T) {
 		},
 	}
 	roster := reachableRoster{peers: []yagomodel.Seed{networkTestSeed(t)}}
-	source := newNetworkSource(gates, roster, []string{"https://seeds.example/seed.txt"})
+	source := newNetworkSource(gates, roster, []string{"https://seeds.example/seed.txt"}, nil)
 
 	status := source.Network(context.Background())
 	if !status.PublicReachable {
 		t.Fatal("expected the public self-test result to be surfaced")
 	}
-	if len(status.SeedlistURLs) != 1 || status.SeedlistURLs[0] != "https://seeds.example/seed.txt" {
-		t.Fatalf("seedlist urls = %v", status.SeedlistURLs)
+	if len(status.Seedlists) != 1 || status.Seedlists[0].URL != "https://seeds.example/seed.txt" {
+		t.Fatalf("seedlists = %+v", status.Seedlists)
+	}
+	if status.Seedlists[0].Imported {
+		t.Fatal("a seedlist with no recorded import should not be marked imported")
 	}
 	if len(status.Peers) != 1 || status.KnownPeers != 1 {
 		t.Fatalf("peers = %+v known=%d", status.Peers, status.KnownPeers)

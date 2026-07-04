@@ -21,6 +21,16 @@ type NetworkPeer struct {
 	AgeDays  int
 }
 
+// SeedlistEntry is one configured bootstrap seed-list URL with the outcome of its
+// most recent import, shown in the Network section's seedlist table.
+type SeedlistEntry struct {
+	URL        string
+	LastImport string
+	Result     string
+	OK         bool
+	Imported   bool
+}
+
 // NetworkStatus is the peer-network snapshot the Network section renders.
 type NetworkStatus struct {
 	Available       bool
@@ -31,7 +41,7 @@ type NetworkStatus struct {
 	KnownPeers      int
 	ReachablePeers  int
 	Peers           []NetworkPeer
-	SeedlistURLs    []string
+	Seedlists       []SeedlistEntry
 }
 
 // NetworkSource supplies the network snapshot on each request.
@@ -81,4 +91,11 @@ type PeerNewsItem struct {
 // A nil provider hides the peer-news sub-view.
 type PeerNewsSource interface {
 	PeerNews(ctx context.Context) []PeerNewsItem
+}
+
+// SeedlistRefreshSource re-imports a configured seed list on the operator's
+// behalf, recording the outcome. It rejects a URL that is not configured. A nil
+// provider leaves the seedlist table read-only (no refresh action).
+type SeedlistRefreshSource interface {
+	RefreshSeedlist(ctx context.Context, url string) error
 }

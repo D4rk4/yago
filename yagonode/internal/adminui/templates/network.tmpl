@@ -66,13 +66,30 @@
 <div class="cds-empty" role="status">No peers yet.</div>
 {{end}}
 <h2 class="cds-h2">Seedlists</h2>
-{{if .Network.SeedlistURLs}}
+{{if .Network.Seedlists}}
 <p class="cds-muted">Bootstrap seedlist URLs imported at startup to discover peers.</p>
+{{$refresh := .SeedlistRefresh}}
+{{$csrf := .CSRF}}
 <div class="cds-scroll-x">
   <table class="cds-table">
-    <thead><tr><th scope="col">Seedlist URL</th></tr></thead>
+    <thead><tr><th scope="col">Seedlist URL</th><th scope="col">Last import</th><th scope="col">Result</th>{{if $refresh}}<th scope="col">Action</th>{{end}}</tr></thead>
     <tbody>
-      {{range .Network.SeedlistURLs}}<tr><td class="cds-mono">{{.}}</td></tr>{{end}}
+      {{range .Network.Seedlists}}
+      <tr>
+        <td class="cds-mono">{{.URL}}</td>
+        <td>{{if .Imported}}{{.LastImport}}{{else}}—{{end}}</td>
+        <td>{{if .Imported}}<span class="cds-tag cds-tag--{{if .OK}}success{{else}}error{{end}}">{{.Result}}</span>{{else}}<span class="cds-muted">never</span>{{end}}</td>
+        {{if $refresh}}
+        <td>
+          <form method="post" action="/admin/network/seedlist/refresh">
+            <input type="hidden" name="csrf_token" value="{{$csrf}}">
+            <input type="hidden" name="url" value="{{.URL}}">
+            <button class="cds-btn cds-btn--ghost" type="submit">Refresh now</button>
+          </form>
+        </td>
+        {{end}}
+      </tr>
+      {{end}}
     </tbody>
   </table>
 </div>

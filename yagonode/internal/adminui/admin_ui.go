@@ -40,6 +40,7 @@ const (
 	indexPath           = "/admin/index"
 	networkPath         = "/admin/network"
 	networkPeerPath     = "/admin/network/peer"
+	seedlistRefreshPath = "/admin/network/seedlist/refresh"
 	logsPath            = "/admin/logs"
 	logsEventsPath      = "/admin/logs/events"
 	securityPath        = "/admin/security"
@@ -77,23 +78,24 @@ var navItems = []NavItem{
 // Options configures the console's data providers. A nil provider makes its
 // section render a controlled unavailable state.
 type Options struct {
-	Overview    OverviewSource
-	Search      SearchSource
-	Crawl       CrawlSource
-	Monitor     CrawlMonitorSource
-	Control     CrawlControlSource
-	Index       IndexSource
-	Network     NetworkSource
-	Config      ConfigSource
-	Settings    SettingsSource
-	Binding     BindingSource
-	Logs        LogsSource
-	Security    SecuritySource
-	Terms       TermSource
-	Schema      []SchemaGroup
-	Performance PerformanceSource
-	PeerDetail  PeerDetailSource
-	PeerNews    PeerNewsSource
+	Overview        OverviewSource
+	Search          SearchSource
+	Crawl           CrawlSource
+	Monitor         CrawlMonitorSource
+	Control         CrawlControlSource
+	Index           IndexSource
+	Network         NetworkSource
+	Config          ConfigSource
+	Settings        SettingsSource
+	Binding         BindingSource
+	Logs            LogsSource
+	Security        SecuritySource
+	Terms           TermSource
+	Schema          []SchemaGroup
+	Performance     PerformanceSource
+	PeerDetail      PeerDetailSource
+	PeerNews        PeerNewsSource
+	SeedlistRefresh SeedlistRefreshSource
 }
 
 type sectionView struct {
@@ -115,6 +117,7 @@ type pageData struct {
 	PeerLinks       bool
 	PeerNews        []PeerNewsItem
 	PeerNewsEnabled bool
+	SeedlistRefresh bool
 	Config          ConfigView
 	Logs            []LogEntry
 }
@@ -261,26 +264,27 @@ type templates struct {
 
 // Console is the server-rendered admin console handler.
 type Console struct {
-	mux         *http.ServeMux
-	tpl         templates
-	sections    map[string]sectionView
-	overview    OverviewSource
-	search      SearchSource
-	crawl       CrawlSource
-	monitor     CrawlMonitorSource
-	control     CrawlControlSource
-	index       IndexSource
-	network     NetworkSource
-	config      ConfigSource
-	settings    SettingsSource
-	binding     BindingSource
-	logs        LogsSource
-	security    SecuritySource
-	terms       TermSource
-	schema      []SchemaGroup
-	performance PerformanceSource
-	peerDetail  PeerDetailSource
-	peerNews    PeerNewsSource
+	mux             *http.ServeMux
+	tpl             templates
+	sections        map[string]sectionView
+	overview        OverviewSource
+	search          SearchSource
+	crawl           CrawlSource
+	monitor         CrawlMonitorSource
+	control         CrawlControlSource
+	index           IndexSource
+	network         NetworkSource
+	config          ConfigSource
+	settings        SettingsSource
+	binding         BindingSource
+	logs            LogsSource
+	security        SecuritySource
+	terms           TermSource
+	schema          []SchemaGroup
+	performance     PerformanceSource
+	peerDetail      PeerDetailSource
+	peerNews        PeerNewsSource
+	seedlistRefresh SeedlistRefreshSource
 }
 
 // New builds the console with its embedded templates, assets, and providers.
@@ -290,26 +294,27 @@ func New(opts Options) *Console {
 	assets, _ := fs.Sub(assetFS, "assets")
 
 	console := &Console{
-		mux:         http.NewServeMux(),
-		tpl:         buildTemplates(),
-		sections:    defaultSections(),
-		overview:    opts.Overview,
-		search:      opts.Search,
-		crawl:       opts.Crawl,
-		monitor:     opts.Monitor,
-		control:     opts.Control,
-		index:       opts.Index,
-		network:     opts.Network,
-		config:      opts.Config,
-		settings:    opts.Settings,
-		binding:     opts.Binding,
-		logs:        opts.Logs,
-		security:    opts.Security,
-		terms:       opts.Terms,
-		schema:      opts.Schema,
-		performance: opts.Performance,
-		peerDetail:  opts.PeerDetail,
-		peerNews:    opts.PeerNews,
+		mux:             http.NewServeMux(),
+		tpl:             buildTemplates(),
+		sections:        defaultSections(),
+		overview:        opts.Overview,
+		search:          opts.Search,
+		crawl:           opts.Crawl,
+		monitor:         opts.Monitor,
+		control:         opts.Control,
+		index:           opts.Index,
+		network:         opts.Network,
+		config:          opts.Config,
+		settings:        opts.Settings,
+		binding:         opts.Binding,
+		logs:            opts.Logs,
+		security:        opts.Security,
+		terms:           opts.Terms,
+		schema:          opts.Schema,
+		performance:     opts.Performance,
+		peerDetail:      opts.PeerDetail,
+		peerNews:        opts.PeerNews,
+		seedlistRefresh: opts.SeedlistRefresh,
 	}
 	console.registerRoutes(assets)
 
@@ -350,6 +355,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
 	c.mux.HandleFunc("GET "+networkPath, c.handleNetwork)
 	c.mux.HandleFunc("GET "+networkPeerPath, c.handleNetworkPeer)
+	c.mux.HandleFunc("POST "+seedlistRefreshPath, c.handleSeedlistRefresh)
 	c.mux.HandleFunc("GET "+configPath, c.handleConfig)
 	c.mux.HandleFunc("POST "+configPath, c.handleConfigUpdate)
 	c.mux.HandleFunc("GET "+logsPath, c.handleLogs)
@@ -514,7 +520,24 @@ func (c *Console) handleNetwork(w http.ResponseWriter, r *http.Request) {
 		PeerLinks:       c.peerDetail != nil,
 		PeerNews:        c.peerNewsItems(r.Context()),
 		PeerNewsEnabled: c.peerNews != nil,
+		SeedlistRefresh: c.seedlistRefresh != nil,
 	})
+}
+
+func (c *Console) handleSeedlistRefresh(w http.ResponseWriter, r *http.Request) {
+	if c.seedlistRefresh == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+
+	url := strings.TrimSpace(r.PostFormValue("url"))
+	if err := c.seedlistRefresh.RefreshSeedlist(r.Context(), url); err != nil {
+		slog.WarnContext(r.Context(), "admin seedlist refresh failed",
+			slog.String("url", url), slog.Any("error", err))
+	}
+
+	http.Redirect(w, r, networkPath, http.StatusSeeOther)
 }
 
 // peerNewsItems returns the recent peer-news items, or nil when no source is

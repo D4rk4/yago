@@ -232,6 +232,7 @@ a:focus, button:focus, input:focus, select:focus, [tabindex]:focus {
 .cds-tag--debug { background: #e0e0e0; color: #393939; }
 .cds-tag--warn { background: #fcf4d6; color: #684e00; }
 .cds-tag--error { background: #ffd7d9; color: #a2191f; }
+.cds-tag--success { background: #a7f0ba; color: #0e6027; }
 
 /* Data table */
 .cds-table { width: 100%; border-collapse: collapse; background: var(--cds-layer-02); }

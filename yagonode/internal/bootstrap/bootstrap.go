@@ -25,3 +25,20 @@ func New(client *http.Client, urls []string) SeedSource {
 func NewObserved(client *http.Client, urls []string, observer SeedImportObserver) SeedSource {
 	return &seedlists{fetcher: newHTTPSeedlistFetcher(client), urls: urls, observer: observer}
 }
+
+// SeedlistImporter fetches a single seed list on demand — e.g. an operator's
+// "refresh now" action — reusing the same egress-screened client and decoder as
+// the cold-start source.
+type SeedlistImporter struct {
+	fetcher httpSeedlistFetcher
+}
+
+// NewSeedlistImporter builds an on-demand importer over the given client.
+func NewSeedlistImporter(client *http.Client) *SeedlistImporter {
+	return &SeedlistImporter{fetcher: newHTTPSeedlistFetcher(client)}
+}
+
+// Import fetches and decodes the seeds advertised by one seed-list URL.
+func (i *SeedlistImporter) Import(ctx context.Context, url string) ([]yagomodel.Seed, error) {
+	return i.fetcher.Fetch(ctx, url)
+}

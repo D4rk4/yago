@@ -361,7 +361,15 @@ func TestConsoleNetworkRendersStatus(t *testing.T) {
 				AgeDays:  3,
 			},
 		},
-		SeedlistURLs: []string{"https://seeds.example/seed.txt"},
+		Seedlists: []SeedlistEntry{
+			{
+				URL:        "https://seeds.example/seed.txt",
+				Imported:   true,
+				OK:         true,
+				LastImport: "2026-07-04T09:00:00Z",
+				Result:     "12 seeds",
+			},
+		},
 	}
 	got := do(t, New(Options{Network: fakeNetwork{snap: snap}}), "/admin/network")
 	if got.status != http.StatusOK {
@@ -394,6 +402,90 @@ func TestConsoleNetworkEmptyStates(t *testing.T) {
 	}
 	if !strings.Contains(got.body, "No seedlist URLs configured.") {
 		t.Fatal("expected empty seedlist state")
+	}
+}
+
+type fakeSeedlistRefresh struct {
+	refreshed []string
+	err       error
+}
+
+func (f *fakeSeedlistRefresh) RefreshSeedlist(_ context.Context, url string) error {
+	f.refreshed = append(f.refreshed, url)
+
+	return f.err
+}
+
+func networkWithSeedlist() fakeNetwork {
+	return fakeNetwork{snap: NetworkStatus{
+		Available: true,
+		Seedlists: []SeedlistEntry{{URL: "https://seeds.example/seed.txt"}},
+	}}
+}
+
+func TestConsoleSeedlistShowsRefreshButtonOnlyWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	without := do(t, New(Options{Network: networkWithSeedlist()}), "/admin/network")
+	if strings.Contains(without.body, "Refresh now") {
+		t.Fatal("no refresh action should render without a refresh source")
+	}
+
+	with := do(
+		t,
+		New(Options{Network: networkWithSeedlist(), SeedlistRefresh: &fakeSeedlistRefresh{}}),
+		"/admin/network",
+	)
+	if !strings.Contains(with.body, "Refresh now") {
+		t.Fatal("refresh action should render when a refresh source is wired")
+	}
+	if !strings.Contains(with.body, `action="/admin/network/seedlist/refresh"`) {
+		t.Fatal("refresh form should post to the refresh endpoint")
+	}
+}
+
+func TestConsoleSeedlistRefreshInvokesSource(t *testing.T) {
+	t.Parallel()
+
+	refresh := &fakeSeedlistRefresh{}
+	got := doPost(
+		t,
+		New(Options{Network: networkWithSeedlist(), SeedlistRefresh: refresh}),
+		seedlistRefreshPath,
+		url.Values{"url": {"https://seeds.example/seed.txt"}},
+	)
+	if got.status != http.StatusSeeOther {
+		t.Fatalf("status %d, want 303", got.status)
+	}
+	if loc := got.header.Get("Location"); loc != networkPath {
+		t.Fatalf("location %q, want %q", loc, networkPath)
+	}
+	if len(refresh.refreshed) != 1 || refresh.refreshed[0] != "https://seeds.example/seed.txt" {
+		t.Fatalf("refreshed = %v", refresh.refreshed)
+	}
+}
+
+func TestConsoleSeedlistRefreshWithoutSourceIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	got := doPost(t, New(Options{}), seedlistRefreshPath, url.Values{"url": {"https://x/"}})
+	if got.status != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", got.status)
+	}
+}
+
+func TestConsoleSeedlistRefreshRedirectsOnError(t *testing.T) {
+	t.Parallel()
+
+	refresh := &fakeSeedlistRefresh{err: errors.New("refresh failed")}
+	got := doPost(
+		t,
+		New(Options{Network: networkWithSeedlist(), SeedlistRefresh: refresh}),
+		seedlistRefreshPath,
+		url.Values{"url": {"https://seeds.example/seed.txt"}},
+	)
+	if got.status != http.StatusSeeOther {
+		t.Fatalf("a failed refresh should still redirect: status %d", got.status)
 	}
 }
 

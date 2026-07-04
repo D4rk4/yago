@@ -2,19 +2,28 @@ package yagonode
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
+	"github.com/D4rk4/yago/yagonode/internal/seedimport"
 )
 
 const adminNetworkPeerLimit = 20
+
+// seedImportStatusReader reads the durable last-import status per seed-list URL.
+// A nil reader leaves the seedlist table without import history.
+type seedImportStatusReader interface {
+	Get(ctx context.Context, url string) (seedimport.Status, bool, error)
+}
 
 type networkSource struct {
 	gates        dhtGateStatusSource
 	roster       peerroster.Roster
 	seedlistURLs []string
+	status       seedImportStatusReader
 	now          func() time.Time
 }
 
@@ -22,8 +31,15 @@ func newNetworkSource(
 	gates dhtGateStatusSource,
 	roster peerroster.Roster,
 	seedlistURLs []string,
+	status seedImportStatusReader,
 ) networkSource {
-	return networkSource{gates: gates, roster: roster, seedlistURLs: seedlistURLs, now: time.Now}
+	return networkSource{
+		gates:        gates,
+		roster:       roster,
+		seedlistURLs: seedlistURLs,
+		status:       status,
+		now:          time.Now,
+	}
 }
 
 func (s networkSource) Network(ctx context.Context) adminui.NetworkStatus {
@@ -34,7 +50,7 @@ func (s networkSource) Network(ctx context.Context) adminui.NetworkStatus {
 		PublicReachable: report.State.PublicReachable,
 		BlockingReason:  report.BlockingReason,
 		Gates:           adminNetworkGates(report.Gates),
-		SeedlistURLs:    s.seedlistURLs,
+		Seedlists:       s.adminSeedlists(ctx),
 	}
 
 	if s.roster != nil {
@@ -44,6 +60,35 @@ func (s networkSource) Network(ctx context.Context) adminui.NetworkStatus {
 	}
 
 	return status
+}
+
+func (s networkSource) adminSeedlists(ctx context.Context) []adminui.SeedlistEntry {
+	entries := make([]adminui.SeedlistEntry, 0, len(s.seedlistURLs))
+	for _, url := range s.seedlistURLs {
+		entry := adminui.SeedlistEntry{URL: url}
+		if s.status != nil {
+			if st, found, err := s.status.Get(ctx, url); err == nil && found {
+				entry.Imported = true
+				entry.OK = st.OK
+				entry.LastImport = st.LastImport.UTC().Format(time.RFC3339)
+				entry.Result = seedlistResult(st)
+			}
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries
+}
+
+func seedlistResult(status seedimport.Status) string {
+	if status.OK {
+		return fmt.Sprintf("%d seeds", status.Seeds)
+	}
+	if status.Error != "" {
+		return "failed: " + status.Error
+	}
+
+	return "failed"
 }
 
 func adminNetworkGates(results []dhtGateResultResponse) []adminui.NetworkGate {
