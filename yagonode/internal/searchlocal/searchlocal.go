@@ -74,6 +74,7 @@ func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRe
 	return searchindex.SearchRequest{
 		Query:         query,
 		ExcludeTerms:  append([]string(nil), req.ExcludedTerms...),
+		Phrases:       append([]string(nil), req.Phrases...),
 		MaxResults:    req.Offset + requestLimit(req),
 		IncludeDomain: includeDomains(req),
 		Language:      strings.ToLower(req.Language),

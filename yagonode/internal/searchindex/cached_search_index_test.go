@@ -253,3 +253,28 @@ func TestCachedSearchIndexForwardsClose(t *testing.T) {
 		t.Fatalf("non-closer close = %v, want nil", err)
 	}
 }
+
+func TestCachedSearchIndexKeysOnPhrases(t *testing.T) {
+	inner := &countingIndex{results: SearchResultSet{Total: 0}}
+	cache := NewCachedSearchIndex(inner, 8)
+	ctx := t.Context()
+	base := SearchRequest{Query: "quick brown", MaxResults: 5}
+
+	if _, err := cache.Search(ctx, base); err != nil {
+		t.Fatalf("base search: %v", err)
+	}
+	phrased := base
+	phrased.Phrases = []string{"quick brown"}
+	if _, err := cache.Search(ctx, phrased); err != nil {
+		t.Fatalf("phrased search: %v", err)
+	}
+	if _, err := cache.Search(ctx, phrased); err != nil {
+		t.Fatalf("phrased repeat: %v", err)
+	}
+	if inner.searches != 2 {
+		t.Fatalf(
+			"inner searches = %d, want 2 (phrases are a distinct key; repeat is cached)",
+			inner.searches,
+		)
+	}
+}

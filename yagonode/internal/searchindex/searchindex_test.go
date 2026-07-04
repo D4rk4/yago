@@ -360,3 +360,46 @@ func TestBleveMemoryIndexHelpers(t *testing.T) {
 		t.Fatal("document should be allowed")
 	}
 }
+
+func TestBleveMemoryIndexPhraseBoostPrefersAdjacency(t *testing.T) {
+	index, err := NewBleveMemoryIndex(t.Context(), nil)
+	if err != nil {
+		t.Fatalf("NewBleveMemoryIndex: %v", err)
+	}
+
+	// Both documents carry exactly one "quick" and one "brown" in a four-word
+	// body, so their term scores are identical; only `adjacent` has the two words
+	// next to each other, isolating the phrase boost as the sole differentiator.
+	scattered := documentstore.Document{
+		CanonicalURL:  "https://scattered.example/",
+		Title:         "Guide",
+		ExtractedText: "brown fox quick lazy",
+		Language:      "en",
+	}
+	adjacent := documentstore.Document{
+		CanonicalURL:  "https://adjacent.example/",
+		Title:         "Guide",
+		ExtractedText: "quick brown fox lazy",
+		Language:      "en",
+	}
+	for _, doc := range []documentstore.Document{scattered, adjacent} {
+		if err := index.Index(t.Context(), doc); err != nil {
+			t.Fatalf("Index: %v", err)
+		}
+	}
+
+	results, err := index.Search(t.Context(), SearchRequest{
+		Query:      "quick brown",
+		Phrases:    []string{"quick brown"},
+		MaxResults: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(results.Results) != 2 {
+		t.Fatalf("results = %#v, want both documents", results.Results)
+	}
+	if results.Results[0].URL != adjacent.CanonicalURL {
+		t.Fatalf("phrase match not ranked first: %#v", results.Results)
+	}
+}

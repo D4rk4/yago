@@ -259,6 +259,7 @@ func coreRequest(req SearchRequest) (searchcore.Request, error) {
 		Query:         query,
 		Terms:         parsed.Terms,
 		ExcludedTerms: parsed.ExcludedTerms,
+		Phrases:       parsed.Phrases(),
 		Source:        source,
 		Limit:         limit,
 		ContentDomain: searchcore.ContentDomainText,

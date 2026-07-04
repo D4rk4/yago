@@ -975,10 +975,22 @@ Acceptance:
 
 ### SEARCH-11: Web-search relevance and analyzer tuning
 
+Status: partial. The phrase half of task 2 is Done: quoted multi-word phrases now
+parse into `searchcore.Request.Phrases`, thread through `searchlocal` into
+`searchindex.SearchRequest.Phrases`, and add per-field `MatchPhraseQuery` SHOULD
+boosts in `bleveSearchQuery` (memory and disk share it), so documents with the
+words adjacent rank above scattered-term matches without excluding them. The
+hot-query cache keys on `Phrases` (same discipline as SEARCH-10). The wire path
+(`/yacysearch.*` RWI, `POST /search`) is unaffected — the RWI/postings fallback
+ignores the field and stays byte-compatible. Remaining: task 1 (analyzer tuning —
+URL/host tokenization and language-aware text analysis, an index-mapping change
+that requires a reindex) and the per-host diversity half of task 2, which is
+realised by SEARCH-13 (MMR + domain-cap decorator on the composed searcher).
+
 Tasks:
 
-1. Tune analyzers for web content, including URL and host tokenization and language-aware text analysis where language is known.
-2. Improve result quality with phrase/proximity support and per-host result diversity.
+1. Tune analyzers for web content, including URL and host tokenization and language-aware text analysis where language is known. Remaining.
+2. Improve result quality with phrase/proximity support and per-host result diversity. Phrase/proximity Done; per-host diversity delegated to SEARCH-13.
 
 Acceptance:
 

@@ -36,6 +36,7 @@ type Request struct {
 	Query            string
 	Terms            []string
 	ExcludedTerms    []string
+	Phrases          []string
 	Source           Source
 	Limit            int
 	Offset           int

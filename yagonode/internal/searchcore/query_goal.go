@@ -8,6 +8,20 @@ import (
 
 const queryGoalSeparators = ":;#*`!$%()=?^<>/&_"
 
+// Phrases returns the multi-word include phrases the caller quoted, so a searcher
+// can boost documents where those words appear adjacently. Single-word entries
+// are excluded because they are already covered by term matching.
+func (p ParsedQuery) Phrases() []string {
+	var phrases []string
+	for _, phrase := range p.IncludePhrases {
+		if strings.Contains(phrase, " ") {
+			phrases = append(phrases, phrase)
+		}
+	}
+
+	return phrases
+}
+
 func (p *ParsedQuery) addQueryWords(raw string) {
 	words := strings.ToLower(strings.TrimSpace(raw))
 	for _, separator := range queryGoalSeparators {

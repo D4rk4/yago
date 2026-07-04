@@ -81,3 +81,14 @@ func assertStrings(t *testing.T, got, want []string) {
 		}
 	}
 }
+
+func TestParsedQueryPhrasesReturnsQuotedMultiWord(t *testing.T) {
+	got := ParseTextQuery(`golang "p2p search" tooling`)
+	assertStrings(t, got.Phrases(), []string{"p2p search"})
+}
+
+func TestParsedQueryPhrasesIgnoresSingleWords(t *testing.T) {
+	if phrases := ParseTextQuery("golang p2p search").Phrases(); len(phrases) != 0 {
+		t.Fatalf("phrases = %#v, want none", phrases)
+	}
+}

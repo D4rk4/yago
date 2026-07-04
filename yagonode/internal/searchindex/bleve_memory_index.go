@@ -176,12 +176,16 @@ func bleveSearchQuery(req SearchRequest) blevequery.Query {
 		fieldMatch("body", req.Query, weights.Body),
 		fieldMatch("url", req.Query, weights.URL),
 	)
-	if len(req.ExcludeTerms) == 0 {
+	phrases := phraseBoosts(req.Phrases, weights)
+	if len(req.ExcludeTerms) == 0 && len(phrases) == 0 {
 		return main
 	}
 
 	query := bleve.NewBooleanQuery()
 	query.AddMust(main)
+	for _, phrase := range phrases {
+		query.AddShould(phrase)
+	}
 	for _, term := range req.ExcludeTerms {
 		term = strings.TrimSpace(term)
 		if term != "" {
@@ -193,8 +197,37 @@ func bleveSearchQuery(req SearchRequest) blevequery.Query {
 	return query
 }
 
+// phraseBoosts turns each quoted phrase into an optional, weighted phrase match
+// across the text fields. Added as SHOULD clauses, they lift documents where the
+// words appear adjacently without excluding the term-only matches the main
+// disjunction already covers.
+func phraseBoosts(phrases []string, weights RankingWeights) []blevequery.Query {
+	boosts := make([]blevequery.Query, 0, len(phrases))
+	for _, phrase := range phrases {
+		phrase = strings.TrimSpace(phrase)
+		if phrase == "" {
+			continue
+		}
+		boosts = append(boosts, bleve.NewDisjunctionQuery(
+			fieldPhrase("title", phrase, weights.Title),
+			fieldPhrase("headings", phrase, weights.Headings),
+			fieldPhrase("body", phrase, weights.Body),
+		))
+	}
+
+	return boosts
+}
+
 func fieldMatch(field string, text string, boost float64) *blevequery.MatchQuery {
 	query := bleve.NewMatchQuery(text)
+	query.SetField(field)
+	query.SetBoost(boost)
+
+	return query
+}
+
+func fieldPhrase(field string, text string, boost float64) *blevequery.MatchPhraseQuery {
+	query := bleve.NewMatchPhraseQuery(text)
 	query.SetField(field)
 	query.SetBoost(boost)
 

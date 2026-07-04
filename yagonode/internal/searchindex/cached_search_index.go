@@ -133,6 +133,7 @@ func cacheKey(req SearchRequest) string {
 	writeCacheField(&builder, strconv.FormatBool(req.IncludeRaw))
 	writeCacheField(&builder, req.Language)
 	writeCacheField(&builder, strings.Join(req.ExcludeTerms, "\x1f"))
+	writeCacheField(&builder, strings.Join(req.Phrases, "\x1f"))
 	writeCacheField(&builder, strings.Join(req.IncludeDomain, "\x1f"))
 	writeCacheField(&builder, strings.Join(req.ExcludeDomain, "\x1f"))
 	writeCacheField(&builder, strconv.FormatInt(req.Since.UnixNano(), 10))

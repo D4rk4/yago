@@ -26,6 +26,7 @@ func searchRequestFromValues(values url.Values) (searchcore.Request, error) {
 		Query:            values.Get(yagoproto.FieldQuery),
 		Terms:            parsed.Terms,
 		ExcludedTerms:    parsed.ExcludedTerms,
+		Phrases:          parsed.Phrases(),
 		Source:           searchcore.Source(values.Get(yagoproto.FieldResource)),
 		Limit:            limit,
 		Offset:           offset,
