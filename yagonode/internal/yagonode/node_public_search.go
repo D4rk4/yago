@@ -5,6 +5,7 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yagonode/internal/documentsearch"
+	"github.com/D4rk4/yago/yagonode/internal/landing"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
@@ -28,7 +29,7 @@ type publicSearchAssembly struct {
 	extractFetcher       tavilyapi.ContentFetcher
 	webFallback          webFallbackConfig
 	seedQueue            crawldispatch.CrawlOrderQueue
-	publicPortalEnabled  bool
+	toggles              *runtimeToggles
 }
 
 func mountNodePublicSearch(
@@ -58,11 +59,35 @@ func mountNodePublicSearch(
 	yacysearch.Mount(mux, search)
 	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
 	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access, assembly.extractFetcher)
-	if assembly.publicPortalEnabled {
-		mux.Handle("/{$}", publicportal.New(newPortalSource(search)))
-	}
+	mux.Handle(
+		"/{$}",
+		newRootDispatcher(assembly.toggles, publicportal.New(newPortalSource(search))),
+	)
 
 	return search
+}
+
+// rootDispatcher serves the public search portal at the site root when the
+// operator has enabled it, and the static landing page otherwise. The portal can
+// be toggled live because the choice is made per request rather than at mount
+// time.
+type rootDispatcher struct {
+	toggles *runtimeToggles
+	portal  http.Handler
+	landing http.Handler
+}
+
+func newRootDispatcher(toggles *runtimeToggles, portal http.Handler) *rootDispatcher {
+	return &rootDispatcher{toggles: toggles, portal: portal, landing: landing.NewEndpoint()}
+}
+
+func (d *rootDispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if d.toggles.PortalEnabled() {
+		d.portal.ServeHTTP(w, r)
+
+		return
+	}
+	d.landing.ServeHTTP(w, r)
 }
 
 // searchAccessPolicy prefers scoped API-key auth when the operator requires it,

@@ -15,10 +15,18 @@ admin console's Configuration section. An override is stored durably in the node
 vault and takes precedence over the environment default; clearing it (**Reset to
 default**) reverts to the environment value. Overrides survive restarts, require
 an authenticated admin session with a CSRF token, and record a `config` event on
-each change. Secrets are never runtime-overridable. Some settings (for example
-the public search portal toggle) take effect only after a node restart, which the
-console flags. The whitelist starts with the public search portal and grows as
-HTTP→HTTPS redirect controls land.
+each change. Secrets are never runtime-overridable. The public search portal
+toggle and the HTTP→HTTPS redirect apply live (no restart); listen-address
+changes take effect on the next restart, which the console flags.
+
+The **public search portal** toggle overrides `YAGO_PUBLIC_SEARCH_UI_ENABLED`:
+enabling it mounts the portal at the site root, disabling it serves the static
+landing page there instead, switched live on the next request. The **HTTP→HTTPS
+redirect** toggle overrides `YAGO_HTTPS_REDIRECT` (off by default): when on, a
+plain-HTTP request is answered with a 308 to the `https://` origin, preserving
+the path and query. TLS is expected to be terminated in front (a reverse proxy
+sets `X-Forwarded-Proto`); loopback requests are never redirected, so the admin
+console reached over `localhost` cannot be pushed to an unreachable HTTPS origin.
 
 ### Listen addresses
 
@@ -69,7 +77,8 @@ offered so a bind change cannot lock you out of the admin console.
 | `YAGO_EGRESS_ALLOW_CIDRS` | _(empty)_ | Comma-separated private CIDRs the egress guard admits even when `YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS` is false, so intranet mode reaches only named ranges instead of all private space. Only relaxes the private check: loopback, link-local (including the cloud metadata range), and reserved ranges stay blocked, so a non-private entry never grants access to them. |
 | `YAGO_SEARCH_API_KEY` | _(empty)_ | Optional legacy static bearer token for the Tavily-compatible `POST /search` and `POST /extract` endpoints. When set, callers must send `Authorization: Bearer <token>`. This is a local key for the node's own endpoint, not a key for any external search service; the node uses no keyed external search API. Ignored when `YAGO_SEARCH_REQUIRE_API_KEY` is on. |
 | `YAGO_SEARCH_REQUIRE_API_KEY` | `false` | Require scoped API keys on the Tavily-compatible surface. When on, `POST /search` and `POST /extract` accept only admin-minted API keys (`Authorization: Bearer <key>`): `/search` needs `search:read` (or `search:raw` for raw content) and `/extract` needs `search:raw`. Missing/invalid keys return `401`, insufficient scope `403`, and rate-limited keys `429`. Takes precedence over `YAGO_SEARCH_API_KEY`; when both are unset the surface is public. |
-| `YAGO_PUBLIC_SEARCH_UI_ENABLED` | `false` | Serve the anonymous public search portal on the public listener's root (`/`). Off by default; while off, the root serves the landing page and the portal is not mounted. When on, a minimal, server-rendered, no-JavaScript search page runs queries against the node's search core (local plus peers, DDGS fallback included) and shows the `[ddgs]` marker on fallback hits. It exposes only search — never admin APIs — and does not log the query text. |
+| `YAGO_PUBLIC_SEARCH_UI_ENABLED` | `false` | Serve the anonymous public search portal on the public listener's root (`/`). Off by default; while off, the root serves the landing page and the portal is not mounted. When on, a minimal, server-rendered, no-JavaScript search page runs queries against the node's search core (local plus peers, DDGS fallback included) and shows the `[ddgs]` marker on fallback hits. It exposes only search — never admin APIs — and does not log the query text. Overridable live from the admin console (see Runtime overrides). |
+| `YAGO_HTTPS_REDIRECT` | `false` | Redirect plain-HTTP requests to the `https://` origin with a 308, preserving path and query. Off by default. TLS termination is expected in front (a reverse proxy sets `X-Forwarded-Proto`); loopback requests are never redirected. Overridable live from the admin console (see Runtime overrides). |
 | `YAGO_EXTRACT_FETCH_ENABLED` | `false` | Enable fetch-on-extract for `POST /extract`. Off by default, so an uncached URL is a controlled `failed_result` with no outbound request. When on, an uncached URL is fetched through the shared egress-guarded client (private networks stay default-denied — no SSRF) and its title and visible text are extracted. |
 | `YAGO_EXTRACT_FETCH_TIMEOUT` | `10s` | Per-request timeout for a fetch-on-extract fetch. |
 | `YAGO_EXTRACT_FETCH_MAX_BYTES` | `2097152` | Maximum response bytes read per fetch-on-extract fetch (2 MiB). |

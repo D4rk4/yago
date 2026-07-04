@@ -27,8 +27,9 @@ func newTestSettingsSource(
 		t.Fatalf("settingsstore.Open: %v", err)
 	}
 	recorder := events.NewRecorder(events.DefaultCapacity)
+	toggles := newRuntimeToggles(envConfig)
 
-	return newSettingsSource(store, envConfig, recorder), store, recorder
+	return newSettingsSource(store, envConfig, toggles, recorder), store, recorder
 }
 
 func portalItem(t *testing.T, view adminui.SettingsView) adminui.SettingItem {
@@ -85,8 +86,8 @@ func TestSettingsSourceUpdatePersistsAndRecordsEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if !result.OK || !result.RestartRequired {
-		t.Fatalf("result = %+v, want OK and RestartRequired", result)
+	if !result.OK || result.RestartRequired {
+		t.Fatalf("result = %+v, want OK and live (no restart required)", result)
 	}
 
 	stored, set, err := store.Get(ctx, settingKeyPublicSearchPortal)
@@ -103,6 +104,50 @@ func TestSettingsSourceUpdatePersistsAndRecordsEvent(t *testing.T) {
 	}
 	if recent[0].Category != events.CategoryConfig || recent[0].Name != "settings.updated" {
 		t.Fatalf("event = %+v, want config/settings.updated", recent[0])
+	}
+}
+
+func TestSettingsSourceUpdateAppliesPortalLive(t *testing.T) {
+	t.Parallel()
+
+	v, err := memvault.Open(0)
+	if err != nil {
+		t.Fatalf("memvault.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = v.Close() })
+	store, err := settingsstore.Open(v)
+	if err != nil {
+		t.Fatalf("settingsstore.Open: %v", err)
+	}
+
+	envConfig := nodeConfig{PublicSearchUIEnabled: true}
+	toggles := newRuntimeToggles(envConfig)
+	source := newSettingsSource(
+		store,
+		envConfig,
+		toggles,
+		events.NewRecorder(events.DefaultCapacity),
+	)
+	ctx := context.Background()
+
+	if _, err := source.Update(
+		ctx,
+		adminui.SettingsChange{Key: settingKeyPublicSearchPortal, Value: "false"},
+	); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if toggles.PortalEnabled() {
+		t.Fatal("portal toggle was not applied live")
+	}
+
+	if _, err := source.Update(
+		ctx,
+		adminui.SettingsChange{Key: settingKeyPublicSearchPortal, Reset: true},
+	); err != nil {
+		t.Fatalf("Update reset: %v", err)
+	}
+	if !toggles.PortalEnabled() {
+		t.Fatal("reset did not revert the portal toggle to the environment default")
 	}
 }
 

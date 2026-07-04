@@ -26,24 +26,27 @@ func loadRuntimeSettings(
 	storage *vault.Vault,
 	config nodeConfig,
 	recorder *events.Recorder,
-) (consoleAdminSources, nodeConfig, error) {
+) (consoleAdminSources, *runtimeToggles, nodeConfig, error) {
 	store, err := settingsstore.Open(storage)
 	if err != nil {
-		return consoleAdminSources{}, config, fmt.Errorf("open runtime settings: %w", err)
+		return consoleAdminSources{}, nil, config, fmt.Errorf("open runtime settings: %w", err)
 	}
 	overrides, err := store.All(ctx)
 	if err != nil {
-		return consoleAdminSources{}, config, fmt.Errorf("load runtime settings: %w", err)
+		return consoleAdminSources{}, nil, config, fmt.Errorf("load runtime settings: %w", err)
 	}
 
-	sources := consoleAdminSources{
-		settings: newSettingsSource(store, config, recorder),
-		binding:  newBindingSource(store, config, recorder),
-	}
+	envConfig := config
 	config = applyRuntimeSettingOverrides(config, overrides)
 	config = applyBindOverrides(config, overrides)
+	toggles := newRuntimeToggles(config)
 
-	return sources, config, nil
+	sources := consoleAdminSources{
+		settings: newSettingsSource(store, envConfig, toggles, recorder),
+		binding:  newBindingSource(store, envConfig, recorder),
+	}
+
+	return sources, toggles, config, nil
 }
 
 // settingsSource adapts the durable settings store and the runtime setting
@@ -54,18 +57,21 @@ type settingsSource struct {
 	store       *settingsstore.Store
 	definitions []settingDefinition
 	envConfig   nodeConfig
+	toggles     *runtimeToggles
 	recorder    *events.Recorder
 }
 
 func newSettingsSource(
 	store *settingsstore.Store,
 	envConfig nodeConfig,
+	toggles *runtimeToggles,
 	recorder *events.Recorder,
 ) *settingsSource {
 	return &settingsSource{
 		store:       store,
 		definitions: runtimeSettingDefinitions(),
 		envConfig:   envConfig,
+		toggles:     toggles,
 		recorder:    recorder,
 	}
 }
@@ -95,7 +101,7 @@ func (s *settingsSource) item(ctx context.Context, def settingDefinition) adminu
 		Description:     def.description,
 		Value:           value,
 		Overridden:      overridden,
-		RestartRequired: def.restartRequired,
+		RestartRequired: def.restartRequired(),
 		Options:         adminSettingOptions(def.options),
 	}
 }
@@ -129,13 +135,13 @@ func (s *settingsSource) set(
 	if err := s.store.Set(ctx, def.key, value); err != nil {
 		return adminui.SettingsResult{}, fmt.Errorf("store setting %q: %w", def.key, err)
 	}
-
+	s.applyLive(def, value)
 	s.record(def, "set to "+value)
 
 	return adminui.SettingsResult{
 		OK:              true,
 		Message:         def.title + " updated.",
-		RestartRequired: def.restartRequired,
+		RestartRequired: def.restartRequired(),
 	}, nil
 }
 
@@ -146,13 +152,13 @@ func (s *settingsSource) reset(
 	if err := s.store.Unset(ctx, def.key); err != nil {
 		return adminui.SettingsResult{}, fmt.Errorf("clear setting %q: %w", def.key, err)
 	}
-
+	s.applyLive(def, def.defaultValue(s.envConfig))
 	s.record(def, "reset to the environment default")
 
 	return adminui.SettingsResult{
 		OK:              true,
 		Message:         def.title + " reset to the environment default.",
-		RestartRequired: def.restartRequired,
+		RestartRequired: def.restartRequired(),
 	}, nil
 }
 
@@ -164,6 +170,13 @@ func (s *settingsSource) definition(key string) (settingDefinition, bool) {
 	}
 
 	return settingDefinition{}, false
+}
+
+func (s *settingsSource) applyLive(def settingDefinition, value string) {
+	if def.applyLive == nil || s.toggles == nil {
+		return
+	}
+	def.applyLive(s.toggles, value)
 }
 
 func (s *settingsSource) record(def settingDefinition, detail string) {

@@ -87,7 +87,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	sources, config, err := loadRuntimeSettings(ctx, vault, config, eventRecorder)
+	sources, toggles, config, err := loadRuntimeSettings(ctx, vault, config, eventRecorder)
 	if err != nil {
 		return err
 	}
@@ -110,6 +110,7 @@ func run() error {
 			dhtInbound:       dhtInboundMetrics,
 			peer:             peerMetrics,
 			searchAuthorizer: searchScopeAuthorizerFor(config, authService),
+			toggles:          toggles,
 		},
 	)
 	if err != nil {
@@ -126,8 +127,8 @@ func run() error {
 		ctx,
 		assembled,
 		evictionMetrics,
-		buildPeerServer(config, endpoints, assembled),
-		namedServer{"ops", buildServer(config.OpsAddr, opsHandler)},
+		buildPeerServer(config, endpoints, assembled, toggles),
+		namedServer{"ops", buildServer(config.OpsAddr, redirectHTTPS(toggles, opsHandler))},
 	)
 }
 
@@ -135,17 +136,14 @@ func buildPeerServer(
 	config nodeConfig,
 	endpoints *metrics.HTTPEndpointMetrics,
 	assembled node,
+	toggles *runtimeToggles,
 ) namedServer {
-	return namedServer{
-		"peer protocol",
-		buildServer(
-			config.PeerAddr,
-			wrapSearchCORS(
-				config.CrossOrigin.SearchOrigins,
-				logHTTPRequests(instrumentHTTP(endpoints, assembled.peerMux)),
-			),
-		),
-	}
+	peerHandler := redirectHTTPS(toggles, wrapSearchCORS(
+		config.CrossOrigin.SearchOrigins,
+		logHTTPRequests(instrumentHTTP(endpoints, assembled.peerMux)),
+	))
+
+	return namedServer{"peer protocol", buildServer(config.PeerAddr, peerHandler)}
 }
 
 type namedServer struct {

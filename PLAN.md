@@ -2235,6 +2235,20 @@ Acceptance:
 
 ### NET-02: Admin-toggleable HTTPS redirect and portal enablement
 
+Status: Done. Both toggles are CFG-01 runtime settings that apply live (no
+restart) via a shared atomic `runtimeToggles` holder read on every request. The
+**public search portal** toggle (overriding `YAGO_PUBLIC_SEARCH_UI_ENABLED`) is
+served through a single `rootDispatcher` registered once at `/{$}` that switches
+between the portal and the static landing page per request — replacing the former
+mutually-exclusive mount so the portal mounts/unmounts live. The **HTTP->HTTPS
+redirect** (`YAGO_HTTPS_REDIRECT`, off by default) is a `redirectHTTPS`
+middleware wrapping both listeners: when on, a plain-HTTP request gets a 308 to
+the `https://` origin preserving path and query; it treats `X-Forwarded-Proto:
+https` as already-secure (TLS terminated in front) and never redirects loopback
+requests, so the localhost admin console cannot be pushed to an unreachable HTTPS
+origin. Each toggle records a `config` event. verify green (coverage 97.8%),
+Semgrep + Trivy clean.
+
 Let the operator turn on an HTTP->HTTPS redirect and enable the public search
 portal from the admin console, overriding the environment defaults, built on the
 runtime settings store (CFG-01).

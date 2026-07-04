@@ -17,17 +17,26 @@ type settingOption struct {
 // validated, and how a stored override layers onto the boot configuration. The
 // whitelist deliberately excludes secrets, which are never stored here.
 type settingDefinition struct {
-	key             string
-	title           string
-	description     string
-	restartRequired bool
-	options         []settingOption
-	defaultValue    func(config nodeConfig) string
-	normalize       func(raw string) (string, error)
-	apply           func(config nodeConfig, value string) nodeConfig
+	key          string
+	title        string
+	description  string
+	options      []settingOption
+	defaultValue func(config nodeConfig) string
+	normalize    func(raw string) (string, error)
+	apply        func(config nodeConfig, value string) nodeConfig
+	applyLive    func(toggles *runtimeToggles, value string)
 }
 
-const settingKeyPublicSearchPortal = "portal.enabled"
+// restartRequired reports whether a change to this setting only takes effect
+// after a restart. Settings with a live-apply hook take effect immediately.
+func (d settingDefinition) restartRequired() bool {
+	return d.applyLive == nil
+}
+
+const (
+	settingKeyPublicSearchPortal = "portal.enabled"
+	settingKeyHTTPSRedirect      = "https.redirect"
+)
 
 const (
 	settingBoolTrue  = "true"
@@ -37,11 +46,10 @@ const (
 func runtimeSettingDefinitions() []settingDefinition {
 	return []settingDefinition{
 		{
-			key:             settingKeyPublicSearchPortal,
-			title:           "Public search portal",
-			description:     "Serve the public search portal at the site root.",
-			restartRequired: true,
-			options:         boolSettingOptions(),
+			key:         settingKeyPublicSearchPortal,
+			title:       "Public search portal",
+			description: "Serve the public search portal at the site root.",
+			options:     boolSettingOptions(),
 			defaultValue: func(config nodeConfig) string {
 				return formatSettingBool(config.PublicSearchUIEnabled)
 			},
@@ -50,6 +58,27 @@ func runtimeSettingDefinitions() []settingDefinition {
 				config.PublicSearchUIEnabled = value == settingBoolTrue
 
 				return config
+			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				toggles.SetPortalEnabled(value == settingBoolTrue)
+			},
+		},
+		{
+			key:         settingKeyHTTPSRedirect,
+			title:       "HTTP to HTTPS redirect",
+			description: "Redirect plain-HTTP requests to the https origin (TLS terminated in front).",
+			options:     boolSettingOptions(),
+			defaultValue: func(config nodeConfig) string {
+				return formatSettingBool(config.HTTPSRedirect)
+			},
+			normalize: normalizeSettingBool,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.HTTPSRedirect = value == settingBoolTrue
+
+				return config
+			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				toggles.SetHTTPSRedirect(value == settingBoolTrue)
 			},
 		},
 	}
