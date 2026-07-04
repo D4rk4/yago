@@ -22,12 +22,20 @@ func (s *crawlSource) Start(
 	start adminui.CrawlStart,
 ) (adminui.CrawlDispatch, error) {
 	accepted, err := s.dispatcher.Dispatch(ctx, crawldispatch.OperatorRequest{
-		Name:            start.Name,
-		Seeds:           start.Seeds,
-		StartMode:       start.Mode,
-		Scope:           start.Scope,
-		MaxDepth:        start.MaxDepth,
-		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+		Name:                 start.Name,
+		Seeds:                start.Seeds,
+		StartMode:            start.Mode,
+		Scope:                start.Scope,
+		MaxDepth:             start.MaxDepth,
+		URLMustMatch:         start.URLMustMatch,
+		URLMustNotMatch:      start.URLMustNotMatch,
+		IndexURLMustMatch:    start.IndexURLMustMatch,
+		IndexURLMustNotMatch: start.IndexURLMustNotMatch,
+		MaxPagesPerHost:      pagesPerHostOrUnlimited(start.MaxPagesPerHost),
+		AllowQueryURLs:       start.AllowQueryURLs,
+		FollowNoFollowLinks:  start.FollowNoFollowLinks,
+		RecrawlIfOlder:       start.RecrawlIfOlder,
+		CrawlDelay:           start.CrawlDelay,
 	}, "")
 	if err != nil {
 		return adminui.CrawlDispatch{}, fmt.Errorf("start crawl: %w", err)
@@ -38,4 +46,14 @@ func (s *crawlSource) Start(
 		Seeds:         accepted.Seeds,
 		Duplicate:     accepted.Duplicate,
 	}, nil
+}
+
+// pagesPerHostOrUnlimited treats a blank or non-positive per-host cap as unlimited,
+// preserving the simple-start default while letting an expert cap the fetch count.
+func pagesPerHostOrUnlimited(maxPagesPerHost int) int {
+	if maxPagesPerHost <= 0 {
+		return yagocrawlcontract.UnlimitedPagesPerHost
+	}
+
+	return maxPagesPerHost
 }

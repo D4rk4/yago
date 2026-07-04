@@ -1896,9 +1896,16 @@ on top of the per-host crawl delay, with zero lifting the throttle. The Cancel
 button is now htmx-driven with `hx-confirm` (an inline `onclick` confirm is blocked
 by the console's `script-src 'self'` CSP), and htmx-issued controls swap the
 refreshed monitor partial in place while a plain form post falls back to a
-full-page reload. Remaining for this epic: cache policy plus expert start fields
-(START-11), then close-out (CLOSE-12). The crawl-profile editor (named-profile
-CRUD) stays a separate follow-up (management, not observability).
+full-page reload. Expert crawl start is now wired (START-11): an "Expert options"
+panel on the start form exposes the profile's four RE2 regex filters (crawl/skip
+and index/never-index), the per-host page cap (blank meaning unlimited), the
+per-host crawl delay, recrawl-if-older, and the query-URL and nofollow toggles —
+all fields the dispatcher already compiles and validates, so a bad regex surfaces
+as a start error naming the field (and the panel stays open). A YaCy-style HTTP
+cache policy and delete-on-recrawl are deliberately out of scope: the engine has
+no fetch cache (HTCACHE equivalent), and recrawl-if-older is our freshness
+control. Remaining for this epic: close-out (CLOSE-12). The crawl-profile editor
+(named-profile CRUD) stays a separate follow-up (management, not observability).
 
 Pages:
 

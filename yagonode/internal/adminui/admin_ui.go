@@ -127,11 +127,23 @@ type searchPageData struct {
 }
 
 type crawlForm struct {
-	Name     string
-	Seeds    string
-	Mode     string
-	Scope    string
-	MaxDepth int
+	Name                 string
+	Seeds                string
+	Mode                 string
+	Scope                string
+	MaxDepth             int
+	URLMustMatch         string
+	URLMustNotMatch      string
+	IndexURLMustMatch    string
+	IndexURLMustNotMatch string
+	MaxPagesPerHost      int
+	AllowQueryURLs       bool
+	FollowNoFollowLinks  bool
+	RecrawlIfOlder       string
+	CrawlDelay           string
+	// ShowExpert keeps the expert panel open across a redisplay (a validation error
+	// or a successful start) when the operator was using it.
+	ShowExpert bool
 }
 
 type crawlPageData struct {
@@ -747,15 +759,27 @@ func (c *Console) handleCrawlStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := c.crawl.Start(r.Context(), CrawlStart{
-		Name:     form.Name,
-		Seeds:    seeds,
-		Mode:     form.Mode,
-		Scope:    form.Scope,
-		MaxDepth: form.MaxDepth,
+		Name:                 form.Name,
+		Seeds:                seeds,
+		Mode:                 form.Mode,
+		Scope:                form.Scope,
+		MaxDepth:             form.MaxDepth,
+		URLMustMatch:         form.URLMustMatch,
+		URLMustNotMatch:      form.URLMustNotMatch,
+		IndexURLMustMatch:    form.IndexURLMustMatch,
+		IndexURLMustNotMatch: form.IndexURLMustNotMatch,
+		MaxPagesPerHost:      form.MaxPagesPerHost,
+		AllowQueryURLs:       form.AllowQueryURLs,
+		FollowNoFollowLinks:  form.FollowNoFollowLinks,
+		RecrawlIfOlder:       form.RecrawlIfOlder,
+		CrawlDelay:           form.CrawlDelay,
 	})
 	if err != nil {
 		slog.WarnContext(r.Context(), "admin crawl start failed", slog.Any("error", err))
-		data.Error = "Crawl start failed. Check the seed URLs and options, then try again."
+		// The dispatcher validates the profile (scope, durations, and the four
+		// regex filters), so surfacing its message tells the operator which expert
+		// field to fix rather than a generic failure.
+		data.Error = "Crawl start failed: " + err.Error()
 	} else {
 		data.Result = &result
 	}
@@ -844,13 +868,24 @@ func defaultCrawlForm() crawlForm {
 
 func parseCrawlForm(r *http.Request) crawlForm {
 	depth, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("maxDepth")))
+	maxPages, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("maxPagesPerHost")))
 
 	return crawlForm{
-		Name:     strings.TrimSpace(r.PostFormValue("name")),
-		Seeds:    r.PostFormValue("seeds"),
-		Mode:     r.PostFormValue("mode"),
-		Scope:    r.PostFormValue("scope"),
-		MaxDepth: depth,
+		Name:                 strings.TrimSpace(r.PostFormValue("name")),
+		Seeds:                r.PostFormValue("seeds"),
+		Mode:                 r.PostFormValue("mode"),
+		Scope:                r.PostFormValue("scope"),
+		MaxDepth:             depth,
+		URLMustMatch:         strings.TrimSpace(r.PostFormValue("urlMustMatch")),
+		URLMustNotMatch:      strings.TrimSpace(r.PostFormValue("urlMustNotMatch")),
+		IndexURLMustMatch:    strings.TrimSpace(r.PostFormValue("indexMustMatch")),
+		IndexURLMustNotMatch: strings.TrimSpace(r.PostFormValue("indexMustNotMatch")),
+		MaxPagesPerHost:      maxPages,
+		AllowQueryURLs:       r.PostFormValue("allowQueryURLs") == "on",
+		FollowNoFollowLinks:  r.PostFormValue("followNoFollowLinks") == "on",
+		RecrawlIfOlder:       strings.TrimSpace(r.PostFormValue("recrawlIfOlder")),
+		CrawlDelay:           strings.TrimSpace(r.PostFormValue("crawlDelay")),
+		ShowExpert:           r.PostFormValue("showExpert") == "on",
 	}
 }
 

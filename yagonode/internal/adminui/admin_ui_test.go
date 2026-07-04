@@ -624,15 +624,63 @@ func TestConsoleCrawlStartRejectsEmptySeeds(t *testing.T) {
 func TestConsoleCrawlStartShowsError(t *testing.T) {
 	t.Parallel()
 
-	crawl := &fakeCrawl{err: errors.New("boom")}
+	crawl := &fakeCrawl{err: errors.New("invalid crawl profile: bad regex")}
 	got := doPost(
 		t,
 		New(Options{Crawl: crawl}),
 		"/admin/crawl",
-		url.Values{"seeds": {"http://a.example"}},
+		url.Values{"seeds": {"http://a.example"}, "urlMustMatch": {"("}, "showExpert": {"on"}},
 	)
-	if !strings.Contains(got.body, "Crawl start failed") {
-		t.Fatalf("expected failure notice, got %s", got.body)
+	// The dispatcher's validation message is surfaced so the operator can fix the
+	// offending expert field, and the expert panel stays open on redisplay.
+	if !strings.Contains(got.body, "Crawl start failed") ||
+		!strings.Contains(got.body, "bad regex") {
+		t.Fatalf("expected the validation detail, got %s", got.body)
+	}
+	if !strings.Contains(got.body, "<details class=\"cds-expert\" open>") {
+		t.Fatal("expert panel should stay open after a validation error")
+	}
+}
+
+func TestConsoleCrawlStartPassesExpertFields(t *testing.T) {
+	t.Parallel()
+
+	crawl := &fakeCrawl{result: CrawlDispatch{ProfileHandle: "PH", Seeds: 1}}
+	got := doPost(t, New(Options{Crawl: crawl}), "/admin/crawl", url.Values{
+		"seeds":               {"http://a.example"},
+		"mode":                {"url"},
+		"scope":               {"domain"},
+		"maxDepth":            {"2"},
+		"urlMustMatch":        {`https?://a\.example/.*`},
+		"urlMustNotMatch":     {`.*\.pdf$`},
+		"indexMustMatch":      {".*"},
+		"indexMustNotMatch":   {`.*/private/.*`},
+		"maxPagesPerHost":     {"50"},
+		"crawlDelay":          {"2s"},
+		"recrawlIfOlder":      {"24h"},
+		"allowQueryURLs":      {"on"},
+		"followNoFollowLinks": {"on"},
+		"showExpert":          {"on"},
+	})
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	switch {
+	case crawl.got.URLMustMatch != `https?://a\.example/.*`:
+		t.Fatalf("urlMustMatch = %q", crawl.got.URLMustMatch)
+	case crawl.got.URLMustNotMatch != `.*\.pdf$`:
+		t.Fatalf("urlMustNotMatch = %q", crawl.got.URLMustNotMatch)
+	case crawl.got.IndexURLMustNotMatch != `.*/private/.*`:
+		t.Fatalf("indexMustNotMatch = %q", crawl.got.IndexURLMustNotMatch)
+	case crawl.got.MaxPagesPerHost != 50:
+		t.Fatalf("maxPagesPerHost = %d", crawl.got.MaxPagesPerHost)
+	case !crawl.got.AllowQueryURLs || !crawl.got.FollowNoFollowLinks:
+		t.Fatalf("checkboxes not captured: %+v", crawl.got)
+	case crawl.got.RecrawlIfOlder != "24h" || crawl.got.CrawlDelay != "2s":
+		t.Fatalf("durations not captured: %+v", crawl.got)
+	}
+	if !strings.Contains(got.body, "Expert options") {
+		t.Fatal("expert panel missing from the response")
 	}
 }
 

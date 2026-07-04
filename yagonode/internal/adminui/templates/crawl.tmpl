@@ -43,6 +43,45 @@
     <label class="cds-label" for="maxDepth">Maximum depth</label>
     <input class="cds-input" type="number" id="maxDepth" name="maxDepth" min="0" max="64" value="{{.Form.MaxDepth}}">
   </div>
+  <details class="cds-expert"{{if .Form.ShowExpert}} open{{end}}>
+    <summary class="cds-label">Expert options</summary>
+    <input type="hidden" name="showExpert" value="on">
+    <p class="cds-muted">Regex filters use RE2 syntax; an invalid pattern is reported when you start the crawl. Blank filters match everything.</p>
+    <div class="cds-field">
+      <label class="cds-label" for="urlMustMatch">Crawl URLs matching (regex)</label>
+      <input class="cds-input" type="text" id="urlMustMatch" name="urlMustMatch" value="{{.Form.URLMustMatch}}" autocomplete="off" placeholder=".*">
+    </div>
+    <div class="cds-field">
+      <label class="cds-label" for="urlMustNotMatch">Skip URLs matching (regex)</label>
+      <input class="cds-input" type="text" id="urlMustNotMatch" name="urlMustNotMatch" value="{{.Form.URLMustNotMatch}}" autocomplete="off">
+    </div>
+    <div class="cds-field">
+      <label class="cds-label" for="indexMustMatch">Index only URLs matching (regex)</label>
+      <input class="cds-input" type="text" id="indexMustMatch" name="indexMustMatch" value="{{.Form.IndexURLMustMatch}}" autocomplete="off" placeholder=".*">
+    </div>
+    <div class="cds-field">
+      <label class="cds-label" for="indexMustNotMatch">Never index URLs matching (regex)</label>
+      <input class="cds-input" type="text" id="indexMustNotMatch" name="indexMustNotMatch" value="{{.Form.IndexURLMustNotMatch}}" autocomplete="off">
+    </div>
+    <div class="cds-field">
+      <label class="cds-label" for="maxPagesPerHost">Maximum pages per host (0 = unlimited)</label>
+      <input class="cds-input" type="number" id="maxPagesPerHost" name="maxPagesPerHost" min="0" value="{{.Form.MaxPagesPerHost}}">
+    </div>
+    <div class="cds-field">
+      <label class="cds-label" for="crawlDelay">Crawl delay per host (e.g. 1s, 500ms)</label>
+      <input class="cds-input" type="text" id="crawlDelay" name="crawlDelay" value="{{.Form.CrawlDelay}}" autocomplete="off" placeholder="1s">
+    </div>
+    <div class="cds-field">
+      <label class="cds-label" for="recrawlIfOlder">Recrawl if older than (e.g. 24h, blank = never)</label>
+      <input class="cds-input" type="text" id="recrawlIfOlder" name="recrawlIfOlder" value="{{.Form.RecrawlIfOlder}}" autocomplete="off" placeholder="24h">
+    </div>
+    <div class="cds-field cds-field--check">
+      <label class="cds-label"><input type="checkbox" name="allowQueryURLs"{{if .Form.AllowQueryURLs}} checked{{end}}> Crawl URLs with query parameters</label>
+    </div>
+    <div class="cds-field cds-field--check">
+      <label class="cds-label"><input type="checkbox" name="followNoFollowLinks"{{if .Form.FollowNoFollowLinks}} checked{{end}}> Follow rel=nofollow links</label>
+    </div>
+  </details>
   <button class="cds-btn" type="submit">Start crawl</button>
 </form>
 {{with .Monitor}}{{template "crawl-monitor" .}}{{end}}
