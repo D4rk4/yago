@@ -91,7 +91,14 @@ The node currently targets these responsibilities:
   transfer series, peer discovery gauges/counters, local search index stats, and
   a machine-readable compatibility catalog;
 - optionally publish `url`, `sitemap`, `sitelist`, or `robots` crawl orders and
-  consume crawler ingest batches over gRPC when crawling is configured.
+  consume crawler ingest batches over gRPC when crawling is configured;
+- serve a native administration console whose Crawler section starts crawls with
+  simple or expert profile options (regex crawl/index filters, per-host page cap
+  and crawl delay, recrawl-if-older, query-URL and nofollow toggles) and shows a
+  live monitor — running runs with per-outcome tallies, order-queue depth, and a
+  results/rejections rollup — with per-run pause, resume, cancel, and
+  pages-per-minute controls. This natively covers YaCy's `/Crawler_p.html`
+  function; the legacy HTML endpoint itself stays unsupported by design.
 
 The node stores bounded extracted document text, page description metadata,
 bounded image URL/alt metadata, and other document metadata, and maintains an

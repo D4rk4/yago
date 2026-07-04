@@ -1653,13 +1653,14 @@ Acceptance:
 
 ### CRAWL-08: YaCy `/Crawler_p.html` compatibility subset
 
-Status: Being superseded (2026-07-04). The user authorised closing CRAWL-08
-without ever implementing the legacy `/Crawler_p.html` HTML endpoint: the native
-admin console (the UI-06 epic) covers the page's function — crawl start plus a
-live monitor, queue sizes, results/rejections, and pause/cancel/PPM controls. The
-legacy page stays Unsupported by design; this task will be closed as Superseded
-in the epic's final slice (CRAWL-CLOSE-12). Progress is tracked under UI-06
-(CRAWL-OBS-1..6, CRAWL-CTL-7..10).
+Status: Superseded (2026-07-04). Closed in the UI-06 epic's final slice
+(CRAWL-CLOSE-12) without ever implementing the legacy `/Crawler_p.html` HTML
+endpoint: the native admin console (the UI-06 epic) covers the page's function —
+expert crawl start, a live monitor with queue sizes and a results/rejections
+rollup, and pause/resume/cancel/rate controls. The legacy `/Crawler_p.html` page
+stays Unsupported by design. What the acceptance below asked for is served by the
+native surfaces instead (see UI-06); the tasks below are retained only as a record
+of the superseded plan.
 
 Tasks:
 
@@ -1839,7 +1840,12 @@ Acceptance:
 
 ### UI-06: Crawler UI
 
-Status: In progress — native-crawler-UI epic (2026-07-04). Done earlier: the
+Status: Done (2026-07-04) — the native-crawler-UI epic is complete, all 12 slices
+landed (CRAWL-OBS-1..6, CRAWL-CTL-7..10, CRAWL-START-11, CRAWL-CLOSE-12). The
+console Crawler section covers what YaCy's `/Crawler_p.html` did — expert crawl
+start, a live monitor with queue depth and a results/rejections rollup, and
+pause/resume/cancel/rate controls — so CRAWL-08 is closed as Superseded and the
+legacy HTML endpoint stays Unsupported by design. Done earlier: the
 console Crawler section (`GET`/`POST /admin/crawl`) — a CSRF-protected
 crawl-start form (seeds, name, mode, scope, max depth) that reuses a shared
 `crawldispatch.Dispatcher` (the JSON `POST /crawl` endpoint uses the same seam)
@@ -1904,8 +1910,11 @@ all fields the dispatcher already compiles and validates, so a bad regex surface
 as a start error naming the field (and the panel stays open). A YaCy-style HTTP
 cache policy and delete-on-recrawl are deliberately out of scope: the engine has
 no fetch cache (HTCACHE equivalent), and recrawl-if-older is our freshness
-control. Remaining for this epic: close-out (CLOSE-12). The crawl-profile editor
-(named-profile CRUD) stays a separate follow-up (management, not observability).
+control. The epic is closed (CLOSE-12); two deferred follow-ups remain outside its
+scope: per-URL result/rejection lists (needs the crawl exchange to carry a bounded
+per-URL outcome sample) and the crawl-profile editor (named-profile CRUD — a
+management surface, not observability). Neither blocks the YaCy-breadth acceptance,
+which the start/monitor/results/controls surfaces already meet.
 
 Pages:
 
