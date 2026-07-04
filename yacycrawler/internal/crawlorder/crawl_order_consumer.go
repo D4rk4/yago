@@ -73,28 +73,34 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 		return
 	}
 	c.frontier.Hold()
-	seeded := c.frontier.SeedRun(ctx, order.Requests, order.Provenance, profile, func(succeeded bool) {
-		defer c.frontier.Release()
-		if ctx.Err() != nil || !succeeded {
-			if err := delivery.Nak(context.Background()); err != nil {
+	seeded := c.frontier.SeedRun(
+		ctx,
+		order.Requests,
+		order.Provenance,
+		profile,
+		func(succeeded bool) {
+			defer c.frontier.Release()
+			if ctx.Err() != nil || !succeeded {
+				if err := delivery.Nak(context.Background()); err != nil {
+					slog.WarnContext(
+						context.Background(),
+						msgOrderNakFailed,
+						slog.String("handle", order.Profile.Handle),
+						slog.Any("error", err),
+					)
+				}
+				return
+			}
+			if err := delivery.Ack(context.Background()); err != nil {
 				slog.WarnContext(
 					context.Background(),
-					msgOrderNakFailed,
+					msgOrderAckFailed,
 					slog.String("handle", order.Profile.Handle),
 					slog.Any("error", err),
 				)
 			}
-			return
-		}
-		if err := delivery.Ack(context.Background()); err != nil {
-			slog.WarnContext(
-				context.Background(),
-				msgOrderAckFailed,
-				slog.String("handle", order.Profile.Handle),
-				slog.Any("error", err),
-			)
-		}
-	})
+		},
+	)
 	slog.InfoContext(
 		ctx,
 		msgRunSeeded,

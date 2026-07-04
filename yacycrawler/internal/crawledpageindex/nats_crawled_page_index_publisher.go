@@ -42,6 +42,12 @@ func (p *NATSCrawledPageIndexPublisher) Publish(ctx context.Context, index Crawl
 	for {
 		if _, err := p.js.Publish(ctx, p.subject, data); err == nil {
 			return nil
+		} else if crawledPageIndexOversized(err) {
+			return fmt.Errorf(
+				"publish crawled page index %s: %w",
+				index.SourceURL,
+				ErrCrawledPageIndexOversized,
+			)
 		} else if !crawledPageIndexStreamFull(err) {
 			return fmt.Errorf("publish crawled page index %s: %w", index.SourceURL, err)
 		}

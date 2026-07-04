@@ -124,6 +124,5 @@ func ensureStreams(
 	return crawledpage.NewCrawledPageEmitter(
 		crawledpage.NewNATSCrawledPagePublisher(js, cfg.CrawledPageSubject),
 		nil,
-		cfg.CrawledPageMaxBytes,
 	), nil
 }

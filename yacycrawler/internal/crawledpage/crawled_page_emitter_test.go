@@ -23,7 +23,7 @@ func (p *recordingPublisher) Publish(_ context.Context, text yacycrawlcontract.C
 
 func TestCrawledPageEmitterPublishesCanonicalizedPage(t *testing.T) {
 	publisher := &recordingPublisher{}
-	emitter := crawledpage.NewCrawledPageEmitter(publisher, nil, 1<<20)
+	emitter := crawledpage.NewCrawledPageEmitter(publisher, nil)
 	crawledAt := time.Date(2026, 7, 4, 0, 0, 0, 0, time.UTC)
 	page := pageparse.ParsedPage{
 		URL:      "https://Example.com/",
@@ -50,21 +50,18 @@ func TestCrawledPageEmitterPublishesCanonicalizedPage(t *testing.T) {
 }
 
 func TestCrawledPageEmitterDropsOversizedPage(t *testing.T) {
-	publisher := &recordingPublisher{}
-	emitter := crawledpage.NewCrawledPageEmitter(publisher, nil, 4)
+	publisher := &recordingPublisher{err: crawledpage.ErrCrawledPageOversized}
+	emitter := crawledpage.NewCrawledPageEmitter(publisher, nil)
 	page := pageparse.ParsedPage{URL: "https://example.com/", Text: "way too long"}
 
 	if err := emitter.Emit(context.Background(), page, time.Now()); err != nil {
-		t.Fatalf("emit: %v", err)
-	}
-	if publisher.published.CanonicalURL != "" {
-		t.Error("expected oversized page to be dropped, not published")
+		t.Fatalf("oversized page must drop cleanly, got: %v", err)
 	}
 }
 
 func TestCrawledPageEmitterPropagatesPublishError(t *testing.T) {
 	publisher := &recordingPublisher{err: errors.New("boom")}
-	emitter := crawledpage.NewCrawledPageEmitter(publisher, nil, 1<<20)
+	emitter := crawledpage.NewCrawledPageEmitter(publisher, nil)
 	page := pageparse.ParsedPage{URL: "https://example.com/"}
 
 	if err := emitter.Emit(context.Background(), page, time.Now()); err == nil {

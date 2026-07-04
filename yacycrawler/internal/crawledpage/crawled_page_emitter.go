@@ -2,6 +2,7 @@ package crawledpage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -11,7 +12,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
 )
 
-const msgCrawledPageOverLimit = "crawled page over size limit"
+const msgCrawledPageOverLimit = "crawled page dropped over size limit"
 
 type CrawledPagePublisher interface {
 	Publish(ctx context.Context, text yacycrawlcontract.CrawledPage) error
@@ -24,18 +25,15 @@ type CrawledPageEmitter interface {
 type crawledPageEmitter struct {
 	publisher      CrawledPagePublisher
 	trackingParams []string
-	maxTextBytes   int
 }
 
 func NewCrawledPageEmitter(
 	publisher CrawledPagePublisher,
 	trackingParams []string,
-	maxTextBytes int,
 ) CrawledPageEmitter {
 	return &crawledPageEmitter{
 		publisher:      publisher,
 		trackingParams: trackingParams,
-		maxTextBytes:   maxTextBytes,
 	}
 }
 
@@ -48,14 +46,6 @@ func (e *crawledPageEmitter) Emit(
 	if !ok {
 		return fmt.Errorf("canonicalize url: %s", page.URL)
 	}
-	if len(page.Text) > e.maxTextBytes {
-		slog.WarnContext(ctx, msgCrawledPageOverLimit,
-			slog.String("url", canonical),
-			slog.Int("bytes", len(page.Text)),
-			slog.Int("limit", e.maxTextBytes),
-		)
-		return nil
-	}
 	text := yacycrawlcontract.CrawledPage{
 		CanonicalURL: canonical,
 		DocumentID:   docidentity.DocumentID(canonical),
@@ -65,6 +55,13 @@ func (e *crawledPageEmitter) Emit(
 		Language:     page.Language,
 	}
 	if err := e.publisher.Publish(ctx, text); err != nil {
+		if errors.Is(err, ErrCrawledPageOversized) {
+			slog.WarnContext(ctx, msgCrawledPageOverLimit,
+				slog.String("url", canonical),
+				slog.Int("bytes", len(page.Text)),
+			)
+			return nil
+		}
 		return fmt.Errorf("publish crawled page %s: %w", canonical, err)
 	}
 	return nil

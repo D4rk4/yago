@@ -204,6 +204,26 @@ func TestPipelineMarksJobFailedOnEmitError(t *testing.T) {
 	}
 }
 
+func TestPipelineDropsOversizedIndexWithoutFailingDelivery(t *testing.T) {
+	frontier := newRecordingFrontier()
+	p := pipeline.NewPipeline(
+		frontier,
+		fetchFunc(
+			func(context.Context, *url.URL) (pagefetch.FetchedPage, error) { return htmlPage(), nil },
+		),
+		pageindex.NewIndexBuilder(),
+		emitFunc(
+			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, crawledpageindex.Envelope) error {
+				return crawledpageindex.ErrCrawledPageIndexOversized
+			},
+		),
+		crawledpage.NewNoopCrawledPageEmitter(),
+	)
+	if done := runOneJob(t, p, frontier); done.failed {
+		t.Error("oversized index is a terminal content drop and must not fail delivery")
+	}
+}
+
 func TestPipelineDeliversCrawledPage(t *testing.T) {
 	frontier := newRecordingFrontier()
 	emitted := make(chan string, 1)

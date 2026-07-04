@@ -40,6 +40,12 @@ func (p *NATSCrawledPagePublisher) Publish(
 	for {
 		if _, err := p.js.Publish(ctx, p.subject, data); err == nil {
 			return nil
+		} else if crawledPageOversized(err) {
+			return fmt.Errorf(
+				"publish crawled page %s: %w",
+				text.CanonicalURL,
+				ErrCrawledPageOversized,
+			)
 		} else if !crawledPageStreamFull(err) {
 			return fmt.Errorf("publish crawled page %s: %w", text.CanonicalURL, err)
 		}

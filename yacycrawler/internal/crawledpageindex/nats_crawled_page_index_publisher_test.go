@@ -2,10 +2,13 @@ package crawledpageindex_test
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
 
+	natsserver "github.com/nats-io/nats-server/v2/server"
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
@@ -135,6 +138,56 @@ func TestNATSCrawledPageIndexPublisherBackpressureRespectsDeadline(t *testing.T)
 		testCrawledPageIndex("https://example.org/second"),
 	); err == nil {
 		t.Fatal("expected deadline error on saturated crawled page index stream, got nil")
+	}
+}
+
+func TestNATSCrawledPageIndexPublisherReportsOversizedAsTerminal(t *testing.T) {
+	srv, err := natsserver.NewServer(&natsserver.Options{
+		Port:       -1,
+		JetStream:  true,
+		StoreDir:   t.TempDir(),
+		MaxPayload: 1024,
+	})
+	if err != nil {
+		t.Fatalf("new nats server: %v", err)
+	}
+	go srv.Start()
+	if !srv.ReadyForConnections(10 * time.Second) {
+		t.Fatal("nats server not ready")
+	}
+	t.Cleanup(srv.Shutdown)
+
+	nc, err := nats.Connect(srv.ClientURL())
+	if err != nil {
+		t.Fatalf("connect nats: %v", err)
+	}
+	t.Cleanup(nc.Close)
+	js, err := jetstream.New(nc)
+	if err != nil {
+		t.Fatalf("init jetstream: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := yacycrawlcontract.EnsureCrawledPageIndexStream(
+		ctx,
+		js,
+		yacycrawlcontract.CrawledPageIndexStreamSpec{Subject: testPageIndexSubject, MaxMsgs: 64},
+	); err != nil {
+		t.Fatalf("ensure crawled page index stream: %v", err)
+	}
+
+	index := testCrawledPageIndex("https://example.org/oversized")
+	for i := range 256 {
+		index.Postings = append(index.Postings, yacymodel.RWIPosting{
+			WordHash:   yacymodel.Hash("wordhash0123"),
+			Properties: map[string]string{"u": "urlhash01234", "n": string(rune('a' + i%26))},
+		})
+	}
+
+	publisher := crawledpageindex.NewNATSCrawledPageIndexPublisher(js, testPageIndexSubject)
+	err = publisher.Publish(ctx, index)
+	if !errors.Is(err, crawledpageindex.ErrCrawledPageIndexOversized) {
+		t.Fatalf("oversized publish error = %v, want ErrCrawledPageIndexOversized", err)
 	}
 }
 

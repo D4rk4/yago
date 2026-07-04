@@ -26,7 +26,6 @@ const (
 	EnvCrawledPageEnabled     = "YACYCRAWLER_CRAWLED_PAGE_ENABLED"
 	EnvNATSCrawledPageSubject = "NATS_CRAWLED_PAGE_SUBJECT"
 	EnvNATSCrawledPageMaxMsgs = "NATS_CRAWLED_PAGE_MAX_MSGS"
-	EnvCrawledPageMaxBytes    = "YACYCRAWLER_CRAWLED_PAGE_MAX_BYTES"
 
 	DefaultOrdersSubject           = "yacy.crawl.orders"
 	DefaultCrawledPageIndexSubject = "yacy.crawl.page-index"
@@ -34,7 +33,6 @@ const (
 	DefaultCrawledPageIndexMaxMsgs = 1024
 	DefaultCrawledPageSubject      = "yacy.crawl.pages"
 	DefaultCrawledPageMaxMsgs      = 1024
-	DefaultCrawledPageMaxBytes     = 1 << 20
 
 	DefaultMaxBodyBytes  int64 = 4 << 20
 	DefaultUserAgent           = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
@@ -80,7 +78,6 @@ type ServiceConfig struct {
 	CrawledPageEnabled      bool
 	CrawledPageSubject      string
 	CrawledPageMaxMsgs      int64
-	CrawledPageMaxBytes     int
 }
 
 func (c ServiceConfig) OrdersStreamSpec() yacycrawlcontract.OrdersStreamSpec {
@@ -152,15 +149,6 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		return ServiceConfig{}, err
 	}
 
-	crawledPageMaxBytes, err := envPositiveInt(
-		getenv,
-		EnvCrawledPageMaxBytes,
-		DefaultCrawledPageMaxBytes,
-	)
-	if err != nil {
-		return ServiceConfig{}, err
-	}
-
 	return ServiceConfig{
 		Crawl:         crawl,
 		NATSURL:       natsURL,
@@ -179,8 +167,7 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 			EnvNATSCrawledPageSubject,
 			DefaultCrawledPageSubject,
 		),
-		CrawledPageMaxMsgs:  crawledPageMaxMsgs,
-		CrawledPageMaxBytes: crawledPageMaxBytes,
+		CrawledPageMaxMsgs: crawledPageMaxMsgs,
 	}, nil
 }
 

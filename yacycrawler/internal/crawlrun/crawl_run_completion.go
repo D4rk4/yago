@@ -53,7 +53,9 @@ func (c *Completion) Fail(runID uuid.UUID) {
 	c.runs[runID].failed = true
 }
 
-func (c *Completion) Settle(runID uuid.UUID) (finish func(succeeded bool), succeeded, drained bool) {
+func (c *Completion) Settle(
+	runID uuid.UUID,
+) (finish func(succeeded bool), succeeded, drained bool) {
 	run := c.runs[runID]
 	run.pending--
 	if run.pending == 0 {

@@ -24,10 +24,11 @@ type Frontier interface {
 }
 
 const (
-	msgPageRejected          = "crawl page rejected"
-	msgJobFetching           = "crawl job fetching"
-	msgPageCrawled           = "crawl page crawled"
-	msgCrawledPageEmitFailed = "crawled page emit failed"
+	msgPageRejected              = "crawl page rejected"
+	msgJobFetching               = "crawl job fetching"
+	msgPageCrawled               = "crawl page crawled"
+	msgCrawledPageEmitFailed     = "crawled page emit failed"
+	msgCrawledPageIndexOversized = "crawled page index dropped over size limit"
 )
 
 type Pipeline struct {
@@ -133,6 +134,12 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 		Provenance:    job.Provenance,
 		ProfileHandle: job.ProfileHandle,
 	}); err != nil {
+		if errors.Is(err, crawledpageindex.ErrCrawledPageIndexOversized) {
+			slog.WarnContext(ctx, msgCrawledPageIndexOversized,
+				slog.String("url", page.URL),
+			)
+			return nil
+		}
 		deliveryFailed = true
 		return fmt.Errorf("emit: %w", err)
 	}

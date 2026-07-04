@@ -78,9 +78,6 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	if cfg.CrawledPageMaxMsgs != DefaultCrawledPageMaxMsgs {
 		t.Errorf("crawled page max msgs = %d", cfg.CrawledPageMaxMsgs)
 	}
-	if cfg.CrawledPageMaxBytes != DefaultCrawledPageMaxBytes {
-		t.Errorf("crawled page max bytes = %d", cfg.CrawledPageMaxBytes)
-	}
 	pageSpec := cfg.CrawledPageStreamSpec()
 	if pageSpec.Subject != cfg.CrawledPageSubject || pageSpec.MaxMsgs != cfg.CrawledPageMaxMsgs {
 		t.Errorf("crawled page stream spec mismatch: %+v", pageSpec)
@@ -94,7 +91,6 @@ func TestLoadServiceConfigCrawledPageOverrides(t *testing.T) {
 		EnvCrawledPageEnabled:     "true",
 		EnvNATSCrawledPageSubject: "t.subject",
 		EnvNATSCrawledPageMaxMsgs: "3",
-		EnvCrawledPageMaxBytes:    "1024",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -102,8 +98,7 @@ func TestLoadServiceConfigCrawledPageOverrides(t *testing.T) {
 	if !cfg.CrawledPageEnabled {
 		t.Error("expected crawled page sink enabled")
 	}
-	if cfg.CrawledPageSubject != "t.subject" || cfg.CrawledPageMaxMsgs != 3 ||
-		cfg.CrawledPageMaxBytes != 1024 {
+	if cfg.CrawledPageSubject != "t.subject" || cfg.CrawledPageMaxMsgs != 3 {
 		t.Errorf("crawled page overrides = %+v", cfg)
 	}
 }
