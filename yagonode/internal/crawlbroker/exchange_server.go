@@ -17,15 +17,16 @@ var errIngestDeferred = errors.New("ingest pipeline saturated")
 
 type exchangeServer struct {
 	crawlrpc.UnimplementedCrawlExchangeServer
-	queue  *DurableOrderQueue
-	ingest chan<- crawlresults.IngestDelivery
+	queue    *DurableOrderQueue
+	ingest   chan<- crawlresults.IngestDelivery
+	progress ProgressSink
 }
 
 func newExchangeServer(
 	queue *DurableOrderQueue,
 	ingest chan<- crawlresults.IngestDelivery,
 ) *exchangeServer {
-	return &exchangeServer{queue: queue, ingest: ingest}
+	return &exchangeServer{queue: queue, ingest: ingest, progress: noopProgressSink{}}
 }
 
 func (s *exchangeServer) StreamOrders(
@@ -77,6 +78,15 @@ func (s *exchangeServer) Heartbeat(
 	}
 
 	return &crawlrpc.WorkerHeartbeatResult{}, nil
+}
+
+func (s *exchangeServer) ReportProgress(
+	ctx context.Context,
+	report *crawlrpc.CrawlProgressReport,
+) (*crawlrpc.CrawlProgressAck, error) {
+	s.progress.Record(ctx, progressFromReport(report))
+
+	return &crawlrpc.CrawlProgressAck{}, nil
 }
 
 func (s *exchangeServer) SubmitIngest(

@@ -10,6 +10,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
+	"github.com/D4rk4/yago/yagonode/internal/crawlruns"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -24,6 +25,7 @@ type crawlProcess interface {
 type crawlRuntime struct {
 	broker    *crawlbroker.CrawlBroker
 	consumer  *crawlresults.IngestConsumer
+	runs      *crawlruns.Registry
 	initiator yagomodel.Hash
 }
 
@@ -39,7 +41,12 @@ func buildCrawlRuntime(
 		return nil, nil
 	}
 
-	broker, err := openCrawlBroker(crawlbroker.Config{ListenAddr: config.ListenAddr}, storageVault)
+	runs := crawlruns.New(0)
+	broker, err := openCrawlBroker(
+		crawlbroker.Config{ListenAddr: config.ListenAddr},
+		storageVault,
+		runs,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("open crawl broker: %w", err)
 	}
@@ -55,6 +62,7 @@ func buildCrawlRuntime(
 	return &crawlRuntime{
 		broker:    broker,
 		consumer:  consumer,
+		runs:      runs,
 		initiator: identity.Hash,
 	}, nil
 }
@@ -69,6 +77,10 @@ func (r *crawlRuntime) observe(observer crawlresults.IngestObserver) {
 
 func (r *crawlRuntime) orderQueue() crawldispatch.CrawlOrderQueue {
 	return r.broker.Orders
+}
+
+func (r *crawlRuntime) runRegistry() *crawlruns.Registry {
+	return r.runs
 }
 
 func (r *crawlRuntime) crawlQueueDepth(ctx context.Context) (crawlbroker.QueueDepth, error) {

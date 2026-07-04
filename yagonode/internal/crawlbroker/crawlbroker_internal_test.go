@@ -18,7 +18,7 @@ func TestOpenServesAndCloses(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = v.Close() })
 
-	broker, err := Open(Config{ListenAddr: "127.0.0.1:0"}, v)
+	broker, err := Open(Config{ListenAddr: "127.0.0.1:0"}, v, nil)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestOpenReturnsListenError(t *testing.T) {
 	t.Cleanup(func() { listenCrawlRPC = restore })
 	listenCrawlRPC = func(string) (net.Listener, error) { return nil, errors.New("listen failed") }
 
-	if _, err := Open(Config{ListenAddr: ":0"}, v); err == nil {
+	if _, err := Open(Config{ListenAddr: ":0"}, v, nil); err == nil {
 		t.Fatal("expected listen error")
 	}
 }
@@ -52,7 +52,7 @@ func TestOpenReturnsQueueError(t *testing.T) {
 		t.Fatalf("vault.New: %v", err)
 	}
 
-	if _, err := Open(Config{ListenAddr: "127.0.0.1:0"}, v); err == nil {
+	if _, err := Open(Config{ListenAddr: "127.0.0.1:0"}, v, nil); err == nil {
 		t.Fatal("expected queue registration error")
 	}
 }
@@ -65,7 +65,7 @@ func TestOpenSurfacesLeaseReclaimError(t *testing.T) {
 		t.Fatalf("vault.New: %v", err)
 	}
 
-	if _, err := Open(Config{ListenAddr: "127.0.0.1:0"}, v); err == nil {
+	if _, err := Open(Config{ListenAddr: "127.0.0.1:0"}, v, nil); err == nil {
 		t.Fatal("expected lease reclaim error")
 	}
 }

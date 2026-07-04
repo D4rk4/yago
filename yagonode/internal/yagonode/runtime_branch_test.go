@@ -941,7 +941,7 @@ func TestPeerExchangeReturnsOpenErrors(t *testing.T) {
 func TestBuildCrawlRuntimeReturnsBrokerError(t *testing.T) {
 	restoreCrawlBrokerSeam(t)
 	sentinel := errors.New("broker failed")
-	openCrawlBroker = func(crawlbroker.Config, *vault.Vault) (*crawlbroker.CrawlBroker, error) {
+	openCrawlBroker = func(crawlbroker.Config, *vault.Vault, crawlbroker.ProgressSink) (*crawlbroker.CrawlBroker, error) {
 		return nil, sentinel
 	}
 	_, err := buildCrawlRuntime(

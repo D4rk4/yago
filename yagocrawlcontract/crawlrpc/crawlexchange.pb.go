@@ -21,6 +21,58 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type CrawlRunState int32
+
+const (
+	CrawlRunState_CRAWL_RUN_STATE_UNSPECIFIED CrawlRunState = 0
+	CrawlRunState_CRAWL_RUN_STATE_RUNNING     CrawlRunState = 1
+	CrawlRunState_CRAWL_RUN_STATE_FINISHED    CrawlRunState = 2
+	CrawlRunState_CRAWL_RUN_STATE_CANCELLED   CrawlRunState = 3
+)
+
+// Enum value maps for CrawlRunState.
+var (
+	CrawlRunState_name = map[int32]string{
+		0: "CRAWL_RUN_STATE_UNSPECIFIED",
+		1: "CRAWL_RUN_STATE_RUNNING",
+		2: "CRAWL_RUN_STATE_FINISHED",
+		3: "CRAWL_RUN_STATE_CANCELLED",
+	}
+	CrawlRunState_value = map[string]int32{
+		"CRAWL_RUN_STATE_UNSPECIFIED": 0,
+		"CRAWL_RUN_STATE_RUNNING":     1,
+		"CRAWL_RUN_STATE_FINISHED":    2,
+		"CRAWL_RUN_STATE_CANCELLED":   3,
+	}
+)
+
+func (x CrawlRunState) Enum() *CrawlRunState {
+	p := new(CrawlRunState)
+	*p = x
+	return p
+}
+
+func (x CrawlRunState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CrawlRunState) Descriptor() protoreflect.EnumDescriptor {
+	return file_crawlexchange_proto_enumTypes[0].Descriptor()
+}
+
+func (CrawlRunState) Type() protoreflect.EnumType {
+	return &file_crawlexchange_proto_enumTypes[0]
+}
+
+func (x CrawlRunState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CrawlRunState.Descriptor instead.
+func (CrawlRunState) EnumDescriptor() ([]byte, []int) {
+	return file_crawlexchange_proto_rawDescGZIP(), []int{0}
+}
+
 type WorkerRegistration struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
@@ -365,6 +417,210 @@ func (*IngestAck) Descriptor() ([]byte, []int) {
 	return file_crawlexchange_proto_rawDescGZIP(), []int{7}
 }
 
+type CrawlRunTally struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Fetched       uint64                 `protobuf:"varint,1,opt,name=fetched,proto3" json:"fetched,omitempty"`
+	Indexed       uint64                 `protobuf:"varint,2,opt,name=indexed,proto3" json:"indexed,omitempty"`
+	Failed        uint64                 `protobuf:"varint,3,opt,name=failed,proto3" json:"failed,omitempty"`
+	RobotsDenied  uint64                 `protobuf:"varint,4,opt,name=robots_denied,json=robotsDenied,proto3" json:"robots_denied,omitempty"`
+	Duplicates    uint64                 `protobuf:"varint,5,opt,name=duplicates,proto3" json:"duplicates,omitempty"`
+	Pending       uint64                 `protobuf:"varint,6,opt,name=pending,proto3" json:"pending,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CrawlRunTally) Reset() {
+	*x = CrawlRunTally{}
+	mi := &file_crawlexchange_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CrawlRunTally) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CrawlRunTally) ProtoMessage() {}
+
+func (x *CrawlRunTally) ProtoReflect() protoreflect.Message {
+	mi := &file_crawlexchange_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CrawlRunTally.ProtoReflect.Descriptor instead.
+func (*CrawlRunTally) Descriptor() ([]byte, []int) {
+	return file_crawlexchange_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *CrawlRunTally) GetFetched() uint64 {
+	if x != nil {
+		return x.Fetched
+	}
+	return 0
+}
+
+func (x *CrawlRunTally) GetIndexed() uint64 {
+	if x != nil {
+		return x.Indexed
+	}
+	return 0
+}
+
+func (x *CrawlRunTally) GetFailed() uint64 {
+	if x != nil {
+		return x.Failed
+	}
+	return 0
+}
+
+func (x *CrawlRunTally) GetRobotsDenied() uint64 {
+	if x != nil {
+		return x.RobotsDenied
+	}
+	return 0
+}
+
+func (x *CrawlRunTally) GetDuplicates() uint64 {
+	if x != nil {
+		return x.Duplicates
+	}
+	return 0
+}
+
+func (x *CrawlRunTally) GetPending() uint64 {
+	if x != nil {
+		return x.Pending
+	}
+	return 0
+}
+
+type CrawlProgressReport struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	RunId         []byte                 `protobuf:"bytes,2,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	ProfileHandle string                 `protobuf:"bytes,3,opt,name=profile_handle,json=profileHandle,proto3" json:"profile_handle,omitempty"`
+	ProfileName   string                 `protobuf:"bytes,4,opt,name=profile_name,json=profileName,proto3" json:"profile_name,omitempty"`
+	State         CrawlRunState          `protobuf:"varint,5,opt,name=state,proto3,enum=yacycrawl.v1.CrawlRunState" json:"state,omitempty"`
+	Tally         *CrawlRunTally         `protobuf:"bytes,6,opt,name=tally,proto3" json:"tally,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CrawlProgressReport) Reset() {
+	*x = CrawlProgressReport{}
+	mi := &file_crawlexchange_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CrawlProgressReport) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CrawlProgressReport) ProtoMessage() {}
+
+func (x *CrawlProgressReport) ProtoReflect() protoreflect.Message {
+	mi := &file_crawlexchange_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CrawlProgressReport.ProtoReflect.Descriptor instead.
+func (*CrawlProgressReport) Descriptor() ([]byte, []int) {
+	return file_crawlexchange_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *CrawlProgressReport) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *CrawlProgressReport) GetRunId() []byte {
+	if x != nil {
+		return x.RunId
+	}
+	return nil
+}
+
+func (x *CrawlProgressReport) GetProfileHandle() string {
+	if x != nil {
+		return x.ProfileHandle
+	}
+	return ""
+}
+
+func (x *CrawlProgressReport) GetProfileName() string {
+	if x != nil {
+		return x.ProfileName
+	}
+	return ""
+}
+
+func (x *CrawlProgressReport) GetState() CrawlRunState {
+	if x != nil {
+		return x.State
+	}
+	return CrawlRunState_CRAWL_RUN_STATE_UNSPECIFIED
+}
+
+func (x *CrawlProgressReport) GetTally() *CrawlRunTally {
+	if x != nil {
+		return x.Tally
+	}
+	return nil
+}
+
+type CrawlProgressAck struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CrawlProgressAck) Reset() {
+	*x = CrawlProgressAck{}
+	mi := &file_crawlexchange_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CrawlProgressAck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CrawlProgressAck) ProtoMessage() {}
+
+func (x *CrawlProgressAck) ProtoReflect() protoreflect.Message {
+	mi := &file_crawlexchange_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CrawlProgressAck.ProtoReflect.Descriptor instead.
+func (*CrawlProgressAck) Descriptor() ([]byte, []int) {
+	return file_crawlexchange_proto_rawDescGZIP(), []int{10}
+}
+
 var File_crawlexchange_proto protoreflect.FileDescriptor
 
 const file_crawlexchange_proto_rawDesc = "" +
@@ -386,12 +642,35 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x12IngestBatchMessage\x12\x1d\n" +
 	"\n" +
 	"batch_json\x18\x01 \x01(\fR\tbatchJson\"\v\n" +
-	"\tIngestAck2\xc2\x02\n" +
+	"\tIngestAck\"\xba\x01\n" +
+	"\rCrawlRunTally\x12\x18\n" +
+	"\afetched\x18\x01 \x01(\x04R\afetched\x12\x18\n" +
+	"\aindexed\x18\x02 \x01(\x04R\aindexed\x12\x16\n" +
+	"\x06failed\x18\x03 \x01(\x04R\x06failed\x12#\n" +
+	"\rrobots_denied\x18\x04 \x01(\x04R\frobotsDenied\x12\x1e\n" +
+	"\n" +
+	"duplicates\x18\x05 \x01(\x04R\n" +
+	"duplicates\x12\x18\n" +
+	"\apending\x18\x06 \x01(\x04R\apending\"\xf9\x01\n" +
+	"\x13CrawlProgressReport\x12\x1b\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x15\n" +
+	"\x06run_id\x18\x02 \x01(\fR\x05runId\x12%\n" +
+	"\x0eprofile_handle\x18\x03 \x01(\tR\rprofileHandle\x12!\n" +
+	"\fprofile_name\x18\x04 \x01(\tR\vprofileName\x121\n" +
+	"\x05state\x18\x05 \x01(\x0e2\x1b.yacycrawl.v1.CrawlRunStateR\x05state\x121\n" +
+	"\x05tally\x18\x06 \x01(\v2\x1b.yacycrawl.v1.CrawlRunTallyR\x05tally\"\x12\n" +
+	"\x10CrawlProgressAck*\x8a\x01\n" +
+	"\rCrawlRunState\x12\x1f\n" +
+	"\x1bCRAWL_RUN_STATE_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17CRAWL_RUN_STATE_RUNNING\x10\x01\x12\x1c\n" +
+	"\x18CRAWL_RUN_STATE_FINISHED\x10\x02\x12\x1d\n" +
+	"\x19CRAWL_RUN_STATE_CANCELLED\x10\x032\x97\x03\n" +
 	"\rCrawlExchange\x12S\n" +
 	"\fStreamOrders\x12 .yacycrawl.v1.WorkerRegistration\x1a\x1f.yacycrawl.v1.CrawlOrderMessage0\x01\x12@\n" +
 	"\bAckOrder\x12\x16.yacycrawl.v1.OrderAck\x1a\x1c.yacycrawl.v1.OrderAckResult\x12O\n" +
 	"\tHeartbeat\x12\x1d.yacycrawl.v1.WorkerHeartbeat\x1a#.yacycrawl.v1.WorkerHeartbeatResult\x12I\n" +
-	"\fSubmitIngest\x12 .yacycrawl.v1.IngestBatchMessage\x1a\x17.yacycrawl.v1.IngestAckB2Z0github.com/D4rk4/yago/yagocrawlcontract/crawlrpcb\x06proto3"
+	"\fSubmitIngest\x12 .yacycrawl.v1.IngestBatchMessage\x1a\x17.yacycrawl.v1.IngestAck\x12S\n" +
+	"\x0eReportProgress\x12!.yacycrawl.v1.CrawlProgressReport\x1a\x1e.yacycrawl.v1.CrawlProgressAckB2Z0github.com/D4rk4/yago/yagocrawlcontract/crawlrpcb\x06proto3"
 
 var (
 	file_crawlexchange_proto_rawDescOnce sync.Once
@@ -405,31 +684,40 @@ func file_crawlexchange_proto_rawDescGZIP() []byte {
 	return file_crawlexchange_proto_rawDescData
 }
 
-var file_crawlexchange_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_crawlexchange_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_crawlexchange_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_crawlexchange_proto_goTypes = []any{
-	(*WorkerRegistration)(nil),    // 0: yacycrawl.v1.WorkerRegistration
-	(*CrawlOrderMessage)(nil),     // 1: yacycrawl.v1.CrawlOrderMessage
-	(*OrderAck)(nil),              // 2: yacycrawl.v1.OrderAck
-	(*OrderAckResult)(nil),        // 3: yacycrawl.v1.OrderAckResult
-	(*WorkerHeartbeat)(nil),       // 4: yacycrawl.v1.WorkerHeartbeat
-	(*WorkerHeartbeatResult)(nil), // 5: yacycrawl.v1.WorkerHeartbeatResult
-	(*IngestBatchMessage)(nil),    // 6: yacycrawl.v1.IngestBatchMessage
-	(*IngestAck)(nil),             // 7: yacycrawl.v1.IngestAck
+	(CrawlRunState)(0),            // 0: yacycrawl.v1.CrawlRunState
+	(*WorkerRegistration)(nil),    // 1: yacycrawl.v1.WorkerRegistration
+	(*CrawlOrderMessage)(nil),     // 2: yacycrawl.v1.CrawlOrderMessage
+	(*OrderAck)(nil),              // 3: yacycrawl.v1.OrderAck
+	(*OrderAckResult)(nil),        // 4: yacycrawl.v1.OrderAckResult
+	(*WorkerHeartbeat)(nil),       // 5: yacycrawl.v1.WorkerHeartbeat
+	(*WorkerHeartbeatResult)(nil), // 6: yacycrawl.v1.WorkerHeartbeatResult
+	(*IngestBatchMessage)(nil),    // 7: yacycrawl.v1.IngestBatchMessage
+	(*IngestAck)(nil),             // 8: yacycrawl.v1.IngestAck
+	(*CrawlRunTally)(nil),         // 9: yacycrawl.v1.CrawlRunTally
+	(*CrawlProgressReport)(nil),   // 10: yacycrawl.v1.CrawlProgressReport
+	(*CrawlProgressAck)(nil),      // 11: yacycrawl.v1.CrawlProgressAck
 }
 var file_crawlexchange_proto_depIdxs = []int32{
-	0, // 0: yacycrawl.v1.CrawlExchange.StreamOrders:input_type -> yacycrawl.v1.WorkerRegistration
-	2, // 1: yacycrawl.v1.CrawlExchange.AckOrder:input_type -> yacycrawl.v1.OrderAck
-	4, // 2: yacycrawl.v1.CrawlExchange.Heartbeat:input_type -> yacycrawl.v1.WorkerHeartbeat
-	6, // 3: yacycrawl.v1.CrawlExchange.SubmitIngest:input_type -> yacycrawl.v1.IngestBatchMessage
-	1, // 4: yacycrawl.v1.CrawlExchange.StreamOrders:output_type -> yacycrawl.v1.CrawlOrderMessage
-	3, // 5: yacycrawl.v1.CrawlExchange.AckOrder:output_type -> yacycrawl.v1.OrderAckResult
-	5, // 6: yacycrawl.v1.CrawlExchange.Heartbeat:output_type -> yacycrawl.v1.WorkerHeartbeatResult
-	7, // 7: yacycrawl.v1.CrawlExchange.SubmitIngest:output_type -> yacycrawl.v1.IngestAck
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	0,  // 0: yacycrawl.v1.CrawlProgressReport.state:type_name -> yacycrawl.v1.CrawlRunState
+	9,  // 1: yacycrawl.v1.CrawlProgressReport.tally:type_name -> yacycrawl.v1.CrawlRunTally
+	1,  // 2: yacycrawl.v1.CrawlExchange.StreamOrders:input_type -> yacycrawl.v1.WorkerRegistration
+	3,  // 3: yacycrawl.v1.CrawlExchange.AckOrder:input_type -> yacycrawl.v1.OrderAck
+	5,  // 4: yacycrawl.v1.CrawlExchange.Heartbeat:input_type -> yacycrawl.v1.WorkerHeartbeat
+	7,  // 5: yacycrawl.v1.CrawlExchange.SubmitIngest:input_type -> yacycrawl.v1.IngestBatchMessage
+	10, // 6: yacycrawl.v1.CrawlExchange.ReportProgress:input_type -> yacycrawl.v1.CrawlProgressReport
+	2,  // 7: yacycrawl.v1.CrawlExchange.StreamOrders:output_type -> yacycrawl.v1.CrawlOrderMessage
+	4,  // 8: yacycrawl.v1.CrawlExchange.AckOrder:output_type -> yacycrawl.v1.OrderAckResult
+	6,  // 9: yacycrawl.v1.CrawlExchange.Heartbeat:output_type -> yacycrawl.v1.WorkerHeartbeatResult
+	8,  // 10: yacycrawl.v1.CrawlExchange.SubmitIngest:output_type -> yacycrawl.v1.IngestAck
+	11, // 11: yacycrawl.v1.CrawlExchange.ReportProgress:output_type -> yacycrawl.v1.CrawlProgressAck
+	7,  // [7:12] is the sub-list for method output_type
+	2,  // [2:7] is the sub-list for method input_type
+	2,  // [2:2] is the sub-list for extension type_name
+	2,  // [2:2] is the sub-list for extension extendee
+	0,  // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_crawlexchange_proto_init() }
@@ -442,13 +730,14 @@ func file_crawlexchange_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_crawlexchange_proto_rawDesc), len(file_crawlexchange_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   8,
+			NumEnums:      1,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_crawlexchange_proto_goTypes,
 		DependencyIndexes: file_crawlexchange_proto_depIdxs,
+		EnumInfos:         file_crawlexchange_proto_enumTypes,
 		MessageInfos:      file_crawlexchange_proto_msgTypes,
 	}.Build()
 	File_crawlexchange_proto = out.File

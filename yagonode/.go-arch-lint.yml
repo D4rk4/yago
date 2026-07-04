@@ -104,6 +104,8 @@ components:
     in: internal/crawlresults/**
   crawlbroker:
     in: internal/crawlbroker/**
+  crawlruns:
+    in: internal/crawlruns/**
   adminauth:
     in: internal/adminauth/**
   crossorigin:
@@ -487,6 +489,11 @@ deps:
       - yagocrawlcontract
       - yagomodel
       - grpc
+  crawlruns:
+    mayDependOn:
+      - crawlruns
+    canUse:
+      - yagocrawlcontract
       - protobuf
   adminauth:
     mayDependOn:
@@ -545,6 +552,7 @@ deps:
       - crawldispatch
       - crawlresults
       - crawlbroker
+      - crawlruns
       - adminauth
       - crossorigin
       - compatibility

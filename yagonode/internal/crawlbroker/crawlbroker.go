@@ -42,7 +42,7 @@ var (
 	newGRPCServer = func() *grpc.Server { return grpc.NewServer() }
 )
 
-func Open(cfg Config, storage *vault.Vault) (*CrawlBroker, error) {
+func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker, error) {
 	leaseTTL := cfg.LeaseTTL
 	if leaseTTL <= 0 {
 		leaseTTL = DefaultLeaseTTL
@@ -67,7 +67,11 @@ func Open(cfg Config, storage *vault.Vault) (*CrawlBroker, error) {
 
 	ingest := newIngestReceiver()
 	server := newGRPCServer()
-	crawlrpc.RegisterCrawlExchangeServer(server, newExchangeServer(queue, ingest.out))
+	exchange := newExchangeServer(queue, ingest.out)
+	if progress != nil {
+		exchange.progress = progress
+	}
+	crawlrpc.RegisterCrawlExchangeServer(server, exchange)
 	go func() { _ = server.Serve(listener) }()
 
 	sweep := time.NewTicker(max(leaseTTL/4, time.Second))

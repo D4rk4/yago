@@ -70,6 +70,14 @@ func (f *fakeExchange) Heartbeat(
 	return &crawlrpc.WorkerHeartbeatResult{}, nil
 }
 
+func (f *fakeExchange) ReportProgress(
+	context.Context,
+	*crawlrpc.CrawlProgressReport,
+	...grpc.CallOption,
+) (*crawlrpc.CrawlProgressAck, error) {
+	return &crawlrpc.CrawlProgressAck{}, nil
+}
+
 type fakeOrderClientStream struct {
 	grpc.ClientStream
 	ctx    context.Context

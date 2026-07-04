@@ -28,6 +28,13 @@ service CrawlExchange {
   // absorbs it. The node returns an error when its ingest pipeline is saturated
   // so the crawler retries, which is the backpressure signal.
   rpc SubmitIngest(IngestBatchMessage) returns (IngestAck);
+
+  // ReportProgress lets a worker report the lifecycle and cumulative outcome
+  // tallies of a run it is executing, keyed by the order provenance token, so the
+  // node can surface active crawls, their counters, and their results without
+  // owning the worker's in-memory frontier. Reports carry absolute tallies, so a
+  // lost report is corrected by the next one.
+  rpc ReportProgress(CrawlProgressReport) returns (CrawlProgressAck);
 }
 
 message WorkerRegistration {
@@ -57,3 +64,30 @@ message IngestBatchMessage {
 }
 
 message IngestAck {}
+
+enum CrawlRunState {
+  CRAWL_RUN_STATE_UNSPECIFIED = 0;
+  CRAWL_RUN_STATE_RUNNING = 1;
+  CRAWL_RUN_STATE_FINISHED = 2;
+  CRAWL_RUN_STATE_CANCELLED = 3;
+}
+
+message CrawlRunTally {
+  uint64 fetched = 1;
+  uint64 indexed = 2;
+  uint64 failed = 3;
+  uint64 robots_denied = 4;
+  uint64 duplicates = 5;
+  uint64 pending = 6;
+}
+
+message CrawlProgressReport {
+  string worker_id = 1;
+  bytes run_id = 2;
+  string profile_handle = 3;
+  string profile_name = 4;
+  CrawlRunState state = 5;
+  CrawlRunTally tally = 6;
+}
+
+message CrawlProgressAck {}

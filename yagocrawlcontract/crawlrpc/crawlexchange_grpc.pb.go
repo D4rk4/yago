@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	CrawlExchange_StreamOrders_FullMethodName = "/yacycrawl.v1.CrawlExchange/StreamOrders"
-	CrawlExchange_AckOrder_FullMethodName     = "/yacycrawl.v1.CrawlExchange/AckOrder"
-	CrawlExchange_Heartbeat_FullMethodName    = "/yacycrawl.v1.CrawlExchange/Heartbeat"
-	CrawlExchange_SubmitIngest_FullMethodName = "/yacycrawl.v1.CrawlExchange/SubmitIngest"
+	CrawlExchange_StreamOrders_FullMethodName   = "/yacycrawl.v1.CrawlExchange/StreamOrders"
+	CrawlExchange_AckOrder_FullMethodName       = "/yacycrawl.v1.CrawlExchange/AckOrder"
+	CrawlExchange_Heartbeat_FullMethodName      = "/yacycrawl.v1.CrawlExchange/Heartbeat"
+	CrawlExchange_SubmitIngest_FullMethodName   = "/yacycrawl.v1.CrawlExchange/SubmitIngest"
+	CrawlExchange_ReportProgress_FullMethodName = "/yacycrawl.v1.CrawlExchange/ReportProgress"
 )
 
 // CrawlExchangeClient is the client API for CrawlExchange service.
@@ -50,6 +51,12 @@ type CrawlExchangeClient interface {
 	// absorbs it. The node returns an error when its ingest pipeline is saturated
 	// so the crawler retries, which is the backpressure signal.
 	SubmitIngest(ctx context.Context, in *IngestBatchMessage, opts ...grpc.CallOption) (*IngestAck, error)
+	// ReportProgress lets a worker report the lifecycle and cumulative outcome
+	// tallies of a run it is executing, keyed by the order provenance token, so the
+	// node can surface active crawls, their counters, and their results without
+	// owning the worker's in-memory frontier. Reports carry absolute tallies, so a
+	// lost report is corrected by the next one.
+	ReportProgress(ctx context.Context, in *CrawlProgressReport, opts ...grpc.CallOption) (*CrawlProgressAck, error)
 }
 
 type crawlExchangeClient struct {
@@ -109,6 +116,16 @@ func (c *crawlExchangeClient) SubmitIngest(ctx context.Context, in *IngestBatchM
 	return out, nil
 }
 
+func (c *crawlExchangeClient) ReportProgress(ctx context.Context, in *CrawlProgressReport, opts ...grpc.CallOption) (*CrawlProgressAck, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CrawlProgressAck)
+	err := c.cc.Invoke(ctx, CrawlExchange_ReportProgress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CrawlExchangeServer is the server API for CrawlExchange service.
 // All implementations must embed UnimplementedCrawlExchangeServer
 // for forward compatibility.
@@ -134,6 +151,12 @@ type CrawlExchangeServer interface {
 	// absorbs it. The node returns an error when its ingest pipeline is saturated
 	// so the crawler retries, which is the backpressure signal.
 	SubmitIngest(context.Context, *IngestBatchMessage) (*IngestAck, error)
+	// ReportProgress lets a worker report the lifecycle and cumulative outcome
+	// tallies of a run it is executing, keyed by the order provenance token, so the
+	// node can surface active crawls, their counters, and their results without
+	// owning the worker's in-memory frontier. Reports carry absolute tallies, so a
+	// lost report is corrected by the next one.
+	ReportProgress(context.Context, *CrawlProgressReport) (*CrawlProgressAck, error)
 	mustEmbedUnimplementedCrawlExchangeServer()
 }
 
@@ -155,6 +178,9 @@ func (UnimplementedCrawlExchangeServer) Heartbeat(context.Context, *WorkerHeartb
 }
 func (UnimplementedCrawlExchangeServer) SubmitIngest(context.Context, *IngestBatchMessage) (*IngestAck, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitIngest not implemented")
+}
+func (UnimplementedCrawlExchangeServer) ReportProgress(context.Context, *CrawlProgressReport) (*CrawlProgressAck, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReportProgress not implemented")
 }
 func (UnimplementedCrawlExchangeServer) mustEmbedUnimplementedCrawlExchangeServer() {}
 func (UnimplementedCrawlExchangeServer) testEmbeddedByValue()                       {}
@@ -242,6 +268,24 @@ func _CrawlExchange_SubmitIngest_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CrawlExchange_ReportProgress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CrawlProgressReport)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CrawlExchangeServer).ReportProgress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CrawlExchange_ReportProgress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CrawlExchangeServer).ReportProgress(ctx, req.(*CrawlProgressReport))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CrawlExchange_ServiceDesc is the grpc.ServiceDesc for CrawlExchange service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -260,6 +304,10 @@ var CrawlExchange_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SubmitIngest",
 			Handler:    _CrawlExchange_SubmitIngest_Handler,
+		},
+		{
+			MethodName: "ReportProgress",
+			Handler:    _CrawlExchange_ReportProgress_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
