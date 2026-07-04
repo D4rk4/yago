@@ -2009,6 +2009,44 @@ Acceptance:
 - The OSDD and any suggestions endpoint expose only public search, honor the
   portal's privacy stance, and are covered by tests.
 
+### UI-14: Per-peer detail page
+
+Follow-up to UI-07 (the Network section renders the peer table but has no
+drill-down). Add a per-peer detail route reachable from the peer table showing the
+peer's published DNA/profile (name, hash, address, version, contact/comment where
+present), its statistics (RWI words, links, age, uptime, last-seen), its
+capability flags, and its per-peer index-transfer counters. Read-only; no secrets;
+mirrors YaCy's `ViewProfile`/peer-detail. Acceptance: a peer row links to a detail
+page rendered from roster/seed state; no new backend store; tests + `make verify`.
+
+### UI-15: Peer probe and block/unblock
+
+Follow-up to UI-07. Add operator actions on a peer: an on-demand reachability
+probe, and block/unblock that persists a peer-policy decision. Requires a durable
+peer-policy store (a CFG-01-style vault collection) and is a CSRF-guarded write
+surface behind the admin session. Blocked peers are excluded from DHT fan-out and
+seeding. Acceptance: probe reports live reachability; block persists and survives
+restart and removes the peer from fan-out; anti-lockout guardrails; tests +
+`make verify`.
+
+### UI-16: Seedlist operations
+
+Follow-up to UI-07 (the Network section lists configured seedlist URLs but cannot
+act on them). Add a durable last-import status per seedlist URL and an operator
+"refresh now" action that re-fetches a seedlist through the egress guard and
+records the outcome as a structured event. Acceptance: last-import time/result is
+shown per seedlist; a manual refresh updates it and is auditable; tests +
+`make verify`.
+
+### UI-17: Peer messaging and news console
+
+Surface the existing `peernews` subsystem in the admin console read-only: a Network
+sub-view listing recent peer-news items (category, subject, originating peer, age)
+that the node has received, mirroring the observability half of YaCy's
+`Messages_p`/news. Sending messages is out of scope (a later write surface).
+Acceptance: recent peer-news items render from the peernews store with no secrets;
+empty state when none; tests + `make verify`.
+
 ---
 
 ## 11. Phase 6 - Security, privacy and abuse controls
