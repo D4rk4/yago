@@ -8,8 +8,10 @@ allow:
 components:
   searchdocument:
     in: internal/searchdocument/**
-  crawledpage:
-    in: internal/crawledpage/**
+  elasticsearchindex:
+    in: internal/elasticsearchindex/**
+  pageintake:
+    in: internal/pageintake/**
   textindexercmd:
     in: cmd/yacytextindexer/**
 
@@ -32,17 +34,23 @@ deps:
       - searchdocument
     canUse:
       - yacycrawlcontract
-  crawledpage:
+  elasticsearchindex:
     mayDependOn:
-      - crawledpage
+      - elasticsearchindex
+      - searchdocument
+    canUse:
+      - yacycrawlcontract
+  pageintake:
+    mayDependOn:
+      - pageintake
     canUse:
       - yacycrawlcontract
       - nats
       - nats-server
   textindexercmd:
     mayDependOn:
-      - crawledpage
-      - searchdocument
+      - pageintake
+      - elasticsearchindex
     canUse:
       - yacycrawlcontract
       - nats

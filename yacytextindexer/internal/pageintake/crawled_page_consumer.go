@@ -1,4 +1,4 @@
-package crawledpage
+package pageintake
 
 import (
 	"context"
@@ -19,29 +19,29 @@ const (
 )
 
 type SearchIndex interface {
-	Index(ctx context.Context, text yacycrawlcontract.CrawledPage) error
+	Index(ctx context.Context, page yacycrawlcontract.CrawledPage) error
 }
 
-type CrawledPageMessages interface {
+type CrawledPageSource interface {
 	Messages(...jetstream.PullMessagesOpt) (jetstream.MessagesContext, error)
 }
 
 type CrawledPageConsumer struct {
-	consumer    CrawledPageMessages
+	source      CrawledPageSource
 	indexer     SearchIndex
 	concurrency int
 }
 
 func NewCrawledPageConsumer(
-	consumer CrawledPageMessages,
+	source CrawledPageSource,
 	indexer SearchIndex,
 	concurrency int,
 ) *CrawledPageConsumer {
-	return &CrawledPageConsumer{consumer: consumer, indexer: indexer, concurrency: concurrency}
+	return &CrawledPageConsumer{source: source, indexer: indexer, concurrency: concurrency}
 }
 
 func (c *CrawledPageConsumer) Run(ctx context.Context) error {
-	iter, err := c.consumer.Messages()
+	iter, err := c.source.Messages()
 	if err != nil {
 		return fmt.Errorf("open crawled page message iterator: %w", err)
 	}
@@ -79,20 +79,20 @@ func (c *CrawledPageConsumer) Run(ctx context.Context) error {
 }
 
 func (c *CrawledPageConsumer) processOne(ctx context.Context, msg jetstream.Msg) {
-	text, err := yacycrawlcontract.UnmarshalCrawledPage(msg.Data())
+	page, err := yacycrawlcontract.UnmarshalCrawledPage(msg.Data())
 	if err != nil {
 		slog.WarnContext(ctx, msgCrawledPageDecodeFailed, slog.Any("error", err))
 		_ = msg.Term()
 		return
 	}
-	if err := c.indexer.Index(ctx, text); err != nil {
+	if err := c.indexer.Index(ctx, page); err != nil {
 		slog.WarnContext(ctx, msgCrawledPageIndexFailed,
-			slog.String("url", text.CanonicalURL),
+			slog.String("url", page.CanonicalURL),
 			slog.Any("error", err),
 		)
 		_ = msg.Nak()
 		return
 	}
-	slog.DebugContext(ctx, msgCrawledPageIndexed, slog.String("url", text.CanonicalURL))
+	slog.DebugContext(ctx, msgCrawledPageIndexed, slog.String("url", page.CanonicalURL))
 	_ = msg.Ack()
 }

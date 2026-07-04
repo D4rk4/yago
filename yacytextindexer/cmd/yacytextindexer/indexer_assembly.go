@@ -10,8 +10,8 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/crawledpage"
-	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/searchdocument"
+	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/elasticsearchindex"
+	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/pageintake"
 )
 
 func RunService(ctx context.Context, cfg ServiceConfig) error {
@@ -47,20 +47,20 @@ func RunService(ctx context.Context, cfg ServiceConfig) error {
 		return fmt.Errorf("create crawled page consumer: %w", err)
 	}
 
-	index := searchdocument.NewElasticsearchIndex(
+	index := elasticsearchindex.NewElasticsearchIndex(
 		cfg.ElasticsearchURL,
 		cfg.ElasticsearchIndex,
 		http.DefaultClient,
 	)
-	artifacts := crawledpage.NewCrawledPageConsumer(consumer, index, cfg.Concurrency)
+	intake := pageintake.NewCrawledPageConsumer(consumer, index, cfg.Concurrency)
 
 	slog.InfoContext(ctx, "textindexer started",
 		slog.String("subject", cfg.CrawledPageSubject),
 		slog.String("index", cfg.ElasticsearchIndex),
 		slog.Int("concurrency", cfg.Concurrency),
 	)
-	if err := artifacts.Run(ctx); err != nil {
-		return fmt.Errorf("run artifact consumer: %w", err)
+	if err := intake.Run(ctx); err != nil {
+		return fmt.Errorf("run crawled page consumer: %w", err)
 	}
 	slog.InfoContext(ctx, "textindexer stopped")
 	return nil

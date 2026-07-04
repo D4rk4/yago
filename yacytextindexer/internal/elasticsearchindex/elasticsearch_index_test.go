@@ -1,4 +1,4 @@
-package searchdocument_test
+package elasticsearchindex_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/elasticsearchindex"
 	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/searchdocument"
 )
 
@@ -24,8 +25,8 @@ func TestElasticsearchIndexPutsDocumentByID(t *testing.T) {
 	}))
 	defer server.Close()
 
-	index := searchdocument.NewElasticsearchIndex(server.URL, "yacy-text", server.Client())
-	text := yacycrawlcontract.CrawledPage{
+	index := elasticsearchindex.NewElasticsearchIndex(server.URL, "yacy-text", server.Client())
+	page := yacycrawlcontract.CrawledPage{
 		CanonicalURL: "https://example.com/",
 		DocumentID:   "abc123",
 		Title:        "Hi",
@@ -33,7 +34,7 @@ func TestElasticsearchIndexPutsDocumentByID(t *testing.T) {
 		CrawledAt:    time.Unix(0, 0).UTC(),
 		Language:     "en",
 	}
-	if err := index.Index(context.Background(), text); err != nil {
+	if err := index.Index(context.Background(), page); err != nil {
 		t.Fatalf("index: %v", err)
 	}
 	if gotPath != "/yacy-text/_doc/abc123" {
@@ -51,7 +52,7 @@ func TestElasticsearchIndexReturnsErrorOnFailureStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	index := searchdocument.NewElasticsearchIndex(server.URL, "yacy-text", server.Client())
+	index := elasticsearchindex.NewElasticsearchIndex(server.URL, "yacy-text", server.Client())
 	err := index.Index(context.Background(), yacycrawlcontract.CrawledPage{DocumentID: "abc123"})
 	if err == nil {
 		t.Fatal("expected error for non-2xx response")

@@ -1,4 +1,4 @@
-package crawledpage_test
+package pageintake_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/crawledpage"
+	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/pageintake"
 )
 
 type fakeMsg struct {
@@ -92,7 +92,7 @@ func TestCrawledPageConsumerAcksOnSuccessfulIndex(t *testing.T) {
 	source := fakeSource{
 		iterator: &fakeIterator{messages: []jetstream.Msg{newFakeMsg(data, acked)}},
 	}
-	consumer := crawledpage.NewCrawledPageConsumer(source, recordingIndexer{}, 1)
+	consumer := pageintake.NewCrawledPageConsumer(source, recordingIndexer{}, 1)
 
 	if err := consumer.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
@@ -118,7 +118,7 @@ func TestCrawledPageConsumerNaksOnIndexFailure(t *testing.T) {
 	source := fakeSource{
 		iterator: &fakeIterator{messages: []jetstream.Msg{newFakeMsg(data, acked)}},
 	}
-	consumer := crawledpage.NewCrawledPageConsumer(source, recordingIndexer{fail: true}, 1)
+	consumer := pageintake.NewCrawledPageConsumer(source, recordingIndexer{fail: true}, 1)
 
 	if err := consumer.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
@@ -138,7 +138,7 @@ func TestCrawledPageConsumerTermsOnDecodeFailure(t *testing.T) {
 	source := fakeSource{
 		iterator: &fakeIterator{messages: []jetstream.Msg{newFakeMsg([]byte("not json"), acked)}},
 	}
-	consumer := crawledpage.NewCrawledPageConsumer(source, recordingIndexer{}, 1)
+	consumer := pageintake.NewCrawledPageConsumer(source, recordingIndexer{}, 1)
 
 	if err := consumer.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)

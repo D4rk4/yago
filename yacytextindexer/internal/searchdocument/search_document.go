@@ -14,12 +14,12 @@ type SearchDocument struct {
 	Language  string    `json:"language"`
 }
 
-func FromCrawledPage(text yacycrawlcontract.CrawledPage) SearchDocument {
+func FromCrawledPage(page yacycrawlcontract.CrawledPage) SearchDocument {
 	return SearchDocument{
-		Title:     text.Title,
-		URL:       text.CanonicalURL,
-		Content:   text.Text,
-		CrawledAt: text.CrawledAt,
-		Language:  text.Language,
+		Title:     page.Title,
+		URL:       page.CanonicalURL,
+		Content:   page.Text,
+		CrawledAt: page.CrawledAt,
+		Language:  page.Language,
 	}
 }
