@@ -11,13 +11,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
 const (
-	recordBucket vault.Name = "recrawl_records"
-	dueBucket    vault.Name = "recrawl_due"
+	recordBucket  vault.Name = "recrawl_records"
+	dueBucket     vault.Name = "recrawl_due"
+	profileBucket vault.Name = "recrawl_profiles"
 )
 
 // scheduleRecord is one URL's recrawl state, keyed by its URL hash.
@@ -48,18 +50,40 @@ func (recordCodec) Decode(raw []byte) (scheduleRecord, error) {
 	return record, nil
 }
 
+type profileCodec struct{}
+
+func (profileCodec) Encode(profile yagocrawlcontract.CrawlProfile) ([]byte, error) {
+	raw, err := json.Marshal(profile)
+	if err != nil {
+		return nil, fmt.Errorf("encode recrawl profile: %w", err)
+	}
+
+	return raw, nil
+}
+
+func (profileCodec) Decode(raw []byte) (yagocrawlcontract.CrawlProfile, error) {
+	var profile yagocrawlcontract.CrawlProfile
+	if err := json.Unmarshal(raw, &profile); err != nil {
+		return yagocrawlcontract.CrawlProfile{}, fmt.Errorf("decode recrawl profile: %w", err)
+	}
+
+	return profile, nil
+}
+
 // DueURL names a URL the sweeper should re-dispatch, with the profile that owns it.
 type DueURL struct {
 	URL           string
 	ProfileHandle string
 }
 
-// Frontier is the durable recrawl schedule. It holds the per-URL records and an
-// ordered due index so due URLs are found with a bounded forward scan.
+// Frontier is the durable recrawl schedule. It holds the per-URL records, an
+// ordered due index so due URLs are found with a bounded forward scan, and the
+// crawl profiles (keyed by handle) needed to interpret and re-dispatch them.
 type Frontier struct {
-	vault   *vault.Vault
-	records *vault.Collection[scheduleRecord]
-	due     *vault.Collection[struct{}]
+	vault    *vault.Vault
+	records  *vault.Collection[scheduleRecord]
+	due      *vault.Collection[struct{}]
+	profiles *vault.Collection[yagocrawlcontract.CrawlProfile]
 }
 
 func Open(v *vault.Vault) (*Frontier, error) {
@@ -71,8 +95,12 @@ func Open(v *vault.Vault) (*Frontier, error) {
 	if err != nil {
 		return nil, fmt.Errorf("register recrawl due index: %w", err)
 	}
+	profiles, err := vault.Register(v, profileBucket, profileCodec{})
+	if err != nil {
+		return nil, fmt.Errorf("register recrawl profiles: %w", err)
+	}
 
-	return &Frontier{vault: v, records: records, due: due}, nil
+	return &Frontier{vault: v, records: records, due: due, profiles: profiles}, nil
 }
 
 // Observe records that url was fetched at fetchedAt under a profile whose recrawl

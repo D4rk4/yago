@@ -1525,10 +1525,23 @@ any prior schedule without orphaning its index entry. `ClaimDue(now, limit)`
 atomically returns due URLs soonest-first and pushes each forward by its interval
 so a swept URL is not re-dispatched every tick; a real recrawl re-schedules it
 precisely via the next Observe. The schedule survives node restarts (bolt-backed,
-tested). Remaining (09b, wiring): feed `Observe` from ingest completions with the
-profile's `RecrawlIfOlder` (needs a profileHandle->interval lookup recorded at
-dispatch, since the ingest envelope does not carry the interval), and drive
-`ClaimDue` from a ticker sweeper that re-publishes due URLs as fresh crawl orders.
+tested).
+
+09b-1 landed the profile registry the wiring needs. The node keeps no
+handle->profile store and a handle cannot reconstruct its profile, so the frontier
+now durably records the full `CrawlProfile` per handle (`recrawl_profiles`).
+`RecordProfile` is meant to be called at dispatch (where the full profile is in
+scope); `RecordFetch(url, handle, fetchedAt)` — the ingest feed — resolves the
+interval from that registry and schedules `fetchedAt+RecrawlIfOlder` (an unknown
+handle or a never-recrawl profile is a no-op); `ProfileByHandle` lets the sweeper
+turn a due URL back into a faithful order. All package-local and bolt-persisted.
+
+Remaining (09b-2, wiring): call `RecordProfile` at dispatch, add a per-batch
+ingest hook that calls `RecordFetch` (the metrics `IngestObserver` seam is
+throughput-only and drops the URL/handle/fetched-at fields), and drive a ticker
+sweeper (mirroring the eviction sweep loop) that pairs `ClaimDue` with
+`ProfileByHandle` to re-publish due URLs as fresh crawl orders, wired into the
+node assembly and lifecycle with a sweep-interval env knob.
 
 Tasks:
 

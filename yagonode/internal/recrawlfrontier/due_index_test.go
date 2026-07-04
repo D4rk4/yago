@@ -101,3 +101,24 @@ func TestRecordCodecRoundTripsAndRejectsGarbage(t *testing.T) {
 		t.Fatal("expected error decoding garbage")
 	}
 }
+
+func TestProfileCodecRoundTripsAndRejectsGarbage(t *testing.T) {
+	codec := profileCodec{}
+	profile := profileWithRecrawl("Example", time.Hour)
+	raw, err := codec.Encode(profile)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	back, err := codec.Decode(raw)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if back.Handle != profile.Handle ||
+		back.Name != profile.Name ||
+		back.RecrawlIfOlder != profile.RecrawlIfOlder {
+		t.Fatalf("round trip = %+v, want %+v", back, profile)
+	}
+	if _, err := codec.Decode([]byte("{not json")); err == nil {
+		t.Fatal("expected error decoding garbage")
+	}
+}

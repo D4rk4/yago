@@ -422,6 +422,7 @@ deps:
       - boltvault
     canUse:
       - yagomodel
+      - yagocrawlcontract
   searchremote:
     mayDependOn:
       - searchremote
