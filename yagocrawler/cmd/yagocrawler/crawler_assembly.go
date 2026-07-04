@@ -24,6 +24,7 @@ import (
 	"github.com/D4rk4/yago/yagocrawler/internal/pipeline"
 	"github.com/D4rk4/yago/yagocrawler/internal/publicweb"
 	"github.com/D4rk4/yago/yagocrawler/internal/robots"
+	"github.com/D4rk4/yago/yagocrawler/internal/runtally"
 	"github.com/D4rk4/yago/yagoegress"
 )
 
@@ -100,18 +101,21 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		return fmt.Errorf("create robots admission: %w", err)
 	}
 	publicOnly := newCrawlerPublicWebAdmissionFetcher(admitted, nil, guard)
+	tally := runtally.New()
 	worker := pipeline.NewPipeline(
 		frontier,
 		publicOnly,
 		pageindex.NewIndexBuilder(),
 		emitter,
 		pipeline.WithObserver(metrics),
+		pipeline.WithRunTally(tally),
 	)
 	consumer := crawlorder.NewCrawlOrderConsumer(
 		orders,
 		frontier,
 		newCrawlRequestExpander(client, crawl, guard),
-	).WithProgressReporter(crawlorder.NewGRPCProgressReporter(exchange, cfg.WorkerID))
+	).WithProgressReporter(crawlorder.NewGRPCProgressReporter(exchange, cfg.WorkerID)).
+		WithRunTally(tally)
 
 	slog.InfoContext(ctx, "crawler started",
 		slog.String("nodeRpcAddr", cfg.NodeRPCAddr),

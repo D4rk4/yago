@@ -91,6 +91,97 @@ func TestConsumerReportsRunLifecycle(t *testing.T) {
 	}
 }
 
+type stubRunTally struct {
+	mu        sync.Mutex
+	tally     yagocrawlcontract.CrawlRunTally
+	forgotten [][]byte
+}
+
+func (s *stubRunTally) Snapshot([]byte) yagocrawlcontract.CrawlRunTally {
+	return s.tally
+}
+
+func (s *stubRunTally) Forget(provenance []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.forgotten = append(s.forgotten, append([]byte(nil), provenance...))
+}
+
+func (s *stubRunTally) forgottenRuns() [][]byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return append([][]byte(nil), s.forgotten...)
+}
+
+func TestConsumerReportsRunOutcomeTally(t *testing.T) {
+	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
+	f := frontier.NewFrontier(8, nil)
+	reporter := &captureReporter{}
+	tally := &stubRunTally{tally: yagocrawlcontract.CrawlRunTally{
+		Fetched: 2,
+		Indexed: 1,
+		Failed:  1,
+	}}
+	consumer := crawlorder.NewCrawlOrderConsumer(queue, f).
+		WithProgressReporter(reporter).
+		WithRunTally(tally)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go consumer.Run(ctx)
+
+	profile := yagocrawlcontract.NewCrawlProfile(yagocrawlcontract.CrawlProfile{
+		Name:            "Example",
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	acked := make(chan struct{})
+	delivery := crawlorder.CrawlOrderDelivery{
+		Order: yagocrawlcontract.CrawlOrder{
+			Provenance: []byte("run-9"),
+			Profile:    profile,
+			Requests: []yagocrawlcontract.CrawlRequest{
+				{URL: "https://example.com/", ProfileHandle: profile.Handle},
+			},
+		},
+		Ack: func(context.Context) error { close(acked); return nil },
+	}
+	if err := queue.Publish(ctx, delivery); err != nil {
+		t.Fatalf("publish delivery: %v", err)
+	}
+
+	select {
+	case job := <-f.Jobs():
+		f.Done(job)
+	case <-time.After(3 * time.Second):
+		t.Fatal("frontier never received seeded job")
+	}
+	select {
+	case <-acked:
+	case <-time.After(3 * time.Second):
+		t.Fatal("delivery never acked after run finished")
+	}
+
+	reports := reporter.snapshot()
+	finished := reports[len(reports)-1]
+	if finished.State != yagocrawlcontract.CrawlRunFinished {
+		t.Fatalf("last report = %+v, want finished", finished)
+	}
+	if finished.Tally.Fetched != 2 ||
+		finished.Tally.Indexed != 1 ||
+		finished.Tally.Failed != 1 ||
+		finished.Tally.Pending != 0 {
+		t.Fatalf("finish tally = %+v, want fetched 2 indexed 1 failed 1 pending 0",
+			finished.Tally)
+	}
+	forgotten := tally.forgottenRuns()
+	if len(forgotten) != 1 || string(forgotten[0]) != "run-9" {
+		t.Fatalf("forgotten runs = %v, want [run-9] after finish", forgotten)
+	}
+}
+
 type fakeProgressClient struct {
 	mu   sync.Mutex
 	last *crawlrpc.CrawlProgressReport

@@ -35,6 +35,7 @@ type Pipeline struct {
 	index    pageindex.IndexBuilder
 	emitter  ingest.BatchEmitter
 	observer Observer
+	tally    RunTally
 }
 
 func NewPipeline(
@@ -50,6 +51,7 @@ func NewPipeline(
 		index:    index,
 		emitter:  emitter,
 		observer: noopObserver{},
+		tally:    noopRunTally{},
 	}
 	for _, opt := range opts {
 		opt(pipeline)
@@ -120,11 +122,13 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	if err != nil {
 		if !errors.Is(err, pagefetch.ErrPageRejected) {
 			p.observer.FetchFailed()
+			p.tally.Failed(job.Provenance)
 		}
 
 		return fmt.Errorf("fetch: %w", err)
 	}
 	p.observer.FetchSucceeded(len(fetched.Body))
+	p.tally.Fetched(job.Provenance)
 	page := pageparse.ParseHTML(fetched.URL.String(), fetched.ContentType, fetched.Body)
 	slog.DebugContext(ctx, msgPageCrawled,
 		slog.String("url", page.URL),
@@ -167,6 +171,7 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 		return fmt.Errorf("emit: %w", err)
 	}
 	p.observer.IngestPublished()
+	p.tally.Indexed(job.Provenance)
 
 	return nil
 }

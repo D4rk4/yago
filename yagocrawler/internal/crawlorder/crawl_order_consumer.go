@@ -33,6 +33,7 @@ type CrawlOrderConsumer struct {
 	frontier *frontier.Frontier
 	expander RequestExpander
 	progress ProgressReporter
+	tally    RunTallySource
 }
 
 func NewCrawlOrderConsumer(
@@ -50,6 +51,7 @@ func NewCrawlOrderConsumer(
 		frontier: frontier,
 		expander: selected,
 		progress: noopProgressReporter{},
+		tally:    noopRunTallySource{},
 	}
 }
 
@@ -58,6 +60,16 @@ func NewCrawlOrderConsumer(
 func (c *CrawlOrderConsumer) WithProgressReporter(reporter ProgressReporter) *CrawlOrderConsumer {
 	if reporter != nil {
 		c.progress = reporter
+	}
+
+	return c
+}
+
+// WithRunTally attaches the per-run outcome tally read into each run's finish
+// report. A nil tally is ignored so the default empty tally stays.
+func (c *CrawlOrderConsumer) WithRunTally(tally RunTallySource) *CrawlOrderConsumer {
+	if tally != nil {
+		c.tally = tally
 	}
 
 	return c
@@ -158,6 +170,7 @@ func (c *CrawlOrderConsumer) finishRun(
 			state = yagocrawlcontract.CrawlRunCancelled
 		}
 		c.reportRun(context.WithoutCancel(ctx), order, state, 0)
+		c.tally.Forget(order.Provenance)
 		if cancelled {
 			if err := delivery.Nak(context.Background()); err != nil {
 				slog.WarnContext(
@@ -189,7 +202,7 @@ func (c *CrawlOrderConsumer) reportRun(
 	state yagocrawlcontract.CrawlRunState,
 	pending int,
 ) {
-	tally := yagocrawlcontract.CrawlRunTally{}
+	tally := c.tally.Snapshot(order.Provenance)
 	if pending > 0 {
 		tally.Pending = uint64(pending)
 	}

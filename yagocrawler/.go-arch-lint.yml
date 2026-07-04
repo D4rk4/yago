@@ -46,6 +46,8 @@ components:
     in: internal/ingest/**
   pipeline:
     in: internal/pipeline/**
+  runtally:
+    in: internal/runtally/**
   crawlermetrics:
     in: internal/crawlermetrics/**
   crawlercmd:
@@ -223,6 +225,11 @@ deps:
     canUse:
       - yagocrawlcontract
       - yagomodel
+  runtally:
+    mayDependOn:
+      - runtally
+    canUse:
+      - yagocrawlcontract
   crawlermetrics:
     mayDependOn:
       - crawlermetrics
@@ -244,6 +251,7 @@ deps:
       - pipeline
       - publicweb
       - robots
+      - runtally
     canUse:
       - yagocrawlcontract
       - yagoegress
