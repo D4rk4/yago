@@ -1892,6 +1892,34 @@ Acceptance:
 
 ---
 
+### UI-12: OpenSearch integration for the public search portal
+
+Make the public search portal (UI-11) discoverable and usable as a browser search
+engine through OpenSearch, so a visitor can add the node to their browser's search
+bar and search it directly.
+
+Tasks:
+
+1. Serve an OpenSearch description document (OSDD) describing the portal's search
+   endpoint (the public root with the `q` parameter) and identity (short name from
+   the brand, description, attribution), self-contained and cacheable.
+2. Add the `<link rel="search" type="application/opensearchdescription+xml">`
+   autodiscovery tag to the portal page so browsers offer to add it automatically.
+3. Optionally expose an OpenSearch Suggestions endpoint (a JSON suggestions array)
+   for typeahead, respecting the same privacy stance as the portal (no query
+   logging by default, SEC-05).
+4. Keep it public-surface-only (no admin data) and require no JavaScript for the
+   core add-and-search flow. Only serve it when the portal is enabled (UI-11).
+
+Acceptance:
+
+- Browsers discover the portal as a search engine via the autodiscovery link and
+  the served OSDD; adding it and searching hits the portal's public search.
+- The OSDD and any suggestions endpoint expose only public search, honor the
+  portal's privacy stance, and are covered by tests.
+
+---
+
 ## 11. Phase 6 - Security, privacy and abuse controls
 
 ### SEC-01: Admin authentication
@@ -2106,7 +2134,8 @@ Acceptance:
 
 Let operators choose the interface (IP) and port each externally reachable
 surface binds to, so the public P2P port, the admin/ops surface, the Tavily API,
-and the public search portal can be exposed or restricted independently.
+and the public search portal can be exposed or restricted independently — both
+from the environment at boot and, at runtime, from the admin console.
 
 Tasks:
 
@@ -2119,6 +2148,15 @@ Tasks:
 3. Keep sensible defaults: peer public, admin loopback-friendly, Tavily API and
    public portal off/opt-in as they exist today.
 4. Validate bind strings at boot with clear errors and document exposure guidance.
+5. Add an admin-console binding editor (a write surface on the Configuration
+   section): enumerate the host's available network interfaces and their addresses
+   — including loopback — and let the operator pick, per surface, a bind address
+   from the discovered set (or "all interfaces") and a port. Persist the choice
+   through the runtime settings store (CFG-01) so it overrides the environment
+   default, and validate the address is bindable before saving.
+6. Apply changes safely: re-bind the affected listener in place where possible, or
+   clearly flag a restart-required state; add lock-out guardrails so the operator
+   cannot bind the admin surface to an unreachable address and lose access.
 
 Acceptance:
 
@@ -2126,6 +2164,70 @@ Acceptance:
   verified by tests over the config loader.
 - Binding the admin surface to loopback is documented and works; the public search
   portal binds to its configured port only when enabled.
+- The admin console lists the host's interfaces (including loopback) and can change
+  a surface's bind address and port, persisted as a runtime override (CFG-01), with
+  lock-out guardrails; covered by tests.
+
+---
+
+### CFG-01: Admin-writable runtime settings store
+
+Provide a small, persisted settings store that the admin console can write and
+that overrides the environment-derived defaults at runtime, so operator toggles
+survive restarts and take effect without editing the environment. This is the
+foundation the runtime write surfaces (UI-10 write, NET-01 binding editor, NET-02
+toggles) build on.
+
+Tasks:
+
+1. Add a durable settings store (in the existing vault) holding a bounded set of
+   operator-overridable settings, each with an explicit "unset -> use environment
+   default" state, layered over the loaded `nodeConfig` (environment is the
+   default; the store is the override).
+2. Expose a typed read/write seam guarded by the admin session (admin:write scope,
+   CSRF), reusing the UI-10 Configuration section for reads and the CSRF form
+   pattern (FTR-030) for writes; never store or echo secrets in plaintext.
+3. Apply overrides live where a subsystem can re-read them; otherwise surface a
+   clear "restart required" state. Record each change as a structured event.
+4. Keep it minimal and safe: whitelist exactly which settings are runtime-mutable
+   (start with the public-portal toggle, the HTTPS redirect, and per-surface binds);
+   do not make security-critical invariants silently changeable.
+
+Acceptance:
+
+- A whitelisted setting changed in the admin console persists across a restart and
+  overrides its environment default; unset settings fall back to the environment.
+- Writes require an admin session + CSRF; secrets are never persisted or shown in
+  plaintext; changes emit structured events. Covered by tests.
+
+---
+
+### NET-02: Admin-toggleable HTTPS redirect and portal enablement
+
+Let the operator turn on an HTTP->HTTPS redirect and enable the public search
+portal from the admin console, overriding the environment defaults, built on the
+runtime settings store (CFG-01).
+
+Tasks:
+
+1. Add an HTTP->HTTPS redirect, off by default: when enabled, a plain-HTTP request
+   to a redirect-eligible surface receives a 301/308 to the `https://` origin
+   (preserving path and query), toggled from the admin console (CFG-01). TLS
+   termination itself is expected in front (reverse proxy) or via a configured
+   certificate; only redirect when HTTPS is actually reachable.
+2. Let the admin console enable/disable the public search portal (UI-11) as a
+   runtime override of `YAGO_PUBLIC_SEARCH_UI_ENABLED` (CFG-01), mounting or
+   unmounting the portal at the public root accordingly, with the environment value
+   as the default when the override is unset.
+3. Guardrails: never redirect the loopback admin surface into an unreachable state;
+   validate before applying; emit a structured event on each toggle.
+
+Acceptance:
+
+- With the redirect enabled, an `http://` request is 301/308-redirected to the
+  `https://` equivalent; with it off (default), no redirect happens. Tested.
+- Toggling the portal in the admin console mounts/unmounts it at the public root and
+  overrides the environment default; the override persists (CFG-01). Tested.
 
 ---
 
@@ -2770,3 +2872,37 @@ Acceptance:
 - Built images, compose services, and binaries use `yago*` names; a clean
   `docker compose up` works.
 - Existing data directories containing `yacy-rwi.db` still open.
+
+### BRAND-04: Adopt the "YagoSeek" public brand
+
+Establish **YagoSeek** as the public-facing brand while keeping `yago` as the
+binary/module/CLI name and `github.com/D4rk4/yago` as the repository. This is
+public naming and copy only; it changes no wire-compatibility invariant above,
+nor the `yago` command or module paths (BRAND-01..03).
+
+Naming:
+
+- Brand: **YagoSeek**. CLI/binary and Go module short name: `yago`. Repository:
+  `github.com/D4rk4/yago`. Domain: `yagoseek.dev`, with `docs.`, `api.`,
+  `demo.` (public demo), and `status.` subdomains.
+
+Tasks:
+
+1. Rewrite the README lede to introduce YagoSeek:
+   "YagoSeek is a self-hosted, YaCy-compatible P2P search node written in Go. It
+   provides crawling, indexing, local search, federated peer discovery, and a
+   Tavily-like Search API for applications, agents, and private search
+   deployments." Include the hero copy ("Open search infrastructure for
+   developers.") and the tagline "YagoSeek — your own federated search node."
+2. Use YagoSeek as the product name in README and docs and `yago` in commands
+   (`go install github.com/D4rk4/yago/cmd/yago@latest`, `yago node start`); keep
+   the YaCy compatibility statement and the AGPL attribution intact.
+3. Sequence after BRAND-01..03 so the README's `yago` commands and module paths are
+   real; reference the `docs./api./demo./status.` domain structure.
+
+Acceptance:
+
+- README and docs present YagoSeek as the brand and `yago` as the command, with
+  accurate install/run instructions once BRAND-01..03 land.
+- No wire endpoint, DTO field, data-file fallback, or AGPL/YaCy attribution
+  changes.
