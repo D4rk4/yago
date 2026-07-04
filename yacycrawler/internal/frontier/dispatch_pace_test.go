@@ -100,6 +100,47 @@ func TestDispatchReleasesCooldownJobWhenDue(t *testing.T) {
 	f.Done(second, false)
 }
 
+func TestDispatchInterleavesManyHostsWithoutStarvation(t *testing.T) {
+	f := frontier.NewFrontier(64, newCooldownPace(10*time.Millisecond), 0)
+	profile := openProfile(t)
+	const hosts = 20
+	urls := make([]string, 0, hosts*2)
+	for i := 0; i < hosts; i++ {
+		host := "https://host" + string(rune('a'+i)) + ".example"
+		urls = append(urls, host+"/1", host+"/2")
+	}
+	f.SeedRun(
+		context.Background(),
+		runSeeds(profile, nil, requestsFor(profile.Profile.Handle, urls...)),
+		func(bool) {},
+	)
+
+	firstRound := make(map[string]bool)
+	for i := 0; i < hosts; i++ {
+		job := receiveJob(t, f)
+		host := weburl.Host(job.URL)
+		if firstRound[host] {
+			t.Fatalf("host %q dispatched twice before every host was served once", host)
+		}
+		if job.URL[len(job.URL)-1] != '1' {
+			t.Fatalf("host %q dispatched its second url before its first", host)
+		}
+		firstRound[host] = true
+		f.Done(job, false)
+	}
+	if len(firstRound) != hosts {
+		t.Fatalf("first round covered %d distinct hosts, want %d", len(firstRound), hosts)
+	}
+
+	for i := 0; i < hosts; i++ {
+		job := receiveJob(t, f)
+		if job.URL[len(job.URL)-1] != '2' {
+			t.Fatalf("expected second-round url, got %q", job.URL)
+		}
+		f.Done(job, false)
+	}
+}
+
 func TestDispatchDrainsCooldownJobOnClose(t *testing.T) {
 	f := frontier.NewFrontier(8, newCooldownPace(50*time.Millisecond), 0)
 	profile := openProfile(t)

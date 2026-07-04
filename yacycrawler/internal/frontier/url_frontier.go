@@ -38,7 +38,7 @@ type Frontier struct {
 type frontierState struct {
 	runs           map[uuid.UUID]*crawlRun
 	completion     *crawlrun.Completion
-	ready          []crawljob.CrawlJob
+	ready          *hostSchedule
 	maxPagesPerRun int
 }
 
@@ -68,6 +68,7 @@ func NewFrontier(capacity int, pace CrawlPace, maxPagesPerRun int) *Frontier {
 		state: &frontierState{
 			runs:           make(map[uuid.UUID]*crawlRun),
 			completion:     crawlrun.NewCompletion(),
+			ready:          newHostSchedule(pace),
 			maxPagesPerRun: maxPagesPerRun,
 		},
 	}
@@ -142,12 +143,12 @@ func (f *Frontier) run() {
 	for {
 		now := time.Now()
 		f.mu.Lock()
-		next, index, wait, due := f.nextDue(now)
+		next, wait, due := f.state.ready.peek(now)
 		var send chan crawljob.CrawlJob
 		if due {
 			send = f.jobs
 		}
-		closeJobs := f.closing && len(f.state.ready) == 0
+		closeJobs := f.closing && f.state.ready.len() == 0
 		f.mu.Unlock()
 
 		if closeJobs {
@@ -167,8 +168,7 @@ func (f *Frontier) run() {
 		case <-wakeup:
 		case send <- next:
 			f.mu.Lock()
-			f.pace.Visited(next, time.Now())
-			f.state.ready = append(f.state.ready[:index], f.state.ready[index+1:]...)
+			f.state.ready.dispatched(next, time.Now())
 			f.mu.Unlock()
 		}
 
@@ -176,20 +176,6 @@ func (f *Frontier) run() {
 			timer.Stop()
 		}
 	}
-}
-
-func (f *Frontier) nextDue(now time.Time) (crawljob.CrawlJob, int, time.Duration, bool) {
-	var soonest time.Duration
-	for i, job := range f.state.ready {
-		wait := f.pace.DueAt(job, now).Sub(now)
-		if wait <= 0 {
-			return job, i, 0, true
-		}
-		if soonest == 0 || wait < soonest {
-			soonest = wait
-		}
-	}
-	return crawljob.CrawlJob{}, 0, soonest, false
 }
 
 func (s *frontierState) seed(
@@ -306,13 +292,13 @@ func (s *frontierState) accept(
 	run.hostPages[host]++
 	run.pages++
 	s.completion.Track(runID)
-	s.ready = append(s.ready, crawljob.CrawlJob{
+	s.ready.push(crawljob.CrawlJob{
 		URL:           candidate.normURL,
 		Depth:         candidate.depth,
 		ProfileHandle: candidate.profileHandle,
 		Provenance:    candidate.provenance,
 		RunID:         runID,
-	})
+	}, time.Now())
 	return true
 }
 
