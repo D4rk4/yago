@@ -26,6 +26,8 @@ components:
     in: internal/peernews/**
   transfertally:
     in: internal/transfertally/**
+  settingsstore:
+    in: internal/settingsstore/**
   peerroster:
     in: internal/peerroster/**
   peerannouncement:
@@ -212,6 +214,11 @@ deps:
   transfertally:
     mayDependOn:
       - transfertally
+      - vault
+      - memvault
+  settingsstore:
+    mayDependOn:
+      - settingsstore
       - vault
       - memvault
   peerroster:
@@ -522,6 +529,7 @@ deps:
       - nodestatus
       - peernews
       - transfertally
+      - settingsstore
       - urlmetastaleness
       - urlreferences
       - crawldispatch

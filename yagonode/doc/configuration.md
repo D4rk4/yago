@@ -8,6 +8,18 @@ The node is configured through environment variables.
 > migrate to the `YAGO_` names. The crawler fleet worker's variables were renamed
 > from `YACYCRAWLER_` to `YAGOCRAWLER_` without a fallback.
 
+## Runtime overrides
+
+A small, whitelisted set of settings can also be changed at runtime from the
+admin console's Configuration section. An override is stored durably in the node
+vault and takes precedence over the environment default; clearing it (**Reset to
+default**) reverts to the environment value. Overrides survive restarts, require
+an authenticated admin session with a CSRF token, and record a `config` event on
+each change. Secrets are never runtime-overridable. Some settings (for example
+the public search portal toggle) take effect only after a node restart, which the
+console flags. The whitelist starts with the public search portal and grows as
+per-surface bind and HTTP→HTTPS redirect controls land.
+
 | Variable | Default | Description |
 | --- | --- | --- |
 | `LOG_LEVEL` | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARN`, or `ERROR`. |

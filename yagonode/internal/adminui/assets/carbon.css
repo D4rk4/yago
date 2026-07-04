@@ -122,6 +122,7 @@ a:focus, button:focus, input:focus, select:focus, [tabindex]:focus {
 .cds-breadcrumb a { text-decoration: none; }
 .cds-h1 { font-size: 1.75rem; line-height: 1.25; font-weight: 400; margin: 0 0 var(--cds-spacing-07); }
 .cds-h2 { font-size: 1.25rem; font-weight: 400; margin: var(--cds-spacing-07) 0 var(--cds-spacing-05); }
+.cds-h3 { font-size: 1rem; font-weight: 600; margin: var(--cds-spacing-06) 0 var(--cds-spacing-03); }
 
 /* Tiles / cards */
 .cds-tile {

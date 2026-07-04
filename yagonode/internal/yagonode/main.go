@@ -87,6 +87,11 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	settingsSource, config, err := loadRuntimeSettings(ctx, vault, config, eventRecorder)
+	if err != nil {
+		return err
+	}
+
 	authService, err := provisionAdminAuth(ctx, config, vault, authObserver)
 	if err != nil {
 		return fmt.Errorf("configure admin auth: %w", err)
@@ -108,7 +113,7 @@ func run() error {
 		return fmt.Errorf("assemble node: %w", err)
 	}
 
-	opsMux := buildOpsMux(endpoints, config, assembled, eventRecorder)
+	opsMux := buildOpsMux(endpoints, config, assembled, eventRecorder, settingsSource)
 	opsHandler := wrapAdminCORS(
 		config.CrossOrigin.AdminOrigins,
 		guardAdminSurface(authService, opsMux),
@@ -118,18 +123,26 @@ func run() error {
 		ctx,
 		assembled,
 		evictionMetrics,
-		namedServer{
-			"peer protocol",
-			buildServer(
-				config.PeerAddr,
-				wrapSearchCORS(
-					config.CrossOrigin.SearchOrigins,
-					logHTTPRequests(instrumentHTTP(endpoints, assembled.peerMux)),
-				),
-			),
-		},
+		buildPeerServer(config, endpoints, assembled),
 		namedServer{"ops", buildServer(config.OpsAddr, opsHandler)},
 	)
+}
+
+func buildPeerServer(
+	config nodeConfig,
+	endpoints *metrics.HTTPEndpointMetrics,
+	assembled node,
+) namedServer {
+	return namedServer{
+		"peer protocol",
+		buildServer(
+			config.PeerAddr,
+			wrapSearchCORS(
+				config.CrossOrigin.SearchOrigins,
+				logHTTPRequests(instrumentHTTP(endpoints, assembled.peerMux)),
+			),
+		),
+	}
 }
 
 type namedServer struct {

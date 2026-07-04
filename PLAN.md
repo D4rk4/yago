@@ -2172,6 +2172,20 @@ Acceptance:
 
 ### CFG-01: Admin-writable runtime settings store
 
+Status: Done. A new `internal/settingsstore` package persists a name->string
+override map in the node vault (`runtime_settings` bucket; absent key == unset ==
+environment default). At startup `loadRuntimeSettings` layers stored overrides
+onto the env-derived `nodeConfig` before assembly, and builds a `settingsSource`
+over the *unmodified* env defaults so the console can show default-vs-override.
+The Configuration section gained an editable, whitelisted surface (`SettingsSource`
+in adminui): a per-setting `POST /admin/configuration` form (CSRF via FTR-030,
+guarded by the admin session), validated and normalized server-side, persisted
+durably, with a `config`-category structured event (`settings.updated`) on every
+change and a "restart required" flag surfaced in the UI. The whitelist starts
+with the public-search-portal toggle (restart-required apply; live mount/unmount
+is NET-02). Secrets are structurally excluded from the whitelist, never stored or
+echoed. verify green (coverage 98.0%), Semgrep + Trivy clean.
+
 Provide a small, persisted settings store that the admin console can write and
 that overrides the environment-derived defaults at runtime, so operator toggles
 survive restarts and take effect without editing the environment. This is the

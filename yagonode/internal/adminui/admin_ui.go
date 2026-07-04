@@ -76,6 +76,7 @@ type Options struct {
 	Index    IndexSource
 	Network  NetworkSource
 	Config   ConfigSource
+	Settings SettingsSource
 	Logs     LogsSource
 }
 
@@ -131,6 +132,19 @@ type crawlPageData struct {
 	Error      string
 }
 
+type configPageData struct {
+	AppName    string
+	ActivePath string
+	Nav        []NavItem
+	CSRF       string
+	Section    sectionView
+	Config     ConfigView
+	Editable   bool
+	Settings   SettingsView
+	Notice     string
+	Error      string
+}
+
 func csrfToken(r *http.Request) string {
 	token, _ := adminauth.CSRFTokenFromContext(r.Context())
 
@@ -159,6 +173,7 @@ type Console struct {
 	index    IndexSource
 	network  NetworkSource
 	config   ConfigSource
+	settings SettingsSource
 	logs     LogsSource
 }
 
@@ -179,6 +194,7 @@ func New(opts Options) *Console {
 		index:    opts.Index,
 		network:  opts.Network,
 		config:   opts.Config,
+		settings: opts.Settings,
 		logs:     opts.Logs,
 	}
 	console.registerRoutes(assets)
@@ -215,6 +231,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
 	c.mux.HandleFunc("GET "+networkPath, c.handleNetwork)
 	c.mux.HandleFunc("GET "+configPath, c.handleConfig)
+	c.mux.HandleFunc("POST "+configPath, c.handleConfigUpdate)
 	c.mux.HandleFunc("GET "+logsPath, c.handleLogs)
 	c.mux.HandleFunc("GET "+logsEventsPath, c.handleLogsEvents)
 
@@ -340,12 +357,69 @@ func (c *Console) handleConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.render(r.Context(), w, c.tpl.config, "layout", pageData{
+	c.render(r.Context(), w, c.tpl.config, "layout", c.configPage(r, "", ""))
+}
+
+func (c *Console) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
+	if c.config == nil {
+		c.renderUnavailable(w, r, configPath, "Configuration", configUnavailable)
+
+		return
+	}
+	if c.settings == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+
+	result, err := c.settings.Update(r.Context(), parseSettingsChange(r))
+	if err != nil {
+		slog.WarnContext(r.Context(), "admin settings update failed", slog.Any("error", err))
+	}
+	notice, errMsg := settingsOutcome(result, err)
+
+	c.render(r.Context(), w, c.tpl.config, "layout", c.configPage(r, notice, errMsg))
+}
+
+func settingsOutcome(result SettingsResult, err error) (notice, errMsg string) {
+	switch {
+	case err != nil:
+		return "", "Update failed. Please try again."
+	case !result.OK:
+		return "", result.Message
+	default:
+		notice = result.Message
+		if result.RestartRequired {
+			notice += " Restart the node for the change to take effect."
+		}
+
+		return notice, ""
+	}
+}
+
+func (c *Console) configPage(r *http.Request, notice, errMsg string) configPageData {
+	data := configPageData{
 		AppName: appName, ActivePath: configPath, Nav: navItems,
 		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Configuration", Available: true},
 		Config:  c.config.Config(r.Context()),
-	})
+		Notice:  notice,
+		Error:   errMsg,
+	}
+	if c.settings != nil {
+		data.Editable = true
+		data.Settings = c.settings.Settings(r.Context())
+	}
+
+	return data
+}
+
+func parseSettingsChange(r *http.Request) SettingsChange {
+	return SettingsChange{
+		Key:   strings.TrimSpace(r.PostFormValue("key")),
+		Value: strings.TrimSpace(r.PostFormValue("value")),
+		Reset: r.PostFormValue("reset") == "true",
+	}
 }
 
 func (c *Console) handleSearch(w http.ResponseWriter, r *http.Request) {

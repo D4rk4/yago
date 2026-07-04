@@ -1,9 +1,37 @@
 {{define "content"}}
 <nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Configuration</nav>
 <h1 class="cds-h1">Configuration</h1>
-<p class="cds-muted">Effective configuration for this node. Values are read from the environment at startup and secrets are redacted. Editing configuration at runtime is not yet supported.</p>
+{{if .Editable}}
+<h2 class="cds-h2">Runtime settings</h2>
+<p class="cds-muted">These settings are stored on the node and override the environment defaults. Unset settings fall back to the environment.</p>
+{{if .Notice}}<div class="cds-inline-notification cds-inline-notification--success" role="status">{{.Notice}}</div>{{end}}
+{{if .Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>{{end}}
+{{range .Settings.Items}}
+<form class="cds-form" method="post" action="/admin/configuration" hx-boost="false">
+  <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+  <input type="hidden" name="key" value="{{.Key}}">
+  <div class="cds-field">
+    <label class="cds-label" for="setting-{{.Key}}">{{.Title}}{{if .Overridden}} <span class="cds-tag cds-tag--info">overridden</span>{{end}}</label>
+    {{if .Description}}<p class="cds-muted">{{.Description}}</p>{{end}}
+    {{if .Options}}
+    <select class="cds-input" id="setting-{{.Key}}" name="value">
+      {{$current := .Value}}
+      {{range .Options}}<option value="{{.Value}}"{{if eq .Value $current}} selected{{end}}>{{.Label}}</option>{{end}}
+    </select>
+    {{else}}
+    <input class="cds-input" type="text" id="setting-{{.Key}}" name="value" value="{{.Value}}" autocomplete="off">
+    {{end}}
+    {{if .RestartRequired}}<p class="cds-muted">Takes effect after a node restart.</p>{{end}}
+  </div>
+  <button class="cds-btn" type="submit">Save</button>
+  {{if .Overridden}}<button class="cds-btn cds-btn--ghost" type="submit" name="reset" value="true">Reset to default</button>{{end}}
+</form>
+{{end}}
+{{end}}
+<h2 class="cds-h2">Effective configuration</h2>
+<p class="cds-muted">Values in effect for this node. Secrets are redacted; any runtime overrides above are already applied.</p>
 {{range .Config.Groups}}
-<h2 class="cds-h2">{{.Title}}</h2>
+<h3 class="cds-h3">{{.Title}}</h3>
 <div class="cds-scroll-x">
 <table class="cds-table">
   <tbody>
