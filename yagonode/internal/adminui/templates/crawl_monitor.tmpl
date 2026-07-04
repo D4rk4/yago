@@ -1,0 +1,45 @@
+{{define "crawl-monitor"}}
+<div id="crawl-monitor" hx-get="/admin/crawl/monitor" hx-trigger="every 5s"
+     hx-swap="outerHTML" role="region" aria-label="Crawl monitor">
+  <h2 class="cds-h2">Crawl monitor</h2>
+  <p>
+    <button class="cds-btn cds-btn--ghost" type="button"
+            hx-get="/admin/crawl/monitor" hx-target="#crawl-monitor" hx-swap="outerHTML">Refresh</button>
+    <span class="cds-muted">order queue: {{.QueuePending}} pending, {{.QueueLeased}} leased — updates every 5s</span>
+  </p>
+  <div class="cds-scroll-x">
+    <table class="cds-table">
+      <thead>
+        <tr>
+          <th scope="col">Profile</th>
+          <th scope="col">State</th>
+          <th scope="col">Fetched</th>
+          <th scope="col">Indexed</th>
+          <th scope="col">Failed</th>
+          <th scope="col">Robots</th>
+          <th scope="col">Duplicates</th>
+          <th scope="col">Pending</th>
+          <th scope="col">Runtime</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Runs}}
+        <tr>
+          <td>{{.Profile}}</td>
+          <td><span class="cds-tag{{with stateTag .State}} cds-tag--{{.}}{{end}}">{{.State}}</span></td>
+          <td class="cds-mono">{{.Fetched}}</td>
+          <td class="cds-mono">{{.Indexed}}</td>
+          <td class="cds-mono">{{.Failed}}</td>
+          <td class="cds-mono">{{.RobotsDenied}}</td>
+          <td class="cds-mono">{{.Duplicates}}</td>
+          <td class="cds-mono">{{.Pending}}</td>
+          <td class="cds-mono">{{.Runtime}}</td>
+        </tr>
+        {{else}}
+        <tr><td colspan="9">No crawl runs observed yet.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}

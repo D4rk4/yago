@@ -34,6 +34,7 @@ const (
 	overviewMetricsPath = "/admin/overview/metrics"
 	searchPath          = "/admin/search"
 	crawlPath           = "/admin/crawl"
+	crawlMonitorPath    = "/admin/crawl/monitor"
 	configPath          = "/admin/configuration"
 	indexPath           = "/admin/index"
 	networkPath         = "/admin/network"
@@ -77,6 +78,7 @@ type Options struct {
 	Overview    OverviewSource
 	Search      SearchSource
 	Crawl       CrawlSource
+	Monitor     CrawlMonitorSource
 	Index       IndexSource
 	Network     NetworkSource
 	Config      ConfigSource
@@ -137,6 +139,7 @@ type crawlPageData struct {
 	CSRF       string
 	Section    sectionView
 	Form       crawlForm
+	Monitor    *CrawlMonitor
 	Result     *CrawlDispatch
 	Error      string
 }
@@ -217,6 +220,7 @@ type Console struct {
 	overview    OverviewSource
 	search      SearchSource
 	crawl       CrawlSource
+	monitor     CrawlMonitorSource
 	index       IndexSource
 	network     NetworkSource
 	config      ConfigSource
@@ -242,6 +246,7 @@ func New(opts Options) *Console {
 		overview:    opts.Overview,
 		search:      opts.Search,
 		crawl:       opts.Crawl,
+		monitor:     opts.Monitor,
 		index:       opts.Index,
 		network:     opts.Network,
 		config:      opts.Config,
@@ -268,7 +273,7 @@ func buildTemplates() templates {
 		placeholder: clone(nil, "templates/placeholder.tmpl"),
 		overview:    clone(overviewFuncs, "templates/overview.tmpl", "templates/metrics.tmpl"),
 		search:      clone(nil, "templates/search.tmpl"),
-		crawl:       clone(nil, "templates/crawl.tmpl"),
+		crawl:       clone(crawlFuncs, "templates/crawl.tmpl", "templates/crawl_monitor.tmpl"),
 		index:       clone(nil, "templates/index.tmpl"),
 		network:     clone(nil, "templates/network.tmpl"),
 		config:      clone(nil, "templates/config.tmpl", "templates/toasts.tmpl"),
@@ -286,6 +291,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+searchPath, c.handleSearch)
 	c.mux.HandleFunc("GET "+crawlPath, c.handleCrawl)
 	c.mux.HandleFunc("POST "+crawlPath, c.handleCrawlStart)
+	c.mux.HandleFunc("GET "+crawlMonitorPath, c.handleCrawlMonitor)
 	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
 	c.mux.HandleFunc("GET "+networkPath, c.handleNetwork)
 	c.mux.HandleFunc("GET "+configPath, c.handleConfig)
@@ -750,7 +756,30 @@ func (c *Console) crawlPage(r *http.Request, form crawlForm) crawlPageData {
 		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Crawler", Available: true},
 		Form:    form,
+		Monitor: c.crawlMonitor(r.Context()),
 	}
+}
+
+// crawlMonitor returns the live crawl monitor snapshot, or nil when no monitor
+// provider is wired so the Crawler section renders the start form alone.
+func (c *Console) crawlMonitor(ctx context.Context) *CrawlMonitor {
+	if c.monitor == nil {
+		return nil
+	}
+
+	snapshot := c.monitor.Monitor(ctx)
+
+	return &snapshot
+}
+
+func (c *Console) handleCrawlMonitor(w http.ResponseWriter, r *http.Request) {
+	if c.monitor == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+
+	c.render(r.Context(), w, c.tpl.crawl, "crawl-monitor", c.monitor.Monitor(r.Context()))
 }
 
 func defaultCrawlForm() crawlForm {

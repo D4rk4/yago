@@ -1846,7 +1846,7 @@ crawl-start form (seeds, name, mode, scope, max depth) that reuses a shared
 to validate a profile and enqueue on the crawl broker. The user authorised
 building the observability and control halves of `/Crawler_p.html` natively (and
 closing CRAWL-08 as superseded) — a 12-slice epic tracked as CRAWL-OBS-1..6 and
-CRAWL-CTL-7..10. Slices CRAWL-OBS-1..4 done: the crawl queue depth on the
+CRAWL-CTL-7..10. Slices CRAWL-OBS-1..5 done: the crawl queue depth on the
 Performance tile and the `queue_crawl_depth` metric now read the broker's
 outstanding order backlog (pending + leased) instead of the always-zero
 `GateState.CrawlQueueSize`; the contract carries a `ReportProgress` RPC
@@ -1857,8 +1857,12 @@ collector (`crawl_runs_active` gauge plus `crawl_runs_total{state}` and
 `crawl_run_outcomes_total{outcome}` counters) and a Logs event on each run's first
 terminal transition (`crawl.run.finished`/`crawl.run.cancelled`, warn-raised on a
 cancellation or any failed pages), wired through a registry observer that detects
-the terminal transition under the lock so each run is counted exactly once.
-Remaining: running-crawls and results/rejections console views (OBS-5..6), a
+the terminal transition under the lock so each run is counted exactly once; and
+the Crawler section now renders a live running-crawls monitor (OBS-5) — an htmx
+auto-refreshing table (`/admin/crawl/monitor`, 5s) of the known runs newest-first
+with their state, per-outcome tally, and runtime, plus the broker's outstanding
+order backlog, from a read-only `adminui.CrawlMonitorSource` adapter over the run
+registry and queue probe. Remaining: a results/rejections console view (OBS-6), a
 node→worker control plane for pause/cancel/PPM (CTL-7..10), and cache policy plus
 expert start fields (START-11). The crawl-profile editor (named-profile CRUD)
 stays a separate follow-up (management, not observability).

@@ -45,4 +45,5 @@
   </div>
   <button class="cds-btn" type="submit">Start crawl</button>
 </form>
+{{with .Monitor}}{{template "crawl-monitor" .}}{{end}}
 {{end}}
