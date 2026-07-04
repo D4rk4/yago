@@ -285,6 +285,25 @@ func TestDefaultSeedSourceBuildsFetcher(t *testing.T) {
 	}
 }
 
+func TestNewCrawlerExchangeDialsWellFormedTarget(t *testing.T) {
+	client, closer, err := newCrawlerExchange("localhost:9091")
+	if err != nil {
+		t.Fatalf("dial well-formed target: %v", err)
+	}
+	if client == nil || closer == nil {
+		t.Fatal("client/closer nil for a well-formed target")
+	}
+	if err := closer.Close(); err != nil {
+		t.Errorf("close: %v", err)
+	}
+}
+
+func TestNewCrawlerExchangeRejectsMalformedTarget(t *testing.T) {
+	if _, _, err := newCrawlerExchange("\x00bad"); err == nil {
+		t.Fatal("expected an error for a malformed target")
+	}
+}
+
 func serviceConfig() ServiceConfig {
 	getenv := func(key string) string {
 		switch key {

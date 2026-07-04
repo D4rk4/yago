@@ -224,13 +224,14 @@ func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 func TestLoadServiceConfigRejectsParseErrors(t *testing.T) {
 	base := map[string]string{EnvNodeRPCAddr: "node:9091"}
 	cases := map[string]string{
-		EnvCrawlDelay:      "not-a-duration",
-		EnvRequestTimeout:  "not-a-duration",
-		EnvConnectTimeout:  "not-a-duration",
-		EnvTLSTimeout:      "not-a-duration",
-		EnvHeaderTimeout:   "not-a-duration",
-		EnvMaxRedirects:    "not-a-number",
-		EnvSitemapURLLimit: "not-a-number",
+		EnvCrawlDelay:         "not-a-duration",
+		EnvRequestTimeout:     "not-a-duration",
+		EnvConnectTimeout:     "not-a-duration",
+		EnvTLSTimeout:         "not-a-duration",
+		EnvHeaderTimeout:      "not-a-duration",
+		EnvMaxRedirects:       "not-a-number",
+		EnvSitemapURLLimit:    "not-a-number",
+		EnvMaxHostConcurrency: "not-a-number",
 	}
 	for key, bad := range cases {
 		env := map[string]string{}

@@ -4,25 +4,33 @@ import "testing"
 
 func TestSeedStatisticsEmission(t *testing.T) {
 	seed := Seed{
-		Hash:            Hash("ABCDEFGHIJKL"),
-		NoticedURLCount: Some(0),
-		OfferedURLCount: Some(0),
-		KnownSeedCount:  Some(7),
-		ConnectsPerHour: Some(0),
-		IndexingSpeed:   Some(0),
-		RequestSpeed:    Some(0),
-		UplinkSpeed:     Some(0),
+		Hash:              Hash("ABCDEFGHIJKL"),
+		NoticedURLCount:   Some(0),
+		OfferedURLCount:   Some(0),
+		KnownSeedCount:    Some(7),
+		ConnectsPerHour:   Some(0),
+		IndexingSpeed:     Some(0),
+		RequestSpeed:      Some(0),
+		UplinkSpeed:       Some(0),
+		SentWordCount:     Some[int64](1234),
+		ReceivedWordCount: Some[int64](0),
+		SentURLCount:      Some[int64](56),
+		ReceivedURLCount:  Some[int64](78),
 	}
 
 	fields := seed.Properties()
 	want := map[string]string{
-		SeedNoticedURLCount: "0",
-		SeedOfferedURLCount: "0",
-		SeedKnownSeedCount:  "7",
-		SeedConnectsPerHour: "0",
-		SeedIndexingSpeed:   "0",
-		SeedRequestSpeed:    "0",
-		SeedUplinkSpeed:     "0",
+		SeedNoticedURLCount:   "0",
+		SeedOfferedURLCount:   "0",
+		SeedKnownSeedCount:    "7",
+		SeedConnectsPerHour:   "0",
+		SeedIndexingSpeed:     "0",
+		SeedRequestSpeed:      "0",
+		SeedUplinkSpeed:       "0",
+		SeedSentWordCount:     "1234",
+		SeedReceivedWordCount: "0",
+		SeedSentURLCount:      "56",
+		SeedReceivedURLCount:  "78",
 	}
 	for key, value := range want {
 		if fields[key] != value {
