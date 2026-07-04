@@ -99,6 +99,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure admin auth: %w", err)
 	}
+	sources.security = newSecuritySource(authService)
 
 	assembled, err := assembleRuntimeNode(
 		ctx,

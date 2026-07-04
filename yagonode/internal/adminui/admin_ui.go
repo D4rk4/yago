@@ -39,6 +39,7 @@ const (
 	networkPath         = "/admin/network"
 	logsPath            = "/admin/logs"
 	logsEventsPath      = "/admin/logs/events"
+	securityPath        = "/admin/security"
 
 	overviewUnavailable = "Node status is not available."
 	searchUnavailable   = "Search is not available."
@@ -47,6 +48,7 @@ const (
 	indexUnavailable    = "The search index is not available."
 	networkUnavailable  = "Network status is not available."
 	logsUnavailable     = "Event log is not available."
+	securityUnavailable = "Security settings are not available."
 )
 
 // NavItem is one entry in the console side navigation.
@@ -79,6 +81,7 @@ type Options struct {
 	Settings SettingsSource
 	Binding  BindingSource
 	Logs     LogsSource
+	Security SecuritySource
 }
 
 type sectionView struct {
@@ -148,6 +151,18 @@ type configPageData struct {
 	Error      string
 }
 
+type securityPageData struct {
+	AppName    string
+	ActivePath string
+	Nav        []NavItem
+	CSRF       string
+	Section    sectionView
+	Security   SecurityView
+	Minted     *MintedAPIKey
+	Notice     string
+	Error      string
+}
+
 func csrfToken(r *http.Request) string {
 	token, _ := adminauth.CSRFTokenFromContext(r.Context())
 
@@ -163,6 +178,7 @@ type templates struct {
 	network     *template.Template
 	config      *template.Template
 	logs        *template.Template
+	security    *template.Template
 }
 
 // Console is the server-rendered admin console handler.
@@ -179,6 +195,7 @@ type Console struct {
 	settings SettingsSource
 	binding  BindingSource
 	logs     LogsSource
+	security SecuritySource
 }
 
 // New builds the console with its embedded templates, assets, and providers.
@@ -201,6 +218,7 @@ func New(opts Options) *Console {
 		settings: opts.Settings,
 		binding:  opts.Binding,
 		logs:     opts.Logs,
+		security: opts.Security,
 	}
 	console.registerRoutes(assets)
 
@@ -222,6 +240,7 @@ func buildTemplates() templates {
 		network:     clone(nil, "templates/network.tmpl"),
 		config:      clone(nil, "templates/config.tmpl"),
 		logs:        clone(nil, "templates/logs.tmpl", "templates/logs_table.tmpl"),
+		security:    clone(nil, "templates/security.tmpl"),
 	}
 }
 
@@ -239,6 +258,8 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("POST "+configPath, c.handleConfigUpdate)
 	c.mux.HandleFunc("GET "+logsPath, c.handleLogs)
 	c.mux.HandleFunc("GET "+logsEventsPath, c.handleLogsEvents)
+	c.mux.HandleFunc("GET "+securityPath, c.handleSecurity)
+	c.mux.HandleFunc("POST "+securityPath, c.handleSecurityUpdate)
 
 	for _, item := range navItems {
 		if dynamicSection(item.Path) {
@@ -251,7 +272,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 func dynamicSection(path string) bool {
 	return path == overviewPath || path == searchPath || path == crawlPath ||
 		path == indexPath || path == networkPath || path == configPath ||
-		path == logsPath
+		path == logsPath || path == securityPath
 }
 
 // ServeHTTP dispatches to the console's internal router.
@@ -462,6 +483,130 @@ func parseSettingsChange(r *http.Request) SettingsChange {
 		Key:   strings.TrimSpace(r.PostFormValue("key")),
 		Value: strings.TrimSpace(r.PostFormValue("value")),
 		Reset: r.PostFormValue("reset") == "true",
+	}
+}
+
+func (c *Console) handleSecurity(w http.ResponseWriter, r *http.Request) {
+	if c.security == nil {
+		c.renderUnavailable(w, r, securityPath, "Security", securityUnavailable)
+
+		return
+	}
+
+	c.render(r.Context(), w, c.tpl.security, "layout", c.securityPage(r, "", "", nil))
+}
+
+func (c *Console) handleSecurityUpdate(w http.ResponseWriter, r *http.Request) {
+	if c.security == nil {
+		c.renderUnavailable(w, r, securityPath, "Security", securityUnavailable)
+
+		return
+	}
+
+	notice, errMsg, minted := c.applySecurityUpdate(r)
+	c.render(r.Context(), w, c.tpl.security, "layout", c.securityPage(r, notice, errMsg, minted))
+}
+
+func (c *Console) applySecurityUpdate(
+	r *http.Request,
+) (notice, errMsg string, minted *MintedAPIKey) {
+	switch r.PostFormValue("form") {
+	case "mint":
+		return c.applyAPIKeyMint(r)
+	case "revoke":
+		notice, errMsg = c.applyAPIKeyRevoke(r)
+
+		return notice, errMsg, nil
+	case "password":
+		notice, errMsg = c.applyPasswordChange(r)
+
+		return notice, errMsg, nil
+	default:
+		return "", "Unknown action.", nil
+	}
+}
+
+func (c *Console) applyAPIKeyMint(
+	r *http.Request,
+) (notice, errMsg string, minted *MintedAPIKey) {
+	result, err := c.security.MintAPIKey(r.Context(), parseAPIKeyMint(r))
+	if err != nil {
+		slog.WarnContext(r.Context(), "admin api-key mint failed", slog.Any("error", err))
+	}
+	if err == nil && result.OK {
+		minted = result.Created
+	}
+	notice, errMsg = writeOutcome(
+		result.OK, result.Message, err, "Could not create the API key. Please try again.",
+	)
+
+	return notice, errMsg, minted
+}
+
+func (c *Console) applyAPIKeyRevoke(r *http.Request) (notice, errMsg string) {
+	revoke := APIKeyRevoke{ID: strings.TrimSpace(r.PostFormValue("id"))}
+	result, err := c.security.RevokeAPIKey(r.Context(), revoke)
+	if err != nil {
+		slog.WarnContext(r.Context(), "admin api-key revoke failed", slog.Any("error", err))
+	}
+
+	return writeOutcome(
+		result.OK, result.Message, err, "Could not revoke the API key. Please try again.",
+	)
+}
+
+func (c *Console) applyPasswordChange(r *http.Request) (notice, errMsg string) {
+	result, err := c.security.ChangePassword(r.Context(), parsePasswordChange(r))
+	if err != nil {
+		slog.WarnContext(r.Context(), "admin password change failed", slog.Any("error", err))
+	}
+
+	return writeOutcome(
+		result.OK, result.Message, err, "Could not change the password. Please try again.",
+	)
+}
+
+func writeOutcome(ok bool, message string, err error, failMsg string) (notice, errMsg string) {
+	switch {
+	case err != nil:
+		return "", failMsg
+	case !ok:
+		return "", message
+	default:
+		return message, ""
+	}
+}
+
+func parseAPIKeyMint(r *http.Request) APIKeyMint {
+	_ = r.ParseForm()
+
+	return APIKeyMint{
+		Label:  strings.TrimSpace(r.PostFormValue("label")),
+		Scopes: r.PostForm["scope"],
+	}
+}
+
+func parsePasswordChange(r *http.Request) PasswordChange {
+	return PasswordChange{
+		Current: r.PostFormValue("current"),
+		New:     r.PostFormValue("new"),
+		Confirm: r.PostFormValue("confirm"),
+	}
+}
+
+func (c *Console) securityPage(
+	r *http.Request,
+	notice, errMsg string,
+	minted *MintedAPIKey,
+) securityPageData {
+	return securityPageData{
+		AppName: appName, ActivePath: securityPath, Nav: navItems,
+		CSRF:     csrfToken(r),
+		Section:  sectionView{Heading: "Security", Available: true},
+		Security: c.security.Security(r.Context()),
+		Minted:   minted,
+		Notice:   notice,
+		Error:    errMsg,
 	}
 }
 

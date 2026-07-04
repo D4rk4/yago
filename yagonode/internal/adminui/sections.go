@@ -18,9 +18,5 @@ func defaultSections() map[string]sectionView {
 			"Configuration",
 			"Identity, storage, proxy, search, and security settings appear here.",
 		),
-		"/admin/security": pending(
-			"Security",
-			"Authentication, API keys, and privacy modes appear here.",
-		),
 	}
 }

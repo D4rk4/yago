@@ -15,6 +15,7 @@ import (
 type consoleAdminSources struct {
 	settings *settingsSource
 	binding  *bindingSource
+	security *securitySource
 }
 
 // loadRuntimeSettings opens the durable settings store, layers any stored

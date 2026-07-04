@@ -1,0 +1,83 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Security</nav>
+<h1 class="cds-h1">Security</h1>
+{{if or .Notice .Error}}
+{{if .Notice}}<div class="cds-inline-notification cds-inline-notification--success" role="status">{{.Notice}}</div>{{end}}
+{{if .Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>{{end}}
+{{end}}
+{{if .Security.Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Security.Error}}</div>{{end}}
+{{if .Minted}}
+<div class="cds-inline-notification cds-inline-notification--success" role="status">
+  <p>New API key <strong>{{.Minted.Label}}</strong> created. Copy it now — it is shown only once and cannot be recovered.</p>
+  <p class="cds-mono">{{.Minted.Secret}}</p>
+</div>
+{{end}}
+
+<h2 class="cds-h2">API keys</h2>
+<p class="cds-muted">Keys authenticate programmatic access. Only the key identifier and scopes are stored; the secret is shown once at creation.</p>
+{{if .Security.Keys}}
+<div class="cds-scroll-x">
+<table class="cds-table">
+  <thead><tr><th scope="col">Identifier</th><th scope="col">Label</th><th scope="col">Scopes</th><th scope="col">Created</th><th scope="col">Last used</th><th scope="col">Actions</th></tr></thead>
+  <tbody>
+  {{range .Security.Keys}}
+  <tr>
+    <td class="cds-mono">{{.ID}}</td>
+    <td>{{if .Label}}{{.Label}}{{else}}—{{end}}</td>
+    <td>{{range .Scopes}}<span class="cds-tag cds-tag--info">{{.}}</span> {{end}}</td>
+    <td>{{.Created}}</td>
+    <td>{{if .LastUsed}}{{.LastUsed}}{{else}}never{{end}}</td>
+    <td>
+      <form method="post" action="/admin/security" hx-boost="false">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <input type="hidden" name="form" value="revoke">
+        <input type="hidden" name="id" value="{{.ID}}">
+        <button class="cds-btn cds-btn--ghost" type="submit">Revoke</button>
+      </form>
+    </td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{else}}
+<p class="cds-empty">No API keys yet.</p>
+{{end}}
+
+<h2 class="cds-h2">Create API key</h2>
+<form class="cds-form" method="post" action="/admin/security" hx-boost="false">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <input type="hidden" name="form" value="mint">
+  <div class="cds-field">
+    <label class="cds-label" for="key-label">Label</label>
+    <input class="cds-input" type="text" id="key-label" name="label" autocomplete="off">
+  </div>
+  <fieldset class="cds-field">
+    <legend class="cds-label">Scopes</legend>
+    {{range .Security.Scopes}}
+    <label class="cds-checkbox"><input type="checkbox" name="scope" value="{{.Value}}"> {{.Label}}</label>
+    {{end}}
+  </fieldset>
+  <button class="cds-btn" type="submit">Create key</button>
+</form>
+
+<h2 class="cds-h2">Change password</h2>
+<p class="cds-muted">Change the administrator password. You must supply the current password.</p>
+<form class="cds-form" method="post" action="/admin/security" hx-boost="false">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <input type="hidden" name="form" value="password">
+  <div class="cds-field">
+    <label class="cds-label" for="pw-current">Current password</label>
+    <input class="cds-input" type="password" id="pw-current" name="current" autocomplete="current-password">
+  </div>
+  <div class="cds-field">
+    <label class="cds-label" for="pw-new">New password</label>
+    <input class="cds-input" type="password" id="pw-new" name="new" autocomplete="new-password">
+  </div>
+  <div class="cds-field">
+    <label class="cds-label" for="pw-confirm">Confirm new password</label>
+    <input class="cds-input" type="password" id="pw-confirm" name="confirm" autocomplete="new-password">
+  </div>
+  <button class="cds-btn" type="submit">Change password</button>
+</form>
+{{end}}

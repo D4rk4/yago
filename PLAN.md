@@ -1571,14 +1571,24 @@ Acceptance:
 
 ### UI-03: Auth UI
 
-Status: Partial (FTR-030). Done: server-rendered login (`/admin/login`),
-first-run setup (`/admin/setup`), and CSRF-protected sign-out (`/admin/logout`)
-in `internal/adminauth`, reusing the existing auth service; the session guard
-redirects unauthenticated browsers to the login page and now accepts the CSRF
-token from a `csrf_token` form field (not only the `X-CSRF-Token` header), with
-`adminauth.CSRFTokenFromContext` exposing the token to the console for write
-forms. Follow-ups: the in-console API-key management page and a password-change
-page (API keys stay on the JSON auth API for now).
+Status: Done (FTR-030). The server-rendered login (`/admin/login`), first-run
+setup (`/admin/setup`), and CSRF-protected sign-out (`/admin/logout`) in
+`internal/adminauth` remain, and the Security section (`GET`/`POST
+/admin/security`) now delivers the two follow-ups. It is a real console section
+(replacing the placeholder stub) backed by a new `adminui.SecuritySource` seam
+and a `securitySource` adapter over the auth service, which gained exported
+`ListAPIKeys`/`CreateAPIKey`/`RevokeAPIKey`/`ChangePassword` methods plus
+`PrincipalFromContext` and `KnownScopes`. The **API-key page** lists stored keys
+(identifier, label, scopes, created, last-used — never the secret), mints a key
+from a label + scope checkboxes (the raw secret is shown exactly once in a
+one-time banner and is never recoverable), and revokes a key per row. The
+**password-change** form takes the current password plus a new/confirm pair,
+verifies the current password (argon2id) before replacing it, and reports a wrong
+current password or a confirmation mismatch as a rejection. Every form is
+CSRF-guarded; invalid scopes and a wrong current password map to sentinels
+(`ErrInvalidScope`, `ErrPasswordMismatch`) so genuine storage failures stay Go
+errors. Admin pages still require auth; the public search page is unaffected.
+verify green (coverage 97.5%), Semgrep + Trivy clean.
 
 Tasks:
 
