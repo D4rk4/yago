@@ -109,6 +109,23 @@ func (d documentVault) Document(
 	return doc, found, nil
 }
 
+func (d documentVault) Delete(ctx context.Context, normalizedURL string) (bool, error) {
+	var removed bool
+	if err := d.vault.Update(ctx, func(tx *vault.Txn) error {
+		deleted, err := d.collection.Delete(tx, vault.Key(normalizedURL))
+		if err != nil {
+			return fmt.Errorf("delete document: %w", err)
+		}
+		removed = deleted
+
+		return nil
+	}); err != nil {
+		return false, fmt.Errorf("delete document: %w", err)
+	}
+
+	return removed, nil
+}
+
 func (d documentVault) Count(ctx context.Context) (int, error) {
 	var count int
 	err := d.vault.View(ctx, func(tx *vault.Txn) error {

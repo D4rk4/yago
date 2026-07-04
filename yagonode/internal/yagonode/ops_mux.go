@@ -45,10 +45,7 @@ func buildOpsMux(
 		opsMux.Handle(pathSearchRanking, assembled.searchRanking)
 	}
 	seedStatus, seedRefresh := seedImportSources(assembled, config, recorder)
-	var blocks peerBlockStore
-	if assembled.peerBlock != nil {
-		blocks = assembled.peerBlock
-	}
+	blocks := assembledPeerBlocks(assembled)
 	options := adminui.Options{
 		Overview: newOverviewSource(assembled.report),
 		Search:   newSearchSource(assembled.searcher),
@@ -72,6 +69,9 @@ func buildOpsMux(
 	}
 	if assembled.docScan != nil {
 		options.Documents = newDocumentBrowseSource(assembled.docScan)
+	}
+	if assembled.indexAdmin != nil {
+		options.IndexAdmin = assembled.indexAdmin
 	}
 	if assembled.roster != nil {
 		options.PeerDetail = newPeerDetailSource(assembled.roster, blocks)
@@ -130,6 +130,17 @@ func seedImportSources(
 	)
 
 	return store, refresh
+}
+
+// assembledPeerBlocks returns the peer-block store as an interface, preserving a
+// true nil (rather than a typed-nil) when the node has no block store so callers
+// can guard on it.
+func assembledPeerBlocks(assembled node) peerBlockStore {
+	if assembled.peerBlock == nil {
+		return nil
+	}
+
+	return assembled.peerBlock
 }
 
 func metricsHandler(endpoints *metrics.HTTPEndpointMetrics, enabled bool) http.Handler {

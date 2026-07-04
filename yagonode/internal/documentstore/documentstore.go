@@ -45,6 +45,12 @@ type StoredDocuments interface {
 	StoredDocuments(ctx context.Context, visit func(Document) (bool, error)) error
 }
 
+// DocumentEvictor removes a stored document by its normalized URL (the store key),
+// reporting whether a document was present. It backs operator delete actions.
+type DocumentEvictor interface {
+	Delete(ctx context.Context, normalizedURL string) (bool, error)
+}
+
 type DocumentReceiver interface {
 	Receive(ctx context.Context, docs []Document) (Receipt, error)
 }

@@ -60,15 +60,31 @@ func (s quotaSweeper) Sweep(ctx context.Context) (Result, error) {
 }
 
 func (s quotaSweeper) purge(ctx context.Context, urls []yagomodel.Hash) (Result, error) {
+	return purgeURLs(ctx, s.vault, s.postings, s.references, s.urls, urls)
+}
+
+// purgeURLs drops the postings and metadata of the given URLs in one
+// capacity-exempt transaction, so every collection clears atomically. It backs
+// both the quota sweep and the on-demand Evictor.
+//
+//nolint:revive // each argument is a distinct collection the purge touches; bundling them would invent a hollow type
+func purgeURLs(
+	ctx context.Context,
+	v *vault.Vault,
+	postings rwi.PostingPurger,
+	references urlreferences.ReferenceQuery,
+	evictor urlmeta.URLEvictor,
+	urls []yagomodel.Hash,
+) (Result, error) {
 	var result Result
-	err := s.vault.Update(ctx, func(tx *vault.Txn) error {
+	err := v.Update(ctx, func(tx *vault.Txn) error {
 		for _, url := range urls {
-			words, err := s.references.WordsReferencing(tx, url)
+			words, err := references.WordsReferencing(tx, url)
 			if err != nil {
 				return fmt.Errorf("words referencing url: %w", err)
 			}
 			for _, word := range words {
-				deleted, err := s.postings.PurgePosting(tx, word, url)
+				deleted, err := postings.PurgePosting(tx, word, url)
 				if err != nil {
 					return fmt.Errorf("purge posting: %w", err)
 				}
@@ -78,7 +94,7 @@ func (s quotaSweeper) purge(ctx context.Context, urls []yagomodel.Hash) (Result,
 			}
 		}
 
-		urlResult, err := s.urls.Purge(ctx, tx, urls)
+		urlResult, err := evictor.Purge(ctx, tx, urls)
 		if err != nil {
 			return fmt.Errorf("purge urls: %w", err)
 		}

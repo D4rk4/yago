@@ -56,11 +56,22 @@
   <button class="cds-btn" type="submit">Search</button>
   <a class="cds-btn cds-btn--ghost" href="/admin/index">Clear</a>
 </form>
+{{$del := .DeleteEnabled}}
+{{$csrf := .CSRF}}
+{{if and $del .DocDomain}}
+<form class="cds-actions" method="post" action="/admin/index/delete"
+      hx-confirm="Delete every indexed document from {{.DocDomain}}? This cannot be undone.">
+  <input type="hidden" name="csrf_token" value="{{$csrf}}">
+  <input type="hidden" name="action" value="domain">
+  <input type="hidden" name="domain" value="{{.DocDomain}}">
+  <button class="cds-btn cds-btn--danger" type="submit">Delete all from {{.DocDomain}}</button>
+</form>
+{{end}}
 {{if .Documents.Documents}}
 <p class="cds-muted">{{.Documents.Matched}} matching document(s){{if .Documents.Truncated}}, showing the first {{.Documents.Limit}}{{end}}.</p>
 <div class="cds-scroll-x">
   <table class="cds-table">
-    <thead><tr><th scope="col">URL</th><th scope="col">Title</th><th scope="col">Type</th><th scope="col">Lang</th><th scope="col">Indexed</th></tr></thead>
+    <thead><tr><th scope="col">URL</th><th scope="col">Title</th><th scope="col">Type</th><th scope="col">Lang</th><th scope="col">Indexed</th>{{if $del}}<th scope="col">Action</th>{{end}}</tr></thead>
     <tbody>
       {{range .Documents.Documents}}
       <tr>
@@ -69,6 +80,17 @@
         <td>{{if .ContentType}}{{.ContentType}}{{else}}—{{end}}</td>
         <td>{{if .Language}}{{.Language}}{{else}}—{{end}}</td>
         <td>{{if .IndexedAt}}{{.IndexedAt}}{{else}}—{{end}}</td>
+        {{if $del}}
+        <td>
+          <form method="post" action="/admin/index/delete"
+                hx-confirm="Delete this document from the index? This cannot be undone.">
+            <input type="hidden" name="csrf_token" value="{{$csrf}}">
+            <input type="hidden" name="action" value="url">
+            <input type="hidden" name="url" value="{{.Key}}">
+            <button class="cds-btn cds-btn--danger cds-btn--ghost" type="submit">Delete</button>
+          </form>
+        </td>
+        {{end}}
       </tr>
       {{end}}
     </tbody>

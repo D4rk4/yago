@@ -15,12 +15,14 @@ import (
 type scriptedDocumentEngine struct {
 	buckets   map[vault.Name]map[string][]byte
 	putErrors map[vault.Name]error
+	delErrors map[vault.Name]error
 }
 
 func newScriptedDocumentEngine() *scriptedDocumentEngine {
 	return &scriptedDocumentEngine{
 		buckets:   map[vault.Name]map[string][]byte{},
 		putErrors: map[vault.Name]error{},
+		delErrors: map[vault.Name]error{},
 	}
 }
 
@@ -82,6 +84,9 @@ func (b scriptedDocumentBucket) Put(key vault.Key, raw []byte) error {
 }
 
 func (b scriptedDocumentBucket) Delete(key vault.Key) error {
+	if err := b.engine.delErrors[b.name]; err != nil {
+		return err
+	}
 	delete(b.engine.buckets[b.name], string(key))
 	return nil
 }
@@ -568,5 +573,63 @@ func TestOpenReturnsRegisterError(t *testing.T) {
 func TestDocumentCodecRejectsInvalidJSON(t *testing.T) {
 	if _, err := (documentCodec{}).Decode([]byte("{")); err == nil {
 		t.Fatal("expected decode error")
+	}
+}
+
+func TestDeleteRemovesDocument(t *testing.T) {
+	directory, receiver := openDocuments(t)
+	doc := Document{
+		CanonicalURL:  "https://example.org/",
+		NormalizedURL: "https://example.org/",
+		Title:         "Example",
+	}
+	if _, err := receiver.Receive(context.Background(), []Document{doc}); err != nil {
+		t.Fatalf("receive: %v", err)
+	}
+
+	removed, err := directory.(DocumentEvictor).Delete(context.Background(), doc.NormalizedURL)
+	if err != nil || !removed {
+		t.Fatalf("delete = %v, %v; want removed", removed, err)
+	}
+	if _, ok, _ := directory.Document(context.Background(), doc.NormalizedURL); ok {
+		t.Fatal("document should be gone after delete")
+	}
+}
+
+func TestDeleteAbsentDocumentIsNoOp(t *testing.T) {
+	directory, _ := openDocuments(t)
+
+	removed, err := directory.(DocumentEvictor).Delete(
+		context.Background(),
+		"https://absent.example/",
+	)
+	if err != nil || removed {
+		t.Fatalf("delete absent = %v, %v; want (false, nil)", removed, err)
+	}
+}
+
+func TestDeleteReturnsUpdateError(t *testing.T) {
+	directory, _, _ := openScriptedDocuments(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := directory.(DocumentEvictor).Delete(ctx, "https://x.example/"); err == nil {
+		t.Fatal("delete should surface an update error")
+	}
+}
+
+func TestDeleteReturnsCollectionError(t *testing.T) {
+	directory, receiver, engine := openScriptedDocuments(t)
+	doc := Document{CanonicalURL: "https://x.example/", NormalizedURL: "https://x.example/"}
+	if _, err := receiver.Receive(context.Background(), []Document{doc}); err != nil {
+		t.Fatalf("receive: %v", err)
+	}
+	engine.delErrors[bucketName] = errors.New("delete boom")
+
+	if _, err := directory.(DocumentEvictor).Delete(
+		context.Background(),
+		doc.NormalizedURL,
+	); err == nil {
+		t.Fatal("delete should surface a collection error")
 	}
 }

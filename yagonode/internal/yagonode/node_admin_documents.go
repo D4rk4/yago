@@ -102,6 +102,7 @@ func documentURL(doc documentstore.Document) string {
 func documentSummary(doc documentstore.Document) adminui.DocumentSummary {
 	return adminui.DocumentSummary{
 		URL:         documentURL(doc),
+		Key:         doc.NormalizedURL,
 		Title:       doc.Title,
 		ContentType: doc.ContentType,
 		Language:    doc.Language,

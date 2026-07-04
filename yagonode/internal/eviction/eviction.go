@@ -8,6 +8,7 @@ package eviction
 import (
 	"context"
 
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
 	"github.com/D4rk4/yago/yagonode/internal/urlmeta"
 	"github.com/D4rk4/yago/yagonode/internal/urlmetastaleness"
@@ -47,4 +48,27 @@ func NewSweeper(
 		target:     cfg.TargetFraction,
 		batch:      cfg.BatchSize,
 	}
+}
+
+// Evictor removes specific URLs on demand — the operator-driven counterpart to the
+// quota Sweep — running the same atomic posting-and-metadata purge.
+type Evictor struct {
+	vault      *vault.Vault
+	postings   rwi.PostingPurger
+	references urlreferences.ReferenceQuery
+	urls       urlmeta.URLEvictor
+}
+
+func NewEvictor(
+	vault *vault.Vault,
+	postings rwi.PostingPurger,
+	references urlreferences.ReferenceQuery,
+	urls urlmeta.URLEvictor,
+) Evictor {
+	return Evictor{vault: vault, postings: postings, references: references, urls: urls}
+}
+
+// EvictURLs drops the postings and metadata of the given URL hashes.
+func (e Evictor) EvictURLs(ctx context.Context, urls []yagomodel.Hash) (Result, error) {
+	return purgeURLs(ctx, e.vault, e.postings, e.references, e.urls, urls)
 }

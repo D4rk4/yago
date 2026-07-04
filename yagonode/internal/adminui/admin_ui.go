@@ -38,6 +38,7 @@ const (
 	crawlControlPath    = "/admin/crawl/control"
 	configPath          = "/admin/configuration"
 	indexPath           = "/admin/index"
+	indexDeletePath     = "/admin/index/delete"
 	networkPath         = "/admin/network"
 	networkPeerPath     = "/admin/network/peer"
 	peerBlockPath       = "/admin/network/peer/block"
@@ -86,6 +87,7 @@ type Options struct {
 	Control         CrawlControlSource
 	Index           IndexSource
 	Documents       DocumentBrowserSource
+	IndexAdmin      IndexAdminSource
 	Network         NetworkSource
 	Config          ConfigSource
 	Settings        SettingsSource
@@ -204,20 +206,21 @@ type configPageData struct {
 }
 
 type indexPageData struct {
-	AppName     string
-	ActivePath  string
-	Nav         []NavItem
-	CSRF        string
-	Section     sectionView
-	Index       IndexStats
-	TermEnabled bool
-	TermQueried bool
-	Term        TermReport
-	Schema      []SchemaGroup
-	DocsEnabled bool
-	Documents   DocumentPage
-	DocQuery    string
-	DocDomain   string
+	AppName       string
+	ActivePath    string
+	Nav           []NavItem
+	CSRF          string
+	Section       sectionView
+	Index         IndexStats
+	TermEnabled   bool
+	TermQueried   bool
+	Term          TermReport
+	Schema        []SchemaGroup
+	DocsEnabled   bool
+	Documents     DocumentPage
+	DocQuery      string
+	DocDomain     string
+	DeleteEnabled bool
 }
 
 type securityPageData struct {
@@ -282,6 +285,7 @@ type Console struct {
 	control         CrawlControlSource
 	index           IndexSource
 	documents       DocumentBrowserSource
+	indexAdmin      IndexAdminSource
 	network         NetworkSource
 	config          ConfigSource
 	settings        SettingsSource
@@ -314,6 +318,7 @@ func New(opts Options) *Console {
 		control:         opts.Control,
 		index:           opts.Index,
 		documents:       opts.Documents,
+		indexAdmin:      opts.IndexAdmin,
 		network:         opts.Network,
 		config:          opts.Config,
 		settings:        opts.Settings,
@@ -365,6 +370,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+crawlMonitorPath, c.handleCrawlMonitor)
 	c.mux.HandleFunc("POST "+crawlControlPath, c.handleCrawlControl)
 	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
+	c.mux.HandleFunc("POST "+indexDeletePath, c.handleIndexDelete)
 	c.mux.HandleFunc("GET "+networkPath, c.handleNetwork)
 	c.mux.HandleFunc("GET "+networkPeerPath, c.handleNetworkPeer)
 	c.mux.HandleFunc("POST "+peerBlockPath, c.handlePeerBlock)
@@ -460,6 +466,7 @@ func (c *Console) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	if c.documents != nil {
 		data.DocsEnabled = true
+		data.DeleteEnabled = c.indexAdmin != nil
 		data.DocQuery = strings.TrimSpace(r.URL.Query().Get("q"))
 		data.DocDomain = strings.TrimSpace(r.URL.Query().Get("domain"))
 		data.Documents = c.documents.BrowseDocuments(r.Context(), DocumentQuery{
@@ -469,6 +476,33 @@ func (c *Console) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c.render(r.Context(), w, c.tpl.index, "layout", data)
+}
+
+func (c *Console) handleIndexDelete(w http.ResponseWriter, r *http.Request) {
+	if c.indexAdmin == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+
+	ctx := r.Context()
+	var err error
+	switch r.PostFormValue("action") {
+	case "url":
+		err = c.indexAdmin.DeleteDocument(ctx, strings.TrimSpace(r.PostFormValue("url")))
+	case "domain":
+		_, err = c.indexAdmin.DeleteDomain(ctx, strings.TrimSpace(r.PostFormValue("domain")))
+	default:
+		http.Error(w, "unknown index delete action", http.StatusBadRequest)
+
+		return
+	}
+	if err != nil {
+		slog.WarnContext(ctx, "admin index delete failed",
+			slog.String("action", r.PostFormValue("action")), slog.Any("error", err))
+	}
+
+	http.Redirect(w, r, indexPath, http.StatusSeeOther)
 }
 
 func (c *Console) handlePerformance(w http.ResponseWriter, r *http.Request) {

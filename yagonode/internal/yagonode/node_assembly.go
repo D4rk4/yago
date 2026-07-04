@@ -41,6 +41,7 @@ type node struct {
 	searcher      searchcore.Searcher
 	index         searchindex.SearchIndex
 	docScan       documentstore.StoredDocuments
+	indexAdmin    *indexAdminController
 	postings      rwi.PostingIndex
 	urlDirectory  urlmeta.URLDirectory
 	roster        peerroster.Roster
@@ -264,6 +265,7 @@ func newAssembledNode(parts nodeParts) node {
 		searcher:      parts.searcher,
 		index:         parts.storage.searchIndex,
 		docScan:       parts.storage.storedDocuments(),
+		indexAdmin:    newIndexAdminController(parts.storage, parts.vault),
 		postings:      parts.storage.postings,
 		urlDirectory:  parts.storage.urlDirectory,
 		roster:        parts.roster,

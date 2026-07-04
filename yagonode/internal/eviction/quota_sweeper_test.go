@@ -326,3 +326,32 @@ func TestSweepReportsPostingError(t *testing.T) {
 		t.Fatalf("err = %v, want %v", err, wantErr)
 	}
 }
+
+func TestEvictorEvictsURLs(t *testing.T) {
+	v := openVault(t, 1024)
+	postings := &fakePostings{}
+	urls := &fakeURLs{remaining: hashes(2)}
+	evictor := eviction.NewEvictor(v, postings, fakeReferences{word: yagomodel.WordHash("w")}, urls)
+
+	result, err := evictor.EvictURLs(context.Background(), hashes(2))
+	if err != nil {
+		t.Fatalf("EvictURLs: %v", err)
+	}
+	if result.URLsDeleted != 2 || result.PostingsDeleted != 2 {
+		t.Fatalf("result = %+v", result)
+	}
+	if len(postings.purged) != 2 {
+		t.Fatalf("purged = %v", postings.purged)
+	}
+}
+
+func TestEvictorSurfacesPurgeError(t *testing.T) {
+	v := openVault(t, 1024)
+	evictor := eviction.NewEvictor(
+		v, &fakePostings{}, fakeReferences{}, &fakeURLs{purgeErr: errors.New("boom")},
+	)
+
+	if _, err := evictor.EvictURLs(context.Background(), hashes(1)); err == nil {
+		t.Fatal("EvictURLs should surface a purge error")
+	}
+}

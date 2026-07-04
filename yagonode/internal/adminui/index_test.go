@@ -2,7 +2,9 @@ package adminui
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -167,5 +169,127 @@ func TestConsoleIndexOmitsDocumentBrowserWithoutSource(t *testing.T) {
 	got := do(t, New(Options{Index: fakeIndex{snap: IndexStats{Available: true}}}), "/admin/index")
 	if strings.Contains(got.body, "Document browser") {
 		t.Fatal("document browser rendered without a source")
+	}
+}
+
+type fakeIndexAdmin struct {
+	deletedKeys    []string
+	deletedDomains []string
+	err            error
+}
+
+func (f *fakeIndexAdmin) DeleteDocument(_ context.Context, key string) error {
+	f.deletedKeys = append(f.deletedKeys, key)
+
+	return f.err
+}
+
+func (f *fakeIndexAdmin) DeleteDomain(_ context.Context, domain string) (int, error) {
+	f.deletedDomains = append(f.deletedDomains, domain)
+
+	return len(f.deletedDomains), f.err
+}
+
+func docBrowserWithOne() *fakeDocuments {
+	return &fakeDocuments{page: DocumentPage{
+		Documents: []DocumentSummary{{URL: "https://a.example/1", Key: "https://a.example/1"}},
+		Matched:   1,
+		Limit:     50,
+	}}
+}
+
+func TestConsoleIndexRendersDeleteControls(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Index:      fakeIndex{snap: IndexStats{Available: true}},
+		Documents:  docBrowserWithOne(),
+		IndexAdmin: &fakeIndexAdmin{},
+	})
+	got := do(t, console, "/admin/index?domain=a.example")
+	for _, want := range []string{
+		"Delete all from a.example", `value="domain"`,
+		">Delete<", `value="url"`, `value="https://a.example/1"`,
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("delete controls missing %q", want)
+		}
+	}
+
+	without := do(
+		t,
+		New(
+			Options{
+				Index:     fakeIndex{snap: IndexStats{Available: true}},
+				Documents: docBrowserWithOne(),
+			},
+		),
+		"/admin/index?domain=a.example",
+	)
+	if strings.Contains(without.body, ">Delete<") ||
+		strings.Contains(without.body, "Delete all from") {
+		t.Fatal("no delete controls should render without an index-admin source")
+	}
+}
+
+func TestConsoleIndexDeleteDocument(t *testing.T) {
+	t.Parallel()
+
+	admin := &fakeIndexAdmin{}
+	got := doPost(t, New(Options{IndexAdmin: admin}), indexDeletePath, url.Values{
+		"action": {"url"}, "url": {"https://a.example/1"},
+	})
+	if got.status != http.StatusSeeOther {
+		t.Fatalf("status %d, want 303", got.status)
+	}
+	if loc := got.header.Get("Location"); loc != indexPath {
+		t.Fatalf("location %q, want %q", loc, indexPath)
+	}
+	if len(admin.deletedKeys) != 1 || admin.deletedKeys[0] != "https://a.example/1" {
+		t.Fatalf("deleted keys = %v", admin.deletedKeys)
+	}
+}
+
+func TestConsoleIndexDeleteDomain(t *testing.T) {
+	t.Parallel()
+
+	admin := &fakeIndexAdmin{}
+	got := doPost(t, New(Options{IndexAdmin: admin}), indexDeletePath, url.Values{
+		"action": {"domain"}, "domain": {"a.example"},
+	})
+	if got.status != http.StatusSeeOther || len(admin.deletedDomains) != 1 {
+		t.Fatalf("status %d, domains %v", got.status, admin.deletedDomains)
+	}
+}
+
+func TestConsoleIndexDeleteRejectsUnknownAction(t *testing.T) {
+	t.Parallel()
+
+	got := doPost(t, New(Options{IndexAdmin: &fakeIndexAdmin{}}), indexDeletePath, url.Values{
+		"action": {"purge"},
+	})
+	if got.status != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", got.status)
+	}
+}
+
+func TestConsoleIndexDeleteWithoutSourceIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	got := doPost(t, New(Options{}), indexDeletePath, url.Values{"action": {"url"}, "url": {"x"}})
+	if got.status != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", got.status)
+	}
+}
+
+func TestConsoleIndexDeleteRedirectsOnError(t *testing.T) {
+	t.Parallel()
+
+	admin := &fakeIndexAdmin{err: errors.New("delete failed")}
+	got := doPost(t, New(Options{IndexAdmin: admin}), indexDeletePath, url.Values{
+		"action": {"url"}, "url": {"https://a.example/1"},
+	})
+	if got.status != http.StatusSeeOther {
+		t.Fatalf("a failed delete should still redirect: status %d", got.status)
 	}
 }

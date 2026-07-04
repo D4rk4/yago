@@ -3,8 +3,10 @@ package adminui
 import "context"
 
 // DocumentSummary is one indexed document as shown in the Index document browser.
+// Key is the store key (the normalized URL) used to delete the document.
 type DocumentSummary struct {
 	URL         string
+	Key         string
 	Title       string
 	ContentType string
 	Language    string
@@ -32,4 +34,13 @@ type DocumentPage struct {
 // first, bounded to a fixed page size. A nil provider hides the document browser.
 type DocumentBrowserSource interface {
 	BrowseDocuments(ctx context.Context, query DocumentQuery) DocumentPage
+}
+
+// IndexAdminSource performs destructive index maintenance: removing one document
+// by its store key, or every document of a domain. It removes the document from
+// every index lineage it participates in. A nil provider hides the delete
+// controls.
+type IndexAdminSource interface {
+	DeleteDocument(ctx context.Context, key string) error
+	DeleteDomain(ctx context.Context, domain string) (int, error)
 }
