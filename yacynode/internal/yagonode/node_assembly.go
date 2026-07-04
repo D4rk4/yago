@@ -99,7 +99,9 @@ func assembleNode(
 	storage = observeDHTInboundStorage(storage, telemetry.dhtInbound, tally)
 
 	mux := http.NewServeMux()
-	mux.Handle("/{$}", landing.NewEndpoint())
+	if !config.PublicSearchUIEnabled {
+		mux.Handle("/{$}", landing.NewEndpoint())
+	}
 	router := httpguard.NewWireRouter(mux, newRuntimeWireGate(config, report))
 
 	mountNodeProtocol(router, identity, storage)
@@ -176,16 +178,17 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		return nodeSurfaces{}, err
 	}
 	searcher := mountNodePublicSearch(in.mux, publicSearchAssembly{
-		storage:          in.storage,
-		roster:           in.roster,
-		identity:         in.identity,
-		dht:              in.config.DHT,
-		client:           in.client,
-		searchAPIKey:     in.config.SearchAPIKey,
-		searchAuthorizer: in.telemetry.searchAuthorizer,
-		extractFetcher:   buildExtractFetcher(in.config, in.client),
-		webFallback:      in.config.WebFallback,
-		seedQueue:        crawlOrderQueue(runtime),
+		storage:             in.storage,
+		roster:              in.roster,
+		identity:            in.identity,
+		dht:                 in.config.DHT,
+		client:              in.client,
+		searchAPIKey:        in.config.SearchAPIKey,
+		searchAuthorizer:    in.telemetry.searchAuthorizer,
+		extractFetcher:      buildExtractFetcher(in.config, in.client),
+		webFallback:         in.config.WebFallback,
+		seedQueue:           crawlOrderQueue(runtime),
+		publicPortalEnabled: in.config.PublicSearchUIEnabled,
 	})
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
 		ctx:         in.ctx,

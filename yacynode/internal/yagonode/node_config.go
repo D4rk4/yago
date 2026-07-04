@@ -33,6 +33,7 @@ const (
 	envGreetsPerCycle      = "YACY_GREETS_PER_CYCLE"
 	envSearchAccessToken   = "YAGO_SEARCH_API" + "_KEY"
 	envSearchRequireAPIKey = "YAGO_SEARCH_REQUIRE_API" + "_KEY"
+	envPublicSearchUI      = "YAGO_PUBLIC_SEARCH_UI_ENABLED"
 	envPeerBirthDate       = "YACY_PEER_BIRTH_DATE"
 
 	defaultPeerAddr         = ":8090"
@@ -49,34 +50,35 @@ const (
 )
 
 type nodeConfig struct {
-	Hash                yacymodel.Hash
-	NetworkName         string
-	Name                string
-	DataDir             string
-	AdvertiseHost       string
-	AdvertisePort       int
-	PublicSelfTestURL   *url.URL
-	Flags               yacymodel.Flags
-	PeerAddr            string
-	OpsAddr             string
-	StoragePath         string
-	SearchIndexPath     string
-	StorageQuotaByte    int64
-	TrustedProxies      []*net.IPNet
-	EgressAllowLAN      bool
-	EgressAllowedCIDRs  []netip.Prefix
-	SeedlistURLs        []string
-	AnnounceInterval    time.Duration
-	GreetsPerCycle      int
-	SearchAPIKey        string
-	SearchRequireAPIKey bool
-	DeclaredBirthDate   time.Time
-	Crawl               crawlConfig
-	Admin               adminConfig
-	CrossOrigin         crossOriginConfig
-	DHT                 dhtDistributionConfig
-	WebFallback         webFallbackConfig
-	ExtractFetch        extractFetchConfig
+	Hash                  yacymodel.Hash
+	NetworkName           string
+	Name                  string
+	DataDir               string
+	AdvertiseHost         string
+	AdvertisePort         int
+	PublicSelfTestURL     *url.URL
+	Flags                 yacymodel.Flags
+	PeerAddr              string
+	OpsAddr               string
+	StoragePath           string
+	SearchIndexPath       string
+	StorageQuotaByte      int64
+	TrustedProxies        []*net.IPNet
+	EgressAllowLAN        bool
+	EgressAllowedCIDRs    []netip.Prefix
+	SeedlistURLs          []string
+	AnnounceInterval      time.Duration
+	GreetsPerCycle        int
+	SearchAPIKey          string
+	SearchRequireAPIKey   bool
+	PublicSearchUIEnabled bool
+	DeclaredBirthDate     time.Time
+	Crawl                 crawlConfig
+	Admin                 adminConfig
+	CrossOrigin           crossOriginConfig
+	DHT                   dhtDistributionConfig
+	WebFallback           webFallbackConfig
+	ExtractFetch          extractFetchConfig
 }
 
 type configuredNodeData struct {
@@ -136,40 +138,42 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	}
 
 	return nodeConfig{
-		Hash:                hash,
-		NetworkName:         envWithDefault(getenv, envNetworkName, yacyproto.DefaultNetwork),
-		Name:                name,
-		DataDir:             data.directory,
-		AdvertiseHost:       host,
-		AdvertisePort:       port,
-		PublicSelfTestURL:   selfTestURL,
-		Flags:               seniorFlags(),
-		PeerAddr:            peerAddr,
-		OpsAddr:             envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
-		StoragePath:         data.databasePath,
-		SearchIndexPath:     data.searchIndexPath,
-		StorageQuotaByte:    data.quotaByte,
-		TrustedProxies:      proxies,
-		EgressAllowLAN:      egressAllowLAN,
-		EgressAllowedCIDRs:  egressAllowedCIDRs,
-		SeedlistURLs:        seedlistURLs,
-		AnnounceInterval:    announceInterval,
-		GreetsPerCycle:      greetsPerCycle,
-		SearchAPIKey:        strings.TrimSpace(getenv(envSearchAccessToken)),
-		SearchRequireAPIKey: derived.requireAPIKey,
-		DeclaredBirthDate:   derived.birthDate,
-		DHT:                 derived.dht,
-		WebFallback:         derived.webFallback,
-		ExtractFetch:        derived.extractFetch,
+		Hash:                  hash,
+		NetworkName:           envWithDefault(getenv, envNetworkName, yacyproto.DefaultNetwork),
+		Name:                  name,
+		DataDir:               data.directory,
+		AdvertiseHost:         host,
+		AdvertisePort:         port,
+		PublicSelfTestURL:     selfTestURL,
+		Flags:                 seniorFlags(),
+		PeerAddr:              peerAddr,
+		OpsAddr:               envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
+		StoragePath:           data.databasePath,
+		SearchIndexPath:       data.searchIndexPath,
+		StorageQuotaByte:      data.quotaByte,
+		TrustedProxies:        proxies,
+		EgressAllowLAN:        egressAllowLAN,
+		EgressAllowedCIDRs:    egressAllowedCIDRs,
+		SeedlistURLs:          seedlistURLs,
+		AnnounceInterval:      announceInterval,
+		GreetsPerCycle:        greetsPerCycle,
+		SearchAPIKey:          strings.TrimSpace(getenv(envSearchAccessToken)),
+		SearchRequireAPIKey:   derived.requireAPIKey,
+		PublicSearchUIEnabled: derived.publicSearchUI,
+		DeclaredBirthDate:     derived.birthDate,
+		DHT:                   derived.dht,
+		WebFallback:           derived.webFallback,
+		ExtractFetch:          derived.extractFetch,
 	}, nil
 }
 
 type derivedConfigs struct {
-	dht           dhtDistributionConfig
-	webFallback   webFallbackConfig
-	birthDate     time.Time
-	requireAPIKey bool
-	extractFetch  extractFetchConfig
+	dht            dhtDistributionConfig
+	webFallback    webFallbackConfig
+	birthDate      time.Time
+	requireAPIKey  bool
+	publicSearchUI bool
+	extractFetch   extractFetchConfig
 }
 
 func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
@@ -189,17 +193,22 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	if err != nil {
 		return derivedConfigs{}, fmt.Errorf("%s: %w", envSearchRequireAPIKey, err)
 	}
+	publicSearchUI, err := boolEnv(getenv, envPublicSearchUI, false)
+	if err != nil {
+		return derivedConfigs{}, fmt.Errorf("%s: %w", envPublicSearchUI, err)
+	}
 	extractFetch, err := loadExtractFetchConfig(getenv)
 	if err != nil {
 		return derivedConfigs{}, err
 	}
 
 	return derivedConfigs{
-		dht:           dht,
-		webFallback:   webFallback,
-		birthDate:     birthDate,
-		requireAPIKey: requireAPIKey,
-		extractFetch:  extractFetch,
+		dht:            dht,
+		webFallback:    webFallback,
+		birthDate:      birthDate,
+		requireAPIKey:  requireAPIKey,
+		publicSearchUI: publicSearchUI,
+		extractFetch:   extractFetch,
 	}, nil
 }
 

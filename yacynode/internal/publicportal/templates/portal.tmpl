@@ -1,0 +1,58 @@
+{{define "portal"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{{if .Query}}{{.Query}} — {{end}}{{.Brand}} search</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; color: #161616; background: #ffffff; margin: 0; }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 1rem; }
+  .home { text-align: center; margin-top: 12vh; }
+  .brand { font-size: 3.5rem; font-weight: 700; letter-spacing: -0.02em; }
+  .brand b { color: #d81c2f; }
+  form.search { margin: 1.5rem 0; }
+  .search input[type=search] { width: 70%; max-width: 32rem; height: 2.5rem; font-size: 1rem;
+    padding: 0 0.6rem; border: 1px solid #8d8d8d; vertical-align: middle; box-sizing: border-box; }
+  .search button { height: 2.5rem; font-size: 1rem; padding: 0 1rem; background: #d81c2f;
+    color: #ffffff; border: none; cursor: pointer; vertical-align: middle; }
+  .meta { color: #525252; font-size: 0.8rem; margin: 0.5rem 0 1rem; }
+  .result { margin: 0 0 1.1rem; }
+  .result a.title { color: #0f62fe; font-size: 1.05rem; text-decoration: none; }
+  .result a.title:hover { text-decoration: underline; }
+  .result .url { color: #178a3a; font-size: 0.8rem; word-break: break-all; }
+  .result p { margin: 0.2rem 0 0; color: #333333; font-size: 0.9rem; }
+  .ddgs { color: #8d8d8d; font-size: 0.85em; }
+  .foot { color: #8d8d8d; font-size: 0.7rem; margin-top: 2rem; border-top: 1px solid #e0e0e0; padding-top: 0.6rem; }
+  @media (max-width: 32rem) { .brand { font-size: 2.5rem; } .search input[type=search] { width: 60%; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="{{if not .Submitted}}{{if not .Error}}home{{end}}{{end}}">
+    <div class="brand"><b>ya</b>go</div>
+    <form class="search" method="get" action="/" role="search">
+      <input type="search" name="q" value="{{.Query}}" aria-label="Search query" autofocus>
+      <button type="submit">Search</button>
+    </form>
+  </div>
+  {{if .Error}}
+  <p class="meta" role="alert">{{.Error}}</p>
+  {{else if .Submitted}}
+  {{with .Results}}
+  <p class="meta">{{.TotalResults}} result(s) for “{{.Query}}”.</p>
+  {{range .Results}}
+  <div class="result">
+    <a class="title" href="{{.URL}}" rel="noopener noreferrer nofollow">{{if .Marked}}<span class="ddgs">[ddgs]</span> {{end}}{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a>
+    <div class="url">{{if .DisplayURL}}{{.DisplayURL}}{{else}}{{.URL}}{{end}}</div>
+    {{if .Snippet}}<p>{{.Snippet}}</p>{{end}}
+  </div>
+  {{else}}
+  <p class="meta">Nothing found.</p>
+  {{end}}
+  {{end}}
+  {{end}}
+  <div class="foot">{{.Brand}} — free software under the GNU AGPL v3.</div>
+</div>
+</body>
+</html>{{end}}

@@ -46,6 +46,8 @@ components:
     in: internal/landing/**
   adminui:
     in: internal/adminui/**
+  publicportal:
+    in: internal/publicportal/**
   crawling:
     in: internal/crawling/**
   crawlurls:
@@ -275,6 +277,9 @@ deps:
   adminui:
     mayDependOn:
       - adminui
+  publicportal:
+    mayDependOn:
+      - publicportal
   crawling:
     mayDependOn:
       - crawling
@@ -499,6 +504,7 @@ deps:
       - bootstrap
       - landing
       - adminui
+      - publicportal
       - crawling
       - crawlurls
       - dhttarget

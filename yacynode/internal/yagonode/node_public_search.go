@@ -7,6 +7,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/documentsearch"
 	"github.com/D4rk4/yago/yacynode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yacynode/internal/peerroster"
+	"github.com/D4rk4/yago/yacynode/internal/publicportal"
 	"github.com/D4rk4/yago/yacynode/internal/searchcore"
 	"github.com/D4rk4/yago/yacynode/internal/searchlocal"
 	"github.com/D4rk4/yago/yacynode/internal/searchremote"
@@ -27,6 +28,7 @@ type publicSearchAssembly struct {
 	extractFetcher       tavilyapi.ContentFetcher
 	webFallback          webFallbackConfig
 	seedQueue            crawldispatch.CrawlOrderQueue
+	publicPortalEnabled  bool
 }
 
 func mountNodePublicSearch(
@@ -56,6 +58,9 @@ func mountNodePublicSearch(
 	yacysearch.Mount(mux, search)
 	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
 	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access, assembly.extractFetcher)
+	if assembly.publicPortalEnabled {
+		mux.Handle("/{$}", publicportal.New(newPortalSource(search)))
+	}
 
 	return search
 }

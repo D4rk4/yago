@@ -1812,6 +1812,15 @@ Acceptance:
 
 ### UI-11: Public search portal (port 80)
 
+Status: Done (FTR-029, ADR-0020). Off by default (`YAGO_PUBLIC_SEARCH_UI_ENABLED`),
+a server-rendered `internal/publicportal` replaces the landing page at the public
+root `/`: a minimal early-2000s-Yandex page (centered wordmark, one box+button,
+plain results) that works without JavaScript and in legacy browsers, is responsive,
+and is self-contained (inline styles). It queries the shared search core (local +
+peers + DDGS fallback), shows the `[ddgs]` marker, exposes only search, and does
+not log the query. OpenSearch/suggestions on the portal and SEC-05 privacy wiring
+remain follow-ups.
+
 A separate, admin-toggleable **public** search UI served on the node's public
 HTTP port (`80` in appliance mode) — distinct from the authenticated Carbon admin
 SPA (UI-02..UI-10). It is the anonymous front door for search-portal and intranet
