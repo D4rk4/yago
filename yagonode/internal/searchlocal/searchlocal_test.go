@@ -283,3 +283,31 @@ func mustParseURL(tb testing.TB, raw string) *url.URL {
 
 	return parsed
 }
+
+func TestSearcherThreadsProviderWeights(t *testing.T) {
+	index := &fakeIndex{}
+	want := searchindex.RankingWeights{Title: 7, Headings: 5, Anchors: 3, Body: 2, URL: 1}
+	searcher := NewSearcherWithWeights(
+		index,
+		func() searchindex.RankingWeights { return want },
+	)
+	if _, err := searcher.Search(t.Context(), searchcore.Request{Query: "golang"}); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if index.got.Weights != want {
+		t.Fatalf("index weights = %+v, want %+v", index.got.Weights, want)
+	}
+}
+
+func TestSearcherDefaultsWeightsWithoutProvider(t *testing.T) {
+	index := &fakeIndex{}
+	if _, err := NewSearcher(index).Search(
+		t.Context(),
+		searchcore.Request{Query: "golang"},
+	); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if index.got.Weights != (searchindex.RankingWeights{}) {
+		t.Fatalf("index weights = %+v, want zero", index.got.Weights)
+	}
+}

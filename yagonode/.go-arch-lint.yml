@@ -80,6 +80,8 @@ components:
     in: internal/searchindex/**
   searchlocal:
     in: internal/searchlocal/**
+  rankingprofile:
+    in: internal/rankingprofile/**
   searchremote:
     in: internal/searchremote/**
   tavilyapi:
@@ -403,6 +405,13 @@ deps:
       - documentstore
     canUse:
       - yagomodel
+  rankingprofile:
+    mayDependOn:
+      - rankingprofile
+      - searchindex
+      - vault
+      - memvault
+      - boltvault
   searchremote:
     mayDependOn:
       - searchremote
@@ -560,6 +569,7 @@ deps:
       - searchindex
       - searchlocal
       - searchremote
+      - rankingprofile
       - tavilyapi
       - yacysearch
       - websearch

@@ -17,11 +17,22 @@ import (
 const defaultMaxResultsPerHost = 5
 
 type localSearcher struct {
-	index searchindex.SearchIndex
+	index   searchindex.SearchIndex
+	weights func() searchindex.RankingWeights
 }
 
 func NewSearcher(index searchindex.SearchIndex) searchcore.Searcher {
-	return localSearcher{index: index}
+	return NewSearcherWithWeights(index, nil)
+}
+
+// NewSearcherWithWeights builds a local searcher that reads its ranking weights
+// from weights on every request, so an operator's persisted ranking profile
+// applies live. A nil provider keeps the built-in default weights.
+func NewSearcherWithWeights(
+	index searchindex.SearchIndex,
+	weights func() searchindex.RankingWeights,
+) searchcore.Searcher {
+	return localSearcher{index: index, weights: weights}
 }
 
 func (s localSearcher) Search(
@@ -31,7 +42,7 @@ func (s localSearcher) Search(
 	if s.index == nil {
 		return searchcore.Response{}, fmt.Errorf("search index unavailable")
 	}
-	indexReq := indexRequest(req)
+	indexReq := s.indexRequest(req)
 	resultSet, err := s.index.Search(ctx, indexReq)
 	if err != nil {
 		return searchcore.Response{}, fmt.Errorf("search index: %w", err)
@@ -49,10 +60,15 @@ func (s localSearcher) Search(
 	}, nil
 }
 
-func indexRequest(req searchcore.Request) searchindex.SearchRequest {
+func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRequest {
 	query := strings.TrimSpace(req.Query)
 	if query == "" {
 		query = strings.Join(req.Terms, " ")
+	}
+
+	var weights searchindex.RankingWeights
+	if s.weights != nil {
+		weights = s.weights()
 	}
 
 	return searchindex.SearchRequest{
@@ -61,6 +77,7 @@ func indexRequest(req searchcore.Request) searchindex.SearchRequest {
 		MaxResults:    req.Offset + requestLimit(req),
 		IncludeDomain: includeDomains(req),
 		Language:      strings.ToLower(req.Language),
+		Weights:       weights,
 	}
 }
 

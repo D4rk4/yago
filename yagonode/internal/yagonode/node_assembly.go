@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/D4rk4/yago/yagonode/internal/crawling"
@@ -17,6 +18,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/peerbirth"
 	"github.com/D4rk4/yago/yagonode/internal/peernews"
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
+	"github.com/D4rk4/yago/yagonode/internal/rankingprofile"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
@@ -31,6 +33,7 @@ type node struct {
 	readiness     http.Handler
 	indexStats    http.Handler
 	searchExplain http.Handler
+	searchRanking http.Handler
 	report        nodestatus.Report
 	searcher      searchcore.Searcher
 	index         searchindex.SearchIndex
@@ -151,6 +154,7 @@ func assembleNode(
 		searcher:  surfaces.searcher,
 		roster:    roster,
 		vault:     vault,
+		ranking:   surfaces.ranking,
 	}), nil
 }
 
@@ -173,6 +177,7 @@ type nodeSurfaces struct {
 	crawl    crawlProcess
 	dht      dhtOutboundProcess
 	searcher searchcore.Searcher
+	ranking  *rankingprofile.Holder
 }
 
 func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
@@ -181,6 +186,10 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		return nodeSurfaces{}, err
 	}
 	attachCrawlMetrics(runtime, in.telemetry.crawl)
+	ranking, err := rankingprofile.Open(in.ctx, in.vault)
+	if err != nil {
+		return nodeSurfaces{}, fmt.Errorf("open ranking profile: %w", err)
+	}
 	searcher := mountNodePublicSearch(in.mux, publicSearchAssembly{
 		storage:          in.storage,
 		roster:           in.roster,
@@ -195,6 +204,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		toggles:          in.toggles,
 		queryLogMode:     in.config.QueryLogMode,
 		searchMetrics:    in.telemetry.search,
+		rankingWeights:   ranking.Current,
 	})
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
 		ctx:         in.ctx,
@@ -207,7 +217,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		observer:    tallyOutboundObserver{next: in.telemetry.dhtOutbound, tally: in.tally},
 	})
 
-	return nodeSurfaces{crawl: runtime, dht: dht, searcher: searcher}, nil
+	return nodeSurfaces{crawl: runtime, dht: dht, searcher: searcher, ranking: ranking}, nil
 }
 
 type nodeParts struct {
@@ -220,6 +230,7 @@ type nodeParts struct {
 	searcher  searchcore.Searcher
 	roster    peerroster.Roster
 	vault     *vault.Vault
+	ranking   *rankingprofile.Holder
 }
 
 func newAssembledNode(parts nodeParts) node {
@@ -228,6 +239,7 @@ func newAssembledNode(parts nodeParts) node {
 		readiness:     newReadinessEndpoint(parts.storage.searchIndex),
 		indexStats:    newIndexStatsEndpoint(parts.storage.searchIndex),
 		searchExplain: newSearchExplainEndpoint(parts.storage.searchIndex),
+		searchRanking: newSearchRankingEndpoint(parts.ranking),
 		report:        parts.report,
 		searcher:      parts.searcher,
 		index:         parts.storage.searchIndex,

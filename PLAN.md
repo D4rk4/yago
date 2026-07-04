@@ -881,20 +881,27 @@ Acceptance:
 
 ### SEARCH-07: Search explain and ranking config
 
-Status: acceptance met. `POST /api/admin/v1/search/explain` previews a query
-under caller-supplied ranking weights and returns per-result score explanations
+Status: acceptance met, and the SEARCH-07* follow-up (persistent ranking-profile
+apply) is now Done. `POST /api/admin/v1/search/explain` previews a query under
+caller-supplied ranking weights and returns per-result score explanations
 without saving them; `RankingWeights` validates and threads through the memory
-and disk Bleve searches with a documented default profile.
+and disk Bleve searches with a documented default profile. `GET/POST
+/api/admin/v1/search/ranking` reads and persists the node's default ranking
+profile (vault-backed `rankingprofile.Holder`), which the local searcher reads
+live per request, so a retune applies without a restart and survives one. The
+hot-query cache keys on effective weights (SEARCH-10), so a profile change
+self-invalidates rather than serving stale-weighted hits.
 
 Tasks:
 
 1. Add explain output for admin users. Done.
 2. Add configurable ranking weights. Done.
-3. Validate ranking config before saving. Done (per-request validation).
-4. Store ranking config in persistent settings. Deferred: the preview path is
-   stateless by design; persisting an applied profile and threading it into the
-   live default searcher (with search-cache invalidation on change) is a
-   follow-up, not required by the acceptance criteria below.
+3. Validate ranking config before saving. Done (per-request validation, and
+   `Holder.Set` re-validates before persisting).
+4. Store ranking config in persistent settings. Done (SEARCH-07*): the preview
+   path stays stateless by design; the applied default profile persists in the
+   `rankingprofile` vault bucket and threads into the live default searcher via
+   a per-request weights provider, with cache self-invalidation on change.
 5. Provide default profile matching YaCy-ish behavior without overclaiming exact
    compatibility. Done (`DefaultRankingWeights`: title 4, headings 3, anchors 2,
    body 1, url 1).

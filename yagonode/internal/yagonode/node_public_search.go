@@ -11,6 +11,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 	"github.com/D4rk4/yago/yagonode/internal/searchlocal"
 	"github.com/D4rk4/yago/yagonode/internal/searchremote"
 	"github.com/D4rk4/yago/yagonode/internal/tavilyapi"
@@ -33,13 +34,17 @@ type publicSearchAssembly struct {
 	toggles              *runtimeToggles
 	queryLogMode         queryLogMode
 	searchMetrics        *metrics.SearchMetrics
+	rankingWeights       func() searchindex.RankingWeights
 }
 
 func mountNodePublicSearch(
 	mux *http.ServeMux,
 	assembly publicSearchAssembly,
 ) searchcore.Searcher {
-	local := searchlocal.NewSearcher(assembly.storage.searchIndex)
+	local := searchlocal.NewSearcherWithWeights(
+		assembly.storage.searchIndex,
+		assembly.rankingWeights,
+	)
 	if assembly.storage.searchIndex == nil {
 		local = documentsearch.NewLocalSearcherWithDocuments(
 			assembly.storage.postings,

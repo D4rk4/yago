@@ -38,6 +38,9 @@ func buildOpsMux(
 	if assembled.searchExplain != nil {
 		opsMux.Handle(pathSearchExplain, assembled.searchExplain)
 	}
+	if assembled.searchRanking != nil {
+		opsMux.Handle(pathSearchRanking, assembled.searchRanking)
+	}
 	options := adminui.Options{
 		Overview: newOverviewSource(assembled.report),
 		Search:   newSearchSource(assembled.searcher),
