@@ -2117,6 +2117,19 @@ Acceptance:
 
 ### OPS-02: Structured events
 
+Status: Done. The stable event names, four severities (debug/info/warn/error) and
+seven categories (p2p/dht/search/crawl/storage/security/config) already backed the
+in-memory recorder (FTR-028). This slice adds **durable persistence**: a new
+`eventstore` package keeps a bounded, monotonic-sequence log of the recent events
+in the node vault (default cap 512, oldest pruned past the cap), storing only the
+severity, category, name, message and timestamp — never secrets. The recorder
+grows a `Sink` seam; at startup `provisionObservability` opens the store, seeds the
+in-memory ring with the events that survived the last restart (newest kept when
+history exceeds the ring), and installs a best-effort write-through sink so each
+new event is persisted outside the recorder lock. The admin Logs section therefore
+shows recent important events across restarts without scraping logs, bounded on
+both memory and disk. verify green (coverage 97.5%), Semgrep + Trivy clean.
+
 Tasks:
 
 1. Create stable event names/constants for UI event log.

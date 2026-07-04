@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/boltvault"
-	"github.com/D4rk4/yago/yagonode/internal/events"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 )
 
@@ -74,20 +73,15 @@ func run() error {
 	}
 	defer closeVault(vault)
 
-	endpoints := metrics.NewHTTPEndpointMetrics()
-	metrics.NewStorageMetrics(endpoints.Registry(), vault)
-	evictionMetrics := metrics.NewEvictionMetrics(endpoints.Registry())
-	dhtOutboundMetrics := metrics.NewDHTOutboundMetrics(endpoints.Registry())
-	dhtInboundMetrics := metrics.NewDHTInboundMetrics(endpoints.Registry())
-	peerMetrics := metrics.NewPeerMetrics(endpoints.Registry())
-	authMetrics := metrics.NewAuthMetrics(endpoints.Registry())
-	eventRecorder := events.NewRecorder(events.DefaultCapacity)
-	authObserver := authObserverFanOut{authMetrics, authEventObserver{recorder: eventRecorder}}
-
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	sources, toggles, config, err := loadRuntimeSettings(ctx, vault, config, eventRecorder)
+	obs, err := provisionObservability(ctx, vault)
+	if err != nil {
+		return err
+	}
+
+	sources, toggles, config, err := loadRuntimeSettings(ctx, vault, config, obs.recorder)
 	if err != nil {
 		return err
 	}
@@ -95,7 +89,7 @@ func run() error {
 		return fmt.Errorf("validate listen addresses: %w", err)
 	}
 
-	authService, err := provisionAdminAuth(ctx, config, vault, authObserver)
+	authService, err := provisionAdminAuth(ctx, config, vault, obs.authObserver)
 	if err != nil {
 		return fmt.Errorf("configure admin auth: %w", err)
 	}
@@ -107,9 +101,9 @@ func run() error {
 		vault,
 		client,
 		nodeTelemetry{
-			dhtOutbound:      dhtOutboundMetrics,
-			dhtInbound:       dhtInboundMetrics,
-			peer:             peerMetrics,
+			dhtOutbound:      obs.dhtOutbound,
+			dhtInbound:       obs.dhtInbound,
+			peer:             obs.peer,
 			searchAuthorizer: searchScopeAuthorizerFor(config, authService),
 			toggles:          toggles,
 		},
@@ -118,7 +112,7 @@ func run() error {
 		return fmt.Errorf("assemble node: %w", err)
 	}
 
-	opsMux := buildOpsMux(endpoints, config, assembled, eventRecorder, sources)
+	opsMux := buildOpsMux(obs.endpoints, config, assembled, obs.recorder, sources)
 	opsHandler := wrapAdminCORS(
 		config.CrossOrigin.AdminOrigins,
 		guardAdminSurface(authService, opsMux),
@@ -127,8 +121,8 @@ func run() error {
 	return serveRuntimeNode(
 		ctx,
 		assembled,
-		evictionMetrics,
-		buildPeerServer(config, endpoints, assembled, toggles),
+		obs.eviction,
+		buildPeerServer(config, obs.endpoints, assembled, toggles),
 		namedServer{"ops", buildServer(config.OpsAddr, redirectHTTPS(toggles, opsHandler))},
 	)
 }

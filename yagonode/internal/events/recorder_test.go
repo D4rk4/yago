@@ -11,6 +11,33 @@ func record(r *events.Recorder, name string) {
 	r.Record(events.SeverityInfo, events.CategoryConfig, name, "message "+name)
 }
 
+type captureSink struct{ persisted []events.Event }
+
+func (c *captureSink) Persist(event events.Event) {
+	c.persisted = append(c.persisted, event)
+}
+
+func TestRecorderPersistsEachEventToSink(t *testing.T) {
+	sink := &captureSink{}
+	r := events.NewRecorder(8)
+	r.Attach(sink, nil)
+
+	record(r, "x")
+	record(r, "y")
+	if got := names(sink.persisted); !reflect.DeepEqual(got, []string{"x", "y"}) {
+		t.Fatalf("persisted = %v", got)
+	}
+}
+
+func TestRecorderAttachSeedsHistoryNewestFirst(t *testing.T) {
+	r := events.NewRecorder(8)
+	r.Attach(nil, []events.Event{{Name: "old1"}, {Name: "old2"}})
+
+	if got := names(r.Recent(0)); !reflect.DeepEqual(got, []string{"old2", "old1"}) {
+		t.Fatalf("recent = %v", got)
+	}
+}
+
 func names(evs []events.Event) []string {
 	out := make([]string, len(evs))
 	for i, e := range evs {

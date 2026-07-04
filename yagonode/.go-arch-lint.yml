@@ -28,6 +28,8 @@ components:
     in: internal/transfertally/**
   settingsstore:
     in: internal/settingsstore/**
+  eventstore:
+    in: internal/eventstore/**
   peerroster:
     in: internal/peerroster/**
   peerannouncement:
@@ -221,6 +223,13 @@ deps:
       - settingsstore
       - vault
       - memvault
+  eventstore:
+    mayDependOn:
+      - eventstore
+      - events
+      - vault
+      - memvault
+      - boltvault
   peerroster:
     mayDependOn:
       - peerroster
@@ -530,6 +539,7 @@ deps:
       - peernews
       - transfertally
       - settingsstore
+      - eventstore
       - urlmetastaleness
       - urlreferences
       - crawldispatch
