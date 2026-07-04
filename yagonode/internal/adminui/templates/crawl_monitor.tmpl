@@ -66,6 +66,8 @@
               <input type="hidden" name="runId" value="{{.RunID}}">
               <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="pause">Pause</button>
               <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="resume">Resume</button>
+              <button class="cds-btn cds-btn--danger" type="submit" name="action" value="cancel"
+                      onclick="return confirm('Cancel this crawl run? Pending pages are dropped; in-flight fetches finish.')">Cancel</button>
             </form>
             {{else}}<span class="cds-muted">—</span>{{end}}
           </td>

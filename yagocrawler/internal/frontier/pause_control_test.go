@@ -45,6 +45,117 @@ func TestPauseWithholdsRunJobsUntilResume(t *testing.T) {
 	f.Done(job)
 }
 
+func TestCancelDropsPendingJobsAndDrainsRun(t *testing.T) {
+	f := frontier.NewFrontier(8, nil)
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxDepth:        0,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	provenance := []byte("run-x")
+	finished := make(chan struct{})
+
+	// Pausing holds the seed job in the ready queue so Cancel has a pending job to
+	// drop, exercising the drop-and-settle path.
+	f.Pause(provenance)
+	f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle, "https://example.com/"),
+		provenance,
+		profile,
+		func() { close(finished) },
+	)
+
+	f.Cancel(provenance)
+
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("cancelled run never drained")
+	}
+	if !f.WasCancelled(provenance) {
+		t.Fatal("WasCancelled = false after Cancel")
+	}
+	select {
+	case job := <-f.Jobs():
+		t.Fatalf("cancelled run dispatched %q, want nothing", job.URL)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	f.ClearCancelled(provenance)
+	if f.WasCancelled(provenance) {
+		t.Fatal("WasCancelled = true after ClearCancelled")
+	}
+}
+
+func TestCancelKeepsOtherRunsPendingJobs(t *testing.T) {
+	f := frontier.NewFrontier(8, nil)
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxDepth:        0,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+
+	// Both runs are paused so their seed jobs sit in the ready queue when Cancel
+	// scans it — the survivor's job must be kept, not dropped alongside the doomed run.
+	f.Pause([]byte("doomed"))
+	f.Pause([]byte("survivor"))
+	f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle, "https://doomed.example/"),
+		[]byte("doomed"),
+		profile,
+		func() {},
+	)
+	f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle, "https://survivor.example/"),
+		[]byte("survivor"),
+		profile,
+		func() {},
+	)
+
+	f.Cancel([]byte("doomed"))
+
+	f.Resume([]byte("survivor"))
+	job := receiveJob(t, f)
+	if job.URL != "https://survivor.example/" {
+		t.Fatalf("dispatched %q, want the survivor run's job", job.URL)
+	}
+	f.Done(job)
+}
+
+func TestCancelRejectsDiscoveredLinks(t *testing.T) {
+	f := frontier.NewFrontier(8, nil)
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxDepth:        2,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	provenance := []byte("run-z")
+	f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle, "https://example.com/"),
+		provenance,
+		profile,
+		func() {},
+	)
+
+	work := receiveJob(t, f)
+	f.Cancel(work.Provenance)
+	f.Submit(context.Background(), work, discoveredLinks("https://example.com/child"))
+	f.Done(work)
+
+	select {
+	case job := <-f.Jobs():
+		t.Fatalf("cancelled run dispatched discovered link %q, want nothing", job.URL)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
 func TestPauseIsScopedToOneRun(t *testing.T) {
 	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yagocrawlcontract.CrawlProfile{

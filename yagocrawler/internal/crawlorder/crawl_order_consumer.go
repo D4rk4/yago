@@ -164,7 +164,8 @@ func (c *CrawlOrderConsumer) finishRun(
 ) func() {
 	return func() {
 		defer c.frontier.Release()
-		cancelled := ctx.Err() != nil
+		cancelled := ctx.Err() != nil || c.frontier.WasCancelled(order.Provenance)
+		c.frontier.ClearCancelled(order.Provenance)
 		state := yagocrawlcontract.CrawlRunFinished
 		if cancelled {
 			state = yagocrawlcontract.CrawlRunCancelled

@@ -85,6 +85,8 @@ func crawlControlKind(action string) (yagocrawlcontract.CrawlControlKind, bool) 
 		return yagocrawlcontract.CrawlControlPause, true
 	case "resume":
 		return yagocrawlcontract.CrawlControlResume, true
+	case "cancel":
+		return yagocrawlcontract.CrawlControlCancel, true
 	default:
 		return "", false
 	}

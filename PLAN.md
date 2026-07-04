@@ -1882,9 +1882,15 @@ monitor carries CSRF-guarded Pause/Resume buttons that POST to
 registry and enqueues the directive, and the worker's `FrontierControlHandler`
 translates the directive's run token to the provenance the frontier keys runs by
 and gates that run in the dispatch loop — a paused run's ready jobs are withheld
-(in-flight fetches finish) until it resumes, which wakes the loop. Remaining: wire
-cancel a run (CTL-9) and PPM rate (CTL-10) onto the same control channel, and
-cache policy plus expert start fields (START-11). The crawl-profile editor
+(in-flight fetches finish) until it resumes, which wakes the loop. Cancel now
+rides the same channel (CTL-9): a per-row Cancel button (confirm-guarded, since it
+is destructive) enqueues a cancel directive; the worker's frontier drops the run's
+pending jobs, settling their completion so the run drains once its in-flight
+fetches finish, and marks the run so newly discovered links are refused rather
+than crawled on. The completion callback reads that mark (`WasCancelled`) to settle
+the order as cancelled — reported as such and naked back to the node — then clears
+it. Remaining: wire PPM rate (CTL-10) onto the same control channel, and cache
+policy plus expert start fields (START-11). The crawl-profile editor
 (named-profile CRUD) stays a separate follow-up (management, not observability).
 
 Pages:

@@ -152,6 +152,31 @@ func TestAcceptNaksCanceledRunAndLogsNakError(t *testing.T) {
 	waitCallback(t, naked)
 }
 
+func TestAcceptNaksFrontierCancelledRun(t *testing.T) {
+	f := frontier.NewFrontier(1, nil)
+	provenance := []byte("cancel-me")
+	f.Cancel(provenance)
+	consumer := NewCrawlOrderConsumer(
+		boundedqueue.NewBoundedQueue[CrawlOrderDelivery](1),
+		f,
+	)
+	naked := make(chan struct{})
+
+	consumer.accept(context.Background(), CrawlOrderDelivery{
+		Order: yagocrawlcontract.CrawlOrder{Profile: consumerProfile(), Provenance: provenance},
+		Nak: func(context.Context) error {
+			close(naked)
+
+			return nil
+		},
+	})
+
+	waitCallback(t, naked)
+	if f.WasCancelled(provenance) {
+		t.Fatal("finishRun should clear the cancelled mark once the run settles")
+	}
+}
+
 func TestPassThroughRequestExpanderRejectsUnknownMode(t *testing.T) {
 	_, err := passThroughRequestExpander{}.Expand(
 		context.Background(),

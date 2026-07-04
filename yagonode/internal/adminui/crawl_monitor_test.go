@@ -141,6 +141,7 @@ func TestConsoleCrawlMonitorRendersControlButtons(t *testing.T) {
 	for _, want := range []string{
 		`action="/admin/crawl/control"`, `name="runId" value="run-abc"`,
 		`name="action" value="pause"`, `name="action" value="resume"`,
+		`name="action" value="cancel"`,
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("monitor missing control %q", want)

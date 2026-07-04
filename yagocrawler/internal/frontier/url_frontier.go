@@ -53,6 +53,9 @@ type frontierState struct {
 	completion *crawlrun.Completion
 	ready      []crawljob.CrawlJob
 	tally      RunTally
+	// cancelled lives on the state, rather than beside paused on the Frontier, so
+	// accept (a frontierState method) can reject a cancelled run's discovered links.
+	cancelled map[string]struct{}
 }
 
 type crawlRun struct {
@@ -78,6 +81,7 @@ func NewFrontier(capacity int, pace CrawlPace, opts ...Option) *Frontier {
 			runs:       make(map[uuid.UUID]*crawlRun),
 			completion: crawlrun.NewCompletion(),
 			tally:      noopRunTally{},
+			cancelled:  make(map[string]struct{}),
 		},
 		inflight: make(map[string]int),
 		paused:   make(map[string]struct{}),
@@ -211,6 +215,56 @@ func (f *Frontier) isPausedLocked(provenance []byte) bool {
 	_, paused := f.paused[string(provenance)]
 
 	return paused
+}
+
+// Cancel drops a run's pending jobs and stops it accepting newly discovered links,
+// so the run drains once its in-flight fetches finish rather than crawling on. The
+// run is identified by its provenance token; WasCancelled then lets the completion
+// callback settle the order as cancelled instead of finished.
+func (f *Frontier) Cancel(provenance []byte) {
+	key := string(provenance)
+
+	f.mu.Lock()
+	f.state.cancelled[key] = struct{}{}
+	delete(f.paused, key)
+	var finishes []func()
+	kept := f.state.ready[:0]
+	for _, job := range f.state.ready {
+		if string(job.Provenance) != key {
+			kept = append(kept, job)
+
+			continue
+		}
+		if finish, drained := f.state.completion.Settle(job.RunID); drained && finish != nil {
+			finishes = append(finishes, finish)
+		}
+	}
+	f.state.ready = kept
+	f.mu.Unlock()
+
+	for _, finish := range finishes {
+		go finish()
+	}
+	f.wake()
+}
+
+// WasCancelled reports whether a run has been cancelled, so its completion
+// callback can settle the order as cancelled rather than finished.
+func (f *Frontier) WasCancelled(provenance []byte) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	_, cancelled := f.state.cancelled[string(provenance)]
+
+	return cancelled
+}
+
+// ClearCancelled forgets a cancelled run once it has drained, bounding the set.
+func (f *Frontier) ClearCancelled(provenance []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	delete(f.state.cancelled, string(provenance))
 }
 
 func (f *Frontier) run() {
@@ -363,6 +417,9 @@ func (s *frontierState) accept(
 	runID uuid.UUID,
 	candidate frontierCandidate,
 ) bool {
+	if _, cancelled := s.cancelled[string(candidate.provenance)]; cancelled {
+		return false
+	}
 	host := weburl.Host(candidate.normURL)
 	run := s.runDedup(runID, crawladmission.AdmissionProfile{})
 	profile, ok := run.profiles[candidate.profileHandle]

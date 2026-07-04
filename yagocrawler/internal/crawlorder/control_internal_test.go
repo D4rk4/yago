@@ -85,8 +85,9 @@ func TestDispatchDirectivesFansToHandler(t *testing.T) {
 }
 
 type fakeController struct {
-	paused  [][]byte
-	resumed [][]byte
+	paused    [][]byte
+	resumed   [][]byte
+	cancelled [][]byte
 }
 
 func (c *fakeController) Pause(provenance []byte) {
@@ -95,6 +96,10 @@ func (c *fakeController) Pause(provenance []byte) {
 
 func (c *fakeController) Resume(provenance []byte) {
 	c.resumed = append(c.resumed, provenance)
+}
+
+func (c *fakeController) Cancel(provenance []byte) {
+	c.cancelled = append(c.cancelled, provenance)
 }
 
 func TestFrontierControlHandlerPauseResume(t *testing.T) {
@@ -118,6 +123,20 @@ func TestFrontierControlHandlerPauseResume(t *testing.T) {
 	}
 }
 
+func TestFrontierControlHandlerCancel(t *testing.T) {
+	controller := &fakeController{}
+	NewFrontierControlHandler(controller).Apply(
+		context.Background(),
+		yagocrawlcontract.CrawlControlDirective{
+			Kind:  yagocrawlcontract.CrawlControlCancel,
+			RunID: "ef",
+		},
+	)
+	if len(controller.cancelled) != 1 || controller.cancelled[0][0] != 0xef {
+		t.Fatalf("cancelled = %x, want [ef]", controller.cancelled)
+	}
+}
+
 func TestFrontierControlHandlerIgnoresMalformedRunID(t *testing.T) {
 	controller := &fakeController{}
 	NewFrontierControlHandler(controller).Apply(
@@ -137,12 +156,12 @@ func TestFrontierControlHandlerIgnoresKindsWithoutBehaviour(t *testing.T) {
 	NewFrontierControlHandler(controller).Apply(
 		context.Background(),
 		yagocrawlcontract.CrawlControlDirective{
-			Kind:  yagocrawlcontract.CrawlControlCancel,
+			Kind:  yagocrawlcontract.CrawlControlSetRate,
 			RunID: "ab",
 		},
 	)
-	if len(controller.paused) != 0 || len(controller.resumed) != 0 {
-		t.Fatal("cancel has no pause/resume behaviour in this slice")
+	if len(controller.paused)+len(controller.resumed)+len(controller.cancelled) != 0 {
+		t.Fatal("set-rate has no pause/resume/cancel behaviour in this slice")
 	}
 }
 

@@ -74,6 +74,7 @@ func TestCrawlControlKindMapping(t *testing.T) {
 	cases := map[string]yagocrawlcontract.CrawlControlKind{
 		"pause":  yagocrawlcontract.CrawlControlPause,
 		"resume": yagocrawlcontract.CrawlControlResume,
+		"cancel": yagocrawlcontract.CrawlControlCancel,
 	}
 	for action, want := range cases {
 		got, ok := crawlControlKind(action)
