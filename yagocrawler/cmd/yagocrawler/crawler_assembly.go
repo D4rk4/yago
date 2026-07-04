@@ -72,7 +72,11 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	if err != nil {
 		return fmt.Errorf("create crawl pace: %w", err)
 	}
-	frontier := frontier.NewFrontier(crawl.JobQueueSize, pace)
+	frontier := frontier.NewFrontier(
+		crawl.JobQueueSize,
+		pace,
+		frontier.WithMaxHostConcurrency(crawl.MaxHostConcurrency),
+	)
 
 	guard := yagoegress.NewGuard(
 		cfg.EgressAllowLAN,

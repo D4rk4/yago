@@ -1411,7 +1411,14 @@ document's `document.contentType` and rejects non-HTML media the same way the
 HTTP path does, closing the gap where a browser-rendered PDF or image was
 indexed as if it were HTML. Full browser network-event interception of
 intermediate redirect URLs remains a planned refinement on top of the dial-time
-guard.
+guard. Per-host concurrency is now bounded independently of the crawl delay: the
+frontier caps how many of a single host's URLs are in flight (dispatched but not
+yet `Done`) at `YAGOCRAWLER_MAX_HOST_CONCURRENCY` (default 2), withholding further
+same-host jobs until an in-flight fetch completes, so a host whose fetches outlast
+the delay can no longer accumulate concurrent same-host fetches up to the worker
+count. Per-profile crawl delay (the `CrawlProfile.CrawlDelay` field) is still
+applied only through the single global `YAGOCRAWLER_CRAWL_DELAY`; wiring per-profile
+delay into the pace is a follow-up.
 
 Tasks:
 
@@ -1420,7 +1427,9 @@ Tasks:
 3. Resolve DNS safely and re-check IP after redirects.
 4. Enforce max redirects.
 5. Enforce robots.txt unless profile disables it explicitly and admin confirms.
-6. Enforce per-host delays and concurrency.
+6. Enforce per-host delays and concurrency. Delays Done (global `HostPace`);
+   per-host concurrency Done (frontier in-flight cap,
+   `YAGOCRAWLER_MAX_HOST_CONCURRENCY`, default 2); per-profile delay is a follow-up.
 7. Enforce max response body bytes.
 8. Enforce MIME allowlist.
 9. Extend timeout budgets to browser navigation and any future finer body-read phases.

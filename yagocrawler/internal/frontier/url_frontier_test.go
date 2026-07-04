@@ -276,3 +276,68 @@ func TestSubmitFollowsNoFollowLinksWhenProfileAllows(t *testing.T) {
 		t.Fatalf("child URL = %q", child.URL)
 	}
 }
+
+func TestFrontierBoundsPerHostConcurrency(t *testing.T) {
+	f := frontier.NewFrontier(8, nil, frontier.WithMaxHostConcurrency(2))
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	seeded := f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle,
+			"https://example.com/a",
+			"https://example.com/b",
+			"https://example.com/c",
+		),
+		[]byte("admin"),
+		profile,
+		func() {},
+	)
+	if seeded.Queued != 3 {
+		t.Fatalf("queued = %d, want 3", seeded.Queued)
+	}
+
+	first := receiveJob(t, f)
+	second := receiveJob(t, f)
+	select {
+	case extra := <-f.Jobs():
+		t.Fatalf("dispatched %s while host at concurrency cap", extra.URL)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// Completing one in-flight fetch frees a host slot for the withheld job.
+	f.Done(first)
+	third := receiveJob(t, f)
+	f.Done(second)
+	f.Done(third)
+}
+
+func TestFrontierAllowsConcurrencyAcrossHosts(t *testing.T) {
+	f := frontier.NewFrontier(8, nil, frontier.WithMaxHostConcurrency(1))
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeWide,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle,
+			"https://a.example/",
+			"https://b.example/",
+			"https://c.example/",
+		),
+		[]byte("admin"),
+		profile,
+		func() {},
+	)
+
+	// A per-host cap of 1 must still let three distinct hosts run concurrently.
+	first := receiveJob(t, f)
+	second := receiveJob(t, f)
+	third := receiveJob(t, f)
+	f.Done(first)
+	f.Done(second)
+	f.Done(third)
+}

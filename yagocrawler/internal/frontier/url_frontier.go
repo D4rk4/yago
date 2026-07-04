@@ -28,9 +28,23 @@ type Frontier struct {
 	signal chan struct{}
 	pace   CrawlPace
 
-	mu      sync.Mutex
-	state   *frontierState
-	closing bool
+	maxPerHost int
+
+	mu       sync.Mutex
+	state    *frontierState
+	inflight map[string]int
+	closing  bool
+}
+
+// Option configures a Frontier at construction.
+type Option func(*Frontier)
+
+// WithMaxHostConcurrency bounds how many of a single host's URLs may be in flight
+// (dispatched but not yet Done) at once, so a host whose fetches outlast the crawl
+// delay cannot accumulate concurrent same-host fetches up to the worker count. A
+// value <= 0 leaves per-host concurrency unbounded.
+func WithMaxHostConcurrency(maxPerHost int) Option {
+	return func(f *Frontier) { f.maxPerHost = maxPerHost }
 }
 
 type frontierState struct {
@@ -50,7 +64,7 @@ type SeededRun struct {
 	Queued int
 }
 
-func NewFrontier(capacity int, pace CrawlPace) *Frontier {
+func NewFrontier(capacity int, pace CrawlPace, opts ...Option) *Frontier {
 	if pace == nil {
 		pace = alwaysDuePace{}
 	}
@@ -62,6 +76,10 @@ func NewFrontier(capacity int, pace CrawlPace) *Frontier {
 			runs:       make(map[uuid.UUID]*crawlRun),
 			completion: crawlrun.NewCompletion(),
 		},
+		inflight: make(map[string]int),
+	}
+	for _, opt := range opts {
+		opt(frontier)
 	}
 	go frontier.run()
 	return frontier
@@ -116,11 +134,46 @@ func (f *Frontier) Submit(
 
 func (f *Frontier) Done(work crawljob.CrawlJob) {
 	f.mu.Lock()
+	f.releaseHost(work.URL)
 	finish, drained := f.state.completion.Settle(work.RunID)
 	f.mu.Unlock()
+	// Releasing a host slot may make a withheld same-host job dispatchable, so
+	// nudge the run loop to re-evaluate rather than wait for the next signal.
+	f.wake()
 	if drained && finish != nil {
 		go finish()
 	}
+}
+
+// acquireHost and releaseHost track in-flight fetches per host under f.mu so the
+// dispatch loop can withhold a host whose concurrency cap is reached. Both are
+// no-ops when per-host concurrency is unbounded.
+func (f *Frontier) acquireHost(url string) {
+	if f.maxPerHost <= 0 {
+		return
+	}
+	f.inflight[weburl.Host(url)]++
+}
+
+func (f *Frontier) releaseHost(url string) {
+	if f.maxPerHost <= 0 {
+		return
+	}
+	host := weburl.Host(url)
+	if f.inflight[host] <= 1 {
+		delete(f.inflight, host)
+
+		return
+	}
+	f.inflight[host]--
+}
+
+func (f *Frontier) hostAtCapacity(url string) bool {
+	if f.maxPerHost <= 0 {
+		return false
+	}
+
+	return f.inflight[weburl.Host(url)] >= f.maxPerHost
 }
 
 func (f *Frontier) wake() {
@@ -160,6 +213,7 @@ func (f *Frontier) run() {
 		case send <- next:
 			f.mu.Lock()
 			f.pace.Visited(next, time.Now())
+			f.acquireHost(next.URL)
 			f.state.ready = append(f.state.ready[:index], f.state.ready[index+1:]...)
 			f.mu.Unlock()
 		}
@@ -173,6 +227,9 @@ func (f *Frontier) run() {
 func (f *Frontier) nextDue(now time.Time) (crawljob.CrawlJob, int, time.Duration, bool) {
 	var soonest time.Duration
 	for i, job := range f.state.ready {
+		if f.hostAtCapacity(job.URL) {
+			continue
+		}
 		wait := f.pace.DueAt(job, now).Sub(now)
 		if wait <= 0 {
 			return job, i, 0, true

@@ -121,6 +121,10 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	if cfg.Crawl.MaxRedirects != DefaultMaxRedirects {
 		t.Errorf("redirects = %d", cfg.Crawl.MaxRedirects)
 	}
+	if cfg.Crawl.MaxHostConcurrency != DefaultMaxHostConcurrency {
+		t.Errorf("max host concurrency = %d, want %d",
+			cfg.Crawl.MaxHostConcurrency, DefaultMaxHostConcurrency)
+	}
 	if cfg.Crawl.SitemapURLLimit != DefaultSitemapURLLimit {
 		t.Errorf("sitemap URL limit = %d", cfg.Crawl.SitemapURLLimit)
 	}
@@ -134,21 +138,22 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 
 func TestLoadServiceConfigOverrides(t *testing.T) {
 	cfg, err := LoadServiceConfig(envFrom(map[string]string{
-		EnvNodeRPCAddr:     "node:9091",
-		EnvWorkerID:        "worker-7",
-		EnvMetricsAddr:     "127.0.0.1:9100",
-		EnvShutdownGrace:   "5s",
-		EnvEgressAllowLAN:  "true",
-		EnvWorkers:         "3",
-		EnvMaxDepth:        "5",
-		EnvCrawlDelay:      "250ms",
-		EnvUserAgent:       "test-agent",
-		EnvRequestTimeout:  "20s",
-		EnvConnectTimeout:  "4s",
-		EnvTLSTimeout:      "3s",
-		EnvHeaderTimeout:   "2s",
-		EnvMaxRedirects:    "2",
-		EnvSitemapURLLimit: "9",
+		EnvNodeRPCAddr:        "node:9091",
+		EnvWorkerID:           "worker-7",
+		EnvMetricsAddr:        "127.0.0.1:9100",
+		EnvShutdownGrace:      "5s",
+		EnvEgressAllowLAN:     "true",
+		EnvWorkers:            "3",
+		EnvMaxHostConcurrency: "6",
+		EnvMaxDepth:           "5",
+		EnvCrawlDelay:         "250ms",
+		EnvUserAgent:          "test-agent",
+		EnvRequestTimeout:     "20s",
+		EnvConnectTimeout:     "4s",
+		EnvTLSTimeout:         "3s",
+		EnvHeaderTimeout:      "2s",
+		EnvMaxRedirects:       "2",
+		EnvSitemapURLLimit:    "9",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -167,6 +172,9 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	}
 	if cfg.Crawl.Workers != 3 || cfg.Crawl.MaxDepth != 5 {
 		t.Errorf("workers/depth = %d %d", cfg.Crawl.Workers, cfg.Crawl.MaxDepth)
+	}
+	if cfg.Crawl.MaxHostConcurrency != 6 {
+		t.Errorf("max host concurrency = %d, want 6", cfg.Crawl.MaxHostConcurrency)
 	}
 	if cfg.Crawl.CrawlDelay != 250*time.Millisecond {
 		t.Errorf("delay = %v", cfg.Crawl.CrawlDelay)

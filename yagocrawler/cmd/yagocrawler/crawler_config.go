@@ -12,71 +12,75 @@ import (
 )
 
 const (
-	EnvNodeRPCAddr     = "YAGOCRAWLER_NODE_RPC_ADDR"
-	EnvWorkerID        = "YAGOCRAWLER_WORKER_ID"
-	EnvWorkers         = "YAGOCRAWLER_WORKERS"
-	EnvMaxDepth        = "YAGOCRAWLER_MAX_DEPTH"
-	EnvCrawlDelay      = "YAGOCRAWLER_CRAWL_DELAY"
-	EnvUserAgent       = "YAGOCRAWLER_USER_AGENT"
-	EnvRequestTimeout  = "YAGOCRAWLER_REQUEST_TIMEOUT"
-	EnvConnectTimeout  = "YAGOCRAWLER_CONNECT_TIMEOUT"
-	EnvTLSTimeout      = "YAGOCRAWLER_TLS_TIMEOUT"
-	EnvHeaderTimeout   = "YAGOCRAWLER_HEADER_TIMEOUT"
-	EnvMaxRedirects    = "YAGOCRAWLER_MAX_REDIRECTS"
-	EnvSitemapURLLimit = "YAGOCRAWLER_SITEMAP_URL_LIMIT"
-	EnvEgressAllowLAN  = "YAGOCRAWLER_ALLOW_PRIVATE_NETWORKS"
-	EnvMetricsAddr     = "YAGOCRAWLER_METRICS_ADDR"
-	EnvShutdownGrace   = "YAGOCRAWLER_SHUTDOWN_GRACE"
+	EnvNodeRPCAddr        = "YAGOCRAWLER_NODE_RPC_ADDR"
+	EnvWorkerID           = "YAGOCRAWLER_WORKER_ID"
+	EnvWorkers            = "YAGOCRAWLER_WORKERS"
+	EnvMaxHostConcurrency = "YAGOCRAWLER_MAX_HOST_CONCURRENCY"
+	EnvMaxDepth           = "YAGOCRAWLER_MAX_DEPTH"
+	EnvCrawlDelay         = "YAGOCRAWLER_CRAWL_DELAY"
+	EnvUserAgent          = "YAGOCRAWLER_USER_AGENT"
+	EnvRequestTimeout     = "YAGOCRAWLER_REQUEST_TIMEOUT"
+	EnvConnectTimeout     = "YAGOCRAWLER_CONNECT_TIMEOUT"
+	EnvTLSTimeout         = "YAGOCRAWLER_TLS_TIMEOUT"
+	EnvHeaderTimeout      = "YAGOCRAWLER_HEADER_TIMEOUT"
+	EnvMaxRedirects       = "YAGOCRAWLER_MAX_REDIRECTS"
+	EnvSitemapURLLimit    = "YAGOCRAWLER_SITEMAP_URL_LIMIT"
+	EnvEgressAllowLAN     = "YAGOCRAWLER_ALLOW_PRIVATE_NETWORKS"
+	EnvMetricsAddr        = "YAGOCRAWLER_METRICS_ADDR"
+	EnvShutdownGrace      = "YAGOCRAWLER_SHUTDOWN_GRACE"
 
 	DefaultWorkerID      = "yagocrawler"
 	DefaultShutdownGrace = 10 * time.Second
 
-	DefaultMaxBodyBytes    int64 = 4 << 20
-	DefaultRequestTimeout        = 15 * time.Second
-	DefaultConnectTimeout        = 5 * time.Second
-	DefaultTLSTimeout            = 5 * time.Second
-	DefaultHeaderTimeout         = 10 * time.Second
-	DefaultMaxRedirects          = 10
-	DefaultSitemapURLLimit       = 10000
-	DefaultUserAgent             = "yago-crawler/0.1 (+https://github.com/D4rk4/yago/)"
-	DefaultHostCacheSize         = 4096
+	DefaultMaxBodyBytes       int64 = 4 << 20
+	DefaultRequestTimeout           = 15 * time.Second
+	DefaultConnectTimeout           = 5 * time.Second
+	DefaultTLSTimeout               = 5 * time.Second
+	DefaultHeaderTimeout            = 10 * time.Second
+	DefaultMaxRedirects             = 10
+	DefaultMaxHostConcurrency       = 2
+	DefaultSitemapURLLimit          = 10000
+	DefaultUserAgent                = "yago-crawler/0.1 (+https://github.com/D4rk4/yago/)"
+	DefaultHostCacheSize            = 4096
 )
 
 type CrawlConfig struct {
-	Workers         int
-	JobQueueSize    int
-	MaxBodyBytes    int64
-	RequestTimeout  time.Duration
-	ConnectTimeout  time.Duration
-	TLSTimeout      time.Duration
-	HeaderTimeout   time.Duration
-	UserAgent       string
-	MaxRedirects    int
-	SitemapURLLimit int
-	CrawlDelay      time.Duration
-	MaxDepth        int
-	Scope           yagocrawlcontract.CrawlScope
-	MaxPagesPerHost int
-	HostCacheSize   int
+	Workers            int
+	JobQueueSize       int
+	MaxBodyBytes       int64
+	RequestTimeout     time.Duration
+	ConnectTimeout     time.Duration
+	TLSTimeout         time.Duration
+	HeaderTimeout      time.Duration
+	UserAgent          string
+	MaxRedirects       int
+	SitemapURLLimit    int
+	CrawlDelay         time.Duration
+	MaxHostConcurrency int
+	MaxDepth           int
+	Scope              yagocrawlcontract.CrawlScope
+	MaxPagesPerHost    int
+	HostCacheSize      int
 }
 
 func DefaultCrawlConfig() CrawlConfig {
 	return CrawlConfig{
-		Workers:         4,
-		JobQueueSize:    256,
-		MaxBodyBytes:    DefaultMaxBodyBytes,
-		RequestTimeout:  DefaultRequestTimeout,
-		ConnectTimeout:  DefaultConnectTimeout,
-		TLSTimeout:      DefaultTLSTimeout,
-		HeaderTimeout:   DefaultHeaderTimeout,
-		MaxRedirects:    DefaultMaxRedirects,
-		SitemapURLLimit: DefaultSitemapURLLimit,
-		UserAgent:       DefaultUserAgent,
-		CrawlDelay:      crawldelay.DefaultCrawlDelay,
-		MaxDepth:        2,
-		Scope:           yagocrawlcontract.ScopeDomain,
-		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
-		HostCacheSize:   DefaultHostCacheSize,
+		Workers:            4,
+		JobQueueSize:       256,
+		MaxBodyBytes:       DefaultMaxBodyBytes,
+		RequestTimeout:     DefaultRequestTimeout,
+		ConnectTimeout:     DefaultConnectTimeout,
+		TLSTimeout:         DefaultTLSTimeout,
+		HeaderTimeout:      DefaultHeaderTimeout,
+		MaxRedirects:       DefaultMaxRedirects,
+		SitemapURLLimit:    DefaultSitemapURLLimit,
+		UserAgent:          DefaultUserAgent,
+		CrawlDelay:         crawldelay.DefaultCrawlDelay,
+		MaxHostConcurrency: DefaultMaxHostConcurrency,
+		MaxDepth:           2,
+		Scope:              yagocrawlcontract.ScopeDomain,
+		MaxPagesPerHost:    yagocrawlcontract.UnlimitedPagesPerHost,
+		HostCacheSize:      DefaultHostCacheSize,
 	}
 }
 
@@ -135,6 +139,16 @@ func loadCrawlConfig(getenv func(string) string) (CrawlConfig, error) {
 		return CrawlConfig{}, err
 	}
 	crawl.Workers = workers
+
+	maxHostConcurrency, err := envPositiveInt(
+		getenv,
+		EnvMaxHostConcurrency,
+		crawl.MaxHostConcurrency,
+	)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.MaxHostConcurrency = maxHostConcurrency
 
 	depth, err := envPositiveInt(getenv, EnvMaxDepth, crawl.MaxDepth)
 	if err != nil {
