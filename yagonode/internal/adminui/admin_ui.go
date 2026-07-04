@@ -85,6 +85,7 @@ type Options struct {
 	Monitor         CrawlMonitorSource
 	Control         CrawlControlSource
 	Index           IndexSource
+	Documents       DocumentBrowserSource
 	Network         NetworkSource
 	Config          ConfigSource
 	Settings        SettingsSource
@@ -213,6 +214,10 @@ type indexPageData struct {
 	TermQueried bool
 	Term        TermReport
 	Schema      []SchemaGroup
+	DocsEnabled bool
+	Documents   DocumentPage
+	DocQuery    string
+	DocDomain   string
 }
 
 type securityPageData struct {
@@ -276,6 +281,7 @@ type Console struct {
 	monitor         CrawlMonitorSource
 	control         CrawlControlSource
 	index           IndexSource
+	documents       DocumentBrowserSource
 	network         NetworkSource
 	config          ConfigSource
 	settings        SettingsSource
@@ -307,6 +313,7 @@ func New(opts Options) *Console {
 		monitor:         opts.Monitor,
 		control:         opts.Control,
 		index:           opts.Index,
+		documents:       opts.Documents,
 		network:         opts.Network,
 		config:          opts.Config,
 		settings:        opts.Settings,
@@ -450,6 +457,15 @@ func (c *Console) handleIndex(w http.ResponseWriter, r *http.Request) {
 			data.TermQueried = true
 			data.Term = c.terms.LookupTerm(r.Context(), term)
 		}
+	}
+	if c.documents != nil {
+		data.DocsEnabled = true
+		data.DocQuery = strings.TrimSpace(r.URL.Query().Get("q"))
+		data.DocDomain = strings.TrimSpace(r.URL.Query().Get("domain"))
+		data.Documents = c.documents.BrowseDocuments(r.Context(), DocumentQuery{
+			URLContains: data.DocQuery,
+			Domain:      data.DocDomain,
+		})
 	}
 
 	c.render(r.Context(), w, c.tpl.index, "layout", data)

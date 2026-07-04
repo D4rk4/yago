@@ -2012,6 +2012,19 @@ but there is no single delete operation; deferred pending eviction plumbing) and
 today — only a read-only YaCy-compat shared-list file server; deferred pending a
 new store). verify green (coverage 97.7%), Semgrep + Trivy clean.
 
+The remaining work is being closed in sub-slices (like the UI-06 epic). **UI-08a
+(document browser) — Done (2026-07-05).** The Index section gains a document
+browser: a no-JS `?q=`/`?domain=` GET form searches the indexed documents by URL
+substring (case-insensitive) and/or domain (exact host or any subdomain), rendering
+a bounded table (URL, title, content-type, language, indexed time) newest-indexed
+first, with a match count, a truncation note past the 50-row page size, and an
+empty state. Backed by a new `adminui.DocumentBrowserSource` over a node
+`documentBrowseSource` that scans `documentstore.StoredDocuments` (surfaced onto
+the `node` struct as `docScan`) and filters in Go; a scan error degrades to the
+partial results collected. Read-only — no delete yet (UI-08b). verify green (all 6
+modules 100%), Semgrep + Trivy clean. Still open: **UI-08b** (delete-by-URL/domain)
+and **UI-08c** (blacklist store + management + enforcement).
+
 Pages:
 
 1. Index stats:

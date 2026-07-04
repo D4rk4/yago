@@ -70,6 +70,9 @@ func buildOpsMux(
 		Performance:     newPerformanceSource(assembled.dht.gateStatus, crawlDepth),
 		SeedlistRefresh: seedRefresh,
 	}
+	if assembled.docScan != nil {
+		options.Documents = newDocumentBrowseSource(assembled.docScan)
+	}
 	if assembled.roster != nil {
 		options.PeerDetail = newPeerDetailSource(assembled.roster, blocks)
 	}

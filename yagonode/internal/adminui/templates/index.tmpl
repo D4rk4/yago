@@ -41,6 +41,43 @@
   {{end}}
 {{end}}
 {{end}}
+{{if .DocsEnabled}}
+<h2 class="cds-h2">Document browser</h2>
+<p class="cds-muted">Search the indexed documents by URL substring and/or domain.</p>
+<form class="cds-form cds-form--inline" method="get" action="/admin/index" role="search">
+  <div class="cds-field">
+    <label class="cds-label" for="q">URL contains</label>
+    <input class="cds-input" type="search" id="q" name="q" value="{{.DocQuery}}" autocomplete="off">
+  </div>
+  <div class="cds-field">
+    <label class="cds-label" for="domain">Domain</label>
+    <input class="cds-input" type="search" id="domain" name="domain" value="{{.DocDomain}}" autocomplete="off">
+  </div>
+  <button class="cds-btn" type="submit">Search</button>
+  <a class="cds-btn cds-btn--ghost" href="/admin/index">Clear</a>
+</form>
+{{if .Documents.Documents}}
+<p class="cds-muted">{{.Documents.Matched}} matching document(s){{if .Documents.Truncated}}, showing the first {{.Documents.Limit}}{{end}}.</p>
+<div class="cds-scroll-x">
+  <table class="cds-table">
+    <thead><tr><th scope="col">URL</th><th scope="col">Title</th><th scope="col">Type</th><th scope="col">Lang</th><th scope="col">Indexed</th></tr></thead>
+    <tbody>
+      {{range .Documents.Documents}}
+      <tr>
+        <td class="cds-mono">{{.URL}}</td>
+        <td>{{if .Title}}{{.Title}}{{else}}—{{end}}</td>
+        <td>{{if .ContentType}}{{.ContentType}}{{else}}—{{end}}</td>
+        <td>{{if .Language}}{{.Language}}{{else}}—{{end}}</td>
+        <td>{{if .IndexedAt}}{{.IndexedAt}}{{else}}—{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<div class="cds-empty" role="status">No documents match.</div>
+{{end}}
+{{end}}
 {{if .Schema}}
 <h2 class="cds-h2">Index schema</h2>
 <p class="cds-muted">Read-only reference of the fields stored in each index.</p>

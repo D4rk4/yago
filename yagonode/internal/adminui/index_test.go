@@ -98,3 +98,74 @@ func TestConsoleIndexOmitsTermBrowserWithoutSource(t *testing.T) {
 		t.Fatal("term browser rendered without a term source")
 	}
 }
+
+type fakeDocuments struct {
+	page DocumentPage
+	got  DocumentQuery
+}
+
+func (f *fakeDocuments) BrowseDocuments(_ context.Context, query DocumentQuery) DocumentPage {
+	f.got = query
+
+	return f.page
+}
+
+func TestConsoleIndexRendersDocumentBrowser(t *testing.T) {
+	t.Parallel()
+
+	docs := &fakeDocuments{page: DocumentPage{
+		Documents: []DocumentSummary{{
+			URL: "https://a.example/1", Title: "Doc One",
+			ContentType: "text/html", Language: "en", IndexedAt: "2026-07-04T00:00:00Z",
+		}},
+		Matched: 60, Limit: 50, Truncated: true,
+	}}
+	console := New(Options{
+		Index:     fakeIndex{snap: IndexStats{Available: true}},
+		Documents: docs,
+	})
+
+	got := do(t, console, "/admin/index?q=example&domain=a.example")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	if docs.got.URLContains != "example" || docs.got.Domain != "a.example" {
+		t.Fatalf("filters not passed to source: %+v", docs.got)
+	}
+	for _, want := range []string{
+		"Document browser", "https://a.example/1", "Doc One", "text/html",
+		"60 matching document(s)", "showing the first 50",
+		`value="example"`, `value="a.example"`,
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("document browser missing %q", want)
+		}
+	}
+}
+
+func TestConsoleIndexDocumentBrowserEmptyState(t *testing.T) {
+	t.Parallel()
+
+	got := do(
+		t,
+		New(
+			Options{
+				Index:     fakeIndex{snap: IndexStats{Available: true}},
+				Documents: &fakeDocuments{},
+			},
+		),
+		"/admin/index",
+	)
+	if !strings.Contains(got.body, "No documents match.") {
+		t.Fatal("expected the empty document-browser state")
+	}
+}
+
+func TestConsoleIndexOmitsDocumentBrowserWithoutSource(t *testing.T) {
+	t.Parallel()
+
+	got := do(t, New(Options{Index: fakeIndex{snap: IndexStats{Available: true}}}), "/admin/index")
+	if strings.Contains(got.body, "Document browser") {
+		t.Fatal("document browser rendered without a source")
+	}
+}

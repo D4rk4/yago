@@ -9,6 +9,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/crawlurls"
 	"github.com/D4rk4/yago/yagonode/internal/dhtexchange"
 	"github.com/D4rk4/yago/yagonode/internal/documentsearch"
+	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/events"
 	"github.com/D4rk4/yago/yagonode/internal/eviction"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
@@ -39,6 +40,7 @@ type node struct {
 	report        nodestatus.Report
 	searcher      searchcore.Searcher
 	index         searchindex.SearchIndex
+	docScan       documentstore.StoredDocuments
 	postings      rwi.PostingIndex
 	urlDirectory  urlmeta.URLDirectory
 	roster        peerroster.Roster
@@ -261,6 +263,7 @@ func newAssembledNode(parts nodeParts) node {
 		report:        parts.report,
 		searcher:      parts.searcher,
 		index:         parts.storage.searchIndex,
+		docScan:       parts.storage.storedDocuments(),
 		postings:      parts.storage.postings,
 		urlDirectory:  parts.storage.urlDirectory,
 		roster:        parts.roster,
