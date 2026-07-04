@@ -27,6 +27,10 @@ type fakeNetwork struct{ snap NetworkStatus }
 
 func (f fakeNetwork) Network(context.Context) NetworkStatus { return f.snap }
 
+type fakeLogs struct{ entries []LogEntry }
+
+func (f fakeLogs) Logs(context.Context) []LogEntry { return f.entries }
+
 func sampleResults() SearchResults {
 	return SearchResults{
 		Query:        "go",
@@ -382,6 +386,75 @@ func TestConsoleNetworkUnavailableWithoutSource(t *testing.T) {
 	}
 	if !strings.Contains(got.body, networkUnavailable) {
 		t.Fatal("expected unavailable message")
+	}
+}
+
+func TestConsoleLogsRendersEvents(t *testing.T) {
+	t.Parallel()
+
+	entries := []LogEntry{
+		{
+			Time:     "2026-07-04T00:00:00Z",
+			Severity: "warn",
+			Category: "security",
+			Name:     "login.failed",
+			Message:  "bad password",
+		},
+	}
+	got := do(t, New(Options{Logs: fakeLogs{entries: entries}}), "/admin/logs")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	for _, want := range []string{"login.failed", "bad password", "security", "cds-tag--warn", `id="logs-table"`} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("logs section missing %q", want)
+		}
+	}
+}
+
+func TestConsoleLogsPartialIsFragment(t *testing.T) {
+	t.Parallel()
+
+	entries := []LogEntry{
+		{Time: "t", Severity: "info", Category: "config", Name: "node.started", Message: "up"},
+	}
+	got := do(t, New(Options{Logs: fakeLogs{entries: entries}}), "/admin/logs/events")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	if !strings.Contains(got.body, `id="logs-table"`) {
+		t.Fatal("fragment must be the self-refreshing region")
+	}
+	if strings.Contains(got.body, "<header") || strings.Contains(got.body, "<nav") {
+		t.Fatal("partial must not include the full shell")
+	}
+}
+
+func TestConsoleLogsEmptyState(t *testing.T) {
+	t.Parallel()
+
+	got := do(t, New(Options{Logs: fakeLogs{}}), "/admin/logs")
+	if !strings.Contains(got.body, "No events recorded yet.") {
+		t.Fatal("expected empty events state")
+	}
+}
+
+func TestConsoleLogsUnavailableWithoutSource(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{})
+
+	page := do(t, console, "/admin/logs")
+	if !strings.Contains(page.body, "cds-empty") {
+		t.Fatal("expected unavailable state without a logs source")
+	}
+	if !strings.Contains(page.body, logsUnavailable) {
+		t.Fatal("expected unavailable message")
+	}
+
+	events := do(t, console, "/admin/logs/events")
+	if events.status != http.StatusNotFound {
+		t.Fatalf("logs partial without source: status %d", events.status)
 	}
 }
 

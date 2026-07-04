@@ -36,6 +36,7 @@ func buildOpsMux(
 		Search:   newSearchSource(assembled.searcher),
 		Index:    newIndexSource(assembled.index),
 		Network:  newNetworkSource(assembled.dht.gateStatus, assembled.roster),
+		Logs:     newLogsSource(recorder),
 	}))
 	recorder.Record(events.SeverityInfo, events.CategoryConfig, "node.started", "node started")
 

@@ -1749,6 +1749,13 @@ Acceptance:
 
 ### UI-09: Performance and operations UI
 
+Status: Partial (FTR-028). The Logs section renders recent structured events
+(time, severity, category, name, message) newest-first from the in-memory events
+recorder via a decoupled `adminui.LogsSource`, with an htmx auto-refresh partial
+and severity tags, degrading to plain HTML without JavaScript. The separate
+Performance section (queues, throughput, backup/restore controls) remains a
+placeholder follow-up.
+
 Pages:
 
 - Memory/disk/runtime stats.

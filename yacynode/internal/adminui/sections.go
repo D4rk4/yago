@@ -22,6 +22,5 @@ func defaultSections() map[string]sectionView {
 			"Security",
 			"Authentication, API keys, and privacy modes appear here.",
 		),
-		"/admin/logs": pending("Logs", "Structured events and log streaming appear here."),
 	}
 }

@@ -32,11 +32,14 @@ const (
 	searchPath          = "/admin/search"
 	indexPath           = "/admin/index"
 	networkPath         = "/admin/network"
+	logsPath            = "/admin/logs"
+	logsEventsPath      = "/admin/logs/events"
 
 	overviewUnavailable = "Node status is not available."
 	searchUnavailable   = "Search is not available."
 	indexUnavailable    = "The search index is not available."
 	networkUnavailable  = "Network status is not available."
+	logsUnavailable     = "Event log is not available."
 )
 
 // NavItem is one entry in the console side navigation.
@@ -64,6 +67,7 @@ type Options struct {
 	Search   SearchSource
 	Index    IndexSource
 	Network  NetworkSource
+	Logs     LogsSource
 }
 
 type sectionView struct {
@@ -81,6 +85,7 @@ type pageData struct {
 	Overview   Overview
 	Index      IndexStats
 	Network    NetworkStatus
+	Logs       []LogEntry
 }
 
 type searchPageData struct {
@@ -101,6 +106,7 @@ type templates struct {
 	search      *template.Template
 	index       *template.Template
 	network     *template.Template
+	logs        *template.Template
 }
 
 // Console is the server-rendered admin console handler.
@@ -112,6 +118,7 @@ type Console struct {
 	search   SearchSource
 	index    IndexSource
 	network  NetworkSource
+	logs     LogsSource
 }
 
 // New builds the console with its embedded templates, assets, and providers.
@@ -129,6 +136,7 @@ func New(opts Options) *Console {
 		search:   opts.Search,
 		index:    opts.Index,
 		network:  opts.Network,
+		logs:     opts.Logs,
 	}
 	console.registerRoutes(assets)
 
@@ -147,6 +155,7 @@ func buildTemplates() templates {
 		search:      clone(nil, "templates/search.tmpl"),
 		index:       clone(nil, "templates/index.tmpl"),
 		network:     clone(nil, "templates/network.tmpl"),
+		logs:        clone(nil, "templates/logs.tmpl", "templates/logs_table.tmpl"),
 	}
 }
 
@@ -158,6 +167,8 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+searchPath, c.handleSearch)
 	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
 	c.mux.HandleFunc("GET "+networkPath, c.handleNetwork)
+	c.mux.HandleFunc("GET "+logsPath, c.handleLogs)
+	c.mux.HandleFunc("GET "+logsEventsPath, c.handleLogsEvents)
 
 	for _, item := range navItems {
 		if dynamicSection(item.Path) {
@@ -169,7 +180,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 
 func dynamicSection(path string) bool {
 	return path == overviewPath || path == searchPath ||
-		path == indexPath || path == networkPath
+		path == indexPath || path == networkPath || path == logsPath
 }
 
 // ServeHTTP dispatches to the console's internal router.
@@ -228,6 +239,30 @@ func (c *Console) handleIndex(w http.ResponseWriter, r *http.Request) {
 		Section: sectionView{Heading: "Index", Available: true},
 		Index:   c.index.Index(r.Context()),
 	})
+}
+
+func (c *Console) handleLogs(w http.ResponseWriter, r *http.Request) {
+	if c.logs == nil {
+		c.renderUnavailable(w, r, logsPath, "Logs", logsUnavailable)
+
+		return
+	}
+
+	c.render(r.Context(), w, c.tpl.logs, "layout", pageData{
+		AppName: appName, ActivePath: logsPath, Nav: navItems,
+		Section: sectionView{Heading: "Logs", Available: true},
+		Logs:    c.logs.Logs(r.Context()),
+	})
+}
+
+func (c *Console) handleLogsEvents(w http.ResponseWriter, r *http.Request) {
+	if c.logs == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+
+	c.render(r.Context(), w, c.tpl.logs, "logs-table", c.logs.Logs(r.Context()))
 }
 
 func (c *Console) handleNetwork(w http.ResponseWriter, r *http.Request) {

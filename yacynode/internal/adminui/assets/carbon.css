@@ -197,6 +197,10 @@ a:focus, button:focus, input:focus, select:focus, [tabindex]:focus {
   font-size: 0.75rem;
   line-height: 1.5rem;
 }
+.cds-tag--info { background: #d0e2ff; color: #0043ce; }
+.cds-tag--debug { background: #e0e0e0; color: #393939; }
+.cds-tag--warn { background: #fcf4d6; color: #684e00; }
+.cds-tag--error { background: #ffd7d9; color: #a2191f; }
 
 /* Data table */
 .cds-table { width: 100%; border-collapse: collapse; background: var(--cds-layer-02); }
