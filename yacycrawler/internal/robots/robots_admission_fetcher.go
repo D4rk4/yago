@@ -15,6 +15,14 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
 )
 
+const (
+	msgRobotsRequestFailed  = "robots request build failed"
+	msgRobotsFetchFailed    = "robots fetch failed"
+	msgRobotsBodyCloseFail  = "robots body close failed"
+	msgRobotsBodyReadFailed = "robots body read failed"
+	msgRobotsParseFailed    = "robots parse failed"
+)
+
 type RobotsAdmissionFetcher struct {
 	inner     pagefetch.PageSource
 	client    *http.Client
@@ -61,8 +69,10 @@ func (f *RobotsAdmissionFetcher) group(ctx context.Context, target *url.URL) *ro
 		return group
 	}
 	resolved, _, _ := f.fetches.Do(target.Host, func() (any, error) {
-		group := f.fetchRobotsGroup(ctx, target)
-		f.groups.Add(target.Host, group)
+		group, ok := f.fetchRobotsGroup(ctx, target)
+		if ok {
+			f.groups.Add(target.Host, group)
+		}
 		return group, nil
 	})
 	return resolved.(*robotstxt.Group)
@@ -71,27 +81,33 @@ func (f *RobotsAdmissionFetcher) group(ctx context.Context, target *url.URL) *ro
 func (f *RobotsAdmissionFetcher) fetchRobotsGroup(
 	ctx context.Context,
 	target *url.URL,
-) *robotstxt.Group {
+) (*robotstxt.Group, bool) {
 	robotsURL := target.Scheme + "://" + target.Host + "/robots.txt"
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, robotsURL, nil)
 	if err != nil {
-		return allowAll()
+		slog.WarnContext(
+			ctx,
+			msgRobotsRequestFailed,
+			slog.String("host", target.Host),
+			slog.Any("error", err),
+		)
+		return allowAll(), false
 	}
 	response, err := f.client.Do(request)
 	if err != nil {
 		slog.WarnContext(
 			ctx,
-			"robots fetch failed",
+			msgRobotsFetchFailed,
 			slog.String("host", target.Host),
 			slog.Any("error", err),
 		)
-		return allowAll()
+		return allowAll(), false
 	}
 	defer func() {
 		if cerr := response.Body.Close(); cerr != nil {
 			slog.WarnContext(
 				ctx,
-				"robots body close failed",
+				msgRobotsBodyCloseFail,
 				slog.String("host", target.Host),
 				slog.Any("error", cerr),
 			)
@@ -99,13 +115,25 @@ func (f *RobotsAdmissionFetcher) fetchRobotsGroup(
 	}()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return allowAll()
+		slog.WarnContext(
+			ctx,
+			msgRobotsBodyReadFailed,
+			slog.String("host", target.Host),
+			slog.Any("error", err),
+		)
+		return allowAll(), false
 	}
 	data, err := robotstxt.FromStatusAndBytes(response.StatusCode, body)
 	if err != nil {
-		return allowAll()
+		slog.WarnContext(
+			ctx,
+			msgRobotsParseFailed,
+			slog.String("host", target.Host),
+			slog.Any("error", err),
+		)
+		return allowAll(), false
 	}
-	return data.FindGroup(f.userAgent)
+	return data.FindGroup(f.userAgent), true
 }
 
 func allowAll() *robotstxt.Group {

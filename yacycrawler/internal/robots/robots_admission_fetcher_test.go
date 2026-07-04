@@ -118,6 +118,43 @@ func TestRobotsAdmissionAllowsOnFetchFailure(t *testing.T) {
 	}
 }
 
+func TestRobotsAdmissionDoesNotCacheFetchFailure(t *testing.T) {
+	var hits int32
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/robots.txt" {
+			w.Header().Set("Content-Type", "text/html")
+			return
+		}
+		if atomic.AddInt32(&hits, 1) == 1 {
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				t.Fatal("response writer does not support hijacking")
+			}
+			conn, _, err := hj.Hijack()
+			if err != nil {
+				t.Fatalf("hijack: %v", err)
+			}
+			_ = conn.Close()
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer proxy.Close()
+
+	fetcher := newFetcher(t, deliveringSource(), proxy.Client(), 8)
+	target := mustParse(t, proxy.URL+"/public")
+
+	if _, err := fetcher.Fetch(context.Background(), target); err != nil {
+		t.Fatalf("first fetch: %v", err)
+	}
+	if _, err := fetcher.Fetch(context.Background(), target); err != nil {
+		t.Fatalf("second fetch: %v", err)
+	}
+	if got := atomic.LoadInt32(&hits); got != 2 {
+		t.Errorf("robots fetches = %d, want 2 (failed fetch must not be cached)", got)
+	}
+}
+
 func TestRobotsAdmissionReFetchesAfterEviction(t *testing.T) {
 	var hits int32
 	server := robotsServer(t, "User-agent: *\nDisallow: /private\n", &hits)
