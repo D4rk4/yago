@@ -37,7 +37,13 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		return err
 	}
 
-	orders, err := crawlorder.NewNATSOrderReceiver(ctx, js, cfg.OrdersDurable, cfg.OrdersSubject)
+	orders, err := crawlorder.NewNATSOrderReceiver(
+		ctx,
+		js,
+		cfg.OrdersDurable,
+		cfg.OrdersSubject,
+		cfg.OrdersRedelivery,
+	)
 	if err != nil {
 		return fmt.Errorf("create order receiver: %w", err)
 	}
@@ -70,7 +76,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		emitter,
 		pageEmitter,
 	)
-	consumer := crawlorder.NewCrawlOrderConsumer(orders, frontier)
+	consumer := crawlorder.NewCrawlOrderConsumer(orders, frontier, cfg.OrdersRedelivery)
 
 	workersDone := make(chan struct{})
 	go func() {

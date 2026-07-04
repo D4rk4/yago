@@ -9,6 +9,7 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawldelay"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlorder"
 )
 
 const (
@@ -17,6 +18,8 @@ const (
 	EnvNATSCrawledPageIndexSubject = "NATS_CRAWLED_PAGE_INDEX_SUBJECT"
 	EnvNATSCrawledPageIndexMaxMsgs = "NATS_CRAWLED_PAGE_INDEX_MAX_MSGS"
 	EnvNATSOrdersDurable           = "NATS_ORDERS_DURABLE"
+	EnvNATSOrdersAckWait           = "NATS_ORDERS_ACK_WAIT"
+	EnvNATSOrdersMaxDeliver        = "NATS_ORDERS_MAX_DELIVER"
 	EnvWorkers                     = "YACYCRAWLER_WORKERS"
 	EnvMaxDepth                    = "YACYCRAWLER_MAX_DEPTH"
 	EnvCrawlDelay                  = "YACYCRAWLER_CRAWL_DELAY"
@@ -30,6 +33,8 @@ const (
 	DefaultOrdersSubject           = "yacy.crawl.orders"
 	DefaultCrawledPageIndexSubject = "yacy.crawl.page-index"
 	DefaultOrdersDurable           = "yacy-crawlers"
+	DefaultOrdersAckWait           = 30 * time.Second
+	DefaultOrdersMaxDeliver        = 5
 	DefaultCrawledPageIndexMaxMsgs = 1024
 	DefaultCrawledPageSubject      = "yacy.crawl.pages"
 	DefaultCrawledPageMaxMsgs      = 1024
@@ -74,6 +79,7 @@ type ServiceConfig struct {
 	OrdersSubject           string
 	CrawledPageIndexSubject string
 	OrdersDurable           string
+	OrdersRedelivery        crawlorder.OrderRedeliveryPolicy
 	CrawledPageIndexMaxMsgs int64
 	CrawledPageEnabled      bool
 	CrawledPageSubject      string
@@ -149,6 +155,11 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		return ServiceConfig{}, err
 	}
 
+	ordersRedelivery, err := ordersRedeliveryFromEnv(getenv)
+	if err != nil {
+		return ServiceConfig{}, err
+	}
+
 	return ServiceConfig{
 		Crawl:         crawl,
 		NATSURL:       natsURL,
@@ -160,6 +171,7 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 			DefaultCrawledPageIndexSubject,
 		),
 		OrdersDurable:           envString(getenv, EnvNATSOrdersDurable, DefaultOrdersDurable),
+		OrdersRedelivery:        ordersRedelivery,
 		CrawledPageIndexMaxMsgs: crawledPageIndexMaxMsgs,
 		CrawledPageEnabled:      envBool(getenv, EnvCrawledPageEnabled, false),
 		CrawledPageSubject: envString(
@@ -169,6 +181,20 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		),
 		CrawledPageMaxMsgs: crawledPageMaxMsgs,
 	}, nil
+}
+
+func ordersRedeliveryFromEnv(
+	getenv func(string) string,
+) (crawlorder.OrderRedeliveryPolicy, error) {
+	ackWait, err := envDuration(getenv, EnvNATSOrdersAckWait, DefaultOrdersAckWait)
+	if err != nil {
+		return crawlorder.OrderRedeliveryPolicy{}, err
+	}
+	maxAttempts, err := envPositiveInt(getenv, EnvNATSOrdersMaxDeliver, DefaultOrdersMaxDeliver)
+	if err != nil {
+		return crawlorder.OrderRedeliveryPolicy{}, err
+	}
+	return crawlorder.OrderRedeliveryPolicy{AckWait: ackWait, MaxAttempts: maxAttempts}, nil
 }
 
 func envBool(getenv func(string) string, key string, fallback bool) bool {

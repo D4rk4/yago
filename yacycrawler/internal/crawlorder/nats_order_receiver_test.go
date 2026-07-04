@@ -33,7 +33,10 @@ func TestNATSOrderReceiverDeliversInOrder(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	receiver, err := crawlorder.NewNATSOrderReceiver(ctx, js, "test-durable", testOrdersSubject)
+	receiver, err := crawlorder.NewNATSOrderReceiver(
+		ctx, js, "test-durable", testOrdersSubject,
+		crawlorder.OrderRedeliveryPolicy{AckWait: 30 * time.Second, MaxAttempts: 5},
+	)
 	if err != nil {
 		t.Fatalf("new receiver: %v", err)
 	}
@@ -71,7 +74,10 @@ func TestNATSOrderReceiverTermsPoisonWithoutStalling(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	receiver, err := crawlorder.NewNATSOrderReceiver(ctx, js, "test-durable", testOrdersSubject)
+	receiver, err := crawlorder.NewNATSOrderReceiver(
+		ctx, js, "test-durable", testOrdersSubject,
+		crawlorder.OrderRedeliveryPolicy{AckWait: 30 * time.Second, MaxAttempts: 5},
+	)
 	if err != nil {
 		t.Fatalf("new receiver: %v", err)
 	}
@@ -107,7 +113,10 @@ func TestNATSOrderReceiverLeavesDeliveredOrderPendingUntilAck(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	receiver, err := crawlorder.NewNATSOrderReceiver(ctx, js, "test-durable", testOrdersSubject)
+	receiver, err := crawlorder.NewNATSOrderReceiver(
+		ctx, js, "test-durable", testOrdersSubject,
+		crawlorder.OrderRedeliveryPolicy{AckWait: 30 * time.Second, MaxAttempts: 5},
+	)
 	if err != nil {
 		t.Fatalf("new receiver: %v", err)
 	}
@@ -133,6 +142,66 @@ func TestNATSOrderReceiverLeavesDeliveredOrderPendingUntilAck(t *testing.T) {
 		t.Fatalf("ack: %v", err)
 	}
 	waitForAckPending(t, js, "test-durable", 0)
+}
+
+func TestNATSOrderReceiverHeartbeatHoldsRedeliveryThenReleases(t *testing.T) {
+	js := connectJetStream(t, startNATS(t))
+	ensureTestStreams(t, js)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	const ackWait = time.Second
+	receiver, err := crawlorder.NewNATSOrderReceiver(
+		ctx, js, "test-durable", testOrdersSubject,
+		crawlorder.OrderRedeliveryPolicy{AckWait: ackWait, MaxAttempts: 5},
+	)
+	if err != nil {
+		t.Fatalf("new receiver: %v", err)
+	}
+
+	order := yacycrawlcontract.CrawlOrder{Provenance: []byte("slow")}
+	data, err := yacycrawlcontract.MarshalCrawlOrder(order)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if _, err := js.Publish(ctx, testOrdersSubject, data); err != nil {
+		t.Fatalf("publish order: %v", err)
+	}
+
+	var delivery crawlorder.CrawlOrderDelivery
+	select {
+	case delivery = <-receiver.Receive():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for first delivery")
+	}
+
+	beat := time.NewTicker(ackWait / 2)
+	defer beat.Stop()
+	held := time.After(3 * ackWait)
+	for holding := true; holding; {
+		select {
+		case <-beat.C:
+			if err := delivery.InProgress(context.Background()); err != nil {
+				t.Fatalf("heartbeat: %v", err)
+			}
+		case again := <-receiver.Receive():
+			t.Fatalf("order redelivered while heartbeat kept it alive: %v", again.Order.Provenance)
+		case <-held:
+			holding = false
+		}
+	}
+
+	select {
+	case redelivered := <-receiver.Receive():
+		if string(redelivered.Order.Provenance) != "slow" {
+			t.Errorf("redelivered provenance = %q", redelivered.Order.Provenance)
+		}
+		if err := redelivered.Ack(context.Background()); err != nil {
+			t.Fatalf("ack redelivery: %v", err)
+		}
+	case <-time.After(3 * ackWait):
+		t.Fatal("order never redelivered after heartbeat stopped")
+	}
 }
 
 func waitForAckPending(

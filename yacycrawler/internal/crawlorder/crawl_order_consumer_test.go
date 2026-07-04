@@ -14,7 +14,10 @@ import (
 func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
 	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
 	f := frontier.NewFrontier(8, nil)
-	consumer := crawlorder.NewCrawlOrderConsumer(queue, f)
+	consumer := crawlorder.NewCrawlOrderConsumer(queue, f, crawlorder.OrderRedeliveryPolicy{
+		AckWait:     2 * time.Hour,
+		MaxAttempts: 5,
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -67,7 +70,10 @@ func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
 func TestConsumerNaksWhenRunHasDeliveryFailure(t *testing.T) {
 	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
 	f := frontier.NewFrontier(8, nil)
-	consumer := crawlorder.NewCrawlOrderConsumer(queue, f)
+	consumer := crawlorder.NewCrawlOrderConsumer(queue, f, crawlorder.OrderRedeliveryPolicy{
+		AckWait:     2 * time.Hour,
+		MaxAttempts: 5,
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -111,7 +117,10 @@ func TestConsumerNaksWhenRunHasDeliveryFailure(t *testing.T) {
 func TestConsumerTermsUncompilableProfile(t *testing.T) {
 	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
 	f := frontier.NewFrontier(8, nil)
-	consumer := crawlorder.NewCrawlOrderConsumer(queue, f)
+	consumer := crawlorder.NewCrawlOrderConsumer(queue, f, crawlorder.OrderRedeliveryPolicy{
+		AckWait:     2 * time.Hour,
+		MaxAttempts: 5,
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

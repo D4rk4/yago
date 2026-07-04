@@ -19,15 +19,21 @@ const (
 )
 
 type CrawlOrderConsumer struct {
-	orders   boundedqueue.Receiver[CrawlOrderDelivery]
-	frontier *frontier.Frontier
+	orders     boundedqueue.Receiver[CrawlOrderDelivery]
+	frontier   *frontier.Frontier
+	redelivery OrderRedeliveryPolicy
 }
 
 func NewCrawlOrderConsumer(
 	orders boundedqueue.Receiver[CrawlOrderDelivery],
 	frontier *frontier.Frontier,
+	redelivery OrderRedeliveryPolicy,
 ) *CrawlOrderConsumer {
-	return &CrawlOrderConsumer{orders: orders, frontier: frontier}
+	return &CrawlOrderConsumer{
+		orders:     orders,
+		frontier:   frontier,
+		redelivery: redelivery,
+	}
 }
 
 func (c *CrawlOrderConsumer) Run(ctx context.Context) {
@@ -73,12 +79,14 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 		return
 	}
 	c.frontier.Hold()
+	heartbeat := keepOrderAlive(ctx, delivery, c.redelivery.heartbeatInterval())
 	seeded := c.frontier.SeedRun(
 		ctx,
 		order.Requests,
 		order.Provenance,
 		profile,
 		func(succeeded bool) {
+			heartbeat.release()
 			defer c.frontier.Release()
 			if ctx.Err() != nil || !succeeded {
 				if err := delivery.Nak(context.Background()); err != nil {

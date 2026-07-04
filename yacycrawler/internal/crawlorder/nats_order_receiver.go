@@ -21,6 +21,7 @@ func NewNATSOrderReceiver(
 	js jetstream.JetStream,
 	durable string,
 	subject string,
+	redelivery OrderRedeliveryPolicy,
 ) (*NATSOrderReceiver, error) {
 	consumer, err := js.CreateOrUpdateConsumer(
 		ctx,
@@ -29,6 +30,8 @@ func NewNATSOrderReceiver(
 			Durable:       durable,
 			AckPolicy:     jetstream.AckExplicitPolicy,
 			FilterSubject: subject,
+			AckWait:       redelivery.AckWait,
+			MaxDeliver:    redelivery.MaxAttempts,
 		},
 	)
 	if err != nil {
@@ -53,6 +56,9 @@ func NewNATSOrderReceiver(
 			},
 			Term: func(context.Context) error {
 				return msg.Term()
+			},
+			InProgress: func(context.Context) error {
+				return msg.InProgress()
 			},
 		}
 		select {
