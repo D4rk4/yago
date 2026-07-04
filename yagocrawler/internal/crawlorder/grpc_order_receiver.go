@@ -62,10 +62,11 @@ func NewGRPCOrderReceiver(
 	ctx context.Context,
 	client OrderStreamer,
 	workerID string,
+	control ControlHandler,
 ) *GRPCOrderReceiver {
 	out := make(chan CrawlOrderDelivery)
 	go streamCrawlOrders(ctx, client, workerID, out, orderStreamRetryWait)
-	go heartbeatOrders(ctx, client, workerID, orderHeartbeatInterval)
+	go heartbeatOrders(ctx, client, workerID, orderHeartbeatInterval, control)
 
 	return &GRPCOrderReceiver{out: out}
 }
@@ -102,6 +103,7 @@ func heartbeatOrders(
 	client OrderStreamer,
 	workerID string,
 	interval time.Duration,
+	control ControlHandler,
 ) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -110,12 +112,13 @@ func heartbeatOrders(
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if _, err := client.Heartbeat(
-				ctx,
-				&crawlrpc.WorkerHeartbeat{WorkerId: workerID},
-			); err != nil {
+			result, err := client.Heartbeat(ctx, &crawlrpc.WorkerHeartbeat{WorkerId: workerID})
+			if err != nil {
 				slog.WarnContext(ctx, msgHeartbeatFailed, slog.Any("error", err))
+
+				continue
 			}
+			dispatchDirectives(ctx, control, result.GetDirectives())
 		}
 	}
 }

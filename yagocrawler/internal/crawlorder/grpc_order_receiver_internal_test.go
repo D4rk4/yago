@@ -50,12 +50,13 @@ type fakeStreamer struct {
 	attempts []streamAttempt
 	index    int
 
-	mu         sync.Mutex
-	acks       []*crawlrpc.OrderAck
-	heartbeats []string
-	beatCalls  int
-	ackErr     error
-	beatErr    error
+	mu             sync.Mutex
+	acks           []*crawlrpc.OrderAck
+	heartbeats     []string
+	beatCalls      int
+	ackErr         error
+	beatErr        error
+	beatDirectives []*crawlrpc.CrawlControlDirective
 }
 
 func (f *fakeStreamer) StreamOrders(
@@ -104,7 +105,7 @@ func (f *fakeStreamer) Heartbeat(
 	}
 	f.heartbeats = append(f.heartbeats, in.GetWorkerId())
 
-	return &crawlrpc.WorkerHeartbeatResult{}, nil
+	return &crawlrpc.WorkerHeartbeatResult{Directives: f.beatDirectives}, nil
 }
 
 func (f *fakeStreamer) ackedLeases() []*crawlrpc.OrderAck {
@@ -162,7 +163,7 @@ func TestGRPCOrderReceiverDeliversOrderAndSettlesLease(t *testing.T) {
 		attempts: []streamAttempt{{results: []recvResult{orderResult(t, "docs")}}},
 	}
 
-	receiver := NewGRPCOrderReceiver(ctx, client, "worker-1")
+	receiver := NewGRPCOrderReceiver(ctx, client, "worker-1", nil)
 	delivery := awaitOrder(t, receiver)
 	if delivery.Order.Profile.Name != "docs" {
 		t.Fatalf("order = %q, want docs", delivery.Order.Profile.Name)
@@ -201,7 +202,7 @@ func TestGRPCOrderReceiverHeartbeatsWorker(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	client := &fakeStreamer{ctx: ctx}
 
-	receiver := NewGRPCOrderReceiver(ctx, client, "worker-9")
+	receiver := NewGRPCOrderReceiver(ctx, client, "worker-9", nil)
 	deadline := time.After(2 * time.Second)
 	for len(client.beats()) == 0 {
 		select {
@@ -223,7 +224,7 @@ func TestHeartbeatOrdersLogsError(t *testing.T) {
 	client := &fakeStreamer{ctx: ctx, beatErr: errors.New("heartbeat rejected")}
 	done := make(chan struct{})
 	go func() {
-		heartbeatOrders(ctx, client, "worker-1", orderHeartbeatInterval)
+		heartbeatOrders(ctx, client, "worker-1", orderHeartbeatInterval, nil)
 		close(done)
 	}()
 	deadline := time.After(2 * time.Second)
@@ -253,7 +254,7 @@ func TestGRPCOrderReceiverReconnectsAfterStreamError(t *testing.T) {
 		},
 	}
 
-	receiver := NewGRPCOrderReceiver(ctx, client, "worker-1")
+	receiver := NewGRPCOrderReceiver(ctx, client, "worker-1", nil)
 	if got := awaitOrder(t, receiver).Order.Profile.Name; got != "retry" {
 		t.Fatalf("order = %q, want retry", got)
 	}
@@ -271,7 +272,7 @@ func TestGRPCOrderReceiverSkipsUndecodableOrders(t *testing.T) {
 		}}},
 	}
 
-	receiver := NewGRPCOrderReceiver(ctx, client, "worker-1")
+	receiver := NewGRPCOrderReceiver(ctx, client, "worker-1", nil)
 	if got := awaitOrder(t, receiver).Order.Profile.Name; got != "good" {
 		t.Fatalf("order = %q, want good", got)
 	}

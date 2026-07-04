@@ -1869,10 +1869,18 @@ an operator can see at a glance whether the fleet is producing results or bounci
 pages. Per-URL result/rejection lists (the actual indexed/failed/blocked URLs)
 stay a follow-up: the worker ships only per-run outcome counts today, so listing
 individual URLs needs the crawl exchange extended to carry a bounded per-URL
-outcome sample. Remaining: a node→worker control plane for pause/cancel/PPM
-(CTL-7..10), and cache policy plus expert start fields (START-11). The
-crawl-profile editor (named-profile CRUD) stays a separate follow-up (management,
-not observability).
+outcome sample. The node→worker control plane now exists (CTL-7): the
+`WorkerHeartbeatResult` carries a repeated `CrawlControlDirective`
+(pause/resume/cancel/set-rate, targeting a run by its provenance token or the
+whole worker), the node queues directives per worker in a `ControlRegistry` the
+heartbeat handler drains, and the worker's order receiver dispatches each
+delivered directive to a `ControlHandler` seam (a logging handler today). Control
+thus rides the existing lease-keepalive with no new stream and no wire break (a
+purely additive proto field). Remaining: wire the directives to real behaviour —
+pause/resume (CTL-8), cancel a run (CTL-9), PPM rate (CTL-10) — each an admin
+action that enqueues the directive plus the worker-side handler that acts on it,
+and cache policy plus expert start fields (START-11). The crawl-profile editor
+(named-profile CRUD) stays a separate follow-up (management, not observability).
 
 Pages:
 

@@ -20,13 +20,19 @@ type exchangeServer struct {
 	queue    *DurableOrderQueue
 	ingest   chan<- crawlresults.IngestDelivery
 	progress ProgressSink
+	control  *ControlRegistry
 }
 
 func newExchangeServer(
 	queue *DurableOrderQueue,
 	ingest chan<- crawlresults.IngestDelivery,
 ) *exchangeServer {
-	return &exchangeServer{queue: queue, ingest: ingest, progress: noopProgressSink{}}
+	return &exchangeServer{
+		queue:    queue,
+		ingest:   ingest,
+		progress: noopProgressSink{},
+		control:  newControlRegistry(),
+	}
 }
 
 func (s *exchangeServer) StreamOrders(
@@ -77,7 +83,9 @@ func (s *exchangeServer) Heartbeat(
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return &crawlrpc.WorkerHeartbeatResult{}, nil
+	return &crawlrpc.WorkerHeartbeatResult{
+		Directives: directivesToProto(s.control.drain(req.GetWorkerId())),
+	}, nil
 }
 
 func (s *exchangeServer) ReportProgress(

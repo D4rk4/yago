@@ -1,0 +1,120 @@
+package crawlorder
+
+import (
+	"context"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
+	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
+)
+
+type recordingControlHandler struct {
+	mu      sync.Mutex
+	applied []yagocrawlcontract.CrawlControlDirective
+}
+
+func (h *recordingControlHandler) Apply(
+	_ context.Context,
+	directive yagocrawlcontract.CrawlControlDirective,
+) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.applied = append(h.applied, directive)
+}
+
+func (h *recordingControlHandler) snapshot() []yagocrawlcontract.CrawlControlDirective {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	return append([]yagocrawlcontract.CrawlControlDirective(nil), h.applied...)
+}
+
+func TestDirectiveFromProtoMapsKinds(t *testing.T) {
+	cases := map[crawlrpc.CrawlControlKind]yagocrawlcontract.CrawlControlKind{
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_PAUSE:    yagocrawlcontract.CrawlControlPause,
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESUME:   yagocrawlcontract.CrawlControlResume,
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_CANCEL:   yagocrawlcontract.CrawlControlCancel,
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_RATE: yagocrawlcontract.CrawlControlSetRate,
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_UNSPECIFIED: yagocrawlcontract.CrawlControlKind(
+			"",
+		),
+	}
+	for proto, want := range cases {
+		if got := controlKindFromProto(proto); got != want {
+			t.Fatalf("controlKindFromProto(%v) = %q, want %q", proto, got, want)
+		}
+	}
+}
+
+func TestDirectiveFromProtoEncodesRunID(t *testing.T) {
+	directive := directiveFromProto(&crawlrpc.CrawlControlDirective{
+		Kind:           crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_RATE,
+		RunId:          []byte{0xab, 0xcd},
+		PagesPerMinute: 30,
+	})
+	if directive.Kind != yagocrawlcontract.CrawlControlSetRate {
+		t.Fatalf("kind = %q", directive.Kind)
+	}
+	if directive.RunID != "abcd" {
+		t.Fatalf("run id = %q, want abcd", directive.RunID)
+	}
+	if directive.PagesPerMinute != 30 {
+		t.Fatalf("ppm = %d, want 30", directive.PagesPerMinute)
+	}
+}
+
+func TestDispatchDirectivesNilHandlerNoOp(t *testing.T) {
+	dispatchDirectives(context.Background(), nil, []*crawlrpc.CrawlControlDirective{
+		{Kind: crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_PAUSE},
+	})
+}
+
+func TestDispatchDirectivesFansToHandler(t *testing.T) {
+	handler := &recordingControlHandler{}
+	dispatchDirectives(context.Background(), handler, []*crawlrpc.CrawlControlDirective{
+		{Kind: crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_PAUSE},
+		{Kind: crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_CANCEL},
+	})
+	applied := handler.snapshot()
+	if len(applied) != 2 || applied[0].Kind != yagocrawlcontract.CrawlControlPause ||
+		applied[1].Kind != yagocrawlcontract.CrawlControlCancel {
+		t.Fatalf("dispatched = %+v, want pause then cancel", applied)
+	}
+}
+
+func TestLoggingControlHandlerApplyDoesNotPanic(t *testing.T) {
+	LoggingControlHandler{}.Apply(context.Background(), yagocrawlcontract.CrawlControlDirective{
+		Kind:  yagocrawlcontract.CrawlControlResume,
+		RunID: "beef",
+	})
+}
+
+func TestGRPCOrderReceiverDispatchesHeartbeatDirectives(t *testing.T) {
+	fastHeartbeat(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	handler := &recordingControlHandler{}
+	client := &fakeStreamer{
+		ctx: ctx,
+		beatDirectives: []*crawlrpc.CrawlControlDirective{
+			{Kind: crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_CANCEL, RunId: []byte{0x01}},
+		},
+	}
+
+	NewGRPCOrderReceiver(ctx, client, "worker-ctl", handler)
+	deadline := time.After(2 * time.Second)
+	for len(handler.snapshot()) == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("no directive dispatched from heartbeat")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if got := handler.snapshot()[0]; got.Kind != yagocrawlcontract.CrawlControlCancel ||
+		got.RunID != "01" {
+		t.Fatalf("dispatched directive = %+v, want cancel/01", got)
+	}
+}

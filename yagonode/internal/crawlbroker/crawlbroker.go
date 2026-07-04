@@ -28,6 +28,7 @@ type Config struct {
 type CrawlBroker struct {
 	Orders   *DurableOrderQueue
 	Ingest   *IngestReceiver
+	Control  *ControlRegistry
 	server   *grpc.Server
 	listener net.Listener
 	sweep    *time.Ticker
@@ -80,6 +81,7 @@ func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker
 	return &CrawlBroker{
 		Orders:   queue,
 		Ingest:   ingest,
+		Control:  exchange.control,
 		server:   server,
 		listener: listener,
 		sweep:    sweep,
