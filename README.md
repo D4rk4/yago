@@ -1,9 +1,23 @@
-# yago
+# YagoSeek
 
-`yago` is a Go workspace for `yago-node`, a YaCy-compatible P2P search node,
-and an optional crawler pipeline.
+**Open search infrastructure for developers.**
 
-Project repository: https://github.com/D4rk4/yago/.
+*YagoSeek — your own federated search node.*
+
+YagoSeek is a self-hosted, YaCy-compatible peer-to-peer search node: run your own
+index, join the federated network, and query it through a Tavily-compatible
+Search API or the built-in portal. It is built on `yago`, a Go workspace whose
+`yago-node` binary speaks the YaCy RWI/DHT wire protocol, alongside an optional
+crawler pipeline.
+
+**YagoSeek** is the product; **`yago`** is the toolkit — the Go module, the
+workspace, and the command-line binaries (`yago-node`, `yagocrawler`).
+
+- Project home: https://yagoseek.dev/ — documentation at https://docs.yagoseek.dev/,
+  the Search API reference at https://api.yagoseek.dev/, a hosted demo at
+  https://demo.yagoseek.dev/, and network status at https://status.yagoseek.dev/.
+- Source repository: https://github.com/D4rk4/yago/, importable as the Go module
+  `github.com/D4rk4/yago`.
 
 This repository is a fork of https://github.com/nikitakarpei/yacy-rwi-node.
 The original author is Nikita Karpei.

@@ -2904,6 +2904,16 @@ Acceptance:
 
 ### BRAND-04: Adopt the "YagoSeek" public brand
 
+Status: Done. The README now leads with the **YagoSeek** brand — the hero line
+"Open search infrastructure for developers.", the tagline "YagoSeek — your own
+federated search node.", a product lede, the `yagoseek.dev` domain family
+(docs./api./demo./status.), and an explicit split (YagoSeek = product; `yago` =
+module/workspace/binaries `yago-node`/`yagocrawler`). The `FORK.md` and
+`fork-roadmap.md` headers carry the same product name. Command examples stay
+accurate to the real binaries; a unified `yago` sub-command CLI is not shipped
+(a separate CLI-consolidation follow-up, not branding). Wire, DTO, data-fallback,
+and AGPL/fork attribution are untouched. verify green, Semgrep + Trivy clean.
+
 Establish **YagoSeek** as the public-facing brand while keeping `yago` as the
 binary/module/CLI name and `github.com/D4rk4/yago` as the repository. This is
 public naming and copy only; it changes no wire-compatibility invariant above,

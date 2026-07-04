@@ -1,7 +1,8 @@
-# yago Roadmap
+# YagoSeek Roadmap
 
-This is a plain-language summary of where `yago` is going. It is a direction, not
-a claim that every capability below is complete. Endpoint-level status is in
+This is a plain-language summary of where YagoSeek — the product built on the
+`yago` toolkit — is going. It is a direction, not a claim that every capability
+below is complete. Endpoint-level status is in
 [compatibility.md](compatibility.md); the full engineering plan is in
 [PLAN.md](../../PLAN.md).
 

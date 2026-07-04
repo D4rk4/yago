@@ -1,9 +1,10 @@
-# yago Fork Notice
+# YagoSeek Fork Notice
 
-`yago` is an independent fork of `yacy-rwi-node` by Nikita Karpei
-(https://github.com/nikitakarpei/yacy-rwi-node), a YaCy-compatible peer. This
-document states what the fork aims to be, what it claims about compatibility, and
-the legal notices it must carry.
+YagoSeek — built on `yago` — is an independent fork of `yacy-rwi-node` by Nikita
+Karpei (https://github.com/nikitakarpei/yacy-rwi-node), a YaCy-compatible peer.
+YagoSeek is the product name; `yago` is the Go module, workspace, and binaries.
+This document states what the fork aims to be, what it claims about
+compatibility, and the legal notices it must carry.
 
 ## Fork Goals
 
