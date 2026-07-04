@@ -1468,6 +1468,11 @@ Acceptance:
 - A page with a future `lastmod`-derived due time is not re-dispatched early.
 - Scheduled recrawls survive a restart.
 
+Research enrichment (Phase 8): drive the recrawl interval with an online change-rate
+estimator that needs only the binary changed/not-changed signal from the content
+hash (arXiv:2004.02167, 2020), and treat sitemap `lastmod` as a weak prior only -
+measured precision <0.2, recall <0.5 (arXiv:2502.02430, 2025) - never as truth.
+
 ### CRAWL-07: Crawler worker hardening
 
 Tasks:
@@ -3148,3 +3153,198 @@ Acceptance:
   accurate install/run instructions once BRAND-01..03 land.
 - No wire endpoint, DTO field, data-file fallback, or AGPL/YaCy attribution
   changes.
+
+## 23. Phase 8 - SOTA research-driven improvements
+
+Goal: close the gap to the state of the art in web crawling, retrieval, and
+observability identified by an arXiv survey (2020-2026), strictly within the
+YaCy-swarm compatibility invariants: never break the RWI-DHT protocol, the
+`/yacysearch.*` endpoints, or the protobuf wire; no mandatory GPU/LLM runtime
+(optional CPU or offline-only model paths only); queries are never logged by
+default; Go implementation; egress stays default-deny. Each task is tagged by
+adoption wave - Wave A: light, model-free, immediate, wire-safe; Wave B: medium,
+optional or offline-model; Wave C: heavy or research-grade / differentiating.
+arXiv ids are cited for provenance; any new third-party dependency still needs its
+own ADR before adoption. These tasks enrich, not replace, SEARCH-09/10/11 and
+CRAWL-09.
+
+### Crawler
+
+### CRAWL-10: Near-duplicate and canonical detection (Wave A)
+Add SimHash fingerprints at ingest (upgradeable to LSHBloom-style Bloom-backed
+storage) plus deterministic URL canonicalization (RFC 3986, tracking-param strip,
+`rel=canonical`) feeding the visited-set, so mirrors, spun near-duplicates, and
+tracking-URL variants stop wasting crawl budget and index space. Refs: Manku et
+al. WWW 2007 (SimHash, non-arXiv); LSHBloom arXiv:2411.04257 (2024). Fit: dedup is
+node-local, outside the wire protocol. Acceptance: near-duplicate pages collapse
+to one index entry; canonical URL variants dedupe before fetch; tests + verify.
+
+### CRAWL-11: Adaptive server-load-aware politeness (Wave A)
+Replace the fixed per-host delay with a per-host token bucket plus adaptive
+backoff on `429`/`503`/`Retry-After` and latency spikes, and smooth the aggregate
+request rate. Complements CTL-10 (operator-set PPM budget) with automatic,
+server-signalled restraint so a node does not earn IP bans that degrade swarm
+reach. Refs: constant-total-rate scheduler in arXiv:2502.02430 (2025); Cho &
+Garcia-Molina (non-arXiv). Acceptance: crawler backs off on throttling responses;
+per-host and aggregate rate stay within budget; tests + verify.
+
+### CRAWL-12: Pluggable frontier value-scorer (Wave B)
+Replace graph-connectivity frontier ordering with a predicted per-page value
+score, exposed as an optional gRPC scoring interface with a heuristic default, so
+a limited page budget is spent on high-value pages and nodes without the model
+still work. Refs: Craw4LLM arXiv:2502.13347 (2025); Neural Prioritisation
+arXiv:2506.16146 (2025); Tree-Frontier sampling arXiv:2112.07620. Fit: mirrors the
+existing node/worker gRPC split; no wire change to the swarm. Acceptance: frontier
+order follows the scorer when present, heuristic otherwise; tests + verify.
+
+### CRAWL-13: Main-content extraction quality (Wave B)
+Raise ingest quality with Trafilatura/Resiliparse-grade main-content extraction
+(boilerplate removal), lifting both RWI posting quality and snippet quality with
+one change. Refs: Bevendorff et al. SIGIR 2023 extractor benchmark (non-arXiv);
+FineWeb arXiv:2406.17557 (2024) for the no-ML extract+filter recipe. Acceptance: a
+representative page set indexes main content without navigation/boilerplate;
+tests + verify.
+
+### CRAWL-14: Pre-index spam/quality filtering (Wave B)
+Filter AI-slop, spam, and low-value pages before indexing using the
+"offline-model-labels -> lightweight online classifier" pattern, so quality
+filtering needs no heavy runtime dependency. Refs: Web Page Classification for
+Crawling arXiv:2505.06972 (2025); FineWeb filter recipe arXiv:2406.17557 (2024).
+Acceptance: a labelled spam/ham set is separated by the online classifier above a
+target precision; tests + verify.
+
+### CRAWL-15: Opt-in JS/SPA rendering per-host escalation (Wave C)
+Offer headless-browser rendering as an explicit per-host opt-in escalation (never
+the default), since most valuable text is extractable from raw HTML and a browser
+pool is heavy and complicates the egress guard. Refs: FineWeb arXiv:2406.17557;
+CRATOR arXiv:2405.06356 (2024). Acceptance: rendering runs only for opted-in hosts
+and stays egress-guarded; disabled by default; tests + verify.
+
+### Search / retrieval
+
+### SEARCH-12: Reciprocal Rank Fusion at the merge chokepoint (Wave A)
+Merge heterogeneous per-peer result lists (and, later, a dense side) with
+score-calibration-free Reciprocal Rank Fusion at the single composed-searcher
+merge point. Ref: Cormack, Clarke & Buttcher, SIGIR 2009 (non-arXiv). Fit:
+rank-based, no model, no wire change; the fusion primitive future dense/sparse
+sides plug into. Acceptance: fused ranking holds or improves on a before/after
+relevance check; tests + verify.
+
+### SEARCH-13: Result diversification, near-dup collapse, and snippets (Wave A)
+Add MMR + per-domain-cap diversification and SimHash near-duplicate collapsing
+over the merged result set, plus query-biased extractive snippets, all as
+composed-searcher decorators. Realises the diversity half of SEARCH-11 with cited
+methods. Refs: Carbonell & Goldstein MMR SIGIR 1998 (non-arXiv); MA4DIV
+arXiv:2403.17421 (2024); query-aware snippets arXiv:2210.08809 (2022). Fit: local,
+model-free. Acceptance: duplicate/same-domain flooding is bounded; snippets are
+query-biased; tests + verify.
+
+### SEARCH-14: Local pseudo-relevance feedback and spell correction (Wave A)
+Add RM3-style pseudo-relevance feedback computed locally from first-pass RWI hits
+and SymSpell edit-distance spell/typo correction on the query endpoint. Refs: RM3
+(Lavrenko/Croft, foundational, non-arXiv); SymSpell (algorithmic). Fit: pure term
+statistics, no model, no logging, no protocol change - ideal under the privacy
+invariant. Acceptance: recall improves on a representative set without logging
+queries; tests + verify.
+
+### SEARCH-15: doc2query index-time document expansion (Wave B)
+Generate predicted query terms per document offline and inject them as ordinary
+postings into Bleve/RWI, so expansion terms flow through the DHT unchanged,
+ranking stays BM25, and there is zero query-time model. Ref: doc2query /
+docTTTTTquery arXiv:1904.08375 (2019). Fit: the strongest wire-safe retrieval
+upgrade - fully RWI/DHT compatible. Acceptance: expanded docs are retrievable by
+predicted terms; wire format unchanged; tests + verify.
+
+### SEARCH-16: IR evaluation harness and self-evaluation (Wave B)
+Add a BEIR / MS MARCO evaluation harness to gate every retrieval change against
+BM25 before shipping, plus doc2query-generated synthetic queries over our own
+crawled docs as privacy-preserving pseudo-qrels for label-free self-evaluation.
+Refs: BEIR arXiv:2104.08663 (2021); MS MARCO; doc2query arXiv:1904.08375.
+Acceptance: a change must show NDCG@10 non-regression vs BM25 to merge; harness
+runs offline. 
+
+### SEARCH-17: Optional CPU dense retrieval side, RRF-fused (Wave B/C)
+Add an optional, node-local dense index (CPU-only small bi-encoder such as
+E5-small/BGE-small or a Model2Vec static embedding, over a Go HNSW graph) fused
+with RWI results via SEARCH-12 RRF, keeping the index local so no protocol
+changes. Refs: E5 arXiv:2212.03533; BGE arXiv:2309.07597; Nomic arXiv:2402.01613;
+HNSW arXiv:1603.09320. Fit: dense augments, never replaces, RWI. Acceptance: dense
+side is optional, CPU-only, disabled by default; fused results beat BM25 on the
+SEARCH-16 harness; tests + verify.
+
+### SEARCH-18: Optional lightweight rerank decorator (Wave C)
+Add an opt-in rerank decorator (distilled RankGPT or a lightweight late-interaction
+reranker like LITE) applied only to the locally-merged top-k, so no extra peer
+traffic and no query leakage. Refs: RankGPT arXiv:2304.09542 (2023); LITE
+arXiv:2406.17968 (2024). Acceptance: rerank is opt-in, CPU-feasible, improves
+top-k order on the SEARCH-16 harness; tests + verify.
+
+### SEARCH-19: Learned-sparse RWI research spike (Wave C)
+Assess moving the RWI toward learned-sparse weights (SPLADE-v3) with a fast sparse
+ANN (Seismic), explicitly evaluating the wire-compatibility risk since learned
+weights change RWI posting-weight semantics. Deliverable is an ADR with a
+go/no-go, not code. Refs: SPLADE-v3 arXiv:2403.06789 (2024); Seismic
+arXiv:2404.18812 (2024). Acceptance: ADR documenting benefit vs DHT-wire risk.
+
+### SEARCH-20: Private-query research spike (Wave C)
+Assess Tiptoe-style private search (private nearest-neighbour over embeddings via
+linearly-homomorphic encryption) so queries can be hidden from peers, not just
+from logs. Deliverable is an ADR weighing protocol change and cost against the
+decentralization/privacy payoff. Refs: Tiptoe, SOSP 2023 (non-arXiv); Wally
+arXiv:2406.06761 (2024). Acceptance: ADR with a recommendation.
+
+### Observability and admin UI
+
+### OPS-07: Metric methodology - RED/USE/Golden Signals and OTel naming (Wave A)
+Regroup the existing metrics into RED (Rate/Errors/Duration) per surface (search,
+P2P RPC, crawl-ingest) and USE (Utilization/Saturation/Errors) per resource, add
+missing saturation signals (queue-full, DHT send backpressure), and name
+spans/metrics per OpenTelemetry semantic conventions. Refs: Wilkie RED; Gregg USE;
+Google SRE Ch.6; OpenTelemetry semconv (all industry/standards). Acceptance: a
+request-centric and a resource-centric dashboard render from existing metrics;
+tests + verify.
+
+### OPS-08: Continuous profiling (Wave A)
+Expose Go `net/http/pprof` CPU/heap/goroutine profiles behind the auth-protected
+ops listener (optionally scraped by Parca/Pyroscope), to catch parser hot spots
+and goroutine/RWI leaks metrics never reveal (<1-3% overhead). Refs: Google-Wide
+Profiling, IEEE Micro 2010 (non-arXiv); pprof/Parca (industry). Acceptance: pprof
+endpoints are reachable only with admin auth; tests + verify.
+
+### UI-13: Server-side log filtering (Wave A)
+Add severity/category/time filter chips to the Logs console section, rendered as
+htmx partials over the existing durable event log, closing the UI-09 log-filter
+follow-up without a client-side log viewer. Ref: htmx progressive enhancement
+(industry). Acceptance: filtered views render server-side and degrade without JS;
+tests + verify.
+
+### OPS-09: Crawl-health observability (Wave B)
+Add freshness/coverage (age-of-index), harvest-rate, spider-trap detection
+(per-host URL-growth + duplicate-content rate), and politeness (per-host rate,
+robots compliance, 429/deferral counts) as first-class metrics and tiles inside
+the live crawl-run monitor from the OBS/CTL epic. Ref: Olston & Najork,
+Foundations and Trends in IR 2010 (non-arXiv). Acceptance: stale index and trap
+conditions are visible; tests + verify.
+
+### OPS-10: Internal distributed tracing and exemplars (Wave B)
+Propagate W3C Trace Context across the node's own gRPC/P2P legs (sampled, scoped
+to this node - not cross-swarm), and attach trace-id exemplars to latency
+histograms so an operator clicks from a p99 spike to the slow request. Refs: W3C
+Trace Context (standard); TraceMesh arXiv:2406.06975 (2024); OpenMetrics exemplars
+(standard). Acceptance: a fan-out search produces a sampled waterfall; exemplars
+appear on histograms; tests + verify.
+
+### OPS-11: SLOs and multiwindow burn-rate alerting (Wave C)
+Define SLIs/SLOs for search availability and latency and a crawl-throughput SLO,
+with multiwindow multi-burn-rate alerts (page-worthy vs ticket-worthy) sized for a
+single-operator node. Ref: Google SRE Workbook, "Alerting on SLOs" (industry).
+Acceptance: recording rules compute burn rate; alert thresholds documented.
+
+### OPS-12: Swarm/peer health observability (Wave C)
+Add per-peer churn/availability health scoring (churn predicts routing
+degradation better than raw peer count) and a local-operator-only DHT/peer map
+from passive DHT in/out observation. Privacy caveat from the IPFS study: the same
+vantage enables deanonymization, so the map is never shared beyond the local
+operator. Refs: Interlaced churn arXiv:1903.07289 (2019); IPFS DHT monitoring
+arXiv:2104.09202 (2021). Acceptance: peer health scores render; the map is
+local-only; tests + verify.
