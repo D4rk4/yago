@@ -16,6 +16,46 @@
     </tbody>
   </table>
 </div>
+{{if .TermEnabled}}
+<h2 class="cds-h2">Term browser</h2>
+<p class="cds-muted">Look up how many postings a term has in the reverse word index and a sample of the documents that carry it.</p>
+<form class="cds-search-form" method="get" action="/admin/index" role="search">
+  <input class="cds-input" type="search" name="term" value="{{.Term.Term}}" aria-label="Term" autocomplete="off">
+  <button class="cds-btn" type="submit">Look up</button>
+</form>
+{{if .TermQueried}}
+  {{if .Term.Error}}
+  <div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Term.Error}}</div>
+  {{else if .Term.NotFound}}
+  <p class="cds-muted">No postings for “{{.Term.Term}}” (word hash <span class="cds-mono">{{.Term.Hash}}</span>).</p>
+  {{else}}
+  <p class="cds-muted">{{.Term.Count}} posting(s) for “{{.Term.Term}}” (word hash <span class="cds-mono">{{.Term.Hash}}</span>). Showing up to {{len .Term.Sample}}.</p>
+  <div class="cds-scroll-x">
+    <table class="cds-table">
+      <thead><tr><th scope="col">Title</th><th scope="col">URL</th></tr></thead>
+      <tbody>
+        {{range .Term.Sample}}<tr><td>{{if .Title}}{{.Title}}{{else}}—{{end}}</td><td class="cds-mono">{{if .URL}}{{.URL}}{{else}}—{{end}}</td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+  {{end}}
+{{end}}
+{{end}}
+{{if .Schema}}
+<h2 class="cds-h2">Index schema</h2>
+<p class="cds-muted">Read-only reference of the fields stored in each index.</p>
+{{range .Schema}}
+<h3 class="cds-h3">{{.Title}}</h3>
+<div class="cds-scroll-x">
+  <table class="cds-table">
+    <thead><tr><th scope="col">Field</th><th scope="col">Description</th></tr></thead>
+    <tbody>
+      {{range .Fields}}<tr><th scope="row" class="cds-mono">{{.Name}}</th><td>{{.Description}}</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+{{end}}
 {{else}}
 <div class="cds-empty" role="status" aria-live="polite">The search index is not available.</div>
 {{end}}

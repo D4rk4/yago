@@ -82,6 +82,8 @@ type Options struct {
 	Binding  BindingSource
 	Logs     LogsSource
 	Security SecuritySource
+	Terms    TermSource
+	Schema   []SchemaGroup
 }
 
 type sectionView struct {
@@ -151,6 +153,19 @@ type configPageData struct {
 	Error      string
 }
 
+type indexPageData struct {
+	AppName     string
+	ActivePath  string
+	Nav         []NavItem
+	CSRF        string
+	Section     sectionView
+	Index       IndexStats
+	TermEnabled bool
+	TermQueried bool
+	Term        TermReport
+	Schema      []SchemaGroup
+}
+
 type securityPageData struct {
 	AppName    string
 	ActivePath string
@@ -196,6 +211,8 @@ type Console struct {
 	binding  BindingSource
 	logs     LogsSource
 	security SecuritySource
+	terms    TermSource
+	schema   []SchemaGroup
 }
 
 // New builds the console with its embedded templates, assets, and providers.
@@ -219,6 +236,8 @@ func New(opts Options) *Console {
 		binding:  opts.Binding,
 		logs:     opts.Logs,
 		security: opts.Security,
+		terms:    opts.Terms,
+		schema:   opts.Schema,
 	}
 	console.registerRoutes(assets)
 
@@ -328,12 +347,22 @@ func (c *Console) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.render(r.Context(), w, c.tpl.index, "layout", pageData{
+	data := indexPageData{
 		AppName: appName, ActivePath: indexPath, Nav: navItems,
 		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Index", Available: true},
 		Index:   c.index.Index(r.Context()),
-	})
+		Schema:  c.schema,
+	}
+	if c.terms != nil {
+		data.TermEnabled = true
+		if term := strings.TrimSpace(r.URL.Query().Get("term")); term != "" {
+			data.TermQueried = true
+			data.Term = c.terms.LookupTerm(r.Context(), term)
+		}
+	}
+
+	c.render(r.Context(), w, c.tpl.index, "layout", data)
 }
 
 func (c *Console) handleLogs(w http.ResponseWriter, r *http.Request) {

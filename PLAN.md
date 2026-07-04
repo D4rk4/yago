@@ -1760,11 +1760,20 @@ Acceptance:
 
 ### UI-08: Index UI
 
-Status: Partial (FTR-026). The Index section renders search-index statistics
-(indexed document count, backend, last-updated) read directly from the node's
-`SearchIndex` via a decoupled `adminui.IndexSource`, degrading to a controlled
-unavailable state. Document/term browsing, blacklist management, and the schema
-view remain follow-ups.
+Status: Partial (FTR-026), advanced. The Index section renders search-index
+statistics (indexed document count, backend, last-updated) via a decoupled
+`adminui.IndexSource`, and now adds two of the four follow-ups. The **term
+browser** (`adminui.TermSource`, adapter over the RWI `PostingIndex` +
+`URLDirectory` threaded onto the `node` struct) lets an admin enter a term and
+see its word hash, its total posting count, and a bounded sample of the carrying
+documents (title + URL) — for debugging — via a no-JS `?term=` GET form. The
+read-only **schema view** renders a curated, grouped reference of the fields each
+index stores (full-text, RWI posting, URL metadata). Still open: the **document
+browser** (search/filter indexed URLs + delete-by-URL/domain — read paths exist
+but there is no single delete operation; deferred pending eviction plumbing) and
+**blacklist management** (no admin-manageable domain/path denylist store exists
+today — only a read-only YaCy-compat shared-list file server; deferred pending a
+new store). verify green (coverage 97.7%), Semgrep + Trivy clean.
 
 Pages:
 

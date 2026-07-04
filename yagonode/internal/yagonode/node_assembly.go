@@ -34,6 +34,8 @@ type node struct {
 	report        nodestatus.Report
 	searcher      searchcore.Searcher
 	index         searchindex.SearchIndex
+	postings      rwi.PostingIndex
+	urlDirectory  urlmeta.URLDirectory
 	roster        peerroster.Roster
 	sweeper       eviction.Sweeper
 	announcer     peerannouncement.Announcer
@@ -225,6 +227,8 @@ func newAssembledNode(parts nodeParts) node {
 		report:        parts.report,
 		searcher:      parts.searcher,
 		index:         parts.storage.searchIndex,
+		postings:      parts.storage.postings,
+		urlDirectory:  parts.storage.urlDirectory,
 		roster:        parts.roster,
 		sweeper:       newStorageSweeper(parts.vault, parts.storage),
 		announcer:     parts.announcer,

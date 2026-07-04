@@ -43,6 +43,8 @@ func buildOpsMux(
 		Binding:  sources.binding,
 		Logs:     newLogsSource(recorder),
 		Security: sources.security,
+		Terms:    newTermSource(assembled.postings, assembled.urlDirectory),
+		Schema:   indexSchemaGroups(),
 	}
 	if dispatcher := crawlDispatcher(assembled.crawl); dispatcher != nil {
 		options.Crawl = newCrawlSource(dispatcher)
