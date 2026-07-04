@@ -293,3 +293,120 @@ func TestConsoleIndexDeleteRedirectsOnError(t *testing.T) {
 		t.Fatalf("a failed delete should still redirect: status %d", got.status)
 	}
 }
+
+type fakeBlacklist struct {
+	entries []BlacklistEntry
+	added   []string
+	removed []string
+	err     error
+}
+
+func (f *fakeBlacklist) BlacklistEntries(context.Context) []BlacklistEntry { return f.entries }
+
+func (f *fakeBlacklist) AddBlacklist(_ context.Context, kind, value string) error {
+	f.added = append(f.added, kind+":"+value)
+
+	return f.err
+}
+
+func (f *fakeBlacklist) RemoveBlacklist(_ context.Context, kind, value string) error {
+	f.removed = append(f.removed, kind+":"+value)
+
+	return f.err
+}
+
+func TestConsoleIndexRendersBlacklist(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Index: fakeIndex{snap: IndexStats{Available: true}},
+		Blacklist: &fakeBlacklist{entries: []BlacklistEntry{
+			{Kind: "domain", Value: "blocked.example", AddedAt: "2026-07-05T00:00:00Z"},
+		}},
+	})
+	got := do(t, console, "/admin/index")
+	for _, want := range []string{
+		"Blacklist", "Block a URL or a whole domain", `value="add"`,
+		"blocked.example", `value="remove"`, ">Remove<",
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("blacklist manager missing %q", want)
+		}
+	}
+
+	empty := do(t, New(Options{
+		Index:     fakeIndex{snap: IndexStats{Available: true}},
+		Blacklist: &fakeBlacklist{},
+	}), "/admin/index")
+	if !strings.Contains(empty.body, "The blacklist is empty.") {
+		t.Fatal("expected the empty blacklist state")
+	}
+
+	without := do(
+		t,
+		New(Options{Index: fakeIndex{snap: IndexStats{Available: true}}}),
+		"/admin/index",
+	)
+	if strings.Contains(without.body, "Block a URL or a whole domain") {
+		t.Fatal("no blacklist manager should render without a source")
+	}
+}
+
+func TestConsoleBlacklistAdd(t *testing.T) {
+	t.Parallel()
+
+	blacklist := &fakeBlacklist{}
+	got := doPost(t, New(Options{Blacklist: blacklist}), blacklistPath, url.Values{
+		"action": {"add"}, "kind": {"domain"}, "value": {"blocked.example"},
+	})
+	if got.status != http.StatusSeeOther || got.header.Get("Location") != indexPath {
+		t.Fatalf("status %d, location %q", got.status, got.header.Get("Location"))
+	}
+	if len(blacklist.added) != 1 || blacklist.added[0] != "domain:blocked.example" {
+		t.Fatalf("added = %v", blacklist.added)
+	}
+}
+
+func TestConsoleBlacklistRemove(t *testing.T) {
+	t.Parallel()
+
+	blacklist := &fakeBlacklist{}
+	got := doPost(t, New(Options{Blacklist: blacklist}), blacklistPath, url.Values{
+		"action": {"remove"}, "kind": {"url"}, "value": {"https://a.example/"},
+	})
+	if got.status != http.StatusSeeOther || len(blacklist.removed) != 1 {
+		t.Fatalf("status %d, removed %v", got.status, blacklist.removed)
+	}
+}
+
+func TestConsoleBlacklistRejectsUnknownAction(t *testing.T) {
+	t.Parallel()
+
+	got := doPost(t, New(Options{Blacklist: &fakeBlacklist{}}), blacklistPath, url.Values{
+		"action": {"purge"},
+	})
+	if got.status != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", got.status)
+	}
+}
+
+func TestConsoleBlacklistWithoutSourceIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	got := doPost(t, New(Options{}), blacklistPath, url.Values{"action": {"add"}})
+	if got.status != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", got.status)
+	}
+}
+
+func TestConsoleBlacklistRedirectsOnError(t *testing.T) {
+	t.Parallel()
+
+	blacklist := &fakeBlacklist{err: errors.New("write failed")}
+	got := doPost(t, New(Options{Blacklist: blacklist}), blacklistPath, url.Values{
+		"action": {"add"}, "kind": {"domain"}, "value": {"blocked.example"},
+	})
+	if got.status != http.StatusSeeOther {
+		t.Fatalf("a failed blacklist write should still redirect: status %d", got.status)
+	}
+}

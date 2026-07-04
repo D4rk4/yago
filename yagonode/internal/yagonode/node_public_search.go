@@ -35,6 +35,7 @@ type publicSearchAssembly struct {
 	queryLogMode         queryLogMode
 	searchMetrics        *metrics.SearchMetrics
 	rankingWeights       func() searchindex.RankingWeights
+	denylist             denylistSnapshotter
 }
 
 func mountNodePublicSearch(
@@ -63,7 +64,8 @@ func mountNodePublicSearch(
 		RandomTargetIndex:  assembly.dhtSearchTargetIndex,
 	})
 	federated := withWebFallback(searchcore.NewFederatedSearcher(local, remote), assembly)
-	search := withQueryLogging(federated, assembly.queryLogMode)
+	filtered := withDenylistFilter(federated, assembly.denylist)
+	search := withQueryLogging(filtered, assembly.queryLogMode)
 	search = withSearchMetrics(search, assembly.searchMetrics)
 	access := searchAccessPolicy(assembly)
 	yacysearch.Mount(mux, search)

@@ -233,6 +233,21 @@ func TestAssembleNodeSurfacesRankingOpenError(t *testing.T) {
 	}
 }
 
+func TestAssembleNodeSurfacesDenylistOpenError(t *testing.T) {
+	engine := newCtrlEngine()
+	engine.failProvision["urldenylist"] = true
+	v := ctrlVault(t, engine)
+
+	_, err := assembleNodeSurfaces(assembleSurfacesInput{
+		ctx:    context.Background(),
+		config: testConfig(t),
+		vault:  v,
+	})
+	if err == nil {
+		t.Fatal("assembleNodeSurfaces should surface the url denylist open error")
+	}
+}
+
 func TestLoadRuntimeSettingsAllError(t *testing.T) {
 	engine := newCtrlEngine()
 	engine.failScan = true

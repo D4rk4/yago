@@ -67,12 +67,7 @@ func buildOpsMux(
 		Performance:     newPerformanceSource(assembled.dht.gateStatus, crawlDepth),
 		SeedlistRefresh: seedRefresh,
 	}
-	if assembled.docScan != nil {
-		options.Documents = newDocumentBrowseSource(assembled.docScan)
-	}
-	if assembled.indexAdmin != nil {
-		options.IndexAdmin = assembled.indexAdmin
-	}
+	applyIndexAdminOptions(&options, assembled)
 	if assembled.roster != nil {
 		options.PeerDetail = newPeerDetailSource(assembled.roster, blocks)
 	}
@@ -130,6 +125,20 @@ func seedImportSources(
 	)
 
 	return store, refresh
+}
+
+// applyIndexAdminOptions wires the Index console's document browser, delete
+// controls, and blacklist manager, each only when its backing store is present.
+func applyIndexAdminOptions(options *adminui.Options, assembled node) {
+	if assembled.docScan != nil {
+		options.Documents = newDocumentBrowseSource(assembled.docScan)
+	}
+	if assembled.indexAdmin != nil {
+		options.IndexAdmin = assembled.indexAdmin
+	}
+	if assembled.denylist != nil {
+		options.Blacklist = newBlacklistController(assembled.denylist)
+	}
 }
 
 // assembledPeerBlocks returns the peer-block store as an interface, preserving a

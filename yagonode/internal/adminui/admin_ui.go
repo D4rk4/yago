@@ -39,6 +39,7 @@ const (
 	configPath          = "/admin/configuration"
 	indexPath           = "/admin/index"
 	indexDeletePath     = "/admin/index/delete"
+	blacklistPath       = "/admin/index/blacklist"
 	networkPath         = "/admin/network"
 	networkPeerPath     = "/admin/network/peer"
 	peerBlockPath       = "/admin/network/peer/block"
@@ -88,6 +89,7 @@ type Options struct {
 	Index           IndexSource
 	Documents       DocumentBrowserSource
 	IndexAdmin      IndexAdminSource
+	Blacklist       BlacklistSource
 	Network         NetworkSource
 	Config          ConfigSource
 	Settings        SettingsSource
@@ -206,21 +208,23 @@ type configPageData struct {
 }
 
 type indexPageData struct {
-	AppName       string
-	ActivePath    string
-	Nav           []NavItem
-	CSRF          string
-	Section       sectionView
-	Index         IndexStats
-	TermEnabled   bool
-	TermQueried   bool
-	Term          TermReport
-	Schema        []SchemaGroup
-	DocsEnabled   bool
-	Documents     DocumentPage
-	DocQuery      string
-	DocDomain     string
-	DeleteEnabled bool
+	AppName          string
+	ActivePath       string
+	Nav              []NavItem
+	CSRF             string
+	Section          sectionView
+	Index            IndexStats
+	TermEnabled      bool
+	TermQueried      bool
+	Term             TermReport
+	Schema           []SchemaGroup
+	DocsEnabled      bool
+	Documents        DocumentPage
+	DocQuery         string
+	DocDomain        string
+	DeleteEnabled    bool
+	BlacklistEnabled bool
+	Blacklist        []BlacklistEntry
 }
 
 type securityPageData struct {
@@ -286,6 +290,7 @@ type Console struct {
 	index           IndexSource
 	documents       DocumentBrowserSource
 	indexAdmin      IndexAdminSource
+	blacklist       BlacklistSource
 	network         NetworkSource
 	config          ConfigSource
 	settings        SettingsSource
@@ -319,6 +324,7 @@ func New(opts Options) *Console {
 		index:           opts.Index,
 		documents:       opts.Documents,
 		indexAdmin:      opts.IndexAdmin,
+		blacklist:       opts.Blacklist,
 		network:         opts.Network,
 		config:          opts.Config,
 		settings:        opts.Settings,
@@ -371,6 +377,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("POST "+crawlControlPath, c.handleCrawlControl)
 	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
 	c.mux.HandleFunc("POST "+indexDeletePath, c.handleIndexDelete)
+	c.mux.HandleFunc("POST "+blacklistPath, c.handleBlacklist)
 	c.mux.HandleFunc("GET "+networkPath, c.handleNetwork)
 	c.mux.HandleFunc("GET "+networkPeerPath, c.handleNetworkPeer)
 	c.mux.HandleFunc("POST "+peerBlockPath, c.handlePeerBlock)
@@ -474,8 +481,42 @@ func (c *Console) handleIndex(w http.ResponseWriter, r *http.Request) {
 			Domain:      data.DocDomain,
 		})
 	}
+	if c.blacklist != nil {
+		data.BlacklistEnabled = true
+		data.Blacklist = c.blacklist.BlacklistEntries(r.Context())
+	}
 
 	c.render(r.Context(), w, c.tpl.index, "layout", data)
+}
+
+func (c *Console) handleBlacklist(w http.ResponseWriter, r *http.Request) {
+	if c.blacklist == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+
+	ctx := r.Context()
+	action := r.PostFormValue("action")
+	kind := strings.TrimSpace(r.PostFormValue("kind"))
+	value := strings.TrimSpace(r.PostFormValue("value"))
+	var err error
+	switch action {
+	case "add":
+		err = c.blacklist.AddBlacklist(ctx, kind, value)
+	case "remove":
+		err = c.blacklist.RemoveBlacklist(ctx, kind, value)
+	default:
+		http.Error(w, "unknown blacklist action", http.StatusBadRequest)
+
+		return
+	}
+	if err != nil {
+		slog.WarnContext(ctx, "admin blacklist action failed",
+			slog.String("action", action), slog.Any("error", err))
+	}
+
+	http.Redirect(w, r, indexPath, http.StatusSeeOther)
 }
 
 func (c *Console) handleIndexDelete(w http.ResponseWriter, r *http.Request) {

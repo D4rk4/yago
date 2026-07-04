@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/crawling"
 	"github.com/D4rk4/yago/yagonode/internal/crawlurls"
@@ -27,6 +28,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 	"github.com/D4rk4/yago/yagonode/internal/tavilyapi"
 	"github.com/D4rk4/yago/yagonode/internal/transfertally"
+	"github.com/D4rk4/yago/yagonode/internal/urldenylist"
 	"github.com/D4rk4/yago/yagonode/internal/urlmeta"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -53,6 +55,7 @@ type node struct {
 	vault         *vault.Vault
 	client        *http.Client
 	peerBlock     *peerblock.Store
+	denylist      *urldenylist.Store
 	identity      nodeidentity.Identity
 }
 
@@ -169,6 +172,7 @@ func assembleNode(
 		vault:     vault,
 		client:    client,
 		peerBlock: blocks,
+		denylist:  surfaces.denylist,
 		identity:  identity,
 		ranking:   surfaces.ranking,
 	}), nil
@@ -194,6 +198,7 @@ type nodeSurfaces struct {
 	dht      dhtOutboundProcess
 	searcher searchcore.Searcher
 	ranking  *rankingprofile.Holder
+	denylist *urldenylist.Store
 }
 
 func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
@@ -206,6 +211,10 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	ranking, err := rankingprofile.Open(in.ctx, in.vault)
 	if err != nil {
 		return nodeSurfaces{}, fmt.Errorf("open ranking profile: %w", err)
+	}
+	denylist, err := urldenylist.Open(in.vault, time.Now)
+	if err != nil {
+		return nodeSurfaces{}, fmt.Errorf("open url denylist: %w", err)
 	}
 	searcher := mountNodePublicSearch(in.mux, publicSearchAssembly{
 		storage:          in.storage,
@@ -222,6 +231,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		queryLogMode:     in.config.QueryLogMode,
 		searchMetrics:    in.telemetry.search,
 		rankingWeights:   ranking.Current,
+		denylist:         denylist,
 	})
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
 		ctx:         in.ctx,
@@ -234,7 +244,13 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		observer:    tallyOutboundObserver{next: in.telemetry.dhtOutbound, tally: in.tally},
 	})
 
-	return nodeSurfaces{crawl: runtime, dht: dht, searcher: searcher, ranking: ranking}, nil
+	return nodeSurfaces{
+		crawl:    runtime,
+		dht:      dht,
+		searcher: searcher,
+		ranking:  ranking,
+		denylist: denylist,
+	}, nil
 }
 
 type nodeParts struct {
@@ -250,6 +266,7 @@ type nodeParts struct {
 	vault     *vault.Vault
 	client    *http.Client
 	peerBlock *peerblock.Store
+	denylist  *urldenylist.Store
 	identity  nodeidentity.Identity
 	ranking   *rankingprofile.Holder
 }
@@ -277,6 +294,7 @@ func newAssembledNode(parts nodeParts) node {
 		vault:         parts.vault,
 		client:        parts.client,
 		peerBlock:     parts.peerBlock,
+		denylist:      parts.denylist,
 		identity:      parts.identity,
 	}
 }

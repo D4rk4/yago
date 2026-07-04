@@ -100,6 +100,54 @@
 <div class="cds-empty" role="status">No documents match.</div>
 {{end}}
 {{end}}
+{{if .BlacklistEnabled}}
+<h2 class="cds-h2">Blacklist</h2>
+<p class="cds-muted">Block a URL or a whole domain from appearing in search results. Blocked entries survive restarts.</p>
+<form class="cds-form cds-form--inline" method="post" action="/admin/index/blacklist">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <input type="hidden" name="action" value="add">
+  <div class="cds-field">
+    <label class="cds-label" for="bl-kind">Kind</label>
+    <select class="cds-input" id="bl-kind" name="kind">
+      <option value="domain">Domain</option>
+      <option value="url">URL</option>
+    </select>
+  </div>
+  <div class="cds-field">
+    <label class="cds-label" for="bl-value">Value</label>
+    <input class="cds-input" type="text" id="bl-value" name="value" placeholder="example.com or https://example.com/page" autocomplete="off" required>
+  </div>
+  <button class="cds-btn" type="submit">Block</button>
+</form>
+{{if .Blacklist}}
+<div class="cds-scroll-x">
+  <table class="cds-table">
+    <thead><tr><th scope="col">Kind</th><th scope="col">Value</th><th scope="col">Added</th><th scope="col">Action</th></tr></thead>
+    <tbody>
+      {{range .Blacklist}}
+      <tr>
+        <td>{{.Kind}}</td>
+        <td class="cds-mono">{{.Value}}</td>
+        <td>{{if .AddedAt}}{{.AddedAt}}{{else}}—{{end}}</td>
+        <td>
+          <form method="post" action="/admin/index/blacklist"
+                hx-confirm="Remove {{.Value}} from the blacklist?">
+            <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+            <input type="hidden" name="action" value="remove">
+            <input type="hidden" name="kind" value="{{.Kind}}">
+            <input type="hidden" name="value" value="{{.Value}}">
+            <button class="cds-btn cds-btn--danger cds-btn--ghost" type="submit">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<div class="cds-empty" role="status">The blacklist is empty.</div>
+{{end}}
+{{end}}
 {{if .Schema}}
 <h2 class="cds-h2">Index schema</h2>
 <p class="cds-muted">Read-only reference of the fields stored in each index.</p>

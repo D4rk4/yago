@@ -44,3 +44,20 @@ type IndexAdminSource interface {
 	DeleteDocument(ctx context.Context, key string) error
 	DeleteDomain(ctx context.Context, domain string) (int, error)
 }
+
+// BlacklistEntry is one denylisted URL or domain as shown in the blacklist
+// manager. Kind is "url" or "domain"; AddedAt is a preformatted timestamp.
+type BlacklistEntry struct {
+	Kind    string
+	Value   string
+	AddedAt string
+}
+
+// BlacklistSource manages the operator URL/domain denylist: listing entries and
+// adding or removing them. Denylisted entries are filtered out of search results.
+// A nil provider hides the blacklist manager.
+type BlacklistSource interface {
+	BlacklistEntries(ctx context.Context) []BlacklistEntry
+	AddBlacklist(ctx context.Context, kind, value string) error
+	RemoveBlacklist(ctx context.Context, kind, value string) error
+}

@@ -46,6 +46,8 @@ components:
     in: internal/seedimport/**
   peerblock:
     in: internal/peerblock/**
+  urldenylist:
+    in: internal/urldenylist/**
   sharedblacklist:
     in: internal/sharedblacklist/**
   bootstrap:
@@ -245,6 +247,11 @@ deps:
       - memvault
     canUse:
       - yagomodel
+  urldenylist:
+    mayDependOn:
+      - urldenylist
+      - vault
+      - memvault
   eventstore:
     mayDependOn:
       - eventstore
@@ -585,6 +592,7 @@ deps:
       - settingsstore
       - seedimport
       - peerblock
+      - urldenylist
       - eventstore
       - urlmetastaleness
       - urlreferences
