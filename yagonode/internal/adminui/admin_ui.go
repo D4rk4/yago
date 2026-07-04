@@ -806,15 +806,36 @@ func (c *Console) handleCrawlControl(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := CrawlControlRequest{
-		RunID:  strings.TrimSpace(r.PostFormValue("runId")),
-		Action: r.PostFormValue("action"),
+		RunID:          strings.TrimSpace(r.PostFormValue("runId")),
+		Action:         r.PostFormValue("action"),
+		PagesPerMinute: parsePagesPerMinute(r.PostFormValue("ppm")),
 	}
 	if err := c.control.Control(r.Context(), req); err != nil {
 		slog.WarnContext(r.Context(), "admin crawl control failed",
 			slog.String("action", req.Action), slog.Any("error", err))
 	}
 
+	// An htmx-issued control (the confirm-guarded Cancel button) swaps the refreshed
+	// monitor in place; a plain form post falls back to a full-page reload.
+	if r.Header.Get("HX-Request") == "true" && c.monitor != nil {
+		c.render(r.Context(), w, c.tpl.crawl, "crawl-monitor", c.crawlMonitorView(r))
+
+		return
+	}
+
 	http.Redirect(w, r, crawlPath, http.StatusSeeOther)
+}
+
+// parsePagesPerMinute reads a set-rate form value, treating anything unparseable as
+// zero, which lifts the throttle. ParseUint bounds the value to 32 bits, so the
+// conversion cannot overflow.
+func parsePagesPerMinute(raw string) uint32 {
+	value, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 32)
+	if err != nil {
+		return 0
+	}
+
+	return uint32(value)
 }
 
 func defaultCrawlForm() crawlForm {

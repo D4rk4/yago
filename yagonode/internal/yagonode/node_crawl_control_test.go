@@ -23,13 +23,14 @@ func controlSourceWithRun(t *testing.T, runID, workerID string) *crawlControlSou
 	return newCrawlControlSource(runtime.runRegistry(), runtime.controlRegistry())
 }
 
-func TestCrawlControlSourcePauseAndResume(t *testing.T) {
+func TestCrawlControlSourceSteersRun(t *testing.T) {
 	source := controlSourceWithRun(t, "ab", "worker-1")
 
-	for _, action := range []string{"pause", "resume"} {
+	for _, action := range []string{"pause", "resume", "cancel", "set_rate"} {
 		if err := source.Control(context.Background(), adminui.CrawlControlRequest{
-			RunID:  "ab",
-			Action: action,
+			RunID:          "ab",
+			Action:         action,
+			PagesPerMinute: 30,
 		}); err != nil {
 			t.Fatalf("%s: %v", action, err)
 		}
@@ -72,9 +73,10 @@ func TestCrawlControlSourceRejectsUnknownRun(t *testing.T) {
 
 func TestCrawlControlKindMapping(t *testing.T) {
 	cases := map[string]yagocrawlcontract.CrawlControlKind{
-		"pause":  yagocrawlcontract.CrawlControlPause,
-		"resume": yagocrawlcontract.CrawlControlResume,
-		"cancel": yagocrawlcontract.CrawlControlCancel,
+		"pause":    yagocrawlcontract.CrawlControlPause,
+		"resume":   yagocrawlcontract.CrawlControlResume,
+		"cancel":   yagocrawlcontract.CrawlControlCancel,
+		"set_rate": yagocrawlcontract.CrawlControlSetRate,
 	}
 	for action, want := range cases {
 		got, ok := crawlControlKind(action)

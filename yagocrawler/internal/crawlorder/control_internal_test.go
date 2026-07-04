@@ -84,10 +84,16 @@ func TestDispatchDirectivesFansToHandler(t *testing.T) {
 	}
 }
 
+type ratedCall struct {
+	provenance []byte
+	ppm        uint32
+}
+
 type fakeController struct {
 	paused    [][]byte
 	resumed   [][]byte
 	cancelled [][]byte
+	rated     []ratedCall
 }
 
 func (c *fakeController) Pause(provenance []byte) {
@@ -100,6 +106,14 @@ func (c *fakeController) Resume(provenance []byte) {
 
 func (c *fakeController) Cancel(provenance []byte) {
 	c.cancelled = append(c.cancelled, provenance)
+}
+
+func (c *fakeController) SetRate(provenance []byte, pagesPerMinute uint32) {
+	c.rated = append(c.rated, ratedCall{provenance: provenance, ppm: pagesPerMinute})
+}
+
+func (c *fakeController) steers() int {
+	return len(c.paused) + len(c.resumed) + len(c.cancelled) + len(c.rated)
 }
 
 func TestFrontierControlHandlerPauseResume(t *testing.T) {
@@ -151,17 +165,33 @@ func TestFrontierControlHandlerIgnoresMalformedRunID(t *testing.T) {
 	}
 }
 
-func TestFrontierControlHandlerIgnoresKindsWithoutBehaviour(t *testing.T) {
+func TestFrontierControlHandlerSetRate(t *testing.T) {
 	controller := &fakeController{}
 	NewFrontierControlHandler(controller).Apply(
 		context.Background(),
 		yagocrawlcontract.CrawlControlDirective{
-			Kind:  yagocrawlcontract.CrawlControlSetRate,
+			Kind:           yagocrawlcontract.CrawlControlSetRate,
+			RunID:          "ab",
+			PagesPerMinute: 45,
+		},
+	)
+	if len(controller.rated) != 1 || controller.rated[0].provenance[0] != 0xab ||
+		controller.rated[0].ppm != 45 {
+		t.Fatalf("rated = %+v, want [ab]/45", controller.rated)
+	}
+}
+
+func TestFrontierControlHandlerIgnoresUnknownKind(t *testing.T) {
+	controller := &fakeController{}
+	NewFrontierControlHandler(controller).Apply(
+		context.Background(),
+		yagocrawlcontract.CrawlControlDirective{
+			Kind:  yagocrawlcontract.CrawlControlKind("bogus"),
 			RunID: "ab",
 		},
 	)
-	if len(controller.paused)+len(controller.resumed)+len(controller.cancelled) != 0 {
-		t.Fatal("set-rate has no pause/resume/cancel behaviour in this slice")
+	if controller.steers() != 0 {
+		t.Fatal("an unrecognised control kind must steer nothing")
 	}
 }
 

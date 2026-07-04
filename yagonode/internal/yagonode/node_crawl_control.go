@@ -59,8 +59,9 @@ func (s *crawlControlSource) Control(_ context.Context, req adminui.CrawlControl
 	}
 
 	s.control.Enqueue(worker, yagocrawlcontract.CrawlControlDirective{
-		Kind:  kind,
-		RunID: req.RunID,
+		Kind:           kind,
+		RunID:          req.RunID,
+		PagesPerMinute: req.PagesPerMinute,
 	})
 
 	return nil
@@ -87,6 +88,8 @@ func crawlControlKind(action string) (yagocrawlcontract.CrawlControlKind, bool) 
 		return yagocrawlcontract.CrawlControlResume, true
 	case "cancel":
 		return yagocrawlcontract.CrawlControlCancel, true
+	case "set_rate":
+		return yagocrawlcontract.CrawlControlSetRate, true
 	default:
 		return "", false
 	}

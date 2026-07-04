@@ -156,6 +156,42 @@ func TestCancelRejectsDiscoveredLinks(t *testing.T) {
 	}
 }
 
+func TestSetRateThrottlesRunDispatch(t *testing.T) {
+	f := frontier.NewFrontier(8, nil)
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxDepth:        0,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	provenance := []byte("rated-run")
+
+	// One page per minute spaces dispatches 60s apart, so after the first job the
+	// second is withheld well beyond the test window.
+	f.SetRate(provenance, 1)
+	f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle, "https://a.example/", "https://b.example/"),
+		provenance,
+		profile,
+		func() {},
+	)
+
+	first := receiveJob(t, f)
+	f.Done(first)
+
+	select {
+	case job := <-f.Jobs():
+		t.Fatalf("throttled run dispatched %q too soon", job.URL)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// Lifting the throttle releases the withheld job at once.
+	f.SetRate(provenance, 0)
+	second := receiveJob(t, f)
+	f.Done(second)
+}
+
 func TestPauseIsScopedToOneRun(t *testing.T) {
 	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yagocrawlcontract.CrawlProfile{

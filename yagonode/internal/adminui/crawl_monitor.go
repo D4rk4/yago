@@ -49,10 +49,12 @@ type CrawlMonitorSource interface {
 }
 
 // CrawlControlRequest is an operator's steer of one crawl run, keyed by the run's
-// identifier as shown in the monitor.
+// identifier as shown in the monitor. PagesPerMinute carries the target rate for a
+// set-rate action (zero lifts the throttle) and is ignored by other actions.
 type CrawlControlRequest struct {
-	RunID  string
-	Action string
+	RunID          string
+	Action         string
+	PagesPerMinute uint32
 }
 
 // CrawlControlSource steers a running crawl on the operator's behalf. A nil

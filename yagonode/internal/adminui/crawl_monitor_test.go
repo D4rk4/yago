@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -141,11 +142,68 @@ func TestConsoleCrawlMonitorRendersControlButtons(t *testing.T) {
 	for _, want := range []string{
 		`action="/admin/crawl/control"`, `name="runId" value="run-abc"`,
 		`name="action" value="pause"`, `name="action" value="resume"`,
-		`name="action" value="cancel"`,
+		`name="action" value="cancel"`, `hx-confirm=`,
+		`name="action" value="set_rate"`, `name="ppm"`, `Apply rate`,
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("monitor missing control %q", want)
 		}
+	}
+}
+
+func TestParsePagesPerMinute(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]uint32{
+		"45": 45, "0": 0, "": 0, "abc": 0, "-5": 0, "999999999999": 0,
+	}
+	for raw, want := range cases {
+		if got := parsePagesPerMinute(raw); got != want {
+			t.Fatalf("parsePagesPerMinute(%q) = %d, want %d", raw, got, want)
+		}
+	}
+}
+
+func TestConsoleCrawlControlSetRateParsesPagesPerMinute(t *testing.T) {
+	t.Parallel()
+
+	control := &fakeControl{}
+	got := doPost(t, New(Options{Control: control}), "/admin/crawl/control", url.Values{
+		"runId":  {"run-abc"},
+		"action": {"set_rate"},
+		"ppm":    {"90"},
+	})
+	if got.status != http.StatusSeeOther {
+		t.Fatalf("status %d, want 303", got.status)
+	}
+	if control.got.Action != "set_rate" || control.got.PagesPerMinute != 90 {
+		t.Fatalf("control received %+v, want set_rate/90", control.got)
+	}
+}
+
+func TestConsoleCrawlControlHtmxRefreshesMonitor(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Monitor: fakeMonitor{snap: sampleMonitor()},
+		Control: &fakeControl{},
+	})
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/admin/crawl/control",
+		strings.NewReader(url.Values{"runId": {"run-abc"}, "action": {"cancel"}}.Encode()),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	rec := httptest.NewRecorder()
+	console.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200 for an htmx control", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `id="crawl-monitor"`) {
+		t.Fatal("htmx control response is not the refreshed monitor partial")
 	}
 }
 

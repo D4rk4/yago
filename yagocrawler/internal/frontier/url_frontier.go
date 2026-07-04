@@ -34,7 +34,13 @@ type Frontier struct {
 	state    *frontierState
 	inflight map[string]int
 	paused   map[string]struct{}
-	closing  bool
+	// rate throttles a run to a page budget: rateInterval holds the minimum gap
+	// between the run's dispatches (0 = unthrottled), and rateNextDue the earliest
+	// time its next job may dispatch, both keyed by provenance and layered on top of
+	// the per-host crawl delay.
+	rateInterval map[string]time.Duration
+	rateNextDue  map[string]time.Time
+	closing      bool
 }
 
 // Option configures a Frontier at construction.
@@ -83,8 +89,10 @@ func NewFrontier(capacity int, pace CrawlPace, opts ...Option) *Frontier {
 			tally:      noopRunTally{},
 			cancelled:  make(map[string]struct{}),
 		},
-		inflight: make(map[string]int),
-		paused:   make(map[string]struct{}),
+		inflight:     make(map[string]int),
+		paused:       make(map[string]struct{}),
+		rateInterval: make(map[string]time.Duration),
+		rateNextDue:  make(map[string]time.Time),
 	}
 	for _, opt := range opts {
 		opt(frontier)
@@ -267,6 +275,43 @@ func (f *Frontier) ClearCancelled(provenance []byte) {
 	delete(f.state.cancelled, string(provenance))
 }
 
+// SetRate throttles a run to at most pagesPerMinute dispatches, spacing its jobs
+// by a fixed interval on top of the per-host crawl delay. A rate of zero lifts the
+// throttle, restoring the run to full speed.
+func (f *Frontier) SetRate(provenance []byte, pagesPerMinute uint32) {
+	key := string(provenance)
+
+	f.mu.Lock()
+	if pagesPerMinute == 0 {
+		delete(f.rateInterval, key)
+		delete(f.rateNextDue, key)
+	} else {
+		f.rateInterval[key] = time.Minute / time.Duration(pagesPerMinute)
+	}
+	f.mu.Unlock()
+
+	f.wake()
+}
+
+// rateDueLocked returns the earliest time a job may dispatch under its run's rate
+// throttle, or the zero time when the run is unthrottled. Callers hold f.mu.
+func (f *Frontier) rateDueLocked(provenance []byte) (time.Time, bool) {
+	if _, throttled := f.rateInterval[string(provenance)]; !throttled {
+		return time.Time{}, false
+	}
+
+	return f.rateNextDue[string(provenance)], true
+}
+
+// recordRateVisitLocked advances a throttled run's next-eligible dispatch time.
+// Callers hold f.mu.
+func (f *Frontier) recordRateVisitLocked(provenance []byte, at time.Time) {
+	key := string(provenance)
+	if interval, throttled := f.rateInterval[key]; throttled {
+		f.rateNextDue[key] = at.Add(interval)
+	}
+}
+
 func (f *Frontier) run() {
 	for {
 		now := time.Now()
@@ -296,7 +341,9 @@ func (f *Frontier) run() {
 		case <-wakeup:
 		case send <- next:
 			f.mu.Lock()
-			f.pace.Visited(next, time.Now())
+			dispatchedAt := time.Now()
+			f.pace.Visited(next, dispatchedAt)
+			f.recordRateVisitLocked(next.Provenance, dispatchedAt)
 			f.acquireHost(next.URL)
 			f.state.ready = append(f.state.ready[:index], f.state.ready[index+1:]...)
 			f.mu.Unlock()
@@ -317,7 +364,11 @@ func (f *Frontier) nextDue(now time.Time) (crawljob.CrawlJob, int, time.Duration
 		if f.hostAtCapacity(job.URL) {
 			continue
 		}
-		wait := f.pace.DueAt(job, now).Sub(now)
+		due := f.pace.DueAt(job, now)
+		if rateDue, throttled := f.rateDueLocked(job.Provenance); throttled && rateDue.After(due) {
+			due = rateDue
+		}
+		wait := due.Sub(now)
 		if wait <= 0 {
 			return job, i, 0, true
 		}

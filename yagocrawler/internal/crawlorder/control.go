@@ -22,12 +22,12 @@ type CrawlController interface {
 	Pause(provenance []byte)
 	Resume(provenance []byte)
 	Cancel(provenance []byte)
+	SetRate(provenance []byte, pagesPerMinute uint32)
 }
 
 // FrontierControlHandler applies control directives to the worker's crawl
 // controller, translating a directive's hex run token back to the raw provenance
-// the controller keys runs by. A malformed token is logged and ignored, and kinds
-// without a behaviour yet (set-rate) are no-ops until their slice lands.
+// the controller keys runs by. A malformed token is logged and ignored.
 type FrontierControlHandler struct {
 	controller CrawlController
 }
@@ -57,6 +57,8 @@ func (h FrontierControlHandler) Apply(
 		h.controller.Resume(provenance)
 	case yagocrawlcontract.CrawlControlCancel:
 		h.controller.Cancel(provenance)
+	case yagocrawlcontract.CrawlControlSetRate:
+		h.controller.SetRate(provenance, directive.PagesPerMinute)
 	}
 }
 

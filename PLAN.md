@@ -1889,9 +1889,16 @@ pending jobs, settling their completion so the run drains once its in-flight
 fetches finish, and marks the run so newly discovered links are refused rather
 than crawled on. The completion callback reads that mark (`WasCancelled`) to settle
 the order as cancelled — reported as such and naked back to the node — then clears
-it. Remaining: wire PPM rate (CTL-10) onto the same control channel, and cache
-policy plus expert start fields (START-11). The crawl-profile editor
-(named-profile CRUD) stays a separate follow-up (management, not observability).
+it. Rate control closes the steering trio (CTL-10): a per-row pages-per-minute
+field enqueues a set-rate directive carrying the target; the worker's frontier
+throttles that run to a fixed dispatch interval (`60s / pages-per-minute`) layered
+on top of the per-host crawl delay, with zero lifting the throttle. The Cancel
+button is now htmx-driven with `hx-confirm` (an inline `onclick` confirm is blocked
+by the console's `script-src 'self'` CSP), and htmx-issued controls swap the
+refreshed monitor partial in place while a plain form post falls back to a
+full-page reload. Remaining for this epic: cache policy plus expert start fields
+(START-11), then close-out (CLOSE-12). The crawl-profile editor (named-profile
+CRUD) stays a separate follow-up (management, not observability).
 
 Pages:
 
