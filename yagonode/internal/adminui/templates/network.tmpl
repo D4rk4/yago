@@ -15,6 +15,10 @@
     <div class="cds-metric__label">DHT distribution</div>
     <div class="cds-metric__value">{{if .Network.DHTOpen}}Open{{else}}Closed{{end}}</div>
   </section>
+  <section class="cds-tile">
+    <div class="cds-metric__label">Public endpoint self-test</div>
+    <div class="cds-metric__value">{{if .Network.PublicReachable}}Reachable{{else}}Unreachable{{end}}</div>
+  </section>
 </div>
 {{if and (not .Network.DHTOpen) .Network.BlockingReason}}
 <div class="cds-inline-notification" role="status">DHT distribution gate closed: {{.Network.BlockingReason}}</div>
@@ -36,25 +40,43 @@
     </tbody>
   </table>
 </div>
-<h2 class="cds-h2">Reachable peers</h2>
+<h2 class="cds-h2">Peers</h2>
 {{if .Network.Peers}}
 <div class="cds-scroll-x">
   <table class="cds-table">
-    <thead><tr><th scope="col">Peer</th><th scope="col">Address</th><th scope="col">Hash</th><th scope="col">Age (days)</th></tr></thead>
+    <thead><tr><th scope="col">Peer</th><th scope="col">Type</th><th scope="col">Address</th><th scope="col">Flags</th><th scope="col">RWI count</th><th scope="col">Last seen</th><th scope="col">Age (days)</th><th scope="col">Hash</th></tr></thead>
     <tbody>
       {{range .Network.Peers}}
       <tr>
         <th scope="row">{{if .Name}}{{.Name}}{{else}}—{{end}}</th>
+        <td>{{if .Type}}{{.Type}}{{else}}—{{end}}</td>
         <td>{{if .Address}}{{.Address}}{{else}}—{{end}}</td>
-        <td class="cds-mono">{{.Hash}}</td>
+        <td>{{range .Flags}}<span class="cds-tag cds-tag--info">{{.}}</span> {{else}}—{{end}}</td>
+        <td>{{.RWICount}}</td>
+        <td>{{if .LastSeen}}{{.LastSeen}}{{else}}—{{end}}</td>
         <td>{{.AgeDays}}</td>
+        <td class="cds-mono">{{.Hash}}</td>
       </tr>
       {{end}}
     </tbody>
   </table>
 </div>
 {{else}}
-<div class="cds-empty" role="status">No reachable peers yet.</div>
+<div class="cds-empty" role="status">No peers yet.</div>
+{{end}}
+<h2 class="cds-h2">Seedlists</h2>
+{{if .Network.SeedlistURLs}}
+<p class="cds-muted">Bootstrap seedlist URLs imported at startup to discover peers.</p>
+<div class="cds-scroll-x">
+  <table class="cds-table">
+    <thead><tr><th scope="col">Seedlist URL</th></tr></thead>
+    <tbody>
+      {{range .Network.SeedlistURLs}}<tr><td class="cds-mono">{{.}}</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<div class="cds-empty" role="status">No seedlist URLs configured.</div>
 {{end}}
 {{else}}
 <div class="cds-empty" role="status" aria-live="polite">Network status is not available.</div>

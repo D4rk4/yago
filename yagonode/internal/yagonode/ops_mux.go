@@ -37,7 +37,7 @@ func buildOpsMux(
 		Overview: newOverviewSource(assembled.report),
 		Search:   newSearchSource(assembled.searcher),
 		Index:    newIndexSource(assembled.index),
-		Network:  newNetworkSource(assembled.dht.gateStatus, assembled.roster),
+		Network:  newNetworkSource(assembled.dht.gateStatus, assembled.roster, config.SeedlistURLs),
 		Config:   newConfigSource(config),
 		Settings: sources.settings,
 		Binding:  sources.binding,

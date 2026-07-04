@@ -1712,12 +1712,21 @@ Acceptance:
 
 ### UI-07: Network/P2P UI
 
-Status: Partial (FTR-027). The Network section renders known/reachable peer counts,
-DHT distribution gate state (with blocking reason), the per-gate results table, and
-the freshest reachable peers (name, address, hash, age) read directly from the DHT
-gate source and peer roster via a decoupled `adminui.NetworkSource`. Seed-list
-management, per-peer detail, transfer history, and the network self-test control
-remain follow-ups.
+Status: Done (FTR-027), table-first per the acceptance. The Network section renders
+known/reachable peer counts, DHT distribution gate state (with blocking reason),
+and the per-gate results table via a decoupled `adminui.NetworkSource`. The peer
+table is now the full YaCy-style table — name, **type** (virgin/junior/senior/…),
+address, **flags** (direct/remote-crawl/remote-index/root/ssl as tags), **RWI
+count**, **last-seen**, age, and hash — all mapped from the roster's `Seed`
+records with no new backend. The **public-endpoint self-test** result
+(`PublicReachable`, the node's own `/yacy/query?Object=rwicount` reachability
+probe) is surfaced as a status tile, and a **Seedlists** panel lists the
+configured bootstrap seedlist URLs (`YAGO_SEEDLIST_URLS`). No secrets appear in
+peer data. Interactive actions (per-peer probe, block/unblock, manual seedlist
+refresh), a dedicated per-peer detail route, durable last-import status, and
+transfer *history* (only running totals exist today, already shown on Overview)
+are documented follow-ups that need new backend write operations or stores.
+verify green (coverage 97.7%), Semgrep + Trivy clean.
 
 Pages:
 

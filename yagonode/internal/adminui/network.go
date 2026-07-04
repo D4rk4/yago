@@ -9,23 +9,29 @@ type NetworkGate struct {
 	Reason string
 }
 
-// NetworkPeer is one reachable peer summarized for the console.
+// NetworkPeer is one peer summarized for the console peer table.
 type NetworkPeer struct {
-	Name    string
-	Hash    string
-	Address string
-	AgeDays int
+	Name     string
+	Hash     string
+	Address  string
+	Type     string
+	Flags    []string
+	RWICount int
+	LastSeen string
+	AgeDays  int
 }
 
 // NetworkStatus is the peer-network snapshot the Network section renders.
 type NetworkStatus struct {
-	Available      bool
-	DHTOpen        bool
-	BlockingReason string
-	Gates          []NetworkGate
-	KnownPeers     int
-	ReachablePeers int
-	Peers          []NetworkPeer
+	Available       bool
+	DHTOpen         bool
+	PublicReachable bool
+	BlockingReason  string
+	Gates           []NetworkGate
+	KnownPeers      int
+	ReachablePeers  int
+	Peers           []NetworkPeer
+	SeedlistURLs    []string
 }
 
 // NetworkSource supplies the network snapshot on each request.

@@ -339,24 +339,39 @@ func TestConsoleNetworkRendersStatus(t *testing.T) {
 	t.Parallel()
 
 	snap := NetworkStatus{
-		Available:      true,
-		DHTOpen:        false,
-		BlockingReason: "not enough peers",
-		KnownPeers:     12,
-		ReachablePeers: 5,
+		Available:       true,
+		DHTOpen:         false,
+		PublicReachable: true,
+		BlockingReason:  "not enough peers",
+		KnownPeers:      12,
+		ReachablePeers:  5,
 		Gates: []NetworkGate{
 			{Name: "connectedPeers", Open: false, Reason: "need 10"},
 			{Name: "storage", Open: true},
 		},
 		Peers: []NetworkPeer{
-			{Name: "peerA", Hash: "HHHHHH", Address: "1.2.3.4:8090", AgeDays: 3},
+			{
+				Name:     "peerA",
+				Hash:     "HHHHHH",
+				Address:  "1.2.3.4:8090",
+				Type:     "senior",
+				Flags:    []string{"remote-index"},
+				RWICount: 42,
+				LastSeen: "2026-01-02T03:04:05Z",
+				AgeDays:  3,
+			},
 		},
+		SeedlistURLs: []string{"https://seeds.example/seed.txt"},
 	}
 	got := do(t, New(Options{Network: fakeNetwork{snap: snap}}), "/admin/network")
 	if got.status != http.StatusOK {
 		t.Fatalf("status %d", got.status)
 	}
-	for _, want := range []string{"peerA", "1.2.3.4:8090", ">12<", ">5<", "connectedPeers", "not enough peers", "Closed"} {
+	for _, want := range []string{
+		"peerA", "1.2.3.4:8090", ">12<", ">5<", "connectedPeers",
+		"not enough peers", "Closed", "senior", "remote-index", ">42<",
+		"2026-01-02T03:04:05Z", "Reachable", "https://seeds.example/seed.txt",
+	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("network section missing %q", want)
 		}
@@ -374,8 +389,11 @@ func TestConsoleNetworkEmptyStates(t *testing.T) {
 	if !strings.Contains(got.body, "No gate data.") {
 		t.Fatal("expected empty gate row")
 	}
-	if !strings.Contains(got.body, "No reachable peers yet.") {
+	if !strings.Contains(got.body, "No peers yet.") {
 		t.Fatal("expected empty peers state")
+	}
+	if !strings.Contains(got.body, "No seedlist URLs configured.") {
+		t.Fatal("expected empty seedlist state")
 	}
 }
 
