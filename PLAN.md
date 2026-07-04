@@ -1602,7 +1602,16 @@ measured precision <0.2, recall <0.5 (arXiv:2502.02430, 2025) - never as truth.
 
 ### CRAWL-07: Crawler worker hardening
 
-Status: mostly done. The worker has a stable supervised lifecycle, durable
+Status: done (2026-07-04). Everything below is implemented and both acceptance
+items are covered by deterministic in-process end-to-end tests that drive the
+fully assembled crawler through a fake node exchange (cmd/yagocrawler
+crawl_flow_e2e_test.go): one runs eight workers over a cross-linked page set and
+asserts every URL is fetched exactly once (no duplicate-fetch explosion), also
+checking the finished run report's outcome tally; the other holds the node's
+ingest intake (a capacity-1 SubmitIngest channel) and asserts the crawler stalls
+mid-crawl until the node resumes absorbing batches. Historical detail follows.
+
+The worker has a stable supervised lifecycle, durable
 lease-based order consumption, graceful shutdown that drains in-flight fetches
 within a grace window, a 30s heartbeat that keeps leases alive, and all six
 Prometheus metrics; a node+broker+crawler e2e round-trip exists. The worker now

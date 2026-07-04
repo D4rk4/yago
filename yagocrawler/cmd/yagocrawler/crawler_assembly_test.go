@@ -25,6 +25,7 @@ import (
 type fakeExchange struct {
 	orders    []*crawlrpc.CrawlOrderMessage
 	ingested  chan *crawlrpc.IngestBatchMessage
+	progress  chan *crawlrpc.CrawlProgressReport
 	streamErr error
 }
 
@@ -71,10 +72,14 @@ func (f *fakeExchange) Heartbeat(
 }
 
 func (f *fakeExchange) ReportProgress(
-	context.Context,
-	*crawlrpc.CrawlProgressReport,
-	...grpc.CallOption,
+	_ context.Context,
+	in *crawlrpc.CrawlProgressReport,
+	_ ...grpc.CallOption,
 ) (*crawlrpc.CrawlProgressAck, error) {
+	if f.progress != nil {
+		f.progress <- in
+	}
+
 	return &crawlrpc.CrawlProgressAck{}, nil
 }
 
@@ -119,6 +124,24 @@ func stubExchange(t *testing.T, exchange *fakeExchange) {
 	t.Helper()
 	newCrawlerExchange = func(string) (crawlrpc.CrawlExchangeClient, io.Closer, error) {
 		return exchange, io.NopCloser(nil), nil
+	}
+}
+
+// serveViaSlowSource points the fast fetcher at a real HTTP client (which the
+// egress guard refuses for the loopback origin) and strips the public-web
+// admission layer, so page content is served by the fallback `source` handed to
+// RunService — letting a test drive deterministic page bodies in-process.
+func serveViaSlowSource(t *testing.T) {
+	t.Helper()
+	newCrawlerHTTPPageFetcher = func(*http.Client, string, int64) *httpfetch.PageFetcher {
+		return httpfetch.NewPageFetcher(http.DefaultClient, "", 0)
+	}
+	newCrawlerPublicWebAdmissionFetcher = func(
+		inner pagefetch.PageSource,
+		_ publicweb.Resolver,
+		_ yagoegress.Guard,
+	) pagefetch.PageSource {
+		return inner
 	}
 }
 
