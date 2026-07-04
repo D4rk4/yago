@@ -67,6 +67,7 @@ func buildCrawlRuntime(
 		storage.postingReceiver,
 	)
 	consumer.RecordFetches(frontier)
+	consumer.CheckOwnership(frontier)
 
 	return &crawlRuntime{
 		broker:    broker,

@@ -1333,20 +1333,27 @@ document it carries must have a URL), and a malformed batch is dropped — acked
 it leaves the queue instead of redelivering forever as a poison message — while
 being recorded via a new `ObserveRejected` observer hook and a
 `crawl_ingest_rejections_total` metric. This meets the "malformed batches are
-rejected and recorded" acceptance. Remaining: job-ownership validation (02b —
-reject batches whose profile handle the node never dispatched, reusing the
-`recrawl_profiles` registry from CRAWL-09), and progress counter reconciliation
-(task 7, tracked with the CRAWL-07b outcome tally).
+rejected and recorded" acceptance. 02b added job-ownership validation: before
+absorbing, the consumer asks an `OwnershipCheck` whether the node dispatched a
+crawl under the batch's profile handle, and drops (records + acks) a batch whose
+handle is unknown as unsolicited, while deferring (naking) if the check itself
+errors. The check is backed by the CRAWL-09 `recrawl_profiles` registry, which the
+dispatch path already populates for every operator, seeded, and recrawl order
+before the worker can fetch — and the crawler only ever emits a page under its
+order's profile handle (mismatched seeds are skipped, discovered links inherit the
+handle), so no legitimate batch is ever falsely rejected. Remaining: progress
+counter reconciliation (task 7, tracked with the CRAWL-07b outcome tally).
 
 Tasks:
 
 1. Implement `crawlingest` in `yacynode`. Done (`crawlresults`).
-2. Consume crawler ingest batches over the node's gRPC crawl endpoint.
-3. Validate batch schema and job ownership.
-4. Write URL metadata, RWI postings, snippets and crawl result state durably.
-5. Ack broker message only after durable commit.
-6. Apply backpressure when storage/queue is unhealthy.
-7. Update crawl job progress counters.
+2. Consume crawler ingest batches over the node's gRPC crawl endpoint. Done.
+3. Validate batch schema and job ownership. Done (02a schema, 02b ownership).
+4. Write URL metadata, RWI postings, snippets and crawl result state durably. Done.
+5. Ack broker message only after durable commit. Done.
+6. Apply backpressure when storage/queue is unhealthy. Done (nak/defer).
+7. Update crawl job progress counters. Partial — lifecycle via CRAWL-07;
+   per-outcome reconciliation tracked with CRAWL-07b.
 
 Acceptance:
 

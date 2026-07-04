@@ -58,6 +58,18 @@ func (f *Frontier) ProfileByHandle(
 	return profile, found, nil
 }
 
+// OwnsProfile reports whether a crawl profile with the given handle has been
+// recorded — that is, whether the node dispatched a crawl under it — so ingest
+// batches for a handle the node never dispatched can be rejected as unsolicited.
+func (f *Frontier) OwnsProfile(ctx context.Context, handle string) (bool, error) {
+	_, found, err := f.ProfileByHandle(ctx, handle)
+	if err != nil {
+		return false, fmt.Errorf("owns profile: %w", err)
+	}
+
+	return found, nil
+}
+
 // RecordFetch schedules url for recrawl from the profile recorded for
 // profileHandle: it becomes due at fetchedAt plus that profile's RecrawlIfOlder.
 // If no profile is known for the handle, or the profile never recrawls, the fetch

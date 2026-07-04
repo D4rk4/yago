@@ -39,6 +39,16 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 		return
 	}
 
+	owned, err := c.owner.OwnsProfile(ctx, batch.ProfileHandle)
+	if err != nil {
+		c.redeliver(ctx, delivery, batch.SourceURL, err)
+		return
+	}
+	if !owned {
+		c.reject(ctx, delivery, "unowned profile")
+		return
+	}
+
 	if c.documents != nil && hasDocument(batch.Document) {
 		doc := documentFromIngest(batch.Document)
 		documentReceipt, err := c.documents.Receive(ctx, []documentstore.Document{doc})

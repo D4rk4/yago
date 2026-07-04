@@ -57,6 +57,19 @@ func (noopFetchRecorder) RecordFetch(context.Context, string, string, time.Time)
 	return nil
 }
 
+// OwnershipCheck reports whether the node dispatched a crawl under a profile
+// handle. Ingest batches naming a handle the node never dispatched are
+// unsolicited and are dropped rather than absorbed.
+type OwnershipCheck interface {
+	OwnsProfile(ctx context.Context, profileHandle string) (bool, error)
+}
+
+type allowAllOwnership struct{}
+
+func (allowAllOwnership) OwnsProfile(context.Context, string) (bool, error) {
+	return true, nil
+}
+
 type IngestConsumer struct {
 	stream    IngestStream
 	documents documentstore.DocumentReceiver
@@ -65,6 +78,7 @@ type IngestConsumer struct {
 	postings  rwi.PostingReceiver
 	observer  IngestObserver
 	recorder  FetchRecorder
+	owner     OwnershipCheck
 }
 
 func NewIngestConsumer(
@@ -91,6 +105,7 @@ func NewIngestConsumerWithIndex(
 		postings:  postings,
 		observer:  noopIngestObserver{},
 		recorder:  noopFetchRecorder{},
+		owner:     allowAllOwnership{},
 	}
 }
 
@@ -108,5 +123,14 @@ func (c *IngestConsumer) Observe(observer IngestObserver) {
 func (c *IngestConsumer) RecordFetches(recorder FetchRecorder) {
 	if recorder != nil {
 		c.recorder = recorder
+	}
+}
+
+// CheckOwnership installs an ownership check so batches naming a profile handle
+// the node never dispatched are dropped. A nil check is ignored so the consumer
+// keeps its default of accepting every batch.
+func (c *IngestConsumer) CheckOwnership(oracle OwnershipCheck) {
+	if oracle != nil {
+		c.owner = oracle
 	}
 }

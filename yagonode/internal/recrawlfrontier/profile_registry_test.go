@@ -40,6 +40,31 @@ func TestRecordProfileRoundTrips(t *testing.T) {
 	}
 }
 
+func TestOwnsProfileReflectsRegistry(t *testing.T) {
+	f := openTestFrontier(t)
+	ctx := context.Background()
+	profile := profileWithRecrawl("Example", time.Hour)
+
+	owns, err := f.OwnsProfile(ctx, profile.Handle)
+	if err != nil {
+		t.Fatalf("owns before record: %v", err)
+	}
+	if owns {
+		t.Fatal("owns an unrecorded profile")
+	}
+
+	if err := f.RecordProfile(ctx, profile); err != nil {
+		t.Fatalf("record profile: %v", err)
+	}
+	owns, err = f.OwnsProfile(ctx, profile.Handle)
+	if err != nil {
+		t.Fatalf("owns after record: %v", err)
+	}
+	if !owns {
+		t.Fatal("does not own a recorded profile")
+	}
+}
+
 func TestProfileByHandleMissingReturnsNotFound(t *testing.T) {
 	f := openTestFrontier(t)
 	_, found, err := f.ProfileByHandle(context.Background(), "unknown")
