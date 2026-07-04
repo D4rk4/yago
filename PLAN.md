@@ -943,6 +943,19 @@ Acceptance:
 
 ### SEARCH-10: Hot-query cache and index warmup
 
+Status: Done. The bounded hot-query cache (`internal/searchindex/cached_search_index.go`,
+`CachedSearchIndex`, capacity 256, FIFO eviction, generation counter bumped on every
+`Index`/`Delete` so a stale entry is never served) and the disk-index warmup
+(`BleveDiskIndex.warm` runs a size-1 `MatchAll` on open) were already in place with
+tests for hit/invalidation/eviction. This slice closed the one correctness gap the
+audit found: `cacheKey` omitted the ranking `Weights` and the `Explain` flag, so an
+admin explain query (custom weights, `Explain=true`) sharing a query and result cap
+with a normal default-weighted query could collide and serve the wrong ranking or a
+non-explained result (the explain endpoint reads the same cached index). The key now
+folds in `Explain` and the effective `Weights` (via `orDefault()`, so a zero-value
+request and an explicit default share one entry). Tests assert weight/explain
+variants stay distinct and that the default normalises.
+
 Tasks:
 
 1. Add a bounded hot-query result cache as a decorator over `SearchIndex`, invalidated on index writes.

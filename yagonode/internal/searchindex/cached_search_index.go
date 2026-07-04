@@ -137,8 +137,18 @@ func cacheKey(req SearchRequest) string {
 	writeCacheField(&builder, strings.Join(req.ExcludeDomain, "\x1f"))
 	writeCacheField(&builder, strconv.FormatInt(req.Since.UnixNano(), 10))
 	writeCacheField(&builder, strconv.FormatInt(req.Until.UnixNano(), 10))
+	writeCacheField(&builder, strconv.FormatBool(req.Explain))
+	writeCacheWeights(&builder, req.Weights.orDefault())
 
 	return builder.String()
+}
+
+func writeCacheWeights(builder *strings.Builder, weights RankingWeights) {
+	writeCacheField(builder, strconv.FormatFloat(weights.Title, 'g', -1, 64))
+	writeCacheField(builder, strconv.FormatFloat(weights.Headings, 'g', -1, 64))
+	writeCacheField(builder, strconv.FormatFloat(weights.Anchors, 'g', -1, 64))
+	writeCacheField(builder, strconv.FormatFloat(weights.Body, 'g', -1, 64))
+	writeCacheField(builder, strconv.FormatFloat(weights.URL, 'g', -1, 64))
 }
 
 func writeCacheField(builder *strings.Builder, value string) {

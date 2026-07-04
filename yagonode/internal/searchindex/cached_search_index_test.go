@@ -127,6 +127,53 @@ func TestCachedSearchIndexDoesNotCacheAcrossConcurrentWrite(t *testing.T) {
 	}
 }
 
+func TestCachedSearchIndexKeysOnWeightsAndExplain(t *testing.T) {
+	inner := &countingIndex{results: SearchResultSet{Total: 0}}
+	cache := NewCachedSearchIndex(inner, 8)
+	ctx := t.Context()
+	base := SearchRequest{Query: "golang", MaxResults: 5}
+
+	if _, err := cache.Search(ctx, base); err != nil {
+		t.Fatalf("default search: %v", err)
+	}
+	weighted := base
+	weighted.Weights = RankingWeights{Title: 9, Headings: 1, Anchors: 1, Body: 1, URL: 1}
+	if _, err := cache.Search(ctx, weighted); err != nil {
+		t.Fatalf("weighted search: %v", err)
+	}
+	explained := base
+	explained.Explain = true
+	if _, err := cache.Search(ctx, explained); err != nil {
+		t.Fatalf("explained search: %v", err)
+	}
+	if inner.searches != 3 {
+		t.Fatalf(
+			"inner searches = %d, want 3 (weights and explain are distinct keys)",
+			inner.searches,
+		)
+	}
+}
+
+func TestCachedSearchIndexNormalisesDefaultWeights(t *testing.T) {
+	inner := &countingIndex{results: SearchResultSet{Total: 0}}
+	cache := NewCachedSearchIndex(inner, 8)
+	ctx := t.Context()
+
+	if _, err := cache.Search(ctx, SearchRequest{Query: "go", MaxResults: 5}); err != nil {
+		t.Fatalf("zero-weight search: %v", err)
+	}
+	explicit := SearchRequest{Query: "go", MaxResults: 5, Weights: DefaultRankingWeights()}
+	if _, err := cache.Search(ctx, explicit); err != nil {
+		t.Fatalf("explicit-default search: %v", err)
+	}
+	if inner.searches != 1 {
+		t.Fatalf(
+			"inner searches = %d, want 1 (zero and explicit default share a key)",
+			inner.searches,
+		)
+	}
+}
+
 func TestCachedSearchIndexEvictsOldestBeyondCapacity(t *testing.T) {
 	inner := &countingIndex{results: SearchResultSet{Total: 0}}
 	cache := NewCachedSearchIndex(inner, 1)
