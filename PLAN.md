@@ -1324,9 +1324,23 @@ Acceptance:
 
 ### CRAWL-02: Node-side ingest consumer
 
+Status: the consumer exists and most tasks are met — `crawlresults` consumes the
+crawler's ingest batches over the node's gRPC endpoint, writes documents, URL
+metadata, and postings durably, acks only after the durable commit, and defers
+(naks) under storage/queue backpressure. 02a added malformed-batch handling: each
+batch is schema-checked before absorption (it must name its source URL, and any
+document it carries must have a URL), and a malformed batch is dropped — acked so
+it leaves the queue instead of redelivering forever as a poison message — while
+being recorded via a new `ObserveRejected` observer hook and a
+`crawl_ingest_rejections_total` metric. This meets the "malformed batches are
+rejected and recorded" acceptance. Remaining: job-ownership validation (02b —
+reject batches whose profile handle the node never dispatched, reusing the
+`recrawl_profiles` registry from CRAWL-09), and progress counter reconciliation
+(task 7, tracked with the CRAWL-07b outcome tally).
+
 Tasks:
 
-1. Implement `crawlingest` in `yacynode`.
+1. Implement `crawlingest` in `yacynode`. Done (`crawlresults`).
 2. Consume crawler ingest batches over the node's gRPC crawl endpoint.
 3. Validate batch schema and job ownership.
 4. Write URL metadata, RWI postings, snippets and crawl result state durably.

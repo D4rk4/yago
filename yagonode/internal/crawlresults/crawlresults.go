@@ -27,10 +27,12 @@ type IngestStream interface {
 
 // IngestObserver receives the node-side outcome of each crawl ingest batch so an
 // edge can meter crawl throughput. Its methods are called once per batch and must
-// not block.
+// not block. ObserveRejected counts a malformed batch that was dropped rather than
+// absorbed or deferred.
 type IngestObserver interface {
 	ObserveAbsorbed(contentBytes, urls, postings int)
 	ObserveDeferred()
+	ObserveRejected()
 }
 
 type noopIngestObserver struct{}
@@ -38,6 +40,8 @@ type noopIngestObserver struct{}
 func (noopIngestObserver) ObserveAbsorbed(int, int, int) {}
 
 func (noopIngestObserver) ObserveDeferred() {}
+
+func (noopIngestObserver) ObserveRejected() {}
 
 // FetchRecorder is told, once per successfully absorbed page batch, which URL was
 // fetched under which profile and when, so a recrawl schedule can be maintained.

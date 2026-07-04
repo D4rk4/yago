@@ -11,6 +11,7 @@ import (
 const (
 	msgIngestBatchAbsorbed = "ingest batch absorbed"
 	msgIngestBatchDeferred = "ingest batch deferred"
+	msgIngestBatchRejected = "ingest batch rejected"
 	msgIngestAckFailed     = "ingest batch ack failed"
 	msgIngestNakFailed     = "ingest batch nak failed"
 	msgRecrawlRecordFailed = "recrawl schedule record failed"
@@ -32,6 +33,11 @@ func (c *IngestConsumer) Run(ctx context.Context) {
 
 func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 	batch := delivery.Batch
+
+	if reason := batchRejectionReason(batch); reason != "" {
+		c.reject(ctx, delivery, reason)
+		return
+	}
 
 	if c.documents != nil && hasDocument(batch.Document) {
 		doc := documentFromIngest(batch.Document)
@@ -96,6 +102,38 @@ func (c *IngestConsumer) recordFetch(ctx context.Context, batch yagocrawlcontrac
 	); err != nil {
 		slog.WarnContext(ctx, msgRecrawlRecordFailed,
 			slog.String("sourceUrl", batch.SourceURL), slog.Any("error", err))
+	}
+}
+
+// batchRejectionReason returns why a batch is malformed, or "" when it is well
+// formed. A batch must name the source URL it came from, and any document it
+// carries must have a URL to be stored under; a batch failing either cannot be
+// attributed or indexed, so retrying it would only re-fail — it is dropped, not
+// deferred.
+func batchRejectionReason(batch yagocrawlcontract.IngestBatch) string {
+	if batch.SourceURL == "" {
+		return "missing source url"
+	}
+	if hasDocument(batch.Document) &&
+		batch.Document.NormalizedURL == "" &&
+		batch.Document.CanonicalURL == "" {
+		return "document without url"
+	}
+
+	return ""
+}
+
+// reject drops a malformed batch: it records the rejection, logs the reason, and
+// acks the delivery so the poison batch leaves the queue instead of being
+// redelivered forever.
+func (c *IngestConsumer) reject(ctx context.Context, delivery IngestDelivery, reason string) {
+	c.observer.ObserveRejected()
+	slog.WarnContext(ctx, msgIngestBatchRejected,
+		slog.String("sourceUrl", delivery.Batch.SourceURL),
+		slog.String("reason", reason))
+	if err := delivery.Ack(ctx); err != nil {
+		slog.WarnContext(ctx, msgIngestAckFailed,
+			slog.String("sourceUrl", delivery.Batch.SourceURL), slog.Any("error", err))
 	}
 }
 

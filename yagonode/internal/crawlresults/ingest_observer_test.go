@@ -14,6 +14,7 @@ import (
 type recordingObserver struct {
 	absorbed int
 	deferred int
+	rejected int
 	bytes    int
 	urls     int
 	postings int
@@ -27,6 +28,8 @@ func (o *recordingObserver) ObserveAbsorbed(bytes, urls, postings int) {
 }
 
 func (o *recordingObserver) ObserveDeferred() { o.deferred++ }
+
+func (o *recordingObserver) ObserveRejected() { o.rejected++ }
 
 func runObserved(
 	t *testing.T,
@@ -94,5 +97,62 @@ func TestObserverCountsDeferredBatch(t *testing.T) {
 
 	if observer.deferred != 1 || observer.absorbed != 0 {
 		t.Fatalf("deferred=%d absorbed=%d", observer.deferred, observer.absorbed)
+	}
+}
+
+func TestObserverCountsRejectedBatch(t *testing.T) {
+	urls := &recordingURLReceiver{}
+	observer := runObserved(t, urls, yagocrawlcontract.IngestBatch{
+		Document: yagocrawlcontract.DocumentIngest{
+			NormalizedURL: "https://example.org",
+			ExtractedText: "body",
+		},
+	})
+
+	if observer.rejected != 1 || observer.absorbed != 0 || observer.deferred != 0 {
+		t.Fatalf("rejected=%d absorbed=%d deferred=%d",
+			observer.rejected, observer.absorbed, observer.deferred)
+	}
+	if urls.calls != 0 {
+		t.Fatalf("url receiver called %d times for rejected batch, want 0", urls.calls)
+	}
+}
+
+func TestObserverRejectsDocumentWithoutURL(t *testing.T) {
+	observer := runObserved(t, &recordingURLReceiver{}, yagocrawlcontract.IngestBatch{
+		SourceURL: "https://example.org",
+		Document: yagocrawlcontract.DocumentIngest{
+			ExtractedText: "body",
+		},
+	})
+
+	if observer.rejected != 1 || observer.absorbed != 0 {
+		t.Fatalf("rejected=%d absorbed=%d", observer.rejected, observer.absorbed)
+	}
+}
+
+func TestRejectedBatchIsAckedNotNaked(t *testing.T) {
+	var acked, naked bool
+	var wg sync.WaitGroup
+	wg.Add(1)
+	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery, 1)}
+	stream.out <- crawlresults.IngestDelivery{
+		Batch: yagocrawlcontract.IngestBatch{},
+		Ack:   func(context.Context) error { acked = true; wg.Done(); return nil },
+		Nak:   func(context.Context) error { naked = true; wg.Done(); return nil },
+	}
+	consumer := crawlresults.NewIngestConsumer(
+		stream,
+		&recordingDocumentReceiver{},
+		&recordingURLReceiver{},
+		&recordingPostingReceiver{},
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go consumer.Run(ctx)
+	wg.Wait()
+
+	if !acked || naked {
+		t.Fatalf("malformed batch acked=%v naked=%v, want dropped (ack, no nak)", acked, naked)
 	}
 }

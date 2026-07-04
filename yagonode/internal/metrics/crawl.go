@@ -5,6 +5,7 @@ import "github.com/prometheus/client_golang/prometheus"
 type CrawlMetrics struct {
 	absorbed prometheus.Counter
 	deferred prometheus.Counter
+	rejected prometheus.Counter
 	bytes    prometheus.Counter
 	urls     prometheus.Counter
 	postings prometheus.Counter
@@ -19,6 +20,10 @@ func NewCrawlMetrics(registry prometheus.Registerer) *CrawlMetrics {
 		Name: "crawl_ingest_deferrals_total",
 		Help: "Crawl ingest batches deferred back to the queue.",
 	})
+	rejected := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "crawl_ingest_rejections_total",
+		Help: "Malformed crawl ingest batches dropped without absorbing.",
+	})
 	bytes := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "crawl_ingest_content_bytes_total",
 		Help: "Extracted content bytes absorbed from crawl ingest.",
@@ -31,11 +36,12 @@ func NewCrawlMetrics(registry prometheus.Registerer) *CrawlMetrics {
 		Name: "crawl_ingest_postings_total",
 		Help: "Postings absorbed from crawl ingest.",
 	})
-	registry.MustRegister(absorbed, deferred, bytes, urls, postings)
+	registry.MustRegister(absorbed, deferred, rejected, bytes, urls, postings)
 
 	return &CrawlMetrics{
 		absorbed: absorbed,
 		deferred: deferred,
+		rejected: rejected,
 		bytes:    bytes,
 		urls:     urls,
 		postings: postings,
@@ -51,4 +57,8 @@ func (m *CrawlMetrics) ObserveAbsorbed(contentBytes, urls, postings int) {
 
 func (m *CrawlMetrics) ObserveDeferred() {
 	m.deferred.Inc()
+}
+
+func (m *CrawlMetrics) ObserveRejected() {
+	m.rejected.Inc()
 }
