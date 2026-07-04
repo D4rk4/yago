@@ -9,6 +9,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/crawlurls"
 	"github.com/D4rk4/yago/yagonode/internal/dhtexchange"
 	"github.com/D4rk4/yago/yagonode/internal/documentsearch"
+	"github.com/D4rk4/yago/yagonode/internal/events"
 	"github.com/D4rk4/yago/yagonode/internal/eviction"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
@@ -52,6 +53,8 @@ type nodeTelemetry struct {
 	peer             *metrics.PeerMetrics
 	search           *metrics.SearchMetrics
 	crawl            *metrics.CrawlMetrics
+	crawlRuns        *metrics.CrawlRunMetrics
+	recorder         *events.Recorder
 	searchAuthorizer tavilyapi.ScopeAuthorizer
 	toggles          *runtimeToggles
 }
@@ -186,6 +189,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		return nodeSurfaces{}, err
 	}
 	attachCrawlMetrics(runtime, in.telemetry.crawl)
+	attachCrawlRunObserver(runtime, in.telemetry.crawlRuns, in.telemetry.recorder)
 	ranking, err := rankingprofile.Open(in.ctx, in.vault)
 	if err != nil {
 		return nodeSurfaces{}, fmt.Errorf("open ranking profile: %w", err)

@@ -32,10 +32,16 @@ type Run struct {
 // use. Records arrive from worker progress reports; the oldest-updated run is
 // evicted once the table exceeds its capacity.
 type Registry struct {
-	mu       sync.Mutex
-	runs     map[string]Run
-	capacity int
-	now      func() time.Time
+	mu        sync.Mutex
+	runs      map[string]Run
+	capacity  int
+	now       func() time.Time
+	observers []func(run Run, newlyTerminal bool, active int)
+}
+
+func isTerminal(state yagocrawlcontract.CrawlRunState) bool {
+	return state == yagocrawlcontract.CrawlRunFinished ||
+		state == yagocrawlcontract.CrawlRunCancelled
 }
 
 // New builds a registry holding at most capacity runs, defaulting a non-positive
@@ -61,11 +67,11 @@ func (r *Registry) Record(_ context.Context, progress yagocrawlcontract.CrawlRun
 	}
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	now := r.now()
-	run, ok := r.runs[progress.RunID]
-	if !ok {
+	prev, existed := r.runs[progress.RunID]
+	run := prev
+	if !existed {
 		run.RunID = progress.RunID
 		run.FirstSeen = now
 	}
@@ -78,6 +84,39 @@ func (r *Registry) Record(_ context.Context, progress yagocrawlcontract.CrawlRun
 	r.runs[progress.RunID] = run
 
 	r.evictLocked()
+
+	// Detecting the terminal transition under the lock guarantees exactly one
+	// newly-terminal notification per run, even under concurrent reports.
+	newlyTerminal := isTerminal(run.State) && (!existed || !isTerminal(prev.State))
+	active := r.activeCountLocked()
+	observers := r.observers
+	r.mu.Unlock()
+
+	for _, observe := range observers {
+		observe(run, newlyTerminal, active)
+	}
+}
+
+// AddObserver registers a callback invoked after each recorded report with the
+// run's current snapshot, whether this report was its first terminal transition,
+// and the number of runs still active. Observers are registered at assembly time,
+// before the broker serves, so registration never races a report.
+func (r *Registry) AddObserver(observe func(run Run, newlyTerminal bool, active int)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.observers = append(r.observers, observe)
+}
+
+func (r *Registry) activeCountLocked() int {
+	active := 0
+	for _, run := range r.runs {
+		if !isTerminal(run.State) {
+			active++
+		}
+	}
+
+	return active
 }
 
 // Recent returns the runs newest-updated first, breaking ties by run id.

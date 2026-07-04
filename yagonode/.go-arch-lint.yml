@@ -479,6 +479,7 @@ deps:
       - dhtexchange
     canUse:
       - yagomodel
+      - yagocrawlcontract
       - prometheus
   events:
     mayDependOn:

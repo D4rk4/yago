@@ -19,6 +19,7 @@ type runtimeObservability struct {
 	peer         *metrics.PeerMetrics
 	search       *metrics.SearchMetrics
 	crawl        *metrics.CrawlMetrics
+	crawlRuns    *metrics.CrawlRunMetrics
 	recorder     *events.Recorder
 	authObserver authObserverFanOut
 }
@@ -47,6 +48,7 @@ func provisionObservability(
 		peer:         metrics.NewPeerMetrics(endpoints.Registry()),
 		search:       metrics.NewSearchMetrics(endpoints.Registry()),
 		crawl:        metrics.NewCrawlMetrics(endpoints.Registry()),
+		crawlRuns:    metrics.NewCrawlRunMetrics(endpoints.Registry()),
 		recorder:     recorder,
 		authObserver: authObserverFanOut{authMetrics, authEventObserver{recorder: recorder}},
 	}, nil

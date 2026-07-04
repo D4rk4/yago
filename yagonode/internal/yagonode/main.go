@@ -121,6 +121,8 @@ func bootNode(
 			peer:             obs.peer,
 			search:           obs.search,
 			crawl:            obs.crawl,
+			crawlRuns:        obs.crawlRuns,
+			recorder:         obs.recorder,
 			searchAuthorizer: searchScopeAuthorizerFor(config, authService),
 			toggles:          toggles,
 		},
