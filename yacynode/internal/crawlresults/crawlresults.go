@@ -13,7 +13,7 @@ import (
 )
 
 type IngestDelivery struct {
-	Batch yacycrawlcontract.IngestBatch
+	Batch yacycrawlcontract.CrawledPageIndex
 	Ack   func(context.Context) error
 	Nak   func(context.Context) error
 }

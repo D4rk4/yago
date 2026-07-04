@@ -7,8 +7,8 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-func TestIngestBatchRoundTrip(t *testing.T) {
-	batch := IngestBatch{
+func TestCrawledPageIndexRoundTrip(t *testing.T) {
+	index := CrawledPageIndex{
 		SourceURL:     "https://example.org/a",
 		Provenance:    []byte("admin"),
 		ProfileHandle: "abcdef012345",
@@ -23,15 +23,15 @@ func TestIngestBatchRoundTrip(t *testing.T) {
 		},
 	}
 
-	data, err := MarshalIngestBatch(batch)
+	data, err := MarshalCrawledPageIndex(index)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	got, err := UnmarshalIngestBatch(data)
+	got, err := UnmarshalCrawledPageIndex(data)
 	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if !reflect.DeepEqual(batch, got) {
-		t.Errorf("round-trip mismatch:\nwant %#v\ngot  %#v", batch, got)
+	if !reflect.DeepEqual(index, got) {
+		t.Errorf("round-trip mismatch:\nwant %#v\ngot  %#v", index, got)
 	}
 }

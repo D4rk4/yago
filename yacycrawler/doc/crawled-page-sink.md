@@ -1,27 +1,28 @@
-# yacycrawler — extracted-text capture sink
+# yacycrawler — crawled-page capture sink
 
 ## What this is
 
-`yacycrawler` has a second, opt-in output alongside its default postings output: an
-extracted-text sink that carries parsed page text to a separate optional consumer,
+`yacycrawler` has a second, opt-in output alongside its default postings output: a
+crawled-page sink that carries parsed page text to a separate optional consumer,
 `yacytextindexer`. The postings output stays the default and is unchanged by this sink's
 existence.
 
 ## Functional Requirements
 
-* The service SHALL publish postings-only `IngestBatch` messages on the existing ingest
-  subject, unchanged, whether or not the extracted-text sink is enabled.
+* The service SHALL publish postings-only `CrawledPageIndex` messages on the existing
+  crawled-page-index subject, unchanged, whether or not the crawled-page sink is enabled.
 * The service SHALL discard raw HTML after parsing; raw HTML SHALL reach no sink.
-* The service SHALL let operators enable the extracted-text sink independently of the
+* The service SHALL let operators enable the crawled-page sink independently of the
   postings sink.
-* When the extracted-text sink is enabled, the service SHALL publish, per page, an
-  artifact carrying: the canonical URL, the document identity derived from that canonical
-  URL, the page title, the extracted text, the crawl timestamp, and the detected language.
+* When the crawled-page sink is enabled, the service SHALL publish, per page, a
+  `CrawledPage` carrying: the canonical URL, the document identity derived from that
+  canonical URL, the page title, the extracted text, the crawl timestamp, and the detected
+  language.
 * The service SHALL enforce a per-page text size limit before publishing. A page over the
   limit SHALL be dropped whole — not truncated and published — and the drop SHALL be
   logged, so a consumer never receives a partial page indistinguishable from a complete
   one.
-* Enabling the extracted-text sink SHALL NOT alter the service's postings or metadata
+* Enabling the crawled-page sink SHALL NOT alter the service's postings or metadata
   output.
 
 ### Canonical URL identity contract
@@ -40,7 +41,7 @@ as incidental implementation.
 
 ## Trust boundary
 
-* The extracted-text subject SHALL share the trust boundary of the NATS deployment the
+* The crawled-page subject SHALL share the trust boundary of the NATS deployment the
   crawler is already configured against. Publish rights to it are equivalent to publish
   rights to ingest.
 * Restricting or authorizing that subject beyond the configured deployment's boundary is
@@ -49,10 +50,10 @@ as incidental implementation.
 
 ## Stream isolation and retention
 
-* The postings and extracted-text sinks SHALL publish to separate JetStream streams with
-  independently configured limits, so backlog or retention pressure on the extracted-text
+* The postings and crawled-page sinks SHALL publish to separate JetStream streams with
+  independently configured limits, so backlog or retention pressure on the crawled-page
   stream SHALL NOT affect publishing to the postings stream.
-* The operator SHALL size the extracted-text stream's retention window. A consumer's
+* The operator SHALL size the crawled-page stream's retention window. A consumer's
   outage-survival guarantee holds only within that window.
 
 ## Non-Goals

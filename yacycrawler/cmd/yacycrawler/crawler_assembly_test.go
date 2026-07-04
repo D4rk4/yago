@@ -12,7 +12,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 )
 
-func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
+func TestRunServiceDrivesOrdersToCrawledPageIndex(t *testing.T) {
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "no robots", http.StatusNotFound)
 	}))
@@ -34,9 +34,9 @@ func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
 
 	publishDefaultOrder(t, ctx, js, cfg.OrdersSubject, origin.URL)
 
-	batch := fetchOneIngest(t, js, cfg.IngestSubject)
-	if string(batch.Provenance) != "admin" {
-		t.Errorf("batch provenance = %q, want admin", batch.Provenance)
+	index := fetchOneCrawledPageIndex(t, js, cfg.CrawledPageIndexSubject)
+	if string(index.Provenance) != "admin" {
+		t.Errorf("index provenance = %q, want admin", index.Provenance)
 	}
 
 	cancel()
@@ -111,40 +111,40 @@ func waitForStream(t *testing.T, js jetstream.JetStream, name string) {
 	t.Fatalf("stream %s not created in time", name)
 }
 
-func fetchOneIngest(
+func fetchOneCrawledPageIndex(
 	t *testing.T,
 	js jetstream.JetStream,
 	subject string,
-) yacycrawlcontract.IngestBatch {
+) yacycrawlcontract.CrawledPageIndex {
 	t.Helper()
-	stream, err := js.Stream(context.Background(), yacycrawlcontract.IngestStreamName)
+	stream, err := js.Stream(context.Background(), yacycrawlcontract.CrawledPageIndexStreamName)
 	if err != nil {
-		t.Fatalf("lookup ingest stream: %v", err)
+		t.Fatalf("lookup crawled page index stream: %v", err)
 	}
 	consumer, err := stream.CreateOrUpdateConsumer(context.Background(), jetstream.ConsumerConfig{
 		FilterSubject: subject,
 		AckPolicy:     jetstream.AckExplicitPolicy,
 	})
 	if err != nil {
-		t.Fatalf("create ingest consumer: %v", err)
+		t.Fatalf("create crawled page index consumer: %v", err)
 	}
 	msgs, err := consumer.Fetch(1, jetstream.FetchMaxWait(15*time.Second))
 	if err != nil {
-		t.Fatalf("fetch ingest: %v", err)
+		t.Fatalf("fetch crawled page index: %v", err)
 	}
 	msg, ok := <-msgs.Messages()
 	if !ok {
 		if err := msgs.Error(); err != nil {
 			t.Fatalf("fetch error: %v", err)
 		}
-		t.Fatal("no ingest batch received")
+		t.Fatal("no crawled page index received")
 	}
-	batch, err := yacycrawlcontract.UnmarshalIngestBatch(msg.Data())
+	index, err := yacycrawlcontract.UnmarshalCrawledPageIndex(msg.Data())
 	if err != nil {
-		t.Fatalf("decode ingest: %v", err)
+		t.Fatalf("decode crawled page index: %v", err)
 	}
 	if err := msg.Ack(); err != nil {
 		t.Fatalf("ack: %v", err)
 	}
-	return batch
+	return index
 }

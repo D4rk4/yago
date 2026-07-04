@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-func TestExtractedTextRoundTrip(t *testing.T) {
-	text := ExtractedText{
+func TestCrawledPageRoundTrip(t *testing.T) {
+	text := CrawledPage{
 		CanonicalURL: "https://example.org/a",
 		DocumentID:   "abc123",
 		Title:        "Hi",
@@ -16,11 +16,11 @@ func TestExtractedTextRoundTrip(t *testing.T) {
 		Language:     "en",
 	}
 
-	data, err := MarshalExtractedText(text)
+	data, err := MarshalCrawledPage(text)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	got, err := UnmarshalExtractedText(data)
+	got, err := UnmarshalCrawledPage(data)
 	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -29,8 +29,8 @@ func TestExtractedTextRoundTrip(t *testing.T) {
 	}
 }
 
-func TestUnmarshalExtractedTextRejectsInvalidJSON(t *testing.T) {
-	if _, err := UnmarshalExtractedText([]byte("not json")); err == nil {
+func TestUnmarshalCrawledPageRejectsInvalidJSON(t *testing.T) {
+	if _, err := UnmarshalCrawledPage([]byte("not json")); err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
 }

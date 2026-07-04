@@ -24,7 +24,11 @@ type searchResponse struct {
 	} `json:"hits"`
 }
 
-func waitForIndexedHit(t *testing.T, ctx context.Context, elasticsearchURL, expectedURL string) searchHit {
+func waitForIndexedHit(
+	t *testing.T,
+	ctx context.Context,
+	elasticsearchURL, expectedURL string,
+) searchHit {
 	t.Helper()
 	var found searchHit
 	ok := waitFor(30*time.Second, func() bool {
@@ -41,7 +45,11 @@ func waitForIndexedHit(t *testing.T, ctx context.Context, elasticsearchURL, expe
 	return found
 }
 
-func searchOnce(t *testing.T, ctx context.Context, elasticsearchURL, expectedURL string) (searchHit, bool) {
+func searchOnce(
+	t *testing.T,
+	ctx context.Context,
+	elasticsearchURL, expectedURL string,
+) (searchHit, bool) {
 	t.Helper()
 	target := elasticsearchURL + "/" + elasticsearchIndex + "/_search?q=" + "url:%22" + expectedURL + "%22"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)

@@ -1,4 +1,4 @@
-package ingest
+package crawledpageindex
 
 import (
 	"context"
@@ -14,7 +14,7 @@ type Envelope struct {
 	ProfileHandle string
 }
 
-type BatchEmitter interface {
+type CrawledPageIndexEmitter interface {
 	Emit(
 		ctx context.Context,
 		postings []yacymodel.RWIPosting,
@@ -23,29 +23,31 @@ type BatchEmitter interface {
 	) error
 }
 
-type batchEmitter struct {
-	queue boundedqueue.Publisher[IngestBatch]
+type crawledPageIndexEmitter struct {
+	queue boundedqueue.Publisher[CrawledPageIndex]
 }
 
-func NewBatchEmitter(queue boundedqueue.Publisher[IngestBatch]) BatchEmitter {
-	return &batchEmitter{queue: queue}
+func NewCrawledPageIndexEmitter(
+	queue boundedqueue.Publisher[CrawledPageIndex],
+) CrawledPageIndexEmitter {
+	return &crawledPageIndexEmitter{queue: queue}
 }
 
-func (e *batchEmitter) Emit(
+func (e *crawledPageIndexEmitter) Emit(
 	ctx context.Context,
 	postings []yacymodel.RWIPosting,
 	metadata yacymodel.URIMetadataRow,
 	envelope Envelope,
 ) error {
-	batch := IngestBatch{
+	index := CrawledPageIndex{
 		SourceURL:     envelope.SourceURL,
 		Provenance:    envelope.Provenance,
 		ProfileHandle: envelope.ProfileHandle,
 		Postings:      postings,
 		Metadata:      []yacymodel.URIMetadataRow{metadata},
 	}
-	if err := e.queue.Publish(ctx, batch); err != nil {
-		return fmt.Errorf("publish ingest batch %s: %w", envelope.SourceURL, err)
+	if err := e.queue.Publish(ctx, index); err != nil {
+		return fmt.Errorf("publish crawled page index %s: %w", envelope.SourceURL, err)
 	}
 	return nil
 }

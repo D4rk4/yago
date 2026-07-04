@@ -1,4 +1,4 @@
-package extractedtext_test
+package yacycrawlcontract_test
 
 import (
 	"testing"

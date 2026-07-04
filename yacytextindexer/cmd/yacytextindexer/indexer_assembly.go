@@ -10,8 +10,8 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/crawledpage"
 	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/searchdocument"
-	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/textsubscription"
 )
 
 func RunService(ctx context.Context, cfg ServiceConfig) error {
@@ -25,29 +25,37 @@ func RunService(ctx context.Context, cfg ServiceConfig) error {
 	if err != nil {
 		return fmt.Errorf("init jetstream: %w", err)
 	}
-	if err := yacycrawlcontract.EnsureExtractedTextStream(ctx, js, cfg.StreamSpec()); err != nil {
-		return fmt.Errorf("ensure extracted text stream: %w", err)
+	if err := yacycrawlcontract.EnsureCrawledPageStream(
+		ctx,
+		js,
+		cfg.CrawledPageStreamSpec(),
+	); err != nil {
+		return fmt.Errorf("ensure crawled page stream: %w", err)
 	}
 
-	stream, err := js.Stream(ctx, yacycrawlcontract.ExtractedTextStreamName)
+	stream, err := js.Stream(ctx, yacycrawlcontract.CrawledPageStreamName)
 	if err != nil {
-		return fmt.Errorf("lookup extracted text stream: %w", err)
+		return fmt.Errorf("lookup crawled page stream: %w", err)
 	}
 	consumer, err := stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
-		Durable:       cfg.Durable,
-		FilterSubject: cfg.ExtractedTextSubject,
+		Durable:       cfg.CrawledPageDurable,
+		FilterSubject: cfg.CrawledPageSubject,
 		AckPolicy:     jetstream.AckExplicitPolicy,
 		MaxAckPending: cfg.Concurrency,
 	})
 	if err != nil {
-		return fmt.Errorf("create extracted text consumer: %w", err)
+		return fmt.Errorf("create crawled page consumer: %w", err)
 	}
 
-	index := searchdocument.NewElasticsearchIndex(cfg.ElasticsearchURL, cfg.ElasticsearchIndex, http.DefaultClient)
-	artifacts := textsubscription.NewArtifactConsumer(consumer, index, cfg.Concurrency)
+	index := searchdocument.NewElasticsearchIndex(
+		cfg.ElasticsearchURL,
+		cfg.ElasticsearchIndex,
+		http.DefaultClient,
+	)
+	artifacts := crawledpage.NewCrawledPageConsumer(consumer, index, cfg.Concurrency)
 
 	slog.InfoContext(ctx, "textindexer started",
-		slog.String("subject", cfg.ExtractedTextSubject),
+		slog.String("subject", cfg.CrawledPageSubject),
 		slog.String("index", cfg.ElasticsearchIndex),
 		slog.Int("concurrency", cfg.Concurrency),
 	)

@@ -9,35 +9,35 @@ import (
 )
 
 const (
-	EnvNATSURL              = "NATS_URL"
-	EnvExtractedTextSubject = "NATS_EXTRACTED_TEXT_SUBJECT"
-	EnvExtractedTextMaxMsgs = "NATS_EXTRACTED_TEXT_MAX_MSGS"
-	EnvDurable              = "YACYTEXTINDEXER_DURABLE"
-	EnvConcurrency          = "YACYTEXTINDEXER_CONCURRENCY"
-	EnvElasticsearchURL     = "ELASTICSEARCH_URL"
-	EnvElasticsearchIndex   = "ELASTICSEARCH_INDEX"
+	EnvNATSURL                = "NATS_URL"
+	EnvNATSCrawledPageSubject = "NATS_CRAWLED_PAGE_SUBJECT"
+	EnvNATSCrawledPageMaxMsgs = "NATS_CRAWLED_PAGE_MAX_MSGS"
+	EnvNATSCrawledPageDurable = "NATS_CRAWLED_PAGE_DURABLE"
+	EnvConcurrency            = "YACYTEXTINDEXER_CONCURRENCY"
+	EnvElasticsearchURL       = "ELASTICSEARCH_URL"
+	EnvElasticsearchIndex     = "ELASTICSEARCH_INDEX"
 
-	DefaultExtractedTextSubject = "yacy.crawl.extracted-text"
-	DefaultExtractedTextMaxMsgs = 1024
-	DefaultDurable              = "yacytextindexer"
-	DefaultConcurrency          = 4
-	DefaultElasticsearchIndex   = "yacy-text"
+	DefaultCrawledPageSubject = "yacy.crawl.pages"
+	DefaultCrawledPageMaxMsgs = 1024
+	DefaultCrawledPageDurable = "yacytextindexer"
+	DefaultConcurrency        = 4
+	DefaultElasticsearchIndex = "yacy-text"
 )
 
 type ServiceConfig struct {
-	NATSURL              string
-	ExtractedTextSubject string
-	ExtractedTextMaxMsgs int64
-	Durable              string
-	Concurrency          int
-	ElasticsearchURL     string
-	ElasticsearchIndex   string
+	NATSURL            string
+	CrawledPageSubject string
+	CrawledPageMaxMsgs int64
+	CrawledPageDurable string
+	Concurrency        int
+	ElasticsearchURL   string
+	ElasticsearchIndex string
 }
 
-func (c ServiceConfig) StreamSpec() yacycrawlcontract.ExtractedTextStreamSpec {
-	return yacycrawlcontract.ExtractedTextStreamSpec{
-		Subject: c.ExtractedTextSubject,
-		MaxMsgs: c.ExtractedTextMaxMsgs,
+func (c ServiceConfig) CrawledPageStreamSpec() yacycrawlcontract.CrawledPageStreamSpec {
+	return yacycrawlcontract.CrawledPageStreamSpec{
+		Subject: c.CrawledPageSubject,
+		MaxMsgs: c.CrawledPageMaxMsgs,
 	}
 }
 
@@ -51,7 +51,7 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		return ServiceConfig{}, fmt.Errorf("%s: must be set", EnvElasticsearchURL)
 	}
 
-	maxMsgs, err := envPositiveInt64(getenv, EnvExtractedTextMaxMsgs, DefaultExtractedTextMaxMsgs)
+	maxMsgs, err := envPositiveInt64(getenv, EnvNATSCrawledPageMaxMsgs, DefaultCrawledPageMaxMsgs)
 	if err != nil {
 		return ServiceConfig{}, err
 	}
@@ -61,13 +61,13 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 	}
 
 	return ServiceConfig{
-		NATSURL:              natsURL,
-		ExtractedTextSubject: envString(getenv, EnvExtractedTextSubject, DefaultExtractedTextSubject),
-		ExtractedTextMaxMsgs: maxMsgs,
-		Durable:              envString(getenv, EnvDurable, DefaultDurable),
-		Concurrency:          concurrency,
-		ElasticsearchURL:     esURL,
-		ElasticsearchIndex:   envString(getenv, EnvElasticsearchIndex, DefaultElasticsearchIndex),
+		NATSURL:            natsURL,
+		CrawledPageSubject: envString(getenv, EnvNATSCrawledPageSubject, DefaultCrawledPageSubject),
+		CrawledPageMaxMsgs: maxMsgs,
+		CrawledPageDurable: envString(getenv, EnvNATSCrawledPageDurable, DefaultCrawledPageDurable),
+		Concurrency:        concurrency,
+		ElasticsearchURL:   esURL,
+		ElasticsearchIndex: envString(getenv, EnvElasticsearchIndex, DefaultElasticsearchIndex),
 	}, nil
 }
 

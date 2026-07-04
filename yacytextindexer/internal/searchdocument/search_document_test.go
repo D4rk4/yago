@@ -8,9 +8,9 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/searchdocument"
 )
 
-func TestFromExtractedTextMapsFields(t *testing.T) {
+func TestFromCrawledPageMapsFields(t *testing.T) {
 	crawledAt := time.Date(2026, 7, 4, 0, 0, 0, 0, time.UTC)
-	doc := searchdocument.FromExtractedText(yacycrawlcontract.ExtractedText{
+	doc := searchdocument.FromCrawledPage(yacycrawlcontract.CrawledPage{
 		CanonicalURL: "https://example.com/",
 		Title:        "Hi",
 		Text:         "words here",

@@ -38,14 +38,14 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if cfg.ExtractedTextSubject != DefaultExtractedTextSubject {
-		t.Errorf("subject = %q", cfg.ExtractedTextSubject)
+	if cfg.CrawledPageSubject != DefaultCrawledPageSubject {
+		t.Errorf("subject = %q", cfg.CrawledPageSubject)
 	}
-	if cfg.ExtractedTextMaxMsgs != DefaultExtractedTextMaxMsgs {
-		t.Errorf("max msgs = %d", cfg.ExtractedTextMaxMsgs)
+	if cfg.CrawledPageMaxMsgs != DefaultCrawledPageMaxMsgs {
+		t.Errorf("max msgs = %d", cfg.CrawledPageMaxMsgs)
 	}
-	if cfg.Durable != DefaultDurable {
-		t.Errorf("durable = %q", cfg.Durable)
+	if cfg.CrawledPageDurable != DefaultCrawledPageDurable {
+		t.Errorf("durable = %q", cfg.CrawledPageDurable)
 	}
 	if cfg.Concurrency != DefaultConcurrency {
 		t.Errorf("concurrency = %d", cfg.Concurrency)
@@ -53,30 +53,30 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	if cfg.ElasticsearchIndex != DefaultElasticsearchIndex {
 		t.Errorf("index = %q", cfg.ElasticsearchIndex)
 	}
-	spec := cfg.StreamSpec()
-	if spec.Subject != cfg.ExtractedTextSubject || spec.MaxMsgs != cfg.ExtractedTextMaxMsgs {
+	spec := cfg.CrawledPageStreamSpec()
+	if spec.Subject != cfg.CrawledPageSubject || spec.MaxMsgs != cfg.CrawledPageMaxMsgs {
 		t.Errorf("stream spec mismatch: %+v", spec)
 	}
 }
 
 func TestLoadServiceConfigOverrides(t *testing.T) {
 	cfg, err := LoadServiceConfig(envFrom(map[string]string{
-		EnvNATSURL:              "nats://localhost:4222",
-		EnvElasticsearchURL:     "http://localhost:9200",
-		EnvExtractedTextSubject: "t.subject",
-		EnvExtractedTextMaxMsgs: "7",
-		EnvDurable:              "dur",
-		EnvConcurrency:          "3",
-		EnvElasticsearchIndex:   "my-index",
+		EnvNATSURL:                "nats://localhost:4222",
+		EnvElasticsearchURL:       "http://localhost:9200",
+		EnvNATSCrawledPageSubject: "t.subject",
+		EnvNATSCrawledPageMaxMsgs: "7",
+		EnvNATSCrawledPageDurable: "dur",
+		EnvConcurrency:            "3",
+		EnvElasticsearchIndex:     "my-index",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if cfg.ExtractedTextSubject != "t.subject" || cfg.ExtractedTextMaxMsgs != 7 {
-		t.Errorf("subject/maxmsgs = %q %d", cfg.ExtractedTextSubject, cfg.ExtractedTextMaxMsgs)
+	if cfg.CrawledPageSubject != "t.subject" || cfg.CrawledPageMaxMsgs != 7 {
+		t.Errorf("subject/maxmsgs = %q %d", cfg.CrawledPageSubject, cfg.CrawledPageMaxMsgs)
 	}
-	if cfg.Durable != "dur" || cfg.Concurrency != 3 {
-		t.Errorf("durable/concurrency = %q %d", cfg.Durable, cfg.Concurrency)
+	if cfg.CrawledPageDurable != "dur" || cfg.Concurrency != 3 {
+		t.Errorf("durable/concurrency = %q %d", cfg.CrawledPageDurable, cfg.Concurrency)
 	}
 	if cfg.ElasticsearchIndex != "my-index" {
 		t.Errorf("index = %q", cfg.ElasticsearchIndex)
@@ -89,8 +89,8 @@ func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 		EnvElasticsearchURL: "http://localhost:9200",
 	}
 	cases := map[string]string{
-		EnvExtractedTextMaxMsgs: "0",
-		EnvConcurrency:          "abc",
+		EnvNATSCrawledPageMaxMsgs: "0",
+		EnvConcurrency:            "abc",
 	}
 	for key, bad := range cases {
 		env := map[string]string{}

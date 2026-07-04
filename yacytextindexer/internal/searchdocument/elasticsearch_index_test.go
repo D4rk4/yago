@@ -25,7 +25,7 @@ func TestElasticsearchIndexPutsDocumentByID(t *testing.T) {
 	defer server.Close()
 
 	index := searchdocument.NewElasticsearchIndex(server.URL, "yacy-text", server.Client())
-	text := yacycrawlcontract.ExtractedText{
+	text := yacycrawlcontract.CrawledPage{
 		CanonicalURL: "https://example.com/",
 		DocumentID:   "abc123",
 		Title:        "Hi",
@@ -39,7 +39,8 @@ func TestElasticsearchIndexPutsDocumentByID(t *testing.T) {
 	if gotPath != "/yacy-text/_doc/abc123" {
 		t.Errorf("path = %q", gotPath)
 	}
-	if gotDoc.Title != "Hi" || gotDoc.URL != "https://example.com/" || gotDoc.Content != "words here" {
+	if gotDoc.Title != "Hi" || gotDoc.URL != "https://example.com/" ||
+		gotDoc.Content != "words here" {
 		t.Errorf("document = %+v", gotDoc)
 	}
 }
@@ -51,7 +52,7 @@ func TestElasticsearchIndexReturnsErrorOnFailureStatus(t *testing.T) {
 	defer server.Close()
 
 	index := searchdocument.NewElasticsearchIndex(server.URL, "yacy-text", server.Client())
-	err := index.Index(context.Background(), yacycrawlcontract.ExtractedText{DocumentID: "abc123"})
+	err := index.Index(context.Background(), yacycrawlcontract.CrawledPage{DocumentID: "abc123"})
 	if err == nil {
 		t.Fatal("expected error for non-2xx response")
 	}

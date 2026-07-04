@@ -16,15 +16,15 @@ The contract has two one-way message flows:
           CrawlOrder
 node ------------------> crawler
 
-          IngestBatch
+          CrawledPageIndex
 node <------------------ crawler
 ```
 
 `CrawlOrder` carries crawl work from the node to crawler instances. The order includes
 the crawl profile and seed requests needed to start or continue a crawl.
 
-`IngestBatch` carries references back to the node for one fetched page: RWI postings,
-URL metadata, and the attribution data needed by the node.
+`CrawledPageIndex` carries references back to the node for one fetched page: RWI
+postings, URL metadata, and the attribution data needed by the node.
 
 Each flow is one-way so multiple crawler instances can share the same work stream and
 publish results back to one node without per-crawler addressing.

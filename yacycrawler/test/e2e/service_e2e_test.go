@@ -43,11 +43,11 @@ func TestCrawlerIsOrderDrivenEndToEnd(t *testing.T) {
 		t.Fatalf("publish order: %v", err)
 	}
 
-	batch := fetchOneIngest(t, ctx, js)
-	if batch.ProfileHandle != order.Profile.Handle {
-		t.Errorf("batch handle = %q, want %q", batch.ProfileHandle, order.Profile.Handle)
+	index := fetchOneCrawledPageIndex(t, ctx, js)
+	if index.ProfileHandle != order.Profile.Handle {
+		t.Errorf("index handle = %q, want %q", index.ProfileHandle, order.Profile.Handle)
 	}
-	if string(batch.Provenance) != "admin" {
-		t.Errorf("batch provenance = %q, want admin", batch.Provenance)
+	if string(index.Provenance) != "admin" {
+		t.Errorf("index provenance = %q, want admin", index.Provenance)
 	}
 }

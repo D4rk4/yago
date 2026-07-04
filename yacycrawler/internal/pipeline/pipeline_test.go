@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawledpage"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawledpageindex"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/extractedtext"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
@@ -54,20 +54,24 @@ func (f indexFunc) Build(
 	return f(p, s)
 }
 
-type emitFunc func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error
+type emitFunc func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, crawledpageindex.Envelope) error
 
 func (f emitFunc) Emit(
 	ctx context.Context,
 	postings []yacymodel.RWIPosting,
 	metadata yacymodel.URIMetadataRow,
-	envelope ingest.Envelope,
+	envelope crawledpageindex.Envelope,
 ) error {
 	return f(ctx, postings, metadata, envelope)
 }
 
 type textEmitFunc func(context.Context, pageparse.ParsedPage, time.Time) error
 
-func (f textEmitFunc) Emit(ctx context.Context, page pageparse.ParsedPage, crawledAt time.Time) error {
+func (f textEmitFunc) Emit(
+	ctx context.Context,
+	page pageparse.ParsedPage,
+	crawledAt time.Time,
+) error {
 	return f(ctx, page, crawledAt)
 }
 
@@ -97,9 +101,9 @@ func runOneJob(
 	}
 }
 
-func TestPipelineDeliversIngestBatch(t *testing.T) {
+func TestPipelineDeliversCrawledPageIndex(t *testing.T) {
 	frontier := newRecordingFrontier()
-	emitted := make(chan ingest.Envelope, 1)
+	emitted := make(chan crawledpageindex.Envelope, 1)
 	p := pipeline.NewPipeline(
 		frontier,
 		fetchFunc(
@@ -107,12 +111,12 @@ func TestPipelineDeliversIngestBatch(t *testing.T) {
 		),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
-			func(_ context.Context, _ []yacymodel.RWIPosting, _ yacymodel.URIMetadataRow, e ingest.Envelope) error {
+			func(_ context.Context, _ []yacymodel.RWIPosting, _ yacymodel.URIMetadataRow, e crawledpageindex.Envelope) error {
 				emitted <- e
 				return nil
 			},
 		),
-		extractedtext.NewNoopArtifactEmitter(),
+		crawledpage.NewNoopCrawledPageEmitter(),
 	)
 	runOneJob(t, p, frontier)
 	select {
@@ -140,12 +144,12 @@ func TestPipelineDropsRejectedPages(t *testing.T) {
 			return pageindex.Artifacts{}, nil
 		}),
 		emitFunc(
-			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, crawledpageindex.Envelope) error {
 				t.Error("emit should not run for rejected page")
 				return nil
 			},
 		),
-		extractedtext.NewNoopArtifactEmitter(),
+		crawledpage.NewNoopCrawledPageEmitter(),
 	)
 	runOneJob(t, p, frontier)
 	if len(frontier.submitted) != 0 {
@@ -162,11 +166,11 @@ func TestPipelineFinishesJobOnFetchError(t *testing.T) {
 		}),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
-			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, crawledpageindex.Envelope) error {
 				return nil
 			},
 		),
-		extractedtext.NewNoopArtifactEmitter(),
+		crawledpage.NewNoopCrawledPageEmitter(),
 	)
 	runOneJob(t, p, frontier)
 }
@@ -180,16 +184,16 @@ func TestPipelineFinishesJobOnEmitError(t *testing.T) {
 		),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
-			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, crawledpageindex.Envelope) error {
 				return errors.New("emit failed")
 			},
 		),
-		extractedtext.NewNoopArtifactEmitter(),
+		crawledpage.NewNoopCrawledPageEmitter(),
 	)
 	runOneJob(t, p, frontier)
 }
 
-func TestPipelineDeliversExtractedText(t *testing.T) {
+func TestPipelineDeliversCrawledPage(t *testing.T) {
 	frontier := newRecordingFrontier()
 	emitted := make(chan string, 1)
 	p := pipeline.NewPipeline(
@@ -199,7 +203,7 @@ func TestPipelineDeliversExtractedText(t *testing.T) {
 		),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
-			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, crawledpageindex.Envelope) error {
 				return nil
 			},
 		),
@@ -215,7 +219,7 @@ func TestPipelineDeliversExtractedText(t *testing.T) {
 			t.Errorf("emitted text url = %q", url)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("no extracted text emitted")
+		t.Fatal("no crawled page emitted")
 	}
 }
 
@@ -228,7 +232,7 @@ func TestPipelineFinishesJobOnTextEmitError(t *testing.T) {
 		),
 		pageindex.NewIndexBuilder(),
 		emitFunc(
-			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, crawledpageindex.Envelope) error {
 				return nil
 			},
 		),
@@ -250,12 +254,12 @@ func TestPipelineFinishesJobOnIndexError(t *testing.T) {
 			return pageindex.Artifacts{}, errors.New("index failed")
 		}),
 		emitFunc(
-			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, ingest.Envelope) error {
+			func(context.Context, []yacymodel.RWIPosting, yacymodel.URIMetadataRow, crawledpageindex.Envelope) error {
 				t.Error("emit should not run after index error")
 				return nil
 			},
 		),
-		extractedtext.NewNoopArtifactEmitter(),
+		crawledpage.NewNoopCrawledPageEmitter(),
 	)
 	runOneJob(t, p, frontier)
 }

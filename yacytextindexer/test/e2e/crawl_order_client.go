@@ -13,11 +13,11 @@ import (
 )
 
 const (
-	ordersSubject        = "yacy.crawl.orders"
-	ingestSubject        = "yacy.crawl.ingest"
-	ingestMaxMsgs        = 1024
-	extractedTextSubject = "yacy.crawl.extracted-text"
-	extractedTextMaxMsgs = 1024
+	ordersSubject           = "yacy.crawl.orders"
+	crawledPageIndexSubject = "yacy.crawl.page-index"
+	crawledPageIndexMaxMsgs = 1024
+	crawledPageSubject      = "yacy.crawl.pages"
+	crawledPageMaxMsgs      = 1024
 )
 
 func connectJetStream(t *testing.T, url string) jetstream.JetStream {
@@ -36,24 +36,36 @@ func connectJetStream(t *testing.T, url string) jetstream.JetStream {
 
 func ensureStreams(t *testing.T, ctx context.Context, js jetstream.JetStream) {
 	t.Helper()
-	spec := yacycrawlcontract.StreamSpec{
-		OrdersSubject: ordersSubject,
-		IngestSubject: ingestSubject,
-		IngestMaxMsgs: ingestMaxMsgs,
+	if err := yacycrawlcontract.EnsureOrdersStream(ctx, js, yacycrawlcontract.OrdersStreamSpec{
+		Subject: ordersSubject,
+	}); err != nil {
+		t.Fatalf("ensure orders stream: %v", err)
 	}
-	if err := yacycrawlcontract.EnsureStreams(ctx, js, spec); err != nil {
-		t.Fatalf("ensure streams: %v", err)
+	if err := yacycrawlcontract.EnsureCrawledPageIndexStream(
+		ctx,
+		js,
+		yacycrawlcontract.CrawledPageIndexStreamSpec{
+			Subject: crawledPageIndexSubject,
+			MaxMsgs: crawledPageIndexMaxMsgs,
+		},
+	); err != nil {
+		t.Fatalf("ensure crawled page index stream: %v", err)
 	}
-	textSpec := yacycrawlcontract.ExtractedTextStreamSpec{
-		Subject: extractedTextSubject,
-		MaxMsgs: extractedTextMaxMsgs,
+	pageSpec := yacycrawlcontract.CrawledPageStreamSpec{
+		Subject: crawledPageSubject,
+		MaxMsgs: crawledPageMaxMsgs,
 	}
-	if err := yacycrawlcontract.EnsureExtractedTextStream(ctx, js, textSpec); err != nil {
-		t.Fatalf("ensure extracted text stream: %v", err)
+	if err := yacycrawlcontract.EnsureCrawledPageStream(ctx, js, pageSpec); err != nil {
+		t.Fatalf("ensure crawled page stream: %v", err)
 	}
 }
 
-func publishCrawlOrder(t *testing.T, ctx context.Context, js jetstream.JetStream, originURL string) {
+func publishCrawlOrder(
+	t *testing.T,
+	ctx context.Context,
+	js jetstream.JetStream,
+	originURL string,
+) {
 	t.Helper()
 	order := yacycrawlcontract.CrawlOrder{
 		Provenance: []byte("admin"),

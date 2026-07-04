@@ -24,12 +24,12 @@ func startCrawler(t *testing.T, ctx context.Context, networkName string) {
 			Networks:       []string{networkName},
 			NetworkAliases: map[string][]string{networkName: {crawlerAlias}},
 			Env: map[string]string{
-				"NATS_URL":                           natsNetworkURL(),
-				"YACYCRAWLER_PROXY_URL":              egressProxyNetworkURL(),
-				"YACYCRAWLER_WORKERS":                "1",
-				"YACYCRAWLER_EXTRACTED_TEXT_ENABLED": "true",
-				"NATS_EXTRACTED_TEXT_SUBJECT":        extractedTextSubject,
-				"LOG_LEVEL":                          "debug",
+				"NATS_URL":                         natsNetworkURL(),
+				"YACYCRAWLER_PROXY_URL":            egressProxyNetworkURL(),
+				"YACYCRAWLER_WORKERS":              "1",
+				"YACYCRAWLER_CRAWLED_PAGE_ENABLED": "true",
+				"NATS_CRAWLED_PAGE_SUBJECT":        crawledPageSubject,
+				"LOG_LEVEL":                        "debug",
 			},
 		},
 	})

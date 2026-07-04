@@ -27,8 +27,11 @@ func NewElasticsearchIndex(endpoint, index string, client *http.Client) *Elastic
 	}
 }
 
-func (idx *ElasticsearchIndex) Index(ctx context.Context, text yacycrawlcontract.ExtractedText) error {
-	body, err := json.Marshal(FromExtractedText(text))
+func (idx *ElasticsearchIndex) Index(
+	ctx context.Context,
+	text yacycrawlcontract.CrawledPage,
+) error {
+	body, err := json.Marshal(FromCrawledPage(text))
 	if err != nil {
 		return fmt.Errorf("marshal search document %s: %w", text.DocumentID, err)
 	}
@@ -47,7 +50,12 @@ func (idx *ElasticsearchIndex) Index(ctx context.Context, text yacycrawlcontract
 
 	if resp.StatusCode >= 300 {
 		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("index document %s: status %d: %s", text.DocumentID, resp.StatusCode, detail)
+		return fmt.Errorf(
+			"index document %s: status %d: %s",
+			text.DocumentID,
+			resp.StatusCode,
+			detail,
+		)
 	}
 	return nil
 }

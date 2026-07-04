@@ -28,6 +28,6 @@ The node can drive a crawl fleet over NATS JetStream: operators start a crawl by
 | --- | --- | --- |
 | `NATS_URL` | _(empty)_ | NATS server to reach the crawl fleet (e.g. `nats://nats:4222`). Empty disables crawling. |
 | `NATS_ORDERS_SUBJECT` | `yacy.crawl.orders` | Subject crawl orders are published to. Must match the crawler. |
-| `NATS_INGEST_SUBJECT` | `yacy.crawl.ingest` | Subject crawled batches arrive on. Must match the crawler. |
+| `NATS_INGEST_SUBJECT` | `yacy.crawl.page-index` | Subject crawled batches arrive on. Must match the crawler. |
 | `NATS_INGEST_DURABLE` | `yacy-node` | Durable consumer name for reading ingest batches. |
 | `NATS_INGEST_MAX_MSGS` | `1024` | Maximum undelivered ingest batches buffered before the fleet is paused. |

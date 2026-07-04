@@ -79,8 +79,11 @@ func TestIngestReceiverDeliversDecodableBatchAndSkipsGarbage(t *testing.T) {
 	if _, err := js.Publish(ctx, ingestSubject, []byte("not json")); err != nil {
 		t.Fatalf("publish garbage: %v", err)
 	}
-	batch := yacycrawlcontract.IngestBatch{SourceURL: "https://example.org", ProfileHandle: "h"}
-	data, err := yacycrawlcontract.MarshalIngestBatch(batch)
+	batch := yacycrawlcontract.CrawledPageIndex{
+		SourceURL:     "https://example.org",
+		ProfileHandle: "h",
+	}
+	data, err := yacycrawlcontract.MarshalCrawledPageIndex(batch)
 	if err != nil {
 		t.Fatalf("marshal batch: %v", err)
 	}

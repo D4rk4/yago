@@ -24,10 +24,10 @@ func startTextIndexer(t *testing.T, ctx context.Context, networkName string) {
 			Networks:       []string{networkName},
 			NetworkAliases: map[string][]string{networkName: {textIndexerAlias}},
 			Env: map[string]string{
-				"NATS_URL":                    natsNetworkURL(),
-				"NATS_EXTRACTED_TEXT_SUBJECT": extractedTextSubject,
-				"ELASTICSEARCH_URL":           elasticsearchNetworkURL(),
-				"ELASTICSEARCH_INDEX":         elasticsearchIndex,
+				"NATS_URL":                  natsNetworkURL(),
+				"NATS_CRAWLED_PAGE_SUBJECT": crawledPageSubject,
+				"ELASTICSEARCH_URL":         elasticsearchNetworkURL(),
+				"ELASTICSEARCH_INDEX":       elasticsearchIndex,
 			},
 		},
 	})

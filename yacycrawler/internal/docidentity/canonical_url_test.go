@@ -7,7 +7,10 @@ import (
 )
 
 func TestCanonicalizeURLNormalizesEquivalentURLs(t *testing.T) {
-	a, ok := docidentity.CanonicalizeURL("HTTPS://Example.com/path/?b=2&a=1&utm_source=x#frag", []string{"utm_source"})
+	a, ok := docidentity.CanonicalizeURL(
+		"HTTPS://Example.com/path/?b=2&a=1&utm_source=x#frag",
+		[]string{"utm_source"},
+	)
 	if !ok {
 		t.Fatal("expected ok")
 	}

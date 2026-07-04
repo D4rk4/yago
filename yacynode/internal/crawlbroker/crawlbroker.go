@@ -40,13 +40,22 @@ func Open(ctx context.Context, cfg Config) (*CrawlBroker, error) {
 		return nil, fmt.Errorf("init jetstream: %w", err)
 	}
 
-	if err := yacycrawlcontract.EnsureStreams(ctx, js, yacycrawlcontract.StreamSpec{
-		OrdersSubject: cfg.OrdersSubject,
-		IngestSubject: cfg.IngestSubject,
-		IngestMaxMsgs: cfg.IngestMaxMsgs,
+	if err := yacycrawlcontract.EnsureOrdersStream(ctx, js, yacycrawlcontract.OrdersStreamSpec{
+		Subject: cfg.OrdersSubject,
 	}); err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("ensure streams: %w", err)
+		return nil, fmt.Errorf("ensure orders stream: %w", err)
+	}
+	if err := yacycrawlcontract.EnsureCrawledPageIndexStream(
+		ctx,
+		js,
+		yacycrawlcontract.CrawledPageIndexStreamSpec{
+			Subject: cfg.IngestSubject,
+			MaxMsgs: cfg.IngestMaxMsgs,
+		},
+	); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("ensure ingest stream: %w", err)
 	}
 
 	ingest, err := newIngestReceiver(ctx, js, cfg.IngestDurable, cfg.IngestSubject)

@@ -14,7 +14,7 @@ type SearchDocument struct {
 	Language  string    `json:"language"`
 }
 
-func FromExtractedText(text yacycrawlcontract.ExtractedText) SearchDocument {
+func FromCrawledPage(text yacycrawlcontract.CrawledPage) SearchDocument {
 	return SearchDocument{
 		Title:     text.Title,
 		URL:       text.CanonicalURL,

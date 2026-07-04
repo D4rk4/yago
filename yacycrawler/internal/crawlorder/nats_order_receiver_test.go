@@ -18,16 +18,12 @@ const (
 
 func ensureTestStreams(t *testing.T, js jetstream.JetStream) {
 	t.Helper()
-	if err := yacycrawlcontract.EnsureStreams(
+	if err := yacycrawlcontract.EnsureOrdersStream(
 		context.Background(),
 		js,
-		yacycrawlcontract.StreamSpec{
-			OrdersSubject: testOrdersSubject,
-			IngestSubject: testIngestSubject,
-			IngestMaxMsgs: 64,
-		},
+		yacycrawlcontract.OrdersStreamSpec{Subject: testOrdersSubject},
 	); err != nil {
-		t.Fatalf("ensure streams: %v", err)
+		t.Fatalf("ensure orders stream: %v", err)
 	}
 }
 

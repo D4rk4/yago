@@ -11,10 +11,10 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/botwall"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawldelay"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawledpage"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawledpageindex"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlorder"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/extractedtext"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pipeline"
@@ -32,27 +32,18 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	if err != nil {
 		return fmt.Errorf("init jetstream: %w", err)
 	}
-	if err := yacycrawlcontract.EnsureStreams(ctx, js, cfg.StreamSpec()); err != nil {
-		return fmt.Errorf("ensure streams: %w", err)
-	}
-
-	textEmitter := extractedtext.NewNoopArtifactEmitter()
-	if cfg.ExtractedTextEnabled {
-		if err := yacycrawlcontract.EnsureExtractedTextStream(ctx, js, cfg.ExtractedTextStreamSpec()); err != nil {
-			return fmt.Errorf("ensure extracted text stream: %w", err)
-		}
-		textEmitter = extractedtext.NewArtifactEmitter(
-			extractedtext.NewNATSArtifactPublisher(js, cfg.ExtractedTextSubject),
-			nil,
-			cfg.ExtractedTextMaxBytes,
-		)
+	pageEmitter, err := ensureStreams(ctx, js, cfg)
+	if err != nil {
+		return err
 	}
 
 	orders, err := crawlorder.NewNATSOrderReceiver(ctx, js, cfg.OrdersDurable, cfg.OrdersSubject)
 	if err != nil {
 		return fmt.Errorf("create order receiver: %w", err)
 	}
-	emitter := ingest.NewBatchEmitter(ingest.NewNATSIngestPublisher(js, cfg.IngestSubject))
+	emitter := crawledpageindex.NewCrawledPageIndexEmitter(
+		crawledpageindex.NewNATSCrawledPageIndexPublisher(js, cfg.CrawledPageIndexSubject),
+	)
 
 	crawl := cfg.Crawl
 	pace, err := crawldelay.NewHostPace(crawl.CrawlDelay, crawl.HostCacheSize)
@@ -77,7 +68,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		screened,
 		pageindex.NewIndexBuilder(),
 		emitter,
-		textEmitter,
+		pageEmitter,
 	)
 	consumer := crawlorder.NewCrawlOrderConsumer(orders, frontier)
 
@@ -95,11 +86,44 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 
 	slog.InfoContext(ctx, "crawler started",
 		slog.String("ordersSubject", cfg.OrdersSubject),
-		slog.String("ingestSubject", cfg.IngestSubject),
+		slog.String("crawledPageIndexSubject", cfg.CrawledPageIndexSubject),
 		slog.Int("workers", crawl.Workers),
 	)
 	<-consumerDone
 	<-workersDone
 	slog.InfoContext(ctx, "crawler stopped")
 	return nil
+}
+
+func ensureStreams(
+	ctx context.Context,
+	js jetstream.JetStream,
+	cfg ServiceConfig,
+) (crawledpage.CrawledPageEmitter, error) {
+	if err := yacycrawlcontract.EnsureOrdersStream(ctx, js, cfg.OrdersStreamSpec()); err != nil {
+		return nil, fmt.Errorf("ensure orders stream: %w", err)
+	}
+	if err := yacycrawlcontract.EnsureCrawledPageIndexStream(
+		ctx,
+		js,
+		cfg.CrawledPageIndexStreamSpec(),
+	); err != nil {
+		return nil, fmt.Errorf("ensure crawled page index stream: %w", err)
+	}
+
+	if !cfg.CrawledPageEnabled {
+		return crawledpage.NewNoopCrawledPageEmitter(), nil
+	}
+	if err := yacycrawlcontract.EnsureCrawledPageStream(
+		ctx,
+		js,
+		cfg.CrawledPageStreamSpec(),
+	); err != nil {
+		return nil, fmt.Errorf("ensure crawled page stream: %w", err)
+	}
+	return crawledpage.NewCrawledPageEmitter(
+		crawledpage.NewNATSCrawledPagePublisher(js, cfg.CrawledPageSubject),
+		nil,
+		cfg.CrawledPageMaxBytes,
+	), nil
 }

@@ -1,4 +1,4 @@
-package extractedtext
+package crawledpage
 
 import (
 	"context"
@@ -11,48 +11,52 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
 )
 
-const msgPageTextOverLimit = "extracted text page over size limit"
+const msgCrawledPageOverLimit = "crawled page over size limit"
 
-type ArtifactPublisher interface {
-	Publish(ctx context.Context, text yacycrawlcontract.ExtractedText) error
+type CrawledPagePublisher interface {
+	Publish(ctx context.Context, text yacycrawlcontract.CrawledPage) error
 }
 
-type ArtifactEmitter interface {
+type CrawledPageEmitter interface {
 	Emit(ctx context.Context, page pageparse.ParsedPage, crawledAt time.Time) error
 }
 
-type artifactEmitter struct {
-	publisher      ArtifactPublisher
+type crawledPageEmitter struct {
+	publisher      CrawledPagePublisher
 	trackingParams []string
 	maxTextBytes   int
 }
 
-func NewArtifactEmitter(
-	publisher ArtifactPublisher,
+func NewCrawledPageEmitter(
+	publisher CrawledPagePublisher,
 	trackingParams []string,
 	maxTextBytes int,
-) ArtifactEmitter {
-	return &artifactEmitter{
+) CrawledPageEmitter {
+	return &crawledPageEmitter{
 		publisher:      publisher,
 		trackingParams: trackingParams,
 		maxTextBytes:   maxTextBytes,
 	}
 }
 
-func (e *artifactEmitter) Emit(ctx context.Context, page pageparse.ParsedPage, crawledAt time.Time) error {
+func (e *crawledPageEmitter) Emit(
+	ctx context.Context,
+	page pageparse.ParsedPage,
+	crawledAt time.Time,
+) error {
 	canonical, ok := docidentity.CanonicalizeURL(page.URL, e.trackingParams)
 	if !ok {
 		return fmt.Errorf("canonicalize url: %s", page.URL)
 	}
 	if len(page.Text) > e.maxTextBytes {
-		slog.WarnContext(ctx, msgPageTextOverLimit,
+		slog.WarnContext(ctx, msgCrawledPageOverLimit,
 			slog.String("url", canonical),
 			slog.Int("bytes", len(page.Text)),
 			slog.Int("limit", e.maxTextBytes),
 		)
 		return nil
 	}
-	text := yacycrawlcontract.ExtractedText{
+	text := yacycrawlcontract.CrawledPage{
 		CanonicalURL: canonical,
 		DocumentID:   docidentity.DocumentID(canonical),
 		Title:        page.Title,
@@ -61,7 +65,7 @@ func (e *artifactEmitter) Emit(ctx context.Context, page pageparse.ParsedPage, c
 		Language:     page.Language,
 	}
 	if err := e.publisher.Publish(ctx, text); err != nil {
-		return fmt.Errorf("publish extracted text %s: %w", canonical, err)
+		return fmt.Errorf("publish crawled page %s: %w", canonical, err)
 	}
 	return nil
 }

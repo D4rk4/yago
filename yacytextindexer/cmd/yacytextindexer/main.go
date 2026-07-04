@@ -17,7 +17,11 @@ func main() {
 func start() int {
 	cfg, err := LoadServiceConfig(lookupEnv)
 	if err != nil {
-		slog.ErrorContext(context.Background(), "textindexer config invalid", slog.Any("error", err))
+		slog.ErrorContext(
+			context.Background(),
+			"textindexer config invalid",
+			slog.Any("error", err),
+		)
 		return 2
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

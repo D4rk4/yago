@@ -12,29 +12,29 @@ import (
 )
 
 const (
-	EnvNATSURL           = "NATS_URL"
-	EnvNATSOrdersSubject = "NATS_ORDERS_SUBJECT"
-	EnvNATSIngestSubject = "NATS_INGEST_SUBJECT"
-	EnvNATSIngestMaxMsgs = "NATS_INGEST_MAX_MSGS"
-	EnvNATSDurable       = "NATS_ORDERS_DURABLE"
-	EnvWorkers           = "YACYCRAWLER_WORKERS"
-	EnvMaxDepth          = "YACYCRAWLER_MAX_DEPTH"
-	EnvCrawlDelay        = "YACYCRAWLER_CRAWL_DELAY"
-	EnvUserAgent         = "YACYCRAWLER_USER_AGENT"
-	EnvProxyURL          = "YACYCRAWLER_PROXY_URL"
+	EnvNATSURL                     = "NATS_URL"
+	EnvNATSOrdersSubject           = "NATS_ORDERS_SUBJECT"
+	EnvNATSCrawledPageIndexSubject = "NATS_CRAWLED_PAGE_INDEX_SUBJECT"
+	EnvNATSCrawledPageIndexMaxMsgs = "NATS_CRAWLED_PAGE_INDEX_MAX_MSGS"
+	EnvNATSOrdersDurable           = "NATS_ORDERS_DURABLE"
+	EnvWorkers                     = "YACYCRAWLER_WORKERS"
+	EnvMaxDepth                    = "YACYCRAWLER_MAX_DEPTH"
+	EnvCrawlDelay                  = "YACYCRAWLER_CRAWL_DELAY"
+	EnvUserAgent                   = "YACYCRAWLER_USER_AGENT"
+	EnvProxyURL                    = "YACYCRAWLER_PROXY_URL"
 
-	EnvExtractedTextEnabled  = "YACYCRAWLER_EXTRACTED_TEXT_ENABLED"
-	EnvExtractedTextSubject  = "NATS_EXTRACTED_TEXT_SUBJECT"
-	EnvExtractedTextMaxMsgs  = "NATS_EXTRACTED_TEXT_MAX_MSGS"
-	EnvExtractedTextMaxBytes = "YACYCRAWLER_EXTRACTED_TEXT_MAX_BYTES"
+	EnvCrawledPageEnabled     = "YACYCRAWLER_CRAWLED_PAGE_ENABLED"
+	EnvNATSCrawledPageSubject = "NATS_CRAWLED_PAGE_SUBJECT"
+	EnvNATSCrawledPageMaxMsgs = "NATS_CRAWLED_PAGE_MAX_MSGS"
+	EnvCrawledPageMaxBytes    = "YACYCRAWLER_CRAWLED_PAGE_MAX_BYTES"
 
-	DefaultOrdersSubject         = "yacy.crawl.orders"
-	DefaultIngestSubject         = "yacy.crawl.ingest"
-	DefaultOrdersDurable         = "yacy-crawlers"
-	DefaultIngestMaxMsgs         = 1024
-	DefaultExtractedTextSubject  = "yacy.crawl.extracted-text"
-	DefaultExtractedTextMaxMsgs  = 1024
-	DefaultExtractedTextMaxBytes = 1 << 20
+	DefaultOrdersSubject           = "yacy.crawl.orders"
+	DefaultCrawledPageIndexSubject = "yacy.crawl.page-index"
+	DefaultOrdersDurable           = "yacy-crawlers"
+	DefaultCrawledPageIndexMaxMsgs = 1024
+	DefaultCrawledPageSubject      = "yacy.crawl.pages"
+	DefaultCrawledPageMaxMsgs      = 1024
+	DefaultCrawledPageMaxBytes     = 1 << 20
 
 	DefaultMaxBodyBytes  int64 = 4 << 20
 	DefaultUserAgent           = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
@@ -70,31 +70,34 @@ func DefaultCrawlConfig() CrawlConfig {
 }
 
 type ServiceConfig struct {
-	Crawl                 CrawlConfig
-	NATSURL               string
-	ProxyURL              *url.URL
-	OrdersSubject         string
-	IngestSubject         string
-	OrdersDurable         string
-	IngestMaxMsgs         int64
-	ExtractedTextEnabled  bool
-	ExtractedTextSubject  string
-	ExtractedTextMaxMsgs  int64
-	ExtractedTextMaxBytes int
+	Crawl                   CrawlConfig
+	NATSURL                 string
+	ProxyURL                *url.URL
+	OrdersSubject           string
+	CrawledPageIndexSubject string
+	OrdersDurable           string
+	CrawledPageIndexMaxMsgs int64
+	CrawledPageEnabled      bool
+	CrawledPageSubject      string
+	CrawledPageMaxMsgs      int64
+	CrawledPageMaxBytes     int
 }
 
-func (c ServiceConfig) StreamSpec() yacycrawlcontract.StreamSpec {
-	return yacycrawlcontract.StreamSpec{
-		OrdersSubject: c.OrdersSubject,
-		IngestSubject: c.IngestSubject,
-		IngestMaxMsgs: c.IngestMaxMsgs,
+func (c ServiceConfig) OrdersStreamSpec() yacycrawlcontract.OrdersStreamSpec {
+	return yacycrawlcontract.OrdersStreamSpec{Subject: c.OrdersSubject}
+}
+
+func (c ServiceConfig) CrawledPageIndexStreamSpec() yacycrawlcontract.CrawledPageIndexStreamSpec {
+	return yacycrawlcontract.CrawledPageIndexStreamSpec{
+		Subject: c.CrawledPageIndexSubject,
+		MaxMsgs: c.CrawledPageIndexMaxMsgs,
 	}
 }
 
-func (c ServiceConfig) ExtractedTextStreamSpec() yacycrawlcontract.ExtractedTextStreamSpec {
-	return yacycrawlcontract.ExtractedTextStreamSpec{
-		Subject: c.ExtractedTextSubject,
-		MaxMsgs: c.ExtractedTextMaxMsgs,
+func (c ServiceConfig) CrawledPageStreamSpec() yacycrawlcontract.CrawledPageStreamSpec {
+	return yacycrawlcontract.CrawledPageStreamSpec{
+		Subject: c.CrawledPageSubject,
+		MaxMsgs: c.CrawledPageMaxMsgs,
 	}
 }
 
@@ -131,33 +134,53 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 
 	crawl.UserAgent = envString(getenv, EnvUserAgent, crawl.UserAgent)
 
-	maxMsgs, err := envPositiveInt64(getenv, EnvNATSIngestMaxMsgs, DefaultIngestMaxMsgs)
+	crawledPageIndexMaxMsgs, err := envPositiveInt64(
+		getenv,
+		EnvNATSCrawledPageIndexMaxMsgs,
+		DefaultCrawledPageIndexMaxMsgs,
+	)
 	if err != nil {
 		return ServiceConfig{}, err
 	}
 
-	textMaxMsgs, err := envPositiveInt64(getenv, EnvExtractedTextMaxMsgs, DefaultExtractedTextMaxMsgs)
+	crawledPageMaxMsgs, err := envPositiveInt64(
+		getenv,
+		EnvNATSCrawledPageMaxMsgs,
+		DefaultCrawledPageMaxMsgs,
+	)
 	if err != nil {
 		return ServiceConfig{}, err
 	}
 
-	textMaxBytes, err := envPositiveInt(getenv, EnvExtractedTextMaxBytes, DefaultExtractedTextMaxBytes)
+	crawledPageMaxBytes, err := envPositiveInt(
+		getenv,
+		EnvCrawledPageMaxBytes,
+		DefaultCrawledPageMaxBytes,
+	)
 	if err != nil {
 		return ServiceConfig{}, err
 	}
 
 	return ServiceConfig{
-		Crawl:                 crawl,
-		NATSURL:               natsURL,
-		ProxyURL:              proxyURL,
-		OrdersSubject:         envString(getenv, EnvNATSOrdersSubject, DefaultOrdersSubject),
-		IngestSubject:         envString(getenv, EnvNATSIngestSubject, DefaultIngestSubject),
-		OrdersDurable:         envString(getenv, EnvNATSDurable, DefaultOrdersDurable),
-		IngestMaxMsgs:         maxMsgs,
-		ExtractedTextEnabled:  envBool(getenv, EnvExtractedTextEnabled, false),
-		ExtractedTextSubject:  envString(getenv, EnvExtractedTextSubject, DefaultExtractedTextSubject),
-		ExtractedTextMaxMsgs:  textMaxMsgs,
-		ExtractedTextMaxBytes: textMaxBytes,
+		Crawl:         crawl,
+		NATSURL:       natsURL,
+		ProxyURL:      proxyURL,
+		OrdersSubject: envString(getenv, EnvNATSOrdersSubject, DefaultOrdersSubject),
+		CrawledPageIndexSubject: envString(
+			getenv,
+			EnvNATSCrawledPageIndexSubject,
+			DefaultCrawledPageIndexSubject,
+		),
+		OrdersDurable:           envString(getenv, EnvNATSOrdersDurable, DefaultOrdersDurable),
+		CrawledPageIndexMaxMsgs: crawledPageIndexMaxMsgs,
+		CrawledPageEnabled:      envBool(getenv, EnvCrawledPageEnabled, false),
+		CrawledPageSubject: envString(
+			getenv,
+			EnvNATSCrawledPageSubject,
+			DefaultCrawledPageSubject,
+		),
+		CrawledPageMaxMsgs:  crawledPageMaxMsgs,
+		CrawledPageMaxBytes: crawledPageMaxBytes,
 	}, nil
 }
 

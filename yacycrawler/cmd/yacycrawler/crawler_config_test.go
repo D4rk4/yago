@@ -53,80 +53,82 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	if cfg.OrdersSubject != DefaultOrdersSubject {
 		t.Errorf("orders subject = %q", cfg.OrdersSubject)
 	}
-	if cfg.IngestSubject != DefaultIngestSubject {
-		t.Errorf("ingest subject = %q", cfg.IngestSubject)
+	if cfg.CrawledPageIndexSubject != DefaultCrawledPageIndexSubject {
+		t.Errorf("crawled page index subject = %q", cfg.CrawledPageIndexSubject)
 	}
 	if cfg.OrdersDurable != DefaultOrdersDurable {
 		t.Errorf("durable = %q", cfg.OrdersDurable)
 	}
-	if cfg.IngestMaxMsgs != DefaultIngestMaxMsgs {
-		t.Errorf("max msgs = %d", cfg.IngestMaxMsgs)
+	if cfg.CrawledPageIndexMaxMsgs != DefaultCrawledPageIndexMaxMsgs {
+		t.Errorf("max msgs = %d", cfg.CrawledPageIndexMaxMsgs)
 	}
-	spec := cfg.StreamSpec()
-	if spec.OrdersSubject != cfg.OrdersSubject ||
-		spec.IngestSubject != cfg.IngestSubject ||
-		spec.IngestMaxMsgs != cfg.IngestMaxMsgs {
-		t.Errorf("stream spec mismatch: %+v", spec)
+	if orders := cfg.OrdersStreamSpec(); orders.Subject != cfg.OrdersSubject {
+		t.Errorf("orders stream spec mismatch: %+v", orders)
 	}
-	if cfg.ExtractedTextEnabled {
-		t.Error("extracted text sink should default to disabled")
+	if pageIndex := cfg.CrawledPageIndexStreamSpec(); pageIndex.Subject != cfg.CrawledPageIndexSubject ||
+		pageIndex.MaxMsgs != cfg.CrawledPageIndexMaxMsgs {
+		t.Errorf("crawled page index stream spec mismatch: %+v", pageIndex)
 	}
-	if cfg.ExtractedTextSubject != DefaultExtractedTextSubject {
-		t.Errorf("extracted text subject = %q", cfg.ExtractedTextSubject)
+	if cfg.CrawledPageEnabled {
+		t.Error("crawled page sink should default to disabled")
 	}
-	if cfg.ExtractedTextMaxMsgs != DefaultExtractedTextMaxMsgs {
-		t.Errorf("extracted text max msgs = %d", cfg.ExtractedTextMaxMsgs)
+	if cfg.CrawledPageSubject != DefaultCrawledPageSubject {
+		t.Errorf("crawled page subject = %q", cfg.CrawledPageSubject)
 	}
-	if cfg.ExtractedTextMaxBytes != DefaultExtractedTextMaxBytes {
-		t.Errorf("extracted text max bytes = %d", cfg.ExtractedTextMaxBytes)
+	if cfg.CrawledPageMaxMsgs != DefaultCrawledPageMaxMsgs {
+		t.Errorf("crawled page max msgs = %d", cfg.CrawledPageMaxMsgs)
 	}
-	textSpec := cfg.ExtractedTextStreamSpec()
-	if textSpec.Subject != cfg.ExtractedTextSubject || textSpec.MaxMsgs != cfg.ExtractedTextMaxMsgs {
-		t.Errorf("extracted text stream spec mismatch: %+v", textSpec)
+	if cfg.CrawledPageMaxBytes != DefaultCrawledPageMaxBytes {
+		t.Errorf("crawled page max bytes = %d", cfg.CrawledPageMaxBytes)
+	}
+	pageSpec := cfg.CrawledPageStreamSpec()
+	if pageSpec.Subject != cfg.CrawledPageSubject || pageSpec.MaxMsgs != cfg.CrawledPageMaxMsgs {
+		t.Errorf("crawled page stream spec mismatch: %+v", pageSpec)
 	}
 }
 
-func TestLoadServiceConfigExtractedTextOverrides(t *testing.T) {
+func TestLoadServiceConfigCrawledPageOverrides(t *testing.T) {
 	cfg, err := LoadServiceConfig(envFrom(map[string]string{
-		EnvNATSURL:               "nats://localhost:4222",
-		EnvProxyURL:              "http://proxy:4750",
-		EnvExtractedTextEnabled:  "true",
-		EnvExtractedTextSubject:  "t.subject",
-		EnvExtractedTextMaxMsgs:  "3",
-		EnvExtractedTextMaxBytes: "1024",
+		EnvNATSURL:                "nats://localhost:4222",
+		EnvProxyURL:               "http://proxy:4750",
+		EnvCrawledPageEnabled:     "true",
+		EnvNATSCrawledPageSubject: "t.subject",
+		EnvNATSCrawledPageMaxMsgs: "3",
+		EnvCrawledPageMaxBytes:    "1024",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if !cfg.ExtractedTextEnabled {
-		t.Error("expected extracted text sink enabled")
+	if !cfg.CrawledPageEnabled {
+		t.Error("expected crawled page sink enabled")
 	}
-	if cfg.ExtractedTextSubject != "t.subject" || cfg.ExtractedTextMaxMsgs != 3 || cfg.ExtractedTextMaxBytes != 1024 {
-		t.Errorf("extracted text overrides = %+v", cfg)
+	if cfg.CrawledPageSubject != "t.subject" || cfg.CrawledPageMaxMsgs != 3 ||
+		cfg.CrawledPageMaxBytes != 1024 {
+		t.Errorf("crawled page overrides = %+v", cfg)
 	}
 }
 
 func TestLoadServiceConfigOverrides(t *testing.T) {
 	cfg, err := LoadServiceConfig(envFrom(map[string]string{
-		EnvNATSURL:           "nats://localhost:4222",
-		EnvProxyURL:          "http://proxy:4750",
-		EnvNATSOrdersSubject: "o.subject",
-		EnvNATSIngestSubject: "i.subject",
-		EnvNATSDurable:       "dur",
-		EnvNATSIngestMaxMsgs: "7",
-		EnvWorkers:           "3",
-		EnvMaxDepth:          "5",
-		EnvCrawlDelay:        "250ms",
-		EnvUserAgent:         "test-agent",
+		EnvNATSURL:                     "nats://localhost:4222",
+		EnvProxyURL:                    "http://proxy:4750",
+		EnvNATSOrdersSubject:           "o.subject",
+		EnvNATSCrawledPageIndexSubject: "i.subject",
+		EnvNATSOrdersDurable:           "dur",
+		EnvNATSCrawledPageIndexMaxMsgs: "7",
+		EnvWorkers:                     "3",
+		EnvMaxDepth:                    "5",
+		EnvCrawlDelay:                  "250ms",
+		EnvUserAgent:                   "test-agent",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if cfg.OrdersSubject != "o.subject" || cfg.IngestSubject != "i.subject" {
-		t.Errorf("subjects = %q %q", cfg.OrdersSubject, cfg.IngestSubject)
+	if cfg.OrdersSubject != "o.subject" || cfg.CrawledPageIndexSubject != "i.subject" {
+		t.Errorf("subjects = %q %q", cfg.OrdersSubject, cfg.CrawledPageIndexSubject)
 	}
-	if cfg.OrdersDurable != "dur" || cfg.IngestMaxMsgs != 7 {
-		t.Errorf("durable/maxmsgs = %q %d", cfg.OrdersDurable, cfg.IngestMaxMsgs)
+	if cfg.OrdersDurable != "dur" || cfg.CrawledPageIndexMaxMsgs != 7 {
+		t.Errorf("durable/maxmsgs = %q %d", cfg.OrdersDurable, cfg.CrawledPageIndexMaxMsgs)
 	}
 	if cfg.Crawl.Workers != 3 || cfg.Crawl.MaxDepth != 5 {
 		t.Errorf("workers/depth = %d %d", cfg.Crawl.Workers, cfg.Crawl.MaxDepth)
@@ -145,10 +147,10 @@ func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 		EnvProxyURL: "http://proxy:4750",
 	}
 	cases := map[string]string{
-		EnvWorkers:           "0",
-		EnvMaxDepth:          "abc",
-		EnvCrawlDelay:        "-1s",
-		EnvNATSIngestMaxMsgs: "0",
+		EnvWorkers:                     "0",
+		EnvMaxDepth:                    "abc",
+		EnvCrawlDelay:                  "-1s",
+		EnvNATSCrawledPageIndexMaxMsgs: "0",
 	}
 	for key, bad := range cases {
 		env := map[string]string{}

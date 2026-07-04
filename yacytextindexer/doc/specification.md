@@ -5,7 +5,7 @@
 `yacycrawler` discards document bodies by design, contributing only word-index postings
 toward the DHT. Some operators want real full-text search over their own crawled corpus.
 `yacytextindexer` is a separate, optional, disposable Go service that consumes the
-extracted text `yacycrawler` optionally publishes and indexes it into an operator-run
+crawled pages `yacycrawler` optionally publishes and indexes them into an operator-run
 Elasticsearch instance. It serves no queries: SearXNG queries Elasticsearch directly
 through its native Elasticsearch engine.
 
@@ -22,8 +22,8 @@ through its native Elasticsearch engine.
 
 ## Functional Requirements
 
-* The service SHALL subscribe to the extracted-text subject `yacycrawler` publishes.
-* The service SHALL translate each received artifact into an Elasticsearch document
+* The service SHALL subscribe to the crawled-page subject `yacycrawler` publishes.
+* The service SHALL translate each received crawled page into an Elasticsearch document
   carrying its canonical URL, title, extracted text, crawl timestamp, and language.
 * The service SHALL use the crawler-supplied document identity as the Elasticsearch
   document identity, so re-indexing an already-seen URL overwrites the existing document
@@ -48,9 +48,9 @@ through its native Elasticsearch engine.
   Elasticsearch outage therefore depends on operator-sized broker retention (see
   `yacycrawler`'s stream retention contract), not on any store this service owns.
 * The service SHALL be independently disposable: operators MAY stop it and later re-enable
-  the crawler's extracted-text sink without depending on this service's prior state.
+  the crawler's crawled-page sink without depending on this service's prior state.
 * The service SHALL support running multiple instances concurrently against the same
-  extracted-text subject, with each artifact indexed by exactly one instance, so operators
+  crawled-page subject, with each crawled page indexed by exactly one instance, so operators
   can scale indexing throughput horizontally by adding instances.
 
 ## Known Limitations

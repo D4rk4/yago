@@ -34,8 +34,12 @@ components:
     in: internal/pageparse/**
   pageindex:
     in: internal/pageindex/**
-  ingest:
-    in: internal/ingest/**
+  crawledpageindex:
+    in: internal/crawledpageindex/**
+  docidentity:
+    in: internal/docidentity/**
+  crawledpage:
+    in: internal/crawledpage/**
   pipeline:
     in: internal/pipeline/**
   crawlercmd:
@@ -150,9 +154,9 @@ deps:
       - pageparse
     canUse:
       - yacymodel
-  ingest:
+  crawledpageindex:
     mayDependOn:
-      - ingest
+      - crawledpageindex
       - boundedqueue
     canUse:
       - yacycrawlcontract
@@ -169,11 +173,24 @@ deps:
       - yacycrawlcontract
       - nats
       - nats-server
+  docidentity:
+    mayDependOn:
+      - docidentity
+  crawledpage:
+    mayDependOn:
+      - crawledpage
+      - docidentity
+      - pageparse
+    canUse:
+      - yacycrawlcontract
+      - nats
+      - nats-server
   pipeline:
     mayDependOn:
       - pipeline
       - crawljob
-      - ingest
+      - crawledpageindex
+      - crawledpage
       - pagefetch
       - pageindex
       - pageparse
@@ -187,7 +204,8 @@ deps:
       - crawldelay
       - crawlorder
       - frontier
-      - ingest
+      - crawledpageindex
+      - crawledpage
       - pagefetch
       - pageindex
       - pipeline

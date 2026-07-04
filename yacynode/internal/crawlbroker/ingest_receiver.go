@@ -25,7 +25,7 @@ func newIngestReceiver(
 ) (*IngestReceiver, error) {
 	consumer, err := js.CreateOrUpdateConsumer(
 		ctx,
-		yacycrawlcontract.IngestStreamName,
+		yacycrawlcontract.CrawledPageIndexStreamName,
 		jetstream.ConsumerConfig{
 			Durable:       durable,
 			AckPolicy:     jetstream.AckExplicitPolicy,
@@ -38,7 +38,7 @@ func newIngestReceiver(
 
 	out := make(chan crawlresults.IngestDelivery)
 	consume, err := consumer.Consume(func(msg jetstream.Msg) {
-		batch, err := yacycrawlcontract.UnmarshalIngestBatch(msg.Data())
+		batch, err := yacycrawlcontract.UnmarshalCrawledPageIndex(msg.Data())
 		if err != nil {
 			slog.WarnContext(context.Background(), msgIngestDecodeFailed, slog.Any("error", err))
 			_ = msg.Term()

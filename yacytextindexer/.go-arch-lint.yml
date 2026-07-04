@@ -1,0 +1,52 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  searchdocument:
+    in: internal/searchdocument/**
+  crawledpage:
+    in: internal/crawledpage/**
+  textindexercmd:
+    in: cmd/yacytextindexer/**
+
+vendors:
+  yacycrawlcontract:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract
+      - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract/**
+  nats:
+    in:
+      - github.com/nats-io/nats.go
+      - github.com/nats-io/nats.go/**
+  nats-server:
+    in:
+      - github.com/nats-io/nats-server/v2/server
+
+deps:
+  searchdocument:
+    mayDependOn:
+      - searchdocument
+    canUse:
+      - yacycrawlcontract
+  crawledpage:
+    mayDependOn:
+      - crawledpage
+    canUse:
+      - yacycrawlcontract
+      - nats
+      - nats-server
+  textindexercmd:
+    mayDependOn:
+      - crawledpage
+      - searchdocument
+    canUse:
+      - yacycrawlcontract
+      - nats
+      - nats-server
+
+excludeFiles:
+  - "test/e2e"

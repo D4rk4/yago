@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawledpage"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawledpageindex"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/extractedtext"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/ingest"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pagefetch"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageindex"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/pageparse"
@@ -24,33 +24,33 @@ type Frontier interface {
 }
 
 const (
-	msgPageRejected   = "crawl page rejected"
-	msgJobFetching    = "crawl job fetching"
-	msgPageCrawled    = "crawl page crawled"
-	msgTextEmitFailed = "extracted text emit failed"
+	msgPageRejected          = "crawl page rejected"
+	msgJobFetching           = "crawl job fetching"
+	msgPageCrawled           = "crawl page crawled"
+	msgCrawledPageEmitFailed = "crawled page emit failed"
 )
 
 type Pipeline struct {
 	frontier    Frontier
 	fetcher     pagefetch.PageSource
 	index       pageindex.IndexBuilder
-	emitter     ingest.BatchEmitter
-	textEmitter extractedtext.ArtifactEmitter
+	emitter     crawledpageindex.CrawledPageIndexEmitter
+	pageEmitter crawledpage.CrawledPageEmitter
 }
 
 func NewPipeline(
 	frontier Frontier,
 	fetcher pagefetch.PageSource,
 	index pageindex.IndexBuilder,
-	emitter ingest.BatchEmitter,
-	textEmitter extractedtext.ArtifactEmitter,
+	emitter crawledpageindex.CrawledPageIndexEmitter,
+	pageEmitter crawledpage.CrawledPageEmitter,
 ) *Pipeline {
 	return &Pipeline{
 		frontier:    frontier,
 		fetcher:     fetcher,
 		index:       index,
 		emitter:     emitter,
-		textEmitter: textEmitter,
+		pageEmitter: pageEmitter,
 	}
 }
 
@@ -127,15 +127,15 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	if err != nil {
 		return fmt.Errorf("index: %w", err)
 	}
-	if err := p.emitter.Emit(ctx, artifacts.Postings, artifacts.Metadata, ingest.Envelope{
+	if err := p.emitter.Emit(ctx, artifacts.Postings, artifacts.Metadata, crawledpageindex.Envelope{
 		SourceURL:     page.URL,
 		Provenance:    job.Provenance,
 		ProfileHandle: job.ProfileHandle,
 	}); err != nil {
 		return fmt.Errorf("emit: %w", err)
 	}
-	if err := p.textEmitter.Emit(ctx, page, time.Now()); err != nil {
-		slog.WarnContext(ctx, msgTextEmitFailed,
+	if err := p.pageEmitter.Emit(ctx, page, time.Now()); err != nil {
+		slog.WarnContext(ctx, msgCrawledPageEmitFailed,
 			slog.String("url", page.URL),
 			slog.Any("error", err),
 		)
