@@ -1680,6 +1680,10 @@ Acceptance:
 
 Goal: build a modern admin/search interface comparable in breadth to original YaCy's web UI, using IBM Carbon.
 
+Status: Done (2026-07-05) except **UI-13** (out of the current scope). UI-01..UI-12 and
+UI-14..UI-17 are complete; the UI-06 (crawler) and UI-08 (index) epics were closed in
+sub-slices. Each task below carries its own status line.
+
 ### UI-01: Frontend foundation ADR and scaffold
 
 Status: Done (ADR-0022, FTR-024). The admin console is a server-rendered Go
@@ -1997,7 +2001,7 @@ Acceptance:
 
 ### UI-08: Index UI
 
-Status: Partial (FTR-026), advanced. The Index section renders search-index
+Status: Done (2026-07-05). The Index section renders search-index
 statistics (indexed document count, backend, last-updated) via a decoupled
 `adminui.IndexSource`, and now adds two of the four follow-ups. The **term
 browser** (`adminui.TermSource`, adapter over the RWI `PostingIndex` +
@@ -2037,7 +2041,23 @@ removes each host-or-subdomain match. New plumbing: `documentstore.DocumentEvict
 quota sweep's atomic posting-and-metadata purge via an extracted `purgeURLs`;
 `adminui.IndexAdminSource`. verify green (all 6 modules 100%), Semgrep + Trivy clean.
 
-Still open: **UI-08c** (blacklist store + management + enforcement).
+**UI-08c (blacklist management + enforcement) — Done (2026-07-05).** A new durable
+`internal/urldenylist` vault store (mirroring `peerblock`/`seedimport`) holds
+operator-managed URL and whole-domain entries that survive restarts. This is a
+net-new capability: nothing consumed a URL denylist before — the existing
+`sharedblacklist` is only a read-only YaCy-compat file export. Enforcement lives at
+the search serving path: a `withDenylistFilter` decorator wraps the federated
+searcher, so a `Snapshot`'s `Blocks` (exact URL, or a host that is or sits under a
+denylisted domain) drops results uniformly whether they came from the local index,
+remote peers, or the web fallback. A snapshot load failure fails open (search stays
+available) with a warning. The Index console gains a CSRF-guarded, htmx-confirmed
+blacklist manager (`adminui.BlacklistSource` + `POST /admin/index/blacklist`) to add,
+remove, and list entries. Fresh-crawl admission enforcement is a documented
+follow-up: the per-URL crawl chokepoint lives in the separate `yagocrawler` worker
+and would need the denylist carried in the crawl order (a cross-module wire change).
+verify green (all 6 modules 100%), Semgrep + Trivy clean. **This closes the UI-08
+epic (browser + delete + blacklist) and, with it, Phase 5 — every UI task except
+UI-13.**
 
 Pages:
 
