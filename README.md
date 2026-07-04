@@ -92,13 +92,28 @@ The node currently targets these responsibilities:
   a machine-readable compatibility catalog;
 - optionally publish `url`, `sitemap`, `sitelist`, or `robots` crawl orders and
   consume crawler ingest batches over gRPC when crawling is configured;
-- serve a native administration console whose Crawler section starts crawls with
-  simple or expert profile options (regex crawl/index filters, per-host page cap
-  and crawl delay, recrawl-if-older, query-URL and nofollow toggles) and shows a
-  live monitor — running runs with per-outcome tallies, order-queue depth, and a
-  results/rejections rollup — with per-run pause, resume, cancel, and
-  pages-per-minute controls. This natively covers YaCy's `/Crawler_p.html`
-  function; the legacy HTML endpoint itself stays unsupported by design.
+- filter denylisted results out of every search surface: an operator-managed,
+  restart-surviving URL and whole-domain blacklist drops matching results from
+  local, peer, and web-fallback search alike;
+- reschedule crawled pages for recrawl on their profile cadence through a durable,
+  node-side frontier that survives node and crawler restarts;
+- keep a bounded, restart-surviving log of recent structured node events (no
+  secrets) alongside the in-memory event ring;
+- optionally serve a minimal public search portal at the public listener root when
+  `YAGO_PUBLIC_SEARCH_UI_ENABLED` is set, and optionally redirect plain HTTP to
+  HTTPS (both live-toggleable at runtime);
+- serve a native, server-rendered administration console at `/admin/` behind an
+  admin session, with: live Overview status; an admin Search console; a Crawler
+  section with simple/expert crawl start, a live run monitor (per-outcome tallies,
+  order-queue depth, results/rejections rollup) and per-run pause, resume, cancel,
+  and pages-per-minute controls; a Network section with per-peer detail, peer
+  block/unblock, seedlist refresh, and a read-only peer-news view; an Index section
+  with document and term browsing, delete-by-URL/domain, and blacklist management;
+  a Performance dashboard; a Configuration section that shows the effective config
+  and edits runtime settings and listener binds; a Security section for password
+  change and API-key mint/list/revoke; and a severity/category-filtered event log.
+  This natively covers YaCy's `/Crawler_p.html` and much of its admin surface; the
+  legacy HTML endpoints themselves stay unsupported by design.
 
 The node stores bounded extracted document text, page description metadata,
 bounded image URL/alt metadata, and other document metadata, and maintains an
@@ -121,8 +136,7 @@ publish ingest batches back to the node.
 | `yagoproto` | YaCy peer-to-peer endpoint paths, request/response DTOs, and wire protocol helpers. |
 | `yagonode/doc` | User-facing node specification, configuration, protocol, interoperability, and ADR documentation. |
 | `FEATURES.md` | Markdown feature catalog for implemented, partial, and planned capabilities. |
-| `FORK.md` | Fork goals, compatibility claims, and AGPL and UI legal notices. |
-| `PLAN.md` | Development roadmap for the fork. |
+| `PLAN.md` | Development roadmap. |
 
 ## Requirements
 
@@ -286,9 +300,6 @@ make e2e
 
 Start with these documents:
 
-- [FORK.md](FORK.md) for the fork's goals, compatibility claims, and legal
-  notices, and [yagonode/doc/fork-roadmap.md](yagonode/doc/fork-roadmap.md) for a
-  plain-language roadmap;
 - [yagonode/doc/adr/README.md](yagonode/doc/adr/README.md) for the architecture
   decision records and the new-dependency rule;
 - [yagonode/doc/specification.md](yagonode/doc/specification.md) for the current

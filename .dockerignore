@@ -1,8 +1,10 @@
 .git
 .github
+.claude
 archive
 coverage.out
 data
 doc
 *.md
 .toolchain
+tools

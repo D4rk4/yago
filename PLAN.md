@@ -522,6 +522,10 @@ Acceptance:
 - Docs do not claim full YaCy compatibility.
 - Docs state that `POST /search` is Tavily-compatible API surface, not Tavily itself, unless external upstream mode is enabled.
 
+Status: Superseded (2026-07-05). `FORK.md` and `yagonode/doc/fork-roadmap.md` were
+removed; their content is covered by `README.md`, this `PLAN.md`, and
+`yagonode/doc/compatibility.md`. The AGPL notice and compatibility tables remain.
+
 ### FND-02: Add ADR process for new dependencies
 
 Tasks:
@@ -2605,17 +2609,26 @@ Tasks:
    that installs binaries to `/opt/yago/bin`, ships the systemd units, seeds
    default config under `/opt/yago/etc`, and creates a system `yago` user whose
    data lives under `/opt/yago/data`.
-2. Target Debian 12 (bookworm), Debian 13 (trixie), and Ubuntu 24.04 LTS and
-   newer; build per target in CI (matrix) and name artifacts by distro, arch, and
-   version.
+2. Target Debian 12 (bookworm), Debian 13 (trixie), and every Ubuntu release from
+   24.04 LTS and newer, each on the three architectures **i386, amd64, and arm64**
+   (Go `GOARCH` `386`, `amd64`, `arm64`; CGO stays disabled so all three
+   cross-compile cleanly). The `.deb` packages are built automatically by the
+   repository's own GitHub Actions CI, triggered on a version-tag push (the OPS-06
+   release workflow drives this matrix — no manual or local build step). Build the
+   full distro × architecture matrix and name each artifact by distro,
+   architecture, and version (e.g. `yago-node_<version>_amd64.deb`); the
+   `Architecture:` control field is the Debian arch name (`i386`, `amd64`, `arm64`).
 3. postinst/prerm scripts create the user and directories, set ownership, and
    enable but do not force-start the service; purge must not delete operator data.
-4. Document `apt`/`dpkg -i` install, config location, and upgrade behavior.
+4. Document `apt`/`dpkg -i` install, config location, upgrade behavior, and which
+   distro/architecture each artifact targets.
 
 Acceptance:
 
-- A produced `.deb` installs on a clean Debian 12/13 and Ubuntu 24.04 container,
+- A produced `.deb` installs on a clean Debian 12/13 and Ubuntu 24.04+ container,
   the service starts against `/opt/yago`, and removal leaves operator data intact.
+- The CI matrix produces an artifact for every supported distro on each of i386,
+  amd64, and arm64.
 - No secrets or keys are baked into the package.
 
 ---
@@ -3284,11 +3297,11 @@ Task: FND-01 + FND-02 only.
 
 Expected files:
 
-- `FORK.md`
-- `yacynode/doc/fork-roadmap.md`
 - `yacynode/doc/compatibility.md`
 - `yacynode/doc/adr/0000-template.md`
 - `yacynode/doc/adr/README.md`
+
+(`FORK.md` and `yacynode/doc/fork-roadmap.md` were later removed — see FND-01.)
 
 No Go code changes.
 
@@ -3469,8 +3482,7 @@ Status: Done. The README now leads with the **YagoSeek** brand — the hero line
 "Open search infrastructure for developers.", the tagline "YagoSeek — your own
 federated search node.", a product lede, the `yagoseek.dev` domain family
 (docs./api./demo./status.), and an explicit split (YagoSeek = product; `yago` =
-module/workspace/binaries `yago-node`/`yagocrawler`). The `FORK.md` and
-`fork-roadmap.md` headers carry the same product name. Command examples stay
+module/workspace/binaries `yago-node`/`yagocrawler`). Command examples stay
 accurate to the real binaries; a unified `yago` sub-command CLI is not shipped
 (a separate CLI-consolidation follow-up, not branding). Wire, DTO, data-fallback,
 and AGPL/fork attribution are untouched. verify green, Semgrep + Trivy clean.
