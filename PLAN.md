@@ -920,6 +920,17 @@ Acceptance:
 
 ### SEARCH-09: Tune the Bleve index mapping for web search
 
+Status: Done - acceptance already met by the current mapping. A code audit
+confirmed `internal/searchindex/bleve_index_mapping.go` builds a single shared
+static mapping (used by both the memory and disk indexes) that maps only the five
+queried fields (`title`, `headings`, `anchors`, `body`, `url`), with every field
+`Store=false`, `IncludeInAll=false` (no `_all`), `IncludeTermVectors=false`,
+`DocValues=false`, and `Dynamic=false` at the document and index level, keeping the
+`standard` text analyzer (`simple` for `url`). Read paths re-hydrate results from
+the document store, not from Bleve, so nothing depends on stored fields or `_all`.
+`TestNewSearchIndexMappingTunesFields` locks every flag in and is green. No change
+required.
+
 Tasks:
 
 1. Replace the default index mapping with a shared custom mapping for the memory and disk indexes.
