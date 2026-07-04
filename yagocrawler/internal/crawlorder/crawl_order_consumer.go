@@ -32,6 +32,7 @@ type CrawlOrderConsumer struct {
 	orders   boundedqueue.Receiver[CrawlOrderDelivery]
 	frontier *frontier.Frontier
 	expander RequestExpander
+	progress ProgressReporter
 }
 
 func NewCrawlOrderConsumer(
@@ -43,7 +44,23 @@ func NewCrawlOrderConsumer(
 	if len(expander) > 0 && expander[0] != nil {
 		selected = expander[0]
 	}
-	return &CrawlOrderConsumer{orders: orders, frontier: frontier, expander: selected}
+
+	return &CrawlOrderConsumer{
+		orders:   orders,
+		frontier: frontier,
+		expander: selected,
+		progress: noopProgressReporter{},
+	}
+}
+
+// WithProgressReporter attaches a reporter that receives run lifecycle snapshots
+// as runs start and finish. A nil reporter is ignored so the default no-op stays.
+func (c *CrawlOrderConsumer) WithProgressReporter(reporter ProgressReporter) *CrawlOrderConsumer {
+	if reporter != nil {
+		c.progress = reporter
+	}
+
+	return c
 }
 
 func (c *CrawlOrderConsumer) Run(ctx context.Context) {
@@ -106,10 +123,42 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 		}
 		return
 	}
+	c.reportRun(ctx, order, yagocrawlcontract.CrawlRunRunning, len(requests))
 	c.frontier.Hold()
-	seeded := c.frontier.SeedRun(ctx, requests, order.Provenance, profile, func() {
+	seeded := c.frontier.SeedRun(
+		ctx,
+		requests,
+		order.Provenance,
+		profile,
+		c.finishRun(ctx, order, delivery),
+	)
+	slog.InfoContext(
+		ctx,
+		msgRunSeeded,
+		slog.String("handle", order.Profile.Handle),
+		slog.String("runId", seeded.RunID.String()),
+		slog.Int("queued", seeded.Queued),
+	)
+}
+
+// finishRun builds the run's completion callback: it reports the terminal run
+// state (cancelled during shutdown, finished otherwise) and settles the order's
+// lease. The report uses a cancel-detached context so a report still reaches the
+// node while the worker is draining on shutdown.
+func (c *CrawlOrderConsumer) finishRun(
+	ctx context.Context,
+	order yagocrawlcontract.CrawlOrder,
+	delivery CrawlOrderDelivery,
+) func() {
+	return func() {
 		defer c.frontier.Release()
-		if ctx.Err() != nil {
+		cancelled := ctx.Err() != nil
+		state := yagocrawlcontract.CrawlRunFinished
+		if cancelled {
+			state = yagocrawlcontract.CrawlRunCancelled
+		}
+		c.reportRun(context.WithoutCancel(ctx), order, state, 0)
+		if cancelled {
 			if err := delivery.Nak(context.Background()); err != nil {
 				slog.WarnContext(
 					context.Background(),
@@ -118,6 +167,7 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 					slog.Any("error", err),
 				)
 			}
+
 			return
 		}
 		if err := delivery.Ack(context.Background()); err != nil {
@@ -128,14 +178,28 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 				slog.Any("error", err),
 			)
 		}
+	}
+}
+
+// reportRun emits a best-effort lifecycle snapshot keyed by the order provenance,
+// which the node and worker share as the run identity.
+func (c *CrawlOrderConsumer) reportRun(
+	ctx context.Context,
+	order yagocrawlcontract.CrawlOrder,
+	state yagocrawlcontract.CrawlRunState,
+	pending int,
+) {
+	tally := yagocrawlcontract.CrawlRunTally{}
+	if pending > 0 {
+		tally.Pending = uint64(pending)
+	}
+	c.progress.ReportRun(ctx, RunReport{
+		Provenance:    order.Provenance,
+		ProfileHandle: order.Profile.Handle,
+		ProfileName:   order.Profile.Name,
+		State:         state,
+		Tally:         tally,
 	})
-	slog.InfoContext(
-		ctx,
-		msgRunSeeded,
-		slog.String("handle", order.Profile.Handle),
-		slog.String("runId", seeded.RunID.String()),
-		slog.Int("queued", seeded.Queued),
-	)
 }
 
 type passThroughRequestExpander struct{}

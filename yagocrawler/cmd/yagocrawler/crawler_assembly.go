@@ -111,7 +111,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		orders,
 		frontier,
 		newCrawlRequestExpander(client, crawl, guard),
-	)
+	).WithProgressReporter(crawlorder.NewGRPCProgressReporter(exchange, cfg.WorkerID))
 
 	slog.InfoContext(ctx, "crawler started",
 		slog.String("nodeRpcAddr", cfg.NodeRPCAddr),

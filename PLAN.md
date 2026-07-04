@@ -1535,12 +1535,26 @@ measured precision <0.2, recall <0.5 (arXiv:2502.02430, 2025) - never as truth.
 
 ### CRAWL-07: Crawler worker hardening
 
+Status: mostly done. The worker has a stable supervised lifecycle, durable
+lease-based order consumption, graceful shutdown that drains in-flight fetches
+within a grace window, a 30s heartbeat that keeps leases alive, and all six
+Prometheus metrics; a node+broker+crawler e2e round-trip exists. The worker now
+also emits `ReportProgress` run lifecycle to the node: the order consumer reports
+`running` before seeding a run and `finished`/`cancelled` when the run's frontier
+drains, keyed by the order provenance token the node registry shares as the run
+identity (this closes the emission half of CRAWL-OBS-3). Remaining: the report's
+outcome tally currently carries only `pending` at start — populating
+`fetched`/`indexed`/`failed`/`robots_denied`/`duplicates` needs per-run outcome
+tracking through the pipeline (follow-up); and the two acceptance items still lack
+dedicated tests (a multi-worker no-duplicate-fetch integration test and an
+end-to-end backpressure test — each half is unit-tested in isolation).
+
 Tasks:
 
-1. Replace experimental assumptions with stable worker lifecycle.
-2. Add durable consumer group behavior.
-3. Add graceful shutdown: stop accepting new work, finish/park current fetches, commit offsets.
-4. Add worker heartbeat to node.
+1. Replace experimental assumptions with stable worker lifecycle. Done.
+2. Add durable consumer group behavior. Done (node lease queue + worker Ack/Nak/heartbeat).
+3. Add graceful shutdown: stop accepting new work, finish/park current fetches, commit offsets. Done.
+4. Add worker heartbeat to node. Done; plus `ReportProgress` run-lifecycle emission.
 5. Add metrics:
    - `yacy_crawler_jobs_active`
    - `yacy_crawler_fetches_total`
