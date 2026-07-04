@@ -583,6 +583,121 @@ func TestConsoleNetworkPeerWithoutSource(t *testing.T) {
 	}
 }
 
+type fakePeerBlock struct {
+	blocked   []string
+	unblocked []string
+	err       error
+}
+
+func (f *fakePeerBlock) Block(_ context.Context, hash string) error {
+	f.blocked = append(f.blocked, hash)
+
+	return f.err
+}
+
+func (f *fakePeerBlock) Unblock(_ context.Context, hash string) error {
+	f.unblocked = append(f.unblocked, hash)
+
+	return f.err
+}
+
+func TestConsolePeerDetailShowsBlockControls(t *testing.T) {
+	t.Parallel()
+
+	open := &fakePeerDetail{ok: true, detail: PeerDetail{Hash: "HHHHHHHHHHHH"}}
+	with := do(
+		t,
+		New(Options{PeerDetail: open, PeerBlock: &fakePeerBlock{}}),
+		"/admin/network/peer?hash=HHHHHHHHHHHH",
+	)
+	if !strings.Contains(with.body, "Block peer") ||
+		!strings.Contains(with.body, `value="block"`) {
+		t.Fatal("an unblocked peer should offer a Block action when a block source is wired")
+	}
+
+	blockedSource := &fakePeerDetail{
+		ok:     true,
+		detail: PeerDetail{Hash: "HHHHHHHHHHHH", Blocked: true},
+	}
+	blocked := do(
+		t,
+		New(Options{PeerDetail: blockedSource, PeerBlock: &fakePeerBlock{}}),
+		"/admin/network/peer?hash=HHHHHHHHHHHH",
+	)
+	if !strings.Contains(blocked.body, "Unblock peer") ||
+		!strings.Contains(blocked.body, `value="unblock"`) {
+		t.Fatal("a blocked peer should offer an Unblock action")
+	}
+
+	without := do(t, New(Options{PeerDetail: open}), "/admin/network/peer?hash=HHHHHHHHHHHH")
+	if strings.Contains(without.body, "Block peer") {
+		t.Fatal("no block controls should render without a block source")
+	}
+}
+
+func TestConsolePeerBlockInvokesSource(t *testing.T) {
+	t.Parallel()
+
+	block := &fakePeerBlock{}
+	got := doPost(t, New(Options{PeerBlock: block}), peerBlockPath, url.Values{
+		"hash":   {"HHHHHHHHHHHH"},
+		"action": {"block"},
+	})
+	if got.status != http.StatusSeeOther {
+		t.Fatalf("status %d, want 303", got.status)
+	}
+	if loc := got.header.Get("Location"); loc != networkPath {
+		t.Fatalf("location %q, want %q", loc, networkPath)
+	}
+	if len(block.blocked) != 1 || block.blocked[0] != "HHHHHHHHHHHH" {
+		t.Fatalf("blocked = %v", block.blocked)
+	}
+
+	unblock := &fakePeerBlock{}
+	got = doPost(t, New(Options{PeerBlock: unblock}), peerBlockPath, url.Values{
+		"hash":   {"HHHHHHHHHHHH"},
+		"action": {"unblock"},
+	})
+	if got.status != http.StatusSeeOther || len(unblock.unblocked) != 1 {
+		t.Fatalf("unblock: status %d, calls %v", got.status, unblock.unblocked)
+	}
+}
+
+func TestConsolePeerBlockRejectsUnknownAction(t *testing.T) {
+	t.Parallel()
+
+	got := doPost(t, New(Options{PeerBlock: &fakePeerBlock{}}), peerBlockPath, url.Values{
+		"hash":   {"HHHHHHHHHHHH"},
+		"action": {"delete"},
+	})
+	if got.status != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400 for an unknown action", got.status)
+	}
+}
+
+func TestConsolePeerBlockWithoutSourceIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	got := doPost(t, New(Options{}), peerBlockPath, url.Values{
+		"hash": {"HHHHHHHHHHHH"}, "action": {"block"},
+	})
+	if got.status != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", got.status)
+	}
+}
+
+func TestConsolePeerBlockRedirectsOnError(t *testing.T) {
+	t.Parallel()
+
+	block := &fakePeerBlock{err: errors.New("cannot block")}
+	got := doPost(t, New(Options{PeerBlock: block}), peerBlockPath, url.Values{
+		"hash": {"HHHHHHHHHHHH"}, "action": {"block"},
+	})
+	if got.status != http.StatusSeeOther {
+		t.Fatalf("a failed block should still redirect: status %d", got.status)
+	}
+}
+
 type fakePeerNews struct{ items []PeerNewsItem }
 
 func (f fakePeerNews) PeerNews(context.Context) []PeerNewsItem { return f.items }

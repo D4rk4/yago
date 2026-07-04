@@ -3,6 +3,7 @@ package yagonode
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -24,6 +25,7 @@ type networkSource struct {
 	roster       peerroster.Roster
 	seedlistURLs []string
 	status       seedImportStatusReader
+	blocks       peerBlockStore
 	now          func() time.Time
 }
 
@@ -32,12 +34,14 @@ func newNetworkSource(
 	roster peerroster.Roster,
 	seedlistURLs []string,
 	status seedImportStatusReader,
+	blocks peerBlockStore,
 ) networkSource {
 	return networkSource{
 		gates:        gates,
 		roster:       roster,
 		seedlistURLs: seedlistURLs,
 		status:       status,
+		blocks:       blocks,
 		now:          time.Now,
 	}
 }
@@ -56,10 +60,30 @@ func (s networkSource) Network(ctx context.Context) adminui.NetworkStatus {
 	if s.roster != nil {
 		status.KnownPeers = s.roster.KnownPeerCount(ctx)
 		status.ReachablePeers = s.roster.ReachablePeerCount(ctx)
-		status.Peers = s.adminNetworkPeers(s.roster.FreshestPeers(ctx, adminNetworkPeerLimit))
+		status.Peers = s.adminNetworkPeers(ctx, s.roster.FreshestPeers(ctx, adminNetworkPeerLimit))
 	}
 
 	return status
+}
+
+// blockedSet loads the current blocklist once as a set for marking the peer
+// table. A read error degrades to no marks rather than hiding the table.
+func (s networkSource) blockedSet(ctx context.Context) map[yagomodel.Hash]struct{} {
+	if s.blocks == nil {
+		return nil
+	}
+	entries, err := s.blocks.Blocked(ctx)
+	if err != nil {
+		slog.WarnContext(ctx, "read peer blocklist for admin table failed", slog.Any("error", err))
+
+		return nil
+	}
+	set := make(map[yagomodel.Hash]struct{}, len(entries))
+	for _, entry := range entries {
+		set[entry.Hash] = struct{}{}
+	}
+
+	return set
 }
 
 func (s networkSource) adminSeedlists(ctx context.Context) []adminui.SeedlistEntry {
@@ -104,14 +128,19 @@ func adminNetworkGates(results []dhtGateResultResponse) []adminui.NetworkGate {
 	return gates
 }
 
-func (s networkSource) adminNetworkPeers(seeds []yagomodel.Seed) []adminui.NetworkPeer {
+func (s networkSource) adminNetworkPeers(
+	ctx context.Context,
+	seeds []yagomodel.Seed,
+) []adminui.NetworkPeer {
 	now := s.now()
+	blocked := s.blockedSet(ctx)
 	peers := make([]adminui.NetworkPeer, 0, len(seeds))
 	for _, seed := range seeds {
 		name, _ := seed.Name.Get()
 		address, _ := seed.NetworkAddress()
 		peerType, _ := seed.PeerType.Get()
 		rwiCount, _ := seed.RWICount.Get()
+		_, isBlocked := blocked[seed.Hash]
 		peers = append(peers, adminui.NetworkPeer{
 			Name:     name,
 			Hash:     string(seed.Hash),
@@ -121,6 +150,7 @@ func (s networkSource) adminNetworkPeers(seeds []yagomodel.Seed) []adminui.Netwo
 			RWICount: rwiCount,
 			LastSeen: seedLastSeen(seed),
 			AgeDays:  seed.AgeDays(now),
+			Blocked:  isBlocked,
 		})
 	}
 
@@ -131,11 +161,12 @@ func (s networkSource) adminNetworkPeers(seeds []yagomodel.Seed) []adminui.Netwo
 // per-peer detail page. It reads through the roster and carries no secrets.
 type peerDetailSource struct {
 	roster peerroster.Roster
+	blocks peerBlockStore
 	now    func() time.Time
 }
 
-func newPeerDetailSource(roster peerroster.Roster) peerDetailSource {
-	return peerDetailSource{roster: roster, now: time.Now}
+func newPeerDetailSource(roster peerroster.Roster, blocks peerBlockStore) peerDetailSource {
+	return peerDetailSource{roster: roster, blocks: blocks, now: time.Now}
 }
 
 func (s peerDetailSource) PeerDetail(
@@ -151,7 +182,14 @@ func (s peerDetailSource) PeerDetail(
 		return adminui.PeerDetail{}, false
 	}
 
-	return peerDetailFromSeed(seed, s.now()), true
+	detail := peerDetailFromSeed(seed, s.now())
+	if s.blocks != nil {
+		if blocked, err := s.blocks.IsBlocked(ctx, parsed); err == nil {
+			detail.Blocked = blocked
+		}
+	}
+
+	return detail, true
 }
 
 func peerDetailFromSeed(seed yagomodel.Seed, now time.Time) adminui.PeerDetail {

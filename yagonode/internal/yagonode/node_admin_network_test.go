@@ -33,8 +33,8 @@ func networkTestSeed(t *testing.T) yagomodel.Seed {
 }
 
 func TestNetworkSourceMapsPeerDetail(t *testing.T) {
-	source := newNetworkSource(dhtGateStatusSource{}, nil, nil, nil)
-	peers := source.adminNetworkPeers([]yagomodel.Seed{networkTestSeed(t)})
+	source := newNetworkSource(dhtGateStatusSource{}, nil, nil, nil, nil)
+	peers := source.adminNetworkPeers(context.Background(), []yagomodel.Seed{networkTestSeed(t)})
 	if len(peers) != 1 {
 		t.Fatalf("peers = %d", len(peers))
 	}
@@ -60,7 +60,7 @@ func TestNetworkSourceSurfacesReachabilityAndSeedlists(t *testing.T) {
 		},
 	}
 	roster := reachableRoster{peers: []yagomodel.Seed{networkTestSeed(t)}}
-	source := newNetworkSource(gates, roster, []string{"https://seeds.example/seed.txt"}, nil)
+	source := newNetworkSource(gates, roster, []string{"https://seeds.example/seed.txt"}, nil, nil)
 
 	status := source.Network(context.Background())
 	if !status.PublicReachable {
@@ -93,7 +93,7 @@ func TestPeerDetailSourceMapsSeed(t *testing.T) {
 	seed.ReceivedWordCount = yagomodel.Some(int64(22))
 	seed.SentURLCount = yagomodel.Some(int64(33))
 	seed.ReceivedURLCount = yagomodel.Some(int64(44))
-	source := newPeerDetailSource(reachableRoster{peers: []yagomodel.Seed{seed}})
+	source := newPeerDetailSource(reachableRoster{peers: []yagomodel.Seed{seed}}, nil)
 
 	detail, ok := source.PeerDetail(context.Background(), string(seed.Hash))
 	if !ok {
@@ -114,14 +114,14 @@ func TestPeerDetailSourceMapsSeed(t *testing.T) {
 }
 
 func TestPeerDetailSourceRejectsMalformedHash(t *testing.T) {
-	source := newPeerDetailSource(reachableRoster{})
+	source := newPeerDetailSource(reachableRoster{}, nil)
 	if _, ok := source.PeerDetail(context.Background(), "too-short"); ok {
 		t.Fatal("a malformed hash must not resolve")
 	}
 }
 
 func TestPeerDetailSourceReportsUnknownPeer(t *testing.T) {
-	source := newPeerDetailSource(reachableRoster{})
+	source := newPeerDetailSource(reachableRoster{}, nil)
 	if _, ok := source.PeerDetail(context.Background(), "HHHHHHHHHHHH"); ok {
 		t.Fatal("an unknown but well-formed hash must not resolve")
 	}

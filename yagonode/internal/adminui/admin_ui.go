@@ -40,6 +40,7 @@ const (
 	indexPath           = "/admin/index"
 	networkPath         = "/admin/network"
 	networkPeerPath     = "/admin/network/peer"
+	peerBlockPath       = "/admin/network/peer/block"
 	seedlistRefreshPath = "/admin/network/seedlist/refresh"
 	logsPath            = "/admin/logs"
 	logsEventsPath      = "/admin/logs/events"
@@ -96,6 +97,7 @@ type Options struct {
 	PeerDetail      PeerDetailSource
 	PeerNews        PeerNewsSource
 	SeedlistRefresh SeedlistRefreshSource
+	PeerBlock       PeerBlockSource
 }
 
 type sectionView struct {
@@ -123,12 +125,13 @@ type pageData struct {
 }
 
 type peerDetailPageData struct {
-	AppName    string
-	ActivePath string
-	Nav        []NavItem
-	CSRF       string
-	Section    sectionView
-	Peer       PeerDetail
+	AppName      string
+	ActivePath   string
+	Nav          []NavItem
+	CSRF         string
+	Section      sectionView
+	Peer         PeerDetail
+	BlockEnabled bool
 }
 
 type searchPageData struct {
@@ -285,6 +288,7 @@ type Console struct {
 	peerDetail      PeerDetailSource
 	peerNews        PeerNewsSource
 	seedlistRefresh SeedlistRefreshSource
+	peerBlock       PeerBlockSource
 }
 
 // New builds the console with its embedded templates, assets, and providers.
@@ -315,6 +319,7 @@ func New(opts Options) *Console {
 		peerDetail:      opts.PeerDetail,
 		peerNews:        opts.PeerNews,
 		seedlistRefresh: opts.SeedlistRefresh,
+		peerBlock:       opts.PeerBlock,
 	}
 	console.registerRoutes(assets)
 
@@ -355,6 +360,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
 	c.mux.HandleFunc("GET "+networkPath, c.handleNetwork)
 	c.mux.HandleFunc("GET "+networkPeerPath, c.handleNetworkPeer)
+	c.mux.HandleFunc("POST "+peerBlockPath, c.handlePeerBlock)
 	c.mux.HandleFunc("POST "+seedlistRefreshPath, c.handleSeedlistRefresh)
 	c.mux.HandleFunc("GET "+configPath, c.handleConfig)
 	c.mux.HandleFunc("POST "+configPath, c.handleConfigUpdate)
@@ -566,10 +572,41 @@ func (c *Console) handleNetworkPeer(w http.ResponseWriter, r *http.Request) {
 
 	c.render(r.Context(), w, c.tpl.peerDetail, "layout", peerDetailPageData{
 		AppName: appName, ActivePath: networkPath, Nav: navItems,
-		CSRF:    csrfToken(r),
-		Section: sectionView{Heading: "Peer detail", Available: true},
-		Peer:    detail,
+		CSRF:         csrfToken(r),
+		Section:      sectionView{Heading: "Peer detail", Available: true},
+		Peer:         detail,
+		BlockEnabled: c.peerBlock != nil,
 	})
+}
+
+func (c *Console) handlePeerBlock(w http.ResponseWriter, r *http.Request) {
+	if c.peerBlock == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+
+	hash := strings.TrimSpace(r.PostFormValue("hash"))
+	action := r.PostFormValue("action")
+	var err error
+	switch action {
+	case "block":
+		err = c.peerBlock.Block(r.Context(), hash)
+	case "unblock":
+		err = c.peerBlock.Unblock(r.Context(), hash)
+	default:
+		http.Error(w, "unknown peer block action", http.StatusBadRequest)
+
+		return
+	}
+	if err != nil {
+		slog.WarnContext(r.Context(), "admin peer block action failed",
+			slog.String("action", action), slog.String("hash", hash), slog.Any("error", err))
+	}
+
+	// Redirect to the static Network list (never a user-supplied URL) where the
+	// peer's new blocked state is visible.
+	http.Redirect(w, r, networkPath, http.StatusSeeOther)
 }
 
 func (c *Console) handleConfig(w http.ResponseWriter, r *http.Request) {

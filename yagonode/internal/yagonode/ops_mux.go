@@ -45,6 +45,10 @@ func buildOpsMux(
 		opsMux.Handle(pathSearchRanking, assembled.searchRanking)
 	}
 	seedStatus, seedRefresh := seedImportSources(assembled, config, recorder)
+	var blocks peerBlockStore
+	if assembled.peerBlock != nil {
+		blocks = assembled.peerBlock
+	}
 	options := adminui.Options{
 		Overview: newOverviewSource(assembled.report),
 		Search:   newSearchSource(assembled.searcher),
@@ -54,6 +58,7 @@ func buildOpsMux(
 			assembled.roster,
 			config.SeedlistURLs,
 			seedStatus,
+			blocks,
 		),
 		Config:          newConfigSource(config),
 		Settings:        sources.settings,
@@ -66,7 +71,10 @@ func buildOpsMux(
 		SeedlistRefresh: seedRefresh,
 	}
 	if assembled.roster != nil {
-		options.PeerDetail = newPeerDetailSource(assembled.roster)
+		options.PeerDetail = newPeerDetailSource(assembled.roster, blocks)
+	}
+	if blocks != nil {
+		options.PeerBlock = newPeerBlockController(blocks, assembled.identity.Hash)
 	}
 	if assembled.news != nil {
 		options.PeerNews = newPeerNewsSource(assembled.news)

@@ -49,7 +49,7 @@
       {{$links := .PeerLinks}}
       {{range .Network.Peers}}
       <tr>
-        <th scope="row">{{if $links}}<a href="/admin/network/peer?hash={{.Hash}}">{{if .Name}}{{.Name}}{{else}}{{.Hash}}{{end}}</a>{{else if .Name}}{{.Name}}{{else}}—{{end}}</th>
+        <th scope="row">{{if $links}}<a href="/admin/network/peer?hash={{.Hash}}">{{if .Name}}{{.Name}}{{else}}{{.Hash}}{{end}}</a>{{else if .Name}}{{.Name}}{{else}}—{{end}}{{if .Blocked}} <span class="cds-tag cds-tag--error">blocked</span>{{end}}</th>
         <td>{{if .Type}}{{.Type}}{{else}}—{{end}}</td>
         <td>{{if .Address}}{{.Address}}{{else}}—{{end}}</td>
         <td>{{range .Flags}}<span class="cds-tag cds-tag--info">{{.}}</span> {{else}}—{{end}}</td>

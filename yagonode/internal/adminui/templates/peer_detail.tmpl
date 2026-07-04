@@ -1,7 +1,28 @@
 {{define "content"}}
 <nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / <a href="/admin/network">Network</a> / Peer</nav>
-<h1 class="cds-h1">{{if .Peer.Name}}{{.Peer.Name}}{{else}}Peer{{end}}</h1>
+<h1 class="cds-h1">{{if .Peer.Name}}{{.Peer.Name}}{{else}}Peer{{end}}{{if .Peer.Blocked}} <span class="cds-tag cds-tag--error">blocked</span>{{end}}</h1>
 <p class="cds-muted">Read-only view of the peer's published profile as advertised in its seed DNA.</p>
+
+{{if .BlockEnabled}}
+<div class="cds-actions">
+  {{if .Peer.Blocked}}
+  <p class="cds-muted">This peer is excluded from index fan-out and from the peer lists this node advertises.</p>
+  <form method="post" action="/admin/network/peer/block">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <input type="hidden" name="hash" value="{{.Peer.Hash}}">
+    <input type="hidden" name="action" value="unblock">
+    <button class="cds-btn" type="submit">Unblock peer</button>
+  </form>
+  {{else}}
+  <form method="post" action="/admin/network/peer/block" hx-confirm="Block this peer? It will be excluded from index fan-out and seeding.">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <input type="hidden" name="hash" value="{{.Peer.Hash}}">
+    <input type="hidden" name="action" value="block">
+    <button class="cds-btn cds-btn--danger" type="submit">Block peer</button>
+  </form>
+  {{end}}
+</div>
+{{end}}
 
 <h2 class="cds-h2">Identity</h2>
 <div class="cds-scroll-x">

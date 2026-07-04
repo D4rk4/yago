@@ -179,7 +179,7 @@ func TestNetworkSourceSurfacesSeedlistStatus(t *testing.T) {
 	status := fakeSeedStatus{statuses: map[string]seedimport.Status{
 		url: {LastImport: imported, Seeds: 12, OK: true},
 	}}
-	source := newNetworkSource(dhtGateStatusSource{}, nil, []string{url}, status)
+	source := newNetworkSource(dhtGateStatusSource{}, nil, []string{url}, status, nil)
 
 	entries := source.Network(context.Background()).Seedlists
 	if len(entries) != 1 {
@@ -197,7 +197,11 @@ func TestNetworkSourceSurfacesSeedlistStatus(t *testing.T) {
 func TestNetworkSourceIgnoresSeedlistStatusError(t *testing.T) {
 	url := "https://seeds.example/seed.txt"
 	source := newNetworkSource(
-		dhtGateStatusSource{}, nil, []string{url}, fakeSeedStatus{err: errors.New("read failed")},
+		dhtGateStatusSource{},
+		nil,
+		[]string{url},
+		fakeSeedStatus{err: errors.New("read failed")},
+		nil,
 	)
 
 	entries := source.Network(context.Background()).Seedlists

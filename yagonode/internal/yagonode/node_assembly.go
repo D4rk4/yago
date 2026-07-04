@@ -17,6 +17,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/nodestatus"
 	"github.com/D4rk4/yago/yagonode/internal/peerannouncement"
 	"github.com/D4rk4/yago/yagonode/internal/peerbirth"
+	"github.com/D4rk4/yago/yagonode/internal/peerblock"
 	"github.com/D4rk4/yago/yagonode/internal/peernews"
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
 	"github.com/D4rk4/yago/yagonode/internal/rankingprofile"
@@ -48,6 +49,8 @@ type node struct {
 	dht           dhtOutboundProcess
 	vault         *vault.Vault
 	client        *http.Client
+	peerBlock     *peerblock.Store
+	identity      nodeidentity.Identity
 }
 
 type nodeTelemetry struct {
@@ -103,7 +106,7 @@ func assembleNode(
 		return node{}, err
 	}
 
-	roster, news, tally, err := openPeerStores(vault, telemetry.peer)
+	roster, news, tally, blocks, err := openPeerStores(vault, telemetry.peer)
 	if err != nil {
 		return node{}, err
 	}
@@ -162,6 +165,8 @@ func assembleNode(
 		news:      news,
 		vault:     vault,
 		client:    client,
+		peerBlock: blocks,
+		identity:  identity,
 		ranking:   surfaces.ranking,
 	}), nil
 }
@@ -241,6 +246,8 @@ type nodeParts struct {
 	news      *peernews.Pool
 	vault     *vault.Vault
 	client    *http.Client
+	peerBlock *peerblock.Store
+	identity  nodeidentity.Identity
 	ranking   *rankingprofile.Holder
 }
 
@@ -264,6 +271,8 @@ func newAssembledNode(parts nodeParts) node {
 		dht:           parts.dht,
 		vault:         parts.vault,
 		client:        parts.client,
+		peerBlock:     parts.peerBlock,
+		identity:      parts.identity,
 	}
 }
 

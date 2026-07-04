@@ -14,6 +14,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/nodestatus"
 	"github.com/D4rk4/yago/yagonode/internal/peeradmission"
 	"github.com/D4rk4/yago/yagonode/internal/peerannouncement"
+	"github.com/D4rk4/yago/yagonode/internal/peerblock"
 	"github.com/D4rk4/yago/yagonode/internal/peermessage"
 	"github.com/D4rk4/yago/yagonode/internal/peernews"
 	"github.com/D4rk4/yago/yagonode/internal/peerprofile"
@@ -81,21 +82,27 @@ func newNodeStatusReport(
 func openPeerStores(
 	vault *vault.Vault,
 	peer *metrics.PeerMetrics,
-) (peerroster.Roster, *peernews.Pool, *transfertally.Tally, error) {
+) (peerroster.Roster, *peernews.Pool, *transfertally.Tally, *peerblock.Store, error) {
 	roster, err := openObservedPeerRoster(vault, peer)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	news, err := openRuntimePeerNews(vault, time.Now)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("open peer news: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("open peer news: %w", err)
 	}
 	tally, err := openRuntimeTransferTally(vault)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("open transfer tally: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("open transfer tally: %w", err)
+	}
+	blocks, err := peerblock.Open(vault, time.Now)
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("open peer blocklist: %w", err)
 	}
 
-	return roster, news, tally, nil
+	// Wrap the roster so blocked peers vanish from the reachable set that feeds
+	// index fan-out and the peer lists this node advertises.
+	return newBlockingRoster(roster, blocks), news, tally, blocks, nil
 }
 
 func (p peerExchange) assemble() (peerExchangeRuntime, error) {

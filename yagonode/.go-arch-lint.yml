@@ -44,6 +44,8 @@ components:
     in: internal/seedlist/**
   seedimport:
     in: internal/seedimport/**
+  peerblock:
+    in: internal/peerblock/**
   sharedblacklist:
     in: internal/sharedblacklist/**
   bootstrap:
@@ -236,6 +238,13 @@ deps:
       - seedimport
       - vault
       - memvault
+  peerblock:
+    mayDependOn:
+      - peerblock
+      - vault
+      - memvault
+    canUse:
+      - yagomodel
   eventstore:
     mayDependOn:
       - eventstore
@@ -575,6 +584,7 @@ deps:
       - transfertally
       - settingsstore
       - seedimport
+      - peerblock
       - eventstore
       - urlmetastaleness
       - urlreferences

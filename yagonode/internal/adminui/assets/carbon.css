@@ -204,6 +204,9 @@ a:focus, button:focus, input:focus, select:focus, [tabindex]:focus {
 .cds-btn:active { background: var(--cds-interactive-active); }
 .cds-btn--secondary { background: #393939; }
 .cds-btn--ghost { background: transparent; color: var(--cds-link-primary); }
+.cds-btn--danger { background: #da1e28; }
+.cds-btn--danger:hover { background: #ba1b23; }
+.cds-actions { margin: var(--cds-spacing-05) 0; }
 .cds-field { margin-bottom: var(--cds-spacing-05); }
 .cds-label { display: block; font-size: 0.75rem; color: var(--cds-text-secondary); margin-bottom: var(--cds-spacing-03); }
 .cds-input {

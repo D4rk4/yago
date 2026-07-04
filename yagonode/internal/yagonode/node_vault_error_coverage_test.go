@@ -176,6 +176,19 @@ func TestRunNodeLoadRuntimeSettingsError(t *testing.T) {
 	}
 }
 
+func TestRunNodePeerBlockOpenError(t *testing.T) {
+	engine := newCtrlEngine()
+	engine.failProvision["peerblock"] = true
+	v := ctrlVault(t, engine)
+	config := testConfig(t)
+
+	if err := bootNode(
+		context.Background(), config, v, newRuntimeEgressClient(config),
+	); err == nil {
+		t.Fatal("bootNode should surface the peer blocklist open error")
+	}
+}
+
 func TestRunNodeValidateBindsError(t *testing.T) {
 	engine := newCtrlEngine()
 	v := ctrlVault(t, engine)

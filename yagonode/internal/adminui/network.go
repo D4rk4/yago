@@ -19,6 +19,7 @@ type NetworkPeer struct {
 	RWICount int
 	LastSeen string
 	AgeDays  int
+	Blocked  bool
 }
 
 // SeedlistEntry is one configured bootstrap seed-list URL with the outcome of its
@@ -69,6 +70,7 @@ type PeerDetail struct {
 	ReceivedWords int64
 	SentURLs      int64
 	ReceivedURLs  int64
+	Blocked       bool
 }
 
 // PeerDetailSource resolves a peer hash to its detail. It reports false when the
@@ -98,4 +100,11 @@ type PeerNewsSource interface {
 // provider leaves the seedlist table read-only (no refresh action).
 type SeedlistRefreshSource interface {
 	RefreshSeedlist(ctx context.Context, url string) error
+}
+
+// PeerBlockSource blocks or unblocks a peer by hash. It validates the hash and
+// refuses to block this node itself. A nil provider hides the block controls.
+type PeerBlockSource interface {
+	Block(ctx context.Context, hash string) error
+	Unblock(ctx context.Context, hash string) error
 }

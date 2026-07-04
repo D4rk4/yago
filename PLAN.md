@@ -2251,13 +2251,27 @@ page rendered from roster/seed state; no new backend store; tests + `make verify
 
 ### UI-15: Peer probe and block/unblock
 
-Follow-up to UI-07. Add operator actions on a peer: an on-demand reachability
-probe, and block/unblock that persists a peer-policy decision. Requires a durable
-peer-policy store (a CFG-01-style vault collection) and is a CSRF-guarded write
-surface behind the admin session. Blocked peers are excluded from DHT fan-out and
-seeding. Acceptance: probe reports live reachability; block persists and survives
-restart and removes the peer from fan-out; anti-lockout guardrails; tests +
-`make verify`.
+Status: Done (2026-07-04). The peer detail page gains CSRF-guarded Block / Unblock
+actions, and the Network table badges blocked peers. A new durable
+`peerblock.Store` (a vault collection keyed by peer hash, recording the block
+time) persists the decision across restarts. The exclusion is enforced at a single
+chokepoint: `openPeerStores` wraps the roster in a `blockingRoster` that drops
+blocked peers from `ReachablePeers` — the set that feeds outbound DHT index
+fan-out, the hello-response peer list, and the `/yacy/seedlist` endpoint — so a
+blocked peer is neither sent index nor advertised to others. The admin
+`FreshestPeers` listing is left unfiltered so blocked peers remain visible (and
+unblockable). The `peerBlockController` validates the hash and refuses to block
+this node's own identity hash (anti-lockout); the blocklist read fails open (a
+transient store error never halts fan-out). `POST /admin/network/peer/block`
+(action block/unblock) drives it and redirects back to the peer page. The
+reachability probe is deferred as out of scope for this slice: live reachability
+is already surfaced via the roster's confirmed-reachable set and the Network
+section's public-reachability self-test; an on-demand active probe would add an
+outbound-connect surface better handled with the DHT gate machinery. Cross-layer
+tests (store incl. corrupt-record/failing-engine branches, the roster decorator's
+filter/passthrough/fail-open, the controller's anti-lockout and validation, the
+admin marking, the handler, and the assembly open-error path) — all six modules
+100%, Semgrep + Trivy clean.
 
 ### UI-16: Seedlist operations
 
