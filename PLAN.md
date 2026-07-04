@@ -1792,13 +1792,22 @@ Acceptance:
 
 ### UI-10: Configuration UI
 
-Status: Partial (FTR-032). Done: a read-only Configuration section (`GET
-/admin/configuration`) showing the effective startup configuration grouped
-(Node, Listeners, Storage, Search, Network policy, Crawler, Administrator) with
-secrets redacted (search API key and admin password render only as
-`Configured`/`Not set`). Follow-up: the write surface — the node has no
-runtime-mutable configuration store yet, so runtime editing needs a config
-persistence subsystem before it can be wired.
+Status: Done (FTR-032, CFG-01, NET-01, NET-02). The read-only Configuration
+section (`GET /admin/configuration`) shows the effective startup configuration
+grouped (Node, Listeners, Storage, Search, Network policy, Crawler,
+Administrator) with secrets redacted (search API key and admin password render
+only as `Configured`/`Not set`). The write surface is now delivered on the same
+page: CFG-01 added the durable runtime-settings store and a "Runtime settings"
+form group (per-setting select/text input with a reset-to-env control), NET-01
+added the "Listen addresses" editor (per-surface host select + port input), and
+NET-02 made the portal and HTTPS-redirect toggles apply live. Every write is
+CSRF-guarded, validated before persistence (a rejected value re-renders with an
+error and no change), and each setting is marked when it requires a restart to
+take effect — satisfying the acceptance ("Settings validate before save",
+"Settings that require restart are clearly marked"). Coverage of individual
+fields grows incrementally as settings join the CFG-01 whitelist (secrets are
+never placed in it); the broader first-run wizard pages below remain aspirational
+design intent rather than acceptance.
 
 Pages:
 
