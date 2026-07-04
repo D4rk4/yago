@@ -4,11 +4,18 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"time"
+	"unicode/utf8"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawler/internal/pageparse"
 	"github.com/D4rk4/yago/yagomodel"
 )
+
+// maxExtractedTextBytes bounds the extracted page text the crawler ships, so a
+// pathological page cannot send an unbounded body over the wire. It matches the
+// node document store's own bound, so this only trims text the node would discard
+// anyway while keeping the crawler's memory and payload bounded.
+const maxExtractedTextBytes = 1 << 20
 
 type Artifacts struct {
 	Postings []yagomodel.RWIPosting
@@ -55,7 +62,7 @@ func BuildDocument(
 		NormalizedURL: page.URL,
 		Title:         page.Title,
 		Headings:      append([]string(nil), page.Headings...),
-		ExtractedText: page.Text,
+		ExtractedText: boundedText(page.Text),
 		Language:      NormalizeLanguage(page.Language),
 		FetchStatus:   "fetched",
 		IndexedAt:     indexedAt.UTC(),
@@ -64,6 +71,20 @@ func BuildDocument(
 		Images:        imageMetadataFromPage(page.Images),
 		Metadata:      documentMetadata(page, metadata),
 	}
+}
+
+// boundedText truncates text to maxExtractedTextBytes on a UTF-8 rune boundary,
+// so a partial rune is never emitted. Text within the bound is returned unchanged.
+func boundedText(text string) string {
+	if len(text) <= maxExtractedTextBytes {
+		return text
+	}
+	end := maxExtractedTextBytes
+	for end > 0 && !utf8.RuneStart(text[end]) {
+		end--
+	}
+
+	return text[:end]
 }
 
 func imageMetadataFromPage(in []pageparse.ImageMetadata) []yagocrawlcontract.ImageMetadata {

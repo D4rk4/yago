@@ -1486,8 +1486,11 @@ Tasks:
 3. Respect `rel=nofollow` based on profile setting.
 4. Extract image URLs and alt text for image metadata.
 5. Produce RWI postings and URL metadata compatible with `yacymodel`.
-6. Produce bounded snippets, not full body by default.
-7. Hash content for dedupe.
+6. Produce bounded snippets, not full body by default. Done — the crawler caps
+   `ExtractedText` at 1 MiB (rune-boundary safe) before shipping, matching the node
+   document store bound, so a pathological page cannot send an unbounded body over
+   the wire; the content hash still covers the full text for dedupe.
+7. Hash content for dedupe. Done.
 
 Acceptance:
 
