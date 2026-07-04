@@ -1680,9 +1680,12 @@ Acceptance:
 
 Goal: build a modern admin/search interface comparable in breadth to original YaCy's web UI, using IBM Carbon.
 
-Status: Done (2026-07-05) except **UI-13** (out of the current scope). UI-01..UI-12 and
-UI-14..UI-17 are complete; the UI-06 (crawler) and UI-08 (index) epics were closed in
-sub-slices. Each task below carries its own status line.
+Status: The UI surface is complete except **UI-13** (out of the current scope). Every
+UI slice UI-01..UI-12 and UI-14..UI-17 has shipped; the UI-06 (crawler) and UI-08
+(index) epics were closed in sub-slices. The only residue is in **UI-09**, whose
+console UI (Logs + Performance) is done but whose full acceptance (a backup/restore
+page, throughput history) is gated on the separate operations tasks **OPS-02**/
+**OPS-03**, not on any remaining UI work. Each task below carries its own status line.
 
 ### UI-01: Frontend foundation ADR and scaffold
 
