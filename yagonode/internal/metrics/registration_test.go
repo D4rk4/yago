@@ -11,6 +11,7 @@ func TestCollectorsShareRegistryWithoutConflict(t *testing.T) {
 	NewDHTOutboundMetrics(registry)
 	NewDHTInboundMetrics(registry)
 	NewPeerMetrics(registry)
+	NewSearchMetrics(registry)
 	NewStorageMetrics(registry, stubStorage{})
 	NewQueueDepthMetrics(registry, stubQueue{})
 

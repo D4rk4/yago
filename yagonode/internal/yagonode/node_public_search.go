@@ -6,6 +6,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yagonode/internal/documentsearch"
 	"github.com/D4rk4/yago/yagonode/internal/landing"
+	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
@@ -31,6 +32,7 @@ type publicSearchAssembly struct {
 	seedQueue            crawldispatch.CrawlOrderQueue
 	toggles              *runtimeToggles
 	queryLogMode         queryLogMode
+	searchMetrics        *metrics.SearchMetrics
 }
 
 func mountNodePublicSearch(
@@ -57,6 +59,7 @@ func mountNodePublicSearch(
 	})
 	federated := withWebFallback(searchcore.NewFederatedSearcher(local, remote), assembly)
 	search := withQueryLogging(federated, assembly.queryLogMode)
+	search = withSearchMetrics(search, assembly.searchMetrics)
 	access := searchAccessPolicy(assembly)
 	yacysearch.Mount(mux, search)
 	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)

@@ -30,9 +30,13 @@ The registry publishes:
 - **Authentication** — admin authentication failures.
 - **Queue depths** — the crawl and index backlog read live from the DHT gate
   snapshot at scrape time (`queue_crawl_depth`, `queue_index_depth`).
+- **Search** — request count, latency, result count and partial failures,
+  metered once at the search composition chokepoint so the YaCy, Tavily and
+  portal surfaces share one view (`search_requests_total`,
+  `search_latency_seconds`, `search_results`, `search_partial_failures_total`).
 
-Search-surface latency/result metrics and crawl job/fetch/byte metrics are the
-remaining groups from the observability plan and are not yet published.
+Crawl job/fetch/byte metrics are the remaining group from the observability plan
+and are not yet published.
 
 ## Registration
 

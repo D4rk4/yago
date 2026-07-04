@@ -47,6 +47,7 @@ type nodeTelemetry struct {
 	dhtOutbound      dhtexchange.DistributionObserver
 	dhtInbound       *metrics.DHTInboundMetrics
 	peer             *metrics.PeerMetrics
+	search           *metrics.SearchMetrics
 	searchAuthorizer tavilyapi.ScopeAuthorizer
 	toggles          *runtimeToggles
 }
@@ -191,6 +192,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		seedQueue:        crawlOrderQueue(runtime),
 		toggles:          in.toggles,
 		queryLogMode:     in.config.QueryLogMode,
+		searchMetrics:    in.telemetry.search,
 	})
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
 		ctx:         in.ctx,

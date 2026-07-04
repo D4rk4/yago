@@ -2107,11 +2107,15 @@ collector publishes `queue_crawl_depth` and `queue_index_depth` as gauges read l
 from the DHT gate snapshot at scrape time (the same source as the UI-09 Performance
 tiles). A **registration-conflict test** now constructs every collector on one
 registry and gathers it, turning a duplicate metric name into a build-time failure
-rather than a startup panic (acceptance). `doc/metrics.md` documents the endpoint,
-its authentication, and the published groups. Already covered before this slice:
-HTTP request, Storage, Eviction, DHT inbound/outbound, Peers, Authentication.
-**Still open:** Search latency/results/partial-failure metrics, Crawl
-jobs/fetches/failures/bytes metrics, and an explicit disable toggle for the
+rather than a startup panic (acceptance). It also adds a **Search** group: a
+`SearchMetrics` collector fed by a `withSearchMetrics` decorator at the single
+search composition chokepoint meters request count, latency, result count and
+partial failures once for every surface (YaCy, Tavily, portal) —
+`search_requests_total`, `search_latency_seconds`, `search_results`,
+`search_partial_failures_total`. `doc/metrics.md` documents the endpoint, its
+authentication, and the published groups. Already covered before: HTTP request,
+Storage, Eviction, DHT inbound/outbound, Peers, Authentication. **Still open:**
+Crawl jobs/fetches/failures/bytes metrics, and an explicit disable toggle for the
 endpoint. verify green (coverage 97.5%), Semgrep + Trivy clean.
 
 Expose Prometheus-style metrics or a documented JSON metrics endpoint. If adding Prometheus client dependency, create ADR first.
