@@ -100,6 +100,10 @@ func (r *crawlRuntime) runRegistry() *crawlruns.Registry {
 	return r.runs
 }
 
+func (r *crawlRuntime) controlRegistry() *crawlbroker.ControlRegistry {
+	return r.broker.Control
+}
+
 func (r *crawlRuntime) crawlQueueDepth(ctx context.Context) (crawlbroker.QueueDepth, error) {
 	depth, err := r.broker.Orders.Depth(ctx)
 	if err != nil {

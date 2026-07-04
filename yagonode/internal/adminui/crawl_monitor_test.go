@@ -2,10 +2,14 @@ package adminui
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
+
+var errStubControl = errors.New("stub control failure")
 
 type fakeMonitor struct {
 	snap CrawlMonitor
@@ -15,9 +19,21 @@ func (f fakeMonitor) Monitor(context.Context) CrawlMonitor {
 	return f.snap
 }
 
+type fakeControl struct {
+	got CrawlControlRequest
+	err error
+}
+
+func (f *fakeControl) Control(_ context.Context, req CrawlControlRequest) error {
+	f.got = req
+
+	return f.err
+}
+
 func sampleMonitor() CrawlMonitor {
 	return CrawlMonitor{
 		Runs: []CrawlRunView{{
+			RunID:   "run-abc",
 			Profile: "news-crawl",
 			State:   "running",
 			Fetched: 12,
@@ -110,6 +126,76 @@ func TestConsoleCrawlMonitorEmptyRuns(t *testing.T) {
 	got := do(t, console, "/admin/crawl/monitor")
 	if !strings.Contains(got.body, "No crawl runs observed yet.") {
 		t.Fatal("empty monitor missing the empty state")
+	}
+}
+
+func TestConsoleCrawlMonitorRendersControlButtons(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Crawl:   &fakeCrawl{},
+		Monitor: fakeMonitor{snap: sampleMonitor()},
+		Control: &fakeControl{},
+	})
+	got := do(t, console, "/admin/crawl/monitor")
+	for _, want := range []string{
+		`action="/admin/crawl/control"`, `name="runId" value="run-abc"`,
+		`name="action" value="pause"`, `name="action" value="resume"`,
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("monitor missing control %q", want)
+		}
+	}
+}
+
+func TestConsoleCrawlMonitorHidesControlsWithoutSource(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{Crawl: &fakeCrawl{}, Monitor: fakeMonitor{snap: sampleMonitor()}})
+	got := do(t, console, "/admin/crawl/monitor")
+	if strings.Contains(got.body, `name="action" value="pause"`) {
+		t.Fatal("control buttons rendered without a control source")
+	}
+}
+
+func TestConsoleCrawlControlDispatches(t *testing.T) {
+	t.Parallel()
+
+	control := &fakeControl{}
+	got := doPost(t, New(Options{Control: control}), "/admin/crawl/control", url.Values{
+		"runId":  {"run-abc"},
+		"action": {"pause"},
+	})
+	if got.status != http.StatusSeeOther {
+		t.Fatalf("status %d, want 303", got.status)
+	}
+	if control.got.RunID != "run-abc" || control.got.Action != "pause" {
+		t.Fatalf("control received %+v, want run-abc/pause", control.got)
+	}
+}
+
+func TestConsoleCrawlControlSurvivesSourceError(t *testing.T) {
+	t.Parallel()
+
+	control := &fakeControl{err: errStubControl}
+	got := doPost(t, New(Options{Control: control}), "/admin/crawl/control", url.Values{
+		"runId":  {"run-abc"},
+		"action": {"resume"},
+	})
+	if got.status != http.StatusSeeOther {
+		t.Fatalf("status %d, want 303 even when the control source errs", got.status)
+	}
+}
+
+func TestConsoleCrawlControlNotFoundWithoutSource(t *testing.T) {
+	t.Parallel()
+
+	got := doPost(t, New(Options{}), "/admin/crawl/control", url.Values{
+		"runId":  {"run-abc"},
+		"action": {"pause"},
+	})
+	if got.status != http.StatusNotFound {
+		t.Fatalf("status %d, want 404 without a control source", got.status)
 	}
 }
 

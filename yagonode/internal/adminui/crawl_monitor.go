@@ -8,6 +8,7 @@ import (
 // CrawlRunView is one row of the crawl monitor: a run the node currently knows
 // about, with its per-outcome tally and how long it has been running.
 type CrawlRunView struct {
+	RunID        string
 	Profile      string
 	Worker       string
 	State        string
@@ -45,6 +46,19 @@ type CrawlMonitor struct {
 // provider hides the monitor from the Crawler section.
 type CrawlMonitorSource interface {
 	Monitor(ctx context.Context) CrawlMonitor
+}
+
+// CrawlControlRequest is an operator's steer of one crawl run, keyed by the run's
+// identifier as shown in the monitor.
+type CrawlControlRequest struct {
+	RunID  string
+	Action string
+}
+
+// CrawlControlSource steers a running crawl on the operator's behalf. A nil
+// provider leaves the monitor read-only.
+type CrawlControlSource interface {
+	Control(ctx context.Context, req CrawlControlRequest) error
 }
 
 var crawlFuncs = template.FuncMap{"stateTag": crawlStateTag}

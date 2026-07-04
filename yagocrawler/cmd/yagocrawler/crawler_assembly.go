@@ -58,12 +58,6 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	}
 	defer func() { _ = closer.Close() }()
 
-	orders := crawlorder.NewGRPCOrderReceiver(
-		ctx,
-		exchange,
-		cfg.WorkerID,
-		crawlorder.LoggingControlHandler{},
-	)
 	emitter := ingest.NewBatchEmitter(ingest.NewGRPCIngestPublisher(exchange))
 
 	metrics := crawlermetrics.New()
@@ -84,6 +78,12 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		pace,
 		frontier.WithMaxHostConcurrency(crawl.MaxHostConcurrency),
 		frontier.WithRunTally(tally),
+	)
+	orders := crawlorder.NewGRPCOrderReceiver(
+		ctx,
+		exchange,
+		cfg.WorkerID,
+		crawlorder.NewFrontierControlHandler(frontier),
 	)
 
 	guard := yagoegress.NewGuard(

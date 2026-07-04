@@ -16,6 +16,47 @@ type ControlHandler interface {
 	Apply(ctx context.Context, directive yagocrawlcontract.CrawlControlDirective)
 }
 
+// CrawlController is the worker's run-steering surface a control handler drives.
+// The frontier satisfies it, keying runs by their provenance token.
+type CrawlController interface {
+	Pause(provenance []byte)
+	Resume(provenance []byte)
+}
+
+// FrontierControlHandler applies control directives to the worker's crawl
+// controller, translating a directive's hex run token back to the raw provenance
+// the controller keys runs by. A malformed token is logged and ignored, and kinds
+// without a behaviour yet (cancel, set-rate) are no-ops until their slices land.
+type FrontierControlHandler struct {
+	controller CrawlController
+}
+
+// NewFrontierControlHandler binds a control handler to a crawl controller.
+func NewFrontierControlHandler(controller CrawlController) FrontierControlHandler {
+	return FrontierControlHandler{controller: controller}
+}
+
+// Apply dispatches a directive to the controller.
+func (h FrontierControlHandler) Apply(
+	ctx context.Context,
+	directive yagocrawlcontract.CrawlControlDirective,
+) {
+	provenance, err := hex.DecodeString(directive.RunID)
+	if err != nil {
+		slog.WarnContext(ctx, "crawl control directive has a malformed run token",
+			slog.String("run", directive.RunID))
+
+		return
+	}
+
+	switch directive.Kind {
+	case yagocrawlcontract.CrawlControlPause:
+		h.controller.Pause(provenance)
+	case yagocrawlcontract.CrawlControlResume:
+		h.controller.Resume(provenance)
+	}
+}
+
 // LoggingControlHandler records each received directive to the worker log. It is
 // the receiver's default handler: control delivery is observable from the moment
 // the channel exists, and the run-steering behaviours are layered on top.

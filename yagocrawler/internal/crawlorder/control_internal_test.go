@@ -84,6 +84,68 @@ func TestDispatchDirectivesFansToHandler(t *testing.T) {
 	}
 }
 
+type fakeController struct {
+	paused  [][]byte
+	resumed [][]byte
+}
+
+func (c *fakeController) Pause(provenance []byte) {
+	c.paused = append(c.paused, provenance)
+}
+
+func (c *fakeController) Resume(provenance []byte) {
+	c.resumed = append(c.resumed, provenance)
+}
+
+func TestFrontierControlHandlerPauseResume(t *testing.T) {
+	controller := &fakeController{}
+	handler := NewFrontierControlHandler(controller)
+
+	handler.Apply(context.Background(), yagocrawlcontract.CrawlControlDirective{
+		Kind:  yagocrawlcontract.CrawlControlPause,
+		RunID: "ab",
+	})
+	handler.Apply(context.Background(), yagocrawlcontract.CrawlControlDirective{
+		Kind:  yagocrawlcontract.CrawlControlResume,
+		RunID: "cd",
+	})
+
+	if len(controller.paused) != 1 || controller.paused[0][0] != 0xab {
+		t.Fatalf("paused = %x, want [ab]", controller.paused)
+	}
+	if len(controller.resumed) != 1 || controller.resumed[0][0] != 0xcd {
+		t.Fatalf("resumed = %x, want [cd]", controller.resumed)
+	}
+}
+
+func TestFrontierControlHandlerIgnoresMalformedRunID(t *testing.T) {
+	controller := &fakeController{}
+	NewFrontierControlHandler(controller).Apply(
+		context.Background(),
+		yagocrawlcontract.CrawlControlDirective{
+			Kind:  yagocrawlcontract.CrawlControlPause,
+			RunID: "not-hex",
+		},
+	)
+	if len(controller.paused) != 0 {
+		t.Fatal("a malformed run token must be ignored, not paused")
+	}
+}
+
+func TestFrontierControlHandlerIgnoresKindsWithoutBehaviour(t *testing.T) {
+	controller := &fakeController{}
+	NewFrontierControlHandler(controller).Apply(
+		context.Background(),
+		yagocrawlcontract.CrawlControlDirective{
+			Kind:  yagocrawlcontract.CrawlControlCancel,
+			RunID: "ab",
+		},
+	)
+	if len(controller.paused) != 0 || len(controller.resumed) != 0 {
+		t.Fatal("cancel has no pause/resume behaviour in this slice")
+	}
+}
+
 func TestLoggingControlHandlerApplyDoesNotPanic(t *testing.T) {
 	LoggingControlHandler{}.Apply(context.Background(), yagocrawlcontract.CrawlControlDirective{
 		Kind:  yagocrawlcontract.CrawlControlResume,

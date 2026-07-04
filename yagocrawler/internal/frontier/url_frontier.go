@@ -33,6 +33,7 @@ type Frontier struct {
 	mu       sync.Mutex
 	state    *frontierState
 	inflight map[string]int
+	paused   map[string]struct{}
 	closing  bool
 }
 
@@ -79,6 +80,7 @@ func NewFrontier(capacity int, pace CrawlPace, opts ...Option) *Frontier {
 			tally:      noopRunTally{},
 		},
 		inflight: make(map[string]int),
+		paused:   make(map[string]struct{}),
 	}
 	for _, opt := range opts {
 		opt(frontier)
@@ -185,6 +187,32 @@ func (f *Frontier) wake() {
 	}
 }
 
+// Pause withholds a run's pending jobs from dispatch without dropping them: the
+// dispatch loop skips its ready jobs until the run is resumed, while in-flight
+// fetches finish normally. A run is identified by its provenance token.
+func (f *Frontier) Pause(provenance []byte) {
+	f.mu.Lock()
+	f.paused[string(provenance)] = struct{}{}
+	f.mu.Unlock()
+}
+
+// Resume lifts a pause and wakes the dispatch loop so the run's withheld jobs
+// become dispatchable again.
+func (f *Frontier) Resume(provenance []byte) {
+	f.mu.Lock()
+	delete(f.paused, string(provenance))
+	f.mu.Unlock()
+	f.wake()
+}
+
+// isPausedLocked reports whether a job's run is paused. It is called from the
+// dispatch loop, which already holds f.mu.
+func (f *Frontier) isPausedLocked(provenance []byte) bool {
+	_, paused := f.paused[string(provenance)]
+
+	return paused
+}
+
 func (f *Frontier) run() {
 	for {
 		now := time.Now()
@@ -229,6 +257,9 @@ func (f *Frontier) run() {
 func (f *Frontier) nextDue(now time.Time) (crawljob.CrawlJob, int, time.Duration, bool) {
 	var soonest time.Duration
 	for i, job := range f.state.ready {
+		if f.isPausedLocked(job.Provenance) {
+			continue
+		}
 		if f.hostAtCapacity(job.URL) {
 			continue
 		}

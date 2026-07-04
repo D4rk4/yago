@@ -1874,12 +1874,17 @@ outcome sample. The node→worker control plane now exists (CTL-7): the
 (pause/resume/cancel/set-rate, targeting a run by its provenance token or the
 whole worker), the node queues directives per worker in a `ControlRegistry` the
 heartbeat handler drains, and the worker's order receiver dispatches each
-delivered directive to a `ControlHandler` seam (a logging handler today). Control
-thus rides the existing lease-keepalive with no new stream and no wire break (a
-purely additive proto field). Remaining: wire the directives to real behaviour —
-pause/resume (CTL-8), cancel a run (CTL-9), PPM rate (CTL-10) — each an admin
-action that enqueues the directive plus the worker-side handler that acts on it,
-and cache policy plus expert start fields (START-11). The crawl-profile editor
+delivered directive to a `ControlHandler` seam. Control thus rides the existing
+lease-keepalive with no new stream and no wire break (a purely additive proto
+field). Pause/resume is now wired end to end (CTL-8): each running row in the
+monitor carries CSRF-guarded Pause/Resume buttons that POST to
+`/admin/crawl/control`; the node resolves the run's worker through the run
+registry and enqueues the directive, and the worker's `FrontierControlHandler`
+translates the directive's run token to the provenance the frontier keys runs by
+and gates that run in the dispatch loop — a paused run's ready jobs are withheld
+(in-flight fetches finish) until it resumes, which wakes the loop. Remaining: wire
+cancel a run (CTL-9) and PPM rate (CTL-10) onto the same control channel, and
+cache policy plus expert start fields (START-11). The crawl-profile editor
 (named-profile CRUD) stays a separate follow-up (management, not observability).
 
 Pages:

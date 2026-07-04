@@ -64,6 +64,9 @@ func buildOpsMux(
 	}
 	if registry := crawlRunRegistry(assembled.crawl); registry != nil {
 		options.Monitor = newCrawlMonitorSource(registry, crawlDepth.probe)
+		if control := crawlControlRegistry(assembled.crawl); control != nil {
+			options.Control = newCrawlControlSource(registry, control)
+		}
 	}
 	opsMux.Handle(adminui.BasePath, adminui.New(options))
 	recorder.Record(events.SeverityInfo, events.CategoryConfig, "node.started", "node started")

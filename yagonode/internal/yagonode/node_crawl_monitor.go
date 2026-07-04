@@ -63,6 +63,7 @@ func (s *crawlMonitorSource) Monitor(ctx context.Context) adminui.CrawlMonitor {
 
 func crawlRunView(run crawlruns.Run) adminui.CrawlRunView {
 	return adminui.CrawlRunView{
+		RunID:        run.RunID,
 		Profile:      crawlRunLabel(run),
 		Worker:       run.WorkerID,
 		State:        string(run.State),

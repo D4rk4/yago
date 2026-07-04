@@ -5,28 +5,28 @@
   <p>
     <button class="cds-btn cds-btn--ghost" type="button"
             hx-get="/admin/crawl/monitor" hx-target="#crawl-monitor" hx-swap="outerHTML">Refresh</button>
-    <span class="cds-muted">order queue: {{.QueuePending}} pending, {{.QueueLeased}} leased — updates every 5s</span>
+    <span class="cds-muted">order queue: {{.Monitor.QueuePending}} pending, {{.Monitor.QueueLeased}} leased — updates every 5s</span>
   </p>
   <div class="cds-tile-grid" role="group" aria-label="Crawl results and rejections">
     <section class="cds-tile">
       <div class="cds-metric__label">Fetched</div>
-      <div class="cds-metric__value">{{.Totals.Fetched}}</div>
+      <div class="cds-metric__value">{{.Monitor.Totals.Fetched}}</div>
     </section>
     <section class="cds-tile">
       <div class="cds-metric__label">Indexed</div>
-      <div class="cds-metric__value">{{.Totals.Indexed}}</div>
+      <div class="cds-metric__value">{{.Monitor.Totals.Indexed}}</div>
     </section>
     <section class="cds-tile">
       <div class="cds-metric__label">Failed</div>
-      <div class="cds-metric__value">{{.Totals.Failed}}</div>
+      <div class="cds-metric__value">{{.Monitor.Totals.Failed}}</div>
     </section>
     <section class="cds-tile">
       <div class="cds-metric__label">Robots-denied</div>
-      <div class="cds-metric__value">{{.Totals.RobotsDenied}}</div>
+      <div class="cds-metric__value">{{.Monitor.Totals.RobotsDenied}}</div>
     </section>
     <section class="cds-tile">
       <div class="cds-metric__label">Duplicates</div>
-      <div class="cds-metric__value">{{.Totals.Duplicates}}</div>
+      <div class="cds-metric__value">{{.Monitor.Totals.Duplicates}}</div>
     </section>
   </div>
   <div class="cds-scroll-x">
@@ -42,10 +42,12 @@
           <th scope="col">Duplicates</th>
           <th scope="col">Pending</th>
           <th scope="col">Runtime</th>
+          {{if .Controllable}}<th scope="col">Actions</th>{{end}}
         </tr>
       </thead>
       <tbody>
-        {{range .Runs}}
+        {{$root := .}}
+        {{range .Monitor.Runs}}
         <tr>
           <td>{{.Profile}}</td>
           <td><span class="cds-tag{{with stateTag .State}} cds-tag--{{.}}{{end}}">{{.State}}</span></td>
@@ -56,9 +58,21 @@
           <td class="cds-mono">{{.Duplicates}}</td>
           <td class="cds-mono">{{.Pending}}</td>
           <td class="cds-mono">{{.Runtime}}</td>
+          {{if $root.Controllable}}
+          <td>
+            {{if eq .State "running"}}
+            <form method="post" action="/admin/crawl/control" hx-boost="false" class="cds-inline-form">
+              <input type="hidden" name="csrf_token" value="{{$root.CSRF}}">
+              <input type="hidden" name="runId" value="{{.RunID}}">
+              <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="pause">Pause</button>
+              <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="resume">Resume</button>
+            </form>
+            {{else}}<span class="cds-muted">—</span>{{end}}
+          </td>
+          {{end}}
         </tr>
         {{else}}
-        <tr><td colspan="9">No crawl runs observed yet.</td></tr>
+        <tr><td colspan="{{if .Controllable}}10{{else}}9{{end}}">No crawl runs observed yet.</td></tr>
         {{end}}
       </tbody>
     </table>

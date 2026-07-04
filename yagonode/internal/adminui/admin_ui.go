@@ -35,6 +35,7 @@ const (
 	searchPath          = "/admin/search"
 	crawlPath           = "/admin/crawl"
 	crawlMonitorPath    = "/admin/crawl/monitor"
+	crawlControlPath    = "/admin/crawl/control"
 	configPath          = "/admin/configuration"
 	indexPath           = "/admin/index"
 	networkPath         = "/admin/network"
@@ -79,6 +80,7 @@ type Options struct {
 	Search      SearchSource
 	Crawl       CrawlSource
 	Monitor     CrawlMonitorSource
+	Control     CrawlControlSource
 	Index       IndexSource
 	Network     NetworkSource
 	Config      ConfigSource
@@ -139,9 +141,17 @@ type crawlPageData struct {
 	CSRF       string
 	Section    sectionView
 	Form       crawlForm
-	Monitor    *CrawlMonitor
+	Monitor    *crawlMonitorView
 	Result     *CrawlDispatch
 	Error      string
+}
+
+// crawlMonitorView wraps the crawl monitor snapshot with the per-request data the
+// control buttons need: the CSRF token and whether control actions are wired.
+type crawlMonitorView struct {
+	Monitor      CrawlMonitor
+	CSRF         string
+	Controllable bool
 }
 
 type configPageData struct {
@@ -221,6 +231,7 @@ type Console struct {
 	search      SearchSource
 	crawl       CrawlSource
 	monitor     CrawlMonitorSource
+	control     CrawlControlSource
 	index       IndexSource
 	network     NetworkSource
 	config      ConfigSource
@@ -247,6 +258,7 @@ func New(opts Options) *Console {
 		search:      opts.Search,
 		crawl:       opts.Crawl,
 		monitor:     opts.Monitor,
+		control:     opts.Control,
 		index:       opts.Index,
 		network:     opts.Network,
 		config:      opts.Config,
@@ -292,6 +304,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+crawlPath, c.handleCrawl)
 	c.mux.HandleFunc("POST "+crawlPath, c.handleCrawlStart)
 	c.mux.HandleFunc("GET "+crawlMonitorPath, c.handleCrawlMonitor)
+	c.mux.HandleFunc("POST "+crawlControlPath, c.handleCrawlControl)
 	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
 	c.mux.HandleFunc("GET "+networkPath, c.handleNetwork)
 	c.mux.HandleFunc("GET "+configPath, c.handleConfig)
@@ -756,20 +769,23 @@ func (c *Console) crawlPage(r *http.Request, form crawlForm) crawlPageData {
 		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Crawler", Available: true},
 		Form:    form,
-		Monitor: c.crawlMonitor(r.Context()),
+		Monitor: c.crawlMonitorView(r),
 	}
 }
 
-// crawlMonitor returns the live crawl monitor snapshot, or nil when no monitor
-// provider is wired so the Crawler section renders the start form alone.
-func (c *Console) crawlMonitor(ctx context.Context) *CrawlMonitor {
+// crawlMonitorView returns the live crawl monitor snapshot wrapped with the
+// per-request CSRF token and whether control actions are wired, or nil when no
+// monitor provider exists so the Crawler section renders the start form alone.
+func (c *Console) crawlMonitorView(r *http.Request) *crawlMonitorView {
 	if c.monitor == nil {
 		return nil
 	}
 
-	snapshot := c.monitor.Monitor(ctx)
-
-	return &snapshot
+	return &crawlMonitorView{
+		Monitor:      c.monitor.Monitor(r.Context()),
+		CSRF:         csrfToken(r),
+		Controllable: c.control != nil,
+	}
 }
 
 func (c *Console) handleCrawlMonitor(w http.ResponseWriter, r *http.Request) {
@@ -779,7 +795,26 @@ func (c *Console) handleCrawlMonitor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.render(r.Context(), w, c.tpl.crawl, "crawl-monitor", c.monitor.Monitor(r.Context()))
+	c.render(r.Context(), w, c.tpl.crawl, "crawl-monitor", c.crawlMonitorView(r))
+}
+
+func (c *Console) handleCrawlControl(w http.ResponseWriter, r *http.Request) {
+	if c.control == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+
+	req := CrawlControlRequest{
+		RunID:  strings.TrimSpace(r.PostFormValue("runId")),
+		Action: r.PostFormValue("action"),
+	}
+	if err := c.control.Control(r.Context(), req); err != nil {
+		slog.WarnContext(r.Context(), "admin crawl control failed",
+			slog.String("action", req.Action), slog.Any("error", err))
+	}
+
+	http.Redirect(w, r, crawlPath, http.StatusSeeOther)
 }
 
 func defaultCrawlForm() crawlForm {
