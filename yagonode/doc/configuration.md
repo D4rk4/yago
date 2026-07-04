@@ -61,6 +61,7 @@ offered so a bind change cannot lock you out of the admin console.
 | `YAGO_DATA_DIR` | `./data` | Where the node persists its data. New nodes use `yago-node.db`; existing `yacy-rwi.db` files are opened when no `yago-node.db` exists. The embedded full-text fallback index is `search.bleve` inside this directory. The YaCy-compatible peer profile file is `SETTINGS/profile.txt` inside this directory. Shared blacklist export reads `SETTINGS/yacy.conf` `BlackLists.Shared` and the referenced files under `LISTS/`. |
 | `YAGO_PEER_ADDR` | `:8090` | Listen address for the YaCy peer protocol. |
 | `YAGO_OPS_ADDR` | `:9090` | Listen address for `/health`, `/ready`, `/metrics`, and ops JSON endpoints. |
+| `YAGO_METRICS_ENABLED` | `true` | Serve the Prometheus `/metrics` endpoint. Set to `false` to unmount it (returns 404); the collectors still run. The endpoint is admin-authenticated regardless (it is not on the operations listener's public allowlist). See [metrics.md](metrics.md). |
 | `YAGO_PEER_HASH` | _(required)_ | The 12-character enhanced-Base64 peer hash advertised to the network. |
 | `YAGO_PEER_NAME` | _(required)_ | Peer name advertised to the network. |
 | `YAGO_NETWORK_NAME` | `freeworld` | YaCy network to join. Only peers on the same network exchange data. |
@@ -97,6 +98,7 @@ offered so a bind change cannot lock you out of the admin console.
 | `YAGO_SEARCH_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the public search endpoints on the peer listener. Empty denies all cross-origin requests; `*` allows any origin without credentials. |
 | `YAGO_WEB_FALLBACK_ENABLED` | `false` | Legacy on/off switch for the optional DDGS web-search fallback, kept for compatibility. It is the default source for `YAGO_WEB_FALLBACK_PRIVACY` when that variable is unset (`true` → `enabled`, `false` → `disabled`). Prefer setting the privacy mode directly. When active, a query that returns nothing locally and across peers is answered by an external keyless metasearch and the results are marked `[ddgs]` on the human search surfaces (never on the Tavily `POST /search` drop-in). |
 | `YAGO_WEB_FALLBACK_PRIVACY` | _(from `ENABLED`)_ | Governs whether a query may leave the node for the external provider. `disabled` never sends a query (the fallback is not even installed); `explicit` sends only for a request that opted in; `enabled` sends on any local-and-peer miss. Defaults to `disabled` unless the legacy `YAGO_WEB_FALLBACK_ENABLED` is `true`. |
+| `YAGO_WEB_FALLBACK_PROVIDER` | `ddgs` | Selects the fallback provider family. Only the keyless `ddgs` metasearch is available; `YAGO_WEB_FALLBACK_BACKEND` chooses the engine within it. |
 | `YAGO_WEB_FALLBACK_BACKEND` | `auto` | Engine selection for the fallback. `auto` excludes DuckDuckGo (which hard-blocks automated queries) and uses Mojeek then Bing; `mojeek`, `bing`, or `duckduckgo` pick a single engine. See `doc/adr/0021-in-house-metasearch-backend.md`. |
 | `YAGO_WEB_FALLBACK_MAX_RESULTS` | `10` | Maximum fallback results (1–20). |
 | `YAGO_WEB_FALLBACK_TIMEOUT` | `10s` | Per-request timeout for an outbound fallback query. |

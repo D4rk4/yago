@@ -2189,6 +2189,12 @@ Acceptance:
 
 ### OPS-04: Packaging
 
+Status: Partial. Task 4 (config reference) is complete: `doc/configuration.md` now
+documents every one of the node's environment variables and its default — an audit
+confirmed all 53 `YAGO_*` variables are covered, adding the two that were missing
+(`YAGO_METRICS_ENABLED`, `YAGO_WEB_FALLBACK_PROVIDER`). Tasks 1–3 (the `/opt/yago`
+Docker layout, `docker-compose.yml.example`, and the systemd unit) remain.
+
 Tasks:
 
 1. Update Dockerfiles for node, crawler and optional all-in-one dev setup to the
