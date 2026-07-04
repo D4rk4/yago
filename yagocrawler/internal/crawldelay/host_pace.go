@@ -32,6 +32,12 @@ func (p *HostPace) DueAt(job crawljob.CrawlJob, now time.Time) time.Time {
 	return now
 }
 
+// Visited records the host's next-eligible fetch time. A job whose profile sets a
+// CrawlDelay uses that delay; otherwise the crawler's global default applies.
 func (p *HostPace) Visited(job crawljob.CrawlJob, at time.Time) {
-	p.nextDue.Add(weburl.Host(job.URL), at.Add(p.delay))
+	delay := p.delay
+	if job.CrawlDelay > 0 {
+		delay = job.CrawlDelay
+	}
+	p.nextDue.Add(weburl.Host(job.URL), at.Add(delay))
 }

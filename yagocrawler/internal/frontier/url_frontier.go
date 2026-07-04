@@ -357,6 +357,7 @@ func (s *frontierState) accept(
 		Provenance:    candidate.provenance,
 		RunID:         runID,
 		Index:         profile.IndexAllowed(candidate.normURL),
+		CrawlDelay:    profile.Profile.CrawlDelay,
 	})
 	return true
 }

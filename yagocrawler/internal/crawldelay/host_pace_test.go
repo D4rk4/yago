@@ -39,6 +39,28 @@ func TestHostPaceVisitDelaysNextDue(t *testing.T) {
 	}
 }
 
+func TestHostPaceVisitUsesProfileDelayWhenSet(t *testing.T) {
+	pace := newPace(t, time.Second)
+	now := time.Now()
+	job := crawljob.CrawlJob{URL: "https://example.com/a", CrawlDelay: 5 * time.Second}
+	pace.Visited(job, now)
+	want := now.Add(5 * time.Second)
+	if due := pace.DueAt(jobFor("https://example.com/b"), now); !due.Equal(want) {
+		t.Errorf("profile-delay host due = %v, want %v", due, want)
+	}
+}
+
+func TestHostPaceVisitFallsBackToGlobalDelay(t *testing.T) {
+	pace := newPace(t, 2*time.Second)
+	now := time.Now()
+	// CrawlDelay zero → the global default applies.
+	pace.Visited(jobFor("https://example.com/a"), now)
+	want := now.Add(2 * time.Second)
+	if due := pace.DueAt(jobFor("https://example.com/b"), now); !due.Equal(want) {
+		t.Errorf("global-delay host due = %v, want %v", due, want)
+	}
+}
+
 func TestHostPaceIndependentHosts(t *testing.T) {
 	pace := newPace(t, time.Second)
 	now := time.Now()

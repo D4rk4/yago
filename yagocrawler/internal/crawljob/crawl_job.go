@@ -1,6 +1,8 @@
 package crawljob
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 )
 
@@ -11,6 +13,9 @@ type CrawlJob struct {
 	Provenance    []byte
 	RunID         uuid.UUID
 	Index         bool
+	// CrawlDelay is the profile's requested politeness delay for this job's host.
+	// Zero means the crawler's global default delay applies.
+	CrawlDelay time.Duration
 }
 
 type DiscoveredLinks struct {
