@@ -82,6 +82,8 @@ components:
     in: internal/searchlocal/**
   rankingprofile:
     in: internal/rankingprofile/**
+  recrawlfrontier:
+    in: internal/recrawlfrontier/**
   searchremote:
     in: internal/searchremote/**
   tavilyapi:
@@ -412,6 +414,14 @@ deps:
       - vault
       - memvault
       - boltvault
+  recrawlfrontier:
+    mayDependOn:
+      - recrawlfrontier
+      - vault
+      - memvault
+      - boltvault
+    canUse:
+      - yagomodel
   searchremote:
     mayDependOn:
       - searchremote

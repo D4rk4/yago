@@ -1515,13 +1515,28 @@ Split out of CRAWL-06. The crawler carries sitemap/robots `lastmod` onto
 `CrawlRequest.LastModified`, but no component consumes it for recrawl decisions
 yet; the crawler frontier is in-memory per run.
 
+Status: durable store landed (09a). New package `recrawlfrontier` keeps a
+node-side, vault-backed recrawl schedule: per-URL records keyed by URL hash
+(`recrawl_records`) plus an ordered due index (`recrawl_due`) whose key is a
+fixed-width, zero-padded UnixNano prefix + URL hash, so a bounded forward scan
+yields the soonest-due URLs. `Observe(url, profileHandle, interval, fetchedAt)`
+schedules `fetchedAt+interval` (a non-positive interval unschedules), replacing
+any prior schedule without orphaning its index entry. `ClaimDue(now, limit)`
+atomically returns due URLs soonest-first and pushes each forward by its interval
+so a swept URL is not re-dispatched every tick; a real recrawl re-schedules it
+precisely via the next Observe. The schedule survives node restarts (bolt-backed,
+tested). Remaining (09b, wiring): feed `Observe` from ingest completions with the
+profile's `RecrawlIfOlder` (needs a profileHandle->interval lookup recorded at
+dispatch, since the ingest envelope does not carry the interval), and drive
+`ClaimDue` from a ticker sweeper that re-publishes due URLs as fresh crawl orders.
+
 Tasks:
 
 1. Add a durable, node-side frontier that records per-URL last-fetch time and
-   next-eligible-recrawl time.
+   next-eligible-recrawl time. Done (09a: `recrawlfrontier` package).
 2. Feed sitemap `lastmod` and the profile `RecrawlIfOlder` into the recrawl
-   schedule so unchanged pages are not refetched before they are due.
-3. Survive node and crawler restarts without losing scheduled recrawls.
+   schedule so unchanged pages are not refetched before they are due. Pending (09b wiring).
+3. Survive node and crawler restarts without losing scheduled recrawls. Done (09a, bolt-backed).
 
 Acceptance:
 
