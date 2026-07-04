@@ -1492,6 +1492,14 @@ Acceptance:
 
 ### CRAWL-08: YaCy `/Crawler_p.html` compatibility subset
 
+Status: Being superseded (2026-07-04). The user authorised closing CRAWL-08
+without ever implementing the legacy `/Crawler_p.html` HTML endpoint: the native
+admin console (the UI-06 epic) covers the page's function — crawl start plus a
+live monitor, queue sizes, results/rejections, and pause/cancel/PPM controls. The
+legacy page stays Unsupported by design; this task will be closed as Superseded
+in the epic's final slice (CRAWL-CLOSE-12). Progress is tracked under UI-06
+(CRAWL-OBS-1..6, CRAWL-CTL-7..10).
+
 Tasks:
 
 1. Implement `/Crawler_p.html` parser for common GET/POST parameters from YaCy crawler API.
@@ -1670,14 +1678,22 @@ Acceptance:
 
 ### UI-06: Crawler UI
 
-Status: Partial (FTR-031). Done: the console Crawler section (`GET`/`POST
-/admin/crawl`) — a CSRF-protected crawl-start form (seeds, name, mode, scope,
-max depth) that reuses a new shared `crawldispatch.Dispatcher` (the JSON `POST
-/crawl` endpoint now uses the same seam) to validate a profile and enqueue on the
-crawl broker, confirming acceptance or showing a failure. Follow-ups: a
-simple/expert toggle, a crawl-profile editor (CRAWL-03 expert fields), and a live
-per-crawl monitor with results — the last is blocked on crawl-progress
-observability the node does not yet expose.
+Status: In progress — native-crawler-UI epic (2026-07-04). Done earlier: the
+console Crawler section (`GET`/`POST /admin/crawl`) — a CSRF-protected
+crawl-start form (seeds, name, mode, scope, max depth) that reuses a shared
+`crawldispatch.Dispatcher` (the JSON `POST /crawl` endpoint uses the same seam)
+to validate a profile and enqueue on the crawl broker. The user authorised
+building the observability and control halves of `/Crawler_p.html` natively (and
+closing CRAWL-08 as superseded) — a 12-slice epic tracked as CRAWL-OBS-1..6 and
+CRAWL-CTL-7..10. Slice CRAWL-OBS-1 done: the crawl queue depth on the Performance
+tile and the `queue_crawl_depth` metric now read the broker's outstanding order
+backlog (pending + leased) instead of the always-zero `GateState.CrawlQueueSize`.
+Remaining: a worker→node progress-report contract and a node run registry keyed
+by the order provenance token (OBS-2..3), running-crawls and results/rejections
+console views (OBS-5..6), a node→worker control plane for pause/cancel/PPM
+(CTL-7..10), and cache policy plus expert start fields (START-11). The
+crawl-profile editor (named-profile CRUD) stays a separate follow-up (management,
+not observability).
 
 Pages:
 

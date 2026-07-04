@@ -20,9 +20,10 @@ func buildOpsMux(
 	recorder *events.Recorder,
 	sources consoleAdminSources,
 ) *http.ServeMux {
+	crawlDepth := crawlQueueDepthSource{probe: crawlQueueProbe(assembled.crawl)}
 	metrics.NewQueueDepthMetrics(
 		endpoints.Registry(),
-		newQueueDepthSource(assembled.dht.gateStatus),
+		newQueueDepthSource(assembled.dht.gateStatus, crawlDepth),
 	)
 	opsMux := newOpsMux(
 		metricsHandler(endpoints, config.MetricsEnabled),
@@ -53,7 +54,7 @@ func buildOpsMux(
 		Security:    sources.security,
 		Terms:       newTermSource(assembled.postings, assembled.urlDirectory),
 		Schema:      indexSchemaGroups(),
-		Performance: newPerformanceSource(assembled.dht.gateStatus),
+		Performance: newPerformanceSource(assembled.dht.gateStatus, crawlDepth),
 	}
 	if dispatcher := crawlDispatcher(assembled.crawl); dispatcher != nil {
 		options.Crawl = newCrawlSource(dispatcher)

@@ -71,6 +71,15 @@ func (r *crawlRuntime) orderQueue() crawldispatch.CrawlOrderQueue {
 	return r.broker.Orders
 }
 
+func (r *crawlRuntime) crawlQueueDepth(ctx context.Context) (crawlbroker.QueueDepth, error) {
+	depth, err := r.broker.Orders.Depth(ctx)
+	if err != nil {
+		return crawlbroker.QueueDepth{}, fmt.Errorf("crawl runtime queue depth: %w", err)
+	}
+
+	return depth, nil
+}
+
 func (r *crawlRuntime) dispatcher() *crawldispatch.Dispatcher {
 	return crawldispatch.NewDispatcher(r.initiator, mintProvenance, r.broker.Orders)
 }
@@ -87,6 +96,21 @@ func crawlDispatcher(runtime crawlProcess) *crawldispatch.Dispatcher {
 	}
 
 	return provider.dispatcher()
+}
+
+// crawlQueueProbe returns the crawl queue depth accessor when the runtime is a
+// live crawl runtime, or nil when crawling is disabled (or the runtime is a test
+// double), so the crawl queue backlog is metered only when there is a broker to
+// count.
+func crawlQueueProbe(runtime crawlProcess) func(context.Context) (crawlbroker.QueueDepth, error) {
+	probe, ok := runtime.(interface {
+		crawlQueueDepth(context.Context) (crawlbroker.QueueDepth, error)
+	})
+	if !ok {
+		return nil
+	}
+
+	return probe.crawlQueueDepth
 }
 
 // attachCrawlMetrics wires the crawl ingest observer when the runtime supports it

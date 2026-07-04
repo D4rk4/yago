@@ -4,17 +4,23 @@ import (
 	"context"
 	"testing"
 
+	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/dhtexchange"
 )
 
-func TestQueueDepthSourceMapsGateState(t *testing.T) {
+func TestQueueDepthSourceReadsBrokerAndGate(t *testing.T) {
 	gates := dhtGateStatusSource{
 		snapshot: func(context.Context) dhtexchange.GateState {
-			return dhtexchange.GateState{CrawlQueueSize: 8, IndexQueueSize: 3}
+			return dhtexchange.GateState{IndexQueueSize: 3}
+		},
+	}
+	crawl := crawlQueueDepthSource{
+		probe: func(context.Context) (crawlbroker.QueueDepth, error) {
+			return crawlbroker.QueueDepth{Pending: 5, Leased: 3}, nil
 		},
 	}
 
-	source := newQueueDepthSource(gates)
+	source := newQueueDepthSource(gates, crawl)
 	if got := source.CrawlQueueDepth(context.Background()); got != 8 {
 		t.Fatalf("crawl depth = %d, want 8", got)
 	}

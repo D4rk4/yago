@@ -24,7 +24,7 @@
     <div class="cds-metric__value">{{if .Performance.StorageAvailable}}Available{{else}}Full{{end}}</div>
   </section>
 </div>
-<p class="cds-muted">Queue depths and storage headroom are read from the DHT gate snapshot. Backup and restore controls are a planned addition.</p>
+<p class="cds-muted">The crawl queue is the broker's outstanding order backlog, waiting or in flight. The index queue, peer count and storage headroom are read from the DHT gate snapshot. Backup and restore controls are a planned addition.</p>
 {{else}}
 <div class="cds-empty" role="status" aria-live="polite">Performance metrics are not available.</div>
 {{end}}
