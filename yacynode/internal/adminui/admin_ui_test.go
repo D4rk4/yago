@@ -19,6 +19,10 @@ func (f fakeSearch) Search(context.Context, SearchQuery) (SearchResults, error) 
 	return f.results, f.err
 }
 
+type fakeIndex struct{ snap IndexStats }
+
+func (f fakeIndex) Index(context.Context) IndexStats { return f.snap }
+
 func sampleResults() SearchResults {
 	return SearchResults{
 		Query:        "go",
@@ -291,6 +295,33 @@ func TestConsoleSearchErrorIsGeneric(t *testing.T) {
 	}
 	if strings.Contains(got.body, "backend detail") {
 		t.Fatal("must not leak internal error detail")
+	}
+}
+
+func TestConsoleIndexRendersStats(t *testing.T) {
+	t.Parallel()
+
+	source := fakeIndex{snap: IndexStats{Available: true, Documents: 99, Backend: "bleve"}}
+	got := do(t, New(Options{Index: source}), "/admin/index")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	for _, want := range []string{">99<", "bleve", "Indexed documents"} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("index section missing %q", want)
+		}
+	}
+}
+
+func TestConsoleIndexUnavailableWithoutSource(t *testing.T) {
+	t.Parallel()
+
+	got := do(t, New(Options{}), "/admin/index")
+	if !strings.Contains(got.body, "cds-empty") {
+		t.Fatal("expected unavailable state without an index source")
+	}
+	if !strings.Contains(got.body, indexUnavailable) {
+		t.Fatal("expected unavailable message")
 	}
 }
 

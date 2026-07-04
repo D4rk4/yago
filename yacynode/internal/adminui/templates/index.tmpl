@@ -1,0 +1,22 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Index</nav>
+<h1 class="cds-h1">Index</h1>
+{{if .Index.Available}}
+<div class="cds-tile-grid">
+  <section class="cds-tile">
+    <div class="cds-metric__label">Indexed documents</div>
+    <div class="cds-metric__value">{{.Index.Documents}}</div>
+  </section>
+</div>
+<div class="cds-tile">
+  <table class="cds-table">
+    <tbody>
+      <tr><th scope="row">Backend</th><td>{{if .Index.Backend}}{{.Index.Backend}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Last updated</th><td>{{if .Index.UpdatedAt}}{{.Index.UpdatedAt}}{{else}}—{{end}}</td></tr>
+    </tbody>
+  </table>
+</div>
+{{else}}
+<div class="cds-empty" role="status" aria-live="polite">The search index is not available.</div>
+{{end}}
+{{end}}

@@ -20,6 +20,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/peerroster"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
 	"github.com/D4rk4/yago/yacynode/internal/searchcore"
+	"github.com/D4rk4/yago/yacynode/internal/searchindex"
 	"github.com/D4rk4/yago/yacynode/internal/tavilyapi"
 	"github.com/D4rk4/yago/yacynode/internal/transfertally"
 	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
@@ -33,6 +34,7 @@ type node struct {
 	searchExplain http.Handler
 	report        nodestatus.Report
 	searcher      searchcore.Searcher
+	index         searchindex.SearchIndex
 	sweeper       eviction.Sweeper
 	announcer     peerannouncement.Announcer
 	crawl         crawlProcess
@@ -216,6 +218,7 @@ func newAssembledNode(parts nodeParts) node {
 		searchExplain: newSearchExplainEndpoint(parts.storage.searchIndex),
 		report:        parts.report,
 		searcher:      parts.searcher,
+		index:         parts.storage.searchIndex,
 		sweeper:       newStorageSweeper(parts.vault, parts.storage),
 		announcer:     parts.announcer,
 		crawl:         parts.crawl,

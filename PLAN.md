@@ -1709,6 +1709,12 @@ Acceptance:
 
 ### UI-08: Index UI
 
+Status: Partial (FTR-026). The Index section renders search-index statistics
+(indexed document count, backend, last-updated) read directly from the node's
+`SearchIndex` via a decoupled `adminui.IndexSource`, degrading to a controlled
+unavailable state. Document/term browsing, blacklist management, and the schema
+view remain follow-ups.
+
 Pages:
 
 1. Index stats:

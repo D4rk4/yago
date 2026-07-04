@@ -14,10 +14,6 @@ func defaultSections() map[string]sectionView {
 			"Network",
 			"Peers, seed lists, DHT gates, and transfers appear here.",
 		),
-		"/admin/index": pending(
-			"Index",
-			"Index stats, document and term browsing, and blacklists appear here.",
-		),
 		"/admin/performance": pending(
 			"Performance",
 			"Queues, throughput, and operational controls appear here.",

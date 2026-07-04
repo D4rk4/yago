@@ -30,9 +30,11 @@ const (
 	overviewPath        = "/admin/overview"
 	overviewMetricsPath = "/admin/overview/metrics"
 	searchPath          = "/admin/search"
+	indexPath           = "/admin/index"
 
 	overviewUnavailable = "Node status is not available."
 	searchUnavailable   = "Search is not available."
+	indexUnavailable    = "The search index is not available."
 )
 
 // NavItem is one entry in the console side navigation.
@@ -46,7 +48,7 @@ var navItems = []NavItem{
 	{Title: "Search", Path: searchPath},
 	{Title: "Crawler", Path: "/admin/crawl"},
 	{Title: "Network", Path: "/admin/network"},
-	{Title: "Index", Path: "/admin/index"},
+	{Title: "Index", Path: indexPath},
 	{Title: "Performance", Path: "/admin/performance"},
 	{Title: "Configuration", Path: "/admin/configuration"},
 	{Title: "Security", Path: "/admin/security"},
@@ -58,6 +60,7 @@ var navItems = []NavItem{
 type Options struct {
 	Overview OverviewSource
 	Search   SearchSource
+	Index    IndexSource
 }
 
 type sectionView struct {
@@ -73,6 +76,7 @@ type pageData struct {
 	Nav        []NavItem
 	Section    sectionView
 	Overview   Overview
+	Index      IndexStats
 }
 
 type searchPageData struct {
@@ -91,6 +95,7 @@ type templates struct {
 	placeholder *template.Template
 	overview    *template.Template
 	search      *template.Template
+	index       *template.Template
 }
 
 // Console is the server-rendered admin console handler.
@@ -100,6 +105,7 @@ type Console struct {
 	sections map[string]sectionView
 	overview OverviewSource
 	search   SearchSource
+	index    IndexSource
 }
 
 // New builds the console with its embedded templates, assets, and providers.
@@ -115,6 +121,7 @@ func New(opts Options) *Console {
 		sections: defaultSections(),
 		overview: opts.Overview,
 		search:   opts.Search,
+		index:    opts.Index,
 	}
 	console.registerRoutes(assets)
 
@@ -131,15 +138,17 @@ func buildTemplates() templates {
 		placeholder: clone(nil, "templates/placeholder.tmpl"),
 		overview:    clone(overviewFuncs, "templates/overview.tmpl", "templates/metrics.tmpl"),
 		search:      clone(nil, "templates/search.tmpl"),
+		index:       clone(nil, "templates/index.tmpl"),
 	}
 }
 
 func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.Handle("GET /admin/assets/", assetHandler(assets))
-	c.mux.HandleFunc("GET /admin/{$}", handleIndex)
+	c.mux.HandleFunc("GET /admin/{$}", handleRoot)
 	c.mux.HandleFunc("GET "+overviewPath, c.handleOverview)
 	c.mux.HandleFunc("GET "+overviewMetricsPath, c.handleOverviewMetrics)
 	c.mux.HandleFunc("GET "+searchPath, c.handleSearch)
+	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
 
 	for _, item := range navItems {
 		if dynamicSection(item.Path) {
@@ -150,7 +159,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 }
 
 func dynamicSection(path string) bool {
-	return path == overviewPath || path == searchPath
+	return path == overviewPath || path == searchPath || path == indexPath
 }
 
 // ServeHTTP dispatches to the console's internal router.
@@ -195,6 +204,20 @@ func (c *Console) handleOverviewMetrics(w http.ResponseWriter, r *http.Request) 
 	}
 
 	c.render(r.Context(), w, c.tpl.overview, "overview-metrics", c.overview.Overview(r.Context()))
+}
+
+func (c *Console) handleIndex(w http.ResponseWriter, r *http.Request) {
+	if c.index == nil {
+		c.renderUnavailable(w, r, indexPath, "Index", indexUnavailable)
+
+		return
+	}
+
+	c.render(r.Context(), w, c.tpl.index, "layout", pageData{
+		AppName: appName, ActivePath: indexPath, Nav: navItems,
+		Section: sectionView{Heading: "Index", Available: true},
+		Index:   c.index.Index(r.Context()),
+	})
 }
 
 func (c *Console) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -250,7 +273,7 @@ func (c *Console) render(
 	}
 }
 
-func handleIndex(w http.ResponseWriter, r *http.Request) {
+func handleRoot(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, overviewPath, http.StatusFound)
 }
 
