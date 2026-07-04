@@ -15,6 +15,7 @@ const (
 
 func buildOpsMux(
 	endpoints *metrics.HTTPEndpointMetrics,
+	config nodeConfig,
 	assembled node,
 	recorder *events.Recorder,
 ) *http.ServeMux {
@@ -36,6 +37,7 @@ func buildOpsMux(
 		Search:   newSearchSource(assembled.searcher),
 		Index:    newIndexSource(assembled.index),
 		Network:  newNetworkSource(assembled.dht.gateStatus, assembled.roster),
+		Config:   newConfigSource(config),
 		Logs:     newLogsSource(recorder),
 	}
 	if dispatcher := crawlDispatcher(assembled.crawl); dispatcher != nil {

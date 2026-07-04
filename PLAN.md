@@ -1792,6 +1792,14 @@ Acceptance:
 
 ### UI-10: Configuration UI
 
+Status: Partial (FTR-032). Done: a read-only Configuration section (`GET
+/admin/configuration`) showing the effective startup configuration grouped
+(Node, Listeners, Storage, Search, Network policy, Crawler, Administrator) with
+secrets redacted (search API key and admin password render only as
+`Configured`/`Not set`). Follow-up: the write surface — the node has no
+runtime-mutable configuration store yet, so runtime editing needs a config
+persistence subsystem before it can be wired.
+
 Pages:
 
 1. First-run use case selection:

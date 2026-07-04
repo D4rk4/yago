@@ -1,0 +1,17 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Configuration</nav>
+<h1 class="cds-h1">Configuration</h1>
+<p class="cds-muted">Effective configuration for this node. Values are read from the environment at startup and secrets are redacted. Editing configuration at runtime is not yet supported.</p>
+{{range .Config.Groups}}
+<h2 class="cds-h2">{{.Title}}</h2>
+<div class="cds-scroll-x">
+<table class="cds-table">
+  <tbody>
+  {{range .Settings}}
+  <tr><th scope="row">{{.Name}}</th><td>{{if .Value}}{{.Value}}{{else}}—{{end}}</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+{{end}}

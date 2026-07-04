@@ -106,7 +106,7 @@ func run() error {
 		return fmt.Errorf("assemble node: %w", err)
 	}
 
-	opsMux := buildOpsMux(endpoints, assembled, eventRecorder)
+	opsMux := buildOpsMux(endpoints, config, assembled, eventRecorder)
 	opsHandler := wrapAdminCORS(
 		config.CrossOrigin.AdminOrigins,
 		guardAdminSurface(authService, opsMux),

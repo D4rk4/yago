@@ -617,3 +617,36 @@ func TestConsoleCrawlStartShowsError(t *testing.T) {
 		t.Fatalf("expected failure notice, got %s", got.body)
 	}
 }
+
+type fakeConfig struct{ view ConfigView }
+
+func (f fakeConfig) Config(context.Context) ConfigView { return f.view }
+
+func TestConsoleConfigUnavailableWithoutSource(t *testing.T) {
+	t.Parallel()
+
+	got := do(t, New(Options{}), "/admin/configuration")
+	if !strings.Contains(got.body, configUnavailable) {
+		t.Fatal("expected unavailable state without a config source")
+	}
+}
+
+func TestConsoleConfigRendersGroups(t *testing.T) {
+	t.Parallel()
+
+	view := ConfigView{Groups: []ConfigGroup{
+		{Title: "Search", Settings: []ConfigSetting{
+			{Name: "Search API key", Value: "Configured"},
+			{Name: "Require API key", Value: "Yes"},
+		}},
+	}}
+	got := do(t, New(Options{Config: fakeConfig{view: view}}), "/admin/configuration")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	for _, want := range []string{"Search", "Search API key", "Configured", "Require API key"} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("config view missing %q", want)
+		}
+	}
+}

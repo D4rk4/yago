@@ -34,6 +34,7 @@ const (
 	overviewMetricsPath = "/admin/overview/metrics"
 	searchPath          = "/admin/search"
 	crawlPath           = "/admin/crawl"
+	configPath          = "/admin/configuration"
 	indexPath           = "/admin/index"
 	networkPath         = "/admin/network"
 	logsPath            = "/admin/logs"
@@ -42,6 +43,7 @@ const (
 	overviewUnavailable = "Node status is not available."
 	searchUnavailable   = "Search is not available."
 	crawlUnavailable    = "The crawler is not available on this node."
+	configUnavailable   = "Configuration is not available."
 	indexUnavailable    = "The search index is not available."
 	networkUnavailable  = "Network status is not available."
 	logsUnavailable     = "Event log is not available."
@@ -73,6 +75,7 @@ type Options struct {
 	Crawl    CrawlSource
 	Index    IndexSource
 	Network  NetworkSource
+	Config   ConfigSource
 	Logs     LogsSource
 }
 
@@ -92,6 +95,7 @@ type pageData struct {
 	Overview   Overview
 	Index      IndexStats
 	Network    NetworkStatus
+	Config     ConfigView
 	Logs       []LogEntry
 }
 
@@ -140,6 +144,7 @@ type templates struct {
 	crawl       *template.Template
 	index       *template.Template
 	network     *template.Template
+	config      *template.Template
 	logs        *template.Template
 }
 
@@ -153,6 +158,7 @@ type Console struct {
 	crawl    CrawlSource
 	index    IndexSource
 	network  NetworkSource
+	config   ConfigSource
 	logs     LogsSource
 }
 
@@ -172,6 +178,7 @@ func New(opts Options) *Console {
 		crawl:    opts.Crawl,
 		index:    opts.Index,
 		network:  opts.Network,
+		config:   opts.Config,
 		logs:     opts.Logs,
 	}
 	console.registerRoutes(assets)
@@ -192,6 +199,7 @@ func buildTemplates() templates {
 		crawl:       clone(nil, "templates/crawl.tmpl"),
 		index:       clone(nil, "templates/index.tmpl"),
 		network:     clone(nil, "templates/network.tmpl"),
+		config:      clone(nil, "templates/config.tmpl"),
 		logs:        clone(nil, "templates/logs.tmpl", "templates/logs_table.tmpl"),
 	}
 }
@@ -206,6 +214,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("POST "+crawlPath, c.handleCrawlStart)
 	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
 	c.mux.HandleFunc("GET "+networkPath, c.handleNetwork)
+	c.mux.HandleFunc("GET "+configPath, c.handleConfig)
 	c.mux.HandleFunc("GET "+logsPath, c.handleLogs)
 	c.mux.HandleFunc("GET "+logsEventsPath, c.handleLogsEvents)
 
@@ -219,7 +228,8 @@ func (c *Console) registerRoutes(assets fs.FS) {
 
 func dynamicSection(path string) bool {
 	return path == overviewPath || path == searchPath || path == crawlPath ||
-		path == indexPath || path == networkPath || path == logsPath
+		path == indexPath || path == networkPath || path == configPath ||
+		path == logsPath
 }
 
 // ServeHTTP dispatches to the console's internal router.
@@ -320,6 +330,21 @@ func (c *Console) handleNetwork(w http.ResponseWriter, r *http.Request) {
 		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Network", Available: true},
 		Network: c.network.Network(r.Context()),
+	})
+}
+
+func (c *Console) handleConfig(w http.ResponseWriter, r *http.Request) {
+	if c.config == nil {
+		c.renderUnavailable(w, r, configPath, "Configuration", configUnavailable)
+
+		return
+	}
+
+	c.render(r.Context(), w, c.tpl.config, "layout", pageData{
+		AppName: appName, ActivePath: configPath, Nav: navItems,
+		CSRF:    csrfToken(r),
+		Section: sectionView{Heading: "Configuration", Available: true},
+		Config:  c.config.Config(r.Context()),
 	})
 }
 
