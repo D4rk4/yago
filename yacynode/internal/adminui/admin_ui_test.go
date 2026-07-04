@@ -1,6 +1,7 @@
 package adminui
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -472,5 +473,35 @@ func TestHumanDuration(t *testing.T) {
 		if got := humanDuration(seconds); got != want {
 			t.Fatalf("humanDuration(%d) = %q, want %q", seconds, got, want)
 		}
+	}
+}
+
+func TestLayoutRendersSignOutWithCSRF(t *testing.T) {
+	console := New(Options{})
+	var buf bytes.Buffer
+	if err := console.tpl.placeholder.ExecuteTemplate(&buf, "layout", pageData{
+		AppName: appName, Nav: navItems, CSRF: "tok-123",
+		Section: sectionView{Heading: "Overview"},
+	}); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `action="/admin/logout"`) ||
+		!strings.Contains(out, `value="tok-123"`) {
+		t.Fatalf("sign-out form missing: %s", out)
+	}
+}
+
+func TestLayoutOmitsSignOutWithoutCSRF(t *testing.T) {
+	console := New(Options{})
+	var buf bytes.Buffer
+	if err := console.tpl.placeholder.ExecuteTemplate(&buf, "layout", pageData{
+		AppName: appName, Nav: navItems,
+		Section: sectionView{Heading: "Overview"},
+	}); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(buf.String(), "/admin/logout") {
+		t.Fatalf("sign-out form should be absent without a CSRF token")
 	}
 }

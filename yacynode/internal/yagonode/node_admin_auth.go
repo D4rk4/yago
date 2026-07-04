@@ -42,9 +42,17 @@ func provisionAdminAuth(
 // created and can sign in.
 func guardAdminSurface(service *adminauth.Service, opsMux *http.ServeMux) http.Handler {
 	adminauth.Mount(opsMux, service)
+	adminauth.MountHTML(opsMux, service)
 
 	return service.Guard(
-		[]string{pathHealth, pathReady, adminauth.PathLogin, adminauth.PathSetup},
+		[]string{
+			pathHealth,
+			pathReady,
+			adminauth.PathLogin,
+			adminauth.PathSetup,
+			adminauth.PathLoginPage,
+			adminauth.PathSetupPage,
+		},
 		map[string]adminauth.Scope{
 			crawldispatch.PathCrawlDispatch: adminauth.ScopeCrawlWrite,
 			pathSearchExplain:               adminauth.ScopeSearchRead,

@@ -10,6 +10,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/D4rk4/yago/yacynode/internal/adminauth"
 )
 
 //go:embed templates/*.tmpl
@@ -81,6 +83,7 @@ type pageData struct {
 	AppName    string
 	ActivePath string
 	Nav        []NavItem
+	CSRF       string
 	Section    sectionView
 	Overview   Overview
 	Index      IndexStats
@@ -92,12 +95,19 @@ type searchPageData struct {
 	AppName    string
 	ActivePath string
 	Nav        []NavItem
+	CSRF       string
 	Section    sectionView
 	Query      string
 	Global     bool
 	Submitted  bool
 	Error      string
 	Results    SearchResults
+}
+
+func csrfToken(r *http.Request) string {
+	token, _ := adminauth.CSRFTokenFromContext(r.Context())
+
+	return token
 }
 
 type templates struct {
@@ -198,7 +208,8 @@ func (c *Console) sectionHandler(path string) http.HandlerFunc {
 		}
 
 		c.render(r.Context(), w, c.tpl.placeholder, "layout", pageData{
-			AppName: appName, ActivePath: path, Nav: navItems, Section: view,
+			AppName: appName, ActivePath: path, Nav: navItems,
+			CSRF: csrfToken(r), Section: view,
 		})
 	}
 }
@@ -212,6 +223,7 @@ func (c *Console) handleOverview(w http.ResponseWriter, r *http.Request) {
 
 	c.render(r.Context(), w, c.tpl.overview, "layout", pageData{
 		AppName: appName, ActivePath: overviewPath, Nav: navItems,
+		CSRF:     csrfToken(r),
 		Section:  sectionView{Heading: "Overview", Available: true},
 		Overview: c.overview.Overview(r.Context()),
 	})
@@ -236,6 +248,7 @@ func (c *Console) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	c.render(r.Context(), w, c.tpl.index, "layout", pageData{
 		AppName: appName, ActivePath: indexPath, Nav: navItems,
+		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Index", Available: true},
 		Index:   c.index.Index(r.Context()),
 	})
@@ -250,6 +263,7 @@ func (c *Console) handleLogs(w http.ResponseWriter, r *http.Request) {
 
 	c.render(r.Context(), w, c.tpl.logs, "layout", pageData{
 		AppName: appName, ActivePath: logsPath, Nav: navItems,
+		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Logs", Available: true},
 		Logs:    c.logs.Logs(r.Context()),
 	})
@@ -274,6 +288,7 @@ func (c *Console) handleNetwork(w http.ResponseWriter, r *http.Request) {
 
 	c.render(r.Context(), w, c.tpl.network, "layout", pageData{
 		AppName: appName, ActivePath: networkPath, Nav: navItems,
+		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Network", Available: true},
 		Network: c.network.Network(r.Context()),
 	})
@@ -289,6 +304,7 @@ func (c *Console) handleSearch(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	data := searchPageData{
 		AppName: appName, ActivePath: searchPath, Nav: navItems,
+		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Search", Available: true},
 		Query:   query, Global: r.URL.Query().Get("scope") == "global",
 	}
@@ -314,6 +330,7 @@ func (c *Console) renderUnavailable(
 ) {
 	c.render(r.Context(), w, c.tpl.placeholder, "layout", pageData{
 		AppName: appName, ActivePath: path, Nav: navItems,
+		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: heading, Message: message},
 	})
 }

@@ -8,9 +8,14 @@ import (
 )
 
 const (
-	csrfHeader   = "X-CSRF-Token"
-	bearerScheme = "Bearer "
-	authzHeader  = "Authorization"
+	csrfHeader      = "X-CSRF-Token"
+	csrfFormField   = "csrf_token"
+	formContentType = "application/x-www-form-urlencoded"
+	acceptHeader    = "Accept"
+	contentType     = "Content-Type"
+	htmlMediaType   = "text/html"
+	bearerScheme    = "Bearer "
+	authzHeader     = "Authorization"
 )
 
 type contextKey int
@@ -62,7 +67,7 @@ func (s *Service) Guard(
 func (s *Service) guardSession(w http.ResponseWriter, r *http.Request, next http.Handler) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "authentication required")
+		s.unauthenticated(w, r)
 
 		return
 	}
@@ -73,21 +78,51 @@ func (s *Service) guardSession(w http.ResponseWriter, r *http.Request, next http
 		return
 	}
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "authentication required")
+		s.unauthenticated(w, r)
 
 		return
 	}
-	if !isSafeMethod(r.Method) &&
-		subtle.ConstantTimeCompare(
-			[]byte(r.Header.Get(csrfHeader)),
-			[]byte(record.CSRFToken),
-		) != 1 {
+	if !isSafeMethod(r.Method) && !validCSRFToken(r, record.CSRFToken) {
 		writeError(w, http.StatusForbidden, "missing or invalid CSRF token")
 
 		return
 	}
 
 	next.ServeHTTP(w, r.WithContext(contextWithSession(r.Context(), record)))
+}
+
+// unauthenticated redirects a browser navigation to the login page and answers
+// programmatic requests with a 401 so API clients still get a clear status.
+func (s *Service) unauthenticated(w http.ResponseWriter, r *http.Request) {
+	if isSafeMethod(r.Method) && acceptsHTML(r) {
+		http.Redirect(w, r, PathLoginPage, http.StatusSeeOther)
+
+		return
+	}
+
+	writeError(w, http.StatusUnauthorized, "authentication required")
+}
+
+// validCSRFToken accepts the session CSRF token from the X-CSRF-Token header or,
+// for a form submission, from a csrf_token form field, so server-rendered HTML
+// forms work without JavaScript.
+func validCSRFToken(r *http.Request, want string) bool {
+	if constantTimeMatch(r.Header.Get(csrfHeader), want) {
+		return true
+	}
+	if strings.HasPrefix(r.Header.Get(contentType), formContentType) {
+		return constantTimeMatch(r.PostFormValue(csrfFormField), want)
+	}
+
+	return false
+}
+
+func constantTimeMatch(got, want string) bool {
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
+func acceptsHTML(r *http.Request) bool {
+	return strings.Contains(r.Header.Get(acceptHeader), htmlMediaType)
 }
 
 func (s *Service) guardAPIKey(

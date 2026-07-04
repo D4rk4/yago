@@ -1,0 +1,25 @@
+{{define "setup"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Set up — yago admin</title>
+{{template "authstyle"}}
+</head>
+<body>
+<div class="card">
+  <h1 class="brand">Set up <b>yago</b></h1>
+  <p class="lede">Create the administrator account for this node.</p>
+  {{if .Error}}<div class="err" role="alert">{{.Error}}</div>{{end}}
+  <form method="post" action="/admin/setup">
+    <label for="u">Username</label>
+    <input id="u" name="username" autocomplete="username" autofocus required>
+    <label for="p">Password</label>
+    <input id="p" name="password" type="password" autocomplete="new-password" required>
+    <button type="submit">Create administrator</button>
+  </form>
+  <div class="foot">yago — free software under the GNU AGPL v3.</div>
+</div>
+</body>
+</html>{{end}}

@@ -15,6 +15,12 @@
   <span class="cds-header__spacer"></span>
   <a class="cds-header__link" href="/">Public search</a>
   <a class="cds-header__link" href="/admin/security">Security</a>
+  {{if .CSRF}}
+  <form class="cds-header__signout" method="post" action="/admin/logout" hx-boost="false">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <button class="cds-header__link cds-header__button" type="submit">Sign out</button>
+  </form>
+  {{end}}
 </header>
 <div class="cds-shell">
   <nav class="cds-nav" aria-label="Sections">

@@ -1571,6 +1571,15 @@ Acceptance:
 
 ### UI-03: Auth UI
 
+Status: Partial (FTR-030). Done: server-rendered login (`/admin/login`),
+first-run setup (`/admin/setup`), and CSRF-protected sign-out (`/admin/logout`)
+in `internal/adminauth`, reusing the existing auth service; the session guard
+redirects unauthenticated browsers to the login page and now accepts the CSRF
+token from a `csrf_token` form field (not only the `X-CSRF-Token` header), with
+`adminauth.CSRFTokenFromContext` exposing the token to the console for write
+forms. Follow-ups: the in-console API-key management page and a password-change
+page (API keys stay on the JSON auth API for now).
+
 Tasks:
 
 1. Login page.

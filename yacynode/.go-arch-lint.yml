@@ -277,6 +277,7 @@ deps:
   adminui:
     mayDependOn:
       - adminui
+      - adminauth
   publicportal:
     mayDependOn:
       - publicportal
