@@ -30,6 +30,7 @@ type publicSearchAssembly struct {
 	webFallback          webFallbackConfig
 	seedQueue            crawldispatch.CrawlOrderQueue
 	toggles              *runtimeToggles
+	queryLogMode         queryLogMode
 }
 
 func mountNodePublicSearch(
@@ -54,7 +55,8 @@ func mountNodePublicSearch(
 		PartitionExponent:  assembly.dht.PartitionExponent,
 		RandomTargetIndex:  assembly.dhtSearchTargetIndex,
 	})
-	search := withWebFallback(searchcore.NewFederatedSearcher(local, remote), assembly)
+	federated := withWebFallback(searchcore.NewFederatedSearcher(local, remote), assembly)
+	search := withQueryLogging(federated, assembly.queryLogMode)
 	access := searchAccessPolicy(assembly)
 	yacysearch.Mount(mux, search)
 	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
@@ -110,7 +112,7 @@ func withWebFallback(
 	assembly publicSearchAssembly,
 ) searchcore.Searcher {
 	config := assembly.webFallback
-	if config.Provider != webFallbackProviderDDGS {
+	if config.Provider != webFallbackProviderDDGS || config.Privacy == webFallbackPrivacyDisabled {
 		return search
 	}
 	provider := websearch.NewDDGSProvider(websearch.DDGSConfig{
@@ -135,7 +137,18 @@ func withWebFallback(
 	return websearch.NewFallbackSearcher(
 		search,
 		provider,
-		func() bool { return config.Enabled },
+		webFallbackPermit(config.Privacy),
 		opts...,
 	)
+}
+
+// webFallbackPermit maps the privacy mode to the per-request decision the
+// fallback searcher applies: enabled permits every query, while explicit permits
+// only a query that opted in. Disabled is handled before installation.
+func webFallbackPermit(privacy webFallbackPrivacy) func(searchcore.Request) bool {
+	if privacy == webFallbackPrivacyEnabled {
+		return func(searchcore.Request) bool { return true }
+	}
+
+	return func(req searchcore.Request) bool { return req.AllowWebFallback }
 }

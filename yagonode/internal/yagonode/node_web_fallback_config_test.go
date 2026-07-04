@@ -67,3 +67,56 @@ func TestLoadWebFallbackConfigRejectsOutOfRangeResults(t *testing.T) {
 		t.Fatal("expected error for out-of-range max results")
 	}
 }
+
+func TestLoadWebFallbackPrivacyDefaultsToDisabled(t *testing.T) {
+	config, err := loadWebFallbackConfig(func(string) string { return "" })
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if config.Privacy != webFallbackPrivacyDisabled {
+		t.Fatalf("privacy = %q, want disabled", config.Privacy)
+	}
+}
+
+func TestLoadWebFallbackPrivacyFollowsLegacyEnabled(t *testing.T) {
+	config, err := loadWebFallbackConfig(func(key string) string {
+		if key == envWebFallbackEnabled {
+			return "true"
+		}
+
+		return ""
+	})
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if config.Privacy != webFallbackPrivacyEnabled {
+		t.Fatalf("privacy = %q, want enabled from legacy flag", config.Privacy)
+	}
+}
+
+func TestLoadWebFallbackPrivacyExplicitOverridesLegacy(t *testing.T) {
+	env := map[string]string{
+		envWebFallbackEnabled: "true",
+		envWebFallbackPrivacy: string(webFallbackPrivacyExplicit),
+	}
+	config, err := loadWebFallbackConfig(func(key string) string { return env[key] })
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if config.Privacy != webFallbackPrivacyExplicit {
+		t.Fatalf("privacy = %q, want explicit", config.Privacy)
+	}
+}
+
+func TestLoadWebFallbackPrivacyRejectsUnknownMode(t *testing.T) {
+	_, err := loadWebFallbackConfig(func(key string) string {
+		if key == envWebFallbackPrivacy {
+			return "sometimes"
+		}
+
+		return ""
+	})
+	if err == nil {
+		t.Fatal("expected error for an unknown privacy mode")
+	}
+}

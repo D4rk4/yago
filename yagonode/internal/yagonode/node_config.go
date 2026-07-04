@@ -35,6 +35,7 @@ const (
 	envSearchRequireAPIKey = "YAGO_SEARCH_REQUIRE_API" + "_KEY"
 	envPublicSearchUI      = "YAGO_PUBLIC_SEARCH_UI_ENABLED"
 	envHTTPSRedirect       = "YAGO_HTTPS_REDIRECT"
+	envQueryLogMode        = "YAGO_QUERY_LOG_MODE"
 	envPeerBirthDate       = "YAGO_PEER_BIRTH_DATE"
 
 	defaultPeerAddr         = ":8090"
@@ -74,6 +75,7 @@ type nodeConfig struct {
 	SearchRequireAPIKey   bool
 	PublicSearchUIEnabled bool
 	HTTPSRedirect         bool
+	QueryLogMode          queryLogMode
 	DeclaredBirthDate     time.Time
 	Crawl                 crawlConfig
 	Admin                 adminConfig
@@ -163,6 +165,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		SearchRequireAPIKey:   derived.requireAPIKey,
 		PublicSearchUIEnabled: derived.publicSearchUI,
 		HTTPSRedirect:         derived.httpsRedirect,
+		QueryLogMode:          derived.queryLogMode,
 		DeclaredBirthDate:     derived.birthDate,
 		DHT:                   derived.dht,
 		WebFallback:           derived.webFallback,
@@ -177,6 +180,7 @@ type derivedConfigs struct {
 	requireAPIKey  bool
 	publicSearchUI bool
 	httpsRedirect  bool
+	queryLogMode   queryLogMode
 	extractFetch   extractFetchConfig
 }
 
@@ -205,6 +209,10 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	if err != nil {
 		return derivedConfigs{}, fmt.Errorf("%s: %w", envHTTPSRedirect, err)
 	}
+	queryLog, err := parseQueryLogMode(getenv(envQueryLogMode))
+	if err != nil {
+		return derivedConfigs{}, fmt.Errorf("%s: %w", envQueryLogMode, err)
+	}
 	extractFetch, err := loadExtractFetchConfig(getenv)
 	if err != nil {
 		return derivedConfigs{}, err
@@ -217,6 +225,7 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 		requireAPIKey:  requireAPIKey,
 		publicSearchUI: publicSearchUI,
 		httpsRedirect:  httpsRedirect,
+		queryLogMode:   queryLog,
 		extractFetch:   extractFetch,
 	}, nil
 }

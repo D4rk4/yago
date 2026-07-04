@@ -15,22 +15,24 @@ const (
 )
 
 // FallbackSearcher wraps a primary searcher and, only on a true miss (the primary
-// returned zero results) and only while the runtime toggle is enabled, augments
-// the response with results from a web-search Provider stamped as SourceWeb.
+// returned zero results) and only when the privacy policy permits this request,
+// augments the response with results from a web-search Provider stamped as
+// SourceWeb. The permit closure receives the request so a per-request opt-in
+// policy can gate whether the query is allowed to leave the node.
 type FallbackSearcher struct {
 	primary  searchcore.Searcher
 	provider Provider
-	enabled  func() bool
+	permit   func(searchcore.Request) bool
 	seeder   CrawlSeeder
 }
 
 func NewFallbackSearcher(
 	primary searchcore.Searcher,
 	provider Provider,
-	enabled func() bool,
+	permit func(searchcore.Request) bool,
 	opts ...Option,
 ) *FallbackSearcher {
-	searcher := &FallbackSearcher{primary: primary, provider: provider, enabled: enabled}
+	searcher := &FallbackSearcher{primary: primary, provider: provider, permit: permit}
 	for _, opt := range opts {
 		opt(searcher)
 	}
@@ -79,7 +81,7 @@ func (s *FallbackSearcher) shouldFallback(resp searchcore.Response, req searchco
 	if len(resp.Results) > 0 || s.provider == nil {
 		return false
 	}
-	if s.enabled == nil || !s.enabled() {
+	if s.permit == nil || !s.permit(req) {
 		return false
 	}
 

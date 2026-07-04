@@ -86,7 +86,8 @@ offered so a bind change cannot lock you out of the admin console.
 | `YAGO_ADMIN_PASSWORD` | _(empty)_ | Administrator password, stored as an Argon2id hash. Leave both admin variables empty to create the first admin with `POST /api/admin/v1/auth/setup` on first run. There is no default password. |
 | `YAGO_ADMIN_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the operations surface. Empty denies all cross-origin requests. Use `*` to echo any origin (required for a credentialed admin UI on an unknown origin, but broad). |
 | `YAGO_SEARCH_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the public search endpoints on the peer listener. Empty denies all cross-origin requests; `*` allows any origin without credentials. |
-| `YAGO_WEB_FALLBACK_ENABLED` | `false` | Enable the optional DDGS web-search fallback. Off by default; while off, no query is ever sent to an external engine. When on, a query that returns nothing locally and across peers is answered by an external keyless metasearch and the results are marked `[ddgs]` on the human search surfaces (never on the Tavily `POST /search` drop-in). |
+| `YAGO_WEB_FALLBACK_ENABLED` | `false` | Legacy on/off switch for the optional DDGS web-search fallback, kept for compatibility. It is the default source for `YAGO_WEB_FALLBACK_PRIVACY` when that variable is unset (`true` → `enabled`, `false` → `disabled`). Prefer setting the privacy mode directly. When active, a query that returns nothing locally and across peers is answered by an external keyless metasearch and the results are marked `[ddgs]` on the human search surfaces (never on the Tavily `POST /search` drop-in). |
+| `YAGO_WEB_FALLBACK_PRIVACY` | _(from `ENABLED`)_ | Governs whether a query may leave the node for the external provider. `disabled` never sends a query (the fallback is not even installed); `explicit` sends only for a request that opted in; `enabled` sends on any local-and-peer miss. Defaults to `disabled` unless the legacy `YAGO_WEB_FALLBACK_ENABLED` is `true`. |
 | `YAGO_WEB_FALLBACK_BACKEND` | `auto` | Engine selection for the fallback. `auto` excludes DuckDuckGo (which hard-blocks automated queries) and uses Mojeek then Bing; `mojeek`, `bing`, or `duckduckgo` pick a single engine. See `doc/adr/0021-in-house-metasearch-backend.md`. |
 | `YAGO_WEB_FALLBACK_MAX_RESULTS` | `10` | Maximum fallback results (1–20). |
 | `YAGO_WEB_FALLBACK_TIMEOUT` | `10s` | Per-request timeout for an outbound fallback query. |
@@ -95,6 +96,38 @@ offered so a bind change cannot lock you out of the admin console.
 | `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | When on (and crawling is enabled), URLs surfaced by the fallback are published as conservative crawl orders so the next identical query can be answered locally. URLs already in the document store are skipped; the durable queue deduplicates by URL. No effect when crawling is disabled. |
 | `YAGO_WEB_FALLBACK_SEED_DEPTH` | `1` | Crawl depth for seeded orders (0–8). Kept shallow to bound amplification. |
 | `YAGO_WEB_FALLBACK_SEED_MAX_PAGES` | `20` | Per-host page cap for seeded crawl orders. |
+| `YAGO_QUERY_LOG_MODE` | `off` | How much of a search query is written to the node's logs. `off` records nothing; `aggregate` records only the query length and result count (never the text); `full` records the query text. The default keeps queries out of the logs. |
+
+## Privacy
+
+The default posture is that no search query leaves the node and no query text is
+written to the logs. Two independent controls widen that when an operator opts in.
+
+**Query logging (`YAGO_QUERY_LOG_MODE`).** A single decorator wraps the composed
+searcher, so every search surface — the human portal, the YaCy-compatible
+endpoints, and the Tavily `POST /search` drop-in — is covered by one setting.
+`off` (default) records nothing, `aggregate` records only the query length and
+the result count, and `full` records the query text. The aggregate mode never
+writes the query text, so it can be used for volume metrics without retaining
+what people searched for.
+
+**External web-search egress (`YAGO_WEB_FALLBACK_PRIVACY`).** When a query finds
+nothing locally or across peers, the node can consult an external keyless
+metasearch provider. The provider necessarily receives the query, and any pages
+it returns may be queued for this node to crawl (see `YAGO_WEB_FALLBACK_SEED_CRAWL`).
+`disabled` (default) never contacts the provider; `explicit` contacts it only for
+a request that opted in; `enabled` contacts it on any miss. The public portal
+tags such results with `[ddgs]` and its footer states that these results came
+from an external provider that received the query and that the pages may be
+crawled.
+
+**Retention.** Cached fallback responses are held for `YAGO_WEB_FALLBACK_CACHE_TTL`
+(the only outbound-search cache) and then discarded, bounding how long external
+result text lingers. Query logs are emitted to the node's structured log stream,
+so their retention is governed by the operator's log pipeline rather than the
+node. Retention windows for stored document snippets and crawl logs follow the
+storage eviction settings under **Crawling** and are not yet independently
+tunable.
 
 ## Admin authentication
 

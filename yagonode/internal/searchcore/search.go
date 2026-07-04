@@ -51,6 +51,7 @@ type Request struct {
 	Navigation       string
 	SortByDate       bool
 	Near             bool
+	AllowWebFallback bool
 }
 
 type Result struct {

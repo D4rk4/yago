@@ -188,6 +188,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		webFallback:      in.config.WebFallback,
 		seedQueue:        crawlOrderQueue(runtime),
 		toggles:          in.toggles,
+		queryLogMode:     in.config.QueryLogMode,
 	})
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
 		ctx:         in.ctx,

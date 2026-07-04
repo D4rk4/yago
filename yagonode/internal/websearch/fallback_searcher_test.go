@@ -36,8 +36,33 @@ func (p *stubProvider) Search(_ context.Context, query string, limit int) ([]Res
 	return p.results, p.err
 }
 
-func enabled() bool  { return true }
-func disabled() bool { return false }
+func enabled(searchcore.Request) bool  { return true }
+func disabled(searchcore.Request) bool { return false }
+
+func TestFallbackPermitGatesOnRequest(t *testing.T) {
+	primary := &stubSearcher{}
+	provider := &stubProvider{results: []Result{{Title: "web", URL: "https://a.example.com/x"}}}
+	permit := func(req searchcore.Request) bool { return req.AllowWebFallback }
+	searcher := NewFallbackSearcher(primary, provider, permit)
+
+	if _, err := searcher.Search(
+		context.Background(),
+		searchcore.Request{Query: "q", Limit: 10},
+	); err != nil {
+		t.Fatalf("search without opt-in: %v", err)
+	}
+	if provider.calls != 0 {
+		t.Fatal("provider ran without a per-request opt-in")
+	}
+
+	optedIn := searchcore.Request{Query: "q", Limit: 10, AllowWebFallback: true}
+	if _, err := searcher.Search(context.Background(), optedIn); err != nil {
+		t.Fatalf("search with opt-in: %v", err)
+	}
+	if provider.calls != 1 {
+		t.Fatal("provider did not run with a per-request opt-in")
+	}
+}
 
 func TestFallbackSkippedWhenPrimaryHasResults(t *testing.T) {
 	primary := &stubSearcher{

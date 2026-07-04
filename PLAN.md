@@ -1983,6 +1983,28 @@ Acceptance:
 
 ### SEC-05: Privacy modes
 
+Status: Done. Two independent, privacy-preserving-by-default controls, both
+loaded from the environment. **Query logging** (`YAGO_QUERY_LOG_MODE`, default
+`off`) is a single decorator wrapping the composed searcher, so it covers every
+surface — the portal, the YaCy-compatible endpoints, and the Tavily drop-in — at
+once: `off` records nothing, `aggregate` records only the query length and result
+count (never the text), `full` records the query text. **External web-search
+egress** (`YAGO_WEB_FALLBACK_PRIVACY`, default `disabled`) replaces the old
+enable flag's runtime gate with a three-state per-request policy on the fallback
+searcher: `disabled` never installs the fallback (no query leaves), `explicit`
+consults the provider only for a request that opted in (a new internal
+`searchcore.Request.AllowWebFallback` field), `enabled` consults it on any miss.
+The legacy `YAGO_WEB_FALLBACK_ENABLED` still seeds the default (`true`→`enabled`,
+`false`→`disabled`) so existing deployments are unchanged. The public portal
+footer explains that `[ddgs]` results came from an external provider that
+received the query and that the pages may be crawled; `doc/configuration.md`
+gains a Privacy section. Retention: the fallback cache TTL bounds outbound-result
+retention, query logs inherit the operator's log-pipeline retention, and snippet
+/ crawl-log retention follows the existing storage eviction settings (not yet
+independently tunable — a documented follow-up). Per-surface opt-in wiring for
+`explicit` (beyond the request field + tests) is a follow-up. verify green
+(coverage 97.8%), Semgrep + Trivy clean.
+
 Tasks:
 
 1. Add setting for query logging:
