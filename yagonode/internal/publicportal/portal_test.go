@@ -44,7 +44,13 @@ func TestPortalHomepageWithoutQuery(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("status %d", status)
 	}
-	for _, want := range []string{"yago", `name="q"`, "home"} {
+	for _, want := range []string{
+		"yago",
+		`name="q"`,
+		"home",
+		`rel="search" type="application/opensearchdescription+xml"`,
+		`href="/opensearch.xml"`,
+	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("homepage missing %q", want)
 		}

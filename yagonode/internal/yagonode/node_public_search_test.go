@@ -203,6 +203,45 @@ func TestNodePublicSearchUsesDHTRedundancyConfig(t *testing.T) {
 	}
 }
 
+func portalGateRequest(t *testing.T, enabled bool) (*httptest.ResponseRecorder, bool) {
+	t.Helper()
+
+	toggles := &runtimeToggles{}
+	if enabled {
+		toggles.SetPortalEnabled(true)
+	}
+	hit := false
+	gate := portalGate(toggles, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		hit = true
+	}))
+	rec := httptest.NewRecorder()
+	gate.ServeHTTP(rec, httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"/opensearch.xml",
+		nil,
+	))
+
+	return rec, hit
+}
+
+func TestPortalGateBlocksWhenDisabled(t *testing.T) {
+	rec, hit := portalGateRequest(t, false)
+	if hit {
+		t.Fatal("gate served a portal route while the portal was disabled")
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("code = %d, want 404", rec.Code)
+	}
+}
+
+func TestPortalGateServesWhenEnabled(t *testing.T) {
+	_, hit := portalGateRequest(t, true)
+	if !hit {
+		t.Fatal("gate blocked a portal route while the portal was enabled")
+	}
+}
+
 func defaultPublicSearchDHTConfig() dhtDistributionConfig {
 	return dhtDistributionConfig{
 		Redundancy:         defaultDHTRedundancy,

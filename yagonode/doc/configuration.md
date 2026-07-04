@@ -21,7 +21,16 @@ changes take effect on the next restart, which the console flags.
 
 The **public search portal** toggle overrides `YAGO_PUBLIC_SEARCH_UI_ENABLED`:
 enabling it mounts the portal at the site root, disabling it serves the static
-landing page there instead, switched live on the next request. The **HTTP→HTTPS
+landing page there instead, switched live on the next request. While the portal
+is enabled it advertises itself as a browser search engine: the portal page
+carries an OpenSearch autodiscovery link and the node serves an OpenSearch
+description document at `/opensearch.xml` (pointing at the portal root's `q`
+parameter) plus a suggestions endpoint at `/opensearch/suggest`. Both are served
+only while the portal is on, expose only public search, and — honouring the
+SEC-05 privacy stance — the suggestions endpoint keeps no query history and
+always returns an empty completion list. This is separate from the
+YaCy-compatible `/opensearchdescription.xml`, which describes the `/yacysearch.*`
+endpoints. The **HTTP→HTTPS
 redirect** toggle overrides `YAGO_HTTPS_REDIRECT` (off by default): when on, a
 plain-HTTP request is answered with a 308 to the `https://` origin, preserving
 the path and query. TLS is expected to be terminated in front (a reverse proxy

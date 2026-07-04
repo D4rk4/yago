@@ -1903,6 +1903,24 @@ Acceptance:
 
 ### UI-12: OpenSearch integration for the public search portal
 
+Status: Done. While the portal is enabled the node serves a portal-scoped
+OpenSearch description document at `/opensearch.xml` whose `text/html` URL
+template points at the portal root's `q` parameter (`{origin}/?q={searchTerms}`,
+origin derived from the request so it matches whatever host the visitor used),
+plus a `application/x-suggestions+json` suggestions endpoint at
+`/opensearch/suggest`. The portal page carries the
+`<link rel="search" type="application/opensearchdescription+xml">` autodiscovery
+tag, so a browser offers to add it. Both routes are wrapped in a `portalGate`
+that answers 404 while the portal is off, so they appear only with the portal;
+they expose only public search and no admin data. Honouring the SEC-05 privacy
+stance, the suggestions endpoint keeps no query history and always returns an
+empty completion list (echoing only the caller's own term). This is distinct from
+the existing YaCy-compatible `/opensearchdescription.xml`, which describes the
+`/yacysearch.*` surface. Tests cover the OSDD shape (namespace, templates,
+forwarded-proto scheme), the empty-suggestions privacy contract, the
+autodiscovery link, and the gate's on/off behaviour. verify green (coverage
+97.8%), Semgrep + Trivy clean.
+
 Make the public search portal (UI-11) discoverable and usable as a browser search
 engine through OpenSearch, so a visitor can add the node to their browser's search
 bar and search it directly.

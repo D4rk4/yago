@@ -20,7 +20,7 @@ func newRuntimeToggles(config nodeConfig) *runtimeToggles {
 }
 
 func (t *runtimeToggles) PortalEnabled() bool {
-	return t.portalEnabled.Load()
+	return t != nil && t.portalEnabled.Load()
 }
 
 func (t *runtimeToggles) SetPortalEnabled(enabled bool) {
@@ -28,7 +28,7 @@ func (t *runtimeToggles) SetPortalEnabled(enabled bool) {
 }
 
 func (t *runtimeToggles) HTTPSRedirectEnabled() bool {
-	return t.httpsRedirect.Load()
+	return t != nil && t.httpsRedirect.Load()
 }
 
 func (t *runtimeToggles) SetHTTPSRedirect(enabled bool) {

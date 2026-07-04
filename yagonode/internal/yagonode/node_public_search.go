@@ -65,8 +65,37 @@ func mountNodePublicSearch(
 		"/{$}",
 		newRootDispatcher(assembly.toggles, publicportal.New(newPortalSource(search))),
 	)
+	mountPortalOpenSearch(mux, assembly.toggles)
 
 	return search
+}
+
+// mountPortalOpenSearch registers the portal's OpenSearch description document
+// and suggestions endpoint, each gated so it is served only while the public
+// portal is enabled.
+func mountPortalOpenSearch(mux *http.ServeMux, toggles *runtimeToggles) {
+	opensearch := publicportal.NewOpenSearch()
+	mux.Handle(
+		opensearch.DescribePath(),
+		portalGate(toggles, http.HandlerFunc(opensearch.Describe)),
+	)
+	mux.Handle(
+		opensearch.SuggestPath(),
+		portalGate(toggles, http.HandlerFunc(opensearch.Suggest)),
+	)
+}
+
+// portalGate answers 404 unless the public portal is enabled, so portal-only
+// routes stay invisible while the portal is off.
+func portalGate(toggles *runtimeToggles, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !toggles.PortalEnabled() {
+			http.NotFound(w, r)
+
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // rootDispatcher serves the public search portal at the site root when the
