@@ -1541,19 +1541,29 @@ the storage vault; a `profileRecordingQueue` decorator wraps the durable order
 queue so every dispatched or seeded order records its profile before it is
 enqueued; and the ingest consumer gained a best-effort per-batch `FetchRecorder`
 hook (separate from the throughput-only `IngestObserver`) that calls `RecordFetch`
-with each absorbed page's URL, handle, and fetch time. The schedule now fills as
-crawls run, but is not yet drained.
+with each absorbed page's URL, handle, and fetch time.
 
-Remaining (09b-2b, drain): a ticker sweeper (mirroring the eviction sweep loop)
-that pairs `ClaimDue` with `ProfileByHandle` to re-publish due URLs as fresh crawl
-orders, wired into the node lifecycle with a sweep-interval env knob.
+09b-2b wired the drain half and closes CRAWL-09. A `recrawlSweeper` (mirroring the
+eviction sweep loop: immediate pass, then a stoppable ticker, injectable for
+tests) claims the due URLs each minute and re-dispatches each as a fresh
+single-URL crawl order under its recorded profile, published keyless onto the
+durable order queue so a recrawl is never swallowed as a duplicate of its original
+crawl. It is started from `serve` alongside the crawl runtime, so it runs only
+when crawling is enabled. The sweep interval is a `defaultRecrawlSweepInterval`
+const (mirroring the eviction loop); exposing it as an env knob is a trivial
+follow-up. End to end: a dispatched crawl records its profile, each ingested page
+is scheduled at fetched-at plus the profile's RecrawlIfOlder, the sweeper
+re-dispatches it when due (and not before), and the whole schedule survives a
+restart.
 
 Tasks:
 
 1. Add a durable, node-side frontier that records per-URL last-fetch time and
    next-eligible-recrawl time. Done (09a: `recrawlfrontier` package).
 2. Feed sitemap `lastmod` and the profile `RecrawlIfOlder` into the recrawl
-   schedule so unchanged pages are not refetched before they are due. Pending (09b wiring).
+   schedule so unchanged pages are not refetched before they are due. Done (09b:
+   the profile's `RecrawlIfOlder` drives the schedule; sitemap `lastmod` as an
+   input remains the Phase-8 change-rate enrichment below).
 3. Survive node and crawler restarts without losing scheduled recrawls. Done (09a, bolt-backed).
 
 Acceptance:

@@ -181,6 +181,13 @@ func serve(
 			defer background.Done()
 			assembled.crawl.Run(ctx)
 		}()
+		if sweeper, ok := crawlRecrawlSweeper(assembled.crawl); ok {
+			background.Add(1)
+			go func() {
+				defer background.Done()
+				runRecrawlSweepLoop(ctx, sweeper)
+			}()
+		}
 	}
 	if assembled.dht.cycle != nil {
 		background.Add(1)

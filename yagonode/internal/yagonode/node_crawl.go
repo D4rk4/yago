@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
@@ -109,6 +110,34 @@ func (r *crawlRuntime) crawlQueueDepth(ctx context.Context) (crawlbroker.QueueDe
 
 func (r *crawlRuntime) dispatcher() *crawldispatch.Dispatcher {
 	return crawldispatch.NewDispatcher(r.initiator, mintProvenance, r.dispatchQueue())
+}
+
+// recrawlSweeper builds the sweeper that drains the recrawl schedule, publishing
+// due URLs straight onto the durable order queue (keyless, so a recrawl is not
+// swallowed as a duplicate of its original crawl).
+func (r *crawlRuntime) recrawlSweeper() recrawlSweeper {
+	return recrawlSweeper{
+		frontier:  r.frontier,
+		publisher: r.broker.Orders,
+		initiator: r.initiator,
+		mint:      mintProvenance,
+		now:       time.Now,
+		batch:     defaultRecrawlSweepBatch,
+	}
+}
+
+// crawlRecrawlSweeper returns the recrawl sweeper when the runtime is a live crawl
+// runtime, or false when crawling is disabled (or the runtime is a test double),
+// so the schedule is drained only when there is a fleet to re-dispatch to.
+func crawlRecrawlSweeper(runtime crawlProcess) (recrawlSweeper, bool) {
+	provider, ok := runtime.(interface {
+		recrawlSweeper() recrawlSweeper
+	})
+	if !ok {
+		return recrawlSweeper{}, false
+	}
+
+	return provider.recrawlSweeper(), true
 }
 
 // crawlDispatcher returns a crawl dispatcher when the crawl runtime is active, or
