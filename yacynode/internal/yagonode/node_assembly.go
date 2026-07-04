@@ -30,6 +30,7 @@ type node struct {
 	readiness     http.Handler
 	indexStats    http.Handler
 	searchExplain http.Handler
+	report        nodestatus.Report
 	sweeper       eviction.Sweeper
 	announcer     peerannouncement.Announcer
 	crawl         crawlProcess
@@ -137,6 +138,7 @@ func assembleNode(
 		announcer: exchange.announcer,
 		crawl:     surfaces.crawl,
 		dht:       surfaces.dht,
+		report:    report,
 		vault:     vault,
 	}), nil
 }
@@ -197,6 +199,7 @@ type nodeParts struct {
 	announcer peerannouncement.Announcer
 	crawl     crawlProcess
 	dht       dhtOutboundProcess
+	report    nodestatus.Report
 	vault     *vault.Vault
 }
 
@@ -206,6 +209,7 @@ func newAssembledNode(parts nodeParts) node {
 		readiness:     newReadinessEndpoint(parts.storage.searchIndex),
 		indexStats:    newIndexStatsEndpoint(parts.storage.searchIndex),
 		searchExplain: newSearchExplainEndpoint(parts.storage.searchIndex),
+		report:        parts.report,
 		sweeper:       newStorageSweeper(parts.vault, parts.storage),
 		announcer:     parts.announcer,
 		crawl:         parts.crawl,

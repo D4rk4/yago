@@ -1,0 +1,50 @@
+{{define "overview-metrics"}}
+<div id="overview-metrics" hx-get="/admin/overview/metrics" hx-trigger="every 15s"
+     hx-swap="outerHTML" role="region" aria-label="Node status">
+  <div class="cds-tile-grid">
+    <section class="cds-tile">
+      <div class="cds-metric__label">Documents</div>
+      <div class="cds-metric__value">{{.Documents}}</div>
+    </section>
+    <section class="cds-tile">
+      <div class="cds-metric__label">RWI words</div>
+      <div class="cds-metric__value">{{.Words}}</div>
+    </section>
+    <section class="cds-tile">
+      <div class="cds-metric__label">Known peers</div>
+      <div class="cds-metric__value">{{.KnownPeers}}</div>
+    </section>
+    <section class="cds-tile">
+      <div class="cds-metric__label">Uptime</div>
+      <div class="cds-metric__value">{{dur .UptimeSeconds}}</div>
+    </section>
+  </div>
+  <div class="cds-tile">
+    <h2 class="cds-h2">Identity</h2>
+    <table class="cds-table">
+      <tbody>
+        <tr><th scope="row">Peer name</th><td>{{if .PeerName}}{{.PeerName}}{{else}}—{{end}}</td></tr>
+        <tr><th scope="row">Hash</th><td class="cds-mono">{{if .PeerHash}}{{.PeerHash}}{{else}}—{{end}}</td></tr>
+        <tr><th scope="row">Type</th><td>{{if .PeerType}}<span class="cds-tag">{{.PeerType}}</span>{{else}}—{{end}}</td></tr>
+        <tr><th scope="row">Version</th><td>{{if .Version}}{{.Version}}{{else}}—{{end}}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="cds-tile">
+    <h2 class="cds-h2">Index transfer totals</h2>
+    <div class="cds-scroll-x">
+      <table class="cds-table">
+        <thead><tr><th scope="col">Direction</th><th scope="col">Words</th><th scope="col">URLs</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Sent</th><td>{{.SentWords}}</td><td>{{.SentURLs}}</td></tr>
+          <tr><th scope="row">Received</th><td>{{.ReceivedWords}}</td><td>{{.ReceivedURLs}}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p>
+    <button class="cds-btn cds-btn--ghost" type="button"
+            hx-get="/admin/overview/metrics" hx-target="#overview-metrics" hx-swap="outerHTML">Refresh</button>
+  </p>
+</div>
+{{end}}

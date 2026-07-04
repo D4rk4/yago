@@ -31,6 +31,9 @@ func buildOpsMux(
 	if assembled.searchExplain != nil {
 		opsMux.Handle(pathSearchExplain, assembled.searchExplain)
 	}
+	opsMux.Handle(adminui.BasePath, adminui.New(adminui.Options{
+		Overview: newOverviewSource(assembled.report),
+	}))
 	recorder.Record(events.SeverityInfo, events.CategoryConfig, "node.started", "node started")
 
 	return opsMux
@@ -61,7 +64,6 @@ func newOpsMux(
 	if recentEvents != nil {
 		mux.Handle(pathEvents, recentEvents)
 	}
-	mux.Handle(adminui.BasePath, adminui.New())
 
 	return mux
 }

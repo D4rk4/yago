@@ -1587,6 +1587,15 @@ Acceptance:
 
 ### UI-04: Overview dashboard
 
+Status: Done (FTR-024). The Overview section renders live node status (documents,
+RWI words, known peers, uptime, peer identity, and index-transfer totals) read
+directly from the node status report via a decoupled `adminui.OverviewSource`, as
+Carbon metric tiles, with an htmx partial (`/admin/overview/metrics`) that
+auto-refreshes and a manual refresh button; it degrades to the same server-rendered
+tiles without JavaScript and to a controlled unavailable state when unwired. This
+established the console's data-provider plumbing (`adminui.Options`) reused by the
+remaining sections.
+
 Show:
 
 - Node mode.

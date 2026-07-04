@@ -15,6 +15,27 @@ type capture struct {
 	body   string
 }
 
+type fakeOverview struct{ snap Overview }
+
+func (f fakeOverview) Overview(context.Context) Overview { return f.snap }
+
+func sampleOverview() Overview {
+	return Overview{
+		PeerName:      "test-peer",
+		PeerHash:      "ABCDEFGHIJKL",
+		PeerType:      "senior",
+		Version:       "1.2.3",
+		UptimeSeconds: 90061,
+		Documents:     42,
+		Words:         100,
+		KnownPeers:    7,
+		SentWords:     5,
+		ReceivedWords: 6,
+		SentURLs:      3,
+		ReceivedURLs:  4,
+	}
+}
+
 func do(t *testing.T, console *Console, path string) capture {
 	t.Helper()
 
@@ -36,7 +57,7 @@ func do(t *testing.T, console *Console, path string) capture {
 func TestConsoleRendersEveryNavRoute(t *testing.T) {
 	t.Parallel()
 
-	console := New()
+	console := New(Options{})
 	for _, item := range navItems {
 		got := do(t, console, item.Path)
 		if got.status != http.StatusOK {
@@ -60,43 +81,77 @@ func TestConsoleRendersEveryNavRoute(t *testing.T) {
 func TestConsoleSetsSecurityHeaders(t *testing.T) {
 	t.Parallel()
 
-	got := do(t, New(), "/admin/overview")
-	if got.header.Get("Content-Security-Policy") == "" {
-		t.Fatal("missing Content-Security-Policy")
+	got := do(t, New(Options{}), "/admin/search")
+	if !strings.Contains(got.header.Get("Content-Security-Policy"), "connect-src 'self'") {
+		t.Fatal("CSP must allow same-origin htmx requests")
 	}
 	if got.header.Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatal("missing nosniff")
 	}
 }
 
-func TestConsoleOverviewIsAvailable(t *testing.T) {
+func TestConsoleOverviewUnavailableWithoutSource(t *testing.T) {
 	t.Parallel()
 
-	got := do(t, New(), "/admin/overview")
-	if !strings.Contains(got.body, "Operator console") {
-		t.Fatal("overview welcome missing")
+	console := New(Options{})
+
+	page := do(t, console, "/admin/overview")
+	if !strings.Contains(page.body, "cds-empty") {
+		t.Fatal("expected unavailable state without an overview source")
 	}
-	if !strings.Contains(got.body, "/search") {
-		t.Fatal("overview should link to public search")
+	if !strings.Contains(page.body, overviewUnavailable) {
+		t.Fatal("expected unavailable message")
+	}
+
+	metrics := do(t, console, "/admin/overview/metrics")
+	if metrics.status != http.StatusNotFound {
+		t.Fatalf("metrics without source: status %d", metrics.status)
 	}
 }
 
-func TestConsoleUnavailableSectionShowsEmptyState(t *testing.T) {
+func TestConsoleOverviewRendersLiveStatus(t *testing.T) {
 	t.Parallel()
 
-	got := do(t, New(), "/admin/network")
-	if !strings.Contains(got.body, "cds-empty") {
-		t.Fatal("expected controlled unavailable state")
+	console := New(Options{Overview: fakeOverview{snap: sampleOverview()}})
+
+	got := do(t, console, "/admin/overview")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
 	}
-	if !strings.Contains(got.body, "Peers, seed lists") {
-		t.Fatal("expected section blurb")
+	for _, want := range []string{"test-peer", "ABCDEFGHIJKL", "senior", ">42<", "1d 1h 1m", "overview-metrics"} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("overview missing %q", want)
+		}
+	}
+	if !strings.Contains(got.body, "<header") {
+		t.Fatal("full page should include the shell header")
+	}
+}
+
+func TestConsoleOverviewMetricsPartialIsFragment(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{Overview: fakeOverview{snap: sampleOverview()}})
+
+	got := do(t, console, "/admin/overview/metrics")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	if !strings.Contains(got.body, `id="overview-metrics"`) {
+		t.Fatal("fragment must be the self-refreshing region")
+	}
+	if !strings.Contains(got.body, ">42<") {
+		t.Fatal("fragment missing document count")
+	}
+	if strings.Contains(got.body, "<header") || strings.Contains(got.body, "<nav") {
+		t.Fatal("partial must not include the full shell")
 	}
 }
 
 func TestConsoleIndexRedirectsToOverview(t *testing.T) {
 	t.Parallel()
 
-	got := do(t, New(), "/admin/")
+	got := do(t, New(Options{}), "/admin/")
 	if got.status != http.StatusFound {
 		t.Fatalf("status %d", got.status)
 	}
@@ -108,7 +163,7 @@ func TestConsoleIndexRedirectsToOverview(t *testing.T) {
 func TestConsoleServesEmbeddedAssets(t *testing.T) {
 	t.Parallel()
 
-	console := New()
+	console := New(Options{})
 
 	css := do(t, console, "/admin/assets/carbon.css")
 	if css.status != http.StatusOK {
@@ -133,7 +188,7 @@ func TestConsoleServesEmbeddedAssets(t *testing.T) {
 func TestConsoleUnknownSectionIsNotFound(t *testing.T) {
 	t.Parallel()
 
-	got := do(t, New(), "/admin/does-not-exist")
+	got := do(t, New(Options{}), "/admin/does-not-exist")
 	if got.status != http.StatusNotFound {
 		t.Fatalf("status %d", got.status)
 	}
@@ -144,9 +199,26 @@ func TestSectionHandlerRejectsUnknownPath(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/ghost", nil)
-	New().sectionHandler("/admin/ghost")(rec, req)
+	New(Options{}).sectionHandler("/admin/ghost")(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status %d", rec.Code)
+	}
+}
+
+func TestHumanDuration(t *testing.T) {
+	t.Parallel()
+
+	cases := map[int]string{
+		0:     "0s",
+		59:    "0m",
+		60:    "1m",
+		3661:  "1h 1m",
+		90061: "1d 1h 1m",
+	}
+	for seconds, want := range cases {
+		if got := humanDuration(seconds); got != want {
+			t.Fatalf("humanDuration(%d) = %q, want %q", seconds, got, want)
+		}
 	}
 }

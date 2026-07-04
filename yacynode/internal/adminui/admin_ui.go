@@ -3,6 +3,7 @@
 package adminui
 
 import (
+	"context"
 	"embed"
 	"html/template"
 	"io/fs"
@@ -22,8 +23,12 @@ const BasePath = "/admin/"
 const (
 	appName     = "yago"
 	htmlType    = "text/html; charset=utf-8"
-	contentPol  = "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+	contentPol  = "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
 	assetMaxAge = "public, max-age=86400"
+
+	overviewPath        = "/admin/overview"
+	overviewMetricsPath = "/admin/overview/metrics"
+	overviewUnavailable = "Node status is not available."
 )
 
 // NavItem is one entry in the console side navigation.
@@ -33,7 +38,7 @@ type NavItem struct {
 }
 
 var navItems = []NavItem{
-	{Title: "Overview", Path: "/admin/overview"},
+	{Title: "Overview", Path: overviewPath},
 	{Title: "Search", Path: "/admin/search"},
 	{Title: "Crawler", Path: "/admin/crawl"},
 	{Title: "Network", Path: "/admin/network"},
@@ -42,6 +47,12 @@ var navItems = []NavItem{
 	{Title: "Configuration", Path: "/admin/configuration"},
 	{Title: "Security", Path: "/admin/security"},
 	{Title: "Logs", Path: "/admin/logs"},
+}
+
+// Options configures the console's data providers. A nil provider makes its
+// section render a controlled unavailable state.
+type Options struct {
+	Overview OverviewSource
 }
 
 type sectionView struct {
@@ -56,38 +67,63 @@ type pageData struct {
 	ActivePath string
 	Nav        []NavItem
 	Section    sectionView
+	Overview   Overview
 }
 
 // Console is the server-rendered admin console handler.
 type Console struct {
-	mux      *http.ServeMux
-	page     *template.Template
-	sections map[string]sectionView
+	mux         *http.ServeMux
+	placeholder *template.Template
+	overviewTpl *template.Template
+	sections    map[string]sectionView
+	overview    OverviewSource
 }
 
-// New builds the console with its embedded templates and assets.
-func New() *Console {
+// New builds the console with its embedded templates, assets, and providers.
+func New(opts Options) *Console {
 	assets, err := fs.Sub(assetFS, "assets")
 	if err != nil {
 		panic(err)
 	}
 
+	placeholder, overviewTpl := buildTemplates()
 	console := &Console{
-		page: template.Must(
-			template.ParseFS(templateFS, "templates/layout.tmpl", "templates/placeholder.tmpl"),
-		),
-		sections: defaultSections(),
+		mux:         http.NewServeMux(),
+		placeholder: placeholder,
+		overviewTpl: overviewTpl,
+		sections:    defaultSections(),
+		overview:    opts.Overview,
 	}
-
-	console.mux = http.NewServeMux()
-	console.mux.Handle("GET /admin/assets/", assetHandler(assets))
-	console.mux.HandleFunc("GET /admin/{$}", handleIndex)
-
-	for _, item := range navItems {
-		console.mux.HandleFunc("GET "+item.Path, console.sectionHandler(item.Path))
-	}
+	console.registerRoutes(assets)
 
 	return console
+}
+
+func buildTemplates() (placeholder, overview *template.Template) {
+	layout := template.Must(template.ParseFS(templateFS, "templates/layout.tmpl"))
+	placeholder = template.Must(
+		template.Must(layout.Clone()).ParseFS(templateFS, "templates/placeholder.tmpl"),
+	)
+	overview = template.Must(
+		template.Must(layout.Clone()).Funcs(overviewFuncs).
+			ParseFS(templateFS, "templates/overview.tmpl", "templates/metrics.tmpl"),
+	)
+
+	return placeholder, overview
+}
+
+func (c *Console) registerRoutes(assets fs.FS) {
+	c.mux.Handle("GET /admin/assets/", assetHandler(assets))
+	c.mux.HandleFunc("GET /admin/{$}", handleIndex)
+	c.mux.HandleFunc("GET "+overviewPath, c.handleOverview)
+	c.mux.HandleFunc("GET "+overviewMetricsPath, c.handleOverviewMetrics)
+
+	for _, item := range navItems {
+		if item.Path == overviewPath {
+			continue
+		}
+		c.mux.HandleFunc("GET "+item.Path, c.sectionHandler(item.Path))
+	}
 }
 
 // ServeHTTP dispatches to the console's internal router.
@@ -104,20 +140,62 @@ func (c *Console) sectionHandler(path string) http.HandlerFunc {
 			return
 		}
 
-		data := pageData{AppName: appName, ActivePath: path, Nav: navItems, Section: view}
-		w.Header().Set("Content-Type", htmlType)
-		w.Header().Set("Content-Security-Policy", contentPol)
-		w.Header().Set("X-Content-Type-Options", "nosniff")
+		c.render(r.Context(), w, c.placeholder, "layout", pageData{
+			AppName: appName, ActivePath: path, Nav: navItems, Section: view,
+		})
+	}
+}
 
-		if err := c.page.ExecuteTemplate(w, "layout", data); err != nil {
-			slog.WarnContext(r.Context(), "admin console render failed",
-				slog.String("path", path), slog.Any("error", err))
-		}
+func (c *Console) handleOverview(w http.ResponseWriter, r *http.Request) {
+	if c.overview == nil {
+		c.render(r.Context(), w, c.placeholder, "layout", pageData{
+			AppName: appName, ActivePath: overviewPath, Nav: navItems,
+			Section: sectionView{Heading: "Overview", Message: overviewUnavailable},
+		})
+
+		return
+	}
+
+	c.render(r.Context(), w, c.overviewTpl, "layout", pageData{
+		AppName: appName, ActivePath: overviewPath, Nav: navItems,
+		Section:  sectionView{Heading: "Overview", Available: true},
+		Overview: c.overview.Overview(r.Context()),
+	})
+}
+
+func (c *Console) handleOverviewMetrics(w http.ResponseWriter, r *http.Request) {
+	if c.overview == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+
+	c.render(r.Context(), w, c.overviewTpl, "overview-metrics", c.overview.Overview(r.Context()))
+}
+
+func (c *Console) render(
+	ctx context.Context,
+	w http.ResponseWriter,
+	tpl *template.Template,
+	name string,
+	data any,
+) {
+	writeHTMLHeaders(w)
+	if err := tpl.ExecuteTemplate(w, name, data); err != nil {
+		slog.WarnContext(ctx, "admin console render failed",
+			slog.String("template", name), slog.Any("error", err))
 	}
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/admin/overview", http.StatusFound)
+	http.Redirect(w, r, overviewPath, http.StatusFound)
+}
+
+func writeHTMLHeaders(w http.ResponseWriter) {
+	header := w.Header()
+	header.Set("Content-Type", htmlType)
+	header.Set("Content-Security-Policy", contentPol)
+	header.Set("X-Content-Type-Options", "nosniff")
 }
 
 func assetHandler(assets fs.FS) http.Handler {
