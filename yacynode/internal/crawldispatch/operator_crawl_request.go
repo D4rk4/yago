@@ -8,7 +8,9 @@ import (
 	"github.com/D4rk4/yago/yacymodel"
 )
 
-type operatorCrawlRequest struct {
+// OperatorRequest is an operator's crawl-start request: the seeds and the crawl
+// profile knobs, as accepted by both the JSON endpoint and the admin console.
+type OperatorRequest struct {
 	Name                 string   `json:"name"`
 	Seeds                []string `json:"seeds"`
 	StartMode            string   `json:"startMode"`
@@ -32,7 +34,7 @@ var crawlScopeByName = map[string]yacycrawlcontract.CrawlScope{
 	"subpath": yacycrawlcontract.ScopeSubpath,
 }
 
-func (r operatorCrawlRequest) order(
+func (r OperatorRequest) order(
 	initiator yacymodel.Hash,
 	provenance []byte,
 	now time.Time,

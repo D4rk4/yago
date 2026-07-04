@@ -1,0 +1,48 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Crawler</nav>
+<h1 class="cds-h1">Crawler</h1>
+<p class="cds-muted">Start a crawl by entering one or more seed URLs. Crawls run on the local fleet and stay subject to the node's egress policy.</p>
+{{if .Error}}
+<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>
+{{end}}
+{{with .Result}}
+<div class="cds-inline-notification cds-inline-notification--success" role="status">
+  Crawl accepted: {{.Seeds}} seed(s) queued under profile <code>{{.ProfileHandle}}</code>{{if .Duplicate}} — already queued, not enqueued again{{end}}.
+</div>
+{{end}}
+<form class="cds-form" method="post" action="/admin/crawl" hx-boost="false">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <div class="cds-field">
+    <label class="cds-label" for="seeds">Seed URLs (one per line)</label>
+    <textarea class="cds-input cds-textarea" id="seeds" name="seeds" rows="4" autocomplete="off" required>{{.Form.Seeds}}</textarea>
+  </div>
+  <div class="cds-field">
+    <label class="cds-label" for="name">Crawl name (optional)</label>
+    <input class="cds-input" type="text" id="name" name="name" value="{{.Form.Name}}" autocomplete="off">
+  </div>
+  <div class="cds-field">
+    <label class="cds-label" for="mode">Start mode</label>
+    <select class="cds-input" id="mode" name="mode">
+      {{$m := .Form.Mode}}
+      <option value="url"{{if eq $m "url"}} selected{{end}}>Single URL</option>
+      <option value="sitemap"{{if eq $m "sitemap"}} selected{{end}}>Sitemap</option>
+      <option value="sitelist"{{if eq $m "sitelist"}} selected{{end}}>Site list</option>
+      <option value="robots"{{if eq $m "robots"}} selected{{end}}>robots.txt</option>
+    </select>
+  </div>
+  <div class="cds-field">
+    <label class="cds-label" for="scope">Scope</label>
+    <select class="cds-input" id="scope" name="scope">
+      {{$s := .Form.Scope}}
+      <option value="domain"{{if eq $s "domain"}} selected{{end}}>Same domain</option>
+      <option value="subpath"{{if eq $s "subpath"}} selected{{end}}>Sub-path</option>
+      <option value="wide"{{if eq $s "wide"}} selected{{end}}>Wide (follow anywhere)</option>
+    </select>
+  </div>
+  <div class="cds-field">
+    <label class="cds-label" for="maxDepth">Maximum depth</label>
+    <input class="cds-input" type="number" id="maxDepth" name="maxDepth" min="0" max="64" value="{{.Form.MaxDepth}}">
+  </div>
+  <button class="cds-btn" type="submit">Start crawl</button>
+</form>
+{{end}}

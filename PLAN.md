@@ -1653,6 +1653,15 @@ Acceptance:
 
 ### UI-06: Crawler UI
 
+Status: Partial (FTR-031). Done: the console Crawler section (`GET`/`POST
+/admin/crawl`) — a CSRF-protected crawl-start form (seeds, name, mode, scope,
+max depth) that reuses a new shared `crawldispatch.Dispatcher` (the JSON `POST
+/crawl` endpoint now uses the same seam) to validate a profile and enqueue on the
+crawl broker, confirming acceptance or showing a failure. Follow-ups: a
+simple/expert toggle, a crawl-profile editor (CRAWL-03 expert fields), and a live
+per-crawl monitor with results — the last is blocked on crawl-progress
+observability the node does not yet expose.
+
 Pages:
 
 1. Simple crawl start:

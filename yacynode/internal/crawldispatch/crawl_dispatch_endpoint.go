@@ -2,13 +2,11 @@ package crawldispatch
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
-
-	"github.com/D4rk4/yago/yacymodel"
 )
 
 const (
@@ -23,9 +21,7 @@ const (
 )
 
 type crawlDispatchEndpoint struct {
-	initiator yacymodel.Hash
-	mint      ProvenanceMint
-	queue     CrawlOrderQueue
+	dispatcher *Dispatcher
 }
 
 type crawlDispatchAccepted struct {
@@ -38,6 +34,7 @@ func (e crawlDispatchEndpoint) ServeHTTP(w http.ResponseWriter, req *http.Reques
 	if req.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+
 		return
 	}
 
@@ -48,47 +45,51 @@ func (e crawlDispatchEndpoint) ServeHTTP(w http.ResponseWriter, req *http.Reques
 			req,
 			fmt.Errorf("idempotency key must not exceed %d characters", maxIdempotencyKeyLen),
 		)
+
 		return
 	}
 
-	var input operatorCrawlRequest
+	var input OperatorRequest
 	if err := json.NewDecoder(req.Body).Decode(&input); err != nil {
 		e.reject(w, req, err)
+
 		return
 	}
 
-	order, err := input.order(e.initiator, e.mint(), time.Now())
+	accepted, err := e.dispatcher.Dispatch(req.Context(), input, key)
 	if err != nil {
-		e.reject(w, req, err)
-		return
-	}
+		e.fail(w, req, err)
 
-	duplicate, err := e.queue.PublishOnce(req.Context(), key, order)
-	if err != nil {
-		slog.ErrorContext(req.Context(), msgCrawlOrderFailed, slog.Any("error", err))
-		http.Error(w, "crawl order publish failed", http.StatusBadGateway)
 		return
 	}
 
 	slog.InfoContext(
 		req.Context(),
 		msgCrawlOrderPublished,
-		slog.String("profileHandle", order.Profile.Handle),
-		slog.Int("seeds", len(order.Requests)),
-		slog.Bool("duplicate", duplicate),
+		slog.String("profileHandle", accepted.ProfileHandle),
+		slog.Int("seeds", accepted.Seeds),
+		slog.Bool("duplicate", accepted.Duplicate),
 	)
 
 	status := http.StatusAccepted
-	if duplicate {
+	if accepted.Duplicate {
 		status = http.StatusOK
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(crawlDispatchAccepted{
-		ProfileHandle: order.Profile.Handle,
-		Seeds:         len(order.Requests),
-		Duplicate:     duplicate,
-	})
+	_ = json.NewEncoder(w).Encode(crawlDispatchAccepted(accepted))
+}
+
+func (e crawlDispatchEndpoint) fail(w http.ResponseWriter, req *http.Request, err error) {
+	var dispatchErr *DispatchError
+	if errors.As(err, &dispatchErr) && dispatchErr.Retryable {
+		slog.ErrorContext(req.Context(), msgCrawlOrderFailed, slog.Any("error", err))
+		http.Error(w, "crawl order publish failed", http.StatusBadGateway)
+
+		return
+	}
+
+	e.reject(w, req, err)
 }
 
 func (e crawlDispatchEndpoint) reject(w http.ResponseWriter, req *http.Request, err error) {

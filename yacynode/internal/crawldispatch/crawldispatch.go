@@ -33,8 +33,6 @@ func MountCrawlDispatch(
 	queue CrawlOrderQueue,
 ) {
 	mux.Handle(PathCrawlDispatch, crawlDispatchEndpoint{
-		initiator: initiator,
-		mint:      mint,
-		queue:     queue,
+		dispatcher: NewDispatcher(initiator, mint, queue),
 	})
 }

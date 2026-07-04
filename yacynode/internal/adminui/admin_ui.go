@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/D4rk4/yago/yacynode/internal/adminauth"
@@ -32,6 +33,7 @@ const (
 	overviewPath        = "/admin/overview"
 	overviewMetricsPath = "/admin/overview/metrics"
 	searchPath          = "/admin/search"
+	crawlPath           = "/admin/crawl"
 	indexPath           = "/admin/index"
 	networkPath         = "/admin/network"
 	logsPath            = "/admin/logs"
@@ -39,6 +41,7 @@ const (
 
 	overviewUnavailable = "Node status is not available."
 	searchUnavailable   = "Search is not available."
+	crawlUnavailable    = "The crawler is not available on this node."
 	indexUnavailable    = "The search index is not available."
 	networkUnavailable  = "Network status is not available."
 	logsUnavailable     = "Event log is not available."
@@ -67,6 +70,7 @@ var navItems = []NavItem{
 type Options struct {
 	Overview OverviewSource
 	Search   SearchSource
+	Crawl    CrawlSource
 	Index    IndexSource
 	Network  NetworkSource
 	Logs     LogsSource
@@ -104,6 +108,25 @@ type searchPageData struct {
 	Results    SearchResults
 }
 
+type crawlForm struct {
+	Name     string
+	Seeds    string
+	Mode     string
+	Scope    string
+	MaxDepth int
+}
+
+type crawlPageData struct {
+	AppName    string
+	ActivePath string
+	Nav        []NavItem
+	CSRF       string
+	Section    sectionView
+	Form       crawlForm
+	Result     *CrawlDispatch
+	Error      string
+}
+
 func csrfToken(r *http.Request) string {
 	token, _ := adminauth.CSRFTokenFromContext(r.Context())
 
@@ -114,6 +137,7 @@ type templates struct {
 	placeholder *template.Template
 	overview    *template.Template
 	search      *template.Template
+	crawl       *template.Template
 	index       *template.Template
 	network     *template.Template
 	logs        *template.Template
@@ -126,6 +150,7 @@ type Console struct {
 	sections map[string]sectionView
 	overview OverviewSource
 	search   SearchSource
+	crawl    CrawlSource
 	index    IndexSource
 	network  NetworkSource
 	logs     LogsSource
@@ -144,6 +169,7 @@ func New(opts Options) *Console {
 		sections: defaultSections(),
 		overview: opts.Overview,
 		search:   opts.Search,
+		crawl:    opts.Crawl,
 		index:    opts.Index,
 		network:  opts.Network,
 		logs:     opts.Logs,
@@ -163,6 +189,7 @@ func buildTemplates() templates {
 		placeholder: clone(nil, "templates/placeholder.tmpl"),
 		overview:    clone(overviewFuncs, "templates/overview.tmpl", "templates/metrics.tmpl"),
 		search:      clone(nil, "templates/search.tmpl"),
+		crawl:       clone(nil, "templates/crawl.tmpl"),
 		index:       clone(nil, "templates/index.tmpl"),
 		network:     clone(nil, "templates/network.tmpl"),
 		logs:        clone(nil, "templates/logs.tmpl", "templates/logs_table.tmpl"),
@@ -175,6 +202,8 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+overviewPath, c.handleOverview)
 	c.mux.HandleFunc("GET "+overviewMetricsPath, c.handleOverviewMetrics)
 	c.mux.HandleFunc("GET "+searchPath, c.handleSearch)
+	c.mux.HandleFunc("GET "+crawlPath, c.handleCrawl)
+	c.mux.HandleFunc("POST "+crawlPath, c.handleCrawlStart)
 	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
 	c.mux.HandleFunc("GET "+networkPath, c.handleNetwork)
 	c.mux.HandleFunc("GET "+logsPath, c.handleLogs)
@@ -189,7 +218,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 }
 
 func dynamicSection(path string) bool {
-	return path == overviewPath || path == searchPath ||
+	return path == overviewPath || path == searchPath || path == crawlPath ||
 		path == indexPath || path == networkPath || path == logsPath
 }
 
@@ -321,6 +350,87 @@ func (c *Console) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c.render(r.Context(), w, c.tpl.search, "layout", data)
+}
+
+func (c *Console) handleCrawl(w http.ResponseWriter, r *http.Request) {
+	if c.crawl == nil {
+		c.renderUnavailable(w, r, crawlPath, "Crawler", crawlUnavailable)
+
+		return
+	}
+
+	c.render(r.Context(), w, c.tpl.crawl, "layout", c.crawlPage(r, defaultCrawlForm()))
+}
+
+func (c *Console) handleCrawlStart(w http.ResponseWriter, r *http.Request) {
+	if c.crawl == nil {
+		c.renderUnavailable(w, r, crawlPath, "Crawler", crawlUnavailable)
+
+		return
+	}
+
+	form := parseCrawlForm(r)
+	data := c.crawlPage(r, form)
+
+	seeds := splitSeeds(form.Seeds)
+	if len(seeds) == 0 {
+		data.Error = "Enter at least one seed URL."
+		c.render(r.Context(), w, c.tpl.crawl, "layout", data)
+
+		return
+	}
+
+	result, err := c.crawl.Start(r.Context(), CrawlStart{
+		Name:     form.Name,
+		Seeds:    seeds,
+		Mode:     form.Mode,
+		Scope:    form.Scope,
+		MaxDepth: form.MaxDepth,
+	})
+	if err != nil {
+		slog.WarnContext(r.Context(), "admin crawl start failed", slog.Any("error", err))
+		data.Error = "Crawl start failed. Check the seed URLs and options, then try again."
+	} else {
+		data.Result = &result
+	}
+
+	c.render(r.Context(), w, c.tpl.crawl, "layout", data)
+}
+
+func (c *Console) crawlPage(r *http.Request, form crawlForm) crawlPageData {
+	return crawlPageData{
+		AppName: appName, ActivePath: crawlPath, Nav: navItems,
+		CSRF:    csrfToken(r),
+		Section: sectionView{Heading: "Crawler", Available: true},
+		Form:    form,
+	}
+}
+
+func defaultCrawlForm() crawlForm {
+	return crawlForm{Mode: "url", Scope: "domain", MaxDepth: 3}
+}
+
+func parseCrawlForm(r *http.Request) crawlForm {
+	depth, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("maxDepth")))
+
+	return crawlForm{
+		Name:     strings.TrimSpace(r.PostFormValue("name")),
+		Seeds:    r.PostFormValue("seeds"),
+		Mode:     r.PostFormValue("mode"),
+		Scope:    r.PostFormValue("scope"),
+		MaxDepth: depth,
+	}
+}
+
+func splitSeeds(raw string) []string {
+	var seeds []string
+	for _, line := range strings.Split(raw, "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			seeds = append(seeds, trimmed)
+		}
+	}
+
+	return seeds
 }
 
 func (c *Console) renderUnavailable(

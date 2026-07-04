@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -503,5 +504,116 @@ func TestLayoutOmitsSignOutWithoutCSRF(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "/admin/logout") {
 		t.Fatalf("sign-out form should be absent without a CSRF token")
+	}
+}
+
+type fakeCrawl struct {
+	got    CrawlStart
+	result CrawlDispatch
+	err    error
+}
+
+func (f *fakeCrawl) Start(_ context.Context, start CrawlStart) (CrawlDispatch, error) {
+	f.got = start
+
+	return f.result, f.err
+}
+
+func doPost(t *testing.T, console *Console, path string, form url.Values) capture {
+	t.Helper()
+
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		path,
+		strings.NewReader(form.Encode()),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	console.ServeHTTP(rec, req)
+
+	resp := rec.Result()
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+
+	return capture{status: resp.StatusCode, header: resp.Header, body: string(body)}
+}
+
+func TestConsoleCrawlUnavailableWithoutSource(t *testing.T) {
+	t.Parallel()
+
+	got := do(t, New(Options{}), "/admin/crawl")
+	if !strings.Contains(got.body, crawlUnavailable) {
+		t.Fatal("expected unavailable state without a crawl source")
+	}
+}
+
+func TestConsoleCrawlRendersForm(t *testing.T) {
+	t.Parallel()
+
+	got := do(t, New(Options{Crawl: &fakeCrawl{}}), "/admin/crawl")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	for _, want := range []string{`name="seeds"`, `action="/admin/crawl"`, `name="csrf_token"`, `name="maxDepth"`} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("crawl form missing %q", want)
+		}
+	}
+}
+
+func TestConsoleCrawlStartDispatches(t *testing.T) {
+	t.Parallel()
+
+	crawl := &fakeCrawl{result: CrawlDispatch{ProfileHandle: "PH123", Seeds: 2}}
+	got := doPost(t, New(Options{Crawl: crawl}), "/admin/crawl", url.Values{
+		"seeds":    {"http://a.example\nhttp://b.example"},
+		"mode":     {"url"},
+		"scope":    {"domain"},
+		"maxDepth": {"3"},
+	})
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	if len(crawl.got.Seeds) != 2 {
+		t.Fatalf("seeds = %v", crawl.got.Seeds)
+	}
+	if crawl.got.MaxDepth != 3 {
+		t.Fatalf("maxDepth = %d", crawl.got.MaxDepth)
+	}
+	if !strings.Contains(got.body, "Crawl accepted") || !strings.Contains(got.body, "PH123") {
+		t.Fatalf("expected acceptance, got %s", got.body)
+	}
+}
+
+func TestConsoleCrawlStartRejectsEmptySeeds(t *testing.T) {
+	t.Parallel()
+
+	crawl := &fakeCrawl{}
+	got := doPost(t, New(Options{Crawl: crawl}), "/admin/crawl", url.Values{"seeds": {"   \n  "}})
+	if !strings.Contains(got.body, "at least one seed") {
+		t.Fatalf("expected empty-seed error, got %s", got.body)
+	}
+	if len(crawl.got.Seeds) != 0 {
+		t.Fatal("dispatcher should not be called for empty seeds")
+	}
+}
+
+func TestConsoleCrawlStartShowsError(t *testing.T) {
+	t.Parallel()
+
+	crawl := &fakeCrawl{err: errors.New("boom")}
+	got := doPost(
+		t,
+		New(Options{Crawl: crawl}),
+		"/admin/crawl",
+		url.Values{"seeds": {"http://a.example"}},
+	)
+	if !strings.Contains(got.body, "Crawl start failed") {
+		t.Fatalf("expected failure notice, got %s", got.body)
 	}
 }

@@ -31,13 +31,17 @@ func buildOpsMux(
 	if assembled.searchExplain != nil {
 		opsMux.Handle(pathSearchExplain, assembled.searchExplain)
 	}
-	opsMux.Handle(adminui.BasePath, adminui.New(adminui.Options{
+	options := adminui.Options{
 		Overview: newOverviewSource(assembled.report),
 		Search:   newSearchSource(assembled.searcher),
 		Index:    newIndexSource(assembled.index),
 		Network:  newNetworkSource(assembled.dht.gateStatus, assembled.roster),
 		Logs:     newLogsSource(recorder),
-	}))
+	}
+	if dispatcher := crawlDispatcher(assembled.crawl); dispatcher != nil {
+		options.Crawl = newCrawlSource(dispatcher)
+	}
+	opsMux.Handle(adminui.BasePath, adminui.New(options))
 	recorder.Record(events.SeverityInfo, events.CategoryConfig, "node.started", "node started")
 
 	return opsMux

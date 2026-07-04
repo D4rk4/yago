@@ -66,6 +66,24 @@ func (r *crawlRuntime) orderQueue() crawldispatch.CrawlOrderQueue {
 	return r.broker.Orders
 }
 
+func (r *crawlRuntime) dispatcher() *crawldispatch.Dispatcher {
+	return crawldispatch.NewDispatcher(r.initiator, mintProvenance, r.broker.Orders)
+}
+
+// crawlDispatcher returns a crawl dispatcher when the crawl runtime is active, or
+// nil when crawling is disabled (or the runtime is a test double), so the admin
+// console's Crawler section is wired only when there is a fleet to dispatch to.
+func crawlDispatcher(runtime crawlProcess) *crawldispatch.Dispatcher {
+	provider, ok := runtime.(interface {
+		dispatcher() *crawldispatch.Dispatcher
+	})
+	if !ok {
+		return nil
+	}
+
+	return provider.dispatcher()
+}
+
 // crawlOrderQueue returns the crawl order queue when the crawl runtime is active,
 // or nil when crawling is disabled (or the runtime is a test double), so
 // web-search crawl seeding is wired only when there is a queue to publish to.
