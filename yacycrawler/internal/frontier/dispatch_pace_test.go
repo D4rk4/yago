@@ -62,7 +62,7 @@ func openProfile(t *testing.T) crawladmission.AdmissionProfile {
 
 func TestDispatchSkipsStalledHost(t *testing.T) {
 	pace := &stallPace{stalledHost: "slow.example", until: time.Now().Add(time.Hour)}
-	f := frontier.NewFrontier(8, pace)
+	f := frontier.NewFrontier(8, pace, 0)
 	profile := openProfile(t)
 	f.SeedRun(
 		context.Background(),
@@ -80,7 +80,7 @@ func TestDispatchSkipsStalledHost(t *testing.T) {
 }
 
 func TestDispatchReleasesCooldownJobWhenDue(t *testing.T) {
-	f := frontier.NewFrontier(8, newCooldownPace(50*time.Millisecond))
+	f := frontier.NewFrontier(8, newCooldownPace(50*time.Millisecond), 0)
 	profile := openProfile(t)
 	f.SeedRun(
 		context.Background(),
@@ -101,7 +101,7 @@ func TestDispatchReleasesCooldownJobWhenDue(t *testing.T) {
 }
 
 func TestDispatchDrainsCooldownJobOnClose(t *testing.T) {
-	f := frontier.NewFrontier(8, newCooldownPace(50*time.Millisecond))
+	f := frontier.NewFrontier(8, newCooldownPace(50*time.Millisecond), 0)
 	profile := openProfile(t)
 	f.Hold()
 	f.SeedRun(

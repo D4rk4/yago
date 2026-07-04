@@ -25,6 +25,7 @@ const (
 	EnvCrawlDelay                  = "YACYCRAWLER_CRAWL_DELAY"
 	EnvUserAgent                   = "YACYCRAWLER_USER_AGENT"
 	EnvProxyURL                    = "YACYCRAWLER_PROXY_URL"
+	EnvMaxPagesPerRun              = "YACYCRAWLER_MAX_PAGES_PER_RUN"
 
 	EnvCrawledPageEnabled     = "YACYCRAWLER_CRAWLED_PAGE_ENABLED"
 	EnvNATSCrawledPageSubject = "NATS_CRAWLED_PAGE_SUBJECT"
@@ -39,9 +40,10 @@ const (
 	DefaultCrawledPageSubject      = "yacy.crawl.pages"
 	DefaultCrawledPageMaxMsgs      = 1024
 
-	DefaultMaxBodyBytes  int64 = 4 << 20
-	DefaultUserAgent           = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
-	DefaultHostCacheSize       = 4096
+	DefaultMaxBodyBytes   int64 = 4 << 20
+	DefaultUserAgent            = "yacy-rwi-node-crawler/0.1 (+https://yacy.net)"
+	DefaultHostCacheSize        = 4096
+	DefaultMaxPagesPerRun       = 50_000
 )
 
 type CrawlConfig struct {
@@ -55,6 +57,7 @@ type CrawlConfig struct {
 	Scope           yacycrawlcontract.CrawlScope
 	MaxPagesPerHost int
 	HostCacheSize   int
+	MaxPagesPerRun  int
 }
 
 func DefaultCrawlConfig() CrawlConfig {
@@ -69,6 +72,7 @@ func DefaultCrawlConfig() CrawlConfig {
 		Scope:           yacycrawlcontract.ScopeDomain,
 		MaxPagesPerHost: yacycrawlcontract.UnlimitedPagesPerHost,
 		HostCacheSize:   DefaultHostCacheSize,
+		MaxPagesPerRun:  DefaultMaxPagesPerRun,
 	}
 }
 
@@ -115,27 +119,10 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		return ServiceConfig{}, err
 	}
 
-	crawl := DefaultCrawlConfig()
-
-	workers, err := envPositiveInt(getenv, EnvWorkers, crawl.Workers)
+	crawl, err := crawlConfigFromEnv(getenv)
 	if err != nil {
 		return ServiceConfig{}, err
 	}
-	crawl.Workers = workers
-
-	depth, err := envPositiveInt(getenv, EnvMaxDepth, crawl.MaxDepth)
-	if err != nil {
-		return ServiceConfig{}, err
-	}
-	crawl.MaxDepth = depth
-
-	delay, err := envDuration(getenv, EnvCrawlDelay, crawl.CrawlDelay)
-	if err != nil {
-		return ServiceConfig{}, err
-	}
-	crawl.CrawlDelay = delay
-
-	crawl.UserAgent = envString(getenv, EnvUserAgent, crawl.UserAgent)
 
 	crawledPageIndexMaxMsgs, err := envPositiveInt64(
 		getenv,
@@ -183,6 +170,38 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 	}, nil
 }
 
+func crawlConfigFromEnv(getenv func(string) string) (CrawlConfig, error) {
+	crawl := DefaultCrawlConfig()
+
+	workers, err := envPositiveInt(getenv, EnvWorkers, crawl.Workers)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.Workers = workers
+
+	depth, err := envPositiveInt(getenv, EnvMaxDepth, crawl.MaxDepth)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.MaxDepth = depth
+
+	delay, err := envDuration(getenv, EnvCrawlDelay, crawl.CrawlDelay)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.CrawlDelay = delay
+
+	crawl.UserAgent = envString(getenv, EnvUserAgent, crawl.UserAgent)
+
+	maxPagesPerRun, err := envNonNegativeInt(getenv, EnvMaxPagesPerRun, crawl.MaxPagesPerRun)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.MaxPagesPerRun = maxPagesPerRun
+
+	return crawl, nil
+}
+
 func ordersRedeliveryFromEnv(
 	getenv func(string) string,
 ) (crawlorder.OrderRedeliveryPolicy, error) {
@@ -227,6 +246,21 @@ func envPositiveInt(getenv func(string) string, key string, fallback int) (int, 
 	}
 	if value <= 0 {
 		return 0, fmt.Errorf("%s: must be positive", key)
+	}
+	return value, nil
+}
+
+func envNonNegativeInt(getenv func(string) string, key string, fallback int) (int, error) {
+	raw := strings.TrimSpace(getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("%s: must not be negative", key)
 	}
 	return value, nil
 }

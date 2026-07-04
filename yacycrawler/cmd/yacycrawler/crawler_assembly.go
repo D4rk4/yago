@@ -56,7 +56,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	if err != nil {
 		return fmt.Errorf("create crawl pace: %w", err)
 	}
-	frontier := frontier.NewFrontier(crawl.JobQueueSize, pace)
+	frontier := frontier.NewFrontier(crawl.JobQueueSize, pace, crawl.MaxPagesPerRun)
 
 	client := newEgressProxyClient(cfg.ProxyURL, crawl.RequestTimeout)
 	admitted, err := robots.NewRobotsAdmissionFetcher(

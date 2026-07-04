@@ -58,7 +58,7 @@ func runSeeds(
 }
 
 func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
-	f := frontier.NewFrontier(8, nil)
+	f := frontier.NewFrontier(8, nil, 0)
 	profile := compiled(t, yacycrawlcontract.CrawlProfile{
 		Scope:           yacycrawlcontract.ScopeDomain,
 		URLMustMatch:    yacycrawlcontract.MatchAll,
@@ -88,7 +88,7 @@ func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
 }
 
 func TestSeedRunRejectsDuplicateRunID(t *testing.T) {
-	f := frontier.NewFrontier(8, nil)
+	f := frontier.NewFrontier(8, nil, 0)
 	profile := compiled(t, yacycrawlcontract.CrawlProfile{
 		Scope:           yacycrawlcontract.ScopeDomain,
 		URLMustMatch:    yacycrawlcontract.MatchAll,
@@ -136,7 +136,7 @@ func TestSeedRunRejectsDuplicateRunID(t *testing.T) {
 }
 
 func TestSeedRunSkipsMismatchedProfileHandle(t *testing.T) {
-	f := frontier.NewFrontier(8, nil)
+	f := frontier.NewFrontier(8, nil, 0)
 	profile := compiled(t, yacycrawlcontract.CrawlProfile{
 		Scope:           yacycrawlcontract.ScopeDomain,
 		URLMustMatch:    yacycrawlcontract.MatchAll,
@@ -159,7 +159,7 @@ func TestSeedRunSkipsMismatchedProfileHandle(t *testing.T) {
 }
 
 func TestSeedRunRejectsUnparsableSeed(t *testing.T) {
-	f := frontier.NewFrontier(8, nil)
+	f := frontier.NewFrontier(8, nil, 0)
 	profile := compiled(t, yacycrawlcontract.CrawlProfile{
 		Scope:           yacycrawlcontract.ScopeDomain,
 		URLMustMatch:    yacycrawlcontract.MatchAll,
@@ -176,7 +176,7 @@ func TestSeedRunRejectsUnparsableSeed(t *testing.T) {
 }
 
 func TestSeedRunHonoursHostCap(t *testing.T) {
-	f := frontier.NewFrontier(8, nil)
+	f := frontier.NewFrontier(8, nil, 0)
 	profile := compiled(t, yacycrawlcontract.CrawlProfile{
 		Scope:           yacycrawlcontract.ScopeDomain,
 		URLMustMatch:    yacycrawlcontract.MatchAll,
@@ -196,8 +196,29 @@ func TestSeedRunHonoursHostCap(t *testing.T) {
 	f.Done(receiveJob(t, f), false)
 }
 
+func TestSeedRunHonoursPageBudget(t *testing.T) {
+	f := frontier.NewFrontier(8, nil, 1)
+	profile := compiled(t, yacycrawlcontract.CrawlProfile{
+		Scope:           yacycrawlcontract.ScopeDomain,
+		URLMustMatch:    yacycrawlcontract.MatchAll,
+		MaxPagesPerHost: yacycrawlcontract.UnlimitedPagesPerHost,
+	})
+	queued, _ := f.SeedRun(
+		context.Background(),
+		runSeeds(profile, nil, requestsFor(profile.Profile.Handle,
+			"https://example.com/a",
+			"https://other.example/b",
+		)),
+		func(bool) {},
+	)
+	if queued != 1 {
+		t.Fatalf("queued = %d, want 1 (run budget)", queued)
+	}
+	f.Done(receiveJob(t, f), false)
+}
+
 func TestSubmitFollowsLinksWithinDepth(t *testing.T) {
-	f := frontier.NewFrontier(8, nil)
+	f := frontier.NewFrontier(8, nil, 0)
 	profile := compiled(t, yacycrawlcontract.CrawlProfile{
 		Scope:           yacycrawlcontract.ScopeDomain,
 		URLMustMatch:    yacycrawlcontract.MatchAll,
@@ -229,7 +250,7 @@ func TestSubmitFollowsLinksWithinDepth(t *testing.T) {
 }
 
 func TestSubmitForUnknownRunIsIgnored(t *testing.T) {
-	f := frontier.NewFrontier(8, nil)
+	f := frontier.NewFrontier(8, nil, 0)
 	f.Submit(
 		context.Background(),
 		crawljob.CrawlJob{URL: "https://example.com/"},

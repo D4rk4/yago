@@ -22,6 +22,7 @@ const (
 	msgAcceptProfileUnknown = "crawl job accepted for unknown profile"
 	msgSeedProfileMismatch  = "seed profile handle does not match order"
 	msgSeedRunDuplicate     = "crawl run already active for order id"
+	msgRunPageBudgetReached = "crawl run reached its page budget"
 )
 
 type Frontier struct {
@@ -35,15 +36,18 @@ type Frontier struct {
 }
 
 type frontierState struct {
-	runs       map[uuid.UUID]*crawlRun
-	completion *crawlrun.Completion
-	ready      []crawljob.CrawlJob
+	runs           map[uuid.UUID]*crawlRun
+	completion     *crawlrun.Completion
+	ready          []crawljob.CrawlJob
+	maxPagesPerRun int
 }
 
 type crawlRun struct {
-	visited   map[string]struct{}
-	hostPages map[string]int
-	profiles  map[string]crawladmission.AdmissionProfile
+	visited        map[string]struct{}
+	hostPages      map[string]int
+	profiles       map[string]crawladmission.AdmissionProfile
+	pages          int
+	budgetExceeded bool
 }
 
 type RunSeeds struct {
@@ -53,7 +57,7 @@ type RunSeeds struct {
 	Profile    crawladmission.AdmissionProfile
 }
 
-func NewFrontier(capacity int, pace CrawlPace) *Frontier {
+func NewFrontier(capacity int, pace CrawlPace, maxPagesPerRun int) *Frontier {
 	if pace == nil {
 		pace = alwaysDuePace{}
 	}
@@ -62,8 +66,9 @@ func NewFrontier(capacity int, pace CrawlPace) *Frontier {
 		signal: make(chan struct{}, 1),
 		pace:   pace,
 		state: &frontierState{
-			runs:       make(map[uuid.UUID]*crawlRun),
-			completion: crawlrun.NewCompletion(),
+			runs:           make(map[uuid.UUID]*crawlRun),
+			completion:     crawlrun.NewCompletion(),
+			maxPagesPerRun: maxPagesPerRun,
 		},
 	}
 	go frontier.run()
@@ -287,8 +292,19 @@ func (s *frontierState) accept(
 		run.hostPages[host] >= profile.Profile.MaxPagesPerHost {
 		return false
 	}
+	if s.maxPagesPerRun > 0 && run.pages >= s.maxPagesPerRun {
+		if !run.budgetExceeded {
+			run.budgetExceeded = true
+			slog.WarnContext(ctx, msgRunPageBudgetReached,
+				slog.String("runId", runID.String()),
+				slog.Int("maxPagesPerRun", s.maxPagesPerRun),
+			)
+		}
+		return false
+	}
 	run.visited[candidate.normURL] = struct{}{}
 	run.hostPages[host]++
+	run.pages++
 	s.completion.Track(runID)
 	s.ready = append(s.ready, crawljob.CrawlJob{
 		URL:           candidate.normURL,

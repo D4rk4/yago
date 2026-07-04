@@ -16,7 +16,7 @@ import (
 
 func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
 	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
-	f := frontier.NewFrontier(8, nil)
+	f := frontier.NewFrontier(8, nil, 0)
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f, crawlorder.OrderRedeliveryPolicy{
 		AckWait:     2 * time.Hour,
 		MaxAttempts: 5,
@@ -73,7 +73,7 @@ func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
 
 func TestConsumerNaksWhenRunHasDeliveryFailure(t *testing.T) {
 	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
-	f := frontier.NewFrontier(8, nil)
+	f := frontier.NewFrontier(8, nil, 0)
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f, crawlorder.OrderRedeliveryPolicy{
 		AckWait:     2 * time.Hour,
 		MaxAttempts: 5,
@@ -121,7 +121,7 @@ func TestConsumerNaksWhenRunHasDeliveryFailure(t *testing.T) {
 
 func TestConsumerTermsMalformedOrderID(t *testing.T) {
 	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
-	f := frontier.NewFrontier(8, nil)
+	f := frontier.NewFrontier(8, nil, 0)
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f, crawlorder.OrderRedeliveryPolicy{
 		AckWait:     2 * time.Hour,
 		MaxAttempts: 5,
@@ -154,7 +154,7 @@ func TestConsumerTermsMalformedOrderID(t *testing.T) {
 
 func TestConsumerNaksDuplicateOrderID(t *testing.T) {
 	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
-	f := frontier.NewFrontier(8, nil)
+	f := frontier.NewFrontier(8, nil, 0)
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f, crawlorder.OrderRedeliveryPolicy{
 		AckWait:     2 * time.Hour,
 		MaxAttempts: 5,
@@ -227,7 +227,7 @@ func TestConsumerNaksDuplicateOrderID(t *testing.T) {
 
 func TestConsumerTermsUncompilableProfile(t *testing.T) {
 	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
-	f := frontier.NewFrontier(8, nil)
+	f := frontier.NewFrontier(8, nil, 0)
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f, crawlorder.OrderRedeliveryPolicy{
 		AckWait:     2 * time.Hour,
 		MaxAttempts: 5,
