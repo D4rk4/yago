@@ -13,6 +13,7 @@ const (
 	msgIngestBatchDeferred = "ingest batch deferred"
 	msgIngestAckFailed     = "ingest batch ack failed"
 	msgIngestNakFailed     = "ingest batch nak failed"
+	msgRecrawlRecordFailed = "recrawl schedule record failed"
 )
 
 func (c *IngestConsumer) Run(ctx context.Context) {
@@ -64,6 +65,7 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 		len(batch.Metadata),
 		len(batch.Postings),
 	)
+	c.recordFetch(ctx, batch)
 	if err := delivery.Ack(ctx); err != nil {
 		slog.WarnContext(ctx, msgIngestAckFailed,
 			slog.String("sourceUrl", batch.SourceURL), slog.Any("error", err))
@@ -74,6 +76,27 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 		slog.Bool("document", hasDocument(batch.Document)),
 		slog.Int("metadata", len(batch.Metadata)),
 		slog.Int("postings", len(batch.Postings)))
+}
+
+// recordFetch feeds the recrawl schedule after a page batch is absorbed. It is
+// best-effort: a failure is logged, never propagated, so it cannot fail an ingest
+// that already stored its document, metadata, and postings. Only real page fetches
+// (a document with a source URL and a fetch time) are recorded.
+func (c *IngestConsumer) recordFetch(ctx context.Context, batch yagocrawlcontract.IngestBatch) {
+	if batch.SourceURL == "" ||
+		!hasDocument(batch.Document) ||
+		batch.Document.FetchedAt.IsZero() {
+		return
+	}
+	if err := c.recorder.RecordFetch(
+		ctx,
+		batch.SourceURL,
+		batch.ProfileHandle,
+		batch.Document.FetchedAt,
+	); err != nil {
+		slog.WarnContext(ctx, msgRecrawlRecordFailed,
+			slog.String("sourceUrl", batch.SourceURL), slog.Any("error", err))
+	}
 }
 
 func hasDocument(doc yagocrawlcontract.DocumentIngest) bool {

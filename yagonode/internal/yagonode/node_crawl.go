@@ -13,6 +13,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/crawlruns"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yagonode/internal/recrawlfrontier"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -26,6 +27,7 @@ type crawlRuntime struct {
 	broker    *crawlbroker.CrawlBroker
 	consumer  *crawlresults.IngestConsumer
 	runs      *crawlruns.Registry
+	frontier  *recrawlfrontier.Frontier
 	initiator yagomodel.Hash
 }
 
@@ -51,6 +53,11 @@ func buildCrawlRuntime(
 		return nil, fmt.Errorf("open crawl broker: %w", err)
 	}
 
+	frontier, err := recrawlfrontier.Open(storageVault)
+	if err != nil {
+		return nil, fmt.Errorf("open recrawl frontier: %w", err)
+	}
+
 	consumer := crawlresults.NewIngestConsumerWithIndex(
 		broker.Ingest,
 		storage.documentReceiver,
@@ -58,17 +65,25 @@ func buildCrawlRuntime(
 		storage.urlReceiver,
 		storage.postingReceiver,
 	)
+	consumer.RecordFetches(frontier)
 
 	return &crawlRuntime{
 		broker:    broker,
 		consumer:  consumer,
 		runs:      runs,
+		frontier:  frontier,
 		initiator: identity.Hash,
 	}, nil
 }
 
+// dispatchQueue wraps the durable order queue so every dispatched or seeded crawl
+// order records its profile in the recrawl frontier before it is enqueued.
+func (r *crawlRuntime) dispatchQueue() crawldispatch.CrawlOrderQueue {
+	return profileRecordingQueue{inner: r.broker.Orders, frontier: r.frontier}
+}
+
 func (r *crawlRuntime) mountDispatch(mux *http.ServeMux) {
-	crawldispatch.MountCrawlDispatch(mux, r.initiator, mintProvenance, r.broker.Orders)
+	crawldispatch.MountCrawlDispatch(mux, r.initiator, mintProvenance, r.dispatchQueue())
 }
 
 func (r *crawlRuntime) observe(observer crawlresults.IngestObserver) {
@@ -76,7 +91,7 @@ func (r *crawlRuntime) observe(observer crawlresults.IngestObserver) {
 }
 
 func (r *crawlRuntime) orderQueue() crawldispatch.CrawlOrderQueue {
-	return r.broker.Orders
+	return r.dispatchQueue()
 }
 
 func (r *crawlRuntime) runRegistry() *crawlruns.Registry {
@@ -93,7 +108,7 @@ func (r *crawlRuntime) crawlQueueDepth(ctx context.Context) (crawlbroker.QueueDe
 }
 
 func (r *crawlRuntime) dispatcher() *crawldispatch.Dispatcher {
-	return crawldispatch.NewDispatcher(r.initiator, mintProvenance, r.broker.Orders)
+	return crawldispatch.NewDispatcher(r.initiator, mintProvenance, r.dispatchQueue())
 }
 
 // crawlDispatcher returns a crawl dispatcher when the crawl runtime is active, or

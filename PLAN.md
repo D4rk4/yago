@@ -1536,12 +1536,17 @@ interval from that registry and schedules `fetchedAt+RecrawlIfOlder` (an unknown
 handle or a never-recrawl profile is a no-op); `ProfileByHandle` lets the sweeper
 turn a due URL back into a faithful order. All package-local and bolt-persisted.
 
-Remaining (09b-2, wiring): call `RecordProfile` at dispatch, add a per-batch
-ingest hook that calls `RecordFetch` (the metrics `IngestObserver` seam is
-throughput-only and drops the URL/handle/fetched-at fields), and drive a ticker
-sweeper (mirroring the eviction sweep loop) that pairs `ClaimDue` with
-`ProfileByHandle` to re-publish due URLs as fresh crawl orders, wired into the
-node assembly and lifecycle with a sweep-interval env knob.
+09b-2a wired the populate half. `buildCrawlRuntime` now opens the frontier from
+the storage vault; a `profileRecordingQueue` decorator wraps the durable order
+queue so every dispatched or seeded order records its profile before it is
+enqueued; and the ingest consumer gained a best-effort per-batch `FetchRecorder`
+hook (separate from the throughput-only `IngestObserver`) that calls `RecordFetch`
+with each absorbed page's URL, handle, and fetch time. The schedule now fills as
+crawls run, but is not yet drained.
+
+Remaining (09b-2b, drain): a ticker sweeper (mirroring the eviction sweep loop)
+that pairs `ClaimDue` with `ProfileByHandle` to re-publish due URLs as fresh crawl
+orders, wired into the node lifecycle with a sweep-interval env knob.
 
 Tasks:
 

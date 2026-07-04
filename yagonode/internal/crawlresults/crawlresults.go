@@ -6,6 +6,7 @@ package crawlresults
 
 import (
 	"context"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
@@ -38,6 +39,20 @@ func (noopIngestObserver) ObserveAbsorbed(int, int, int) {}
 
 func (noopIngestObserver) ObserveDeferred() {}
 
+// FetchRecorder is told, once per successfully absorbed page batch, which URL was
+// fetched under which profile and when, so a recrawl schedule can be maintained.
+// It is called only after the batch is durably absorbed, is best-effort (a failure
+// never fails the ingest), and must not block.
+type FetchRecorder interface {
+	RecordFetch(ctx context.Context, url, profileHandle string, fetchedAt time.Time) error
+}
+
+type noopFetchRecorder struct{}
+
+func (noopFetchRecorder) RecordFetch(context.Context, string, string, time.Time) error {
+	return nil
+}
+
 type IngestConsumer struct {
 	stream    IngestStream
 	documents documentstore.DocumentReceiver
@@ -45,6 +60,7 @@ type IngestConsumer struct {
 	urls      urlmeta.URLReceiver
 	postings  rwi.PostingReceiver
 	observer  IngestObserver
+	recorder  FetchRecorder
 }
 
 func NewIngestConsumer(
@@ -70,6 +86,7 @@ func NewIngestConsumerWithIndex(
 		urls:      urls,
 		postings:  postings,
 		observer:  noopIngestObserver{},
+		recorder:  noopFetchRecorder{},
 	}
 }
 
@@ -78,5 +95,14 @@ func NewIngestConsumerWithIndex(
 func (c *IngestConsumer) Observe(observer IngestObserver) {
 	if observer != nil {
 		c.observer = observer
+	}
+}
+
+// RecordFetches installs a recorder fed the URL, profile handle, and fetch time of
+// each absorbed page batch. A nil recorder is ignored so the consumer keeps its
+// silent default.
+func (c *IngestConsumer) RecordFetches(recorder FetchRecorder) {
+	if recorder != nil {
+		c.recorder = recorder
 	}
 }

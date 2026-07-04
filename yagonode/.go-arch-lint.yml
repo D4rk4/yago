@@ -573,6 +573,7 @@ deps:
       - crawlresults
       - crawlbroker
       - crawlruns
+      - recrawlfrontier
       - adminauth
       - crossorigin
       - compatibility
