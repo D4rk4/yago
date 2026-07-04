@@ -15,7 +15,8 @@ type Completion struct {
 
 type outstanding struct {
 	pending int
-	finish  func()
+	failed  bool
+	finish  func(succeeded bool)
 }
 
 func NewCompletion() *Completion {
@@ -35,7 +36,7 @@ func (c *Completion) Release() (drained bool) {
 	return false
 }
 
-func (c *Completion) Begin(runID uuid.UUID, finish func()) {
+func (c *Completion) Begin(runID uuid.UUID, finish func(succeeded bool)) {
 	run, ok := c.runs[runID]
 	if !ok {
 		run = &outstanding{finish: finish}
@@ -48,12 +49,16 @@ func (c *Completion) Track(runID uuid.UUID) {
 	c.runs[runID].pending++
 }
 
-func (c *Completion) Settle(runID uuid.UUID) (finish func(), drained bool) {
+func (c *Completion) Fail(runID uuid.UUID) {
+	c.runs[runID].failed = true
+}
+
+func (c *Completion) Settle(runID uuid.UUID) (finish func(succeeded bool), succeeded, drained bool) {
 	run := c.runs[runID]
 	run.pending--
 	if run.pending == 0 {
 		delete(c.runs, runID)
-		return run.finish, true
+		return run.finish, !run.failed, true
 	}
-	return nil, false
+	return nil, false, false
 }

@@ -60,13 +60,13 @@ func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
 		),
 		[]byte("admin"),
 		profile,
-		func() { close(finished) },
+		func(bool) { close(finished) },
 	)
 	if seeded.Queued != 2 {
 		t.Fatalf("queued = %d, want 2", seeded.Queued)
 	}
-	f.Done(receiveJob(t, f))
-	f.Done(receiveJob(t, f))
+	f.Done(receiveJob(t, f), false)
+	f.Done(receiveJob(t, f), false)
 	select {
 	case <-finished:
 	case <-time.After(2 * time.Second):
@@ -87,7 +87,7 @@ func TestSeedRunSkipsMismatchedProfileHandle(t *testing.T) {
 		requestsFor("wrong-handle", "https://example.com/"),
 		nil,
 		profile,
-		func() { close(finished) },
+		func(bool) { close(finished) },
 	)
 	if seeded.Queued != 0 {
 		t.Fatalf("queued = %d, want 0", seeded.Queued)
@@ -111,7 +111,7 @@ func TestSeedRunRejectsUnparsableSeed(t *testing.T) {
 		requestsFor(profile.Profile.Handle, "ftp://example.com/"),
 		nil,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	if seeded.Queued != 0 {
 		t.Fatalf("queued = %d, want 0", seeded.Queued)
@@ -133,12 +133,12 @@ func TestSeedRunHonoursHostCap(t *testing.T) {
 		),
 		nil,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	if seeded.Queued != 1 {
 		t.Fatalf("queued = %d, want 1 (host cap)", seeded.Queued)
 	}
-	f.Done(receiveJob(t, f))
+	f.Done(receiveJob(t, f), false)
 }
 
 func TestSubmitFollowsLinksWithinDepth(t *testing.T) {
@@ -154,7 +154,7 @@ func TestSubmitFollowsLinksWithinDepth(t *testing.T) {
 		requestsFor(profile.Profile.Handle, "https://example.com/"),
 		nil,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	if seeded.Queued != 1 {
 		t.Fatalf("queued = %d, want 1", seeded.Queued)
@@ -166,8 +166,8 @@ func TestSubmitFollowsLinksWithinDepth(t *testing.T) {
 		t.Errorf("child depth = %d, want 1", child.Depth)
 	}
 	f.Submit(context.Background(), child, []string{"https://example.com/grandchild"})
-	f.Done(child)
-	f.Done(root)
+	f.Done(child, false)
+	f.Done(root, false)
 	select {
 	case extra := <-f.Jobs():
 		t.Errorf("did not expect job past max depth: %+v", extra)

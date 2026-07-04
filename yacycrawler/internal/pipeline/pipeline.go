@@ -20,7 +20,7 @@ import (
 type Frontier interface {
 	Jobs() <-chan crawljob.CrawlJob
 	Submit(ctx context.Context, work crawljob.CrawlJob, links []string)
-	Done(work crawljob.CrawlJob)
+	Done(work crawljob.CrawlJob, deliveryFailed bool)
 }
 
 const (
@@ -96,7 +96,8 @@ func (p *Pipeline) run(ctx context.Context) {
 }
 
 func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
-	defer p.frontier.Done(job)
+	deliveryFailed := false
+	defer func() { p.frontier.Done(job, deliveryFailed) }()
 	slog.DebugContext(ctx, msgJobFetching,
 		slog.String("url", job.URL),
 		slog.Int("depth", job.Depth),
@@ -132,6 +133,7 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 		Provenance:    job.Provenance,
 		ProfileHandle: job.ProfileHandle,
 	}); err != nil {
+		deliveryFailed = true
 		return fmt.Errorf("emit: %w", err)
 	}
 	if err := p.pageEmitter.Emit(ctx, page, time.Now()); err != nil {

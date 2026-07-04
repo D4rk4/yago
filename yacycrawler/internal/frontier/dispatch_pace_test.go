@@ -72,13 +72,13 @@ func TestDispatchSkipsStalledHost(t *testing.T) {
 		),
 		nil,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	job := receiveJob(t, f)
 	if weburl.Host(job.URL) != "fast.example" {
 		t.Errorf("dispatched %q, want fast.example to skip the stalled host", job.URL)
 	}
-	f.Done(job)
+	f.Done(job, false)
 }
 
 func TestDispatchReleasesCooldownJobWhenDue(t *testing.T) {
@@ -92,16 +92,16 @@ func TestDispatchReleasesCooldownJobWhenDue(t *testing.T) {
 		),
 		nil,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	first := receiveJob(t, f)
-	f.Done(first)
+	f.Done(first, false)
 	start := time.Now()
 	second := receiveJob(t, f)
 	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {
 		t.Errorf("second job released after %v, want at least the crawl delay", elapsed)
 	}
-	f.Done(second)
+	f.Done(second, false)
 }
 
 func TestDispatchDrainsCooldownJobOnClose(t *testing.T) {
@@ -116,11 +116,11 @@ func TestDispatchDrainsCooldownJobOnClose(t *testing.T) {
 		),
 		nil,
 		profile,
-		func() {},
+		func(bool) {},
 	)
-	f.Done(receiveJob(t, f))
+	f.Done(receiveJob(t, f), false)
 	f.Release()
-	f.Done(receiveJob(t, f))
+	f.Done(receiveJob(t, f), false)
 	select {
 	case _, ok := <-f.Jobs():
 		if ok {

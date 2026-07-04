@@ -73,9 +73,9 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 		return
 	}
 	c.frontier.Hold()
-	seeded := c.frontier.SeedRun(ctx, order.Requests, order.Provenance, profile, func() {
+	seeded := c.frontier.SeedRun(ctx, order.Requests, order.Provenance, profile, func(succeeded bool) {
 		defer c.frontier.Release()
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || !succeeded {
 			if err := delivery.Nak(context.Background()); err != nil {
 				slog.WarnContext(
 					context.Background(),

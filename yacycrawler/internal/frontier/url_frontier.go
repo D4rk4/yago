@@ -91,7 +91,7 @@ func (f *Frontier) SeedRun(
 	requests []yacycrawlcontract.CrawlRequest,
 	provenance []byte,
 	profile crawladmission.AdmissionProfile,
-	finish func(),
+	finish func(succeeded bool),
 ) SeededRun {
 	f.mu.Lock()
 	seeded, settled := f.state.seed(ctx, requests, provenance, profile, finish)
@@ -110,12 +110,15 @@ func (f *Frontier) Submit(ctx context.Context, work crawljob.CrawlJob, links []s
 	f.wake()
 }
 
-func (f *Frontier) Done(work crawljob.CrawlJob) {
+func (f *Frontier) Done(work crawljob.CrawlJob, deliveryFailed bool) {
 	f.mu.Lock()
-	finish, drained := f.state.completion.Settle(work.RunID)
+	if deliveryFailed {
+		f.state.completion.Fail(work.RunID)
+	}
+	finish, succeeded, drained := f.state.completion.Settle(work.RunID)
 	f.mu.Unlock()
 	if drained && finish != nil {
-		go finish()
+		go finish(succeeded)
 	}
 }
 
@@ -185,7 +188,7 @@ func (s *frontierState) seed(
 	requests []yacycrawlcontract.CrawlRequest,
 	provenance []byte,
 	profile crawladmission.AdmissionProfile,
-	finish func(),
+	finish func(succeeded bool),
 ) (SeededRun, func()) {
 	runID := uuid.New()
 	s.runDedup(runID, profile)
@@ -217,8 +220,8 @@ func (s *frontierState) seed(
 			queued++
 		}
 	}
-	if finish, drained := s.completion.Settle(runID); drained && finish != nil {
-		return SeededRun{RunID: runID, Queued: queued}, finish
+	if finish, succeeded, drained := s.completion.Settle(runID); drained && finish != nil {
+		return SeededRun{RunID: runID, Queued: queued}, func() { finish(succeeded) }
 	}
 	return SeededRun{RunID: runID, Queued: queued}, nil
 }

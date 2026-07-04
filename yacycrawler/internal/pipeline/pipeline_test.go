@@ -18,16 +18,21 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
+type doneCall struct {
+	work   crawljob.CrawlJob
+	failed bool
+}
+
 type recordingFrontier struct {
 	jobs      chan crawljob.CrawlJob
 	submitted [][]string
-	done      chan crawljob.CrawlJob
+	done      chan doneCall
 }
 
 func newRecordingFrontier() *recordingFrontier {
 	return &recordingFrontier{
 		jobs: make(chan crawljob.CrawlJob, 1),
-		done: make(chan crawljob.CrawlJob, 8),
+		done: make(chan doneCall, 8),
 	}
 }
 
@@ -37,7 +42,9 @@ func (f *recordingFrontier) Submit(_ context.Context, _ crawljob.CrawlJob, links
 	f.submitted = append(f.submitted, links)
 }
 
-func (f *recordingFrontier) Done(work crawljob.CrawlJob) { f.done <- work }
+func (f *recordingFrontier) Done(work crawljob.CrawlJob, deliveryFailed bool) {
+	f.done <- doneCall{work: work, failed: deliveryFailed}
+}
 
 type fetchFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
 
@@ -88,16 +95,18 @@ func runOneJob(
 	t *testing.T,
 	p *pipeline.Pipeline,
 	frontier *recordingFrontier,
-) {
+) doneCall {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go p.RunWorkers(ctx, 1)
 	frontier.jobs <- crawljob.CrawlJob{URL: "https://example.com/", ProfileHandle: "h"}
 	select {
-	case <-frontier.done:
+	case done := <-frontier.done:
+		return done
 	case <-time.After(2 * time.Second):
 		t.Fatal("job never reached Done")
+		return doneCall{}
 	}
 }
 
@@ -175,7 +184,7 @@ func TestPipelineFinishesJobOnFetchError(t *testing.T) {
 	runOneJob(t, p, frontier)
 }
 
-func TestPipelineFinishesJobOnEmitError(t *testing.T) {
+func TestPipelineMarksJobFailedOnEmitError(t *testing.T) {
 	frontier := newRecordingFrontier()
 	p := pipeline.NewPipeline(
 		frontier,
@@ -190,7 +199,9 @@ func TestPipelineFinishesJobOnEmitError(t *testing.T) {
 		),
 		crawledpage.NewNoopCrawledPageEmitter(),
 	)
-	runOneJob(t, p, frontier)
+	if done := runOneJob(t, p, frontier); !done.failed {
+		t.Error("emit failure should mark the job as delivery-failed so the order naks")
+	}
 }
 
 func TestPipelineDeliversCrawledPage(t *testing.T) {

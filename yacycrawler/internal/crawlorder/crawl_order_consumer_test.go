@@ -52,7 +52,7 @@ func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
 		if job.ProfileHandle != profile.Handle {
 			t.Errorf("profile handle = %q want %q", job.ProfileHandle, profile.Handle)
 		}
-		f.Done(job)
+		f.Done(job, false)
 	case <-time.After(3 * time.Second):
 		t.Fatal("frontier never received seeded job")
 	}
@@ -61,6 +61,50 @@ func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
 	case <-acked:
 	case <-time.After(3 * time.Second):
 		t.Fatal("delivery never acked after run finished")
+	}
+}
+
+func TestConsumerNaksWhenRunHasDeliveryFailure(t *testing.T) {
+	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
+	f := frontier.NewFrontier(8, nil)
+	consumer := crawlorder.NewCrawlOrderConsumer(queue, f)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go consumer.Run(ctx)
+
+	profile := yacycrawlcontract.NewCrawlProfile(yacycrawlcontract.CrawlProfile{
+		Scope:           yacycrawlcontract.ScopeDomain,
+		URLMustMatch:    yacycrawlcontract.MatchAll,
+		MaxPagesPerHost: yacycrawlcontract.UnlimitedPagesPerHost,
+	})
+	order := yacycrawlcontract.CrawlOrder{
+		Profile: profile,
+		Requests: []yacycrawlcontract.CrawlRequest{
+			{URL: "https://example.com/", ProfileHandle: profile.Handle},
+		},
+	}
+	naked := make(chan struct{})
+	delivery := crawlorder.CrawlOrderDelivery{
+		Order: order,
+		Ack:   func(context.Context) error { t.Error("failed run must not ack"); return nil },
+		Nak:   func(context.Context) error { close(naked); return nil },
+	}
+	if err := queue.Publish(ctx, delivery); err != nil {
+		t.Fatalf("publish delivery: %v", err)
+	}
+
+	select {
+	case job := <-f.Jobs():
+		f.Done(job, true)
+	case <-time.After(3 * time.Second):
+		t.Fatal("frontier never received seeded job")
+	}
+
+	select {
+	case <-naked:
+	case <-time.After(3 * time.Second):
+		t.Fatal("delivery never naked after a page failed to deliver")
 	}
 }
 
