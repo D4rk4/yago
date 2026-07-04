@@ -2022,8 +2022,22 @@ empty state. Backed by a new `adminui.DocumentBrowserSource` over a node
 `documentBrowseSource` that scans `documentstore.StoredDocuments` (surfaced onto
 the `node` struct as `docScan`) and filters in Go; a scan error degrades to the
 partial results collected. Read-only — no delete yet (UI-08b). verify green (all 6
-modules 100%), Semgrep + Trivy clean. Still open: **UI-08b** (delete-by-URL/domain)
-and **UI-08c** (blacklist store + management + enforcement).
+modules 100%), Semgrep + Trivy clean.
+
+**UI-08b (delete-by-URL/domain) — Done (2026-07-05).** The document browser gains
+operator delete: a CSRF-guarded, htmx `hx-confirm` per-row "Delete" button and, once
+a `?domain=` filter is applied, a "Delete all from <domain>" form. Both POST to a
+static `/admin/index/delete` (redirecting back to the Index page, so no open-redirect
+surface). A node `indexAdminController` retracts each document from *every* store
+lineage it participates in: the bleve full-text index (by normalized URL), the
+document store, and the YaCy-native RWI postings + URL metadata (keyed by the URL
+hash from `yagomodel.HashURL`). Delete-by-domain enumerates the document store and
+removes each host-or-subdomain match. New plumbing: `documentstore.DocumentEvictor`
++ `Delete`; an on-demand `eviction.Evictor`/`NewEvictor`/`EvictURLs` that shares the
+quota sweep's atomic posting-and-metadata purge via an extracted `purgeURLs`;
+`adminui.IndexAdminSource`. verify green (all 6 modules 100%), Semgrep + Trivy clean.
+
+Still open: **UI-08c** (blacklist store + management + enforcement).
 
 Pages:
 
