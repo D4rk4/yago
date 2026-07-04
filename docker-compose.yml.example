@@ -31,7 +31,7 @@ services:
       YAGO_SEARCH_CORS_ORIGINS: ${YAGO_SEARCH_CORS_ORIGINS:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
-      - yacy-data:/data
+      - yago-data:/data
 
   yagocrawler:
     build:
@@ -57,4 +57,4 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
 volumes:
-  yacy-data:
+  yago-data:

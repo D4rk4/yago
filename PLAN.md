@@ -2878,6 +2878,15 @@ Acceptance:
 
 ### BRAND-03: Rename containers, images, binaries, and default paths
 
+Status: Done. The container images and Compose services were already `yago*`
+after BRAND-01; the residual `yacy`-named build artefacts are gone: the
+`cmd/yacy-peer-hash` dev binary is now `cmd/yago-peer-hash` (directory, Makefile
+target, arch-lint component, and doc comments), and the Compose data volume
+`yacy-data` is now `yago-data`. Kept: the `yacy-rwi.db` open-fallback and the
+external YaCy seedlist URLs (`/yacyseed`, `yacy.v16.de`) that bootstrap into the
+real YaCy network. The `/opt/yago` filesystem layout and systemd/deb packaging
+are tracked separately under OPS-04/05. verify green, Semgrep + Trivy clean.
+
 Tasks:
 
 1. Rename container images, compose service names, and binaries from `yacy*` to

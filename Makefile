@@ -107,7 +107,7 @@ proto:
 		-I proto proto/crawlexchange.proto
 
 peer-hash:
-	cd yagonode && $(GO) run ./cmd/yacy-peer-hash
+	cd yagonode && $(GO) run ./cmd/yago-peer-hash
 
 verify: fmt-check vet lint arch test cover-check build
 

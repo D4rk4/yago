@@ -110,7 +110,7 @@ components:
     in: internal/yagonode/**
   cmd:
     in:
-      - cmd/yacy-peer-hash/**
+      - cmd/yago-peer-hash/**
       - cmd/yago-node/**
 
 vendors:

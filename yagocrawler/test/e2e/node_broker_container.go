@@ -21,7 +21,7 @@ const (
 	nodeOpsPort     = "9090"
 	nodeCrawlRPCEnv = ":9091"
 
-	// nodePeerHash is a fixed valid peer hash minted by cmd/yacy-peer-hash; the
+	// nodePeerHash is a fixed valid peer hash minted by cmd/yago-peer-hash; the
 	// node runs standalone here so any well-formed hash is sufficient.
 	nodePeerHash  = "ziv-MzQvviRK"
 	nodeAdminUser = "admin"

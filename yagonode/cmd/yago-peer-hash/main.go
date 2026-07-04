@@ -1,4 +1,4 @@
-// Command yacy-peer-hash prints a freshly generated YaCy peer hash.
+// Command yago-peer-hash prints a freshly generated YaCy peer hash.
 package main
 
 import (
