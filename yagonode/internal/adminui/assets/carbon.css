@@ -158,6 +158,34 @@ a:focus, button:focus, input:focus, select:focus, [tabindex]:focus {
 .cds-inline-notification--error { border-left-color: var(--cds-support-error); }
 .cds-inline-notification--success { border-left-color: var(--cds-support-success); }
 
+/* Toasts: transient, floating feedback for write actions */
+.cds-toasts {
+  position: fixed;
+  top: var(--cds-spacing-07);
+  right: var(--cds-spacing-05);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cds-spacing-03);
+  max-width: 22rem;
+}
+.cds-toast {
+  padding: var(--cds-spacing-05);
+  border-left: 3px solid var(--cds-support-warning);
+  background: var(--cds-layer-01);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  animation: cds-toast-in 160ms ease-out;
+}
+.cds-toast--error { border-left-color: var(--cds-support-error); }
+.cds-toast--success { border-left-color: var(--cds-support-success); }
+@keyframes cds-toast-in {
+  from { opacity: 0; transform: translateY(-0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 32rem) {
+  .cds-toasts { left: var(--cds-spacing-05); right: var(--cds-spacing-05); max-width: none; }
+}
+
 /* Buttons + forms */
 .cds-btn {
   display: inline-flex;

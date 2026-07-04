@@ -1,10 +1,7 @@
 {{define "content"}}
 <nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Configuration</nav>
 <h1 class="cds-h1">Configuration</h1>
-{{if or .Notice .Error}}
-{{if .Notice}}<div class="cds-inline-notification cds-inline-notification--success" role="status">{{.Notice}}</div>{{end}}
-{{if .Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>{{end}}
-{{end}}
+{{template "toasts" .}}
 {{if .Editable}}
 <h2 class="cds-h2">Runtime settings</h2>
 <p class="cds-muted">These settings are stored on the node and override the environment defaults. Unset settings fall back to the environment.</p>

@@ -1,10 +1,7 @@
 {{define "content"}}
 <nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Security</nav>
 <h1 class="cds-h1">Security</h1>
-{{if or .Notice .Error}}
-{{if .Notice}}<div class="cds-inline-notification cds-inline-notification--success" role="status">{{.Notice}}</div>{{end}}
-{{if .Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>{{end}}
-{{end}}
+{{template "toasts" .}}
 {{if .Security.Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Security.Error}}</div>{{end}}
 {{if .Minted}}
 <div class="cds-inline-notification cds-inline-notification--success" role="status">

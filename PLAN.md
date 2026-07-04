@@ -1543,8 +1543,15 @@ Status: Done (FTR-024). The server-rendered Carbon shell (header, section side
 nav with `aria-current`, content area, breadcrumb, keyboard skip-link, footer)
 renders all nine admin routes plus a link to `/search`; unwired sections show a
 controlled unavailable state and Overview shows a welcome, so the shell renders
-without any backing API. Toasts and richer live states arrive with the sections
-(UI-04..10) and htmx interactions.
+without any backing API. The global notification system is now a shared `toasts`
+template partial (`{{template "toasts" .}}`) plus `.cds-toast` styles: a
+fixed-position, `aria-live` region that renders a write action's page-level
+notice as a `role=status` success toast or its error as a `role=alert` toast,
+with a subtle slide-in and a mobile-friendly full-width fallback. It is driven by
+the same server-rendered `Notice`/`Error` fields the write sections already
+produce, so it needs no JavaScript and degrades to a static notification; the
+Configuration and Security sections use it today and any section carrying those
+fields can include it.
 
 Tasks:
 

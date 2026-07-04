@@ -238,9 +238,9 @@ func buildTemplates() templates {
 		crawl:       clone(nil, "templates/crawl.tmpl"),
 		index:       clone(nil, "templates/index.tmpl"),
 		network:     clone(nil, "templates/network.tmpl"),
-		config:      clone(nil, "templates/config.tmpl"),
+		config:      clone(nil, "templates/config.tmpl", "templates/toasts.tmpl"),
 		logs:        clone(nil, "templates/logs.tmpl", "templates/logs_table.tmpl"),
-		security:    clone(nil, "templates/security.tmpl"),
+		security:    clone(nil, "templates/security.tmpl", "templates/toasts.tmpl"),
 	}
 }
 

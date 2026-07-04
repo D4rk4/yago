@@ -1,0 +1,8 @@
+{{define "toasts"}}
+{{if or .Notice .Error}}
+<div class="cds-toasts" aria-live="polite">
+  {{if .Notice}}<div class="cds-toast cds-toast--success" role="status">{{.Notice}}</div>{{end}}
+  {{if .Error}}<div class="cds-toast cds-toast--error" role="alert">{{.Error}}</div>{{end}}
+</div>
+{{end}}
+{{end}}
