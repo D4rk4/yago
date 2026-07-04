@@ -2097,6 +2097,23 @@ Acceptance:
 
 ### OPS-01: Metrics
 
+Status: Partial, advanced. `/metrics` serves Prometheus format on the operations
+listener from a single shared registry (Prometheus client already adopted in
+ADR-0011, so no new ADR). The endpoint is **auth-protected**: it is not on the
+listener's public allowlist (only the health/readiness probes and login/setup are),
+so a scraper needs an admin session or API key — satisfying "can be disabled or
+auth-protected". This slice adds a **Queue depths** group: a `QueueDepthMetrics`
+collector publishes `queue_crawl_depth` and `queue_index_depth` as gauges read live
+from the DHT gate snapshot at scrape time (the same source as the UI-09 Performance
+tiles). A **registration-conflict test** now constructs every collector on one
+registry and gathers it, turning a duplicate metric name into a build-time failure
+rather than a startup panic (acceptance). `doc/metrics.md` documents the endpoint,
+its authentication, and the published groups. Already covered before this slice:
+HTTP request, Storage, Eviction, DHT inbound/outbound, Peers, Authentication.
+**Still open:** Search latency/results/partial-failure metrics, Crawl
+jobs/fetches/failures/bytes metrics, and an explicit disable toggle for the
+endpoint. verify green (coverage 97.5%), Semgrep + Trivy clean.
+
 Expose Prometheus-style metrics or a documented JSON metrics endpoint. If adding Prometheus client dependency, create ADR first.
 
 Metrics groups:

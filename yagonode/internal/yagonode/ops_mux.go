@@ -20,6 +20,10 @@ func buildOpsMux(
 	recorder *events.Recorder,
 	sources consoleAdminSources,
 ) *http.ServeMux {
+	metrics.NewQueueDepthMetrics(
+		endpoints.Registry(),
+		newQueueDepthSource(assembled.dht.gateStatus),
+	)
 	opsMux := newOpsMux(
 		endpoints.Handler(),
 		assembled.readiness,

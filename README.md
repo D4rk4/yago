@@ -297,6 +297,8 @@ Start with these documents:
   compatibility tests;
 - [yagonode/doc/remote-crawl-policy.md](yagonode/doc/remote-crawl-policy.md) for
   the disabled-by-default remote crawl security policy;
+- [yagonode/doc/metrics.md](yagonode/doc/metrics.md) for the Prometheus metrics
+  endpoint, its authentication, and the published metric groups;
 - [yagocrawler/README.md](yagocrawler/README.md) for crawler behavior;
 - [yagocrawlcontract/README.md](yagocrawlcontract/README.md) for node-crawler
   message flow.
