@@ -2112,11 +2112,15 @@ rather than a startup panic (acceptance). It also adds a **Search** group: a
 search composition chokepoint meters request count, latency, result count and
 partial failures once for every surface (YaCy, Tavily, portal) —
 `search_requests_total`, `search_latency_seconds`, `search_results`,
-`search_partial_failures_total`. `doc/metrics.md` documents the endpoint, its
-authentication, and the published groups. Already covered before: HTTP request,
-Storage, Eviction, DHT inbound/outbound, Peers, Authentication. **Still open:**
-Crawl jobs/fetches/failures/bytes metrics, and an explicit disable toggle for the
-endpoint. verify green (coverage 97.5%), Semgrep + Trivy clean.
+`search_partial_failures_total`. The endpoint also gains an **explicit disable toggle**: `YAGO_METRICS_ENABLED`
+(default `true`) unmounts `/metrics` (returns 404) when set to `false` while the
+collectors keep running, so the acceptance "can be disabled or auth-protected" is
+met both ways. `doc/metrics.md` documents the endpoint, its authentication, the
+toggle, and the published groups. Already covered before: HTTP request, Storage,
+Eviction, DHT inbound/outbound, Peers, Authentication. **Still open:** Crawl
+jobs/fetches/failures/bytes metrics (the only remaining group; needs crawl-pipeline
+observation hooks and spans the node/crawler boundary). verify green (coverage
+97.5%), Semgrep + Trivy clean.
 
 Expose Prometheus-style metrics or a documented JSON metrics endpoint. If adding Prometheus client dependency, create ADR first.
 

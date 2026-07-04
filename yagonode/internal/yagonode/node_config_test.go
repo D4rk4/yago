@@ -54,6 +54,9 @@ func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 	if config.SearchAPIKey != "" {
 		t.Errorf("SearchAPIKey = %q, want empty default", config.SearchAPIKey)
 	}
+	if !config.MetricsEnabled {
+		t.Error("MetricsEnabled = false, want true by default")
+	}
 	if config.StorageQuotaByte != 1<<30 {
 		t.Errorf("StorageQuotaByte = %d, want 1GB", config.StorageQuotaByte)
 	}
@@ -148,6 +151,21 @@ func TestLoadNodeConfigReadsOverrides(t *testing.T) {
 		config.DHT.Gates.MinimumConnectedPeer != 2 ||
 		config.DHT.Gates.MinimumRWIWord != 10 {
 		t.Errorf("DHT config = %#v", config.DHT)
+	}
+}
+
+func TestLoadNodeConfigDisablesMetrics(t *testing.T) {
+	config, err := loadNodeConfig(envFrom(map[string]string{
+		envPeerHash:       "0123456789AB",
+		envPeerName:       "node",
+		envMetricsEnabled: "false",
+	}))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if config.MetricsEnabled {
+		t.Error("MetricsEnabled = true, want false when overridden off")
 	}
 }
 

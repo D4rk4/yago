@@ -14,6 +14,10 @@ present an admin session cookie or an API key. Bind the operations listener to a
 private interface or loopback (see [configuration.md](configuration.md)) so the
 metrics and admin surfaces are not publicly reachable.
 
+The endpoint can also be turned off entirely: `YAGO_METRICS_ENABLED` defaults to
+`true`, and setting it to `false` unmounts `/metrics` so it returns 404 while the
+collectors still run harmlessly in the background.
+
 ## Metric groups
 
 The registry publishes:

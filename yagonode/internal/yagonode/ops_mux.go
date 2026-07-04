@@ -25,7 +25,7 @@ func buildOpsMux(
 		newQueueDepthSource(assembled.dht.gateStatus),
 	)
 	opsMux := newOpsMux(
-		endpoints.Handler(),
+		metricsHandler(endpoints, config.MetricsEnabled),
 		assembled.readiness,
 		assembled.dht.gates,
 		assembled.indexStats,
@@ -64,6 +64,14 @@ func buildOpsMux(
 	return opsMux
 }
 
+func metricsHandler(endpoints *metrics.HTTPEndpointMetrics, enabled bool) http.Handler {
+	if !enabled {
+		return nil
+	}
+
+	return endpoints.Handler()
+}
+
 func newOpsMux(
 	metrics http.Handler,
 	readiness http.Handler,
@@ -78,7 +86,9 @@ func newOpsMux(
 	if readiness != nil {
 		mux.Handle(pathReady, readiness)
 	}
-	mux.Handle(pathMetrics, metrics)
+	if metrics != nil {
+		mux.Handle(pathMetrics, metrics)
+	}
 	mux.Handle(pathCompatibility, newCompatibilityEndpoint())
 	if dhtGates != nil {
 		mux.Handle(pathDHTGates, dhtGates)

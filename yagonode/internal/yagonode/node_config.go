@@ -37,6 +37,7 @@ const (
 	envHTTPSRedirect       = "YAGO_HTTPS_REDIRECT"
 	envQueryLogMode        = "YAGO_QUERY_LOG_MODE"
 	envPeerBirthDate       = "YAGO_PEER_BIRTH_DATE"
+	envMetricsEnabled      = "YAGO_METRICS_ENABLED"
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"
@@ -76,6 +77,7 @@ type nodeConfig struct {
 	PublicSearchUIEnabled bool
 	HTTPSRedirect         bool
 	QueryLogMode          queryLogMode
+	MetricsEnabled        bool
 	DeclaredBirthDate     time.Time
 	Crawl                 crawlConfig
 	Admin                 adminConfig
@@ -166,6 +168,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		PublicSearchUIEnabled: derived.publicSearchUI,
 		HTTPSRedirect:         derived.httpsRedirect,
 		QueryLogMode:          derived.queryLogMode,
+		MetricsEnabled:        derived.metricsEnabled,
 		DeclaredBirthDate:     derived.birthDate,
 		DHT:                   derived.dht,
 		WebFallback:           derived.webFallback,
@@ -181,6 +184,7 @@ type derivedConfigs struct {
 	publicSearchUI bool
 	httpsRedirect  bool
 	queryLogMode   queryLogMode
+	metricsEnabled bool
 	extractFetch   extractFetchConfig
 }
 
@@ -213,6 +217,10 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	if err != nil {
 		return derivedConfigs{}, fmt.Errorf("%s: %w", envQueryLogMode, err)
 	}
+	metricsEnabled, err := boolEnv(getenv, envMetricsEnabled, true)
+	if err != nil {
+		return derivedConfigs{}, fmt.Errorf("%s: %w", envMetricsEnabled, err)
+	}
 	extractFetch, err := loadExtractFetchConfig(getenv)
 	if err != nil {
 		return derivedConfigs{}, err
@@ -226,6 +234,7 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 		publicSearchUI: publicSearchUI,
 		httpsRedirect:  httpsRedirect,
 		queryLogMode:   queryLog,
+		metricsEnabled: metricsEnabled,
 		extractFetch:   extractFetch,
 	}, nil
 }
