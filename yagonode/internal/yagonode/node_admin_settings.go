@@ -10,28 +10,40 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
+// consoleAdminSources bundles the console's runtime write surfaces so the ops
+// mux can receive them as a single dependency.
+type consoleAdminSources struct {
+	settings *settingsSource
+	binding  *bindingSource
+}
+
 // loadRuntimeSettings opens the durable settings store, layers any stored
-// overrides onto the environment configuration, and returns both the console's
-// write source (over the unmodified environment defaults) and the effective
+// overrides onto the environment configuration, and returns the console's write
+// sources (built over the unmodified environment defaults) and the effective
 // configuration used to assemble the node.
 func loadRuntimeSettings(
 	ctx context.Context,
 	storage *vault.Vault,
 	config nodeConfig,
 	recorder *events.Recorder,
-) (*settingsSource, nodeConfig, error) {
+) (consoleAdminSources, nodeConfig, error) {
 	store, err := settingsstore.Open(storage)
 	if err != nil {
-		return nil, config, fmt.Errorf("open runtime settings: %w", err)
+		return consoleAdminSources{}, config, fmt.Errorf("open runtime settings: %w", err)
 	}
 	overrides, err := store.All(ctx)
 	if err != nil {
-		return nil, config, fmt.Errorf("load runtime settings: %w", err)
+		return consoleAdminSources{}, config, fmt.Errorf("load runtime settings: %w", err)
 	}
 
-	source := newSettingsSource(store, config, recorder)
+	sources := consoleAdminSources{
+		settings: newSettingsSource(store, config, recorder),
+		binding:  newBindingSource(store, config, recorder),
+	}
+	config = applyRuntimeSettingOverrides(config, overrides)
+	config = applyBindOverrides(config, overrides)
 
-	return source, applyRuntimeSettingOverrides(config, overrides), nil
+	return sources, config, nil
 }
 
 // settingsSource adapts the durable settings store and the runtime setting

@@ -2132,6 +2132,23 @@ Acceptance:
 
 ### NET-01: Per-surface configurable bind addresses
 
+Status: Done. The two real HTTP listeners — the peer protocol listener
+(`YAGO_PEER_ADDR`, which also serves the Tavily API and the public portal) and
+the admin/ops listener (`YAGO_OPS_ADDR`) — each take an independent `host:port`
+bind, validated at boot (`validateNodeBinds`: empty host = all interfaces, else an
+IP literal, port 1-65535). The Configuration section gained a per-surface bind
+editor (`BindingSource`): it enumerates the host's interface addresses (loopback
+included), offers per surface an interface (or "all interfaces") and a port,
+validates that the host is one the machine actually has (which is also the
+self-lockout guardrail — you cannot bind to an unreachable address, and loopback
+plus all-interfaces are always offered), and persists the choice as a CFG-01
+runtime override applied on the next restart, recording a `bind.updated` config
+event. Re-bind is restart-required (listen addresses are fixed at construction).
+Dedicated own-port listeners for the Tavily API and public portal remain a
+follow-up — today they share the peer listener, and the portal is reachable on
+the peer port only when enabled, satisfying the "portal binds only when enabled"
+acceptance. verify green (coverage 97.8%), Semgrep + Trivy clean.
+
 Let operators choose the interface (IP) and port each externally reachable
 surface binds to, so the public P2P port, the admin/ops surface, the Tavily API,
 and the public search portal can be exposed or restricted independently — both

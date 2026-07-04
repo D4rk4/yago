@@ -18,7 +18,7 @@ func buildOpsMux(
 	config nodeConfig,
 	assembled node,
 	recorder *events.Recorder,
-	settings adminui.SettingsSource,
+	sources consoleAdminSources,
 ) *http.ServeMux {
 	opsMux := newOpsMux(
 		endpoints.Handler(),
@@ -39,7 +39,8 @@ func buildOpsMux(
 		Index:    newIndexSource(assembled.index),
 		Network:  newNetworkSource(assembled.dht.gateStatus, assembled.roster),
 		Config:   newConfigSource(config),
-		Settings: settings,
+		Settings: sources.settings,
+		Binding:  sources.binding,
 		Logs:     newLogsSource(recorder),
 	}
 	if dispatcher := crawlDispatcher(assembled.crawl); dispatcher != nil {

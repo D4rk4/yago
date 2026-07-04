@@ -77,6 +77,7 @@ type Options struct {
 	Network  NetworkSource
 	Config   ConfigSource
 	Settings SettingsSource
+	Binding  BindingSource
 	Logs     LogsSource
 }
 
@@ -141,6 +142,8 @@ type configPageData struct {
 	Config     ConfigView
 	Editable   bool
 	Settings   SettingsView
+	Bindable   bool
+	Bindings   BindingsView
 	Notice     string
 	Error      string
 }
@@ -174,6 +177,7 @@ type Console struct {
 	network  NetworkSource
 	config   ConfigSource
 	settings SettingsSource
+	binding  BindingSource
 	logs     LogsSource
 }
 
@@ -195,6 +199,7 @@ func New(opts Options) *Console {
 		network:  opts.Network,
 		config:   opts.Config,
 		settings: opts.Settings,
+		binding:  opts.Binding,
 		logs:     opts.Logs,
 	}
 	console.registerRoutes(assets)
@@ -366,19 +371,53 @@ func (c *Console) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	if c.settings == nil {
+
+	binding := r.PostFormValue("form") == "binding"
+	if (binding && c.binding == nil) || (!binding && c.settings == nil) {
 		http.NotFound(w, r)
 
 		return
+	}
+
+	notice, errMsg := c.applyConfigUpdate(r, binding)
+	c.render(r.Context(), w, c.tpl.config, "layout", c.configPage(r, notice, errMsg))
+}
+
+func (c *Console) applyConfigUpdate(r *http.Request, binding bool) (notice, errMsg string) {
+	if binding {
+		result, err := c.binding.UpdateBinding(r.Context(), parseBindChange(r))
+		if err != nil {
+			slog.WarnContext(r.Context(), "admin bind update failed", slog.Any("error", err))
+		}
+
+		return bindingOutcome(result, err)
 	}
 
 	result, err := c.settings.Update(r.Context(), parseSettingsChange(r))
 	if err != nil {
 		slog.WarnContext(r.Context(), "admin settings update failed", slog.Any("error", err))
 	}
-	notice, errMsg := settingsOutcome(result, err)
 
-	c.render(r.Context(), w, c.tpl.config, "layout", c.configPage(r, notice, errMsg))
+	return settingsOutcome(result, err)
+}
+
+func bindingOutcome(result BindResult, err error) (notice, errMsg string) {
+	switch {
+	case err != nil:
+		return "", "Update failed. Please try again."
+	case !result.OK:
+		return "", result.Message
+	default:
+		return result.Message, ""
+	}
+}
+
+func parseBindChange(r *http.Request) BindChange {
+	return BindChange{
+		Key:  strings.TrimSpace(r.PostFormValue("key")),
+		Host: strings.TrimSpace(r.PostFormValue("host")),
+		Port: strings.TrimSpace(r.PostFormValue("port")),
+	}
 }
 
 func settingsOutcome(result SettingsResult, err error) (notice, errMsg string) {
@@ -409,6 +448,10 @@ func (c *Console) configPage(r *http.Request, notice, errMsg string) configPageD
 	if c.settings != nil {
 		data.Editable = true
 		data.Settings = c.settings.Settings(r.Context())
+	}
+	if c.binding != nil {
+		data.Bindable = true
+		data.Bindings = c.binding.Bindings(r.Context())
 	}
 
 	return data

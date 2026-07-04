@@ -18,7 +18,24 @@ an authenticated admin session with a CSRF token, and record a `config` event on
 each change. Secrets are never runtime-overridable. Some settings (for example
 the public search portal toggle) take effect only after a node restart, which the
 console flags. The whitelist starts with the public search portal and grows as
-per-surface bind and HTTP→HTTPS redirect controls land.
+HTTP→HTTPS redirect controls land.
+
+### Listen addresses
+
+The Configuration section also has a per-surface bind editor. It lists the host's
+network interface addresses (including loopback) and lets you set, per listener,
+the interface (or **all interfaces**) and the port. Two surfaces are editable:
+the **peer protocol** listener (`YAGO_PEER_ADDR`, which also serves the
+Tavily-compatible API and the public portal) and the **admin and ops** listener
+(`YAGO_OPS_ADDR`). A bind override is validated — the host must be one of the
+machine's own interface addresses, so you cannot bind a surface to an unreachable
+address — persisted durably, and applied on the next restart.
+
+Exposure guidance: keep the peer listener reachable from the network (bind to all
+interfaces or your public IP) so other peers can reach you; the admin and ops
+listener can be bound to loopback (`127.0.0.1`) when the console is only used
+locally or reached through a reverse proxy. Loopback and all-interfaces are always
+offered so a bind change cannot lock you out of the admin console.
 
 | Variable | Default | Description |
 | --- | --- | --- |

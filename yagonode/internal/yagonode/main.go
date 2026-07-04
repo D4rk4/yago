@@ -87,9 +87,12 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	settingsSource, config, err := loadRuntimeSettings(ctx, vault, config, eventRecorder)
+	sources, config, err := loadRuntimeSettings(ctx, vault, config, eventRecorder)
 	if err != nil {
 		return err
+	}
+	if err := validateNodeBinds(config); err != nil {
+		return fmt.Errorf("validate listen addresses: %w", err)
 	}
 
 	authService, err := provisionAdminAuth(ctx, config, vault, authObserver)
@@ -113,7 +116,7 @@ func run() error {
 		return fmt.Errorf("assemble node: %w", err)
 	}
 
-	opsMux := buildOpsMux(endpoints, config, assembled, eventRecorder, settingsSource)
+	opsMux := buildOpsMux(endpoints, config, assembled, eventRecorder, sources)
 	opsHandler := wrapAdminCORS(
 		config.CrossOrigin.AdminOrigins,
 		guardAdminSurface(authService, opsMux),
