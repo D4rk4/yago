@@ -2,7 +2,7 @@ services:
   yago-node:
     build:
       context: .
-      dockerfile: yacynode/Dockerfile
+      dockerfile: yagonode/Dockerfile
     image: yago-node:latest
     restart: unless-stopped
     ports:
@@ -33,11 +33,11 @@ services:
     volumes:
       - yacy-data:/data
 
-  yacycrawler:
+  yagocrawler:
     build:
       context: .
-      dockerfile: yacycrawler/Dockerfile
-    image: yacycrawler:latest
+      dockerfile: yagocrawler/Dockerfile
+    image: yagocrawler:latest
     restart: unless-stopped
     depends_on:
       - yago-node

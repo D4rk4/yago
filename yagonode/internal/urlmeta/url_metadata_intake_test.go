@@ -1,0 +1,183 @@
+package urlmeta
+
+import (
+	"context"
+	"testing"
+
+	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/memvault"
+	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
+)
+
+func localIdentity() nodeidentity.Identity {
+	return nodeidentity.Identity{Hash: yagomodel.WordHash("self"), NetworkName: "freeworld"}
+}
+
+type urlPorts struct {
+	Directory URLDirectory
+	Evictor   URLEvictor
+	Receiver  URLReceiver
+}
+
+func openModule(t *testing.T, quotaBytes int64) urlPorts {
+	t.Helper()
+
+	v, err := memvault.Open(quotaBytes)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := v.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+
+	directory, evictor, receiver, err := Open(v)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	return urlPorts{Directory: directory, Evictor: evictor, Receiver: receiver}
+}
+
+func urlRow(t *testing.T, seed string) yagomodel.URIMetadataRow {
+	t.Helper()
+
+	row := yagomodel.URIMetadataRow{
+		Properties: map[string]string{yagomodel.URLMetaHash: yagomodel.WordHash(seed).String()},
+	}
+	roundTrip, err := yagomodel.ParseURIMetadataRow(row.String())
+	if err != nil {
+		t.Fatalf("row does not round-trip: %v", err)
+	}
+
+	return roundTrip
+}
+
+func rowHash(t *testing.T, row yagomodel.URIMetadataRow) yagomodel.Hash {
+	t.Helper()
+
+	hash, err := row.URLHash()
+	if err != nil {
+		t.Fatalf("URLHash: %v", err)
+	}
+
+	return hash.Hash()
+}
+
+func TestIntakePersistsAndReportsExisting(t *testing.T) {
+	ctx := context.Background()
+	module := openModule(t, 0)
+	first := urlRow(t, "a")
+	second := urlRow(t, "b")
+
+	receipt, err := module.Receiver.Receive(ctx, []yagomodel.URIMetadataRow{first, second})
+	if err != nil {
+		t.Fatalf("Intake: %v", err)
+	}
+	if receipt.Busy || receipt.Double != 0 || len(receipt.ErrorURL) != 0 {
+		t.Fatalf("first receipt = %+v, want empty", receipt)
+	}
+
+	receipt, err = module.Receiver.Receive(ctx, []yagomodel.URIMetadataRow{first})
+	if err != nil {
+		t.Fatalf("Intake duplicate: %v", err)
+	}
+	if receipt.Double != 1 {
+		t.Fatalf("duplicate Double = %d, want 1", receipt.Double)
+	}
+
+	count, err := module.Directory.Count(ctx)
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("Count = %d, want 2", count)
+	}
+}
+
+func TestIntakeDurabilityAndLookup(t *testing.T) {
+	ctx := context.Background()
+	module := openModule(t, 0)
+	row := urlRow(t, "a")
+	hash := rowHash(t, row)
+
+	if _, err := module.Receiver.Receive(ctx, []yagomodel.URIMetadataRow{row}); err != nil {
+		t.Fatalf("Intake: %v", err)
+	}
+
+	rows, err := module.Directory.RowsByHash(ctx, []yagomodel.Hash{hash})
+	if err != nil {
+		t.Fatalf("RowsByHash: %v", err)
+	}
+	if len(rows) != 1 || rowHash(t, rows[0]) != hash {
+		t.Fatalf("RowsByHash = %v, want one matching row", rows)
+	}
+
+	missing, err := module.Directory.MissingURLs(ctx, []yagomodel.Hash{
+		hash,
+		yagomodel.WordHash("absent"),
+		yagomodel.WordHash("absent"),
+	})
+	if err != nil {
+		t.Fatalf("MissingURLs: %v", err)
+	}
+	if len(missing) != 1 || missing[0] != yagomodel.WordHash("absent") {
+		t.Fatalf("MissingURLs = %v, want one absent hash", missing)
+	}
+}
+
+func TestIntakeBusyAtCapacity(t *testing.T) {
+	ctx := context.Background()
+	module := openModule(t, 1)
+
+	receipt, err := module.Receiver.Receive(ctx, []yagomodel.URIMetadataRow{urlRow(t, "a")})
+	if err != nil {
+		t.Fatalf("Intake: %v", err)
+	}
+	if receipt.Busy {
+		t.Fatalf("first receipt = %+v, want stored", receipt)
+	}
+
+	receipt, err = module.Receiver.Receive(ctx, []yagomodel.URIMetadataRow{urlRow(t, "b")})
+	if err != nil {
+		t.Fatalf("Intake over capacity: %v", err)
+	}
+	if !receipt.Busy {
+		t.Fatalf("receipt = %+v, want Busy", receipt)
+	}
+}
+
+func TestIntakeNotifiesObserverOfStoredURLs(t *testing.T) {
+	ctx := context.Background()
+	observer := &recordingObserver{}
+	_, module := openObservedModule(t, observer)
+	row := urlRow(t, "a")
+
+	if _, err := module.Receiver.Receive(ctx, []yagomodel.URIMetadataRow{row}); err != nil {
+		t.Fatalf("Intake: %v", err)
+	}
+	if len(observer.stored) != 1 || observer.stored[0] != rowHash(t, row) {
+		t.Fatalf("stored = %v, want one matching hash", observer.stored)
+	}
+}
+
+func TestIntakeSurvivesObserverFailure(t *testing.T) {
+	ctx := context.Background()
+	observer := &recordingObserver{fail: true}
+	_, module := openObservedModule(t, observer)
+
+	if _, err := module.Receiver.Receive(
+		ctx,
+		[]yagomodel.URIMetadataRow{urlRow(t, "a")},
+	); err != nil {
+		t.Fatalf("Intake: %v", err)
+	}
+	count, err := module.Directory.Count(ctx)
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Count = %d, want 1 despite observer failure", count)
+	}
+}

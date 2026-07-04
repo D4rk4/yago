@@ -18,7 +18,7 @@ the legal notices it must carry.
   external or paid search service.
 
 The user-facing roadmap is in
-[yacynode/doc/fork-roadmap.md](yacynode/doc/fork-roadmap.md). The full engineering
+[yagonode/doc/fork-roadmap.md](yagonode/doc/fork-roadmap.md). The full engineering
 plan is in [PLAN.md](PLAN.md).
 
 ## Compatibility Claims
@@ -26,12 +26,12 @@ plan is in [PLAN.md](PLAN.md).
 - This fork does not claim full Java YaCy Search Server compatibility.
   Compatibility is implemented and verified one surface at a time.
 - Supported, partial, planned, and unsupported surfaces are listed in
-  [yacynode/doc/compatibility.md](yacynode/doc/compatibility.md), also served at
+  [yagonode/doc/compatibility.md](yagonode/doc/compatibility.md), also served at
   `GET /api/admin/v1/compatibility`.
 - The `POST /search` and `POST /extract` endpoints are a Tavily-compatible API
   surface served from this node's own search core. They are not the Tavily service
   and never call it; there is no outbound upstream Tavily provider (see
-  [ADR-0019](yacynode/doc/adr/0019-ddgs-web-search-fallback.md)). `POST /search` is
+  [ADR-0019](yagonode/doc/adr/0019-ddgs-web-search-fallback.md)). `POST /search` is
   a drop-in Tavily Search API: it returns only Tavily-shaped fields, carries no
   yago-specific provenance markers, and is search-only. The one optional external
   augmentation is the admin-toggled DDGS web-search fallback, off by default; its

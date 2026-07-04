@@ -1,4 +1,4 @@
-yacymodel/yacy_hash_form.go
+yagomodel/yacy_hash_form.go
 
 # Vendored, pinned third-party asset (htmx 2.0.4, ADR-0022); not authored here.
-yacynode/internal/adminui/assets/htmx.min.js
+yagonode/internal/adminui/assets/htmx.min.js

@@ -1,0 +1,196 @@
+package peerroster_test
+
+import (
+	"context"
+	"testing"
+
+	"github.com/D4rk4/yago/yagomodel"
+)
+
+func TestDiscoverKeepsSeniorsAndDropsJuniors(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 8, 4)
+
+	senior := seniorSeed(t, "senior", "203.0.113.1", 8090)
+	junior := seniorSeed(t, "junior", "", 0)
+	roster.Discover(ctx, senior, junior)
+
+	targets := hashes(roster.FreshestPeers(ctx, 4))
+	if _, ok := targets[senior.Hash]; !ok {
+		t.Fatalf("senior missing from greet targets: %v", targets)
+	}
+	if _, ok := targets[junior.Hash]; ok {
+		t.Fatalf("junior should have been dropped: %v", targets)
+	}
+}
+
+func TestReachablePromotesAndIsServed(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 8, 4)
+
+	senior := seniorSeed(t, "senior", "203.0.113.1", 8090)
+	roster.Discover(ctx, senior)
+
+	if got := roster.ReachablePeers(ctx); len(got) != 0 {
+		t.Fatalf("reachable before greet = %d, want 0", len(got))
+	}
+
+	roster.ConfirmReachable(ctx, senior.Hash)
+
+	if _, ok := hashes(roster.ReachablePeers(ctx))[senior.Hash]; !ok {
+		t.Fatalf("senior not served as reachable after confirmation")
+	}
+}
+
+func TestPeerCountsFollowRosterState(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 8, 4)
+
+	first := seniorSeed(t, "first", "203.0.113.1", 8090)
+	second := seniorSeed(t, "second", "203.0.113.2", 8090)
+	roster.Discover(ctx, first, second)
+	if roster.KnownPeerCount(ctx) != 2 || roster.ReachablePeerCount(ctx) != 0 {
+		t.Fatalf(
+			"counts after discovery = %d/%d, want 2/0",
+			roster.KnownPeerCount(ctx),
+			roster.ReachablePeerCount(ctx),
+		)
+	}
+
+	roster.ConfirmReachable(ctx, first.Hash)
+	if roster.KnownPeerCount(ctx) != 2 || roster.ReachablePeerCount(ctx) != 1 {
+		t.Fatalf(
+			"counts after reachability = %d/%d, want 2/1",
+			roster.KnownPeerCount(ctx),
+			roster.ReachablePeerCount(ctx),
+		)
+	}
+
+	roster.ConfirmUnreachable(ctx, first.Hash)
+	if roster.KnownPeerCount(ctx) != 1 || roster.ReachablePeerCount(ctx) != 0 {
+		t.Fatalf(
+			"counts after unreachable = %d/%d, want 1/0",
+			roster.KnownPeerCount(ctx),
+			roster.ReachablePeerCount(ctx),
+		)
+	}
+}
+
+func TestReachableUnknownPeerIsNoop(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 8, 4)
+
+	roster.ConfirmReachable(ctx, hashFor("ghost"))
+
+	if got := roster.ReachablePeers(ctx); len(got) != 0 {
+		t.Fatalf("reachable = %d, want 0 for unknown peer", len(got))
+	}
+}
+
+func TestUnreachableDropsFromReachableAndReservoir(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 8, 4)
+
+	senior := seniorSeed(t, "senior", "203.0.113.1", 8090)
+	roster.Discover(ctx, senior)
+	roster.ConfirmReachable(ctx, senior.Hash)
+
+	roster.ConfirmUnreachable(ctx, senior.Hash)
+
+	if got := roster.ReachablePeers(ctx); len(got) != 0 {
+		t.Fatalf("reachable = %d, want 0 after failure", len(got))
+	}
+	if got := roster.FreshestPeers(ctx, 4); len(got) != 0 {
+		t.Fatalf("greet targets = %d, want 0 after drop", len(got))
+	}
+}
+
+func TestRejectRemoteIndexClearsFlagForClashingAddress(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 8, 4)
+	peer := seniorSeed(t, "senior", "203.0.113.1", 8090)
+	peer.Flags = yagomodel.Some(
+		yagomodel.ZeroFlags().Set(yagomodel.FlagAcceptRemoteIndex, true),
+	)
+	roster.Discover(ctx, peer)
+	roster.ConfirmReachable(ctx, peer.Hash)
+
+	roster.RejectRemoteIndex(ctx, seniorSeed(t, "senior", "203.0.113.1", 8091))
+
+	reachable := roster.ReachablePeers(ctx)
+	if len(reachable) != 1 || reachable[0].Hash != peer.Hash {
+		t.Fatalf("reachable = %#v, want peer retained", reachable)
+	}
+	flags, ok := reachable[0].Flags.Get()
+	if !ok || flags.Get(yagomodel.FlagAcceptRemoteIndex) {
+		t.Fatalf("flags = %q, %v; want remote-index disabled", flags, ok)
+	}
+}
+
+func TestRejectRemoteIndexKeepsFlagForDifferentCurrentAddress(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 8, 4)
+	peer := seniorSeed(t, "senior", "203.0.113.2", 8090)
+	peer.Flags = yagomodel.Some(
+		yagomodel.ZeroFlags().Set(yagomodel.FlagAcceptRemoteIndex, true),
+	)
+	roster.Discover(ctx, peer)
+	roster.ConfirmReachable(ctx, peer.Hash)
+
+	roster.RejectRemoteIndex(ctx, seniorSeed(t, "senior", "203.0.113.1", 8090))
+
+	reachable := roster.ReachablePeers(ctx)
+	flags, ok := reachable[0].Flags.Get()
+	if !ok || !flags.Get(yagomodel.FlagAcceptRemoteIndex) {
+		t.Fatalf("flags = %q, %v; want remote-index retained", flags, ok)
+	}
+}
+
+func TestRejectRemoteIndexSetsMissingFlagsToDisabled(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 8, 4)
+	peer := seniorSeed(t, "senior", "203.0.113.1", 8090)
+	roster.Discover(ctx, peer)
+	roster.ConfirmReachable(ctx, peer.Hash)
+
+	roster.RejectRemoteIndex(ctx, peer)
+
+	flags, ok := roster.ReachablePeers(ctx)[0].Flags.Get()
+	if !ok || flags.Get(yagomodel.FlagAcceptRemoteIndex) {
+		t.Fatalf("flags = %q, %v; want explicit remote-index disabled", flags, ok)
+	}
+}
+
+func TestDiscoverEvictsStalestBeyondCapacity(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 2, 4)
+
+	oldest := seniorSeed(t, "oldest", "203.0.113.1", 8090)
+	middle := seniorSeed(t, "middle", "203.0.113.2", 8090)
+	newest := seniorSeed(t, "newest", "203.0.113.3", 8090)
+
+	roster.Discover(ctx, oldest)
+	roster.Discover(ctx, middle)
+	roster.Discover(ctx, newest)
+
+	targets := hashes(roster.FreshestPeers(ctx, 4))
+	if _, ok := targets[oldest.Hash]; ok {
+		t.Fatalf("stalest peer should have been evicted: %v", targets)
+	}
+	if len(targets) != 2 {
+		t.Fatalf("reservoir size = %d, want 2 after eviction", len(targets))
+	}
+}
+
+func TestFreshestPeersToppedUpToLimit(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 8, 2)
+
+	for _, name := range []string{"a", "b", "c", "d"} {
+		roster.Discover(ctx, seniorSeed(t, name, "203.0.113.9", 8090))
+	}
+
+	if got := len(roster.FreshestPeers(ctx, 2)); got != 2 {
+		t.Fatalf("freshest peers = %d, want capped at limit 2", got)
+	}
+}

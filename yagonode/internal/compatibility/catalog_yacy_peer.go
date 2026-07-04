@@ -1,0 +1,173 @@
+package compatibility
+
+import "github.com/D4rk4/yago/yagoproto"
+
+var yacyPeerSurfaceSpecs = []surfaceSpec{
+	{
+		Name:    "Peer liveness handshake",
+		Path:    yagoproto.PathHello,
+		Methods: methods(yagoproto.HelloEndpointMethods),
+		State:   Implemented,
+		Behavior: "Returns caller IP, caller peer type, own seed, and bounded known seed list after " +
+			"back-ping classification, while rejecting self-pings and callers using this peer hash.",
+		Evidence: []string{
+			"yagonode/internal/peeradmission/*_test.go",
+			"yagonode/test/fixtures/yacywire/hello-*",
+		},
+	},
+	{
+		Name:    "RWI and URL count query",
+		Path:    yagoproto.PathQuery,
+		Methods: methods(yagoproto.QueryEndpointMethods),
+		State:   Implemented,
+		Behavior: "Answers YaCy-compatible rwicount, per-word rwiurlcount, lurlcount, and " +
+			"zero-valued wanted* status probes with target identity checks.",
+		Evidence: []string{
+			"yagonode/internal/nodestatus/*_test.go",
+			"yagonode/test/fixtures/yacywire/query-*",
+		},
+	},
+	{
+		Name:    "Inbound RWI transfer",
+		Path:    yagoproto.PathTransferRWI,
+		Methods: methods(yagoproto.TransferRWIEndpointMethods),
+		State:   Implemented,
+		Behavior: "Checks the YaCy network unit and required transfer fields before intake, accepts RWI postings " +
+			"durably before acknowledgement, and reports missing URL metadata with YaCy transferRWI fields.",
+		Evidence: []string{
+			"yagonode/internal/rwi/*_test.go",
+			"yagonode/test/fixtures/yacywire/transfer-rwi-*",
+		},
+	},
+	{
+		Name:    "Inbound URL metadata transfer",
+		Path:    yagoproto.PathTransferURL,
+		Methods: methods(yagoproto.TransferURLEndpointMethods),
+		State:   Implemented,
+		Behavior: "Checks the YaCy network unit before target handling, accepts URL metadata rows, reconciles RWI " +
+			"references, and returns YaCy transferURL result fields.",
+		Evidence: []string{
+			"yagonode/internal/urlmeta/*_test.go",
+			"yagonode/test/fixtures/yacywire/transfer-url-*",
+		},
+	},
+	{
+		Name:    "Remote RWI search",
+		Path:    yagoproto.PathSearch,
+		Methods: methods(yagoproto.SearchEndpointMethods),
+		State:   Implemented,
+		Behavior: "Serves key-value YaCy remote search responses with count, joincount, resource rows, " +
+			"indexcount, and indexabstract metadata from local RWI storage.",
+		Evidence: []string{
+			"yagonode/internal/documentsearch/*_test.go",
+			"yagonode/test/fixtures/yacywire/search-*",
+		},
+	},
+	{
+		Name:    "Plain seed list",
+		Path:    yagoproto.PathSeedlist,
+		Methods: methods(yagoproto.SeedlistEndpointMethods),
+		State:   Implemented,
+		Behavior: "Serves own and confirmed reachable seeds in plain YaCy seed-list form with upstream filters, including minversion; " +
+			"configured bootstrap import accepts seed UTC offset and timestamp wire values.",
+		Evidence: []string{"yagonode/internal/seedlist/*_test.go"},
+	},
+	{
+		Name:     "JSON seed list",
+		Path:     yagoproto.PathSeedlistJSON,
+		Methods:  methods(yagoproto.SeedlistEndpointMethods),
+		State:    Implemented,
+		Behavior: "Serves own and confirmed reachable seeds in JSON seed-list form with the same YaCy request filters as the plain seed list.",
+		Evidence: []string{"yagonode/internal/seedlist/*_test.go"},
+	},
+	{
+		Name:     "XML seed list",
+		Path:     yagoproto.PathSeedlistXML,
+		Methods:  methods(yagoproto.SeedlistEndpointMethods),
+		State:    Implemented,
+		Behavior: "Serves own and confirmed reachable seeds in XML seed-list form with the same YaCy request filters as the plain seed list.",
+		Evidence: []string{"yagonode/internal/seedlist/*_test.go"},
+	},
+	{
+		Name:     "Host-link index",
+		Path:     yagoproto.PathIndex,
+		Methods:  methods(yagoproto.IndexEndpointMethods),
+		State:    Partial,
+		Behavior: "Serves the YaCy idx.json host object shape with a bounded incoming host-link index counted from stored document outlinks per source host.",
+		Evidence: []string{
+			"yagonode/internal/hostlinks/*_test.go",
+			"yagonode/internal/urlmeta/*_test.go",
+			"yagonode/internal/yagonode/host_link_source_test.go",
+			"yagoproto/index_test.go",
+		},
+		Notes: "Only object=host is implemented.",
+	},
+	{
+		Name:     "Shared blacklist export",
+		Path:     yagoproto.PathList,
+		Methods:  methods(yagoproto.ListEndpointMethods),
+		State:    Partial,
+		Behavior: "Checks the YaCy network unit and serves shared blacklist col=black responses from files named in YACY_DATA_DIR/SETTINGS/yacy.conf BlackLists.Shared under YACY_DATA_DIR/LISTS.",
+		Evidence: []string{
+			"yagonode/internal/sharedblacklist/*_test.go",
+			"yagonode/internal/yagonode/node_shared_blacklist_test.go",
+			"yagoproto/list_test.go",
+		},
+		Notes: "Only col=black is implemented.",
+	},
+	{
+		Name:     "Peer message inbox",
+		Path:     yagoproto.PathMessage,
+		Methods:  methods(yagoproto.MessageEndpointMethods),
+		State:    Partial,
+		Behavior: "Accepts permission checks without requiring iam or parsing post-only body fields and inbound peer message posts into a durable inbox.",
+		Evidence: []string{"yagonode/internal/peermessage/*_test.go", "yagoproto/message_test.go"},
+		Notes:    "Attachments are advertised as size 0 and are not stored.",
+	},
+	{
+		Name:     "Peer profile export",
+		Path:     yagoproto.PathProfile,
+		Methods:  methods(yagoproto.ProfileEndpointMethods),
+		State:    Partial,
+		Behavior: "Serves the YaCy profile text shape with properties loaded from YACY_DATA_DIR/SETTINGS/profile.txt when that file exists.",
+		Evidence: []string{
+			"yagonode/internal/peerprofile/*_test.go",
+			"yagonode/internal/yagonode/node_profile_test.go",
+			"yagoproto/profile_test.go",
+		},
+		Notes: "Missing profile files produce an empty profile.",
+	},
+	{
+		Name:     "Remote crawl URL feed",
+		Path:     yagoproto.PathCrawlURLs,
+		Methods:  methods(yagoproto.CrawlURLEndpointMethods),
+		State:    Partial,
+		Behavior: "Serves URL-hash metadata feeds and safe empty remote-crawl feeds while remote crawl execution is disabled.",
+		Evidence: []string{"yagonode/internal/crawlurls/*_test.go", "yagoproto/crawl_urls_test.go"},
+		Notes:    "Remote crawl work is disabled by default for SSRF safety.",
+	},
+	{
+		Name:     "Remote crawl receipt",
+		Path:     yagoproto.PathCrawlReceipt,
+		Methods:  methods(yagoproto.CrawlReceiptEndpointMethods),
+		State:    Partial,
+		Behavior: "Accepts the YaCy crawl receipt wire shape, returns no delay field on network-auth failure, and returns YaCy's rejected-receipt retry delay for same-network malformed or wrong target hashes while remote crawl execution is disabled.",
+		Evidence: []string{
+			"yagonode/internal/crawling/*_test.go",
+			"yagoproto/crawl_receipt_test.go",
+		},
+		Notes: "Remote crawl work is disabled by default for SSRF safety.",
+	},
+}
+
+func methods(set yagoproto.EndpointMethodSet) []string {
+	var out []string
+	if set&yagoproto.EndpointMethodGet != 0 {
+		out = append(out, "GET")
+	}
+	if set&yagoproto.EndpointMethodPost != 0 {
+		out = append(out, "POST")
+	}
+
+	return out
+}

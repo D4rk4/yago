@@ -1,0 +1,25 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  yagoproto:
+    in:
+      - .
+      - "**"
+
+vendors:
+  yagomodel:
+    in:
+      - github.com/D4rk4/yago/yagomodel
+      - github.com/D4rk4/yago/yagomodel/**
+
+deps:
+  yagoproto:
+    mayDependOn:
+      - yagoproto
+    canUse:
+      - yagomodel

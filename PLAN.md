@@ -2822,6 +2822,17 @@ Invariants for every BRAND task (must NOT be renamed):
 
 ### BRAND-01: Rename Go modules, import paths, and directories
 
+Status: Done (ADR-0023). The six workspace modules, their directories, `go.mod`
+paths, `go.work` entries, module-root packages, imports/selectors, and all
+build/config/doc references were renamed `yacy*` -> `yago*` (length-preserving).
+The YaCy-compatibility surface is intentionally kept: `/yacy/*` and
+`/yacysearch.*` endpoints, the `yacycrawl.v1` protobuf wire package, DTO field
+names, the `yacy-rwi.db` fallback, the `internal/yacysearch` and
+`test/fixtures/yacywire` packages, `yacy_hash_form.go`, the `yacy-*.md` docs, the
+`yacy_*.go` e2e interop tests, and the YaCy/AGPL attribution. verify green
+(coverage 98.2%), Semgrep + Trivy clean; a pre-existing flaky crawler-heartbeat
+data race surfaced under `-race` and was fixed.
+
 Tasks:
 
 1. Rename the module directories and `go.mod` module paths

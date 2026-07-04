@@ -1,4 +1,4 @@
-Modern Go YaCy-compatible P2P search node. Spec: `yacynode/doc/specification.md`.
+Modern Go YaCy-compatible P2P search node. Spec: `yagonode/doc/specification.md`.
 
 Project language: Use English in code, documentation, generated project files, commits, and user-visible text. Exceptions are exact upstream protocol fixtures, exact legal license text, and externally supplied data that must remain verbatim.
 
@@ -84,19 +84,19 @@ Strategic guardrails: Do not reimplement Java YaCy internals blindly. Do not int
 
 Continuity: Maintain one workspace ledger in `CONTINUITY.md`. At the start of every assistant turn, read it, update it with the current goal, constraints, decisions, progress state, and important tool outcomes, then continue the work. Keep it short: facts only, bullets preferred, uncertainty marked `UNCONFIRMED`. Keep `functions.update_plan` for short-term execution scaffolding and `CONTINUITY.md` for durable session state. Replies start with a brief Ledger Snapshot containing Goal, Now/Next, and Open Questions. The ledger keeps these headings: Goal (incl. success criteria), Constraints/Assumptions, Key decisions, State, Done, Now, Next, Open questions, Working set (files/ids/commands).
 
-Feature catalog: Maintain `FEATURES.md` in the workspace root. It describes project capabilities side by side across `yacynode`, `yacycrawler`, `yacycrawlcontract`, `yacymodel`, and `yacyproto` where relevant. When adding a feature or changing behavior, update the affected capability, surface, status, behavior summary, and relevant files/tests.
+Feature catalog: Maintain `FEATURES.md` in the workspace root. It describes project capabilities side by side across `yagonode`, `yagocrawler`, `yagocrawlcontract`, `yagomodel`, and `yagoproto` where relevant. When adding a feature or changing behavior, update the affected capability, surface, status, behavior summary, and relevant files/tests.
 
 Code structure: Follow OCP. Add features in new files and connect them through the smallest seam; do not grow existing files.
 
-Module boundaries: Keep YaCy value types in `yacymodel`, wire protocol DTOs and endpoint vocabulary in `yacyproto`, node runtime/storage/P2P/search/ops behavior in `yacynode`, crawler worker behavior in `yacycrawler`, and node-crawler message contracts in `yacycrawlcontract`. Do not mix crawler runtime code into the node except through the contract and narrow node-side crawl orchestration.
+Module boundaries: Keep YaCy value types in `yagomodel`, wire protocol DTOs and endpoint vocabulary in `yagoproto`, node runtime/storage/P2P/search/ops behavior in `yagonode`, crawler worker behavior in `yagocrawler`, and node-crawler message contracts in `yagocrawlcontract`. Do not mix crawler runtime code into the node except through the contract and narrow node-side crawl orchestration.
 
 Logging: Use stable message constants; put variable data in key/value fields. Happy paths: DEBUG. Sad paths: WARN if recoverable, ERROR if action is needed.
 
-Comments: No comments without explicit user approval. Use naming and structure instead. Put required prose in `yacynode/doc/` or the relevant module README. Godoc package docs are allowed. If a comment seems unavoidable, ask first.
+Comments: No comments without explicit user approval. Use naming and structure instead. Put required prose in `yagonode/doc/` or the relevant module README. Godoc package docs are allowed. If a comment seems unavoidable, ask first.
 
 Single source of truth: Do not duplicate facts in comments, errors, logs, or similar text when they already exist in constants, config, docs, or protocol definitions.
 
-Documentation: Each doc is self-contained, concise, plain-language, and user-facing. Links are for navigation only. Avoid cross-doc dependencies, duplicate facts, jargon, implementation details, and rationale. Behavior changes update the relevant module README, `yacynode/doc/`, `FEATURES.md`, and `CONTINUITY.md`; update a root README if one is introduced.
+Documentation: Each doc is self-contained, concise, plain-language, and user-facing. Links are for navigation only. Avoid cross-doc dependencies, duplicate facts, jargon, implementation details, and rationale. Behavior changes update the relevant module README, `yagonode/doc/`, `FEATURES.md`, and `CONTINUITY.md`; update a root README if one is introduced.
 
 Naming: Every package, file, type, interface, port, function, method, field, and variable has one bounded responsibility. Prefer explicit bounded names over short generic names. Never use `util.go`, `helpers.go`, `handler.go`, or `types.go`. Reject umbrella names such as Store, Manager, Service, Handler, Util, or catch-all domain names like Distribution*. If the boundary cannot be stated in one sentence, fix the abstraction.
 

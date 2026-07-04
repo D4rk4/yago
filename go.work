@@ -1,10 +1,10 @@
 go 1.26
 
 use (
-	./yacycrawlcontract
-	./yacycrawler
-	./yacyegress
-	./yacymodel
-	./yacynode
-	./yacyproto
+	./yagocrawlcontract
+	./yagocrawler
+	./yagoegress
+	./yagomodel
+	./yagonode
+	./yagoproto
 )

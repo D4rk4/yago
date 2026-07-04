@@ -1,0 +1,556 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  vault:
+    in: internal/vault/**
+  boltvault:
+    in: internal/boltvault/**
+  memvault:
+    in: internal/memvault/**
+  vaulttest:
+    in: internal/vaulttest/**
+  httpguard:
+    in: internal/httpguard/**
+  nodeidentity:
+    in: internal/nodeidentity/**
+  peeradmission:
+    in: internal/peeradmission/**
+  peerbirth:
+    in: internal/peerbirth/**
+  peernews:
+    in: internal/peernews/**
+  transfertally:
+    in: internal/transfertally/**
+  peerroster:
+    in: internal/peerroster/**
+  peerannouncement:
+    in: internal/peerannouncement/**
+  hostlinks:
+    in: internal/hostlinks/**
+  peermessage:
+    in: internal/peermessage/**
+  peerprofile:
+    in: internal/peerprofile/**
+  seedlist:
+    in: internal/seedlist/**
+  sharedblacklist:
+    in: internal/sharedblacklist/**
+  bootstrap:
+    in: internal/bootstrap/**
+  landing:
+    in: internal/landing/**
+  adminui:
+    in: internal/adminui/**
+  publicportal:
+    in: internal/publicportal/**
+  crawling:
+    in: internal/crawling/**
+  crawlurls:
+    in: internal/crawlurls/**
+  dhttarget:
+    in: internal/dhttarget/**
+  indextransfer:
+    in: internal/indextransfer/**
+  dhtexchange:
+    in: internal/dhtexchange/**
+  urlmeta:
+    in: internal/urlmeta/**
+  urlmetastaleness:
+    in: internal/urlmetastaleness/**
+  urlreferences:
+    in: internal/urlreferences/**
+  rwi:
+    in: internal/rwi/**
+  documentstore:
+    in: internal/documentstore/**
+  documentsearch:
+    in: internal/documentsearch/**
+  searchcore:
+    in: internal/searchcore/**
+  searchindex:
+    in: internal/searchindex/**
+  searchlocal:
+    in: internal/searchlocal/**
+  searchremote:
+    in: internal/searchremote/**
+  tavilyapi:
+    in: internal/tavilyapi/**
+  yacysearch:
+    in: internal/yacysearch/**
+  websearch:
+    in: internal/websearch/**
+  extractfetch:
+    in: internal/extractfetch/**
+  nodestatus:
+    in: internal/nodestatus/**
+  eviction:
+    in: internal/eviction/**
+  metrics:
+    in: internal/metrics/**
+  events:
+    in: internal/events/**
+  crawldispatch:
+    in: internal/crawldispatch/**
+  crawlresults:
+    in: internal/crawlresults/**
+  crawlbroker:
+    in: internal/crawlbroker/**
+  adminauth:
+    in: internal/adminauth/**
+  crossorigin:
+    in: internal/crossorigin/**
+  compatibility:
+    in: internal/compatibility/**
+  yagonode:
+    in: internal/yagonode/**
+  cmd:
+    in:
+      - cmd/yacy-peer-hash/**
+      - cmd/yago-node/**
+
+vendors:
+  yagomodel:
+    in:
+      - github.com/D4rk4/yago/yagomodel
+      - github.com/D4rk4/yago/yagomodel/**
+  yagoproto:
+    in:
+      - github.com/D4rk4/yago/yagoproto
+      - github.com/D4rk4/yago/yagoproto/**
+  yagocrawlcontract:
+    in:
+      - github.com/D4rk4/yago/yagocrawlcontract
+      - github.com/D4rk4/yago/yagocrawlcontract/**
+  yagoegress:
+    in:
+      - github.com/D4rk4/yago/yagoegress
+      - github.com/D4rk4/yago/yagoegress/**
+  bbolt:
+    in: go.etcd.io/bbolt
+  bleve:
+    in:
+      - github.com/blevesearch/bleve/v2
+      - github.com/blevesearch/bleve/v2/**
+  prometheus:
+    in:
+      - github.com/prometheus/client_golang/prometheus
+      - github.com/prometheus/client_golang/prometheus/**
+  grpc:
+    in:
+      - google.golang.org/grpc
+      - google.golang.org/grpc/**
+  protobuf:
+    in:
+      - google.golang.org/protobuf
+      - google.golang.org/protobuf/**
+  crypto:
+    in:
+      - golang.org/x/crypto
+      - golang.org/x/crypto/**
+  xnet:
+    in:
+      - golang.org/x/net
+      - golang.org/x/net/**
+
+deps:
+  vault:
+    mayDependOn:
+      - vault
+      - vaulttest
+  boltvault:
+    deepScan: false
+    mayDependOn:
+      - boltvault
+      - vault
+      - vaulttest
+    canUse:
+      - bbolt
+  memvault:
+    mayDependOn:
+      - memvault
+      - vault
+      - vaulttest
+  vaulttest:
+    mayDependOn:
+      - vaulttest
+      - vault
+  httpguard:
+    mayDependOn:
+      - httpguard
+    canUse:
+      - yagomodel
+      - yagoproto
+  nodeidentity:
+    canUse:
+      - yagomodel
+      - yagoproto
+  peeradmission:
+    mayDependOn:
+      - peeradmission
+      - peerroster
+      - httpguard
+      - nodeidentity
+    canUse:
+      - yagomodel
+      - yagoproto
+  peerbirth:
+    mayDependOn:
+      - peerbirth
+      - vault
+  peernews:
+    mayDependOn:
+      - peernews
+      - vault
+      - memvault
+    canUse:
+      - yagomodel
+  transfertally:
+    mayDependOn:
+      - transfertally
+      - vault
+      - memvault
+  peerroster:
+    mayDependOn:
+      - peerroster
+      - vault
+      - memvault
+    canUse:
+      - yagomodel
+  peerannouncement:
+    mayDependOn:
+      - peerannouncement
+      - peerroster
+      - bootstrap
+    canUse:
+      - yagomodel
+      - yagoproto
+  hostlinks:
+    mayDependOn:
+      - hostlinks
+      - httpguard
+    canUse:
+      - yagoproto
+  peermessage:
+    mayDependOn:
+      - peermessage
+      - httpguard
+      - nodeidentity
+      - vault
+      - memvault
+    canUse:
+      - yagomodel
+      - yagoproto
+  peerprofile:
+    mayDependOn:
+      - peerprofile
+      - httpguard
+      - nodeidentity
+    canUse:
+      - yagoproto
+  seedlist:
+    mayDependOn:
+      - seedlist
+      - httpguard
+    canUse:
+      - yagomodel
+      - yagoproto
+  sharedblacklist:
+    mayDependOn:
+      - sharedblacklist
+      - httpguard
+    canUse:
+      - yagoproto
+  bootstrap:
+    mayDependOn:
+      - bootstrap
+    canUse:
+      - yagomodel
+      - yagoproto
+  landing:
+    mayDependOn:
+      - landing
+  adminui:
+    mayDependOn:
+      - adminui
+      - adminauth
+  publicportal:
+    mayDependOn:
+      - publicportal
+  crawling:
+    mayDependOn:
+      - crawling
+      - httpguard
+    canUse:
+      - yagomodel
+      - yagoproto
+  crawlurls:
+    mayDependOn:
+      - crawlurls
+      - httpguard
+      - nodeidentity
+    canUse:
+      - yagomodel
+      - yagoproto
+  dhttarget:
+    mayDependOn:
+      - dhttarget
+    canUse:
+      - yagomodel
+  indextransfer:
+    mayDependOn:
+      - indextransfer
+      - dhttarget
+    canUse:
+      - yagomodel
+      - yagoproto
+  dhtexchange:
+    mayDependOn:
+      - dhtexchange
+      - indextransfer
+    canUse:
+      - yagomodel
+  urlmeta:
+    mayDependOn:
+      - urlmeta
+      - vault
+      - memvault
+      - httpguard
+      - nodeidentity
+    canUse:
+      - yagomodel
+      - yagoproto
+  urlmetastaleness:
+    mayDependOn:
+      - urlmetastaleness
+      - urlmeta
+      - vault
+      - memvault
+    canUse:
+      - yagomodel
+  urlreferences:
+    mayDependOn:
+      - urlreferences
+      - rwi
+      - vault
+      - memvault
+    canUse:
+      - yagomodel
+  rwi:
+    mayDependOn:
+      - rwi
+      - urlmeta
+      - vault
+      - memvault
+      - httpguard
+      - nodeidentity
+    canUse:
+      - yagomodel
+      - yagoproto
+  documentstore:
+    mayDependOn:
+      - documentstore
+      - vault
+      - memvault
+  documentsearch:
+    mayDependOn:
+      - documentsearch
+      - documentstore
+      - searchcore
+      - rwi
+      - urlmeta
+      - httpguard
+      - nodeidentity
+    canUse:
+      - yagomodel
+      - yagoproto
+  searchcore:
+    mayDependOn:
+      - searchcore
+  searchindex:
+    mayDependOn:
+      - searchindex
+      - documentstore
+    canUse:
+      - bleve
+  searchlocal:
+    mayDependOn:
+      - searchlocal
+      - searchcore
+      - searchindex
+      - documentstore
+    canUse:
+      - yagomodel
+  searchremote:
+    mayDependOn:
+      - searchremote
+      - searchcore
+      - dhttarget
+    canUse:
+      - yagomodel
+      - yagoproto
+  tavilyapi:
+    mayDependOn:
+      - tavilyapi
+      - searchcore
+      - documentstore
+  yacysearch:
+    mayDependOn:
+      - yacysearch
+      - searchcore
+    canUse:
+      - yagoproto
+  websearch:
+    mayDependOn:
+      - websearch
+      - searchcore
+    canUse:
+      - xnet
+  extractfetch:
+    mayDependOn:
+      - extractfetch
+    canUse:
+      - xnet
+  nodestatus:
+    mayDependOn:
+      - nodestatus
+      - httpguard
+      - nodeidentity
+    canUse:
+      - yagomodel
+      - yagoproto
+  eviction:
+    mayDependOn:
+      - eviction
+      - rwi
+      - urlmeta
+      - urlmetastaleness
+      - urlreferences
+      - vault
+      - memvault
+    canUse:
+      - yagomodel
+  metrics:
+    mayDependOn:
+      - metrics
+      - eviction
+      - dhtexchange
+    canUse:
+      - yagomodel
+      - prometheus
+  events:
+    mayDependOn:
+      - events
+  crawldispatch:
+    mayDependOn:
+      - crawldispatch
+    canUse:
+      - yagocrawlcontract
+      - yagomodel
+  crawlresults:
+    mayDependOn:
+      - crawlresults
+      - documentstore
+      - searchindex
+      - urlmeta
+      - rwi
+    canUse:
+      - yagocrawlcontract
+      - yagomodel
+  crawlbroker:
+    mayDependOn:
+      - crawlbroker
+      - crawlresults
+      - vault
+      - memvault
+    canUse:
+      - yagocrawlcontract
+      - yagomodel
+      - grpc
+      - protobuf
+  adminauth:
+    mayDependOn:
+      - adminauth
+      - vault
+      - memvault
+    canUse:
+      - crypto
+  crossorigin:
+    mayDependOn:
+      - crossorigin
+  compatibility:
+    mayDependOn:
+      - compatibility
+    canUse:
+      - yagoproto
+  yagonode:
+    mayDependOn:
+      - vault
+      - boltvault
+      - memvault
+      - httpguard
+      - peeradmission
+      - peerbirth
+      - peerroster
+      - peerannouncement
+      - hostlinks
+      - peermessage
+      - peerprofile
+      - seedlist
+      - sharedblacklist
+      - bootstrap
+      - landing
+      - adminui
+      - publicportal
+      - crawling
+      - crawlurls
+      - dhttarget
+      - dhtexchange
+      - indextransfer
+      - urlmeta
+      - documentstore
+      - rwi
+      - documentsearch
+      - eviction
+      - metrics
+      - events
+      - nodeidentity
+      - nodestatus
+      - peernews
+      - transfertally
+      - urlmetastaleness
+      - urlreferences
+      - crawldispatch
+      - crawlresults
+      - crawlbroker
+      - adminauth
+      - crossorigin
+      - compatibility
+      - searchcore
+      - searchindex
+      - searchlocal
+      - searchremote
+      - tavilyapi
+      - yacysearch
+      - websearch
+      - extractfetch
+    canUse:
+      - yagocrawlcontract
+      - yagoegress
+      - yagomodel
+      - yagoproto
+      - prometheus
+      - grpc
+  cmd:
+    mayDependOn:
+      - yagonode
+    canUse:
+      - yagomodel
+
+excludeFiles:
+  - "test/e2e"
+  - "test/fixtures"

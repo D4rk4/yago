@@ -93,12 +93,12 @@ publish ingest batches back to the node.
 
 | Path | Purpose |
 | --- | --- |
-| `yacynode` | The `yago-node` daemon, YaCy peer protocol endpoints, document, RWI, and URL metadata vaults, search surfaces, metrics, peer exchange, and node-side crawl orchestration. |
-| `yacycrawler` | Optional crawler worker that fetches pages through a bounded HTTP fast path with browser fallback, then emits document ingest payloads, RWI postings, and URL metadata. |
-| `yacycrawlcontract` | Shared JSON message contract between the node and crawler. |
-| `yacymodel` | YaCy domain values and codecs. |
-| `yacyproto` | YaCy peer-to-peer endpoint paths, request/response DTOs, and wire protocol helpers. |
-| `yacynode/doc` | User-facing node specification, configuration, protocol, interoperability, and ADR documentation. |
+| `yagonode` | The `yago-node` daemon, YaCy peer protocol endpoints, document, RWI, and URL metadata vaults, search surfaces, metrics, peer exchange, and node-side crawl orchestration. |
+| `yagocrawler` | Optional crawler worker that fetches pages through a bounded HTTP fast path with browser fallback, then emits document ingest payloads, RWI postings, and URL metadata. |
+| `yagocrawlcontract` | Shared JSON message contract between the node and crawler. |
+| `yagomodel` | YaCy domain values and codecs. |
+| `yagoproto` | YaCy peer-to-peer endpoint paths, request/response DTOs, and wire protocol helpers. |
+| `yagonode/doc` | User-facing node specification, configuration, protocol, interoperability, and ADR documentation. |
 | `FEATURES.md` | Markdown feature catalog for implemented, partial, and planned capabilities. |
 | `FORK.md` | Fork goals, compatibility claims, and AGPL and UI legal notices. |
 | `PLAN.md` | Development roadmap for the fork. |
@@ -169,7 +169,7 @@ Common crawler variables:
 | `YACYCRAWLER_MAX_REDIRECTS` | `10` | Maximum HTTP redirect hops followed by the crawler fast fetch path. Set `0` to reject the first redirect. |
 | `YACYCRAWLER_SITEMAP_URL_LIMIT` | `10000` | Maximum URLs imported from one sitemap or sitelist crawl seed before frontier admission. |
 
-See [yacynode/doc/configuration.md](yacynode/doc/configuration.md) for the full
+See [yagonode/doc/configuration.md](yagonode/doc/configuration.md) for the full
 configuration reference.
 
 ## Local Stack
@@ -190,7 +190,7 @@ docker compose up --build
 The example stack starts:
 
 - `yago-node` on ports `8090` and `9090`;
-- `yacycrawler` as the optional crawler worker.
+- `yagocrawler` as the optional crawler worker.
 
 When `YACY_CRAWL_RPC_ADDR` is configured, the ops listener accepts local crawl dispatch
 requests at `POST /crawl`. The request body includes `seeds` and optional
@@ -266,25 +266,25 @@ make e2e
 Start with these documents:
 
 - [FORK.md](FORK.md) for the fork's goals, compatibility claims, and legal
-  notices, and [yacynode/doc/fork-roadmap.md](yacynode/doc/fork-roadmap.md) for a
+  notices, and [yagonode/doc/fork-roadmap.md](yagonode/doc/fork-roadmap.md) for a
   plain-language roadmap;
-- [yacynode/doc/adr/README.md](yacynode/doc/adr/README.md) for the architecture
+- [yagonode/doc/adr/README.md](yagonode/doc/adr/README.md) for the architecture
   decision records and the new-dependency rule;
-- [yacynode/doc/specification.md](yacynode/doc/specification.md) for the current
+- [yagonode/doc/specification.md](yagonode/doc/specification.md) for the current
   node contract and non-goals;
-- [yacynode/doc/yacy-dht-interop.md](yacynode/doc/yacy-dht-interop.md) for YaCy
+- [yagonode/doc/yacy-dht-interop.md](yagonode/doc/yacy-dht-interop.md) for YaCy
   DHT interoperability notes;
-- [yacynode/doc/yacy-wire-protocol.md](yacynode/doc/yacy-wire-protocol.md) for
+- [yagonode/doc/yacy-wire-protocol.md](yagonode/doc/yacy-wire-protocol.md) for
   peer protocol details;
-- [yacynode/doc/compatibility.md](yacynode/doc/compatibility.md) for supported,
+- [yagonode/doc/compatibility.md](yagonode/doc/compatibility.md) for supported,
   partial, planned, and unsupported YaCy/Tavily surfaces;
-- [yacynode/doc/yacy-upstream-test-parity.md](yacynode/doc/yacy-upstream-test-parity.md)
+- [yagonode/doc/yacy-upstream-test-parity.md](yagonode/doc/yacy-upstream-test-parity.md)
   for the mapping between upstream YaCy JUnit tests and this repository's
   compatibility tests;
-- [yacynode/doc/remote-crawl-policy.md](yacynode/doc/remote-crawl-policy.md) for
+- [yagonode/doc/remote-crawl-policy.md](yagonode/doc/remote-crawl-policy.md) for
   the disabled-by-default remote crawl security policy;
-- [yacycrawler/README.md](yacycrawler/README.md) for crawler behavior;
-- [yacycrawlcontract/README.md](yacycrawlcontract/README.md) for node-crawler
+- [yagocrawler/README.md](yagocrawler/README.md) for crawler behavior;
+- [yagocrawlcontract/README.md](yagocrawlcontract/README.md) for node-crawler
   message flow.
 
 ## License

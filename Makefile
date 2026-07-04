@@ -1,5 +1,5 @@
 GO ?= go
-MODULES := yacynode yacymodel yacyproto yacycrawlcontract yacyegress yacycrawler
+MODULES := yagonode yagomodel yagoproto yagocrawlcontract yagoegress yagocrawler
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 80
 COVER_EXCLUDE := /internal/vaulttest/|/test/e2e/|/crawlrpc/
@@ -12,7 +12,7 @@ GO_ARCH_LINT := $(TOOLS_BIN)/go-arch-lint
 .PHONY: tools proto-tools proto fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-node-image e2e-crawler-image peer-hash
 
 PROTOC ?= protoc
-PROTO_MODULE := github.com/D4rk4/yago/yacycrawlcontract
+PROTO_MODULE := github.com/D4rk4/yago/yagocrawlcontract
 PROTOC_GEN_GO_VERSION ?= v1.36.6
 PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
 
@@ -101,28 +101,28 @@ proto-tools:
 	GOBIN=$(TOOLS_BIN) $(GO) install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
 
 proto:
-	cd yacycrawlcontract && PATH="$(TOOLS_BIN):$$PATH" $(PROTOC) \
+	cd yagocrawlcontract && PATH="$(TOOLS_BIN):$$PATH" $(PROTOC) \
 		--go_out=. --go_opt=module=$(PROTO_MODULE) \
 		--go-grpc_out=. --go-grpc_opt=module=$(PROTO_MODULE) \
 		-I proto proto/crawlexchange.proto
 
 peer-hash:
-	cd yacynode && $(GO) run ./cmd/yacy-peer-hash
+	cd yagonode && $(GO) run ./cmd/yacy-peer-hash
 
 verify: fmt-check vet lint arch test cover-check build
 
 e2e-node-image:
-	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacynode/Dockerfile -t $(E2E_NODE_IMAGE) .
+	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yagonode/Dockerfile -t $(E2E_NODE_IMAGE) .
 
 e2e-crawler-image:
-	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacycrawler/Dockerfile -t $(E2E_CRAWLER_IMAGE) .
+	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yagocrawler/Dockerfile -t $(E2E_CRAWLER_IMAGE) .
 
 e2e-node:
-	cd yacynode/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
+	cd yagonode/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
 
 e2e-crawler:
-	cd yacycrawler/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) \
+	cd yagocrawler/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) \
 		YACYCRAWLER_IMAGE=$(E2E_CRAWLER_IMAGE) YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
 
