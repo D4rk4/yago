@@ -41,6 +41,7 @@ type node struct {
 	postings      rwi.PostingIndex
 	urlDirectory  urlmeta.URLDirectory
 	roster        peerroster.Roster
+	news          *peernews.Pool
 	sweeper       eviction.Sweeper
 	announcer     peerannouncement.Announcer
 	crawl         crawlProcess
@@ -156,6 +157,7 @@ func assembleNode(
 		report:    report,
 		searcher:  surfaces.searcher,
 		roster:    roster,
+		news:      news,
 		vault:     vault,
 		ranking:   surfaces.ranking,
 	}), nil
@@ -233,6 +235,7 @@ type nodeParts struct {
 	report    nodestatus.Report
 	searcher  searchcore.Searcher
 	roster    peerroster.Roster
+	news      *peernews.Pool
 	vault     *vault.Vault
 	ranking   *rankingprofile.Holder
 }
@@ -250,6 +253,7 @@ func newAssembledNode(parts nodeParts) node {
 		postings:      parts.storage.postings,
 		urlDirectory:  parts.storage.urlDirectory,
 		roster:        parts.roster,
+		news:          parts.news,
 		sweeper:       newStorageSweeper(parts.vault, parts.storage),
 		announcer:     parts.announcer,
 		crawl:         parts.crawl,

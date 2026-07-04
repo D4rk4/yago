@@ -62,6 +62,9 @@ func buildOpsMux(
 	if assembled.roster != nil {
 		options.PeerDetail = newPeerDetailSource(assembled.roster)
 	}
+	if assembled.news != nil {
+		options.PeerNews = newPeerNewsSource(assembled.news)
+	}
 	if dispatcher := crawlDispatcher(assembled.crawl); dispatcher != nil {
 		options.Crawl = newCrawlSource(dispatcher)
 	}

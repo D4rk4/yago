@@ -67,3 +67,18 @@ type PeerDetail struct {
 type PeerDetailSource interface {
 	PeerDetail(ctx context.Context, hash string) (PeerDetail, bool)
 }
+
+// PeerNewsItem is one received peer-news record summarized for the Network
+// section: its category, originating peer, humanized age, and payload detail.
+type PeerNewsItem struct {
+	Category   string
+	Originator string
+	Age        string
+	Detail     string
+}
+
+// PeerNewsSource supplies the most recent received peer-news items, newest first.
+// A nil provider hides the peer-news sub-view.
+type PeerNewsSource interface {
+	PeerNews(ctx context.Context) []PeerNewsItem
+}

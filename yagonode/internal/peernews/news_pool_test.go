@@ -146,6 +146,45 @@ func TestPublishOwnNewsIgnoresBadIDOffset(t *testing.T) {
 	}
 }
 
+func TestRecentReturnsNewestFirstCapped(t *testing.T) {
+	ctx := context.Background()
+	pool := openMemPool(t)
+	base := fixedNow()
+
+	for i := range 3 {
+		record := Record{
+			Originator: yagomodel.WordHash("peer"),
+			Created:    base.Add(-time.Duration(i+1) * time.Minute),
+			Received:   base.Add(-time.Duration(i+1) * time.Minute),
+			Category:   CategoryCrawlStart,
+			Attributes: map[string]string{"startURL": "http://example.test/" + strconv.Itoa(i)},
+		}
+		if stored, err := pool.EnqueueIncomingNews(ctx, record); err != nil || !stored {
+			t.Fatalf("enqueue %d = %v, %v", i, stored, err)
+		}
+	}
+
+	recent, err := pool.Recent(ctx, Incoming, 2)
+	if err != nil {
+		t.Fatalf("Recent: %v", err)
+	}
+	if len(recent) != 2 {
+		t.Fatalf("recent = %d, want 2 (capped)", len(recent))
+	}
+	if recent[0].Attributes["startURL"] != "http://example.test/2" ||
+		recent[1].Attributes["startURL"] != "http://example.test/1" {
+		t.Fatalf("recent order = %q, %q; want newest first",
+			recent[0].Attributes["startURL"], recent[1].Attributes["startURL"])
+	}
+
+	if got, err := pool.Recent(ctx, Incoming, 0); err != nil || got != nil {
+		t.Fatalf("Recent(0) = %v, %v; want nil", got, err)
+	}
+	if got, err := pool.Recent(ctx, Processed, 5); err != nil || len(got) != 0 {
+		t.Fatalf("Recent(empty queue) = %v, %v; want none", got, err)
+	}
+}
+
 func TestEnqueueIncomingNewsValidatesAndStores(t *testing.T) {
 	ctx := context.Background()
 	pool := openMemPool(t)

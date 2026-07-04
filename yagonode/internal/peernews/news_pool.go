@@ -223,6 +223,44 @@ func (p *Pool) ByID(ctx context.Context, queue Queue, id string) (Record, bool, 
 	return record, found, nil
 }
 
+// Recent returns up to limit records from a queue, newest first. It is a
+// read-only view for the admin console and does not touch the distribution state.
+func (p *Pool) Recent(ctx context.Context, queue Queue, limit int) ([]Record, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+
+	var records []Record
+	err := p.vault.View(ctx, func(tx *vault.Txn) error {
+		return p.queue.Scan(tx, queuePrefix(queue), func(_ vault.Key, wire string) (bool, error) {
+			record, err := parseRecord(wire, time.Time{})
+			if err != nil {
+				return false, fmt.Errorf("stored news record: %w", err)
+			}
+			records = append(records, record)
+
+			return true, nil
+		})
+	})
+	if err != nil {
+		return nil, fmt.Errorf("recent %s news: %w", queue, err)
+	}
+
+	// Scan yields oldest-first by sequence; reverse and cap to the newest limit.
+	reverseRecords(records)
+	if len(records) > limit {
+		records = records[:limit]
+	}
+
+	return records, nil
+}
+
+func reverseRecords(records []Record) {
+	for i, j := 0, len(records)-1; i < j; i, j = i+1, j-1 {
+		records[i], records[j] = records[j], records[i]
+	}
+}
+
 func (p *Pool) push(tx *vault.Txn, queue Queue, record Record) error {
 	sequence, err := p.nextSequence(tx, queue)
 	if err != nil {

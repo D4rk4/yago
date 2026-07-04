@@ -79,6 +79,29 @@
 {{else}}
 <div class="cds-empty" role="status">No seedlist URLs configured.</div>
 {{end}}
+{{if .PeerNewsEnabled}}
+<h2 class="cds-h2">Peer news</h2>
+<p class="cds-muted">Recent news records received from other peers, newest first.</p>
+{{if .PeerNews}}
+<div class="cds-scroll-x">
+  <table class="cds-table">
+    <thead><tr><th scope="col">Category</th><th scope="col">Originator</th><th scope="col">Age</th><th scope="col">Detail</th></tr></thead>
+    <tbody>
+      {{range .PeerNews}}
+      <tr>
+        <td>{{if .Category}}<span class="cds-tag cds-tag--info">{{.Category}}</span>{{else}}—{{end}}</td>
+        <td class="cds-mono">{{.Originator}}</td>
+        <td>{{if .Age}}{{.Age}}{{else}}—{{end}}</td>
+        <td>{{if .Detail}}{{.Detail}}{{else}}—{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<div class="cds-empty" role="status">No peer news received yet.</div>
+{{end}}
+{{end}}
 {{else}}
 <div class="cds-empty" role="status" aria-live="polite">Network status is not available.</div>
 {{end}}

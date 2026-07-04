@@ -93,6 +93,7 @@ type Options struct {
 	Schema      []SchemaGroup
 	Performance PerformanceSource
 	PeerDetail  PeerDetailSource
+	PeerNews    PeerNewsSource
 }
 
 type sectionView struct {
@@ -103,17 +104,19 @@ type sectionView struct {
 }
 
 type pageData struct {
-	AppName    string
-	ActivePath string
-	Nav        []NavItem
-	CSRF       string
-	Section    sectionView
-	Overview   Overview
-	Index      IndexStats
-	Network    NetworkStatus
-	PeerLinks  bool
-	Config     ConfigView
-	Logs       []LogEntry
+	AppName         string
+	ActivePath      string
+	Nav             []NavItem
+	CSRF            string
+	Section         sectionView
+	Overview        Overview
+	Index           IndexStats
+	Network         NetworkStatus
+	PeerLinks       bool
+	PeerNews        []PeerNewsItem
+	PeerNewsEnabled bool
+	Config          ConfigView
+	Logs            []LogEntry
 }
 
 type peerDetailPageData struct {
@@ -268,6 +271,7 @@ type Console struct {
 	schema      []SchemaGroup
 	performance PerformanceSource
 	peerDetail  PeerDetailSource
+	peerNews    PeerNewsSource
 }
 
 // New builds the console with its embedded templates, assets, and providers.
@@ -296,6 +300,7 @@ func New(opts Options) *Console {
 		schema:      opts.Schema,
 		performance: opts.Performance,
 		peerDetail:  opts.PeerDetail,
+		peerNews:    opts.PeerNews,
 	}
 	console.registerRoutes(assets)
 
@@ -478,11 +483,23 @@ func (c *Console) handleNetwork(w http.ResponseWriter, r *http.Request) {
 
 	c.render(r.Context(), w, c.tpl.network, "layout", pageData{
 		AppName: appName, ActivePath: networkPath, Nav: navItems,
-		CSRF:      csrfToken(r),
-		Section:   sectionView{Heading: "Network", Available: true},
-		Network:   c.network.Network(r.Context()),
-		PeerLinks: c.peerDetail != nil,
+		CSRF:            csrfToken(r),
+		Section:         sectionView{Heading: "Network", Available: true},
+		Network:         c.network.Network(r.Context()),
+		PeerLinks:       c.peerDetail != nil,
+		PeerNews:        c.peerNewsItems(r.Context()),
+		PeerNewsEnabled: c.peerNews != nil,
 	})
+}
+
+// peerNewsItems returns the recent peer-news items, or nil when no source is
+// wired so the Network section omits the peer-news sub-view.
+func (c *Console) peerNewsItems(ctx context.Context) []PeerNewsItem {
+	if c.peerNews == nil {
+		return nil
+	}
+
+	return c.peerNews.PeerNews(ctx)
 }
 
 func (c *Console) handleNetworkPeer(w http.ResponseWriter, r *http.Request) {

@@ -2266,6 +2266,17 @@ shown per seedlist; a manual refresh updates it and is auditable; tests +
 
 ### UI-17: Peer messaging and news console
 
+Status: Done (2026-07-04). The Network section gains a read-only "Peer news"
+sub-view: a table of the most recent received peer-news records (category,
+originating peer hash, humanized age, and the record's payload attributes rendered
+as a compact key=value detail), newest first, with an empty state when none. A new
+read-only `peernews.Pool.Recent(queue, limit)` scans the incoming queue and returns
+the newest records; the node's `adminui.PeerNewsSource` adapter maps each record to
+a view row (humanizing the received age to minutes/hours/days and joining the
+non-standard attributes for the detail), and the section is hidden entirely when no
+source is wired. Sending messages stays out of scope (a later write surface). No
+secrets. verify green (all modules 100%), Semgrep + Trivy clean.
+
 Surface the existing `peernews` subsystem in the admin console read-only: a Network
 sub-view listing recent peer-news items (category, subject, originating peer, age)
 that the node has received, mirroring the observability half of YaCy's

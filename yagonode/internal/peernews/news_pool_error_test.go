@@ -268,6 +268,24 @@ func TestByIDReturnsStorageErrors(t *testing.T) {
 	}
 }
 
+func TestRecentReturnsStorageErrors(t *testing.T) {
+	ctx := context.Background()
+
+	scanBroken := newNewsStubEngine()
+	pool := openStubPool(t, scanBroken)
+	scanBroken.scanErrors[queueBucket] = errors.New("scan failed")
+	if _, err := pool.Recent(ctx, Incoming, 5); err == nil {
+		t.Error("scan failure did not fail")
+	}
+
+	corrupt := newNewsStubEngine()
+	pool = openStubPool(t, corrupt)
+	corrupt.buckets[queueBucket][string(queueKey(Incoming, 1))] = []byte("{dis=many}")
+	if _, err := pool.Recent(ctx, Incoming, 5); err == nil {
+		t.Error("corrupt stored record did not fail")
+	}
+}
+
 func TestNewsPoolSurvivesReopenOnSameStorage(t *testing.T) {
 	ctx := context.Background()
 	engine := newNewsStubEngine()

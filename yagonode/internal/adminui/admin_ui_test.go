@@ -491,6 +491,56 @@ func TestConsoleNetworkPeerWithoutSource(t *testing.T) {
 	}
 }
 
+type fakePeerNews struct{ items []PeerNewsItem }
+
+func (f fakePeerNews) PeerNews(context.Context) []PeerNewsItem { return f.items }
+
+func TestConsoleNetworkRendersPeerNews(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Network: fakeNetwork{snap: NetworkStatus{Available: true}},
+		PeerNews: fakePeerNews{items: []PeerNewsItem{{
+			Category: "crwlstrt", Originator: "PEERHASH1234",
+			Age: "3h", Detail: "startURL=http://x/",
+		}}},
+	})
+	got := do(t, console, "/admin/network")
+	for _, want := range []string{
+		"Peer news", "crwlstrt", "PEERHASH1234", "3h", "startURL=http://x/",
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("peer-news section missing %q", want)
+		}
+	}
+}
+
+func TestConsoleNetworkPeerNewsEmptyState(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Network:  fakeNetwork{snap: NetworkStatus{Available: true}},
+		PeerNews: fakePeerNews{},
+	})
+	got := do(t, console, "/admin/network")
+	if !strings.Contains(got.body, "No peer news received yet.") {
+		t.Fatal("expected the peer-news empty state when the source has no items")
+	}
+}
+
+func TestConsoleNetworkHidesPeerNewsWithoutSource(t *testing.T) {
+	t.Parallel()
+
+	got := do(
+		t,
+		New(Options{Network: fakeNetwork{snap: NetworkStatus{Available: true}}}),
+		"/admin/network",
+	)
+	if strings.Contains(got.body, "Peer news") {
+		t.Fatal("peer-news section should be hidden without a source")
+	}
+}
+
 func TestConsoleLogsRendersEvents(t *testing.T) {
 	t.Parallel()
 
