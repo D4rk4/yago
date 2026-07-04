@@ -1512,26 +1512,39 @@ Goal: build a modern admin/search interface comparable in breadth to original Ya
 
 ### UI-01: Frontend foundation ADR and scaffold
 
+Status: Done (ADR-0022, FTR-024). The admin console is a server-rendered Go
+surface enhanced with a single vendored htmx, and the public portal is
+server-rendered Go (ADR-0020) — no Vite/React/npm, so `make verify` stays Go-only
+and the dependency surface is minimal. Delivered: the `internal/adminui` package
+with embedded templates, Carbon-token CSS, and pinned `htmx.min.js`, mounted on the
+operations listener behind the admin session guard.
+
 Tasks:
 
-1. Add ADR for frontend stack: Vite + React + Carbon.
-2. Create `web/admin` workspace.
-3. Pin package manager and versions.
-4. Add scripts:
-   - `lint`
-   - `typecheck`
-   - `test`
-   - `build`
-5. Add Go embed target for compiled assets.
-6. Extend root `Makefile` with frontend verify target.
+1. Record the frontend stack in ADR-0022 (server-rendered Go `html/template` +
+   hand-authored Carbon-token CSS + vendored htmx; no npm/Vite/React).
+2. Create the `internal/adminui` package with an embedded base layout, Carbon-token
+   CSS, and a pinned, vendored `htmx.min.js`, all embedded via `go:embed`.
+3. Serve the console from the operations listener behind the admin session guard;
+   handlers read internal state directly (no separate JSON API round-trip).
+4. Keep `make verify` Go-only — the vendored assets ship in the binary, so there is
+   no separate frontend lint/typecheck/build step.
 
 Acceptance:
 
-- `make verify` builds frontend.
-- Go server can serve static SPA.
-- No admin API secrets embedded in frontend build.
+- `make verify` covers the console (Go tests) with no frontend toolchain.
+- The Go server serves the console and its embedded assets; the public port never
+  exposes it.
+- No admin secrets or keys are embedded in any served asset.
 
 ### UI-02: Carbon app shell
+
+Status: Done (FTR-024). The server-rendered Carbon shell (header, section side
+nav with `aria-current`, content area, breadcrumb, keyboard skip-link, footer)
+renders all nine admin routes plus a link to `/search`; unwired sections show a
+controlled unavailable state and Overview shows a welcome, so the shell renders
+without any backing API. Toasts and richer live states arrive with the sections
+(UI-04..10) and htmx interactions.
 
 Tasks:
 

@@ -1,0 +1,11 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / {{.Section.Heading}}</nav>
+<h1 class="cds-h1">{{.Section.Heading}}</h1>
+{{if .Section.Available}}
+{{.Section.Body}}
+{{else}}
+<div class="cds-empty" role="status" aria-live="polite">
+  <p>{{.Section.Message}}</p>
+</div>
+{{end}}
+{{end}}

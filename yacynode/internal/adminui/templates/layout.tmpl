@@ -1,0 +1,36 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{{.Section.Heading}} — {{.AppName}} admin</title>
+<link rel="stylesheet" href="/admin/assets/carbon.css">
+<script src="/admin/assets/htmx.min.js" defer></script>
+</head>
+<body hx-boost="true">
+<a class="cds-skip" href="#cds-main">Skip to main content</a>
+<header class="cds-header">
+  <span class="cds-header__name"><b>{{.AppName}}</b> admin</span>
+  <span class="cds-header__spacer"></span>
+  <a class="cds-header__link" href="/search">Public search</a>
+  <a class="cds-header__link" href="/admin/security">Security</a>
+</header>
+<div class="cds-shell">
+  <nav class="cds-nav" aria-label="Sections">
+    <ul class="cds-nav__list">
+      {{range .Nav}}
+      <li><a class="cds-nav__link" href="{{.Path}}"{{if eq .Path $.ActivePath}} aria-current="page"{{end}}>{{.Title}}</a></li>
+      {{end}}
+    </ul>
+  </nav>
+  <main class="cds-main" id="cds-main" tabindex="-1">
+    {{template "content" .}}
+    <footer class="cds-footer">
+      {{.AppName}} is free software under the GNU AGPL v3.
+      <a href="https://github.com/D4rk4/yago">Source code</a>.
+    </footer>
+  </main>
+</div>
+</body>
+</html>{{end}}

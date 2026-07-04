@@ -3,6 +3,7 @@ package yagonode
 import (
 	"net/http"
 
+	"github.com/D4rk4/yago/yacynode/internal/adminui"
 	"github.com/D4rk4/yago/yacynode/internal/events"
 	"github.com/D4rk4/yago/yacynode/internal/metrics"
 )
@@ -60,6 +61,7 @@ func newOpsMux(
 	if recentEvents != nil {
 		mux.Handle(pathEvents, recentEvents)
 	}
+	mux.Handle(adminui.BasePath, adminui.New())
 
 	return mux
 }

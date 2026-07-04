@@ -44,6 +44,8 @@ components:
     in: internal/bootstrap/**
   landing:
     in: internal/landing/**
+  adminui:
+    in: internal/adminui/**
   crawling:
     in: internal/crawling/**
   crawlurls:
@@ -270,6 +272,9 @@ deps:
   landing:
     mayDependOn:
       - landing
+  adminui:
+    mayDependOn:
+      - adminui
   crawling:
     mayDependOn:
       - crawling
@@ -493,6 +498,7 @@ deps:
       - sharedblacklist
       - bootstrap
       - landing
+      - adminui
       - crawling
       - crawlurls
       - dhttarget
