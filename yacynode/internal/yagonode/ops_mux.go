@@ -33,6 +33,7 @@ func buildOpsMux(
 	}
 	opsMux.Handle(adminui.BasePath, adminui.New(adminui.Options{
 		Overview: newOverviewSource(assembled.report),
+		Search:   newSearchSource(assembled.searcher),
 	}))
 	recorder.Record(events.SeverityInfo, events.CategoryConfig, "node.started", "node started")
 

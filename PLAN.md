@@ -1618,6 +1618,14 @@ Acceptance:
 
 ### UI-05: Search UI
 
+Status: Done (FTR-025). The Search section runs queries against the node's shared
+search core (same searcher as `/yacysearch.*` and the Tavily API, DDGS fallback
+included) via a decoupled `adminui.SearchSource`; a server-rendered Carbon form
+(`q`, `scope=global`) renders results with no client JavaScript, DDGS hits carry
+the visible `[ddgs]` marker on this human surface, partial peer failures show as
+notifications, and backend errors are generic. Query explain, richer filters, and
+pagination remain follow-ups.
+
 Features:
 
 - Search box.

@@ -2,12 +2,45 @@ package adminui
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+type fakeSearch struct {
+	results SearchResults
+	err     error
+}
+
+func (f fakeSearch) Search(context.Context, SearchQuery) (SearchResults, error) {
+	return f.results, f.err
+}
+
+func sampleResults() SearchResults {
+	return SearchResults{
+		Query:        "go",
+		Global:       true,
+		TotalResults: 2,
+		Results: []SearchResult{
+			{
+				Title:      "Local hit",
+				URL:        "http://a.example/1",
+				DisplayURL: "a.example/1",
+				Snippet:    "s",
+			},
+			{
+				Title:      "Web hit",
+				URL:        "http://b.example/2",
+				DisplayURL: "b.example/2",
+				Source:     "ddgs",
+				Marked:     true,
+			},
+		},
+	}
+}
 
 type capture struct {
 	status int
@@ -203,6 +236,61 @@ func TestSectionHandlerRejectsUnknownPath(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status %d", rec.Code)
+	}
+}
+
+func TestConsoleSearchFormRendersWithoutQuery(t *testing.T) {
+	t.Parallel()
+
+	got := do(t, New(Options{Search: fakeSearch{}}), "/admin/search")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	if !strings.Contains(got.body, `name="q"`) {
+		t.Fatal("search form missing")
+	}
+	if strings.Contains(got.body, "result(s) for") {
+		t.Fatal("no results should render before a query")
+	}
+}
+
+func TestConsoleSearchRendersResultsWithMarker(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{Search: fakeSearch{results: sampleResults()}})
+	got := do(t, console, "/admin/search?q=go&scope=global")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	for _, want := range []string{"Local hit", "Web hit", "[ddgs]", "result(s) for", "(local + peers)"} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("search results missing %q", want)
+		}
+	}
+}
+
+func TestConsoleSearchUnavailableWithoutSource(t *testing.T) {
+	t.Parallel()
+
+	got := do(t, New(Options{}), "/admin/search")
+	if !strings.Contains(got.body, "cds-empty") {
+		t.Fatal("expected unavailable state without a search source")
+	}
+	if !strings.Contains(got.body, searchUnavailable) {
+		t.Fatal("expected unavailable message")
+	}
+}
+
+func TestConsoleSearchErrorIsGeneric(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{Search: fakeSearch{err: errors.New("backend detail")}})
+	got := do(t, console, "/admin/search?q=go")
+	if !strings.Contains(got.body, "Search failed.") {
+		t.Fatal("expected generic error notification")
+	}
+	if strings.Contains(got.body, "backend detail") {
+		t.Fatal("must not leak internal error detail")
 	}
 }
 

@@ -6,10 +6,6 @@ func pending(heading, message string) sectionView {
 
 func defaultSections() map[string]sectionView {
 	return map[string]sectionView{
-		"/admin/search": pending(
-			"Search",
-			"Admin search, source toggle, and query explain appear here.",
-		),
 		"/admin/crawl": pending(
 			"Crawler",
 			"Crawl start, monitor, results, and profiles appear here.",

@@ -32,7 +32,7 @@ type publicSearchAssembly struct {
 func mountNodePublicSearch(
 	mux *http.ServeMux,
 	assembly publicSearchAssembly,
-) {
+) searchcore.Searcher {
 	local := searchlocal.NewSearcher(assembly.storage.searchIndex)
 	if assembly.storage.searchIndex == nil {
 		local = documentsearch.NewLocalSearcherWithDocuments(
@@ -56,6 +56,8 @@ func mountNodePublicSearch(
 	yacysearch.Mount(mux, search)
 	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
 	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access, assembly.extractFetcher)
+
+	return search
 }
 
 // searchAccessPolicy prefers scoped API-key auth when the operator requires it,

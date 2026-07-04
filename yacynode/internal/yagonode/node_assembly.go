@@ -19,6 +19,7 @@ import (
 	"github.com/D4rk4/yago/yacynode/internal/peernews"
 	"github.com/D4rk4/yago/yacynode/internal/peerroster"
 	"github.com/D4rk4/yago/yacynode/internal/rwi"
+	"github.com/D4rk4/yago/yacynode/internal/searchcore"
 	"github.com/D4rk4/yago/yacynode/internal/tavilyapi"
 	"github.com/D4rk4/yago/yacynode/internal/transfertally"
 	"github.com/D4rk4/yago/yacynode/internal/urlmeta"
@@ -31,6 +32,7 @@ type node struct {
 	indexStats    http.Handler
 	searchExplain http.Handler
 	report        nodestatus.Report
+	searcher      searchcore.Searcher
 	sweeper       eviction.Sweeper
 	announcer     peerannouncement.Announcer
 	crawl         crawlProcess
@@ -139,6 +141,7 @@ func assembleNode(
 		crawl:     surfaces.crawl,
 		dht:       surfaces.dht,
 		report:    report,
+		searcher:  surfaces.searcher,
 		vault:     vault,
 	}), nil
 }
@@ -158,8 +161,9 @@ type assembleSurfacesInput struct {
 }
 
 type nodeSurfaces struct {
-	crawl crawlProcess
-	dht   dhtOutboundProcess
+	crawl    crawlProcess
+	dht      dhtOutboundProcess
+	searcher searchcore.Searcher
 }
 
 func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
@@ -167,7 +171,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	if err != nil {
 		return nodeSurfaces{}, err
 	}
-	mountNodePublicSearch(in.mux, publicSearchAssembly{
+	searcher := mountNodePublicSearch(in.mux, publicSearchAssembly{
 		storage:          in.storage,
 		roster:           in.roster,
 		identity:         in.identity,
@@ -190,7 +194,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		observer:    tallyOutboundObserver{next: in.telemetry.dhtOutbound, tally: in.tally},
 	})
 
-	return nodeSurfaces{crawl: runtime, dht: dht}, nil
+	return nodeSurfaces{crawl: runtime, dht: dht, searcher: searcher}, nil
 }
 
 type nodeParts struct {
@@ -200,6 +204,7 @@ type nodeParts struct {
 	crawl     crawlProcess
 	dht       dhtOutboundProcess
 	report    nodestatus.Report
+	searcher  searchcore.Searcher
 	vault     *vault.Vault
 }
 
@@ -210,6 +215,7 @@ func newAssembledNode(parts nodeParts) node {
 		indexStats:    newIndexStatsEndpoint(parts.storage.searchIndex),
 		searchExplain: newSearchExplainEndpoint(parts.storage.searchIndex),
 		report:        parts.report,
+		searcher:      parts.searcher,
 		sweeper:       newStorageSweeper(parts.vault, parts.storage),
 		announcer:     parts.announcer,
 		crawl:         parts.crawl,

@@ -1,0 +1,38 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Search</nav>
+<h1 class="cds-h1">Search</h1>
+<form class="cds-search-form" method="get" action="/admin/search" role="search">
+  <div class="cds-field">
+    <label class="cds-label" for="q">Query</label>
+    <input class="cds-input" type="search" id="q" name="q" value="{{.Query}}"
+           autocomplete="off" autofocus>
+  </div>
+  <div class="cds-field">
+    <label class="cds-checkbox">
+      <input type="checkbox" name="scope" value="global"{{if .Global}} checked{{end}}>
+      Include peer network (global)
+    </label>
+  </div>
+  <button class="cds-btn" type="submit">Search</button>
+</form>
+{{if .Error}}
+<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>
+{{else if .Submitted}}
+{{with .Results}}
+<p class="cds-muted">{{.TotalResults}} result(s) for “{{.Query}}”{{if .Global}} (local + peers){{end}}.</p>
+{{range .Failures}}
+<div class="cds-inline-notification" role="status">Partial failure: {{.}}</div>
+{{end}}
+{{range .Results}}
+<article class="cds-result">
+  <a class="cds-result__title" href="{{.URL}}" rel="noopener noreferrer nofollow" target="_blank">
+    {{if .Marked}}<span class="cds-tag">[ddgs]</span> {{end}}{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a>
+  <div class="cds-result__url">{{if .DisplayURL}}{{.DisplayURL}}{{else}}{{.URL}}{{end}}</div>
+  {{if .Snippet}}<p class="cds-result__snippet">{{.Snippet}}</p>{{end}}
+</article>
+{{else}}
+<div class="cds-empty" role="status">No results.</div>
+{{end}}
+{{end}}
+{{end}}
+{{end}}
