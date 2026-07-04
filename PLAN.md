@@ -2097,12 +2097,12 @@ Acceptance:
 
 ### OPS-01: Metrics
 
-Status: Partial, advanced. `/metrics` serves Prometheus format on the operations
+Status: Done. `/metrics` serves Prometheus format on the operations
 listener from a single shared registry (Prometheus client already adopted in
 ADR-0011, so no new ADR). The endpoint is **auth-protected**: it is not on the
 listener's public allowlist (only the health/readiness probes and login/setup are),
 so a scraper needs an admin session or API key — satisfying "can be disabled or
-auth-protected". This slice adds a **Queue depths** group: a `QueueDepthMetrics`
+auth-protected". A **Queue depths** group: a `QueueDepthMetrics`
 collector publishes `queue_crawl_depth` and `queue_index_depth` as gauges read live
 from the DHT gate snapshot at scrape time (the same source as the UI-09 Performance
 tiles). A **registration-conflict test** now constructs every collector on one
@@ -2116,11 +2116,17 @@ partial failures once for every surface (YaCy, Tavily, portal) —
 (default `true`) unmounts `/metrics` (returns 404) when set to `false` while the
 collectors keep running, so the acceptance "can be disabled or auth-protected" is
 met both ways. `doc/metrics.md` documents the endpoint, its authentication, the
-toggle, and the published groups. Already covered before: HTTP request, Storage,
-Eviction, DHT inbound/outbound, Peers, Authentication. **Still open:** Crawl
-jobs/fetches/failures/bytes metrics (the only remaining group; needs crawl-pipeline
-observation hooks and spans the node/crawler boundary). verify green (coverage
-97.5%), Semgrep + Trivy clean.
+toggle, and the published groups. The final **Crawl ingest** group closes the set:
+an `IngestObserver` seam on the crawl `IngestConsumer` (attached post-construction,
+so a disabled crawl runtime and test doubles stay unmetered) feeds a `CrawlMetrics`
+collector that counts batches absorbed, batches deferred back to the queue, and the
+extracted content bytes, URL rows and postings absorbed — `crawl_ingest_batches_total`,
+`crawl_ingest_deferrals_total`, `crawl_ingest_content_bytes_total`,
+`crawl_ingest_urls_total`, `crawl_ingest_postings_total`. All eight plan groups are
+now published (HTTP request, P2P peers, DHT inbound/outbound, Search, Crawl, Storage,
+Queue depths, Authentication), the endpoint is both disable-able and auth-protected,
+and the registration-conflict test guards the shared registry. verify green
+(coverage 97.4%), Semgrep + Trivy clean.
 
 Expose Prometheus-style metrics or a documented JSON metrics endpoint. If adding Prometheus client dependency, create ADR first.
 

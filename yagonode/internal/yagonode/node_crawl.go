@@ -10,6 +10,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
+	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -62,6 +63,10 @@ func (r *crawlRuntime) mountDispatch(mux *http.ServeMux) {
 	crawldispatch.MountCrawlDispatch(mux, r.initiator, mintProvenance, r.broker.Orders)
 }
 
+func (r *crawlRuntime) observe(observer crawlresults.IngestObserver) {
+	r.consumer.Observe(observer)
+}
+
 func (r *crawlRuntime) orderQueue() crawldispatch.CrawlOrderQueue {
 	return r.broker.Orders
 }
@@ -82,6 +87,23 @@ func crawlDispatcher(runtime crawlProcess) *crawldispatch.Dispatcher {
 	}
 
 	return provider.dispatcher()
+}
+
+// attachCrawlMetrics wires the crawl ingest observer when the runtime supports it
+// and a collector is configured, so crawl throughput is metered only for a live
+// crawl runtime and never for a disabled one or a test double.
+func attachCrawlMetrics(runtime crawlProcess, collector *metrics.CrawlMetrics) {
+	if collector == nil {
+		return
+	}
+	observed, ok := runtime.(interface {
+		observe(crawlresults.IngestObserver)
+	})
+	if !ok {
+		return
+	}
+
+	observed.observe(collector)
 }
 
 // crawlOrderQueue returns the crawl order queue when the crawl runtime is active,

@@ -105,6 +105,7 @@ func run() error {
 			dhtInbound:       obs.dhtInbound,
 			peer:             obs.peer,
 			search:           obs.search,
+			crawl:            obs.crawl,
 			searchAuthorizer: searchScopeAuthorizerFor(config, authService),
 			toggles:          toggles,
 		},

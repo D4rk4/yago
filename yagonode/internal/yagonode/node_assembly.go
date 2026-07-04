@@ -48,6 +48,7 @@ type nodeTelemetry struct {
 	dhtInbound       *metrics.DHTInboundMetrics
 	peer             *metrics.PeerMetrics
 	search           *metrics.SearchMetrics
+	crawl            *metrics.CrawlMetrics
 	searchAuthorizer tavilyapi.ScopeAuthorizer
 	toggles          *runtimeToggles
 }
@@ -179,6 +180,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	if err != nil {
 		return nodeSurfaces{}, err
 	}
+	attachCrawlMetrics(runtime, in.telemetry.crawl)
 	searcher := mountNodePublicSearch(in.mux, publicSearchAssembly{
 		storage:          in.storage,
 		roster:           in.roster,

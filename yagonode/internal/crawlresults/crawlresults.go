@@ -24,12 +24,27 @@ type IngestStream interface {
 	Receive() <-chan IngestDelivery
 }
 
+// IngestObserver receives the node-side outcome of each crawl ingest batch so an
+// edge can meter crawl throughput. Its methods are called once per batch and must
+// not block.
+type IngestObserver interface {
+	ObserveAbsorbed(contentBytes, urls, postings int)
+	ObserveDeferred()
+}
+
+type noopIngestObserver struct{}
+
+func (noopIngestObserver) ObserveAbsorbed(int, int, int) {}
+
+func (noopIngestObserver) ObserveDeferred() {}
+
 type IngestConsumer struct {
 	stream    IngestStream
 	documents documentstore.DocumentReceiver
 	index     searchindex.SearchIndex
 	urls      urlmeta.URLReceiver
 	postings  rwi.PostingReceiver
+	observer  IngestObserver
 }
 
 func NewIngestConsumer(
@@ -54,5 +69,14 @@ func NewIngestConsumerWithIndex(
 		index:     index,
 		urls:      urls,
 		postings:  postings,
+		observer:  noopIngestObserver{},
+	}
+}
+
+// Observe installs an observer that receives each batch's ingest outcome. A nil
+// observer is ignored so the consumer keeps its silent default.
+func (c *IngestConsumer) Observe(observer IngestObserver) {
+	if observer != nil {
+		c.observer = observer
 	}
 }

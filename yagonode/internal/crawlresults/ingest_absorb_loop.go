@@ -59,6 +59,11 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 		return
 	}
 
+	c.observer.ObserveAbsorbed(
+		len(batch.Document.ExtractedText),
+		len(batch.Metadata),
+		len(batch.Postings),
+	)
 	if err := delivery.Ack(ctx); err != nil {
 		slog.WarnContext(ctx, msgIngestAckFailed,
 			slog.String("sourceUrl", batch.SourceURL), slog.Any("error", err))
@@ -121,6 +126,7 @@ func (c *IngestConsumer) redeliver(
 	sourceURL string,
 	cause error,
 ) {
+	c.observer.ObserveDeferred()
 	slog.WarnContext(ctx, msgIngestBatchDeferred,
 		slog.String("sourceUrl", sourceURL), slog.Any("error", cause))
 	if err := delivery.Nak(ctx); err != nil {

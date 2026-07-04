@@ -18,6 +18,7 @@ type runtimeObservability struct {
 	dhtInbound   *metrics.DHTInboundMetrics
 	peer         *metrics.PeerMetrics
 	search       *metrics.SearchMetrics
+	crawl        *metrics.CrawlMetrics
 	recorder     *events.Recorder
 	authObserver authObserverFanOut
 }
@@ -45,6 +46,7 @@ func provisionObservability(
 		dhtInbound:   metrics.NewDHTInboundMetrics(endpoints.Registry()),
 		peer:         metrics.NewPeerMetrics(endpoints.Registry()),
 		search:       metrics.NewSearchMetrics(endpoints.Registry()),
+		crawl:        metrics.NewCrawlMetrics(endpoints.Registry()),
 		recorder:     recorder,
 		authObserver: authObserverFanOut{authMetrics, authEventObserver{recorder: recorder}},
 	}, nil

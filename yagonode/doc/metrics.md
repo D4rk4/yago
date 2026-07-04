@@ -38,9 +38,11 @@ The registry publishes:
   metered once at the search composition chokepoint so the YaCy, Tavily and
   portal surfaces share one view (`search_requests_total`,
   `search_latency_seconds`, `search_results`, `search_partial_failures_total`).
-
-Crawl job/fetch/byte metrics are the remaining group from the observability plan
-and are not yet published.
+- **Crawl ingest** — batches absorbed, batches deferred back to the queue, and
+  the extracted content bytes, URL rows and postings absorbed as the node ingests
+  results from the crawl fleet (`crawl_ingest_batches_total`,
+  `crawl_ingest_deferrals_total`, `crawl_ingest_content_bytes_total`,
+  `crawl_ingest_urls_total`, `crawl_ingest_postings_total`).
 
 ## Registration
 
