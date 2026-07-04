@@ -46,9 +46,10 @@
   <table class="cds-table">
     <thead><tr><th scope="col">Peer</th><th scope="col">Type</th><th scope="col">Address</th><th scope="col">Flags</th><th scope="col">RWI count</th><th scope="col">Last seen</th><th scope="col">Age (days)</th><th scope="col">Hash</th></tr></thead>
     <tbody>
+      {{$links := .PeerLinks}}
       {{range .Network.Peers}}
       <tr>
-        <th scope="row">{{if .Name}}{{.Name}}{{else}}—{{end}}</th>
+        <th scope="row">{{if $links}}<a href="/admin/network/peer?hash={{.Hash}}">{{if .Name}}{{.Name}}{{else}}{{.Hash}}{{end}}</a>{{else if .Name}}{{.Name}}{{else}}—{{end}}</th>
         <td>{{if .Type}}{{.Type}}{{else}}—{{end}}</td>
         <td>{{if .Address}}{{.Address}}{{else}}—{{end}}</td>
         <td>{{range .Flags}}<span class="cds-tag cds-tag--info">{{.}}</span> {{else}}—{{end}}</td>

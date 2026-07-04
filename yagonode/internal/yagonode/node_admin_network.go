@@ -82,6 +82,71 @@ func (s networkSource) adminNetworkPeers(seeds []yagomodel.Seed) []adminui.Netwo
 	return peers
 }
 
+// peerDetailSource resolves a peer hash to its published profile for the console's
+// per-peer detail page. It reads through the roster and carries no secrets.
+type peerDetailSource struct {
+	roster peerroster.Roster
+	now    func() time.Time
+}
+
+func newPeerDetailSource(roster peerroster.Roster) peerDetailSource {
+	return peerDetailSource{roster: roster, now: time.Now}
+}
+
+func (s peerDetailSource) PeerDetail(
+	ctx context.Context,
+	hash string,
+) (adminui.PeerDetail, bool) {
+	parsed, err := yagomodel.ParseHash(hash)
+	if err != nil {
+		return adminui.PeerDetail{}, false
+	}
+	seed, ok := s.roster.PeerByHash(ctx, parsed)
+	if !ok {
+		return adminui.PeerDetail{}, false
+	}
+
+	return peerDetailFromSeed(seed, s.now()), true
+}
+
+func peerDetailFromSeed(seed yagomodel.Seed, now time.Time) adminui.PeerDetail {
+	name, _ := seed.Name.Get()
+	address, _ := seed.NetworkAddress()
+	peerType, _ := seed.PeerType.Get()
+	rwi, _ := seed.RWICount.Get()
+	urls, _ := seed.URLCount.Get()
+	knownSeeds, _ := seed.KnownSeedCount.Get()
+	uptime, _ := seed.Uptime.Get()
+	sentWords, _ := seed.SentWordCount.Get()
+	receivedWords, _ := seed.ReceivedWordCount.Get()
+	sentURLs, _ := seed.SentURLCount.Get()
+	receivedURLs, _ := seed.ReceivedURLCount.Get()
+
+	version := ""
+	if v, ok := seed.Version.Get(); ok {
+		version = v.String()
+	}
+
+	return adminui.PeerDetail{
+		Name:          name,
+		Hash:          string(seed.Hash),
+		Address:       address,
+		Version:       version,
+		Type:          string(peerType),
+		Flags:         seedFlagLabels(seed),
+		LastSeen:      seedLastSeen(seed),
+		AgeDays:       seed.AgeDays(now),
+		UptimeMinutes: uptime,
+		RWIWords:      rwi,
+		URLs:          urls,
+		KnownSeeds:    knownSeeds,
+		SentWords:     sentWords,
+		ReceivedWords: receivedWords,
+		SentURLs:      sentURLs,
+		ReceivedURLs:  receivedURLs,
+	}
+}
+
 var seedFlagBits = []struct {
 	bit   int
 	label string

@@ -22,6 +22,7 @@ type Roster interface {
 	RejectRemoteIndex(ctx context.Context, peer yagomodel.Seed)
 	FreshestPeers(ctx context.Context, limit int) []yagomodel.Seed
 	ReachablePeers(ctx context.Context) []yagomodel.Seed
+	PeerByHash(ctx context.Context, peer yagomodel.Hash) (yagomodel.Seed, bool)
 	KnownPeerCount(ctx context.Context) int
 	ReachablePeerCount(ctx context.Context) int
 }

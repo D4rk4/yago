@@ -1,0 +1,51 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / <a href="/admin/network">Network</a> / Peer</nav>
+<h1 class="cds-h1">{{if .Peer.Name}}{{.Peer.Name}}{{else}}Peer{{end}}</h1>
+<p class="cds-muted">Read-only view of the peer's published profile as advertised in its seed DNA.</p>
+
+<h2 class="cds-h2">Identity</h2>
+<div class="cds-scroll-x">
+  <table class="cds-table">
+    <tbody>
+      <tr><th scope="row">Name</th><td>{{if .Peer.Name}}{{.Peer.Name}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Hash</th><td class="cds-mono">{{.Peer.Hash}}</td></tr>
+      <tr><th scope="row">Address</th><td>{{if .Peer.Address}}{{.Peer.Address}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Type</th><td>{{if .Peer.Type}}{{.Peer.Type}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Version</th><td>{{if .Peer.Version}}{{.Peer.Version}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Flags</th><td>{{range .Peer.Flags}}<span class="cds-tag cds-tag--info">{{.}}</span> {{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Last seen</th><td>{{if .Peer.LastSeen}}{{.Peer.LastSeen}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Age (days)</th><td>{{.Peer.AgeDays}}</td></tr>
+      <tr><th scope="row">Uptime (minutes)</th><td>{{.Peer.UptimeMinutes}}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 class="cds-h2">Statistics</h2>
+<div class="cds-tile-grid">
+  <section class="cds-tile">
+    <div class="cds-metric__label">RWI words</div>
+    <div class="cds-metric__value">{{.Peer.RWIWords}}</div>
+  </section>
+  <section class="cds-tile">
+    <div class="cds-metric__label">URLs</div>
+    <div class="cds-metric__value">{{.Peer.URLs}}</div>
+  </section>
+  <section class="cds-tile">
+    <div class="cds-metric__label">Known seeds</div>
+    <div class="cds-metric__value">{{.Peer.KnownSeeds}}</div>
+  </section>
+</div>
+
+<h2 class="cds-h2">Index transfer</h2>
+<div class="cds-scroll-x">
+  <table class="cds-table">
+    <thead><tr><th scope="col">Direction</th><th scope="col">Words</th><th scope="col">URLs</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Sent</th><td class="cds-mono">{{.Peer.SentWords}}</td><td class="cds-mono">{{.Peer.SentURLs}}</td></tr>
+      <tr><th scope="row">Received</th><td class="cds-mono">{{.Peer.ReceivedWords}}</td><td class="cds-mono">{{.Peer.ReceivedURLs}}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<p><a class="cds-btn cds-btn--ghost" href="/admin/network">Back to Network</a></p>
+{{end}}

@@ -59,6 +59,9 @@ func buildOpsMux(
 		Schema:      indexSchemaGroups(),
 		Performance: newPerformanceSource(assembled.dht.gateStatus, crawlDepth),
 	}
+	if assembled.roster != nil {
+		options.PeerDetail = newPeerDetailSource(assembled.roster)
+	}
 	if dispatcher := crawlDispatcher(assembled.crawl); dispatcher != nil {
 		options.Crawl = newCrawlSource(dispatcher)
 	}

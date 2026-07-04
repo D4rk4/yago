@@ -24,6 +24,27 @@ func TestDiscoverKeepsSeniorsAndDropsJuniors(t *testing.T) {
 	}
 }
 
+func TestPeerByHashResolvesDiscoveredPeer(t *testing.T) {
+	ctx := context.Background()
+	roster := openRoster(t, 8, 4)
+
+	senior := seniorSeed(t, "senior", "203.0.113.1", 8090)
+	roster.Discover(ctx, senior)
+
+	got, ok := roster.PeerByHash(ctx, senior.Hash)
+	if !ok {
+		t.Fatal("a discovered peer must resolve by hash")
+	}
+	if got.Hash != senior.Hash {
+		t.Fatalf("hash = %q, want %q", got.Hash, senior.Hash)
+	}
+
+	ghost := seniorSeed(t, "ghost", "203.0.113.9", 9099)
+	if _, ok := roster.PeerByHash(ctx, ghost.Hash); ok {
+		t.Fatal("an undiscovered hash must not resolve")
+	}
+}
+
 func TestReachablePromotesAndIsServed(t *testing.T) {
 	ctx := context.Background()
 	roster := openRoster(t, 8, 4)

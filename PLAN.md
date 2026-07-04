@@ -2224,6 +2224,19 @@ Acceptance:
 
 ### UI-14: Per-peer detail page
 
+Status: Done (2026-07-04). The Network peer table now drill-downs to a per-peer
+detail route (`GET /admin/network/peer?hash=…`): each peer row links to a page
+rendering the peer's published DNA — name, hash, address, version, type, capability
+flags, last-seen, age, uptime — its statistics (RWI words, URLs, known seeds), and
+its per-peer index-transfer counters (sent/received words and URLs), all read-only
+and secret-free from the seed the roster already holds. A new read-only
+`peerroster.Roster.PeerByHash` resolves a hash through the persisted peers
+collection (so a peer outside the freshest working set still resolves); the node's
+`adminui.PeerDetailSource` adapter parses and looks up the hash, returning not-found
+(404) for a malformed or unknown hash, and the peer table links only when the
+detail source is wired. No new backend store. verify green (all modules 100%),
+Semgrep + Trivy clean.
+
 Follow-up to UI-07 (the Network section renders the peer table but has no
 drill-down). Add a per-peer detail route reachable from the peer table showing the
 peer's published DNA/profile (name, hash, address, version, contact/comment where

@@ -31,6 +31,13 @@ func (r *countingPeerRoster) FreshestPeers(context.Context, int) []yagomodel.See
 
 func (r *countingPeerRoster) ReachablePeers(context.Context) []yagomodel.Seed { return nil }
 
+func (r *countingPeerRoster) PeerByHash(
+	context.Context,
+	yagomodel.Hash,
+) (yagomodel.Seed, bool) {
+	return yagomodel.Seed{}, false
+}
+
 func (r *countingPeerRoster) KnownPeerCount(context.Context) int {
 	return r.known
 }

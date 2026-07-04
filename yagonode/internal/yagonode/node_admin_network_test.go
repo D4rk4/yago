@@ -79,3 +79,47 @@ func TestSeedFlagLabelsEmptyWithoutFlags(t *testing.T) {
 		t.Fatalf("expected no labels for a seed without flags, got %v", labels)
 	}
 }
+
+func TestPeerDetailSourceMapsSeed(t *testing.T) {
+	seed := networkTestSeed(t)
+	seed.Version = yagomodel.Some(yagomodel.YaCyVersion("1.83"))
+	seed.URLCount = yagomodel.Some(1234)
+	seed.KnownSeedCount = yagomodel.Some(9)
+	seed.Uptime = yagomodel.Some(600)
+	seed.SentWordCount = yagomodel.Some(int64(11))
+	seed.ReceivedWordCount = yagomodel.Some(int64(22))
+	seed.SentURLCount = yagomodel.Some(int64(33))
+	seed.ReceivedURLCount = yagomodel.Some(int64(44))
+	source := newPeerDetailSource(reachableRoster{peers: []yagomodel.Seed{seed}})
+
+	detail, ok := source.PeerDetail(context.Background(), string(seed.Hash))
+	if !ok {
+		t.Fatal("a known peer must resolve")
+	}
+	switch {
+	case detail.Name != "peerA" || detail.Type != "senior" || detail.Hash != "HHHHHHHHHHHH":
+		t.Fatalf("identity = %+v", detail)
+	case detail.Address != "1.2.3.4:8090" || detail.Version != "1.83":
+		t.Fatalf("address/version = %+v", detail)
+	case detail.RWIWords != 42 || detail.URLs != 1234 || detail.KnownSeeds != 9 || detail.UptimeMinutes != 600:
+		t.Fatalf("stats = %+v", detail)
+	case detail.SentWords != 11 || detail.ReceivedWords != 22 || detail.SentURLs != 33 || detail.ReceivedURLs != 44:
+		t.Fatalf("transfer counters = %+v", detail)
+	case len(detail.Flags) != 1 || detail.Flags[0] != "remote-index":
+		t.Fatalf("flags = %v", detail.Flags)
+	}
+}
+
+func TestPeerDetailSourceRejectsMalformedHash(t *testing.T) {
+	source := newPeerDetailSource(reachableRoster{})
+	if _, ok := source.PeerDetail(context.Background(), "too-short"); ok {
+		t.Fatal("a malformed hash must not resolve")
+	}
+}
+
+func TestPeerDetailSourceReportsUnknownPeer(t *testing.T) {
+	source := newPeerDetailSource(reachableRoster{})
+	if _, ok := source.PeerDetail(context.Background(), "HHHHHHHHHHHH"); ok {
+		t.Fatal("an unknown but well-formed hash must not resolve")
+	}
+}

@@ -409,6 +409,88 @@ func TestConsoleNetworkUnavailableWithoutSource(t *testing.T) {
 	}
 }
 
+type fakePeerDetail struct {
+	detail  PeerDetail
+	ok      bool
+	gotHash string
+}
+
+func (f *fakePeerDetail) PeerDetail(_ context.Context, hash string) (PeerDetail, bool) {
+	f.gotHash = hash
+
+	return f.detail, f.ok
+}
+
+func TestConsoleNetworkLinksToPeerDetail(t *testing.T) {
+	t.Parallel()
+
+	snap := NetworkStatus{
+		Available: true,
+		Peers:     []NetworkPeer{{Name: "peerA", Hash: "HHHHHHHHHHHH"}},
+	}
+
+	linked := do(
+		t,
+		New(Options{Network: fakeNetwork{snap: snap}, PeerDetail: &fakePeerDetail{ok: true}}),
+		"/admin/network",
+	)
+	if !strings.Contains(linked.body, `href="/admin/network/peer?hash=HHHHHHHHHHHH"`) {
+		t.Fatal("peer row should link to the detail page when a detail source is wired")
+	}
+
+	plain := do(t, New(Options{Network: fakeNetwork{snap: snap}}), "/admin/network")
+	if strings.Contains(plain.body, "/admin/network/peer?hash=") {
+		t.Fatal("peer rows must not link without a detail source")
+	}
+}
+
+func TestConsoleNetworkPeerRendersDetail(t *testing.T) {
+	t.Parallel()
+
+	source := &fakePeerDetail{ok: true, detail: PeerDetail{
+		Name: "peerA", Hash: "HHHHHHHHHHHH", Address: "1.2.3.4:8090", Version: "1.83",
+		Type: "senior", Flags: []string{"remote-index"},
+		RWIWords: 42, URLs: 1234, SentWords: 11, ReceivedURLs: 44,
+	}}
+	got := do(t, New(Options{PeerDetail: source}), "/admin/network/peer?hash=HHHHHHHHHHHH")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	if source.gotHash != "HHHHHHHHHHHH" {
+		t.Fatalf("handler read hash %q", source.gotHash)
+	}
+	for _, want := range []string{
+		"peerA", "1.2.3.4:8090", "1.83", "senior", "remote-index",
+		">42<", ">1234<", ">11<", ">44<",
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("peer detail missing %q", want)
+		}
+	}
+}
+
+func TestConsoleNetworkPeerNotFound(t *testing.T) {
+	t.Parallel()
+
+	got := do(
+		t,
+		New(Options{PeerDetail: &fakePeerDetail{ok: false}}),
+		"/admin/network/peer?hash=zzzzzzzzzzzz",
+	)
+	if got.status != http.StatusNotFound {
+		t.Fatalf("status %d, want 404 for an unknown peer", got.status)
+	}
+}
+
+func TestConsoleNetworkPeerWithoutSource(t *testing.T) {
+	t.Parallel()
+
+	got := do(t, New(Options{}), "/admin/network/peer?hash=HHHHHHHHHHHH")
+	if got.status != http.StatusNotFound {
+		t.Fatalf("status %d, want 404 without a peer-detail source", got.status)
+	}
+}
+
 func TestConsoleLogsRendersEvents(t *testing.T) {
 	t.Parallel()
 

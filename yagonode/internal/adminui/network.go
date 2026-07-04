@@ -38,3 +38,32 @@ type NetworkStatus struct {
 type NetworkSource interface {
 	Network(ctx context.Context) NetworkStatus
 }
+
+// PeerDetail is one peer's published profile as shown on its detail page: its DNA
+// identity, its self-reported statistics, its capability flags, and its per-peer
+// index-transfer counters. It is read-only and carries no secrets.
+type PeerDetail struct {
+	Name          string
+	Hash          string
+	Address       string
+	Version       string
+	Type          string
+	Flags         []string
+	LastSeen      string
+	AgeDays       int
+	UptimeMinutes int
+	RWIWords      int
+	URLs          int
+	KnownSeeds    int
+	SentWords     int64
+	ReceivedWords int64
+	SentURLs      int64
+	ReceivedURLs  int64
+}
+
+// PeerDetailSource resolves a peer hash to its detail. It reports false when the
+// roster has never seen the hash, so the console can render a 404. A nil provider
+// leaves the peer table without drill-down links.
+type PeerDetailSource interface {
+	PeerDetail(ctx context.Context, hash string) (PeerDetail, bool)
+}

@@ -39,6 +39,7 @@ const (
 	configPath          = "/admin/configuration"
 	indexPath           = "/admin/index"
 	networkPath         = "/admin/network"
+	networkPeerPath     = "/admin/network/peer"
 	logsPath            = "/admin/logs"
 	logsEventsPath      = "/admin/logs/events"
 	securityPath        = "/admin/security"
@@ -91,6 +92,7 @@ type Options struct {
 	Terms       TermSource
 	Schema      []SchemaGroup
 	Performance PerformanceSource
+	PeerDetail  PeerDetailSource
 }
 
 type sectionView struct {
@@ -109,8 +111,18 @@ type pageData struct {
 	Overview   Overview
 	Index      IndexStats
 	Network    NetworkStatus
+	PeerLinks  bool
 	Config     ConfigView
 	Logs       []LogEntry
+}
+
+type peerDetailPageData struct {
+	AppName    string
+	ActivePath string
+	Nav        []NavItem
+	CSRF       string
+	Section    sectionView
+	Peer       PeerDetail
 }
 
 type searchPageData struct {
@@ -228,6 +240,7 @@ type templates struct {
 	crawl       *template.Template
 	index       *template.Template
 	network     *template.Template
+	peerDetail  *template.Template
 	config      *template.Template
 	logs        *template.Template
 	security    *template.Template
@@ -254,6 +267,7 @@ type Console struct {
 	terms       TermSource
 	schema      []SchemaGroup
 	performance PerformanceSource
+	peerDetail  PeerDetailSource
 }
 
 // New builds the console with its embedded templates, assets, and providers.
@@ -281,6 +295,7 @@ func New(opts Options) *Console {
 		terms:       opts.Terms,
 		schema:      opts.Schema,
 		performance: opts.Performance,
+		peerDetail:  opts.PeerDetail,
 	}
 	console.registerRoutes(assets)
 
@@ -300,6 +315,7 @@ func buildTemplates() templates {
 		crawl:       clone(crawlFuncs, "templates/crawl.tmpl", "templates/crawl_monitor.tmpl"),
 		index:       clone(nil, "templates/index.tmpl"),
 		network:     clone(nil, "templates/network.tmpl"),
+		peerDetail:  clone(nil, "templates/peer_detail.tmpl"),
 		config:      clone(nil, "templates/config.tmpl", "templates/toasts.tmpl"),
 		logs:        clone(nil, "templates/logs.tmpl", "templates/logs_table.tmpl"),
 		security:    clone(nil, "templates/security.tmpl", "templates/toasts.tmpl"),
@@ -319,6 +335,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("POST "+crawlControlPath, c.handleCrawlControl)
 	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
 	c.mux.HandleFunc("GET "+networkPath, c.handleNetwork)
+	c.mux.HandleFunc("GET "+networkPeerPath, c.handleNetworkPeer)
 	c.mux.HandleFunc("GET "+configPath, c.handleConfig)
 	c.mux.HandleFunc("POST "+configPath, c.handleConfigUpdate)
 	c.mux.HandleFunc("GET "+logsPath, c.handleLogs)
@@ -461,9 +478,32 @@ func (c *Console) handleNetwork(w http.ResponseWriter, r *http.Request) {
 
 	c.render(r.Context(), w, c.tpl.network, "layout", pageData{
 		AppName: appName, ActivePath: networkPath, Nav: navItems,
+		CSRF:      csrfToken(r),
+		Section:   sectionView{Heading: "Network", Available: true},
+		Network:   c.network.Network(r.Context()),
+		PeerLinks: c.peerDetail != nil,
+	})
+}
+
+func (c *Console) handleNetworkPeer(w http.ResponseWriter, r *http.Request) {
+	if c.peerDetail == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+
+	detail, ok := c.peerDetail.PeerDetail(r.Context(), r.URL.Query().Get("hash"))
+	if !ok {
+		http.NotFound(w, r)
+
+		return
+	}
+
+	c.render(r.Context(), w, c.tpl.peerDetail, "layout", peerDetailPageData{
+		AppName: appName, ActivePath: networkPath, Nav: navItems,
 		CSRF:    csrfToken(r),
-		Section: sectionView{Heading: "Network", Available: true},
-		Network: c.network.Network(r.Context()),
+		Section: sectionView{Heading: "Peer detail", Available: true},
+		Peer:    detail,
 	})
 }
 

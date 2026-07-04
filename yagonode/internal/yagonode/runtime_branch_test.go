@@ -112,6 +112,10 @@ func (fakeRoster) FreshestPeers(context.Context, int) []yagomodel.Seed { return 
 
 func (fakeRoster) ReachablePeers(context.Context) []yagomodel.Seed { return nil }
 
+func (fakeRoster) PeerByHash(context.Context, yagomodel.Hash) (yagomodel.Seed, bool) {
+	return yagomodel.Seed{}, false
+}
+
 func (fakeRoster) KnownPeerCount(context.Context) int { return 0 }
 
 func (fakeRoster) ReachablePeerCount(context.Context) int { return 0 }
@@ -141,6 +145,19 @@ func (r reachableRoster) RejectRemoteIndex(context.Context, yagomodel.Seed) {}
 func (r reachableRoster) FreshestPeers(context.Context, int) []yagomodel.Seed { return r.peers }
 
 func (r reachableRoster) ReachablePeers(context.Context) []yagomodel.Seed { return r.peers }
+
+func (r reachableRoster) PeerByHash(
+	_ context.Context,
+	hash yagomodel.Hash,
+) (yagomodel.Seed, bool) {
+	for _, peer := range r.peers {
+		if peer.Hash == hash {
+			return peer, true
+		}
+	}
+
+	return yagomodel.Seed{}, false
+}
 
 func (r reachableRoster) KnownPeerCount(context.Context) int { return len(r.peers) }
 

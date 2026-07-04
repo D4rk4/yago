@@ -205,6 +205,17 @@ func TestDiscoverLogsReadAndStoreErrors(t *testing.T) {
 	r.Discover(t.Context(), internalSeed(t, "other", "203.0.113.2"))
 }
 
+func TestPeerByHashLogsReadError(t *testing.T) {
+	r, engine := openScriptedRoster(t, 8, 4)
+	peer := internalSeed(t, "peer", "203.0.113.1")
+	r.Discover(t.Context(), peer)
+	corruptPeerRecord(t, r, engine, peer.Hash)
+
+	if _, ok := r.PeerByHash(t.Context(), peer.Hash); ok {
+		t.Fatal("a corrupt peer record must not resolve by hash")
+	}
+}
+
 func TestConfirmReachableLogsReadAndStoreErrors(t *testing.T) {
 	r, engine := openScriptedRoster(t, 8, 4)
 	peer := internalSeed(t, "peer", "203.0.113.1")

@@ -208,6 +208,34 @@ func withoutRemoteIndex(seed yagomodel.Seed) yagomodel.Seed {
 	return seed
 }
 
+// PeerByHash returns the stored seed for a peer hash, or false when the roster has
+// never discovered it. It reads through the persisted peers collection, so a peer
+// outside the freshest working set is still resolvable for a detail lookup.
+func (r *roster) PeerByHash(ctx context.Context, peer yagomodel.Hash) (yagomodel.Seed, bool) {
+	var (
+		seed  yagomodel.Seed
+		found bool
+	)
+	if err := r.vault.View(ctx, func(tx *vault.Txn) error {
+		entry, known, err := r.peers.Get(tx, r.key(peer))
+		if err != nil {
+			return fmt.Errorf("read peer: %w", err)
+		}
+		if known {
+			seed, found = entry.seed, true
+		}
+
+		return nil
+	}); err != nil {
+		slog.WarnContext(ctx, "peer lookup failed",
+			slog.String("peer", peer.String()), slog.Any("error", err))
+
+		return yagomodel.Seed{}, false
+	}
+
+	return seed, found
+}
+
 func (r *roster) KnownPeerCount(ctx context.Context) int {
 	return r.peerCount(ctx)
 }
