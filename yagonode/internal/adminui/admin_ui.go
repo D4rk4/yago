@@ -230,6 +230,15 @@ type performancePageData struct {
 	Performance PerformanceStatus
 }
 
+type logsPageData struct {
+	AppName    string
+	ActivePath string
+	Nav        []NavItem
+	CSRF       string
+	Section    sectionView
+	Logs       logsView
+}
+
 func csrfToken(r *http.Request) string {
 	token, _ := adminauth.CSRFTokenFromContext(r.Context())
 
@@ -456,11 +465,11 @@ func (c *Console) handleLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.render(r.Context(), w, c.tpl.logs, "layout", pageData{
+	c.render(r.Context(), w, c.tpl.logs, "layout", logsPageData{
 		AppName: appName, ActivePath: logsPath, Nav: navItems,
 		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Logs", Available: true},
-		Logs:    c.logs.Logs(r.Context()),
+		Logs:    c.logsView(r),
 	})
 }
 
@@ -471,7 +480,23 @@ func (c *Console) handleLogsEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.render(r.Context(), w, c.tpl.logs, "logs-table", c.logs.Logs(r.Context()))
+	c.render(r.Context(), w, c.tpl.logs, "logs-table", c.logsView(r))
+}
+
+// logsView builds the Logs render model, applying the severity and category
+// filters from the query string while offering the full category vocabulary.
+func (c *Console) logsView(r *http.Request) logsView {
+	entries := c.logs.Logs(r.Context())
+	severity := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("severity")))
+	category := strings.TrimSpace(r.URL.Query().Get("category"))
+
+	return logsView{
+		Entries:    filterLogEntries(entries, severity, category),
+		Severity:   severity,
+		Category:   category,
+		Severities: logSeverities,
+		Categories: distinctLogCategories(entries),
+	}
 }
 
 func (c *Console) handleNetwork(w http.ResponseWriter, r *http.Request) {

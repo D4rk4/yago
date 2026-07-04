@@ -591,6 +591,76 @@ func TestConsoleLogsEmptyState(t *testing.T) {
 	}
 }
 
+func TestConsoleLogsFiltersBySeverityAndCategory(t *testing.T) {
+	t.Parallel()
+
+	entries := []LogEntry{
+		{Time: "t1", Severity: "warn", Category: "security", Name: "login.failed", Message: "bad"},
+		{Time: "t2", Severity: "info", Category: "config", Name: "node.started", Message: "up"},
+	}
+	console := New(Options{Logs: fakeLogs{entries: entries}})
+
+	sev := do(t, console, "/admin/logs?severity=warn")
+	if !strings.Contains(sev.body, "login.failed") || strings.Contains(sev.body, "node.started") {
+		t.Fatal("severity filter should keep only warn events")
+	}
+	if !strings.Contains(sev.body, `value="warn" selected`) {
+		t.Fatal("severity dropdown should pre-select the active filter")
+	}
+	if !strings.Contains(sev.body, "severity=warn") || !strings.Contains(sev.body, "filtered") {
+		t.Fatal("refresh URL should carry the filter and mark the view filtered")
+	}
+
+	cat := do(t, console, "/admin/logs?category=config")
+	if !strings.Contains(cat.body, "node.started") || strings.Contains(cat.body, "login.failed") {
+		t.Fatal("category filter should keep only config events")
+	}
+	if !strings.Contains(cat.body, `value="security"`) ||
+		!strings.Contains(cat.body, `value="config"`) {
+		t.Fatal("category dropdown should offer every observed category")
+	}
+}
+
+func TestConsoleLogsEventsPartialHonorsFilter(t *testing.T) {
+	t.Parallel()
+
+	entries := []LogEntry{
+		{Time: "t1", Severity: "error", Category: "dht", Name: "alpha", Message: "m1"},
+		{Time: "t2", Severity: "info", Category: "dht", Name: "beta", Message: "m2"},
+	}
+	got := do(
+		t,
+		New(Options{Logs: fakeLogs{entries: entries}}),
+		"/admin/logs/events?severity=error",
+	)
+	if !strings.Contains(got.body, "alpha") || strings.Contains(got.body, "beta") {
+		t.Fatal("events partial should honor the severity filter")
+	}
+}
+
+func TestLogFilterHelpers(t *testing.T) {
+	t.Parallel()
+
+	entries := []LogEntry{
+		{Severity: "warn", Category: "b"},
+		{Severity: "info", Category: "a"},
+		{Severity: "warn", Category: "a"},
+		{Severity: "info", Category: ""},
+	}
+	if cats := distinctLogCategories(entries); len(cats) != 2 || cats[0] != "a" || cats[1] != "b" {
+		t.Fatalf("categories = %v, want sorted [a b] without blanks", cats)
+	}
+	if got := filterLogEntries(entries, "", "a"); len(got) != 2 {
+		t.Fatalf("category-only filter = %d, want 2", len(got))
+	}
+	if got := filterLogEntries(entries, "warn", "a"); len(got) != 1 {
+		t.Fatalf("combined filter = %d, want 1", len(got))
+	}
+	if got := filterLogEntries(entries, "", ""); len(got) != len(entries) {
+		t.Fatal("an empty filter returns every entry")
+	}
+}
+
 func TestConsoleLogsUnavailableWithoutSource(t *testing.T) {
 	t.Parallel()
 

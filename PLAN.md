@@ -2047,9 +2047,13 @@ partial and severity tags, degrading to plain HTML without JavaScript. The
 `adminui.PerformanceSource` (adapter over the DHT gate snapshot) renders a
 read-only operational dashboard of the crawl-queue depth, index-queue depth,
 connected-peer count, local RWI word count, and storage headroom as Carbon metric
-tiles. Still open: throughput history and **backup/restore controls** (the latter
-depends on OPS-03), log filters by severity/category, and durable event
-persistence (OPS-02). verify green (coverage 97.6%), Semgrep + Trivy clean.
+tiles. The **Logs section** now filters: a severity/category filter form (GET
+`/admin/logs`) narrows the recent events by an exact, case-insensitive match, the
+severity dropdown offers the fixed vocabulary and the category dropdown the
+distinct categories seen, and the selected filter rides the htmx auto-refresh URL
+so the 10s poll stays scoped. Still open (each blocked on another task, not this
+slice): throughput history and **backup/restore controls** (OPS-03), and durable
+event persistence (OPS-02). verify green (all modules 100%), Semgrep + Trivy clean.
 
 Pages:
 
