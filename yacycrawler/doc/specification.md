@@ -33,6 +33,8 @@ for a more capable host than an always-on node.
 * The service SHOULD fetch the same content at most once per run; this dedup is best-effort
   and lapses to duplicates under bounded memory.
 * Every outbound fetch SHALL egress through the operator's configured proxy.
+* The service SHALL honor a target's explicit refusal, ceasing or deferring the fetch
+  rather than pressing against it.
 * The service SHALL offer two equal outputs, each operator-enabled on its own: an index
   output carrying page references, never a body, and a page-content output carrying content.
 * The service SHALL publish each page to every enabled output, advancing them together:
