@@ -1610,17 +1610,17 @@ also emits `ReportProgress` run lifecycle to the node: the order consumer report
 `running` before seeding a run and `finished`/`cancelled` when the run's frontier
 drains, keyed by the order provenance token the node registry shares as the run
 identity (this closes the emission half of CRAWL-OBS-3). The finish report now
-also carries a real outcome tally for three of the five counters: a per-run
-accumulator (the `runtally` package, keyed by the run's provenance token and safe
-for concurrent workers) is incremented from the pipeline — `fetched` on a
-successful fetch, `indexed` on ingest publish, `failed` on a hard fetch error
-(rejections such as robots/bot-wall are excluded) — and the order consumer reads
-its snapshot into the run's `finished`/`cancelled` report before forgetting the
-run. Remaining: `robots_denied` and `duplicates` still need wiring (a robots
-sentinel the pipeline can detect, and a frontier dedup-skip hook — the accumulator
-already exposes both methods); and the two acceptance items still lack dedicated
-tests (a multi-worker no-duplicate-fetch integration test and an end-to-end
-backpressure test — each half is unit-tested in isolation).
+carries a real outcome tally for all five counters: a per-run accumulator (the
+`runtally` package, keyed by the run's provenance token and safe for concurrent
+workers) is fed from the pipeline — `fetched` on a successful fetch, `indexed` on
+ingest publish, `failed` on a hard fetch error, `robots_denied` when the fetch is
+refused by robots.txt (detected via a `robots.ErrDisallowed` sentinel that wraps
+the generic rejection) — and from the frontier — `duplicates` when an already
+visited URL is skipped. The order consumer reads the snapshot into the run's
+`finished`/`cancelled` report before forgetting the run. Remaining: the two
+acceptance items still lack dedicated tests (a multi-worker no-duplicate-fetch
+integration test and an end-to-end backpressure test — each half is unit-tested in
+isolation).
 
 Tasks:
 

@@ -2,6 +2,7 @@ package robots
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,6 +15,12 @@ import (
 
 	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
 )
+
+// ErrDisallowed marks a fetch refused because the host's robots.txt disallows the
+// path. It wraps pagefetch.ErrPageRejected, so callers that only care that a page
+// was rejected still match; callers that need the reason can test for this
+// specifically (the pipeline counts it as a per-run robots denial).
+var ErrDisallowed = errors.New("robots.txt disallowed")
 
 type RobotsAdmissionFetcher struct {
 	inner     pagefetch.PageSource
@@ -57,7 +64,9 @@ func (f *RobotsAdmissionFetcher) Fetch(
 	if !group.Test(target.Path) {
 		f.observer.RobotsDenied()
 
-		return pagefetch.FetchedPage{}, fmt.Errorf("robots disallow: %w", pagefetch.ErrPageRejected)
+		return pagefetch.FetchedPage{}, fmt.Errorf(
+			"robots disallow: %w: %w", ErrDisallowed, pagefetch.ErrPageRejected,
+		)
 	}
 	page, err := f.inner.Fetch(ctx, target)
 	if err != nil {

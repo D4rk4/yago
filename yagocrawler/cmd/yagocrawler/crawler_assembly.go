@@ -73,10 +73,12 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	if err != nil {
 		return fmt.Errorf("create crawl pace: %w", err)
 	}
+	tally := runtally.New()
 	frontier := frontier.NewFrontier(
 		crawl.JobQueueSize,
 		pace,
 		frontier.WithMaxHostConcurrency(crawl.MaxHostConcurrency),
+		frontier.WithRunTally(tally),
 	)
 
 	guard := yagoegress.NewGuard(
@@ -101,7 +103,6 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		return fmt.Errorf("create robots admission: %w", err)
 	}
 	publicOnly := newCrawlerPublicWebAdmissionFetcher(admitted, nil, guard)
-	tally := runtally.New()
 	worker := pipeline.NewPipeline(
 		frontier,
 		publicOnly,

@@ -78,6 +78,43 @@ func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
 	}
 }
 
+type countingFrontierTally struct {
+	duplicates [][]byte
+}
+
+func (c *countingFrontierTally) Duplicate(provenance []byte) {
+	c.duplicates = append(c.duplicates, append([]byte(nil), provenance...))
+}
+
+func TestSeedRunCountsDuplicateSkips(t *testing.T) {
+	tally := &countingFrontierTally{}
+	f := frontier.NewFrontier(8, nil, frontier.WithRunTally(tally))
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	seeded := f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle,
+			"https://example.com/",
+			"https://example.com/",
+			"https://example.com/b",
+		),
+		[]byte("run-dup"),
+		profile,
+		func() {},
+	)
+	if seeded.Queued != 2 {
+		t.Fatalf("queued = %d, want 2", seeded.Queued)
+	}
+	if len(tally.duplicates) != 1 || string(tally.duplicates[0]) != "run-dup" {
+		t.Fatalf("duplicates = %v, want one skip keyed run-dup", tally.duplicates)
+	}
+	f.Done(receiveJob(t, f))
+	f.Done(receiveJob(t, f))
+}
+
 func TestSeedRunSkipsMismatchedProfileHandle(t *testing.T) {
 	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yagocrawlcontract.CrawlProfile{

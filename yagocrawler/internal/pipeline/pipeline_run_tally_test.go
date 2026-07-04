@@ -10,12 +10,14 @@ import (
 	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yagocrawler/internal/pageindex"
 	"github.com/D4rk4/yago/yagocrawler/internal/pipeline"
+	"github.com/D4rk4/yago/yagocrawler/internal/robots"
 )
 
 type countingRunTally struct {
-	fetched int
-	indexed int
-	failed  int
+	fetched      int
+	indexed      int
+	failed       int
+	robotsDenied int
 }
 
 func (c *countingRunTally) Fetched([]byte) { c.fetched++ }
@@ -23,6 +25,8 @@ func (c *countingRunTally) Fetched([]byte) { c.fetched++ }
 func (c *countingRunTally) Indexed([]byte) { c.indexed++ }
 
 func (c *countingRunTally) Failed([]byte) { c.failed++ }
+
+func (c *countingRunTally) RobotsDenied([]byte) { c.robotsDenied++ }
 
 func TestPipelineRunTallyCountsSuccessfulPage(t *testing.T) {
 	frontier := newRecordingFrontier()
@@ -79,7 +83,30 @@ func TestPipelineRunTallyIgnoresRejectedFetch(t *testing.T) {
 
 	runOneJob(t, p, frontier)
 
-	if tally.failed != 0 || tally.fetched != 0 || tally.indexed != 0 {
+	if tally.failed != 0 || tally.fetched != 0 || tally.indexed != 0 ||
+		tally.robotsDenied != 0 {
 		t.Fatalf("tally = %#v, want all zero (a non-robots reject is not a failure)", tally)
+	}
+}
+
+func TestPipelineRunTallyCountsRobotsDenial(t *testing.T) {
+	frontier := newRecordingFrontier()
+	tally := &countingRunTally{}
+	p := pipeline.NewPipeline(
+		frontier,
+		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			return pagefetch.FetchedPage{}, fmt.Errorf(
+				"robots disallow: %w: %w", robots.ErrDisallowed, pagefetch.ErrPageRejected,
+			)
+		}),
+		pageindex.NewIndexBuilder(),
+		okEmitter(),
+		pipeline.WithRunTally(tally),
+	)
+
+	runOneJob(t, p, frontier)
+
+	if tally.robotsDenied != 1 || tally.failed != 0 || tally.fetched != 0 {
+		t.Fatalf("tally = %#v, want robotsDenied 1 and no failure", tally)
 	}
 }

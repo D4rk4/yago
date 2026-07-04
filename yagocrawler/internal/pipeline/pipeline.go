@@ -13,6 +13,7 @@ import (
 	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yagocrawler/internal/pageindex"
 	"github.com/D4rk4/yago/yagocrawler/internal/pageparse"
+	"github.com/D4rk4/yago/yagocrawler/internal/robots"
 	"github.com/D4rk4/yago/yagocrawler/internal/weburl"
 )
 
@@ -120,9 +121,12 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	p.observer.FetchAttempted()
 	fetched, err := p.fetcher.Fetch(ctx, target)
 	if err != nil {
-		if !errors.Is(err, pagefetch.ErrPageRejected) {
+		switch {
+		case !errors.Is(err, pagefetch.ErrPageRejected):
 			p.observer.FetchFailed()
 			p.tally.Failed(job.Provenance)
+		case errors.Is(err, robots.ErrDisallowed):
+			p.tally.RobotsDenied(job.Provenance)
 		}
 
 		return fmt.Errorf("fetch: %w", err)

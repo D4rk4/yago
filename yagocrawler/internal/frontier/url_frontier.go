@@ -51,6 +51,7 @@ type frontierState struct {
 	runs       map[uuid.UUID]*crawlRun
 	completion *crawlrun.Completion
 	ready      []crawljob.CrawlJob
+	tally      RunTally
 }
 
 type crawlRun struct {
@@ -75,6 +76,7 @@ func NewFrontier(capacity int, pace CrawlPace, opts ...Option) *Frontier {
 		state: &frontierState{
 			runs:       make(map[uuid.UUID]*crawlRun),
 			completion: crawlrun.NewCompletion(),
+			tally:      noopRunTally{},
 		},
 		inflight: make(map[string]int),
 	}
@@ -341,6 +343,7 @@ func (s *frontierState) accept(
 		return false
 	}
 	if _, seen := run.visited[candidate.normURL]; seen {
+		s.tally.Duplicate(candidate.provenance)
 		return false
 	}
 	if profile.Profile.MaxPagesPerHost != yagocrawlcontract.UnlimitedPagesPerHost &&

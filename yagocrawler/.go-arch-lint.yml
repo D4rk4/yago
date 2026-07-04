@@ -221,6 +221,7 @@ deps:
       - pagefetch
       - pageindex
       - pageparse
+      - robots
       - weburl
     canUse:
       - yagocrawlcontract
