@@ -37,14 +37,19 @@ func buildOpsMux(
 		Overview: newOverviewSource(assembled.report),
 		Search:   newSearchSource(assembled.searcher),
 		Index:    newIndexSource(assembled.index),
-		Network:  newNetworkSource(assembled.dht.gateStatus, assembled.roster, config.SeedlistURLs),
-		Config:   newConfigSource(config),
-		Settings: sources.settings,
-		Binding:  sources.binding,
-		Logs:     newLogsSource(recorder),
-		Security: sources.security,
-		Terms:    newTermSource(assembled.postings, assembled.urlDirectory),
-		Schema:   indexSchemaGroups(),
+		Network: newNetworkSource(
+			assembled.dht.gateStatus,
+			assembled.roster,
+			config.SeedlistURLs,
+		),
+		Config:      newConfigSource(config),
+		Settings:    sources.settings,
+		Binding:     sources.binding,
+		Logs:        newLogsSource(recorder),
+		Security:    sources.security,
+		Terms:       newTermSource(assembled.postings, assembled.urlDirectory),
+		Schema:      indexSchemaGroups(),
+		Performance: newPerformanceSource(assembled.dht.gateStatus),
 	}
 	if dispatcher := crawlDispatcher(assembled.crawl); dispatcher != nil {
 		options.Crawl = newCrawlSource(dispatcher)

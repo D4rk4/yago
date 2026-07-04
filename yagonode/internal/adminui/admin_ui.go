@@ -40,15 +40,17 @@ const (
 	logsPath            = "/admin/logs"
 	logsEventsPath      = "/admin/logs/events"
 	securityPath        = "/admin/security"
+	performancePath     = "/admin/performance"
 
-	overviewUnavailable = "Node status is not available."
-	searchUnavailable   = "Search is not available."
-	crawlUnavailable    = "The crawler is not available on this node."
-	configUnavailable   = "Configuration is not available."
-	indexUnavailable    = "The search index is not available."
-	networkUnavailable  = "Network status is not available."
-	logsUnavailable     = "Event log is not available."
-	securityUnavailable = "Security settings are not available."
+	overviewUnavailable    = "Node status is not available."
+	searchUnavailable      = "Search is not available."
+	crawlUnavailable       = "The crawler is not available on this node."
+	configUnavailable      = "Configuration is not available."
+	indexUnavailable       = "The search index is not available."
+	networkUnavailable     = "Network status is not available."
+	logsUnavailable        = "Event log is not available."
+	securityUnavailable    = "Security settings are not available."
+	performanceUnavailable = "Performance metrics are not available."
 )
 
 // NavItem is one entry in the console side navigation.
@@ -72,18 +74,19 @@ var navItems = []NavItem{
 // Options configures the console's data providers. A nil provider makes its
 // section render a controlled unavailable state.
 type Options struct {
-	Overview OverviewSource
-	Search   SearchSource
-	Crawl    CrawlSource
-	Index    IndexSource
-	Network  NetworkSource
-	Config   ConfigSource
-	Settings SettingsSource
-	Binding  BindingSource
-	Logs     LogsSource
-	Security SecuritySource
-	Terms    TermSource
-	Schema   []SchemaGroup
+	Overview    OverviewSource
+	Search      SearchSource
+	Crawl       CrawlSource
+	Index       IndexSource
+	Network     NetworkSource
+	Config      ConfigSource
+	Settings    SettingsSource
+	Binding     BindingSource
+	Logs        LogsSource
+	Security    SecuritySource
+	Terms       TermSource
+	Schema      []SchemaGroup
+	Performance PerformanceSource
 }
 
 type sectionView struct {
@@ -178,6 +181,15 @@ type securityPageData struct {
 	Error      string
 }
 
+type performancePageData struct {
+	AppName     string
+	ActivePath  string
+	Nav         []NavItem
+	CSRF        string
+	Section     sectionView
+	Performance PerformanceStatus
+}
+
 func csrfToken(r *http.Request) string {
 	token, _ := adminauth.CSRFTokenFromContext(r.Context())
 
@@ -194,25 +206,27 @@ type templates struct {
 	config      *template.Template
 	logs        *template.Template
 	security    *template.Template
+	performance *template.Template
 }
 
 // Console is the server-rendered admin console handler.
 type Console struct {
-	mux      *http.ServeMux
-	tpl      templates
-	sections map[string]sectionView
-	overview OverviewSource
-	search   SearchSource
-	crawl    CrawlSource
-	index    IndexSource
-	network  NetworkSource
-	config   ConfigSource
-	settings SettingsSource
-	binding  BindingSource
-	logs     LogsSource
-	security SecuritySource
-	terms    TermSource
-	schema   []SchemaGroup
+	mux         *http.ServeMux
+	tpl         templates
+	sections    map[string]sectionView
+	overview    OverviewSource
+	search      SearchSource
+	crawl       CrawlSource
+	index       IndexSource
+	network     NetworkSource
+	config      ConfigSource
+	settings    SettingsSource
+	binding     BindingSource
+	logs        LogsSource
+	security    SecuritySource
+	terms       TermSource
+	schema      []SchemaGroup
+	performance PerformanceSource
 }
 
 // New builds the console with its embedded templates, assets, and providers.
@@ -223,21 +237,22 @@ func New(opts Options) *Console {
 	}
 
 	console := &Console{
-		mux:      http.NewServeMux(),
-		tpl:      buildTemplates(),
-		sections: defaultSections(),
-		overview: opts.Overview,
-		search:   opts.Search,
-		crawl:    opts.Crawl,
-		index:    opts.Index,
-		network:  opts.Network,
-		config:   opts.Config,
-		settings: opts.Settings,
-		binding:  opts.Binding,
-		logs:     opts.Logs,
-		security: opts.Security,
-		terms:    opts.Terms,
-		schema:   opts.Schema,
+		mux:         http.NewServeMux(),
+		tpl:         buildTemplates(),
+		sections:    defaultSections(),
+		overview:    opts.Overview,
+		search:      opts.Search,
+		crawl:       opts.Crawl,
+		index:       opts.Index,
+		network:     opts.Network,
+		config:      opts.Config,
+		settings:    opts.Settings,
+		binding:     opts.Binding,
+		logs:        opts.Logs,
+		security:    opts.Security,
+		terms:       opts.Terms,
+		schema:      opts.Schema,
+		performance: opts.Performance,
 	}
 	console.registerRoutes(assets)
 
@@ -260,6 +275,7 @@ func buildTemplates() templates {
 		config:      clone(nil, "templates/config.tmpl", "templates/toasts.tmpl"),
 		logs:        clone(nil, "templates/logs.tmpl", "templates/logs_table.tmpl"),
 		security:    clone(nil, "templates/security.tmpl", "templates/toasts.tmpl"),
+		performance: clone(nil, "templates/performance.tmpl"),
 	}
 }
 
@@ -279,6 +295,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+logsEventsPath, c.handleLogsEvents)
 	c.mux.HandleFunc("GET "+securityPath, c.handleSecurity)
 	c.mux.HandleFunc("POST "+securityPath, c.handleSecurityUpdate)
+	c.mux.HandleFunc("GET "+performancePath, c.handlePerformance)
 
 	for _, item := range navItems {
 		if dynamicSection(item.Path) {
@@ -291,7 +308,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 func dynamicSection(path string) bool {
 	return path == overviewPath || path == searchPath || path == crawlPath ||
 		path == indexPath || path == networkPath || path == configPath ||
-		path == logsPath || path == securityPath
+		path == logsPath || path == securityPath || path == performancePath
 }
 
 // ServeHTTP dispatches to the console's internal router.
@@ -363,6 +380,21 @@ func (c *Console) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c.render(r.Context(), w, c.tpl.index, "layout", data)
+}
+
+func (c *Console) handlePerformance(w http.ResponseWriter, r *http.Request) {
+	if c.performance == nil {
+		c.renderUnavailable(w, r, performancePath, "Performance", performanceUnavailable)
+
+		return
+	}
+
+	c.render(r.Context(), w, c.tpl.performance, "layout", performancePageData{
+		AppName: appName, ActivePath: performancePath, Nav: navItems,
+		CSRF:        csrfToken(r),
+		Section:     sectionView{Heading: "Performance", Available: true},
+		Performance: c.performance.Performance(r.Context()),
+	})
 }
 
 func (c *Console) handleLogs(w http.ResponseWriter, r *http.Request) {

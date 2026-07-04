@@ -1802,12 +1802,17 @@ Acceptance:
 
 ### UI-09: Performance and operations UI
 
-Status: Partial (FTR-028). The Logs section renders recent structured events
-(time, severity, category, name, message) newest-first from the in-memory events
-recorder via a decoupled `adminui.LogsSource`, with an htmx auto-refresh partial
-and severity tags, degrading to plain HTML without JavaScript. The separate
-Performance section (queues, throughput, backup/restore controls) remains a
-placeholder follow-up.
+Status: Partial (FTR-028), advanced. The Logs section renders recent structured
+events (time, severity, category, name, message) newest-first from the in-memory
+events recorder via a decoupled `adminui.LogsSource`, with an htmx auto-refresh
+partial and severity tags, degrading to plain HTML without JavaScript. The
+**Performance section** is no longer a placeholder: a decoupled
+`adminui.PerformanceSource` (adapter over the DHT gate snapshot) renders a
+read-only operational dashboard of the crawl-queue depth, index-queue depth,
+connected-peer count, local RWI word count, and storage headroom as Carbon metric
+tiles. Still open: throughput history and **backup/restore controls** (the latter
+depends on OPS-03), log filters by severity/category, and durable event
+persistence (OPS-02). verify green (coverage 97.6%), Semgrep + Trivy clean.
 
 Pages:
 
