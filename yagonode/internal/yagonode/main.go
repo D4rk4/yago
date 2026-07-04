@@ -14,6 +14,7 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/boltvault"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
+	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
 const (
@@ -67,21 +68,35 @@ func run() error {
 
 	client := newRuntimeEgressClient(config)
 
-	vault, err := openRuntimeVault(config.StoragePath, config.StorageQuotaByte)
+	storageVault, err := openRuntimeVault(config.StoragePath, config.StorageQuotaByte)
 	if err != nil {
 		return fmt.Errorf("open storage: %w", err)
 	}
-	defer closeVault(vault)
+	defer closeVault(storageVault)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	obs, err := provisionObservability(ctx, vault)
+	return bootNode(ctx, config, storageVault, client)
+}
+
+// bootNode drives the node once its configuration is loaded and its durable
+// storage is open: it wires observability, applies runtime overrides, validates
+// the listen addresses, assembles the surfaces, and serves until the context is
+// cancelled. It is separated from run so the post-storage boot can be exercised
+// against an injected vault.
+func bootNode(
+	ctx context.Context,
+	config nodeConfig,
+	storageVault *vault.Vault,
+	client *http.Client,
+) error {
+	obs, err := provisionObservability(ctx, storageVault)
 	if err != nil {
 		return err
 	}
 
-	sources, toggles, config, err := loadRuntimeSettings(ctx, vault, config, obs.recorder)
+	sources, toggles, config, err := loadRuntimeSettings(ctx, storageVault, config, obs.recorder)
 	if err != nil {
 		return err
 	}
@@ -89,7 +104,7 @@ func run() error {
 		return fmt.Errorf("validate listen addresses: %w", err)
 	}
 
-	authService, err := provisionAdminAuth(ctx, config, vault, obs.authObserver)
+	authService, err := provisionAdminAuth(ctx, config, storageVault, obs.authObserver)
 	if err != nil {
 		return fmt.Errorf("configure admin auth: %w", err)
 	}
@@ -98,7 +113,7 @@ func run() error {
 	assembled, err := assembleRuntimeNode(
 		ctx,
 		config,
-		vault,
+		storageVault,
 		client,
 		nodeTelemetry{
 			dhtOutbound:      obs.dhtOutbound,

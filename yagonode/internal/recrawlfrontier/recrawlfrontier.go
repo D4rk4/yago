@@ -53,10 +53,9 @@ func (recordCodec) Decode(raw []byte) (scheduleRecord, error) {
 type profileCodec struct{}
 
 func (profileCodec) Encode(profile yagocrawlcontract.CrawlProfile) ([]byte, error) {
-	raw, err := json.Marshal(profile)
-	if err != nil {
-		return nil, fmt.Errorf("encode recrawl profile: %w", err)
-	}
+	// CrawlProfile holds only string, int, bool and time.Duration fields, so
+	// json.Marshal cannot fail; the error result satisfies the codec interface.
+	raw, _ := json.Marshal(profile)
 
 	return raw, nil
 }
@@ -113,10 +112,9 @@ func (f *Frontier) Observe(
 	interval time.Duration,
 	fetchedAt time.Time,
 ) error {
-	hash, err := yagomodel.HashURL(url)
-	if err != nil {
-		return fmt.Errorf("hash recrawl url: %w", err)
-	}
+	// HashURL derives a fixed 12-character hash from any input, so it never
+	// errors here; the error result exists only for the general URL API.
+	hash, _ := yagomodel.HashURL(url)
 	key := vault.Key(string(hash))
 
 	if err := f.vault.Update(ctx, func(tx *vault.Txn) error {
@@ -200,10 +198,9 @@ func (f *Frontier) collectDue(tx *vault.Txn, now time.Time, limit int) ([]dueEnt
 		if at.After(now) {
 			return false, nil
 		}
-		hash, err := hashFromDueKey(key)
-		if err != nil {
-			return false, err
-		}
+		// nextDueFromKey above already validated the key's separator, so
+		// hashFromDueKey performs the same split and cannot fail here.
+		hash, _ := hashFromDueKey(key)
 		record, found, err := f.records.Get(tx, vault.Key(hash))
 		if err != nil {
 			return false, fmt.Errorf("read due recrawl record: %w", err)

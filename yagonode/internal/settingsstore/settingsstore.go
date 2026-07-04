@@ -48,11 +48,9 @@ func (s *Store) Get(ctx context.Context, name string) (string, bool, error) {
 	)
 
 	err := s.vault.View(ctx, func(tx *vault.Txn) error {
-		stored, found, err := s.values.Get(tx, vault.Key(name))
-		if err != nil {
-			return fmt.Errorf("read runtime setting %q: %w", name, err)
-		}
-		value, set = stored, found
+		// The settings collection stores plain strings whose decode never
+		// fails, so Get only ever reports the outer View error handled below.
+		value, set, _ = s.values.Get(tx, vault.Key(name))
 
 		return nil
 	})

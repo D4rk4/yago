@@ -64,6 +64,22 @@ func TestRegistryRecentOrdersByUpdatedDesc(t *testing.T) {
 	}
 }
 
+func TestRegistryRecentBreaksUpdatedTiesByRunID(t *testing.T) {
+	reg := New(4)
+	fixed := time.Unix(5000, 0)
+	reg.now = func() time.Time { return fixed }
+	ctx := context.Background()
+
+	reg.Record(ctx, yagocrawlcontract.CrawlRunProgress{RunID: "b"})
+	reg.Record(ctx, yagocrawlcontract.CrawlRunProgress{RunID: "a"})
+
+	runs := reg.Recent()
+	if len(runs) != 2 || runs[0].RunID != "a" || runs[1].RunID != "b" {
+		t.Fatalf("order = %v, want [a b] with equal Updated broken by run id",
+			[]string{runs[0].RunID, runs[1].RunID})
+	}
+}
+
 func TestRegistryEvictsOldestOverCapacity(t *testing.T) {
 	reg := New(2)
 	base := time.Unix(3000, 0)

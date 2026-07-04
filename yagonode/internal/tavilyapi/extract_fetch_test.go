@@ -69,3 +69,30 @@ func TestExtractFetchMarkdown(t *testing.T) {
 		t.Fatalf("raw = %q", resp.Results[0].RawContent)
 	}
 }
+
+func TestExtractFetchMarkdownWithoutTitle(t *testing.T) {
+	fetcher := &stubContentFetcher{content: FetchedContent{Text: "Body only"}}
+	handler := NewExtractEndpointWithFetcher(&fakeDocuments{}, SearchAccessPolicy{}, fetcher)
+
+	resp := decodeExtract(
+		t,
+		postExtract(t, handler, `{"urls":"https://fresh.example/","format":"markdown"}`, ""),
+	)
+	if resp.Results[0].RawContent != "Body only" {
+		t.Fatalf("raw = %q, want the untitled body verbatim", resp.Results[0].RawContent)
+	}
+}
+
+func TestExtractFetchIncludesFavicon(t *testing.T) {
+	fetcher := &stubContentFetcher{content: FetchedContent{Title: "T", Text: "Body"}}
+	handler := NewExtractEndpointWithFetcher(&fakeDocuments{}, SearchAccessPolicy{}, fetcher)
+
+	resp := decodeExtract(
+		t,
+		postExtract(t, handler, `{"urls":"https://fresh.example/page","include_favicon":true}`, ""),
+	)
+	if len(resp.Results) != 1 ||
+		resp.Results[0].Favicon != "https://fresh.example/favicon.ico" {
+		t.Fatalf("favicon = %#v, want the derived favicon URL", resp.Results)
+	}
+}

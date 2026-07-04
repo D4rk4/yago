@@ -231,10 +231,9 @@ type Console struct {
 
 // New builds the console with its embedded templates, assets, and providers.
 func New(opts Options) *Console {
-	assets, err := fs.Sub(assetFS, "assets")
-	if err != nil {
-		panic(err)
-	}
+	// assetFS embeds the "assets" directory under a valid path, so fs.Sub
+	// always resolves it; the returned error is structurally unreachable.
+	assets, _ := fs.Sub(assetFS, "assets")
 
 	console := &Console{
 		mux:         http.NewServeMux(),

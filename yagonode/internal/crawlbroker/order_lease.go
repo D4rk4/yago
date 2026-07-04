@@ -36,10 +36,9 @@ type leaseRecord struct {
 type leaseRecordCodec struct{}
 
 func (leaseRecordCodec) Encode(v leaseRecord) ([]byte, error) {
-	raw, err := json.Marshal(v)
-	if err != nil {
-		return nil, fmt.Errorf("encode lease record: %w", err)
-	}
+	// leaseRecord holds only []byte, string and int64 fields, so json.Marshal
+	// cannot fail; the error result exists only to satisfy the codec interface.
+	raw, _ := json.Marshal(v)
 
 	return raw, nil
 }

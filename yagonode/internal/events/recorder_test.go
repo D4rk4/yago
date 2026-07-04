@@ -38,6 +38,15 @@ func TestRecorderAttachSeedsHistoryNewestFirst(t *testing.T) {
 	}
 }
 
+func TestRecorderAttachHistoryWrapsRing(t *testing.T) {
+	r := events.NewRecorder(3)
+	r.Attach(nil, []events.Event{{Name: "1"}, {Name: "2"}, {Name: "3"}})
+
+	if got := names(r.Recent(0)); !reflect.DeepEqual(got, []string{"3", "2", "1"}) {
+		t.Fatalf("recent = %v, want [3 2 1] after history fills the ring", got)
+	}
+}
+
 func names(evs []events.Event) []string {
 	out := make([]string, len(evs))
 	for i, e := range evs {

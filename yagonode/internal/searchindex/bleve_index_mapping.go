@@ -43,7 +43,9 @@ func searchFieldAnalyzer(field string) string {
 	return searchTextAnalyzer
 }
 
-func newSearchIndexMapping() (*mapping.IndexMappingImpl, error) {
+// newSearchIndexMapping is a package var so a test can inject a mapping-build
+// failure and exercise the callers' error handling.
+var newSearchIndexMapping = func() (*mapping.IndexMappingImpl, error) {
 	indexMapping := bleve.NewIndexMapping()
 	if err := registerURLAnalyzer(indexMapping); err != nil {
 		return nil, err
@@ -65,7 +67,8 @@ func newSearchIndexMapping() (*mapping.IndexMappingImpl, error) {
 
 // registerURLAnalyzer wires an alphanumeric-run tokenizer plus lowercasing so the
 // url field tokenizes host labels and path segments while keeping their digits.
-func registerURLAnalyzer(indexMapping *mapping.IndexMappingImpl) error {
+// It is a package var so a test can force a mapping-registration failure.
+var registerURLAnalyzer = func(indexMapping *mapping.IndexMappingImpl) error {
 	if err := indexMapping.AddCustomTokenizer(urlWordSplitter, map[string]any{
 		"type":   "regexp",
 		"regexp": urlWordRegexp,

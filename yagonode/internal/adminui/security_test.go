@@ -13,6 +13,9 @@ type fakeSecurity struct {
 	mintResult   APIKeyMintResult
 	revokeResult APIKeyRevokeResult
 	pwResult     PasswordChangeResult
+	mintErr      error
+	revokeErr    error
+	pwErr        error
 	mints        int
 	revokes      int
 	changes      int
@@ -30,7 +33,7 @@ func (f *fakeSecurity) MintAPIKey(
 	f.mints++
 	f.lastMint = mint
 
-	return f.mintResult, nil
+	return f.mintResult, f.mintErr
 }
 
 func (f *fakeSecurity) RevokeAPIKey(
@@ -40,7 +43,7 @@ func (f *fakeSecurity) RevokeAPIKey(
 	f.revokes++
 	f.lastRevoke = revoke
 
-	return f.revokeResult, nil
+	return f.revokeResult, f.revokeErr
 }
 
 func (f *fakeSecurity) ChangePassword(
@@ -50,7 +53,7 @@ func (f *fakeSecurity) ChangePassword(
 	f.changes++
 	f.lastChange = change
 
-	return f.pwResult, nil
+	return f.pwResult, f.pwErr
 }
 
 func securityViewWithKey() SecurityView {
