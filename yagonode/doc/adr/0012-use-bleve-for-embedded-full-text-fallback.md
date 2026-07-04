@@ -28,7 +28,7 @@ ranking parity.
 Use `github.com/blevesearch/bleve/v2` as the first embedded full-text fallback
 backend.
 
-The adapter persists its index under `YACY_DATA_DIR/search.bleve`. Startup opens
+The adapter persists its index under `YAGO_DATA_DIR/search.bleve`. Startup opens
 the existing index and rebuilds from the document store only when the index is
 missing or unusable. Crawler ingest updates the document store first and then
 updates the full-text index before URL metadata and RWI postings are

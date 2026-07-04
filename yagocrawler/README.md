@@ -56,13 +56,13 @@ its `Sitemap:` directives; a missing or unreadable `robots.txt` discovers nothin
 rather than failing the crawl. Sitemap `lastmod` values are carried as crawl
 request hints for later recrawl scheduling.
 
-Configuration comes from the environment (`YACYCRAWLER_NODE_RPC_ADDR` is required;
-`YACYCRAWLER_ALLOW_PRIVATE_NETWORKS` opts into all LAN and private-network targets,
-while `YACYCRAWLER_ALLOW_CIDRS` is a comma-separated list of private CIDRs to admit
+Configuration comes from the environment (`YAGOCRAWLER_NODE_RPC_ADDR` is required;
+`YAGOCRAWLER_ALLOW_PRIVATE_NETWORKS` opts into all LAN and private-network targets,
+while `YAGOCRAWLER_ALLOW_CIDRS` is a comma-separated list of private CIDRs to admit
 instead of opening all private space; loopback, link-local, and reserved ranges
 stay blocked either way). The service runs until it receives `SIGINT` or
 `SIGTERM`, then shuts down gracefully: it stops pulling new jobs but lets
-in-flight page fetches finish, waiting up to `YACYCRAWLER_SHUTDOWN_GRACE`
+in-flight page fetches finish, waiting up to `YAGOCRAWLER_SHUTDOWN_GRACE`
 (default `10s`) before aborting any still running.
 Outbound fetches, including the headless browser, are screened in-process at dial
 time against the connected IP address, so no external forward proxy is required;
@@ -73,13 +73,13 @@ unspecified, documentation/test, and metadata-local destinations. The final
 rendered URL is checked against the same public-web policy.
 The default fetch path uses a bounded HTTP GET first and falls back to the
 headless browser only when that fast path rejects the page. The HTTP fast path
-follows at most `YACYCRAWLER_MAX_REDIRECTS` redirect hops and uses explicit
+follows at most `YAGOCRAWLER_MAX_REDIRECTS` redirect hops and uses explicit
 request, connect, TLS, and response-header timeout budgets. Sitemap and
-sitelist expansion imports at most `YACYCRAWLER_SITEMAP_URL_LIMIT` URLs per
+sitelist expansion imports at most `YAGOCRAWLER_SITEMAP_URL_LIMIT` URLs per
 seed. The container image
 embeds the pinned headless-shell runtime in a scratch non-root image.
 
-When `YACYCRAWLER_METRICS_ADDR` is set (for example `:9101`), the crawler serves
+When `YAGOCRAWLER_METRICS_ADDR` is set (for example `:9101`), the crawler serves
 Prometheus metrics at `/metrics` on that address: `yacy_crawler_jobs_active`,
 `yacy_crawler_fetches_total`, `yacy_crawler_fetch_failures_total`,
 `yacy_crawler_bytes_total`, `yacy_crawler_robots_denied_total`, and

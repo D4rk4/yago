@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	envNodeImage    = "YACY_NODE_IMAGE"
+	envNodeImage    = "YAGO_NODE_IMAGE"
 	nodeAlias       = "node"
 	nodePeerPort    = "8090"
 	nodeOpsPort     = "9090"
@@ -45,22 +45,22 @@ func startNodeBroker(t *testing.T, ctx context.Context, networkName string) node
 			Networks:       []string{networkName},
 			NetworkAliases: map[string][]string{networkName: {nodeAlias}},
 			Env: map[string]string{
-				"YACY_PEER_HASH":      nodePeerHash,
-				"YACY_PEER_NAME":      "lease-e2e-node",
-				"YACY_PEER_ADDR":      ":" + nodePeerPort,
-				"YACY_OPS_ADDR":       ":" + nodeOpsPort,
-				"YACY_ADVERTISE_HOST": nodeAlias,
-				"YACY_ADVERTISE_PORT": nodePeerPort,
-				"YACY_NETWORK_NAME":   "freeworld",
-				"YACY_PEER_BIRTH_DATE": time.Now().
+				"YAGO_PEER_HASH":      nodePeerHash,
+				"YAGO_PEER_NAME":      "lease-e2e-node",
+				"YAGO_PEER_ADDR":      ":" + nodePeerPort,
+				"YAGO_OPS_ADDR":       ":" + nodeOpsPort,
+				"YAGO_ADVERTISE_HOST": nodeAlias,
+				"YAGO_ADVERTISE_PORT": nodePeerPort,
+				"YAGO_NETWORK_NAME":   "freeworld",
+				"YAGO_PEER_BIRTH_DATE": time.Now().
 					AddDate(0, 0, -1).
 					UTC().
 					Format("20060102"),
-				"YACY_DATA_DIR":                      "/tmp/data",
-				"YACY_CRAWL_RPC_ADDR":                nodeCrawlRPCEnv,
+				"YAGO_DATA_DIR":                      "/tmp/data",
+				"YAGO_CRAWL_RPC_ADDR":                nodeCrawlRPCEnv,
 				"YAGO_ADMIN_USER":                    nodeAdminUser,
 				"YAGO_ADMIN_PASSWORD":                nodeAdminPass,
-				"YACY_EGRESS_ALLOW_PRIVATE_NETWORKS": "true",
+				"YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS": "true",
 				"LOG_LEVEL":                          "info",
 			},
 			Tmpfs: map[string]string{"/tmp": "rw,mode=1777"},

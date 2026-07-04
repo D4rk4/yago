@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const EnvEgressAllowCIDRs = "YACYCRAWLER_ALLOW_CIDRS"
+const EnvEgressAllowCIDRs = "YAGOCRAWLER_ALLOW_CIDRS"
 
 // parseEgressAllowCIDRs reads a comma-separated list of private CIDRs the crawler
 // egress guard admits even when private networks are otherwise blocked, so an

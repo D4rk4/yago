@@ -118,12 +118,12 @@ e2e-crawler-image:
 	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yagocrawler/Dockerfile -t $(E2E_CRAWLER_IMAGE) .
 
 e2e-node:
-	cd yagonode/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
+	cd yagonode/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YAGO_NODE_IMAGE=$(E2E_NODE_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
 
 e2e-crawler:
 	cd yagocrawler/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) \
-		YACYCRAWLER_IMAGE=$(E2E_CRAWLER_IMAGE) YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
+		YAGOCRAWLER_IMAGE=$(E2E_CRAWLER_IMAGE) YAGO_NODE_IMAGE=$(E2E_NODE_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
 
 e2e: e2e-node e2e-crawler

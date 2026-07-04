@@ -13,7 +13,7 @@ import (
 
 const (
 	crawlerAlias    = "crawler"
-	envCrawlerImage = "YACYCRAWLER_IMAGE"
+	envCrawlerImage = "YAGOCRAWLER_IMAGE"
 	hostInternal    = "host.testcontainers.internal"
 )
 
@@ -27,13 +27,13 @@ func startCrawler(t *testing.T, ctx context.Context, networkName string, exchang
 			NetworkAliases:  map[string][]string{networkName: {crawlerAlias}},
 			HostAccessPorts: []int{exchangePort},
 			Env: map[string]string{
-				"YACYCRAWLER_NODE_RPC_ADDR": fmt.Sprintf(
+				"YAGOCRAWLER_NODE_RPC_ADDR": fmt.Sprintf(
 					"%s:%d",
 					hostInternal,
 					exchangePort,
 				),
-				"YACYCRAWLER_ALLOW_PRIVATE_NETWORKS": "true",
-				"YACYCRAWLER_WORKERS":                "1",
+				"YAGOCRAWLER_ALLOW_PRIVATE_NETWORKS": "true",
+				"YAGOCRAWLER_WORKERS":                "1",
 				"LOG_LEVEL":                          "debug",
 			},
 		},

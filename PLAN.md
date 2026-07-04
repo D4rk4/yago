@@ -2852,6 +2852,15 @@ Acceptance:
 
 ### BRAND-02: Rename environment variables YACY_* -> YAGO_*
 
+Status: Done. All node `YACY_*` variables were renamed to `YAGO_*` and the
+crawler's `YACYCRAWLER_*` to `YAGOCRAWLER_*` across code, tests, e2e, the
+Makefile, `.env.example`, `docker-compose.yml.example`, the container-image
+workflow, and the docs. Compatibility policy: the node keeps a one-release grace
+period — an unset `YAGO_*` variable falls back to its legacy `YACY_*` name and
+logs a one-time deprecation warning (`withLegacyEnvAliases`); the crawler is a
+clean rename (its egress allowlist vars fail closed, so a stale name is safe).
+verify green (coverage 98.2%), Semgrep + Trivy clean.
+
 Tasks:
 
 1. Rename every `YACY_*` variable to a `YAGO_*` name and converge the §16.1 spec

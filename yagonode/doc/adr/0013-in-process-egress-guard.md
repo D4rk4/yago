@@ -41,8 +41,8 @@ proxy remains in the stack.
 
 Private networks (RFC 1918 and unique-local) are blocked by default because a
 public swarm peer or web origin never lives behind one. Deployments on a LAN or
-a private YaCy network opt back in with `YACY_EGRESS_ALLOW_PRIVATE_NETWORKS`
-(node) or `YACYCRAWLER_ALLOW_PRIVATE_NETWORKS` (crawler). Loopback, link-local
+a private YaCy network opt back in with `YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS`
+(node) or `YAGOCRAWLER_ALLOW_PRIVATE_NETWORKS` (crawler). Loopback, link-local
 (including the cloud-metadata range), carrier-grade NAT, multicast, and reserved
 ranges stay blocked in either mode.
 

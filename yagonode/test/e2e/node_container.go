@@ -18,7 +18,7 @@ import (
 
 const (
 	nodeContainerPort = "8090"
-	envNodeImage      = "YACY_NODE_IMAGE"
+	envNodeImage      = "YAGO_NODE_IMAGE"
 )
 
 type nodeConfig struct {
@@ -37,21 +37,21 @@ func startNode(
 ) (testcontainers.Container, string) {
 	t.Helper()
 	env := map[string]string{
-		"YACY_PEER_BIRTH_DATE":               time.Now().AddDate(0, 0, -5).UTC().Format("20060102"),
-		"YACY_PEER_HASH":                     cfg.hash.String(),
-		"YACY_PEER_NAME":                     cfg.alias,
-		"YACY_NETWORK_NAME":                  yagoproto.DefaultNetwork,
-		"YACY_PEER_ADDR":                     ":" + nodeContainerPort,
-		"YACY_ADVERTISE_HOST":                cfg.alias,
-		"YACY_ADVERTISE_PORT":                nodeContainerPort,
-		"YACY_DATA_DIR":                      "/tmp/data",
-		"YACY_ANNOUNCE_INTERVAL":             "10s",
-		"YACY_GREETS_PER_CYCLE":              strconv.Itoa(dhtMinConnectedPeers + 8),
-		"YACY_EGRESS_ALLOW_PRIVATE_NETWORKS": "true",
+		"YAGO_PEER_BIRTH_DATE":               time.Now().AddDate(0, 0, -5).UTC().Format("20060102"),
+		"YAGO_PEER_HASH":                     cfg.hash.String(),
+		"YAGO_PEER_NAME":                     cfg.alias,
+		"YAGO_NETWORK_NAME":                  yagoproto.DefaultNetwork,
+		"YAGO_PEER_ADDR":                     ":" + nodeContainerPort,
+		"YAGO_ADVERTISE_HOST":                cfg.alias,
+		"YAGO_ADVERTISE_PORT":                nodeContainerPort,
+		"YAGO_DATA_DIR":                      "/tmp/data",
+		"YAGO_ANNOUNCE_INTERVAL":             "10s",
+		"YAGO_GREETS_PER_CYCLE":              strconv.Itoa(dhtMinConnectedPeers + 8),
+		"YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS": "true",
 		"LOG_LEVEL":                          "debug",
 	}
 	if cfg.seedlistURL != "" {
-		env["YACY_SEEDLIST_URLS"] = cfg.seedlistURL
+		env["YAGO_SEEDLIST_URLS"] = cfg.seedlistURL
 	}
 	for key, value := range cfg.extraEnv {
 		env[key] = value

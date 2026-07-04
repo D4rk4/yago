@@ -36,9 +36,9 @@ RUN mkdir -p /out/data
 
 FROM gcr.io/distroless/static-debian12:nonroot
 
-ENV YACY_DATA_DIR=/data \
-    YACY_PEER_ADDR=:8090 \
-    YACY_OPS_ADDR=:9090
+ENV YAGO_DATA_DIR=/data \
+    YAGO_PEER_ADDR=:8090 \
+    YAGO_OPS_ADDR=:9090
 
 COPY --from=build --chown=nonroot:nonroot /out/data /data
 COPY --from=build /out/yago-node /usr/local/bin/yago-node

@@ -5,7 +5,7 @@ import (
 	"net/netip"
 )
 
-const envEgressAllowCIDRs = "YACY_EGRESS_ALLOW_CIDRS"
+const envEgressAllowCIDRs = "YAGO_EGRESS_ALLOW_CIDRS"
 
 // parseEgressAllowCIDRs reads a comma-separated list of private CIDRs the egress
 // guard should admit even when private networks are otherwise blocked. An empty

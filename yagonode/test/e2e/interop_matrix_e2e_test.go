@@ -46,11 +46,11 @@ func TestNodeDistributesRWIToRealYaCy(t *testing.T) {
 		hash:        outboundNodeHash,
 		seedlistURL: "http://" + outboundYaCyAlias + ":8090/yacy/seedlist.html",
 		extraEnv: map[string]string{
-			"YACY_DHT_MINIMUM_PEER_AGE_DAYS":   "-1",
-			"YACY_DHT_MINIMUM_CONNECTED_PEERS": "1",
-			"YACY_DHT_MINIMUM_RWI_WORDS":       "50",
-			"YACY_DHT_DISTRIBUTION_INTERVAL":   "5s",
-			"YACY_PUBLIC_SELF_TEST_URL":        "http://" + outboundNodeAlias + ":8090",
+			"YAGO_DHT_MINIMUM_PEER_AGE_DAYS":   "-1",
+			"YAGO_DHT_MINIMUM_CONNECTED_PEERS": "1",
+			"YAGO_DHT_MINIMUM_RWI_WORDS":       "50",
+			"YAGO_DHT_DISTRIBUTION_INTERVAL":   "5s",
+			"YAGO_PUBLIC_SELF_TEST_URL":        "http://" + outboundNodeAlias + ":8090",
 		},
 	})
 
@@ -100,7 +100,7 @@ func TestGlobalSearchFindsRealYaCyResults(t *testing.T) {
 		hash:        searchNodeHash,
 		seedlistURL: "http://" + searchYaCyAlias + ":8090/yacy/seedlist.html",
 		extraEnv: map[string]string{
-			"YACY_DHT_MINIMUM_PEER_AGE_DAYS": "-1",
+			"YAGO_DHT_MINIMUM_PEER_AGE_DAYS": "-1",
 		},
 	})
 

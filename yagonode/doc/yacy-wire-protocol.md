@@ -16,10 +16,10 @@ form observed in current freeworld seedlists, preserving whichever value the
 remote seed carries.
 The shared blacklist endpoint `/yacy/list.html` is also raw text. It checks the
 YaCy network unit and returns the `col=black` list files named by
-`YACY_DATA_DIR/SETTINGS/yacy.conf` `BlackLists.Shared`, read from
-`YACY_DATA_DIR/LISTS`. The peer profile endpoint `/yacy/profile.html` is raw text
+`YAGO_DATA_DIR/SETTINGS/yacy.conf` `BlackLists.Shared`, read from
+`YAGO_DATA_DIR/LISTS`. The peer profile endpoint `/yacy/profile.html` is raw text
 as well and returns CRLF-terminated `key=value` profile properties loaded from
-`YACY_DATA_DIR/SETTINGS/profile.txt` when present.
+`YAGO_DATA_DIR/SETTINGS/profile.txt` when present.
 The host-link endpoint `/yacy/idx.json?object=host` returns
 JSON with version, uptime, YaCy's host-reference row definition, and a bounded
 incoming host-link index inferred from stored URL metadata referrers.

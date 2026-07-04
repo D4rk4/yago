@@ -35,9 +35,9 @@ The node currently targets these responsibilities:
   offset or timestamp `UTC` wire values;
 - answer YaCy shared blacklist export requests through `/yacy/list.html` with
   YaCy network-unit checks and entries from list files named in
-  `YACY_DATA_DIR/SETTINGS/yacy.conf` `BlackLists.Shared`;
+  `YAGO_DATA_DIR/SETTINGS/yacy.conf` `BlackLists.Shared`;
 - answer YaCy peer profile export requests through `/yacy/profile.html` with
-  properties from `YACY_DATA_DIR/SETTINGS/profile.txt` when that file exists;
+  properties from `YAGO_DATA_DIR/SETTINGS/profile.txt` when that file exists;
 - answer YaCy host-link index requests through `/yacy/idx.json?object=host` with
   a bounded incoming host graph counted from stored document outlinks;
 - answer YaCy peer message permission requests without requiring `iam` or
@@ -82,7 +82,7 @@ The node currently targets these responsibilities:
 The node stores bounded extracted document text, page description metadata,
 bounded image URL/alt metadata, and other document metadata, and maintains an
 embedded persistent Bleve full-text fallback index for local public search under
-`YACY_DATA_DIR/search.bleve`. The fallback index is opened on startup and is
+`YAGO_DATA_DIR/search.bleve`. The fallback index is opened on startup and is
 rebuilt from the document store only when missing or unusable. Bleve is the
 committed local search backend, tuned for web search. The node does not store unbounded raw
 HTML bodies. The crawler is a separate, optional worker process that can fetch
@@ -110,9 +110,9 @@ publish ingest batches back to the node.
 
 Outbound node and crawler connections are screened in-process at dial time, so
 no external forward proxy is required. Private networks are blocked by default;
-set `YACY_EGRESS_ALLOW_PRIVATE_NETWORKS=true` (node) or
-`YACYCRAWLER_ALLOW_PRIVATE_NETWORKS=true` (crawler) to open all private space, or
-name specific ranges with `YACY_EGRESS_ALLOW_CIDRS` / `YACYCRAWLER_ALLOW_CIDRS`
+set `YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS=true` (node) or
+`YAGOCRAWLER_ALLOW_PRIVATE_NETWORKS=true` (crawler) to open all private space, or
+name specific ranges with `YAGO_EGRESS_ALLOW_CIDRS` / `YAGOCRAWLER_ALLOW_CIDRS`
 (comma-separated CIDRs) to reach only those private networks. Loopback,
 link-local (including the cloud metadata range), and reserved ranges stay blocked
 either way.
@@ -126,8 +126,8 @@ The node is configured through environment variables. The minimum required
 values for a local node process are:
 
 ```sh
-YACY_PEER_HASH=...
-YACY_PEER_NAME=...
+YAGO_PEER_HASH=...
+YAGO_PEER_NAME=...
 ```
 
 Generate a peer hash with:
@@ -140,34 +140,34 @@ Common node variables:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `YACY_PEER_ADDR` | `:8090` | YaCy peer protocol listener. |
-| `YACY_OPS_ADDR` | `:9090` | Ops listener for `/health`, `/ready`, `/metrics`, and node-side crawl dispatch. Every endpoint except `/health` and `/ready` requires a valid admin session or a scoped `Authorization: Bearer` API key. |
+| `YAGO_PEER_ADDR` | `:8090` | YaCy peer protocol listener. |
+| `YAGO_OPS_ADDR` | `:9090` | Ops listener for `/health`, `/ready`, `/metrics`, and node-side crawl dispatch. Every endpoint except `/health` and `/ready` requires a valid admin session or a scoped `Authorization: Bearer` API key. |
 | `YAGO_ADMIN_USER` | empty | Administrator username. When set together with `YAGO_ADMIN_PASSWORD`, the admin is provisioned on every start (authoritative). |
 | `YAGO_ADMIN_PASSWORD` | empty | Administrator password, stored as an Argon2id hash. Leave both admin variables empty to instead create the first admin with `POST /api/admin/v1/auth/setup`. There is no default password. |
 | `YAGO_ADMIN_CORS_ORIGINS` | empty | Comma-separated origin allowlist for cross-origin browser calls to the ops surface. Empty denies all; cross-origin is off by default. |
 | `YAGO_SEARCH_CORS_ORIGINS` | empty | Comma-separated origin allowlist for cross-origin browser calls to the public search endpoints. Empty denies all. |
-| `YACY_DATA_DIR` | `./data` | Directory for persistent node storage, `search.bleve`, YaCy-compatible `SETTINGS/profile.txt`, and shared blacklist files configured by `SETTINGS/yacy.conf`. |
-| `YACY_NETWORK_NAME` | `freeworld` | YaCy network name. |
-| `YACY_ADVERTISE_HOST` | empty | Public host advertised to peers. Required when seedlists are configured. |
-| `YACY_ADVERTISE_PORT` | peer listener port | Public port advertised to peers. |
-| `YACY_PUBLIC_SELF_TEST_URL` | local peer URL | Base URL used by outbound DHT gates to self-test `/yacy/query.html?object=rwicount`. |
-| `YACY_SEEDLIST_URLS` | empty | Comma-separated YaCy seedlist URLs. |
-| `YACY_DHT_REDUNDANCY` | `3` | Redundant DHT targets per vertical partition, matching YaCy freeworld senior peers. |
-| `YACY_DHT_PARTITION_EXPONENT` | `4` | YaCy vertical DHT partition exponent used for outbound transfer and global remote search. |
-| `YACY_STORAGE_QUOTA` | `1GB` | Node storage quota. |
+| `YAGO_DATA_DIR` | `./data` | Directory for persistent node storage, `search.bleve`, YaCy-compatible `SETTINGS/profile.txt`, and shared blacklist files configured by `SETTINGS/yacy.conf`. |
+| `YAGO_NETWORK_NAME` | `freeworld` | YaCy network name. |
+| `YAGO_ADVERTISE_HOST` | empty | Public host advertised to peers. Required when seedlists are configured. |
+| `YAGO_ADVERTISE_PORT` | peer listener port | Public port advertised to peers. |
+| `YAGO_PUBLIC_SELF_TEST_URL` | local peer URL | Base URL used by outbound DHT gates to self-test `/yacy/query.html?object=rwicount`. |
+| `YAGO_SEEDLIST_URLS` | empty | Comma-separated YaCy seedlist URLs. |
+| `YAGO_DHT_REDUNDANCY` | `3` | Redundant DHT targets per vertical partition, matching YaCy freeworld senior peers. |
+| `YAGO_DHT_PARTITION_EXPONENT` | `4` | YaCy vertical DHT partition exponent used for outbound transfer and global remote search. |
+| `YAGO_STORAGE_QUOTA` | `1GB` | Node storage quota. |
 | `YAGO_SEARCH_API_KEY` | empty | Optional local bearer token required by Tavily-compatible `POST /search` when set. |
-| `YACY_CRAWL_RPC_ADDR` | empty | Enables node-crawler integration when set; the address the node serves the crawl gRPC endpoint on (e.g. `:9091`). |
+| `YAGO_CRAWL_RPC_ADDR` | empty | Enables node-crawler integration when set; the address the node serves the crawl gRPC endpoint on (e.g. `:9091`). |
 
 Common crawler variables:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `YACYCRAWLER_REQUEST_TIMEOUT` | `15s` | Whole-request deadline for crawler HTTP requests, including body reads. |
-| `YACYCRAWLER_CONNECT_TIMEOUT` | `5s` | Dial timeout for crawler HTTP connections, including DNS and multi-address dialing. |
-| `YACYCRAWLER_TLS_TIMEOUT` | `5s` | TLS handshake timeout for crawler HTTPS requests. |
-| `YACYCRAWLER_HEADER_TIMEOUT` | `10s` | Time allowed for crawler HTTP response headers after the request is written. |
-| `YACYCRAWLER_MAX_REDIRECTS` | `10` | Maximum HTTP redirect hops followed by the crawler fast fetch path. Set `0` to reject the first redirect. |
-| `YACYCRAWLER_SITEMAP_URL_LIMIT` | `10000` | Maximum URLs imported from one sitemap or sitelist crawl seed before frontier admission. |
+| `YAGOCRAWLER_REQUEST_TIMEOUT` | `15s` | Whole-request deadline for crawler HTTP requests, including body reads. |
+| `YAGOCRAWLER_CONNECT_TIMEOUT` | `5s` | Dial timeout for crawler HTTP connections, including DNS and multi-address dialing. |
+| `YAGOCRAWLER_TLS_TIMEOUT` | `5s` | TLS handshake timeout for crawler HTTPS requests. |
+| `YAGOCRAWLER_HEADER_TIMEOUT` | `10s` | Time allowed for crawler HTTP response headers after the request is written. |
+| `YAGOCRAWLER_MAX_REDIRECTS` | `10` | Maximum HTTP redirect hops followed by the crawler fast fetch path. Set `0` to reject the first redirect. |
+| `YAGOCRAWLER_SITEMAP_URL_LIMIT` | `10000` | Maximum URLs imported from one sitemap or sitelist crawl seed before frontier admission. |
 
 See [yagonode/doc/configuration.md](yagonode/doc/configuration.md) for the full
 configuration reference.
@@ -192,7 +192,7 @@ The example stack starts:
 - `yago-node` on ports `8090` and `9090`;
 - `yagocrawler` as the optional crawler worker.
 
-When `YACY_CRAWL_RPC_ADDR` is configured, the ops listener accepts local crawl dispatch
+When `YAGO_CRAWL_RPC_ADDR` is configured, the ops listener accepts local crawl dispatch
 requests at `POST /crawl`. The request body includes `seeds` and optional
 `startMode`; supported modes are `url`, `sitemap`, `sitelist`, and `robots`.
 Sitemap and sitelist seeds are fetched by the crawler through the same public-web

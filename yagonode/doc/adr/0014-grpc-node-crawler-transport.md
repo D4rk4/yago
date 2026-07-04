@@ -61,7 +61,7 @@ removes, with no offsetting simplicity once the queue already lives in the node.
 ## Consequences
 
 The crawler no longer needs a broker address; it dials the node's crawl RPC endpoint
-(`YACYCRAWLER_NODE_RPC_ADDR`), and the node listens on `YACY_CRAWL_RPC_ADDR`. gRPC and protobuf
+(`YAGOCRAWLER_NODE_RPC_ADDR`), and the node listens on `YAGO_CRAWL_RPC_ADDR`. gRPC and protobuf
 become runtime dependencies of the node, the crawler, and the contract module; NATS is dropped
 from all three. Order delivery is now at-most-once from the crawler's view: the node forgets an
 order once streamed, so an order in flight when a crawler dies is not redelivered, where

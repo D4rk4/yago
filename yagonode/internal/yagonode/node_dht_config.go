@@ -10,16 +10,16 @@ import (
 )
 
 const (
-	envNetworkDHT                  = "YACY_NETWORK_DHT"
-	envDHTDistribution             = "YACY_DHT_DISTRIBUTION"
-	envDHTAllowWhileCrawling       = "YACY_DHT_ALLOW_WHILE_CRAWLING"
-	envDHTAllowWhileIndexing       = "YACY_DHT_ALLOW_WHILE_INDEXING"
-	envDHTDistributionInterval     = "YACY_DHT_DISTRIBUTION_INTERVAL"
-	envDHTRedundancy               = "YACY_DHT_REDUNDANCY"
-	envDHTPartitionExponent        = "YACY_DHT_PARTITION_EXPONENT"
-	envDHTMinimumPeerAgeDays       = "YACY_DHT_MINIMUM_PEER_AGE_DAYS"
-	envDHTMinimumConnectedPeers    = "YACY_DHT_MINIMUM_CONNECTED_PEERS"
-	envDHTMinimumRWIWords          = "YACY_DHT_MINIMUM_RWI_WORDS"
+	envNetworkDHT                  = "YAGO_NETWORK_DHT"
+	envDHTDistribution             = "YAGO_DHT_DISTRIBUTION"
+	envDHTAllowWhileCrawling       = "YAGO_DHT_ALLOW_WHILE_CRAWLING"
+	envDHTAllowWhileIndexing       = "YAGO_DHT_ALLOW_WHILE_INDEXING"
+	envDHTDistributionInterval     = "YAGO_DHT_DISTRIBUTION_INTERVAL"
+	envDHTRedundancy               = "YAGO_DHT_REDUNDANCY"
+	envDHTPartitionExponent        = "YAGO_DHT_PARTITION_EXPONENT"
+	envDHTMinimumPeerAgeDays       = "YAGO_DHT_MINIMUM_PEER_AGE_DAYS"
+	envDHTMinimumConnectedPeers    = "YAGO_DHT_MINIMUM_CONNECTED_PEERS"
+	envDHTMinimumRWIWords          = "YAGO_DHT_MINIMUM_RWI_WORDS"
 	defaultDHTDistributionInterval = 10 * time.Second
 	defaultDHTRedundancy           = 3
 	defaultDHTPartitionExponent    = 4

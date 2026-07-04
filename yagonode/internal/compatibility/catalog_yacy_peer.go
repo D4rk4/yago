@@ -107,7 +107,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:     yagoproto.PathList,
 		Methods:  methods(yagoproto.ListEndpointMethods),
 		State:    Partial,
-		Behavior: "Checks the YaCy network unit and serves shared blacklist col=black responses from files named in YACY_DATA_DIR/SETTINGS/yacy.conf BlackLists.Shared under YACY_DATA_DIR/LISTS.",
+		Behavior: "Checks the YaCy network unit and serves shared blacklist col=black responses from files named in YAGO_DATA_DIR/SETTINGS/yacy.conf BlackLists.Shared under YAGO_DATA_DIR/LISTS.",
 		Evidence: []string{
 			"yagonode/internal/sharedblacklist/*_test.go",
 			"yagonode/internal/yagonode/node_shared_blacklist_test.go",
@@ -129,7 +129,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:     yagoproto.PathProfile,
 		Methods:  methods(yagoproto.ProfileEndpointMethods),
 		State:    Partial,
-		Behavior: "Serves the YaCy profile text shape with properties loaded from YACY_DATA_DIR/SETTINGS/profile.txt when that file exists.",
+		Behavior: "Serves the YaCy profile text shape with properties loaded from YAGO_DATA_DIR/SETTINGS/profile.txt when that file exists.",
 		Evidence: []string{
 			"yagonode/internal/peerprofile/*_test.go",
 			"yagonode/internal/yagonode/node_profile_test.go",

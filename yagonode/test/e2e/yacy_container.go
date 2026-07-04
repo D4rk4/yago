@@ -22,7 +22,7 @@ func startYaCy(
 	networkName, alias string,
 ) (testcontainers.Container, string) {
 	t.Helper()
-	image := os.Getenv("YACY_YACY_IMAGE")
+	image := os.Getenv("YAGO_YAGO_IMAGE")
 	if image == "" {
 		image = defaultYaCyImage
 	}

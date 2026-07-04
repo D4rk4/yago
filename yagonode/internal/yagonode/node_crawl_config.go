@@ -2,7 +2,7 @@ package yagonode
 
 import "strings"
 
-const envCrawlRPCAddr = "YACY_CRAWL_RPC_ADDR"
+const envCrawlRPCAddr = "YAGO_CRAWL_RPC_ADDR"
 
 type crawlConfig struct {
 	ListenAddr string

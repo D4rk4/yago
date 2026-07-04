@@ -27,7 +27,7 @@ the same version the node uses, rather than inventing a second metrics format.
   its own `prometheus.Registry` and serves them in the Prometheus text exposition
   format.
 - The crawler exposes `/metrics` on an optional listener configured by
-  `YACYCRAWLER_METRICS_ADDR`; when the variable is empty the crawler starts no
+  `YAGOCRAWLER_METRICS_ADDR`; when the variable is empty the crawler starts no
   metrics server and only collects in memory, so the default deployment opens no
   new port.
 - Fetch, byte, failure, ingest, and active-job counts are observed from the
@@ -41,4 +41,4 @@ the same version the node uses, rather than inventing a second metrics format.
 - Crawler metrics aggregate in the same Prometheus server as node metrics and
   share the `yacy_` naming convention already used by node series.
 - The crawler gains an optional HTTP listener; it stays closed unless
-  `YACYCRAWLER_METRICS_ADDR` is set, keeping the worker headless by default.
+  `YAGOCRAWLER_METRICS_ADDR` is set, keeping the worker headless by default.

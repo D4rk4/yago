@@ -20,9 +20,9 @@ func startCrawlerForNode(t *testing.T, ctx context.Context, networkName string) 
 			Networks:       []string{networkName},
 			NetworkAliases: map[string][]string{networkName: {crawlerAlias}},
 			Env: map[string]string{
-				"YACYCRAWLER_NODE_RPC_ADDR":          nodeAlias + ":9091",
-				"YACYCRAWLER_ALLOW_PRIVATE_NETWORKS": "true",
-				"YACYCRAWLER_WORKERS":                "1",
+				"YAGOCRAWLER_NODE_RPC_ADDR":          nodeAlias + ":9091",
+				"YAGOCRAWLER_ALLOW_PRIVATE_NETWORKS": "true",
+				"YAGOCRAWLER_WORKERS":                "1",
 				"LOG_LEVEL":                          "debug",
 			},
 		},

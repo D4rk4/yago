@@ -102,7 +102,7 @@ admin UI work.
 The public endpoint self-test calls
 `/yacy/query.html?object=rwicount&youare=<local-peer-hash>`. By default it uses
 the local peer listener with loopback substituted for wildcard listen addresses.
-Set `YACY_PUBLIC_SELF_TEST_URL` to the externally reachable peer base URL when a
+Set `YAGO_PUBLIC_SELF_TEST_URL` to the externally reachable peer base URL when a
 reverse proxy or NAT path should be tested instead.
 
 The Go outbound transfer layer can probe a target peer's `rwicount` through
@@ -167,7 +167,7 @@ is stored on first start and survives restarts, so remote YaCy peers judge this
 node's age from its real history when they select it as a distribution target.
 A freshly started peer therefore receives no DHT transfers from YaCy peers for
 its first three days; operators migrating an established peer identity can
-declare the original birth date through `YACY_PEER_BIRTH_DATE`.
+declare the original birth date through `YAGO_PEER_BIRTH_DATE`.
 The Go selector preserves that
 target order and eligibility logic for the peer-routing step. The runtime
 defaults to YaCy freeworld senior redundancy `3` and vertical partition exponent

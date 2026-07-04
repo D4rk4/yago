@@ -51,18 +51,20 @@ func Main() {
 }
 
 func run() error {
-	if err := configureLogging(os.Getenv); err != nil {
+	getenv := withLegacyEnvAliases(os.Getenv)
+
+	if err := configureLogging(getenv); err != nil {
 		return fmt.Errorf("configure logging: %w", err)
 	}
 
-	config, err := loadNodeConfig(os.Getenv)
+	config, err := loadNodeConfig(getenv)
 	if err != nil {
 		return fmt.Errorf("load node config: %w", err)
 	}
 
-	config.Crawl = loadCrawlConfig(os.Getenv)
-	config.Admin = loadAdminConfig(os.Getenv)
-	config.CrossOrigin = loadCrossOriginConfig(os.Getenv)
+	config.Crawl = loadCrawlConfig(getenv)
+	config.Admin = loadAdminConfig(getenv)
+	config.CrossOrigin = loadCrossOriginConfig(getenv)
 
 	client := newRuntimeEgressClient(config)
 
