@@ -94,13 +94,16 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 		dhtexchange.OutboundSchedulerConfig{Gates: assembly.config.DHT.Gates, Feed: feeder},
 	)
 
+	gateStatus := dhtGateStatusSource{
+		snapshot: gateSource.Snapshot,
+		config:   assembly.config.DHT.Gates,
+	}
+
 	return dhtOutboundProcess{
-		cycle:    dhtOutboundRosterCycle{cycle: scheduler, roster: assembly.roster},
-		interval: assembly.config.DHT.Interval,
-		gates: newDHTGateStatusEndpoint(dhtGateStatusSource{
-			snapshot: gateSource.Snapshot,
-			config:   assembly.config.DHT.Gates,
-		}),
+		cycle:      dhtOutboundRosterCycle{cycle: scheduler, roster: assembly.roster},
+		interval:   assembly.config.DHT.Interval,
+		gates:      newDHTGateStatusEndpoint(gateStatus),
+		gateStatus: gateStatus,
 	}
 }
 

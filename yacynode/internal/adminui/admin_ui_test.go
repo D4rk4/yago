@@ -23,6 +23,10 @@ type fakeIndex struct{ snap IndexStats }
 
 func (f fakeIndex) Index(context.Context) IndexStats { return f.snap }
 
+type fakeNetwork struct{ snap NetworkStatus }
+
+func (f fakeNetwork) Network(context.Context) NetworkStatus { return f.snap }
+
 func sampleResults() SearchResults {
 	return SearchResults{
 		Query:        "go",
@@ -321,6 +325,62 @@ func TestConsoleIndexUnavailableWithoutSource(t *testing.T) {
 		t.Fatal("expected unavailable state without an index source")
 	}
 	if !strings.Contains(got.body, indexUnavailable) {
+		t.Fatal("expected unavailable message")
+	}
+}
+
+func TestConsoleNetworkRendersStatus(t *testing.T) {
+	t.Parallel()
+
+	snap := NetworkStatus{
+		Available:      true,
+		DHTOpen:        false,
+		BlockingReason: "not enough peers",
+		KnownPeers:     12,
+		ReachablePeers: 5,
+		Gates: []NetworkGate{
+			{Name: "connectedPeers", Open: false, Reason: "need 10"},
+			{Name: "storage", Open: true},
+		},
+		Peers: []NetworkPeer{
+			{Name: "peerA", Hash: "HHHHHH", Address: "1.2.3.4:8090", AgeDays: 3},
+		},
+	}
+	got := do(t, New(Options{Network: fakeNetwork{snap: snap}}), "/admin/network")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	for _, want := range []string{"peerA", "1.2.3.4:8090", ">12<", ">5<", "connectedPeers", "not enough peers", "Closed"} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("network section missing %q", want)
+		}
+	}
+}
+
+func TestConsoleNetworkEmptyStates(t *testing.T) {
+	t.Parallel()
+
+	got := do(
+		t,
+		New(Options{Network: fakeNetwork{snap: NetworkStatus{Available: true}}}),
+		"/admin/network",
+	)
+	if !strings.Contains(got.body, "No gate data.") {
+		t.Fatal("expected empty gate row")
+	}
+	if !strings.Contains(got.body, "No reachable peers yet.") {
+		t.Fatal("expected empty peers state")
+	}
+}
+
+func TestConsoleNetworkUnavailableWithoutSource(t *testing.T) {
+	t.Parallel()
+
+	got := do(t, New(Options{}), "/admin/network")
+	if !strings.Contains(got.body, "cds-empty") {
+		t.Fatal("expected unavailable state without a network source")
+	}
+	if !strings.Contains(got.body, networkUnavailable) {
 		t.Fatal("expected unavailable message")
 	}
 }

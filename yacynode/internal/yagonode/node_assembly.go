@@ -35,6 +35,7 @@ type node struct {
 	report        nodestatus.Report
 	searcher      searchcore.Searcher
 	index         searchindex.SearchIndex
+	roster        peerroster.Roster
 	sweeper       eviction.Sweeper
 	announcer     peerannouncement.Announcer
 	crawl         crawlProcess
@@ -144,6 +145,7 @@ func assembleNode(
 		dht:       surfaces.dht,
 		report:    report,
 		searcher:  surfaces.searcher,
+		roster:    roster,
 		vault:     vault,
 	}), nil
 }
@@ -207,6 +209,7 @@ type nodeParts struct {
 	dht       dhtOutboundProcess
 	report    nodestatus.Report
 	searcher  searchcore.Searcher
+	roster    peerroster.Roster
 	vault     *vault.Vault
 }
 
@@ -219,6 +222,7 @@ func newAssembledNode(parts nodeParts) node {
 		report:        parts.report,
 		searcher:      parts.searcher,
 		index:         parts.storage.searchIndex,
+		roster:        parts.roster,
 		sweeper:       newStorageSweeper(parts.vault, parts.storage),
 		announcer:     parts.announcer,
 		crawl:         parts.crawl,

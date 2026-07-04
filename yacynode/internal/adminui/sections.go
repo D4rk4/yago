@@ -10,10 +10,6 @@ func defaultSections() map[string]sectionView {
 			"Crawler",
 			"Crawl start, monitor, results, and profiles appear here.",
 		),
-		"/admin/network": pending(
-			"Network",
-			"Peers, seed lists, DHT gates, and transfers appear here.",
-		),
 		"/admin/performance": pending(
 			"Performance",
 			"Queues, throughput, and operational controls appear here.",

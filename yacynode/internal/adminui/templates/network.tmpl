@@ -1,0 +1,62 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Network</nav>
+<h1 class="cds-h1">Network</h1>
+{{if .Network.Available}}
+<div class="cds-tile-grid">
+  <section class="cds-tile">
+    <div class="cds-metric__label">Known peers</div>
+    <div class="cds-metric__value">{{.Network.KnownPeers}}</div>
+  </section>
+  <section class="cds-tile">
+    <div class="cds-metric__label">Reachable peers</div>
+    <div class="cds-metric__value">{{.Network.ReachablePeers}}</div>
+  </section>
+  <section class="cds-tile">
+    <div class="cds-metric__label">DHT distribution</div>
+    <div class="cds-metric__value">{{if .Network.DHTOpen}}Open{{else}}Closed{{end}}</div>
+  </section>
+</div>
+{{if and (not .Network.DHTOpen) .Network.BlockingReason}}
+<div class="cds-inline-notification" role="status">DHT distribution gate closed: {{.Network.BlockingReason}}</div>
+{{end}}
+<h2 class="cds-h2">DHT gates</h2>
+<div class="cds-scroll-x">
+  <table class="cds-table">
+    <thead><tr><th scope="col">Gate</th><th scope="col">State</th><th scope="col">Reason</th></tr></thead>
+    <tbody>
+      {{range .Network.Gates}}
+      <tr>
+        <th scope="row">{{.Name}}</th>
+        <td>{{if .Open}}<span class="cds-tag">open</span>{{else}}closed{{end}}</td>
+        <td>{{if .Reason}}{{.Reason}}{{else}}—{{end}}</td>
+      </tr>
+      {{else}}
+      <tr><td colspan="3">No gate data.</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+<h2 class="cds-h2">Reachable peers</h2>
+{{if .Network.Peers}}
+<div class="cds-scroll-x">
+  <table class="cds-table">
+    <thead><tr><th scope="col">Peer</th><th scope="col">Address</th><th scope="col">Hash</th><th scope="col">Age (days)</th></tr></thead>
+    <tbody>
+      {{range .Network.Peers}}
+      <tr>
+        <th scope="row">{{if .Name}}{{.Name}}{{else}}—{{end}}</th>
+        <td>{{if .Address}}{{.Address}}{{else}}—{{end}}</td>
+        <td class="cds-mono">{{.Hash}}</td>
+        <td>{{.AgeDays}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<div class="cds-empty" role="status">No reachable peers yet.</div>
+{{end}}
+{{else}}
+<div class="cds-empty" role="status" aria-live="polite">Network status is not available.</div>
+{{end}}
+{{end}}

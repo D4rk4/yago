@@ -1677,6 +1677,13 @@ Acceptance:
 
 ### UI-07: Network/P2P UI
 
+Status: Partial (FTR-027). The Network section renders known/reachable peer counts,
+DHT distribution gate state (with blocking reason), the per-gate results table, and
+the freshest reachable peers (name, address, hash, age) read directly from the DHT
+gate source and peer roster via a decoupled `adminui.NetworkSource`. Seed-list
+management, per-peer detail, transfer history, and the network self-test control
+remain follow-ups.
+
 Pages:
 
 1. Peer network overview:

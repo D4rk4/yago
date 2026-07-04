@@ -19,9 +19,10 @@ type dhtOutboundCycle interface {
 }
 
 type dhtOutboundProcess struct {
-	cycle    dhtOutboundCycle
-	interval time.Duration
-	gates    http.Handler
+	cycle      dhtOutboundCycle
+	interval   time.Duration
+	gates      http.Handler
+	gateStatus dhtGateStatusSource
 }
 
 var newDHTOutboundTicks = func(interval time.Duration) (<-chan time.Time, func()) {
