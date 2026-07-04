@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/boundedqueue"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
@@ -23,12 +22,16 @@ type CrawledPageIndexEmitter interface {
 	) error
 }
 
+type CrawledPageIndexPublisher interface {
+	Publish(ctx context.Context, index CrawledPageIndex) error
+}
+
 type crawledPageIndexEmitter struct {
-	queue boundedqueue.Publisher[CrawledPageIndex]
+	queue CrawledPageIndexPublisher
 }
 
 func NewCrawledPageIndexEmitter(
-	queue boundedqueue.Publisher[CrawledPageIndex],
+	queue CrawledPageIndexPublisher,
 ) CrawledPageIndexEmitter {
 	return &crawledPageIndexEmitter{queue: queue}
 }

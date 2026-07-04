@@ -2,20 +2,48 @@ package crawlorder_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/boundedqueue"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlorder"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
 )
 
+const fakeCrawlOrderIntakeCapacity = 4
+
+type fakeCrawlOrderIntake struct {
+	deliveries chan crawlorder.CrawlOrderDelivery
+}
+
+func newFakeCrawlOrderIntake() *fakeCrawlOrderIntake {
+	return &fakeCrawlOrderIntake{
+		deliveries: make(chan crawlorder.CrawlOrderDelivery, fakeCrawlOrderIntakeCapacity),
+	}
+}
+
+func (q *fakeCrawlOrderIntake) Publish(
+	ctx context.Context,
+	delivery crawlorder.CrawlOrderDelivery,
+) error {
+	select {
+	case q.deliveries <- delivery:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("publish: %w", ctx.Err())
+	}
+}
+
+func (q *fakeCrawlOrderIntake) Receive() <-chan crawlorder.CrawlOrderDelivery {
+	return q.deliveries
+}
+
 func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
-	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
+	queue := newFakeCrawlOrderIntake()
 	f := frontier.NewFrontier(8, nil, 0)
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f, crawlorder.OrderRedeliveryPolicy{
 		AckWait:     2 * time.Hour,
@@ -72,7 +100,7 @@ func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
 }
 
 func TestConsumerNaksWhenRunHasDeliveryFailure(t *testing.T) {
-	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
+	queue := newFakeCrawlOrderIntake()
 	f := frontier.NewFrontier(8, nil, 0)
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f, crawlorder.OrderRedeliveryPolicy{
 		AckWait:     2 * time.Hour,
@@ -120,7 +148,7 @@ func TestConsumerNaksWhenRunHasDeliveryFailure(t *testing.T) {
 }
 
 func TestConsumerTermsMalformedOrderID(t *testing.T) {
-	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
+	queue := newFakeCrawlOrderIntake()
 	f := frontier.NewFrontier(8, nil, 0)
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f, crawlorder.OrderRedeliveryPolicy{
 		AckWait:     2 * time.Hour,
@@ -153,7 +181,7 @@ func TestConsumerTermsMalformedOrderID(t *testing.T) {
 }
 
 func TestConsumerNaksDuplicateOrderID(t *testing.T) {
-	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
+	queue := newFakeCrawlOrderIntake()
 	f := frontier.NewFrontier(8, nil, 0)
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f, crawlorder.OrderRedeliveryPolicy{
 		AckWait:     2 * time.Hour,
@@ -226,7 +254,7 @@ func TestConsumerNaksDuplicateOrderID(t *testing.T) {
 }
 
 func TestConsumerTermsUncompilableProfile(t *testing.T) {
-	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
+	queue := newFakeCrawlOrderIntake()
 	f := frontier.NewFrontier(8, nil, 0)
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f, crawlorder.OrderRedeliveryPolicy{
 		AckWait:     2 * time.Hour,

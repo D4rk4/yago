@@ -2,15 +2,37 @@ package crawledpageindex_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/boundedqueue"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawledpageindex"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
+type fakeCrawledPageIndexPublisher struct {
+	published chan crawledpageindex.CrawledPageIndex
+}
+
+func newFakeCrawledPageIndexPublisher() *fakeCrawledPageIndexPublisher {
+	return &fakeCrawledPageIndexPublisher{
+		published: make(chan crawledpageindex.CrawledPageIndex, 1),
+	}
+}
+
+func (p *fakeCrawledPageIndexPublisher) Publish(
+	ctx context.Context,
+	index crawledpageindex.CrawledPageIndex,
+) error {
+	select {
+	case p.published <- index:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("publish: %w", ctx.Err())
+	}
+}
+
 func TestCrawledPageIndexEmitterAssemblesEnvelope(t *testing.T) {
-	queue := boundedqueue.NewBoundedQueue[crawledpageindex.CrawledPageIndex](1)
+	queue := newFakeCrawledPageIndexPublisher()
 	emitter := crawledpageindex.NewCrawledPageIndexEmitter(queue)
 
 	postings := []yacymodel.RWIPosting{{WordHash: yacymodel.WordHash("kangaroo")}}
@@ -25,7 +47,7 @@ func TestCrawledPageIndexEmitterAssemblesEnvelope(t *testing.T) {
 		t.Fatalf("Emit: %v", err)
 	}
 
-	index := <-queue.Receive()
+	index := <-queue.published
 	if index.SourceURL != envelope.SourceURL {
 		t.Errorf("source url = %q", index.SourceURL)
 	}

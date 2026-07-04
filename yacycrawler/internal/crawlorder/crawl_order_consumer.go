@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/boundedqueue"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawladmission"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
 )
@@ -22,14 +21,18 @@ const (
 	msgOrderTermFailed       = "crawl order term failed"
 )
 
+type CrawlOrderIntake interface {
+	Receive() <-chan CrawlOrderDelivery
+}
+
 type CrawlOrderConsumer struct {
-	orders     boundedqueue.Receiver[CrawlOrderDelivery]
+	orders     CrawlOrderIntake
 	frontier   *frontier.Frontier
 	redelivery OrderRedeliveryPolicy
 }
 
 func NewCrawlOrderConsumer(
-	orders boundedqueue.Receiver[CrawlOrderDelivery],
+	orders CrawlOrderIntake,
 	frontier *frontier.Frontier,
 	redelivery OrderRedeliveryPolicy,
 ) *CrawlOrderConsumer {
