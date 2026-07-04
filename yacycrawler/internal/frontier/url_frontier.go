@@ -21,6 +21,7 @@ const (
 	msgSubmitProfileUnknown = "links submitted for unknown profile"
 	msgAcceptProfileUnknown = "crawl job accepted for unknown profile"
 	msgSeedProfileMismatch  = "seed profile handle does not match order"
+	msgSeedRunDuplicate     = "crawl run already active for order id"
 )
 
 type Frontier struct {
@@ -45,9 +46,11 @@ type crawlRun struct {
 	profiles  map[string]crawladmission.AdmissionProfile
 }
 
-type SeededRun struct {
-	RunID  uuid.UUID
-	Queued int
+type RunSeeds struct {
+	RunID      uuid.UUID
+	Requests   []yacycrawlcontract.CrawlRequest
+	Provenance []byte
+	Profile    crawladmission.AdmissionProfile
 }
 
 func NewFrontier(capacity int, pace CrawlPace) *Frontier {
@@ -88,19 +91,20 @@ func (f *Frontier) Release() {
 
 func (f *Frontier) SeedRun(
 	ctx context.Context,
-	requests []yacycrawlcontract.CrawlRequest,
-	provenance []byte,
-	profile crawladmission.AdmissionProfile,
+	seeds RunSeeds,
 	finish func(succeeded bool),
-) SeededRun {
+) (queued int, duplicate bool) {
 	f.mu.Lock()
-	seeded, settled := f.state.seed(ctx, requests, provenance, profile, finish)
+	queued, settled, duplicate := f.state.seed(ctx, seeds, finish)
 	f.mu.Unlock()
+	if duplicate {
+		return 0, true
+	}
 	f.wake()
 	if settled != nil {
 		go settled()
 	}
-	return seeded
+	return queued, false
 }
 
 func (f *Frontier) Submit(ctx context.Context, work crawljob.CrawlJob, links []string) {
@@ -185,21 +189,22 @@ func (f *Frontier) nextDue(now time.Time) (crawljob.CrawlJob, int, time.Duration
 
 func (s *frontierState) seed(
 	ctx context.Context,
-	requests []yacycrawlcontract.CrawlRequest,
-	provenance []byte,
-	profile crawladmission.AdmissionProfile,
+	seeds RunSeeds,
 	finish func(succeeded bool),
-) (SeededRun, func()) {
-	runID := uuid.New()
-	s.runDedup(runID, profile)
+) (queued int, settled func(), duplicate bool) {
+	runID := seeds.RunID
+	if _, active := s.runs[runID]; active {
+		slog.WarnContext(ctx, msgSeedRunDuplicate, slog.String("runId", runID.String()))
+		return 0, nil, true
+	}
+	s.runDedup(runID, seeds.Profile)
 	s.completion.Begin(runID, finish)
-	queued := 0
-	for _, req := range requests {
-		if req.ProfileHandle != profile.Profile.Handle {
+	for _, req := range seeds.Requests {
+		if req.ProfileHandle != seeds.Profile.Profile.Handle {
 			slog.WarnContext(ctx, msgSeedProfileMismatch,
 				slog.String("url", req.URL),
 				slog.String("seedProfileHandle", req.ProfileHandle),
-				slog.String("orderProfileHandle", profile.Profile.Handle),
+				slog.String("orderProfileHandle", seeds.Profile.Profile.Handle),
 			)
 			continue
 		}
@@ -215,15 +220,15 @@ func (s *frontierState) seed(
 			normURL:       norm,
 			depth:         req.Depth,
 			profileHandle: req.ProfileHandle,
-			provenance:    provenance,
+			provenance:    seeds.Provenance,
 		}) {
 			queued++
 		}
 	}
 	if finish, succeeded, drained := s.completion.Settle(runID); drained && finish != nil {
-		return SeededRun{RunID: runID, Queued: queued}, func() { finish(succeeded) }
+		return queued, func() { finish(succeeded) }, false
 	}
-	return SeededRun{RunID: runID, Queued: queued}, nil
+	return queued, nil, false
 }
 
 func (s *frontierState) submit(ctx context.Context, work crawljob.CrawlJob, links []string) {

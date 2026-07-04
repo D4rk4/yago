@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/google/uuid"
+
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/boundedqueue"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawladmission"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/frontier"
@@ -13,6 +15,8 @@ const (
 	msgOrderReceived         = "crawl order received"
 	msgRunSeeded             = "crawl run seeded"
 	msgProfileRegisterFailed = "crawl profile registration failed"
+	msgOrderIDInvalid        = "crawl order id is not a valid identifier"
+	msgOrderDuplicate        = "crawl order already active, naking redelivery"
 	msgOrderAckFailed        = "crawl order ack failed"
 	msgOrderNakFailed        = "crawl order nak failed"
 	msgOrderTermFailed       = "crawl order term failed"
@@ -60,6 +64,17 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 		slog.String("handle", order.Profile.Handle),
 		slog.Int("seeds", len(order.Requests)),
 	)
+	runID, err := uuid.Parse(order.OrderID)
+	if err != nil {
+		slog.WarnContext(
+			ctx,
+			msgOrderIDInvalid,
+			slog.String("orderId", order.OrderID),
+			slog.Any("error", err),
+		)
+		c.term(ctx, delivery)
+		return
+	}
 	profile, err := crawladmission.CompileProfile(order.Profile)
 	if err != nil {
 		slog.WarnContext(
@@ -68,52 +83,79 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 			slog.String("handle", order.Profile.Handle),
 			slog.Any("error", err),
 		)
-		if err := delivery.Term(ctx); err != nil {
-			slog.WarnContext(
-				ctx,
-				msgOrderTermFailed,
-				slog.String("handle", order.Profile.Handle),
-				slog.Any("error", err),
-			)
-		}
+		c.term(ctx, delivery)
 		return
 	}
 	c.frontier.Hold()
 	heartbeat := keepOrderAlive(ctx, delivery, c.redelivery.heartbeatInterval())
-	seeded := c.frontier.SeedRun(
-		ctx,
-		order.Requests,
-		order.Provenance,
-		profile,
-		func(succeeded bool) {
-			heartbeat.release()
-			defer c.frontier.Release()
-			if ctx.Err() != nil || !succeeded {
-				if err := delivery.Nak(context.Background()); err != nil {
-					slog.WarnContext(
-						context.Background(),
-						msgOrderNakFailed,
-						slog.String("handle", order.Profile.Handle),
-						slog.Any("error", err),
-					)
-				}
-				return
-			}
-			if err := delivery.Ack(context.Background()); err != nil {
-				slog.WarnContext(
-					context.Background(),
-					msgOrderAckFailed,
-					slog.String("handle", order.Profile.Handle),
-					slog.Any("error", err),
-				)
-			}
-		},
-	)
+	queued, duplicate := c.frontier.SeedRun(ctx, frontier.RunSeeds{
+		RunID:      runID,
+		Requests:   order.Requests,
+		Provenance: order.Provenance,
+		Profile:    profile,
+	}, c.settleRun(ctx, delivery, heartbeat))
+	if duplicate {
+		heartbeat.release()
+		c.frontier.Release()
+		slog.WarnContext(
+			ctx,
+			msgOrderDuplicate,
+			slog.String("handle", order.Profile.Handle),
+			slog.String("runId", runID.String()),
+		)
+		c.nak(ctx, delivery)
+		return
+	}
 	slog.InfoContext(
 		ctx,
 		msgRunSeeded,
 		slog.String("handle", order.Profile.Handle),
-		slog.String("runId", seeded.RunID.String()),
-		slog.Int("queued", seeded.Queued),
+		slog.String("runId", runID.String()),
+		slog.Int("queued", queued),
 	)
+}
+
+func (c *CrawlOrderConsumer) settleRun(
+	ctx context.Context,
+	delivery CrawlOrderDelivery,
+	heartbeat *orderHeartbeat,
+) func(succeeded bool) {
+	return func(succeeded bool) {
+		heartbeat.release()
+		defer c.frontier.Release()
+		if ctx.Err() != nil || !succeeded {
+			c.nak(context.Background(), delivery)
+			return
+		}
+		if err := delivery.Ack(context.Background()); err != nil {
+			slog.WarnContext(
+				context.Background(),
+				msgOrderAckFailed,
+				slog.String("handle", delivery.Order.Profile.Handle),
+				slog.Any("error", err),
+			)
+		}
+	}
+}
+
+func (c *CrawlOrderConsumer) nak(ctx context.Context, delivery CrawlOrderDelivery) {
+	if err := delivery.Nak(ctx); err != nil {
+		slog.WarnContext(
+			ctx,
+			msgOrderNakFailed,
+			slog.String("handle", delivery.Order.Profile.Handle),
+			slog.Any("error", err),
+		)
+	}
+}
+
+func (c *CrawlOrderConsumer) term(ctx context.Context, delivery CrawlOrderDelivery) {
+	if err := delivery.Term(ctx); err != nil {
+		slog.WarnContext(
+			ctx,
+			msgOrderTermFailed,
+			slog.String("handle", delivery.Order.Profile.Handle),
+			slog.Any("error", err),
+		)
+	}
 }

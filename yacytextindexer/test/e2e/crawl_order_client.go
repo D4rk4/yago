@@ -68,6 +68,7 @@ func publishCrawlOrder(
 ) {
 	t.Helper()
 	order := yacycrawlcontract.CrawlOrder{
+		OrderID:    "b3f2a1c0-4d5e-4f6a-8b9c-0d1e2f3a4b5c",
 		Provenance: []byte("admin"),
 		Profile: yacycrawlcontract.NewCrawlProfile(yacycrawlcontract.CrawlProfile{
 			Name:            "default",

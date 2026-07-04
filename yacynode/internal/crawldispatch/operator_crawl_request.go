@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
@@ -81,6 +83,7 @@ func (r operatorCrawlRequest) order(
 	}
 
 	return yacycrawlcontract.CrawlOrder{
+		OrderID:    uuid.NewString(),
 		Provenance: provenance,
 		Profile:    profile,
 		Requests:   requests,

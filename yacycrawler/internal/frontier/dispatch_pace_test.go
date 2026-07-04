@@ -66,12 +66,10 @@ func TestDispatchSkipsStalledHost(t *testing.T) {
 	profile := openProfile(t)
 	f.SeedRun(
 		context.Background(),
-		requestsFor(profile.Profile.Handle,
+		runSeeds(profile, nil, requestsFor(profile.Profile.Handle,
 			"https://slow.example/a",
 			"https://fast.example/a",
-		),
-		nil,
-		profile,
+		)),
 		func(bool) {},
 	)
 	job := receiveJob(t, f)
@@ -86,12 +84,10 @@ func TestDispatchReleasesCooldownJobWhenDue(t *testing.T) {
 	profile := openProfile(t)
 	f.SeedRun(
 		context.Background(),
-		requestsFor(profile.Profile.Handle,
+		runSeeds(profile, nil, requestsFor(profile.Profile.Handle,
 			"https://example.com/a",
 			"https://example.com/b",
-		),
-		nil,
-		profile,
+		)),
 		func(bool) {},
 	)
 	first := receiveJob(t, f)
@@ -110,12 +106,10 @@ func TestDispatchDrainsCooldownJobOnClose(t *testing.T) {
 	f.Hold()
 	f.SeedRun(
 		context.Background(),
-		requestsFor(profile.Profile.Handle,
+		runSeeds(profile, nil, requestsFor(profile.Profile.Handle,
 			"https://example.com/a",
 			"https://example.com/b",
-		),
-		nil,
-		profile,
+		)),
 		func(bool) {},
 	)
 	f.Done(receiveJob(t, f), false)

@@ -168,11 +168,13 @@ deps:
       - crawlorder
       - boundedqueue
       - crawladmission
+      - crawljob
       - frontier
     canUse:
       - yacycrawlcontract
       - nats
       - nats-server
+      - google-uuid
   docidentity:
     mayDependOn:
       - docidentity

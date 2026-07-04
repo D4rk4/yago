@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawladmission"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawljob"
@@ -42,6 +44,19 @@ func requestsFor(handle string, urls ...string) []yacycrawlcontract.CrawlRequest
 	return reqs
 }
 
+func runSeeds(
+	profile crawladmission.AdmissionProfile,
+	provenance []byte,
+	requests []yacycrawlcontract.CrawlRequest,
+) frontier.RunSeeds {
+	return frontier.RunSeeds{
+		RunID:      uuid.New(),
+		Requests:   requests,
+		Provenance: provenance,
+		Profile:    profile,
+	}
+}
+
 func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
 	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yacycrawlcontract.CrawlProfile{
@@ -51,19 +66,17 @@ func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
 		MaxPagesPerHost: yacycrawlcontract.UnlimitedPagesPerHost,
 	})
 	finished := make(chan struct{})
-	seeded := f.SeedRun(
+	queued, _ := f.SeedRun(
 		context.Background(),
-		requestsFor(profile.Profile.Handle,
+		runSeeds(profile, []byte("admin"), requestsFor(profile.Profile.Handle,
 			"https://example.com/",
 			"https://example.com/",
 			"https://example.com/b",
-		),
-		[]byte("admin"),
-		profile,
+		)),
 		func(bool) { close(finished) },
 	)
-	if seeded.Queued != 2 {
-		t.Fatalf("queued = %d, want 2", seeded.Queued)
+	if queued != 2 {
+		t.Fatalf("queued = %d, want 2", queued)
 	}
 	f.Done(receiveJob(t, f), false)
 	f.Done(receiveJob(t, f), false)
@@ -71,6 +84,54 @@ func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
 	case <-finished:
 	case <-time.After(2 * time.Second):
 		t.Fatal("run finish callback never fired")
+	}
+}
+
+func TestSeedRunRejectsDuplicateRunID(t *testing.T) {
+	f := frontier.NewFrontier(8, nil)
+	profile := compiled(t, yacycrawlcontract.CrawlProfile{
+		Scope:           yacycrawlcontract.ScopeDomain,
+		URLMustMatch:    yacycrawlcontract.MatchAll,
+		MaxPagesPerHost: yacycrawlcontract.UnlimitedPagesPerHost,
+	})
+	runID := uuid.New()
+	firstQueued, duplicate := f.SeedRun(
+		context.Background(),
+		frontier.RunSeeds{
+			RunID:    runID,
+			Requests: requestsFor(profile.Profile.Handle, "https://example.com/"),
+			Profile:  profile,
+		},
+		func(bool) {},
+	)
+	if duplicate {
+		t.Fatal("first seed reported as duplicate")
+	}
+	if firstQueued != 1 {
+		t.Fatalf("first queued = %d, want 1", firstQueued)
+	}
+
+	secondQueued, duplicate := f.SeedRun(
+		context.Background(),
+		frontier.RunSeeds{
+			RunID:    runID,
+			Requests: requestsFor(profile.Profile.Handle, "https://example.com/other"),
+			Profile:  profile,
+		},
+		func(bool) { t.Error("duplicate seed must not register a finish callback") },
+	)
+	if !duplicate {
+		t.Fatal("re-seed with the same run id was not reported as duplicate")
+	}
+	if secondQueued != 0 {
+		t.Fatalf("duplicate queued = %d, want 0", secondQueued)
+	}
+
+	f.Done(receiveJob(t, f), false)
+	select {
+	case extra := <-f.Jobs():
+		t.Errorf("duplicate seed enqueued extra work: %+v", extra)
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 
@@ -82,15 +143,13 @@ func TestSeedRunSkipsMismatchedProfileHandle(t *testing.T) {
 		MaxPagesPerHost: yacycrawlcontract.UnlimitedPagesPerHost,
 	})
 	finished := make(chan struct{})
-	seeded := f.SeedRun(
+	queued, _ := f.SeedRun(
 		context.Background(),
-		requestsFor("wrong-handle", "https://example.com/"),
-		nil,
-		profile,
+		runSeeds(profile, nil, requestsFor("wrong-handle", "https://example.com/")),
 		func(bool) { close(finished) },
 	)
-	if seeded.Queued != 0 {
-		t.Fatalf("queued = %d, want 0", seeded.Queued)
+	if queued != 0 {
+		t.Fatalf("queued = %d, want 0", queued)
 	}
 	select {
 	case <-finished:
@@ -106,15 +165,13 @@ func TestSeedRunRejectsUnparsableSeed(t *testing.T) {
 		URLMustMatch:    yacycrawlcontract.MatchAll,
 		MaxPagesPerHost: yacycrawlcontract.UnlimitedPagesPerHost,
 	})
-	seeded := f.SeedRun(
+	queued, _ := f.SeedRun(
 		context.Background(),
-		requestsFor(profile.Profile.Handle, "ftp://example.com/"),
-		nil,
-		profile,
+		runSeeds(profile, nil, requestsFor(profile.Profile.Handle, "ftp://example.com/")),
 		func(bool) {},
 	)
-	if seeded.Queued != 0 {
-		t.Fatalf("queued = %d, want 0", seeded.Queued)
+	if queued != 0 {
+		t.Fatalf("queued = %d, want 0", queued)
 	}
 }
 
@@ -125,18 +182,16 @@ func TestSeedRunHonoursHostCap(t *testing.T) {
 		URLMustMatch:    yacycrawlcontract.MatchAll,
 		MaxPagesPerHost: 1,
 	})
-	seeded := f.SeedRun(
+	queued, _ := f.SeedRun(
 		context.Background(),
-		requestsFor(profile.Profile.Handle,
+		runSeeds(profile, nil, requestsFor(profile.Profile.Handle,
 			"https://example.com/a",
 			"https://example.com/b",
-		),
-		nil,
-		profile,
+		)),
 		func(bool) {},
 	)
-	if seeded.Queued != 1 {
-		t.Fatalf("queued = %d, want 1 (host cap)", seeded.Queued)
+	if queued != 1 {
+		t.Fatalf("queued = %d, want 1 (host cap)", queued)
 	}
 	f.Done(receiveJob(t, f), false)
 }
@@ -149,15 +204,13 @@ func TestSubmitFollowsLinksWithinDepth(t *testing.T) {
 		MaxDepth:        1,
 		MaxPagesPerHost: yacycrawlcontract.UnlimitedPagesPerHost,
 	})
-	seeded := f.SeedRun(
+	queued, _ := f.SeedRun(
 		context.Background(),
-		requestsFor(profile.Profile.Handle, "https://example.com/"),
-		nil,
-		profile,
+		runSeeds(profile, nil, requestsFor(profile.Profile.Handle, "https://example.com/")),
 		func(bool) {},
 	)
-	if seeded.Queued != 1 {
-		t.Fatalf("queued = %d, want 1", seeded.Queued)
+	if queued != 1 {
+		t.Fatalf("queued = %d, want 1", queued)
 	}
 	root := receiveJob(t, f)
 	f.Submit(context.Background(), root, []string{"https://example.com/child"})

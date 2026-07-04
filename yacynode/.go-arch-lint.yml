@@ -83,6 +83,8 @@ vendors:
   nats-server:
     in:
       - github.com/nats-io/nats-server/v2/server
+  uuid:
+    in: github.com/google/uuid
 
 deps:
   vault:
@@ -234,6 +236,7 @@ deps:
     canUse:
       - yacycrawlcontract
       - yacymodel
+      - uuid
   crawlresults:
     mayDependOn:
       - crawlresults

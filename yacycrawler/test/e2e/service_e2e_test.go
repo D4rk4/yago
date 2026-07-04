@@ -23,6 +23,7 @@ func TestCrawlerIsOrderDrivenEndToEnd(t *testing.T) {
 	ensureStreams(t, ctx, js)
 
 	order := yacycrawlcontract.CrawlOrder{
+		OrderID:    "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
 		Provenance: []byte("admin"),
 		Profile: yacycrawlcontract.NewCrawlProfile(yacycrawlcontract.CrawlProfile{
 			Name:            "default",

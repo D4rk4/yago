@@ -6,6 +6,7 @@ import (
 )
 
 type CrawlOrder struct {
+	OrderID    string
 	Provenance []byte
 	Profile    CrawlProfile
 	Requests   []CrawlRequest
