@@ -45,6 +45,11 @@ func (s *crawlMonitorSource) Monitor(ctx context.Context) adminui.CrawlMonitor {
 	monitor := adminui.CrawlMonitor{Runs: make([]adminui.CrawlRunView, 0, len(runs))}
 	for _, run := range runs {
 		monitor.Runs = append(monitor.Runs, crawlRunView(run))
+		monitor.Totals.Fetched += run.Tally.Fetched
+		monitor.Totals.Indexed += run.Tally.Indexed
+		monitor.Totals.Failed += run.Tally.Failed
+		monitor.Totals.RobotsDenied += run.Tally.RobotsDenied
+		monitor.Totals.Duplicates += run.Tally.Duplicates
 	}
 	if s.probe != nil {
 		if depth, err := s.probe(ctx); err == nil {

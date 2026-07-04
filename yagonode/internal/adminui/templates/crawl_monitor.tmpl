@@ -7,6 +7,28 @@
             hx-get="/admin/crawl/monitor" hx-target="#crawl-monitor" hx-swap="outerHTML">Refresh</button>
     <span class="cds-muted">order queue: {{.QueuePending}} pending, {{.QueueLeased}} leased — updates every 5s</span>
   </p>
+  <div class="cds-tile-grid" role="group" aria-label="Crawl results and rejections">
+    <section class="cds-tile">
+      <div class="cds-metric__label">Fetched</div>
+      <div class="cds-metric__value">{{.Totals.Fetched}}</div>
+    </section>
+    <section class="cds-tile">
+      <div class="cds-metric__label">Indexed</div>
+      <div class="cds-metric__value">{{.Totals.Indexed}}</div>
+    </section>
+    <section class="cds-tile">
+      <div class="cds-metric__label">Failed</div>
+      <div class="cds-metric__value">{{.Totals.Failed}}</div>
+    </section>
+    <section class="cds-tile">
+      <div class="cds-metric__label">Robots-denied</div>
+      <div class="cds-metric__value">{{.Totals.RobotsDenied}}</div>
+    </section>
+    <section class="cds-tile">
+      <div class="cds-metric__label">Duplicates</div>
+      <div class="cds-metric__value">{{.Totals.Duplicates}}</div>
+    </section>
+  </div>
   <div class="cds-scroll-x">
     <table class="cds-table">
       <thead>

@@ -26,6 +26,13 @@ func sampleMonitor() CrawlMonitor {
 			Pending: 4,
 			Runtime: "2m0s",
 		}},
+		Totals: CrawlTotals{
+			Fetched:      12,
+			Indexed:      9,
+			Failed:       1,
+			RobotsDenied: 3,
+			Duplicates:   5,
+		},
 		QueuePending: 7,
 		QueueLeased:  2,
 	}
@@ -39,9 +46,25 @@ func TestConsoleCrawlRendersMonitor(t *testing.T) {
 	if got.status != http.StatusOK {
 		t.Fatalf("status %d", got.status)
 	}
-	for _, want := range []string{"Crawl monitor", "news-crawl", "cds-tag--info", "7 pending, 2 leased"} {
+	for _, want := range []string{
+		"Crawl monitor", "news-crawl", "cds-tag--info", "7 pending, 2 leased",
+		"Crawl results and rejections", "Robots-denied",
+	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("crawl page missing %q", want)
+		}
+	}
+}
+
+func TestConsoleCrawlMonitorRendersResultTotals(t *testing.T) {
+	t.Parallel()
+
+	monitor := CrawlMonitor{Totals: CrawlTotals{Indexed: 42, RobotsDenied: 7}}
+	console := New(Options{Crawl: &fakeCrawl{}, Monitor: fakeMonitor{snap: monitor}})
+	got := do(t, console, "/admin/crawl/monitor")
+	for _, want := range []string{"Fetched", "Indexed", "Failed", "Duplicates", ">42<", ">7<"} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("results rollup missing %q", want)
 		}
 	}
 }

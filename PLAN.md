@@ -1846,7 +1846,7 @@ crawl-start form (seeds, name, mode, scope, max depth) that reuses a shared
 to validate a profile and enqueue on the crawl broker. The user authorised
 building the observability and control halves of `/Crawler_p.html` natively (and
 closing CRAWL-08 as superseded) — a 12-slice epic tracked as CRAWL-OBS-1..6 and
-CRAWL-CTL-7..10. Slices CRAWL-OBS-1..5 done: the crawl queue depth on the
+CRAWL-CTL-7..10. Slices CRAWL-OBS-1..6 done: the crawl queue depth on the
 Performance tile and the `queue_crawl_depth` metric now read the broker's
 outstanding order backlog (pending + leased) instead of the always-zero
 `GateState.CrawlQueueSize`; the contract carries a `ReportProgress` RPC
@@ -1862,10 +1862,17 @@ the Crawler section now renders a live running-crawls monitor (OBS-5) — an htm
 auto-refreshing table (`/admin/crawl/monitor`, 5s) of the known runs newest-first
 with their state, per-outcome tally, and runtime, plus the broker's outstanding
 order backlog, from a read-only `adminui.CrawlMonitorSource` adapter over the run
-registry and queue probe. Remaining: a results/rejections console view (OBS-6), a
-node→worker control plane for pause/cancel/PPM (CTL-7..10), and cache policy plus
-expert start fields (START-11). The crawl-profile editor (named-profile CRUD)
-stays a separate follow-up (management, not observability).
+registry and queue probe; and the monitor now leads with a crawl
+results/rejections rollup (OBS-6) — cumulative Fetched/Indexed result tiles and
+Failed/Robots-denied/Duplicates rejection tiles summed across the known runs, so
+an operator can see at a glance whether the fleet is producing results or bouncing
+pages. Per-URL result/rejection lists (the actual indexed/failed/blocked URLs)
+stay a follow-up: the worker ships only per-run outcome counts today, so listing
+individual URLs needs the crawl exchange extended to carry a bounded per-URL
+outcome sample. Remaining: a node→worker control plane for pause/cancel/PPM
+(CTL-7..10), and cache policy plus expert start fields (START-11). The
+crawl-profile editor (named-profile CRUD) stays a separate follow-up (management,
+not observability).
 
 Pages:
 

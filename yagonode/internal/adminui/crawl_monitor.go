@@ -20,10 +20,23 @@ type CrawlRunView struct {
 	Runtime      string
 }
 
-// CrawlMonitor is the crawl monitor snapshot: the known runs newest-first plus the
-// broker's outstanding order backlog.
+// CrawlTotals is the crawl results/rejections rollup across the known runs: the
+// pages that produced a result (fetched, indexed) and those that were rejected
+// (failed, denied by robots, or skipped as duplicates).
+type CrawlTotals struct {
+	Fetched      uint64
+	Indexed      uint64
+	Failed       uint64
+	RobotsDenied uint64
+	Duplicates   uint64
+}
+
+// CrawlMonitor is the crawl monitor snapshot: the known runs newest-first, the
+// results/rejections rollup across them, and the broker's outstanding order
+// backlog.
 type CrawlMonitor struct {
 	Runs         []CrawlRunView
+	Totals       CrawlTotals
 	QueuePending int
 	QueueLeased  int
 }

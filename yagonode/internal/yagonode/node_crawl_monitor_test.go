@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
+	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/crawlruns"
 )
@@ -14,6 +15,16 @@ var errMonitorProbe = errors.New("probe failed")
 
 func recordRun(reg *crawlruns.Registry, progress yagocrawlcontract.CrawlRunProgress) {
 	reg.Record(context.Background(), progress)
+}
+
+func monitorRunByProfile(monitor adminui.CrawlMonitor, profile string) adminui.CrawlRunView {
+	for _, run := range monitor.Runs {
+		if run.Profile == profile {
+			return run
+		}
+	}
+
+	return adminui.CrawlRunView{}
 }
 
 func TestCrawlMonitorSourceSnapshot(t *testing.T) {
@@ -27,15 +38,26 @@ func TestCrawlMonitorSourceSnapshot(t *testing.T) {
 			Fetched: 5, Indexed: 4, Failed: 1, RobotsDenied: 2, Duplicates: 3, Pending: 6,
 		},
 	})
+	recordRun(reg, yagocrawlcontract.CrawlRunProgress{
+		RunID:       "r2",
+		ProfileName: "docs",
+		State:       yagocrawlcontract.CrawlRunFinished,
+		Tally:       yagocrawlcontract.CrawlRunTally{Fetched: 10, Indexed: 6, Duplicates: 2},
+	})
 	source := newCrawlMonitorSource(reg, func(context.Context) (crawlbroker.QueueDepth, error) {
 		return crawlbroker.QueueDepth{Pending: 3, Leased: 1}, nil
 	})
 
 	monitor := source.Monitor(context.Background())
-	if len(monitor.Runs) != 1 {
-		t.Fatalf("runs = %d, want 1", len(monitor.Runs))
+	if len(monitor.Runs) != 2 {
+		t.Fatalf("runs = %d, want 2", len(monitor.Runs))
 	}
-	run := monitor.Runs[0]
+	if monitor.Totals.Fetched != 15 || monitor.Totals.Indexed != 10 ||
+		monitor.Totals.Failed != 1 || monitor.Totals.RobotsDenied != 2 ||
+		monitor.Totals.Duplicates != 5 {
+		t.Fatalf("totals = %+v, want summed across both runs", monitor.Totals)
+	}
+	run := monitorRunByProfile(monitor, "news")
 	if run.Profile != "news" || run.Worker != "w1" || run.State != "running" {
 		t.Fatalf("run view identity = %+v", run)
 	}
