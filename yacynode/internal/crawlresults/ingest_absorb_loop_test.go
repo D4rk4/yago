@@ -62,7 +62,7 @@ func deliver(
 	var wg sync.WaitGroup
 	wg.Add(1)
 	stream.out <- crawlresults.IngestDelivery{
-		Batch: yacycrawlcontract.CrawledPageIndex{SourceURL: "https://example.org"},
+		Batch: yacycrawlcontract.CrawledPageIndex{CanonicalURL: "https://example.org"},
 		Ack:   func(context.Context) error { acked = true; wg.Done(); return nil },
 		Nak:   func(context.Context) error { naked = true; wg.Done(); return nil },
 	}

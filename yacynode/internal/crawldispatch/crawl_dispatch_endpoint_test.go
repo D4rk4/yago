@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/crawldispatch"
 )
 
@@ -25,17 +24,10 @@ func (q *recordingQueue) Publish(_ context.Context, order yacycrawlcontract.Craw
 	return q.err
 }
 
-const initiator = yacymodel.Hash("abcdefABCDEF")
-
 func mount(t *testing.T, queue crawldispatch.CrawlOrderQueue) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
-	crawldispatch.MountCrawlDispatch(
-		mux,
-		initiator,
-		func() []byte { return []byte("token") },
-		queue,
-	)
+	crawldispatch.MountCrawlDispatch(mux, queue)
 	return mux
 }
 
@@ -72,25 +64,17 @@ func TestDispatchBuildsOrderFromOperatorInput(t *testing.T) {
 		t.Fatal("order was not published")
 	}
 	order := queue.order
-	if string(order.Provenance) != "token" {
-		t.Fatalf("provenance = %q, want token", order.Provenance)
+	wantSeeds := []string{"https://example.org/a", "https://example.org/b"}
+	if len(order.SeedURLs) != len(wantSeeds) {
+		t.Fatalf("seedURLs = %d, want %d", len(order.SeedURLs), len(wantSeeds))
 	}
-	if len(order.Requests) != 2 {
-		t.Fatalf("requests = %d, want 2", len(order.Requests))
+	for i, seed := range wantSeeds {
+		if order.SeedURLs[i] != seed {
+			t.Fatalf("seedURLs[%d] = %q, want %q", i, order.SeedURLs[i], seed)
+		}
 	}
 	if order.Profile.Handle == "" {
 		t.Fatal("profile handle is empty")
-	}
-	for _, r := range order.Requests {
-		if r.ProfileHandle != order.Profile.Handle {
-			t.Fatalf("request handle = %q, want %q", r.ProfileHandle, order.Profile.Handle)
-		}
-		if r.Initiator != initiator {
-			t.Fatalf("initiator = %q, want %q", r.Initiator, initiator)
-		}
-		if r.AppDate.IsZero() {
-			t.Fatal("request AppDate is zero")
-		}
 	}
 	if order.Profile.Scope != yacycrawlcontract.ScopeDomain {
 		t.Fatalf("scope = %v, want domain", order.Profile.Scope)

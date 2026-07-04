@@ -6,10 +6,9 @@ import (
 )
 
 type CrawlOrder struct {
-	OrderID    string
-	Provenance []byte
-	Profile    CrawlProfile
-	Requests   []CrawlRequest
+	OrderID  string
+	Profile  CrawlProfile
+	SeedURLs []string
 }
 
 func MarshalCrawlOrder(order CrawlOrder) ([]byte, error) {

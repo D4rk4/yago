@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"time"
-
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
 const (
@@ -16,9 +13,7 @@ const (
 )
 
 type crawlDispatchEndpoint struct {
-	initiator yacymodel.Hash
-	mint      ProvenanceMint
-	queue     CrawlOrderQueue
+	queue CrawlOrderQueue
 }
 
 type crawlDispatchAccepted struct {
@@ -39,7 +34,7 @@ func (e crawlDispatchEndpoint) ServeHTTP(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	order, err := input.order(e.initiator, e.mint(), time.Now())
+	order, err := input.order()
 	if err != nil {
 		e.reject(w, req, err)
 		return
@@ -55,14 +50,14 @@ func (e crawlDispatchEndpoint) ServeHTTP(w http.ResponseWriter, req *http.Reques
 		req.Context(),
 		msgCrawlOrderPublished,
 		slog.String("profileHandle", order.Profile.Handle),
-		slog.Int("seeds", len(order.Requests)),
+		slog.Int("seeds", len(order.SeedURLs)),
 	)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	_ = json.NewEncoder(w).Encode(crawlDispatchAccepted{
 		ProfileHandle: order.Profile.Handle,
-		Seeds:         len(order.Requests),
+		Seeds:         len(order.SeedURLs),
 	})
 }
 

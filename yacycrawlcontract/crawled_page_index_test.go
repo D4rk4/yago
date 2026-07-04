@@ -9,9 +9,7 @@ import (
 
 func TestCrawledPageIndexRoundTrip(t *testing.T) {
 	index := CrawledPageIndex{
-		SourceURL:     "https://example.org/a",
-		Provenance:    []byte("admin"),
-		ProfileHandle: "abcdef012345",
+		CanonicalURL: "https://example.org/a",
 		Postings: []yacymodel.RWIPosting{
 			{
 				WordHash:   yacymodel.Hash("wordhash0123"),

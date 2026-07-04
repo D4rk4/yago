@@ -41,9 +41,9 @@ func TestOrderPublisherDeliversToOrdersStream(t *testing.T) {
 	broker, js, ctx := openBroker(t)
 
 	order := yacycrawlcontract.CrawlOrder{
-		Provenance: []byte("token"),
-		Profile:    yacycrawlcontract.NewCrawlProfile(yacycrawlcontract.CrawlProfile{Name: "docs"}),
-		Requests:   []yacycrawlcontract.CrawlRequest{{URL: "https://example.org"}},
+		OrderID:  "order-1",
+		Profile:  yacycrawlcontract.NewCrawlProfile(yacycrawlcontract.CrawlProfile{Name: "docs"}),
+		SeedURLs: []string{"https://example.org"},
 	}
 	if err := broker.Orders.Publish(ctx, order); err != nil {
 		t.Fatalf("publish order: %v", err)
@@ -68,7 +68,7 @@ func TestOrderPublisherDeliversToOrdersStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode order: %v", err)
 	}
-	if string(got.Provenance) != "token" || got.Profile.Handle != order.Profile.Handle {
+	if got.OrderID != order.OrderID || got.Profile.Handle != order.Profile.Handle {
 		t.Fatalf("round-tripped order mismatch: %+v", got)
 	}
 }
@@ -80,8 +80,7 @@ func TestIngestReceiverDeliversDecodableBatchAndSkipsGarbage(t *testing.T) {
 		t.Fatalf("publish garbage: %v", err)
 	}
 	batch := yacycrawlcontract.CrawledPageIndex{
-		SourceURL:     "https://example.org",
-		ProfileHandle: "h",
+		CanonicalURL: "https://example.org",
 	}
 	data, err := yacycrawlcontract.MarshalCrawledPageIndex(batch)
 	if err != nil {
@@ -93,8 +92,8 @@ func TestIngestReceiverDeliversDecodableBatchAndSkipsGarbage(t *testing.T) {
 
 	select {
 	case delivery := <-broker.Ingest.Receive():
-		if delivery.Batch.SourceURL != batch.SourceURL {
-			t.Fatalf("sourceURL = %q, want %q", delivery.Batch.SourceURL, batch.SourceURL)
+		if delivery.Batch.CanonicalURL != batch.CanonicalURL {
+			t.Fatalf("canonicalURL = %q, want %q", delivery.Batch.CanonicalURL, batch.CanonicalURL)
 		}
 		if err := delivery.Ack(ctx); err != nil {
 			t.Fatalf("ack: %v", err)

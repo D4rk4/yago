@@ -48,7 +48,6 @@ func TestRunServiceIndexesCrawledPageIntoElasticsearch(t *testing.T) {
 
 	data, err := yacycrawlcontract.MarshalCrawledPage(yacycrawlcontract.CrawledPage{
 		CanonicalURL: "https://example.com/",
-		DocumentID:   "abc123",
 		Title:        "Hi",
 		Text:         "words here",
 	})
@@ -64,7 +63,7 @@ func TestRunServiceIndexesCrawledPageIntoElasticsearch(t *testing.T) {
 		mu.Lock()
 		path := gotPath
 		mu.Unlock()
-		if path == "/yacy-text/_doc/abc123" {
+		if path == "/yacy-text/_doc/0f115db062b7c0dd030b16878c99dea5c354b49dc37b38eb8846179c7783e9d7" {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -72,7 +71,7 @@ func TestRunServiceIndexesCrawledPageIntoElasticsearch(t *testing.T) {
 	mu.Lock()
 	path := gotPath
 	mu.Unlock()
-	if path != "/yacy-text/_doc/abc123" {
+	if path != "/yacy-text/_doc/0f115db062b7c0dd030b16878c99dea5c354b49dc37b38eb8846179c7783e9d7" {
 		t.Fatalf("elasticsearch never received the indexed document, last path = %q", path)
 	}
 

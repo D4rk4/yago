@@ -9,7 +9,6 @@ import (
 func TestCrawledPageRoundTrip(t *testing.T) {
 	text := CrawledPage{
 		CanonicalURL: "https://example.org/a",
-		DocumentID:   "abc123",
 		Title:        "Hi",
 		Text:         "words here",
 		CrawledAt:    time.Date(2026, 7, 4, 0, 0, 0, 0, time.UTC),

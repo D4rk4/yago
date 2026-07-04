@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
 type operatorCrawlRequest struct {
@@ -19,7 +18,6 @@ type operatorCrawlRequest struct {
 	MaxDepth        int      `json:"maxDepth"`
 	AllowQueryURLs  bool     `json:"allowQueryURLs"`
 	MaxPagesPerHost int      `json:"maxPagesPerHost"`
-	RecrawlIfOlder  string   `json:"recrawlIfOlder"`
 	CrawlDelay      string   `json:"crawlDelay"`
 }
 
@@ -30,11 +28,7 @@ var crawlScopeByName = map[string]yacycrawlcontract.CrawlScope{
 	"subpath": yacycrawlcontract.ScopeSubpath,
 }
 
-func (r operatorCrawlRequest) order(
-	initiator yacymodel.Hash,
-	provenance []byte,
-	now time.Time,
-) (yacycrawlcontract.CrawlOrder, error) {
+func (r operatorCrawlRequest) order() (yacycrawlcontract.CrawlOrder, error) {
 	if len(r.Seeds) == 0 {
 		return yacycrawlcontract.CrawlOrder{}, fmt.Errorf("at least one seed url is required")
 	}
@@ -51,10 +45,6 @@ func (r operatorCrawlRequest) order(
 		)
 	}
 
-	recrawl, err := optionalDuration(r.RecrawlIfOlder)
-	if err != nil {
-		return yacycrawlcontract.CrawlOrder{}, fmt.Errorf("recrawlIfOlder: %w", err)
-	}
 	delay, err := optionalDuration(r.CrawlDelay)
 	if err != nil {
 		return yacycrawlcontract.CrawlOrder{}, fmt.Errorf("crawlDelay: %w", err)
@@ -68,25 +58,13 @@ func (r operatorCrawlRequest) order(
 		MaxDepth:        r.MaxDepth,
 		AllowQueryURLs:  r.AllowQueryURLs,
 		MaxPagesPerHost: r.MaxPagesPerHost,
-		RecrawlIfOlder:  recrawl,
 		CrawlDelay:      delay,
 	})
 
-	requests := make([]yacycrawlcontract.CrawlRequest, 0, len(r.Seeds))
-	for _, seed := range r.Seeds {
-		requests = append(requests, yacycrawlcontract.CrawlRequest{
-			URL:           seed,
-			ProfileHandle: profile.Handle,
-			Initiator:     initiator,
-			AppDate:       now,
-		})
-	}
-
 	return yacycrawlcontract.CrawlOrder{
-		OrderID:    uuid.NewString(),
-		Provenance: provenance,
-		Profile:    profile,
-		Requests:   requests,
+		OrderID:  uuid.NewString(),
+		Profile:  profile,
+		SeedURLs: r.Seeds,
 	}, nil
 }
 

@@ -86,7 +86,7 @@ func assembleNode(
 
 	sweeper := newStorageSweeper(vault, storage)
 
-	runtime, err := buildCrawlRuntime(ctx, config.Crawl, identity, storage)
+	runtime, err := buildCrawlRuntime(ctx, config.Crawl, storage)
 	if err != nil {
 		return node{}, err
 	}

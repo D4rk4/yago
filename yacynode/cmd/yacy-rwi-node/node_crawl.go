@@ -2,27 +2,22 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"net/http"
 
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/crawlbroker"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/crawldispatch"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/crawlresults"
-	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodeidentity"
 )
 
 type crawlRuntime struct {
-	broker    *crawlbroker.CrawlBroker
-	consumer  *crawlresults.IngestConsumer
-	initiator yacymodel.Hash
+	broker   *crawlbroker.CrawlBroker
+	consumer *crawlresults.IngestConsumer
 }
 
 func buildCrawlRuntime(
 	ctx context.Context,
 	config crawlConfig,
-	identity nodeidentity.Identity,
 	storage nodeStorage,
 ) (*crawlRuntime, error) {
 	if !config.Enabled() {
@@ -47,14 +42,13 @@ func buildCrawlRuntime(
 	)
 
 	return &crawlRuntime{
-		broker:    broker,
-		consumer:  consumer,
-		initiator: identity.Hash,
+		broker:   broker,
+		consumer: consumer,
 	}, nil
 }
 
 func (r *crawlRuntime) mountDispatch(mux *http.ServeMux) {
-	crawldispatch.MountCrawlDispatch(mux, r.initiator, mintProvenance, r.broker.Orders)
+	crawldispatch.MountCrawlDispatch(mux, r.broker.Orders)
 }
 
 func (r *crawlRuntime) Run(ctx context.Context) {
@@ -63,10 +57,4 @@ func (r *crawlRuntime) Run(ctx context.Context) {
 
 func (r *crawlRuntime) Close() {
 	r.broker.Close()
-}
-
-func mintProvenance() []byte {
-	token := make([]byte, yacymodel.HashLength)
-	_, _ = rand.Read(token)
-	return token
 }

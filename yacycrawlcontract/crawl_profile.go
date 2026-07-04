@@ -29,7 +29,6 @@ type CrawlProfile struct {
 	MaxDepth        int
 	AllowQueryURLs  bool
 	MaxPagesPerHost int
-	RecrawlIfOlder  time.Duration
 	CrawlDelay      time.Duration
 }
 

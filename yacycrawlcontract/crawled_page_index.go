@@ -8,11 +8,9 @@ import (
 )
 
 type CrawledPageIndex struct {
-	SourceURL     string
-	Provenance    []byte
-	ProfileHandle string
-	Postings      []yacymodel.RWIPosting
-	Metadata      []yacymodel.URIMetadataRow
+	CanonicalURL string
+	Postings     []yacymodel.RWIPosting
+	Metadata     []yacymodel.URIMetadataRow
 }
 
 func MarshalCrawledPageIndex(index CrawledPageIndex) ([]byte, error) {

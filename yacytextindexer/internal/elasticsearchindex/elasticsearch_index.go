@@ -32,20 +32,21 @@ func (idx *ElasticsearchIndex) Index(
 	ctx context.Context,
 	page yacycrawlcontract.CrawledPage,
 ) error {
+	identity := documentIdentity(page.CanonicalURL)
 	body, err := json.Marshal(searchdocument.FromCrawledPage(page))
 	if err != nil {
-		return fmt.Errorf("marshal search document %s: %w", page.DocumentID, err)
+		return fmt.Errorf("marshal search document %s: %w", identity, err)
 	}
-	target := fmt.Sprintf("%s/%s/_doc/%s", idx.endpoint, idx.index, url.PathEscape(page.DocumentID))
+	target := fmt.Sprintf("%s/%s/_doc/%s", idx.endpoint, idx.index, url.PathEscape(identity))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, target, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("build index request %s: %w", page.DocumentID, err)
+		return fmt.Errorf("build index request %s: %w", identity, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := idx.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("index document %s: %w", page.DocumentID, err)
+		return fmt.Errorf("index document %s: %w", identity, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -53,7 +54,7 @@ func (idx *ElasticsearchIndex) Index(
 		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf(
 			"index document %s: status %d: %s",
-			page.DocumentID,
+			identity,
 			resp.StatusCode,
 			detail,
 		)

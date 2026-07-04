@@ -48,7 +48,7 @@ func TestCrawlRuntimeDispatchAndConsume(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	runtime, err := buildCrawlRuntime(ctx, cfg, nodeIdentity(testConfig(t)), storage)
+	runtime, err := buildCrawlRuntime(ctx, cfg, storage)
 	if err != nil {
 		t.Fatalf("build crawl runtime: %v", err)
 	}

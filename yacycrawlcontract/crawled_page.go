@@ -8,7 +8,6 @@ import (
 
 type CrawledPage struct {
 	CanonicalURL string
-	DocumentID   string
 	Title        string
 	Text         string
 	CrawledAt    time.Time

@@ -68,8 +68,7 @@ func publishCrawlOrder(
 ) {
 	t.Helper()
 	order := yacycrawlcontract.CrawlOrder{
-		OrderID:    "b3f2a1c0-4d5e-4f6a-8b9c-0d1e2f3a4b5c",
-		Provenance: []byte("admin"),
+		OrderID: "b3f2a1c0-4d5e-4f6a-8b9c-0d1e2f3a4b5c",
 		Profile: yacycrawlcontract.NewCrawlProfile(yacycrawlcontract.CrawlProfile{
 			Name:            "default",
 			Scope:           yacycrawlcontract.ScopeDomain,
@@ -77,9 +76,7 @@ func publishCrawlOrder(
 			MaxDepth:        0,
 			MaxPagesPerHost: yacycrawlcontract.UnlimitedPagesPerHost,
 		}),
-	}
-	order.Requests = []yacycrawlcontract.CrawlRequest{
-		{URL: originURL, ProfileHandle: order.Profile.Handle},
+		SeedURLs: []string{originURL},
 	}
 	data, err := yacycrawlcontract.MarshalCrawlOrder(order)
 	if err != nil {

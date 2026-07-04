@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
 const PathCrawlDispatch = "/crawl"
@@ -17,17 +16,6 @@ type CrawlOrderQueue interface {
 	Publish(ctx context.Context, order yacycrawlcontract.CrawlOrder) error
 }
 
-type ProvenanceMint func() []byte
-
-func MountCrawlDispatch(
-	mux *http.ServeMux,
-	initiator yacymodel.Hash,
-	mint ProvenanceMint,
-	queue CrawlOrderQueue,
-) {
-	mux.Handle(PathCrawlDispatch, crawlDispatchEndpoint{
-		initiator: initiator,
-		mint:      mint,
-		queue:     queue,
-	})
+func MountCrawlDispatch(mux *http.ServeMux, queue CrawlOrderQueue) {
+	mux.Handle(PathCrawlDispatch, crawlDispatchEndpoint{queue: queue})
 }
