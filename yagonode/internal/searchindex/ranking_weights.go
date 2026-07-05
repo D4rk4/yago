@@ -11,6 +11,11 @@ type RankingWeights struct {
 	Anchors  float64 `json:"anchors"`
 	Body     float64 `json:"body"`
 	URL      float64 `json:"url"`
+	// HostRank scales the local host-authority boost (YBR-style block rank) folded
+	// into a result's score after retrieval. It is a post-retrieval multiplier, not
+	// a text-field boost, so it does not count toward the relevance-weight
+	// requirement below. Zero (the default) disables the host-authority signal.
+	HostRank float64 `json:"hostRank"`
 }
 
 func DefaultRankingWeights() RankingWeights {
@@ -42,6 +47,12 @@ func (w RankingWeights) Validate() error {
 	}
 	if !positive {
 		return fmt.Errorf("at least one ranking weight must be positive")
+	}
+	if math.IsNaN(w.HostRank) || math.IsInf(w.HostRank, 0) {
+		return fmt.Errorf("ranking weight hostRank must be a finite number")
+	}
+	if w.HostRank < 0 {
+		return fmt.Errorf("ranking weight hostRank must not be negative")
 	}
 
 	return nil

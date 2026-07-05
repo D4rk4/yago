@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 )
@@ -17,8 +18,9 @@ import (
 const defaultMaxResultsPerHost = 5
 
 type localSearcher struct {
-	index   searchindex.SearchIndex
-	weights func() searchindex.RankingWeights
+	index    searchindex.SearchIndex
+	weights  func() searchindex.RankingWeights
+	hostRank func() hostrank.Table
 }
 
 func NewSearcher(index searchindex.SearchIndex) searchcore.Searcher {
@@ -32,7 +34,19 @@ func NewSearcherWithWeights(
 	index searchindex.SearchIndex,
 	weights func() searchindex.RankingWeights,
 ) searchcore.Searcher {
-	return localSearcher{index: index, weights: weights}
+	return NewSearcherWithRanking(index, weights, nil)
+}
+
+// NewSearcherWithRanking extends NewSearcherWithWeights with a live host-authority
+// table so the RankingWeights.HostRank coefficient can fold local block-rank into
+// result scores. A nil hostRank provider (or a zero HostRank weight) leaves scores
+// untouched.
+func NewSearcherWithRanking(
+	index searchindex.SearchIndex,
+	weights func() searchindex.RankingWeights,
+	hostRank func() hostrank.Table,
+) searchcore.Searcher {
+	return localSearcher{index: index, weights: weights, hostRank: hostRank}
 }
 
 func (s localSearcher) Search(
@@ -48,7 +62,7 @@ func (s localSearcher) Search(
 		return searchcore.Response{}, fmt.Errorf("search index: %w", err)
 	}
 
-	results, err := coreResults(req, resultSet.Results)
+	results, err := coreResults(req, resultSet.Results, s.hostRankScorer())
 	if err != nil {
 		return searchcore.Response{}, err
 	}
@@ -104,6 +118,7 @@ func includeDomains(req searchcore.Request) []string {
 func coreResults(
 	req searchcore.Request,
 	results []searchindex.SearchResult,
+	scorer *hostRankScorer,
 ) ([]searchcore.Result, error) {
 	filters, err := requestFilters(req)
 	if err != nil {
@@ -116,9 +131,55 @@ func coreResults(
 			out = append(out, core)
 		}
 	}
+	scorer.rescore(out)
 	filters.prefer(out)
 
 	return diversifyByHost(out, defaultMaxResultsPerHost), nil
+}
+
+// hostRankScorer folds this node's local host-authority table into result scores:
+// a result on host h is multiplied by 1 + weight*rank(h). Unknown hosts rank 0,
+// so they keep their relevance score unchanged.
+type hostRankScorer struct {
+	weight float64
+	table  hostrank.Table
+}
+
+// hostRankScorer returns a scorer only when a host-authority table is wired and
+// the live ranking profile enables it with a positive HostRank weight; otherwise
+// it returns nil and rescore is a no-op.
+func (s localSearcher) hostRankScorer() *hostRankScorer {
+	if s.weights == nil || s.hostRank == nil {
+		return nil
+	}
+	weight := s.weights().HostRank
+	if weight <= 0 {
+		return nil
+	}
+
+	return &hostRankScorer{weight: weight, table: s.hostRank()}
+}
+
+func (h *hostRankScorer) rescore(results []searchcore.Result) {
+	if h == nil {
+		return
+	}
+	for i := range results {
+		results[i].Score *= 1 + h.weight*h.table.Rank(hostHashOf(results[i].URL))
+	}
+	sort.SliceStable(results, func(i, j int) bool {
+		return results[i].Score > results[j].Score
+	})
+}
+
+// hostHashOf derives the YaCy host hash of rawURL the same way the host-link graph
+// does (HashURL then HostHash), yielding "" for a URL that cannot be hashed so the
+// lookup falls back to a neutral rank.
+func hostHashOf(rawURL string) string {
+	urlHash, _ := yagomodel.HashURL(rawURL)
+	hostHash, _ := urlHash.HostHash()
+
+	return hostHash
 }
 
 func diversifyByHost(results []searchcore.Result, maxPerHost int) []searchcore.Result {

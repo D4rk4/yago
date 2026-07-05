@@ -8,6 +8,7 @@ import (
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yagonode/internal/documentsearch"
+	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/landing"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
@@ -40,6 +41,7 @@ type publicSearchAssembly struct {
 	queryLogMode         queryLogMode
 	searchMetrics        *metrics.SearchMetrics
 	rankingWeights       func() searchindex.RankingWeights
+	hostRank             func() hostrank.Table
 	denylist             denylistSnapshotter
 	indexRemoteResults   bool
 	swarmSeed            swarmSeedConfig
@@ -130,9 +132,10 @@ func mountNodePublicSearch(
 	mux *http.ServeMux,
 	assembly publicSearchAssembly,
 ) searchcore.Searcher {
-	local := searchlocal.NewSearcherWithWeights(
+	local := searchlocal.NewSearcherWithRanking(
 		assembly.storage.searchIndex,
 		assembly.rankingWeights,
+		assembly.hostRank,
 	)
 	if assembly.storage.searchIndex == nil {
 		local = documentsearch.NewLocalSearcherWithDocuments(

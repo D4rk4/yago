@@ -38,6 +38,8 @@ components:
     in: internal/peerannouncement/**
   hostlinks:
     in: internal/hostlinks/**
+  hostrank:
+    in: internal/hostrank/**
   peermessage:
     in: internal/peermessage/**
   peerprofile:
@@ -438,6 +440,7 @@ deps:
       - searchcore
       - searchindex
       - documentstore
+      - hostrank
     canUse:
       - yagomodel
   rankingprofile:
@@ -518,6 +521,9 @@ deps:
   events:
     mayDependOn:
       - events
+  hostrank:
+    mayDependOn:
+      - hostrank
   crawldispatch:
     mayDependOn:
       - crawldispatch
@@ -577,6 +583,7 @@ deps:
       - peerroster
       - peerannouncement
       - hostlinks
+      - hostrank
       - peermessage
       - peerprofile
       - seedlist

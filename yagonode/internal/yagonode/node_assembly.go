@@ -13,6 +13,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/events"
 	"github.com/D4rk4/yago/yagonode/internal/eviction"
+	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
@@ -44,6 +45,7 @@ type node struct {
 	searcher      searchcore.Searcher
 	index         searchindex.SearchIndex
 	docScan       documentstore.StoredDocuments
+	hostRank      *hostrank.Holder
 	indexAdmin    *indexAdminController
 	postings      rwi.PostingIndex
 	urlDirectory  urlmeta.URLDirectory
@@ -107,7 +109,6 @@ func assembleNode(
 	if err != nil {
 		return node{}, err
 	}
-
 	storage, err := openRuntimeNodeStorage(vault, config.SearchIndexPath)
 	if err != nil {
 		return node{}, err
@@ -176,6 +177,7 @@ func assembleNode(
 		denylist:  surfaces.denylist,
 		identity:  identity,
 		ranking:   surfaces.ranking,
+		hostRank:  surfaces.hostRank,
 	}), nil
 }
 
@@ -211,6 +213,7 @@ type nodeSurfaces struct {
 	searcher  searchcore.Searcher
 	publicMux *http.ServeMux
 	ranking   *rankingprofile.Holder
+	hostRank  *hostrank.Holder
 	denylist  *urldenylist.Store
 }
 
@@ -230,8 +233,10 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		return nodeSurfaces{}, fmt.Errorf("open url denylist: %w", err)
 	}
 	publicMux := http.NewServeMux()
+	hostRankHolder := hostrank.NewHolder()
 	searcher := mountNodePublicSearch(publicMux, publicSearchAssembly{
 		storage:            in.storage,
+		hostRank:           hostRankHolder.Current,
 		roster:             in.roster,
 		identity:           in.identity,
 		dht:                in.config.DHT,
@@ -269,6 +274,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		searcher:  searcher,
 		publicMux: publicMux,
 		ranking:   ranking,
+		hostRank:  hostRankHolder,
 		denylist:  denylist,
 	}, nil
 }
@@ -290,6 +296,7 @@ type nodeParts struct {
 	denylist  *urldenylist.Store
 	identity  nodeidentity.Identity
 	ranking   *rankingprofile.Holder
+	hostRank  *hostrank.Holder
 }
 
 func newAssembledNode(parts nodeParts) node {
@@ -304,6 +311,7 @@ func newAssembledNode(parts nodeParts) node {
 		searcher:      parts.searcher,
 		index:         parts.storage.searchIndex,
 		docScan:       parts.storage.storedDocuments(),
+		hostRank:      parts.hostRank,
 		indexAdmin:    newIndexAdminController(parts.storage, parts.vault),
 		postings:      parts.storage.postings,
 		urlDirectory:  parts.storage.urlDirectory,

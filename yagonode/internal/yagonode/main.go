@@ -227,7 +227,7 @@ func serve(
 	ctx, cancel := context.WithCancel(ctx)
 
 	var background sync.WaitGroup
-	background.Add(2)
+	background.Add(3)
 	go func() {
 		defer background.Done()
 		assembled.announcer.Run(ctx)
@@ -235,6 +235,13 @@ func serve(
 	go func() {
 		defer background.Done()
 		runEvictionLoop(ctx, assembled.sweeper, evictionMetrics)
+	}()
+	go func() {
+		defer background.Done()
+		runHostRankRefreshLoop(ctx, hostRankSweeper{
+			documents: assembled.docScan,
+			holder:    assembled.hostRank,
+		})
 	}()
 	if assembled.crawl != nil {
 		defer assembled.crawl.Close()

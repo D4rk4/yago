@@ -20,6 +20,8 @@ func TestRankingWeightsValidate(t *testing.T) {
 		{"nan", RankingWeights{Title: math.NaN(), Body: 1}},
 		{"inf", RankingWeights{Title: math.Inf(1), Body: 1}},
 		{"all zero", RankingWeights{}},
+		{"hostrank negative", RankingWeights{Body: 1, HostRank: -1}},
+		{"hostrank nan", RankingWeights{Body: 1, HostRank: math.NaN()}},
 	}
 	for _, tc := range cases {
 		if err := tc.weights.Validate(); err == nil {
