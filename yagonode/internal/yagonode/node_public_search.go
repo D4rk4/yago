@@ -179,7 +179,11 @@ func mountNodePublicSearch(
 		)
 	}
 	access := searchAccessPolicy(assembly)
-	yacysearch.Mount(mux, search, assembly.linksNewTab)
+	// Autocomplete suggestions come from the local index alone (denylist applied,
+	// same as served results) so typeahead never fans out to the swarm or the web
+	// fallback that the main search path can reach.
+	suggestSource := withDenylistFilter(local, assembly.denylist)
+	yacysearch.Mount(mux, search, suggestSource, assembly.linksNewTab)
 	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
 	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access, assembly.extractFetcher)
 	mux.Handle(

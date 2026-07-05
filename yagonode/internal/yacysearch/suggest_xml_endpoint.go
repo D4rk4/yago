@@ -8,6 +8,7 @@ import (
 const searchSuggestionNamespace = "http://schemas.microsoft.com/Search/2008/suggestions"
 
 type suggestXMLEndpoint struct {
+	index       indexSuggester
 	suggestions *recentQueries
 }
 
@@ -40,7 +41,11 @@ func (e suggestXMLEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = encoder.EncodeToken(xml.ProcInst{Target: "xml", Inst: []byte(`version="1.0"`)})
 	_ = encoder.EncodeToken(xml.CharData("\n"))
 	_ = encoder.Encode(
-		suggestionResponse(query, e.suggestions.Suggest(query, publicSuggestionLimit)),
+		suggestionResponse(query, mergeSuggestions(
+			publicSuggestionLimit,
+			e.index.Suggest(r.Context(), query, publicSuggestionLimit),
+			e.suggestions.Suggest(query, publicSuggestionLimit),
+		)),
 	)
 	_ = encoder.Flush()
 }

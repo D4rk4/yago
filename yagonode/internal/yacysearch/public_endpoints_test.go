@@ -17,7 +17,7 @@ import (
 
 func TestMountRegistersPublicSearchEndpoints(t *testing.T) {
 	mux := http.NewServeMux()
-	Mount(mux, &fakeSearch{}, false)
+	Mount(mux, &fakeSearch{}, nil, false)
 
 	for _, path := range []string{
 		yagoproto.PathYaCySearchJSON,
@@ -208,7 +208,7 @@ func TestSuggestEndpointAcceptsQueryParameterAndRejectsNonGET(t *testing.T) {
 		nil,
 	)
 	suggestEndpoint{suggestions: nil}.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `["go",null]`) {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `["go",[]]`) {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 

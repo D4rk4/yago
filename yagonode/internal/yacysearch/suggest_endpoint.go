@@ -6,6 +6,7 @@ import (
 )
 
 type suggestEndpoint struct {
+	index       indexSuggester
 	suggestions *recentQueries
 }
 
@@ -21,6 +22,10 @@ func (e suggestEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode([]any{
 		query,
-		e.suggestions.Suggest(query, publicSuggestionLimit),
+		mergeSuggestions(
+			publicSuggestionLimit,
+			e.index.Suggest(r.Context(), query, publicSuggestionLimit),
+			e.suggestions.Suggest(query, publicSuggestionLimit),
+		),
 	})
 }

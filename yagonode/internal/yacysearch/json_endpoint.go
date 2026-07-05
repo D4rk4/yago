@@ -17,8 +17,13 @@ func MountJSON(mux *http.ServeMux, search searchcore.Searcher) {
 	mux.Handle(yagoproto.PathYaCySearchJSON, jsonEndpoint{search: search})
 }
 
-func Mount(mux *http.ServeMux, search searchcore.Searcher, linksNewTab bool) {
+// Mount wires the public YaCy search surface. suggest is a local-only searcher
+// used to build autocomplete suggestions from indexed page titles; it is kept
+// separate from search so typeahead never triggers the remote swarm fan-out or
+// the web-search fallback that the main search path may reach.
+func Mount(mux *http.ServeMux, search, suggest searchcore.Searcher, linksNewTab bool) {
 	suggestions := newRecentQueries()
+	index := indexSuggester{search: suggest}
 	mux.Handle(yagoproto.PathYaCySearchJSON, jsonEndpoint{
 		search:      search,
 		suggestions: suggestions,
@@ -33,8 +38,8 @@ func Mount(mux *http.ServeMux, search searchcore.Searcher, linksNewTab bool) {
 		newTab:      linksNewTab,
 	})
 	mux.Handle(yagoproto.PathOpenSearch, openSearchEndpoint{})
-	mux.Handle(yagoproto.PathSuggestJSON, suggestEndpoint{suggestions: suggestions})
-	mux.Handle(yagoproto.PathSuggestXML, suggestXMLEndpoint{suggestions: suggestions})
+	mux.Handle(yagoproto.PathSuggestJSON, suggestEndpoint{index: index, suggestions: suggestions})
+	mux.Handle(yagoproto.PathSuggestXML, suggestXMLEndpoint{index: index, suggestions: suggestions})
 }
 
 func (e jsonEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
