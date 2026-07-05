@@ -61,12 +61,21 @@ func securityViewWithKey() SecurityView {
 		Keys: []APIKeyItem{{
 			ID:      "abc123",
 			Label:   "ci",
+			Kind:    "search",
 			Scopes:  []string{"search:read"},
 			Created: "2026-01-01T00:00:00Z",
 		}},
-		Scopes: []ScopeOption{
-			{Value: "search:read", Label: "search:read"},
-			{Value: "admin:write", Label: "admin:write"},
+		ScopeGroups: []ScopeGroup{
+			{
+				Title:       "Node API key",
+				Description: "Ops API keys.",
+				Scopes:      []ScopeOption{{Value: "admin:write", Label: "admin:write"}},
+			},
+			{
+				Title:       "Search API key (Tavily-compatible)",
+				Description: "Search API keys.",
+				Scopes:      []ScopeOption{{Value: "search:read", Label: "search:read"}},
+			},
 		},
 	}
 }
@@ -81,7 +90,9 @@ func TestConsoleSecurityRendersKeysAndForms(t *testing.T) {
 	}
 	for _, want := range []string{
 		"API keys", "abc123", "search:read", "Revoke",
-		"Create API key", `name="scope"`, "Change password",
+		"Create Node API key", "Create Search API key (Tavily-compatible)",
+		"Ops API keys.", "Search API keys.", `name="scope"`,
+		">search<", "Change password",
 		`name="current"`, `name="csrf_token"`,
 	} {
 		if !strings.Contains(got.body, want) {

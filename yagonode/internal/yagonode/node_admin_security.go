@@ -25,23 +25,25 @@ func (s *securitySource) Security(ctx context.Context) adminui.SecurityView {
 	infos, err := s.service.ListAPIKeys(ctx)
 	if err != nil {
 		return adminui.SecurityView{
-			Scopes: securityScopeOptions(),
-			Error:  "Could not load API keys.",
+			ScopeGroups: securityScopeGroups(),
+			Error:       "Could not load API keys.",
 		}
 	}
 
 	items := make([]adminui.APIKeyItem, 0, len(infos))
 	for _, info := range infos {
+		scopes := scopeStrings(info.Scopes)
 		items = append(items, adminui.APIKeyItem{
 			ID:       info.ID,
 			Label:    info.Label,
-			Scopes:   scopeStrings(info.Scopes),
+			Kind:     apiKeyKind(scopes),
+			Scopes:   scopes,
 			Created:  formatSecurityTime(info.CreatedAt),
 			LastUsed: formatSecurityTime(info.LastUsedAt),
 		})
 	}
 
-	return adminui.SecurityView{Keys: items, Scopes: securityScopeOptions()}
+	return adminui.SecurityView{Keys: items, ScopeGroups: securityScopeGroups()}
 }
 
 func (s *securitySource) MintAPIKey(
@@ -120,8 +122,34 @@ func (s *securitySource) ChangePassword(
 	return adminui.PasswordChangeResult{OK: true, Message: "Password changed."}, nil
 }
 
-func securityScopeOptions() []adminui.ScopeOption {
-	scopes := adminauth.KnownScopes()
+// securityScopeGroups splits key creation into the two key families this node
+// serves: keys for its own ops/admin API (a yago surface — upstream YaCy has no
+// API-key mechanism at all, only digest admin auth) and keys for the
+// Tavily-compatible search API, so an operator cannot mix the two by accident.
+func securityScopeGroups() []adminui.ScopeGroup {
+	return []adminui.ScopeGroup{
+		{
+			Title: "Node API key",
+			Description: "Authenticates this node's ops API on the ops listener: " +
+				"admin endpoints and crawl dispatch. These keys are yago-specific — " +
+				"Java YaCy has no API keys; its admin API uses HTTP digest auth instead.",
+			Scopes: scopeOptions(
+				adminauth.ScopeAdminRead,
+				adminauth.ScopeAdminWrite,
+				adminauth.ScopeCrawlWrite,
+			),
+		},
+		{
+			Title: "Search API key (Tavily-compatible)",
+			Description: "Authenticates the Tavily-compatible POST /search and " +
+				"POST /extract on the public listener (Authorization: Bearer), enforced " +
+				"when YAGO_SEARCH_REQUIRE_API_KEY is on. Raw page content needs search:raw.",
+			Scopes: scopeOptions(adminauth.ScopeSearchRead, adminauth.ScopeSearchRaw),
+		},
+	}
+}
+
+func scopeOptions(scopes ...adminauth.Scope) []adminui.ScopeOption {
 	options := make([]adminui.ScopeOption, 0, len(scopes))
 	for _, scope := range scopes {
 		options = append(options, adminui.ScopeOption{
@@ -131,6 +159,28 @@ func securityScopeOptions() []adminui.ScopeOption {
 	}
 
 	return options
+}
+
+// apiKeyKind classifies a stored key by its scopes for the console list: search
+// keys serve the Tavily-compatible API, node keys the ops API, and keys carrying
+// both families (mintable over the raw JSON API) read as mixed.
+func apiKeyKind(scopes []string) string {
+	search, node := false, false
+	for _, scope := range scopes {
+		if strings.HasPrefix(scope, "search:") {
+			search = true
+		} else {
+			node = true
+		}
+	}
+	switch {
+	case search && node:
+		return "mixed"
+	case search:
+		return "search"
+	default:
+		return "node"
+	}
 }
 
 func scopeStrings(scopes []adminauth.Scope) []string {

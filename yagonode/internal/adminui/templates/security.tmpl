@@ -15,12 +15,13 @@
 {{if .Security.Keys}}
 <div class="cds-scroll-x">
 <table class="cds-table">
-  <thead><tr><th scope="col">Identifier</th><th scope="col">Label</th><th scope="col">Scopes</th><th scope="col">Created</th><th scope="col">Last used</th><th scope="col">Actions</th></tr></thead>
+  <thead><tr><th scope="col">Identifier</th><th scope="col">Label</th><th scope="col">Type</th><th scope="col">Scopes</th><th scope="col">Created</th><th scope="col">Last used</th><th scope="col">Actions</th></tr></thead>
   <tbody>
   {{range .Security.Keys}}
   <tr>
     <td class="cds-mono">{{.ID}}</td>
     <td>{{if .Label}}{{.Label}}{{else}}—{{end}}</td>
+    <td>{{if eq .Kind "search"}}<span class="cds-tag cds-tag--success">search</span>{{else if eq .Kind "mixed"}}<span class="cds-tag cds-tag--warn">mixed</span>{{else}}<span class="cds-tag cds-tag--info">node</span>{{end}}</td>
     <td>{{range .Scopes}}<span class="cds-tag cds-tag--info">{{.}}</span> {{end}}</td>
     <td>{{.Created}}</td>
     <td>{{if .LastUsed}}{{.LastUsed}}{{else}}never{{end}}</td>
@@ -41,22 +42,25 @@
 <p class="cds-empty">No API keys yet.</p>
 {{end}}
 
-<h2 class="cds-h2">Create API key</h2>
+{{range $index, $group := .Security.ScopeGroups}}
+<h2 class="cds-h2">Create {{$group.Title}}</h2>
+<p class="cds-muted">{{$group.Description}}</p>
 <form class="cds-form" method="post" action="/admin/security" hx-boost="false">
-  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
   <input type="hidden" name="form" value="mint">
   <div class="cds-field">
-    <label class="cds-label" for="key-label">Label</label>
-    <input class="cds-input" type="text" id="key-label" name="label" autocomplete="off">
+    <label class="cds-label" for="key-label-{{$index}}">Label</label>
+    <input class="cds-input" type="text" id="key-label-{{$index}}" name="label" autocomplete="off">
   </div>
   <fieldset class="cds-field">
     <legend class="cds-label">Scopes</legend>
-    {{range .Security.Scopes}}
+    {{range $group.Scopes}}
     <label class="cds-checkbox"><input type="checkbox" name="scope" value="{{.Value}}"> {{.Label}}</label>
     {{end}}
   </fieldset>
   <button class="cds-btn" type="submit">Create key</button>
 </form>
+{{end}}
 
 <h2 class="cds-h2">Change password</h2>
 <p class="cds-muted">Change the administrator password. You must supply the current password.</p>

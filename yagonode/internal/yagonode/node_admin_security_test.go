@@ -129,14 +129,48 @@ func TestSecuritySourcePasswordValidation(t *testing.T) {
 	}
 }
 
-func TestSecurityScopeOptionsCoverKnownScopes(t *testing.T) {
-	options := securityScopeOptions()
-	if len(options) != len(adminauth.KnownScopes()) {
-		t.Fatalf("scope options = %d, want %d", len(options), len(adminauth.KnownScopes()))
+func TestSecurityScopeGroupsCoverKnownScopesWithoutOverlap(t *testing.T) {
+	groups := securityScopeGroups()
+	if len(groups) != 2 {
+		t.Fatalf("scope groups = %d, want node + search", len(groups))
 	}
-	for _, option := range options {
-		if option.Value == "" || option.Label == "" {
-			t.Fatalf("empty scope option: %+v", option)
+	seen := map[string]bool{}
+	for _, group := range groups {
+		if group.Title == "" || group.Description == "" {
+			t.Fatalf("group missing title/description: %+v", group)
+		}
+		for _, option := range group.Scopes {
+			if option.Value == "" || option.Label == "" {
+				t.Fatalf("empty scope option: %+v", option)
+			}
+			if seen[option.Value] {
+				t.Fatalf("scope %q offered in more than one group", option.Value)
+			}
+			seen[option.Value] = true
+		}
+	}
+	if len(seen) != len(adminauth.KnownScopes()) {
+		t.Fatalf(
+			"groups offer %d scopes, want all %d known",
+			len(seen),
+			len(adminauth.KnownScopes()),
+		)
+	}
+}
+
+func TestAPIKeyKindClassifiesScopeFamilies(t *testing.T) {
+	cases := map[string]struct {
+		scopes []string
+		want   string
+	}{
+		"search only": {[]string{"search:read", "search:raw"}, "search"},
+		"node only":   {[]string{"admin:read", "crawl:write"}, "node"},
+		"mixed":       {[]string{"search:read", "admin:write"}, "mixed"},
+		"empty":       {nil, "node"},
+	}
+	for name, tc := range cases {
+		if got := apiKeyKind(tc.scopes); got != tc.want {
+			t.Fatalf("%s: kind = %q, want %q", name, got, tc.want)
 		}
 	}
 }

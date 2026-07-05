@@ -8,10 +8,20 @@ type ScopeOption struct {
 	Label string
 }
 
+// ScopeGroup is one key family offered as its own creation form, so keys for the
+// node's own ops API and keys for the Tavily-compatible search API are minted
+// separately and cannot be mixed by accident.
+type ScopeGroup struct {
+	Title       string
+	Description string
+	Scopes      []ScopeOption
+}
+
 // APIKeyItem is a stored API key shown in the console; it never carries the secret.
 type APIKeyItem struct {
 	ID       string
 	Label    string
+	Kind     string
 	Scopes   []string
 	Created  string
 	LastUsed string
@@ -27,9 +37,9 @@ type MintedAPIKey struct {
 
 // SecurityView is the rendered state of the Security section.
 type SecurityView struct {
-	Keys   []APIKeyItem
-	Scopes []ScopeOption
-	Error  string
+	Keys        []APIKeyItem
+	ScopeGroups []ScopeGroup
+	Error       string
 }
 
 // APIKeyMint is a request to create an API key.
