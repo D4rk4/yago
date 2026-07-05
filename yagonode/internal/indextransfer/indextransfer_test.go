@@ -124,7 +124,7 @@ func rowOf(tb testing.TB, urlWord string) yagomodel.URIMetadataRow {
 func TestNewHTTPPeerWriterUsesDefaultClient(t *testing.T) {
 	t.Parallel()
 
-	writer := NewHTTPPeerWriter(nil, yagoproto.DefaultNetwork, yagomodel.Seed{})
+	writer := NewHTTPPeerWriter(nil, yagoproto.DefaultNetwork, yagomodel.Seed{}, false)
 	if writer.client != http.DefaultClient {
 		t.Fatal("nil client did not select http.DefaultClient")
 	}
@@ -141,6 +141,7 @@ func TestTransferRWIHandlesEmptyPostingBatchLocally(t *testing.T) {
 		})},
 		yagoproto.DefaultNetwork,
 		yagomodel.Seed{Hash: hashOf(t, "self")},
+		false,
 	)
 
 	resp, err := writer.TransferRWI(context.Background(), yagomodel.Seed{}, nil)
@@ -191,7 +192,7 @@ func TestTransferRWIPostsYaCyFormAndParsesResponse(t *testing.T) {
 	defer server.Close()
 
 	peer := serverSeed(t, server)
-	resp, err := NewHTTPPeerWriter(server.Client(), yagoproto.DefaultNetwork, self).
+	resp, err := NewHTTPPeerWriter(server.Client(), yagoproto.DefaultNetwork, self, false).
 		TransferRWI(context.Background(), peer, postings)
 	if err != nil {
 		t.Fatalf("TransferRWI: %v", err)
@@ -246,7 +247,7 @@ func TestTransferURLPostsYaCyFormAndParsesResponse(t *testing.T) {
 	defer server.Close()
 
 	peer := serverSeed(t, server)
-	resp, err := NewHTTPPeerWriter(server.Client(), yagoproto.DefaultNetwork, self).
+	resp, err := NewHTTPPeerWriter(server.Client(), yagoproto.DefaultNetwork, self, false).
 		TransferURL(context.Background(), peer, rows)
 	if err != nil {
 		t.Fatalf("TransferURL: %v", err)
@@ -273,7 +274,12 @@ func TestTransferURLPostsYaCyFormAndParsesResponse(t *testing.T) {
 func TestTransferRejectsUnreachablePeer(t *testing.T) {
 	t.Parallel()
 
-	writer := NewHTTPPeerWriter(http.DefaultClient, yagoproto.DefaultNetwork, yagomodel.Seed{})
+	writer := NewHTTPPeerWriter(
+		http.DefaultClient,
+		yagoproto.DefaultNetwork,
+		yagomodel.Seed{},
+		false,
+	)
 	if _, err := writer.TransferURL(
 		context.Background(),
 		yagomodel.Seed{Hash: hashOf(t, "peer")},
@@ -290,7 +296,12 @@ func TestTransferRejectsRequestCreationError(t *testing.T) {
 		return nil, errors.New("request boom")
 	}
 
-	writer := NewHTTPPeerWriter(http.DefaultClient, yagoproto.DefaultNetwork, yagomodel.Seed{})
+	writer := NewHTTPPeerWriter(
+		http.DefaultClient,
+		yagoproto.DefaultNetwork,
+		yagomodel.Seed{},
+		false,
+	)
 	peer := peerSeed(t)
 	if _, err := writer.TransferURL(context.Background(), peer, nil); err == nil {
 		t.Fatal("expected request creation error")
@@ -306,6 +317,7 @@ func TestTransferRejectsPostError(t *testing.T) {
 		})},
 		yagoproto.DefaultNetwork,
 		yagomodel.Seed{},
+		false,
 	)
 	peer := peerSeed(t)
 	if _, err := writer.TransferURL(context.Background(), peer, nil); err == nil {
@@ -322,7 +334,7 @@ func TestTransferRejectsNonOKStatus(t *testing.T) {
 	defer server.Close()
 
 	peer := serverSeed(t, server)
-	writer := NewHTTPPeerWriter(server.Client(), yagoproto.DefaultNetwork, yagomodel.Seed{})
+	writer := NewHTTPPeerWriter(server.Client(), yagoproto.DefaultNetwork, yagomodel.Seed{}, false)
 	if _, err := writer.TransferURL(context.Background(), peer, nil); err == nil {
 		t.Fatal("expected status error")
 	}
@@ -340,6 +352,7 @@ func TestTransferRejectsReadError(t *testing.T) {
 		})},
 		yagoproto.DefaultNetwork,
 		yagomodel.Seed{},
+		false,
 	)
 	peer := peerSeed(t)
 	if _, err := writer.TransferURL(context.Background(), peer, nil); err == nil {
@@ -361,6 +374,7 @@ func TestTransferRejectsOversizedResponse(t *testing.T) {
 		})},
 		yagoproto.DefaultNetwork,
 		yagomodel.Seed{},
+		false,
 	)
 	peer := peerSeed(t)
 	if _, err := writer.TransferURL(context.Background(), peer, nil); err == nil {
@@ -384,6 +398,7 @@ func TestTransferRejectsMessageParseError(t *testing.T) {
 		})},
 		yagoproto.DefaultNetwork,
 		yagomodel.Seed{},
+		false,
 	)
 	peer := peerSeed(t)
 	if _, err := writer.TransferURL(context.Background(), peer, nil); err == nil {
@@ -403,6 +418,7 @@ func TestTransferRejectsProtocolResponseError(t *testing.T) {
 		})},
 		yagoproto.DefaultNetwork,
 		yagomodel.Seed{},
+		false,
 	)
 	peer := peerSeed(t)
 	if _, err := writer.TransferURL(context.Background(), peer, nil); err == nil {

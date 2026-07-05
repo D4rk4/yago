@@ -125,6 +125,7 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 			Reachability: p.roster,
 			Client:       p.client,
 			News:         p.news,
+			PreferHTTPS:  p.config.PeerHTTPSPreferred,
 		},
 	)
 	seedlist.Mount(p.router, p.report, p.roster)
@@ -146,6 +147,7 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 				GreetsPerCycle: p.config.GreetsPerCycle,
 				Observer:       announceObserver,
 				News:           p.news,
+				PreferHTTPS:    p.config.PeerHTTPSPreferred,
 			},
 			p.report,
 			bootstrap.NewObserved(p.client, p.config.SeedlistURLs, seedObserver),

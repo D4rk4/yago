@@ -32,7 +32,10 @@ const (
 	remoteSearchBodyCap       = 512 << 10
 )
 
-var errRemoteSearchFailed = errors.New("remote search failed")
+var (
+	errRemoteSearchFailed    = errors.New("remote search failed")
+	errRemoteSearchTransport = errors.New("peer transport failed")
+)
 
 // PeerSource supplies the candidate peers a remote search may target. Following
 // YaCy, these are known senior peers selected from the seed database by DHT
@@ -58,6 +61,7 @@ type Config struct {
 	OverallTimeout     time.Duration
 	RandomTargetIndex  func(int) (int, error)
 	Weights            func() RankingWeights
+	PreferHTTPS        bool
 }
 
 type searcher struct {
@@ -74,6 +78,7 @@ type searcher struct {
 	overallTimeout     time.Duration
 	randomTargetIndex  func(int) (int, error)
 	weights            func() RankingWeights
+	preferHTTPS        bool
 }
 
 type peerSearchResult struct {
@@ -115,6 +120,7 @@ func NewSearcher(config Config) searchcore.Searcher {
 		overallTimeout:     durationOrDefault(config.OverallTimeout, DefaultOverallTimeout),
 		randomTargetIndex:  randomTargetIndexOrDefault(config.RandomTargetIndex),
 		weights:            weightsOrDefault(config.Weights),
+		preferHTTPS:        config.PreferHTTPS,
 	}
 }
 
@@ -486,10 +492,34 @@ func (s searcher) sendRemoteSearch(
 	peer yagomodel.Seed,
 	searchReq yagoproto.SearchRequest,
 ) (yagoproto.SearchResponse, error) {
-	target, err := peer.HTTPEndpoint(yagoproto.PathSearch)
+	targets, err := peer.ProtocolEndpoints(yagoproto.PathSearch, s.preferHTTPS)
 	if err != nil {
 		return yagoproto.SearchResponse{}, fmt.Errorf("%w: target: %w", errRemoteSearchFailed, err)
 	}
+
+	var lastErr error
+	for _, target := range targets {
+		response, err := s.sendRemoteSearchTo(ctx, target, searchReq)
+		if err == nil {
+			return response, nil
+		}
+		lastErr = err
+		// Retry over the next candidate scheme only when the transport
+		// failed; an HTTP status means the peer answered (YaCy retries
+		// https as http on IOException only).
+		if !errors.Is(err, errRemoteSearchTransport) {
+			break
+		}
+	}
+
+	return yagoproto.SearchResponse{}, lastErr
+}
+
+func (s searcher) sendRemoteSearchTo(
+	ctx context.Context,
+	target *url.URL,
+	searchReq yagoproto.SearchRequest,
+) (yagoproto.SearchResponse, error) {
 	target.RawQuery = searchReq.Form().Encode()
 
 	httpReq, err := newRemoteSearchRequest(ctx, http.MethodGet, target.String(), nil)
@@ -498,7 +528,12 @@ func (s searcher) sendRemoteSearch(
 	}
 	httpResp, err := s.client.Do(httpReq)
 	if err != nil {
-		return yagoproto.SearchResponse{}, fmt.Errorf("%w: get: %w", errRemoteSearchFailed, err)
+		return yagoproto.SearchResponse{}, fmt.Errorf(
+			"%w: %w: %w",
+			errRemoteSearchFailed,
+			errRemoteSearchTransport,
+			err,
+		)
 	}
 	defer func() { _ = httpResp.Body.Close() }()
 	if httpResp.StatusCode != http.StatusOK {

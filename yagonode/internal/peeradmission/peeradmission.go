@@ -29,6 +29,7 @@ type HelloExchange struct {
 	Reachability ReachableRoster
 	Client       *http.Client
 	News         NewsIntake
+	PreferHTTPS  bool
 }
 
 func MountHello(
@@ -44,7 +45,7 @@ func MountHello(
 		helloEndpoint{
 			identity:     identity,
 			status:       exchange.Status,
-			probe:        newCallerBackPing(exchange.Client),
+			probe:        newCallerBackPing(exchange.Client, exchange.PreferHTTPS),
 			reachability: exchange.Reachability,
 			news:         exchange.News,
 		}.Serve,

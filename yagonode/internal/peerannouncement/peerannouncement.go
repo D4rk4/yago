@@ -37,6 +37,7 @@ type Config struct {
 	GreetsPerCycle int
 	Observer       Observer
 	News           PeerNews
+	PreferHTTPS    bool
 }
 
 func New(
@@ -51,7 +52,7 @@ func New(
 		self:           self,
 		seeds:          seeds,
 		roster:         roster,
-		greeter:        newHTTPPeerGreeter(cfg.Client, cfg.NetworkName),
+		greeter:        newHTTPPeerGreeter(cfg.Client, cfg.NetworkName, cfg.PreferHTTPS),
 		observer:       cfg.Observer,
 		news:           cfg.News,
 	}

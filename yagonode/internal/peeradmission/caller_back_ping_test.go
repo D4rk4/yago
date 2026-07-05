@@ -61,7 +61,7 @@ func TestCallerBackPingConfirmsValidQueryResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	probe := newCallerBackPing(srv.Client())
+	probe := newCallerBackPing(srv.Client(), false)
 
 	if !probe.Reachable(
 		context.Background(),
@@ -79,7 +79,7 @@ func TestCallerBackPingRejectsErrorStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	probe := newCallerBackPing(srv.Client())
+	probe := newCallerBackPing(srv.Client(), false)
 
 	if probe.Reachable(context.Background(), serverSeed(t, srv.URL), hashFor("self"), "freeworld") {
 		t.Fatal("Reachable = true, want false on error status")
@@ -91,7 +91,7 @@ func TestCallerBackPingRejectsTransportError(t *testing.T) {
 		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, errors.New("transport failed")
 		}),
-	})
+	}, false)
 
 	if probe.Reachable(
 		context.Background(),
@@ -111,7 +111,7 @@ func TestCallerBackPingRejectsReadError(t *testing.T) {
 				Body:       failingBody{readErr: errors.New("read failed")},
 			}, nil
 		}),
-	})
+	}, false)
 
 	if probe.Reachable(
 		context.Background(),
@@ -136,7 +136,7 @@ func TestCallerBackPingRejectsMessageParseError(t *testing.T) {
 				Body:       io.NopCloser(strings.NewReader("response=3\n")),
 			}, nil
 		}),
-	})
+	}, false)
 
 	if probe.Reachable(
 		context.Background(),
@@ -155,7 +155,7 @@ func TestCallerBackPingRejectsBadQueryResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	probe := newCallerBackPing(srv.Client())
+	probe := newCallerBackPing(srv.Client(), false)
 
 	if probe.Reachable(context.Background(), serverSeed(t, srv.URL), hashFor("self"), "freeworld") {
 		t.Fatal("Reachable = true, want false on bad query response")
@@ -163,14 +163,14 @@ func TestCallerBackPingRejectsBadQueryResponse(t *testing.T) {
 }
 
 func TestCallerBackPingLogsCloseError(t *testing.T) {
-	newCallerBackPing(http.DefaultClient).close(
+	newCallerBackPing(http.DefaultClient, false).close(
 		context.Background(),
 		failingBody{closeErr: errors.New("close failed")},
 	)
 }
 
 func TestCallerBackPingRejectsUnaddressableSeed(t *testing.T) {
-	probe := newCallerBackPing(http.DefaultClient)
+	probe := newCallerBackPing(http.DefaultClient, false)
 
 	if probe.Reachable(
 		context.Background(),

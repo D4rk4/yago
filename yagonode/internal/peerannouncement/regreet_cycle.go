@@ -14,7 +14,7 @@ const announceHelloPeerCount = 30
 type peerGreeter interface {
 	Greet(
 		ctx context.Context,
-		endpoint string,
+		target yagomodel.Seed,
 		self yagomodel.Seed,
 		count int,
 	) (greetResult, error)
@@ -78,7 +78,7 @@ func (a *announcer) Announce(ctx context.Context) {
 			continue
 		}
 
-		result, err := a.greeter.Greet(ctx, endpoint, self, announceHelloPeerCount)
+		result, err := a.greeter.Greet(ctx, target, self, announceHelloPeerCount)
 		if err != nil {
 			if a.observer != nil {
 				a.observer.ObservePeerProbeFailure()

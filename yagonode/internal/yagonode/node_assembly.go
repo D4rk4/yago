@@ -120,20 +120,19 @@ func assembleNode(
 
 	report := newNodeStatusReport(identity, storage, roster, news, tally)
 	storage = observeDHTInboundStorage(storage, telemetry.dhtInbound, tally)
-
 	mux := http.NewServeMux()
 	router := httpguard.NewWireRouter(mux, newRuntimeWireGate(config, report))
 
 	mountNodeProtocol(router, identity, storage)
 	mountNodeCrawlCompatibility(router, identity, storage)
-
+	peerClient := nodePeerClient(config, client)
 	exchange, err := assembleRuntimePeerExchange(peerExchange{
 		router:   router,
 		identity: identity,
 		report:   report,
 		config:   config,
 		vault:    vault,
-		client:   client,
+		client:   peerClient,
 		peer:     telemetry.peer,
 		host:     storedDocumentHostLinks{documents: storage.storedDocuments()},
 		roster:   roster,
@@ -143,17 +142,18 @@ func assembleNode(
 		return node{}, err
 	}
 	surfaces, err := assembleNodeSurfaces(assembleSurfacesInput{
-		ctx:       ctx,
-		config:    config,
-		vault:     vault,
-		client:    client,
-		storage:   storage,
-		roster:    roster,
-		identity:  identity,
-		report:    report,
-		tally:     tally,
-		telemetry: telemetry,
-		toggles:   telemetry.toggles,
+		ctx:        ctx,
+		config:     config,
+		vault:      vault,
+		client:     client,
+		peerClient: peerClient,
+		storage:    storage,
+		roster:     roster,
+		identity:   identity,
+		report:     report,
+		tally:      tally,
+		telemetry:  telemetry,
+		toggles:    telemetry.toggles,
 	})
 	if err != nil {
 		return node{}, err
@@ -179,18 +179,30 @@ func assembleNode(
 	}), nil
 }
 
+// nodePeerClient picks the client for peer-protocol calls: a client tolerant
+// of the self-signed certificates YaCy peers serve when https preference is
+// on, and the plain egress client verbatim otherwise.
+func nodePeerClient(config nodeConfig, client *http.Client) *http.Client {
+	if config.PeerHTTPSPreferred {
+		return newRuntimePeerProtocolClient(config)
+	}
+
+	return client
+}
+
 type assembleSurfacesInput struct {
-	ctx       context.Context
-	config    nodeConfig
-	vault     *vault.Vault
-	client    *http.Client
-	storage   nodeStorage
-	roster    peerroster.Roster
-	identity  nodeidentity.Identity
-	report    nodestatus.Report
-	tally     *transfertally.Tally
-	telemetry nodeTelemetry
-	toggles   *runtimeToggles
+	ctx        context.Context
+	config     nodeConfig
+	vault      *vault.Vault
+	client     *http.Client
+	peerClient *http.Client
+	storage    nodeStorage
+	roster     peerroster.Roster
+	identity   nodeidentity.Identity
+	report     nodestatus.Report
+	tally      *transfertally.Tally
+	telemetry  nodeTelemetry
+	toggles    *runtimeToggles
 }
 
 type nodeSurfaces struct {
@@ -224,6 +236,8 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		identity:           in.identity,
 		dht:                in.config.DHT,
 		client:             in.client,
+		peerClient:         in.peerClient,
+		peerHTTPSPreferred: in.config.PeerHTTPSPreferred,
 		searchAPIKey:       in.config.SearchAPIKey,
 		searchAuthorizer:   in.telemetry.searchAuthorizer,
 		extractFetcher:     buildExtractFetcher(in.config, in.client),
@@ -243,7 +257,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		nodeStorage: in.storage,
 		report:      in.report,
 		roster:      in.roster,
-		client:      in.client,
+		client:      in.peerClient,
 		observer:    tallyOutboundObserver{next: in.telemetry.dhtOutbound, tally: in.tally},
 	})
 

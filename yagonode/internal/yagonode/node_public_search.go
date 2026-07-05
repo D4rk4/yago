@@ -28,6 +28,8 @@ type publicSearchAssembly struct {
 	identity             nodeidentity.Identity
 	dht                  dhtDistributionConfig
 	client               *http.Client
+	peerClient           *http.Client
+	peerHTTPSPreferred   bool
 	dhtSearchTargetIndex func(int) (int, error)
 	searchAPIKey         string
 	searchAuthorizer     tavilyapi.ScopeAuthorizer
@@ -88,6 +90,16 @@ func (s parsedQuerySearcher) Search(
 	return s.inner.Search(ctx, req)
 }
 
+// remoteSearchClient picks the peer-protocol client for the remote search
+// fan-out when one is wired, falling back to the general egress client.
+func remoteSearchClient(assembly publicSearchAssembly) *http.Client {
+	if assembly.peerClient != nil {
+		return assembly.peerClient
+	}
+
+	return assembly.client
+}
+
 // remoteRankingWeights narrows the local ranking profile to the fields remote
 // results can honor (title and URL text), so swarm hits are ranked by the
 // same profile as local hits rather than by the sending peer's result order.
@@ -129,7 +141,7 @@ func mountNodePublicSearch(
 		)
 	}
 	remote := searchremote.NewSearcher(searchremote.Config{
-		Client:             assembly.client,
+		Client:             remoteSearchClient(assembly),
 		NetworkName:        assembly.identity.NetworkName,
 		Peers:              searchTargetPeers{roster: assembly.roster},
 		Redundancy:         assembly.dht.Redundancy,
@@ -137,6 +149,7 @@ func mountNodePublicSearch(
 		PartitionExponent:  assembly.dht.PartitionExponent,
 		RandomTargetIndex:  assembly.dhtSearchTargetIndex,
 		Weights:            remoteRankingWeights(assembly.rankingWeights),
+		PreferHTTPS:        assembly.peerHTTPSPreferred,
 	})
 	federated := withWebFallback(searchcore.NewFederatedSearcher(local, remote), assembly)
 	filtered := withDenylistFilter(federated, assembly.denylist)

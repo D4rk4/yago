@@ -17,7 +17,12 @@ type stubGreeter struct {
 	calls  int
 }
 
-func (g *stubGreeter) Greet(context.Context, string, yagomodel.Seed, int) (greetResult, error) {
+func (g *stubGreeter) Greet(
+	context.Context,
+	yagomodel.Seed,
+	yagomodel.Seed,
+	int,
+) (greetResult, error) {
 	g.calls++
 
 	return g.result, g.err
@@ -30,7 +35,7 @@ type cancelingGreeter struct {
 
 func (g *cancelingGreeter) Greet(
 	context.Context,
-	string,
+	yagomodel.Seed,
 	yagomodel.Seed,
 	int,
 ) (greetResult, error) {

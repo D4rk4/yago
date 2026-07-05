@@ -40,6 +40,7 @@ const (
 	envPeerBirthDate       = "YAGO_PEER_BIRTH_DATE"
 	envMetricsEnabled      = "YAGO_METRICS_ENABLED"
 	envIndexRemoteResults  = "YAGO_INDEX_REMOTE_RESULTS"
+	envPeerHTTPSPreferred  = "YAGO_PEER_HTTPS_PREFERRED"
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"
@@ -85,6 +86,7 @@ type nodeConfig struct {
 	QueryLogMode          queryLogMode
 	MetricsEnabled        bool
 	IndexRemoteResults    bool
+	PeerHTTPSPreferred    bool
 	DeclaredBirthDate     time.Time
 	Crawl                 crawlConfig
 	Admin                 adminConfig
@@ -167,6 +169,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		QueryLogMode:          derived.queryLogMode,
 		MetricsEnabled:        derived.metricsEnabled,
 		IndexRemoteResults:    derived.indexRemoteResults,
+		PeerHTTPSPreferred:    derived.peerHTTPSPreferred,
 		DeclaredBirthDate:     derived.birthDate,
 		DHT:                   derived.dht,
 		WebFallback:           derived.webFallback,
@@ -184,6 +187,7 @@ type derivedConfigs struct {
 	queryLogMode       queryLogMode
 	metricsEnabled     bool
 	indexRemoteResults bool
+	peerHTTPSPreferred bool
 	extractFetch       extractFetchConfig
 }
 
@@ -228,6 +232,12 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	if err != nil {
 		return derivedConfigs{}, fmt.Errorf("%s: %w", envIndexRemoteResults, err)
 	}
+	// Default matches YaCy's network.unit.protocol.https.preferred=false: peers
+	// advertising the SSL flag get https-first with a plain-http retry when on.
+	peerHTTPSPreferred, err := boolEnv(getenv, envPeerHTTPSPreferred, false)
+	if err != nil {
+		return derivedConfigs{}, fmt.Errorf("%s: %w", envPeerHTTPSPreferred, err)
+	}
 
 	return derivedConfigs{
 		dht:                dht,
@@ -239,6 +249,7 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 		queryLogMode:       queryLog,
 		metricsEnabled:     metricsEnabled,
 		indexRemoteResults: indexRemoteResults,
+		peerHTTPSPreferred: peerHTTPSPreferred,
 		extractFetch:       extractFetch,
 	}, nil
 }

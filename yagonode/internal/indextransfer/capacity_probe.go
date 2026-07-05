@@ -19,18 +19,25 @@ type RemoteRWICountProbe struct {
 	client      *http.Client
 	networkName string
 	self        yagomodel.Seed
+	preferHTTPS bool
 }
 
 func NewRemoteRWICountProbe(
 	client *http.Client,
 	networkName string,
 	self yagomodel.Seed,
+	preferHTTPS bool,
 ) RemoteRWICountProbe {
 	if client == nil {
 		client = http.DefaultClient
 	}
 
-	return RemoteRWICountProbe{client: client, networkName: networkName, self: self}
+	return RemoteRWICountProbe{
+		client:      client,
+		networkName: networkName,
+		self:        self,
+		preferHTTPS: preferHTTPS,
+	}
 }
 
 func (p RemoteRWICountProbe) RWICount(
@@ -49,7 +56,8 @@ func (p RemoteRWICountProbe) RWICount(
 				Iam:         p.self.Hash,
 				Object:      yagoproto.ObjectRWICount,
 			}.Form(),
-			parse: yagoproto.ParseQueryResponse,
+			parse:       yagoproto.ParseQueryResponse,
+			preferHTTPS: p.preferHTTPS,
 		},
 	)
 	if err != nil {

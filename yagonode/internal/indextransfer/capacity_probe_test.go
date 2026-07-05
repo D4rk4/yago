@@ -17,7 +17,7 @@ import (
 func TestNewRemoteRWICountProbeUsesDefaultClient(t *testing.T) {
 	t.Parallel()
 
-	probe := NewRemoteRWICountProbe(nil, yagoproto.DefaultNetwork, yagomodel.Seed{})
+	probe := NewRemoteRWICountProbe(nil, yagoproto.DefaultNetwork, yagomodel.Seed{}, false)
 	if probe.client != http.DefaultClient {
 		t.Fatal("nil client did not select http.DefaultClient")
 	}
@@ -52,7 +52,7 @@ func TestRemoteRWICountProbePostsYaCyQueryAndParsesResponse(t *testing.T) {
 	defer server.Close()
 
 	peer := serverSeed(t, server)
-	count, err := NewRemoteRWICountProbe(server.Client(), yagoproto.DefaultNetwork, self).
+	count, err := NewRemoteRWICountProbe(server.Client(), yagoproto.DefaultNetwork, self, false).
 		RWICount(context.Background(), peer)
 	if err != nil {
 		t.Fatalf("RWICount: %v", err)
@@ -75,7 +75,12 @@ func TestRemoteRWICountProbePostsYaCyQueryAndParsesResponse(t *testing.T) {
 func TestRemoteRWICountProbeRejectsUnreachablePeer(t *testing.T) {
 	t.Parallel()
 
-	probe := NewRemoteRWICountProbe(http.DefaultClient, yagoproto.DefaultNetwork, yagomodel.Seed{})
+	probe := NewRemoteRWICountProbe(
+		http.DefaultClient,
+		yagoproto.DefaultNetwork,
+		yagomodel.Seed{},
+		false,
+	)
 	if _, err := probe.RWICount(
 		context.Background(),
 		yagomodel.Seed{Hash: hashOf(t, "peer")},
@@ -94,7 +99,12 @@ func TestRemoteRWICountProbeRejectsRemoteRejection(t *testing.T) {
 	defer server.Close()
 
 	peer := serverSeed(t, server)
-	_, err := NewRemoteRWICountProbe(server.Client(), yagoproto.DefaultNetwork, yagomodel.Seed{}).
+	_, err := NewRemoteRWICountProbe(
+		server.Client(),
+		yagoproto.DefaultNetwork,
+		yagomodel.Seed{},
+		false,
+	).
 		RWICount(context.Background(), peer)
 	if !errors.Is(err, ErrCapacityProbeRejected) {
 		t.Fatalf("error = %v, want ErrCapacityProbeRejected", err)
@@ -115,6 +125,7 @@ func TestRemoteRWICountProbeRejectsNegativeResponse(t *testing.T) {
 		server.Client(),
 		yagoproto.DefaultNetwork,
 		yagomodel.Seed{},
+		false,
 	).
 		RWICount(context.Background(), peer); err == nil {
 		t.Fatal("expected negative response error")
@@ -133,6 +144,7 @@ func TestRemoteRWICountProbeWrapsProtocolErrors(t *testing.T) {
 		})},
 		yagoproto.DefaultNetwork,
 		yagomodel.Seed{},
+		false,
 	)
 	peer := peerSeed(t)
 	if _, err := probe.RWICount(context.Background(), peer); err == nil {

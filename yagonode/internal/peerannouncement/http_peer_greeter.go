@@ -15,7 +15,10 @@ import (
 
 const greetMaxBodyBytes int64 = 256 << 10
 
-var errGreetFailed = errors.New("peer greet failed")
+var (
+	errGreetFailed    = errors.New("peer greet failed")
+	errGreetTransport = errors.New("peer transport failed")
+)
 
 type greetResult struct {
 	YourIP   string
@@ -26,6 +29,7 @@ type greetResult struct {
 type httpPeerGreeter struct {
 	client      *http.Client
 	networkName string
+	preferHTTPS bool
 }
 
 var (
@@ -33,17 +37,21 @@ var (
 	parseGreetMessage = yagomodel.ParseMessage
 )
 
-func newHTTPPeerGreeter(client *http.Client, networkName string) httpPeerGreeter {
-	return httpPeerGreeter{client: client, networkName: networkName}
+func newHTTPPeerGreeter(
+	client *http.Client,
+	networkName string,
+	preferHTTPS bool,
+) httpPeerGreeter {
+	return httpPeerGreeter{client: client, networkName: networkName, preferHTTPS: preferHTTPS}
 }
 
 func (g httpPeerGreeter) Greet(
 	ctx context.Context,
-	endpoint string,
+	target yagomodel.Seed,
 	self yagomodel.Seed,
 	count int,
 ) (greetResult, error) {
-	target, err := greetURL(endpoint)
+	endpoints, err := greetEndpoints(target, g.preferHTTPS)
 	if err != nil {
 		return greetResult{}, err
 	}
@@ -54,13 +62,32 @@ func (g httpPeerGreeter) Greet(
 		Count:       count,
 		Iam:         self.Hash,
 	}
+	form := request.Form().Encode()
 
-	req, err := newGreetRequest(
-		ctx,
-		http.MethodPost,
-		target.String(),
-		strings.NewReader(request.Form().Encode()),
-	)
+	var lastErr error
+	for _, endpoint := range endpoints {
+		result, err := g.greetEndpoint(ctx, endpoint, form)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		// Retry over the next candidate scheme only when the transport
+		// failed; an HTTP status means the peer answered (YaCy retries
+		// https as http on IOException only).
+		if !errors.Is(err, errGreetTransport) {
+			break
+		}
+	}
+
+	return greetResult{}, lastErr
+}
+
+func (g httpPeerGreeter) greetEndpoint(
+	ctx context.Context,
+	target *url.URL,
+	form string,
+) (greetResult, error) {
+	req, err := newGreetRequest(ctx, http.MethodPost, target.String(), strings.NewReader(form))
 	if err != nil {
 		return greetResult{}, fmt.Errorf("%w: %w", errGreetFailed, err)
 	}
@@ -68,7 +95,7 @@ func (g httpPeerGreeter) Greet(
 
 	resp, err := g.client.Do(req)
 	if err != nil {
-		return greetResult{}, fmt.Errorf("%w: %w", errGreetFailed, err)
+		return greetResult{}, fmt.Errorf("%w: %w: %w", errGreetFailed, errGreetTransport, err)
 	}
 	defer closeResponseBody(ctx, resp.Body, "peerGreet")
 
@@ -101,15 +128,11 @@ func parseGreetResponse(ctx context.Context, body io.Reader) (greetResult, error
 	}, nil
 }
 
-func greetURL(endpoint string) (*url.URL, error) {
-	endpoint = strings.TrimSpace(endpoint)
-	if endpoint == "" {
-		return nil, fmt.Errorf("%w: empty endpoint", errGreetFailed)
+func greetEndpoints(target yagomodel.Seed, preferHTTPS bool) ([]*url.URL, error) {
+	endpoints, err := target.ProtocolEndpoints(yagoproto.PathHello, preferHTTPS)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errGreetFailed, err)
 	}
 
-	return &url.URL{
-		Scheme: "http",
-		Host:   endpoint,
-		Path:   yagoproto.PathHello,
-	}, nil
+	return endpoints, nil
 }

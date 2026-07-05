@@ -13,11 +13,12 @@ import (
 const backPingMaxBodyBytes int64 = 64 << 10
 
 type callerBackPing struct {
-	client *http.Client
+	client      *http.Client
+	preferHTTPS bool
 }
 
-func newCallerBackPing(client *http.Client) callerBackPing {
-	return callerBackPing{client: client}
+func newCallerBackPing(client *http.Client, preferHTTPS bool) callerBackPing {
+	return callerBackPing{client: client, preferHTTPS: preferHTTPS}
 }
 
 var _ callerReachabilityProbe = callerBackPing{}
@@ -30,7 +31,7 @@ func (p callerBackPing) Reachable(
 	self yagomodel.Hash,
 	networkName string,
 ) bool {
-	target, err := caller.HTTPEndpoint(yagoproto.PathQuery)
+	targets, err := caller.ProtocolEndpoints(yagoproto.PathQuery, p.preferHTTPS)
 	if err != nil {
 		slog.DebugContext(ctx, "caller back-ping unreachable", slog.Any("error", err))
 
@@ -43,15 +44,27 @@ func (p callerBackPing) Reachable(
 		Iam:         self,
 		Object:      yagoproto.ObjectRWICount,
 	}
-	target.RawQuery = query.Form().Encode()
+	rawQuery := query.Form().Encode()
 
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
-	resp, err := p.client.Do(req)
-	if err != nil {
-		slog.DebugContext(ctx, "caller back-ping unreachable", slog.Any("error", err))
+	// A reachability probe passes when any candidate scheme answers, so walk
+	// the https-first candidates until one connects.
+	for _, target := range targets {
+		target.RawQuery = rawQuery
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
+		resp, err := p.client.Do(req)
+		if err != nil {
+			slog.DebugContext(ctx, "caller back-ping unreachable", slog.Any("error", err))
 
-		return false
+			continue
+		}
+
+		return p.confirmClose(ctx, resp)
 	}
+
+	return false
+}
+
+func (p callerBackPing) confirmClose(ctx context.Context, resp *http.Response) bool {
 	defer p.close(ctx, resp.Body)
 
 	return p.confirms(ctx, resp)

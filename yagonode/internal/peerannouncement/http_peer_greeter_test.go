@@ -33,15 +33,27 @@ func (b failingBody) Close() error {
 	return b.closeErr
 }
 
-func endpointOf(t *testing.T, server *httptest.Server) string {
+func serverSeed(t *testing.T, server *httptest.Server) yagomodel.Seed {
 	t.Helper()
 
 	parsed, err := url.Parse(server.URL)
 	if err != nil {
 		t.Fatalf("parse server url: %v", err)
 	}
+	host, err := yagomodel.ParseHost(parsed.Hostname())
+	if err != nil {
+		t.Fatalf("parse server host: %v", err)
+	}
+	port, err := yagomodel.ParsePort(parsed.Port())
+	if err != nil {
+		t.Fatalf("parse server port: %v", err)
+	}
 
-	return parsed.Host
+	return yagomodel.Seed{
+		Hash: hashFor("server"),
+		IP:   yagomodel.Some(host),
+		Port: yagomodel.Some(port),
+	}
 }
 
 func TestPeerGreeterLearnsTypeAndKnownSeeds(t *testing.T) {
@@ -60,10 +72,10 @@ func TestPeerGreeterLearnsTypeAndKnownSeeds(t *testing.T) {
 	}))
 	defer server.Close()
 
-	greeter := newHTTPPeerGreeter(server.Client(), "freeworld")
+	greeter := newHTTPPeerGreeter(server.Client(), "freeworld", false)
 	result, err := greeter.Greet(
 		context.Background(),
-		endpointOf(t, server),
+		serverSeed(t, server),
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
 	)
@@ -87,10 +99,10 @@ func TestPeerGreeterRejectsNon200(t *testing.T) {
 	}))
 	defer server.Close()
 
-	greeter := newHTTPPeerGreeter(server.Client(), "freeworld")
+	greeter := newHTTPPeerGreeter(server.Client(), "freeworld", false)
 	if _, err := greeter.Greet(
 		context.Background(),
-		endpointOf(t, server),
+		serverSeed(t, server),
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
 	); err == nil {
@@ -106,10 +118,10 @@ func TestPeerGreeterRejectsRequestCreationError(t *testing.T) {
 		return nil, sentinel
 	}
 
-	greeter := newHTTPPeerGreeter(http.DefaultClient, "freeworld")
+	greeter := newHTTPPeerGreeter(http.DefaultClient, "freeworld", false)
 	if _, err := greeter.Greet(
 		context.Background(),
-		"203.0.113.1:8090",
+		callerSeed(t, "target", "203.0.113.1"),
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
 	); !errors.Is(err, sentinel) {
@@ -123,11 +135,11 @@ func TestPeerGreeterRejectsTransportError(t *testing.T) {
 		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return nil, sentinel
 		}),
-	}, "freeworld")
+	}, "freeworld", false)
 
 	if _, err := greeter.Greet(
 		context.Background(),
-		"203.0.113.1:8090",
+		callerSeed(t, "target", "203.0.113.1"),
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
 	); !errors.Is(err, sentinel) {
@@ -144,11 +156,11 @@ func TestPeerGreeterRejectsReadError(t *testing.T) {
 				Body:       failingBody{readErr: sentinel},
 			}, nil
 		}),
-	}, "freeworld")
+	}, "freeworld", false)
 
 	if _, err := greeter.Greet(
 		context.Background(),
-		"203.0.113.1:8090",
+		callerSeed(t, "target", "203.0.113.1"),
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
 	); !errors.Is(err, sentinel) {
@@ -189,13 +201,13 @@ func TestPeerGreeterLogsCloseError(t *testing.T) {
 }
 
 func TestPeerGreeterRejectsEmptyEndpoint(t *testing.T) {
-	greeter := newHTTPPeerGreeter(http.DefaultClient, "freeworld")
+	greeter := newHTTPPeerGreeter(http.DefaultClient, "freeworld", false)
 	if _, err := greeter.Greet(
 		context.Background(),
-		"  ",
+		yagomodel.Seed{Hash: hashFor("target")},
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
 	); err == nil {
-		t.Fatal("expected error for empty endpoint")
+		t.Fatal("expected error for a target without a reachable address")
 	}
 }

@@ -61,6 +61,7 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 		assembly.client,
 		assembly.config.NetworkName,
 		self,
+		assembly.config.PeerHTTPSPreferred,
 	)
 	queue := dhtexchange.NewOutboundQueue()
 	feeder := dhtexchange.NewOutboundFeeder(
@@ -82,6 +83,7 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 			assembly.client,
 			assembly.config.NetworkName,
 			self,
+			assembly.config.PeerHTTPSPreferred,
 		),
 		indextransfer.NewHandoff(writer, assembly.nodeStorage.urlDirectory),
 		dhtOutboundRWIWords{postings: assembly.nodeStorage.outboundPostings},
