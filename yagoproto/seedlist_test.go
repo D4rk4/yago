@@ -157,11 +157,21 @@ func TestSeedlistRequestRejectsBadFields(t *testing.T) {
 		t.Fatal("expected bad node error")
 	}
 
-	if _, err := yagoproto.ParseSeedlistRequest(
+	// "my" follows YaCy's containsKey semantics: any value — even one that is
+	// not a boolean — selects the own seed.
+	quirk, err := yagoproto.ParseSeedlistRequest(
 		t.Context(),
 		url.Values{yagoproto.FieldSeedlistMy: {"perhaps"}},
-	); err == nil {
-		t.Fatal("expected bad my error")
+	)
+	if err != nil || !quirk.OwnSeedOnly {
+		t.Fatalf("my=perhaps: req=%#v err=%v, want OwnSeedOnly", quirk, err)
+	}
+	bare, err := yagoproto.ParseSeedlistRequest(
+		t.Context(),
+		url.Values{yagoproto.FieldSeedlistMy: {""}},
+	)
+	if err != nil || !bare.OwnSeedOnly {
+		t.Fatalf("bare ?my: req=%#v err=%v, want OwnSeedOnly", bare, err)
 	}
 
 	if _, err := yagoproto.ParseSeedlistRequest(

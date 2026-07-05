@@ -81,11 +81,10 @@ func ParseSeedlistRequest(_ context.Context, form url.Values) (SeedlistRequest, 
 	}
 	req.IncludeSelf = includeSelf
 
-	ownSeedOnly, err := seedlistBool(FieldSeedlistMy, form.Get(FieldSeedlistMy), false)
-	if err != nil {
-		return SeedlistRequest{}, err
-	}
-	req.OwnSeedOnly = ownSeedOnly
+	// YaCy's seedlist servlet checks only for the key's presence
+	// (post.containsKey("my")), never its value, so a bare "?my" — and even
+	// "my=false" — selects the own seed. Mirror that for wire parity.
+	req.OwnSeedOnly = form.Has(FieldSeedlistMy)
 
 	if raw := form.Get(FieldSeedlistID); raw != "" {
 		id, err := parseHashField("seedlist request", FieldSeedlistID, raw)
