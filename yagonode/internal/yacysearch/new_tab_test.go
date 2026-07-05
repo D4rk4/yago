@@ -101,3 +101,12 @@ func TestHTMLEndpointRendersAccessibleAutocomplete(t *testing.T) {
 		}
 	}
 }
+
+func TestHTMLEndpointRendersOperatorHelp(t *testing.T) {
+	body := htmlSearchBody(t, false)
+	for _, want := range []string{"Search operators", "site:example.org", "/date"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("search page help missing %q", want)
+		}
+	}
+}

@@ -53,6 +53,8 @@ func (s localSearcher) Search(
 		return searchcore.Response{}, err
 	}
 
+	searchcore.OrderByDateWhenRequested(results, req)
+
 	return searchcore.Response{
 		Request:      req,
 		TotalResults: resultSet.Total,

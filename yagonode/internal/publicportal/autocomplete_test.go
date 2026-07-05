@@ -22,3 +22,14 @@ func TestPortalRendersAccessibleAutocomplete(t *testing.T) {
 		}
 	}
 }
+
+func TestPortalRendersOperatorHelp(t *testing.T) {
+	_, body := get(t, New(&fakeSource{}, false), "/")
+	for _, want := range []string{
+		"Search operators", "site:example.org", "filetype:pdf", "/date", "-word",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("portal help missing %q", want)
+		}
+	}
+}

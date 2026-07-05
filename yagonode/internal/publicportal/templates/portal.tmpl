@@ -24,7 +24,10 @@
   .result .url { color: #178a3a; font-size: 0.8rem; word-break: break-all; }
   .result p { margin: 0.2rem 0 0; color: #333333; font-size: 0.9rem; }
   .ddgs { color: #8d8d8d; font-size: 0.85em; }
-  .ac-wrap { position: relative; display: inline-block; }
+  .ophelp { margin-top: 0.75rem; font-size: 0.85rem; color: #555; text-align: left; display: inline-block; }
+.ophelp ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+.ophelp code { background: #f2f2f2; padding: 0 0.25rem; }
+.ac-wrap { position: relative; display: inline-block; }
 #ac-list { position: absolute; left: 0; right: 0; top: 100%; margin: 0; padding: 0; list-style: none; background: #fff; border: 1px solid #ccc; border-top: none; z-index: 10; text-align: left; }
 #ac-list li { padding: 0.35rem 0.6rem; cursor: pointer; }
 #ac-list li[aria-selected="true"], #ac-list li:hover { background: #eef; }
@@ -50,6 +53,19 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
       </span>
       <button type="submit">Search</button>
     </form>
+    <details class="ophelp">
+      <summary>Search operators</summary>
+      <ul>
+<li><code>"exact phrase"</code> — match words adjacently</li>
+<li><code>-word</code> — exclude a word</li>
+<li><code>site:example.org</code> — one host only</li>
+<li><code>inurl:blog</code> — URL must contain text</li>
+<li><code>tld:de</code> — top-level domain</li>
+<li><code>filetype:pdf</code> — document type</li>
+<li><code>language:ru</code> — page language</li>
+<li><code>/date</code> — newest results first</li>
+      </ul>
+    </details>
   </div>
   {{if .Error}}
   <p class="meta" role="alert">{{.Error}}</p>

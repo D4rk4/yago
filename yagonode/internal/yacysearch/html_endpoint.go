@@ -68,6 +68,19 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 <input name="contentdom" type="hidden" value="{{.ContentDomain}}">
 <button type="submit">search</button>
 </form>
+<details>
+<summary>Search operators</summary>
+<ul>
+<li><code>"exact phrase"</code> — match words adjacently</li>
+<li><code>-word</code> — exclude a word</li>
+<li><code>site:example.org</code> — one host only</li>
+<li><code>inurl:blog</code> — URL must contain text</li>
+<li><code>tld:de</code> — top-level domain</li>
+<li><code>filetype:pdf</code> — document type</li>
+<li><code>language:ru</code> — page language</li>
+<li><code>/date</code> — newest results first</li>
+</ul>
+</details>
 {{if .ShowResults}}
 <section>
 <h1>Search for {{.Query}}</h1>

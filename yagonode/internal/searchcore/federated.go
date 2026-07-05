@@ -44,6 +44,7 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 		localResp.Results,
 		calibratedRemoteResults(localResp.Results, remoteResp.Results),
 	)
+	OrderByDateWhenRequested(merged, req)
 
 	return Response{
 		Request:         req,
