@@ -16,6 +16,13 @@ const (
 	pathMetrics = "/metrics"
 )
 
+// opsIndexSource assembles the Index-section source with its on-disk usage
+// providers: the full-text index directory and the data vault with its quota.
+func opsIndexSource(config nodeConfig, assembled node) indexSource {
+	return newIndexSource(assembled.index).
+		withDisk(config.SearchIndexPath, assembled.vault)
+}
+
 func buildOpsMux(
 	endpoints *metrics.HTTPEndpointMetrics,
 	config nodeConfig,
@@ -49,7 +56,7 @@ func buildOpsMux(
 	options := adminui.Options{
 		Overview: newOverviewSource(assembled.report),
 		Search:   newSearchSource(assembled.searcher),
-		Index:    newIndexSource(assembled.index),
+		Index:    opsIndexSource(config, assembled),
 		Network: newNetworkSource(
 			assembled.dht.gateStatus,
 			assembled.roster,

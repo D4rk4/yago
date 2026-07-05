@@ -9,6 +9,7 @@ import (
 
 type indexSource struct {
 	index searchindex.SearchIndex
+	disk  indexDiskUsage
 }
 
 func newIndexSource(index searchindex.SearchIndex) indexSource {
@@ -25,10 +26,13 @@ func (s indexSource) Index(ctx context.Context) adminui.IndexStats {
 		return adminui.IndexStats{}
 	}
 
-	return adminui.IndexStats{
+	view := adminui.IndexStats{
 		Available: true,
 		Documents: stats.Documents,
 		Backend:   stats.Backend,
 		UpdatedAt: formattedIndexStatsTime(stats.UpdatedAt),
 	}
+	s.disk.fill(ctx, &view)
+
+	return view
 }

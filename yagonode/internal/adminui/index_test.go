@@ -31,7 +31,13 @@ func TestConsoleIndexRendersTermBrowserAndSchema(t *testing.T) {
 	t.Parallel()
 
 	console := New(Options{
-		Index:  fakeIndex{snap: IndexStats{Available: true, Documents: 3}},
+		Index: fakeIndex{snap: IndexStats{
+			Available:  true,
+			Documents:  3,
+			DiskSize:   "2.0 KiB",
+			VaultUsed:  "1.5 MiB",
+			VaultQuota: "unlimited",
+		}},
 		Terms:  &fakeTerms{},
 		Schema: indexSchemaFixture(),
 	})
@@ -42,6 +48,8 @@ func TestConsoleIndexRendersTermBrowserAndSchema(t *testing.T) {
 	for _, want := range []string{
 		"Term browser", `name="term"`, "Index schema",
 		"Full-text search index", "body", "Main extracted body text.",
+		"Search index on disk", "2.0 KiB", "Data vault on disk", "1.5 MiB",
+		"Vault quota (maximum)", "unlimited",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("index page missing %q", want)

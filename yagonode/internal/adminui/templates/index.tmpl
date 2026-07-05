@@ -13,6 +13,9 @@
     <tbody>
       <tr><th scope="row">Backend</th><td>{{if .Index.Backend}}{{.Index.Backend}}{{else}}—{{end}}</td></tr>
       <tr><th scope="row">Last updated</th><td>{{if .Index.UpdatedAt}}{{.Index.UpdatedAt}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Search index on disk</th><td>{{if .Index.DiskSize}}{{.Index.DiskSize}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Data vault on disk</th><td>{{if .Index.VaultUsed}}{{.Index.VaultUsed}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Vault quota (maximum)</th><td>{{if .Index.VaultQuota}}{{.Index.VaultQuota}}{{else}}—{{end}}</td></tr>
     </tbody>
   </table>
 </div>
