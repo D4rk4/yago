@@ -176,6 +176,7 @@ type crawlForm struct {
 	MaxPagesPerHost      int
 	AllowQueryURLs       bool
 	FollowNoFollowLinks  bool
+	IgnoreTLSAuthority   bool
 	RecrawlIfOlder       string
 	CrawlDelay           string
 	// ShowExpert keeps the expert panel open across a redisplay (a validation error
@@ -1073,6 +1074,7 @@ func (c *Console) handleCrawlStart(w http.ResponseWriter, r *http.Request) {
 		MaxPagesPerHost:      form.MaxPagesPerHost,
 		AllowQueryURLs:       form.AllowQueryURLs,
 		FollowNoFollowLinks:  form.FollowNoFollowLinks,
+		IgnoreTLSAuthority:   form.IgnoreTLSAuthority,
 		RecrawlIfOlder:       form.RecrawlIfOlder,
 		CrawlDelay:           form.CrawlDelay,
 	})
@@ -1165,7 +1167,14 @@ func parsePagesPerMinute(raw string) uint32 {
 }
 
 func defaultCrawlForm() crawlForm {
-	return crawlForm{Mode: "url", Scope: "domain", MaxDepth: 3}
+	// Query URLs and TLS-authority tolerance default on: most sites paginate
+	// or route through query strings, and mis-chained certificates are common
+	// enough that a strict default silently empties operator crawls.
+	return crawlForm{
+		Mode: "url", Scope: "domain", MaxDepth: 3,
+		AllowQueryURLs:     true,
+		IgnoreTLSAuthority: true,
+	}
 }
 
 func parseCrawlForm(r *http.Request) crawlForm {
@@ -1185,6 +1194,7 @@ func parseCrawlForm(r *http.Request) crawlForm {
 		MaxPagesPerHost:      maxPages,
 		AllowQueryURLs:       r.PostFormValue("allowQueryURLs") == "on",
 		FollowNoFollowLinks:  r.PostFormValue("followNoFollowLinks") == "on",
+		IgnoreTLSAuthority:   r.PostFormValue("ignoreTLSAuthority") == "on",
 		RecrawlIfOlder:       strings.TrimSpace(r.PostFormValue("recrawlIfOlder")),
 		CrawlDelay:           strings.TrimSpace(r.PostFormValue("crawlDelay")),
 		ShowExpert:           r.PostFormValue("showExpert") == "on",

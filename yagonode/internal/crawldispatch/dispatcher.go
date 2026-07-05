@@ -2,7 +2,9 @@ package crawldispatch
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -28,12 +30,17 @@ func (e *DispatchError) Error() string { return e.Err.Error() }
 func (e *DispatchError) Unwrap() error { return e.Err }
 
 // Dispatcher turns an operator crawl request into a durable crawl order stamped
-// with the local initiator and a freshly minted provenance token.
+// with the local initiator and a freshly minted provenance token. It remembers
+// the most recent request per profile handle so a finished or failed run can
+// be restarted from the monitor without re-entering the form.
 type Dispatcher struct {
 	initiator yagomodel.Hash
 	mint      ProvenanceMint
 	queue     CrawlOrderQueue
 	now       func() time.Time
+
+	mu           sync.Mutex
+	lastByHandle map[string]OperatorRequest
 }
 
 // NewDispatcher builds a dispatcher over the given crawl order queue.
@@ -42,7 +49,32 @@ func NewDispatcher(
 	mint ProvenanceMint,
 	queue CrawlOrderQueue,
 ) *Dispatcher {
-	return &Dispatcher{initiator: initiator, mint: mint, queue: queue, now: time.Now}
+	return &Dispatcher{
+		initiator:    initiator,
+		mint:         mint,
+		queue:        queue,
+		now:          time.Now,
+		lastByHandle: map[string]OperatorRequest{},
+	}
+}
+
+// ErrNoRestartableOrder marks a restart for a profile this dispatcher never
+// dispatched (or forgot across a restart of the node itself).
+var ErrNoRestartableOrder = errors.New("no restartable crawl order for profile")
+
+// Restart re-dispatches the most recent request seen for the profile handle
+// under a fresh provenance and timestamp, producing a new run.
+func (d *Dispatcher) Restart(ctx context.Context, profileHandle string) (Accepted, error) {
+	d.mu.Lock()
+	req, ok := d.lastByHandle[profileHandle]
+	d.mu.Unlock()
+	if !ok {
+		return Accepted{}, &DispatchError{
+			Err: fmt.Errorf("%w: %s", ErrNoRestartableOrder, profileHandle),
+		}
+	}
+
+	return d.Dispatch(ctx, req, "")
 }
 
 // Dispatch builds the crawl order from req and enqueues it under key. A nil error
@@ -57,6 +89,10 @@ func (d *Dispatcher) Dispatch(
 	if err != nil {
 		return Accepted{}, &DispatchError{Err: err}
 	}
+
+	d.mu.Lock()
+	d.lastByHandle[order.Profile.Handle] = req
+	d.mu.Unlock()
 
 	duplicate, err := d.queue.PublishOnce(ctx, key, order)
 	if err != nil {

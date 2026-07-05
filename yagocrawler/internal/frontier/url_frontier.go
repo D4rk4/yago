@@ -493,13 +493,14 @@ func (s *frontierState) accept(
 	run.hostPages[host]++
 	s.completion.Track(runID)
 	s.ready = append(s.ready, crawljob.CrawlJob{
-		URL:           candidate.normURL,
-		Depth:         candidate.depth,
-		ProfileHandle: candidate.profileHandle,
-		Provenance:    candidate.provenance,
-		RunID:         runID,
-		Index:         profile.IndexAllowed(candidate.normURL),
-		CrawlDelay:    profile.Profile.CrawlDelay,
+		URL:                candidate.normURL,
+		Depth:              candidate.depth,
+		ProfileHandle:      candidate.profileHandle,
+		Provenance:         candidate.provenance,
+		RunID:              runID,
+		Index:              profile.IndexAllowed(candidate.normURL),
+		CrawlDelay:         profile.Profile.CrawlDelay,
+		IgnoreTLSAuthority: profile.Profile.IgnoreTLSAuthority,
 	})
 	return true
 }

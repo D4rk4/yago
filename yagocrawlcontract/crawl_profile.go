@@ -30,9 +30,13 @@ type CrawlProfile struct {
 	MaxDepth             int
 	AllowQueryURLs       bool
 	FollowNoFollowLinks  bool
-	MaxPagesPerHost      int
-	RecrawlIfOlder       time.Duration
-	CrawlDelay           time.Duration
+	// IgnoreTLSAuthority fetches https pages without verifying the certificate
+	// chain, for self-signed or mis-chained sites an operator still wants
+	// crawled. The crawl payload is public web content, not credentials.
+	IgnoreTLSAuthority bool
+	MaxPagesPerHost    int
+	RecrawlIfOlder     time.Duration
+	CrawlDelay         time.Duration
 }
 
 func NewCrawlProfile(profile CrawlProfile) CrawlProfile {

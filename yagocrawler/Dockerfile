@@ -52,6 +52,9 @@ FROM scratch
 ENV HOME=/tmp XDG_CACHE_HOME=/tmp/.cache PATH=/usr/local/bin:/headless-shell
 
 COPY --from=browser /runtime/ /
+# CA roots for outbound TLS: the scratch base and the headless-shell slices
+# carry none, so every https fetch failed x509 verification without this.
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/yagocrawler /usr/local/bin/yagocrawler
 
 USER 65534:65534

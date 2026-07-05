@@ -34,6 +34,7 @@ func (s *crawlSource) Start(
 		MaxPagesPerHost:      pagesPerHostOrUnlimited(start.MaxPagesPerHost),
 		AllowQueryURLs:       start.AllowQueryURLs,
 		FollowNoFollowLinks:  start.FollowNoFollowLinks,
+		IgnoreTLSAuthority:   start.IgnoreTLSAuthority,
 		RecrawlIfOlder:       start.RecrawlIfOlder,
 		CrawlDelay:           start.CrawlDelay,
 	}, "")

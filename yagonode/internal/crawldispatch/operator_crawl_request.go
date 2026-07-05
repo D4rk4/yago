@@ -21,6 +21,7 @@ type OperatorRequest struct {
 	IndexURLMustNotMatch string   `json:"indexMustNotMatch"`
 	MaxDepth             int      `json:"maxDepth"`
 	AllowQueryURLs       bool     `json:"allowQueryURLs"`
+	IgnoreTLSAuthority   bool     `json:"ignoreTLSAuthority"`
 	FollowNoFollowLinks  bool     `json:"followNoFollowLinks"`
 	MaxPagesPerHost      int      `json:"maxPagesPerHost"`
 	RecrawlIfOlder       string   `json:"recrawlIfOlder"`
@@ -71,6 +72,7 @@ func (r OperatorRequest) order(
 		IndexURLMustNotMatch: r.IndexURLMustNotMatch,
 		MaxDepth:             r.MaxDepth,
 		AllowQueryURLs:       r.AllowQueryURLs,
+		IgnoreTLSAuthority:   r.IgnoreTLSAuthority,
 		FollowNoFollowLinks:  r.FollowNoFollowLinks,
 		MaxPagesPerHost:      r.MaxPagesPerHost,
 		RecrawlIfOlder:       recrawl,

@@ -273,3 +273,38 @@ func TestCrawlStateTag(t *testing.T) {
 		}
 	}
 }
+
+func TestConsoleCrawlMonitorOffersRestartForFinishedRuns(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Monitor: fakeMonitor{snap: CrawlMonitor{Runs: []CrawlRunView{
+			{RunID: "run-done", Profile: "HandleAAAAAA", State: "finished"},
+			{RunID: "run-live", Profile: "HandleBBBBBB", State: "running"},
+		}}},
+		Control: &fakeControl{},
+	})
+	got := do(t, console, "/admin/crawl/monitor")
+	if !strings.Contains(got.body, `name="action" value="restart"`) {
+		t.Fatal("finished run should offer a restart action")
+	}
+	if !strings.Contains(got.body, `value="run-done"`) {
+		t.Fatal("restart form should carry the finished run id")
+	}
+}
+
+func TestConsoleCrawlControlRestartDispatches(t *testing.T) {
+	t.Parallel()
+
+	control := &fakeControl{}
+	got := doPost(t, New(Options{Control: control}), "/admin/crawl/control", url.Values{
+		"runId":  {"run-done"},
+		"action": {"restart"},
+	})
+	if got.status != http.StatusSeeOther {
+		t.Fatalf("status %d, want 303", got.status)
+	}
+	if control.got.Action != "restart" || control.got.RunID != "run-done" {
+		t.Fatalf("control received %+v, want restart/run-done", control.got)
+	}
+}

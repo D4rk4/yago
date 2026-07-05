@@ -51,6 +51,58 @@ var newCrawlerPublicWebAdmissionFetcher = func(
 	return publicweb.NewAdmissionFetcher(inner, resolver, guard)
 }
 
+// fetchChains carries the two assembled page-fetch chains: the verifying
+// default and the parallel one for profiles that opted into
+// IgnoreTLSAuthority. Both share the browser fallback and the botwall,
+// robots, and public-web layers; only the TLS client differs.
+type fetchChains struct {
+	verifying pagefetch.PageSource
+	insecure  pagefetch.PageSource
+}
+
+func buildFetchChains(
+	guard yagoegress.Guard,
+	client *http.Client,
+	crawl CrawlConfig,
+	source pagefetch.PageSource,
+	metrics *crawlermetrics.Metrics,
+) (fetchChains, error) {
+	slowSource := botwall.NewBotWallScreeningFetcher(source)
+	fastSource := botwall.NewBotWallScreeningFetcher(
+		newCrawlerHTTPPageFetcher(client, crawl.UserAgent, crawl.MaxBodyBytes),
+	)
+	admitted, err := newCrawlerRobotsAdmissionFetcher(
+		pagefetch.NewFallbackPageSource(fastSource, slowSource),
+		client,
+		crawl.UserAgent,
+		crawl.HostCacheSize,
+		robots.WithDenialObserver(metrics),
+	)
+	if err != nil {
+		return fetchChains{}, fmt.Errorf("create robots admission: %w", err)
+	}
+
+	insecureClient := newInsecureEgressClient(guard, crawl)
+	insecureFast := botwall.NewBotWallScreeningFetcher(
+		newCrawlerHTTPPageFetcher(insecureClient, crawl.UserAgent, crawl.MaxBodyBytes),
+	)
+	insecureAdmitted, err := newCrawlerRobotsAdmissionFetcher(
+		pagefetch.NewFallbackPageSource(insecureFast, slowSource),
+		insecureClient,
+		crawl.UserAgent,
+		crawl.HostCacheSize,
+		robots.WithDenialObserver(metrics),
+	)
+	if err != nil {
+		return fetchChains{}, fmt.Errorf("create insecure robots admission: %w", err)
+	}
+
+	return fetchChains{
+		verifying: newCrawlerPublicWebAdmissionFetcher(admitted, nil, guard),
+		insecure:  newCrawlerPublicWebAdmissionFetcher(insecureAdmitted, nil, guard),
+	}, nil
+}
+
 func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSource) error {
 	exchange, closer, err := newCrawlerExchange(cfg.NodeRPCAddr)
 	if err != nil {
@@ -91,30 +143,19 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		yagoegress.WithPrivateAllowlist(cfg.EgressAllowedCIDRs),
 	)
 	client := newGuardedEgressClient(guard, crawl)
-	fastSource := botwall.NewBotWallScreeningFetcher(
-		newCrawlerHTTPPageFetcher(client, crawl.UserAgent, crawl.MaxBodyBytes),
-	)
-	slowSource := botwall.NewBotWallScreeningFetcher(source)
-	selectedSource := pagefetch.NewFallbackPageSource(fastSource, slowSource)
-
-	admitted, err := newCrawlerRobotsAdmissionFetcher(
-		selectedSource,
-		client,
-		crawl.UserAgent,
-		crawl.HostCacheSize,
-		robots.WithDenialObserver(metrics),
-	)
+	chains, err := buildFetchChains(guard, client, crawl, source, metrics)
 	if err != nil {
-		return fmt.Errorf("create robots admission: %w", err)
+		return err
 	}
-	publicOnly := newCrawlerPublicWebAdmissionFetcher(admitted, nil, guard)
+
 	worker := pipeline.NewPipeline(
 		frontier,
-		publicOnly,
+		chains.verifying,
 		pageindex.NewIndexBuilder(),
 		emitter,
 		pipeline.WithObserver(metrics),
 		pipeline.WithRunTally(tally),
+		pipeline.WithInsecureFetcher(chains.insecure),
 	)
 	consumer := crawlorder.NewCrawlOrderConsumer(
 		orders,

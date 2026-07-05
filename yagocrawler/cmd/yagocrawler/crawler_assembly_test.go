@@ -345,3 +345,32 @@ func orderMessage(t *testing.T, target string) *crawlrpc.CrawlOrderMessage {
 
 	return &crawlrpc.CrawlOrderMessage{OrderJson: data}
 }
+
+func TestRunServiceReturnsInsecureRobotsAdmissionError(t *testing.T) {
+	restoreAssemblySeams(t)
+	stubExchange(t, &fakeExchange{ingested: make(chan *crawlrpc.IngestBatchMessage, 1)})
+	sentinel := errors.New("insecure robots failed")
+	calls := 0
+	newCrawlerRobotsAdmissionFetcher = func(
+		inner pagefetch.PageSource,
+		client *http.Client,
+		agent string,
+		cacheSize int,
+		opts ...robots.Option,
+	) (*robots.RobotsAdmissionFetcher, error) {
+		calls++
+		// The verifying chain builds first; fail only the insecure one.
+		if calls == 2 {
+			return nil, sentinel
+		}
+
+		return robots.NewRobotsAdmissionFetcher(inner, client, agent, cacheSize, opts...)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := RunService(ctx, serviceConfig(), htmlPageSource(map[string]string{}))
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("error = %v, want %v", err, sentinel)
+	}
+}

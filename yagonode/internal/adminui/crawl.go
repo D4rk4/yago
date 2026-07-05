@@ -20,6 +20,7 @@ type CrawlStart struct {
 	MaxPagesPerHost      int
 	AllowQueryURLs       bool
 	FollowNoFollowLinks  bool
+	IgnoreTLSAuthority   bool
 	RecrawlIfOlder       string
 	CrawlDelay           string
 }

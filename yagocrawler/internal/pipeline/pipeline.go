@@ -33,6 +33,9 @@ const (
 type Pipeline struct {
 	frontier Frontier
 	fetcher  pagefetch.PageSource
+	// insecure serves jobs whose profile opted into IgnoreTLSAuthority; nil
+	// keeps every job on the verifying chain.
+	insecure pagefetch.PageSource
 	index    pageindex.IndexBuilder
 	emitter  ingest.BatchEmitter
 	observer Observer
@@ -108,6 +111,26 @@ func (p *Pipeline) run(acceptCtx, fetchCtx context.Context) {
 	}
 }
 
+// jobFetcher picks the fetch chain for a job: the TLS-authority-ignoring one
+// when the profile opted in and it is wired, the verifying default otherwise.
+func (p *Pipeline) jobFetcher(job crawljob.CrawlJob) pagefetch.PageSource {
+	if job.IgnoreTLSAuthority && p.insecure != nil {
+		return p.insecure
+	}
+
+	return p.fetcher
+}
+
+// WithInsecureFetcher installs the fetch chain used by jobs whose crawl
+// profile set IgnoreTLSAuthority. A nil source is ignored.
+func WithInsecureFetcher(source pagefetch.PageSource) Option {
+	return func(p *Pipeline) {
+		if source != nil {
+			p.insecure = source
+		}
+	}
+}
+
 func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	p.observer.JobStarted()
 	defer p.frontier.Done(job)
@@ -121,7 +144,7 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 		return fmt.Errorf("parse url: %s", job.URL)
 	}
 	p.observer.FetchAttempted()
-	fetched, err := p.fetcher.Fetch(ctx, target)
+	fetched, err := p.jobFetcher(job).Fetch(ctx, target)
 	if err != nil {
 		// A rejected page (blocked target, bad status, wrong content type)
 		// counts as a failed fetch: without a counter a run would finish

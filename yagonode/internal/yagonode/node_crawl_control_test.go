@@ -7,6 +7,7 @@ import (
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
+	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 )
 
 func controlSourceWithRun(t *testing.T, runID, workerID string) *crawlControlSource {
@@ -20,7 +21,7 @@ func controlSourceWithRun(t *testing.T, runID, workerID string) *crawlControlSou
 		})
 	}
 
-	return newCrawlControlSource(runtime.runRegistry(), runtime.controlRegistry())
+	return newCrawlControlSource(runtime.runRegistry(), runtime.controlRegistry(), nil)
 }
 
 func TestCrawlControlSourceSteersRun(t *testing.T) {
@@ -95,5 +96,90 @@ func TestCrawlControlRegistryLiveAndBare(t *testing.T) {
 	}
 	if crawlControlRegistry(liveCrawlRuntime(t)) == nil {
 		t.Fatal("live crawl runtime should expose a control registry")
+	}
+}
+
+type recordingRestarter struct {
+	handles []string
+	err     error
+}
+
+func (r *recordingRestarter) Restart(
+	_ context.Context,
+	handle string,
+) (crawldispatch.Accepted, error) {
+	r.handles = append(r.handles, handle)
+
+	return crawldispatch.Accepted{ProfileHandle: handle}, r.err
+}
+
+func restartControlSource(
+	t *testing.T,
+	restarter crawlRestarter,
+) *crawlControlSource {
+	t.Helper()
+	runtime := liveCrawlRuntime(t)
+	runtime.runRegistry().Record(context.Background(), yagocrawlcontract.CrawlRunProgress{
+		RunID:         "ab",
+		WorkerID:      "worker-1",
+		ProfileHandle: "HandleAAAAAA",
+		State:         yagocrawlcontract.CrawlRunFinished,
+	})
+
+	return newCrawlControlSource(runtime.runRegistry(), runtime.controlRegistry(), restarter)
+}
+
+func TestCrawlControlSourceRestartsFinishedRunByProfile(t *testing.T) {
+	restarter := &recordingRestarter{}
+	source := restartControlSource(t, restarter)
+
+	if err := source.Control(context.Background(), adminui.CrawlControlRequest{
+		RunID:  "ab",
+		Action: "restart",
+	}); err != nil {
+		t.Fatalf("restart: %v", err)
+	}
+	if len(restarter.handles) != 1 || restarter.handles[0] != "HandleAAAAAA" {
+		t.Fatalf("restarted handles = %v", restarter.handles)
+	}
+}
+
+func TestCrawlControlSourceRestartRejections(t *testing.T) {
+	failing := &recordingRestarter{err: errors.New("queue down")}
+	source := restartControlSource(t, failing)
+	if err := source.Control(context.Background(), adminui.CrawlControlRequest{
+		RunID:  "ab",
+		Action: "restart",
+	}); err == nil {
+		t.Fatal("expected the restarter failure to surface")
+	}
+
+	if err := source.Control(context.Background(), adminui.CrawlControlRequest{
+		RunID:  "zz",
+		Action: "restart",
+	}); !errors.Is(err, errUnknownCrawlRun) {
+		t.Fatalf("unknown run err = %v", err)
+	}
+	if err := source.Control(context.Background(), adminui.CrawlControlRequest{
+		Action: "restart",
+	}); !errors.Is(err, errUnknownCrawlRun) {
+		t.Fatalf("blank run err = %v", err)
+	}
+
+	withoutRestarter := restartControlSource(t, nil)
+	if err := withoutRestarter.Control(context.Background(), adminui.CrawlControlRequest{
+		RunID:  "ab",
+		Action: "restart",
+	}); !errors.Is(err, errUnknownCrawlAction) {
+		t.Fatalf("nil restarter err = %v", err)
+	}
+}
+
+func TestCrawlRestartSourceKeepsNilDispatcherNil(t *testing.T) {
+	if crawlRestartSource(nil) != nil {
+		t.Fatal("nil dispatcher must stay a nil restarter")
+	}
+	if crawlRestartSource(&crawldispatch.Dispatcher{}) == nil {
+		t.Fatal("real dispatcher must become a restarter")
 	}
 }

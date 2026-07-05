@@ -78,13 +78,18 @@ func buildOpsMux(
 	if assembled.news != nil {
 		options.PeerNews = newPeerNewsSource(assembled.news)
 	}
-	if dispatcher := crawlDispatcher(assembled.crawl); dispatcher != nil {
+	dispatcher := crawlDispatcher(assembled.crawl)
+	if dispatcher != nil {
 		options.Crawl = newCrawlSource(dispatcher)
 	}
 	if registry := crawlRunRegistry(assembled.crawl); registry != nil {
 		options.Monitor = newCrawlMonitorSource(registry, crawlDepth.probe)
 		if control := crawlControlRegistry(assembled.crawl); control != nil {
-			options.Control = newCrawlControlSource(registry, control)
+			options.Control = newCrawlControlSource(
+				registry,
+				control,
+				crawlRestartSource(dispatcher),
+			)
 		}
 	}
 	opsMux.Handle(adminui.BasePath, adminui.New(options))

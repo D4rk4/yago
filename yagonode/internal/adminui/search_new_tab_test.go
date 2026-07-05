@@ -44,3 +44,22 @@ func TestConsoleSearchLinksOpenNewTabWithIndicatorWhenEnabled(t *testing.T) {
 		}
 	}
 }
+
+func TestConsoleCrawlFormDefaultsEnableQueryURLsAndTLSAuthorityOptOut(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{Crawl: &fakeCrawl{}})
+	got := do(t, console, "/admin/crawl")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	for _, want := range []string{
+		`name="allowQueryURLs" checked`,
+		`name="ignoreTLSAuthority" checked`,
+		"Ignore SSL certificate authority",
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("crawl form missing %q", want)
+		}
+	}
+}

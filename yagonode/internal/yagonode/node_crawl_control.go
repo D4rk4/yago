@@ -8,6 +8,7 @@ import (
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
+	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yagonode/internal/crawlruns"
 )
 
@@ -34,21 +35,42 @@ func crawlControlRegistry(runtime crawlProcess) *crawlbroker.ControlRegistry {
 // the worker that runs the target run. It resolves the run's worker through the
 // run registry and enqueues on the broker's control registry.
 type crawlControlSource struct {
-	runs    *crawlruns.Registry
-	control *crawlbroker.ControlRegistry
+	runs      *crawlruns.Registry
+	control   *crawlbroker.ControlRegistry
+	restarter crawlRestarter
+}
+
+// crawlRestartSource wraps a dispatcher as a restarter, keeping a nil
+// dispatcher a nil interface so the restart action reports unavailable
+// instead of panicking through a typed-nil method call.
+func crawlRestartSource(dispatcher *crawldispatch.Dispatcher) crawlRestarter {
+	if dispatcher == nil {
+		return nil
+	}
+
+	return dispatcher
+}
+
+// crawlRestarter re-dispatches the last order seen for a profile handle.
+type crawlRestarter interface {
+	Restart(ctx context.Context, profileHandle string) (crawldispatch.Accepted, error)
 }
 
 func newCrawlControlSource(
 	runs *crawlruns.Registry,
 	control *crawlbroker.ControlRegistry,
+	restarter crawlRestarter,
 ) *crawlControlSource {
-	return &crawlControlSource{runs: runs, control: control}
+	return &crawlControlSource{runs: runs, control: control, restarter: restarter}
 }
 
 // Control enqueues a control directive for the worker running the requested run. A
 // run whose worker is unknown, or an unsupported action, is rejected without
 // enqueuing anything.
-func (s *crawlControlSource) Control(_ context.Context, req adminui.CrawlControlRequest) error {
+func (s *crawlControlSource) Control(ctx context.Context, req adminui.CrawlControlRequest) error {
+	if req.Action == "restart" {
+		return s.restart(ctx, req.RunID)
+	}
 	kind, ok := crawlControlKind(req.Action)
 	if !ok {
 		return fmt.Errorf("%w: %q", errUnknownCrawlAction, req.Action)
@@ -65,6 +87,36 @@ func (s *crawlControlSource) Control(_ context.Context, req adminui.CrawlControl
 	})
 
 	return nil
+}
+
+// restart resolves the run's profile handle and re-dispatches its last order
+// as a brand-new run.
+func (s *crawlControlSource) restart(ctx context.Context, runID string) error {
+	if s.restarter == nil {
+		return fmt.Errorf("%w: restart", errUnknownCrawlAction)
+	}
+	handle, ok := s.profileForRun(runID)
+	if !ok {
+		return fmt.Errorf("%w: %q", errUnknownCrawlRun, runID)
+	}
+	if _, err := s.restarter.Restart(ctx, handle); err != nil {
+		return fmt.Errorf("restart crawl %s: %w", handle, err)
+	}
+
+	return nil
+}
+
+func (s *crawlControlSource) profileForRun(runID string) (string, bool) {
+	if runID == "" {
+		return "", false
+	}
+	for _, run := range s.runs.Recent() {
+		if run.RunID == runID && run.ProfileHandle != "" {
+			return run.ProfileHandle, true
+		}
+	}
+
+	return "", false
 }
 
 func (s *crawlControlSource) workerForRun(runID string) (string, bool) {

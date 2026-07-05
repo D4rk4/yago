@@ -77,6 +77,7 @@
     </div>
     <div class="cds-field cds-field--check">
       <label class="cds-label"><input type="checkbox" name="allowQueryURLs"{{if .Form.AllowQueryURLs}} checked{{end}}> Crawl URLs with query parameters</label>
+      <label class="cds-label"><input type="checkbox" name="ignoreTLSAuthority"{{if .Form.IgnoreTLSAuthority}} checked{{end}}> Ignore SSL certificate authority</label>
     </div>
     <div class="cds-field cds-field--check">
       <label class="cds-label"><input type="checkbox" name="followNoFollowLinks"{{if .Form.FollowNoFollowLinks}} checked{{end}}> Follow rel=nofollow links</label>

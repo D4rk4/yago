@@ -79,7 +79,15 @@
                      placeholder="pages/min" aria-label="Pages per minute for {{.Profile}}">
               <button class="cds-btn cds-btn--ghost" type="submit">Apply rate</button>
             </form>
-            {{else}}<span class="cds-muted">—</span>{{end}}
+            {{else}}
+            <form method="post" action="/admin/crawl/control" hx-boost="false" class="cds-inline-form">
+              <input type="hidden" name="csrf_token" value="{{$root.CSRF}}">
+              <input type="hidden" name="runId" value="{{.RunID}}">
+              <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="restart"
+                      hx-post="/admin/crawl/control" hx-include="closest form"
+                      hx-target="#crawl-monitor" hx-swap="outerHTML">Restart</button>
+            </form>
+            {{end}}
           </td>
           {{end}}
         </tr>
