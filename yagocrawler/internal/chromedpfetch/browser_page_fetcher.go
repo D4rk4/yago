@@ -47,8 +47,16 @@ func NewBrowserPageFetcher(
 	if err != nil {
 		return nil, nil, fmt.Errorf("start browser egress proxy: %w", err)
 	}
+	// The crawler is a disposable, egress-guarded container that the host isolates,
+	// and current Linux distros disable the unprivileged user namespaces Chrome's
+	// zygote sandbox needs, so the browser aborts with "No usable sandbox" without
+	// these flags. Dropping Chrome's own sandbox is safe here because the container
+	// is the isolation boundary; disable-dev-shm-usage keeps Chrome off the small
+	// default /dev/shm so a large page cannot crash the tab.
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.UserAgent(userAgent),
+		chromedp.NoSandbox,
+		chromedp.Flag("disable-dev-shm-usage", true),
 	)
 	opts = append(opts, proxyExecAllocatorOptions(proxy.url)...)
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
@@ -109,7 +117,7 @@ func (f *BrowserPageFetcher) Fetch(
 			"browser fetch %s content type %q: %w",
 			target,
 			contentType,
-			pagefetch.ErrPageRejected,
+			pagefetch.ErrUnsupportedContentType,
 		)
 	}
 	body := []byte(rendered.content)

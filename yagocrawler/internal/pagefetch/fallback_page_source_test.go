@@ -61,6 +61,26 @@ func TestFallbackPageSourceUsesFallbackForRejectedPrimary(t *testing.T) {
 	}
 }
 
+func TestFallbackPageSourceSkipsBrowserForUnsupportedContentType(t *testing.T) {
+	source := pagefetch.NewFallbackPageSource(
+		sourceFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			return pagefetch.FetchedPage{}, pagefetch.ErrUnsupportedContentType
+		}),
+		sourceFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			t.Fatal("browser fallback must not run for non-HTML media")
+			return pagefetch.FetchedPage{}, nil
+		}),
+	)
+
+	_, err := source.Fetch(context.Background(), exampleURL(t))
+	if !errors.Is(err, pagefetch.ErrUnsupportedContentType) {
+		t.Fatalf("error = %v, want unsupported content type", err)
+	}
+	if !errors.Is(err, pagefetch.ErrPageRejected) {
+		t.Fatalf("error = %v, must stay a page rejection", err)
+	}
+}
+
 func TestFallbackPageSourceReturnsPrimaryFetchError(t *testing.T) {
 	sentinel := errors.New("network failed")
 	source := pagefetch.NewFallbackPageSource(

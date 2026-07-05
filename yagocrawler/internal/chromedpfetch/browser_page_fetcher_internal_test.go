@@ -132,8 +132,11 @@ func TestBrowserPageFetcherRejectsDisallowedContentType(t *testing.T) {
 	}
 
 	_, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/doc.pdf"))
+	if !errors.Is(err, pagefetch.ErrUnsupportedContentType) {
+		t.Fatalf("error = %v, want ErrUnsupportedContentType", err)
+	}
 	if !errors.Is(err, pagefetch.ErrPageRejected) {
-		t.Fatalf("error = %v, want ErrPageRejected", err)
+		t.Fatalf("error = %v, must stay a page rejection", err)
 	}
 }
 

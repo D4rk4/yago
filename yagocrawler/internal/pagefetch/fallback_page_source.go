@@ -27,6 +27,12 @@ func (s *FallbackPageSource) Fetch(
 	if !errors.Is(err, ErrPageRejected) {
 		return FetchedPage{}, fmt.Errorf("primary fetch: %w", err)
 	}
+	// A non-HTML media type is refused by the same MIME policy in the browser, so
+	// the fallback cannot rescue it — launching the browser would only waste a
+	// tab (and, in a container, hit Chrome's sandbox failure) on every PDF or image.
+	if errors.Is(err, ErrUnsupportedContentType) {
+		return FetchedPage{}, fmt.Errorf("primary fetch: %w", err)
+	}
 
 	page, err = s.fallback.Fetch(ctx, target)
 	if err != nil {

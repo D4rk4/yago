@@ -3,10 +3,18 @@ package pagefetch
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 )
 
 var ErrPageRejected = errors.New("page rejected")
+
+// ErrUnsupportedContentType is the page rejection raised when a fetched document's
+// media type is not one the crawler parses. It wraps ErrPageRejected, so callers
+// that only care that a page was rejected keep matching it, while the browser
+// fallback can single it out: the browser enforces the same MIME policy, so it
+// cannot rescue non-HTML media and must not be launched for it.
+var ErrUnsupportedContentType = fmt.Errorf("unsupported content type: %w", ErrPageRejected)
 
 type FetchedPage struct {
 	URL         *url.URL

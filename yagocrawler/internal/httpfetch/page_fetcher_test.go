@@ -162,6 +162,11 @@ func TestPageFetcherRejectsNonSuccessStatus(t *testing.T) {
 	if !errors.Is(err, pagefetch.ErrPageRejected) {
 		t.Fatalf("error = %v, want page rejected", err)
 	}
+	// A status rejection is not a content-type rejection: the browser fallback
+	// must still be given a chance to pass the wall.
+	if errors.Is(err, pagefetch.ErrUnsupportedContentType) {
+		t.Fatalf("error = %v, status rejection must not be an unsupported-content-type", err)
+	}
 }
 
 func TestPageFetcherRejectsNonHTMLContentType(t *testing.T) {
@@ -176,8 +181,11 @@ func TestPageFetcherRejectsNonHTMLContentType(t *testing.T) {
 		"",
 		0,
 	).Fetch(context.Background(), mustParse(t, server.URL))
+	if !errors.Is(err, pagefetch.ErrUnsupportedContentType) {
+		t.Fatalf("error = %v, want unsupported content type", err)
+	}
 	if !errors.Is(err, pagefetch.ErrPageRejected) {
-		t.Fatalf("error = %v, want page rejected", err)
+		t.Fatalf("error = %v, unsupported content type must remain a page rejection", err)
 	}
 }
 

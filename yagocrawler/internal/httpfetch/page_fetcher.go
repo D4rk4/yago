@@ -63,7 +63,7 @@ func (f *PageFetcher) Fetch(
 		return pagefetch.FetchedPage{}, fmt.Errorf(
 			"content type %q: %w",
 			contentType,
-			pagefetch.ErrPageRejected,
+			pagefetch.ErrUnsupportedContentType,
 		)
 	}
 
