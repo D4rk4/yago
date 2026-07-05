@@ -148,6 +148,16 @@ func (f *Frontier) Submit(
 	f.wake()
 }
 
+// RunPending reports a run's outstanding page count (queued plus in-flight), so a
+// periodic progress report can carry a live queue depth rather than only the seed
+// count. A drained or unknown run reports 0.
+func (f *Frontier) RunPending(runID uuid.UUID) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.state.completion.Pending(runID)
+}
+
 func (f *Frontier) Done(work crawljob.CrawlJob) {
 	f.mu.Lock()
 	f.releaseHost(work.URL)

@@ -136,14 +136,24 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 		return
 	}
 	c.reportRun(ctx, order, yagocrawlcontract.CrawlRunRunning, len(requests))
+	reporter := newRunProgressReporter()
 	c.frontier.Hold()
 	seeded := c.frontier.SeedRun(
 		ctx,
 		requests,
 		order.Provenance,
 		profile,
-		c.finishRun(ctx, order, delivery),
+		c.finishRun(ctx, order, delivery, reporter),
 	)
+	reporter.reportWith(func() {
+		c.reportRun(
+			ctx,
+			order,
+			yagocrawlcontract.CrawlRunRunning,
+			c.frontier.RunPending(seeded.RunID),
+		)
+	})
+	reporter.start(ctx, progressReportInterval)
 	slog.InfoContext(
 		ctx,
 		msgRunSeeded,
@@ -161,8 +171,10 @@ func (c *CrawlOrderConsumer) finishRun(
 	ctx context.Context,
 	order yagocrawlcontract.CrawlOrder,
 	delivery CrawlOrderDelivery,
+	reporter *runProgressReporter,
 ) func() {
 	return func() {
+		reporter.Stop()
 		defer c.frontier.Release()
 		cancelled := ctx.Err() != nil || c.frontier.WasCancelled(order.Provenance)
 		c.frontier.ClearCancelled(order.Provenance)

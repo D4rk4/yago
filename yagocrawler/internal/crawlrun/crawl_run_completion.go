@@ -48,6 +48,17 @@ func (c *Completion) Track(runID uuid.UUID) {
 	c.runs[runID].pending++
 }
 
+// Pending reports a run's outstanding page count, or 0 once the run has drained
+// and been forgotten, so a progress report can carry a live queue depth.
+func (c *Completion) Pending(runID uuid.UUID) int {
+	run, ok := c.runs[runID]
+	if !ok {
+		return 0
+	}
+
+	return run.pending
+}
+
 func (c *Completion) Settle(runID uuid.UUID) (finish func(), drained bool) {
 	run := c.runs[runID]
 	run.pending--
