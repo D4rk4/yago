@@ -44,7 +44,7 @@
   <p class="meta">{{.TotalResults}} result(s) for “{{.Query}}”.</p>
   {{range .Results}}
   <div class="result">
-    <a class="title" href="{{.URL}}" rel="noopener noreferrer nofollow">{{if .Marked}}<span class="ddgs">[ddgs]</span> {{end}}{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a>
+    <a class="title" href="{{.URL}}" target="_blank" rel="noopener noreferrer nofollow">{{if .Marked}}<span class="ddgs">[ddgs]</span> {{end}}{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a>
     <div class="url">{{if .DisplayURL}}{{.DisplayURL}}{{else}}{{.URL}}{{end}}</div>
     {{if .Snippet}}<p>{{.Snippet}}</p>{{end}}
   </div>

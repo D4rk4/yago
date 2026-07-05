@@ -80,7 +80,10 @@ func TestPortalRendersResultsWithMarker(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("status %d", status)
 	}
-	for _, want := range []string{"Local hit", "Web hit", "[ddgs]", "result(s) for"} {
+	for _, want := range []string{
+		"Local hit", "Web hit", "[ddgs]", "result(s) for",
+		`target="_blank"`, `rel="noopener noreferrer nofollow"`,
+	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("results missing %q", want)
 		}

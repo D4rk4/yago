@@ -64,7 +64,7 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 <ol>
 {{range .Items}}
 <li>
-<h2><a href="{{.URL}}">{{.Title}}</a></h2>
+<h2><a href="{{.URL}}" target="_blank" rel="noopener noreferrer nofollow">{{.Title}}</a></h2>
 <p>{{.Description}}</p>
 <p>{{.DisplayURL}} {{.SizeName}} {{.Date}}</p>
 </li>
