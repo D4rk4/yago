@@ -52,13 +52,20 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   .skel-short { width: 70%; }
   @keyframes skel-shimmer { to { background-position: -200% 0; } }
   @media (prefers-reduced-motion: reduce) { .skel-line { animation: none; } }
+  @media (max-width: 48rem) {
+    .search input[type=search], .search button { height: 2.75rem; }
+    .topbar { position: sticky; top: 0; background: #ffffff; padding: 0.25rem 0 0.4rem; z-index: 5; box-shadow: 0 1px 0 #e0e0e0; }
+    .topbar .ophelp { display: none; }
+    nav.pager { justify-content: space-between; }
+    nav.pager a { padding: 0.75rem 1rem; }
+  }
   @media (max-width: 32rem) { .brand { font-size: 2.5rem; } .ac-wrap { width: 60%; } }
 </style>
 </head>
 <body>
 <a class="skip" href="#serp">Skip to results</a>
 <div class="wrap">
-  <div class="{{if not .Submitted}}{{if not .Error}}home{{end}}{{end}}">
+  <div class="{{if and (not .Submitted) (not .Error)}}home{{else}}topbar{{end}}">
     <div class="brand"><b>ya</b>go</div>
     <form class="search" method="get" action="/" role="search">
       <span class="ac-wrap">
