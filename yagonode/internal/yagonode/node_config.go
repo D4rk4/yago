@@ -39,6 +39,7 @@ const (
 	envQueryLogMode        = "YAGO_QUERY_LOG_MODE"
 	envPeerBirthDate       = "YAGO_PEER_BIRTH_DATE"
 	envMetricsEnabled      = "YAGO_METRICS_ENABLED"
+	envIndexRemoteResults  = "YAGO_INDEX_REMOTE_RESULTS"
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"
@@ -83,6 +84,7 @@ type nodeConfig struct {
 	HTTPSRedirect         bool
 	QueryLogMode          queryLogMode
 	MetricsEnabled        bool
+	IndexRemoteResults    bool
 	DeclaredBirthDate     time.Time
 	Crawl                 crawlConfig
 	Admin                 adminConfig
@@ -164,6 +166,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		HTTPSRedirect:         derived.httpsRedirect,
 		QueryLogMode:          derived.queryLogMode,
 		MetricsEnabled:        derived.metricsEnabled,
+		IndexRemoteResults:    derived.indexRemoteResults,
 		DeclaredBirthDate:     derived.birthDate,
 		DHT:                   derived.dht,
 		WebFallback:           derived.webFallback,
@@ -172,15 +175,16 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 }
 
 type derivedConfigs struct {
-	dht            dhtDistributionConfig
-	webFallback    webFallbackConfig
-	birthDate      time.Time
-	requireAPIKey  bool
-	publicSearchUI bool
-	httpsRedirect  bool
-	queryLogMode   queryLogMode
-	metricsEnabled bool
-	extractFetch   extractFetchConfig
+	dht                dhtDistributionConfig
+	webFallback        webFallbackConfig
+	birthDate          time.Time
+	requireAPIKey      bool
+	publicSearchUI     bool
+	httpsRedirect      bool
+	queryLogMode       queryLogMode
+	metricsEnabled     bool
+	indexRemoteResults bool
+	extractFetch       extractFetchConfig
 }
 
 func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
@@ -220,17 +224,22 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	if err != nil {
 		return derivedConfigs{}, err
 	}
+	indexRemoteResults, err := boolEnv(getenv, envIndexRemoteResults, true)
+	if err != nil {
+		return derivedConfigs{}, fmt.Errorf("%s: %w", envIndexRemoteResults, err)
+	}
 
 	return derivedConfigs{
-		dht:            dht,
-		webFallback:    webFallback,
-		birthDate:      birthDate,
-		requireAPIKey:  requireAPIKey,
-		publicSearchUI: publicSearchUI,
-		httpsRedirect:  httpsRedirect,
-		queryLogMode:   queryLog,
-		metricsEnabled: metricsEnabled,
-		extractFetch:   extractFetch,
+		dht:                dht,
+		webFallback:        webFallback,
+		birthDate:          birthDate,
+		requireAPIKey:      requireAPIKey,
+		publicSearchUI:     publicSearchUI,
+		httpsRedirect:      httpsRedirect,
+		queryLogMode:       queryLog,
+		metricsEnabled:     metricsEnabled,
+		indexRemoteResults: indexRemoteResults,
+		extractFetch:       extractFetch,
 	}, nil
 }
 

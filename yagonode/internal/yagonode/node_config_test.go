@@ -145,6 +145,11 @@ func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 	if !config.MetricsEnabled {
 		t.Error("MetricsEnabled = false, want true by default")
 	}
+	if !config.IndexRemoteResults {
+		t.Error(
+			"IndexRemoteResults = false, want true by default (YaCy addResultsToLocalIndex parity)",
+		)
+	}
 	if config.StorageQuotaByte != 1<<30 {
 		t.Errorf("StorageQuotaByte = %d, want 1GB", config.StorageQuotaByte)
 	}
@@ -254,6 +259,32 @@ func TestLoadNodeConfigDisablesMetrics(t *testing.T) {
 
 	if config.MetricsEnabled {
 		t.Error("MetricsEnabled = true, want false when overridden off")
+	}
+}
+
+func TestLoadNodeConfigDisablesRemoteResultIndexing(t *testing.T) {
+	config, err := loadNodeConfig(envFrom(map[string]string{
+		envPeerHash:           "0123456789AB",
+		envPeerName:           "node",
+		envIndexRemoteResults: "false",
+	}))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if config.IndexRemoteResults {
+		t.Error("IndexRemoteResults = true, want false when overridden off")
+	}
+}
+
+func TestLoadNodeConfigRejectsInvalidRemoteResultIndexing(t *testing.T) {
+	_, err := loadNodeConfig(envFrom(map[string]string{
+		envPeerHash:           "0123456789AB",
+		envPeerName:           "node",
+		envIndexRemoteResults: "maybe",
+	}))
+	if err == nil {
+		t.Fatal("load config error = nil, want an error for an unparseable boolean")
 	}
 }
 

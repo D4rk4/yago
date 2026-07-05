@@ -203,6 +203,27 @@ func TestNodePublicSearchUsesDHTRedundancyConfig(t *testing.T) {
 	}
 }
 
+func TestNodePublicSearchInstallsRemoteResultCache(t *testing.T) {
+	searcher := mountNodePublicSearch(http.NewServeMux(), publicSearchAssembly{
+		storage: nodeStorage{
+			searchIndex:  stubSearchIndex{},
+			postings:     publicSearchPostingIndex{},
+			urlDirectory: publicSearchURLDirectory{},
+		},
+		identity:           nodeidentity.Identity{NetworkName: "freeworld"},
+		dht:                defaultPublicSearchDHTConfig(),
+		client:             http.DefaultClient,
+		indexRemoteResults: true,
+	})
+
+	if _, ok := searcher.(remoteCachingSearcher); !ok {
+		t.Fatalf(
+			"searcher = %T, want a remoteCachingSearcher when result caching is enabled",
+			searcher,
+		)
+	}
+}
+
 func portalGateRequest(t *testing.T, enabled bool) (*httptest.ResponseRecorder, bool) {
 	t.Helper()
 

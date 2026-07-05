@@ -126,6 +126,7 @@ peer listener is behind a reverse proxy or NAT and the external address differs)
 | `YAGO_WEB_FALLBACK_SEED_DEPTH` | `1` | Crawl depth for seeded orders (0–8). Kept shallow to bound amplification. |
 | `YAGO_WEB_FALLBACK_SEED_MAX_PAGES` | `20` | Per-host page cap for seeded crawl orders. |
 | `YAGO_QUERY_LOG_MODE` | `off` | How much of a search query is written to the node's logs. `off` records nothing; `aggregate` records only the query length and result count (never the text); `full` records the query text. The default keeps queries out of the logs. |
+| `YAGO_INDEX_REMOTE_RESULTS` | `true` | Cache the metadata of results returned by peers into the local index after a swarm search, mirroring YaCy's `addResultsToLocalIndex`, so a later query for the same content is answered locally without re-fetching. Metadata only (title, snippet, URL — no crawl); a URL already in the store is never overwritten, so a locally crawled full page is preserved. The write runs off the request path and only when the full-text index is available. Set to `false` to leave the index unchanged by searches (a node that indexes only what it crawls). |
 
 ## Privacy
 

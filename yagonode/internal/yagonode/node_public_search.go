@@ -39,6 +39,7 @@ type publicSearchAssembly struct {
 	searchMetrics        *metrics.SearchMetrics
 	rankingWeights       func() searchindex.RankingWeights
 	denylist             denylistSnapshotter
+	indexRemoteResults   bool
 }
 
 // searchTargetPeers adapts the peer roster for remote-search target selection.
@@ -125,6 +126,11 @@ func mountNodePublicSearch(
 	search := withQueryLogging(filtered, assembly.queryLogMode)
 	search = withSearchMetrics(search, assembly.searchMetrics)
 	search = withParsedQuery(search)
+	if assembly.indexRemoteResults && assembly.storage.searchIndex != nil {
+		// Cache swarm results into the local index (YaCy addResultsToLocalIndex),
+		// but only when the full-text backend is available to make them findable.
+		search = withRemoteIndexCache(search, newRemoteIndexCache(assembly.storage))
+	}
 	access := searchAccessPolicy(assembly)
 	yacysearch.Mount(mux, search)
 	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
