@@ -96,6 +96,7 @@ func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRe
 		IncludeDomain: includeDomains(req),
 		Language:      strings.ToLower(req.Language),
 		Weights:       weights,
+		Fuzzy:         req.Fuzzy,
 	}
 }
 

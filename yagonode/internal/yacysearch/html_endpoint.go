@@ -30,6 +30,9 @@ type htmlSearchPage struct {
 	OpenSearchURL      string
 	TotalResults       string
 	Elapsed            string
+	Recovered          bool
+	DidYouMean         string
+	DidYouMeanURL      string
 	Items              []htmlSearchItem
 	PartialFailures    []searchcore.PartialFailure
 	ShowResults        bool
@@ -92,6 +95,7 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 {{if .ShowResults}}
 <section id="results" tabindex="-1">
 <h1>Search for {{.Query}}</h1>
+{{if .Recovered}}<p role="status">No exact matches — showing close matches instead.{{if .DidYouMean}} Did you mean <a href="{{.DidYouMeanURL}}">{{.DidYouMean}}</a>?{{end}}</p>{{end}}
 <p role="status">{{.TotalResults}} results{{if .Elapsed}} ({{.Elapsed}}){{end}}</p>
 {{if .ShowPartialFailure}}
 <ul>
@@ -223,10 +227,17 @@ func responseHTML(r *http.Request, resp searchcore.Response) htmlSearchPage {
 		JSONURL:            requestBaseURL(r) + "/yacysearch.json" + rawSearchURL[len(base):],
 		OpenSearchURL:      requestBaseURL(r) + "/opensearchdescription.xml",
 		TotalResults:       strconv.Itoa(resp.TotalResults),
+		Recovered:          resp.Recovered != "",
+		DidYouMean:         resp.DidYouMean,
 		Items:              responseHTMLItems(resp.Results, resp.Request.Terms),
 		PartialFailures:    resp.PartialFailures,
 		ShowResults:        resp.Request.Query != "",
 		ShowPartialFailure: len(resp.PartialFailures) > 0,
+	}
+	if resp.DidYouMean != "" {
+		values := url.Values{}
+		values.Set(yagoproto.FieldQuery, resp.DidYouMean)
+		page.DidYouMeanURL = base + "?" + values.Encode()
 	}
 	applyHTMLPagination(&page, base, resp)
 

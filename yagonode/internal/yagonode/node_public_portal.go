@@ -3,6 +3,7 @@ package yagonode
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 
 	"github.com/D4rk4/yago/yagonode/internal/cachedpage"
@@ -79,6 +80,13 @@ func (s portalSource) Search(
 	}
 
 	out := publicportal.SearchResults{Query: query, TotalResults: response.TotalResults}
+	if response.Recovered != "" {
+		out.Recovered = true
+		out.DidYouMean = response.DidYouMean
+		if response.DidYouMean != "" {
+			out.DidYouMeanURL = "/?q=" + url.QueryEscape(response.DidYouMean)
+		}
+	}
 	out.Results = make([]publicportal.SearchResult, 0, len(response.Results))
 	for _, result := range response.Results {
 		provenance := resultProvenance(result)

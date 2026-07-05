@@ -27,6 +27,9 @@ type SearchRequest struct {
 	Until         time.Time
 	Weights       RankingWeights
 	Explain       bool
+	// Fuzzy widens the main field matches to edit-distance-1 term matching for
+	// the zero-result recovery retry.
+	Fuzzy bool
 }
 
 type SearchResultSet struct {

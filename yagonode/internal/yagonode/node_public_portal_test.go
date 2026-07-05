@@ -76,6 +76,28 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 	}
 }
 
+func TestPortalSourceCarriesRecoverySuggestion(t *testing.T) {
+	t.Parallel()
+
+	searcher := &stubPortalSearcher{response: searchcore.Response{
+		TotalResults: 1,
+		Results:      []searchcore.Result{{Title: "Golang", URL: "http://a/1"}},
+		Recovered:    "fuzzy",
+		DidYouMean:   "golang tutorial",
+	}}
+
+	results, err := newPortalSource(searcher).Search(context.Background(), "golnag", 0, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if !results.Recovered || results.DidYouMean != "golang tutorial" {
+		t.Fatalf("recovery not carried: %+v", results)
+	}
+	if results.DidYouMeanURL != "/?q=golang+tutorial" {
+		t.Fatalf("did-you-mean url = %q", results.DidYouMeanURL)
+	}
+}
+
 func TestPortalSourceWrapsError(t *testing.T) {
 	t.Parallel()
 

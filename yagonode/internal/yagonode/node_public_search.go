@@ -163,7 +163,10 @@ func mountNodePublicSearch(
 	})
 	federated := withWebFallback(searchcore.NewFederatedSearcher(local, remote), assembly)
 	filtered := withDenylistFilter(federated, assembly.denylist)
-	search := withQueryLogging(filtered, assembly.queryLogMode)
+	// Zero-result recovery sits above the filters so its fuzzy retry serves
+	// only pages the denylist would allow.
+	recovering := withZeroResultRecovery(filtered)
+	search := withQueryLogging(recovering, assembly.queryLogMode)
 	search = withSearchMetrics(search, assembly.searchMetrics)
 	search = withParsedQuery(search)
 	if assembly.indexRemoteResults && assembly.storage.searchIndex != nil {

@@ -33,12 +33,15 @@ const (
 )
 
 type Request struct {
-	Query            string
-	Terms            []string
-	ExcludedTerms    []string
-	Phrases          []string
-	Source           Source
-	Limit            int
+	Query         string
+	Terms         []string
+	ExcludedTerms []string
+	Phrases       []string
+	Source        Source
+	Limit         int
+	// Fuzzy asks the local index for approximate (edit-distance) term matching;
+	// the zero-result recovery retry sets it, remote fan-out ignores it.
+	Fuzzy            bool
 	Offset           int
 	ContentDomain    ContentDomain
 	Language         string
@@ -82,6 +85,13 @@ type Response struct {
 	TotalResults    int
 	Results         []Result
 	PartialFailures []PartialFailure
+	// Recovered names the zero-result recovery step that produced these results
+	// ("fuzzy") so surfaces can say "no exact matches; showing close matches";
+	// empty for a normal answer.
+	Recovered string
+	// DidYouMean carries a spelling suggestion assembled from close-match titles
+	// when recovery found the query terms slightly off; empty when none.
+	DidYouMean string
 }
 
 type Searcher interface {

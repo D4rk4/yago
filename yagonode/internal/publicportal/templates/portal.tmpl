@@ -96,6 +96,9 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   <p class="meta" role="alert">{{.Error}}</p>
   {{else if .Submitted}}
   {{with .Results}}
+  {{if .Recovered}}
+  <p class="meta" role="status">No exact matches for “{{.Query}}” — showing close matches instead.{{if .DidYouMean}} Did you mean <a href="{{.DidYouMeanURL}}">{{.DidYouMean}}</a>?{{end}}</p>
+  {{end}}
   <p class="meta" role="status">{{.TotalResults}} result(s) for “{{.Query}}”{{if $.Elapsed}} ({{$.Elapsed}}){{end}}.{{if .Results}} On this page: {{.LocalCount}} from this node · {{.PeerCount}} from peers · {{.WebCount}} from the web.{{end}}</p>
   {{if .Results}}<ul class="results">{{end}}
   {{range .Results}}

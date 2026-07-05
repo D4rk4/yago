@@ -64,6 +64,12 @@ type SearchResults struct {
 	PeerCount    int
 	WebCount     int
 	Results      []SearchResult
+	// Recovered marks results found by the zero-result fuzzy retry, so the page
+	// says these are close matches rather than exact ones.
+	Recovered bool
+	// DidYouMean and DidYouMeanURL offer the assembled spelling suggestion.
+	DidYouMean    string
+	DidYouMeanURL string
 }
 
 // SearchSource runs a portal query against the node search core, returning the

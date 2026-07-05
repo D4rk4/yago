@@ -175,13 +175,22 @@ func (b *BleveMemoryIndex) Stats(context.Context) (IndexStats, error) {
 
 func bleveSearchQuery(req SearchRequest, gram bool) blevequery.Query {
 	weights := req.Weights.orDefault()
-	main := bleve.NewDisjunctionQuery(
+	fields := []*blevequery.MatchQuery{
 		fieldMatch("title", req.Query, weights.Title),
 		fieldMatch("headings", req.Query, weights.Headings),
 		fieldMatch("anchors", req.Query, weights.Anchors),
 		fieldMatch("body", req.Query, weights.Body),
 		fieldMatch("url", req.Query, weights.URL),
-	)
+	}
+	main := bleve.NewDisjunctionQuery()
+	for _, field := range fields {
+		if req.Fuzzy {
+			// Zero-result recovery: tolerate one edit per term so slightly
+			// misspelled queries still reach close matches.
+			field.SetFuzziness(1)
+		}
+		main.AddQuery(field)
+	}
 	if gram {
 		// Language-agnostic trigram recall: a document whose text contains every
 		// trigram of a query word matches even when the word is a morphological
