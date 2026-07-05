@@ -46,8 +46,25 @@ func scopeAllows(scope yagocrawlcontract.CrawlScope, base, resolved *url.URL) bo
 	case yagocrawlcontract.ScopeSubpath:
 		return resolved.Host == base.Host && strings.HasPrefix(resolved.Path, basePath(base.Path))
 	default:
-		return resolved.Host == base.Host
+		return sameDomainHost(resolved.Host, base.Host)
 	}
+}
+
+// sameDomainHost reports whether two hosts belong to the same crawl domain. YaCy
+// 1.4 relaxed the site operator so a bare domain and its www. variant count as
+// one: a domain-scoped crawl of anticisco.ru follows links into www.anticisco.ru
+// and back. Comparison is case-insensitive per DNS; only a single leading www.
+// label is dropped, and any port is preserved.
+func sameDomainHost(a, b string) bool {
+	return domainKey(a) == domainKey(b)
+}
+
+func domainKey(host string) string {
+	host = strings.ToLower(host)
+	if trimmed := strings.TrimPrefix(host, "www."); trimmed != host {
+		return trimmed
+	}
+	return host
 }
 
 func basePath(path string) string {

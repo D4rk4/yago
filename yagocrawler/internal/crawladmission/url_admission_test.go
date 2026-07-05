@@ -111,6 +111,46 @@ func TestAdmitLinksScope(t *testing.T) {
 	}
 }
 
+func TestAdmitLinksDomainScopeUnifiesWWW(t *testing.T) {
+	domain, _ := crawladmission.CompileProfile(yagocrawlcontract.CrawlProfile{
+		Scope:        yagocrawlcontract.ScopeDomain,
+		URLMustMatch: yagocrawlcontract.MatchAll,
+	})
+
+	fromBare := domain.AdmitLinks("https://anticisco.ru/", []string{
+		"https://www.anticisco.ru/page",
+		"https://blog.anticisco.ru/page",
+		"https://other.ru/page",
+	})
+	if want := []string{"https://www.anticisco.ru/page"}; !slices.Equal(fromBare, want) {
+		t.Errorf("bare-domain admit = %v want %v", fromBare, want)
+	}
+
+	fromWWW := domain.AdmitLinks("https://www.anticisco.ru/", []string{
+		"https://anticisco.ru/page",
+		"https://deep.www.anticisco.ru/page",
+	})
+	if want := []string{"https://anticisco.ru/page"}; !slices.Equal(fromWWW, want) {
+		t.Errorf("www-domain admit = %v want %v", fromWWW, want)
+	}
+}
+
+func TestAdmitLinksSubpathKeepsWWWDistinct(t *testing.T) {
+	sub, _ := crawladmission.CompileProfile(yagocrawlcontract.CrawlProfile{
+		Scope:        yagocrawlcontract.ScopeSubpath,
+		URLMustMatch: yagocrawlcontract.MatchAll,
+	})
+
+	got := sub.AdmitLinks("https://anticisco.ru/dir/page", []string{
+		"https://anticisco.ru/dir/child",
+		"https://www.anticisco.ru/dir/child",
+	})
+	want := []string{"https://anticisco.ru/dir/child"}
+	if !slices.Equal(got, want) {
+		t.Errorf("subpath must keep www distinct, admit = %v want %v", got, want)
+	}
+}
+
 func TestAdmitLinksSubpath(t *testing.T) {
 	sub, _ := crawladmission.CompileProfile(yagocrawlcontract.CrawlProfile{
 		Scope:        yagocrawlcontract.ScopeSubpath,
