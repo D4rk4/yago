@@ -160,10 +160,7 @@ func assertRichSearchResponse(
 		got.RequestID != "request-123" ||
 		got.Answer == nil ||
 		*got.Answer != "" ||
-		got.Images == nil ||
-		len(*got.Images) != 1 ||
-		(*got.Images)[0].URL != "https://example.org/image.png" ||
-		(*got.Images)[0].Description != "Document image" ||
+		got.FollowUpQuestions != nil ||
 		len(got.Results[0].Images) != 1 ||
 		got.Results[0].Images[0] != "https://example.org/image.png" ||
 		got.Usage == nil ||
@@ -172,6 +169,18 @@ func assertRichSearchResponse(
 		got.AutoParameters["search_depth"] != "advanced" ||
 		got.AutoParameters["source"] != "global" {
 		t.Fatalf("response = %#v", got)
+	}
+	// The images field arrives as []SearchImage in-process and as decoded JSON
+	// after an HTTP round-trip; normalize through JSON before asserting.
+	raw, err := json.Marshal(got.Images)
+	if err != nil {
+		t.Fatalf("marshal images: %v", err)
+	}
+	var images []SearchImage
+	if err := json.Unmarshal(raw, &images); err != nil || len(images) != 1 ||
+		images[0].URL != "https://example.org/image.png" ||
+		images[0].Description != "Document image" {
+		t.Fatalf("images = %#v, want one described image object (%v)", got.Images, err)
 	}
 	if search.got.Source != searchcore.SourceGlobal ||
 		search.got.Limit != 2 ||
@@ -677,14 +686,24 @@ func TestSnippetAndModeHelpers(t *testing.T) {
 
 func TestResponseOptionHelpers(t *testing.T) {
 	if responseAnswer(SearchRequest{}) != nil ||
-		responseImages(SearchRequest{}, nil) != nil ||
 		responseUsage(SearchRequest{}) != nil ||
 		responseAutoParameters(SearchRequest{}, searchcore.Request{}) != nil {
 		t.Fatal("disabled response option mismatch")
 	}
-	emptyImages := responseImages(SearchRequest{IncludeImages: true}, nil)
-	if emptyImages == nil || len(*emptyImages) != 0 {
-		t.Fatalf("empty images = %#v", emptyImages)
+	if off, ok := responseImages(SearchRequest{}, nil).([]string); !ok || len(off) != 0 {
+		t.Fatalf("images without include_images = %#v, want empty string array", off)
+	}
+	sample := []SearchImage{{URL: "https://a.example/i.png", Description: "alt"}}
+	urls, ok := responseImages(SearchRequest{IncludeImages: true}, sample).([]string)
+	if !ok || len(urls) != 1 || urls[0] != "https://a.example/i.png" {
+		t.Fatalf("images without descriptions = %#v, want URL strings", urls)
+	}
+	described, ok := responseImages(SearchRequest{
+		IncludeImages:            true,
+		IncludeImageDescriptions: true,
+	}, nil).([]SearchImage)
+	if !ok || len(described) != 0 {
+		t.Fatalf("described images = %#v, want empty object array", described)
 	}
 	defaultAuto := responseAutoParameters(
 		SearchRequest{AutoParameters: true},

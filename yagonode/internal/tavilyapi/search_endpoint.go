@@ -63,15 +63,20 @@ type SearchRequest struct {
 
 type inclusionMode string
 
+// SearchResponse mirrors Tavily's /search payload shape: answer, images, and
+// follow_up_questions are always present (null / [] when not requested), and
+// images is an array of URL strings unless include_image_descriptions asks for
+// {url, description} objects — real Tavily clients index into both.
 type SearchResponse struct {
-	Query          string            `json:"query"`
-	Answer         *string           `json:"answer,omitempty"`
-	Images         *[]SearchImage    `json:"images,omitempty"`
-	Results        []SearchResult    `json:"results"`
-	ResponseTime   float64           `json:"response_time"`
-	AutoParameters map[string]string `json:"auto_parameters,omitempty"`
-	Usage          *SearchUsage      `json:"usage,omitempty"`
-	RequestID      string            `json:"request_id"`
+	Query             string            `json:"query"`
+	FollowUpQuestions *[]string         `json:"follow_up_questions"`
+	Answer            *string           `json:"answer"`
+	Images            any               `json:"images"`
+	Results           []SearchResult    `json:"results"`
+	ResponseTime      float64           `json:"response_time"`
+	AutoParameters    map[string]string `json:"auto_parameters,omitempty"`
+	Usage             *SearchUsage      `json:"usage,omitempty"`
+	RequestID         string            `json:"request_id"`
 }
 
 type SearchResult struct {
@@ -95,14 +100,23 @@ type SearchUsage struct {
 	Credits int `json:"credits"`
 }
 
+// ErrorResponse carries both error envelopes: our structured error object and
+// Tavily's documented {"detail": {"error": "..."}} shape, so clients written
+// against either contract can read the failure message.
 type ErrorResponse struct {
-	Error     ErrorBody `json:"error"`
-	RequestID string    `json:"request_id"`
+	Error     ErrorBody   `json:"error"`
+	Detail    ErrorDetail `json:"detail"`
+	RequestID string      `json:"request_id"`
 }
 
 type ErrorBody struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+// ErrorDetail is the Tavily-native error envelope body.
+type ErrorDetail struct {
+	Error string `json:"error"`
 }
 
 var randomRead = rand.Read
@@ -580,15 +594,26 @@ func responseAnswer(req SearchRequest) *string {
 	return &answer
 }
 
-func responseImages(req SearchRequest, images []SearchImage) *[]SearchImage {
-	if !req.IncludeImages {
-		return nil
+// responseImages renders the top-level images field in Tavily's dual shape:
+// URL strings by default, {url, description} objects only when descriptions are
+// requested, and an empty array when images were not requested at all.
+func responseImages(req SearchRequest, images []SearchImage) any {
+	if req.IncludeImages && req.IncludeImageDescriptions {
+		if images == nil {
+			images = []SearchImage{}
+		}
+
+		return images
 	}
-	if images == nil {
-		images = []SearchImage{}
+	urls := make([]string, 0, len(images))
+	if !req.IncludeImages {
+		return urls
+	}
+	for _, image := range images {
+		urls = append(urls, image.URL)
 	}
 
-	return &images
+	return urls
 }
 
 func resultImagesFromDocument(
@@ -833,6 +858,7 @@ func writeError(w http.ResponseWriter, status int, code, message, requestID stri
 			Code:    code,
 			Message: message,
 		},
+		Detail:    ErrorDetail{Error: message},
 		RequestID: requestID,
 	})
 }
