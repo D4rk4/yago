@@ -43,6 +43,7 @@ type publicSearchAssembly struct {
 	denylist             denylistSnapshotter
 	indexRemoteResults   bool
 	swarmSeed            swarmSeedConfig
+	linksNewTab          bool
 }
 
 // searchTargetPeers adapts the peer roster for remote-search target selection.
@@ -178,12 +179,15 @@ func mountNodePublicSearch(
 		)
 	}
 	access := searchAccessPolicy(assembly)
-	yacysearch.Mount(mux, search)
+	yacysearch.Mount(mux, search, assembly.linksNewTab)
 	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
 	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access, assembly.extractFetcher)
 	mux.Handle(
 		"/{$}",
-		newRootDispatcher(assembly.toggles, publicportal.New(newPortalSource(search))),
+		newRootDispatcher(
+			assembly.toggles,
+			publicportal.New(newPortalSource(search), assembly.linksNewTab),
+		),
 	)
 	mountPortalOpenSearch(mux, assembly.toggles)
 

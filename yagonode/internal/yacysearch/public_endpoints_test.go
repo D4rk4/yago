@@ -17,7 +17,7 @@ import (
 
 func TestMountRegistersPublicSearchEndpoints(t *testing.T) {
 	mux := http.NewServeMux()
-	Mount(mux, &fakeSearch{})
+	Mount(mux, &fakeSearch{}, false)
 
 	for _, path := range []string{
 		yagoproto.PathYaCySearchJSON,

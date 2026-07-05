@@ -17,7 +17,7 @@ func MountJSON(mux *http.ServeMux, search searchcore.Searcher) {
 	mux.Handle(yagoproto.PathYaCySearchJSON, jsonEndpoint{search: search})
 }
 
-func Mount(mux *http.ServeMux, search searchcore.Searcher) {
+func Mount(mux *http.ServeMux, search searchcore.Searcher, linksNewTab bool) {
 	suggestions := newRecentQueries()
 	mux.Handle(yagoproto.PathYaCySearchJSON, jsonEndpoint{
 		search:      search,
@@ -30,6 +30,7 @@ func Mount(mux *http.ServeMux, search searchcore.Searcher) {
 	mux.Handle(yagoproto.PathYaCySearchHTML, htmlEndpoint{
 		search:      search,
 		suggestions: suggestions,
+		newTab:      linksNewTab,
 	})
 	mux.Handle(yagoproto.PathOpenSearch, openSearchEndpoint{})
 	mux.Handle(yagoproto.PathSuggestJSON, suggestEndpoint{suggestions: suggestions})

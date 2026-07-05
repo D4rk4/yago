@@ -69,19 +69,24 @@ type portalData struct {
 	Error      string
 	Results    SearchResults
 	Pagination pagination
+	NewTab     bool
 }
 
 // Portal is the public search portal handler, mounted at the public root.
 type Portal struct {
 	page   *template.Template
 	source SearchSource
+	newTab bool
 }
 
 // New builds the portal with its embedded template and search source.
-func New(source SearchSource) *Portal {
+// New builds the portal; newTab controls whether result links open in a new
+// tab (with an accessible indicator) instead of the same-tab default.
+func New(source SearchSource, newTab bool) *Portal {
 	return &Portal{
 		page:   template.Must(template.ParseFS(templateFS, "templates/portal.tmpl")),
 		source: source,
+		newTab: newTab,
 	}
 }
 
@@ -96,7 +101,7 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	page := parsePortalPage(r.URL.Query().Get("p"))
-	data := portalData{Brand: brand, Query: query}
+	data := portalData{Brand: brand, Query: query, NewTab: p.newTab}
 
 	if query != "" {
 		offset := (page - 1) * portalPageSize

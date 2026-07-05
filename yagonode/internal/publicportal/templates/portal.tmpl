@@ -24,7 +24,8 @@
   .result .url { color: #178a3a; font-size: 0.8rem; word-break: break-all; }
   .result p { margin: 0.2rem 0 0; color: #333333; font-size: 0.9rem; }
   .ddgs { color: #8d8d8d; font-size: 0.85em; }
-  nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5rem; font-size: 0.9rem; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5rem; font-size: 0.9rem; }
   nav.pager a { color: #0f62fe; text-decoration: none; }
   nav.pager a:hover { text-decoration: underline; }
   nav.pager .page { color: #525252; }
@@ -48,7 +49,7 @@
   <p class="meta">{{.TotalResults}} result(s) for “{{.Query}}”.</p>
   {{range .Results}}
   <div class="result">
-    <a class="title" href="{{.URL}}" target="_blank" rel="noopener noreferrer nofollow">{{if .Marked}}<span class="ddgs">[ddgs]</span> {{end}}{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a>
+    <a class="title" href="{{.URL}}"{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{if .Marked}}<span class="ddgs">[ddgs]</span> {{end}}{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span class="sr-only"> (opens in new tab)</span>{{end}}</a>
     <div class="url">{{if .DisplayURL}}{{.DisplayURL}}{{else}}{{.URL}}{{end}}</div>
     {{if .Snippet}}<p>{{.Snippet}}</p>{{end}}
   </div>

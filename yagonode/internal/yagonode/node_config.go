@@ -41,6 +41,7 @@ const (
 	envMetricsEnabled      = "YAGO_METRICS_ENABLED"
 	envIndexRemoteResults  = "YAGO_INDEX_REMOTE_RESULTS"
 	envPeerHTTPSPreferred  = "YAGO_PEER_HTTPS_PREFERRED"
+	envSearchLinksNewTab   = "YAGO_SEARCH_LINKS_NEW_TAB"
 	envSwarmSeedCrawl      = "YAGO_SWARM_SEED_CRAWL"
 	envSwarmSeedLimitDocs  = "YAGO_SWARM_SEED_LIMIT_DOCS"
 
@@ -84,6 +85,7 @@ type nodeConfig struct {
 	SearchAPIKey          string
 	SearchRequireAPIKey   bool
 	PublicSearchUIEnabled bool
+	SearchLinksNewTab     bool
 	HTTPSRedirect         bool
 	QueryLogMode          queryLogMode
 	MetricsEnabled        bool
@@ -168,6 +170,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		SearchAPIKey:          strings.TrimSpace(getenv(envSearchAccessToken)),
 		SearchRequireAPIKey:   derived.requireAPIKey,
 		PublicSearchUIEnabled: derived.publicSearchUI,
+		SearchLinksNewTab:     derived.searchLinksNewTab,
 		HTTPSRedirect:         derived.httpsRedirect,
 		QueryLogMode:          derived.queryLogMode,
 		MetricsEnabled:        derived.metricsEnabled,
@@ -192,6 +195,7 @@ type derivedConfigs struct {
 	metricsEnabled     bool
 	indexRemoteResults bool
 	peerHTTPSPreferred bool
+	searchLinksNewTab  bool
 	swarmSeed          swarmSeedConfig
 	extractFetch       extractFetchConfig
 }
@@ -277,6 +281,12 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	if err != nil {
 		return derivedConfigs{}, err
 	}
+	// Same-tab is the default per NN/G guidance; opening results in a new tab
+	// is an operator opt-in and renders an accessible new-tab indicator.
+	searchLinksNewTab, err := boolEnv(getenv, envSearchLinksNewTab, false)
+	if err != nil {
+		return derivedConfigs{}, fmt.Errorf("%s: %w", envSearchLinksNewTab, err)
+	}
 
 	return derivedConfigs{
 		dht:                dht,
@@ -289,6 +299,7 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 		metricsEnabled:     metricsEnabled,
 		indexRemoteResults: indexRemoteResults,
 		peerHTTPSPreferred: peerHTTPSPreferred,
+		searchLinksNewTab:  searchLinksNewTab,
 		swarmSeed:          swarmSeed,
 		extractFetch:       extractFetch,
 	}, nil

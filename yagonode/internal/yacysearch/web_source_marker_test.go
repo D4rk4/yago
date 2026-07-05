@@ -29,7 +29,7 @@ func TestJSONEndpointMarksWebFallbackResults(t *testing.T) {
 		}},
 	}}
 	mux := http.NewServeMux()
-	Mount(mux, search)
+	Mount(mux, search, false)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(

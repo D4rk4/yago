@@ -49,7 +49,7 @@ func get(t *testing.T, portal *Portal, target string) (int, string) {
 func TestPortalHomepageWithoutQuery(t *testing.T) {
 	t.Parallel()
 
-	status, body := get(t, New(&fakeSource{}), "/")
+	status, body := get(t, New(&fakeSource{}, false), "/")
 	if status != http.StatusOK {
 		t.Fatalf("status %d", status)
 	}
@@ -85,13 +85,13 @@ func TestPortalRendersResultsWithMarker(t *testing.T) {
 			{Title: "Web hit", URL: "http://b.example/2", DisplayURL: "b.example/2", Marked: true},
 		},
 	}}
-	status, body := get(t, New(source), "/?q=go")
+	status, body := get(t, New(source, false), "/?q=go")
 	if status != http.StatusOK {
 		t.Fatalf("status %d", status)
 	}
 	for _, want := range []string{
 		"Local hit", "Web hit", "[ddgs]", "result(s) for",
-		`target="_blank"`, `rel="noopener noreferrer nofollow"`,
+		`rel="noreferrer nofollow"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("results missing %q", want)
@@ -102,7 +102,7 @@ func TestPortalRendersResultsWithMarker(t *testing.T) {
 func TestPortalEmptyResults(t *testing.T) {
 	t.Parallel()
 
-	status, body := get(t, New(&fakeSource{results: SearchResults{Query: "x"}}), "/?q=x")
+	status, body := get(t, New(&fakeSource{results: SearchResults{Query: "x"}}, false), "/?q=x")
 	if status != http.StatusOK {
 		t.Fatalf("status %d", status)
 	}
@@ -114,7 +114,7 @@ func TestPortalEmptyResults(t *testing.T) {
 func TestPortalSearchErrorIsGeneric(t *testing.T) {
 	t.Parallel()
 
-	status, body := get(t, New(&fakeSource{err: errors.New("backend detail")}), "/?q=go")
+	status, body := get(t, New(&fakeSource{err: errors.New("backend detail")}, false), "/?q=go")
 	if status != http.StatusOK {
 		t.Fatalf("status %d", status)
 	}
@@ -131,7 +131,7 @@ func TestPortalRejectsNonGet(t *testing.T) {
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", nil)
 	rec := httptest.NewRecorder()
-	New(&fakeSource{}).ServeHTTP(rec, req)
+	New(&fakeSource{}, false).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status %d", rec.Code)
@@ -142,7 +142,7 @@ func TestPortalPaginationParsesPageIntoOffset(t *testing.T) {
 	t.Parallel()
 
 	source := &fakeSource{results: SearchResults{Query: "go", TotalResults: 100}}
-	if _, body := get(t, New(source), "/?q=go&p=3"); !strings.Contains(body, "Page 3") {
+	if _, body := get(t, New(source, false), "/?q=go&p=3"); !strings.Contains(body, "Page 3") {
 		t.Fatalf("body missing the current page indicator")
 	}
 	if source.gotOffset != 2*portalPageSize || source.gotLimit != portalPageSize {
@@ -159,7 +159,7 @@ func TestPortalPaginationRendersPrevAndNext(t *testing.T) {
 		TotalResults: 100,
 		Results:      []SearchResult{{Title: "hit", URL: "http://a.example/1"}},
 	}}
-	_, body := get(t, New(source), "/?q=go&p=2")
+	_, body := get(t, New(source, false), "/?q=go&p=2")
 
 	for _, want := range []string{
 		"‹ Previous", "Next ›", "Page 2", `rel="prev"`, `rel="next"`,
@@ -179,7 +179,7 @@ func TestPortalPaginationHidesNavOnSinglePage(t *testing.T) {
 		TotalResults: 2,
 		Results:      []SearchResult{{Title: "a", URL: "http://a"}, {Title: "b", URL: "http://b"}},
 	}}
-	_, body := get(t, New(source), "/?q=go")
+	_, body := get(t, New(source, false), "/?q=go")
 
 	if strings.Contains(body, "Next ›") || strings.Contains(body, "‹ Previous") {
 		t.Fatal("single page should render no pager navigation")
@@ -190,13 +190,13 @@ func TestPortalPaginationClampsPage(t *testing.T) {
 	t.Parallel()
 
 	junk := &fakeSource{results: SearchResults{Query: "go", TotalResults: 5}}
-	get(t, New(junk), "/?q=go&p=not-a-number")
+	get(t, New(junk, false), "/?q=go&p=not-a-number")
 	if junk.gotOffset != 0 {
 		t.Fatalf("junk page offset = %d, want 0 (page 1)", junk.gotOffset)
 	}
 
 	over := &fakeSource{results: SearchResults{Query: "go", TotalResults: 5}}
-	get(t, New(over), "/?q=go&p=99999")
+	get(t, New(over, false), "/?q=go&p=99999")
 	if over.gotOffset != (portalMaxPage-1)*portalPageSize {
 		t.Fatalf("over-max page offset = %d, want %d",
 			over.gotOffset, (portalMaxPage-1)*portalPageSize)

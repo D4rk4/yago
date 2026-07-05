@@ -30,8 +30,8 @@
 {{end}}
 {{range .Results}}
 <article class="cds-result">
-  <a class="cds-result__title" href="{{.URL}}" rel="noopener noreferrer nofollow" target="_blank">
-    {{if .Marked}}<span class="cds-tag">[ddgs]</span> {{end}}{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a>
+  <a class="cds-result__title" href="{{.URL}}"{{if $.NewTab}} rel="noopener noreferrer nofollow" target="_blank"{{else}} rel="noreferrer nofollow"{{end}}>
+    {{if .Marked}}<span class="cds-tag">[ddgs]</span> {{end}}{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span class="cds-sr-only"> (opens in new tab)</span>{{end}}</a>
   <div class="cds-result__url">{{if .DisplayURL}}{{.DisplayURL}}{{else}}{{.URL}}{{end}}</div>
   {{if .Snippet}}<p class="cds-result__snippet">{{.Snippet}}</p>{{end}}
 </article>

@@ -46,3 +46,24 @@ func TestLoadNodeConfigRejectsInvalidSwarmSeedSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadNodeConfigReadsSearchLinksNewTab(t *testing.T) {
+	config, err := loadNodeConfig(envFrom(map[string]string{
+		envPeerHash:          "0123456789AB",
+		envPeerName:          "node",
+		envSearchLinksNewTab: "true",
+	}))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !config.SearchLinksNewTab {
+		t.Error("SearchLinksNewTab = false, want true when enabled")
+	}
+	if _, err := loadNodeConfig(envFrom(map[string]string{
+		envPeerHash:          "0123456789AB",
+		envPeerName:          "node",
+		envSearchLinksNewTab: "maybe",
+	})); err == nil {
+		t.Fatal("load config error = nil, want an error for an unparseable boolean")
+	}
+}

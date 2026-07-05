@@ -13,6 +13,7 @@ import (
 type htmlEndpoint struct {
 	search      searchcore.Searcher
 	suggestions *recentQueries
+	newTab      bool
 }
 
 type htmlSearchPage struct {
@@ -32,6 +33,7 @@ type htmlSearchPage struct {
 	HasNext            bool
 	PrevURL            string
 	NextURL            string
+	NewTab             bool
 }
 
 type htmlSearchItem struct {
@@ -71,7 +73,7 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 <ol>
 {{range .Items}}
 <li>
-<h2><a href="{{.URL}}" target="_blank" rel="noopener noreferrer nofollow">{{.Title}}</a></h2>
+<h2><a href="{{.URL}}"{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{.Title}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"> (opens in new tab)</span>{{end}}</a></h2>
 <p>{{.Description}}</p>
 <p>{{.DisplayURL}} {{.SizeName}} {{.Date}}</p>
 </li>
@@ -111,7 +113,9 @@ func (e htmlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_ = htmlSearchTemplate.Execute(w, responseHTML(r, resp))
+	page := responseHTML(r, resp)
+	page.NewTab = e.newTab
+	_ = htmlSearchTemplate.Execute(w, page)
 }
 
 func responseHTML(r *http.Request, resp searchcore.Response) htmlSearchPage {

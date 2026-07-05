@@ -250,6 +250,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		denylist:           denylist,
 		indexRemoteResults: in.config.IndexRemoteResults,
 		swarmSeed:          in.config.SwarmSeed,
+		linksNewTab:        in.config.SearchLinksNewTab,
 	})
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
 		ctx:         in.ctx,

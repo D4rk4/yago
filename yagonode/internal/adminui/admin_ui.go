@@ -108,7 +108,10 @@ type Options struct {
 	PeerDetail      PeerDetailSource
 	PeerNews        PeerNewsSource
 	SeedlistRefresh SeedlistRefreshSource
-	PeerBlock       PeerBlockSource
+	// SearchLinksNewTab opens result links in a new tab with an accessible
+	// indicator; the default keeps NN/G same-tab navigation.
+	SearchLinksNewTab bool
+	PeerBlock         PeerBlockSource
 }
 
 type sectionView struct {
@@ -157,6 +160,7 @@ type searchPageData struct {
 	Error      string
 	Results    SearchResults
 	Pagination SearchPagination
+	NewTab     bool
 }
 
 type crawlForm struct {
@@ -291,6 +295,7 @@ type Console struct {
 	sections        map[string]sectionView
 	overview        OverviewSource
 	search          SearchSource
+	searchNewTab    bool
 	crawl           CrawlSource
 	monitor         CrawlMonitorSource
 	control         CrawlControlSource
@@ -325,6 +330,7 @@ func New(opts Options) *Console {
 		sections:        defaultSections(),
 		overview:        opts.Overview,
 		search:          opts.Search,
+		searchNewTab:    opts.SearchLinksNewTab,
 		crawl:           opts.Crawl,
 		monitor:         opts.Monitor,
 		control:         opts.Control,
@@ -956,6 +962,7 @@ func (c *Console) handleSearch(w http.ResponseWriter, r *http.Request) {
 		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Search", Available: true},
 		Query:   query, Global: global,
+		NewTab: c.searchNewTab,
 	}
 
 	if query != "" {
