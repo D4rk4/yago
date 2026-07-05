@@ -318,11 +318,13 @@ func TestMountSearchServesRoute(t *testing.T) {
 			Address: httpguard.NewClientAddressResolver(nil),
 		}),
 		searchIdentity(),
-		fakeScanner{postings: map[yagomodel.Hash][]yagomodel.RWIPosting{
-			word: {postingEntry(word, "u1", 0, 1)},
-		}},
-		fakeDirectory{rows: urlRows("u1")},
-		100,
+		SearchConfig{
+			Index: fakeScanner{postings: map[yagomodel.Hash][]yagomodel.RWIPosting{
+				word: {postingEntry(word, "u1", 0, 1)},
+			}},
+			Documents:      fakeDirectory{rows: urlRows("u1")},
+			MatchesPerTerm: 100,
+		},
 	)
 	req := yagoproto.SearchRequest{
 		NetworkName: "freeworld",

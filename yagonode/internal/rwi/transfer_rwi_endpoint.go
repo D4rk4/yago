@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagoproto"
 )
@@ -14,6 +15,7 @@ const transferRWIDefaultPause = 60000
 type transferRWIEndpoint struct {
 	identity nodeidentity.Identity
 	intake   PostingReceiver
+	gate     *httpguard.IntakeGate
 }
 
 func (e transferRWIEndpoint) Serve(
@@ -42,6 +44,15 @@ func (e transferRWIEndpoint) Serve(
 
 		return resp, nil
 	}
+	// YaCy rejects inbound RWI under high system load without details
+	// (transferRWI.java "too high load"); admission slots bound the same harm.
+	release, ok := e.gate.TryAcquire()
+	if !ok {
+		resp.Result = yagoproto.ResultTooHighLoad
+
+		return resp, nil
+	}
+	defer release()
 	if req.YouAre != e.identity.Hash {
 		resp.Result = yagoproto.ResultWrongTarget
 		resp.Pause = 0

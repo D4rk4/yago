@@ -10,20 +10,28 @@ import (
 	"github.com/D4rk4/yago/yagoproto"
 )
 
+// SearchConfig carries the backing stores and limits for the inbound YaCy
+// remote-search endpoint.
+type SearchConfig struct {
+	Index          rwi.PostingIndex
+	Documents      urlmeta.URLDirectory
+	MatchesPerTerm int
+	Gate           *httpguard.IntakeGate
+}
+
 func MountSearch(
 	router httpguard.WireRouter,
 	identity nodeidentity.Identity,
-	index rwi.PostingIndex,
-	documents urlmeta.URLDirectory,
-	matchesPerTerm int,
+	config SearchConfig,
 ) {
 	endpoint := searchEndpoint{
 		identity: identity,
 		searcher: searcher{
-			index:          index,
-			documents:      documents,
-			matchesPerTerm: matchesPerTerm,
+			index:          config.Index,
+			documents:      config.Documents,
+			matchesPerTerm: config.MatchesPerTerm,
 		},
+		gate: config.Gate,
 	}
 
 	httpguard.Mount(

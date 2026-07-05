@@ -89,12 +89,13 @@ func MountTransferRWI(
 	router httpguard.WireRouter,
 	identity nodeidentity.Identity,
 	receiver PostingReceiver,
+	gate *httpguard.IntakeGate,
 ) {
 	httpguard.Mount(
 		router,
 		yagoproto.PathTransferRWI,
 		yagoproto.TransferRWIEndpointMethods,
 		yagoproto.ParseTransferRWIRequest,
-		transferRWIEndpoint{identity: identity, intake: receiver}.Serve,
+		transferRWIEndpoint{identity: identity, intake: receiver, gate: gate}.Serve,
 	)
 }

@@ -572,6 +572,7 @@ func TestMountTransferURLServesRoute(t *testing.T) {
 		}),
 		localIdentity(),
 		okURLReceiver{},
+		nil,
 	)
 	req := yagoproto.TransferURLRequest{
 		NetworkName: "freeworld",

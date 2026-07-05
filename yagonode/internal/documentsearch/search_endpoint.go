@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagoproto"
 )
@@ -19,6 +20,7 @@ const (
 type searchEndpoint struct {
 	identity nodeidentity.Identity
 	searcher searcher
+	gate     *httpguard.IntakeGate
 }
 
 func (e searchEndpoint) Serve(
@@ -26,6 +28,17 @@ func (e searchEndpoint) Serve(
 	req yagoproto.SearchRequest,
 ) (yagoproto.SearchResponse, error) {
 	resp := yagoproto.SearchResponse{}
+
+	// Distributed-search DoS protection (YaCy 1.0): a flood of concurrent
+	// remote searches gets empty-but-valid responses instead of exhausting
+	// the node.
+	release, ok := e.gate.TryAcquire()
+	if !ok {
+		slog.DebugContext(ctx, "inbound remote search shed: all slots busy")
+
+		return resp, nil
+	}
+	defer release()
 
 	if e.identity.NetworkMatches(req.NetworkName) {
 		criteria, err := searchCriteriaFromRequest(req)

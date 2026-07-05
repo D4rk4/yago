@@ -26,11 +26,16 @@ const (
 	// deliberately: the protocol version must never be overridden at build time.
 	version = "1.941"
 
-	receiveBatchCap       = 1000
-	receiveBusyPauseSecs  = 30
-	searchPostingsPerWord = 1000
-	reservoirCapacity     = 4096
-	activeSetCapacity     = 256
+	receiveBatchCap      = 1000
+	receiveBusyPauseSecs = 30
+	// dhtInboundTransferSlots bounds concurrent inbound transferRWI/transferURL
+	// intake, and inboundRemoteSearchSlots bounds concurrent /yacy/search.html
+	// serving; excess requests are shed with protocol-level busy answers.
+	dhtInboundTransferSlots  = 4
+	inboundRemoteSearchSlots = 8
+	searchPostingsPerWord    = 1000
+	reservoirCapacity        = 4096
+	activeSetCapacity        = 256
 
 	evictionTargetFraction = 0.9
 	evictionBatch          = 256

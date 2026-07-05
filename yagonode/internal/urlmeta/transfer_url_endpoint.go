@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagoproto"
 )
@@ -12,6 +13,7 @@ import (
 type transferURLEndpoint struct {
 	identity nodeidentity.Identity
 	intake   URLReceiver
+	gate     *httpguard.IntakeGate
 }
 
 func (e transferURLEndpoint) Serve(
@@ -23,6 +25,15 @@ func (e transferURLEndpoint) Serve(
 	if !e.identity.NetworkMatches(req.NetworkName) {
 		return resp, nil
 	}
+	// DHT-in load limitation (YaCy 1.6): shed metadata intake when all
+	// admission slots are busy, using this endpoint's busy result.
+	release, ok := e.gate.TryAcquire()
+	if !ok {
+		resp.Result = yagoproto.ResultErrorNotGranted
+
+		return resp, nil
+	}
+	defer release()
 	if req.YouAre != e.identity.Hash {
 		resp.Result = yagoproto.ResultWrongTarget
 

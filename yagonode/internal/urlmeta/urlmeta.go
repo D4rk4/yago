@@ -71,12 +71,13 @@ func MountTransferURL(
 	router httpguard.WireRouter,
 	identity nodeidentity.Identity,
 	receiver URLReceiver,
+	gate *httpguard.IntakeGate,
 ) {
 	httpguard.Mount(
 		router,
 		yagoproto.PathTransferURL,
 		yagoproto.TransferURLEndpointMethods,
 		yagoproto.ParseTransferURLRequest,
-		transferURLEndpoint{identity: identity, intake: receiver}.Serve,
+		transferURLEndpoint{identity: identity, intake: receiver, gate: gate}.Serve,
 	)
 }

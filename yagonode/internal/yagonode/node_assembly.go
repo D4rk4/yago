@@ -347,21 +347,24 @@ func mountNodeProtocol(
 	identity nodeidentity.Identity,
 	storage nodeStorage,
 ) {
-	urlmeta.MountTransferURL(router, identity, storage.urlReceiver)
-	rwi.MountTransferRWI(router, identity, storage.postingReceiver)
+	// One admission gate covers both DHT-in transfer endpoints (YaCy 1.6
+	// load-limits the whole DHT intake), a separate one bounds concurrent
+	// inbound remote searches (YaCy 1.0 distributed-search DoS protection).
+	transferGate := httpguard.NewIntakeGate(dhtInboundTransferSlots)
+	urlmeta.MountTransferURL(router, identity, storage.urlReceiver, transferGate)
+	rwi.MountTransferRWI(router, identity, storage.postingReceiver, transferGate)
 	nodestatus.MountQuery(
 		router,
 		identity,
 		storage.postings,
 		storage.urlDirectory,
 	)
-	documentsearch.MountSearch(
-		router,
-		identity,
-		storage.postings,
-		storage.urlDirectory,
-		searchPostingsPerWord,
-	)
+	documentsearch.MountSearch(router, identity, documentsearch.SearchConfig{
+		Index:          storage.postings,
+		Documents:      storage.urlDirectory,
+		MatchesPerTerm: searchPostingsPerWord,
+		Gate:           httpguard.NewIntakeGate(inboundRemoteSearchSlots),
+	})
 }
 
 func newStorageSweeper(vault *vault.Vault, storage nodeStorage) eviction.Sweeper {
