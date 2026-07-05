@@ -26,6 +26,11 @@ type Run struct {
 	Tally         yagocrawlcontract.CrawlRunTally
 	FirstSeen     time.Time
 	Updated       time.Time
+	// PagesPerMinute is the last fetch-rate cap an operator applied to this run
+	// (0 means no cap). It is not reported by the worker, so it is remembered here
+	// and preserved across worker progress reports to pre-fill the monitor's rate
+	// control.
+	PagesPerMinute uint32
 }
 
 // Registry is a bounded table of crawl runs keyed by run id, safe for concurrent
@@ -95,6 +100,26 @@ func (r *Registry) Record(_ context.Context, progress yagocrawlcontract.CrawlRun
 	for _, observe := range observers {
 		observe(run, newlyTerminal, active)
 	}
+}
+
+// SetRate remembers the operator-applied fetch-rate cap for a known run so the
+// monitor can pre-fill its rate control. It is a no-op for an unknown run (the
+// worker's next report will not carry a rate to restore), and it leaves the run's
+// recency untouched so a rate change does not reorder the monitor.
+func (r *Registry) SetRate(runID string, pagesPerMinute uint32) {
+	if runID == "" {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	run, ok := r.runs[runID]
+	if !ok {
+		return
+	}
+	run.PagesPerMinute = pagesPerMinute
+	r.runs[runID] = run
 }
 
 // AddObserver registers a callback invoked after each recorded report with the

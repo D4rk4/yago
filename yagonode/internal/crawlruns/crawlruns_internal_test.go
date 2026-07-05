@@ -42,6 +42,44 @@ func TestRegistryRecordUpsertsAndPreservesFirstSeen(t *testing.T) {
 	}
 }
 
+func TestRegistrySetRateRemembersRateAcrossReports(t *testing.T) {
+	reg := New(4)
+	ctx := context.Background()
+	reg.Record(ctx, yagocrawlcontract.CrawlRunProgress{
+		RunID: "a", State: yagocrawlcontract.CrawlRunRunning,
+	})
+
+	reg.SetRate("a", 45)
+	if got := reg.Recent()[0].PagesPerMinute; got != 45 {
+		t.Fatalf("rate after SetRate = %d, want 45", got)
+	}
+
+	// A later worker report must not wipe the operator-applied rate.
+	reg.Record(ctx, yagocrawlcontract.CrawlRunProgress{
+		RunID: "a", State: yagocrawlcontract.CrawlRunRunning,
+		Tally: yagocrawlcontract.CrawlRunTally{Fetched: 9},
+	})
+	run := reg.Recent()[0]
+	if run.PagesPerMinute != 45 || run.Tally.Fetched != 9 {
+		t.Fatalf("run = %+v, want rate 45 preserved with fresh tally", run)
+	}
+
+	// Lifting the throttle resets it to zero.
+	reg.SetRate("a", 0)
+	if got := reg.Recent()[0].PagesPerMinute; got != 0 {
+		t.Fatalf("rate after lifting throttle = %d, want 0", got)
+	}
+}
+
+func TestRegistrySetRateIgnoresUnknownAndEmptyRun(t *testing.T) {
+	reg := New(4)
+	reg.SetRate("missing", 30)
+	reg.SetRate("", 30)
+	if got := reg.Len(); got != 0 {
+		t.Fatalf("registry length = %d, want 0 (SetRate must not create runs)", got)
+	}
+}
+
 func TestRegistryRecentOrdersByUpdatedDesc(t *testing.T) {
 	reg := New(4)
 	base := time.Unix(2000, 0)

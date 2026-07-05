@@ -63,16 +63,17 @@ func (s *crawlMonitorSource) Monitor(ctx context.Context) adminui.CrawlMonitor {
 
 func crawlRunView(run crawlruns.Run) adminui.CrawlRunView {
 	return adminui.CrawlRunView{
-		RunID:        run.RunID,
-		Profile:      crawlRunLabel(run),
-		Worker:       run.WorkerID,
-		State:        string(run.State),
-		Fetched:      run.Tally.Fetched,
-		Indexed:      run.Tally.Indexed,
-		Failed:       run.Tally.Failed,
-		RobotsDenied: run.Tally.RobotsDenied,
-		Duplicates:   run.Tally.Duplicates,
-		Pending:      run.Tally.Pending,
-		Runtime:      run.Updated.Sub(run.FirstSeen).Round(time.Second).String(),
+		RunID:          run.RunID,
+		Profile:        crawlRunLabel(run),
+		Worker:         run.WorkerID,
+		State:          string(run.State),
+		Fetched:        run.Tally.Fetched,
+		Indexed:        run.Tally.Indexed,
+		Failed:         run.Tally.Failed,
+		RobotsDenied:   run.Tally.RobotsDenied,
+		Duplicates:     run.Tally.Duplicates,
+		Pending:        run.Tally.Pending,
+		Runtime:        run.Updated.Sub(run.FirstSeen).Round(time.Second).String(),
+		PagesPerMinute: run.PagesPerMinute,
 	}
 }

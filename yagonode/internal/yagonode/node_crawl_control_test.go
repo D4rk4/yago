@@ -38,6 +38,33 @@ func TestCrawlControlSourceSteersRun(t *testing.T) {
 	}
 }
 
+func TestCrawlControlSourceRemembersRateForMonitorPrefill(t *testing.T) {
+	runtime := liveCrawlRuntime(t)
+	runtime.runRegistry().Record(context.Background(), yagocrawlcontract.CrawlRunProgress{
+		RunID: "ab", WorkerID: "worker-1", State: yagocrawlcontract.CrawlRunRunning,
+	})
+	source := newCrawlControlSource(runtime.runRegistry(), runtime.controlRegistry(), nil)
+
+	if err := source.Control(context.Background(), adminui.CrawlControlRequest{
+		RunID: "ab", Action: "set_rate", PagesPerMinute: 45,
+	}); err != nil {
+		t.Fatalf("set_rate: %v", err)
+	}
+	if got := runtime.runRegistry().Recent()[0].PagesPerMinute; got != 45 {
+		t.Fatalf("remembered rate = %d, want 45", got)
+	}
+
+	// A non-rate action leaves the remembered rate intact.
+	if err := source.Control(context.Background(), adminui.CrawlControlRequest{
+		RunID: "ab", Action: "pause",
+	}); err != nil {
+		t.Fatalf("pause: %v", err)
+	}
+	if got := runtime.runRegistry().Recent()[0].PagesPerMinute; got != 45 {
+		t.Fatalf("rate after pause = %d, want 45 preserved", got)
+	}
+}
+
 func TestCrawlControlSourceRejectsUnknownAction(t *testing.T) {
 	source := controlSourceWithRun(t, "ab", "worker-1")
 

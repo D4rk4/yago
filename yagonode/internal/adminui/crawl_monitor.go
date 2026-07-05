@@ -19,6 +19,9 @@ type CrawlRunView struct {
 	Duplicates   uint64
 	Pending      uint64
 	Runtime      string
+	// PagesPerMinute is the last operator-applied fetch-rate cap (0 = none), used
+	// to pre-fill the monitor's rate control.
+	PagesPerMinute uint32
 }
 
 // CrawlTotals is the crawl results/rejections rollup across the known runs: the

@@ -85,6 +85,9 @@ func (s *crawlControlSource) Control(ctx context.Context, req adminui.CrawlContr
 		RunID:          req.RunID,
 		PagesPerMinute: req.PagesPerMinute,
 	})
+	if kind == yagocrawlcontract.CrawlControlSetRate {
+		s.runs.SetRate(req.RunID, req.PagesPerMinute)
+	}
 
 	return nil
 }

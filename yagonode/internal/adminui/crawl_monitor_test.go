@@ -151,6 +151,51 @@ func TestConsoleCrawlMonitorRendersControlButtons(t *testing.T) {
 	}
 }
 
+func TestConsoleCrawlMonitorLaysControlsOnOneLine(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Crawl:   &fakeCrawl{},
+		Monitor: fakeMonitor{snap: sampleMonitor()},
+		Control: &fakeControl{},
+	})
+	got := do(t, console, "/admin/crawl/monitor")
+	for _, want := range []string{
+		`class="cds-control-row"`,
+		`class="cds-input cds-input--rate"`,
+		`placeholder="pages/min"`,
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("monitor controls missing %q", want)
+		}
+	}
+	// A run with no operator-applied rate leaves the field empty (placeholder
+	// only), not pre-filled with a misleading zero.
+	if strings.Contains(got.body, `value="0"`) {
+		t.Fatal("an unset rate must not pre-fill the field with zero")
+	}
+}
+
+func TestConsoleCrawlMonitorPrefillsCurrentRate(t *testing.T) {
+	t.Parallel()
+
+	monitor := CrawlMonitor{Runs: []CrawlRunView{{
+		RunID:          "run-abc",
+		Profile:        "news-crawl",
+		State:          "running",
+		PagesPerMinute: 45,
+	}}}
+	console := New(Options{
+		Crawl:   &fakeCrawl{},
+		Monitor: fakeMonitor{snap: monitor},
+		Control: &fakeControl{},
+	})
+	got := do(t, console, "/admin/crawl/monitor")
+	if !strings.Contains(got.body, `value="45"`) {
+		t.Fatal("running run with an applied rate should pre-fill the rate field")
+	}
+}
+
 func TestParsePagesPerMinute(t *testing.T) {
 	t.Parallel()
 

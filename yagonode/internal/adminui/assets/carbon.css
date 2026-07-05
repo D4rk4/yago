@@ -220,6 +220,21 @@ a:focus, button:focus, input:focus, select:focus, [tabindex]:focus {
   font-size: 0.875rem;
   color: var(--cds-text-primary);
 }
+.cds-input--rate { width: 8rem; }
+
+/* Row of inline control forms in a table Actions cell: keep the buttons and the
+   rate field on one line instead of letting each block-level form stack. */
+.cds-control-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cds-spacing-05);
+}
+.cds-inline-form {
+  display: flex;
+  align-items: center;
+  gap: var(--cds-spacing-03);
+}
 
 /* Tags */
 .cds-tag {
