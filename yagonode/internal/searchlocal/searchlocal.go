@@ -97,6 +97,9 @@ func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRe
 		Language:      strings.ToLower(req.Language),
 		Weights:       weights,
 		Fuzzy:         req.Fuzzy,
+		Author:        req.Author,
+		Terms:         append([]string(nil), req.Terms...),
+		Near:          req.Near,
 	}
 }
 

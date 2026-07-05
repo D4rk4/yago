@@ -49,6 +49,7 @@ type Request struct {
 	InURL            string
 	TLD              string
 	FileType         string
+	Author           string
 	URLMaskFilter    string
 	PreferMaskFilter string
 	Verify           VerifyMode

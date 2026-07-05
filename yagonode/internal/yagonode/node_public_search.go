@@ -90,10 +90,39 @@ func (s parsedQuerySearcher) Search(
 		req.Terms = parsed.Terms
 		req.ExcludedTerms = parsed.ExcludedTerms
 		req.Phrases = parsed.Phrases()
+		applyParsedOperators(&req, parsed)
 	}
 
 	//nolint:wrapcheck // pass the wrapped searcher's error through unchanged.
 	return s.inner.Search(ctx, req)
+}
+
+// applyParsedOperators maps the query operators onto the request for surfaces
+// that pass a raw query string (the portal, the admin console): each field is
+// filled only when the caller left it empty, and the query itself is replaced
+// by the bare terms so the index never matches operator tokens literally.
+func applyParsedOperators(req *searchcore.Request, parsed searchcore.ParsedQuery) {
+	req.Query = strings.Join(parsed.Terms, " ")
+	if req.Language == "" {
+		req.Language = parsed.Language
+	}
+	if req.SiteHost == "" {
+		req.SiteHost = parsed.SiteHost
+	}
+	if req.InURL == "" {
+		req.InURL = parsed.InURL
+	}
+	if req.TLD == "" {
+		req.TLD = parsed.TLD
+	}
+	if req.FileType == "" {
+		req.FileType = parsed.FileType
+	}
+	if req.Author == "" {
+		req.Author = parsed.Author
+	}
+	req.SortByDate = req.SortByDate || parsed.SortByDate
+	req.Near = req.Near || parsed.Near
 }
 
 // remoteSearchClient picks the peer-protocol client for the remote search

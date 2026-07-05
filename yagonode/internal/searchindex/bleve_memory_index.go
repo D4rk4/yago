@@ -342,6 +342,16 @@ func allowsDocument(doc documentstore.Document, req SearchRequest) bool {
 	if !req.Until.IsZero() && published.After(req.Until) {
 		return false
 	}
+	if req.Author != "" &&
+		!strings.Contains(
+			strings.ToLower(doc.Metadata["author"]),
+			strings.ToLower(req.Author),
+		) {
+		return false
+	}
+	if req.Near && !termsNear(doc.ExtractedText, req.Terms) {
+		return false
+	}
 
 	return true
 }

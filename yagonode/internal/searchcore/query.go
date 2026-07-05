@@ -9,6 +9,7 @@ const (
 	operatorInURL         = "inurl:"
 	operatorTLD           = "tld:"
 	operatorFileType      = "filetype:"
+	operatorAuthor        = "author:"
 	operatorDate          = "/date"
 	operatorNear          = "near"
 )
@@ -23,6 +24,7 @@ type ParsedQuery struct {
 	InURL          string
 	TLD            string
 	FileType       string
+	Author         string
 	SortByDate     bool
 	Near           bool
 }
@@ -67,6 +69,8 @@ func (p *ParsedQuery) addModifier(token string) bool {
 		p.TLD = strings.ToLower(token[len(operatorTLD):])
 	case strings.HasPrefix(lower, operatorFileType):
 		p.FileType = strings.ToLower(strings.TrimPrefix(token[len(operatorFileType):], "."))
+	case strings.HasPrefix(lower, operatorAuthor):
+		p.Author = token[len(operatorAuthor):]
 	default:
 		return false
 	}

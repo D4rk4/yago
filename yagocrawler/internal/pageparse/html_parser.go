@@ -55,6 +55,7 @@ func readHTMLFields(root *html.Node, rawURL string, page *ParsedPage) {
 		page.Title = strings.TrimSpace(dom.TextContent(title))
 	}
 	page.Description = readMetaDescription(root)
+	page.Author = readMetaAuthor(root)
 	for _, name := range []string{"h1", "h2", "h3", "h4", "h5", "h6"} {
 		for _, heading := range dom.GetElementsByTagName(root, name) {
 			text := collapseSpaces(dom.TextContent(heading))
@@ -94,6 +95,26 @@ func readCanonicalURL(root *html.Node, rawURL string) string {
 		}
 	}
 	return ""
+}
+
+// readMetaAuthor reads the page author from the conventional meta tags, in
+// order of specificity: article:author, then name=author.
+func readMetaAuthor(root *html.Node) string {
+	byName := ""
+	for _, meta := range dom.GetElementsByTagName(root, "meta") {
+		content := collapseSpaces(dom.GetAttribute(meta, "content"))
+		if content == "" {
+			continue
+		}
+		if strings.EqualFold(dom.GetAttribute(meta, "property"), "article:author") {
+			return content
+		}
+		if byName == "" && strings.EqualFold(dom.GetAttribute(meta, "name"), "author") {
+			byName = content
+		}
+	}
+
+	return byName
 }
 
 func readMetaDescription(root *html.Node) string {

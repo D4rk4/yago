@@ -30,6 +30,13 @@ type SearchRequest struct {
 	// Fuzzy widens the main field matches to edit-distance-1 term matching for
 	// the zero-result recovery retry.
 	Fuzzy bool
+	// Author keeps only documents whose extracted author metadata contains this
+	// text (case-insensitive).
+	Author string
+	// Terms carries the parsed query words for the proximity filter; Near keeps
+	// only documents where every term appears within one small token window.
+	Terms []string
+	Near  bool
 }
 
 type SearchResultSet struct {

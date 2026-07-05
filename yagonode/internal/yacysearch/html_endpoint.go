@@ -89,6 +89,8 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 <li><code>tld:de</code> — top-level domain</li>
 <li><code>filetype:pdf</code> — document type</li>
 <li><code>language:ru</code> — page language</li>
+<li><code>author:name</code> — page author metadata</li>
+<li><code>near</code> — all words close together</li>
 <li><code>/date</code> — newest results first</li>
 </ul>
 </details>
