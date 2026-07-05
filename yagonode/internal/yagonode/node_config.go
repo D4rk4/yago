@@ -41,6 +41,8 @@ const (
 	envMetricsEnabled      = "YAGO_METRICS_ENABLED"
 	envIndexRemoteResults  = "YAGO_INDEX_REMOTE_RESULTS"
 	envPeerHTTPSPreferred  = "YAGO_PEER_HTTPS_PREFERRED"
+	envSwarmSeedCrawl      = "YAGO_SWARM_SEED_CRAWL"
+	envSwarmSeedLimitDocs  = "YAGO_SWARM_SEED_LIMIT_DOCS"
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"
@@ -87,6 +89,7 @@ type nodeConfig struct {
 	MetricsEnabled        bool
 	IndexRemoteResults    bool
 	PeerHTTPSPreferred    bool
+	SwarmSeed             swarmSeedConfig
 	DeclaredBirthDate     time.Time
 	Crawl                 crawlConfig
 	Admin                 adminConfig
@@ -170,6 +173,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		MetricsEnabled:        derived.metricsEnabled,
 		IndexRemoteResults:    derived.indexRemoteResults,
 		PeerHTTPSPreferred:    derived.peerHTTPSPreferred,
+		SwarmSeed:             derived.swarmSeed,
 		DeclaredBirthDate:     derived.birthDate,
 		DHT:                   derived.dht,
 		WebFallback:           derived.webFallback,
@@ -188,7 +192,38 @@ type derivedConfigs struct {
 	metricsEnabled     bool
 	indexRemoteResults bool
 	peerHTTPSPreferred bool
+	swarmSeed          swarmSeedConfig
 	extractFetch       extractFetchConfig
+}
+
+// swarmSeedConfig gates YaCy-style greedy learning: bounded crawls of URLs
+// surfaced by swarm search, until the local index holds LimitDocs documents
+// (YaCy greedylearning.enabled + greedylearning.limit.doccount).
+type swarmSeedConfig struct {
+	Enabled   bool
+	LimitDocs int
+}
+
+const defaultSwarmSeedLimitDocs = 15000
+
+func loadSwarmSeedConfig(getenv func(string) string) (swarmSeedConfig, error) {
+	enabled, err := boolEnv(getenv, envSwarmSeedCrawl, false)
+	if err != nil {
+		return swarmSeedConfig{}, fmt.Errorf("%s: %w", envSwarmSeedCrawl, err)
+	}
+	limit := defaultSwarmSeedLimitDocs
+	if raw := strings.TrimSpace(getenv(envSwarmSeedLimitDocs)); raw != "" {
+		limit, err = strconv.Atoi(raw)
+		if err != nil || limit <= 0 {
+			return swarmSeedConfig{}, fmt.Errorf(
+				"%s: want a positive integer, got %q",
+				envSwarmSeedLimitDocs,
+				raw,
+			)
+		}
+	}
+
+	return swarmSeedConfig{Enabled: enabled, LimitDocs: limit}, nil
 }
 
 func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
@@ -238,6 +273,10 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	if err != nil {
 		return derivedConfigs{}, fmt.Errorf("%s: %w", envPeerHTTPSPreferred, err)
 	}
+	swarmSeed, err := loadSwarmSeedConfig(getenv)
+	if err != nil {
+		return derivedConfigs{}, err
+	}
 
 	return derivedConfigs{
 		dht:                dht,
@@ -250,6 +289,7 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 		metricsEnabled:     metricsEnabled,
 		indexRemoteResults: indexRemoteResults,
 		peerHTTPSPreferred: peerHTTPSPreferred,
+		swarmSeed:          swarmSeed,
 		extractFetch:       extractFetch,
 	}, nil
 }

@@ -42,6 +42,7 @@ type publicSearchAssembly struct {
 	rankingWeights       func() searchindex.RankingWeights
 	denylist             denylistSnapshotter
 	indexRemoteResults   bool
+	swarmSeed            swarmSeedConfig
 }
 
 // searchTargetPeers adapts the peer roster for remote-search target selection.
@@ -160,6 +161,21 @@ func mountNodePublicSearch(
 		// Cache swarm results into the local index (YaCy addResultsToLocalIndex),
 		// but only when the full-text backend is available to make them findable.
 		search = withRemoteIndexCache(search, newRemoteIndexCache(assembly.storage))
+	}
+	if assembly.swarmSeed.Enabled && assembly.seedQueue != nil {
+		// Greedy learning (YaCy 1.5): crawl what swarm search surfaced, growing
+		// the index from real usage until the document limit is reached.
+		search = withSwarmSeedCrawl(
+			search,
+			newCrawlSeeder(
+				assembly.seedQueue,
+				assembly.storage.documentDirectory,
+				assembly.identity.Hash,
+				seedProfile{name: swarmSeedProfileName, depth: 1, maxPages: 20},
+			),
+			assembly.storage.documentDirectory,
+			assembly.swarmSeed.LimitDocs,
+		)
 	}
 	access := searchAccessPolicy(assembly)
 	yacysearch.Mount(mux, search)

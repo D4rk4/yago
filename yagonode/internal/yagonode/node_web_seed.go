@@ -18,6 +18,14 @@ const (
 	webSeedProfileName = "web-fallback-seed"
 )
 
+// seedProfile names a crawl-seeding source and bounds how far its
+// conservative, domain-scoped orders may crawl.
+type seedProfile struct {
+	name     string
+	depth    int
+	maxPages int
+}
+
 // webCrawlSeeder publishes conservative crawl orders for URLs the web-search
 // fallback surfaced, so the next identical query can be answered locally. It
 // skips URLs already in the document store and relies on the durable queue's
@@ -36,12 +44,25 @@ func newWebCrawlSeeder(
 	initiator yagomodel.Hash,
 	config webFallbackConfig,
 ) *webCrawlSeeder {
+	return newCrawlSeeder(queue, documents, initiator, seedProfile{
+		name:     webSeedProfileName,
+		depth:    config.SeedDepth,
+		maxPages: config.SeedMaxPages,
+	})
+}
+
+func newCrawlSeeder(
+	queue crawldispatch.CrawlOrderQueue,
+	documents documentstore.DocumentDirectory,
+	initiator yagomodel.Hash,
+	seed seedProfile,
+) *webCrawlSeeder {
 	profile := yagocrawlcontract.NewCrawlProfile(yagocrawlcontract.CrawlProfile{
-		Name:            webSeedProfileName,
+		Name:            seed.name,
 		Scope:           yagocrawlcontract.ScopeDomain,
 		URLMustMatch:    yagocrawlcontract.MatchAll,
-		MaxDepth:        config.SeedDepth,
-		MaxPagesPerHost: config.SeedMaxPages,
+		MaxDepth:        seed.depth,
+		MaxPagesPerHost: seed.maxPages,
 	})
 
 	return &webCrawlSeeder{

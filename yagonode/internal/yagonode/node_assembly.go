@@ -249,6 +249,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		rankingWeights:     ranking.Current,
 		denylist:           denylist,
 		indexRemoteResults: in.config.IndexRemoteResults,
+		swarmSeed:          in.config.SwarmSeed,
 	})
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
 		ctx:         in.ctx,
