@@ -76,10 +76,23 @@ func (f *AdmissionFetcher) admit(ctx context.Context, target *url.URL) error {
 	if len(addresses) == 0 {
 		return reject("empty resolution")
 	}
+	dialable := 0
 	for _, address := range addresses {
+		// A bogus unspecified record (":: " or "0.0.0.0" riding along real
+		// addresses, often published to "disable" IPv6) cannot be dialed, so
+		// it neither admits nor condemns the host; the dial-time guard stays
+		// as the second line. Private and other non-public addresses still
+		// reject the whole host to keep the DNS-rebinding defense.
+		if address.Unmap().IsUnspecified() {
+			continue
+		}
 		if err := f.admitAddress(address); err != nil {
 			return err
 		}
+		dialable++
+	}
+	if dialable == 0 {
+		return reject("no dialable address")
 	}
 	return nil
 }

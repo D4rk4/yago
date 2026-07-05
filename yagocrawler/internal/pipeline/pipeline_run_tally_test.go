@@ -68,7 +68,11 @@ func TestPipelineRunTallyCountsHardFailure(t *testing.T) {
 	}
 }
 
-func TestPipelineRunTallyIgnoresRejectedFetch(t *testing.T) {
+// Regression: a rejected fetch (blocked target, bad status, wrong content
+// type) used to increment no counter at all, so a run finished with every
+// number at zero and no trace of why (seen live with a bogus "::" DNS
+// record). A non-robots reject now counts as a failed fetch.
+func TestPipelineRunTallyCountsRejectedFetchAsFailed(t *testing.T) {
 	frontier := newRecordingFrontier()
 	tally := &countingRunTally{}
 	p := pipeline.NewPipeline(
@@ -83,9 +87,9 @@ func TestPipelineRunTallyIgnoresRejectedFetch(t *testing.T) {
 
 	runOneJob(t, p, frontier)
 
-	if tally.failed != 0 || tally.fetched != 0 || tally.indexed != 0 ||
+	if tally.failed != 1 || tally.fetched != 0 || tally.indexed != 0 ||
 		tally.robotsDenied != 0 {
-		t.Fatalf("tally = %#v, want all zero (a non-robots reject is not a failure)", tally)
+		t.Fatalf("tally = %#v, want the rejected fetch counted as failed", tally)
 	}
 }
 

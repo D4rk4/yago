@@ -88,7 +88,9 @@ func (p *Pipeline) run(acceptCtx, fetchCtx context.Context) {
 			switch {
 			case err == nil:
 			case errors.Is(err, pagefetch.ErrPageRejected):
-				slog.DebugContext(
+				// Info, not debug: a rejected seed is the difference between
+				// a working crawl and a silently empty run.
+				slog.InfoContext(
 					fetchCtx,
 					msgPageRejected,
 					slog.String("url", job.URL),
@@ -121,12 +123,14 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	p.observer.FetchAttempted()
 	fetched, err := p.fetcher.Fetch(ctx, target)
 	if err != nil {
-		switch {
-		case !errors.Is(err, pagefetch.ErrPageRejected):
+		// A rejected page (blocked target, bad status, wrong content type)
+		// counts as a failed fetch: without a counter a run would finish
+		// all-zero with no trace of why.
+		if errors.Is(err, robots.ErrDisallowed) {
+			p.tally.RobotsDenied(job.Provenance)
+		} else {
 			p.observer.FetchFailed()
 			p.tally.Failed(job.Provenance)
-		case errors.Is(err, robots.ErrDisallowed):
-			p.tally.RobotsDenied(job.Provenance)
 		}
 
 		return fmt.Errorf("fetch: %w", err)

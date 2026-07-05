@@ -91,7 +91,7 @@ func TestPipelineObserverRecordsHardFailure(t *testing.T) {
 	}
 }
 
-func TestPipelineObserverIgnoresRejectedFetch(t *testing.T) {
+func TestPipelineObserverCountsRejectedFetchAsFailed(t *testing.T) {
 	frontier := newRecordingFrontier()
 	observer := &countingPipelineObserver{}
 	p := pipeline.NewPipeline(
@@ -106,8 +106,8 @@ func TestPipelineObserverIgnoresRejectedFetch(t *testing.T) {
 
 	runOneJob(t, p, frontier)
 
-	if observer.fetchAttempted != 1 || observer.fetchFailed != 0 {
-		t.Fatalf("observer = %#v", observer)
+	if observer.fetchAttempted != 1 || observer.fetchFailed != 1 {
+		t.Fatalf("observer = %#v, want the rejected fetch counted as failed", observer)
 	}
 }
 
