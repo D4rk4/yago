@@ -40,10 +40,10 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 		}
 	}
 
-	merged := mergeResults(
+	merged := DiversifyResults(mergeResults(
 		localResp.Results,
 		calibratedRemoteResults(localResp.Results, remoteResp.Results),
-	)
+	), req)
 	OrderByDateWhenRequested(merged, req)
 
 	return Response{

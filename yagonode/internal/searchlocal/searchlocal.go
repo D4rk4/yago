@@ -53,6 +53,7 @@ func (s localSearcher) Search(
 		return searchcore.Response{}, err
 	}
 
+	results = searchcore.DiversifyResults(results, req)
 	searchcore.OrderByDateWhenRequested(results, req)
 
 	return searchcore.Response{

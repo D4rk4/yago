@@ -665,7 +665,7 @@ func (s searcher) response(
 		}
 		resp.Results = append(resp.Results, normalized...)
 	}
-	deduped := dedupeSearchResults(resp.Results)
+	deduped := searchcore.DiversifyResults(dedupeSearchResults(resp.Results), req)
 	searchcore.OrderByDateWhenRequested(deduped, req)
 	resp.Results = offsetResults(deduped, req.Offset, req.Limit)
 
