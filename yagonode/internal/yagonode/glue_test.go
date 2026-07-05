@@ -70,6 +70,8 @@ func (s stubReport) Version(context.Context) string { return "1.83" }
 
 func (s stubReport) Uptime(context.Context) int { return 5 }
 
+func (s stubReport) UptimeSeconds(context.Context) int { return 315 }
+
 func (s stubReport) SelfSeed(context.Context) yagomodel.Seed { return s.seed }
 
 var _ nodestatus.Report = stubReport{}

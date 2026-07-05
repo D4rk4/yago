@@ -26,6 +26,13 @@ func (id Identity) Uptime(now time.Time) int {
 	return int(now.Sub(id.Start).Minutes())
 }
 
+// UptimeSeconds reports uptime in seconds, unlike Uptime which reports the
+// minute-granularity value the YaCy seed carries. The admin console renders this
+// so the figure advances on every refresh rather than only once a minute.
+func (id Identity) UptimeSeconds(now time.Time) int {
+	return int(now.Sub(id.Start).Seconds())
+}
+
 func (id Identity) NetworkMatches(network string) bool {
 	return yagoproto.NetworkUnit(network) == yagoproto.NetworkUnit(id.NetworkName)
 }

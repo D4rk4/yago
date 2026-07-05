@@ -981,10 +981,12 @@ func TestHumanDuration(t *testing.T) {
 
 	cases := map[int]string{
 		0:     "0s",
-		59:    "0m",
-		60:    "1m",
-		3661:  "1h 1m",
-		90061: "1d 1h 1m",
+		45:    "45s",
+		59:    "59s",
+		60:    "1m 0s",
+		3600:  "1h 0m 0s",
+		3661:  "1h 1m 1s",
+		90061: "1d 1h 1m 1s",
 	}
 	for seconds, want := range cases {
 		if got := humanDuration(seconds); got != want {

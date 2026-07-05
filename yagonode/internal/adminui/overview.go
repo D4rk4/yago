@@ -41,15 +41,22 @@ func humanDuration(seconds int) string {
 	days := int(total / (24 * time.Hour))
 	hours := int(total/time.Hour) % 24
 	minutes := int(total/time.Minute) % 60
+	secs := int(total/time.Second) % 60
 
-	parts := make([]string, 0, 3)
+	// Seconds are always shown as the smallest unit so the uptime advances on
+	// every console refresh instead of appearing frozen between minute ticks; a
+	// larger unit pulls in every unit below it.
+	parts := make([]string, 0, 4)
 	if days > 0 {
 		parts = append(parts, strconv.Itoa(days)+"d")
 	}
-	if hours > 0 {
+	if days > 0 || hours > 0 {
 		parts = append(parts, strconv.Itoa(hours)+"h")
 	}
-	parts = append(parts, strconv.Itoa(minutes)+"m")
+	if days > 0 || hours > 0 || minutes > 0 {
+		parts = append(parts, strconv.Itoa(minutes)+"m")
+	}
+	parts = append(parts, strconv.Itoa(secs)+"s")
 
 	return strings.Join(parts, " ")
 }

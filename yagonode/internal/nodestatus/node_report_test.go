@@ -211,6 +211,9 @@ func TestHeaderReportsVersionAndUptime(t *testing.T) {
 	if got := report.Uptime(ctx); got != 45 {
 		t.Fatalf("Uptime = %d, want 45", got)
 	}
+	if got := report.UptimeSeconds(ctx); got != 45*60 {
+		t.Fatalf("UptimeSeconds = %d, want %d", got, 45*60)
+	}
 }
 
 func TestNewReportReturnsRuntimeReport(t *testing.T) {

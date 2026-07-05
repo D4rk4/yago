@@ -39,6 +39,10 @@ func (r nodeReport) Uptime(context.Context) int {
 	return r.id.Uptime(r.now())
 }
 
+func (r nodeReport) UptimeSeconds(context.Context) int {
+	return r.id.UptimeSeconds(r.now())
+}
+
 func (r nodeReport) SelfSeed(ctx context.Context) yagomodel.Seed {
 	now := r.now()
 	seed := r.base

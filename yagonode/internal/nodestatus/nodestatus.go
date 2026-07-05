@@ -18,6 +18,7 @@ import (
 type Report interface {
 	Version(ctx context.Context) string
 	Uptime(ctx context.Context) int
+	UptimeSeconds(ctx context.Context) int
 	SelfSeed(ctx context.Context) yagomodel.Seed
 }
 

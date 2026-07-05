@@ -33,7 +33,7 @@ func (s overviewSource) Overview(ctx context.Context) adminui.Overview {
 		PeerHash:      string(seed.Hash),
 		PeerType:      string(peerType),
 		Version:       s.report.Version(ctx),
-		UptimeSeconds: s.report.Uptime(ctx),
+		UptimeSeconds: s.report.UptimeSeconds(ctx),
 		Documents:     documents,
 		Words:         words,
 		KnownPeers:    knownPeers,

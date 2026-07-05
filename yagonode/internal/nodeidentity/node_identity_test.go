@@ -16,6 +16,15 @@ func TestIdentityUptimeRoundsDownToMinutes(t *testing.T) {
 	}
 }
 
+func TestIdentityUptimeSecondsKeepsSecondGranularity(t *testing.T) {
+	start := time.Date(2026, time.July, 1, 10, 0, 0, 0, time.UTC)
+	identity := Identity{Start: start}
+
+	if got := identity.UptimeSeconds(start.Add(90*time.Second + 500*time.Millisecond)); got != 90 {
+		t.Fatalf("UptimeSeconds = %d, want 90", got)
+	}
+}
+
 func TestIdentityNetworkMatchesDefaultNetwork(t *testing.T) {
 	identity := Identity{NetworkName: "freeworld"}
 

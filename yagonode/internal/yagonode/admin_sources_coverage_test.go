@@ -19,7 +19,7 @@ func TestOverviewSourceMapsReport(t *testing.T) {
 	if overview.PeerHash != "0123456789AB" {
 		t.Fatalf("peer hash = %q", overview.PeerHash)
 	}
-	if overview.Version != "1.83" || overview.UptimeSeconds != 5 {
+	if overview.Version != "1.83" || overview.UptimeSeconds != 315 {
 		t.Fatalf("overview = %+v", overview)
 	}
 }
