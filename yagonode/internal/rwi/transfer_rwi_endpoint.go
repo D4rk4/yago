@@ -16,6 +16,8 @@ type transferRWIEndpoint struct {
 	identity nodeidentity.Identity
 	intake   PostingReceiver
 	gate     *httpguard.IntakeGate
+	batchCap int
+	pause    int
 }
 
 func (e transferRWIEndpoint) Serve(
@@ -41,6 +43,17 @@ func (e transferRWIEndpoint) Serve(
 	}
 	if req.MissingIndexesField() {
 		resp.Result = yagoproto.ResultMissingIndexes
+
+		return resp, nil
+	}
+	// A single peer transfer carrying more postings than a batch may hold is a
+	// swarm-transfer admission limit, not a storage failure; answer Busy so the
+	// sender backs off and retries a smaller batch. A non-positive cap disables
+	// the limit. Local crawl ingest bypasses this endpoint and is never
+	// size-capped.
+	if e.batchCap > 0 && len(req.Indexes) > e.batchCap {
+		resp.Result = yagoproto.ResultBusy
+		resp.Pause = e.pause
 
 		return resp, nil
 	}

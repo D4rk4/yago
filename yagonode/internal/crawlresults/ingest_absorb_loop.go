@@ -41,7 +41,7 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 
 	owned, err := c.owner.OwnsProfile(ctx, batch.ProfileHandle)
 	if err != nil {
-		c.redeliver(ctx, delivery, batch.SourceURL, err)
+		c.redeliver(ctx, delivery, batch.SourceURL, "ownership check", err)
 		return
 	}
 	if !owned {
@@ -49,30 +49,27 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 		return
 	}
 
-	if c.documents != nil && hasDocument(batch.Document) {
-		doc := documentFromIngest(batch.Document)
-		documentReceipt, err := c.documents.Receive(ctx, []documentstore.Document{doc})
-		if err != nil || documentReceipt.Busy {
-			c.redeliver(ctx, delivery, batch.SourceURL, err)
-			return
-		}
-		if c.index != nil {
-			if err := c.index.Index(ctx, doc); err != nil {
-				c.redeliver(ctx, delivery, batch.SourceURL, err)
-				return
-			}
-		}
+	if deferred := c.storeDocument(ctx, delivery, batch); deferred {
+		return
 	}
 
 	urlReceipt, err := c.urls.Receive(ctx, batch.Metadata)
-	if err != nil || urlReceipt.Busy {
-		c.redeliver(ctx, delivery, batch.SourceURL, err)
+	if err != nil {
+		c.redeliver(ctx, delivery, batch.SourceURL, "url metadata store", err)
+		return
+	}
+	if urlReceipt.Busy {
+		c.redeliver(ctx, delivery, batch.SourceURL, "url metadata at capacity", nil)
 		return
 	}
 
 	postingReceipt, err := c.postings.Receive(ctx, batch.Postings)
-	if err != nil || postingReceipt.Busy {
-		c.redeliver(ctx, delivery, batch.SourceURL, err)
+	if err != nil {
+		c.redeliver(ctx, delivery, batch.SourceURL, "posting store", err)
+		return
+	}
+	if postingReceipt.Busy {
+		c.redeliver(ctx, delivery, batch.SourceURL, "posting store at capacity", nil)
 		return
 	}
 
@@ -92,6 +89,39 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 		slog.Bool("document", hasDocument(batch.Document)),
 		slog.Int("metadata", len(batch.Metadata)),
 		slog.Int("postings", len(batch.Postings)))
+}
+
+// storeDocument persists and indexes the batch's document, if it carries one. It
+// returns true when the batch was redelivered (a store error or capacity
+// backpressure), so absorb stops before metadata and postings; a document store
+// and its search index must stay in step.
+func (c *IngestConsumer) storeDocument(
+	ctx context.Context,
+	delivery IngestDelivery,
+	batch yagocrawlcontract.IngestBatch,
+) bool {
+	if c.documents == nil || !hasDocument(batch.Document) {
+		return false
+	}
+
+	doc := documentFromIngest(batch.Document)
+	receipt, err := c.documents.Receive(ctx, []documentstore.Document{doc})
+	if err != nil {
+		c.redeliver(ctx, delivery, batch.SourceURL, "document store", err)
+		return true
+	}
+	if receipt.Busy {
+		c.redeliver(ctx, delivery, batch.SourceURL, "document store at capacity", nil)
+		return true
+	}
+	if c.index != nil {
+		if err := c.index.Index(ctx, doc); err != nil {
+			c.redeliver(ctx, delivery, batch.SourceURL, "search index", err)
+			return true
+		}
+	}
+
+	return false
 }
 
 // recordFetch feeds the recrawl schedule after a page batch is absorbed. It is
@@ -191,15 +221,28 @@ func imageMetadataFromIngest(in []yagocrawlcontract.ImageMetadata) []documentsto
 	return out
 }
 
+// redeliver naks a batch so the stream hands it back later. A nil cause means
+// plain capacity backpressure — an expected, self-clearing condition logged at
+// debug so a busy vault cannot flood the operator; a non-nil cause is a real
+// storage fault and is logged at warn with the error.
 func (c *IngestConsumer) redeliver(
 	ctx context.Context,
 	delivery IngestDelivery,
 	sourceURL string,
+	reason string,
 	cause error,
 ) {
 	c.observer.ObserveDeferred()
-	slog.WarnContext(ctx, msgIngestBatchDeferred,
-		slog.String("sourceUrl", sourceURL), slog.Any("error", cause))
+	if cause != nil {
+		slog.WarnContext(ctx, msgIngestBatchDeferred,
+			slog.String("sourceUrl", sourceURL),
+			slog.String("reason", reason),
+			slog.Any("error", cause))
+	} else {
+		slog.DebugContext(ctx, msgIngestBatchDeferred,
+			slog.String("sourceUrl", sourceURL),
+			slog.String("reason", reason))
+	}
 	if err := delivery.Nak(ctx); err != nil {
 		slog.WarnContext(ctx, msgIngestNakFailed,
 			slog.String("sourceUrl", sourceURL), slog.Any("error", err))

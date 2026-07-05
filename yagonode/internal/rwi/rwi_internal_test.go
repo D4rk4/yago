@@ -482,6 +482,7 @@ func TestMountTransferRWIServesRoute(t *testing.T) {
 		localIdentity(),
 		fakePostingReceiver{},
 		nil,
+		Config{BatchCap: 10, PauseSeconds: 5},
 	)
 	req := yagoproto.TransferRWIRequest{
 		NetworkName: "freeworld",

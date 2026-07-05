@@ -354,7 +354,13 @@ func mountNodeProtocol(
 	// inbound remote searches (YaCy 1.0 distributed-search DoS protection).
 	transferGate := httpguard.NewIntakeGate(dhtInboundTransferSlots)
 	urlmeta.MountTransferURL(router, identity, storage.urlReceiver, transferGate)
-	rwi.MountTransferRWI(router, identity, storage.postingReceiver, transferGate)
+	rwi.MountTransferRWI(
+		router,
+		identity,
+		storage.postingReceiver,
+		transferGate,
+		rwi.Config{BatchCap: receiveBatchCap, PauseSeconds: receiveBusyPauseSecs},
+	)
 	nodestatus.MountQuery(
 		router,
 		identity,

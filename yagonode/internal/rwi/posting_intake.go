@@ -15,7 +15,6 @@ type postingIntake struct {
 	postings     *vault.Collection[yagomodel.RWIPosting]
 	observers    postingObservers
 	urls         urlmeta.URLDirectory
-	batchCap     int
 	pauseSeconds int
 }
 
@@ -23,10 +22,6 @@ func (i postingIntake) Receive(
 	ctx context.Context,
 	entries []yagomodel.RWIPosting,
 ) (Receipt, error) {
-	if len(entries) > i.batchCap {
-		return Receipt{Busy: true, Pause: i.pauseSeconds}, nil
-	}
-
 	atCapacity, err := i.vault.AtCapacity(ctx)
 	if err != nil {
 		return Receipt{}, fmt.Errorf("check capacity: %w", err)

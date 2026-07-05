@@ -26,6 +26,7 @@ type harness struct {
 	urls     urlmeta.URLReceiver
 	rwi      rwiPorts
 	observer *recordingObserver
+	batchCap int
 }
 
 func openHarness(t *testing.T, quotaBytes int64, batchCap int) harness {
@@ -61,6 +62,7 @@ func openHarness(t *testing.T, quotaBytes int64, batchCap int) harness {
 		urls:     urlReceiver,
 		rwi:      rwiPorts{Index: index, Receiver: receiver, Purger: purger},
 		observer: observer,
+		batchCap: batchCap,
 	}
 }
 
@@ -172,7 +174,11 @@ func TestIntakeBusyAtCapacity(t *testing.T) {
 	}
 }
 
-func TestIntakeBusyOverBatchCap(t *testing.T) {
+// TestIntakeStoresBatchesLargerThanTransferCap guards the fix for the crawl
+// ingest flood: the per-transfer batch cap is a swarm-transfer admission limit,
+// not a storage limit, so the shared intake must absorb a local crawl page whose
+// posting count exceeds the cap instead of deferring it forever.
+func TestIntakeStoresBatchesLargerThanTransferCap(t *testing.T) {
 	ctx := context.Background()
 	h := openHarness(t, 0, 1)
 
@@ -183,7 +189,7 @@ func TestIntakeBusyOverBatchCap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Intake: %v", err)
 	}
-	if !receipt.Busy {
-		t.Fatalf("receipt = %+v, want Busy over batch cap", receipt)
+	if receipt.Busy {
+		t.Fatalf("receipt = %+v, want stored despite exceeding the transfer cap", receipt)
 	}
 }

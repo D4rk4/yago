@@ -9,7 +9,12 @@ import (
 )
 
 func (h harness) endpoint() transferRWIEndpoint {
-	return transferRWIEndpoint{identity: localIdentity(), intake: h.rwi.Receiver}
+	return transferRWIEndpoint{
+		identity: localIdentity(),
+		intake:   h.rwi.Receiver,
+		batchCap: h.batchCap,
+		pause:    5,
+	}
 }
 
 func TestTransferRWIReportsBusy(t *testing.T) {
@@ -37,6 +42,40 @@ func TestTransferRWIReportsBusy(t *testing.T) {
 	}
 	if resp.Pause != 5 {
 		t.Fatalf("Pause = %d, want 5", resp.Pause)
+	}
+}
+
+func TestTransferRWIRejectsOversizedBatch(t *testing.T) {
+	h := openHarness(t, 0, 1)
+
+	req := yagoproto.TransferRWIRequest{
+		NetworkName: "freeworld",
+		YouAre:      localIdentity().Hash,
+		WordCount:   2,
+		EntryCount:  2,
+		Indexes: []yagomodel.RWIPosting{
+			posting("w1", "u1"),
+			posting("w2", "u2"),
+		},
+	}
+
+	resp, err := h.endpoint().Serve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if resp.Result != yagoproto.ResultBusy {
+		t.Fatalf("Result = %q, want busy over transfer cap", resp.Result)
+	}
+	if resp.Pause != 5 {
+		t.Fatalf("Pause = %d, want configured backoff", resp.Pause)
+	}
+
+	rwiCount, err := h.rwi.Index.RWICount(context.Background())
+	if err != nil {
+		t.Fatalf("RWICount: %v", err)
+	}
+	if rwiCount != 0 {
+		t.Fatalf("RWICount = %d, want nothing stored for a rejected transfer", rwiCount)
 	}
 }
 

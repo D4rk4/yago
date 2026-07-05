@@ -78,7 +78,6 @@ func Open(
 		postings:     postings,
 		observers:    watched,
 		urls:         urls,
-		batchCap:     cfg.BatchCap,
 		pauseSeconds: cfg.PauseSeconds,
 	}
 
@@ -90,12 +89,19 @@ func MountTransferRWI(
 	identity nodeidentity.Identity,
 	receiver PostingReceiver,
 	gate *httpguard.IntakeGate,
+	cfg Config,
 ) {
 	httpguard.Mount(
 		router,
 		yagoproto.PathTransferRWI,
 		yagoproto.TransferRWIEndpointMethods,
 		yagoproto.ParseTransferRWIRequest,
-		transferRWIEndpoint{identity: identity, intake: receiver, gate: gate}.Serve,
+		transferRWIEndpoint{
+			identity: identity,
+			intake:   receiver,
+			gate:     gate,
+			batchCap: cfg.BatchCap,
+			pause:    cfg.PauseSeconds,
+		}.Serve,
 	)
 }
