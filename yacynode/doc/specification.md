@@ -15,7 +15,6 @@ Additional YaCy-related capabilities can be provided by separate services when n
 * Full-text indexing or local search UI.
 * Solr, Lucene, Elasticsearch, or equivalent full-text integration.
 * Citation graphs, webgraph indexing, or media indexing.
-* Outbound DHT distribution of stored RWI postings to other peers.
 * A full-scale Go YaCy node beyond DHT RWI storage and serving.
 
 ## Functional Requirements
@@ -39,6 +38,14 @@ Additional YaCy-related capabilities can be provided by separate services when n
 * The node SHALL store accepted RWI postings and the URL metadata those postings reference.
 * The node SHALL allow operators to configure its storage quota.
 * The node SHALL NOT store full document bodies.
+* The node SHALL let operators enable outbound DHT distribution of its stored postings; it
+  is disabled by default.
+* The node SHALL let operators configure how many responsible peers each posting reaches.
+* The node SHALL let operators configure the fewest known reachable peers distribution needs,
+  and SHALL pause distribution while the network is below it.
+* When enabled, the node SHALL offer each stored posting to the peers the DHT makes
+  responsible for it.
+* The node SHALL treat a posting as distributed only once that many responsible peers accept it.
 
 ## Non-Functional Requirements
 
@@ -48,6 +55,8 @@ Additional YaCy-related capabilities can be provided by separate services when n
 * The node SHALL set explicit limits on all caches, queues, buffers, batches, and request bodies.
 * The node SHALL complete requests within bounded deadlines.
 * The node SHALL prefer availability and data integrity over ingestion throughput.
+* The node SHALL serve and store first and distribute only with the resources left over,
+  within operator-set bounds.
 * The node SHALL support low-resource Linux-class devices, including Raspberry-Pi-class hardware.
 * The node SHALL preserve compatibility with standard YaCy peer-to-peer contracts.
 * The node SHALL NOT require rebuilding the complete index in memory after restart.
