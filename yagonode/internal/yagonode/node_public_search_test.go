@@ -206,7 +206,7 @@ func TestNodePublicSearchUsesDHTRedundancyConfig(t *testing.T) {
 }
 
 func TestNodePublicSearchInstallsRemoteResultCache(t *testing.T) {
-	searcher := mountNodePublicSearch(http.NewServeMux(), publicSearchAssembly{
+	searcher, _ := mountNodePublicSearch(http.NewServeMux(), publicSearchAssembly{
 		storage: nodeStorage{
 			searchIndex:  stubSearchIndex{},
 			postings:     publicSearchPostingIndex{},

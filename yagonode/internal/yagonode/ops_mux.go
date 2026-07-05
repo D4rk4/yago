@@ -9,12 +9,38 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/events"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/seedimport"
+	"github.com/D4rk4/yago/yagonode/internal/yacysearch"
 )
 
 const (
 	pathHealth  = "/health"
 	pathMetrics = "/metrics"
 )
+
+// registerQueueDepthMetrics exposes the DHT and crawl queue depths as metrics
+// and returns the crawl-depth source the Performance section shares.
+func registerQueueDepthMetrics(
+	endpoints *metrics.HTTPEndpointMetrics,
+	assembled node,
+) crawlQueueDepthSource {
+	crawlDepth := crawlQueueDepthSource{probe: crawlQueueProbe(assembled.crawl)}
+	metrics.NewQueueDepthMetrics(
+		endpoints.Registry(),
+		newQueueDepthSource(assembled.dht.gateStatus, crawlDepth),
+	)
+
+	return crawlDepth
+}
+
+// adminSearchSuggest backs the admin console's search autocomplete with the
+// same local-only, denylist-filtered suggest source the public surfaces use.
+func adminSearchSuggest(assembled node) http.Handler {
+	if assembled.suggest == nil {
+		return nil
+	}
+
+	return yacysearch.NewSuggestHandler(assembled.suggest)
+}
 
 // opsIndexSource assembles the Index-section source with its on-disk usage
 // providers: the full-text index directory and the data vault with its quota.
@@ -30,11 +56,7 @@ func buildOpsMux(
 	recorder *events.Recorder,
 	sources consoleAdminSources,
 ) *http.ServeMux {
-	crawlDepth := crawlQueueDepthSource{probe: crawlQueueProbe(assembled.crawl)}
-	metrics.NewQueueDepthMetrics(
-		endpoints.Registry(),
-		newQueueDepthSource(assembled.dht.gateStatus, crawlDepth),
-	)
+	crawlDepth := registerQueueDepthMetrics(endpoints, assembled)
 	opsMux := newOpsMux(
 		metricsHandler(endpoints, config.MetricsEnabled),
 		assembled.readiness,
@@ -74,6 +96,7 @@ func buildOpsMux(
 		Performance:       newPerformanceSource(assembled.dht.gateStatus, crawlDepth),
 		SeedlistRefresh:   seedRefresh,
 		SearchLinksNewTab: config.SearchLinksNewTab,
+		SearchSuggest:     adminSearchSuggest(assembled),
 	}
 	applyIndexAdminOptions(&options, assembled)
 	if assembled.roster != nil {

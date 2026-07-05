@@ -4,8 +4,17 @@
 <form class="cds-search-form" method="get" action="/admin/search" role="search">
   <div class="cds-field">
     <label class="cds-label" for="q">Query</label>
+    {{if .SuggestEnabled}}
+    <span class="cds-ac-wrap">
+      <input class="cds-input" type="search" id="q" name="q" value="{{.Query}}"
+             role="combobox" aria-autocomplete="list" aria-expanded="false"
+             aria-controls="ac-list" autocomplete="off" autofocus>
+      <ul id="ac-list" class="cds-ac-list" role="listbox" aria-label="Search suggestions" hidden></ul>
+    </span>
+    {{else}}
     <input class="cds-input" type="search" id="q" name="q" value="{{.Query}}"
            autocomplete="off" autofocus>
+    {{end}}
   </div>
   <fieldset class="cds-field">
     <legend class="cds-label">Scope</legend>
@@ -47,4 +56,5 @@
 </nav>
 {{end}}
 {{end}}
+{{if .SuggestEnabled}}<script src="/admin/assets/autocomplete.js" defer></script>{{end}}
 {{end}}

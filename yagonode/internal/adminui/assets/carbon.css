@@ -294,3 +294,9 @@ a:focus, button:focus, input:focus, select:focus, [tabindex]:focus {
   .cds-nav__link[aria-current="page"] { border-left: none; border-bottom-color: var(--cds-interactive); }
   .cds-main { padding: var(--cds-spacing-05); }
 }
+
+/* Search-box autocomplete (combobox over listbox) */
+.cds-ac-wrap { position: relative; display: block; }
+.cds-ac-list { position: absolute; left: 0; right: 0; top: 100%; margin: 0; padding: 0; list-style: none; background: var(--cds-layer, #fff); border: 1px solid var(--cds-border-subtle, #c6c6c6); z-index: 10; }
+.cds-ac-list li { padding: 0.4rem 0.75rem; cursor: pointer; }
+.cds-ac-list li[aria-selected="true"], .cds-ac-list li:hover { background: var(--cds-layer-hover, #e8e8e8); }

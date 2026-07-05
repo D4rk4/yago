@@ -43,6 +43,7 @@ type node struct {
 	searchRanking http.Handler
 	report        nodestatus.Report
 	searcher      searchcore.Searcher
+	suggest       searchcore.Searcher
 	index         searchindex.SearchIndex
 	docScan       documentstore.StoredDocuments
 	hostRank      *hostrank.Holder
@@ -113,7 +114,6 @@ func assembleNode(
 	if err != nil {
 		return node{}, err
 	}
-
 	roster, news, tally, blocks, err := openPeerStores(vault, telemetry.peer)
 	if err != nil {
 		return node{}, err
@@ -169,6 +169,7 @@ func assembleNode(
 		dht:       surfaces.dht,
 		report:    report,
 		searcher:  surfaces.searcher,
+		suggest:   surfaces.suggest,
 		roster:    roster,
 		news:      news,
 		vault:     vault,
@@ -211,6 +212,7 @@ type nodeSurfaces struct {
 	crawl     crawlProcess
 	dht       dhtOutboundProcess
 	searcher  searchcore.Searcher
+	suggest   searchcore.Searcher
 	publicMux *http.ServeMux
 	ranking   *rankingprofile.Holder
 	hostRank  *hostrank.Holder
@@ -234,7 +236,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	}
 	publicMux := http.NewServeMux()
 	hostRankHolder := hostrank.NewHolder()
-	searcher := mountNodePublicSearch(publicMux, publicSearchAssembly{
+	searcher, suggest := mountNodePublicSearch(publicMux, publicSearchAssembly{
 		storage:            in.storage,
 		hostRank:           hostRankHolder.Current,
 		roster:             in.roster,
@@ -272,6 +274,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		crawl:     runtime,
 		dht:       dht,
 		searcher:  searcher,
+		suggest:   suggest,
 		publicMux: publicMux,
 		ranking:   ranking,
 		hostRank:  hostRankHolder,
@@ -288,6 +291,7 @@ type nodeParts struct {
 	dht       dhtOutboundProcess
 	report    nodestatus.Report
 	searcher  searchcore.Searcher
+	suggest   searchcore.Searcher
 	roster    peerroster.Roster
 	news      *peernews.Pool
 	vault     *vault.Vault
@@ -309,6 +313,7 @@ func newAssembledNode(parts nodeParts) node {
 		searchRanking: newSearchRankingEndpoint(parts.ranking),
 		report:        parts.report,
 		searcher:      parts.searcher,
+		suggest:       parts.suggest,
 		index:         parts.storage.searchIndex,
 		docScan:       parts.storage.storedDocuments(),
 		hostRank:      parts.hostRank,

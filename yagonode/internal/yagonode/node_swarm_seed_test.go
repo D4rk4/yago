@@ -73,7 +73,7 @@ func (nullCrawlQueue) PublishOnce(
 }
 
 func TestNodePublicSearchInstallsSwarmSeedCrawl(t *testing.T) {
-	searcher := mountNodePublicSearch(http.NewServeMux(), publicSearchAssembly{
+	searcher, _ := mountNodePublicSearch(http.NewServeMux(), publicSearchAssembly{
 		storage: nodeStorage{
 			postings:     publicSearchPostingIndex{},
 			urlDirectory: publicSearchURLDirectory{},

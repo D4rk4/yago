@@ -19,7 +19,7 @@ import (
 //go:embed templates/*.tmpl
 var templateFS embed.FS
 
-//go:embed assets/carbon.css assets/htmx.min.js
+//go:embed assets/carbon.css assets/htmx.min.js assets/autocomplete.js
 var assetFS embed.FS
 
 // BasePath is where the console mounts on the operations listener.
@@ -112,6 +112,9 @@ type Options struct {
 	// indicator; the default keeps NN/G same-tab navigation.
 	SearchLinksNewTab bool
 	PeerBlock         PeerBlockSource
+	// SearchSuggest, when set, serves OpenSearch suggestion JSON for the console
+	// search box autocomplete at GET /admin/search/suggest.
+	SearchSuggest http.Handler
 }
 
 type sectionView struct {
@@ -149,18 +152,19 @@ type peerDetailPageData struct {
 }
 
 type searchPageData struct {
-	AppName    string
-	ActivePath string
-	Nav        []NavItem
-	CSRF       string
-	Section    sectionView
-	Query      string
-	Global     bool
-	Submitted  bool
-	Error      string
-	Results    SearchResults
-	Pagination SearchPagination
-	NewTab     bool
+	AppName        string
+	ActivePath     string
+	Nav            []NavItem
+	CSRF           string
+	Section        sectionView
+	Query          string
+	Global         bool
+	Submitted      bool
+	Error          string
+	Results        SearchResults
+	Pagination     SearchPagination
+	NewTab         bool
+	SuggestEnabled bool
 }
 
 type crawlForm struct {
@@ -317,6 +321,7 @@ type Console struct {
 	peerNews        PeerNewsSource
 	seedlistRefresh SeedlistRefreshSource
 	peerBlock       PeerBlockSource
+	searchSuggest   http.Handler
 }
 
 // New builds the console with its embedded templates, assets, and providers.
@@ -332,6 +337,7 @@ func New(opts Options) *Console {
 		overview:        opts.Overview,
 		search:          opts.Search,
 		searchNewTab:    opts.SearchLinksNewTab,
+		searchSuggest:   opts.SearchSuggest,
 		crawl:           opts.Crawl,
 		monitor:         opts.Monitor,
 		control:         opts.Control,
@@ -381,6 +387,9 @@ func buildTemplates() templates {
 
 func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.Handle("GET /admin/assets/", assetHandler(assets))
+	if c.searchSuggest != nil {
+		c.mux.Handle("GET /admin/search/suggest", c.searchSuggest)
+	}
 	c.mux.HandleFunc("GET /admin/{$}", handleRoot)
 	c.mux.HandleFunc("GET "+overviewPath, c.handleOverview)
 	c.mux.HandleFunc("GET "+overviewMetricsPath, c.handleOverviewMetrics)
@@ -963,7 +972,8 @@ func (c *Console) handleSearch(w http.ResponseWriter, r *http.Request) {
 		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Search", Available: true},
 		Query:   query, Global: global,
-		NewTab: c.searchNewTab,
+		NewTab:         c.searchNewTab,
+		SuggestEnabled: c.searchSuggest != nil,
 	}
 
 	if query != "" {

@@ -130,10 +130,13 @@ func mountPeerLanding(mux *http.ServeMux) {
 	mux.Handle("/{$}", landing.NewEndpoint(buildVersion))
 }
 
+// mountNodePublicSearch wires the public surfaces and returns the decorated
+// search pipeline plus the local-only suggest source (index suggestions with
+// the denylist applied), which the admin console reuses for its autocomplete.
 func mountNodePublicSearch(
 	mux *http.ServeMux,
 	assembly publicSearchAssembly,
-) searchcore.Searcher {
+) (searchcore.Searcher, searchcore.Searcher) {
 	local := searchlocal.NewSearcherWithRanking(
 		assembly.storage.searchIndex,
 		assembly.rankingWeights,
@@ -202,7 +205,7 @@ func mountNodePublicSearch(
 	)
 	mountPortalOpenSearch(mux, assembly.toggles)
 
-	return search
+	return search, suggestSource
 }
 
 // mountPortalOpenSearch registers the portal's OpenSearch description document
