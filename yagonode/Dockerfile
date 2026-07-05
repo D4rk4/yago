@@ -4,7 +4,10 @@ FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.26 AS build
 
 ARG TARGETOS
 ARG TARGETARCH
-ARG VERSION=dev
+# Optional release stamp for the yago brand version (e.g. 2026.7 or 2026.7-abc123).
+# Left empty, the binary reports its compiled-in calendar default; the numeric
+# YaCy protocol version is a constant and is never injected here.
+ARG VERSION=
 
 ENV CGO_ENABLED=0 GOFLAGS=-trimpath
 
@@ -28,7 +31,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build \
-        -ldflags="-s -w -X github.com/D4rk4/yago/yagonode/internal/yagonode.version=${VERSION}" \
+        -ldflags="-s -w ${VERSION:+-X github.com/D4rk4/yago/yagonode/internal/yagonode.buildVersion=${VERSION}}" \
         -o /out/yago-node \
         ./yagonode/cmd/yago-node
 

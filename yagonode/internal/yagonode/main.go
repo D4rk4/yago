@@ -22,16 +22,9 @@ const (
 	// seed's Version field. YaCy peers parse it with Float/Double.parseFloat and
 	// gate features on it, so it must stay a plain float string; it tracks the
 	// current YaCy release (build.properties releaseVersion) so peers treat this
-	// node as a current participant rather than a stale one.
+	// node as a current participant rather than a stale one. It is a constant
+	// deliberately: the protocol version must never be overridden at build time.
 	version = "1.941"
-	// buildVersion is yago's own calendar build version (YYYY.M). It is a brand
-	// identity for the User-Agent and human-facing display, kept separate from the
-	// numeric YaCy protocol version above so the two evolve independently.
-	buildVersion = "2026.7"
-	// userAgent brands this node's outbound requests as yago while declaring the
-	// YaCy protocol version it speaks. It is applied only where a caller has not
-	// already set its own User-Agent (see egress_client.go).
-	userAgent = "yago/" + buildVersion + " (+https://github.com/D4rk4/yago; YaCy/" + version + " compatible)"
 
 	receiveBatchCap       = 1000
 	receiveBusyPauseSecs  = 30
@@ -45,6 +38,20 @@ const (
 	serverReadHeaderTimeout = 10 * time.Second
 	shutdownTimeout         = 15 * time.Second
 )
+
+// buildVersion is yago's own calendar build version (YYYY.M), a brand identity
+// kept separate from the numeric YaCy protocol version so the two evolve
+// independently. It is a var, not a const, so a release build can stamp a precise
+// version through -ldflags "-X ...yagonode.buildVersion=<ver>" (see the
+// Dockerfile); left unstamped it reports the calendar default.
+var buildVersion = "2026.7"
+
+// userAgent brands this node's outbound requests as yago while declaring the YaCy
+// protocol version it speaks. It is applied only where a caller has not already
+// set its own User-Agent (see egress_client.go). It derives from buildVersion at
+// startup, so a stamped build is reflected here too.
+var userAgent = "yago/" + buildVersion +
+	" (+https://github.com/D4rk4/yago; YaCy/" + version + " compatible)"
 
 var (
 	exitProcess         = os.Exit

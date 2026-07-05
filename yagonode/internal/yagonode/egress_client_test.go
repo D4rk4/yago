@@ -3,10 +3,23 @@ package yagonode
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagoegress"
 )
+
+func TestUserAgentEmbedsBuildAndProtocolVersions(t *testing.T) {
+	if !strings.HasPrefix(userAgent, "yago/") {
+		t.Errorf("userAgent %q should identify the node as yago", userAgent)
+	}
+	if !strings.Contains(userAgent, buildVersion) {
+		t.Errorf("userAgent %q should carry the build version %q", userAgent, buildVersion)
+	}
+	if !strings.Contains(userAgent, "YaCy/"+version) {
+		t.Errorf("userAgent %q should declare the YaCy protocol version %q", userAgent, version)
+	}
+}
 
 type recordingRoundTripper struct {
 	seenUserAgent string
