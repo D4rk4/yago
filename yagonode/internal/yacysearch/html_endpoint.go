@@ -3,9 +3,11 @@ package yacysearch
 import (
 	"html/template"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagoproto"
 )
 
 type htmlEndpoint struct {
@@ -25,6 +27,11 @@ type htmlSearchPage struct {
 	PartialFailures    []searchcore.PartialFailure
 	ShowResults        bool
 	ShowPartialFailure bool
+	Page               int
+	HasPrev            bool
+	HasNext            bool
+	PrevURL            string
+	NextURL            string
 }
 
 type htmlSearchItem struct {
@@ -70,6 +77,13 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 </li>
 {{end}}
 </ol>
+{{if or .HasPrev .HasNext}}
+<nav aria-label="Result pages">
+{{if .HasPrev}}<a rel="prev" href="{{.PrevURL}}">&lsaquo; Previous</a>{{end}}
+<span>Page {{.Page}}</span>
+{{if .HasNext}}<a rel="next" href="{{.NextURL}}">Next &rsaquo;</a>{{end}}
+</nav>
+{{end}}
 </section>
 {{end}}
 </main>
@@ -104,7 +118,7 @@ func responseHTML(r *http.Request, resp searchcore.Response) htmlSearchPage {
 	base := searchBaseURL(r)
 	rawSearchURL := searchURL(base, resp.Request)
 
-	return htmlSearchPage{
+	page := htmlSearchPage{
 		Query:              resp.Request.Query,
 		Resource:           string(resp.Request.Source),
 		ContentDomain:      string(resp.Request.ContentDomain),
@@ -117,6 +131,46 @@ func responseHTML(r *http.Request, resp searchcore.Response) htmlSearchPage {
 		ShowResults:        resp.Request.Query != "",
 		ShowPartialFailure: len(resp.PartialFailures) > 0,
 	}
+	applyHTMLPagination(&page, base, resp)
+
+	return page
+}
+
+// applyHTMLPagination fills the prev/next navigation from the request window and
+// total, using YaCy's startRecord/maximumRecords parameters so links stay
+// compatible with the OpenSearch paging contract. It no-ops when the limit is
+// unset (no meaningful page size).
+func applyHTMLPagination(page *htmlSearchPage, base string, resp searchcore.Response) {
+	limit := resp.Request.Limit
+	if limit <= 0 {
+		return
+	}
+	offset := resp.Request.Offset
+	page.Page = offset/limit + 1
+
+	if offset > 0 {
+		prev := offset - limit
+		if prev < 0 {
+			prev = 0
+		}
+		page.HasPrev = true
+		page.PrevURL = htmlPageURL(base, resp.Request, prev)
+	}
+	if offset+len(resp.Results) < resp.TotalResults {
+		page.HasNext = true
+		page.NextURL = htmlPageURL(base, resp.Request, offset+limit)
+	}
+}
+
+func htmlPageURL(base string, req searchcore.Request, offset int) string {
+	values := url.Values{}
+	values.Set(yagoproto.FieldQuery, req.Query)
+	values.Set(yagoproto.FieldResource, string(req.Source))
+	values.Set(yagoproto.FieldContentDom, string(req.ContentDomain))
+	values.Set(yagoproto.FieldMaximumRecords, strconv.Itoa(req.Limit))
+	values.Set(yagoproto.FieldStartRecord, strconv.Itoa(offset))
+
+	return base + "?" + values.Encode()
 }
 
 func responseHTMLItems(results []searchcore.Result) []htmlSearchItem {

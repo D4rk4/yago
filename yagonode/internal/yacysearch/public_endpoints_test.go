@@ -337,6 +337,80 @@ func TestHTMLEndpointReturnsSearchPage(t *testing.T) {
 	}
 }
 
+func TestHTMLEndpointRendersPagination(t *testing.T) {
+	search := &fakeSearch{response: searchcore.Response{
+		TotalResults: 100,
+		Results:      []searchcore.Result{{Title: "Result", URL: "https://example.org/doc"}},
+	}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"http://node.test/yacysearch.html?query=go&resource=local&startRecord=10&maximumRecords=10",
+		nil,
+	)
+
+	htmlEndpoint{search: search, suggestions: newRecentQueries()}.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, expected := range []string{
+		"Previous", "Next", "Page 2", `rel="prev"`, `rel="next"`,
+		"startRecord=0", "startRecord=20", "query=go", "maximumRecords=10",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("paginated page missing %q in %s", expected, body)
+		}
+	}
+}
+
+func TestHTMLEndpointFirstPageHasNoPrev(t *testing.T) {
+	search := &fakeSearch{response: searchcore.Response{
+		TotalResults: 100,
+		Results:      []searchcore.Result{{Title: "Result", URL: "https://example.org/doc"}},
+	}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"http://node.test/yacysearch.html?query=go&maximumRecords=10",
+		nil,
+	)
+
+	htmlEndpoint{search: search, suggestions: newRecentQueries()}.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, `rel="prev"`) {
+		t.Fatal("first page should render no previous link")
+	}
+	if !strings.Contains(body, `rel="next"`) {
+		t.Fatal("first page with more results should render a next link")
+	}
+}
+
+func TestApplyHTMLPaginationEdgeCases(t *testing.T) {
+	// No page size: navigation stays off.
+	off := htmlSearchPage{}
+	applyHTMLPagination(&off, "http://n/yacysearch.html", searchcore.Response{
+		Request:      searchcore.Request{Limit: 0, Offset: 5},
+		TotalResults: 100,
+	})
+	if off.HasPrev || off.HasNext {
+		t.Fatalf("no page size should disable pagination: %+v", off)
+	}
+
+	// A partial first window (offset below the page size) clamps the previous
+	// start to zero rather than going negative.
+	clamp := htmlSearchPage{}
+	applyHTMLPagination(&clamp, "http://n/yacysearch.html", searchcore.Response{
+		Request:      searchcore.Request{Query: "go", Limit: 10, Offset: 5},
+		Results:      []searchcore.Result{{URL: "https://a"}},
+		TotalResults: 100,
+	})
+	if !clamp.HasPrev || !strings.Contains(clamp.PrevURL, "startRecord=0") {
+		t.Fatalf("previous start should clamp to zero: %+v", clamp)
+	}
+}
+
 func suggestionTexts(items []suggestionItem) []string {
 	values := make([]string, 0, len(items))
 	for _, item := range items {
