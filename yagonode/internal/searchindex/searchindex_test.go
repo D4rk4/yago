@@ -288,8 +288,14 @@ func TestBleveMemoryIndexReturnsClosedIndexErrors(t *testing.T) {
 }
 
 func TestBleveSearchQuerySupportsExcludedTerms(t *testing.T) {
-	if bleveSearchQuery(SearchRequest{Query: "golang", ExcludeTerms: []string{"", "java"}}) == nil {
-		t.Fatal("expected query")
+	for _, gram := range []bool{true, false} {
+		query := bleveSearchQuery(
+			SearchRequest{Query: "golang", ExcludeTerms: []string{"", "java"}},
+			gram,
+		)
+		if query == nil {
+			t.Fatalf("expected query (gram=%v)", gram)
+		}
 	}
 }
 

@@ -26,6 +26,7 @@ type BleveDiskIndex struct {
 	documents documentstore.DocumentDirectory
 	updatedAt time.Time
 	closed    bool
+	gram      bool
 	now       func() time.Time
 }
 
@@ -49,7 +50,7 @@ func NewBleveDiskIndex(
 		return nil, fmt.Errorf("document directory required")
 	}
 
-	index, rebuild, updatedAt, err := openOrCreateBleveDisk(path)
+	index, rebuild, updatedAt, err := openOrCreateBleveDisk(path, stored != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -58,6 +59,7 @@ func NewBleveDiskIndex(
 		index:     index,
 		documents: directory,
 		updatedAt: updatedAt,
+		gram:      supportsGramAnalyzer(index),
 		now:       time.Now,
 	}
 	if rebuild && stored != nil {
@@ -146,7 +148,7 @@ func (b *BleveDiskIndex) Search(
 		return SearchResultSet{}, nil
 	}
 
-	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req))
+	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req, b.gram))
 	searchRequest.Size = diskSearchSize(req.MaxResults, bleveDocumentCount(count))
 	searchRequest.Explain = req.Explain
 	result, err := b.index.SearchInContext(ctx, searchRequest)
@@ -230,7 +232,7 @@ func (b *BleveDiskIndex) rebuild(
 	return nil
 }
 
-func openOrCreateBleveDisk(path string) (bleve.Index, bool, time.Time, error) {
+func openOrCreateBleveDisk(path string, canRebuild bool) (bleve.Index, bool, time.Time, error) {
 	info, statErr := os.Stat(path)
 	if errors.Is(statErr, os.ErrNotExist) {
 		indexMapping, err := newSearchIndexMapping()
@@ -249,7 +251,13 @@ func openOrCreateBleveDisk(path string) (bleve.Index, bool, time.Time, error) {
 
 	index, err := openBleveDisk(path)
 	if err == nil {
-		return index, false, info.ModTime().UTC(), nil
+		if supportsGramAnalyzer(index) || !canRebuild {
+			return index, false, info.ModTime().UTC(), nil
+		}
+		// The index predates the trigram analyzer: its persisted mapping can
+		// neither index nor search the gram fields, so rebuild it from the
+		// stored documents under the current mapping.
+		_ = index.Close()
 	}
 	if err := removeBleveDisk(path); err != nil {
 		return nil, false, time.Time{}, fmt.Errorf("repair bleve disk index: %w", err)

@@ -141,6 +141,15 @@ func newSearchGramField(name string) *mapping.FieldMapping {
 	return field
 }
 
+// supportsGramAnalyzer reports whether the index's mapping can resolve the
+// trigram analyzer. An index created before the analyzer existed keeps its
+// original persisted mapping for life, and a query that references the
+// analyzer against such an index fails the whole search with
+// "no analyzer named 'text_gram' registered".
+func supportsGramAnalyzer(index bleve.Index) bool {
+	return index.Mapping().AnalyzerNamed(searchGramAnalyzer) != nil
+}
+
 // registerGramAnalyzer wires the language-agnostic trigram analyzer: the unicode
 // tokenizer splits any script into words, lowercasing and NFKC normalization fold
 // case and width/compatibility variants, and the ngram filter emits overlapping

@@ -25,6 +25,7 @@ type BleveMemoryIndex struct {
 	index     bleve.Index
 	documents map[string]documentstore.Document
 	updatedAt time.Time
+	gram      bool
 	now       func() time.Time
 }
 
@@ -56,6 +57,7 @@ func NewBleveMemoryIndex(
 	out := &BleveMemoryIndex{
 		index:     index,
 		documents: map[string]documentstore.Document{},
+		gram:      supportsGramAnalyzer(index),
 		now:       time.Now,
 	}
 	if stored == nil {
@@ -133,7 +135,7 @@ func (b *BleveMemoryIndex) Search(
 		return SearchResultSet{}, nil
 	}
 
-	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req))
+	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req, b.gram))
 	searchRequest.Size = len(b.documents)
 	searchRequest.Explain = req.Explain
 	result, err := b.index.SearchInContext(ctx, searchRequest)
@@ -171,7 +173,7 @@ func (b *BleveMemoryIndex) Stats(context.Context) (IndexStats, error) {
 	}, nil
 }
 
-func bleveSearchQuery(req SearchRequest) blevequery.Query {
+func bleveSearchQuery(req SearchRequest, gram bool) blevequery.Query {
 	weights := req.Weights.orDefault()
 	main := bleve.NewDisjunctionQuery(
 		fieldMatch("title", req.Query, weights.Title),
@@ -179,14 +181,21 @@ func bleveSearchQuery(req SearchRequest) blevequery.Query {
 		fieldMatch("anchors", req.Query, weights.Anchors),
 		fieldMatch("body", req.Query, weights.Body),
 		fieldMatch("url", req.Query, weights.URL),
+	)
+	if gram {
 		// Language-agnostic trigram recall: a document whose text contains every
 		// trigram of a query word matches even when the word is a morphological
 		// variant or truncation (e.g. "зеленски" -> "зеленский"), for any script.
-		gramMatch("title"+gramFieldSuffix, req.Query, weights.Title*gramWeightFactor),
-		gramMatch("headings"+gramFieldSuffix, req.Query, weights.Headings*gramWeightFactor),
-		gramMatch("anchors"+gramFieldSuffix, req.Query, weights.Anchors*gramWeightFactor),
-		gramMatch("body"+gramFieldSuffix, req.Query, weights.Body*gramWeightFactor),
-	)
+		// Skipped when the index mapping predates the trigram analyzer: such an
+		// index can neither resolve the analyzer nor hold gram fields, and a
+		// query referencing it fails the whole search.
+		main.AddQuery(
+			gramMatch("title"+gramFieldSuffix, req.Query, weights.Title*gramWeightFactor),
+			gramMatch("headings"+gramFieldSuffix, req.Query, weights.Headings*gramWeightFactor),
+			gramMatch("anchors"+gramFieldSuffix, req.Query, weights.Anchors*gramWeightFactor),
+			gramMatch("body"+gramFieldSuffix, req.Query, weights.Body*gramWeightFactor),
+		)
+	}
 	phrases := phraseBoosts(req.Phrases, weights)
 	if len(req.ExcludeTerms) == 0 && len(phrases) == 0 {
 		return main
