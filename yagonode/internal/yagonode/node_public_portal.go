@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/D4rk4/yago/yagonode/internal/cachedpage"
+	"github.com/D4rk4/yago/yagonode/internal/faviconproxy"
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/snippetmark"
@@ -38,6 +39,16 @@ func cachedCopyURL(result searchcore.Result) string {
 	}
 
 	return cachedpage.URLFor(result.URL)
+}
+
+// resultFaviconURL links the result host's icon through this node's favicon
+// proxy, so origin hosts never see the searcher before a click.
+func resultFaviconURL(result searchcore.Result) string {
+	if result.Host == "" {
+		return ""
+	}
+
+	return faviconproxy.URLFor(result.Host)
 }
 
 // resultProvenance labels where a hit came from for the transparency badge.
@@ -86,11 +97,12 @@ func (s portalSource) Search(
 			Snippet:     result.Snippet,
 			SnippetHTML: snippetmark.Highlight(result.Snippet, response.Request.Terms),
 			Host:        result.Host,
-			Date:        result.Date,
+			Date:        result.DisplayDate(),
 			SizeName:    resultSizeName(result.Size),
 			Marked:      result.FromWeb(),
 			CachedURL:   cachedCopyURL(result),
 			Provenance:  provenance,
+			FaviconURL:  resultFaviconURL(result),
 		})
 	}
 

@@ -2,6 +2,17 @@ package searchcore
 
 import "testing"
 
+func TestResultDisplayDateCanonicalForm(t *testing.T) {
+	if got := (Result{Date: "20260520"}).DisplayDate(); got != "Wed, 20 May 2026" {
+		t.Fatalf("display date = %q, want canonical form", got)
+	}
+	for _, raw := range []string{"", "not-a-date", "2026052"} {
+		if got := (Result{Date: raw}).DisplayDate(); got != "" {
+			t.Fatalf("display date for %q = %q, want empty", raw, got)
+		}
+	}
+}
+
 func TestResultProvenanceClassification(t *testing.T) {
 	cases := map[string]struct {
 		source Source

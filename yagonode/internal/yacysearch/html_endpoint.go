@@ -280,7 +280,7 @@ func responseHTMLItems(results []searchcore.Result, terms []string) []htmlSearch
 			// Highlight escapes the snippet before adding <mark>, so this is
 			// the only HTML the description may carry.
 			Description: snippetmark.Highlight(result.Snippet, terms),
-			Date:        result.Date,
+			Date:        result.DisplayDate(),
 			SizeName:    sizeName(result.Size),
 		}
 		if result.StoredLocally() {

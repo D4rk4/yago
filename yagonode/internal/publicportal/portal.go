@@ -49,6 +49,9 @@ type SearchResult struct {
 	// Provenance labels where the hit came from: "local" (this node's index),
 	// "peer" (another swarm peer), or "web" (the external fallback).
 	Provenance string
+	// FaviconURL points at this node's favicon proxy for the result host, so
+	// origin sites never see the searcher's browser before a click.
+	FaviconURL string
 }
 
 // SearchResults is the rendered outcome of a portal query. The per-source

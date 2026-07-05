@@ -39,7 +39,7 @@ func TestPortalSourceHighlightsSnippetsAndCarriesMeta(t *testing.T) {
 		strings.Contains(string(result.SnippetHTML), "<fast>") {
 		t.Fatalf("SnippetHTML = %q", result.SnippetHTML)
 	}
-	if result.Host != "example.org" || result.Date != "20260701" ||
+	if result.Host != "example.org" || result.Date != "Wed, 01 Jul 2026" ||
 		result.SizeName != "2048 bytes" {
 		t.Fatalf("meta = %#v", result)
 	}

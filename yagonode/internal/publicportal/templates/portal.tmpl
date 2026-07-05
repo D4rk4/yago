@@ -19,7 +19,8 @@
   .search button { height: 2.5rem; font-size: 1rem; padding: 0 1rem; background: #d81c2f;
     color: #ffffff; border: none; cursor: pointer; vertical-align: middle; }
   .meta { color: #525252; font-size: 0.8rem; margin: 0.5rem 0 1rem; }
-  .result { margin: 0 0 1.1rem; }
+  .result { margin: 0 0 1.1rem; position: relative; padding-left: 1.5rem; }
+  .result .fav { position: absolute; left: 0; top: 0.25rem; width: 16px; height: 16px; }
   .result a.title { color: #0f62fe; font-size: 1.05rem; text-decoration: none; }
   .result a.title:hover { text-decoration: underline; }
   .result .url { color: #178a3a; font-size: 0.8rem; word-break: break-all; }
@@ -99,6 +100,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   {{if .Results}}<ul class="results">{{end}}
   {{range .Results}}
   <li class="result">
+    {{if .FaviconURL}}<img class="fav" src="{{.FaviconURL}}" alt="" width="16" height="16" loading="lazy">{{end}}
     <a class="title" href="{{.URL}}"{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{if .Marked}}<span class="ddgs">[ddgs]</span> {{end}}{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span class="sr-only"> (opens in new tab)</span>{{end}}</a>
     <div class="url">{{if .DisplayURL}}{{.DisplayURL}}{{else}}{{.URL}}{{end}}{{if .Provenance}} · <span class="prov prov-{{.Provenance}}">{{.Provenance}}</span>{{end}}{{if .Date}} · {{.Date}}{{end}}{{if .SizeName}} · {{.SizeName}}{{end}}{{if .CachedURL}} · <a href="{{.CachedURL}}">cached</a>{{end}}</div>
     {{if .SnippetHTML}}<p>{{.SnippetHTML}}</p>{{else if .Snippet}}<p>{{.Snippet}}</p>{{end}}

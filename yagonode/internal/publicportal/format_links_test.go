@@ -27,6 +27,8 @@ func (cachedSource) Search(
 				URL:        "https://a.example/x",
 				CachedURL:  "/cached?u=https%3A%2F%2Fa.example%2Fx",
 				Provenance: "local",
+				FaviconURL: "/favicon?host=a.example",
+				Date:       "Wed, 20 May 2026",
 			},
 			{
 				Title:      "Peer",
@@ -53,6 +55,8 @@ func TestPortalLinksFormatsAndCachedCopy(t *testing.T) {
 		`href="/cached?u=https%3A%2F%2Fa.example%2Fx">cached</a>`,
 		`<span class="prov prov-local">local</span>`,
 		`<span class="prov prov-peer">peer</span>`,
+		`<img class="fav" src="/favicon?host=a.example"`,
+		"Wed, 20 May 2026",
 		"On this page: 1 from this node · 1 from peers · 0 from the web.",
 		"Searches fan out to peers in the YaCy network",
 	} {

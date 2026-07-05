@@ -42,6 +42,8 @@ components:
     in: internal/hostrank/**
   cachedpage:
     in: internal/cachedpage/**
+  faviconproxy:
+    in: internal/faviconproxy/**
   peermessage:
     in: internal/peermessage/**
   peerprofile:
@@ -531,6 +533,9 @@ deps:
     mayDependOn:
       - cachedpage
       - documentstore
+  faviconproxy:
+    mayDependOn:
+      - faviconproxy
   crawldispatch:
     mayDependOn:
       - crawldispatch
@@ -592,6 +597,7 @@ deps:
       - hostlinks
       - hostrank
       - cachedpage
+      - faviconproxy
       - peermessage
       - peerprofile
       - seedlist
