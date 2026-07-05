@@ -175,10 +175,8 @@ func TestBrowserPageFetcherAppliesTimeout(t *testing.T) {
 
 func TestNewBrowserPageFetcherBuildsFetcher(t *testing.T) {
 	fetcher, cancel, err := NewBrowserPageFetcher(
-		"agent/1.0",
+		BrowserLaunch{UserAgent: "agent/1.0", Timeout: time.Second, MaxBytes: 4 << 20},
 		yagoegress.NewGuard(false),
-		time.Second,
-		4<<20,
 	)
 	if err != nil {
 		t.Fatalf("new fetcher: %v", err)
@@ -190,6 +188,27 @@ func TestNewBrowserPageFetcherBuildsFetcher(t *testing.T) {
 	}
 }
 
+func TestNewBrowserPageFetcherHonorsSandboxAndExecPath(t *testing.T) {
+	fetcher, cancel, err := NewBrowserPageFetcher(
+		BrowserLaunch{
+			UserAgent: "agent/1.0",
+			Timeout:   time.Second,
+			MaxBytes:  4 << 20,
+			ExecPath:  "/usr/bin/chromium",
+			Sandbox:   true,
+		},
+		yagoegress.NewGuard(false),
+	)
+	if err != nil {
+		t.Fatalf("new fetcher: %v", err)
+	}
+	defer cancel()
+
+	if fetcher == nil || fetcher.render == nil {
+		t.Fatal("expected configured fetcher with sandbox and explicit binary")
+	}
+}
+
 func TestNewBrowserPageFetcherFailsWhenProxyCannotListen(t *testing.T) {
 	restore := listenBrowserProxy
 	t.Cleanup(func() { listenBrowserProxy = restore })
@@ -198,10 +217,8 @@ func TestNewBrowserPageFetcherFailsWhenProxyCannotListen(t *testing.T) {
 	}
 
 	if _, _, err := NewBrowserPageFetcher(
-		"agent/1.0",
+		BrowserLaunch{UserAgent: "agent/1.0", Timeout: time.Second, MaxBytes: 4 << 20},
 		yagoegress.NewGuard(false),
-		time.Second,
-		4<<20,
 	); err == nil {
 		t.Fatal("expected error when the browser proxy cannot listen")
 	}

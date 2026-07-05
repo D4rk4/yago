@@ -67,6 +67,13 @@ services:
       YAGOCRAWLER_HEADER_TIMEOUT: ${YAGOCRAWLER_HEADER_TIMEOUT:-10s}
       YAGOCRAWLER_MAX_REDIRECTS: ${YAGOCRAWLER_MAX_REDIRECTS:-10}
       YAGOCRAWLER_SITEMAP_URL_LIMIT: ${YAGOCRAWLER_SITEMAP_URL_LIMIT:-10000}
+      # Slow-path browser: the container image bundles headless-shell on PATH, so
+      # BROWSER_PATH stays empty; a bare-metal/systemd install points it at the
+      # host browser (e.g. /usr/bin/chromium). BROWSER_SANDBOX is off so Chrome
+      # starts in the container and on hosts that restrict user namespaces; a
+      # hardened host may set it true.
+      YAGOCRAWLER_BROWSER_PATH: ${YAGOCRAWLER_BROWSER_PATH:-}
+      YAGOCRAWLER_BROWSER_SANDBOX: ${YAGOCRAWLER_BROWSER_SANDBOX:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
 volumes:

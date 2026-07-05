@@ -37,33 +37,47 @@ type BrowserPageFetcher struct {
 	maxBytes int64
 }
 
+// BrowserLaunch selects how the slow-path browser is launched so the crawler runs
+// the same binary under Docker, systemd on bare metal, and a Debian package.
+// ExecPath names the browser binary; an empty value falls back to discovery on
+// PATH (the bundled headless-shell in the container image, chromium on a Debian
+// host). Sandbox keeps Chrome's own renderer sandbox; it defaults off because the
+// container image and modern hosts that restrict unprivileged user namespaces
+// cannot start the sandbox, and an operator on a host that supports it opts back in.
+type BrowserLaunch struct {
+	UserAgent string
+	Timeout   time.Duration
+	MaxBytes  int64
+	ExecPath  string
+	Sandbox   bool
+}
+
 func NewBrowserPageFetcher(
-	userAgent string,
+	launch BrowserLaunch,
 	guard yagoegress.Guard,
-	timeout time.Duration,
-	maxBytes int64,
 ) (*BrowserPageFetcher, func(), error) {
 	proxy, err := startGuardedForwardProxy((&net.Dialer{Control: guard.DialControl}).DialContext)
 	if err != nil {
 		return nil, nil, fmt.Errorf("start browser egress proxy: %w", err)
 	}
-	// The crawler is a disposable, egress-guarded container that the host isolates,
-	// and current Linux distros disable the unprivileged user namespaces Chrome's
-	// zygote sandbox needs, so the browser aborts with "No usable sandbox" without
-	// these flags. Dropping Chrome's own sandbox is safe here because the container
-	// is the isolation boundary; disable-dev-shm-usage keeps Chrome off the small
-	// default /dev/shm so a large page cannot crash the tab.
+	// disable-dev-shm-usage keeps Chrome off the small default /dev/shm so a large
+	// page cannot crash the tab; it is harmless on every target.
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.UserAgent(userAgent),
-		chromedp.NoSandbox,
+		chromedp.UserAgent(launch.UserAgent),
 		chromedp.Flag("disable-dev-shm-usage", true),
 	)
+	if !launch.Sandbox {
+		opts = append(opts, chromedp.NoSandbox)
+	}
+	if launch.ExecPath != "" {
+		opts = append(opts, chromedp.ExecPath(launch.ExecPath))
+	}
 	opts = append(opts, proxyExecAllocatorOptions(proxy.url)...)
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	fetcher := &BrowserPageFetcher{
 		render:   chromedpRenderer(allocCtx),
-		timeout:  timeout,
-		maxBytes: maxBytes,
+		timeout:  launch.Timeout,
+		maxBytes: launch.MaxBytes,
 	}
 	closeFetcher := func() {
 		allocCancel()

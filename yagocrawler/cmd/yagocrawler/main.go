@@ -47,13 +47,17 @@ func start() int {
 func run(ctx context.Context, cfg ServiceConfig) error {
 	crawl := cfg.Crawl
 	fetcher, closeBrowser, err := newCrawlerBrowserFetcher(
-		crawl.UserAgent,
+		chromedpfetch.BrowserLaunch{
+			UserAgent: crawl.UserAgent,
+			Timeout:   crawl.RequestTimeout,
+			MaxBytes:  crawl.MaxBodyBytes,
+			ExecPath:  crawl.BrowserPath,
+			Sandbox:   crawl.BrowserSandbox,
+		},
 		yagoegress.NewGuard(
 			cfg.EgressAllowLAN,
 			yagoegress.WithPrivateAllowlist(cfg.EgressAllowedCIDRs),
 		),
-		crawl.RequestTimeout,
-		crawl.MaxBodyBytes,
 	)
 	if err != nil {
 		return fmt.Errorf("start browser fetcher: %w", err)

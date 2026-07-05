@@ -2581,8 +2581,16 @@ Acceptance:
 Status: Partial. Task 4 (config reference) is complete: `doc/configuration.md` now
 documents every one of the node's environment variables and its default — an audit
 confirmed all 53 `YAGO_*` variables are covered, adding the two that were missing
-(`YAGO_METRICS_ENABLED`, `YAGO_WEB_FALLBACK_PROVIDER`). Tasks 1–3 (the `/opt/yago`
-Docker layout, `docker-compose.yml.example`, and the systemd unit) remain.
+(`YAGO_METRICS_ENABLED`, `YAGO_WEB_FALLBACK_PROVIDER`). Task 3 has a reference
+implementation: `deploy/systemd/` ships hardened `yago-node.service` and
+`yagocrawler.service` units plus their env-file examples, and `deploy/README.md`
+documents the `/opt/yago` layout, the OS package dependencies (`ca-certificates`,
+`chromium`), and the browser sandbox tradeoff. The runtime is deployment-agnostic:
+the crawler discovers its browser through `YAGOCRAWLER_BROWSER_PATH` (empty = PATH
+discovery, so the bundled headless-shell works in the image and `/usr/bin/chromium`
+on a host) and keeps Chrome's sandbox off by default via `YAGOCRAWLER_BROWSER_SANDBOX`
+so it starts under both Docker and userns-restricted hosts. Tasks 1–2 (the `/opt/yago`
+Docker layout and the matching `docker-compose.yml.example` volumes) remain.
 
 Tasks:
 
@@ -2614,9 +2622,11 @@ Debian-family distributions without Docker.
 Tasks:
 
 1. Add Debian packaging metadata (an `nfpm` config or `debian/` control files)
-   that installs binaries to `/opt/yago/bin`, ships the systemd units, seeds
-   default config under `/opt/yago/etc`, and creates a system `yago` user whose
-   data lives under `/opt/yago/data`.
+   that installs binaries to `/opt/yago/bin`, ships the `deploy/systemd/` units,
+   seeds their env-file examples as default config under `/opt/yago/etc`, declares
+   the OS runtime dependencies (`ca-certificates`, and `chromium` for the crawler
+   package), and creates a system `yago` user whose data lives under
+   `/opt/yago/data`.
 2. Target Debian 12 (bookworm), Debian 13 (trixie), and every Ubuntu release from
    24.04 LTS and newer, each on the three architectures **i386, amd64, and arm64**
    (Go `GOARCH` `386`, `amd64`, `arm64`; CGO stays disabled so all three

@@ -1,0 +1,29 @@
+[Unit]
+Description=yago P2P search node
+Documentation=https://github.com/D4rk4/yago
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=yago
+Group=yago
+ExecStart=/opt/yago/bin/yago-node
+EnvironmentFile=/opt/yago/etc/yago-node.env
+WorkingDirectory=/opt/yago
+Restart=on-failure
+RestartSec=5s
+
+# The service, not a container, is the isolation boundary on bare metal.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/opt/yago/data
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

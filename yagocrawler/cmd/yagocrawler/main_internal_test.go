@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/D4rk4/yago/yagocrawler/internal/chromedpfetch"
 	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
@@ -110,7 +109,7 @@ func TestRunClosesBrowserOnSuccess(t *testing.T) {
 	restoreMainSeams(t)
 	closed := false
 	newCrawlerBrowserFetcher = func(
-		string, yagoegress.Guard, time.Duration, int64,
+		chromedpfetch.BrowserLaunch, yagoegress.Guard,
 	) (*chromedpfetch.BrowserPageFetcher, func(), error) {
 		return &chromedpfetch.BrowserPageFetcher{}, func() { closed = true }, nil
 	}
@@ -131,7 +130,7 @@ func TestRunClosesBrowserOnServiceError(t *testing.T) {
 	sentinel := errors.New("service failed")
 	closed := false
 	newCrawlerBrowserFetcher = func(
-		string, yagoegress.Guard, time.Duration, int64,
+		chromedpfetch.BrowserLaunch, yagoegress.Guard,
 	) (*chromedpfetch.BrowserPageFetcher, func(), error) {
 		return &chromedpfetch.BrowserPageFetcher{}, func() { closed = true }, nil
 	}
@@ -152,7 +151,7 @@ func TestRunReturnsBrowserStartError(t *testing.T) {
 	restoreMainSeams(t)
 	sentinel := errors.New("browser start failed")
 	newCrawlerBrowserFetcher = func(
-		string, yagoegress.Guard, time.Duration, int64,
+		chromedpfetch.BrowserLaunch, yagoegress.Guard,
 	) (*chromedpfetch.BrowserPageFetcher, func(), error) {
 		return nil, nil, sentinel
 	}

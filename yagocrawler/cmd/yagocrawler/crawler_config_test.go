@@ -134,6 +134,12 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 		cfg.Crawl.HeaderTimeout != DefaultHeaderTimeout {
 		t.Errorf("timeouts = %+v", cfg.Crawl)
 	}
+	if cfg.Crawl.BrowserPath != "" {
+		t.Errorf("browser path = %q, want empty (PATH discovery)", cfg.Crawl.BrowserPath)
+	}
+	if cfg.Crawl.BrowserSandbox {
+		t.Error("browser sandbox must default off so containers and userns-restricted hosts start")
+	}
 }
 
 func TestLoadServiceConfigOverrides(t *testing.T) {
@@ -154,9 +160,17 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 		EnvHeaderTimeout:      "2s",
 		EnvMaxRedirects:       "2",
 		EnvSitemapURLLimit:    "9",
+		EnvBrowserPath:        "/usr/bin/chromium",
+		EnvBrowserSandbox:     "true",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
+	}
+	if cfg.Crawl.BrowserPath != "/usr/bin/chromium" {
+		t.Errorf("browser path = %q, want /usr/bin/chromium", cfg.Crawl.BrowserPath)
+	}
+	if !cfg.Crawl.BrowserSandbox {
+		t.Error("browser sandbox = false, want true when the host opts in")
 	}
 	if cfg.WorkerID != "worker-7" {
 		t.Errorf("worker id = %q, want worker-7", cfg.WorkerID)
@@ -232,6 +246,7 @@ func TestLoadServiceConfigRejectsParseErrors(t *testing.T) {
 		EnvMaxRedirects:       "not-a-number",
 		EnvSitemapURLLimit:    "not-a-number",
 		EnvMaxHostConcurrency: "not-a-number",
+		EnvBrowserSandbox:     "not-a-bool",
 	}
 	for key, bad := range cases {
 		env := map[string]string{}

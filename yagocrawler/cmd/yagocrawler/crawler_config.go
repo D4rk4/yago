@@ -28,6 +28,8 @@ const (
 	EnvEgressAllowLAN     = "YAGOCRAWLER_ALLOW_PRIVATE_NETWORKS"
 	EnvMetricsAddr        = "YAGOCRAWLER_METRICS_ADDR"
 	EnvShutdownGrace      = "YAGOCRAWLER_SHUTDOWN_GRACE"
+	EnvBrowserPath        = "YAGOCRAWLER_BROWSER_PATH"
+	EnvBrowserSandbox     = "YAGOCRAWLER_BROWSER_SANDBOX"
 
 	DefaultWorkerID      = "yagocrawler"
 	DefaultShutdownGrace = 10 * time.Second
@@ -61,6 +63,8 @@ type CrawlConfig struct {
 	Scope              yagocrawlcontract.CrawlScope
 	MaxPagesPerHost    int
 	HostCacheSize      int
+	BrowserPath        string
+	BrowserSandbox     bool
 }
 
 func DefaultCrawlConfig() CrawlConfig {
@@ -199,6 +203,14 @@ func loadCrawlConfig(getenv func(string) string) (CrawlConfig, error) {
 		return CrawlConfig{}, err
 	}
 	crawl.SitemapURLLimit = sitemapURLLimit
+
+	crawl.BrowserPath = envString(getenv, EnvBrowserPath, crawl.BrowserPath)
+
+	browserSandbox, err := envBool(getenv, EnvBrowserSandbox, crawl.BrowserSandbox)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.BrowserSandbox = browserSandbox
 
 	return crawl, nil
 }
