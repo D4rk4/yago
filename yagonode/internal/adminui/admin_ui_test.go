@@ -283,12 +283,24 @@ func TestConsoleSearchRendersResultsWithMarker(t *testing.T) {
 	}
 }
 
-type recordingSearch struct{ lastGlobal bool }
+type recordingSearch struct {
+	lastGlobal bool
+	lastOffset int
+	lastLimit  int
+	results    SearchResults
+}
 
 func (r *recordingSearch) Search(_ context.Context, q SearchQuery) (SearchResults, error) {
 	r.lastGlobal = q.Global
+	r.lastOffset = q.Offset
+	r.lastLimit = q.Limit
 
-	return SearchResults{Query: q.Query, Global: q.Global}, nil
+	return SearchResults{
+		Query:        q.Query,
+		Global:       q.Global,
+		TotalResults: r.results.TotalResults,
+		Results:      r.results.Results,
+	}, nil
 }
 
 func TestConsoleSearchDefaultsToGlobalScope(t *testing.T) {
@@ -310,6 +322,53 @@ func TestConsoleSearchDefaultsToGlobalScope(t *testing.T) {
 	do(t, New(Options{Search: localOnly}), "/admin/search?q=go&scope=local")
 	if localOnly.lastGlobal {
 		t.Fatal("scope=local should search only the local index")
+	}
+}
+
+func TestConsoleSearchPaginationParsesPageIntoOffset(t *testing.T) {
+	t.Parallel()
+
+	rec := &recordingSearch{results: SearchResults{TotalResults: 200}}
+	if got := do(
+		t,
+		New(Options{Search: rec}),
+		"/admin/search?q=go&p=3",
+	); got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	if rec.lastOffset != 2*adminSearchPageSize || rec.lastLimit != adminSearchPageSize {
+		t.Fatalf("offset=%d limit=%d, want offset=%d limit=%d",
+			rec.lastOffset, rec.lastLimit, 2*adminSearchPageSize, adminSearchPageSize)
+	}
+}
+
+func TestConsoleSearchPaginationRendersPrevAndNext(t *testing.T) {
+	t.Parallel()
+
+	rec := &recordingSearch{results: SearchResults{
+		TotalResults: 200,
+		Results:      []SearchResult{{Title: "hit", URL: "http://a/1"}},
+	}}
+	got := do(t, New(Options{Search: rec}), "/admin/search?q=go&scope=local&p=2")
+
+	for _, want := range []string{
+		"‹ Previous", "Next ›", "Page 2", `rel="prev"`, `rel="next"`,
+		"p=1", "p=3", "scope=local",
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("paginated admin results missing %q", want)
+		}
+	}
+}
+
+func TestConsoleSearchPaginationClampsPage(t *testing.T) {
+	t.Parallel()
+
+	rec := &recordingSearch{results: SearchResults{TotalResults: 5}}
+	do(t, New(Options{Search: rec}), "/admin/search?q=go&p=99999")
+	if rec.lastOffset != (adminSearchMaxPage-1)*adminSearchPageSize {
+		t.Fatalf("over-max offset = %d, want %d",
+			rec.lastOffset, (adminSearchMaxPage-1)*adminSearchPageSize)
 	}
 }
 

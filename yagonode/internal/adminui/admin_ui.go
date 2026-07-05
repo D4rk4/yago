@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -48,6 +49,11 @@ const (
 	logsEventsPath      = "/admin/logs/events"
 	securityPath        = "/admin/security"
 	performancePath     = "/admin/performance"
+
+	// adminSearchPageSize is how many results one admin search page shows;
+	// adminSearchMaxPage bounds how deep a crafted ?p= can page.
+	adminSearchPageSize = 20
+	adminSearchMaxPage  = 50
 
 	overviewUnavailable    = "Node status is not available."
 	searchUnavailable      = "Search is not available."
@@ -150,6 +156,7 @@ type searchPageData struct {
 	Submitted  bool
 	Error      string
 	Results    SearchResults
+	Pagination SearchPagination
 }
 
 type crawlForm struct {
@@ -942,25 +949,80 @@ func (c *Console) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	global := r.URL.Query().Get("scope") != "local"
+	page := parseSearchPage(r.URL.Query().Get("p"))
 	data := searchPageData{
 		AppName: appName, ActivePath: searchPath, Nav: navItems,
 		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Search", Available: true},
-		Query:   query, Global: r.URL.Query().Get("scope") != "local",
+		Query:   query, Global: global,
 	}
 
 	if query != "" {
 		data.Submitted = true
-		results, err := c.search.Search(r.Context(), SearchQuery{Query: query, Global: data.Global})
+		offset := (page - 1) * adminSearchPageSize
+		results, err := c.search.Search(r.Context(), SearchQuery{
+			Query: query, Global: global, Offset: offset, Limit: adminSearchPageSize,
+		})
 		if err != nil {
 			slog.WarnContext(r.Context(), "admin search failed", slog.Any("error", err))
 			data.Error = "Search failed."
 		} else {
 			data.Results = results
+			data.Pagination = newSearchPagination(
+				query, global, page, len(results.Results), results.TotalResults,
+			)
 		}
 	}
 
 	c.render(r.Context(), w, c.tpl.search, "layout", data)
+}
+
+// parseSearchPage reads the 1-based ?p= page number, clamping junk and
+// out-of-range values into [1, adminSearchMaxPage].
+func parseSearchPage(raw string) int {
+	page, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || page < 1 {
+		return 1
+	}
+	if page > adminSearchMaxPage {
+		return adminSearchMaxPage
+	}
+
+	return page
+}
+
+// newSearchPagination decides which navigation links to show. A next link
+// appears only while more results remain than the current window covers and the
+// page cap is not reached; a previous link appears past the first page.
+func newSearchPagination(query string, global bool, page, shown, total int) SearchPagination {
+	offset := (page - 1) * adminSearchPageSize
+	nav := SearchPagination{
+		Page:    page,
+		HasPrev: page > 1,
+		HasNext: offset+shown < total && page < adminSearchMaxPage,
+	}
+	if nav.HasPrev {
+		nav.PrevURL = adminSearchPageURL(query, global, page-1)
+	}
+	if nav.HasNext {
+		nav.NextURL = adminSearchPageURL(query, global, page+1)
+	}
+
+	return nav
+}
+
+func adminSearchPageURL(query string, global bool, page int) string {
+	scope := "global"
+	if !global {
+		scope = "local"
+	}
+	values := url.Values{}
+	values.Set("q", query)
+	values.Set("scope", scope)
+	values.Set("p", strconv.Itoa(page))
+
+	return searchPath + "?" + values.Encode()
 }
 
 func (c *Console) handleCrawl(w http.ResponseWriter, r *http.Request) {

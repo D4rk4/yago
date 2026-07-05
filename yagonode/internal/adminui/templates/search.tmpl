@@ -39,5 +39,12 @@
 <div class="cds-empty" role="status">No results.</div>
 {{end}}
 {{end}}
+{{if or .Pagination.HasPrev .Pagination.HasNext}}
+<nav class="cds-pager" aria-label="Result pages">
+  {{if .Pagination.HasPrev}}<a rel="prev" href="{{.Pagination.PrevURL}}">‹ Previous</a>{{end}}
+  <span class="cds-muted">Page {{.Pagination.Page}}</span>
+  {{if .Pagination.HasNext}}<a rel="next" href="{{.Pagination.NextURL}}">Next ›</a>{{end}}
+</nav>
+{{end}}
 {{end}}
 {{end}}

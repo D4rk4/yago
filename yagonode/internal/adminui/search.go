@@ -2,10 +2,24 @@ package adminui
 
 import "context"
 
-// SearchQuery is an admin-console search request.
+// SearchQuery is an admin-console search request. Offset and Limit carry the
+// requested result window so the console can page through matches.
 type SearchQuery struct {
 	Query  string
 	Global bool
+	Offset int
+	Limit  int
+}
+
+// SearchPagination carries the prev/next navigation for a results page. The URLs
+// are built server-side (query-encoded, scope preserved) so the template never
+// assembles a URL from parts.
+type SearchPagination struct {
+	Page    int
+	HasPrev bool
+	HasNext bool
+	PrevURL string
+	NextURL string
 }
 
 // SearchResult is one rendered hit. Marked is set for DDGS web-fallback hits so

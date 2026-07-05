@@ -256,6 +256,7 @@ a:focus, button:focus, input:focus, select:focus, [tabindex]:focus {
 .cds-textarea { height: auto; min-height: 5rem; padding: var(--cds-spacing-03) var(--cds-spacing-05); resize: vertical; }
 .cds-checkbox { display: flex; align-items: center; gap: var(--cds-spacing-03); font-size: 0.875rem; }
 .cds-muted { color: var(--cds-text-secondary); font-size: 0.8125rem; }
+.cds-pager { display: flex; align-items: center; gap: var(--cds-spacing-05); margin-top: var(--cds-spacing-06); font-size: 0.875rem; }
 .cds-result { padding: var(--cds-spacing-05) 0; border-bottom: 1px solid var(--cds-border-subtle); }
 .cds-result__title { font-size: 1rem; }
 .cds-result__url { color: var(--cds-support-success); font-size: 0.75rem; word-break: break-all; margin-top: 0.125rem; }

@@ -8,8 +8,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
-const adminSearchLimit = 20
-
 type searchSource struct {
 	searcher searchcore.Searcher
 }
@@ -30,7 +28,8 @@ func (s searchSource) Search(
 	response, err := s.searcher.Search(ctx, searchcore.Request{
 		Query:  query.Query,
 		Source: source,
-		Limit:  adminSearchLimit,
+		Offset: query.Offset,
+		Limit:  query.Limit,
 	})
 	if err != nil {
 		return adminui.SearchResults{}, fmt.Errorf("admin search: %w", err)

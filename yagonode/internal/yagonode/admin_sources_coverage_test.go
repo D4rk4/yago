@@ -62,20 +62,23 @@ func TestIndexSourceCoversAllPaths(t *testing.T) {
 }
 
 type stubAdminSearcher struct {
-	response searchcore.Response
-	err      error
+	response   searchcore.Response
+	err        error
+	gotRequest searchcore.Request
 }
 
-func (s stubAdminSearcher) Search(
-	context.Context,
-	searchcore.Request,
+func (s *stubAdminSearcher) Search(
+	_ context.Context,
+	req searchcore.Request,
 ) (searchcore.Response, error) {
+	s.gotRequest = req
+
 	return s.response, s.err
 }
 
 func TestSearchSourceMapsResultsAndFailures(t *testing.T) {
 	ctx := context.Background()
-	searcher := stubAdminSearcher{response: searchcore.Response{
+	searcher := &stubAdminSearcher{response: searchcore.Response{
 		TotalResults: 2,
 		Results: []searchcore.Result{
 			{Title: "A", URL: "https://a", Source: searchcore.SourceWeb},
@@ -83,12 +86,18 @@ func TestSearchSourceMapsResultsAndFailures(t *testing.T) {
 		},
 		PartialFailures: []searchcore.PartialFailure{{Source: "global", Reason: "timeout"}},
 	}}
-	got, err := newSearchSource(searcher).Search(ctx, adminui.SearchQuery{Query: "q", Global: true})
+	got, err := newSearchSource(searcher).Search(ctx, adminui.SearchQuery{
+		Query: "q", Global: true, Offset: 40, Limit: 20,
+	})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
 	if got.TotalResults != 2 || len(got.Results) != 2 || len(got.Failures) != 1 {
 		t.Fatalf("results = %+v", got)
+	}
+	if searcher.gotRequest.Offset != 40 || searcher.gotRequest.Limit != 20 {
+		t.Fatalf("offset=%d limit=%d, want the window forwarded to the searcher",
+			searcher.gotRequest.Offset, searcher.gotRequest.Limit)
 	}
 	if !got.Results[0].Marked || got.Results[1].Marked {
 		t.Fatalf("web result should be marked, local not: %+v", got.Results)
@@ -97,7 +106,7 @@ func TestSearchSourceMapsResultsAndFailures(t *testing.T) {
 		t.Fatalf("failure = %q", got.Failures[0])
 	}
 
-	if _, err := newSearchSource(stubAdminSearcher{err: errors.New("down")}).
+	if _, err := newSearchSource(&stubAdminSearcher{err: errors.New("down")}).
 		Search(ctx, adminui.SearchQuery{Query: "q"}); err == nil {
 		t.Fatal("expected search error")
 	}
