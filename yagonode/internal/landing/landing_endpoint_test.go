@@ -24,7 +24,7 @@ func (w *failingLandingWriter) Write([]byte) (int, error) {
 func (w *failingLandingWriter) WriteHeader(int) {}
 
 func TestNewEndpointReturnsLandingHandler(t *testing.T) {
-	handler := NewEndpoint()
+	handler := NewEndpoint("2026.7")
 
 	if _, ok := handler.(landingEndpoint); !ok {
 		t.Fatalf("handler type = %T, want landingEndpoint", handler)
@@ -35,7 +35,7 @@ func TestLandingEndpointServesHTML(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 
-	landingEndpoint{}.ServeHTTP(rec, req)
+	landingEndpoint{version: "2026.7"}.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -44,10 +44,21 @@ func TestLandingEndpointServesHTML(t *testing.T) {
 		t.Errorf("content type = %q, want %q", got, landingPageContentType)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"YagoSeek", "RWI", "github.com/D4rk4/yago/issues"} {
+	for _, want := range []string{"YagoSeek", "2026.7", "RWI", "github.com/D4rk4/yago/issues"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q", want)
 		}
+	}
+}
+
+func TestLandingEndpointOmitsVersionWhenUnset(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+
+	landingEndpoint{}.ServeHTTP(rec, req)
+
+	if strings.Contains(rec.Body.String(), `class="version"`) {
+		t.Error("version line rendered with no version set, want it omitted")
 	}
 }
 

@@ -93,7 +93,7 @@ func (s parsedQuerySearcher) Search(
 // peer listener otherwise carries only the /yacy/* wire protocol; the public
 // search surfaces live on the separate public listener.
 func mountPeerLanding(mux *http.ServeMux) {
-	mux.Handle("/{$}", landing.NewEndpoint())
+	mux.Handle("/{$}", landing.NewEndpoint(buildVersion))
 }
 
 func mountNodePublicSearch(
@@ -183,7 +183,11 @@ type rootDispatcher struct {
 }
 
 func newRootDispatcher(toggles *runtimeToggles, portal http.Handler) *rootDispatcher {
-	return &rootDispatcher{toggles: toggles, portal: portal, landing: landing.NewEndpoint()}
+	return &rootDispatcher{
+		toggles: toggles,
+		portal:  portal,
+		landing: landing.NewEndpoint(buildVersion),
+	}
 }
 
 func (d *rootDispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {

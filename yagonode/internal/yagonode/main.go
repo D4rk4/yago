@@ -18,7 +18,20 @@ import (
 )
 
 const (
-	version = "1.83"
+	// version is the numeric YaCy-compatible protocol version advertised in the
+	// seed's Version field. YaCy peers parse it with Float/Double.parseFloat and
+	// gate features on it, so it must stay a plain float string; it tracks the
+	// current YaCy release (build.properties releaseVersion) so peers treat this
+	// node as a current participant rather than a stale one.
+	version = "1.941"
+	// buildVersion is yago's own calendar build version (YYYY.M). It is a brand
+	// identity for the User-Agent and human-facing display, kept separate from the
+	// numeric YaCy protocol version above so the two evolve independently.
+	buildVersion = "2026.7"
+	// userAgent brands this node's outbound requests as yago while declaring the
+	// YaCy protocol version it speaks. It is applied only where a caller has not
+	// already set its own User-Agent (see egress_client.go).
+	userAgent = "yago/" + buildVersion + " (+https://github.com/D4rk4/yago; YaCy/" + version + " compatible)"
 
 	receiveBatchCap       = 1000
 	receiveBusyPauseSecs  = 30

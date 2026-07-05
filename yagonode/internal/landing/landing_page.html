@@ -8,6 +8,7 @@
   body { font: 16px/1.6 system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1.25rem; color: #1a1a1a; }
   h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
   .lede { color: #444; }
+  .version { color: #888; font-size: 0.85rem; margin-top: 0; }
   .note { background: #fff4e5; border: 1px solid #f0c36d; border-radius: 0.5rem; padding: 1rem 1.25rem; margin-top: 2rem; }
   a { color: #1a56db; }
   code { background: #f2f2f2; border-radius: 0.25rem; padding: 0.05rem 0.3rem; }
@@ -15,6 +16,7 @@
 </head>
 <body>
 <h1>YagoSeek node</h1>
+{{if .Version}}<p class="version">YagoSeek {{.Version}}</p>{{end}}
 <p class="lede">This is a self-hosted YagoSeek search node — a YaCy-compatible
 peer built on the <code>yago</code> toolkit. It stores and serves a Reverse Word
 Index (RWI), participates in the YaCy peer-to-peer network, and answers local and
