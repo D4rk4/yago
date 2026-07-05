@@ -1,10 +1,12 @@
 package yacysearch
 
 import (
+	"fmt"
 	"html/template"
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/cachedpage"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -27,6 +29,7 @@ type htmlSearchPage struct {
 	JSONURL            string
 	OpenSearchURL      string
 	TotalResults       string
+	Elapsed            string
 	Items              []htmlSearchItem
 	PartialFailures    []searchcore.PartialFailure
 	ShowResults        bool
@@ -87,7 +90,7 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 {{if .ShowResults}}
 <section>
 <h1>Search for {{.Query}}</h1>
-<p>{{.TotalResults}} results</p>
+<p>{{.TotalResults}} results{{if .Elapsed}} ({{.Elapsed}}){{end}}</p>
 {{if .ShowPartialFailure}}
 <ul>
 {{range .PartialFailures}}<li>{{.Source}}: {{.Reason}}</li>{{end}}
@@ -186,6 +189,7 @@ func (e htmlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	started := htmlClock()
 	resp, err := e.search.Search(r.Context(), req)
 	if err != nil {
 		http.Error(w, "search failed", http.StatusInternalServerError)
@@ -196,9 +200,13 @@ func (e htmlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	page := responseHTML(r, resp)
+	page.Elapsed = fmt.Sprintf("%.2f s", htmlClock().Sub(started).Seconds())
 	page.NewTab = e.newTab
 	_ = htmlSearchTemplate.Execute(w, page)
 }
+
+// htmlClock feeds the query-duration display; tests substitute a scripted clock.
+var htmlClock = time.Now
 
 func responseHTML(r *http.Request, resp searchcore.Response) htmlSearchPage {
 	base := searchBaseURL(r)

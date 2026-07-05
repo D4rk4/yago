@@ -38,6 +38,12 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   nav.pager a:hover { text-decoration: underline; }
   nav.pager .page { color: #525252; }
   .foot { color: #8d8d8d; font-size: 0.7rem; margin-top: 2rem; border-top: 1px solid #e0e0e0; padding-top: 0.6rem; }
+  .skel { margin: 1rem 0 1.4rem; }
+  .skel-line { height: 0.85rem; margin: 0.4rem 0; border-radius: 3px; background: linear-gradient(90deg, #e8e8e8 25%, #f4f4f4 50%, #e8e8e8 75%); background-size: 200% 100%; animation: skel-shimmer 1.2s linear infinite; }
+  .skel-title { width: 55%; height: 1.05rem; }
+  .skel-short { width: 70%; }
+  @keyframes skel-shimmer { to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .skel-line { animation: none; } }
   @media (max-width: 32rem) { .brand { font-size: 2.5rem; } .ac-wrap { width: 60%; } }
 </style>
 </head>
@@ -68,11 +74,12 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
       </ul>
     </details>
   </div>
+  <div id="serp">
   {{if .Error}}
   <p class="meta" role="alert">{{.Error}}</p>
   {{else if .Submitted}}
   {{with .Results}}
-  <p class="meta">{{.TotalResults}} result(s) for “{{.Query}}”.</p>
+  <p class="meta">{{.TotalResults}} result(s) for “{{.Query}}”{{if $.Elapsed}} ({{$.Elapsed}}){{end}}.</p>
   {{range .Results}}
   <div class="result">
     <a class="title" href="{{.URL}}"{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{if .Marked}}<span class="ddgs">[ddgs]</span> {{end}}{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span class="sr-only"> (opens in new tab)</span>{{end}}</a>
@@ -94,10 +101,26 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   <p class="meta">Get these results as <a href="{{.RSSURL}}">RSS</a> · <a href="{{.JSONURL}}">JSON</a> — or add this engine to your browser via <a href="/opensearch.xml">OpenSearch</a>.</p>
   {{end}}
   {{end}}
+  </div>
   <div class="foot">{{.Brand}} — free software under the GNU AGPL v3.<br>
   Results tagged <span class="ddgs">[ddgs]</span> come from an external web-search provider that receives your query; pages it returns may be queued for this node to crawl.</div>
 </div>
 <script>
+(function () {
+  var searchForm = document.querySelector("form.search");
+  var serp = document.getElementById("serp");
+  if (searchForm && serp) {
+    searchForm.addEventListener("submit", function () {
+      serp.setAttribute("aria-busy", "true");
+      var html = '<p class="meta">Searching…</p>';
+      for (var i = 0; i < 5; i++) {
+        html += '<div class="skel"><div class="skel-line skel-title"></div>' +
+          '<div class="skel-line"></div><div class="skel-line skel-short"></div></div>';
+      }
+      serp.innerHTML = html;
+    });
+  }
+})();
 (function () {
   var input = document.getElementById("q");
   var list = document.getElementById("ac-list");

@@ -7,12 +7,14 @@ package publicportal
 import (
 	"context"
 	"embed"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 //go:embed templates/portal.tmpl
@@ -82,7 +84,14 @@ type portalData struct {
 	// output formats this node already serves; empty before a query is run.
 	RSSURL  string
 	JSONURL string
+	// Elapsed is the human-readable search duration ("0.42 s") shown next to
+	// the result count, so a searcher sees how fast the query ran.
+	Elapsed string
 }
+
+// portalClock feeds the query-duration display; tests substitute a scripted
+// clock for a deterministic elapsed value.
+var portalClock = time.Now
 
 // Portal is the public search portal handler, mounted at the public root.
 type Portal struct {
@@ -119,6 +128,7 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		data.RSSURL = formatURL("/yacysearch.rss", query)
 		data.JSONURL = formatURL("/yacysearch.json", query)
 		offset := (page - 1) * portalPageSize
+		started := portalClock()
 		results, err := p.source.Search(r.Context(), query, offset, portalPageSize)
 		if err != nil {
 			slog.WarnContext(r.Context(), "public portal search failed", slog.Any("error", err))
@@ -126,6 +136,7 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			data.Submitted = true
 			data.Results = results
+			data.Elapsed = elapsedSeconds(portalClock().Sub(started))
 			data.Pagination = newPagination(
 				query,
 				page,
@@ -194,4 +205,9 @@ func formatURL(path string, query string) string {
 	values.Set("query", query)
 
 	return path + "?" + values.Encode()
+}
+
+// elapsedSeconds renders a search duration for the results meta line.
+func elapsedSeconds(elapsed time.Duration) string {
+	return fmt.Sprintf("%.2f s", elapsed.Seconds())
 }
