@@ -31,6 +31,8 @@ destination. It runs inside the operator's own SearXNG instance and depends on n
   itself.
 * The plugin SHALL add no persistent state and no per-request state beyond the page it
   rewrites.
+* An operator SHALL be able to add and enable the plugin in an existing SearXNG instance
+  without rebuilding SearXNG.
 
 ## Known Limitations
 
