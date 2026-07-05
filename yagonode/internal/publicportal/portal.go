@@ -42,6 +42,8 @@ type SearchResult struct {
 	Date        string
 	SizeName    string
 	Marked      bool
+	// CachedURL links this node's stored copy of the page; empty hides the link.
+	CachedURL string
 }
 
 // SearchResults is the rendered outcome of a portal query.
@@ -76,6 +78,10 @@ type portalData struct {
 	Results    SearchResults
 	Pagination pagination
 	NewTab     bool
+	// RSSURL and JSONURL expose the current query in the machine-readable
+	// output formats this node already serves; empty before a query is run.
+	RSSURL  string
+	JSONURL string
 }
 
 // Portal is the public search portal handler, mounted at the public root.
@@ -110,6 +116,8 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	data := portalData{Brand: brand, Query: query, NewTab: p.newTab}
 
 	if query != "" {
+		data.RSSURL = formatURL("/yacysearch.rss", query)
+		data.JSONURL = formatURL("/yacysearch.json", query)
 		offset := (page - 1) * portalPageSize
 		results, err := p.source.Search(r.Context(), query, offset, portalPageSize)
 		if err != nil {
@@ -177,4 +185,13 @@ func portalPageURL(query string, page int) string {
 	values.Set("p", strconv.Itoa(page))
 
 	return "/?" + values.Encode()
+}
+
+// formatURL links a machine-readable output format for the current query; the
+// format endpoints live on the same public listener as the portal.
+func formatURL(path string, query string) string {
+	values := url.Values{}
+	values.Set("query", query)
+
+	return path + "?" + values.Encode()
 }

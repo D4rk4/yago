@@ -1,0 +1,42 @@
+package yacysearch
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+)
+
+func TestHTMLEndpointLinksCachedCopyAndFormats(t *testing.T) {
+	search := &fakeSearch{response: searchcore.Response{
+		TotalResults: 2,
+		Results: []searchcore.Result{
+			{Title: "Local", URL: "https://a.example/x", Source: searchcore.SourceLocal},
+			{Title: "Remote", URL: "https://b.example/y", Source: searchcore.SourceGlobal},
+		},
+	}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"http://node.test/yacysearch.html?query=go",
+		nil,
+	)
+	htmlEndpoint{search: search, suggestions: newRecentQueries()}.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `href="/cached?u=https%3A%2F%2Fa.example%2Fx">cached`) {
+		t.Fatalf("local result missing cached link: %s", body)
+	}
+	if strings.Contains(body, "cached?u=https%3A%2F%2Fb.example%2Fy") {
+		t.Fatal("remote result must not link a cached copy")
+	}
+	if !strings.Contains(body, "/yacysearch.json") || !strings.Contains(body, ">JSON</a>") {
+		t.Fatalf("visible JSON format link missing: %s", body)
+	}
+	if !strings.Contains(body, ">RSS</a>") {
+		t.Fatalf("visible RSS format link missing: %s", body)
+	}
+}

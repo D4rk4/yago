@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/D4rk4/yago/yagonode/internal/cachedpage"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/snippetmark"
 	"github.com/D4rk4/yago/yagoproto"
@@ -23,6 +24,7 @@ type htmlSearchPage struct {
 	ContentDomain      string
 	SearchURL          string
 	RSSURL             string
+	JSONURL            string
 	OpenSearchURL      string
 	TotalResults       string
 	Items              []htmlSearchItem
@@ -44,6 +46,7 @@ type htmlSearchItem struct {
 	Description template.HTML
 	Date        string
 	SizeName    string
+	CachedURL   string
 }
 
 var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!doctype html>
@@ -95,10 +98,11 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 <li>
 <h2><a href="{{.URL}}"{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{.Title}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"> (opens in new tab)</span>{{end}}</a></h2>
 <p>{{.Description}}</p>
-<p>{{.DisplayURL}} {{.SizeName}} {{.Date}}</p>
+<p>{{.DisplayURL}} {{.SizeName}} {{.Date}}{{if .CachedURL}} <a href="{{.CachedURL}}">cached</a>{{end}}</p>
 </li>
 {{end}}
 </ol>
+<p>Get these results as <a href="{{.RSSURL}}">RSS</a> · <a href="{{.JSONURL}}">JSON</a></p>
 {{if or .HasPrev .HasNext}}
 <nav aria-label="Result pages">
 {{if .HasPrev}}<a rel="prev" href="{{.PrevURL}}">&lsaquo; Previous</a>{{end}}
@@ -206,6 +210,7 @@ func responseHTML(r *http.Request, resp searchcore.Response) htmlSearchPage {
 		ContentDomain:      string(resp.Request.ContentDomain),
 		SearchURL:          searchBaseURL(r),
 		RSSURL:             requestBaseURL(r) + "/yacysearch.rss" + rawSearchURL[len(base):],
+		JSONURL:            requestBaseURL(r) + "/yacysearch.json" + rawSearchURL[len(base):],
 		OpenSearchURL:      requestBaseURL(r) + "/opensearchdescription.xml",
 		TotalResults:       strconv.Itoa(resp.TotalResults),
 		Items:              responseHTMLItems(resp.Results, resp.Request.Terms),
@@ -258,7 +263,7 @@ func htmlPageURL(base string, req searchcore.Request, offset int) string {
 func responseHTMLItems(results []searchcore.Result, terms []string) []htmlSearchItem {
 	items := make([]htmlSearchItem, 0, len(results))
 	for _, result := range results {
-		items = append(items, htmlSearchItem{
+		item := htmlSearchItem{
 			Title:      markWebResultTitle(result.Source, result.Title),
 			URL:        result.URL,
 			DisplayURL: result.DisplayURL,
@@ -267,7 +272,12 @@ func responseHTMLItems(results []searchcore.Result, terms []string) []htmlSearch
 			Description: snippetmark.Highlight(result.Snippet, terms),
 			Date:        result.Date,
 			SizeName:    sizeName(result.Size),
-		})
+		}
+		if result.Source == searchcore.SourceLocal {
+			// Only locally indexed pages have a stored copy to show.
+			item.CachedURL = cachedpage.URLFor(result.URL)
+		}
+		items = append(items, item)
 	}
 
 	return items

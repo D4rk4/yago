@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/cachedpage"
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yagonode/internal/documentsearch"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
@@ -187,6 +188,7 @@ func mountNodePublicSearch(
 	// fallback that the main search path can reach.
 	suggestSource := withDenylistFilter(local, assembly.denylist)
 	yacysearch.Mount(mux, search, suggestSource, assembly.linksNewTab)
+	cachedpage.Mount(mux, assembly.storage.documentDirectory)
 	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
 	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access, assembly.extractFetcher)
 	mux.Handle(

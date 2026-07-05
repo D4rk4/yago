@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/D4rk4/yago/yagonode/internal/cachedpage"
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/snippetmark"
@@ -26,6 +27,16 @@ func resultSizeName(size int) string {
 
 func newPortalSource(searcher searchcore.Searcher) portalSource {
 	return portalSource{searcher: searcher}
+}
+
+// cachedCopyURL links the node's stored copy for locally indexed results; other
+// sources (peers, web fallback) have no stored page to show.
+func cachedCopyURL(result searchcore.Result) string {
+	if result.Source != searchcore.SourceLocal {
+		return ""
+	}
+
+	return cachedpage.URLFor(result.URL)
 }
 
 func (s portalSource) Search(
@@ -55,6 +66,7 @@ func (s portalSource) Search(
 			Date:        result.Date,
 			SizeName:    resultSizeName(result.Size),
 			Marked:      result.Source == searchcore.SourceWeb,
+			CachedURL:   cachedCopyURL(result),
 		})
 	}
 
