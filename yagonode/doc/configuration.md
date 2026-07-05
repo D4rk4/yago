@@ -80,8 +80,8 @@ peer listener is behind a reverse proxy or NAT and the external address differs)
 | `YAGO_PEER_ADDR` | `:8090` | Listen address for the YaCy peer protocol. |
 | `YAGO_OPS_ADDR` | `:9090` | Listen address for `/health`, `/ready`, `/metrics`, and ops JSON endpoints. |
 | `YAGO_METRICS_ENABLED` | `true` | Serve the Prometheus `/metrics` endpoint. Set to `false` to unmount it (returns 404); the collectors still run. The endpoint is admin-authenticated regardless (it is not on the operations listener's public allowlist). See [metrics.md](metrics.md). |
-| `YAGO_PEER_HASH` | _(required)_ | The 12-character enhanced-Base64 peer hash advertised to the network. |
-| `YAGO_PEER_NAME` | _(required)_ | Peer name advertised to the network. |
+| `YAGO_PEER_HASH` | _(generated)_ | The 12-character enhanced-Base64 peer hash advertised to the network. If unset, the node generates one on first start and persists it to the data directory, reusing it across restarts so the peer keeps a stable identity. Set it to pin a specific hash. |
+| `YAGO_PEER_NAME` | _(generated)_ | Peer name advertised to the network. Generated (as `yago-<random>`) and persisted like the hash when unset. |
 | `YAGO_NETWORK_NAME` | `freeworld` | YaCy network to join. Only peers on the same network exchange data. |
 | `YAGO_SEEDLIST_URLS` | _(empty)_ | Comma-separated YaCy seedlist URLs to discover peers from. |
 | `YAGO_ADVERTISE_HOST` | _(empty)_ | Public IP or DNS name other peers use to reach you. Required when `YAGO_SEEDLIST_URLS` is set. |

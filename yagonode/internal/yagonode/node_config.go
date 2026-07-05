@@ -100,15 +100,12 @@ type configuredNodeData struct {
 }
 
 func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
-	hash, err := yagomodel.ParseHash(strings.TrimSpace(getenv(envPeerHash)))
-	if err != nil {
-		return nodeConfig{}, fmt.Errorf("%s: %w", envPeerHash, err)
-	}
-
-	name, err := requiredEnv(getenv, envPeerName)
+	hash, err := optionalPeerHash(getenv)
 	if err != nil {
 		return nodeConfig{}, err
 	}
+
+	name := strings.TrimSpace(getenv(envPeerName))
 
 	peerAddr := envWithDefault(getenv, envPeerAddr, defaultPeerAddr)
 	seedlistURLs := splitList(getenv(envSeedlistURLs))
@@ -463,13 +460,21 @@ func seniorFlags() yagomodel.Flags {
 	return flags
 }
 
-func requiredEnv(getenv func(string) string, key string) (string, error) {
-	value := strings.TrimSpace(getenv(key))
-	if value == "" {
-		return "", fmt.Errorf("%s: must be set", key)
+// optionalPeerHash parses the peer hash from the environment when set. An empty
+// value is not an error: the effective identity is resolved (and, if needed,
+// generated and persisted) later against the data directory, so a node
+// bootstraps without the operator having to supply a hash.
+func optionalPeerHash(getenv func(string) string) (yagomodel.Hash, error) {
+	raw := strings.TrimSpace(getenv(envPeerHash))
+	if raw == "" {
+		return "", nil
+	}
+	hash, err := yagomodel.ParseHash(raw)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", envPeerHash, err)
 	}
 
-	return value, nil
+	return hash, nil
 }
 
 func positiveInt(key, raw string) (int, error) {

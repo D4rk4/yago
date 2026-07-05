@@ -15,9 +15,11 @@ import (
 )
 
 func TestRunRejectsInvalidConfig(t *testing.T) {
-	t.Setenv(envPeerHash, "")
+	// An empty hash is now valid (the identity is generated), so use a malformed
+	// hash to exercise the configuration-rejection path.
+	t.Setenv(envPeerHash, "short")
 	if err := run(); err == nil {
-		t.Fatal("expected error for missing config")
+		t.Fatal("expected error for invalid config")
 	}
 }
 

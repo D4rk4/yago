@@ -157,8 +157,10 @@ installed under `.toolchain/` by `make tools` or `make verify`.
 
 ## Configuration
 
-The node is configured through environment variables. The minimum required
-values for a local node process are:
+The node is configured through environment variables. A bare node needs none of
+them to start: on first run it generates its peer identity (hash and name) and
+persists it to the data directory, reusing it across restarts. To pin a specific
+identity, set:
 
 ```sh
 YAGO_PEER_HASH=...

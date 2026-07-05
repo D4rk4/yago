@@ -6,8 +6,30 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yagonode/internal/peeridentity"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
+
+// resolvePeerIdentity fills in the effective peer hash and name from the data
+// directory, generating and persisting them when neither the environment nor a
+// previous run supplied a value, so a node bootstraps without a mandatory
+// identity yet keeps a stable one across restarts.
+func resolvePeerIdentity(
+	ctx context.Context,
+	v *vault.Vault,
+	config nodeConfig,
+) (nodeConfig, error) {
+	hash, name, err := peeridentity.Open(
+		ctx, v, config.Hash, config.Name, peeridentity.DefaultGenerators(),
+	)
+	if err != nil {
+		return config, fmt.Errorf("resolve peer identity: %w", err)
+	}
+	config.Hash = hash
+	config.Name = name
+
+	return config, nil
+}
 
 func nodeIdentity(config nodeConfig) nodeidentity.Identity {
 	return nodeidentity.Identity{

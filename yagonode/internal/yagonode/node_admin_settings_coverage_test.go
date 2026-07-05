@@ -7,7 +7,35 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/memvault"
 	"github.com/D4rk4/yago/yagonode/internal/settingsstore"
+	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
+
+// reserveCodec is a throwaway codec used only to pre-register a bucket name.
+type reserveCodec struct{}
+
+func (reserveCodec) Encode(int) ([]byte, error) { return nil, nil }
+
+func (reserveCodec) Decode([]byte) (int, error) { return 0, nil }
+
+func TestLoadRuntimeSettingsIdentityError(t *testing.T) {
+	v, err := memvault.Open(0)
+	if err != nil {
+		t.Fatalf("memvault: %v", err)
+	}
+	t.Cleanup(func() { _ = v.Close() })
+
+	// Reserve the peer-identity bucket so resolving the identity fails on a
+	// duplicate registration while the settings store still opens cleanly.
+	if _, err := vault.Register(v, "peeridentity", reserveCodec{}); err != nil {
+		t.Fatalf("reserve bucket: %v", err)
+	}
+
+	if _, _, _, err := loadRuntimeSettings(
+		context.Background(), v, testConfig(t), nil,
+	); err == nil {
+		t.Fatal("loadRuntimeSettings should fail when peer identity cannot be resolved")
+	}
+}
 
 func TestLoadRuntimeSettingsOpenError(t *testing.T) {
 	v, err := memvault.Open(0)

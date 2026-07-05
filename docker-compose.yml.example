@@ -10,8 +10,11 @@ services:
       - "8080:8080"   # public search (portal, OpenSearch, Tavily API, /yacysearch.*)
       - "9090:9090"   # admin and ops (console, /health, /ready, /metrics)
     environment:
-      YAGO_PEER_HASH: ${YAGO_PEER_HASH:?set YAGO_PEER_HASH in .env}
-      YAGO_PEER_NAME: ${YAGO_PEER_NAME:?set YAGO_PEER_NAME in .env}
+      # Peer identity. Leave unset to have the node generate a hash and name on
+      # first start and persist them to its data volume (stable across restarts);
+      # set them to pin a specific identity.
+      YAGO_PEER_HASH: ${YAGO_PEER_HASH:-}
+      YAGO_PEER_NAME: ${YAGO_PEER_NAME:-}
       YAGO_ADVERTISE_HOST: ${YAGO_ADVERTISE_HOST:?set YAGO_ADVERTISE_HOST in .env}
       YAGO_PUBLIC_SELF_TEST_URL: ${YAGO_PUBLIC_SELF_TEST_URL:-}
       YAGO_NETWORK_NAME: ${YAGO_NETWORK_NAME:-freeworld}

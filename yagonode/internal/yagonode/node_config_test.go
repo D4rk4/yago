@@ -39,6 +39,21 @@ func TestPublicListenerAddr(t *testing.T) {
 	}
 }
 
+func TestLoadNodeConfigAllowsMissingIdentity(t *testing.T) {
+	// A bare node with no peer hash or name still loads: the identity is
+	// generated and persisted against the data directory at runtime.
+	config, err := loadNodeConfig(envFrom(map[string]string{}))
+	if err != nil {
+		t.Fatalf("load config without identity: %v", err)
+	}
+	if config.Hash != "" {
+		t.Errorf("Hash = %q, want empty (resolved at runtime)", config.Hash)
+	}
+	if config.Name != "" {
+		t.Errorf("Name = %q, want empty (resolved at runtime)", config.Name)
+	}
+}
+
 func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
 		envPeerHash: "0123456789AB",
@@ -328,8 +343,7 @@ func TestLoadNodeConfigRejectsBadAnnounceInterval(t *testing.T) {
 
 func TestLoadNodeConfigRejects(t *testing.T) {
 	cases := map[string]map[string]string{
-		"bad hash":     {envPeerHash: "short"},
-		"missing name": {envPeerHash: "0123456789AB"},
+		"bad hash": {envPeerHash: "short"},
 		"announce no host": {
 			envPeerHash:     "0123456789AB",
 			envPeerName:     "n",

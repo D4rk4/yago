@@ -22,6 +22,8 @@ components:
     in: internal/peeradmission/**
   peerbirth:
     in: internal/peerbirth/**
+  peeridentity:
+    in: internal/peeridentity/**
   peernews:
     in: internal/peernews/**
   transfertally:
@@ -218,6 +220,12 @@ deps:
     mayDependOn:
       - peerbirth
       - vault
+  peeridentity:
+    mayDependOn:
+      - peeridentity
+      - vault
+    canUse:
+      - yagomodel
   peernews:
     mayDependOn:
       - peernews
@@ -562,6 +570,7 @@ deps:
       - httpguard
       - peeradmission
       - peerbirth
+      - peeridentity
       - peerroster
       - peerannouncement
       - hostlinks

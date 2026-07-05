@@ -40,6 +40,10 @@ func loadRuntimeSettings(
 	envConfig := config
 	config = applyRuntimeSettingOverrides(config, overrides)
 	config = applyBindOverrides(config, overrides)
+	config, err = resolvePeerIdentity(ctx, storage, config)
+	if err != nil {
+		return consoleAdminSources{}, nil, config, err
+	}
 	toggles := newRuntimeToggles(config)
 
 	sources := consoleAdminSources{
