@@ -3,23 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>YaCy RWI node (alpha)</title>
+<title>YagoSeek node</title>
 <style>
   body { font: 16px/1.6 system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1.25rem; color: #1a1a1a; }
   h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
-  .alpha { display: inline-block; background: #b3261e; color: #fff; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 0.15rem 0.5rem; border-radius: 0.25rem; }
+  .lede { color: #444; }
   .note { background: #fff4e5; border: 1px solid #f0c36d; border-radius: 0.5rem; padding: 1rem 1.25rem; margin-top: 2rem; }
   a { color: #1a56db; }
+  code { background: #f2f2f2; border-radius: 0.25rem; padding: 0.05rem 0.3rem; }
 </style>
 </head>
 <body>
-<h1>YaCy RWI node <span class="alpha">alpha</span></h1>
-<p>This is an experimental, lightweight Go implementation of a YaCy node for
-Reverse Word Index (RWI) storing and serving.</p>
-<p>It is an alpha-stage project: behavior may change, and it may contain bugs.</p>
+<h1>YagoSeek node</h1>
+<p class="lede">This is a self-hosted YagoSeek search node — a YaCy-compatible
+peer built on the <code>yago</code> toolkit. It stores and serves a Reverse Word
+Index (RWI), participates in the YaCy peer-to-peer network, and answers local and
+federated searches.</p>
+<p>This node speaks the YaCy peer protocol here. Its public search API and human
+search surfaces are served on the node's separate public listener; the public
+search portal appears at that listener's root once the operator enables it.</p>
 <div class="note">
-<p>If you believe this node is harming the YaCy network, please report it so we
-can address it:</p>
+<p>If you believe this node is misbehaving on the YaCy network, please report it
+so the operators can address it:</p>
 <p><a href="https://github.com/D4rk4/yago/issues">github.com/D4rk4/yago/issues</a></p>
 </div>
 </body>

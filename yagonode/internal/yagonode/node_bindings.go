@@ -23,13 +23,15 @@ type bindDefinition struct {
 	title       string
 	description string
 	guardAdmin  bool
+	optional    bool
 	current     func(config nodeConfig) string
 	apply       func(config nodeConfig, addr string) nodeConfig
 }
 
 const (
-	bindKeyPeer = "bind.peer"
-	bindKeyOps  = "bind.ops"
+	bindKeyPeer   = "bind.peer"
+	bindKeyOps    = "bind.ops"
+	bindKeyPublic = "bind.public"
 )
 
 func bindDefinitions() []bindDefinition {
@@ -37,10 +39,22 @@ func bindDefinitions() []bindDefinition {
 		{
 			key:         bindKeyPeer,
 			title:       "Peer protocol (P2P)",
-			description: "The public YaCy peer listener; also serves the Tavily API and portal.",
+			description: "The YaCy peer listener; carries only the /yacy/* wire protocol.",
 			current:     func(config nodeConfig) string { return config.PeerAddr },
 			apply: func(config nodeConfig, addr string) nodeConfig {
 				config.PeerAddr = addr
+
+				return config
+			},
+		},
+		{
+			key:         bindKeyPublic,
+			title:       "Public search",
+			description: "The public search portal, OpenSearch, and Tavily-compatible API listener.",
+			optional:    true,
+			current:     func(config nodeConfig) string { return config.PublicAddr },
+			apply: func(config nodeConfig, addr string) nodeConfig {
+				config.PublicAddr = addr
 
 				return config
 			},
@@ -89,10 +103,15 @@ func applyBindOverrides(config nodeConfig, overrides map[string]string) nodeConf
 	return config
 }
 
-// validateNodeBinds rejects malformed peer or ops listen addresses at boot.
+// validateNodeBinds rejects malformed listen addresses at boot. An optional
+// surface (the public search listener) with an empty address is disabled, not
+// misconfigured, so it is skipped.
 func validateNodeBinds(config nodeConfig) error {
 	for _, def := range bindDefinitions() {
 		addr := def.current(config)
+		if def.optional && addr == "" {
+			continue
+		}
 		if _, _, err := splitBindAddr(addr); err != nil {
 			return fmt.Errorf("%s bind %q: %w", def.title, addr, err)
 		}

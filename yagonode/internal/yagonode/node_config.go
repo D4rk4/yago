@@ -21,6 +21,7 @@ const (
 	envNetworkName         = "YAGO_NETWORK_NAME"
 	envPeerAddr            = "YAGO_PEER_ADDR"
 	envOpsAddr             = "YAGO_OPS_ADDR"
+	envPublicAddr          = "YAGO_PUBLIC_ADDR"
 	envAdvertiseHost       = "YAGO_ADVERTISE_HOST"
 	envAdvertisePort       = "YAGO_ADVERTISE_PORT"
 	envPublicSelfTestURL   = "YAGO_PUBLIC_SELF_TEST_URL"
@@ -41,6 +42,7 @@ const (
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"
+	defaultPublicAddr       = ":8080"
 	defaultDataDir          = "./data"
 	defaultQuota            = "1GB"
 	defaultAnnounceInterval = 10 * time.Minute
@@ -63,6 +65,7 @@ type nodeConfig struct {
 	Flags                 yagomodel.Flags
 	PeerAddr              string
 	OpsAddr               string
+	PublicAddr            string
 	StoragePath           string
 	SearchIndexPath       string
 	StorageQuotaByte      int64
@@ -154,6 +157,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		Flags:                 seniorFlags(),
 		PeerAddr:              peerAddr,
 		OpsAddr:               envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
+		PublicAddr:            publicListenerAddr(getenv),
 		StoragePath:           data.databasePath,
 		SearchIndexPath:       data.searchIndexPath,
 		StorageQuotaByte:      data.quotaByte,
@@ -399,6 +403,23 @@ func advertisePort(getenv func(string) string, peerAddr string) (int, error) {
 	}
 
 	return positiveInt(envPeerAddr, portPart)
+}
+
+// publicListenerAddr resolves the dedicated public search listener's address. It
+// defaults to defaultPublicAddr; the sentinels "off", "none", and "disabled"
+// (any case) turn the public surface off, returning an empty address that
+// suppresses the listener entirely so the node stays a pure peer.
+func publicListenerAddr(getenv func(string) string) string {
+	raw := strings.TrimSpace(getenv(envPublicAddr))
+	if raw == "" {
+		return defaultPublicAddr
+	}
+	switch strings.ToLower(raw) {
+	case "off", "none", "disabled":
+		return ""
+	default:
+		return raw
+	}
 }
 
 func seniorFlags() yagomodel.Flags {

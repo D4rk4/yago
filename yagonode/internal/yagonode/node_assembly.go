@@ -35,6 +35,7 @@ import (
 
 type node struct {
 	peerMux       *http.ServeMux
+	publicMux     *http.ServeMux
 	readiness     http.Handler
 	indexStats    http.Handler
 	searchExplain http.Handler
@@ -146,7 +147,6 @@ func assembleNode(
 		config:    config,
 		vault:     vault,
 		client:    client,
-		mux:       mux,
 		storage:   storage,
 		roster:    roster,
 		identity:  identity,
@@ -158,9 +158,10 @@ func assembleNode(
 	if err != nil {
 		return node{}, err
 	}
-
+	mountPeerLanding(mux)
 	return newAssembledNode(nodeParts{
 		mux:       mux,
+		publicMux: surfaces.publicMux,
 		storage:   storage,
 		announcer: exchange.announcer,
 		crawl:     surfaces.crawl,
@@ -183,7 +184,6 @@ type assembleSurfacesInput struct {
 	config    nodeConfig
 	vault     *vault.Vault
 	client    *http.Client
-	mux       *http.ServeMux
 	storage   nodeStorage
 	roster    peerroster.Roster
 	identity  nodeidentity.Identity
@@ -194,11 +194,12 @@ type assembleSurfacesInput struct {
 }
 
 type nodeSurfaces struct {
-	crawl    crawlProcess
-	dht      dhtOutboundProcess
-	searcher searchcore.Searcher
-	ranking  *rankingprofile.Holder
-	denylist *urldenylist.Store
+	crawl     crawlProcess
+	dht       dhtOutboundProcess
+	searcher  searchcore.Searcher
+	publicMux *http.ServeMux
+	ranking   *rankingprofile.Holder
+	denylist  *urldenylist.Store
 }
 
 func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
@@ -216,7 +217,8 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	if err != nil {
 		return nodeSurfaces{}, fmt.Errorf("open url denylist: %w", err)
 	}
-	searcher := mountNodePublicSearch(in.mux, publicSearchAssembly{
+	publicMux := http.NewServeMux()
+	searcher := mountNodePublicSearch(publicMux, publicSearchAssembly{
 		storage:          in.storage,
 		roster:           in.roster,
 		identity:         in.identity,
@@ -245,16 +247,18 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	})
 
 	return nodeSurfaces{
-		crawl:    runtime,
-		dht:      dht,
-		searcher: searcher,
-		ranking:  ranking,
-		denylist: denylist,
+		crawl:     runtime,
+		dht:       dht,
+		searcher:  searcher,
+		publicMux: publicMux,
+		ranking:   ranking,
+		denylist:  denylist,
 	}, nil
 }
 
 type nodeParts struct {
 	mux       *http.ServeMux
+	publicMux *http.ServeMux
 	storage   nodeStorage
 	announcer peerannouncement.Announcer
 	crawl     crawlProcess
@@ -274,6 +278,7 @@ type nodeParts struct {
 func newAssembledNode(parts nodeParts) node {
 	return node{
 		peerMux:       parts.mux,
+		publicMux:     parts.publicMux,
 		readiness:     newReadinessEndpoint(parts.storage.searchIndex),
 		indexStats:    newIndexStatsEndpoint(parts.storage.searchIndex),
 		searchExplain: newSearchExplainEndpoint(parts.storage.searchIndex),

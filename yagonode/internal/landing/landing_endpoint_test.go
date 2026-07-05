@@ -44,7 +44,7 @@ func TestLandingEndpointServesHTML(t *testing.T) {
 		t.Errorf("content type = %q, want %q", got, landingPageContentType)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"alpha", "RWI", "github.com/D4rk4/yago/issues"} {
+	for _, want := range []string{"YagoSeek", "RWI", "github.com/D4rk4/yago/issues"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q", want)
 		}

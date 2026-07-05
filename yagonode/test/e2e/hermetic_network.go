@@ -43,3 +43,19 @@ func hostURL(t *testing.T, ctx context.Context, container testcontainers.Contain
 	}
 	return "http://" + net.JoinHostPort(host, port.Port())
 }
+
+// nodePublicURL resolves the host URL for the node's dedicated public search
+// listener, which carries the /yacysearch.* and portal surfaces that no longer
+// share the peer port.
+func nodePublicURL(t *testing.T, ctx context.Context, container testcontainers.Container) string {
+	t.Helper()
+	host, err := container.Host(ctx)
+	if err != nil {
+		t.Fatalf("resolve container host: %v", err)
+	}
+	port, err := container.MappedPort(ctx, nodePublicHTTPPort)
+	if err != nil {
+		t.Fatalf("resolve mapped public port: %v", err)
+	}
+	return "http://" + net.JoinHostPort(host, port.Port())
+}

@@ -87,6 +87,7 @@ func buildOpsMux(
 		}
 	}
 	opsMux.Handle(adminui.BasePath, adminui.New(options))
+	opsMux.Handle("/{$}", http.RedirectHandler(adminui.BasePath, http.StatusFound))
 	recorder.Record(events.SeverityInfo, events.CategoryConfig, "node.started", "node started")
 
 	return opsMux

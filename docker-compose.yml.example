@@ -6,14 +6,21 @@ services:
     image: yago-node:latest
     restart: unless-stopped
     ports:
-      - "8090:8090"
-      - "9090:9090"
+      - "8090:8090"   # peer protocol (P2P /yacy/*) — keep reachable from the network
+      - "8080:8080"   # public search (portal, OpenSearch, Tavily API, /yacysearch.*)
+      - "9090:9090"   # admin and ops (console, /health, /ready, /metrics)
     environment:
       YAGO_PEER_HASH: ${YAGO_PEER_HASH:?set YAGO_PEER_HASH in .env}
       YAGO_PEER_NAME: ${YAGO_PEER_NAME:?set YAGO_PEER_NAME in .env}
       YAGO_ADVERTISE_HOST: ${YAGO_ADVERTISE_HOST:?set YAGO_ADVERTISE_HOST in .env}
       YAGO_PUBLIC_SELF_TEST_URL: ${YAGO_PUBLIC_SELF_TEST_URL:-}
       YAGO_NETWORK_NAME: ${YAGO_NETWORK_NAME:-freeworld}
+      # Public search listener address; set to "off" to run a pure peer node.
+      YAGO_PUBLIC_ADDR: ${YAGO_PUBLIC_ADDR:-:8080}
+      # Public search portal UI at the public listener root (off by default).
+      YAGO_PUBLIC_SEARCH_UI_ENABLED: ${YAGO_PUBLIC_SEARCH_UI_ENABLED:-false}
+      # Answer plain HTTP with a redirect to HTTPS (for a TLS-terminating proxy).
+      YAGO_HTTPS_REDIRECT: ${YAGO_HTTPS_REDIRECT:-false}
       YAGO_SEEDLIST_URLS: >-
         http://sixcooler.de/yacy/seed.txt,
         https://sonst.mifritscher.de/yacy/seed.txt,

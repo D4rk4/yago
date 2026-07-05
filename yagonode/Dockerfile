@@ -43,7 +43,8 @@ ENV YAGO_DATA_DIR=/data \
 COPY --from=build --chown=nonroot:nonroot /out/data /data
 COPY --from=build /out/yago-node /usr/local/bin/yago-node
 
-EXPOSE 8090 9090
+# 8090 peer protocol (P2P), 8080 public search (portal/OpenSearch/Tavily API), 9090 ops/admin
+EXPOSE 8090 8080 9090
 
 VOLUME ["/data"]
 

@@ -2180,20 +2180,27 @@ Acceptance:
 - Settings validate before save.
 - Settings that require restart are clearly marked.
 
-### UI-11: Public search portal (port 80)
+### UI-11: Public search portal (dedicated public listener, default :8080)
 
-Status: Done (FTR-029, ADR-0020). Off by default (`YAGO_PUBLIC_SEARCH_UI_ENABLED`),
-a server-rendered `internal/publicportal` replaces the landing page at the public
-root `/`: a minimal early-2000s-Yandex page (centered wordmark, one box+button,
-plain results) that works without JavaScript and in legacy browsers, is responsive,
-and is self-contained (inline styles). It queries the shared search core (local +
+Status: Done (FTR-029, FTR-043, ADR-0020). The public surface now lives on its own
+listener (`YAGO_PUBLIC_ADDR`, default `:8080`, unprivileged; set to `off` for a
+pure peer node), separate from the peer protocol listener (`:8090`, `/yacy/*` only)
+and the ops listener (`:9090`). All client-facing search surfaces — the portal,
+`/yacysearch.*`, OpenSearch, and the Tavily API — moved off the peer port to this
+public listener; this matches YaCy's own servlet split (`/yacy/*` is the inter-peer
+protocol, `/yacysearch.*` is the client frontend), so swarm interop is unaffected.
+Off by default (`YAGO_PUBLIC_SEARCH_UI_ENABLED`), a server-rendered
+`internal/publicportal` replaces the landing page at the public listener root `/`:
+a minimal early-2000s-Yandex page (centered wordmark, one box+button, plain
+results) that works without JavaScript and in legacy browsers, is responsive, and
+is self-contained (inline styles). It queries the shared search core (local +
 peers + DDGS fallback), shows the `[ddgs]` marker, exposes only search, and does
 not log the query. OpenSearch/suggestions on the portal and SEC-05 privacy wiring
 remain follow-ups.
 
-A separate, admin-toggleable **public** search UI served on the node's public
-HTTP port (`80` in appliance mode) — distinct from the authenticated Carbon admin
-SPA (UI-02..UI-10). It is the anonymous front door for search-portal and intranet
+A separate, admin-toggleable **public** search UI served on the node's dedicated
+public search listener (`YAGO_PUBLIC_ADDR`, default `:8080`) — distinct from the
+authenticated Carbon admin SPA (UI-02..UI-10). It is the anonymous front door for search-portal and intranet
 deployments and is off by default (the "Public search enabled" runtime setting
 and the `YAGO_PUBLIC_SEARCH_UI_ENABLED` toggle gate it). It renders the same
 search that the admin UI and `/yacysearch.*` endpoints do, so DDGS-fallback hits
@@ -2227,8 +2234,9 @@ Design and delivery constraints:
 
 Acceptance:
 
-- With the toggle off, port 80 serves no public search UI; with it on, `/` serves
-  the Yandex-style portal and a query returns a results page.
+- With the toggle off, the public listener's root serves the landing page (no
+  public search portal); with it on, `/` serves the Yandex-style portal and a
+  query returns a results page.
 - The portal renders a usable search box and results with JavaScript disabled.
 - Layout is legible on a narrow mobile viewport without horizontal scrolling.
 - DDGS-fallback results show the `[ddgs]` marker on the portal; the Tavily
@@ -3495,7 +3503,7 @@ nor the `yago` command or module paths (BRAND-01..03).
 Naming:
 
 - Brand: **YagoSeek**. CLI/binary and Go module short name: `yago`. Repository:
-  `github.com/D4rk4/yago`. Domain: `yagoseek.dev`, with `docs.`, `api.`,
+  `github.com/D4rk4/yago`. Domain: `yagoseek.dev`, with `docs.`,
   `demo.` (public demo), and `status.` subdomains.
 
 Tasks:

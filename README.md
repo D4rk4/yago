@@ -14,8 +14,8 @@ crawler pipeline.
 workspace, and the command-line binaries (`yago-node`, `yagocrawler`).
 
 - Project home: https://yagoseek.dev/ — documentation at https://docs.yagoseek.dev/,
-  the Search API reference at https://api.yagoseek.dev/, a hosted demo at
-  https://demo.yagoseek.dev/, and network status at https://status.yagoseek.dev/.
+  a hosted demo at https://demo.yagoseek.dev/, and network status at
+  https://status.yagoseek.dev/.
 - Source repository: https://github.com/D4rk4/yago/, importable as the Go module
   `github.com/D4rk4/yago`.
 
@@ -175,8 +175,9 @@ Common node variables:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `YAGO_PEER_ADDR` | `:8090` | YaCy peer protocol listener. |
-| `YAGO_OPS_ADDR` | `:9090` | Ops listener for `/health`, `/ready`, `/metrics`, and node-side crawl dispatch. Every endpoint except `/health` and `/ready` requires a valid admin session or a scoped `Authorization: Bearer` API key. |
+| `YAGO_PEER_ADDR` | `:8090` | YaCy peer-to-peer wire protocol (`/yacy/*`) listener; its root `/` serves the node's identity landing page. |
+| `YAGO_PUBLIC_ADDR` | `:8080` | Public search listener: the search portal, OpenSearch description/suggestions, the Tavily-compatible API (`POST /search`, `POST /extract`), and `/yacysearch.*`. Set to `off` (or `none`) to run a pure peer node with no public surface. The default is unprivileged so the `nonroot` container binds it without extra capabilities; front it with a reverse proxy for TLS. |
+| `YAGO_OPS_ADDR` | `:9090` | Ops listener for `/health`, `/ready`, `/metrics`, node-side crawl dispatch, and the admin console (root `/` redirects to `/admin/`). Every endpoint except `/health` and `/ready` requires a valid admin session or a scoped `Authorization: Bearer` API key. |
 | `YAGO_ADMIN_USER` | empty | Administrator username. When set together with `YAGO_ADMIN_PASSWORD`, the admin is provisioned on every start (authoritative). |
 | `YAGO_ADMIN_PASSWORD` | empty | Administrator password, stored as an Argon2id hash. Leave both admin variables empty to instead create the first admin with `POST /api/admin/v1/auth/setup`. There is no default password. |
 | `YAGO_ADMIN_CORS_ORIGINS` | empty | Comma-separated origin allowlist for cross-origin browser calls to the ops surface. Empty denies all; cross-origin is off by default. |

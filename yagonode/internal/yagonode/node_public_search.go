@@ -38,6 +38,14 @@ type publicSearchAssembly struct {
 	denylist             denylistSnapshotter
 }
 
+// mountPeerLanding serves the static landing page at the peer listener's root so
+// a human (or another peer) that opens the P2P port sees the node's identity. The
+// peer listener otherwise carries only the /yacy/* wire protocol; the public
+// search surfaces live on the separate public listener.
+func mountPeerLanding(mux *http.ServeMux) {
+	mux.Handle("/{$}", landing.NewEndpoint())
+}
+
 func mountNodePublicSearch(
 	mux *http.ServeMux,
 	assembly publicSearchAssembly,

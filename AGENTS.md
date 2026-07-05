@@ -96,7 +96,7 @@ Comments: No comments without explicit user approval. Use naming and structure i
 
 Single source of truth: Do not duplicate facts in comments, errors, logs, or similar text when they already exist in constants, config, docs, or protocol definitions.
 
-Documentation: Each doc is self-contained, concise, plain-language, and user-facing. Links are for navigation only. Avoid cross-doc dependencies, duplicate facts, jargon, implementation details, and rationale. Behavior changes update the relevant module README, `yagonode/doc/`, `FEATURES.md`, and `CONTINUITY.md`; update a root README if one is introduced.
+Documentation: Each doc is self-contained, concise, plain-language, and user-facing. Links are for navigation only. Avoid cross-doc dependencies, duplicate facts, jargon, implementation details, and rationale. Behavior changes update the relevant module README, `yagonode/doc/`, `FEATURES.md`, and `CONTINUITY.md`; update a root README if one is introduced. Any change to the deployed surface — ports, listeners, service topology, images, or the environment variables a node or crawler reads — must also update `docker-compose.yml.example` (its `ports`, `services`, and `environment` blocks) in the same change; the example is the canonical deployment reference and is kept in sync, never left to drift.
 
 Naming: Every package, file, type, interface, port, function, method, field, and variable has one bounded responsibility. Prefer explicit bounded names over short generic names. Never use `util.go`, `helpers.go`, `handler.go`, or `types.go`. Reject umbrella names such as Store, Manager, Service, Handler, Util, or catch-all domain names like Distribution*. If the boundary cannot be stated in one sentence, fix the abstraction.
 
@@ -135,6 +135,6 @@ git log -1 --format=%B | grep -F "Motivation:"
 
 Keep commit text in English.
 
-Feature closure: Closing a feature requires the tests to be written with the code, then a full test run, Dockerized Semgrep, Dockerized Trivy source and container-image scans, container builds, sanity tests, and smoke tests, and updating `FEATURES.md` (the affected capability, surface, status, behavior summary, and files/tests) alongside the code — a slice is not closed until its `FEATURES.md` row reflects it. If all feature-closure checks pass, commit the change and push it to `main`.
+Feature closure: Closing a feature requires the tests to be written with the code, then a full test run, Dockerized Semgrep, Dockerized Trivy source and container-image scans, container builds, sanity tests, and smoke tests, and updating `FEATURES.md` (the affected capability, surface, status, behavior summary, and files/tests) plus `docker-compose.yml.example` when the deployed surface (ports, listeners, services, images, or env vars) changed, alongside the code — a slice is not closed until its `FEATURES.md` row and, where relevant, the compose example reflect it. If all feature-closure checks pass, commit the change and push it to `main`.
 
 Gate: `make verify` is the mandatory code gate. A code change is not done until it is green. Feature closure adds the required Dockerized Semgrep, Dockerized Trivy, container, sanity, smoke, commit, and push checks.

@@ -32,6 +32,7 @@ func buildConfigView(config nodeConfig) adminui.ConfigView {
 		{Title: "Listeners", Settings: []adminui.ConfigSetting{
 			{Name: "Peer listener", Value: config.PeerAddr},
 			{Name: "Operations listener", Value: config.OpsAddr},
+			{Name: "Public search listener", Value: publicListenerDisplay(config.PublicAddr)},
 			{
 				Name:  "Advertised endpoint",
 				Value: fmt.Sprintf("%s:%d", config.AdvertiseHost, config.AdvertisePort),
@@ -66,6 +67,14 @@ func buildConfigView(config nodeConfig) adminui.ConfigView {
 			{Name: "Password", Value: redactedSecret(config.Admin.Password)},
 		}},
 	}}
+}
+
+func publicListenerDisplay(addr string) string {
+	if addr == "" {
+		return "Disabled"
+	}
+
+	return addr
 }
 
 func redactedSecret(secret string) string {

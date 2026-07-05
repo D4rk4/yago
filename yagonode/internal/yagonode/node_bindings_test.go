@@ -50,14 +50,21 @@ func TestApplyBindOverridesReplacesListenAddress(t *testing.T) {
 	t.Parallel()
 
 	config := applyBindOverrides(
-		nodeConfig{PeerAddr: ":8090", OpsAddr: ":9090"},
-		map[string]string{bindKeyPeer: "127.0.0.1:8091", bindKeyOps: "0.0.0.0:9191"},
+		nodeConfig{PeerAddr: ":8090", OpsAddr: ":9090", PublicAddr: ":8080"},
+		map[string]string{
+			bindKeyPeer:   "127.0.0.1:8091",
+			bindKeyOps:    "0.0.0.0:9191",
+			bindKeyPublic: "127.0.0.1:8081",
+		},
 	)
 	if config.PeerAddr != "127.0.0.1:8091" {
 		t.Fatalf("PeerAddr = %q, want 127.0.0.1:8091", config.PeerAddr)
 	}
 	if config.OpsAddr != "0.0.0.0:9191" {
 		t.Fatalf("OpsAddr = %q, want 0.0.0.0:9191", config.OpsAddr)
+	}
+	if config.PublicAddr != "127.0.0.1:8081" {
+		t.Fatalf("PublicAddr = %q, want 127.0.0.1:8081", config.PublicAddr)
 	}
 }
 
@@ -77,12 +84,22 @@ func TestValidateNodeBinds(t *testing.T) {
 	t.Parallel()
 
 	if err := validateNodeBinds(
-		nodeConfig{PeerAddr: ":8090", OpsAddr: "127.0.0.1:9090"},
+		nodeConfig{PeerAddr: ":8090", OpsAddr: "127.0.0.1:9090", PublicAddr: ":8080"},
 	); err != nil {
 		t.Fatalf("valid binds rejected: %v", err)
 	}
+	if err := validateNodeBinds(
+		nodeConfig{PeerAddr: ":8090", OpsAddr: ":9090", PublicAddr: ""},
+	); err != nil {
+		t.Fatalf("disabled (empty) public bind rejected: %v", err)
+	}
 	if err := validateNodeBinds(nodeConfig{PeerAddr: "bogus", OpsAddr: ":9090"}); err == nil {
 		t.Fatal("malformed peer bind accepted")
+	}
+	if err := validateNodeBinds(
+		nodeConfig{PeerAddr: ":8090", OpsAddr: ":9090", PublicAddr: "bogus"},
+	); err == nil {
+		t.Fatal("malformed public bind accepted")
 	}
 }
 

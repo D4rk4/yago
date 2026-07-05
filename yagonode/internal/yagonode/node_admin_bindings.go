@@ -64,14 +64,18 @@ func (s *bindingSource) item(
 		}
 	}
 
-	host, port, _ := splitBindAddr(addr)
+	host, port, err := splitBindAddr(addr)
+	portText := ""
+	if err == nil {
+		portText = fmt.Sprintf("%d", port)
+	}
 
 	return adminui.BindItem{
 		Key:         def.key,
 		Title:       def.title,
 		Description: def.description,
 		Host:        host,
-		Port:        fmt.Sprintf("%d", port),
+		Port:        portText,
 		Overridden:  overridden,
 		Interfaces:  options,
 	}

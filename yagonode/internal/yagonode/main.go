@@ -137,13 +137,33 @@ func bootNode(
 		guardAdminSurface(authService, opsMux),
 	)
 
-	return serveRuntimeNode(
-		ctx,
-		assembled,
-		obs.eviction,
+	servers := []namedServer{
 		buildPeerServer(config, obs.endpoints, assembled, toggles),
-		namedServer{"ops", buildServer(config.OpsAddr, redirectHTTPS(toggles, opsHandler))},
-	)
+		{"ops", buildServer(config.OpsAddr, redirectHTTPS(toggles, opsHandler))},
+	}
+	if config.PublicAddr != "" {
+		servers = append(servers, buildPublicServer(config, obs.endpoints, assembled, toggles))
+	}
+
+	return serveRuntimeNode(ctx, assembled, obs.eviction, servers...)
+}
+
+// buildPublicServer builds the dedicated public search listener: the portal,
+// OpenSearch, the Tavily-compatible API, and the /yacysearch.* surfaces. It is
+// only constructed when a public address is configured, so a pure peer node runs
+// without it.
+func buildPublicServer(
+	config nodeConfig,
+	endpoints *metrics.HTTPEndpointMetrics,
+	assembled node,
+	toggles *runtimeToggles,
+) namedServer {
+	publicHandler := redirectHTTPS(toggles, wrapSearchCORS(
+		config.CrossOrigin.SearchOrigins,
+		logHTTPRequests(instrumentHTTP(endpoints, assembled.publicMux)),
+	))
+
+	return namedServer{"public search", buildServer(config.PublicAddr, publicHandler)}
 }
 
 func buildPeerServer(

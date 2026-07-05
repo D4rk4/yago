@@ -308,6 +308,7 @@ func setValidRunEnv(t *testing.T) {
 		envLogLevel,
 		envPeerAddr,
 		envOpsAddr,
+		envPublicAddr,
 		envAdvertiseHost,
 		envAdvertisePort,
 		envStorageQuota,
@@ -410,8 +411,8 @@ func TestRunMountsCrawlDispatchAndServes(t *testing.T) {
 		_ *metrics.EvictionMetrics,
 		servers ...namedServer,
 	) error {
-		if len(servers) != 2 {
-			t.Fatalf("servers = %d, want 2", len(servers))
+		if len(servers) != 3 {
+			t.Fatalf("servers = %d, want 3", len(servers))
 		}
 
 		return nil
@@ -422,6 +423,47 @@ func TestRunMountsCrawlDispatchAndServes(t *testing.T) {
 	}
 	if !crawl.mounted.Load() {
 		t.Fatal("crawl dispatch was not mounted")
+	}
+}
+
+// TestRunOmitsPublicServerWhenDisabled proves the public search listener is
+// suppressed (leaving only the peer and ops servers) when the operator turns it
+// off, exercising the disabled branch of the public-listener wiring.
+func TestRunOmitsPublicServerWhenDisabled(t *testing.T) {
+	restoreMainSeams(t)
+	setValidRunEnv(t)
+	t.Setenv(envPublicAddr, "off")
+	openRuntimeVault = func(string, int64) (*vault.Vault, error) { return openTestVault(t), nil }
+	assembleRuntimeNode = func(
+		context.Context,
+		nodeConfig,
+		*vault.Vault,
+		*http.Client,
+		nodeTelemetry,
+	) (node, error) {
+		return node{
+			announcer:     fakeAnnouncer{},
+			sweeper:       &scriptedSweeper{},
+			searchExplain: newSearchExplainEndpoint(nil),
+		}, nil
+	}
+	served := 0
+	serveRuntimeNode = func(
+		_ context.Context,
+		_ node,
+		_ *metrics.EvictionMetrics,
+		servers ...namedServer,
+	) error {
+		served = len(servers)
+
+		return nil
+	}
+
+	if err := run(); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if served != 2 {
+		t.Fatalf("servers = %d, want 2", served)
 	}
 }
 

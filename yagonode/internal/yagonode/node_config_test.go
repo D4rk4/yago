@@ -13,6 +13,32 @@ func envFrom(values map[string]string) func(string) string {
 	return func(key string) string { return values[key] }
 }
 
+func TestPublicListenerAddr(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		env  string
+		want string
+	}{
+		{name: "defaults when unset", env: "", want: defaultPublicAddr},
+		{name: "off sentinel disables", env: "off", want: ""},
+		{name: "disabled sentinel any case", env: "Disabled", want: ""},
+		{name: "none sentinel disables", env: "none", want: ""},
+		{name: "custom address passes through", env: "127.0.0.1:9091", want: "127.0.0.1:9091"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := publicListenerAddr(envFrom(map[string]string{envPublicAddr: tc.env}))
+			if got != tc.want {
+				t.Fatalf("publicListenerAddr(%q) = %q, want %q", tc.env, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestLoadNodeConfigAppliesDefaults(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
 		envPeerHash: "0123456789AB",

@@ -39,20 +39,33 @@ console reached over `localhost` cannot be pushed to an unreachable HTTPS origin
 
 ### Listen addresses
 
+The node runs three separate HTTP listeners, each with a distinct job:
+
+- **Peer protocol** (`YAGO_PEER_ADDR`, default `:8090`) — the YaCy peer-to-peer
+  wire protocol only: `/yacy/*` (search fan-out, RWI/URL transfer, seedlist,
+  query, hello). Other peers reach you here, so keep it reachable from the
+  network. Its root `/` serves a static identity landing page.
+- **Public search** (`YAGO_PUBLIC_ADDR`, default `:8080`) — the client-facing
+  surfaces: the Tavily-compatible API (`POST /search`, `POST /extract`), the
+  `/yacysearch.*` endpoints, OpenSearch description/suggestions, and the public
+  search portal at its root `/`. Set `YAGO_PUBLIC_ADDR` to `off` (or `none`) to
+  run a pure peer node with no public surface. Front it with a reverse proxy for
+  TLS; the default `:8080` is unprivileged so the `nonroot` container binds it
+  without extra capabilities.
+- **Admin and ops** (`YAGO_OPS_ADDR`, default `:9090`) — `/health`, `/ready`,
+  `/metrics`, the ops JSON endpoints, and the admin console at `/admin/`. Its
+  root `/` redirects to the console. Every path except `/health` and `/ready`
+  requires an admin session or a scoped API key, so this listener can be bound to
+  loopback (`127.0.0.1`) when the console is only reached locally or through a
+  proxy.
+
 The Configuration section also has a per-surface bind editor. It lists the host's
 network interface addresses (including loopback) and lets you set, per listener,
-the interface (or **all interfaces**) and the port. Two surfaces are editable:
-the **peer protocol** listener (`YAGO_PEER_ADDR`, which also serves the
-Tavily-compatible API and the public portal) and the **admin and ops** listener
-(`YAGO_OPS_ADDR`). A bind override is validated — the host must be one of the
-machine's own interface addresses, so you cannot bind a surface to an unreachable
-address — persisted durably, and applied on the next restart.
-
-Exposure guidance: keep the peer listener reachable from the network (bind to all
-interfaces or your public IP) so other peers can reach you; the admin and ops
-listener can be bound to loopback (`127.0.0.1`) when the console is only used
-locally or reached through a reverse proxy. Loopback and all-interfaces are always
-offered so a bind change cannot lock you out of the admin console.
+the interface (or **all interfaces**) and the port for each of the three surfaces
+above. A bind override is validated — the host must be one of the machine's own
+interface addresses, so you cannot bind a surface to an unreachable address —
+persisted durably, and applied on the next restart. Loopback and all-interfaces
+are always offered so a bind change cannot lock you out of the admin console.
 
 | Variable | Default | Description |
 | --- | --- | --- |

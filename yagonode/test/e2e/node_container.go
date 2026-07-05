@@ -17,8 +17,10 @@ import (
 )
 
 const (
-	nodeContainerPort = "8090"
-	envNodeImage      = "YAGO_NODE_IMAGE"
+	nodeContainerPort       = "8090"
+	nodePublicContainerPort = "8080"
+	nodePublicHTTPPort      = nodePublicContainerPort + "/tcp"
+	envNodeImage            = "YAGO_NODE_IMAGE"
 )
 
 type nodeConfig struct {
@@ -42,6 +44,7 @@ func startNode(
 		"YAGO_PEER_NAME":                     cfg.alias,
 		"YAGO_NETWORK_NAME":                  yagoproto.DefaultNetwork,
 		"YAGO_PEER_ADDR":                     ":" + nodeContainerPort,
+		"YAGO_PUBLIC_ADDR":                   ":" + nodePublicContainerPort,
 		"YAGO_ADVERTISE_HOST":                cfg.alias,
 		"YAGO_ADVERTISE_PORT":                nodeContainerPort,
 		"YAGO_DATA_DIR":                      "/tmp/data",
@@ -61,7 +64,7 @@ func startNode(
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:          nodeImage(t),
 			Name:           cfg.alias,
-			ExposedPorts:   []string{httpPort},
+			ExposedPorts:   []string{httpPort, nodePublicHTTPPort},
 			Env:            env,
 			Networks:       []string{cfg.networkName},
 			NetworkAliases: map[string][]string{cfg.networkName: {cfg.alias}},

@@ -94,7 +94,7 @@ func TestGlobalSearchFindsRealYaCyResults(t *testing.T) {
 	pushDocument(t, ctx, probe, yacyURL, tokens)
 	waitYaCyLocalRWIs(t, ctx, probe, yacyURL, yacyHash, 30*time.Second)
 
-	_, nodeURL := startNode(t, ctx, probe, nodeConfig{
+	nodeContainer, _ := startNode(t, ctx, probe, nodeConfig{
 		networkName: network.Name,
 		alias:       searchNodeAlias,
 		hash:        searchNodeHash,
@@ -104,7 +104,9 @@ func TestGlobalSearchFindsRealYaCyResults(t *testing.T) {
 		},
 	})
 
-	searchURL := nodeURL + "/yacysearch.json?" + url.Values{
+	// The client search surfaces now live on the dedicated public listener, not
+	// the peer port that carries the /yacy/* wire protocol.
+	searchURL := nodePublicURL(t, ctx, nodeContainer) + "/yacysearch.json?" + url.Values{
 		"query":          {tokens[0]},
 		"resource":       {"global"},
 		"maximumRecords": {"10"},
