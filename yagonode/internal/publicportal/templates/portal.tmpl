@@ -13,7 +13,7 @@
   .brand { font-size: 3.5rem; font-weight: 700; letter-spacing: -0.02em; }
   .brand b { color: #d81c2f; }
   form.search { margin: 1.5rem 0; }
-  .search input[type=search] { width: 70%; max-width: 32rem; height: 2.5rem; font-size: 1rem;
+  .search input[type=search] { width: 100%; height: 2.5rem; font-size: 1rem;
     padding: 0 0.6rem; border: 1px solid #8d8d8d; vertical-align: middle; box-sizing: border-box; }
   .search button { height: 2.5rem; font-size: 1rem; padding: 0 1rem; background: #d81c2f;
     color: #ffffff; border: none; cursor: pointer; vertical-align: middle; }
@@ -27,7 +27,7 @@
   .ophelp { margin-top: 0.75rem; font-size: 0.85rem; color: #555; text-align: left; display: inline-block; }
 .ophelp ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
 .ophelp code { background: #f2f2f2; padding: 0 0.25rem; }
-.ac-wrap { position: relative; display: inline-block; }
+.ac-wrap { position: relative; display: inline-block; width: 70%; max-width: 32rem; vertical-align: middle; }
 #ac-list { position: absolute; left: 0; right: 0; top: 100%; margin: 0; padding: 0; list-style: none; background: #fff; border: 1px solid #ccc; border-top: none; z-index: 10; text-align: left; }
 #ac-list li { padding: 0.35rem 0.6rem; cursor: pointer; }
 #ac-list li[aria-selected="true"], #ac-list li:hover { background: #eef; }
@@ -37,7 +37,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   nav.pager a:hover { text-decoration: underline; }
   nav.pager .page { color: #525252; }
   .foot { color: #8d8d8d; font-size: 0.7rem; margin-top: 2rem; border-top: 1px solid #e0e0e0; padding-top: 0.6rem; }
-  @media (max-width: 32rem) { .brand { font-size: 2.5rem; } .search input[type=search] { width: 60%; } }
+  @media (max-width: 32rem) { .brand { font-size: 2.5rem; } .ac-wrap { width: 60%; } }
 </style>
 </head>
 <body>
