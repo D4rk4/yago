@@ -66,6 +66,11 @@ above. A bind override is validated — the host must be one of the machine's ow
 interface addresses, so you cannot bind a surface to an unreachable address —
 persisted durably, and applied on the next restart. Loopback and all-interfaces
 are always offered so a bind change cannot lock you out of the admin console.
+Changing the **peer** listener's port also re-derives the advertised port and the
+local DHT self-test address from the new value, so the node announces the port it
+actually listens on — unless you pinned them explicitly with `YAGO_ADVERTISE_PORT`
+or `YAGO_PUBLIC_SELF_TEST_URL`, which stay authoritative (set the latter when the
+peer listener is behind a reverse proxy or NAT and the external address differs).
 
 | Variable | Default | Description |
 | --- | --- | --- |

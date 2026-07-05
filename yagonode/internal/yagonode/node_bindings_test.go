@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"net"
+	"net/url"
 	"testing"
 )
 
@@ -77,6 +78,43 @@ func TestApplyBindOverridesIgnoresMalformed(t *testing.T) {
 	)
 	if config.PeerAddr != ":8090" {
 		t.Fatalf("PeerAddr = %q, want the environment default :8090", config.PeerAddr)
+	}
+}
+
+func TestApplyBindOverridesRealignsPeerDerivedValues(t *testing.T) {
+	t.Parallel()
+
+	config := applyBindOverrides(
+		nodeConfig{PeerAddr: ":8090", AdvertisePort: 8090},
+		map[string]string{bindKeyPeer: "127.0.0.1:8091"},
+	)
+	if config.AdvertisePort != 8091 {
+		t.Fatalf("AdvertisePort = %d, want the re-derived 8091", config.AdvertisePort)
+	}
+	if config.PublicSelfTestURL == nil || config.PublicSelfTestURL.Port() != "8091" {
+		t.Fatalf("PublicSelfTestURL = %v, want port 8091", config.PublicSelfTestURL)
+	}
+}
+
+func TestApplyBindOverridesKeepsPinnedPeerDerivedValues(t *testing.T) {
+	t.Parallel()
+
+	pinned := &url.URL{Scheme: "https", Host: "node.example:9000"}
+	config := applyBindOverrides(
+		nodeConfig{
+			PeerAddr:            ":8090",
+			AdvertisePort:       7000,
+			AdvertisePortPinned: true,
+			PublicSelfTestURL:   pinned,
+			SelfTestURLPinned:   true,
+		},
+		map[string]string{bindKeyPeer: "127.0.0.1:8091"},
+	)
+	if config.AdvertisePort != 7000 {
+		t.Fatalf("AdvertisePort = %d, want the pinned 7000", config.AdvertisePort)
+	}
+	if config.PublicSelfTestURL != pinned {
+		t.Fatalf("PublicSelfTestURL = %v, want the pinned URL unchanged", config.PublicSelfTestURL)
 	}
 }
 

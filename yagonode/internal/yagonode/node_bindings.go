@@ -100,6 +100,27 @@ func applyBindOverrides(config nodeConfig, overrides map[string]string) nodeConf
 		config = def.apply(config, formatBindAddr(host, port))
 	}
 
+	return realignPeerDerivedConfig(config)
+}
+
+// realignPeerDerivedConfig re-derives the values computed from the peer listen
+// address — the advertised port and the local DHT self-test URL — after a bind
+// override may have changed it, unless the operator pinned them explicitly via
+// YAGO_ADVERTISE_PORT / YAGO_PUBLIC_SELF_TEST_URL. Without this, changing the
+// peer port in the console would keep advertising the old port to the network
+// and self-testing the old address (leaving the DHT gate shut).
+func realignPeerDerivedConfig(config nodeConfig) nodeConfig {
+	if !config.AdvertisePortPinned {
+		if _, port, err := splitBindAddr(config.PeerAddr); err == nil {
+			config.AdvertisePort = port
+		}
+	}
+	if !config.SelfTestURLPinned {
+		if selfTest, err := localSelfTestURL(config.PeerAddr); err == nil {
+			config.PublicSelfTestURL = selfTest
+		}
+	}
+
 	return config
 }
 

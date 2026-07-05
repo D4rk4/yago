@@ -61,7 +61,9 @@ type nodeConfig struct {
 	DataDir               string
 	AdvertiseHost         string
 	AdvertisePort         int
+	AdvertisePortPinned   bool
 	PublicSelfTestURL     *url.URL
+	SelfTestURLPinned     bool
 	Flags                 yagomodel.Flags
 	PeerAddr              string
 	OpsAddr               string
@@ -116,17 +118,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		return nodeConfig{}, err
 	}
 
-	host, err := advertiseHost(getenv, len(seedlistURLs) > 0)
-	if err != nil {
-		return nodeConfig{}, err
-	}
-
-	port, err := advertisePort(getenv, peerAddr)
-	if err != nil {
-		return nodeConfig{}, err
-	}
-
-	selfTestURL, err := publicSelfTestURL(getenv, peerAddr)
+	adv, err := loadPeerAdvertisement(getenv, peerAddr, len(seedlistURLs) > 0)
 	if err != nil {
 		return nodeConfig{}, err
 	}
@@ -151,9 +143,11 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		NetworkName:           envWithDefault(getenv, envNetworkName, yagoproto.DefaultNetwork),
 		Name:                  name,
 		DataDir:               data.directory,
-		AdvertiseHost:         host,
-		AdvertisePort:         port,
-		PublicSelfTestURL:     selfTestURL,
+		AdvertiseHost:         adv.host,
+		AdvertisePort:         adv.port,
+		AdvertisePortPinned:   adv.portPinned,
+		PublicSelfTestURL:     adv.selfTestURL,
+		SelfTestURLPinned:     adv.selfTestPinned,
 		Flags:                 seniorFlags(),
 		PeerAddr:              peerAddr,
 		OpsAddr:               envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
@@ -390,6 +384,45 @@ func advertiseHost(getenv func(string) string, announcing bool) (string, error) 
 	}
 
 	return host, nil
+}
+
+// peerAdvertisement bundles how the node presents its peer endpoint to the
+// network: the advertised host and port and the local DHT self-test URL, plus
+// whether the port and self-test URL were pinned by their own environment
+// variables (so a later peer-bind change does not silently override them).
+type peerAdvertisement struct {
+	host           string
+	port           int
+	portPinned     bool
+	selfTestURL    *url.URL
+	selfTestPinned bool
+}
+
+func loadPeerAdvertisement(
+	getenv func(string) string,
+	peerAddr string,
+	announcing bool,
+) (peerAdvertisement, error) {
+	host, err := advertiseHost(getenv, announcing)
+	if err != nil {
+		return peerAdvertisement{}, err
+	}
+	port, err := advertisePort(getenv, peerAddr)
+	if err != nil {
+		return peerAdvertisement{}, err
+	}
+	selfTestURL, err := publicSelfTestURL(getenv, peerAddr)
+	if err != nil {
+		return peerAdvertisement{}, err
+	}
+
+	return peerAdvertisement{
+		host:           host,
+		port:           port,
+		portPinned:     strings.TrimSpace(getenv(envAdvertisePort)) != "",
+		selfTestURL:    selfTestURL,
+		selfTestPinned: strings.TrimSpace(getenv(envPublicSelfTestURL)) != "",
+	}, nil
 }
 
 func advertisePort(getenv func(string) string, peerAddr string) (int, error) {
