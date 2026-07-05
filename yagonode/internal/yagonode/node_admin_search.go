@@ -6,6 +6,7 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/snippetmark"
 )
 
 type searchSource struct {
@@ -39,23 +40,28 @@ func (s searchSource) Search(
 		Query:        query.Query,
 		Global:       query.Global,
 		TotalResults: response.TotalResults,
-		Results:      adminSearchResults(response.Results),
+		Results:      adminSearchResults(response.Results, response.Request.Terms),
 		Failures:     adminSearchFailures(response.PartialFailures),
 	}, nil
 }
 
-func adminSearchResults(results []searchcore.Result) []adminui.SearchResult {
+func adminSearchResults(
+	results []searchcore.Result,
+	terms []string,
+) []adminui.SearchResult {
 	rendered := make([]adminui.SearchResult, 0, len(results))
 	for _, result := range results {
 		rendered = append(rendered, adminui.SearchResult{
-			Title:      result.Title,
-			URL:        result.URL,
-			DisplayURL: result.DisplayURL,
-			Snippet:    result.Snippet,
-			Host:       result.Host,
-			Date:       result.Date,
-			Source:     string(result.Source),
-			Marked:     result.Source == searchcore.SourceWeb,
+			Title:       result.Title,
+			URL:         result.URL,
+			DisplayURL:  result.DisplayURL,
+			Snippet:     result.Snippet,
+			SnippetHTML: snippetmark.Highlight(result.Snippet, terms),
+			Host:        result.Host,
+			Date:        result.Date,
+			SizeName:    resultSizeName(result.Size),
+			Source:      string(result.Source),
+			Marked:      result.Source == searchcore.SourceWeb,
 		})
 	}
 

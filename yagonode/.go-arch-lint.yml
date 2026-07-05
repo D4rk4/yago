@@ -98,6 +98,8 @@ components:
     in: internal/tavilyapi/**
   yacysearch:
     in: internal/yacysearch/**
+  snippetmark:
+    in: internal/snippetmark/**
   websearch:
     in: internal/websearch/**
   extractfetch:
@@ -471,6 +473,7 @@ deps:
     mayDependOn:
       - yacysearch
       - searchcore
+      - snippetmark
     canUse:
       - yagoproto
   websearch:
@@ -622,6 +625,7 @@ deps:
       - yacysearch
       - websearch
       - extractfetch
+      - snippetmark
     canUse:
       - yagocrawlcontract
       - yagoegress

@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/snippetmark"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -40,7 +41,7 @@ type htmlSearchItem struct {
 	Title       string
 	URL         string
 	DisplayURL  string
-	Description string
+	Description template.HTML
 	Date        string
 	SizeName    string
 }
@@ -130,7 +131,7 @@ func responseHTML(r *http.Request, resp searchcore.Response) htmlSearchPage {
 		RSSURL:             requestBaseURL(r) + "/yacysearch.rss" + rawSearchURL[len(base):],
 		OpenSearchURL:      requestBaseURL(r) + "/opensearchdescription.xml",
 		TotalResults:       strconv.Itoa(resp.TotalResults),
-		Items:              responseHTMLItems(resp.Results),
+		Items:              responseHTMLItems(resp.Results, resp.Request.Terms),
 		PartialFailures:    resp.PartialFailures,
 		ShowResults:        resp.Request.Query != "",
 		ShowPartialFailure: len(resp.PartialFailures) > 0,
@@ -177,14 +178,16 @@ func htmlPageURL(base string, req searchcore.Request, offset int) string {
 	return base + "?" + values.Encode()
 }
 
-func responseHTMLItems(results []searchcore.Result) []htmlSearchItem {
+func responseHTMLItems(results []searchcore.Result, terms []string) []htmlSearchItem {
 	items := make([]htmlSearchItem, 0, len(results))
 	for _, result := range results {
 		items = append(items, htmlSearchItem{
-			Title:       markWebResultTitle(result.Source, result.Title),
-			URL:         result.URL,
-			DisplayURL:  result.DisplayURL,
-			Description: result.Snippet,
+			Title:      markWebResultTitle(result.Source, result.Title),
+			URL:        result.URL,
+			DisplayURL: result.DisplayURL,
+			// Highlight escapes the snippet before adding <mark>, so this is
+			// the only HTML the description may carry.
+			Description: snippetmark.Highlight(result.Snippet, terms),
 			Date:        result.Date,
 			SizeName:    sizeName(result.Size),
 		})

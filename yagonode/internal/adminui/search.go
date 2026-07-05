@@ -1,6 +1,9 @@
 package adminui
 
-import "context"
+import (
+	"context"
+	"html/template"
+)
 
 // SearchQuery is an admin-console search request. Offset and Limit carry the
 // requested result window so the console can page through matches.
@@ -29,10 +32,14 @@ type SearchResult struct {
 	URL        string
 	DisplayURL string
 	Snippet    string
-	Host       string
-	Date       string
-	Source     string
-	Marked     bool
+	// SnippetHTML carries the query-term-highlighted snippet (escaped text
+	// plus <mark> only); when set it renders instead of the plain snippet.
+	SnippetHTML template.HTML
+	Host        string
+	Date        string
+	SizeName    string
+	Source      string
+	Marked      bool
 }
 
 // SearchResults is the rendered outcome of a query.

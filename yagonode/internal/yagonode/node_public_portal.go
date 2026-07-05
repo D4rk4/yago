@@ -3,13 +3,25 @@ package yagonode
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/snippetmark"
 )
 
 type portalSource struct {
 	searcher searchcore.Searcher
+}
+
+// resultSizeName renders a stored page size for the human surfaces, empty
+// when the size is unknown.
+func resultSizeName(size int) string {
+	if size <= 0 {
+		return ""
+	}
+
+	return strconv.Itoa(size) + " bytes"
 }
 
 func newPortalSource(searcher searchcore.Searcher) portalSource {
@@ -34,11 +46,15 @@ func (s portalSource) Search(
 	results := make([]publicportal.SearchResult, 0, len(response.Results))
 	for _, result := range response.Results {
 		results = append(results, publicportal.SearchResult{
-			Title:      result.Title,
-			URL:        result.URL,
-			DisplayURL: result.DisplayURL,
-			Snippet:    result.Snippet,
-			Marked:     result.Source == searchcore.SourceWeb,
+			Title:       result.Title,
+			URL:         result.URL,
+			DisplayURL:  result.DisplayURL,
+			Snippet:     result.Snippet,
+			SnippetHTML: snippetmark.Highlight(result.Snippet, response.Request.Terms),
+			Host:        result.Host,
+			Date:        result.Date,
+			SizeName:    resultSizeName(result.Size),
+			Marked:      result.Source == searchcore.SourceWeb,
 		})
 	}
 

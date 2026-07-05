@@ -57,3 +57,30 @@ func TestHTMLEndpointLinksOpenNewTabWithIndicatorWhenEnabled(t *testing.T) {
 		}
 	}
 }
+
+func TestHTMLEndpointHighlightsQueryTerms(t *testing.T) {
+	search := &fakeSearch{response: searchcore.Response{
+		TotalResults: 1,
+		Results: []searchcore.Result{{
+			Title:   "Result",
+			URL:     "https://example.org/doc",
+			Snippet: "Golang crawls <fast>",
+		}},
+	}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"http://node.test/yacysearch.html?query=golang",
+		nil,
+	)
+	htmlEndpoint{search: search, suggestions: newRecentQueries()}.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "<mark>Golang</mark>") {
+		t.Fatalf("missing highlighted term in %s", body)
+	}
+	if strings.Contains(body, "<fast>") {
+		t.Fatal("snippet markup must stay escaped")
+	}
+}

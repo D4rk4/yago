@@ -35,7 +35,13 @@ type SearchResult struct {
 	URL        string
 	DisplayURL string
 	Snippet    string
-	Marked     bool
+	// SnippetHTML carries the query-term-highlighted snippet (escaped text
+	// plus <mark> only); when set it renders instead of the plain snippet.
+	SnippetHTML template.HTML
+	Host        string
+	Date        string
+	SizeName    string
+	Marked      bool
 }
 
 // SearchResults is the rendered outcome of a portal query.
