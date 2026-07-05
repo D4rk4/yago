@@ -58,6 +58,11 @@ func MountHTML(mux *http.ServeMux, service *Service) {
 }
 
 func (s *Service) handleLoginPage(w http.ResponseWriter, r *http.Request) {
+	if present, err := s.creds.exists(r.Context()); err == nil && !present {
+		redirectAuth(w, r, PathSetupPage)
+
+		return
+	}
 	s.renderAuthPage(w, r, "login", authPageData{
 		Error:  loginErrorMessage(r.URL.Query().Get("error")),
 		Notice: loginNoticeMessage(r.URL.Query().Get("notice")),

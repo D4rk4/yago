@@ -91,16 +91,30 @@ func (s *Service) guardSession(w http.ResponseWriter, r *http.Request, next http
 	next.ServeHTTP(w, r.WithContext(contextWithSession(r.Context(), record)))
 }
 
-// unauthenticated redirects a browser navigation to the login page and answers
+// unauthenticated redirects a browser navigation to the login page (or the
+// first-run setup page while no administrator exists yet) and answers
 // programmatic requests with a 401 so API clients still get a clear status.
 func (s *Service) unauthenticated(w http.ResponseWriter, r *http.Request) {
 	if isSafeMethod(r.Method) && acceptsHTML(r) {
-		http.Redirect(w, r, PathLoginPage, http.StatusSeeOther)
+		http.Redirect(w, r, s.firstRunAuthPath(r.Context()), http.StatusSeeOther)
 
 		return
 	}
 
 	writeError(w, http.StatusUnauthorized, "authentication required")
+}
+
+// firstRunAuthPath sends a browser to the first-run setup page while no
+// administrator account exists yet, and to the login page once one does. On a
+// fresh node this guides the operator to create the first administrator instead
+// of stranding them on a login form for an account that does not exist. A lookup
+// error falls back to the login page.
+func (s *Service) firstRunAuthPath(ctx context.Context) string {
+	if present, err := s.creds.exists(ctx); err == nil && !present {
+		return PathSetupPage
+	}
+
+	return PathLoginPage
 }
 
 // validCSRFToken accepts the session CSRF token from the X-CSRF-Token header or,

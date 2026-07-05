@@ -41,7 +41,8 @@ func postForm(
 }
 
 func TestLoginPageRendersForm(t *testing.T) {
-	service, _ := scriptedService(t)
+	service, engine := scriptedService(t)
+	injectAdmin(t, engine, "operator", "correct-horse")
 	rec := doRequest(htmlSurface(t, service), http.MethodGet, PathLoginPage, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -57,10 +58,25 @@ func TestLoginPageRendersForm(t *testing.T) {
 }
 
 func TestLoginPageShowsError(t *testing.T) {
-	service, _ := scriptedService(t)
+	service, engine := scriptedService(t)
+	injectAdmin(t, engine, "operator", "correct-horse")
 	rec := doRequest(htmlSurface(t, service), http.MethodGet, PathLoginPage+"?error=invalid", "")
 	if !strings.Contains(rec.Body.String(), "Invalid username or password.") {
 		t.Fatalf("expected error message, got %s", rec.Body.String())
+	}
+}
+
+// TestLoginPageFirstRunRedirectsToSetup proves that while no administrator exists
+// the login page routes the operator to the first-run setup page instead of
+// stranding them on a login form for an account that has not been created yet.
+func TestLoginPageFirstRunRedirectsToSetup(t *testing.T) {
+	service, _ := scriptedService(t)
+	rec := doRequest(htmlSurface(t, service), http.MethodGet, PathLoginPage, "")
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != PathSetupPage {
+		t.Fatalf("location = %q, want %q", loc, PathSetupPage)
 	}
 }
 
