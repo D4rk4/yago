@@ -30,8 +30,8 @@ for a more capable host than an always-on node.
   discovered links.
 * Every crawl run SHALL terminate within a run-wide page budget, never aborted by elapsed
   time.
-* The service SHOULD fetch the same content at most once per run; this dedup is best-effort
-  and lapses to duplicates under bounded memory.
+* Before fetching a page, the service SHALL ask the recrawl decision whether it is due,
+  and skip the fetch if not.
 * Every outbound fetch SHALL egress through the operator's configured proxy.
 * The service SHALL honor a target's explicit refusal, ceasing or deferring the fetch
   rather than pressing against it.
@@ -59,12 +59,13 @@ for a more capable host than an always-on node.
 * The service SHALL cap every resource an order can inflate — its frontier, buffers, and
   fetched-body sizes — keeping memory bounded regardless of run size.
 * The service SHALL bound every outbound fetch with an explicit deadline.
-* The service SHALL persist no state of its own; a run survives a restart only when the
-  order source re-sends the order.
+* The core SHALL keep no state of its own; anything remembered between runs lives behind an
+  interface it consults. A run survives a restart only if the order source resends the order.
 * The message broker SHALL be replaceable behind a narrow interface assuming at-least-once
   delivery with acknowledgment and redelivery, with no change to crawl logic.
 * The page-fetch mechanism SHALL be replaceable behind a narrow interface, with no
   change to crawl or admission logic.
+* The recrawl decision SHALL sit behind a narrow interface; its default admits every page.
 * Operational behavior SHALL be observable through machine-readable metrics.
 
 ## Known Limitations
