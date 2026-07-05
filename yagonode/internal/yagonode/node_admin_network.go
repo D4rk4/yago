@@ -20,12 +20,19 @@ type seedImportStatusReader interface {
 	Get(ctx context.Context, url string) (seedimport.Status, bool, error)
 }
 
+// selfSeedSource supplies the seed this node currently advertises to the swarm;
+// nodestatus.Report satisfies it.
+type selfSeedSource interface {
+	SelfSeed(ctx context.Context) yagomodel.Seed
+}
+
 type networkSource struct {
 	gates        dhtGateStatusSource
 	roster       peerroster.Roster
 	seedlistURLs []string
 	status       seedImportStatusReader
 	blocks       peerBlockStore
+	self         selfSeedSource
 	now          func() time.Time
 }
 
@@ -46,6 +53,15 @@ func newNetworkSource(
 	}
 }
 
+// withSelf attaches the advertised-seed provider so the Network section can show
+// the capability flags this node publishes to the swarm. A nil provider hides the
+// flags block.
+func (s networkSource) withSelf(self selfSeedSource) networkSource {
+	s.self = self
+
+	return s
+}
+
 func (s networkSource) Network(ctx context.Context) adminui.NetworkStatus {
 	report := s.gates.response(ctx)
 	status := adminui.NetworkStatus{
@@ -55,6 +71,9 @@ func (s networkSource) Network(ctx context.Context) adminui.NetworkStatus {
 		BlockingReason:  report.BlockingReason,
 		Gates:           adminNetworkGates(report.Gates),
 		Seedlists:       s.adminSeedlists(ctx),
+	}
+	if s.self != nil {
+		status.OwnFlags = advertisedFlagStates(s.self.SelfSeed(ctx))
 	}
 
 	if s.roster != nil {
@@ -239,6 +258,24 @@ var seedFlagBits = []struct {
 	{yagomodel.FlagAcceptRemoteIndex, "remote-index"},
 	{yagomodel.FlagRootNode, "root"},
 	{yagomodel.FlagSSLAvailable, "ssl"},
+}
+
+// advertisedFlagStates reports every known capability flag with the state the
+// given seed advertises, so the console shows set and unset bits alike.
+func advertisedFlagStates(seed yagomodel.Seed) []adminui.NetworkFlag {
+	flags, ok := seed.Flags.Get()
+	if !ok {
+		return nil
+	}
+	states := make([]adminui.NetworkFlag, 0, len(seedFlagBits))
+	for _, entry := range seedFlagBits {
+		states = append(states, adminui.NetworkFlag{
+			Name: entry.label,
+			Set:  flags.Get(entry.bit),
+		})
+	}
+
+	return states
 }
 
 func seedFlagLabels(seed yagomodel.Seed) []string {

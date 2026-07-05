@@ -56,7 +56,7 @@ func buildOpsMux(
 			config.SeedlistURLs,
 			seedStatus,
 			blocks,
-		),
+		).withSelf(assembled.report),
 		Config:            newConfigSource(config),
 		Settings:          sources.settings,
 		Binding:           sources.binding,

@@ -434,6 +434,10 @@ func TestConsoleNetworkRendersStatus(t *testing.T) {
 		BlockingReason:  "not enough peers",
 		KnownPeers:      12,
 		ReachablePeers:  5,
+		OwnFlags: []NetworkFlag{
+			{Name: "direct", Set: true},
+			{Name: "remote-crawl", Set: false},
+		},
 		Gates: []NetworkGate{
 			{Name: "connectedPeers", Open: false, Reason: "need 10"},
 			{Name: "storage", Open: true},
@@ -468,6 +472,7 @@ func TestConsoleNetworkRendersStatus(t *testing.T) {
 		"peerA", "1.2.3.4:8090", ">12<", ">5<", "connectedPeers",
 		"not enough peers", "Closed", "senior", "remote-index", ">42<",
 		"2026-01-02T03:04:05Z", "Reachable", "https://seeds.example/seed.txt",
+		"Advertised to swarm", "direct: on", "remote-crawl: off",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("network section missing %q", want)

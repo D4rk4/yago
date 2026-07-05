@@ -32,12 +32,20 @@ type SeedlistEntry struct {
 	Imported   bool
 }
 
+// NetworkFlag is one seed capability flag with the state this node advertises to
+// the swarm, so the operator sees every bit peers receive — set or not.
+type NetworkFlag struct {
+	Name string
+	Set  bool
+}
+
 // NetworkStatus is the peer-network snapshot the Network section renders.
 type NetworkStatus struct {
 	Available       bool
 	DHTOpen         bool
 	PublicReachable bool
 	BlockingReason  string
+	OwnFlags        []NetworkFlag
 	Gates           []NetworkGate
 	KnownPeers      int
 	ReachablePeers  int

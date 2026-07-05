@@ -23,6 +23,15 @@
 {{if and (not .Network.DHTOpen) .Network.BlockingReason}}
 <div class="cds-inline-notification" role="status">DHT distribution gate closed: {{.Network.BlockingReason}}</div>
 {{end}}
+{{if .Network.OwnFlags}}
+<h2 class="cds-h2">Advertised to swarm</h2>
+<p>Capability flags this node publishes in its seed (hello, seed lists): peers read them to decide what to send us.</p>
+<p>
+  {{range .Network.OwnFlags}}
+  {{if .Set}}<span class="cds-tag cds-tag--success">{{.Name}}: on</span>{{else}}<span class="cds-tag">{{.Name}}: off</span>{{end}}
+  {{end}}
+</p>
+{{end}}
 <h2 class="cds-h2">DHT gates</h2>
 <div class="cds-scroll-x">
   <table class="cds-table">
