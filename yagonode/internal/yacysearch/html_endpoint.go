@@ -57,7 +57,13 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 <body>
 <main>
 <form method="get" action="{{.SearchURL}}">
-<input name="query" type="search" value="{{.Query}}" maxlength="200" autofocus>
+<span style="position:relative;display:inline-block">
+<input id="query" name="query" type="search" value="{{.Query}}" maxlength="200"
+ role="combobox" aria-autocomplete="list" aria-expanded="false"
+ aria-controls="ac-list" autocomplete="off" autofocus>
+<ul id="ac-list" role="listbox" aria-label="Search suggestions" hidden
+ style="position:absolute;left:0;right:0;top:100%;margin:0;padding:0;list-style:none;background:#fff;border:1px solid #ccc;z-index:10"></ul>
+</span>
 <input name="resource" type="hidden" value="{{.Resource}}">
 <input name="contentdom" type="hidden" value="{{.ContentDomain}}">
 <button type="submit">search</button>
@@ -90,6 +96,64 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 </section>
 {{end}}
 </main>
+<script>
+(function () {
+  var input = document.getElementById("query");
+  var list = document.getElementById("ac-list");
+  if (!input || !list) return;
+  var form = input.form, timer = null, options = [], active = -1;
+  function close() {
+    list.hidden = true; list.textContent = ""; options = []; active = -1;
+    input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
+  }
+  function pick(i) { input.value = options[i].textContent; close(); form.submit(); }
+  function highlight(i) {
+    if (active >= 0) options[active].removeAttribute("aria-selected");
+    active = i;
+    if (i >= 0) {
+      options[i].setAttribute("aria-selected", "true");
+      input.setAttribute("aria-activedescendant", options[i].id);
+    } else input.removeAttribute("aria-activedescendant");
+  }
+  function render(items) {
+    close();
+    if (!items.length) return;
+    items.forEach(function (text, i) {
+      var li = document.createElement("li");
+      li.id = "ac-opt-" + i;
+      li.setAttribute("role", "option");
+      li.textContent = text;
+      li.style.padding = "0.3rem 0.5rem";
+      li.style.cursor = "pointer";
+      li.addEventListener("mousedown", function (e) { e.preventDefault(); pick(i); });
+      list.appendChild(li);
+      options.push(li);
+    });
+    list.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+  }
+  input.addEventListener("input", function () {
+    clearTimeout(timer);
+    var q = input.value.trim();
+    if (q.length < 2) { close(); return; }
+    timer = setTimeout(function () {
+      fetch("/suggest.json?q=" + encodeURIComponent(q))
+        .then(function (r) { return r.json(); })
+        .then(function (data) { render((data && data[1]) || []); })
+        .catch(close);
+    }, 200);
+  });
+  input.addEventListener("keydown", function (e) {
+    if (list.hidden) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); highlight((active + 1) % options.length); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); highlight((active - 1 + options.length) % options.length); }
+    else if (e.key === "Enter" && active >= 0) { e.preventDefault(); pick(active); }
+    else if (e.key === "Escape") { close(); }
+  });
+  input.addEventListener("blur", function () { setTimeout(close, 120); });
+})();
+</script>
 </body>
 </html>`))
 

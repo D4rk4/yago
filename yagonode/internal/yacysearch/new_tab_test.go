@@ -84,3 +84,20 @@ func TestHTMLEndpointHighlightsQueryTerms(t *testing.T) {
 		t.Fatal("snippet markup must stay escaped")
 	}
 }
+
+func TestHTMLEndpointRendersAccessibleAutocomplete(t *testing.T) {
+	body := htmlSearchBody(t, false)
+	for _, want := range []string{
+		`role="combobox"`,
+		`aria-autocomplete="list"`,
+		`aria-controls="ac-list"`,
+		`role="listbox"`,
+		`autocomplete="off"`,
+		"/suggest.json?q=",
+		"aria-activedescendant",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("search page missing %q", want)
+		}
+	}
+}
