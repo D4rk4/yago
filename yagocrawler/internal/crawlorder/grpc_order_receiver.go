@@ -17,8 +17,14 @@ const (
 	msgOrderStreamReconnect = "crawl order stream reconnecting"
 	msgHeartbeatFailed      = "crawl worker heartbeat failed"
 
-	DefaultOrderRetryWait    = time.Second
-	DefaultHeartbeatInterval = 30 * time.Second
+	DefaultOrderRetryWait = time.Second
+	// DefaultHeartbeatInterval also bounds how long a control directive
+	// (cancel/pause/resume/rate) waits before it reaches the worker, since
+	// directives are drained on the heartbeat. It is kept short so an operator's
+	// cancel takes visible effect within a few seconds rather than up to half a
+	// minute; the heartbeat is a cheap unary call and more frequent lease renewal
+	// only makes reclaim more reliable.
+	DefaultHeartbeatInterval = 5 * time.Second
 	DefaultAckTimeout        = 5 * time.Second
 )
 
