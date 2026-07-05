@@ -48,7 +48,7 @@ func newGuardedEgressClientWithTLS(guard yagoegress.Guard, tlsConfig *tls.Config
 	dialer := &net.Dialer{Control: guard.DialControl}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	transport.DialContext = dialer.DialContext
+	transport.DialContext = yagoegress.PreferIPv4(nil, dialer.DialContext)
 	if tlsConfig != nil {
 		transport.TLSClientConfig = tlsConfig
 	}

@@ -56,7 +56,9 @@ func NewBrowserPageFetcher(
 	launch BrowserLaunch,
 	guard yagoegress.Guard,
 ) (*BrowserPageFetcher, func(), error) {
-	proxy, err := startGuardedForwardProxy((&net.Dialer{Control: guard.DialControl}).DialContext)
+	proxy, err := startGuardedForwardProxy(
+		dialFunc(yagoegress.PreferIPv4(nil, (&net.Dialer{Control: guard.DialControl}).DialContext)),
+	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("start browser egress proxy: %w", err)
 	}

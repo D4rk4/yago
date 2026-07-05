@@ -35,7 +35,7 @@ func newGuardedEgressClientWithTLS(
 	dialer := &net.Dialer{Timeout: config.ConnectTimeout, Control: guard.DialControl}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	transport.DialContext = dialer.DialContext
+	transport.DialContext = yagoegress.PreferIPv4(nil, dialer.DialContext)
 	transport.TLSHandshakeTimeout = config.TLSTimeout
 	transport.ResponseHeaderTimeout = config.HeaderTimeout
 	if tlsConfig != nil {
