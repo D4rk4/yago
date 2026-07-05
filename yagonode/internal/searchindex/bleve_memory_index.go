@@ -179,6 +179,13 @@ func bleveSearchQuery(req SearchRequest) blevequery.Query {
 		fieldMatch("anchors", req.Query, weights.Anchors),
 		fieldMatch("body", req.Query, weights.Body),
 		fieldMatch("url", req.Query, weights.URL),
+		// Language-agnostic trigram recall: a document whose text contains every
+		// trigram of a query word matches even when the word is a morphological
+		// variant or truncation (e.g. "зеленски" -> "зеленский"), for any script.
+		gramMatch("title"+gramFieldSuffix, req.Query, weights.Title*gramWeightFactor),
+		gramMatch("headings"+gramFieldSuffix, req.Query, weights.Headings*gramWeightFactor),
+		gramMatch("anchors"+gramFieldSuffix, req.Query, weights.Anchors*gramWeightFactor),
+		gramMatch("body"+gramFieldSuffix, req.Query, weights.Body*gramWeightFactor),
 	)
 	phrases := phraseBoosts(req.Phrases, weights)
 	if len(req.ExcludeTerms) == 0 && len(phrases) == 0 {
@@ -226,6 +233,23 @@ func fieldMatch(field string, text string, boost float64) *blevequery.MatchQuery
 	query := bleve.NewMatchQuery(text)
 	query.SetField(field)
 	query.SetBoost(boost)
+
+	return query
+}
+
+// gramMatch matches a trigram sub-field with AND semantics: every trigram the
+// query analyzes into must be present in the document, so the clause fires only
+// for words that actually share the query's character runs (precision, and no
+// flooding on common single grams) rather than any partial overlap.
+func gramMatch(field string, text string, boost float64) *blevequery.MatchQuery {
+	query := bleve.NewMatchQuery(text)
+	query.SetField(field)
+	query.SetBoost(boost)
+	query.SetOperator(blevequery.MatchQueryOperatorAnd)
+	// The gram sub-field is named "<field>_gram" but lives at path "<field>", so
+	// the mapping cannot resolve its analyzer by name; set it explicitly so the
+	// query text is cut into the same trigrams the field was indexed with.
+	query.Analyzer = searchGramAnalyzer
 
 	return query
 }

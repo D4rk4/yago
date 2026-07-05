@@ -7,7 +7,10 @@ import (
 	_ "github.com/blevesearch/bleve/v2/analysis/analyzer/custom"
 	_ "github.com/blevesearch/bleve/v2/analysis/lang/en"
 	_ "github.com/blevesearch/bleve/v2/analysis/token/lowercase"
+	"github.com/blevesearch/bleve/v2/analysis/token/ngram"
+	"github.com/blevesearch/bleve/v2/analysis/token/unicodenorm"
 	_ "github.com/blevesearch/bleve/v2/analysis/tokenizer/regexp"
+	_ "github.com/blevesearch/bleve/v2/analysis/tokenizer/unicode"
 	"github.com/blevesearch/bleve/v2/mapping"
 )
 
@@ -29,6 +32,23 @@ const (
 	urlWordSplitter   = "weburl_word"
 	lowercaseFilter   = "to_lower"
 	urlWordRegexp     = `[\p{L}\p{N}\p{M}]+`
+	// searchGramAnalyzer indexes overlapping character trigrams so a query finds a
+	// morphological variant or truncation of an indexed word ("зеленски" ->
+	// "зеленский") in ANY language, with no per-language stemmer. The unicode
+	// tokenizer + lowercasing + NFKC normalization make the grams script-agnostic;
+	// trigrams (McNamee & Mayfield 2004: n=3-4 substitutes for stemming, gains
+	// correlate with morphological richness). It supplements, never replaces, the
+	// exact fields: gram matches are OR'd into the main disjunction at a lower
+	// boost so full-word matches keep ranking above shared-gram matches. Follow-up:
+	// an edge-ngram prefix field, query-time fuzzy, and an OR-recall variant.
+	searchGramAnalyzer = "text_gram"
+	gramTokenFilter    = "trigram"
+	unicodeNormFilter  = "normalize_nfkc"
+	gramFieldSuffix    = "_gram"
+	gramSize           = 3.0
+	// gramWeightFactor scales a field's ranking weight for its trigram clause so a
+	// document matching all query trigrams (AND) ranks below an exact word match.
+	gramWeightFactor = 0.5
 )
 
 func searchIndexedFields() []string {
@@ -50,11 +70,18 @@ var newSearchIndexMapping = func() (*mapping.IndexMappingImpl, error) {
 	if err := registerURLAnalyzer(indexMapping); err != nil {
 		return nil, err
 	}
+	if err := registerGramAnalyzer(indexMapping); err != nil {
+		return nil, err
+	}
 
 	document := bleve.NewDocumentMapping()
 	document.Dynamic = false
 	for _, field := range searchIndexedFields() {
-		document.AddFieldMappingsAt(field, newSearchTextField(searchFieldAnalyzer(field)))
+		fields := []*mapping.FieldMapping{newSearchTextField(searchFieldAnalyzer(field))}
+		if fieldSupportsGrams(field) {
+			fields = append(fields, newSearchGramField(field+gramFieldSuffix))
+		}
+		document.AddFieldMappingsAt(field, fields...)
 	}
 
 	indexMapping.DefaultMapping = document
@@ -95,4 +122,51 @@ func newSearchTextField(analyzer string) *mapping.FieldMapping {
 	field.DocValues = false
 
 	return field
+}
+
+// fieldSupportsGrams reports whether a source field also gets a trigram sub-field.
+// The url field keeps only its punctuation-splitting analyzer; trigrams over host
+// labels and path segments add noise without helping word-level recall.
+func fieldSupportsGrams(field string) bool {
+	return field != "url"
+}
+
+// newSearchGramField maps a source field a second time under a "<field>_gram"
+// name analyzed into character trigrams, so the same document text is searchable
+// both as whole words (precision) and as language-agnostic grams (recall).
+func newSearchGramField(name string) *mapping.FieldMapping {
+	field := newSearchTextField(searchGramAnalyzer)
+	field.Name = name
+
+	return field
+}
+
+// registerGramAnalyzer wires the language-agnostic trigram analyzer: the unicode
+// tokenizer splits any script into words, lowercasing and NFKC normalization fold
+// case and width/compatibility variants, and the ngram filter emits overlapping
+// character trigrams. It is a package var so a test can force a registration
+// failure. See searchGramAnalyzer for the rationale.
+var registerGramAnalyzer = func(indexMapping *mapping.IndexMappingImpl) error {
+	if err := indexMapping.AddCustomTokenFilter(unicodeNormFilter, map[string]any{
+		"type": unicodenorm.Name,
+		"form": unicodenorm.NFKC,
+	}); err != nil {
+		return fmt.Errorf("register unicode normaliser: %w", err)
+	}
+	if err := indexMapping.AddCustomTokenFilter(gramTokenFilter, map[string]any{
+		"type": ngram.Name,
+		"min":  gramSize,
+		"max":  gramSize,
+	}); err != nil {
+		return fmt.Errorf("register trigram filter: %w", err)
+	}
+	if err := indexMapping.AddCustomAnalyzer(searchGramAnalyzer, map[string]any{
+		"type":          "custom",
+		"tokenizer":     "unicode",
+		"token_filters": []string{lowercaseFilter, unicodeNormFilter, gramTokenFilter},
+	}); err != nil {
+		return fmt.Errorf("register gram analyzer: %w", err)
+	}
+
+	return nil
 }
