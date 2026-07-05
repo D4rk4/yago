@@ -11,11 +11,20 @@ import (
 )
 
 type fakeSource struct {
-	results SearchResults
-	err     error
+	results   SearchResults
+	err       error
+	gotOffset int
+	gotLimit  int
 }
 
-func (f fakeSource) Search(context.Context, string) (SearchResults, error) {
+func (f *fakeSource) Search(
+	_ context.Context,
+	_ string,
+	offset, limit int,
+) (SearchResults, error) {
+	f.gotOffset = offset
+	f.gotLimit = limit
+
 	return f.results, f.err
 }
 
@@ -40,7 +49,7 @@ func get(t *testing.T, portal *Portal, target string) (int, string) {
 func TestPortalHomepageWithoutQuery(t *testing.T) {
 	t.Parallel()
 
-	status, body := get(t, New(fakeSource{}), "/")
+	status, body := get(t, New(&fakeSource{}), "/")
 	if status != http.StatusOK {
 		t.Fatalf("status %d", status)
 	}
@@ -63,7 +72,7 @@ func TestPortalHomepageWithoutQuery(t *testing.T) {
 func TestPortalRendersResultsWithMarker(t *testing.T) {
 	t.Parallel()
 
-	source := fakeSource{results: SearchResults{
+	source := &fakeSource{results: SearchResults{
 		Query:        "go",
 		TotalResults: 2,
 		Results: []SearchResult{
@@ -93,7 +102,7 @@ func TestPortalRendersResultsWithMarker(t *testing.T) {
 func TestPortalEmptyResults(t *testing.T) {
 	t.Parallel()
 
-	status, body := get(t, New(fakeSource{results: SearchResults{Query: "x"}}), "/?q=x")
+	status, body := get(t, New(&fakeSource{results: SearchResults{Query: "x"}}), "/?q=x")
 	if status != http.StatusOK {
 		t.Fatalf("status %d", status)
 	}
@@ -105,7 +114,7 @@ func TestPortalEmptyResults(t *testing.T) {
 func TestPortalSearchErrorIsGeneric(t *testing.T) {
 	t.Parallel()
 
-	status, body := get(t, New(fakeSource{err: errors.New("backend detail")}), "/?q=go")
+	status, body := get(t, New(&fakeSource{err: errors.New("backend detail")}), "/?q=go")
 	if status != http.StatusOK {
 		t.Fatalf("status %d", status)
 	}
@@ -122,9 +131,74 @@ func TestPortalRejectsNonGet(t *testing.T) {
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", nil)
 	rec := httptest.NewRecorder()
-	New(fakeSource{}).ServeHTTP(rec, req)
+	New(&fakeSource{}).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status %d", rec.Code)
+	}
+}
+
+func TestPortalPaginationParsesPageIntoOffset(t *testing.T) {
+	t.Parallel()
+
+	source := &fakeSource{results: SearchResults{Query: "go", TotalResults: 100}}
+	if _, body := get(t, New(source), "/?q=go&p=3"); !strings.Contains(body, "Page 3") {
+		t.Fatalf("body missing the current page indicator")
+	}
+	if source.gotOffset != 2*portalPageSize || source.gotLimit != portalPageSize {
+		t.Fatalf("offset=%d limit=%d, want offset=%d limit=%d",
+			source.gotOffset, source.gotLimit, 2*portalPageSize, portalPageSize)
+	}
+}
+
+func TestPortalPaginationRendersPrevAndNext(t *testing.T) {
+	t.Parallel()
+
+	source := &fakeSource{results: SearchResults{
+		Query:        "go",
+		TotalResults: 100,
+		Results:      []SearchResult{{Title: "hit", URL: "http://a.example/1"}},
+	}}
+	_, body := get(t, New(source), "/?q=go&p=2")
+
+	for _, want := range []string{
+		"‹ Previous", "Next ›", "Page 2", `rel="prev"`, `rel="next"`,
+		"p=1", "p=3", "q=go",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("paginated results missing %q", want)
+		}
+	}
+}
+
+func TestPortalPaginationHidesNavOnSinglePage(t *testing.T) {
+	t.Parallel()
+
+	source := &fakeSource{results: SearchResults{
+		Query:        "go",
+		TotalResults: 2,
+		Results:      []SearchResult{{Title: "a", URL: "http://a"}, {Title: "b", URL: "http://b"}},
+	}}
+	_, body := get(t, New(source), "/?q=go")
+
+	if strings.Contains(body, "Next ›") || strings.Contains(body, "‹ Previous") {
+		t.Fatal("single page should render no pager navigation")
+	}
+}
+
+func TestPortalPaginationClampsPage(t *testing.T) {
+	t.Parallel()
+
+	junk := &fakeSource{results: SearchResults{Query: "go", TotalResults: 5}}
+	get(t, New(junk), "/?q=go&p=not-a-number")
+	if junk.gotOffset != 0 {
+		t.Fatalf("junk page offset = %d, want 0 (page 1)", junk.gotOffset)
+	}
+
+	over := &fakeSource{results: SearchResults{Query: "go", TotalResults: 5}}
+	get(t, New(over), "/?q=go&p=99999")
+	if over.gotOffset != (portalMaxPage-1)*portalPageSize {
+		t.Fatalf("over-max page offset = %d, want %d",
+			over.gotOffset, (portalMaxPage-1)*portalPageSize)
 	}
 }

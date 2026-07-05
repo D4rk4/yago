@@ -24,6 +24,10 @@
   .result .url { color: #178a3a; font-size: 0.8rem; word-break: break-all; }
   .result p { margin: 0.2rem 0 0; color: #333333; font-size: 0.9rem; }
   .ddgs { color: #8d8d8d; font-size: 0.85em; }
+  nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5rem; font-size: 0.9rem; }
+  nav.pager a { color: #0f62fe; text-decoration: none; }
+  nav.pager a:hover { text-decoration: underline; }
+  nav.pager .page { color: #525252; }
   .foot { color: #8d8d8d; font-size: 0.7rem; margin-top: 2rem; border-top: 1px solid #e0e0e0; padding-top: 0.6rem; }
   @media (max-width: 32rem) { .brand { font-size: 2.5rem; } .search input[type=search] { width: 60%; } }
 </style>
@@ -51,6 +55,13 @@
   {{else}}
   <p class="meta">Nothing found.</p>
   {{end}}
+  {{end}}
+  {{if or .Pagination.HasPrev .Pagination.HasNext}}
+  <nav class="pager" aria-label="Result pages">
+    {{if .Pagination.HasPrev}}<a rel="prev" href="{{.Pagination.PrevURL}}">‹ Previous</a>{{end}}
+    <span class="page">Page {{.Pagination.Page}}</span>
+    {{if .Pagination.HasNext}}<a rel="next" href="{{.Pagination.NextURL}}">Next ›</a>{{end}}
+  </nav>
   {{end}}
   {{end}}
   <div class="foot">{{.Brand}} — free software under the GNU AGPL v3.<br>

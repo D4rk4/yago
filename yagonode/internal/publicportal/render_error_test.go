@@ -52,5 +52,5 @@ func TestPortalRenderSurvivesWriteFailure(t *testing.T) {
 	t.Parallel()
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
-	New(fakeSource{}).ServeHTTP(&failingResponseWriter{}, req)
+	New(&fakeSource{}).ServeHTTP(&failingResponseWriter{}, req)
 }

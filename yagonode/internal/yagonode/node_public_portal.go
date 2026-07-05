@@ -8,8 +8,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
-const portalSearchLimit = 20
-
 type portalSource struct {
 	searcher searchcore.Searcher
 }
@@ -21,11 +19,13 @@ func newPortalSource(searcher searchcore.Searcher) portalSource {
 func (s portalSource) Search(
 	ctx context.Context,
 	query string,
+	offset, limit int,
 ) (publicportal.SearchResults, error) {
 	response, err := s.searcher.Search(ctx, searchcore.Request{
 		Query:  query,
 		Source: searchcore.SourceGlobal,
-		Limit:  portalSearchLimit,
+		Offset: offset,
+		Limit:  limit,
 	})
 	if err != nil {
 		return publicportal.SearchResults{}, fmt.Errorf("portal search: %w", err)
