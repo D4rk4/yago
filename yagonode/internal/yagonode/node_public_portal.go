@@ -29,14 +29,27 @@ func newPortalSource(searcher searchcore.Searcher) portalSource {
 	return portalSource{searcher: searcher}
 }
 
-// cachedCopyURL links the node's stored copy for locally indexed results; other
-// sources (peers, web fallback) have no stored page to show.
+// cachedCopyURL links the node's stored copy for locally stored results; peer
+// and web-fallback hits have no stored page to show. Local hits in a global
+// search carry SourceGlobal, so this goes through Result.StoredLocally.
 func cachedCopyURL(result searchcore.Result) string {
-	if result.Source != searchcore.SourceLocal {
+	if !result.StoredLocally() {
 		return ""
 	}
 
 	return cachedpage.URLFor(result.URL)
+}
+
+// resultProvenance labels where a hit came from for the transparency badge.
+func resultProvenance(result searchcore.Result) string {
+	switch {
+	case result.FromWeb():
+		return "web"
+	case result.FromPeer():
+		return "peer"
+	default:
+		return "local"
+	}
 }
 
 func (s portalSource) Search(
@@ -54,9 +67,19 @@ func (s portalSource) Search(
 		return publicportal.SearchResults{}, fmt.Errorf("portal search: %w", err)
 	}
 
-	results := make([]publicportal.SearchResult, 0, len(response.Results))
+	out := publicportal.SearchResults{Query: query, TotalResults: response.TotalResults}
+	out.Results = make([]publicportal.SearchResult, 0, len(response.Results))
 	for _, result := range response.Results {
-		results = append(results, publicportal.SearchResult{
+		provenance := resultProvenance(result)
+		switch provenance {
+		case "web":
+			out.WebCount++
+		case "peer":
+			out.PeerCount++
+		default:
+			out.LocalCount++
+		}
+		out.Results = append(out.Results, publicportal.SearchResult{
 			Title:       result.Title,
 			URL:         result.URL,
 			DisplayURL:  result.DisplayURL,
@@ -65,14 +88,11 @@ func (s portalSource) Search(
 			Host:        result.Host,
 			Date:        result.Date,
 			SizeName:    resultSizeName(result.Size),
-			Marked:      result.Source == searchcore.SourceWeb,
+			Marked:      result.FromWeb(),
 			CachedURL:   cachedCopyURL(result),
+			Provenance:  provenance,
 		})
 	}
 
-	return publicportal.SearchResults{
-		Query:        query,
-		TotalResults: response.TotalResults,
-		Results:      results,
-	}, nil
+	return out, nil
 }

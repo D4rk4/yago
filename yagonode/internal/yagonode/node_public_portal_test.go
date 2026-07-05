@@ -27,10 +27,12 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 	t.Parallel()
 
 	searcher := &stubPortalSearcher{response: searchcore.Response{
-		TotalResults: 2,
+		TotalResults: 3,
 		Results: []searchcore.Result{
-			{Title: "local", URL: "http://a/1", DisplayURL: "a/1", Source: searchcore.SourceLocal},
+			// A local hit in a global search carries the request source.
+			{Title: "local", URL: "http://a/1", DisplayURL: "a/1", Source: searchcore.SourceGlobal},
 			{Title: "web", URL: "http://b/2", DisplayURL: "b/2", Source: searchcore.SourceWeb},
+			{Title: "peer", URL: "http://c/3", DisplayURL: "c/3", Source: searchcore.SourceRemote},
 		},
 	}}
 
@@ -38,7 +40,7 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if results.TotalResults != 2 || len(results.Results) != 2 {
+	if results.TotalResults != 3 || len(results.Results) != 3 {
 		t.Fatalf("unexpected results: %+v", results)
 	}
 	if searcher.gotRequest.Offset != 20 || searcher.gotRequest.Limit != 10 {
@@ -53,6 +55,24 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 	}
 	if !results.Results[1].Marked {
 		t.Fatal("ddgs result must be marked")
+	}
+	if results.LocalCount != 1 || results.WebCount != 1 || results.PeerCount != 1 {
+		t.Fatalf("provenance counts = %d/%d/%d, want 1/1/1",
+			results.LocalCount, results.PeerCount, results.WebCount)
+	}
+	if results.Results[0].Provenance != "local" ||
+		results.Results[1].Provenance != "web" ||
+		results.Results[2].Provenance != "peer" {
+		t.Fatalf("provenance labels = %q/%q/%q",
+			results.Results[0].Provenance,
+			results.Results[1].Provenance,
+			results.Results[2].Provenance)
+	}
+	if results.Results[0].CachedURL == "" {
+		t.Fatal("locally stored result must carry a cached link (global-source local hit)")
+	}
+	if results.Results[1].CachedURL != "" || results.Results[2].CachedURL != "" {
+		t.Fatal("web and peer results must not carry cached links")
 	}
 }
 

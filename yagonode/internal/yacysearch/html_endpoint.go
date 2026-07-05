@@ -50,6 +50,7 @@ type htmlSearchItem struct {
 	Date        string
 	SizeName    string
 	CachedURL   string
+	Provenance  string
 }
 
 var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!doctype html>
@@ -101,7 +102,7 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 <li>
 <h2><a href="{{.URL}}"{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{.Title}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"> (opens in new tab)</span>{{end}}</a></h2>
 <p>{{.Description}}</p>
-<p>{{.DisplayURL}} {{.SizeName}} {{.Date}}{{if .CachedURL}} <a href="{{.CachedURL}}">cached</a>{{end}}</p>
+<p>{{.DisplayURL}}{{if .Provenance}} [{{.Provenance}}]{{end}} {{.SizeName}} {{.Date}}{{if .CachedURL}} <a href="{{.CachedURL}}">cached</a>{{end}}</p>
 </li>
 {{end}}
 </ol>
@@ -281,9 +282,13 @@ func responseHTMLItems(results []searchcore.Result, terms []string) []htmlSearch
 			Date:        result.Date,
 			SizeName:    sizeName(result.Size),
 		}
-		if result.Source == searchcore.SourceLocal {
-			// Only locally indexed pages have a stored copy to show.
+		if result.StoredLocally() {
+			// Only locally stored pages have a copy to show; local hits inside a
+			// global search carry SourceGlobal, so this must not test SourceLocal.
 			item.CachedURL = cachedpage.URLFor(result.URL)
+		}
+		if result.FromPeer() {
+			item.Provenance = "peer"
 		}
 		items = append(items, item)
 	}

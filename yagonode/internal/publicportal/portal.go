@@ -46,12 +46,20 @@ type SearchResult struct {
 	Marked      bool
 	// CachedURL links this node's stored copy of the page; empty hides the link.
 	CachedURL string
+	// Provenance labels where the hit came from: "local" (this node's index),
+	// "peer" (another swarm peer), or "web" (the external fallback).
+	Provenance string
 }
 
-// SearchResults is the rendered outcome of a portal query.
+// SearchResults is the rendered outcome of a portal query. The per-source
+// counts feed the transparency line so a searcher sees how much of the page
+// came from this node, from peers, and from the web fallback.
 type SearchResults struct {
 	Query        string
 	TotalResults int
+	LocalCount   int
+	PeerCount    int
+	WebCount     int
 	Results      []SearchResult
 }
 

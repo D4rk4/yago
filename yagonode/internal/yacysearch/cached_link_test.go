@@ -13,8 +13,10 @@ func TestHTMLEndpointLinksCachedCopyAndFormats(t *testing.T) {
 	search := &fakeSearch{response: searchcore.Response{
 		TotalResults: 2,
 		Results: []searchcore.Result{
-			{Title: "Local", URL: "https://a.example/x", Source: searchcore.SourceLocal},
-			{Title: "Remote", URL: "https://b.example/y", Source: searchcore.SourceGlobal},
+			// A local hit inside a global search carries the request source, so
+			// the cached link must key off StoredLocally, not SourceLocal.
+			{Title: "Local", URL: "https://a.example/x", Source: searchcore.SourceGlobal},
+			{Title: "Remote", URL: "https://b.example/y", Source: searchcore.SourceRemote},
 		},
 	}}
 	rec := httptest.NewRecorder()
@@ -32,6 +34,9 @@ func TestHTMLEndpointLinksCachedCopyAndFormats(t *testing.T) {
 	}
 	if strings.Contains(body, "cached?u=https%3A%2F%2Fb.example%2Fy") {
 		t.Fatal("remote result must not link a cached copy")
+	}
+	if !strings.Contains(body, "[peer]") {
+		t.Fatalf("peer result missing provenance label: %s", body)
 	}
 	if !strings.Contains(body, "/yacysearch.json") || !strings.Contains(body, ">JSON</a>") {
 		t.Fatalf("visible JSON format link missing: %s", body)
