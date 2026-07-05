@@ -34,8 +34,14 @@ const (
 
 var errRemoteSearchFailed = errors.New("remote search failed")
 
+// PeerSource supplies the candidate peers a remote search may target. Following
+// YaCy, these are known senior peers selected from the seed database by DHT
+// position — NOT only peers confirmed reachable by a prior hello handshake — so
+// a node whose inbound reachability never completes (e.g. behind NAT) can still
+// search the network. Unreachable candidates surface as per-peer partial
+// failures rather than blocking the search outright.
 type PeerSource interface {
-	ReachablePeers(ctx context.Context) []yagomodel.Seed
+	SearchTargetPeers(ctx context.Context) []yagomodel.Seed
 }
 
 type Config struct {
@@ -146,11 +152,11 @@ func (s searcher) remotePeers(
 	hashes []yagomodel.Hash,
 ) ([]yagomodel.Seed, string) {
 	if s.peers == nil {
-		return nil, "no reachable peers"
+		return nil, "no peer source configured"
 	}
-	peers := s.peers.ReachablePeers(ctx)
+	peers := s.peers.SearchTargetPeers(ctx)
 	if len(peers) == 0 {
-		return nil, "no reachable peers"
+		return nil, "no known peers"
 	}
 
 	if len(hashes) == 0 {

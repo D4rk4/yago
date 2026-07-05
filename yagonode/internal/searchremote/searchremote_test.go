@@ -27,7 +27,7 @@ type fakePeerSource struct {
 	peers []yagomodel.Seed
 }
 
-func (s fakePeerSource) ReachablePeers(context.Context) []yagomodel.Seed {
+func (s fakePeerSource) SearchTargetPeers(context.Context) []yagomodel.Seed {
 	return s.peers
 }
 
@@ -240,7 +240,8 @@ func TestRemoteSearcherReportsNoPeers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0].Reason != "no reachable peers" {
+	if len(resp.PartialFailures) != 1 ||
+		resp.PartialFailures[0].Reason != "no peer source configured" {
 		t.Fatalf("response = %#v", resp)
 	}
 
@@ -251,7 +252,7 @@ func TestRemoteSearcherReportsNoPeers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search with empty roster: %v", err)
 	}
-	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0].Reason != "no reachable peers" {
+	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0].Reason != "no known peers" {
 		t.Fatalf("empty roster response = %#v", resp)
 	}
 }

@@ -1,8 +1,10 @@
 package yagonode
 
 import (
+	"context"
 	"net/http"
 
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yagonode/internal/documentsearch"
 	"github.com/D4rk4/yago/yagonode/internal/landing"
@@ -38,6 +40,22 @@ type publicSearchAssembly struct {
 	denylist             denylistSnapshotter
 }
 
+// searchTargetPeers adapts the peer roster for remote-search target selection.
+// DHT index distribution targets only greet-confirmed reachable peers, but YaCy
+// selects remote-search targets from the seed database of known senior peers
+// with no prior reachability handshake (net/yacy/peers/RemoteSearch.java ->
+// DHTSelection.selectDHTSearchTargets). A node behind NAT — whose inbound hello,
+// and thus reachability confirmation, never completes — must still search the
+// network, so remote search draws from the known-peer set and lets unreachable
+// candidates surface as per-peer partial failures rather than blocking outright.
+type searchTargetPeers struct {
+	roster peerroster.Roster
+}
+
+func (s searchTargetPeers) SearchTargetPeers(ctx context.Context) []yagomodel.Seed {
+	return s.roster.FreshestPeers(ctx, reservoirCapacity)
+}
+
 // mountPeerLanding serves the static landing page at the peer listener's root so
 // a human (or another peer) that opens the P2P port sees the node's identity. The
 // peer listener otherwise carries only the /yacy/* wire protocol; the public
@@ -65,7 +83,7 @@ func mountNodePublicSearch(
 	remote := searchremote.NewSearcher(searchremote.Config{
 		Client:             assembly.client,
 		NetworkName:        assembly.identity.NetworkName,
-		Peers:              assembly.roster,
+		Peers:              searchTargetPeers{roster: assembly.roster},
 		Redundancy:         assembly.dht.Redundancy,
 		MinimumPeerAgeDays: assembly.dht.MinimumPeerAgeDays,
 		PartitionExponent:  assembly.dht.PartitionExponent,
