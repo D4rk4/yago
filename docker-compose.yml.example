@@ -15,7 +15,10 @@ services:
       # set them to pin a specific identity.
       YAGO_PEER_HASH: ${YAGO_PEER_HASH:-}
       YAGO_PEER_NAME: ${YAGO_PEER_NAME:-}
-      YAGO_ADVERTISE_HOST: ${YAGO_ADVERTISE_HOST:?set YAGO_ADVERTISE_HOST in .env}
+      # Address peers use to reach this node. Leave unset to auto-detect the
+      # first non-loopback IPv4; set it explicitly behind NAT or Docker bridge
+      # networking, where the container's own address is not reachable.
+      YAGO_ADVERTISE_HOST: ${YAGO_ADVERTISE_HOST:-}
       YAGO_PUBLIC_SELF_TEST_URL: ${YAGO_PUBLIC_SELF_TEST_URL:-}
       YAGO_NETWORK_NAME: ${YAGO_NETWORK_NAME:-freeworld}
       # Public search listener address; set to "off" to run a pure peer node.

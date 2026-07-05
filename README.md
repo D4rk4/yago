@@ -186,7 +186,7 @@ Common node variables:
 | `YAGO_SEARCH_CORS_ORIGINS` | empty | Comma-separated origin allowlist for cross-origin browser calls to the public search endpoints. Empty denies all. |
 | `YAGO_DATA_DIR` | `./data` | Directory for persistent node storage, `search.bleve`, YaCy-compatible `SETTINGS/profile.txt`, and shared blacklist files configured by `SETTINGS/yacy.conf`. |
 | `YAGO_NETWORK_NAME` | `freeworld` | YaCy network name. |
-| `YAGO_ADVERTISE_HOST` | empty | Public host advertised to peers. Required when seedlists are configured. |
+| `YAGO_ADVERTISE_HOST` | auto | Public host advertised to peers. When unset and seedlists are configured, the node auto-detects its first non-loopback IPv4; set it explicitly behind NAT or Docker bridge networking. |
 | `YAGO_ADVERTISE_PORT` | peer listener port | Public port advertised to peers. |
 | `YAGO_PUBLIC_SELF_TEST_URL` | local peer URL | Base URL used by outbound DHT gates to self-test `/yacy/query.html?object=rwicount`. |
 | `YAGO_SEEDLIST_URLS` | empty | Comma-separated YaCy seedlist URLs. |

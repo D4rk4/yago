@@ -84,7 +84,7 @@ peer listener is behind a reverse proxy or NAT and the external address differs)
 | `YAGO_PEER_NAME` | _(generated)_ | Peer name advertised to the network. Generated (as `yago-<random>`) and persisted like the hash when unset. |
 | `YAGO_NETWORK_NAME` | `freeworld` | YaCy network to join. Only peers on the same network exchange data. |
 | `YAGO_SEEDLIST_URLS` | _(empty)_ | Comma-separated YaCy seedlist URLs to discover peers from. |
-| `YAGO_ADVERTISE_HOST` | _(empty)_ | Public IP or DNS name other peers use to reach you. Required when `YAGO_SEEDLIST_URLS` is set. |
+| `YAGO_ADVERTISE_HOST` | _(auto)_ | Public IP or DNS name other peers use to reach you. When unset and the node announces to the network (`YAGO_SEEDLIST_URLS` set), it auto-detects the first non-loopback IPv4 address. Set it explicitly behind NAT or Docker bridge networking, where the guess is wrong; the DHT self-test demotes an unreachable self. |
 | `YAGO_ADVERTISE_PORT` | _(the `YAGO_PEER_ADDR` port)_ | Port other peers use to reach you. |
 | `YAGO_PUBLIC_SELF_TEST_URL` | local peer URL | Base URL used by outbound DHT gates to self-test `/yacy/query.html?object=rwicount`. Set it to the externally reachable peer URL when the local listener is behind a reverse proxy or NAT. |
 | `YAGO_ANNOUNCE_INTERVAL` | `10m` | How often to re-announce yourself to the network (e.g. `30s`, `10m`, `1h`). |

@@ -374,13 +374,48 @@ func splitList(raw string) []string {
 	return out
 }
 
-func advertiseHost(getenv func(string) string, announcing bool) (string, error) {
+// advertiseHost resolves the host advertised to the network. An explicit
+// YAGO_ADVERTISE_HOST always wins. Otherwise, when the node announces itself, it
+// auto-detects a best-guess address from the machine's interfaces so a node
+// bootstraps without the operator pinning one. The guess can be wrong behind
+// NAT or Docker (set YAGO_ADVERTISE_HOST then), and the DHT self-test demotes an
+// unreachable self; detection never fails, so a node that cannot guess an
+// address still starts rather than refusing to boot.
+func advertiseHost(getenv func(string) string, announcing bool) string {
 	host := strings.TrimSpace(getenv(envAdvertiseHost))
-	if host == "" && announcing {
-		return "", fmt.Errorf("%s: must be set when announcing to the network", envAdvertiseHost)
+	if host != "" {
+		return host
+	}
+	if !announcing {
+		return ""
 	}
 
-	return host, nil
+	return detectAdvertiseHost(net.InterfaceAddrs)
+}
+
+// detectAdvertiseHost returns the first non-loopback IPv4 address the machine
+// has, or an empty string when the interfaces cannot be read or none qualifies.
+func detectAdvertiseHost(addrs func() ([]net.Addr, error)) string {
+	found, err := addrs()
+	if err != nil {
+		return ""
+	}
+	for _, addr := range found {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip := ipNet.IP
+		if ip == nil || ip.IsLoopback() ||
+			ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			continue
+		}
+		if v4 := ip.To4(); v4 != nil {
+			return v4.String()
+		}
+	}
+
+	return ""
 }
 
 // peerAdvertisement bundles how the node presents its peer endpoint to the
@@ -400,10 +435,7 @@ func loadPeerAdvertisement(
 	peerAddr string,
 	announcing bool,
 ) (peerAdvertisement, error) {
-	host, err := advertiseHost(getenv, announcing)
-	if err != nil {
-		return peerAdvertisement{}, err
-	}
+	host := advertiseHost(getenv, announcing)
 	port, err := advertisePort(getenv, peerAddr)
 	if err != nil {
 		return peerAdvertisement{}, err

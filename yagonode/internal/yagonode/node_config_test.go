@@ -1,6 +1,7 @@
 package yagonode
 
 import (
+	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -51,6 +52,52 @@ func TestLoadNodeConfigAllowsMissingIdentity(t *testing.T) {
 	}
 	if config.Name != "" {
 		t.Errorf("Name = %q, want empty (resolved at runtime)", config.Name)
+	}
+}
+
+func TestLoadNodeConfigAutoDetectsAdvertiseHostWhenAnnouncing(t *testing.T) {
+	// An announcing node (seedlists set) without YAGO_ADVERTISE_HOST now
+	// auto-detects a best-guess address instead of refusing to start.
+	config, err := loadNodeConfig(envFrom(map[string]string{
+		envPeerHash:     "0123456789AB",
+		envPeerName:     "n",
+		envSeedlistURLs: "http://seed",
+	}))
+	if err != nil {
+		t.Fatalf("announcing node without an advertise host should load: %v", err)
+	}
+	_ = config.AdvertiseHost // machine-dependent; may be empty in isolated envs
+}
+
+func TestDetectAdvertiseHost(t *testing.T) {
+	t.Parallel()
+	ipnet := func(s string) net.Addr { return &net.IPNet{IP: net.ParseIP(s)} }
+
+	if got := detectAdvertiseHost(func() ([]net.Addr, error) {
+		return nil, net.UnknownNetworkError("boom")
+	}); got != "" {
+		t.Fatalf("on interface error = %q, want empty", got)
+	}
+
+	got := detectAdvertiseHost(func() ([]net.Addr, error) {
+		return []net.Addr{
+			&net.IPAddr{IP: net.ParseIP("8.8.8.8")}, // not an *net.IPNet -> skipped
+			&net.IPNet{IP: nil},                     // nil IP -> skipped
+			ipnet("127.0.0.1"),                      // loopback -> skipped
+			ipnet("169.254.1.1"),                    // link-local -> skipped
+			ipnet("2001:db8::1"),                    // non-IPv4 -> skipped
+			ipnet("10.0.0.5"),                       // first usable IPv4
+			ipnet("192.168.1.9"),                    // later match, ignored
+		}, nil
+	})
+	if got != "10.0.0.5" {
+		t.Fatalf("detected = %q, want 10.0.0.5", got)
+	}
+
+	if got := detectAdvertiseHost(func() ([]net.Addr, error) {
+		return []net.Addr{ipnet("127.0.0.1")}, nil
+	}); got != "" {
+		t.Fatalf("no usable address = %q, want empty", got)
 	}
 }
 
@@ -343,12 +390,7 @@ func TestLoadNodeConfigRejectsBadAnnounceInterval(t *testing.T) {
 
 func TestLoadNodeConfigRejects(t *testing.T) {
 	cases := map[string]map[string]string{
-		"bad hash": {envPeerHash: "short"},
-		"announce no host": {
-			envPeerHash:     "0123456789AB",
-			envPeerName:     "n",
-			envSeedlistURLs: "http://seed",
-		},
+		"bad hash":         {envPeerHash: "short"},
 		"bad port":         {envPeerHash: "0123456789AB", envPeerName: "n", envAdvertisePort: "-3"},
 		"bad peer address": {envPeerHash: "0123456789AB", envPeerName: "n", envPeerAddr: "bad"},
 		"bad public self-test url": {
