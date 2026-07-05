@@ -70,11 +70,13 @@ func TestRemoteSearcherQueriesPeersAndNormalizesResults(t *testing.T) {
 		t.Fatalf("response = %#v", resp)
 	}
 	result := resp.Results[0]
+	// The title and URL carry no query term, so only the peer-order share of
+	// the profile-based score remains.
 	if result.Title != "Remote Result" ||
 		result.URL != "https://example.org/doc.html" ||
 		result.Source != searchcore.SourceRemote ||
 		result.URLHash != hash.String() ||
-		result.Score != 0.5 {
+		result.Score != remotePeerOrderShare {
 		t.Fatalf("result = %#v", result)
 	}
 }
@@ -936,8 +938,6 @@ func TestResultHelpers(t *testing.T) {
 		t.Context(),
 		searchcore.Request{},
 		metadataRow(t, hash, "not a url", ""),
-		0,
-		1,
 	)
 	if err != nil {
 		t.Fatalf("searchResult: %v", err)
@@ -955,8 +955,6 @@ func TestResultHelpers(t *testing.T) {
 		t.Context(),
 		searchcore.Request{},
 		yagomodel.URIMetadataRow{Properties: map[string]string{yagomodel.URLMetaHash: "bad"}},
-		0,
-		1,
 	); err == nil {
 		t.Fatal("expected bad hash error")
 	}
@@ -968,8 +966,6 @@ func TestResultHelpers(t *testing.T) {
 			yagomodel.URLMetaURL:            "z|@@@",
 			yagomodel.URLMetaColDescription: yagomodel.EncodeBase64WireForm("bad url"),
 		}},
-		0,
-		1,
 	); err == nil {
 		t.Fatal("expected bad url encoding error")
 	}

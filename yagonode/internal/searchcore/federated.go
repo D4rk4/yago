@@ -40,7 +40,10 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 		}
 	}
 
-	merged := mergeResults(localResp.Results, remoteResp.Results)
+	merged := mergeResults(
+		localResp.Results,
+		calibratedRemoteResults(localResp.Results, remoteResp.Results),
+	)
 
 	return Response{
 		Request:         req,
@@ -59,6 +62,36 @@ func requestWindow(req Request) Request {
 	}
 
 	return window
+}
+
+// calibratedRemoteResults maps remote scores, which the remote searcher emits
+// in [0, 1] from the local ranking profile, onto the local score scale so
+// neither source dominates the merge by scale alone: a perfect remote profile
+// match ranks with the best local hit. Without local scores the remote order
+// already stands on its own.
+func calibratedRemoteResults(local []Result, remote []Result) []Result {
+	scale := maxScore(local)
+	if scale <= 0 || len(remote) == 0 {
+		return remote
+	}
+	calibrated := make([]Result, len(remote))
+	for i, result := range remote {
+		result.Score *= scale
+		calibrated[i] = result
+	}
+
+	return calibrated
+}
+
+func maxScore(results []Result) float64 {
+	top := 0.0
+	for _, result := range results {
+		if result.Score > top {
+			top = result.Score
+		}
+	}
+
+	return top
 }
 
 func mergeResults(local []Result, remote []Result) []Result {

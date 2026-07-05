@@ -88,6 +88,22 @@ func (s parsedQuerySearcher) Search(
 	return s.inner.Search(ctx, req)
 }
 
+// remoteRankingWeights narrows the local ranking profile to the fields remote
+// results can honor (title and URL text), so swarm hits are ranked by the
+// same profile as local hits rather than by the sending peer's result order.
+func remoteRankingWeights(
+	current func() searchindex.RankingWeights,
+) func() searchremote.RankingWeights {
+	return func() searchremote.RankingWeights {
+		if current == nil {
+			return searchremote.DefaultRankingWeights()
+		}
+		weights := current()
+
+		return searchremote.RankingWeights{Title: weights.Title, URL: weights.URL}
+	}
+}
+
 // mountPeerLanding serves the static landing page at the peer listener's root so
 // a human (or another peer) that opens the P2P port sees the node's identity. The
 // peer listener otherwise carries only the /yacy/* wire protocol; the public
@@ -120,6 +136,7 @@ func mountNodePublicSearch(
 		MinimumPeerAgeDays: assembly.dht.MinimumPeerAgeDays,
 		PartitionExponent:  assembly.dht.PartitionExponent,
 		RandomTargetIndex:  assembly.dhtSearchTargetIndex,
+		Weights:            remoteRankingWeights(assembly.rankingWeights),
 	})
 	federated := withWebFallback(searchcore.NewFederatedSearcher(local, remote), assembly)
 	filtered := withDenylistFilter(federated, assembly.denylist)

@@ -42,7 +42,7 @@ Status values:
 
 | Surface | Path | Methods | Status | Behavior |
 | --- | --- | --- | --- | --- |
-| YaCy search JSON | `/yacysearch.json` | GET | partial | Serves local full-text and DHT-selected reachable-peer search results in an upstream-like JSON shape; multi-term remote search uses YaCy index abstracts before secondary URL retrieval. |
+| YaCy search JSON | `/yacysearch.json` | GET | partial | Serves local full-text and DHT-selected reachable-peer search results in an upstream-like JSON shape; multi-term remote search uses YaCy index abstracts before secondary URL retrieval, and remote results are ranked with the local ranking profile before the calibrated federated merge (YaCy 1.4 harmonization). |
 | YaCy search RSS | `/yacysearch.rss` | GET | partial | Serves OpenSearch-flavored RSS from the same local full-text and federated search backend. |
 | YaCy search HTML | `/yacysearch.html` | GET | partial | Serves a simple public search form and result list from the same local full-text and federated search backend. As a human search surface, it is where DDGS web-search fallback hits (when enabled) show their `[ddgs]` marker, unlike the unmarked Tavily `/search` drop-in. |
 | OpenSearch description | `/opensearchdescription.xml` | GET | implemented | Advertises HTML, RSS, JSON suggestion, and XML suggestion URLs. |

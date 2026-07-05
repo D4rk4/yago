@@ -57,6 +57,7 @@ type Config struct {
 	PerPeerTimeout     time.Duration
 	OverallTimeout     time.Duration
 	RandomTargetIndex  func(int) (int, error)
+	Weights            func() RankingWeights
 }
 
 type searcher struct {
@@ -72,6 +73,7 @@ type searcher struct {
 	perPeerTimeout     time.Duration
 	overallTimeout     time.Duration
 	randomTargetIndex  func(int) (int, error)
+	weights            func() RankingWeights
 }
 
 type peerSearchResult struct {
@@ -112,6 +114,7 @@ func NewSearcher(config Config) searchcore.Searcher {
 		perPeerTimeout:     durationOrDefault(config.PerPeerTimeout, DefaultPerPeerTimeout),
 		overallTimeout:     durationOrDefault(config.OverallTimeout, DefaultOverallTimeout),
 		randomTargetIndex:  randomTargetIndexOrDefault(config.RandomTargetIndex),
+		weights:            weightsOrDefault(config.Weights),
 	}
 }
 
@@ -610,6 +613,7 @@ func (s searcher) response(
 ) searchcore.Response {
 	var resp searchcore.Response
 	resp.Request = req
+	scorer := newRemoteScorer(req.Terms, s.weights())
 	for _, result := range results {
 		if result.err != nil {
 			resp.PartialFailures = append(
@@ -619,7 +623,7 @@ func (s searcher) response(
 			continue
 		}
 		resp.TotalResults += result.response.JoinCount
-		normalized, err := searchResults(ctx, req, result.response.Resources)
+		normalized, err := searchResults(ctx, req, result.response.Resources, scorer)
 		if err != nil {
 			resp.PartialFailures = append(resp.PartialFailures, peerFailure(result.peer, err))
 			continue
@@ -667,13 +671,15 @@ func searchResults(
 	ctx context.Context,
 	req searchcore.Request,
 	rows []yagomodel.URIMetadataRow,
+	scorer remoteScorer,
 ) ([]searchcore.Result, error) {
 	results := make([]searchcore.Result, 0, len(rows))
 	for i, row := range rows {
-		result, err := searchResult(ctx, req, row, i, len(rows))
+		result, err := searchResult(ctx, req, row)
 		if err != nil {
 			return nil, err
 		}
+		result.Score = scorer.score(result, i, len(rows))
 		results = append(results, result)
 	}
 
@@ -684,8 +690,6 @@ func searchResult(
 	ctx context.Context,
 	req searchcore.Request,
 	row yagomodel.URIMetadataRow,
-	rank int,
-	total int,
 ) (searchcore.Result, error) {
 	rawURL, err := decodedMetadataProperty(ctx, row, yagomodel.URLMetaURL)
 	if err != nil {
@@ -710,7 +714,6 @@ func searchResult(
 		URL:           rawURL,
 		DisplayURL:    displayURL(host, pathValue),
 		Snippet:       title,
-		Score:         float64(total-rank) * 0.5,
 		Source:        searchcore.SourceRemote,
 		Host:          host,
 		Path:          pathValue,

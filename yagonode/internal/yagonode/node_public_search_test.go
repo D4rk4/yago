@@ -13,6 +13,8 @@ import (
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yagonode/internal/searchindex"
+	"github.com/D4rk4/yago/yagonode/internal/searchremote"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -244,6 +246,18 @@ func portalGateRequest(t *testing.T, enabled bool) (*httptest.ResponseRecorder, 
 	))
 
 	return rec, hit
+}
+
+func TestRemoteRankingWeightsNarrowLocalProfile(t *testing.T) {
+	weights := remoteRankingWeights(func() searchindex.RankingWeights {
+		return searchindex.RankingWeights{Title: 7, Headings: 5, Anchors: 3, Body: 2, URL: 6}
+	})()
+	if weights != (searchremote.RankingWeights{Title: 7, URL: 6}) {
+		t.Fatalf("weights = %#v", weights)
+	}
+	if got := remoteRankingWeights(nil)(); got != searchremote.DefaultRankingWeights() {
+		t.Fatalf("nil provider weights = %#v", got)
+	}
 }
 
 func TestPortalGateBlocksWhenDisabled(t *testing.T) {
