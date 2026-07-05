@@ -42,9 +42,13 @@ const (
 	DefaultMaxRedirects             = 10
 	DefaultMaxHostConcurrency       = 2
 	DefaultSitemapURLLimit          = 10000
-	DefaultUserAgent                = "yago-crawler/0.1 (+https://github.com/D4rk4/yago/)"
 	DefaultHostCacheSize            = 4096
 )
+
+// DefaultUserAgent brands crawl requests (plain HTTP and robots fetches alike)
+// with the crawler's build version, so site operators can identify this crawler
+// generation and find its contact page.
+var DefaultUserAgent = "yago-crawler/" + version + " (+https://github.com/D4rk4/yago/)"
 
 type CrawlConfig struct {
 	Workers            int

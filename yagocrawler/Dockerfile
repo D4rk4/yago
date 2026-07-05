@@ -4,7 +4,7 @@ FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.26 AS build
 
 ARG TARGETOS
 ARG TARGETARCH
-ARG VERSION=dev
+ARG VERSION=
 
 ENV CGO_ENABLED=0 GOFLAGS=-trimpath
 
@@ -28,7 +28,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build \
-        -ldflags="-s -w -X main.version=${VERSION}" \
+        -ldflags="-s -w ${VERSION:+-X main.version=${VERSION}}" \
         -o /out/yagocrawler \
         ./yagocrawler/cmd/yagocrawler
 
