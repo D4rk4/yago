@@ -3,6 +3,7 @@ package yagonode
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
@@ -56,6 +57,36 @@ func (s searchTargetPeers) SearchTargetPeers(ctx context.Context) []yagomodel.Se
 	return s.roster.FreshestPeers(ctx, reservoirCapacity)
 }
 
+// parsedQuerySearcher fills a request's word-hash terms from its raw query when
+// the caller supplied none. Human search surfaces (the admin console, the public
+// portal) and API callers that pass only a query string would otherwise reach
+// the remote DHT fan-out with no term hashes and get "no query terms"; the
+// public /yacysearch and Tavily endpoints that already parse the query keep
+// their terms untouched. It sits at the top of the shared searcher so every
+// surface benefits.
+type parsedQuerySearcher struct {
+	inner searchcore.Searcher
+}
+
+func withParsedQuery(inner searchcore.Searcher) searchcore.Searcher {
+	return parsedQuerySearcher{inner: inner}
+}
+
+func (s parsedQuerySearcher) Search(
+	ctx context.Context,
+	req searchcore.Request,
+) (searchcore.Response, error) {
+	if len(req.Terms) == 0 && strings.TrimSpace(req.Query) != "" {
+		parsed := searchcore.ParseTextQuery(req.Query)
+		req.Terms = parsed.Terms
+		req.ExcludedTerms = parsed.ExcludedTerms
+		req.Phrases = parsed.Phrases()
+	}
+
+	//nolint:wrapcheck // pass the wrapped searcher's error through unchanged.
+	return s.inner.Search(ctx, req)
+}
+
 // mountPeerLanding serves the static landing page at the peer listener's root so
 // a human (or another peer) that opens the P2P port sees the node's identity. The
 // peer listener otherwise carries only the /yacy/* wire protocol; the public
@@ -93,6 +124,7 @@ func mountNodePublicSearch(
 	filtered := withDenylistFilter(federated, assembly.denylist)
 	search := withQueryLogging(filtered, assembly.queryLogMode)
 	search = withSearchMetrics(search, assembly.searchMetrics)
+	search = withParsedQuery(search)
 	access := searchAccessPolicy(assembly)
 	yacysearch.Mount(mux, search)
 	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
