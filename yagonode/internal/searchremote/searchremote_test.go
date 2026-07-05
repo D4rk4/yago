@@ -141,8 +141,54 @@ func TestRemoteSearcherUsesIndexAbstractsForMultiTermSearch(t *testing.T) {
 		len(resp.PartialFailures) != 0 {
 		t.Fatalf("response = %#v", resp)
 	}
-	if requests := fixture.recordedRequests(); len(requests) != 4 {
-		t.Fatalf("request count = %d, want 4; requests=%v", len(requests), requests)
+	if requests := fixture.recordedRequests(); len(requests) != 5 {
+		t.Fatalf("request count = %d, want 5 (1 primary + 2 abstract + 2 secondary); requests=%v",
+			len(requests), requests)
+	}
+}
+
+// TestRemoteSearcherMultiWordPrimaryConjunction proves the fix for multi-word
+// queries returning zero results: the primary search now sends every query word
+// hash to the peer, which returns the AND-intersection directly, so a hit is
+// found without depending on the fragile index-abstract intersection.
+func TestRemoteSearcherMultiWordPrimaryConjunction(t *testing.T) {
+	doc := hashFor("doc")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		form := r.URL.Query()
+		if form.Get(yagoproto.FieldAbstracts) != "" || form.Get(yagoproto.FieldURLs) != "" {
+			// Abstract/secondary enhancement: no split results in this fixture.
+			writeFixtureResponse(t, w, yagoproto.SearchResponse{}.Encode().Encode())
+
+			return
+		}
+		// Primary conjunction search returns a document matching every word.
+		writeFixtureResponse(t, w, yagoproto.SearchResponse{
+			JoinCount: 1,
+			Count:     1,
+			Resources: []yagomodel.URIMetadataRow{
+				metadataRow(t, doc, "https://example.org/doc", "Doc"),
+			},
+		}.Encode().Encode())
+	}))
+	defer server.Close()
+
+	resp, err := NewSearcher(Config{
+		Client:      server.Client(),
+		NetworkName: "freeworld",
+		Peers:       fakePeerSource{peers: []yagomodel.Seed{serverSeed(t, server.URL)}},
+		MaxPeers:    1,
+		Redundancy:  1,
+		Concurrency: 1,
+	}).Search(t.Context(), searchcore.Request{
+		Terms:  []string{"alpha", "beta"},
+		Source: searchcore.SourceGlobal,
+		Limit:  10,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].URLHash != doc.String() {
+		t.Fatalf("primary conjunction did not return the multi-word result: %#v", resp)
 	}
 }
 
@@ -187,6 +233,11 @@ func (f *multiTermAbstractFixture) serve(w http.ResponseWriter, r *http.Request)
 	case form.Get(yagoproto.FieldQuery) == f.beta.String() &&
 		form.Get(yagoproto.FieldURLs) == f.shared.String():
 		f.writeSecondary(w)
+	case form.Get(yagoproto.FieldAbstracts) == "" &&
+		form.Get(yagoproto.FieldURLs) == "":
+		// primary conjunction search: this fixture holds no single-peer hit, so
+		// the shared document is recovered only via the abstract/secondary phase.
+		writeFixtureResponse(f.tb, w, yagoproto.SearchResponse{}.Encode().Encode())
 	default:
 		f.tb.Fatalf("unexpected remote search request: %s", r.URL.RawQuery)
 	}
@@ -283,8 +334,10 @@ func TestRemoteSearcherReportsNoTargetsForMultiTermSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if len(resp.PartialFailures) != 2 ||
-		!strings.Contains(resp.PartialFailures[0].Reason, "no dht search targets") {
+	// The primary conjunction search runs first for every query, so a missing
+	// peer source short-circuits before the abstract phase with one failure.
+	if len(resp.PartialFailures) != 1 ||
+		!strings.Contains(resp.PartialFailures[0].Reason, "no peer source configured") {
 		t.Fatalf("response = %#v", resp)
 	}
 }
@@ -328,6 +381,9 @@ func TestRemoteSearcherReportsMalformedIndexAbstract(t *testing.T) {
 					beta: yagomodel.EncodeSearchIndexAbstract([]yagomodel.Hash{hashFor("beta")}),
 				},
 			}.Encode().Encode())
+		case "":
+			// primary conjunction search: no direct hit in this fixture.
+			writeFixtureResponse(t, w, yagoproto.SearchResponse{}.Encode().Encode())
 		default:
 			t.Fatalf("unexpected request: %s", r.URL.RawQuery)
 		}
@@ -373,8 +429,10 @@ func TestRemoteSearcherReportsIndexAbstractPeerFailures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
+	// One primary conjunction failure plus the abstract phase (two peer failures
+	// and two missing-response notices) surface together.
 	if len(resp.Results) != 0 ||
-		len(resp.PartialFailures) != 4 ||
+		len(resp.PartialFailures) != 5 ||
 		!strings.Contains(resp.PartialFailures[0].Reason, "status 502") {
 		t.Fatalf("response = %#v", resp)
 	}
@@ -391,6 +449,16 @@ func TestRemoteSearcherReportsMissingIndexAbstractResponses(t *testing.T) {
 		len(failures) != 1 ||
 		!strings.Contains(failures[0].Reason, "no index abstract responses") {
 		t.Fatalf("abstracts=%#v failures=%#v", abstracts, failures)
+	}
+}
+
+func TestRemoteSearcherTermTargetsReportsMissingTargets(t *testing.T) {
+	term := yagomodel.WordHash("alpha")
+	targets, failures := (searcher{}).termTargets(t.Context(), []yagomodel.Hash{term})
+	if len(targets) != 0 ||
+		len(failures) != 1 ||
+		!strings.Contains(failures[0].Reason, "no dht search targets for") {
+		t.Fatalf("targets=%#v failures=%#v", targets, failures)
 	}
 }
 

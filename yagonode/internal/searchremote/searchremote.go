@@ -123,10 +123,6 @@ func (s searcher) Search(
 	defer cancel()
 
 	hashes := termHashes(req.Terms)
-	if len(hashes) > 1 {
-		return s.searchWithAbstracts(ctx, req, hashes), nil
-	}
-
 	peers, noPeersReason := s.remotePeers(ctx, hashes)
 	if len(peers) == 0 {
 		return searchcore.Response{
@@ -138,7 +134,24 @@ func (s searcher) Search(
 		}, nil
 	}
 
+	// Primary search: send every query word hash to the selected DHT targets in a
+	// single request so each peer performs the AND-intersection over its own index
+	// and returns documents matching all words. This mirrors YaCy's primary remote
+	// search (search.java searchConjunction) and is the main result source for
+	// both single- and multi-word queries.
 	results := s.queryPeers(ctx, peers, req)
+
+	// For multi-word queries also run the index-abstract secondary search, which
+	// recovers documents whose matching words are held by different peers (no
+	// single peer holds all words). It is a best-effort enhancement layered on top
+	// of the primary results, not a replacement for them.
+	if len(hashes) > 1 {
+		secondaryResults, secondaryFailures := s.secondaryAbstractSearch(ctx, req, hashes)
+		resp := s.response(ctx, req, append(results, secondaryResults...))
+		resp.PartialFailures = append(secondaryFailures, resp.PartialFailures...)
+
+		return resp, nil
+	}
 
 	return s.response(ctx, req, results), nil
 }
@@ -247,21 +260,26 @@ func (s searcher) queryPeerJob(
 	}
 }
 
-func (s searcher) searchWithAbstracts(
+// secondaryAbstractSearch runs YaCy's two-phase index-abstract search as a
+// best-effort enhancement for multi-word queries: it asks each word's peers for
+// the URL-hash abstract of that word, intersects the abstracts to find URLs that
+// contain every word across the network, then fetches those URLs' metadata. It
+// returns the secondary peer results to merge with the primary search plus any
+// partial failures gathered along the way. A word with no reachable target, an
+// empty abstract, or an empty intersection simply yields no secondary results;
+// the primary search still stands.
+func (s searcher) secondaryAbstractSearch(
 	ctx context.Context,
 	req searchcore.Request,
 	terms []yagomodel.Hash,
-) searchcore.Response {
+) ([]peerSearchResult, []searchcore.PartialFailure) {
 	targets, failures := s.termTargets(ctx, terms)
-	if len(targets) != len(terms) {
-		return searchcore.Response{Request: req, PartialFailures: failures}
-	}
 
 	abstracts, abstractFailures := s.termAbstracts(ctx, req, targets)
 	failures = append(failures, abstractFailures...)
 	urls := intersectTermAbstracts(terms, abstracts)
 	if len(urls) == 0 {
-		return searchcore.Response{Request: req, PartialFailures: failures}
+		return nil, failures
 	}
 
 	results := s.queryPeerJobs(ctx, secondarySearchJobs(
@@ -271,10 +289,8 @@ func (s searcher) searchWithAbstracts(
 		s.networkName,
 		s.perPeerTimeout,
 	))
-	resp := s.response(ctx, req, results)
-	resp.PartialFailures = append(failures, resp.PartialFailures...)
 
-	return resp
+	return results, failures
 }
 
 func (s searcher) termTargets(
