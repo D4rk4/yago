@@ -44,4 +44,12 @@ func TestHTMLEndpointLinksCachedCopyAndFormats(t *testing.T) {
 	if !strings.Contains(body, ">RSS</a>") {
 		t.Fatalf("visible RSS format link missing: %s", body)
 	}
+	for _, want := range []string{
+		`href="#results"`, "Skip to results",
+		`<section id="results" tabindex="-1">`, `<p role="status">`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("a11y landmark missing %q: %s", want, body)
+		}
+	}
 }

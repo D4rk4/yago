@@ -62,6 +62,7 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 <link rel="alternate" type="application/rss+xml" title="Search for {{.Query}}" href="{{.RSSURL}}">
 </head>
 <body>
+<a href="#results" style="position:absolute;left:-999px;top:0;background:#00f;color:#fff;padding:0.5rem">Skip to results</a>
 <main>
 <form method="get" action="{{.SearchURL}}">
 <span style="position:relative;display:inline-block">
@@ -89,9 +90,9 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 </ul>
 </details>
 {{if .ShowResults}}
-<section>
+<section id="results" tabindex="-1">
 <h1>Search for {{.Query}}</h1>
-<p>{{.TotalResults}} results{{if .Elapsed}} ({{.Elapsed}}){{end}}</p>
+<p role="status">{{.TotalResults}} results{{if .Elapsed}} ({{.Elapsed}}){{end}}</p>
 {{if .ShowPartialFailure}}
 <ul>
 {{range .PartialFailures}}<li>{{.Source}}: {{.Reason}}</li>{{end}}

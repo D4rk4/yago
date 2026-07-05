@@ -33,8 +33,12 @@
 #ac-list li { padding: 0.35rem 0.6rem; cursor: pointer; }
 #ac-list li[aria-selected="true"], #ac-list li:hover { background: #eef; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: -999px; top: 0; background: #0f62fe; color: #fff; padding: 0.6rem 1rem; z-index: 20; }
+.skip:focus { left: 0; }
+a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid #0f62fe; outline-offset: 2px; }
+ul.results { list-style: none; margin: 0; padding: 0; }
 nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5rem; font-size: 0.9rem; }
-  nav.pager a { color: #0f62fe; text-decoration: none; }
+  nav.pager a { color: #0f62fe; text-decoration: none; display: inline-block; padding: 0.5rem 0.75rem; }
   nav.pager a:hover { text-decoration: underline; }
   nav.pager .page { color: #525252; }
   .foot { color: #8d8d8d; font-size: 0.7rem; margin-top: 2rem; border-top: 1px solid #e0e0e0; padding-top: 0.6rem; }
@@ -52,6 +56,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
 </style>
 </head>
 <body>
+<a class="skip" href="#serp">Skip to results</a>
 <div class="wrap">
   <div class="{{if not .Submitted}}{{if not .Error}}home{{end}}{{end}}">
     <div class="brand"><b>ya</b>go</div>
@@ -78,21 +83,23 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
       </ul>
     </details>
   </div>
-  <div id="serp">
+  <div id="serp" tabindex="-1">
   {{if .Error}}
   <p class="meta" role="alert">{{.Error}}</p>
   {{else if .Submitted}}
   {{with .Results}}
-  <p class="meta">{{.TotalResults}} result(s) for “{{.Query}}”{{if $.Elapsed}} ({{$.Elapsed}}){{end}}.{{if .Results}} On this page: {{.LocalCount}} from this node · {{.PeerCount}} from peers · {{.WebCount}} from the web.{{end}}</p>
+  <p class="meta" role="status">{{.TotalResults}} result(s) for “{{.Query}}”{{if $.Elapsed}} ({{$.Elapsed}}){{end}}.{{if .Results}} On this page: {{.LocalCount}} from this node · {{.PeerCount}} from peers · {{.WebCount}} from the web.{{end}}</p>
+  {{if .Results}}<ul class="results">{{end}}
   {{range .Results}}
-  <div class="result">
+  <li class="result">
     <a class="title" href="{{.URL}}"{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{if .Marked}}<span class="ddgs">[ddgs]</span> {{end}}{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span class="sr-only"> (opens in new tab)</span>{{end}}</a>
     <div class="url">{{if .DisplayURL}}{{.DisplayURL}}{{else}}{{.URL}}{{end}}{{if .Provenance}} · <span class="prov prov-{{.Provenance}}">{{.Provenance}}</span>{{end}}{{if .Date}} · {{.Date}}{{end}}{{if .SizeName}} · {{.SizeName}}{{end}}{{if .CachedURL}} · <a href="{{.CachedURL}}">cached</a>{{end}}</div>
     {{if .SnippetHTML}}<p>{{.SnippetHTML}}</p>{{else if .Snippet}}<p>{{.Snippet}}</p>{{end}}
-  </div>
+  </li>
   {{else}}
-  <p class="meta">Nothing found.</p>
+  <p class="meta" role="status">Nothing found.</p>
   {{end}}
+  {{if .Results}}</ul>{{end}}
   {{end}}
   {{if or .Pagination.HasPrev .Pagination.HasNext}}
   <nav class="pager" aria-label="Result pages">
@@ -117,7 +124,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   if (searchForm && serp) {
     searchForm.addEventListener("submit", function () {
       serp.setAttribute("aria-busy", "true");
-      var html = '<p class="meta">Searching…</p>';
+      var html = '<p class="meta" role="status">Searching…</p>';
       for (var i = 0; i < 5; i++) {
         html += '<div class="skel"><div class="skel-line skel-title"></div>' +
           '<div class="skel-line"></div><div class="skel-line skel-short"></div></div>';
