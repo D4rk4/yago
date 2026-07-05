@@ -248,7 +248,11 @@ func TestOpenReportsNameGeneratorFailure(t *testing.T) {
 		Name: func() (string, error) { return "", errors.New("no name") },
 	}
 	_, _, err := Open(
-		context.Background(), openStubVault(t, newStubEngine()), mustHash(t, "0123456789AB"), "", gen,
+		context.Background(),
+		openStubVault(t, newStubEngine()),
+		mustHash(t, "0123456789AB"),
+		"",
+		gen,
 	)
 	if err == nil {
 		t.Fatal("name generator failure did not fail")

@@ -7,12 +7,17 @@
     <input class="cds-input" type="search" id="q" name="q" value="{{.Query}}"
            autocomplete="off" autofocus>
   </div>
-  <div class="cds-field">
-    <label class="cds-checkbox">
-      <input type="checkbox" name="scope" value="global"{{if .Global}} checked{{end}}>
-      Include peer network (global)
+  <fieldset class="cds-field">
+    <legend class="cds-label">Scope</legend>
+    <label class="cds-radio">
+      <input type="radio" name="scope" value="global"{{if .Global}} checked{{end}}>
+      Local + peer network (global)
     </label>
-  </div>
+    <label class="cds-radio">
+      <input type="radio" name="scope" value="local"{{if not .Global}} checked{{end}}>
+      Local index only
+    </label>
+  </fieldset>
   <button class="cds-btn" type="submit">Search</button>
 </form>
 {{if .Error}}

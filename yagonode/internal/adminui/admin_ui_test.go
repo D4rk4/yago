@@ -283,6 +283,36 @@ func TestConsoleSearchRendersResultsWithMarker(t *testing.T) {
 	}
 }
 
+type recordingSearch struct{ lastGlobal bool }
+
+func (r *recordingSearch) Search(_ context.Context, q SearchQuery) (SearchResults, error) {
+	r.lastGlobal = q.Global
+
+	return SearchResults{Query: q.Query, Global: q.Global}, nil
+}
+
+func TestConsoleSearchDefaultsToGlobalScope(t *testing.T) {
+	t.Parallel()
+
+	byDefault := &recordingSearch{}
+	if got := do(
+		t,
+		New(Options{Search: byDefault}),
+		"/admin/search?q=go",
+	); got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	if !byDefault.lastGlobal {
+		t.Fatal("search without an explicit scope should default to the peer network (global)")
+	}
+
+	localOnly := &recordingSearch{}
+	do(t, New(Options{Search: localOnly}), "/admin/search?q=go&scope=local")
+	if localOnly.lastGlobal {
+		t.Fatal("scope=local should search only the local index")
+	}
+}
+
 func TestConsoleSearchUnavailableWithoutSource(t *testing.T) {
 	t.Parallel()
 

@@ -946,7 +946,7 @@ func (c *Console) handleSearch(w http.ResponseWriter, r *http.Request) {
 		AppName: appName, ActivePath: searchPath, Nav: navItems,
 		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Search", Available: true},
-		Query:   query, Global: r.URL.Query().Get("scope") == "global",
+		Query:   query, Global: r.URL.Query().Get("scope") != "local",
 	}
 
 	if query != "" {
