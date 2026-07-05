@@ -27,7 +27,7 @@ Status values:
 | RWI and URL count query | `/yacy/query.html` | GET, POST | implemented | Answers YaCy-compatible `rwicount`, per-word `rwiurlcount`, `lurlcount`, and zero-valued `wanted*` probes with target identity checks. |
 | Inbound RWI transfer | `/yacy/transferRWI.html` | POST | implemented | Checks the YaCy network unit and required transfer fields before intake, sheds intake with YaCy's "too high load" answer when all admission slots are busy, accepts RWI postings durably (batch-size and storage-capacity pressure answer busy with a pause), and reports missing URL metadata. |
 | Inbound URL metadata transfer | `/yacy/transferURL.html` | POST | implemented | Checks the YaCy network unit before target handling, sheds intake with the endpoint's not-granted answer when all admission slots are busy, accepts URL metadata, and reconciles RWI references. |
-| Remote RWI search | `/yacy/search.html` | GET, POST | implemented | Serves key-value YaCy remote search responses from local RWI storage, clamps requested count and time like YaCy, and sheds concurrent floods with empty-but-valid responses. |
+| Remote RWI search | `/yacy/search.html` | GET, POST | implemented | Serves key-value YaCy remote search responses from local RWI storage (never Solr — see the swarm interop note below), clamps requested count and time like YaCy, answers per-term `indexcount`/`indexabstract` when a peer requests abstracts (the multi-term index-abstract negotiation), and sheds concurrent floods with empty-but-valid responses. A wire-conformance test drives this route and feeds the raw body back through the same peer-response parser the outbound path uses, proving the output is consumable by a YaCy-compatible peer. |
 | Seed list | `/yacy/seedlist.html` | GET, POST | implemented | Serves own and confirmed reachable seeds in plain seed-list form with YaCy request filters — `my` (own seed only, YaCy containsKey semantics), `id`/`name`/`peername` single-seed selection, `node`, `me`, `minversion`, `maxcount`; configured bootstrap import accepts seed `UTC` offset and timestamp wire values. |
 | Seed list JSON | `/yacy/seedlist.json` | GET, POST | implemented | Serves own and confirmed reachable seeds in JSON seed-list form with the same YaCy request filters as the plain seed list. |
 | Seed list XML | `/yacy/seedlist.xml` | GET, POST | implemented | Serves own and confirmed reachable seeds in XML seed-list form with the same YaCy request filters as the plain seed list. |
@@ -51,6 +51,38 @@ Status values:
 | Solr select compatibility | `/solr/select` | GET, POST | unsupported | Not mounted. Solr query compatibility is dropped; local full-text search uses the native Go backend (see `doc/adr/0012-use-bleve-for-embedded-full-text-fallback.md`). |
 | GSA search compatibility | `/gsa/searchresult` | GET | planned | Not mounted. |
 | Full embedded Solr API | `/solr/*` | GET, POST | unsupported | Full Solr server compatibility is not a Go peer target. No Solr subset is planned. |
+
+### Swarm remote-search interop (no-Solr divergence)
+
+This node participates in YaCy distributed search over the RWI hash path only; it
+never runs Solr/Lucene (ADR-0012). Interop is verified from both directions:
+
+- **We search a real YaCy peer (outbound).** The opt-in end-to-end test
+  `TestGlobalSearchFindsRealYaCyResults` (`yagonode/test/e2e/interop_matrix_e2e_test.go`,
+  `//go:build e2e`) pushes a document into a live `yacy/yacy_search_server`
+  container and confirms our `resource=global` search reaches that peer's
+  `/yacy/search.html`, negotiates index abstracts, retrieves the URLs, and returns
+  the hit.
+- **A YaCy peer searches us (inbound).** `TestRemoteSearchWireResponseIsPeerConsumable`
+  (`yagonode/internal/documentsearch`) drives our real `/yacy/search.html` route
+  with a multi-word query and parses the raw wire body with the same
+  `yagoproto.ParseSearchResponse` reader used to consume other peers — asserting a
+  YaCy-compatible peer can parse our `searchtime`/`references`/`joincount`/`count`/
+  `resourceN`/`indexcount.<hash>`/`indexabstract.<hash>` response. This is
+  deterministic and runs in CI, so it guards the wire contract even where a live
+  YaCy container is unavailable.
+
+The divergence from upstream is that the remote-search answer is built from the
+RWI posting index and URL-metadata store, not Solr: our node keeps the YaCy RWI +
+URL stores as the peer-exchange/search-interop layer (ADR-0012) while local
+public full-text search uses the native Go backend. Solr-only request fields a
+current YaCy release may send (`prefer`, `filter`, `profile`, `author`,
+`collection`, `filetype`, `protocol`, `timezoneOffset`) are accepted and logged
+but do not steer the RWI search, so an interoperating peer's request never fails
+on them. To exercise the inbound direction against a live YaCy peer manually, run
+the `//go:build e2e` suite (it pulls `docker.io/yacy/yacy_search_server:latest`),
+which CI does not run because forcing an external peer's DHT to target this node
+for a given query hash is non-deterministic.
 
 ## Agent API Targets
 
