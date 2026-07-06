@@ -1,0 +1,39 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Restart node</nav>
+<h1 class="cds-heading">Restart node</h1>
+<div class="cds-tile">
+  <p>Restarting stops the node gracefully and lets the supervisor bring it back
+  up with the persisted settings applied. In-flight crawls and searches are
+  interrupted for a few seconds; durable queues resume where they left off.</p>
+  <form method="post" action="/admin/restart" hx-boost="false">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <button class="cds-btn cds-btn--danger" type="submit">Restart node now</button>
+    <a class="cds-btn cds-btn--ghost" href="/admin/overview">Cancel</a>
+  </form>
+</div>
+{{end}}
+
+{{define "restarting-node"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="refresh" content="10;url=/admin/overview">
+<title>Restarting — {{.AppName}} admin</title>
+<style>
+  body { font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif; background: #f4f4f4; color: #161616; margin: 0; }
+  .card { max-width: 24rem; margin: 12vh auto; background: #ffffff; border: 1px solid #e0e0e0; padding: 2rem; }
+  h1 { font-size: 1.5rem; font-weight: 400; margin: 0 0 1rem; }
+  p { color: #525252; font-size: 0.875rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Restarting <b>{{.AppName}}</b></h1>
+  <p role="status">The node is shutting down gracefully and will be brought
+  back up by its supervisor. This page returns to the console in about ten
+  seconds; if it does not load yet, give the node a moment and reload.</p>
+</div>
+</body>
+</html>{{end}}

@@ -96,6 +96,7 @@ func buildOpsMux(
 		Performance:       newPerformanceSource(assembled.dht.gateStatus, crawlDepth),
 		SeedlistRefresh:   seedRefresh,
 		SearchLinksNewTab: config.SearchLinksNewTab,
+		Restart:           sources.restart,
 		SearchSuggest:     adminSearchSuggest(assembled),
 		CrawlFormats:      crawlFormatsAdmin(assembled.crawl),
 	}

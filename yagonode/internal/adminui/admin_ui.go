@@ -112,7 +112,9 @@ type Options struct {
 	// SearchLinksNewTab opens result links in a new tab with an accessible
 	// indicator; the default keeps NN/G same-tab navigation.
 	SearchLinksNewTab bool
-	PeerBlock         PeerBlockSource
+	// Restart requests a graceful node restart; nil hides the action.
+	Restart   func()
+	PeerBlock PeerBlockSource
 	// SearchSuggest, when set, serves OpenSearch suggestion JSON for the console
 	// search box autocomplete at GET /admin/search/suggest.
 	SearchSuggest http.Handler
@@ -298,6 +300,7 @@ type templates struct {
 	logs        *template.Template
 	security    *template.Template
 	performance *template.Template
+	restart     *template.Template
 }
 
 // Console is the server-rendered admin console handler.
@@ -329,6 +332,7 @@ type Console struct {
 	peerNews        PeerNewsSource
 	seedlistRefresh SeedlistRefreshSource
 	peerBlock       PeerBlockSource
+	restart         func()
 	searchSuggest   http.Handler
 }
 
@@ -367,6 +371,7 @@ func New(opts Options) *Console {
 		peerNews:        opts.PeerNews,
 		seedlistRefresh: opts.SeedlistRefresh,
 		peerBlock:       opts.PeerBlock,
+		restart:         opts.Restart,
 	}
 	console.registerRoutes(assets)
 
@@ -391,6 +396,7 @@ func buildTemplates() templates {
 		logs:        clone(nil, "templates/logs.tmpl", "templates/logs_table.tmpl"),
 		security:    clone(nil, "templates/security.tmpl", "templates/toasts.tmpl"),
 		performance: clone(nil, "templates/performance.tmpl"),
+		restart:     clone(nil, "templates/restart.tmpl"),
 	}
 }
 
@@ -421,6 +427,8 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+logsEventsPath, c.handleLogsEvents)
 	c.mux.HandleFunc("GET "+securityPath, c.handleSecurity)
 	c.mux.HandleFunc("POST "+securityPath, c.handleSecurityUpdate)
+	c.mux.HandleFunc("GET "+restartPath, c.handleRestartPage)
+	c.mux.HandleFunc("POST "+restartPath, c.handleRestartAction)
 	c.mux.HandleFunc("GET "+performancePath, c.handlePerformance)
 
 	for _, item := range navItems {

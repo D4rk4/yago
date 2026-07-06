@@ -152,6 +152,7 @@ func bootNode(
 	// wizard can end in a mandatory graceful restart (its choices apply at boot).
 	ctx, restart := newRestartController(ctx)
 	configureSetupWizard(authService, sources.settings, config, restart.Trigger)
+	sources.restart = restart.Trigger
 
 	assembled, err := assembleRuntimeNode(
 		ctx,
