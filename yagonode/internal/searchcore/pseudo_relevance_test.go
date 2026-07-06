@@ -8,13 +8,15 @@ import (
 
 type scriptedSearcher struct {
 	calls     int
+	requests  []Request
 	responses []Response
 	errs      []error
 }
 
-func (s *scriptedSearcher) Search(context.Context, Request) (Response, error) {
+func (s *scriptedSearcher) Search(_ context.Context, req Request) (Response, error) {
 	index := s.calls
 	s.calls++
+	s.requests = append(s.requests, req)
 	if index < len(s.errs) && s.errs[index] != nil {
 		return Response{}, s.errs[index]
 	}
@@ -55,6 +57,14 @@ func TestPseudoRelevanceExpandsThinRecallQuery(t *testing.T) {
 	}
 	if inner.calls != 2 {
 		t.Fatalf("expected a second expanded pass, calls = %d", inner.calls)
+	}
+	// Drift control: mined terms travel as optional ExpansionTerms while the
+	// required query stays exactly what the user typed.
+	expanded := inner.requests[1]
+	if len(expanded.ExpansionTerms) == 0 ||
+		expanded.Query != "alpha" ||
+		len(expanded.Terms) != 0 {
+		t.Fatalf("expanded request = %#v", expanded)
 	}
 	found := false
 	for _, result := range resp.Results {

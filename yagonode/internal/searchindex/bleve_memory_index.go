@@ -209,47 +209,13 @@ func bleveSearchQuery(req SearchRequest, gram bool, multilingual bool) blevequer
 		analyzers = queryAnalyzers(req.Query)
 	}
 	primary := analyzers[0]
-	main := bleve.NewDisjunctionQuery()
-	for _, analyzer := range analyzers {
-		for _, field := range textSearchFields() {
-			match := fieldMatchWithAnalyzer(
-				field,
-				req.Query,
-				textFieldWeight(field, weights),
-				analyzer,
-			)
-			if req.Fuzzy {
-				// Zero-result recovery: tolerate one edit per term so slightly
-				// misspelled queries still reach close matches.
-				match.SetFuzziness(1)
-			}
-			main.AddQuery(match)
-		}
-	}
-	urlMatch := fieldMatch("url", req.Query, weights.URL)
+	var main blevequery.Query
 	if req.Fuzzy {
-		urlMatch.SetFuzziness(1)
-	}
-	main.AddQuery(urlMatch)
-	if gram && req.Fuzzy {
-		// Language-agnostic trigram recall, restricted to the zero-result
-		// recovery path. Matching a word's character trigrams with AND semantics
-		// does NOT require them to be contiguous or in one word, so over a long
-		// body every common trigram of a query word (e.g. Russian "черногория" ->
-		// чер, ерн, рно, ...) occurs scattered in nearly every same-script
-		// document, flooding ordinary queries with unrelated content. Restoring
-		// contiguity needs positional term vectors (a reindex), and morphology is
-		// better served by per-language stemming, so grams now only widen recall
-		// when the precise query already found nothing rather than on every search.
-		// Skipped when the index mapping predates the trigram analyzer: such an
-		// index can neither resolve the analyzer nor hold gram fields, and a
-		// query referencing it fails the whole search.
-		main.AddQuery(
-			gramMatch("title"+gramFieldSuffix, req.Query, weights.Title*gramWeightFactor),
-			gramMatch("headings"+gramFieldSuffix, req.Query, weights.Headings*gramWeightFactor),
-			gramMatch("anchors"+gramFieldSuffix, req.Query, weights.Anchors*gramWeightFactor),
-			gramMatch("body"+gramFieldSuffix, req.Query, weights.Body*gramWeightFactor),
-		)
+		main = fuzzyRecoveryQuery(req, gram, analyzers, weights)
+	} else {
+		// The precise path requires every query word somewhere in the document,
+		// matching YaCy's all-words RWI join; expansion terms only reorder.
+		main = requiredTermsQuery(req, analyzers, weights)
 	}
 	phrases := phraseBoosts(req.Phrases, weights, primary)
 	if len(req.ExcludeTerms) == 0 && len(phrases) == 0 {

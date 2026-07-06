@@ -90,21 +90,22 @@ func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRe
 	}
 
 	return searchindex.SearchRequest{
-		Query:         query,
-		ExcludeTerms:  append([]string(nil), req.ExcludedTerms...),
-		Phrases:       append([]string(nil), req.Phrases...),
-		MaxResults:    req.Offset + requestLimit(req),
-		IncludeDomain: includeDomains(req),
-		Language:      strings.ToLower(req.Language),
-		Weights:       weights,
-		Fuzzy:         req.Fuzzy,
-		Author:        req.Author,
-		Terms:         append([]string(nil), req.Terms...),
-		Near:          req.Near,
-		WithFacets:    req.WithFacets,
-		ContentDomain: string(req.ContentDomain),
-		MinDate:       req.MinDate,
-		MaxDate:       req.MaxDate,
+		Query:          query,
+		ExcludeTerms:   append([]string(nil), req.ExcludedTerms...),
+		Phrases:        append([]string(nil), req.Phrases...),
+		MaxResults:     req.Offset + requestLimit(req),
+		IncludeDomain:  includeDomains(req),
+		Language:       strings.ToLower(req.Language),
+		Weights:        weights,
+		Fuzzy:          req.Fuzzy,
+		Author:         req.Author,
+		Terms:          append([]string(nil), req.Terms...),
+		ExpansionTerms: append([]string(nil), req.ExpansionTerms...),
+		Near:           req.Near,
+		WithFacets:     req.WithFacets,
+		ContentDomain:  string(req.ContentDomain),
+		MinDate:        req.MinDate,
+		MaxDate:        req.MaxDate,
 	}
 }
 

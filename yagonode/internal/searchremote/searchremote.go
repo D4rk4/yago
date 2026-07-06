@@ -205,7 +205,6 @@ func (s searcher) searchVariants(
 ) searchcore.Response {
 	lists := make([][]searchcore.Result, 0, len(variants))
 	failures := make([]searchcore.PartialFailure, 0, len(variants))
-	total := 0
 	for _, variant := range variants {
 		variantReq := req
 		variantReq.Terms = []string{variant}
@@ -213,10 +212,13 @@ func (s searcher) searchVariants(
 		resp := s.searchExact(ctx, variantReq)
 		lists = append(lists, resp.Results)
 		failures = append(failures, resp.PartialFailures...)
-		total += resp.TotalResults
 	}
 
 	fused := searchcore.FuseByReciprocalRank(lists...)
+	// Fusion deduplicates across the variant passes, so the fused length is the
+	// honest total; summing per-variant totals would double-count documents
+	// indexed under several inflections.
+	total := len(fused)
 	if len(fused) > req.Limit && req.Limit > 0 {
 		fused = fused[:req.Limit]
 	}
@@ -721,7 +723,6 @@ func (s searcher) response(
 			)
 			continue
 		}
-		resp.TotalResults += result.response.JoinCount
 		normalized, err := searchResults(ctx, req, result.response.Resources, scorer)
 		if err != nil {
 			resp.PartialFailures = append(resp.PartialFailures, peerFailure(result.peer, err))
@@ -731,6 +732,10 @@ func (s searcher) response(
 	}
 	deduped := searchcore.DiversifyResults(dedupeSearchResults(resp.Results), req)
 	searchcore.OrderByDateWhenRequested(deduped, req)
+	// The honest remote total is the verified, deduplicated rows actually in
+	// hand, not the peers' claimed join counts: an unverifiable claim must not
+	// inflate the result counter or fabricate result pages.
+	resp.TotalResults = len(deduped)
 	resp.Results = offsetResults(deduped, req.Offset, req.Limit)
 
 	return resp
@@ -774,6 +779,7 @@ func searchResults(
 	rows []yagomodel.URIMetadataRow,
 	scorer remoteScorer,
 ) ([]searchcore.Result, error) {
+	rows = cappedPeerRows(rows, req.Offset+req.Limit)
 	results := make([]searchcore.Result, 0, len(rows))
 	for i, row := range rows {
 		result, err := searchResult(ctx, req, row)
@@ -784,7 +790,7 @@ func searchResults(
 		results = append(results, result)
 	}
 
-	return results, nil
+	return verifiedPeerResults(req, results), nil
 }
 
 func searchResult(

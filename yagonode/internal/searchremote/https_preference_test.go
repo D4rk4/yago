@@ -70,6 +70,7 @@ func TestRemoteSearcherFallsBackToPlainHTTPWhenHTTPSFails(t *testing.T) {
 		Terms:  []string{word.String()},
 		Source: searchcore.SourceGlobal,
 		Limit:  10,
+		Verify: searchcore.VerifyFalse,
 	})
 	if err != nil {
 		t.Fatalf("Search: %v", err)

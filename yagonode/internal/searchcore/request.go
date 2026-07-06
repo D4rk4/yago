@@ -18,7 +18,9 @@ func NormalizePublicRequest(req Request, limitCap int) (Request, error) {
 		req.ContentDomain = ContentDomainText
 	}
 	if req.Verify == "" {
-		req.Verify = VerifyFalse
+		// YaCy defaults search.verify to "ifexist": results are checked against
+		// the evidence at hand unless the caller opts out with verify=false.
+		req.Verify = VerifyIfExist
 	}
 	if req.Limit <= 0 {
 		req.Limit = DefaultPublicLimit

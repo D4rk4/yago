@@ -62,6 +62,7 @@ func TestRemoteSearcherQueriesPeersAndNormalizesResults(t *testing.T) {
 		Source:        searchcore.SourceGlobal,
 		Limit:         10,
 		ContentDomain: searchcore.ContentDomainText,
+		Verify:        searchcore.VerifyFalse,
 	})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -137,7 +138,7 @@ func TestRemoteSearcherUsesIndexAbstractsForMultiTermSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if resp.TotalResults != 2 ||
+	if resp.TotalResults != 1 ||
 		len(resp.Results) != 1 ||
 		resp.Results[0].URLHash != fixture.shared.String() ||
 		len(resp.PartialFailures) != 0 {
@@ -168,7 +169,7 @@ func TestRemoteSearcherMultiWordPrimaryConjunction(t *testing.T) {
 			JoinCount: 1,
 			Count:     1,
 			Resources: []yagomodel.URIMetadataRow{
-				metadataRow(t, doc, "https://example.org/doc", "Doc"),
+				metadataRow(t, doc, "https://example.org/doc", "Doc alpha beta"),
 			},
 		}.Encode().Encode())
 	}))
@@ -280,7 +281,7 @@ func (f *multiTermAbstractFixture) writeSecondary(w http.ResponseWriter) {
 		JoinCount: 1,
 		Count:     1,
 		Resources: []yagomodel.URIMetadataRow{
-			metadataRow(f.tb, f.shared, "https://example.org/shared", "Shared"),
+			metadataRow(f.tb, f.shared, "https://example.org/shared", "Shared alpha beta"),
 		},
 	}.Encode().Encode())
 }
@@ -561,8 +562,8 @@ func TestRemoteSearcherHonorsLimitAndOffset(t *testing.T) {
 			JoinCount: 2,
 			Count:     2,
 			Resources: []yagomodel.URIMetadataRow{
-				metadataRow(t, first, "https://example.org/a", "A"),
-				metadataRow(t, second, "https://example.org/b", "B"),
+				metadataRow(t, first, "https://example.org/a", "A golang"),
+				metadataRow(t, second, "https://example.org/b", "B golang"),
 			},
 		}
 		writeFixtureResponse(t, w, response.Encode().Encode())
@@ -577,7 +578,7 @@ func TestRemoteSearcherHonorsLimitAndOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if len(resp.Results) != 1 || resp.Results[0].Title != "B" {
+	if len(resp.Results) != 1 || resp.Results[0].Title != "B golang" {
 		t.Fatalf("results = %#v", resp.Results)
 	}
 }
@@ -1114,7 +1115,12 @@ func TestRemoteSearcherExpandsSingleWordMorphology(t *testing.T) {
 			JoinCount: 1,
 			Count:     1,
 			Resources: []yagomodel.URIMetadataRow{
-				metadataRow(t, hashFor(query), "https://example.org/"+query+".html", "R"),
+				metadataRow(
+					t,
+					hashFor(query),
+					"https://example.org/"+query+".html",
+					"R черногория",
+				),
 			},
 		}.Encode().Encode())
 	}))

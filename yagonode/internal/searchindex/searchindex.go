@@ -37,6 +37,10 @@ type SearchRequest struct {
 	// only documents where every term appears within one small token window.
 	Terms []string
 	Near  bool
+	// ExpansionTerms are optional recall terms (pseudo-relevance feedback): they
+	// boost documents that already match every required query term and never
+	// admit one that does not.
+	ExpansionTerms []string
 	// WithFacets asks for facet counts over every matching document.
 	WithFacets bool
 	// ContentDomain narrows results to a media vertical (image/audio/video/app);

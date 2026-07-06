@@ -28,10 +28,12 @@ const (
 
 // NewPseudoRelevanceSearcher expands a recall-poor query with terms mined from
 // its own top results (pseudo-relevance feedback, RM3) and fuses the expanded
-// pass with the original by reciprocal rank, so the added terms widen recall and
-// lift on-topic documents without displacing the original matches. It wraps the
-// local searcher: peers run their own retrieval, and a full first page skips
-// expansion entirely.
+// pass with the original by reciprocal rank. The mined terms travel as
+// Request.ExpansionTerms — optional scoring evidence, never required matches —
+// so the second pass reorders documents that contain the actual query but can
+// never surface one that only matches an expansion word (the classic RM3 drift
+// failure). It wraps the local searcher: peers run their own retrieval, and a
+// full first page skips expansion entirely.
 func NewPseudoRelevanceSearcher(inner Searcher) Searcher {
 	return pseudoRelevanceSearcher{inner: inner}
 }
@@ -57,8 +59,7 @@ func (s pseudoRelevanceSearcher) Search(
 	}
 
 	expanded := req
-	expanded.Query = strings.TrimSpace(req.Query + " " + strings.Join(expansion, " "))
-	expanded.Terms = append(append([]string(nil), req.Terms...), expansion...)
+	expanded.ExpansionTerms = expansion
 	second, err := s.inner.Search(ctx, expanded)
 	if err != nil {
 		// Expansion is best-effort: a failed second pass keeps the first result.

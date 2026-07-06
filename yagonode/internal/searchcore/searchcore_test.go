@@ -34,7 +34,7 @@ func TestNormalizePublicRequestDefaultsAndCaps(t *testing.T) {
 	}
 	if got.Source != SourceLocal ||
 		got.ContentDomain != ContentDomainText ||
-		got.Verify != VerifyFalse ||
+		got.Verify != VerifyIfExist ||
 		got.Limit != 7 {
 		t.Fatalf("normalized = %#v", got)
 	}

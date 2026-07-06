@@ -60,6 +60,14 @@ type Request struct {
 	Author           string
 	URLMaskFilter    string
 	PreferMaskFilter string
+	// ExpansionTerms carries recall terms mined by pseudo-relevance feedback.
+	// The local index scores them as optional evidence only: they lift documents
+	// that already match every required query term and never admit one that does
+	// not (RM3 drift control; Lavrenko & Croft, SIGIR 2001).
+	ExpansionTerms []string
+	// Verify controls the term-containment check on peer-supplied results,
+	// following YaCy's verify parameter: VerifyFalse trusts peers verbatim, every
+	// other mode drops rows whose own metadata never mentions a query term.
 	Verify           VerifyMode
 	Navigation       string
 	SortByDate       bool
