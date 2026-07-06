@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 type CrawlJob struct {
@@ -16,6 +18,8 @@ type CrawlJob struct {
 	// CrawlDelay is the profile's requested politeness delay for this job's host.
 	// Zero means the crawler's global default delay applies.
 	CrawlDelay time.Duration
+	// Formats selects which document format families this job may parse.
+	Formats yagocrawlcontract.FormatToggles
 	// IgnoreTLSAuthority routes this job through the fetch chain that skips
 	// certificate-chain verification (profile opt-in).
 	IgnoreTLSAuthority bool

@@ -40,6 +40,8 @@ components:
     in: internal/frontier/**
   pageparse:
     in: internal/pageparse/**
+  formatparse:
+    in: internal/formatparse/**
   pageindex:
     in: internal/pageindex/**
   ingest:
@@ -102,6 +104,7 @@ deps:
     mayDependOn:
       - crawljob
     canUse:
+      - yagocrawlcontract
       - google-uuid
   weburl:
     mayDependOn:
@@ -187,6 +190,12 @@ deps:
       - xnet-html
       - trafilatura
       - go-shiori-dom
+  formatparse:
+    mayDependOn:
+      - formatparse
+      - pageparse
+    canUse:
+      - yagocrawlcontract
   pageindex:
     mayDependOn:
       - pageindex
@@ -217,6 +226,7 @@ deps:
     mayDependOn:
       - pipeline
       - crawljob
+      - formatparse
       - ingest
       - pagefetch
       - pageindex

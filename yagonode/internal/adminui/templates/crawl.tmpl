@@ -85,5 +85,26 @@
   </details>
   <button class="cds-btn" type="submit">Start crawl</button>
 </form>
+
+{{if .Formats}}
+<h2 class="cds-h2">Document formats</h2>
+<p class="cds-muted">Format families every crawl parses and indexes (shared by all crawls; YaCy TextParser parity). HTML/web text is always on. Archives are off by default: unpacking hostile archives is a security decision.</p>
+{{if .FormatsNote}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.FormatsNote}}</div>{{end}}
+<form class="cds-form" method="post" action="/admin/crawl/formats" hx-boost="false">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <fieldset class="cds-field">
+    <legend class="cds-label">Enabled families</legend>
+    <label class="cds-checkbox"><input type="checkbox" name="text"{{if .Formats.Text}} checked{{end}}> Text (txt, tex, csv, rtf, msg)</label>
+    <label class="cds-checkbox"><input type="checkbox" name="xmlfeeds"{{if .Formats.XMLFeeds}} checked{{end}}> XML &amp; feeds (xml, rss, atom)</label>
+    <label class="cds-checkbox"><input type="checkbox" name="pdf"{{if .Formats.PDF}} checked{{end}}> PDF &amp; PostScript</label>
+    <label class="cds-checkbox"><input type="checkbox" name="office"{{if .Formats.Office}} checked{{end}}> Office (OOXML, OpenDocument, legacy Office, Visio, FreeMind)</label>
+    <label class="cds-checkbox"><input type="checkbox" name="images"{{if .Formats.Images}} checked{{end}}> Images (metadata only, no OCR)</label>
+    <label class="cds-checkbox"><input type="checkbox" name="audio"{{if .Formats.Audio}} checked{{end}}> Audio (tags only, no transcription)</label>
+    <label class="cds-checkbox"><input type="checkbox" name="misc"{{if .Formats.Misc}} checked{{end}}> vCard, torrent, APK</label>
+    <label class="cds-checkbox"><input type="checkbox" name="archives"{{if .Formats.Archives}} checked{{end}}> Archives (zip, jar, epub, tar, gz, bz2, xz) — security risk</label>
+  </fieldset>
+  <button class="cds-btn" type="submit">Save format settings</button>
+</form>
+{{end}}
 {{with .Monitor}}{{template "crawl-monitor" .}}{{end}}
 {{end}}

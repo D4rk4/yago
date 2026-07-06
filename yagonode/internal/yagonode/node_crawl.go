@@ -10,6 +10,7 @@ import (
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
+	"github.com/D4rk4/yago/yagonode/internal/crawlformats"
 	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
 	"github.com/D4rk4/yago/yagonode/internal/crawlruns"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
@@ -29,6 +30,7 @@ type crawlRuntime struct {
 	consumer  *crawlresults.IngestConsumer
 	runs      *crawlruns.Registry
 	frontier  *recrawlfrontier.Frontier
+	formats   *crawlformats.Store
 	initiator yagomodel.Hash
 }
 
@@ -58,6 +60,10 @@ func buildCrawlRuntime(
 	if err != nil {
 		return nil, fmt.Errorf("open recrawl frontier: %w", err)
 	}
+	formats, err := crawlformats.Open(storageVault)
+	if err != nil {
+		return nil, fmt.Errorf("open crawl formats: %w", err)
+	}
 
 	consumer := crawlresults.NewIngestConsumerWithIndex(
 		broker.Ingest,
@@ -74,6 +80,7 @@ func buildCrawlRuntime(
 		consumer:  consumer,
 		runs:      runs,
 		frontier:  frontier,
+		formats:   formats,
 		initiator: identity.Hash,
 	}, nil
 }
@@ -81,7 +88,12 @@ func buildCrawlRuntime(
 // dispatchQueue wraps the durable order queue so every dispatched or seeded crawl
 // order records its profile in the recrawl frontier before it is enqueued.
 func (r *crawlRuntime) dispatchQueue() crawldispatch.CrawlOrderQueue {
-	return profileRecordingQueue{inner: r.broker.Orders, frontier: r.frontier}
+	// Format toggles are stamped first so the recorded recrawl profile carries
+	// them too and re-dispatched URLs parse the same families.
+	return profileRecordingQueue{
+		inner:    formatStampingQueue{inner: r.broker.Orders, formats: r.formats},
+		frontier: r.frontier,
+	}
 }
 
 func (r *crawlRuntime) mountDispatch(mux *http.ServeMux) {
@@ -94,6 +106,10 @@ func (r *crawlRuntime) observe(observer crawlresults.IngestObserver) {
 
 func (r *crawlRuntime) orderQueue() crawldispatch.CrawlOrderQueue {
 	return r.dispatchQueue()
+}
+
+func (r *crawlRuntime) formatStore() *crawlformats.Store {
+	return r.formats
 }
 
 func (r *crawlRuntime) runRegistry() *crawlruns.Registry {

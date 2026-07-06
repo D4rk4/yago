@@ -37,6 +37,45 @@ type CrawlProfile struct {
 	MaxPagesPerHost    int
 	RecrawlIfOlder     time.Duration
 	CrawlDelay         time.Duration
+	// Formats selects which document format families the crawler parses and
+	// indexes for this crawl; the node fills it from the operator's shared
+	// format settings on every dispatch.
+	Formats FormatToggles
+}
+
+// FormatToggles enables document format families for parsing (YaCy TextParser
+// parity). HTML/web text is always on and carries no toggle.
+type FormatToggles struct {
+	// Text: txt, tex, csv, rtf, msg.
+	Text bool
+	// XMLFeeds: xml, rss, atom.
+	XMLFeeds bool
+	// PDF: pdf, ps.
+	PDF bool
+	// Office: OOXML, OpenDocument/StarOffice, legacy Office, Visio, FreeMind.
+	Office bool
+	// Images: jpg, png, gif, bmp, wbmp, tiff, psd, svg metadata.
+	Images bool
+	// Audio: mp3, ogg, wma, wav, m4a/m4b/m4p, mp4, aiff, ra/rm, sid tags.
+	Audio bool
+	// Misc: vcf, torrent, apk.
+	Misc bool
+	// Archives: zip, jar, epub, tar, gz/tgz, bz2/tbz/tbz2, xz/txz containers.
+	// Default off: unpacking hostile archives is a security decision.
+	Archives bool
+}
+
+// DefaultFormatToggles enables every family except archives.
+func DefaultFormatToggles() FormatToggles {
+	return FormatToggles{
+		Text:     true,
+		XMLFeeds: true,
+		PDF:      true,
+		Office:   true,
+		Images:   true,
+		Audio:    true,
+		Misc:     true,
+	}
 }
 
 func NewCrawlProfile(profile CrawlProfile) CrawlProfile {

@@ -90,6 +90,7 @@ type Options struct {
 	Overview        OverviewSource
 	Search          SearchSource
 	Crawl           CrawlSource
+	CrawlFormats    CrawlFormatsSource
 	Monitor         CrawlMonitorSource
 	Control         CrawlControlSource
 	Index           IndexSource
@@ -198,6 +199,10 @@ type crawlPageData struct {
 	Monitor    *crawlMonitorView
 	Result     *CrawlDispatch
 	Error      string
+	// Formats carries the shared document-format toggles; nil hides the block.
+	Formats *FormatSettings
+	// FormatsNote flashes the outcome of a formats save.
+	FormatsNote string
 }
 
 // crawlMonitorView wraps the crawl monitor snapshot with the per-request data the
@@ -302,6 +307,7 @@ type Console struct {
 	search          SearchSource
 	searchNewTab    bool
 	crawl           CrawlSource
+	crawlFormats    CrawlFormatsSource
 	monitor         CrawlMonitorSource
 	control         CrawlControlSource
 	index           IndexSource
@@ -339,6 +345,7 @@ func New(opts Options) *Console {
 		searchNewTab:    opts.SearchLinksNewTab,
 		searchSuggest:   opts.SearchSuggest,
 		crawl:           opts.Crawl,
+		crawlFormats:    opts.CrawlFormats,
 		monitor:         opts.Monitor,
 		control:         opts.Control,
 		index:           opts.Index,
@@ -396,6 +403,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+searchPath, c.handleSearch)
 	c.mux.HandleFunc("GET "+crawlPath, c.handleCrawl)
 	c.mux.HandleFunc("POST "+crawlPath, c.handleCrawlStart)
+	c.mux.HandleFunc("POST "+crawlPath+"/formats", c.handleCrawlFormats)
 	c.mux.HandleFunc("GET "+crawlMonitorPath, c.handleCrawlMonitor)
 	c.mux.HandleFunc("POST "+crawlControlPath, c.handleCrawlControl)
 	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
@@ -1102,13 +1110,52 @@ func (c *Console) handleCrawlStart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Console) crawlPage(r *http.Request, form crawlForm) crawlPageData {
-	return crawlPageData{
+	data := crawlPageData{
 		AppName: appName, ActivePath: crawlPath, Nav: navItems,
 		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Crawler", Available: true},
 		Form:    form,
 		Monitor: c.crawlMonitorView(r),
 	}
+	if c.crawlFormats != nil {
+		settings := c.crawlFormats.CurrentFormats(r.Context())
+		data.Formats = &settings
+	}
+
+	return data
+}
+
+// handleCrawlFormats saves the shared document-format toggles.
+func (c *Console) handleCrawlFormats(w http.ResponseWriter, r *http.Request) {
+	if c.crawlFormats == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+
+		return
+	}
+	settings := FormatSettings{
+		Text:     r.PostForm.Get("text") == "on",
+		XMLFeeds: r.PostForm.Get("xmlfeeds") == "on",
+		PDF:      r.PostForm.Get("pdf") == "on",
+		Office:   r.PostForm.Get("office") == "on",
+		Images:   r.PostForm.Get("images") == "on",
+		Audio:    r.PostForm.Get("audio") == "on",
+		Misc:     r.PostForm.Get("misc") == "on",
+		Archives: r.PostForm.Get("archives") == "on",
+	}
+	if err := c.crawlFormats.SaveFormats(r.Context(), settings); err != nil {
+		slog.WarnContext(r.Context(), "save crawl formats failed", slog.Any("error", err))
+		data := c.crawlPage(r, defaultCrawlForm())
+		data.FormatsNote = "Saving format settings failed."
+		c.render(r.Context(), w, c.tpl.crawl, "layout", data)
+
+		return
+	}
+	http.Redirect(w, r, crawlPath, http.StatusSeeOther)
 }
 
 // crawlMonitorView returns the live crawl monitor snapshot wrapped with the

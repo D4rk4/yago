@@ -46,6 +46,8 @@ components:
     in: internal/faviconproxy/**
   searchsession:
     in: internal/searchsession/**
+  crawlformats:
+    in: internal/crawlformats/**
   peermessage:
     in: internal/peermessage/**
   peerprofile:
@@ -542,6 +544,13 @@ deps:
     mayDependOn:
       - searchsession
       - searchcore
+  crawlformats:
+    mayDependOn:
+      - crawlformats
+      - vault
+      - memvault
+    canUse:
+      - yagocrawlcontract
   crawldispatch:
     mayDependOn:
       - crawldispatch
@@ -605,6 +614,7 @@ deps:
       - cachedpage
       - faviconproxy
       - searchsession
+      - crawlformats
       - peermessage
       - peerprofile
       - seedlist

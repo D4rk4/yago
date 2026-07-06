@@ -97,6 +97,7 @@ func buildOpsMux(
 		SeedlistRefresh:   seedRefresh,
 		SearchLinksNewTab: config.SearchLinksNewTab,
 		SearchSuggest:     adminSearchSuggest(assembled),
+		CrawlFormats:      crawlFormatsAdmin(assembled.crawl),
 	}
 	applyIndexAdminOptions(&options, assembled)
 	if assembled.roster != nil {

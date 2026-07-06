@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagocrawler/internal/crawljob"
+	"github.com/D4rk4/yago/yagocrawler/internal/formatparse"
 	"github.com/D4rk4/yago/yagocrawler/internal/ingest"
 	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yagocrawler/internal/pageindex"
@@ -160,7 +161,12 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	}
 	p.observer.FetchSucceeded(len(fetched.Body))
 	p.tally.Fetched(job.Provenance)
-	page := pageparse.ParseHTML(fetched.URL.String(), fetched.ContentType, fetched.Body)
+	page, parsed := formatparse.Parse(
+		fetched.URL.String(),
+		fetched.ContentType,
+		fetched.Body,
+		job.Formats,
+	)
 	slog.DebugContext(ctx, msgPageCrawled,
 		slog.String("url", page.URL),
 		slog.Int("links", len(page.Links)),
@@ -176,7 +182,7 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 		Followable: page.FollowableLinks,
 		NoFollow:   page.NoFollowLinks,
 	})
-	if !job.Index {
+	if !job.Index || !parsed {
 		slog.DebugContext(ctx, msgPageNotIndexed, slog.String("url", page.URL))
 
 		return nil

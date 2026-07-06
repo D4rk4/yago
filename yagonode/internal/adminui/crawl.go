@@ -37,3 +37,23 @@ type CrawlDispatch struct {
 type CrawlSource interface {
 	Start(ctx context.Context, start CrawlStart) (CrawlDispatch, error)
 }
+
+// FormatSettings mirrors the shared document-format toggles every crawl uses
+// (YaCy TextParser families). HTML/web text is always on and carries no toggle.
+type FormatSettings struct {
+	Text     bool
+	XMLFeeds bool
+	PDF      bool
+	Office   bool
+	Images   bool
+	Audio    bool
+	Misc     bool
+	Archives bool
+}
+
+// CrawlFormatsSource reads and saves the shared format toggles. A nil source
+// hides the formats block.
+type CrawlFormatsSource interface {
+	CurrentFormats(ctx context.Context) FormatSettings
+	SaveFormats(ctx context.Context, settings FormatSettings) error
+}
