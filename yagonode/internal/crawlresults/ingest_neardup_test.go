@@ -133,3 +133,76 @@ func TestNoopObserverDuplicateIsSilent(t *testing.T) {
 		t.Fatalf("noop-observer duplicate stored: %d", documents.calls)
 	}
 }
+
+// TestIngestGateRejectsLowQualityBatchWhole is the CRAWL-14 acceptance: a page
+// failing the quality gate is dropped entirely — no document, no metadata, no
+// postings reach the stores — with the rejection counted.
+func TestIngestGateRejectsLowQualityBatchWhole(t *testing.T) {
+	documents := &recordingDocumentReceiver{}
+	urls := &recordingURLReceiver{}
+	postings := &recordingPostingReceiver{}
+	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery, 1)}
+	consumer := crawlresults.NewIngestConsumer(stream, documents, urls, postings)
+	consumer.GateQuality(func(text string) string {
+		if len(text) < 100 {
+			return "too-few-words"
+		}
+		return ""
+	})
+	consumer.GateQuality(nil)
+	observer := &recordingObserver{}
+	consumer.Observe(observer)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go consumer.Run(ctx)
+
+	deliverPage(t, stream, "https://spam.example/doorway", "мало слов")
+	if documents.calls != 0 || urls.calls != 0 || postings.calls != 0 {
+		t.Fatalf("low-quality batch leaked: docs=%d urls=%d postings=%d",
+			documents.calls, urls.calls, postings.calls)
+	}
+	if observer.lowQuality != 1 {
+		t.Fatalf("lowQuality observations = %d", observer.lowQuality)
+	}
+
+	deliverPage(
+		t,
+		stream,
+		"https://ok.example/page",
+		nearDupPageText+" "+nearDupPageText+" достаточно длинный содержательный текст страницы",
+	)
+	if documents.calls != 1 || urls.calls != 1 || postings.calls != 1 {
+		t.Fatalf("passing batch not absorbed: docs=%d urls=%d postings=%d",
+			documents.calls, urls.calls, postings.calls)
+	}
+}
+
+func TestRejectLowQualityLogsAckFailure(t *testing.T) {
+	documents := &recordingDocumentReceiver{}
+	urls := &recordingURLReceiver{}
+	postings := &recordingPostingReceiver{}
+	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery, 1)}
+	consumer := crawlresults.NewIngestConsumer(stream, documents, urls, postings)
+	consumer.GateQuality(func(string) string { return "too-few-words" })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go consumer.Run(ctx)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	stream.out <- crawlresults.IngestDelivery{
+		Batch: yagocrawlcontract.IngestBatch{
+			SourceURL: "https://spam.example/doorway",
+			Document: yagocrawlcontract.DocumentIngest{
+				NormalizedURL: "https://spam.example/doorway",
+				ExtractedText: "мало",
+			},
+		},
+		Ack: func(context.Context) error { wg.Done(); return context.Canceled },
+		Nak: func(context.Context) error { wg.Done(); return nil },
+	}
+	wg.Wait()
+	if documents.calls != 0 {
+		t.Fatalf("batch stored despite gate: %d", documents.calls)
+	}
+}

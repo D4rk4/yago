@@ -7,6 +7,7 @@ type CrawlMetrics struct {
 	deferred   prometheus.Counter
 	rejected   prometheus.Counter
 	duplicates prometheus.Counter
+	lowQuality prometheus.Counter
 	bytes      prometheus.Counter
 	urls       prometheus.Counter
 	postings   prometheus.Counter
@@ -41,13 +42,20 @@ func NewCrawlMetrics(registry prometheus.Registerer) *CrawlMetrics {
 		Name: "crawl_ingest_near_duplicates_total",
 		Help: "Crawl ingest documents collapsed as near-duplicates of stored pages.",
 	})
-	registry.MustRegister(absorbed, deferred, rejected, duplicates, bytes, urls, postings)
+	lowQuality := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "crawl_ingest_low_quality_total",
+		Help: "Crawl ingest batches rejected by the content-quality gate.",
+	})
+	registry.MustRegister(
+		absorbed, deferred, rejected, duplicates, lowQuality, bytes, urls, postings,
+	)
 
 	return &CrawlMetrics{
 		absorbed:   absorbed,
 		deferred:   deferred,
 		rejected:   rejected,
 		duplicates: duplicates,
+		lowQuality: lowQuality,
 		bytes:      bytes,
 		urls:       urls,
 		postings:   postings,
@@ -71,4 +79,8 @@ func (m *CrawlMetrics) ObserveRejected() {
 
 func (m *CrawlMetrics) ObserveDuplicate() {
 	m.duplicates.Inc()
+}
+
+func (m *CrawlMetrics) ObserveLowQuality() {
+	m.lowQuality.Inc()
 }

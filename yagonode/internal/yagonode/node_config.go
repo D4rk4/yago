@@ -46,6 +46,7 @@ const (
 	envSwarmSeedCrawl      = "YAGO_SWARM_SEED_CRAWL"
 	envSwarmSeedLimitDocs  = "YAGO_SWARM_SEED_LIMIT_DOCS"
 	envSwarmMorphology     = "YAGO_SWARM_MORPHOLOGY"
+	envIngestQualityGate   = "YAGO_INGEST_QUALITY_GATE"
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"

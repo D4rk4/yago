@@ -183,6 +183,19 @@ func extendedGrowthDefinitions() []settingDefinition {
 			},
 		},
 		{
+			key:          "crawl.ingest.quality_gate",
+			title:        "Ingest quality gate",
+			description:  "Reject crawled pages failing the deterministic Gopher/C4 content-quality rules before they are stored or indexed.",
+			options:      boolSettingOptions(),
+			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.Crawl.QualityGate) },
+			normalize:    normalizeSettingBool,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.Crawl.QualityGate = value == settingBoolTrue
+
+				return config
+			},
+		},
+		{
 			key:          "swarm.morphology.enabled",
 			title:        "Swarm morphology",
 			description:  "Search peers for inflected forms of a single-word query (more recall, more peer round-trips).",

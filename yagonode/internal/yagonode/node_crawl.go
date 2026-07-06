@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/contentquality"
 	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yagonode/internal/crawlformats"
@@ -76,6 +77,9 @@ func buildCrawlRuntime(
 	consumer.RecordFetches(frontier)
 	consumer.CheckOwnership(frontier)
 	consumer.CollapseNearDuplicates(neardup.NewWindow(0))
+	if config.QualityGate {
+		consumer.GateQuality(contentquality.RejectionRule)
+	}
 
 	return &crawlRuntime{
 		broker:    broker,

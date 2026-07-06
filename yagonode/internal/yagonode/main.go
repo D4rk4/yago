@@ -87,7 +87,10 @@ func run() error {
 		return fmt.Errorf("load node config: %w", err)
 	}
 
-	config.Crawl = loadCrawlConfig(getenv)
+	config.Crawl, err = loadCrawlConfig(getenv)
+	if err != nil {
+		return fmt.Errorf("load crawl config: %w", err)
+	}
 	config.Admin = loadAdminConfig(getenv)
 	config.CrossOrigin = loadCrossOriginConfig(getenv)
 

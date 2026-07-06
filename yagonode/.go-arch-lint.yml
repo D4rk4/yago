@@ -102,6 +102,8 @@ components:
     in: internal/stopwords/**
   neardup:
     in: internal/neardup/**
+  contentquality:
+    in: internal/contentquality/**
   searcheval:
     in: internal/searcheval/**
   searchindex:
@@ -472,6 +474,10 @@ deps:
     mayDependOn:
       - neardup
       - stopwords
+  contentquality:
+    mayDependOn:
+      - contentquality
+      - stopwords
   searcheval:
     mayDependOn:
       - searchcore
@@ -656,6 +662,7 @@ deps:
   yagonode:
     mayDependOn:
       - neardup
+      - contentquality
       - vault
       - boltvault
       - memvault

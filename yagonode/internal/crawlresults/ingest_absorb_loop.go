@@ -16,6 +16,7 @@ const (
 	msgIngestNakFailed     = "ingest batch nak failed"
 	msgRecrawlRecordFailed = "recrawl schedule record failed"
 	msgIngestNearDuplicate = "ingest document near-duplicate collapsed"
+	msgIngestLowQuality    = "ingest document rejected by quality gate"
 )
 
 func (c *IngestConsumer) Run(ctx context.Context) {
@@ -47,6 +48,11 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 	}
 	if !owned {
 		c.reject(ctx, delivery, "unowned profile")
+		return
+	}
+
+	if rule := c.qualityRejectionRule(batch); rule != "" {
+		c.rejectLowQuality(ctx, delivery, rule)
 		return
 	}
 
@@ -126,6 +132,36 @@ func (c *IngestConsumer) storeDocument(
 	}
 
 	return false
+}
+
+// qualityRejectionRule names the quality rule the batch's document text
+// violates, or "" when the batch may be absorbed (no gate, no document, or
+// text worth indexing).
+func (c *IngestConsumer) qualityRejectionRule(batch yagocrawlcontract.IngestBatch) string {
+	if c.quality == nil || !hasDocument(batch.Document) ||
+		batch.Document.ExtractedText == "" {
+		return ""
+	}
+
+	return c.quality(batch.Document.ExtractedText)
+}
+
+// rejectLowQuality drops a batch whose page failed the content-quality gate:
+// the document is not stored, its postings never reach the shared index, and
+// the rejection is counted with its rule named.
+func (c *IngestConsumer) rejectLowQuality(
+	ctx context.Context,
+	delivery IngestDelivery,
+	rule string,
+) {
+	c.observer.ObserveLowQuality()
+	slog.DebugContext(ctx, msgIngestLowQuality,
+		slog.String("sourceUrl", delivery.Batch.SourceURL),
+		slog.String("rule", rule))
+	if err := delivery.Ack(ctx); err != nil {
+		slog.WarnContext(ctx, msgIngestAckFailed,
+			slog.String("sourceUrl", delivery.Batch.SourceURL), slog.Any("error", err))
+	}
 }
 
 // collapseNearDuplicate reports whether the document's text near-duplicates a

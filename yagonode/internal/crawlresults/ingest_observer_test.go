@@ -16,6 +16,7 @@ type recordingObserver struct {
 	deferred   int
 	rejected   int
 	duplicates int
+	lowQuality int
 	bytes      int
 	urls       int
 	postings   int
@@ -30,6 +31,10 @@ func (o *recordingObserver) ObserveAbsorbed(bytes, urls, postings int) {
 
 func (o *recordingObserver) ObserveDuplicate() {
 	o.duplicates++
+}
+
+func (o *recordingObserver) ObserveLowQuality() {
+	o.lowQuality++
 }
 
 func (o *recordingObserver) ObserveDeferred() { o.deferred++ }

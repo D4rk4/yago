@@ -36,6 +36,7 @@ type IngestObserver interface {
 	ObserveDeferred()
 	ObserveRejected()
 	ObserveDuplicate()
+	ObserveLowQuality()
 }
 
 type noopIngestObserver struct{}
@@ -47,6 +48,8 @@ func (noopIngestObserver) ObserveDeferred() {}
 func (noopIngestObserver) ObserveRejected() {}
 
 func (noopIngestObserver) ObserveDuplicate() {}
+
+func (noopIngestObserver) ObserveLowQuality() {}
 
 // FetchRecorder is told, once per successfully absorbed page batch, which URL was
 // fetched under which profile and when, so a recrawl schedule can be maintained.
@@ -85,6 +88,9 @@ type IngestConsumer struct {
 	recorder  FetchRecorder
 	owner     OwnershipCheck
 	nearDup   *neardup.Window
+	// quality names the rule a document's text violates, "" for indexable text;
+	// nil skips the gate.
+	quality func(text string) string
 }
 
 func NewIngestConsumer(
@@ -129,6 +135,16 @@ func (c *IngestConsumer) Observe(observer IngestObserver) {
 func (c *IngestConsumer) CollapseNearDuplicates(window *neardup.Window) {
 	if window != nil {
 		c.nearDup = window
+	}
+}
+
+// GateQuality installs a content-quality rule check: a batch whose document
+// text violates a rule is dropped whole — spam postings must not reach the
+// shared index — with the rejection counted and the rule named in the log
+// (CRAWL-14). A nil gate is ignored.
+func (c *IngestConsumer) GateQuality(gate func(text string) string) {
+	if gate != nil {
+		c.quality = gate
 	}
 }
 
