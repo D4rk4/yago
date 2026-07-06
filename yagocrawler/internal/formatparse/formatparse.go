@@ -77,6 +77,7 @@ func families() []family {
 				"vsd", "vss", "vst", "mm",
 			),
 			mimes:   set("application/msword", "application/vnd.oasis.opendocument.text"),
+			parse:   parseOffice,
 			enabled: func(t yagocrawlcontract.FormatToggles) bool { return t.Office },
 		},
 		{
@@ -89,6 +90,7 @@ func families() []family {
 				"image/jpeg", "image/png", "image/gif", "image/bmp",
 				"image/tiff", "image/svg+xml",
 			),
+			parse:   parseImage,
 			enabled: func(t yagocrawlcontract.FormatToggles) bool { return t.Images },
 		},
 		{
@@ -118,6 +120,19 @@ func families() []family {
 	}
 }
 
+// dispatch runs the family parser when the family is enabled and implemented.
+func (f family) dispatch(
+	rawURL, contentType string,
+	body []byte,
+	toggles yagocrawlcontract.FormatToggles,
+) (pageparse.ParsedPage, bool) {
+	if !f.enabled(toggles) || f.parse == nil {
+		return pageparse.ParsedPage{URL: rawURL}, false
+	}
+
+	return f.parse(rawURL, contentType, body)
+}
+
 // Parse dispatches the fetched body. The bool reports whether a parser
 // produced an indexable page: HTML always parses; other families parse only
 // when their toggle is on and their parser is implemented.
@@ -132,15 +147,18 @@ func Parse(
 		return pageparse.ParseHTML(rawURL, contentType, body), true
 	}
 
-	for _, entry := range families() {
-		if !entry.extensions[ext] && !entry.mimes[mime] {
-			continue
+	// The URL extension is more specific than generic MIME bindings (a
+	// FreeMind .mm arrives as text/xml), so extension matches win.
+	registered := families()
+	for _, entry := range registered {
+		if entry.extensions[ext] {
+			return entry.dispatch(rawURL, contentType, body, toggles)
 		}
-		if !entry.enabled(toggles) || entry.parse == nil {
-			return pageparse.ParsedPage{URL: rawURL}, false
+	}
+	for _, entry := range registered {
+		if entry.mimes[mime] {
+			return entry.dispatch(rawURL, contentType, body, toggles)
 		}
-
-		return entry.parse(rawURL, contentType, body)
 	}
 
 	// Unknown types fall back to the HTML parser, which degrades to link-less
