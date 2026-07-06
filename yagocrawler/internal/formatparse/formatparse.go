@@ -58,6 +58,7 @@ func families() []family {
 				"text/xml", "application/xml", "application/rss+xml",
 				"application/atom+xml",
 			),
+			parse:   parseXMLFeeds,
 			enabled: func(t yagocrawlcontract.FormatToggles) bool { return t.XMLFeeds },
 		},
 		{
