@@ -21,6 +21,7 @@ The crawler is configured entirely through environment variables.
 | `YACYCRAWLER_PROXY_URL` | required | Egress proxy every outbound fetch passes through. |
 | `YACYCRAWLER_MAX_BODY_BYTES` | `2097152` | Largest response body accepted; larger is disposed. |
 | `YACYCRAWLER_FETCH_DEADLINE` | `30s` | Deadline for a single fetch. |
+| `YACYCRAWLER_FETCH_CONCURRENCY` | `4` | Concurrent fetches within a single run. |
 | `YACYCRAWLER_CONTENT_TYPES` | all | Comma-separated media types to crawl. Empty crawls every supported type; a list that matches none fails startup. |
 | `YACYCRAWLER_USER_AGENT` | `yacycrawler (+https://yacy.net)` | User-Agent sent with every fetch. |
 
@@ -28,7 +29,6 @@ The crawler is configured entirely through environment variables.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `YACYCRAWLER_WORKERS` | `1` | Orders processed concurrently. |
 | `YACYCRAWLER_RUN_PAGE_BUDGET` | `1000` | Pages a single run may fetch before it stops. |
 | `YACYCRAWLER_FRONTIER_CAP` | `10000` | Largest frontier a single run may hold. |
 
