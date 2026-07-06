@@ -134,6 +134,7 @@ func bootNode(
 		return fmt.Errorf("configure admin auth: %w", err)
 	}
 	sources.security = newSecuritySource(authService)
+	configureSetupWizard(authService, sources.settings, config)
 
 	assembled, err := assembleRuntimeNode(
 		ctx,

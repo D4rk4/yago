@@ -53,13 +53,15 @@ func (c Config) withDefaults() Config {
 }
 
 type Service struct {
-	creds      *credentialStore
-	sessions   *sessionStore
-	apiKeys    *apiKeyStore
-	limiter    *loginRateLimiter
-	keyLimiter *apiKeyRateLimiter
-	observer   AuthObserver
-	now        func() time.Time
+	creds          *credentialStore
+	sessions       *sessionStore
+	apiKeys        *apiKeyStore
+	limiter        *loginRateLimiter
+	keyLimiter     *apiKeyRateLimiter
+	observer       AuthObserver
+	now            func() time.Time
+	wizardDefaults SetupDefaults
+	wizardApply    SetupApplier
 }
 
 func New(storage *vault.Vault, cfg Config) (*Service, error) {

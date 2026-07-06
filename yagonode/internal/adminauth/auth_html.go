@@ -32,6 +32,9 @@ const (
 type authPageData struct {
 	Error  string
 	Notice string
+	// Wizard arms the node-mode step of the first-run setup page.
+	Wizard   bool
+	Defaults SetupDefaults
 }
 
 // CSRFTokenFromContext returns the authenticated session's CSRF token so a
@@ -117,7 +120,11 @@ func (s *Service) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 		w,
 		r,
 		"setup",
-		authPageData{Error: setupErrorMessage(r.URL.Query().Get("error"))},
+		authPageData{
+			Error:    setupErrorMessage(r.URL.Query().Get("error")),
+			Wizard:   s.wizardApply != nil,
+			Defaults: s.wizardDefaults,
+		},
 	)
 }
 
@@ -140,6 +147,15 @@ func (s *Service) handleSetupForm(w http.ResponseWriter, r *http.Request) {
 		redirectAuth(w, r, PathSetupPage+"?error=server")
 
 		return
+	}
+	if s.wizardApply != nil {
+		if err := s.wizardApply(r.Context(), wizardChoices(r.PostFormValue)); err != nil {
+			// The administrator exists; the node-mode settings can be redone
+			// in the console, so surface the partial success honestly.
+			redirectAuth(w, r, PathLoginPage+"?notice=created&error=wizard")
+
+			return
+		}
 	}
 	redirectAuth(w, r, PathLoginPage+"?notice=created")
 }

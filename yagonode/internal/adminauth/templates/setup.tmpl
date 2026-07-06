@@ -17,6 +17,24 @@
     <input id="u" name="username" autocomplete="username" autofocus required>
     <label for="p">Password</label>
     <input id="p" name="password" type="password" autocomplete="new-password" required>
+    {{if .Wizard}}
+    <fieldset class="modes">
+      <legend>Node mode</legend>
+      <label><input type="radio" name="mode" value="local" checked> Local-only — private index, no public exposure</label>
+      <label><input type="radio" name="mode" value="peer"> Public peer — join the swarm, keep the search portal off</label>
+      <label><input type="radio" name="mode" value="search"> Public search node — join the swarm and serve the public portal</label>
+    </fieldset>
+    <label for="ah">Advertised host (autodetected)</label>
+    <input id="ah" name="advertise_host" value="{{.Defaults.AdvertiseHost}}" autocomplete="off">
+    <label for="sl">Seedlist URLs (comma-separated)</label>
+    <input id="sl" name="seedlists" value="{{.Defaults.Seedlists}}" autocomplete="off">
+    <label for="wf">Web search fallback (DDGS)</label>
+    <select id="wf" name="web_fallback">
+      <option value="disabled"{{if eq .Defaults.WebFallback "disabled"}} selected{{end}}>Disabled</option>
+      <option value="explicit"{{if eq .Defaults.WebFallback "explicit"}} selected{{end}}>Only when requested</option>
+      <option value="enabled"{{if eq .Defaults.WebFallback "enabled"}} selected{{end}}>Enabled</option>
+    </select>
+    {{end}}
     <button type="submit">Create administrator</button>
   </form>
   <div class="foot">yago — free software under the GNU AGPL v3.</div>
