@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/cachedpage"
@@ -51,11 +52,25 @@ type publicSearchAssembly struct {
 	spellCorrector       func() *spellcheck.Corrector
 	denylist             denylistSnapshotter
 	snippetEnricher      *snippetfetch.Enricher
+	remoteTimeouts       remoteSearchTimeouts
 	indexRemoteResults   bool
 	swarmMorphology      bool
 	wordForms            func() *wordforms.Expander
 	swarmSeed            swarmSeedConfig
 	linksNewTab          bool
+}
+
+// remoteSearchTimeouts carries the swarm fan-out budgets into the assembly.
+type remoteSearchTimeouts struct {
+	perPeer time.Duration
+	overall time.Duration
+}
+
+func configRemoteTimeouts(config nodeConfig) remoteSearchTimeouts {
+	return remoteSearchTimeouts{
+		perPeer: config.RemotePeerTimeout,
+		overall: config.RemoteTimeout,
+	}
 }
 
 // searchTargetPeers adapts the peer roster for remote-search target selection.
@@ -198,6 +213,8 @@ func mountNodePublicSearch(
 		Weights:            remoteRankingWeights(assembly.rankingWeights),
 		PreferHTTPS:        assembly.peerHTTPSPreferred,
 		ExpandWord:         swarmMorphologyExpander(assembly),
+		PerPeerTimeout:     assembly.remoteTimeouts.perPeer,
+		OverallTimeout:     assembly.remoteTimeouts.overall,
 	})
 	search := assemblePublicSearcher(local, remote, assembly)
 	access := searchAccessPolicy(assembly)

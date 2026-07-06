@@ -268,6 +268,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		rankingWeights:     ranking.Current,
 		denylist:           denylist,
 		snippetEnricher:    buildSnippetEnricher(in.config, in.client),
+		remoteTimeouts:     configRemoteTimeouts(in.config),
 		indexRemoteResults: in.config.IndexRemoteResults,
 		swarmMorphology:    in.config.SwarmMorphology,
 		swarmSeed:          in.config.SwarmSeed,

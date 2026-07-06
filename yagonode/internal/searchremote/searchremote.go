@@ -20,11 +20,17 @@ import (
 )
 
 const (
-	DefaultMaxPeers           = 8
-	DefaultRedundancy         = 3
-	DefaultConcurrency        = 4
-	DefaultPerPeerTimeout     = time.Second
-	DefaultOverallTimeout     = 2 * time.Second
+	DefaultMaxPeers    = 8
+	DefaultRedundancy  = 3
+	DefaultConcurrency = 4
+	// DefaultPerPeerTimeout and DefaultOverallTimeout budget the swarm
+	// fan-out. Real YaCy peers answer a remote search in one to five seconds,
+	// so the old one-second per-peer budget discarded most honest answers —
+	// «0 from peers» at exactly the overall deadline (SEARCH-35). Since the
+	// fan-out runs concurrently with the local query (PERF-02), a longer
+	// budget costs latency only when peers actually take that long.
+	DefaultPerPeerTimeout     = 3 * time.Second
+	DefaultOverallTimeout     = 4 * time.Second
 	DefaultMinimumPeerAgeDays = 3
 	DefaultMinimumPeerRWIs    = 1
 	maxPartitionExponent      = 8

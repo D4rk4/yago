@@ -3,6 +3,7 @@ package yagonode
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 type catalogRoundTripCase struct {
@@ -39,6 +40,12 @@ func catalogRoundTripCases() map[string]catalogRoundTripCase {
 		}},
 		"web.fallback.seed_max_pages": {"35", func(c nodeConfig) bool {
 			return c.WebFallback.SeedMaxPages == 35
+		}},
+		"search.remote.peer_timeout": {"5s", func(c nodeConfig) bool {
+			return c.RemotePeerTimeout == 5*time.Second
+		}},
+		"search.remote.timeout": {"6s", func(c nodeConfig) bool {
+			return c.RemoteTimeout == 6*time.Second
 		}},
 		"swarm.seed.enabled": {"true", func(c nodeConfig) bool { return c.SwarmSeed.Enabled }},
 		"swarm.seed.limit": {
@@ -167,5 +174,18 @@ func TestAutocrawlerSettingValidation(t *testing.T) {
 		if _, err := byKey[key].normalize("0"); err == nil {
 			t.Fatalf("%s: non-positive page cap must fail", key)
 		}
+	}
+}
+
+func TestRemoteTimeoutSettingValidation(t *testing.T) {
+	byKey := indexSettingDefinitions()
+	for _, bad := range []string{"soon", "50ms", "10m"} {
+		if _, err := byKey["search.remote.timeout"].normalize(bad); err == nil {
+			t.Fatalf("%q must fail duration validation", bad)
+		}
+	}
+	if normalized, err := byKey["search.remote.peer_timeout"].normalize(" 3s "); err != nil ||
+		normalized != "3s" {
+		t.Fatalf("duration normalize = %q %v", normalized, err)
 	}
 }

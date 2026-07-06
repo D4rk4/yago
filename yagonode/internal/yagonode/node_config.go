@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/searchremote"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -50,6 +51,8 @@ const (
 	envSwarmMorphology     = "YAGO_SWARM_MORPHOLOGY"
 	envIngestQualityGate   = "YAGO_INGEST_QUALITY_GATE"
 	envPeerSnippetFetch    = "YAGO_PEER_SNIPPET_FETCH"
+	envRemotePeerTimeout   = "YAGO_SEARCH_REMOTE_PEER_TIMEOUT"
+	envRemoteTimeout       = "YAGO_SEARCH_REMOTE_TIMEOUT"
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"
@@ -99,6 +102,8 @@ type nodeConfig struct {
 	IndexRemoteResults    bool
 	SwarmMorphology       bool
 	PeerSnippetFetch      bool
+	RemotePeerTimeout     time.Duration
+	RemoteTimeout         time.Duration
 	PeerHTTPSPreferred    bool
 	SwarmSeed             swarmSeedConfig
 	DeclaredBirthDate     time.Time
@@ -187,6 +192,8 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		IndexRemoteResults:    derived.indexRemoteResults,
 		SwarmMorphology:       derived.swarmMorphology,
 		PeerSnippetFetch:      derived.peerSnippetFetch,
+		RemotePeerTimeout:     derived.remotePeerTimeout,
+		RemoteTimeout:         derived.remoteTimeout,
 		PeerHTTPSPreferred:    derived.peerHTTPSPreferred,
 		SwarmSeed:             derived.swarmSeed,
 		DeclaredBirthDate:     derived.birthDate,
@@ -213,6 +220,8 @@ type derivedConfigs struct {
 	searchLinksNewTab  bool
 	swarmSeed          swarmSeedConfig
 	extractFetch       extractFetchConfig
+	remotePeerTimeout  time.Duration
+	remoteTimeout      time.Duration
 }
 
 // swarmSeedConfig gates YaCy-style greedy learning: bounded crawls of URLs
@@ -303,6 +312,16 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	if err != nil {
 		return derivedConfigs{}, err
 	}
+	remotePeerTimeout, err := durationEnv(
+		getenv, envRemotePeerTimeout, searchremote.DefaultPerPeerTimeout,
+	)
+	if err != nil {
+		return derivedConfigs{}, fmt.Errorf("%s: %w", envRemotePeerTimeout, err)
+	}
+	remoteTimeout, err := durationEnv(getenv, envRemoteTimeout, searchremote.DefaultOverallTimeout)
+	if err != nil {
+		return derivedConfigs{}, fmt.Errorf("%s: %w", envRemoteTimeout, err)
+	}
 	toggles, err := loadDerivedBoolToggles(getenv)
 	if err != nil {
 		return derivedConfigs{}, err
@@ -325,6 +344,8 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 		searchLinksNewTab:  toggles.searchLinksNewTab,
 		swarmSeed:          swarmSeed,
 		extractFetch:       extractFetch,
+		remotePeerTimeout:  remotePeerTimeout,
+		remoteTimeout:      remoteTimeout,
 	}, nil
 }
 

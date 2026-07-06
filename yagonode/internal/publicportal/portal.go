@@ -71,7 +71,10 @@ type SearchResults struct {
 	LocalCount   int
 	PeerCount    int
 	WebCount     int
-	Results      []SearchResult
+	// PeersFailed counts peers that errored or timed out during the fan-out,
+	// so «0 from peers» is distinguishable from «peers had nothing».
+	PeersFailed int
+	Results     []SearchResult
 	// Recovered marks results found by the zero-result fuzzy retry, so the page
 	// says these are close matches rather than exact ones.
 	Recovered bool

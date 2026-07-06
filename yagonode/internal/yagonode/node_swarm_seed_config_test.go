@@ -1,6 +1,11 @@
 package yagonode
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"github.com/D4rk4/yago/yagonode/internal/searchremote"
+)
 
 func TestLoadNodeConfigReadsSwarmSeedSettings(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
@@ -79,5 +84,40 @@ func TestLoadNodeConfigReadsSearchLinksNewTab(t *testing.T) {
 		envSearchLinksNewTab: "maybe",
 	})); err == nil {
 		t.Fatal("load config error = nil, want an error for an unparseable boolean")
+	}
+}
+
+func TestLoadNodeConfigReadsRemoteSearchTimeouts(t *testing.T) {
+	config, err := loadNodeConfig(envFrom(map[string]string{
+		envPeerHash:          "0123456789AB",
+		envPeerName:          "node",
+		envRemotePeerTimeout: "5s",
+		envRemoteTimeout:     "7s",
+	}))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if config.RemotePeerTimeout != 5*time.Second || config.RemoteTimeout != 7*time.Second {
+		t.Fatalf("remote timeouts = %v/%v", config.RemotePeerTimeout, config.RemoteTimeout)
+	}
+
+	defaults, err := loadNodeConfig(envFrom(map[string]string{
+		envPeerHash: "0123456789AB",
+		envPeerName: "node",
+	}))
+	if err != nil {
+		t.Fatalf("load defaults: %v", err)
+	}
+	if defaults.RemotePeerTimeout != searchremote.DefaultPerPeerTimeout ||
+		defaults.RemoteTimeout != searchremote.DefaultOverallTimeout {
+		t.Fatalf("default timeouts = %v/%v", defaults.RemotePeerTimeout, defaults.RemoteTimeout)
+	}
+
+	if _, err := loadNodeConfig(envFrom(map[string]string{
+		envPeerHash:      "0123456789AB",
+		envPeerName:      "node",
+		envRemoteTimeout: "soon",
+	})); err == nil {
+		t.Fatal("unparseable remote timeout must fail")
 	}
 }

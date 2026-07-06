@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // extendedSettingDefinitions covers the remaining operator-tunable environment
@@ -81,6 +82,7 @@ func extendedSettingDefinitions() []settingDefinition {
 		},
 	}...)
 	definitions = append(definitions, extendedTelemetryDefinitions()...)
+	definitions = append(definitions, remoteSearchDefinitions()...)
 	definitions = append(definitions, webFallbackDefinitions()...)
 	definitions = append(definitions, extendedGrowthDefinitions()...)
 
@@ -200,6 +202,36 @@ func extendedTelemetryDefinitions() []settingDefinition {
 			},
 			apply: func(config nodeConfig, value string) nodeConfig {
 				config.QueryLogMode = queryLogMode(value)
+
+				return config
+			},
+		},
+	}
+}
+
+// remoteSearchDefinitions holds the swarm fan-out budgets (SEARCH-35).
+func remoteSearchDefinitions() []settingDefinition {
+	return []settingDefinition{
+		{
+			key:          "search.remote.peer_timeout",
+			title:        "Swarm per-peer timeout",
+			description:  "How long one peer may take to answer a swarm search (e.g. 3s); real YaCy peers answer in one to five seconds.",
+			defaultValue: func(config nodeConfig) string { return config.RemotePeerTimeout.String() },
+			normalize:    normalizeSettingDuration,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.RemotePeerTimeout, _ = time.ParseDuration(value)
+
+				return config
+			},
+		},
+		{
+			key:          "search.remote.timeout",
+			title:        "Swarm overall timeout",
+			description:  "Budget for the whole peer fan-out per query (e.g. 4s); it runs concurrently with the local search.",
+			defaultValue: func(config nodeConfig) string { return config.RemoteTimeout.String() },
+			normalize:    normalizeSettingDuration,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.RemoteTimeout, _ = time.ParseDuration(value)
 
 				return config
 			},
@@ -372,6 +404,17 @@ func normalizePositiveInt(raw string) (string, error) {
 	}
 
 	return strconv.Itoa(value), nil
+}
+
+// normalizeSettingDuration accepts a positive Go duration between 100ms and
+// two minutes, the sane window for a per-query network budget.
+func normalizeSettingDuration(raw string) (string, error) {
+	value, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil || value < 100*time.Millisecond || value > 2*time.Minute {
+		return "", fmt.Errorf("value must be a duration between 100ms and 2m")
+	}
+
+	return value.String(), nil
 }
 
 // normalizeSwarmSeedDepth accepts a crawl depth within the loader's bounds so a

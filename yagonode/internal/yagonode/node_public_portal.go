@@ -100,7 +100,11 @@ func (s portalSource) Search(
 		return publicportal.SearchResults{}, fmt.Errorf("portal search: %w", err)
 	}
 
-	out := publicportal.SearchResults{Query: query, TotalResults: response.TotalResults}
+	out := publicportal.SearchResults{
+		Query:        query,
+		TotalResults: response.TotalResults,
+		PeersFailed:  len(response.PartialFailures),
+	}
 	if response.Recovered != "" {
 		out.Recovered = true
 		out.DidYouMean = response.DidYouMean
