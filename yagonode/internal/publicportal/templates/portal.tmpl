@@ -47,6 +47,19 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   .prov-local { border-color: #a7f0ba; background: #defbe6; color: #0e6027; }
   .prov-peer { border-color: #bae6ff; background: #e5f6ff; color: #003a6d; }
   .prov-web { border-color: #ffd6e8; background: #fff0f7; color: #740937; }
+  .facets { margin: 0.5rem 0 1rem; }
+  .facets summary { cursor: pointer; color: #525252; font-size: 0.85rem; padding: 0.4rem 0; }
+  .facets fieldset { border: 1px solid #e0e0e0; margin: 0 0 0.6rem; padding: 0.3rem 0.6rem 0.5rem; }
+  .facets legend { font-size: 0.75rem; color: #525252; padding: 0 0.25rem; }
+  .facets ul { list-style: none; margin: 0; padding: 0; font-size: 0.8rem; }
+  .facets li { margin: 0.15rem 0; }
+  .facets .count { color: #8d8d8d; }
+  @media (min-width: 48rem) {
+    .serp-grid { display: grid; grid-template-columns: 14rem 1fr; gap: 1.5rem; align-items: start; }
+    .facets details { display: block; }
+    .facets summary { display: none; }
+    .facets details[open] { display: block; }
+  }
   .skel { margin: 1rem 0 1.4rem; }
   .skel-line { height: 0.85rem; margin: 0.4rem 0; border-radius: 3px; background: linear-gradient(90deg, #e8e8e8 25%, #f4f4f4 50%, #e8e8e8 75%); background-size: 200% 100%; animation: skel-shimmer 1.2s linear infinite; }
   .skel-title { width: 55%; height: 1.05rem; }
@@ -102,6 +115,19 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   <p class="meta" role="status">No exact matches for “{{.Query}}” — showing close matches instead.{{if .DidYouMean}} Did you mean <a href="{{.DidYouMeanURL}}">{{.DidYouMean}}</a>?{{end}}</p>
   {{end}}
   <p class="meta" role="status">{{.TotalResults}} result(s) for “{{.Query}}”{{if $.Elapsed}} ({{$.Elapsed}}){{end}}.{{if .Results}} On this page: {{.LocalCount}} from this node · {{.PeerCount}} from peers · {{.WebCount}} from the web.{{end}}</p>
+  {{if .Facets}}<div class="serp-grid"><aside class="facets" aria-label="Filter results">
+  <details open>
+  <summary>Filters</summary>
+  {{range .Facets}}
+  <fieldset><legend>{{.Title}}</legend>
+  <ul>
+  {{range .Items}}<li>{{if .URL}}<a href="{{.URL}}">{{.Label}}</a>{{else}}{{.Label}}{{end}} <span class="count">({{.Count}})</span></li>
+  {{end}}
+  </ul>
+  </fieldset>
+  {{end}}
+  </details>
+  </aside><div>{{end}}
   {{if .Results}}<ul class="results">{{end}}
   {{range .Results}}
   <li class="result">
@@ -114,6 +140,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   <p class="meta" role="status">Nothing found.</p>
   {{end}}
   {{if .Results}}</ul>{{end}}
+  {{if .Facets}}</div></div>{{end}}
   {{end}}
   {{if or .Pagination.HasPrev .Pagination.HasNext .Pagination.Pages}}
   <nav class="pager" aria-label="Result pages">

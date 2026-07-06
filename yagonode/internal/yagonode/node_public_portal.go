@@ -70,10 +70,11 @@ func (s portalSource) Search(
 	offset, limit int,
 ) (publicportal.SearchResults, error) {
 	response, err := s.searcher.Search(ctx, searchcore.Request{
-		Query:  query,
-		Source: searchcore.SourceGlobal,
-		Offset: offset,
-		Limit:  limit,
+		Query:      query,
+		Source:     searchcore.SourceGlobal,
+		Offset:     offset,
+		Limit:      limit,
+		WithFacets: true,
 	})
 	if err != nil {
 		return publicportal.SearchResults{}, fmt.Errorf("portal search: %w", err)
@@ -114,5 +115,44 @@ func (s portalSource) Search(
 		})
 	}
 
+	out.Facets = portalFacets(query, response.Facets)
+
 	return out, nil
+}
+
+// facetOperators maps facet dimensions onto the query operators a click adds;
+// dimensions without an operator render as plain counts.
+var facetOperators = map[string]string{
+	"host":     "site:",
+	"filetype": "filetype:",
+	"language": "language:",
+	"author":   "author:",
+}
+
+var facetTitles = map[string]string{
+	"host":     "Host",
+	"filetype": "File type",
+	"language": "Language",
+	"author":   "Author",
+	"protocol": "Protocol",
+	"month":    "Month",
+}
+
+// portalFacets renders the local facet groups as sidebar filters: clicking a
+// value re-runs the query with the matching operator appended.
+func portalFacets(query string, groups []searchcore.FacetGroup) []publicportal.FacetGroup {
+	out := make([]publicportal.FacetGroup, 0, len(groups))
+	for _, group := range groups {
+		items := make([]publicportal.FacetItem, 0, len(group.Terms))
+		for _, term := range group.Terms {
+			item := publicportal.FacetItem{Label: term.Term, Count: term.Count}
+			if operator, ok := facetOperators[group.Name]; ok {
+				item.URL = "/?q=" + url.QueryEscape(query+" "+operator+term.Term)
+			}
+			items = append(items, item)
+		}
+		out = append(out, publicportal.FacetGroup{Title: facetTitles[group.Name], Items: items})
+	}
+
+	return out
 }

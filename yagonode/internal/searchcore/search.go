@@ -41,7 +41,9 @@ type Request struct {
 	Limit         int
 	// Fuzzy asks the local index for approximate (edit-distance) term matching;
 	// the zero-result recovery retry sets it, remote fan-out ignores it.
-	Fuzzy            bool
+	Fuzzy bool
+	// WithFacets asks the local index for facet counts over every match.
+	WithFacets       bool
 	Offset           int
 	ContentDomain    ContentDomain
 	Language         string
@@ -93,6 +95,20 @@ type Response struct {
 	// DidYouMean carries a spelling suggestion assembled from close-match titles
 	// when recovery found the query terms slightly off; empty when none.
 	DidYouMean string
+	// Facets carries the local facet groups when the request asked for them.
+	Facets []FacetGroup
+}
+
+// FacetGroup is one facet dimension with its most frequent terms among the
+// locally matching documents.
+type FacetGroup struct {
+	Name  string
+	Terms []FacetTerm
+}
+
+type FacetTerm struct {
+	Term  string
+	Count int
 }
 
 type Searcher interface {

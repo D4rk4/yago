@@ -35,6 +35,7 @@ type session struct {
 	total      int
 	recovered  string
 	didYouMean string
+	facets     []searchcore.FacetGroup
 	expires    time.Time
 	element    *list.Element
 }
@@ -111,6 +112,7 @@ func (s *stableSearcher) store(key string, resp searchcore.Response) *session {
 		total:      len(resp.Results),
 		recovered:  resp.Recovered,
 		didYouMean: resp.DidYouMean,
+		facets:     resp.Facets,
 		expires:    clock().Add(sessionTTL),
 	}
 	entry.element = s.order.PushFront(entry)
@@ -151,6 +153,7 @@ func (e *session) respond(req searchcore.Request) searchcore.Response {
 		PartialFailures: e.failures,
 		Recovered:       e.recovered,
 		DidYouMean:      e.didYouMean,
+		Facets:          e.facets,
 	}
 }
 

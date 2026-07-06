@@ -37,9 +37,13 @@ type SearchRequest struct {
 	// only documents where every term appears within one small token window.
 	Terms []string
 	Near  bool
+	// WithFacets asks for facet counts over every matching document.
+	WithFacets bool
 }
 
 type SearchResultSet struct {
+	// Facets carries the facet groups when the request asked for them.
+	Facets  []FacetGroup
 	Results []SearchResult
 	Total   int
 }

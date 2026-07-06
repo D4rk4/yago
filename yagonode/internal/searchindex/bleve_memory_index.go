@@ -144,12 +144,14 @@ func (b *BleveMemoryIndex) Search(
 	}
 
 	results := make([]SearchResult, 0, min(req.MaxResults, len(result.Hits)))
+	facets := newFacetCollector(req.WithFacets)
 	total := 0
 	for _, hit := range result.Hits {
 		doc, found := b.documents[hit.ID]
 		if !found || !allowsDocument(doc, req) {
 			continue
 		}
+		facets.observe(doc)
 		total++
 		if len(results) < req.MaxResults {
 			results = append(
@@ -159,7 +161,7 @@ func (b *BleveMemoryIndex) Search(
 		}
 	}
 
-	return SearchResultSet{Results: results, Total: total}, nil
+	return SearchResultSet{Results: results, Total: total, Facets: facets.groups()}, nil
 }
 
 func (b *BleveMemoryIndex) Stats(context.Context) (IndexStats, error) {

@@ -74,6 +74,7 @@ func (s localSearcher) Search(
 		Request:      req,
 		TotalResults: resultSet.Total,
 		Results:      offsetResults(results, req.Offset, requestLimit(req)),
+		Facets:       coreFacets(resultSet.Facets),
 	}, nil
 }
 
@@ -100,7 +101,22 @@ func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRe
 		Author:        req.Author,
 		Terms:         append([]string(nil), req.Terms...),
 		Near:          req.Near,
+		WithFacets:    req.WithFacets,
 	}
+}
+
+// coreFacets converts the index facet groups into the shared search vocabulary.
+func coreFacets(groups []searchindex.FacetGroup) []searchcore.FacetGroup {
+	out := make([]searchcore.FacetGroup, 0, len(groups))
+	for _, group := range groups {
+		terms := make([]searchcore.FacetTerm, 0, len(group.Terms))
+		for _, term := range group.Terms {
+			terms = append(terms, searchcore.FacetTerm{Term: term.Term, Count: term.Count})
+		}
+		out = append(out, searchcore.FacetGroup{Name: group.Name, Terms: terms})
+	}
+
+	return out
 }
 
 func requestLimit(req searchcore.Request) int {

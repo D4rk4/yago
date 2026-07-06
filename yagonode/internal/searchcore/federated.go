@@ -51,6 +51,8 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 		TotalResults:    localResp.TotalResults + remoteResp.TotalResults,
 		Results:         offsetResults(merged, req.Offset, req.Limit),
 		PartialFailures: append(localResp.PartialFailures, remoteResp.PartialFailures...),
+		// Facets describe the local corpus only; peers report no counts.
+		Facets: localResp.Facets,
 	}, nil
 }
 

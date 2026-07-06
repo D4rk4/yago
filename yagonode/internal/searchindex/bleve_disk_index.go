@@ -157,6 +157,7 @@ func (b *BleveDiskIndex) Search(
 	}
 
 	results := make([]SearchResult, 0, min(req.MaxResults, len(result.Hits)))
+	facets := newFacetCollector(req.WithFacets)
 	total := 0
 	for _, hit := range result.Hits {
 		doc, found, err := b.documents.Document(ctx, hit.ID)
@@ -166,6 +167,7 @@ func (b *BleveDiskIndex) Search(
 		if !found || !allowsDocument(doc, req) {
 			continue
 		}
+		facets.observe(doc)
 		total++
 		if len(results) < req.MaxResults {
 			results = append(
@@ -175,7 +177,7 @@ func (b *BleveDiskIndex) Search(
 		}
 	}
 
-	return SearchResultSet{Results: results, Total: total}, nil
+	return SearchResultSet{Results: results, Total: total, Facets: facets.groups()}, nil
 }
 
 func (b *BleveDiskIndex) Stats(ctx context.Context) (IndexStats, error) {

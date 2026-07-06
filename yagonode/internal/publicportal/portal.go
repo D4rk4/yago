@@ -70,6 +70,21 @@ type SearchResults struct {
 	// DidYouMean and DidYouMeanURL offer the assembled spelling suggestion.
 	DidYouMean    string
 	DidYouMeanURL string
+	// Facets renders the sidebar filter groups; empty hides the sidebar.
+	Facets []FacetGroup
+}
+
+// FacetGroup is one sidebar filter dimension over the local matches.
+type FacetGroup struct {
+	Title string
+	Items []FacetItem
+}
+
+// FacetItem is one clickable facet value; an empty URL renders a plain count.
+type FacetItem struct {
+	Label string
+	Count int
+	URL   string
 }
 
 // SearchSource runs a portal query against the node search core, returning the
