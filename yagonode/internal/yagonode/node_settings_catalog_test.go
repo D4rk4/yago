@@ -31,6 +31,15 @@ func catalogRoundTripCases() map[string]catalogRoundTripCase {
 		"web.fallback.backend": {"brave", func(c nodeConfig) bool {
 			return c.WebFallback.Backend == "brave"
 		}},
+		"web.fallback.seed_crawl": {"true", func(c nodeConfig) bool {
+			return c.WebFallback.SeedCrawl
+		}},
+		"web.fallback.seed_depth": {"2", func(c nodeConfig) bool {
+			return c.WebFallback.SeedDepth == 2
+		}},
+		"web.fallback.seed_max_pages": {"35", func(c nodeConfig) bool {
+			return c.WebFallback.SeedMaxPages == 35
+		}},
 		"swarm.seed.enabled": {"true", func(c nodeConfig) bool { return c.SwarmSeed.Enabled }},
 		"swarm.seed.limit": {
 			"5000",
@@ -108,19 +117,6 @@ func TestExtendedSettingValidation(t *testing.T) {
 	if _, err := byKey["swarm.seed.limit"].normalize("many"); err == nil {
 		t.Fatal("non-numeric limit must fail")
 	}
-	if _, err := byKey["swarm.seed.depth"].normalize("99"); err == nil {
-		t.Fatal("out-of-range autocrawler depth must fail")
-	}
-	if _, err := byKey["swarm.seed.depth"].normalize("-1"); err == nil {
-		t.Fatal("negative autocrawler depth must fail")
-	}
-	if normalized, err := byKey["swarm.seed.depth"].normalize(" 0 "); err != nil ||
-		normalized != "0" {
-		t.Fatalf("depth 0 must normalize: %q %v", normalized, err)
-	}
-	if _, err := byKey["swarm.seed.max_pages"].normalize("0"); err == nil {
-		t.Fatal("non-positive autocrawler page cap must fail")
-	}
 	if _, err := byKey["search.query.log"].normalize("noisy"); err == nil {
 		t.Fatal("unknown log mode must fail")
 	}
@@ -151,5 +147,25 @@ func TestExtendedSettingValidation(t *testing.T) {
 	// Extended settings without live hooks require a restart.
 	if !byKey["peer.name"].restartRequired() {
 		t.Fatal("peer.name must require a restart")
+	}
+}
+
+func TestAutocrawlerSettingValidation(t *testing.T) {
+	byKey := indexSettingDefinitions()
+	for _, key := range []string{"swarm.seed.depth", "web.fallback.seed_depth"} {
+		if _, err := byKey[key].normalize("99"); err == nil {
+			t.Fatalf("%s: out-of-range depth must fail", key)
+		}
+		if _, err := byKey[key].normalize("-1"); err == nil {
+			t.Fatalf("%s: negative depth must fail", key)
+		}
+		if normalized, err := byKey[key].normalize(" 0 "); err != nil || normalized != "0" {
+			t.Fatalf("%s: depth 0 must normalize: %q %v", key, normalized, err)
+		}
+	}
+	for _, key := range []string{"swarm.seed.max_pages", "web.fallback.seed_max_pages"} {
+		if _, err := byKey[key].normalize("0"); err == nil {
+			t.Fatalf("%s: non-positive page cap must fail", key)
+		}
 	}
 }

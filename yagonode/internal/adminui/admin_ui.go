@@ -75,6 +75,7 @@ type NavItem struct {
 var navItems = []NavItem{
 	{Title: "Overview", Path: overviewPath},
 	{Title: "Search", Path: searchPath},
+	{Title: "Autocrawler", Path: autocrawlerPath},
 	{Title: "Crawler", Path: "/admin/crawl"},
 	{Title: "Network", Path: "/admin/network"},
 	{Title: "Index", Path: indexPath},
@@ -301,6 +302,7 @@ type templates struct {
 	security    *template.Template
 	performance *template.Template
 	restart     *template.Template
+	autocrawler *template.Template
 }
 
 // Console is the server-rendered admin console handler.
@@ -397,6 +399,7 @@ func buildTemplates() templates {
 		security:    clone(nil, "templates/security.tmpl", "templates/toasts.tmpl"),
 		performance: clone(nil, "templates/performance.tmpl"),
 		restart:     clone(nil, "templates/restart.tmpl"),
+		autocrawler: clone(nil, "templates/autocrawler.tmpl"),
 	}
 }
 
@@ -429,6 +432,8 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("POST "+securityPath, c.handleSecurityUpdate)
 	c.mux.HandleFunc("GET "+restartPath, c.handleRestartPage)
 	c.mux.HandleFunc("POST "+restartPath, c.handleRestartAction)
+	c.mux.HandleFunc("GET "+autocrawlerPath, c.handleAutocrawler)
+	c.mux.HandleFunc("POST "+autocrawlerPath, c.handleAutocrawlerUpdate)
 	c.mux.HandleFunc("GET "+performancePath, c.handlePerformance)
 
 	for _, item := range navItems {
@@ -442,7 +447,8 @@ func (c *Console) registerRoutes(assets fs.FS) {
 func dynamicSection(path string) bool {
 	return path == overviewPath || path == searchPath || path == crawlPath ||
 		path == indexPath || path == networkPath || path == configPath ||
-		path == logsPath || path == securityPath || path == performancePath
+		path == logsPath || path == securityPath || path == performancePath ||
+		path == autocrawlerPath
 }
 
 // ServeHTTP dispatches to the console's internal router.

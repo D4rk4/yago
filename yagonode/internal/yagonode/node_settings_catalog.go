@@ -84,7 +84,53 @@ func extendedSettingDefinitions() []settingDefinition {
 	definitions = append(definitions, webFallbackDefinitions()...)
 	definitions = append(definitions, extendedGrowthDefinitions()...)
 
-	return append(definitions, autocrawlerDefinitions()...)
+	definitions = append(definitions, autocrawlerDefinitions()...)
+
+	return append(definitions, webDiscoveryDefinitions()...)
+}
+
+// webDiscoveryDefinitions surface the web-fallback seeding path of the
+// autocrawler: crawl URLs the web-search fallback surfaced (UI-14).
+func webDiscoveryDefinitions() []settingDefinition {
+	return []settingDefinition{
+		{
+			key:          "web.fallback.seed_crawl",
+			title:        "Web-discovery crawling",
+			description:  "Crawl URLs the web-search fallback surfaced so the next identical query is answered locally.",
+			options:      boolSettingOptions(),
+			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.WebFallback.SeedCrawl) },
+			normalize:    normalizeSettingBool,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.WebFallback.SeedCrawl = value == settingBoolTrue
+
+				return config
+			},
+		},
+		{
+			key:          "web.fallback.seed_depth",
+			title:        "Web-discovery crawl depth",
+			description:  "How many link hops each web-surfaced URL is crawled (0 crawls only the URL itself).",
+			defaultValue: func(config nodeConfig) string { return strconv.Itoa(config.WebFallback.SeedDepth) },
+			normalize:    normalizeSwarmSeedDepth,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.WebFallback.SeedDepth, _ = strconv.Atoi(value)
+
+				return config
+			},
+		},
+		{
+			key:          "web.fallback.seed_max_pages",
+			title:        "Web-discovery pages per host",
+			description:  "Cap on how many pages the autocrawler fetches per host for each web-surfaced URL.",
+			defaultValue: func(config nodeConfig) string { return strconv.Itoa(config.WebFallback.SeedMaxPages) },
+			normalize:    normalizePositiveInt,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.WebFallback.SeedMaxPages, _ = strconv.Atoi(value)
+
+				return config
+			},
+		},
+	}
 }
 
 // autocrawlerDefinitions surface the tunable seed-crawl profile that both the
