@@ -43,3 +43,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0022](0022-server-rendered-admin-console.md) | Server-rendered admin console with htmx instead of a React SPA | Accepted |
 | [0023](0023-rename-go-modules-yacy-to-yago.md) | Rename the Go modules and import paths from yacy* to yago* | Accepted |
 | [0024](0024-local-host-block-rank-signal.md) | Local host block-rank as an opt-in ranking signal | Accepted |
+| [0025](0025-sharded-compressed-vault-and-index.md) | Shard the vault and search index into bounded compressed files | Accepted |
