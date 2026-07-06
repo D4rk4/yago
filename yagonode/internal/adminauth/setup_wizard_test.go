@@ -71,6 +71,12 @@ func TestSetupPageShowsWizardWhenConfigured(t *testing.T) {
 		"Node mode", `value="local" checked`, `value="peer"`, `value="search"`,
 		`value="auto.example"`, `value="https://seeds.example/a"`,
 		"Web search fallback",
+		// The mode radios must reset the base full-width input geometry, else the
+		// tall 2.5rem input box pushes each label off its radio (regression: the
+		// wizard's "Node mode" choices rendered with the text wrapped below the
+		// button). A flex row keeps radio and label on one baseline.
+		".modes label { display: flex;",
+		".modes input { width: auto; height: auto;",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("setup page missing %q", want)
