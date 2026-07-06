@@ -266,9 +266,15 @@ func assemblePublicSearcher(
 	// textual evidence before filtering and paging freeze the order.
 	reranked := searchcore.NewLexicalRerankSearcher(federated)
 	filtered := withDenylistFilter(reranked, assembly.denylist)
-	// Zero-result recovery sits above the filters so its fuzzy retry serves
-	// only pages the denylist would allow.
-	recovering := withZeroResultRecovery(filtered, assembly.spellCorrector)
+	// Zero-result recovery sits above the filters; its fuzzy retry targets the
+	// denylist-filtered LOCAL index only — peers and the web provider do not
+	// understand fuzzy matching, so re-running the whole pipeline only repeated
+	// their latency (PERF-04).
+	recovering := withZeroResultRecovery(
+		filtered,
+		withDenylistFilter(local, assembly.denylist),
+		assembly.spellCorrector,
+	)
 	// The session cache makes paging stable (YaCy SearchEventCache): page one
 	// runs one deep search, deeper pages slice the cached result list.
 	stable := searchsession.WithStableWindow(recovering)

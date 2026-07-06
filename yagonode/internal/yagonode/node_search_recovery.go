@@ -20,17 +20,27 @@ const (
 // edit-distance-tolerant matching and, when close matches surface, labels the
 // response and assembles a "did you mean" spelling suggestion from the words of
 // the recovered titles. An honest empty answer stays empty when even the fuzzy
-// retry finds nothing.
+// retry finds nothing. The retry runs against a dedicated searcher — the
+// denylist-filtered local index — because only the local index understands
+// fuzzy matching: repeating the full pipeline made the retry wait out a second
+// multi-second peer fan-out and could fire the web fallback twice for nothing
+// (PERF-04). A nil retry searcher falls back to the inner pipeline.
 type recoveringSearcher struct {
 	inner     searchcore.Searcher
+	retry     searchcore.Searcher
 	corrector func() *spellcheck.Corrector
 }
 
 func withZeroResultRecovery(
 	inner searchcore.Searcher,
+	retry searchcore.Searcher,
 	corrector func() *spellcheck.Corrector,
 ) searchcore.Searcher {
-	return recoveringSearcher{inner: inner, corrector: corrector}
+	if retry == nil {
+		retry = inner
+	}
+
+	return recoveringSearcher{inner: inner, retry: retry, corrector: corrector}
 }
 
 func (s recoveringSearcher) Search(
@@ -45,7 +55,7 @@ func (s recoveringSearcher) Search(
 
 	retry := req
 	retry.Fuzzy = true
-	recovered, retryErr := s.inner.Search(ctx, retry)
+	recovered, retryErr := s.retry.Search(ctx, retry)
 	if retryErr != nil || len(recovered.Results) == 0 {
 		// The recovery retry is best-effort: when it fails or stays empty, the
 		// caller gets the primary search's honest empty answer — still carrying a
