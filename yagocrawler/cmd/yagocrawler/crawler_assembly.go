@@ -129,9 +129,13 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	defer func() { _ = metricsCloser.Close() }()
 
 	crawl := cfg.Crawl
-	pace, err := crawldelay.NewHostPace(crawl.CrawlDelay, crawl.HostCacheSize)
+	hostPace, err := crawldelay.NewHostPace(crawl.CrawlDelay, crawl.HostCacheSize)
 	if err != nil {
 		return fmt.Errorf("create crawl pace: %w", err)
+	}
+	pace, err := crawldelay.NewAdaptivePace(hostPace, crawl.HostCacheSize, metrics)
+	if err != nil {
+		return fmt.Errorf("create adaptive crawl pace: %w", err)
 	}
 	tally := runtally.New()
 	frontier := frontier.NewFrontier(
@@ -166,6 +170,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		pipeline.WithRunTally(tally),
 		pipeline.WithInsecureFetcher(chains.insecure),
 		pipeline.WithRobotsIgnoringFetchers(chains.verifyingDirect, chains.insecureDirect),
+		pipeline.WithHostLoadFeedback(pace),
 	)
 	consumer := crawlorder.NewCrawlOrderConsumer(
 		orders,

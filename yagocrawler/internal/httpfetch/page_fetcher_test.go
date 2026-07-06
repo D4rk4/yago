@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawler/internal/httpfetch"
 	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
@@ -282,4 +283,40 @@ func mustParse(t *testing.T, raw string) *url.URL {
 		t.Fatalf("parse url %q: %v", raw, err)
 	}
 	return parsed
+}
+
+// TestPageFetcherSignalsThrottleWithRetryAfter: 429/503 become typed throttle
+// errors carrying the Retry-After wish; other bad statuses stay plain
+// rejections.
+func TestPageFetcherSignalsThrottleWithRetryAfter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/throttled":
+			w.Header().Set("Retry-After", "120")
+			w.WriteHeader(http.StatusTooManyRequests)
+		case "/unavailable":
+			w.WriteHeader(http.StatusServiceUnavailable)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	fetcher := httpfetch.NewPageFetcher(server.Client(), "", 1<<20)
+
+	_, err := fetcher.Fetch(context.Background(), mustParse(t, server.URL+"/throttled"))
+	throttled, ok := pagefetch.AsThrottled(err)
+	if !ok || throttled.Status != http.StatusTooManyRequests ||
+		throttled.RetryAfter != 2*time.Minute {
+		t.Fatalf("throttle = %#v, %v", throttled, ok)
+	}
+
+	_, err = fetcher.Fetch(context.Background(), mustParse(t, server.URL+"/unavailable"))
+	if throttled, ok = pagefetch.AsThrottled(err); !ok || throttled.RetryAfter != 0 {
+		t.Fatalf("503 throttle = %#v, %v", throttled, ok)
+	}
+
+	_, err = fetcher.Fetch(context.Background(), mustParse(t, server.URL+"/missing"))
+	if _, ok = pagefetch.AsThrottled(err); ok || !errors.Is(err, pagefetch.ErrPageRejected) {
+		t.Fatalf("404 error = %v", err)
+	}
 }

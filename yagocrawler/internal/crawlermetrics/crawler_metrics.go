@@ -15,6 +15,7 @@ type Metrics struct {
 	jobsActive    prometheus.Gauge
 	fetches       prometheus.Counter
 	fetchFailures prometheus.Counter
+	hostBackoffs  prometheus.Counter
 	bytes         prometheus.Counter
 	robotsDenied  prometheus.Counter
 	ingestBatches prometheus.Counter
@@ -46,7 +47,13 @@ func New() *Metrics {
 		Name: "yacy_crawler_ingest_batches_total",
 		Help: "Ingest batches accepted by the node.",
 	})
-	registry.MustRegister(jobsActive, fetches, fetchFailures, bytes, robotsDenied, ingestBatches)
+	hostBackoffs := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "yacy_crawler_host_backoffs_total",
+		Help: "Hosts backed off after a 429/503 or Retry-After throttle signal.",
+	})
+	registry.MustRegister(
+		jobsActive, fetches, fetchFailures, bytes, robotsDenied, ingestBatches, hostBackoffs,
+	)
 
 	return &Metrics{
 		registry:      registry,
@@ -56,7 +63,13 @@ func New() *Metrics {
 		bytes:         bytes,
 		robotsDenied:  robotsDenied,
 		ingestBatches: ingestBatches,
+		hostBackoffs:  hostBackoffs,
 	}
+}
+
+// ObserveHostBackoff counts a host backed off after a server throttle signal.
+func (m *Metrics) ObserveHostBackoff() {
+	m.hostBackoffs.Inc()
 }
 
 func (m *Metrics) Handler() http.Handler {

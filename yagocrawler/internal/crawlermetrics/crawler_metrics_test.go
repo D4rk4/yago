@@ -35,6 +35,7 @@ func TestMetricsExposeCrawlerSeries(t *testing.T) {
 	metrics.FetchFailed()
 	metrics.RobotsDenied()
 	metrics.IngestPublished()
+	metrics.ObserveHostBackoff()
 
 	body := scrapeMetrics(t, metrics)
 	for _, want := range []string{
@@ -44,6 +45,7 @@ func TestMetricsExposeCrawlerSeries(t *testing.T) {
 		"yacy_crawler_fetch_failures_total 1",
 		"yacy_crawler_robots_denied_total 1",
 		"yacy_crawler_ingest_batches_total 1",
+		"yacy_crawler_host_backoffs_total 1",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("metrics missing %q in:\n%s", want, body)

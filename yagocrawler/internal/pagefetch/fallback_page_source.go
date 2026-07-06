@@ -33,6 +33,12 @@ func (s *FallbackPageSource) Fetch(
 	if errors.Is(err, ErrUnsupportedContentType) {
 		return FetchedPage{}, fmt.Errorf("primary fetch: %w", err)
 	}
+	// A throttling status is the server asking for restraint: retrying the same
+	// page through a full browser would hit the overloaded host harder, so the
+	// throttle propagates for the politeness layer to back the host off.
+	if _, throttled := AsThrottled(err); throttled {
+		return FetchedPage{}, fmt.Errorf("primary fetch: %w", err)
+	}
 
 	page, err = s.fallback.Fetch(ctx, target)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"sync"
 	"time"
 
@@ -41,10 +42,13 @@ type Pipeline struct {
 	// keeps robots.txt enforced for every job.
 	direct         pagefetch.PageSource
 	insecureDirect pagefetch.PageSource
-	index          pageindex.IndexBuilder
-	emitter        ingest.BatchEmitter
-	observer       Observer
-	tally          RunTally
+	// loadFeedback hears each host's throttle signals and successes so the
+	// politeness pace can back off and recover; nil discards the signals.
+	loadFeedback HostLoadFeedback
+	index        pageindex.IndexBuilder
+	emitter      ingest.BatchEmitter
+	observer     Observer
+	tally        RunTally
 }
 
 func NewPipeline(
@@ -146,6 +150,25 @@ func WithInsecureFetcher(source pagefetch.PageSource) Option {
 	}
 }
 
+// HostLoadFeedback receives per-fetch server-load outcomes: Throttled after a
+// 429/503 (with the server's Retry-After wish, zero when absent) and Succeeded
+// after a served page, so an adaptive pace can widen and narrow each host's
+// delay. Implementations must not block.
+type HostLoadFeedback interface {
+	Throttled(rawURL string, retryAfter time.Duration, at time.Time)
+	Succeeded(rawURL string, at time.Time)
+}
+
+// WithHostLoadFeedback installs the politeness feedback sink. A nil sink is
+// ignored so the pipeline keeps discarding the signals.
+func WithHostLoadFeedback(feedback HostLoadFeedback) Option {
+	return func(p *Pipeline) {
+		if feedback != nil {
+			p.loadFeedback = feedback
+		}
+	}
+}
+
 // WithRobotsIgnoringFetchers installs the fetch chains used by jobs whose
 // crawl profile set IgnoreRobots: the certificate-verifying variant and the
 // TLS-authority-ignoring one. Nil sources are ignored, so an unwired variant
@@ -161,18 +184,14 @@ func WithRobotsIgnoringFetchers(verifying, insecure pagefetch.PageSource) Option
 	}
 }
 
-func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
-	p.observer.JobStarted()
-	defer p.frontier.Done(job)
-	defer p.observer.JobFinished()
-	slog.DebugContext(ctx, msgJobFetching,
-		slog.String("url", job.URL),
-		slog.Int("depth", job.Depth),
-	)
-	target, ok := weburl.ParseBase(job.URL)
-	if !ok {
-		return fmt.Errorf("parse url: %s", job.URL)
-	}
+// fetchJob runs the job through its fetch chain, accounting the outcome: a
+// robots denial and a hard failure land in the run tally, a throttle signal
+// and a served page feed the politeness pace.
+func (p *Pipeline) fetchJob(
+	ctx context.Context,
+	job crawljob.CrawlJob,
+	target *url.URL,
+) (pagefetch.FetchedPage, error) {
 	p.observer.FetchAttempted()
 	fetched, err := p.jobFetcher(job).Fetch(ctx, target)
 	if err != nil {
@@ -185,8 +204,34 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 			p.observer.FetchFailed()
 			p.tally.Failed(job.Provenance)
 		}
+		if throttled, ok := pagefetch.AsThrottled(err); ok && p.loadFeedback != nil {
+			p.loadFeedback.Throttled(job.URL, throttled.RetryAfter, time.Now())
+		}
 
-		return fmt.Errorf("fetch: %w", err)
+		return pagefetch.FetchedPage{}, fmt.Errorf("fetch: %w", err)
+	}
+	if p.loadFeedback != nil {
+		p.loadFeedback.Succeeded(job.URL, time.Now())
+	}
+
+	return fetched, nil
+}
+
+func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
+	p.observer.JobStarted()
+	defer p.frontier.Done(job)
+	defer p.observer.JobFinished()
+	slog.DebugContext(ctx, msgJobFetching,
+		slog.String("url", job.URL),
+		slog.Int("depth", job.Depth),
+	)
+	target, ok := weburl.ParseBase(job.URL)
+	if !ok {
+		return fmt.Errorf("parse url: %s", job.URL)
+	}
+	fetched, err := p.fetchJob(ctx, job, target)
+	if err != nil {
+		return err
 	}
 	p.observer.FetchSucceeded(len(fetched.Body))
 	p.tally.Fetched(job.Provenance)

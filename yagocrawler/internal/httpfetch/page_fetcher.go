@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
 )
@@ -47,6 +48,16 @@ func (f *PageFetcher) Fetch(
 	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		if pagefetch.ThrottledStatus(response.StatusCode) {
+			return pagefetch.FetchedPage{}, &pagefetch.ThrottledError{
+				Status: response.StatusCode,
+				RetryAfter: pagefetch.ParseRetryAfter(
+					response.Header.Get("Retry-After"),
+					time.Now(),
+				),
+			}
+		}
+
 		return pagefetch.FetchedPage{}, fmt.Errorf(
 			"status %d: %w",
 			response.StatusCode,

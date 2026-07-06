@@ -124,3 +124,26 @@ func exampleURL(t *testing.T) *url.URL {
 	}
 	return parsed
 }
+
+// TestFallbackPageSourceSkipsBrowserOnThrottle: a 429/503 is the server asking
+// for restraint, so the browser fallback must not hit the host again.
+func TestFallbackPageSourceSkipsBrowserOnThrottle(t *testing.T) {
+	fallbackCalls := 0
+	source := pagefetch.NewFallbackPageSource(
+		sourceFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			return pagefetch.FetchedPage{}, &pagefetch.ThrottledError{Status: 429}
+		}),
+		sourceFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			fallbackCalls++
+			return pagefetch.FetchedPage{}, nil
+		}),
+	)
+
+	_, err := source.Fetch(context.Background(), exampleURL(t))
+	if _, ok := pagefetch.AsThrottled(err); !ok {
+		t.Fatalf("throttle signal lost: %v", err)
+	}
+	if fallbackCalls != 0 {
+		t.Fatalf("browser fallback ran %d times on a throttled host", fallbackCalls)
+	}
+}
