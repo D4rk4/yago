@@ -190,14 +190,18 @@ func TestParseHTMLFallsBackOnBadCharset(t *testing.T) {
 	}
 }
 
-func TestParseHTMLUsesDOMTextWhenMainContentIsEmpty(t *testing.T) {
+func TestParseHTMLKeepsTextOfChromeOnlyPages(t *testing.T) {
+	// A page of bare controls still yields its visible text (the precision
+	// extractor keeps the span, drops the button label as boilerplate); the
+	// full-DOM fallback for a genuinely empty extraction is covered by the
+	// internal seam test.
 	page := pageparse.ParseHTML(
 		"http://example.com/",
 		"text/html",
 		[]byte("<html><body><button>Login</button><span>Menu</span></body></html>"),
 	)
 
-	if !strings.Contains(page.Text, "LoginMenu") {
-		t.Fatalf("DOM fallback text missing: %q", page.Text)
+	if !strings.Contains(page.Text, "Menu") {
+		t.Fatalf("chrome-only page text missing: %q", page.Text)
 	}
 }
