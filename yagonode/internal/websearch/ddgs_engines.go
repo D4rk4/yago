@@ -59,9 +59,14 @@ func allEngines() map[string]engine {
 	}
 }
 
-// backendsFor resolves a backend selector to an ordered engine list. "auto"
-// deliberately excludes DuckDuckGo, which aggressively rate-limits automated
-// queries; DuckDuckGo is used only when an operator selects it explicitly.
+// backendsFor resolves a backend selector to an ordered engine list. The query
+// loop walks engines in order and stops at the first one that yields results,
+// so "auto" keeps Mojeek and Bing in front and adds the DuckDuckGo endpoints
+// only as a tail resort: they aggressively rate-limit automated queries
+// (ADR-0021), but they are reached only when the front engines produced
+// nothing — Mojeek has little non-English coverage and Bing bot-walls
+// datacenter addresses, which used to leave e.g. Cyrillic queries with an
+// empty fallback while DuckDuckGo could still answer them.
 func backendsFor(name string) []engine {
 	engines := allEngines()
 	switch strings.ToLower(strings.TrimSpace(name)) {
@@ -72,7 +77,12 @@ func backendsFor(name string) []engine {
 	case backendDuckDuckGo, backendDDG:
 		return []engine{engines[engineDDGHTML], engines[engineDDGLite]}
 	default:
-		return []engine{engines[engineMojeek], engines[engineBing]}
+		return []engine{
+			engines[engineMojeek],
+			engines[engineBing],
+			engines[engineDDGHTML],
+			engines[engineDDGLite],
+		}
 	}
 }
 

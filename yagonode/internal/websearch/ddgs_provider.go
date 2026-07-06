@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -96,7 +97,12 @@ func (p *DDGSProvider) Search(ctx context.Context, query string, limit int) ([]R
 	if err != nil {
 		return nil, err
 	}
-	p.cache.put(query, results)
+	// An empty answer is a miss, not an answer: engines rate-limit and bot-wall
+	// intermittently, and caching the miss would pin the failure for the whole
+	// TTL while the next attempt might succeed.
+	if len(results) > 0 {
+		p.cache.put(query, results)
+	}
 
 	return capResults(results, p.limit(limit)), nil
 }
@@ -106,6 +112,11 @@ func (p *DDGSProvider) query(ctx context.Context, query string) ([]Result, bool,
 	allRateLimited := true
 	for _, backend := range p.engines {
 		results, rateLimited, err := p.fetch(ctx, backend, query)
+		slog.DebugContext(ctx, "web-search engine attempt",
+			slog.String("engine", backend.name),
+			slog.Int("results", len(results)),
+			slog.Bool("rateLimited", rateLimited),
+			slog.Any("error", err))
 		if rateLimited {
 			continue
 		}

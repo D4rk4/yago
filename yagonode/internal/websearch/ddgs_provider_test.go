@@ -50,10 +50,18 @@ func TestDDGSProviderReturnsResults(t *testing.T) {
 	}
 }
 
-func TestDDGSProviderAutoNeverQueriesDuckDuckGo(t *testing.T) {
+// TestDDGSProviderAutoQueriesDuckDuckGoOnlyAsTailResort: the front engines
+// answer most queries so DuckDuckGo's aggressive rate limiting stays untouched
+// (ADR-0021); only a query the front engines could not answer walks on to it —
+// Mojeek has little non-English coverage and Bing bot-walls datacenter
+// addresses, which used to leave Cyrillic queries with an empty fallback.
+func TestDDGSProviderAutoQueriesDuckDuckGoOnlyAsTailResort(t *testing.T) {
 	var hosts []string
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		hosts = append(hosts, r.URL.Host)
+		if r.URL.Host == "www.mojeek.com" {
+			return htmlResponse(http.StatusOK, listFixture), nil
+		}
 
 		return htmlResponse(http.StatusOK, "<html><body>no results</body></html>"), nil
 	})}
@@ -64,11 +72,57 @@ func TestDDGSProviderAutoNeverQueriesDuckDuckGo(t *testing.T) {
 	}
 	for _, host := range hosts {
 		if strings.Contains(host, "duckduckgo.com") {
-			t.Fatalf("auto backend must never query DuckDuckGo, hit %s", host)
+			t.Fatalf("a query the front engines answered must not reach DuckDuckGo, hit %s", host)
 		}
 	}
-	if len(hosts) == 0 {
-		t.Fatal("expected auto backend to query at least one engine")
+
+	hosts = nil
+	empty := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		hosts = append(hosts, r.URL.Host)
+		if strings.Contains(r.URL.Host, "duckduckgo.com") {
+			return htmlResponse(http.StatusOK, ddgFixture), nil
+		}
+
+		return htmlResponse(http.StatusOK, "<html><body>no results</body></html>"), nil
+	})}
+	provider = NewDDGSProvider(DDGSConfig{Client: empty, Backend: backendAuto, Now: fixedClock()})
+	results, err := provider.Search(context.Background(), "что такое осень ддт", 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("tail-resort DuckDuckGo results were discarded")
+	}
+	reachedDuck := false
+	for _, host := range hosts {
+		reachedDuck = reachedDuck || strings.Contains(host, "duckduckgo.com")
+	}
+	if !reachedDuck {
+		t.Fatalf("front engines yielded nothing yet DuckDuckGo was not tried: %v", hosts)
+	}
+}
+
+func TestDDGSProviderDoesNotCacheEmptyAnswers(t *testing.T) {
+	attempts := 0
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		attempts++
+
+		return htmlResponse(http.StatusOK, "<html><body>no results</body></html>"), nil
+	})}
+	provider := NewDDGSProvider(DDGSConfig{
+		Client:   client,
+		Backend:  backendMojeek,
+		CacheTTL: time.Hour,
+		Now:      fixedClock(),
+	})
+
+	for range 2 {
+		if _, err := provider.Search(context.Background(), "пустой ответ", 10); err != nil {
+			t.Fatalf("search: %v", err)
+		}
+	}
+	if attempts != 2 {
+		t.Fatalf("engine attempts = %d, want 2 (an empty answer must not be cached)", attempts)
 	}
 }
 
