@@ -68,3 +68,13 @@ func TestResultMentionsTermsEmptyAndBlankTerms(t *testing.T) {
 		t.Fatal("a blank term must not verify a result")
 	}
 }
+
+func TestTextMentionsTermOverPlainText(t *testing.T) {
+	body := "Самая известная песня группы — «Что такое осень», записанная для альбома."
+	if !TextMentionsTerm(body, "осень") || !TextMentionsTerm(body, "альбома") {
+		t.Fatal("plain-text mention missed")
+	}
+	if TextMentionsTerm(body, "черногория") {
+		t.Fatal("absent term matched")
+	}
+}

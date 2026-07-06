@@ -104,6 +104,8 @@ components:
     in: internal/neardup/**
   contentquality:
     in: internal/contentquality/**
+  snippetfetch:
+    in: internal/snippetfetch/**
   searcheval:
     in: internal/searcheval/**
   searchindex:
@@ -478,6 +480,11 @@ deps:
     mayDependOn:
       - contentquality
       - stopwords
+  snippetfetch:
+    mayDependOn:
+      - snippetfetch
+      - searchcore
+      - stopwords
   searcheval:
     mayDependOn:
       - searchcore
@@ -663,6 +670,7 @@ deps:
     mayDependOn:
       - neardup
       - contentquality
+      - snippetfetch
       - vault
       - boltvault
       - memvault

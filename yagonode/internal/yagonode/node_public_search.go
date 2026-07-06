@@ -21,6 +21,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchlocal"
 	"github.com/D4rk4/yago/yagonode/internal/searchremote"
 	"github.com/D4rk4/yago/yagonode/internal/searchsession"
+	"github.com/D4rk4/yago/yagonode/internal/snippetfetch"
 	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
 	"github.com/D4rk4/yago/yagonode/internal/tavilyapi"
 	"github.com/D4rk4/yago/yagonode/internal/websearch"
@@ -49,6 +50,7 @@ type publicSearchAssembly struct {
 	hostRank             func() hostrank.Table
 	spellCorrector       func() *spellcheck.Corrector
 	denylist             denylistSnapshotter
+	snippetEnricher      *snippetfetch.Enricher
 	indexRemoteResults   bool
 	swarmMorphology      bool
 	wordForms            func() *wordforms.Expander
@@ -260,9 +262,13 @@ func assemblePublicSearcher(
 	// Zero-result recovery sits above the filters so its fuzzy retry serves
 	// only pages the denylist would allow.
 	recovering := withZeroResultRecovery(filtered, assembly.spellCorrector)
+	// Peer rows on the first page trade their peer-sent titles for verified,
+	// query-biased snippets fetched from the pages themselves (YaCy TextSnippet
+	// parity); sitting below the session cache, one query enriches once.
+	enriched := snippetfetch.WithSnippetEnrichment(recovering, assembly.snippetEnricher)
 	// The session cache makes paging stable (YaCy SearchEventCache): page one
 	// runs one deep search, deeper pages slice the cached result list.
-	stable := searchsession.WithStableWindow(recovering)
+	stable := searchsession.WithStableWindow(enriched)
 	search := withQueryLogging(stable, assembly.queryLogMode)
 	search = withSearchMetrics(search, assembly.searchMetrics)
 	search = withParsedQuery(search)

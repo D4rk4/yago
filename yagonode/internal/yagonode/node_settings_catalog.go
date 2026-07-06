@@ -196,6 +196,19 @@ func extendedGrowthDefinitions() []settingDefinition {
 			},
 		},
 		{
+			key:          "search.peer.snippet_fetch",
+			title:        "Peer snippet fetch",
+			description:  "Load the first page's peer results to build verified, query-biased snippets from the pages themselves (YaCy verify parity).",
+			options:      boolSettingOptions(),
+			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.PeerSnippetFetch) },
+			normalize:    normalizeSettingBool,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.PeerSnippetFetch = value == settingBoolTrue
+
+				return config
+			},
+		},
+		{
 			key:          "swarm.morphology.enabled",
 			title:        "Swarm morphology",
 			description:  "Search peers for inflected forms of a single-word query (more recall, more peer round-trips).",

@@ -267,6 +267,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		searchMetrics:      in.telemetry.search,
 		rankingWeights:     ranking.Current,
 		denylist:           denylist,
+		snippetEnricher:    buildSnippetEnricher(in.config, in.client),
 		indexRemoteResults: in.config.IndexRemoteResults,
 		swarmMorphology:    in.config.SwarmMorphology,
 		swarmSeed:          in.config.SwarmSeed,

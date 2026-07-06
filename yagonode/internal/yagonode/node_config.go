@@ -47,6 +47,7 @@ const (
 	envSwarmSeedLimitDocs  = "YAGO_SWARM_SEED_LIMIT_DOCS"
 	envSwarmMorphology     = "YAGO_SWARM_MORPHOLOGY"
 	envIngestQualityGate   = "YAGO_INGEST_QUALITY_GATE"
+	envPeerSnippetFetch    = "YAGO_PEER_SNIPPET_FETCH"
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"
@@ -95,6 +96,7 @@ type nodeConfig struct {
 	MetricsEnabled        bool
 	IndexRemoteResults    bool
 	SwarmMorphology       bool
+	PeerSnippetFetch      bool
 	PeerHTTPSPreferred    bool
 	SwarmSeed             swarmSeedConfig
 	DeclaredBirthDate     time.Time
@@ -182,6 +184,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		MetricsEnabled:        derived.metricsEnabled,
 		IndexRemoteResults:    derived.indexRemoteResults,
 		SwarmMorphology:       derived.swarmMorphology,
+		PeerSnippetFetch:      derived.peerSnippetFetch,
 		PeerHTTPSPreferred:    derived.peerHTTPSPreferred,
 		SwarmSeed:             derived.swarmSeed,
 		DeclaredBirthDate:     derived.birthDate,
@@ -203,6 +206,7 @@ type derivedConfigs struct {
 	metricsEnabled     bool
 	indexRemoteResults bool
 	swarmMorphology    bool
+	peerSnippetFetch   bool
 	peerHTTPSPreferred bool
 	searchLinksNewTab  bool
 	swarmSeed          swarmSeedConfig
@@ -285,6 +289,7 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 		metricsEnabled:     toggles.metricsEnabled,
 		indexRemoteResults: toggles.indexRemoteResults,
 		swarmMorphology:    toggles.swarmMorphology,
+		peerSnippetFetch:   toggles.peerSnippetFetch,
 		peerHTTPSPreferred: toggles.peerHTTPSPreferred,
 		searchLinksNewTab:  toggles.searchLinksNewTab,
 		swarmSeed:          swarmSeed,
@@ -303,6 +308,7 @@ type derivedBoolToggles struct {
 	peerHTTPSPreferred bool
 	swarmMorphology    bool
 	searchLinksNewTab  bool
+	peerSnippetFetch   bool
 }
 
 func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, error) {
@@ -339,6 +345,13 @@ func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, err
 	if err != nil {
 		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envSwarmMorphology, err)
 	}
+	// On by default: a peer sends only a result's title, so without loading the
+	// page the SERP cannot show the query words the peer matched in the body
+	// (YaCy TextSnippet parity); operators on constrained egress can opt out.
+	peerSnippetFetch, err := boolEnv(getenv, envPeerSnippetFetch, true)
+	if err != nil {
+		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envPeerSnippetFetch, err)
+	}
 	// Same-tab is the default per NN/G guidance; opening results in a new tab is
 	// an operator opt-in and renders an accessible new-tab indicator.
 	searchLinksNewTab, err := boolEnv(getenv, envSearchLinksNewTab, false)
@@ -354,6 +367,7 @@ func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, err
 		indexRemoteResults: indexRemoteResults,
 		peerHTTPSPreferred: peerHTTPSPreferred,
 		swarmMorphology:    swarmMorphology,
+		peerSnippetFetch:   peerSnippetFetch,
 		searchLinksNewTab:  searchLinksNewTab,
 	}, nil
 }

@@ -30,20 +30,39 @@ func ResultMentionsTerms(result Result, terms []string) bool {
 	haystack := strings.ToLower(
 		result.Title + " " + result.Snippet + " " + decodedResultURL(result.URL),
 	)
-	tokens := strings.FieldsFunc(haystack, func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
-	})
+	tokens := foldedTokens(haystack)
 	for _, term := range terms {
-		term = strings.ToLower(strings.TrimSpace(term))
-		if term == "" {
-			continue
-		}
-		if strings.Contains(haystack, term) || anyTokenSharesStem(tokens, term) {
+		if foldedTextMentionsTerm(haystack, tokens, term) {
 			return true
 		}
 	}
 
 	return false
+}
+
+// TextMentionsTerm reports whether the folded text contains the term verbatim
+// or a token sharing a stem-length prefix with it — the same evidence rule
+// result verification uses, exposed for callers holding a fetched document
+// body rather than a Result.
+func TextMentionsTerm(text string, term string) bool {
+	folded := strings.ToLower(text)
+
+	return foldedTextMentionsTerm(folded, foldedTokens(folded), term)
+}
+
+func foldedTokens(folded string) []string {
+	return strings.FieldsFunc(folded, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	})
+}
+
+func foldedTextMentionsTerm(folded string, tokens []string, term string) bool {
+	term = strings.ToLower(strings.TrimSpace(term))
+	if term == "" {
+		return false
+	}
+
+	return strings.Contains(folded, term) || anyTokenSharesStem(tokens, term)
 }
 
 // decodedResultURL folds percent-encoding out of a result URL so query words
