@@ -119,39 +119,6 @@ func TestFederatedSearcherReturnsLocalError(t *testing.T) {
 	}
 }
 
-func TestCalibratedRemoteResultsScaleToLocalScores(t *testing.T) {
-	local := []Result{{Score: 1.6}, {Score: 0.4}}
-	remote := []Result{{URL: "https://a", Score: 1}, {URL: "https://b", Score: 0.5}}
-
-	calibrated := calibratedRemoteResults(local, remote)
-
-	if calibrated[0].Score != 1.6 || calibrated[1].Score != 0.8 {
-		t.Fatalf("calibrated = %#v", calibrated)
-	}
-	if remote[0].Score != 1 {
-		t.Fatalf("input mutated: %#v", remote)
-	}
-}
-
-func TestCalibratedRemoteResultsKeepRemoteScaleWithoutLocalScores(t *testing.T) {
-	remote := []Result{{URL: "https://a", Score: 0.9}}
-	for _, item := range []struct {
-		name  string
-		local []Result
-	}{
-		{name: "no local results", local: nil},
-		{name: "zero local scores", local: []Result{{Score: 0}}},
-	} {
-		calibrated := calibratedRemoteResults(item.local, remote)
-		if len(calibrated) != 1 || calibrated[0].Score != 0.9 {
-			t.Fatalf("%s: calibrated = %#v", item.name, calibrated)
-		}
-	}
-	if got := calibratedRemoteResults([]Result{{Score: 2}}, nil); len(got) != 0 {
-		t.Fatalf("empty remote calibrated = %#v", got)
-	}
-}
-
 func TestResultIdentityFallsBackToURL(t *testing.T) {
 	if got := resultIdentity(Result{URL: "https://example.org"}); got != "url:https://example.org" {
 		t.Fatalf("identity = %q", got)

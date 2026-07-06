@@ -3,7 +3,6 @@ package searchcore
 import (
 	"context"
 	"fmt"
-	"sort"
 )
 
 type federatedSearcher struct {
@@ -40,9 +39,12 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 		}
 	}
 
-	merged := DiversifyResults(mergeResults(
+	// Reciprocal Rank Fusion is the single merge point: local and remote
+	// lists fuse by rank, so incomparable peer scores never need calibration
+	// (SEARCH-12; Cormack et al., SIGIR 2009).
+	merged := DiversifyResults(FuseByReciprocalRank(
 		localResp.Results,
-		calibratedRemoteResults(localResp.Results, remoteResp.Results),
+		remoteResp.Results,
 	), req)
 	OrderByDateWhenRequested(merged, req)
 
@@ -72,49 +74,6 @@ func requestWindow(req Request) Request {
 // neither source dominates the merge by scale alone: a perfect remote profile
 // match ranks with the best local hit. Without local scores the remote order
 // already stands on its own.
-func calibratedRemoteResults(local []Result, remote []Result) []Result {
-	scale := maxScore(local)
-	if scale <= 0 || len(remote) == 0 {
-		return remote
-	}
-	calibrated := make([]Result, len(remote))
-	for i, result := range remote {
-		result.Score *= scale
-		calibrated[i] = result
-	}
-
-	return calibrated
-}
-
-func maxScore(results []Result) float64 {
-	top := 0.0
-	for _, result := range results {
-		if result.Score > top {
-			top = result.Score
-		}
-	}
-
-	return top
-}
-
-func mergeResults(local []Result, remote []Result) []Result {
-	results := make([]Result, 0, len(local)+len(remote))
-	seen := map[string]struct{}{}
-	for _, result := range append(local, remote...) {
-		key := resultIdentity(result)
-		if _, exists := seen[key]; exists {
-			continue
-		}
-		seen[key] = struct{}{}
-		results = append(results, result)
-	}
-	sort.SliceStable(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
-	})
-
-	return results
-}
-
 func resultIdentity(result Result) string {
 	if result.URLHash != "" {
 		return "hash:" + result.URLHash
