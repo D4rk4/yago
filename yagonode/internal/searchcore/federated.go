@@ -10,6 +10,12 @@ type federatedSearcher struct {
 	remote Searcher
 }
 
+// searchOutcome carries one branch's answer across the fan-out channel.
+type searchOutcome struct {
+	resp Response
+	err  error
+}
+
 func NewFederatedSearcher(local Searcher, remote Searcher) Searcher {
 	return federatedSearcher{local: local, remote: remote}
 }
@@ -25,16 +31,28 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 	}
 
 	window := requestWindow(req)
+	// The peer fan-out runs concurrently with the local query: remote search
+	// spends seconds waiting on peers while the local index answers in
+	// milliseconds, so running them in sequence added the whole local latency
+	// to every federated query (PERF-02). The channel is buffered, so the
+	// remote goroutine never leaks even when the local error path returns
+	// without draining it.
+	remoteOutcome := make(chan searchOutcome, 1)
+	go func() {
+		resp, err := s.remote.Search(ctx, window)
+		remoteOutcome <- searchOutcome{resp: resp, err: err}
+	}()
 	localResp, err := s.local.Search(ctx, window)
 	if err != nil {
 		return Response{}, fmt.Errorf("local search: %w", err)
 	}
-	remoteResp, err := s.remote.Search(ctx, window)
-	if err != nil {
+	remote := <-remoteOutcome
+	remoteResp := remote.resp
+	if remote.err != nil {
 		remoteResp = Response{
 			PartialFailures: []PartialFailure{{
 				Source: "remote-yacy",
-				Reason: err.Error(),
+				Reason: remote.err.Error(),
 			}},
 		}
 	}

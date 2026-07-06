@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 type fakeCoreSearcher struct {
@@ -129,4 +130,52 @@ func TestOffsetResultsEmptyWindow(t *testing.T) {
 	if got := offsetResults([]Result{{URL: "a"}}, 2, 1); got != nil {
 		t.Fatalf("results = %#v", got)
 	}
+}
+
+// TestFederatedSearchRunsBranchesConcurrently proves PERF-02: the local and
+// remote branches overlap in time — each branch blocks until the other has
+// started, which deadlocks (and times out) under sequential execution.
+func TestFederatedSearchRunsBranchesConcurrently(t *testing.T) {
+	localStarted := make(chan struct{})
+	remoteStarted := make(chan struct{})
+	barrier := func(mine, other chan struct{}) error {
+		close(mine)
+		select {
+		case <-other:
+			return nil
+		case <-time.After(5 * time.Second):
+			return errors.New("fan-out is sequential")
+		}
+	}
+	local := searchFunc(func(context.Context, Request) (Response, error) {
+		if err := barrier(localStarted, remoteStarted); err != nil {
+			return Response{}, err
+		}
+
+		return Response{Results: []Result{{URL: "https://local.example/"}}}, nil
+	})
+	remote := searchFunc(func(context.Context, Request) (Response, error) {
+		if err := barrier(remoteStarted, localStarted); err != nil {
+			return Response{}, err
+		}
+
+		return Response{Results: []Result{{URL: "https://remote.example/"}}}, nil
+	})
+
+	resp, err := NewFederatedSearcher(local, remote).Search(
+		context.Background(),
+		Request{Source: SourceGlobal, Limit: 10},
+	)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(resp.Results) != 2 {
+		t.Fatalf("results = %d, want both branches merged", len(resp.Results))
+	}
+}
+
+type searchFunc func(context.Context, Request) (Response, error)
+
+func (f searchFunc) Search(ctx context.Context, req Request) (Response, error) {
+	return f(ctx, req)
 }
