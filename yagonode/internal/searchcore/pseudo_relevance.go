@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/D4rk4/yago/yagonode/internal/stopwords"
 )
 
 const (
@@ -87,7 +89,7 @@ func minePseudoRelevanceTerms(results []Result, queryTerms []string) []string {
 	for _, result := range results[:feedback] {
 		seen := map[string]bool{}
 		for _, token := range strings.Fields(strings.ToLower(result.Title + " " + result.Snippet)) {
-			if len(token) < prfMinTermLen || query[token] || pseudoRelevanceStopwords[token] {
+			if len(token) < prfMinTermLen || query[token] || stopwords.IsStopword(token) {
 				continue
 			}
 			totalFreq[token]++
@@ -120,25 +122,4 @@ func minePseudoRelevanceTerms(results []Result, queryTerms []string) []string {
 	}
 
 	return candidates
-}
-
-// pseudoRelevanceStopwords are high-frequency function words across the major
-// languages the node serves; excluding them keeps expansion terms content-bearing
-// even though the layer has no corpus IDF. It is intentionally small — content
-// words dominate query-biased snippets, so a short list suffices.
-var pseudoRelevanceStopwords = map[string]bool{
-	// English
-	"the": true, "and": true, "for": true, "with": true, "that": true,
-	"this": true, "from": true, "have": true, "your": true, "you": true,
-	"are": true, "was": true, "will": true, "not": true, "but": true,
-	// German
-	"und": true, "der": true, "die": true, "das": true, "den": true,
-	"ein": true, "eine": true, "mit": true, "auf": true, "ist": true,
-	// Spanish / French
-	"que": true, "los": true, "las": true, "por": true, "para": true,
-	"con": true, "una": true, "des": true, "les": true, "pour": true,
-	"dans": true, "est": true, "sur": true,
-	// Russian
-	"это": true, "как": true, "что": true, "для": true, "или": true,
-	"так": true, "все": true, "его": true, "она": true, "они": true,
 }

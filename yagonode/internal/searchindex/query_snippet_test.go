@@ -142,3 +142,39 @@ func TestNewBleveShardRejectsOccupiedPath(t *testing.T) {
 		t.Fatal("occupied path must fail shard creation")
 	}
 }
+
+func TestQueryBiasedSnippetAnchorsOnContentTerm(t *testing.T) {
+	text := "Ну вот я и не понимаю, что я делаю не так. " +
+		strings.Repeat("Форумные сообщения о маршрутизаторах и настройке. ", 20) +
+		"У меня отвалилось после обновления прошлой осенью, вроде бы."
+	got := queryBiasedSnippet(text, []string{"что", "такое", "осень"}, "fallback")
+	if !strings.Contains(got, "осенью") {
+		t.Fatalf("snippet not anchored on the content term: %q", got)
+	}
+}
+
+func TestQueryBiasedSnippetFallsBackToAnyTermWhenContentAbsent(t *testing.T) {
+	text := "Ну вот я и не понимаю, что я делаю не так. " +
+		strings.Repeat("Форумные сообщения о маршрутизаторах и настройке. ", 20)
+	got := queryBiasedSnippet(text, []string{"что", "такое", "осень"}, "fallback")
+	if !strings.Contains(got, "что") {
+		t.Fatalf("snippet lost the only matching term: %q", got)
+	}
+}
+
+func TestQueryBiasedSnippetWithoutAnyTermFallsBackToLeadingText(t *testing.T) {
+	text := strings.Repeat("Форумные сообщения о маршрутизаторах и настройке. ", 20)
+	got := queryBiasedSnippet(text, []string{"черногория"}, "fallback")
+	if !strings.HasPrefix(got, "Форумные") {
+		t.Fatalf("leading-text fallback lost: %q", got)
+	}
+}
+
+func TestQueryBiasedSnippetAllStopwordQueryAnchorsOnAnyTerm(t *testing.T) {
+	text := strings.Repeat("Форумные сообщения о маршрутизаторах и настройке сети. ", 20) +
+		"И вот что получилось после обновления."
+	got := queryBiasedSnippet(text, []string{"что", "такое"}, "fallback")
+	if !strings.Contains(got, "что") {
+		t.Fatalf("all-stopword query lost its anchor: %q", got)
+	}
+}

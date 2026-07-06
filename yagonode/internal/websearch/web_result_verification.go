@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/stopwords"
 )
 
 // verifiedWebResults keeps the provider hits whose own title, snippet, or URL
@@ -19,6 +20,9 @@ func verifiedWebResults(req searchcore.Request, results []Result) []Result {
 	terms := req.Terms
 	if len(terms) == 0 {
 		terms = strings.Fields(req.Query)
+	}
+	if content := stopwords.ContentTerms(terms); len(content) > 0 {
+		terms = content
 	}
 	kept := make([]Result, 0, len(results))
 	for _, result := range results {

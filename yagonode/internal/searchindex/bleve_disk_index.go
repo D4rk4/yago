@@ -190,25 +190,53 @@ func (b *BleveDiskIndex) Search(
 	ctx context.Context,
 	req SearchRequest,
 ) (SearchResultSet, error) {
+	set, orphans, err := b.searchHits(ctx, req)
+	if err != nil {
+		return SearchResultSet{}, err
+	}
+	b.dropOrphanedEntries(ctx, orphans)
+
+	return set, nil
+}
+
+// dropOrphanedEntries deletes index entries whose stored document has vanished
+// (quota eviction removes vault records without reaching into the index), so
+// the index converges back onto the store instead of silently swallowing the
+// best-ranked hits forever — YaCy parity: its search sorts out results whose
+// document no longer verifies and purges the stale word references
+// (SearchEvent.getSnippet, failURLsRegisterMissingWord). Best-effort: a failed
+// delete is retried by whichever later search meets the orphan again.
+func (b *BleveDiskIndex) dropOrphanedEntries(ctx context.Context, orphans []string) {
+	for _, docID := range orphans {
+		if err := b.Delete(ctx, docID); err != nil {
+			return
+		}
+	}
+}
+
+func (b *BleveDiskIndex) searchHits(
+	ctx context.Context,
+	req SearchRequest,
+) (SearchResultSet, []string, error) {
 	if err := ctx.Err(); err != nil {
-		return SearchResultSet{}, fmt.Errorf("context: %w", err)
+		return SearchResultSet{}, nil, fmt.Errorf("context: %w", err)
 	}
 	req.Query = strings.TrimSpace(req.Query)
 	if req.Query == "" || req.MaxResults <= 0 {
-		return SearchResultSet{}, nil
+		return SearchResultSet{}, nil, nil
 	}
 
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	if b.closed {
-		return SearchResultSet{}, fmt.Errorf("search index closed")
+		return SearchResultSet{}, nil, fmt.Errorf("search index closed")
 	}
 	count, err := b.docCount()
 	if err != nil {
-		return SearchResultSet{}, fmt.Errorf("count indexed documents: %w", err)
+		return SearchResultSet{}, nil, fmt.Errorf("count indexed documents: %w", err)
 	}
 	if count == 0 {
-		return SearchResultSet{}, nil
+		return SearchResultSet{}, nil, nil
 	}
 
 	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req, b.gram, b.multilingual))
@@ -216,18 +244,24 @@ func (b *BleveDiskIndex) Search(
 	searchRequest.Explain = req.Explain
 	result, err := b.alias.SearchInContext(ctx, searchRequest)
 	if err != nil {
-		return SearchResultSet{}, fmt.Errorf("search documents: %w", err)
+		return SearchResultSet{}, nil, fmt.Errorf("search documents: %w", err)
 	}
 
 	results := make([]SearchResult, 0, min(req.MaxResults, len(result.Hits)))
 	facets := newFacetCollector(req.WithFacets)
 	total := 0
+	var orphans []string
 	for _, hit := range result.Hits {
 		doc, found, err := b.documents.Document(ctx, hit.ID)
 		if err != nil {
-			return SearchResultSet{}, fmt.Errorf("load search document: %w", err)
+			return SearchResultSet{}, nil, fmt.Errorf("load search document: %w", err)
 		}
-		if !found || !allowsDocument(doc, req) {
+		if !found {
+			orphans = append(orphans, hit.ID)
+
+			continue
+		}
+		if !allowsDocument(doc, req) {
 			continue
 		}
 		facets.observe(doc)
@@ -240,7 +274,7 @@ func (b *BleveDiskIndex) Search(
 		}
 	}
 
-	return SearchResultSet{Results: results, Total: total, Facets: facets.groups()}, nil
+	return SearchResultSet{Results: results, Total: total, Facets: facets.groups()}, orphans, nil
 }
 
 func (b *BleveDiskIndex) Stats(ctx context.Context) (IndexStats, error) {

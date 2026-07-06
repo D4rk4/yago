@@ -1,6 +1,10 @@
 package searchindex
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/D4rk4/yago/yagonode/internal/stopwords"
+)
 
 // queryBiasedSnippet centers the snippet on the query: the window of the text
 // covering the densest cluster of query-term occurrences serves as the
@@ -17,7 +21,17 @@ func queryBiasedSnippet(text string, terms []string, fallback string) string {
 	if len(runes) <= snippetRuneCap || len(terms) == 0 {
 		return snippet(text, fallback)
 	}
-	anchor := firstTermAnchor(strings.ToLower(text), terms)
+	// Anchor on a content word: a function word («что», "the") occurs earlier
+	// in almost any text and would center every snippet on it, hiding the
+	// passage that actually answers the query.
+	anchorTerms := stopwords.ContentTerms(terms)
+	if len(anchorTerms) == 0 {
+		anchorTerms = terms
+	}
+	anchor := firstTermAnchor(strings.ToLower(text), anchorTerms)
+	if anchor < 0 {
+		anchor = firstTermAnchor(strings.ToLower(text), terms)
+	}
 	if anchor < 0 {
 		return snippet(text, fallback)
 	}

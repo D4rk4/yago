@@ -98,6 +98,8 @@ components:
     in: internal/documentsearch/**
   searchcore:
     in: internal/searchcore/**
+  stopwords:
+    in: internal/stopwords/**
   searcheval:
     in: internal/searcheval/**
   searchindex:
@@ -463,6 +465,7 @@ deps:
   searchcore:
     mayDependOn:
       - searchcore
+      - stopwords
   searcheval:
     mayDependOn:
       - searchcore
@@ -470,6 +473,7 @@ deps:
     mayDependOn:
       - searchindex
       - documentstore
+      - stopwords
     canUse:
       - bleve
       - xxhash
@@ -504,6 +508,7 @@ deps:
     mayDependOn:
       - searchremote
       - searchcore
+      - stopwords
       - dhttarget
     canUse:
       - yagomodel
@@ -525,6 +530,7 @@ deps:
     mayDependOn:
       - websearch
       - searchcore
+      - stopwords
     canUse:
       - xnet
   extractfetch:

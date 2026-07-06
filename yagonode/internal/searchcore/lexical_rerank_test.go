@@ -145,3 +145,14 @@ func TestLexicalRerankSearcher(t *testing.T) {
 		t.Fatal("expected inner error to propagate")
 	}
 }
+
+func TestRerankQueryTermsAllStopwordFallback(t *testing.T) {
+	got := rerankQueryTerms(Request{Terms: []string{"что", "и", "the"}})
+	if len(got) != 3 {
+		t.Fatalf("all-stopword query terms = %#v", got)
+	}
+	got = rerankQueryTerms(Request{Terms: []string{"что", "осень", "осень"}})
+	if len(got) != 1 || got[0] != "осень" {
+		t.Fatalf("content terms = %#v", got)
+	}
+}

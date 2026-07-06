@@ -1,6 +1,9 @@
 package snippetmark
 
-import "testing"
+import (
+	"html/template"
+	"testing"
+)
 
 func TestHighlightMarksTermsAndEscapesHTML(t *testing.T) {
 	for _, item := range []struct {
@@ -67,5 +70,21 @@ func TestHighlightMarksTermsAndEscapesHTML(t *testing.T) {
 		if got := string(Highlight(item.snippet, item.terms)); got != item.want {
 			t.Fatalf("%s: Highlight = %q, want %q", item.name, got, item.want)
 		}
+	}
+}
+
+func TestHighlightShortTermMatchesExactWordOnly(t *testing.T) {
+	got := Highlight("чтобы было что вспомнить", []string{"что"})
+	want := template.HTML("чтобы было <mark>что</mark> вспомнить")
+	if got != want {
+		t.Fatalf("short-term highlight = %q, want %q", got, want)
+	}
+}
+
+func TestHighlightLongTermMarksInflectedForm(t *testing.T) {
+	got := Highlight("прошлой осенью в горах", []string{"осень"})
+	want := template.HTML("прошлой <mark>осенью</mark> в горах")
+	if got != want {
+		t.Fatalf("inflected highlight = %q, want %q", got, want)
 	}
 }

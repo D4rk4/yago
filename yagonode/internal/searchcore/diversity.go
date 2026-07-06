@@ -4,6 +4,8 @@ import (
 	"hash/fnv"
 	"math/bits"
 	"strings"
+
+	"github.com/D4rk4/yago/yagonode/internal/stopwords"
 )
 
 const (
@@ -85,12 +87,19 @@ func deferCrowdedHosts(results []Result) []Result {
 	return append(head, overflow...)
 }
 
-// simhash builds a 64-bit fingerprint from lowercase word tokens; the second
-// return reports whether the text carried enough tokens to compare.
+// simhash builds a 64-bit fingerprint from lowercase content-word tokens; the
+// second return reports whether the text carried enough tokens to compare.
+// Function words are excluded: short query-biased snippets are dominated by
+// them, and fingerprints built over «что»/«как»/"the"-grade tokens collide at
+// the near-duplicate threshold for texts that share no content at all, so a
+// relevant result could vanish as a false "duplicate" of an unrelated one.
 func simhash(text string) (uint64, bool) {
 	var weights [64]int
 	tokens := 0
 	for _, token := range strings.Fields(strings.ToLower(text)) {
+		if stopwords.IsStopword(strings.Trim(token, ".,!?…:;\"'()[]«»—-")) {
+			continue
+		}
 		hasher := fnv.New64a()
 		_, _ = hasher.Write([]byte(token))
 		tokenHash := hasher.Sum64()

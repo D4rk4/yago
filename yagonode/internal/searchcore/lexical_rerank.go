@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/D4rk4/yago/yagonode/internal/stopwords"
 )
 
 const (
@@ -87,8 +89,11 @@ func rerankLexicalProximity(results []Result, req Request) []Result {
 	return append(reranked, results[window:]...)
 }
 
-// rerankQueryTerms is the distinct lowercased query terms, preferring the parsed
-// terms and falling back to whitespace splitting of the raw query.
+// rerankQueryTerms is the distinct lowercased content terms of the query,
+// preferring the parsed terms and falling back to whitespace splitting of the
+// raw query. Function words are excluded so coverage and proximity measure
+// the words that carry the query's meaning; an all-stopword query keeps every
+// term, there being nothing better to measure.
 func rerankQueryTerms(req Request) []string {
 	raw := req.Terms
 	if len(raw) == 0 {
@@ -96,6 +101,7 @@ func rerankQueryTerms(req Request) []string {
 	}
 	seen := map[string]bool{}
 	terms := make([]string, 0, len(raw))
+	content := make([]string, 0, len(raw))
 	for _, term := range raw {
 		term = strings.ToLower(strings.TrimSpace(term))
 		if term == "" || seen[term] {
@@ -103,6 +109,12 @@ func rerankQueryTerms(req Request) []string {
 		}
 		seen[term] = true
 		terms = append(terms, term)
+		if !stopwords.IsStopword(term) {
+			content = append(content, term)
+		}
+	}
+	if len(content) > 0 {
+		return content
 	}
 
 	return terms

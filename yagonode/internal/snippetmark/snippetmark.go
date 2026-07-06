@@ -13,8 +13,10 @@ import (
 )
 
 // Highlight returns the snippet with every term occurrence wrapped in
-// <mark>, matching case-insensitively on whole-word prefixes so inflected
-// forms stay highlighted ("crawl" marks "Crawling"). Terms are matched
+// <mark>, matching case-insensitively. A term of markStemPrefixRunes runes or
+// more matches as a whole-word prefix so inflected forms stay highlighted
+// ("crawl" marks "Crawling", «осень» marks «осенью»); a shorter term matches
+// only as the exact word, so «что» never marks «чтобы». Terms are matched
 // against the raw snippet, and all text is escaped before markup is added.
 func Highlight(snippet string, terms []string) template.HTML {
 	cleaned := usableTerms(terms)
@@ -46,11 +48,17 @@ func Highlight(snippet string, terms []string) template.HTML {
 	return template.HTML(out.String()) // nosemgrep
 }
 
+// markStemPrefixRunes is the shortest term allowed to highlight as a stem
+// prefix of a longer word; shorter terms mark only exact word occurrences.
+const markStemPrefixRunes = 4
+
 // nextMatch finds the earliest word-start occurrence of any term and extends
-// the match to the end of that word, so the whole inflected form is marked.
+// the match to the end of that word, so the whole inflected form is marked; a
+// term shorter than markStemPrefixRunes must be the whole word.
 func nextMatch(haystackLower string, haystack string, terms []string) (int, int) {
 	best, bestLen := -1, 0
 	for _, term := range terms {
+		prefixing := utf8.RuneCountInString(term) >= markStemPrefixRunes
 		offset := 0
 		for {
 			at := strings.Index(haystackLower[offset:], term)
@@ -58,13 +66,14 @@ func nextMatch(haystackLower string, haystack string, terms []string) (int, int)
 				break
 			}
 			at += offset
-			if !startsWord(haystack, at) {
+			length := wordLength(haystack, at, len(term))
+			if !startsWord(haystack, at) || (!prefixing && length != len(term)) {
 				offset = at + len(term)
 
 				continue
 			}
 			if best < 0 || at < best {
-				best, bestLen = at, wordLength(haystack, at, len(term))
+				best, bestLen = at, length
 			}
 
 			break

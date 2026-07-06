@@ -55,3 +55,31 @@ func TestVerificationTermsFallsBackToQueryWords(t *testing.T) {
 		t.Fatalf("parsed terms not preferred: %#v", got)
 	}
 }
+
+func TestVerificationTermsPreferContentWords(t *testing.T) {
+	got := verificationTerms(searchcore.Request{Terms: []string{"что", "такое", "осень"}})
+	if len(got) != 1 || got[0] != "осень" {
+		t.Fatalf("verification terms = %#v", got)
+	}
+	got = verificationTerms(searchcore.Request{Terms: []string{"что", "такое"}})
+	if len(got) != 2 {
+		t.Fatalf("all-stopword fallback = %#v", got)
+	}
+}
+
+func TestVerifiedPeerResultsRejectStopwordOnlyMentions(t *testing.T) {
+	results := []searchcore.Result{
+		{Title: "Что лучше: чулки или колготки", URL: "https://example.org/tights"},
+		{Title: "Что такое осень — стихи", URL: "https://example.org/autumn"},
+	}
+	kept := verifiedPeerResults(
+		searchcore.Request{
+			Terms:  []string{"что", "такое", "осень"},
+			Verify: searchcore.VerifyIfExist,
+		},
+		results,
+	)
+	if len(kept) != 1 || kept[0].URL != "https://example.org/autumn" {
+		t.Fatalf("kept = %#v", kept)
+	}
+}

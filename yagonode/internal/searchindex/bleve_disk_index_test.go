@@ -391,8 +391,20 @@ func TestBleveDiskIndexHandlesEmptyMissingAndFailedSearches(t *testing.T) {
 	if results.Total != 0 {
 		t.Fatalf("missing document results = %#v", results)
 	}
+	// The orphaned entry self-heals: the search that discovered the vanished
+	// document also removed its index entry.
+	stats, err := index.Stats(t.Context())
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if stats.Documents != 0 {
+		t.Fatalf("orphaned entry not healed, documents = %d", stats.Documents)
+	}
 
 	directory.documents[doc.NormalizedURL] = doc
+	if err := index.Index(t.Context(), doc); err != nil {
+		t.Fatalf("re-index healed document: %v", err)
+	}
 	directory.err = errors.New("document failed")
 	if _, err := index.Search(
 		t.Context(),
@@ -528,5 +540,60 @@ func TestBleveDocumentCount(t *testing.T) {
 	}
 	if got := bleveDocumentCount(uint64(maxInt) + 1); got != maxInt {
 		t.Fatalf("large count = %d, want %d", got, maxInt)
+	}
+}
+
+func TestDropOrphanedEntriesStopsOnDeleteError(t *testing.T) {
+	directory := newFakeDocumentDirectory()
+	index, err := NewBleveDiskIndex(
+		t.Context(),
+		filepath.Join(t.TempDir(), "search.bleve"),
+		directory,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewBleveDiskIndex: %v", err)
+	}
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	index.dropOrphanedEntries(canceled, []string{"https://example.org/"})
+}
+
+func TestBleveDiskIndexSearchFiltersDisallowedDocuments(t *testing.T) {
+	doc := documentstore.Document{
+		NormalizedURL: "https://example.org/rejected",
+		ExtractedText: "needle body",
+		Language:      "de",
+	}
+	index, err := NewBleveDiskIndex(
+		t.Context(),
+		filepath.Join(t.TempDir(), "search.bleve"),
+		newFakeDocumentDirectory(doc),
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewBleveDiskIndex: %v", err)
+	}
+	t.Cleanup(func() { _ = index.Close() })
+	if err := index.Index(t.Context(), doc); err != nil {
+		t.Fatalf("Index: %v", err)
+	}
+	results, err := index.Search(t.Context(), SearchRequest{
+		Query:      "needle",
+		MaxResults: 1,
+		Language:   "ru",
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if results.Total != 0 {
+		t.Fatalf("language-filtered results = %#v", results)
+	}
+	stats, err := index.Stats(t.Context())
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if stats.Documents != 1 {
+		t.Fatalf("disallowed document treated as orphan, documents = %d", stats.Documents)
 	}
 }

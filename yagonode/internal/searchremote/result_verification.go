@@ -5,6 +5,7 @@ import (
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/stopwords"
 )
 
 // cappedPeerRows bounds one peer's answer to the row count the request asked
@@ -47,12 +48,19 @@ func verifiedPeerResults(
 	return kept
 }
 
-// verificationTerms is the parsed query words, falling back to whitespace
-// splitting of the raw query when no parsed words were sent.
+// verificationTerms is the content words of the query — a peer row must
+// mention a word that carries meaning, never verify on a bare function word
+// («что» appears in half the Russian web), matching YaCy's snippet check of
+// the include words minus stopwords. An all-stopword query falls back to the
+// full term list so something is still checked.
 func verificationTerms(req searchcore.Request) []string {
-	if len(req.Terms) > 0 {
-		return req.Terms
+	terms := req.Terms
+	if len(terms) == 0 {
+		terms = strings.Fields(req.Query)
+	}
+	if content := stopwords.ContentTerms(terms); len(content) > 0 {
+		return content
 	}
 
-	return strings.Fields(req.Query)
+	return terms
 }
