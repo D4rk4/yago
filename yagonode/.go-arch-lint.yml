@@ -112,6 +112,8 @@ components:
     in: internal/recrawlfrontier/**
   searchremote:
     in: internal/searchremote/**
+  wordforms:
+    in: internal/wordforms/**
   tavilyapi:
     in: internal/tavilyapi/**
   yacysearch:
@@ -567,6 +569,9 @@ deps:
   spellcheck:
     mayDependOn:
       - spellcheck
+  wordforms:
+    mayDependOn:
+      - wordforms
   cachedpage:
     mayDependOn:
       - cachedpage
@@ -649,6 +654,7 @@ deps:
       - hostlinks
       - hostrank
       - spellcheck
+      - wordforms
       - cachedpage
       - faviconproxy
       - searchsession

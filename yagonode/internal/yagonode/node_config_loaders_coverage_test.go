@@ -18,6 +18,7 @@ func TestLoadDerivedConfigsRejectsBadEnv(t *testing.T) {
 		envPublicSearchUI:      "notabool",
 		envHTTPSRedirect:       "notabool",
 		envMetricsEnabled:      "notabool",
+		envSwarmMorphology:     "notabool",
 	}
 	for key, bad := range badBool {
 		if _, err := loadDerivedConfigs(envWithBad(key, bad)); err == nil {

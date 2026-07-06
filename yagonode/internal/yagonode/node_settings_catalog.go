@@ -183,6 +183,19 @@ func extendedGrowthDefinitions() []settingDefinition {
 			},
 		},
 		{
+			key:          "swarm.morphology.enabled",
+			title:        "Swarm morphology",
+			description:  "Search peers for inflected forms of a single-word query (more recall, more peer round-trips).",
+			options:      boolSettingOptions(),
+			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.SwarmMorphology) },
+			normalize:    normalizeSettingBool,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.SwarmMorphology = value == settingBoolTrue
+
+				return config
+			},
+		},
+		{
 			key:          "extract.fetch.enabled",
 			title:        "Fetch on extract",
 			description:  "Let /extract, /crawl, and /map fetch pages missing from the index.",

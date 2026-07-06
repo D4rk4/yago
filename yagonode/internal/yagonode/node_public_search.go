@@ -24,6 +24,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
 	"github.com/D4rk4/yago/yagonode/internal/tavilyapi"
 	"github.com/D4rk4/yago/yagonode/internal/websearch"
+	"github.com/D4rk4/yago/yagonode/internal/wordforms"
 	"github.com/D4rk4/yago/yagonode/internal/yacysearch"
 )
 
@@ -49,6 +50,8 @@ type publicSearchAssembly struct {
 	spellCorrector       func() *spellcheck.Corrector
 	denylist             denylistSnapshotter
 	indexRemoteResults   bool
+	swarmMorphology      bool
+	wordForms            func() *wordforms.Expander
 	swarmSeed            swarmSeedConfig
 	linksNewTab          bool
 }
@@ -192,6 +195,7 @@ func mountNodePublicSearch(
 		RandomTargetIndex:  assembly.dhtSearchTargetIndex,
 		Weights:            remoteRankingWeights(assembly.rankingWeights),
 		PreferHTTPS:        assembly.peerHTTPSPreferred,
+		ExpandWord:         swarmMorphologyExpander(assembly),
 	})
 	search := assemblePublicSearcher(local, remote, assembly)
 	access := searchAccessPolicy(assembly)
@@ -218,6 +222,17 @@ func mountNodePublicSearch(
 	mountPortalOpenSearch(mux, assembly.toggles)
 
 	return search, suggestSource
+}
+
+// swarmMorphologyExpander builds the single-word expansion function for the
+// remote searcher, or nil when swarm morphology is off or no expander is wired —
+// so the exact conjunctive search stays the default.
+func swarmMorphologyExpander(assembly publicSearchAssembly) func(string) []string {
+	if !assembly.swarmMorphology || assembly.wordForms == nil {
+		return nil
+	}
+
+	return func(word string) []string { return assembly.wordForms().Variants(word) }
 }
 
 // assemblePublicSearcher stacks the federated searcher decorators in order: merge

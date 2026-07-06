@@ -34,6 +34,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/urldenylist"
 	"github.com/D4rk4/yago/yagonode/internal/urlmeta"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
+	"github.com/D4rk4/yago/yagonode/internal/wordforms"
 )
 
 type node struct {
@@ -50,6 +51,8 @@ type node struct {
 	docScan       documentstore.StoredDocuments
 	hostRank      *hostrank.Holder
 	spell         *spellcheck.Holder
+	wordForms     *wordforms.Holder
+	swarmMorph    bool
 	indexAdmin    *indexAdminController
 	postings      rwi.PostingIndex
 	urlDirectory  urlmeta.URLDirectory
@@ -125,9 +128,7 @@ func assembleNode(
 	storage = observeDHTInboundStorage(storage, telemetry.dhtInbound, tally)
 	mux := http.NewServeMux()
 	router := httpguard.NewWireRouter(mux, newRuntimeWireGate(config, report))
-
-	mountNodeProtocol(router, identity, storage)
-	mountNodeCrawlCompatibility(router, identity, storage)
+	mountNodeWireHandlers(router, identity, storage)
 	peerClient := nodePeerClient(config, client)
 	exchange, err := assembleRuntimePeerExchange(peerExchange{
 		router:   router,
@@ -163,25 +164,27 @@ func assembleNode(
 	}
 	mountPeerLanding(mux)
 	return newAssembledNode(nodeParts{
-		mux:       mux,
-		publicMux: surfaces.publicMux,
-		storage:   storage,
-		announcer: exchange.announcer,
-		crawl:     surfaces.crawl,
-		dht:       surfaces.dht,
-		report:    report,
-		searcher:  surfaces.searcher,
-		suggest:   surfaces.suggest,
-		roster:    roster,
-		news:      news,
-		vault:     vault,
-		client:    client,
-		peerBlock: blocks,
-		denylist:  surfaces.denylist,
-		identity:  identity,
-		ranking:   surfaces.ranking,
-		hostRank:  surfaces.hostRank,
-		spell:     surfaces.spell,
+		mux:        mux,
+		publicMux:  surfaces.publicMux,
+		storage:    storage,
+		announcer:  exchange.announcer,
+		crawl:      surfaces.crawl,
+		dht:        surfaces.dht,
+		report:     report,
+		searcher:   surfaces.searcher,
+		suggest:    surfaces.suggest,
+		roster:     roster,
+		news:       news,
+		vault:      vault,
+		client:     client,
+		peerBlock:  blocks,
+		denylist:   surfaces.denylist,
+		identity:   identity,
+		ranking:    surfaces.ranking,
+		hostRank:   surfaces.hostRank,
+		spell:      surfaces.spell,
+		wordForms:  surfaces.wordForms,
+		swarmMorph: config.SwarmMorphology,
 	}), nil
 }
 
@@ -220,6 +223,7 @@ type nodeSurfaces struct {
 	ranking   *rankingprofile.Holder
 	hostRank  *hostrank.Holder
 	spell     *spellcheck.Holder
+	wordForms *wordforms.Holder
 	denylist  *urldenylist.Store
 }
 
@@ -241,10 +245,12 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	publicMux := http.NewServeMux()
 	hostRankHolder := hostrank.NewHolder()
 	spellHolder := spellcheck.NewHolder()
+	wordFormsHolder := wordforms.NewHolder()
 	searcher, suggest := mountNodePublicSearch(publicMux, publicSearchAssembly{
 		storage:            in.storage,
 		hostRank:           hostRankHolder.Current,
 		spellCorrector:     spellHolder.Current,
+		wordForms:          wordFormsHolder.Current,
 		roster:             in.roster,
 		identity:           in.identity,
 		dht:                in.config.DHT,
@@ -262,6 +268,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		rankingWeights:     ranking.Current,
 		denylist:           denylist,
 		indexRemoteResults: in.config.IndexRemoteResults,
+		swarmMorphology:    in.config.SwarmMorphology,
 		swarmSeed:          in.config.SwarmSeed,
 		linksNewTab:        in.config.SearchLinksNewTab,
 	})
@@ -296,30 +303,33 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		ranking:   ranking,
 		hostRank:  hostRankHolder,
 		spell:     spellHolder,
+		wordForms: wordFormsHolder,
 		denylist:  denylist,
 	}, nil
 }
 
 type nodeParts struct {
-	mux       *http.ServeMux
-	publicMux http.Handler
-	storage   nodeStorage
-	announcer peerannouncement.Announcer
-	crawl     crawlProcess
-	dht       dhtOutboundProcess
-	report    nodestatus.Report
-	searcher  searchcore.Searcher
-	suggest   searchcore.Searcher
-	roster    peerroster.Roster
-	news      *peernews.Pool
-	vault     *vault.Vault
-	client    *http.Client
-	peerBlock *peerblock.Store
-	denylist  *urldenylist.Store
-	identity  nodeidentity.Identity
-	ranking   *rankingprofile.Holder
-	hostRank  *hostrank.Holder
-	spell     *spellcheck.Holder
+	mux        *http.ServeMux
+	publicMux  http.Handler
+	storage    nodeStorage
+	announcer  peerannouncement.Announcer
+	crawl      crawlProcess
+	dht        dhtOutboundProcess
+	report     nodestatus.Report
+	searcher   searchcore.Searcher
+	suggest    searchcore.Searcher
+	roster     peerroster.Roster
+	news       *peernews.Pool
+	vault      *vault.Vault
+	client     *http.Client
+	peerBlock  *peerblock.Store
+	denylist   *urldenylist.Store
+	identity   nodeidentity.Identity
+	ranking    *rankingprofile.Holder
+	hostRank   *hostrank.Holder
+	spell      *spellcheck.Holder
+	wordForms  *wordforms.Holder
+	swarmMorph bool
 }
 
 func newAssembledNode(parts nodeParts) node {
@@ -337,6 +347,8 @@ func newAssembledNode(parts nodeParts) node {
 		docScan:       parts.storage.storedDocuments(),
 		hostRank:      parts.hostRank,
 		spell:         parts.spell,
+		wordForms:     parts.wordForms,
+		swarmMorph:    parts.swarmMorph,
 		indexAdmin:    newIndexAdminController(parts.storage, parts.vault),
 		postings:      parts.storage.postings,
 		urlDirectory:  parts.storage.urlDirectory,
@@ -366,6 +378,17 @@ func newRuntimeWireGate(
 		Respond: httpguard.NewWireResponder(report),
 		Address: httpguard.NewClientAddressResolver(config.TrustedProxies),
 	}
+}
+
+// mountNodeWireHandlers registers the YaCy wire-protocol routes and the
+// crawl-compatibility routes on the peer router in one step.
+func mountNodeWireHandlers(
+	router httpguard.WireRouter,
+	identity nodeidentity.Identity,
+	storage nodeStorage,
+) {
+	mountNodeProtocol(router, identity, storage)
+	mountNodeCrawlCompatibility(router, identity, storage)
 }
 
 func mountNodeCrawlCompatibility(

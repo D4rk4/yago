@@ -62,6 +62,9 @@ type Config struct {
 	RandomTargetIndex  func(int) (int, error)
 	Weights            func() RankingWeights
 	PreferHTTPS        bool
+	// ExpandWord returns the inflected surface forms to also search for a
+	// single-word query; nil disables swarm morphology.
+	ExpandWord func(string) []string
 }
 
 type searcher struct {
@@ -79,6 +82,7 @@ type searcher struct {
 	randomTargetIndex  func(int) (int, error)
 	weights            func() RankingWeights
 	preferHTTPS        bool
+	expandWord         func(string) []string
 }
 
 type peerSearchResult struct {
@@ -121,6 +125,7 @@ func NewSearcher(config Config) searchcore.Searcher {
 		randomTargetIndex:  randomTargetIndexOrDefault(config.RandomTargetIndex),
 		weights:            weightsOrDefault(config.Weights),
 		preferHTTPS:        config.PreferHTTPS,
+		expandWord:         config.ExpandWord,
 	}
 }
 
@@ -131,6 +136,17 @@ func (s searcher) Search(
 	ctx, cancel := s.overallContext(ctx)
 	defer cancel()
 
+	if variants := s.swarmMorphologyVariants(req); len(variants) > 1 {
+		return s.searchVariants(ctx, req, variants), nil
+	}
+
+	return s.searchExact(ctx, req), nil
+}
+
+func (s searcher) searchExact(
+	ctx context.Context,
+	req searchcore.Request,
+) searchcore.Response {
 	hashes := termHashes(req.Terms)
 	peers, noPeersReason := s.remotePeers(ctx, hashes)
 	if len(peers) == 0 {
@@ -140,7 +156,7 @@ func (s searcher) Search(
 				Source: "remote-yacy",
 				Reason: noPeersReason,
 			}},
-		}, nil
+		}
 	}
 
 	// Primary search: send every query word hash to the selected DHT targets in a
@@ -159,10 +175,58 @@ func (s searcher) Search(
 		resp := s.response(ctx, req, append(results, secondaryResults...))
 		resp.PartialFailures = append(secondaryFailures, resp.PartialFailures...)
 
-		return resp, nil
+		return resp
 	}
 
-	return s.response(ctx, req, results), nil
+	return s.response(ctx, req, results)
+}
+
+// swarmMorphologyVariants returns the surface-form variants to search for a
+// single-word query, so the swarm matches peer documents indexed under an
+// inflected form of the query word. It is disabled when no expander is wired,
+// and multi-word queries keep the exact conjunctive search — expanding several
+// words would multiply the peer fan-out.
+func (s searcher) swarmMorphologyVariants(req searchcore.Request) []string {
+	if s.expandWord == nil || len(req.Terms) != 1 {
+		return nil
+	}
+
+	return s.expandWord(req.Terms[0])
+}
+
+// searchVariants runs the exact conjunctive search once per surface variant of a
+// single-word query and fuses the passes by reciprocal rank, so a document
+// indexed under any inflection contributes while the base form keeps top rank.
+// Each variant is wire-compatible: its hash is an ordinary exact-word hash.
+func (s searcher) searchVariants(
+	ctx context.Context,
+	req searchcore.Request,
+	variants []string,
+) searchcore.Response {
+	lists := make([][]searchcore.Result, 0, len(variants))
+	failures := make([]searchcore.PartialFailure, 0, len(variants))
+	total := 0
+	for _, variant := range variants {
+		variantReq := req
+		variantReq.Terms = []string{variant}
+		variantReq.Query = variant
+		resp := s.searchExact(ctx, variantReq)
+		lists = append(lists, resp.Results)
+		failures = append(failures, resp.PartialFailures...)
+		total += resp.TotalResults
+	}
+
+	fused := searchcore.FuseByReciprocalRank(lists...)
+	if len(fused) > req.Limit && req.Limit > 0 {
+		fused = fused[:req.Limit]
+	}
+
+	return searchcore.Response{
+		Request:         req,
+		TotalResults:    total,
+		Results:         fused,
+		PartialFailures: failures,
+	}
 }
 
 func (s searcher) overallContext(ctx context.Context) (context.Context, context.CancelFunc) {

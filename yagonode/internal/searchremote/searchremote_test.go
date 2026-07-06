@@ -1101,3 +1101,75 @@ func mustHost(tb testing.TB, raw string) yagomodel.Host {
 
 	return host
 }
+
+func TestRemoteSearcherExpandsSingleWordMorphology(t *testing.T) {
+	var mu sync.Mutex
+	queries := map[string]bool{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get(yagoproto.FieldQuery)
+		mu.Lock()
+		queries[query] = true
+		mu.Unlock()
+		writeFixtureResponse(t, w, yagoproto.SearchResponse{
+			JoinCount: 1,
+			Count:     1,
+			Resources: []yagomodel.URIMetadataRow{
+				metadataRow(t, hashFor(query), "https://example.org/"+query+".html", "R"),
+			},
+		}.Encode().Encode())
+	}))
+	defer server.Close()
+
+	resp, err := NewSearcher(Config{
+		Client:      server.Client(),
+		NetworkName: "freeworld",
+		Peers:       fakePeerSource{peers: []yagomodel.Seed{serverSeed(t, server.URL)}},
+		ExpandWord: func(word string) []string {
+			return []string{word, word + "и", word + "ю"}
+		},
+	}).Search(t.Context(), searchcore.Request{
+		Terms:         []string{"черногория"},
+		Source:        searchcore.SourceGlobal,
+		Limit:         1,
+		ContentDomain: searchcore.ContentDomainText,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+
+	mu.Lock()
+	distinct := len(queries)
+	mu.Unlock()
+	if distinct < 2 {
+		t.Fatalf("expected several inflected-form queries, got %d", distinct)
+	}
+	// Each variant returned a distinct document; the fused list is capped to the
+	// requested limit.
+	if len(resp.Results) != 1 {
+		t.Fatalf("variant fusion not capped to the limit: %d", len(resp.Results))
+	}
+}
+
+func TestSwarmMorphologyVariantsGating(t *testing.T) {
+	expanding := searcher{expandWord: func(word string) []string {
+		return []string{word, word + "и"}
+	}}
+	// A single word expands to several surface variants.
+	if got := expanding.swarmMorphologyVariants(
+		searchcore.Request{Terms: []string{"черногория"}},
+	); len(got) < 2 {
+		t.Fatalf("single word not expanded: %v", got)
+	}
+	// A multi-word query keeps the exact conjunctive search.
+	if got := expanding.swarmMorphologyVariants(
+		searchcore.Request{Terms: []string{"black", "mountain"}},
+	); got != nil {
+		t.Fatalf("multi-word expanded: %v", got)
+	}
+	// No expander wired: no expansion at all.
+	if got := (searcher{}).swarmMorphologyVariants(
+		searchcore.Request{Terms: []string{"черногория"}},
+	); got != nil {
+		t.Fatalf("nil expander expanded: %v", got)
+	}
+}

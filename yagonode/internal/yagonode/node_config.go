@@ -45,6 +45,7 @@ const (
 	envSearchLinksNewTab   = "YAGO_SEARCH_LINKS_NEW_TAB"
 	envSwarmSeedCrawl      = "YAGO_SWARM_SEED_CRAWL"
 	envSwarmSeedLimitDocs  = "YAGO_SWARM_SEED_LIMIT_DOCS"
+	envSwarmMorphology     = "YAGO_SWARM_MORPHOLOGY"
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"
@@ -92,6 +93,7 @@ type nodeConfig struct {
 	QueryLogMode          queryLogMode
 	MetricsEnabled        bool
 	IndexRemoteResults    bool
+	SwarmMorphology       bool
 	PeerHTTPSPreferred    bool
 	SwarmSeed             swarmSeedConfig
 	DeclaredBirthDate     time.Time
@@ -178,6 +180,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		QueryLogMode:          derived.queryLogMode,
 		MetricsEnabled:        derived.metricsEnabled,
 		IndexRemoteResults:    derived.indexRemoteResults,
+		SwarmMorphology:       derived.swarmMorphology,
 		PeerHTTPSPreferred:    derived.peerHTTPSPreferred,
 		SwarmSeed:             derived.swarmSeed,
 		DeclaredBirthDate:     derived.birthDate,
@@ -198,6 +201,7 @@ type derivedConfigs struct {
 	queryLogMode       queryLogMode
 	metricsEnabled     bool
 	indexRemoteResults bool
+	swarmMorphology    bool
 	peerHTTPSPreferred bool
 	searchLinksNewTab  bool
 	swarmSeed          swarmSeedConfig
@@ -247,18 +251,6 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	if err != nil {
 		return derivedConfigs{}, err
 	}
-	requireAPIKey, err := boolEnv(getenv, envSearchRequireAPIKey, false)
-	if err != nil {
-		return derivedConfigs{}, fmt.Errorf("%s: %w", envSearchRequireAPIKey, err)
-	}
-	publicSearchUI, err := boolEnv(getenv, envPublicSearchUI, false)
-	if err != nil {
-		return derivedConfigs{}, fmt.Errorf("%s: %w", envPublicSearchUI, err)
-	}
-	httpsRedirect, err := boolEnv(getenv, envHTTPSRedirect, false)
-	if err != nil {
-		return derivedConfigs{}, fmt.Errorf("%s: %w", envHTTPSRedirect, err)
-	}
 	publicBaseURL, err := normalizePublicBaseURL(getenv(envPublicBaseURL))
 	if err != nil {
 		return derivedConfigs{}, fmt.Errorf("%s: %w", envPublicBaseURL, err)
@@ -267,50 +259,101 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	if err != nil {
 		return derivedConfigs{}, fmt.Errorf("%s: %w", envQueryLogMode, err)
 	}
-	metricsEnabled, err := boolEnv(getenv, envMetricsEnabled, true)
-	if err != nil {
-		return derivedConfigs{}, fmt.Errorf("%s: %w", envMetricsEnabled, err)
-	}
 	extractFetch, err := loadExtractFetchConfig(getenv)
 	if err != nil {
 		return derivedConfigs{}, err
-	}
-	indexRemoteResults, err := boolEnv(getenv, envIndexRemoteResults, true)
-	if err != nil {
-		return derivedConfigs{}, fmt.Errorf("%s: %w", envIndexRemoteResults, err)
-	}
-	// Default matches YaCy's network.unit.protocol.https.preferred=false: peers
-	// advertising the SSL flag get https-first with a plain-http retry when on.
-	peerHTTPSPreferred, err := boolEnv(getenv, envPeerHTTPSPreferred, false)
-	if err != nil {
-		return derivedConfigs{}, fmt.Errorf("%s: %w", envPeerHTTPSPreferred, err)
 	}
 	swarmSeed, err := loadSwarmSeedConfig(getenv)
 	if err != nil {
 		return derivedConfigs{}, err
 	}
-	// Same-tab is the default per NN/G guidance; opening results in a new tab
-	// is an operator opt-in and renders an accessible new-tab indicator.
-	searchLinksNewTab, err := boolEnv(getenv, envSearchLinksNewTab, false)
+	toggles, err := loadDerivedBoolToggles(getenv)
 	if err != nil {
-		return derivedConfigs{}, fmt.Errorf("%s: %w", envSearchLinksNewTab, err)
+		return derivedConfigs{}, err
 	}
 
 	return derivedConfigs{
 		dht:                dht,
 		webFallback:        webFallback,
 		birthDate:          birthDate,
+		requireAPIKey:      toggles.requireAPIKey,
+		publicSearchUI:     toggles.publicSearchUI,
+		httpsRedirect:      toggles.httpsRedirect,
+		publicBaseURL:      publicBaseURL,
+		queryLogMode:       queryLog,
+		metricsEnabled:     toggles.metricsEnabled,
+		indexRemoteResults: toggles.indexRemoteResults,
+		swarmMorphology:    toggles.swarmMorphology,
+		peerHTTPSPreferred: toggles.peerHTTPSPreferred,
+		searchLinksNewTab:  toggles.searchLinksNewTab,
+		swarmSeed:          swarmSeed,
+		extractFetch:       extractFetch,
+	}, nil
+}
+
+// derivedBoolToggles groups the plain boolean feature switches read from the
+// environment, keeping loadDerivedConfigs within its length budget.
+type derivedBoolToggles struct {
+	requireAPIKey      bool
+	publicSearchUI     bool
+	httpsRedirect      bool
+	metricsEnabled     bool
+	indexRemoteResults bool
+	peerHTTPSPreferred bool
+	swarmMorphology    bool
+	searchLinksNewTab  bool
+}
+
+func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, error) {
+	requireAPIKey, err := boolEnv(getenv, envSearchRequireAPIKey, false)
+	if err != nil {
+		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envSearchRequireAPIKey, err)
+	}
+	publicSearchUI, err := boolEnv(getenv, envPublicSearchUI, false)
+	if err != nil {
+		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envPublicSearchUI, err)
+	}
+	httpsRedirect, err := boolEnv(getenv, envHTTPSRedirect, false)
+	if err != nil {
+		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envHTTPSRedirect, err)
+	}
+	metricsEnabled, err := boolEnv(getenv, envMetricsEnabled, true)
+	if err != nil {
+		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envMetricsEnabled, err)
+	}
+	indexRemoteResults, err := boolEnv(getenv, envIndexRemoteResults, true)
+	if err != nil {
+		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envIndexRemoteResults, err)
+	}
+	// Default matches YaCy's network.unit.protocol.https.preferred=false: peers
+	// advertising the SSL flag get https-first with a plain-http retry when on.
+	peerHTTPSPreferred, err := boolEnv(getenv, envPeerHTTPSPreferred, false)
+	if err != nil {
+		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envPeerHTTPSPreferred, err)
+	}
+	// Off by default: expanding a single-word swarm query into surface variants
+	// multiplies the peer fan-out, so operators opt in when recall matters more
+	// than round-trips (ADR-0027).
+	swarmMorphology, err := boolEnv(getenv, envSwarmMorphology, false)
+	if err != nil {
+		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envSwarmMorphology, err)
+	}
+	// Same-tab is the default per NN/G guidance; opening results in a new tab is
+	// an operator opt-in and renders an accessible new-tab indicator.
+	searchLinksNewTab, err := boolEnv(getenv, envSearchLinksNewTab, false)
+	if err != nil {
+		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envSearchLinksNewTab, err)
+	}
+
+	return derivedBoolToggles{
 		requireAPIKey:      requireAPIKey,
 		publicSearchUI:     publicSearchUI,
 		httpsRedirect:      httpsRedirect,
-		publicBaseURL:      publicBaseURL,
-		queryLogMode:       queryLog,
 		metricsEnabled:     metricsEnabled,
 		indexRemoteResults: indexRemoteResults,
 		peerHTTPSPreferred: peerHTTPSPreferred,
+		swarmMorphology:    swarmMorphology,
 		searchLinksNewTab:  searchLinksNewTab,
-		swarmSeed:          swarmSeed,
-		extractFetch:       extractFetch,
 	}, nil
 }
 

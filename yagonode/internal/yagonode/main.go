@@ -251,6 +251,7 @@ func serve(
 			holder:    assembled.spell,
 		})
 	}()
+	startWordFormsLoop(ctx, &background, assembled)
 	if assembled.crawl != nil {
 		defer assembled.crawl.Close()
 		background.Add(1)
@@ -299,6 +300,22 @@ func serve(
 	case <-ctx.Done():
 		return shutdown(servers)
 	}
+}
+
+// startWordFormsLoop launches the swarm-morphology vocabulary sweep, but only
+// when the feature is enabled — a peer without swarm morphology pays no scan.
+func startWordFormsLoop(ctx context.Context, background *sync.WaitGroup, assembled node) {
+	if !assembled.swarmMorph {
+		return
+	}
+	background.Add(1)
+	go func() {
+		defer background.Done()
+		runWordFormsRefreshLoop(ctx, wordFormsSweeper{
+			documents: assembled.docScan,
+			holder:    assembled.wordForms,
+		})
+	}()
 }
 
 func shutdown(servers []namedServer) error {
