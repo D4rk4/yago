@@ -227,7 +227,14 @@ func assemblePublicSearcher(
 	remote searchcore.Searcher,
 	assembly publicSearchAssembly,
 ) searchcore.Searcher {
-	federated := withWebFallback(searchcore.NewFederatedSearcher(local, remote), assembly)
+	// Pseudo-relevance feedback expands recall-poor local queries with terms
+	// mined from their own top results (RM3) before the swarm merge; peers run
+	// their own retrieval, so only the local searcher is wrapped.
+	localWithFeedback := searchcore.NewPseudoRelevanceSearcher(local)
+	federated := withWebFallback(
+		searchcore.NewFederatedSearcher(localWithFeedback, remote),
+		assembly,
+	)
 	// Rerank the merged local+remote window by query-term coverage and proximity
 	// over the visible title and snippet, so both sources compete on the same
 	// textual evidence before filtering and paging freeze the order.
