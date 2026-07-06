@@ -30,6 +30,8 @@ type Frontier struct {
 
 	maxPerHost int
 
+	scorer ValueScorer
+
 	mu       sync.Mutex
 	state    *frontierState
 	inflight map[string]int
@@ -82,6 +84,7 @@ func NewFrontier(capacity int, pace CrawlPace, opts ...Option) *Frontier {
 	frontier := &Frontier{
 		jobs:   make(chan crawljob.CrawlJob, capacity),
 		signal: make(chan struct{}, 1),
+		scorer: DefaultValueScorer,
 		pace:   pace,
 		state: &frontierState{
 			runs:       make(map[uuid.UUID]*crawlRun),
@@ -365,8 +368,14 @@ func (f *Frontier) run() {
 	}
 }
 
+// nextDue picks the highest-value dispatchable job: among the ready jobs that
+// are unpaused, under their host's in-flight cap, and past their politeness
+// due time, the one the value scorer ranks best goes first (ties keep
+// submission order); with none due it reports how long until the soonest.
 func (f *Frontier) nextDue(now time.Time) (crawljob.CrawlJob, int, time.Duration, bool) {
 	var soonest time.Duration
+	bestIndex := -1
+	bestScore := 0.0
 	for i, job := range f.state.ready {
 		if f.isPausedLocked(job.Provenance) {
 			continue
@@ -380,12 +389,20 @@ func (f *Frontier) nextDue(now time.Time) (crawljob.CrawlJob, int, time.Duration
 		}
 		wait := due.Sub(now)
 		if wait <= 0 {
-			return job, i, 0, true
+			if score := f.jobValueLocked(job); bestIndex < 0 || score > bestScore {
+				bestIndex, bestScore = i, score
+			}
+
+			continue
 		}
 		if soonest == 0 || wait < soonest {
 			soonest = wait
 		}
 	}
+	if bestIndex >= 0 {
+		return f.state.ready[bestIndex], bestIndex, 0, true
+	}
+
 	return crawljob.CrawlJob{}, 0, soonest, false
 }
 
