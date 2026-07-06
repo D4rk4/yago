@@ -115,10 +115,11 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   {{end}}
   {{if .Results}}</ul>{{end}}
   {{end}}
-  {{if or .Pagination.HasPrev .Pagination.HasNext}}
+  {{if or .Pagination.HasPrev .Pagination.HasNext .Pagination.Pages}}
   <nav class="pager" aria-label="Result pages">
     {{if .Pagination.HasPrev}}<a rel="prev" href="{{.Pagination.PrevURL}}">‹ Previous</a>{{end}}
-    <span class="page">Page {{.Pagination.Page}}</span>
+    {{range .Pagination.Pages}}{{if .Current}}<span class="page" aria-current="page">{{.Number}}</span>{{else}}<a href="{{.URL}}">{{.Number}}</a>{{end}}
+    {{end}}
     {{if .Pagination.HasNext}}<a rel="next" href="{{.Pagination.NextURL}}">Next ›</a>{{end}}
   </nav>
   {{end}}

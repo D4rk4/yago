@@ -142,7 +142,14 @@ func TestPortalPaginationParsesPageIntoOffset(t *testing.T) {
 	t.Parallel()
 
 	source := &fakeSource{results: SearchResults{Query: "go", TotalResults: 100}}
-	if _, body := get(t, New(source, false), "/?q=go&p=3"); !strings.Contains(body, "Page 3") {
+	if _, body := get(
+		t,
+		New(source, false),
+		"/?q=go&p=3",
+	); !strings.Contains(
+		body,
+		`<span class="page" aria-current="page">3</span>`,
+	) {
 		t.Fatalf("body missing the current page indicator")
 	}
 	if source.gotOffset != 2*portalPageSize || source.gotLimit != portalPageSize {
@@ -162,7 +169,7 @@ func TestPortalPaginationRendersPrevAndNext(t *testing.T) {
 	_, body := get(t, New(source, false), "/?q=go&p=2")
 
 	for _, want := range []string{
-		"‹ Previous", "Next ›", "Page 2", `rel="prev"`, `rel="next"`,
+		"‹ Previous", "Next ›", `<span class="page" aria-current="page">2</span>`, `rel="prev"`, `rel="next"`,
 		"p=1", "p=3", "q=go",
 	} {
 		if !strings.Contains(body, want) {

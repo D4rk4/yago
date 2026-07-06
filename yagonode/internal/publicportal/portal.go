@@ -87,7 +87,18 @@ type pagination struct {
 	HasNext bool
 	PrevURL string
 	NextURL string
+	// Pages lists up to ten numbered page links around the current page.
+	Pages []pageLink
 }
+
+type pageLink struct {
+	Number  int
+	URL     string
+	Current bool
+}
+
+// pagerWindow is how many numbered page links the pager shows at most.
+const pagerWindow = 10
 
 type portalData struct {
 	Brand      string
@@ -203,8 +214,38 @@ func newPagination(query string, page, offset, shown, total int) pagination {
 	if nav.HasNext {
 		nav.NextURL = portalPageURL(query, page+1)
 	}
+	nav.Pages = numberedPages(query, page, total)
 
 	return nav
+}
+
+// numberedPages builds up to pagerWindow page links centered on the current
+// page, bounded by the honest total and the portal's page cap.
+func numberedPages(query string, page, total int) []pageLink {
+	last := (total + portalPageSize - 1) / portalPageSize
+	if last > portalMaxPage {
+		last = portalMaxPage
+	}
+	if last <= 1 {
+		return nil
+	}
+	start := page - pagerWindow/2
+	if start+pagerWindow-1 > last {
+		start = last - pagerWindow + 1
+	}
+	if start < 1 {
+		start = 1
+	}
+	pages := make([]pageLink, 0, pagerWindow)
+	for number := start; number <= last && len(pages) < pagerWindow; number++ {
+		pages = append(pages, pageLink{
+			Number:  number,
+			URL:     portalPageURL(query, number),
+			Current: number == page,
+		})
+	}
+
+	return pages
 }
 
 func portalPageURL(query string, page int) string {

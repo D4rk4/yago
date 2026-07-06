@@ -354,7 +354,7 @@ func TestHTMLEndpointRendersPagination(t *testing.T) {
 
 	body := rec.Body.String()
 	for _, expected := range []string{
-		"Previous", "Next", "Page 2", `rel="prev"`, `rel="next"`,
+		"Previous", "Next", `<span aria-current="page">2</span>`, `rel="prev"`, `rel="next"`,
 		"startRecord=0", "startRecord=20", "query=go", "maximumRecords=10",
 	} {
 		if !strings.Contains(body, expected) {

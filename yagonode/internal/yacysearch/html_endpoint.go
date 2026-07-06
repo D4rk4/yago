@@ -38,12 +38,22 @@ type htmlSearchPage struct {
 	ShowResults        bool
 	ShowPartialFailure bool
 	Page               int
+	PageLinks          []htmlPageLink
 	HasPrev            bool
 	HasNext            bool
 	PrevURL            string
 	NextURL            string
 	NewTab             bool
 }
+
+type htmlPageLink struct {
+	Number  int
+	URL     string
+	Current bool
+}
+
+// htmlPagerWindow caps how many numbered page links the pager shows.
+const htmlPagerWindow = 10
 
 type htmlSearchItem struct {
 	Title       string
@@ -114,10 +124,11 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 {{end}}
 </ol>
 <p>Get these results as <a href="{{.RSSURL}}">RSS</a> · <a href="{{.JSONURL}}">JSON</a></p>
-{{if or .HasPrev .HasNext}}
+{{if or .HasPrev .HasNext .PageLinks}}
 <nav aria-label="Result pages">
 {{if .HasPrev}}<a rel="prev" href="{{.PrevURL}}">&lsaquo; Previous</a>{{end}}
-<span>Page {{.Page}}</span>
+{{range .PageLinks}}{{if .Current}}<span aria-current="page">{{.Number}}</span>{{else}}<a href="{{.URL}}">{{.Number}}</a>{{end}}
+{{end}}
 {{if .HasNext}}<a rel="next" href="{{.NextURL}}">Next &rsaquo;</a>{{end}}
 </nav>
 {{end}}
@@ -270,6 +281,37 @@ func applyHTMLPagination(page *htmlSearchPage, base string, resp searchcore.Resp
 		page.HasNext = true
 		page.NextURL = htmlPageURL(base, resp.Request, offset+limit)
 	}
+	page.PageLinks = htmlNumberedPages(base, resp, page.Page, limit)
+}
+
+// htmlNumberedPages builds up to htmlPagerWindow numbered links around the
+// current page over the honest pageable total.
+func htmlNumberedPages(
+	base string,
+	resp searchcore.Response,
+	current, limit int,
+) []htmlPageLink {
+	last := (resp.TotalResults + limit - 1) / limit
+	if last <= 1 {
+		return nil
+	}
+	start := current - htmlPagerWindow/2
+	if start+htmlPagerWindow-1 > last {
+		start = last - htmlPagerWindow + 1
+	}
+	if start < 1 {
+		start = 1
+	}
+	links := make([]htmlPageLink, 0, htmlPagerWindow)
+	for number := start; number <= last && len(links) < htmlPagerWindow; number++ {
+		links = append(links, htmlPageLink{
+			Number:  number,
+			URL:     htmlPageURL(base, resp.Request, (number-1)*limit),
+			Current: number == current,
+		})
+	}
+
+	return links
 }
 
 func htmlPageURL(base string, req searchcore.Request, offset int) string {

@@ -44,6 +44,8 @@ components:
     in: internal/cachedpage/**
   faviconproxy:
     in: internal/faviconproxy/**
+  searchsession:
+    in: internal/searchsession/**
   peermessage:
     in: internal/peermessage/**
   peerprofile:
@@ -536,6 +538,10 @@ deps:
   faviconproxy:
     mayDependOn:
       - faviconproxy
+  searchsession:
+    mayDependOn:
+      - searchsession
+      - searchcore
   crawldispatch:
     mayDependOn:
       - crawldispatch
@@ -598,6 +604,7 @@ deps:
       - hostrank
       - cachedpage
       - faviconproxy
+      - searchsession
       - peermessage
       - peerprofile
       - seedlist

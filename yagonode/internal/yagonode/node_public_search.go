@@ -20,6 +20,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 	"github.com/D4rk4/yago/yagonode/internal/searchlocal"
 	"github.com/D4rk4/yago/yagonode/internal/searchremote"
+	"github.com/D4rk4/yago/yagonode/internal/searchsession"
 	"github.com/D4rk4/yago/yagonode/internal/tavilyapi"
 	"github.com/D4rk4/yago/yagonode/internal/websearch"
 	"github.com/D4rk4/yago/yagonode/internal/yacysearch"
@@ -195,7 +196,10 @@ func mountNodePublicSearch(
 	// Zero-result recovery sits above the filters so its fuzzy retry serves
 	// only pages the denylist would allow.
 	recovering := withZeroResultRecovery(filtered)
-	search := withQueryLogging(recovering, assembly.queryLogMode)
+	// The session cache makes paging stable (YaCy SearchEventCache): page one
+	// runs one deep search, deeper pages slice the cached result list.
+	stable := searchsession.WithStableWindow(recovering)
+	search := withQueryLogging(stable, assembly.queryLogMode)
 	search = withSearchMetrics(search, assembly.searchMetrics)
 	search = withParsedQuery(search)
 	if assembly.indexRemoteResults && assembly.storage.searchIndex != nil {
