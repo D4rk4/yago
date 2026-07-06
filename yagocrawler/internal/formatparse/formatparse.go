@@ -100,12 +100,14 @@ func families() []family {
 				"aif", "aifc", "aiff", "ra", "rm", "sid",
 			),
 			mimes:   set("audio/mpeg", "audio/ogg", "audio/wav", "video/mp4"),
+			parse:   parseAudio,
 			enabled: func(t yagocrawlcontract.FormatToggles) bool { return t.Audio },
 		},
 		{
 			name:       "misc",
 			extensions: set("vcf", "torrent", "apk"),
 			mimes:      set("text/vcard", "application/x-bittorrent"),
+			parse:      parseMisc,
 			enabled:    func(t yagocrawlcontract.FormatToggles) bool { return t.Misc },
 		},
 		{
@@ -115,6 +117,7 @@ func families() []family {
 				"bz2", "tbz", "tbz2", "xz", "txz",
 			),
 			mimes:   set("application/zip", "application/gzip", "application/x-tar"),
+			parse:   parseArchive,
 			enabled: func(t yagocrawlcontract.FormatToggles) bool { return t.Archives },
 		},
 	}
