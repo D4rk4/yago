@@ -7,6 +7,7 @@ require (
 	github.com/D4rk4/yago/yagoegress v0.0.0
 	github.com/D4rk4/yago/yagomodel v0.0.0
 	github.com/D4rk4/yago/yagoproto v0.0.0
+	github.com/abadojack/whatlanggo v1.0.1
 	github.com/blevesearch/bleve/v2 v2.6.0
 	github.com/blevesearch/bleve_index_api v1.3.11
 	github.com/cespare/xxhash/v2 v2.3.0
@@ -30,6 +31,7 @@ require (
 	github.com/blevesearch/scorch_segment_api/v2 v2.4.7 // indirect
 	github.com/blevesearch/segment v0.9.1 // indirect
 	github.com/blevesearch/snowballstem v0.9.0 // indirect
+	github.com/blevesearch/stempel v0.2.0 // indirect
 	github.com/blevesearch/upsidedown_store_api v1.0.2 // indirect
 	github.com/blevesearch/vellum v1.2.0 // indirect
 	github.com/blevesearch/zapx/v11 v11.4.3 // indirect

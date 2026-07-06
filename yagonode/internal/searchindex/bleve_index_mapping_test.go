@@ -31,9 +31,21 @@ func TestNewSearchIndexMappingTunesFields(t *testing.T) {
 	}
 }
 
+// defaultMappingAnalyzer is the analyzer the fallback (standard) document
+// mapping applies to a field: the punctuation splitter for the url field, the
+// no-stemming standard analyzer for text.
+func defaultMappingAnalyzer(field string) string {
+	if field == "url" {
+		return searchURLAnalyzer
+	}
+
+	return standardTextAnalyzer
+}
+
 // assertTunedSearchField checks a source field maps to a tuned-down exact word
-// field (correct analyzer, no store/term-vectors/doc-values) plus, for grammed
-// fields, a trigram sub-field named "<field>_gram" with the gram analyzer.
+// field (correct analyzer, term vectors on for positional queries, no
+// store/doc-values) plus, for grammed fields, a trigram sub-field named
+// "<field>_gram" with the gram analyzer.
 func assertTunedSearchField(t *testing.T, field string, document *mapping.DocumentMapping) {
 	t.Helper()
 
@@ -46,18 +58,18 @@ func assertTunedSearchField(t *testing.T, field string, document *mapping.Docume
 	}
 
 	exact := document.Fields[0]
-	if !exact.Index {
-		t.Fatalf("field %q is not indexed", field)
+	if !exact.Index || !exact.IncludeTermVectors {
+		t.Fatalf("field %q must be indexed with term vectors: %#v", field, exact)
 	}
-	if exact.Store || exact.IncludeInAll || exact.IncludeTermVectors || exact.DocValues {
+	if exact.Store || exact.IncludeInAll || exact.DocValues {
 		t.Fatalf("field %q exact sub-field not tuned down: %#v", field, exact)
 	}
-	if exact.Analyzer != searchFieldAnalyzer(field) {
+	if exact.Analyzer != defaultMappingAnalyzer(field) {
 		t.Fatalf(
 			"field %q analyzer = %q, want %q",
 			field,
 			exact.Analyzer,
-			searchFieldAnalyzer(field),
+			defaultMappingAnalyzer(field),
 		)
 	}
 
@@ -68,7 +80,7 @@ func assertTunedSearchField(t *testing.T, field string, document *mapping.Docume
 	if gram.Name != field+gramFieldSuffix || gram.Analyzer != searchGramAnalyzer {
 		t.Fatalf("field %q gram sub-field = %#v", field, gram)
 	}
-	if gram.Store || gram.IncludeInAll || gram.IncludeTermVectors || gram.DocValues {
+	if gram.Store || gram.IncludeInAll || gram.DocValues {
 		t.Fatalf("field %q gram sub-field not tuned down: %#v", field, gram)
 	}
 }

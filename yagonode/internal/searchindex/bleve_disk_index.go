@@ -34,14 +34,15 @@ const (
 )
 
 type BleveDiskIndex struct {
-	mu        sync.RWMutex
-	shards    []bleve.Index
-	alias     bleve.Index
-	documents documentstore.DocumentDirectory
-	updatedAt time.Time
-	closed    bool
-	gram      bool
-	now       func() time.Time
+	mu           sync.RWMutex
+	shards       []bleve.Index
+	alias        bleve.Index
+	documents    documentstore.DocumentDirectory
+	updatedAt    time.Time
+	closed       bool
+	gram         bool
+	multilingual bool
+	now          func() time.Time
 }
 
 // diskShard picks the shard for one document id.
@@ -112,12 +113,13 @@ func NewBleveDiskIndex(
 	}
 
 	out := &BleveDiskIndex{
-		shards:    shards,
-		alias:     bleve.NewIndexAlias(shards...),
-		documents: directory,
-		updatedAt: updatedAt,
-		gram:      supportsGramAnalyzer(shards[0]),
-		now:       time.Now,
+		shards:       shards,
+		alias:        bleve.NewIndexAlias(shards...),
+		documents:    directory,
+		updatedAt:    updatedAt,
+		gram:         supportsGramAnalyzer(shards[0]),
+		multilingual: supportsMultilingualAnalyzers(shards[0]),
+		now:          time.Now,
 	}
 	if rebuild && stored != nil {
 		if err := out.rebuild(ctx, stored); err != nil {
@@ -209,7 +211,7 @@ func (b *BleveDiskIndex) Search(
 		return SearchResultSet{}, nil
 	}
 
-	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req, b.gram))
+	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req, b.gram, b.multilingual))
 	searchRequest.Size = diskSearchSize(req.MaxResults, bleveDocumentCount(count))
 	searchRequest.Explain = req.Explain
 	result, err := b.alias.SearchInContext(ctx, searchRequest)
@@ -381,13 +383,14 @@ func legacyBleveLayout(root string) (bool, os.FileInfo) {
 }
 
 // openOrCreateBleveShard opens one shard, recreating it when it is missing,
-// unreadable, or predates the trigram analyzer.
+// unreadable, or built under a mapping that predates the current analyzers
+// (the trigram field or the per-language routing).
 func openOrCreateBleveShard(path string, canRebuild bool) (bleve.Index, bool, time.Time, error) {
 	info, statErr := os.Stat(path)
 	if statErr == nil {
 		index, err := openBleveDisk(path)
 		if err == nil {
-			if supportsGramAnalyzer(index) || !canRebuild {
+			if shardMappingIsCurrent(index) || !canRebuild {
 				return index, false, info.ModTime().UTC(), nil
 			}
 			_ = index.Close()

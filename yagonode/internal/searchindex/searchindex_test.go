@@ -289,12 +289,15 @@ func TestBleveMemoryIndexReturnsClosedIndexErrors(t *testing.T) {
 
 func TestBleveSearchQuerySupportsExcludedTerms(t *testing.T) {
 	for _, gram := range []bool{true, false} {
-		query := bleveSearchQuery(
-			SearchRequest{Query: "golang", ExcludeTerms: []string{"", "java"}},
-			gram,
-		)
-		if query == nil {
-			t.Fatalf("expected query (gram=%v)", gram)
+		for _, multilingual := range []bool{true, false} {
+			query := bleveSearchQuery(
+				SearchRequest{Query: "golang", ExcludeTerms: []string{"", "java"}},
+				gram,
+				multilingual,
+			)
+			if query == nil {
+				t.Fatalf("expected query (gram=%v multilingual=%v)", gram, multilingual)
+			}
 		}
 	}
 }

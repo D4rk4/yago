@@ -56,13 +56,9 @@ func searchIndexedFields() []string {
 	return []string{"title", "headings", "anchors", "body", "url"}
 }
 
-func searchFieldAnalyzer(field string) string {
-	if field == "url" {
-		return searchURLAnalyzer
-	}
-
-	return searchTextAnalyzer
-}
+// documentAnalyzerField is the TypeField whose value (an analyzer name) selects
+// the per-language document mapping a document is analyzed with.
+const documentAnalyzerField = "_analyzer"
 
 // newSearchIndexMapping is a package var so a test can inject a mapping-build
 // failure and exercise the callers' error handling.
@@ -74,18 +70,18 @@ var newSearchIndexMapping = func() (*mapping.IndexMappingImpl, error) {
 	if err := registerGramAnalyzer(indexMapping); err != nil {
 		return nil, err
 	}
-
-	document := bleve.NewDocumentMapping()
-	document.Dynamic = false
-	for _, field := range searchIndexedFields() {
-		fields := []*mapping.FieldMapping{newSearchTextField(searchFieldAnalyzer(field))}
-		if fieldSupportsGrams(field) {
-			fields = append(fields, newSearchGramField(field+gramFieldSuffix))
-		}
-		document.AddFieldMappingsAt(field, fields...)
+	if err := registerStandardTextAnalyzer(indexMapping); err != nil {
+		return nil, fmt.Errorf("register standard analyzer: %w", err)
 	}
 
-	indexMapping.DefaultMapping = document
+	// Each document is routed by its detected language to a document mapping
+	// that analyzes the text fields with that language's stemmer; the standard
+	// (no-stemming) mapping is the fallback for unrouted languages.
+	indexMapping.TypeField = documentAnalyzerField
+	for _, analyzer := range documentAnalyzers() {
+		indexMapping.AddDocumentMapping(analyzer, newDocumentMapping(analyzer))
+	}
+	indexMapping.DefaultMapping = newDocumentMapping(standardTextAnalyzer)
 	indexMapping.StoreDynamic = false
 	indexMapping.IndexDynamic = false
 	indexMapping.DocValuesDynamic = false
@@ -97,6 +93,29 @@ var newSearchIndexMapping = func() (*mapping.IndexMappingImpl, error) {
 	indexMapping.ScoringModel = bleveindex.BM25Scoring
 
 	return indexMapping, nil
+}
+
+// newDocumentMapping builds the field mappings for one text analyzer: the text
+// fields (title/headings/anchors/body) stem with the given analyzer and carry
+// term vectors so positional and phrase queries work; the url field keeps its
+// punctuation splitter; every text field keeps its language-agnostic trigram
+// sub-field for the recovery path.
+func newDocumentMapping(textAnalyzer string) *mapping.DocumentMapping {
+	document := bleve.NewDocumentMapping()
+	document.Dynamic = false
+	for _, field := range searchIndexedFields() {
+		analyzer := textAnalyzer
+		if field == "url" {
+			analyzer = searchURLAnalyzer
+		}
+		fields := []*mapping.FieldMapping{newSearchTextField(analyzer)}
+		if fieldSupportsGrams(field) {
+			fields = append(fields, newSearchGramField(field+gramFieldSuffix))
+		}
+		document.AddFieldMappingsAt(field, fields...)
+	}
+
+	return document
 }
 
 // enableBM25Scoring switches an already-opened index to BM25 scoring in place.
@@ -135,7 +154,10 @@ func newSearchTextField(analyzer string) *mapping.FieldMapping {
 	field.Analyzer = analyzer
 	field.Store = false
 	field.IncludeInAll = false
-	field.IncludeTermVectors = false
+	// Term vectors carry token positions so phrase and other positional queries
+	// work on the scorch backend; without them a quoted-phrase clause silently
+	// matches nothing.
+	field.IncludeTermVectors = true
 	field.DocValues = false
 
 	return field
@@ -165,6 +187,21 @@ func newSearchGramField(name string) *mapping.FieldMapping {
 // "no analyzer named 'text_gram' registered".
 func supportsGramAnalyzer(index bleve.Index) bool {
 	return index.Mapping().AnalyzerNamed(searchGramAnalyzer) != nil
+}
+
+// supportsMultilingualAnalyzers reports whether the index's mapping carries the
+// per-language routing added with the standard fallback analyzer. An index
+// created before that change cannot resolve the per-language query analyzers,
+// so its queries must keep the single default-analyzer clause set.
+func supportsMultilingualAnalyzers(index bleve.Index) bool {
+	return index.Mapping().AnalyzerNamed(standardTextAnalyzer) != nil
+}
+
+// shardMappingIsCurrent reports whether a persisted shard was built under the
+// current mapping — it must resolve both the trigram analyzer and the
+// per-language routing. A shard missing either is rebuilt when a source exists.
+func shardMappingIsCurrent(index bleve.Index) bool {
+	return supportsGramAnalyzer(index) && supportsMultilingualAnalyzers(index)
 }
 
 // registerGramAnalyzer wires the language-agnostic trigram analyzer: the unicode

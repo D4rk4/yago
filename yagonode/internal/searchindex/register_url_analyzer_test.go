@@ -43,7 +43,13 @@ func TestRegisterURLAnalyzerRejectsDuplicateAnalyzer(t *testing.T) {
 }
 
 func TestPhraseBoostsSkipsBlankPhrases(t *testing.T) {
-	if got := phraseBoosts([]string{"  ", "", "\t"}, RankingWeights{}); len(got) != 0 {
+	if got := phraseBoosts(
+		[]string{"  ", "", "\t"},
+		RankingWeights{},
+		standardTextAnalyzer,
+	); len(
+		got,
+	) != 0 {
 		t.Fatalf("boosts = %d, want none for blank phrases", len(got))
 	}
 }

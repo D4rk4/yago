@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/blevesearch/bleve/v2"
+	"github.com/blevesearch/bleve/v2/index/scorch"
+	"github.com/blevesearch/bleve/v2/mapping"
 	"github.com/blevesearch/bleve/v2/search"
 	blevequery "github.com/blevesearch/bleve/v2/search/query"
 
@@ -21,12 +23,13 @@ const (
 )
 
 type BleveMemoryIndex struct {
-	mu        sync.RWMutex
-	index     bleve.Index
-	documents map[string]documentstore.Document
-	updatedAt time.Time
-	gram      bool
-	now       func() time.Time
+	mu           sync.RWMutex
+	index        bleve.Index
+	documents    map[string]documentstore.Document
+	updatedAt    time.Time
+	gram         bool
+	multilingual bool
+	now          func() time.Time
 }
 
 type bleveDocument struct {
@@ -37,14 +40,26 @@ type bleveDocument struct {
 	Anchors  []string `json:"anchors"`
 	Language string   `json:"language"`
 	Host     string   `json:"host"`
+	// Analyzer is the TypeField that routes the document to its per-language
+	// analyzer mapping; see documentAnalyzerField.
+	Analyzer string `json:"_analyzer"`
 }
 
-// newBleveMemory opens the in-memory fallback index. It uses bleve's
-// upside-down backend, which — unlike the on-disk scorch shards — ignores the
-// BM25 scoring model and always scores with TF-IDF. Unifying the fallback on
-// scorch (for BM25 parity and working positional/phrase queries) needs term
-// vectors and a matching migration, handled with the multilingual reindex.
-var newBleveMemory = bleve.NewMemOnly
+// BleveType routes the document to its per-language analyzer mapping. bleve
+// reads the type of a struct document from this interface method (the TypeField
+// property path only resolves for map documents), so without it every document
+// would fall to the default no-stemming mapping.
+func (d bleveDocument) BleveType() string {
+	return d.Analyzer
+}
+
+// newBleveMemory opens the in-memory fallback index on the scorch backend
+// (bleve.NewMemOnly's upside-down backend ignores the BM25 scoring model and
+// mishandles positional queries). An empty path keeps scorch entirely in
+// memory, so the fallback ranks and matches identically to the on-disk shards.
+var newBleveMemory = func(indexMapping mapping.IndexMapping) (bleve.Index, error) {
+	return bleve.NewUsing("", indexMapping, scorch.Name, scorch.Name, nil)
+}
 
 func NewBleveMemoryIndex(
 	ctx context.Context,
@@ -60,10 +75,11 @@ func NewBleveMemoryIndex(
 	}
 
 	out := &BleveMemoryIndex{
-		index:     index,
-		documents: map[string]documentstore.Document{},
-		gram:      supportsGramAnalyzer(index),
-		now:       time.Now,
+		index:        index,
+		documents:    map[string]documentstore.Document{},
+		gram:         supportsGramAnalyzer(index),
+		multilingual: supportsMultilingualAnalyzers(index),
+		now:          time.Now,
 	}
 	if stored == nil {
 		return out, nil
@@ -140,7 +156,7 @@ func (b *BleveMemoryIndex) Search(
 		return SearchResultSet{}, nil
 	}
 
-	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req, b.gram))
+	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req, b.gram, b.multilingual))
 	searchRequest.Size = len(b.documents)
 	searchRequest.Explain = req.Explain
 	result, err := b.index.SearchInContext(ctx, searchRequest)
@@ -180,24 +196,41 @@ func (b *BleveMemoryIndex) Stats(context.Context) (IndexStats, error) {
 	}, nil
 }
 
-func bleveSearchQuery(req SearchRequest, gram bool) blevequery.Query {
+func bleveSearchQuery(req SearchRequest, gram bool, multilingual bool) blevequery.Query {
 	weights := req.Weights.orDefault()
-	fields := []*blevequery.MatchQuery{
-		fieldMatch("title", req.Query, weights.Title),
-		fieldMatch("headings", req.Query, weights.Headings),
-		fieldMatch("anchors", req.Query, weights.Anchors),
-		fieldMatch("body", req.Query, weights.Body),
-		fieldMatch("url", req.Query, weights.URL),
+	// Interpret the query with the analyzers that serve its script (documents
+	// were routed to a per-language analyzer at index time). Each candidate
+	// contributes its own field matches; a document in language L matches only
+	// the clauses analyzed the way its tokens were indexed. An index that
+	// predates the per-language mappings can resolve none of these analyzers, so
+	// there the query keeps the single default-analyzer clause set (empty name).
+	analyzers := []string{""}
+	if multilingual {
+		analyzers = queryAnalyzers(req.Query)
 	}
+	primary := analyzers[0]
 	main := bleve.NewDisjunctionQuery()
-	for _, field := range fields {
-		if req.Fuzzy {
-			// Zero-result recovery: tolerate one edit per term so slightly
-			// misspelled queries still reach close matches.
-			field.SetFuzziness(1)
+	for _, analyzer := range analyzers {
+		for _, field := range textSearchFields() {
+			match := fieldMatchWithAnalyzer(
+				field,
+				req.Query,
+				textFieldWeight(field, weights),
+				analyzer,
+			)
+			if req.Fuzzy {
+				// Zero-result recovery: tolerate one edit per term so slightly
+				// misspelled queries still reach close matches.
+				match.SetFuzziness(1)
+			}
+			main.AddQuery(match)
 		}
-		main.AddQuery(field)
 	}
+	urlMatch := fieldMatch("url", req.Query, weights.URL)
+	if req.Fuzzy {
+		urlMatch.SetFuzziness(1)
+	}
+	main.AddQuery(urlMatch)
 	if gram && req.Fuzzy {
 		// Language-agnostic trigram recall, restricted to the zero-result
 		// recovery path. Matching a word's character trigrams with AND semantics
@@ -218,7 +251,7 @@ func bleveSearchQuery(req SearchRequest, gram bool) blevequery.Query {
 			gramMatch("body"+gramFieldSuffix, req.Query, weights.Body*gramWeightFactor),
 		)
 	}
-	phrases := phraseBoosts(req.Phrases, weights)
+	phrases := phraseBoosts(req.Phrases, weights, primary)
 	if len(req.ExcludeTerms) == 0 && len(phrases) == 0 {
 		return main
 	}
@@ -231,19 +264,39 @@ func bleveSearchQuery(req SearchRequest, gram bool) blevequery.Query {
 	for _, term := range req.ExcludeTerms {
 		term = strings.TrimSpace(term)
 		if term != "" {
-			query.AddMustNot(fieldMatch("body", term, 1))
-			query.AddMustNot(fieldMatch("title", term, 1))
+			query.AddMustNot(fieldMatchWithAnalyzer("body", term, 1, primary))
+			query.AddMustNot(fieldMatchWithAnalyzer("title", term, 1, primary))
 		}
 	}
 
 	return query
 }
 
+// textSearchFields are the fields analyzed with a per-language stemmer (the url
+// field keeps its own punctuation splitter).
+func textSearchFields() []string {
+	return []string{"title", "headings", "anchors", "body"}
+}
+
+// textFieldWeight is the ranking weight for one stemmed text field.
+func textFieldWeight(field string, weights RankingWeights) float64 {
+	switch field {
+	case "title":
+		return weights.Title
+	case "headings":
+		return weights.Headings
+	case "anchors":
+		return weights.Anchors
+	default:
+		return weights.Body
+	}
+}
+
 // phraseBoosts turns each quoted phrase into an optional, weighted phrase match
-// across the text fields. Added as SHOULD clauses, they lift documents where the
-// words appear adjacently without excluding the term-only matches the main
-// disjunction already covers.
-func phraseBoosts(phrases []string, weights RankingWeights) []blevequery.Query {
+// across the text fields, analyzed with the query's primary analyzer. Added as
+// SHOULD clauses, they lift documents where the words appear adjacently without
+// excluding the term-only matches the main disjunction already covers.
+func phraseBoosts(phrases []string, weights RankingWeights, analyzer string) []blevequery.Query {
 	boosts := make([]blevequery.Query, 0, len(phrases))
 	for _, phrase := range phrases {
 		phrase = strings.TrimSpace(phrase)
@@ -251,9 +304,9 @@ func phraseBoosts(phrases []string, weights RankingWeights) []blevequery.Query {
 			continue
 		}
 		boosts = append(boosts, bleve.NewDisjunctionQuery(
-			fieldPhrase("title", phrase, weights.Title),
-			fieldPhrase("headings", phrase, weights.Headings),
-			fieldPhrase("body", phrase, weights.Body),
+			fieldPhrase("title", phrase, weights.Title, analyzer),
+			fieldPhrase("headings", phrase, weights.Headings, analyzer),
+			fieldPhrase("body", phrase, weights.Body, analyzer),
 		))
 	}
 
@@ -264,6 +317,24 @@ func fieldMatch(field string, text string, boost float64) *blevequery.MatchQuery
 	query := bleve.NewMatchQuery(text)
 	query.SetField(field)
 	query.SetBoost(boost)
+
+	return query
+}
+
+// fieldMatchWithAnalyzer is a field match whose query text is analyzed with an
+// explicit analyzer, so the query is stemmed the same way the target
+// document's language was at index time. An empty analyzer leaves the field's
+// own mapping analyzer in effect (the legacy pre-multilingual behavior).
+func fieldMatchWithAnalyzer(
+	field string,
+	text string,
+	boost float64,
+	analyzer string,
+) *blevequery.MatchQuery {
+	query := fieldMatch(field, text, boost)
+	if analyzer != "" {
+		query.Analyzer = analyzer
+	}
 
 	return query
 }
@@ -285,10 +356,18 @@ func gramMatch(field string, text string, boost float64) *blevequery.MatchQuery 
 	return query
 }
 
-func fieldPhrase(field string, text string, boost float64) *blevequery.MatchPhraseQuery {
+func fieldPhrase(
+	field string,
+	text string,
+	boost float64,
+	analyzer string,
+) *blevequery.MatchPhraseQuery {
 	query := bleve.NewMatchPhraseQuery(text)
 	query.SetField(field)
 	query.SetBoost(boost)
+	if analyzer != "" {
+		query.Analyzer = analyzer
+	}
 
 	return query
 }
@@ -302,7 +381,14 @@ func bleveDocumentFromStore(doc documentstore.Document) bleveDocument {
 		Anchors:  anchorTexts(doc.Inlinks),
 		Language: strings.ToLower(doc.Language),
 		Host:     documentHost(doc),
+		Analyzer: detectDocumentAnalyzer(analyzerDetectionText(doc), doc.Language),
 	}
+}
+
+// analyzerDetectionText assembles the text language detection runs on: the
+// title and extracted body carry the most representative language signal.
+func analyzerDetectionText(doc documentstore.Document) string {
+	return strings.TrimSpace(doc.Title + " " + doc.ExtractedText)
 }
 
 func searchResultFromDocument(

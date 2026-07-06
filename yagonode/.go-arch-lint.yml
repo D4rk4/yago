@@ -175,6 +175,8 @@ vendors:
       - github.com/blevesearch/bleve/v2
       - github.com/blevesearch/bleve/v2/**
       - github.com/blevesearch/bleve_index_api
+  whatlanggo:
+    in: github.com/abadojack/whatlanggo
   prometheus:
     in:
       - github.com/prometheus/client_golang/prometheus
@@ -462,6 +464,7 @@ deps:
     canUse:
       - bleve
       - xxhash
+      - whatlanggo
   searchlocal:
     mayDependOn:
       - searchlocal
