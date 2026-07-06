@@ -98,6 +98,8 @@ components:
     in: internal/documentsearch/**
   searchcore:
     in: internal/searchcore/**
+  searcheval:
+    in: internal/searcheval/**
   searchindex:
     in: internal/searchindex/**
   searchlocal:
@@ -457,6 +459,9 @@ deps:
   searchcore:
     mayDependOn:
       - searchcore
+  searcheval:
+    mayDependOn:
+      - searchcore
   searchindex:
     mayDependOn:
       - searchindex
@@ -469,6 +474,7 @@ deps:
     mayDependOn:
       - searchlocal
       - searchcore
+      - searcheval
       - searchindex
       - documentstore
       - hostrank
