@@ -17,6 +17,7 @@ import (
 type fakeDocumentDirectory struct {
 	documents map[string]documentstore.Document
 	err       error
+	loads     int
 }
 
 func newFakeDocumentDirectory(docs ...documentstore.Document) *fakeDocumentDirectory {
@@ -32,6 +33,7 @@ func (d *fakeDocumentDirectory) Document(
 	_ context.Context,
 	normalizedURL string,
 ) (documentstore.Document, bool, error) {
+	d.loads++
 	if d.err != nil {
 		return documentstore.Document{}, false, d.err
 	}

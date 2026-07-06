@@ -247,11 +247,33 @@ func (b *BleveDiskIndex) searchHits(
 		return SearchResultSet{}, nil, fmt.Errorf("search documents: %w", err)
 	}
 
+	set, orphans, err := b.collectHits(ctx, req, result)
+	if err != nil {
+		return SearchResultSet{}, nil, err
+	}
+
+	return set, orphans, nil
+}
+
+// collectHits hydrates the bleve hits into results. Hydrating a hit is a
+// vault read plus a zstd+JSON decode of the full page, so hits that can
+// neither reach the page nor change a count are never loaded: without
+// post-filters or facets the loop stops at a full page and the total comes
+// from bleve itself (PERF-03).
+func (b *BleveDiskIndex) collectHits(
+	ctx context.Context,
+	req SearchRequest,
+	result *bleve.SearchResult,
+) (SearchResultSet, []string, error) {
 	results := make([]SearchResult, 0, min(req.MaxResults, len(result.Hits)))
 	facets := newFacetCollector(req.WithFacets)
+	scanAll := req.WithFacets || hasPostFilters(req)
 	total := 0
 	var orphans []string
 	for _, hit := range result.Hits {
+		if !scanAll && len(results) >= req.MaxResults {
+			break
+		}
 		doc, found, err := b.documents.Document(ctx, hit.ID)
 		if err != nil {
 			return SearchResultSet{}, nil, fmt.Errorf("load search document: %w", err)
@@ -273,8 +295,27 @@ func (b *BleveDiskIndex) searchHits(
 			)
 		}
 	}
+	if !scanAll {
+		total = max(bleveDocumentCount(result.Total)-len(orphans), len(results))
+	}
 
 	return SearchResultSet{Results: results, Total: total, Facets: facets.groups()}, orphans, nil
+}
+
+// hasPostFilters reports whether the request carries a constraint only the
+// stored document can answer, forcing the hit loop to hydrate past a full
+// page for honest totals.
+func hasPostFilters(req SearchRequest) bool {
+	return req.Language != "" ||
+		len(req.IncludeDomain) > 0 ||
+		len(req.ExcludeDomain) > 0 ||
+		!req.Since.IsZero() ||
+		!req.Until.IsZero() ||
+		!req.MinDate.IsZero() ||
+		!req.MaxDate.IsZero() ||
+		req.Author != "" ||
+		req.Near ||
+		req.ContentDomain != ""
 }
 
 func (b *BleveDiskIndex) Stats(ctx context.Context) (IndexStats, error) {

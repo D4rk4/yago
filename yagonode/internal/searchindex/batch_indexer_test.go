@@ -3,6 +3,7 @@ package searchindex
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
@@ -121,5 +122,54 @@ func TestCachedIndexBatchDelegatesAndFallsBack(t *testing.T) {
 	perDoc.fail = true
 	if err := cached.IndexBatch(context.Background(), docs); err == nil {
 		t.Fatal("per-document failure must propagate")
+	}
+}
+
+// TestSearchStopsHydratingAtFullPageWithoutFilters pins PERF-03: a filter-less
+// facet-less query loads exactly one page of documents from the store, and the
+// total comes from bleve rather than a full hit scan.
+func TestSearchStopsHydratingAtFullPageWithoutFilters(t *testing.T) {
+	docs := make([]documentstore.Document, 0, 12)
+	for i := range 12 {
+		docs = append(docs, batchDoc(
+			fmt.Sprintf("https://host%02d.example/page", i),
+			"shared topic",
+		))
+	}
+	directory := newFakeDocumentDirectory(docs...)
+	index, err := NewBleveDiskIndex(t.Context(), t.TempDir(), directory, nil)
+	if err != nil {
+		t.Fatalf("NewBleveDiskIndex: %v", err)
+	}
+	defer func() { _ = index.Close() }()
+	if err := index.IndexBatch(t.Context(), docs); err != nil {
+		t.Fatalf("IndexBatch: %v", err)
+	}
+
+	directory.loads = 0
+	set, err := index.Search(t.Context(), SearchRequest{Query: "shared", MaxResults: 3})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(set.Results) != 3 || set.Total != 12 {
+		t.Fatalf("results=%d total=%d, want 3 rows over an honest bleve total of 12",
+			len(set.Results), set.Total)
+	}
+	if directory.loads != 3 {
+		t.Fatalf("hydrated %d documents, want exactly the page (PERF-03)", directory.loads)
+	}
+
+	directory.loads = 0
+	filtered, err := index.Search(t.Context(), SearchRequest{
+		Query: "shared", MaxResults: 3, Language: "ru",
+	})
+	if err != nil {
+		t.Fatalf("filtered Search: %v", err)
+	}
+	if directory.loads <= 3 {
+		t.Fatalf("filtered query hydrated %d documents, must scan past the page", directory.loads)
+	}
+	if filtered.Total != 0 {
+		t.Fatalf("filtered total = %d, want 0 (no Russian docs)", filtered.Total)
 	}
 }
