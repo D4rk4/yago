@@ -22,18 +22,20 @@ const (
 )
 
 // DiversifyResults drops near-duplicate results (SimHash over title and
-// snippet) and defers host-crowding overflow — hits beyond the per-host cap
-// move behind other hosts in stable order, they are not dropped. Crowding is
+// snippet), defers host-crowding overflow — hits beyond the per-host cap
+// move behind other hosts in stable order, they are not dropped — and then
+// reorders the visible window with Maximal Marginal Relevance so texts that
+// repeat an already-chosen result yield to novel ones. Crowding and MMR are
 // skipped for site: queries (one host is the point) and for /date ordering
-// (deferral would break the chronology); deduplication always applies. Runs
-// before the paging window is cut so pages stay stable.
+// (reordering would break the chronology); deduplication always applies.
+// Runs before the paging window is cut so pages stay stable.
 func DiversifyResults(results []Result, req Request) []Result {
 	deduped := dropNearDuplicates(results)
 	if req.SiteHost != "" || req.SortByDate {
 		return deduped
 	}
 
-	return deferCrowdedHosts(deduped)
+	return rerankMarginalRelevance(deferCrowdedHosts(deduped))
 }
 
 func dropNearDuplicates(results []Result) []Result {

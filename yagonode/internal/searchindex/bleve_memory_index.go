@@ -310,7 +310,7 @@ func searchResultFromDocument(
 		DocumentID:    documentID,
 		Title:         documentTitle(doc),
 		URL:           documentURL(doc),
-		Snippet:       snippet(doc.ExtractedText, documentTitle(doc)),
+		Snippet:       queryBiasedSnippet(doc.ExtractedText, req.Terms, documentTitle(doc)),
 		RawContent:    rawContent,
 		Score:         score,
 		Explanation:   explanation,
