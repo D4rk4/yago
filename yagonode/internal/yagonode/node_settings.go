@@ -103,6 +103,12 @@ func runtimeSettingDefinitions() []settingDefinition {
 	}
 }
 
+// allRuntimeSettingDefinitions is the console's full editable catalog: the
+// live-appliable core plus the extended environment settings.
+func allRuntimeSettingDefinitions() []settingDefinition {
+	return append(runtimeSettingDefinitions(), extendedSettingDefinitions()...)
+}
+
 func boolSettingOptions() []settingOption {
 	return []settingOption{
 		{value: settingBoolTrue, label: "Enabled"},
@@ -148,7 +154,7 @@ func applyRuntimeSettingOverrides(config nodeConfig, overrides map[string]string
 }
 
 func indexSettingDefinitions() map[string]settingDefinition {
-	definitions := runtimeSettingDefinitions()
+	definitions := allRuntimeSettingDefinitions()
 	byKey := make(map[string]settingDefinition, len(definitions))
 	for _, def := range definitions {
 		byKey[def.key] = def

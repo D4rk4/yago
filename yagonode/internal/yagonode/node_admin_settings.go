@@ -74,7 +74,7 @@ func newSettingsSource(
 ) *settingsSource {
 	return &settingsSource{
 		store:       store,
-		definitions: runtimeSettingDefinitions(),
+		definitions: allRuntimeSettingDefinitions(),
 		envConfig:   envConfig,
 		toggles:     toggles,
 		recorder:    recorder,
