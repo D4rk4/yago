@@ -45,3 +45,9 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0024](0024-local-host-block-rank-signal.md) | Local host block-rank as an opt-in ranking signal | Accepted |
 | [0025](0025-sharded-compressed-vault-and-index.md) | Shard the vault and search index into bounded compressed files | Accepted |
 | [0026](0026-per-language-morphology-and-analyzer-routing.md) | Route documents to per-language analyzers for multilingual morphology | Accepted |
+| [0027](0027-swarm-morphological-query-expansion.md) | Expand single-word swarm queries into corpus-observed inflections | Accepted |
+| [0028](0028-local-morphology-followups-disposition.md) | Close the local-morphology and partial-word follow-ups as subsumed | Accepted |
+| [0029](0029-document-expansion-anchor-text-vs-doc2query.md) | Deliver document expansion via inbound anchor text; defer model-based doc2query | Accepted |
+| [0030](0030-optional-cpu-dense-retrieval-side.md) | Approve an optional, default-off CPU dense retrieval side, gated on the eval harness | Accepted |
+| [0031](0031-learned-sparse-rwi-no-go.md) | Do not move the RWI to learned-sparse (SPLADE) weights | Accepted |
+| [0032](0032-private-query-search-no-go.md) | Do not adopt Tiptoe-style private search; keep it behind the dense side | Accepted |
