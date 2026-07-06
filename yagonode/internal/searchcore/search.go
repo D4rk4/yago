@@ -1,6 +1,9 @@
 package searchcore
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type Source string
 
@@ -43,7 +46,10 @@ type Request struct {
 	// the zero-result recovery retry sets it, remote fan-out ignores it.
 	Fuzzy bool
 	// WithFacets asks the local index for facet counts over every match.
-	WithFacets       bool
+	WithFacets bool
+	// MinDate and MaxDate bound results by document date when non-zero.
+	MinDate          time.Time
+	MaxDate          time.Time
 	Offset           int
 	ContentDomain    ContentDomain
 	Language         string

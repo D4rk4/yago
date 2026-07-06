@@ -165,6 +165,7 @@ func sessionKey(req searchcore.Request) string {
 	fmt.Fprintf(&key, "%s|%s|%s|%s|%s|", req.SiteHost, req.InURL, req.TLD, req.FileType, req.Author)
 	fmt.Fprintf(&key, "%s|%s|%s|", req.URLMaskFilter, req.PreferMaskFilter, req.Navigation)
 	fmt.Fprintf(&key, "%v|%v|%v|%v|", req.SortByDate, req.Near, req.Fuzzy, req.AllowWebFallback)
+	fmt.Fprintf(&key, "%d|%d|", req.MinDate.Unix(), req.MaxDate.Unix())
 	fmt.Fprintf(&key, "%s|%s|%s",
 		strings.Join(req.Terms, " "),
 		strings.Join(req.ExcludedTerms, " "),

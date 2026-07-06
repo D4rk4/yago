@@ -45,6 +45,7 @@ type SearchRequest struct {
 	MaxResults               *int           `json:"max_results,omitempty"`
 	Topic                    string         `json:"topic,omitempty"`
 	TimeRange                string         `json:"time_range,omitempty"`
+	Days                     *int           `json:"days,omitempty"`
 	StartDate                string         `json:"start_date,omitempty"`
 	EndDate                  string         `json:"end_date,omitempty"`
 	IncludeAnswer            inclusionMode  `json:"include_answer,omitempty"`
@@ -232,8 +233,19 @@ func (e searchEndpoint) searchResponse(
 	if err != nil {
 		return SearchResponse{}, fmt.Errorf("search failed: %w", err)
 	}
+	dated := resp.Results
+	if !coreReq.MinDate.IsZero() || !coreReq.MaxDate.IsZero() {
+		// Remote and web results bypass the local index filter; hold them to
+		// the same document-date bounds.
+		dated = make([]searchcore.Result, 0, len(resp.Results))
+		for _, result := range resp.Results {
+			if resultWithinBounds(result.Date, coreReq.MinDate, coreReq.MaxDate) {
+				dated = append(dated, result)
+			}
+		}
+	}
 
-	results, images, err := e.responseResults(ctx, req, coreReq, resp.Results)
+	results, images, err := e.responseResults(ctx, req, coreReq, dated)
 	if err != nil {
 		return SearchResponse{}, err
 	}
@@ -268,6 +280,7 @@ func coreRequest(req SearchRequest) (searchcore.Request, error) {
 		return searchcore.Request{}, err
 	}
 	parsed := searchcore.ParseTextQuery(query)
+	minDate, maxDate := requestTimeBounds(req)
 
 	coreReq, _ := searchcore.NormalizePublicRequest(searchcore.Request{
 		Query:         query,
@@ -285,6 +298,8 @@ func coreRequest(req SearchRequest) (searchcore.Request, error) {
 		Verify:        searchcore.VerifyFalse,
 		SortByDate:    parsed.SortByDate,
 		Near:          parsed.Near,
+		MinDate:       minDate,
+		MaxDate:       maxDate,
 	}, maxResultsCap)
 	if limit == 0 {
 		coreReq.Limit = 0
@@ -318,6 +333,9 @@ func sourceForDepth(depth string) (searchcore.Source, error) {
 func validateRequestOptions(req SearchRequest) error {
 	if err := validateTopic(req.Topic); err != nil {
 		return err
+	}
+	if req.Days != nil && *req.Days < 0 {
+		return badRequest("days must not be negative")
 	}
 	if err := validateTimeRange(req.TimeRange); err != nil {
 		return err

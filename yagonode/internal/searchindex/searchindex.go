@@ -42,6 +42,9 @@ type SearchRequest struct {
 	// ContentDomain narrows results to a media vertical (image/audio/video/app);
 	// empty, "text", and "all" accept every document.
 	ContentDomain string
+	// MinDate and MaxDate bound results by document date when non-zero.
+	MinDate time.Time
+	MaxDate time.Time
 }
 
 type SearchResultSet struct {

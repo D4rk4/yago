@@ -103,6 +103,8 @@ func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRe
 		Near:          req.Near,
 		WithFacets:    req.WithFacets,
 		ContentDomain: string(req.ContentDomain),
+		MinDate:       req.MinDate,
+		MaxDate:       req.MaxDate,
 	}
 }
 

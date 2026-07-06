@@ -358,6 +358,29 @@ func allowsDocument(doc documentstore.Document, req SearchRequest) bool {
 	if !allowsContentDomain(doc, req.ContentDomain) {
 		return false
 	}
+	if !allowsDocumentDate(doc, req) {
+		return false
+	}
+
+	return true
+}
+
+// allowsDocumentDate applies the optional document-date bounds; when a bound
+// is set, undated documents do not qualify.
+func allowsDocumentDate(doc documentstore.Document, req SearchRequest) bool {
+	if req.MinDate.IsZero() && req.MaxDate.IsZero() {
+		return true
+	}
+	when := documentTime(doc)
+	if when.IsZero() {
+		return false
+	}
+	if !req.MinDate.IsZero() && when.Before(req.MinDate) {
+		return false
+	}
+	if !req.MaxDate.IsZero() && when.After(req.MaxDate) {
+		return false
+	}
 
 	return true
 }
