@@ -7,6 +7,8 @@ const listFixture = `<!doctype html><html><body>
 <li><h2><a href="https://example.com/page">First Result</a></h2><p class="s">A snippet describing the first result.</p></li>
 <li><h2><a href="https://direct.example.org/">Second Result</a></h2></li>
 <li><h2><a href="/relative-only">Ad without absolute URL</a></h2></li>
+<li><h2><a href="https://www.bing.com/ck/a?!&amp;&amp;p=deadbeef&amp;u=a1aHR0cHM6Ly90YXJnZXQuZXhhbXBsZS5vcmcvcGFnZQ">Bing Tracked Result</a></h2><p>Bing snippet.</p></li>
+<li><h2><a href="https://www.bing.com/ck/a?!&amp;&amp;p=deadbeef">Bing redirect without target</a></h2></li>
 </ul>
 </body></html>`
 
@@ -31,8 +33,12 @@ func TestParseListResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if len(results) != 2 {
-		t.Fatalf("results = %d, want 2 (relative dropped): %#v", len(results), results)
+	if len(results) != 3 {
+		t.Fatalf(
+			"results = %d, want 3 (relative and undecodable redirect dropped): %#v",
+			len(results),
+			results,
+		)
 	}
 	if results[0].Title != "First Result" || results[0].URL != "https://example.com/page" {
 		t.Errorf("result[0] = %#v", results[0])
@@ -42,6 +48,10 @@ func TestParseListResults(t *testing.T) {
 	}
 	if results[1].URL != "https://direct.example.org/" || results[1].Snippet != "" {
 		t.Errorf("result[1] = %#v", results[1])
+	}
+	if results[2].URL != "https://target.example.org/page" ||
+		results[2].Title != "Bing Tracked Result" {
+		t.Errorf("bing redirect not decoded: %#v", results[2])
 	}
 }
 

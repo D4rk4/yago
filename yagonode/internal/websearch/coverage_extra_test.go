@@ -118,7 +118,7 @@ func TestDDGSProviderFetchAppliesTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if len(results) != 2 {
+	if len(results) != 3 {
 		t.Fatalf("results = %#v", results)
 	}
 }

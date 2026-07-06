@@ -57,6 +57,7 @@ func (s *FallbackSearcher) Search(
 
 		return resp, nil
 	}
+	results = verifiedWebResults(req, results)
 	resp.Results = toCoreResults(results, req.Limit)
 	resp.TotalResults = len(resp.Results)
 	if s.seeder != nil && len(results) > 0 {

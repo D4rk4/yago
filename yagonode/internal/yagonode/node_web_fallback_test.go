@@ -25,7 +25,7 @@ type fallbackRoundTrip func(*http.Request) (*http.Response, error)
 
 func (f fallbackRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-const mojeekListFixture = `<ul><li><h2><a href="https://web.example/x">Hit</a></h2><p>snippet</p></li></ul>`
+const mojeekListFixture = `<ul><li><h2><a href="https://web.example/x">Hit about gap</a></h2><p>snippet</p></li></ul>`
 
 func TestWithWebFallbackWrapsWhenConfigured(t *testing.T) {
 	client := &http.Client{

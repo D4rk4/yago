@@ -44,7 +44,7 @@ func listItemResult(item *html.Node) (Result, bool) {
 		return Result{}, false
 	}
 	href, _ := elementAttr(link, "href")
-	target := absoluteURL(href)
+	target := decodeBingRedirect(absoluteURL(href))
 	if target == "" {
 		return Result{}, false
 	}

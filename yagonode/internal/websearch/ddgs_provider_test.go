@@ -45,7 +45,7 @@ func TestDDGSProviderReturnsResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if len(results) != 2 || results[0].URL != "https://example.com/page" {
+	if len(results) != 3 || results[0].URL != "https://example.com/page" {
 		t.Fatalf("results = %#v", results)
 	}
 }
@@ -88,7 +88,7 @@ func TestDDGSProviderAutoFallsBackToBing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if len(results) != 2 {
+	if len(results) != 3 {
 		t.Fatalf("results = %#v", results)
 	}
 }

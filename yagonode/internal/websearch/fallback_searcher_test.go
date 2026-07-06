@@ -86,8 +86,8 @@ func TestFallbackSkippedWhenPrimaryHasResults(t *testing.T) {
 func TestFallbackRunsOnMiss(t *testing.T) {
 	primary := &stubSearcher{}
 	provider := &stubProvider{results: []Result{
-		{Title: "web one", URL: "https://a.example.com/x", Snippet: "s1"},
-		{Title: "web two", URL: "https://b.example.com/y", Snippet: "s2"},
+		{Title: "web one gap", URL: "https://a.example.com/x", Snippet: "s1"},
+		{Title: "web two", URL: "https://b.example.com/y", Snippet: "the gap explained"},
 	}}
 	searcher := NewFallbackSearcher(primary, provider, enabled)
 
@@ -190,8 +190,8 @@ func (s *stubSeeder) Seed(_ context.Context, urls []string) {
 func TestFallbackSeedsProviderURLs(t *testing.T) {
 	primary := &stubSearcher{}
 	provider := &stubProvider{results: []Result{
-		{URL: "https://a.example/x"},
-		{URL: "https://b.example/y"},
+		{URL: "https://a.example/gap-intro"},
+		{URL: "https://b.example/mind-the-gap"},
 	}}
 	seeder := &stubSeeder{}
 	searcher := NewFallbackSearcher(primary, provider, enabled, WithSeeder(seeder))
