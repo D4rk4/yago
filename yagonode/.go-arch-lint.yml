@@ -10,6 +10,8 @@ components:
     in: internal/vault/**
   boltvault:
     in: internal/boltvault/**
+  shardvault:
+    in: internal/shardvault/**
   memvault:
     in: internal/memvault/**
   vaulttest:
@@ -162,6 +164,10 @@ vendors:
       - github.com/D4rk4/yago/yagoegress/**
   bbolt:
     in: go.etcd.io/bbolt
+  xxhash:
+    in: github.com/cespare/xxhash/v2
+  klauspost-compress:
+    in: github.com/klauspost/compress/**
   bleve:
     in:
       - github.com/blevesearch/bleve/v2
@@ -200,6 +206,16 @@ deps:
       - vaulttest
     canUse:
       - bbolt
+  shardvault:
+    deepScan: false
+    mayDependOn:
+      - shardvault
+      - vault
+      - vaulttest
+    canUse:
+      - bbolt
+      - xxhash
+      - klauspost-compress
   memvault:
     mayDependOn:
       - memvault
@@ -615,6 +631,7 @@ deps:
       - faviconproxy
       - searchsession
       - crawlformats
+      - shardvault
       - peermessage
       - peerprofile
       - seedlist

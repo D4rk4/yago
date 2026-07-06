@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/D4rk4/yago/yagonode/internal/boltvault"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
+	"github.com/D4rk4/yago/yagonode/internal/shardvault"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -61,7 +61,7 @@ var userAgent = "yago/" + buildVersion +
 var (
 	exitProcess         = os.Exit
 	runNode             = run
-	openRuntimeVault    = boltvault.Open
+	openRuntimeVault    = shardvault.OpenAt
 	assembleRuntimeNode = assembleNode
 	serveRuntimeNode    = serve
 	listenAndServeHTTP  = func(server *http.Server) error { return server.ListenAndServe() }

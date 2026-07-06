@@ -8,6 +8,8 @@ require (
 	github.com/D4rk4/yago/yagomodel v0.0.0
 	github.com/D4rk4/yago/yagoproto v0.0.0
 	github.com/blevesearch/bleve/v2 v2.6.0
+	github.com/cespare/xxhash/v2 v2.3.0
+	github.com/klauspost/compress v1.18.6
 	github.com/prometheus/client_golang v1.20.5
 	go.etcd.io/bbolt v1.4.3
 	golang.org/x/crypto v0.53.0
@@ -37,10 +39,8 @@ require (
 	github.com/blevesearch/zapx/v15 v15.4.3 // indirect
 	github.com/blevesearch/zapx/v16 v16.3.4 // indirect
 	github.com/blevesearch/zapx/v17 v17.1.2 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
