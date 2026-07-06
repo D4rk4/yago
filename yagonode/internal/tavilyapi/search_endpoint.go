@@ -252,7 +252,7 @@ func (e searchEndpoint) searchResponse(
 
 	return SearchResponse{
 		Query:          coreReq.Query,
-		Answer:         responseAnswer(req),
+		Answer:         responseAnswer(req, results),
 		Images:         responseImages(req, images),
 		Results:        results,
 		ResponseTime:   e.now().Sub(start).Seconds(),
@@ -603,11 +603,12 @@ func snippet(text string) string {
 	return string(runes[:snippetRuneCap])
 }
 
-func responseAnswer(req SearchRequest) *string {
+// responseAnswer synthesizes the extractive answer from the served results.
+func responseAnswer(req SearchRequest, results []SearchResult) *string {
 	if !req.IncludeAnswer.Enabled() {
 		return nil
 	}
-	answer := ""
+	answer := extractiveAnswer(req.IncludeAnswer, req.Query, results)
 
 	return &answer
 }

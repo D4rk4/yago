@@ -685,7 +685,7 @@ func TestSnippetAndModeHelpers(t *testing.T) {
 }
 
 func TestResponseOptionHelpers(t *testing.T) {
-	if responseAnswer(SearchRequest{}) != nil ||
+	if responseAnswer(SearchRequest{}, nil) != nil ||
 		responseUsage(SearchRequest{}) != nil ||
 		responseAutoParameters(SearchRequest{}, searchcore.Request{}) != nil {
 		t.Fatal("disabled response option mismatch")
