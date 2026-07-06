@@ -9,14 +9,15 @@ import (
 
 const textTitleRuneCap = 80
 
-// parseTextFamily handles the plain-text members of the text family today:
-// txt and tex index as raw text, csv as its cell text. RTF and MSG carry
-// markup/container structure a plain read would garble, so they report
-// unparsable until their extractors land.
+// parseTextFamily handles the text family: txt and tex index as raw text, csv
+// as its cell text, RTF through its control-word walker, and Outlook MSG
+// through best-effort readable-run extraction.
 func parseTextFamily(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
 	switch urlExtension(rawURL) {
-	case "rtf", "msg":
-		return pageparse.ParsedPage{URL: rawURL}, false
+	case "rtf":
+		return parseRTF(rawURL, body)
+	case "msg":
+		return parseMSG(rawURL, body)
 	}
 	text := strings.TrimSpace(strings.ToValidUTF8(string(body), ""))
 	if text == "" {

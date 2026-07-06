@@ -145,10 +145,10 @@ func TestParseTextFamilyPlainMembers(t *testing.T) {
 		t.Fatalf("txt parse = %v %+v", parsed, page)
 	}
 
-	if _, parsed := Parse(
+	if rtfPage, parsed := Parse(
 		"https://a.example/doc.rtf", "application/rtf", []byte(`{\rtf1 x}`), toggles,
-	); parsed {
-		t.Fatal("rtf must stay unparsed until its extractor lands")
+	); !parsed || rtfPage.Text != "x" {
+		t.Fatalf("rtf parse = %v %+v", parsed, rtfPage)
 	}
 	if _, parsed := Parse(
 		"https://a.example/empty.txt", "text/plain", []byte("   "), toggles,
