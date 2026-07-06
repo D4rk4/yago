@@ -230,6 +230,7 @@ func mountNodePublicSearch(
 	yacysearch.Mount(mux, search, suggestSource, assembly.linksNewTab)
 	cachedpage.Mount(mux, assembly.storage.documentDirectory)
 	faviconproxy.Mount(mux, assembly.client)
+	faviconproxy.MountImages(mux, assembly.client)
 	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
 	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access, assembly.extractFetcher)
 	mux.Handle(

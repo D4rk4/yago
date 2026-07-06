@@ -76,6 +76,8 @@ type Result struct {
 	Date          string
 	ContentDomain ContentDomain
 	Language      string
+	// Images carries the page's extracted images for the image vertical.
+	Images []ResultImage
 }
 
 type PartialFailure struct {
@@ -109,6 +111,12 @@ type FacetGroup struct {
 type FacetTerm struct {
 	Term  string
 	Count int
+}
+
+// ResultImage is one extracted page image surfaced by the image vertical.
+type ResultImage struct {
+	URL string
+	Alt string
 }
 
 type Searcher interface {

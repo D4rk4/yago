@@ -315,6 +315,7 @@ func searchResultFromDocument(
 		Score:         score,
 		Explanation:   explanation,
 		PublishedDate: documentTime(doc),
+		Images:        resultImages(doc, req),
 	}
 }
 
@@ -352,6 +353,9 @@ func allowsDocument(doc documentstore.Document, req SearchRequest) bool {
 		return false
 	}
 	if req.Near && !termsNear(doc.ExtractedText, req.Terms) {
+		return false
+	}
+	if !allowsContentDomain(doc, req.ContentDomain) {
 		return false
 	}
 
@@ -430,6 +434,23 @@ func documentTime(doc documentstore.Document) time.Time {
 	}
 
 	return doc.IndexedAt
+}
+
+// resultImages surfaces the document's extracted images for the image vertical;
+// other domains carry none to keep result payloads lean.
+func resultImages(doc documentstore.Document, req SearchRequest) []ResultImage {
+	if !strings.EqualFold(req.ContentDomain, "image") {
+		return nil
+	}
+	images := make([]ResultImage, 0, len(doc.Images))
+	for _, image := range doc.Images {
+		if image.URL == "" {
+			continue
+		}
+		images = append(images, ResultImage{URL: image.URL, Alt: image.AltText})
+	}
+
+	return images
 }
 
 func anchorTexts(anchors []documentstore.AnchorText) []string {

@@ -47,6 +47,18 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   .prov-local { border-color: #a7f0ba; background: #defbe6; color: #0e6027; }
   .prov-peer { border-color: #bae6ff; background: #e5f6ff; color: #003a6d; }
   .prov-web { border-color: #ffd6e8; background: #fff0f7; color: #740937; }
+  .tabs { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; }
+  .tabs a, .tabs span[aria-current] { display: inline-block; padding: 0.35rem 0.7rem; color: #0f62fe; text-decoration: none; }
+  .tabs span[aria-current] { color: #161616; border-bottom: 2px solid #d81c2f; }
+  .imggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 0.6rem; list-style: none; margin: 0; padding: 0; }
+  .imggrid img { width: 100%; height: 7rem; object-fit: cover; background: #f4f4f4; display: block; }
+  .imggrid figcaption { font-size: 0.7rem; color: #525252; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 30; padding: 2rem; text-align: center; }
+  .lightbox:target { display: block; }
+  .lightbox img { max-width: 90vw; max-height: 80vh; width: auto; height: auto; object-fit: contain; }
+  .lightbox a.close { position: absolute; top: 1rem; right: 1.5rem; color: #fff; font-size: 1.5rem; text-decoration: none; }
+  .lightbox .from { color: #c6c6c6; font-size: 0.85rem; margin-top: 0.6rem; }
+  .lightbox .from a { color: #78a9ff; }
   .facets { margin: 0.5rem 0 1rem; }
   .facets summary { cursor: pointer; color: #525252; font-size: 0.85rem; padding: 0.4rem 0; }
   .facets fieldset { border: 1px solid #e0e0e0; margin: 0 0 0.6rem; padding: 0.3rem 0.6rem 0.5rem; }
@@ -106,6 +118,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
       </ul>
     </details>
   </div>
+  {{if .Verticals}}<nav class="tabs" aria-label="Content verticals">{{range .Verticals}}{{if .Current}}<span aria-current="page">{{.Label}}</span>{{else}}<a href="{{.URL}}">{{.Label}}</a>{{end}}{{end}}</nav>{{end}}
   <div id="serp" tabindex="-1">
   {{if .Error}}
   <p class="meta" role="alert">{{.Error}}</p>
@@ -128,6 +141,22 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   {{end}}
   </details>
   </aside><div>{{end}}
+  {{if eq $.Dom "image"}}
+  <ul class="imggrid">
+  {{range $ri, $res := .Results}}{{range $ii, $img := $res.Images}}
+  <li><figure>
+    <a href="#img-{{$ri}}-{{$ii}}"><img src="{{$img.ProxyURL}}" alt="{{$img.Alt}}" loading="lazy"></a>
+    <figcaption>{{if $img.Alt}}{{$img.Alt}}{{else}}{{$res.Title}}{{end}}</figcaption>
+  </figure>
+  <div class="lightbox" id="img-{{$ri}}-{{$ii}}">
+    <a class="close" href="#serp" aria-label="Close">×</a>
+    <img src="{{$img.ProxyURL}}" alt="{{$img.Alt}}">
+    <p class="from">From <a href="{{$res.URL}}" rel="noreferrer nofollow">{{$res.Title}}</a></p>
+  </div>
+  </li>
+  {{end}}{{end}}
+  </ul>
+  {{else}}
   {{if .Results}}<ul class="results">{{end}}
   {{range .Results}}
   <li class="result">
@@ -140,6 +169,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   <p class="meta" role="status">Nothing found.</p>
   {{end}}
   {{if .Results}}</ul>{{end}}
+  {{end}}
   {{if .Facets}}</div></div>{{end}}
   {{end}}
   {{if or .Pagination.HasPrev .Pagination.HasNext .Pagination.Pages}}

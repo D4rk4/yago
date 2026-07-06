@@ -36,7 +36,7 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 		},
 	}}
 
-	results, err := newPortalSource(searcher).Search(context.Background(), "go", 20, 10)
+	results, err := newPortalSource(searcher).Search(context.Background(), "go", "", 20, 10)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestPortalSourceCarriesRecoverySuggestion(t *testing.T) {
 		DidYouMean:   "golang tutorial",
 	}}
 
-	results, err := newPortalSource(searcher).Search(context.Background(), "golnag", 0, 10)
+	results, err := newPortalSource(searcher).Search(context.Background(), "golnag", "", 0, 10)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -102,7 +102,9 @@ func TestPortalSourceWrapsError(t *testing.T) {
 	t.Parallel()
 
 	searcher := &stubPortalSearcher{err: errors.New("boom")}
-	if _, err := newPortalSource(searcher).Search(context.Background(), "go", 0, 10); err == nil {
+	if _, err := newPortalSource(
+		searcher,
+	).Search(context.Background(), "go", "", 0, 10); err == nil {
 		t.Fatal("expected error")
 	}
 }

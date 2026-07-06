@@ -10,7 +10,7 @@ import (
 
 type recoveredSource struct{}
 
-func (recoveredSource) Search(context.Context, string, int, int) (SearchResults, error) {
+func (recoveredSource) Search(context.Context, string, string, int, int) (SearchResults, error) {
 	return SearchResults{
 		Query:         "golnag",
 		TotalResults:  1,

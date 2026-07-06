@@ -10,7 +10,7 @@ import (
 
 type facetedSource struct{}
 
-func (facetedSource) Search(context.Context, string, int, int) (SearchResults, error) {
+func (facetedSource) Search(context.Context, string, string, int, int) (SearchResults, error) {
 	return SearchResults{
 		Query:        "go",
 		TotalResults: 1,

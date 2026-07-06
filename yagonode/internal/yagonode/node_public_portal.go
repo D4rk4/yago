@@ -42,6 +42,21 @@ func cachedCopyURL(result searchcore.Result) string {
 	return cachedpage.URLFor(result.URL)
 }
 
+// portalImages proxies the page's extracted images for the image grid, so
+// pictured hosts never see the searcher before a click.
+func portalImages(result searchcore.Result) []publicportal.ResultImage {
+	images := make([]publicportal.ResultImage, 0, len(result.Images))
+	for _, image := range result.Images {
+		images = append(images, publicportal.ResultImage{
+			ProxyURL: faviconproxy.ImageURLFor(image.URL),
+			Alt:      image.Alt,
+			PageURL:  result.URL,
+		})
+	}
+
+	return images
+}
+
 // resultFaviconURL links the result host's icon through this node's favicon
 // proxy, so origin hosts never see the searcher before a click.
 func resultFaviconURL(result searchcore.Result) string {
@@ -66,15 +81,20 @@ func resultProvenance(result searchcore.Result) string {
 
 func (s portalSource) Search(
 	ctx context.Context,
-	query string,
+	query, dom string,
 	offset, limit int,
 ) (publicportal.SearchResults, error) {
+	domain := searchcore.ContentDomainText
+	if dom != "" {
+		domain = searchcore.ContentDomain(dom)
+	}
 	response, err := s.searcher.Search(ctx, searchcore.Request{
-		Query:      query,
-		Source:     searchcore.SourceGlobal,
-		Offset:     offset,
-		Limit:      limit,
-		WithFacets: true,
+		Query:         query,
+		Source:        searchcore.SourceGlobal,
+		ContentDomain: domain,
+		Offset:        offset,
+		Limit:         limit,
+		WithFacets:    true,
 	})
 	if err != nil {
 		return publicportal.SearchResults{}, fmt.Errorf("portal search: %w", err)
@@ -112,6 +132,7 @@ func (s portalSource) Search(
 			CachedURL:   cachedCopyURL(result),
 			Provenance:  provenance,
 			FaviconURL:  resultFaviconURL(result),
+			Images:      portalImages(result),
 		})
 	}
 

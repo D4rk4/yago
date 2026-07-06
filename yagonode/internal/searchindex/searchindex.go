@@ -39,6 +39,9 @@ type SearchRequest struct {
 	Near  bool
 	// WithFacets asks for facet counts over every matching document.
 	WithFacets bool
+	// ContentDomain narrows results to a media vertical (image/audio/video/app);
+	// empty, "text", and "all" accept every document.
+	ContentDomain string
 }
 
 type SearchResultSet struct {
@@ -57,6 +60,14 @@ type SearchResult struct {
 	Score         float64
 	Explanation   string
 	PublishedDate time.Time
+	// Images carries the document's extracted images for the image vertical.
+	Images []ResultImage
+}
+
+// ResultImage is one extracted page image surfaced by the image vertical.
+type ResultImage struct {
+	URL string
+	Alt string
 }
 
 type IndexStats struct {

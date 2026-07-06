@@ -52,6 +52,15 @@ type SearchResult struct {
 	// FaviconURL points at this node's favicon proxy for the result host, so
 	// origin sites never see the searcher's browser before a click.
 	FaviconURL string
+	// Images carries the page's extracted images (proxied) for the image grid.
+	Images []ResultImage
+}
+
+// ResultImage is one image-grid cell: the proxied thumbnail and its source page.
+type ResultImage struct {
+	ProxyURL string
+	Alt      string
+	PageURL  string
 }
 
 // SearchResults is the rendered outcome of a portal query. The per-source
@@ -88,9 +97,10 @@ type FacetItem struct {
 }
 
 // SearchSource runs a portal query against the node search core, returning the
-// window of results starting at offset and holding at most limit hits.
+// window of results starting at offset and holding at most limit hits. The dom
+// parameter selects the content vertical ("", "image", "audio", "video", "app").
 type SearchSource interface {
-	Search(ctx context.Context, query string, offset, limit int) (SearchResults, error)
+	Search(ctx context.Context, query, dom string, offset, limit int) (SearchResults, error)
 }
 
 // pagination carries the prev/next navigation for a results page. The URLs are
@@ -118,6 +128,8 @@ const pagerWindow = 10
 type portalData struct {
 	Brand      string
 	Query      string
+	Dom        string
+	Verticals  []verticalTab
 	Submitted  bool
 	Error      string
 	Results    SearchResults
@@ -130,6 +142,38 @@ type portalData struct {
 	// Elapsed is the human-readable search duration ("0.42 s") shown next to
 	// the result count, so a searcher sees how fast the query ran.
 	Elapsed string
+}
+
+// verticalTab is one content-vertical link above the results.
+type verticalTab struct {
+	Label   string
+	URL     string
+	Current bool
+}
+
+// portalVerticals builds the vertical tabs for the query.
+func portalVerticals(query, dom string) []verticalTab {
+	tabs := make([]verticalTab, 0, 5)
+	for _, entry := range []struct{ label, value string }{
+		{"All", ""},
+		{"Images", "image"},
+		{"Audio", "audio"},
+		{"Video", "video"},
+		{"Apps", "app"},
+	} {
+		values := url.Values{}
+		values.Set("q", query)
+		if entry.value != "" {
+			values.Set("dom", entry.value)
+		}
+		tabs = append(tabs, verticalTab{
+			Label:   entry.label,
+			URL:     "/?" + values.Encode(),
+			Current: dom == entry.value,
+		})
+	}
+
+	return tabs
 }
 
 // portalClock feeds the query-duration display; tests substitute a scripted
@@ -164,15 +208,17 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	dom := portalDom(r.URL.Query().Get("dom"))
 	page := parsePortalPage(r.URL.Query().Get("p"))
-	data := portalData{Brand: brand, Query: query, NewTab: p.newTab}
+	data := portalData{Brand: brand, Query: query, Dom: dom, NewTab: p.newTab}
 
 	if query != "" {
 		data.RSSURL = formatURL("/yacysearch.rss", query)
 		data.JSONURL = formatURL("/yacysearch.json", query)
 		offset := (page - 1) * portalPageSize
+		data.Verticals = portalVerticals(query, dom)
 		started := portalClock()
-		results, err := p.source.Search(r.Context(), query, offset, portalPageSize)
+		results, err := p.source.Search(r.Context(), query, dom, offset, portalPageSize)
 		if err != nil {
 			slog.WarnContext(r.Context(), "public portal search failed", slog.Any("error", err))
 			data.Error = "Search is temporarily unavailable."
@@ -269,6 +315,16 @@ func portalPageURL(query string, page int) string {
 	values.Set("p", strconv.Itoa(page))
 
 	return "/?" + values.Encode()
+}
+
+// portalDom validates the requested content vertical.
+func portalDom(raw string) string {
+	switch raw {
+	case "image", "audio", "video", "app":
+		return raw
+	default:
+		return ""
+	}
 }
 
 // formatURL links a machine-readable output format for the current query; the

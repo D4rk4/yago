@@ -10,7 +10,7 @@ import (
 
 type emptySource struct{}
 
-func (emptySource) Search(context.Context, string, int, int) (SearchResults, error) {
+func (emptySource) Search(context.Context, string, string, int, int) (SearchResults, error) {
 	return SearchResults{Query: "void"}, nil
 }
 

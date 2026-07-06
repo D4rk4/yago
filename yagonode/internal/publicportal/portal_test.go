@@ -20,6 +20,7 @@ type fakeSource struct {
 func (f *fakeSource) Search(
 	_ context.Context,
 	_ string,
+	_ string,
 	offset, limit int,
 ) (SearchResults, error) {
 	f.gotOffset = offset

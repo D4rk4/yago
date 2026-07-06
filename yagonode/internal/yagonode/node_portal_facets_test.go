@@ -19,7 +19,7 @@ func TestPortalSourceRendersFacetSidebar(t *testing.T) {
 		},
 	}}
 
-	results, err := newPortalSource(searcher).Search(context.Background(), "go", 0, 10)
+	results, err := newPortalSource(searcher).Search(context.Background(), "go", "", 0, 10)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}

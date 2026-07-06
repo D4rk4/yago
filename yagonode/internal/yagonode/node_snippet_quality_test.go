@@ -30,7 +30,7 @@ func TestPortalSourceHighlightsSnippetsAndCarriesMeta(t *testing.T) {
 		}},
 	}}
 
-	results, err := newPortalSource(inner).Search(t.Context(), "golang", 0, 10)
+	results, err := newPortalSource(inner).Search(t.Context(), "golang", "", 0, 10)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}

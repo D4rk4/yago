@@ -102,7 +102,18 @@ func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRe
 		Terms:         append([]string(nil), req.Terms...),
 		Near:          req.Near,
 		WithFacets:    req.WithFacets,
+		ContentDomain: string(req.ContentDomain),
 	}
+}
+
+// coreImages converts the index image refs into the shared search vocabulary.
+func coreImages(images []searchindex.ResultImage) []searchcore.ResultImage {
+	out := make([]searchcore.ResultImage, 0, len(images))
+	for _, image := range images {
+		out = append(out, searchcore.ResultImage{URL: image.URL, Alt: image.Alt})
+	}
+
+	return out
 }
 
 // coreFacets converts the index facet groups into the shared search vocabulary.
@@ -245,6 +256,7 @@ func coreResult(
 		Date:          result.PublishedDate.Format("20060102"),
 		ContentDomain: req.ContentDomain,
 		Language:      req.Language,
+		Images:        coreImages(result.Images),
 	}
 }
 

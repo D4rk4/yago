@@ -13,6 +13,7 @@ type cachedSource struct{}
 func (cachedSource) Search(
 	context.Context,
 	string,
+	string,
 	int,
 	int,
 ) (SearchResults, error) {
