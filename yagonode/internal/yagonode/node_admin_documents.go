@@ -12,10 +12,20 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
 
-const documentBrowseLimit = 50
+const (
+	documentBrowseLimit = 50
+	// documentScanBudget bounds how many stored documents a filtered browse
+	// may decode: every visited document is a vault read plus a zstd+JSON
+	// decode of the full text, so an unbounded scan made /admin/index take
+	// tens of seconds on a large store (PERF-01).
+	documentScanBudget = 20000
+)
 
 // documentBrowseSource lists indexed documents for the admin Index browser by
 // scanning the document store and filtering by URL substring and/or domain.
+// The scan is bounded: an unfiltered browse stops as soon as the page is
+// full, and a filtered browse gives up after documentScanBudget documents,
+// marking the page as sampled instead of scanning the whole store.
 type documentBrowseSource struct {
 	stored documentstore.StoredDocuments
 }
@@ -30,16 +40,30 @@ func (s documentBrowseSource) BrowseDocuments(
 ) adminui.DocumentPage {
 	needle := strings.ToLower(strings.TrimSpace(query.URLContains))
 	domain := strings.ToLower(strings.TrimSpace(query.Domain))
+	filtered := needle != "" || domain != ""
 
 	var matches []documentstore.Document
 	matched := 0
+	scanned := 0
+	sampled := false
 	if err := s.stored.StoredDocuments(ctx, func(doc documentstore.Document) (bool, error) {
+		scanned++
+		if filtered && scanned > documentScanBudget {
+			sampled = true
+
+			return false, nil
+		}
 		if !documentMatches(doc, needle, domain) {
 			return true, nil
 		}
 		matched++
 		if len(matches) < documentBrowseLimit {
 			matches = append(matches, doc)
+		}
+		if !filtered && len(matches) >= documentBrowseLimit {
+			sampled = true
+
+			return false, nil
 		}
 
 		return true, nil
@@ -61,6 +85,7 @@ func (s documentBrowseSource) BrowseDocuments(
 		Matched:   matched,
 		Limit:     documentBrowseLimit,
 		Truncated: matched > len(summaries),
+		Sampled:   sampled,
 	}
 }
 

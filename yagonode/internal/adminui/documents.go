@@ -28,6 +28,10 @@ type DocumentPage struct {
 	Matched   int
 	Limit     int
 	Truncated bool
+	// Sampled marks a page assembled without a full store scan: the browse
+	// stopped early (unfiltered page) or hit its scan budget (filtered), so
+	// Matched counts only what was seen, not the whole store.
+	Sampled bool
 }
 
 // DocumentBrowserSource lists indexed documents matching a query, newest results

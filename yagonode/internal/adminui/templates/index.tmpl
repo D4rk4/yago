@@ -71,7 +71,7 @@
 </form>
 {{end}}
 {{if .Documents.Documents}}
-<p class="cds-muted">{{.Documents.Matched}} matching document(s){{if .Documents.Truncated}}, showing the first {{.Documents.Limit}}{{end}}.</p>
+<p class="cds-muted">{{if .Documents.Sampled}}Showing the first {{len .Documents.Documents}} document(s); the scan stops early so this page stays fast.{{else}}{{.Documents.Matched}} matching document(s){{if .Documents.Truncated}}, showing the first {{.Documents.Limit}}{{end}}.{{end}}</p>
 <div class="cds-scroll-x">
   <table class="cds-table">
     <thead><tr><th scope="col">URL</th><th scope="col">Title</th><th scope="col">Type</th><th scope="col">Lang</th><th scope="col">Indexed</th>{{if $del}}<th scope="col">Action</th>{{end}}</tr></thead>

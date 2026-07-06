@@ -12,8 +12,9 @@ import (
 )
 
 type fakeStoredDocuments struct {
-	docs []documentstore.Document
-	err  error
+	docs   []documentstore.Document
+	err    error
+	visits *int
 }
 
 func (f fakeStoredDocuments) StoredDocuments(
@@ -21,6 +22,9 @@ func (f fakeStoredDocuments) StoredDocuments(
 	visit func(documentstore.Document) (bool, error),
 ) error {
 	for _, doc := range f.docs {
+		if f.visits != nil {
+			*f.visits++
+		}
 		keep, err := visit(doc)
 		if err != nil {
 			return err
@@ -79,12 +83,40 @@ func TestBrowseDocumentsTruncatesToLimit(t *testing.T) {
 			IndexedAt:    day(1),
 		})
 	}
-	page := newDocumentBrowseSource(fakeStoredDocuments{docs: docs}).
+	visits := 0
+	page := newDocumentBrowseSource(fakeStoredDocuments{docs: docs, visits: &visits}).
 		BrowseDocuments(context.Background(), adminui.DocumentQuery{})
 
-	if !page.Truncated || page.Matched != documentBrowseLimit+5 ||
-		len(page.Documents) != documentBrowseLimit {
-		t.Fatalf("expected truncation at the browse limit: %+v", page)
+	if !page.Sampled || len(page.Documents) != documentBrowseLimit {
+		t.Fatalf("expected an early-stopped full page: %+v", page)
+	}
+	if visits != documentBrowseLimit {
+		t.Fatalf("unfiltered browse visited %d documents, want exactly %d (PERF-01)",
+			visits, documentBrowseLimit)
+	}
+}
+
+// TestBrowseDocumentsFilteredScanHitsBudget pins the PERF-01 bound: a filter
+// matching nothing must stop at the scan budget instead of decoding the whole
+// store, and the page says so.
+func TestBrowseDocumentsFilteredScanHitsBudget(t *testing.T) {
+	docs := make([]documentstore.Document, 0, documentScanBudget+10)
+	for i := 0; i < documentScanBudget+10; i++ {
+		docs = append(docs, documentstore.Document{
+			CanonicalURL: fmt.Sprintf("https://x.example/%d", i),
+			IndexedAt:    day(1),
+		})
+	}
+	visits := 0
+	page := newDocumentBrowseSource(fakeStoredDocuments{docs: docs, visits: &visits}).
+		BrowseDocuments(context.Background(), adminui.DocumentQuery{Domain: "absent.example"})
+
+	if !page.Sampled || len(page.Documents) != 0 {
+		t.Fatalf("expected a sampled empty page: %+v", page)
+	}
+	if visits != documentScanBudget+1 {
+		t.Fatalf("filtered browse visited %d documents, want the budget %d",
+			visits, documentScanBudget+1)
 	}
 }
 
