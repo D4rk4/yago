@@ -3,10 +3,15 @@ package yagonode
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagonode/internal/adminauth"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
+	"github.com/D4rk4/yago/yagonode/internal/memvault"
 )
 
 type recordingSettings struct {
@@ -114,5 +119,47 @@ func TestSetupWizardApplierSurfacesFailures(t *testing.T) {
 
 func TestConfigureSetupWizardSkipsNilSettings(t *testing.T) {
 	service := &adminauth.Service{}
-	configureSetupWizard(service, nil, nodeConfig{})
+	configureSetupWizard(service, nil, nodeConfig{}, nil)
+}
+
+// TestConfigureSetupWizardArmsMandatoryRestart drives the real setup form:
+// once the wizard applies its choices, the armed restart trigger fires and the
+// operator sees the restarting notice instead of a login redirect served by a
+// half-configured node.
+func TestConfigureSetupWizardArmsMandatoryRestart(t *testing.T) {
+	storage, err := memvault.Open(0)
+	if err != nil {
+		t.Fatalf("memvault.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = storage.Close() })
+	service, err := adminauth.New(storage, adminauth.Config{})
+	if err != nil {
+		t.Fatalf("adminauth.New: %v", err)
+	}
+	restarts := 0
+	configureSetupWizard(service, &recordingSettings{}, nodeConfig{}, func() { restarts++ })
+
+	mux := http.NewServeMux()
+	adminauth.MountHTML(mux, service)
+	form := url.Values{
+		"username": {"admin"},
+		"password": {"correct horse battery staple"},
+		"mode":     {"search"},
+	}
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		adminauth.PathSetupPage,
+		strings.NewReader(form.Encode()),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Restarting") {
+		t.Fatalf("setup = %d, want the restarting page", rec.Code)
+	}
+	if restarts != 1 {
+		t.Fatalf("restart triggered %d times, want 1", restarts)
+	}
 }

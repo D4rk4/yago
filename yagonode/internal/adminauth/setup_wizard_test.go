@@ -35,7 +35,7 @@ func TestWizardChoicesNormalizesMode(t *testing.T) {
 func doAuthRequest(
 	t *testing.T,
 	service *Service,
-	method, target string,
+	method string,
 	form url.Values,
 ) *httptest.ResponseRecorder {
 	t.Helper()
@@ -47,7 +47,7 @@ func doAuthRequest(
 	} else {
 		body = strings.NewReader("")
 	}
-	req := httptest.NewRequestWithContext(t.Context(), method, target, body)
+	req := httptest.NewRequestWithContext(t.Context(), method, PathSetupPage, body)
 	if form != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
@@ -65,7 +65,7 @@ func TestSetupPageShowsWizardWhenConfigured(t *testing.T) {
 		WebFallback:   "disabled",
 	}, func(context.Context, SetupChoices) error { return nil })
 
-	rec := doAuthRequest(t, service, http.MethodGet, PathSetupPage, nil)
+	rec := doAuthRequest(t, service, http.MethodGet, nil)
 	body := rec.Body.String()
 	for _, want := range []string{
 		"Node mode", `value="local" checked`, `value="peer"`, `value="search"`,
@@ -96,7 +96,7 @@ func TestSetupFormAppliesWizardChoices(t *testing.T) {
 		},
 	)
 
-	rec := doAuthRequest(t, service, http.MethodPost, PathSetupPage, url.Values{
+	rec := doAuthRequest(t, service, http.MethodPost, url.Values{
 		"username":       {"admin"},
 		"password":       {"correct horse battery staple"},
 		"mode":           {"search"},
@@ -120,7 +120,7 @@ func TestSetupFormSurfacesWizardFailure(t *testing.T) {
 		return errors.New("store down")
 	})
 
-	rec := doAuthRequest(t, service, http.MethodPost, PathSetupPage, url.Values{
+	rec := doAuthRequest(t, service, http.MethodPost, url.Values{
 		"username": {"admin"},
 		"password": {"correct horse battery staple"},
 	})
@@ -128,5 +128,54 @@ func TestSetupFormSurfacesWizardFailure(t *testing.T) {
 	if !strings.Contains(location, "notice=created") ||
 		!strings.Contains(location, "error=wizard") {
 		t.Fatalf("partial success location = %q", location)
+	}
+}
+
+// TestSetupFormEndsInMandatoryRestart: with a restart trigger armed, a
+// successful wizard apply renders the restarting notice and invokes the
+// trigger, while a failed apply keeps the node running.
+func TestSetupFormEndsInMandatoryRestart(t *testing.T) {
+	service := testService(t)
+	service.ConfigureSetupWizard(
+		SetupDefaults{},
+		func(context.Context, SetupChoices) error { return nil },
+	)
+	restarts := 0
+	service.ConfigureSetupRestart(func() { restarts++ })
+
+	rec := doAuthRequest(t, service, http.MethodPost, url.Values{
+		"username": {"admin"},
+		"password": {"correct horse battery staple"},
+		"mode":     {"search"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("setup = %d, want the restarting page", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"Restarting", `http-equiv="refresh"`, "/admin/login"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("restarting page missing %q", want)
+		}
+	}
+	if restarts != 1 {
+		t.Fatalf("restart triggered %d times, want 1", restarts)
+	}
+}
+
+func TestSetupFormSkipsRestartWhenWizardFails(t *testing.T) {
+	service := testService(t)
+	service.ConfigureSetupWizard(
+		SetupDefaults{},
+		func(context.Context, SetupChoices) error { return errors.New("apply failed") },
+	)
+	service.ConfigureSetupRestart(func() { t.Fatal("restart must not run on a failed apply") })
+
+	rec := doAuthRequest(t, service, http.MethodPost, url.Values{
+		"username": {"admin"},
+		"password": {"correct horse battery staple"},
+	})
+	if rec.Code != http.StatusSeeOther ||
+		!strings.Contains(rec.Header().Get("Location"), "error=wizard") {
+		t.Fatalf("setup = %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 }

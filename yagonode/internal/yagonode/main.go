@@ -69,7 +69,18 @@ var (
 )
 
 func Main() {
-	if err := runNode(); err != nil {
+	err := runNode()
+	if errors.Is(err, errRestartRequested) {
+		slog.InfoContext(
+			context.Background(),
+			"restarting to apply settings",
+			slog.Int("exitCode", restartExitCode),
+		)
+		exitProcess(restartExitCode)
+
+		return
+	}
+	if err != nil {
 		slog.ErrorContext(context.Background(), "node terminated", slog.Any("error", err))
 		exitProcess(1)
 	}
@@ -137,7 +148,10 @@ func bootNode(
 		return fmt.Errorf("configure admin auth: %w", err)
 	}
 	sources.security = newSecuritySource(authService)
-	configureSetupWizard(authService, sources.settings, config)
+	// The serve context is governed by the restart controller so the setup
+	// wizard can end in a mandatory graceful restart (its choices apply at boot).
+	ctx, restart := newRestartController(ctx)
+	configureSetupWizard(authService, sources.settings, config, restart.Trigger)
 
 	assembled, err := assembleRuntimeNode(
 		ctx,
@@ -174,7 +188,7 @@ func bootNode(
 		servers = append(servers, buildPublicServer(config, obs.endpoints, assembled, toggles))
 	}
 
-	return serveRuntimeNode(ctx, assembled, obs.eviction, servers...)
+	return restart.Wrap(serveRuntimeNode(ctx, assembled, obs.eviction, servers...))
 }
 
 // buildPublicServer builds the dedicated public search listener: the portal,

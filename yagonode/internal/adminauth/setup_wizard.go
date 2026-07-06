@@ -39,6 +39,14 @@ func (s *Service) ConfigureSetupWizard(defaults SetupDefaults, applier SetupAppl
 	s.wizardApply = applier
 }
 
+// ConfigureSetupRestart makes a node restart mandatory after a successful
+// wizard apply: several wizard choices only take effect at boot, so instead of
+// redirecting to a login page served by a half-configured node, the form
+// response renders a restarting notice and then invokes trigger.
+func (s *Service) ConfigureSetupRestart(trigger func()) {
+	s.wizardRestart = trigger
+}
+
 // wizardChoices reads the wizard fields of the setup form.
 func wizardChoices(form func(string) string) SetupChoices {
 	mode := strings.TrimSpace(form("mode"))

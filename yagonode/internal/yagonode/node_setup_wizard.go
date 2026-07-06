@@ -10,12 +10,15 @@ import (
 )
 
 // configureSetupWizard arms the first-run setup page with the node-mode
-// wizard: prefilled critical settings and an applier that persists the choices
-// through the same validated runtime-settings path the console uses.
+// wizard: prefilled critical settings, an applier that persists the choices
+// through the same validated runtime-settings path the console uses, and a
+// mandatory restart once they are saved — several of them (portal listener,
+// seedlist bootstrap, web-fallback assembly) only take effect at boot.
 func configureSetupWizard(
 	service *adminauth.Service,
 	settings adminui.SettingsSource,
 	config nodeConfig,
+	restart func(),
 ) {
 	if settings == nil {
 		return
@@ -25,6 +28,9 @@ func configureSetupWizard(
 		Seedlists:     strings.Join(config.SeedlistURLs, ","),
 		WebFallback:   string(config.WebFallback.Privacy),
 	}, setupWizardApplier(settings))
+	if restart != nil {
+		service.ConfigureSetupRestart(restart)
+	}
 }
 
 // setupWizardApplier maps the wizard's choices onto runtime settings. The

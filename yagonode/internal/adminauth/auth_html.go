@@ -156,6 +156,15 @@ func (s *Service) handleSetupForm(w http.ResponseWriter, r *http.Request) {
 
 			return
 		}
+		if s.wizardRestart != nil {
+			// Several wizard choices only take effect at boot, so setup ends in
+			// a mandatory restart: render the notice first, then trigger —
+			// graceful shutdown waits for this response to finish.
+			s.renderAuthPage(w, r, "restarting", authPageData{})
+			s.wizardRestart()
+
+			return
+		}
 	}
 	redirectAuth(w, r, PathLoginPage+"?notice=created")
 }

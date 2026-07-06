@@ -1,0 +1,21 @@
+{{define "restarting"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="refresh" content="10;url=/admin/login">
+<title>Restarting — yago admin</title>
+{{template "authstyle"}}
+</head>
+<body>
+<div class="card">
+  <h1 class="brand">Restarting <b>yago</b></h1>
+  <div class="notice" role="status">Administrator account created and node mode saved.</div>
+  <p class="lede">The node is restarting to apply your settings. This page will
+  take you to the login page in about ten seconds; if it does not load yet,
+  give the node a moment and reload.</p>
+  <div class="foot">yago — free software under the GNU AGPL v3.</div>
+</div>
+</body>
+</html>{{end}}

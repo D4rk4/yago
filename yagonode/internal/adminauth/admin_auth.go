@@ -62,6 +62,7 @@ type Service struct {
 	now            func() time.Time
 	wizardDefaults SetupDefaults
 	wizardApply    SetupApplier
+	wizardRestart  func()
 }
 
 func New(storage *vault.Vault, cfg Config) (*Service, error) {
