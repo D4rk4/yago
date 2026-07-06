@@ -104,6 +104,12 @@ func NewBleveDiskIndex(
 	if err != nil {
 		return nil, err
 	}
+	for _, shard := range shards {
+		// Shards created before BM25 was adopted persist the default TF-IDF
+		// scoring; switch them in place so an existing index needs no rebuild
+		// to gain saturation and length normalization.
+		enableBM25Scoring(shard)
+	}
 
 	out := &BleveDiskIndex{
 		shards:    shards,

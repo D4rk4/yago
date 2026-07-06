@@ -8,6 +8,7 @@ require (
 	github.com/D4rk4/yago/yagomodel v0.0.0
 	github.com/D4rk4/yago/yagoproto v0.0.0
 	github.com/blevesearch/bleve/v2 v2.6.0
+	github.com/blevesearch/bleve_index_api v1.3.11
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/klauspost/compress v1.18.6
 	github.com/prometheus/client_golang v1.20.5
@@ -21,7 +22,6 @@ require (
 	github.com/RoaringBitmap/roaring/v2 v2.14.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.2 // indirect
-	github.com/blevesearch/bleve_index_api v1.3.11 // indirect
 	github.com/blevesearch/geo v0.2.5 // indirect
 	github.com/blevesearch/go-faiss v1.1.0 // indirect
 	github.com/blevesearch/go-porterstemmer v1.0.3 // indirect

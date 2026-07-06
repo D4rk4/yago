@@ -12,6 +12,7 @@ import (
 	_ "github.com/blevesearch/bleve/v2/analysis/tokenizer/regexp"
 	_ "github.com/blevesearch/bleve/v2/analysis/tokenizer/unicode"
 	"github.com/blevesearch/bleve/v2/mapping"
+	bleveindex "github.com/blevesearch/bleve_index_api"
 )
 
 const (
@@ -88,8 +89,24 @@ var newSearchIndexMapping = func() (*mapping.IndexMappingImpl, error) {
 	indexMapping.StoreDynamic = false
 	indexMapping.IndexDynamic = false
 	indexMapping.DocValuesDynamic = false
+	// Okapi BM25 replaces bleve's default TF-IDF: term-frequency saturation
+	// keeps a keyword-stuffed page from outranking a concise relevant one, and
+	// document-length normalization stops a long page from accumulating score
+	// merely by being long (bleve's own scoring guidance; Robertson & Zaragoza,
+	// "The Probabilistic Relevance Framework: BM25 and Beyond", 2009).
+	indexMapping.ScoringModel = bleveindex.BM25Scoring
 
 	return indexMapping, nil
+}
+
+// enableBM25Scoring switches an already-opened index to BM25 scoring in place.
+// bleve reads the scoring model from the live mapping at search time and a
+// model change needs no reindex, so an index persisted under the default
+// TF-IDF scoring adopts BM25 the moment it is opened — no rebuild required.
+func enableBM25Scoring(index bleve.Index) {
+	if mappingImpl, ok := index.Mapping().(*mapping.IndexMappingImpl); ok {
+		mappingImpl.ScoringModel = bleveindex.BM25Scoring
+	}
 }
 
 // registerURLAnalyzer wires an alphanumeric-run tokenizer plus lowercasing so the

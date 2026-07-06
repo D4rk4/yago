@@ -39,6 +39,11 @@ type bleveDocument struct {
 	Host     string   `json:"host"`
 }
 
+// newBleveMemory opens the in-memory fallback index. It uses bleve's
+// upside-down backend, which — unlike the on-disk scorch shards — ignores the
+// BM25 scoring model and always scores with TF-IDF. Unifying the fallback on
+// scorch (for BM25 parity and working positional/phrase queries) needs term
+// vectors and a matching migration, handled with the multilingual reindex.
 var newBleveMemory = bleve.NewMemOnly
 
 func NewBleveMemoryIndex(
