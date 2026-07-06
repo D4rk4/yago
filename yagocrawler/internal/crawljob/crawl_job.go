@@ -23,6 +23,9 @@ type CrawlJob struct {
 	// IgnoreTLSAuthority routes this job through the fetch chain that skips
 	// certificate-chain verification (profile opt-in).
 	IgnoreTLSAuthority bool
+	// IgnoreRobots routes this job through the fetch chain that skips the
+	// robots.txt check (explicit profile opt-out; obeyed by default).
+	IgnoreRobots bool
 }
 
 type DiscoveredLinks struct {

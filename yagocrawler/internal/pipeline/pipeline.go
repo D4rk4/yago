@@ -37,10 +37,14 @@ type Pipeline struct {
 	// insecure serves jobs whose profile opted into IgnoreTLSAuthority; nil
 	// keeps every job on the verifying chain.
 	insecure pagefetch.PageSource
-	index    pageindex.IndexBuilder
-	emitter  ingest.BatchEmitter
-	observer Observer
-	tally    RunTally
+	// direct and insecureDirect serve jobs whose profile set IgnoreRobots; nil
+	// keeps robots.txt enforced for every job.
+	direct         pagefetch.PageSource
+	insecureDirect pagefetch.PageSource
+	index          pageindex.IndexBuilder
+	emitter        ingest.BatchEmitter
+	observer       Observer
+	tally          RunTally
 }
 
 func NewPipeline(
@@ -112,11 +116,21 @@ func (p *Pipeline) run(acceptCtx, fetchCtx context.Context) {
 	}
 }
 
-// jobFetcher picks the fetch chain for a job: the TLS-authority-ignoring one
-// when the profile opted in and it is wired, the verifying default otherwise.
+// jobFetcher picks the fetch chain for a job along two profile axes: the
+// TLS-authority-ignoring chain when the profile opted in, and the
+// robots-skipping variant when the profile explicitly opted out of robots.txt.
+// A variant that is not wired falls back to the safe (robots-obeying,
+// certificate-verifying) default.
 func (p *Pipeline) jobFetcher(job crawljob.CrawlJob) pagefetch.PageSource {
 	if job.IgnoreTLSAuthority && p.insecure != nil {
+		if job.IgnoreRobots && p.insecureDirect != nil {
+			return p.insecureDirect
+		}
+
 		return p.insecure
+	}
+	if job.IgnoreRobots && p.direct != nil {
+		return p.direct
 	}
 
 	return p.fetcher
@@ -128,6 +142,21 @@ func WithInsecureFetcher(source pagefetch.PageSource) Option {
 	return func(p *Pipeline) {
 		if source != nil {
 			p.insecure = source
+		}
+	}
+}
+
+// WithRobotsIgnoringFetchers installs the fetch chains used by jobs whose
+// crawl profile set IgnoreRobots: the certificate-verifying variant and the
+// TLS-authority-ignoring one. Nil sources are ignored, so an unwired variant
+// keeps robots enforced.
+func WithRobotsIgnoringFetchers(verifying, insecure pagefetch.PageSource) Option {
+	return func(p *Pipeline) {
+		if verifying != nil {
+			p.direct = verifying
+		}
+		if insecure != nil {
+			p.insecureDirect = insecure
 		}
 	}
 }

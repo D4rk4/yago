@@ -34,9 +34,14 @@ type CrawlProfile struct {
 	// chain, for self-signed or mis-chained sites an operator still wants
 	// crawled. The crawl payload is public web content, not credentials.
 	IgnoreTLSAuthority bool
-	MaxPagesPerHost    int
-	RecrawlIfOlder     time.Duration
-	CrawlDelay         time.Duration
+	// IgnoreRobots fetches pages without consulting robots.txt. Robots is
+	// enforced by default; this is an explicit per-profile operator opt-out the
+	// admin form confirms, for archiving one's own sites or hosts whose robots
+	// file blocks all crawlers by mistake.
+	IgnoreRobots    bool
+	MaxPagesPerHost int
+	RecrawlIfOlder  time.Duration
+	CrawlDelay      time.Duration
 	// Formats selects which document format families the crawler parses and
 	// indexes for this crawl; the node fills it from the operator's shared
 	// format settings on every dispatch.

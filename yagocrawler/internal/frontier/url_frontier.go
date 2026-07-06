@@ -511,6 +511,7 @@ func (s *frontierState) accept(
 		Index:              profile.IndexAllowed(candidate.normURL),
 		CrawlDelay:         profile.Profile.CrawlDelay,
 		IgnoreTLSAuthority: profile.Profile.IgnoreTLSAuthority,
+		IgnoreRobots:       profile.Profile.IgnoreRobots,
 		Formats:            profile.Profile.Formats,
 	})
 	return true

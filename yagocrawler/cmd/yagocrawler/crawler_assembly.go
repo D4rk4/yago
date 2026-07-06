@@ -58,6 +58,11 @@ var newCrawlerPublicWebAdmissionFetcher = func(
 type fetchChains struct {
 	verifying pagefetch.PageSource
 	insecure  pagefetch.PageSource
+	// verifyingDirect and insecureDirect skip the robots.txt layer for jobs
+	// whose profile set IgnoreRobots; every other layer (botwall, browser
+	// fallback, public-web admission) is identical.
+	verifyingDirect pagefetch.PageSource
+	insecureDirect  pagefetch.PageSource
 }
 
 func buildFetchChains(
@@ -71,8 +76,9 @@ func buildFetchChains(
 	fastSource := botwall.NewBotWallScreeningFetcher(
 		newCrawlerHTTPPageFetcher(client, crawl.UserAgent, crawl.MaxBodyBytes),
 	)
+	verifyingCore := pagefetch.NewFallbackPageSource(fastSource, slowSource)
 	admitted, err := newCrawlerRobotsAdmissionFetcher(
-		pagefetch.NewFallbackPageSource(fastSource, slowSource),
+		verifyingCore,
 		client,
 		crawl.UserAgent,
 		crawl.HostCacheSize,
@@ -86,8 +92,9 @@ func buildFetchChains(
 	insecureFast := botwall.NewBotWallScreeningFetcher(
 		newCrawlerHTTPPageFetcher(insecureClient, crawl.UserAgent, crawl.MaxBodyBytes),
 	)
+	insecureCore := pagefetch.NewFallbackPageSource(insecureFast, slowSource)
 	insecureAdmitted, err := newCrawlerRobotsAdmissionFetcher(
-		pagefetch.NewFallbackPageSource(insecureFast, slowSource),
+		insecureCore,
 		insecureClient,
 		crawl.UserAgent,
 		crawl.HostCacheSize,
@@ -98,8 +105,10 @@ func buildFetchChains(
 	}
 
 	return fetchChains{
-		verifying: newCrawlerPublicWebAdmissionFetcher(admitted, nil, guard),
-		insecure:  newCrawlerPublicWebAdmissionFetcher(insecureAdmitted, nil, guard),
+		verifying:       newCrawlerPublicWebAdmissionFetcher(admitted, nil, guard),
+		insecure:        newCrawlerPublicWebAdmissionFetcher(insecureAdmitted, nil, guard),
+		verifyingDirect: newCrawlerPublicWebAdmissionFetcher(verifyingCore, nil, guard),
+		insecureDirect:  newCrawlerPublicWebAdmissionFetcher(insecureCore, nil, guard),
 	}, nil
 }
 
@@ -156,6 +165,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		pipeline.WithObserver(metrics),
 		pipeline.WithRunTally(tally),
 		pipeline.WithInsecureFetcher(chains.insecure),
+		pipeline.WithRobotsIgnoringFetchers(chains.verifyingDirect, chains.insecureDirect),
 	)
 	consumer := crawlorder.NewCrawlOrderConsumer(
 		orders,

@@ -35,6 +35,7 @@ func (s *crawlSource) Start(
 		AllowQueryURLs:       start.AllowQueryURLs,
 		FollowNoFollowLinks:  start.FollowNoFollowLinks,
 		IgnoreTLSAuthority:   start.IgnoreTLSAuthority,
+		IgnoreRobots:         start.IgnoreRobots,
 		RecrawlIfOlder:       start.RecrawlIfOlder,
 		CrawlDelay:           start.CrawlDelay,
 	}, "")
