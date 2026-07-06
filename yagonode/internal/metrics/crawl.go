@@ -3,12 +3,13 @@ package metrics
 import "github.com/prometheus/client_golang/prometheus"
 
 type CrawlMetrics struct {
-	absorbed prometheus.Counter
-	deferred prometheus.Counter
-	rejected prometheus.Counter
-	bytes    prometheus.Counter
-	urls     prometheus.Counter
-	postings prometheus.Counter
+	absorbed   prometheus.Counter
+	deferred   prometheus.Counter
+	rejected   prometheus.Counter
+	duplicates prometheus.Counter
+	bytes      prometheus.Counter
+	urls       prometheus.Counter
+	postings   prometheus.Counter
 }
 
 func NewCrawlMetrics(registry prometheus.Registerer) *CrawlMetrics {
@@ -36,15 +37,20 @@ func NewCrawlMetrics(registry prometheus.Registerer) *CrawlMetrics {
 		Name: "crawl_ingest_postings_total",
 		Help: "Postings absorbed from crawl ingest.",
 	})
-	registry.MustRegister(absorbed, deferred, rejected, bytes, urls, postings)
+	duplicates := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "crawl_ingest_near_duplicates_total",
+		Help: "Crawl ingest documents collapsed as near-duplicates of stored pages.",
+	})
+	registry.MustRegister(absorbed, deferred, rejected, duplicates, bytes, urls, postings)
 
 	return &CrawlMetrics{
-		absorbed: absorbed,
-		deferred: deferred,
-		rejected: rejected,
-		bytes:    bytes,
-		urls:     urls,
-		postings: postings,
+		absorbed:   absorbed,
+		deferred:   deferred,
+		rejected:   rejected,
+		duplicates: duplicates,
+		bytes:      bytes,
+		urls:       urls,
+		postings:   postings,
 	}
 }
 
@@ -61,4 +67,8 @@ func (m *CrawlMetrics) ObserveDeferred() {
 
 func (m *CrawlMetrics) ObserveRejected() {
 	m.rejected.Inc()
+}
+
+func (m *CrawlMetrics) ObserveDuplicate() {
+	m.duplicates.Inc()
 }

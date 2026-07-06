@@ -2,6 +2,11 @@ package weburl
 
 import "net/url"
 
+// Normalize canonicalizes an http(s) URL to the one spelling the frontier
+// visited-set, document keys, and recrawl schedule share, so tracking-parameter
+// and session-id variants of one page stop burning crawl budget and index
+// space as distinct URLs (RFC 3986 normalization; Manku et al. WWW 2007
+// motivate dedup before fetch).
 func Normalize(raw string) (string, bool) {
 	parsed, err := url.Parse(raw)
 	if err != nil {
@@ -13,7 +18,8 @@ func Normalize(raw string) (string, bool) {
 	if parsed.Host == "" {
 		return "", false
 	}
-	parsed.Fragment = ""
+	canonicalizeURL(parsed)
+
 	return parsed.String(), true
 }
 

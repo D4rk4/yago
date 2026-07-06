@@ -15,6 +15,7 @@ const (
 	msgIngestAckFailed     = "ingest batch ack failed"
 	msgIngestNakFailed     = "ingest batch nak failed"
 	msgRecrawlRecordFailed = "recrawl schedule record failed"
+	msgIngestNearDuplicate = "ingest document near-duplicate collapsed"
 )
 
 func (c *IngestConsumer) Run(ctx context.Context) {
@@ -105,6 +106,9 @@ func (c *IngestConsumer) storeDocument(
 	}
 
 	doc := documentFromIngest(batch.Document)
+	if c.collapseNearDuplicate(ctx, doc) {
+		return false
+	}
 	receipt, err := c.documents.Receive(ctx, []documentstore.Document{doc})
 	if err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "document store", err)
@@ -122,6 +126,33 @@ func (c *IngestConsumer) storeDocument(
 	}
 
 	return false
+}
+
+// collapseNearDuplicate reports whether the document's text near-duplicates a
+// recently stored page: the duplicate keeps its URL metadata and postings (the
+// URL is real and its links count) but is not stored or indexed as another
+// copy, so mirrors and session-id spellings collapse to one index entry.
+func (c *IngestConsumer) collapseNearDuplicate(
+	ctx context.Context,
+	doc documentstore.Document,
+) bool {
+	if c.nearDup == nil {
+		return false
+	}
+	key := doc.NormalizedURL
+	if key == "" {
+		key = doc.CanonicalURL
+	}
+	original, duplicate := c.nearDup.Observe(key, doc.ExtractedText)
+	if !duplicate {
+		return false
+	}
+	c.observer.ObserveDuplicate()
+	slog.DebugContext(ctx, msgIngestNearDuplicate,
+		slog.String("url", key),
+		slog.String("duplicateOf", original))
+
+	return true
 }
 
 // recordFetch feeds the recrawl schedule after a page batch is absorbed. It is

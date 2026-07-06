@@ -10,6 +10,7 @@ import (
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
+	"github.com/D4rk4/yago/yagonode/internal/neardup"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 	"github.com/D4rk4/yago/yagonode/internal/urlmeta"
@@ -28,11 +29,13 @@ type IngestStream interface {
 // IngestObserver receives the node-side outcome of each crawl ingest batch so an
 // edge can meter crawl throughput. Its methods are called once per batch and must
 // not block. ObserveRejected counts a malformed batch that was dropped rather than
-// absorbed or deferred.
+// absorbed or deferred; ObserveDuplicate counts a page whose text near-duplicated
+// an already stored page, so its document was collapsed instead of indexed.
 type IngestObserver interface {
 	ObserveAbsorbed(contentBytes, urls, postings int)
 	ObserveDeferred()
 	ObserveRejected()
+	ObserveDuplicate()
 }
 
 type noopIngestObserver struct{}
@@ -42,6 +45,8 @@ func (noopIngestObserver) ObserveAbsorbed(int, int, int) {}
 func (noopIngestObserver) ObserveDeferred() {}
 
 func (noopIngestObserver) ObserveRejected() {}
+
+func (noopIngestObserver) ObserveDuplicate() {}
 
 // FetchRecorder is told, once per successfully absorbed page batch, which URL was
 // fetched under which profile and when, so a recrawl schedule can be maintained.
@@ -79,6 +84,7 @@ type IngestConsumer struct {
 	observer  IngestObserver
 	recorder  FetchRecorder
 	owner     OwnershipCheck
+	nearDup   *neardup.Window
 }
 
 func NewIngestConsumer(
@@ -114,6 +120,15 @@ func NewIngestConsumerWithIndex(
 func (c *IngestConsumer) Observe(observer IngestObserver) {
 	if observer != nil {
 		c.observer = observer
+	}
+}
+
+// CollapseNearDuplicates installs a fingerprint window so pages whose text
+// near-duplicates an already stored page keep their URL metadata and postings
+// but are not stored or indexed again (CRAWL-10). A nil window is ignored.
+func (c *IngestConsumer) CollapseNearDuplicates(window *neardup.Window) {
+	if window != nil {
+		c.nearDup = window
 	}
 }
 

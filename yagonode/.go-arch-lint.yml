@@ -100,6 +100,8 @@ components:
     in: internal/searchcore/**
   stopwords:
     in: internal/stopwords/**
+  neardup:
+    in: internal/neardup/**
   searcheval:
     in: internal/searcheval/**
   searchindex:
@@ -466,6 +468,10 @@ deps:
     mayDependOn:
       - searchcore
       - stopwords
+  neardup:
+    mayDependOn:
+      - neardup
+      - stopwords
   searcheval:
     mayDependOn:
       - searchcore
@@ -609,6 +615,7 @@ deps:
     mayDependOn:
       - crawlresults
       - documentstore
+      - neardup
       - searchindex
       - urlmeta
       - rwi
@@ -648,6 +655,7 @@ deps:
       - yagoproto
   yagonode:
     mayDependOn:
+      - neardup
       - vault
       - boltvault
       - memvault

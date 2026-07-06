@@ -14,6 +14,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
 	"github.com/D4rk4/yago/yagonode/internal/crawlruns"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
+	"github.com/D4rk4/yago/yagonode/internal/neardup"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/recrawlfrontier"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -74,6 +75,7 @@ func buildCrawlRuntime(
 	)
 	consumer.RecordFetches(frontier)
 	consumer.CheckOwnership(frontier)
+	consumer.CollapseNearDuplicates(neardup.NewWindow(0))
 
 	return &crawlRuntime{
 		broker:    broker,
