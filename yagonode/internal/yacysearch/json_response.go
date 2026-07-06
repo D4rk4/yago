@@ -130,6 +130,9 @@ func searchImageURL(r *http.Request) string {
 }
 
 func requestBaseURL(r *http.Request) string {
+	if configured := configuredBaseURL(); configured != "" {
+		return configured
+	}
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"

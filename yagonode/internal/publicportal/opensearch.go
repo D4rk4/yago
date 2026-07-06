@@ -103,6 +103,9 @@ func (o *OpenSearch) Suggest(w http.ResponseWriter, r *http.Request) {
 }
 
 func requestOrigin(r *http.Request) string {
+	if configured := configuredBaseURL(); configured != "" {
+		return configured
+	}
 	scheme := "http"
 	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
 		scheme = "https"

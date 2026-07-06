@@ -240,6 +240,8 @@ func mountNodePublicSearch(
 			publicportal.New(newPortalSource(search), assembly.linksNewTab),
 		),
 	)
+	publicportal.SetBaseURLProvider(assembly.toggles.PublicBaseURL)
+	yacysearch.SetBaseURLProvider(assembly.toggles.PublicBaseURL)
 	mountPortalOpenSearch(mux, assembly.toggles)
 
 	return search, suggestSource

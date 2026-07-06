@@ -36,6 +36,7 @@ const (
 	envSearchRequireAPIKey = "YAGO_SEARCH_REQUIRE_API" + "_KEY"
 	envPublicSearchUI      = "YAGO_PUBLIC_SEARCH_UI_ENABLED"
 	envHTTPSRedirect       = "YAGO_HTTPS_REDIRECT"
+	envPublicBaseURL       = "YAGO_PUBLIC_BASE_URL"
 	envQueryLogMode        = "YAGO_QUERY_LOG_MODE"
 	envPeerBirthDate       = "YAGO_PEER_BIRTH_DATE"
 	envMetricsEnabled      = "YAGO_METRICS_ENABLED"
@@ -87,6 +88,7 @@ type nodeConfig struct {
 	PublicSearchUIEnabled bool
 	SearchLinksNewTab     bool
 	HTTPSRedirect         bool
+	PublicBaseURL         string
 	QueryLogMode          queryLogMode
 	MetricsEnabled        bool
 	IndexRemoteResults    bool
@@ -172,6 +174,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		PublicSearchUIEnabled: derived.publicSearchUI,
 		SearchLinksNewTab:     derived.searchLinksNewTab,
 		HTTPSRedirect:         derived.httpsRedirect,
+		PublicBaseURL:         derived.publicBaseURL,
 		QueryLogMode:          derived.queryLogMode,
 		MetricsEnabled:        derived.metricsEnabled,
 		IndexRemoteResults:    derived.indexRemoteResults,
@@ -191,6 +194,7 @@ type derivedConfigs struct {
 	requireAPIKey      bool
 	publicSearchUI     bool
 	httpsRedirect      bool
+	publicBaseURL      string
 	queryLogMode       queryLogMode
 	metricsEnabled     bool
 	indexRemoteResults bool
@@ -255,6 +259,10 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	if err != nil {
 		return derivedConfigs{}, fmt.Errorf("%s: %w", envHTTPSRedirect, err)
 	}
+	publicBaseURL, err := normalizePublicBaseURL(getenv(envPublicBaseURL))
+	if err != nil {
+		return derivedConfigs{}, fmt.Errorf("%s: %w", envPublicBaseURL, err)
+	}
 	queryLog, err := parseQueryLogMode(getenv(envQueryLogMode))
 	if err != nil {
 		return derivedConfigs{}, fmt.Errorf("%s: %w", envQueryLogMode, err)
@@ -295,6 +303,7 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 		requireAPIKey:      requireAPIKey,
 		publicSearchUI:     publicSearchUI,
 		httpsRedirect:      httpsRedirect,
+		publicBaseURL:      publicBaseURL,
 		queryLogMode:       queryLog,
 		metricsEnabled:     metricsEnabled,
 		indexRemoteResults: indexRemoteResults,

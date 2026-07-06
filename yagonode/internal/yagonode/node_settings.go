@@ -36,6 +36,7 @@ func (d settingDefinition) restartRequired() bool {
 const (
 	settingKeyPublicSearchPortal = "portal.enabled"
 	settingKeyHTTPSRedirect      = "https.redirect"
+	settingKeyPublicBaseURL      = "public.base.url"
 )
 
 const (
@@ -79,6 +80,24 @@ func runtimeSettingDefinitions() []settingDefinition {
 			},
 			applyLive: func(toggles *runtimeToggles, value string) {
 				toggles.SetHTTPSRedirect(value == settingBoolTrue)
+			},
+		},
+		{
+			key:   settingKeyPublicBaseURL,
+			title: "Public base URL",
+			description: "Absolute public origin used in OpenSearch descriptors and " +
+				"result links behind a reverse proxy (empty derives it from each request).",
+			defaultValue: func(config nodeConfig) string {
+				return config.PublicBaseURL
+			},
+			normalize: normalizePublicBaseURL,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.PublicBaseURL = value
+
+				return config
+			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				toggles.SetPublicBaseURL(value)
 			},
 		},
 	}
