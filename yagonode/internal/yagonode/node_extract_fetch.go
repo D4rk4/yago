@@ -42,3 +42,26 @@ func (f extractContentFetcher) Fetch(
 
 	return tavilyapi.FetchedContent{Title: content.Title, Text: content.Text}, nil
 }
+
+// FetchPage satisfies the crawl-page fetcher over the same guarded fetcher.
+func (f extractContentFetcher) FetchPage(
+	ctx context.Context,
+	url string,
+) (tavilyapi.CrawledPage, error) {
+	page, err := f.fetcher.FetchPage(ctx, url)
+	if err != nil {
+		return tavilyapi.CrawledPage{}, fmt.Errorf("fetch crawl page: %w", err)
+	}
+
+	return tavilyapi.CrawledPage{Title: page.Title, Text: page.Text, Links: page.Links}, nil
+}
+
+// crawlPageFetcher exposes the extract fetcher for /crawl and /map; a node
+// with fetch-on-extract disabled leaves the crawl surfaces unavailable.
+func crawlPageFetcher(fetcher tavilyapi.ContentFetcher) tavilyapi.PageFetcher {
+	if pages, ok := fetcher.(tavilyapi.PageFetcher); ok {
+		return pages
+	}
+
+	return nil
+}

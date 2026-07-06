@@ -233,6 +233,7 @@ func mountNodePublicSearch(
 	faviconproxy.MountImages(mux, assembly.client)
 	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
 	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access, assembly.extractFetcher)
+	tavilyapi.MountCrawl(mux, access, crawlPageFetcher(assembly.extractFetcher))
 	mux.Handle(
 		"/{$}",
 		newRootDispatcher(
