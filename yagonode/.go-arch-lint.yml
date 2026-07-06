@@ -50,6 +50,8 @@ components:
     in: internal/searchsession/**
   crawlformats:
     in: internal/crawlformats/**
+  publicratelimit:
+    in: internal/publicratelimit/**
   peermessage:
     in: internal/peermessage/**
   peerprofile:
@@ -568,6 +570,9 @@ deps:
       - memvault
     canUse:
       - yagocrawlcontract
+  publicratelimit:
+    mayDependOn:
+      - publicratelimit
   crawldispatch:
     mayDependOn:
       - crawldispatch
@@ -633,6 +638,7 @@ deps:
       - searchsession
       - crawlformats
       - shardvault
+      - publicratelimit
       - peermessage
       - peerprofile
       - seedlist

@@ -23,6 +23,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/peerblock"
 	"github.com/D4rk4/yago/yagonode/internal/peernews"
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
+	"github.com/D4rk4/yago/yagonode/internal/publicratelimit"
 	"github.com/D4rk4/yago/yagonode/internal/rankingprofile"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -36,7 +37,7 @@ import (
 
 type node struct {
 	peerMux       *http.ServeMux
-	publicMux     *http.ServeMux
+	publicMux     http.Handler
 	readiness     http.Handler
 	indexStats    http.Handler
 	searchExplain http.Handler
@@ -213,7 +214,7 @@ type nodeSurfaces struct {
 	dht       dhtOutboundProcess
 	searcher  searchcore.Searcher
 	suggest   searchcore.Searcher
-	publicMux *http.ServeMux
+	publicMux http.Handler
 	ranking   *rankingprofile.Holder
 	hostRank  *hostrank.Holder
 	denylist  *urldenylist.Store
@@ -270,12 +271,23 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		observer:    tallyOutboundObserver{next: in.telemetry.dhtOutbound, tally: in.tally},
 	})
 
+	// The public search paths throttle per client (YaCy search.public.max.access
+	// tiers); authenticated keys and the local operator get raised limits.
+	limitedPublic := publicratelimit.Wrap(
+		publicMux,
+		publicratelimit.NewLimiter(publicratelimit.DefaultPublicTiers()),
+		searchAccessPolicy(publicSearchAssembly{
+			searchAuthorizer: in.telemetry.searchAuthorizer,
+			searchAPIKey:     in.config.SearchAPIKey,
+		}).AuthenticatedRead,
+	)
+
 	return nodeSurfaces{
 		crawl:     runtime,
 		dht:       dht,
 		searcher:  searcher,
 		suggest:   suggest,
-		publicMux: publicMux,
+		publicMux: limitedPublic,
 		ranking:   ranking,
 		hostRank:  hostRankHolder,
 		denylist:  denylist,
@@ -284,7 +296,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 
 type nodeParts struct {
 	mux       *http.ServeMux
-	publicMux *http.ServeMux
+	publicMux http.Handler
 	storage   nodeStorage
 	announcer peerannouncement.Announcer
 	crawl     crawlProcess
