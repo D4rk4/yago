@@ -45,6 +45,8 @@ const (
 	envSearchLinksNewTab   = "YAGO_SEARCH_LINKS_NEW_TAB"
 	envSwarmSeedCrawl      = "YAGO_SWARM_SEED_CRAWL"
 	envSwarmSeedLimitDocs  = "YAGO_SWARM_SEED_LIMIT_DOCS"
+	envSwarmSeedDepth      = "YAGO_SWARM_SEED_DEPTH"
+	envSwarmSeedMaxPages   = "YAGO_SWARM_SEED_MAX_PAGES"
 	envSwarmMorphology     = "YAGO_SWARM_MORPHOLOGY"
 	envIngestQualityGate   = "YAGO_INGEST_QUALITY_GATE"
 	envPeerSnippetFetch    = "YAGO_PEER_SNIPPET_FETCH"
@@ -215,13 +217,23 @@ type derivedConfigs struct {
 
 // swarmSeedConfig gates YaCy-style greedy learning: bounded crawls of URLs
 // surfaced by swarm search, until the local index holds LimitDocs documents
-// (YaCy greedylearning.enabled + greedylearning.limit.doccount).
+// (YaCy greedylearning.enabled + greedylearning.limit.doccount). SeedDepth and
+// SeedMaxPages tune how far each surfaced URL is crawled — the autocrawler
+// profile — mirroring the web-fallback seed knobs so both discovery paths are
+// equally tunable instead of the swarm path being hardcoded.
 type swarmSeedConfig struct {
-	Enabled   bool
-	LimitDocs int
+	Enabled      bool
+	LimitDocs    int
+	SeedDepth    int
+	SeedMaxPages int
 }
 
-const defaultSwarmSeedLimitDocs = 15000
+const (
+	defaultSwarmSeedLimitDocs = 15000
+	defaultSwarmSeedDepth     = 1
+	defaultSwarmSeedMaxPages  = 20
+	maxSwarmSeedDepth         = 8
+)
 
 func loadSwarmSeedConfig(getenv func(string) string) (swarmSeedConfig, error) {
 	enabled, err := boolEnv(getenv, envSwarmSeedCrawl, false)
@@ -239,8 +251,27 @@ func loadSwarmSeedConfig(getenv func(string) string) (swarmSeedConfig, error) {
 			)
 		}
 	}
+	depth, err := intRangeEnv(
+		getenv,
+		envSwarmSeedDepth,
+		defaultSwarmSeedDepth,
+		0,
+		maxSwarmSeedDepth,
+	)
+	if err != nil {
+		return swarmSeedConfig{}, fmt.Errorf("%s: %w", envSwarmSeedDepth, err)
+	}
+	maxPages, err := intAtLeastEnv(getenv, envSwarmSeedMaxPages, defaultSwarmSeedMaxPages, 1)
+	if err != nil {
+		return swarmSeedConfig{}, fmt.Errorf("%s: %w", envSwarmSeedMaxPages, err)
+	}
 
-	return swarmSeedConfig{Enabled: enabled, LimitDocs: limit}, nil
+	return swarmSeedConfig{
+		Enabled:      enabled,
+		LimitDocs:    limit,
+		SeedDepth:    depth,
+		SeedMaxPages: maxPages,
+	}, nil
 }
 
 func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {

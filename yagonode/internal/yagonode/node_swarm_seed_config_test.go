@@ -8,12 +8,17 @@ func TestLoadNodeConfigReadsSwarmSeedSettings(t *testing.T) {
 		envPeerName:           "node",
 		envSwarmSeedCrawl:     "true",
 		envSwarmSeedLimitDocs: "500",
+		envSwarmSeedDepth:     "3",
+		envSwarmSeedMaxPages:  "75",
 	}))
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
 	if !config.SwarmSeed.Enabled || config.SwarmSeed.LimitDocs != 500 {
 		t.Fatalf("SwarmSeed = %#v", config.SwarmSeed)
+	}
+	if config.SwarmSeed.SeedDepth != 3 || config.SwarmSeed.SeedMaxPages != 75 {
+		t.Fatalf("autocrawler profile = %#v", config.SwarmSeed)
 	}
 }
 
@@ -28,6 +33,10 @@ func TestLoadNodeConfigSwarmSeedDefaultsOffWithDocLimit(t *testing.T) {
 	if config.SwarmSeed.Enabled || config.SwarmSeed.LimitDocs != defaultSwarmSeedLimitDocs {
 		t.Fatalf("SwarmSeed = %#v", config.SwarmSeed)
 	}
+	if config.SwarmSeed.SeedDepth != defaultSwarmSeedDepth ||
+		config.SwarmSeed.SeedMaxPages != defaultSwarmSeedMaxPages {
+		t.Fatalf("autocrawler defaults = %#v", config.SwarmSeed)
+	}
 }
 
 func TestLoadNodeConfigRejectsInvalidSwarmSeedSettings(t *testing.T) {
@@ -36,6 +45,11 @@ func TestLoadNodeConfigRejectsInvalidSwarmSeedSettings(t *testing.T) {
 		{envSwarmSeedLimitDocs: "many"},
 		{envSwarmSeedLimitDocs: "0"},
 		{envSwarmSeedLimitDocs: "-5"},
+		{envSwarmSeedDepth: "-1"},
+		{envSwarmSeedDepth: "99"},
+		{envSwarmSeedDepth: "deep"},
+		{envSwarmSeedMaxPages: "0"},
+		{envSwarmSeedMaxPages: "lots"},
 	} {
 		env := map[string]string{envPeerHash: "0123456789AB", envPeerName: "node"}
 		for key, value := range item {

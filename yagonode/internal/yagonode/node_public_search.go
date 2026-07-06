@@ -286,7 +286,11 @@ func assemblePublicSearcher(
 				assembly.seedQueue,
 				assembly.storage.documentDirectory,
 				assembly.identity.Hash,
-				seedProfile{name: swarmSeedProfileName, depth: 1, maxPages: 20},
+				seedProfile{
+					name:     swarmSeedProfileName,
+					depth:    assembly.swarmSeed.SeedDepth,
+					maxPages: assembly.swarmSeed.SeedMaxPages,
+				},
 			),
 			assembly.storage.documentDirectory,
 			assembly.swarmSeed.LimitDocs,

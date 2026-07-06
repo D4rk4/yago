@@ -81,8 +81,40 @@ func extendedSettingDefinitions() []settingDefinition {
 		},
 	}...)
 	definitions = append(definitions, extendedTelemetryDefinitions()...)
+	definitions = append(definitions, extendedGrowthDefinitions()...)
 
-	return append(definitions, extendedGrowthDefinitions()...)
+	return append(definitions, autocrawlerDefinitions()...)
+}
+
+// autocrawlerDefinitions surface the tunable seed-crawl profile that both the
+// swarm greedy-learning and web-fallback discovery paths use (CRAWL-16/UI-14).
+func autocrawlerDefinitions() []settingDefinition {
+	return []settingDefinition{
+		{
+			key:          "swarm.seed.depth",
+			title:        "Autocrawler crawl depth",
+			description:  "How many link hops each swarm- or web-surfaced URL is crawled (0 crawls only the URL itself).",
+			defaultValue: func(config nodeConfig) string { return strconv.Itoa(config.SwarmSeed.SeedDepth) },
+			normalize:    normalizeSwarmSeedDepth,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.SwarmSeed.SeedDepth, _ = strconv.Atoi(value)
+
+				return config
+			},
+		},
+		{
+			key:          "swarm.seed.max_pages",
+			title:        "Autocrawler pages per host",
+			description:  "Cap on how many pages the autocrawler fetches per host for each seeded URL.",
+			defaultValue: func(config nodeConfig) string { return strconv.Itoa(config.SwarmSeed.SeedMaxPages) },
+			normalize:    normalizePositiveInt,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.SwarmSeed.SeedMaxPages, _ = strconv.Atoi(value)
+
+				return config
+			},
+		},
+	}
 }
 
 // extendedTelemetryDefinitions holds the observability and fallback knobs.
@@ -252,6 +284,17 @@ func normalizePositiveInt(raw string) (string, error) {
 	value, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || value <= 0 {
 		return "", fmt.Errorf("value must be a positive integer")
+	}
+
+	return strconv.Itoa(value), nil
+}
+
+// normalizeSwarmSeedDepth accepts a crawl depth within the loader's bounds so a
+// runtime edit cannot set an autocrawler depth the env loader would reject.
+func normalizeSwarmSeedDepth(raw string) (string, error) {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || value < 0 || value > maxSwarmSeedDepth {
+		return "", fmt.Errorf("value must be an integer between 0 and %d", maxSwarmSeedDepth)
 	}
 
 	return strconv.Itoa(value), nil

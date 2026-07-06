@@ -72,6 +72,43 @@ func (nullCrawlQueue) PublishOnce(
 	return false, nil
 }
 
+type capturingCrawlQueue struct {
+	orders []yagocrawlcontract.CrawlOrder
+}
+
+func (q *capturingCrawlQueue) PublishOnce(
+	_ context.Context,
+	_ string,
+	order yagocrawlcontract.CrawlOrder,
+) (bool, error) {
+	q.orders = append(q.orders, order)
+
+	return true, nil
+}
+
+// TestNewCrawlSeederAppliesAutocrawlerProfileBounds proves the tunable
+// autocrawler depth and page cap reach the published crawl order rather than
+// the former hardcoded depth 1 / 20 pages.
+func TestNewCrawlSeederAppliesAutocrawlerProfileBounds(t *testing.T) {
+	queue := &capturingCrawlQueue{}
+	seeder := newCrawlSeeder(
+		queue,
+		countingDirectory{},
+		nodeidentity.Identity{}.Hash,
+		seedProfile{name: swarmSeedProfileName, depth: 3, maxPages: 75},
+	)
+	seeder.Seed(t.Context(), []string{"https://discovered.example/page"})
+
+	if len(queue.orders) != 1 {
+		t.Fatalf("published %d orders, want 1", len(queue.orders))
+	}
+	profile := queue.orders[0].Profile
+	if profile.MaxDepth != 3 || profile.MaxPagesPerHost != 75 {
+		t.Fatalf("autocrawler profile bounds = depth %d / %d pages, want 3 / 75",
+			profile.MaxDepth, profile.MaxPagesPerHost)
+	}
+}
+
 func TestNodePublicSearchInstallsSwarmSeedCrawl(t *testing.T) {
 	searcher, _ := mountNodePublicSearch(http.NewServeMux(), publicSearchAssembly{
 		storage: nodeStorage{
@@ -82,7 +119,12 @@ func TestNodePublicSearchInstallsSwarmSeedCrawl(t *testing.T) {
 		dht:       defaultPublicSearchDHTConfig(),
 		client:    http.DefaultClient,
 		seedQueue: nullCrawlQueue{},
-		swarmSeed: swarmSeedConfig{Enabled: true, LimitDocs: 100},
+		swarmSeed: swarmSeedConfig{
+			Enabled:      true,
+			LimitDocs:    100,
+			SeedDepth:    2,
+			SeedMaxPages: 40,
+		},
 	})
 
 	if _, ok := searcher.(swarmSeedingSearcher); !ok {

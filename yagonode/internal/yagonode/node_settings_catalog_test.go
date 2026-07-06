@@ -43,6 +43,14 @@ func TestExtendedSettingCatalogRoundTrips(t *testing.T) {
 			"5000",
 			func(c nodeConfig) bool { return c.SwarmSeed.LimitDocs == 5000 },
 		},
+		"swarm.seed.depth": {
+			"4",
+			func(c nodeConfig) bool { return c.SwarmSeed.SeedDepth == 4 },
+		},
+		"swarm.seed.max_pages": {
+			"60",
+			func(c nodeConfig) bool { return c.SwarmSeed.SeedMaxPages == 60 },
+		},
 		"extract.fetch.enabled": {"true", func(c nodeConfig) bool {
 			return c.ExtractFetch.Enabled
 		}},
@@ -90,6 +98,19 @@ func TestExtendedSettingValidation(t *testing.T) {
 	}
 	if _, err := byKey["swarm.seed.limit"].normalize("many"); err == nil {
 		t.Fatal("non-numeric limit must fail")
+	}
+	if _, err := byKey["swarm.seed.depth"].normalize("99"); err == nil {
+		t.Fatal("out-of-range autocrawler depth must fail")
+	}
+	if _, err := byKey["swarm.seed.depth"].normalize("-1"); err == nil {
+		t.Fatal("negative autocrawler depth must fail")
+	}
+	if normalized, err := byKey["swarm.seed.depth"].normalize(" 0 "); err != nil ||
+		normalized != "0" {
+		t.Fatalf("depth 0 must normalize: %q %v", normalized, err)
+	}
+	if _, err := byKey["swarm.seed.max_pages"].normalize("0"); err == nil {
+		t.Fatal("non-positive autocrawler page cap must fail")
 	}
 	if _, err := byKey["search.query.log"].normalize("noisy"); err == nil {
 		t.Fatal("unknown log mode must fail")
