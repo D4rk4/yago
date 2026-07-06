@@ -26,6 +26,9 @@ type CrawlJob struct {
 	// IgnoreRobots routes this job through the fetch chain that skips the
 	// robots.txt check (explicit profile opt-out; obeyed by default).
 	IgnoreRobots bool
+	// DisableBrowser keeps this job on the fast HTTP path: no headless-browser
+	// escalation when the fast fetch is rejected.
+	DisableBrowser bool
 }
 
 type DiscoveredLinks struct {

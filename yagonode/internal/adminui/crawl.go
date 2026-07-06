@@ -22,6 +22,7 @@ type CrawlStart struct {
 	FollowNoFollowLinks  bool
 	IgnoreTLSAuthority   bool
 	IgnoreRobots         bool
+	DisableBrowser       bool
 	RecrawlIfOlder       string
 	CrawlDelay           string
 }

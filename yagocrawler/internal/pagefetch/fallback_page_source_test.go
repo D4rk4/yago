@@ -147,3 +147,26 @@ func TestFallbackPageSourceSkipsBrowserOnThrottle(t *testing.T) {
 		t.Fatalf("browser fallback ran %d times on a throttled host", fallbackCalls)
 	}
 }
+
+// TestFallbackPageSourceHonorsBrowserOptOut: a profile that disabled browser
+// rendering keeps a rejected fast fetch rejected instead of escalating.
+func TestFallbackPageSourceHonorsBrowserOptOut(t *testing.T) {
+	fallbackCalls := 0
+	source := pagefetch.NewFallbackPageSource(
+		sourceFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			return pagefetch.FetchedPage{}, pagefetch.ErrPageRejected
+		}),
+		sourceFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			fallbackCalls++
+			return pagefetch.FetchedPage{}, nil
+		}),
+	)
+
+	ctx := pagefetch.WithoutBrowserFallback(context.Background())
+	if _, err := source.Fetch(ctx, exampleURL(t)); !errors.Is(err, pagefetch.ErrPageRejected) {
+		t.Fatalf("rejection lost: %v", err)
+	}
+	if fallbackCalls != 0 {
+		t.Fatalf("browser ran %d times despite the opt-out", fallbackCalls)
+	}
+}

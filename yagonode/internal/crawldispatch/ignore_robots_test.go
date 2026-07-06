@@ -41,3 +41,23 @@ func TestDispatchThreadsIgnoreRobotsIntoProfile(t *testing.T) {
 		t.Fatal("robots must stay enforced by default")
 	}
 }
+
+func TestDispatchThreadsDisableBrowserIntoProfile(t *testing.T) {
+	queue := &recordingQueue{}
+	mux := mount(t, queue)
+
+	rec := post(t, mux, `{
+		"name": "plain-html",
+		"seeds": ["https://example.org/"],
+		"scope": "domain",
+		"maxDepth": 1,
+		"maxPagesPerHost": 10,
+		"disableBrowser": true
+	}`)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d; body=%s", rec.Code, rec.Body.String())
+	}
+	if !queue.order.Profile.DisableBrowser {
+		t.Fatal("disableBrowser opt-out did not reach the profile")
+	}
+}

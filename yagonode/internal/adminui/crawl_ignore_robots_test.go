@@ -60,3 +60,36 @@ func TestConsoleCrawlFormShowsRobotsOptOutUnchecked(t *testing.T) {
 		t.Fatal("robots opt-out label missing")
 	}
 }
+
+// TestConsoleCrawlStartThreadsDisableBrowser: the fast-only opt-out reaches
+// the crawl source and defaults to browser rendering staying available.
+func TestConsoleCrawlStartThreadsDisableBrowser(t *testing.T) {
+	t.Parallel()
+
+	crawl := &fakeCrawl{}
+	console := New(Options{Crawl: crawl})
+	got := doPost(t, console, "/admin/crawl", url.Values{
+		"seeds":          {"https://example.org/"},
+		"scope":          {"domain"},
+		"maxDepth":       {"1"},
+		"disableBrowser": {"on"},
+	})
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	if !crawl.got.DisableBrowser {
+		t.Fatal("disableBrowser checkbox did not reach the crawl source")
+	}
+
+	got = doPost(t, console, "/admin/crawl", url.Values{
+		"seeds":    {"https://example.org/"},
+		"scope":    {"domain"},
+		"maxDepth": {"1"},
+	})
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	if crawl.got.DisableBrowser {
+		t.Fatal("browser rendering must stay available by default")
+	}
+}

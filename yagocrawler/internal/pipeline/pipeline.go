@@ -193,6 +193,9 @@ func (p *Pipeline) fetchJob(
 	target *url.URL,
 ) (pagefetch.FetchedPage, error) {
 	p.observer.FetchAttempted()
+	if job.DisableBrowser {
+		ctx = pagefetch.WithoutBrowserFallback(ctx)
+	}
 	fetched, err := p.jobFetcher(job).Fetch(ctx, target)
 	if err != nil {
 		// A rejected page (blocked target, bad status, wrong content type)

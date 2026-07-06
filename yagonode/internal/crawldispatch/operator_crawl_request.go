@@ -23,6 +23,7 @@ type OperatorRequest struct {
 	AllowQueryURLs       bool     `json:"allowQueryURLs"`
 	IgnoreTLSAuthority   bool     `json:"ignoreTLSAuthority"`
 	IgnoreRobots         bool     `json:"ignoreRobots"`
+	DisableBrowser       bool     `json:"disableBrowser"`
 	FollowNoFollowLinks  bool     `json:"followNoFollowLinks"`
 	MaxPagesPerHost      int      `json:"maxPagesPerHost"`
 	RecrawlIfOlder       string   `json:"recrawlIfOlder"`
@@ -75,6 +76,7 @@ func (r OperatorRequest) order(
 		AllowQueryURLs:       r.AllowQueryURLs,
 		IgnoreTLSAuthority:   r.IgnoreTLSAuthority,
 		IgnoreRobots:         r.IgnoreRobots,
+		DisableBrowser:       r.DisableBrowser,
 		FollowNoFollowLinks:  r.FollowNoFollowLinks,
 		MaxPagesPerHost:      r.MaxPagesPerHost,
 		RecrawlIfOlder:       recrawl,

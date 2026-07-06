@@ -39,6 +39,9 @@ func (s *FallbackPageSource) Fetch(
 	if _, throttled := AsThrottled(err); throttled {
 		return FetchedPage{}, fmt.Errorf("primary fetch: %w", err)
 	}
+	if browserFallbackDisabled(ctx) {
+		return FetchedPage{}, fmt.Errorf("primary fetch: %w", err)
+	}
 
 	page, err = s.fallback.Fetch(ctx, target)
 	if err != nil {

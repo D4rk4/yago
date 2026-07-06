@@ -529,6 +529,7 @@ func (s *frontierState) accept(
 		CrawlDelay:         profile.Profile.CrawlDelay,
 		IgnoreTLSAuthority: profile.Profile.IgnoreTLSAuthority,
 		IgnoreRobots:       profile.Profile.IgnoreRobots,
+		DisableBrowser:     profile.Profile.DisableBrowser,
 		Formats:            profile.Profile.Formats,
 	})
 	return true

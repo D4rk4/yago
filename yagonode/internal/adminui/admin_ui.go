@@ -183,6 +183,7 @@ type crawlForm struct {
 	FollowNoFollowLinks  bool
 	IgnoreTLSAuthority   bool
 	IgnoreRobots         bool
+	DisableBrowser       bool
 	RecrawlIfOlder       string
 	CrawlDelay           string
 	// ShowExpert keeps the expert panel open across a redisplay (a validation error
@@ -1095,6 +1096,7 @@ func (c *Console) handleCrawlStart(w http.ResponseWriter, r *http.Request) {
 		FollowNoFollowLinks:  form.FollowNoFollowLinks,
 		IgnoreTLSAuthority:   form.IgnoreTLSAuthority,
 		IgnoreRobots:         form.IgnoreRobots,
+		DisableBrowser:       form.DisableBrowser,
 		RecrawlIfOlder:       form.RecrawlIfOlder,
 		CrawlDelay:           form.CrawlDelay,
 	})
@@ -1255,6 +1257,7 @@ func parseCrawlForm(r *http.Request) crawlForm {
 		FollowNoFollowLinks:  r.PostFormValue("followNoFollowLinks") == "on",
 		IgnoreTLSAuthority:   r.PostFormValue("ignoreTLSAuthority") == "on",
 		IgnoreRobots:         r.PostFormValue("ignoreRobots") == "on",
+		DisableBrowser:       r.PostFormValue("disableBrowser") == "on",
 		RecrawlIfOlder:       strings.TrimSpace(r.PostFormValue("recrawlIfOlder")),
 		CrawlDelay:           strings.TrimSpace(r.PostFormValue("crawlDelay")),
 		ShowExpert:           r.PostFormValue("showExpert") == "on",

@@ -38,7 +38,12 @@ type CrawlProfile struct {
 	// enforced by default; this is an explicit per-profile operator opt-out the
 	// admin form confirms, for archiving one's own sites or hosts whose robots
 	// file blocks all crawlers by mistake.
-	IgnoreRobots    bool
+	IgnoreRobots bool
+	// DisableBrowser keeps this crawl on the fast HTTP path only: the headless
+	// browser never escalates a rejected fetch. Off by default — bot-walled
+	// pages keep rendering — but a browser tab is heavy, so profiles crawling
+	// plain-HTML corpora can opt out.
+	DisableBrowser  bool
 	MaxPagesPerHost int
 	RecrawlIfOlder  time.Duration
 	CrawlDelay      time.Duration

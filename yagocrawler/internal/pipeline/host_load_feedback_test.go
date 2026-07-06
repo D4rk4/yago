@@ -74,3 +74,39 @@ func TestPipelineFeedsHostLoadSignals(t *testing.T) {
 		t.Fatalf("successes = %d, want 1", feedback.successes)
 	}
 }
+
+// TestPipelineDisablesBrowserEscalationPerJob: a DisableBrowser job's fetch
+// context carries the opt-out marker down to the fallback source.
+func TestPipelineDisablesBrowserEscalationPerJob(t *testing.T) {
+	frontier := newRecordingFrontier()
+	fallbackCalls := 0
+	source := pagefetch.NewFallbackPageSource(
+		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			return pagefetch.FetchedPage{}, pagefetch.ErrPageRejected
+		}),
+		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			fallbackCalls++
+			return htmlPage(), nil
+		}),
+	)
+	p := pipeline.NewPipeline(
+		frontier,
+		source,
+		pageindex.NewIndexBuilder(),
+		emitFunc(
+			func(context.Context, yagocrawlcontract.DocumentIngest, []yagomodel.RWIPosting, yagomodel.URIMetadataRow, ingest.Envelope) error {
+				return nil
+			},
+		),
+	)
+
+	frontier.jobs = make(chan crawljob.CrawlJob, 2)
+	frontier.jobs <- crawljob.CrawlJob{URL: "https://a.example/plain", DisableBrowser: true}
+	frontier.jobs <- crawljob.CrawlJob{URL: "https://a.example/rendered"}
+	close(frontier.jobs)
+	p.RunWorkers(context.Background(), context.Background(), 1)
+
+	if fallbackCalls != 1 {
+		t.Fatalf("browser fallback ran %d times, want 1 (only the default job)", fallbackCalls)
+	}
+}
