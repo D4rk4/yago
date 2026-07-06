@@ -191,8 +191,48 @@ func mountNodePublicSearch(
 		Weights:            remoteRankingWeights(assembly.rankingWeights),
 		PreferHTTPS:        assembly.peerHTTPSPreferred,
 	})
+	search := assemblePublicSearcher(local, remote, assembly)
+	access := searchAccessPolicy(assembly)
+	// Autocomplete suggestions come from the local index alone (denylist applied,
+	// same as served results) so typeahead never fans out to the swarm or the web
+	// fallback that the main search path can reach.
+	suggestSource := withDenylistFilter(local, assembly.denylist)
+	yacysearch.Mount(mux, search, suggestSource, assembly.linksNewTab)
+	cachedpage.Mount(mux, assembly.storage.documentDirectory)
+	faviconproxy.Mount(mux, assembly.client)
+	faviconproxy.MountImages(mux, assembly.client)
+	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
+	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access, assembly.extractFetcher)
+	tavilyapi.MountCrawl(mux, access, crawlPageFetcher(assembly.extractFetcher))
+	mux.Handle(
+		"/{$}",
+		newRootDispatcher(
+			assembly.toggles,
+			publicportal.New(newPortalSource(search), assembly.linksNewTab),
+		),
+	)
+	publicportal.SetBaseURLProvider(assembly.toggles.PublicBaseURL)
+	yacysearch.SetBaseURLProvider(assembly.toggles.PublicBaseURL)
+	mountPortalOpenSearch(mux, assembly.toggles)
+
+	return search, suggestSource
+}
+
+// assemblePublicSearcher stacks the federated searcher decorators in order: merge
+// local and remote, rerank the merged window on lexical evidence, apply the
+// denylist, recover zero-result queries, stabilize the paging window, then layer
+// observability, remote-result caching, and greedy-learning seed crawls.
+func assemblePublicSearcher(
+	local searchcore.Searcher,
+	remote searchcore.Searcher,
+	assembly publicSearchAssembly,
+) searchcore.Searcher {
 	federated := withWebFallback(searchcore.NewFederatedSearcher(local, remote), assembly)
-	filtered := withDenylistFilter(federated, assembly.denylist)
+	// Rerank the merged local+remote window by query-term coverage and proximity
+	// over the visible title and snippet, so both sources compete on the same
+	// textual evidence before filtering and paging freeze the order.
+	reranked := searchcore.NewLexicalRerankSearcher(federated)
+	filtered := withDenylistFilter(reranked, assembly.denylist)
 	// Zero-result recovery sits above the filters so its fuzzy retry serves
 	// only pages the denylist would allow.
 	recovering := withZeroResultRecovery(filtered)
@@ -222,30 +262,8 @@ func mountNodePublicSearch(
 			assembly.swarmSeed.LimitDocs,
 		)
 	}
-	access := searchAccessPolicy(assembly)
-	// Autocomplete suggestions come from the local index alone (denylist applied,
-	// same as served results) so typeahead never fans out to the swarm or the web
-	// fallback that the main search path can reach.
-	suggestSource := withDenylistFilter(local, assembly.denylist)
-	yacysearch.Mount(mux, search, suggestSource, assembly.linksNewTab)
-	cachedpage.Mount(mux, assembly.storage.documentDirectory)
-	faviconproxy.Mount(mux, assembly.client)
-	faviconproxy.MountImages(mux, assembly.client)
-	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
-	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access, assembly.extractFetcher)
-	tavilyapi.MountCrawl(mux, access, crawlPageFetcher(assembly.extractFetcher))
-	mux.Handle(
-		"/{$}",
-		newRootDispatcher(
-			assembly.toggles,
-			publicportal.New(newPortalSource(search), assembly.linksNewTab),
-		),
-	)
-	publicportal.SetBaseURLProvider(assembly.toggles.PublicBaseURL)
-	yacysearch.SetBaseURLProvider(assembly.toggles.PublicBaseURL)
-	mountPortalOpenSearch(mux, assembly.toggles)
 
-	return search, suggestSource
+	return search
 }
 
 // mountPortalOpenSearch registers the portal's OpenSearch description document
