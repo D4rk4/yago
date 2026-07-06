@@ -256,3 +256,48 @@ func TestDDGSProviderIgnoresBlankQuery(t *testing.T) {
 		t.Fatalf("results = %#v, err = %v", results, err)
 	}
 }
+
+// TestDDGSProviderWalksPastOffTopicEngineAnswers: Bing's bot-tier response
+// answers only the first query word with dictionary pages; with the acceptance
+// hook the loop treats that engine as empty and DuckDuckGo's on-topic results
+// win.
+func TestDDGSProviderWalksPastOffTopicEngineAnswers(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host == "www.bing.com" {
+			return htmlResponse(http.StatusOK, `<!doctype html><html><body>
+<li><h2><a href="https://ru.wiktionary.org/wiki/that">что — Викисловарь</a></h2><p>значение слова</p></li>
+</body></html>`), nil
+		}
+		if strings.Contains(r.URL.Host, "duckduckgo.com") {
+			return htmlResponse(http.StatusOK, `<!doctype html><html><body>
+<div class="result results_links web-result">
+  <div class="links_main">
+    <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fvideo.example%2Fddt&rut=abc">ДДТ - Что такое осень (Official video)</a>
+    <a class="result__snippet">Клип группы ДДТ на песню Что такое осень.</a>
+  </div>
+</div>
+</body></html>`), nil
+		}
+
+		return htmlResponse(http.StatusOK, "<html><body>no results</body></html>"), nil
+	})}
+	provider := NewDDGSProvider(DDGSConfig{
+		Client:  client,
+		Backend: backendAuto,
+		Now:     fixedClock(),
+		Accept:  VerifiedForQuery,
+	})
+
+	results, err := provider.Search(context.Background(), "что такое осень ддт", 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("off-topic engine answer stopped the walk to DuckDuckGo")
+	}
+	for _, result := range results {
+		if strings.Contains(result.URL, "wiktionary") {
+			t.Fatalf("off-topic dictionary row leaked through: %s", result.URL)
+		}
+	}
+}

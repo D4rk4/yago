@@ -21,6 +21,19 @@ func verifiedWebResults(req searchcore.Request, results []Result) []Result {
 	if len(terms) == 0 {
 		terms = strings.Fields(req.Query)
 	}
+
+	return resultsMentioningTerms(terms, results)
+}
+
+// VerifiedForQuery filters results down to those mentioning a content word of
+// the query string. It backs the provider's per-engine acceptance hook, so an
+// engine whose whole answer is off-topic counts as empty and the engine loop
+// walks on instead of stopping at plausible-looking noise.
+func VerifiedForQuery(query string, results []Result) []Result {
+	return resultsMentioningTerms(strings.Fields(query), results)
+}
+
+func resultsMentioningTerms(terms []string, results []Result) []Result {
 	if content := stopwords.ContentTerms(terms); len(content) > 0 {
 		terms = content
 	}

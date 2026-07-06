@@ -32,6 +32,13 @@ type DDGSConfig struct {
 	CacheTTL   time.Duration
 	CacheMax   int
 	Now        func() time.Time
+	// Accept filters one engine's parsed results before they are accepted as
+	// the answer; an engine whose entire answer is filtered away counts as
+	// having yielded nothing, so the loop walks on to the next engine. Bing's
+	// bot-tier response answers only the first query word with dictionary
+	// pages — plausible-looking, entirely off-topic — and without this hook it
+	// would satisfy the loop while post-hoc verification then emptied the SERP.
+	Accept func(query string, results []Result) []Result
 }
 
 // DDGSProvider is a best-effort metasearch client over keyless public search
@@ -45,6 +52,7 @@ type DDGSProvider struct {
 	timeout    time.Duration
 	now        func() time.Time
 	cache      *queryCache
+	accept     func(query string, results []Result) []Result
 
 	mu           sync.Mutex
 	backoffUntil time.Time
@@ -73,6 +81,7 @@ func NewDDGSProvider(config DDGSConfig) *DDGSProvider {
 		timeout:    config.Timeout,
 		now:        now,
 		cache:      newQueryCache(config.CacheTTL, cacheMax, now),
+		accept:     config.Accept,
 	}
 }
 
@@ -112,9 +121,14 @@ func (p *DDGSProvider) query(ctx context.Context, query string) ([]Result, bool,
 	allRateLimited := true
 	for _, backend := range p.engines {
 		results, rateLimited, err := p.fetch(ctx, backend, query)
+		fetched := len(results)
+		if err == nil && p.accept != nil {
+			results = p.accept(query, results)
+		}
 		slog.DebugContext(ctx, "web-search engine attempt",
 			slog.String("engine", backend.name),
-			slog.Int("results", len(results)),
+			slog.Int("fetched", fetched),
+			slog.Int("accepted", len(results)),
 			slog.Bool("rateLimited", rateLimited),
 			slog.Any("error", err))
 		if rateLimited {

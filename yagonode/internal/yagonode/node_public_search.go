@@ -388,6 +388,7 @@ func withWebFallback(
 		SafeSearch: config.SafeSearch,
 		Timeout:    config.Timeout,
 		CacheTTL:   config.CacheTTL,
+		Accept:     websearch.VerifiedForQuery,
 	})
 
 	var opts []websearch.Option
