@@ -250,10 +250,17 @@ func assemblePublicSearcher(
 	// mined from their own top results (RM3) before the swarm merge; peers run
 	// their own retrieval, so only the local searcher is wrapped.
 	localWithFeedback := searchcore.NewPseudoRelevanceSearcher(local)
-	federated := withWebFallback(
+	// Peer rows trade their peer-sent titles for verified, query-biased snippets
+	// fetched from the pages themselves (YaCy TextSnippet parity). Enrichment
+	// sits directly on the merge — below the web fallback and the zero-result
+	// recovery, so a window it demotes to nothing still triggers both, and below
+	// the rerank, so ranking sees the fetched page evidence instead of bare
+	// titles.
+	enriched := snippetfetch.WithSnippetEnrichment(
 		searchcore.NewFederatedSearcher(localWithFeedback, remote),
-		assembly,
+		assembly.snippetEnricher,
 	)
+	federated := withWebFallback(enriched, assembly)
 	// Rerank the merged local+remote window by query-term coverage and proximity
 	// over the visible title and snippet, so both sources compete on the same
 	// textual evidence before filtering and paging freeze the order.
@@ -262,13 +269,9 @@ func assemblePublicSearcher(
 	// Zero-result recovery sits above the filters so its fuzzy retry serves
 	// only pages the denylist would allow.
 	recovering := withZeroResultRecovery(filtered, assembly.spellCorrector)
-	// Peer rows on the first page trade their peer-sent titles for verified,
-	// query-biased snippets fetched from the pages themselves (YaCy TextSnippet
-	// parity); sitting below the session cache, one query enriches once.
-	enriched := snippetfetch.WithSnippetEnrichment(recovering, assembly.snippetEnricher)
 	// The session cache makes paging stable (YaCy SearchEventCache): page one
 	// runs one deep search, deeper pages slice the cached result list.
-	stable := searchsession.WithStableWindow(enriched)
+	stable := searchsession.WithStableWindow(recovering)
 	search := withQueryLogging(stable, assembly.queryLogMode)
 	search = withSearchMetrics(search, assembly.searchMetrics)
 	search = withParsedQuery(search)

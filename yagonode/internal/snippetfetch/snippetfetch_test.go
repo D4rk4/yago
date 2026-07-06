@@ -52,10 +52,12 @@ func peerRow(url, title string) searchcore.Result {
 	}
 }
 
-// TestEnrichmentBuildsVerifiedSnippetsFromFetchedPages is the SEARCH-31
+// TestEnrichmentBuildsVerifiedSnippetsFromFetchedPages is the SEARCH-31/32
 // acceptance on the reported bug: a peer row titled only «ДДТ (группа)» gains
 // a body excerpt containing «осень», a fetched page missing the query words is
-// sorted out, and an unreachable page keeps its row unchanged.
+// demoted behind every other row (never dropped — an all-demoted window must
+// not turn into an empty SERP), and an unreachable page keeps its row
+// unchanged.
 func TestEnrichmentBuildsVerifiedSnippetsFromFetchedPages(t *testing.T) {
 	fetcher := &scriptedFetcher{
 		pages: map[string]string{
@@ -80,8 +82,8 @@ func TestEnrichmentBuildsVerifiedSnippetsFromFetchedPages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if len(resp.Results) != 2 || resp.TotalResults != 2 {
-		t.Fatalf("results = %d total = %d, want 2/2 (spam row sorted out)",
+	if len(resp.Results) != 3 || resp.TotalResults != 3 {
+		t.Fatalf("results = %d total = %d, want all 3 kept (spam demoted, not dropped)",
 			len(resp.Results), resp.TotalResults)
 	}
 	wiki := resp.Results[0]
@@ -91,6 +93,30 @@ func TestEnrichmentBuildsVerifiedSnippetsFromFetchedPages(t *testing.T) {
 	down := resp.Results[1]
 	if down.Snippet != "ДДТ Что такое осень текст" {
 		t.Fatalf("unreachable row rewritten: %q", down.Snippet)
+	}
+	last := resp.Results[2]
+	if last.URL != "https://spam.example/page" || last.Snippet != "ддт осень скачать бесплатно" {
+		t.Fatalf("verification-missing row must sink to the tail unrewritten, got %+v", last)
+	}
+}
+
+// TestEnrichmentNeverEmptiesTheWindow guards the «0 result(s)» regression: a
+// window where every fetched page lacks the query words keeps all its rows.
+func TestEnrichmentNeverEmptiesTheWindow(t *testing.T) {
+	fetcher := &scriptedFetcher{pages: map[string]string{
+		"https://uk.wikipedia.org/ddt": "ДДТ — радянський і російський рок-гурт, пісня «Що таке осінь» відома всім",
+	}}
+	enricher := NewEnricher(fetcher.fetch)
+	results := enricher.enrich(
+		context.Background(),
+		[]string{"осень", "ддт"},
+		[]searchcore.Result{peerRow("https://uk.wikipedia.org/ddt", "ДДТ (гурт) — Вікіпедія")},
+	)
+	if len(results) != 1 {
+		t.Fatalf("all-demoted window emptied: %d rows", len(results))
+	}
+	if results[0].Snippet != "ДДТ (гурт) — Вікіпедія" {
+		t.Fatalf("demoted row rewritten: %q", results[0].Snippet)
 	}
 }
 
@@ -140,12 +166,12 @@ func TestEnrichmentTouchesOnlyLeadingPeerRows(t *testing.T) {
 		rows = append(rows, peerRow(fmt.Sprintf("https://peer.example/p%d", i), "peer row"))
 	}
 	enricher := NewEnricher(fetcher.fetch)
-	if _, dropped := enricher.enrich(
+	if kept := enricher.enrich(
 		context.Background(),
 		[]string{"осень"},
 		rows,
-	); dropped != 0 {
-		t.Fatalf("empty fetches dropped rows: %d", dropped)
+	); len(kept) != len(rows) {
+		t.Fatalf("empty fetches changed row count: %d", len(kept))
 	}
 	if fetcher.calls != enrichLimit-1 {
 		t.Fatalf("fetch calls = %d, want %d (leading peer rows only)",
@@ -162,9 +188,7 @@ func TestEnrichmentHelpersDegradeGracefully(t *testing.T) {
 		t.Fatal("nil enricher must return the inner searcher")
 	}
 	enricher := NewEnricher(func(context.Context, string) (string, error) { return "", nil })
-	if results, dropped := enricher.enrich(context.Background(), nil, nil); len(
-		results,
-	) != 0 || dropped != 0 {
+	if results := enricher.enrich(context.Background(), nil, nil); len(results) != 0 {
 		t.Fatal("empty inputs must pass through")
 	}
 	terms := enrichmentTerms(searchcore.Request{Query: "что такое"})

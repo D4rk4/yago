@@ -5,14 +5,19 @@
 // peer rows' pages are fetched — egress-guarded, bounded, concurrent, cached —
 // their text is checked for every content word of the query, and a
 // query-biased excerpt replaces the bare title. A fetched page missing the
-// words is sorted out (YaCy's ERROR_NO_MATCH); a page that cannot be loaded
-// keeps its row unchanged, exactly as YaCy keeps remote results whose snippet
-// fetch fails.
+// words is demoted behind every other row rather than dropped: YaCy sorts such
+// results out (ERROR_NO_MATCH), but it verifies against a stream of hundreds of
+// candidates, while dropping from a ten-row window turned honest-but-foreign
+// pages (a Ukrainian article without the Russian query word) into an empty SERP
+// that the zero-result layers never saw. A page that cannot be loaded keeps its
+// row unchanged, exactly as YaCy keeps remote results whose snippet fetch
+// fails.
 package snippetfetch
 
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -96,11 +101,7 @@ func (s enrichingSearcher) Search(
 	if req.Verify == searchcore.VerifyFalse {
 		return resp, nil
 	}
-	dropped := 0
-	resp.Results, dropped = s.enricher.enrich(ctx, enrichmentTerms(req), resp.Results)
-	if resp.TotalResults >= dropped {
-		resp.TotalResults -= dropped
-	}
+	resp.Results = s.enricher.enrich(ctx, enrichmentTerms(req), resp.Results)
 
 	return resp, nil
 }
@@ -121,18 +122,22 @@ func enrichmentTerms(req searchcore.Request) []string {
 
 type enrichOutcome struct {
 	snippet string
-	drop    bool
+	demote  bool
 }
 
-// enrich fetches the leading peer rows concurrently and returns the surviving
-// rows plus how many were sorted out for missing the query words.
+// enrich fetches the leading peer rows concurrently, swaps verified rows'
+// snippets for page excerpts, and moves rows whose fetched page lacks a query
+// word behind everything else. The demotion is best-effort: the lexical rerank
+// above may lift a demoted row whose title carries the query words, which is
+// acceptable — the invariant this pass guarantees is that verification never
+// removes a row, so a window can only gain evidence, not turn empty.
 func (e *Enricher) enrich(
 	ctx context.Context,
 	terms []string,
 	results []searchcore.Result,
-) ([]searchcore.Result, int) {
+) []searchcore.Result {
 	if len(terms) == 0 || len(results) == 0 {
-		return results, 0
+		return results
 	}
 	ctx, cancel := context.WithTimeout(ctx, enrichBudget)
 	defer cancel()
@@ -141,8 +146,8 @@ func (e *Enricher) enrich(
 	outcomes := make([]enrichOutcome, head)
 	var wg sync.WaitGroup
 	slots := make(chan struct{}, fetchConcurrency)
-	for i := range head {
-		if results[i].Source != searchcore.SourceRemote {
+	for i, result := range results[:head] {
+		if result.Source != searchcore.SourceRemote {
 			continue
 		}
 		wg.Add(1)
@@ -151,15 +156,17 @@ func (e *Enricher) enrich(
 			slots <- struct{}{}
 			defer func() { <-slots }()
 			outcomes[index] = e.pageOutcome(ctx, terms, rawURL)
-		}(i, results[i].URL)
+		}(i, result.URL)
 	}
 	wg.Wait()
 
 	kept := make([]searchcore.Result, 0, len(results))
-	dropped := 0
+	demoted := make([]searchcore.Result, 0, len(results))
 	for i, result := range results {
-		if i < head && outcomes[i].drop {
-			dropped++
+		if i < head && outcomes[i].demote {
+			slog.DebugContext(ctx, "peer snippet verification demoted result",
+				slog.String("url", result.URL))
+			demoted = append(demoted, result)
 
 			continue
 		}
@@ -169,11 +176,11 @@ func (e *Enricher) enrich(
 		kept = append(kept, result)
 	}
 
-	return kept, dropped
+	return append(kept, demoted...)
 }
 
 // pageOutcome loads one page and judges it: an unreachable page keeps its row,
-// a page missing any content word is sorted out, a verified page yields its
+// a page missing any content word is demoted, a verified page yields its
 // query-biased excerpt.
 func (e *Enricher) pageOutcome(
 	ctx context.Context,
@@ -186,7 +193,7 @@ func (e *Enricher) pageOutcome(
 	}
 	for _, term := range terms {
 		if !searchcore.TextMentionsTerm(text, term) {
-			return enrichOutcome{drop: true}
+			return enrichOutcome{demote: true}
 		}
 	}
 
