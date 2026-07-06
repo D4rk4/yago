@@ -1,6 +1,9 @@
 package websearch
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 const listFixture = `<!doctype html><html><body>
 <ul class="results-standard">
@@ -104,5 +107,46 @@ func TestUnwrapRedirect(t *testing.T) {
 		if got := unwrapRedirect(href); got != want {
 			t.Errorf("unwrapRedirect(%q) = %q, want %q", href, got, want)
 		}
+	}
+}
+
+const braveFixture = `<!doctype html><html><body>
+<div class="snippet svelte-x" data-pos="0" data-type="web">
+  <a href="https://www.youtube.com/watch?v=5KC-iscJtsI" class="l1">
+    <div class="site-name-content"><div class="text-ellipsis">YouTube</div></div>
+    <div class="title snippet-title-hash">ДДТ - Что такое осень (Official video) - YouTube</div>
+  </a>
+  <div class="generic-content">(С) Navigator Records, 2011. Музыка и слова Ю. Шевчук. Режиссер Б. Деденев. 1991 год.</div>
+</div>
+<div class="snippet svelte-x" data-pos="1" data-type="videos">
+  <a href="https://video.example/ignored"><div class="snippet-title">видеокарусель — не веб-результат</div></a>
+</div>
+<div class="snippet svelte-x" data-pos="2" data-type="web">
+  <a href="https://sefon.pro/mp3/31774-ddt-chto-takoe-osen/" class="l1">
+    <div class="snippet-title">ДДТ - Что Такое Осень - скачать песню</div>
+  </a>
+  <div class="generic-content">Скачать бесплатно ДДТ - Что Такое Осень в качестве 320 kbps. Возможность слушать песню онлайн.</div>
+</div>
+</body></html>`
+
+func TestParseBraveResults(t *testing.T) {
+	results, err := parseBraveResults([]byte(braveFixture))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("results = %d, want 2 web blocks (the video carousel is skipped)", len(results))
+	}
+	first := results[0]
+	if first.URL != "https://www.youtube.com/watch?v=5KC-iscJtsI" ||
+		!strings.Contains(first.Title, "Что такое осень") {
+		t.Fatalf("first = %+v", first)
+	}
+	if !strings.Contains(first.Snippet, "Navigator Records") {
+		t.Fatalf("snippet not taken from the long leaf text: %q", first.Snippet)
+	}
+	if strings.Contains(results[1].Snippet, "Что Такое Осень - скачать песню") &&
+		results[1].Snippet == results[1].Title {
+		t.Fatalf("snippet must not repeat the title: %+v", results[1])
 	}
 }

@@ -10,12 +10,14 @@ const (
 	engineBing    = "bing"
 	engineDDGHTML = "ddg-html"
 	engineDDGLite = "ddg-lite"
+	engineBrave   = "brave"
 
 	backendAuto       = "auto"
 	backendMojeek     = "mojeek"
 	backendBing       = "bing"
 	backendDuckDuckGo = "duckduckgo"
 	backendDDG        = "ddg"
+	backendBrave      = "brave"
 )
 
 type engine struct {
@@ -56,17 +58,25 @@ func allEngines() map[string]engine {
 			parse:    parseDuckDuckGoLiteResults,
 			safe:     duckSafeParams,
 		},
+		engineBrave: {
+			name:     engineBrave,
+			endpoint: "https://search.brave.com/search",
+			queryKey: "q",
+			parse:    parseBraveResults,
+			safe:     braveSafeParams,
+		},
 	}
 }
 
 // backendsFor resolves a backend selector to an ordered engine list. The query
-// loop walks engines in order and stops at the first one that yields results,
-// so "auto" keeps Mojeek and Bing in front and adds the DuckDuckGo endpoints
-// only as a tail resort: they aggressively rate-limit automated queries
-// (ADR-0021), but they are reached only when the front engines produced
-// nothing — Mojeek has little non-English coverage and Bing bot-walls
-// datacenter addresses, which used to leave e.g. Cyrillic queries with an
-// empty fallback while DuckDuckGo could still answer them.
+// loop walks engines in order and stops at the first one whose answer survives
+// acceptance, so "auto" is ordered by answer quality: the DuckDuckGo endpoints
+// first — the only keyless engines with solid multilingual coverage — then
+// Brave, then Mojeek (little non-English coverage) and Bing (its bot-tier
+// response answers only the first query word) as the tail. DuckDuckGo's
+// aggressive rate limiting (ADR-0021) is handled by the per-engine backoff:
+// a limited engine is skipped for its own backoff window while the rest of
+// the chain keeps answering.
 func backendsFor(name string) []engine {
 	engines := allEngines()
 	switch strings.ToLower(strings.TrimSpace(name)) {
@@ -76,12 +86,15 @@ func backendsFor(name string) []engine {
 		return []engine{engines[engineBing]}
 	case backendDuckDuckGo, backendDDG:
 		return []engine{engines[engineDDGHTML], engines[engineDDGLite]}
+	case backendBrave:
+		return []engine{engines[engineBrave]}
 	default:
 		return []engine{
-			engines[engineMojeek],
-			engines[engineBing],
 			engines[engineDDGHTML],
 			engines[engineDDGLite],
+			engines[engineBrave],
+			engines[engineMojeek],
+			engines[engineBing],
 		}
 	}
 }
@@ -120,3 +133,15 @@ func duckSafeParams(mode string) url.Values {
 }
 
 func noSafeParams(string) url.Values { return url.Values{} }
+
+func braveSafeParams(mode string) url.Values {
+	values := url.Values{}
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "strict":
+		values.Set("safesearch", "strict")
+	case "off":
+		values.Set("safesearch", "off")
+	}
+
+	return values
+}

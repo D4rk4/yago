@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/net/html"
 )
@@ -215,4 +216,93 @@ func textContent(node *html.Node) string {
 	walk(node)
 
 	return strings.Join(strings.Fields(builder.String()), " ")
+}
+
+// parseBraveResults extracts hits from search.brave.com, whose server-rendered
+// page marks each organic result container with data-type="web": the first
+// absolute link is the target, the element whose class carries "snippet-title"
+// is the title, and the snippet is the container's first long leaf text that
+// is not the title (Brave has no stable description class).
+func parseBraveResults(body []byte) ([]Result, error) {
+	doc, err := html.Parse(bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("parse brave: %w", err)
+	}
+	var results []Result
+	forEachElement(doc, func(node *html.Node) {
+		if kind, _ := elementAttr(node, "data-type"); kind != "web" {
+			return
+		}
+		link := findDescendant(node, func(candidate *html.Node) bool {
+			href, _ := elementAttr(candidate, "href")
+
+			return candidate.Data == "a" && strings.HasPrefix(href, "http")
+		})
+		if link == nil {
+			return
+		}
+		href, _ := elementAttr(link, "href")
+		result := Result{URL: href}
+		if title := findDescendant(node, func(candidate *html.Node) bool {
+			return hasClassContaining(candidate, "snippet-title")
+		}); title != nil {
+			result.Title = textContent(title)
+		}
+		if result.Title == "" {
+			result.Title = textContent(link)
+		}
+		result.Snippet = firstLongLeafText(node, result.Title)
+		results = append(results, result)
+	})
+
+	return results, nil
+}
+
+// braveSnippetMinRunes is the shortest leaf text accepted as a Brave snippet;
+// shorter fragments are site names, dates, and view counters.
+const braveSnippetMinRunes = 60
+
+func firstLongLeafText(node *html.Node, exclude string) string {
+	var found string
+	var walk func(*html.Node)
+	walk = func(current *html.Node) {
+		if found != "" {
+			return
+		}
+		if current.Type == html.TextNode {
+			text := strings.Join(strings.Fields(current.Data), " ")
+			if utf8.RuneCountInString(text) >= braveSnippetMinRunes && text != exclude {
+				found = text
+			}
+
+			return
+		}
+		if current.Type == html.ElementNode &&
+			(current.Data == "script" || current.Data == "style") {
+			return
+		}
+		for child := current.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(node)
+
+	return found
+}
+
+// hasClassContaining reports whether any class token of the node contains the
+// wanted substring; Brave suffixes its tokens with build hashes, so exact
+// token matching would be brittle.
+func hasClassContaining(node *html.Node, want string) bool {
+	classes, ok := elementAttr(node, "class")
+	if !ok {
+		return false
+	}
+	for _, token := range strings.Fields(classes) {
+		if strings.Contains(token, want) {
+			return true
+		}
+	}
+
+	return false
 }

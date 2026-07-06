@@ -81,6 +81,7 @@ func extendedSettingDefinitions() []settingDefinition {
 		},
 	}...)
 	definitions = append(definitions, extendedTelemetryDefinitions()...)
+	definitions = append(definitions, webFallbackDefinitions()...)
 	definitions = append(definitions, extendedGrowthDefinitions()...)
 
 	return append(definitions, autocrawlerDefinitions()...)
@@ -157,6 +158,12 @@ func extendedTelemetryDefinitions() []settingDefinition {
 				return config
 			},
 		},
+	}
+}
+
+// webFallbackDefinitions holds the web-search fallback knobs.
+func webFallbackDefinitions() []settingDefinition {
+	return []settingDefinition{
 		{
 			key:         "web.fallback.privacy",
 			title:       "Web search fallback (DDGS)",
@@ -183,6 +190,38 @@ func extendedTelemetryDefinitions() []settingDefinition {
 				return config
 			},
 		},
+		{
+			key:         "web.fallback.backend",
+			title:       "Web fallback engines",
+			description: "Which keyless engines answer the web fallback; auto walks DuckDuckGo, Brave, Mojeek, then Bing until one answer mentions the query.",
+			options: []settingOption{
+				{value: "auto", label: "Auto (DuckDuckGo → Brave → Mojeek → Bing)"},
+				{value: "ddg", label: "DuckDuckGo only"},
+				{value: "brave", label: "Brave only"},
+				{value: "mojeek", label: "Mojeek only"},
+				{value: "bing", label: "Bing only"},
+			},
+			defaultValue: func(config nodeConfig) string { return config.WebFallback.Backend },
+			normalize:    normalizeWebFallbackBackend,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.WebFallback.Backend = value
+
+				return config
+			},
+		},
+	}
+}
+
+// normalizeWebFallbackBackend accepts the engine selectors the websearch
+// backend resolver understands, so a runtime edit cannot select an engine
+// list the fallback would silently collapse to the default.
+func normalizeWebFallbackBackend(raw string) (string, error) {
+	value := strings.TrimSpace(strings.ToLower(raw))
+	switch value {
+	case "auto", "ddg", "duckduckgo", "brave", "mojeek", "bing":
+		return value, nil
+	default:
+		return "", fmt.Errorf("invalid web fallback backend")
 	}
 }
 

@@ -29,13 +29,13 @@ func fixedClock() func() time.Time {
 
 func TestDDGSProviderReturnsResults(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Host != "www.mojeek.com" {
-			t.Errorf("auto should hit Mojeek first, got host %s", r.URL.Host)
+		if r.URL.Host != "html.duckduckgo.com" {
+			t.Errorf("auto should hit DuckDuckGo first, got host %s", r.URL.Host)
 		}
 		if r.URL.Query().Get("q") != "example" {
 			t.Errorf("q = %q", r.URL.Query().Get("q"))
 		}
-		return htmlResponse(http.StatusOK, listFixture), nil
+		return htmlResponse(http.StatusOK, ddgFixture), nil
 	})}
 	provider := NewDDGSProvider(DDGSConfig{
 		Client: client, Backend: backendAuto, CacheTTL: time.Minute, Now: fixedClock(),
@@ -45,20 +45,51 @@ func TestDDGSProviderReturnsResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if len(results) != 3 || results[0].URL != "https://example.com/page" {
+	if len(results) != 1 || results[0].URL != "https://example.com/page" {
 		t.Fatalf("results = %#v", results)
 	}
 }
 
-// TestDDGSProviderAutoQueriesDuckDuckGoOnlyAsTailResort: the front engines
-// answer most queries so DuckDuckGo's aggressive rate limiting stays untouched
-// (ADR-0021); only a query the front engines could not answer walks on to it —
-// Mojeek has little non-English coverage and Bing bot-walls datacenter
-// addresses, which used to leave Cyrillic queries with an empty fallback.
-func TestDDGSProviderAutoQueriesDuckDuckGoOnlyAsTailResort(t *testing.T) {
+// TestDDGSProviderAutoAsksDuckDuckGoFirst: the auto chain is ordered by
+// answer quality — DuckDuckGo is the only keyless engine with solid
+// multilingual coverage, so it goes first and an answered query touches no
+// other engine; per-engine backoff keeps its rate limiting from pausing the
+// rest of the chain.
+func TestDDGSProviderAutoAsksDuckDuckGoFirst(t *testing.T) {
 	var hosts []string
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		hosts = append(hosts, r.URL.Host)
+		if r.URL.Host == "html.duckduckgo.com" {
+			return htmlResponse(http.StatusOK, ddgFixture), nil
+		}
+
+		return htmlResponse(http.StatusOK, "<html><body>no results</body></html>"), nil
+	})}
+	provider := NewDDGSProvider(DDGSConfig{Client: client, Backend: backendAuto, Now: fixedClock()})
+
+	results, err := provider.Search(context.Background(), "example", 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("DuckDuckGo answer discarded")
+	}
+	if len(hosts) != 1 || hosts[0] != "html.duckduckgo.com" {
+		t.Fatalf("an answered query must stop at DuckDuckGo, asked %v", hosts)
+	}
+}
+
+// TestDDGSProviderSkipsRateLimitedEngineAndWalksOn: a rate-limited DuckDuckGo
+// pauses only itself — the same query is answered by the next engine, and the
+// next query skips DuckDuckGo without asking it again inside its window.
+func TestDDGSProviderSkipsRateLimitedEngineAndWalksOn(t *testing.T) {
+	var duckAsks int
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if strings.Contains(r.URL.Host, "duckduckgo.com") {
+			duckAsks++
+
+			return htmlResponse(http.StatusTooManyRequests, ""), nil
+		}
 		if r.URL.Host == "www.mojeek.com" {
 			return htmlResponse(http.StatusOK, listFixture), nil
 		}
@@ -67,38 +98,20 @@ func TestDDGSProviderAutoQueriesDuckDuckGoOnlyAsTailResort(t *testing.T) {
 	})}
 	provider := NewDDGSProvider(DDGSConfig{Client: client, Backend: backendAuto, Now: fixedClock()})
 
-	if _, err := provider.Search(context.Background(), "example", 10); err != nil {
-		t.Fatalf("search: %v", err)
-	}
-	for _, host := range hosts {
-		if strings.Contains(host, "duckduckgo.com") {
-			t.Fatalf("a query the front engines answered must not reach DuckDuckGo, hit %s", host)
+	for range 2 {
+		results, err := provider.Search(context.Background(), "example", 10)
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if len(results) == 0 {
+			t.Fatal("rate-limited DuckDuckGo must not block the chain")
 		}
 	}
-
-	hosts = nil
-	empty := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		hosts = append(hosts, r.URL.Host)
-		if strings.Contains(r.URL.Host, "duckduckgo.com") {
-			return htmlResponse(http.StatusOK, ddgFixture), nil
-		}
-
-		return htmlResponse(http.StatusOK, "<html><body>no results</body></html>"), nil
-	})}
-	provider = NewDDGSProvider(DDGSConfig{Client: empty, Backend: backendAuto, Now: fixedClock()})
-	results, err := provider.Search(context.Background(), "что такое осень ддт", 10)
-	if err != nil {
-		t.Fatalf("search: %v", err)
-	}
-	if len(results) == 0 {
-		t.Fatal("tail-resort DuckDuckGo results were discarded")
-	}
-	reachedDuck := false
-	for _, host := range hosts {
-		reachedDuck = reachedDuck || strings.Contains(host, "duckduckgo.com")
-	}
-	if !reachedDuck {
-		t.Fatalf("front engines yielded nothing yet DuckDuckGo was not tried: %v", hosts)
+	if duckAsks != 2 {
+		t.Fatalf(
+			"DuckDuckGo asked %d times, want 2 (html+lite once, then skipped in backoff)",
+			duckAsks,
+		)
 	}
 }
 
@@ -128,13 +141,11 @@ func TestDDGSProviderDoesNotCacheEmptyAnswers(t *testing.T) {
 
 func TestDDGSProviderAutoFallsBackToBing(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Host == "www.mojeek.com" {
-			return htmlResponse(http.StatusOK, "<html><body>no results</body></html>"), nil
+		if r.URL.Host == "www.bing.com" {
+			return htmlResponse(http.StatusOK, listFixture), nil
 		}
-		if r.URL.Host != "www.bing.com" {
-			t.Errorf("unexpected host %s", r.URL.Host)
-		}
-		return htmlResponse(http.StatusOK, listFixture), nil
+
+		return htmlResponse(http.StatusOK, "<html><body>no results</body></html>"), nil
 	})}
 	provider := NewDDGSProvider(DDGSConfig{Client: client, Backend: backendAuto, Now: fixedClock()})
 
@@ -257,26 +268,25 @@ func TestDDGSProviderIgnoresBlankQuery(t *testing.T) {
 	}
 }
 
-// TestDDGSProviderWalksPastOffTopicEngineAnswers: Bing's bot-tier response
-// answers only the first query word with dictionary pages; with the acceptance
-// hook the loop treats that engine as empty and DuckDuckGo's on-topic results
-// win.
+// TestDDGSProviderWalksPastOffTopicEngineAnswers: an engine answering only
+// the first query word with dictionary pages (Bing's bot-tier behavior) is
+// treated as empty by the acceptance hook, and the walk continues to an
+// engine whose answer actually mentions the query.
 func TestDDGSProviderWalksPastOffTopicEngineAnswers(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Host == "www.bing.com" {
+		if r.URL.Host == "html.duckduckgo.com" {
 			return htmlResponse(http.StatusOK, `<!doctype html><html><body>
-<li><h2><a href="https://ru.wiktionary.org/wiki/that">что — Викисловарь</a></h2><p>значение слова</p></li>
+<div class="result results_links web-result"><div class="links_main">
+<a class="result__a" href="https://ru.wiktionary.org/wiki/that">что — Викисловарь</a>
+<a class="result__snippet">значение слова</a>
+</div></div>
 </body></html>`), nil
 		}
 		if strings.Contains(r.URL.Host, "duckduckgo.com") {
-			return htmlResponse(http.StatusOK, `<!doctype html><html><body>
-<div class="result results_links web-result">
-  <div class="links_main">
-    <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fvideo.example%2Fddt&rut=abc">ДДТ - Что такое осень (Official video)</a>
-    <a class="result__snippet">Клип группы ДДТ на песню Что такое осень.</a>
-  </div>
-</div>
-</body></html>`), nil
+			return htmlResponse(http.StatusOK, `<!doctype html><html><body><table>
+<tr><td><a class="result-link" href="https://video.example/ddt">ДДТ - Что такое осень (Official video)</a></td></tr>
+<tr><td class="result-snippet">Клип группы ДДТ на песню Что такое осень.</td></tr>
+</table></body></html>`), nil
 		}
 
 		return htmlResponse(http.StatusOK, "<html><body>no results</body></html>"), nil

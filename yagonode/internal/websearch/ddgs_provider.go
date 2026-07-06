@@ -54,9 +54,16 @@ type DDGSProvider struct {
 	cache      *queryCache
 	accept     func(query string, results []Result) []Result
 
-	mu           sync.Mutex
-	backoffUntil time.Time
-	backoff      time.Duration
+	mu       sync.Mutex
+	backoffs map[string]*engineBackoff
+}
+
+// engineBackoff tracks one engine's rate-limit window. Backoff is per engine
+// deliberately: with DuckDuckGo in front of the chain, its aggressive limiting
+// must pause only DuckDuckGo while Brave, Mojeek, and Bing keep answering.
+type engineBackoff struct {
+	until   time.Time
+	backoff time.Duration
 }
 
 func NewDDGSProvider(config DDGSConfig) *DDGSProvider {
@@ -82,6 +89,7 @@ func NewDDGSProvider(config DDGSConfig) *DDGSProvider {
 		now:        now,
 		cache:      newQueryCache(config.CacheTTL, cacheMax, now),
 		accept:     config.Accept,
+		backoffs:   map[string]*engineBackoff{},
 	}
 }
 
@@ -93,16 +101,10 @@ func (p *DDGSProvider) Search(ctx context.Context, query string, limit int) ([]R
 	if cached, ok := p.cache.get(query); ok {
 		return capResults(cached, p.limit(limit)), nil
 	}
-	if p.backedOff() {
-		return nil, nil
-	}
 	results, rateLimited, err := p.query(ctx, query)
 	if rateLimited {
-		p.recordBackoff()
-
 		return nil, nil
 	}
-	p.resetBackoff()
 	if err != nil {
 		return nil, err
 	}
@@ -120,6 +122,9 @@ func (p *DDGSProvider) query(ctx context.Context, query string) ([]Result, bool,
 	var lastErr error
 	allRateLimited := true
 	for _, backend := range p.engines {
+		if p.backedOff(backend.name) {
+			continue
+		}
 		results, rateLimited, err := p.fetch(ctx, backend, query)
 		fetched := len(results)
 		if err == nil && p.accept != nil {
@@ -132,8 +137,11 @@ func (p *DDGSProvider) query(ctx context.Context, query string) ([]Result, bool,
 			slog.Bool("rateLimited", rateLimited),
 			slog.Any("error", err))
 		if rateLimited {
+			p.recordBackoff(backend.name)
+
 			continue
 		}
+		p.resetBackoff(backend.name)
 		allRateLimited = false
 		if err != nil {
 			lastErr = err
@@ -199,32 +207,37 @@ func (p *DDGSProvider) limit(callerLimit int) int {
 	return callerLimit
 }
 
-func (p *DDGSProvider) backedOff() bool {
+func (p *DDGSProvider) backedOff(name string) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	entry, ok := p.backoffs[name]
 
-	return p.now().Before(p.backoffUntil)
+	return ok && p.now().Before(entry.until)
 }
 
-func (p *DDGSProvider) recordBackoff() {
+func (p *DDGSProvider) recordBackoff(name string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.backoff == 0 {
-		p.backoff = minBackoff
+	entry, ok := p.backoffs[name]
+	if !ok {
+		entry = &engineBackoff{}
+		p.backoffs[name] = entry
+	}
+	if entry.backoff == 0 {
+		entry.backoff = minBackoff
 	} else {
-		p.backoff *= 2
+		entry.backoff *= 2
 	}
-	if p.backoff > maxBackoff {
-		p.backoff = maxBackoff
+	if entry.backoff > maxBackoff {
+		entry.backoff = maxBackoff
 	}
-	p.backoffUntil = p.now().Add(p.backoff)
+	entry.until = p.now().Add(entry.backoff)
 }
 
-func (p *DDGSProvider) resetBackoff() {
+func (p *DDGSProvider) resetBackoff(name string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.backoff = 0
-	p.backoffUntil = time.Time{}
+	delete(p.backoffs, name)
 }
 
 func capResults(results []Result, limit int) []Result {

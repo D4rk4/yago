@@ -180,22 +180,32 @@ func TestDDGSProviderErrorsOnParseError(t *testing.T) {
 	}
 }
 
-func TestRecordBackoffDoublesAndCaps(t *testing.T) {
+func TestRecordBackoffDoublesCapsAndStaysPerEngine(t *testing.T) {
 	provider := NewDDGSProvider(DDGSConfig{Backend: backendMojeek, Now: fixedClock()})
 
-	provider.recordBackoff()
-	if provider.backoff != minBackoff {
-		t.Fatalf("first backoff = %v, want %v", provider.backoff, minBackoff)
+	provider.recordBackoff(engineDDGHTML)
+	if got := provider.backoffs[engineDDGHTML].backoff; got != minBackoff {
+		t.Fatalf("first backoff = %v, want %v", got, minBackoff)
 	}
-	provider.recordBackoff()
-	if provider.backoff != 2*minBackoff {
-		t.Fatalf("second backoff = %v, want %v", provider.backoff, 2*minBackoff)
+	provider.recordBackoff(engineDDGHTML)
+	if got := provider.backoffs[engineDDGHTML].backoff; got != 2*minBackoff {
+		t.Fatalf("second backoff = %v, want %v", got, 2*minBackoff)
 	}
 	for range 12 {
-		provider.recordBackoff()
+		provider.recordBackoff(engineDDGHTML)
 	}
-	if provider.backoff != maxBackoff {
-		t.Fatalf("capped backoff = %v, want %v", provider.backoff, maxBackoff)
+	if got := provider.backoffs[engineDDGHTML].backoff; got != maxBackoff {
+		t.Fatalf("capped backoff = %v, want %v", got, maxBackoff)
+	}
+	if provider.backedOff(engineBrave) {
+		t.Fatal("a limited DuckDuckGo must not pause the other engines")
+	}
+	if !provider.backedOff(engineDDGHTML) {
+		t.Fatal("the limited engine must be skipped inside its window")
+	}
+	provider.resetBackoff(engineDDGHTML)
+	if provider.backedOff(engineDDGHTML) {
+		t.Fatal("a successful answer must clear the engine's backoff")
 	}
 }
 

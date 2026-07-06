@@ -5,23 +5,13 @@ import (
 	"testing"
 )
 
-func TestExtendedSettingCatalogRoundTrips(t *testing.T) {
-	base := nodeConfig{
-		Name:               "old-name",
-		AdvertiseHost:      "old.example",
-		SeedlistURLs:       []string{"https://seeds.example/a"},
-		SearchLinksNewTab:  false,
-		IndexRemoteResults: false,
-		MetricsEnabled:     true,
-		QueryLogMode:       queryLogOff,
-	}
-	base.WebFallback.Privacy = webFallbackPrivacyDisabled
-	base.SwarmSeed.LimitDocs = 100
+type catalogRoundTripCase struct {
+	value string
+	check func(config nodeConfig) bool
+}
 
-	cases := map[string]struct {
-		value string
-		check func(config nodeConfig) bool
-	}{
+func catalogRoundTripCases() map[string]catalogRoundTripCase {
+	return map[string]catalogRoundTripCase{
 		"peer.name": {"fresh-name", func(c nodeConfig) bool { return c.Name == "fresh-name" }},
 		"network.advertise.host": {"pub.example", func(c nodeConfig) bool {
 			return c.AdvertiseHost == "pub.example"
@@ -37,6 +27,9 @@ func TestExtendedSettingCatalogRoundTrips(t *testing.T) {
 		}},
 		"web.fallback.privacy": {"enabled", func(c nodeConfig) bool {
 			return c.WebFallback.Privacy == webFallbackPrivacyEnabled
+		}},
+		"web.fallback.backend": {"brave", func(c nodeConfig) bool {
+			return c.WebFallback.Backend == "brave"
 		}},
 		"swarm.seed.enabled": {"true", func(c nodeConfig) bool { return c.SwarmSeed.Enabled }},
 		"swarm.seed.limit": {
@@ -55,6 +48,22 @@ func TestExtendedSettingCatalogRoundTrips(t *testing.T) {
 			return c.ExtractFetch.Enabled
 		}},
 	}
+}
+
+func TestExtendedSettingCatalogRoundTrips(t *testing.T) {
+	base := nodeConfig{
+		Name:               "old-name",
+		AdvertiseHost:      "old.example",
+		SeedlistURLs:       []string{"https://seeds.example/a"},
+		SearchLinksNewTab:  false,
+		IndexRemoteResults: false,
+		MetricsEnabled:     true,
+		QueryLogMode:       queryLogOff,
+	}
+	base.WebFallback.Privacy = webFallbackPrivacyDisabled
+	base.SwarmSeed.LimitDocs = 100
+
+	cases := catalogRoundTripCases()
 	byKey := indexSettingDefinitions()
 	for key, tc := range cases {
 		def, ok := byKey[key]
@@ -117,6 +126,13 @@ func TestExtendedSettingValidation(t *testing.T) {
 	}
 	if _, err := byKey["web.fallback.privacy"].normalize("sometimes"); err == nil {
 		t.Fatal("unknown privacy mode must fail")
+	}
+	if _, err := byKey["web.fallback.backend"].normalize("google"); err == nil {
+		t.Fatal("unsupported backend must fail")
+	}
+	if normalized, err := byKey["web.fallback.backend"].normalize(" DDG "); err != nil ||
+		normalized != "ddg" {
+		t.Fatalf("backend normalize = %q %v", normalized, err)
 	}
 	if normalized, err := byKey["web.fallback.privacy"].normalize(" Explicit "); err != nil ||
 		normalized != "explicit" {
