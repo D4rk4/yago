@@ -326,14 +326,7 @@ func extractContent(format string, doc documentstore.Document) string {
 }
 
 func markdownContent(doc documentstore.Document) string {
-	switch {
-	case doc.Title == "":
-		return doc.ExtractedText
-	case doc.ExtractedText == "":
-		return "# " + doc.Title
-	default:
-		return "# " + doc.Title + "\n\n" + doc.ExtractedText
-	}
+	return documentMarkdown(doc)
 }
 
 func extractImages(doc documentstore.Document) []string {

@@ -291,7 +291,7 @@ func coreRequest(req SearchRequest) (searchcore.Request, error) {
 		Limit:         limit,
 		ContentDomain: searchcore.ContentDomainText,
 		Language:      parsed.Language,
-		SiteHost:      firstDomain(req.IncludeDomains),
+		SiteHost:      retrievalDomain(req.IncludeDomains),
 		InURL:         parsed.InURL,
 		TLD:           parsed.TLD,
 		FileType:      parsed.FileType,
@@ -304,8 +304,46 @@ func coreRequest(req SearchRequest) (searchcore.Request, error) {
 	if limit == 0 {
 		coreReq.Limit = 0
 	}
+	if len(req.IncludeDomains) > 1 && coreReq.Limit > 0 {
+		// Several include domains cannot narrow retrieval to one host; fetch
+		// wider so the post-filter can still fill max_results for them all.
+		coreReq.Limit = min(
+			coreReq.Limit*domainOverfetchFactor,
+			maxResultsCap*domainOverfetchFactor,
+		)
+	}
 
 	return coreReq, nil
+}
+
+// domainOverfetchFactor widens retrieval when several include domains must be
+// served from one query.
+const domainOverfetchFactor = 4
+
+// retrievalDomain narrows retrieval only when exactly one include domain is
+// requested; several domains filter post-retrieval instead.
+func retrievalDomain(domains []string) string {
+	if len(domains) == 1 {
+		return firstDomain(domains)
+	}
+
+	return ""
+}
+
+// documentContent picks the served content: advanced searches with
+// chunks_per_source return the query-relevant chunks, everything else the
+// leading snippet.
+func documentContent(
+	req SearchRequest,
+	coreReq searchcore.Request,
+	doc documentstore.Document,
+) string {
+	if req.ChunksPerSource != nil && *req.ChunksPerSource > 0 &&
+		strings.EqualFold(strings.TrimSpace(req.SearchDepth), "advanced") {
+		return relevantChunks(doc.ExtractedText, coreReq.Terms, *req.ChunksPerSource)
+	}
+
+	return snippet(doc.ExtractedText)
 }
 
 func requestLimit(maxResults *int) (int, error) {
@@ -434,9 +472,16 @@ func (e searchEndpoint) responseResults(
 	coreReq searchcore.Request,
 	results []searchcore.Result,
 ) ([]SearchResult, []SearchImage, error) {
+	limit, err := requestLimit(req.MaxResults)
+	if err != nil {
+		return nil, nil, err
+	}
 	out := make([]SearchResult, 0, len(results))
 	images := make([]SearchImage, 0)
 	for _, result := range results {
+		if len(out) >= limit {
+			break
+		}
 		if !allowsDomain(result, req.IncludeDomains, req.ExcludeDomains) {
 			continue
 		}
@@ -474,9 +519,13 @@ func (e searchEndpoint) responseResult(
 			result.Title = doc.Title
 		}
 		if doc.ExtractedText != "" {
-			content = snippet(doc.ExtractedText)
+			content = documentContent(req, coreReq, doc)
 			if req.IncludeRawContent.Enabled() {
-				raw = &doc.ExtractedText
+				rawText := doc.ExtractedText
+				if strings.EqualFold(string(req.IncludeRawContent), "markdown") {
+					rawText = documentMarkdown(doc)
+				}
+				raw = &rawText
 			}
 		}
 		resultImages, imageDetails = resultImagesFromDocument(req, doc)
