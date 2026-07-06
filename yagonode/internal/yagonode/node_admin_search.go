@@ -60,8 +60,7 @@ func adminSearchResults(
 			Host:        result.Host,
 			Date:        result.Date,
 			SizeName:    resultSizeName(result.Size),
-			Source:      string(result.Source),
-			Marked:      result.Source == searchcore.SourceWeb,
+			Source:      resultProvenance(result),
 		})
 	}
 

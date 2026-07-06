@@ -99,8 +99,9 @@ func TestSearchSourceMapsResultsAndFailures(t *testing.T) {
 		t.Fatalf("offset=%d limit=%d, want the window forwarded to the searcher",
 			searcher.gotRequest.Offset, searcher.gotRequest.Limit)
 	}
-	if !got.Results[0].Marked || got.Results[1].Marked {
-		t.Fatalf("web result should be marked, local not: %+v", got.Results)
+	if got.Results[0].Source != "web" || got.Results[1].Source != "local" {
+		t.Fatalf("result provenance = %q / %q, want web / local",
+			got.Results[0].Source, got.Results[1].Source)
 	}
 	if got.Failures[0] != "global: timeout" {
 		t.Fatalf("failure = %q", got.Failures[0])

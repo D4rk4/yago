@@ -25,7 +25,6 @@
   .result a.title:hover { text-decoration: underline; }
   .result .url { color: #178a3a; font-size: 0.8rem; word-break: break-all; }
   .result p { margin: 0.2rem 0 0; color: #333333; font-size: 0.9rem; }
-  .ddgs { color: #8d8d8d; font-size: 0.85em; }
   .ophelp { margin-top: 0.75rem; font-size: 0.85rem; color: #555; text-align: left; display: inline-block; }
 .ophelp ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
 .ophelp code { background: #f2f2f2; padding: 0 0.25rem; }
@@ -161,7 +160,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   {{range .Results}}
   <li class="result">
     {{if .FaviconURL}}<img class="fav" src="{{.FaviconURL}}" alt="" width="16" height="16" loading="lazy">{{end}}
-    <a class="title" href="{{.URL}}"{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{if .Marked}}<span class="ddgs">[ddgs]</span> {{end}}{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span class="sr-only"> (opens in new tab)</span>{{end}}</a>
+    <a class="title" href="{{.URL}}"{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span class="sr-only"> (opens in new tab)</span>{{end}}</a>
     <div class="url">{{if .DisplayURL}}{{.DisplayURL}}{{else}}{{.URL}}{{end}}{{if .Provenance}} · <span class="prov prov-{{.Provenance}}">{{.Provenance}}</span>{{end}}{{if .Date}} · {{.Date}}{{end}}{{if .SizeName}} · {{.SizeName}}{{end}}{{if .CachedURL}} · <a href="{{.CachedURL}}">cached</a>{{end}}</div>
     {{if .SnippetHTML}}<p>{{.SnippetHTML}}</p>{{else if .Snippet}}<p>{{.Snippet}}</p>{{end}}
   </li>
@@ -186,8 +185,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   {{end}}
   </div>
   <div class="foot">{{.Brand}} — free software under the GNU AGPL v3.<br>
-  Searches fan out to peers in the YaCy network, which see your query terms; results are labelled by where they came from (<span class="prov prov-local">local</span> this node's index, <span class="prov prov-peer">peer</span> another node, <span class="prov prov-web">web</span> an external provider).<br>
-  Results tagged <span class="ddgs">[ddgs]</span> come from an external web-search provider that receives your query; pages it returns may be queued for this node to crawl.</div>
+  Searches fan out to peers in the YaCy network, which see your query terms; results are labelled by where they came from (<span class="prov prov-local">local</span> this node's index, <span class="prov prov-peer">peer</span> another node, <span class="prov prov-web">web</span> an external provider that receives your query, whose pages may be queued for this node to crawl).</div>
 </div>
 <script>
 (function () {

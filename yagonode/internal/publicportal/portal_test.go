@@ -70,7 +70,7 @@ func TestPortalHomepageWithoutQuery(t *testing.T) {
 	}
 }
 
-func TestPortalRendersResultsWithMarker(t *testing.T) {
+func TestPortalRendersResultsWithProvenance(t *testing.T) {
 	t.Parallel()
 
 	source := &fakeSource{results: SearchResults{
@@ -83,7 +83,12 @@ func TestPortalRendersResultsWithMarker(t *testing.T) {
 				DisplayURL: "a.example/1",
 				Snippet:    "s",
 			},
-			{Title: "Web hit", URL: "http://b.example/2", DisplayURL: "b.example/2", Marked: true},
+			{
+				Title:      "Web hit",
+				URL:        "http://b.example/2",
+				DisplayURL: "b.example/2",
+				Provenance: "web",
+			},
 		},
 	}}
 	status, body := get(t, New(source, false), "/?q=go")
@@ -91,7 +96,7 @@ func TestPortalRendersResultsWithMarker(t *testing.T) {
 		t.Fatalf("status %d", status)
 	}
 	for _, want := range []string{
-		"Local hit", "Web hit", "[ddgs]", "result(s) for",
+		"Local hit", "Web hit", "prov-web", "result(s) for",
 		`rel="noreferrer nofollow"`,
 	} {
 		if !strings.Contains(body, want) {

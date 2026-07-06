@@ -30,8 +30,8 @@ const (
 	portalMaxPage  = 50
 )
 
-// SearchResult is one rendered hit. Marked is set for DDGS web-fallback hits so
-// the portal shows the visible [ddgs] marker (ADR-0019, ADR-0020).
+// SearchResult is one rendered hit. Where a hit came from is shown through the
+// Provenance badge (ADR-0019, ADR-0020).
 type SearchResult struct {
 	Title      string
 	URL        string
@@ -43,7 +43,6 @@ type SearchResult struct {
 	Host        string
 	Date        string
 	SizeName    string
-	Marked      bool
 	// CachedURL links this node's stored copy of the page; empty hides the link.
 	CachedURL string
 	// Provenance labels where the hit came from: "local" (this node's index),

@@ -50,12 +50,6 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 	if searcher.gotRequest.Source != searchcore.SourceGlobal {
 		t.Fatalf("source = %q, want global", searcher.gotRequest.Source)
 	}
-	if results.Results[0].Marked {
-		t.Fatal("local result must not be marked")
-	}
-	if !results.Results[1].Marked {
-		t.Fatal("ddgs result must be marked")
-	}
 	if results.LocalCount != 1 || results.WebCount != 1 || results.PeerCount != 1 {
 		t.Fatalf("provenance counts = %d/%d/%d, want 1/1/1",
 			results.LocalCount, results.PeerCount, results.WebCount)

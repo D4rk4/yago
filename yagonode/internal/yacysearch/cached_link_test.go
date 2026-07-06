@@ -17,6 +17,7 @@ func TestHTMLEndpointLinksCachedCopyAndFormats(t *testing.T) {
 			// the cached link must key off StoredLocally, not SourceLocal.
 			{Title: "Local", URL: "https://a.example/x", Source: searchcore.SourceGlobal},
 			{Title: "Remote", URL: "https://b.example/y", Source: searchcore.SourceRemote},
+			{Title: "External", URL: "https://c.example/z", Source: searchcore.SourceWeb},
 		},
 	}}
 	rec := httptest.NewRecorder()
@@ -37,6 +38,12 @@ func TestHTMLEndpointLinksCachedCopyAndFormats(t *testing.T) {
 	}
 	if !strings.Contains(body, "[peer]") {
 		t.Fatalf("peer result missing provenance label: %s", body)
+	}
+	if !strings.Contains(body, "[web]") {
+		t.Fatalf("web-fallback result missing provenance label: %s", body)
+	}
+	if strings.Contains(body, "[ddgs]") {
+		t.Fatalf("web-fallback result must not carry the [ddgs] title badge: %s", body)
 	}
 	if !strings.Contains(body, "/yacysearch.json") || !strings.Contains(body, ">JSON</a>") {
 		t.Fatalf("visible JSON format link missing: %s", body)

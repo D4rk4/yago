@@ -329,7 +329,7 @@ func responseHTMLItems(results []searchcore.Result, terms []string) []htmlSearch
 	items := make([]htmlSearchItem, 0, len(results))
 	for _, result := range results {
 		item := htmlSearchItem{
-			Title:      markWebResultTitle(result.Source, result.Title),
+			Title:      result.Title,
 			URL:        result.URL,
 			DisplayURL: result.DisplayURL,
 			// Highlight escapes the snippet before adding <mark>, so this is
@@ -343,7 +343,10 @@ func responseHTMLItems(results []searchcore.Result, terms []string) []htmlSearch
 			// global search carry SourceGlobal, so this must not test SourceLocal.
 			item.CachedURL = cachedpage.URLFor(result.URL)
 		}
-		if result.FromPeer() {
+		switch {
+		case result.FromWeb():
+			item.Provenance = "web"
+		case result.FromPeer():
 			item.Provenance = "peer"
 		}
 		items = append(items, item)

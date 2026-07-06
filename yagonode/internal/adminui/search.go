@@ -25,8 +25,8 @@ type SearchPagination struct {
 	NextURL string
 }
 
-// SearchResult is one rendered hit. Marked is set for DDGS web-fallback hits so
-// this human surface can show the visible [ddgs] marker.
+// SearchResult is one rendered hit. Source labels where the hit came from
+// ("local", "peer", or "web") and renders in the result's metadata line.
 type SearchResult struct {
 	Title      string
 	URL        string
@@ -39,7 +39,6 @@ type SearchResult struct {
 	Date        string
 	SizeName    string
 	Source      string
-	Marked      bool
 }
 
 // SearchResults is the rendered outcome of a query.

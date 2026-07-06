@@ -128,7 +128,6 @@ func (s portalSource) Search(
 			Host:        result.Host,
 			Date:        result.DisplayDate(),
 			SizeName:    resultSizeName(result.Size),
-			Marked:      result.FromWeb(),
 			CachedURL:   cachedCopyURL(result),
 			Provenance:  provenance,
 			FaviconURL:  resultFaviconURL(result),

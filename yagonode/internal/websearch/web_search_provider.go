@@ -1,8 +1,8 @@
 // Package websearch provides an optional, admin-gated web-search fallback that
 // answers a query only after the local index and the federated peers return
 // nothing. Fallback results are stamped with searchcore.SourceWeb so the human
-// search surfaces can render a visible [ddgs] marker while the Tavily-compatible
-// API returns them unmarked.
+// search surfaces can label them with a "web" provenance badge while the
+// Tavily-compatible API returns them unmarked.
 package websearch
 
 import "context"
