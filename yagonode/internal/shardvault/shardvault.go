@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"container/heap"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -87,7 +88,12 @@ func openEngine(dir string, quotaBytes int64) (*engine, error) {
 		shards[i] = db
 	}
 
-	return &engine{shards: shards, dir: dir, quotaBytes: quotaBytes}, nil
+	return &engine{
+		shards:     shards,
+		dir:        dir,
+		quotaBytes: quotaBytes,
+		shardLocks: make([]sync.Mutex, len(shards)),
+	}, nil
 }
 
 // quarantineSuffix marks a shard file set aside after failing to open; the
@@ -155,11 +161,22 @@ type engine struct {
 	shards     []*bolt.DB
 	dir        string
 	quotaBytes int64
-	// writeGate serializes writers: bbolt allows one write transaction per
-	// file, and lazily opening several shards from concurrent updates would
-	// deadlock on each other's held shards.
-	writeGate sync.Mutex
+	// Writers hold shardLocks for the shards they touch, so updates landing on
+	// disjoint shards commit concurrently (PERF-06). bbolt allows one write
+	// transaction per file, and lazily opening several shards from concurrent
+	// updates in data-driven order can deadlock — a writer that fails to take a
+	// shard lock therefore rolls back, upgrades to the exclusive globalGate,
+	// and retries alone. Fast-path writers hold the gate shared. Inserts into
+	// one collection still serialize on its length-counter shard (the counter
+	// key is the collection name), so the win is between different collections
+	// and on update-in-place writes.
+	shardLocks []sync.Mutex
+	globalGate sync.RWMutex
 }
+
+// errShardContended aborts a fast-path update whose next shard is locked by a
+// concurrent writer; the update retries under the exclusive gate.
+var errShardContended = errors.New("shard contended")
 
 // route picks the shard for one record.
 func (e *engine) route(bucket vault.Name, key vault.Key) int {
@@ -190,13 +207,38 @@ func (e *engine) Provision(name vault.Name) error {
 // Update runs fn over a lazy multi-shard transaction: a shard's write
 // transaction opens on first touch and every opened transaction commits when
 // fn succeeds (or rolls back when it fails). Commits are per shard — the
-// relaxed atomicity ADR-0025 documents.
+// relaxed atomicity ADR-0025 documents. Updates touching disjoint shards run
+// concurrently; on shard contention fn is rolled back and re-run once under
+// the exclusive gate, so fn must not leak side effects before it returns.
 func (e *engine) Update(_ context.Context, fn func(vault.EngineTxn) error) error {
-	e.writeGate.Lock()
-	defer e.writeGate.Unlock()
-	txn := &shardTxn{engine: e, writable: true, open: make([]*bolt.Tx, len(e.shards))}
+	e.globalGate.RLock()
+	err := e.runUpdate(fn, true)
+	e.globalGate.RUnlock()
+	if !errors.Is(err, errShardContended) {
+		return err
+	}
+
+	e.globalGate.Lock()
+	defer e.globalGate.Unlock()
+
+	return e.runUpdate(fn, false)
+}
+
+// runUpdate executes one update attempt; tryLocks selects the fast path that
+// takes per-shard locks and aborts on contention.
+func (e *engine) runUpdate(fn func(vault.EngineTxn) error, tryLocks bool) error {
+	txn := &shardTxn{
+		engine:   e,
+		writable: true,
+		tryLocks: tryLocks,
+		open:     make([]*bolt.Tx, len(e.shards)),
+	}
+	defer txn.releaseLocks()
 	if err := fn(txn); err != nil {
 		txn.rollback()
+		if errors.Is(err, errShardContended) {
+			return errShardContended
+		}
 		if storageAtCapacityError(err) {
 			return vault.ErrAtCapacity
 		}
@@ -267,15 +309,26 @@ func storageAtCapacityError(err error) bool {
 type shardTxn struct {
 	engine   *engine
 	writable bool
+	tryLocks bool
+	held     []int
 	open     []*bolt.Tx
 }
 
 func (t *shardTxn) Writable() bool { return t.writable }
 
-// shard returns the open transaction for one shard, opening it on demand.
+// shard returns the open transaction for one shard, opening it on demand. A
+// fast-path writer must take the shard's lock first; a locked shard aborts
+// the attempt with errShardContended instead of risking a lazy-open deadlock
+// against the writer holding it.
 func (t *shardTxn) shard(index int) (*bolt.Tx, error) {
 	if t.open[index] != nil {
 		return t.open[index], nil
+	}
+	if t.writable && t.tryLocks {
+		if !t.engine.shardLocks[index].TryLock() {
+			return nil, errShardContended
+		}
+		t.held = append(t.held, index)
 	}
 	tx, err := t.engine.shards[index].Begin(t.writable)
 	if err != nil {
@@ -284,6 +337,14 @@ func (t *shardTxn) shard(index int) (*bolt.Tx, error) {
 	t.open[index] = tx
 
 	return tx, nil
+}
+
+// releaseLocks returns the fast path's shard locks after commit or rollback.
+func (t *shardTxn) releaseLocks() {
+	for _, index := range t.held {
+		t.engine.shardLocks[index].Unlock()
+	}
+	t.held = nil
 }
 
 // commit commits every touched shard; on the first failure the remaining

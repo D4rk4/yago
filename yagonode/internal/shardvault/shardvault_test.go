@@ -3,11 +3,13 @@ package shardvault
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	bolt "go.etcd.io/bbolt"
 
@@ -881,5 +883,158 @@ func TestQuarantineFailurePaths(t *testing.T) {
 	}
 	if _, err := openOrQuarantineShard(path, 0); err == nil {
 		t.Fatal("recreate failure must surface")
+	}
+}
+
+// TestConcurrentUpdatesOnDisjointShardsOverlap pins PERF-06: writers into
+// different collections whose records and length counters all land on
+// disjoint shards hold their write transactions at the same time — each
+// blocks until the other has started, which deadlocks (and times out) under
+// a store-wide write gate.
+func TestConcurrentUpdatesOnDisjointShardsOverlap(t *testing.T) {
+	vaulted, _ := openTestVault(t)
+	bucketA, keyA, bucketB, keyB := disjointWriteTargets(t)
+	valuesA, err := vault.Register[string](vaulted, vault.Name(bucketA), stringCodec{})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	valuesB, err := vault.Register[string](vaulted, vault.Name(bucketB), stringCodec{})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	aStarted := make(chan struct{})
+	bStarted := make(chan struct{})
+	barrier := func(mine, other chan struct{}) error {
+		close(mine)
+		select {
+		case <-other:
+			return nil
+		case <-time.After(5 * time.Second):
+			return errors.New("writers are serialized store-wide")
+		}
+	}
+
+	errs := make(chan error, 2)
+	go func() {
+		errs <- vaulted.Update(context.Background(), func(txn *vault.Txn) error {
+			if err := valuesA.Put(txn, vault.Key(keyA), "a"); err != nil {
+				return fmt.Errorf("put a: %w", err)
+			}
+
+			return barrier(aStarted, bStarted)
+		})
+	}()
+	go func() {
+		errs <- vaulted.Update(context.Background(), func(txn *vault.Txn) error {
+			if err := valuesB.Put(txn, vault.Key(keyB), "b"); err != nil {
+				return fmt.Errorf("put b: %w", err)
+			}
+
+			return barrier(bStarted, aStarted)
+		})
+	}()
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent update: %v", err)
+		}
+	}
+}
+
+// disjointWriteTargets picks two collection/key pairs whose record shards and
+// per-collection length-counter shards are all distinct, so the two writers
+// genuinely touch disjoint files.
+func disjointWriteTargets(t *testing.T) (string, string, string, string) {
+	t.Helper()
+	shards := shardCountForQuota(1 << 20)
+	probe := engine{shards: make([]*bolt.DB, shards)}
+	route := func(bucket, key string) int {
+		return probe.route(vault.Name(bucket), vault.Key(key))
+	}
+	bucketA, keyA := "colA", "ka-0"
+	used := map[int]bool{
+		route(bucketA, keyA):          true,
+		route("__lengths__", bucketA): true,
+	}
+	for b := range 64 {
+		bucketB := fmt.Sprintf("col%02db", b)
+		if used[route("__lengths__", bucketB)] {
+			continue
+		}
+		for j := range 4096 {
+			keyB := fmt.Sprintf("kb-%d", j)
+			shard := route(bucketB, keyB)
+			if used[shard] || shard == route("__lengths__", bucketB) {
+				continue
+			}
+
+			return bucketA, keyA, bucketB, keyB
+		}
+	}
+	t.Fatal("no disjoint write targets found")
+
+	return "", "", "", ""
+}
+
+// TestContendedUpdateRetriesUnderTheExclusiveGate: a writer that meets a
+// locked shard rolls back and retries alone instead of failing or deadlocking.
+func TestContendedUpdateRetriesUnderTheExclusiveGate(t *testing.T) {
+	vaulted, _ := openTestVault(t)
+	values, err := vault.Register[string](vaulted, "docs", stringCodec{})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	holding := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- vaulted.Update(context.Background(), func(txn *vault.Txn) error {
+			if err := values.Put(txn, vault.Key("contended"), "first"); err != nil {
+				return fmt.Errorf("put first: %w", err)
+			}
+			close(holding)
+			<-release
+
+			return nil
+		})
+	}()
+	<-holding
+
+	second := make(chan error, 1)
+	go func() {
+		second <- vaulted.Update(context.Background(), func(txn *vault.Txn) error {
+			if err := values.Put(txn, vault.Key("contended"), "second"); err != nil {
+				return fmt.Errorf("put second: %w", err)
+			}
+
+			return nil
+		})
+	}()
+	// The second writer targets the shard the first one holds, so it must
+	// wait (upgrade path) rather than error out.
+	select {
+	case err := <-second:
+		t.Fatalf("second update finished while the shard was held: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("first update: %v", err)
+	}
+	if err := <-second; err != nil {
+		t.Fatalf("second update: %v", err)
+	}
+
+	viewErr := vaulted.View(context.Background(), func(txn *vault.Txn) error {
+		got, ok, getErr := values.Get(txn, vault.Key("contended"))
+		if getErr != nil || !ok || got != "second" {
+			t.Fatalf("get = %q %v %v", got, ok, getErr)
+		}
+
+		return nil
+	})
+	if viewErr != nil {
+		t.Fatalf("view: %v", viewErr)
 	}
 }
