@@ -64,14 +64,17 @@ for a more capable host than an always-on node.
 * The message broker SHALL be replaceable behind a narrow interface assuming at-least-once
   delivery with acknowledgment and redelivery, with no change to crawl logic.
 * The page-fetch mechanism SHALL be replaceable behind a narrow interface, with no
-  change to crawl or admission logic.
+  change to crawl logic.
 * The recrawl decision SHALL sit behind a narrow interface; its default admits every page.
 * Operational behavior SHALL be observable through machine-readable metrics.
 
 ## Known Limitations
 
-* Both target-safety (internal-host targeting, DNS rebinding) and per-host crawl
-  politeness depend entirely on the configured proxy's policy; the service adds neither.
+* Target-safety (internal-host targeting, DNS rebinding), per-host crawl politeness,
+  robots obedience, and page rendering all depend entirely on the configured proxy's
+  policy; the service adds none of them.
+* A proxy that rewrites fetch responses must preserve the refusal and wait signals the
+  service honors, or the service cannot act on them.
 * The page-content output carries renderable web content; anyone with broker publish
   rights can inject it, and narrowing that subject is operator-added hardening.
 * A consumer's outage-survival for the page-content output holds only within the

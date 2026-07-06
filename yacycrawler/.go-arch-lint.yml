@@ -1,0 +1,171 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  canonicalurl:
+    in: internal/canonicalurl/**
+  pageadmission:
+    in: internal/pageadmission/**
+  crawlfrontier:
+    in: internal/crawlfrontier/**
+  crawlcapability:
+    in: internal/crawlcapability/**
+  crawlrun:
+    in: internal/crawlrun/**
+  crawltraversal:
+    in: internal/crawltraversal/**
+  htmlpage:
+    in: internal/htmlpage/**
+  contentextraction:
+    in: internal/contentextraction/**
+  archivemember:
+    in: internal/archivemember/**
+  httpfetch:
+    in: internal/httpfetch/**
+  pageindex:
+    in: internal/pageindex/**
+  pagepublication:
+    in: internal/pagepublication/**
+  orderintake:
+    in: internal/orderintake/**
+  crawlmetrics:
+    in: internal/crawlmetrics/**
+  crawlercmd:
+    in: cmd/yacycrawler/**
+
+vendors:
+  yacycrawlcontract:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract
+      - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract/**
+  yacymodel:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/yacymodel
+      - github.com/nikitakarpei/yacy-rwi-node/yacymodel/**
+  nats:
+    in:
+      - github.com/nats-io/nats.go
+      - github.com/nats-io/nats.go/**
+  nats-server:
+    in:
+      - github.com/nats-io/nats-server/v2/server
+  prometheus:
+    in:
+      - github.com/prometheus/client_golang/**
+  readability:
+    in:
+      - codeberg.org/readeck/go-readability/v2
+  xnet:
+    in:
+      - golang.org/x/net/**
+  backoff:
+    in:
+      - github.com/cenkalti/backoff/v4
+
+deps:
+  canonicalurl:
+    mayDependOn:
+      - canonicalurl
+  pageadmission:
+    mayDependOn:
+      - pageadmission
+    canUse:
+      - yacycrawlcontract
+  crawlfrontier:
+    mayDependOn:
+      - crawlfrontier
+      - pageadmission
+  crawlcapability:
+    mayDependOn:
+      - crawlcapability
+    canUse:
+      - yacycrawlcontract
+  crawlrun:
+    mayDependOn:
+      - crawlrun
+      - crawltraversal
+      - crawlcapability
+    canUse:
+      - yacycrawlcontract
+  crawltraversal:
+    mayDependOn:
+      - crawltraversal
+      - crawlcapability
+      - canonicalurl
+      - pageadmission
+      - crawlfrontier
+    canUse:
+      - yacycrawlcontract
+      - backoff
+  pageindex:
+    mayDependOn:
+      - pageindex
+      - crawlcapability
+    canUse:
+      - yacycrawlcontract
+      - yacymodel
+  htmlpage:
+    mayDependOn:
+      - htmlpage
+      - crawlcapability
+      - canonicalurl
+    canUse:
+      - readability
+      - xnet
+  contentextraction:
+    mayDependOn:
+      - contentextraction
+      - crawlcapability
+  archivemember:
+    mayDependOn:
+      - archivemember
+      - crawlcapability
+  httpfetch:
+    mayDependOn:
+      - httpfetch
+      - crawlcapability
+  pagepublication:
+    mayDependOn:
+      - pagepublication
+      - crawlcapability
+      - pageindex
+    canUse:
+      - yacycrawlcontract
+      - nats
+      - nats-server
+  orderintake:
+    mayDependOn:
+      - orderintake
+      - crawlcapability
+    canUse:
+      - yacycrawlcontract
+      - nats
+      - nats-server
+  crawlmetrics:
+    mayDependOn:
+      - crawlmetrics
+    canUse:
+      - prometheus
+  crawlercmd:
+    mayDependOn:
+      - crawlrun
+      - crawltraversal
+      - crawlcapability
+      - htmlpage
+      - contentextraction
+      - archivemember
+      - httpfetch
+      - pagepublication
+      - orderintake
+      - crawlmetrics
+    canUse:
+      - yacycrawlcontract
+      - nats
+      - nats-server
+
+excludeFiles:
+  - "test/e2e"

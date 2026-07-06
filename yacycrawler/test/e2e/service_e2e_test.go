@@ -23,8 +23,7 @@ func TestCrawlerIsOrderDrivenEndToEnd(t *testing.T) {
 	ensureStreams(t, ctx, js)
 
 	order := yacycrawlcontract.CrawlOrder{
-		OrderID:    "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
-		Provenance: []byte("admin"),
+		OrderID: "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
 		Profile: yacycrawlcontract.NewCrawlProfile(yacycrawlcontract.CrawlProfile{
 			Name:            "default",
 			Scope:           yacycrawlcontract.ScopeDomain,
@@ -32,9 +31,7 @@ func TestCrawlerIsOrderDrivenEndToEnd(t *testing.T) {
 			MaxDepth:        0,
 			MaxPagesPerHost: yacycrawlcontract.UnlimitedPagesPerHost,
 		}),
-	}
-	order.Requests = []yacycrawlcontract.CrawlRequest{
-		{URL: originURL, ProfileHandle: order.Profile.Handle},
+		SeedURLs: []string{originURL},
 	}
 	data, err := yacycrawlcontract.MarshalCrawlOrder(order)
 	if err != nil {
@@ -45,10 +42,10 @@ func TestCrawlerIsOrderDrivenEndToEnd(t *testing.T) {
 	}
 
 	index := fetchOneCrawledPageIndex(t, ctx, js)
-	if index.ProfileHandle != order.Profile.Handle {
-		t.Errorf("index handle = %q, want %q", index.ProfileHandle, order.Profile.Handle)
+	if index.CanonicalURL != originURL {
+		t.Errorf("index canonical url = %q, want %q", index.CanonicalURL, originURL)
 	}
-	if string(index.Provenance) != "admin" {
-		t.Errorf("index provenance = %q, want admin", index.Provenance)
+	if len(index.Postings) == 0 {
+		t.Error("index carries no postings")
 	}
 }

@@ -13,7 +13,7 @@ WORKDIR /src
 COPY go.work go.work.sum ./
 COPY yacynode/go.mod yacynode/go.sum yacynode/
 COPY yacycrawlcontract/go.mod yacycrawlcontract/
-COPY yacycrawler/go.mod yacycrawler/
+COPY yacycrawler/go.mod yacycrawler/go.sum yacycrawler/
 COPY yacymodel/go.mod yacymodel/
 COPY yacyproto/go.mod yacyproto/
 COPY yacytextindexer/go.mod yacytextindexer/
@@ -32,7 +32,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -o /out/yacycrawler \
         ./yacycrawler/cmd/yacycrawler
 
-FROM docker.io/chromedp/headless-shell:148.0.7778.97
+FROM gcr.io/distroless/static-debian12:nonroot
 
 COPY --from=build /out/yacycrawler /usr/local/bin/yacycrawler
 
