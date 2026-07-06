@@ -60,9 +60,10 @@ func TestBleveDiskIndexCreatesReopensAndSearches(t *testing.T) {
 	}
 	directory := newFakeDocumentDirectory(doc)
 	stored := &fakeStoredDocuments{documents: []documentstore.Document{doc}}
+	indexPath := filepath.Join(t.TempDir(), "search.bleve")
 	index, err := NewBleveDiskIndex(
 		t.Context(),
-		filepath.Join(t.TempDir(), "search.bleve"),
+		indexPath,
 		directory,
 		stored,
 	)
@@ -104,7 +105,7 @@ func TestBleveDiskIndexCreatesReopensAndSearches(t *testing.T) {
 		t.Fatalf("result = %#v", result)
 	}
 
-	path := index.index.Name()
+	path := indexPath
 	if err := index.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
@@ -455,9 +456,7 @@ func TestBleveDiskIndexReturnsUnexpectedUnderlyingCloseErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewBleveDiskIndex: %v", err)
 	}
-	if err := index.index.Close(); err != nil {
-		t.Fatalf("underlying Close: %v", err)
-	}
+	closeBleveShards(index.shards)
 
 	if err := index.Index(
 		t.Context(),
@@ -481,7 +480,7 @@ func TestBleveDiskIndexReturnsUnexpectedUnderlyingCloseErrors(t *testing.T) {
 
 func TestBleveDiskIndexWrapsCloseErrors(t *testing.T) {
 	sentinel := errors.New("close failed")
-	index := &BleveDiskIndex{index: closeErrorBleveIndex{err: sentinel}}
+	index := &BleveDiskIndex{shards: []bleve.Index{closeErrorBleveIndex{err: sentinel}}}
 
 	if err := index.Close(); !errors.Is(err, sentinel) {
 		t.Fatalf("Close error = %v, want %v", err, sentinel)

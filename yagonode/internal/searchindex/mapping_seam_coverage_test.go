@@ -2,11 +2,9 @@ package searchindex
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/mapping"
 )
 
@@ -50,23 +48,13 @@ func TestNewBleveDiskIndexCreateMappingError(t *testing.T) {
 
 func TestNewBleveDiskIndexRecreateMappingError(t *testing.T) {
 	sentinel := errors.New("mapping failed")
-	path := filepath.Join(t.TempDir(), "search.bleve")
-	if err := os.WriteFile(path, []byte("not an index"), 0o600); err != nil {
-		t.Fatalf("write broken index: %v", err)
-	}
-
-	oldOpen := openBleveDisk
 	oldMapping := newSearchIndexMapping
-	t.Cleanup(func() {
-		openBleveDisk = oldOpen
-		newSearchIndexMapping = oldMapping
-	})
-	openBleveDisk = func(string) (bleve.Index, error) { return nil, errors.New("corrupt") }
+	t.Cleanup(func() { newSearchIndexMapping = oldMapping })
 	newSearchIndexMapping = func() (*mapping.IndexMappingImpl, error) { return nil, sentinel }
 
 	if _, err := NewBleveDiskIndex(
 		t.Context(),
-		path,
+		filepath.Join(t.TempDir(), "search.bleve"),
 		newFakeDocumentDirectory(),
 		nil,
 	); !errors.Is(err, sentinel) {

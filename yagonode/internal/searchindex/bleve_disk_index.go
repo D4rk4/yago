@@ -5,12 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/blevesearch/bleve/v2"
+	"github.com/blevesearch/bleve/v2/index/scorch"
+	"github.com/blevesearch/bleve/v2/mapping"
+	"github.com/cespare/xxhash/v2"
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
@@ -18,11 +22,21 @@ import (
 const (
 	bleveDiskBackendName = "bleve-disk"
 	bleveSearchHitCap    = 1000
+
+	// diskShardCount fixes the index shard pool (ADR-0025): documents route
+	// by hash across M scorch indexes living in a three-level fanout, each
+	// with a merge policy that keeps its zap files well under the 1 GB cap.
+	diskShardCount = 8
+	// diskMaxSegmentDocs bounds merged scorch segments; MaxSegmentSize is
+	// measured in documents, not bytes.
+	diskMaxSegmentDocs = 400_000
+	diskSnapshotsKept  = 3
 )
 
 type BleveDiskIndex struct {
 	mu        sync.RWMutex
-	index     bleve.Index
+	shards    []bleve.Index
+	alias     bleve.Index
 	documents documentstore.DocumentDirectory
 	updatedAt time.Time
 	closed    bool
@@ -30,11 +44,47 @@ type BleveDiskIndex struct {
 	now       func() time.Time
 }
 
+// diskShard picks the shard for one document id.
+func diskShard(shards []bleve.Index, docID string) bleve.Index {
+	return shards[int(xxhash.Sum64String(docID)%uint64(len(shards)))] //nolint:gosec // bounded by len.
+}
+
+// diskShardPath is the three-level fanout location of one index shard.
+func diskShardPath(root string, shard int) string {
+	id := fmt.Sprintf("%06x", shard)
+
+	return filepath.Join(root, id[0:2], id[2:4], id[4:6], id+".idx")
+}
+
 var (
-	newBleveDisk    = bleve.New
+	newBleveDisk    = newBleveShard
 	openBleveDisk   = bleve.Open
 	removeBleveDisk = os.RemoveAll
 )
+
+// newBleveShard creates one scorch shard with the bounded merge policy. The
+// merge options pass as a partial JSON object: scorch unmarshals it over its
+// defaults, so only the overridden field is set (the full struct carries a
+// non-serializable scoring func).
+func newBleveShard(path string, indexMapping mapping.IndexMapping) (bleve.Index, error) {
+	index, err := bleve.NewUsing(
+		path,
+		indexMapping,
+		scorch.Name,
+		scorch.Name,
+		map[string]interface{}{
+			"scorchMergePlanOptions": map[string]interface{}{
+				"MaxSegmentSize": diskMaxSegmentDocs,
+			},
+			"numSnapshotsToKeep": diskSnapshotsKept,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create scorch shard: %w", err)
+	}
+
+	return index, nil
+}
 
 func NewBleveDiskIndex(
 	ctx context.Context,
@@ -50,21 +100,23 @@ func NewBleveDiskIndex(
 		return nil, fmt.Errorf("document directory required")
 	}
 
-	index, rebuild, updatedAt, err := openOrCreateBleveDisk(path, stored != nil)
+	shards, rebuild, updatedAt, err := openOrCreateBleveDisk(path, stored != nil)
 	if err != nil {
 		return nil, err
 	}
 
 	out := &BleveDiskIndex{
-		index:     index,
+		shards:    shards,
+		alias:     bleve.NewIndexAlias(shards...),
 		documents: directory,
 		updatedAt: updatedAt,
-		gram:      supportsGramAnalyzer(index),
+		gram:      supportsGramAnalyzer(shards[0]),
 		now:       time.Now,
 	}
 	if rebuild && stored != nil {
 		if err := out.rebuild(ctx, stored); err != nil {
-			_ = index.Close()
+			closeBleveShards(shards)
+
 			return nil, err
 		}
 	}
@@ -76,7 +128,7 @@ func NewBleveDiskIndex(
 func (b *BleveDiskIndex) warm(ctx context.Context) {
 	request := bleve.NewSearchRequest(bleve.NewMatchAllQuery())
 	request.Size = 1
-	_, _ = b.index.SearchInContext(ctx, request)
+	_, _ = b.alias.SearchInContext(ctx, request)
 }
 
 func (b *BleveDiskIndex) Index(
@@ -96,7 +148,7 @@ func (b *BleveDiskIndex) Index(
 	if b.closed {
 		return fmt.Errorf("search index closed")
 	}
-	if err := b.index.Index(id, bleveDocumentFromStore(doc)); err != nil {
+	if err := diskShard(b.shards, id).Index(id, bleveDocumentFromStore(doc)); err != nil {
 		return fmt.Errorf("index document: %w", err)
 	}
 	b.updatedAt = b.now().UTC()
@@ -118,7 +170,7 @@ func (b *BleveDiskIndex) Delete(ctx context.Context, docID string) error {
 	if b.closed {
 		return fmt.Errorf("search index closed")
 	}
-	if err := b.index.Delete(docID); err != nil {
+	if err := diskShard(b.shards, docID).Delete(docID); err != nil {
 		return fmt.Errorf("delete document: %w", err)
 	}
 	b.updatedAt = b.now().UTC()
@@ -130,6 +182,9 @@ func (b *BleveDiskIndex) Search(
 	ctx context.Context,
 	req SearchRequest,
 ) (SearchResultSet, error) {
+	if err := ctx.Err(); err != nil {
+		return SearchResultSet{}, fmt.Errorf("context: %w", err)
+	}
 	req.Query = strings.TrimSpace(req.Query)
 	if req.Query == "" || req.MaxResults <= 0 {
 		return SearchResultSet{}, nil
@@ -140,7 +195,7 @@ func (b *BleveDiskIndex) Search(
 	if b.closed {
 		return SearchResultSet{}, fmt.Errorf("search index closed")
 	}
-	count, err := b.index.DocCount()
+	count, err := b.docCount()
 	if err != nil {
 		return SearchResultSet{}, fmt.Errorf("count indexed documents: %w", err)
 	}
@@ -151,7 +206,7 @@ func (b *BleveDiskIndex) Search(
 	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req, b.gram))
 	searchRequest.Size = diskSearchSize(req.MaxResults, bleveDocumentCount(count))
 	searchRequest.Explain = req.Explain
-	result, err := b.index.SearchInContext(ctx, searchRequest)
+	result, err := b.alias.SearchInContext(ctx, searchRequest)
 	if err != nil {
 		return SearchResultSet{}, fmt.Errorf("search documents: %w", err)
 	}
@@ -190,7 +245,7 @@ func (b *BleveDiskIndex) Stats(ctx context.Context) (IndexStats, error) {
 	if b.closed {
 		return IndexStats{}, fmt.Errorf("search index closed")
 	}
-	count, err := b.index.DocCount()
+	count, err := b.docCount()
 	if err != nil {
 		return IndexStats{}, fmt.Errorf("count indexed documents: %w", err)
 	}
@@ -210,11 +265,33 @@ func (b *BleveDiskIndex) Close() error {
 	}
 	b.closed = true
 
-	if err := b.index.Close(); err != nil {
-		return fmt.Errorf("close bleve disk index: %w", err)
+	for _, shard := range b.shards {
+		if err := shard.Close(); err != nil {
+			return fmt.Errorf("close bleve disk index: %w", err)
+		}
 	}
 
 	return nil
+}
+
+// docCount sums the shards' document counts.
+func (b *BleveDiskIndex) docCount() (uint64, error) {
+	var total uint64
+	for _, shard := range b.shards {
+		count, err := shard.DocCount()
+		if err != nil {
+			return 0, err //nolint:wrapcheck // callers wrap with context.
+		}
+		total += count
+	}
+
+	return total, nil
+}
+
+func closeBleveShards(shards []bleve.Index) {
+	for _, shard := range shards {
+		_ = shard.Close()
+	}
 }
 
 func (b *BleveDiskIndex) rebuild(
@@ -234,43 +311,100 @@ func (b *BleveDiskIndex) rebuild(
 	return nil
 }
 
-func openOrCreateBleveDisk(path string, canRebuild bool) (bleve.Index, bool, time.Time, error) {
+// openOrCreateBleveDisk opens the sharded index layout under root: M scorch
+// shards at root/xx/zz/yy/xxzzyy.idx (ADR-0025). A legacy single bleve index
+// found at root is removed and rebuilt from the stored documents; a shard that
+// fails to open or predates the trigram analyzer recreates alone (its slice of
+// the corpus re-indexes on the rebuild pass).
+func openOrCreateBleveDisk(root string, canRebuild bool) ([]bleve.Index, bool, time.Time, error) {
+	if legacy, info := legacyBleveLayout(root); legacy {
+		if !canRebuild {
+			// Without a rebuild source the legacy index keeps serving as a
+			// single shard in its compatibility mode.
+			index, err := openBleveDisk(root)
+			if err != nil {
+				return nil, false, time.Time{}, fmt.Errorf("open bleve index shard: %w", err)
+			}
+
+			return []bleve.Index{index}, false, info.ModTime().UTC(), nil
+		}
+		// A legacy single bleve index (or an unreadable remnant) occupies the
+		// root: rebuild it into the sharded layout from the stored documents.
+		if err := removeBleveDisk(root); err != nil {
+			return nil, false, time.Time{}, fmt.Errorf("retire legacy bleve index: %w", err)
+		}
+	}
+	shards := make([]bleve.Index, 0, diskShardCount)
+	rebuild := false
+	var updatedAt time.Time
+	for i := 0; i < diskShardCount; i++ {
+		shard, created, modTime, err := openOrCreateBleveShard(diskShardPath(root, i), canRebuild)
+		if err != nil {
+			closeBleveShards(shards)
+
+			return nil, false, time.Time{}, err
+		}
+		rebuild = rebuild || created
+		if modTime.After(updatedAt) {
+			updatedAt = modTime
+		}
+		shards = append(shards, shard)
+	}
+	if rebuild {
+		updatedAt = time.Time{}
+	}
+
+	return shards, rebuild, updatedAt, nil
+}
+
+// legacyBleveLayout reports whether the root holds a pre-shard layout: a
+// single bleve index directory or an unreadable non-directory remnant.
+func legacyBleveLayout(root string) (bool, os.FileInfo) {
+	info, err := os.Stat(root)
+	if err != nil {
+		return false, nil
+	}
+	if !info.IsDir() {
+		return true, info
+	}
+	if _, err := os.Stat(filepath.Join(root, "index_meta.json")); err == nil {
+		return true, info
+	}
+
+	return false, info
+}
+
+// openOrCreateBleveShard opens one shard, recreating it when it is missing,
+// unreadable, or predates the trigram analyzer.
+func openOrCreateBleveShard(path string, canRebuild bool) (bleve.Index, bool, time.Time, error) {
 	info, statErr := os.Stat(path)
-	if errors.Is(statErr, os.ErrNotExist) {
-		indexMapping, err := newSearchIndexMapping()
-		if err != nil {
-			return nil, false, time.Time{}, fmt.Errorf("build search index mapping: %w", err)
+	if statErr == nil {
+		index, err := openBleveDisk(path)
+		if err == nil {
+			if supportsGramAnalyzer(index) || !canRebuild {
+				return index, false, info.ModTime().UTC(), nil
+			}
+			_ = index.Close()
 		}
-		index, err := newBleveDisk(path, indexMapping)
-		if err != nil {
-			return nil, false, time.Time{}, fmt.Errorf("create bleve disk index: %w", err)
+		if !canRebuild {
+			return nil, false, time.Time{}, fmt.Errorf("open bleve index shard: %w", err)
 		}
-
-		return index, true, time.Time{}, nil
-	} else if statErr != nil {
-		return nil, false, time.Time{}, fmt.Errorf("stat bleve disk index: %w", statErr)
+		if err := removeBleveDisk(path); err != nil {
+			return nil, false, time.Time{}, fmt.Errorf("repair bleve index shard: %w", err)
+		}
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return nil, false, time.Time{}, fmt.Errorf("stat bleve index shard: %w", statErr)
 	}
-
-	index, err := openBleveDisk(path)
-	if err == nil {
-		if supportsGramAnalyzer(index) || !canRebuild {
-			return index, false, info.ModTime().UTC(), nil
-		}
-		// The index predates the trigram analyzer: its persisted mapping can
-		// neither index nor search the gram fields, so rebuild it from the
-		// stored documents under the current mapping.
-		_ = index.Close()
-	}
-	if err := removeBleveDisk(path); err != nil {
-		return nil, false, time.Time{}, fmt.Errorf("repair bleve disk index: %w", err)
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return nil, false, time.Time{}, fmt.Errorf("create index shard directory: %w", err)
 	}
 	indexMapping, err := newSearchIndexMapping()
 	if err != nil {
 		return nil, false, time.Time{}, fmt.Errorf("build search index mapping: %w", err)
 	}
-	index, err = newBleveDisk(path, indexMapping)
+	index, err := newBleveDisk(path, indexMapping)
 	if err != nil {
-		return nil, false, time.Time{}, fmt.Errorf("recreate bleve disk index: %w", err)
+		return nil, false, time.Time{}, fmt.Errorf("create bleve index shard: %w", err)
 	}
 
 	return index, true, time.Time{}, nil
