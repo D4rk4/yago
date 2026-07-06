@@ -21,6 +21,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchlocal"
 	"github.com/D4rk4/yago/yagonode/internal/searchremote"
 	"github.com/D4rk4/yago/yagonode/internal/searchsession"
+	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
 	"github.com/D4rk4/yago/yagonode/internal/tavilyapi"
 	"github.com/D4rk4/yago/yagonode/internal/websearch"
 	"github.com/D4rk4/yago/yagonode/internal/yacysearch"
@@ -45,6 +46,7 @@ type publicSearchAssembly struct {
 	searchMetrics        *metrics.SearchMetrics
 	rankingWeights       func() searchindex.RankingWeights
 	hostRank             func() hostrank.Table
+	spellCorrector       func() *spellcheck.Corrector
 	denylist             denylistSnapshotter
 	indexRemoteResults   bool
 	swarmSeed            swarmSeedConfig
@@ -242,7 +244,7 @@ func assemblePublicSearcher(
 	filtered := withDenylistFilter(reranked, assembly.denylist)
 	// Zero-result recovery sits above the filters so its fuzzy retry serves
 	// only pages the denylist would allow.
-	recovering := withZeroResultRecovery(filtered)
+	recovering := withZeroResultRecovery(filtered, assembly.spellCorrector)
 	// The session cache makes paging stable (YaCy SearchEventCache): page one
 	// runs one deep search, deeper pages slice the cached result list.
 	stable := searchsession.WithStableWindow(recovering)

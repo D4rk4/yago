@@ -104,6 +104,8 @@ components:
     in: internal/searchindex/**
   searchlocal:
     in: internal/searchlocal/**
+  spellcheck:
+    in: internal/spellcheck/**
   rankingprofile:
     in: internal/rankingprofile/**
   recrawlfrontier:
@@ -562,6 +564,9 @@ deps:
   hostrank:
     mayDependOn:
       - hostrank
+  spellcheck:
+    mayDependOn:
+      - spellcheck
   cachedpage:
     mayDependOn:
       - cachedpage
@@ -643,6 +648,7 @@ deps:
       - peerannouncement
       - hostlinks
       - hostrank
+      - spellcheck
       - cachedpage
       - faviconproxy
       - searchsession

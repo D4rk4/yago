@@ -6,7 +6,14 @@ import (
 	"testing"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
 )
+
+func fixedCorrector(frequency map[string]int) func() *spellcheck.Corrector {
+	corrector := spellcheck.New(frequency)
+
+	return func() *spellcheck.Corrector { return corrector }
+}
 
 // scriptedRecoverySearcher answers the exact search with empty results and the
 // fuzzy retry with the scripted recovery results.
@@ -39,7 +46,7 @@ func TestRecoveryRetriesFuzzyAndSuggestsSpelling(t *testing.T) {
 	inner := &scriptedRecoverySearcher{fuzzyResults: []searchcore.Result{
 		{Title: "Golang Tutorial", URL: "https://a.example/1"},
 	}}
-	searcher := withZeroResultRecovery(inner)
+	searcher := withZeroResultRecovery(inner, nil)
 
 	resp, err := searcher.Search(context.Background(), searchcore.Request{
 		Query: "golnag tutorial",
@@ -68,7 +75,7 @@ func TestRecoveryRetriesFuzzyAndSuggestsSpelling(t *testing.T) {
 
 func TestRecoveryKeepsHonestEmptyAndSkipsWhenNotEligible(t *testing.T) {
 	empty := &scriptedRecoverySearcher{}
-	resp, err := withZeroResultRecovery(empty).Search(context.Background(), searchcore.Request{
+	resp, err := withZeroResultRecovery(empty, nil).Search(context.Background(), searchcore.Request{
 		Query: "void", Terms: []string{"void"},
 	})
 	if err != nil || resp.Recovered != "" || len(resp.Results) != 0 {
@@ -77,7 +84,7 @@ func TestRecoveryKeepsHonestEmptyAndSkipsWhenNotEligible(t *testing.T) {
 
 	// No parsed terms: no retry at all.
 	noTerms := &scriptedRecoverySearcher{}
-	if _, err := withZeroResultRecovery(noTerms).Search(
+	if _, err := withZeroResultRecovery(noTerms, nil).Search(
 		context.Background(), searchcore.Request{Query: ""},
 	); err != nil || len(noTerms.requests) != 1 {
 		t.Fatalf("termless query retried: %d requests", len(noTerms.requests))
@@ -85,7 +92,7 @@ func TestRecoveryKeepsHonestEmptyAndSkipsWhenNotEligible(t *testing.T) {
 
 	// Already-fuzzy requests never loop.
 	fuzzy := &scriptedRecoverySearcher{}
-	if _, err := withZeroResultRecovery(fuzzy).Search(
+	if _, err := withZeroResultRecovery(fuzzy, nil).Search(
 		context.Background(), searchcore.Request{Fuzzy: true, Terms: []string{"x"}},
 	); err != nil || len(fuzzy.requests) != 1 {
 		t.Fatalf("fuzzy request retried: %d requests", len(fuzzy.requests))
@@ -93,11 +100,51 @@ func TestRecoveryKeepsHonestEmptyAndSkipsWhenNotEligible(t *testing.T) {
 
 	// A retry error falls back to the honest empty answer.
 	failing := &scriptedRecoverySearcher{fuzzyErr: errors.New("boom")}
-	resp, err = withZeroResultRecovery(failing).Search(context.Background(), searchcore.Request{
+	resp, err = withZeroResultRecovery(
+		failing,
+		nil,
+	).Search(context.Background(), searchcore.Request{
 		Query: "void", Terms: []string{"void"},
 	})
 	if err != nil || resp.Recovered != "" {
 		t.Fatalf("failed retry must fall back to the empty answer: %+v %v", resp, err)
+	}
+}
+
+func TestRecoverySuggestsFromIndexVocabularyOnTotalMiss(t *testing.T) {
+	// The fuzzy retry also finds nothing, but the index-vocabulary corrector
+	// still points at the intended spelling.
+	miss := &scriptedRecoverySearcher{}
+	corrector := fixedCorrector(map[string]int{"golang": 9, "tutorial": 5})
+	resp, err := withZeroResultRecovery(miss, corrector).Search(
+		context.Background(),
+		searchcore.Request{Query: "golnag", Terms: []string{"golnag"}},
+	)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(resp.Results) != 0 || resp.DidYouMean != "golang" {
+		t.Fatalf("total miss = results:%d did-you-mean:%q, want a golang suggestion",
+			len(resp.Results), resp.DidYouMean)
+	}
+}
+
+func TestRecoveryPrefersVocabularyCorrectionOverTitles(t *testing.T) {
+	// A fuzzy retry surfaces a page, but the vocabulary corrector's suggestion
+	// (frequency-ranked over the whole index) wins over the title sample.
+	inner := &scriptedRecoverySearcher{fuzzyResults: []searchcore.Result{
+		{Title: "unrelated heading", URL: "https://a.example/1"},
+	}}
+	corrector := fixedCorrector(map[string]int{"golang": 12})
+	resp, err := withZeroResultRecovery(inner, corrector).Search(
+		context.Background(),
+		searchcore.Request{Query: "golnag", Terms: []string{"golnag"}},
+	)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if resp.DidYouMean != "golang" {
+		t.Fatalf("did you mean = %q, want golang from the vocabulary", resp.DidYouMean)
 	}
 }
 

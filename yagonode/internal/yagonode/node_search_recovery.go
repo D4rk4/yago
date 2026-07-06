@@ -6,6 +6,7 @@ import (
 	"unicode"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
 )
 
 const (
@@ -21,11 +22,15 @@ const (
 // the recovered titles. An honest empty answer stays empty when even the fuzzy
 // retry finds nothing.
 type recoveringSearcher struct {
-	inner searchcore.Searcher
+	inner     searchcore.Searcher
+	corrector func() *spellcheck.Corrector
 }
 
-func withZeroResultRecovery(inner searchcore.Searcher) searchcore.Searcher {
-	return recoveringSearcher{inner: inner}
+func withZeroResultRecovery(
+	inner searchcore.Searcher,
+	corrector func() *spellcheck.Corrector,
+) searchcore.Searcher {
+	return recoveringSearcher{inner: inner, corrector: corrector}
 }
 
 func (s recoveringSearcher) Search(
@@ -43,14 +48,46 @@ func (s recoveringSearcher) Search(
 	recovered, retryErr := s.inner.Search(ctx, retry)
 	if retryErr != nil || len(recovered.Results) == 0 {
 		// The recovery retry is best-effort: when it fails or stays empty, the
-		// caller gets the primary search's honest empty answer, not an error.
+		// caller gets the primary search's honest empty answer — still carrying a
+		// dictionary spelling suggestion when one exists, so a total miss can
+		// point at the likely intended query.
+		resp.DidYouMean = s.spellSuggestion(req.Terms)
+
 		return resp, nil //nolint:nilerr // deliberate fallback to the empty answer.
 	}
 	recovered.Request = req
 	recovered.Recovered = "fuzzy"
-	recovered.DidYouMean = didYouMean(req.Terms, recovered.Results)
+	recovered.DidYouMean = s.didYouMeanFor(req.Terms, recovered.Results)
 
 	return recovered, nil
+}
+
+// didYouMeanFor prefers a correction against the whole indexed vocabulary
+// (SymSpell) and falls back to the recovered result titles when the dictionary
+// offers nothing.
+func (s recoveringSearcher) didYouMeanFor(
+	terms []string,
+	results []searchcore.Result,
+) string {
+	if suggestion := s.spellSuggestion(terms); suggestion != "" {
+		return suggestion
+	}
+
+	return didYouMean(terms, results)
+}
+
+// spellSuggestion corrects the query terms against the current index-vocabulary
+// corrector, returning empty when no corrector is wired or nothing needs fixing.
+func (s recoveringSearcher) spellSuggestion(terms []string) string {
+	if s.corrector == nil {
+		return ""
+	}
+	corrector := s.corrector()
+	if corrector == nil {
+		return ""
+	}
+
+	return corrector.CorrectQuery(terms)
 }
 
 // didYouMean rebuilds the query with each term replaced by the closest word

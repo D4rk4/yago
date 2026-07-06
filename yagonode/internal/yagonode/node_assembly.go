@@ -28,6 +28,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
+	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
 	"github.com/D4rk4/yago/yagonode/internal/tavilyapi"
 	"github.com/D4rk4/yago/yagonode/internal/transfertally"
 	"github.com/D4rk4/yago/yagonode/internal/urldenylist"
@@ -48,6 +49,7 @@ type node struct {
 	index         searchindex.SearchIndex
 	docScan       documentstore.StoredDocuments
 	hostRank      *hostrank.Holder
+	spell         *spellcheck.Holder
 	indexAdmin    *indexAdminController
 	postings      rwi.PostingIndex
 	urlDirectory  urlmeta.URLDirectory
@@ -119,7 +121,6 @@ func assembleNode(
 	if err != nil {
 		return node{}, err
 	}
-
 	report := newNodeStatusReport(identity, storage, roster, news, tally)
 	storage = observeDHTInboundStorage(storage, telemetry.dhtInbound, tally)
 	mux := http.NewServeMux()
@@ -180,6 +181,7 @@ func assembleNode(
 		identity:  identity,
 		ranking:   surfaces.ranking,
 		hostRank:  surfaces.hostRank,
+		spell:     surfaces.spell,
 	}), nil
 }
 
@@ -217,6 +219,7 @@ type nodeSurfaces struct {
 	publicMux http.Handler
 	ranking   *rankingprofile.Holder
 	hostRank  *hostrank.Holder
+	spell     *spellcheck.Holder
 	denylist  *urldenylist.Store
 }
 
@@ -237,9 +240,11 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	}
 	publicMux := http.NewServeMux()
 	hostRankHolder := hostrank.NewHolder()
+	spellHolder := spellcheck.NewHolder()
 	searcher, suggest := mountNodePublicSearch(publicMux, publicSearchAssembly{
 		storage:            in.storage,
 		hostRank:           hostRankHolder.Current,
+		spellCorrector:     spellHolder.Current,
 		roster:             in.roster,
 		identity:           in.identity,
 		dht:                in.config.DHT,
@@ -290,6 +295,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		publicMux: limitedPublic,
 		ranking:   ranking,
 		hostRank:  hostRankHolder,
+		spell:     spellHolder,
 		denylist:  denylist,
 	}, nil
 }
@@ -313,6 +319,7 @@ type nodeParts struct {
 	identity  nodeidentity.Identity
 	ranking   *rankingprofile.Holder
 	hostRank  *hostrank.Holder
+	spell     *spellcheck.Holder
 }
 
 func newAssembledNode(parts nodeParts) node {
@@ -329,6 +336,7 @@ func newAssembledNode(parts nodeParts) node {
 		index:         parts.storage.searchIndex,
 		docScan:       parts.storage.storedDocuments(),
 		hostRank:      parts.hostRank,
+		spell:         parts.spell,
 		indexAdmin:    newIndexAdminController(parts.storage, parts.vault),
 		postings:      parts.storage.postings,
 		urlDirectory:  parts.storage.urlDirectory,
