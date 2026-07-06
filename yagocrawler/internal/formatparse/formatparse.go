@@ -65,6 +65,7 @@ func families() []family {
 			name:       "pdf",
 			extensions: set("pdf", "ps"),
 			mimes:      set("application/pdf", "application/postscript"),
+			parse:      parsePDF,
 			enabled:    func(t yagocrawlcontract.FormatToggles) bool { return t.PDF },
 		},
 		{
