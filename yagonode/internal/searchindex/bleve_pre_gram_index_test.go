@@ -49,9 +49,12 @@ func TestNewBleveDiskIndexMigratesPreGramIndex(t *testing.T) {
 			stored.scans,
 		)
 	}
-	// The morphological variant only matches through the gram fields, proving
-	// the migrated index carries the current mapping.
-	results, err := index.Search(t.Context(), SearchRequest{Query: "зеленски", MaxResults: 5})
+	// The morphological variant only matches through the gram fields (recovery
+	// path), proving the migrated index carries the current mapping.
+	results, err := index.Search(
+		t.Context(),
+		SearchRequest{Query: "зеленски", MaxResults: 5, Fuzzy: true},
+	)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}

@@ -152,14 +152,49 @@ func TestSearchMatchesTruncatedWordViaTrigrams(t *testing.T) {
 	}
 
 	// A truncated query ("зеленски" for indexed "Зеленский") shares every trigram
-	// of the query, so the language-agnostic gram field matches with no Russian
-	// stemmer configured — the exact word field alone would return nothing.
-	results, err := index.Search(t.Context(), SearchRequest{Query: "зеленски", MaxResults: 5})
+	// of the query. The exact word field alone returns nothing, so the trigram
+	// recall only fires on the zero-result recovery path (Fuzzy) — that is where
+	// the language-agnostic gram field earns its keep without flooding ordinary
+	// queries.
+	results, err := index.Search(
+		t.Context(),
+		SearchRequest{Query: "зеленски", MaxResults: 5, Fuzzy: true},
+	)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
 	if results.Total != 1 {
 		t.Fatalf(`results = %#v, want truncated "зеленски" to match indexed "Зеленский"`, results)
+	}
+}
+
+// TestTrigramsDoNotFloodOrdinaryQueries locks in the flooding fix: a long
+// same-script document that shares every trigram of the query word but never
+// mentions it must not match on the ordinary (non-recovery) query path.
+func TestTrigramsDoNotFloodOrdinaryQueries(t *testing.T) {
+	index, err := NewBleveMemoryIndex(t.Context(), &fakeStoredDocuments{
+		documents: []documentstore.Document{
+			{
+				NormalizedURL: "https://anticisco.ru/blog",
+				Title:         "antiCisco blogs cisco",
+				ExtractedText: "через черно многие много строгого город которая территория горы",
+			},
+			{
+				NormalizedURL: "https://ru.wikipedia.org/montenegro",
+				Title:         "Черногория",
+				ExtractedText: "Черногория страна на Балканах столица Подгорица",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewBleveMemoryIndex: %v", err)
+	}
+	results, err := index.Search(t.Context(), SearchRequest{Query: "черногория", MaxResults: 10})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if results.Total != 1 || results.Results[0].URL != "https://ru.wikipedia.org/montenegro" {
+		t.Fatalf("ordinary query flooded by scattered trigrams: %#v", results)
 	}
 }
 

@@ -193,10 +193,16 @@ func bleveSearchQuery(req SearchRequest, gram bool) blevequery.Query {
 		}
 		main.AddQuery(field)
 	}
-	if gram {
-		// Language-agnostic trigram recall: a document whose text contains every
-		// trigram of a query word matches even when the word is a morphological
-		// variant or truncation (e.g. "зеленски" -> "зеленский"), for any script.
+	if gram && req.Fuzzy {
+		// Language-agnostic trigram recall, restricted to the zero-result
+		// recovery path. Matching a word's character trigrams with AND semantics
+		// does NOT require them to be contiguous or in one word, so over a long
+		// body every common trigram of a query word (e.g. Russian "черногория" ->
+		// чер, ерн, рно, ...) occurs scattered in nearly every same-script
+		// document, flooding ordinary queries with unrelated content. Restoring
+		// contiguity needs positional term vectors (a reindex), and morphology is
+		// better served by per-language stemming, so grams now only widen recall
+		// when the precise query already found nothing rather than on every search.
 		// Skipped when the index mapping predates the trigram analyzer: such an
 		// index can neither resolve the analyzer nor hold gram fields, and a
 		// query referencing it fails the whole search.
