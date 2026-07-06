@@ -87,6 +87,9 @@ func TestNodePublicSearchMountsYaCySearchSurfaces(t *testing.T) {
 		}
 	}
 
+	// SEC-02: the agent /search surface has no configured credential here, so
+	// it must deny rather than serve publicly; the YaCy-compatible surfaces
+	// above stay public by design.
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(
 		t.Context(),
@@ -95,8 +98,8 @@ func TestNodePublicSearchMountsYaCySearchSurfaces(t *testing.T) {
 		strings.NewReader(`{"query":"absent","max_results":1}`),
 	)
 	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("/search: status = %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("/search without a key: status = %d, want 401 (no key, no access)", rec.Code)
 	}
 }
 

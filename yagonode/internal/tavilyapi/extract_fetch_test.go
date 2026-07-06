@@ -20,9 +20,16 @@ func (s *stubContentFetcher) Fetch(_ context.Context, url string) (FetchedConten
 
 func TestExtractFetchesUncachedURL(t *testing.T) {
 	fetcher := &stubContentFetcher{content: FetchedContent{Title: "T", Text: "Body text"}}
-	handler := NewExtractEndpointWithFetcher(&fakeDocuments{}, SearchAccessPolicy{}, fetcher)
+	handler := NewExtractEndpointWithFetcher(
+		&fakeDocuments{},
+		SearchAccessPolicy{BearerToken: extractTestKey},
+		fetcher,
+	)
 
-	resp := decodeExtract(t, postExtract(t, handler, `{"urls":"https://fresh.example/page"}`, ""))
+	resp := decodeExtract(
+		t,
+		postExtract(t, handler, `{"urls":"https://fresh.example/page"}`, extractTestKey),
+	)
 	if len(resp.Results) != 1 || len(resp.FailedResults) != 0 {
 		t.Fatalf("results=%d failed=%d", len(resp.Results), len(resp.FailedResults))
 	}
@@ -36,9 +43,16 @@ func TestExtractFetchesUncachedURL(t *testing.T) {
 
 func TestExtractFetchFailureBecomesFailedResult(t *testing.T) {
 	fetcher := &stubContentFetcher{err: errors.New("boom")}
-	handler := NewExtractEndpointWithFetcher(&fakeDocuments{}, SearchAccessPolicy{}, fetcher)
+	handler := NewExtractEndpointWithFetcher(
+		&fakeDocuments{},
+		SearchAccessPolicy{BearerToken: extractTestKey},
+		fetcher,
+	)
 
-	resp := decodeExtract(t, postExtract(t, handler, `{"urls":"https://fresh.example/"}`, ""))
+	resp := decodeExtract(
+		t,
+		postExtract(t, handler, `{"urls":"https://fresh.example/"}`, extractTestKey),
+	)
 	if len(resp.Results) != 0 || len(resp.FailedResults) != 1 {
 		t.Fatalf("results=%d failed=%d", len(resp.Results), len(resp.FailedResults))
 	}
@@ -48,9 +62,16 @@ func TestExtractFetchFailureBecomesFailedResult(t *testing.T) {
 }
 
 func TestExtractWithoutFetcherReportsDisabled(t *testing.T) {
-	handler := NewExtractEndpointWithFetcher(&fakeDocuments{}, SearchAccessPolicy{}, nil)
+	handler := NewExtractEndpointWithFetcher(
+		&fakeDocuments{},
+		SearchAccessPolicy{BearerToken: extractTestKey},
+		nil,
+	)
 
-	resp := decodeExtract(t, postExtract(t, handler, `{"urls":"https://fresh.example/"}`, ""))
+	resp := decodeExtract(
+		t,
+		postExtract(t, handler, `{"urls":"https://fresh.example/"}`, extractTestKey),
+	)
 	if len(resp.FailedResults) != 1 ||
 		resp.FailedResults[0].Error != "url is not in the index and fetch-on-extract is disabled" {
 		t.Fatalf("failed = %#v", resp.FailedResults)
@@ -59,11 +80,20 @@ func TestExtractWithoutFetcherReportsDisabled(t *testing.T) {
 
 func TestExtractFetchMarkdown(t *testing.T) {
 	fetcher := &stubContentFetcher{content: FetchedContent{Title: "T", Text: "Body"}}
-	handler := NewExtractEndpointWithFetcher(&fakeDocuments{}, SearchAccessPolicy{}, fetcher)
+	handler := NewExtractEndpointWithFetcher(
+		&fakeDocuments{},
+		SearchAccessPolicy{BearerToken: extractTestKey},
+		fetcher,
+	)
 
 	resp := decodeExtract(
 		t,
-		postExtract(t, handler, `{"urls":"https://fresh.example/","format":"markdown"}`, ""),
+		postExtract(
+			t,
+			handler,
+			`{"urls":"https://fresh.example/","format":"markdown"}`,
+			extractTestKey,
+		),
 	)
 	if resp.Results[0].RawContent != "# T\n\nBody" {
 		t.Fatalf("raw = %q", resp.Results[0].RawContent)
@@ -72,11 +102,20 @@ func TestExtractFetchMarkdown(t *testing.T) {
 
 func TestExtractFetchMarkdownWithoutTitle(t *testing.T) {
 	fetcher := &stubContentFetcher{content: FetchedContent{Text: "Body only"}}
-	handler := NewExtractEndpointWithFetcher(&fakeDocuments{}, SearchAccessPolicy{}, fetcher)
+	handler := NewExtractEndpointWithFetcher(
+		&fakeDocuments{},
+		SearchAccessPolicy{BearerToken: extractTestKey},
+		fetcher,
+	)
 
 	resp := decodeExtract(
 		t,
-		postExtract(t, handler, `{"urls":"https://fresh.example/","format":"markdown"}`, ""),
+		postExtract(
+			t,
+			handler,
+			`{"urls":"https://fresh.example/","format":"markdown"}`,
+			extractTestKey,
+		),
 	)
 	if resp.Results[0].RawContent != "Body only" {
 		t.Fatalf("raw = %q, want the untitled body verbatim", resp.Results[0].RawContent)
@@ -85,11 +124,20 @@ func TestExtractFetchMarkdownWithoutTitle(t *testing.T) {
 
 func TestExtractFetchIncludesFavicon(t *testing.T) {
 	fetcher := &stubContentFetcher{content: FetchedContent{Title: "T", Text: "Body"}}
-	handler := NewExtractEndpointWithFetcher(&fakeDocuments{}, SearchAccessPolicy{}, fetcher)
+	handler := NewExtractEndpointWithFetcher(
+		&fakeDocuments{},
+		SearchAccessPolicy{BearerToken: extractTestKey},
+		fetcher,
+	)
 
 	resp := decodeExtract(
 		t,
-		postExtract(t, handler, `{"urls":"https://fresh.example/page","include_favicon":true}`, ""),
+		postExtract(
+			t,
+			handler,
+			`{"urls":"https://fresh.example/page","include_favicon":true}`,
+			extractTestKey,
+		),
 	)
 	if len(resp.Results) != 1 ||
 		resp.Results[0].Favicon != "https://fresh.example/favicon.ico" {

@@ -43,8 +43,13 @@ func decodeExtract(t *testing.T, rec *httptest.ResponseRecorder) ExtractResponse
 	return resp
 }
 
+const extractTestKey = "extract-test-key"
+
 func extractHandler(rows map[string]documentstore.Document) http.Handler {
-	return NewExtractEndpointWithAccess(&fakeDocuments{rows: rows}, SearchAccessPolicy{})
+	return NewExtractEndpointWithAccess(
+		&fakeDocuments{rows: rows},
+		SearchAccessPolicy{BearerToken: extractTestKey},
+	)
 }
 
 func TestExtractRejectsNonPost(t *testing.T) {
@@ -86,7 +91,7 @@ func TestExtractAllowsWhenAuthorized(t *testing.T) {
 }
 
 func TestExtractRejectsInvalidJSON(t *testing.T) {
-	rec := postExtract(t, extractHandler(nil), "{", "")
+	rec := postExtract(t, extractHandler(nil), "{", extractTestKey)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
@@ -98,7 +103,7 @@ func TestExtractRejectsInvalidJSON(t *testing.T) {
 }
 
 func TestExtractRejectsNonStringURLs(t *testing.T) {
-	rec := postExtract(t, extractHandler(nil), `{"urls":123}`, "")
+	rec := postExtract(t, extractHandler(nil), `{"urls":123}`, extractTestKey)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
 	}
@@ -123,7 +128,7 @@ func TestExtractValidationErrors(t *testing.T) {
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
-			rec := postExtract(t, extractHandler(nil), body, "")
+			rec := postExtract(t, extractHandler(nil), body, extractTestKey)
 			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
 			}
@@ -135,7 +140,7 @@ func TestExtractReturnsCachedContent(t *testing.T) {
 	rows := map[string]documentstore.Document{
 		"http://ex.com/a": {ExtractedText: "the quick brown fox", Title: "Fox"},
 	}
-	rec := postExtract(t, extractHandler(rows), `{"urls":"http://ex.com/a"}`, "")
+	rec := postExtract(t, extractHandler(rows), `{"urls":"http://ex.com/a"}`, extractTestKey)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
@@ -162,21 +167,36 @@ func TestExtractMarkdownFormat(t *testing.T) {
 
 	full := decodeExtract(
 		t,
-		postExtract(t, handler, `{"urls":"http://ex.com/full","format":"markdown"}`, ""),
+		postExtract(
+			t,
+			handler,
+			`{"urls":"http://ex.com/full","format":"markdown"}`,
+			extractTestKey,
+		),
 	)
 	if full.Results[0].RawContent != "# Title\n\nbody text" {
 		t.Fatalf("full markdown = %q", full.Results[0].RawContent)
 	}
 	titleOnly := decodeExtract(
 		t,
-		postExtract(t, handler, `{"urls":"http://ex.com/title","format":"MarkDown"}`, ""),
+		postExtract(
+			t,
+			handler,
+			`{"urls":"http://ex.com/title","format":"MarkDown"}`,
+			extractTestKey,
+		),
 	)
 	if titleOnly.Results[0].RawContent != "# Only Title" {
 		t.Fatalf("title-only markdown = %q", titleOnly.Results[0].RawContent)
 	}
 	textOnly := decodeExtract(
 		t,
-		postExtract(t, handler, `{"urls":"http://ex.com/text","format":"markdown"}`, ""),
+		postExtract(
+			t,
+			handler,
+			`{"urls":"http://ex.com/text","format":"markdown"}`,
+			extractTestKey,
+		),
 	)
 	if textOnly.Results[0].RawContent != "only text" {
 		t.Fatalf("text-only markdown = %q", textOnly.Results[0].RawContent)
@@ -189,7 +209,7 @@ func TestExtractStripsFragmentAndAcceptsTextFormat(t *testing.T) {
 		t,
 		extractHandler(rows),
 		`{"urls":"http://ex.com/a#section","format":"text"}`,
-		"",
+		extractTestKey,
 	)
 	resp := decodeExtract(t, rec)
 	if len(resp.Results) != 1 || resp.Results[0].RawContent != "content" {
@@ -203,7 +223,7 @@ func TestExtractStripsFragmentAndAcceptsTextFormat(t *testing.T) {
 func TestExtractSeparatesFoundInvalidAndMissing(t *testing.T) {
 	rows := map[string]documentstore.Document{"http://ex.com/a": {ExtractedText: "hit"}}
 	body := `{"urls":["http://ex.com/a","http://ex.com/missing","ftp://ex.com/x","http://[::1","http:///nohost","notaurl"],"extract_depth":"advanced"}`
-	resp := decodeExtract(t, postExtract(t, extractHandler(rows), body, ""))
+	resp := decodeExtract(t, postExtract(t, extractHandler(rows), body, extractTestKey))
 	if len(resp.Results) != 1 || resp.Results[0].URL != "http://ex.com/a" {
 		t.Fatalf("results = %+v", resp.Results)
 	}
@@ -223,7 +243,7 @@ func TestExtractIncludesImagesAndFavicon(t *testing.T) {
 		},
 	}
 	body := `{"urls":"http://ex.com/a","include_images":true,"include_favicon":true}`
-	resp := decodeExtract(t, postExtract(t, extractHandler(rows), body, ""))
+	resp := decodeExtract(t, postExtract(t, extractHandler(rows), body, extractTestKey))
 	got := resp.Results[0]
 	if len(got.Images) != 2 || got.Images[0] != "http://ex.com/1.png" {
 		t.Fatalf("images = %v", got.Images)
@@ -248,7 +268,7 @@ func TestExtractCapsAndSkipsImages(t *testing.T) {
 			t,
 			extractHandler(rows),
 			`{"urls":"http://ex.com/a","include_images":true}`,
-			"",
+			extractTestKey,
 		),
 	)
 	if len(resp.Results[0].Images) != maxResultImages {
@@ -264,7 +284,7 @@ func TestExtractOmitsImagesWhenDocumentHasNone(t *testing.T) {
 			t,
 			extractHandler(rows),
 			`{"urls":"http://ex.com/a","include_images":true}`,
-			"",
+			extractTestKey,
 		),
 	)
 	if resp.Results[0].Images != nil {
@@ -275,26 +295,43 @@ func TestExtractOmitsImagesWhenDocumentHasNone(t *testing.T) {
 func TestExtractReturnsStoreError(t *testing.T) {
 	handler := NewExtractEndpointWithAccess(
 		&fakeDocuments{err: errors.New("store unavailable")},
-		SearchAccessPolicy{},
+		SearchAccessPolicy{BearerToken: extractTestKey},
 	)
-	rec := postExtract(t, handler, `{"urls":"http://ex.com/a"}`, "")
+	rec := postExtract(t, handler, `{"urls":"http://ex.com/a"}`, extractTestKey)
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500; body=%s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestExtractNilDirectoryMissesEveryURL(t *testing.T) {
-	handler := NewExtractEndpoint(nil)
-	resp := decodeExtract(t, postExtract(t, handler, `{"urls":"http://ex.com/a"}`, ""))
+	handler := NewExtractEndpointWithAccess(nil, SearchAccessPolicy{BearerToken: extractTestKey})
+	resp := decodeExtract(
+		t,
+		postExtract(t, handler, `{"urls":"http://ex.com/a"}`, extractTestKey),
+	)
 	if len(resp.Results) != 0 || len(resp.FailedResults) != 1 {
 		t.Fatalf("results=%d failed=%d", len(resp.Results), len(resp.FailedResults))
+	}
+}
+
+// TestExtractDefaultConstructorDeniesAnonymous pins SEC-02: an endpoint built
+// without any credential serves nothing rather than everything.
+func TestExtractDefaultConstructorDeniesAnonymous(t *testing.T) {
+	rec := postExtract(t, NewExtractEndpoint(nil), `{"urls":"http://ex.com/a"}`, "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (no key, no access)", rec.Code)
 	}
 }
 
 func TestMountExtractRegistersRoute(t *testing.T) {
 	mux := http.NewServeMux()
 	rows := map[string]documentstore.Document{"http://ex.com/a": {ExtractedText: "hi"}}
-	MountExtract(mux, &fakeDocuments{rows: rows}, SearchAccessPolicy{}, nil)
+	MountExtract(
+		mux,
+		&fakeDocuments{rows: rows},
+		SearchAccessPolicy{BearerToken: extractTestKey},
+		nil,
+	)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(
 		context.Background(),
@@ -302,6 +339,7 @@ func TestMountExtractRegistersRoute(t *testing.T) {
 		PathExtract,
 		strings.NewReader(`{"urls":"http://ex.com/a"}`),
 	)
+	req.Header.Set("Authorization", "Bearer "+extractTestKey)
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())

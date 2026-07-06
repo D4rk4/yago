@@ -48,14 +48,17 @@ func testSite() sitePages {
 	}
 }
 
+const crawlTestKey = "crawl-test-key"
+
 func doCrawl(t *testing.T, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	MountCrawl(mux, SearchAccessPolicy{}, testSite())
+	MountCrawl(mux, SearchAccessPolicy{BearerToken: crawlTestKey}, testSite())
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(
 		t.Context(), http.MethodPost, path, strings.NewReader(body),
 	)
+	req.Header.Set("Authorization", "Bearer "+crawlTestKey)
 	mux.ServeHTTP(rec, req)
 
 	return rec
@@ -145,7 +148,7 @@ func TestCrawlOptionsAndErrors(t *testing.T) {
 
 	// Method and availability guards.
 	mux := http.NewServeMux()
-	MountCrawl(mux, SearchAccessPolicy{}, nil)
+	MountCrawl(mux, SearchAccessPolicy{BearerToken: crawlTestKey}, nil)
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequestWithContext(
 		t.Context(), http.MethodGet, PathCrawl, nil,
@@ -154,9 +157,11 @@ func TestCrawlOptionsAndErrors(t *testing.T) {
 		t.Fatalf("GET = %d", rec.Code)
 	}
 	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequestWithContext(
+	unavailable := httptest.NewRequestWithContext(
 		t.Context(), http.MethodPost, PathCrawl, strings.NewReader(`{"url":"https://x.example/"}`),
-	))
+	)
+	unavailable.Header.Set("Authorization", "Bearer "+crawlTestKey)
+	mux.ServeHTTP(rec, unavailable)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("nil fetcher = %d", rec.Code)
 	}

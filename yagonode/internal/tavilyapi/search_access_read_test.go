@@ -33,8 +33,8 @@ func TestAuthenticatedRead(t *testing.T) {
 	if !static.AuthenticatedRead(withToken) {
 		t.Fatal("matching static token must authenticate")
 	}
-	open := SearchAccessPolicy{}
-	if !open.AuthenticatedRead(withToken) {
-		t.Fatal("open policy with a token allows")
+	unconfigured := SearchAccessPolicy{}
+	if unconfigured.AuthenticatedRead(withToken) {
+		t.Fatal("a policy without any credential must deny (SEC-02: no key, no access)")
 	}
 }

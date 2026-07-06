@@ -15,6 +15,21 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
+const searchTestKey = "search-test-key"
+
+// newTestSearchEndpoint builds the endpoint with a static test credential:
+// SEC-02 removed the open default, so every test request authenticates.
+func newTestSearchEndpoint(
+	search searchcore.Searcher,
+	documents documentstore.DocumentDirectory,
+) http.Handler {
+	return NewSearchEndpointWithAccess(
+		search,
+		documents,
+		SearchAccessPolicy{BearerToken: searchTestKey},
+	)
+}
+
 type fakeSearcher struct {
 	response searchcore.Response
 	err      error
@@ -87,6 +102,7 @@ func TestSearchEndpointReturnsTavilyShape(t *testing.T) {
 		PathSearch,
 		strings.NewReader(body),
 	)
+	req.Header.Set("Authorization", "Bearer "+searchTestKey)
 	req.Header.Set(requestIDHeader, "request-123")
 	endpoint.ServeHTTP(rec, req)
 
@@ -132,6 +148,7 @@ func richSearchEndpoint() (searchEndpoint, *fakeSearcher, *fakeDocuments) {
 	}}
 
 	return searchEndpoint{
+		access:    SearchAccessPolicy{BearerToken: searchTestKey},
 		search:    search,
 		documents: documents,
 		now:       fixedClock(time.Unix(100, 0), time.Unix(100, int64(250*time.Millisecond))),
@@ -205,8 +222,9 @@ func TestSearchEndpointDefaultsToLocalAndMetadataSnippet(t *testing.T) {
 		PathSearch,
 		strings.NewReader(`{"query":"golang","include_domains":["example.org"]}`),
 	)
+	req.Header.Set("Authorization", "Bearer "+searchTestKey)
 
-	NewSearchEndpoint(search, nil).ServeHTTP(rec, req)
+	newTestSearchEndpoint(search, nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
@@ -235,8 +253,9 @@ func TestSearchEndpointFiltersMismatchedIncludeDomains(t *testing.T) {
 		PathSearch,
 		strings.NewReader(`{"query":"golang","include_domains":["example.org"]}`),
 	)
+	req.Header.Set("Authorization", "Bearer "+searchTestKey)
 
-	NewSearchEndpoint(search, nil).ServeHTTP(rec, req)
+	newTestSearchEndpoint(search, nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
@@ -259,8 +278,9 @@ func TestSearchEndpointUsesTitleWhenContentIsMissing(t *testing.T) {
 		PathSearch,
 		strings.NewReader(`{"query":"golang","include_answer":true}`),
 	)
+	req.Header.Set("Authorization", "Bearer "+searchTestKey)
 
-	NewSearchEndpoint(search, nil).ServeHTTP(rec, req)
+	newTestSearchEndpoint(search, nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
@@ -275,6 +295,7 @@ func TestSearchEndpointHandlesEmptyResultLimit(t *testing.T) {
 	limit := 0
 	search := &fakeSearcher{}
 	endpoint := searchEndpoint{
+		access: SearchAccessPolicy{BearerToken: searchTestKey},
 		search: search,
 		now:    fixedClock(time.Unix(0, 0), time.Unix(1, 0)),
 	}
@@ -285,6 +306,7 @@ func TestSearchEndpointHandlesEmptyResultLimit(t *testing.T) {
 		PathSearch,
 		strings.NewReader(`{"query":"golang","max_results":0}`),
 	)
+	req.Header.Set("Authorization", "Bearer "+searchTestKey)
 
 	endpoint.ServeHTTP(rec, req)
 
@@ -312,8 +334,9 @@ func TestSearchEndpointIgnoresUnknownFields(t *testing.T) {
 		PathSearch,
 		strings.NewReader(`{"query":"go","future_option":true}`),
 	)
+	req.Header.Set("Authorization", "Bearer "+searchTestKey)
 
-	NewSearchEndpoint(search, nil).ServeHTTP(rec, req)
+	newTestSearchEndpoint(search, nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
@@ -345,6 +368,7 @@ func TestSearchEndpointRequiresConfiguredBearerToken(t *testing.T) {
 				PathSearch,
 				strings.NewReader(`{"query":"go"}`),
 			)
+			req.Header.Set("Authorization", "Bearer "+searchTestKey)
 			req.Header.Set(requestIDHeader, tc.name)
 			if tc.authorization != "" {
 				req.Header.Set("Authorization", tc.authorization)
@@ -410,8 +434,9 @@ func TestSearchEndpointFiltersExactMatches(t *testing.T) {
 		PathSearch,
 		strings.NewReader(`{"query":"\"John Smith\" company","exact_match":true}`),
 	)
+	req.Header.Set("Authorization", "Bearer "+searchTestKey)
 
-	NewSearchEndpoint(search, nil).ServeHTTP(rec, req)
+	newTestSearchEndpoint(search, nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
@@ -431,8 +456,9 @@ func TestSearchEndpointRejectsBadRequests(t *testing.T) {
 			PathSearch,
 			strings.NewReader(tc.body),
 		)
+		req.Header.Set("Authorization", "Bearer "+searchTestKey)
 
-		NewSearchEndpoint(&fakeSearcher{}, nil).ServeHTTP(rec, req)
+		newTestSearchEndpoint(&fakeSearcher{}, nil).ServeHTTP(rec, req)
 
 		if rec.Code != tc.code {
 			t.Fatalf("%s: status = %d body=%s", tc.name, rec.Code, rec.Body.String())
@@ -574,8 +600,9 @@ func TestSearchEndpointReturnsSearchAndDocumentErrors(t *testing.T) {
 			PathSearch,
 			strings.NewReader(`{"query":"go"}`),
 		)
+		req.Header.Set("Authorization", "Bearer "+searchTestKey)
 
-		NewSearchEndpoint(&fakeSearcher{err: errors.New("boom")}, nil).ServeHTTP(rec, req)
+		newTestSearchEndpoint(&fakeSearcher{err: errors.New("boom")}, nil).ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
@@ -590,12 +617,13 @@ func TestSearchEndpointReturnsSearchAndDocumentErrors(t *testing.T) {
 			PathSearch,
 			strings.NewReader(`{"query":"go"}`),
 		)
+		req.Header.Set("Authorization", "Bearer "+searchTestKey)
 		search := &fakeSearcher{response: searchcore.Response{Results: []searchcore.Result{{
 			URL: "https://example.org/",
 		}}}}
 		docs := &fakeDocuments{err: errors.New("read failed")}
 
-		NewSearchEndpoint(search, docs).ServeHTTP(rec, req)
+		newTestSearchEndpoint(search, docs).ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
@@ -605,7 +633,7 @@ func TestSearchEndpointReturnsSearchAndDocumentErrors(t *testing.T) {
 
 func TestSearchEndpointMountsRoute(t *testing.T) {
 	mux := http.NewServeMux()
-	Mount(mux, &fakeSearcher{}, nil, SearchAccessPolicy{})
+	Mount(mux, &fakeSearcher{}, nil, SearchAccessPolicy{BearerToken: searchTestKey})
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(
@@ -614,6 +642,7 @@ func TestSearchEndpointMountsRoute(t *testing.T) {
 		PathSearch,
 		strings.NewReader(`{"query":"go"}`),
 	)
+	req.Header.Set("Authorization", "Bearer "+searchTestKey)
 	mux.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {

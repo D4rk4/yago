@@ -22,6 +22,7 @@ func TestSearchEndpointDoesNotMarkWebFallbackResults(t *testing.T) {
 		}},
 	}}
 	endpoint := searchEndpoint{
+		access:    SearchAccessPolicy{BearerToken: searchTestKey},
 		search:    search,
 		documents: &fakeDocuments{},
 		now:       fixedClock(time.Unix(100, 0), time.Unix(100, 0)),
@@ -34,6 +35,7 @@ func TestSearchEndpointDoesNotMarkWebFallbackResults(t *testing.T) {
 		PathSearch,
 		strings.NewReader(`{"query":"gap"}`),
 	)
+	req.Header.Set("Authorization", "Bearer "+searchTestKey)
 	endpoint.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {

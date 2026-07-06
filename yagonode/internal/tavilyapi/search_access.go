@@ -45,9 +45,13 @@ func (p SearchAccessPolicy) authorize(r *http.Request, scope SearchScope) AuthDe
 		return p.Authorizer.Authorize(r.Context(), token, scope)
 	}
 
+	// No configured credential means no access, never public access: the
+	// search API returns raw page content and feeds the crawler, so an
+	// operator who has not minted a key or set a static token has not opted
+	// into exposing it (SEC-02).
 	expected := strings.TrimSpace(p.BearerToken)
 	if expected == "" {
-		return DecisionAllow
+		return DecisionUnauthenticated
 	}
 	got, ok := bearerToken(r.Header.Get("Authorization"))
 	if !ok || subtle.ConstantTimeCompare([]byte(got), []byte(expected)) != 1 {

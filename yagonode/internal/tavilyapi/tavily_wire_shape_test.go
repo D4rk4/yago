@@ -21,6 +21,7 @@ func TestSearchWireShapeMatchesTavilyDefaults(t *testing.T) {
 		PathSearch,
 		strings.NewReader(`{"query":"golang"}`),
 	)
+	req.Header.Set("Authorization", "Bearer "+searchTestKey)
 	endpoint.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
@@ -39,6 +40,7 @@ func TestSearchWireShapeMatchesTavilyDefaults(t *testing.T) {
 		PathSearch,
 		strings.NewReader(`{"query":"golang","include_images":true}`),
 	)
+	req.Header.Set("Authorization", "Bearer "+searchTestKey)
 	endpoint.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
@@ -60,6 +62,7 @@ func TestSearchErrorCarriesTavilyDetailEnvelope(t *testing.T) {
 		PathSearch,
 		strings.NewReader(`{"query":""}`),
 	)
+	req.Header.Set("Authorization", "Bearer "+searchTestKey)
 	endpoint.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
