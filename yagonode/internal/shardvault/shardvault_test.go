@@ -524,7 +524,7 @@ func TestOpenAndCommitFailurePaths(t *testing.T) {
 		t.Fatal("blocked fanout dir must fail")
 	}
 
-	// A directory where the shard file belongs fails bolt.Open.
+	// A directory where the shard file belongs is quarantined and replaced.
 	dirShard := filepath.Join(base, "v3")
 	if _, err := loadOrCreateManifest(dirShard, 8); err != nil {
 		t.Fatalf("manifest: %v", err)
@@ -532,17 +532,13 @@ func TestOpenAndCommitFailurePaths(t *testing.T) {
 	if err := os.MkdirAll(shardPath(dirShard, 0), 0o750); err != nil {
 		t.Fatalf("mk shard dir: %v", err)
 	}
-	if _, err := openEngine(dirShard, 0); err == nil {
-		t.Fatal("directory shard file must fail")
+	replaced, err := openEngine(dirShard, 0)
+	if err != nil {
+		t.Fatalf("open with a directory shard: %v", err)
 	}
-
-	// A read-only root fails the manifest write.
-	roDir := filepath.Join(base, "ro")
-	if err := os.MkdirAll(roDir, 0o500); err != nil {
-		t.Fatalf("mk ro: %v", err)
-	}
-	if _, err := loadOrCreateManifest(roDir, 8); err == nil {
-		t.Fatal("read-only root must fail manifest write")
+	_ = replaced.Close()
+	if _, err := os.Stat(shardPath(dirShard, 0) + quarantineSuffix); err != nil {
+		t.Fatalf("quarantined directory missing: %v", err)
 	}
 
 	// Commit failures wrap; a capacity-shaped commit error maps.
@@ -769,5 +765,121 @@ func assertCorruptAndReadOnly(t *testing.T, multi *engine) {
 	})
 	if err != nil {
 		t.Fatalf("view: %v", err)
+	}
+}
+
+func TestQuarantineReplacesDamagedShard(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "vault")
+	vaulted, err := Open(dir, 0)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	values, err := vault.Register(vaulted, "docs", stringCodec{})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	ctx := context.Background()
+	err = vaulted.Update(ctx, func(txn *vault.Txn) error {
+		for i := 0; i < 64; i++ {
+			key := fmt.Sprintf("doc-%03d", i)
+			if err := values.Put(txn, vault.Key(key), "v"); err != nil {
+				return fmt.Errorf("put: %w", err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("fill: %v", err)
+	}
+	if err := vaulted.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	// Damage one shard file beyond bbolt's tolerance.
+	damaged := shardPath(dir, 3)
+	if err := os.WriteFile(damaged, bytes.Repeat([]byte{0xFF}, 4096), 0o600); err != nil {
+		t.Fatalf("damage: %v", err)
+	}
+
+	reopened, err := Open(dir, 0)
+	if err != nil {
+		t.Fatalf("reopen with damaged shard: %v", err)
+	}
+	defer func() { _ = reopened.Close() }()
+	if _, err := os.Stat(damaged + quarantineSuffix); err != nil {
+		t.Fatalf("quarantine file missing: %v", err)
+	}
+	values, err = vault.Register(reopened, "docs", stringCodec{})
+	if err != nil {
+		t.Fatalf("re-register: %v", err)
+	}
+	survivors := 0
+	err = reopened.View(ctx, func(txn *vault.Txn) error {
+		return values.Scan(txn, nil, func(vault.Key, string) (bool, error) {
+			survivors++
+
+			return true, nil
+		})
+	})
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if survivors == 0 || survivors >= 64 {
+		t.Fatalf("survivors = %d, want a partial keyspace", survivors)
+	}
+	// The replaced shard accepts writes again.
+	err = reopened.Update(ctx, func(txn *vault.Txn) error {
+		if err := values.Put(txn, vault.Key("fresh"), "v"); err != nil {
+			return fmt.Errorf("put: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("write after quarantine: %v", err)
+	}
+}
+
+func TestManifestWriteFailure(t *testing.T) {
+	roDir := filepath.Join(t.TempDir(), "ro")
+	if err := os.MkdirAll(roDir, 0o500); err != nil {
+		t.Fatalf("mk ro: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(roDir, 0o700) }) //nolint:gosec // test cleanup
+	if _, err := loadOrCreateManifest(roDir, 8); err == nil {
+		t.Fatal("read-only root must fail manifest write")
+	}
+}
+
+func TestQuarantineFailurePaths(t *testing.T) {
+	saved := openBolt
+	t.Cleanup(func() { openBolt = saved })
+
+	// An engine-level shard failure closes the already-open shards.
+	openBolt = func(string, os.FileMode, *bolt.Options) (*bolt.DB, error) {
+		return nil, fmt.Errorf("open boom")
+	}
+	if _, err := openEngine(filepath.Join(t.TempDir(), "veng"), 0); err == nil {
+		t.Fatal("engine open with failing shards must fail")
+	}
+	openBolt = saved
+
+	// A rename failure surfaces: the shard path does not exist.
+	openBolt = func(string, os.FileMode, *bolt.Options) (*bolt.DB, error) {
+		return nil, fmt.Errorf("open boom")
+	}
+	if _, err := openOrQuarantineShard(filepath.Join(t.TempDir(), "missing.vlt"), 0); err == nil {
+		t.Fatal("rename of a missing shard must fail")
+	}
+
+	// A recreate failure after a successful quarantine surfaces.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "000000.vlt")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := openOrQuarantineShard(path, 0); err == nil {
+		t.Fatal("recreate failure must surface")
 	}
 }

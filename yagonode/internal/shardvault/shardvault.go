@@ -13,9 +13,11 @@ import (
 	"container/heap"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/cespare/xxhash/v2"
 	bolt "go.etcd.io/bbolt"
@@ -36,6 +38,7 @@ var newVault = vault.New
 var (
 	commitTx = (*bolt.Tx).Commit
 	closeDB  = (*bolt.DB).Close
+	openBolt = bolt.Open
 )
 
 // Open opens (or creates) the sharded vault rooted at dir with the given
@@ -75,16 +78,51 @@ func openEngine(dir string, quotaBytes int64) (*engine, error) {
 
 			return nil, fmt.Errorf("create shard directory: %w", err)
 		}
-		db, err := bolt.Open(path, 0o600, nil)
+		db, err := openOrQuarantineShard(path, i)
 		if err != nil {
 			closeShards(shards)
 
-			return nil, fmt.Errorf("open shard %d: %w", i, err)
+			return nil, err
 		}
 		shards[i] = db
 	}
 
 	return &engine{shards: shards, dir: dir, quotaBytes: quotaBytes}, nil
+}
+
+// quarantineSuffix marks a shard file set aside after failing to open; the
+// store keeps serving the surviving shards (ADR-0025 loss tolerance).
+const quarantineSuffix = ".quarantine"
+
+// openOrQuarantineShard opens one shard file; a shard that cannot open is
+// quarantined (renamed aside for offline inspection) and replaced with a
+// fresh empty shard, so a single damaged file costs 1/N of the keyspace
+// instead of the store.
+func openOrQuarantineShard(path string, shard int) (*bolt.DB, error) {
+	db, err := openBolt(path, 0o600, openTimeoutOptions())
+	if err == nil {
+		return db, nil
+	}
+	slog.WarnContext(context.Background(), "vault shard quarantined",
+		slog.Int("shard", shard),
+		slog.String("path", path),
+		slog.Any("error", err),
+	)
+	if renameErr := os.Rename(path, path+quarantineSuffix); renameErr != nil {
+		return nil, fmt.Errorf("quarantine shard %d: %w", shard, renameErr)
+	}
+	db, err = openBolt(path, 0o600, openTimeoutOptions())
+	if err != nil {
+		return nil, fmt.Errorf("recreate quarantined shard %d: %w", shard, err)
+	}
+
+	return db, nil
+}
+
+// openTimeoutOptions bounds the file-lock wait so a stuck lock surfaces as an
+// error instead of hanging startup.
+func openTimeoutOptions() *bolt.Options {
+	return &bolt.Options{Timeout: 5 * time.Second}
 }
 
 // shardCountForQuota sizes the shard pool so a full store keeps files well
