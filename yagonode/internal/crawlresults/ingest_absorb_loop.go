@@ -28,38 +28,55 @@ func (c *IngestConsumer) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			c.absorb(ctx, delivery)
+			c.absorbGroup(ctx, c.drainPending(delivery))
 		}
 	}
 }
 
 func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
-	batch := delivery.Batch
-
-	if reason := batchRejectionReason(batch); reason != "" {
-		c.reject(ctx, delivery, reason)
+	if !c.passesGates(ctx, delivery) {
 		return
 	}
+	if deferred := c.storeDocument(ctx, delivery, delivery.Batch); deferred {
+		return
+	}
+	c.absorbTail(ctx, delivery)
+}
 
+// passesGates runs the per-delivery admission gates — wire validity, profile
+// ownership, and the content-quality rule — handling rejection and redelivery
+// itself; it reports whether the delivery may proceed to storage.
+func (c *IngestConsumer) passesGates(ctx context.Context, delivery IngestDelivery) bool {
+	batch := delivery.Batch
+	if reason := batchRejectionReason(batch); reason != "" {
+		c.reject(ctx, delivery, reason)
+
+		return false
+	}
 	owned, err := c.owner.OwnsProfile(ctx, batch.ProfileHandle)
 	if err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "ownership check", err)
-		return
+
+		return false
 	}
 	if !owned {
 		c.reject(ctx, delivery, "unowned profile")
-		return
-	}
 
+		return false
+	}
 	if rule := c.qualityRejectionRule(batch); rule != "" {
 		c.rejectLowQuality(ctx, delivery, rule)
-		return
+
+		return false
 	}
 
-	if deferred := c.storeDocument(ctx, delivery, batch); deferred {
-		return
-	}
+	return true
+}
 
+// absorbTail persists the batch's URL metadata and postings and acknowledges
+// the delivery; it runs after the document (if any) is stored and indexed.
+func (c *IngestConsumer) absorbTail(ctx context.Context, delivery IngestDelivery) {
+	batch := delivery.Batch
 	urlReceipt, err := c.urls.Receive(ctx, batch.Metadata)
 	if err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "url metadata store", err)
