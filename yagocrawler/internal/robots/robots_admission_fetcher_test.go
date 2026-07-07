@@ -240,6 +240,46 @@ func TestRobotsAdmissionLogsBodyCloseErrorAndUsesRules(t *testing.T) {
 	}
 }
 
+// TestRobotsAdmissionDoesNotCacheFetchFailure is the regression guard for the
+// fail-open caching bug: a transient robots.txt fetch failure allows the current
+// request (availability) but must NOT be cached, so the next request re-fetches
+// robots and then honors the real rules. Without the fix the first failure caches
+// allow-all and the disallowed path is crawled anyway.
+func TestRobotsAdmissionDoesNotCacheFetchFailure(t *testing.T) {
+	var robotsHits int32
+	client := &http.Client{Transport: roundTripFunc(
+		func(*http.Request) (*http.Response, error) {
+			if atomic.AddInt32(&robotsHits, 1) == 1 {
+				return nil, errors.New("transient network error")
+			}
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("User-agent: *\nDisallow: /private\n")),
+			}, nil
+		},
+	)}
+	fetcher := newFetcher(t, deliveringSource(), client, 8)
+
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		mustParse(t, "http://example.com/private"),
+	); err != nil {
+		t.Fatalf("transient robots failure should fail open, got %v", err)
+	}
+
+	_, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/private"))
+	if !errors.Is(err, pagefetch.ErrPageRejected) {
+		t.Fatalf(
+			"second fetch = %v, want ErrPageRejected (rules re-fetched, not cached-allow)",
+			err,
+		)
+	}
+	if got := atomic.LoadInt32(&robotsHits); got != 2 {
+		t.Errorf("robots fetches = %d, want 2 (transient failure must not be cached)", got)
+	}
+}
+
 func TestRobotsAdmissionReFetchesAfterEviction(t *testing.T) {
 	var hits int32
 	server := robotsServer(t, "User-agent: *\nDisallow: /private\n", &hits)
