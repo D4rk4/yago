@@ -2,6 +2,7 @@ package adminui
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -9,11 +10,12 @@ import (
 )
 
 type fakeSettings struct {
-	view   SettingsView
-	result SettingsResult
-	err    error
-	calls  int
-	change SettingsChange
+	view    SettingsView
+	result  SettingsResult
+	err     error
+	calls   int
+	change  SettingsChange
+	changes []SettingsChange
 }
 
 func (f *fakeSettings) Settings(context.Context) SettingsView { return f.view }
@@ -21,6 +23,7 @@ func (f *fakeSettings) Settings(context.Context) SettingsView { return f.view }
 func (f *fakeSettings) Update(_ context.Context, change SettingsChange) (SettingsResult, error) {
 	f.calls++
 	f.change = change
+	f.changes = append(f.changes, change)
 
 	return f.result, f.err
 }
@@ -53,12 +56,47 @@ func TestConsoleConfigRendersEditableSettings(t *testing.T) {
 	}
 	for _, want := range []string{
 		`role="tablist"`, `id="tab-public-portal"`, `aria-controls="panel-public-portal"`,
-		`name="key"`, "Public search portal",
-		`value="false"`, "Reset to default", `name="csrf_token"`,
+		`name="key"`, "Public search portal", `class="cds-setting-row"`,
+		`name="value:portal.enabled"`, `value="false"`, ">Reset<", `name="csrf_token"`,
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("editable settings missing %q", want)
 		}
+	}
+}
+
+// TestConsoleConfigTabRendersOneFormWithOneSave is the operator-feedback
+// acceptance: each tab is a single form under one shared Save button, with each
+// setting collapsed to one aligned row rather than its own stacked form.
+func TestConsoleConfigTabRendersOneFormWithOneSave(t *testing.T) {
+	t.Parallel()
+
+	view := SettingsView{Items: []SettingItem{
+		{
+			Key: "portal.enabled", Title: "Public search portal", Value: "true",
+			Category: "Public portal", Boolean: true,
+			Options: []SettingOption{
+				{Value: "true", Label: "Enabled"},
+				{Value: "false", Label: "Disabled"},
+			},
+		},
+		{Key: "portal.title", Title: "Portal title", Value: "Yago", Category: "Public portal"},
+	}}
+	console := New(
+		Options{Config: fakeConfig{view: ConfigView{}}, Settings: &fakeSettings{view: view}},
+	)
+	got := do(t, console, "/admin/configuration")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	if n := strings.Count(got.body, `action="/admin/configuration"`); n != 1 {
+		t.Fatalf("settings forms = %d, want 1 (one form per tab)", n)
+	}
+	if n := strings.Count(got.body, `>Save</button>`); n != 1 {
+		t.Fatalf("Save buttons = %d, want 1 (one shared Save)", n)
+	}
+	if n := strings.Count(got.body, `class="cds-setting-row"`); n != 2 {
+		t.Fatalf("one-line rows = %d, want 2", n)
 	}
 }
 
@@ -89,7 +127,8 @@ func TestConsoleConfigRendersBooleanSettingAsCheckbox(t *testing.T) {
 	}
 	for _, want := range []string{
 		`class="cds-fieldset"`, `<legend class="cds-legend">`,
-		`type="checkbox"`, `name="bool"`, `class="cds-checkbox"`, `value="true" checked`,
+		`type="checkbox"`, `name="bool:portal.enabled"`, `class="cds-checkbox"`,
+		`value="true" checked`,
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("boolean setting render missing %q", want)
@@ -103,16 +142,27 @@ func TestConsoleConfigRendersBooleanSettingAsCheckbox(t *testing.T) {
 func TestConsoleConfigCheckboxCheckedSubmitsTrue(t *testing.T) {
 	t.Parallel()
 
-	settings := &fakeSettings{view: booleanSettingsView(), result: SettingsResult{OK: true}}
+	view := SettingsView{Items: []SettingItem{{
+		Key: "portal.enabled", Title: "Public search portal", Value: "false",
+		Category: "Public portal", Boolean: true,
+		Options: []SettingOption{
+			{Value: "true", Label: "Enabled"},
+			{Value: "false", Label: "Disabled"},
+		},
+	}}}
+	settings := &fakeSettings{view: view, result: SettingsResult{OK: true}}
 	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Settings: settings})
 
 	doPost(t, console, "/admin/configuration", url.Values{
-		"key":   {"portal.enabled"},
-		"bool":  {"1"},
-		"value": {"true"},
+		"key":                  {"portal.enabled"},
+		"bool:portal.enabled":  {"1"},
+		"value:portal.enabled": {"true"},
 	})
-	if settings.change.Value != "true" {
-		t.Fatalf("checked checkbox value = %q, want true", settings.change.Value)
+	if settings.calls != 1 || settings.change.Value != "true" {
+		t.Fatalf(
+			"checked checkbox: calls=%d value=%q, want 1 true",
+			settings.calls, settings.change.Value,
+		)
 	}
 }
 
@@ -123,13 +173,13 @@ func TestConsoleConfigCheckboxUncheckedSubmitsFalse(t *testing.T) {
 	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Settings: settings})
 
 	doPost(t, console, "/admin/configuration", url.Values{
-		"key":  {"portal.enabled"},
-		"bool": {"1"},
+		"key":                 {"portal.enabled"},
+		"bool:portal.enabled": {"1"},
 	})
-	if settings.change.Value != "false" {
+	if settings.calls != 1 || settings.change.Value != "false" {
 		t.Fatalf(
-			"unchecked checkbox value = %q, want false (absent value coerced)",
-			settings.change.Value,
+			"unchecked checkbox: calls=%d value=%q, want 1 false (absent value coerced)",
+			settings.calls, settings.change.Value,
 		)
 	}
 }
@@ -157,8 +207,8 @@ func TestConsoleConfigUpdateAppliesChange(t *testing.T) {
 	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Settings: settings})
 
 	got := doPost(t, console, "/admin/configuration", url.Values{
-		"key":   {"portal.enabled"},
-		"value": {"false"},
+		"key":                  {"portal.enabled"},
+		"value:portal.enabled": {"false"},
 	})
 	if got.status != http.StatusOK {
 		t.Fatalf("status %d", got.status)
@@ -170,10 +220,67 @@ func TestConsoleConfigUpdateAppliesChange(t *testing.T) {
 		settings.change.Reset {
 		t.Fatalf("unexpected change %+v", settings.change)
 	}
-	for _, want := range []string{"Public search portal updated.", "Restart the node"} {
+	for _, want := range []string{"1 setting updated.", "Restart the node"} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("update response missing %q", want)
 		}
+	}
+}
+
+// TestConsoleConfigSaveAppliesOnlyChangedSettings is the batch acceptance: a
+// single Save writes only the rows whose value differs, so an unchanged setting
+// is never re-applied (and never spuriously marked overridden).
+func TestConsoleConfigSaveAppliesOnlyChangedSettings(t *testing.T) {
+	t.Parallel()
+
+	view := SettingsView{Items: []SettingItem{
+		{Key: "a.one", Value: "keep", Category: "General"},
+		{Key: "a.two", Value: "old2", Category: "General"},
+		{Key: "a.three", Value: "old3", Category: "General"},
+	}}
+	settings := &fakeSettings{view: view, result: SettingsResult{OK: true}}
+	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Settings: settings})
+
+	got := doPost(t, console, "/admin/configuration", url.Values{
+		"key":           {"a.one", "a.two", "a.three"},
+		"value:a.one":   {"keep"}, // unchanged, skipped
+		"value:a.two":   {"new2"}, // changed
+		"value:a.three": {"new3"}, // changed
+	})
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	if settings.calls != 2 {
+		t.Fatalf("Update called %d times, want 2 (only the changed keys)", settings.calls)
+	}
+	changed := map[string]string{}
+	for _, ch := range settings.changes {
+		changed[ch.Key] = ch.Value
+	}
+	if changed["a.two"] != "new2" || changed["a.three"] != "new3" || len(changed) != 2 {
+		t.Fatalf("applied changes = %+v, want only a.two/a.three", settings.changes)
+	}
+	if !strings.Contains(got.body, "2 settings updated.") {
+		t.Fatalf("missing batch summary, got %.80q", got.body)
+	}
+}
+
+func TestConsoleConfigSaveNoChanges(t *testing.T) {
+	t.Parallel()
+
+	view := SettingsView{Items: []SettingItem{{Key: "a.one", Value: "keep", Category: "General"}}}
+	settings := &fakeSettings{view: view, result: SettingsResult{OK: true}}
+	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Settings: settings})
+
+	got := doPost(t, console, "/admin/configuration", url.Values{
+		"key":         {"a.one"},
+		"value:a.one": {"keep"},
+	})
+	if settings.calls != 0 {
+		t.Fatalf("Update called %d times, want 0 for an unchanged Save", settings.calls)
+	}
+	if !strings.Contains(got.body, "No changes.") {
+		t.Fatalf("missing no-changes notice, got %.80q", got.body)
 	}
 }
 
@@ -181,7 +288,7 @@ func TestConsoleConfigUpdateResetClearsOverride(t *testing.T) {
 	t.Parallel()
 
 	settings := &fakeSettings{
-		view: portalSettingsView(false),
+		view: portalSettingsView(true),
 		result: SettingsResult{
 			OK:      true,
 			Message: "Public search portal reset to the environment default.",
@@ -190,11 +297,33 @@ func TestConsoleConfigUpdateResetClearsOverride(t *testing.T) {
 	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Settings: settings})
 
 	doPost(t, console, "/admin/configuration", url.Values{
-		"key":   {"portal.enabled"},
-		"reset": {"true"},
+		"key":                  {"portal.enabled"},
+		"value:portal.enabled": {"false"},
+		"reset":                {"portal.enabled"},
 	})
-	if !settings.change.Reset {
+	if !settings.change.Reset || settings.change.Key != "portal.enabled" {
 		t.Fatalf("reset flag not parsed: %+v", settings.change)
+	}
+	if settings.calls != 1 {
+		t.Fatalf(
+			"reset applied %d updates, want exactly 1 (reset takes precedence)",
+			settings.calls,
+		)
+	}
+}
+
+func TestConsoleConfigResetErrorShowsGeneric(t *testing.T) {
+	t.Parallel()
+
+	settings := &fakeSettings{view: portalSettingsView(true), err: errors.New("backend detail")}
+	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Settings: settings})
+
+	got := doPost(t, console, "/admin/configuration", url.Values{"reset": {"portal.enabled"}})
+	if !strings.Contains(got.body, "Update failed. Please try again.") {
+		t.Fatalf("reset error not generic: %.80q", got.body)
+	}
+	if strings.Contains(got.body, "backend detail") {
+		t.Fatal("must not leak internal error detail")
 	}
 }
 
@@ -208,8 +337,8 @@ func TestConsoleConfigUpdateRejectedShowsReason(t *testing.T) {
 	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Settings: settings})
 
 	got := doPost(t, console, "/admin/configuration", url.Values{
-		"key":   {"portal.enabled"},
-		"value": {"maybe"},
+		"key":                  {"portal.enabled"},
+		"value:portal.enabled": {"maybe"},
 	})
 	if !strings.Contains(got.body, "Invalid value for Public search portal.") {
 		t.Fatal("rejection reason not shown")

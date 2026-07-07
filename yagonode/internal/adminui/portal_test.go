@@ -85,9 +85,9 @@ func TestPortalUpdateAcceptsOwnKeysOnly(t *testing.T) {
 	console := New(Options{Settings: settings})
 
 	posted := doPost(t, console, "/admin/portal", url.Values{
-		"key": {"https.redirect"}, "value": {"true"},
+		"key": {"https.redirect"}, "value:https.redirect": {"true"},
 	})
-	if posted.status != http.StatusOK || !strings.Contains(posted.body, "Saved.") {
+	if posted.status != http.StatusOK || !strings.Contains(posted.body, "1 setting updated.") {
 		t.Fatalf("update = %d %.60q", posted.status, posted.body)
 	}
 	if settings.got.Key != "https.redirect" || settings.got.Value != "true" {
@@ -95,7 +95,7 @@ func TestPortalUpdateAcceptsOwnKeysOnly(t *testing.T) {
 	}
 
 	foreign := doPost(t, console, "/admin/portal", url.Values{
-		"key": {"peer.name"}, "value": {"sneaky"},
+		"key": {"peer.name"}, "value:peer.name": {"sneaky"},
 	})
 	if foreign.status != http.StatusNotFound {
 		t.Fatalf("foreign key = %d, want 404", foreign.status)
@@ -110,7 +110,7 @@ func TestPortalUpdateSurfacesSaveFailure(t *testing.T) {
 	console := New(Options{Settings: settings})
 
 	posted := doPost(t, console, "/admin/portal", url.Values{
-		"key": {"portal.enabled"}, "value": {"true"},
+		"key": {"portal.enabled"}, "value:portal.enabled": {"true"},
 	})
 	if posted.status != http.StatusOK ||
 		!strings.Contains(posted.body, "Update failed. Please try again.") {

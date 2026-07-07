@@ -57,17 +57,14 @@ func (c *Console) handleAutocrawlerUpdate(w http.ResponseWriter, r *http.Request
 
 		return
 	}
-	change := parseSettingsChange(r)
-	if !autocrawlerKeys[change.Key] {
+	notice, errMsg, ok := c.applySettingsBatch(r, func(key string) bool {
+		return autocrawlerKeys[key]
+	})
+	if !ok {
 		http.NotFound(w, r)
 
 		return
 	}
-	result, err := c.settings.Update(r.Context(), change)
-	if err != nil {
-		slog.WarnContext(r.Context(), "admin autocrawler update failed", slog.Any("error", err))
-	}
-	notice, errMsg := settingsOutcome(result, err)
 	c.render(r.Context(), w, c.tpl.autocrawler, "layout", c.autocrawlerPage(r, notice, errMsg))
 }
 

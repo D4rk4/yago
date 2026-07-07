@@ -28,32 +28,36 @@ profile; crawls stay conservative (domain-scoped) regardless.</p>
 </form>
 {{end}}
 {{if .Settings.Items}}
-<fieldset class="cds-fieldset">
-  <legend class="cds-legend">Autocrawler settings</legend>
-  {{range .Settings.Items}}
-  <form class="cds-form" method="post" action="/admin/autocrawler" hx-boost="false">
-    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-    <input type="hidden" name="key" value="{{.Key}}">
-    <div class="cds-field">
-      <label class="cds-label" for="autocrawler-{{.Key}}">{{.Title}}{{if .Overridden}} <span class="cds-tag cds-tag--info">overridden</span>{{end}}</label>
-      {{if .Description}}<p class="cds-muted">{{.Description}}</p>{{end}}
-      {{if .Boolean}}
-      <input type="hidden" name="bool" value="1">
-      <label class="cds-checkbox"><input type="checkbox" id="autocrawler-{{.Key}}" name="value" value="true"{{if eq .Value "true"}} checked{{end}}> Enabled</label>
-      {{else if .Options}}
-      <select class="cds-input" id="autocrawler-{{.Key}}" name="value">
-        {{$current := .Value}}
-        {{range .Options}}<option value="{{.Value}}"{{if eq .Value $current}} selected{{end}}>{{.Label}}</option>{{end}}
-      </select>
-      {{else}}
-      <input class="cds-input" type="text" id="autocrawler-{{.Key}}" name="value" value="{{.Value}}" autocomplete="off">
-      {{end}}
-      {{if .RestartRequired}}<p class="cds-muted">Takes effect after a node restart.</p>{{end}}
+<form class="cds-settings-form" method="post" action="/admin/autocrawler" hx-boost="false">
+  <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+  <fieldset class="cds-fieldset">
+    <legend class="cds-legend">Autocrawler settings</legend>
+    {{range .Settings.Items}}
+    <div class="cds-setting-row"{{if .Description}} title="{{.Description}}"{{end}}>
+      <input type="hidden" name="key" value="{{.Key}}">
+      <span class="cds-setting-row__label">
+        <label for="autocrawler-{{.Key}}">{{.Title}}</label>
+        {{if .Overridden}}<span class="cds-tag cds-tag--info">overridden</span>{{end}}
+        {{if .RestartRequired}}<span class="cds-setting-row__restart" title="Takes effect after a node restart.">restart</span>{{end}}
+      </span>
+      <span class="cds-setting-row__control">
+        {{if .Boolean}}
+        <input type="hidden" name="bool:{{.Key}}" value="1">
+        <label class="cds-checkbox"><input type="checkbox" id="autocrawler-{{.Key}}" name="value:{{.Key}}" value="true"{{if eq .Value "true"}} checked{{end}}> Enabled</label>
+        {{else if .Options}}
+        <select class="cds-input" id="autocrawler-{{.Key}}" name="value:{{.Key}}">
+          {{$current := .Value}}
+          {{range .Options}}<option value="{{.Value}}"{{if eq .Value $current}} selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+        {{else}}
+        <input class="cds-input" type="text" id="autocrawler-{{.Key}}" name="value:{{.Key}}" value="{{.Value}}" autocomplete="off">
+        {{end}}
+        {{if .Overridden}}<button class="cds-btn cds-btn--ghost" type="submit" name="reset" value="{{.Key}}">Reset</button>{{end}}
+      </span>
     </div>
-    <button class="cds-btn" type="submit">Save</button>
-    {{if .Overridden}}<button class="cds-btn cds-btn--ghost" type="submit" name="reset" value="true">Reset to default</button>{{end}}
-  </form>
-  {{end}}
-</fieldset>
+    {{end}}
+  </fieldset>
+  <button class="cds-btn" type="submit">Save</button>
+</form>
 {{end}}
 {{end}}

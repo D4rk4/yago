@@ -77,9 +77,9 @@ func TestAutocrawlerUpdateAcceptsOwnKeysOnly(t *testing.T) {
 	console := New(Options{Settings: settings})
 
 	posted := doPost(t, console, "/admin/autocrawler", url.Values{
-		"key": {"swarm.seed.depth"}, "value": {"3"},
+		"key": {"swarm.seed.depth"}, "value:swarm.seed.depth": {"3"},
 	})
-	if posted.status != http.StatusOK || !strings.Contains(posted.body, "Saved.") {
+	if posted.status != http.StatusOK || !strings.Contains(posted.body, "1 setting updated.") {
 		t.Fatalf("update = %d %.60q", posted.status, posted.body)
 	}
 	if settings.got.Key != "swarm.seed.depth" || settings.got.Value != "3" {
@@ -87,10 +87,26 @@ func TestAutocrawlerUpdateAcceptsOwnKeysOnly(t *testing.T) {
 	}
 
 	foreign := doPost(t, console, "/admin/autocrawler", url.Values{
-		"key": {"peer.name"}, "value": {"sneaky"},
+		"key": {"peer.name"}, "value:peer.name": {"sneaky"},
 	})
 	if foreign.status != http.StatusNotFound {
 		t.Fatalf("foreign key = %d, want 404", foreign.status)
+	}
+}
+
+func TestAutocrawlerResetClearsOwnKey(t *testing.T) {
+	t.Parallel()
+
+	settings := autocrawlerTestSettings()
+	console := New(Options{Settings: settings})
+	doPost(t, console, "/admin/autocrawler", url.Values{"reset": {"swarm.seed.enabled"}})
+	if !settings.got.Reset || settings.got.Key != "swarm.seed.enabled" {
+		t.Fatalf("reset change = %+v", settings.got)
+	}
+
+	foreign := doPost(t, console, "/admin/autocrawler", url.Values{"reset": {"peer.name"}})
+	if foreign.status != http.StatusNotFound {
+		t.Fatalf("foreign reset = %d, want 404", foreign.status)
 	}
 }
 
@@ -107,7 +123,7 @@ func TestAutocrawlerUpdateAcceptsCrawlOptionKeys(t *testing.T) {
 		"autocrawler.crawl.follow_nofollow",
 	} {
 		posted := doPost(t, console, "/admin/autocrawler", url.Values{
-			"key": {key}, "value": {"true"},
+			"key": {key}, "value:" + key: {"true"},
 		})
 		if posted.status == http.StatusNotFound {
 			t.Fatalf("%s rejected as a foreign key", key)

@@ -183,6 +183,11 @@ html, body {
 .cds-checkbox { font-size: var(--ph-ctl-fs); }
 .cds-fieldset { border: 1px solid var(--ph-frame); box-shadow: var(--ph-raise); }
 .cds-legend { font-size: var(--ph-ctl-fs); font-weight: 700; }
+.cds-setting-row { border-bottom: 1px solid var(--ph-frame); font-size: var(--ph-ctl-fs); }
+.cds-setting-row__label { font-size: var(--ph-ctl-fs); }
+.cds-setting-row__control .cds-input,
+.cds-setting-row__control select.cds-input { height: var(--ph-ctl-h); }
+.cds-setting-row__restart { border: 1px solid var(--ph-frame); box-shadow: var(--ph-raise); }
 
 /* Panels: tiles, notifications and toasts as raised grey panels */
 .cds-tile {

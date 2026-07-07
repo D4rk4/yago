@@ -112,8 +112,8 @@ func TestConsoleConfigSettingsUpdateErrorShowsGeneric(t *testing.T) {
 	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Settings: settings})
 
 	got := doPost(t, console, "/admin/configuration", url.Values{
-		"key":   {"portal.enabled"},
-		"value": {"false"},
+		"key":                  {"portal.enabled"},
+		"value:portal.enabled": {"false"},
 	})
 	if !strings.Contains(got.body, "Update failed. Please try again.") {
 		t.Fatalf("expected generic settings error, got %s", got.body)

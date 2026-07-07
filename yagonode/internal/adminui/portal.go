@@ -2,7 +2,6 @@ package adminui
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 )
 
@@ -40,17 +39,12 @@ func (c *Console) handlePortalUpdate(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	change := parseSettingsChange(r)
-	if !portalKey(r.Context(), c.settings, change.Key) {
+	notice, errMsg, ok := c.applySettingsBatch(r, c.portalGate(r.Context()))
+	if !ok {
 		http.NotFound(w, r)
 
 		return
 	}
-	result, err := c.settings.Update(r.Context(), change)
-	if err != nil {
-		slog.WarnContext(r.Context(), "admin portal update failed", slog.Any("error", err))
-	}
-	notice, errMsg := settingsOutcome(result, err)
 	c.render(r.Context(), w, c.tpl.portal, "layout", c.portalPage(r, notice, errMsg))
 }
 
@@ -79,14 +73,14 @@ func portalSettings(ctx context.Context, source SettingsSource) SettingsView {
 	return SettingsView{Items: items}
 }
 
-// portalKey reports whether key names a portal-facing setting, gating the update
-// handler to the Public-portal subset so a foreign key cannot be written here.
-func portalKey(ctx context.Context, source SettingsSource, key string) bool {
-	for _, item := range portalSettings(ctx, source).Items {
-		if item.Key == key {
-			return true
-		}
+// portalGate precomputes the portal-facing key whitelist so the batch can gate
+// each submitted key without re-reading the settings catalog per key, keeping a
+// foreign key from being written through this page.
+func (c *Console) portalGate(ctx context.Context) settingsGate {
+	allowed := map[string]bool{}
+	for _, item := range portalSettings(ctx, c.settings).Items {
+		allowed[item.Key] = true
 	}
 
-	return false
+	return func(key string) bool { return allowed[key] }
 }

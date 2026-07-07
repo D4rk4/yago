@@ -1035,26 +1035,27 @@ func (c *Console) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notice, errMsg := c.applyConfigUpdate(r, binding)
+	// Config's settings batch runs with a nil gate (the source rejects unknown
+	// keys), so it never signals a foreign-key 404 here; ok is discarded.
+	notice, errMsg, _ := c.applyConfigUpdate(r, binding)
 	c.render(r.Context(), w, c.tpl.config, "layout", c.configPage(r, notice, errMsg))
 }
 
-func (c *Console) applyConfigUpdate(r *http.Request, binding bool) (notice, errMsg string) {
+func (c *Console) applyConfigUpdate(
+	r *http.Request,
+	binding bool,
+) (notice, errMsg string, ok bool) {
 	if binding {
 		result, err := c.binding.UpdateBinding(r.Context(), parseBindChange(r))
 		if err != nil {
 			slog.WarnContext(r.Context(), "admin bind update failed", slog.Any("error", err))
 		}
+		notice, errMsg = bindingOutcome(result, err)
 
-		return bindingOutcome(result, err)
+		return notice, errMsg, true
 	}
 
-	result, err := c.settings.Update(r.Context(), parseSettingsChange(r))
-	if err != nil {
-		slog.WarnContext(r.Context(), "admin settings update failed", slog.Any("error", err))
-	}
-
-	return settingsOutcome(result, err)
+	return c.applySettingsBatch(r, nil)
 }
 
 func bindingOutcome(result BindResult, err error) (notice, errMsg string) {
@@ -1112,27 +1113,6 @@ func (c *Console) configPage(r *http.Request, notice, errMsg string) configPageD
 	}
 
 	return data
-}
-
-func parseSettingsChange(r *http.Request) SettingsChange {
-	return SettingsChange{
-		Key:   strings.TrimSpace(r.PostFormValue("key")),
-		Value: settingFormValue(r),
-		Reset: r.PostFormValue("reset") == "true",
-	}
-}
-
-// settingFormValue reads a submitted setting value, resolving a checkbox
-// (boolean) form into an explicit "true"/"false". An unchecked checkbox submits
-// no value at all; the hidden "bool" marker lets the handler read that absence as
-// "false" so the setting is disabled rather than rejected as an empty value.
-func settingFormValue(r *http.Request) string {
-	value := strings.TrimSpace(r.PostFormValue("value"))
-	if r.PostFormValue("bool") == "1" && value != "true" {
-		return "false"
-	}
-
-	return value
 }
 
 func (c *Console) handleSecurity(w http.ResponseWriter, r *http.Request) {
