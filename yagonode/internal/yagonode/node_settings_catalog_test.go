@@ -41,6 +41,9 @@ func catalogRoundTripCases() map[string]catalogRoundTripCase {
 		"web.fallback.seed_max_pages": {"35", func(c nodeConfig) bool {
 			return c.WebFallback.SeedMaxPages == 35
 		}},
+		"network.lan_discovery": {"false", func(c nodeConfig) bool {
+			return !c.LANDiscovery
+		}},
 		"search.remote.peer_timeout": {"5s", func(c nodeConfig) bool {
 			return c.RemotePeerTimeout == 5*time.Second
 		}},

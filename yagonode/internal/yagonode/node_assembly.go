@@ -15,6 +15,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/eviction"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
+	"github.com/D4rk4/yago/yagonode/internal/landiscovery"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/nodestatus"
@@ -60,6 +61,7 @@ type node struct {
 	news          *peernews.Pool
 	sweeper       eviction.Sweeper
 	announcer     peerannouncement.Announcer
+	lanBeacon     *landiscovery.Beacon
 	crawl         crawlProcess
 	dht           dhtOutboundProcess
 	vault         *vault.Vault
@@ -105,6 +107,17 @@ var (
 	}
 )
 
+// newNodeWireMux builds the peer-protocol mux and its guarded wire router,
+// keeping assembleNode within its length budget.
+func newNodeWireMux(
+	config nodeConfig,
+	report nodestatus.Report,
+) (*http.ServeMux, httpguard.WireRouter) {
+	mux := http.NewServeMux()
+
+	return mux, httpguard.NewWireRouter(mux, newRuntimeWireGate(config, report))
+}
+
 func assembleNode(
 	ctx context.Context,
 	config nodeConfig,
@@ -126,8 +139,7 @@ func assembleNode(
 	}
 	report := newNodeStatusReport(identity, storage, roster, news, tally)
 	storage = observeDHTInboundStorage(storage, telemetry.dhtInbound, tally)
-	mux := http.NewServeMux()
-	router := httpguard.NewWireRouter(mux, newRuntimeWireGate(config, report))
+	mux, router := newNodeWireMux(config, report)
 	mountNodeWireHandlers(router, identity, storage)
 	peerClient := nodePeerClient(config, client)
 	exchange, err := assembleRuntimePeerExchange(peerExchange{
@@ -168,6 +180,7 @@ func assembleNode(
 		publicMux:  surfaces.publicMux,
 		storage:    storage,
 		announcer:  exchange.announcer,
+		lanBeacon:  buildLANBeacon(config, identity, exchange.announcer),
 		crawl:      surfaces.crawl,
 		dht:        surfaces.dht,
 		report:     report,
@@ -315,6 +328,7 @@ type nodeParts struct {
 	publicMux  http.Handler
 	storage    nodeStorage
 	announcer  peerannouncement.Announcer
+	lanBeacon  *landiscovery.Beacon
 	crawl      crawlProcess
 	dht        dhtOutboundProcess
 	report     nodestatus.Report
@@ -358,6 +372,7 @@ func newAssembledNode(parts nodeParts) node {
 		news:          parts.news,
 		sweeper:       newStorageSweeper(parts.vault, parts.storage),
 		announcer:     parts.announcer,
+		lanBeacon:     parts.lanBeacon,
 		crawl:         parts.crawl,
 		dht:           parts.dht,
 		vault:         parts.vault,

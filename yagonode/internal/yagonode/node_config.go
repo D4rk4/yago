@@ -52,6 +52,7 @@ const (
 	envIngestQualityGate   = "YAGO_INGEST_QUALITY_GATE"
 	envPeerSnippetFetch    = "YAGO_PEER_SNIPPET_FETCH"
 	envRemotePeerTimeout   = "YAGO_SEARCH_REMOTE_PEER_TIMEOUT"
+	envLANDiscovery        = "YAGO_LAN_DISCOVERY"
 	envRemoteTimeout       = "YAGO_SEARCH_REMOTE_TIMEOUT"
 
 	defaultPeerAddr         = ":8090"
@@ -104,6 +105,7 @@ type nodeConfig struct {
 	PeerSnippetFetch      bool
 	RemotePeerTimeout     time.Duration
 	RemoteTimeout         time.Duration
+	LANDiscovery          bool
 	PeerHTTPSPreferred    bool
 	SwarmSeed             swarmSeedConfig
 	DeclaredBirthDate     time.Time

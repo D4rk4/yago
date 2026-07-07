@@ -19,6 +19,10 @@ type SelfSeed interface {
 
 type Announcer interface {
 	Run(ctx context.Context)
+	// GreetDiscovered runs one verified hello exchange against a peer found
+	// outside the roster (LAN discovery); a successful exchange lands the
+	// peer and its known seeds in the roster like any greeted peer.
+	GreetDiscovered(ctx context.Context, target yagomodel.Seed)
 }
 
 type Observer interface {

@@ -247,10 +247,7 @@ func serve(
 
 	var background sync.WaitGroup
 	background.Add(4)
-	go func() {
-		defer background.Done()
-		assembled.announcer.Run(ctx)
-	}()
+	startPeerPresenceLoops(ctx, &background, assembled)
 	go func() {
 		defer background.Done()
 		runEvictionLoop(ctx, assembled.sweeper, evictionMetrics)
@@ -318,6 +315,21 @@ func serve(
 	case <-ctx.Done():
 		return shutdown(servers)
 	}
+}
+
+// startPeerPresenceLoops runs the DHT announcer and the LAN discovery beacon;
+// the beacon is nil on deployments that disabled discovery, and Run on a nil
+// beacon is a no-op.
+func startPeerPresenceLoops(ctx context.Context, background *sync.WaitGroup, assembled node) {
+	go func() {
+		defer background.Done()
+		assembled.announcer.Run(ctx)
+	}()
+	background.Add(1)
+	go func() {
+		defer background.Done()
+		assembled.lanBeacon.Run(ctx)
+	}()
 }
 
 // startWordFormsLoop launches the swarm-morphology vocabulary sweep, but only

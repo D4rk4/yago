@@ -82,6 +82,7 @@ func extendedSettingDefinitions() []settingDefinition {
 		},
 	}...)
 	definitions = append(definitions, extendedTelemetryDefinitions()...)
+	definitions = append(definitions, networkDiscoveryDefinitions()...)
 	definitions = append(definitions, remoteSearchDefinitions()...)
 	definitions = append(definitions, webFallbackDefinitions()...)
 	definitions = append(definitions, extendedGrowthDefinitions()...)
@@ -202,6 +203,25 @@ func extendedTelemetryDefinitions() []settingDefinition {
 			},
 			apply: func(config nodeConfig, value string) nodeConfig {
 				config.QueryLogMode = queryLogMode(value)
+
+				return config
+			},
+		},
+	}
+}
+
+// networkDiscoveryDefinitions holds the LAN discovery toggle (NET-05).
+func networkDiscoveryDefinitions() []settingDefinition {
+	return []settingDefinition{
+		{
+			key:          "network.lan_discovery",
+			title:        "LAN peer discovery",
+			description:  "Announce this node on the local network over a UDP beacon and greet announcing neighbors (Syncthing-style); every discovered peer is verified through the normal hello exchange.",
+			options:      boolSettingOptions(),
+			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.LANDiscovery) },
+			normalize:    normalizeSettingBool,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.LANDiscovery = value == settingBoolTrue
 
 				return config
 			},

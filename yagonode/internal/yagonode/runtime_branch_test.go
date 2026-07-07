@@ -39,6 +39,8 @@ type fakeAnnouncer struct{}
 
 func (fakeAnnouncer) Run(ctx context.Context) { <-ctx.Done() }
 
+func (fakeAnnouncer) GreetDiscovered(context.Context, yagomodel.Seed) {}
+
 type scriptedSweeper struct {
 	result   eviction.Result
 	err      error

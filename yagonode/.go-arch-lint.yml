@@ -106,6 +106,8 @@ components:
     in: internal/contentquality/**
   snippetfetch:
     in: internal/snippetfetch/**
+  landiscovery:
+    in: internal/landiscovery/**
   searcheval:
     in: internal/searcheval/**
   searchindex:
@@ -485,6 +487,9 @@ deps:
       - snippetfetch
       - searchcore
       - stopwords
+  landiscovery:
+    mayDependOn:
+      - landiscovery
   searcheval:
     mayDependOn:
       - searchcore
@@ -739,6 +744,7 @@ deps:
       - websearch
       - extractfetch
       - snippetmark
+      - landiscovery
     canUse:
       - yagocrawlcontract
       - yagoegress

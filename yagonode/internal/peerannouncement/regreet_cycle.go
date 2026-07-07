@@ -120,3 +120,24 @@ func (a *announcer) acceptGreetedNews(ctx context.Context, seeds []yagomodel.See
 		}
 	}
 }
+
+// GreetDiscovered greets one out-of-roster candidate (LAN discovery): the
+// hello exchange verifies the peer, and only a verified answer reaches the
+// roster — the discovery layer's claim is never trusted directly.
+func (a *announcer) GreetDiscovered(ctx context.Context, target yagomodel.Seed) {
+	self := a.self.SelfSeed(ctx)
+	result, err := a.greeter.Greet(ctx, target, self, announceHelloPeerCount)
+	if err != nil {
+		if a.observer != nil {
+			a.observer.ObservePeerProbeFailure()
+		}
+		slog.DebugContext(ctx, "lan peer greet failed",
+			slog.String("peer", target.Hash.String()), slog.Any("error", err))
+
+		return
+	}
+	a.roster.Discover(ctx, target)
+	a.roster.ConfirmReachable(ctx, target.Hash)
+	a.roster.Discover(ctx, result.Known...)
+	a.acceptGreetedNews(ctx, result.Known)
+}
