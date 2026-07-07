@@ -95,6 +95,7 @@ var navItems = []NavItem{
 	{Title: "Configuration", Path: "/admin/configuration", Icon: "configuration"},
 	{Title: "Security", Path: "/admin/security", Icon: "security"},
 	{Title: "Logs", Path: "/admin/logs", Icon: "logs"},
+	{Title: "Restart", Path: restartPath, Icon: "restart"},
 }
 
 // Options configures the console's data providers. A nil provider makes its
@@ -522,7 +523,7 @@ func dynamicSection(path string) bool {
 	return path == overviewPath || path == searchPath || path == crawlPath ||
 		path == indexPath || path == networkPath || path == configPath ||
 		path == logsPath || path == securityPath || path == performancePath ||
-		path == autocrawlerPath || path == activityPath
+		path == autocrawlerPath || path == activityPath || path == restartPath
 }
 
 // ServeHTTP dispatches to the console's internal router, first resolving the

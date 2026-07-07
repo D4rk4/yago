@@ -54,14 +54,32 @@ func TestConsoleRestartUnavailableWithoutTrigger(t *testing.T) {
 	}
 }
 
-func TestLayoutHeaderLinksRestartBetweenSecurityAndSignOut(t *testing.T) {
+func TestHeaderDropsSecurityAndRestartLinks(t *testing.T) {
 	t.Parallel()
 
-	console := New(Options{})
+	console := New(Options{Config: fakeConfig{view: ConfigView{}}, PublicAddr: ":8090"})
 	got := do(t, console, "/admin/overview")
-	security := strings.Index(got.body, `href="/admin/security"`)
-	restart := strings.Index(got.body, `href="/admin/restart"`)
-	if security < 0 || restart < 0 || restart < security {
-		t.Fatalf("header order wrong: security@%d restart@%d", security, restart)
+
+	header := got.body[strings.Index(got.body, "<header"):strings.Index(got.body, "</header>")]
+	if strings.Contains(header, "/admin/security") {
+		t.Fatal("Security should not be duplicated in the header; it lives in the nav")
+	}
+	if strings.Contains(header, "/admin/restart") {
+		t.Fatal("Restart should live in the nav, not the header")
+	}
+	if !strings.Contains(header, `aria-label="Public search"`) ||
+		!strings.Contains(header, `href="#ic-globe"`) {
+		t.Fatalf("public search icon missing from header: %s", header)
+	}
+}
+
+func TestRestartIsANavItem(t *testing.T) {
+	t.Parallel()
+
+	got := do(t, New(Options{}), "/admin/overview")
+	if !strings.Contains(got.body, `href="/admin/restart"`) ||
+		!strings.Contains(got.body, `cds-nav__label">Restart</span>`) ||
+		!strings.Contains(got.body, `href="#ic-restart"`) {
+		t.Fatal("Restart nav item with its icon is missing")
 	}
 }

@@ -98,6 +98,8 @@ select:focus-visible, [tabindex]:focus-visible {
 .cds-header__link { color: #c6c6c6; text-decoration: none; font-size: 0.8125rem; }
 .cds-header__link:hover { color: var(--cds-text-on-color); }
 .cds-header__signout { margin: 0; display: inline-flex; align-items: center; }
+.cds-header__icon { display: inline-flex; align-items: center; padding: 0 0.25rem; color: inherit; }
+.cds-header__icon svg { width: 1.125rem; height: 1.125rem; display: block; }
 /* Reset only the button chrome, not its typography: `font: inherit` reset the
    size back to the body's 0.875rem, so the Sign out button rendered a step
    larger than the sibling header links (0.8125rem) and the row jumped. Keeping

@@ -1016,6 +1016,10 @@ func TestLayoutRendersSignOutWithCSRF(t *testing.T) {
 		!strings.Contains(out, `value="tok-123"`) {
 		t.Fatalf("sign-out form missing: %s", out)
 	}
+	if !strings.Contains(out, `aria-label="Sign out"`) ||
+		!strings.Contains(out, `href="#ic-logout"`) {
+		t.Fatalf("sign-out icon missing: %s", out)
+	}
 }
 
 func TestLayoutOmitsSignOutWithoutCSRF(t *testing.T) {

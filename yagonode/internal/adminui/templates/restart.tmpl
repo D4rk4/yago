@@ -1,6 +1,6 @@
 {{define "content"}}
 <nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Restart node</nav>
-<h1 class="cds-heading">Restart node</h1>
+<h1 class="cds-h1">Restart node</h1>
 <div class="cds-tile">
   <p>Restarting stops the node gracefully and lets the supervisor bring it back
   up with the persisted settings applied. In-flight crawls and searches are
@@ -22,18 +22,27 @@
 <meta http-equiv="refresh" content="10;url=/admin/overview">
 <title>Restarting — {{.AppName}} admin</title>
 <style>
-  body { font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif; background: #f4f4f4; color: #161616; margin: 0; }
-  .card { max-width: 24rem; margin: 12vh auto; background: #ffffff; border: 1px solid #e0e0e0; padding: 2rem; }
-  h1 { font-size: 1.5rem; font-weight: 400; margin: 0 0 1rem; }
-  p { color: #525252; font-size: 0.875rem; }
+  body { font-family: 'Helvetica Neue', Helvetica, 'Nimbus Sans', Arial, sans-serif; background: #6f829c; color: #17150e; margin: 0; }
+  .card { max-width: 26rem; margin: 14vh auto; background: #c9c6c0; border: 1px solid #46443d;
+    box-shadow: inset 1px 1px 0 #fbfaf6, inset -1px -1px 0 #5c5a52, inset 2px 2px 0 #ece9e3, inset -2px -2px 0 #8b887f; }
+  .card__bar { background: linear-gradient(180deg, #7ba2e8 0%, #5c8bdf 60%, #3f6fc4 100%);
+    color: #fff; font-size: 0.8125rem; font-weight: 700; padding: 0.25rem 0.75rem;
+    border-bottom: 1px solid #2f5296; box-shadow: inset 0 1px 0 rgba(255,255,255,0.45); }
+  .card__bar b { color: #fa4d56; }
+  .card__body { padding: 1.25rem; }
+  h1 { font-size: 1.1875rem; font-weight: 700; margin: 0 0 0.75rem; }
+  p { color: #46443c; font-size: 0.8125rem; }
 </style>
 </head>
 <body>
 <div class="card">
-  <h1>Restarting <b>{{.AppName}}</b></h1>
-  <p role="status">The node is shutting down gracefully and will be brought
-  back up by its supervisor. This page returns to the console in about ten
-  seconds; if it does not load yet, give the node a moment and reload.</p>
+  <div class="card__bar"><b>ya</b>go admin</div>
+  <div class="card__body">
+    <h1>Restarting the node</h1>
+    <p role="status">The node is shutting down gracefully and will be brought
+    back up by its supervisor. This page returns to the console in about ten
+    seconds; if it does not load yet, give the node a moment and reload.</p>
+  </div>
 </div>
 </body>
 </html>{{end}}
