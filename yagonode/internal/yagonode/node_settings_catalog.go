@@ -89,7 +89,19 @@ func extendedSettingDefinitions() []settingDefinition {
 
 	definitions = append(definitions, autocrawlerDefinitions()...)
 
-	return append(definitions, webDiscoveryDefinitions()...)
+	definitions = append(definitions, webDiscoveryDefinitions()...)
+
+	return append(definitions, parityGapDefinitions()...)
+}
+
+// parityGapDefinitions groups the settings the CFG-02 review added.
+func parityGapDefinitions() []settingDefinition {
+	definitions := storageAndAccessDefinitions()
+	definitions = append(definitions, swarmPresenceDefinitions()...)
+	definitions = append(definitions, dhtDefinitions()...)
+	definitions = append(definitions, webFallbackTuningDefinitions()...)
+
+	return append(definitions, perimeterDefinitions()...)
 }
 
 // webDiscoveryDefinitions surface the web-fallback seeding path of the
