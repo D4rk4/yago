@@ -4,21 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>{{.Section.Heading}} — {{.AppName}} admin</title>
+<title>{{.Data.Section.Heading}} — {{.Data.AppName}} admin</title>
 <link rel="stylesheet" href="/admin/assets/carbon.css">
 <script src="/admin/assets/htmx.min.js" defer></script>
+<script src="/admin/assets/tabs.js" defer></script>
 </head>
 <body hx-boost="true">
 <a class="cds-skip" href="#cds-main">Skip to main content</a>
 <header class="cds-header">
-  <span class="cds-header__name"><b>{{.AppName}}</b> admin</span>
+  <span class="cds-header__name"><b>{{.Data.AppName}}</b> admin</span>
   <span class="cds-header__spacer"></span>
-  <a class="cds-header__link" href="/">Public search</a>
+  {{if .PublicSearchHref}}<a class="cds-header__link" href="{{.PublicSearchHref}}" rel="noopener">Public search</a>{{end}}
   <a class="cds-header__link" href="/admin/security">Security</a>
   <a class="cds-header__link" href="/admin/restart">Restart Node</a>
-  {{if .CSRF}}
+  {{if .Data.CSRF}}
   <form class="cds-header__signout" method="post" action="/admin/logout" hx-boost="false">
-    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <input type="hidden" name="csrf_token" value="{{.Data.CSRF}}">
     <button class="cds-header__link cds-header__button" type="submit">Sign out</button>
   </form>
   {{end}}
@@ -26,15 +27,15 @@
 <div class="cds-shell">
   <nav class="cds-nav" aria-label="Sections">
     <ul class="cds-nav__list">
-      {{range .Nav}}
-      <li><a class="cds-nav__link" href="{{.Path}}"{{if eq .Path $.ActivePath}} aria-current="page"{{end}}>{{.Title}}</a></li>
+      {{range .Data.Nav}}
+      <li><a class="cds-nav__link" href="{{.Path}}"{{if eq .Path $.Data.ActivePath}} aria-current="page"{{end}}>{{.Title}}</a></li>
       {{end}}
     </ul>
   </nav>
   <main class="cds-main" id="cds-main" tabindex="-1">
-    {{template "content" .}}
+    {{template "content" .Data}}
     <footer class="cds-footer">
-      {{.AppName}} is free software under the GNU AGPL v3.
+      {{.Data.AppName}} is free software under the GNU AGPL v3.
       <a href="https://github.com/D4rk4/yago">Source code</a>.
     </footer>
   </main>

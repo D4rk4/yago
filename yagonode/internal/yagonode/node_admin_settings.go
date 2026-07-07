@@ -3,6 +3,7 @@ package yagonode
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/events"
@@ -109,6 +110,35 @@ func (s *settingsSource) item(ctx context.Context, def settingDefinition) adminu
 		Overridden:      overridden,
 		RestartRequired: def.restartRequired(),
 		Options:         adminSettingOptions(def.options),
+		Category:        settingCategory(def.key),
+	}
+}
+
+// settingCategory maps a setting key to the console tab that groups it, so the
+// Configuration page presents related knobs together instead of one flat sheet.
+func settingCategory(key string) string {
+	switch {
+	case strings.HasPrefix(key, "web.fallback."):
+		return "Web fallback"
+	case strings.HasPrefix(key, "search."):
+		return "Search"
+	case strings.HasPrefix(key, "swarm."):
+		return "Swarm"
+	case strings.HasPrefix(key, "network."):
+		return "Network & peers"
+	case strings.HasPrefix(key, "crawl."):
+		return "Crawler"
+	case strings.HasPrefix(key, "extract."):
+		return "Extraction"
+	case strings.HasPrefix(key, "metrics."):
+		return "Monitoring"
+	case strings.HasPrefix(key, "portal."),
+		strings.HasPrefix(key, "web.robots."),
+		key == "public.base.url",
+		key == "https.redirect":
+		return "Public portal"
+	default:
+		return "General"
 	}
 }
 

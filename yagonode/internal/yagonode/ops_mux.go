@@ -93,6 +93,8 @@ func buildOpsMux(
 		Restart:           sources.restart,
 		SearchSuggest:     adminSearchSuggest(assembled),
 		CrawlFormats:      crawlFormatsAdmin(assembled.crawl),
+		PublicBaseURL:     config.PublicBaseURL,
+		PublicAddr:        config.PublicAddr,
 	}
 	applyIndexAdminOptions(&options, assembled)
 	if assembled.roster != nil {

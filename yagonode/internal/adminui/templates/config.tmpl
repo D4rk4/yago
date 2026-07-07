@@ -2,68 +2,84 @@
 <nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Configuration</nav>
 <h1 class="cds-h1">Configuration</h1>
 {{template "toasts" .}}
-{{if .Editable}}
-<h2 class="cds-h2">Runtime settings</h2>
-<p class="cds-muted">These settings are stored on the node and override the environment defaults. Unset settings fall back to the environment.</p>
-{{range .Settings.Items}}
-<form class="cds-form" method="post" action="/admin/configuration" hx-boost="false">
-  <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-  <input type="hidden" name="key" value="{{.Key}}">
-  <div class="cds-field">
-    <label class="cds-label" for="setting-{{.Key}}">{{.Title}}{{if .Overridden}} <span class="cds-tag cds-tag--info">overridden</span>{{end}}</label>
-    {{if .Description}}<p class="cds-muted">{{.Description}}</p>{{end}}
-    {{if .Options}}
-    <select class="cds-input" id="setting-{{.Key}}" name="value">
-      {{$current := .Value}}
-      {{range .Options}}<option value="{{.Value}}"{{if eq .Value $current}} selected{{end}}>{{.Label}}</option>{{end}}
-    </select>
-    {{else}}
-    <input class="cds-input" type="text" id="setting-{{.Key}}" name="value" value="{{.Value}}" autocomplete="off">
+<p class="cds-muted">The node's settings, grouped into tabs. Runtime overrides are stored on the node and layer over the environment defaults; unset settings fall back to the environment.</p>
+<div class="cds-tabs" data-tabs>
+  <div class="cds-tablist" role="tablist" aria-label="Configuration sections">
+    {{if .Editable}}{{range .SettingGroups}}<button type="button" role="tab" class="cds-tab" id="tab-{{.ID}}" aria-controls="panel-{{.ID}}" aria-selected="false">{{.Title}}</button>
+    {{end}}{{end}}{{if .Bindable}}<button type="button" role="tab" class="cds-tab" id="tab-listen" aria-controls="panel-listen" aria-selected="false">Listen addresses</button>
+    {{end}}<button type="button" role="tab" class="cds-tab" id="tab-effective" aria-controls="panel-effective" aria-selected="false">Effective configuration</button>
+  </div>
+
+  {{if .Editable}}{{range .SettingGroups}}
+  <section class="cds-tabpanel" role="tabpanel" id="panel-{{.ID}}" aria-labelledby="tab-{{.ID}}">
+    <h2 class="cds-h2 cds-tabpanel__heading">{{.Title}}</h2>
+    {{range .Items}}
+    <form class="cds-form" method="post" action="/admin/configuration" hx-boost="false">
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+      <input type="hidden" name="key" value="{{.Key}}">
+      <div class="cds-field">
+        <label class="cds-label" for="setting-{{.Key}}">{{.Title}}{{if .Overridden}} <span class="cds-tag cds-tag--info">overridden</span>{{end}}</label>
+        {{if .Description}}<p class="cds-muted">{{.Description}}</p>{{end}}
+        {{if .Options}}
+        <select class="cds-input" id="setting-{{.Key}}" name="value">
+          {{$current := .Value}}
+          {{range .Options}}<option value="{{.Value}}"{{if eq .Value $current}} selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+        {{else}}
+        <input class="cds-input" type="text" id="setting-{{.Key}}" name="value" value="{{.Value}}" autocomplete="off">
+        {{end}}
+        {{if .RestartRequired}}<p class="cds-muted">Takes effect after a node restart.</p>{{end}}
+      </div>
+      <button class="cds-btn" type="submit">Save</button>
+      {{if .Overridden}}<button class="cds-btn cds-btn--ghost" type="submit" name="reset" value="true">Reset to default</button>{{end}}
+    </form>
     {{end}}
-    {{if .RestartRequired}}<p class="cds-muted">Takes effect after a node restart.</p>{{end}}
-  </div>
-  <button class="cds-btn" type="submit">Save</button>
-  {{if .Overridden}}<button class="cds-btn cds-btn--ghost" type="submit" name="reset" value="true">Reset to default</button>{{end}}
-</form>
-{{end}}
-{{end}}
-{{if .Bindable}}
-<h2 class="cds-h2">Listen addresses</h2>
-<p class="cds-muted">Choose the interface and port each listener binds to. Changes take effect after a node restart. Loopback and “all interfaces” are always offered so you cannot lock yourself out of the admin console.</p>
-{{if .Bindings.Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Bindings.Error}}</div>{{end}}
-{{range .Bindings.Items}}
-<form class="cds-form" method="post" action="/admin/configuration" hx-boost="false">
-  <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-  <input type="hidden" name="form" value="binding">
-  <input type="hidden" name="key" value="{{.Key}}">
-  <div class="cds-field">
-    <label class="cds-label" for="bind-host-{{.Key}}">{{.Title}}{{if .Overridden}} <span class="cds-tag cds-tag--info">overridden</span>{{end}}</label>
-    {{if .Description}}<p class="cds-muted">{{.Description}}</p>{{end}}
-    {{$host := .Host}}
-    <select class="cds-input" id="bind-host-{{.Key}}" name="host">
-      {{range .Interfaces}}<option value="{{.Value}}"{{if eq .Value $host}} selected{{end}}>{{.Label}}</option>{{end}}
-    </select>
-  </div>
-  <div class="cds-field">
-    <label class="cds-label" for="bind-port-{{.Key}}">Port</label>
-    <input class="cds-input" type="number" id="bind-port-{{.Key}}" name="port" min="1" max="65535" value="{{.Port}}">
-  </div>
-  <button class="cds-btn" type="submit">Save</button>
-</form>
-{{end}}
-{{end}}
-<h2 class="cds-h2">Effective configuration</h2>
-<p class="cds-muted">Values in effect for this node. Secrets are redacted; any runtime overrides above are already applied.</p>
-{{range .Config.Groups}}
-<h3 class="cds-h3">{{.Title}}</h3>
-<div class="cds-scroll-x">
-<table class="cds-table">
-  <tbody>
-  {{range .Settings}}
-  <tr><th scope="row">{{.Name}}</th><td>{{if .Value}}{{.Value}}{{else}}—{{end}}</td></tr>
+  </section>
+  {{end}}{{end}}
+
+  {{if .Bindable}}
+  <section class="cds-tabpanel" role="tabpanel" id="panel-listen" aria-labelledby="tab-listen">
+    <h2 class="cds-h2 cds-tabpanel__heading">Listen addresses</h2>
+    <p class="cds-muted">Choose the interface and port each listener binds to. Changes take effect after a node restart. Loopback and “all interfaces” are always offered so you cannot lock yourself out of the admin console.</p>
+    {{if .Bindings.Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Bindings.Error}}</div>{{end}}
+    {{range .Bindings.Items}}
+    <form class="cds-form" method="post" action="/admin/configuration" hx-boost="false">
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+      <input type="hidden" name="form" value="binding">
+      <input type="hidden" name="key" value="{{.Key}}">
+      <div class="cds-field">
+        <label class="cds-label" for="bind-host-{{.Key}}">{{.Title}}{{if .Overridden}} <span class="cds-tag cds-tag--info">overridden</span>{{end}}</label>
+        {{if .Description}}<p class="cds-muted">{{.Description}}</p>{{end}}
+        {{$host := .Host}}
+        <select class="cds-input" id="bind-host-{{.Key}}" name="host">
+          {{range .Interfaces}}<option value="{{.Value}}"{{if eq .Value $host}} selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+      </div>
+      <div class="cds-field">
+        <label class="cds-label" for="bind-port-{{.Key}}">Port</label>
+        <input class="cds-input" type="number" id="bind-port-{{.Key}}" name="port" min="1" max="65535" value="{{.Port}}">
+      </div>
+      <button class="cds-btn" type="submit">Save</button>
+    </form>
+    {{end}}
+  </section>
   {{end}}
-  </tbody>
-</table>
+
+  <section class="cds-tabpanel" role="tabpanel" id="panel-effective" aria-labelledby="tab-effective">
+    <h2 class="cds-h2 cds-tabpanel__heading">Effective configuration</h2>
+    <p class="cds-muted">Values in effect for this node. Secrets are redacted; any runtime overrides above are already applied.</p>
+    {{range .Config.Groups}}
+    <h3 class="cds-h3">{{.Title}}</h3>
+    <div class="cds-scroll-x">
+    <table class="cds-table">
+      <tbody>
+      {{range .Settings}}
+      <tr><th scope="row">{{.Name}}</th><td>{{if .Value}}{{.Value}}{{else}}—{{end}}</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{end}}
+  </section>
 </div>
-{{end}}
 {{end}}

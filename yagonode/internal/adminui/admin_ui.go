@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -20,7 +21,7 @@ import (
 //go:embed templates/*.tmpl
 var templateFS embed.FS
 
-//go:embed assets/carbon.css assets/htmx.min.js assets/autocomplete.js
+//go:embed assets/carbon.css assets/htmx.min.js assets/autocomplete.js assets/tabs.js
 var assetFS embed.FS
 
 // BasePath is where the console mounts on the operations listener.
@@ -131,6 +132,14 @@ type Options struct {
 	// SearchSuggest, when set, serves OpenSearch suggestion JSON for the console
 	// search box autocomplete at GET /admin/search/suggest.
 	SearchSuggest http.Handler
+	// PublicBaseURL is the operator-configured public origin of the search
+	// portal (the OpenSearch external base URL); when set the header's Public
+	// search link points straight at it.
+	PublicBaseURL string
+	// PublicAddr is the dedicated public listener's bind address (e.g. ":8080").
+	// When PublicBaseURL is unset the Public search link is derived from the
+	// request host and this port; an empty/disabled address hides the link.
+	PublicAddr string
 }
 
 type sectionView struct {
@@ -244,10 +253,13 @@ type configPageData struct {
 	Config     ConfigView
 	Editable   bool
 	Settings   SettingsView
-	Bindable   bool
-	Bindings   BindingsView
-	Notice     string
-	Error      string
+	// SettingGroups is Settings.Items bucketed into ordered categories, one tab
+	// each; empty when the settings surface is read-only.
+	SettingGroups []SettingGroup
+	Bindable      bool
+	Bindings      BindingsView
+	Notice        string
+	Error         string
 }
 
 type indexPageData struct {
@@ -367,6 +379,8 @@ type Console struct {
 	peerBlock       PeerBlockSource
 	restart         func()
 	searchSuggest   http.Handler
+	publicBase      string
+	publicPort      string
 }
 
 // New builds the console with its embedded templates, assets, and providers.
@@ -408,10 +422,27 @@ func New(opts Options) *Console {
 		seedlistRefresh: opts.SeedlistRefresh,
 		peerBlock:       opts.PeerBlock,
 		restart:         opts.Restart,
+		publicBase:      strings.TrimRight(opts.PublicBaseURL, "/"),
+		publicPort:      publicListenerPort(opts.PublicAddr),
 	}
 	console.registerRoutes(assets)
 
 	return console
+}
+
+// publicListenerPort extracts the port the public search portal listens on so
+// the header link can be built from the request host. A disabled or portless
+// address yields "", which hides the derived link.
+func publicListenerPort(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return ""
+	}
+	if _, port, err := net.SplitHostPort(addr); err == nil {
+		return port
+	}
+
+	return ""
 }
 
 func buildTemplates() templates {
@@ -492,9 +523,56 @@ func dynamicSection(path string) bool {
 		path == autocrawlerPath || path == activityPath
 }
 
-// ServeHTTP dispatches to the console's internal router.
+// ServeHTTP dispatches to the console's internal router, first resolving the
+// public search portal's address for this request so the shared layout can link
+// to it without every page threading the value through its own data.
 func (c *Console) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	c.mux.ServeHTTP(w, r)
+	ctx := context.WithValue(r.Context(), publicSearchHrefKey{}, c.publicSearchHref(r))
+	c.mux.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// publicSearchHrefKey types the context value carrying the resolved link.
+type publicSearchHrefKey struct{}
+
+// publicSearchHref resolves the URL of the public search portal: the configured
+// public origin when set, otherwise the request's own host with the public
+// listener's port. It is empty when the public surface is disabled, which hides
+// the header link rather than pointing it at the admin origin.
+func (c *Console) publicSearchHref(r *http.Request) string {
+	if c.publicBase != "" {
+		return c.publicBase
+	}
+	if c.publicPort == "" || r.Host == "" {
+		return ""
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if host == "" {
+		return ""
+	}
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+
+	return scheme + "://" + net.JoinHostPort(host, c.publicPort) + "/"
+}
+
+// publicSearchHrefFromContext reads the resolved link, empty when absent.
+func publicSearchHrefFromContext(ctx context.Context) string {
+	href, _ := ctx.Value(publicSearchHrefKey{}).(string)
+
+	return href
+}
+
+// layoutEnvelope wraps a page's data with the request-scoped chrome the shared
+// layout needs but the page data does not carry, so a new chrome value does not
+// force a field onto every page-data struct.
+type layoutEnvelope struct {
+	PublicSearchHref string
+	Data             any
 }
 
 func (c *Console) sectionHandler(path string) http.HandlerFunc {
@@ -1011,6 +1089,7 @@ func (c *Console) configPage(r *http.Request, notice, errMsg string) configPageD
 	if c.settings != nil {
 		data.Editable = true
 		data.Settings = c.settings.Settings(r.Context())
+		data.SettingGroups = groupSettings(data.Settings.Items)
 	}
 	if c.binding != nil {
 		data.Bindable = true
@@ -1527,7 +1606,16 @@ func (c *Console) render(
 	data any,
 ) {
 	writeHTMLHeaders(w)
-	if err := tpl.ExecuteTemplate(w, name, data); err != nil {
+	payload := data
+	// Only the full-page layout carries chrome; htmx partials render their raw
+	// data so their field access stays unwrapped.
+	if name == "layout" {
+		payload = layoutEnvelope{
+			PublicSearchHref: publicSearchHrefFromContext(ctx),
+			Data:             data,
+		}
+	}
+	if err := tpl.ExecuteTemplate(w, name, payload); err != nil {
 		slog.WarnContext(ctx, "admin console render failed",
 			slog.String("template", name), slog.Any("error", err))
 	}

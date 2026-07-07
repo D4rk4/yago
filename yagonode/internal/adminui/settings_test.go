@@ -32,6 +32,7 @@ func portalSettingsView(overridden bool) SettingsView {
 		Value:           "true",
 		Overridden:      overridden,
 		RestartRequired: true,
+		Category:        "Public portal",
 		Options: []SettingOption{
 			{Value: "true", Label: "Enabled"},
 			{Value: "false", Label: "Disabled"},
@@ -51,7 +52,8 @@ func TestConsoleConfigRendersEditableSettings(t *testing.T) {
 		t.Fatalf("status %d", got.status)
 	}
 	for _, want := range []string{
-		"Runtime settings", `name="key"`, "Public search portal",
+		`role="tablist"`, `id="tab-public-portal"`, `aria-controls="panel-public-portal"`,
+		`name="key"`, "Public search portal",
 		`value="false"`, "Reset to default", `name="csrf_token"`,
 	} {
 		if !strings.Contains(got.body, want) {
@@ -64,7 +66,7 @@ func TestConsoleConfigOmitsEditableSurfaceWithoutSettings(t *testing.T) {
 	t.Parallel()
 
 	got := do(t, New(Options{Config: fakeConfig{view: ConfigView{}}}), "/admin/configuration")
-	if strings.Contains(got.body, "Runtime settings") {
+	if strings.Contains(got.body, `for="setting-`) {
 		t.Fatal("editable surface rendered without a settings source")
 	}
 }

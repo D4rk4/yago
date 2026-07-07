@@ -1005,10 +1005,10 @@ func TestHumanDuration(t *testing.T) {
 func TestLayoutRendersSignOutWithCSRF(t *testing.T) {
 	console := New(Options{})
 	var buf bytes.Buffer
-	if err := console.tpl.placeholder.ExecuteTemplate(&buf, "layout", pageData{
+	if err := console.tpl.placeholder.ExecuteTemplate(&buf, "layout", layoutEnvelope{Data: pageData{
 		AppName: appName, Nav: navItems, CSRF: "tok-123",
 		Section: sectionView{Heading: "Overview"},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("render: %v", err)
 	}
 	out := buf.String()
@@ -1021,10 +1021,10 @@ func TestLayoutRendersSignOutWithCSRF(t *testing.T) {
 func TestLayoutOmitsSignOutWithoutCSRF(t *testing.T) {
 	console := New(Options{})
 	var buf bytes.Buffer
-	if err := console.tpl.placeholder.ExecuteTemplate(&buf, "layout", pageData{
+	if err := console.tpl.placeholder.ExecuteTemplate(&buf, "layout", layoutEnvelope{Data: pageData{
 		AppName: appName, Nav: navItems,
 		Section: sectionView{Heading: "Overview"},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("render: %v", err)
 	}
 	if strings.Contains(buf.String(), "/admin/logout") {
