@@ -74,7 +74,8 @@ func buildFetchChains(
 ) (fetchChains, error) {
 	slowSource := botwall.NewBotWallScreeningFetcher(source)
 	fastSource := botwall.NewBotWallScreeningFetcher(
-		newCrawlerHTTPPageFetcher(client, crawl.UserAgent, crawl.MaxBodyBytes),
+		newCrawlerHTTPPageFetcher(client, crawl.UserAgent, crawl.MaxBodyBytes).
+			WithHTTP1Fallback(newHTTP1EgressClient(guard, crawl, nil)),
 	)
 	verifyingCore := pagefetch.NewFallbackPageSource(fastSource, slowSource)
 	admitted, err := newCrawlerRobotsAdmissionFetcher(
@@ -90,7 +91,8 @@ func buildFetchChains(
 
 	insecureClient := newInsecureEgressClient(guard, crawl)
 	insecureFast := botwall.NewBotWallScreeningFetcher(
-		newCrawlerHTTPPageFetcher(insecureClient, crawl.UserAgent, crawl.MaxBodyBytes),
+		newCrawlerHTTPPageFetcher(insecureClient, crawl.UserAgent, crawl.MaxBodyBytes).
+			WithHTTP1Fallback(newHTTP1EgressClient(guard, crawl, insecureTLSConfig())),
 	)
 	insecureCore := pagefetch.NewFallbackPageSource(insecureFast, slowSource)
 	insecureAdmitted, err := newCrawlerRobotsAdmissionFetcher(

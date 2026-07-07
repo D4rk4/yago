@@ -13,9 +13,11 @@ import (
 )
 
 type PageFetcher struct {
-	client    *http.Client
-	userAgent string
-	maxBytes  int64
+	client     *http.Client
+	h1Client   *http.Client
+	downgrades *hostDowngrades
+	userAgent  string
+	maxBytes   int64
 }
 
 func NewPageFetcher(
@@ -26,7 +28,21 @@ func NewPageFetcher(
 	if client == nil {
 		client = http.DefaultClient
 	}
-	return &PageFetcher{client: client, userAgent: userAgent, maxBytes: maxBytes}
+	return &PageFetcher{
+		client:     client,
+		downgrades: newHostDowngrades(),
+		userAgent:  userAgent,
+		maxBytes:   maxBytes,
+	}
+}
+
+// WithHTTP1Fallback arms the h2-hostile-host fallback (CRAWL-18): on an
+// HTTP/2 stream failure the request retries once through this h1-only
+// client, and the host skips h2 for a while afterwards.
+func (f *PageFetcher) WithHTTP1Fallback(client *http.Client) *PageFetcher {
+	f.h1Client = client
+
+	return f
 }
 
 func (f *PageFetcher) Fetch(
@@ -41,7 +57,7 @@ func (f *PageFetcher) Fetch(
 		request.Header.Set("User-Agent", f.userAgent)
 	}
 
-	response, err := f.client.Do(request)
+	response, err := f.do(request, target)
 	if err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("http fetch: %w", err)
 	}
@@ -107,4 +123,21 @@ func responseContentType(header string, body []byte) string {
 		return header
 	}
 	return http.DetectContentType(body)
+}
+
+// do routes one request through the right protocol: hosts remembered as
+// h2-hostile go straight to the h1 client, everything else tries the primary
+// client and falls back once on an HTTP/2 stream failure (CRAWL-18).
+func (f *PageFetcher) do(request *http.Request, target *url.URL) (*http.Response, error) {
+	if f.h1Client != nil && f.downgrades.Active(target.Hostname()) {
+		return f.h1Client.Do(request) //nolint:wrapcheck // caller wraps uniformly.
+	}
+	response, err := f.client.Do(request)
+	if err == nil || f.h1Client == nil || !IsHTTP2StreamError(err) {
+		return response, err //nolint:wrapcheck // caller wraps uniformly.
+	}
+	f.downgrades.Mark(target.Hostname())
+	retry := request.Clone(request.Context())
+
+	return f.h1Client.Do(retry) //nolint:wrapcheck // caller wraps uniformly.
 }

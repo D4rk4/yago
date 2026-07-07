@@ -21,16 +21,42 @@ func newGuardedEgressClient(guard yagoegress.Guard, config CrawlConfig) *http.Cl
 // need self-signed or mis-chained sites crawled. The fetched payload is public
 // web content, and the egress dial guard applies unchanged.
 func newInsecureEgressClient(guard yagoegress.Guard, config CrawlConfig) *http.Client {
+	return newGuardedEgressClientWithTLS(guard, config, insecureTLSConfig())
+}
+
+// insecureTLSConfig is the shared verification-off TLS setup for the
+// IgnoreTLSAuthority crawl profiles.
+func insecureTLSConfig() *tls.Config {
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12} // nosemgrep
 	tlsConfig.InsecureSkipVerify = true
 
-	return newGuardedEgressClientWithTLS(guard, config, tlsConfig)
+	return tlsConfig
 }
 
 func newGuardedEgressClientWithTLS(
 	guard yagoegress.Guard,
 	config CrawlConfig,
 	tlsConfig *tls.Config,
+) *http.Client {
+	return buildEgressClient(guard, config, tlsConfig, false)
+}
+
+// newHTTP1EgressClient builds the same guarded client with HTTP/2 disabled —
+// the fallback path for hosts whose bot protection resets Go's h2 streams
+// (CRAWL-18). Everything else (dial guard, timeouts, redirects) is identical.
+func newHTTP1EgressClient(
+	guard yagoegress.Guard,
+	config CrawlConfig,
+	tlsConfig *tls.Config,
+) *http.Client {
+	return buildEgressClient(guard, config, tlsConfig, true)
+}
+
+func buildEgressClient(
+	guard yagoegress.Guard,
+	config CrawlConfig,
+	tlsConfig *tls.Config,
+	http1Only bool,
 ) *http.Client {
 	dialer := &net.Dialer{Timeout: config.ConnectTimeout, Control: guard.DialControl}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -39,7 +65,15 @@ func newGuardedEgressClientWithTLS(
 	transport.TLSHandshakeTimeout = config.TLSTimeout
 	transport.ResponseHeaderTimeout = config.HeaderTimeout
 	if tlsConfig != nil {
-		transport.TLSClientConfig = tlsConfig
+		transport.TLSClientConfig = tlsConfig.Clone()
+	}
+	if http1Only {
+		transport.ForceAttemptHTTP2 = false
+		transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		}
+		transport.TLSClientConfig.NextProtos = []string{"http/1.1"}
 	}
 
 	return &http.Client{
