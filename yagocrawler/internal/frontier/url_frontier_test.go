@@ -182,6 +182,38 @@ func TestSeedRunHonoursHostCap(t *testing.T) {
 	f.Done(receiveJob(t, f))
 }
 
+// TestSeedRunHonoursPageBudget pins the whole-run page budget (PORT-03): a run
+// stops admitting once it reaches its total page budget, above and beyond the
+// per-host cap. With the per-host cap left unlimited, four URLs and a budget of
+// two admit exactly two — the run budget, not the host cap, is what stops it —
+// and the fourth admission exercises the already-warned path.
+func TestSeedRunHonoursPageBudget(t *testing.T) {
+	f := frontier.NewFrontier(8, nil, frontier.WithMaxPagesPerRun(2))
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	seeded := f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle,
+			"https://example.com/a",
+			"https://example.com/b",
+			"https://example.com/c",
+			"https://example.com/d",
+		),
+		nil,
+		profile,
+		func() {},
+	)
+	if seeded.Queued != 2 {
+		t.Fatalf("queued = %d, want 2 (per-run page budget)", seeded.Queued)
+	}
+	for range 2 {
+		f.Done(receiveJob(t, f))
+	}
+}
+
 func TestSubmitFollowsLinksWithinDepth(t *testing.T) {
 	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yagocrawlcontract.CrawlProfile{

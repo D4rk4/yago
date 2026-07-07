@@ -114,6 +114,22 @@ func buildFetchChains(
 	}, nil
 }
 
+// assembleFrontier builds the URL frontier with the run's pacing, per-host
+// concurrency and page-budget bounds, and outcome tally.
+func assembleFrontier(
+	crawl CrawlConfig,
+	pace frontier.CrawlPace,
+	tally frontier.RunTally,
+) *frontier.Frontier {
+	return frontier.NewFrontier(
+		crawl.JobQueueSize,
+		pace,
+		frontier.WithMaxHostConcurrency(crawl.MaxHostConcurrency),
+		frontier.WithMaxPagesPerRun(crawl.MaxPagesPerRun),
+		frontier.WithRunTally(tally),
+	)
+}
+
 func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSource) error {
 	ctx, restart := newRestartController(ctx)
 
@@ -142,12 +158,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		return fmt.Errorf("create adaptive crawl pace: %w", err)
 	}
 	tally := runtally.New()
-	frontier := frontier.NewFrontier(
-		crawl.JobQueueSize,
-		pace,
-		frontier.WithMaxHostConcurrency(crawl.MaxHostConcurrency),
-		frontier.WithRunTally(tally),
-	)
+	frontier := assembleFrontier(crawl, pace, tally)
 	orders := crawlorder.NewGRPCOrderReceiver(
 		ctx,
 		exchange,

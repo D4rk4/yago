@@ -21,6 +21,9 @@ func TestDefaultCrawlConfig(t *testing.T) {
 	if cfg.SitemapURLLimit != DefaultSitemapURLLimit {
 		t.Errorf("sitemap URL limit = %d", cfg.SitemapURLLimit)
 	}
+	if cfg.MaxPagesPerRun != DefaultMaxPagesPerRun {
+		t.Errorf("max pages per run = %d, want %d", cfg.MaxPagesPerRun, DefaultMaxPagesPerRun)
+	}
 	if cfg.RequestTimeout != DefaultRequestTimeout ||
 		cfg.ConnectTimeout != DefaultConnectTimeout ||
 		cfg.TLSTimeout != DefaultTLSTimeout ||
@@ -128,6 +131,9 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	if cfg.Crawl.SitemapURLLimit != DefaultSitemapURLLimit {
 		t.Errorf("sitemap URL limit = %d", cfg.Crawl.SitemapURLLimit)
 	}
+	if cfg.Crawl.MaxPagesPerRun != DefaultMaxPagesPerRun {
+		t.Errorf("max pages per run = %d, want %d", cfg.Crawl.MaxPagesPerRun, DefaultMaxPagesPerRun)
+	}
 	if cfg.Crawl.RequestTimeout != DefaultRequestTimeout ||
 		cfg.Crawl.ConnectTimeout != DefaultConnectTimeout ||
 		cfg.Crawl.TLSTimeout != DefaultTLSTimeout ||
@@ -152,6 +158,7 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 		EnvWorkers:            "3",
 		EnvMaxHostConcurrency: "6",
 		EnvMaxDepth:           "5",
+		EnvMaxPagesPerRun:     "12345",
 		EnvCrawlDelay:         "250ms",
 		EnvUserAgent:          "test-agent",
 		EnvRequestTimeout:     "20s",
@@ -187,6 +194,9 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	if cfg.Crawl.Workers != 3 || cfg.Crawl.MaxDepth != 5 {
 		t.Errorf("workers/depth = %d %d", cfg.Crawl.Workers, cfg.Crawl.MaxDepth)
 	}
+	if cfg.Crawl.MaxPagesPerRun != 12345 {
+		t.Errorf("max pages per run = %d, want 12345", cfg.Crawl.MaxPagesPerRun)
+	}
 	if cfg.Crawl.MaxHostConcurrency != 6 {
 		t.Errorf("max host concurrency = %d, want 6", cfg.Crawl.MaxHostConcurrency)
 	}
@@ -215,6 +225,7 @@ func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 	cases := map[string]string{
 		EnvWorkers:         "0",
 		EnvMaxDepth:        "abc",
+		EnvMaxPagesPerRun:  "-5",
 		EnvCrawlDelay:      "-1s",
 		EnvMaxRedirects:    "-1",
 		EnvRequestTimeout:  "0s",

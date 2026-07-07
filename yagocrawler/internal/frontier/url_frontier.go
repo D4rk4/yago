@@ -21,6 +21,7 @@ const (
 	msgSubmitProfileUnknown = "links submitted for unknown profile"
 	msgAcceptProfileUnknown = "crawl job accepted for unknown profile"
 	msgSeedProfileMismatch  = "seed profile handle does not match order"
+	msgRunPageBudgetReached = "crawl run reached its page budget"
 )
 
 type Frontier struct {
@@ -56,6 +57,14 @@ func WithMaxHostConcurrency(maxPerHost int) Option {
 	return func(f *Frontier) { f.maxPerHost = maxPerHost }
 }
 
+// WithMaxPagesPerRun caps the total number of pages a single crawl run may admit
+// across all hosts (a whole-run budget above the per-host cap), so a spider trap
+// that mints an unbounded URL space cannot make one run crawl forever. A value
+// <= 0 leaves the run budget unlimited.
+func WithMaxPagesPerRun(maxPagesPerRun int) Option {
+	return func(f *Frontier) { f.state.maxPagesPerRun = maxPagesPerRun }
+}
+
 type frontierState struct {
 	runs       map[uuid.UUID]*crawlRun
 	completion *crawlrun.Completion
@@ -64,12 +73,18 @@ type frontierState struct {
 	// cancelled lives on the state, rather than beside paused on the Frontier, so
 	// accept (a frontierState method) can reject a cancelled run's discovered links.
 	cancelled map[string]struct{}
+	// maxPagesPerRun caps how many pages one run may admit in total (0 = unlimited),
+	// a whole-run ceiling above the per-host cap so a spider trap spanning many hosts
+	// cannot crawl unbounded.
+	maxPagesPerRun int
 }
 
 type crawlRun struct {
-	visited   map[string]struct{}
-	hostPages map[string]int
-	profiles  map[string]crawladmission.AdmissionProfile
+	visited        map[string]struct{}
+	hostPages      map[string]int
+	profiles       map[string]crawladmission.AdmissionProfile
+	pages          int
+	budgetExceeded bool
 }
 
 type SeededRun struct {
@@ -516,8 +531,20 @@ func (s *frontierState) accept(
 		run.hostPages[host] >= profile.Profile.MaxPagesPerHost {
 		return false
 	}
+	if s.maxPagesPerRun > 0 && run.pages >= s.maxPagesPerRun {
+		if !run.budgetExceeded {
+			run.budgetExceeded = true
+			slog.WarnContext(ctx, msgRunPageBudgetReached,
+				slog.String("runId", runID.String()),
+				slog.Int("maxPagesPerRun", s.maxPagesPerRun),
+			)
+		}
+
+		return false
+	}
 	run.visited[candidate.normURL] = struct{}{}
 	run.hostPages[host]++
+	run.pages++
 	s.completion.Track(runID)
 	s.ready = append(s.ready, crawljob.CrawlJob{
 		URL:                candidate.normURL,

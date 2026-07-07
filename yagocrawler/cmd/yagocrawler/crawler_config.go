@@ -17,6 +17,7 @@ const (
 	EnvWorkers            = "YAGOCRAWLER_WORKERS"
 	EnvMaxHostConcurrency = "YAGOCRAWLER_MAX_HOST_CONCURRENCY"
 	EnvMaxDepth           = "YAGOCRAWLER_MAX_DEPTH"
+	EnvMaxPagesPerRun     = "YAGOCRAWLER_MAX_PAGES_PER_RUN"
 	EnvCrawlDelay         = "YAGOCRAWLER_CRAWL_DELAY"
 	EnvUserAgent          = "YAGOCRAWLER_USER_AGENT"
 	EnvRequestTimeout     = "YAGOCRAWLER_REQUEST_TIMEOUT"
@@ -43,6 +44,7 @@ const (
 	DefaultMaxHostConcurrency       = 2
 	DefaultSitemapURLLimit          = 10000
 	DefaultHostCacheSize            = 4096
+	DefaultMaxPagesPerRun           = 50_000
 )
 
 // DefaultUserAgent brands crawl requests (plain HTTP and robots fetches alike)
@@ -66,6 +68,7 @@ type CrawlConfig struct {
 	MaxDepth           int
 	Scope              yagocrawlcontract.CrawlScope
 	MaxPagesPerHost    int
+	MaxPagesPerRun     int
 	HostCacheSize      int
 	BrowserPath        string
 	BrowserSandbox     bool
@@ -88,6 +91,7 @@ func DefaultCrawlConfig() CrawlConfig {
 		MaxDepth:           2,
 		Scope:              yagocrawlcontract.ScopeDomain,
 		MaxPagesPerHost:    yagocrawlcontract.UnlimitedPagesPerHost,
+		MaxPagesPerRun:     DefaultMaxPagesPerRun,
 		HostCacheSize:      DefaultHostCacheSize,
 	}
 }
@@ -158,11 +162,10 @@ func loadCrawlConfig(getenv func(string) string) (CrawlConfig, error) {
 	}
 	crawl.MaxHostConcurrency = maxHostConcurrency
 
-	depth, err := envPositiveInt(getenv, EnvMaxDepth, crawl.MaxDepth)
+	crawl, err = loadCrawlLimits(getenv, crawl)
 	if err != nil {
 		return CrawlConfig{}, err
 	}
-	crawl.MaxDepth = depth
 
 	delay, err := envDuration(getenv, EnvCrawlDelay, crawl.CrawlDelay)
 	if err != nil {
@@ -215,6 +218,24 @@ func loadCrawlConfig(getenv func(string) string) (CrawlConfig, error) {
 		return CrawlConfig{}, err
 	}
 	crawl.BrowserSandbox = browserSandbox
+
+	return crawl, nil
+}
+
+// loadCrawlLimits reads the bounds on how far and how much one crawl run fetches:
+// the maximum link depth and the whole-run page budget.
+func loadCrawlLimits(getenv func(string) string, crawl CrawlConfig) (CrawlConfig, error) {
+	depth, err := envPositiveInt(getenv, EnvMaxDepth, crawl.MaxDepth)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.MaxDepth = depth
+
+	maxPagesPerRun, err := envNonNegativeInt(getenv, EnvMaxPagesPerRun, crawl.MaxPagesPerRun)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.MaxPagesPerRun = maxPagesPerRun
 
 	return crawl, nil
 }
