@@ -176,7 +176,7 @@ type engine struct {
 
 // errShardContended aborts a fast-path update whose next shard is locked by a
 // concurrent writer; the update retries under the exclusive gate.
-var errShardContended = errors.New("shard contended")
+var errShardContended = fmt.Errorf("shard contended: %w", vault.ErrContended)
 
 // route picks the shard for one record.
 func (e *engine) route(bucket vault.Name, key vault.Key) int {

@@ -236,6 +236,16 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	if err != nil {
 		return err
 	}
+	if !formatparse.Accepts(fetched.URL.String(), fetched.ContentType, job.Formats) {
+		p.observer.FetchFailed()
+		p.tally.Failed(job.Provenance)
+
+		return fmt.Errorf(
+			"content type %q: %w",
+			fetched.ContentType,
+			pagefetch.ErrUnsupportedContentType,
+		)
+	}
 	p.observer.FetchSucceeded(len(fetched.Body))
 	p.tally.Fetched(job.Provenance)
 	page, parsed := formatparse.Parse(

@@ -2,11 +2,16 @@ package urlmeta
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/memvault"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
 func localIdentity() nodeidentity.Identity {
@@ -179,5 +184,150 @@ func TestIntakeSurvivesObserverFailure(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("Count = %d, want 1 despite observer failure", count)
+	}
+}
+
+// contendOnceEngine simulates the shard engine's contention retry: the first
+// update pass sees a contended Put, and — exactly like shardvault — the
+// engine re-runs the callback only when the callback RETURNS the contended
+// error. A callback that swallows it (the STOR-05 bug) commits a pass that
+// silently dropped the row.
+type contendOnceEngine struct {
+	mu      sync.Mutex
+	buckets map[vault.Name]map[string][]byte
+	passes  int
+	retried bool
+}
+
+func newContendOnceEngine() *contendOnceEngine {
+	return &contendOnceEngine{buckets: map[vault.Name]map[string][]byte{}}
+}
+
+func (e *contendOnceEngine) Update(ctx context.Context, fn func(vault.EngineTxn) error) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.passes++
+	txn := plainTxn{engine: e}
+	var err error
+	if e.passes == 1 {
+		err = fn(contendedTxn{plainTxn: txn})
+	} else {
+		err = fn(txn)
+	}
+	if err != nil && errors.Is(err, vault.ErrContended) {
+		e.retried = true
+		e.mu.Unlock()
+		defer e.mu.Lock()
+
+		return e.Update(ctx, fn)
+	}
+
+	return err
+}
+
+func (e *contendOnceEngine) View(_ context.Context, fn func(vault.EngineTxn) error) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return fn(plainTxn{engine: e})
+}
+
+func (e *contendOnceEngine) Provision(name vault.Name) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.buckets[name] == nil {
+		e.buckets[name] = map[string][]byte{}
+	}
+
+	return nil
+}
+
+func (e *contendOnceEngine) UsedBytes(context.Context) (int64, error) { return 0, nil }
+func (e *contendOnceEngine) QuotaBytes() int64                        { return 0 }
+func (e *contendOnceEngine) Close() error                             { return nil }
+
+type plainTxn struct{ engine *contendOnceEngine }
+
+func (t plainTxn) Writable() bool { return true }
+
+func (t plainTxn) Bucket(name vault.Name) vault.EngineBucket {
+	if t.engine.buckets[name] == nil {
+		t.engine.buckets[name] = map[string][]byte{}
+	}
+
+	return plainBucket{data: t.engine.buckets[name]}
+}
+
+type plainBucket struct{ data map[string][]byte }
+
+func (b plainBucket) Get(key vault.Key) []byte { return b.data[string(key)] }
+
+func (b plainBucket) Put(key vault.Key, value []byte) error {
+	b.data[string(key)] = append([]byte(nil), value...)
+
+	return nil
+}
+
+func (b plainBucket) Delete(key vault.Key) error {
+	delete(b.data, string(key))
+
+	return nil
+}
+
+func (b plainBucket) Scan(prefix vault.Key, fn func(vault.Key, []byte) (bool, error)) error {
+	for key, value := range b.data {
+		if len(prefix) > 0 && !strings.HasPrefix(key, string(prefix)) {
+			continue
+		}
+		if ok, err := fn(vault.Key(key), value); !ok || err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+type contendedTxn struct{ plainTxn }
+
+func (t contendedTxn) Bucket(name vault.Name) vault.EngineBucket {
+	return contendedBucket{EngineBucket: t.plainTxn.Bucket(name)}
+}
+
+type contendedBucket struct{ vault.EngineBucket }
+
+func (contendedBucket) Put(vault.Key, []byte) error {
+	return fmt.Errorf("shard contended: %w", vault.ErrContended)
+}
+
+// TestIntakeRetriesContendedStoreInsteadOfDropping pins STOR-05: a contended
+// Put must propagate out of the update callback so the engine's exclusive
+// retry runs — the row lands on the second pass instead of being discarded.
+func TestIntakeRetriesContendedStoreInsteadOfDropping(t *testing.T) {
+	engine := newContendOnceEngine()
+	store, err := vault.New(engine)
+	if err != nil {
+		t.Fatalf("vault.New: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	directory, _, receiver, err := Open(store)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	row := urlRow(t, "contended-row")
+
+	receipt, err := receiver.Receive(context.Background(), []yagomodel.URIMetadataRow{row})
+	if err != nil {
+		t.Fatalf("Receive: %v", err)
+	}
+	if len(receipt.ErrorURL) != 0 {
+		t.Fatalf("row reported rejected despite retryable contention: %+v", receipt)
+	}
+	if !engine.retried {
+		t.Fatal("the contended pass must trigger the engine retry")
+	}
+	rows, err := directory.RowsByHash(context.Background(), []yagomodel.Hash{rowHash(t, row)})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("row missing after retry: rows=%d err=%v", len(rows), err)
 	}
 }

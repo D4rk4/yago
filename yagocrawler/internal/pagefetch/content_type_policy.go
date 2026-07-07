@@ -5,7 +5,11 @@ import (
 	"strings"
 )
 
-// AllowedContentType reports whether a fetched document's Content-Type is one the
+// AllowedContentType reports whether a rendered document's Content-Type is one the
+// BROWSER fetcher may return — the headless browser produces HTML, so anything
+// else coming out of it is a render failure. The plain HTTP fetcher accepts
+// every type; per-job filtering happens in the pipeline against the format
+// registry (CRAWL-17). It also reports whether a fetched document's Content-Type is one the
 // crawler will parse and index. The crawler only handles HTML, so non-HTML media
 // (PDF, images, archives, and so on) are rejected. It is the single MIME policy
 // shared by the fast HTTP fetch path and the browser fallback, so neither can

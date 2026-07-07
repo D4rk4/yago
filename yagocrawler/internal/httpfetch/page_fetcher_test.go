@@ -170,43 +170,52 @@ func TestPageFetcherRejectsNonSuccessStatus(t *testing.T) {
 	}
 }
 
-func TestPageFetcherRejectsNonHTMLContentType(t *testing.T) {
+// TestPageFetcherPassesNonHTMLContentTypes pins CRAWL-17: the HTTP fetcher no
+// longer filters by content type — a PDF (or any type) leaves the fetcher
+// with its body and declared type intact; the per-job format registry decides
+// downstream.
+func TestPageFetcherPassesNonHTMLContentTypes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true}`))
+		w.Header().Set("Content-Type", "application/pdf")
+		_, _ = w.Write([]byte("%PDF-1.4 fake"))
 	}))
 	defer server.Close()
 
-	_, err := httpfetch.NewPageFetcher(
+	page, err := httpfetch.NewPageFetcher(
 		server.Client(),
 		"",
 		0,
 	).Fetch(context.Background(), mustParse(t, server.URL))
-	if !errors.Is(err, pagefetch.ErrUnsupportedContentType) {
-		t.Fatalf("error = %v, want unsupported content type", err)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
 	}
-	if !errors.Is(err, pagefetch.ErrPageRejected) {
-		t.Fatalf("error = %v, unsupported content type must remain a page rejection", err)
+	if page.ContentType != "application/pdf" || string(page.Body) != "%PDF-1.4 fake" {
+		t.Fatalf("page = %q %q", page.ContentType, page.Body)
 	}
 }
 
-func TestPageFetcherRejectsEmptyContentType(t *testing.T) {
+// TestPageFetcherSniffsMissingContentType pins the header-less path: the
+// fetcher sniffs a type from the body instead of rejecting, and an empty
+// body without a header yields the sniffer's default.
+func TestPageFetcherSniffsMissingContentType(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header()["Content-Type"] = nil
+		_, _ = w.Write([]byte("<html><body>hi</body></html>"))
 	}))
 	defer server.Close()
 
-	_, err := httpfetch.NewPageFetcher(
+	page, err := httpfetch.NewPageFetcher(
 		server.Client(),
 		"",
 		0,
 	).Fetch(context.Background(), mustParse(t, server.URL))
-	if !errors.Is(err, pagefetch.ErrPageRejected) {
-		t.Fatalf("error = %v, want page rejected", err)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
 	}
-}
+	if !strings.HasPrefix(page.ContentType, "text/html") {
+		t.Fatalf("sniffed type = %q", page.ContentType)
+	}
 
-func TestPageFetcherRejectsEmptyBodyWithoutContentType(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(
 		func(request *http.Request) (*http.Response, error) {
 			return &http.Response{
@@ -217,14 +226,16 @@ func TestPageFetcherRejectsEmptyBodyWithoutContentType(t *testing.T) {
 			}, nil
 		},
 	)}
-
-	_, err := httpfetch.NewPageFetcher(
+	empty, err := httpfetch.NewPageFetcher(
 		client,
 		"",
 		0,
 	).Fetch(context.Background(), mustParse(t, "https://example.com/"))
-	if !errors.Is(err, pagefetch.ErrPageRejected) {
-		t.Fatalf("error = %v, want page rejected", err)
+	if err != nil {
+		t.Fatalf("empty-body fetch: %v", err)
+	}
+	if empty.ContentType == "" {
+		t.Fatal("sniffer must supply a fallback content type")
 	}
 }
 

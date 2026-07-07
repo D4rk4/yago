@@ -79,6 +79,12 @@ func (i urlIntake) store(
 			continue
 		}
 		if err := i.collection.Put(tx, key, row); err != nil {
+			// A contended shard is a retryable abort: returning it lets the
+			// engine re-run this whole update under its exclusive gate
+			// (STOR-05). Swallowing it here silently dropped inbound rows.
+			if errors.Is(err, vault.ErrContended) {
+				return nil, nil, fmt.Errorf("store url metadata: %w", err)
+			}
 			rejected = append(rejected, hash.Hash())
 			slog.WarnContext(ctx, urlRowDiscarded,
 				slog.String("reason", "store failed"),

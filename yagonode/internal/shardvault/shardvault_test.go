@@ -1038,3 +1038,13 @@ func TestContendedUpdateRetriesUnderTheExclusiveGate(t *testing.T) {
 		t.Fatalf("view: %v", viewErr)
 	}
 }
+
+// TestContentionErrorCarriesVaultSentinel pins STOR-05: the internal
+// contention abort is recognizable by callbacks through the exported vault
+// sentinel, so they can propagate it for the exclusive-gate retry instead of
+// swallowing a retryable abort as data loss.
+func TestContentionErrorCarriesVaultSentinel(t *testing.T) {
+	if !errors.Is(errShardContended, vault.ErrContended) {
+		t.Fatal("errShardContended must wrap vault.ErrContended")
+	}
+}

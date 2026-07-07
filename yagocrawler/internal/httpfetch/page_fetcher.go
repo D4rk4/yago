@@ -69,14 +69,11 @@ func (f *PageFetcher) Fetch(
 	if err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("read body: %w", err)
 	}
+	// Every content type leaves the fetcher: the format-parser registry
+	// decides downstream what the job's toggles accept (CRAWL-17). The body
+	// is already read at this point, so filtering here saved nothing and
+	// silently cut every non-HTML format family off from the crawl.
 	contentType := responseContentType(response.Header.Get("Content-Type"), body)
-	if !pagefetch.AllowedContentType(contentType) {
-		return pagefetch.FetchedPage{}, fmt.Errorf(
-			"content type %q: %w",
-			contentType,
-			pagefetch.ErrUnsupportedContentType,
-		)
-	}
 
 	finalURL := target
 	if response.Request != nil && response.Request.URL != nil {
@@ -108,9 +105,6 @@ func readBody(body io.Reader, maxBytes int64) ([]byte, error) {
 func responseContentType(header string, body []byte) string {
 	if strings.TrimSpace(header) != "" {
 		return header
-	}
-	if len(body) == 0 {
-		return ""
 	}
 	return http.DetectContentType(body)
 }
