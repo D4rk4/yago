@@ -6,8 +6,6 @@ allow:
   deepScan: false
 
 components:
-  searchdocument:
-    in: internal/searchdocument/**
   elasticsearchindex:
     in: internal/elasticsearchindex/**
   pageintake:
@@ -20,6 +18,10 @@ vendors:
     in:
       - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract
       - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract/**
+  searchdocument:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/searchdocument
+      - github.com/nikitakarpei/yacy-rwi-node/searchdocument/**
   nats:
     in:
       - github.com/nats-io/nats.go
@@ -29,17 +31,12 @@ vendors:
       - github.com/nats-io/nats-server/v2/server
 
 deps:
-  searchdocument:
-    mayDependOn:
-      - searchdocument
-    canUse:
-      - yacycrawlcontract
   elasticsearchindex:
     mayDependOn:
       - elasticsearchindex
-      - searchdocument
     canUse:
       - yacycrawlcontract
+      - searchdocument
   pageintake:
     mayDependOn:
       - pageintake

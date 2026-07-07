@@ -1,16 +1,15 @@
-package searchdocument_test
+package elasticsearchindex
 
 import (
 	"testing"
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/searchdocument"
 )
 
-func TestFromCrawledPageMapsFields(t *testing.T) {
+func TestCrawledPageDocumentMapsFields(t *testing.T) {
 	crawledAt := time.Date(2026, 7, 4, 0, 0, 0, 0, time.UTC)
-	doc := searchdocument.FromCrawledPage(yacycrawlcontract.CrawledPage{
+	doc := crawledPageDocument(yacycrawlcontract.CrawledPage{
 		CanonicalURL: "https://example.com/",
 		Title:        "Hi",
 		Text:         "words here",

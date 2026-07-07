@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nikitakarpei/yacy-rwi-node/searchdocument"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/elasticsearchindex"
-	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/searchdocument"
 )
 
 func TestElasticsearchIndexPutsDocumentByID(t *testing.T) {
 	var gotPath string
-	var gotDoc searchdocument.SearchDocument
+	var gotDoc searchdocument.Document
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		if err := json.NewDecoder(r.Body).Decode(&gotDoc); err != nil {

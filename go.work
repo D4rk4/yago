@@ -1,6 +1,7 @@
 go 1.26
 
 use (
+	./searchdocument
 	./yacycrawlcontract
 	./yacycrawler
 	./yacymodel

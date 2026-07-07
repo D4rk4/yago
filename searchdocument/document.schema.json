@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nikitakarpei/yacy-rwi-node/searchdocument/document.schema.json",
+  "title": "search document",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "url", "content", "crawled_at", "language"],
+  "properties": {
+    "title": { "type": "string" },
+    "url": { "type": "string", "format": "uri" },
+    "content": { "type": "string" },
+    "crawled_at": { "type": "string", "format": "date-time" },
+    "language": { "type": "string" }
+  }
+}
