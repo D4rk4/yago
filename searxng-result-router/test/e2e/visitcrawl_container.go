@@ -11,6 +11,9 @@ import (
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/natsjetstream"
 )
 
 const (
@@ -29,7 +32,7 @@ func startVisitcrawl(t *testing.T, ctx context.Context, networkName string) stri
 			Networks:       []string{networkName},
 			NetworkAliases: map[string][]string{networkName: {visitcrawlAlias}},
 			Env: map[string]string{
-				"NATS_URL":  natsNetworkURL(),
+				"NATS_URL":  natsjetstream.NetworkURL(),
 				"LOG_LEVEL": "debug",
 			},
 			WaitingFor: wait.ForHTTP("/visit").
@@ -42,7 +45,7 @@ func startVisitcrawl(t *testing.T, ctx context.Context, networkName string) stri
 		t.Fatalf("start visitcrawl container: %v", err)
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-	dumpLogsOnFailure(t, "visitcrawl", container)
+	containerlog.DumpOnFailure(t, "visitcrawl", container)
 
 	host, err := container.Host(ctx)
 	if err != nil {

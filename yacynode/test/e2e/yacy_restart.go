@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/testcontainers/testcontainers-go"
+
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/hermeticnetwork"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/pollwait"
 )
 
 func restartYaCy(
@@ -24,8 +27,8 @@ func restartYaCy(
 	if err := container.Start(ctx); err != nil {
 		t.Fatalf("restart yacy: %v", err)
 	}
-	yacyURL := hostURL(t, ctx, container)
-	if !waitFor(60*time.Second, func() bool {
+	yacyURL := hermeticnetwork.HostURL(t, ctx, container, httpPort)
+	if !pollwait.For(60*time.Second, func() bool {
 		return probe.OK(ctx, yacyURL+"/yacy/query.html?object=rwicount")
 	}) {
 		t.Fatal("YaCy never became reachable after restart")

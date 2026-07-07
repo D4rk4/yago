@@ -12,6 +12,10 @@ import (
 	dockercontainer "github.com/docker/docker/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
 
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/egressproxy"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/hermeticnetwork"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/pollwait"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
@@ -45,7 +49,7 @@ func startNode(
 		"YACY_DATA_DIR":          "/tmp/data",
 		"YACY_ANNOUNCE_INTERVAL": "10s",
 		"YACY_GREETS_PER_CYCLE":  strconv.Itoa(dhtMinConnectedPeers + 8),
-		"YACY_PROXY_URL":         egressProxyNetworkURL(),
+		"YACY_PROXY_URL":         egressproxy.NetworkURL(),
 		"LOG_LEVEL":              "debug",
 	}
 	if cfg.seedlistURL != "" {
@@ -72,9 +76,9 @@ func startNode(
 		t.Fatalf("start node container from Dockerfile: %v", err)
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-	dumpLogsOnFailure(t, "node", container)
-	nodeURL := hostURL(t, ctx, container)
-	if !waitFor(20*time.Second, func() bool {
+	containerlog.DumpOnFailure(t, "node", container)
+	nodeURL := hermeticnetwork.HostURL(t, ctx, container, httpPort)
+	if !pollwait.For(20*time.Second, func() bool {
 		return probe.OK(ctx, nodeURL+"/yacy/query.html?object=rwicount")
 	}) {
 		t.Fatalf("node %s never became reachable from the host", cfg.alias)

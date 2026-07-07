@@ -10,6 +10,8 @@ import (
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
 )
 
 const (
@@ -42,7 +44,7 @@ func startElasticsearch(t *testing.T, ctx context.Context, networkName string) s
 		t.Fatalf("start elasticsearch container %s: %v", elasticsearchImage, err)
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-	dumpLogsOnFailure(t, "elasticsearch", container)
+	containerlog.DumpOnFailure(t, "elasticsearch", container)
 
 	host, err := container.Host(ctx)
 	if err != nil {

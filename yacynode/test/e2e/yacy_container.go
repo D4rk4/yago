@@ -11,6 +11,10 @@ import (
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/hermeticnetwork"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/pollwait"
 )
 
 const defaultYaCyImage = "docker.io/yacy/yacy_search_server:latest"
@@ -59,9 +63,9 @@ func startYaCy(
 		t.Fatalf("start YaCy container %s: %v", image, err)
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-	dumpLogsOnFailure(t, "yacy", container)
-	yacyURL := hostURL(t, ctx, container)
-	if !waitFor(60*time.Second, func() bool {
+	containerlog.DumpOnFailure(t, "yacy", container)
+	yacyURL := hermeticnetwork.HostURL(t, ctx, container, httpPort)
+	if !pollwait.For(60*time.Second, func() bool {
 		return probe.OK(ctx, yacyURL+"/yacy/query.html?object=rwicount")
 	}) {
 		t.Fatal("YaCy never became reachable from the host")

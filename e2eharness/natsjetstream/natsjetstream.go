@@ -1,6 +1,6 @@
 //go:build e2e
 
-package e2e
+package natsjetstream
 
 import (
 	"context"
@@ -10,44 +10,46 @@ import (
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
 )
 
 const (
-	natsImage = "docker.io/library/nats:2.10-alpine"
-	natsAlias = "nats"
-	natsPort  = "4222/tcp"
+	image = "docker.io/library/nats:2.10-alpine"
+	alias = "nats"
+	port  = "4222/tcp"
 )
 
-func startNATS(t *testing.T, ctx context.Context, networkName string) string {
+func Start(t *testing.T, ctx context.Context, networkName string) string {
 	t.Helper()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		Started: true,
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:          natsImage,
+			Image:          image,
 			Cmd:            []string{"--jetstream"},
-			ExposedPorts:   []string{natsPort},
+			ExposedPorts:   []string{port},
 			Networks:       []string{networkName},
-			NetworkAliases: map[string][]string{networkName: {natsAlias}},
+			NetworkAliases: map[string][]string{networkName: {alias}},
 			WaitingFor:     wait.ForLog("Server is ready").WithStartupTimeout(time.Minute),
 		},
 	})
 	if err != nil {
-		t.Fatalf("start NATS container %s: %v", natsImage, err)
+		t.Fatalf("start NATS container %s: %v", image, err)
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-	dumpLogsOnFailure(t, "nats", container)
+	containerlog.DumpOnFailure(t, "nats", container)
 
 	host, err := container.Host(ctx)
 	if err != nil {
 		t.Fatalf("resolve NATS host: %v", err)
 	}
-	port, err := container.MappedPort(ctx, natsPort)
+	mappedPort, err := container.MappedPort(ctx, port)
 	if err != nil {
 		t.Fatalf("resolve NATS mapped port: %v", err)
 	}
-	return "nats://" + net.JoinHostPort(host, port.Port())
+	return "nats://" + net.JoinHostPort(host, mappedPort.Port())
 }
 
-func natsNetworkURL() string {
-	return "nats://" + natsAlias + ":4222"
+func NetworkURL() string {
+	return "nats://" + alias + ":4222"
 }

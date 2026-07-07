@@ -8,6 +8,9 @@ import (
 	"testing"
 
 	"github.com/testcontainers/testcontainers-go"
+
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/natsjetstream"
 )
 
 const (
@@ -29,7 +32,7 @@ func startNode(t *testing.T, ctx context.Context, networkName string) {
 				"YACY_PEER_HASH":      nodePeerHash,
 				"YACY_PEER_NAME":      nodeAlias,
 				"YACY_ADVERTISE_HOST": nodeAlias,
-				"NATS_URL":            natsNetworkURL(),
+				"NATS_URL":            natsjetstream.NetworkURL(),
 				"LOG_LEVEL":           "debug",
 			},
 		},
@@ -38,7 +41,7 @@ func startNode(t *testing.T, ctx context.Context, networkName string) {
 		t.Fatalf("start node container: %v", err)
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-	dumpLogsOnFailure(t, "node", container)
+	containerlog.DumpOnFailure(t, "node", container)
 }
 
 func nodeImage(t *testing.T) string {

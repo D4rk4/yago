@@ -6,17 +6,20 @@ import (
 	"context"
 	"testing"
 
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/dockernetwork"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/egressproxy"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/natsjetstream"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 )
 
 func TestCrawlerIsOrderDrivenEndToEnd(t *testing.T) {
 	ctx := context.Background()
 
-	network := newNetwork(t, ctx)
+	network := dockernetwork.New(t, ctx)
 
-	natsURL := startNATS(t, ctx, network.Name)
+	natsURL := natsjetstream.Start(t, ctx, network.Name)
 	originURL := startOrigin(t, ctx, network.Name)
-	startEgressProxy(t, ctx, network.Name)
+	egressproxy.Start(t, ctx, network.Name)
 	startCrawler(t, ctx, network.Name)
 
 	js := connectJetStream(t, natsURL)

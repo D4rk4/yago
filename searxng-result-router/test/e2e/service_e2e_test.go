@@ -8,14 +8,17 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/dockernetwork"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/natsjetstream"
 )
 
 func TestResultLinkRouterRoutesSearchResultsThroughVisitcrawl(t *testing.T) {
 	ctx := context.Background()
 
-	network := newNetwork(t, ctx)
+	network := dockernetwork.New(t, ctx)
 
-	natsURL := startNATS(t, ctx, network.Name)
+	natsURL := natsjetstream.Start(t, ctx, network.Name)
 	startOrigin(t, ctx, network.Name)
 	visitcrawlBaseURL := startVisitcrawl(t, ctx, network.Name)
 	searxngBaseURL := startSearXNG(t, ctx, network.Name, visitcrawlBaseURL)

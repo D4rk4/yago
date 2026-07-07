@@ -8,6 +8,9 @@ import (
 	"testing"
 
 	"github.com/testcontainers/testcontainers-go"
+
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/natsjetstream"
 )
 
 const (
@@ -24,7 +27,7 @@ func startTextIndexer(t *testing.T, ctx context.Context, networkName string) {
 			Networks:       []string{networkName},
 			NetworkAliases: map[string][]string{networkName: {textIndexerAlias}},
 			Env: map[string]string{
-				"NATS_URL":                  natsNetworkURL(),
+				"NATS_URL":                  natsjetstream.NetworkURL(),
 				"NATS_CRAWLED_PAGE_SUBJECT": crawledPageSubject,
 				"ELASTICSEARCH_URL":         elasticsearchNetworkURL(),
 				"ELASTICSEARCH_INDEX":       elasticsearchIndex,
@@ -35,7 +38,7 @@ func startTextIndexer(t *testing.T, ctx context.Context, networkName string) {
 		t.Fatalf("start textindexer container: %v", err)
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-	dumpLogsOnFailure(t, "textindexer", container)
+	containerlog.DumpOnFailure(t, "textindexer", container)
 }
 
 func textIndexerImage(t *testing.T) string {

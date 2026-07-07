@@ -12,6 +12,8 @@ import (
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
 )
 
 const (
@@ -124,7 +126,7 @@ func startSearXNG(
 		t.Fatalf("start searxng container %s: %v", searxngImage, err)
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-	dumpLogsOnFailure(t, "searxng", container)
+	containerlog.DumpOnFailure(t, "searxng", container)
 
 	host, err := container.Host(ctx)
 	if err != nil {

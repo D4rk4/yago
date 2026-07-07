@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/egressproxy"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/hermeticnetwork"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/pollwait"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
@@ -16,9 +19,9 @@ func TestRealYaCyTransfersRWIToFleet(t *testing.T) {
 	ctx := context.Background()
 	probe := newHTTPProbe(t)
 
-	network := newHermeticNetwork(t, ctx)
+	network := hermeticnetwork.New(t, ctx)
 
-	startEgressProxy(t, ctx, network.Name)
+	egressproxy.Start(t, ctx, network.Name)
 
 	yacyContainer, yacyURL := startYaCy(t, ctx, probe, network.Name, transferYaCyAlias)
 
@@ -35,7 +38,7 @@ func TestRealYaCyTransfersRWIToFleet(t *testing.T) {
 
 	yacyURL = restartYaCy(t, ctx, probe, yacyContainer)
 
-	received := waitFor(180*time.Second, func() bool {
+	received := pollwait.For(180*time.Second, func() bool {
 		for _, node := range fleet {
 			rwiCount, rwiOK := peerQueryCount(
 				ctx,

@@ -1,6 +1,6 @@
 //go:build e2e
 
-package e2e
+package dockernetwork
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	tcnetwork "github.com/testcontainers/testcontainers-go/network"
 )
 
-func newNetwork(t *testing.T, ctx context.Context) *testcontainers.DockerNetwork {
+func New(t *testing.T, ctx context.Context) *testcontainers.DockerNetwork {
 	t.Helper()
 	network, err := tcnetwork.New(ctx)
 	if err != nil {

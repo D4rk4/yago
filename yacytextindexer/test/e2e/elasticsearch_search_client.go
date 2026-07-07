@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/pollwait"
 )
 
 type searchHit struct {
@@ -31,7 +33,7 @@ func waitForIndexedHit(
 ) searchHit {
 	t.Helper()
 	var found searchHit
-	ok := waitFor(30*time.Second, func() bool {
+	ok := pollwait.For(30*time.Second, func() bool {
 		hit, ok := searchOnce(t, ctx, elasticsearchURL, expectedURL)
 		if !ok {
 			return false

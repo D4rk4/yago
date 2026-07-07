@@ -10,6 +10,8 @@ import (
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
 )
 
 const (
@@ -41,6 +43,6 @@ func startOrigin(t *testing.T, ctx context.Context, networkName string) string {
 		t.Fatalf("start origin container %s: %v", originImage, err)
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-	dumpLogsOnFailure(t, "origin", container)
+	containerlog.DumpOnFailure(t, "origin", container)
 	return "http://" + originAlias + "/"
 }

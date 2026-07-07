@@ -8,6 +8,10 @@ import (
 	"testing"
 
 	"github.com/testcontainers/testcontainers-go"
+
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/egressproxy"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/natsjetstream"
 )
 
 const (
@@ -24,8 +28,8 @@ func startCrawler(t *testing.T, ctx context.Context, networkName string) {
 			Networks:       []string{networkName},
 			NetworkAliases: map[string][]string{networkName: {crawlerAlias}},
 			Env: map[string]string{
-				"NATS_URL":                      natsNetworkURL(),
-				"YACYCRAWLER_PROXY_URL":         egressProxyNetworkURL(),
+				"NATS_URL":                      natsjetstream.NetworkURL(),
+				"YACYCRAWLER_PROXY_URL":         egressproxy.NetworkURL(),
 				"YACYCRAWLER_FETCH_CONCURRENCY": "1",
 				"LOG_LEVEL":                     "debug",
 			},
@@ -35,7 +39,7 @@ func startCrawler(t *testing.T, ctx context.Context, networkName string) {
 		t.Fatalf("start crawler container: %v", err)
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-	dumpLogsOnFailure(t, "crawler", container)
+	containerlog.DumpOnFailure(t, "crawler", container)
 }
 
 func crawlerImage(t *testing.T) string {

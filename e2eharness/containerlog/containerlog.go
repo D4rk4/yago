@@ -1,6 +1,6 @@
 //go:build e2e
 
-package e2e
+package containerlog
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 )
 
-func dumpLogsOnFailure(t *testing.T, label string, container testcontainers.Container) {
+func DumpOnFailure(t *testing.T, label string, container testcontainers.Container) {
 	t.Helper()
 	t.Cleanup(func() {
 		if !t.Failed() {

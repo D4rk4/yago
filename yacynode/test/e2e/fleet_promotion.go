@@ -6,6 +6,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/pollwait"
 )
 
 func waitFleetSenior(
@@ -17,7 +19,7 @@ func waitFleetSenior(
 	timeout time.Duration,
 ) {
 	t.Helper()
-	if waitFor(timeout, func() bool {
+	if pollwait.For(timeout, func() bool {
 		result := probe.Get(ctx, yacyURL+"/yacy/seedlist.xml")
 		if !result.ok {
 			return false
@@ -54,7 +56,7 @@ func waitFleetActiveConnected(
 	for _, node := range fleet {
 		hashes[node.hash.String()] = struct{}{}
 	}
-	if waitFor(timeout, func() bool {
+	if pollwait.For(timeout, func() bool {
 		result := probe.Get(ctx, yacyURL+"/Network.xml?page=1&maxCount=1000")
 		if !result.ok {
 			return false

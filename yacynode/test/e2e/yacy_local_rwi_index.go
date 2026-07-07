@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/pollwait"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
@@ -23,7 +24,7 @@ func waitYaCyLocalRWIs(
 ) {
 	t.Helper()
 	last := -1
-	if waitFor(timeout, func() bool {
+	if pollwait.For(timeout, func() bool {
 		count, ok := peerQueryCount(ctx, probe, yacyURL, yacyHash, yacyproto.ObjectRWICount)
 		if !ok {
 			return false

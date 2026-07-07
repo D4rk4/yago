@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/egressproxy"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/hermeticnetwork"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/pollwait"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
@@ -20,9 +23,9 @@ func TestRealYaCyPromotesNodeToSenior(t *testing.T) {
 	ctx := context.Background()
 	probe := newHTTPProbe(t)
 
-	network := newHermeticNetwork(t, ctx)
+	network := hermeticnetwork.New(t, ctx)
 
-	startEgressProxy(t, ctx, network.Name)
+	egressproxy.Start(t, ctx, network.Name)
 
 	_, yacyURL := startYaCy(t, ctx, probe, network.Name, yacyAlias)
 
@@ -33,7 +36,7 @@ func TestRealYaCyPromotesNodeToSenior(t *testing.T) {
 		seedlistURL: "http://" + yacyAlias + ":" + nodeContainerPort + "/yacy/seedlist.html",
 	})
 
-	if !waitFor(15*time.Second, func() bool {
+	if !pollwait.For(15*time.Second, func() bool {
 		result := probe.Get(ctx, yacyURL+"/Network.xml?page=1&maxCount=1000")
 		if !result.ok {
 			return false
@@ -48,7 +51,7 @@ func TestRealYaCyPromotesNodeToSenior(t *testing.T) {
 		t.Fatalf("YaCy never saw node hash %s as an active connected peer", nodeHash)
 	}
 
-	promoted := waitFor(45*time.Second, func() bool {
+	promoted := pollwait.For(45*time.Second, func() bool {
 		result := probe.Get(ctx, yacyURL+"/yacy/seedlist.xml")
 		if !result.ok {
 			return false
