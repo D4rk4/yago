@@ -14,12 +14,34 @@ type RankingWeights struct {
 	// HostRank scales the local host-authority boost (YBR-style block rank) folded
 	// into a result's score after retrieval. It is a post-retrieval multiplier, not
 	// a text-field boost, so it does not count toward the relevance-weight
-	// requirement below. Zero (the default) disables the host-authority signal.
+	// requirement below. Zero disables the host-authority signal.
 	HostRank float64 `json:"hostRank"`
+	// Freshness scales the recency prior folded into a result's score after
+	// retrieval: a dated document gains up to Freshness×exp(−ln2·age/half-life)
+	// on top of its relevance, so newer pages win ties without burying the
+	// archive (undated documents keep their score). Zero disables it.
+	Freshness float64 `json:"freshness"`
 }
 
 func DefaultRankingWeights() RankingWeights {
-	return RankingWeights{Title: 4, Headings: 3, Anchors: 2, Body: 1, URL: 1}
+	// Text-field weights follow BM25F practice (title ≫ headings ≫ anchors ≫
+	// body); the post-retrieval priors default ON — host authority (YBR) and a
+	// gentle freshness decay — because relevance alone cannot break ties in a
+	// small federated corpus (SEARCH-38).
+	// Field weights sit in the practical BM25F range from the TREC-13 web
+	// track (title and anchor text far above body; Robertson & Zaragoza,
+	// CIKM 2004): anchor text is what OTHER pages call this one — for
+	// navigational queries it outranks the page's own body by an order of
+	// magnitude in tuned systems.
+	return RankingWeights{
+		Title:     6,
+		Headings:  3,
+		Anchors:   4,
+		Body:      1,
+		URL:       2,
+		HostRank:  0.3,
+		Freshness: 0.2,
+	}
 }
 
 func (w RankingWeights) Validate() error {
@@ -48,11 +70,16 @@ func (w RankingWeights) Validate() error {
 	if !positive {
 		return fmt.Errorf("at least one ranking weight must be positive")
 	}
-	if math.IsNaN(w.HostRank) || math.IsInf(w.HostRank, 0) {
-		return fmt.Errorf("ranking weight hostRank must be a finite number")
-	}
-	if w.HostRank < 0 {
-		return fmt.Errorf("ranking weight hostRank must not be negative")
+	for _, prior := range []struct {
+		name  string
+		value float64
+	}{{"hostRank", w.HostRank}, {"freshness", w.Freshness}} {
+		if math.IsNaN(prior.value) || math.IsInf(prior.value, 0) {
+			return fmt.Errorf("ranking weight %s must be a finite number", prior.name)
+		}
+		if prior.value < 0 {
+			return fmt.Errorf("ranking weight %s must not be negative", prior.name)
+		}
 	}
 
 	return nil

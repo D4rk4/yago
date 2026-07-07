@@ -87,11 +87,6 @@ func requestWindow(req Request) Request {
 	return window
 }
 
-// calibratedRemoteResults maps remote scores, which the remote searcher emits
-// in [0, 1] from the local ranking profile, onto the local score scale so
-// neither source dominates the merge by scale alone: a perfect remote profile
-// match ranks with the best local hit. Without local scores the remote order
-// already stands on its own.
 func resultIdentity(result Result) string {
 	if result.URLHash != "" {
 		return "hash:" + result.URLHash

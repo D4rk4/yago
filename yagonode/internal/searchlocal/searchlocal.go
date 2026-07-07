@@ -3,11 +3,13 @@ package searchlocal
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/url"
 	"path"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
@@ -171,27 +173,57 @@ func coreResults(
 	return diversifyByHost(out, defaultMaxResultsPerHost), nil
 }
 
-// hostRankScorer folds this node's local host-authority table into result scores:
-// a result on host h is multiplied by 1 + weight*rank(h). Unknown hosts rank 0,
-// so they keep their relevance score unchanged.
+// hostRankScorer folds the query-independent document priors into result
+// scores after retrieval (SEARCH-38): host authority (YBR block rank), a
+// freshness decay over the document date, and a saturating URL-length prior
+// (Kraaij, Westerveld & Hiemstra, SIGIR 2002: root-like URLs are far likelier
+// entry pages; Zaragoza's TREC-13 static feature w·k/(k+len)). Each prior is
+// additive inside one multiplier, so relevance stays dominant:
+//
+//	score ×= 1 + wHost·rank(host) + wFresh·2^(−age/halfLife) + urlPrior(path)
+//
+// Undated documents skip the freshness term rather than being punished.
 type hostRankScorer struct {
-	weight float64
-	table  hostrank.Table
+	hostWeight  float64
+	freshWeight float64
+	table       hostrank.Table
+	now         time.Time
 }
 
-// hostRankScorer returns a scorer only when a host-authority table is wired and
-// the live ranking profile enables it with a positive HostRank weight; otherwise
-// it returns nil and rescore is a no-op.
+// freshnessHalfLife is the age at which the recency prior halves; half a year
+// keeps news-ish pages ahead without burying a reference archive.
+const freshnessHalfLife = 180 * 24 * time.Hour
+
+// URL-length prior constants: weight and saturation length in path runes
+// (k≈20 chars per the TREC-13 static feature).
+const (
+	urlPriorWeight = 0.1
+	urlPriorK      = 20.0
+)
+
+// hostRankScorer returns a scorer when any prior is enabled by the live
+// ranking profile; with every prior weight at zero it returns nil and rescore
+// is a no-op.
 func (s localSearcher) hostRankScorer() *hostRankScorer {
-	if s.weights == nil || s.hostRank == nil {
+	if s.weights == nil {
 		return nil
 	}
-	weight := s.weights().HostRank
-	if weight <= 0 {
+	weights := s.weights()
+	scorer := &hostRankScorer{
+		hostWeight:  weights.HostRank,
+		freshWeight: weights.Freshness,
+		now:         time.Now(),
+	}
+	// The host table is consulted only when its weight enables it, so a
+	// profile with host authority off pays no table snapshot.
+	if scorer.hostWeight > 0 && s.hostRank != nil {
+		scorer.table = s.hostRank()
+	}
+	if scorer.table == nil && scorer.freshWeight <= 0 {
 		return nil
 	}
 
-	return &hostRankScorer{weight: weight, table: s.hostRank()}
+	return scorer
 }
 
 func (h *hostRankScorer) rescore(results []searchcore.Result) {
@@ -199,11 +231,42 @@ func (h *hostRankScorer) rescore(results []searchcore.Result) {
 		return
 	}
 	for i := range results {
-		results[i].Score *= 1 + h.weight*h.table.Rank(hostHashOf(results[i].URL))
+		results[i].Score *= 1 + h.priors(results[i])
 	}
 	sort.SliceStable(results, func(i, j int) bool {
 		return results[i].Score > results[j].Score
 	})
+}
+
+// priors sums the enabled query-independent bonuses for one result.
+func (h *hostRankScorer) priors(result searchcore.Result) float64 {
+	total := urlLengthPrior(result.URL)
+	if h.hostWeight > 0 && h.table != nil {
+		total += h.hostWeight * h.table.Rank(hostHashOf(result.URL))
+	}
+	if h.freshWeight > 0 {
+		if published, err := time.Parse("20060102", result.Date); err == nil {
+			age := h.now.Sub(published)
+			if age < 0 {
+				age = 0
+			}
+			total += h.freshWeight * math.Exp2(-age.Hours()/freshnessHalfLife.Hours())
+		}
+	}
+
+	return total
+}
+
+// urlLengthPrior is the saturating root-URL bonus: an empty or short path
+// earns up to urlPriorWeight, a deep path almost nothing.
+func urlLengthPrior(rawURL string) float64 {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return 0
+	}
+	pathLen := float64(len(strings.Trim(parsed.Path, "/")))
+
+	return urlPriorWeight * urlPriorK / (urlPriorK + pathLen)
 }
 
 // hostHashOf derives the YaCy host hash of rawURL the same way the host-link graph

@@ -218,7 +218,14 @@ func bleveSearchQuery(req SearchRequest, gram bool, multilingual bool) blevequer
 		main = requiredTermsQuery(req, analyzers, weights)
 	}
 	phrases := phraseBoosts(req.Phrases, weights, primary)
-	if len(req.ExcludeTerms) == 0 && len(phrases) == 0 {
+	// Term-dependency boosts (SDM, Metzler & Croft 2005): documents where
+	// adjacent query words appear as an ordered pair outrank bags of the same
+	// words. The fuzzy recovery path skips them — its terms are approximate.
+	var bigrams []blevequery.Query
+	if !req.Fuzzy {
+		bigrams = sdmBigramBoosts(req.Terms, weights, primary)
+	}
+	if len(req.ExcludeTerms) == 0 && len(phrases) == 0 && len(bigrams) == 0 {
 		return main
 	}
 
@@ -226,6 +233,9 @@ func bleveSearchQuery(req SearchRequest, gram bool, multilingual bool) blevequer
 	query.AddMust(main)
 	for _, phrase := range phrases {
 		query.AddShould(phrase)
+	}
+	for _, bigram := range bigrams {
+		query.AddShould(bigram)
 	}
 	for _, term := range req.ExcludeTerms {
 		term = strings.TrimSpace(term)
