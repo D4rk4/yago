@@ -1,6 +1,7 @@
 package yagonode
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -181,5 +182,66 @@ func TestRobotsPolicySettingRoundTrips(t *testing.T) {
 	var nilToggles *runtimeToggles
 	if got := nilToggles.RobotsPolicy(); string(got) != "no-serp" {
 		t.Fatalf("nil toggles policy = %q", got)
+	}
+}
+
+// TestSearchRateSettingsRoundTrip pins UI-20 (SearchAccessRate_p parity):
+// each tier setting edits its own field, untouched fields keep the shipped
+// defaults, and a zero-valued config resolves to the defaults.
+func TestSearchRateSettingsRoundTrip(t *testing.T) {
+	definitions := map[string]settingDefinition{}
+	for _, definition := range extendedSettingDefinitions() {
+		definitions[definition.key] = definition
+	}
+	burst, ok := definitions["search.rate.burst"]
+	if !ok {
+		t.Fatal("search.rate.burst missing from the catalog")
+	}
+	if got := burst.defaultValue(nodeConfig{}); got != "10" {
+		t.Fatalf("default burst = %q, want shipped default", got)
+	}
+	applied := burst.apply(nodeConfig{}, "25")
+	if applied.SearchRate.Per3Seconds != 25 || applied.SearchRate.PerMinute != 60 ||
+		applied.SearchRate.Per10Minutes != 300 {
+		t.Fatalf("apply = %+v", applied.SearchRate)
+	}
+	applied = definitions["search.rate.minute"].apply(applied, "120")
+	if applied.SearchRate.Per3Seconds != 25 || applied.SearchRate.PerMinute != 120 {
+		t.Fatalf("second apply lost the first: %+v", applied.SearchRate)
+	}
+	if _, err := definitions["search.rate.ten_minutes"].normalize("0"); err == nil {
+		t.Fatal("zero limit must be rejected")
+	}
+}
+
+// TestPortalGreetingSetting pins UI-21: the name normalizes, rejects markup,
+// applies to the config, and flips the live toggle.
+func TestPortalGreetingSetting(t *testing.T) {
+	var definition settingDefinition
+	for _, candidate := range allRuntimeSettingDefinitions() {
+		if candidate.key == "portal.greeting" {
+			definition = candidate
+		}
+	}
+	if definition.key == "" {
+		t.Fatal("portal.greeting missing from the catalog")
+	}
+	if normalized, err := definition.normalize("  My Library  "); err != nil ||
+		normalized != "My Library" {
+		t.Fatalf("normalize = %q %v", normalized, err)
+	}
+	if _, err := definition.normalize("<script>"); err == nil {
+		t.Fatal("markup must be rejected")
+	}
+	if _, err := definition.normalize(strings.Repeat("x", 61)); err == nil {
+		t.Fatal("over-long name must be rejected")
+	}
+	toggles := newRuntimeToggles(nodeConfig{})
+	definition.applyLive(toggles, "My Library")
+	if toggles.PortalGreeting() != "My Library" {
+		t.Fatalf("live apply = %q", toggles.PortalGreeting())
+	}
+	if definition.apply(nodeConfig{}, "My Library").PortalGreeting != "My Library" {
+		t.Fatal("config apply lost the value")
 	}
 }

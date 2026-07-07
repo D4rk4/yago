@@ -15,6 +15,7 @@ type runtimeToggles struct {
 	httpsRedirect atomic.Bool
 	publicBaseURL atomic.Value
 	robotsPolicy  atomic.Value
+	greeting      atomic.Value
 }
 
 func newRuntimeToggles(config nodeConfig) *runtimeToggles {
@@ -23,8 +24,24 @@ func newRuntimeToggles(config nodeConfig) *runtimeToggles {
 	toggles.httpsRedirect.Store(config.HTTPSRedirect)
 	toggles.publicBaseURL.Store(config.PublicBaseURL)
 	toggles.robotsPolicy.Store(string(publicrobots.ParsePolicy(config.RobotsPolicy)))
+	toggles.greeting.Store(config.PortalGreeting)
 
 	return toggles
+}
+
+// PortalGreeting is the live operator-chosen portal name ("" = default brand).
+func (t *runtimeToggles) PortalGreeting() string {
+	if t == nil {
+		return ""
+	}
+	value, _ := t.greeting.Load().(string)
+
+	return value
+}
+
+// SetPortalGreeting renames the portal without a restart.
+func (t *runtimeToggles) SetPortalGreeting(value string) {
+	t.greeting.Store(value)
 }
 
 // RobotsPolicy is the live foreign-crawler policy for the public listener.

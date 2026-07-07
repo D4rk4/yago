@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/publicratelimit"
 	"github.com/D4rk4/yago/yagonode/internal/searchremote"
 	"github.com/D4rk4/yago/yagoproto"
 )
@@ -106,6 +107,8 @@ type nodeConfig struct {
 	RemotePeerTimeout     time.Duration
 	RemoteTimeout         time.Duration
 	RobotsPolicy          string
+	PortalGreeting        string
+	SearchRate            publicratelimit.Tiers
 	LANDiscovery          bool
 	PeerHTTPSPreferred    bool
 	SwarmSeed             swarmSeedConfig

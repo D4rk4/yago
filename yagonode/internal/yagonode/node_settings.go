@@ -85,6 +85,13 @@ func runtimeSettingDefinitions() []settingDefinition {
 				toggles.SetHTTPSRedirect(value == settingBoolTrue)
 			},
 		},
+	}
+}
+
+// publicSurfaceDefinitions groups the live public-listener knobs added by the
+// UI-GAP review (robots policy UI-15, portal name UI-21).
+func publicSurfaceDefinitions() []settingDefinition {
+	return []settingDefinition{
 		{
 			key:         "web.robots.policy",
 			title:       "Robots policy",
@@ -105,6 +112,23 @@ func runtimeSettingDefinitions() []settingDefinition {
 			},
 			applyLive: func(toggles *runtimeToggles, value string) {
 				toggles.SetRobotsPolicy(value)
+			},
+		},
+		{
+			key:         "portal.greeting",
+			title:       "Portal name",
+			description: "Display name shown on the public search portal (empty keeps the default brand).",
+			defaultValue: func(config nodeConfig) string {
+				return config.PortalGreeting
+			},
+			normalize: normalizePortalGreeting,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.PortalGreeting = value
+
+				return config
+			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				toggles.SetPortalGreeting(value)
 			},
 		},
 		{
@@ -131,7 +155,9 @@ func runtimeSettingDefinitions() []settingDefinition {
 // allRuntimeSettingDefinitions is the console's full editable catalog: the
 // live-appliable core plus the extended environment settings.
 func allRuntimeSettingDefinitions() []settingDefinition {
-	return append(runtimeSettingDefinitions(), extendedSettingDefinitions()...)
+	definitions := append(runtimeSettingDefinitions(), publicSurfaceDefinitions()...)
+
+	return append(definitions, extendedSettingDefinitions()...)
 }
 
 func boolSettingOptions() []settingOption {
@@ -197,4 +223,17 @@ func normalizeRobotsPolicy(raw string) (string, error) {
 	default:
 		return "", fmt.Errorf("value must be no-serp, open, or closed")
 	}
+}
+
+// normalizePortalGreeting bounds the portal name to one plain-text line.
+func normalizePortalGreeting(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if len([]rune(value)) > 60 {
+		return "", fmt.Errorf("value must be at most 60 characters")
+	}
+	if strings.ContainsAny(value, "<>\n\r") {
+		return "", fmt.Errorf("value must be plain text without angle brackets")
+	}
+
+	return value, nil
 }

@@ -212,7 +212,7 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	dom := portalDom(r.URL.Query().Get("dom"))
 	page := parsePortalPage(r.URL.Query().Get("p"))
-	data := portalData{Brand: brand, Query: query, Dom: dom, NewTab: p.newTab}
+	data := portalData{Brand: portalBrand(), Query: query, Dom: dom, NewTab: p.newTab}
 
 	if query != "" {
 		data.RSSURL = formatURL("/yacysearch.rss", query)

@@ -100,6 +100,7 @@ func parityGapDefinitions() []settingDefinition {
 	definitions = append(definitions, swarmPresenceDefinitions()...)
 	definitions = append(definitions, dhtDefinitions()...)
 	definitions = append(definitions, webFallbackTuningDefinitions()...)
+	definitions = append(definitions, searchRateDefinitions()...)
 
 	return append(definitions, perimeterDefinitions()...)
 }

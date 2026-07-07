@@ -302,7 +302,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	// tiers); authenticated keys and the local operator get raised limits.
 	limitedPublic := publicratelimit.Wrap(
 		publicMux,
-		publicratelimit.NewLimiter(publicratelimit.DefaultPublicTiers()),
+		publicratelimit.NewLimiter(searchRateTiers(in.config.SearchRate)),
 		searchAccessPolicy(publicSearchAssembly{
 			searchAuthorizer: in.telemetry.searchAuthorizer,
 			searchAPIKey:     in.config.SearchAPIKey,

@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/D4rk4/yago/yagonode/internal/publicratelimit"
 )
 
 // This file closes the CFG-02 parity gaps the operator review found: every
@@ -460,4 +462,65 @@ func formatIPNets(nets []*net.IPNet) string {
 	}
 
 	return strings.Join(parts, ",")
+}
+
+// searchRateTiers falls back to the shipped defaults when the operator has
+// not tuned the public search rate limits.
+func searchRateTiers(configured publicratelimit.Tiers) publicratelimit.Tiers {
+	if configured.Per3Seconds > 0 && configured.PerMinute > 0 && configured.Per10Minutes > 0 {
+		return configured
+	}
+
+	return publicratelimit.DefaultPublicTiers()
+}
+
+// searchRateDefinitions exposes the public-search rate limits — YaCy's
+// SearchAccessRate_p parity (UI-20). Authenticated callers keep their 10x
+// multiplier on top of whatever the operator sets here.
+func searchRateDefinitions() []settingDefinition {
+	tiers := []struct {
+		key, title, description string
+		read                    func(t publicratelimit.Tiers) int
+		write                   func(t *publicratelimit.Tiers, v int)
+	}{
+		{
+			"search.rate.burst", "Search burst limit",
+			"Anonymous searches allowed per 3 seconds per client.",
+			func(t publicratelimit.Tiers) int { return t.Per3Seconds },
+			func(t *publicratelimit.Tiers, v int) { t.Per3Seconds = v },
+		},
+		{
+			"search.rate.minute", "Search per-minute limit",
+			"Anonymous searches allowed per minute per client.",
+			func(t publicratelimit.Tiers) int { return t.PerMinute },
+			func(t *publicratelimit.Tiers, v int) { t.PerMinute = v },
+		},
+		{
+			"search.rate.ten_minutes", "Search 10-minute limit",
+			"Anonymous searches allowed per ten minutes per client.",
+			func(t publicratelimit.Tiers) int { return t.Per10Minutes },
+			func(t *publicratelimit.Tiers, v int) { t.Per10Minutes = v },
+		},
+	}
+	definitions := make([]settingDefinition, 0, len(tiers))
+	for _, tier := range tiers {
+		definitions = append(definitions, settingDefinition{
+			key:         tier.key,
+			title:       tier.title,
+			description: tier.description,
+			defaultValue: func(config nodeConfig) string {
+				return strconv.Itoa(tier.read(searchRateTiers(config.SearchRate)))
+			},
+			normalize: normalizePositiveInt,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				parsed, _ := strconv.Atoi(value)
+				config.SearchRate = searchRateTiers(config.SearchRate)
+				tier.write(&config.SearchRate, parsed)
+
+				return config
+			},
+		})
+	}
+
+	return definitions
 }
