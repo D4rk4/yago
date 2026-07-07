@@ -1,19 +1,11 @@
 services:
-  nats:
-    image: nats:2.14.2
-    restart: unless-stopped
-    command: ["-js"]
-    ports:
-      - "4222:4222"
-
   yacy-rwi-node:
     build:
-      context: .
+      context: ../..
       dockerfile: yacynode/Dockerfile
     image: yacy-rwi-node:latest
     restart: unless-stopped
     depends_on:
-      - nats
       - smokescreen
     ports:
       - "8090:8090"
@@ -30,7 +22,6 @@ services:
         http://yacy.v16.de/seed/seed.txt,
         https://frank-siebert.de/seed.txt,
         http://seedlist.wertewesten.net/seed.txt
-      NATS_URL: nats://nats:4222
       YACY_PROXY_URL: http://smokescreen:4750
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
@@ -41,35 +32,6 @@ services:
     image: pretix/smokescreen:latest
     restart: unless-stopped
     command: ["--listen-ip", "0.0.0.0"]
-
-  yacycrawler:
-    build:
-      context: .
-      dockerfile: yacycrawler/Dockerfile
-    image: yacycrawler:latest
-    restart: unless-stopped
-    depends_on:
-      - nats
-      - smokescreen
-    environment:
-      NATS_URL: nats://nats:4222
-      YACYCRAWLER_PROXY_URL: http://smokescreen:4750
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-
-  yacyvisitcrawl:
-    build:
-      context: .
-      dockerfile: yacyvisitcrawl/Dockerfile
-    image: yacyvisitcrawl:latest
-    restart: unless-stopped
-    depends_on:
-      - nats
-    ports:
-      - "8091:8091"
-      - "9091:9091"
-    environment:
-      NATS_URL: nats://nats:4222
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
 volumes:
   yacy-data:
