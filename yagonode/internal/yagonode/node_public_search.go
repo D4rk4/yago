@@ -60,6 +60,7 @@ type publicSearchAssembly struct {
 	swarmMorphology      bool
 	wordForms            func() *wordforms.Expander
 	swarmSeed            swarmSeedConfig
+	autocrawlerCrawl     seedCrawlOptions
 	linksNewTab          bool
 }
 
@@ -325,6 +326,7 @@ func assemblePublicSearcher(
 					name:     swarmSeedProfileName,
 					depth:    assembly.swarmSeed.SeedDepth,
 					maxPages: assembly.swarmSeed.SeedMaxPages,
+					options:  assembly.autocrawlerCrawl,
 				},
 			),
 			assembly.storage.documentDirectory,
@@ -430,6 +432,7 @@ func withWebFallback(
 			assembly.storage.documentDirectory,
 			assembly.identity.Hash,
 			config,
+			assembly.autocrawlerCrawl,
 		)))
 	}
 

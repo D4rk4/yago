@@ -126,7 +126,8 @@ func settingCategory(key string) string {
 		return "Swarm"
 	case strings.HasPrefix(key, "network."):
 		return "Network & peers"
-	case strings.HasPrefix(key, "crawl."):
+	case strings.HasPrefix(key, "autocrawler."),
+		strings.HasPrefix(key, "crawl."):
 		return "Crawler"
 	case strings.HasPrefix(key, "extract."):
 		return "Extraction"

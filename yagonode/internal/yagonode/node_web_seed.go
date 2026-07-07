@@ -19,11 +19,13 @@ const (
 )
 
 // seedProfile names a crawl-seeding source and bounds how far its
-// conservative, domain-scoped orders may crawl.
+// conservative, domain-scoped orders may crawl. options carries the per-crawl
+// fetch policy the autocrawler applies to every seeded order.
 type seedProfile struct {
 	name     string
 	depth    int
 	maxPages int
+	options  seedCrawlOptions
 }
 
 // webCrawlSeeder publishes conservative crawl orders for URLs the web-search
@@ -43,11 +45,13 @@ func newWebCrawlSeeder(
 	documents documentstore.DocumentDirectory,
 	initiator yagomodel.Hash,
 	config webFallbackConfig,
+	options seedCrawlOptions,
 ) *webCrawlSeeder {
 	return newCrawlSeeder(queue, documents, initiator, seedProfile{
 		name:     webSeedProfileName,
 		depth:    config.SeedDepth,
 		maxPages: config.SeedMaxPages,
+		options:  options,
 	})
 }
 
@@ -58,11 +62,16 @@ func newCrawlSeeder(
 	seed seedProfile,
 ) *webCrawlSeeder {
 	profile := yagocrawlcontract.NewCrawlProfile(yagocrawlcontract.CrawlProfile{
-		Name:            seed.name,
-		Scope:           yagocrawlcontract.ScopeDomain,
-		URLMustMatch:    yagocrawlcontract.MatchAll,
-		MaxDepth:        seed.depth,
-		MaxPagesPerHost: seed.maxPages,
+		Name:                seed.name,
+		Scope:               yagocrawlcontract.ScopeDomain,
+		URLMustMatch:        yagocrawlcontract.MatchAll,
+		MaxDepth:            seed.depth,
+		MaxPagesPerHost:     seed.maxPages,
+		AllowQueryURLs:      seed.options.AllowQueryURLs,
+		IgnoreTLSAuthority:  seed.options.IgnoreTLSAuthority,
+		IgnoreRobots:        seed.options.IgnoreRobots,
+		DisableBrowser:      seed.options.DisableBrowser,
+		FollowNoFollowLinks: seed.options.FollowNoFollowLinks,
 	})
 
 	return &webCrawlSeeder{

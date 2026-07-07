@@ -513,6 +513,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("POST "+restartPath, c.handleRestartAction)
 	c.mux.HandleFunc("GET "+autocrawlerPath, c.handleAutocrawler)
 	c.mux.HandleFunc("POST "+autocrawlerPath, c.handleAutocrawlerUpdate)
+	c.mux.HandleFunc("POST "+autocrawlerPath+"/formats", c.handleAutocrawlerFormats)
 	c.mux.HandleFunc("GET "+performancePath, c.handlePerformance)
 	c.mux.HandleFunc("GET "+activityPath, c.handleActivity)
 

@@ -112,6 +112,7 @@ type nodeConfig struct {
 	LANDiscovery          bool
 	PeerHTTPSPreferred    bool
 	SwarmSeed             swarmSeedConfig
+	AutocrawlerCrawl      seedCrawlOptions
 	DeclaredBirthDate     time.Time
 	Crawl                 crawlConfig
 	Admin                 adminConfig
@@ -202,6 +203,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		RemoteTimeout:         derived.remoteTimeout,
 		PeerHTTPSPreferred:    derived.peerHTTPSPreferred,
 		SwarmSeed:             derived.swarmSeed,
+		AutocrawlerCrawl:      defaultSeedCrawlOptions(),
 		DeclaredBirthDate:     derived.birthDate,
 		DHT:                   derived.dht,
 		WebFallback:           derived.webFallback,
@@ -249,6 +251,24 @@ const (
 	defaultSwarmSeedMaxPages  = 20
 	maxSwarmSeedDepth         = 8
 )
+
+// seedCrawlOptions carries the per-crawl toggles the autocrawler's automatic
+// crawls (swarm greedy-learning and web-fallback discovery) honor, mirroring
+// the manual crawler's options so both discovery paths obey the same fetch
+// policy. AllowQueryURLs and IgnoreTLSAuthority default on to match the manual
+// crawler defaults; the rest stay off until an operator opts in.
+type seedCrawlOptions struct {
+	AllowQueryURLs      bool
+	IgnoreTLSAuthority  bool
+	IgnoreRobots        bool
+	DisableBrowser      bool
+	FollowNoFollowLinks bool
+}
+
+// defaultSeedCrawlOptions returns the autocrawler's shipped crawl policy.
+func defaultSeedCrawlOptions() seedCrawlOptions {
+	return seedCrawlOptions{AllowQueryURLs: true, IgnoreTLSAuthority: true}
+}
 
 func loadSwarmSeedConfig(getenv func(string) string) (swarmSeedConfig, error) {
 	enabled, err := boolEnv(getenv, envSwarmSeedCrawl, false)

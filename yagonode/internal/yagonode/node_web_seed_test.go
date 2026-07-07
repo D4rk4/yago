@@ -46,7 +46,7 @@ func TestWebCrawlSeederPublishesUnknownURLs(t *testing.T) {
 	seeder := newWebCrawlSeeder(queue, docs, yagomodel.Hash("node"), webFallbackConfig{
 		SeedDepth:    1,
 		SeedMaxPages: 20,
-	})
+	}, seedCrawlOptions{})
 
 	seeder.Seed(context.Background(), []string{
 		"https://fresh.example/page#frag",

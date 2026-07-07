@@ -147,6 +147,7 @@ func TestWebCrawlSeederLogsPublishFailure(t *testing.T) {
 		fakeSeedDocuments{},
 		yagomodel.Hash("node"),
 		webFallbackConfig{SeedDepth: 0, SeedMaxPages: 1},
+		seedCrawlOptions{},
 	)
 	seeder.Seed(context.Background(), []string{"https://unknown.example/"})
 }

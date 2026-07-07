@@ -3,6 +3,7 @@ package adminui
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -90,6 +91,102 @@ func TestAutocrawlerUpdateAcceptsOwnKeysOnly(t *testing.T) {
 	})
 	if foreign.status != http.StatusNotFound {
 		t.Fatalf("foreign key = %d, want 404", foreign.status)
+	}
+}
+
+func TestAutocrawlerUpdateAcceptsCrawlOptionKeys(t *testing.T) {
+	t.Parallel()
+
+	settings := autocrawlerTestSettings()
+	console := New(Options{Settings: settings})
+	for _, key := range []string{
+		"autocrawler.crawl.query_urls",
+		"autocrawler.crawl.tls_insecure",
+		"autocrawler.crawl.ignore_robots",
+		"autocrawler.crawl.no_browser",
+		"autocrawler.crawl.follow_nofollow",
+	} {
+		posted := doPost(t, console, "/admin/autocrawler", url.Values{
+			"key": {key}, "value": {"true"},
+		})
+		if posted.status == http.StatusNotFound {
+			t.Fatalf("%s rejected as a foreign key", key)
+		}
+		if settings.got.Key != key {
+			t.Fatalf("change key = %q, want %q", settings.got.Key, key)
+		}
+	}
+}
+
+func TestAutocrawlerRendersFormatToggles(t *testing.T) {
+	t.Parallel()
+
+	formats := &fakeFormats{current: FormatSettings{Text: true, PDF: true}}
+	console := New(Options{Settings: autocrawlerTestSettings(), CrawlFormats: formats})
+	got := do(t, console, "/admin/autocrawler")
+	for _, want := range []string{
+		"Document formats", `name="text" checked`, `name="pdf" checked`,
+		`action="/admin/autocrawler/formats"`, `name="archives"`,
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("autocrawler page missing %q", want)
+		}
+	}
+	if strings.Contains(got.body, `name="archives" checked`) {
+		t.Fatal("archives rendered checked while off")
+	}
+}
+
+func TestAutocrawlerSavesFormatToggles(t *testing.T) {
+	t.Parallel()
+
+	formats := &fakeFormats{}
+	console := New(Options{Settings: autocrawlerTestSettings(), CrawlFormats: formats})
+	got := doPost(t, console, "/admin/autocrawler/formats", url.Values{
+		"text": {"on"}, "images": {"on"},
+	})
+	if got.status != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", got.status)
+	}
+	if loc := got.header.Get("Location"); loc != autocrawlerPath {
+		t.Fatalf("redirect = %q, want %q", loc, autocrawlerPath)
+	}
+	if formats.saved == nil || !formats.saved.Text || !formats.saved.Images ||
+		formats.saved.PDF || formats.saved.Archives {
+		t.Fatalf("saved = %+v", formats.saved)
+	}
+
+	bare := New(Options{Settings: autocrawlerTestSettings()})
+	if got := doPost(
+		t,
+		bare,
+		"/admin/autocrawler/formats",
+		url.Values{},
+	); got.status != http.StatusNotFound {
+		t.Fatalf("formats save without source = %d, want 404", got.status)
+	}
+}
+
+func TestAutocrawlerFormatsErrorPaths(t *testing.T) {
+	t.Parallel()
+
+	failing := &fakeFormats{err: context.DeadlineExceeded}
+	console := New(Options{Settings: autocrawlerTestSettings(), CrawlFormats: failing})
+	got := doPost(t, console, "/admin/autocrawler/formats", url.Values{"text": {"on"}})
+	if got.status != http.StatusOK ||
+		!strings.Contains(got.body, "Saving format settings failed.") {
+		t.Fatalf("save failure = %d, want rendered note", got.status)
+	}
+
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost, "/admin/autocrawler/formats",
+		strings.NewReader("%zz"),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	console.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("malformed body = %d, want 400", rec.Code)
 	}
 }
 

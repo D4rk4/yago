@@ -88,8 +88,8 @@ func extendedSettingDefinitions() []settingDefinition {
 	definitions = append(definitions, extendedGrowthDefinitions()...)
 
 	definitions = append(definitions, autocrawlerDefinitions()...)
-
 	definitions = append(definitions, webDiscoveryDefinitions()...)
+	definitions = append(definitions, autocrawlerCrawlOptionDefinitions()...)
 
 	return append(definitions, parityGapDefinitions()...)
 }
@@ -177,6 +177,49 @@ func autocrawlerDefinitions() []settingDefinition {
 				return config
 			},
 		},
+	}
+}
+
+// autocrawlerCrawlOptionDefinitions surface the per-crawl fetch policy the
+// autocrawler applies to its automatic crawls, mirroring the manual crawler's
+// options in the crawler's order so both discovery paths obey one policy.
+func autocrawlerCrawlOptionDefinitions() []settingDefinition {
+	return []settingDefinition{
+		boolSettingDefinition(
+			"autocrawler.crawl.query_urls",
+			"Crawl URLs with query parameters",
+			"Crawl URLs that carry query parameters (?...) instead of skipping them.",
+			func(config nodeConfig) bool { return config.AutocrawlerCrawl.AllowQueryURLs },
+			func(config *nodeConfig, value bool) { config.AutocrawlerCrawl.AllowQueryURLs = value },
+		),
+		boolSettingDefinition(
+			"autocrawler.crawl.tls_insecure",
+			"Ignore SSL certificate authority",
+			"Accept mis-chained or untrusted TLS certificates when fetching.",
+			func(config nodeConfig) bool { return config.AutocrawlerCrawl.IgnoreTLSAuthority },
+			func(config *nodeConfig, value bool) { config.AutocrawlerCrawl.IgnoreTLSAuthority = value },
+		),
+		boolSettingDefinition(
+			"autocrawler.crawl.ignore_robots",
+			"Ignore robots.txt",
+			"Crawl hosts even when robots.txt would disallow it (operator confirms authorisation).",
+			func(config nodeConfig) bool { return config.AutocrawlerCrawl.IgnoreRobots },
+			func(config *nodeConfig, value bool) { config.AutocrawlerCrawl.IgnoreRobots = value },
+		),
+		boolSettingDefinition(
+			"autocrawler.crawl.no_browser",
+			"Disable browser rendering",
+			"Fetch pages over plain HTTP only, without headless-browser rendering.",
+			func(config nodeConfig) bool { return config.AutocrawlerCrawl.DisableBrowser },
+			func(config *nodeConfig, value bool) { config.AutocrawlerCrawl.DisableBrowser = value },
+		),
+		boolSettingDefinition(
+			"autocrawler.crawl.follow_nofollow",
+			"Follow rel=nofollow links",
+			"Follow links marked rel=nofollow when expanding a crawl.",
+			func(config nodeConfig) bool { return config.AutocrawlerCrawl.FollowNoFollowLinks },
+			func(config *nodeConfig, value bool) { config.AutocrawlerCrawl.FollowNoFollowLinks = value },
+		),
 	}
 }
 

@@ -218,20 +218,21 @@ func TestSettingCategory(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]string{
-		"peer.name":                 "General",
-		"network.advertise.host":    "Network & peers",
-		"network.lan_discovery":     "Network & peers",
-		"search.links.newtab":       "Search",
-		"swarm.morphology.enabled":  "Swarm",
-		"crawl.ingest.quality_gate": "Crawler",
-		"extract.fetch.enabled":     "Extraction",
-		"metrics.enabled":           "Monitoring",
-		"web.fallback.backend":      "Web fallback",
-		"web.robots.policy":         "Public portal",
-		"portal.enabled":            "Public portal",
-		"public.base.url":           "Public portal",
-		"https.redirect":            "Public portal",
-		"unknown.key":               "General",
+		"peer.name":                    "General",
+		"network.advertise.host":       "Network & peers",
+		"network.lan_discovery":        "Network & peers",
+		"search.links.newtab":          "Search",
+		"swarm.morphology.enabled":     "Swarm",
+		"crawl.ingest.quality_gate":    "Crawler",
+		"autocrawler.crawl.query_urls": "Crawler",
+		"extract.fetch.enabled":        "Extraction",
+		"metrics.enabled":              "Monitoring",
+		"web.fallback.backend":         "Web fallback",
+		"web.robots.policy":            "Public portal",
+		"portal.enabled":               "Public portal",
+		"public.base.url":              "Public portal",
+		"https.redirect":               "Public portal",
+		"unknown.key":                  "General",
 	}
 	for key, want := range cases {
 		if got := settingCategory(key); got != want {

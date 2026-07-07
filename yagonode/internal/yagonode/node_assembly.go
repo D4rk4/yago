@@ -289,6 +289,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		indexRemoteResults: in.config.IndexRemoteResults,
 		swarmMorphology:    in.config.SwarmMorphology,
 		swarmSeed:          in.config.SwarmSeed,
+		autocrawlerCrawl:   in.config.AutocrawlerCrawl,
 		linksNewTab:        in.config.SearchLinksNewTab,
 	})
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
@@ -301,7 +302,6 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		client:      in.peerClient,
 		observer:    tallyOutboundObserver{next: in.telemetry.dhtOutbound, tally: in.tally},
 	})
-
 	// The public search paths throttle per client (YaCy search.public.max.access
 	// tiers); authenticated keys and the local operator get raised limits.
 	limitedPublic := publicratelimit.Wrap(
