@@ -1,16 +1,17 @@
 //go:build e2e
 
-package e2e
+// Package peerdirectory parses YaCy's peer-directory XML views (seedlist,
+// network) into hash sets.
+package peerdirectory
 
 import (
 	"bytes"
 	"encoding/xml"
 	"io"
-	"strconv"
 	"strings"
 )
 
-func seedlistSeniorHashes(body []byte) (map[string]struct{}, error) {
+func SeniorHashes(body []byte) (map[string]struct{}, error) {
 	var doc struct {
 		Seeds []struct {
 			Hash     string `xml:"Hash"`
@@ -29,7 +30,7 @@ func seedlistSeniorHashes(body []byte) (map[string]struct{}, error) {
 	return out, nil
 }
 
-func networkActivePeerHashes(body []byte) (map[string]struct{}, error) {
+func ActivePeerHashes(body []byte) (map[string]struct{}, error) {
 	decoder := xml.NewDecoder(bytes.NewReader(body))
 	out := map[string]struct{}{}
 	for {
@@ -54,17 +55,4 @@ func networkActivePeerHashes(body []byte) (map[string]struct{}, error) {
 		}
 	}
 	return out, nil
-}
-
-func queryResponseCount(body string) (int, bool) {
-	for _, line := range strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n") {
-		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "response="); ok {
-			n, err := strconv.Atoi(strings.TrimSpace(value))
-			if err != nil {
-				return 0, false
-			}
-			return n, true
-		}
-	}
-	return 0, false
 }

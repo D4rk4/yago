@@ -4,7 +4,6 @@ package e2e
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/testcontainers/testcontainers-go"
@@ -12,6 +11,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/egressproxy"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/natsjetstream"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/requiredimage"
 )
 
 const (
@@ -44,12 +44,5 @@ func startCrawler(t *testing.T, ctx context.Context, networkName string) {
 
 func crawlerImage(t *testing.T) string {
 	t.Helper()
-	image := os.Getenv(envCrawlerImage)
-	if image == "" {
-		t.Fatalf(
-			"%s is not set; build the crawler image first (run via `make e2e`)",
-			envCrawlerImage,
-		)
-	}
-	return image
+	return requiredimage.FromEnv(t, envCrawlerImage, "crawler", "e2e")
 }

@@ -1,6 +1,6 @@
 //go:build e2e
 
-package e2e
+package httpprobe
 
 import (
 	"context"
@@ -12,48 +12,48 @@ import (
 	"time"
 )
 
-type httpProbe struct {
+type Probe struct {
 	t        testing.TB
 	client   *http.Client
 	failDiag map[string]string
 }
 
-type probeResult struct {
-	ok          bool
-	body        string
-	httpStatus  int
-	contentType string
-	errMsg      string
+type Result struct {
+	OK          bool
+	Body        string
+	HTTPStatus  int
+	ContentType string
+	ErrMsg      string
 }
 
-func newHTTPProbe(t testing.TB) *httpProbe {
+func New(t testing.TB) *Probe {
 	t.Helper()
-	return &httpProbe{
+	return &Probe{
 		t:        t,
 		client:   &http.Client{Timeout: 15 * time.Second},
 		failDiag: map[string]string{},
 	}
 }
 
-func (p *httpProbe) Get(ctx context.Context, url string) probeResult {
+func (p *Probe) Get(ctx context.Context, url string) Result {
 	p.t.Helper()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return probeResult{errMsg: err.Error()}
+		return Result{ErrMsg: err.Error()}
 	}
 	return p.do(req)
 }
 
-func (p *httpProbe) OK(ctx context.Context, url string) bool {
+func (p *Probe) OK(ctx context.Context, url string) bool {
 	p.t.Helper()
-	return p.Get(ctx, url).ok
+	return p.Get(ctx, url).OK
 }
 
-func (p *httpProbe) PostRaw(ctx context.Context, url, body string, headers ...string) probeResult {
+func (p *Probe) PostRaw(ctx context.Context, url, body string, headers ...string) Result {
 	p.t.Helper()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
 	if err != nil {
-		return probeResult{errMsg: err.Error()}
+		return Result{ErrMsg: err.Error()}
 	}
 	for _, header := range headers {
 		if name, value, found := strings.Cut(header, ":"); found {
@@ -63,48 +63,48 @@ func (p *httpProbe) PostRaw(ctx context.Context, url, body string, headers ...st
 	return p.do(req)
 }
 
-func (p *httpProbe) do(req *http.Request) probeResult {
+func (p *Probe) do(req *http.Request) Result {
 	p.t.Helper()
-	var result probeResult
+	var result Result
 	resp, err := p.client.Do(req)
 	if err != nil {
-		result = probeResult{errMsg: err.Error()}
+		result = Result{ErrMsg: err.Error()}
 	} else {
 		raw, readErr := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		result = probeResult{
-			body:        string(raw),
-			httpStatus:  resp.StatusCode,
-			contentType: resp.Header.Get("Content-Type"),
+		result = Result{
+			Body:        string(raw),
+			HTTPStatus:  resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
 		}
 		switch {
 		case readErr != nil:
-			result.errMsg = "read body: " + readErr.Error()
+			result.ErrMsg = "read body: " + readErr.Error()
 		case resp.StatusCode < 200 || resp.StatusCode >= 300:
-			result.errMsg = "non-2xx status"
+			result.ErrMsg = "non-2xx status"
 		default:
-			result.ok = true
+			result.OK = true
 		}
 	}
 	p.logFailureChanged(req.URL.String(), result)
 	return result
 }
 
-func (p *httpProbe) logFailureChanged(url string, result probeResult) {
-	if result.ok {
+func (p *Probe) logFailureChanged(url string, result Result) {
+	if result.OK {
 		delete(p.failDiag, url)
 		return
 	}
-	diag := result.diag()
+	diag := result.Diag()
 	if p.failDiag[url] != diag {
 		p.t.Logf("e2e probe failed url=%s %s", url, diag)
 		p.failDiag[url] = diag
 	}
 }
 
-func (r probeResult) diag() string {
+func (r Result) Diag() string {
 	return fmt.Sprintf("http_status=%d content_type=%q err=%q body_preview=%q",
-		r.httpStatus, r.contentType, r.errMsg, shortPreview(r.body))
+		r.HTTPStatus, r.ContentType, r.ErrMsg, shortPreview(r.Body))
 }
 
 func shortPreview(body string) string {

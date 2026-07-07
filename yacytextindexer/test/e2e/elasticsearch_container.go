@@ -4,7 +4,6 @@ package e2e
 
 import (
 	"context"
-	"net"
 	"testing"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerurl"
 )
 
 const (
@@ -45,16 +45,7 @@ func startElasticsearch(t *testing.T, ctx context.Context, networkName string) s
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
 	containerlog.DumpOnFailure(t, "elasticsearch", container)
-
-	host, err := container.Host(ctx)
-	if err != nil {
-		t.Fatalf("resolve elasticsearch host: %v", err)
-	}
-	port, err := container.MappedPort(ctx, elasticsearchPort)
-	if err != nil {
-		t.Fatalf("resolve elasticsearch mapped port: %v", err)
-	}
-	return "http://" + net.JoinHostPort(host, port.Port())
+	return containerurl.HostURL(t, ctx, container, elasticsearchPort)
 }
 
 func elasticsearchNetworkURL() string {

@@ -4,13 +4,13 @@ package e2e
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/testcontainers/testcontainers-go"
 
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/natsjetstream"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/requiredimage"
 )
 
 const (
@@ -43,12 +43,5 @@ func startTextIndexer(t *testing.T, ctx context.Context, networkName string) {
 
 func textIndexerImage(t *testing.T) string {
 	t.Helper()
-	image := os.Getenv(envTextIndexerImage)
-	if image == "" {
-		t.Fatalf(
-			"%s is not set; build the textindexer image first (run via `make e2e`)",
-			envTextIndexerImage,
-		)
-	}
-	return image
+	return requiredimage.FromEnv(t, envTextIndexerImage, "textindexer", "e2e")
 }

@@ -9,8 +9,13 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/egressproxy"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/hermeticnetwork"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/httpprobe"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/pollwait"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/test/e2e/nodepeer"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/test/e2e/peerclient"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/test/e2e/peerdirectory"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/test/e2e/yacypeer"
 )
 
 const (
@@ -21,27 +26,27 @@ const (
 
 func TestRealYaCyPromotesNodeToSenior(t *testing.T) {
 	ctx := context.Background()
-	probe := newHTTPProbe(t)
+	probe := httpprobe.New(t)
 
 	network := hermeticnetwork.New(t, ctx)
 
 	egressproxy.Start(t, ctx, network.Name)
 
-	_, yacyURL := startYaCy(t, ctx, probe, network.Name, yacyAlias)
+	_, yacyURL := yacypeer.Start(t, ctx, probe, network.Name, yacyAlias)
 
-	startNode(t, ctx, probe, nodeConfig{
-		networkName: network.Name,
-		alias:       nodeAlias,
-		hash:        nodeHash,
-		seedlistURL: "http://" + yacyAlias + ":" + nodeContainerPort + "/yacy/seedlist.html",
+	nodepeer.Start(t, ctx, probe, nodepeer.Config{
+		NetworkName: network.Name,
+		Alias:       nodeAlias,
+		Hash:        nodeHash,
+		SeedlistURL: "http://" + yacyAlias + ":" + peerclient.Port + "/yacy/seedlist.html",
 	})
 
 	if !pollwait.For(15*time.Second, func() bool {
 		result := probe.Get(ctx, yacyURL+"/Network.xml?page=1&maxCount=1000")
-		if !result.ok {
+		if !result.OK {
 			return false
 		}
-		active, err := networkActivePeerHashes([]byte(result.body))
+		active, err := peerdirectory.ActivePeerHashes([]byte(result.Body))
 		if err != nil {
 			return false
 		}
@@ -53,10 +58,10 @@ func TestRealYaCyPromotesNodeToSenior(t *testing.T) {
 
 	promoted := pollwait.For(45*time.Second, func() bool {
 		result := probe.Get(ctx, yacyURL+"/yacy/seedlist.xml")
-		if !result.ok {
+		if !result.OK {
 			return false
 		}
-		seniors, err := seedlistSeniorHashes([]byte(result.body))
+		seniors, err := peerdirectory.SeniorHashes([]byte(result.Body))
 		if err != nil {
 			return false
 		}
@@ -64,8 +69,8 @@ func TestRealYaCyPromotesNodeToSenior(t *testing.T) {
 		return ok
 	})
 	if !promoted {
-		if result := probe.Get(ctx, yacyURL+"/yacy/seedlist.xml"); result.ok {
-			t.Logf("final seedlist.xml:\n%s", result.body)
+		if result := probe.Get(ctx, yacyURL+"/yacy/seedlist.xml"); result.OK {
+			t.Logf("final seedlist.xml:\n%s", result.Body)
 		}
 		t.Fatalf("real YaCy never published node hash %s as PeerType=senior", nodeHash)
 	}

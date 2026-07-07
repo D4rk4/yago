@@ -4,11 +4,9 @@ package hermeticnetwork
 
 import (
 	"context"
-	"net"
 	"testing"
 
 	dockernetwork "github.com/docker/docker/api/types/network"
-	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	tcnetwork "github.com/testcontainers/testcontainers-go/network"
 )
@@ -28,17 +26,4 @@ func New(t *testing.T, ctx context.Context) *testcontainers.DockerNetwork {
 	}
 	t.Cleanup(func() { _ = network.Remove(context.Background()) })
 	return network
-}
-
-func HostURL(t *testing.T, ctx context.Context, container testcontainers.Container, port string) string {
-	t.Helper()
-	host, err := container.Host(ctx)
-	if err != nil {
-		t.Fatalf("resolve container host: %v", err)
-	}
-	mappedPort, err := container.MappedPort(ctx, nat.Port(port))
-	if err != nil {
-		t.Fatalf("resolve mapped port: %v", err)
-	}
-	return "http://" + net.JoinHostPort(host, mappedPort.Port())
 }

@@ -9,7 +9,11 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/egressproxy"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/hermeticnetwork"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/httpprobe"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/pollwait"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/test/e2e/nodepeer"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/test/e2e/peerclient"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/test/e2e/yacypeer"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
@@ -17,47 +21,54 @@ const transferYaCyAlias = "yacy-tr-e2e"
 
 func TestRealYaCyTransfersRWIToFleet(t *testing.T) {
 	ctx := context.Background()
-	probe := newHTTPProbe(t)
+	probe := httpprobe.New(t)
 
 	network := hermeticnetwork.New(t, ctx)
 
 	egressproxy.Start(t, ctx, network.Name)
 
-	yacyContainer, yacyURL := startYaCy(t, ctx, probe, network.Name, transferYaCyAlias)
+	yacyContainer, yacyURL := yacypeer.Start(t, ctx, probe, network.Name, transferYaCyAlias)
 
-	yacyHash := resolveYaCyHash(t, ctx, probe, yacyURL)
+	yacyHash := peerclient.ResolveHash(t, ctx, probe, yacyURL)
 
-	seedlistURL := "http://" + transferYaCyAlias + ":" + nodeContainerPort + "/yacy/seedlist.html"
-	fleet := startNodeFleet(t, ctx, probe, network.Name, seedlistURL, dhtMinConnectedPeers)
+	seedlistURL := "http://" + transferYaCyAlias + ":" + peerclient.Port + "/yacy/seedlist.html"
+	fleet := nodepeer.StartFleet(
+		t,
+		ctx,
+		probe,
+		network.Name,
+		seedlistURL,
+		nodepeer.MinConnectedPeers,
+	)
 
-	pushDocument(t, ctx, probe, yacyURL, buildTransferTokens())
+	yacypeer.PushDocument(t, ctx, probe, yacyURL, yacypeer.TransferTokens())
 
-	waitYaCyLocalRWIs(t, ctx, probe, yacyURL, yacyHash, 30*time.Second)
+	yacypeer.WaitLocalRWIs(t, ctx, probe, yacyURL, yacyHash, 30*time.Second)
 	waitFleetSenior(t, ctx, probe, yacyURL, fleet, 60*time.Second)
 	waitFleetActiveConnected(t, ctx, probe, yacyURL, fleet, 15*time.Second)
 
-	yacyURL = restartYaCy(t, ctx, probe, yacyContainer)
+	yacyURL = yacypeer.Restart(t, ctx, probe, yacyContainer)
 
 	received := pollwait.For(180*time.Second, func() bool {
 		for _, node := range fleet {
-			rwiCount, rwiOK := peerQueryCount(
+			rwiCount, rwiOK := peerclient.QueryCount(
 				ctx,
 				probe,
-				node.url,
-				node.hash,
+				node.URL,
+				node.Hash,
 				yacyproto.ObjectRWICount,
 			)
-			urlCount, urlOK := peerQueryCount(
+			urlCount, urlOK := peerclient.QueryCount(
 				ctx,
 				probe,
-				node.url,
-				node.hash,
+				node.URL,
+				node.Hash,
 				yacyproto.ObjectLURLCount,
 			)
 			if rwiOK && urlOK && rwiCount > 0 && urlCount > 0 {
 				t.Logf(
 					"fleet node %s received transferred RWIs: rwicount=%d urlcount=%d",
-					node.alias,
+					node.Alias,
 					rwiCount,
 					urlCount,
 				)

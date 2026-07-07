@@ -7,29 +7,32 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/httpprobe"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/pollwait"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/test/e2e/nodepeer"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/test/e2e/peerdirectory"
 )
 
 func waitFleetSenior(
 	t *testing.T,
 	ctx context.Context,
-	probe *httpProbe,
+	probe *httpprobe.Probe,
 	yacyURL string,
-	fleet []fleetNode,
+	fleet []nodepeer.Peer,
 	timeout time.Duration,
 ) {
 	t.Helper()
 	if pollwait.For(timeout, func() bool {
 		result := probe.Get(ctx, yacyURL+"/yacy/seedlist.xml")
-		if !result.ok {
+		if !result.OK {
 			return false
 		}
-		seniors, err := seedlistSeniorHashes([]byte(result.body))
+		seniors, err := peerdirectory.SeniorHashes([]byte(result.Body))
 		if err != nil {
 			return false
 		}
 		for _, node := range fleet {
-			if _, ok := seniors[node.hash.String()]; !ok {
+			if _, ok := seniors[node.Hash.String()]; !ok {
 				return false
 			}
 		}
@@ -37,8 +40,8 @@ func waitFleetSenior(
 	}) {
 		return
 	}
-	if result := probe.Get(ctx, yacyURL+"/yacy/seedlist.xml"); result.ok {
-		t.Logf("final seedlist.xml:\n%s", result.body)
+	if result := probe.Get(ctx, yacyURL+"/yacy/seedlist.xml"); result.OK {
+		t.Logf("final seedlist.xml:\n%s", result.Body)
 	}
 	t.Fatalf("YaCy never published all %d fleet hashes as PeerType=senior", len(fleet))
 }
@@ -46,22 +49,22 @@ func waitFleetSenior(
 func waitFleetActiveConnected(
 	t *testing.T,
 	ctx context.Context,
-	probe *httpProbe,
+	probe *httpprobe.Probe,
 	yacyURL string,
-	fleet []fleetNode,
+	fleet []nodepeer.Peer,
 	timeout time.Duration,
 ) {
 	t.Helper()
 	hashes := make(map[string]struct{}, len(fleet))
 	for _, node := range fleet {
-		hashes[node.hash.String()] = struct{}{}
+		hashes[node.Hash.String()] = struct{}{}
 	}
 	if pollwait.For(timeout, func() bool {
 		result := probe.Get(ctx, yacyURL+"/Network.xml?page=1&maxCount=1000")
-		if !result.ok {
+		if !result.OK {
 			return false
 		}
-		active, err := networkActivePeerHashes([]byte(result.body))
+		active, err := peerdirectory.ActivePeerHashes([]byte(result.Body))
 		if err != nil {
 			return false
 		}

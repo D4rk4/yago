@@ -4,7 +4,6 @@ package e2e
 
 import (
 	"context"
-	"net"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerurl"
 )
 
 const (
@@ -127,14 +127,5 @@ func startSearXNG(
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
 	containerlog.DumpOnFailure(t, "searxng", container)
-
-	host, err := container.Host(ctx)
-	if err != nil {
-		t.Fatalf("resolve searxng host: %v", err)
-	}
-	port, err := container.MappedPort(ctx, searxngPort)
-	if err != nil {
-		t.Fatalf("resolve searxng mapped port: %v", err)
-	}
-	return "http://" + net.JoinHostPort(host, port.Port())
+	return containerurl.HostURL(t, ctx, container, searxngPort)
 }

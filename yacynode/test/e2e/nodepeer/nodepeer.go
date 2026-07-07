@@ -1,10 +1,11 @@
 //go:build e2e
 
-package e2e
+// Package nodepeer starts and configures the node-under-test, alone or as a
+// fleet.
+package nodepeer
 
 import (
 	"context"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -13,57 +14,61 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerurl"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/egressproxy"
-	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/hermeticnetwork"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/httpprobe"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/pollwait"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/requiredimage"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/test/e2e/peerclient"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 const (
-	nodeContainerPort = "8090"
+	// MinConnectedPeers is the DHT sender gate's minimum connected-peer count.
+	MinConnectedPeers = 33
 	envNodeImage      = "YACY_NODE_IMAGE"
 )
 
-type nodeConfig struct {
-	networkName string
-	alias       string
-	hash        yacymodel.Hash
-	seedlistURL string
+type Config struct {
+	NetworkName string
+	Alias       string
+	Hash        yacymodel.Hash
+	SeedlistURL string
 }
 
-func startNode(
+func Start(
 	t *testing.T,
 	ctx context.Context,
-	probe *httpProbe,
-	cfg nodeConfig,
+	probe *httpprobe.Probe,
+	cfg Config,
 ) (testcontainers.Container, string) {
 	t.Helper()
 	env := map[string]string{
-		"YACY_PEER_HASH":         cfg.hash.String(),
-		"YACY_PEER_NAME":         cfg.alias,
+		"YACY_PEER_HASH":         cfg.Hash.String(),
+		"YACY_PEER_NAME":         cfg.Alias,
 		"YACY_NETWORK_NAME":      yacyproto.DefaultNetwork,
-		"YACY_PEER_ADDR":         ":" + nodeContainerPort,
-		"YACY_ADVERTISE_HOST":    cfg.alias,
-		"YACY_ADVERTISE_PORT":    nodeContainerPort,
+		"YACY_PEER_ADDR":         ":" + peerclient.Port,
+		"YACY_ADVERTISE_HOST":    cfg.Alias,
+		"YACY_ADVERTISE_PORT":    peerclient.Port,
 		"YACY_DATA_DIR":          "/tmp/data",
 		"YACY_ANNOUNCE_INTERVAL": "10s",
-		"YACY_GREETS_PER_CYCLE":  strconv.Itoa(dhtMinConnectedPeers + 8),
+		"YACY_GREETS_PER_CYCLE":  strconv.Itoa(MinConnectedPeers + 8),
 		"YACY_PROXY_URL":         egressproxy.NetworkURL(),
 		"LOG_LEVEL":              "debug",
 	}
-	if cfg.seedlistURL != "" {
-		env["YACY_SEEDLIST_URLS"] = cfg.seedlistURL
+	if cfg.SeedlistURL != "" {
+		env["YACY_SEEDLIST_URLS"] = cfg.SeedlistURL
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		Started: true,
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:          nodeImage(t),
-			Name:           cfg.alias,
-			ExposedPorts:   []string{httpPort},
+			Image:          image(t),
+			Name:           cfg.Alias,
+			ExposedPorts:   []string{peerclient.ExposedPort},
 			Env:            env,
-			Networks:       []string{cfg.networkName},
-			NetworkAliases: map[string][]string{cfg.networkName: {cfg.alias}},
+			Networks:       []string{cfg.NetworkName},
+			NetworkAliases: map[string][]string{cfg.NetworkName: {cfg.Alias}},
 			Tmpfs:          map[string]string{"/tmp": "rw,mode=1777"},
 			HostConfigModifier: func(hostConfig *dockercontainer.HostConfig) {
 				hostConfig.ReadonlyRootfs = true
@@ -77,20 +82,16 @@ func startNode(
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
 	containerlog.DumpOnFailure(t, "node", container)
-	nodeURL := hermeticnetwork.HostURL(t, ctx, container, httpPort)
+	nodeURL := containerurl.HostURL(t, ctx, container, peerclient.ExposedPort)
 	if !pollwait.For(20*time.Second, func() bool {
 		return probe.OK(ctx, nodeURL+"/yacy/query.html?object=rwicount")
 	}) {
-		t.Fatalf("node %s never became reachable from the host", cfg.alias)
+		t.Fatalf("node %s never became reachable from the host", cfg.Alias)
 	}
 	return container, nodeURL
 }
 
-func nodeImage(t *testing.T) string {
+func image(t *testing.T) string {
 	t.Helper()
-	image := os.Getenv(envNodeImage)
-	if image == "" {
-		t.Fatalf("%s is not set; build the node image first (run via `make e2e`)", envNodeImage)
-	}
-	return image
+	return requiredimage.FromEnv(t, envNodeImage, "node", "e2e")
 }

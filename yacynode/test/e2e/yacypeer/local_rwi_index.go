@@ -1,23 +1,25 @@
 //go:build e2e
 
-package e2e
+package yacypeer
 
 import (
 	"context"
 	"testing"
 	"time"
 
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/httpprobe"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/pollwait"
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/test/e2e/peerclient"
 	"github.com/nikitakarpei/yacy-rwi-node/yacyproto"
 )
 
 const dhtMinLocalRWIs = 100
 
-func waitYaCyLocalRWIs(
+func WaitLocalRWIs(
 	t *testing.T,
 	ctx context.Context,
-	probe *httpProbe,
+	probe *httpprobe.Probe,
 	yacyURL string,
 	yacyHash yacymodel.Hash,
 	timeout time.Duration,
@@ -25,7 +27,7 @@ func waitYaCyLocalRWIs(
 	t.Helper()
 	last := -1
 	if pollwait.For(timeout, func() bool {
-		count, ok := peerQueryCount(ctx, probe, yacyURL, yacyHash, yacyproto.ObjectRWICount)
+		count, ok := peerclient.QueryCount(ctx, probe, yacyURL, yacyHash, yacyproto.ObjectRWICount)
 		if !ok {
 			return false
 		}

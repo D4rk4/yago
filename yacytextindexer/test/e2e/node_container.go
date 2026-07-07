@@ -4,13 +4,13 @@ package e2e
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/testcontainers/testcontainers-go"
 
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/natsjetstream"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/requiredimage"
 )
 
 const (
@@ -46,9 +46,5 @@ func startNode(t *testing.T, ctx context.Context, networkName string) {
 
 func nodeImage(t *testing.T) string {
 	t.Helper()
-	image := os.Getenv(envNodeImage)
-	if image == "" {
-		t.Fatalf("%s is not set; build the node image first (run via `make e2e`)", envNodeImage)
-	}
-	return image
+	return requiredimage.FromEnv(t, envNodeImage, "node", "e2e")
 }

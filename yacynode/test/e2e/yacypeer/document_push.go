@@ -1,6 +1,6 @@
 //go:build e2e
 
-package e2e
+package yacypeer
 
 import (
 	"bytes"
@@ -10,11 +10,13 @@ import (
 	"mime/multipart"
 	"strings"
 	"testing"
+
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/httpprobe"
 )
 
-const yacyAdminAuthHeader = "Authorization: Basic YWRtaW46eWFjeQ=="
+const adminAuthHeader = "Authorization: Basic YWRtaW46eWFjeQ=="
 
-func buildTransferTokens() []string {
+func TransferTokens() []string {
 	tokens := make([]string, 150)
 	for i := range tokens {
 		tokens[i] = fmt.Sprintf("yacyrwitransferuniquetoken%03d", i)
@@ -22,10 +24,10 @@ func buildTransferTokens() []string {
 	return tokens
 }
 
-func pushDocument(
+func PushDocument(
 	t *testing.T,
 	ctx context.Context,
-	probe *httpProbe,
+	probe *httpprobe.Probe,
 	yacyURL string,
 	tokens []string,
 ) {
@@ -45,12 +47,12 @@ func pushDocument(
 	)
 
 	result := probe.PostRaw(ctx, yacyURL+"/api/push_p.json", body,
-		"Content-Type: "+contentType, yacyAdminAuthHeader)
-	if !result.ok {
-		t.Fatalf("push_p.json request to YaCy failed: %s", result.diag())
+		"Content-Type: "+contentType, adminAuthHeader)
+	if !result.OK {
+		t.Fatalf("push_p.json request to YaCy failed: %s", result.Diag())
 	}
-	if !strings.Contains(result.body, "successall") {
-		t.Fatalf("push_p.json did not report success: %s", result.body)
+	if !strings.Contains(result.Body, "successall") {
+		t.Fatalf("push_p.json did not report success: %s", result.Body)
 	}
 }
 

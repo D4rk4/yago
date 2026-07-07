@@ -4,8 +4,6 @@ package e2e
 
 import (
 	"context"
-	"net"
-	"os"
 	"testing"
 	"time"
 
@@ -13,7 +11,9 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerurl"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/natsjetstream"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/requiredimage"
 )
 
 const (
@@ -46,26 +46,10 @@ func startVisitcrawl(t *testing.T, ctx context.Context, networkName string) stri
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
 	containerlog.DumpOnFailure(t, "visitcrawl", container)
-
-	host, err := container.Host(ctx)
-	if err != nil {
-		t.Fatalf("resolve visitcrawl host: %v", err)
-	}
-	port, err := container.MappedPort(ctx, visitcrawlPort)
-	if err != nil {
-		t.Fatalf("resolve visitcrawl mapped port: %v", err)
-	}
-	return "http://" + net.JoinHostPort(host, port.Port())
+	return containerurl.HostURL(t, ctx, container, visitcrawlPort)
 }
 
 func visitcrawlImage(t *testing.T) string {
 	t.Helper()
-	image := os.Getenv(envVisitcrawlImage)
-	if image == "" {
-		t.Fatalf(
-			"%s is not set; build the visitcrawl image first (run via `make e2e-plugin`)",
-			envVisitcrawlImage,
-		)
-	}
-	return image
+	return requiredimage.FromEnv(t, envVisitcrawlImage, "visitcrawl", "e2e-plugin")
 }
