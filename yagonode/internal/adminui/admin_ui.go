@@ -93,6 +93,7 @@ var navItems = []NavItem{
 	{Title: "Index", Path: indexPath, Icon: "index"},
 	{Title: "Performance", Path: "/admin/performance", Icon: "performance"},
 	{Title: "Configuration", Path: "/admin/configuration", Icon: "configuration"},
+	{Title: "Public portal", Path: portalPath, Icon: "globe"},
 	{Title: "Security", Path: "/admin/security", Icon: "security"},
 	{Title: "Logs", Path: "/admin/logs", Icon: "logs"},
 	{Title: "Restart", Path: restartPath, Icon: "restart"},
@@ -349,6 +350,7 @@ type templates struct {
 	performance *template.Template
 	restart     *template.Template
 	autocrawler *template.Template
+	portal      *template.Template
 }
 
 // Console is the server-rendered admin console handler.
@@ -474,6 +476,7 @@ func buildTemplates() templates {
 		performance: clone(nil, "templates/performance.tmpl"),
 		restart:     clone(nil, "templates/restart.tmpl"),
 		autocrawler: clone(nil, "templates/autocrawler.tmpl"),
+		portal:      clone(nil, "templates/portal.tmpl"),
 	}
 }
 
@@ -514,6 +517,8 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+autocrawlerPath, c.handleAutocrawler)
 	c.mux.HandleFunc("POST "+autocrawlerPath, c.handleAutocrawlerUpdate)
 	c.mux.HandleFunc("POST "+autocrawlerPath+"/formats", c.handleAutocrawlerFormats)
+	c.mux.HandleFunc("GET "+portalPath, c.handlePortal)
+	c.mux.HandleFunc("POST "+portalPath, c.handlePortalUpdate)
 	c.mux.HandleFunc("GET "+performancePath, c.handlePerformance)
 	c.mux.HandleFunc("GET "+activityPath, c.handleActivity)
 
@@ -529,7 +534,8 @@ func dynamicSection(path string) bool {
 	return path == overviewPath || path == searchPath || path == crawlPath ||
 		path == indexPath || path == networkPath || path == configPath ||
 		path == logsPath || path == securityPath || path == performancePath ||
-		path == autocrawlerPath || path == activityPath || path == restartPath
+		path == autocrawlerPath || path == activityPath || path == restartPath ||
+		path == portalPath
 }
 
 // ServeHTTP dispatches to the console's internal router, first resolving the

@@ -1,0 +1,49 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Public portal</nav>
+<h1 class="cds-heading">Public portal</h1>
+<p class="cds-muted">Configure the public search portal and redesign its search and results pages. The Configuration tab gathers the portal-facing settings; the design tabs let an operator edit the public pages without redeploying (ADR-0033).</p>
+<div class="cds-tabs" data-tabs>
+  <div class="cds-tablist" role="tablist" aria-label="Public portal sections">
+    <button type="button" role="tab" class="cds-tab" id="tab-portal-config" aria-controls="panel-portal-config" aria-selected="false">Configuration</button>
+    <button type="button" role="tab" class="cds-tab" id="tab-portal-design" aria-controls="panel-portal-design" aria-selected="false">Portal design</button>
+    <button type="button" role="tab" class="cds-tab" id="tab-portal-results" aria-controls="panel-portal-results" aria-selected="false">Results design</button>
+  </div>
+
+  <section class="cds-tabpanel" role="tabpanel" id="panel-portal-config" aria-labelledby="tab-portal-config">
+    <h2 class="cds-h2 cds-tabpanel__heading">Configuration</h2>
+    {{if .Notice}}<div class="cds-inline-notification cds-inline-notification--success" role="status">{{.Notice}}</div>{{end}}
+    {{if .Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>{{end}}
+    {{range .Settings.Items}}
+    <form class="cds-form" method="post" action="/admin/portal" hx-boost="false">
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+      <input type="hidden" name="key" value="{{.Key}}">
+      <div class="cds-field">
+        <label class="cds-label" for="portal-{{.Key}}">{{.Title}}{{if .Overridden}} <span class="cds-tag cds-tag--info">overridden</span>{{end}}</label>
+        {{if .Description}}<p class="cds-muted">{{.Description}}</p>{{end}}
+        {{if .Options}}
+        <select class="cds-input" id="portal-{{.Key}}" name="value">
+          {{$current := .Value}}
+          {{range .Options}}<option value="{{.Value}}"{{if eq .Value $current}} selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+        {{else}}
+        <input class="cds-input" type="text" id="portal-{{.Key}}" name="value" value="{{.Value}}" autocomplete="off">
+        {{end}}
+        {{if .RestartRequired}}<p class="cds-muted">Takes effect after a node restart.</p>{{end}}
+      </div>
+      <button class="cds-btn" type="submit">Save</button>
+      {{if .Overridden}}<button class="cds-btn cds-btn--ghost" type="submit" name="reset" value="true">Reset to default</button>{{end}}
+    </form>
+    {{end}}
+  </section>
+
+  <section class="cds-tabpanel" role="tabpanel" id="panel-portal-design" aria-labelledby="tab-portal-design">
+    <h2 class="cds-h2 cds-tabpanel__heading">Portal design</h2>
+    <p class="cds-muted">The visual page editor and Handlebars code editor for the public search page arrive in a following slice per ADR-0033. No editor is loaded here yet.</p>
+  </section>
+
+  <section class="cds-tabpanel" role="tabpanel" id="panel-portal-results" aria-labelledby="tab-portal-results">
+    <h2 class="cds-h2 cds-tabpanel__heading">Results design</h2>
+    <p class="cds-muted">The visual page editor and Handlebars code editor for the public results page arrive in a following slice per ADR-0033. No editor is loaded here yet.</p>
+  </section>
+</div>
+{{end}}
