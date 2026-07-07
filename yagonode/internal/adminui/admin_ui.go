@@ -39,6 +39,7 @@ const (
 	crawlPath           = "/admin/crawl"
 	crawlMonitorPath    = "/admin/crawl/monitor"
 	crawlControlPath    = "/admin/crawl/control"
+	crawlSchedulePath   = "/admin/crawl/schedule"
 	configPath          = "/admin/configuration"
 	indexPath           = "/admin/index"
 	indexDeletePath     = "/admin/index/delete"
@@ -102,6 +103,7 @@ type Options struct {
 	Crawl           CrawlSource
 	CrawlFormats    CrawlFormatsSource
 	Monitor         CrawlMonitorSource
+	Schedules       CrawlScheduleSource
 	Control         CrawlControlSource
 	Index           IndexSource
 	Documents       DocumentBrowserSource
@@ -218,6 +220,10 @@ type crawlPageData struct {
 	Formats *FormatSettings
 	// FormatsNote flashes the outcome of a formats save.
 	FormatsNote string
+	// Schedules lists the recurring crawls; nil source hides the block.
+	Schedules     []CrawlScheduleView
+	SchedulesOn   bool
+	ScheduleError string
 }
 
 // crawlMonitorView wraps the crawl monitor snapshot with the per-request data the
@@ -339,6 +345,7 @@ type Console struct {
 	crawl           CrawlSource
 	crawlFormats    CrawlFormatsSource
 	monitor         CrawlMonitorSource
+	schedules       CrawlScheduleSource
 	control         CrawlControlSource
 	index           IndexSource
 	documents       DocumentBrowserSource
@@ -380,6 +387,7 @@ func New(opts Options) *Console {
 		crawl:           opts.Crawl,
 		crawlFormats:    opts.CrawlFormats,
 		monitor:         opts.Monitor,
+		schedules:       opts.Schedules,
 		control:         opts.Control,
 		index:           opts.Index,
 		documents:       opts.Documents,
@@ -442,6 +450,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+crawlPath, c.handleCrawl)
 	c.mux.HandleFunc("POST "+crawlPath, c.handleCrawlStart)
 	c.mux.HandleFunc("POST "+crawlPath+"/formats", c.handleCrawlFormats)
+	c.mux.HandleFunc("POST "+crawlSchedulePath, c.handleCrawlSchedule)
 	c.mux.HandleFunc("GET "+crawlMonitorPath, c.handleCrawlMonitor)
 	c.mux.HandleFunc("POST "+crawlControlPath, c.handleCrawlControl)
 	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
@@ -1301,8 +1310,52 @@ func (c *Console) crawlPage(r *http.Request, form crawlForm) crawlPageData {
 		settings := c.crawlFormats.CurrentFormats(r.Context())
 		data.Formats = &settings
 	}
+	if c.schedules != nil {
+		data.SchedulesOn = true
+		data.Schedules = c.schedules.Schedules(r.Context())
+	}
 
 	return data
+}
+
+// handleCrawlSchedule serves the recurring-crawl actions (UI-19).
+func (c *Console) handleCrawlSchedule(w http.ResponseWriter, r *http.Request) {
+	if c.schedules == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+	ctx := r.Context()
+	var err error
+	switch r.PostFormValue("action") {
+	case "create":
+		depth, _ := strconv.Atoi(r.PostFormValue("maxDepth"))
+		err = c.schedules.CreateSchedule(ctx, CrawlScheduleRequest{
+			Name:     strings.TrimSpace(r.PostFormValue("name")),
+			Seeds:    strings.Split(r.PostFormValue("seeds"), "\n"),
+			Scope:    r.PostFormValue("scope"),
+			MaxDepth: depth,
+			Interval: r.PostFormValue("interval"),
+		})
+	case "delete":
+		err = c.schedules.DeleteSchedule(ctx, r.PostFormValue("id"))
+	case "enable":
+		err = c.schedules.SetScheduleEnabled(ctx, r.PostFormValue("id"), true)
+	case "disable":
+		err = c.schedules.SetScheduleEnabled(ctx, r.PostFormValue("id"), false)
+	default:
+		http.Error(w, "unknown schedule action", http.StatusBadRequest)
+
+		return
+	}
+	if err != nil {
+		data := c.crawlPage(r, defaultCrawlForm())
+		data.ScheduleError = err.Error()
+		c.render(ctx, w, c.tpl.crawl, "layout", data)
+
+		return
+	}
+	http.Redirect(w, r, crawlPath, http.StatusSeeOther)
 }
 
 // handleCrawlFormats saves the shared document-format toggles.

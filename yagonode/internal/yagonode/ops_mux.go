@@ -107,6 +107,7 @@ func buildOpsMux(
 	dispatcher := crawlDispatcher(assembled.crawl)
 	if dispatcher != nil {
 		options.Crawl = newCrawlSource(dispatcher)
+		options.Schedules = newCrawlScheduleSource(assembled.schedules, options.Crawl)
 	}
 	if registry := crawlRunRegistry(assembled.crawl); registry != nil {
 		options.Monitor = newCrawlMonitorSource(registry, crawlDepth.probe)

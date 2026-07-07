@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/crawling"
+	"github.com/D4rk4/yago/yagonode/internal/crawlschedule"
 	"github.com/D4rk4/yago/yagonode/internal/crawlurls"
 	"github.com/D4rk4/yago/yagonode/internal/dhtexchange"
 	"github.com/D4rk4/yago/yagonode/internal/documentsearch"
@@ -53,6 +54,7 @@ type node struct {
 	docScan       documentstore.StoredDocuments
 	docEvictor    documentstore.DocumentEvictor
 	activity      *searchactivity.Tracker
+	schedules     *crawlschedule.Store
 	hostRank      *hostrank.Holder
 	spell         *spellcheck.Holder
 	wordForms     *wordforms.Holder
@@ -193,6 +195,7 @@ func assembleNode(
 		peerBlock:  blocks,
 		denylist:   surfaces.denylist,
 		activity:   surfaces.activity,
+		schedules:  surfaces.schedules,
 		identity:   identity,
 		ranking:    surfaces.ranking,
 		hostRank:   surfaces.hostRank,
@@ -240,6 +243,7 @@ type nodeSurfaces struct {
 	wordForms *wordforms.Holder
 	denylist  *urldenylist.Store
 	activity  *searchactivity.Tracker
+	schedules *crawlschedule.Store
 }
 
 func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
@@ -249,7 +253,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	}
 	attachCrawlMetrics(runtime, in.telemetry.crawl)
 	attachCrawlRunObserver(runtime, in.telemetry.crawlRuns, in.telemetry.recorder)
-	ranking, denylist, err := openSearchStores(in.ctx, in.vault)
+	ranking, denylist, schedules, err := openSurfaceStores(in.ctx, in.vault)
 	if err != nil {
 		return nodeSurfaces{}, err
 	}
@@ -321,6 +325,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		wordForms: wordFormsHolder,
 		denylist:  denylist,
 		activity:  activityTracker,
+		schedules: schedules,
 	}, nil
 }
 
@@ -342,6 +347,7 @@ type nodeParts struct {
 	peerBlock  *peerblock.Store
 	denylist   *urldenylist.Store
 	activity   *searchactivity.Tracker
+	schedules  *crawlschedule.Store
 	identity   nodeidentity.Identity
 	ranking    *rankingprofile.Holder
 	hostRank   *hostrank.Holder
@@ -365,6 +371,7 @@ func newAssembledNode(parts nodeParts) node {
 		docScan:       parts.storage.storedDocuments(),
 		docEvictor:    documentEvictorOf(parts.storage),
 		activity:      parts.activity,
+		schedules:     parts.schedules,
 		hostRank:      parts.hostRank,
 		spell:         parts.spell,
 		wordForms:     parts.wordForms,
@@ -491,20 +498,24 @@ func openNodeCore(
 	return identity, storage, nil
 }
 
-// openSearchStores opens the vault-backed search-side stores the public
-// surfaces need.
-func openSearchStores(
+// openSurfaceStores opens the vault-backed stores the public surfaces and
+// the crawl scheduler need.
+func openSurfaceStores(
 	ctx context.Context,
 	vaultStore *vault.Vault,
-) (*rankingprofile.Holder, *urldenylist.Store, error) {
+) (*rankingprofile.Holder, *urldenylist.Store, *crawlschedule.Store, error) {
 	ranking, err := rankingprofile.Open(ctx, vaultStore)
 	if err != nil {
-		return nil, nil, fmt.Errorf("open ranking profile: %w", err)
+		return nil, nil, nil, fmt.Errorf("open ranking profile: %w", err)
 	}
 	denylist, err := urldenylist.Open(vaultStore, time.Now)
 	if err != nil {
-		return nil, nil, fmt.Errorf("open url denylist: %w", err)
+		return nil, nil, nil, fmt.Errorf("open url denylist: %w", err)
+	}
+	schedules, err := crawlschedule.Open(vaultStore, time.Now)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("open crawl schedules: %w", err)
 	}
 
-	return ranking, denylist, nil
+	return ranking, denylist, schedules, nil
 }

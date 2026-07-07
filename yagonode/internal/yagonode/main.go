@@ -250,6 +250,7 @@ func serve(
 	background.Add(4)
 	startPeerPresenceLoops(ctx, &background, assembled)
 	go runRedirectPurge(ctx, assembled)
+	go runCrawlScheduleLoop(ctx, assembled.schedules, adminCrawlDispatch(assembled))
 	go func() {
 		defer background.Done()
 		runEvictionLoop(ctx, assembled.sweeper, evictionMetrics)

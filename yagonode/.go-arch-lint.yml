@@ -130,6 +130,8 @@ components:
     in: internal/publicrobots/**
   searchactivity:
     in: internal/searchactivity/**
+  crawlschedule:
+    in: internal/crawlschedule/**
   wordforms:
     in: internal/wordforms/**
   tavilyapi:
@@ -536,6 +538,11 @@ deps:
     canUse:
       - yagomodel
       - yagocrawlcontract
+  crawlschedule:
+    mayDependOn:
+      - crawlschedule
+      - vault
+      - memvault
   redirectpurge:
     mayDependOn:
       - redirectpurge
@@ -691,6 +698,7 @@ deps:
       - redirectpurge
       - publicrobots
       - searchactivity
+      - crawlschedule
       - contentquality
       - snippetfetch
       - vault

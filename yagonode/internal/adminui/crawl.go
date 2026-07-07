@@ -59,3 +59,34 @@ type CrawlFormatsSource interface {
 	CurrentFormats(ctx context.Context) FormatSettings
 	SaveFormats(ctx context.Context, settings FormatSettings) error
 }
+
+// CrawlScheduleView is one recurring crawl as listed in the console (UI-19,
+// YaCy Automation_p parity).
+type CrawlScheduleView struct {
+	ID       string
+	Name     string
+	Seeds    int
+	Scope    string
+	Interval string
+	LastRun  string
+	Enabled  bool
+}
+
+// CrawlScheduleRequest creates one recurring crawl.
+type CrawlScheduleRequest struct {
+	Name     string
+	Seeds    []string
+	Scope    string
+	MaxDepth int
+	// Interval is a Go duration string; the store enforces the hour floor.
+	Interval string
+}
+
+// CrawlScheduleSource manages recurring crawls. A nil provider hides the
+// schedules block.
+type CrawlScheduleSource interface {
+	Schedules(ctx context.Context) []CrawlScheduleView
+	CreateSchedule(ctx context.Context, req CrawlScheduleRequest) error
+	DeleteSchedule(ctx context.Context, id string) error
+	SetScheduleEnabled(ctx context.Context, id string, enabled bool) error
+}
