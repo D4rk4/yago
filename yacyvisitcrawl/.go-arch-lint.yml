@@ -1,0 +1,67 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  visitintake:
+    in: internal/visitintake/**
+  crawlorderbroker:
+    in: internal/crawlorderbroker/**
+  visitmetrics:
+    in: internal/visitmetrics/**
+  visitcrawlcmd:
+    in: cmd/yacyvisitcrawl/**
+
+vendors:
+  yacycrawlcontract:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract
+      - github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract/**
+  nats:
+    in:
+      - github.com/nats-io/nats.go
+      - github.com/nats-io/nats.go/**
+  nats-server:
+    in:
+      - github.com/nats-io/nats-server/v2/server
+  prometheus:
+    in:
+      - github.com/prometheus/client_golang/**
+  uuid:
+    in:
+      - github.com/google/uuid
+
+deps:
+  visitintake:
+    mayDependOn:
+      - visitintake
+    canUse:
+      - yacycrawlcontract
+      - uuid
+  crawlorderbroker:
+    mayDependOn:
+      - crawlorderbroker
+    canUse:
+      - yacycrawlcontract
+      - nats
+      - nats-server
+  visitmetrics:
+    mayDependOn:
+      - visitmetrics
+    canUse:
+      - prometheus
+  visitcrawlcmd:
+    mayDependOn:
+      - visitintake
+      - crawlorderbroker
+      - visitmetrics
+    canUse:
+      - yacycrawlcontract
+      - nats
+      - nats-server
+
+excludeFiles:
+  - "test/e2e"

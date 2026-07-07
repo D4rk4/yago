@@ -7,4 +7,5 @@ use (
 	./yacynode
 	./yacyproto
 	./yacytextindexer
+	./yacyvisitcrawl
 )
