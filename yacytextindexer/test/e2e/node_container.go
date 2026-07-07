@@ -9,6 +9,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/egressproxy"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/natsjetstream"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/requiredimage"
 )
@@ -33,6 +34,7 @@ func startNode(t *testing.T, ctx context.Context, networkName string) {
 				"YACY_PEER_NAME":      nodeAlias,
 				"YACY_ADVERTISE_HOST": nodeAlias,
 				"NATS_URL":            natsjetstream.NetworkURL(),
+				"YACY_PROXY_URL":      egressproxy.NetworkURL(),
 				"LOG_LEVEL":           "debug",
 			},
 		},
