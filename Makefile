@@ -33,8 +33,7 @@ endef
 	cover cover-go cover-py \
 	cover-check cover-check-go cover-check-py \
 	build verify peer-hash \
-	e2e e2e-node e2e-crawler e2e-textindexer e2e-searxng-result-router \
-	e2e-node-image e2e-crawler-image e2e-textindexer-image e2e-visitcrawl-image
+	e2e e2e-images
 
 fmt:         fmt-go fmt-py
 fmt-check:   fmt-check-go fmt-check-py
@@ -130,10 +129,6 @@ peer-hash:
 # ---- e2e ----
 
 E2E_TIMEOUT ?= 10m
-E2E_NODE_IMAGE ?= yacy-rwi-node:e2e
-E2E_CRAWLER_IMAGE ?= yacy-rwi-crawler:e2e
-E2E_TEXTINDEXER_IMAGE ?= yacy-rwi-textindexer:e2e
-E2E_VISITCRAWL_IMAGE ?= yacyvisitcrawl:e2e
 
 E2E_CONTAINER_CLI := $(shell command -v docker >/dev/null 2>&1 && echo docker || \
 	(command -v podman >/dev/null 2>&1 && echo podman || echo "distrobox-host-exec podman"))
@@ -141,36 +136,35 @@ E2E_RUNTIME_DIR := $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))
 E2E_DOCKER_HOST := $(or $(DOCKER_HOST),unix://$(E2E_RUNTIME_DIR)/podman/podman.sock)
 E2E_DOCKER_ENV := DOCKER_HOST=$(E2E_DOCKER_HOST) TESTCONTAINERS_RYUK_DISABLED=true
 
-e2e-node-image:
-	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacynode/Dockerfile -t $(E2E_NODE_IMAGE) .
+# Modules that build a docker image for e2e testing, and the tag each produces.
+E2E_IMAGE_MODULES := yacynode yacycrawler yacytextindexer yacyvisitcrawl
 
-e2e-crawler-image:
-	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacycrawler/Dockerfile -t $(E2E_CRAWLER_IMAGE) .
+E2E_IMAGE_yacynode        := yacy-rwi-node:e2e
+E2E_IMAGE_yacycrawler     := yacy-rwi-crawler:e2e
+E2E_IMAGE_yacytextindexer := yacy-rwi-textindexer:e2e
+E2E_IMAGE_yacyvisitcrawl  := yacyvisitcrawl:e2e
 
-e2e-textindexer-image:
-	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacytextindexer/Dockerfile -t $(E2E_TEXTINDEXER_IMAGE) .
+define e2e_image_rule
+e2e-$(1)-image:
+	DOCKER_BUILDKIT=1 $$(E2E_CONTAINER_CLI) build -f $(1)/Dockerfile -t $$(E2E_IMAGE_$(1)) .
+endef
+$(foreach m,$(E2E_IMAGE_MODULES),$(eval $(call e2e_image_rule,$(m))))
 
-e2e-visitcrawl-image:
-	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacyvisitcrawl/Dockerfile -t $(E2E_VISITCRAWL_IMAGE) .
+e2e-images: $(foreach m,$(E2E_IMAGE_MODULES),e2e-$(m)-image)
 
-e2e-node:
-	cd yacynode/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
-		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
+# Modules that own a test/e2e suite, and the images each suite needs.
+E2E_SUITE_MODULES := yacynode yacycrawler yacytextindexer searxng-result-router
 
-e2e-crawler:
-	cd yacycrawler/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YACYCRAWLER_IMAGE=$(E2E_CRAWLER_IMAGE) \
-		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
+E2E_ENV_yacynode              := YACY_NODE_IMAGE=$(E2E_IMAGE_yacynode)
+E2E_ENV_yacycrawler           := YACYCRAWLER_IMAGE=$(E2E_IMAGE_yacycrawler)
+E2E_ENV_yacytextindexer       := YACY_NODE_IMAGE=$(E2E_IMAGE_yacynode) YACYCRAWLER_IMAGE=$(E2E_IMAGE_yacycrawler) YACYTEXTINDEXER_IMAGE=$(E2E_IMAGE_yacytextindexer)
+E2E_ENV_searxng-result-router := YACYVISITCRAWL_IMAGE=$(E2E_IMAGE_yacyvisitcrawl)
 
-e2e-textindexer:
-	cd yacytextindexer/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) \
-		YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
-		YACYCRAWLER_IMAGE=$(E2E_CRAWLER_IMAGE) \
-		YACYTEXTINDEXER_IMAGE=$(E2E_TEXTINDEXER_IMAGE) \
-		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
+define e2e_suite_rule
+e2e-$(1):
+	cd $(1)/test/e2e && GOWORK=off $$(E2E_DOCKER_ENV) $$(E2E_ENV_$(1)) \
+		$$(GO) test -tags e2e -timeout $$(E2E_TIMEOUT) -count=1 -v ./...
+endef
+$(foreach m,$(E2E_SUITE_MODULES),$(eval $(call e2e_suite_rule,$(m))))
 
-e2e-searxng-result-router:
-	cd searxng-result-router/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) \
-		YACYVISITCRAWL_IMAGE=$(E2E_VISITCRAWL_IMAGE) \
-		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
-
-e2e: e2e-node e2e-crawler e2e-textindexer e2e-searxng-result-router
+e2e: $(foreach m,$(E2E_SUITE_MODULES),e2e-$(m))
