@@ -389,3 +389,73 @@ func TestPipelineFinishesJobOnBadURL(t *testing.T) {
 		t.Fatal("bad URL job was not marked done")
 	}
 }
+
+// TestPipelineGatesContentTypeByJobToggles pins the CRAWL-17 pipeline gate:
+// a PDF response is dropped when the job's PDF toggle is off (counted as a
+// failed fetch, nothing emitted) and flows through to the emitter when the
+// toggle is on.
+func TestPipelineGatesContentTypeByJobToggles(t *testing.T) {
+	pdfBody := []byte("%PDF-1.4 not really parsed here")
+	pdfFetch := fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+		target, _ := url.Parse("https://example.com/doc.pdf")
+
+		return pagefetch.FetchedPage{
+			URL: target, ContentType: "application/pdf", Body: pdfBody,
+		}, nil
+	})
+
+	emittedCount := 0
+	build := func() (*recordingFrontier, *pipeline.Pipeline) {
+		frontier := newRecordingFrontier()
+
+		return frontier, pipeline.NewPipeline(
+			frontier,
+			pdfFetch,
+			pageindex.NewIndexBuilder(),
+			emitFunc(func(
+				context.Context,
+				yagocrawlcontract.DocumentIngest,
+				[]yagomodel.RWIPosting,
+				yagomodel.URIMetadataRow,
+				ingest.Envelope,
+			) error {
+				emittedCount++
+
+				return nil
+			}),
+		)
+	}
+
+	frontier, gated := build()
+	ctx, cancel := context.WithCancel(context.Background())
+	go gated.RunWorkers(ctx, ctx, 1)
+	frontier.jobs <- crawljob.CrawlJob{
+		URL: "https://example.com/doc.pdf", ProfileHandle: "h", Index: true,
+	}
+	select {
+	case <-frontier.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("gated job did not finish")
+	}
+	cancel()
+	if emittedCount != 0 {
+		t.Fatalf("pdf with the toggle off must not reach the emitter: %d", emittedCount)
+	}
+
+	frontier2, open := build()
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	go open.RunWorkers(ctx2, ctx2, 1)
+	frontier2.jobs <- crawljob.CrawlJob{
+		URL: "https://example.com/doc.pdf", ProfileHandle: "h", Index: true,
+		Formats: yagocrawlcontract.FormatToggles{PDF: true},
+	}
+	select {
+	case <-frontier2.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("open job did not finish")
+	}
+	if emittedCount != 0 {
+		t.Fatalf("unparseable pdf stub must pass the gate yet emit nothing: %d", emittedCount)
+	}
+}
