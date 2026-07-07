@@ -15,12 +15,62 @@ import (
 type ControlRegistry struct {
 	mu      sync.Mutex
 	pending map[string][]yagocrawlcontract.CrawlControlDirective
+	// workers counts the live StreamOrders connections per worker id so a
+	// broadcast (RestartWorkers) reaches exactly the crawlers attached now.
+	workers map[string]int
 }
 
 func newControlRegistry() *ControlRegistry {
 	return &ControlRegistry{
 		pending: make(map[string][]yagocrawlcontract.CrawlControlDirective),
+		workers: make(map[string]int),
 	}
+}
+
+// register marks a worker's order stream as connected; a blank id is ignored.
+func (r *ControlRegistry) register(workerID string) {
+	if workerID == "" {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.workers[workerID]++
+}
+
+// unregister drops one of a worker's order-stream connections.
+func (r *ControlRegistry) unregister(workerID string) {
+	if workerID == "" {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.workers[workerID] <= 1 {
+		delete(r.workers, workerID)
+
+		return
+	}
+	r.workers[workerID]--
+}
+
+// RestartWorkers queues a restart directive for every connected worker and
+// returns how many were signalled. Each directive is one-shot: a worker drains
+// it on its next heartbeat, shuts down, and reconnects without it, so the
+// broadcast does not loop.
+func (r *ControlRegistry) RestartWorkers() int {
+	restart := yagocrawlcontract.CrawlControlDirective{Kind: yagocrawlcontract.CrawlControlRestart}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for workerID := range r.workers {
+		r.pending[workerID] = append(r.pending[workerID], restart)
+	}
+
+	return len(r.workers)
 }
 
 // Enqueue queues a directive for a worker; it is delivered on the worker's next
@@ -92,6 +142,8 @@ func controlKindToProto(kind yagocrawlcontract.CrawlControlKind) crawlrpc.CrawlC
 		return crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_CANCEL
 	case yagocrawlcontract.CrawlControlSetRate:
 		return crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_RATE
+	case yagocrawlcontract.CrawlControlRestart:
+		return crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESTART
 	default:
 		return crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_UNSPECIFIED
 	}

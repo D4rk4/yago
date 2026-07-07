@@ -112,6 +112,8 @@ func controlKindFromProto(kind crawlrpc.CrawlControlKind) yagocrawlcontract.Craw
 		return yagocrawlcontract.CrawlControlCancel
 	case crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_RATE:
 		return yagocrawlcontract.CrawlControlSetRate
+	case crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESTART:
+		return yagocrawlcontract.CrawlControlRestart
 	default:
 		return ""
 	}

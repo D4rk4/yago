@@ -41,6 +41,8 @@ func (s *exchangeServer) StreamOrders(
 ) error {
 	ctx := stream.Context()
 	workerID := reg.GetWorkerId()
+	s.control.register(workerID)
+	defer s.control.unregister(workerID)
 	for {
 		data, leaseID, err := s.queue.leaseNext(ctx, workerID)
 		if err != nil {

@@ -130,8 +130,11 @@ type Options struct {
 	// indicator; the default keeps NN/G same-tab navigation.
 	SearchLinksNewTab bool
 	// Restart requests a graceful node restart; nil hides the action.
-	Restart   func()
-	PeerBlock PeerBlockSource
+	Restart func()
+	// RestartCrawlers signals every connected crawler to restart over the gRPC
+	// control plane and returns how many were signalled; nil hides the action.
+	RestartCrawlers func() int
+	PeerBlock       PeerBlockSource
 	// SearchSuggest, when set, serves OpenSearch suggestion JSON for the console
 	// search box autocomplete at GET /admin/search/suggest.
 	SearchSuggest http.Handler
@@ -381,6 +384,7 @@ type Console struct {
 	seedlistRefresh SeedlistRefreshSource
 	peerBlock       PeerBlockSource
 	restart         func()
+	restartCrawlers func() int
 	searchSuggest   http.Handler
 	publicBase      string
 	publicPort      string
@@ -425,6 +429,7 @@ func New(opts Options) *Console {
 		seedlistRefresh: opts.SeedlistRefresh,
 		peerBlock:       opts.PeerBlock,
 		restart:         opts.Restart,
+		restartCrawlers: opts.RestartCrawlers,
 		publicBase:      strings.TrimRight(opts.PublicBaseURL, "/"),
 		publicPort:      publicListenerPort(opts.PublicAddr),
 	}

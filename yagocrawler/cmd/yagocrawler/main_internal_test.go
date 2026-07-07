@@ -160,3 +160,20 @@ func TestRunReturnsBrowserStartError(t *testing.T) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
 	}
 }
+
+func TestStartReturnsRestartCode(t *testing.T) {
+	restoreMainSeams(t)
+	loadCrawlerServiceConfig = func(func(string) string) (ServiceConfig, error) {
+		return minimalServiceConfig(t), nil
+	}
+	notifyProcessContext = func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) {
+		return context.WithCancel(ctx)
+	}
+	runConfiguredCrawler = func(context.Context, ServiceConfig) error {
+		return errRestartRequested
+	}
+
+	if code := start(); code != restartExitCode {
+		t.Fatalf("code = %d, want %d", code, restartExitCode)
+	}
+}

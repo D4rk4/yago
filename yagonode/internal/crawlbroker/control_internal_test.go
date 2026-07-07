@@ -58,6 +58,7 @@ func TestDirectivesToProtoMapsFields(t *testing.T) {
 		yagocrawlcontract.CrawlControlResume:    crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESUME,
 		yagocrawlcontract.CrawlControlCancel:    crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_CANCEL,
 		yagocrawlcontract.CrawlControlSetRate:   crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_RATE,
+		yagocrawlcontract.CrawlControlRestart:   crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESTART,
 		yagocrawlcontract.CrawlControlKind("x"): crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_UNSPECIFIED,
 	}
 	for kind, want := range kinds {
@@ -120,5 +121,64 @@ func TestExchangeHeartbeatDeliversControlDirectives(t *testing.T) {
 	}
 	if len(drained.GetDirectives()) != 0 {
 		t.Fatalf("second heartbeat returned %d directives, want 0", len(drained.GetDirectives()))
+	}
+}
+
+func TestControlRegistryRestartWorkers(t *testing.T) {
+	registry := newControlRegistry()
+	if signalled := registry.RestartWorkers(); signalled != 0 {
+		t.Fatalf("restart with no workers = %d, want 0", signalled)
+	}
+
+	registry.register("w1")
+	registry.register("w1") // a second order stream for the same worker
+	registry.register("w2")
+	registry.register("") // blank id is ignored
+
+	if signalled := registry.RestartWorkers(); signalled != 2 {
+		t.Fatalf("restart signalled %d workers, want 2", signalled)
+	}
+	for _, worker := range []string{"w1", "w2"} {
+		drained := registry.drain(worker)
+		if len(drained) != 1 || drained[0].Kind != yagocrawlcontract.CrawlControlRestart {
+			t.Fatalf("%s drained = %+v, want one restart directive", worker, drained)
+		}
+	}
+
+	registry.unregister("w1") // still has a second connection
+	if signalled := registry.RestartWorkers(); signalled != 2 {
+		t.Fatalf("after one unregister = %d, want 2 workers still connected", signalled)
+	}
+	registry.drain("w1")
+	registry.drain("w2")
+
+	registry.unregister("w1") // last connection drops
+	registry.unregister("w2")
+	registry.unregister("") // blank id is ignored
+	if signalled := registry.RestartWorkers(); signalled != 0 {
+		t.Fatalf("after all unregister = %d, want 0", signalled)
+	}
+}
+
+func TestStreamOrdersRegistersWorkerForRestart(t *testing.T) {
+	queue := memQueue(t)
+	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
+	if err := queue.Publish(context.Background(), testOrder("reg")); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var duringStream int
+	stream := &fakeOrderStream{ctx: ctx, onSend: func() {
+		duringStream = server.control.RestartWorkers()
+		cancel()
+	}}
+	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{WorkerId: "w1"}, stream)
+
+	if duringStream != 1 {
+		t.Fatalf("worker not registered during StreamOrders: restart saw %d", duringStream)
+	}
+	if after := server.control.RestartWorkers(); after != 0 {
+		t.Fatalf("worker still registered after StreamOrders returned: %d", after)
 	}
 }

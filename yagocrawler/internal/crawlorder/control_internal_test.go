@@ -37,6 +37,7 @@ func TestDirectiveFromProtoMapsKinds(t *testing.T) {
 		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESUME:   yagocrawlcontract.CrawlControlResume,
 		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_CANCEL:   yagocrawlcontract.CrawlControlCancel,
 		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_RATE: yagocrawlcontract.CrawlControlSetRate,
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESTART:  yagocrawlcontract.CrawlControlRestart,
 		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_UNSPECIFIED: yagocrawlcontract.CrawlControlKind(
 			"",
 		),

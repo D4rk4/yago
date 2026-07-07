@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -37,11 +38,16 @@ func start() int {
 	ctx, stop := notifyProcessContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runConfiguredCrawler(ctx, cfg); err != nil {
+	switch err := runConfiguredCrawler(ctx, cfg); {
+	case errors.Is(err, errRestartRequested):
+		slog.InfoContext(ctx, "crawler restarting", slog.Int("exitCode", restartExitCode))
+		return restartExitCode
+	case err != nil:
 		slog.ErrorContext(ctx, "crawler failed", slog.Any("error", err))
 		return 1
+	default:
+		return 0
 	}
-	return 0
 }
 
 func run(ctx context.Context, cfg ServiceConfig) error {

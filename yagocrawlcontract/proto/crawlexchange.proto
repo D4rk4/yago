@@ -66,6 +66,9 @@ enum CrawlControlKind {
   CRAWL_CONTROL_KIND_RESUME = 2;
   CRAWL_CONTROL_KIND_CANCEL = 3;
   CRAWL_CONTROL_KIND_SET_RATE = 4;
+  // RESTART asks the whole worker to shut down gracefully so its supervisor
+  // brings it back up; run_id is ignored.
+  CRAWL_CONTROL_KIND_RESTART = 5;
 }
 
 // CrawlControlDirective steers one run identified by its provenance token, or the

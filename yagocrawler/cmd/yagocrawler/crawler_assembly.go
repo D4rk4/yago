@@ -115,6 +115,8 @@ func buildFetchChains(
 }
 
 func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSource) error {
+	ctx, restart := newRestartController(ctx)
+
 	exchange, closer, err := newCrawlerExchange(cfg.NodeRPCAddr)
 	if err != nil {
 		return fmt.Errorf("dial node rpc: %w", err)
@@ -150,7 +152,10 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		ctx,
 		exchange,
 		cfg.WorkerID,
-		crawlorder.NewFrontierControlHandler(frontier),
+		crawlorder.NewRestartControlHandler(
+			restart.Trigger,
+			crawlorder.NewFrontierControlHandler(frontier),
+		),
 	)
 
 	guard := yagoegress.NewGuard(
@@ -189,7 +194,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	superviseCrawl(ctx, worker, consumer, crawl.Workers, cfg.ShutdownGrace)
 	slog.InfoContext(ctx, "crawler stopped")
 
-	return nil
+	return restart.Wrap(nil)
 }
 
 func newCrawlRequestExpander(

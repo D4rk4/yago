@@ -13,6 +13,9 @@ const (
 	CrawlControlCancel CrawlControlKind = "cancel"
 	// CrawlControlSetRate caps the run's fetch pace at PagesPerMinute.
 	CrawlControlSetRate CrawlControlKind = "set_rate"
+	// CrawlControlRestart asks the whole worker to shut down gracefully so its
+	// supervisor brings it back up; RunID is ignored since it targets the process.
+	CrawlControlRestart CrawlControlKind = "restart"
 )
 
 // CrawlControlDirective steers one run identified by its provenance token (RunID,

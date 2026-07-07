@@ -32,6 +32,9 @@ const (
 	CrawlControlKind_CRAWL_CONTROL_KIND_RESUME      CrawlControlKind = 2
 	CrawlControlKind_CRAWL_CONTROL_KIND_CANCEL      CrawlControlKind = 3
 	CrawlControlKind_CRAWL_CONTROL_KIND_SET_RATE    CrawlControlKind = 4
+	// RESTART asks the whole worker to shut down gracefully so its supervisor
+	// brings it back up; run_id is ignored.
+	CrawlControlKind_CRAWL_CONTROL_KIND_RESTART CrawlControlKind = 5
 )
 
 // Enum value maps for CrawlControlKind.
@@ -42,6 +45,7 @@ var (
 		2: "CRAWL_CONTROL_KIND_RESUME",
 		3: "CRAWL_CONTROL_KIND_CANCEL",
 		4: "CRAWL_CONTROL_KIND_SET_RATE",
+		5: "CRAWL_CONTROL_KIND_RESTART",
 	}
 	CrawlControlKind_value = map[string]int32{
 		"CRAWL_CONTROL_KIND_UNSPECIFIED": 0,
@@ -49,6 +53,7 @@ var (
 		"CRAWL_CONTROL_KIND_RESUME":      2,
 		"CRAWL_CONTROL_KIND_CANCEL":      3,
 		"CRAWL_CONTROL_KIND_SET_RATE":    4,
+		"CRAWL_CONTROL_KIND_RESTART":     5,
 	}
 )
 
@@ -798,13 +803,14 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\fprofile_name\x18\x04 \x01(\tR\vprofileName\x121\n" +
 	"\x05state\x18\x05 \x01(\x0e2\x1b.yacycrawl.v1.CrawlRunStateR\x05state\x121\n" +
 	"\x05tally\x18\x06 \x01(\v2\x1b.yacycrawl.v1.CrawlRunTallyR\x05tally\"\x12\n" +
-	"\x10CrawlProgressAck*\xb3\x01\n" +
+	"\x10CrawlProgressAck*\xd3\x01\n" +
 	"\x10CrawlControlKind\x12\"\n" +
 	"\x1eCRAWL_CONTROL_KIND_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18CRAWL_CONTROL_KIND_PAUSE\x10\x01\x12\x1d\n" +
 	"\x19CRAWL_CONTROL_KIND_RESUME\x10\x02\x12\x1d\n" +
 	"\x19CRAWL_CONTROL_KIND_CANCEL\x10\x03\x12\x1f\n" +
-	"\x1bCRAWL_CONTROL_KIND_SET_RATE\x10\x04*\x8a\x01\n" +
+	"\x1bCRAWL_CONTROL_KIND_SET_RATE\x10\x04\x12\x1e\n" +
+	"\x1aCRAWL_CONTROL_KIND_RESTART\x10\x05*\x8a\x01\n" +
 	"\rCrawlRunState\x12\x1f\n" +
 	"\x1bCRAWL_RUN_STATE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17CRAWL_RUN_STATE_RUNNING\x10\x01\x12\x1c\n" +

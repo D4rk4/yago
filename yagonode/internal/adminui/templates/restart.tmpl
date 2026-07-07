@@ -1,16 +1,33 @@
 {{define "content"}}
-<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Restart node</nav>
-<h1 class="cds-h1">Restart node</h1>
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Restart</nav>
+<h1 class="cds-h1">Restart</h1>
+{{if .Notice}}<div class="cds-inline-notification cds-inline-notification--success" role="status">{{.Notice}}</div>{{end}}
 <div class="cds-tile">
+  <h2 class="cds-h2">Restart node</h2>
   <p>Restarting stops the node gracefully and lets the supervisor bring it back
   up with the persisted settings applied. In-flight crawls and searches are
   interrupted for a few seconds; durable queues resume where they left off.</p>
   <form method="post" action="/admin/restart" hx-boost="false">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <input type="hidden" name="target" value="node">
     <button class="cds-btn cds-btn--danger" type="submit">Restart node now</button>
     <a class="cds-btn cds-btn--ghost" href="/admin/overview">Cancel</a>
   </form>
 </div>
+{{if .CrawlerRestart}}
+<div class="cds-tile">
+  <h2 class="cds-h2">Restart crawlers</h2>
+  <p>Signal every connected crawler to shut down gracefully and be brought back
+  up by its supervisor. The command reaches each worker over the gRPC control
+  plane on its next heartbeat; the node keeps running. Leased orders return to
+  the durable queue and resume once the worker reconnects.</p>
+  <form method="post" action="/admin/restart" hx-boost="false">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <input type="hidden" name="target" value="crawler">
+    <button class="cds-btn cds-btn--danger" type="submit">Restart crawlers now</button>
+  </form>
+</div>
+{{end}}
 {{end}}
 
 {{define "restarting-node"}}<!doctype html>
