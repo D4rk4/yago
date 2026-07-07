@@ -14,8 +14,11 @@ func TestConsoleSearchLinksDefaultToSameTab(t *testing.T) {
 	if got.status != http.StatusOK {
 		t.Fatalf("status %d", got.status)
 	}
-	if strings.Contains(got.body, `target="_blank"`) {
-		t.Fatal("same-tab default should not render target=_blank")
+	// The new-tab result rel is the precise same-tab-vs-new-tab discriminator;
+	// checking for a bare target="_blank" would now also match the header brand
+	// link, which is unrelated chrome.
+	if strings.Contains(got.body, `rel="noopener noreferrer nofollow"`) {
+		t.Fatal("same-tab default should not render new-tab result links")
 	}
 	if !strings.Contains(got.body, `rel="noreferrer nofollow"`) {
 		t.Fatal("same-tab links should keep referrer and follow hygiene")

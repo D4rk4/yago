@@ -85,8 +85,15 @@ select:focus-visible, [tabindex]:focus-visible {
   border-bottom: 1px solid var(--cds-header-border);
   z-index: 20;
 }
-.cds-header__name { font-weight: 600; letter-spacing: 0.02em; }
-.cds-header__name b { font-weight: 600; }
+.cds-header__brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-size: 1rem;
+  text-decoration: none;
+}
+.cds-brand__ya { color: #fa4d56; }
+.cds-brand__go { color: #ffffff; }
+.cds-header__name { color: var(--cds-text-secondary); font-weight: 400; letter-spacing: 0.02em; }
 .cds-header__spacer { flex: 1 1 auto; }
 .cds-header__link { color: #c6c6c6; text-decoration: none; font-size: 0.8125rem; }
 .cds-header__link:hover { color: var(--cds-text-on-color); }

@@ -12,7 +12,8 @@
 <body hx-boost="true">
 <a class="cds-skip" href="#cds-main">Skip to main content</a>
 <header class="cds-header">
-  <span class="cds-header__name"><b>{{.Data.AppName}}</b> admin</span>
+  <a class="cds-header__brand" href="https://github.com/D4rk4/yago" target="_blank" rel="noopener noreferrer" aria-label="yago source on GitHub"><span class="cds-brand__ya">ya</span><span class="cds-brand__go">go</span></a>
+  <span class="cds-header__name">admin</span>
   <span class="cds-header__spacer"></span>
   {{if .PublicSearchHref}}<a class="cds-header__link" href="{{.PublicSearchHref}}" rel="noopener">Public search</a>{{end}}
   <a class="cds-header__link" href="/admin/security">Security</a>
