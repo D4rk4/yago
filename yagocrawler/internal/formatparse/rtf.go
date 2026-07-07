@@ -83,6 +83,15 @@ func (w *rtfWalker) handleEscape(body []byte, i int) int {
 		}
 
 		return i + 1
+	case next == '*':
+		// An ignorable destination: readers that do not understand the
+		// following control word (embedded WordML, revision data, ...) drop
+		// the whole group, so its contents never leak into the text.
+		if w.emitting() {
+			w.skip = w.deep
+		}
+
+		return i + 1
 	case isRTFLetter(next):
 		word, parameter, consumed := rtfControlWord(body[i+1:])
 

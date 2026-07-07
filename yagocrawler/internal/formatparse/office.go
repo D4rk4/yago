@@ -38,9 +38,9 @@ var (
 
 // parseOffice handles the office family: OOXML and OpenDocument are zip+XML
 // containers whose content parts yield the document text; FreeMind .mm is
-// plain XML; the legacy binary formats (doc/xls/ppt/Visio — Apache POI
-// territory) extract best-effort readable runs like MSG. Old StarOffice
-// sxw/sxc use the ODF container too, so they route with it.
+// plain XML; the legacy binary formats (doc/xls/ppt/Visio) are OLE2 compound
+// files decoded from their own text streams. Old StarOffice sxw/sxc use the
+// ODF container too, so they route with it.
 func parseOffice(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
 	ext := urlExtension(rawURL)
 	switch {
@@ -51,7 +51,7 @@ func parseOffice(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
 	case ext == "mm":
 		return parseFreeMind(rawURL, body)
 	case legacyOfficeExtensions[ext]:
-		return parseMSG(rawURL, body)
+		return parseLegacyOffice(rawURL, body)
 	default:
 		return pageparse.ParsedPage{URL: rawURL}, false
 	}
@@ -119,28 +119,56 @@ func readZipPart(file *zip.File) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(opened, officeMaxPartBytes))
 }
 
+// noiseMetaElement names the document-metadata elements whose text is machine
+// bookkeeping (the authoring application, timestamps, edit counters) rather
+// than content — indexing them pollutes the page with generator strings and
+// ISO date stamps, and lets a generator string masquerade as the title.
+var noiseMetaElement = set(
+	"generator", "created", "modified", "date", "creation-date",
+	"print-date", "editing-cycles", "editing-duration", "revision",
+)
+
 // appendXMLCharData writes the XML document's character data, breaking lines
-// at the block elements OOXML and ODF use for paragraphs, rows, and pages.
+// at the block elements OOXML and ODF use for paragraphs, rows, and pages and
+// dropping the character data of the metadata-noise elements.
 func appendXMLCharData(text *strings.Builder, content []byte) {
 	decoder := xml.NewDecoder(bytes.NewReader(content))
+	depth, skipDepth := 0, -1
 	for {
 		token, err := decoder.Token()
 		if err != nil {
 			return
 		}
 		switch typed := token.(type) {
-		case xml.CharData:
-			trimmed := strings.TrimSpace(string(typed))
-			if trimmed != "" {
-				text.WriteString(trimmed)
-				text.WriteByte(' ')
+		case xml.StartElement:
+			depth++
+			if skipDepth < 0 && noiseMetaElement[typed.Name.Local] {
+				skipDepth = depth
 			}
+		case xml.CharData:
+			appendXMLChars(text, typed, skipDepth)
 		case xml.EndElement:
+			if skipDepth == depth {
+				skipDepth = -1
+			}
+			depth--
 			switch typed.Name.Local {
 			case "p", "row", "si", "h", "title":
 				text.WriteByte('\n')
 			}
 		}
+	}
+}
+
+// appendXMLChars writes trimmed character data unless it sits inside a
+// metadata-noise element.
+func appendXMLChars(text *strings.Builder, data xml.CharData, skipDepth int) {
+	if skipDepth >= 0 {
+		return
+	}
+	if trimmed := strings.TrimSpace(string(data)); trimmed != "" {
+		text.WriteString(trimmed)
+		text.WriteByte(' ')
 	}
 }
 

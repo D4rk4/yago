@@ -105,10 +105,16 @@ func TestParseFreeMindAndLegacy(t *testing.T) {
 		t.Fatalf("mm parse = %v %+v", parsed, page)
 	}
 
+	// A truncated compound-file signature is not a real .doc and must not be
+	// mistaken for one — proper extraction needs the OLE2 directory structure.
 	legacy := append([]byte{0xd0, 0xcf, 0x11, 0xe0}, []byte("Legacy Word body text here")...)
-	page, parsed = Parse("https://a.example/old.doc", "application/msword", legacy, toggles)
-	if !parsed || !strings.Contains(page.Text, "Legacy Word body text here") {
-		t.Fatalf("doc parse = %v %+v", parsed, page)
+	if _, parsed := Parse(
+		"https://a.example/old.doc",
+		"application/msword",
+		legacy,
+		toggles,
+	); parsed {
+		t.Fatal("a truncated compound file must stay unparsed")
 	}
 
 	if _, parsed := Parse(
