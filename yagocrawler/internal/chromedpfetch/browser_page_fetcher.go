@@ -17,6 +17,13 @@ import (
 const (
 	BrowserContentType    = "text/html; charset=utf-8"
 	jsDocumentContentType = "document.contentType"
+	// jsDocumentOuterHTML reads the rendered markup straight from the live DOM.
+	// chromedp.OuterHTML resolves the "html" node id first and then reads its
+	// outerHTML in a second call; if the page navigates between the two (a
+	// redirect, meta refresh, or client-side navigation) the node id is stale and
+	// Chrome fails the fetch with "No node with given id found (-32000)". A single
+	// script evaluation avoids the stale reference by reading the DOM at call time.
+	jsDocumentOuterHTML = "document.documentElement.outerHTML"
 )
 
 var newChromedpTabContext = chromedp.NewContext
@@ -100,7 +107,7 @@ func chromedpRenderer(allocCtx context.Context) pageRenderer {
 		finalURL := rawURL
 		err := runChromedpActions(tabCtx,
 			chromedp.Navigate(rawURL),
-			chromedp.OuterHTML("html", &content, chromedp.ByQuery),
+			chromedp.Evaluate(jsDocumentOuterHTML, &content),
 			chromedp.Location(&finalURL),
 			chromedp.Evaluate(jsDocumentContentType, &contentType),
 		)
