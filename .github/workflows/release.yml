@@ -1,0 +1,129 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: yagonode/go.mod
+
+      - name: Cache Go modules and tools
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            tools/bin
+          key: release-verify-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+
+      - name: Verify
+        run: make verify
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: yagonode/go.mod
+
+      - name: Build binaries
+        env:
+          CGO_ENABLED: "0"
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist/${GOARCH}
+          go build -trimpath -ldflags="-s -w" \
+            -o dist/${GOARCH}/yago-node ./yagonode/cmd/yago-node
+          (cd yagocrawler && go build -trimpath -ldflags="-s -w" \
+            -o ../dist/${GOARCH}/yagocrawler ./cmd/yagocrawler)
+
+      - name: Package tarball
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          tar -czf "dist/yago_${version}_linux_${{ matrix.goarch }}.tar.gz" \
+            -C dist/${{ matrix.goarch }} yago-node yagocrawler \
+            -C ../.. deploy/install.sh deploy/systemd doc/backup-restore.md
+
+      - name: Build .deb
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sh deploy/debian/build-deb.sh "$version" ${{ matrix.goarch }} \
+            dist/${{ matrix.goarch }} dist
+
+      - name: Smoke-test .deb (native arch only)
+        if: matrix.goarch == 'amd64'
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          docker run --rm -v "$PWD/dist:/out:ro" debian:12-slim sh -c "
+            apt-get update -qq >/dev/null && \
+            apt-get install -y -qq ca-certificates adduser >/dev/null && \
+            dpkg -i /out/yago_${version}_amd64.deb && id yago && \
+            dpkg -P yago && test -d /opt/yago/data"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dist-${{ matrix.goarch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate release notes from commits
+        run: |
+          previous=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          {
+            echo "## Changes"
+            echo
+            if [ -n "$previous" ]; then
+              git log --format='- %s' "${previous}..${GITHUB_REF_NAME}" | grep -v '^- Co-Authored' || true
+            else
+              git log --format='- %s' "${GITHUB_REF_NAME}" | head -50
+            fi
+            echo
+            echo "## Container images"
+            echo
+            echo 'Multi-arch images are published by the container-image workflow:'
+            echo '`ghcr.io/${{ github.repository }}-node` and `ghcr.io/${{ github.repository }}-crawler`.'
+          } > notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" --notes-file notes.md

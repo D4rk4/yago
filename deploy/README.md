@@ -1,5 +1,10 @@
 # Bare-metal deployment (systemd + Debian package)
 
+**Quick paths:** `deploy/install.sh` installs from a release tarball;
+`deploy/debian/build-deb.sh` builds the `.deb` (the release workflow publishes
+both per tag, amd64 + arm64); `deploy/backup.sh` / `deploy/restore.sh` cover
+disaster recovery (doc/backup-restore.md).
+
 The same `yago-node` and `yagocrawler` binaries that run under Docker also run
 directly on a Linux host, managed by systemd and installed from a Debian
 package. This directory holds the reference systemd units and environment files;
@@ -31,6 +36,18 @@ package dependencies rather than bundled:
   the OS browser through `YAGOCRAWLER_BROWSER_PATH`.
 
 ## Install and run
+
+`deploy/install.sh` performs the whole layout: it creates the `yago` system
+user, the `/opt/yago/{bin,etc,data}` tree with correct ownership, copies the
+binaries and env examples (never overwriting an edited env), installs the
+units, and enables them when systemd is running. Idempotent — re-run it for
+upgrades:
+
+```sh
+sudo deploy/install.sh <dir-with-binaries>
+```
+
+Or by hand:
 
 ```sh
 sudo cp yago-node yagocrawler /opt/yago/bin/
@@ -64,3 +81,22 @@ The `.deb` build automation (which installs this layout, ships these units,
 seeds the env files, and creates the `yago` user) is tracked as OPS-05 in
 `PLAN.md`. The runtime is already deployment-agnostic, so the package only has to
 place files and register the services.
+
+## Debian package
+
+`deploy/debian/build-deb.sh <version> <arch> <bindir> <outdir>` builds the
+package anywhere `dpkg-deb` exists. It installs into `/opt/yago`, depends on
+`ca-certificates` and `adduser` (recommends `chromium` for the crawler's
+browser path), creates the `yago` system user in postinst, enables the
+systemd units, and — validated end to end on Debian 12 and Ubuntu 24.04 —
+keeps `/opt/yago/data` through purge while removing the edited env files.
+
+## Releases
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`: `make verify` gates
+the release, binaries build for amd64 and arm64 (CGO off, trimmed), each arch
+ships as a tarball (binaries + install.sh + units + backup doc) and a `.deb`
+(the amd64 package is smoke-installed in a clean Debian 12 container), release
+notes are generated from the commit titles since the previous tag, and a
+GitHub Release carries the assets. Container images stay on the
+`container-image` workflow; the notes link them.
