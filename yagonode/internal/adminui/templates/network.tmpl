@@ -53,7 +53,7 @@
 {{if .Network.Peers}}
 <div class="cds-scroll-x">
   <table class="cds-table">
-    <thead><tr><th scope="col">Peer</th><th scope="col">Type</th><th scope="col">Address</th><th scope="col">Flags</th><th scope="col">RWI count</th><th scope="col">Last seen</th><th scope="col">Age (days)</th><th scope="col">Hash</th></tr></thead>
+    <thead><tr><th scope="col">Peer</th><th scope="col">Type</th><th scope="col">Address</th><th scope="col">Flags</th><th scope="col">RWI count</th><th scope="col">Last seen</th><th scope="col">Health</th><th scope="col">Age (days)</th><th scope="col">Hash</th></tr></thead>
     <tbody>
       {{$links := .PeerLinks}}
       {{range .Network.Peers}}
@@ -64,6 +64,7 @@
         <td>{{range .Flags}}<span class="cds-tag cds-tag--info">{{.}}</span> {{else}}—{{end}}</td>
         <td>{{.RWICount}}</td>
         <td>{{if .LastSeen}}{{.LastSeen}}{{else}}—{{end}}</td>
+        <td><span class="cds-tag cds-tag--{{if eq .HealthTag "healthy"}}info{{else if eq .HealthTag "aging"}}warn{{else}}error{{end}}">{{.Health}} {{.HealthTag}}</span></td>
         <td>{{.AgeDays}}</td>
         <td class="cds-mono">{{.Hash}}</td>
       </tr>

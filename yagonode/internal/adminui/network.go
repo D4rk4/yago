@@ -20,6 +20,10 @@ type NetworkPeer struct {
 	LastSeen string
 	AgeDays  int
 	Blocked  bool
+	// Health is the passive-observation availability score (OPS-12) and
+	// HealthTag its healthy/aging/stale band.
+	Health    int
+	HealthTag string
 }
 
 // SeedlistEntry is one configured bootstrap seed-list URL with the outcome of its
