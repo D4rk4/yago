@@ -54,8 +54,9 @@ func seedUsage(t *testing.T, v *vault.Vault) {
 }
 
 type fakeReferences struct {
-	word yagomodel.Hash
-	err  error
+	word  yagomodel.Hash
+	err   error
+	empty bool
 }
 
 func (f fakeReferences) WordsReferencing(
@@ -64,6 +65,9 @@ func (f fakeReferences) WordsReferencing(
 ) ([]yagomodel.Hash, error) {
 	if f.err != nil {
 		return nil, f.err
+	}
+	if f.empty {
+		return nil, nil
 	}
 	return []yagomodel.Hash{f.word}, nil
 }
@@ -345,6 +349,24 @@ func TestEvictorEvictsURLs(t *testing.T) {
 	}
 }
 
+func TestEvictorEvictsAbsentURLsNoop(t *testing.T) {
+	v := openVault(t, 1024)
+	postings := &fakePostings{}
+	urls := &fakeURLs{noDelete: true}
+	evictor := eviction.NewEvictor(v, postings, fakeReferences{empty: true}, urls)
+
+	result, err := evictor.EvictURLs(context.Background(), hashes(1))
+	if err != nil {
+		t.Fatalf("EvictURLs: %v", err)
+	}
+	if result.URLsDeleted != 0 || result.PostingsDeleted != 0 {
+		t.Fatalf("purging an absent url must delete nothing, result = %+v", result)
+	}
+	if len(postings.purged) != 0 {
+		t.Fatalf("purged = %v, want none", postings.purged)
+	}
+}
+
 func TestEvictorSurfacesPurgeError(t *testing.T) {
 	v := openVault(t, 1024)
 	evictor := eviction.NewEvictor(
@@ -353,5 +375,30 @@ func TestEvictorSurfacesPurgeError(t *testing.T) {
 
 	if _, err := evictor.EvictURLs(context.Background(), hashes(1)); err == nil {
 		t.Fatal("EvictURLs should surface a purge error")
+	}
+}
+
+func TestEvictorPurgeDropsURLs(t *testing.T) {
+	v := openVault(t, 1024)
+	postings := &fakePostings{}
+	urls := &fakeURLs{remaining: hashes(1)}
+	evictor := eviction.NewEvictor(v, postings, fakeReferences{word: yagomodel.WordHash("w")}, urls)
+
+	if err := evictor.Purge(context.Background(), hashes(1)); err != nil {
+		t.Fatalf("Purge: %v", err)
+	}
+	if len(postings.purged) != 1 {
+		t.Fatalf("purged = %v, want one", postings.purged)
+	}
+}
+
+func TestEvictorPurgeSurfacesError(t *testing.T) {
+	v := openVault(t, 1024)
+	evictor := eviction.NewEvictor(
+		v, &fakePostings{}, fakeReferences{}, &fakeURLs{purgeErr: errors.New("boom")},
+	)
+
+	if err := evictor.Purge(context.Background(), hashes(1)); err == nil {
+		t.Fatal("Purge should surface a purge error")
 	}
 }

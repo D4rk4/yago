@@ -331,3 +331,50 @@ func TestPageFetcherSignalsThrottleWithRetryAfter(t *testing.T) {
 		t.Fatalf("404 error = %v", err)
 	}
 }
+
+// TestPageFetcherSignalsGoneOnDeadStatus pins ADR-0034: 404 and 410 become typed
+// GoneError signals (still page rejections), while other non-2xx statuses stay
+// plain rejections or throttles and are never treated as gone.
+func TestPageFetcherSignalsGoneOnDeadStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/notfound":
+			w.WriteHeader(http.StatusNotFound)
+		case "/gone":
+			w.WriteHeader(http.StatusGone)
+		case "/forbidden":
+			w.WriteHeader(http.StatusForbidden)
+		case "/error":
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
+	defer server.Close()
+	fetcher := httpfetch.NewPageFetcher(server.Client(), "", 1<<20)
+
+	for _, path := range []string{"/notfound", "/gone"} {
+		_, err := fetcher.Fetch(context.Background(), mustParse(t, server.URL+path))
+		var gone *pagefetch.GoneError
+		if !errors.As(err, &gone) || !errors.Is(err, pagefetch.ErrPageRejected) {
+			t.Fatalf("%s error = %v, want GoneError", path, err)
+		}
+	}
+
+	for _, path := range []string{"/forbidden", "/error"} {
+		_, err := fetcher.Fetch(context.Background(), mustParse(t, server.URL+path))
+		var gone *pagefetch.GoneError
+		if errors.As(err, &gone) || !errors.Is(err, pagefetch.ErrPageRejected) {
+			t.Fatalf("%s error = %v, want plain rejection", path, err)
+		}
+	}
+
+	_, err := fetcher.Fetch(context.Background(), mustParse(t, server.URL+"/unavailable"))
+	var gone *pagefetch.GoneError
+	if errors.As(err, &gone) {
+		t.Fatalf("503 error = %v, must not be gone", err)
+	}
+	if _, ok := pagefetch.AsThrottled(err); !ok {
+		t.Fatalf("503 error = %v, want throttled", err)
+	}
+}

@@ -62,3 +62,27 @@ func TestUnmarshalIngestBatchRejectsInvalidJSON(t *testing.T) {
 		t.Fatal("invalid JSON should fail")
 	}
 }
+
+func TestIngestBatchRemovedRoundTrip(t *testing.T) {
+	batch := IngestBatch{
+		SourceURL:     "https://example.org/gone",
+		Provenance:    []byte("admin"),
+		ProfileHandle: "abcdef012345",
+		Removed:       true,
+	}
+
+	data, err := MarshalIngestBatch(batch)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got, err := UnmarshalIngestBatch(data)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !got.Removed {
+		t.Fatalf("Removed did not survive round-trip: %#v", got)
+	}
+	if !reflect.DeepEqual(batch, got) {
+		t.Errorf("round-trip mismatch:\nwant %#v\ngot  %#v", batch, got)
+	}
+}

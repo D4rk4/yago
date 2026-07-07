@@ -67,6 +67,22 @@ behavior**: 403, 429, 5xx, timeouts, DNS/connection errors, and read errors are
 transient or ambiguous and never delete content — they stay counted as failed
 fetches. (429/503 already route to `ThrottledError`.)
 
+A gone status must survive the crawler's fetch chain to reach the pipeline. The
+fast HTTP client is the primary of a `FallbackPageSource` whose fallback is the
+headless browser, and that source escalates a page rejection to the browser to
+rescue bot-walled or JavaScript-rendered pages. A 404/410 is escalated too on the
+unchanged path — but the browser receives the same status from the origin, so it
+cannot rescue the page; it would instead render the server's error page into a
+soft-404 document and bury the gone signal under a browser error, leaving the
+recrawl path unable to tombstone the URL. So the fallback source treats a gone
+status like a throttle: it propagates unchanged rather than escalating. This
+matches how mainstream crawlers treat 404/410 as a removal signal rather than a
+render candidate, and it stops the pre-existing habit of indexing rendered
+error pages. (A site that returns 404 to bots but real content to a browser — rare
+for the *404/410* codes specifically, as opposed to 403/challenge pages — is no
+longer browser-rescued; that trade is accepted for correct, conservative
+removal.)
+
 **3. The node purges idempotently, so no "is this a recrawl?" flag is needed.**
 On a `Removed` batch the node hashes `SourceURL` and drops that URL's postings
 and metadata, reusing the eviction purge primitive (promoted to an exported

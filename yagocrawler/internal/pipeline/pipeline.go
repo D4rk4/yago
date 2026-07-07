@@ -235,6 +235,10 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	}
 	fetched, err := p.fetchJob(ctx, job, target)
 	if err != nil {
+		if p.emitRemovalIfGone(ctx, job, err) {
+			deliveryFailed = true
+		}
+
 		return err
 	}
 	if !formatparse.Accepts(fetched.URL.String(), fetched.ContentType, job.Formats) {
@@ -278,6 +282,37 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	deliveryFailed, err = p.indexAndEmit(ctx, job, page, fetched.ContentType)
 
 	return err
+}
+
+// emitRemovalIfGone tombstones a dead page: when the fetch failed with a
+// permanent 404/410 gone status (ADR-0034), it emits a removal for the job's URL
+// so the node purges its index entry. Every other fetch failure is left as a
+// plain failed fetch. It reports whether the durable removal emit itself failed,
+// so the caller can mark the order delivery-failed and let PORT-04 redeliver it
+// rather than lose the tombstone; a successful emit (or a non-gone error) does
+// not touch the delivery outcome.
+func (p *Pipeline) emitRemovalIfGone(ctx context.Context, job crawljob.CrawlJob, err error) bool {
+	var gone *pagefetch.GoneError
+	if !errors.As(err, &gone) {
+		return false
+	}
+	if emitErr := p.emitter.EmitRemoval(
+		ctx,
+		job.URL,
+		job.Provenance,
+		job.ProfileHandle,
+	); emitErr != nil {
+		slog.WarnContext(ctx, "crawl page removal emit failed",
+			slog.String("url", job.URL),
+			slog.Any("error", emitErr))
+
+		return true
+	}
+	slog.DebugContext(ctx, "crawl dead page tombstoned",
+		slog.String("url", job.URL),
+		slog.Int("status", gone.Status))
+
+	return false
 }
 
 // indexAndEmit builds the page's index artifacts and delivers them to the ingest

@@ -73,6 +73,9 @@ func (f *PageFetcher) Fetch(
 				),
 			}
 		}
+		if pagefetch.GoneStatus(response.StatusCode) {
+			return pagefetch.FetchedPage{}, &pagefetch.GoneError{Status: response.StatusCode}
+		}
 
 		return pagefetch.FetchedPage{}, fmt.Errorf(
 			"status %d: %w",

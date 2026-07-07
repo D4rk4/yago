@@ -75,3 +75,40 @@ func TestBatchEmitterReturnsPublishError(t *testing.T) {
 		t.Fatalf("Emit error = %v, want %v", err, sentinel)
 	}
 }
+
+func TestBatchEmitterEmitsRemovalTombstone(t *testing.T) {
+	queue := boundedqueue.NewBoundedQueue[ingest.IngestBatch](1)
+	emitter := ingest.NewBatchEmitter(queue)
+
+	if err := emitter.EmitRemoval(
+		context.Background(),
+		"http://example.com/gone",
+		[]byte("peer"),
+		"handle",
+	); err != nil {
+		t.Fatalf("EmitRemoval: %v", err)
+	}
+
+	batch := <-queue.Receive()
+	if !batch.Removed {
+		t.Fatalf("removal batch must set Removed: %#v", batch)
+	}
+	if batch.SourceURL != "http://example.com/gone" ||
+		string(batch.Provenance) != "peer" || batch.ProfileHandle != "handle" {
+		t.Fatalf("removal envelope = %#v", batch)
+	}
+	if batch.Document.NormalizedURL != "" ||
+		len(batch.Postings) != 0 || len(batch.Metadata) != 0 {
+		t.Fatalf("removal batch must be empty of content: %#v", batch)
+	}
+}
+
+func TestBatchEmitterReturnsRemovalPublishError(t *testing.T) {
+	sentinel := errors.New("queue closed")
+	emitter := ingest.NewBatchEmitter(failingPublisher{err: sentinel})
+
+	err := emitter.EmitRemoval(context.Background(), "http://example.com/gone", nil, "handle")
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("EmitRemoval error = %v, want %v", err, sentinel)
+	}
+}

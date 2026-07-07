@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/neardup"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
@@ -78,6 +79,18 @@ func (allowAllOwnership) OwnsProfile(context.Context, string) (bool, error) {
 	return true, nil
 }
 
+// URLPurger drops a URL's postings and metadata from the index. A dead-page
+// tombstone (ADR-0034) purges its source URL through this port; the assembly
+// satisfies it with the eviction purge primitive. Purging an unindexed URL is a
+// no-op, so a tombstone is idempotent and safe to redeliver.
+type URLPurger interface {
+	Purge(ctx context.Context, urls []yagomodel.Hash) error
+}
+
+type noopURLPurger struct{}
+
+func (noopURLPurger) Purge(context.Context, []yagomodel.Hash) error { return nil }
+
 type IngestConsumer struct {
 	stream    IngestStream
 	documents documentstore.DocumentReceiver
@@ -87,10 +100,14 @@ type IngestConsumer struct {
 	observer  IngestObserver
 	recorder  FetchRecorder
 	owner     OwnershipCheck
+	purger    URLPurger
 	nearDup   *neardup.Window
 	// quality names the rule a document's text violates, "" for indexable text;
 	// nil skips the gate.
 	quality func(text string) string
+	// hashURL derives a tombstone's URL hash; a field so a test can force the
+	// (otherwise unreachable) hashing failure.
+	hashURL func(string) (yagomodel.URLHash, error)
 }
 
 func NewIngestConsumer(
@@ -118,6 +135,8 @@ func NewIngestConsumerWithIndex(
 		observer:  noopIngestObserver{},
 		recorder:  noopFetchRecorder{},
 		owner:     allowAllOwnership{},
+		purger:    noopURLPurger{},
+		hashURL:   yagomodel.HashURL,
 	}
 }
 
@@ -163,5 +182,14 @@ func (c *IngestConsumer) RecordFetches(recorder FetchRecorder) {
 func (c *IngestConsumer) CheckOwnership(oracle OwnershipCheck) {
 	if oracle != nil {
 		c.owner = oracle
+	}
+}
+
+// PurgeURLs installs the purge port a dead-page tombstone drops its source URL
+// through (ADR-0034). A nil purger is ignored so the consumer keeps its no-op
+// default.
+func (c *IngestConsumer) PurgeURLs(purger URLPurger) {
+	if purger != nil {
+		c.purger = purger
 	}
 }

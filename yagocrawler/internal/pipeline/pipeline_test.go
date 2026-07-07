@@ -83,6 +83,8 @@ func (f emitFunc) Emit(
 	return f(ctx, document, postings, metadata, envelope)
 }
 
+func (emitFunc) EmitRemoval(context.Context, string, []byte, string) error { return nil }
+
 func htmlPage() pagefetch.FetchedPage {
 	target, _ := url.Parse("https://example.com/")
 	return pagefetch.FetchedPage{

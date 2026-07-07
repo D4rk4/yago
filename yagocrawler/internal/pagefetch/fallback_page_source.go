@@ -39,6 +39,15 @@ func (s *FallbackPageSource) Fetch(
 	if _, throttled := AsThrottled(err); throttled {
 		return FetchedPage{}, fmt.Errorf("primary fetch: %w", err)
 	}
+	// A permanently gone status (404/410) is the server's definitive verdict: the
+	// browser would receive the same status, so it cannot rescue the page, and
+	// escalating would only render the server's error page into a soft-404
+	// document. The gone status propagates so the recrawl path can tombstone the
+	// URL out of the index instead (ADR-0034), matching how mainstream crawlers
+	// treat 404/410 as a removal signal rather than a render candidate.
+	if _, gone := AsGone(err); gone {
+		return FetchedPage{}, fmt.Errorf("primary fetch: %w", err)
+	}
 	if browserFallbackDisabled(ctx) {
 		return FetchedPage{}, fmt.Errorf("primary fetch: %w", err)
 	}

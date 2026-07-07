@@ -23,6 +23,15 @@ type BatchEmitter interface {
 		metadata yagomodel.URIMetadataRow,
 		envelope Envelope,
 	) error
+	// EmitRemoval publishes a tombstone (Removed) batch for a URL a recrawl
+	// found permanently gone, so the node purges its index entry (ADR-0034). It
+	// flows through the same durable at-least-once publisher as Emit.
+	EmitRemoval(
+		ctx context.Context,
+		sourceURL string,
+		provenance []byte,
+		profileHandle string,
+	) error
 }
 
 type batchEmitter struct {
@@ -50,6 +59,24 @@ func (e *batchEmitter) Emit(
 	}
 	if err := e.queue.Publish(ctx, batch); err != nil {
 		return fmt.Errorf("publish ingest batch %s: %w", envelope.SourceURL, err)
+	}
+	return nil
+}
+
+func (e *batchEmitter) EmitRemoval(
+	ctx context.Context,
+	sourceURL string,
+	provenance []byte,
+	profileHandle string,
+) error {
+	batch := IngestBatch{
+		SourceURL:     sourceURL,
+		Provenance:    provenance,
+		ProfileHandle: profileHandle,
+		Removed:       true,
+	}
+	if err := e.queue.Publish(ctx, batch); err != nil {
+		return fmt.Errorf("publish removal batch %s: %w", sourceURL, err)
 	}
 	return nil
 }

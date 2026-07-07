@@ -72,3 +72,14 @@ func NewEvictor(
 func (e Evictor) EvictURLs(ctx context.Context, urls []yagomodel.Hash) (Result, error) {
 	return purgeURLs(ctx, e.vault, e.postings, e.references, e.urls, urls)
 }
+
+// Purge drops the given URL hashes and reports only whether the drop succeeded,
+// discarding the deletion counts. It is the dead-page tombstone port (ADR-0034):
+// a recrawl found a URL permanently gone and only needs it purged, idempotently.
+func (e Evictor) Purge(ctx context.Context, urls []yagomodel.Hash) error {
+	if _, err := e.EvictURLs(ctx, urls); err != nil {
+		return err
+	}
+
+	return nil
+}

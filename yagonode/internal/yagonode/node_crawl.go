@@ -14,6 +14,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/crawlformats"
 	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
 	"github.com/D4rk4/yago/yagonode/internal/crawlruns"
+	"github.com/D4rk4/yago/yagonode/internal/eviction"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/neardup"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
@@ -77,6 +78,9 @@ func buildCrawlRuntime(
 	consumer.RecordFetches(frontier)
 	consumer.CheckOwnership(frontier)
 	consumer.CollapseNearDuplicates(neardup.NewWindow(0))
+	consumer.PurgeURLs(eviction.NewEvictor(
+		storageVault, storage.postingPurger, storage.references, storage.urlEvictor,
+	))
 	if config.QualityGate {
 		consumer.GateQuality(contentquality.RejectionRule)
 	}

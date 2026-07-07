@@ -148,6 +148,35 @@ func TestFallbackPageSourceSkipsBrowserOnThrottle(t *testing.T) {
 	}
 }
 
+// TestFallbackPageSourceSkipsBrowserForGonePage: a 404/410 is the server's
+// definitive gone verdict, so the browser must not run — it would render the
+// error page into a soft-404 document and bury the gone signal, leaving the
+// recrawl path unable to tombstone the URL (ADR-0034). The gone status must
+// propagate unchanged.
+func TestFallbackPageSourceSkipsBrowserForGonePage(t *testing.T) {
+	fallbackCalls := 0
+	source := pagefetch.NewFallbackPageSource(
+		sourceFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			return pagefetch.FetchedPage{}, &pagefetch.GoneError{Status: 404}
+		}),
+		sourceFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			fallbackCalls++
+			return pagefetch.FetchedPage{}, nil
+		}),
+	)
+
+	_, err := source.Fetch(context.Background(), exampleURL(t))
+	if _, ok := pagefetch.AsGone(err); !ok {
+		t.Fatalf("gone signal lost through fallback: %v", err)
+	}
+	if !errors.Is(err, pagefetch.ErrPageRejected) {
+		t.Fatalf("error = %v, must stay a page rejection", err)
+	}
+	if fallbackCalls != 0 {
+		t.Fatalf("browser fallback ran %d times on a gone page", fallbackCalls)
+	}
+}
+
 // TestFallbackPageSourceHonorsBrowserOptOut: a profile that disabled browser
 // rendering keeps a rejected fast fetch rejected instead of escalating.
 func TestFallbackPageSourceHonorsBrowserOptOut(t *testing.T) {

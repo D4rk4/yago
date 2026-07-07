@@ -126,7 +126,7 @@ func awaitFinishedReport(
 func loopbackOrigin(t *testing.T) *httptest.Server {
 	t.Helper()
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "no robots", http.StatusNotFound)
+		http.Error(w, "fast client forbidden", http.StatusForbidden)
 	}))
 	t.Cleanup(origin.Close)
 
