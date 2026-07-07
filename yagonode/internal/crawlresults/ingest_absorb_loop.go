@@ -3,6 +3,7 @@ package crawlresults
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
@@ -153,14 +154,31 @@ func (c *IngestConsumer) storeDocument(
 
 // qualityRejectionRule names the quality rule the batch's document text
 // violates, or "" when the batch may be absorbed (no gate, no document, or
-// text worth indexing).
+// text worth indexing). The gate's Gopher/C4 heuristics model WEB PAGES —
+// word-count floors and boilerplate ratios; a parsed document format (PDF
+// bulletin, vCard, image or audio metadata) legitimately extracts a handful
+// of words, so only web-page content types face the gate (CRAWL-17 wrap-up:
+// a real 1999 PDF was fetched, parsed, and then silently dropped here).
 func (c *IngestConsumer) qualityRejectionRule(batch yagocrawlcontract.IngestBatch) string {
 	if c.quality == nil || !hasDocument(batch.Document) ||
-		batch.Document.ExtractedText == "" {
+		batch.Document.ExtractedText == "" ||
+		!webPageContentType(batch.Document.ContentType) {
 		return ""
 	}
 
 	return c.quality(batch.Document.ExtractedText)
+}
+
+// webPageContentType reports whether the document is an ordinary web page —
+// the corpus the spam heuristics were built for.
+func webPageContentType(contentType string) bool {
+	mediaType, _, _ := strings.Cut(contentType, ";")
+	switch strings.ToLower(strings.TrimSpace(mediaType)) {
+	case "", "text/html", "application/xhtml+xml", "text/plain":
+		return true
+	default:
+		return false
+	}
 }
 
 // rejectLowQuality drops a batch whose page failed the content-quality gate:
