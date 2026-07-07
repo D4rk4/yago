@@ -1,6 +1,9 @@
 package yagonode
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // TestAutocrawlerCrawlOptionCatalog covers the five per-crawl toggles the
 // autocrawler page exposes: their defaults, boolean normalization, and that
@@ -58,5 +61,41 @@ func TestAutocrawlerCrawlOptionCatalog(t *testing.T) {
 		if disabled := def.apply(base, off); tc.read(disabled) {
 			t.Fatalf("%s apply(false) left its field set", tc.key)
 		}
+	}
+}
+
+// TestAutocrawlerRecrawlIntervalSetting covers the recrawl-cadence setting: the
+// default renders as the shipped 30d, a friendly value is canonicalized, "off"
+// disables recrawling, garbage is rejected, and apply writes the config field.
+func TestAutocrawlerRecrawlIntervalSetting(t *testing.T) {
+	t.Parallel()
+
+	base := nodeConfig{AutocrawlerCrawl: defaultSeedCrawlOptions()}
+	def, ok := indexSettingDefinitions()["autocrawler.crawl.recrawl_interval"]
+	if !ok {
+		t.Fatal("autocrawler.crawl.recrawl_interval missing from the catalog")
+	}
+	if got := def.defaultValue(base); got != "30d" {
+		t.Fatalf("default = %q, want 30d", got)
+	}
+	canonical, err := def.normalize("720h")
+	if err != nil || canonical != "30d" {
+		t.Fatalf("normalize(720h) = %q %v, want 30d", canonical, err)
+	}
+	off, err := def.normalize("off")
+	if err != nil || off != "off" {
+		t.Fatalf("normalize(off) = %q %v, want off", off, err)
+	}
+	if _, err := def.normalize("nonsense"); err == nil {
+		t.Fatal("normalize must reject an invalid interval")
+	}
+	if applied := def.apply(
+		base,
+		canonical,
+	); applied.AutocrawlerCrawl.RecrawlInterval != 30*24*time.Hour {
+		t.Fatalf("apply(30d) = %v, want 720h", applied.AutocrawlerCrawl.RecrawlInterval)
+	}
+	if disabled := def.apply(base, off); disabled.AutocrawlerCrawl.RecrawlInterval != 0 {
+		t.Fatalf("apply(off) = %v, want 0", disabled.AutocrawlerCrawl.RecrawlInterval)
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 // extendedSettingDefinitions covers the remaining operator-tunable environment
@@ -220,7 +222,43 @@ func autocrawlerCrawlOptionDefinitions() []settingDefinition {
 			func(config nodeConfig) bool { return config.AutocrawlerCrawl.FollowNoFollowLinks },
 			func(config *nodeConfig, value bool) { config.AutocrawlerCrawl.FollowNoFollowLinks = value },
 		),
+		autocrawlerRecrawlDefinition(),
 	}
+}
+
+// autocrawlerRecrawlDefinition surfaces the default recrawl cadence the
+// autocrawler stamps onto its seeded crawls, so an indexed page is re-fetched
+// once it is older than this interval instead of being indexed forever.
+func autocrawlerRecrawlDefinition() settingDefinition {
+	return settingDefinition{
+		key:   "autocrawler.crawl.recrawl_interval",
+		title: "Recrawl interval",
+		description: "How old an indexed page may get before the autocrawler " +
+			"re-fetches it (e.g. 30d, 2w, off). off disables recrawling.",
+		defaultValue: func(config nodeConfig) string {
+			return yagocrawlcontract.FormatRecrawlInterval(config.AutocrawlerCrawl.RecrawlInterval)
+		},
+		normalize: normalizeRecrawlInterval,
+		apply: func(config nodeConfig, value string) nodeConfig {
+			config.AutocrawlerCrawl.RecrawlInterval, _ = yagocrawlcontract.ParseRecrawlInterval(
+				value,
+			)
+
+			return config
+		},
+	}
+}
+
+// normalizeRecrawlInterval validates a recrawl cadence and returns its
+// canonical "30d"/"2w"/"off" form so stored overrides read back consistently
+// no matter which accepted spelling the operator submitted.
+func normalizeRecrawlInterval(raw string) (string, error) {
+	parsed, err := yagocrawlcontract.ParseRecrawlInterval(raw)
+	if err != nil {
+		return "", fmt.Errorf("autocrawler recrawl interval: %w", err)
+	}
+
+	return yagocrawlcontract.FormatRecrawlInterval(parsed), nil
 }
 
 // extendedTelemetryDefinitions holds the observability and fallback knobs.

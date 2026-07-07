@@ -390,6 +390,8 @@ deps:
     mayDependOn:
       - adminui
       - adminauth
+    canUse:
+      - yagocrawlcontract
   publicportal:
     mayDependOn:
       - publicportal

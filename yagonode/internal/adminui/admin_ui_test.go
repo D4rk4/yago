@@ -1095,6 +1095,17 @@ func TestConsoleCrawlRendersForm(t *testing.T) {
 	}
 }
 
+// TestDefaultCrawlFormPrefillsRecrawlInterval pins the manual crawl form's
+// shipped recrawl cadence to 30d, so an operator crawl schedules a recrawl by
+// default instead of indexing each URL once forever.
+func TestDefaultCrawlFormPrefillsRecrawlInterval(t *testing.T) {
+	t.Parallel()
+
+	if got := defaultCrawlForm().RecrawlIfOlder; got != "30d" {
+		t.Fatalf("defaultCrawlForm().RecrawlIfOlder = %q, want 30d", got)
+	}
+}
+
 func TestConsoleCrawlStartDispatches(t *testing.T) {
 	t.Parallel()
 

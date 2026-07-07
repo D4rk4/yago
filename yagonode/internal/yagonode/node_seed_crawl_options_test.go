@@ -55,11 +55,45 @@ func TestNewCrawlSeederAppliesSeedCrawlOptions(t *testing.T) {
 }
 
 // TestDefaultSeedCrawlOptions pins the shipped autocrawler crawl policy: query
-// URLs and lax TLS on, the rest off.
+// URLs and lax TLS on, the rest off, and the default recrawl cadence so seeded
+// crawls schedule a recrawl instead of indexing each URL forever.
 func TestDefaultSeedCrawlOptions(t *testing.T) {
 	got := defaultSeedCrawlOptions()
-	want := seedCrawlOptions{AllowQueryURLs: true, IgnoreTLSAuthority: true}
+	want := seedCrawlOptions{
+		AllowQueryURLs:     true,
+		IgnoreTLSAuthority: true,
+		RecrawlInterval:    yagocrawlcontract.DefaultRecrawlInterval,
+	}
 	if got != want {
 		t.Fatalf("defaultSeedCrawlOptions() = %+v, want %+v", got, want)
+	}
+}
+
+// TestNewCrawlSeederAppliesDefaultRecrawlInterval proves the shipped default
+// recrawl cadence flows through the seed profile onto the published crawl
+// profile's RecrawlIfOlder, and that a custom interval flows through unchanged.
+func TestNewCrawlSeederAppliesDefaultRecrawlInterval(t *testing.T) {
+	options := defaultSeedCrawlOptions()
+	seeder := newCrawlSeeder(
+		nullCrawlQueue{},
+		countingDirectory{},
+		yagomodel.Hash("node"),
+		seedProfile{name: swarmSeedProfileName, depth: 1, maxPages: 5, options: options},
+	)
+	if seeder.profile.RecrawlIfOlder != yagocrawlcontract.DefaultRecrawlInterval {
+		t.Fatalf("RecrawlIfOlder = %v, want %v",
+			seeder.profile.RecrawlIfOlder, yagocrawlcontract.DefaultRecrawlInterval)
+	}
+
+	options.RecrawlInterval = 2 * yagocrawlcontract.DefaultRecrawlInterval
+	custom := newCrawlSeeder(
+		nullCrawlQueue{},
+		countingDirectory{},
+		yagomodel.Hash("node"),
+		seedProfile{name: swarmSeedProfileName, depth: 1, maxPages: 5, options: options},
+	)
+	if custom.profile.RecrawlIfOlder != options.RecrawlInterval {
+		t.Fatalf("custom RecrawlIfOlder = %v, want %v",
+			custom.profile.RecrawlIfOlder, options.RecrawlInterval)
 	}
 }

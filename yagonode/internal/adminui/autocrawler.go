@@ -12,18 +12,19 @@ const autocrawlerPath = "/admin/autocrawler"
 // edits: the two discovery paths that grow the index without a manual crawl —
 // swarm greedy learning and web-fallback seeding — plus their crawl profiles.
 var autocrawlerKeys = map[string]bool{
-	"swarm.seed.enabled":                true,
-	"swarm.seed.limit":                  true,
-	"swarm.seed.depth":                  true,
-	"swarm.seed.max_pages":              true,
-	"web.fallback.seed_crawl":           true,
-	"web.fallback.seed_depth":           true,
-	"web.fallback.seed_max_pages":       true,
-	"autocrawler.crawl.query_urls":      true,
-	"autocrawler.crawl.tls_insecure":    true,
-	"autocrawler.crawl.ignore_robots":   true,
-	"autocrawler.crawl.no_browser":      true,
-	"autocrawler.crawl.follow_nofollow": true,
+	"swarm.seed.enabled":                 true,
+	"swarm.seed.limit":                   true,
+	"swarm.seed.depth":                   true,
+	"swarm.seed.max_pages":               true,
+	"web.fallback.seed_crawl":            true,
+	"web.fallback.seed_depth":            true,
+	"web.fallback.seed_max_pages":        true,
+	"autocrawler.crawl.query_urls":       true,
+	"autocrawler.crawl.tls_insecure":     true,
+	"autocrawler.crawl.ignore_robots":    true,
+	"autocrawler.crawl.no_browser":       true,
+	"autocrawler.crawl.follow_nofollow":  true,
+	"autocrawler.crawl.recrawl_interval": true,
 }
 
 type autocrawlerPageData struct {

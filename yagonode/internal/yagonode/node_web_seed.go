@@ -72,6 +72,7 @@ func newCrawlSeeder(
 		IgnoreRobots:        seed.options.IgnoreRobots,
 		DisableBrowser:      seed.options.DisableBrowser,
 		FollowNoFollowLinks: seed.options.FollowNoFollowLinks,
+		RecrawlIfOlder:      seed.options.RecrawlInterval,
 	})
 
 	return &webCrawlSeeder{

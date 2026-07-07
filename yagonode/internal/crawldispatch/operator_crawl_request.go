@@ -56,7 +56,7 @@ func (r OperatorRequest) order(
 		return yagocrawlcontract.CrawlOrder{}, fmt.Errorf("unknown crawl scope %q", r.Scope)
 	}
 
-	recrawl, err := optionalDuration(r.RecrawlIfOlder)
+	recrawl, err := yagocrawlcontract.ParseRecrawlInterval(r.RecrawlIfOlder)
 	if err != nil {
 		return yagocrawlcontract.CrawlOrder{}, fmt.Errorf("recrawlIfOlder: %w", err)
 	}

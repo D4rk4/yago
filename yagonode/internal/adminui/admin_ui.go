@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/adminauth"
 )
 
@@ -1554,6 +1555,9 @@ func defaultCrawlForm() crawlForm {
 		Mode: "url", Scope: "domain", MaxDepth: 3,
 		AllowQueryURLs:     true,
 		IgnoreTLSAuthority: true,
+		RecrawlIfOlder: yagocrawlcontract.FormatRecrawlInterval(
+			yagocrawlcontract.DefaultRecrawlInterval,
+		),
 	}
 }
 

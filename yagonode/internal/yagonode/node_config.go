@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/publicratelimit"
 	"github.com/D4rk4/yago/yagonode/internal/searchremote"
@@ -263,11 +264,18 @@ type seedCrawlOptions struct {
 	IgnoreRobots        bool
 	DisableBrowser      bool
 	FollowNoFollowLinks bool
+	// RecrawlInterval is how old an indexed page may get before the autocrawler
+	// re-fetches it; a zero interval leaves seeded URLs fetched once forever.
+	RecrawlInterval time.Duration
 }
 
 // defaultSeedCrawlOptions returns the autocrawler's shipped crawl policy.
 func defaultSeedCrawlOptions() seedCrawlOptions {
-	return seedCrawlOptions{AllowQueryURLs: true, IgnoreTLSAuthority: true}
+	return seedCrawlOptions{
+		AllowQueryURLs:     true,
+		IgnoreTLSAuthority: true,
+		RecrawlInterval:    yagocrawlcontract.DefaultRecrawlInterval,
+	}
 }
 
 func loadSwarmSeedConfig(getenv func(string) string) (swarmSeedConfig, error) {
