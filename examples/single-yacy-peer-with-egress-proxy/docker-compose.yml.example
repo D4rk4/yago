@@ -1,9 +1,6 @@
 services:
   yacy-rwi-node:
-    build:
-      context: ../..
-      dockerfile: yacynode/Dockerfile
-    image: yacy-rwi-node:latest
+    image: ghcr.io/nikitakarpei/yacynode:latest
     restart: unless-stopped
     depends_on:
       - smokescreen

@@ -11,20 +11,14 @@ This is the smallest deployment: a peer with no crawling and no search UI of its
 1. Copy `.env.example` to `.env` and set `YACY_PEER_HASH`, `YACY_PEER_NAME`, and
    `YACY_ADVERTISE_HOST`.
 2. Copy `docker-compose.yml.example` to `docker-compose.yml`.
-3. Start the stack: `docker compose up -d --build`.
+3. Start the stack: `docker compose up -d`.
 
 ## What's running
 
 | Service | Role |
 | --- | --- |
-| `yacy-rwi-node` | The peer: joins the DHT, serves remote search requests, exposes `/health` and `/metrics`. |
+| `yacy-rwi-node` | The peer: joins the DHT and serves remote search requests. |
 | `smokescreen` | Egress proxy every outbound connection from the node passes through. |
 
-## Ports
-
-| Port | Purpose |
-| --- | --- |
-| 8090 | YaCy peer protocol |
-| 9090 | `/health` and `/metrics` |
-
-See `yacynode/doc/configuration.md` for every environment variable the node accepts.
+See `yacynode/doc/configuration.md` for every environment variable the node accepts and the
+ports it listens on.
