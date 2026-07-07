@@ -58,6 +58,8 @@ straight to a live trace ID. Scope is deliberately this node plus its own
 outbound legs; a full OpenTelemetry export would need a collector dependency
 (ADR required) and is not planned until an operator asks for one.
 
-## Follow-ups
+## SLOs and burn-rate alerts (OPS-11)
 
-SLO targets and burn-rate alerts belong to OPS-11.
+`deploy/prometheus-rules.yml` ships recording rules and multiwindow
+burn-rate alerts for the search availability/latency SLOs and a crawl-stall
+hint; `doc/slo.md` explains the objectives and the page-vs-ticket split.

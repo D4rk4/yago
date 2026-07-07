@@ -1,0 +1,103 @@
+# SLO recording and multiwindow burn-rate alerting rules for a yago node
+# (OPS-11, Google SRE Workbook ch. 5). Load into Prometheus with:
+#   rule_files: ["prometheus-rules.yml"]
+#
+# SLOs (per doc/slo.md):
+#   - Search availability: 99.5% of HTTP search requests answer without a 5xx.
+#   - Search latency: 95% of searches complete inside 2.5s.
+#   - Crawl throughput: pages are being absorbed whenever runs are active.
+#
+# Burn-rate pairs follow the Workbook's multiwindow, multi-burn-rate pattern:
+# page when the fast pair fires (budget gone in days), ticket on the slow
+# pair (budget gone in weeks). Both windows must burn to fire, which filters
+# short blips without missing sustained burns.
+
+groups:
+  - name: yago-slo-recordings
+    interval: 30s
+    rules:
+      - record: yago:search_error_ratio:rate5m
+        expr: |
+          sum(rate(http_requests_total{endpoint=~".*(yacysearch|search).*",status_code=~"5.."}[5m]))
+          / clamp_min(sum(rate(http_requests_total{endpoint=~".*(yacysearch|search).*"}[5m])), 1e-9)
+      - record: yago:search_error_ratio:rate1h
+        expr: |
+          sum(rate(http_requests_total{endpoint=~".*(yacysearch|search).*",status_code=~"5.."}[1h]))
+          / clamp_min(sum(rate(http_requests_total{endpoint=~".*(yacysearch|search).*"}[1h])), 1e-9)
+      - record: yago:search_error_ratio:rate6h
+        expr: |
+          sum(rate(http_requests_total{endpoint=~".*(yacysearch|search).*",status_code=~"5.."}[6h]))
+          / clamp_min(sum(rate(http_requests_total{endpoint=~".*(yacysearch|search).*"}[6h])), 1e-9)
+      - record: yago:search_error_ratio:rate3d
+        expr: |
+          sum(rate(http_requests_total{endpoint=~".*(yacysearch|search).*",status_code=~"5.."}[3d]))
+          / clamp_min(sum(rate(http_requests_total{endpoint=~".*(yacysearch|search).*"}[3d])), 1e-9)
+      # Latency SLI: share of searches SLOWER than the 2.5s objective.
+      - record: yago:search_slow_ratio:rate5m
+        expr: |
+          1 - (sum(rate(search_latency_seconds_bucket{le="2.5"}[5m]))
+          / clamp_min(sum(rate(search_latency_seconds_count[5m])), 1e-9))
+      - record: yago:search_slow_ratio:rate1h
+        expr: |
+          1 - (sum(rate(search_latency_seconds_bucket{le="2.5"}[1h]))
+          / clamp_min(sum(rate(search_latency_seconds_count[1h])), 1e-9))
+      - record: yago:search_slow_ratio:rate6h
+        expr: |
+          1 - (sum(rate(search_latency_seconds_bucket{le="2.5"}[6h]))
+          / clamp_min(sum(rate(search_latency_seconds_count[6h])), 1e-9))
+      - record: yago:search_slow_ratio:rate3d
+        expr: |
+          1 - (sum(rate(search_latency_seconds_bucket{le="2.5"}[3d]))
+          / clamp_min(sum(rate(search_latency_seconds_count[3d])), 1e-9))
+
+  - name: yago-slo-alerts
+    rules:
+      # Availability SLO 99.5% → error budget 0.5%. Fast burn: 14.4× budget
+      # over 1h AND 5m — pages; budget would be gone in ~2 days.
+      - alert: SearchAvailabilityFastBurn
+        expr: |
+          yago:search_error_ratio:rate1h > (14.4 * 0.005)
+          and yago:search_error_ratio:rate5m > (14.4 * 0.005)
+        labels: {severity: page, slo: search-availability}
+        annotations:
+          summary: "Search error budget burning at 14x — gone in ~2 days"
+      # Slow burn: 3× budget over 6h AND 3d — a ticket, not a page.
+      - alert: SearchAvailabilitySlowBurn
+        expr: |
+          yago:search_error_ratio:rate6h > (3 * 0.005)
+          and yago:search_error_ratio:rate3d > (3 * 0.005)
+        labels: {severity: ticket, slo: search-availability}
+        annotations:
+          summary: "Search error budget burning at 3x — gone in ~10 days"
+      # Latency SLO: 95% under 2.5s → budget 5%.
+      - alert: SearchLatencyFastBurn
+        expr: |
+          yago:search_slow_ratio:rate1h > (14.4 * 0.05)
+          and yago:search_slow_ratio:rate5m > (14.4 * 0.05)
+        labels: {severity: page, slo: search-latency}
+        annotations:
+          summary: "Search latency budget burning at 14x (share of searches >2.5s)"
+      - alert: SearchLatencySlowBurn
+        expr: |
+          yago:search_slow_ratio:rate6h > (3 * 0.05)
+          and yago:search_slow_ratio:rate3d > (3 * 0.05)
+        labels: {severity: ticket, slo: search-latency}
+        annotations:
+          summary: "Search latency budget burning at 3x"
+      # Crawl throughput: active runs but nothing absorbed for 30m — the
+      # pipeline is stuck (frontier, ingest, or the crawler itself).
+      - alert: CrawlPipelineStalled
+        expr: |
+          crawl_runs_active > 0
+          and rate(crawl_ingest_urls_total[30m]) == 0
+        for: 30m
+        labels: {severity: ticket, slo: crawl-throughput}
+        annotations:
+          summary: "Crawl runs active but no documents absorbed for 30m"
+      # Saturation early warning (OPS-07 signal): sustained intake shedding.
+      - alert: IntakeSheddingSustained
+        expr: rate(intake_rejections_total[15m]) > 0.1
+        for: 15m
+        labels: {severity: ticket, slo: intake-capacity}
+        annotations:
+          summary: "A bounded intake has been shedding requests for 15m"
