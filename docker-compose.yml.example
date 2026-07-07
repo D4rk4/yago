@@ -56,5 +56,20 @@ services:
       YACYCRAWLER_PROXY_URL: http://smokescreen:4750
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
+  yacyvisitcrawl:
+    build:
+      context: .
+      dockerfile: yacyvisitcrawl/Dockerfile
+    image: yacyvisitcrawl:latest
+    restart: unless-stopped
+    depends_on:
+      - nats
+    ports:
+      - "8091:8091"
+      - "9091:9091"
+    environment:
+      NATS_URL: nats://nats:4222
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
 volumes:
   yacy-data:
