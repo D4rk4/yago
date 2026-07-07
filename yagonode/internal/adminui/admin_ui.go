@@ -46,6 +46,7 @@ const (
 	blacklistTestPath   = "/admin/index/blacklist/test"
 	blacklistExportPath = "/admin/index/blacklist/export"
 	blacklistImportPath = "/admin/index/blacklist/import"
+	indexExportPath     = "/admin/index/export"
 	networkPath         = "/admin/network"
 	networkPeerPath     = "/admin/network/peer"
 	peerBlockPath       = "/admin/network/peer/block"
@@ -106,6 +107,7 @@ type Options struct {
 	Documents       DocumentBrowserSource
 	IndexAdmin      IndexAdminSource
 	Blacklist       BlacklistSource
+	IndexExport     IndexExporter
 	Network         NetworkSource
 	Config          ConfigSource
 	Settings        SettingsSource
@@ -342,6 +344,7 @@ type Console struct {
 	documents       DocumentBrowserSource
 	indexAdmin      IndexAdminSource
 	blacklist       BlacklistSource
+	indexExport     IndexExporter
 	network         NetworkSource
 	config          ConfigSource
 	settings        SettingsSource
@@ -382,6 +385,7 @@ func New(opts Options) *Console {
 		documents:       opts.Documents,
 		indexAdmin:      opts.IndexAdmin,
 		blacklist:       opts.Blacklist,
+		indexExport:     opts.IndexExport,
 		network:         opts.Network,
 		config:          opts.Config,
 		settings:        opts.Settings,
@@ -446,6 +450,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+blacklistTestPath, c.handleBlacklistTest)
 	c.mux.HandleFunc("GET "+blacklistExportPath, c.handleBlacklistExport)
 	c.mux.HandleFunc("POST "+blacklistImportPath, c.handleBlacklistImport)
+	c.mux.HandleFunc("GET "+indexExportPath, c.handleIndexExport)
 	c.mux.HandleFunc("GET "+networkPath, c.handleNetwork)
 	c.mux.HandleFunc("GET "+networkPeerPath, c.handleNetworkPeer)
 	c.mux.HandleFunc("POST "+peerBlockPath, c.handlePeerBlock)
@@ -664,6 +669,46 @@ func (c *Console) handleBlacklistImport(w http.ResponseWriter, r *http.Request) 
 		note = fmt.Sprintf("Imported %d entries, then failed: %v", added, err)
 	}
 	c.renderIndexPage(w, r, indexNotes{BlacklistProbe: note})
+}
+
+// handleIndexExport streams the filtered corpus in the requested format
+// (UI-18, YaCy IndexExport_p).
+func (c *Console) handleIndexExport(w http.ResponseWriter, r *http.Request) {
+	if c.indexExport == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+	req := IndexExportRequest{
+		Format:      strings.TrimSpace(r.URL.Query().Get("format")),
+		Domain:      strings.TrimSpace(r.URL.Query().Get("domain")),
+		URLContains: strings.TrimSpace(r.URL.Query().Get("q")),
+	}
+	contentType, filename, ok := exportContentMeta(req.Format)
+	if !ok {
+		http.Error(w, "unknown export format", http.StatusBadRequest)
+
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	if err := c.indexExport.ExportDocuments(r.Context(), req, w); err != nil {
+		slog.WarnContext(r.Context(), "index export failed", slog.Any("error", err))
+	}
+}
+
+// exportContentMeta maps an export format onto its response headers.
+func exportContentMeta(format string) (contentType, filename string, ok bool) {
+	switch format {
+	case "", "text":
+		return "text/plain; charset=utf-8", "index-urls.txt", true
+	case "csv":
+		return "text/csv; charset=utf-8", "index-export.csv", true
+	case "jsonl":
+		return "application/x-ndjson", "index-export.jsonl", true
+	default:
+		return "", "", false
+	}
 }
 
 func (c *Console) handleIndexDelete(w http.ResponseWriter, r *http.Request) {

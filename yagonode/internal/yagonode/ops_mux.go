@@ -64,22 +64,15 @@ func buildOpsMux(
 		assembled.indexStats,
 		newEventsEndpoint(recorder),
 	)
-	if assembled.crawl != nil {
-		assembled.crawl.mountDispatch(opsMux)
-	}
-	if assembled.searchExplain != nil {
-		opsMux.Handle(pathSearchExplain, assembled.searchExplain)
-	}
-	if assembled.searchRanking != nil {
-		opsMux.Handle(pathSearchRanking, assembled.searchRanking)
-	}
+	mountOpsExtras(opsMux, assembled)
 	seedStatus, seedRefresh := seedImportSources(assembled, config, recorder)
 	blocks := assembledPeerBlocks(assembled)
 	options := adminui.Options{
-		Overview: newOverviewSource(assembled.report),
-		Search:   newSearchSource(assembled.searcher),
-		Activity: newActivitySource(assembled.activity),
-		Index:    opsIndexSource(config, assembled),
+		Overview:    newOverviewSource(assembled.report),
+		Search:      newSearchSource(assembled.searcher),
+		Activity:    newActivitySource(assembled.activity),
+		IndexExport: newIndexExporter(assembled.docScan),
+		Index:       opsIndexSource(config, assembled),
 		Network: newNetworkSource(
 			assembled.dht.gateStatus,
 			assembled.roster,
@@ -230,4 +223,18 @@ func newOpsMux(
 	}
 
 	return mux
+}
+
+// mountOpsExtras attaches the optional ops-listener endpoints an assembled
+// node may carry.
+func mountOpsExtras(opsMux *http.ServeMux, assembled node) {
+	if assembled.crawl != nil {
+		assembled.crawl.mountDispatch(opsMux)
+	}
+	if assembled.searchExplain != nil {
+		opsMux.Handle(pathSearchExplain, assembled.searchExplain)
+	}
+	if assembled.searchRanking != nil {
+		opsMux.Handle(pathSearchRanking, assembled.searchRanking)
+	}
 }

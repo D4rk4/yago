@@ -1,6 +1,9 @@
 package adminui
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 // DocumentSummary is one indexed document as shown in the Index document browser.
 // Key is the store key (the normalized URL) used to delete the document.
@@ -77,4 +80,21 @@ type BlacklistProber interface {
 type BlacklistPorter interface {
 	ExportBlacklist(ctx context.Context) (string, error)
 	ImportBlacklist(ctx context.Context, payload string) (added int, err error)
+}
+
+// IndexExportRequest filters one index export (UI-18, YaCy IndexExport_p).
+type IndexExportRequest struct {
+	// Format is text (URL per line), csv, or jsonl.
+	Format string
+	// Domain keeps documents of one host and its subdomains.
+	Domain string
+	// URLContains keeps documents whose URL contains the substring.
+	URLContains string
+}
+
+// IndexExporter streams matching documents to the response; the console sets
+// the content type and attachment headers per format. A nil provider hides
+// the export controls.
+type IndexExporter interface {
+	ExportDocuments(ctx context.Context, req IndexExportRequest, w io.Writer) error
 }

@@ -45,6 +45,13 @@
 {{end}}
 {{end}}
 {{if .DocsEnabled}}
+<p>
+  Export the index:
+  <a class="cds-btn cds-btn--ghost" href="/admin/index/export?format=text&amp;domain={{.DocDomain}}&amp;q={{.DocQuery}}">URLs (.txt)</a>
+  <a class="cds-btn cds-btn--ghost" href="/admin/index/export?format=csv&amp;domain={{.DocDomain}}&amp;q={{.DocQuery}}">CSV</a>
+  <a class="cds-btn cds-btn--ghost" href="/admin/index/export?format=jsonl&amp;domain={{.DocDomain}}&amp;q={{.DocQuery}}">JSONL</a>
+  <span class="cds-muted">honors the browser filters above</span>
+</p>
 <h2 class="cds-h2">Document browser</h2>
 <p class="cds-muted">Search the indexed documents by URL substring and/or domain.</p>
 <form class="cds-form cds-form--inline" method="get" action="/admin/index" role="search">

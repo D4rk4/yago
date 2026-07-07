@@ -2,6 +2,7 @@ package adminui
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -104,5 +105,62 @@ func TestBlacklistPorterRoutesRequireSource(t *testing.T) {
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("%s = %d, want 404 without a source", path, rec.Code)
 		}
+	}
+}
+
+type fakeIndexExporter struct{ req IndexExportRequest }
+
+func (f *fakeIndexExporter) ExportDocuments(
+	_ context.Context,
+	req IndexExportRequest,
+	w io.Writer,
+) error {
+	f.req = req
+	_, err := io.WriteString(w, "https://a.example/\n")
+
+	return err //nolint:wrapcheck // test double passes the writer error through.
+}
+
+// TestIndexExportRoute pins UI-18's console surface: filters flow from the
+// query string, headers announce a download, unknown formats 400, and the
+// route 404s without an exporter.
+func TestIndexExportRoute(t *testing.T) {
+	exporter := &fakeIndexExporter{}
+	console := New(Options{
+		Index:       fakeIndex{snap: IndexStats{Available: true}},
+		IndexExport: exporter,
+	})
+
+	rec := httptest.NewRecorder()
+	console.ServeHTTP(rec, httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet,
+		"/admin/index/export?format=csv&domain=a.example&q=page", nil,
+	))
+	if rec.Code != http.StatusOK ||
+		!strings.Contains(rec.Header().Get("Content-Disposition"), "index-export.csv") ||
+		exporter.req != (IndexExportRequest{Format: "csv", Domain: "a.example", URLContains: "page"}) {
+		t.Fatalf(
+			"export = %d %q %+v",
+			rec.Code,
+			rec.Header().Get("Content-Disposition"),
+			exporter.req,
+		)
+	}
+
+	bad := httptest.NewRecorder()
+	console.ServeHTTP(bad, httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, "/admin/index/export?format=xml", nil,
+	))
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("unknown format = %d, want 400", bad.Code)
+	}
+
+	none := New(Options{Index: fakeIndex{snap: IndexStats{Available: true}}})
+	missing := httptest.NewRecorder()
+	none.ServeHTTP(missing, httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, "/admin/index/export", nil,
+	))
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("no exporter = %d, want 404", missing.Code)
 	}
 }
