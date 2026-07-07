@@ -21,7 +21,7 @@ import (
 //go:embed templates/*.tmpl
 var templateFS embed.FS
 
-//go:embed assets/carbon.css assets/htmx.min.js assets/autocomplete.js assets/tabs.js
+//go:embed assets/carbon.css assets/photon.css assets/htmx.min.js assets/autocomplete.js assets/tabs.js
 var assetFS embed.FS
 
 // BasePath is where the console mounts on the operations listener.
@@ -79,20 +79,22 @@ const (
 type NavItem struct {
 	Title string
 	Path  string
+	// Icon names a symbol in the layout's SVG sprite drawn beside the label.
+	Icon string
 }
 
 var navItems = []NavItem{
-	{Title: "Overview", Path: overviewPath},
-	{Title: "Search", Path: searchPath},
-	{Title: "Activity", Path: activityPath},
-	{Title: "Autocrawler", Path: autocrawlerPath},
-	{Title: "Crawler", Path: "/admin/crawl"},
-	{Title: "Network", Path: "/admin/network"},
-	{Title: "Index", Path: indexPath},
-	{Title: "Performance", Path: "/admin/performance"},
-	{Title: "Configuration", Path: "/admin/configuration"},
-	{Title: "Security", Path: "/admin/security"},
-	{Title: "Logs", Path: "/admin/logs"},
+	{Title: "Overview", Path: overviewPath, Icon: "overview"},
+	{Title: "Search", Path: searchPath, Icon: "search"},
+	{Title: "Activity", Path: activityPath, Icon: "activity"},
+	{Title: "Autocrawler", Path: autocrawlerPath, Icon: "autocrawler"},
+	{Title: "Crawler", Path: "/admin/crawl", Icon: "crawler"},
+	{Title: "Network", Path: "/admin/network", Icon: "network"},
+	{Title: "Index", Path: indexPath, Icon: "index"},
+	{Title: "Performance", Path: "/admin/performance", Icon: "performance"},
+	{Title: "Configuration", Path: "/admin/configuration", Icon: "configuration"},
+	{Title: "Security", Path: "/admin/security", Icon: "security"},
+	{Title: "Logs", Path: "/admin/logs", Icon: "logs"},
 }
 
 // Options configures the console's data providers. A nil provider makes its

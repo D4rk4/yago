@@ -1,0 +1,272 @@
+/* Photon theme: re-skins the Carbon-classed console to resemble the QNX Neutrino
+   Photon microGUI (QNX 6.x). Photon's signature is a light-blue active titlebar
+   (RGB 0x5C8BDF), neutral-grey widgets carrying Motif-style raised/sunken
+   bevels, and a vertical shelf on the right — so the section navigation sits on
+   the right, framed as a raised panel, over a blue-grey desktop. Loaded after
+   carbon.css, it overrides the design tokens and the components whose flat
+   Carbon look would otherwise show through. Every control shares one height and
+   text size so the widgets stay proportional to one another. */
+:root {
+  /* Photon palette */
+  --cds-background: #c9c6c0;
+  --cds-layer-01: #c1beb8;
+  --cds-layer-02: #d0cdc7;
+  --cds-layer-hover: #bab7b0;
+  --cds-border-subtle: #a4a199;
+  --cds-border-strong: #6c6a62;
+  --cds-text-primary: #17150e;
+  --cds-text-secondary: #46443c;
+  --cds-text-placeholder: #79776e;
+  --cds-text-on-color: #ffffff;
+  --cds-link-primary: #26478f;
+  --cds-interactive: #5c8bdf;
+  --cds-interactive-hover: #4a79cd;
+  --cds-interactive-active: #3560b0;
+  --cds-support-error: #9c1a1a;
+  --cds-support-success: #1f7135;
+  --cds-support-warning: #9a6a08;
+  --cds-header-bg: #5c8bdf;
+  --cds-header-border: #2f5296;
+  --cds-focus: #3560b0;
+  --cds-font-sans: 'Helvetica Neue', Helvetica, 'Nimbus Sans', Arial, 'Segoe UI', system-ui, sans-serif;
+
+  /* Photon desktop and bevel primitives */
+  --ph-desktop: #6f829c;
+  --ph-face: #c9c6c0;
+  --ph-hi: #ece9e3;
+  --ph-light: #fbfaf6;
+  --ph-shadow: #8b887f;
+  --ph-dark: #5c5a52;
+  --ph-frame: #46443d;
+  --ph-titlebar-hi: #7ba2e8;
+  --ph-titlebar-lo: #3f6fc4;
+  --ph-raise: inset 1px 1px 0 var(--ph-light), inset -1px -1px 0 var(--ph-dark),
+    inset 2px 2px 0 var(--ph-hi), inset -2px -2px 0 var(--ph-shadow);
+  --ph-sink: inset 1px 1px 0 var(--ph-dark), inset -1px -1px 0 var(--ph-light),
+    inset 2px 2px 0 var(--ph-shadow), inset -2px -2px 0 var(--ph-hi);
+  --ph-raise1: inset 1px 1px 0 var(--ph-light), inset -1px -1px 0 var(--ph-dark);
+  --ph-press: inset 1px 1px 0 var(--ph-dark), inset -1px -1px 0 var(--ph-light);
+
+  /* One control geometry shared by buttons, fields, selects and tabs */
+  --ph-ctl-h: 1.625rem;
+  --ph-ctl-fs: 0.8125rem;
+
+  /* A thin Photon titlebar; also drives the shell/shelf offsets in carbon.css */
+  --cds-header-height: 1.75rem;
+}
+
+html, body {
+  background: var(--ph-desktop);
+  font-size: 0.8125rem;
+}
+
+/* Titlebar: the fixed header reads as a Photon active window titlebar */
+.cds-header {
+  height: 1.75rem;
+  padding: 0 var(--cds-spacing-05);
+  gap: var(--cds-spacing-05);
+  border-bottom: 1px solid var(--ph-frame);
+  background: linear-gradient(180deg, var(--ph-titlebar-hi) 0%, var(--cds-header-bg) 60%, var(--ph-titlebar-lo) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -1px 0 rgba(0, 0, 0, 0.28);
+}
+.cds-header__link { color: #f3f7ff; font-size: var(--ph-ctl-fs); }
+.cds-header__link:hover { color: #ffffff; text-decoration: underline; }
+.cds-header__button { font-size: var(--ph-ctl-fs); }
+.cds-header__name { color: #dbe6fb; font-size: var(--ph-ctl-fs); }
+.cds-header__brand { font-size: 0.9375rem; }
+
+/* Desktop gutter so the panels float over the workspace like Photon windows */
+.cds-shell {
+  background: var(--ph-desktop);
+  gap: 3px;
+  padding: 3px 3px 0;
+  padding-top: calc(var(--cds-header-height) + 3px);
+}
+
+/* Section navigation = the Photon shelf, on the right, a raised grey panel */
+.cds-nav {
+  order: 2;
+  width: 13rem;
+  flex-basis: 13rem;
+  border: 1px solid var(--ph-frame);
+  border-radius: 0;
+  background: var(--cds-layer-01);
+  box-shadow: var(--ph-raise);
+  padding: var(--cds-spacing-03) 0;
+  top: calc(var(--cds-header-height) + 3px);
+  height: calc(100vh - var(--cds-header-height) - 3px);
+}
+.cds-main {
+  order: 1;
+  border: 1px solid var(--ph-frame);
+  background: var(--cds-background);
+  box-shadow: var(--ph-raise);
+  padding: var(--cds-spacing-05);
+}
+.cds-nav__list { padding: 0 var(--cds-spacing-03); }
+.cds-nav__list li { margin: 1px 0; }
+.cds-nav__link {
+  display: flex;
+  align-items: center;
+  gap: var(--cds-spacing-03);
+  min-height: var(--ph-ctl-h);
+  padding: 0 var(--cds-spacing-03);
+  border: 1px solid transparent;
+  border-left: 1px solid transparent;
+  color: var(--cds-text-primary);
+  font-size: var(--ph-ctl-fs);
+}
+.cds-nav__link:hover {
+  background: var(--ph-face);
+  box-shadow: var(--ph-raise1);
+  color: var(--cds-text-primary);
+}
+.cds-nav__link[aria-current="page"] {
+  background: var(--cds-interactive);
+  border: 1px solid var(--ph-frame);
+  color: #ffffff;
+  box-shadow: var(--ph-raise1);
+  font-weight: 700;
+}
+.cds-nav__icon { width: 16px; height: 16px; flex: 0 0 16px; color: var(--cds-interactive-active); }
+.cds-nav__link:hover .cds-nav__icon { color: var(--cds-interactive-hover); }
+.cds-nav__link[aria-current="page"] .cds-nav__icon { color: #ffffff; }
+.cds-nav__label { flex: 1 1 auto; }
+
+/* Buttons: raised grey Photon push buttons, depressed when pressed */
+.cds-btn {
+  min-height: var(--ph-ctl-h);
+  height: var(--ph-ctl-h);
+  padding: 0 var(--cds-spacing-05);
+  border: 1px solid var(--ph-frame);
+  border-radius: 0;
+  background: var(--ph-face);
+  color: var(--cds-text-primary);
+  box-shadow: var(--ph-raise);
+  font-size: var(--ph-ctl-fs);
+  font-weight: 600;
+}
+.cds-btn:hover { background: #d3d0ca; }
+.cds-btn:active { background: var(--ph-face); box-shadow: var(--ph-press); padding-top: 1px; }
+.cds-btn--secondary { background: #bcb9b2; color: var(--cds-text-primary); }
+.cds-btn--secondary:hover { background: #c6c3bc; }
+.cds-btn--ghost { background: var(--ph-face); color: var(--cds-interactive-active); }
+.cds-btn--danger { background: #b45850; color: #fff; }
+.cds-btn--danger:hover { background: #c0645b; }
+.cds-btn--danger:active { box-shadow: var(--ph-press); }
+
+/* Fields: sunken wells, same height as the buttons */
+.cds-input, select.cds-input {
+  height: var(--ph-ctl-h);
+  padding: 0 var(--cds-spacing-03);
+  border: 1px solid var(--ph-frame);
+  border-radius: 0;
+  background: #e7e4dd;
+  box-shadow: var(--ph-sink);
+  color: var(--cds-text-primary);
+  font-size: var(--ph-ctl-fs);
+}
+.cds-textarea {
+  height: auto;
+  padding: var(--cds-spacing-03);
+  border: 1px solid var(--ph-frame);
+  background: #e7e4dd;
+  box-shadow: var(--ph-sink);
+  color: var(--cds-text-primary);
+  font-size: var(--ph-ctl-fs);
+}
+.cds-input:focus, select.cds-input:focus, .cds-textarea:focus {
+  outline: 1px dotted var(--cds-interactive-active);
+  outline-offset: -4px;
+}
+.cds-label { font-size: 0.75rem; }
+.cds-checkbox { font-size: var(--ph-ctl-fs); }
+
+/* Panels: tiles, notifications and toasts as raised grey panels */
+.cds-tile {
+  border: 1px solid var(--ph-frame);
+  border-radius: 0;
+  background: var(--cds-layer-02);
+  box-shadow: var(--ph-raise);
+  padding: var(--cds-spacing-05);
+}
+.cds-inline-notification, .cds-toast {
+  border: 1px solid var(--ph-frame);
+  background: var(--cds-layer-01);
+  box-shadow: var(--ph-raise);
+}
+.cds-empty { border: 1px solid var(--ph-frame); box-shadow: var(--ph-sink); background: #c1beb8; }
+.cds-metric__value { font-size: 1.75rem; font-weight: 700; }
+.cds-metric__label { font-size: 0.6875rem; }
+
+/* Tabs: raised folder tabs, the active one merged into its panel */
+.cds-tablist { border-bottom: 1px solid var(--ph-frame); gap: 2px; }
+.cds-tabs.js-tabs .cds-tab {
+  min-height: var(--ph-ctl-h);
+  padding: 0 var(--cds-spacing-05);
+  border: 1px solid var(--ph-frame);
+  border-bottom: none;
+  background: var(--cds-layer-01);
+  box-shadow: var(--ph-raise1);
+  color: var(--cds-text-secondary);
+  font-size: var(--ph-ctl-fs);
+  margin-bottom: -1px;
+}
+.cds-tabs.js-tabs .cds-tab:hover { background: var(--ph-face); }
+.cds-tabs.js-tabs .cds-tab[aria-selected="true"] {
+  background: var(--cds-layer-02);
+  color: var(--cds-interactive-active);
+  border-bottom: 1px solid var(--cds-layer-02);
+  box-shadow: inset 1px 1px 0 var(--ph-light);
+  font-weight: 700;
+}
+.cds-tabpanel {
+  border: 1px solid var(--ph-frame);
+  box-shadow: var(--ph-raise);
+  background: var(--cds-layer-02);
+  padding: var(--cds-spacing-05);
+  margin-top: -1px;
+}
+
+/* Data tables: sunken frame with a raised header row */
+.cds-table {
+  border: 1px solid var(--ph-frame);
+  box-shadow: var(--ph-sink);
+  background: #d6d3cc;
+}
+.cds-table th {
+  background: var(--cds-layer-01);
+  box-shadow: var(--ph-raise1);
+  color: var(--cds-text-primary);
+  font-size: 0.6875rem;
+}
+.cds-table th, .cds-table td {
+  border-bottom: 1px solid var(--ph-shadow);
+  font-size: var(--ph-ctl-fs);
+}
+
+/* Tags: small square beveled chips */
+.cds-tag {
+  border-radius: 0;
+  border: 1px solid var(--ph-frame);
+  line-height: 1.25rem;
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+/* Headings: plain bold, sized down to sit proportionally over the dense grid */
+.cds-h1 { font-size: 1.375rem; font-weight: 700; margin-bottom: var(--cds-spacing-05); }
+.cds-h2 { font-size: 1.0625rem; font-weight: 700; }
+.cds-h3 { font-size: 0.9375rem; font-weight: 700; }
+.cds-result__title { font-size: 0.9375rem; }
+
+/* When the shelf collapses on narrow screens it stacks below the content,
+   framed along its top edge instead of its side. */
+@media (max-width: 42rem) {
+  .cds-nav {
+    width: 100%;
+    flex-basis: auto;
+    border-left: 1px solid var(--ph-frame);
+    box-shadow: var(--ph-raise);
+  }
+  .cds-nav__list { display: flex; flex-wrap: wrap; }
+}

@@ -61,9 +61,9 @@ func TestAutocrawlerSectionRendersItsSubsetBetweenSearchAndCrawler(t *testing.T)
 	if strings.Contains(got.body, `name="key" value="peer.name"`) {
 		t.Fatal("foreign setting leaked into the autocrawler section")
 	}
-	search := strings.Index(got.body, `>Search</a>`)
-	auto := strings.Index(got.body, `>Autocrawler</a>`)
-	crawler := strings.Index(got.body, `>Crawler</a>`)
+	search := strings.Index(got.body, `cds-nav__label">Search</span>`)
+	auto := strings.Index(got.body, `cds-nav__label">Autocrawler</span>`)
+	crawler := strings.Index(got.body, `cds-nav__label">Crawler</span>`)
 	if search < 0 || search >= auto || auto >= crawler {
 		t.Fatalf("nav order wrong: search@%d autocrawler@%d crawler@%d", search, auto, crawler)
 	}
