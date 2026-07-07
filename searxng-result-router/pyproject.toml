@@ -1,0 +1,2 @@
+[tool.coverage.run]
+source = ["result_link_router"]

@@ -1,8 +1,11 @@
 GO ?= go
 PYTHON ?= python3
-MODULES := yacynode yacymodel yacyproto yacycrawlcontract yacycrawler yacytextindexer yacyvisitcrawl
-COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 80
+
+GO_MODULES := yacynode yacymodel yacyproto yacycrawlcontract yacycrawler yacytextindexer yacyvisitcrawl
+PY_MODULES := searxng-result-router
+
+COVER_PROFILE := coverage.out
 COVER_EXCLUDE := /internal/vaulttest/|/test/e2e/
 
 TOOLS_BIN := $(CURDIR)/.toolchain/bin
@@ -11,23 +14,36 @@ GOLANGCI_LINT := $(TOOLS_BIN)/golangci-lint
 GO_ARCH_LINT := $(TOOLS_BIN)/go-arch-lint
 RUFF := $(TOOLS_BIN)/ruff
 
-SEARXNG_ROUTER_DIR := searxng-result-router
-SEARXNG_ROUTER_VENV := $(SEARXNG_ROUTER_DIR)/.venv
-SEARXNG_ROUTER_VENV_STAMP := $(SEARXNG_ROUTER_VENV)/.installed
+PY_VENV_STAMPS := $(foreach m,$(PY_MODULES),$(m)/.venv/.installed)
 
-.PHONY: tools fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-textindexer e2e-searxng-result-router e2e-node-image e2e-crawler-image e2e-textindexer-image e2e-visitcrawl-image peer-hash
+define for_each_go
+set -e; for m in $(GO_MODULES); do echo "==> $(1) $$m"; ( cd $$m && $(2) ); done
+endef
 
-E2E_TIMEOUT ?= 10m
-E2E_NODE_IMAGE ?= yacy-rwi-node:e2e
-E2E_CRAWLER_IMAGE ?= yacy-rwi-crawler:e2e
-E2E_TEXTINDEXER_IMAGE ?= yacy-rwi-textindexer:e2e
-E2E_VISITCRAWL_IMAGE ?= yacyvisitcrawl:e2e
+define for_each_py
+set -e; for m in $(PY_MODULES); do echo "==> $(1) $$m"; ( cd $$m && $(2) ); done
+endef
 
-E2E_CONTAINER_CLI := $(shell command -v docker >/dev/null 2>&1 && echo docker || \
-	(command -v podman >/dev/null 2>&1 && echo podman || echo "distrobox-host-exec podman"))
-E2E_RUNTIME_DIR := $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))
-E2E_DOCKER_HOST := $(or $(DOCKER_HOST),unix://$(E2E_RUNTIME_DIR)/podman/podman.sock)
-E2E_DOCKER_ENV := DOCKER_HOST=$(E2E_DOCKER_HOST) TESTCONTAINERS_RYUK_DISABLED=true
+.PHONY: tools \
+	fmt fmt-go fmt-py \
+	fmt-check fmt-check-go fmt-check-py \
+	lint lint-go lint-py \
+	vet arch \
+	test test-go test-py \
+	cover cover-go cover-py \
+	cover-check cover-check-go cover-check-py \
+	build verify peer-hash \
+	e2e e2e-node e2e-crawler e2e-textindexer e2e-searxng-result-router \
+	e2e-node-image e2e-crawler-image e2e-textindexer-image e2e-visitcrawl-image
+
+fmt:         fmt-go fmt-py
+fmt-check:   fmt-check-go fmt-check-py
+lint:        lint-go lint-py
+test:        test-go test-py
+cover:       cover-go cover-py
+cover-check: cover-check-go cover-check-py
+build:       build-go
+verify:      fmt-check vet lint arch test cover-check build
 
 $(TOOLS_STAMP): tools/install tools/tools.lock
 	./tools/install
@@ -35,63 +51,44 @@ $(TOOLS_STAMP): tools/install tools/tools.lock
 
 tools: $(TOOLS_STAMP)
 
-fmt: $(TOOLS_STAMP)
-	@set -e; for m in $(MODULES); do \
-		echo "==> fmt $$m"; \
-		( cd $$m && $(GOLANGCI_LINT) fmt ); \
-	done
-	@echo "==> fmt $(SEARXNG_ROUTER_DIR)"
-	@$(RUFF) format $(SEARXNG_ROUTER_DIR)
+$(PY_VENV_STAMPS): %/.venv/.installed: %/requirements-dev.txt
+	$(PYTHON) -m venv $*/.venv
+	$*/.venv/bin/pip install --quiet -r $*/requirements-dev.txt
+	@touch $@
 
-fmt-check: $(TOOLS_STAMP)
-	@set -e; for m in $(MODULES); do \
-		echo "==> fmt-check $$m"; \
-		( cd $$m && $(GOLANGCI_LINT) fmt --diff ); \
-	done
-	@echo "==> fmt-check $(SEARXNG_ROUTER_DIR)"
-	@$(RUFF) format --check $(SEARXNG_ROUTER_DIR)
+# ---- Go stack ----
 
-lint: $(TOOLS_STAMP)
-	@set -e; for m in $(MODULES); do \
-		echo "==> lint $$m"; \
-		( cd $$m && $(GOLANGCI_LINT) run ./... ); \
-	done
-	@echo "==> lint $(SEARXNG_ROUTER_DIR)"
-	@$(RUFF) check $(SEARXNG_ROUTER_DIR)
+fmt-go: $(TOOLS_STAMP)
+	@$(call for_each_go,fmt,$(GOLANGCI_LINT) fmt)
+
+fmt-check-go: $(TOOLS_STAMP)
+	@$(call for_each_go,fmt-check,$(GOLANGCI_LINT) fmt --diff)
+
+lint-go: $(TOOLS_STAMP)
+	@$(call for_each_go,lint,$(GOLANGCI_LINT) run ./...)
 
 vet:
-	@set -e; for m in $(MODULES); do \
-		echo "==> vet $$m"; \
-		( cd $$m && $(GO) vet ./... ); \
-	done
+	@$(call for_each_go,vet,$(GO) vet ./...)
 
 arch: $(TOOLS_STAMP)
-	@set -e; for m in $(MODULES); do \
-		echo "==> arch $$m"; \
-		( cd $$m && $(GO_ARCH_LINT) check ); \
-	done
+	@$(call for_each_go,arch,$(GO_ARCH_LINT) check)
 
-test: $(SEARXNG_ROUTER_VENV_STAMP)
-	@set -e; for m in $(MODULES); do \
-		echo "==> test $$m"; \
-		( cd $$m && $(GO) test -race ./... ); \
-	done
-	@echo "==> test $(SEARXNG_ROUTER_DIR)"
-	cd $(SEARXNG_ROUTER_DIR) && .venv/bin/python -m pytest -q
+test-go:
+	@$(call for_each_go,test,$(GO) test -race ./...)
 
-cover: $(SEARXNG_ROUTER_VENV_STAMP)
-	@set -e; for m in $(MODULES); do \
+build-go:
+	@$(call for_each_go,build,$(GO) build ./...)
+
+cover-go:
+	@set -e; for m in $(GO_MODULES); do \
 		echo "==> cover $$m"; \
 		( cd $$m && $(GO) test -coverprofile=$(COVER_PROFILE) ./... && \
 			grep -vE '$(COVER_EXCLUDE)' $(COVER_PROFILE) > $(COVER_PROFILE).gated; \
 			$(GO) tool cover -func=$(COVER_PROFILE).gated ); \
 	done
-	@echo "==> cover $(SEARXNG_ROUTER_DIR)"
-	cd $(SEARXNG_ROUTER_DIR) && .venv/bin/python -m pytest -q \
-		--cov=result_link_router --cov-report=term-missing
 
-cover-check: $(SEARXNG_ROUTER_VENV_STAMP)
-	@set -e; for m in $(MODULES); do \
+cover-check-go:
+	@set -e; for m in $(GO_MODULES); do \
 		echo "==> cover-check $$m (min $(COVERAGE_MIN)%)"; \
 		( cd $$m && $(GO) test -race -coverprofile=$(COVER_PROFILE) ./... >/dev/null && \
 			grep -vE '$(COVER_EXCLUDE)' $(COVER_PROFILE) > $(COVER_PROFILE).gated; \
@@ -104,25 +101,45 @@ cover-check: $(SEARXNG_ROUTER_VENV_STAMP)
 				'BEGIN { if (c + 0 < min + 0) { exit 1 } }' || \
 				{ echo "coverage $${total:-0}% below $(COVERAGE_MIN)% in $$m"; exit 1; } ); \
 	done
-	@echo "==> cover-check $(SEARXNG_ROUTER_DIR) (min $(COVERAGE_MIN)%)"
-	cd $(SEARXNG_ROUTER_DIR) && .venv/bin/python -m pytest -q \
-		--cov=result_link_router --cov-fail-under=$(COVERAGE_MIN)
 
-build:
-	@set -e; for m in $(MODULES); do \
-		echo "==> build $$m"; \
-		( cd $$m && $(GO) build ./... ); \
-	done
+# ---- Python stack ----
+
+fmt-py: $(TOOLS_STAMP)
+	@$(call for_each_py,fmt,$(RUFF) format .)
+
+fmt-check-py: $(TOOLS_STAMP)
+	@$(call for_each_py,fmt-check,$(RUFF) format --check .)
+
+lint-py: $(TOOLS_STAMP)
+	@$(call for_each_py,lint,$(RUFF) check .)
+
+test-py: $(PY_VENV_STAMPS)
+	@$(call for_each_py,test,.venv/bin/python -m pytest -q)
+
+cover-py: $(PY_VENV_STAMPS)
+	@$(call for_each_py,cover,.venv/bin/python -m pytest -q --cov --cov-report=term-missing)
+
+cover-check-py: $(PY_VENV_STAMPS)
+	@$(call for_each_py,cover-check,.venv/bin/python -m pytest -q --cov --cov-fail-under=$(COVERAGE_MIN))
+
+# ---- misc ----
 
 peer-hash:
 	cd yacynode && $(GO) run ./cmd/yacy-peer-hash
 
-$(SEARXNG_ROUTER_VENV_STAMP): $(SEARXNG_ROUTER_DIR)/requirements-dev.txt
-	$(PYTHON) -m venv $(SEARXNG_ROUTER_VENV)
-	$(SEARXNG_ROUTER_VENV)/bin/pip install --quiet -r $(SEARXNG_ROUTER_DIR)/requirements-dev.txt
-	@touch $@
+# ---- e2e ----
 
-verify: fmt-check vet lint arch test cover-check build
+E2E_TIMEOUT ?= 10m
+E2E_NODE_IMAGE ?= yacy-rwi-node:e2e
+E2E_CRAWLER_IMAGE ?= yacy-rwi-crawler:e2e
+E2E_TEXTINDEXER_IMAGE ?= yacy-rwi-textindexer:e2e
+E2E_VISITCRAWL_IMAGE ?= yacyvisitcrawl:e2e
+
+E2E_CONTAINER_CLI := $(shell command -v docker >/dev/null 2>&1 && echo docker || \
+	(command -v podman >/dev/null 2>&1 && echo podman || echo "distrobox-host-exec podman"))
+E2E_RUNTIME_DIR := $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))
+E2E_DOCKER_HOST := $(or $(DOCKER_HOST),unix://$(E2E_RUNTIME_DIR)/podman/podman.sock)
+E2E_DOCKER_ENV := DOCKER_HOST=$(E2E_DOCKER_HOST) TESTCONTAINERS_RYUK_DISABLED=true
 
 e2e-node-image:
 	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacynode/Dockerfile -t $(E2E_NODE_IMAGE) .
