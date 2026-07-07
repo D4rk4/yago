@@ -207,6 +207,7 @@ func newOpsMux(
 	recentEvents http.Handler,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
+	mountProfiling(mux)
 	mux.HandleFunc(pathHealth, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
