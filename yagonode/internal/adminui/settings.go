@@ -26,6 +26,9 @@ type SettingItem struct {
 	RestartRequired bool
 	Options         []SettingOption
 	Category        string
+	// Boolean marks an Enabled/Disabled setting so the console renders it as a
+	// checkbox rather than a two-option dropdown.
+	Boolean bool
 }
 
 // SettingsView is the editable runtime-settings subset of the configuration.

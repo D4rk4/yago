@@ -111,7 +111,17 @@ func (s *settingsSource) item(ctx context.Context, def settingDefinition) adminu
 		RestartRequired: def.restartRequired(),
 		Options:         adminSettingOptions(def.options),
 		Category:        settingCategory(def.key),
+		Boolean:         isBooleanSettingOptions(def.options),
 	}
+}
+
+// isBooleanSettingOptions reports whether a setting's choices are exactly the
+// Enabled/Disabled boolean pair, so the console renders it as a checkbox instead
+// of a two-option dropdown.
+func isBooleanSettingOptions(options []settingOption) bool {
+	return len(options) == 2 &&
+		options[0].value == settingBoolTrue &&
+		options[1].value == settingBoolFalse
 }
 
 // settingCategory maps a setting key to the console tab that groups it, so the

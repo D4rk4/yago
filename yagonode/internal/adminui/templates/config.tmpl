@@ -12,28 +12,33 @@
 
   {{if .Editable}}{{range .SettingGroups}}
   <section class="cds-tabpanel" role="tabpanel" id="panel-{{.ID}}" aria-labelledby="tab-{{.ID}}">
-    <h2 class="cds-h2 cds-tabpanel__heading">{{.Title}}</h2>
-    {{range .Items}}
-    <form class="cds-form" method="post" action="/admin/configuration" hx-boost="false">
-      <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-      <input type="hidden" name="key" value="{{.Key}}">
-      <div class="cds-field">
-        <label class="cds-label" for="setting-{{.Key}}">{{.Title}}{{if .Overridden}} <span class="cds-tag cds-tag--info">overridden</span>{{end}}</label>
-        {{if .Description}}<p class="cds-muted">{{.Description}}</p>{{end}}
-        {{if .Options}}
-        <select class="cds-input" id="setting-{{.Key}}" name="value">
-          {{$current := .Value}}
-          {{range .Options}}<option value="{{.Value}}"{{if eq .Value $current}} selected{{end}}>{{.Label}}</option>{{end}}
-        </select>
-        {{else}}
-        <input class="cds-input" type="text" id="setting-{{.Key}}" name="value" value="{{.Value}}" autocomplete="off">
-        {{end}}
-        {{if .RestartRequired}}<p class="cds-muted">Takes effect after a node restart.</p>{{end}}
-      </div>
-      <button class="cds-btn" type="submit">Save</button>
-      {{if .Overridden}}<button class="cds-btn cds-btn--ghost" type="submit" name="reset" value="true">Reset to default</button>{{end}}
-    </form>
-    {{end}}
+    <fieldset class="cds-fieldset">
+      <legend class="cds-legend">{{.Title}}</legend>
+      {{range .Items}}
+      <form class="cds-form" method="post" action="/admin/configuration" hx-boost="false">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <input type="hidden" name="key" value="{{.Key}}">
+        <div class="cds-field">
+          <label class="cds-label" for="setting-{{.Key}}">{{.Title}}{{if .Overridden}} <span class="cds-tag cds-tag--info">overridden</span>{{end}}</label>
+          {{if .Description}}<p class="cds-muted">{{.Description}}</p>{{end}}
+          {{if .Boolean}}
+          <input type="hidden" name="bool" value="1">
+          <label class="cds-checkbox"><input type="checkbox" id="setting-{{.Key}}" name="value" value="true"{{if eq .Value "true"}} checked{{end}}> Enabled</label>
+          {{else if .Options}}
+          <select class="cds-input" id="setting-{{.Key}}" name="value">
+            {{$current := .Value}}
+            {{range .Options}}<option value="{{.Value}}"{{if eq .Value $current}} selected{{end}}>{{.Label}}</option>{{end}}
+          </select>
+          {{else}}
+          <input class="cds-input" type="text" id="setting-{{.Key}}" name="value" value="{{.Value}}" autocomplete="off">
+          {{end}}
+          {{if .RestartRequired}}<p class="cds-muted">Takes effect after a node restart.</p>{{end}}
+        </div>
+        <button class="cds-btn" type="submit">Save</button>
+        {{if .Overridden}}<button class="cds-btn cds-btn--ghost" type="submit" name="reset" value="true">Reset to default</button>{{end}}
+      </form>
+      {{end}}
+    </fieldset>
   </section>
   {{end}}{{end}}
 

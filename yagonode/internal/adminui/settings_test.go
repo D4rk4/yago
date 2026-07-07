@@ -62,6 +62,78 @@ func TestConsoleConfigRendersEditableSettings(t *testing.T) {
 	}
 }
 
+func booleanSettingsView() SettingsView {
+	return SettingsView{Items: []SettingItem{{
+		Key:      "portal.enabled",
+		Title:    "Public search portal",
+		Value:    "true",
+		Category: "Public portal",
+		Boolean:  true,
+		Options: []SettingOption{
+			{Value: "true", Label: "Enabled"},
+			{Value: "false", Label: "Disabled"},
+		},
+	}}}
+}
+
+func TestConsoleConfigRendersBooleanSettingAsCheckbox(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Config:   fakeConfig{view: ConfigView{}},
+		Settings: &fakeSettings{view: booleanSettingsView()},
+	})
+	got := do(t, console, "/admin/configuration")
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	for _, want := range []string{
+		`class="cds-fieldset"`, `<legend class="cds-legend">`,
+		`type="checkbox"`, `name="bool"`, `class="cds-checkbox"`, `value="true" checked`,
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("boolean setting render missing %q", want)
+		}
+	}
+	if strings.Contains(got.body, "<select") {
+		t.Fatal("a boolean setting must render a checkbox, not a dropdown")
+	}
+}
+
+func TestConsoleConfigCheckboxCheckedSubmitsTrue(t *testing.T) {
+	t.Parallel()
+
+	settings := &fakeSettings{view: booleanSettingsView(), result: SettingsResult{OK: true}}
+	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Settings: settings})
+
+	doPost(t, console, "/admin/configuration", url.Values{
+		"key":   {"portal.enabled"},
+		"bool":  {"1"},
+		"value": {"true"},
+	})
+	if settings.change.Value != "true" {
+		t.Fatalf("checked checkbox value = %q, want true", settings.change.Value)
+	}
+}
+
+func TestConsoleConfigCheckboxUncheckedSubmitsFalse(t *testing.T) {
+	t.Parallel()
+
+	settings := &fakeSettings{view: booleanSettingsView(), result: SettingsResult{OK: true}}
+	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Settings: settings})
+
+	doPost(t, console, "/admin/configuration", url.Values{
+		"key":  {"portal.enabled"},
+		"bool": {"1"},
+	})
+	if settings.change.Value != "false" {
+		t.Fatalf(
+			"unchecked checkbox value = %q, want false (absent value coerced)",
+			settings.change.Value,
+		)
+	}
+}
+
 func TestConsoleConfigOmitsEditableSurfaceWithoutSettings(t *testing.T) {
 	t.Parallel()
 

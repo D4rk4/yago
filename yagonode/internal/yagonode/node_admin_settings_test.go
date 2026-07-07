@@ -59,6 +59,33 @@ func TestSettingsSourceReportsEnvironmentDefault(t *testing.T) {
 	}
 }
 
+func TestSettingItemMarksBooleanSetting(t *testing.T) {
+	t.Parallel()
+
+	source, _, _ := newTestSettingsSource(t, nodeConfig{PublicSearchUIEnabled: true})
+	if item := portalItem(t, source.Settings(context.Background())); !item.Boolean {
+		t.Fatal("Enabled/Disabled portal setting should be marked Boolean for checkbox rendering")
+	}
+}
+
+func TestIsBooleanSettingOptions(t *testing.T) {
+	t.Parallel()
+
+	if !isBooleanSettingOptions(boolSettingOptions()) {
+		t.Error("Enabled/Disabled options should be detected as boolean")
+	}
+	for _, options := range [][]settingOption{
+		nil,
+		{{value: settingBoolTrue, label: "Enabled"}},
+		{{value: "a", label: "A"}, {value: "b", label: "B"}},
+		{{value: settingBoolTrue, label: "On"}, {value: "off", label: "Off"}},
+	} {
+		if isBooleanSettingOptions(options) {
+			t.Errorf("non-boolean options %+v wrongly detected as boolean", options)
+		}
+	}
+}
+
 func TestSettingsSourceReportsStoredOverride(t *testing.T) {
 	t.Parallel()
 

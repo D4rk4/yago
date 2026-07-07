@@ -181,6 +181,8 @@ html, body {
 }
 .cds-label { font-size: 0.75rem; }
 .cds-checkbox { font-size: var(--ph-ctl-fs); }
+.cds-fieldset { border: 1px solid var(--ph-frame); box-shadow: var(--ph-raise); }
+.cds-legend { font-size: var(--ph-ctl-fs); font-weight: 700; }
 
 /* Panels: tiles, notifications and toasts as raised grey panels */
 .cds-tile {

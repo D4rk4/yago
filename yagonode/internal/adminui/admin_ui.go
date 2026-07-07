@@ -1117,9 +1117,22 @@ func (c *Console) configPage(r *http.Request, notice, errMsg string) configPageD
 func parseSettingsChange(r *http.Request) SettingsChange {
 	return SettingsChange{
 		Key:   strings.TrimSpace(r.PostFormValue("key")),
-		Value: strings.TrimSpace(r.PostFormValue("value")),
+		Value: settingFormValue(r),
 		Reset: r.PostFormValue("reset") == "true",
 	}
+}
+
+// settingFormValue reads a submitted setting value, resolving a checkbox
+// (boolean) form into an explicit "true"/"false". An unchecked checkbox submits
+// no value at all; the hidden "bool" marker lets the handler read that absence as
+// "false" so the setting is disabled rather than rejected as an empty value.
+func settingFormValue(r *http.Request) string {
+	value := strings.TrimSpace(r.PostFormValue("value"))
+	if r.PostFormValue("bool") == "1" && value != "true" {
+		return "false"
+	}
+
+	return value
 }
 
 func (c *Console) handleSecurity(w http.ResponseWriter, r *http.Request) {
