@@ -16,10 +16,13 @@ classes confirmed against SearXNG's own source.
 
 ## Decision
 
-`requirements-dev.txt` pins `pytest` as the only test dependency. `conftest.py` installs a
-minimal `searx`/`searx.plugins` stub into `sys.modules`, matching the real classes' fields and
+`requirements-dev.txt` pins `pytest` and `pytest-cov`. `conftest.py` installs a minimal
+`searx`/`searx.plugins` stub into `sys.modules`, matching the real classes' fields and
 signatures, before any test imports `result_link_router`. Tests exercise the plugin's own
 logic (link rewriting, base-URL configuration) against this stub, not against SearXNG itself.
+`make test`/`make cover-check` install both into a project-local `.venv` (gitignored, rebuilt
+whenever `requirements-dev.txt` changes) rather than using a system-wide install, so the pinned
+versions are what actually runs.
 
 ## Consequences
 

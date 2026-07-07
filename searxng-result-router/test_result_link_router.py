@@ -33,16 +33,26 @@ def plugin(monkeypatch):
 
 def test_rewrites_http_url(plugin):
     rewritten = plugin.route_through_visitcrawl(None, "url", "http://example.com/a")
-    assert rewritten == "http://yacyvisitcrawl:8091/visit?url=http%3A%2F%2Fexample.com%2Fa"
+    assert (
+        rewritten == "http://yacyvisitcrawl:8091/visit?url=http%3A%2F%2Fexample.com%2Fa"
+    )
 
 
 def test_rewrites_https_url(plugin):
-    rewritten = plugin.route_through_visitcrawl(None, "url", "https://example.com/a?b=c")
-    assert rewritten == "http://yacyvisitcrawl:8091/visit?url=https%3A%2F%2Fexample.com%2Fa%3Fb%3Dc"
+    rewritten = plugin.route_through_visitcrawl(
+        None, "url", "https://example.com/a?b=c"
+    )
+    assert (
+        rewritten
+        == "http://yacyvisitcrawl:8091/visit?url=https%3A%2F%2Fexample.com%2Fa%3Fb%3Dc"
+    )
 
 
 def test_leaves_non_url_field_unchanged(plugin):
-    assert plugin.route_through_visitcrawl(None, "img_src", "http://example.com/a.png") is True
+    assert (
+        plugin.route_through_visitcrawl(None, "img_src", "http://example.com/a.png")
+        is True
+    )
 
 
 def test_leaves_non_http_scheme_unchanged(plugin):
@@ -52,8 +62,13 @@ def test_leaves_non_http_scheme_unchanged(plugin):
 def test_respects_configured_base_url(monkeypatch):
     monkeypatch.setenv("YACYVISITCRAWL_BASE_URL", "https://visitcrawl.internal:9443/")
     configured = result_link_router.SXNGPlugin(PluginCfg(active=True))
-    rewritten = configured.route_through_visitcrawl(None, "url", "https://example.com/a")
-    assert rewritten == "https://visitcrawl.internal:9443/visit?url=https%3A%2F%2Fexample.com%2Fa"
+    rewritten = configured.route_through_visitcrawl(
+        None, "url", "https://example.com/a"
+    )
+    assert (
+        rewritten
+        == "https://visitcrawl.internal:9443/visit?url=https%3A%2F%2Fexample.com%2Fa"
+    )
 
 
 def test_requires_base_url_configured(monkeypatch):
@@ -63,11 +78,16 @@ def test_requires_base_url_configured(monkeypatch):
 
 
 def test_on_result_rewrites_url_and_keeps_result(plugin):
-    result = FakeResult(url="https://example.com/a", img_src="https://example.com/a.png")
+    result = FakeResult(
+        url="https://example.com/a", img_src="https://example.com/a.png"
+    )
 
     kept = plugin.on_result(request=None, search=None, result=result)
 
     assert kept is True
     assert result.filter_urls_calls == 1
-    assert result["url"] == "http://yacyvisitcrawl:8091/visit?url=https%3A%2F%2Fexample.com%2Fa"
+    assert (
+        result["url"]
+        == "http://yacyvisitcrawl:8091/visit?url=https%3A%2F%2Fexample.com%2Fa"
+    )
     assert result["img_src"] == "https://example.com/a.png"

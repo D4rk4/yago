@@ -64,3 +64,15 @@ ver="$1"; sum="$2"
 fetch go-arch-lint \
 	"https://github.com/fe3dback/go-arch-lint/releases/download/v$ver/go-arch-lint_${ver}_${os}_${arch}.tar.gz" \
 	"$sum" "go-arch-lint"
+
+case "$platform" in
+	linux-amd64) triple=x86_64-unknown-linux-gnu ;;
+	linux-arm64) triple=aarch64-unknown-linux-gnu ;;
+	darwin-amd64) triple=x86_64-apple-darwin ;;
+	darwin-arm64) triple=aarch64-apple-darwin ;;
+esac
+set -- $(lookup ruff)
+ver="$1"; sum="$2"
+fetch ruff \
+	"https://github.com/astral-sh/ruff/releases/download/$ver/ruff-$triple.tar.gz" \
+	"$sum" "ruff-$triple/ruff"

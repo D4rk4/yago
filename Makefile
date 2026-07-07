@@ -9,12 +9,13 @@ TOOLS_BIN := $(CURDIR)/.toolchain/bin
 TOOLS_STAMP := $(TOOLS_BIN)/.installed
 GOLANGCI_LINT := $(TOOLS_BIN)/golangci-lint
 GO_ARCH_LINT := $(TOOLS_BIN)/go-arch-lint
+RUFF := $(TOOLS_BIN)/ruff
 
 SEARXNG_ROUTER_DIR := searxng-result-router
 SEARXNG_ROUTER_VENV := $(SEARXNG_ROUTER_DIR)/.venv
 SEARXNG_ROUTER_VENV_STAMP := $(SEARXNG_ROUTER_VENV)/.installed
 
-.PHONY: tools fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-textindexer e2e-node-image e2e-crawler-image e2e-textindexer-image peer-hash searxng-result-router-test
+.PHONY: tools fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-textindexer e2e-node-image e2e-crawler-image e2e-textindexer-image peer-hash
 
 E2E_TIMEOUT ?= 10m
 E2E_NODE_IMAGE ?= yacy-rwi-node:e2e
@@ -37,18 +38,24 @@ fmt: $(TOOLS_STAMP)
 		echo "==> fmt $$m"; \
 		( cd $$m && $(GOLANGCI_LINT) fmt ); \
 	done
+	@echo "==> fmt $(SEARXNG_ROUTER_DIR)"
+	@$(RUFF) format $(SEARXNG_ROUTER_DIR)
 
 fmt-check: $(TOOLS_STAMP)
 	@set -e; for m in $(MODULES); do \
 		echo "==> fmt-check $$m"; \
 		( cd $$m && $(GOLANGCI_LINT) fmt --diff ); \
 	done
+	@echo "==> fmt-check $(SEARXNG_ROUTER_DIR)"
+	@$(RUFF) format --check $(SEARXNG_ROUTER_DIR)
 
 lint: $(TOOLS_STAMP)
 	@set -e; for m in $(MODULES); do \
 		echo "==> lint $$m"; \
 		( cd $$m && $(GOLANGCI_LINT) run ./... ); \
 	done
+	@echo "==> lint $(SEARXNG_ROUTER_DIR)"
+	@$(RUFF) check $(SEARXNG_ROUTER_DIR)
 
 vet:
 	@set -e; for m in $(MODULES); do \
@@ -62,21 +69,26 @@ arch: $(TOOLS_STAMP)
 		( cd $$m && $(GO_ARCH_LINT) check ); \
 	done
 
-test:
+test: $(SEARXNG_ROUTER_VENV_STAMP)
 	@set -e; for m in $(MODULES); do \
 		echo "==> test $$m"; \
 		( cd $$m && $(GO) test -race ./... ); \
 	done
+	@echo "==> test $(SEARXNG_ROUTER_DIR)"
+	cd $(SEARXNG_ROUTER_DIR) && .venv/bin/python -m pytest -q
 
-cover:
+cover: $(SEARXNG_ROUTER_VENV_STAMP)
 	@set -e; for m in $(MODULES); do \
 		echo "==> cover $$m"; \
 		( cd $$m && $(GO) test -coverprofile=$(COVER_PROFILE) ./... && \
 			grep -vE '$(COVER_EXCLUDE)' $(COVER_PROFILE) > $(COVER_PROFILE).gated; \
 			$(GO) tool cover -func=$(COVER_PROFILE).gated ); \
 	done
+	@echo "==> cover $(SEARXNG_ROUTER_DIR)"
+	cd $(SEARXNG_ROUTER_DIR) && .venv/bin/python -m pytest -q \
+		--cov=result_link_router --cov-report=term-missing
 
-cover-check:
+cover-check: $(SEARXNG_ROUTER_VENV_STAMP)
 	@set -e; for m in $(MODULES); do \
 		echo "==> cover-check $$m (min $(COVERAGE_MIN)%)"; \
 		( cd $$m && $(GO) test -race -coverprofile=$(COVER_PROFILE) ./... >/dev/null && \
@@ -90,6 +102,9 @@ cover-check:
 				'BEGIN { if (c + 0 < min + 0) { exit 1 } }' || \
 				{ echo "coverage $${total:-0}% below $(COVERAGE_MIN)% in $$m"; exit 1; } ); \
 	done
+	@echo "==> cover-check $(SEARXNG_ROUTER_DIR) (min $(COVERAGE_MIN)%)"
+	cd $(SEARXNG_ROUTER_DIR) && .venv/bin/python -m pytest -q \
+		--cov=result_link_router --cov-fail-under=$(COVERAGE_MIN)
 
 build:
 	@set -e; for m in $(MODULES); do \
@@ -105,10 +120,7 @@ $(SEARXNG_ROUTER_VENV_STAMP): $(SEARXNG_ROUTER_DIR)/requirements-dev.txt
 	$(SEARXNG_ROUTER_VENV)/bin/pip install --quiet -r $(SEARXNG_ROUTER_DIR)/requirements-dev.txt
 	@touch $@
 
-searxng-result-router-test: $(SEARXNG_ROUTER_VENV_STAMP)
-	cd $(SEARXNG_ROUTER_DIR) && .venv/bin/python -m pytest -q
-
-verify: fmt-check vet lint arch test cover-check build searxng-result-router-test
+verify: fmt-check vet lint arch test cover-check build
 
 e2e-node-image:
 	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacynode/Dockerfile -t $(E2E_NODE_IMAGE) .

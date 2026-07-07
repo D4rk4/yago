@@ -12,8 +12,8 @@ if t.TYPE_CHECKING:
     from searx.result_types import LegacyResult, Result
     from searx.search import SearchWithPlugins
 
-class SXNGPlugin(Plugin):
 
+class SXNGPlugin(Plugin):
     id = "result_link_router"
 
     def __init__(self, plg_cfg: "PluginCfg") -> None:
@@ -29,7 +29,9 @@ class SXNGPlugin(Plugin):
             raise ValueError("YACYVISITCRAWL_BASE_URL must be set")
         self.visitcrawl_base_url = base_url.rstrip("/")
 
-    def on_result(self, request: "SXNG_Request", search: "SearchWithPlugins", result: "Result") -> bool:
+    def on_result(
+        self, request: "SXNG_Request", search: "SearchWithPlugins", result: "Result"
+    ) -> bool:
         result.filter_urls(self.route_through_visitcrawl)
         return True
 
