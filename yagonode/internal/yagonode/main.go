@@ -249,6 +249,7 @@ func serve(
 	var background sync.WaitGroup
 	background.Add(4)
 	startPeerPresenceLoops(ctx, &background, assembled)
+	go runRedirectPurge(ctx, assembled)
 	go func() {
 		defer background.Done()
 		runEvictionLoop(ctx, assembled.sweeper, evictionMetrics)

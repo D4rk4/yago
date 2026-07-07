@@ -124,6 +124,8 @@ components:
     in: internal/searchremote/**
   tracectx:
     in: internal/tracectx/**
+  redirectpurge:
+    in: internal/redirectpurge/**
   wordforms:
     in: internal/wordforms/**
   tavilyapi:
@@ -530,6 +532,10 @@ deps:
     canUse:
       - yagomodel
       - yagocrawlcontract
+  redirectpurge:
+    mayDependOn:
+      - redirectpurge
+      - documentstore
   searchremote:
     mayDependOn:
       - searchremote
@@ -678,6 +684,7 @@ deps:
     mayDependOn:
       - neardup
       - tracectx
+      - redirectpurge
       - contentquality
       - snippetfetch
       - vault

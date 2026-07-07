@@ -50,6 +50,7 @@ type node struct {
 	suggest       searchcore.Searcher
 	index         searchindex.SearchIndex
 	docScan       documentstore.StoredDocuments
+	docEvictor    documentstore.DocumentEvictor
 	hostRank      *hostrank.Holder
 	spell         *spellcheck.Holder
 	wordForms     *wordforms.Holder
@@ -362,6 +363,7 @@ func newAssembledNode(parts nodeParts) node {
 		suggest:       parts.suggest,
 		index:         parts.storage.searchIndex,
 		docScan:       parts.storage.storedDocuments(),
+		docEvictor:    documentEvictorOf(parts.storage),
 		hostRank:      parts.hostRank,
 		spell:         parts.spell,
 		wordForms:     parts.wordForms,
