@@ -35,6 +35,17 @@ A rising rate on a gate means that intake runs at capacity **before** latency
 or error rates show it — alert on `rate(intake_rejections_total[5m]) > 0`
 sustained for minutes, not on single spikes.
 
+## Crawl health (OPS-09)
+
+The crawl monitor derives Olston & Najork's crawl-health signals from the run
+tallies once a sample reaches 100 fetched pages: **harvest rate**
+(indexed/fetched — how much fetch effort became index entries), **duplicate
+rate** (the spider-trap smell; a warning names the run when a running crawl
+exceeds 30 % duplicates), and **failure rate** (a blocking or dead host flags
+above 50 %). Index freshness is read from Prometheus as
+`rate(crawl_documents_indexed[1h])` against the queue depths — a full
+age-of-index gauge would need a corpus scan and stays a follow-up.
+
 ## Follow-ups
 
 OpenTelemetry export and W3C trace propagation belong to the internal-tracing

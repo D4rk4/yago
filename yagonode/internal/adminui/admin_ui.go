@@ -214,6 +214,7 @@ type crawlPageData struct {
 // control buttons need: the CSRF token and whether control actions are wired.
 type crawlMonitorView struct {
 	Monitor      CrawlMonitor
+	Health       CrawlHealth
 	CSRF         string
 	Controllable bool
 }
@@ -1186,8 +1187,11 @@ func (c *Console) crawlMonitorView(r *http.Request) *crawlMonitorView {
 		return nil
 	}
 
+	monitor := c.monitor.Monitor(r.Context())
+
 	return &crawlMonitorView{
-		Monitor:      c.monitor.Monitor(r.Context()),
+		Monitor:      monitor,
+		Health:       crawlHealth(monitor),
 		CSRF:         csrfToken(r),
 		Controllable: c.control != nil,
 	}

@@ -28,7 +28,27 @@
       <div class="cds-metric__label">Duplicates</div>
       <div class="cds-metric__value">{{.Monitor.Totals.Duplicates}}</div>
     </section>
+    {{if .Health.HarvestRate}}
+    <section class="cds-tile">
+      <div class="cds-metric__label">Harvest rate</div>
+      <div class="cds-metric__value">{{.Health.HarvestRate}}</div>
+      <div class="cds-muted">indexed / fetched</div>
+    </section>
+    <section class="cds-tile">
+      <div class="cds-metric__label">Duplicate rate</div>
+      <div class="cds-metric__value">{{.Health.DupRate}}</div>
+      <div class="cds-muted">spider-trap smell above 30%</div>
+    </section>
+    <section class="cds-tile">
+      <div class="cds-metric__label">Failure rate</div>
+      <div class="cds-metric__value">{{.Health.FailRate}}</div>
+      <div class="cds-muted">failed / fetched</div>
+    </section>
+    {{end}}
   </div>
+  {{range .Health.Suspects}}
+  <p class="cds-inline-notification cds-inline-notification--warn" role="alert">{{.}}</p>
+  {{end}}
   <div class="cds-scroll-x">
     <table class="cds-table">
       <thead>
