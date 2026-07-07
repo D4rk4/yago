@@ -81,6 +81,7 @@ type nodeTelemetry struct {
 	recorder         *events.Recorder
 	searchAuthorizer tavilyapi.ScopeAuthorizer
 	toggles          *runtimeToggles
+	saturation       *metrics.SaturationMetrics
 }
 
 var (
@@ -140,7 +141,7 @@ func assembleNode(
 	report := newNodeStatusReport(identity, storage, roster, news, tally)
 	storage = observeDHTInboundStorage(storage, telemetry.dhtInbound, tally)
 	mux, router := newNodeWireMux(config, report)
-	mountNodeWireHandlers(router, identity, storage)
+	mountNodeWireHandlers(router, identity, storage, telemetry.saturation)
 	peerClient := nodePeerClient(config, client)
 	exchange, err := assembleRuntimePeerExchange(peerExchange{
 		router:   router,
@@ -403,8 +404,9 @@ func mountNodeWireHandlers(
 	router httpguard.WireRouter,
 	identity nodeidentity.Identity,
 	storage nodeStorage,
+	saturation *metrics.SaturationMetrics,
 ) {
-	mountNodeProtocol(router, identity, storage)
+	mountNodeProtocol(router, identity, storage, saturation)
 	mountNodeCrawlCompatibility(router, identity, storage)
 }
 
@@ -421,11 +423,16 @@ func mountNodeProtocol(
 	router httpguard.WireRouter,
 	identity nodeidentity.Identity,
 	storage nodeStorage,
+	saturation *metrics.SaturationMetrics,
 ) {
 	// One admission gate covers both DHT-in transfer endpoints (YaCy 1.6
 	// load-limits the whole DHT intake), a separate one bounds concurrent
 	// inbound remote searches (YaCy 1.0 distributed-search DoS protection).
-	transferGate := httpguard.NewIntakeGate(dhtInboundTransferSlots)
+	// Each shed request counts as a saturation event (USE method, OPS-07).
+	transferGate := httpguard.NewObservedIntakeGate(
+		dhtInboundTransferSlots,
+		saturation.RejectionObserver(metrics.GateDHTTransfer),
+	)
 	urlmeta.MountTransferURL(router, identity, storage.urlReceiver, transferGate)
 	rwi.MountTransferRWI(
 		router,
@@ -444,7 +451,10 @@ func mountNodeProtocol(
 		Index:          storage.postings,
 		Documents:      storage.urlDirectory,
 		MatchesPerTerm: searchPostingsPerWord,
-		Gate:           httpguard.NewIntakeGate(inboundRemoteSearchSlots),
+		Gate: httpguard.NewObservedIntakeGate(
+			inboundRemoteSearchSlots,
+			saturation.RejectionObserver(metrics.GateRemoteSearch),
+		),
 	})
 }
 

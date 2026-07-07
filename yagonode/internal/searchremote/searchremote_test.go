@@ -3,6 +3,7 @@ package searchremote
 import (
 	"context"
 	"errors"
+	"fmt"
 	"html/template"
 	"io"
 	"math/big"
@@ -13,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1177,5 +1179,62 @@ func TestSwarmMorphologyVariantsGating(t *testing.T) {
 		searchcore.Request{Terms: []string{"черногория"}},
 	); got != nil {
 		t.Fatalf("nil expander expanded: %v", got)
+	}
+}
+
+// TestFanOutQueriesEveryPeerConcurrently pins SEARCH-37 (YaCy parity:
+// RemoteSearch starts one thread per selected peer): thirteen peers each
+// taking 400ms must all be answered well inside a budget that four sequential
+// waves would blow — with the old four-worker pool this test times out.
+func TestFanOutQueriesEveryPeerConcurrently(t *testing.T) {
+	const peerCount = 13
+	var inFlight, peak atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		current := inFlight.Add(1)
+		defer inFlight.Add(-1)
+		for {
+			observed := peak.Load()
+			if current <= observed || peak.CompareAndSwap(observed, current) {
+				break
+			}
+		}
+		time.Sleep(400 * time.Millisecond)
+		w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+		_, _ = w.Write([]byte("resource=\nlinkcount=0\nreferences=\n"))
+	}))
+	defer server.Close()
+
+	peers := make([]yagomodel.Seed, 0, peerCount)
+	for i := range peerCount {
+		peers = append(peers, serverSeedWithHash(
+			t,
+			server.URL,
+			yagomodel.Hash(fmt.Sprintf("FanOutPeer%02d", i)),
+		))
+	}
+	searcher := NewSearcher(Config{
+		Client:         server.Client(),
+		NetworkName:    "freeworld",
+		Peers:          fakePeerSource{peers: peers},
+		MaxPeers:       peerCount,
+		Redundancy:     peerCount,
+		PerPeerTimeout: 2 * time.Second,
+		OverallTimeout: 1500 * time.Millisecond,
+	})
+
+	start := time.Now()
+	_, err := searcher.Search(t.Context(), searchcore.Request{
+		Terms:  []string{"solo"},
+		Source: searchcore.SourceGlobal,
+		Limit:  10,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 1200*time.Millisecond {
+		t.Fatalf("fan-out took %v — peers are being queried in waves", elapsed)
+	}
+	if got := peak.Load(); got < peerCount {
+		t.Fatalf("peak concurrency = %d, want all %d peers in flight together", got, peerCount)
 	}
 }

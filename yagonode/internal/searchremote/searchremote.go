@@ -20,9 +20,15 @@ import (
 )
 
 const (
-	DefaultMaxPeers    = 8
-	DefaultRedundancy  = 3
-	DefaultConcurrency = 4
+	DefaultMaxPeers   = 8
+	DefaultRedundancy = 3
+	// DefaultConcurrency caps the peer fan-out workers. YaCy queries every
+	// selected target at once (RemoteSearch.java starts one thread per peer),
+	// so the cap exists only to bound a pathological roster: with a
+	// four-worker pool, thirteen targets took four sequential waves of up to
+	// three seconds each and the overall budget expired before the later
+	// waves even started — every peer reported as timed out (SEARCH-37).
+	DefaultConcurrency = 32
 	// DefaultPerPeerTimeout and DefaultOverallTimeout budget the swarm
 	// fan-out. Real YaCy peers answer a remote search in one to five seconds,
 	// so the old one-second per-peer budget discarded most honest answers —

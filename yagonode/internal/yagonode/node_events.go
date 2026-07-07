@@ -20,6 +20,7 @@ type runtimeObservability struct {
 	search       *metrics.SearchMetrics
 	crawl        *metrics.CrawlMetrics
 	crawlRuns    *metrics.CrawlRunMetrics
+	saturation   *metrics.SaturationMetrics
 	recorder     *events.Recorder
 	authObserver authObserverFanOut
 }
@@ -39,6 +40,7 @@ func provisionObservability(
 		return runtimeObservability{}, fmt.Errorf("configure event log: %w", err)
 	}
 	authMetrics := metrics.NewAuthMetrics(endpoints.Registry())
+	saturation := metrics.NewSaturationMetrics(endpoints.Registry())
 
 	return runtimeObservability{
 		endpoints:    endpoints,
@@ -46,6 +48,7 @@ func provisionObservability(
 		dhtOutbound:  metrics.NewDHTOutboundMetrics(endpoints.Registry()),
 		dhtInbound:   metrics.NewDHTInboundMetrics(endpoints.Registry()),
 		peer:         metrics.NewPeerMetrics(endpoints.Registry()),
+		saturation:   saturation,
 		search:       metrics.NewSearchMetrics(endpoints.Registry()),
 		crawl:        metrics.NewCrawlMetrics(endpoints.Registry()),
 		crawlRuns:    metrics.NewCrawlRunMetrics(endpoints.Registry()),

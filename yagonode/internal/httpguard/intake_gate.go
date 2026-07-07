@@ -7,17 +7,25 @@ package httpguard
 // harm both guard against — unbounded concurrent intake work — is bounded
 // directly by admission slots.
 type IntakeGate struct {
-	slots chan struct{}
+	slots    chan struct{}
+	onReject func()
 }
 
 // NewIntakeGate builds a gate admitting at most limit concurrent requests.
 // A non-positive limit returns a nil gate, which admits everything.
 func NewIntakeGate(limit int) *IntakeGate {
+	return NewObservedIntakeGate(limit, nil)
+}
+
+// NewObservedIntakeGate builds a gate that also reports each shed request to
+// onReject — the saturation signal of the USE method (OPS-07). A nil observer
+// keeps the gate silent.
+func NewObservedIntakeGate(limit int, onReject func()) *IntakeGate {
 	if limit <= 0 {
 		return nil
 	}
 
-	return &IntakeGate{slots: make(chan struct{}, limit)}
+	return &IntakeGate{slots: make(chan struct{}, limit), onReject: onReject}
 }
 
 // TryAcquire claims a slot without blocking; the caller must invoke release
@@ -30,6 +38,10 @@ func (g *IntakeGate) TryAcquire() (release func(), ok bool) {
 	case g.slots <- struct{}{}:
 		return func() { <-g.slots }, true
 	default:
+		if g.onReject != nil {
+			g.onReject()
+		}
+
 		return nil, false
 	}
 }

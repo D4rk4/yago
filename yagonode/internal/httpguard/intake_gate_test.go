@@ -36,3 +36,29 @@ func TestIntakeGateNilAndNonPositiveAdmitEverything(t *testing.T) {
 		release()
 	}
 }
+
+func TestObservedIntakeGateCountsRejections(t *testing.T) {
+	rejections := 0
+	gate := NewObservedIntakeGate(1, func() { rejections++ })
+	release, ok := gate.TryAcquire()
+	if !ok {
+		t.Fatal("first acquire must succeed")
+	}
+	if _, ok := gate.TryAcquire(); ok {
+		t.Fatal("second acquire must shed")
+	}
+	if rejections != 1 {
+		t.Fatalf("rejections = %d, want 1", rejections)
+	}
+	release()
+	if _, ok := gate.TryAcquire(); !ok {
+		t.Fatal("released slot must admit again")
+	}
+	if rejections != 1 {
+		t.Fatalf("admitted request counted as rejection: %d", rejections)
+	}
+
+	if NewObservedIntakeGate(0, func() {}) != nil {
+		t.Fatal("non-positive limit must return the nil gate")
+	}
+}

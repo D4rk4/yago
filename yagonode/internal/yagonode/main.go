@@ -169,6 +169,7 @@ func bootNode(
 			recorder:         obs.recorder,
 			searchAuthorizer: searchScopeAuthorizerFor(config, authService),
 			toggles:          toggles,
+			saturation:       obs.saturation,
 		},
 	)
 	if err != nil {
