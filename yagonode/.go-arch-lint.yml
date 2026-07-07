@@ -126,6 +126,8 @@ components:
     in: internal/tracectx/**
   redirectpurge:
     in: internal/redirectpurge/**
+  publicrobots:
+    in: internal/publicrobots/**
   wordforms:
     in: internal/wordforms/**
   tavilyapi:
@@ -685,6 +687,7 @@ deps:
       - neardup
       - tracectx
       - redirectpurge
+      - publicrobots
       - contentquality
       - snippetfetch
       - vault

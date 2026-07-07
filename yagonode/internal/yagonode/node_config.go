@@ -105,6 +105,7 @@ type nodeConfig struct {
 	PeerSnippetFetch      bool
 	RemotePeerTimeout     time.Duration
 	RemoteTimeout         time.Duration
+	RobotsPolicy          string
 	LANDiscovery          bool
 	PeerHTTPSPreferred    bool
 	SwarmSeed             swarmSeedConfig

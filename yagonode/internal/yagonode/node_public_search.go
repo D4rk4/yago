@@ -17,6 +17,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
+	"github.com/D4rk4/yago/yagonode/internal/publicrobots"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 	"github.com/D4rk4/yago/yagonode/internal/searchlocal"
@@ -243,6 +244,7 @@ func mountNodePublicSearch(
 	publicportal.SetBaseURLProvider(assembly.toggles.PublicBaseURL)
 	yacysearch.SetBaseURLProvider(assembly.toggles.PublicBaseURL)
 	mountPortalOpenSearch(mux, assembly.toggles)
+	publicrobots.Mount(mux, assembly.toggles.RobotsPolicy)
 
 	return search, suggestSource
 }

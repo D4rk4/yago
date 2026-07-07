@@ -3,6 +3,9 @@ package yagonode
 import (
 	"fmt"
 	"strconv"
+	"strings"
+
+	"github.com/D4rk4/yago/yagonode/internal/publicrobots"
 )
 
 // settingOption is one selectable value for a runtime setting rendered as a
@@ -80,6 +83,28 @@ func runtimeSettingDefinitions() []settingDefinition {
 			},
 			applyLive: func(toggles *runtimeToggles, value string) {
 				toggles.SetHTTPSRedirect(value == settingBoolTrue)
+			},
+		},
+		{
+			key:         "web.robots.policy",
+			title:       "Robots policy",
+			description: "What foreign crawlers may index on the public listener: hide the infinite search pages (default), allow everything, or close the whole site.",
+			options: []settingOption{
+				{value: string(publicrobots.PolicyNoSERP), label: "Hide search pages"},
+				{value: string(publicrobots.PolicyOpen), label: "Allow everything"},
+				{value: string(publicrobots.PolicyClosed), label: "Close the site"},
+			},
+			defaultValue: func(config nodeConfig) string {
+				return string(publicrobots.ParsePolicy(config.RobotsPolicy))
+			},
+			normalize: normalizeRobotsPolicy,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.RobotsPolicy = value
+
+				return config
+			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				toggles.SetRobotsPolicy(value)
 			},
 		},
 		{
@@ -161,4 +186,15 @@ func indexSettingDefinitions() map[string]settingDefinition {
 	}
 
 	return byKey
+}
+
+// normalizeRobotsPolicy accepts only the three published robots policies.
+func normalizeRobotsPolicy(raw string) (string, error) {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	switch publicrobots.Policy(value) {
+	case publicrobots.PolicyOpen, publicrobots.PolicyNoSERP, publicrobots.PolicyClosed:
+		return value, nil
+	default:
+		return "", fmt.Errorf("value must be no-serp, open, or closed")
+	}
 }

@@ -145,3 +145,41 @@ func TestFormatByteSizeRendersUnits(t *testing.T) {
 		t.Fatalf("odd size = %q", got)
 	}
 }
+
+// TestRobotsPolicySettingRoundTrips pins UI-15 (ConfigRobotsTxt parity): the
+// robots policy is editable, validated, applies to the config, and flips the
+// live toggle without a restart.
+func TestRobotsPolicySettingRoundTrips(t *testing.T) {
+	var definition settingDefinition
+	for _, candidate := range allRuntimeSettingDefinitions() {
+		if candidate.key == "web.robots.policy" {
+			definition = candidate
+		}
+	}
+	if definition.key == "" {
+		t.Fatal("web.robots.policy missing from the catalog")
+	}
+	normalized, err := definition.normalize(" Closed ")
+	if err != nil || normalized != "closed" {
+		t.Fatalf("normalize = %q %v", normalized, err)
+	}
+	if _, err := definition.normalize("everything"); err == nil {
+		t.Fatal("unknown policy must be rejected")
+	}
+	applied := definition.apply(nodeConfig{}, "closed")
+	if applied.RobotsPolicy != "closed" {
+		t.Fatalf("apply = %+v", applied)
+	}
+	toggles := newRuntimeToggles(nodeConfig{})
+	if got := toggles.RobotsPolicy(); string(got) != "no-serp" {
+		t.Fatalf("default policy = %q", got)
+	}
+	definition.applyLive(toggles, "closed")
+	if got := toggles.RobotsPolicy(); string(got) != "closed" {
+		t.Fatalf("live apply = %q", got)
+	}
+	var nilToggles *runtimeToggles
+	if got := nilToggles.RobotsPolicy(); string(got) != "no-serp" {
+		t.Fatalf("nil toggles policy = %q", got)
+	}
+}
