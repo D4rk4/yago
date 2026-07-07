@@ -639,11 +639,13 @@ func (c *Console) logsView(r *http.Request) logsView {
 	entries := c.logs.Logs(r.Context())
 	severity := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("severity")))
 	category := strings.TrimSpace(r.URL.Query().Get("category"))
+	needle := strings.TrimSpace(r.URL.Query().Get("q"))
 
 	return logsView{
-		Entries:    filterLogEntries(entries, severity, category),
+		Entries:    filterLogEntries(entries, severity, category, needle),
 		Severity:   severity,
 		Category:   category,
+		Query:      needle,
 		Severities: logSeverities,
 		Categories: distinctLogCategories(entries),
 	}

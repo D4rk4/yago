@@ -1,10 +1,10 @@
 {{define "logs-table"}}
-<div id="logs-table" hx-get="/admin/logs/events?severity={{.Severity | urlquery}}&amp;category={{.Category | urlquery}}" hx-trigger="every 10s"
+<div id="logs-table" hx-get="/admin/logs/events?severity={{.Severity | urlquery}}&amp;category={{.Category | urlquery}}&amp;q={{.Query | urlquery}}" hx-trigger="every 10s"
      hx-swap="outerHTML" role="region" aria-label="Recent events">
   <p>
     <button class="cds-btn cds-btn--ghost" type="button"
-            hx-get="/admin/logs/events?severity={{.Severity | urlquery}}&amp;category={{.Category | urlquery}}" hx-target="#logs-table" hx-swap="outerHTML">Refresh</button>
-    <span class="cds-muted">updates every 10s{{if or .Severity .Category}} — filtered{{end}}</span>
+            hx-get="/admin/logs/events?severity={{.Severity | urlquery}}&amp;category={{.Category | urlquery}}&amp;q={{.Query | urlquery}}" hx-target="#logs-table" hx-swap="outerHTML">Refresh</button>
+    <span class="cds-muted">updates every 10s{{if or .Severity .Category .Query}} — filtered{{end}}</span>
   </p>
   <div class="cds-scroll-x">
     <table class="cds-table">

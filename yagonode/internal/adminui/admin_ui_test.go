@@ -953,13 +953,13 @@ func TestLogFilterHelpers(t *testing.T) {
 	if cats := distinctLogCategories(entries); len(cats) != 2 || cats[0] != "a" || cats[1] != "b" {
 		t.Fatalf("categories = %v, want sorted [a b] without blanks", cats)
 	}
-	if got := filterLogEntries(entries, "", "a"); len(got) != 2 {
+	if got := filterLogEntries(entries, "", "a", ""); len(got) != 2 {
 		t.Fatalf("category-only filter = %d, want 2", len(got))
 	}
-	if got := filterLogEntries(entries, "warn", "a"); len(got) != 1 {
+	if got := filterLogEntries(entries, "warn", "a", ""); len(got) != 1 {
 		t.Fatalf("combined filter = %d, want 1", len(got))
 	}
-	if got := filterLogEntries(entries, "", ""); len(got) != len(entries) {
+	if got := filterLogEntries(entries, "", "", ""); len(got) != len(entries) {
 		t.Fatal("an empty filter returns every entry")
 	}
 }

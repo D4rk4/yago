@@ -1,7 +1,9 @@
 {{define "content"}}
 <nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Logs</nav>
 <h1 class="cds-h1">Logs</h1>
-<form class="cds-form cds-form--inline" method="get" action="/admin/logs" hx-boost="false">
+<form class="cds-form cds-form--inline" method="get" action="/admin/logs" hx-boost="false"
+      hx-get="/admin/logs/events" hx-target="#logs-table" hx-swap="outerHTML"
+      hx-trigger="input changed delay:300ms from:#logs-q, change from:#severity, change from:#category">
   <div class="cds-field">
     <label class="cds-label" for="severity">Severity</label>
     <select class="cds-input" id="severity" name="severity">
@@ -17,6 +19,11 @@
       {{$cat := .Logs.Category}}
       {{range .Logs.Categories}}<option value="{{.}}"{{if eq . $cat}} selected{{end}}>{{.}}</option>{{end}}
     </select>
+  </div>
+  <div class="cds-field">
+    <label class="cds-label" for="logs-q">Contains</label>
+    <input class="cds-input" type="search" id="logs-q" name="q" value="{{.Logs.Query}}"
+           placeholder="message, event, category" autocomplete="off">
   </div>
   <button class="cds-btn" type="submit">Filter</button>
   <a class="cds-btn cds-btn--ghost" href="/admin/logs">Clear</a>

@@ -30,17 +30,20 @@ type logsView struct {
 	Entries    []LogEntry
 	Severity   string
 	Category   string
+	Query      string
 	Severities []string
 	Categories []string
 }
 
 // filterLogEntries keeps the entries matching the active severity and category
-// (case-insensitive, exact). An empty filter field matches everything.
-func filterLogEntries(entries []LogEntry, severity, category string) []LogEntry {
-	if severity == "" && category == "" {
+// (case-insensitive, exact) plus the free-text needle. An empty filter field
+// matches everything.
+func filterLogEntries(entries []LogEntry, severity, category, needle string) []LogEntry {
+	if severity == "" && category == "" && needle == "" {
 		return entries
 	}
 
+	needle = strings.ToLower(needle)
 	filtered := make([]LogEntry, 0, len(entries))
 	for _, entry := range entries {
 		if severity != "" && !strings.EqualFold(entry.Severity, severity) {
@@ -49,10 +52,21 @@ func filterLogEntries(entries []LogEntry, severity, category string) []LogEntry 
 		if category != "" && !strings.EqualFold(entry.Category, category) {
 			continue
 		}
+		if needle != "" && !logEntryMentions(entry, needle) {
+			continue
+		}
 		filtered = append(filtered, entry)
 	}
 
 	return filtered
+}
+
+// logEntryMentions reports whether the folded needle appears in the entry's
+// message, event name, or category — the server-side text filter (UI-13).
+func logEntryMentions(entry LogEntry, needle string) bool {
+	return strings.Contains(strings.ToLower(entry.Message), needle) ||
+		strings.Contains(strings.ToLower(entry.Name), needle) ||
+		strings.Contains(strings.ToLower(entry.Category), needle)
 }
 
 // distinctLogCategories returns the sorted set of categories present in the
