@@ -223,6 +223,26 @@ func TestAdmitLinksRejectsURLPatternMismatch(t *testing.T) {
 	}
 }
 
+// TestAdmitLinksDropsStructuralTraps pins that a discovered link whose structure
+// smells like a crawler trap (here a path-recursion loop) is refused before it
+// can enter the frontier, while an ordinary sibling is still admitted.
+func TestAdmitLinksDropsStructuralTraps(t *testing.T) {
+	wide, _ := crawladmission.CompileProfile(yagocrawlcontract.CrawlProfile{
+		Scope:          yagocrawlcontract.ScopeWide,
+		URLMustMatch:   yagocrawlcontract.MatchAll,
+		AllowQueryURLs: true,
+	})
+
+	got := wide.AdmitLinks("https://example.com/", []string{
+		"https://example.com/real/page",
+		"https://example.com/cal/a/a/a/a/a",
+	})
+	want := []string{"https://example.com/real/page"}
+	if !slices.Equal(got, want) {
+		t.Errorf("admit dropping trap = %v want %v", got, want)
+	}
+}
+
 func TestAdmitLinksBadBaseURL(t *testing.T) {
 	c, _ := crawladmission.CompileProfile(
 		yagocrawlcontract.CrawlProfile{URLMustMatch: yagocrawlcontract.MatchAll},

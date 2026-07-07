@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
+	"github.com/D4rk4/yago/yagocrawler/internal/urltrap"
 	"github.com/D4rk4/yago/yagocrawler/internal/weburl"
 )
 
@@ -36,7 +37,15 @@ func (c AdmissionProfile) admit(base *url.URL, link string) (string, bool) {
 	if !c.URLAllowed(resolved.String()) {
 		return "", false
 	}
-	return weburl.Normalize(resolved.String())
+	normalized, ok := weburl.Normalize(resolved.String())
+	if !ok {
+		return "", false
+	}
+	if urltrap.Suspicious(normalized) {
+		return "", false
+	}
+
+	return normalized, true
 }
 
 func scopeAllows(scope yagocrawlcontract.CrawlScope, base, resolved *url.URL) bool {
