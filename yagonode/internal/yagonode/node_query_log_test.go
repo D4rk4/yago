@@ -38,7 +38,7 @@ func TestWithQueryLoggingOffDoesNotWrap(t *testing.T) {
 	t.Parallel()
 
 	for _, mode := range []queryLogMode{queryLogOff, ""} {
-		if _, ok := withQueryLogging(stubPrimarySearcher{}, mode).(queryLoggingSearcher); ok {
+		if _, ok := withQueryLogging(stubPrimarySearcher{}, mode, nil).(queryLoggingSearcher); ok {
 			t.Errorf("mode %q must not wrap the searcher", mode)
 		}
 	}
@@ -48,7 +48,7 @@ func TestWithQueryLoggingWrapsActiveModes(t *testing.T) {
 	t.Parallel()
 
 	for _, mode := range []queryLogMode{queryLogAggregate, queryLogFull} {
-		if _, ok := withQueryLogging(stubPrimarySearcher{}, mode).(queryLoggingSearcher); !ok {
+		if _, ok := withQueryLogging(stubPrimarySearcher{}, mode, nil).(queryLoggingSearcher); !ok {
 			t.Errorf("mode %q must wrap the searcher", mode)
 		}
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
 	"github.com/D4rk4/yago/yagonode/internal/publicrobots"
+	"github.com/D4rk4/yago/yagonode/internal/searchactivity"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 	"github.com/D4rk4/yago/yagonode/internal/searchlocal"
@@ -47,6 +48,7 @@ type publicSearchAssembly struct {
 	seedQueue            crawldispatch.CrawlOrderQueue
 	toggles              *runtimeToggles
 	queryLogMode         queryLogMode
+	activity             *searchactivity.Tracker
 	searchMetrics        *metrics.SearchMetrics
 	rankingWeights       func() searchindex.RankingWeights
 	hostRank             func() hostrank.Table
@@ -301,7 +303,7 @@ func assemblePublicSearcher(
 	// The session cache makes paging stable (YaCy SearchEventCache): page one
 	// runs one deep search, deeper pages slice the cached result list.
 	stable := searchsession.WithStableWindow(recovering)
-	search := withQueryLogging(stable, assembly.queryLogMode)
+	search := withQueryLogging(stable, assembly.queryLogMode, assembly.activity)
 	search = withSearchMetrics(search, assembly.searchMetrics)
 	search = withParsedQuery(search)
 	if assembly.indexRemoteResults && assembly.storage.searchIndex != nil {

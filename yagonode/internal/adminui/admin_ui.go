@@ -34,6 +34,7 @@ const (
 	overviewPath        = "/admin/overview"
 	overviewMetricsPath = "/admin/overview/metrics"
 	searchPath          = "/admin/search"
+	activityPath        = "/admin/activity"
 	crawlPath           = "/admin/crawl"
 	crawlMonitorPath    = "/admin/crawl/monitor"
 	crawlControlPath    = "/admin/crawl/control"
@@ -64,6 +65,7 @@ const (
 	logsUnavailable        = "Event log is not available."
 	securityUnavailable    = "Security settings are not available."
 	performanceUnavailable = "Performance metrics are not available."
+	activityUnavailable    = "Search activity is not recorded: query logging is off."
 )
 
 // NavItem is one entry in the console side navigation.
@@ -75,6 +77,7 @@ type NavItem struct {
 var navItems = []NavItem{
 	{Title: "Overview", Path: overviewPath},
 	{Title: "Search", Path: searchPath},
+	{Title: "Activity", Path: activityPath},
 	{Title: "Autocrawler", Path: autocrawlerPath},
 	{Title: "Crawler", Path: "/admin/crawl"},
 	{Title: "Network", Path: "/admin/network"},
@@ -90,6 +93,7 @@ var navItems = []NavItem{
 type Options struct {
 	Overview        OverviewSource
 	Search          SearchSource
+	Activity        ActivitySource
 	Crawl           CrawlSource
 	CrawlFormats    CrawlFormatsSource
 	Monitor         CrawlMonitorSource
@@ -266,6 +270,15 @@ type securityPageData struct {
 	Error      string
 }
 
+type activityPageData struct {
+	AppName    string
+	ActivePath string
+	Nav        []NavItem
+	CSRF       string
+	Section    sectionView
+	Activity   ActivityView
+}
+
 type performancePageData struct {
 	AppName     string
 	ActivePath  string
@@ -294,6 +307,7 @@ type templates struct {
 	placeholder *template.Template
 	overview    *template.Template
 	search      *template.Template
+	activity    *template.Template
 	crawl       *template.Template
 	index       *template.Template
 	network     *template.Template
@@ -313,6 +327,7 @@ type Console struct {
 	sections        map[string]sectionView
 	overview        OverviewSource
 	search          SearchSource
+	activity        ActivitySource
 	searchNewTab    bool
 	crawl           CrawlSource
 	crawlFormats    CrawlFormatsSource
@@ -351,6 +366,7 @@ func New(opts Options) *Console {
 		sections:        defaultSections(),
 		overview:        opts.Overview,
 		search:          opts.Search,
+		activity:        opts.Activity,
 		searchNewTab:    opts.SearchLinksNewTab,
 		searchSuggest:   opts.SearchSuggest,
 		crawl:           opts.Crawl,
@@ -391,6 +407,7 @@ func buildTemplates() templates {
 		placeholder: clone(nil, "templates/placeholder.tmpl"),
 		overview:    clone(overviewFuncs, "templates/overview.tmpl", "templates/metrics.tmpl"),
 		search:      clone(nil, "templates/search.tmpl"),
+		activity:    clone(nil, "templates/activity.tmpl"),
 		crawl:       clone(crawlFuncs, "templates/crawl.tmpl", "templates/crawl_monitor.tmpl"),
 		index:       clone(nil, "templates/index.tmpl"),
 		network:     clone(nil, "templates/network.tmpl"),
@@ -436,6 +453,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+autocrawlerPath, c.handleAutocrawler)
 	c.mux.HandleFunc("POST "+autocrawlerPath, c.handleAutocrawlerUpdate)
 	c.mux.HandleFunc("GET "+performancePath, c.handlePerformance)
+	c.mux.HandleFunc("GET "+activityPath, c.handleActivity)
 
 	for _, item := range navItems {
 		if dynamicSection(item.Path) {
@@ -449,7 +467,7 @@ func dynamicSection(path string) bool {
 	return path == overviewPath || path == searchPath || path == crawlPath ||
 		path == indexPath || path == networkPath || path == configPath ||
 		path == logsPath || path == securityPath || path == performancePath ||
-		path == autocrawlerPath
+		path == autocrawlerPath || path == activityPath
 }
 
 // ServeHTTP dispatches to the console's internal router.
@@ -592,6 +610,21 @@ func (c *Console) handleIndexDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, indexPath, http.StatusSeeOther)
+}
+
+func (c *Console) handleActivity(w http.ResponseWriter, r *http.Request) {
+	if c.activity == nil {
+		c.renderUnavailable(w, r, activityPath, "Activity", activityUnavailable)
+
+		return
+	}
+
+	c.render(r.Context(), w, c.tpl.activity, "layout", activityPageData{
+		AppName: appName, ActivePath: activityPath, Nav: navItems,
+		CSRF:     csrfToken(r),
+		Section:  sectionView{Heading: "Search activity", Available: true},
+		Activity: c.activity.Activity(r.Context()),
+	})
 }
 
 func (c *Console) handlePerformance(w http.ResponseWriter, r *http.Request) {

@@ -78,6 +78,7 @@ func buildOpsMux(
 	options := adminui.Options{
 		Overview: newOverviewSource(assembled.report),
 		Search:   newSearchSource(assembled.searcher),
+		Activity: newActivitySource(assembled.activity),
 		Index:    opsIndexSource(config, assembled),
 		Network: newNetworkSource(
 			assembled.dht.gateStatus,

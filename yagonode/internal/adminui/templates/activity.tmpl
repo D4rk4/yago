@@ -1,0 +1,52 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Activity</nav>
+<h1 class="cds-h1">Search activity</h1>
+{{if eq .Activity.Mode "aggregate"}}
+<p class="cds-muted">Privacy mode <strong>aggregate</strong>: only query shapes are recorded — never the text. Switch <code>search.query.log</code> to <code>full</code> for query text and top words.</p>
+{{else}}
+<p class="cds-muted">Privacy mode <strong>full</strong>: query text is recorded in memory only and wiped on restart.</p>
+{{end}}
+<div class="cds-tile-grid" role="group" aria-label="Search activity totals">
+  <section class="cds-tile">
+    <div class="cds-metric__label">Searches since start</div>
+    <div class="cds-metric__value">{{.Activity.Total}}</div>
+  </section>
+  <section class="cds-tile">
+    <div class="cds-metric__label">Zero-result searches</div>
+    <div class="cds-metric__value">{{.Activity.ZeroResults}}</div>
+  </section>
+</div>
+{{if .Activity.TopWords}}
+<h2 class="cds-h2">Top query words</h2>
+<div class="cds-scroll-x">
+  <table class="cds-table">
+    <thead><tr><th scope="col">Word</th><th scope="col">Count</th></tr></thead>
+    <tbody>
+      {{range .Activity.TopWords}}<tr><td>{{.Word}}</td><td>{{.Count}}</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+<h2 class="cds-h2">Recent searches</h2>
+<div class="cds-scroll-x">
+  <table class="cds-table">
+    <thead><tr><th scope="col">Time</th>{{if eq .Activity.Mode "full"}}<th scope="col">Query</th>{{end}}<th scope="col">Length</th><th scope="col">Terms</th><th scope="col">Results</th><th scope="col">Took</th><th scope="col">Scope</th></tr></thead>
+    <tbody>
+      {{$full := eq .Activity.Mode "full"}}
+      {{range .Activity.Entries}}
+      <tr>
+        <td class="cds-mono">{{.Time}}</td>
+        {{if $full}}<td>{{.Query}}</td>{{end}}
+        <td>{{.Length}}</td>
+        <td>{{.Terms}}</td>
+        <td>{{.Results}}</td>
+        <td class="cds-mono">{{.Duration}}</td>
+        <td>{{.Source}}</td>
+      </tr>
+      {{else}}
+      <tr><td colspan="7">No searches recorded yet.</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}

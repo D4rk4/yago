@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
+	"github.com/D4rk4/yago/yagonode/internal/searchactivity"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
@@ -32,25 +34,45 @@ func parseQueryLogMode(raw string) (queryLogMode, error) {
 // operator's privacy mode: off records nothing, aggregate records only the query
 // length and result count (never the text), and full records the query text.
 type queryLoggingSearcher struct {
-	next   searchcore.Searcher
-	mode   queryLogMode
-	logger *slog.Logger
+	next    searchcore.Searcher
+	mode    queryLogMode
+	logger  *slog.Logger
+	tracker *searchactivity.Tracker
 }
 
-func withQueryLogging(next searchcore.Searcher, mode queryLogMode) searchcore.Searcher {
+func withQueryLogging(
+	next searchcore.Searcher,
+	mode queryLogMode,
+	tracker *searchactivity.Tracker,
+) searchcore.Searcher {
 	if mode == queryLogOff || mode == "" {
 		return next
 	}
 
-	return queryLoggingSearcher{next: next, mode: mode, logger: slog.Default()}
+	return queryLoggingSearcher{
+		next:    next,
+		mode:    mode,
+		logger:  slog.Default(),
+		tracker: tracker,
+	}
 }
 
 func (s queryLoggingSearcher) Search(
 	ctx context.Context,
 	req searchcore.Request,
 ) (searchcore.Response, error) {
+	started := time.Now()
 	resp, err := s.next.Search(ctx, req)
 	s.record(ctx, req, resp)
+	s.tracker.Record(searchactivity.Entry{
+		At:          started,
+		Query:       req.Query,
+		QueryLength: len([]rune(req.Query)),
+		Terms:       len(req.Terms),
+		Results:     resp.TotalResults,
+		Duration:    time.Since(started),
+		Source:      string(req.Source),
+	})
 
 	return resp, err //nolint:wrapcheck // pass the wrapped searcher's error through unchanged.
 }

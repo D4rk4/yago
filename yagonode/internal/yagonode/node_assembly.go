@@ -27,6 +27,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/publicratelimit"
 	"github.com/D4rk4/yago/yagonode/internal/rankingprofile"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
+	"github.com/D4rk4/yago/yagonode/internal/searchactivity"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
@@ -51,6 +52,7 @@ type node struct {
 	index         searchindex.SearchIndex
 	docScan       documentstore.StoredDocuments
 	docEvictor    documentstore.DocumentEvictor
+	activity      *searchactivity.Tracker
 	hostRank      *hostrank.Holder
 	spell         *spellcheck.Holder
 	wordForms     *wordforms.Holder
@@ -127,11 +129,7 @@ func assembleNode(
 	client *http.Client,
 	telemetry nodeTelemetry,
 ) (node, error) {
-	identity, err := nodeIdentityWithBirthDate(ctx, config, vault)
-	if err != nil {
-		return node{}, err
-	}
-	storage, err := openRuntimeNodeStorage(vault, config.SearchIndexPath)
+	identity, storage, err := openNodeCore(ctx, config, vault)
 	if err != nil {
 		return node{}, err
 	}
@@ -194,6 +192,7 @@ func assembleNode(
 		client:     client,
 		peerBlock:  blocks,
 		denylist:   surfaces.denylist,
+		activity:   surfaces.activity,
 		identity:   identity,
 		ranking:    surfaces.ranking,
 		hostRank:   surfaces.hostRank,
@@ -240,6 +239,7 @@ type nodeSurfaces struct {
 	spell     *spellcheck.Holder
 	wordForms *wordforms.Holder
 	denylist  *urldenylist.Store
+	activity  *searchactivity.Tracker
 }
 
 func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
@@ -249,15 +249,12 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	}
 	attachCrawlMetrics(runtime, in.telemetry.crawl)
 	attachCrawlRunObserver(runtime, in.telemetry.crawlRuns, in.telemetry.recorder)
-	ranking, err := rankingprofile.Open(in.ctx, in.vault)
+	ranking, denylist, err := openSearchStores(in.ctx, in.vault)
 	if err != nil {
-		return nodeSurfaces{}, fmt.Errorf("open ranking profile: %w", err)
-	}
-	denylist, err := urldenylist.Open(in.vault, time.Now)
-	if err != nil {
-		return nodeSurfaces{}, fmt.Errorf("open url denylist: %w", err)
+		return nodeSurfaces{}, err
 	}
 	publicMux := http.NewServeMux()
+	activityTracker := searchactivity.New(searchactivity.Mode(in.config.QueryLogMode))
 	hostRankHolder := hostrank.NewHolder()
 	spellHolder := spellcheck.NewHolder()
 	wordFormsHolder := wordforms.NewHolder()
@@ -279,6 +276,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		seedQueue:          crawlOrderQueue(runtime),
 		toggles:            in.toggles,
 		queryLogMode:       in.config.QueryLogMode,
+		activity:           activityTracker,
 		searchMetrics:      in.telemetry.search,
 		rankingWeights:     ranking.Current,
 		denylist:           denylist,
@@ -322,6 +320,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		spell:     spellHolder,
 		wordForms: wordFormsHolder,
 		denylist:  denylist,
+		activity:  activityTracker,
 	}, nil
 }
 
@@ -342,6 +341,7 @@ type nodeParts struct {
 	client     *http.Client
 	peerBlock  *peerblock.Store
 	denylist   *urldenylist.Store
+	activity   *searchactivity.Tracker
 	identity   nodeidentity.Identity
 	ranking    *rankingprofile.Holder
 	hostRank   *hostrank.Holder
@@ -364,6 +364,7 @@ func newAssembledNode(parts nodeParts) node {
 		index:         parts.storage.searchIndex,
 		docScan:       parts.storage.storedDocuments(),
 		docEvictor:    documentEvictorOf(parts.storage),
+		activity:      parts.activity,
 		hostRank:      parts.hostRank,
 		spell:         parts.spell,
 		wordForms:     parts.wordForms,
@@ -469,4 +470,41 @@ func newStorageSweeper(vault *vault.Vault, storage nodeStorage) eviction.Sweeper
 		storage.staleness,
 		eviction.Config{TargetFraction: evictionTargetFraction, BatchSize: evictionBatch},
 	)
+}
+
+// openNodeCore resolves the node identity and opens the storage stack — the
+// first, order-sensitive steps of assembly.
+func openNodeCore(
+	ctx context.Context,
+	config nodeConfig,
+	vault *vault.Vault,
+) (nodeidentity.Identity, nodeStorage, error) {
+	identity, err := nodeIdentityWithBirthDate(ctx, config, vault)
+	if err != nil {
+		return nodeidentity.Identity{}, nodeStorage{}, err
+	}
+	storage, err := openRuntimeNodeStorage(vault, config.SearchIndexPath)
+	if err != nil {
+		return nodeidentity.Identity{}, nodeStorage{}, err
+	}
+
+	return identity, storage, nil
+}
+
+// openSearchStores opens the vault-backed search-side stores the public
+// surfaces need.
+func openSearchStores(
+	ctx context.Context,
+	vaultStore *vault.Vault,
+) (*rankingprofile.Holder, *urldenylist.Store, error) {
+	ranking, err := rankingprofile.Open(ctx, vaultStore)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open ranking profile: %w", err)
+	}
+	denylist, err := urldenylist.Open(vaultStore, time.Now)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open url denylist: %w", err)
+	}
+
+	return ranking, denylist, nil
 }
