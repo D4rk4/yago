@@ -15,14 +15,16 @@ SEARXNG_ROUTER_DIR := searxng-result-router
 SEARXNG_ROUTER_VENV := $(SEARXNG_ROUTER_DIR)/.venv
 SEARXNG_ROUTER_VENV_STAMP := $(SEARXNG_ROUTER_VENV)/.installed
 
-.PHONY: tools fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-textindexer e2e-node-image e2e-crawler-image e2e-textindexer-image peer-hash
+.PHONY: tools fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-textindexer e2e-searxng-result-router e2e-node-image e2e-crawler-image e2e-textindexer-image e2e-visitcrawl-image peer-hash
 
 E2E_TIMEOUT ?= 10m
 E2E_NODE_IMAGE ?= yacy-rwi-node:e2e
 E2E_CRAWLER_IMAGE ?= yacy-rwi-crawler:e2e
 E2E_TEXTINDEXER_IMAGE ?= yacy-rwi-textindexer:e2e
+E2E_VISITCRAWL_IMAGE ?= yacyvisitcrawl:e2e
 
-E2E_CONTAINER_CLI := $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
+E2E_CONTAINER_CLI := $(shell command -v docker >/dev/null 2>&1 && echo docker || \
+	(command -v podman >/dev/null 2>&1 && echo podman || echo "distrobox-host-exec podman"))
 E2E_RUNTIME_DIR := $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))
 E2E_DOCKER_HOST := $(or $(DOCKER_HOST),unix://$(E2E_RUNTIME_DIR)/podman/podman.sock)
 E2E_DOCKER_ENV := DOCKER_HOST=$(E2E_DOCKER_HOST) TESTCONTAINERS_RYUK_DISABLED=true
@@ -131,6 +133,9 @@ e2e-crawler-image:
 e2e-textindexer-image:
 	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacytextindexer/Dockerfile -t $(E2E_TEXTINDEXER_IMAGE) .
 
+e2e-visitcrawl-image:
+	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacyvisitcrawl/Dockerfile -t $(E2E_VISITCRAWL_IMAGE) .
+
 e2e-node:
 	cd yacynode/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YACY_NODE_IMAGE=$(E2E_NODE_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
@@ -146,4 +151,9 @@ e2e-textindexer:
 		YACYTEXTINDEXER_IMAGE=$(E2E_TEXTINDEXER_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
 
-e2e: e2e-node e2e-crawler e2e-textindexer
+e2e-searxng-result-router:
+	cd searxng-result-router/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) \
+		YACYVISITCRAWL_IMAGE=$(E2E_VISITCRAWL_IMAGE) \
+		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
+
+e2e: e2e-node e2e-crawler e2e-textindexer e2e-searxng-result-router
