@@ -1,4 +1,5 @@
 GO ?= go
+PYTHON ?= python3
 MODULES := yacynode yacymodel yacyproto yacycrawlcontract yacycrawler yacytextindexer yacyvisitcrawl
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 80
@@ -9,7 +10,11 @@ TOOLS_STAMP := $(TOOLS_BIN)/.installed
 GOLANGCI_LINT := $(TOOLS_BIN)/golangci-lint
 GO_ARCH_LINT := $(TOOLS_BIN)/go-arch-lint
 
-.PHONY: tools fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-textindexer e2e-node-image e2e-crawler-image e2e-textindexer-image peer-hash
+SEARXNG_ROUTER_DIR := searxng-result-router
+SEARXNG_ROUTER_VENV := $(SEARXNG_ROUTER_DIR)/.venv
+SEARXNG_ROUTER_VENV_STAMP := $(SEARXNG_ROUTER_VENV)/.installed
+
+.PHONY: tools fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-textindexer e2e-node-image e2e-crawler-image e2e-textindexer-image peer-hash searxng-result-router-test
 
 E2E_TIMEOUT ?= 10m
 E2E_NODE_IMAGE ?= yacy-rwi-node:e2e
@@ -95,7 +100,15 @@ build:
 peer-hash:
 	cd yacynode && $(GO) run ./cmd/yacy-peer-hash
 
-verify: fmt-check vet lint arch test cover-check build
+$(SEARXNG_ROUTER_VENV_STAMP): $(SEARXNG_ROUTER_DIR)/requirements-dev.txt
+	$(PYTHON) -m venv $(SEARXNG_ROUTER_VENV)
+	$(SEARXNG_ROUTER_VENV)/bin/pip install --quiet -r $(SEARXNG_ROUTER_DIR)/requirements-dev.txt
+	@touch $@
+
+searxng-result-router-test: $(SEARXNG_ROUTER_VENV_STAMP)
+	cd $(SEARXNG_ROUTER_DIR) && .venv/bin/python -m pytest -q
+
+verify: fmt-check vet lint arch test cover-check build searxng-result-router-test
 
 e2e-node-image:
 	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yacynode/Dockerfile -t $(E2E_NODE_IMAGE) .

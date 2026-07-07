@@ -5,3 +5,8 @@ coverage.out.gated
 
 # Project-local Go toolchain (venv-style)
 .toolchain/
+
+# Python virtualenvs and caches
+.venv/
+__pycache__/
+*.pyc
