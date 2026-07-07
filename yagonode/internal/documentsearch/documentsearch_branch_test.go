@@ -84,11 +84,11 @@ func TestTranslateAppearanceRejectsBadPostingFields(t *testing.T) {
 		t.Fatal("posting with bad hit count should be rejected")
 	}
 	entry = postingEntry(hashFor("w1"), "u1", 0, 1)
-	entry.Properties[yagomodel.ColWordDistance] = "bad"
+	entry.Properties[yagomodel.ColTextPosition] = "bad"
 	if _, ok := translateAppearance(t.Context(), entry); ok {
-		t.Fatal("posting with bad word distance should be rejected")
+		t.Fatal("posting with bad text position should be rejected")
 	}
-	if _, ok := cardinal(t.Context(), entry, yagomodel.ColWordDistance); ok {
+	if _, ok := cardinal(t.Context(), entry, yagomodel.ColTextPosition); ok {
 		t.Fatal("bad cardinal should be rejected")
 	}
 }

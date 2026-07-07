@@ -7,9 +7,6 @@ import (
 	"github.com/D4rk4/yago/yagomodel"
 )
 
-// Deliberate divergence from YaCy: maxTermSpread filters each term's own word
-// distance, not the combined distance across joined terms, which would need
-// per-document positional data this node does not store.
 func (s searcher) scanTerm(
 	ctx context.Context,
 	term yagomodel.Hash,

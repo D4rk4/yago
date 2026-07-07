@@ -10,7 +10,12 @@ import (
 type matchedDocument struct {
 	identifier  yagomodel.Hash
 	occurrences uint64
-	termSpread  uint64
+	minPosition uint64
+	maxPosition uint64
+}
+
+func (d matchedDocument) termSpread() uint64 {
+	return d.maxPosition - d.minPosition
 }
 
 func keepDocumentsMatchingEveryTerm(
@@ -31,7 +36,8 @@ func keepDocumentsMatchingEveryTerm(
 				continue
 			}
 			document.occurrences += alsoHere.occurrences
-			document.termSpread += alsoHere.termSpread
+			document.minPosition = min(document.minPosition, alsoHere.minPosition)
+			document.maxPosition = max(document.maxPosition, alsoHere.maxPosition)
 			matchingEvery[identifier] = document
 		}
 	}
@@ -40,7 +46,9 @@ func keepDocumentsMatchingEveryTerm(
 }
 
 // Deliberate divergence from YaCy: documents are ordered by occurrences and term
-// spread alone, not YaCy's normalized multi-factor ranking profile.
+// spread alone, not YaCy's normalized multi-factor ranking profile. Term spread is
+// the span (max-min) of the query terms' text positions, where YaCy averages the
+// consecutive positional gaps.
 func documentsOrderedByRelevance(documents map[yagomodel.Hash]matchedDocument) []yagomodel.Hash {
 	ranked := make([]matchedDocument, 0, len(documents))
 	for _, document := range documents {
@@ -50,8 +58,8 @@ func documentsOrderedByRelevance(documents map[yagomodel.Hash]matchedDocument) [
 		if a.occurrences != b.occurrences {
 			return compareDescending(a.occurrences, b.occurrences)
 		}
-		if a.termSpread != b.termSpread {
-			return compareAscending(a.termSpread, b.termSpread)
+		if a.termSpread() != b.termSpread() {
+			return compareAscending(a.termSpread(), b.termSpread())
 		}
 
 		return compareAscending(a.identifier, b.identifier)
@@ -63,6 +71,22 @@ func documentsOrderedByRelevance(documents map[yagomodel.Hash]matchedDocument) [
 	}
 
 	return identifiers
+}
+
+func documentsWithinTermSpread(
+	documents map[yagomodel.Hash]matchedDocument,
+	maxTermSpread int,
+) map[yagomodel.Hash]matchedDocument {
+	if maxTermSpread <= 0 {
+		return documents
+	}
+	for identifier, document := range documents {
+		if document.termSpread() > uint64(maxTermSpread) {
+			delete(documents, identifier)
+		}
+	}
+
+	return documents
 }
 
 func takeMostRelevant(identifiers []yagomodel.Hash, limit int) []yagomodel.Hash {

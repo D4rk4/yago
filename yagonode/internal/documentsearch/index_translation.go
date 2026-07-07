@@ -13,7 +13,7 @@ type termAppearance struct {
 	documentIdentifier   yagomodel.Hash
 	documentLocation     yagomodel.URLHash
 	occurrences          uint64
-	termSpread           uint64
+	textPosition         uint64
 	language             string
 	contentKind          byte
 	contentKindKnown     bool
@@ -39,7 +39,7 @@ func translateAppearance(
 	if !ok {
 		return termAppearance{}, false
 	}
-	termSpread, ok := cardinal(ctx, posting, yagomodel.ColWordDistance)
+	textPosition, ok := cardinal(ctx, posting, yagomodel.ColTextPosition)
 	if !ok {
 		return termAppearance{}, false
 	}
@@ -48,7 +48,7 @@ func translateAppearance(
 		documentIdentifier: location.Hash(),
 		documentLocation:   location,
 		occurrences:        occurrences,
-		termSpread:         termSpread,
+		textPosition:       textPosition,
 		language:           posting.Properties[yagomodel.ColLanguage],
 	}
 	appearance.contentKind, appearance.contentKindKnown = posting.DocType()
