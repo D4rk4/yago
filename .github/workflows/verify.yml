@@ -1,19 +1,11 @@
-name: e2e
+name: verify
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_call:
 
 jobs:
   verify:
-    uses: ./.github/workflows/verify.yml
-
-  e2e:
-    needs: verify
     runs-on: ubuntu-latest
-    env:
-      DOCKER_HOST: unix:///var/run/docker.sock
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,8 +21,5 @@ jobs:
           path: .toolchain/bin
           key: tools-${{ runner.os }}-${{ hashFiles('tools/tools.lock') }}
 
-      - name: Build e2e images
-        run: make e2e-images
-
-      - name: Run e2e suites
-        run: make e2e
+      - name: Run make verify
+        run: make verify
