@@ -51,3 +51,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0030](0030-optional-cpu-dense-retrieval-side.md) | Approve an optional, default-off CPU dense retrieval side, gated on the eval harness | Accepted |
 | [0031](0031-learned-sparse-rwi-no-go.md) | Do not move the RWI to learned-sparse (SPLADE) weights | Accepted |
 | [0032](0032-private-query-search-no-go.md) | Do not adopt Tiptoe-style private search; keep it behind the dense side | Accepted |
+| [0033](0033-operator-editable-public-portal-handlebars.md) | Operator-editable public portal via server-side Handlebars with a GrapesJS admin editor | Accepted |
