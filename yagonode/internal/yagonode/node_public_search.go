@@ -86,6 +86,10 @@ type searchTargetPeers struct {
 }
 
 func (s searchTargetPeers) SearchTargetPeers(ctx context.Context) []yagomodel.Seed {
+	if s.roster == nil {
+		return nil
+	}
+
 	return s.roster.FreshestPeers(ctx, reservoirCapacity)
 }
 

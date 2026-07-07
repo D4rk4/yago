@@ -3,6 +3,7 @@ package yagonode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -100,5 +101,47 @@ func TestPortalSourceWrapsError(t *testing.T) {
 		searcher,
 	).Search(context.Background(), "go", "", 0, 10); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+// TestFacetsFromResultsBackfillPeerAnswers pins SEARCH-36: a page answered by
+// peers or the web carries no corpus facet counts, so the sidebar derives its
+// groups from the visible rows instead of disappearing.
+func TestFacetsFromResultsBackfillPeerAnswers(t *testing.T) {
+	results := []searchcore.Result{
+		{URL: "https://a.example/1", Host: "a.example", Language: "ru"},
+		{URL: "https://a.example/2", Host: "a.example", Language: "ru"},
+		{URL: "https://b.example/1", Host: "b.example", Language: "EN"},
+		{URL: "https://c.example/1"},
+	}
+	groups := facetsFromResults(results)
+	if len(groups) != 2 || groups[0].Name != "host" || groups[1].Name != "language" {
+		t.Fatalf("groups = %+v", groups)
+	}
+	if groups[0].Terms[0].Term != "a.example" || groups[0].Terms[0].Count != 2 {
+		t.Fatalf("host tally = %+v", groups[0].Terms)
+	}
+	if groups[1].Terms[0].Term != "ru" || groups[1].Terms[0].Count != 2 ||
+		groups[1].Terms[1].Term != "en" {
+		t.Fatalf("language tally = %+v", groups[1].Terms)
+	}
+
+	if got := facetsFromResults(nil); len(got) != 0 {
+		t.Fatalf("empty rows must yield no groups: %+v", got)
+	}
+}
+
+func TestFacetGroupFromCountsCapsAndOrders(t *testing.T) {
+	counts := map[string]int{}
+	for i := range 12 {
+		counts[fmt.Sprintf("host%02d.example", i)] = 1
+	}
+	counts["popular.example"] = 5
+	group, ok := facetGroupFromCounts("host", counts)
+	if !ok || len(group.Terms) != facetsFromResultsCap {
+		t.Fatalf("group = %+v ok=%v", group, ok)
+	}
+	if group.Terms[0].Term != "popular.example" {
+		t.Fatalf("ordering wrong: %+v", group.Terms[0])
 	}
 }

@@ -32,7 +32,7 @@ func TestNormalizePublicRequestDefaultsAndCaps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NormalizePublicRequest: %v", err)
 	}
-	if got.Source != SourceLocal ||
+	if got.Source != SourceGlobal ||
 		got.ContentDomain != ContentDomainText ||
 		got.Verify != VerifyIfExist ||
 		got.Limit != 7 {

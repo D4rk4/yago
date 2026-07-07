@@ -12,7 +12,11 @@ func NormalizePublicRequest(req Request, limitCap int) (Request, error) {
 		limitCap = DefaultPublicLimit
 	}
 	if req.Source == "" {
-		req.Source = SourceLocal
+		// YaCy defaults resource to global: a public search consults the swarm
+		// unless the caller explicitly narrows to the local index. Defaulting
+		// to local silently cut every /yacysearch.* query without resource=
+		// off from peers (SEARCH-36).
+		req.Source = SourceGlobal
 	}
 	if req.ContentDomain == "" {
 		req.ContentDomain = ContentDomainText

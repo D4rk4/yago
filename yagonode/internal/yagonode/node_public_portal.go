@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/D4rk4/yago/yagonode/internal/cachedpage"
 	"github.com/D4rk4/yago/yagonode/internal/faviconproxy"
@@ -139,9 +141,67 @@ func (s portalSource) Search(
 		})
 	}
 
-	out.Facets = portalFacets(query, response.Facets)
+	facets := response.Facets
+	if len(facets) == 0 && len(response.Results) > 0 {
+		// Peer and web rows carry no corpus facet counts, so a page answered
+		// by the swarm or the web fallback rendered without a sidebar at all.
+		// Deriving groups from the visible rows keeps the filters available;
+		// the counts honestly describe this result window, not a corpus.
+		facets = facetsFromResults(response.Results)
+	}
+	out.Facets = portalFacets(query, facets)
 
 	return out, nil
+}
+
+// facetsFromResults tallies facet groups over the result rows themselves —
+// the fallback when no corpus counts exist (peer or web answers).
+func facetsFromResults(results []searchcore.Result) []searchcore.FacetGroup {
+	hosts := map[string]int{}
+	languages := map[string]int{}
+	for _, result := range results {
+		if result.Host != "" {
+			hosts[result.Host]++
+		}
+		if result.Language != "" {
+			languages[strings.ToLower(result.Language)]++
+		}
+	}
+	groups := make([]searchcore.FacetGroup, 0, 2)
+	if group, ok := facetGroupFromCounts("host", hosts); ok {
+		groups = append(groups, group)
+	}
+	if group, ok := facetGroupFromCounts("language", languages); ok {
+		groups = append(groups, group)
+	}
+
+	return groups
+}
+
+const facetsFromResultsCap = 8
+
+// facetGroupFromCounts orders one tally by count (ties by label) and caps it
+// to the sidebar's usual size.
+func facetGroupFromCounts(name string, counts map[string]int) (searchcore.FacetGroup, bool) {
+	if len(counts) == 0 {
+		return searchcore.FacetGroup{}, false
+	}
+	terms := make([]searchcore.FacetTerm, 0, len(counts))
+	for term, count := range counts {
+		terms = append(terms, searchcore.FacetTerm{Term: term, Count: count})
+	}
+	sort.Slice(terms, func(i, j int) bool {
+		if terms[i].Count != terms[j].Count {
+			return terms[i].Count > terms[j].Count
+		}
+
+		return terms[i].Term < terms[j].Term
+	})
+	if len(terms) > facetsFromResultsCap {
+		terms = terms[:facetsFromResultsCap]
+	}
+
+	return searchcore.FacetGroup{Name: name, Terms: terms}, true
 }
 
 // facetOperators maps facet dimensions onto the query operators a click adds;
