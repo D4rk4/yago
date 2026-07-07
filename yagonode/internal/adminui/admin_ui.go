@@ -5,6 +5,7 @@ package adminui
 import (
 	"context"
 	"embed"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log/slog"
@@ -42,6 +43,9 @@ const (
 	indexPath           = "/admin/index"
 	indexDeletePath     = "/admin/index/delete"
 	blacklistPath       = "/admin/index/blacklist"
+	blacklistTestPath   = "/admin/index/blacklist/test"
+	blacklistExportPath = "/admin/index/blacklist/export"
+	blacklistImportPath = "/admin/index/blacklist/import"
 	networkPath         = "/admin/network"
 	networkPeerPath     = "/admin/network/peer"
 	peerBlockPath       = "/admin/network/peer/block"
@@ -256,6 +260,7 @@ type indexPageData struct {
 	DeleteEnabled    bool
 	BlacklistEnabled bool
 	Blacklist        []BlacklistEntry
+	BlacklistProbe   string
 }
 
 type securityPageData struct {
@@ -438,6 +443,9 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
 	c.mux.HandleFunc("POST "+indexDeletePath, c.handleIndexDelete)
 	c.mux.HandleFunc("POST "+blacklistPath, c.handleBlacklist)
+	c.mux.HandleFunc("GET "+blacklistTestPath, c.handleBlacklistTest)
+	c.mux.HandleFunc("GET "+blacklistExportPath, c.handleBlacklistExport)
+	c.mux.HandleFunc("POST "+blacklistImportPath, c.handleBlacklistImport)
 	c.mux.HandleFunc("GET "+networkPath, c.handleNetwork)
 	c.mux.HandleFunc("GET "+networkPeerPath, c.handleNetworkPeer)
 	c.mux.HandleFunc("POST "+peerBlockPath, c.handlePeerBlock)
@@ -517,6 +525,15 @@ func (c *Console) handleOverviewMetrics(w http.ResponseWriter, r *http.Request) 
 }
 
 func (c *Console) handleIndex(w http.ResponseWriter, r *http.Request) {
+	c.renderIndexPage(w, r, indexNotes{})
+}
+
+// indexNotes carries one-shot messages the Index page shows after an action.
+type indexNotes struct {
+	BlacklistProbe string
+}
+
+func (c *Console) renderIndexPage(w http.ResponseWriter, r *http.Request, notes indexNotes) {
 	if c.index == nil {
 		c.renderUnavailable(w, r, indexPath, "Index", indexUnavailable)
 
@@ -550,6 +567,7 @@ func (c *Console) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if c.blacklist != nil {
 		data.BlacklistEnabled = true
 		data.Blacklist = c.blacklist.BlacklistEntries(r.Context())
+		data.BlacklistProbe = notes.BlacklistProbe
 	}
 
 	c.render(r.Context(), w, c.tpl.index, "layout", data)
@@ -583,6 +601,69 @@ func (c *Console) handleBlacklist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, indexPath, http.StatusSeeOther)
+}
+
+// handleBlacklistTest answers the "would this URL be blocked" probe (UI-17,
+// YaCy BlacklistTest_p) by re-rendering the Index page with the verdict.
+func (c *Console) handleBlacklistTest(w http.ResponseWriter, r *http.Request) {
+	prober, ok := c.blacklist.(BlacklistProber)
+	if c.blacklist == nil || !ok {
+		http.NotFound(w, r)
+
+		return
+	}
+	rawURL := strings.TrimSpace(r.URL.Query().Get("url"))
+	probe := ""
+	switch blocked, err := prober.BlacklistBlocks(r.Context(), rawURL); {
+	case rawURL == "":
+		probe = "Enter a URL to test."
+	case err != nil:
+		probe = "Probe failed: " + err.Error()
+	case blocked:
+		probe = rawURL + " is BLOCKED by the denylist."
+	default:
+		probe = rawURL + " is not blocked."
+	}
+	c.renderIndexPage(w, r, indexNotes{BlacklistProbe: probe})
+}
+
+// handleBlacklistExport streams the denylist as importable plaintext (UI-17,
+// YaCy BlacklistImpExp_p).
+func (c *Console) handleBlacklistExport(w http.ResponseWriter, r *http.Request) {
+	porter, ok := c.blacklist.(BlacklistPorter)
+	if c.blacklist == nil || !ok {
+		http.NotFound(w, r)
+
+		return
+	}
+	payload, err := porter.ExportBlacklist(r.Context())
+	if err != nil {
+		http.Error(w, "export failed", http.StatusInternalServerError)
+
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="denylist.txt"`)
+	// Plaintext export of operator-entered denylist lines; nothing renders
+	// as markup.
+	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter
+	_, _ = w.Write([]byte(payload))
+}
+
+// handleBlacklistImport adds every line of the pasted payload.
+func (c *Console) handleBlacklistImport(w http.ResponseWriter, r *http.Request) {
+	porter, ok := c.blacklist.(BlacklistPorter)
+	if c.blacklist == nil || !ok {
+		http.NotFound(w, r)
+
+		return
+	}
+	added, err := porter.ImportBlacklist(r.Context(), r.PostFormValue("payload"))
+	note := fmt.Sprintf("Imported %d entries.", added)
+	if err != nil {
+		note = fmt.Sprintf("Imported %d entries, then failed: %v", added, err)
+	}
+	c.renderIndexPage(w, r, indexNotes{BlacklistProbe: note})
 }
 
 func (c *Console) handleIndexDelete(w http.ResponseWriter, r *http.Request) {

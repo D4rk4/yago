@@ -65,3 +65,16 @@ type BlacklistSource interface {
 	AddBlacklist(ctx context.Context, kind, value string) error
 	RemoveBlacklist(ctx context.Context, kind, value string) error
 }
+
+// BlacklistProber answers whether one URL would be blocked right now —
+// YaCy's BlacklistTest_p parity (UI-17). Implemented by the same source.
+type BlacklistProber interface {
+	BlacklistBlocks(ctx context.Context, rawURL string) (bool, error)
+}
+
+// BlacklistPorter imports and exports the denylist as plaintext lines
+// ("kind value" per line) — YaCy's BlacklistImpExp_p parity (UI-17).
+type BlacklistPorter interface {
+	ExportBlacklist(ctx context.Context) (string, error)
+	ImportBlacklist(ctx context.Context, payload string) (added int, err error)
+}

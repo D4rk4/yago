@@ -122,6 +122,23 @@
   </div>
   <button class="cds-btn" type="submit">Block</button>
 </form>
+{{if .BlacklistProbe}}<p class="cds-inline-notification" role="status">{{.BlacklistProbe}}</p>{{end}}
+<form class="cds-form cds-form--inline" method="get" action="/admin/index/blacklist/test">
+  <div class="cds-field">
+    <label class="cds-label" for="bl-test">Test a URL</label>
+    <input class="cds-input" type="text" id="bl-test" name="url" placeholder="https://example.com/page" autocomplete="off" required>
+  </div>
+  <button class="cds-btn cds-btn--ghost" type="submit">Check</button>
+  <a class="cds-btn cds-btn--ghost" href="/admin/index/blacklist/export">Export</a>
+</form>
+<form class="cds-form" method="post" action="/admin/index/blacklist/import">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <div class="cds-field">
+    <label class="cds-label" for="bl-import">Import entries (one per line: «domain example.com», «url https://…», or a bare host)</label>
+    <textarea class="cds-input" id="bl-import" name="payload" rows="3" placeholder="domain spam.example&#10;badhost.example"></textarea>
+  </div>
+  <button class="cds-btn" type="submit">Import</button>
+</form>
 {{if .Blacklist}}
 <div class="cds-scroll-x">
   <table class="cds-table">
