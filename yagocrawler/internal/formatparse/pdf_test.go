@@ -2,7 +2,10 @@ package formatparse
 
 import (
 	"bytes"
+	"compress/lzw"
 	"compress/zlib"
+	"encoding/ascii85"
+	"encoding/hex"
 	"strings"
 	"testing"
 
@@ -75,7 +78,7 @@ func TestParsePDFRejectsGarbageAndMissingText(t *testing.T) {
 	}
 	// A stream without a terminator ends the walk.
 	unterminated := []byte("%PDF-1.4\nstream\nabcdef")
-	if streams := pdfFlateStreams(unterminated); len(streams) != 0 {
+	if streams := pdfContentStreams(unterminated); len(streams) != 0 {
 		t.Fatalf("unterminated stream = %d", len(streams))
 	}
 	// A title without a nearby literal is ignored.
@@ -169,12 +172,71 @@ func TestPDFBoundsAndNesting(t *testing.T) {
 	empty := []byte("%PDF-1.4\nstream\n")
 	empty = append(empty, z.Bytes()...)
 	empty = append(empty, []byte("\nendstream")...)
-	if streams := pdfFlateStreams(empty); len(streams) != 0 {
+	if streams := pdfContentStreams(empty); len(streams) != 0 {
 		t.Fatalf("empty inflate = %d", len(streams))
 	}
 
 	// Raw nested parentheses inside a literal keep their text.
 	if got, _ := pdfStringLiteral([]byte("(outer (inner) tail)")); got != "outer (inner) tail" {
 		t.Fatalf("nested literal = %q", got)
+	}
+}
+
+// buildLegacyPDF assembles a minimal PDF whose content stream is encoded
+// with the 1990s ASCII85Decode+LZWDecode chain — the combination real PDF
+// 1.0 archives use (CRAWL-17 follow-up).
+func buildLegacyPDF(t *testing.T, content string) []byte {
+	t.Helper()
+	var lzwBuf bytes.Buffer
+	lzwWriter := lzw.NewWriter(&lzwBuf, lzw.MSB, 8)
+	if _, err := lzwWriter.Write([]byte(content)); err != nil {
+		t.Fatalf("lzw write: %v", err)
+	}
+	_ = lzwWriter.Close()
+	var a85 bytes.Buffer
+	encoder := ascii85.NewEncoder(&a85)
+	if _, err := encoder.Write(lzwBuf.Bytes()); err != nil {
+		t.Fatalf("ascii85 write: %v", err)
+	}
+	_ = encoder.Close()
+
+	var pdf bytes.Buffer
+	pdf.WriteString("%PDF-1.0\n")
+	pdf.WriteString("6 0 obj\n<< /Length 99 /Filter [ /ASCII85Decode /LZWDecode ] >>\nstream\n")
+	pdf.Write(a85.Bytes())
+	pdf.WriteString("~>\nendstream\nendobj\n%%EOF")
+
+	return pdf.Bytes()
+}
+
+// TestParsePDFDecodesLegacyFilterChains pins the multi-filter decoder: a
+// PDF 1.0 file with ASCII85+LZW content parses, and an ASCIIHex stream does
+// too, while an image-only filter chain stays unparsed.
+func TestParsePDFDecodesLegacyFilterChains(t *testing.T) {
+	content := "BT (Navy Public Service Award announcement) Tj ET"
+	page, parsed := parsePDF("http://a.example/legacy.pdf", "application/pdf",
+		buildLegacyPDF(t, content))
+	if !parsed || !strings.Contains(page.Text, "Navy Public Service Award") {
+		t.Fatalf("legacy pdf: parsed=%v text=%q", parsed, page.Text)
+	}
+
+	hexContent := hex.EncodeToString([]byte("BT (hex encoded body text here) Tj ET"))
+	var hexPDF bytes.Buffer
+	hexPDF.WriteString("%PDF-1.2\n<< /Filter /ASCIIHexDecode >>\nstream\n")
+	hexPDF.WriteString(hexContent + ">")
+	hexPDF.WriteString("\nendstream\n%%EOF")
+	hexPage, hexParsed := parsePDF("http://a.example/hex.pdf", "application/pdf", hexPDF.Bytes())
+	if !hexParsed || !strings.Contains(hexPage.Text, "hex encoded body") {
+		t.Fatalf("hex pdf: parsed=%v text=%q", hexParsed, hexPage.Text)
+	}
+
+	var imagePDF bytes.Buffer
+	imagePDF.WriteString("%PDF-1.4\n<< /Filter /DCTDecode >>\nstream\n")
+	imagePDF.WriteString("\xff\xd8\xff jpeg bytes")
+	imagePDF.WriteString("\nendstream\n%%EOF")
+	if _, imageParsed := parsePDF(
+		"http://a.example/scan.pdf", "application/pdf", imagePDF.Bytes(),
+	); imageParsed {
+		t.Fatal("image-only pdf must stay unparsed")
 	}
 }

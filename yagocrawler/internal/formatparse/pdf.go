@@ -2,8 +2,13 @@ package formatparse
 
 import (
 	"bytes"
+	"compress/lzw"
 	"compress/zlib"
+	"encoding/ascii85"
+	"encoding/hex"
+	"fmt"
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/D4rk4/yago/yagocrawler/internal/pageparse"
@@ -30,7 +35,7 @@ func parsePDF(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
 		return pageparse.ParsedPage{URL: rawURL}, false
 	}
 	var text strings.Builder
-	for _, stream := range pdfFlateStreams(body) {
+	for _, stream := range pdfContentStreams(body) {
 		text.WriteString(pdfTextFromContent(stream))
 		if text.Len() > pdfMaxTextBytes {
 			break
@@ -48,14 +53,24 @@ func parsePDF(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
 	return pageparse.ParsedPage{URL: rawURL, Title: title, Text: extracted}, true
 }
 
-// pdfFlateStreams inflates every FlateDecode stream in the file, bounded.
-func pdfFlateStreams(body []byte) [][]byte {
+// pdfContentStreams decodes every content stream in the file, bounded. The
+// stream dictionary's /Filter entry names the decode chain; besides the
+// modern FlateDecode this covers the 1990s combination ASCII85Decode +
+// LZWDecode (real archives are full of PDF 1.0 files built exactly that
+// way — CRAWL-17 follow-up) and ASCIIHexDecode. Image filters (DCTDecode,
+// JPXDecode) carry no text and are skipped.
+func pdfContentStreams(body []byte) [][]byte {
 	streams := make([][]byte, 0, 8)
 	at := 0
 	for len(streams) < pdfMaxStreams {
 		index := bytes.Index(body[at:], []byte("stream"))
 		if index < 0 {
 			break
+		}
+		dictStart := bytes.LastIndex(body[at:at+index], []byte("<<"))
+		filters := []string{"FlateDecode"}
+		if dictStart >= 0 {
+			filters = pdfFilterChain(body[at+dictStart : at+index])
 		}
 		start := at + index + len("stream")
 		if start < len(body) && body[start] == '\r' {
@@ -70,19 +85,130 @@ func pdfFlateStreams(body []byte) [][]byte {
 		}
 		raw := body[start : start+end]
 		at = start + end + len("endstream")
-		reader, err := zlib.NewReader(bytes.NewReader(raw))
-		if err != nil {
+		decoded, ok := pdfDecodeChain(raw, filters)
+		if !ok || len(decoded) == 0 {
 			continue
 		}
-		inflated, err := io.ReadAll(io.LimitReader(reader, pdfMaxStreamBytes))
-		_ = reader.Close()
-		if err != nil || len(inflated) == 0 {
-			continue
-		}
-		streams = append(streams, inflated)
+		streams = append(streams, decoded)
 	}
 
 	return streams
+}
+
+// pdfFilterChain reads the /Filter entry of one stream dictionary in order.
+func pdfFilterChain(dict []byte) []string {
+	index := bytes.Index(dict, []byte("/Filter"))
+	if index < 0 {
+		return []string{"FlateDecode"}
+	}
+	rest := dict[index+len("/Filter"):]
+	if closing := bytes.IndexByte(
+		rest,
+		']',
+	); bytes.Contains(
+		rest[:min(len(rest), 2)],
+		[]byte("["),
+	) ||
+		(closing >= 0 && bytes.IndexByte(rest[:closing], '[') >= 0) {
+		rest = rest[:closing]
+	}
+	names := pdfNamePattern.FindAllSubmatch(rest, 4)
+	filters := make([]string, 0, len(names))
+	for _, name := range names {
+		filters = append(filters, string(name[1]))
+	}
+	if len(filters) == 0 {
+		return []string{"FlateDecode"}
+	}
+
+	return filters
+}
+
+var pdfNamePattern = regexp.MustCompile(`/([A-Za-z0-9]+)`)
+
+// pdfDecodeChain applies the named filters in order; an unknown or image
+// filter aborts the stream (ok=false) rather than emitting garbage.
+func pdfDecodeChain(raw []byte, filters []string) ([]byte, bool) {
+	data := raw
+	for _, filter := range filters {
+		var err error
+		switch filter {
+		case "FlateDecode", "Fl":
+			data, err = pdfInflate(data)
+		case "ASCII85Decode", "A85":
+			data, err = pdfASCII85(data)
+		case "ASCIIHexDecode", "AHx":
+			data, err = pdfASCIIHex(data)
+		case "LZWDecode", "LZW":
+			data, err = pdfLZW(data)
+		default:
+			return nil, false
+		}
+		if err != nil {
+			return nil, false
+		}
+	}
+
+	return data, true
+}
+
+func pdfInflate(raw []byte) ([]byte, error) {
+	reader, err := zlib.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		return nil, fmt.Errorf("zlib: %w", err)
+	}
+	defer func() { _ = reader.Close() }()
+	data, err := io.ReadAll(io.LimitReader(reader, pdfMaxStreamBytes))
+	if err != nil && len(data) == 0 {
+		return nil, fmt.Errorf("inflate: %w", err)
+	}
+
+	return data, nil
+}
+
+func pdfASCII85(raw []byte) ([]byte, error) {
+	raw = bytes.TrimSpace(raw)
+	raw = bytes.TrimSuffix(raw, []byte("~>"))
+	decoder := ascii85.NewDecoder(bytes.NewReader(raw))
+	data, err := io.ReadAll(io.LimitReader(decoder, pdfMaxStreamBytes))
+	if err != nil && len(data) == 0 {
+		return nil, fmt.Errorf("ascii85: %w", err)
+	}
+
+	return data, nil
+}
+
+func pdfASCIIHex(raw []byte) ([]byte, error) {
+	compact := make([]byte, 0, len(raw))
+	for _, char := range raw {
+		switch char {
+		case '>', ' ', '\n', '\r', '\t':
+		default:
+			compact = append(compact, char)
+		}
+	}
+	if len(compact)%2 == 1 {
+		compact = append(compact, '0')
+	}
+	data := make([]byte, hex.DecodedLen(len(compact)))
+	if _, err := hex.Decode(data, compact); err != nil {
+		return nil, fmt.Errorf("asciihex: %w", err)
+	}
+
+	return data, nil
+}
+
+// pdfLZW decodes PDF's LZW variant; Go's MSB reader matches the common
+// EarlyChange=1 encoding real files use.
+func pdfLZW(raw []byte) ([]byte, error) {
+	reader := lzw.NewReader(bytes.NewReader(raw), lzw.MSB, 8)
+	defer func() { _ = reader.Close() }()
+	data, err := io.ReadAll(io.LimitReader(reader, pdfMaxStreamBytes))
+	if err != nil && len(data) == 0 {
+		return nil, fmt.Errorf("lzw: %w", err)
+	}
+
+	return data, nil
 }
 
 // pdfTextFromContent walks a content stream's BT..ET blocks collecting the
