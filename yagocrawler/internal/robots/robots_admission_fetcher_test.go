@@ -280,6 +280,65 @@ func TestRobotsAdmissionDoesNotCacheFetchFailure(t *testing.T) {
 	}
 }
 
+// TestRobotsAdmissionSanitizesMalformedRobotsAndCaches is the regression guard
+// for the re-fetch/log storm on a real-world quirk: a Crawl-delay before any
+// User-agent line makes the strict parser reject the whole file. The sanitizer
+// drops the stray leading directive so the Disallow is still honored, and the
+// fetched body is cached so the malformed file is fetched once, not per page.
+func TestRobotsAdmissionSanitizesMalformedRobotsAndCaches(t *testing.T) {
+	var hits int32
+	rule := "# public site\n\nCrawl-delay: 10\nUser-agent: *\nDisallow: /private\n"
+	server := robotsServer(t, rule, &hits)
+	defer server.Close()
+	fetcher := newFetcher(t, deliveringSource(), server.Client(), 8)
+
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		mustParse(t, server.URL+"/private/secret"),
+	); !errors.Is(err, pagefetch.ErrPageRejected) {
+		t.Fatalf("err = %v, want ErrPageRejected (sanitized Disallow honored)", err)
+	}
+	for range 3 {
+		if _, err := fetcher.Fetch(
+			context.Background(),
+			mustParse(t, server.URL+"/public"),
+		); err != nil {
+			t.Fatalf("allow public: %v", err)
+		}
+	}
+	if got := atomic.LoadInt32(&hits); got != 1 {
+		t.Errorf(
+			"robots fetches = %d, want 1 (malformed robots must be cached, not re-fetched)",
+			got,
+		)
+	}
+}
+
+// TestRobotsAdmissionCachesUnparseableRobotsAsAllowAll covers the fallback: a bad
+// Crawl-delay value sits inside the group, so sanitizing the pre-group lines
+// cannot fix it and both parse attempts fail. The crawler then allows the host
+// (fail open) and caches that outcome, so an unparseable file is not re-fetched
+// on every page either.
+func TestRobotsAdmissionCachesUnparseableRobotsAsAllowAll(t *testing.T) {
+	var hits int32
+	rule := "User-agent: *\nCrawl-delay: notanumber\nDisallow: /private\n"
+	server := robotsServer(t, rule, &hits)
+	defer server.Close()
+	fetcher := newFetcher(t, deliveringSource(), server.Client(), 8)
+
+	for range 3 {
+		if _, err := fetcher.Fetch(
+			context.Background(),
+			mustParse(t, server.URL+"/private/secret"),
+		); err != nil {
+			t.Fatalf("unparseable robots should fail open, got %v", err)
+		}
+	}
+	if got := atomic.LoadInt32(&hits); got != 1 {
+		t.Errorf("robots fetches = %d, want 1 (unparseable robots cached as allow-all)", got)
+	}
+}
+
 func TestRobotsAdmissionReFetchesAfterEviction(t *testing.T) {
 	var hits int32
 	server := robotsServer(t, "User-agent: *\nDisallow: /private\n", &hits)

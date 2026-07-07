@@ -142,17 +142,38 @@ func (f *RobotsAdmissionFetcher) fetchRobotsGroup(
 		)
 		return allowAll(), false
 	}
-	data, err := robotstxt.FromStatusAndBytes(response.StatusCode, body)
+	return f.parseRobotsGroup(ctx, target.Host, response.StatusCode, body), true
+}
+
+// parseRobotsGroup resolves a fetched robots.txt body into this crawler's group.
+// A fetched body is a deterministic input, so the caller always caches the
+// result — re-fetching an unparseable file would only repeat the failure and
+// flood the log. A strict parser rejects some common real-world files (a
+// directive before the first User-agent), so a parse failure is retried once on
+// a sanitized body to still honor the host's rules; only when that also fails
+// does the crawler fall back to allow-all, logged once per cache lifetime.
+func (f *RobotsAdmissionFetcher) parseRobotsGroup(
+	ctx context.Context,
+	host string,
+	statusCode int,
+	body []byte,
+) *robotstxt.Group {
+	data, err := robotstxt.FromStatusAndBytes(statusCode, body)
+	if err != nil {
+		data, err = robotstxt.FromStatusAndBytes(statusCode, sanitizeRobots(body))
+	}
 	if err != nil {
 		slog.WarnContext(
 			ctx,
 			msgRobotsParseFailed,
-			slog.String("host", target.Host),
+			slog.String("host", host),
 			slog.Any("error", err),
 		)
-		return allowAll(), false
+
+		return allowAll()
 	}
-	return data.FindGroup(f.userAgent), true
+
+	return data.FindGroup(f.userAgent)
 }
 
 func allowAll() *robotstxt.Group {
