@@ -143,7 +143,7 @@ func (f *Frontier) SeedRun(
 	requests []yagocrawlcontract.CrawlRequest,
 	provenance []byte,
 	profile crawladmission.AdmissionProfile,
-	finish func(),
+	finish func(succeeded bool),
 ) SeededRun {
 	f.mu.Lock()
 	seeded, settled := f.state.seed(ctx, requests, provenance, profile, finish)
@@ -176,16 +176,19 @@ func (f *Frontier) RunPending(runID uuid.UUID) int {
 	return f.state.completion.Pending(runID)
 }
 
-func (f *Frontier) Done(work crawljob.CrawlJob) {
+func (f *Frontier) Done(work crawljob.CrawlJob, deliveryFailed bool) {
 	f.mu.Lock()
 	f.releaseHost(work.URL)
-	finish, drained := f.state.completion.Settle(work.RunID)
+	if deliveryFailed {
+		f.state.completion.Fail(work.RunID)
+	}
+	finish, succeeded, drained := f.state.completion.Settle(work.RunID)
 	f.mu.Unlock()
 	// Releasing a host slot may make a withheld same-host job dispatchable, so
 	// nudge the run loop to re-evaluate rather than wait for the next signal.
 	f.wake()
 	if drained && finish != nil {
-		go finish()
+		go finish(succeeded)
 	}
 }
 
@@ -271,8 +274,11 @@ func (f *Frontier) Cancel(provenance []byte) {
 
 			continue
 		}
-		if finish, drained := f.state.completion.Settle(job.RunID); drained && finish != nil {
-			finishes = append(finishes, finish)
+		if finish, succeeded, drained := f.state.completion.Settle(
+			job.RunID,
+		); drained &&
+			finish != nil {
+			finishes = append(finishes, func() { finish(succeeded) })
 		}
 	}
 	f.state.ready = kept
@@ -426,7 +432,7 @@ func (s *frontierState) seed(
 	requests []yagocrawlcontract.CrawlRequest,
 	provenance []byte,
 	profile crawladmission.AdmissionProfile,
-	finish func(),
+	finish func(succeeded bool),
 ) (SeededRun, func()) {
 	runID := uuid.New()
 	s.runDedup(runID, profile)
@@ -458,8 +464,8 @@ func (s *frontierState) seed(
 			queued++
 		}
 	}
-	if finish, drained := s.completion.Settle(runID); drained && finish != nil {
-		return SeededRun{RunID: runID, Queued: queued}, finish
+	if finish, succeeded, drained := s.completion.Settle(runID); drained && finish != nil {
+		return SeededRun{RunID: runID, Queued: queued}, func() { finish(succeeded) }
 	}
 	return SeededRun{RunID: runID, Queued: queued}, nil
 }

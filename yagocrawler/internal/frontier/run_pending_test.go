@@ -23,20 +23,20 @@ func TestRunPendingReflectsOutstandingJobs(t *testing.T) {
 		requestsFor(profile.Profile.Handle, "https://example.com/a", "https://example.com/b"),
 		provenance,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	if got := f.RunPending(seeded.RunID); got != 2 {
 		t.Fatalf("RunPending after seeding = %d, want 2", got)
 	}
 
 	job := receiveJob(t, f)
-	f.Done(job)
+	f.Done(job, false)
 	if got := f.RunPending(seeded.RunID); got != 1 {
 		t.Fatalf("RunPending after one Done = %d, want 1", got)
 	}
 
 	job = receiveJob(t, f)
-	f.Done(job)
+	f.Done(job, false)
 	if got := f.RunPending(seeded.RunID); got != 0 {
 		t.Fatalf("RunPending after draining = %d, want 0", got)
 	}

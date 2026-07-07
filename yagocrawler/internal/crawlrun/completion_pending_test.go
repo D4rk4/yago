@@ -16,7 +16,7 @@ func TestCompletionPendingReportsOutstandingCount(t *testing.T) {
 		t.Fatalf("Pending for an unknown run = %d, want 0", got)
 	}
 
-	completion.Begin(runID, func() {})
+	completion.Begin(runID, func(bool) {})
 	completion.Track(runID)
 	if got := completion.Pending(runID); got != 2 {
 		t.Fatalf("Pending after Begin+Track = %d, want 2", got)

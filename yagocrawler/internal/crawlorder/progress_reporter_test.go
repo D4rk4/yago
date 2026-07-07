@@ -66,7 +66,7 @@ func TestConsumerReportsRunLifecycle(t *testing.T) {
 
 	select {
 	case job := <-f.Jobs():
-		f.Done(job)
+		f.Done(job, false)
 	case <-time.After(3 * time.Second):
 		t.Fatal("frontier never received seeded job")
 	}
@@ -154,7 +154,7 @@ func TestConsumerReportsRunOutcomeTally(t *testing.T) {
 
 	select {
 	case job := <-f.Jobs():
-		f.Done(job)
+		f.Done(job, false)
 	case <-time.After(3 * time.Second):
 		t.Fatal("frontier never received seeded job")
 	}

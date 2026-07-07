@@ -25,7 +25,7 @@ func TestPauseWithholdsRunJobsUntilResume(t *testing.T) {
 		requestsFor(profile.Profile.Handle, "https://example.com/"),
 		provenance,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	if seeded.Queued != 1 {
 		t.Fatalf("queued = %d, want 1", seeded.Queued)
@@ -42,7 +42,7 @@ func TestPauseWithholdsRunJobsUntilResume(t *testing.T) {
 	if job.URL != "https://example.com/" {
 		t.Fatalf("resumed job = %q, want the seed URL", job.URL)
 	}
-	f.Done(job)
+	f.Done(job, false)
 }
 
 func TestCancelDropsPendingJobsAndDrainsRun(t *testing.T) {
@@ -64,7 +64,7 @@ func TestCancelDropsPendingJobsAndDrainsRun(t *testing.T) {
 		requestsFor(profile.Profile.Handle, "https://example.com/"),
 		provenance,
 		profile,
-		func() { close(finished) },
+		func(bool) { close(finished) },
 	)
 
 	f.Cancel(provenance)
@@ -107,14 +107,14 @@ func TestCancelKeepsOtherRunsPendingJobs(t *testing.T) {
 		requestsFor(profile.Profile.Handle, "https://doomed.example/"),
 		[]byte("doomed"),
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	f.SeedRun(
 		context.Background(),
 		requestsFor(profile.Profile.Handle, "https://survivor.example/"),
 		[]byte("survivor"),
 		profile,
-		func() {},
+		func(bool) {},
 	)
 
 	f.Cancel([]byte("doomed"))
@@ -124,7 +124,7 @@ func TestCancelKeepsOtherRunsPendingJobs(t *testing.T) {
 	if job.URL != "https://survivor.example/" {
 		t.Fatalf("dispatched %q, want the survivor run's job", job.URL)
 	}
-	f.Done(job)
+	f.Done(job, false)
 }
 
 func TestCancelRejectsDiscoveredLinks(t *testing.T) {
@@ -141,13 +141,13 @@ func TestCancelRejectsDiscoveredLinks(t *testing.T) {
 		requestsFor(profile.Profile.Handle, "https://example.com/"),
 		provenance,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 
 	work := receiveJob(t, f)
 	f.Cancel(work.Provenance)
 	f.Submit(context.Background(), work, discoveredLinks("https://example.com/child"))
-	f.Done(work)
+	f.Done(work, false)
 
 	select {
 	case job := <-f.Jobs():
@@ -174,11 +174,11 @@ func TestSetRateThrottlesRunDispatch(t *testing.T) {
 		requestsFor(profile.Profile.Handle, "https://a.example/", "https://b.example/"),
 		provenance,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 
 	first := receiveJob(t, f)
-	f.Done(first)
+	f.Done(first, false)
 
 	select {
 	case job := <-f.Jobs():
@@ -189,7 +189,7 @@ func TestSetRateThrottlesRunDispatch(t *testing.T) {
 	// Lifting the throttle releases the withheld job at once.
 	f.SetRate(provenance, 0)
 	second := receiveJob(t, f)
-	f.Done(second)
+	f.Done(second, false)
 }
 
 func TestPauseIsScopedToOneRun(t *testing.T) {
@@ -207,14 +207,14 @@ func TestPauseIsScopedToOneRun(t *testing.T) {
 		requestsFor(profile.Profile.Handle, "https://paused.example/"),
 		[]byte("paused-run"),
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	f.SeedRun(
 		context.Background(),
 		requestsFor(profile.Profile.Handle, "https://live.example/"),
 		[]byte("live-run"),
 		profile,
-		func() {},
+		func(bool) {},
 	)
 
 	// The un-paused run's job dispatches even while the other run is withheld.
@@ -222,5 +222,5 @@ func TestPauseIsScopedToOneRun(t *testing.T) {
 	if job.URL != "https://live.example/" {
 		t.Fatalf("dispatched %q, want the live run's job", job.URL)
 	}
-	f.Done(job)
+	f.Done(job, false)
 }

@@ -22,7 +22,7 @@ import (
 type Frontier interface {
 	Jobs() <-chan crawljob.CrawlJob
 	Submit(ctx context.Context, work crawljob.CrawlJob, links crawljob.DiscoveredLinks)
-	Done(work crawljob.CrawlJob)
+	Done(work crawljob.CrawlJob, deliveryFailed bool)
 }
 
 const (
@@ -222,7 +222,8 @@ func (p *Pipeline) fetchJob(
 
 func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	p.observer.JobStarted()
-	defer p.frontier.Done(job)
+	deliveryFailed := false
+	defer func() { p.frontier.Done(job, deliveryFailed) }()
 	defer p.observer.JobFinished()
 	slog.DebugContext(ctx, msgJobFetching,
 		slog.String("url", job.URL),
@@ -274,12 +275,26 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 
 		return nil
 	}
+	deliveryFailed, err = p.indexAndEmit(ctx, job, page, fetched.ContentType)
+
+	return err
+}
+
+// indexAndEmit builds the page's index artifacts and delivers them to the ingest
+// emitter, reporting deliveryFailed when the durable emit itself fails so the run
+// can be naked for redelivery rather than acked with references lost in flight.
+func (p *Pipeline) indexAndEmit(
+	ctx context.Context,
+	job crawljob.CrawlJob,
+	page pageparse.ParsedPage,
+	contentType string,
+) (deliveryFailed bool, err error) {
 	stats := pageparse.BuildPageStats(page)
 	artifacts, err := p.index.Build(page, stats)
 	if err != nil {
-		return fmt.Errorf("index: %w", err)
+		return false, fmt.Errorf("index: %w", err)
 	}
-	artifacts.Document.ContentType = fetched.ContentType
+	artifacts.Document.ContentType = contentType
 	artifacts.Document.FetchedAt = time.Now().UTC()
 	if err := p.emitter.Emit(
 		ctx,
@@ -292,10 +307,10 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 			ProfileHandle: job.ProfileHandle,
 		},
 	); err != nil {
-		return fmt.Errorf("emit: %w", err)
+		return true, fmt.Errorf("emit: %w", err)
 	}
 	p.observer.IngestPublished()
 	p.tally.Indexed(job.Provenance)
 
-	return nil
+	return false, nil
 }

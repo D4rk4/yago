@@ -95,7 +95,7 @@ func TestAcceptEmitsPeriodicRunningReports(t *testing.T) {
 	waitForRunning(t, progress, 2)
 
 	job := <-f.Jobs()
-	f.Done(job)
+	f.Done(job, false)
 	waitCallback(t, acked)
 
 	if !progress.sawTerminal() {

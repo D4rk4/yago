@@ -128,7 +128,7 @@ func TestAcceptSeedsExpandedRequests(t *testing.T) {
 	if job.URL != "https://example.org/from-sitemap" {
 		t.Fatalf("job URL = %q", job.URL)
 	}
-	f.Done(job)
+	f.Done(job, false)
 	waitCallback(t, acked)
 }
 

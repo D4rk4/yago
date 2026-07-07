@@ -64,15 +64,41 @@ func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
 		),
 		[]byte("admin"),
 		profile,
-		func() { close(finished) },
+		func(bool) { close(finished) },
 	)
 	if seeded.Queued != 2 {
 		t.Fatalf("queued = %d, want 2", seeded.Queued)
 	}
-	f.Done(receiveJob(t, f))
-	f.Done(receiveJob(t, f))
+	f.Done(receiveJob(t, f), false)
+	f.Done(receiveJob(t, f), false)
 	select {
 	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("run finish callback never fired")
+	}
+}
+
+func TestDoneDrainsRunNotSucceededOnDeliveryFailure(t *testing.T) {
+	f := frontier.NewFrontier(8, nil)
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	succeeded := make(chan bool, 1)
+	f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle, "https://example.com/"),
+		[]byte("admin"),
+		profile,
+		func(ok bool) { succeeded <- ok },
+	)
+	f.Done(receiveJob(t, f), true)
+	select {
+	case ok := <-succeeded:
+		if ok {
+			t.Error("a run whose page failed to deliver must drain not-succeeded")
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("run finish callback never fired")
 	}
@@ -103,7 +129,7 @@ func TestSeedRunCountsDuplicateSkips(t *testing.T) {
 		),
 		[]byte("run-dup"),
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	if seeded.Queued != 2 {
 		t.Fatalf("queued = %d, want 2", seeded.Queued)
@@ -111,8 +137,8 @@ func TestSeedRunCountsDuplicateSkips(t *testing.T) {
 	if len(tally.duplicates) != 1 || string(tally.duplicates[0]) != "run-dup" {
 		t.Fatalf("duplicates = %v, want one skip keyed run-dup", tally.duplicates)
 	}
-	f.Done(receiveJob(t, f))
-	f.Done(receiveJob(t, f))
+	f.Done(receiveJob(t, f), false)
+	f.Done(receiveJob(t, f), false)
 }
 
 func TestSeedRunSkipsMismatchedProfileHandle(t *testing.T) {
@@ -128,7 +154,7 @@ func TestSeedRunSkipsMismatchedProfileHandle(t *testing.T) {
 		requestsFor("wrong-handle", "https://example.com/"),
 		nil,
 		profile,
-		func() { close(finished) },
+		func(bool) { close(finished) },
 	)
 	if seeded.Queued != 0 {
 		t.Fatalf("queued = %d, want 0", seeded.Queued)
@@ -152,7 +178,7 @@ func TestSeedRunRejectsUnparsableSeed(t *testing.T) {
 		requestsFor(profile.Profile.Handle, "ftp://example.com/"),
 		nil,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	if seeded.Queued != 0 {
 		t.Fatalf("queued = %d, want 0", seeded.Queued)
@@ -174,12 +200,12 @@ func TestSeedRunHonoursHostCap(t *testing.T) {
 		),
 		nil,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	if seeded.Queued != 1 {
 		t.Fatalf("queued = %d, want 1 (host cap)", seeded.Queued)
 	}
-	f.Done(receiveJob(t, f))
+	f.Done(receiveJob(t, f), false)
 }
 
 // TestSeedRunHonoursPageBudget pins the whole-run page budget (PORT-03): a run
@@ -204,13 +230,13 @@ func TestSeedRunHonoursPageBudget(t *testing.T) {
 		),
 		nil,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	if seeded.Queued != 2 {
 		t.Fatalf("queued = %d, want 2 (per-run page budget)", seeded.Queued)
 	}
 	for range 2 {
-		f.Done(receiveJob(t, f))
+		f.Done(receiveJob(t, f), false)
 	}
 }
 
@@ -227,7 +253,7 @@ func TestSubmitFollowsLinksWithinDepth(t *testing.T) {
 		requestsFor(profile.Profile.Handle, "https://example.com/"),
 		nil,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	if seeded.Queued != 1 {
 		t.Fatalf("queued = %d, want 1", seeded.Queued)
@@ -239,8 +265,8 @@ func TestSubmitFollowsLinksWithinDepth(t *testing.T) {
 		t.Errorf("child depth = %d, want 1", child.Depth)
 	}
 	f.Submit(context.Background(), child, discoveredLinks("https://example.com/grandchild"))
-	f.Done(child)
-	f.Done(root)
+	f.Done(child, false)
+	f.Done(root, false)
 	select {
 	case extra := <-f.Jobs():
 		t.Errorf("did not expect job past max depth: %+v", extra)
@@ -275,13 +301,13 @@ func TestSubmitForUnknownProfileIsIgnored(t *testing.T) {
 		requestsFor(profile.Profile.Handle, "https://example.com/"),
 		nil,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	root := receiveJob(t, f)
 	root.ProfileHandle = "missing"
 
 	f.Submit(context.Background(), root, discoveredLinks("https://example.com/child"))
-	f.Done(crawljob.CrawlJob{RunID: seeded.RunID})
+	f.Done(crawljob.CrawlJob{RunID: seeded.RunID}, false)
 	select {
 	case job := <-f.Jobs():
 		t.Errorf("unknown profile should produce no jobs, got %+v", job)
@@ -302,7 +328,7 @@ func TestSubmitSkipsNoFollowLinksByDefault(t *testing.T) {
 		requestsFor(profile.Profile.Handle, "https://example.com/"),
 		nil,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	root := receiveJob(t, f)
 	f.Submit(context.Background(), root, crawljob.DiscoveredLinks{
@@ -334,7 +360,7 @@ func TestSubmitFollowsNoFollowLinksWhenProfileAllows(t *testing.T) {
 		requestsFor(profile.Profile.Handle, "https://example.com/"),
 		nil,
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	root := receiveJob(t, f)
 	f.Submit(context.Background(), root, crawljob.DiscoveredLinks{
@@ -362,7 +388,7 @@ func TestFrontierBoundsPerHostConcurrency(t *testing.T) {
 		),
 		[]byte("admin"),
 		profile,
-		func() {},
+		func(bool) {},
 	)
 	if seeded.Queued != 3 {
 		t.Fatalf("queued = %d, want 3", seeded.Queued)
@@ -377,10 +403,10 @@ func TestFrontierBoundsPerHostConcurrency(t *testing.T) {
 	}
 
 	// Completing one in-flight fetch frees a host slot for the withheld job.
-	f.Done(first)
+	f.Done(first, false)
 	third := receiveJob(t, f)
-	f.Done(second)
-	f.Done(third)
+	f.Done(second, false)
+	f.Done(third, false)
 }
 
 func TestFrontierAllowsConcurrencyAcrossHosts(t *testing.T) {
@@ -399,14 +425,14 @@ func TestFrontierAllowsConcurrencyAcrossHosts(t *testing.T) {
 		),
 		[]byte("admin"),
 		profile,
-		func() {},
+		func(bool) {},
 	)
 
 	// A per-host cap of 1 must still let three distinct hosts run concurrently.
 	first := receiveJob(t, f)
 	second := receiveJob(t, f)
 	third := receiveJob(t, f)
-	f.Done(first)
-	f.Done(second)
-	f.Done(third)
+	f.Done(first, false)
+	f.Done(second, false)
+	f.Done(third, false)
 }

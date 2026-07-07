@@ -165,15 +165,18 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 
 // finishRun builds the run's completion callback: it reports the terminal run
 // state (cancelled during shutdown, finished otherwise) and settles the order's
-// lease. The report uses a cancel-detached context so a report still reaches the
-// node while the worker is draining on shutdown.
+// lease. A run that drained with succeeded=false lost at least one page's
+// references in delivery, so it naks down the same redelivery path as a
+// cancelled run rather than acking with those references lost. The report uses a
+// cancel-detached context so a report still reaches the node while the worker is
+// draining on shutdown.
 func (c *CrawlOrderConsumer) finishRun(
 	ctx context.Context,
 	order yagocrawlcontract.CrawlOrder,
 	delivery CrawlOrderDelivery,
 	reporter *runProgressReporter,
-) func() {
-	return func() {
+) func(succeeded bool) {
+	return func(succeeded bool) {
 		reporter.Stop()
 		defer c.frontier.Release()
 		cancelled := ctx.Err() != nil || c.frontier.WasCancelled(order.Provenance)
@@ -184,7 +187,7 @@ func (c *CrawlOrderConsumer) finishRun(
 		}
 		c.reportRun(context.WithoutCancel(ctx), order, state, 0)
 		c.tally.Forget(order.Provenance)
-		if cancelled {
+		if cancelled || !succeeded {
 			if err := delivery.Nak(context.Background()); err != nil {
 				slog.WarnContext(
 					context.Background(),
