@@ -1,21 +1,16 @@
 name: e2e
 
 on:
-  workflow_run:
-    workflows: [verify]
-    types: [completed]
+  workflow_call:
 
 jobs:
   e2e:
-    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
       DOCKER_HOST: unix:///var/run/docker.sock
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
