@@ -100,3 +100,40 @@ func TestSSTReaderSkipSpansSegments(t *testing.T) {
 		t.Fatal("reads past the end must be zero")
 	}
 }
+
+// TestSSTReaderCharGuards covers the character-count guards and the
+// early-break when a string claims more characters than the segments hold.
+func TestSSTReaderCharGuards(t *testing.T) {
+	r := &sstReader{segments: [][]byte{{0x41}}}
+	if got := r.readChars(-1, false); got != "" {
+		t.Fatalf("negative cch = %q", got)
+	}
+	if got := r.readChars(sstMaxChars+1, false); got != "" {
+		t.Fatalf("oversized cch = %q", got)
+	}
+
+	// One byte available but eight characters claimed: the reader stops when
+	// the segments run out instead of over-reading.
+	short := &sstReader{segments: [][]byte{{0x41}}}
+	if got := short.readChars(8, false); got != "A" {
+		t.Fatalf("short read = %q", got)
+	}
+}
+
+// TestSSTReaderSkipPastEnd covers skip running off the end of the segments.
+func TestSSTReaderSkipPastEnd(t *testing.T) {
+	r := &sstReader{segments: [][]byte{{0x01, 0x02}}}
+	r.skip(1000) // must return without panicking.
+	if !r.atEnd() {
+		t.Fatal("reader should be exhausted after an over-long skip")
+	}
+}
+
+// TestSSTReaderSegLenPastEnd covers segLen returning zero once the segment
+// cursor is past the last segment.
+func TestSSTReaderSegLenPastEnd(t *testing.T) {
+	r := &sstReader{segments: [][]byte{{0x01}}, seg: 5}
+	if r.segLen() != 0 {
+		t.Fatalf("segLen past end = %d", r.segLen())
+	}
+}
