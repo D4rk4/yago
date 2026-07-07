@@ -46,7 +46,18 @@ above 50 %). Index freshness is read from Prometheus as
 `rate(crawl_documents_indexed[1h])` against the queue depths — a full
 age-of-index gauge would need a corpus scan and stays a follow-up.
 
+## Internal tracing (OPS-10)
+
+Every HTTP request roots a W3C Trace Context: a valid inbound `traceparent`
+is adopted, otherwise a fresh trace starts here, sampled 1-in-256. The trace
+rides the request context; the peer fan-out stamps a child `traceparent` on
+every outbound peer search, so one public query correlates across its legs in
+the logs of cooperating nodes. Sampled traces attach their trace ID as an
+**exemplar** on `http_request_duration_seconds` — Grafana links a slow bucket
+straight to a live trace ID. Scope is deliberately this node plus its own
+outbound legs; a full OpenTelemetry export would need a collector dependency
+(ADR required) and is not planned until an operator asks for one.
+
 ## Follow-ups
 
-OpenTelemetry export and W3C trace propagation belong to the internal-tracing
-work (OPS-10); SLO targets and burn-rate alerts to OPS-11.
+SLO targets and burn-rate alerts belong to OPS-11.

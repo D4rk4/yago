@@ -9,6 +9,7 @@ import (
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -116,5 +117,40 @@ func TestRemoteSearcherPrefersAdvertisedHTTPS(t *testing.T) {
 	}
 	if len(resp.PartialFailures) != 0 {
 		t.Fatalf("partial failures = %#v", resp.PartialFailures)
+	}
+}
+
+// TestPeerRequestsCarryTheTraceContext pins OPS-10: when the search context
+// holds a trace, the outbound peer request carries a child traceparent — same
+// trace ID, fresh span — so one public query correlates across its fan-out.
+func TestPeerRequestsCarryTheTraceContext(t *testing.T) {
+	var header string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		header = r.Header.Get(tracectx.Header)
+		w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+		_, _ = w.Write([]byte("resource=\nlinkcount=0\nreferences=\n"))
+	}))
+	defer server.Close()
+
+	trace := tracectx.New()
+	ctx := tracectx.WithContext(t.Context(), trace)
+	_, err := NewSearcher(Config{
+		Client:      server.Client(),
+		NetworkName: "freeworld",
+		Peers:       fakePeerSource{peers: []yagomodel.Seed{serverSeed(t, server.URL)}},
+		MaxPeers:    1,
+		Redundancy:  1,
+		Concurrency: 1,
+	}).Search(ctx, searchcore.Request{
+		Terms:  []string{"solo"},
+		Source: searchcore.SourceGlobal,
+		Limit:  5,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	child, ok := tracectx.Parse(header)
+	if !ok || child.TraceID != trace.TraceID || child.SpanID == trace.SpanID {
+		t.Fatalf("peer header = %q (parent %+v)", header, trace)
 	}
 }

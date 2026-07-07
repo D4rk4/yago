@@ -55,6 +55,24 @@ func (e *HTTPEndpointMetrics) Observe(endpoint string, status int, elapsed time.
 	e.durations.WithLabelValues(endpoint).Observe(elapsed.Seconds())
 }
 
+// ObserveExemplar pins a sampled trace ID onto the latency histogram bucket
+// this request fell into, so a slow bucket links straight to a live trace
+// (OPS-10). Non-exemplar observers ignore the call.
+func (e *HTTPEndpointMetrics) ObserveExemplar(
+	endpoint string,
+	elapsed time.Duration,
+	traceID string,
+) {
+	if endpoint == "" {
+		endpoint = unmatchedEndpoint
+	}
+	observer, ok := e.durations.WithLabelValues(endpoint).(prometheus.ExemplarObserver)
+	if !ok {
+		return
+	}
+	observer.ObserveWithExemplar(elapsed.Seconds(), prometheus.Labels{"trace_id": traceID})
+}
+
 func (e *HTTPEndpointMetrics) Handler() http.Handler {
 	return promhttp.HandlerFor(e.registry, promhttp.HandlerOpts{})
 }

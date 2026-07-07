@@ -122,6 +122,8 @@ components:
     in: internal/recrawlfrontier/**
   searchremote:
     in: internal/searchremote/**
+  tracectx:
+    in: internal/tracectx/**
   wordforms:
     in: internal/wordforms/**
   tavilyapi:
@@ -534,6 +536,7 @@ deps:
       - searchcore
       - stopwords
       - dhttarget
+      - tracectx
     canUse:
       - yagomodel
       - yagoproto
@@ -674,6 +677,7 @@ deps:
   yagonode:
     mayDependOn:
       - neardup
+      - tracectx
       - contentquality
       - snippetfetch
       - vault

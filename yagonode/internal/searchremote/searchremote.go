@@ -16,6 +16,7 @@ import (
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -603,6 +604,9 @@ func (s searcher) sendRemoteSearchTo(
 	httpReq, err := newRemoteSearchRequest(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
 		return yagoproto.SearchResponse{}, fmt.Errorf("%w: request: %w", errRemoteSearchFailed, err)
+	}
+	if trace, ok := tracectx.FromContext(ctx); ok {
+		httpReq.Header.Set(tracectx.Header, trace.Child().Header())
 	}
 	httpResp, err := s.client.Do(httpReq)
 	if err != nil {
