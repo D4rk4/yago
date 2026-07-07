@@ -72,6 +72,9 @@ func Body(policy Policy) string {
 func Mount(mux *http.ServeMux, currentPolicy func() Policy) {
 	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		// The payload is assembled purely from package constants and served
+		// as text/plain, so no user input can reach a browser as markup.
+		// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter
 		_, _ = w.Write([]byte(Body(currentPolicy())))
 	})
 }
