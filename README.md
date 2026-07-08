@@ -1,330 +1,274 @@
 # YagoSeek
 
-**Open search infrastructure for developers.**
+<p align="center"><b>Your own federated search engine — one Go binary away.</b></p>
 
-*YagoSeek — your own federated search node.*
+<p align="center">
+  <img alt="Go 1.26" src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white">
+  <img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
+  <img alt="Status alpha" src="https://img.shields.io/badge/status-alpha-orange">
+  <img alt="YaCy protocol" src="https://img.shields.io/badge/YaCy%20P2P-wire%20compatible-6f42c1">
+  <img alt="No JS required" src="https://img.shields.io/badge/public%20portal-works%20without%20JS-2ea44f">
+</p>
 
-YagoSeek is a self-hosted, YaCy-compatible peer-to-peer search node: run your own
-index, join the federated network, and query it through a Tavily-compatible
-Search API or the built-in portal. It is built on `yago`, a Go workspace whose
-`yago-node` binary speaks the YaCy RWI/DHT wire protocol, alongside an optional
-crawler pipeline.
+**YagoSeek** is a self-hosted, YaCy-compatible peer-to-peer search node written
+in pure Go: run your own web index, join the federated YaCy swarm, crawl the
+web with a hardened crawler, and query everything through a Tavily-compatible
+Search API, YaCy-compatible endpoints, or a themeable public portal — all
+administered from a server-rendered console that works without JavaScript.
 
-**YagoSeek** is the product; **`yago`** is the toolkit — the Go module, the
-workspace, and the command-line binaries (`yago-node`, `yagocrawler`).
+**YagoSeek** is the product; **`yago`** is the toolkit — the Go workspace and
+its binaries (`yago-node`, `yagocrawler`).
 
-- Project home: https://yagoseek.dev/ — documentation at https://docs.yagoseek.dev/,
-  a hosted demo at https://demo.yagoseek.dev/, and network status at
-  https://status.yagoseek.dev/.
-- Source repository: https://github.com/D4rk4/yago/, importable as the Go module
-  `github.com/D4rk4/yago`.
+- Project home: https://yagoseek.dev/ · docs: https://docs.yagoseek.dev/ ·
+  demo: https://demo.yagoseek.dev/ · network status: https://status.yagoseek.dev/
+- Source: https://github.com/D4rk4/yago/ — importable as `github.com/D4rk4/yago`
 
-This repository is a fork of https://github.com/nikitakarpei/yacy-rwi-node.
-The original author is Nikita Karpei.
+> [!WARNING]
+> **Alpha software.** Everything described below is implemented, covered by
+> tests (unit, integration, and containerized end-to-end suites), and runs on
+> real nodes — but the project is young and still needs broad, adversarial,
+> real-world testing before you should trust it with anything critical.
+> Expect rough edges, please report what you hit, and keep backups (there is
+> a console page for that now).
 
-## Status
+---
 
-This is alpha-stage software. The current `yago-node` implementation focuses on
-YaCy RWI/DHT compatibility, durable document, RWI, and URL metadata vaults,
-local and federated search surfaces, and an optional crawler-to-node ingest
-path. It is not a drop-in replacement for the Java YaCy Search Server.
+## ✨ What you get
 
-The project roadmap in [PLAN.md](PLAN.md) describes a broader target: a practical
-self-hosted YaCy-like search peer with P2P participation, crawler integration,
-local and federated search, a Tavily-compatible Search API, and an administration
-UI. Treat that file as planned direction, not as a claim that every listed
-capability is already complete.
+### 🌐 A real YaCy peer
 
-## Current Scope
+- Speaks the **YaCy RWI/DHT wire protocol**: hello handshake, seed lists
+  (HTML/JSON/XML), inbound and outbound RWI/URL-metadata DHT transfers with
+  sender-side gates, remote RWI search, host-link index, peer messages,
+  profiles, and shared blacklists — interoperable with the Java YaCy network.
+- **Swarm participation**: seedlist bootstrap, peer roster with birth-date
+  promotion, LAN discovery, peer news, per-peer blocking, and a DHT gates
+  dashboard showing exactly why a transfer would or would not fire.
+- Deliberate divergences are documented, not hidden — see
+  [compatibility.md](yagonode/doc/compatibility.md).
 
-The node currently targets these responsibilities:
+### 🔍 Search that ranks, not just matches
 
-- advertise one YaCy senior peer identity;
-- answer YaCy peer liveness requests with self-identity rejection and answer RWI
-  capacity/status requests, including per-word RWI URL counts;
-- serve YaCy seed lists through `/yacy/seedlist.html`, `/yacy/seedlist.json`,
-  and `/yacy/seedlist.xml`, including upstream request filters such as
-  `minversion`;
-- bootstrap peers from configured YaCy seedlists, including seeds with either
-  offset or timestamp `UTC` wire values;
-- answer YaCy shared blacklist export requests through `/yacy/list.html` with
-  YaCy network-unit checks and entries from list files named in
-  `YAGO_DATA_DIR/SETTINGS/yacy.conf` `BlackLists.Shared`;
-- answer YaCy peer profile export requests through `/yacy/profile.html` with
-  properties from `YAGO_DATA_DIR/SETTINGS/profile.txt` when that file exists;
-- answer YaCy host-link index requests through `/yacy/idx.json?object=host` with
-  a bounded incoming host graph counted from stored document outlinks;
-- answer YaCy peer message permission requests without requiring `iam` or
-  parsing post-only body fields and store inbound `/yacy/message.html` posts
-  without attachment support;
-- answer YaCy `/yacy/urls.xml` remote crawl URL requests with an empty queue,
-  network-check and target-check remote crawl receipts with YaCy retry delay,
-  and serve URL-hash metadata requests from locally stored metadata;
-- receive inbound RWI postings through `/yacy/transferRWI.html`, including YaCy
-  preflight result strings for wrong network units and missing required fields;
-- receive URL metadata through `/yacy/transferURL.html` with YaCy network-auth
-  preflight behavior;
-- run retry-aware outbound DHT handoff cycles fed from stored RWI postings, with
-  YaCy-style sender gates, target selection, local deletion, restart recovery,
-  restore, peer quarantine, metrics, and a JSON gate status endpoint;
-- serve remote RWI search requests through `/yacy/search.html`;
-- serve local and DHT-targeted reachable-peer public search requests through
-  `/yacysearch.json`, `/yacysearch.rss`, and `/yacysearch.html`, using the
-  local full-text `SearchIndex` path for `resource=local`, filtering remote
-  targets by advertised RWI inventory, using YaCy index abstracts for multi-term
-  remote result conjunctions, and balancing redundant DHT candidates randomly;
-- serve Tavily-like `POST /search` responses over the same search core, accepting
-  the current search contract fields, returning JSON error envelopes and request
-  IDs, optionally requiring a local bearer token, using local search for
-  basic/fast depths, using DHT-selected reachable-peer search for
-  `search_depth=advanced`, and returning stored page image metadata when
-  `include_images` is requested;
-- serve Tavily-like `POST /extract` responses that return stored-document content
-  for URLs already in the index, with controlled `failed_results` for uncached
-  URLs and no fetch-on-extract;
-- expose `/opensearchdescription.xml`, `/suggest.json`, and `/suggest.xml` for
-  browser search integration and recent-query suggestions;
-- store accepted document ingest payloads, RWI postings, and URL metadata
-  durably;
-- expose `/health`, `/ready`, `/metrics`, DHT gate status, and a recent
-  structured event log on the ops listener, including inbound and outbound DHT
-  transfer series, peer discovery gauges/counters, local search index stats, and
-  a machine-readable compatibility catalog;
-- optionally publish `url`, `sitemap`, `sitelist`, or `robots` crawl orders and
-  consume crawler ingest batches over gRPC when crawling is configured;
-- filter denylisted results out of every search surface: an operator-managed,
-  restart-surviving URL and whole-domain blacklist drops matching results from
-  local, peer, and web-fallback search alike;
-- reschedule crawled pages for recrawl on their profile cadence through a durable,
-  node-side frontier that survives node and crawler restarts;
-- keep a bounded, restart-surviving log of recent structured node events (no
-  secrets) alongside the in-memory event ring;
-- optionally serve a minimal public search portal at the public listener root when
-  `YAGO_PUBLIC_SEARCH_UI_ENABLED` is set, and optionally redirect plain HTTP to
-  HTTPS (both live-toggleable at runtime);
-- serve a native, server-rendered administration console at `/admin/` behind an
-  admin session, with: live Overview status; an admin Search console; a Crawler
-  section with simple/expert crawl start, a live run monitor (per-outcome tallies,
-  order-queue depth, results/rejections rollup) and per-run pause, resume, cancel,
-  and pages-per-minute controls; a Network section with per-peer detail, peer
-  block/unblock, seedlist refresh, and a read-only peer-news view; an Index section
-  with document and term browsing, delete-by-URL/domain, and blacklist management;
-  a Performance dashboard; a Configuration section that shows the effective config
-  and edits runtime settings and listener binds; a Security section for password
-  change and API-key mint/list/revoke; and a severity/category-filtered event log.
-  This natively covers YaCy's `/Crawler_p.html` and much of its admin surface; the
-  legacy HTML endpoints themselves stay unsupported by design.
+- Local index (sharded [Bleve](https://blevesearch.com/)) + federated swarm
+  fan-out + optional web fallback (off by default), merged with
+  **reciprocal-rank fusion** and **MMR result diversity**.
+- **Multilingual morphology**: documents route to per-language analyzers
+  (Snowball stemming), single-word swarm queries can expand into
+  corpus-observed inflections, and partial words match through trigram fields.
+- YaCy query operators (`site:`, `inurl:`, `filetype:`, `language:`, `tld:`,
+  `author:`, `"phrase"`, `-not`, `near`, `/date`), facet sidebar, content
+  verticals (images/audio/video/apps with a lightbox grid), spell-check
+  ("did you mean"), zero-result fuzzy recovery, query-term-highlighted
+  snippets, anchor-text document expansion, and an explainable ranking API.
+- **Tavily-compatible `/search` and `/extract`** with API keys and scopes —
+  point LLM agents at your own index.
 
-The node stores bounded extracted document text, page description metadata,
-bounded image URL/alt metadata, and other document metadata, and maintains an
-embedded persistent Bleve full-text fallback index for local public search under
-`YAGO_DATA_DIR/search.bleve`. The fallback index is opened on startup and is
-rebuilt from the document store only when missing or unusable. Bleve is the
-committed local search backend, tuned for web search. The node does not store unbounded raw
-HTML bodies. The crawler is a separate, optional worker process that can fetch
-pages, build document ingest payloads and YaCy-compatible references, and
-publish ingest batches back to the node.
+### 🕷️ A crawler built for the hostile web
 
-## Repository Layout
+- Separate `yagocrawler` worker(s) connected over gRPC with durable leased
+  orders, absolute-tally progress reports, and backpressured at-least-once
+  ingest — restart anything, lose nothing.
+- **Format coverage beyond HTML**: PDF, DOCX/XLSX/PPTX, legacy DOC/XLS/PPT,
+  ODT/ODS/ODP, RTF, EPUB, plain text/CSV/Markdown — parsed with stdlib-first
+  parsers and validated against real files.
+- **Two-tier fetching**: fast HTTP first, headless-browser fallback (bundled
+  headless-shell) for bot-walled and JavaScript-rendered pages, both behind a
+  dial-time SSRF egress guard; per-profile toggles for robots, TLS authority,
+  and browser use.
+- Politeness and defense: robots.txt with a sanitizer for real-world malformed
+  files, per-host adaptive pacing and crawl delays, URL canonicalization,
+  SimHash near-duplicate collapse, crawl-trap defense, per-host and per-run
+  page budgets, boilerplate extraction, and a deterministic content-quality
+  gate.
+- **A living index**: a default 30-day recrawl cadence refreshes pages, and a
+  recrawl that finds a page permanently gone (404/410) tombstones it out of
+  the index — no eternal dead links.
+- Autocrawler: swarm greedy-learning and web-fallback seeding fill a young
+  index automatically, fully tunable from the console.
 
-| Path | Purpose |
-| --- | --- |
-| `yagonode` | The `yago-node` daemon, YaCy peer protocol endpoints, document, RWI, and URL metadata vaults, search surfaces, metrics, peer exchange, and node-side crawl orchestration. |
-| `yagocrawler` | Optional crawler worker that fetches pages through a bounded HTTP fast path with browser fallback, then emits document ingest payloads, RWI postings, and URL metadata. |
-| `yagocrawlcontract` | Shared JSON message contract between the node and crawler. |
-| `yagomodel` | YaCy domain values and codecs. |
-| `yagoproto` | YaCy peer-to-peer endpoint paths, request/response DTOs, and wire protocol helpers. |
-| `yagonode/doc` | User-facing node specification, configuration, protocol, interoperability, and ADR documentation. |
-| `FEATURES.md` | Markdown feature catalog for implemented, partial, and planned capabilities. |
-| `PLAN.md` | Development roadmap. |
+### 🎨 A public portal your users can keep
 
-## Requirements
+- Server-rendered, **works without JavaScript**, accessible (skip links, ARIA,
+  keyboard navigation), mobile-friendly, with OpenSearch browser integration
+  and RSS/JSON output for every query.
+- **Operator-themeable end to end**: the search and results pages are
+  Handlebars templates editable from the console — visually with an embedded
+  GrapesJS editor or as code with CodeMirror — with one-click return to the
+  built-in design and a fallback that keeps a broken template from ever
+  blanking the public surface.
 
-- Go 1.26.
-- Docker or Podman for container and end-to-end workflows.
+### 🛠️ An admin console with everything in one place
 
-Outbound node and crawler connections are screened in-process at dial time, so
-no external forward proxy is required. Private networks are blocked by default;
-set `YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS=true` (node) or
-`YAGOCRAWLER_ALLOW_PRIVATE_NETWORKS=true` (crawler) to open all private space, or
-name specific ranges with `YAGO_EGRESS_ALLOW_CIDRS` / `YAGOCRAWLER_ALLOW_CIDRS`
-(comma-separated CIDRs) to reach only those private networks. Loopback,
-link-local (including the cloud metadata range), and reserved ranges stay blocked
-either way.
+- Server-rendered (htmx-enhanced, no SPA, no CDN — every asset self-hosted),
+  with two visual themes and full no-JS degradation.
+- Sections: Overview, Search (with suggestions), Activity, Public portal
+  (settings + design tabs), Autocrawler, Crawler (dispatch, live monitor,
+  pause/resume/rate control, health), Network (peers, seedlists, news,
+  blocking), Index (browse, delete, blacklist, export, schema), Performance
+  (live tiles **and sampled history sparklines**), Backup & restore,
+  Configuration (runtime settings with checkboxes, batch save, per-setting
+  reset), Security (Argon2id admin login, session management, scoped API
+  keys), Logs (filterable events), Restart (node and crawler fleet, can be
+  disabled by config).
+- First-run **setup wizard**, CSRF everywhere, strict CSP, login rate
+  limiting, and a config-events audit trail.
 
-Build and lint tools are pinned through the repository toolchain flow and are
-installed under `.toolchain/` by `make tools` or `make verify`.
+### 📦 Operations without surprises
 
-## Configuration
+- One static binary per role; Docker/Compose on the shared `/opt/yago`
+  layout, hardened systemd units, and Debian packages built by a tag-driven
+  release pipeline with generated notes.
+- Prometheus `/metrics` (RED/USE + saturation), burn-rate alert rules with an
+  SLO doc, health/readiness endpoints, auth-gated pprof, trace-correlated
+  structured logs (never secrets), and a durable event store.
+- **Offline backup/restore scripts** for docker and systemd — covered by an
+  automated end-to-end round-trip test — plus a console page that shows
+  storage usage and hands you the exact commands.
+- Storage: a sharded, compressed, quota-bounded vault (bbolt + zstd) where
+  losing one shard file loses 1/N of the keyspace, never the store; shard
+  integrity checks and index-orphan healing run at startup.
+- Outbound traffic is screened in-process at dial time: private networks,
+  loopback, link-local, and the cloud metadata range are blocked by default,
+  with explicit CIDR allowlists (`YAGO_EGRESS_ALLOW_CIDRS`) when you need
+  them.
 
-The node is configured through environment variables. A bare node needs none of
-them to start: on first run it generates its peer identity (hash and name) and
-persists it to the data directory, reusing it across restarts. To pin a specific
-identity, set:
+---
 
-```sh
-YAGO_PEER_HASH=...
-YAGO_PEER_NAME=...
-```
+## 🧭 YaCy parity at a glance
 
-Generate a peer hash with:
+The [compatibility matrix](yagonode/doc/compatibility.md) tracks every surface
+against upstream YaCy (audited against `yacy/yacy_search_server`):
+
+| Status | Count | Meaning |
+| --- | ---: | --- |
+| ✅ implemented | 18 | wire-compatible, tested against fixtures captured from Java YaCy |
+| 🟡 partial | 14 | interoperable core with documented divergences |
+| 🔵 planned | 1 | on the books, not started |
+| ⛔ unsupported | 3 | deliberate non-goals (embedded Solr API ×2, Java admin page clones) |
+
+Highlights: `hello`, `query`, `transferRWI`, `transferURL`, remote `search`,
+seed lists, `idx.json`, `list.html`, `message.html`, `profile.html`,
+`urls.xml`, `crawlReceipt`, and the `yacysearch.{json,rss,html}` +
+`suggest.{json,xml}` + OpenSearch client surfaces all interoperate with Java
+peers. The admin plane is deliberately different (Argon2id sessions plus
+scoped API keys instead of digest auth) — plain YaCy *search* clients are
+unaffected. Remote crawl for the swarm is answered but disabled by default
+([policy](yagonode/doc/remote-crawl-policy.md)).
+
+---
+
+## 🚀 Quick start
+
+Requirements: Docker (or Podman); for source builds, Go 1.26.
 
 ```sh
-make peer-hash
-```
-
-Common node variables:
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `YAGO_PEER_ADDR` | `:8090` | YaCy peer-to-peer wire protocol (`/yacy/*`) listener; its root `/` serves the node's identity landing page. |
-| `YAGO_PUBLIC_ADDR` | `:8080` | Public search listener: the search portal, OpenSearch description/suggestions, the Tavily-compatible API (`POST /search`, `POST /extract`), and `/yacysearch.*`. Set to `off` (or `none`) to run a pure peer node with no public surface. The default is unprivileged so the `nonroot` container binds it without extra capabilities; front it with a reverse proxy for TLS. |
-| `YAGO_OPS_ADDR` | `:9090` | Ops listener for `/health`, `/ready`, `/metrics`, node-side crawl dispatch, and the admin console (root `/` redirects to `/admin/`). Every endpoint except `/health` and `/ready` requires a valid admin session or a scoped `Authorization: Bearer` API key. |
-| `YAGO_ADMIN_USER` | empty | Administrator username. When set together with `YAGO_ADMIN_PASSWORD`, the admin is provisioned on every start (authoritative). |
-| `YAGO_ADMIN_PASSWORD` | empty | Administrator password, stored as an Argon2id hash. Leave both admin variables empty to instead create the first admin with `POST /api/admin/v1/auth/setup`. There is no default password. |
-| `YAGO_ADMIN_CORS_ORIGINS` | empty | Comma-separated origin allowlist for cross-origin browser calls to the ops surface. Empty denies all; cross-origin is off by default. |
-| `YAGO_SEARCH_CORS_ORIGINS` | empty | Comma-separated origin allowlist for cross-origin browser calls to the public search endpoints. Empty denies all. |
-| `YAGO_DATA_DIR` | `./data` | Directory for persistent node storage, `search.bleve`, YaCy-compatible `SETTINGS/profile.txt`, and shared blacklist files configured by `SETTINGS/yacy.conf`. |
-| `YAGO_NETWORK_NAME` | `freeworld` | YaCy network name. |
-| `YAGO_ADVERTISE_HOST` | auto | Public host advertised to peers. When unset and seedlists are configured, the node auto-detects its first non-loopback IPv4; set it explicitly behind NAT or Docker bridge networking. |
-| `YAGO_ADVERTISE_PORT` | peer listener port | Public port advertised to peers. |
-| `YAGO_PUBLIC_SELF_TEST_URL` | local peer URL | Base URL used by outbound DHT gates to self-test `/yacy/query.html?object=rwicount`. |
-| `YAGO_SEEDLIST_URLS` | empty | Comma-separated YaCy seedlist URLs. |
-| `YAGO_DHT_REDUNDANCY` | `3` | Redundant DHT targets per vertical partition, matching YaCy freeworld senior peers. |
-| `YAGO_DHT_PARTITION_EXPONENT` | `4` | YaCy vertical DHT partition exponent used for outbound transfer and global remote search. |
-| `YAGO_STORAGE_QUOTA` | `1GB` | Node storage quota. |
-| `YAGO_SEARCH_API_KEY` | empty | Optional local bearer token required by Tavily-compatible `POST /search` when set. |
-| `YAGO_CRAWL_RPC_ADDR` | empty | Enables node-crawler integration when set; the address the node serves the crawl gRPC endpoint on (e.g. `:9091`). |
-
-Common crawler variables:
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `YAGOCRAWLER_REQUEST_TIMEOUT` | `15s` | Whole-request deadline for crawler HTTP requests, including body reads. |
-| `YAGOCRAWLER_CONNECT_TIMEOUT` | `5s` | Dial timeout for crawler HTTP connections, including DNS and multi-address dialing. |
-| `YAGOCRAWLER_TLS_TIMEOUT` | `5s` | TLS handshake timeout for crawler HTTPS requests. |
-| `YAGOCRAWLER_HEADER_TIMEOUT` | `10s` | Time allowed for crawler HTTP response headers after the request is written. |
-| `YAGOCRAWLER_MAX_REDIRECTS` | `10` | Maximum HTTP redirect hops followed by the crawler fast fetch path. Set `0` to reject the first redirect. |
-| `YAGOCRAWLER_SITEMAP_URL_LIMIT` | `10000` | Maximum URLs imported from one sitemap or sitelist crawl seed before frontier admission. |
-
-See [yagonode/doc/configuration.md](yagonode/doc/configuration.md) for the full
-configuration reference.
-
-## Local Stack
-
-Copy the examples and fill the required peer values:
-
-```sh
-cp .env.example .env
 cp docker-compose.yml.example docker-compose.yml
+docker compose up -d
 ```
 
-Then build and start the stack:
+| Port | Listener | Serves |
+| --- | --- | --- |
+| `8090` | Peer (P2P) | the YaCy wire protocol (`/yacy/*`) — keep reachable |
+| `8080` | Public search | portal, `yacysearch.*`, OpenSearch, Tavily `/search` + `/extract` |
+| `9090` | Admin & ops | console, `/health`, `/ready`, `/metrics` |
+
+Open `http://localhost:9090/admin/` — the first-run **setup wizard** creates
+the administrator account and walks through the initial settings. Enable the
+public portal from the Public portal page when you are ready to serve
+visitors.
+
+Try it from the command line:
 
 ```sh
-docker compose up --build
-```
-
-The example stack starts:
-
-- `yago-node` on ports `8090` and `9090`;
-- `yagocrawler` as the optional crawler worker.
-
-When `YAGO_CRAWL_RPC_ADDR` is configured, the ops listener accepts local crawl dispatch
-requests at `POST /crawl`. The request body includes `seeds` and optional
-`startMode`; supported modes are `url`, `sitemap`, `sitelist`, and `robots`.
-Sitemap and sitelist seeds are fetched by the crawler through the same public-web
-egress guards as normal pages and expanded into bounded URL roots before frontier
-admission. A `robots` start reads each seed host's `robots.txt` and expands the
-sitemaps named in its `Sitemap:` directives.
-
-Useful checks:
-
-```sh
-curl -fsS http://127.0.0.1:9090/health
-curl -fsS http://127.0.0.1:9090/ready
-curl -fsS http://127.0.0.1:9090/metrics
-curl -fsS http://127.0.0.1:9090/api/admin/v1/compatibility
-curl -fsS http://127.0.0.1:9090/api/admin/v1/network/dht/gates
-curl -fsS http://127.0.0.1:9090/api/admin/v1/index/stats
-curl -fsS http://127.0.0.1:8090/
-curl -fsS 'http://127.0.0.1:8090/yacysearch.json?query=test&resource=local&maximumRecords=10'
-curl -fsS 'http://127.0.0.1:8090/yacysearch.json?query=test&resource=global&maximumRecords=10'
-curl -fsS 'http://127.0.0.1:8090/yacysearch.rss?query=test&resource=local&maximumRecords=10'
-curl -fsS 'http://127.0.0.1:8090/yacysearch.html?query=test&resource=local&maximumRecords=10'
+curl -fsS 'http://127.0.0.1:8080/yacysearch.json?query=test&resource=local'
 curl -fsS -H 'content-type: application/json' \
-  -d '{"query":"test","search_depth":"basic","max_results":5}' \
-  http://127.0.0.1:8090/search
-curl -fsS http://127.0.0.1:8090/opensearchdescription.xml
-curl -fsS 'http://127.0.0.1:8090/suggest.json?query=test'
-curl -fsS 'http://127.0.0.1:8090/suggest.xml?query=test'
-curl -fsS http://127.0.0.1:8090/yacy/seedlist.html
-curl -fsS http://127.0.0.1:8090/yacy/seedlist.json
-curl -fsS http://127.0.0.1:8090/yacy/seedlist.xml
-curl -fsS http://127.0.0.1:8090/yacy/profile.html
-curl -fsS 'http://127.0.0.1:8090/yacy/idx.json?object=host'
-curl -fsS 'http://127.0.0.1:8090/yacy/message.html?process=permission'
-curl -fsS 'http://127.0.0.1:8090/yacy/list.html?col=black'
-curl -fsS 'http://127.0.0.1:8090/yacy/urls.xml?network.unit.name=freeworld&call=remotecrawl'
+  -d '{"query":"test","max_results":5}' http://127.0.0.1:8080/search
 ```
 
-## Development
+A bare node needs **no configuration** to start: it generates and persists its
+peer identity on first run. The variables you are most likely to touch:
 
-The repository is a Go workspace with five modules. The main quality gate is:
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `YAGO_DATA_DIR` | `/opt/yago/data` (container) | all persistent state — index, vault, identity |
+| `YAGO_SEEDLIST_URLS` | example list | YaCy seedlists to bootstrap the swarm from |
+| `YAGO_PUBLIC_ADDR` | `:8080` | public listener; `off` runs a pure peer node |
+| `YAGO_PUBLIC_SEARCH_UI_ENABLED` | `false` | serve the portal at the public root |
+| `YAGO_CRAWL_RPC_ADDR` | empty | set (e.g. `:9091`) to enable the crawler integration |
+| `YAGO_STORAGE_QUOTA` | `1GB` | storage cap; eviction keeps the node inside it |
+
+The full reference — every variable and its default — is
+[doc/configuration.md](yagonode/doc/configuration.md). Bare-metal installs get
+hardened systemd units and Debian packages under [deploy/](deploy/).
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart LR
+    subgraph crawler ["yagocrawler (0..n workers)"]
+        F["fetch: HTTP + headless browser"] --> P["parse: HTML, PDF, Office, eBooks"]
+        P --> I["index artifacts"]
+    end
+    subgraph node ["yago-node"]
+        B[("crawl broker<br/>durable leases")]
+        V[("sharded vault<br/>bbolt + zstd")]
+        X[("sharded Bleve index")]
+        S["search core<br/>RRF + MMR + morphology"]
+    end
+    I -- "gRPC ingest (at-least-once)" --> B --> V --> X --> S
+    B -- "orders / control / progress" --> F
+    S --> PEER["peer listener :8090<br/>YaCy RWI/DHT"]
+    S --> PUB["public listener :8080<br/>portal · yacysearch · Tavily API"]
+    S --> OPS["ops listener :9090<br/>admin console · metrics"]
+    PEER <--> SWARM(("YaCy swarm"))
+```
+
+| Module | Purpose |
+| --- | --- |
+| `yagonode` | the peer daemon: protocol endpoints, vaults, search surfaces, portal, admin console, metrics |
+| `yagocrawler` | the optional crawler worker: fetch, parse, and emit ingest batches |
+| `yagocrawlcontract` | the shared node↔crawler data model and gRPC contract |
+| `yagomodel` / `yagoproto` | the YaCy wire model and protocol helpers — reusable on their own |
+| `yagoegress` | the shared dial-time SSRF egress guard |
+
+Architecture decisions live in [ADRs](yagonode/doc/adr/README.md) (34 and
+counting, including the deliberate no-gos); the full feature ledger with
+per-feature test pointers is [FEATURES.md](FEATURES.md).
+
+## 🛠️ Development
 
 ```sh
-make verify
+make verify   # fmt-check · vet · lint · arch · race tests · coverage · build
+make e2e      # containerized end-to-end suites (node, crawler, backup/restore)
 ```
 
-That runs formatting checks, `go vet`, linting, architecture checks, tests with
-race detection, coverage checks, and builds across all modules.
+Every feature lands with tests; new third-party dependencies require an ADR
+first; `make verify` plus Semgrep and Trivy scans gate every commit. Build and
+lint tools are pinned and installed under `.toolchain/` by `make tools`.
 
-Focused commands are also available:
+## 📚 Documentation
 
-```sh
-make fmt-check
-make vet
-make lint
-make arch
-make test
-make cover-check
-make build
-```
+| Doc | What's inside |
+| --- | --- |
+| [compatibility.md](yagonode/doc/compatibility.md) | the YaCy parity matrix, endpoint by endpoint |
+| [configuration.md](yagonode/doc/configuration.md) | every environment variable and its default |
+| [specification.md](yagonode/doc/specification.md) | the node's behavior specification |
+| [metrics.md](yagonode/doc/metrics.md) · [slo.md](yagonode/doc/slo.md) | observability and alerting |
+| [backup-restore.md](yagonode/doc/backup-restore.md) | the offline backup/restore procedure |
+| [yacy-dht-interop.md](yagonode/doc/yacy-dht-interop.md) | how DHT transfer selection works |
+| [remote-crawl-policy.md](yagonode/doc/remote-crawl-policy.md) | why remote crawl is off by default |
+| [ADR index](yagonode/doc/adr/README.md) | every architecture decision, including the no-gos |
 
-End-to-end tests use container images:
+## 🤝 Credits
 
-```sh
-make e2e-node-image
-make e2e-crawler-image
-make e2e
-```
+This repository started as a fork of
+[nikitakarpei/yacy-rwi-node](https://github.com/nikitakarpei/yacy-rwi-node) by
+Nikita Karpei, and owes its interoperability to the
+[YaCy](https://yacy.net/) project and its two decades of decentralized search.
 
-## Documentation
+## 📄 License
 
-Start with these documents:
-
-- [yagonode/doc/adr/README.md](yagonode/doc/adr/README.md) for the architecture
-  decision records and the new-dependency rule;
-- [yagonode/doc/specification.md](yagonode/doc/specification.md) for the current
-  node contract and non-goals;
-- [yagonode/doc/yacy-dht-interop.md](yagonode/doc/yacy-dht-interop.md) for YaCy
-  DHT interoperability notes;
-- [yagonode/doc/yacy-wire-protocol.md](yagonode/doc/yacy-wire-protocol.md) for
-  peer protocol details;
-- [yagonode/doc/compatibility.md](yagonode/doc/compatibility.md) for supported,
-  partial, planned, and unsupported YaCy/Tavily surfaces;
-- [yagonode/doc/yacy-upstream-test-parity.md](yagonode/doc/yacy-upstream-test-parity.md)
-  for the mapping between upstream YaCy JUnit tests and this repository's
-  compatibility tests;
-- [yagonode/doc/remote-crawl-policy.md](yagonode/doc/remote-crawl-policy.md) for
-  the disabled-by-default remote crawl security policy;
-- [yagonode/doc/metrics.md](yagonode/doc/metrics.md) for the Prometheus metrics
-  endpoint, its authentication, and the published metric groups;
-- [yagocrawler/README.md](yagocrawler/README.md) for crawler behavior;
-- [yagocrawlcontract/README.md](yagocrawlcontract/README.md) for node-crawler
-  message flow.
-
-## License
-
-This project is licensed under the GNU Affero General Public License version 3.
-See [LICENSE](LICENSE).
+[AGPL-3.0](LICENSE). Searches fan out to peers in the YaCy network, which see
+your query terms; the portal footer explains result provenance to your users.

@@ -78,9 +78,10 @@ sandbox under `NoNewPrivileges`.
 ## Debian package
 
 The `.deb` build automation (which installs this layout, ships these units,
-seeds the env files, and creates the `yago` user) is tracked as OPS-05 in
-`PLAN.md`. The runtime is already deployment-agnostic, so the package only has to
-place files and register the services.
+seeds the env files, and creates the `yago` user) lives in
+[debian/](debian/) and runs in the release pipeline. The runtime is
+deployment-agnostic, so the package only has to place files and register the
+services.
 
 ## Debian package
 

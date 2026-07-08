@@ -15,7 +15,7 @@ at-most-once delivery: if a worker crashed, disconnected, or was killed mid-craw
 after receiving an order but before finishing it, that order's work was lost with
 no redelivery, and the node had no signal that a worker was still alive.
 
-PLAN.md CRAWL-07 asks for durable consumer-group behaviour and a worker
+The CRAWL-07 roadmap task asks for durable consumer-group behaviour and a worker
 heartbeat so a disposable, restartable crawler fleet does not silently drop work.
 The crawler already ran the acknowledgement seams (`Ack`/`Nak`/`Term`) as no-ops
 because there was nothing on the node to settle.

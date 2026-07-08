@@ -16,7 +16,7 @@ brute-forced cheaply. The Go standard library has no password-hashing primitive:
 not yet a direct dependency of the node module. Adding a dependency requires an
 ADR per `AGENTS.md`.
 
-PLAN.md SEC-01 already names the preferred primitive: Argon2id via
+The SEC-01 roadmap task already named the preferred primitive: Argon2id via
 `golang.org/x/crypto/argon2` with stored parameters. Argon2id is the current
 OWASP-recommended default for password storage, is memory-hard (resisting GPU and
 ASIC attacks better than bcrypt), and won the Password Hashing Competition.

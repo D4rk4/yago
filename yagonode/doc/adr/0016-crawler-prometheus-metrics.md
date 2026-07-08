@@ -12,7 +12,7 @@ ADR 0011 adopted `github.com/prometheus/client_golang` for the node's `/metrics`
 surface. The crawler is a separate process that dials the node over gRPC and has
 had no metrics of its own, so an operator could not see crawler fetch volume,
 failures, bytes downloaded, robots denials, active jobs, or how many ingest
-batches it published. PLAN.md CRAWL-07 requires those `yacy_crawler_*` metrics so
+batches it published. The CRAWL-07 roadmap task requires those `yacy_crawler_*` metrics so
 multiple workers and backpressure behaviour can be observed.
 
 The crawler module (`yagocrawler`) did not previously depend on

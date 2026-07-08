@@ -128,7 +128,7 @@ in the local roster, and quarantine decisions remove the peer from the reachable
 and known peer sets so target selection stops using it.
 
 The Prometheus edge registers outbound DHT counters for batches, postings,
-failures, and unknown URL requests using the names from `PLAN.md`. The
+failures, and unknown URL requests (see [metrics.md](metrics.md)). The
 runtime scheduler observes each distribution receipt, so these counters reflect
 live DHT traffic as stored RWI rows are fed into the outbound queue.
 
