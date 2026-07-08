@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
 
@@ -11,7 +12,10 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/crawlresults"
 )
 
-const msgIngestDecodeFailed = "ingest batch decode failed"
+const (
+	msgIngestDecodeFailed = "ingest batch decode failed"
+	ingestNakDelay        = 5 * time.Second
+)
 
 type IngestReceiver struct {
 	out chan crawlresults.IngestDelivery
@@ -47,7 +51,7 @@ func newIngestReceiver(
 		delivery := crawlresults.IngestDelivery{
 			Batch: batch,
 			Ack:   func(context.Context) error { return msg.Ack() },
-			Nak:   func(context.Context) error { return msg.Nak() },
+			Nak:   func(context.Context) error { return msg.NakWithDelay(ingestNakDelay) },
 		}
 		select {
 		case out <- delivery:

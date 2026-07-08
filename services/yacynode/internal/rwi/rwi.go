@@ -41,6 +41,7 @@ type PostingReceiver interface {
 
 type Receipt struct {
 	Busy       bool
+	TooLarge   bool
 	Pause      int
 	UnknownURL []yacymodel.Hash
 }

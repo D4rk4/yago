@@ -24,7 +24,7 @@ func (i postingIntake) Receive(
 	entries []yacymodel.RWIPosting,
 ) (Receipt, error) {
 	if len(entries) > i.batchCap {
-		return Receipt{Busy: true, Pause: i.pauseSeconds}, nil
+		return Receipt{Busy: true, TooLarge: true, Pause: i.pauseSeconds}, nil
 	}
 
 	atCapacity, err := i.vault.AtCapacity(ctx)

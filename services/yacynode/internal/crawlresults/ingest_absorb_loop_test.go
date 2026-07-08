@@ -113,6 +113,16 @@ func TestAbsorbNaksWhenPostingReceiverErrors(t *testing.T) {
 	}
 }
 
+func TestAbsorbNaksWhenPostingBatchTooLarge(t *testing.T) {
+	urls := &recordingURLReceiver{}
+	postings := &recordingPostingReceiver{receipt: rwi.Receipt{Busy: true, TooLarge: true}}
+	acked, naked := deliver(t, urls, postings)
+
+	if acked || !naked {
+		t.Fatalf("acked=%v naked=%v, want naked", acked, naked)
+	}
+}
+
 func TestRunStopsWhenStreamCloses(t *testing.T) {
 	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery)}
 	close(stream.out)
