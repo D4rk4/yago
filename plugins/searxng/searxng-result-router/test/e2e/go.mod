@@ -69,7 +69,7 @@ require (
 )
 
 replace (
-	github.com/nikitakarpei/yacy-rwi-node/e2eharness => ../../../../../e2eharness
+	github.com/nikitakarpei/yacy-rwi-node/e2eharness => ../../../../../test/e2eharness
 	github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract => ../../../../../libraries/yacycrawlcontract
 	github.com/nikitakarpei/yacy-rwi-node/yacymodel => ../../../../../libraries/yacymodel
 )
