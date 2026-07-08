@@ -75,6 +75,7 @@ type node struct {
 	peerBlock     *peerblock.Store
 	denylist      *urldenylist.Store
 	identity      nodeidentity.Identity
+	theme         *portaltheme.Theme
 }
 
 type nodeTelemetry struct {
@@ -197,6 +198,7 @@ func assembleNode(
 		denylist:   surfaces.denylist,
 		activity:   surfaces.activity,
 		schedules:  surfaces.schedules,
+		theme:      surfaces.theme,
 		identity:   identity,
 		ranking:    surfaces.ranking,
 		hostRank:   surfaces.hostRank,
@@ -245,6 +247,7 @@ type nodeSurfaces struct {
 	denylist  *urldenylist.Store
 	activity  *searchactivity.Tracker
 	schedules *crawlschedule.Store
+	theme     *portaltheme.Theme
 }
 
 func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
@@ -307,6 +310,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		searcher:  searcher,
 		suggest:   suggest,
 		publicMux: limitedPublic,
+		theme:     theme,
 		ranking:   ranking,
 		hostRank:  hostRankHolder,
 		spell:     spellHolder,
@@ -393,6 +397,7 @@ type nodeParts struct {
 	spell      *spellcheck.Holder
 	wordForms  *wordforms.Holder
 	swarmMorph bool
+	theme      *portaltheme.Theme
 }
 
 func newAssembledNode(parts nodeParts) node {
@@ -430,6 +435,7 @@ func newAssembledNode(parts nodeParts) node {
 		peerBlock:     parts.peerBlock,
 		denylist:      parts.denylist,
 		identity:      parts.identity,
+		theme:         parts.theme,
 	}
 }
 

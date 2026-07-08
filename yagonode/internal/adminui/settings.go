@@ -47,7 +47,7 @@ type SettingGroup struct {
 // regardless of the order the settings source emits its items. Unlisted
 // categories follow in first-seen order.
 var settingGroupOrder = []string{
-	"General", "Public portal", "Search", "Swarm", "Crawler",
+	"General", "Search", "Swarm", "Crawler",
 	"Web fallback", "Extraction", "Monitoring", "Network & peers",
 }
 

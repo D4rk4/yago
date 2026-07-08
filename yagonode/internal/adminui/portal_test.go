@@ -65,16 +65,47 @@ func TestPortalSectionRendersTabsAndSubset(t *testing.T) {
 	}
 }
 
-func TestPortalNavOrderBetweenConfigurationAndSecurity(t *testing.T) {
+func TestPortalNavOrderBetweenActivityAndAutocrawler(t *testing.T) {
 	t.Parallel()
 
 	console := New(Options{Settings: portalTestSettings()})
 	got := do(t, console, "/admin/portal")
-	config := strings.Index(got.body, `cds-nav__label">Configuration</span>`)
+	activity := strings.Index(got.body, `cds-nav__label">Activity</span>`)
 	portal := strings.Index(got.body, `cds-nav__label">Public portal</span>`)
-	security := strings.Index(got.body, `cds-nav__label">Security</span>`)
-	if config < 0 || config >= portal || portal >= security {
-		t.Fatalf("nav order wrong: config@%d portal@%d security@%d", config, portal, security)
+	autocrawler := strings.Index(got.body, `cds-nav__label">Autocrawler</span>`)
+	if activity < 0 || activity >= portal || portal >= autocrawler {
+		t.Fatalf(
+			"nav order wrong: activity@%d portal@%d autocrawler@%d",
+			activity,
+			portal,
+			autocrawler,
+		)
+	}
+}
+
+// TestConfigurationSheetHidesPortalCategory pins the split introduced with the
+// dedicated Public portal page: the flat Configuration sheet must not render a
+// second, competing form for the portal-facing keys.
+func TestConfigurationSheetHidesPortalCategory(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Config:   fakeConfig{view: ConfigView{}},
+		Settings: portalTestSettings(),
+	})
+	got := do(t, console, "/admin/configuration")
+	if got.status != http.StatusOK {
+		t.Fatalf("status = %d", got.status)
+	}
+	if strings.Contains(got.body, `id="tab-public-portal"`) {
+		t.Error("Configuration must not render a Public portal tab")
+	}
+	if strings.Contains(got.body, `value="portal.enabled"`) ||
+		strings.Contains(got.body, `name="key" value="portal.greeting"`) {
+		t.Error("portal keys must not be editable from Configuration")
+	}
+	if !strings.Contains(got.body, "Network &amp; peers") {
+		t.Error("the remaining categories must still render")
 	}
 }
 
@@ -118,6 +149,9 @@ func TestPortalUpdateSurfacesSaveFailure(t *testing.T) {
 	}
 }
 
+// TestPortalDesignTabsRenderPlaceholders pins the no-store degradation: a
+// deployment without a theme store keeps the design tabs, explains why the
+// editors cannot load, ships no editor script, and keeps the strict CSP.
 func TestPortalDesignTabsRenderPlaceholders(t *testing.T) {
 	t.Parallel()
 
@@ -126,11 +160,18 @@ func TestPortalDesignTabsRenderPlaceholders(t *testing.T) {
 	for _, want := range []string{
 		`id="panel-portal-design"`,
 		`id="panel-portal-results"`,
-		"arrive in a following slice",
+		"design store is not available",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("portal design placeholder missing %q", want)
 		}
+	}
+	if strings.Contains(got.body, "portal_designer.js") {
+		t.Error("no editor script may load without a theme store")
+	}
+	if got.header.Get("Content-Security-Policy") != contentPol {
+		t.Errorf("placeholder page must keep the strict CSP: %q",
+			got.header.Get("Content-Security-Policy"))
 	}
 }
 

@@ -35,7 +35,7 @@ func portalSettingsView(overridden bool) SettingsView {
 		Value:           "true",
 		Overridden:      overridden,
 		RestartRequired: true,
-		Category:        "Public portal",
+		Category:        "Search",
 		Options: []SettingOption{
 			{Value: "true", Label: "Enabled"},
 			{Value: "false", Label: "Disabled"},
@@ -55,7 +55,7 @@ func TestConsoleConfigRendersEditableSettings(t *testing.T) {
 		t.Fatalf("status %d", got.status)
 	}
 	for _, want := range []string{
-		`role="tablist"`, `id="tab-public-portal"`, `aria-controls="panel-public-portal"`,
+		`role="tablist"`, `id="tab-search"`, `aria-controls="panel-search"`,
 		`name="key"`, "Public search portal", `class="cds-setting-row"`,
 		`name="value:portal.enabled"`, `value="false"`, ">Reset<", `name="csrf_token"`,
 	} {
@@ -74,13 +74,13 @@ func TestConsoleConfigTabRendersOneFormWithOneSave(t *testing.T) {
 	view := SettingsView{Items: []SettingItem{
 		{
 			Key: "portal.enabled", Title: "Public search portal", Value: "true",
-			Category: "Public portal", Boolean: true,
+			Category: "Search", Boolean: true,
 			Options: []SettingOption{
 				{Value: "true", Label: "Enabled"},
 				{Value: "false", Label: "Disabled"},
 			},
 		},
-		{Key: "portal.title", Title: "Portal title", Value: "Yago", Category: "Public portal"},
+		{Key: "portal.title", Title: "Portal title", Value: "Yago", Category: "Search"},
 	}}
 	console := New(
 		Options{Config: fakeConfig{view: ConfigView{}}, Settings: &fakeSettings{view: view}},
@@ -105,7 +105,7 @@ func booleanSettingsView() SettingsView {
 		Key:      "portal.enabled",
 		Title:    "Public search portal",
 		Value:    "true",
-		Category: "Public portal",
+		Category: "Search",
 		Boolean:  true,
 		Options: []SettingOption{
 			{Value: "true", Label: "Enabled"},
@@ -144,7 +144,7 @@ func TestConsoleConfigCheckboxCheckedSubmitsTrue(t *testing.T) {
 
 	view := SettingsView{Items: []SettingItem{{
 		Key: "portal.enabled", Title: "Public search portal", Value: "false",
-		Category: "Public portal", Boolean: true,
+		Category: "Search", Boolean: true,
 		Options: []SettingOption{
 			{Value: "true", Label: "Enabled"},
 			{Value: "false", Label: "Disabled"},

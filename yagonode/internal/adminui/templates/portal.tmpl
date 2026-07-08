@@ -50,12 +50,58 @@
 
   <section class="cds-tabpanel" role="tabpanel" id="panel-portal-design" aria-labelledby="tab-portal-design">
     <h2 class="cds-h2 cds-tabpanel__heading">Portal design</h2>
-    <p class="cds-muted">The visual page editor and Handlebars code editor for the public search page arrive in a following slice per ADR-0033. No editor is loaded here yet.</p>
+    {{if .DesignSearch}}{{template "design_form" .DesignSearch}}{{else}}
+    <p class="cds-muted">The design store is not available on this deployment, so the search-page editor cannot load.</p>
+    {{end}}
   </section>
 
   <section class="cds-tabpanel" role="tabpanel" id="panel-portal-results" aria-labelledby="tab-portal-results">
     <h2 class="cds-h2 cds-tabpanel__heading">Results design</h2>
-    <p class="cds-muted">The visual page editor and Handlebars code editor for the public results page arrive in a following slice per ADR-0033. No editor is loaded here yet.</p>
+    {{if .DesignResults}}{{template "design_form" .DesignResults}}{{else}}
+    <p class="cds-muted">The design store is not available on this deployment, so the results-page editor cannot load.</p>
+    {{end}}
   </section>
 </div>
+{{if .DesignSearch}}
+<link rel="stylesheet" href="/admin/assets/vendor/codemirror.min.css">
+<link rel="stylesheet" href="/admin/assets/vendor/grapes.min.css">
+<link rel="stylesheet" href="/admin/assets/portal_designer.css">
+<script src="/admin/assets/vendor/codemirror.min.js" defer></script>
+<script src="/admin/assets/vendor/cm-xml.min.js" defer></script>
+<script src="/admin/assets/vendor/cm-javascript.min.js" defer></script>
+<script src="/admin/assets/vendor/cm-css.min.js" defer></script>
+<script src="/admin/assets/vendor/cm-htmlmixed.min.js" defer></script>
+<script src="/admin/assets/vendor/cm-multiplex.min.js" defer></script>
+<script src="/admin/assets/vendor/cm-handlebars.min.js" defer></script>
+<script src="/admin/assets/vendor/grapes.min.js" defer></script>
+<script src="/admin/assets/vendor/grapesjs-preset-webpage.min.js" defer></script>
+<script src="/admin/assets/portal_designer.js" defer></script>
+{{end}}
+{{end}}
+
+{{define "design_form"}}
+<form class="designer" method="post" action="/admin/portal/design" hx-boost="false" data-designer="{{.Page}}">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <input type="hidden" name="page" value="{{.Page}}">
+  <label class="cds-checkbox"><input type="checkbox" name="enabled" value="true"{{if .Enabled}} checked{{end}}> Use the custom design on the public portal (both pages)</label>
+  {{if .Doc.ParseError}}<p class="designer-alert" role="alert">The saved template does not parse: {{.Doc.ParseError}} The public portal keeps serving the previous design.</p>{{end}}
+  <div class="designer-toolbar">
+    <button type="button" class="designer-toggle cds-btn cds-btn--ghost" hidden>Visual editor</button>
+    <p class="designer-hint">Handlebars template for the {{.Label}}. The visual editor works best for layout and chrome; Handlebars block tags survive as text. {{if .Overridden}}This page uses a custom body.{{else}}This page follows the built-in default.{{end}}</p>
+  </div>
+  <div class="designer-canvas" aria-hidden="true"></div>
+  <div class="designer-code">
+    <label>Template ({{.Label}})
+      <textarea name="body" data-designer-template rows="18" spellcheck="false">{{.Doc.Body}}</textarea>
+    </label>
+    <label>Shared styles (CSS, used by both pages{{if .StylesOverridden}}, customized{{end}})
+      <textarea name="styles" data-designer-styles rows="10" spellcheck="false">{{.Styles.Body}}</textarea>
+    </label>
+  </div>
+  <div class="designer-actions">
+    <button class="cds-btn" type="submit">Save design</button>
+    {{if .Overridden}}<button class="cds-btn cds-btn--ghost" type="submit" name="action" value="default">Default design</button>{{end}}
+    {{if .StylesOverridden}}<button class="cds-btn cds-btn--ghost" type="submit" name="action" value="default-styles">Default styles</button>{{end}}
+  </div>
+</form>
 {{end}}

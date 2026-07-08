@@ -95,6 +95,7 @@ func buildOpsMux(
 		CrawlFormats:      crawlFormatsAdmin(assembled.crawl),
 		PublicBaseURL:     config.PublicBaseURL,
 		PublicAddr:        config.PublicAddr,
+		Theme:             newPortalThemeAdmin(assembled.theme),
 	}
 	applyIndexAdminOptions(&options, assembled)
 	if assembled.roster != nil {

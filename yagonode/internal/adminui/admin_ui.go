@@ -22,17 +22,22 @@ import (
 //go:embed templates/*.tmpl
 var templateFS embed.FS
 
-//go:embed assets/carbon.css assets/photon.css assets/htmx.min.js assets/autocomplete.js assets/tabs.js
+//go:embed assets/carbon.css assets/photon.css assets/htmx.min.js assets/autocomplete.js assets/tabs.js assets/portal_designer.js assets/portal_designer.css assets/vendor
 var assetFS embed.FS
 
 // BasePath is where the console mounts on the operations listener.
 const BasePath = "/admin/"
 
 const (
-	appName     = "yago"
-	htmlType    = "text/html; charset=utf-8"
-	contentPol  = "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
-	assetMaxAge = "public, max-age=86400"
+	appName    = "yago"
+	htmlType   = "text/html; charset=utf-8"
+	contentPol = "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+	// portalContentPol is the Public-portal page's CSP: identical to contentPol
+	// except that inline styles are allowed, because the GrapesJS canvas is an
+	// about:blank iframe that inherits this policy and styles its editable page
+	// by injecting <style> elements (ADR-0033). Every script stays 'self'.
+	portalContentPol = "default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+	assetMaxAge      = "public, max-age=86400"
 
 	overviewPath        = "/admin/overview"
 	overviewMetricsPath = "/admin/overview/metrics"
@@ -88,13 +93,13 @@ var navItems = []NavItem{
 	{Title: "Overview", Path: overviewPath, Icon: "overview"},
 	{Title: "Search", Path: searchPath, Icon: "search"},
 	{Title: "Activity", Path: activityPath, Icon: "activity"},
+	{Title: "Public portal", Path: portalPath, Icon: "globe"},
 	{Title: "Autocrawler", Path: autocrawlerPath, Icon: "autocrawler"},
 	{Title: "Crawler", Path: "/admin/crawl", Icon: "crawler"},
 	{Title: "Network", Path: "/admin/network", Icon: "network"},
 	{Title: "Index", Path: indexPath, Icon: "index"},
 	{Title: "Performance", Path: "/admin/performance", Icon: "performance"},
 	{Title: "Configuration", Path: "/admin/configuration", Icon: "configuration"},
-	{Title: "Public portal", Path: portalPath, Icon: "globe"},
 	{Title: "Security", Path: "/admin/security", Icon: "security"},
 	{Title: "Logs", Path: "/admin/logs", Icon: "logs"},
 	{Title: "Restart", Path: restartPath, Icon: "restart"},
@@ -103,22 +108,25 @@ var navItems = []NavItem{
 // Options configures the console's data providers. A nil provider makes its
 // section render a controlled unavailable state.
 type Options struct {
-	Overview        OverviewSource
-	Search          SearchSource
-	Activity        ActivitySource
-	Crawl           CrawlSource
-	CrawlFormats    CrawlFormatsSource
-	Monitor         CrawlMonitorSource
-	Schedules       CrawlScheduleSource
-	Control         CrawlControlSource
-	Index           IndexSource
-	Documents       DocumentBrowserSource
-	IndexAdmin      IndexAdminSource
-	Blacklist       BlacklistSource
-	IndexExport     IndexExporter
-	Network         NetworkSource
-	Config          ConfigSource
-	Settings        SettingsSource
+	Overview     OverviewSource
+	Search       SearchSource
+	Activity     ActivitySource
+	Crawl        CrawlSource
+	CrawlFormats CrawlFormatsSource
+	Monitor      CrawlMonitorSource
+	Schedules    CrawlScheduleSource
+	Control      CrawlControlSource
+	Index        IndexSource
+	Documents    DocumentBrowserSource
+	IndexAdmin   IndexAdminSource
+	Blacklist    BlacklistSource
+	IndexExport  IndexExporter
+	Network      NetworkSource
+	Config       ConfigSource
+	Settings     SettingsSource
+	// Theme persists the operator portal design (ADR-0033); nil renders the
+	// design tabs as placeholders.
+	Theme           ThemeStore
 	Binding         BindingSource
 	Logs            LogsSource
 	Security        SecuritySource
@@ -376,6 +384,7 @@ type Console struct {
 	network         NetworkSource
 	config          ConfigSource
 	settings        SettingsSource
+	theme           ThemeStore
 	binding         BindingSource
 	logs            LogsSource
 	security        SecuritySource
@@ -421,6 +430,7 @@ func New(opts Options) *Console {
 		network:         opts.Network,
 		config:          opts.Config,
 		settings:        opts.Settings,
+		theme:           opts.Theme,
 		binding:         opts.Binding,
 		logs:            opts.Logs,
 		security:        opts.Security,
@@ -520,6 +530,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("POST "+autocrawlerPath+"/formats", c.handleAutocrawlerFormats)
 	c.mux.HandleFunc("GET "+portalPath, c.handlePortal)
 	c.mux.HandleFunc("POST "+portalPath, c.handlePortalUpdate)
+	c.mux.HandleFunc("POST "+portalPath+"/design", c.handlePortalDesign)
 	c.mux.HandleFunc("GET "+performancePath, c.handlePerformance)
 	c.mux.HandleFunc("GET "+activityPath, c.handleActivity)
 
@@ -1106,7 +1117,7 @@ func (c *Console) configPage(r *http.Request, notice, errMsg string) configPageD
 	if c.settings != nil {
 		data.Editable = true
 		data.Settings = c.settings.Settings(r.Context())
-		data.SettingGroups = groupSettings(data.Settings.Items)
+		data.SettingGroups = groupSettings(withoutPortalCategory(data.Settings.Items))
 	}
 	if c.binding != nil {
 		data.Bindable = true
@@ -1617,7 +1628,27 @@ func (c *Console) render(
 	name string,
 	data any,
 ) {
-	writeHTMLHeaders(w)
+	c.renderPolicy(ctx, w, pageTemplate{tpl: tpl, name: name}, data, contentPol)
+}
+
+// pageTemplate pairs a parsed template set with the entry template it renders.
+type pageTemplate struct {
+	tpl  *template.Template
+	name string
+}
+
+// renderPolicy renders a page under an explicit Content-Security-Policy, so a
+// page that hosts the design editors can allow inline styles without relaxing
+// the policy of every other console page.
+func (c *Console) renderPolicy(
+	ctx context.Context,
+	w http.ResponseWriter,
+	page pageTemplate,
+	data any,
+	policy string,
+) {
+	tpl, name := page.tpl, page.name
+	writeHTMLHeadersPolicy(w, policy)
 	payload := data
 	// Only the full-page layout carries chrome; htmx partials render their raw
 	// data so their field access stays unwrapped.
@@ -1637,10 +1668,10 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, overviewPath, http.StatusFound)
 }
 
-func writeHTMLHeaders(w http.ResponseWriter) {
+func writeHTMLHeadersPolicy(w http.ResponseWriter, policy string) {
 	header := w.Header()
 	header.Set("Content-Type", htmlType)
-	header.Set("Content-Security-Policy", contentPol)
+	header.Set("Content-Security-Policy", policy)
 	header.Set("X-Content-Type-Options", "nosniff")
 }
 

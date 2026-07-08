@@ -88,3 +88,67 @@ func TestAssembleNodeSurfacesPortalThemeOpenError(t *testing.T) {
 		t.Fatal("assembleNodeSurfaces should surface the portal theme open error")
 	}
 }
+
+func TestPortalThemeAdminAdaptsStore(t *testing.T) {
+	if newPortalThemeAdmin(nil) != nil {
+		t.Fatal("a nil theme must yield a nil admin port")
+	}
+
+	v, err := memvault.Open(0)
+	if err != nil {
+		t.Fatalf("memvault: %v", err)
+	}
+	t.Cleanup(func() { _ = v.Close() })
+	theme, err := portaltheme.Open(v, themeEventSink(nil))
+	if err != nil {
+		t.Fatalf("open theme: %v", err)
+	}
+	admin := newPortalThemeAdmin(theme)
+	ctx := context.Background()
+
+	if admin.Enabled() {
+		t.Error("fresh theme must report disabled")
+	}
+	if err := admin.SetEnabled(ctx, true); err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+	if !admin.Enabled() {
+		t.Error("toggle must pass through the adapter")
+	}
+
+	if _, found, err := admin.Document(ctx, portaltheme.PageSearch); err != nil || found {
+		t.Fatalf("empty document = found %v, err %v", found, err)
+	}
+	if _, _, err := admin.Document(ctx, "bogus"); err == nil {
+		t.Error("unknown page must surface the store error")
+	}
+
+	saved, err := admin.SaveDocument(ctx, portaltheme.PageSearch, "{{#if}}")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if saved.ParseOK || saved.ParseError == "" || saved.Body != "{{#if}}" {
+		t.Fatalf("parse status lost in adaptation: %+v", saved)
+	}
+	if _, err := admin.SaveDocument(ctx, "bogus", "x"); err == nil {
+		t.Error("unknown page must surface the save error")
+	}
+
+	stored, found, err := admin.Document(ctx, portaltheme.PageSearch)
+	if err != nil || !found || stored.Body != "{{#if}}" {
+		t.Fatalf("stored document = %+v found %v err %v", stored, found, err)
+	}
+
+	existed, err := admin.ResetDocument(ctx, portaltheme.PageSearch)
+	if err != nil || !existed {
+		t.Fatalf("reset = %v, %v", existed, err)
+	}
+
+	if admin.DefaultBody(
+		portaltheme.PageSearch,
+	) != portaltheme.DefaultBody(
+		portaltheme.PageSearch,
+	) {
+		t.Error("default bodies must pass through")
+	}
+}

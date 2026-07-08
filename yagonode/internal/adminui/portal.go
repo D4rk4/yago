@@ -21,6 +21,10 @@ type portalPageData struct {
 	Settings   SettingsView
 	Notice     string
 	Error      string
+	// DesignSearch and DesignResults feed the two design tabs' editors; nil
+	// (no theme store wired) keeps the tabs as placeholders.
+	DesignSearch  *designFormData
+	DesignResults *designFormData
 }
 
 func (c *Console) handlePortal(w http.ResponseWriter, r *http.Request) {
@@ -30,7 +34,7 @@ func (c *Console) handlePortal(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	c.render(r.Context(), w, c.tpl.portal, "layout", c.portalPage(r, "", ""))
+	c.renderPortalPage(w, r, "", "")
 }
 
 func (c *Console) handlePortalUpdate(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +49,34 @@ func (c *Console) handlePortalUpdate(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	c.render(r.Context(), w, c.tpl.portal, "layout", c.portalPage(r, notice, errMsg))
+	c.renderPortalPage(w, r, notice, errMsg)
+}
+
+// renderPortalPage renders the Public portal section with the page-scoped CSP
+// the visual editor's canvas needs (ADR-0033).
+func (c *Console) renderPortalPage(
+	w http.ResponseWriter,
+	r *http.Request,
+	notice, errMsg string,
+) {
+	data := c.portalPage(r, notice, errMsg)
+	policy := contentPol
+	if c.theme != nil {
+		search, results, err := c.portalDesignForms(r.Context(), data.CSRF)
+		if err != nil && data.Error == "" {
+			data.Error = "Loading the stored design failed: " + err.Error()
+		}
+		data.DesignSearch = search
+		data.DesignResults = results
+		policy = portalContentPol
+	}
+	c.renderPolicy(
+		r.Context(),
+		w,
+		pageTemplate{tpl: c.tpl.portal, name: "layout"},
+		data,
+		policy,
+	)
 }
 
 func (c *Console) portalPage(r *http.Request, notice, errMsg string) portalPageData {
@@ -71,6 +102,21 @@ func portalSettings(ctx context.Context, source SettingsSource) SettingsView {
 	}
 
 	return SettingsView{Items: items}
+}
+
+// withoutPortalCategory drops the portal-facing settings from the flat
+// Configuration sheet: they are edited on the dedicated Public portal page, so
+// showing the category twice would leave two competing forms for the same keys.
+func withoutPortalCategory(items []SettingItem) []SettingItem {
+	kept := make([]SettingItem, 0, len(items))
+	for _, item := range items {
+		if item.Category == portalCategory {
+			continue
+		}
+		kept = append(kept, item)
+	}
+
+	return kept
 }
 
 // portalGate precomputes the portal-facing key whitelist so the batch can gate

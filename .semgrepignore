@@ -1,4 +1,8 @@
-yagomodel/yacy_hash_form.go
-
-# Vendored, pinned third-party asset (htmx 2.0.4, ADR-0022); not authored here.
+# Semgrep's default ignores are replaced by this file, so re-state the baseline.
+.git/
+# Vendored, pinned, minified third-party editor assets (GrapesJS, CodeMirror —
+# see deploy/THIRD_PARTY_ASSETS.md and ADR-0033). Upstream minified bundles are
+# not actionable for this repo's static analysis (audit hits and rule timeouts
+# in foreign code); first-party assets such as portal_designer.js stay scanned.
+yagonode/internal/adminui/assets/vendor/
 yagonode/internal/adminui/assets/htmx.min.js
