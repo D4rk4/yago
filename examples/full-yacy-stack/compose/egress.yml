@@ -1,0 +1,5 @@
+services:
+  smokescreen:
+    image: pretix/smokescreen:latest
+    restart: unless-stopped
+    command: ["--listen-ip", "0.0.0.0"]

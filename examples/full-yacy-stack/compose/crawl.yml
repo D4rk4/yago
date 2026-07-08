@@ -1,0 +1,26 @@
+services:
+  yacycrawler:
+    image: ghcr.io/nikitakarpei/yacycrawler:latest
+    restart: unless-stopped
+    depends_on:
+      - nats
+      - smokescreen
+    ports:
+      - "9093:9090"
+    environment:
+      NATS_URL: nats://nats:4222
+      YACYCRAWLER_PROXY_URL: http://smokescreen:4750
+      YACYCRAWLER_PAGE_OUTPUT_ENABLED: "true"
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+  yacyvisitcrawl:
+    image: ghcr.io/nikitakarpei/yacyvisitcrawl:latest
+    restart: unless-stopped
+    depends_on:
+      - nats
+    ports:
+      - "8091:8091"
+      - "9091:9091"
+    environment:
+      NATS_URL: nats://nats:4222
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}

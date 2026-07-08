@@ -1,0 +1,60 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+
+  searxng-engines-seed:
+    image: docker.io/searxng/searxng:2026.7.5-a6438586a
+    entrypoint: ["true"]
+    volumes:
+      - searxng-engines:/usr/local/searxng/searx/engines
+
+  searxng-crawled-text-search-init:
+    image: ghcr.io/nikitakarpei/searxng-crawled-text-search:latest
+    depends_on:
+      searxng-engines-seed:
+        condition: service_completed_successfully
+    command: ["/payload/crawled_text_search.py", "/engines/crawled_text_search.py"]
+    volumes:
+      - searxng-engines:/engines
+
+  searxng-result-router-init:
+    image: ghcr.io/nikitakarpei/searxng-result-router:latest
+    command: ["/payload/result_link_router.py", "/plugins/result_link_router.py"]
+    volumes:
+      - searxng-plugins:/plugins
+
+  searxng:
+    image: docker.io/searxng/searxng:2026.7.5-a6438586a
+    restart: unless-stopped
+    depends_on:
+      searxng-crawled-text-search-init:
+        condition: service_completed_successfully
+      searxng-result-router-init:
+        condition: service_completed_successfully
+      elasticsearch:
+        condition: service_started
+      yacyvisitcrawl:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    environment:
+      PYTHONPATH: /opt/searxng-plugins
+      YACYVISITCRAWL_BASE_URL: ${YACYVISITCRAWL_PUBLIC_URL:?set YACYVISITCRAWL_PUBLIC_URL in .env}
+    volumes:
+      - ../searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - searxng-engines:/usr/local/searxng/searx/engines
+      - searxng-plugins:/opt/searxng-plugins:ro
+
+volumes:
+  elasticsearch-data:
+  searxng-engines:
+  searxng-plugins:

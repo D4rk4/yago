@@ -1,0 +1,12 @@
+services:
+  yacytextindexer:
+    image: ghcr.io/nikitakarpei/yacytextindexer:latest
+    restart: unless-stopped
+    depends_on:
+      - nats
+      - elasticsearch
+    environment:
+      NATS_URL: nats://nats:4222
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      ELASTICSEARCH_INDEX: ${ELASTICSEARCH_INDEX:-yacy-text}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
