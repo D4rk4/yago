@@ -56,6 +56,7 @@ func readHTMLFields(root *html.Node, rawURL string, page *ParsedPage) {
 	}
 	page.Description = readMetaDescription(root)
 	page.Author = readMetaAuthor(root)
+	page.MetaNoindex, page.MetaNofollow = readMetaRobots(root)
 	for _, name := range []string{"h1", "h2", "h3", "h4", "h5", "h6"} {
 		for _, heading := range dom.GetElementsByTagName(root, name) {
 			text := collapseSpaces(dom.TextContent(heading))

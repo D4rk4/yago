@@ -4,9 +4,15 @@ import (
 	"maps"
 
 	"github.com/D4rk4/yago/yagocrawler/internal/pageparse"
+	"github.com/D4rk4/yago/yagocrawler/internal/stopwords"
 	"github.com/D4rk4/yago/yagomodel"
 )
 
+// BuildPostings turns a page's token stream into RWI postings, one per
+// distinct content word. Stopwords produce no postings (SEARCH-39): the
+// node's query side never requires them, so shipping their postings only
+// bloated the index. Other tokens keep their position in the original
+// stream, stopwords included, so proximity semantics are unchanged.
 func BuildPostings(
 	page pageparse.ParsedPage,
 	stats pageparse.PageStats,
@@ -15,6 +21,9 @@ func BuildPostings(
 	firstPosition := make(map[string]int)
 	order := make([]string, 0)
 	for position, token := range stats.Tokens {
+		if stopwords.IsStopword(token) {
+			continue
+		}
 		if _, seen := frequency[token]; !seen {
 			firstPosition[token] = position
 			order = append(order, token)

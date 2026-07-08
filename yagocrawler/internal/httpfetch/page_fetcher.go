@@ -84,6 +84,7 @@ func (f *PageFetcher) Fetch(
 		)
 	}
 
+	robotsTag := response.Header.Get("X-Robots-Tag")
 	body, err := readBody(response.Body, f.maxBytes)
 	if err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("read body: %w", err)
@@ -102,6 +103,7 @@ func (f *PageFetcher) Fetch(
 		URL:         finalURL,
 		ContentType: contentType,
 		Body:        body,
+		RobotsTag:   robotsTag,
 	}, nil
 }
 

@@ -83,6 +83,7 @@
     </div>
     <div class="cds-field cds-field--check">
       <label class="cds-label"><input type="checkbox" name="followNoFollowLinks"{{if .Form.FollowNoFollowLinks}} checked{{end}}> Follow rel=nofollow links</label>
+      <label class="cds-label"><input type="checkbox" name="noindexCanonicalMismatch"{{if .Form.NoindexCanonicalMismatch}} checked{{end}}> Do not index pages whose rel=canonical points elsewhere</label>
     </div>
   </details>
   <button class="cds-btn" type="submit">Start crawl</button>

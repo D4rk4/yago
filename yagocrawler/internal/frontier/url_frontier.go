@@ -553,17 +553,19 @@ func (s *frontierState) accept(
 	run.pages++
 	s.completion.Track(runID)
 	s.ready = append(s.ready, crawljob.CrawlJob{
-		URL:                candidate.normURL,
-		Depth:              candidate.depth,
-		ProfileHandle:      candidate.profileHandle,
-		Provenance:         candidate.provenance,
-		RunID:              runID,
-		Index:              profile.IndexAllowed(candidate.normURL),
-		CrawlDelay:         profile.Profile.CrawlDelay,
-		IgnoreTLSAuthority: profile.Profile.IgnoreTLSAuthority,
-		IgnoreRobots:       profile.Profile.IgnoreRobots,
-		DisableBrowser:     profile.Profile.DisableBrowser,
-		Formats:            profile.Profile.Formats,
+		URL:                      candidate.normURL,
+		Depth:                    candidate.depth,
+		ProfileHandle:            candidate.profileHandle,
+		Provenance:               candidate.provenance,
+		RunID:                    runID,
+		Index:                    profile.IndexAllowed(candidate.normURL),
+		CrawlDelay:               profile.Profile.CrawlDelay,
+		IgnoreTLSAuthority:       profile.Profile.IgnoreTLSAuthority,
+		IgnoreRobots:             profile.Profile.IgnoreRobots,
+		DisableBrowser:           profile.Profile.DisableBrowser,
+		FollowNoFollowLinks:      profile.Profile.FollowNoFollowLinks,
+		NoindexCanonicalMismatch: profile.Profile.NoindexCanonicalMismatch,
+		Formats:                  profile.Profile.Formats,
 	})
 	return true
 }

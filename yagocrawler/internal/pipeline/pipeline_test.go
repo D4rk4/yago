@@ -27,6 +27,10 @@ type recordingFrontier struct {
 	jobs      chan crawljob.CrawlJob
 	submitted []crawljob.DiscoveredLinks
 	done      chan doneCall
+	redirects []string
+	// resolveRedirect overrides the ResolveRedirect outcome; nil admits every
+	// redirect target.
+	resolveRedirect func(job crawljob.CrawlJob, finalURL string) bool
 }
 
 func newRecordingFrontier() *recordingFrontier {
@@ -48,6 +52,15 @@ func (f *recordingFrontier) Submit(
 
 func (f *recordingFrontier) Done(work crawljob.CrawlJob, deliveryFailed bool) {
 	f.done <- doneCall{work: work, failed: deliveryFailed}
+}
+
+func (f *recordingFrontier) ResolveRedirect(job crawljob.CrawlJob, finalURL string) bool {
+	f.redirects = append(f.redirects, finalURL)
+	if f.resolveRedirect == nil {
+		return true
+	}
+
+	return f.resolveRedirect(job, finalURL)
 }
 
 type fetchFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
@@ -113,10 +126,23 @@ func runOneJob(
 	frontier *recordingFrontier,
 ) doneCall {
 	t.Helper()
+
+	return runJob(t, p, frontier, crawljob.CrawlJob{
+		URL: "https://example.com/", ProfileHandle: "h", Index: true,
+	})
+}
+
+func runJob(
+	t *testing.T,
+	p *pipeline.Pipeline,
+	frontier *recordingFrontier,
+	job crawljob.CrawlJob,
+) doneCall {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go p.RunWorkers(ctx, ctx, 1)
-	frontier.jobs <- crawljob.CrawlJob{URL: "https://example.com/", ProfileHandle: "h", Index: true}
+	frontier.jobs <- job
 	select {
 	case done := <-frontier.done:
 		return done

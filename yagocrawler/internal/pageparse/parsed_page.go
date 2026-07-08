@@ -13,6 +13,12 @@ type ParsedPage struct {
 	FollowableLinks []string
 	NoFollowLinks   []string
 	Images          []ImageMetadata
+	// MetaNoindex reports a page-level <meta name="robots"> noindex (or none)
+	// directive: the page asked not to be indexed.
+	MetaNoindex bool
+	// MetaNofollow reports a page-level <meta name="robots"> nofollow (or
+	// none) directive: the page asked for its links not to be followed.
+	MetaNofollow bool
 }
 
 type PageStats struct {

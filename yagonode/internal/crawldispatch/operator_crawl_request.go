@@ -25,9 +25,13 @@ type OperatorRequest struct {
 	IgnoreRobots         bool     `json:"ignoreRobots"`
 	DisableBrowser       bool     `json:"disableBrowser"`
 	FollowNoFollowLinks  bool     `json:"followNoFollowLinks"`
-	MaxPagesPerHost      int      `json:"maxPagesPerHost"`
-	RecrawlIfOlder       string   `json:"recrawlIfOlder"`
-	CrawlDelay           string   `json:"crawlDelay"`
+	// NoindexCanonicalMismatch crawls pages whose rel=canonical points at a
+	// different URL for links only, without indexing them (YaCy
+	// NOINDEX_WHEN_CANONICAL_UNEQUAL_URL parity).
+	NoindexCanonicalMismatch bool   `json:"noindexCanonicalMismatch"`
+	MaxPagesPerHost          int    `json:"maxPagesPerHost"`
+	RecrawlIfOlder           string `json:"recrawlIfOlder"`
+	CrawlDelay               string `json:"crawlDelay"`
 }
 
 var crawlScopeByName = map[string]yagocrawlcontract.CrawlScope{
@@ -66,21 +70,22 @@ func (r OperatorRequest) order(
 	}
 
 	profile := yagocrawlcontract.NewCrawlProfile(yagocrawlcontract.CrawlProfile{
-		Name:                 r.Name,
-		Scope:                scope,
-		URLMustMatch:         matchOrAll(r.URLMustMatch),
-		URLMustNotMatch:      r.URLMustNotMatch,
-		IndexURLMustMatch:    matchOrAll(r.IndexURLMustMatch),
-		IndexURLMustNotMatch: r.IndexURLMustNotMatch,
-		MaxDepth:             r.MaxDepth,
-		AllowQueryURLs:       r.AllowQueryURLs,
-		IgnoreTLSAuthority:   r.IgnoreTLSAuthority,
-		IgnoreRobots:         r.IgnoreRobots,
-		DisableBrowser:       r.DisableBrowser,
-		FollowNoFollowLinks:  r.FollowNoFollowLinks,
-		MaxPagesPerHost:      r.MaxPagesPerHost,
-		RecrawlIfOlder:       recrawl,
-		CrawlDelay:           delay,
+		Name:                     r.Name,
+		Scope:                    scope,
+		URLMustMatch:             matchOrAll(r.URLMustMatch),
+		URLMustNotMatch:          r.URLMustNotMatch,
+		IndexURLMustMatch:        matchOrAll(r.IndexURLMustMatch),
+		IndexURLMustNotMatch:     r.IndexURLMustNotMatch,
+		MaxDepth:                 r.MaxDepth,
+		AllowQueryURLs:           r.AllowQueryURLs,
+		IgnoreTLSAuthority:       r.IgnoreTLSAuthority,
+		IgnoreRobots:             r.IgnoreRobots,
+		DisableBrowser:           r.DisableBrowser,
+		FollowNoFollowLinks:      r.FollowNoFollowLinks,
+		NoindexCanonicalMismatch: r.NoindexCanonicalMismatch,
+		MaxPagesPerHost:          r.MaxPagesPerHost,
+		RecrawlIfOlder:           recrawl,
+		CrawlDelay:               delay,
 	})
 	if err := profile.Validate(); err != nil {
 		return yagocrawlcontract.CrawlOrder{}, fmt.Errorf("invalid crawl profile: %w", err)

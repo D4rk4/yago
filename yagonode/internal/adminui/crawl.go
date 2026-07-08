@@ -20,11 +20,14 @@ type CrawlStart struct {
 	MaxPagesPerHost      int
 	AllowQueryURLs       bool
 	FollowNoFollowLinks  bool
-	IgnoreTLSAuthority   bool
-	IgnoreRobots         bool
-	DisableBrowser       bool
-	RecrawlIfOlder       string
-	CrawlDelay           string
+	// NoindexCanonicalMismatch skips indexing pages whose rel=canonical points
+	// at a different URL while still following their links.
+	NoindexCanonicalMismatch bool
+	IgnoreTLSAuthority       bool
+	IgnoreRobots             bool
+	DisableBrowser           bool
+	RecrawlIfOlder           string
+	CrawlDelay               string
 }
 
 // CrawlDispatch is the outcome of a crawl the console accepted for dispatch.

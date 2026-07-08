@@ -20,6 +20,11 @@ type FetchedPage struct {
 	URL         *url.URL
 	ContentType string
 	Body        []byte
+	// RobotsTag carries the response's X-Robots-Tag header verbatim so the
+	// pipeline can honor header-level noindex/nofollow directives. The
+	// headless-browser fetch path cannot observe response headers and leaves
+	// it empty.
+	RobotsTag string
 }
 
 type PageSource interface {

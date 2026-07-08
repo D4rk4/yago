@@ -44,6 +44,8 @@ components:
     in: internal/pageparse/**
   formatparse:
     in: internal/formatparse/**
+  stopwords:
+    in: internal/stopwords/**
   pageindex:
     in: internal/pageindex/**
   ingest:
@@ -202,10 +204,14 @@ deps:
       - pageparse
     canUse:
       - yagocrawlcontract
+  stopwords:
+    mayDependOn:
+      - stopwords
   pageindex:
     mayDependOn:
       - pageindex
       - pageparse
+      - stopwords
     canUse:
       - yagocrawlcontract
       - yagomodel

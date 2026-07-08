@@ -214,23 +214,24 @@ type searchPageData struct {
 }
 
 type crawlForm struct {
-	Name                 string
-	Seeds                string
-	Mode                 string
-	Scope                string
-	MaxDepth             int
-	URLMustMatch         string
-	URLMustNotMatch      string
-	IndexURLMustMatch    string
-	IndexURLMustNotMatch string
-	MaxPagesPerHost      int
-	AllowQueryURLs       bool
-	FollowNoFollowLinks  bool
-	IgnoreTLSAuthority   bool
-	IgnoreRobots         bool
-	DisableBrowser       bool
-	RecrawlIfOlder       string
-	CrawlDelay           string
+	Name                     string
+	Seeds                    string
+	Mode                     string
+	Scope                    string
+	MaxDepth                 int
+	URLMustMatch             string
+	URLMustNotMatch          string
+	IndexURLMustMatch        string
+	IndexURLMustNotMatch     string
+	MaxPagesPerHost          int
+	AllowQueryURLs           bool
+	FollowNoFollowLinks      bool
+	NoindexCanonicalMismatch bool
+	IgnoreTLSAuthority       bool
+	IgnoreRobots             bool
+	DisableBrowser           bool
+	RecrawlIfOlder           string
+	CrawlDelay               string
 	// ShowExpert keeps the expert panel open across a redisplay (a validation error
 	// or a successful start) when the operator was using it.
 	ShowExpert bool
@@ -1380,23 +1381,24 @@ func (c *Console) handleCrawlStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := c.crawl.Start(r.Context(), CrawlStart{
-		Name:                 form.Name,
-		Seeds:                seeds,
-		Mode:                 form.Mode,
-		Scope:                form.Scope,
-		MaxDepth:             form.MaxDepth,
-		URLMustMatch:         form.URLMustMatch,
-		URLMustNotMatch:      form.URLMustNotMatch,
-		IndexURLMustMatch:    form.IndexURLMustMatch,
-		IndexURLMustNotMatch: form.IndexURLMustNotMatch,
-		MaxPagesPerHost:      form.MaxPagesPerHost,
-		AllowQueryURLs:       form.AllowQueryURLs,
-		FollowNoFollowLinks:  form.FollowNoFollowLinks,
-		IgnoreTLSAuthority:   form.IgnoreTLSAuthority,
-		IgnoreRobots:         form.IgnoreRobots,
-		DisableBrowser:       form.DisableBrowser,
-		RecrawlIfOlder:       form.RecrawlIfOlder,
-		CrawlDelay:           form.CrawlDelay,
+		Name:                     form.Name,
+		Seeds:                    seeds,
+		Mode:                     form.Mode,
+		Scope:                    form.Scope,
+		MaxDepth:                 form.MaxDepth,
+		URLMustMatch:             form.URLMustMatch,
+		URLMustNotMatch:          form.URLMustNotMatch,
+		IndexURLMustMatch:        form.IndexURLMustMatch,
+		IndexURLMustNotMatch:     form.IndexURLMustNotMatch,
+		MaxPagesPerHost:          form.MaxPagesPerHost,
+		AllowQueryURLs:           form.AllowQueryURLs,
+		FollowNoFollowLinks:      form.FollowNoFollowLinks,
+		NoindexCanonicalMismatch: form.NoindexCanonicalMismatch,
+		IgnoreTLSAuthority:       form.IgnoreTLSAuthority,
+		IgnoreRobots:             form.IgnoreRobots,
+		DisableBrowser:           form.DisableBrowser,
+		RecrawlIfOlder:           form.RecrawlIfOlder,
+		CrawlDelay:               form.CrawlDelay,
 	})
 	if err != nil {
 		slog.WarnContext(r.Context(), "admin crawl start failed", slog.Any("error", err))
@@ -1591,24 +1593,25 @@ func parseCrawlForm(r *http.Request) crawlForm {
 	maxPages, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("maxPagesPerHost")))
 
 	return crawlForm{
-		Name:                 strings.TrimSpace(r.PostFormValue("name")),
-		Seeds:                r.PostFormValue("seeds"),
-		Mode:                 r.PostFormValue("mode"),
-		Scope:                r.PostFormValue("scope"),
-		MaxDepth:             depth,
-		URLMustMatch:         strings.TrimSpace(r.PostFormValue("urlMustMatch")),
-		URLMustNotMatch:      strings.TrimSpace(r.PostFormValue("urlMustNotMatch")),
-		IndexURLMustMatch:    strings.TrimSpace(r.PostFormValue("indexMustMatch")),
-		IndexURLMustNotMatch: strings.TrimSpace(r.PostFormValue("indexMustNotMatch")),
-		MaxPagesPerHost:      maxPages,
-		AllowQueryURLs:       r.PostFormValue("allowQueryURLs") == "on",
-		FollowNoFollowLinks:  r.PostFormValue("followNoFollowLinks") == "on",
-		IgnoreTLSAuthority:   r.PostFormValue("ignoreTLSAuthority") == "on",
-		IgnoreRobots:         r.PostFormValue("ignoreRobots") == "on",
-		DisableBrowser:       r.PostFormValue("disableBrowser") == "on",
-		RecrawlIfOlder:       strings.TrimSpace(r.PostFormValue("recrawlIfOlder")),
-		CrawlDelay:           strings.TrimSpace(r.PostFormValue("crawlDelay")),
-		ShowExpert:           r.PostFormValue("showExpert") == "on",
+		Name:                     strings.TrimSpace(r.PostFormValue("name")),
+		Seeds:                    r.PostFormValue("seeds"),
+		Mode:                     r.PostFormValue("mode"),
+		Scope:                    r.PostFormValue("scope"),
+		MaxDepth:                 depth,
+		URLMustMatch:             strings.TrimSpace(r.PostFormValue("urlMustMatch")),
+		URLMustNotMatch:          strings.TrimSpace(r.PostFormValue("urlMustNotMatch")),
+		IndexURLMustMatch:        strings.TrimSpace(r.PostFormValue("indexMustMatch")),
+		IndexURLMustNotMatch:     strings.TrimSpace(r.PostFormValue("indexMustNotMatch")),
+		MaxPagesPerHost:          maxPages,
+		AllowQueryURLs:           r.PostFormValue("allowQueryURLs") == "on",
+		FollowNoFollowLinks:      r.PostFormValue("followNoFollowLinks") == "on",
+		NoindexCanonicalMismatch: r.PostFormValue("noindexCanonicalMismatch") == "on",
+		IgnoreTLSAuthority:       r.PostFormValue("ignoreTLSAuthority") == "on",
+		IgnoreRobots:             r.PostFormValue("ignoreRobots") == "on",
+		DisableBrowser:           r.PostFormValue("disableBrowser") == "on",
+		RecrawlIfOlder:           strings.TrimSpace(r.PostFormValue("recrawlIfOlder")),
+		CrawlDelay:               strings.TrimSpace(r.PostFormValue("crawlDelay")),
+		ShowExpert:               r.PostFormValue("showExpert") == "on",
 	}
 }
 

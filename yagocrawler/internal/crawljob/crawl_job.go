@@ -29,6 +29,14 @@ type CrawlJob struct {
 	// DisableBrowser keeps this job on the fast HTTP path: no headless-browser
 	// escalation when the fast fetch is rejected.
 	DisableBrowser bool
+	// FollowNoFollowLinks mirrors the profile flag: rel=nofollow anchors are
+	// followed, and a page-level nofollow directive (meta robots or
+	// X-Robots-Tag) is overridden for this job.
+	FollowNoFollowLinks bool
+	// NoindexCanonicalMismatch mirrors the profile flag: a page whose
+	// rel=canonical points at a different URL is crawled for links but not
+	// indexed.
+	NoindexCanonicalMismatch bool
 }
 
 type DiscoveredLinks struct {

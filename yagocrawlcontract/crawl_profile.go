@@ -30,6 +30,12 @@ type CrawlProfile struct {
 	MaxDepth             int
 	AllowQueryURLs       bool
 	FollowNoFollowLinks  bool
+	// NoindexCanonicalMismatch crawls a page whose parsed rel=canonical
+	// resolves to a different URL than the fetched page's normalized URL for
+	// links only, without indexing it, mirroring YaCy's
+	// NOINDEX_WHEN_CANONICAL_UNEQUAL_URL. Default off: canonical often points
+	// paginated pages at page 1, which would silently drop them.
+	NoindexCanonicalMismatch bool
 	// IgnoreTLSAuthority fetches https pages without verifying the certificate
 	// chain, for self-signed or mis-chained sites an operator still wants
 	// crawled. The crawl payload is public web content, not credentials.

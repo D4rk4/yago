@@ -23,13 +23,20 @@ type Frontier interface {
 	Jobs() <-chan crawljob.CrawlJob
 	Submit(ctx context.Context, work crawljob.CrawlJob, links crawljob.DiscoveredLinks)
 	Done(work crawljob.CrawlJob, deliveryFailed bool)
+	// ResolveRedirect checks a job's post-redirect final URL against the run's
+	// visited-set, recording it when fresh; false means the target was already
+	// processed this run and the page must be skipped.
+	ResolveRedirect(job crawljob.CrawlJob, finalURL string) bool
 }
 
 const (
-	msgPageRejected   = "crawl page rejected"
-	msgJobFetching    = "crawl job fetching"
-	msgPageCrawled    = "crawl page crawled"
-	msgPageNotIndexed = "crawl page not indexed"
+	msgPageRejected      = "crawl page rejected"
+	msgJobFetching       = "crawl job fetching"
+	msgPageCrawled       = "crawl page crawled"
+	msgPageNotIndexed    = "crawl page not indexed"
+	msgPageNoindex       = "crawl page noindex"
+	msgPageNofollow      = "crawl page nofollow"
+	msgRedirectDuplicate = "crawl redirect target already visited"
 )
 
 type Pipeline struct {
@@ -241,6 +248,9 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 
 		return err
 	}
+	if !p.redirectAdmitted(ctx, job, fetched.URL.String()) {
+		return nil
+	}
 	if !formatparse.Accepts(fetched.URL.String(), fetched.ContentType, job.Formats) {
 		p.observer.FetchFailed()
 		p.tally.Failed(job.Provenance)
@@ -263,6 +273,67 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 		slog.String("url", page.URL),
 		slog.Int("links", len(page.Links)),
 	)
+	directives := effectiveDirectives(job, page, fetched.RobotsTag)
+	p.submitLinks(ctx, job, page, directives)
+	if directives.noindex {
+		slog.DebugContext(ctx, msgPageNoindex,
+			slog.String("url", page.URL),
+			slog.String("source", directives.noindexSource),
+		)
+
+		return nil
+	}
+	if !job.Index || !parsed {
+		slog.DebugContext(ctx, msgPageNotIndexed, slog.String("url", page.URL))
+
+		return nil
+	}
+	deliveryFailed, err = p.indexAndEmit(ctx, job, page, fetched.ContentType)
+
+	return err
+}
+
+// redirectAdmitted applies the run's visited-set to a job's post-redirect
+// final URL (CRAWL-30): when the fetch landed on a different URL than the job
+// was dispatched for, the frontier checks and records the final URL, so two
+// URLs redirecting to one target index it once per run. A duplicate target is
+// counted by the frontier's duplicate tally and skipped entirely.
+func (p *Pipeline) redirectAdmitted(ctx context.Context, job crawljob.CrawlJob, final string) bool {
+	normFinal, ok := weburl.Normalize(final)
+	if !ok {
+		return true
+	}
+	normJob, ok := weburl.Normalize(job.URL)
+	if !ok || normFinal == normJob {
+		return true
+	}
+	if p.frontier.ResolveRedirect(job, final) {
+		return true
+	}
+	slog.DebugContext(ctx, msgRedirectDuplicate,
+		slog.String("url", job.URL),
+		slog.String("finalUrl", final),
+	)
+
+	return false
+}
+
+// submitLinks discovers the page's links into the frontier unless an
+// effective page-level nofollow directive suppresses them (CRAWL-28).
+func (p *Pipeline) submitLinks(
+	ctx context.Context,
+	job crawljob.CrawlJob,
+	page pageparse.ParsedPage,
+	directives pageDirectives,
+) {
+	if directives.nofollow {
+		slog.DebugContext(ctx, msgPageNofollow,
+			slog.String("url", page.URL),
+			slog.String("source", directives.nofollowSource),
+		)
+
+		return
+	}
 	resolved := crawljob.CrawlJob{
 		URL:           page.URL,
 		Depth:         job.Depth,
@@ -274,14 +345,6 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 		Followable: page.FollowableLinks,
 		NoFollow:   page.NoFollowLinks,
 	})
-	if !job.Index || !parsed {
-		slog.DebugContext(ctx, msgPageNotIndexed, slog.String("url", page.URL))
-
-		return nil
-	}
-	deliveryFailed, err = p.indexAndEmit(ctx, job, page, fetched.ContentType)
-
-	return err
 }
 
 // emitRemovalIfGone tombstones a dead page: when the fetch failed with a
