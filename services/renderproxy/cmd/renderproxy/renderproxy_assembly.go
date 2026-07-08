@@ -72,10 +72,20 @@ func runServers(ctx context.Context, proxyServer, opsServer *http.Server) error 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownLimit)
 	defer shutdownCancel()
 	if err := proxyServer.Shutdown(shutdownCtx); err != nil {
-		slog.WarnContext(ctx, msgShutdownFailed, slog.String("server", proxyServer.Addr), slog.Any("error", err))
+		slog.WarnContext(
+			ctx,
+			msgShutdownFailed,
+			slog.String("server", proxyServer.Addr),
+			slog.Any("error", err),
+		)
 	}
 	if err := opsServer.Shutdown(shutdownCtx); err != nil {
-		slog.WarnContext(ctx, msgShutdownFailed, slog.String("server", opsServer.Addr), slog.Any("error", err))
+		slog.WarnContext(
+			ctx,
+			msgShutdownFailed,
+			slog.String("server", opsServer.Addr),
+			slog.Any("error", err),
+		)
 	}
 
 	return runErr
