@@ -4,12 +4,15 @@ package proxyintake
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/nikitakarpei/yacy-rwi-node/renderproxy/internal/renderedpage"
 )
 
 const headerContentType = "Content-Type"
+
+const msgRenderFailed = "render failed"
 
 type Handler struct {
 	renderer renderedpage.Renderer
@@ -31,7 +34,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	page, err := h.renderer.Render(r.Context(), r.URL.String())
 	if err != nil {
-		h.writeFailure(w, err)
+		h.writeFailure(w, r.Context(), err)
 		return
 	}
 
@@ -42,10 +45,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(page.Body)
 }
 
-func (h *Handler) writeFailure(w http.ResponseWriter, err error) {
+func (h *Handler) writeFailure(w http.ResponseWriter, ctx context.Context, err error) {
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		w.WriteHeader(http.StatusGatewayTimeout)
 		return
 	}
+	slog.WarnContext(ctx, msgRenderFailed, slog.Any("error", err))
 	w.WriteHeader(http.StatusBadGateway)
 }

@@ -28,6 +28,12 @@ func Start(t *testing.T, ctx context.Context, networkName string) {
 			ExposedPorts:   []string{port + "/tcp"},
 			Networks:       []string{networkName},
 			NetworkAliases: map[string][]string{networkName: {alias}},
+			Cmd: []string{
+				"/bin/lightpanda", "serve",
+				"--host", "0.0.0.0",
+				"--port", port,
+				"--advertise-host", alias,
+			},
 			WaitingFor: wait.ForListeningPort(port + "/tcp").
 				WithStartupTimeout(time.Minute),
 		},
