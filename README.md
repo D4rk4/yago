@@ -51,6 +51,11 @@ its binaries (`yago-node`, `yagocrawler`).
 - Local index (sharded [Bleve](https://blevesearch.com/)) + federated swarm
   fan-out + optional web fallback (off by default), merged with
   **reciprocal-rank fusion** and **MMR result diversity**.
+- **[YagoRank](yagonode/doc/yagorank.md)** — a learned log-linear ranker whose
+  weights are fit offline to NDCG against a judgment set, not hand-tuned: per-field
+  BM25, the full Sequential Dependence Model (ordered *and* unordered proximity),
+  host-authority, freshness, and a content-quality prior, all learned by
+  coordinate ascent. Pure-Go, CPU-only, no model runtime, no wire change.
 - **Multilingual morphology**: documents route to per-language analyzers
   (Snowball stemming), single-word swarm queries can expand into
   corpus-observed inflections, and partial words match through trigram fields.
@@ -232,7 +237,7 @@ flowchart LR
 | `yagomodel` / `yagoproto` | the YaCy wire model and protocol helpers — reusable on their own |
 | `yagoegress` | the shared dial-time SSRF egress guard |
 
-Architecture decisions live in [ADRs](yagonode/doc/adr/README.md) (34 and
+Architecture decisions live in [ADRs](yagonode/doc/adr/README.md) (36 and
 counting, including the deliberate no-gos); the full feature ledger with
 per-feature test pointers is [FEATURES.md](FEATURES.md).
 
@@ -252,6 +257,7 @@ lint tools are pinned and installed under `.toolchain/` by `make tools`.
 | Doc | What's inside |
 | --- | --- |
 | [compatibility.md](yagonode/doc/compatibility.md) | the YaCy parity matrix, endpoint by endpoint |
+| [yagorank.md](yagonode/doc/yagorank.md) | the learned ranking stack: model, features, and the tuning loop |
 | [configuration.md](yagonode/doc/configuration.md) | every environment variable and its default |
 | [specification.md](yagonode/doc/specification.md) | the node's behavior specification |
 | [metrics.md](yagonode/doc/metrics.md) · [slo.md](yagonode/doc/slo.md) | observability and alerting |
