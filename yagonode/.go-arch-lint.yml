@@ -122,6 +122,8 @@ components:
     in: internal/spellcheck/**
   rankingprofile:
     in: internal/rankingprofile/**
+  rankfit:
+    in: internal/rankfit/**
   recrawlfrontier:
     in: internal/recrawlfrontier/**
   searchremote:
@@ -542,6 +544,12 @@ deps:
       - vault
       - memvault
       - boltvault
+  rankfit:
+    mayDependOn:
+      - rankfit
+      - searchcore
+      - searcheval
+      - searchindex
   portaltheme:
     mayDependOn:
       - portaltheme
