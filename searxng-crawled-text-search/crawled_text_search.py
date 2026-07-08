@@ -29,7 +29,11 @@ def request(query, params):
                     "fields": ["title^3", "content"],
                 }
             },
-            "highlight": {"fields": {"content": {}}},
+            "highlight": {
+                "fields": {"content": {}},
+                "pre_tags": [""],
+                "post_tags": [""],
+            },
         }
     )
     return params
