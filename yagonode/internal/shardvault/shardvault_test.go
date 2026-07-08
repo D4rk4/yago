@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	bolt "go.etcd.io/bbolt"
 
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -185,6 +186,105 @@ func TestShardVaultCompressesLargeValues(t *testing.T) {
 		t.Fatalf("compressible value stored as %d bytes (tag %d) for %d input",
 			len(encoded), encoded[0], len(compressible))
 	}
+}
+
+// TestUsedBytesExcludesFreedPages pins the accounting change behind the storage
+// fix: UsedBytes reports live data, not raw file size. Populating then deleting
+// every record must make UsedBytes fall (the pages are freed), even though the
+// shard files keep their size (bbolt never returns pages to the OS — which is
+// what the periodic compaction pass is for). The old os.Stat accounting failed
+// the first assertion: file size does not drop on delete, so usage looked stuck
+// at the high-water mark and the eviction sweep could never get below it.
+func TestUsedBytesExcludesFreedPages(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "vault")
+	vaulted, err := Open(dir, 64<<20)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = vaulted.Close() })
+	values, err := vault.Register(vaulted, "docs", stringCodec{})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	ctx := context.Background()
+
+	const records = 800
+	keys := make([]string, 0, records)
+	if err := vaulted.Update(ctx, func(txn *vault.Txn) error {
+		for i := range records {
+			key := fmt.Sprintf("doc-%05d", i)
+			keys = append(keys, key)
+			value := incompressibleValue(uint64(i), 1024)
+			if err := values.Put(txn, vault.Key(key), value); err != nil {
+				return fmt.Errorf("put: %w", err)
+			}
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatalf("populate: %v", err)
+	}
+
+	full, err := vaulted.UsedBytes(ctx)
+	if err != nil || full <= 0 {
+		t.Fatalf("used after populate = %d %v", full, err)
+	}
+	fileFull := totalShardFileBytes(dir)
+
+	if err := vaulted.Update(ctx, func(txn *vault.Txn) error {
+		for _, key := range keys {
+			if _, err := values.Delete(txn, vault.Key(key)); err != nil {
+				return fmt.Errorf("delete: %w", err)
+			}
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	empty, err := vaulted.UsedBytes(ctx)
+	if err != nil {
+		t.Fatalf("used after delete: %v", err)
+	}
+	fileEmpty := totalShardFileBytes(dir)
+
+	if empty*2 >= full {
+		t.Fatalf("live usage did not fall after delete: full=%d empty=%d", full, empty)
+	}
+	if fileEmpty < fileFull {
+		t.Fatalf("shard files shrank without compaction: full=%d empty=%d", fileFull, fileEmpty)
+	}
+}
+
+// totalShardFileBytes sums the on-disk sizes of every shard file — the figure
+// the old UsedBytes returned, kept here to prove it stays put across a delete.
+func totalShardFileBytes(dir string) int64 {
+	var total int64
+	for i := range maxShards {
+		info, err := os.Stat(shardPath(dir, i))
+		if err != nil {
+			continue
+		}
+		total += info.Size()
+	}
+
+	return total
+}
+
+// incompressibleValue builds a distinct, poorly-compressible payload from a
+// chain of xxhash digests so the records actually occupy pages instead of
+// collapsing under zstd.
+func incompressibleValue(seed uint64, size int) string {
+	var b strings.Builder
+	b.Grow(size + 16)
+	state := seed
+	for b.Len() < size {
+		state = xxhash.Sum64([]byte(fmt.Sprintf("%d", state)))
+		fmt.Fprintf(&b, "%016x", state)
+	}
+
+	return b.String()[:size]
 }
 
 func TestValueEncodingEdges(t *testing.T) {
@@ -423,8 +523,12 @@ func TestEngineErrorPaths(t *testing.T) {
 	if err := shardEngine.Provision("late"); err == nil {
 		t.Fatal("provision after close must fail")
 	}
-	if _, err := shardEngine.UsedBytes(ctx); err != nil {
-		t.Fatalf("used bytes after close = %v", err)
+	// UsedBytes now reads live stats through a read transaction, so it needs the
+	// shards open; after close it surfaces the failure instead of a stale file
+	// size. Production only ever calls it on an open vault (the metrics gauge
+	// treats an error as zero).
+	if _, err := shardEngine.UsedBytes(ctx); err == nil {
+		t.Fatal("used bytes after close must fail")
 	}
 	closeShards([]*bolt.DB{nil})
 }

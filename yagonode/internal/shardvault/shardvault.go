@@ -266,17 +266,43 @@ func (e *engine) View(_ context.Context, fn func(vault.EngineTxn) error) error {
 	return nil
 }
 
+// UsedBytes reports the live data held across the shards, excluding bbolt free
+// pages, mirroring boltvault. A shard file grows to its high-water mark and
+// bbolt never returns freed pages to the OS, so the raw file size overstates
+// usage after churn (deletes, recrawl re-ingest, eviction). The quota and the
+// eviction sweep that loops on this figure must see the bytes actually in use,
+// not the peak file size — otherwise the sweep can never drop below the mark
+// and thrashes. Compaction (the periodic maintenance pass) is what returns the
+// freed pages to the OS and shrinks the files.
 func (e *engine) UsedBytes(_ context.Context) (int64, error) {
 	var total int64
-	for i := range e.shards {
-		info, err := os.Stat(shardPath(e.dir, i))
+	for i, db := range e.shards {
+		live, err := liveBytes(db)
 		if err != nil {
-			continue
+			return 0, fmt.Errorf("measure shard %d: %w", i, err)
 		}
-		total += info.Size()
+		total += live
 	}
 
 	return total, nil
+}
+
+// liveBytes returns one shard's in-use bytes: the file size minus the free and
+// pending free pages the freelist can reuse.
+func liveBytes(db *bolt.DB) (int64, error) {
+	var live int64
+	if err := db.View(func(tx *bolt.Tx) error {
+		stats := db.Stats()
+		pageSize := int64(db.Info().PageSize)
+		free := int64(stats.FreePageN+stats.PendingPageN) * pageSize
+		live = max(tx.Size()-free, 0)
+
+		return nil
+	}); err != nil {
+		return 0, fmt.Errorf("read shard stats: %w", err)
+	}
+
+	return live, nil
 }
 
 func (e *engine) QuotaBytes() int64 { return e.quotaBytes }
