@@ -5,6 +5,7 @@ use (
 	./libraries/yacycrawlcontract
 	./libraries/yacymodel
 	./libraries/yacyproto
+	./services/renderproxy
 	./services/yacycrawler
 	./services/yacynode
 	./services/yacytextindexer

@@ -1,0 +1,67 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  renderedpage:
+    in: internal/renderedpage/**
+  cdprender:
+    in: internal/cdprender/**
+  rendergate:
+    in: internal/rendergate/**
+  proxyintake:
+    in: internal/proxyintake/**
+  rendermetrics:
+    in: internal/rendermetrics/**
+  renderproxycmd:
+    in: cmd/renderproxy/**
+
+vendors:
+  chromedp:
+    in:
+      - github.com/chromedp/chromedp
+      - github.com/chromedp/chromedp/**
+      - github.com/chromedp/cdproto/**
+  prometheus:
+    in:
+      - github.com/prometheus/client_golang/**
+
+deps:
+  renderedpage:
+    mayDependOn:
+      - renderedpage
+  cdprender:
+    mayDependOn:
+      - cdprender
+      - renderedpage
+    canUse:
+      - chromedp
+  rendergate:
+    mayDependOn:
+      - rendergate
+      - renderedpage
+  proxyintake:
+    mayDependOn:
+      - proxyintake
+      - renderedpage
+  rendermetrics:
+    mayDependOn:
+      - rendermetrics
+    canUse:
+      - prometheus
+  renderproxycmd:
+    mayDependOn:
+      - renderedpage
+      - cdprender
+      - rendergate
+      - proxyintake
+      - rendermetrics
+    canUse:
+      - chromedp
+      - prometheus
+
+excludeFiles:
+  - "test/e2e"
