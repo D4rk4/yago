@@ -43,5 +43,5 @@ flowchart LR
 4. Start the stack: `docker compose up -d`.
 
 See each Go service's `doc/configuration.md` for its environment variables, and
-`searxng-crawled-text-search/doc/` and `searxng-result-router/doc/` for the SearXNG engine
+`plugins/searxng/searxng-crawled-text-search/doc/` and `plugins/searxng/searxng-result-router/doc/` for the SearXNG engine
 and plugin the search UI runs.

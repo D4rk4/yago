@@ -45,7 +45,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v6
         with:
-          context: searxng-result-router
+          context: plugins/searxng/searxng-result-router
           platforms: linux/amd64,linux/arm64
           push: true
           provenance: true

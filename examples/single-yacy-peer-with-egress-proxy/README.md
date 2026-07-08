@@ -22,5 +22,5 @@ running your own crawler or search UI.
 | `yacy-rwi-node` | The peer: joins the DHT and serves remote search requests. |
 | `smokescreen` | Egress proxy every outbound connection from the node passes through. |
 
-See `yacynode/doc/configuration.md` for every environment variable the node accepts and the
+See `services/yacynode/doc/configuration.md` for every environment variable the node accepts and the
 ports it listens on.

@@ -13,7 +13,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: yacynode/go.mod
+          go-version-file: services/yacynode/go.mod
           cache-dependency-path: |
             go.work.sum
             **/go.sum

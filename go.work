@@ -1,12 +1,12 @@
 go 1.26
 
 use (
-	./searchdocument
-	./yacycrawlcontract
-	./yacycrawler
-	./yacymodel
-	./yacynode
-	./yacyproto
-	./yacytextindexer
-	./yacyvisitcrawl
+	./libraries/searchdocument
+	./libraries/yacycrawlcontract
+	./libraries/yacymodel
+	./libraries/yacyproto
+	./services/yacycrawler
+	./services/yacynode
+	./services/yacytextindexer
+	./services/yacyvisitcrawl
 )

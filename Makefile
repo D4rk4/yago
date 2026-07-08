@@ -2,8 +2,8 @@ GO ?= go
 PYTHON ?= python3
 COVERAGE_MIN ?= 80
 
-GO_MODULES := yacynode yacymodel yacyproto yacycrawlcontract yacycrawler yacytextindexer yacyvisitcrawl
-PY_MODULES := searxng-result-router searxng-crawled-text-search
+GO_MODULES := services/yacynode libraries/yacymodel libraries/yacyproto libraries/yacycrawlcontract services/yacycrawler services/yacytextindexer services/yacyvisitcrawl
+PY_MODULES := plugins/searxng/searxng-result-router plugins/searxng/searxng-crawled-text-search
 
 COVER_PROFILE := coverage.out
 COVER_EXCLUDE := /internal/vaulttest/|/test/e2e/
@@ -124,7 +124,7 @@ cover-check-py: $(PY_VENV_STAMPS)
 # ---- misc ----
 
 peer-hash:
-	cd yacynode && $(GO) run ./cmd/yacy-peer-hash
+	cd services/yacynode && $(GO) run ./cmd/yacy-peer-hash
 
 # ---- e2e ----
 
@@ -139,6 +139,11 @@ E2E_DOCKER_ENV := DOCKER_HOST=$(E2E_DOCKER_HOST) TESTCONTAINERS_RYUK_DISABLED=tr
 # Modules that build a docker image for e2e testing, and the tag each produces.
 E2E_IMAGE_MODULES := yacynode yacycrawler yacytextindexer yacyvisitcrawl
 
+E2E_PATH_yacynode        := services/yacynode
+E2E_PATH_yacycrawler     := services/yacycrawler
+E2E_PATH_yacytextindexer := services/yacytextindexer
+E2E_PATH_yacyvisitcrawl  := services/yacyvisitcrawl
+
 E2E_IMAGE_yacynode        := yacy-rwi-node:e2e
 E2E_IMAGE_yacycrawler     := yacy-rwi-crawler:e2e
 E2E_IMAGE_yacytextindexer := yacy-rwi-textindexer:e2e
@@ -146,7 +151,7 @@ E2E_IMAGE_yacyvisitcrawl  := yacyvisitcrawl:e2e
 
 define e2e_image_rule
 e2e-$(1)-image:
-	DOCKER_BUILDKIT=1 $$(E2E_CONTAINER_CLI) build -f $(1)/Dockerfile -t $$(E2E_IMAGE_$(1)) .
+	DOCKER_BUILDKIT=1 $$(E2E_CONTAINER_CLI) build -f $$(E2E_PATH_$(1))/Dockerfile -t $$(E2E_IMAGE_$(1)) .
 endef
 $(foreach m,$(E2E_IMAGE_MODULES),$(eval $(call e2e_image_rule,$(m))))
 
@@ -154,6 +159,9 @@ e2e-images: $(foreach m,$(E2E_IMAGE_MODULES),e2e-$(m)-image)
 
 # Modules that own a test/e2e suite, and the images each suite needs.
 E2E_SUITE_MODULES := yacynode yacycrawler yacytextindexer searxng-result-router searxng-crawled-text-search
+
+E2E_PATH_searxng-result-router         := plugins/searxng/searxng-result-router
+E2E_PATH_searxng-crawled-text-search   := plugins/searxng/searxng-crawled-text-search
 
 E2E_ENV_yacynode                       := YACY_NODE_IMAGE=$(E2E_IMAGE_yacynode)
 E2E_ENV_yacycrawler                    := YACYCRAWLER_IMAGE=$(E2E_IMAGE_yacycrawler)
@@ -163,7 +171,7 @@ E2E_ENV_searxng-crawled-text-search    :=
 
 define e2e_suite_rule
 e2e-$(1):
-	cd $(1)/test/e2e && GOWORK=off $$(E2E_DOCKER_ENV) $$(E2E_ENV_$(1)) \
+	cd $$(E2E_PATH_$(1))/test/e2e && GOWORK=off $$(E2E_DOCKER_ENV) $$(E2E_ENV_$(1)) \
 		$$(GO) test -tags e2e -timeout $$(E2E_TIMEOUT) -count=1 -v ./...
 endef
 $(foreach m,$(E2E_SUITE_MODULES),$(eval $(call e2e_suite_rule,$(m))))
