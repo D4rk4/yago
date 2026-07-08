@@ -91,6 +91,28 @@ type noopURLPurger struct{}
 
 func (noopURLPurger) Purge(context.Context, []yagomodel.Hash) error { return nil }
 
+// StalePostingSweeper drops a URL's postings for words absent from a fresh
+// ingest's set (RWI-01), so a recrawled page stops answering searches for
+// words it no longer contains. The assembly satisfies it with the eviction
+// primitive; the no-op default keeps bare test consumers working.
+type StalePostingSweeper interface {
+	PurgeStalePostings(
+		ctx context.Context,
+		url yagomodel.Hash,
+		live map[yagomodel.Hash]struct{},
+	) (int, error)
+}
+
+type noopStaleSweeper struct{}
+
+func (noopStaleSweeper) PurgeStalePostings(
+	context.Context,
+	yagomodel.Hash,
+	map[yagomodel.Hash]struct{},
+) (int, error) {
+	return 0, nil
+}
+
 type IngestConsumer struct {
 	stream    IngestStream
 	documents documentstore.DocumentReceiver
@@ -101,6 +123,7 @@ type IngestConsumer struct {
 	recorder  FetchRecorder
 	owner     OwnershipCheck
 	purger    URLPurger
+	stale     StalePostingSweeper
 	nearDup   *neardup.Window
 	// quality names the rule a document's text violates, "" for indexable text;
 	// nil skips the gate.
@@ -136,6 +159,7 @@ func NewIngestConsumerWithIndex(
 		recorder:  noopFetchRecorder{},
 		owner:     allowAllOwnership{},
 		purger:    noopURLPurger{},
+		stale:     noopStaleSweeper{},
 		hashURL:   yagomodel.HashURL,
 	}
 }
@@ -191,5 +215,13 @@ func (c *IngestConsumer) CheckOwnership(oracle OwnershipCheck) {
 func (c *IngestConsumer) PurgeURLs(purger URLPurger) {
 	if purger != nil {
 		c.purger = purger
+	}
+}
+
+// SweepStalePostings installs the stale-posting sweeper a fresh ingest runs
+// before storing its postings (RWI-01). A nil sweeper keeps the no-op default.
+func (c *IngestConsumer) SweepStalePostings(sweeper StalePostingSweeper) {
+	if sweeper != nil {
+		c.stale = sweeper
 	}
 }

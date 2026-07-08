@@ -806,7 +806,7 @@ func searchResults(
 		results = append(results, result)
 	}
 
-	return verifiedPeerResults(req, results), nil
+	return languageFiltered(req, verifiedPeerResults(req, results)), nil
 }
 
 func searchResult(
@@ -845,7 +845,7 @@ func searchResult(
 		Size:          metadataSize(row),
 		Date:          row.Freshness(),
 		ContentDomain: req.ContentDomain,
-		Language:      req.Language,
+		Language:      rowLanguage(row),
 	}, nil
 }
 

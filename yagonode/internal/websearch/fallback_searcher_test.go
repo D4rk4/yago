@@ -233,3 +233,30 @@ func TestToCoreResultsCapsToLimit(t *testing.T) {
 		t.Fatalf("results = %d, want 2", len(results))
 	}
 }
+
+// TestFallbackSkipsNonTextVerticals pins SEARCH-40: an empty image (or any
+// non-text vertical) result set must stay empty rather than silently turning
+// into unfiltered text links from the web provider.
+func TestFallbackSkipsNonTextVerticals(t *testing.T) {
+	t.Parallel()
+
+	for _, dom := range []searchcore.ContentDomain{
+		searchcore.ContentDomainImage,
+		searchcore.ContentDomainAudio,
+		searchcore.ContentDomainVideo,
+	} {
+		provider := &stubProvider{results: []Result{{URL: "https://web.example", Title: "t"}}}
+		searcher := NewFallbackSearcher(&stubSearcher{}, provider, enabled)
+		resp, err := searcher.Search(context.Background(), searchcore.Request{
+			Query:         "cats",
+			ContentDomain: dom,
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", dom, err)
+		}
+		if provider.calls != 0 || len(resp.Results) != 0 {
+			t.Fatalf("%s vertical must not fall back: calls=%d results=%d",
+				dom, provider.calls, len(resp.Results))
+		}
+	}
+}

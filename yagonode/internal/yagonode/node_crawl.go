@@ -78,9 +78,11 @@ func buildCrawlRuntime(
 	consumer.RecordFetches(frontier)
 	consumer.CheckOwnership(frontier)
 	consumer.CollapseNearDuplicates(neardup.NewWindow(0))
-	consumer.PurgeURLs(eviction.NewEvictor(
+	evictor := eviction.NewEvictor(
 		storageVault, storage.postingPurger, storage.references, storage.urlEvictor,
-	))
+	)
+	consumer.PurgeURLs(evictor)
+	consumer.SweepStalePostings(evictor)
 	if config.QualityGate {
 		consumer.GateQuality(contentquality.RejectionRule)
 	}

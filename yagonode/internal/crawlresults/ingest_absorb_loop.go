@@ -2,6 +2,7 @@ package crawlresults
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -140,6 +141,10 @@ func (c *IngestConsumer) absorbTail(ctx context.Context, delivery IngestDelivery
 		return
 	}
 
+	if err := c.sweepStale(ctx, batch); err != nil {
+		c.redeliver(ctx, delivery, batch.SourceURL, "stale posting sweep", err)
+		return
+	}
 	postingReceipt, err := c.postings.Receive(ctx, batch.Postings)
 	if err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "posting store", err)
@@ -401,4 +406,30 @@ func (c *IngestConsumer) redeliver(
 		slog.WarnContext(ctx, msgIngestNakFailed,
 			slog.String("sourceUrl", sourceURL), slog.Any("error", err))
 	}
+}
+
+// sweepStale purges the source URL's postings for words the fresh batch no
+// longer carries (RWI-01), so a changed page stops matching its removed words.
+// A batch without postings is left untouched: partial ingests (and the DHT
+// intake, which never passes here) must not wipe a URL's index.
+func (c *IngestConsumer) sweepStale(
+	ctx context.Context,
+	batch yagocrawlcontract.IngestBatch,
+) error {
+	if len(batch.Postings) == 0 {
+		return nil
+	}
+	urlHash, err := c.hashURL(batch.SourceURL)
+	if err != nil {
+		return fmt.Errorf("hash source url: %w", err)
+	}
+	live := make(map[yagomodel.Hash]struct{}, len(batch.Postings))
+	for _, posting := range batch.Postings {
+		live[posting.WordHash] = struct{}{}
+	}
+	if _, err := c.stale.PurgeStalePostings(ctx, urlHash.Hash(), live); err != nil {
+		return fmt.Errorf("purge stale postings: %w", err)
+	}
+
+	return nil
 }
