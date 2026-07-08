@@ -2,7 +2,7 @@
 
 import os
 import typing as t
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from searx.plugins import Plugin, PluginInfo
 
@@ -32,7 +32,10 @@ class SXNGPlugin(Plugin):
     def on_result(
         self, request: "SXNG_Request", search: "SearchWithPlugins", result: "Result"
     ) -> bool:
+        visited_page_url = getattr(result, "url", None)
         result.filter_urls(self.route_through_visitcrawl)
+        if visited_page_url and visited_page_url.startswith(("http://", "https://")):
+            result.parsed_url = urlparse(visited_page_url)
         return True
 
     def route_through_visitcrawl(

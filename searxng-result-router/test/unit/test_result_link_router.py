@@ -13,6 +13,8 @@ class FakeResult:
     def __init__(self, **fields: str) -> None:
         self._fields = dict(fields)
         self.filter_urls_calls = 0
+        self.url = fields.get("url")
+        self.parsed_url = None
 
     def filter_urls(self, filter_func) -> None:
         self.filter_urls_calls += 1
@@ -20,6 +22,8 @@ class FakeResult:
             new_url = filter_func(self, field_name, url_src)
             if isinstance(new_url, str):
                 self._fields[field_name] = new_url
+                if field_name == "url":
+                    self.url = new_url
 
     def __getitem__(self, field_name: str) -> str:
         return self._fields[field_name]
@@ -91,3 +95,11 @@ def test_on_result_rewrites_url_and_keeps_result(plugin):
         == "http://yacyvisitcrawl:8091/visit?url=https%3A%2F%2Fexample.com%2Fa"
     )
     assert result["img_src"] == "https://example.com/a.png"
+
+
+def test_on_result_shows_visited_page_as_pretty_url(plugin):
+    result = FakeResult(url="https://example.com/a")
+
+    plugin.on_result(request=None, search=None, result=result)
+
+    assert result.parsed_url.geturl() == "https://example.com/a"
