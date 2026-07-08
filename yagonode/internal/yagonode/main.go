@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/D4rk4/yago/yagonode/internal/metrichistory"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/shardvault"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -153,6 +154,9 @@ func bootNode(
 	ctx, restart := newRestartController(ctx)
 	configureSetupWizard(authService, sources.settings, config, restart.Trigger)
 	sources.restart = restart.Trigger
+	historySampler := metrichistory.New(obs.endpoints.Registry(), performanceHistoryCapacity)
+	go historySampler.Run(ctx, performanceHistorySampleInterval)
+	sources.perfHistory = newPerformanceHistorySource(historySampler)
 
 	assembled, err := assembleRuntimeNode(
 		ctx,

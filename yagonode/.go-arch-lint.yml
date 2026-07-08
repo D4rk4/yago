@@ -76,6 +76,8 @@ components:
     in: internal/publicportal/**
   portaltheme:
     in: internal/portaltheme/**
+  metrichistory:
+    in: internal/metrichistory/**
   crawling:
     in: internal/crawling/**
   crawlurls:
@@ -213,6 +215,7 @@ vendors:
     in:
       - github.com/prometheus/client_golang/prometheus
       - github.com/prometheus/client_golang/prometheus/**
+      - github.com/prometheus/client_model/**
   grpc:
     in:
       - google.golang.org/grpc
@@ -546,6 +549,11 @@ deps:
       - events
     canUse:
       - raymond
+  metrichistory:
+    mayDependOn:
+      - metrichistory
+    canUse:
+      - prometheus
   recrawlfrontier:
     mayDependOn:
       - recrawlfrontier
@@ -719,6 +727,7 @@ deps:
       - contentquality
       - snippetfetch
       - portaltheme
+      - metrichistory
       - vault
       - boltvault
       - memvault

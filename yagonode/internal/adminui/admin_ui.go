@@ -99,6 +99,7 @@ var navItems = []NavItem{
 	{Title: "Network", Path: "/admin/network", Icon: "network"},
 	{Title: "Index", Path: indexPath, Icon: "index"},
 	{Title: "Performance", Path: "/admin/performance", Icon: "performance"},
+	{Title: "Backup", Path: backupPath, Icon: "backup"},
 	{Title: "Configuration", Path: "/admin/configuration", Icon: "configuration"},
 	{Title: "Security", Path: "/admin/security", Icon: "security"},
 	{Title: "Logs", Path: "/admin/logs", Icon: "logs"},
@@ -126,13 +127,17 @@ type Options struct {
 	Settings     SettingsSource
 	// Theme persists the operator portal design (ADR-0033); nil renders the
 	// design tabs as placeholders.
-	Theme           ThemeStore
-	Binding         BindingSource
-	Logs            LogsSource
-	Security        SecuritySource
-	Terms           TermSource
-	Schema          []SchemaGroup
-	Performance     PerformanceSource
+	Theme       ThemeStore
+	Binding     BindingSource
+	Logs        LogsSource
+	Security    SecuritySource
+	Terms       TermSource
+	Schema      []SchemaGroup
+	Performance PerformanceSource
+	// PerformanceHistory feeds the Performance page's sampled history charts.
+	PerformanceHistory PerformanceHistorySource
+	// Backup reports storage status for the Backup & restore page.
+	Backup          BackupSource
 	PeerDetail      PeerDetailSource
 	PeerNews        PeerNewsSource
 	SeedlistRefresh SeedlistRefreshSource
@@ -327,6 +332,7 @@ type performancePageData struct {
 	CSRF        string
 	Section     sectionView
 	Performance PerformanceStatus
+	History     []historyView
 }
 
 type logsPageData struct {
@@ -358,6 +364,7 @@ type templates struct {
 	security    *template.Template
 	performance *template.Template
 	restart     *template.Template
+	backup      *template.Template
 	autocrawler *template.Template
 	portal      *template.Template
 }
@@ -391,6 +398,8 @@ type Console struct {
 	terms           TermSource
 	schema          []SchemaGroup
 	performance     PerformanceSource
+	perfHistory     PerformanceHistorySource
+	backup          BackupSource
 	peerDetail      PeerDetailSource
 	peerNews        PeerNewsSource
 	seedlistRefresh SeedlistRefreshSource
@@ -437,6 +446,8 @@ func New(opts Options) *Console {
 		terms:           opts.Terms,
 		schema:          opts.Schema,
 		performance:     opts.Performance,
+		perfHistory:     opts.PerformanceHistory,
+		backup:          opts.Backup,
 		peerDetail:      opts.PeerDetail,
 		peerNews:        opts.PeerNews,
 		seedlistRefresh: opts.SeedlistRefresh,
@@ -486,6 +497,7 @@ func buildTemplates() templates {
 		security:    clone(nil, "templates/security.tmpl", "templates/toasts.tmpl"),
 		performance: clone(nil, "templates/performance.tmpl"),
 		restart:     clone(nil, "templates/restart.tmpl"),
+		backup:      clone(nil, "templates/backup.tmpl"),
 		autocrawler: clone(nil, "templates/autocrawler.tmpl"),
 		portal:      clone(nil, "templates/portal.tmpl"),
 	}
@@ -532,6 +544,7 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("POST "+portalPath, c.handlePortalUpdate)
 	c.mux.HandleFunc("POST "+portalPath+"/design", c.handlePortalDesign)
 	c.mux.HandleFunc("GET "+performancePath, c.handlePerformance)
+	c.mux.HandleFunc("GET "+backupPath, c.handleBackup)
 	c.mux.HandleFunc("GET "+activityPath, c.handleActivity)
 
 	for _, item := range navItems {
@@ -547,7 +560,7 @@ func dynamicSection(path string) bool {
 		path == indexPath || path == networkPath || path == configPath ||
 		path == logsPath || path == securityPath || path == performancePath ||
 		path == autocrawlerPath || path == activityPath || path == restartPath ||
-		path == portalPath
+		path == portalPath || path == backupPath
 }
 
 // ServeHTTP dispatches to the console's internal router, first resolving the
@@ -879,6 +892,7 @@ func (c *Console) handlePerformance(w http.ResponseWriter, r *http.Request) {
 		CSRF:        csrfToken(r),
 		Section:     sectionView{Heading: "Performance", Available: true},
 		Performance: c.performance.Performance(r.Context()),
+		History:     performanceHistory(c.perfHistory),
 	})
 }
 

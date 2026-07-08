@@ -24,7 +24,22 @@
     <div class="cds-metric__value">{{if .Performance.StorageAvailable}}Available{{else}}Full{{end}}</div>
   </section>
 </div>
-<p class="cds-muted">The crawl queue is the broker's outstanding order backlog, waiting or in flight. The index queue, peer count and storage headroom are read from the DHT gate snapshot. Backup and restore controls are a planned addition.</p>
+<p class="cds-muted">The crawl queue is the broker's outstanding order backlog, waiting or in flight. The index queue, peer count and storage headroom are read from the DHT gate snapshot. Backup and restore live on the <a href="/admin/backup">Backup &amp; restore</a> page.</p>
+{{if .History}}
+<h2 class="cds-h2">Recent history</h2>
+<div class="cds-tile-grid">
+  {{range .History}}
+  <section class="cds-tile">
+    <div class="cds-metric__label">{{.Name}}</div>
+    <div class="cds-metric__value">{{.Current}} <span class="cds-metric__unit">{{.Unit}}</span></div>
+    {{.SVG}}
+    <div class="cds-muted cds-sparkline__meta">peak {{.Peak}} {{.Unit}} · {{.Samples}} samples over {{.Window}}</div>
+  </section>
+  {{end}}
+</div>
+{{else}}
+<p class="cds-muted">History charts appear after the sampler has collected at least two points (about twenty seconds after start).</p>
+{{end}}
 {{else}}
 <div class="cds-empty" role="status" aria-live="polite">Performance metrics are not available.</div>
 {{end}}

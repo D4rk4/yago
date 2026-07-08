@@ -80,6 +80,7 @@ peer listener is behind a reverse proxy or NAT and the external address differs)
 | `YAGO_PEER_ADDR` | `:8090` | Listen address for the YaCy peer protocol. |
 | `YAGO_OPS_ADDR` | `:9090` | Listen address for `/health`, `/ready`, `/metrics`, and ops JSON endpoints. |
 | `YAGO_METRICS_ENABLED` | `true` | Serve the Prometheus `/metrics` endpoint. Set to `false` to unmount it (returns 404); the collectors still run. The endpoint is admin-authenticated regardless (it is not on the operations listener's public allowlist). See [metrics.md](metrics.md). |
+| `YAGO_ADMIN_RESTART_ENABLED` | `true` | Offer the node/crawler restart controls in the admin console. Set to `false` to strip them: the Restart page then renders as unavailable (UI-09 acceptance). The setup wizard's mandatory post-setup restart is unaffected. |
 | `YAGO_PEER_HASH` | _(generated)_ | The 12-character enhanced-Base64 peer hash advertised to the network. If unset, the node generates one on first start and persists it to the data directory, reusing it across restarts so the peer keeps a stable identity. Set it to pin a specific hash. |
 | `YAGO_PEER_NAME` | _(generated)_ | Peer name advertised to the network. Generated (as `yago-<random>`) and persisted like the hash when unset. |
 | `YAGO_NETWORK_NAME` | `freeworld` | YaCy network to join. Only peers on the same network exchange data. |

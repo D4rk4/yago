@@ -2093,7 +2093,18 @@ Acceptance:
 
 ### UI-09: Performance and operations UI
 
-Status: Partial (FTR-028), advanced. The Logs section renders recent structured
+Status: Complete (FTR-028). The remaining gaps closed: the Performance page now
+renders a sampled short-horizon **history** — request throughput, 5xx rate,
+average request latency, DHT postings-sent rate, and both queue depths, drawn
+as server-rendered SVG sparklines over a fifteen-minute ring
+(`internal/metrichistory`, ten-second samples off the shared Prometheus
+registry) with no charting JavaScript — and a dedicated **Backup & restore**
+page shows the data directory and storage usage/quota and arms the operator
+with the exact offline `deploy/backup.sh`/`restore.sh` invocations for both
+docker and systemd deployments (a consistent backup requires the node stopped
+by design, OPS-03). The restart controls satisfy the acceptance's disable
+switch through `YAGO_ADMIN_RESTART_ENABLED=false`. Earlier state, kept for
+history: Partial (FTR-028), advanced. The Logs section renders recent structured
 events (time, severity, category, name, message) newest-first from the in-memory
 events recorder via a decoupled `adminui.LogsSource`, with an htmx auto-refresh
 partial and severity tags, degrading to plain HTML without JavaScript. The

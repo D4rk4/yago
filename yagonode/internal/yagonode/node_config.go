@@ -43,6 +43,7 @@ const (
 	envQueryLogMode        = "YAGO_QUERY_LOG_MODE"
 	envPeerBirthDate       = "YAGO_PEER_BIRTH_DATE"
 	envMetricsEnabled      = "YAGO_METRICS_ENABLED"
+	envAdminRestartEnabled = "YAGO_ADMIN_RESTART_ENABLED"
 	envIndexRemoteResults  = "YAGO_INDEX_REMOTE_RESULTS"
 	envPeerHTTPSPreferred  = "YAGO_PEER_HTTPS_PREFERRED"
 	envSearchLinksNewTab   = "YAGO_SEARCH_LINKS_NEW_TAB"
@@ -102,6 +103,7 @@ type nodeConfig struct {
 	PublicBaseURL         string
 	QueryLogMode          queryLogMode
 	MetricsEnabled        bool
+	AdminRestartEnabled   bool
 	IndexRemoteResults    bool
 	SwarmMorphology       bool
 	PeerSnippetFetch      bool
@@ -197,6 +199,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		PublicBaseURL:         derived.publicBaseURL,
 		QueryLogMode:          derived.queryLogMode,
 		MetricsEnabled:        derived.metricsEnabled,
+		AdminRestartEnabled:   derived.adminRestartEnabled,
 		IndexRemoteResults:    derived.indexRemoteResults,
 		SwarmMorphology:       derived.swarmMorphology,
 		PeerSnippetFetch:      derived.peerSnippetFetch,
@@ -213,24 +216,25 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 }
 
 type derivedConfigs struct {
-	dht                dhtDistributionConfig
-	webFallback        webFallbackConfig
-	birthDate          time.Time
-	requireAPIKey      bool
-	publicSearchUI     bool
-	httpsRedirect      bool
-	publicBaseURL      string
-	queryLogMode       queryLogMode
-	metricsEnabled     bool
-	indexRemoteResults bool
-	swarmMorphology    bool
-	peerSnippetFetch   bool
-	peerHTTPSPreferred bool
-	searchLinksNewTab  bool
-	swarmSeed          swarmSeedConfig
-	extractFetch       extractFetchConfig
-	remotePeerTimeout  time.Duration
-	remoteTimeout      time.Duration
+	dht                 dhtDistributionConfig
+	webFallback         webFallbackConfig
+	birthDate           time.Time
+	requireAPIKey       bool
+	publicSearchUI      bool
+	httpsRedirect       bool
+	publicBaseURL       string
+	queryLogMode        queryLogMode
+	metricsEnabled      bool
+	adminRestartEnabled bool
+	indexRemoteResults  bool
+	swarmMorphology     bool
+	peerSnippetFetch    bool
+	peerHTTPSPreferred  bool
+	searchLinksNewTab   bool
+	swarmSeed           swarmSeedConfig
+	extractFetch        extractFetchConfig
+	remotePeerTimeout   time.Duration
+	remoteTimeout       time.Duration
 }
 
 // swarmSeedConfig gates YaCy-style greedy learning: bounded crawls of URLs
@@ -362,39 +366,41 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	}
 
 	return derivedConfigs{
-		dht:                dht,
-		webFallback:        webFallback,
-		birthDate:          birthDate,
-		requireAPIKey:      toggles.requireAPIKey,
-		publicSearchUI:     toggles.publicSearchUI,
-		httpsRedirect:      toggles.httpsRedirect,
-		publicBaseURL:      publicBaseURL,
-		queryLogMode:       queryLog,
-		metricsEnabled:     toggles.metricsEnabled,
-		indexRemoteResults: toggles.indexRemoteResults,
-		swarmMorphology:    toggles.swarmMorphology,
-		peerSnippetFetch:   toggles.peerSnippetFetch,
-		peerHTTPSPreferred: toggles.peerHTTPSPreferred,
-		searchLinksNewTab:  toggles.searchLinksNewTab,
-		swarmSeed:          swarmSeed,
-		extractFetch:       extractFetch,
-		remotePeerTimeout:  remotePeerTimeout,
-		remoteTimeout:      remoteTimeout,
+		dht:                 dht,
+		webFallback:         webFallback,
+		birthDate:           birthDate,
+		requireAPIKey:       toggles.requireAPIKey,
+		publicSearchUI:      toggles.publicSearchUI,
+		httpsRedirect:       toggles.httpsRedirect,
+		publicBaseURL:       publicBaseURL,
+		queryLogMode:        queryLog,
+		metricsEnabled:      toggles.metricsEnabled,
+		adminRestartEnabled: toggles.adminRestartEnabled,
+		indexRemoteResults:  toggles.indexRemoteResults,
+		swarmMorphology:     toggles.swarmMorphology,
+		peerSnippetFetch:    toggles.peerSnippetFetch,
+		peerHTTPSPreferred:  toggles.peerHTTPSPreferred,
+		searchLinksNewTab:   toggles.searchLinksNewTab,
+		swarmSeed:           swarmSeed,
+		extractFetch:        extractFetch,
+		remotePeerTimeout:   remotePeerTimeout,
+		remoteTimeout:       remoteTimeout,
 	}, nil
 }
 
 // derivedBoolToggles groups the plain boolean feature switches read from the
 // environment, keeping loadDerivedConfigs within its length budget.
 type derivedBoolToggles struct {
-	requireAPIKey      bool
-	publicSearchUI     bool
-	httpsRedirect      bool
-	metricsEnabled     bool
-	indexRemoteResults bool
-	peerHTTPSPreferred bool
-	swarmMorphology    bool
-	searchLinksNewTab  bool
-	peerSnippetFetch   bool
+	requireAPIKey       bool
+	publicSearchUI      bool
+	httpsRedirect       bool
+	metricsEnabled      bool
+	adminRestartEnabled bool
+	indexRemoteResults  bool
+	peerHTTPSPreferred  bool
+	swarmMorphology     bool
+	searchLinksNewTab   bool
+	peerSnippetFetch    bool
 }
 
 func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, error) {
@@ -413,6 +419,10 @@ func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, err
 	metricsEnabled, err := boolEnv(getenv, envMetricsEnabled, true)
 	if err != nil {
 		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envMetricsEnabled, err)
+	}
+	adminRestartEnabled, err := boolEnv(getenv, envAdminRestartEnabled, true)
+	if err != nil {
+		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envAdminRestartEnabled, err)
 	}
 	indexRemoteResults, err := boolEnv(getenv, envIndexRemoteResults, true)
 	if err != nil {
@@ -446,15 +456,16 @@ func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, err
 	}
 
 	return derivedBoolToggles{
-		requireAPIKey:      requireAPIKey,
-		publicSearchUI:     publicSearchUI,
-		httpsRedirect:      httpsRedirect,
-		metricsEnabled:     metricsEnabled,
-		indexRemoteResults: indexRemoteResults,
-		peerHTTPSPreferred: peerHTTPSPreferred,
-		swarmMorphology:    swarmMorphology,
-		peerSnippetFetch:   peerSnippetFetch,
-		searchLinksNewTab:  searchLinksNewTab,
+		requireAPIKey:       requireAPIKey,
+		publicSearchUI:      publicSearchUI,
+		httpsRedirect:       httpsRedirect,
+		metricsEnabled:      metricsEnabled,
+		adminRestartEnabled: adminRestartEnabled,
+		indexRemoteResults:  indexRemoteResults,
+		peerHTTPSPreferred:  peerHTTPSPreferred,
+		swarmMorphology:     swarmMorphology,
+		peerSnippetFetch:    peerSnippetFetch,
+		searchLinksNewTab:   searchLinksNewTab,
 	}, nil
 }
 

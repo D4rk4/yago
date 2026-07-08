@@ -97,6 +97,7 @@ func buildOpsMux(
 		PublicAddr:        config.PublicAddr,
 		Theme:             newPortalThemeAdmin(assembled.theme),
 	}
+	applyOpsPageOptions(&options, config, assembled, sources)
 	applyIndexAdminOptions(&options, assembled)
 	if assembled.roster != nil {
 		options.PeerDetail = newPeerDetailSource(assembled.roster, blocks)
@@ -107,24 +108,7 @@ func buildOpsMux(
 	if assembled.news != nil {
 		options.PeerNews = newPeerNewsSource(assembled.news)
 	}
-	dispatcher := crawlDispatcher(assembled.crawl)
-	if dispatcher != nil {
-		options.Crawl = newCrawlSource(dispatcher)
-		options.Schedules = newCrawlScheduleSource(assembled.schedules, options.Crawl)
-	}
-	if registry := crawlRunRegistry(assembled.crawl); registry != nil {
-		options.Monitor = newCrawlMonitorSource(registry, crawlDepth.probe)
-		if control := crawlControlRegistry(assembled.crawl); control != nil {
-			options.Control = newCrawlControlSource(
-				registry,
-				control,
-				crawlRestartSource(dispatcher),
-			)
-		}
-	}
-	if control := crawlControlRegistry(assembled.crawl); control != nil {
-		options.RestartCrawlers = control.RestartWorkers
-	}
+	applyCrawlAdminOptions(&options, assembled, crawlDepth)
 	opsMux.Handle(adminui.BasePath, adminui.New(options))
 	opsMux.Handle("/{$}", http.RedirectHandler(adminui.BasePath, http.StatusFound))
 	recorder.Record(events.SeverityInfo, events.CategoryConfig, "node.started", "node started")

@@ -1,0 +1,32 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Backup &amp; restore</nav>
+<h1 class="cds-h1">Backup &amp; restore</h1>
+{{if .Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>{{end}}
+<div class="cds-tile-grid">
+  <section class="cds-tile">
+    <div class="cds-metric__label">Data directory</div>
+    <div class="cds-metric__value cds-metric__value--small">{{.DataDir}}</div>
+  </section>
+  <section class="cds-tile">
+    <div class="cds-metric__label">Storage used</div>
+    <div class="cds-metric__value">{{.Used}}</div>
+  </section>
+  <section class="cds-tile">
+    <div class="cds-metric__label">Storage quota</div>
+    <div class="cds-metric__value">{{.Quota}}</div>
+  </section>
+</div>
+<h2 class="cds-h2">Consistent offline backup</h2>
+<p class="cds-muted">The vault shards and the search index are only guaranteed consistent while the node is not writing, so a backup stops the node for the copy and starts it again (maintenance mode, OPS-03). Everything durable — identity, settings, hashed API keys, crawl profiles, documents, postings — lives in the data directory this archives; volatile queues are deliberately excluded, and secrets are stored hashed, never in plaintext. Run one of these on the host, from the repository or package root:</p>
+<h3 class="cds-h3">Docker deployment</h3>
+<pre class="cds-code">{{.DockerBackup}}</pre>
+<h3 class="cds-h3">systemd deployment</h3>
+<pre class="cds-code">{{.SystemdBackup}}</pre>
+<h2 class="cds-h2">Restore</h2>
+<p class="cds-muted">A restore wipes the data directory first — mixing shard trees from two moments corrupts both — and requires the node stopped; the script stops and restarts it. On start the node runs its shard integrity checks and heals index orphans, which doubles as the restore verification: watch the log after starting.</p>
+<h3 class="cds-h3">Docker deployment</h3>
+<pre class="cds-code">{{.DockerRestore}}</pre>
+<h3 class="cds-h3">systemd deployment</h3>
+<pre class="cds-code">{{.SystemdRestore}}</pre>
+<p class="cds-muted">The full procedure and cross-version compatibility notes live in <code>doc/backup-restore.md</code>.</p>
+{{end}}

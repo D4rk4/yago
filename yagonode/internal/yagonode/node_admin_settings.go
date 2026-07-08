@@ -14,10 +14,11 @@ import (
 // consoleAdminSources bundles the console's runtime write surfaces so the ops
 // mux can receive them as a single dependency.
 type consoleAdminSources struct {
-	settings *settingsSource
-	binding  *bindingSource
-	security *securitySource
-	restart  func()
+	settings    *settingsSource
+	binding     *bindingSource
+	security    *securitySource
+	restart     func()
+	perfHistory adminui.PerformanceHistorySource
 }
 
 // loadRuntimeSettings opens the durable settings store, layers any stored

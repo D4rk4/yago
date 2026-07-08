@@ -432,3 +432,8 @@ select:focus-visible, [tabindex]:focus-visible {
 .cds-ac-list { position: absolute; left: 0; right: 0; top: 100%; margin: 0; padding: 0; list-style: none; background: var(--cds-layer, #fff); border: 1px solid var(--cds-border-subtle, #c6c6c6); z-index: 10; }
 .cds-ac-list li { padding: 0.4rem 0.75rem; cursor: pointer; }
 .cds-ac-list li[aria-selected="true"], .cds-ac-list li:hover { background: var(--cds-layer-hover, #e8e8e8); }
+.cds-sparkline { display: block; margin-top: var(--cds-spacing-03); color: var(--cds-interactive, #0f62fe); max-width: 100%; }
+.cds-sparkline__meta { font-size: 0.72rem; margin-top: 0.15rem; }
+.cds-metric__unit { font-size: 0.8rem; font-weight: 400; color: var(--cds-text-secondary, #525252); }
+.cds-metric__value--small { font-size: 0.95rem; word-break: break-all; }
+.cds-code { background: var(--cds-layer, #f4f4f4); border: 1px solid var(--cds-border-subtle, #e0e0e0); padding: 0.6rem 0.8rem; font-size: 0.85rem; overflow-x: auto; }
