@@ -133,6 +133,8 @@ func TestMountServesSeedlistRoutes(t *testing.T) {
 		yagoproto.PathSeedlist,
 		yagoproto.PathSeedlistJSON,
 		yagoproto.PathSeedlistXML,
+		yagoproto.PathP2PSeeds,
+		yagoproto.PathP2PSeedsJSON,
 	} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)

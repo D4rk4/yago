@@ -89,6 +89,24 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Evidence: []string{"yagonode/internal/seedlist/*_test.go"},
 	},
 	{
+		Name:    "Bootstrap seeds",
+		Path:    yagoproto.PathP2PSeeds,
+		Methods: methods(yagoproto.SeedlistEndpointMethods),
+		State:   Implemented,
+		Behavior: "Serves the plain CRLF seed-string list at upstream's unauthenticated /p2p/seeds bootstrap path " +
+			"with the shared seedlist filters.",
+		Evidence: []string{"yagonode/internal/seedlist/*_test.go"},
+	},
+	{
+		Name:    "Bootstrap seeds JSON",
+		Path:    yagoproto.PathP2PSeedsJSON,
+		Methods: methods(yagoproto.SeedlistEndpointMethods),
+		State:   Implemented,
+		Behavior: "Serves the peers-array JSON bootstrap shape (hash-first seed maps plus public Address entries, " +
+			"JSONP callback supported) from the same backend as the JSON seed list.",
+		Evidence: []string{"yagonode/internal/seedlist/*_test.go"},
+	},
+	{
 		Name:     "Host-link index",
 		Path:     yagoproto.PathIndex,
 		Methods:  methods(yagoproto.IndexEndpointMethods),

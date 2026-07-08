@@ -75,7 +75,10 @@ func TestCrawlReceiptDelaysWrongTarget(t *testing.T) {
 	}
 }
 
-func TestCrawlReceiptIgnoresForeignNetwork(t *testing.T) {
+// TestCrawlReceiptDelaysForeignNetwork pins upstream parity: YaCy's
+// crawlReceipt servlet answers a network-authentication failure with
+// delay=3600 (prop.put before the auth return), not with an empty response.
+func TestCrawlReceiptDelaysForeignNetwork(t *testing.T) {
 	req := yagoproto.CrawlReceiptRequest{
 		NetworkName: "foreign",
 		Iam:         yagomodel.WordHash("caller"),
@@ -91,8 +94,8 @@ func TestCrawlReceiptIgnoresForeignNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Serve: %v", err)
 	}
-	if resp.Delay != 0 {
-		t.Fatalf("Delay = %d, want empty response", resp.Delay)
+	if resp.Delay != disabledCrawlReceiptRetryDelay {
+		t.Fatalf("Delay = %d, want the retry delay (upstream parity)", resp.Delay)
 	}
 }
 
@@ -178,7 +181,7 @@ func TestMountCrawlReceiptDelaysMalformedTarget(t *testing.T) {
 	}
 }
 
-func TestMountCrawlReceiptOmitsDelayForForeignNetwork(t *testing.T) {
+func TestMountCrawlReceiptDelaysForeignNetwork(t *testing.T) {
 	mux := http.NewServeMux()
 	router := httpguard.NewWireRouter(mux, httpguard.WireGate{
 		Guard:   httpguard.NewRequestGuard(1024, time.Second),
@@ -209,7 +212,10 @@ func TestMountCrawlReceiptOmitsDelayForForeignNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse message: %v", err)
 	}
-	if _, ok := msg[yagoproto.FieldDelay]; ok {
-		t.Fatalf("delay encoded for foreign network: %v", msg)
+	if msg[yagoproto.FieldDelay] != "3600" {
+		t.Fatalf(
+			"delay = %q, want 3600 for a foreign network (upstream parity)",
+			msg[yagoproto.FieldDelay],
+		)
 	}
 }

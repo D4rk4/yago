@@ -46,8 +46,8 @@ func TestCatalogIncludesPlannedCompatibilityGaps(t *testing.T) {
 		paths[surface.Path] = surface
 	}
 
-	if got := paths["/gsa/searchresult"]; got.State != Planned {
-		t.Fatalf("gsa state = %q, want planned", got.State)
+	if got := paths["/gsa/searchresult"]; got.State != Unsupported {
+		t.Fatalf("gsa state = %q, want unsupported (removed upstream)", got.State)
 	}
 	for _, path := range []string{"/search", "/extract"} {
 		if got := paths[path]; got.State != Partial {

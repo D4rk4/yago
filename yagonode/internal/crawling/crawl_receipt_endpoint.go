@@ -24,7 +24,7 @@ func (e disabledCrawlReceiptEndpoint) Serve(
 	req yagoproto.CrawlReceiptRequest,
 ) (yagoproto.CrawlReceiptResponse, error) {
 	if e.local == nil || !e.local.NetworkMatches(req.NetworkName) {
-		return yagoproto.CrawlReceiptResponse{}, nil
+		return yagoproto.CrawlReceiptResponse{Delay: disabledCrawlReceiptRetryDelay}, nil
 	}
 
 	if !e.local.Addresses(req.NetworkName, req.YouAre) {

@@ -42,4 +42,18 @@ func Mount(
 		yagoproto.ParseSeedlistRequest,
 		endpoint{status: status, reachability: reachability}.ServeXML,
 	)
+	httpguard.MountRaw(
+		router,
+		yagoproto.PathP2PSeeds,
+		yagoproto.SeedlistEndpointMethods,
+		yagoproto.ParseSeedlistRequest,
+		endpoint{status: status, reachability: reachability}.ServeHTML,
+	)
+	httpguard.MountRaw(
+		router,
+		yagoproto.PathP2PSeedsJSON,
+		yagoproto.SeedlistEndpointMethods,
+		yagoproto.ParseSeedlistRequest,
+		endpoint{status: status, reachability: reachability}.ServeJSON,
+	)
 }

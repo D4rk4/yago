@@ -85,10 +85,11 @@ var searchSurfaceSpecs = []surfaceSpec{
 		Notes:    "No Solr subset is planned; the native Go search backend replaces it.",
 	},
 	{
-		Name:     "GSA search compatibility",
-		Path:     "/gsa/searchresult",
-		Methods:  []string{"GET"},
-		State:    Planned,
-		Behavior: "No Google Search Appliance compatibility endpoint is mounted yet.",
+		Name:    "GSA search compatibility",
+		Path:    "/gsa/searchresult",
+		Methods: []string{"GET"},
+		State:   Unsupported,
+		Behavior: "Not mounted, and no longer a target: upstream YaCy removed GSA support in 2020, " +
+			"so there is no live surface to be compatible with.",
 	},
 }
