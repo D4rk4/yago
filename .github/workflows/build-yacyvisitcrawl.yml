@@ -1,4 +1,4 @@
-name: build-yacycrawler
+name: build-yacyvisitcrawl
 
 on:
   workflow_call:
@@ -10,7 +10,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/yacycrawler
+  IMAGE_NAME: ${{ github.repository_owner }}/yacyvisitcrawl
 
 jobs:
   build-and-sign:
@@ -46,7 +46,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: yacycrawler/Dockerfile
+          file: yacyvisitcrawl/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           provenance: true

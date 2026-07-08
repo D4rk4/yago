@@ -4,7 +4,9 @@ Runs one YaCy RWI node as a peer on the YaCy network, joining the DHT and answer
 search requests. All outbound traffic passes through an egress proxy that blocks requests to
 private and internal IP addresses.
 
-This is the smallest deployment: a peer with no crawling and no search UI of its own.
+This is the smallest deployment: a peer with no crawling and no search UI of its own. Use
+it when you want to contribute storage and search capacity to the YaCy network without
+running your own crawler or search UI.
 
 ## Run it
 

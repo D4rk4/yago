@@ -1,4 +1,4 @@
-name: build-yacycrawler
+name: build-searxng-crawled-text-search
 
 on:
   workflow_call:
@@ -10,7 +10,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/yacycrawler
+  IMAGE_NAME: ${{ github.repository_owner }}/searxng-crawled-text-search
 
 jobs:
   build-and-sign:
@@ -45,16 +45,13 @@ jobs:
         id: build
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: yacycrawler/Dockerfile
+          context: searxng-crawled-text-search
           platforms: linux/amd64,linux/arm64
           push: true
           provenance: true
           sbom: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

@@ -29,3 +29,27 @@ jobs:
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/build-yacycrawler.yml
     secrets: inherit
+
+  build-yacyvisitcrawl:
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/build-yacyvisitcrawl.yml
+    secrets: inherit
+
+  build-yacytextindexer:
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/build-yacytextindexer.yml
+    secrets: inherit
+
+  build-searxng-crawled-text-search:
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/build-searxng-crawled-text-search.yml
+    secrets: inherit
+
+  build-searxng-result-router:
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/build-searxng-result-router.yml
+    secrets: inherit
