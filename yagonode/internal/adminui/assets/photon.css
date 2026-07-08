@@ -136,8 +136,9 @@ html, body {
 /* Buttons: raised grey Photon push buttons, depressed when pressed */
 .cds-btn {
   min-height: var(--ph-ctl-h);
-  height: var(--ph-ctl-h);
-  padding: 0 var(--cds-spacing-05);
+  justify-content: center;
+  white-space: nowrap;
+  padding: 2px var(--cds-spacing-05);
   border: 1px solid var(--ph-frame);
   border-radius: 0;
   background: var(--ph-face);
@@ -155,13 +156,13 @@ html, body {
 .cds-btn--danger:hover { background: #c0645b; }
 .cds-btn--danger:active { box-shadow: var(--ph-press); }
 
-/* Fields: sunken wells, same height as the buttons */
+/* Fields: sunken white wells, same height as the buttons */
 .cds-input, select.cds-input {
   height: var(--ph-ctl-h);
   padding: 0 var(--cds-spacing-03);
   border: 1px solid var(--ph-frame);
   border-radius: 0;
-  background: #e7e4dd;
+  background: #ffffff;
   box-shadow: var(--ph-sink);
   color: var(--cds-text-primary);
   font-size: var(--ph-ctl-fs);
@@ -170,7 +171,7 @@ html, body {
   height: auto;
   padding: var(--cds-spacing-03);
   border: 1px solid var(--ph-frame);
-  background: #e7e4dd;
+  background: #ffffff;
   box-shadow: var(--ph-sink);
   color: var(--cds-text-primary);
   font-size: var(--ph-ctl-fs);
@@ -181,12 +182,60 @@ html, body {
 }
 .cds-label { font-size: 0.75rem; }
 .cds-checkbox { font-size: var(--ph-ctl-fs); }
-.cds-fieldset { border: 1px solid var(--ph-frame); box-shadow: var(--ph-raise); }
-.cds-legend { font-size: var(--ph-ctl-fs); font-weight: 700; }
-.cds-setting-row { border-bottom: 1px solid var(--ph-frame); font-size: var(--ph-ctl-fs); }
-.cds-setting-row__label { font-size: var(--ph-ctl-fs); }
+
+/* Group boxes: a thin etched Photon frame whose title interrupts the top line,
+   not a heavy raised panel that would print its bevel over the legend text */
+.cds-fieldset {
+  border: 2px groove #b7b4ac;
+  box-shadow: none;
+  background: transparent;
+  padding: var(--cds-spacing-05) var(--cds-spacing-05) var(--cds-spacing-03);
+}
+.cds-legend {
+  margin-left: calc(-1 * var(--cds-spacing-03));
+  padding: 0 var(--cds-spacing-03);
+  background: var(--cds-background);
+  font-size: var(--ph-ctl-fs);
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--cds-text-primary);
+}
+
+/* Settings grid: a two-column Photon dialog built with grid + display:contents,
+   NOT a fixed label column (short labels would leave a dead gap before the field;
+   a long label plus a "restart" badge would wrap) and NOT width:fit-content on the
+   <fieldset> (collapses in Firefox). The label column auto-sizes to the widest
+   label in each group; the field sits right after it. Column separators stay
+   continuous because the label carries its gap as right-padding, not a grid gap. */
+.cds-settings-form { max-width: 28rem; }
+.cds-settings-form .cds-fieldset {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  max-width: 100%;
+}
+.cds-settings-form .cds-legend { grid-column: 1 / -1; }
+.cds-settings-form .cds-setting-row { display: contents; }
+.cds-settings-form .cds-setting-row__label {
+  min-height: var(--ph-ctl-h);
+  padding: 3px var(--cds-spacing-05) 3px 0;
+  border-bottom: 1px solid var(--ph-shadow);
+  font-size: var(--ph-ctl-fs);
+}
+.cds-settings-form .cds-setting-row__control {
+  min-height: var(--ph-ctl-h);
+  padding: 3px 0;
+  border-bottom: 1px solid var(--ph-shadow);
+  justify-content: flex-start;
+  font-size: var(--ph-ctl-fs);
+}
+.cds-settings-form .cds-setting-row:last-of-type .cds-setting-row__label,
+.cds-settings-form .cds-setting-row:last-of-type .cds-setting-row__control {
+  border-bottom: none;
+}
 .cds-setting-row__control .cds-input,
-.cds-setting-row__control select.cds-input { height: var(--ph-ctl-h); }
+.cds-setting-row__control select.cds-input { flex: 0 1 14rem; height: var(--ph-ctl-h); }
 .cds-setting-row__restart { border: 1px solid var(--ph-frame); box-shadow: var(--ph-raise); }
 
 /* Panels: tiles, notifications and toasts as raised grey panels */
@@ -237,9 +286,12 @@ html, body {
 
 /* Data tables: sunken frame with a raised header row */
 .cds-table {
+  width: auto;
+  min-width: 24rem;
+  max-width: 100%;
   border: 1px solid var(--ph-frame);
   box-shadow: var(--ph-sink);
-  background: #d6d3cc;
+  background: #ffffff;
 }
 .cds-table th {
   background: var(--cds-layer-01);
