@@ -30,6 +30,7 @@ const (
 	envPublicSelfTestURL   = "YAGO_PUBLIC_SELF_TEST_URL"
 	envDataDir             = "YAGO_DATA_DIR"
 	envStorageQuota        = "YAGO_STORAGE_QUOTA"
+	envStorageCompaction   = "YAGO_STORAGE_COMPACTION_INTERVAL"
 	envTrustedProxies      = "YAGO_TRUSTED_PROXIES"
 	envEgressAllowLAN      = "YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS"
 	envSeedlistURLs        = "YAGO_SEEDLIST_URLS"
@@ -66,6 +67,8 @@ const (
 	defaultAnnounceInterval = 10 * time.Minute
 	defaultGreetsPerCycle   = 16
 
+	defaultStorageCompaction = 24 * time.Hour
+
 	storageFileName       = "yago-node.db"
 	legacyStorageFileName = "yacy-rwi.db"
 	searchIndexDirName    = "search.bleve"
@@ -89,6 +92,7 @@ type nodeConfig struct {
 	StoragePath           string
 	SearchIndexPath       string
 	StorageQuotaByte      int64
+	StorageCompaction     time.Duration
 	TrustedProxies        []*net.IPNet
 	EgressAllowLAN        bool
 	EgressAllowedCIDRs    []netip.Prefix
@@ -130,6 +134,7 @@ type configuredNodeData struct {
 	databasePath    string
 	searchIndexPath string
 	quotaByte       int64
+	compaction      time.Duration
 }
 
 func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
@@ -139,7 +144,6 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	}
 
 	name := strings.TrimSpace(getenv(envPeerName))
-
 	peerAddr := envWithDefault(getenv, envPeerAddr, defaultPeerAddr)
 	seedlistURLs := splitList(getenv(envSeedlistURLs))
 
@@ -185,6 +189,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		StoragePath:           data.databasePath,
 		SearchIndexPath:       data.searchIndexPath,
 		StorageQuotaByte:      data.quotaByte,
+		StorageCompaction:     data.compaction,
 		TrustedProxies:        proxies,
 		EgressAllowLAN:        egressAllowLAN,
 		EgressAllowedCIDRs:    egressAllowedCIDRs,
@@ -507,11 +512,17 @@ func loadConfiguredNodeData(getenv func(string) string) (configuredNodeData, err
 		return configuredNodeData{}, fmt.Errorf("%s: %w", envStorageQuota, err)
 	}
 
+	compaction, err := storageCompactionInterval(getenv)
+	if err != nil {
+		return configuredNodeData{}, err
+	}
+
 	return configuredNodeData{
 		directory:       directory,
 		databasePath:    configuredDatabasePath(directory),
 		searchIndexPath: filepath.Join(directory, searchIndexDirName),
 		quotaByte:       quota,
+		compaction:      compaction,
 	}, nil
 }
 
@@ -579,6 +590,24 @@ func greetsPerCycle(getenv func(string) string) (int, error) {
 		envGreetsPerCycle,
 		envWithDefault(getenv, envGreetsPerCycle, strconv.Itoa(defaultGreetsPerCycle)),
 	)
+}
+
+// storageCompactionInterval reads how often the storage engine compacts its
+// shard files to return freed pages to the OS (ADR-0036 C). It accepts the
+// recrawl-interval vocabulary (e.g. 1d, 12h, off); off — or 0 — disables
+// compaction, and an empty value keeps the default cadence.
+func storageCompactionInterval(getenv func(string) string) (time.Duration, error) {
+	raw := strings.TrimSpace(getenv(envStorageCompaction))
+	if raw == "" {
+		return defaultStorageCompaction, nil
+	}
+
+	interval, err := yagocrawlcontract.ParseRecrawlInterval(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", envStorageCompaction, err)
+	}
+
+	return interval, nil
 }
 
 func announceInterval(getenv func(string) string) (time.Duration, error) {

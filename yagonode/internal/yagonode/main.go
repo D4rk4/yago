@@ -273,6 +273,7 @@ func serve(
 			holder:    assembled.spell,
 		})
 	}()
+	startCompactionLoop(ctx, &background, assembled)
 	startWordFormsLoop(ctx, &background, assembled)
 	if assembled.crawl != nil {
 		defer assembled.crawl.Close()
@@ -352,6 +353,14 @@ func startWordFormsLoop(ctx context.Context, background *sync.WaitGroup, assembl
 			documents: assembled.docScan,
 			holder:    assembled.wordForms,
 		})
+	}()
+}
+
+func startCompactionLoop(ctx context.Context, background *sync.WaitGroup, assembled node) {
+	background.Add(1)
+	go func() {
+		defer background.Done()
+		runCompactionLoop(ctx, assembled.vault, assembled.toggles)
 	}()
 }
 

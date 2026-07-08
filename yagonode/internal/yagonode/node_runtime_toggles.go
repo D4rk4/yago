@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"sync/atomic"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/publicrobots"
 )
@@ -16,6 +17,9 @@ type runtimeToggles struct {
 	publicBaseURL atomic.Value
 	robotsPolicy  atomic.Value
 	greeting      atomic.Value
+	// compaction holds the storage-compaction cadence in nanoseconds (0 = off);
+	// the compaction loop reads the current value each cycle.
+	compaction atomic.Int64
 }
 
 func newRuntimeToggles(config nodeConfig) *runtimeToggles {
@@ -25,8 +29,26 @@ func newRuntimeToggles(config nodeConfig) *runtimeToggles {
 	toggles.publicBaseURL.Store(config.PublicBaseURL)
 	toggles.robotsPolicy.Store(string(publicrobots.ParsePolicy(config.RobotsPolicy)))
 	toggles.greeting.Store(config.PortalGreeting)
+	toggles.compaction.Store(int64(config.StorageCompaction))
 
 	return toggles
+}
+
+// CompactionInterval is the live storage-compaction cadence (0 = off).
+func (t *runtimeToggles) CompactionInterval() time.Duration {
+	if t == nil {
+		return 0
+	}
+
+	return time.Duration(t.compaction.Load())
+}
+
+// SetCompactionInterval changes the storage-compaction cadence without a
+// restart; the compaction loop applies it on its next cycle.
+func (t *runtimeToggles) SetCompactionInterval(interval time.Duration) {
+	if t != nil {
+		t.compaction.Store(int64(interval))
+	}
 }
 
 // PortalGreeting is the live operator-chosen portal name ("" = default brand).

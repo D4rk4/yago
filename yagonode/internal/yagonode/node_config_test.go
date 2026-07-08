@@ -419,6 +419,44 @@ func TestLoadNodeConfigRejectsBadAnnounceInterval(t *testing.T) {
 	}
 }
 
+func TestLoadNodeConfigStorageCompaction(t *testing.T) {
+	base := map[string]string{envPeerHash: "0123456789AB", envPeerName: "node"}
+	load := func(t *testing.T, value string) nodeConfig {
+		t.Helper()
+		env := map[string]string{}
+		for k, v := range base {
+			env[k] = v
+		}
+		if value != "" {
+			env[envStorageCompaction] = value
+		}
+		config, err := loadNodeConfig(envFrom(env))
+		if err != nil {
+			t.Fatalf("load config %q: %v", value, err)
+		}
+
+		return config
+	}
+
+	if got := load(t, "").StorageCompaction; got != defaultStorageCompaction {
+		t.Errorf("default StorageCompaction = %v, want %v", got, defaultStorageCompaction)
+	}
+	if got := load(t, "12h").StorageCompaction; got != 12*time.Hour {
+		t.Errorf("StorageCompaction(12h) = %v, want 12h", got)
+	}
+	if got := load(t, "off").StorageCompaction; got != 0 {
+		t.Errorf("StorageCompaction(off) = %v, want 0 (disabled)", got)
+	}
+
+	env := map[string]string{envStorageCompaction: "nonsense"}
+	for k, v := range base {
+		env[k] = v
+	}
+	if _, err := loadNodeConfig(envFrom(env)); err == nil {
+		t.Fatal("expected error for a malformed compaction interval")
+	}
+}
+
 func TestLoadNodeConfigRejects(t *testing.T) {
 	cases := map[string]map[string]string{
 		"bad hash":         {envPeerHash: "short"},

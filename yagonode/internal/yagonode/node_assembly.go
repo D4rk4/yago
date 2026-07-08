@@ -76,6 +76,7 @@ type node struct {
 	crawl          crawlProcess
 	dht            dhtOutboundProcess
 	vault          *vault.Vault
+	toggles        *runtimeToggles
 	client         *http.Client
 	peerBlock      *peerblock.Store
 	denylist       *urldenylist.Store
@@ -211,7 +212,7 @@ func assembleNode(
 		wordForms:  surfaces.wordForms,
 		judgments:  surfaces.judgments,
 		swarmMorph: config.SwarmMorphology,
-	}), nil
+	}, telemetry.toggles), nil
 }
 
 // nodePeerClient picks the client for peer-protocol calls: a client tolerant
@@ -413,7 +414,7 @@ type nodeParts struct {
 	theme      *portaltheme.Theme
 }
 
-func newAssembledNode(parts nodeParts) node {
+func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 	tuner := newRankingTuner(
 		parts.storage.searchIndex,
 		parts.hostRank.Current,
@@ -454,6 +455,7 @@ func newAssembledNode(parts nodeParts) node {
 		crawl:          parts.crawl,
 		dht:            parts.dht,
 		vault:          parts.vault,
+		toggles:        toggles,
 		client:         parts.client,
 		peerBlock:      parts.peerBlock,
 		denylist:       parts.denylist,
