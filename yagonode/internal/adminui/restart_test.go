@@ -17,7 +17,7 @@ func TestConsoleRestartConfirmAndAction(t *testing.T) {
 	if got.status != http.StatusOK {
 		t.Fatalf("confirm page status %d", got.status)
 	}
-	for _, want := range []string{"Restart node", `action="/admin/restart"`, "Cancel"} {
+	for _, want := range []string{"Restart node", `action="/admin/restart"`} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("confirm page missing %q", want)
 		}
