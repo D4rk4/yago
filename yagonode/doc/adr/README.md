@@ -54,3 +54,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0033](0033-operator-editable-public-portal-handlebars.md) | Operator-editable public portal via server-side Handlebars with a GrapesJS admin editor | Accepted |
 | [0034](0034-dead-page-removal-on-recrawl.md) | Remove a dead page from the index when a recrawl finds it permanently gone (404/410) | Accepted |
 | [0035](0035-learned-log-linear-ranking-yagorank.md) | Learned log-linear ranking (YagoRank): fit ranking weights to NDCG, add quality + unordered-SDM features | Accepted |
+| [0036](0036-storage-usage-accounting-document-eviction-and-compaction.md) | Truthful storage accounting (live bytes), evict documents on purge, and periodic configurable compaction | Accepted |
