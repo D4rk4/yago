@@ -3,6 +3,8 @@ package main
 import (
 	"testing"
 	"time"
+
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/httpfetch"
 )
 
 func envFrom(values map[string]string) func(string) string {
@@ -39,6 +41,29 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	}
 	if cfg.UserAgent != DefaultUserAgent {
 		t.Fatalf("user agent = %q", cfg.UserAgent)
+	}
+	if cfg.ProxyDialMode != httpfetch.ProxyDialTunnel {
+		t.Fatalf("proxy dial mode = %v, want tunnel", cfg.ProxyDialMode)
+	}
+}
+
+func TestLoadServiceConfigAcceptsAbsoluteURLDialMode(t *testing.T) {
+	env := baseEnv()
+	env["YACYCRAWLER_PROXY_DIAL_MODE"] = "absolute-url"
+	cfg, err := LoadServiceConfig(envFrom(env))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.ProxyDialMode != httpfetch.ProxyDialAbsoluteURL {
+		t.Fatalf("proxy dial mode = %v, want absolute-url", cfg.ProxyDialMode)
+	}
+}
+
+func TestLoadServiceConfigRejectsUnknownDialMode(t *testing.T) {
+	env := baseEnv()
+	env["YACYCRAWLER_PROXY_DIAL_MODE"] = "nonsense"
+	if _, err := LoadServiceConfig(envFrom(env)); err == nil {
+		t.Fatal("unknown proxy dial mode should error")
 	}
 }
 

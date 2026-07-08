@@ -33,7 +33,7 @@ func TestFetchSuccess(t *testing.T) {
 	})
 	defer closeFn()
 
-	outcome, err := httpfetch.New(proxy, testUserAgent, 1<<20, time.Second).
+	outcome, err := httpfetch.New(proxy, httpfetch.ProxyDialTunnel, testUserAgent, 1<<20, time.Second).
 		Fetch(context.Background(), "http://target.example/page")
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
@@ -58,7 +58,7 @@ func TestFetchTruncatesOversizedBody(t *testing.T) {
 	})
 	defer closeFn()
 
-	outcome, err := httpfetch.New(proxy, testUserAgent, 4, time.Second).
+	outcome, err := httpfetch.New(proxy, httpfetch.ProxyDialTunnel, testUserAgent, 4, time.Second).
 		Fetch(context.Background(), "http://target.example/big")
 	if err != nil {
 		t.Fatal(err)
@@ -83,7 +83,7 @@ func TestFetchStatusMapping(t *testing.T) {
 		proxy, closeFn := proxyURL(t, func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(status)
 		})
-		outcome, err := httpfetch.New(proxy, testUserAgent, 1<<20, time.Second).
+		outcome, err := httpfetch.New(proxy, httpfetch.ProxyDialTunnel, testUserAgent, 1<<20, time.Second).
 			Fetch(context.Background(), "http://target.example/x")
 		closeFn()
 		if err != nil {
@@ -102,7 +102,7 @@ func TestFetchDeferHonorsRetryAfter(t *testing.T) {
 	})
 	defer closeFn()
 
-	outcome, _ := httpfetch.New(proxy, testUserAgent, 1<<20, time.Second).
+	outcome, _ := httpfetch.New(proxy, httpfetch.ProxyDialTunnel, testUserAgent, 1<<20, time.Second).
 		Fetch(context.Background(), "http://target.example/x")
 	if outcome.DeferFor != 42*time.Second {
 		t.Fatalf("defer = %v, want 42s", outcome.DeferFor)
@@ -116,7 +116,7 @@ func TestFetchReadsXRobotsTag(t *testing.T) {
 	})
 	defer closeFn()
 
-	outcome, _ := httpfetch.New(proxy, testUserAgent, 1<<20, time.Second).
+	outcome, _ := httpfetch.New(proxy, httpfetch.ProxyDialTunnel, testUserAgent, 1<<20, time.Second).
 		Fetch(context.Background(), "http://target.example/x")
 	if !outcome.RefusesIndexing || !outcome.RefusesLinkDiscovery {
 		t.Fatalf("x-robots-tag not parsed: %+v", outcome)
@@ -125,7 +125,7 @@ func TestFetchReadsXRobotsTag(t *testing.T) {
 
 func TestFetchTransientOnProxyFailure(t *testing.T) {
 	proxy, _ := url.Parse("http://127.0.0.1:1")
-	outcome, err := httpfetch.New(proxy, testUserAgent, 1<<20, time.Second).
+	outcome, err := httpfetch.New(proxy, httpfetch.ProxyDialTunnel, testUserAgent, 1<<20, time.Second).
 		Fetch(context.Background(), "http://target.example/x")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -139,7 +139,7 @@ func TestFetchCancelledContext(t *testing.T) {
 	proxy, _ := url.Parse("http://127.0.0.1:1")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := httpfetch.New(proxy, testUserAgent, 1<<20, time.Second).
+	_, err := httpfetch.New(proxy, httpfetch.ProxyDialTunnel, testUserAgent, 1<<20, time.Second).
 		Fetch(ctx, "http://target.example/x")
 	if err == nil {
 		t.Fatal("cancelled context should error")

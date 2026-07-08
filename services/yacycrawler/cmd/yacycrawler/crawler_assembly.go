@@ -65,7 +65,13 @@ func RunService(ctx context.Context, cfg ServiceConfig, metrics *crawlmetrics.Cr
 		return fmt.Errorf("start order receiver: %w", err)
 	}
 
-	fetch := httpfetch.New(cfg.ProxyURL, cfg.UserAgent, cfg.MaxBodyBytes, cfg.FetchDeadline)
+	fetch := httpfetch.New(
+		cfg.ProxyURL,
+		cfg.ProxyDialMode,
+		cfg.UserAgent,
+		cfg.MaxBodyBytes,
+		cfg.FetchDeadline,
+	)
 	outputs := enabledOutputs(js, cfg)
 
 	extract, err := buildExtractor(cfg)

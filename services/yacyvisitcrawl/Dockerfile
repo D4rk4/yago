@@ -19,6 +19,7 @@ COPY libraries/yacymodel/go.mod libraries/yacymodel/
 COPY libraries/yacyproto/go.mod libraries/yacyproto/
 COPY services/yacytextindexer/go.mod services/yacytextindexer/
 COPY services/yacyvisitcrawl/go.mod services/yacyvisitcrawl/
+COPY services/renderproxy/go.mod services/renderproxy/go.sum services/renderproxy/
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \

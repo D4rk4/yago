@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/httpfetch"
 )
 
 const (
@@ -19,6 +20,7 @@ const (
 	EnvPagesSubject       = "NATS_PAGES_SUBJECT"
 	EnvPagesMaxMsgs       = "NATS_PAGES_MAX_MSGS"
 	EnvProxyURL           = "YACYCRAWLER_PROXY_URL"
+	EnvProxyDialMode      = "YACYCRAWLER_PROXY_DIAL_MODE"
 	EnvFetchConcurrency   = "YACYCRAWLER_FETCH_CONCURRENCY"
 	EnvIndexOutputEnabled = "YACYCRAWLER_INDEX_OUTPUT_ENABLED"
 	EnvPageOutputEnabled  = "YACYCRAWLER_PAGE_OUTPUT_ENABLED"
@@ -42,7 +44,13 @@ const (
 	DefaultFetchDeadline    = 30 * time.Second
 	DefaultOpsAddr          = ":9090"
 	DefaultUserAgent        = "yacycrawler (+https://yacy.net)"
+	DefaultProxyDialMode    = "tunnel"
 )
+
+var proxyDialModeByName = map[string]httpfetch.ProxyDialMode{
+	"tunnel":       httpfetch.ProxyDialTunnel,
+	"absolute-url": httpfetch.ProxyDialAbsoluteURL,
+}
 
 type ServiceConfig struct {
 	NATSURL            string
@@ -53,6 +61,7 @@ type ServiceConfig struct {
 	PagesSubject       string
 	PagesMaxMsgs       int64
 	ProxyURL           *url.URL
+	ProxyDialMode      httpfetch.ProxyDialMode
 	FetchConcurrency   int
 	IndexOutputEnabled bool
 	PageOutputEnabled  bool
@@ -89,6 +98,10 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		return ServiceConfig{}, fmt.Errorf("%s: must be set", EnvNATSURL)
 	}
 	proxyURL, err := requiredURL(getenv, EnvProxyURL)
+	if err != nil {
+		return ServiceConfig{}, err
+	}
+	proxyDialMode, err := proxyDialModeFromEnv(getenv)
 	if err != nil {
 		return ServiceConfig{}, err
 	}
@@ -145,6 +158,7 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		PagesSubject:       envString(getenv, EnvPagesSubject, DefaultPagesSubject),
 		PagesMaxMsgs:       pagesMaxMsgs,
 		ProxyURL:           proxyURL,
+		ProxyDialMode:      proxyDialMode,
 		FetchConcurrency:   fetchConcurrency,
 		IndexOutputEnabled: indexEnabled,
 		PageOutputEnabled:  pageEnabled,
@@ -174,6 +188,15 @@ func requiredURL(getenv func(string) string, key string) (*url.URL, error) {
 		return nil, fmt.Errorf("%s: must include a host", key)
 	}
 	return parsed, nil
+}
+
+func proxyDialModeFromEnv(getenv func(string) string) (httpfetch.ProxyDialMode, error) {
+	name := envString(getenv, EnvProxyDialMode, DefaultProxyDialMode)
+	mode, ok := proxyDialModeByName[name]
+	if !ok {
+		return 0, fmt.Errorf("%s: unknown proxy dial mode %q", EnvProxyDialMode, name)
+	}
+	return mode, nil
 }
 
 func envList(getenv func(string) string, key string) []string {

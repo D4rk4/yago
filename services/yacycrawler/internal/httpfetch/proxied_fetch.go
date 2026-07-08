@@ -31,14 +31,13 @@ type ProxiedFetch struct {
 
 func New(
 	proxyURL *url.URL,
+	dialMode ProxyDialMode,
 	userAgent string,
 	maxBodyBytes int64,
 	deadline time.Duration,
 ) *ProxiedFetch {
 	return &ProxiedFetch{
-		client: &http.Client{
-			Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
-		},
+		client:       &http.Client{Transport: transportForDialMode(proxyURL, dialMode)},
 		userAgent:    userAgent,
 		maxBodyBytes: maxBodyBytes,
 		deadline:     deadline,
