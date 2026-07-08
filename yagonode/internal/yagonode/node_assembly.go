@@ -16,6 +16,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/eviction"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
+	"github.com/D4rk4/yago/yagonode/internal/judgments"
 	"github.com/D4rk4/yago/yagonode/internal/landiscovery"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
@@ -48,6 +49,8 @@ type node struct {
 	indexStats    http.Handler
 	searchExplain http.Handler
 	searchRanking http.Handler
+	searchTune    http.Handler
+	judgmentsAPI  http.Handler
 	report        nodestatus.Report
 	searcher      searchcore.Searcher
 	suggest       searchcore.Searcher
@@ -204,6 +207,7 @@ func assembleNode(
 		hostRank:   surfaces.hostRank,
 		spell:      surfaces.spell,
 		wordForms:  surfaces.wordForms,
+		judgments:  surfaces.judgments,
 		swarmMorph: config.SwarmMorphology,
 	}), nil
 }
@@ -245,6 +249,7 @@ type nodeSurfaces struct {
 	spell     *spellcheck.Holder
 	wordForms *wordforms.Holder
 	denylist  *urldenylist.Store
+	judgments *judgments.Store
 	activity  *searchactivity.Tracker
 	schedules *crawlschedule.Store
 	theme     *portaltheme.Theme
@@ -260,6 +265,10 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	ranking, denylist, schedules, err := openSurfaceStores(in.ctx, in.vault)
 	if err != nil {
 		return nodeSurfaces{}, err
+	}
+	judgmentStore, err := judgments.Open(in.vault)
+	if err != nil {
+		return nodeSurfaces{}, fmt.Errorf("open search judgments: %w", err)
 	}
 	theme, err := portaltheme.Open(in.vault, themeEventSink(in.telemetry.recorder))
 	if err != nil {
@@ -318,6 +327,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		denylist:  denylist,
 		activity:  activityTracker,
 		schedules: schedules,
+		judgments: judgmentStore,
 	}, nil
 }
 
@@ -396,6 +406,7 @@ type nodeParts struct {
 	hostRank   *hostrank.Holder
 	spell      *spellcheck.Holder
 	wordForms  *wordforms.Holder
+	judgments  *judgments.Store
 	swarmMorph bool
 	theme      *portaltheme.Theme
 }
@@ -408,34 +419,41 @@ func newAssembledNode(parts nodeParts) node {
 		indexStats:    newIndexStatsEndpoint(parts.storage.searchIndex),
 		searchExplain: newSearchExplainEndpoint(parts.storage.searchIndex),
 		searchRanking: newSearchRankingEndpoint(parts.ranking),
-		report:        parts.report,
-		searcher:      parts.searcher,
-		suggest:       parts.suggest,
-		index:         parts.storage.searchIndex,
-		docScan:       parts.storage.storedDocuments(),
-		docEvictor:    documentEvictorOf(parts.storage),
-		activity:      parts.activity,
-		schedules:     parts.schedules,
-		hostRank:      parts.hostRank,
-		spell:         parts.spell,
-		wordForms:     parts.wordForms,
-		swarmMorph:    parts.swarmMorph,
-		indexAdmin:    newIndexAdminController(parts.storage, parts.vault),
-		postings:      parts.storage.postings,
-		urlDirectory:  parts.storage.urlDirectory,
-		roster:        parts.roster,
-		news:          parts.news,
-		sweeper:       newStorageSweeper(parts.vault, parts.storage),
-		announcer:     parts.announcer,
-		lanBeacon:     parts.lanBeacon,
-		crawl:         parts.crawl,
-		dht:           parts.dht,
-		vault:         parts.vault,
-		client:        parts.client,
-		peerBlock:     parts.peerBlock,
-		denylist:      parts.denylist,
-		identity:      parts.identity,
-		theme:         parts.theme,
+		searchTune: newSearchRankingTuneEndpoint(newRankingTuner(
+			parts.storage.searchIndex,
+			parts.hostRank.Current,
+			parts.ranking,
+			parts.judgments,
+		)),
+		judgmentsAPI: newSearchJudgmentsEndpoint(parts.judgments),
+		report:       parts.report,
+		searcher:     parts.searcher,
+		suggest:      parts.suggest,
+		index:        parts.storage.searchIndex,
+		docScan:      parts.storage.storedDocuments(),
+		docEvictor:   documentEvictorOf(parts.storage),
+		activity:     parts.activity,
+		schedules:    parts.schedules,
+		hostRank:     parts.hostRank,
+		spell:        parts.spell,
+		wordForms:    parts.wordForms,
+		swarmMorph:   parts.swarmMorph,
+		indexAdmin:   newIndexAdminController(parts.storage, parts.vault),
+		postings:     parts.storage.postings,
+		urlDirectory: parts.storage.urlDirectory,
+		roster:       parts.roster,
+		news:         parts.news,
+		sweeper:      newStorageSweeper(parts.vault, parts.storage),
+		announcer:    parts.announcer,
+		lanBeacon:    parts.lanBeacon,
+		crawl:        parts.crawl,
+		dht:          parts.dht,
+		vault:        parts.vault,
+		client:       parts.client,
+		peerBlock:    parts.peerBlock,
+		denylist:     parts.denylist,
+		identity:     parts.identity,
+		theme:        parts.theme,
 	}
 }
 

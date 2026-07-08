@@ -228,4 +228,10 @@ func mountOpsExtras(opsMux *http.ServeMux, assembled node) {
 	if assembled.searchRanking != nil {
 		opsMux.Handle(pathSearchRanking, assembled.searchRanking)
 	}
+	if assembled.searchTune != nil {
+		opsMux.Handle(pathSearchRankingTune, assembled.searchTune)
+	}
+	if assembled.judgmentsAPI != nil {
+		opsMux.Handle(pathSearchJudgments, assembled.judgmentsAPI)
+	}
 }

@@ -804,6 +804,9 @@ deps:
       - searchcore
       - searchindex
       - searchlocal
+      - judgments
+      - rankfit
+      - searcheval
       - searchremote
       - rankingprofile
       - tavilyapi
