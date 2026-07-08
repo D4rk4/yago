@@ -23,7 +23,7 @@ func seedlistLine(t *testing.T, hash, ip string) string {
 		Port: yacymodel.Some(yacymodel.Port(8090)),
 	}
 
-	return yacymodel.EncodeCompactWireForm(seed.String())
+	return yacymodel.EncodeBase64WireForm(seed.String())
 }
 
 func TestSeedlistFetcherDecodesLines(t *testing.T) {

@@ -81,6 +81,28 @@ func TestBuildMetadataParseableAndCarriesURLHash(t *testing.T) {
 	}
 }
 
+func TestBuildMetadataSurvivesCommaInTitleAndURL(t *testing.T) {
+	page := samplePage()
+	page.CanonicalURL = "http://example.com/article?ids=1,2,3"
+	page.Title = "Fourth of July fireworks, 1986 - Example"
+	index, err := pageindex.Build(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := index.Metadata[0]
+	parsed, err := yacymodel.ParseURIMetadataRow(row.String())
+	if err != nil {
+		t.Fatalf("metadata row not parseable: %v", err)
+	}
+	title, err := parsed.Title(t.Context())
+	if err != nil {
+		t.Fatalf("Title: %v", err)
+	}
+	if title != page.Title {
+		t.Fatalf("title = %q, want %q", title, page.Title)
+	}
+}
+
 func TestBuildOmitsLanguageWhenAbsent(t *testing.T) {
 	page := samplePage()
 	page.Language = ""

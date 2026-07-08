@@ -47,7 +47,7 @@ func (r HelloRequest) Form() url.Values {
 	form := url.Values{}
 	putString(form, FieldNetworkName, r.NetworkName)
 	putString(form, FieldKey, r.Key)
-	putString(form, FieldSeed, yacymodel.EncodeCompactWireForm(r.Seed.String()))
+	putString(form, FieldSeed, yacymodel.EncodeBase64WireForm(r.Seed.String()))
 	putInt(form, FieldCount, r.Count)
 	putString(form, FieldIam, r.Iam.String())
 	putString(form, FieldMagicMD5, r.MagicMD5)
@@ -96,7 +96,7 @@ func (r HelloResponse) Encode() yacymodel.Message {
 	setString(msg, FieldMyTime, r.MyTime)
 	setString(msg, FieldMessage, r.Message)
 	for i, seed := range r.Seeds {
-		setString(msg, indexedKey(prefixSeed, i), yacymodel.EncodeCompactWireForm(seed.String()))
+		setString(msg, indexedKey(prefixSeed, i), yacymodel.EncodeBase64WireForm(seed.String()))
 	}
 
 	return msg

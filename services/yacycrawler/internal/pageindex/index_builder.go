@@ -100,8 +100,8 @@ func metadataRow(
 	return yacymodel.URIMetadataRow{Properties: map[string]string{
 		yacymodel.URLMetaHash:           urlHash,
 		"dt":                            string(rune(documentTypeText)),
-		"url":                           page.CanonicalURL,
-		yacymodel.URLMetaColDescription: yacymodel.EncodeCompactWireForm(page.Title),
+		"url":                           yacymodel.EncodeBase64WireForm(page.CanonicalURL),
+		yacymodel.URLMetaColDescription: yacymodel.EncodeBase64WireForm(page.Title),
 		"size":                          strconv.Itoa(len(page.Text)),
 		"wc":                            strconv.Itoa(total),
 		"llocal":                        strconv.Itoa(page.LocalLinkCount),

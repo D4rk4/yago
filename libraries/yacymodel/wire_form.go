@@ -19,22 +19,6 @@ const (
 
 var ErrBadWireForm = errors.New("bad wire form")
 
-func EncodeCompactWireForm(payload string) string {
-	shortest := tagged(wireFormPlain, payload)
-
-	if b64 := tagged(wireFormBase64, Encode([]byte(payload))); len(b64) < len(shortest) {
-		shortest = b64
-	}
-
-	if zipped, err := gzipCompress(payload); err == nil {
-		if z := tagged(wireFormGzip, Encode(zipped)); len(z) < len(shortest) {
-			shortest = z
-		}
-	}
-
-	return shortest
-}
-
 func EncodeBase64WireForm(payload string) string {
 	return tagged(wireFormBase64, Encode([]byte(payload)))
 }
@@ -70,18 +54,6 @@ func DecodeWireForm(ctx context.Context, form string) (string, error) {
 	default:
 		return "", fmt.Errorf("%w: tag %q", ErrBadWireForm, form[0])
 	}
-}
-
-func gzipCompress(s string) ([]byte, error) {
-	var buf bytes.Buffer
-	w := gzip.NewWriter(&buf)
-	if _, err := io.WriteString(w, s); err != nil {
-		return nil, fmt.Errorf("gzip write: %w", err)
-	}
-	if err := w.Close(); err != nil {
-		return nil, fmt.Errorf("gzip close: %w", err)
-	}
-	return buf.Bytes(), nil
 }
 
 func gzipDecompress(ctx context.Context, b []byte) (string, error) {

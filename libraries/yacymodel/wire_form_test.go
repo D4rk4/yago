@@ -7,30 +7,19 @@ import (
 	"testing"
 )
 
-func TestCompactWireFormRoundTrip(t *testing.T) {
+func TestBase64WireFormRoundTrip(t *testing.T) {
 	for _, payload := range []string{
 		sampleSeed,
 		"",
 		strings.Repeat("Key=Value,", 100),
 	} {
-		got, err := DecodeWireForm(context.Background(), EncodeCompactWireForm(payload))
+		got, err := DecodeWireForm(context.Background(), EncodeBase64WireForm(payload))
 		if err != nil {
 			t.Fatalf("round trip %q: %v", payload, err)
 		}
 		if got != payload {
 			t.Errorf("round trip:\n got %q\nwant %q", got, payload)
 		}
-	}
-}
-
-func TestEncodeCompactWireFormPicksShortest(t *testing.T) {
-	short := EncodeCompactWireForm("Hash=ABCDEFGHIJKL")
-	if short[0] != wireFormPlain {
-		t.Errorf("short payload should stay plain, got tag %q", short[0])
-	}
-	long := EncodeCompactWireForm(strings.Repeat("Key=Value,", 200))
-	if long[0] != wireFormGzip {
-		t.Errorf("highly compressible payload should gzip, got tag %q", long[0])
 	}
 }
 
