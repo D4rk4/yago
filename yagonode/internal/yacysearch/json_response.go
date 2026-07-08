@@ -73,11 +73,13 @@ func responseJSON(r *http.Request, resp searchcore.Response) jsonResponse {
 				Title: "Search for " + resp.Request.Query,
 				Link:  link,
 			},
-			StartIndex:      strconv.Itoa(resp.Request.Offset),
-			ItemsPerPage:    strconv.Itoa(resp.Request.Limit),
-			SearchTerms:     url.QueryEscape(resp.Request.Query),
-			Items:           responseItems(resp.Results),
-			Navigation:      []jsonNavigation{},
+			StartIndex:   strconv.Itoa(resp.Request.Offset),
+			ItemsPerPage: strconv.Itoa(resp.Request.Limit),
+			SearchTerms:  url.QueryEscape(resp.Request.Query),
+			Items:        responseItems(resp.Results),
+			Navigation: responseJSONNavigation(
+				buildNavigation(resp.Request.Query, resp.Facets),
+			),
 			TotalResults:    strconv.Itoa(resp.TotalResults),
 			PartialFailures: resp.PartialFailures,
 		},
@@ -105,6 +107,35 @@ func responseItems(results []searchcore.Result) []jsonItem {
 	}
 
 	return items
+}
+
+// responseJSONNavigation renders the shared navigation model as YaCy's JSON
+// navigation array; a value carries its refine modifier and URL only when its
+// dimension has one.
+func responseJSONNavigation(groups []navGroup) []jsonNavigation {
+	nav := make([]jsonNavigation, 0, len(groups))
+	for _, group := range groups {
+		elements := make([]map[string]string, 0, len(group.elements))
+		for _, element := range group.elements {
+			entry := map[string]string{
+				"name":  element.name,
+				"count": strconv.Itoa(element.count),
+			}
+			if element.modifier != "" {
+				entry["modifier"] = element.modifier
+				entry["url"] = element.url
+			}
+			elements = append(elements, entry)
+		}
+		nav = append(nav, jsonNavigation{
+			FacetName:   group.name,
+			DisplayName: group.displayName,
+			Type:        "String",
+			Elements:    elements,
+		})
+	}
+
+	return nav
 }
 
 func searchLink(base string, req searchcore.Request) string {

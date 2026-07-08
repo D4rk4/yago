@@ -53,7 +53,22 @@ type rssQuery struct {
 	SearchTerms string `xml:"searchTerms,attr"`
 }
 
-type rssNavigation struct{}
+type rssNavigation struct {
+	Facets []rssFacet `xml:"facet"`
+}
+
+type rssFacet struct {
+	Name        string            `xml:"name,attr"`
+	DisplayName string            `xml:"displayname,attr"`
+	Type        string            `xml:"type,attr"`
+	Elements    []rssFacetElement `xml:"element"`
+}
+
+type rssFacetElement struct {
+	Name     string `xml:"name"`
+	Count    int    `xml:"count"`
+	Modifier string `xml:"modifier"`
+}
 
 type rssItem struct {
 	Title       string  `xml:"title"`
@@ -107,7 +122,7 @@ func responseRSS(r *http.Request, resp searchcore.Response) rssFeed {
 				SearchTerms: resp.Request.Query,
 			},
 			Items:        responseRSSItems(resp.Results),
-			Navigation:   rssNavigation{},
+			Navigation:   responseRSSNavigation(buildNavigation(resp.Request.Query, resp.Facets)),
 			TotalResults: strconv.Itoa(resp.TotalResults),
 		},
 	}
@@ -134,6 +149,30 @@ func responseRSSItems(results []searchcore.Result) []rssItem {
 	}
 
 	return items
+}
+
+// responseRSSNavigation renders the shared navigation model as YaCy's
+// yacy:navigation element.
+func responseRSSNavigation(groups []navGroup) rssNavigation {
+	facets := make([]rssFacet, 0, len(groups))
+	for _, group := range groups {
+		elements := make([]rssFacetElement, 0, len(group.elements))
+		for _, element := range group.elements {
+			elements = append(elements, rssFacetElement{
+				Name:     element.name,
+				Count:    element.count,
+				Modifier: element.modifier,
+			})
+		}
+		facets = append(facets, rssFacet{
+			Name:        group.name,
+			DisplayName: group.displayName,
+			Type:        "String",
+			Elements:    elements,
+		})
+	}
+
+	return rssNavigation{Facets: facets}
 }
 
 func rssDate(raw string) string {
