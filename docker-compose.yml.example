@@ -44,7 +44,14 @@ services:
       YAGO_SEARCH_CORS_ORIGINS: ${YAGO_SEARCH_CORS_ORIGINS:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
-      - yago-data:/data
+      # Shared /opt/yago layout (OPS-04): index and identity live under
+      # /opt/yago/data, operator-managed config files under /opt/yago/etc; both
+      # persist across container recreation. Migrating from the pre-layout
+      # `yago-data:/data` mount: keep the same named volume and only change the
+      # target to /opt/yago/data — the volume's contents (index, identity) are
+      # preserved — or keep the old target and set YAGO_DATA_DIR=/data instead.
+      - yago-data:/opt/yago/data
+      - yago-etc:/opt/yago/etc
 
   yagocrawler:
     build:
@@ -76,5 +83,22 @@ services:
       YAGOCRAWLER_BROWSER_SANDBOX: ${YAGOCRAWLER_BROWSER_SANDBOX:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
+# Optional TLS-terminating reverse proxy in front of the public and admin
+# listeners (pairs with YAGO_HTTPS_REDIRECT=true). Uncomment and provide the
+# proxy config; Caddy shown as the smallest example.
+#  proxy:
+#    image: caddy:2
+#    restart: unless-stopped
+#    ports:
+#      - "80:80"
+#      - "443:443"
+#    volumes:
+#      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+#      - caddy-data:/data
+#    depends_on:
+#      - yago-node
+
 volumes:
   yago-data:
+  yago-etc:
+#  caddy-data:

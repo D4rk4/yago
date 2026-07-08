@@ -49,14 +49,16 @@ RUN set -eux; \
 
 FROM scratch
 
-ENV HOME=/tmp XDG_CACHE_HOME=/tmp/.cache PATH=/usr/local/bin:/headless-shell
+# Shared /opt/yago layout (OPS-04): the crawler is stateless (no data volume),
+# so only the binary moves under /opt/yago/bin.
+ENV HOME=/tmp XDG_CACHE_HOME=/tmp/.cache PATH=/opt/yago/bin:/headless-shell
 
 COPY --from=browser /runtime/ /
 # CA roots for outbound TLS: the scratch base and the headless-shell slices
 # carry none, so every https fetch failed x509 verification without this.
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=build /out/yagocrawler /usr/local/bin/yagocrawler
+COPY --from=build /out/yagocrawler /opt/yago/bin/yagocrawler
 
 USER 65534:65534
 
-ENTRYPOINT ["/usr/local/bin/yagocrawler"]
+ENTRYPOINT ["/opt/yago/bin/yagocrawler"]

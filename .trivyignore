@@ -1,0 +1,6 @@
+# GO-2026-5932: golang.org/x/crypto/openpgp is unmaintained/unsafe-by-design.
+# This repo never imports any openpgp package (x/crypto is used for argon2id
+# and TLS helpers only; verified by grep across all modules); the advisory has
+# no fixed version to upgrade to, so it is ignored at the package-advisory
+# level rather than suppressible by a bump.
+GO-2026-5932

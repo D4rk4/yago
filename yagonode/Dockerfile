@@ -39,18 +39,24 @@ RUN mkdir -p /out/data
 
 FROM gcr.io/distroless/static-debian12:nonroot
 
-ENV YAGO_DATA_DIR=/data \
+# Shared /opt/yago layout (OPS-04): binaries under /opt/yago/bin, mutable data
+# under /opt/yago/data, config under /opt/yago/etc — the same layout the deb and
+# systemd deployments use. Migrating a pre-layout deployment: see
+# deploy/README.md ("Container layout migration").
+ENV YAGO_DATA_DIR=/opt/yago/data \
     YAGO_PEER_ADDR=:8090 \
-    YAGO_OPS_ADDR=:9090
+    YAGO_OPS_ADDR=:9090 \
+    PATH=/opt/yago/bin
 
-COPY --from=build --chown=nonroot:nonroot /out/data /data
-COPY --from=build /out/yago-node /usr/local/bin/yago-node
+COPY --from=build --chown=nonroot:nonroot /out/data /opt/yago/data
+COPY --from=build --chown=nonroot:nonroot /out/data /opt/yago/etc
+COPY --from=build /out/yago-node /opt/yago/bin/yago-node
 
 # 8090 peer protocol (P2P), 8080 public search (portal/OpenSearch/Tavily API), 9090 ops/admin
 EXPOSE 8090 8080 9090
 
-VOLUME ["/data"]
+VOLUME ["/opt/yago/data", "/opt/yago/etc"]
 
 USER nonroot:nonroot
 
-ENTRYPOINT ["/usr/local/bin/yago-node"]
+ENTRYPOINT ["/opt/yago/bin/yago-node"]

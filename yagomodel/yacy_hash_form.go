@@ -11,9 +11,8 @@ import (
 // collision resistance is relied upon and the algorithm cannot change without
 // breaking wire compatibility.
 func YaCyHashBase64(raw string) string {
-	sum := md5.Sum(
-		[]byte(raw),
-	) // nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-md5
+	// nosemgrep
+	sum := md5.Sum([]byte(raw))
 
 	return Encode(sum[:])
 }
@@ -21,9 +20,8 @@ func YaCyHashBase64(raw string) string {
 // YaCyHashHex is YaCyHashBase64 with the digest in hex, as some YaCy surfaces
 // expect; the same wire-compatibility constraint applies.
 func YaCyHashHex(raw string) string {
-	sum := md5.Sum(
-		[]byte(raw),
-	) // nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-md5
+	// nosemgrep
+	sum := md5.Sum([]byte(raw))
 
 	return hex.EncodeToString(sum[:])
 }

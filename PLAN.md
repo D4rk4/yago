@@ -2578,7 +2578,15 @@ Acceptance:
 
 ### OPS-04: Packaging
 
-Status: Partial. Task 4 (config reference) is complete: `doc/configuration.md` now
+Status: Complete. Tasks 1-2 landed: both container images use the shared
+`/opt/yago` layout (binaries under `/opt/yago/bin`, node data under
+`/opt/yago/data` with `/opt/yago/etc` for config, both declared volumes; the
+crawler image is stateless so only its binary moves), and
+`docker-compose.yml.example` mounts the `yago-data`/`yago-etc` named volumes at
+the new paths with an optional reverse-proxy example; a migration note for
+pre-layout deployments lives in `deploy/README.md`. Distroless images run as the
+`nonroot` user (the closest container equivalent of the dedicated `yago` user
+the deb creates). Task 4 (config reference) is complete: `doc/configuration.md` now
 documents every one of the node's environment variables and its default — an audit
 confirmed all 53 `YAGO_*` variables are covered, adding the two that were missing
 (`YAGO_METRICS_ENABLED`, `YAGO_WEB_FALLBACK_PROVIDER`). Task 3 has a reference

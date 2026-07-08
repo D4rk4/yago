@@ -100,3 +100,23 @@ ships as a tarball (binaries + install.sh + units + backup doc) and a `.deb`
 notes are generated from the commit titles since the previous tag, and a
 GitHub Release carries the assets. Container images stay on the
 `container-image` workflow; the notes link them.
+
+## Container layout migration (OPS-04)
+
+Since the `/opt/yago` layout landed, the container images use the same tree as
+the deb/systemd deployments: the binaries live in `/opt/yago/bin`, the node's
+mutable state in `/opt/yago/data` (`YAGO_DATA_DIR` default), and
+operator-managed config files in `/opt/yago/etc`; both data and etc are
+declared volumes. The crawler container is stateless and only moves its binary.
+
+Migrating a deployment created before this layout (volume mounted at `/data`):
+
+- **Recommended:** keep the same named volume and change only the mount target
+  to `/opt/yago/data` (as `docker-compose.yml.example` now shows). A named
+  volume's contents are independent of the container path, so the index and
+  peer identity are preserved.
+- **Alternative:** keep the old `/data` target and set `YAGO_DATA_DIR=/data` in
+  the container environment.
+
+Custom entrypoint paths must switch from `/usr/local/bin/yago-node` and
+`/usr/local/bin/yagocrawler` to `/opt/yago/bin/{yago-node,yagocrawler}`.
