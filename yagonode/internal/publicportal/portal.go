@@ -9,6 +9,7 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -187,6 +188,9 @@ type Portal struct {
 	page   *template.Template
 	source SearchSource
 	newTab bool
+	// theme optionally renders operator-authored page templates (ADR-0033);
+	// nil or a declining theme falls through to the built-in template.
+	theme ThemeRenderer
 }
 
 // New builds the portal with its embedded template and search source.
@@ -241,6 +245,21 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", htmlType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
+
+	if p.theme != nil {
+		if themed, ok := p.theme.Render(r.Context(), data.themePage(), data.themeView()); ok {
+			// The themed page is rendered by the theme's Handlebars engine, which
+			// auto-escapes every {{...}} interpolation of the view model; raw
+			// {{{...}}} output is authored only by the authenticated operator
+			// (ADR-0033), so writing the rendered document verbatim is the design.
+			// nosemgrep: go.lang.security.audit.xss.no-io-writestring-to-responsewriter.no-io-writestring-to-responsewriter
+			if _, err := io.WriteString(w, themed); err != nil {
+				slog.WarnContext(r.Context(), "public portal render failed", slog.Any("error", err))
+			}
+
+			return
+		}
+	}
 
 	if err := p.page.ExecuteTemplate(w, "portal", data); err != nil {
 		slog.WarnContext(r.Context(), "public portal render failed", slog.Any("error", err))

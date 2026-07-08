@@ -25,6 +25,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/peerblock"
 	"github.com/D4rk4/yago/yagonode/internal/peernews"
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
+	"github.com/D4rk4/yago/yagonode/internal/portaltheme"
 	"github.com/D4rk4/yago/yagonode/internal/publicratelimit"
 	"github.com/D4rk4/yago/yagonode/internal/rankingprofile"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
@@ -257,41 +258,28 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	if err != nil {
 		return nodeSurfaces{}, err
 	}
+	theme, err := portaltheme.Open(in.vault, themeEventSink(in.telemetry.recorder))
+	if err != nil {
+		return nodeSurfaces{}, fmt.Errorf("open portal theme: %w", err)
+	}
 	publicMux := http.NewServeMux()
 	activityTracker := searchactivity.New(searchactivity.Mode(in.config.QueryLogMode))
 	hostRankHolder := hostrank.NewHolder()
 	spellHolder := spellcheck.NewHolder()
 	wordFormsHolder := wordforms.NewHolder()
-	searcher, suggest := mountNodePublicSearch(publicMux, publicSearchAssembly{
-		storage:            in.storage,
-		hostRank:           hostRankHolder.Current,
-		spellCorrector:     spellHolder.Current,
-		wordForms:          wordFormsHolder.Current,
-		roster:             in.roster,
-		identity:           in.identity,
-		dht:                in.config.DHT,
-		client:             in.client,
-		peerClient:         in.peerClient,
-		peerHTTPSPreferred: in.config.PeerHTTPSPreferred,
-		searchAPIKey:       in.config.SearchAPIKey,
-		searchAuthorizer:   in.telemetry.searchAuthorizer,
-		extractFetcher:     buildExtractFetcher(in.config, in.client),
-		webFallback:        in.config.WebFallback,
-		seedQueue:          crawlOrderQueue(runtime),
-		toggles:            in.toggles,
-		queryLogMode:       in.config.QueryLogMode,
-		activity:           activityTracker,
-		searchMetrics:      in.telemetry.search,
-		rankingWeights:     ranking.Current,
-		denylist:           denylist,
-		snippetEnricher:    buildSnippetEnricher(in.config, in.client),
-		remoteTimeouts:     configRemoteTimeouts(in.config),
-		indexRemoteResults: in.config.IndexRemoteResults,
-		swarmMorphology:    in.config.SwarmMorphology,
-		swarmSeed:          in.config.SwarmSeed,
-		autocrawlerCrawl:   in.config.AutocrawlerCrawl,
-		linksNewTab:        in.config.SearchLinksNewTab,
-	})
+	searcher, suggest := mountNodePublicSearch(publicMux, newPublicSearchAssembly(
+		in,
+		publicSearchParts{
+			runtime:  runtime,
+			ranking:  ranking,
+			denylist: denylist,
+			activity: activityTracker,
+			hostRank: hostRankHolder,
+			spell:    spellHolder,
+			words:    wordFormsHolder,
+			theme:    theme,
+		},
+	))
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
 		ctx:         in.ctx,
 		config:      in.config,
@@ -327,6 +315,57 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		activity:  activityTracker,
 		schedules: schedules,
 	}, nil
+}
+
+// publicSearchParts carries the surface stores and runtimes assembleNodeSurfaces
+// opened into the public-search assembly literal, keeping the function inside
+// its length budget.
+type publicSearchParts struct {
+	runtime  crawlProcess
+	ranking  *rankingprofile.Holder
+	denylist *urldenylist.Store
+	activity *searchactivity.Tracker
+	hostRank *hostrank.Holder
+	spell    *spellcheck.Holder
+	words    *wordforms.Holder
+	theme    *portaltheme.Theme
+}
+
+func newPublicSearchAssembly(
+	in assembleSurfacesInput,
+	parts publicSearchParts,
+) publicSearchAssembly {
+	return publicSearchAssembly{
+		storage:            in.storage,
+		hostRank:           parts.hostRank.Current,
+		spellCorrector:     parts.spell.Current,
+		wordForms:          parts.words.Current,
+		roster:             in.roster,
+		identity:           in.identity,
+		dht:                in.config.DHT,
+		client:             in.client,
+		peerClient:         in.peerClient,
+		peerHTTPSPreferred: in.config.PeerHTTPSPreferred,
+		searchAPIKey:       in.config.SearchAPIKey,
+		searchAuthorizer:   in.telemetry.searchAuthorizer,
+		extractFetcher:     buildExtractFetcher(in.config, in.client),
+		webFallback:        in.config.WebFallback,
+		seedQueue:          crawlOrderQueue(parts.runtime),
+		toggles:            in.toggles,
+		queryLogMode:       in.config.QueryLogMode,
+		activity:           parts.activity,
+		searchMetrics:      in.telemetry.search,
+		rankingWeights:     parts.ranking.Current,
+		denylist:           parts.denylist,
+		snippetEnricher:    buildSnippetEnricher(in.config, in.client),
+		remoteTimeouts:     configRemoteTimeouts(in.config),
+		indexRemoteResults: in.config.IndexRemoteResults,
+		swarmMorphology:    in.config.SwarmMorphology,
+		swarmSeed:          in.config.SwarmSeed,
+		autocrawlerCrawl:   in.config.AutocrawlerCrawl,
+		linksNewTab:        in.config.SearchLinksNewTab,
+		theme:              parts.theme,
+	}
 }
 
 type nodeParts struct {

@@ -74,6 +74,8 @@ components:
     in: internal/adminui/**
   publicportal:
     in: internal/publicportal/**
+  portaltheme:
+    in: internal/portaltheme/**
   crawling:
     in: internal/crawling/**
   crawlurls:
@@ -192,6 +194,10 @@ vendors:
       - github.com/D4rk4/yago/yagoegress/**
   bbolt:
     in: go.etcd.io/bbolt
+  raymond:
+    in:
+      - github.com/mailgun/raymond/v2
+      - github.com/mailgun/raymond/v2/**
   xxhash:
     in: github.com/cespare/xxhash/v2
   klauspost-compress:
@@ -531,6 +537,15 @@ deps:
       - vault
       - memvault
       - boltvault
+  portaltheme:
+    mayDependOn:
+      - portaltheme
+      - vault
+      - memvault
+      - boltvault
+      - events
+    canUse:
+      - raymond
   recrawlfrontier:
     mayDependOn:
       - recrawlfrontier
@@ -703,6 +718,7 @@ deps:
       - crawlschedule
       - contentquality
       - snippetfetch
+      - portaltheme
       - vault
       - boltvault
       - memvault

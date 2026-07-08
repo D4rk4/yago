@@ -16,6 +16,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
+	"github.com/D4rk4/yago/yagonode/internal/portaltheme"
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
 	"github.com/D4rk4/yago/yagonode/internal/publicrobots"
 	"github.com/D4rk4/yago/yagonode/internal/searchactivity"
@@ -62,6 +63,9 @@ type publicSearchAssembly struct {
 	swarmSeed            swarmSeedConfig
 	autocrawlerCrawl     seedCrawlOptions
 	linksNewTab          bool
+	// theme carries the operator portal theme (ADR-0033) into the portal
+	// mount; nil keeps the built-in render only.
+	theme *portaltheme.Theme
 }
 
 // remoteSearchTimeouts carries the swarm fan-out budgets into the assembly.
@@ -237,13 +241,11 @@ func mountNodePublicSearch(
 	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
 	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access, assembly.extractFetcher)
 	tavilyapi.MountCrawl(mux, access, crawlPageFetcher(assembly.extractFetcher))
-	mux.Handle(
-		"/{$}",
-		newRootDispatcher(
-			assembly.toggles,
-			publicportal.New(newPortalSource(search), assembly.linksNewTab),
-		),
-	)
+	portal := publicportal.New(newPortalSource(search), assembly.linksNewTab)
+	if assembly.theme != nil {
+		portal.SetTheme(assembly.theme)
+	}
+	mux.Handle("/{$}", newRootDispatcher(assembly.toggles, portal))
 	publicportal.SetBaseURLProvider(assembly.toggles.PublicBaseURL)
 	yacysearch.SetBaseURLProvider(assembly.toggles.PublicBaseURL)
 	mountPortalOpenSearch(mux, assembly.toggles)
