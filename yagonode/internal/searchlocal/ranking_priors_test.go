@@ -52,6 +52,39 @@ func TestFreshnessPriorLiftsRecentDocuments(t *testing.T) {
 	}
 }
 
+// TestFreshnessPriorClampsFutureDates pins the age clamp: a future-dated page is
+// treated as brand new (age 0, full freshness bonus) rather than scoring past the
+// maximum on a negative age.
+func TestFreshnessPriorClampsFutureDates(t *testing.T) {
+	future := time.Now().AddDate(1, 0, 0).Format("20060102")
+	index := &fakeIndex{response: searchindex.SearchResultSet{
+		Total: 1,
+		Results: []searchindex.SearchResult{
+			{
+				Title:         "Future",
+				URL:           "https://a.example/p",
+				Score:         1.0,
+				PublishedDate: mustDate(t, future),
+			},
+		},
+	}}
+	searcher := NewSearcherWithRanking(
+		index,
+		func() searchindex.RankingWeights {
+			return searchindex.RankingWeights{Title: 1, Freshness: 0.3}
+		},
+		nil,
+	)
+
+	resp, err := searcher.Search(context.Background(), searchcore.Request{Query: "q"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if resp.Results[0].Score <= 1.0 {
+		t.Fatalf("future date must earn the full freshness bonus: %v", resp.Results[0].Score)
+	}
+}
+
 // TestURLLengthPriorPrefersRootPages pins the entry-page prior (Kraaij,
 // Westerveld & Hiemstra, SIGIR 2002): with equal relevance a root URL
 // outranks a deep path.
@@ -95,11 +128,40 @@ func TestURLLengthPriorSaturates(t *testing.T) {
 	}
 }
 
+// TestQualityPriorLiftsCleanContent pins the RANK-02 content-quality prior: with
+// equal relevance a clean, prose-like page (high quality score) outranks a
+// keyword-stuffed one (low quality score).
+func TestQualityPriorLiftsCleanContent(t *testing.T) {
+	index := &fakeIndex{response: searchindex.SearchResultSet{
+		Total: 2,
+		Results: []searchindex.SearchResult{
+			{Title: "Spam", URL: "https://a.example/page", Score: 1.0, Quality: 0.1},
+			{Title: "Clean", URL: "https://b.example/page", Score: 1.0, Quality: 0.9},
+		},
+	}}
+	searcher := NewSearcherWithRanking(
+		index,
+		func() searchindex.RankingWeights {
+			return searchindex.RankingWeights{Title: 1, Quality: 0.5}
+		},
+		nil,
+	)
+
+	resp, err := searcher.Search(context.Background(), searchcore.Request{Query: "q"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if titles := resultTitles(resp.Results); titles[0] != "Clean" {
+		t.Fatalf("order = %v, want the clean page first", titles)
+	}
+}
+
 // TestHostRankDefaultEnabled pins the SEARCH-38 default flip: the default
-// ranking profile now folds host authority in.
+// ranking profile now folds host authority in, and RANK-02 adds the quality
+// prior on by default.
 func TestHostRankDefaultEnabled(t *testing.T) {
 	weights := searchindex.DefaultRankingWeights()
-	if weights.HostRank <= 0 || weights.Freshness <= 0 {
+	if weights.HostRank <= 0 || weights.Freshness <= 0 || weights.Quality <= 0 {
 		t.Fatalf("default priors disabled: %+v", weights)
 	}
 	if err := weights.Validate(); err != nil {
@@ -108,6 +170,11 @@ func TestHostRankDefaultEnabled(t *testing.T) {
 	weights.Freshness = -1
 	if err := weights.Validate(); err == nil {
 		t.Fatal("negative freshness must fail validation")
+	}
+	negativeQuality := searchindex.DefaultRankingWeights()
+	negativeQuality.Quality = -1
+	if err := negativeQuality.Validate(); err == nil {
+		t.Fatal("negative quality must fail validation")
 	}
 }
 

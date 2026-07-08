@@ -198,6 +198,7 @@ func coreResults(
 type hostRankScorer struct {
 	hostWeight  float64
 	freshWeight float64
+	qualWeight  float64
 	table       hostrank.Table
 	now         time.Time
 }
@@ -224,6 +225,7 @@ func (s localSearcher) hostRankScorer() *hostRankScorer {
 	scorer := &hostRankScorer{
 		hostWeight:  weights.HostRank,
 		freshWeight: weights.Freshness,
+		qualWeight:  weights.Quality,
 		now:         time.Now(),
 	}
 	// The host table is consulted only when its weight enables it, so a
@@ -231,7 +233,7 @@ func (s localSearcher) hostRankScorer() *hostRankScorer {
 	if scorer.hostWeight > 0 && s.hostRank != nil {
 		scorer.table = s.hostRank()
 	}
-	if scorer.table == nil && scorer.freshWeight <= 0 {
+	if scorer.table == nil && scorer.freshWeight <= 0 && scorer.qualWeight <= 0 {
 		return nil
 	}
 
@@ -264,6 +266,9 @@ func (h *hostRankScorer) priors(result searchcore.Result) float64 {
 			}
 			total += h.freshWeight * math.Exp2(-age.Hours()/freshnessHalfLife.Hours())
 		}
+	}
+	if h.qualWeight > 0 {
+		total += h.qualWeight * result.Quality
 	}
 
 	return total
@@ -334,6 +339,7 @@ func coreResult(
 		Date:               result.PublishedDate.Format("20060102"),
 		ContentDomain:      req.ContentDomain,
 		Language:           req.Language,
+		Quality:            result.Quality,
 		FieldScores:        result.FieldScores,
 		FieldTermPositions: result.FieldTermPositions,
 		Images:             coreImages(result.Images),

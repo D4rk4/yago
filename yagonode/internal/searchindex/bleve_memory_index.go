@@ -14,6 +14,7 @@ import (
 	"github.com/blevesearch/bleve/v2/search"
 	blevequery "github.com/blevesearch/bleve/v2/search/query"
 
+	"github.com/D4rk4/yago/yagonode/internal/contentprior"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
 
@@ -386,6 +387,7 @@ func searchResultFromDocument(
 		RawContent:         rawContent,
 		Score:              hit.Score,
 		Explanation:        hitExplanation(req, hit),
+		Quality:            contentprior.Score(doc.ExtractedText),
 		FieldScores:        hitFieldScores(req, hit),
 		FieldTermPositions: hitFieldTermPositions(req, hit),
 		PublishedDate:      documentTime(doc),

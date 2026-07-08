@@ -80,6 +80,10 @@ var dimensions = []dimension{
 		func(w searchindex.RankingWeights) float64 { return w.Freshness },
 		func(w *searchindex.RankingWeights, v float64) { w.Freshness = v },
 	},
+	{
+		func(w searchindex.RankingWeights) float64 { return w.Quality },
+		func(w *searchindex.RankingWeights, v float64) { w.Quality = v },
+	},
 }
 
 // Ascend runs coordinate ascent from start, returning the best weights found,

@@ -112,6 +112,11 @@ func TestSearchSurfacesFieldFeaturesEndToEnd(t *testing.T) {
 		t.Fatalf("results = %d, want 1", len(set.Results))
 	}
 	result := set.Results[0]
+	// The document is under the scored-word floor, so the quality prior is neutral
+	// rather than left at the zero value — proving it was computed and mapped.
+	if result.Quality != 1.0 {
+		t.Errorf("Quality = %v, want the neutral 1.0 for short text", result.Quality)
+	}
 	if result.FieldScores["title"] <= result.FieldScores["body"] {
 		t.Errorf("title score %v must exceed body score %v (title is boosted)",
 			result.FieldScores["title"], result.FieldScores["body"])

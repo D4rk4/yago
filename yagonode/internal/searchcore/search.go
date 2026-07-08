@@ -90,6 +90,10 @@ type Result struct {
 	Date          string
 	ContentDomain ContentDomain
 	Language      string
+	// Quality is the document's content-quality prior in [0,1] (contentprior) for
+	// local results, folded into the score by the ranking profile; zero for remote
+	// results, which carry no prior.
+	Quality float64
 	// FieldScores carries the per-field BM25 sub-score contributions when the
 	// searcher computed them (local results with explanation on); nil otherwise.
 	FieldScores map[string]float64

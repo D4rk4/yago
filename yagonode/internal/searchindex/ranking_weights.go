@@ -21,6 +21,13 @@ type RankingWeights struct {
 	// on top of its relevance, so newer pages win ties without burying the
 	// archive (undated documents keep their score). Zero disables it.
 	Freshness float64 `json:"freshness"`
+	// Quality scales the deterministic content-quality prior (contentprior) folded
+	// into a result's score after retrieval: a clean, prose-like page gains up to
+	// Quality×quality(text) over a keyword-stuffed one. It is a post-retrieval
+	// multiplier, not a text-field boost. Zero disables it. A ranking profile
+	// persisted before this weight existed decodes it as zero, so the quality
+	// prior stays off until the profile is re-saved or re-tuned.
+	Quality float64 `json:"quality"`
 }
 
 func DefaultRankingWeights() RankingWeights {
@@ -41,6 +48,7 @@ func DefaultRankingWeights() RankingWeights {
 		URL:       2,
 		HostRank:  0.3,
 		Freshness: 0.2,
+		Quality:   0.2,
 	}
 }
 
@@ -73,7 +81,7 @@ func (w RankingWeights) Validate() error {
 	for _, prior := range []struct {
 		name  string
 		value float64
-	}{{"hostRank", w.HostRank}, {"freshness", w.Freshness}} {
+	}{{"hostRank", w.HostRank}, {"freshness", w.Freshness}, {"quality", w.Quality}} {
 		if math.IsNaN(prior.value) || math.IsInf(prior.value, 0) {
 			return fmt.Errorf("ranking weight %s must be a finite number", prior.name)
 		}

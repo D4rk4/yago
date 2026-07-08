@@ -72,6 +72,10 @@ type SearchResult struct {
 	Score         float64
 	Explanation   string
 	PublishedDate time.Time
+	// Quality is the deterministic content-quality prior of the document text in
+	// [0,1] (contentprior), computed at result mapping so it is query-independent;
+	// the searcher folds it into the score by the RankingWeights.Quality weight.
+	Quality float64
 	// FieldScores carries the per-field BM25 sub-score contributions parsed from
 	// the score explanation, deduplicated per field:term so the layered query's
 	// repeated clauses do not multiply one term's weight. It is populated only

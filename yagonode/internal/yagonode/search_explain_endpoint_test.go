@@ -93,6 +93,7 @@ func TestSearchExplainEndpointReturnsScoredResults(t *testing.T) {
 			{
 				URL:         "https://a.example/",
 				Score:       2.5,
+				Quality:     0.7,
 				Explanation: "score 2.5",
 				FieldScores: map[string]float64{"title": 1.5, "body": 1.0},
 			},
@@ -121,6 +122,9 @@ func TestSearchExplainEndpointReturnsScoredResults(t *testing.T) {
 	}
 	if resp.Results[0].FieldScores["title"] != 1.5 {
 		t.Fatalf("per-field scores not surfaced: %#v", resp.Results[0].FieldScores)
+	}
+	if resp.Results[0].Quality != 0.7 {
+		t.Fatalf("quality prior not surfaced: %v", resp.Results[0].Quality)
 	}
 }
 
