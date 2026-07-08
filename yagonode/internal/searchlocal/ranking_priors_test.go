@@ -156,12 +156,41 @@ func TestQualityPriorLiftsCleanContent(t *testing.T) {
 	}
 }
 
+// TestProximityPriorLiftsClusteredTerms pins the RANK-03 SDM unordered-window
+// feature: with equal relevance a page where the query words cluster together
+// outranks one where they merely both appear.
+func TestProximityPriorLiftsClusteredTerms(t *testing.T) {
+	index := &fakeIndex{response: searchindex.SearchResultSet{
+		Total: 2,
+		Results: []searchindex.SearchResult{
+			{Title: "Scattered", URL: "https://a.example/page", Score: 1.0, Proximity: 0.0},
+			{Title: "Clustered", URL: "https://b.example/page", Score: 1.0, Proximity: 1.0},
+		},
+	}}
+	searcher := NewSearcherWithRanking(
+		index,
+		func() searchindex.RankingWeights {
+			return searchindex.RankingWeights{Title: 1, Proximity: 0.5}
+		},
+		nil,
+	)
+
+	resp, err := searcher.Search(context.Background(), searchcore.Request{Query: "q"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if titles := resultTitles(resp.Results); titles[0] != "Clustered" {
+		t.Fatalf("order = %v, want the clustered page first", titles)
+	}
+}
+
 // TestHostRankDefaultEnabled pins the SEARCH-38 default flip: the default
-// ranking profile now folds host authority in, and RANK-02 adds the quality
-// prior on by default.
+// ranking profile now folds host authority in, and RANK-02/RANK-03 add the
+// quality and proximity priors on by default.
 func TestHostRankDefaultEnabled(t *testing.T) {
 	weights := searchindex.DefaultRankingWeights()
-	if weights.HostRank <= 0 || weights.Freshness <= 0 || weights.Quality <= 0 {
+	if weights.HostRank <= 0 || weights.Freshness <= 0 ||
+		weights.Quality <= 0 || weights.Proximity <= 0 {
 		t.Fatalf("default priors disabled: %+v", weights)
 	}
 	if err := weights.Validate(); err != nil {
@@ -175,6 +204,11 @@ func TestHostRankDefaultEnabled(t *testing.T) {
 	negativeQuality.Quality = -1
 	if err := negativeQuality.Validate(); err == nil {
 		t.Fatal("negative quality must fail validation")
+	}
+	negativeProximity := searchindex.DefaultRankingWeights()
+	negativeProximity.Proximity = -1
+	if err := negativeProximity.Validate(); err == nil {
+		t.Fatal("negative proximity must fail validation")
 	}
 }
 

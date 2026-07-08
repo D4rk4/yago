@@ -388,6 +388,7 @@ func searchResultFromDocument(
 		Score:              hit.Score,
 		Explanation:        hitExplanation(req, hit),
 		Quality:            contentprior.Score(doc.ExtractedText),
+		Proximity:          unorderedProximity(doc.ExtractedText, req.Terms),
 		FieldScores:        hitFieldScores(req, hit),
 		FieldTermPositions: hitFieldTermPositions(req, hit),
 		PublishedDate:      documentTime(doc),

@@ -94,6 +94,10 @@ type Result struct {
 	// local results, folded into the score by the ranking profile; zero for remote
 	// results, which carry no prior.
 	Quality float64
+	// Proximity is the document's SDM unordered-window feature in [0,1] for local
+	// results, folded into the score by the ranking profile; zero for remote
+	// results, which carry no document text to scan.
+	Proximity float64
 	// FieldScores carries the per-field BM25 sub-score contributions when the
 	// searcher computed them (local results with explanation on); nil otherwise.
 	FieldScores map[string]float64

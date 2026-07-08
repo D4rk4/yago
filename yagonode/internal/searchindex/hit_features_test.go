@@ -117,6 +117,11 @@ func TestSearchSurfacesFieldFeaturesEndToEnd(t *testing.T) {
 	if result.Quality != 1.0 {
 		t.Errorf("Quality = %v, want the neutral 1.0 for short text", result.Quality)
 	}
+	// "linux" and "kernel" sit adjacent in the body, so the single query-word pair
+	// co-occurs within the window and the SDM proximity feature is fully satisfied.
+	if result.Proximity != 1.0 {
+		t.Errorf("Proximity = %v, want 1.0 for the adjacent query terms", result.Proximity)
+	}
 	if result.FieldScores["title"] <= result.FieldScores["body"] {
 		t.Errorf("title score %v must exceed body score %v (title is boosted)",
 			result.FieldScores["title"], result.FieldScores["body"])

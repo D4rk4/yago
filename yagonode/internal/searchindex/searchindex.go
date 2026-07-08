@@ -76,6 +76,11 @@ type SearchResult struct {
 	// [0,1] (contentprior), computed at result mapping so it is query-independent;
 	// the searcher folds it into the score by the RankingWeights.Quality weight.
 	Quality float64
+	// Proximity is the SDM unordered-window feature in [0,1]: the fraction of
+	// adjacent query-word pairs that co-occur within a small token window of the
+	// document text, computed at result mapping (query-dependent); the searcher
+	// folds it into the score by the RankingWeights.Proximity weight.
+	Proximity float64
 	// FieldScores carries the per-field BM25 sub-score contributions parsed from
 	// the score explanation, deduplicated per field:term so the layered query's
 	// repeated clauses do not multiply one term's weight. It is populated only

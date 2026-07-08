@@ -28,6 +28,13 @@ type RankingWeights struct {
 	// persisted before this weight existed decodes it as zero, so the quality
 	// prior stays off until the profile is re-saved or re-tuned.
 	Quality float64 `json:"quality"`
+	// Proximity scales the SDM unordered-window feature folded into a result's
+	// score after retrieval: a page where adjacent query words cluster within a
+	// small token window gains up to Proximity×proximity(text) over one that merely
+	// mentions the words apart. It completes the Sequential Dependence Model beside
+	// the ordered bigram boost that rides the query, and like the other priors it
+	// is a post-retrieval multiplier that a pre-existing profile decodes as zero.
+	Proximity float64 `json:"proximity"`
 }
 
 func DefaultRankingWeights() RankingWeights {
@@ -49,6 +56,7 @@ func DefaultRankingWeights() RankingWeights {
 		HostRank:  0.3,
 		Freshness: 0.2,
 		Quality:   0.2,
+		Proximity: 0.15,
 	}
 }
 
@@ -81,7 +89,12 @@ func (w RankingWeights) Validate() error {
 	for _, prior := range []struct {
 		name  string
 		value float64
-	}{{"hostRank", w.HostRank}, {"freshness", w.Freshness}, {"quality", w.Quality}} {
+	}{
+		{"hostRank", w.HostRank},
+		{"freshness", w.Freshness},
+		{"quality", w.Quality},
+		{"proximity", w.Proximity},
+	} {
 		if math.IsNaN(prior.value) || math.IsInf(prior.value, 0) {
 			return fmt.Errorf("ranking weight %s must be a finite number", prior.name)
 		}

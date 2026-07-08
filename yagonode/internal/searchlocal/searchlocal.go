@@ -199,6 +199,7 @@ type hostRankScorer struct {
 	hostWeight  float64
 	freshWeight float64
 	qualWeight  float64
+	proxWeight  float64
 	table       hostrank.Table
 	now         time.Time
 }
@@ -226,6 +227,7 @@ func (s localSearcher) hostRankScorer() *hostRankScorer {
 		hostWeight:  weights.HostRank,
 		freshWeight: weights.Freshness,
 		qualWeight:  weights.Quality,
+		proxWeight:  weights.Proximity,
 		now:         time.Now(),
 	}
 	// The host table is consulted only when its weight enables it, so a
@@ -233,7 +235,8 @@ func (s localSearcher) hostRankScorer() *hostRankScorer {
 	if scorer.hostWeight > 0 && s.hostRank != nil {
 		scorer.table = s.hostRank()
 	}
-	if scorer.table == nil && scorer.freshWeight <= 0 && scorer.qualWeight <= 0 {
+	if scorer.table == nil && scorer.freshWeight <= 0 &&
+		scorer.qualWeight <= 0 && scorer.proxWeight <= 0 {
 		return nil
 	}
 
@@ -269,6 +272,9 @@ func (h *hostRankScorer) priors(result searchcore.Result) float64 {
 	}
 	if h.qualWeight > 0 {
 		total += h.qualWeight * result.Quality
+	}
+	if h.proxWeight > 0 {
+		total += h.proxWeight * result.Proximity
 	}
 
 	return total
@@ -340,6 +346,7 @@ func coreResult(
 		ContentDomain:      req.ContentDomain,
 		Language:           req.Language,
 		Quality:            result.Quality,
+		Proximity:          result.Proximity,
 		FieldScores:        result.FieldScores,
 		FieldTermPositions: result.FieldTermPositions,
 		Images:             coreImages(result.Images),

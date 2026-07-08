@@ -94,6 +94,7 @@ func TestSearchExplainEndpointReturnsScoredResults(t *testing.T) {
 				URL:         "https://a.example/",
 				Score:       2.5,
 				Quality:     0.7,
+				Proximity:   0.5,
 				Explanation: "score 2.5",
 				FieldScores: map[string]float64{"title": 1.5, "body": 1.0},
 			},
@@ -125,6 +126,9 @@ func TestSearchExplainEndpointReturnsScoredResults(t *testing.T) {
 	}
 	if resp.Results[0].Quality != 0.7 {
 		t.Fatalf("quality prior not surfaced: %v", resp.Results[0].Quality)
+	}
+	if resp.Results[0].Proximity != 0.5 {
+		t.Fatalf("proximity feature not surfaced: %v", resp.Results[0].Proximity)
 	}
 }
 

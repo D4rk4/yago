@@ -28,6 +28,7 @@ type searchExplainResult struct {
 	URL         string             `json:"url"`
 	Score       float64            `json:"score"`
 	Quality     float64            `json:"quality"`
+	Proximity   float64            `json:"proximity"`
 	FieldScores map[string]float64 `json:"fieldScores,omitempty"`
 	Explanation string             `json:"explanation,omitempty"`
 }
@@ -107,6 +108,7 @@ func (e searchExplainEndpoint) response(r *http.Request) (searchExplainResponse,
 			URL:         result.URL,
 			Score:       result.Score,
 			Quality:     result.Quality,
+			Proximity:   result.Proximity,
 			FieldScores: result.FieldScores,
 			Explanation: result.Explanation,
 		})
