@@ -249,6 +249,8 @@ func TestSettingCategory(t *testing.T) {
 		"network.advertise.host":       "Network & peers",
 		"network.lan_discovery":        "Network & peers",
 		"search.links.newtab":          "Search",
+		"storage.quota":                "Storage",
+		"storage.compaction.interval":  "Storage",
 		"swarm.morphology.enabled":     "Swarm",
 		"crawl.ingest.quality_gate":    "Crawler",
 		"autocrawler.crawl.query_urls": "Crawler",

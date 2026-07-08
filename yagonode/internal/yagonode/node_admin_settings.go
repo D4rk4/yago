@@ -133,6 +133,8 @@ func settingCategory(key string) string {
 		return "Web fallback"
 	case strings.HasPrefix(key, "search."):
 		return "Search"
+	case strings.HasPrefix(key, "storage."):
+		return "Storage"
 	case strings.HasPrefix(key, "swarm."):
 		return "Swarm"
 	case strings.HasPrefix(key, "network."):

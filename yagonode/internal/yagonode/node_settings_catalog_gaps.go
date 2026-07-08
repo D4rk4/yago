@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/publicratelimit"
 )
 
@@ -37,6 +38,7 @@ func storageAndAccessDefinitions() []settingDefinition {
 				return config
 			},
 		},
+		storageCompactionDefinition(),
 		{
 			key:          "search.api.scoped_access",
 			title:        "Require scoped API keys",
@@ -51,6 +53,43 @@ func storageAndAccessDefinitions() []settingDefinition {
 			},
 		},
 	}
+}
+
+// storageCompactionDefinition is the live cadence for rewriting the vault's
+// on-disk shards so space freed by evictions and re-ingests is returned to the
+// OS instead of lingering as high-water file size (ADR-0036 C).
+func storageCompactionDefinition() settingDefinition {
+	return settingDefinition{
+		key:   "storage.compaction.interval",
+		title: "Compaction interval",
+		description: "How often the storage engine rewrites its on-disk shards " +
+			"to return space freed by deletions to the OS (e.g. 1d, 12h, off). " +
+			"off disables compaction.",
+		defaultValue: func(config nodeConfig) string {
+			return yagocrawlcontract.FormatRecrawlInterval(config.StorageCompaction)
+		},
+		normalize: normalizeStorageCompaction,
+		apply: func(config nodeConfig, value string) nodeConfig {
+			config.StorageCompaction, _ = yagocrawlcontract.ParseRecrawlInterval(value)
+
+			return config
+		},
+		applyLive: func(toggles *runtimeToggles, value string) {
+			interval, _ := yagocrawlcontract.ParseRecrawlInterval(value)
+			toggles.SetCompactionInterval(interval)
+		},
+	}
+}
+
+// normalizeStorageCompaction validates a compaction cadence and returns its
+// canonical "1d"/"12h"/"off" form so stored overrides read back consistently.
+func normalizeStorageCompaction(raw string) (string, error) {
+	parsed, err := yagocrawlcontract.ParseRecrawlInterval(raw)
+	if err != nil {
+		return "", fmt.Errorf("storage compaction interval: %w", err)
+	}
+
+	return yagocrawlcontract.FormatRecrawlInterval(parsed), nil
 }
 
 // swarmPresenceDefinitions covers how this node announces itself to peers.

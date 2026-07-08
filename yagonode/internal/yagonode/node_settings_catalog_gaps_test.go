@@ -117,6 +117,45 @@ func TestParityGapSettingsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestStorageCompactionIntervalSetting(t *testing.T) {
+	t.Parallel()
+
+	def, ok := indexSettingDefinitions()["storage.compaction.interval"]
+	if !ok {
+		t.Fatal("storage.compaction.interval missing from the catalog")
+	}
+	if def.restartRequired() {
+		t.Fatal("compaction interval must apply live, without a restart")
+	}
+	if got := def.defaultValue(
+		nodeConfig{StorageCompaction: defaultStorageCompaction},
+	); got != "1d" {
+		t.Fatalf("default = %q, want 1d", got)
+	}
+	if off, err := def.normalize("off"); err != nil || off != "off" {
+		t.Fatalf("normalize(off) = %q %v, want off", off, err)
+	}
+	if _, err := def.normalize("nonsense"); err == nil {
+		t.Fatal("normalize must reject an invalid interval")
+	}
+	if applied := def.apply(nodeConfig{}, "12h"); applied.StorageCompaction != 12*time.Hour {
+		t.Fatalf("apply(12h) = %v, want 12h", applied.StorageCompaction)
+	}
+	if disabled := def.apply(nodeConfig{}, "off"); disabled.StorageCompaction != 0 {
+		t.Fatalf("apply(off) = %v, want 0", disabled.StorageCompaction)
+	}
+
+	toggles := &runtimeToggles{}
+	def.applyLive(toggles, "12h")
+	if got := toggles.CompactionInterval(); got != 12*time.Hour {
+		t.Fatalf("applyLive(12h) = %v, want 12h", got)
+	}
+	def.applyLive(toggles, "off")
+	if got := toggles.CompactionInterval(); got != 0 {
+		t.Fatalf("applyLive(off) = %v, want 0 (disabled)", got)
+	}
+}
+
 func TestParityGapNormalizersReject(t *testing.T) {
 	rejects := map[string][2]string{
 		"storage.quota":             {"", "10MB"},
