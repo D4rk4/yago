@@ -34,18 +34,20 @@ func (e suggestXMLEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := firstNonEmpty(r.URL.Query().Get("query"), r.URL.Query().Get("q"))
+	params := parseSuggestParams(r)
+	// Upstream serves the XML suggestions with open CORS so remote search boxes
+	// can read them; match that.
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/x-suggestions+xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	encoder := xml.NewEncoder(w)
 	_ = encoder.EncodeToken(xml.ProcInst{Target: "xml", Inst: []byte(`version="1.0"`)})
 	_ = encoder.EncodeToken(xml.CharData("\n"))
 	_ = encoder.Encode(
-		suggestionResponse(query, mergeSuggestions(
-			publicSuggestionLimit,
-			e.index.Suggest(r.Context(), query, publicSuggestionLimit),
-			e.suggestions.Suggest(query, publicSuggestionLimit),
-		)),
+		suggestionResponse(
+			params.query,
+			mergedSuggestions(r.Context(), e.index, e.suggestions, params),
+		),
 	)
 	_ = encoder.Flush()
 }
