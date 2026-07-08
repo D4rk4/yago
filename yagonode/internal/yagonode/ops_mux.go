@@ -87,6 +87,7 @@ func buildOpsMux(
 		Security:          sources.security,
 		Terms:             newTermSource(assembled.postings, assembled.urlDirectory),
 		Schema:            indexSchemaGroups(),
+		Ranking:           assembled.rankingConsole,
 		Performance:       newPerformanceSource(assembled.dht.gateStatus, crawlDepth),
 		SeedlistRefresh:   seedRefresh,
 		SearchLinksNewTab: config.SearchLinksNewTab,

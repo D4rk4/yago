@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/crawling"
 	"github.com/D4rk4/yago/yagonode/internal/crawlschedule"
 	"github.com/D4rk4/yago/yagonode/internal/crawlurls"
@@ -43,42 +44,43 @@ import (
 )
 
 type node struct {
-	peerMux       *http.ServeMux
-	publicMux     http.Handler
-	readiness     http.Handler
-	indexStats    http.Handler
-	searchExplain http.Handler
-	searchRanking http.Handler
-	searchTune    http.Handler
-	judgmentsAPI  http.Handler
-	report        nodestatus.Report
-	searcher      searchcore.Searcher
-	suggest       searchcore.Searcher
-	index         searchindex.SearchIndex
-	docScan       documentstore.StoredDocuments
-	docEvictor    documentstore.DocumentEvictor
-	activity      *searchactivity.Tracker
-	schedules     *crawlschedule.Store
-	hostRank      *hostrank.Holder
-	spell         *spellcheck.Holder
-	wordForms     *wordforms.Holder
-	swarmMorph    bool
-	indexAdmin    *indexAdminController
-	postings      rwi.PostingIndex
-	urlDirectory  urlmeta.URLDirectory
-	roster        peerroster.Roster
-	news          *peernews.Pool
-	sweeper       eviction.Sweeper
-	announcer     peerannouncement.Announcer
-	lanBeacon     *landiscovery.Beacon
-	crawl         crawlProcess
-	dht           dhtOutboundProcess
-	vault         *vault.Vault
-	client        *http.Client
-	peerBlock     *peerblock.Store
-	denylist      *urldenylist.Store
-	identity      nodeidentity.Identity
-	theme         *portaltheme.Theme
+	peerMux        *http.ServeMux
+	publicMux      http.Handler
+	readiness      http.Handler
+	indexStats     http.Handler
+	searchExplain  http.Handler
+	searchRanking  http.Handler
+	searchTune     http.Handler
+	judgmentsAPI   http.Handler
+	rankingConsole adminui.RankingSource
+	report         nodestatus.Report
+	searcher       searchcore.Searcher
+	suggest        searchcore.Searcher
+	index          searchindex.SearchIndex
+	docScan        documentstore.StoredDocuments
+	docEvictor     documentstore.DocumentEvictor
+	activity       *searchactivity.Tracker
+	schedules      *crawlschedule.Store
+	hostRank       *hostrank.Holder
+	spell          *spellcheck.Holder
+	wordForms      *wordforms.Holder
+	swarmMorph     bool
+	indexAdmin     *indexAdminController
+	postings       rwi.PostingIndex
+	urlDirectory   urlmeta.URLDirectory
+	roster         peerroster.Roster
+	news           *peernews.Pool
+	sweeper        eviction.Sweeper
+	announcer      peerannouncement.Announcer
+	lanBeacon      *landiscovery.Beacon
+	crawl          crawlProcess
+	dht            dhtOutboundProcess
+	vault          *vault.Vault
+	client         *http.Client
+	peerBlock      *peerblock.Store
+	denylist       *urldenylist.Store
+	identity       nodeidentity.Identity
+	theme          *portaltheme.Theme
 }
 
 type nodeTelemetry struct {
@@ -412,48 +414,51 @@ type nodeParts struct {
 }
 
 func newAssembledNode(parts nodeParts) node {
+	tuner := newRankingTuner(
+		parts.storage.searchIndex,
+		parts.hostRank.Current,
+		parts.ranking,
+		parts.judgments,
+	)
+
 	return node{
-		peerMux:       parts.mux,
-		publicMux:     parts.publicMux,
-		readiness:     newReadinessEndpoint(parts.storage.searchIndex),
-		indexStats:    newIndexStatsEndpoint(parts.storage.searchIndex),
-		searchExplain: newSearchExplainEndpoint(parts.storage.searchIndex),
-		searchRanking: newSearchRankingEndpoint(parts.ranking),
-		searchTune: newSearchRankingTuneEndpoint(newRankingTuner(
-			parts.storage.searchIndex,
-			parts.hostRank.Current,
-			parts.ranking,
-			parts.judgments,
-		)),
-		judgmentsAPI: newSearchJudgmentsEndpoint(parts.judgments),
-		report:       parts.report,
-		searcher:     parts.searcher,
-		suggest:      parts.suggest,
-		index:        parts.storage.searchIndex,
-		docScan:      parts.storage.storedDocuments(),
-		docEvictor:   documentEvictorOf(parts.storage),
-		activity:     parts.activity,
-		schedules:    parts.schedules,
-		hostRank:     parts.hostRank,
-		spell:        parts.spell,
-		wordForms:    parts.wordForms,
-		swarmMorph:   parts.swarmMorph,
-		indexAdmin:   newIndexAdminController(parts.storage, parts.vault),
-		postings:     parts.storage.postings,
-		urlDirectory: parts.storage.urlDirectory,
-		roster:       parts.roster,
-		news:         parts.news,
-		sweeper:      newStorageSweeper(parts.vault, parts.storage),
-		announcer:    parts.announcer,
-		lanBeacon:    parts.lanBeacon,
-		crawl:        parts.crawl,
-		dht:          parts.dht,
-		vault:        parts.vault,
-		client:       parts.client,
-		peerBlock:    parts.peerBlock,
-		denylist:     parts.denylist,
-		identity:     parts.identity,
-		theme:        parts.theme,
+		peerMux:        parts.mux,
+		publicMux:      parts.publicMux,
+		readiness:      newReadinessEndpoint(parts.storage.searchIndex),
+		indexStats:     newIndexStatsEndpoint(parts.storage.searchIndex),
+		searchExplain:  newSearchExplainEndpoint(parts.storage.searchIndex),
+		searchRanking:  newSearchRankingEndpoint(parts.ranking),
+		searchTune:     newSearchRankingTuneEndpoint(tuner),
+		judgmentsAPI:   newSearchJudgmentsEndpoint(parts.judgments),
+		rankingConsole: newRankingConsole(parts.ranking, tuner, parts.judgments),
+		report:         parts.report,
+		searcher:       parts.searcher,
+		suggest:        parts.suggest,
+		index:          parts.storage.searchIndex,
+		docScan:        parts.storage.storedDocuments(),
+		docEvictor:     documentEvictorOf(parts.storage),
+		activity:       parts.activity,
+		schedules:      parts.schedules,
+		hostRank:       parts.hostRank,
+		spell:          parts.spell,
+		wordForms:      parts.wordForms,
+		swarmMorph:     parts.swarmMorph,
+		indexAdmin:     newIndexAdminController(parts.storage, parts.vault),
+		postings:       parts.storage.postings,
+		urlDirectory:   parts.storage.urlDirectory,
+		roster:         parts.roster,
+		news:           parts.news,
+		sweeper:        newStorageSweeper(parts.vault, parts.storage),
+		announcer:      parts.announcer,
+		lanBeacon:      parts.lanBeacon,
+		crawl:          parts.crawl,
+		dht:            parts.dht,
+		vault:          parts.vault,
+		client:         parts.client,
+		peerBlock:      parts.peerBlock,
+		denylist:       parts.denylist,
+		identity:       parts.identity,
+		theme:          parts.theme,
 	}
 }
 

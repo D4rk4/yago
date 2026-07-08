@@ -1,0 +1,34 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / YagoRank</nav>
+<h1 class="cds-h1">YagoRank</h1>
+{{template "toasts" .}}
+<p class="cds-muted">The learned ranking profile. Field boosts weight per-field BM25 during retrieval; priors multiply the score after retrieval. Every weight can be fit to mean NDCG@10 over the judgment set by coordinate ascent — tuning proposes weights for review and changes nothing until you save.</p>
+
+{{if .Tune}}
+<div class="cds-inline-notification {{if .Tune.Improved}}cds-inline-notification--success{{end}}" role="status">
+  <span><strong>Tuning preview.</strong> Mean NDCG@10 {{printf "%.4f" .Tune.BeforeNDCG}} → {{printf "%.4f" .Tune.AfterNDCG}} over {{.Tune.Rounds}} round{{if ne .Tune.Rounds 1}}s{{end}}. {{if .Tune.Improved}}The proposed weights are loaded below — save to apply them.{{else}}The current weights are already at a local optimum.{{end}}</span>
+</div>
+{{end}}
+
+<form class="cds-settings-form" method="post" action="/admin/yagorank" hx-boost="false">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  {{range .Groups}}
+  <fieldset class="cds-fieldset">
+    <legend class="cds-legend">{{.Title}}</legend>
+    {{range .Weights}}
+    <div class="cds-setting-row">
+      <span class="cds-setting-row__label"><label for="weight-{{.Key}}">{{.Label}}</label></span>
+      <span class="cds-setting-row__control">
+        <input class="cds-input" type="number" step="any" min="0" id="weight-{{.Key}}" name="{{.Key}}" value="{{printf "%g" .Value}}" autocomplete="off" inputmode="decimal">
+      </span>
+    </div>
+    {{end}}
+  </fieldset>
+  {{end}}
+  <div class="cds-actions">
+    <button class="cds-btn" type="submit" name="action" value="save">Save profile</button>
+    <button class="cds-btn cds-btn--secondary" type="submit" name="action" value="tune"{{if eq .JudgmentCount 0}} disabled{{end}}>Tune from judgments</button>
+  </div>
+  <p class="cds-muted">{{.JudgmentCount}} judgment{{if ne .JudgmentCount 1}}s{{end}} in the set.{{if eq .JudgmentCount 0}} Add curated judgments before tuning.{{end}}</p>
+</form>
+{{end}}

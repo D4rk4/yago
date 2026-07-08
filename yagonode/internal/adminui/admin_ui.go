@@ -63,6 +63,7 @@ const (
 	logsEventsPath      = "/admin/logs/events"
 	securityPath        = "/admin/security"
 	performancePath     = "/admin/performance"
+	yagorankPath        = "/admin/yagorank"
 
 	// adminSearchPageSize is how many results one admin search page shows;
 	// adminSearchMaxPage bounds how deep a crafted ?p= can page.
@@ -98,6 +99,7 @@ var navItems = []NavItem{
 	{Title: "Crawler", Path: "/admin/crawl", Icon: "crawler"},
 	{Title: "Network", Path: "/admin/network", Icon: "network"},
 	{Title: "Index", Path: indexPath, Icon: "index"},
+	{Title: "YagoRank", Path: yagorankPath, Icon: "yagorank"},
 	{Title: "Performance", Path: "/admin/performance", Icon: "performance"},
 	{Title: "Backup", Path: backupPath, Icon: "backup"},
 	{Title: "Configuration", Path: "/admin/configuration", Icon: "configuration"},
@@ -127,12 +129,14 @@ type Options struct {
 	Settings     SettingsSource
 	// Theme persists the operator portal design (ADR-0033); nil renders the
 	// design tabs as placeholders.
-	Theme       ThemeStore
-	Binding     BindingSource
-	Logs        LogsSource
-	Security    SecuritySource
-	Terms       TermSource
-	Schema      []SchemaGroup
+	Theme    ThemeStore
+	Binding  BindingSource
+	Logs     LogsSource
+	Security SecuritySource
+	Terms    TermSource
+	Schema   []SchemaGroup
+	// Ranking backs the YagoRank section; nil renders it unavailable.
+	Ranking     RankingSource
 	Performance PerformanceSource
 	// PerformanceHistory feeds the Performance page's sampled history charts.
 	PerformanceHistory PerformanceHistorySource
@@ -364,6 +368,7 @@ type templates struct {
 	logs        *template.Template
 	security    *template.Template
 	performance *template.Template
+	yagorank    *template.Template
 	restart     *template.Template
 	backup      *template.Template
 	autocrawler *template.Template
@@ -398,6 +403,7 @@ type Console struct {
 	security        SecuritySource
 	terms           TermSource
 	schema          []SchemaGroup
+	ranking         RankingSource
 	performance     PerformanceSource
 	perfHistory     PerformanceHistorySource
 	backup          BackupSource
@@ -446,6 +452,7 @@ func New(opts Options) *Console {
 		security:        opts.Security,
 		terms:           opts.Terms,
 		schema:          opts.Schema,
+		ranking:         opts.Ranking,
 		performance:     opts.Performance,
 		perfHistory:     opts.PerformanceHistory,
 		backup:          opts.Backup,
@@ -497,6 +504,7 @@ func buildTemplates() templates {
 		logs:        clone(nil, "templates/logs.tmpl", "templates/logs_table.tmpl"),
 		security:    clone(nil, "templates/security.tmpl", "templates/toasts.tmpl"),
 		performance: clone(nil, "templates/performance.tmpl"),
+		yagorank:    clone(nil, "templates/yagorank.tmpl", "templates/toasts.tmpl"),
 		restart:     clone(nil, "templates/restart.tmpl"),
 		backup:      clone(nil, "templates/backup.tmpl"),
 		autocrawler: clone(nil, "templates/autocrawler.tmpl"),
@@ -545,6 +553,8 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("POST "+portalPath, c.handlePortalUpdate)
 	c.mux.HandleFunc("POST "+portalPath+"/design", c.handlePortalDesign)
 	c.mux.HandleFunc("GET "+performancePath, c.handlePerformance)
+	c.mux.HandleFunc("GET "+yagorankPath, c.handleYagoRank)
+	c.mux.HandleFunc("POST "+yagorankPath, c.handleYagoRankAction)
 	c.mux.HandleFunc("GET "+backupPath, c.handleBackup)
 	c.mux.HandleFunc("GET "+activityPath, c.handleActivity)
 
@@ -560,8 +570,8 @@ func dynamicSection(path string) bool {
 	return path == overviewPath || path == searchPath || path == crawlPath ||
 		path == indexPath || path == networkPath || path == configPath ||
 		path == logsPath || path == securityPath || path == performancePath ||
-		path == autocrawlerPath || path == activityPath || path == restartPath ||
-		path == portalPath || path == backupPath
+		path == yagorankPath || path == autocrawlerPath || path == activityPath ||
+		path == restartPath || path == portalPath || path == backupPath
 }
 
 // ServeHTTP dispatches to the console's internal router, first resolving the
