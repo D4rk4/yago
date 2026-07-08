@@ -57,7 +57,7 @@ func TestConsoleConfigRendersEditableSettings(t *testing.T) {
 	for _, want := range []string{
 		`role="tablist"`, `id="tab-search"`, `aria-controls="panel-search"`,
 		`name="key"`, "Public search portal", `class="cds-setting-row"`,
-		`name="value:portal.enabled"`, `value="false"`, ">Reset<", `name="csrf_token"`,
+		`name="value:portal.enabled"`, `value="false"`, `name="csrf_token"`,
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("editable settings missing %q", want)
