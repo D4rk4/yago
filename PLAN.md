@@ -2564,6 +2564,17 @@ Acceptance:
 
 ### OPS-03: Backup and restore
 
+Status: Complete. `deploy/backup.sh` and `deploy/restore.sh` cover both docker
+and systemd deployments (offline copy of the sharded vault + search index —
+identity, settings, hashed API keys, profiles; volatile queues excluded by
+design; restore wipes first and the node's shard integrity checks verify on
+start), `doc/backup-restore.md` documents the procedure and cross-version
+compatibility, and the acceptance E2E now exists as an automated test:
+`yagonode/test/e2e/backup_restore_e2e_test.go` seeds a small index, runs the
+real scripts (docker mode) to back up, wipes the data volume, restores, and
+asserts the restarted node serves the seeded postings again. Backups contain
+hashed keys only (Argon2id), never plaintext.
+
 Tasks:
 
 1. Backup settings, peer identity, API key hashes, crawl profiles, index metadata and storage engine files safely.
