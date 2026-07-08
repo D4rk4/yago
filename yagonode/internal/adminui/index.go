@@ -18,3 +18,17 @@ type IndexStats struct {
 type IndexSource interface {
 	Index(ctx context.Context) IndexStats
 }
+
+// CompactionResult is the outcome of a manual "Compact now" run: how many shards
+// were rewritten and the space handed back to the OS as a prerendered string.
+type CompactionResult struct {
+	ShardsCompacted int
+	BytesReclaimed  string
+}
+
+// Compactor rewrites over-full storage shards on demand so space freed by
+// deletions is returned to the OS. The Configuration page's Storage tab exposes
+// it as a "Compact now" button beside the compaction-interval setting.
+type Compactor interface {
+	Compact(ctx context.Context) (CompactionResult, error)
+}

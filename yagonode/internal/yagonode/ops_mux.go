@@ -164,6 +164,7 @@ func applyIndexAdminOptions(options *adminui.Options, assembled node) {
 	if assembled.denylist != nil {
 		options.Blacklist = newBlacklistController(assembled.denylist)
 	}
+	options.Compactor = newCompactorSource(assembled.vault)
 }
 
 // assembledPeerBlocks returns the peer-block store as an interface, preserving a

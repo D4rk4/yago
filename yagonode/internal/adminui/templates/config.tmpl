@@ -41,6 +41,14 @@
       </fieldset>
       <button class="cds-btn" type="submit">Save</button>
     </form>
+    {{if and (eq .ID "storage") $.CompactEnabled}}
+    <form class="cds-actions" method="post" action="/admin/configuration" hx-boost="false">
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+      <input type="hidden" name="form" value="compact">
+      <button class="cds-btn" type="submit">Compact now</button>
+      <span class="cds-muted">Rewrite over-full storage shards now to hand space freed by deletions back to the OS.</span>
+    </form>
+    {{end}}
   </section>
   {{end}}{{end}}
 

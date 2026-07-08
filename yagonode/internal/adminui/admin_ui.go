@@ -124,6 +124,7 @@ type Options struct {
 	IndexAdmin   IndexAdminSource
 	Blacklist    BlacklistSource
 	IndexExport  IndexExporter
+	Compactor    Compactor
 	Network      NetworkSource
 	Config       ConfigSource
 	Settings     SettingsSource
@@ -286,6 +287,9 @@ type configPageData struct {
 	Bindings      BindingsView
 	Notice        string
 	Error         string
+	// CompactEnabled gates the Storage tab's "Compact now" action; it is set
+	// when the console has a storage compactor wired.
+	CompactEnabled bool
 }
 
 type indexPageData struct {
@@ -394,6 +398,7 @@ type Console struct {
 	indexAdmin      IndexAdminSource
 	blacklist       BlacklistSource
 	indexExport     IndexExporter
+	compactor       Compactor
 	network         NetworkSource
 	config          ConfigSource
 	settings        SettingsSource
@@ -443,6 +448,7 @@ func New(opts Options) *Console {
 		indexAdmin:      opts.IndexAdmin,
 		blacklist:       opts.Blacklist,
 		indexExport:     opts.IndexExport,
+		compactor:       opts.Compactor,
 		network:         opts.Network,
 		config:          opts.Config,
 		settings:        opts.Settings,
@@ -1065,6 +1071,12 @@ func (c *Console) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.PostFormValue("form") == "compact" {
+		c.handleConfigCompact(w, r)
+
+		return
+	}
+
 	binding := r.PostFormValue("form") == "binding"
 	if (binding && c.binding == nil) || (!binding && c.settings == nil) {
 		http.NotFound(w, r)
@@ -1076,6 +1088,39 @@ func (c *Console) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 	// keys), so it never signals a foreign-key 404 here; ok is discarded.
 	notice, errMsg, _ := c.applyConfigUpdate(r, binding)
 	c.render(r.Context(), w, c.tpl.config, "layout", c.configPage(r, notice, errMsg))
+}
+
+// handleConfigCompact runs an on-demand storage compaction from the Storage tab
+// and re-renders Configuration with the reclaimed-space toast. Compaction is
+// idempotent, so a resubmit reclaims nothing rather than harming the store.
+func (c *Console) handleConfigCompact(w http.ResponseWriter, r *http.Request) {
+	if c.compactor == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+
+	notice, errMsg := "", ""
+	result, err := c.compactor.Compact(r.Context())
+	if err != nil {
+		slog.WarnContext(r.Context(), "admin storage compaction failed", slog.Any("error", err))
+		errMsg = "Compaction failed."
+	} else {
+		notice = compactionNotice(result)
+	}
+	c.render(r.Context(), w, c.tpl.config, "layout", c.configPage(r, notice, errMsg))
+}
+
+// compactionNotice renders the operator-facing summary of a compaction run.
+func compactionNotice(result CompactionResult) string {
+	if result.ShardsCompacted == 0 {
+		return "Storage is already compact — nothing to reclaim."
+	}
+
+	return fmt.Sprintf(
+		"Reclaimed %s across %d shard(s).",
+		result.BytesReclaimed, result.ShardsCompacted,
+	)
 }
 
 func (c *Console) applyConfigUpdate(
@@ -1148,6 +1193,7 @@ func (c *Console) configPage(r *http.Request, notice, errMsg string) configPageD
 		data.Bindable = true
 		data.Bindings = c.binding.Bindings(r.Context())
 	}
+	data.CompactEnabled = c.compactor != nil
 
 	return data
 }
