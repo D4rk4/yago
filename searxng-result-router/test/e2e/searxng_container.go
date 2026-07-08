@@ -7,20 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerlog"
-	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/containerurl"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/searxng"
 )
 
 const (
-	searxngImage = "docker.io/searxng/searxng:2026.7.5-a6438586a" +
-		"@sha256:5db870274800e0ed53ffe3c94806523f5313b00f5f7fc038f9e345e867c1f10b"
 	searxngAlias      = "searxng"
-	searxngPort       = "8080/tcp"
 	pluginMountDir    = "/opt/e2e-plugins"
 	pluginSourcePath  = "../../result_link_router.py"
 	engineMountDir    = "/usr/local/searxng/searx/engines"
@@ -89,43 +83,24 @@ func startSearXNG(
 		t.Fatalf("resolve plugin source path: %v", err)
 	}
 
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		Started: true,
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:          searxngImage,
-			ExposedPorts:   []string{searxngPort},
-			Networks:       []string{networkName},
-			NetworkAliases: map[string][]string{networkName: {searxngAlias}},
-			Env: map[string]string{
-				"PYTHONPATH":              pluginMountDir,
-				"YACYVISITCRAWL_BASE_URL": visitcrawlBaseURL,
+	return searxng.Start(t, ctx, networkName, searxng.Config{
+		Alias:        searxngAlias,
+		SettingsYAML: testSettingsYAML,
+		Env: map[string]string{
+			"PYTHONPATH":              pluginMountDir,
+			"YACYVISITCRAWL_BASE_URL": visitcrawlBaseURL,
+		},
+		Files: []testcontainers.ContainerFile{
+			{
+				HostFilePath:      pluginPath,
+				ContainerFilePath: pluginMountDir + "/result_link_router.py",
+				FileMode:          0o644,
 			},
-			Files: []testcontainers.ContainerFile{
-				{
-					HostFilePath:      pluginPath,
-					ContainerFilePath: pluginMountDir + "/result_link_router.py",
-					FileMode:          0o644,
-				},
-				{
-					Reader:            strings.NewReader(testEngineSource(originNetworkURL())),
-					ContainerFilePath: engineMountDir + "/" + testEngineModule + ".py",
-					FileMode:          0o644,
-				},
-				{
-					Reader:            strings.NewReader(testSettingsYAML),
-					ContainerFilePath: "/etc/searxng/settings.yml",
-					FileMode:          0o644,
-				},
+			{
+				Reader:            strings.NewReader(testEngineSource(originNetworkURL())),
+				ContainerFilePath: engineMountDir + "/" + testEngineModule + ".py",
+				FileMode:          0o644,
 			},
-			WaitingFor: wait.ForHTTP("/").
-				WithPort(searxngPort).
-				WithStartupTimeout(2 * time.Minute),
 		},
 	})
-	if err != nil {
-		t.Fatalf("start searxng container %s: %v", searxngImage, err)
-	}
-	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-	containerlog.DumpOnFailure(t, "searxng", container)
-	return containerurl.HostURL(t, ctx, container, searxngPort)
 }

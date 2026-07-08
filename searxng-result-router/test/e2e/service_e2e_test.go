@@ -11,6 +11,7 @@ import (
 
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/dockernetwork"
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/natsjetstream"
+	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/searxngsearch"
 )
 
 func TestResultLinkRouterRoutesSearchResultsThroughVisitcrawl(t *testing.T) {
@@ -26,7 +27,7 @@ func TestResultLinkRouterRoutesSearchResultsThroughVisitcrawl(t *testing.T) {
 	js := connectJetStream(t, natsURL)
 	ensureOrdersStream(t, ctx, js)
 
-	result := searchOneResult(t, ctx, searxngBaseURL, "!"+testEngineBang+" test")
+	result := searxngsearch.SearchOneResult(t, ctx, searxngBaseURL, "!"+testEngineBang+" test")
 
 	wantPrefix := visitcrawlBaseURL + "/visit?url="
 	if !strings.HasPrefix(result.URL, wantPrefix) {

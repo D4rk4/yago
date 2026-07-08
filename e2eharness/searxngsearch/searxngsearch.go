@@ -1,6 +1,7 @@
 //go:build e2e
 
-package e2e
+// Package searxngsearch queries a running SearXNG instance's JSON search API.
+package searxngsearch
 
 import (
 	"context"
@@ -10,22 +11,19 @@ import (
 	"testing"
 )
 
-type searchResult struct {
-	URL string `json:"url"`
+type Result struct {
+	URL     string `json:"url"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
 }
 
-type searchResponse struct {
-	Results []searchResult `json:"results"`
+type response struct {
+	Results []Result `json:"results"`
 }
 
-func searchOneResult(
-	t *testing.T,
-	ctx context.Context,
-	searxngBaseURL string,
-	query string,
-) searchResult {
+func Search(t *testing.T, ctx context.Context, baseURL, query string) []Result {
 	t.Helper()
-	requestURL := searxngBaseURL + "/search?" + url.Values{
+	requestURL := baseURL + "/search?" + url.Values{
 		"q":      {query},
 		"format": {"json"},
 	}.Encode()
@@ -45,12 +43,18 @@ func searchOneResult(
 		t.Fatalf("search request: status %d", resp.StatusCode)
 	}
 
-	var decoded searchResponse
+	var decoded response
 	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
 		t.Fatalf("decode search response: %v", err)
 	}
-	if len(decoded.Results) == 0 {
+	return decoded.Results
+}
+
+func SearchOneResult(t *testing.T, ctx context.Context, baseURL, query string) Result {
+	t.Helper()
+	results := Search(t, ctx, baseURL, query)
+	if len(results) == 0 {
 		t.Fatal("search response carries no results")
 	}
-	return decoded.Results[0]
+	return results[0]
 }

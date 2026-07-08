@@ -3,7 +3,7 @@ PYTHON ?= python3
 COVERAGE_MIN ?= 80
 
 GO_MODULES := yacynode yacymodel yacyproto yacycrawlcontract yacycrawler yacytextindexer yacyvisitcrawl
-PY_MODULES := searxng-result-router
+PY_MODULES := searxng-result-router searxng-crawled-text-search
 
 COVER_PROFILE := coverage.out
 COVER_EXCLUDE := /internal/vaulttest/|/test/e2e/
@@ -153,12 +153,13 @@ $(foreach m,$(E2E_IMAGE_MODULES),$(eval $(call e2e_image_rule,$(m))))
 e2e-images: $(foreach m,$(E2E_IMAGE_MODULES),e2e-$(m)-image)
 
 # Modules that own a test/e2e suite, and the images each suite needs.
-E2E_SUITE_MODULES := yacynode yacycrawler yacytextindexer searxng-result-router
+E2E_SUITE_MODULES := yacynode yacycrawler yacytextindexer searxng-result-router searxng-crawled-text-search
 
-E2E_ENV_yacynode              := YACY_NODE_IMAGE=$(E2E_IMAGE_yacynode)
-E2E_ENV_yacycrawler           := YACYCRAWLER_IMAGE=$(E2E_IMAGE_yacycrawler)
-E2E_ENV_yacytextindexer       := YACY_NODE_IMAGE=$(E2E_IMAGE_yacynode) YACYCRAWLER_IMAGE=$(E2E_IMAGE_yacycrawler) YACYTEXTINDEXER_IMAGE=$(E2E_IMAGE_yacytextindexer)
-E2E_ENV_searxng-result-router := YACYVISITCRAWL_IMAGE=$(E2E_IMAGE_yacyvisitcrawl)
+E2E_ENV_yacynode                       := YACY_NODE_IMAGE=$(E2E_IMAGE_yacynode)
+E2E_ENV_yacycrawler                    := YACYCRAWLER_IMAGE=$(E2E_IMAGE_yacycrawler)
+E2E_ENV_yacytextindexer                := YACY_NODE_IMAGE=$(E2E_IMAGE_yacynode) YACYCRAWLER_IMAGE=$(E2E_IMAGE_yacycrawler) YACYTEXTINDEXER_IMAGE=$(E2E_IMAGE_yacytextindexer)
+E2E_ENV_searxng-result-router          := YACYVISITCRAWL_IMAGE=$(E2E_IMAGE_yacyvisitcrawl)
+E2E_ENV_searxng-crawled-text-search    :=
 
 define e2e_suite_rule
 e2e-$(1):
