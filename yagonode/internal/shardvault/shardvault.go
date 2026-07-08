@@ -188,6 +188,9 @@ func (e *engine) route(bucket vault.Name, key vault.Key) int {
 }
 
 func (e *engine) Provision(name vault.Name) error {
+	e.globalGate.RLock()
+	defer e.globalGate.RUnlock()
+
 	for i, db := range e.shards {
 		err := db.Update(func(tx *bolt.Tx) error {
 			if _, createErr := tx.CreateBucketIfNotExists([]byte(name)); createErr != nil {
@@ -257,6 +260,12 @@ func (e *engine) runUpdate(fn func(vault.EngineTxn) error, tryLocks bool) error 
 }
 
 func (e *engine) View(_ context.Context, fn func(vault.EngineTxn) error) error {
+	// Readers hold the gate shared so a compaction swap (exclusive) waits for
+	// in-flight reads to finish and no read starts mid-swap. The rollback defer
+	// is declared last so it runs before the gate is released.
+	e.globalGate.RLock()
+	defer e.globalGate.RUnlock()
+
 	txn := &shardTxn{engine: e, open: make([]*bolt.Tx, len(e.shards))}
 	defer txn.rollback()
 	if err := fn(txn); err != nil {
@@ -275,6 +284,11 @@ func (e *engine) View(_ context.Context, fn func(vault.EngineTxn) error) error {
 // and thrashes. Compaction (the periodic maintenance pass) is what returns the
 // freed pages to the OS and shrinks the files.
 func (e *engine) UsedBytes(_ context.Context) (int64, error) {
+	// Shared gate: block only against a compaction swap (exclusive), never
+	// against other reads or writes.
+	e.globalGate.RLock()
+	defer e.globalGate.RUnlock()
+
 	var total int64
 	for i, db := range e.shards {
 		live, err := liveBytes(db)
@@ -290,19 +304,29 @@ func (e *engine) UsedBytes(_ context.Context) (int64, error) {
 // liveBytes returns one shard's in-use bytes: the file size minus the free and
 // pending free pages the freelist can reuse.
 func liveBytes(db *bolt.DB) (int64, error) {
-	var live int64
-	if err := db.View(func(tx *bolt.Tx) error {
-		stats := db.Stats()
-		pageSize := int64(db.Info().PageSize)
-		free := int64(stats.FreePageN+stats.PendingPageN) * pageSize
-		live = max(tx.Size()-free, 0)
-
-		return nil
-	}); err != nil {
-		return 0, fmt.Errorf("read shard stats: %w", err)
+	size, free, err := shardSizeAndFree(db)
+	if err != nil {
+		return 0, err
 	}
 
-	return live, nil
+	return max(size-free, 0), nil
+}
+
+// shardSizeAndFree reads one shard's file size and reclaimable (free + pending
+// free) bytes through a read transaction.
+func shardSizeAndFree(db *bolt.DB) (size, free int64, err error) {
+	if viewErr := db.View(func(tx *bolt.Tx) error {
+		stats := db.Stats()
+		pageSize := int64(db.Info().PageSize)
+		free = int64(stats.FreePageN+stats.PendingPageN) * pageSize
+		size = tx.Size()
+
+		return nil
+	}); viewErr != nil {
+		return 0, 0, fmt.Errorf("read shard stats: %w", viewErr)
+	}
+
+	return size, free, nil
 }
 
 func (e *engine) QuotaBytes() int64 { return e.quotaBytes }

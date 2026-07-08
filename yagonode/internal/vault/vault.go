@@ -60,6 +60,39 @@ func (v *Vault) UsedBytes(ctx context.Context) (int64, error) {
 	return used, nil
 }
 
+// CompactResult reports what a Compact pass reclaimed.
+type CompactResult struct {
+	ShardsCompacted int
+	BytesReclaimed  int64
+}
+
+// compactor is the optional engine capability behind Vault.Compact. Only the
+// on-disk sharded engine implements it; the in-memory engine has no files to
+// reclaim, so Compact is a no-op there.
+type compactor interface {
+	Compact(ctx context.Context) (CompactResult, error)
+}
+
+// Compact asks the engine to return space freed by deletes back to the OS. Live
+// usage (UsedBytes) already excludes freed pages, but the files keep their
+// high-water size until compacted (ADR-0036 C). It is a no-op on engines that
+// do not support compaction.
+func (v *Vault) Compact(ctx context.Context) (CompactResult, error) {
+	if v == nil || v.engine == nil {
+		return CompactResult{}, errVaultClosed
+	}
+	c, ok := v.engine.(compactor)
+	if !ok {
+		return CompactResult{}, nil
+	}
+	result, err := c.Compact(ctx)
+	if err != nil {
+		return CompactResult{}, fmt.Errorf("compact storage: %w", err)
+	}
+
+	return result, nil
+}
+
 func (v *Vault) AtCapacity(ctx context.Context) (bool, error) {
 	if v == nil || v.engine == nil {
 		return false, errVaultClosed
