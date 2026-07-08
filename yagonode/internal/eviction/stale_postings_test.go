@@ -62,7 +62,7 @@ func stalePostingsEvictor(
 ) eviction.Evictor {
 	t.Helper()
 
-	return eviction.NewEvictor(openVault(t, 1024), postings, references, &fakeURLs{})
+	return eviction.NewEvictor(openVault(t, 1024), postings, references, &fakeURLs{}, nil, nil)
 }
 
 func TestPurgeStalePostingsDropsOnlyVanishedWords(t *testing.T) {

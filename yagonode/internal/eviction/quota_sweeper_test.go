@@ -158,6 +158,8 @@ func newSweeper(
 		postings,
 		fakeReferences{word: yagomodel.WordHash("w")},
 		urls,
+		nil,
+		nil,
 		urls,
 		eviction.Config{TargetFraction: target, BatchSize: batch},
 	)
@@ -174,6 +176,8 @@ func newSweeperWithReferences(
 		postings,
 		references,
 		urls,
+		nil,
+		nil,
 		urls,
 		eviction.Config{TargetFraction: 1, BatchSize: 1},
 	)
@@ -335,7 +339,9 @@ func TestEvictorEvictsURLs(t *testing.T) {
 	v := openVault(t, 1024)
 	postings := &fakePostings{}
 	urls := &fakeURLs{remaining: hashes(2)}
-	evictor := eviction.NewEvictor(v, postings, fakeReferences{word: yagomodel.WordHash("w")}, urls)
+	evictor := eviction.NewEvictor(
+		v, postings, fakeReferences{word: yagomodel.WordHash("w")}, urls, nil, nil,
+	)
 
 	result, err := evictor.EvictURLs(context.Background(), hashes(2))
 	if err != nil {
@@ -353,7 +359,7 @@ func TestEvictorEvictsAbsentURLsNoop(t *testing.T) {
 	v := openVault(t, 1024)
 	postings := &fakePostings{}
 	urls := &fakeURLs{noDelete: true}
-	evictor := eviction.NewEvictor(v, postings, fakeReferences{empty: true}, urls)
+	evictor := eviction.NewEvictor(v, postings, fakeReferences{empty: true}, urls, nil, nil)
 
 	result, err := evictor.EvictURLs(context.Background(), hashes(1))
 	if err != nil {
@@ -371,6 +377,7 @@ func TestEvictorSurfacesPurgeError(t *testing.T) {
 	v := openVault(t, 1024)
 	evictor := eviction.NewEvictor(
 		v, &fakePostings{}, fakeReferences{}, &fakeURLs{purgeErr: errors.New("boom")},
+		nil, nil,
 	)
 
 	if _, err := evictor.EvictURLs(context.Background(), hashes(1)); err == nil {
@@ -382,7 +389,9 @@ func TestEvictorPurgeDropsURLs(t *testing.T) {
 	v := openVault(t, 1024)
 	postings := &fakePostings{}
 	urls := &fakeURLs{remaining: hashes(1)}
-	evictor := eviction.NewEvictor(v, postings, fakeReferences{word: yagomodel.WordHash("w")}, urls)
+	evictor := eviction.NewEvictor(
+		v, postings, fakeReferences{word: yagomodel.WordHash("w")}, urls, nil, nil,
+	)
 
 	if err := evictor.Purge(context.Background(), hashes(1)); err != nil {
 		t.Fatalf("Purge: %v", err)
@@ -396,9 +405,90 @@ func TestEvictorPurgeSurfacesError(t *testing.T) {
 	v := openVault(t, 1024)
 	evictor := eviction.NewEvictor(
 		v, &fakePostings{}, fakeReferences{}, &fakeURLs{purgeErr: errors.New("boom")},
+		nil, nil,
 	)
 
 	if err := evictor.Purge(context.Background(), hashes(1)); err == nil {
 		t.Fatal("Purge should surface a purge error")
+	}
+}
+
+type fakeResolver struct {
+	rows []yagomodel.URIMetadataRow
+	err  error
+}
+
+func (f fakeResolver) RowsByHash(
+	context.Context,
+	[]yagomodel.Hash,
+) ([]yagomodel.URIMetadataRow, error) {
+	return f.rows, f.err
+}
+
+type fakeDocuments struct {
+	deleted []string
+	absent  map[string]bool
+	err     error
+}
+
+func (f *fakeDocuments) Delete(_ context.Context, url string) (bool, error) {
+	if f.err != nil {
+		return false, f.err
+	}
+	f.deleted = append(f.deleted, url)
+	if f.absent[url] {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func urlMetaRow(url string) yagomodel.URIMetadataRow {
+	return yagomodel.URIMetadataRow{
+		Properties: map[string]string{
+			yagomodel.URLMetaURL: yagomodel.EncodeBase64WireForm(url),
+		},
+	}
+}
+
+// TestEvictURLsDropsResolvedDocuments proves ADR-0036 B: a hash-driven purge
+// resolves each URL through its metadata row (whose "url" is wire-encoded) and
+// drops the document keyed by that URL. A resolved URL whose document is already
+// gone is an idempotent no-op that does not count.
+func TestEvictURLsDropsResolvedDocuments(t *testing.T) {
+	v := openVault(t, 1024)
+	docs := &fakeDocuments{absent: map[string]bool{"http://b/": true}}
+	resolver := fakeResolver{rows: []yagomodel.URIMetadataRow{
+		urlMetaRow("http://a/"), urlMetaRow("http://b/"),
+	}}
+	evictor := eviction.NewEvictor(
+		v, &fakePostings{}, fakeReferences{word: yagomodel.WordHash("w")},
+		&fakeURLs{remaining: hashes(2)}, docs, resolver,
+	)
+
+	result, err := evictor.EvictURLs(context.Background(), hashes(2))
+	if err != nil {
+		t.Fatalf("EvictURLs: %v", err)
+	}
+	if len(docs.deleted) != 2 || docs.deleted[0] != "http://a/" || docs.deleted[1] != "http://b/" {
+		t.Fatalf("document delete attempts = %v, want [http://a/ http://b/]", docs.deleted)
+	}
+	if result.DocumentsDeleted != 1 {
+		t.Fatalf("documents deleted = %d, want 1 (the present one)", result.DocumentsDeleted)
+	}
+}
+
+// TestEvictURLsSurfacesDocumentError makes a failing document delete fail the
+// purge rather than silently dropping the postings and metadata.
+func TestEvictURLsSurfacesDocumentError(t *testing.T) {
+	v := openVault(t, 1024)
+	docs := &fakeDocuments{err: errors.New("boom")}
+	resolver := fakeResolver{rows: []yagomodel.URIMetadataRow{urlMetaRow("http://a/")}}
+	evictor := eviction.NewEvictor(
+		v, &fakePostings{}, fakeReferences{}, &fakeURLs{}, docs, resolver,
+	)
+
+	if _, err := evictor.EvictURLs(context.Background(), hashes(1)); err == nil {
+		t.Fatal("EvictURLs should surface a document delete error")
 	}
 }

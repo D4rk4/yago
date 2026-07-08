@@ -20,6 +20,14 @@ func (s nodeStorage) storedDocuments() documentstore.StoredDocuments {
 	return stored
 }
 
+// documentEvictor exposes the document store's delete side so a URL purge can
+// drop the document alongside the postings and metadata (ADR-0036 B).
+func (s nodeStorage) documentEvictor() documentstore.DocumentEvictor {
+	evictor, _ := s.documentDirectory.(documentstore.DocumentEvictor)
+
+	return evictor
+}
+
 type nodeStorage struct {
 	documentDirectory documentstore.DocumentDirectory
 	documentReceiver  documentstore.DocumentReceiver

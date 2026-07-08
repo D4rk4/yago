@@ -41,7 +41,10 @@ func newIndexAdminController(storage nodeStorage, v *vault.Vault) *indexAdminCon
 		documents: deleter,
 		stored:    storage.storedDocuments(),
 		evictor: eviction.NewEvictor(
+			// Documents are dropped explicitly by deleteOne here, so the evictor
+			// skips the documents side (nil) to avoid a redundant second delete.
 			v, storage.postingPurger, storage.references, storage.urlEvictor,
+			nil, nil,
 		),
 		hashURL: yagomodel.HashURL,
 	}

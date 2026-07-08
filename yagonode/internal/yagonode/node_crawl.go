@@ -80,6 +80,7 @@ func buildCrawlRuntime(
 	consumer.CollapseNearDuplicates(neardup.NewWindow(0))
 	evictor := eviction.NewEvictor(
 		storageVault, storage.postingPurger, storage.references, storage.urlEvictor,
+		storage.documentEvictor(), storage.urlDirectory,
 	)
 	consumer.PurgeURLs(evictor)
 	consumer.SweepStalePostings(evictor)

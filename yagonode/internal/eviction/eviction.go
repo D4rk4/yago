@@ -22,12 +22,28 @@ type Config struct {
 }
 
 type Result struct {
-	URLsDeleted     int
-	PostingsDeleted int
+	URLsDeleted      int
+	PostingsDeleted  int
+	DocumentsDeleted int
 }
 
 type Sweeper interface {
 	Sweep(ctx context.Context) (Result, error)
+}
+
+// DocumentEvictor drops a stored document by its normalized URL. Documents are
+// keyed by the URL string, not the URL hash the postings and metadata use, so a
+// purge resolves the hash to its URL (URLResolver) before deleting the document
+// (ADR-0036 B). A nil DocumentEvictor skips the documents side of the purge —
+// the operator-delete path manages documents itself.
+type DocumentEvictor interface {
+	Delete(ctx context.Context, normalizedURL string) (bool, error)
+}
+
+// URLResolver recovers the URL a document is keyed by from a URL hash, by
+// reading the url-metadata row (whose "url" property is the wire-encoded URL).
+type URLResolver interface {
+	RowsByHash(ctx context.Context, hashes []yagomodel.Hash) ([]yagomodel.URIMetadataRow, error)
 }
 
 //nolint:revive // each argument is a distinct collection the sweep prunes; bundling them would invent a hollow type
@@ -36,6 +52,8 @@ func NewSweeper(
 	postings rwi.PostingPurger,
 	references urlreferences.ReferenceQuery,
 	urls urlmeta.URLEvictor,
+	documents DocumentEvictor,
+	resolver URLResolver,
 	stale urlmetastaleness.StaleURLSource,
 	cfg Config,
 ) Sweeper {
@@ -44,6 +62,8 @@ func NewSweeper(
 		postings:   postings,
 		references: references,
 		urls:       urls,
+		documents:  documents,
+		resolver:   resolver,
 		stale:      stale,
 		target:     cfg.TargetFraction,
 		batch:      cfg.BatchSize,
@@ -57,20 +77,32 @@ type Evictor struct {
 	postings   rwi.PostingPurger
 	references urlreferences.ReferenceQuery
 	urls       urlmeta.URLEvictor
+	documents  DocumentEvictor
+	resolver   URLResolver
 }
 
+//nolint:revive // each argument is a distinct collection the evictor prunes; bundling them would invent a hollow type
 func NewEvictor(
 	vault *vault.Vault,
 	postings rwi.PostingPurger,
 	references urlreferences.ReferenceQuery,
 	urls urlmeta.URLEvictor,
+	documents DocumentEvictor,
+	resolver URLResolver,
 ) Evictor {
-	return Evictor{vault: vault, postings: postings, references: references, urls: urls}
+	return Evictor{
+		vault:      vault,
+		postings:   postings,
+		references: references,
+		urls:       urls,
+		documents:  documents,
+		resolver:   resolver,
+	}
 }
 
-// EvictURLs drops the postings and metadata of the given URL hashes.
+// EvictURLs drops the postings, metadata, and document of the given URL hashes.
 func (e Evictor) EvictURLs(ctx context.Context, urls []yagomodel.Hash) (Result, error) {
-	return purgeURLs(ctx, e.vault, e.postings, e.references, e.urls, urls)
+	return purgeURLs(ctx, e.vault, e.postings, e.references, e.urls, e.documents, e.resolver, urls)
 }
 
 // Purge drops the given URL hashes and reports only whether the drop succeeded,

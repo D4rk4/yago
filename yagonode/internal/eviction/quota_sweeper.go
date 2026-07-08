@@ -17,6 +17,8 @@ type quotaSweeper struct {
 	postings   rwi.PostingPurger
 	references urlreferences.ReferenceQuery
 	urls       urlmeta.URLEvictor
+	documents  DocumentEvictor
+	resolver   URLResolver
 	stale      urlmetastaleness.StaleURLSource
 	target     float64
 	batch      int
@@ -53,6 +55,7 @@ func (s quotaSweeper) Sweep(ctx context.Context) (Result, error) {
 		}
 		total.URLsDeleted += batch.URLsDeleted
 		total.PostingsDeleted += batch.PostingsDeleted
+		total.DocumentsDeleted += batch.DocumentsDeleted
 		if batch.URLsDeleted == 0 {
 			return total, nil
 		}
@@ -60,12 +63,13 @@ func (s quotaSweeper) Sweep(ctx context.Context) (Result, error) {
 }
 
 func (s quotaSweeper) purge(ctx context.Context, urls []yagomodel.Hash) (Result, error) {
-	return purgeURLs(ctx, s.vault, s.postings, s.references, s.urls, urls)
+	return purgeURLs(ctx, s.vault, s.postings, s.references, s.urls, s.documents, s.resolver, urls)
 }
 
-// purgeURLs drops the postings and metadata of the given URLs in one
-// capacity-exempt transaction, so every collection clears atomically. It backs
-// both the quota sweep and the on-demand Evictor.
+// purgeURLs drops the postings, metadata, and document of the given URLs. The
+// postings and metadata clear in one capacity-exempt transaction; the documents,
+// keyed by URL rather than hash, clear first (see purgeDocuments). It backs both
+// the quota sweep and the on-demand Evictor.
 //
 //nolint:revive // each argument is a distinct collection the purge touches; bundling them would invent a hollow type
 func purgeURLs(
@@ -74,10 +78,23 @@ func purgeURLs(
 	postings rwi.PostingPurger,
 	references urlreferences.ReferenceQuery,
 	evictor urlmeta.URLEvictor,
+	documents DocumentEvictor,
+	resolver URLResolver,
 	urls []yagomodel.Hash,
 ) (Result, error) {
-	var result Result
-	err := v.Update(ctx, func(tx *vault.Txn) error {
+	// Documents are keyed by the normalized URL, everything else by the URL
+	// hash, so the document drop must resolve the hash through the metadata row.
+	// It runs first, before that row is purged below: once the row is gone the
+	// URL can no longer be recovered, so a crash between the two steps would
+	// orphan the document forever, whereas doing it first lets the next sweep
+	// re-resolve and retry (ADR-0036 B).
+	documentsDeleted, err := purgeDocuments(ctx, documents, resolver, urls)
+	if err != nil {
+		return Result{}, err
+	}
+
+	result := Result{DocumentsDeleted: documentsDeleted}
+	err = v.Update(ctx, func(tx *vault.Txn) error {
 		for _, url := range urls {
 			words, err := references.WordsReferencing(tx, url)
 			if err != nil {
@@ -107,4 +124,42 @@ func purgeURLs(
 	}
 
 	return result, nil
+}
+
+// purgeDocuments resolves each URL hash to the URL its document is keyed by and
+// deletes that document. A hash may legitimately have no metadata row or no
+// document (near-duplicate collapse and the quality gate store a row and
+// postings without a document), so a miss is an idempotent no-op. A nil evictor
+// or resolver skips the documents side entirely.
+func purgeDocuments(
+	ctx context.Context,
+	documents DocumentEvictor,
+	resolver URLResolver,
+	urls []yagomodel.Hash,
+) (int, error) {
+	if documents == nil || resolver == nil || len(urls) == 0 {
+		return 0, nil
+	}
+
+	rows, err := resolver.RowsByHash(ctx, urls)
+	if err != nil {
+		return 0, fmt.Errorf("resolve urls for document purge: %w", err)
+	}
+
+	deleted := 0
+	for _, row := range rows {
+		url, err := yagomodel.DecodeWireForm(ctx, row.Properties[yagomodel.URLMetaURL])
+		if err != nil || url == "" {
+			continue
+		}
+		removed, err := documents.Delete(ctx, url)
+		if err != nil {
+			return 0, fmt.Errorf("delete document: %w", err)
+		}
+		if removed {
+			deleted++
+		}
+	}
+
+	return deleted, nil
 }

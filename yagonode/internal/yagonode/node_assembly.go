@@ -542,6 +542,8 @@ func newStorageSweeper(vault *vault.Vault, storage nodeStorage) eviction.Sweeper
 		storage.postingPurger,
 		storage.references,
 		storage.urlEvictor,
+		storage.documentEvictor(),
+		storage.urlDirectory,
 		storage.staleness,
 		eviction.Config{TargetFraction: evictionTargetFraction, BatchSize: evictionBatch},
 	)
