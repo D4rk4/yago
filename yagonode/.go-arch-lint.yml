@@ -136,6 +136,8 @@ components:
     in: internal/searchactivity/**
   crawlschedule:
     in: internal/crawlschedule/**
+  judgments:
+    in: internal/judgments/**
   wordforms:
     in: internal/wordforms/**
   tavilyapi:
@@ -566,6 +568,11 @@ deps:
   crawlschedule:
     mayDependOn:
       - crawlschedule
+      - vault
+      - memvault
+  judgments:
+    mayDependOn:
+      - judgments
       - vault
       - memvault
   redirectpurge:
