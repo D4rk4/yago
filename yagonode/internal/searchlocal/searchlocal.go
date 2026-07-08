@@ -92,22 +92,23 @@ func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRe
 	}
 
 	return searchindex.SearchRequest{
-		Query:          query,
-		ExcludeTerms:   append([]string(nil), req.ExcludedTerms...),
-		Phrases:        append([]string(nil), req.Phrases...),
-		MaxResults:     req.Offset + requestLimit(req),
-		IncludeDomain:  includeDomains(req),
-		Language:       strings.ToLower(req.Language),
-		Weights:        weights,
-		Fuzzy:          req.Fuzzy,
-		Author:         req.Author,
-		Terms:          append([]string(nil), req.Terms...),
-		ExpansionTerms: append([]string(nil), req.ExpansionTerms...),
-		Near:           req.Near,
-		WithFacets:     req.WithFacets,
-		ContentDomain:  string(req.ContentDomain),
-		MinDate:        req.MinDate,
-		MaxDate:        req.MaxDate,
+		Query:            query,
+		ExcludeTerms:     append([]string(nil), req.ExcludedTerms...),
+		Phrases:          append([]string(nil), req.Phrases...),
+		MaxResults:       req.Offset + requestLimit(req),
+		IncludeDomain:    includeDomains(req),
+		Language:         strings.ToLower(req.Language),
+		Weights:          weights,
+		IncludePositions: multiTermQuery(query, req.Terms),
+		Fuzzy:            req.Fuzzy,
+		Author:           req.Author,
+		Terms:            append([]string(nil), req.Terms...),
+		ExpansionTerms:   append([]string(nil), req.ExpansionTerms...),
+		Near:             req.Near,
+		WithFacets:       req.WithFacets,
+		ContentDomain:    string(req.ContentDomain),
+		MinDate:          req.MinDate,
+		MaxDate:          req.MaxDate,
 	}
 }
 
@@ -133,6 +134,17 @@ func coreFacets(groups []searchindex.FacetGroup) []searchcore.FacetGroup {
 	}
 
 	return out
+}
+
+// multiTermQuery reports whether the request carries at least two query words,
+// the case where matched-term positions add proximity signal; single-term
+// queries skip the location cost since proximity needs a pair.
+func multiTermQuery(query string, terms []string) bool {
+	if len(terms) >= 2 {
+		return true
+	}
+
+	return len(strings.Fields(query)) >= 2
 }
 
 func requestLimit(req searchcore.Request) int {
@@ -309,20 +321,22 @@ func coreResult(
 	}
 
 	return searchcore.Result{
-		Title:         result.Title,
-		URL:           result.URL,
-		DisplayURL:    displayURL(host, pathValue),
-		Snippet:       result.Snippet,
-		Score:         result.Score,
-		Source:        req.Source,
-		Host:          host,
-		Path:          pathValue,
-		File:          file,
-		URLHash:       hash,
-		Date:          result.PublishedDate.Format("20060102"),
-		ContentDomain: req.ContentDomain,
-		Language:      req.Language,
-		Images:        coreImages(result.Images),
+		Title:              result.Title,
+		URL:                result.URL,
+		DisplayURL:         displayURL(host, pathValue),
+		Snippet:            result.Snippet,
+		Score:              result.Score,
+		Source:             req.Source,
+		Host:               host,
+		Path:               pathValue,
+		File:               file,
+		URLHash:            hash,
+		Date:               result.PublishedDate.Format("20060102"),
+		ContentDomain:      req.ContentDomain,
+		Language:           req.Language,
+		FieldScores:        result.FieldScores,
+		FieldTermPositions: result.FieldTermPositions,
+		Images:             coreImages(result.Images),
 	}
 }
 

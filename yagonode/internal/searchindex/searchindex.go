@@ -27,6 +27,11 @@ type SearchRequest struct {
 	Until         time.Time
 	Weights       RankingWeights
 	Explain       bool
+	// IncludePositions asks the backend to return matched-term positions per
+	// field (bleve locations) in each result's FieldTermPositions, so a caller
+	// can measure query-term coverage and proximity over the document itself
+	// rather than the truncated snippet.
+	IncludePositions bool
 	// Fuzzy widens the main field matches to edit-distance-1 term matching for
 	// the zero-result recovery retry.
 	Fuzzy bool
@@ -67,6 +72,17 @@ type SearchResult struct {
 	Score         float64
 	Explanation   string
 	PublishedDate time.Time
+	// FieldScores carries the per-field BM25 sub-score contributions parsed from
+	// the score explanation, deduplicated per field:term so the layered query's
+	// repeated clauses do not multiply one term's weight. It is populated only
+	// when Explain is set, and is empty when the explanation is absent or its
+	// shape is unrecognised.
+	FieldScores map[string]float64
+	// FieldTermPositions maps each field to the 1-based token positions of every
+	// matched query term (from bleve locations). It is populated only when
+	// IncludePositions is set, and lets the reranker score coverage and proximity
+	// over the document.
+	FieldTermPositions map[string]map[string][]int
 	// Images carries the document's extracted images for the image vertical.
 	Images []ResultImage
 }

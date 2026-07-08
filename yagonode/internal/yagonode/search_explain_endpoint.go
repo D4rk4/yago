@@ -25,9 +25,10 @@ type searchExplainRequest struct {
 }
 
 type searchExplainResult struct {
-	URL         string  `json:"url"`
-	Score       float64 `json:"score"`
-	Explanation string  `json:"explanation,omitempty"`
+	URL         string             `json:"url"`
+	Score       float64            `json:"score"`
+	FieldScores map[string]float64 `json:"fieldScores,omitempty"`
+	Explanation string             `json:"explanation,omitempty"`
 }
 
 type searchExplainResponse struct {
@@ -104,6 +105,7 @@ func (e searchExplainEndpoint) response(r *http.Request) (searchExplainResponse,
 		results = append(results, searchExplainResult{
 			URL:         result.URL,
 			Score:       result.Score,
+			FieldScores: result.FieldScores,
 			Explanation: result.Explanation,
 		})
 	}

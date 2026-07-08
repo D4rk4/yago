@@ -70,7 +70,7 @@ func rerankLexicalProximity(results []Result, req Request) []Result {
 		if maxScore > minScore {
 			normScore = (result.Score - minScore) / (maxScore - minScore)
 		}
-		lexical := lexicalScore(result.Title+" "+result.Snippet, terms)
+		lexical := lexicalSignal(result, terms)
 		keys[i] = (1-lexicalRerankWeight)*normScore + lexicalRerankWeight*lexical
 	}
 
@@ -118,6 +118,90 @@ func rerankQueryTerms(req Request) []string {
 	}
 
 	return terms
+}
+
+// lexicalSignal scores a result's query-term coverage and proximity, preferring
+// the document's matched-term positions (local results, RANK-ENABLER) so the
+// measure spans the whole document, and falling back to the title-plus-snippet
+// text for remote results, which carry no positions.
+func lexicalSignal(result Result, terms []string) float64 {
+	if score, ok := lexicalScoreFromPositions(result.FieldTermPositions, terms); ok {
+		return score
+	}
+
+	return lexicalScore(result.Title+" "+result.Snippet, terms)
+}
+
+// lexicalScoreFromPositions scores coverage and proximity from per-field matched
+// positions: coverage counts a query term present in any field, proximity is the
+// tightest single-field minimum window (proximity across fields is meaningless).
+// It reports ok=false when no field carries a matched query term — an empty map,
+// or only stemmed location keys that do not equal the raw query terms — so the
+// caller falls back to the snippet.
+func lexicalScoreFromPositions(
+	fieldPositions map[string]map[string][]int,
+	terms []string,
+) (float64, bool) {
+	if len(fieldPositions) == 0 {
+		return 0, false
+	}
+	termIndex := make(map[string]int, len(terms))
+	for i, term := range terms {
+		termIndex[term] = i
+	}
+	covered := map[int]bool{}
+	bestProximity := 0.0
+	for _, termPositions := range fieldPositions {
+		hitTerm, hitPos := fieldHits(termPositions, termIndex, covered)
+		proximity := proximityScore(hitTerm, hitPos, distinctTerms(hitTerm))
+		bestProximity = max(bestProximity, proximity)
+	}
+	if len(covered) == 0 {
+		return 0, false
+	}
+
+	return (float64(len(covered))/float64(len(terms)) + bestProximity) / 2, true
+}
+
+// fieldHits flattens one field's term→positions into position-sorted parallel
+// (termIndex, position) slices for the proximity sweep, recording every matched
+// term in covered for the cross-field coverage count.
+func fieldHits(
+	termPositions map[string][]int,
+	termIndex map[string]int,
+	covered map[int]bool,
+) ([]int, []int) {
+	type hit struct{ term, pos int }
+	hits := make([]hit, 0, len(termPositions))
+	for term, positions := range termPositions {
+		index, ok := termIndex[term]
+		if !ok {
+			continue
+		}
+		covered[index] = true
+		for _, position := range positions {
+			hits = append(hits, hit{term: index, pos: position})
+		}
+	}
+	sort.Slice(hits, func(a, b int) bool { return hits[a].pos < hits[b].pos })
+	hitTerm := make([]int, len(hits))
+	hitPos := make([]int, len(hits))
+	for i, entry := range hits {
+		hitTerm[i] = entry.term
+		hitPos[i] = entry.pos
+	}
+
+	return hitTerm, hitPos
+}
+
+// distinctTerms counts the distinct term indices in a hit sequence.
+func distinctTerms(hitTerm []int) int {
+	seen := make(map[int]bool, len(hitTerm))
+	for _, term := range hitTerm {
+		seen[term] = true
+	}
+
+	return len(seen)
 }
 
 // lexicalScore is the mean of term coverage (share of query terms present) and

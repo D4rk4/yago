@@ -90,6 +90,14 @@ type Result struct {
 	Date          string
 	ContentDomain ContentDomain
 	Language      string
+	// FieldScores carries the per-field BM25 sub-score contributions when the
+	// searcher computed them (local results with explanation on); nil otherwise.
+	FieldScores map[string]float64
+	// FieldTermPositions maps each field to the 1-based positions of every matched
+	// query term for local results, letting the lexical reranker measure coverage
+	// and proximity over the document instead of the snippet; nil for remote
+	// results, which fall back to the snippet.
+	FieldTermPositions map[string]map[string][]int
 	// Images carries the page's extracted images for the image vertical.
 	Images []ResultImage
 }

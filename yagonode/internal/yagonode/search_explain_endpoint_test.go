@@ -90,7 +90,12 @@ func TestSearchExplainEndpointRejectsBadRequests(t *testing.T) {
 func TestSearchExplainEndpointReturnsScoredResults(t *testing.T) {
 	index := &searchExplainScript{result: searchindex.SearchResultSet{
 		Results: []searchindex.SearchResult{
-			{URL: "https://a.example/", Score: 2.5, Explanation: "score 2.5"},
+			{
+				URL:         "https://a.example/",
+				Score:       2.5,
+				Explanation: "score 2.5",
+				FieldScores: map[string]float64{"title": 1.5, "body": 1.0},
+			},
 		},
 	}}
 	body := `{"query":"alpha","weights":{"title":5,"headings":1,"anchors":1,"body":1,"url":1}}`
@@ -113,6 +118,9 @@ func TestSearchExplainEndpointReturnsScoredResults(t *testing.T) {
 		resp.Results[0].Explanation != "score 2.5" ||
 		resp.Weights.Title != 5 {
 		t.Fatalf("response = %#v", resp)
+	}
+	if resp.Results[0].FieldScores["title"] != 1.5 {
+		t.Fatalf("per-field scores not surfaced: %#v", resp.Results[0].FieldScores)
 	}
 }
 

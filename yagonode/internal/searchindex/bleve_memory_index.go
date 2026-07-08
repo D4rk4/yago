@@ -159,6 +159,7 @@ func (b *BleveMemoryIndex) Search(
 	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req, b.gram, b.multilingual))
 	searchRequest.Size = len(b.documents)
 	searchRequest.Explain = req.Explain
+	searchRequest.IncludeLocations = req.IncludePositions
 	result, err := b.index.SearchInContext(ctx, searchRequest)
 	if err != nil {
 		return SearchResultSet{}, fmt.Errorf("search documents: %w", err)
@@ -177,7 +178,7 @@ func (b *BleveMemoryIndex) Search(
 		if len(results) < req.MaxResults {
 			results = append(
 				results,
-				searchResultFromDocument(hit.ID, doc, req, hit.Score, hitExplanation(req, hit)),
+				searchResultFromDocument(hit, doc, req),
 			)
 		}
 	}
@@ -368,11 +369,9 @@ func analyzerDetectionText(doc documentstore.Document) string {
 }
 
 func searchResultFromDocument(
-	documentID string,
+	hit *search.DocumentMatch,
 	doc documentstore.Document,
 	req SearchRequest,
-	score float64,
-	explanation string,
 ) SearchResult {
 	rawContent := ""
 	if req.IncludeRaw {
@@ -380,15 +379,17 @@ func searchResultFromDocument(
 	}
 
 	return SearchResult{
-		DocumentID:    documentID,
-		Title:         documentTitle(doc),
-		URL:           documentURL(doc),
-		Snippet:       queryBiasedSnippet(doc.ExtractedText, req.Terms, documentTitle(doc)),
-		RawContent:    rawContent,
-		Score:         score,
-		Explanation:   explanation,
-		PublishedDate: documentTime(doc),
-		Images:        resultImages(doc, req),
+		DocumentID:         hit.ID,
+		Title:              documentTitle(doc),
+		URL:                documentURL(doc),
+		Snippet:            queryBiasedSnippet(doc.ExtractedText, req.Terms, documentTitle(doc)),
+		RawContent:         rawContent,
+		Score:              hit.Score,
+		Explanation:        hitExplanation(req, hit),
+		FieldScores:        hitFieldScores(req, hit),
+		FieldTermPositions: hitFieldTermPositions(req, hit),
+		PublishedDate:      documentTime(doc),
+		Images:             resultImages(doc, req),
 	}
 }
 

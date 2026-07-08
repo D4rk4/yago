@@ -139,6 +139,7 @@ func cacheKey(req SearchRequest) string {
 	writeCacheField(&builder, strconv.FormatInt(req.Since.UnixNano(), 10))
 	writeCacheField(&builder, strconv.FormatInt(req.Until.UnixNano(), 10))
 	writeCacheField(&builder, strconv.FormatBool(req.Explain))
+	writeCacheField(&builder, strconv.FormatBool(req.IncludePositions))
 	writeCacheWeights(&builder, req.Weights.orDefault())
 
 	return builder.String()
