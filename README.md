@@ -19,8 +19,7 @@ administered from a server-rendered console that works without JavaScript.
 **YagoSeek** is the product; **`yago`** is the toolkit — the Go workspace and
 its binaries (`yago-node`, `yagocrawler`).
 
-- Project home: https://yagoseek.dev/ · docs: https://docs.yagoseek.dev/ ·
-  demo: https://demo.yagoseek.dev/ · network status: https://status.yagoseek.dev/
+- Project home: https://yagoseek.dev/ · docs: https://docs.yagoseek.dev/
 - Source: https://github.com/D4rk4/yago/ — importable as `github.com/D4rk4/yago`
 
 > [!WARNING]
