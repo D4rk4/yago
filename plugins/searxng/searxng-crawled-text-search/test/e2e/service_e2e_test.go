@@ -19,13 +19,13 @@ const (
 	seededContent = "A field guide to wildflowers found along riverside trails."
 )
 
-func TestCrawledTextSearchReturnsSeededDocument(t *testing.T) {
+func TestCrawledTextSearchReturnsSeededDocumentFromElasticsearch(t *testing.T) {
 	ctx := context.Background()
 
 	network := dockernetwork.New(t, ctx)
 
 	elasticsearchHostURL := startElasticsearch(t, ctx, network.Name)
-	seedDocument(t, ctx, elasticsearchHostURL, "wildflower-guide", searchdocument.Document{
+	seedElasticsearchDocument(t, ctx, elasticsearchHostURL, "wildflower-guide", searchdocument.Document{
 		Title:     seededTitle,
 		URL:       seededURL,
 		Content:   seededContent,
@@ -33,8 +33,32 @@ func TestCrawledTextSearchReturnsSeededDocument(t *testing.T) {
 		Language:  "en",
 	})
 
-	searxngBaseURL := startSearXNG(t, ctx, network.Name, elasticsearchNetworkURL())
+	searxngBaseURL := startSearXNG(t, ctx, network.Name, elasticsearchEngineSettings())
 
+	assertSeededDocumentIsSearchable(t, ctx, searxngBaseURL)
+}
+
+func TestCrawledTextSearchReturnsSeededDocumentFromManticore(t *testing.T) {
+	ctx := context.Background()
+
+	network := dockernetwork.New(t, ctx)
+
+	manticoreHostURL := startManticore(t, ctx, network.Name)
+	seedManticoreDocument(t, ctx, manticoreHostURL, searchdocument.Document{
+		Title:     seededTitle,
+		URL:       seededURL,
+		Content:   seededContent,
+		CrawledAt: time.Now().UTC(),
+		Language:  "en",
+	})
+
+	searxngBaseURL := startSearXNG(t, ctx, network.Name, manticoreEngineSettings())
+
+	assertSeededDocumentIsSearchable(t, ctx, searxngBaseURL)
+}
+
+func assertSeededDocumentIsSearchable(t *testing.T, ctx context.Context, searxngBaseURL string) {
+	t.Helper()
 	result := searxngsearch.SearchOneResult(t, ctx, searxngBaseURL, "!"+engineBang+" wildflower")
 
 	if result.Title != seededTitle {

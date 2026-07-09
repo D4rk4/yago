@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/crawledpagedocument"
 )
 
 type ElasticsearchIndex struct {
@@ -32,7 +33,7 @@ func (idx *ElasticsearchIndex) Index(
 	page yacycrawlcontract.CrawledPage,
 ) error {
 	identity := documentIdentity(page.CanonicalURL)
-	body, err := json.Marshal(crawledPageDocument(page))
+	body, err := json.Marshal(crawledpagedocument.Of(page))
 	if err != nil {
 		return fmt.Errorf("marshal search document %s: %w", identity, err)
 	}

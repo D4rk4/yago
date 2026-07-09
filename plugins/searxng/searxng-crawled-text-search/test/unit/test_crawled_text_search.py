@@ -10,6 +10,7 @@ crawled_text_search = importlib.import_module("crawled_text_search")
 
 @pytest.fixture(autouse=True)
 def configured(monkeypatch):
+    monkeypatch.setattr(crawled_text_search, "search_index_engine", "elasticsearch")
     monkeypatch.setattr(
         crawled_text_search, "elasticsearch_url", "http://elasticsearch:9200"
     )
@@ -18,6 +19,13 @@ def configured(monkeypatch):
 
 def build_params(pageno=1):
     return {"pageno": pageno, "headers": {}, "url": "", "method": "GET", "data": ""}
+
+
+@pytest.fixture
+def manticore(monkeypatch):
+    monkeypatch.setattr(crawled_text_search, "search_index_engine", "manticore")
+    monkeypatch.setattr(crawled_text_search, "manticore_url", "http://manticore:9308")
+    monkeypatch.setattr(crawled_text_search, "manticore_table", "yacy-text")
 
 
 def test_request_targets_configured_index():
@@ -38,6 +46,37 @@ def test_request_paginates_from_pageno():
     body = json.loads(params["data"])
     assert body["from"] == 2 * crawled_text_search.results_per_page
     assert body["size"] == crawled_text_search.results_per_page
+
+
+def test_manticore_request_targets_configured_table(manticore):
+    params = crawled_text_search.request("wildflower", build_params())
+    assert params["url"] == "http://manticore:9308/search"
+    assert params["method"] == "POST"
+    body = json.loads(params["data"])
+    assert body["table"] == "yacy-text"
+
+
+def test_manticore_request_matches_both_fields_with_title_weight(manticore):
+    params = crawled_text_search.request("wildflower", build_params())
+    body = json.loads(params["data"])
+    assert body["query"]["match"]["title,content"] == "wildflower"
+    assert (
+        body["options"]["field_weights"]["title"] == crawled_text_search._title_weight
+    )
+
+
+def test_manticore_request_paginates_from_pageno(manticore):
+    params = crawled_text_search.request("wildflower", build_params(pageno=3))
+    body = json.loads(params["data"])
+    assert body["offset"] == 2 * crawled_text_search.results_per_page
+    assert body["limit"] == crawled_text_search.results_per_page
+
+
+@pytest.mark.parametrize("engine", ["", "sphinx"])
+def test_request_rejects_unset_or_unknown_engine(monkeypatch, engine):
+    monkeypatch.setattr(crawled_text_search, "search_index_engine", engine)
+    with pytest.raises(ValueError):
+        crawled_text_search.request("wildflower", build_params())
 
 
 class FakeResponse:

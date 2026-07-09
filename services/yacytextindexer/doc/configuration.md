@@ -16,7 +16,7 @@ The indexer is configured entirely through environment variables.
 | Variable | Default | Meaning |
 |---|---|---|
 | `YACYTEXTINDEXER_CONCURRENCY` | `4` | Documents indexed concurrently. |
-| `SEARCH_INDEX_ENGINE` | `elasticsearch` | Which search index to write to: `elasticsearch` or `manticore`. |
+| `SEARCH_INDEX_ENGINE` | required | Which search index to write to: `elasticsearch` or `manticore`. |
 
 When `SEARCH_INDEX_ENGINE` is `elasticsearch`:
 
@@ -30,4 +30,4 @@ When `SEARCH_INDEX_ENGINE` is `manticore`:
 | Variable | Default | Meaning |
 |---|---|---|
 | `MANTICORE_URL` | required | Manticore endpoint documents are indexed into. |
-| `MANTICORE_TABLE` | `yacy-text` | Manticore table documents are indexed into. |
+| `MANTICORE_TABLE` | `yacy_text` | Manticore table documents are indexed into. Manticore table names allow letters, digits, and underscores only. |

@@ -10,7 +10,6 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
-	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/elasticsearchindex"
 	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/pageintake"
 )
 
@@ -47,16 +46,16 @@ func RunService(ctx context.Context, cfg ServiceConfig) error {
 		return fmt.Errorf("create crawled page consumer: %w", err)
 	}
 
-	index := elasticsearchindex.NewElasticsearchIndex(
-		cfg.ElasticsearchURL,
-		cfg.ElasticsearchIndex,
-		http.DefaultClient,
-	)
+	index, indexName, err := selectSearchIndex(cfg, http.DefaultClient)
+	if err != nil {
+		return fmt.Errorf("select search index: %w", err)
+	}
 	intake := pageintake.NewCrawledPageConsumer(consumer, index, cfg.Concurrency)
 
 	slog.InfoContext(ctx, "textindexer started",
 		slog.String("subject", cfg.CrawledPageSubject),
-		slog.String("index", cfg.ElasticsearchIndex),
+		slog.String("engine", cfg.SearchIndexEngine),
+		slog.String("index", indexName),
 		slog.Int("concurrency", cfg.Concurrency),
 	)
 	if err := intake.Run(ctx); err != nil {

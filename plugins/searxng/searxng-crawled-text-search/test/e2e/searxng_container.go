@@ -21,7 +21,7 @@ const (
 	engineSourcePath = "../../crawled_text_search.py"
 )
 
-func testSettingsYAML(elasticsearchURL string) string {
+func testSettingsYAML(engineSettings string) string {
 	return `use_default_settings:
   engines:
     keep_only:
@@ -42,12 +42,10 @@ engines:
     categories: general
     disabled: false
     enable_http: true
-    elasticsearch_url: ` + elasticsearchURL + `
-    elasticsearch_index: ` + elasticsearchIndex + `
-`
+` + engineSettings
 }
 
-func startSearXNG(t *testing.T, ctx context.Context, networkName, elasticsearchURL string) string {
+func startSearXNG(t *testing.T, ctx context.Context, networkName, engineSettings string) string {
 	t.Helper()
 	enginePath, err := filepath.Abs(engineSourcePath)
 	if err != nil {
@@ -56,7 +54,7 @@ func startSearXNG(t *testing.T, ctx context.Context, networkName, elasticsearchU
 
 	return searxng.Start(t, ctx, networkName, searxng.Config{
 		Alias:        searxngAlias,
-		SettingsYAML: testSettingsYAML(elasticsearchURL),
+		SettingsYAML: testSettingsYAML(engineSettings),
 		Files: []testcontainers.ContainerFile{
 			{
 				HostFilePath:      enginePath,

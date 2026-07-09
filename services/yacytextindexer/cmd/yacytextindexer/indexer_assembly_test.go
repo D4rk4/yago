@@ -33,6 +33,7 @@ func TestRunServiceIndexesCrawledPageIntoElasticsearch(t *testing.T) {
 		CrawledPageMaxMsgs: DefaultCrawledPageMaxMsgs,
 		CrawledPageDurable: DefaultCrawledPageDurable,
 		Concurrency:        DefaultConcurrency,
+		SearchIndexEngine:  SearchIndexEngineElasticsearch,
 		ElasticsearchURL:   elasticsearch.URL,
 		ElasticsearchIndex: "yacy-text",
 	}

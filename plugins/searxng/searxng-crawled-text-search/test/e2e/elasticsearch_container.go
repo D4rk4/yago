@@ -27,7 +27,13 @@ func elasticsearchNetworkURL() string {
 	return elasticsearch.NetworkURL(elasticsearchAlias)
 }
 
-func seedDocument(t *testing.T, ctx context.Context, elasticsearchURL, id string, doc searchdocument.Document) {
+func elasticsearchEngineSettings() string {
+	return "    search_index_engine: elasticsearch\n" +
+		"    elasticsearch_url: " + elasticsearchNetworkURL() + "\n" +
+		"    elasticsearch_index: " + elasticsearchIndex + "\n"
+}
+
+func seedElasticsearchDocument(t *testing.T, ctx context.Context, elasticsearchURL, id string, doc searchdocument.Document) {
 	t.Helper()
 	body, err := json.Marshal(doc)
 	if err != nil {

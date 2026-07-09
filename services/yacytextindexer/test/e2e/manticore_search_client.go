@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -12,29 +13,15 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/e2eharness/pollwait"
 )
 
-type searchHit struct {
-	Source struct {
-		Title   string `json:"title"`
-		URL     string `json:"url"`
-		Content string `json:"content"`
-	} `json:"_source"`
-}
-
-type searchResponse struct {
-	Hits struct {
-		Hits []searchHit `json:"hits"`
-	} `json:"hits"`
-}
-
-func waitForElasticsearchIndexedHit(
+func waitForManticoreIndexedHit(
 	t *testing.T,
 	ctx context.Context,
-	elasticsearchURL, expectedURL string,
+	manticoreURL, expectedURL string,
 ) searchHit {
 	t.Helper()
 	var found searchHit
 	ok := pollwait.For(30*time.Second, func() bool {
-		hit, ok := elasticsearchSearchOnce(t, ctx, elasticsearchURL, expectedURL)
+		hit, ok := manticoreSearchOnce(t, ctx, manticoreURL, expectedURL)
 		if !ok {
 			return false
 		}
@@ -42,22 +29,31 @@ func waitForElasticsearchIndexedHit(
 		return true
 	})
 	if !ok {
-		t.Fatal("elasticsearch never indexed the crawled page")
+		t.Fatal("manticore never indexed the crawled page")
 	}
 	return found
 }
 
-func elasticsearchSearchOnce(
+func manticoreSearchOnce(
 	t *testing.T,
 	ctx context.Context,
-	elasticsearchURL, expectedURL string,
+	manticoreURL, expectedURL string,
 ) (searchHit, bool) {
 	t.Helper()
-	target := elasticsearchURL + "/" + elasticsearchIndex + "/_search?q=" + "url:%22" + expectedURL + "%22"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	query, err := json.Marshal(map[string]any{
+		"table": manticoreTable,
+		"query": map[string]any{"match": map[string]any{"url": expectedURL}},
+	})
 	if err != nil {
-		t.Fatalf("build search request: %v", err)
+		t.Fatalf("marshal manticore query: %v", err)
 	}
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodPost, manticoreURL+"/search", bytes.NewReader(query),
+	)
+	if err != nil {
+		t.Fatalf("build manticore search request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return searchHit{}, false

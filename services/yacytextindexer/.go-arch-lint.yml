@@ -6,8 +6,12 @@ allow:
   deepScan: false
 
 components:
+  crawledpagedocument:
+    in: internal/crawledpagedocument/**
   elasticsearchindex:
     in: internal/elasticsearchindex/**
+  manticoreindex:
+    in: internal/manticoreindex/**
   pageintake:
     in: internal/pageintake/**
   textindexercmd:
@@ -31,9 +35,23 @@ vendors:
       - github.com/nats-io/nats-server/v2/server
 
 deps:
+  crawledpagedocument:
+    mayDependOn:
+      - crawledpagedocument
+    canUse:
+      - yacycrawlcontract
+      - searchdocument
   elasticsearchindex:
     mayDependOn:
       - elasticsearchindex
+      - crawledpagedocument
+    canUse:
+      - yacycrawlcontract
+      - searchdocument
+  manticoreindex:
+    mayDependOn:
+      - manticoreindex
+      - crawledpagedocument
     canUse:
       - yacycrawlcontract
       - searchdocument
@@ -48,6 +66,7 @@ deps:
     mayDependOn:
       - pageintake
       - elasticsearchindex
+      - manticoreindex
     canUse:
       - yacycrawlcontract
       - nats

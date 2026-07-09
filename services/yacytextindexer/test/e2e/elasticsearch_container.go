@@ -22,3 +22,11 @@ func startElasticsearch(t *testing.T, ctx context.Context, networkName string) s
 func elasticsearchNetworkURL() string {
 	return elasticsearch.NetworkURL(elasticsearchAlias)
 }
+
+func elasticsearchTextIndexerEnv() map[string]string {
+	return map[string]string{
+		"SEARCH_INDEX_ENGINE": "elasticsearch",
+		"ELASTICSEARCH_URL":   elasticsearchNetworkURL(),
+		"ELASTICSEARCH_INDEX": elasticsearchIndex,
+	}
+}

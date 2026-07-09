@@ -18,20 +18,27 @@ const (
 	envTextIndexerImage = "YACYTEXTINDEXER_IMAGE"
 )
 
-func startTextIndexer(t *testing.T, ctx context.Context, networkName string) {
+func startTextIndexer(
+	t *testing.T,
+	ctx context.Context,
+	networkName string,
+	searchIndexEnv map[string]string,
+) {
 	t.Helper()
+	env := map[string]string{
+		"NATS_URL":                  natsjetstream.NetworkURL(),
+		"NATS_CRAWLED_PAGE_SUBJECT": crawledPageSubject,
+	}
+	for key, value := range searchIndexEnv {
+		env[key] = value
+	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		Started: true,
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:          textIndexerImage(t),
 			Networks:       []string{networkName},
 			NetworkAliases: map[string][]string{networkName: {textIndexerAlias}},
-			Env: map[string]string{
-				"NATS_URL":                  natsjetstream.NetworkURL(),
-				"NATS_CRAWLED_PAGE_SUBJECT": crawledPageSubject,
-				"ELASTICSEARCH_URL":         elasticsearchNetworkURL(),
-				"ELASTICSEARCH_INDEX":       elasticsearchIndex,
-			},
+			Env:            env,
 		},
 	})
 	if err != nil {

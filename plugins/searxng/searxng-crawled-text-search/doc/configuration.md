@@ -22,7 +22,7 @@ engines:
 
 | Key | Meaning |
 |---|---|
-| `search_index_engine` | Which search index to query: `elasticsearch` or `manticore`. |
+| `search_index_engine` | Required. Which search index to query: `elasticsearch` or `manticore`. |
 
 When `search_index_engine` is `elasticsearch`:
 
@@ -36,4 +36,4 @@ When `search_index_engine` is `manticore`:
 | Key | Meaning |
 |---|---|
 | `manticore_url` | Base URL of the Manticore instance to query. |
-| `manticore_table` | Name of the table `yacytextindexer` writes documents into. |
+| `manticore_table` | Name of the table `yacytextindexer` writes documents into. Manticore table names allow letters, digits, and underscores only. |

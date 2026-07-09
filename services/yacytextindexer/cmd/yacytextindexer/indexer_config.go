@@ -14,14 +14,21 @@ const (
 	EnvNATSCrawledPageMaxMsgs = "NATS_CRAWLED_PAGE_MAX_MSGS"
 	EnvNATSCrawledPageDurable = "NATS_CRAWLED_PAGE_DURABLE"
 	EnvConcurrency            = "YACYTEXTINDEXER_CONCURRENCY"
+	EnvSearchIndexEngine      = "SEARCH_INDEX_ENGINE"
 	EnvElasticsearchURL       = "ELASTICSEARCH_URL"
 	EnvElasticsearchIndex     = "ELASTICSEARCH_INDEX"
+	EnvManticoreURL           = "MANTICORE_URL"
+	EnvManticoreTable         = "MANTICORE_TABLE"
 
 	DefaultCrawledPageSubject = "yacy.crawl.pages"
 	DefaultCrawledPageMaxMsgs = 1024
 	DefaultCrawledPageDurable = "yacytextindexer"
 	DefaultConcurrency        = 4
 	DefaultElasticsearchIndex = "yacy-text"
+	DefaultManticoreTable     = "yacy_text"
+
+	SearchIndexEngineElasticsearch = "elasticsearch"
+	SearchIndexEngineManticore     = "manticore"
 )
 
 type ServiceConfig struct {
@@ -30,8 +37,11 @@ type ServiceConfig struct {
 	CrawledPageMaxMsgs int64
 	CrawledPageDurable string
 	Concurrency        int
+	SearchIndexEngine  string
 	ElasticsearchURL   string
 	ElasticsearchIndex string
+	ManticoreURL       string
+	ManticoreTable     string
 }
 
 func (c ServiceConfig) CrawledPageStreamSpec() yacycrawlcontract.CrawledPageStreamSpec {
@@ -46,10 +56,6 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 	if natsURL == "" {
 		return ServiceConfig{}, fmt.Errorf("%s: must be set", EnvNATSURL)
 	}
-	esURL := strings.TrimSpace(getenv(EnvElasticsearchURL))
-	if esURL == "" {
-		return ServiceConfig{}, fmt.Errorf("%s: must be set", EnvElasticsearchURL)
-	}
 
 	maxMsgs, err := envPositiveInt64(getenv, EnvNATSCrawledPageMaxMsgs, DefaultCrawledPageMaxMsgs)
 	if err != nil {
@@ -60,15 +66,38 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		return ServiceConfig{}, err
 	}
 
-	return ServiceConfig{
+	cfg := ServiceConfig{
 		NATSURL:            natsURL,
 		CrawledPageSubject: envString(getenv, EnvNATSCrawledPageSubject, DefaultCrawledPageSubject),
 		CrawledPageMaxMsgs: maxMsgs,
 		CrawledPageDurable: envString(getenv, EnvNATSCrawledPageDurable, DefaultCrawledPageDurable),
 		Concurrency:        concurrency,
-		ElasticsearchURL:   esURL,
-		ElasticsearchIndex: envString(getenv, EnvElasticsearchIndex, DefaultElasticsearchIndex),
-	}, nil
+		SearchIndexEngine:  strings.TrimSpace(getenv(EnvSearchIndexEngine)),
+	}
+	if cfg.SearchIndexEngine == "" {
+		return ServiceConfig{}, fmt.Errorf("%s: must be set", EnvSearchIndexEngine)
+	}
+
+	switch cfg.SearchIndexEngine {
+	case SearchIndexEngineElasticsearch:
+		cfg.ElasticsearchURL = strings.TrimSpace(getenv(EnvElasticsearchURL))
+		if cfg.ElasticsearchURL == "" {
+			return ServiceConfig{}, fmt.Errorf("%s: must be set", EnvElasticsearchURL)
+		}
+		cfg.ElasticsearchIndex = envString(getenv, EnvElasticsearchIndex, DefaultElasticsearchIndex)
+	case SearchIndexEngineManticore:
+		cfg.ManticoreURL = strings.TrimSpace(getenv(EnvManticoreURL))
+		if cfg.ManticoreURL == "" {
+			return ServiceConfig{}, fmt.Errorf("%s: must be set", EnvManticoreURL)
+		}
+		cfg.ManticoreTable = envString(getenv, EnvManticoreTable, DefaultManticoreTable)
+	default:
+		return ServiceConfig{}, fmt.Errorf(
+			"%s: unknown engine %q", EnvSearchIndexEngine, cfg.SearchIndexEngine,
+		)
+	}
+
+	return cfg, nil
 }
 
 func envString(getenv func(string) string, key, fallback string) string {

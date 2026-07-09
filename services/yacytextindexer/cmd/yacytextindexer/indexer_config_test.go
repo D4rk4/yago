@@ -22,9 +22,18 @@ func TestLoadServiceConfigRequiresNATSURL(t *testing.T) {
 	}
 }
 
-func TestLoadServiceConfigRequiresElasticsearchURL(t *testing.T) {
+func TestLoadServiceConfigRequiresSearchIndexEngine(t *testing.T) {
 	if _, err := LoadServiceConfig(envFrom(map[string]string{
 		EnvNATSURL: "nats://localhost:4222",
+	})); err == nil {
+		t.Fatal("expected error when SEARCH_INDEX_ENGINE is unset")
+	}
+}
+
+func TestLoadServiceConfigRequiresElasticsearchURL(t *testing.T) {
+	if _, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNATSURL:           "nats://localhost:4222",
+		EnvSearchIndexEngine: SearchIndexEngineElasticsearch,
 	})); err == nil {
 		t.Fatal("expected error when ELASTICSEARCH_URL is unset")
 	}
@@ -32,8 +41,9 @@ func TestLoadServiceConfigRequiresElasticsearchURL(t *testing.T) {
 
 func TestLoadServiceConfigDefaults(t *testing.T) {
 	cfg, err := LoadServiceConfig(envFrom(map[string]string{
-		EnvNATSURL:          "nats://localhost:4222",
-		EnvElasticsearchURL: "http://localhost:9200",
+		EnvNATSURL:           "nats://localhost:4222",
+		EnvSearchIndexEngine: SearchIndexEngineElasticsearch,
+		EnvElasticsearchURL:  "http://localhost:9200",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -62,6 +72,7 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 func TestLoadServiceConfigOverrides(t *testing.T) {
 	cfg, err := LoadServiceConfig(envFrom(map[string]string{
 		EnvNATSURL:                "nats://localhost:4222",
+		EnvSearchIndexEngine:      SearchIndexEngineElasticsearch,
 		EnvElasticsearchURL:       "http://localhost:9200",
 		EnvNATSCrawledPageSubject: "t.subject",
 		EnvNATSCrawledPageMaxMsgs: "7",
@@ -85,8 +96,9 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 
 func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 	base := map[string]string{
-		EnvNATSURL:          "nats://localhost:4222",
-		EnvElasticsearchURL: "http://localhost:9200",
+		EnvNATSURL:           "nats://localhost:4222",
+		EnvSearchIndexEngine: SearchIndexEngineElasticsearch,
+		EnvElasticsearchURL:  "http://localhost:9200",
 	}
 	cases := map[string]string{
 		EnvNATSCrawledPageMaxMsgs: "0",
