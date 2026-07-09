@@ -5,20 +5,39 @@ and get your own self-hosted search engine at the same time. Search results blen
 you have crawled with the live web, and opening a result crawls that page, so your corpus
 grows from what you read.
 
+## The reading loop
+
+What you do, in order. Searching returns results whose links point at yacyvisitcrawl,
+so opening one both sends you to the page and queues it to be crawled.
+
+```mermaid
+sequenceDiagram
+    actor You
+    participant SearXNG
+    participant Index as Local search index
+    participant Web
+    participant yacyvisitcrawl
+    participant NATS
+
+    You->>SearXNG: search
+    SearXNG->>Index: query crawled pages
+    SearXNG->>Web: query web engines
+    SearXNG-->>You: results, links pointing at yacyvisitcrawl
+    You->>yacyvisitcrawl: open a result
+    yacyvisitcrawl-->>You: redirect to the page
+    yacyvisitcrawl->>NATS: crawl order
+```
+
+## The pipeline
+
+What happens after a crawl order lands on NATS: the page is fetched and rendered, then
+indexed into the search index the reading loop queries, and shared onto the YaCy network.
+
 ```mermaid
 flowchart LR
-    You([You])
+    nats{{NATS}}
     Web([Web])
     Net([YaCy network])
-
-    You -- search --> searxng[SearXNG]
-    searxng -- query crawled pages --> searchindex[(Search index)]
-    searxng -- query web engines --> Web
-    searxng -- result links point at --> yacyvisitcrawl[yacyvisitcrawl]
-
-    You -- open a result --> yacyvisitcrawl
-    yacyvisitcrawl -- crawl order --> nats{{NATS}}
-    yacyvisitcrawl -- redirect --> Web
 
     nats -- crawl order --> yacycrawler[yacycrawler]
     yacycrawler -- fetch --> renderproxy[renderproxy]
@@ -27,15 +46,11 @@ flowchart LR
     yacycrawler -- crawled page --> nats
 
     nats -- crawled page --> yacytextindexer[yacytextindexer]
-    yacytextindexer -- index --> searchindex
+    yacytextindexer -- index --> searchindex[(Local search index)]
 
     nats -- crawled page --> node[yacy-rwi-node]
     node -- DHT traffic --> smokescreen
     node <-- share and serve results --> Net
-
-    node & yacycrawler & yacyvisitcrawl & yacytextindexer & renderproxy & nats -- metrics --> prometheus[Prometheus]
-    prometheus --> grafana[Grafana]
-    You -- watch dashboards --> grafana
 ```
 
 ## Run it
@@ -53,7 +68,7 @@ Prometheus scrapes every service and Grafana shows the crawl-to-serve pipeline a
 `http://localhost:3000`. The **Pipeline overview** dashboard is loaded on start,
 and Grafana opens without a login. Both run on your machine only.
 
-## Choosing a search engine
+## Choosing a search-index engine
 
 The stack stores and serves crawled pages from either Elasticsearch (default) or Manticore.
 To switch, make the choice in three places, all set to the same engine:
