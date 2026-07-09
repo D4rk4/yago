@@ -53,3 +53,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/build-searxng-result-router.yml
     secrets: inherit
+
+  build-renderproxy:
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/build-renderproxy.yml
+    secrets: inherit
