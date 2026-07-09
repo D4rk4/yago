@@ -345,11 +345,11 @@ func TestShardCountAndManifest(t *testing.T) {
 
 	dir := filepath.Join(t.TempDir(), "vault")
 	first, err := loadOrCreateManifest(dir, 16)
-	if err != nil || first.Shards != 16 {
+	if err != nil || first.Level != 4 || first.Split != 0 {
 		t.Fatalf("create manifest = %+v %v", first, err)
 	}
 	second, err := loadOrCreateManifest(dir, 64)
-	if err != nil || second.Shards != 16 {
+	if err != nil || second.shardCount() != 16 {
 		t.Fatalf("reload manifest = %+v %v, want the recorded layout", second, err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, manifestName), []byte("junk"), 0o600); err != nil {
@@ -1051,7 +1051,11 @@ func TestConcurrentUpdatesOnDisjointShardsOverlap(t *testing.T) {
 func disjointWriteTargets(t *testing.T) (string, string, string, string) {
 	t.Helper()
 	shards := shardCountForQuota(1 << 20)
-	probe := engine{shards: make([]*bolt.DB, shards)}
+	level, err := exactLog2(shards)
+	if err != nil {
+		t.Fatalf("shard count: %v", err)
+	}
+	probe := engine{shards: make([]*bolt.DB, shards), level: level}
 	route := func(bucket, key string) int {
 		return probe.route(vault.Name(bucket), vault.Key(key))
 	}

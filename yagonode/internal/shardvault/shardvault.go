@@ -71,7 +71,8 @@ func openEngine(dir string, quotaBytes int64) (*engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	shards := make([]*bolt.DB, manifest.Shards)
+	count := manifest.shardCount()
+	shards := make([]*bolt.DB, count)
 	for i := range shards {
 		path := shardPath(dir, i)
 		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
@@ -92,7 +93,9 @@ func openEngine(dir string, quotaBytes int64) (*engine, error) {
 		shards:     shards,
 		dir:        dir,
 		quotaBytes: quotaBytes,
-		shardLocks: make([]sync.Mutex, len(shards)),
+		level:      manifest.Level,
+		split:      manifest.Split,
+		shardLocks: make([]sync.Mutex, count),
 	}, nil
 }
 
@@ -161,6 +164,12 @@ type engine struct {
 	shards     []*bolt.DB
 	dir        string
 	quotaBytes int64
+	// level and split are the linear-hashing state (ADR-0037): the pool holds
+	// 2^level + split shards and route reads them to place a record. They change
+	// only under the exclusive globalGate (a split), so a gate-holding reader
+	// always sees a consistent pair.
+	level int
+	split int
 	// Writers hold shardLocks for the shards they touch, so updates landing on
 	// disjoint shards commit concurrently (PERF-06). bbolt allows one write
 	// transaction per file, and lazily opening several shards from concurrent
@@ -178,13 +187,28 @@ type engine struct {
 // concurrent writer; the update retries under the exclusive gate.
 var errShardContended = fmt.Errorf("shard contended: %w", vault.ErrContended)
 
-// route picks the shard for one record.
+// route picks the shard for one record under the current linear-hashing state.
 func (e *engine) route(bucket vault.Name, key vault.Key) int {
 	hash := xxhash.New()
 	_, _ = hash.WriteString(string(bucket))
 	_, _ = hash.Write(key)
 
-	return int(hash.Sum64() % uint64(len(e.shards))) //nolint:gosec // bounded by len(shards).
+	return e.locate(hash.Sum64())
+}
+
+// locate maps a record hash to its shard for the linear-hashing state
+// (level, split): buckets below the split pointer have been rehashed under the
+// wider mask, the rest still use the level mask. With split == 0 this is exactly
+// hash mod 2^level — the pre-ADR-0037 routing — so an unsplit pool is unchanged.
+func (e *engine) locate(sum uint64) int {
+	wide := sum & (uint64(1)<<(e.level+1) - 1)
+	full := int(wide) //nolint:gosec // wide < 2^(level+1) ≤ 2·maxShards.
+	half := full & (1<<e.level - 1)
+	if half >= e.split {
+		return half
+	}
+
+	return full
 }
 
 func (e *engine) Provision(name vault.Name) error {
