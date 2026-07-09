@@ -130,11 +130,6 @@ jobs:
             else
               git log --format='- %s' "${GITHUB_REF_NAME}" | grep -v '^- Co-Authored' | head -500
             fi
-            echo
-            echo "## Container images"
-            echo
-            echo 'Multi-arch images are published by the container-image workflow:'
-            echo '`ghcr.io/${{ github.repository }}-node` and `ghcr.io/${{ github.repository }}-crawler`.'
           } > notes.md
 
       - name: Create GitHub Release

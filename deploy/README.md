@@ -107,9 +107,9 @@ units + backup doc) and a `.deb`. The amd64 package is smoke-installed across
 Debian 12/13 and Ubuntu 24.04 + `ubuntu:latest` containers — the run checks the
 declared dependencies resolve, both binaries report the stamped version, and purge keeps
 `/opt/yago/data`. Release notes are generated from the commit titles since the
-previous tag, and a GitHub Release carries the assets. The `container-image`
-workflow also fires on the tag, publishing semver-tagged multi-arch images
-(`{{version}}` and `{{major}}.{{minor}}`) alongside the `main` `latest` images.
+previous tag, and a GitHub Release carries the assets. Container images are not
+published by CI; build them locally from the Dockerfiles (`docker compose
+build`) when a container deployment is wanted.
 
 ## Container layout migration (OPS-04)
 
