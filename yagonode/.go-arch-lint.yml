@@ -142,6 +142,8 @@ components:
     in: internal/crawlschedule/**
   judgments:
     in: internal/judgments/**
+  clickcapture:
+    in: internal/clickcapture/**
   wordforms:
     in: internal/wordforms/**
   tavilyapi:
@@ -588,6 +590,12 @@ deps:
   judgments:
     mayDependOn:
       - judgments
+      - vault
+      - memvault
+  clickcapture:
+    mayDependOn:
+      - clickcapture
+      - searcheval
       - vault
       - memvault
   redirectpurge:
