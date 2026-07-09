@@ -4,10 +4,11 @@ services:
     restart: unless-stopped
     depends_on:
       - nats
-      - elasticsearch
     environment:
       NATS_URL: nats://nats:4222
-      SEARCH_INDEX_ENGINE: elasticsearch
+      SEARCH_INDEX_ENGINE: ${SEARCH_INDEX_ENGINE:-elasticsearch}
       ELASTICSEARCH_URL: http://elasticsearch:9200
       ELASTICSEARCH_INDEX: ${ELASTICSEARCH_INDEX:-yacy-text}
+      MANTICORE_URL: http://manticore:9308
+      MANTICORE_TABLE: ${MANTICORE_TABLE:-yacy_text}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

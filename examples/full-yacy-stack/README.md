@@ -12,7 +12,7 @@ flowchart LR
     Net([YaCy network])
 
     You -- search --> searxng[SearXNG]
-    searxng -- query crawled pages --> elasticsearch[(Elasticsearch)]
+    searxng -- query crawled pages --> searchindex[(Search index)]
     searxng -- query web engines --> Web
     searxng -- result links point at --> yacyvisitcrawl[yacyvisitcrawl]
 
@@ -27,7 +27,7 @@ flowchart LR
     yacycrawler -- crawled page --> nats
 
     nats -- crawled page --> yacytextindexer[yacytextindexer]
-    yacytextindexer -- index --> elasticsearch
+    yacytextindexer -- index --> searchindex
 
     nats -- crawled page --> node[yacy-rwi-node]
     node -- DHT traffic --> smokescreen
@@ -38,9 +38,22 @@ flowchart LR
 
 1. Copy `.env.example` to `.env` and set `YACY_PEER_HASH`, `YACY_PEER_NAME`,
    `YACY_ADVERTISE_HOST`, and `YACYVISITCRAWL_PUBLIC_URL`.
-2. Copy `searxng/settings.yml.example` to `searxng/settings.yml` and set `server.secret_key`.
+2. Copy the SearXNG settings for your chosen engine (see below) to `searxng/settings.yml`
+   and set `server.secret_key`.
 3. Copy `docker-compose.yml.example` to `docker-compose.yml`.
 4. Start the stack: `docker compose up -d`.
+
+## Choosing a search engine
+
+The stack stores and serves crawled pages from either Elasticsearch (default) or Manticore.
+To switch, make the choice in three places, all set to the same engine:
+
+| Engine | `.env` | `docker-compose.yml` include | `searxng/settings.yml` source |
+| --- | --- | --- | --- |
+| Elasticsearch | `SEARCH_INDEX_ENGINE=elasticsearch` | `compose/search-elasticsearch.yml` | `searxng/settings.yml.elasticsearch.example` |
+| Manticore | `SEARCH_INDEX_ENGINE=manticore` | `compose/search-manticore.yml` | `searxng/settings.yml.manticore.example` |
+
+In `docker-compose.yml`, keep exactly one of the two `search-*.yml` include lines uncommented.
 
 See each Go service's `doc/configuration.md` for its environment variables, and
 `plugins/searxng/searxng-crawled-text-search/doc/` and `plugins/searxng/searxng-result-router/doc/` for the SearXNG engine

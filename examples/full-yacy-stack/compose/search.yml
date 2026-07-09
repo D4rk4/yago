@@ -1,16 +1,4 @@
 services:
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
-    restart: unless-stopped
-    environment:
-      discovery.type: single-node
-      xpack.security.enabled: "false"
-      ES_JAVA_OPTS: -Xms512m -Xmx512m
-    ports:
-      - "9200:9200"
-    volumes:
-      - elasticsearch-data:/usr/share/elasticsearch/data
-
   searxng-engines-seed:
     image: docker.io/searxng/searxng:2026.7.5-a6438586a
     entrypoint: ["true"]
@@ -40,8 +28,6 @@ services:
         condition: service_completed_successfully
       searxng-result-router-init:
         condition: service_completed_successfully
-      elasticsearch:
-        condition: service_started
       yacyvisitcrawl:
         condition: service_started
     ports:
@@ -55,6 +41,5 @@ services:
       - searxng-plugins:/opt/searxng-plugins:ro
 
 volumes:
-  elasticsearch-data:
   searxng-engines:
   searxng-plugins:

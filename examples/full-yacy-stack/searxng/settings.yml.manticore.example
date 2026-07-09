@@ -1,0 +1,23 @@
+use_default_settings: true
+
+server:
+  secret_key: "change-me-to-a-random-string"
+
+search:
+  formats:
+    - html
+    - json
+
+engines:
+  - name: crawled text search
+    engine: crawled_text_search
+    shortcut: ct
+    categories: general
+    enable_http: true
+    search_index_engine: manticore
+    manticore_url: http://manticore:9308
+    manticore_table: yacy_text
+
+plugins:
+  result_link_router.SXNGPlugin:
+    active: true
