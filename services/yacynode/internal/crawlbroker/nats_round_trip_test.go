@@ -79,21 +79,25 @@ func TestIngestReceiverDeliversDecodableBatchAndSkipsGarbage(t *testing.T) {
 	if _, err := js.Publish(ctx, ingestSubject, []byte("not json")); err != nil {
 		t.Fatalf("publish garbage: %v", err)
 	}
-	batch := yacycrawlcontract.CrawledPageIndex{
+	message := yacycrawlcontract.CrawledPageIndexMessage{
 		CanonicalURL: "https://example.org",
 	}
-	data, err := yacycrawlcontract.MarshalCrawledPageIndex(batch)
+	data, err := yacycrawlcontract.MarshalCrawledPageIndexMessage(message)
 	if err != nil {
-		t.Fatalf("marshal batch: %v", err)
+		t.Fatalf("marshal message: %v", err)
 	}
 	if _, err := js.Publish(ctx, ingestSubject, data); err != nil {
-		t.Fatalf("publish batch: %v", err)
+		t.Fatalf("publish message: %v", err)
 	}
 
 	select {
 	case delivery := <-broker.Ingest.Receive():
-		if delivery.Batch.CanonicalURL != batch.CanonicalURL {
-			t.Fatalf("canonicalURL = %q, want %q", delivery.Batch.CanonicalURL, batch.CanonicalURL)
+		if delivery.Message.CanonicalURL != message.CanonicalURL {
+			t.Fatalf(
+				"canonicalURL = %q, want %q",
+				delivery.Message.CanonicalURL,
+				message.CanonicalURL,
+			)
 		}
 		if err := delivery.Ack(ctx); err != nil {
 			t.Fatalf("ack: %v", err)

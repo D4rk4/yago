@@ -7,8 +7,8 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-func TestCrawledPageIndexRoundTrip(t *testing.T) {
-	index := CrawledPageIndex{
+func TestCrawledPageIndexMessageRoundTrip(t *testing.T) {
+	message := CrawledPageIndexMessage{
 		CanonicalURL: "https://example.org/a",
 		Postings: []yacymodel.RWIPosting{
 			{
@@ -16,20 +16,17 @@ func TestCrawledPageIndexRoundTrip(t *testing.T) {
 				Properties: map[string]string{"u": "urlhash01234"},
 			},
 		},
-		Metadata: []yacymodel.URIMetadataRow{
-			{Properties: map[string]string{"u": "urlhash01234", "t": "Title"}},
-		},
 	}
 
-	data, err := MarshalCrawledPageIndex(index)
+	data, err := MarshalCrawledPageIndexMessage(message)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	got, err := UnmarshalCrawledPageIndex(data)
+	got, err := UnmarshalCrawledPageIndexMessage(data)
 	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if !reflect.DeepEqual(index, got) {
-		t.Errorf("round-trip mismatch:\nwant %#v\ngot  %#v", index, got)
+	if !reflect.DeepEqual(message, got) {
+		t.Errorf("round-trip mismatch:\nwant %#v\ngot  %#v", message, got)
 	}
 }

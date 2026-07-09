@@ -135,6 +135,7 @@ deps:
       - pageindex
     canUse:
       - yacycrawlcontract
+      - yacymodel
       - nats
       - nats-server
   orderintake:

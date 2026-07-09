@@ -3,6 +3,8 @@ package crawlresults
 import (
 	"context"
 	"log/slog"
+
+	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
 )
 
 const (
@@ -28,33 +30,63 @@ func (c *IngestConsumer) Run(ctx context.Context) {
 }
 
 func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
-	batch := delivery.Batch
+	message := delivery.Message
+	switch {
+	case len(message.Metadata) > 0:
+		c.absorbMetadata(ctx, delivery, message)
+	case len(message.Postings) > 0:
+		c.absorbPostings(ctx, delivery, message)
+	default:
+		c.acknowledge(ctx, delivery, message.CanonicalURL, 0, 0)
+	}
+}
 
-	urlReceipt, err := c.urls.Receive(ctx, batch.Metadata)
-	if err != nil || urlReceipt.Busy {
-		c.redeliver(ctx, delivery, batch.CanonicalURL, err)
+func (c *IngestConsumer) absorbMetadata(
+	ctx context.Context,
+	delivery IngestDelivery,
+	message yacycrawlcontract.CrawledPageIndexMessage,
+) {
+	receipt, err := c.urls.Receive(ctx, message.Metadata)
+	if err != nil || receipt.Busy {
+		c.redeliver(ctx, delivery, message.CanonicalURL, err)
 		return
 	}
+	c.acknowledge(ctx, delivery, message.CanonicalURL, len(message.Metadata), 0)
+}
 
-	postingReceipt, err := c.postings.Receive(ctx, batch.Postings)
-	if postingReceipt.TooLarge {
-		c.redeliverTooLarge(ctx, delivery, batch.CanonicalURL, len(batch.Postings))
+func (c *IngestConsumer) absorbPostings(
+	ctx context.Context,
+	delivery IngestDelivery,
+	message yacycrawlcontract.CrawledPageIndexMessage,
+) {
+	receipt, err := c.postings.Receive(ctx, message.Postings)
+	if receipt.TooLarge {
+		c.redeliverTooLarge(ctx, delivery, message.CanonicalURL, len(message.Postings))
 		return
 	}
-	if err != nil || postingReceipt.Busy {
-		c.redeliver(ctx, delivery, batch.CanonicalURL, err)
+	if err != nil || receipt.Busy {
+		c.redeliver(ctx, delivery, message.CanonicalURL, err)
 		return
 	}
+	c.acknowledge(ctx, delivery, message.CanonicalURL, 0, len(message.Postings))
+}
 
+func (c *IngestConsumer) acknowledge(
+	ctx context.Context,
+	delivery IngestDelivery,
+	canonicalURL string,
+	metadata int,
+	postings int,
+) {
 	if err := delivery.Ack(ctx); err != nil {
 		slog.WarnContext(ctx, msgIngestAckFailed,
-			slog.String("url", batch.CanonicalURL), slog.Any("error", err))
+			slog.String("url", canonicalURL), slog.Any("error", err))
 		return
 	}
 	slog.DebugContext(ctx, msgIngestBatchAbsorbed,
-		slog.String("url", batch.CanonicalURL),
-		slog.Int("metadata", len(batch.Metadata)),
-		slog.Int("postings", len(batch.Postings)))
+		slog.String("url", canonicalURL),
+		slog.Int("metadata", metadata),
+		slog.Int("postings", postings))
 }
 
 func (c *IngestConsumer) redeliver(

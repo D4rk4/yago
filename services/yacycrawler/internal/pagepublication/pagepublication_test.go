@@ -64,12 +64,15 @@ func TestIndexOutputPublishes(t *testing.T) {
 	}
 
 	msg := consumeOne(t, js, yacycrawlcontract.CrawledPageIndexStreamName)
-	index, err := yacycrawlcontract.UnmarshalCrawledPageIndex(msg)
+	message, err := yacycrawlcontract.UnmarshalCrawledPageIndexMessage(msg)
 	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if index.CanonicalURL != "http://example.com/a" {
-		t.Fatalf("canonical url = %q", index.CanonicalURL)
+	if message.CanonicalURL != "http://example.com/a" {
+		t.Fatalf("canonical url = %q", message.CanonicalURL)
+	}
+	if len(message.Metadata) != 1 || len(message.Postings) != 0 {
+		t.Fatalf("first message = %+v, want metadata only", message)
 	}
 }
 

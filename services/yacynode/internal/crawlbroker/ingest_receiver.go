@@ -34,6 +34,7 @@ func newIngestReceiver(
 			Durable:       durable,
 			AckPolicy:     jetstream.AckExplicitPolicy,
 			FilterSubject: subject,
+			MaxAckPending: 1,
 		},
 	)
 	if err != nil {
@@ -42,16 +43,16 @@ func newIngestReceiver(
 
 	out := make(chan crawlresults.IngestDelivery)
 	consume, err := consumer.Consume(func(msg jetstream.Msg) {
-		batch, err := yacycrawlcontract.UnmarshalCrawledPageIndex(msg.Data())
+		message, err := yacycrawlcontract.UnmarshalCrawledPageIndexMessage(msg.Data())
 		if err != nil {
 			slog.WarnContext(context.Background(), msgIngestDecodeFailed, slog.Any("error", err))
 			_ = msg.Term()
 			return
 		}
 		delivery := crawlresults.IngestDelivery{
-			Batch: batch,
-			Ack:   func(context.Context) error { return msg.Ack() },
-			Nak:   func(context.Context) error { return msg.NakWithDelay(ingestNakDelay) },
+			Message: message,
+			Ack:     func(context.Context) error { return msg.Ack() },
+			Nak:     func(context.Context) error { return msg.NakWithDelay(ingestNakDelay) },
 		}
 		select {
 		case out <- delivery:

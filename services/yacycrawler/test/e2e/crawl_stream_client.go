@@ -68,23 +68,25 @@ func fetchOneCrawledPageIndex(
 	if err != nil {
 		t.Fatalf("create crawled page index consumer: %v", err)
 	}
-	msgs, err := consumer.Fetch(1, jetstream.FetchMaxWait(60*time.Second))
-	if err != nil {
-		t.Fatalf("fetch crawled page index: %v", err)
-	}
-	msg, ok := <-msgs.Messages()
-	if !ok {
-		if err := msgs.Error(); err != nil {
-			t.Fatalf("fetch error: %v", err)
+
+	var index yacycrawlcontract.CrawledPageIndex
+	for len(index.Postings) == 0 {
+		msg, err := consumer.Next(jetstream.FetchMaxWait(60 * time.Second))
+		if err != nil {
+			t.Fatalf("fetch crawled page index message: %v", err)
 		}
-		t.Fatal("no crawled page index received")
-	}
-	index, err := yacycrawlcontract.UnmarshalCrawledPageIndex(msg.Data())
-	if err != nil {
-		t.Fatalf("decode crawled page index: %v", err)
-	}
-	if err := msg.Ack(); err != nil {
-		t.Fatalf("ack: %v", err)
+		message, err := yacycrawlcontract.UnmarshalCrawledPageIndexMessage(msg.Data())
+		if err != nil {
+			t.Fatalf("decode crawled page index message: %v", err)
+		}
+		if index.CanonicalURL == "" {
+			index.CanonicalURL = message.CanonicalURL
+		}
+		index.Metadata = append(index.Metadata, message.Metadata...)
+		index.Postings = append(index.Postings, message.Postings...)
+		if err := msg.Ack(); err != nil {
+			t.Fatalf("ack: %v", err)
+		}
 	}
 	return index
 }
