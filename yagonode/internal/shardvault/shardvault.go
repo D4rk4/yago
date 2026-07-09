@@ -141,9 +141,16 @@ func openOrQuarantineShard(path string, shard int) (*bolt.DB, error) {
 }
 
 // openTimeoutOptions bounds the file-lock wait so a stuck lock surfaces as an
-// error instead of hanging startup.
+// error instead of hanging startup, and trims per-commit write volume for
+// fsync-bound storage (IO-AGG-03): the freelist is not persisted on every
+// commit (NoFreelistSync — bbolt rebuilds it on open by scanning the file) and
+// is held as a hashmap, the faster shape for write-heavy shards.
 func openTimeoutOptions() *bolt.Options {
-	return &bolt.Options{Timeout: 5 * time.Second}
+	return &bolt.Options{
+		Timeout:        5 * time.Second,
+		NoFreelistSync: true,
+		FreelistType:   bolt.FreelistMapType,
+	}
 }
 
 // shardPath is the three-level fanout location of one shard file.
