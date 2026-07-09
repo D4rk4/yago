@@ -7,28 +7,38 @@ var searchSurfaceSpecs = []surfaceSpec{
 		Name:    "YaCy search JSON",
 		Path:    yagoproto.PathYaCySearchJSON,
 		Methods: []string{"GET"},
-		State:   Partial,
+		State:   Implemented,
 		Behavior: "Serves an upstream-like JSON search response backed by local full-text search " +
-			"and DHT-selected reachable-peer search with YaCy indexabstract negotiation for multi-term remote searches.",
+			"and DHT-selected reachable-peer search with YaCy indexabstract negotiation for multi-term remote searches, " +
+			"with the channel image/opensearch fields, the full item shape " +
+			"(title/link/code/description/pubDate/size/sizename/guid/host/path/file/urlhash/ranking), and, on a nav= " +
+			"request, the navigation array (hosts/authors/filetypes/languages/protocols/dates with counts and refine " +
+			"modifier/url).",
 		Evidence: []string{
 			"yagonode/internal/yacysearch/*_test.go",
 			"yagonode/internal/searchlocal/*_test.go",
 			"yagonode/internal/searchindex/*_test.go",
 			"yagonode/internal/searchremote/*_test.go",
 		},
-		Notes: "Richer navigation refinements and persistent (cross-restart) query suggestions remain incomplete.",
+		Notes: "Query suggestions are served by the dedicated /suggest.json and /suggest.xml endpoints rather than " +
+			"embedded in the search response, matching upstream; the YaCy-internal faviconCode favicon-hash is omitted " +
+			"(this node proxies favicons by host URL instead).",
 	},
 	{
-		Name:     "YaCy search RSS",
-		Path:     yagoproto.PathYaCySearchRSS,
-		Methods:  []string{"GET"},
-		State:    Partial,
-		Behavior: "Serves OpenSearch-flavored RSS search responses backed by the same local full-text and federated search backend as JSON search.",
+		Name:    "YaCy search RSS",
+		Path:    yagoproto.PathYaCySearchRSS,
+		Methods: []string{"GET"},
+		State:   Implemented,
+		Behavior: "Serves OpenSearch-flavored RSS search responses backed by the same local full-text and federated " +
+			"search backend as JSON search, with per-item Dublin Core dc:creator/dc:publisher/dc:subject from extracted " +
+			"document metadata, the yacy:size/sizename/host/path/file fields, and, on a nav= request, the " +
+			"yacy:navigation facet element (same navigators, counts, and refine modifiers as the JSON surface).",
 		Evidence: []string{
 			"yagonode/internal/yacysearch/*_test.go",
 			"yagonode/internal/searchlocal/*_test.go",
 		},
-		Notes: "Richer YaCy-specific RSS fields remain incomplete.",
+		Notes: "Image-vertical media enclosures reuse the shared text-first result layout rather than YaCy's " +
+			"per-contentdom media: elements — the same text-first-node simplification as the HTML surface, not a wire gap.",
 	},
 	{
 		Name:    "YaCy search HTML",
