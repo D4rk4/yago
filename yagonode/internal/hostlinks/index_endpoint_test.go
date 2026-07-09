@@ -224,6 +224,17 @@ func TestMountServesHostIndexRoute(t *testing.T) {
 	}
 }
 
+func TestHostReferenceRowDefinitionMatchesYaCy(t *testing.T) {
+	// The exact rowdef YaCy's idx.json advertises
+	// (WebStructureGraph.hostReferenceFactory.getRow().toString()): only the two
+	// cardinal columns carry the {b256} encoder, the host-hash column does not, so
+	// a YaCy peer parses the columns with matching widths and codecs.
+	const want = "String h-6, Cardinal m-4 {b256}, Cardinal c-4 {b256}"
+	if HostReferenceRowDefinition != want {
+		t.Fatalf("HostReferenceRowDefinition = %q, want %q", HostReferenceRowDefinition, want)
+	}
+}
+
 func decodeIndexResponse(t *testing.T, body string) decodedIndexResponse {
 	t.Helper()
 

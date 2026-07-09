@@ -8,7 +8,11 @@ import (
 	"github.com/D4rk4/yago/yagoproto"
 )
 
-const HostReferenceRowDefinition = "String h-6 {b256}, Cardinal m-4 {b256}, Cardinal c-4 {b256}"
+// HostReferenceRowDefinition is the exact rowdef string YaCy's idx.json advertises
+// for host references: WebStructureGraph.hostReferenceFactory.getRow().toString().
+// The host-hash column carries no {b256} encoder — only the two cardinals do — so a
+// YaCy peer parsing the feed decodes the columns with the same widths and codecs.
+const HostReferenceRowDefinition = "String h-6, Cardinal m-4 {b256}, Cardinal c-4 {b256}"
 
 type RuntimeStatus interface {
 	Version(ctx context.Context) string

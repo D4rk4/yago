@@ -107,31 +107,34 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Evidence: []string{"yagonode/internal/seedlist/*_test.go"},
 	},
 	{
-		Name:     "Host-link index",
-		Path:     yagoproto.PathIndex,
-		Methods:  methods(yagoproto.IndexEndpointMethods),
-		State:    Partial,
-		Behavior: "Serves the YaCy idx.json host object shape with a bounded incoming host-link index counted from stored document outlinks per source host.",
+		Name:    "Host-link index",
+		Path:    yagoproto.PathIndex,
+		Methods: methods(yagoproto.IndexEndpointMethods),
+		State:   Implemented,
+		Behavior: "Serves the YaCy idx.json host object shape with a bounded incoming host-link index counted from stored document " +
+			"outlinks per source host, advertising the exact hostReferenceRow rowdef and emitting each reference in YaCy's " +
+			"toPropertyForm(':') shape ({\"h\":hash,\"m\":decimal-day,\"c\":decimal-count}).",
 		Evidence: []string{
 			"yagonode/internal/hostlinks/*_test.go",
 			"yagonode/internal/urlmeta/*_test.go",
 			"yagonode/internal/yagonode/host_link_source_test.go",
 			"yagoproto/index_test.go",
 		},
-		Notes: "Only object=host is implemented.",
+		Notes: "object=host is upstream idx.java's only implemented object; verified against " +
+			"source/net/yacy/htroot/yacy/idx.java and WebStructureGraph.java (2026-07).",
 	},
 	{
 		Name:     "Shared blacklist export",
 		Path:     yagoproto.PathList,
 		Methods:  methods(yagoproto.ListEndpointMethods),
-		State:    Partial,
-		Behavior: "Checks the YaCy network unit and serves shared blacklist col=black responses from files named in YAGO_DATA_DIR/SETTINGS/yacy.conf BlackLists.Shared under YAGO_DATA_DIR/LISTS.",
+		State:    Implemented,
+		Behavior: "Checks the YaCy network unit and serves shared blacklist col=black responses from files named in YAGO_DATA_DIR/SETTINGS/yacy.conf BlackLists.Shared under YAGO_DATA_DIR/LISTS, honouring the listname filter and stripping comment lines.",
 		Evidence: []string{
 			"yagonode/internal/sharedblacklist/*_test.go",
 			"yagonode/internal/yagonode/node_shared_blacklist_test.go",
 			"yagoproto/list_test.go",
 		},
-		Notes: "Only col=black is implemented.",
+		Notes: "col=black is upstream list.java's only implemented column; verified against source/net/yacy/htroot/yacy/list.java (2026-07).",
 	},
 	{
 		Name:     "Peer message inbox",
@@ -146,14 +149,14 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Name:     "Peer profile export",
 		Path:     yagoproto.PathProfile,
 		Methods:  methods(yagoproto.ProfileEndpointMethods),
-		State:    Partial,
-		Behavior: "Serves the YaCy profile text shape with properties loaded from YAGO_DATA_DIR/SETTINGS/profile.txt when that file exists.",
+		State:    Implemented,
+		Behavior: "Serves the YaCy profile text shape (key=value lines, \\r stripped and \\n escaped, empty pairs dropped) with properties loaded from YAGO_DATA_DIR/SETTINGS/profile.txt as Java properties.",
 		Evidence: []string{
 			"yagonode/internal/peerprofile/*_test.go",
 			"yagonode/internal/yagonode/node_profile_test.go",
 			"yagoproto/profile_test.go",
 		},
-		Notes: "Missing profile files produce an empty profile.",
+		Notes: "A missing profile.txt yields an empty profile in upstream too (profile.java swallows the read error); verified against source/net/yacy/htroot/yacy/profile.java (2026-07).",
 	},
 	{
 		Name:     "Remote crawl URL feed",
