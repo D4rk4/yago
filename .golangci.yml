@@ -52,6 +52,10 @@ linters:
           arguments:
             - 50
             - 80
+    wrapcheck:
+      ignore-package-globs:
+        - github.com/nikitakarpei/yacy-rwi-node/*
+        - golang.org/x/sync/errgroup
     sloglint:
       attr-only: true
       context: all

@@ -46,5 +46,5 @@ At least one output must be enabled, or startup fails.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `YACYCRAWLER_OPS_ADDR` | `:9090` | Address serving `/health` and `/metrics`. |
+| `YACYCRAWLER_OPS_ADDR` | `:9090` | Address serving `/metrics`. |
 | `LOG_LEVEL` | `INFO` | Log level. |

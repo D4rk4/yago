@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"net"
 	"net/http"
 	"testing"
@@ -11,7 +10,7 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/renderproxy/internal/rendermetrics"
 )
 
-func TestRunServiceServesHealthUntilContextCanceled(t *testing.T) {
+func TestRunServiceServesMetricsUntilContextCanceled(t *testing.T) {
 	opsListener := reservePort(t)
 	cfg := ServiceConfig{
 		ListenAddr:        reservePort(t).String(),
@@ -26,7 +25,7 @@ func TestRunServiceServesHealthUntilContextCanceled(t *testing.T) {
 	serviceDone := make(chan error, 1)
 	go func() { serviceDone <- RunService(ctx, cfg, rendermetrics.New()) }()
 
-	waitForHealthy(t, "http://"+cfg.OpsAddr+pathHealth)
+	waitForHealthy(t, "http://"+cfg.OpsAddr+"/metrics")
 
 	cancel()
 	select {
@@ -69,27 +68,4 @@ func waitForHealthy(t *testing.T, url string) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("ops server never became healthy at %s", url)
-}
-
-func TestRunServersStopsOnServerError(t *testing.T) {
-	occupied := reservePort(t)
-	var listenConfig net.ListenConfig
-	blocker, err := listenConfig.Listen(t.Context(), "tcp", occupied.String())
-	if err != nil {
-		t.Fatalf("hold port: %v", err)
-	}
-	t.Cleanup(func() { _ = blocker.Close() })
-
-	const readHeaderLimit = 10 * time.Second
-	conflicting := &http.Server{Addr: occupied.String(), ReadHeaderTimeout: readHeaderLimit}
-	unused := &http.Server{Addr: reservePort(t).String(), ReadHeaderTimeout: readHeaderLimit}
-	t.Cleanup(func() { _ = unused.Close() })
-
-	err = runServers(t.Context(), conflicting, unused)
-	if err == nil {
-		t.Fatal("expected error from address already in use")
-	}
-	if errors.Is(err, context.Canceled) {
-		t.Fatalf("expected a bind error, got context cancellation: %v", err)
-	}
 }

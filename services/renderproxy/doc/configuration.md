@@ -26,5 +26,5 @@ renderproxy is configured entirely through environment variables.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `RENDERPROXY_OPS_ADDR` | `:9090` | Address serving `/health` and `/metrics`. |
+| `RENDERPROXY_OPS_ADDR` | `:9090` | Address serving `/metrics`. |
 | `LOG_LEVEL` | `INFO` | Log level. |

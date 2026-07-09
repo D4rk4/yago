@@ -1,7 +1,9 @@
 go 1.26
 
 use (
+	./libraries/bytesize
 	./libraries/searchdocument
+	./libraries/serviceruntime
 	./libraries/yacycrawlcontract
 	./libraries/yacymodel
 	./libraries/yacyproto

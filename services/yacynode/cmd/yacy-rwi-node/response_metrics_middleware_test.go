@@ -26,7 +26,7 @@ func TestInstrumentHTTPCountsThroughMiddleware(t *testing.T) {
 
 	scrape := httptest.NewRecorder()
 	scrapeReq, _ := http.NewRequestWithContext(
-		context.Background(), http.MethodGet, pathMetrics, nil,
+		context.Background(), http.MethodGet, "/metrics", nil,
 	)
 	endpoints.Handler().ServeHTTP(scrape, scrapeReq)
 

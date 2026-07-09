@@ -37,5 +37,5 @@ Every placed order carries the same crawl profile, built once from these variabl
 | Variable | Default | Meaning |
 |---|---|---|
 | `YACYVISITCRAWL_LISTEN_ADDR` | `:8091` | Address serving `/visit`. |
-| `YACYVISITCRAWL_OPS_ADDR` | `:9091` | Address serving `/health` and `/metrics`. |
+| `YACYVISITCRAWL_OPS_ADDR` | `:9091` | Address serving `/metrics`. |
 | `LOG_LEVEL` | `INFO` | Log level. |

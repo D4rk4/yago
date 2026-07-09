@@ -85,6 +85,14 @@ vendors:
       - github.com/nats-io/nats-server/v2/server
   uuid:
     in: github.com/google/uuid
+  bytesize:
+    in: github.com/nikitakarpei/yacy-rwi-node/bytesize
+  serviceruntime:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/serviceruntime/applog
+      - github.com/nikitakarpei/yacy-rwi-node/serviceruntime/opsmetrics
+      - github.com/nikitakarpei/yacy-rwi-node/serviceruntime/servergroup
+      - github.com/nikitakarpei/yacy-rwi-node/serviceruntime/envconfig
 
 deps:
   vault:
@@ -284,6 +292,8 @@ deps:
       - yacyproto
       - prometheus
       - nats-server
+      - bytesize
+      - serviceruntime
 
 excludeFiles:
   - "test/e2e"

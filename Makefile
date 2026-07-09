@@ -2,7 +2,7 @@ GO ?= go
 PYTHON ?= python3
 COVERAGE_MIN ?= 80
 
-GO_MODULES := services/yacynode libraries/yacymodel libraries/yacyproto libraries/yacycrawlcontract services/yacycrawler services/yacytextindexer services/yacyvisitcrawl services/renderproxy
+GO_MODULES := services/yacynode libraries/yacymodel libraries/yacyproto libraries/yacycrawlcontract libraries/bytesize libraries/serviceruntime services/yacycrawler services/yacytextindexer services/yacyvisitcrawl services/renderproxy
 PY_MODULES := plugins/searxng/searxng-result-router plugins/searxng/searxng-crawled-text-search
 
 COVER_PROFILE := coverage.out

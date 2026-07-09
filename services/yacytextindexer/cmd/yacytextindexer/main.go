@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/nikitakarpei/yacy-rwi-node/serviceruntime/applog"
 )
 
 var lookupEnv = os.Getenv
@@ -15,6 +17,15 @@ func main() {
 }
 
 func start() int {
+	if err := applog.Configure(lookupEnv); err != nil {
+		slog.ErrorContext(
+			context.Background(),
+			"textindexer logging invalid",
+			slog.Any("error", err),
+		)
+		return 2
+	}
+
 	cfg, err := LoadServiceConfig(lookupEnv)
 	if err != nil {
 		slog.ErrorContext(

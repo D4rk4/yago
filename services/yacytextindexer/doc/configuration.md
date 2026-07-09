@@ -36,4 +36,4 @@ When `SEARCH_INDEX_ENGINE` is `manticore`:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `YACYTEXTINDEXER_OPS_ADDR` | `:9090` | Address serving `/health` and `/metrics`. |
+| `YACYTEXTINDEXER_OPS_ADDR` | `:9090` | Address serving `/metrics`. |

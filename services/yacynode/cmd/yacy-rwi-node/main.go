@@ -2,17 +2,19 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
+	"github.com/nikitakarpei/yacy-rwi-node/serviceruntime/applog"
+	"github.com/nikitakarpei/yacy-rwi-node/serviceruntime/opsmetrics"
+	"github.com/nikitakarpei/yacy-rwi-node/serviceruntime/servergroup"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/boltvault"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/eviction"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/metrics"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
 )
@@ -28,6 +30,7 @@ const (
 
 	evictionTargetFraction = 0.9
 	evictionBatch          = 256
+	evictionInterval       = time.Minute
 
 	serverReadHeaderTimeout = 10 * time.Second
 	shutdownTimeout         = 15 * time.Second
@@ -41,7 +44,7 @@ func main() {
 }
 
 func run() error {
-	if err := configureLogging(os.Getenv); err != nil {
+	if err := applog.Configure(os.Getenv); err != nil {
 		return fmt.Errorf("configure logging: %w", err)
 	}
 
@@ -75,7 +78,7 @@ func run() error {
 		return fmt.Errorf("assemble node: %w", err)
 	}
 
-	opsMux := newOpsMux(endpoints.Handler())
+	opsMux := opsmetrics.NewMux(endpoints.Handler())
 	if assembled.crawl != nil {
 		assembled.crawl.mountDispatch(opsMux)
 	}
@@ -84,20 +87,15 @@ func run() error {
 		ctx,
 		assembled,
 		evictionMetrics,
-		namedServer{
-			"peer protocol",
-			buildServer(
+		servergroup.NamedServer{
+			Name: "peer protocol",
+			Server: buildServer(
 				config.PeerAddr,
 				logHTTPRequests(instrumentHTTP(endpoints, assembled.peerMux)),
 			),
 		},
-		namedServer{"ops", buildServer(config.OpsAddr, opsMux)},
+		servergroup.NamedServer{Name: "ops", Server: buildServer(config.OpsAddr, opsMux)},
 	)
-}
-
-type namedServer struct {
-	name   string
-	server *http.Server
 }
 
 func buildServer(addr string, handler http.Handler) *http.Server {
@@ -112,69 +110,34 @@ func serve(
 	ctx context.Context,
 	assembled node,
 	evictionMetrics *metrics.EvictionMetrics,
-	servers ...namedServer,
+	servers ...servergroup.NamedServer,
 ) error {
-	ctx, cancel := context.WithCancel(ctx)
-
-	var background sync.WaitGroup
-	background.Add(2)
-	go func() {
-		defer background.Done()
-		assembled.announcer.Run(ctx)
-	}()
-	go func() {
-		defer background.Done()
-		runEvictionLoop(ctx, assembled.sweeper, evictionMetrics)
-	}()
+	workers := []func(context.Context) error{
+		func(runCtx context.Context) error {
+			assembled.announcer.Run(runCtx)
+			return nil
+		},
+		func(runCtx context.Context) error {
+			eviction.RunSweepLoop(runCtx, assembled.sweeper, evictionMetrics, evictionInterval)
+			return nil
+		},
+	}
 	if assembled.crawl != nil {
 		defer assembled.crawl.Close()
-		background.Add(1)
-		go func() {
-			defer background.Done()
-			assembled.crawl.Run(ctx)
-		}()
+		workers = append(workers, func(runCtx context.Context) error {
+			assembled.crawl.Run(runCtx)
+			return nil
+		})
 	}
-	defer background.Wait()
-	defer cancel()
 
-	errs := make(chan error, len(servers))
 	for _, s := range servers {
-		go func(s namedServer) {
-			slog.InfoContext(
-				ctx,
-				"serving",
-				slog.String("service", s.name),
-				slog.String("addr", s.server.Addr),
-			)
-			errs <- s.server.ListenAndServe()
-		}(s)
+		slog.InfoContext(ctx, "serving",
+			slog.String("service", s.Name),
+			slog.String("addr", s.Server.Addr),
+		)
 	}
 
-	select {
-	case err := <-errs:
-		if errors.Is(err, http.ErrServerClosed) {
-			return shutdown(servers)
-		}
-
-		return err
-	case <-ctx.Done():
-		return shutdown(servers)
-	}
-}
-
-func shutdown(servers []namedServer) error {
-	slog.InfoContext(context.Background(), "shutting down")
-	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-
-	var failures error
-	for _, s := range servers {
-		if err := s.server.Shutdown(ctx); err != nil {
-			failures = errors.Join(failures, fmt.Errorf("shutdown %s: %w", s.name, err))
-		}
-	}
-
-	return failures
+	return servergroup.Run(ctx, shutdownTimeout, servers, workers...)
 }
 
 func closeVault(vault *vault.Vault) {

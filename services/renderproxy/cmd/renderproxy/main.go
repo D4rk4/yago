@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/nikitakarpei/yacy-rwi-node/renderproxy/internal/rendermetrics"
+	"github.com/nikitakarpei/yacy-rwi-node/serviceruntime/applog"
 )
 
 func main() {
@@ -18,7 +19,7 @@ func main() {
 }
 
 func run() error {
-	if err := configureLogging(os.Getenv); err != nil {
+	if err := applog.Configure(os.Getenv); err != nil {
 		return err
 	}
 	cfg, err := LoadServiceConfig(os.Getenv)

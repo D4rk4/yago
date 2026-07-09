@@ -38,6 +38,12 @@ vendors:
   prometheus:
     in:
       - github.com/prometheus/client_golang/**
+  serviceruntime:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/serviceruntime/applog
+      - github.com/nikitakarpei/yacy-rwi-node/serviceruntime/opsmetrics
+      - github.com/nikitakarpei/yacy-rwi-node/serviceruntime/servergroup
+      - github.com/nikitakarpei/yacy-rwi-node/serviceruntime/envconfig
 
 deps:
   crawledpagedocument:
@@ -82,6 +88,7 @@ deps:
       - yacycrawlcontract
       - nats
       - nats-server
+      - serviceruntime
 
 excludeFiles:
   - "test/e2e"

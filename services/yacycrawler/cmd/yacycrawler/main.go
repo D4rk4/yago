@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/nikitakarpei/yacy-rwi-node/serviceruntime/applog"
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawler/internal/crawlmetrics"
 )
 
@@ -18,7 +19,7 @@ func main() {
 }
 
 func run() error {
-	if err := configureLogging(os.Getenv); err != nil {
+	if err := applog.Configure(os.Getenv); err != nil {
 		return err
 	}
 	cfg, err := LoadServiceConfig(os.Getenv)

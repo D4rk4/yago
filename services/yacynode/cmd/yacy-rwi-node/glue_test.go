@@ -5,22 +5,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
+	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/eviction"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/metrics"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/nodestatus"
 )
-
-func TestConfigureLogging(t *testing.T) {
-	if err := configureLogging(func(string) string { return "debug" }); err != nil {
-		t.Fatalf("configure: %v", err)
-	}
-	if err := configureLogging(func(string) string { return "nonsense" }); err == nil {
-		t.Fatal("expected error for invalid level")
-	}
-}
 
 func TestMiddlewareRecordsStatus(t *testing.T) {
 	handler := logHTTPRequests(instrumentHTTP(metrics.NewHTTPEndpointMetrics(), http.HandlerFunc(
@@ -81,6 +74,5 @@ func TestPublishStorageMetricsAndSweepLoop(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	observer := metrics.NewEvictionMetrics(prometheus.NewRegistry())
-	runEvictionLoop(ctx, assembled.sweeper, observer)
-	sweepOnce(context.Background(), assembled.sweeper, observer)
+	eviction.RunSweepLoop(ctx, assembled.sweeper, observer, time.Minute)
 }

@@ -33,6 +33,12 @@ vendors:
   uuid:
     in:
       - github.com/google/uuid
+  serviceruntime:
+    in:
+      - github.com/nikitakarpei/yacy-rwi-node/serviceruntime/applog
+      - github.com/nikitakarpei/yacy-rwi-node/serviceruntime/opsmetrics
+      - github.com/nikitakarpei/yacy-rwi-node/serviceruntime/servergroup
+      - github.com/nikitakarpei/yacy-rwi-node/serviceruntime/envconfig
 
 deps:
   visitintake:
@@ -62,6 +68,7 @@ deps:
       - yacycrawlcontract
       - nats
       - nats-server
+      - serviceruntime
 
 excludeFiles:
   - "test/e2e"

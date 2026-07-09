@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/nikitakarpei/yacy-rwi-node/serviceruntime/opsmetrics"
+	"github.com/nikitakarpei/yacy-rwi-node/serviceruntime/servergroup"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/memvault"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/metrics"
 	"github.com/nikitakarpei/yacy-rwi-node/yacynode/internal/vault"
@@ -84,10 +84,16 @@ func TestServeReturnsNilAfterCancel(t *testing.T) {
 		ctx,
 		assembled,
 		metrics.NewEvictionMetrics(prometheus.NewRegistry()),
-		namedServer{"peer protocol", buildServer("127.0.0.1:0", assembled.peerMux)},
-		namedServer{
-			"ops",
-			buildServer("127.0.0.1:0", newOpsMux(metrics.NewHTTPEndpointMetrics().Handler())),
+		servergroup.NamedServer{
+			Name:   "peer protocol",
+			Server: buildServer("127.0.0.1:0", assembled.peerMux),
+		},
+		servergroup.NamedServer{
+			Name: "ops",
+			Server: buildServer(
+				"127.0.0.1:0",
+				opsmetrics.NewMux(metrics.NewHTTPEndpointMetrics().Handler()),
+			),
 		},
 	)
 	if err != nil {
@@ -102,19 +108,12 @@ func TestServeShutsDownOnListenError(t *testing.T) {
 		context.Background(),
 		assembled,
 		metrics.NewEvictionMetrics(prometheus.NewRegistry()),
-		namedServer{"peer protocol", buildServer("203.0.113.255:-1", assembled.peerMux)},
+		servergroup.NamedServer{
+			Name:   "peer protocol",
+			Server: buildServer("203.0.113.255:-1", assembled.peerMux),
+		},
 	)
 	if err == nil {
 		t.Fatal("expected listen error")
-	}
-}
-
-func TestOpsMuxAnswersHealth(t *testing.T) {
-	rec := httptest.NewRecorder()
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, pathHealth, nil)
-	newOpsMux(metrics.NewHTTPEndpointMetrics().Handler()).ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("health status = %d, want 200", rec.Code)
 	}
 }

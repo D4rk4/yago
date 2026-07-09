@@ -1,0 +1,37 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  applog:
+    in: applog/**
+  envconfig:
+    in: envconfig/**
+  opsmetrics:
+    in: opsmetrics/**
+  servergroup:
+    in: servergroup/**
+
+vendors:
+  errgroup:
+    in:
+      - golang.org/x/sync/errgroup
+
+deps:
+  applog:
+    mayDependOn:
+      - applog
+  envconfig:
+    mayDependOn:
+      - envconfig
+  opsmetrics:
+    mayDependOn:
+      - opsmetrics
+  servergroup:
+    mayDependOn:
+      - servergroup
+    canUse:
+      - errgroup
