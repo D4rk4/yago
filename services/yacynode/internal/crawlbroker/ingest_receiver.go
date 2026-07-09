@@ -43,14 +43,14 @@ func newIngestReceiver(
 
 	out := make(chan crawlresults.IngestDelivery)
 	consume, err := consumer.Consume(func(msg jetstream.Msg) {
-		message, err := yacycrawlcontract.UnmarshalCrawledPageIndexMessage(msg.Data())
+		segment, err := yacycrawlcontract.UnmarshalCrawledPageIndexSegment(msg.Data())
 		if err != nil {
 			slog.WarnContext(context.Background(), msgIngestDecodeFailed, slog.Any("error", err))
 			_ = msg.Term()
 			return
 		}
 		delivery := crawlresults.IngestDelivery{
-			Message: message,
+			Segment: segment,
 			Ack:     func(context.Context) error { return msg.Ack() },
 			Nak:     func(context.Context) error { return msg.NakWithDelay(ingestNakDelay) },
 		}

@@ -30,45 +30,45 @@ func (c *IngestConsumer) Run(ctx context.Context) {
 }
 
 func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
-	message := delivery.Message
+	segment := delivery.Segment
 	switch {
-	case len(message.Metadata) > 0:
-		c.absorbMetadata(ctx, delivery, message)
-	case len(message.Postings) > 0:
-		c.absorbPostings(ctx, delivery, message)
+	case len(segment.Metadata) > 0:
+		c.absorbMetadata(ctx, delivery, segment)
+	case len(segment.Postings) > 0:
+		c.absorbPostings(ctx, delivery, segment)
 	default:
-		c.acknowledge(ctx, delivery, message.CanonicalURL, 0, 0)
+		c.acknowledge(ctx, delivery, segment.CanonicalURL, 0, 0)
 	}
 }
 
 func (c *IngestConsumer) absorbMetadata(
 	ctx context.Context,
 	delivery IngestDelivery,
-	message yacycrawlcontract.CrawledPageIndexMessage,
+	segment yacycrawlcontract.CrawledPageIndexSegment,
 ) {
-	receipt, err := c.urls.Receive(ctx, message.Metadata)
+	receipt, err := c.urls.Receive(ctx, segment.Metadata)
 	if err != nil || receipt.Busy {
-		c.redeliver(ctx, delivery, message.CanonicalURL, err)
+		c.redeliver(ctx, delivery, segment.CanonicalURL, err)
 		return
 	}
-	c.acknowledge(ctx, delivery, message.CanonicalURL, len(message.Metadata), 0)
+	c.acknowledge(ctx, delivery, segment.CanonicalURL, len(segment.Metadata), 0)
 }
 
 func (c *IngestConsumer) absorbPostings(
 	ctx context.Context,
 	delivery IngestDelivery,
-	message yacycrawlcontract.CrawledPageIndexMessage,
+	segment yacycrawlcontract.CrawledPageIndexSegment,
 ) {
-	receipt, err := c.postings.Receive(ctx, message.Postings)
+	receipt, err := c.postings.Receive(ctx, segment.Postings)
 	if receipt.TooLarge {
-		c.redeliverTooLarge(ctx, delivery, message.CanonicalURL, len(message.Postings))
+		c.redeliverTooLarge(ctx, delivery, segment.CanonicalURL, len(segment.Postings))
 		return
 	}
 	if err != nil || receipt.Busy {
-		c.redeliver(ctx, delivery, message.CanonicalURL, err)
+		c.redeliver(ctx, delivery, segment.CanonicalURL, err)
 		return
 	}
-	c.acknowledge(ctx, delivery, message.CanonicalURL, 0, len(message.Postings))
+	c.acknowledge(ctx, delivery, segment.CanonicalURL, 0, len(segment.Postings))
 }
 
 func (c *IngestConsumer) acknowledge(

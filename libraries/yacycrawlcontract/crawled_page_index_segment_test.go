@@ -7,8 +7,8 @@ import (
 	"github.com/nikitakarpei/yacy-rwi-node/yacymodel"
 )
 
-func TestCrawledPageIndexMessageRoundTrip(t *testing.T) {
-	message := CrawledPageIndexMessage{
+func TestCrawledPageIndexSegmentRoundTrip(t *testing.T) {
+	segment := CrawledPageIndexSegment{
 		CanonicalURL: "https://example.org/a",
 		Postings: []yacymodel.RWIPosting{
 			{
@@ -18,15 +18,15 @@ func TestCrawledPageIndexMessageRoundTrip(t *testing.T) {
 		},
 	}
 
-	data, err := MarshalCrawledPageIndexMessage(message)
+	data, err := MarshalCrawledPageIndexSegment(segment)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	got, err := UnmarshalCrawledPageIndexMessage(data)
+	got, err := UnmarshalCrawledPageIndexSegment(data)
 	if err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if !reflect.DeepEqual(message, got) {
-		t.Errorf("round-trip mismatch:\nwant %#v\ngot  %#v", message, got)
+	if !reflect.DeepEqual(segment, got) {
+		t.Errorf("round-trip mismatch:\nwant %#v\ngot  %#v", segment, got)
 	}
 }

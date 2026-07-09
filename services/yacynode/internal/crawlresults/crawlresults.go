@@ -1,7 +1,7 @@
-// Package crawlresults absorbs ingest messages returned by the crawl fleet. Each
-// message carries either a page's URL metadata or one bounded batch of its postings,
+// Package crawlresults absorbs ingest segments returned by the crawl fleet. Each
+// segment carries either a page's URL metadata or one bounded batch of its postings,
 // stored through the node's existing receivers. NewIngestConsumer and its Run loop
-// are the only surface; IngestStream is the port messages arrive through.
+// are the only surface; IngestStream is the port segments arrive through.
 package crawlresults
 
 import (
@@ -13,7 +13,7 @@ import (
 )
 
 type IngestDelivery struct {
-	Message yacycrawlcontract.CrawledPageIndexMessage
+	Segment yacycrawlcontract.CrawledPageIndexSegment
 	Ack     func(context.Context) error
 	Nak     func(context.Context) error
 }

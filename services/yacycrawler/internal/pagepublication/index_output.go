@@ -31,10 +31,10 @@ func (o IndexOutput) Publish(ctx context.Context, page crawlcapability.Extracted
 	if err != nil {
 		return fmt.Errorf("build page index: %w", err)
 	}
-	for _, message := range segmentCrawledPageIndex(index) {
-		payload, err := yacycrawlcontract.MarshalCrawledPageIndexMessage(message)
+	for _, segment := range segmentCrawledPageIndex(index) {
+		payload, err := yacycrawlcontract.MarshalCrawledPageIndexSegment(segment)
 		if err != nil {
-			return fmt.Errorf("marshal page index message: %w", err)
+			return fmt.Errorf("marshal page index segment: %w", err)
 		}
 		if _, err := o.publisher.Publish(ctx, o.subject, payload); err != nil {
 			return classifyPublishError(err)

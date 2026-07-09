@@ -73,17 +73,17 @@ func fetchOneCrawledPageIndex(
 	for len(index.Postings) == 0 {
 		msg, err := consumer.Next(jetstream.FetchMaxWait(60 * time.Second))
 		if err != nil {
-			t.Fatalf("fetch crawled page index message: %v", err)
+			t.Fatalf("fetch crawled page index segment: %v", err)
 		}
-		message, err := yacycrawlcontract.UnmarshalCrawledPageIndexMessage(msg.Data())
+		segment, err := yacycrawlcontract.UnmarshalCrawledPageIndexSegment(msg.Data())
 		if err != nil {
-			t.Fatalf("decode crawled page index message: %v", err)
+			t.Fatalf("decode crawled page index segment: %v", err)
 		}
 		if index.CanonicalURL == "" {
-			index.CanonicalURL = message.CanonicalURL
+			index.CanonicalURL = segment.CanonicalURL
 		}
-		index.Metadata = append(index.Metadata, message.Metadata...)
-		index.Postings = append(index.Postings, message.Postings...)
+		index.Metadata = append(index.Metadata, segment.Metadata...)
+		index.Postings = append(index.Postings, segment.Postings...)
 		if err := msg.Ack(); err != nil {
 			t.Fatalf("ack: %v", err)
 		}

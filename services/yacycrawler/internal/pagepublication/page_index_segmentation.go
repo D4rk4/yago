@@ -6,20 +6,20 @@ import (
 
 func segmentCrawledPageIndex(
 	index yacycrawlcontract.CrawledPageIndex,
-) []yacycrawlcontract.CrawledPageIndexMessage {
-	var messages []yacycrawlcontract.CrawledPageIndexMessage
+) []yacycrawlcontract.CrawledPageIndexSegment {
+	var segments []yacycrawlcontract.CrawledPageIndexSegment
 	if len(index.Metadata) > 0 {
-		messages = append(messages, yacycrawlcontract.CrawledPageIndexMessage{
+		segments = append(segments, yacycrawlcontract.CrawledPageIndexSegment{
 			CanonicalURL: index.CanonicalURL,
 			Metadata:     index.Metadata,
 		})
 	}
-	for start := 0; start < len(index.Postings); start += yacycrawlcontract.PostingsPerMessageLimit {
-		end := min(start+yacycrawlcontract.PostingsPerMessageLimit, len(index.Postings))
-		messages = append(messages, yacycrawlcontract.CrawledPageIndexMessage{
+	for start := 0; start < len(index.Postings); start += yacycrawlcontract.PostingsPerSegmentLimit {
+		end := min(start+yacycrawlcontract.PostingsPerSegmentLimit, len(index.Postings))
+		segments = append(segments, yacycrawlcontract.CrawledPageIndexSegment{
 			CanonicalURL: index.CanonicalURL,
 			Postings:     index.Postings[start:end],
 		})
 	}
-	return messages
+	return segments
 }

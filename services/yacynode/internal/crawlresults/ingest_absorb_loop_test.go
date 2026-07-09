@@ -54,7 +54,7 @@ func (r *recordingPostingReceiver) Receive(
 
 func deliver(
 	t *testing.T,
-	message yacycrawlcontract.CrawledPageIndexMessage,
+	segment yacycrawlcontract.CrawledPageIndexSegment,
 	urls *recordingURLReceiver,
 	postings *recordingPostingReceiver,
 ) (acked, naked bool) {
@@ -63,7 +63,7 @@ func deliver(
 	var wg sync.WaitGroup
 	wg.Add(1)
 	stream.out <- crawlresults.IngestDelivery{
-		Message: message,
+		Segment: segment,
 		Ack:     func(context.Context) error { acked = true; wg.Done(); return nil },
 		Nak:     func(context.Context) error { naked = true; wg.Done(); return nil },
 	}
@@ -75,8 +75,8 @@ func deliver(
 	return acked, naked
 }
 
-func metadataMessage() yacycrawlcontract.CrawledPageIndexMessage {
-	return yacycrawlcontract.CrawledPageIndexMessage{
+func metadataSegment() yacycrawlcontract.CrawledPageIndexSegment {
+	return yacycrawlcontract.CrawledPageIndexSegment{
 		CanonicalURL: "https://example.org",
 		Metadata: []yacymodel.URIMetadataRow{
 			{Properties: map[string]string{"u": "urlhash01234"}},
@@ -84,17 +84,17 @@ func metadataMessage() yacycrawlcontract.CrawledPageIndexMessage {
 	}
 }
 
-func postingsMessage() yacycrawlcontract.CrawledPageIndexMessage {
-	return yacycrawlcontract.CrawledPageIndexMessage{
+func postingsSegment() yacycrawlcontract.CrawledPageIndexSegment {
+	return yacycrawlcontract.CrawledPageIndexSegment{
 		CanonicalURL: "https://example.org",
 		Postings:     []yacymodel.RWIPosting{{WordHash: yacymodel.WordHash("w")}},
 	}
 }
 
-func TestAbsorbMetadataMessageStoresURLsAndAcks(t *testing.T) {
+func TestAbsorbMetadataSegmentStoresURLsAndAcks(t *testing.T) {
 	urls := &recordingURLReceiver{}
 	postings := &recordingPostingReceiver{}
-	acked, naked := deliver(t, metadataMessage(), urls, postings)
+	acked, naked := deliver(t, metadataSegment(), urls, postings)
 
 	if !acked || naked {
 		t.Fatalf("acked=%v naked=%v, want acked", acked, naked)
@@ -104,10 +104,10 @@ func TestAbsorbMetadataMessageStoresURLsAndAcks(t *testing.T) {
 	}
 }
 
-func TestAbsorbPostingsMessageStoresPostingsAndAcks(t *testing.T) {
+func TestAbsorbPostingsSegmentStoresPostingsAndAcks(t *testing.T) {
 	urls := &recordingURLReceiver{}
 	postings := &recordingPostingReceiver{}
-	acked, naked := deliver(t, postingsMessage(), urls, postings)
+	acked, naked := deliver(t, postingsSegment(), urls, postings)
 
 	if !acked || naked {
 		t.Fatalf("acked=%v naked=%v, want acked", acked, naked)
@@ -120,7 +120,7 @@ func TestAbsorbPostingsMessageStoresPostingsAndAcks(t *testing.T) {
 func TestAbsorbNaksWhenURLReceiverBusy(t *testing.T) {
 	urls := &recordingURLReceiver{receipt: urlmeta.Receipt{Busy: true}}
 	postings := &recordingPostingReceiver{}
-	acked, naked := deliver(t, metadataMessage(), urls, postings)
+	acked, naked := deliver(t, metadataSegment(), urls, postings)
 
 	if acked || !naked {
 		t.Fatalf("acked=%v naked=%v, want naked", acked, naked)
@@ -133,7 +133,7 @@ func TestAbsorbNaksWhenURLReceiverBusy(t *testing.T) {
 func TestAbsorbNaksWhenPostingReceiverErrors(t *testing.T) {
 	urls := &recordingURLReceiver{}
 	postings := &recordingPostingReceiver{err: errors.New("boom")}
-	acked, naked := deliver(t, postingsMessage(), urls, postings)
+	acked, naked := deliver(t, postingsSegment(), urls, postings)
 
 	if acked || !naked {
 		t.Fatalf("acked=%v naked=%v, want naked", acked, naked)
@@ -143,7 +143,7 @@ func TestAbsorbNaksWhenPostingReceiverErrors(t *testing.T) {
 func TestAbsorbNaksWhenPostingBatchTooLarge(t *testing.T) {
 	urls := &recordingURLReceiver{}
 	postings := &recordingPostingReceiver{receipt: rwi.Receipt{Busy: true, TooLarge: true}}
-	acked, naked := deliver(t, postingsMessage(), urls, postings)
+	acked, naked := deliver(t, postingsSegment(), urls, postings)
 
 	if acked || !naked {
 		t.Fatalf("acked=%v naked=%v, want naked", acked, naked)

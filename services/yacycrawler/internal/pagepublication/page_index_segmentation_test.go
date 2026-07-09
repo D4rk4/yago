@@ -8,7 +8,7 @@ import (
 )
 
 func TestSegmentEmitsMetadataFirstThenBoundedPostings(t *testing.T) {
-	postings := make([]yacymodel.RWIPosting, yacycrawlcontract.PostingsPerMessageLimit*2+1)
+	postings := make([]yacymodel.RWIPosting, yacycrawlcontract.PostingsPerSegmentLimit*2+1)
 	for i := range postings {
 		postings[i] = yacymodel.RWIPosting{WordHash: yacymodel.WordHash("w")}
 	}
@@ -20,25 +20,25 @@ func TestSegmentEmitsMetadataFirstThenBoundedPostings(t *testing.T) {
 		Postings: postings,
 	}
 
-	messages := segmentCrawledPageIndex(index)
+	segments := segmentCrawledPageIndex(index)
 
-	if len(messages) != 4 {
-		t.Fatalf("segments = %d, want 4 (1 metadata + 3 posting batches)", len(messages))
+	if len(segments) != 4 {
+		t.Fatalf("segments = %d, want 4 (1 metadata + 3 posting batches)", len(segments))
 	}
-	if len(messages[0].Metadata) != 1 || len(messages[0].Postings) != 0 {
-		t.Fatalf("first message = %+v, want metadata only", messages[0])
+	if len(segments[0].Metadata) != 1 || len(segments[0].Postings) != 0 {
+		t.Fatalf("first segment = %+v, want metadata only", segments[0])
 	}
-	for i, message := range messages[1:] {
-		if len(message.Metadata) != 0 {
-			t.Fatalf("posting message %d carries metadata", i)
+	for i, segment := range segments[1:] {
+		if len(segment.Metadata) != 0 {
+			t.Fatalf("posting segment %d carries metadata", i)
 		}
-		if len(message.Postings) > yacycrawlcontract.PostingsPerMessageLimit {
-			t.Fatalf("posting message %d has %d postings, over limit %d",
-				i, len(message.Postings), yacycrawlcontract.PostingsPerMessageLimit)
+		if len(segment.Postings) > yacycrawlcontract.PostingsPerSegmentLimit {
+			t.Fatalf("posting segment %d has %d postings, over limit %d",
+				i, len(segment.Postings), yacycrawlcontract.PostingsPerSegmentLimit)
 		}
-		if message.CanonicalURL != index.CanonicalURL {
-			t.Fatalf("posting message %d url = %q, want %q",
-				i, message.CanonicalURL, index.CanonicalURL)
+		if segment.CanonicalURL != index.CanonicalURL {
+			t.Fatalf("posting segment %d url = %q, want %q",
+				i, segment.CanonicalURL, index.CanonicalURL)
 		}
 	}
 }
@@ -51,9 +51,9 @@ func TestSegmentWithoutPostingsEmitsMetadataOnly(t *testing.T) {
 		},
 	}
 
-	messages := segmentCrawledPageIndex(index)
+	segments := segmentCrawledPageIndex(index)
 
-	if len(messages) != 1 || len(messages[0].Metadata) != 1 {
-		t.Fatalf("segments = %+v, want a single metadata message", messages)
+	if len(segments) != 1 || len(segments[0].Metadata) != 1 {
+		t.Fatalf("segments = %+v, want a single metadata segment", segments)
 	}
 }
