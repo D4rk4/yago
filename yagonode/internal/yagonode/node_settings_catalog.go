@@ -57,19 +57,6 @@ func extendedSettingDefinitions() []settingDefinition {
 			},
 		},
 		{
-			key:          "search.links.newtab",
-			title:        "Open result links in a new tab",
-			description:  "Serve result links with target=_blank on the search surfaces.",
-			options:      boolSettingOptions(),
-			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.SearchLinksNewTab) },
-			normalize:    normalizeSettingBool,
-			apply: func(config nodeConfig, value string) nodeConfig {
-				config.SearchLinksNewTab = value == settingBoolTrue
-
-				return config
-			},
-		},
-		{
 			key:          "search.index.remote",
 			title:        "Cache swarm results locally",
 			description:  "Index results learned from swarm searches into the local index.",
@@ -83,6 +70,7 @@ func extendedSettingDefinitions() []settingDefinition {
 			},
 		},
 	}...)
+	definitions = append(definitions, searchSurfaceDefinitions()...)
 	definitions = append(definitions, extendedTelemetryDefinitions()...)
 	definitions = append(definitions, seedCapabilityDefinitions()...)
 	definitions = append(definitions, networkDiscoveryDefinitions()...)
@@ -95,6 +83,42 @@ func extendedSettingDefinitions() []settingDefinition {
 	definitions = append(definitions, autocrawlerCrawlOptionDefinitions()...)
 
 	return append(definitions, parityGapDefinitions()...)
+}
+
+// searchSurfaceDefinitions groups the result-link behavior toggles on the public
+// search surface: whether links open in a new tab, and whether result clicks are
+// captured to mine implicit ranking judgments (YagoRank RANK-00b).
+func searchSurfaceDefinitions() []settingDefinition {
+	return []settingDefinition{
+		{
+			key:          "search.links.newtab",
+			title:        "Open result links in a new tab",
+			description:  "Serve result links with target=_blank on the search surfaces.",
+			options:      boolSettingOptions(),
+			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.SearchLinksNewTab) },
+			normalize:    normalizeSettingBool,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.SearchLinksNewTab = value == settingBoolTrue
+
+				return config
+			},
+		},
+		{
+			key:   "search.click.capture",
+			title: "Capture result clicks for ranking",
+			description: "Record which result users click to mine implicit " +
+				"relevance judgments for the ranking learner (stores query-to-URL " +
+				"click aggregates; applied on restart).",
+			options:      boolSettingOptions(),
+			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.SearchClickCapture) },
+			normalize:    normalizeSettingBool,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.SearchClickCapture = value == settingBoolTrue
+
+				return config
+			},
+		},
+	}
 }
 
 // parityGapDefinitions groups the settings the CFG-02 review added.

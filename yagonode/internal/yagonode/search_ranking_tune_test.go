@@ -12,6 +12,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/judgments"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/searcheval"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 )
 
@@ -22,6 +23,68 @@ type stubCurated struct {
 
 func (s stubCurated) List(context.Context) ([]judgments.Judgment, error) {
 	return s.list, s.err
+}
+
+type stubImplicit struct {
+	list []searcheval.Judgment
+	err  error
+}
+
+func (s stubImplicit) ImplicitJudgments(
+	context.Context,
+	int,
+) ([]searcheval.Judgment, error) {
+	return s.list, s.err
+}
+
+func TestTrainingJudgmentsMergesImplicitFillingUncuratedQueries(t *testing.T) {
+	tuner := rankingTuner{
+		curated: linuxCurated(), // curated query "linux kernel"
+		implicit: stubImplicit{list: []searcheval.Judgment{
+			// Same query as curated: dropped, the human label wins wholesale.
+			{Query: "linux kernel", Relevant: map[string]int{"https://spam.example/": 2}},
+			// Uncurated query: added to the training set.
+			{Query: "go generics", Relevant: map[string]int{"https://go.example/": 2}},
+		}},
+	}
+	graded, err := tuner.trainingJudgments(t.Context())
+	if err != nil {
+		t.Fatalf("trainingJudgments: %v", err)
+	}
+	if len(graded) != 2 {
+		t.Fatalf("got %d judgments, want 2 (curated + one implicit)", len(graded))
+	}
+	byQuery := map[string]searcheval.Judgment{}
+	for _, judgment := range graded {
+		byQuery[judgment.Query] = judgment
+	}
+	if _, spam := byQuery["linux kernel"].Relevant["https://spam.example/"]; spam {
+		t.Error("an implicit judgment overrode a curated query")
+	}
+	if byQuery["go generics"].Relevant["https://go.example/"] != 2 {
+		t.Error("an implicit judgment for an uncurated query was not added")
+	}
+}
+
+func TestTrainingJudgmentsCuratedOnlyWhenImplicitNil(t *testing.T) {
+	tuner := rankingTuner{curated: linuxCurated()}
+	graded, err := tuner.trainingJudgments(t.Context())
+	if err != nil {
+		t.Fatalf("trainingJudgments: %v", err)
+	}
+	if len(graded) != 1 || graded[0].Query != "linux kernel" {
+		t.Fatalf("curated-only training set = %+v", graded)
+	}
+}
+
+func TestTrainingJudgmentsPropagatesImplicitError(t *testing.T) {
+	tuner := rankingTuner{
+		curated:  linuxCurated(),
+		implicit: stubImplicit{err: errors.New("clicks down")},
+	}
+	if _, err := tuner.trainingJudgments(t.Context()); err == nil {
+		t.Fatal("expected the implicit-source error to propagate")
+	}
 }
 
 type stubTuneSearcher struct {
@@ -98,11 +161,12 @@ func newTestTuner(t *testing.T) rankingTuner {
 		func() hostrank.Table { return nil },
 		testRankingHolder(t),
 		linuxCurated(),
+		nil,
 	)
 }
 
 func TestTuneReportsMissingIndex(t *testing.T) {
-	tuner := newRankingTuner(nil, nil, testRankingHolder(t), linuxCurated())
+	tuner := newRankingTuner(nil, nil, testRankingHolder(t), linuxCurated(), nil)
 	if _, err := tuner.Tune(t.Context()); err == nil {
 		t.Fatalf("Tune without an index must fail")
 	}
@@ -182,7 +246,7 @@ func TestTuneEndpointUnavailable(t *testing.T) {
 func TestTuneEndpointReportsTuneError(t *testing.T) {
 	// A nil factory (no index) passes the availability guard but fails in Tune.
 	endpoint := newSearchRankingTuneEndpoint(
-		newRankingTuner(nil, nil, testRankingHolder(t), linuxCurated()),
+		newRankingTuner(nil, nil, testRankingHolder(t), linuxCurated(), nil),
 	)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, pathSearchRankingTune, nil)

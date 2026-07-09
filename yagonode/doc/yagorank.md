@@ -129,11 +129,20 @@ prose. Text too short to grade, or in an unsegmented script, scores the neutral 
 
 All learning is **offline, pure-Go, and zero query-time cost**.
 
-1. **Judgment set (qrels).** Graded `query → {url: grade}` judgments persist in the
-   vault (`judgments/`): operator-curated entries plus a click-log importer
-   (RANK-00). The set doubles as a regression guard — every ranking change is
-   scored against it. (Mining implicit judgments continuously from query activity,
-   RANK-00b, is designed but deferred.)
+1. **Judgment set (qrels).** Graded `query → {url: grade}` judgments come from two
+   sources. Operator-curated entries persist in the vault (`judgments/`) and are
+   authoritative. Implicit judgments (RANK-00b) are mined from real result clicks:
+   when click capture is enabled (`search.click.capture`, off by default), the
+   `/yacysearch.html` results page beacons each clicked result's `(query, url,
+   rank)` to `/searchclick`, and the vault-backed `clickcapture` store aggregates
+   them per query with an inverse-propensity position weight (`log2(rank+1)`, which
+   upweights clicks on less-examined lower ranks to correct position bias) before
+   deriving graded judgments — a query's dominant clicked URLs are highly relevant,
+   the rest relevant, and queries below a click floor are dropped as noise. The
+   tuner unions both sets, curated winning wholesale on any query it covers, so a
+   human label is never diluted. Captured data is aggregate-only (no per-user,
+   per-session, or per-event records). The set doubles as a regression guard —
+   every ranking change is scored against it.
 
 2. **Coordinate ascent.** `rankfit` runs a coordinate-wise line search over the
    nine weights, maximizing **mean NDCG@10** across the judgment set

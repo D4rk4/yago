@@ -53,6 +53,7 @@ const (
 	envAdvertiseRootNode    = "YAGO_PEER_ADVERTISE_ROOT_NODE"
 	envAdvertiseSSL         = "YAGO_PEER_ADVERTISE_SSL"
 	envSearchLinksNewTab    = "YAGO_SEARCH_LINKS_NEW_TAB"
+	envSearchClickCapture   = "YAGO_SEARCH_CLICK_CAPTURE"
 	envSwarmSeedCrawl       = "YAGO_SWARM_SEED_CRAWL"
 	envSwarmSeedLimitDocs   = "YAGO_SWARM_SEED_LIMIT_DOCS"
 	envSwarmSeedDepth       = "YAGO_SWARM_SEED_DEPTH"
@@ -114,6 +115,7 @@ type nodeConfig struct {
 	SearchRequireAPIKey    bool
 	PublicSearchUIEnabled  bool
 	SearchLinksNewTab      bool
+	SearchClickCapture     bool
 	HTTPSRedirect          bool
 	PublicBaseURL          string
 	QueryLogMode           queryLogMode
@@ -210,6 +212,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		SearchRequireAPIKey:   derived.requireAPIKey,
 		PublicSearchUIEnabled: derived.publicSearchUI,
 		SearchLinksNewTab:     derived.searchLinksNewTab,
+		SearchClickCapture:    derived.searchClickCapture,
 		HTTPSRedirect:         derived.httpsRedirect,
 		PublicBaseURL:         derived.publicBaseURL,
 		QueryLogMode:          derived.queryLogMode,
@@ -265,6 +268,7 @@ type derivedConfigs struct {
 	peerSnippetFetch    bool
 	peerHTTPSPreferred  bool
 	searchLinksNewTab   bool
+	searchClickCapture  bool
 	swarmSeed           swarmSeedConfig
 	extractFetch        extractFetchConfig
 	remotePeerTimeout   time.Duration
@@ -415,6 +419,7 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 		peerSnippetFetch:    toggles.peerSnippetFetch,
 		peerHTTPSPreferred:  toggles.peerHTTPSPreferred,
 		searchLinksNewTab:   toggles.searchLinksNewTab,
+		searchClickCapture:  toggles.searchClickCapture,
 		swarmSeed:           swarmSeed,
 		extractFetch:        extractFetch,
 		remotePeerTimeout:   remotePeerTimeout,
@@ -434,6 +439,7 @@ type derivedBoolToggles struct {
 	peerHTTPSPreferred  bool
 	swarmMorphology     bool
 	searchLinksNewTab   bool
+	searchClickCapture  bool
 	peerSnippetFetch    bool
 }
 
@@ -488,6 +494,12 @@ func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, err
 	if err != nil {
 		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envSearchLinksNewTab, err)
 	}
+	// Off by default: capturing result clicks to mine implicit judgments persists
+	// query-to-clicked-URL associations, so an operator opts in (YagoRank RANK-00b).
+	searchClickCapture, err := boolEnv(getenv, envSearchClickCapture, false)
+	if err != nil {
+		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envSearchClickCapture, err)
+	}
 
 	return derivedBoolToggles{
 		requireAPIKey:       requireAPIKey,
@@ -500,6 +512,7 @@ func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, err
 		swarmMorphology:     swarmMorphology,
 		peerSnippetFetch:    peerSnippetFetch,
 		searchLinksNewTab:   searchLinksNewTab,
+		searchClickCapture:  searchClickCapture,
 	}, nil
 }
 

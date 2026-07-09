@@ -20,6 +20,10 @@ const (
 	pathSearchRankingTune = "/api/admin/v1/search/ranking/tune"
 	// tuneNDCGCutoff scores candidate weights at rank 10, the ADR-0035 target.
 	tuneNDCGCutoff = 10
+	// tuneMinClicks is the click floor a query must reach before its captured
+	// clicks become an implicit judgment, keeping single-click noise out of the
+	// training set (YagoRank RANK-00b).
+	tuneMinClicks = 3
 )
 
 // curatedJudgments is the read side of the judgment store the tuner trains on.
@@ -27,13 +31,21 @@ type curatedJudgments interface {
 	List(ctx context.Context) ([]judgments.Judgment, error)
 }
 
+// implicitJudgments derives graded judgments mined from captured result clicks;
+// the clickcapture store satisfies it. It is optional — a nil source leaves the
+// tuner training on the curated set alone.
+type implicitJudgments interface {
+	ImplicitJudgments(ctx context.Context, minClicks int) ([]searcheval.Judgment, error)
+}
+
 // rankingTuner fits the ranking profile to the curated judgment set by
 // coordinate ascent over a local searcher, without touching the live profile —
 // the operator applies the result through the ranking endpoint.
 type rankingTuner struct {
-	factory rankfit.SearcherFactory
-	ranking *rankingprofile.Holder
-	curated curatedJudgments
+	factory  rankfit.SearcherFactory
+	ranking  *rankingprofile.Holder
+	curated  curatedJudgments
+	implicit implicitJudgments
 }
 
 // newRankingTuner wires a tuner over the live search index. A nil index (the
@@ -44,6 +56,7 @@ func newRankingTuner(
 	hostRank func() hostrank.Table,
 	ranking *rankingprofile.Holder,
 	curated curatedJudgments,
+	implicit implicitJudgments,
 ) rankingTuner {
 	var factory rankfit.SearcherFactory
 	if index != nil {
@@ -56,7 +69,12 @@ func newRankingTuner(
 		}
 	}
 
-	return rankingTuner{factory: factory, ranking: ranking, curated: curated}
+	return rankingTuner{
+		factory:  factory,
+		ranking:  ranking,
+		curated:  curated,
+		implicit: implicit,
+	}
 }
 
 // Tune fits the ranking weights to the curated judgments and returns the
@@ -66,19 +84,12 @@ func (t rankingTuner) Tune(ctx context.Context) (rankfit.Report, error) {
 	if t.factory == nil {
 		return rankfit.Report{}, fmt.Errorf("search index unavailable for tuning")
 	}
-	stored, err := t.curated.List(ctx)
+	graded, err := t.trainingJudgments(ctx)
 	if err != nil {
-		return rankfit.Report{}, fmt.Errorf("list judgments: %w", err)
+		return rankfit.Report{}, err
 	}
-	if len(stored) == 0 {
-		return rankfit.Report{}, fmt.Errorf("no curated judgments to tune against")
-	}
-	graded := make([]searcheval.Judgment, 0, len(stored))
-	for _, judgment := range stored {
-		graded = append(graded, searcheval.Judgment{
-			Query:    judgment.Query,
-			Relevant: judgment.Grades,
-		})
+	if len(graded) == 0 {
+		return rankfit.Report{}, fmt.Errorf("no judgments to tune against")
 	}
 
 	options := rankfit.DefaultOptions()
@@ -89,6 +100,42 @@ func (t rankingTuner) Tune(ctx context.Context) (rankfit.Report, error) {
 	}
 
 	return report, nil
+}
+
+// trainingJudgments assembles the tuner's training set: curated judgments are
+// authoritative, and implicit judgments mined from result clicks fill in queries
+// the operator has not curated. Curated wins wholesale on a query, so a human
+// label is never diluted by click noise.
+func (t rankingTuner) trainingJudgments(
+	ctx context.Context,
+) ([]searcheval.Judgment, error) {
+	stored, err := t.curated.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list judgments: %w", err)
+	}
+	graded := make([]searcheval.Judgment, 0, len(stored))
+	curatedQueries := make(map[string]struct{}, len(stored))
+	for _, judgment := range stored {
+		curatedQueries[judgment.Query] = struct{}{}
+		graded = append(graded, searcheval.Judgment{
+			Query:    judgment.Query,
+			Relevant: judgment.Grades,
+		})
+	}
+	if t.implicit == nil {
+		return graded, nil
+	}
+	mined, err := t.implicit.ImplicitJudgments(ctx, tuneMinClicks)
+	if err != nil {
+		return nil, fmt.Errorf("mine implicit judgments: %w", err)
+	}
+	for _, judgment := range mined {
+		if _, curated := curatedQueries[judgment.Query]; !curated {
+			graded = append(graded, judgment)
+		}
+	}
+
+	return graded, nil
 }
 
 type searchRankingTuneEndpoint struct {

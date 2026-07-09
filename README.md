@@ -55,7 +55,9 @@ its binaries (`yago-node`, `yagocrawler`).
   weights are fit offline to NDCG against a judgment set, not hand-tuned: per-field
   BM25, the full Sequential Dependence Model (ordered *and* unordered proximity),
   host-authority, freshness, and a content-quality prior, all learned by
-  coordinate ascent. Pure-Go, CPU-only, no model runtime, no wire change.
+  coordinate ascent. The judgment set combines operator-curated qrels with
+  optional implicit judgments mined from position-debiased result clicks. Pure-Go,
+  CPU-only, no model runtime, no wire change.
 - **Multilingual morphology**: documents route to per-language analyzers
   (Snowball stemming), single-word swarm queries can expand into
   corpus-observed inflections, and partial words match through trigram fields.

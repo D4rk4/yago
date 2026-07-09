@@ -17,9 +17,10 @@ import (
 )
 
 type htmlEndpoint struct {
-	search      searchcore.Searcher
-	suggestions *recentQueries
-	newTab      bool
+	search       searchcore.Searcher
+	suggestions  *recentQueries
+	newTab       bool
+	clickCapture bool
 }
 
 type htmlSearchPage struct {
@@ -47,6 +48,7 @@ type htmlSearchPage struct {
 	NextURL            string
 	NewTab             bool
 	NavGroups          []htmlNavGroup
+	ClickCapture       bool
 }
 
 type htmlPageLink struct {
@@ -82,6 +84,7 @@ type htmlSearchItem struct {
 	SizeName    string
 	CachedURL   string
 	Provenance  string
+	Rank        int
 }
 
 var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!doctype html>
@@ -142,10 +145,10 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 {{range .PartialFailures}}<li>{{.Source}}: {{.Reason}}</li>{{end}}
 </ul>
 {{end}}
-<ol>
+<ol{{if .ClickCapture}} data-q="{{.Query}}"{{end}}>
 {{range .Items}}
 <li>
-<h2><a href="{{.URL}}"{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{.Title}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"> (opens in new tab)</span>{{end}}</a></h2>
+<h2><a href="{{.URL}}"{{if $.ClickCapture}} data-p="{{.Rank}}"{{end}}{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{.Title}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"> (opens in new tab)</span>{{end}}</a></h2>
 <p>{{.Description}}</p>
 <p>{{.DisplayURL}}{{if .Provenance}} [{{.Provenance}}]{{end}} {{.SizeName}} {{.Date}}{{if .CachedURL}} <a href="{{.CachedURL}}">cached</a>{{end}}</p>
 </li>
@@ -221,6 +224,26 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
   input.addEventListener("blur", function () { setTimeout(close, 120); });
 })();
 </script>
+{{if .ClickCapture}}<script>
+(function () {
+  var ol = document.querySelector("ol[data-q]");
+  if (!ol || !navigator.sendBeacon) return;
+  var q = ol.getAttribute("data-q");
+  function beacon(a) {
+    try {
+      var body = new URLSearchParams();
+      body.set("q", q);
+      body.set("u", a.href);
+      body.set("p", a.getAttribute("data-p") || "");
+      navigator.sendBeacon("/searchclick", body);
+    } catch (e) {}
+  }
+  ol.querySelectorAll("a[data-p]").forEach(function (a) {
+    a.addEventListener("click", function () { beacon(a); });
+    a.addEventListener("auxclick", function (e) { if (e.button === 1) beacon(a); });
+  });
+})();
+</script>{{end}}
 </body>
 </html>`))
 
@@ -249,6 +272,7 @@ func (e htmlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	page := responseHTML(r, resp)
 	page.Elapsed = fmt.Sprintf("%.2f s", htmlClock().Sub(started).Seconds())
 	page.NewTab = e.newTab
+	page.ClickCapture = e.clickCapture
 	_ = htmlSearchTemplate.Execute(w, page)
 }
 
@@ -260,17 +284,21 @@ func responseHTML(r *http.Request, resp searchcore.Response) htmlSearchPage {
 	rawSearchURL := searchURL(base, resp.Request)
 
 	page := htmlSearchPage{
-		Query:              resp.Request.Query,
-		Resource:           string(resp.Request.Source),
-		ContentDomain:      string(resp.Request.ContentDomain),
-		SearchURL:          searchBaseURL(r),
-		RSSURL:             requestBaseURL(r) + "/yacysearch.rss" + rawSearchURL[len(base):],
-		JSONURL:            requestBaseURL(r) + "/yacysearch.json" + rawSearchURL[len(base):],
-		OpenSearchURL:      requestBaseURL(r) + "/opensearchdescription.xml",
-		TotalResults:       strconv.Itoa(resp.TotalResults),
-		Recovered:          resp.Recovered != "",
-		DidYouMean:         resp.DidYouMean,
-		Items:              responseHTMLItems(resp.Results, resp.Request.Terms),
+		Query:         resp.Request.Query,
+		Resource:      string(resp.Request.Source),
+		ContentDomain: string(resp.Request.ContentDomain),
+		SearchURL:     searchBaseURL(r),
+		RSSURL:        requestBaseURL(r) + "/yacysearch.rss" + rawSearchURL[len(base):],
+		JSONURL:       requestBaseURL(r) + "/yacysearch.json" + rawSearchURL[len(base):],
+		OpenSearchURL: requestBaseURL(r) + "/opensearchdescription.xml",
+		TotalResults:  strconv.Itoa(resp.TotalResults),
+		Recovered:     resp.Recovered != "",
+		DidYouMean:    resp.DidYouMean,
+		Items: responseHTMLItems(
+			resp.Results,
+			resp.Request.Terms,
+			resp.Request.Offset,
+		),
 		PartialFailures:    resp.PartialFailures,
 		ShowResults:        resp.Request.Query != "",
 		ShowPartialFailure: len(resp.PartialFailures) > 0,
@@ -405,12 +433,19 @@ func htmlPageURL(base string, params url.Values, limit, offset int) string {
 	return base + "?" + values.Encode()
 }
 
-func responseHTMLItems(results []searchcore.Result, terms []string) []htmlSearchItem {
+func responseHTMLItems(
+	results []searchcore.Result,
+	terms []string,
+	offset int,
+) []htmlSearchItem {
 	items := make([]htmlSearchItem, 0, len(results))
-	for _, result := range results {
+	for index, result := range results {
 		item := htmlSearchItem{
-			Title:      result.Title,
-			URL:        result.URL,
+			Title: result.Title,
+			URL:   result.URL,
+			// Rank is the result's 1-based position across all pages, so click
+			// capture debiases by the position the searcher actually examined.
+			Rank:       offset + index + 1,
 			DisplayURL: result.DisplayURL,
 			// Highlight escapes the snippet before adding <mark>, so this is
 			// the only HTML the description may carry.

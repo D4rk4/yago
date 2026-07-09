@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
+	"github.com/D4rk4/yago/yagonode/internal/clickcapture"
 	"github.com/D4rk4/yago/yagonode/internal/crawling"
 	"github.com/D4rk4/yago/yagonode/internal/crawlschedule"
 	"github.com/D4rk4/yago/yagonode/internal/crawlurls"
@@ -121,13 +122,16 @@ var (
 	}
 )
 
-// newNodeWireMux builds the peer-protocol mux and its guarded wire router,
-// keeping assembleNode within its length budget.
+// newNodeWireMux builds the peer-protocol mux and its guarded wire router, and
+// mounts the peer landing page on the mux root, keeping assembleNode within its
+// length budget. The landing's exact-match "/{$}" route is order-independent of
+// the /yacy/* wire handlers mounted afterwards.
 func newNodeWireMux(
 	config nodeConfig,
 	report nodestatus.Report,
 ) (*http.ServeMux, httpguard.WireRouter) {
 	mux := http.NewServeMux()
+	mountPeerLanding(mux)
 
 	return mux, httpguard.NewWireRouter(mux, newRuntimeWireGate(config, report))
 }
@@ -184,7 +188,6 @@ func assembleNode(
 	if err != nil {
 		return node{}, err
 	}
-	mountPeerLanding(mux)
 	return newAssembledNode(nodeParts{
 		mux:        mux,
 		publicMux:  surfaces.publicMux,
@@ -211,6 +214,7 @@ func assembleNode(
 		spell:      surfaces.spell,
 		wordForms:  surfaces.wordForms,
 		judgments:  surfaces.judgments,
+		clicks:     surfaces.clicks,
 		swarmMorph: config.SwarmMorphology,
 	}, telemetry.toggles), nil
 }
@@ -253,6 +257,7 @@ type nodeSurfaces struct {
 	wordForms *wordforms.Holder
 	denylist  *urldenylist.Store
 	judgments *judgments.Store
+	clicks    *clickcapture.Store
 	activity  *searchactivity.Tracker
 	schedules *crawlschedule.Store
 	theme     *portaltheme.Theme
@@ -272,6 +277,10 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	judgmentStore, err := judgments.Open(in.vault)
 	if err != nil {
 		return nodeSurfaces{}, fmt.Errorf("open search judgments: %w", err)
+	}
+	clickStore, err := clickcapture.Open(in.vault)
+	if err != nil {
+		return nodeSurfaces{}, fmt.Errorf("open search clicks: %w", err)
 	}
 	theme, err := portaltheme.Open(in.vault, themeEventSink(in.telemetry.recorder))
 	if err != nil {
@@ -293,6 +302,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 			spell:    spellHolder,
 			words:    wordFormsHolder,
 			theme:    theme,
+			clicks:   clickStore,
 		},
 	))
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
@@ -331,6 +341,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		activity:  activityTracker,
 		schedules: schedules,
 		judgments: judgmentStore,
+		clicks:    clickStore,
 	}, nil
 }
 
@@ -346,6 +357,7 @@ type publicSearchParts struct {
 	spell    *spellcheck.Holder
 	words    *wordforms.Holder
 	theme    *portaltheme.Theme
+	clicks   *clickcapture.Store
 }
 
 func newPublicSearchAssembly(
@@ -381,6 +393,8 @@ func newPublicSearchAssembly(
 		swarmSeed:          in.config.SwarmSeed,
 		autocrawlerCrawl:   in.config.AutocrawlerCrawl,
 		linksNewTab:        in.config.SearchLinksNewTab,
+		clickCapture:       in.config.SearchClickCapture,
+		clickRecorder:      parts.clicks,
 		theme:              parts.theme,
 	}
 }
@@ -410,6 +424,7 @@ type nodeParts struct {
 	spell      *spellcheck.Holder
 	wordForms  *wordforms.Holder
 	judgments  *judgments.Store
+	clicks     *clickcapture.Store
 	swarmMorph bool
 	theme      *portaltheme.Theme
 }
@@ -420,6 +435,7 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 		parts.hostRank.Current,
 		parts.ranking,
 		parts.judgments,
+		parts.clicks,
 	)
 
 	return node{

@@ -21,7 +21,12 @@ func MountJSON(mux *http.ServeMux, search searchcore.Searcher) {
 // used to build autocomplete suggestions from indexed page titles; it is kept
 // separate from search so typeahead never triggers the remote swarm fan-out or
 // the web-search fallback that the main search path may reach.
-func Mount(mux *http.ServeMux, search, suggest searchcore.Searcher, linksNewTab bool) {
+func Mount(
+	mux *http.ServeMux,
+	search, suggest searchcore.Searcher,
+	linksNewTab bool,
+	clicks ClickCapture,
+) {
 	suggestions := newRecentQueries()
 	index := indexSuggester{search: suggest}
 	mux.Handle(yagoproto.PathYaCySearchJSON, jsonEndpoint{
@@ -33,13 +38,17 @@ func Mount(mux *http.ServeMux, search, suggest searchcore.Searcher, linksNewTab 
 		suggestions: suggestions,
 	})
 	mux.Handle(yagoproto.PathYaCySearchHTML, htmlEndpoint{
-		search:      search,
-		suggestions: suggestions,
-		newTab:      linksNewTab,
+		search:       search,
+		suggestions:  suggestions,
+		newTab:       linksNewTab,
+		clickCapture: clicks.Enabled && clicks.Recorder != nil,
 	})
 	mux.Handle(yagoproto.PathOpenSearch, openSearchEndpoint{})
 	mux.Handle(yagoproto.PathSuggestJSON, suggestEndpoint{index: index, suggestions: suggestions})
 	mux.Handle(yagoproto.PathSuggestXML, suggestXMLEndpoint{index: index, suggestions: suggestions})
+	if clicks.Enabled && clicks.Recorder != nil {
+		mux.Handle(pathSearchClick, clickEndpoint{recorder: clicks.Recorder})
+	}
 }
 
 func (e jsonEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {

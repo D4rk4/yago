@@ -63,6 +63,12 @@ type publicSearchAssembly struct {
 	swarmSeed            swarmSeedConfig
 	autocrawlerCrawl     seedCrawlOptions
 	linksNewTab          bool
+	// clickCapture enables result-click capture on the results page, and
+	// clickRecorder is where captured clicks land (the clickcapture store); the
+	// recorder is always wired so historical clicks train the learner even when
+	// capture is currently off, while clickCapture gates the live beacon.
+	clickCapture  bool
+	clickRecorder yacysearch.ClickRecorder
 	// theme carries the operator portal theme (ADR-0033) into the portal
 	// mount; nil keeps the built-in render only.
 	theme *portaltheme.Theme
@@ -234,7 +240,10 @@ func mountNodePublicSearch(
 	// same as served results) so typeahead never fans out to the swarm or the web
 	// fallback that the main search path can reach.
 	suggestSource := withDenylistFilter(local, assembly.denylist)
-	yacysearch.Mount(mux, search, suggestSource, assembly.linksNewTab)
+	yacysearch.Mount(mux, search, suggestSource, assembly.linksNewTab, yacysearch.ClickCapture{
+		Enabled:  assembly.clickCapture,
+		Recorder: assembly.clickRecorder,
+	})
 	cachedpage.Mount(mux, assembly.storage.documentDirectory)
 	faviconproxy.Mount(mux, assembly.client)
 	faviconproxy.MountImages(mux, assembly.client)
