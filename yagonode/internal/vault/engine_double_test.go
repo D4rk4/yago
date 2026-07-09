@@ -63,6 +63,8 @@ func (e *doubleEngine) Close() error {
 
 func (e *doubleEngine) QuotaBytes() int64 { return e.quotaBytes }
 
+func (e *doubleEngine) SetQuotaBytes(quotaBytes int64) { e.quotaBytes = quotaBytes }
+
 func (e *doubleEngine) UsedBytes(ctx context.Context) (int64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, fmt.Errorf("context: %w", err)

@@ -117,6 +117,26 @@ func (v *Vault) GrowShards(ctx context.Context, maxSplits int) (int, error) {
 	return splits, nil
 }
 
+// quotaSetter is the optional engine capability behind Vault.SetQuota. The
+// sharded engine carries a mutable ceiling; an engine without one keeps the
+// quota it opened with.
+type quotaSetter interface {
+	SetQuotaBytes(quotaBytes int64)
+}
+
+// SetQuota changes the live disk-budget ceiling without reopening the vault.
+// AtCapacity and the eviction sweep read QuotaBytes each cycle, so the new
+// ceiling takes effect on the next sweep — no restart, no reshard (ADR-0037 D).
+// It is a no-op on engines whose quota is fixed at open.
+func (v *Vault) SetQuota(quotaBytes int64) {
+	if v == nil || v.engine == nil {
+		return
+	}
+	if setter, ok := v.engine.(quotaSetter); ok {
+		setter.SetQuotaBytes(quotaBytes)
+	}
+}
+
 func (v *Vault) AtCapacity(ctx context.Context) (bool, error) {
 	if v == nil || v.engine == nil {
 		return false, errVaultClosed

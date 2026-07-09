@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -14,14 +15,13 @@ import (
 type engine struct {
 	mu         sync.RWMutex
 	buckets    map[vault.Name]map[string][]byte
-	quotaBytes int64
+	quotaBytes atomic.Int64
 }
 
 func Open(quotaBytes int64) (*vault.Vault, error) {
-	vaulted, _ := vault.New(&engine{
-		buckets:    map[vault.Name]map[string][]byte{},
-		quotaBytes: quotaBytes,
-	})
+	e := &engine{buckets: map[vault.Name]map[string][]byte{}}
+	e.quotaBytes.Store(quotaBytes)
+	vaulted, _ := vault.New(e)
 
 	return vaulted, nil
 }
@@ -75,8 +75,13 @@ func (e *engine) Close() error {
 }
 
 func (e *engine) QuotaBytes() int64 {
-	return e.quotaBytes
+	return e.quotaBytes.Load()
 }
+
+// SetQuotaBytes changes the live disk-budget ceiling without reopening the
+// vault, mirroring the sharded engine so a quota change applies without a
+// restart (ADR-0037 D).
+func (e *engine) SetQuotaBytes(quotaBytes int64) { e.quotaBytes.Store(quotaBytes) }
 
 func (e *engine) UsedBytes(ctx context.Context) (int64, error) {
 	if err := ctx.Err(); err != nil {

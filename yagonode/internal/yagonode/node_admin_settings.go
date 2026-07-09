@@ -48,6 +48,7 @@ func loadRuntimeSettings(
 		return consoleAdminSources{}, nil, config, err
 	}
 	toggles := newRuntimeToggles(config)
+	toggles.SetQuotaSink(storage.SetQuota)
 
 	sources := consoleAdminSources{
 		settings: newSettingsSource(store, envConfig, toggles, recorder),

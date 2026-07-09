@@ -37,6 +37,10 @@ func storageAndAccessDefinitions() []settingDefinition {
 
 				return config
 			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				quotaBytes, _ := parseByteSize(value)
+				toggles.ApplyStorageQuota(quotaBytes)
+			},
 		},
 		storageCompactionDefinition(),
 		storageAutosplitDefinition(),

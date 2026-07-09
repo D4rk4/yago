@@ -23,6 +23,10 @@ type runtimeToggles struct {
 	// autosplit gates automatic shard-pool growth; the growth loop reads it each
 	// cycle (ADR-0037).
 	autosplit atomic.Bool
+	// storageQuota carries a new disk-budget ceiling to the vault. It is wired at
+	// boot to vault.SetQuota and holds a func(int64); a storage.quota admin change
+	// flows through it so the new ceiling applies without a restart (ADR-0037 D).
+	storageQuota atomic.Value
 }
 
 func newRuntimeToggles(config nodeConfig) *runtimeToggles {
@@ -65,6 +69,25 @@ func (t *runtimeToggles) AutosplitEnabled() bool {
 func (t *runtimeToggles) SetAutosplitEnabled(enabled bool) {
 	if t != nil {
 		t.autosplit.Store(enabled)
+	}
+}
+
+// SetQuotaSink wires the callback that carries a new storage quota to the vault.
+// It is set once at boot, before any admin request can fire ApplyStorageQuota.
+func (t *runtimeToggles) SetQuotaSink(sink func(int64)) {
+	if t != nil && sink != nil {
+		t.storageQuota.Store(sink)
+	}
+}
+
+// ApplyStorageQuota pushes a new disk-budget ceiling to the vault when a sink is
+// wired; the eviction sweep honors the new ceiling on its next cycle (ADR-0037 D).
+func (t *runtimeToggles) ApplyStorageQuota(quotaBytes int64) {
+	if t == nil {
+		return
+	}
+	if sink, ok := t.storageQuota.Load().(func(int64)); ok {
+		sink(quotaBytes)
 	}
 }
 

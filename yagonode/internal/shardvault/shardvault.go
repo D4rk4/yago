@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -95,17 +96,19 @@ func openEngine(dir string, quotaBytes int64) (*engine, error) {
 		shards[i] = db
 	}
 
-	return &engine{
-		shards:     shards,
-		dir:        dir,
-		quotaBytes: quotaBytes,
-		level:      manifest.Level,
-		split:      manifest.Split,
+	e := &engine{
+		shards: shards,
+		dir:    dir,
+		level:  manifest.Level,
+		split:  manifest.Split,
 		// Sized to the cap so a split never grows it: a []sync.Mutex cannot be
 		// appended without copying locks. Indices past the live count stay unused
 		// until the pool grows into them (ADR-0037).
 		shardLocks: make([]sync.Mutex, maxShards),
-	}, nil
+	}
+	e.quotaBytes.Store(quotaBytes)
+
+	return e, nil
 }
 
 // quarantineSuffix marks a shard file set aside after failing to open; the
@@ -159,9 +162,12 @@ func closeShards(shards []*bolt.DB) {
 }
 
 type engine struct {
-	shards     []*bolt.DB
-	dir        string
-	quotaBytes int64
+	shards []*bolt.DB
+	dir    string
+	// quotaBytes is the live disk-budget ceiling. It is atomic so the admin
+	// console can raise or lower it without a restart (ADR-0037 D): AtCapacity
+	// and the eviction sweep read it each cycle.
+	quotaBytes atomic.Int64
 	// level and split are the linear-hashing state (ADR-0037): the pool holds
 	// 2^level + split shards and route reads them to place a record. They change
 	// only under the exclusive globalGate (a split), so a gate-holding reader
@@ -351,7 +357,12 @@ func shardSizeAndFree(db *bolt.DB) (size, free int64, err error) {
 	return size, free, nil
 }
 
-func (e *engine) QuotaBytes() int64 { return e.quotaBytes }
+func (e *engine) QuotaBytes() int64 { return e.quotaBytes.Load() }
+
+// SetQuotaBytes changes the live disk-budget ceiling without reopening the
+// vault; the eviction sweep and AtCapacity pick it up on their next cycle
+// (ADR-0037 D).
+func (e *engine) SetQuotaBytes(quotaBytes int64) { e.quotaBytes.Store(quotaBytes) }
 
 func (e *engine) Close() error {
 	for _, db := range e.shards {

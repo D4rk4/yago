@@ -145,6 +145,7 @@ func bootNode(
 	if err != nil {
 		return err
 	}
+	storageVault.SetQuota(config.StorageQuotaByte)
 	if err := validateNodeBinds(config); err != nil {
 		return fmt.Errorf("validate listen addresses: %w", err)
 	}
