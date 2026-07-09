@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/cachedpage"
@@ -45,12 +46,28 @@ type htmlSearchPage struct {
 	PrevURL            string
 	NextURL            string
 	NewTab             bool
+	NavGroups          []htmlNavGroup
 }
 
 type htmlPageLink struct {
 	Number  int
 	URL     string
 	Current bool
+}
+
+// htmlNavGroup is one navigator (Provider, Filetype, Language, …) rendered as a
+// collapsible block of refine links on the human search surface.
+type htmlNavGroup struct {
+	Name     string
+	Elements []htmlNavElement
+}
+
+// htmlNavElement is one navigator value; URL is empty for dimensions without a
+// query operator (protocols, dates), which render as a plain labelled count.
+type htmlNavElement struct {
+	Name  string
+	Count int
+	URL   string
 }
 
 // htmlPagerWindow caps how many numbered page links the pager shows.
@@ -110,6 +127,16 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 <h1>Search for {{.Query}}</h1>
 {{if .Recovered}}<p role="status">No exact matches — showing close matches instead.{{if .DidYouMean}} Did you mean <a href="{{.DidYouMeanURL}}">{{.DidYouMean}}</a>?{{end}}</p>{{end}}
 <p role="status">{{.TotalResults}} results{{if .Elapsed}} ({{.Elapsed}}){{end}}</p>
+{{if .NavGroups}}
+<nav aria-label="Refine results">
+{{range .NavGroups}}<details>
+<summary>{{.Name}}</summary>
+<ul>
+{{range .Elements}}<li>{{if .URL}}<a href="{{.URL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}} ({{.Count}})</li>
+{{end}}</ul>
+</details>
+{{end}}</nav>
+{{end}}
 {{if .ShowPartialFailure}}
 <ul>
 {{range .PartialFailures}}<li>{{.Source}}: {{.Reason}}</li>{{end}}
@@ -254,8 +281,46 @@ func responseHTML(r *http.Request, resp searchcore.Response) htmlSearchPage {
 		page.DidYouMeanURL = base + "?" + values.Encode()
 	}
 	applyHTMLPagination(&page, base, r.URL.Query(), resp)
+	page.NavGroups = htmlNavGroups(base, r.URL.Query(), resp)
 
 	return page
+}
+
+// htmlNavGroups renders the shared navigation model as refine links for the
+// human search surface. A linkable value appends its query operator to the
+// current query while preserving every other active filter and returning to the
+// first page, so refining never drops the operator's neighbours (the wire
+// surfaces keep the query-only refine URL that YaCy clients expect).
+func htmlNavGroups(base string, params url.Values, resp searchcore.Response) []htmlNavGroup {
+	built := buildNavigation(resp.Request.Query, resp.Facets)
+	groups := make([]htmlNavGroup, 0, len(built))
+	for _, group := range built {
+		elements := make([]htmlNavElement, 0, len(group.elements))
+		for _, element := range group.elements {
+			nav := htmlNavElement{Name: element.name, Count: element.count}
+			if element.modifier != "" {
+				nav.URL = htmlRefineURL(base, params, resp.Request.Query, element.modifier)
+			}
+			elements = append(elements, nav)
+		}
+		groups = append(groups, htmlNavGroup{Name: group.displayName, Elements: elements})
+	}
+
+	return groups
+}
+
+// htmlRefineURL appends a navigator's query operator to the current query,
+// preserving the client's other parameters and resetting to the first page.
+func htmlRefineURL(base string, params url.Values, query, modifier string) string {
+	values := maps.Clone(params)
+	if values == nil {
+		values = url.Values{}
+	}
+	values.Set(yagoproto.FieldQuery, strings.TrimSpace(query+" "+modifier))
+	values.Set(yagoproto.FieldStartRecord, "0")
+	values.Del(yagoproto.FieldCount)
+
+	return base + "?" + values.Encode()
 }
 
 // applyHTMLPagination fills the prev/next navigation from the request window and
