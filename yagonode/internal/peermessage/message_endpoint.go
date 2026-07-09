@@ -10,6 +10,12 @@ import (
 	"github.com/D4rk4/yago/yagoproto"
 )
 
+// acceptedMessageSize and acceptedAttachmentSize mirror YaCy message.java's
+// hardcoded advertised limits (messagesize=10240, attachmentsize=0): upstream
+// declines attachments and does not require the sender's iam hash (it is
+// commented out there), so accepting a decoded text subject and body from a
+// network-matched, correctly addressed peer is full parity, not a narrowing
+// (verified against source/net/yacy/htroot/yacy/message.java, 2026-07).
 const (
 	acceptedMessageSize    = 10240
 	acceptedAttachmentSize = 0

@@ -140,10 +140,10 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Name:     "Peer message inbox",
 		Path:     yagoproto.PathMessage,
 		Methods:  methods(yagoproto.MessageEndpointMethods),
-		State:    Partial,
-		Behavior: "Accepts permission checks without requiring iam or parsing post-only body fields and inbound peer message posts into a durable inbox.",
+		State:    Implemented,
+		Behavior: "Serves the youare-addressed permission handshake and stores post-only peer message posts, with the subject and body decoded from the wire form, into a durable inbox.",
 		Evidence: []string{"yagonode/internal/peermessage/*_test.go", "yagoproto/message_test.go"},
-		Notes:    "Attachments are advertised as size 0 and are not stored.",
+		Notes:    "Full parity with upstream message.java, which itself advertises attachmentsize 0, stores no attachments, and comments out the iam requirement (verified against source/net/yacy/htroot/yacy/message.java, 2026-07).",
 	},
 	{
 		Name:     "Peer profile export",

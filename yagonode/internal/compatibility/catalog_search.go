@@ -106,4 +106,12 @@ var searchSurfaceSpecs = []surfaceSpec{
 		Behavior: "Not mounted, and no longer a target: upstream YaCy removed GSA support in 2020, " +
 			"so there is no live surface to be compatible with.",
 	},
+	{
+		Name:  "MCP and OpenAI-compatible AI surfaces",
+		Path:  "/tools*, /v1/*, /api/tags",
+		State: Unsupported,
+		Behavior: "Deliberate non-goal (operator decision, 2026-07): upstream YaCy grew an MCP " +
+			"JSON-RPC search server and OpenAI/Ollama proxy endpoints, but this node's agent " +
+			"surface is the Tavily-compatible /search and /extract API, one agent protocol kept simple.",
+	},
 }

@@ -4,6 +4,15 @@ This project is a Go YaCy-compatible peer in progress. It does not claim full
 Java YaCy Search Server compatibility. Compatibility is implemented and verified
 surface by surface.
 
+As of 2026-07 the surface-by-surface review is complete: every mounted surface is
+either `implemented` (served with tests) or carries a recorded `partial` /
+`unsupported` decision — none is unfinished work. The surfaces that remain
+`partial` are narrower by deliberate scoping, not pending: remote crawl execution
+is disabled for SSRF safety (so `/yacy/crawlReceipt.html` and the `/yacy/urls.xml`
+delegation feed stay minimal), fetch-on-extract is likewise disabled (`/extract`),
+the Tavily-compatible `/search` synthesizes no LLM answer and does not steer by
+date, and `/crawl` dispatch depends on crawler integration being configured.
+
 The ops listener exposes the same status as JSON:
 
 ```sh
@@ -35,9 +44,9 @@ Status values:
 | Bootstrap seeds JSON | `/p2p/seeds.json` | GET, POST | implemented | Serves the peers-array JSON bootstrap shape (hash-first seed maps plus public `Address` entries, JSONP `callback` supported) from the same backend as `/yacy/seedlist.json`. |
 | Host-link index | `/yacy/idx.json` | GET, POST | implemented | Serves the `object=host` shape with a bounded incoming host-link index counted from stored document outlinks per source host, advertising the exact `String h-6, Cardinal m-4 {b256}, Cardinal c-4 {b256}` rowdef and emitting each reference in YaCy's `toPropertyForm(':')` shape. `object=host` is upstream `idx.java`'s only implemented object (verified against `source/net/yacy/htroot/yacy/idx.java` + `WebStructureGraph.java`, 2026-07). |
 | Shared blacklist export | `/yacy/list.html` | GET, POST | implemented | Checks the YaCy network unit and serves `col=black` from files named in `YAGO_DATA_DIR/SETTINGS/yacy.conf` `BlackLists.Shared`, under `YAGO_DATA_DIR/LISTS`, honouring the `listname` filter and stripping comment lines. `col=black` is upstream `list.java`'s only implemented column (verified against `source/net/yacy/htroot/yacy/list.java`, 2026-07). |
-| Peer message inbox | `/yacy/message.html` | GET, POST | partial | Accepts permission checks without requiring `iam` or parsing post-only body fields and stores inbound message posts; attachments are not stored. |
+| Peer message inbox | `/yacy/message.html` | GET, POST | implemented | Serves the YaCy message protocol at full parity (verified against `source/net/yacy/htroot/yacy/message.java`, 2026-07): a network-matched peer whose `youare` addresses this node gets a `permission` grant advertising `messagesize=10240` and `attachmentsize=0`, and a `post` from a peer carrying its `myseed` has its wire-decoded `subject` and `message` body stored in a durable inbox and answered `Thank you!`. The two behaviors that looked like gaps are upstream's own: message.java hardcodes `attachmentsize=0` (attachments are declined by YaCy too) and comments out the `iam` hash (the sender is taken from the trusted `myseed`), so this is not a narrowing. |
 | Peer profile export | `/yacy/profile.html` | GET, POST | implemented | Serves the YaCy profile text shape (`key=value` lines, `\r` stripped and `\n` escaped, empty pairs dropped) from `YAGO_DATA_DIR/SETTINGS/profile.txt` parsed as Java properties. A missing file yields an empty profile in upstream too (`profile.java` swallows the read error, verified against `source/net/yacy/htroot/yacy/profile.java`, 2026-07). |
-| Remote crawl URL feed | `/yacy/urls.xml` | GET, POST | partial | Serves URL-hash metadata feeds and safe empty remote-crawl feeds. |
+| Remote crawl URL feed | `/yacy/urls.xml` | GET, POST | partial | Serves the URL-hash metadata feed (resolving requested hashes to stored URL metadata) at parity, and answers the remote-crawl delegation feed with a well-formed empty document. The empty delegation feed is a deliberate consequence of the node not delegating crawl work to remote peers — the same remote-crawl scoping that keeps `/yacy/crawlReceipt.html` narrower — so bringing it to full parity is out of scope while remote crawl stays disabled, not unfinished work. |
 | Remote crawl receipt | `/yacy/crawlReceipt.html` | POST | partial | Accepts the wire shape and answers every rejection with YaCy's retry delay of 3600 — including a network-auth failure, matching upstream, which sets delay=3600 before the auth return (verified against `source/net/yacy/htroot/yacy/crawlReceipt.java`, 2026-07) — while remote crawl execution is disabled. Upstream's full delay matrix (9999 for Robinson/domain/blacklist rejections, 10 on a successful `fill` with fulltext store and delegated-URL cleanup) applies only to enabled remote crawl and stays out of scope with it. |
 
 ## Search Surfaces
@@ -103,6 +112,7 @@ for a given query hash is non-deterministic.
 | Admin authentication | `/api/admin/v1/auth/*` | GET, POST | implemented | First-run admin setup, Argon2id-verified login issuing an HttpOnly `SameSite=Strict` session cookie plus a CSRF token, session introspection, and logout that invalidates the server-side session. Login is rate limited and a failed login does not reveal whether the account exists. |
 | Admin API keys | `/api/admin/v1/auth/api-keys` | GET, POST, DELETE | implemented | Mints high-entropy API keys with explicit scopes, returns the secret once, stores only its SHA-256 hash with a public identifier, lists key metadata and last-used time without the secret, and revokes keys by identifier. A `Authorization: Bearer <key>` request authenticates operations as an alternative to the session cookie, is checked against the scope the path needs, is rate limited per key, and needs no CSRF token. |
 | Metrics | `/metrics` | GET | implemented | Serves Prometheus metrics for node operations. Requires a valid admin session or an API key with the `admin:read` scope. |
+| Recent events | `/api/admin/v1/events` | GET | implemented | Serves recent structured node events newest-first from a bounded in-memory ring, each with a UTC time, severity, category, name, and message; an optional `limit` bounds the count and a non-positive or non-numeric `limit` is rejected with `400`. Events are in-memory only and do not survive a restart. Requires a valid admin session or an API key with the `admin:read` scope. |
 | DHT gate report | `/api/admin/v1/network/dht/gates` | GET | implemented | Serves outbound DHT gate state, configuration, and gate results. Requires a valid admin session or an API key with the `admin:read` scope. |
 | Search index stats | `/api/admin/v1/index/stats` | GET | implemented | Serves local search backend availability, backend name, indexed document count, and last index update time. Requires a valid admin session or an API key with the `admin:read` scope. |
 | Search ranking explain | `/api/admin/v1/search/explain` | POST | implemented | Previews a local search query under caller-supplied ranking weights and returns each result's score and score explanation without saving the weights. Requires a valid admin session with a CSRF token, or an API key with the `search:read` scope. |
