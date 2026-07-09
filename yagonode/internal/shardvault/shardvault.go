@@ -192,6 +192,10 @@ type engine struct {
 	// and on update-in-place writes.
 	shardLocks []sync.Mutex
 	globalGate sync.RWMutex
+	// viewsInFlight counts active read transactions so bulk writes can yield
+	// the disk to interactive reads (IO-PRIO-01): an Update briefly defers
+	// while reads are running, bounded so readers can never starve writers.
+	viewsInFlight atomic.Int64
 }
 
 // errShardContended aborts a fast-path update whose next shard is locked by a
@@ -248,7 +252,8 @@ func (e *engine) Provision(name vault.Name) error {
 // relaxed atomicity ADR-0025 documents. Updates touching disjoint shards run
 // concurrently; on shard contention fn is rolled back and re-run once under
 // the exclusive gate, so fn must not leak side effects before it returns.
-func (e *engine) Update(_ context.Context, fn func(vault.EngineTxn) error) error {
+func (e *engine) Update(ctx context.Context, fn func(vault.EngineTxn) error) error {
+	e.yieldToReads(ctx)
 	e.globalGate.RLock()
 	err := e.runUpdate(fn, true)
 	e.globalGate.RUnlock()
@@ -298,6 +303,8 @@ func (e *engine) View(_ context.Context, fn func(vault.EngineTxn) error) error {
 	// Readers hold the gate shared so a compaction swap (exclusive) waits for
 	// in-flight reads to finish and no read starts mid-swap. The rollback defer
 	// is declared last so it runs before the gate is released.
+	e.viewsInFlight.Add(1)
+	defer e.viewsInFlight.Add(-1)
 	e.globalGate.RLock()
 	defer e.globalGate.RUnlock()
 
@@ -308,6 +315,25 @@ func (e *engine) View(_ context.Context, fn func(vault.EngineTxn) error) error {
 	}
 
 	return nil
+}
+
+// yieldToReads briefly defers a write while read transactions are in flight,
+// so interactive reads (searches, admin pages, session lookups) reach the disk
+// ahead of bulk ingest writes and their fsyncs (IO-PRIO-01). The yield is
+// bounded: a read-heavy node delays its writers by at most yieldCap per
+// update, so writers cannot starve, and a node with no concurrent reads pays
+// nothing.
+func (e *engine) yieldToReads(ctx context.Context) {
+	const (
+		yieldStep = 2 * time.Millisecond
+		yieldCap  = 50 * time.Millisecond
+	)
+	for waited := time.Duration(0); waited < yieldCap; waited += yieldStep {
+		if e.viewsInFlight.Load() == 0 || ctx.Err() != nil {
+			return
+		}
+		time.Sleep(yieldStep)
+	}
 }
 
 // UsedBytes reports the live data held across the shards, excluding bbolt free

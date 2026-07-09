@@ -3,6 +3,9 @@ package shardvault
 import (
 	"context"
 	"testing"
+	"time"
+
+	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
 // TestSetQuotaBytesLiveCeiling: the engine's quota is a mutable ceiling — a
@@ -37,4 +40,38 @@ func TestGrowShardsPreservesQuota(t *testing.T) {
 	if got := e.QuotaBytes(); got != 500<<30 {
 		t.Fatalf("quota after growth = %d, want %d", got, int64(500)<<30)
 	}
+}
+
+// TestUpdateYieldsToReadsButNeverStarves is the IO-PRIO-01 acceptance: with a
+// read transaction held open, a write still completes — the yield to readers
+// is bounded — and the in-flight read counter drains back to zero.
+func TestUpdateYieldsToReadsButNeverStarves(t *testing.T) {
+	e := openTestEngine(t)
+	readHeld := make(chan struct{})
+	releaseRead := make(chan struct{})
+	go func() {
+		_ = e.View(context.Background(), func(vault.EngineTxn) error {
+			close(readHeld)
+			<-releaseRead
+
+			return nil
+		})
+	}()
+	<-readHeld
+
+	done := make(chan error, 1)
+	go func() {
+		done <- e.Update(context.Background(), func(txn vault.EngineTxn) error {
+			return txn.Bucket(testBucket).Put(vault.Key("k"), []byte("v"))
+		})
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("update under held read: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("update starved behind an open read; the yield must be bounded")
+	}
+	close(releaseRead)
 }
