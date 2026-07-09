@@ -126,6 +126,7 @@ func assembleFrontier(
 		pace,
 		frontier.WithMaxHostConcurrency(crawl.MaxHostConcurrency),
 		frontier.WithMaxPagesPerRun(crawl.MaxPagesPerRun),
+		frontier.WithDefaultRunRate(crawl.RunPagesPerMinute),
 		frontier.WithRunTally(tally),
 	)
 }

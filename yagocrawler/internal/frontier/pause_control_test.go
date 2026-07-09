@@ -156,6 +156,44 @@ func TestCancelRejectsDiscoveredLinks(t *testing.T) {
 	}
 }
 
+// TestDefaultRunRateThrottlesFromFirstJob: with a frontier-wide default rate,
+// a freshly seeded run paces immediately — no operator SetRate needed — and an
+// explicit SetRate of zero deliberately unleashes it past the default.
+func TestDefaultRunRateThrottlesFromFirstJob(t *testing.T) {
+	f := frontier.NewFrontier(8, nil, frontier.WithDefaultRunRate(1))
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxDepth:        0,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	provenance := []byte("default-rated-run")
+
+	f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle, "https://a.example/", "https://b.example/"),
+		provenance,
+		profile,
+		func(bool) {},
+	)
+
+	first := receiveJob(t, f)
+	f.Done(first, false)
+
+	// One page per minute spaces dispatches 60s apart, so the second job stays
+	// withheld well beyond the test window without any explicit SetRate.
+	select {
+	case job := <-f.Jobs():
+		t.Fatalf("default-rated run dispatched %q too soon", job.URL)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// An explicit zero rate overrides the default and unleashes the run.
+	f.SetRate(provenance, 0)
+	second := receiveJob(t, f)
+	f.Done(second, false)
+}
+
 func TestSetRateThrottlesRunDispatch(t *testing.T) {
 	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yagocrawlcontract.CrawlProfile{

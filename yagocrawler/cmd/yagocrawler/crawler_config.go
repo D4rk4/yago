@@ -18,6 +18,7 @@ const (
 	EnvMaxHostConcurrency = "YAGOCRAWLER_MAX_HOST_CONCURRENCY"
 	EnvMaxDepth           = "YAGOCRAWLER_MAX_DEPTH"
 	EnvMaxPagesPerRun     = "YAGOCRAWLER_MAX_PAGES_PER_RUN"
+	EnvRunPagesPerMinute  = "YAGOCRAWLER_RUN_PAGES_PER_MINUTE"
 	EnvCrawlDelay         = "YAGOCRAWLER_CRAWL_DELAY"
 	EnvUserAgent          = "YAGOCRAWLER_USER_AGENT"
 	EnvRequestTimeout     = "YAGOCRAWLER_REQUEST_TIMEOUT"
@@ -45,6 +46,10 @@ const (
 	DefaultSitemapURLLimit          = 10000
 	DefaultHostCacheSize            = 4096
 	DefaultMaxPagesPerRun           = 50_000
+	// DefaultRunPagesPerMinute paces every crawl run at a polite 30 fetches per
+	// minute unless the operator raises (or zeroes) the run's rate explicitly,
+	// so a fresh crawl cannot flatten the box or hammer the web at full speed.
+	DefaultRunPagesPerMinute uint32 = 30
 )
 
 // DefaultUserAgent brands crawl requests (plain HTTP and robots fetches alike)
@@ -69,6 +74,7 @@ type CrawlConfig struct {
 	Scope              yagocrawlcontract.CrawlScope
 	MaxPagesPerHost    int
 	MaxPagesPerRun     int
+	RunPagesPerMinute  uint32
 	HostCacheSize      int
 	BrowserPath        string
 	BrowserSandbox     bool
@@ -92,6 +98,7 @@ func DefaultCrawlConfig() CrawlConfig {
 		Scope:              yagocrawlcontract.ScopeDomain,
 		MaxPagesPerHost:    yagocrawlcontract.UnlimitedPagesPerHost,
 		MaxPagesPerRun:     DefaultMaxPagesPerRun,
+		RunPagesPerMinute:  DefaultRunPagesPerMinute,
 		HostCacheSize:      DefaultHostCacheSize,
 	}
 }
@@ -236,6 +243,14 @@ func loadCrawlLimits(getenv func(string) string, crawl CrawlConfig) (CrawlConfig
 		return CrawlConfig{}, err
 	}
 	crawl.MaxPagesPerRun = maxPagesPerRun
+
+	runRate, err := envNonNegativeInt(
+		getenv, EnvRunPagesPerMinute, int(crawl.RunPagesPerMinute),
+	)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	crawl.RunPagesPerMinute = uint32(runRate) //nolint:gosec // non-negative parse.
 
 	return crawl, nil
 }

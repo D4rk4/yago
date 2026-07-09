@@ -74,6 +74,9 @@ services:
       YAGOCRAWLER_HEADER_TIMEOUT: ${YAGOCRAWLER_HEADER_TIMEOUT:-10s}
       YAGOCRAWLER_MAX_REDIRECTS: ${YAGOCRAWLER_MAX_REDIRECTS:-10}
       YAGOCRAWLER_SITEMAP_URL_LIMIT: ${YAGOCRAWLER_SITEMAP_URL_LIMIT:-10000}
+      # Default fetch pace per crawl run, pages per minute (0 = unlimited); the
+      # crawl monitor can raise or zero a running crawl per run.
+      YAGOCRAWLER_RUN_PAGES_PER_MINUTE: ${YAGOCRAWLER_RUN_PAGES_PER_MINUTE:-30}
       # Slow-path browser: the container image bundles headless-shell on PATH, so
       # BROWSER_PATH stays empty; a bare-metal/systemd install points it at the
       # host browser (e.g. /usr/bin/chromium). BROWSER_SANDBOX is off so Chrome

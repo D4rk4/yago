@@ -134,6 +134,10 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	if cfg.Crawl.MaxPagesPerRun != DefaultMaxPagesPerRun {
 		t.Errorf("max pages per run = %d, want %d", cfg.Crawl.MaxPagesPerRun, DefaultMaxPagesPerRun)
 	}
+	if cfg.Crawl.RunPagesPerMinute != DefaultRunPagesPerMinute {
+		t.Errorf("run pages per minute = %d, want %d",
+			cfg.Crawl.RunPagesPerMinute, DefaultRunPagesPerMinute)
+	}
 	if cfg.Crawl.RequestTimeout != DefaultRequestTimeout ||
 		cfg.Crawl.ConnectTimeout != DefaultConnectTimeout ||
 		cfg.Crawl.TLSTimeout != DefaultTLSTimeout ||
@@ -268,5 +272,38 @@ func TestLoadServiceConfigRejectsParseErrors(t *testing.T) {
 		if _, err := LoadServiceConfig(envFrom(env)); err == nil {
 			t.Errorf("%s=%q: expected error", key, bad)
 		}
+	}
+}
+
+// TestLoadServiceConfigRunRateOverride: the per-run default rate is tunable and
+// an explicit zero disables the default pacing entirely.
+func TestLoadServiceConfigRunRateOverride(t *testing.T) {
+	cfg, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNodeRPCAddr:       "node:9091",
+		EnvRunPagesPerMinute: "120",
+	}))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Crawl.RunPagesPerMinute != 120 {
+		t.Errorf("run pages per minute = %d, want 120", cfg.Crawl.RunPagesPerMinute)
+	}
+
+	unlimited, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNodeRPCAddr:       "node:9091",
+		EnvRunPagesPerMinute: "0",
+	}))
+	if err != nil {
+		t.Fatalf("load zero: %v", err)
+	}
+	if unlimited.Crawl.RunPagesPerMinute != 0 {
+		t.Errorf("run pages per minute = %d, want 0", unlimited.Crawl.RunPagesPerMinute)
+	}
+
+	if _, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNodeRPCAddr:       "node:9091",
+		EnvRunPagesPerMinute: "-5",
+	})); err == nil {
+		t.Fatal("negative run rate must be rejected")
 	}
 }

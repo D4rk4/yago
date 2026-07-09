@@ -74,6 +74,9 @@ func flowConfig(workers int) ServiceConfig {
 	cfg.Crawl.Workers = workers
 	cfg.Crawl.CrawlDelay = 0
 	cfg.Crawl.MaxHostConcurrency = 0
+	// Flow tests exercise backpressure and drain mechanics at full speed; the
+	// polite default run rate would stretch them past their windows.
+	cfg.Crawl.RunPagesPerMinute = 0
 	cfg.Crawl.MaxDepth = 3
 
 	return cfg

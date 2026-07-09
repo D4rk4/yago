@@ -38,12 +38,14 @@ type Frontier struct {
 	inflight map[string]int
 	paused   map[string]struct{}
 	// rate throttles a run to a page budget: rateInterval holds the minimum gap
-	// between the run's dispatches (0 = unthrottled), and rateNextDue the earliest
-	// time its next job may dispatch, both keyed by provenance and layered on top of
-	// the per-host crawl delay.
-	rateInterval map[string]time.Duration
-	rateNextDue  map[string]time.Time
-	closing      bool
+	// between the run's dispatches (an explicit zero entry lifts the throttle),
+	// and rateNextDue the earliest time its next job may dispatch, both keyed by
+	// provenance and layered on top of the per-host crawl delay. A run without
+	// an explicit entry paces at defaultRateInterval (zero = no default).
+	rateInterval        map[string]time.Duration
+	rateNextDue         map[string]time.Time
+	defaultRateInterval time.Duration
+	closing             bool
 }
 
 // Option configures a Frontier at construction.
@@ -63,6 +65,19 @@ func WithMaxHostConcurrency(maxPerHost int) Option {
 // <= 0 leaves the run budget unlimited.
 func WithMaxPagesPerRun(maxPagesPerRun int) Option {
 	return func(f *Frontier) { f.state.maxPagesPerRun = maxPagesPerRun }
+}
+
+// WithDefaultRunRate paces every run at pagesPerMinute dispatches from its
+// first job, so a freshly started crawl is polite by default instead of
+// running at full speed until an operator throttles it. An explicit SetRate
+// overrides the default per run — including a rate of zero, which an operator
+// uses to deliberately unleash a run. A value of zero disables the default.
+func WithDefaultRunRate(pagesPerMinute uint32) Option {
+	return func(f *Frontier) {
+		if pagesPerMinute > 0 {
+			f.defaultRateInterval = time.Minute / time.Duration(pagesPerMinute)
+		}
+	}
 }
 
 type frontierState struct {
@@ -311,13 +326,15 @@ func (f *Frontier) ClearCancelled(provenance []byte) {
 
 // SetRate throttles a run to at most pagesPerMinute dispatches, spacing its jobs
 // by a fixed interval on top of the per-host crawl delay. A rate of zero lifts the
-// throttle, restoring the run to full speed.
+// throttle — including the default run rate — restoring the run to full speed.
 func (f *Frontier) SetRate(provenance []byte, pagesPerMinute uint32) {
 	key := string(provenance)
 
 	f.mu.Lock()
 	if pagesPerMinute == 0 {
-		delete(f.rateInterval, key)
+		// An explicit zero entry overrides the default rate; deleting it would
+		// silently re-apply the default on the next dispatch.
+		f.rateInterval[key] = 0
 		delete(f.rateNextDue, key)
 	} else {
 		f.rateInterval[key] = time.Minute / time.Duration(pagesPerMinute)
@@ -327,10 +344,21 @@ func (f *Frontier) SetRate(provenance []byte, pagesPerMinute uint32) {
 	f.wake()
 }
 
+// rateIntervalLocked resolves a run's effective dispatch gap: its explicit
+// SetRate entry when one exists (zero meaning deliberately unthrottled),
+// otherwise the frontier-wide default. Callers hold f.mu.
+func (f *Frontier) rateIntervalLocked(key string) time.Duration {
+	if interval, explicit := f.rateInterval[key]; explicit {
+		return interval
+	}
+
+	return f.defaultRateInterval
+}
+
 // rateDueLocked returns the earliest time a job may dispatch under its run's rate
 // throttle, or the zero time when the run is unthrottled. Callers hold f.mu.
 func (f *Frontier) rateDueLocked(provenance []byte) (time.Time, bool) {
-	if _, throttled := f.rateInterval[string(provenance)]; !throttled {
+	if f.rateIntervalLocked(string(provenance)) <= 0 {
 		return time.Time{}, false
 	}
 
@@ -341,7 +369,7 @@ func (f *Frontier) rateDueLocked(provenance []byte) (time.Time, bool) {
 // Callers hold f.mu.
 func (f *Frontier) recordRateVisitLocked(provenance []byte, at time.Time) {
 	key := string(provenance)
-	if interval, throttled := f.rateInterval[key]; throttled {
+	if interval := f.rateIntervalLocked(key); interval > 0 {
 		f.rateNextDue[key] = at.Add(interval)
 	}
 }
