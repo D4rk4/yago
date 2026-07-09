@@ -92,3 +92,51 @@ func (f *Frontier) RecordFetch(
 
 	return nil
 }
+
+// RecordFetches schedules a whole ingest micro-batch of fetches in one
+// transaction: each distinct profile resolves once, fetches for unknown
+// handles are skipped like RecordFetch, and every surviving observation
+// commits together — one fsync per touched shard instead of one per page
+// (IO-AGG-01). The three slices run in parallel; their lengths must match.
+func (f *Frontier) RecordFetches(
+	ctx context.Context,
+	urls, profileHandles []string,
+	fetchedAt []time.Time,
+) error {
+	if len(urls) != len(profileHandles) || len(urls) != len(fetchedAt) {
+		return fmt.Errorf("record fetches: mismatched slice lengths")
+	}
+	intervals := make(map[string]time.Duration, len(profileHandles))
+	known := make(map[string]bool, len(profileHandles))
+	for _, handle := range profileHandles {
+		if _, seen := known[handle]; seen {
+			continue
+		}
+		profile, found, err := f.ProfileByHandle(ctx, handle)
+		if err != nil {
+			return fmt.Errorf("record fetches: %w", err)
+		}
+		known[handle] = found
+		intervals[handle] = profile.RecrawlIfOlder
+	}
+
+	if err := f.vault.Update(ctx, func(tx *vault.Txn) error {
+		for i, url := range urls {
+			if !known[profileHandles[i]] {
+				continue
+			}
+			if err := f.observeInTx(tx, fetchObservation{
+				url: url, profileHandle: profileHandles[i],
+				interval: intervals[profileHandles[i]], fetchedAt: fetchedAt[i],
+			}); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}); err != nil {
+		return fmt.Errorf("record fetches: %w", err)
+	}
+
+	return nil
+}

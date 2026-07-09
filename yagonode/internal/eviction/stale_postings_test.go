@@ -146,3 +146,38 @@ func TestPurgeStalePostingsSurfacesErrors(t *testing.T) {
 		t.Fatalf("purge error lost: %v", err)
 	}
 }
+
+// TestPurgeStalePostingsForURLsSweepsBatchInOneCall is the IO-AGG-01
+// acceptance: one call sweeps several URLs' vanished words together.
+func TestPurgeStalePostingsForURLsSweepsBatchInOneCall(t *testing.T) {
+	t.Parallel()
+
+	old := []yagomodel.Hash{
+		yagomodel.WordHash("alpha"),
+		yagomodel.WordHash("beta"),
+	}
+	postings := &wordTrackingPostings{}
+	evictor := stalePostingsEvictor(t, multiWordReferences{words: old}, postings)
+
+	first, err := yagomodel.HashURL("https://example.com/one")
+	if err != nil {
+		t.Fatalf("hash: %v", err)
+	}
+	second, err := yagomodel.HashURL("https://example.com/two")
+	if err != nil {
+		t.Fatalf("hash: %v", err)
+	}
+	purged, err := evictor.PurgeStalePostingsForURLs(
+		context.Background(),
+		map[yagomodel.Hash]map[yagomodel.Hash]struct{}{
+			first.Hash():  {old[0]: {}},
+			second.Hash(): {old[1]: {}},
+		},
+	)
+	if err != nil {
+		t.Fatalf("PurgeStalePostingsForURLs: %v", err)
+	}
+	if purged != 2 {
+		t.Fatalf("purged = %d, want beta for one and alpha for two", purged)
+	}
+}

@@ -20,29 +20,60 @@ func (e Evictor) PurgeStalePostings(
 	url yagomodel.Hash,
 	live map[yagomodel.Hash]struct{},
 ) (int, error) {
+	return e.PurgeStalePostingsForURLs(
+		ctx, map[yagomodel.Hash]map[yagomodel.Hash]struct{}{url: live},
+	)
+}
+
+// PurgeStalePostingsForURLs runs the stale sweep for a whole ingest
+// micro-batch in one transaction — one commit per touched shard instead of one
+// per page, which is what fsync-bound storage feels (IO-AGG-01).
+func (e Evictor) PurgeStalePostingsForURLs(
+	ctx context.Context,
+	staleByURL map[yagomodel.Hash]map[yagomodel.Hash]struct{},
+) (int, error) {
 	purged := 0
 	err := e.vault.Update(ctx, func(tx *vault.Txn) error {
-		words, err := e.references.WordsReferencing(tx, url)
-		if err != nil {
-			return fmt.Errorf("words referencing url: %w", err)
-		}
-		for _, word := range words {
-			if _, kept := live[word]; kept {
-				continue
-			}
-			deleted, err := e.postings.PurgePosting(tx, word, url)
+		for url, live := range staleByURL {
+			count, err := e.purgeStaleInTx(tx, url, live)
 			if err != nil {
-				return fmt.Errorf("purge stale posting: %w", err)
+				return err
 			}
-			if deleted {
-				purged++
-			}
+			purged += count
 		}
 
 		return nil
 	})
 	if err != nil {
 		return 0, fmt.Errorf("purge stale postings: %w", err)
+	}
+
+	return purged, nil
+}
+
+// purgeStaleInTx drops one URL's postings for words absent from its live set,
+// inside the caller's transaction.
+func (e Evictor) purgeStaleInTx(
+	tx *vault.Txn,
+	url yagomodel.Hash,
+	live map[yagomodel.Hash]struct{},
+) (int, error) {
+	words, err := e.references.WordsReferencing(tx, url)
+	if err != nil {
+		return 0, fmt.Errorf("words referencing url: %w", err)
+	}
+	purged := 0
+	for _, word := range words {
+		if _, kept := live[word]; kept {
+			continue
+		}
+		deleted, err := e.postings.PurgePosting(tx, word, url)
+		if err != nil {
+			return 0, fmt.Errorf("purge stale posting: %w", err)
+		}
+		if deleted {
+			purged++
+		}
 	}
 
 	return purged, nil

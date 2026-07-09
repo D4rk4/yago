@@ -173,3 +173,41 @@ func TestProfileRegistryPersistsAcrossReopen(t *testing.T) {
 		t.Fatalf("claimed %d after reopen, want 1", len(due))
 	}
 }
+
+// TestRecordFetchesSchedulesKnownAndSkipsUnknown is the IO-AGG-01 acceptance:
+// one call schedules a whole micro-batch — known-profile fetches become due,
+// unknown handles are skipped like RecordFetch, in one transaction.
+func TestRecordFetchesSchedulesKnownAndSkipsUnknown(t *testing.T) {
+	f := openTestFrontier(t)
+	ctx := context.Background()
+	profile := profileWithRecrawl("Example", time.Hour)
+	if err := f.RecordProfile(ctx, profile); err != nil {
+		t.Fatalf("record profile: %v", err)
+	}
+
+	err := f.RecordFetches(ctx,
+		[]string{"https://a.example/", "https://b.example/"},
+		[]string{profile.Handle, "never-recorded"},
+		[]time.Time{testBase, testBase},
+	)
+	if err != nil {
+		t.Fatalf("record fetches: %v", err)
+	}
+
+	due := claim(t, f, testBase.Add(time.Hour), 10)
+	if len(due) != 1 || due[0].URL != "https://a.example/" {
+		t.Fatalf("claimed = %+v, want only a.example due at +1h", due)
+	}
+}
+
+func TestRecordFetchesRejectsMismatchedLengths(t *testing.T) {
+	f := openTestFrontier(t)
+	if err := f.RecordFetches(
+		context.Background(),
+		[]string{"https://a.example/"},
+		[]string{"h1", "h2"},
+		[]time.Time{testBase},
+	); err == nil {
+		t.Fatal("mismatched slice lengths must be rejected")
+	}
+}

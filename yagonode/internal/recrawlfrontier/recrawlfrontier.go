@@ -112,34 +112,51 @@ func (f *Frontier) Observe(
 	interval time.Duration,
 	fetchedAt time.Time,
 ) error {
-	// HashURL derives a fixed 12-character hash from any input, so it never
-	// errors here; the error result exists only for the general URL API.
-	hash, _ := yagomodel.HashURL(url)
-	key := vault.Key(string(hash))
-
 	if err := f.vault.Update(ctx, func(tx *vault.Txn) error {
-		if err := f.clearDue(tx, key); err != nil {
-			return err
-		}
-		if interval <= 0 {
-			if _, err := f.records.Delete(tx, key); err != nil {
-				return fmt.Errorf("drop recrawl record: %w", err)
-			}
-
-			return nil
-		}
-
-		return f.schedule(tx, key, scheduleRecord{
-			URL:           url,
-			ProfileHandle: profileHandle,
-			Interval:      interval,
-			NextDueAt:     fetchedAt.Add(interval).UTC(),
+		return f.observeInTx(tx, fetchObservation{
+			url: url, profileHandle: profileHandle,
+			interval: interval, fetchedAt: fetchedAt,
 		})
 	}); err != nil {
 		return fmt.Errorf("observe recrawl url: %w", err)
 	}
 
 	return nil
+}
+
+// fetchObservation is one fetch to schedule, carried into a shared transaction so a
+// whole ingest micro-batch commits its recrawl schedule once (IO-AGG-01).
+type fetchObservation struct {
+	url           string
+	profileHandle string
+	interval      time.Duration
+	fetchedAt     time.Time
+}
+
+// observeInTx applies one fetch observation inside the caller's transaction.
+func (f *Frontier) observeInTx(tx *vault.Txn, obs fetchObservation) error {
+	// HashURL derives a fixed 12-character hash from any input, so it never
+	// errors here; the error result exists only for the general URL API.
+	hash, _ := yagomodel.HashURL(obs.url)
+	key := vault.Key(string(hash))
+
+	if err := f.clearDue(tx, key); err != nil {
+		return err
+	}
+	if obs.interval <= 0 {
+		if _, err := f.records.Delete(tx, key); err != nil {
+			return fmt.Errorf("drop recrawl record: %w", err)
+		}
+
+		return nil
+	}
+
+	return f.schedule(tx, key, scheduleRecord{
+		URL:           obs.url,
+		ProfileHandle: obs.profileHandle,
+		Interval:      obs.interval,
+		NextDueAt:     obs.fetchedAt.Add(obs.interval).UTC(),
+	})
 }
 
 // ClaimDue returns up to limit URLs whose next-due time is at or before now,

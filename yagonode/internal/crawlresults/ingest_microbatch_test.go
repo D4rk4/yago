@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
@@ -198,5 +199,47 @@ func TestIngestGroupRedeliversAllCarriersOnStoreBackpressure(t *testing.T) {
 	defer index.mu.Unlock()
 	if index.batchCalls != 0 {
 		t.Fatal("index must not run when the store reported capacity")
+	}
+}
+
+func microBatchPageWithTail(url string, acked *sync.WaitGroup) crawlresults.IngestDelivery {
+	delivery := microBatchPage(url, acked)
+	delivery.Batch.Metadata = make([]yagomodel.URIMetadataRow, 1)
+	delivery.Batch.Postings = []yagomodel.RWIPosting{{}}
+
+	return delivery
+}
+
+// TestIngestGroupsTailStoresIntoOneCallEach is the IO-AGG-01 acceptance: a
+// grouped turn persists every delivery's URL metadata through ONE Receive and
+// every delivery's postings through ONE Receive, instead of one durable commit
+// per page.
+func TestIngestGroupsTailStoresIntoOneCallEach(t *testing.T) {
+	documents := &batchRecordingReceiver{}
+	urls := &recordingURLReceiver{}
+	postings := &recordingPostingReceiver{}
+	index := &batchRecordingIndex{}
+	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery, 8)}
+	consumer := crawlresults.NewIngestConsumerWithIndex(stream, documents, index, urls, postings)
+
+	var acked sync.WaitGroup
+	for _, url := range []string{
+		"https://example.org/a",
+		"https://example.org/b",
+		"https://example.org/c",
+	} {
+		stream.out <- microBatchPageWithTail(url, &acked)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go consumer.Run(ctx)
+	acked.Wait()
+
+	if urls.calls != 1 {
+		t.Fatalf("url metadata receives = %d, want one grouped call", urls.calls)
+	}
+	if postings.calls != 1 {
+		t.Fatalf("posting receives = %d, want one grouped call", postings.calls)
 	}
 }
