@@ -147,10 +147,9 @@ against upstream YaCy (audited against `yacy/yacy_search_server`):
 
 | Status | Count | Meaning |
 | --- | ---: | --- |
-| ✅ implemented | 18 | wire-compatible, tested against fixtures captured from Java YaCy |
-| 🟡 partial | 14 | interoperable core with documented divergences |
-| 🔵 planned | 1 | on the books, not started |
-| ⛔ unsupported | 3 | deliberate non-goals (embedded Solr API ×2, Java admin page clones) |
+| ✅ implemented | 30 | wire-compatible, tested against fixtures captured from Java YaCy |
+| 🟡 partial | 5 | interoperable core with documented, by-design divergences |
+| ⛔ unsupported | 5 | deliberate non-goals (embedded Solr API ×2, Java admin page clones, removed GSA servlet, MCP/OpenAI AI surfaces) |
 
 Highlights: `hello`, `query`, `transferRWI`, `transferURL`, remote `search`,
 seed lists, `idx.json`, `list.html`, `message.html`, `profile.html`,
