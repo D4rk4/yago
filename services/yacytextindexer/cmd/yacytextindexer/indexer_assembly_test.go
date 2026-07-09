@@ -36,6 +36,7 @@ func TestRunServiceIndexesCrawledPageIntoElasticsearch(t *testing.T) {
 		SearchIndexEngine:  SearchIndexEngineElasticsearch,
 		ElasticsearchURL:   elasticsearch.URL,
 		ElasticsearchIndex: "yacy-text",
+		OpsAddr:            "127.0.0.1:0",
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -84,6 +85,32 @@ func TestRunServiceIndexesCrawledPageIntoElasticsearch(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("service did not shut down after cancel")
+	}
+}
+
+func TestRunServiceReturnsWhenOpsAddrCannotBind(t *testing.T) {
+	elasticsearch := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusCreated)
+		}),
+	)
+	defer elasticsearch.Close()
+
+	cfg := ServiceConfig{
+		NATSURL:            startNATS(t),
+		CrawledPageSubject: "yacy.crawl.pages",
+		CrawledPageMaxMsgs: DefaultCrawledPageMaxMsgs,
+		CrawledPageDurable: DefaultCrawledPageDurable,
+		Concurrency:        DefaultConcurrency,
+		SearchIndexEngine:  SearchIndexEngineElasticsearch,
+		ElasticsearchURL:   elasticsearch.URL,
+		ElasticsearchIndex: "yacy-text",
+		OpsAddr:            "127.0.0.1:99999",
+	}
+
+	err := RunService(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("expected error when ops address cannot bind")
 	}
 }
 

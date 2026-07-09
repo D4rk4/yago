@@ -63,6 +63,9 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	if cfg.ElasticsearchIndex != DefaultElasticsearchIndex {
 		t.Errorf("index = %q", cfg.ElasticsearchIndex)
 	}
+	if cfg.OpsAddr != DefaultOpsAddr {
+		t.Errorf("ops addr = %q", cfg.OpsAddr)
+	}
 	spec := cfg.CrawledPageStreamSpec()
 	if spec.Subject != cfg.CrawledPageSubject || spec.MaxMsgs != cfg.CrawledPageMaxMsgs {
 		t.Errorf("stream spec mismatch: %+v", spec)
@@ -79,6 +82,7 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 		EnvNATSCrawledPageDurable: "dur",
 		EnvConcurrency:            "3",
 		EnvElasticsearchIndex:     "my-index",
+		EnvOpsAddr:                "127.0.0.1:9099",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -91,6 +95,9 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	}
 	if cfg.ElasticsearchIndex != "my-index" {
 		t.Errorf("index = %q", cfg.ElasticsearchIndex)
+	}
+	if cfg.OpsAddr != "127.0.0.1:9099" {
+		t.Errorf("ops addr = %q", cfg.OpsAddr)
 	}
 }
 

@@ -35,6 +35,9 @@ full-text search index.
   the crawler's page-content output without depending on this service's prior state.
 * The service SHALL support many concurrent instances over the crawler's published pages,
   with each page indexed by exactly one instance.
+* The service SHALL expose its indexing behavior as machine-readable metrics and a liveness
+  signal, so operators can observe pages received, indexed, disposed, and failed, and index
+  latency, without altering how pages are indexed.
 
 ## Known Limitations
 

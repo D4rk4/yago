@@ -10,6 +10,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/nikitakarpei/yacy-rwi-node/yacycrawlcontract"
+	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/indexmetrics"
 	"github.com/nikitakarpei/yacy-rwi-node/yacytextindexer/internal/pageintake"
 )
 
@@ -50,7 +51,14 @@ func RunService(ctx context.Context, cfg ServiceConfig) error {
 	if err != nil {
 		return fmt.Errorf("select search index: %w", err)
 	}
-	intake := pageintake.NewCrawledPageConsumer(consumer, index, cfg.Concurrency)
+	metrics := indexmetrics.New()
+	intake := pageintake.NewCrawledPageConsumer(consumer, index, metrics, cfg.Concurrency)
+
+	opsServer := &http.Server{
+		Addr:              cfg.OpsAddr,
+		Handler:           newOpsMux(metrics.Handler()),
+		ReadHeaderTimeout: opsReadHeaderLimit,
+	}
 
 	slog.InfoContext(ctx, "textindexer started",
 		slog.String("subject", cfg.CrawledPageSubject),
@@ -58,8 +66,8 @@ func RunService(ctx context.Context, cfg ServiceConfig) error {
 		slog.String("index", indexName),
 		slog.Int("concurrency", cfg.Concurrency),
 	)
-	if err := intake.Run(ctx); err != nil {
-		return fmt.Errorf("run crawled page consumer: %w", err)
+	if err := runIntakeAndOps(ctx, intake, opsServer); err != nil {
+		return err
 	}
 	slog.InfoContext(ctx, "textindexer stopped")
 	return nil

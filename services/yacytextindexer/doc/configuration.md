@@ -31,3 +31,9 @@ When `SEARCH_INDEX_ENGINE` is `manticore`:
 |---|---|---|
 | `MANTICORE_URL` | required | Manticore endpoint documents are indexed into. |
 | `MANTICORE_TABLE` | `yacy_text` | Manticore table documents are indexed into. Manticore table names allow letters, digits, and underscores only. |
+
+## Operations
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `YACYTEXTINDEXER_OPS_ADDR` | `:9090` | Address serving `/health` and `/metrics`. |

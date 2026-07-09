@@ -19,7 +19,9 @@ const (
 	EnvElasticsearchIndex     = "ELASTICSEARCH_INDEX"
 	EnvManticoreURL           = "MANTICORE_URL"
 	EnvManticoreTable         = "MANTICORE_TABLE"
+	EnvOpsAddr                = "YACYTEXTINDEXER_OPS_ADDR"
 
+	DefaultOpsAddr            = ":9090"
 	DefaultCrawledPageSubject = "yacy.crawl.pages"
 	DefaultCrawledPageMaxMsgs = 1024
 	DefaultCrawledPageDurable = "yacytextindexer"
@@ -42,6 +44,7 @@ type ServiceConfig struct {
 	ElasticsearchIndex string
 	ManticoreURL       string
 	ManticoreTable     string
+	OpsAddr            string
 }
 
 func (c ServiceConfig) CrawledPageStreamSpec() yacycrawlcontract.CrawledPageStreamSpec {
@@ -73,6 +76,7 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		CrawledPageDurable: envString(getenv, EnvNATSCrawledPageDurable, DefaultCrawledPageDurable),
 		Concurrency:        concurrency,
 		SearchIndexEngine:  strings.TrimSpace(getenv(EnvSearchIndexEngine)),
+		OpsAddr:            envString(getenv, EnvOpsAddr, DefaultOpsAddr),
 	}
 	if cfg.SearchIndexEngine == "" {
 		return ServiceConfig{}, fmt.Errorf("%s: must be set", EnvSearchIndexEngine)

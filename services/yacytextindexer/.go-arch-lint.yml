@@ -14,6 +14,8 @@ components:
     in: internal/manticoreindex/**
   pageintake:
     in: internal/pageintake/**
+  indexmetrics:
+    in: internal/indexmetrics/**
   textindexercmd:
     in: cmd/yacytextindexer/**
 
@@ -33,6 +35,9 @@ vendors:
   nats-server:
     in:
       - github.com/nats-io/nats-server/v2/server
+  prometheus:
+    in:
+      - github.com/prometheus/client_golang/**
 
 deps:
   crawledpagedocument:
@@ -62,11 +67,17 @@ deps:
       - yacycrawlcontract
       - nats
       - nats-server
+  indexmetrics:
+    mayDependOn:
+      - indexmetrics
+    canUse:
+      - prometheus
   textindexercmd:
     mayDependOn:
       - pageintake
       - elasticsearchindex
       - manticoreindex
+      - indexmetrics
     canUse:
       - yacycrawlcontract
       - nats

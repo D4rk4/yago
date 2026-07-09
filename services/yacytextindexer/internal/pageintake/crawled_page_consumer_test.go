@@ -81,6 +81,20 @@ func newFakeMsg(data []byte, acked chan string) *fakeMsg {
 	return &fakeMsg{data: data, acked: acked}
 }
 
+type recordingProgress struct {
+	received int
+	indexed  int
+	disposed []string
+	failed   int
+	observed int
+}
+
+func (p *recordingProgress) PageReceived()               { p.received++ }
+func (p *recordingProgress) PageIndexed()                { p.indexed++ }
+func (p *recordingProgress) PageDisposed(reason string)  { p.disposed = append(p.disposed, reason) }
+func (p *recordingProgress) IndexFailed()                { p.failed++ }
+func (p *recordingProgress) IndexObserved(time.Duration) { p.observed++ }
+
 func TestCrawledPageConsumerAcksOnSuccessfulIndex(t *testing.T) {
 	acked := make(chan string, 1)
 	data, err := yacycrawlcontract.MarshalCrawledPage(
@@ -92,7 +106,8 @@ func TestCrawledPageConsumerAcksOnSuccessfulIndex(t *testing.T) {
 	source := fakeSource{
 		iterator: &fakeIterator{messages: []jetstream.Msg{newFakeMsg(data, acked)}},
 	}
-	consumer := pageintake.NewCrawledPageConsumer(source, recordingIndexer{}, 1)
+	progress := &recordingProgress{}
+	consumer := pageintake.NewCrawledPageConsumer(source, recordingIndexer{}, progress, 1)
 
 	if err := consumer.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
@@ -104,6 +119,9 @@ func TestCrawledPageConsumerAcksOnSuccessfulIndex(t *testing.T) {
 		}
 	default:
 		t.Fatal("expected message to be acked")
+	}
+	if progress.received != 1 || progress.indexed != 1 || progress.observed != 1 {
+		t.Errorf("progress = %+v, want one received/indexed/observed", progress)
 	}
 }
 
@@ -118,7 +136,8 @@ func TestCrawledPageConsumerNaksOnIndexFailure(t *testing.T) {
 	source := fakeSource{
 		iterator: &fakeIterator{messages: []jetstream.Msg{newFakeMsg(data, acked)}},
 	}
-	consumer := pageintake.NewCrawledPageConsumer(source, recordingIndexer{fail: true}, 1)
+	progress := &recordingProgress{}
+	consumer := pageintake.NewCrawledPageConsumer(source, recordingIndexer{fail: true}, progress, 1)
 
 	if err := consumer.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
@@ -131,6 +150,9 @@ func TestCrawledPageConsumerNaksOnIndexFailure(t *testing.T) {
 	default:
 		t.Fatal("expected message to be naked")
 	}
+	if progress.received != 1 || progress.failed != 1 || progress.observed != 1 {
+		t.Errorf("progress = %+v, want one received/failed/observed", progress)
+	}
 }
 
 func TestCrawledPageConsumerTermsOnDecodeFailure(t *testing.T) {
@@ -138,7 +160,8 @@ func TestCrawledPageConsumerTermsOnDecodeFailure(t *testing.T) {
 	source := fakeSource{
 		iterator: &fakeIterator{messages: []jetstream.Msg{newFakeMsg([]byte("not json"), acked)}},
 	}
-	consumer := pageintake.NewCrawledPageConsumer(source, recordingIndexer{}, 1)
+	progress := &recordingProgress{}
+	consumer := pageintake.NewCrawledPageConsumer(source, recordingIndexer{}, progress, 1)
 
 	if err := consumer.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
@@ -150,5 +173,8 @@ func TestCrawledPageConsumerTermsOnDecodeFailure(t *testing.T) {
 		}
 	default:
 		t.Fatal("expected message to be termed")
+	}
+	if progress.received != 1 || len(progress.disposed) != 1 {
+		t.Errorf("progress = %+v, want one received and one disposal", progress)
 	}
 }
