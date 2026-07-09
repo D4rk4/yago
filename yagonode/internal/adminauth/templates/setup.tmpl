@@ -24,6 +24,8 @@
       <label><input type="radio" name="mode" value="peer"> Public peer — join the swarm, keep the search portal off</label>
       <label><input type="radio" name="mode" value="search"> Public search node — join the swarm and serve the public portal</label>
     </fieldset>
+    <label for="pn">Peer name (optional)</label>
+    <input id="pn" name="peer_name" value="{{.Defaults.PeerName}}" autocomplete="off">
     <label for="ah">Advertised host (autodetected)</label>
     <input id="ah" name="advertise_host" value="{{.Defaults.AdvertiseHost}}" autocomplete="off">
     <label for="sl">Seedlist URLs (comma-separated)</label>

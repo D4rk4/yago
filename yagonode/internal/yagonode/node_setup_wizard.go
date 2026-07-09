@@ -24,6 +24,7 @@ func configureSetupWizard(
 		return
 	}
 	service.ConfigureSetupWizard(adminauth.SetupDefaults{
+		PeerName:      config.Name,
 		AdvertiseHost: config.AdvertiseHost,
 		Seedlists:     wizardSeedlistDefault(config.SeedlistURLs),
 		WebFallback:   string(config.WebFallback.Privacy),
@@ -66,6 +67,10 @@ func setupWizardApplier(settings adminui.SettingsSource) adminauth.SetupApplier 
 	return func(ctx context.Context, choices adminauth.SetupChoices) error {
 		changes := []adminui.SettingsChange{
 			{Key: "web.fallback.privacy", Value: choices.WebFallback},
+		}
+		if choices.PeerName != "" {
+			changes = append(changes,
+				adminui.SettingsChange{Key: "peer.name", Value: choices.PeerName})
 		}
 		if choices.Mode != adminauth.SetupModeLocal {
 			changes = append(changes,

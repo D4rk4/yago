@@ -16,14 +16,17 @@ const (
 // the administrator account.
 type SetupChoices struct {
 	Mode          string
+	PeerName      string
 	AdvertiseHost string
 	Seedlists     string
 	WebFallback   string
 }
 
-// SetupDefaults prefills the wizard form: the autodetected advertise host, the
-// effective seedlists, and the current web-fallback privacy mode.
+// SetupDefaults prefills the wizard form: the current peer name, the
+// autodetected advertise host, the effective seedlists, and the current
+// web-fallback privacy mode.
 type SetupDefaults struct {
+	PeerName      string
 	AdvertiseHost string
 	Seedlists     string
 	WebFallback   string
@@ -58,6 +61,7 @@ func wizardChoices(form func(string) string) SetupChoices {
 
 	return SetupChoices{
 		Mode:          mode,
+		PeerName:      strings.TrimSpace(form("peer_name")),
 		AdvertiseHost: strings.TrimSpace(form("advertise_host")),
 		Seedlists:     strings.TrimSpace(form("seedlists")),
 		WebFallback:   strings.TrimSpace(form("web_fallback")),

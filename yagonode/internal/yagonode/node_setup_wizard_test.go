@@ -99,6 +99,32 @@ func TestSetupWizardApplierModes(t *testing.T) {
 	}
 }
 
+func TestSetupWizardApplierPersistsPeerName(t *testing.T) {
+	settings := &recordingSettings{}
+	applier := setupWizardApplier(settings)
+
+	// A named node records the peer.name override, even in local-only mode.
+	if err := applier(context.Background(), adminauth.SetupChoices{
+		Mode: adminauth.SetupModeLocal, WebFallback: "disabled", PeerName: "my-node",
+	}); err != nil {
+		t.Fatalf("named: %v", err)
+	}
+	if got := changedKeys(settings.changes)["peer.name"]; got != "my-node" {
+		t.Fatalf("peer.name = %q, want my-node", got)
+	}
+
+	// An empty peer name keeps the generated name: no override is written.
+	settings.changes = nil
+	if err := applier(context.Background(), adminauth.SetupChoices{
+		Mode: adminauth.SetupModeLocal, WebFallback: "disabled",
+	}); err != nil {
+		t.Fatalf("unnamed: %v", err)
+	}
+	if _, ok := changedKeys(settings.changes)["peer.name"]; ok {
+		t.Fatal("empty peer name must not write a peer.name override")
+	}
+}
+
 func TestSetupWizardApplierSurfacesFailures(t *testing.T) {
 	broken := &recordingSettings{fail: "network.seedlists", err: errors.New("store down")}
 	err := setupWizardApplier(broken)(context.Background(), adminauth.SetupChoices{

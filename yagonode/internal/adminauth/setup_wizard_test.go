@@ -15,11 +15,14 @@ func TestWizardChoicesNormalizesMode(t *testing.T) {
 		return func(key string) string { return values[key] }
 	}
 	choices := wizardChoices(form(map[string]string{
-		"mode": "search", "advertise_host": " host.example ",
+		"mode": "search", "peer_name": "  my-node  ", "advertise_host": " host.example ",
 		"seedlists": "https://s.example/a", "web_fallback": "enabled",
 	}))
 	if choices.Mode != SetupModeSearchNode || choices.AdvertiseHost != "host.example" {
 		t.Fatalf("choices = %+v", choices)
+	}
+	if choices.PeerName != "my-node" {
+		t.Fatalf("peer name = %q, want the trimmed value", choices.PeerName)
 	}
 	if got := wizardChoices(form(map[string]string{"mode": "bogus"})); got.Mode != SetupModeLocal {
 		t.Fatalf("bogus mode = %q", got.Mode)
@@ -60,6 +63,7 @@ func doAuthRequest(
 func TestSetupPageShowsWizardWhenConfigured(t *testing.T) {
 	service := testService(t)
 	service.ConfigureSetupWizard(SetupDefaults{
+		PeerName:      "my-node",
 		AdvertiseHost: "auto.example",
 		Seedlists:     "https://seeds.example/a",
 		WebFallback:   "disabled",
@@ -69,6 +73,7 @@ func TestSetupPageShowsWizardWhenConfigured(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		"Node mode", `value="local" checked`, `value="peer"`, `value="search"`,
+		`name="peer_name"`, `value="my-node"`,
 		`value="auto.example"`, `value="https://seeds.example/a"`,
 		"Web search fallback",
 		// The mode radios must reset the base full-width input geometry, else the
@@ -100,6 +105,7 @@ func TestSetupFormAppliesWizardChoices(t *testing.T) {
 		"username":       {"admin"},
 		"password":       {"correct horse battery staple"},
 		"mode":           {"search"},
+		"peer_name":      {"my-node"},
 		"advertise_host": {"pub.example"},
 		"seedlists":      {"https://seeds.example/a"},
 		"web_fallback":   {"explicit"},
@@ -109,7 +115,7 @@ func TestSetupFormAppliesWizardChoices(t *testing.T) {
 		t.Fatalf("setup = %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 	if applied.Mode != SetupModeSearchNode || applied.AdvertiseHost != "pub.example" ||
-		applied.WebFallback != "explicit" {
+		applied.WebFallback != "explicit" || applied.PeerName != "my-node" {
 		t.Fatalf("applied = %+v", applied)
 	}
 }
