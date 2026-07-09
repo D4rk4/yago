@@ -4,12 +4,13 @@ services:
     restart: unless-stopped
     depends_on:
       - nats
-      - smokescreen
+      - renderproxy
     ports:
       - "9093:9090"
     environment:
       NATS_URL: nats://nats:4222
-      YACYCRAWLER_PROXY_URL: http://smokescreen:4750
+      YACYCRAWLER_PROXY_URL: http://renderproxy:8080
+      YACYCRAWLER_PROXY_DIAL_MODE: absolute-url
       YACYCRAWLER_PAGE_OUTPUT_ENABLED: "true"
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 

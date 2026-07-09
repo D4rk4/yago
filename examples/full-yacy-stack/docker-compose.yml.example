@@ -2,6 +2,7 @@ include:
   - compose/infrastructure.yml
   - compose/egress.yml
   - compose/peer.yml
+  - compose/render.yml
   - compose/crawl.yml
   - compose/index.yml
   - compose/search.yml

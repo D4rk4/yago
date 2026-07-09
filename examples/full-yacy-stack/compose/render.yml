@@ -1,0 +1,29 @@
+services:
+  lightpanda:
+    image: lightpanda/browser:0.3.4
+    restart: unless-stopped
+    depends_on:
+      - smokescreen
+    command:
+      - "/bin/lightpanda"
+      - "serve"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "9222"
+      - "--advertise-host"
+      - "lightpanda"
+      - "--http-proxy"
+      - "http://smokescreen:4750"
+      - "--obey-robots"
+
+  renderproxy:
+    image: ghcr.io/nikitakarpei/renderproxy:latest
+    restart: unless-stopped
+    depends_on:
+      - lightpanda
+    ports:
+      - "9094:9090"
+    environment:
+      RENDERPROXY_CDP_URL: ws://lightpanda:9222
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
