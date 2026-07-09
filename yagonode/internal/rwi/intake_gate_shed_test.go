@@ -19,6 +19,7 @@ func TestTransferRWIShedsWhenAllIntakeSlotsBusy(t *testing.T) {
 		identity: localIdentity(),
 		intake:   h.rwi.Receiver,
 		gate:     gate,
+		accept:   true,
 	}
 
 	resp, err := endpoint.Serve(context.Background(), yagoproto.TransferRWIRequest{

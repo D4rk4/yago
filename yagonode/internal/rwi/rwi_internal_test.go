@@ -192,7 +192,7 @@ func openScriptedRWI(
 	index, receiver, purger, err := Open(
 		storage,
 		urls,
-		Config{BatchCap: 10, PauseSeconds: 5},
+		Config{BatchCap: 10, PauseSeconds: 5, AcceptRemoteIndex: true},
 		observers...)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -454,6 +454,7 @@ func TestTransferRWIReportsReceiveError(t *testing.T) {
 	_, err := (transferRWIEndpoint{
 		identity: localIdentity(),
 		intake:   failingPostingReceiver{},
+		accept:   true,
 	}).Serve(t.Context(), yagoproto.TransferRWIRequest{
 		NetworkName: "freeworld",
 		YouAre:      localIdentity().Hash,
@@ -482,7 +483,7 @@ func TestMountTransferRWIServesRoute(t *testing.T) {
 		localIdentity(),
 		fakePostingReceiver{},
 		nil,
-		Config{BatchCap: 10, PauseSeconds: 5},
+		Config{BatchCap: 10, PauseSeconds: 5, AcceptRemoteIndex: true},
 	)
 	req := yagoproto.TransferRWIRequest{
 		NetworkName: "freeworld",

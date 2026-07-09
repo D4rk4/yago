@@ -165,11 +165,11 @@ func swarmPresenceDefinitions() []settingDefinition {
 }
 
 // seedCapabilityDefinitions surfaces the swarm capability flags this node
-// advertises in its seed (Configuration → General, since the keys carry no
-// tab-specific prefix). Editing a flag re-derives the advertised bitfield; the
-// change reaches the swarm on the next restart, when the seed identity is
-// rebuilt. Accept-remote-crawl is intentionally absent: remote crawl execution
-// is disabled for SSRF safety, so the node never advertises it.
+// advertises in its seed (Configuration → Network & peers). Editing a flag
+// re-derives the advertised bitfield; the change reaches the swarm on the next
+// restart, when the seed identity is rebuilt. Accept-remote-crawl is
+// intentionally absent: remote crawl execution is disabled for SSRF safety, so
+// the node never advertises it.
 func seedCapabilityDefinitions() []settingDefinition {
 	return []settingDefinition{
 		{
@@ -189,7 +189,7 @@ func seedCapabilityDefinitions() []settingDefinition {
 		{
 			key:          "peer.advertise.remote_index",
 			title:        "Advertise accept remote index",
-			description:  "Tell the swarm this peer accepts DHT index (RWI) transfers from other peers.",
+			description:  "Accept DHT index (RWI) transfers from other peers and advertise that to the swarm. Off also refuses inbound transfers (not_granted).",
 			options:      boolSettingOptions(),
 			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.AdvertiseRemoteIndex) },
 			normalize:    normalizeSettingBool,

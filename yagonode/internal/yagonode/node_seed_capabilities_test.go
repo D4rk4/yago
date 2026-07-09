@@ -89,7 +89,7 @@ func TestConfigSeedFlagsRebuildsFromToggles(t *testing.T) {
 	})
 }
 
-func TestSeedCapabilitySettingsLiveInGeneralAndApply(t *testing.T) {
+func TestSeedCapabilitySettingsLiveInNetworkTabAndApply(t *testing.T) {
 	defs := indexSettingDefinitions()
 	cases := []struct {
 		key  string
@@ -122,8 +122,8 @@ func TestSeedCapabilitySettingsLiveInGeneralAndApply(t *testing.T) {
 		if !ok {
 			t.Fatalf("missing setting %q", tc.key)
 		}
-		if got := settingCategory(tc.key); got != "General" {
-			t.Errorf("%s category = %q, want General", tc.key, got)
+		if got := settingCategory(tc.key); got != "Network & peers" {
+			t.Errorf("%s category = %q, want Network & peers", tc.key, got)
 		}
 		updated := def.apply(nodeConfig{}, settingBoolTrue)
 		if !tc.read(updated) {

@@ -14,6 +14,28 @@ func (h harness) endpoint() transferRWIEndpoint {
 		intake:   h.rwi.Receiver,
 		batchCap: h.batchCap,
 		pause:    5,
+		accept:   true,
+	}
+}
+
+// TestTransferRWIRefusesWhenAcceptRemoteIndexOff: with the accept-remote-index
+// capability off, a valid transfer is answered not_granted (YaCy transferRWI
+// with allowReceiveIndex disabled) and nothing reaches the intake.
+func TestTransferRWIRefusesWhenAcceptRemoteIndexOff(t *testing.T) {
+	endpoint := transferRWIEndpoint{identity: localIdentity(), intake: fakePostingReceiver{}}
+
+	resp, err := endpoint.Serve(context.Background(), yagoproto.TransferRWIRequest{
+		NetworkName: "freeworld",
+		YouAre:      localIdentity().Hash,
+		WordCount:   1,
+		EntryCount:  1,
+		Indexes:     []yagomodel.RWIPosting{posting("w1", "u1")},
+	})
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if resp.Result != yagoproto.ResultNotGranted {
+		t.Fatalf("Result = %q, want not_granted", resp.Result)
 	}
 }
 
@@ -149,7 +171,11 @@ func TestTransferRWIRejectsWrongTargetAfterRequiredFields(t *testing.T) {
 }
 
 func TestTransferRWIReportsMissingRequiredFields(t *testing.T) {
-	endpoint := transferRWIEndpoint{identity: localIdentity(), intake: fakePostingReceiver{}}
+	endpoint := transferRWIEndpoint{
+		identity: localIdentity(),
+		intake:   fakePostingReceiver{},
+		accept:   true,
+	}
 
 	for _, item := range []struct {
 		name string

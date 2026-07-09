@@ -12,12 +12,30 @@ import (
 
 const transferRWIDefaultPause = 60000
 
+// missingFieldResult reports the YaCy preflight answer for a transfer that
+// lacks a required field, in the order transferRWI.java checks them.
+func missingFieldResult(
+	req yagoproto.TransferRWIRequest,
+) (yagoproto.TransferRWIResult, bool) {
+	switch {
+	case req.MissingWordCountField():
+		return yagoproto.ResultMissingWordC, true
+	case req.MissingEntryCountField():
+		return yagoproto.ResultMissingEntryC, true
+	case req.MissingIndexesField():
+		return yagoproto.ResultMissingIndexes, true
+	}
+
+	return "", false
+}
+
 type transferRWIEndpoint struct {
 	identity nodeidentity.Identity
 	intake   PostingReceiver
 	gate     *httpguard.IntakeGate
 	batchCap int
 	pause    int
+	accept   bool
 }
 
 func (e transferRWIEndpoint) Serve(
@@ -31,18 +49,16 @@ func (e transferRWIEndpoint) Serve(
 
 		return resp, nil
 	}
-	if req.MissingWordCountField() {
-		resp.Result = yagoproto.ResultMissingWordC
+	// The operator turned the accept-remote-index capability off: refuse the
+	// transfer outright, matching YaCy's transferRWI with allowReceiveIndex
+	// disabled, so senders mark this peer as not accepting and move on.
+	if !e.accept {
+		resp.Result = yagoproto.ResultNotGranted
 
 		return resp, nil
 	}
-	if req.MissingEntryCountField() {
-		resp.Result = yagoproto.ResultMissingEntryC
-
-		return resp, nil
-	}
-	if req.MissingIndexesField() {
-		resp.Result = yagoproto.ResultMissingIndexes
+	if result, missing := missingFieldResult(req); missing {
+		resp.Result = result
 
 		return resp, nil
 	}

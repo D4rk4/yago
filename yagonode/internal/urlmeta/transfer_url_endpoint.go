@@ -14,6 +14,7 @@ type transferURLEndpoint struct {
 	identity nodeidentity.Identity
 	intake   URLReceiver
 	gate     *httpguard.IntakeGate
+	accept   bool
 }
 
 func (e transferURLEndpoint) Serve(
@@ -23,6 +24,14 @@ func (e transferURLEndpoint) Serve(
 	resp := yagoproto.TransferURLResponse{}
 
 	if !e.identity.NetworkMatches(req.NetworkName) {
+		return resp, nil
+	}
+	// The operator turned the accept-remote-index capability off: refuse the
+	// transfer outright, matching YaCy's transferURL with allowReceiveIndex
+	// disabled.
+	if !e.accept {
+		resp.Result = yagoproto.ResultErrorNotGranted
+
 		return resp, nil
 	}
 	// DHT-in load limitation (YaCy 1.6): shed metadata intake when all

@@ -154,7 +154,7 @@ func assembleNode(
 	report := newNodeStatusReport(identity, storage, roster, news, tally)
 	storage = observeDHTInboundStorage(storage, telemetry.dhtInbound, tally)
 	mux, router := newNodeWireMux(config, report)
-	mountNodeWireHandlers(router, identity, storage, telemetry.saturation)
+	mountNodeWireHandlers(router, identity, storage, telemetry.saturation, config)
 	peerClient := nodePeerClient(config, client)
 	exchange, err := assembleRuntimePeerExchange(peerExchange{
 		router:   router,
@@ -495,14 +495,16 @@ func newRuntimeWireGate(
 }
 
 // mountNodeWireHandlers registers the YaCy wire-protocol routes and the
-// crawl-compatibility routes on the peer router in one step.
+// crawl-compatibility routes on the peer router in one step. acceptRemoteIndex
+// mirrors the advertised capability into the DHT-in transfer endpoints.
 func mountNodeWireHandlers(
 	router httpguard.WireRouter,
 	identity nodeidentity.Identity,
 	storage nodeStorage,
 	saturation *metrics.SaturationMetrics,
+	config nodeConfig,
 ) {
-	mountNodeProtocol(router, identity, storage, saturation)
+	mountNodeProtocol(router, identity, storage, saturation, config.AdvertiseRemoteIndex)
 	mountNodeCrawlCompatibility(router, identity, storage)
 }
 
@@ -520,6 +522,7 @@ func mountNodeProtocol(
 	identity nodeidentity.Identity,
 	storage nodeStorage,
 	saturation *metrics.SaturationMetrics,
+	acceptRemoteIndex bool,
 ) {
 	// One admission gate covers both DHT-in transfer endpoints (YaCy 1.6
 	// load-limits the whole DHT intake), a separate one bounds concurrent
@@ -529,13 +532,19 @@ func mountNodeProtocol(
 		dhtInboundTransferSlots,
 		saturation.RejectionObserver(metrics.GateDHTTransfer),
 	)
-	urlmeta.MountTransferURL(router, identity, storage.urlReceiver, transferGate)
+	urlmeta.MountTransferURL(
+		router, identity, storage.urlReceiver, transferGate, acceptRemoteIndex,
+	)
 	rwi.MountTransferRWI(
 		router,
 		identity,
 		storage.postingReceiver,
 		transferGate,
-		rwi.Config{BatchCap: receiveBatchCap, PauseSeconds: receiveBusyPauseSecs},
+		rwi.Config{
+			BatchCap:          receiveBatchCap,
+			PauseSeconds:      receiveBusyPauseSecs,
+			AcceptRemoteIndex: acceptRemoteIndex,
+		},
 	)
 	nodestatus.MountQuery(
 		router,

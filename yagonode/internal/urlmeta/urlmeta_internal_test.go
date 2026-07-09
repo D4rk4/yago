@@ -528,7 +528,7 @@ func (busyURLReceiver) Receive(context.Context, []yagomodel.URIMetadataRow) (Rec
 }
 
 func TestTransferURLReportsReceiveErrorAndBusy(t *testing.T) {
-	_, err := (transferURLEndpoint{identity: localIdentity(), intake: failingURLReceiver{}}).Serve(
+	_, err := (transferURLEndpoint{identity: localIdentity(), intake: failingURLReceiver{}, accept: true}).Serve(
 		t.Context(),
 		yagoproto.TransferURLRequest{NetworkName: "freeworld", YouAre: localIdentity().Hash},
 	)
@@ -536,7 +536,7 @@ func TestTransferURLReportsReceiveErrorAndBusy(t *testing.T) {
 		t.Fatal("expected receive error")
 	}
 
-	resp, err := (transferURLEndpoint{identity: localIdentity(), intake: busyURLReceiver{}}).Serve(
+	resp, err := (transferURLEndpoint{identity: localIdentity(), intake: busyURLReceiver{}, accept: true}).Serve(
 		t.Context(),
 		yagoproto.TransferURLRequest{NetworkName: "freeworld", YouAre: localIdentity().Hash},
 	)
@@ -573,6 +573,7 @@ func TestMountTransferURLServesRoute(t *testing.T) {
 		localIdentity(),
 		okURLReceiver{},
 		nil,
+		true,
 	)
 	req := yagoproto.TransferURLRequest{
 		NetworkName: "freeworld",

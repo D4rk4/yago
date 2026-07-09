@@ -9,7 +9,28 @@ import (
 )
 
 func (m urlPorts) endpoint() transferURLEndpoint {
-	return transferURLEndpoint{identity: localIdentity(), intake: m.Receiver}
+	return transferURLEndpoint{identity: localIdentity(), intake: m.Receiver, accept: true}
+}
+
+// TestTransferURLRefusesWhenAcceptRemoteIndexOff: with the accept-remote-index
+// capability off, a valid transfer is answered error_not_granted (YaCy
+// transferURL with allowReceiveIndex disabled) and nothing is stored.
+func TestTransferURLRefusesWhenAcceptRemoteIndexOff(t *testing.T) {
+	module := openModule(t, 0)
+	endpoint := transferURLEndpoint{identity: localIdentity(), intake: module.Receiver}
+
+	resp, err := endpoint.Serve(context.Background(), yagoproto.TransferURLRequest{
+		NetworkName: "freeworld",
+		YouAre:      localIdentity().Hash,
+		URLCount:    1,
+		URLs:        []yagomodel.URIMetadataRow{urlRow(t, "a")},
+	})
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if resp.Result != yagoproto.ResultErrorNotGranted {
+		t.Fatalf("Result = %q, want error_not_granted", resp.Result)
+	}
 }
 
 func TestTransferURLStoresAndAnswers(t *testing.T) {

@@ -67,17 +67,24 @@ func Open(
 		nil
 }
 
+// MountTransferURL serves the DHT-in URL-metadata endpoint. accept mirrors the
+// advertised accept-remote-index capability: with it off, transfers answer
+// error_not_granted the way YaCy's transferURL does when allowReceiveIndex is
+// disabled.
 func MountTransferURL(
 	router httpguard.WireRouter,
 	identity nodeidentity.Identity,
 	receiver URLReceiver,
 	gate *httpguard.IntakeGate,
+	accept bool,
 ) {
 	httpguard.Mount(
 		router,
 		yagoproto.PathTransferURL,
 		yagoproto.TransferURLEndpointMethods,
 		yagoproto.ParseTransferURLRequest,
-		transferURLEndpoint{identity: identity, intake: receiver, gate: gate}.Serve,
+		transferURLEndpoint{
+			identity: identity, intake: receiver, gate: gate, accept: accept,
+		}.Serve,
 	)
 }

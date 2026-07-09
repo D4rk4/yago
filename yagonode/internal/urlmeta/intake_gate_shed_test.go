@@ -16,6 +16,7 @@ func TestTransferURLShedsWhenAllIntakeSlotsBusy(t *testing.T) {
 		identity: localIdentity(),
 		intake:   okURLReceiver{},
 		gate:     gate,
+		accept:   true,
 	}
 
 	resp, err := endpoint.Serve(t.Context(), yagoproto.TransferURLRequest{

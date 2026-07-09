@@ -49,6 +49,10 @@ type Receipt struct {
 type Config struct {
 	BatchCap     int
 	PauseSeconds int
+	// AcceptRemoteIndex mirrors the advertised accept-remote-index capability:
+	// with it off, inbound transfers answer not_granted the way YaCy's
+	// transferRWI does when allowReceiveIndex is disabled.
+	AcceptRemoteIndex bool
 }
 
 func Open(
@@ -102,6 +106,7 @@ func MountTransferRWI(
 			gate:     gate,
 			batchCap: cfg.BatchCap,
 			pause:    cfg.PauseSeconds,
+			accept:   cfg.AcceptRemoteIndex,
 		}.Serve,
 	)
 }

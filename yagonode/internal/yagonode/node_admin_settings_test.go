@@ -246,6 +246,8 @@ func TestSettingCategory(t *testing.T) {
 
 	cases := map[string]string{
 		"peer.name":                    "General",
+		"peer.advertise.remote_index":  "Network & peers",
+		"peer.advertise.ssl":           "Network & peers",
 		"network.advertise.host":       "Network & peers",
 		"network.lan_discovery":        "Network & peers",
 		"search.links.newtab":          "Search",

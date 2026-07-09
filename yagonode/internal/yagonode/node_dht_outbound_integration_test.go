@@ -291,7 +291,7 @@ func startDHTReceiverNode(
 			Address: httpguard.NewClientAddressResolver(config.TrustedProxies),
 		},
 	)
-	mountNodeProtocol(router, identity, storage, nil)
+	mountNodeProtocol(router, identity, storage, nil, true)
 
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
