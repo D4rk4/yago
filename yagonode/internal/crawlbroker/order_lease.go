@@ -175,9 +175,22 @@ func (q *DurableOrderQueue) requeueLease(ctx context.Context, leaseID string) er
 	return nil
 }
 
-// heartbeat extends the deadline on every lease held by workerID.
+// heartbeat extends the deadline on every lease held by workerID. Durable
+// extension runs at most every leaseTTL/4: heartbeats arrive every few seconds
+// (they also deliver control directives), and rewriting the lease records with
+// an fsync per beat is what fsync-bound storage feels (IO-AGG-02). The skipped
+// beats stay safe — a worker's durable deadline is never closer than
+// 3/4·leaseTTL when a beat is skipped, so a dead worker is still reclaimed
+// within one TTL of its last durable extension.
 func (q *DurableOrderQueue) heartbeat(ctx context.Context, workerID string) error {
-	deadline := nowFunc().Add(q.leaseTTL).UnixNano()
+	now := nowFunc()
+	q.mu.Lock()
+	last, seen := q.extendedAt[workerID]
+	q.mu.Unlock()
+	if seen && now.Sub(last) < q.leaseTTL/4 {
+		return nil
+	}
+	deadline := now.Add(q.leaseTTL).UnixNano()
 	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
 		var keys []vault.Key
 		var records []leaseRecord
@@ -202,6 +215,9 @@ func (q *DurableOrderQueue) heartbeat(ctx context.Context, workerID string) erro
 	}); err != nil {
 		return fmt.Errorf("heartbeat crawl leases: %w", err)
 	}
+	q.mu.Lock()
+	q.extendedAt[workerID] = now
+	q.mu.Unlock()
 
 	return nil
 }

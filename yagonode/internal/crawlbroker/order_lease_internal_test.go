@@ -276,3 +276,43 @@ func TestLeaseRecordCodecRejectsBadJSON(t *testing.T) {
 		t.Fatal("expected lease record decode error")
 	}
 }
+
+// TestHeartbeatSkipsDurableExtensionWithinWindow is the IO-AGG-02 acceptance:
+// heartbeats inside leaseTTL/4 of the last durable extension skip the write
+// entirely, and the first beat past the window extends again — so a worker
+// beating every few seconds costs one fsync per quarter-TTL, not one per beat.
+func TestHeartbeatSkipsDurableExtensionWithinWindow(t *testing.T) {
+	set := withClock(t)
+	base := time.Unix(1000, 0)
+	set(base)
+	queue := memQueue(t)
+	queue.leaseTTL = time.Minute
+	lease := leaseOne(t, queue, "mine", "w1")
+
+	if err := queue.heartbeat(context.Background(), "w1"); err != nil {
+		t.Fatalf("first heartbeat: %v", err)
+	}
+	first, _ := leaseRecordFor(t, queue, lease)
+	if first.ExpiresAtUnixNano != base.Add(time.Minute).UnixNano() {
+		t.Fatalf("first heartbeat did not extend: %d", first.ExpiresAtUnixNano)
+	}
+
+	set(base.Add(5 * time.Second))
+	if err := queue.heartbeat(context.Background(), "w1"); err != nil {
+		t.Fatalf("gated heartbeat: %v", err)
+	}
+	gated, _ := leaseRecordFor(t, queue, lease)
+	if gated.ExpiresAtUnixNano != first.ExpiresAtUnixNano {
+		t.Fatalf("heartbeat within the window rewrote the lease: %d", gated.ExpiresAtUnixNano)
+	}
+
+	set(base.Add(20 * time.Second))
+	if err := queue.heartbeat(context.Background(), "w1"); err != nil {
+		t.Fatalf("post-window heartbeat: %v", err)
+	}
+	extended, _ := leaseRecordFor(t, queue, lease)
+	want := base.Add(20 * time.Second).Add(time.Minute).UnixNano()
+	if extended.ExpiresAtUnixNano != want {
+		t.Fatalf("post-window heartbeat deadline = %d, want %d", extended.ExpiresAtUnixNano, want)
+	}
+}

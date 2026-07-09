@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
@@ -58,6 +59,12 @@ type DurableOrderQueue struct {
 	leases   *vault.Collection[leaseRecord]
 	leaseTTL time.Duration
 	notify   chan struct{}
+	// extendedAt remembers when each worker's leases were last durably
+	// extended, so frequent heartbeats (they also carry control directives, so
+	// their cadence is short) skip the per-beat fsync and only refresh the
+	// durable deadlines every leaseTTL/4 (IO-AGG-02).
+	mu         sync.Mutex
+	extendedAt map[string]time.Time
 }
 
 func newDurableOrderQueue(v *vault.Vault, leaseTTL time.Duration) (*DurableOrderQueue, error) {
@@ -79,13 +86,14 @@ func newDurableOrderQueue(v *vault.Vault, leaseTTL time.Duration) (*DurableOrder
 	}
 
 	return &DurableOrderQueue{
-		vault:    v,
-		orders:   orders,
-		seq:      seq,
-		keys:     keys,
-		leases:   leases,
-		leaseTTL: leaseTTL,
-		notify:   make(chan struct{}, 1),
+		vault:      v,
+		orders:     orders,
+		seq:        seq,
+		keys:       keys,
+		leases:     leases,
+		leaseTTL:   leaseTTL,
+		notify:     make(chan struct{}, 1),
+		extendedAt: map[string]time.Time{},
 	}, nil
 }
 
