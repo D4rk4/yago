@@ -32,6 +32,10 @@ flowchart LR
     nats -- crawled page --> node[yacy-rwi-node]
     node -- DHT traffic --> smokescreen
     node <-- share and serve results --> Net
+
+    node & yacycrawler & yacyvisitcrawl & yacytextindexer & renderproxy & nats -- metrics --> prometheus[Prometheus]
+    prometheus --> grafana[Grafana]
+    You -- watch dashboards --> grafana
 ```
 
 ## Run it
@@ -42,6 +46,12 @@ flowchart LR
    and set `server.secret_key`.
 3. Copy `docker-compose.yml.example` to `docker-compose.yml`.
 4. Start the stack: `docker compose up -d`.
+
+## Watching the stack
+
+Prometheus scrapes every service and Grafana shows the crawl-to-serve pipeline at
+`http://localhost:3000`. The **Pipeline overview** dashboard is loaded on start,
+and Grafana opens without a login. Both run on your machine only.
 
 ## Choosing a search engine
 

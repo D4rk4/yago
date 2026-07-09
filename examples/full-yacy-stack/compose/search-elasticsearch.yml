@@ -11,5 +11,12 @@ services:
     volumes:
       - elasticsearch-data:/usr/share/elasticsearch/data
 
+  elasticsearch-metrics:
+    image: quay.io/prometheuscommunity/elasticsearch-exporter:v1.7.0
+    restart: unless-stopped
+    depends_on:
+      - elasticsearch
+    command: ["--es.uri=http://elasticsearch:9200"]
+
 volumes:
   elasticsearch-data:

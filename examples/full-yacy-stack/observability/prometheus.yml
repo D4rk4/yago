@@ -1,0 +1,31 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: yacy-rwi-node
+    static_configs:
+      - targets: ["yacy-rwi-node:9090"]
+
+  - job_name: renderproxy
+    static_configs:
+      - targets: ["renderproxy:9090"]
+
+  - job_name: yacycrawler
+    static_configs:
+      - targets: ["yacycrawler:9090"]
+
+  - job_name: yacyvisitcrawl
+    static_configs:
+      - targets: ["yacyvisitcrawl:9091"]
+
+  - job_name: yacytextindexer
+    static_configs:
+      - targets: ["yacytextindexer:9090"]
+
+  - job_name: nats
+    static_configs:
+      - targets: ["nats-metrics:7777"]
+
+  - job_name: elasticsearch
+    static_configs:
+      - targets: ["elasticsearch-metrics:9114"]

@@ -1,0 +1,89 @@
+{
+  "title": "Pipeline overview",
+  "uid": "pipeline-overview",
+  "editable": true,
+  "schemaVersion": 39,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "15s",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Visit orders placed",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "targets": [
+        { "expr": "rate(yacyvisitcrawl_orders_placed_total[5m])", "legendFormat": "placed" },
+        { "expr": "rate(yacyvisitcrawl_orders_unplaced_total[5m])", "legendFormat": "unplaced" }
+      ]
+    },
+    {
+      "title": "Crawler pages",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "targets": [
+        { "expr": "rate(yacycrawler_pages_fetched_total[5m])", "legendFormat": "fetched" },
+        { "expr": "rate(yacycrawler_pages_published_total[5m])", "legendFormat": "published" },
+        { "expr": "rate(yacycrawler_pages_disposed_total[5m])", "legendFormat": "disposed" }
+      ]
+    },
+    {
+      "title": "Crawler orders",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "targets": [
+        { "expr": "rate(yacycrawler_orders_received_total[5m])", "legendFormat": "received" },
+        { "expr": "rate(yacycrawler_orders_completed_total[5m])", "legendFormat": "completed" },
+        { "expr": "rate(yacycrawler_orders_redelivered_total[5m])", "legendFormat": "redelivered" }
+      ]
+    },
+    {
+      "title": "Indexer pages",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "targets": [
+        { "expr": "rate(yacytextindexer_pages_indexed_total[5m])", "legendFormat": "indexed" },
+        { "expr": "rate(yacytextindexer_pages_received_total[5m])", "legendFormat": "received" },
+        { "expr": "rate(yacytextindexer_index_failures_total[5m])", "legendFormat": "failures" }
+      ]
+    },
+    {
+      "title": "Renders",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "targets": [
+        { "expr": "rate(renderproxy_renders_succeeded_total[5m])", "legendFormat": "succeeded" },
+        { "expr": "rate(renderproxy_renders_failed_total[5m])", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "title": "Node storage",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [
+        { "expr": "storage_used_bytes", "legendFormat": "used" },
+        { "expr": "storage_quota_bytes", "legendFormat": "quota" }
+      ]
+    }
+  ]
+}

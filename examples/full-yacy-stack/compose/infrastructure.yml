@@ -2,7 +2,7 @@ services:
   nats:
     image: nats:2.14.2
     restart: unless-stopped
-    command: ["-js", "--store_dir=/data"]
+    command: ["-js", "--store_dir=/data", "-m", "8222"]
     ports:
       - "4222:4222"
     volumes:

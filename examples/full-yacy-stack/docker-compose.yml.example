@@ -6,6 +6,7 @@ include:
   - compose/crawl.yml
   - compose/index.yml
   - compose/search.yml
+  - compose/observability.yml
   # Pick one search-index engine (keep it in sync with SEARCH_INDEX_ENGINE in .env
   # and the settings.yml you copied):
   - compose/search-elasticsearch.yml
