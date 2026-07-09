@@ -27,6 +27,7 @@ endef
 .PHONY: tools \
 	fmt fmt-go fmt-py \
 	fmt-check fmt-check-go fmt-check-py \
+	tidy tidy-check \
 	lint lint-go lint-py \
 	vet arch \
 	test test-go test-py \
@@ -42,7 +43,7 @@ test:        test-go test-py
 cover:       cover-go cover-py
 cover-check: cover-check-go cover-check-py
 build:       build-go
-verify:      fmt-check vet lint arch test cover-check build
+verify:      fmt-check tidy-check vet lint arch test cover-check build
 
 $(TOOLS_STAMP): tools/install tools/tools.lock
 	./tools/install
@@ -62,6 +63,12 @@ fmt-go: $(TOOLS_STAMP)
 
 fmt-check-go: $(TOOLS_STAMP)
 	@$(call for_each_go,fmt-check,$(GOLANGCI_LINT) fmt --diff)
+
+tidy:
+	@$(call for_each_go,tidy,$(GO) mod tidy)
+
+tidy-check:
+	@$(call for_each_go,tidy-check,$(GO) mod tidy -diff)
 
 lint-go: $(TOOLS_STAMP)
 	@$(call for_each_go,lint,$(GOLANGCI_LINT) run ./...)
