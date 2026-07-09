@@ -16,7 +16,7 @@ var searchSurfaceSpecs = []surfaceSpec{
 			"yagonode/internal/searchindex/*_test.go",
 			"yagonode/internal/searchremote/*_test.go",
 		},
-		Notes: "HTML parity, richer navigation, and persistent suggestions remain incomplete.",
+		Notes: "Richer navigation refinements and persistent (cross-restart) query suggestions remain incomplete.",
 	},
 	{
 		Name:     "YaCy search RSS",
@@ -28,19 +28,22 @@ var searchSurfaceSpecs = []surfaceSpec{
 			"yagonode/internal/yacysearch/*_test.go",
 			"yagonode/internal/searchlocal/*_test.go",
 		},
-		Notes: "HTML parity and richer YaCy RSS fields remain incomplete.",
+		Notes: "Richer YaCy-specific RSS fields remain incomplete.",
 	},
 	{
-		Name:     "YaCy search HTML",
-		Path:     yagoproto.PathYaCySearchHTML,
-		Methods:  []string{"GET"},
-		State:    Partial,
-		Behavior: "Serves a simple YaCy-compatible public search form and result list backed by the local full-text and federated search backend.",
+		Name:    "YaCy search HTML",
+		Path:    yagoproto.PathYaCySearchHTML,
+		Methods: []string{"GET"},
+		State:   Implemented,
+		Behavior: "Serves a YaCy-compatible public search form and result list backed by the local full-text and " +
+			"federated search backend, with filter-preserving numbered and prev/next pagination and, on a nav= request, " +
+			"collapsible navigator refine links (provider, filetype, language, author, protocol, date).",
 		Evidence: []string{
 			"yagonode/internal/yacysearch/*_test.go",
 			"yagonode/internal/searchlocal/*_test.go",
 		},
-		Notes: "Full Java YaCy page parity remains incomplete.",
+		Notes: "Result rows use one shared text layout across content domains rather than YaCy's per-contentdom " +
+			"thumbnail views — a deliberate text-first-node simplification, not a wire-protocol gap.",
 	},
 	{
 		Name:     "OpenSearch description",
