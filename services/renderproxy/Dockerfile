@@ -13,6 +13,8 @@ WORKDIR /src
 COPY go.work go.work.sum ./
 COPY services/yacynode/go.mod services/yacynode/
 COPY libraries/searchdocument/go.mod libraries/searchdocument/
+COPY libraries/bytesize/go.mod libraries/bytesize/
+COPY libraries/serviceruntime/go.mod libraries/serviceruntime/
 COPY libraries/yacycrawlcontract/go.mod libraries/yacycrawlcontract/
 COPY services/yacycrawler/go.mod services/yacycrawler/
 COPY libraries/yacymodel/go.mod libraries/yacymodel/
