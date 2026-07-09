@@ -30,7 +30,7 @@ Version: $version
 Architecture: $arch
 Maintainer: YagoSeek <noreply@github.com/D4rk4/yago>
 Depends: ca-certificates, adduser
-Recommends: chromium
+Recommends: chromium | chromium-browser
 Section: net
 Priority: optional
 Homepage: https://github.com/D4rk4/yago

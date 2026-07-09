@@ -51,10 +51,12 @@ jobs:
           CGO_ENABLED: "0"
           GOARCH: ${{ matrix.goarch }}
         run: |
+          version="${GITHUB_REF_NAME#v}"
+          node_pkg="github.com/D4rk4/yago/yagonode/internal/yagonode"
           mkdir -p dist/${GOARCH}
-          go build -trimpath -ldflags="-s -w" \
+          go build -trimpath -ldflags="-s -w -X ${node_pkg}.buildVersion=${version}" \
             -o dist/${GOARCH}/yago-node ./yagonode/cmd/yago-node
-          (cd yagocrawler && go build -trimpath -ldflags="-s -w" \
+          (cd yagocrawler && go build -trimpath -ldflags="-s -w -X main.version=${version}" \
             -o ../dist/${GOARCH}/yagocrawler ./cmd/yagocrawler)
 
       - name: Package tarball
@@ -70,15 +72,29 @@ jobs:
           sh deploy/debian/build-deb.sh "$version" ${{ matrix.goarch }} \
             dist/${{ matrix.goarch }} dist
 
-      - name: Smoke-test .deb (native arch only)
+      - name: Smoke-test .deb across target distros (amd64)
         if: matrix.goarch == 'amd64'
         run: |
           version="${GITHUB_REF_NAME#v}"
-          docker run --rm -v "$PWD/dist:/out:ro" debian:12-slim sh -c "
-            apt-get update -qq >/dev/null && \
-            apt-get install -y -qq ca-certificates adduser >/dev/null && \
-            dpkg -i /out/yago_${version}_amd64.deb && id yago && \
-            dpkg -P yago && test -d /opt/yago/data"
+          deb="/out/yago_${version}_amd64.deb"
+          for img in debian:12 debian:13 ubuntu:24.04 ubuntu:latest; do
+            echo "::group::smoke ${img}"
+            docker run --rm -e DEBIAN_FRONTEND=noninteractive \
+              -v "$PWD/dist:/out:ro" "$img" sh -eu -c '
+                apt-get update -qq >/dev/null
+                apt-get install -y -qq --no-install-recommends "$1" >/dev/null
+                id yago
+                test "$(dpkg-query -W -f="\${Version}" yago)" = "$2"
+                dpkg-query -W -f="\${Depends}" yago | grep -q ca-certificates
+                dpkg-query -W -f="\${Recommends}" yago | grep -q chromium
+                test "$(/opt/yago/bin/yago-node --version)" = "yago-node $2"
+                test "$(/opt/yago/bin/yagocrawler --version)" = "yago-crawler $2"
+                dpkg -P yago >/dev/null
+                test -d /opt/yago/data
+                echo "  OK ${1##*/}"
+              ' sh "$deb" "$version"
+            echo "::endgroup::"
+          done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -112,7 +128,7 @@ jobs:
             if [ -n "$previous" ]; then
               git log --format='- %s' "${previous}..${GITHUB_REF_NAME}" | grep -v '^- Co-Authored' || true
             else
-              git log --format='- %s' "${GITHUB_REF_NAME}" | head -50
+              git log --format='- %s' "${GITHUB_REF_NAME}" | grep -v '^- Co-Authored' | head -500
             fi
             echo
             echo "## Container images"

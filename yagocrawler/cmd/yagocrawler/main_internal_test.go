@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -158,6 +159,31 @@ func TestRunReturnsBrowserStartError(t *testing.T) {
 
 	if err := run(context.Background(), minimalServiceConfig(t)); !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
+	}
+}
+
+func TestPrintVersionReportsBuildVersion(t *testing.T) {
+	for _, arg := range []string{"--version", "-version", "version"} {
+		var buf bytes.Buffer
+		if !printVersion([]string{arg}, &buf) {
+			t.Fatalf("printVersion(%q) = false, want true", arg)
+		}
+		want := "yago-crawler " + version + "\n"
+		if buf.String() != want {
+			t.Fatalf("printVersion(%q) wrote %q, want %q", arg, buf.String(), want)
+		}
+	}
+}
+
+func TestPrintVersionIgnoresOtherArgs(t *testing.T) {
+	var buf bytes.Buffer
+	for _, args := range [][]string{nil, {}, {"serve"}, {"-h"}} {
+		if printVersion(args, &buf) {
+			t.Fatalf("printVersion(%v) = true, want false", args)
+		}
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("printVersion wrote %q for non-version args", buf.String())
 	}
 }
 

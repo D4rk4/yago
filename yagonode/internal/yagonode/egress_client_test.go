@@ -19,6 +19,9 @@ func TestUserAgentEmbedsBuildAndProtocolVersions(t *testing.T) {
 	if !strings.Contains(userAgent, "YaCy/"+version) {
 		t.Errorf("userAgent %q should declare the YaCy protocol version %q", userAgent, version)
 	}
+	if Version() != buildVersion {
+		t.Errorf("Version() = %q, want the build version %q", Version(), buildVersion)
+	}
 }
 
 type recordingRoundTripper struct {

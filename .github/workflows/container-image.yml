@@ -3,6 +3,7 @@ name: container-image
 on:
   push:
     branches: [main]
+    tags: ["v*"]
 
 permissions:
   contents: read
@@ -61,7 +62,9 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=sha,format=long
-            type=raw,value=latest
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push
         id: build
@@ -76,7 +79,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ github.sha }}
+            VERSION=${{ github.ref_type == 'tag' && steps.meta.outputs.version || github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -115,7 +118,9 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-crawler
           tags: |
             type=sha,format=long
-            type=raw,value=latest
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push
         id: build
@@ -130,7 +135,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ github.sha }}
+            VERSION=${{ github.ref_type == 'tag' && steps.meta.outputs.version || github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

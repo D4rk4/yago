@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -30,6 +31,10 @@ func main() {
 }
 
 func start() int {
+	if printVersion(os.Args[1:], os.Stdout) {
+		return 0
+	}
+
 	cfg, err := loadCrawlerServiceConfig(os.Getenv)
 	if err != nil {
 		slog.ErrorContext(context.Background(), "crawler config invalid", slog.Any("error", err))
@@ -47,6 +52,23 @@ func start() int {
 		return 1
 	default:
 		return 0
+	}
+}
+
+// printVersion answers `yagocrawler --version` (also -version/version) by
+// writing the stamped build version, returning true when it handled the request
+// so the crawler does not otherwise start.
+func printVersion(args []string, out io.Writer) bool {
+	if len(args) == 0 {
+		return false
+	}
+	switch args[0] {
+	case "--version", "-version", "version":
+		_, _ = fmt.Fprintln(out, "yago-crawler "+version)
+
+		return true
+	default:
+		return false
 	}
 }
 

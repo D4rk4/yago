@@ -31,9 +31,11 @@ package dependencies rather than bundled:
 
 - `ca-certificates` — trust roots for outbound TLS. The binaries read the system
   trust store; there is no baked-in certificate bundle on bare metal.
-- `chromium` (or `google-chrome-stable`) — the crawler's slow-path browser. The
-  container image bundles `headless-shell`; a host install points the crawler at
-  the OS browser through `YAGOCRAWLER_BROWSER_PATH`.
+- `chromium` on Debian or `chromium-browser` on Ubuntu (or any
+  `google-chrome-stable`) — the crawler's slow-path browser. The container image
+  bundles `headless-shell`; a host install points the crawler at the OS browser
+  through `YAGOCRAWLER_BROWSER_PATH`. The crawler still runs without it, serving
+  only the HTTP fast path, so it is a recommended, not a required, dependency.
 
 ## Install and run
 
@@ -87,20 +89,27 @@ services.
 
 `deploy/debian/build-deb.sh <version> <arch> <bindir> <outdir>` builds the
 package anywhere `dpkg-deb` exists. It installs into `/opt/yago`, depends on
-`ca-certificates` and `adduser` (recommends `chromium` for the crawler's
-browser path), creates the `yago` system user in postinst, enables the
-systemd units, and — validated end to end on Debian 12 and Ubuntu 24.04 —
-keeps `/opt/yago/data` through purge while removing the edited env files.
+`ca-certificates` and `adduser` (recommends `chromium | chromium-browser`, so
+the crawler's browser resolves on both Debian and Ubuntu), creates the `yago`
+system user in postinst, enables the systemd units, and — validated end to end
+on Debian 12 and 13 and Ubuntu 24.04 and the latest LTS — keeps `/opt/yago/data`
+through purge while removing the edited env files. The binaries are static (CGO
+off), so the same package installs across every 24.04-and-newer release (and the
+short-lived interim releases in between) with no glibc coupling.
 
 ## Releases
 
 Pushing a `v*` tag runs `.github/workflows/release.yml`: `make verify` gates
-the release, binaries build for amd64 and arm64 (CGO off, trimmed), each arch
-ships as a tarball (binaries + install.sh + units + backup doc) and a `.deb`
-(the amd64 package is smoke-installed in a clean Debian 12 container), release
-notes are generated from the commit titles since the previous tag, and a
-GitHub Release carries the assets. Container images stay on the
-`container-image` workflow; the notes link them.
+the release, binaries build for amd64 and arm64 (CGO off, trimmed) with the tag
+stamped in as the build version (`yago-node --version` / `yagocrawler
+--version` report it), each arch ships as a tarball (binaries + install.sh +
+units + backup doc) and a `.deb`. The amd64 package is smoke-installed across
+Debian 12/13 and Ubuntu 24.04 + `ubuntu:latest` containers — the run checks the
+declared dependencies resolve, both binaries report the stamped version, and purge keeps
+`/opt/yago/data`. Release notes are generated from the commit titles since the
+previous tag, and a GitHub Release carries the assets. The `container-image`
+workflow also fires on the tag, publishing semver-tagged multi-arch images
+(`{{version}}` and `{{major}}.{{minor}}`) alongside the `main` `latest` images.
 
 ## Container layout migration (OPS-04)
 

@@ -52,6 +52,11 @@ const (
 // Dockerfile); left unstamped it reports the calendar default.
 var buildVersion = "2026.7"
 
+// Version returns the build version stamped into this binary: the calendar
+// default, or the precise value a release stamps via -ldflags. It is what
+// `yago-node --version` reports.
+func Version() string { return buildVersion }
+
 // userAgent brands this node's outbound requests as yago while declaring the YaCy
 // protocol version it speaks. It is applied only where a caller has not already
 // set its own User-Agent (see egress_client.go). It derives from buildVersion at
