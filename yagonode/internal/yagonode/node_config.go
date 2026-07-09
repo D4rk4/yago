@@ -47,17 +47,22 @@ const (
 	envAdminRestartEnabled = "YAGO_ADMIN_RESTART_ENABLED"
 	envIndexRemoteResults  = "YAGO_INDEX_REMOTE_RESULTS"
 	envPeerHTTPSPreferred  = "YAGO_PEER_HTTPS_PREFERRED"
-	envSearchLinksNewTab   = "YAGO_SEARCH_LINKS_NEW_TAB"
-	envSwarmSeedCrawl      = "YAGO_SWARM_SEED_CRAWL"
-	envSwarmSeedLimitDocs  = "YAGO_SWARM_SEED_LIMIT_DOCS"
-	envSwarmSeedDepth      = "YAGO_SWARM_SEED_DEPTH"
-	envSwarmSeedMaxPages   = "YAGO_SWARM_SEED_MAX_PAGES"
-	envSwarmMorphology     = "YAGO_SWARM_MORPHOLOGY"
-	envIngestQualityGate   = "YAGO_INGEST_QUALITY_GATE"
-	envPeerSnippetFetch    = "YAGO_PEER_SNIPPET_FETCH"
-	envRemotePeerTimeout   = "YAGO_SEARCH_REMOTE_PEER_TIMEOUT"
-	envLANDiscovery        = "YAGO_LAN_DISCOVERY"
-	envRemoteTimeout       = "YAGO_SEARCH_REMOTE_TIMEOUT"
+	// Seed capability flags advertised to the swarm (YaCy Seed.java flag bits).
+	envAdvertiseDirect      = "YAGO_PEER_ADVERTISE_DIRECT"
+	envAdvertiseRemoteIndex = "YAGO_PEER_ADVERTISE_REMOTE_INDEX"
+	envAdvertiseRootNode    = "YAGO_PEER_ADVERTISE_ROOT_NODE"
+	envAdvertiseSSL         = "YAGO_PEER_ADVERTISE_SSL"
+	envSearchLinksNewTab    = "YAGO_SEARCH_LINKS_NEW_TAB"
+	envSwarmSeedCrawl       = "YAGO_SWARM_SEED_CRAWL"
+	envSwarmSeedLimitDocs   = "YAGO_SWARM_SEED_LIMIT_DOCS"
+	envSwarmSeedDepth       = "YAGO_SWARM_SEED_DEPTH"
+	envSwarmSeedMaxPages    = "YAGO_SWARM_SEED_MAX_PAGES"
+	envSwarmMorphology      = "YAGO_SWARM_MORPHOLOGY"
+	envIngestQualityGate    = "YAGO_INGEST_QUALITY_GATE"
+	envPeerSnippetFetch     = "YAGO_PEER_SNIPPET_FETCH"
+	envRemotePeerTimeout    = "YAGO_SEARCH_REMOTE_PEER_TIMEOUT"
+	envLANDiscovery         = "YAGO_LAN_DISCOVERY"
+	envRemoteTimeout        = "YAGO_SEARCH_REMOTE_TIMEOUT"
 
 	defaultPeerAddr         = ":8090"
 	defaultOpsAddr          = ":9090"
@@ -76,57 +81,63 @@ const (
 )
 
 type nodeConfig struct {
-	Hash                  yagomodel.Hash
-	NetworkName           string
-	Name                  string
-	DataDir               string
-	AdvertiseHost         string
-	AdvertisePort         int
-	AdvertisePortPinned   bool
-	PublicSelfTestURL     *url.URL
-	SelfTestURLPinned     bool
-	Flags                 yagomodel.Flags
-	PeerAddr              string
-	OpsAddr               string
-	PublicAddr            string
-	StoragePath           string
-	SearchIndexPath       string
-	StorageQuotaByte      int64
-	StorageCompaction     time.Duration
-	TrustedProxies        []*net.IPNet
-	EgressAllowLAN        bool
-	EgressAllowedCIDRs    []netip.Prefix
-	SeedlistURLs          []string
-	AnnounceInterval      time.Duration
-	GreetsPerCycle        int
-	SearchAPIKey          string
-	SearchRequireAPIKey   bool
-	PublicSearchUIEnabled bool
-	SearchLinksNewTab     bool
-	HTTPSRedirect         bool
-	PublicBaseURL         string
-	QueryLogMode          queryLogMode
-	MetricsEnabled        bool
-	AdminRestartEnabled   bool
-	IndexRemoteResults    bool
-	SwarmMorphology       bool
-	PeerSnippetFetch      bool
-	RemotePeerTimeout     time.Duration
-	RemoteTimeout         time.Duration
-	RobotsPolicy          string
-	PortalGreeting        string
-	SearchRate            publicratelimit.Tiers
-	LANDiscovery          bool
-	PeerHTTPSPreferred    bool
-	SwarmSeed             swarmSeedConfig
-	AutocrawlerCrawl      seedCrawlOptions
-	DeclaredBirthDate     time.Time
-	Crawl                 crawlConfig
-	Admin                 adminConfig
-	CrossOrigin           crossOriginConfig
-	DHT                   dhtDistributionConfig
-	WebFallback           webFallbackConfig
-	ExtractFetch          extractFetchConfig
+	Hash                yagomodel.Hash
+	NetworkName         string
+	Name                string
+	DataDir             string
+	AdvertiseHost       string
+	AdvertisePort       int
+	AdvertisePortPinned bool
+	PublicSelfTestURL   *url.URL
+	SelfTestURLPinned   bool
+	Flags               yagomodel.Flags
+	// Seed capability flags advertised to the swarm (YaCy Seed.java bits). Flags is
+	// rebuilt from these by configSeedFlags whenever a runtime override lands.
+	AdvertiseDirectConnect bool
+	AdvertiseRemoteIndex   bool
+	AdvertiseRootNode      bool
+	AdvertiseSSLAvailable  bool
+	PeerAddr               string
+	OpsAddr                string
+	PublicAddr             string
+	StoragePath            string
+	SearchIndexPath        string
+	StorageQuotaByte       int64
+	StorageCompaction      time.Duration
+	TrustedProxies         []*net.IPNet
+	EgressAllowLAN         bool
+	EgressAllowedCIDRs     []netip.Prefix
+	SeedlistURLs           []string
+	AnnounceInterval       time.Duration
+	GreetsPerCycle         int
+	SearchAPIKey           string
+	SearchRequireAPIKey    bool
+	PublicSearchUIEnabled  bool
+	SearchLinksNewTab      bool
+	HTTPSRedirect          bool
+	PublicBaseURL          string
+	QueryLogMode           queryLogMode
+	MetricsEnabled         bool
+	AdminRestartEnabled    bool
+	IndexRemoteResults     bool
+	SwarmMorphology        bool
+	PeerSnippetFetch       bool
+	RemotePeerTimeout      time.Duration
+	RemoteTimeout          time.Duration
+	RobotsPolicy           string
+	PortalGreeting         string
+	SearchRate             publicratelimit.Tiers
+	LANDiscovery           bool
+	PeerHTTPSPreferred     bool
+	SwarmSeed              swarmSeedConfig
+	AutocrawlerCrawl       seedCrawlOptions
+	DeclaredBirthDate      time.Time
+	Crawl                  crawlConfig
+	Admin                  adminConfig
+	CrossOrigin            crossOriginConfig
+	DHT                    dhtDistributionConfig
+	WebFallback            webFallbackConfig
+	ExtractFetch           extractFetchConfig
 }
 
 type configuredNodeData struct {
@@ -182,7 +193,6 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		AdvertisePortPinned:   adv.portPinned,
 		PublicSelfTestURL:     adv.selfTestURL,
 		SelfTestURLPinned:     adv.selfTestPinned,
-		Flags:                 seniorFlags(),
 		PeerAddr:              peerAddr,
 		OpsAddr:               envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
 		PublicAddr:            publicListenerAddr(getenv),
@@ -217,7 +227,26 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		DHT:                   derived.dht,
 		WebFallback:           derived.webFallback,
 		ExtractFetch:          derived.extractFetch,
-	}, nil
+	}.withCapabilities(getenv)
+}
+
+// withCapabilities loads the operator's seed capability toggles from the
+// environment and stamps the resulting advertisement flags onto the config. It
+// keeps loadNodeConfig within its length budget while colocating the flag load
+// with the fields it fills.
+func (c nodeConfig) withCapabilities(
+	getenv func(string) string,
+) (nodeConfig, error) {
+	caps, err := loadSeedCapabilities(getenv)
+	if err != nil {
+		return nodeConfig{}, err
+	}
+	c.Flags = caps.flags()
+	c.AdvertiseDirectConnect = caps.directConnect
+	c.AdvertiseRemoteIndex = caps.remoteIndex
+	c.AdvertiseRootNode = caps.rootNode
+	c.AdvertiseSSLAvailable = caps.sslAvailable
+	return c, nil
 }
 
 type derivedConfigs struct {
@@ -748,12 +777,68 @@ func publicListenerAddr(getenv func(string) string) string {
 	}
 }
 
-func seniorFlags() yagomodel.Flags {
+// seedCapabilities holds the operator-controlled swarm capability flags this
+// node advertises in its seed. The values map onto YaCy Seed.java flag bits.
+type seedCapabilities struct {
+	directConnect bool
+	remoteIndex   bool
+	rootNode      bool
+	sslAvailable  bool
+}
+
+// loadSeedCapabilities reads the advertised swarm capability flags from the
+// environment. Defaults preserve the historical advertisement (direct connect
+// and accept-remote-index on), leaving root-node and SSL off until an operator
+// opts in.
+func loadSeedCapabilities(getenv func(string) string) (seedCapabilities, error) {
+	directConnect, err := boolEnv(getenv, envAdvertiseDirect, true)
+	if err != nil {
+		return seedCapabilities{}, fmt.Errorf("%s: %w", envAdvertiseDirect, err)
+	}
+	remoteIndex, err := boolEnv(getenv, envAdvertiseRemoteIndex, true)
+	if err != nil {
+		return seedCapabilities{}, fmt.Errorf("%s: %w", envAdvertiseRemoteIndex, err)
+	}
+	rootNode, err := boolEnv(getenv, envAdvertiseRootNode, false)
+	if err != nil {
+		return seedCapabilities{}, fmt.Errorf("%s: %w", envAdvertiseRootNode, err)
+	}
+	sslAvailable, err := boolEnv(getenv, envAdvertiseSSL, false)
+	if err != nil {
+		return seedCapabilities{}, fmt.Errorf("%s: %w", envAdvertiseSSL, err)
+	}
+
+	return seedCapabilities{
+		directConnect: directConnect,
+		remoteIndex:   remoteIndex,
+		rootNode:      rootNode,
+		sslAvailable:  sslAvailable,
+	}, nil
+}
+
+// flags renders the capability set as the YaCy seed flag bitfield.
+// FlagAcceptRemoteCrawl deliberately stays clear: remote crawl execution is
+// disabled for SSRF safety (see doc/remote-crawl-policy.md), and advertising a
+// capability the crawlReceipt endpoint rejects would break the swarm contract.
+func (c seedCapabilities) flags() yagomodel.Flags {
 	flags := yagomodel.ZeroFlags()
-	flags = flags.Set(yagomodel.FlagDirectConnect, true)
-	flags = flags.Set(yagomodel.FlagAcceptRemoteIndex, true)
+	flags = flags.Set(yagomodel.FlagDirectConnect, c.directConnect)
+	flags = flags.Set(yagomodel.FlagAcceptRemoteIndex, c.remoteIndex)
+	flags = flags.Set(yagomodel.FlagRootNode, c.rootNode)
+	flags = flags.Set(yagomodel.FlagSSLAvailable, c.sslAvailable)
 
 	return flags
+}
+
+// configSeedFlags rebuilds the advertised seed flags from a config's capability
+// toggles, so a runtime override to any toggle re-derives the bitfield.
+func configSeedFlags(config nodeConfig) yagomodel.Flags {
+	return seedCapabilities{
+		directConnect: config.AdvertiseDirectConnect,
+		remoteIndex:   config.AdvertiseRemoteIndex,
+		rootNode:      config.AdvertiseRootNode,
+		sslAvailable:  config.AdvertiseSSLAvailable,
+	}.flags()
 }
 
 // optionalPeerHash parses the peer hash from the environment when set. An empty

@@ -84,6 +84,7 @@ func extendedSettingDefinitions() []settingDefinition {
 		},
 	}...)
 	definitions = append(definitions, extendedTelemetryDefinitions()...)
+	definitions = append(definitions, seedCapabilityDefinitions()...)
 	definitions = append(definitions, networkDiscoveryDefinitions()...)
 	definitions = append(definitions, remoteSearchDefinitions()...)
 	definitions = append(definitions, webFallbackDefinitions()...)

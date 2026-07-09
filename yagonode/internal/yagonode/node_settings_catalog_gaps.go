@@ -135,6 +135,73 @@ func swarmPresenceDefinitions() []settingDefinition {
 	}
 }
 
+// seedCapabilityDefinitions surfaces the swarm capability flags this node
+// advertises in its seed (Configuration → General, since the keys carry no
+// tab-specific prefix). Editing a flag re-derives the advertised bitfield; the
+// change reaches the swarm on the next restart, when the seed identity is
+// rebuilt. Accept-remote-crawl is intentionally absent: remote crawl execution
+// is disabled for SSRF safety, so the node never advertises it.
+func seedCapabilityDefinitions() []settingDefinition {
+	return []settingDefinition{
+		{
+			key:          "peer.advertise.direct_connect",
+			title:        "Advertise direct connect",
+			description:  "Tell the swarm this peer accepts direct inbound connections (YaCy DirectConnect flag).",
+			options:      boolSettingOptions(),
+			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.AdvertiseDirectConnect) },
+			normalize:    normalizeSettingBool,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.AdvertiseDirectConnect = value == settingBoolTrue
+				config.Flags = configSeedFlags(config)
+
+				return config
+			},
+		},
+		{
+			key:          "peer.advertise.remote_index",
+			title:        "Advertise accept remote index",
+			description:  "Tell the swarm this peer accepts DHT index (RWI) transfers from other peers.",
+			options:      boolSettingOptions(),
+			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.AdvertiseRemoteIndex) },
+			normalize:    normalizeSettingBool,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.AdvertiseRemoteIndex = value == settingBoolTrue
+				config.Flags = configSeedFlags(config)
+
+				return config
+			},
+		},
+		{
+			key:          "peer.advertise.root_node",
+			title:        "Advertise root node",
+			description:  "Advertise this peer as a swarm root node (YaCy RootNode flag).",
+			options:      boolSettingOptions(),
+			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.AdvertiseRootNode) },
+			normalize:    normalizeSettingBool,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.AdvertiseRootNode = value == settingBoolTrue
+				config.Flags = configSeedFlags(config)
+
+				return config
+			},
+		},
+		{
+			key:          "peer.advertise.ssl",
+			title:        "Advertise SSL available",
+			description:  "Advertise that this peer's port serves HTTPS so peers try https first. Enable only when the advertised port actually terminates TLS.",
+			options:      boolSettingOptions(),
+			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.AdvertiseSSLAvailable) },
+			normalize:    normalizeSettingBool,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.AdvertiseSSLAvailable = value == settingBoolTrue
+				config.Flags = configSeedFlags(config)
+
+				return config
+			},
+		},
+	}
+}
+
 // dhtDefinitions covers the distributed-index participation knobs.
 func dhtDefinitions() []settingDefinition {
 	toggles := []struct {
