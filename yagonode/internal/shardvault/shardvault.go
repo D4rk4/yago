@@ -95,7 +95,10 @@ func openEngine(dir string, quotaBytes int64) (*engine, error) {
 		quotaBytes: quotaBytes,
 		level:      manifest.Level,
 		split:      manifest.Split,
-		shardLocks: make([]sync.Mutex, count),
+		// Sized to the cap so a split never grows it: a []sync.Mutex cannot be
+		// appended without copying locks. Indices past the live count stay unused
+		// until the pool grows into them (ADR-0037).
+		shardLocks: make([]sync.Mutex, maxShards),
 	}, nil
 }
 

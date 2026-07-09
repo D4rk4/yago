@@ -35,7 +35,12 @@ const (
 // over-full shard at a time (ADR-0036 C).
 func (e *engine) Compact(ctx context.Context) (vault.CompactResult, error) {
 	var result vault.CompactResult
-	for i := range e.shards {
+	// Snapshot the count under the gate: a concurrent split can grow e.shards, and
+	// any shard added after this point is compacted on the next pass.
+	e.globalGate.RLock()
+	count := len(e.shards)
+	e.globalGate.RUnlock()
+	for i := range count {
 		if err := ctx.Err(); err != nil {
 			return result, fmt.Errorf("context: %w", err)
 		}
