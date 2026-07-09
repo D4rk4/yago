@@ -183,3 +183,32 @@ func TestResponseRSSNavigation(t *testing.T) {
 		}
 	}
 }
+
+func TestResponseRSSItemRendersAuthorAsDCCreator(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, "http://node.test/yacysearch.rss?query=golang", nil,
+	)
+	resp := searchcore.Response{
+		TotalResults: 1,
+		Request:      searchcore.Request{Query: "golang", Limit: 10},
+		Results: []searchcore.Result{{
+			Title:  "Doc",
+			URL:    "https://example.org/doc",
+			Author: "Ada Lovelace",
+		}},
+	}
+
+	feed := responseRSS(req, resp)
+	if len(feed.Channel.Items) != 1 || feed.Channel.Items[0].Creator != "Ada Lovelace" {
+		t.Fatalf("item creator = %+v", feed.Channel.Items)
+	}
+	encoded, err := xml.Marshal(feed)
+	if err != nil {
+		t.Fatalf("marshal rss: %v", err)
+	}
+	if !strings.Contains(string(encoded), `<dc:creator>Ada Lovelace</dc:creator>`) {
+		t.Fatalf("rss item missing dc:creator in %s", encoded)
+	}
+}

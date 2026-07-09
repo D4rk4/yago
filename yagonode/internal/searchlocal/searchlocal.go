@@ -345,6 +345,7 @@ func coreResult(
 		Date:               result.PublishedDate.Format("20060102"),
 		ContentDomain:      req.ContentDomain,
 		Language:           req.Language,
+		Author:             result.Author,
 		Quality:            result.Quality,
 		Proximity:          result.Proximity,
 		FieldScores:        result.FieldScores,

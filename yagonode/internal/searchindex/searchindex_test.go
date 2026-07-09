@@ -75,6 +75,7 @@ func TestBleveMemoryIndexRebuildsAndSearchesDocuments(t *testing.T) {
 				Language:      "en",
 				FetchedAt:     fetched,
 				Inlinks:       []documentstore.AnchorText{{Text: "search anchor"}},
+				Metadata:      map[string]string{"author": "Ada Lovelace"},
 			},
 			{
 				NormalizedURL: "https://example.net/rust",
@@ -106,6 +107,7 @@ func TestBleveMemoryIndexRebuildsAndSearchesDocuments(t *testing.T) {
 		result.Snippet != "Golang crawler document body." ||
 		result.RawContent != "Golang crawler document body." ||
 		result.PublishedDate != fetched ||
+		result.Author != "Ada Lovelace" ||
 		result.Score <= 0 {
 		t.Fatalf("result = %#v", result)
 	}

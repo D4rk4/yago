@@ -55,6 +55,7 @@ func TestSearcherTranslatesAndFiltersResults(t *testing.T) {
 				URL:     "https://example.org/file.pdf",
 				Snippet: "first snippet",
 				Score:   1,
+				Author:  "Ada Lovelace",
 			},
 			{
 				Title:   "Rejected",
@@ -105,7 +106,8 @@ func TestSearcherTranslatesAndFiltersResults(t *testing.T) {
 		result.File != "file.pdf" ||
 		result.URLHash == "" ||
 		result.ContentDomain != searchcore.ContentDomainText ||
-		result.Language != "EN" {
+		result.Language != "EN" ||
+		result.Author != "Ada Lovelace" {
 		t.Fatalf("result = %#v", result)
 	}
 }

@@ -90,6 +90,10 @@ type Result struct {
 	Date          string
 	ContentDomain ContentDomain
 	Language      string
+	// Author is the document's extracted author metadata (HTML meta author),
+	// surfaced for the yacysearch RSS dc:creator field; empty when the document
+	// carried none or for remote results that did not include it.
+	Author string
 	// Quality is the document's content-quality prior in [0,1] (contentprior) for
 	// local results, folded into the score by the ranking profile; zero for remote
 	// results, which carry no prior.
