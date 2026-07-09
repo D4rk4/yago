@@ -8,6 +8,8 @@ allow:
 components:
   canonicalurl:
     in: internal/canonicalurl/**
+  formatparse:
+    in: internal/formatparse/**
   pageadmission:
     in: internal/pageadmission/**
   crawlfrontier:
@@ -76,6 +78,9 @@ deps:
   canonicalurl:
     mayDependOn:
       - canonicalurl
+  formatparse:
+    mayDependOn:
+      - formatparse
   pageadmission:
     mayDependOn:
       - pageadmission
