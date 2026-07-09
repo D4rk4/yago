@@ -12,7 +12,7 @@
 
   {{if .Editable}}{{range .SettingGroups}}
   <section class="cds-tabpanel" role="tabpanel" id="panel-{{.ID}}" aria-labelledby="tab-{{.ID}}">
-    <form class="cds-settings-form" method="post" action="/admin/configuration" hx-boost="false">
+    <form id="cfg-{{.ID}}" class="cds-settings-form" method="post" action="/admin/configuration" hx-boost="false">
       <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
       <fieldset class="cds-fieldset">
         <legend class="cds-legend">{{.Title}}</legend>
@@ -39,14 +39,14 @@
         </div>
         {{end}}
       </fieldset>
-      <button class="cds-btn" type="submit">Save</button>
+      {{if not (and (eq .ID "storage") $.CompactEnabled)}}<button class="cds-btn" type="submit">Save</button>{{end}}
     </form>
     {{if and (eq .ID "storage") $.CompactEnabled}}
     <form class="cds-actions" method="post" action="/admin/configuration" hx-boost="false">
       <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
       <input type="hidden" name="form" value="compact">
+      <button class="cds-btn" type="submit" form="cfg-{{.ID}}">Save</button>
       <button class="cds-btn" type="submit">Compact now</button>
-      <span class="cds-muted">Rewrite over-full storage shards now to hand space freed by deletions back to the OS.</span>
     </form>
     {{end}}
   </section>
