@@ -19,8 +19,13 @@ func TestOverviewSourceMapsReport(t *testing.T) {
 	if overview.PeerHash != "0123456789AB" {
 		t.Fatalf("peer hash = %q", overview.PeerHash)
 	}
-	if overview.Version != "1.83" || overview.UptimeSeconds != 315 {
+	// The overview reports yago's own build version, not the YaCy-compatibility
+	// protocol version the stub report carries for the wire.
+	if overview.Version != Version() || overview.UptimeSeconds != 315 {
 		t.Fatalf("overview = %+v", overview)
+	}
+	if overview.Version == report.Version(context.Background()) {
+		t.Fatalf("overview version %q leaked the wire protocol version", overview.Version)
 	}
 }
 

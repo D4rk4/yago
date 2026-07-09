@@ -29,10 +29,14 @@ func (s overviewSource) Overview(ctx context.Context) adminui.Overview {
 	receivedURLs, _ := seed.ReceivedURLCount.Get()
 
 	return adminui.Overview{
-		PeerName:      name,
-		PeerHash:      string(seed.Hash),
-		PeerType:      string(peerType),
-		Version:       s.report.Version(ctx),
+		PeerName: name,
+		PeerHash: string(seed.Hash),
+		PeerType: string(peerType),
+		// The branded console reports yago's own build version (buildVersion,
+		// stamped by a release build), not the numeric YaCy-compatibility
+		// protocol version that report.Version carries for the wire — those two
+		// evolve independently and only the latter must stay a YaCy float.
+		Version:       Version(),
 		UptimeSeconds: s.report.UptimeSeconds(ctx),
 		Documents:     documents,
 		Words:         words,
