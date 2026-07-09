@@ -11,17 +11,7 @@ ENV CGO_ENABLED=0 GOFLAGS=-trimpath
 WORKDIR /src
 
 COPY go.work go.work.sum ./
-COPY services/yacynode/go.mod services/yacynode/go.sum services/yacynode/
-COPY libraries/searchdocument/go.mod libraries/searchdocument/
-COPY libraries/bytesize/go.mod libraries/bytesize/
-COPY libraries/serviceruntime/go.mod libraries/serviceruntime/
-COPY libraries/yacycrawlcontract/go.mod libraries/yacycrawlcontract/
-COPY services/yacycrawler/go.mod services/yacycrawler/
-COPY libraries/yacymodel/go.mod libraries/yacymodel/
-COPY libraries/yacyproto/go.mod libraries/yacyproto/
-COPY services/yacytextindexer/go.mod services/yacytextindexer/
-COPY services/yacyvisitcrawl/go.mod services/yacyvisitcrawl/
-COPY services/renderproxy/go.mod services/renderproxy/go.sum services/renderproxy/
+COPY --parents libraries/*/go.mod libraries/*/go.sum services/*/go.mod services/*/go.sum ./
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
