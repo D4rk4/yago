@@ -55,22 +55,32 @@ func (e *HTTPEndpointMetrics) Observe(endpoint string, status int, elapsed time.
 	e.durations.WithLabelValues(endpoint).Observe(elapsed.Seconds())
 }
 
-// ObserveExemplar pins a sampled trace ID onto the latency histogram bucket
-// this request fell into, so a slow bucket links straight to a live trace
-// (OPS-10). Non-exemplar observers ignore the call.
+// ObserveExemplar records a completed request like Observe — counting it by
+// endpoint and status — but records the single latency observation with the
+// sampled trace ID pinned on as an exemplar, so a slow bucket links straight to
+// a live trace (OPS-10). A sampled request records exactly one histogram
+// observation carrying the exemplar: callers use this instead of Observe for a
+// sampled request, never in addition, so the latency histogram is not
+// double-counted. It falls back to a plain observation when no trace ID is
+// given or the histogram cannot carry exemplars.
 func (e *HTTPEndpointMetrics) ObserveExemplar(
 	endpoint string,
+	status int,
 	elapsed time.Duration,
 	traceID string,
 ) {
 	if endpoint == "" {
 		endpoint = unmatchedEndpoint
 	}
-	observer, ok := e.durations.WithLabelValues(endpoint).(prometheus.ExemplarObserver)
-	if !ok {
+	e.requests.WithLabelValues(endpoint, strconv.Itoa(status)).Inc()
+	observer := e.durations.WithLabelValues(endpoint)
+	exemplar, ok := observer.(prometheus.ExemplarObserver)
+	if !ok || traceID == "" {
+		observer.Observe(elapsed.Seconds())
+
 		return
 	}
-	observer.ObserveWithExemplar(elapsed.Seconds(), prometheus.Labels{"trace_id": traceID})
+	exemplar.ObserveWithExemplar(elapsed.Seconds(), prometheus.Labels{"trace_id": traceID})
 }
 
 func (e *HTTPEndpointMetrics) Handler() http.Handler {

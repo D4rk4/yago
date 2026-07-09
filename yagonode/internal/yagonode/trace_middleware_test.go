@@ -43,6 +43,7 @@ func TestInstrumentHTTPAdoptsInboundTrace(t *testing.T) {
 
 func TestObserveExemplarTolerates(t *testing.T) {
 	endpoints := metrics.NewHTTPEndpointMetrics()
-	endpoints.ObserveExemplar("", 0, "abc")
-	endpoints.ObserveExemplar("/x", 100, "4bf92f3577b34da6a3ce929d0e0e4736")
+	endpoints.ObserveExemplar("", 0, 0, "abc")
+	endpoints.ObserveExemplar("/x", http.StatusOK, 100, "4bf92f3577b34da6a3ce929d0e0e4736")
+	endpoints.ObserveExemplar("/y", http.StatusOK, 50, "")
 }

@@ -23,9 +23,10 @@ func instrumentHTTP(endpoints *metrics.HTTPEndpointMetrics, next http.Handler) h
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(recorder, r)
 		elapsed := time.Since(started)
-		endpoints.Observe(r.Pattern, recorder.status, elapsed)
 		if trace.Sampled {
-			endpoints.ObserveExemplar(r.Pattern, elapsed, trace.TraceID)
+			endpoints.ObserveExemplar(r.Pattern, recorder.status, elapsed, trace.TraceID)
+		} else {
+			endpoints.Observe(r.Pattern, recorder.status, elapsed)
 		}
 	})
 }
