@@ -184,7 +184,7 @@ func TestResponseRSSNavigation(t *testing.T) {
 	}
 }
 
-func TestResponseRSSItemRendersAuthorAsDCCreator(t *testing.T) {
+func TestResponseRSSItemRendersDublinCoreMetadata(t *testing.T) {
 	t.Parallel()
 
 	req := httptest.NewRequestWithContext(
@@ -194,21 +194,34 @@ func TestResponseRSSItemRendersAuthorAsDCCreator(t *testing.T) {
 		TotalResults: 1,
 		Request:      searchcore.Request{Query: "golang", Limit: 10},
 		Results: []searchcore.Result{{
-			Title:  "Doc",
-			URL:    "https://example.org/doc",
-			Author: "Ada Lovelace",
+			Title:     "Doc",
+			URL:       "https://example.org/doc",
+			Author:    "Ada Lovelace",
+			Keywords:  "go, search",
+			Publisher: "Example Press",
 		}},
 	}
 
 	feed := responseRSS(req, resp)
-	if len(feed.Channel.Items) != 1 || feed.Channel.Items[0].Creator != "Ada Lovelace" {
-		t.Fatalf("item creator = %+v", feed.Channel.Items)
+	if len(feed.Channel.Items) != 1 {
+		t.Fatalf("items = %+v", feed.Channel.Items)
+	}
+	item := feed.Channel.Items[0]
+	if item.Creator != "Ada Lovelace" || item.Publisher != "Example Press" ||
+		item.Subject != "go, search" {
+		t.Fatalf("item = %+v", item)
 	}
 	encoded, err := xml.Marshal(feed)
 	if err != nil {
 		t.Fatalf("marshal rss: %v", err)
 	}
-	if !strings.Contains(string(encoded), `<dc:creator>Ada Lovelace</dc:creator>`) {
-		t.Fatalf("rss item missing dc:creator in %s", encoded)
+	for _, want := range []string{
+		`<dc:creator>Ada Lovelace</dc:creator>`,
+		`<dc:publisher>Example Press</dc:publisher>`,
+		`<dc:subject>go, search</dc:subject>`,
+	} {
+		if !strings.Contains(string(encoded), want) {
+			t.Fatalf("rss item missing %q in %s", want, encoded)
+		}
 	}
 }

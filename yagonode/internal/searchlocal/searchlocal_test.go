@@ -51,11 +51,13 @@ func TestSearcherTranslatesAndFiltersResults(t *testing.T) {
 				PublishedDate: published,
 			},
 			{
-				Title:   "First",
-				URL:     "https://example.org/file.pdf",
-				Snippet: "first snippet",
-				Score:   1,
-				Author:  "Ada Lovelace",
+				Title:     "First",
+				URL:       "https://example.org/file.pdf",
+				Snippet:   "first snippet",
+				Score:     1,
+				Author:    "Ada Lovelace",
+				Keywords:  "go, search",
+				Publisher: "Example Press",
 			},
 			{
 				Title:   "Rejected",
@@ -107,7 +109,9 @@ func TestSearcherTranslatesAndFiltersResults(t *testing.T) {
 		result.URLHash == "" ||
 		result.ContentDomain != searchcore.ContentDomainText ||
 		result.Language != "EN" ||
-		result.Author != "Ada Lovelace" {
+		result.Author != "Ada Lovelace" ||
+		result.Keywords != "go, search" ||
+		result.Publisher != "Example Press" {
 		t.Fatalf("result = %#v", result)
 	}
 }

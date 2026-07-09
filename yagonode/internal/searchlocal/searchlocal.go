@@ -346,6 +346,8 @@ func coreResult(
 		ContentDomain:      req.ContentDomain,
 		Language:           req.Language,
 		Author:             result.Author,
+		Keywords:           result.Keywords,
+		Publisher:          result.Publisher,
 		Quality:            result.Quality,
 		Proximity:          result.Proximity,
 		FieldScores:        result.FieldScores,

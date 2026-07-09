@@ -117,5 +117,11 @@ func documentMetadata(
 	if page.Author != "" {
 		values["author"] = page.Author
 	}
+	if page.Keywords != "" {
+		values["keywords"] = page.Keywords
+	}
+	if page.Publisher != "" {
+		values["publisher"] = page.Publisher
+	}
 	return values
 }

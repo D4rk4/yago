@@ -5,6 +5,8 @@ type ParsedPage struct {
 	CanonicalURL    string
 	Description     string
 	Author          string
+	Keywords        string
+	Publisher       string
 	Title           string
 	Headings        []string
 	Language        string

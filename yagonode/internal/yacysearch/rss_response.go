@@ -76,6 +76,8 @@ type rssItem struct {
 	Description string  `xml:"description"`
 	PubDate     string  `xml:"pubDate"`
 	Creator     string  `xml:"dc:creator"`
+	Publisher   string  `xml:"dc:publisher"`
+	Subject     string  `xml:"dc:subject"`
 	Size        int     `xml:"yacy:size"`
 	SizeName    string  `xml:"yacy:sizename"`
 	Host        string  `xml:"yacy:host"`
@@ -138,6 +140,8 @@ func responseRSSItems(results []searchcore.Result) []rssItem {
 			Description: result.Snippet,
 			PubDate:     rssDate(result.Date),
 			Creator:     result.Author,
+			Publisher:   result.Publisher,
+			Subject:     result.Keywords,
 			Size:        result.Size,
 			SizeName:    sizeName(result.Size),
 			Host:        result.Host,

@@ -393,6 +393,8 @@ func searchResultFromDocument(
 		FieldTermPositions: hitFieldTermPositions(req, hit),
 		PublishedDate:      documentTime(doc),
 		Author:             doc.Metadata["author"],
+		Keywords:           doc.Metadata["keywords"],
+		Publisher:          doc.Metadata["publisher"],
 		Images:             resultImages(doc, req),
 	}
 }

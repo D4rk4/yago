@@ -76,6 +76,12 @@ type SearchResult struct {
 	// surfaced for the yacysearch RSS dc:creator field; empty when the document
 	// carried none.
 	Author string
+	// Keywords is the document's extracted keyword metadata
+	// (doc.Metadata["keywords"]), surfaced for the yacysearch RSS dc:subject field.
+	Keywords string
+	// Publisher is the document's extracted publisher metadata
+	// (doc.Metadata["publisher"]), surfaced for the yacysearch RSS dc:publisher field.
+	Publisher string
 	// Quality is the deterministic content-quality prior of the document text in
 	// [0,1] (contentprior), computed at result mapping so it is query-independent;
 	// the searcher folds it into the score by the RankingWeights.Quality weight.

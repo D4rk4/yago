@@ -56,6 +56,8 @@ func readHTMLFields(root *html.Node, rawURL string, page *ParsedPage) {
 	}
 	page.Description = readMetaDescription(root)
 	page.Author = readMetaAuthor(root)
+	page.Keywords = readMetaKeywords(root)
+	page.Publisher = readMetaPublisher(root)
 	page.MetaNoindex, page.MetaNofollow = readMetaRobots(root)
 	for _, name := range []string{"h1", "h2", "h3", "h4", "h5", "h6"} {
 		for _, heading := range dom.GetElementsByTagName(root, name) {
@@ -116,6 +118,43 @@ func readMetaAuthor(root *html.Node) string {
 	}
 
 	return byName
+}
+
+// readMetaKeywords reads the page's comma-separated keywords from the
+// conventional <meta name="keywords"> tag, surfaced as the RSS dc:subject field.
+func readMetaKeywords(root *html.Node) string {
+	for _, meta := range dom.GetElementsByTagName(root, "meta") {
+		if !strings.EqualFold(dom.GetAttribute(meta, "name"), "keywords") {
+			continue
+		}
+		if content := collapseSpaces(dom.GetAttribute(meta, "content")); content != "" {
+			return content
+		}
+	}
+
+	return ""
+}
+
+// readMetaPublisher reads the page publisher from the conventional meta tags, in
+// order of specificity: name=publisher, then property=og:site_name. It feeds the
+// RSS dc:publisher field.
+func readMetaPublisher(root *html.Node) string {
+	fallback := ""
+	for _, meta := range dom.GetElementsByTagName(root, "meta") {
+		content := collapseSpaces(dom.GetAttribute(meta, "content"))
+		if content == "" {
+			continue
+		}
+		if strings.EqualFold(dom.GetAttribute(meta, "name"), "publisher") {
+			return content
+		}
+		if fallback == "" &&
+			strings.EqualFold(dom.GetAttribute(meta, "property"), "og:site_name") {
+			fallback = content
+		}
+	}
+
+	return fallback
 }
 
 func readMetaDescription(root *html.Node) string {
