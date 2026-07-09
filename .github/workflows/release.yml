@@ -96,6 +96,37 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: Install rpm tooling
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Build .rpm
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sh deploy/rpm/build-rpm.sh "$version" ${{ matrix.goarch }} \
+            dist/${{ matrix.goarch }} dist
+
+      - name: Smoke-test .rpm across RPM distros (amd64)
+        if: matrix.goarch == 'amd64'
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          rpm_path="/out/yago-${version}-1.x86_64.rpm"
+          for img in fedora:latest rockylinux:9; do
+            echo "::group::smoke ${img}"
+            docker run --rm -v "$PWD/dist:/out:ro" "$img" sh -eu -c '
+                dnf install -y -q --setopt=install_weak_deps=False "$1" >/dev/null
+                id yago
+                test "$(rpm -q --qf "%{VERSION}" yago)" = "$2"
+                rpm -q --requires yago | grep -q ca-certificates
+                rpm -q --recommends yago | grep -q chromium
+                test "$(/opt/yago/bin/yago-node --version)" = "yago-node $2"
+                test "$(/opt/yago/bin/yagocrawler --version)" = "yago-crawler $2"
+                rpm -e yago
+                test -d /opt/yago/data
+                echo "  OK ${1##*/}"
+              ' sh "$rpm_path" "$version"
+            echo "::endgroup::"
+          done
+
       - name: Upload artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -103,6 +134,7 @@ jobs:
           path: |
             dist/*.tar.gz
             dist/*.deb
+            dist/*.rpm
 
   release:
     needs: build

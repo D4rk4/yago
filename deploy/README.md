@@ -97,15 +97,29 @@ through purge while removing the edited env files. The binaries are static (CGO
 off), so the same package installs across every 24.04-and-newer release (and the
 short-lived interim releases in between) with no glibc coupling.
 
+## RPM package
+
+`deploy/rpm/build-rpm.sh <version> <arch> <bindir> <outdir>` builds the same
+layout as an `.rpm` anywhere `rpmbuild` exists (the `<arch>` is the Go/deb
+`amd64|arm64`, mapped to the RPM `x86_64|aarch64`, so one release matrix drives
+both package builders). It requires `ca-certificates`, recommends `chromium`,
+creates the `yago` system user in a `%pre` scriptlet, enables the units in
+`%post`, and keeps `/opt/yago/data` on removal. The static binaries carry no
+shared-library dependencies, so debuginfo and strip post-processing are disabled
+(they would run the host toolchain against a cross-arch binary) and the same
+package installs across Fedora, RHEL/Rocky/Alma 9+, and openSUSE. Validated end
+to end on Fedora and Rocky 9.
+
 ## Releases
 
 Pushing a `v*` tag runs `.github/workflows/release.yml`: `make verify` gates
 the release, binaries build for amd64 and arm64 (CGO off, trimmed) with the tag
 stamped in as the build version (`yago-node --version` / `yagocrawler
 --version` report it), each arch ships as a tarball (binaries + install.sh +
-units + backup doc) and a `.deb`. The amd64 package is smoke-installed across
-Debian 12/13 and Ubuntu 24.04 + `ubuntu:latest` containers — the run checks the
-declared dependencies resolve, both binaries report the stamped version, and purge keeps
+units + backup doc), a `.deb`, and an `.rpm`. The amd64 `.deb` is smoke-installed
+across Debian 12/13 and Ubuntu 24.04 + `ubuntu:latest`, and the amd64 `.rpm`
+across Fedora and Rocky 9 — each run checks the declared dependencies resolve,
+both binaries report the stamped version, and package removal keeps
 `/opt/yago/data`. Release notes are generated from the commit titles since the
 previous tag, and a GitHub Release carries the assets. Container images are not
 published by CI; build them locally from the Dockerfiles (`docker compose
