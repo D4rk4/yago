@@ -33,6 +33,13 @@ func explainQuery(t *testing.T, index bleve.Index) *search.Explanation {
 	t.Helper()
 	query := bleve.NewMatchQuery("черногория")
 	query.SetField("body")
+	// Pin the analyzer: an unset one is resolved by AnalyzerNameForPath, which
+	// ranges over the per-language TypeMapping map, and Go randomizes map
+	// iteration, so the query text was intermittently stemmed by the "ru"
+	// analyzer ("черногор") and missed the surface term the default mapping
+	// indexed ("черногория") — a ~1-in-N "no hits" flake (TESTFLAKE-01).
+	// standard_text is the surface-form analyzer production always ORs in.
+	query.Analyzer = standardTextAnalyzer
 	request := bleve.NewSearchRequest(query)
 	request.Explain = true
 	result, err := index.Search(request)
