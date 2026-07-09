@@ -126,6 +126,19 @@ func TestConfigureSetupWizardSkipsNilSettings(t *testing.T) {
 // once the wizard applies its choices, the armed restart trigger fires and the
 // operator sees the restarting notice instead of a login redirect served by a
 // half-configured node.
+func TestWizardSeedlistDefaultPrefillsCanonicalWhenEmpty(t *testing.T) {
+	if got := wizardSeedlistDefault(nil); got != strings.Join(defaultWizardSeedlistURLs, ",") {
+		t.Errorf("empty config should prefill the canonical seeds, got %q", got)
+	}
+	if len(defaultWizardSeedlistURLs) == 0 {
+		t.Fatal("canonical seed list must not be empty")
+	}
+	configured := []string{"http://a.example/seed.txt", "http://b.example/seed.txt"}
+	if got := wizardSeedlistDefault(configured); got != strings.Join(configured, ",") {
+		t.Errorf("configured seeds should win, got %q", got)
+	}
+}
+
 func TestConfigureSetupWizardArmsMandatoryRestart(t *testing.T) {
 	storage, err := memvault.Open(0)
 	if err != nil {

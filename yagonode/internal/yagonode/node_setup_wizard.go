@@ -25,12 +25,37 @@ func configureSetupWizard(
 	}
 	service.ConfigureSetupWizard(adminauth.SetupDefaults{
 		AdvertiseHost: config.AdvertiseHost,
-		Seedlists:     strings.Join(config.SeedlistURLs, ","),
+		Seedlists:     wizardSeedlistDefault(config.SeedlistURLs),
 		WebFallback:   string(config.WebFallback.Privacy),
 	}, setupWizardApplier(settings))
 	if restart != nil {
 		service.ConfigureSetupRestart(restart)
 	}
+}
+
+// defaultWizardSeedlistURLs seeds the first-run wizard when the node has no
+// seedlist configured yet, so an operator setting up a public node starts from
+// the canonical YaCy public seed servers instead of an empty box (they can edit
+// or clear them before applying). These mirror docker-compose.yml.example.
+var defaultWizardSeedlistURLs = []string{
+	"http://sixcooler.de/yacy/seed.txt",
+	"https://sonst.mifritscher.de/yacy/seed.txt",
+	"http://5.45.105.16/yacyseed",
+	"http://yacy.v16.de/seed/seed.txt",
+	"https://frank-siebert.de/seed.txt",
+	"http://seedlist.wertewesten.net/seed.txt",
+}
+
+// wizardSeedlistDefault prefills the wizard's seedlist field: the node's
+// configured seeds when it has any, otherwise the canonical public defaults so
+// the field is never empty on a fresh install (which would leave the node with
+// no peers to bootstrap from).
+func wizardSeedlistDefault(configured []string) string {
+	if len(configured) > 0 {
+		return strings.Join(configured, ",")
+	}
+
+	return strings.Join(defaultWizardSeedlistURLs, ",")
 }
 
 // setupWizardApplier maps the wizard's choices onto runtime settings. The
