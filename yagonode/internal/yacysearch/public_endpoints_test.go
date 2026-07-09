@@ -390,7 +390,7 @@ func TestHTMLEndpointFirstPageHasNoPrev(t *testing.T) {
 func TestApplyHTMLPaginationEdgeCases(t *testing.T) {
 	// No page size: navigation stays off.
 	off := htmlSearchPage{}
-	applyHTMLPagination(&off, "http://n/yacysearch.html", searchcore.Response{
+	applyHTMLPagination(&off, "http://n/yacysearch.html", nil, searchcore.Response{
 		Request:      searchcore.Request{Limit: 0, Offset: 5},
 		TotalResults: 100,
 	})
@@ -401,7 +401,7 @@ func TestApplyHTMLPaginationEdgeCases(t *testing.T) {
 	// A partial first window (offset below the page size) clamps the previous
 	// start to zero rather than going negative.
 	clamp := htmlSearchPage{}
-	applyHTMLPagination(&clamp, "http://n/yacysearch.html", searchcore.Response{
+	applyHTMLPagination(&clamp, "http://n/yacysearch.html", nil, searchcore.Response{
 		Request:      searchcore.Request{Query: "go", Limit: 10, Offset: 5},
 		Results:      []searchcore.Result{{URL: "https://a"}},
 		TotalResults: 100,

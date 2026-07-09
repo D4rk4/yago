@@ -3,6 +3,7 @@ package yacysearch
 import (
 	"fmt"
 	"html/template"
+	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -252,16 +253,22 @@ func responseHTML(r *http.Request, resp searchcore.Response) htmlSearchPage {
 		values.Set(yagoproto.FieldQuery, resp.DidYouMean)
 		page.DidYouMeanURL = base + "?" + values.Encode()
 	}
-	applyHTMLPagination(&page, base, resp)
+	applyHTMLPagination(&page, base, r.URL.Query(), resp)
 
 	return page
 }
 
 // applyHTMLPagination fills the prev/next navigation from the request window and
 // total, using YaCy's startRecord/maximumRecords parameters so links stay
-// compatible with the OpenSearch paging contract. It no-ops when the limit is
-// unset (no meaningful page size).
-func applyHTMLPagination(page *htmlSearchPage, base string, resp searchcore.Response) {
+// compatible with the OpenSearch paging contract. params carries the client's
+// original query parameters so every active filter survives a page move. It
+// no-ops when the limit is unset (no meaningful page size).
+func applyHTMLPagination(
+	page *htmlSearchPage,
+	base string,
+	params url.Values,
+	resp searchcore.Response,
+) {
 	limit := resp.Request.Limit
 	if limit <= 0 {
 		return
@@ -275,19 +282,20 @@ func applyHTMLPagination(page *htmlSearchPage, base string, resp searchcore.Resp
 			prev = 0
 		}
 		page.HasPrev = true
-		page.PrevURL = htmlPageURL(base, resp.Request, prev)
+		page.PrevURL = htmlPageURL(base, params, limit, prev)
 	}
 	if offset+len(resp.Results) < resp.TotalResults {
 		page.HasNext = true
-		page.NextURL = htmlPageURL(base, resp.Request, offset+limit)
+		page.NextURL = htmlPageURL(base, params, limit, offset+limit)
 	}
-	page.PageLinks = htmlNumberedPages(base, resp, page.Page, limit)
+	page.PageLinks = htmlNumberedPages(base, params, resp, page.Page, limit)
 }
 
 // htmlNumberedPages builds up to htmlPagerWindow numbered links around the
 // current page over the honest pageable total.
 func htmlNumberedPages(
 	base string,
+	params url.Values,
 	resp searchcore.Response,
 	current, limit int,
 ) []htmlPageLink {
@@ -306,7 +314,7 @@ func htmlNumberedPages(
 	for number := start; number <= last && len(links) < htmlPagerWindow; number++ {
 		links = append(links, htmlPageLink{
 			Number:  number,
-			URL:     htmlPageURL(base, resp.Request, (number-1)*limit),
+			URL:     htmlPageURL(base, params, limit, (number-1)*limit),
 			Current: number == current,
 		})
 	}
@@ -314,13 +322,20 @@ func htmlNumberedPages(
 	return links
 }
 
-func htmlPageURL(base string, req searchcore.Request, offset int) string {
-	values := url.Values{}
-	values.Set(yagoproto.FieldQuery, req.Query)
-	values.Set(yagoproto.FieldResource, string(req.Source))
-	values.Set(yagoproto.FieldContentDom, string(req.ContentDomain))
-	values.Set(yagoproto.FieldMaximumRecords, strconv.Itoa(req.Limit))
+// htmlPageURL builds a pager link that carries the client's original query
+// parameters forward — query, resource, contentdom, and every active filter
+// (author, language, filetype, verify, prefer, filter, nav, …) — overriding only
+// the page window so no filter is dropped when the operator moves between pages.
+func htmlPageURL(base string, params url.Values, limit, offset int) string {
+	values := maps.Clone(params)
+	if values == nil {
+		values = url.Values{}
+	}
+	values.Set(yagoproto.FieldMaximumRecords, strconv.Itoa(limit))
 	values.Set(yagoproto.FieldStartRecord, strconv.Itoa(offset))
+	// count is the OpenSearch alias for maximumRecords; drop it so the two
+	// page-size names cannot disagree on the next request.
+	values.Del(yagoproto.FieldCount)
 
 	return base + "?" + values.Encode()
 }
