@@ -278,7 +278,7 @@ func serve(
 			holder:    assembled.spell,
 		})
 	}()
-	startCompactionLoop(ctx, &background, assembled)
+	startMaintenanceLoops(ctx, &background, assembled)
 	startWordFormsLoop(ctx, &background, assembled)
 	if assembled.crawl != nil {
 		defer assembled.crawl.Close()
@@ -361,11 +361,17 @@ func startWordFormsLoop(ctx context.Context, background *sync.WaitGroup, assembl
 	}()
 }
 
-func startCompactionLoop(ctx context.Context, background *sync.WaitGroup, assembled node) {
-	background.Add(1)
+// startMaintenanceLoops runs the background storage-maintenance passes: periodic
+// compaction (ADR-0036 C) and automatic shard growth (ADR-0037).
+func startMaintenanceLoops(ctx context.Context, background *sync.WaitGroup, assembled node) {
+	background.Add(2)
 	go func() {
 		defer background.Done()
 		runCompactionLoop(ctx, assembled.vault, assembled.toggles)
+	}()
+	go func() {
+		defer background.Done()
+		runShardGrowthLoop(ctx, assembled.vault, assembled.toggles)
 	}()
 }
 

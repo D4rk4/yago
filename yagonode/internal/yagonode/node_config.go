@@ -31,6 +31,7 @@ const (
 	envDataDir             = "YAGO_DATA_DIR"
 	envStorageQuota        = "YAGO_STORAGE_QUOTA"
 	envStorageCompaction   = "YAGO_STORAGE_COMPACTION_INTERVAL"
+	envStorageAutosplit    = "YAGO_STORAGE_AUTOSPLIT"
 	envTrustedProxies      = "YAGO_TRUSTED_PROXIES"
 	envEgressAllowLAN      = "YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS"
 	envSeedlistURLs        = "YAGO_SEEDLIST_URLS"
@@ -105,6 +106,7 @@ type nodeConfig struct {
 	SearchIndexPath        string
 	StorageQuotaByte       int64
 	StorageCompaction      time.Duration
+	StorageAutosplit       bool
 	TrustedProxies         []*net.IPNet
 	EgressAllowLAN         bool
 	EgressAllowedCIDRs     []netip.Prefix
@@ -155,7 +157,6 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	if err != nil {
 		return nodeConfig{}, err
 	}
-
 	name := strings.TrimSpace(getenv(envPeerName))
 	peerAddr := envWithDefault(getenv, envPeerAddr, defaultPeerAddr)
 	seedlistURLs := splitList(getenv(envSeedlistURLs))
@@ -202,6 +203,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		SearchIndexPath:       data.searchIndexPath,
 		StorageQuotaByte:      data.quotaByte,
 		StorageCompaction:     data.compaction,
+		StorageAutosplit:      derived.storageAutosplit,
 		TrustedProxies:        proxies,
 		EgressAllowLAN:        egressAllowLAN,
 		EgressAllowedCIDRs:    egressAllowedCIDRs,
@@ -269,6 +271,7 @@ type derivedConfigs struct {
 	peerHTTPSPreferred  bool
 	searchLinksNewTab   bool
 	searchClickCapture  bool
+	storageAutosplit    bool
 	swarmSeed           swarmSeedConfig
 	extractFetch        extractFetchConfig
 	remotePeerTimeout   time.Duration
@@ -420,6 +423,7 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 		peerHTTPSPreferred:  toggles.peerHTTPSPreferred,
 		searchLinksNewTab:   toggles.searchLinksNewTab,
 		searchClickCapture:  toggles.searchClickCapture,
+		storageAutosplit:    toggles.storageAutosplit,
 		swarmSeed:           swarmSeed,
 		extractFetch:        extractFetch,
 		remotePeerTimeout:   remotePeerTimeout,
@@ -441,6 +445,7 @@ type derivedBoolToggles struct {
 	searchLinksNewTab   bool
 	searchClickCapture  bool
 	peerSnippetFetch    bool
+	storageAutosplit    bool
 }
 
 func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, error) {
@@ -500,6 +505,12 @@ func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, err
 	if err != nil {
 		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envSearchClickCapture, err)
 	}
+	// On by default: the shard pool grows with the data so no file grows oversized
+	// (ADR-0037); an operator can freeze the layout by turning it off.
+	storageAutosplit, err := boolEnv(getenv, envStorageAutosplit, true)
+	if err != nil {
+		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envStorageAutosplit, err)
+	}
 
 	return derivedBoolToggles{
 		requireAPIKey:       requireAPIKey,
@@ -513,6 +524,7 @@ func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, err
 		peerSnippetFetch:    peerSnippetFetch,
 		searchLinksNewTab:   searchLinksNewTab,
 		searchClickCapture:  searchClickCapture,
+		storageAutosplit:    storageAutosplit,
 	}, nil
 }
 

@@ -39,6 +39,7 @@ func storageAndAccessDefinitions() []settingDefinition {
 			},
 		},
 		storageCompactionDefinition(),
+		storageAutosplitDefinition(),
 		{
 			key:          "search.api.scoped_access",
 			title:        "Require scoped API keys",
@@ -90,6 +91,30 @@ func normalizeStorageCompaction(raw string) (string, error) {
 	}
 
 	return yagocrawlcontract.FormatRecrawlInterval(parsed), nil
+}
+
+// storageAutosplitDefinition is the live switch for automatic shard-pool growth:
+// on, the pool splits its pointer shard as data accumulates so no file grows
+// oversized (ADR-0037); off freezes the current shard count.
+func storageAutosplitDefinition() settingDefinition {
+	return settingDefinition{
+		key:   "storage.autosplit",
+		title: "Automatic shard growth",
+		description: "Grow the storage shard pool automatically as data " +
+			"accumulates so no shard file grows oversized. Turn off to freeze the " +
+			"current shard count.",
+		options:      boolSettingOptions(),
+		defaultValue: func(config nodeConfig) string { return formatSettingBool(config.StorageAutosplit) },
+		normalize:    normalizeSettingBool,
+		apply: func(config nodeConfig, value string) nodeConfig {
+			config.StorageAutosplit = value == settingBoolTrue
+
+			return config
+		},
+		applyLive: func(toggles *runtimeToggles, value string) {
+			toggles.SetAutosplitEnabled(value == settingBoolTrue)
+		},
+	}
 }
 
 // swarmPresenceDefinitions covers how this node announces itself to peers.

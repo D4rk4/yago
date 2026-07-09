@@ -35,6 +35,45 @@ func (e *engine) SplitStep(ctx context.Context) (bool, error) {
 	return e.splitLocked(ctx)
 }
 
+// GrowShards splits while the mean shard load exceeds the per-shard target,
+// bounded to maxSplits so one maintenance tick's stall stays bounded. It reads
+// live usage once — a split redistributes records without changing the total —
+// and returns how many splits it performed.
+func (e *engine) GrowShards(ctx context.Context, maxSplits int) (int, error) {
+	used, err := e.UsedBytes(ctx)
+	if err != nil {
+		return 0, err
+	}
+	splits := 0
+	for splits < maxSplits {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return splits, fmt.Errorf("context: %w", ctxErr)
+		}
+		if used <= e.shardCountBytes() {
+			break
+		}
+		grew, err := e.SplitStep(ctx)
+		if err != nil {
+			return splits, err
+		}
+		if !grew {
+			break
+		}
+		splits++
+	}
+
+	return splits, nil
+}
+
+// shardCountBytes is the live-byte ceiling the current shard count implies at the
+// per-shard target; the pool is over target when usage exceeds it.
+func (e *engine) shardCountBytes() int64 {
+	e.globalGate.RLock()
+	defer e.globalGate.RUnlock()
+
+	return int64(len(e.shards)) * shardBytesTarget
+}
+
 func (e *engine) splitLocked(ctx context.Context) (bool, error) {
 	oldLevel, oldSplit := e.level, e.split
 	n := (1 << oldLevel) + oldSplit

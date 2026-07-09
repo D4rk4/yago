@@ -93,6 +93,30 @@ func (v *Vault) Compact(ctx context.Context) (CompactResult, error) {
 	return result, nil
 }
 
+// shardGrower is the optional engine capability behind Vault.GrowShards. Only the
+// sharded engine grows; the in-memory engine is a single store, so it is a no-op.
+type shardGrower interface {
+	GrowShards(ctx context.Context, maxSplits int) (int, error)
+}
+
+// GrowShards asks the engine to split its overfull shards, bounded to maxSplits
+// per call. It is a no-op on engines that do not shard (ADR-0037).
+func (v *Vault) GrowShards(ctx context.Context, maxSplits int) (int, error) {
+	if v == nil || v.engine == nil {
+		return 0, errVaultClosed
+	}
+	grower, ok := v.engine.(shardGrower)
+	if !ok {
+		return 0, nil
+	}
+	splits, err := grower.GrowShards(ctx, maxSplits)
+	if err != nil {
+		return 0, fmt.Errorf("grow shards: %w", err)
+	}
+
+	return splits, nil
+}
+
 func (v *Vault) AtCapacity(ctx context.Context) (bool, error) {
 	if v == nil || v.engine == nil {
 		return false, errVaultClosed

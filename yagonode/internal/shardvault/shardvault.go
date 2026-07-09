@@ -27,10 +27,14 @@ import (
 )
 
 const (
-	shardBytesTarget = int64(7) << 30
-	minShards        = 8
-	maxShards        = 1024
+	minShards = 8
+	maxShards = 1024
 )
+
+// shardBytesTarget is the per-shard live-byte target that drives automatic
+// growth: the pool splits while the mean shard load exceeds it (ADR-0037). It is
+// a var so a test can lower it to force growth without writing gigabytes.
+var shardBytesTarget = int64(7) << 30
 
 var newVault = vault.New
 
@@ -67,7 +71,9 @@ func vaultOverEngine(shardEngine *engine) (*vault.Vault, error) {
 
 // openEngine opens the shard files behind the manifest-recorded layout.
 func openEngine(dir string, quotaBytes int64) (*engine, error) {
-	manifest, err := loadOrCreateManifest(dir, shardCountForQuota(quotaBytes))
+	// New vaults start at the concurrency floor and grow with the data (ADR-0037);
+	// the quota no longer sizes the layout.
+	manifest, err := loadOrCreateManifest(dir, minShards)
 	if err != nil {
 		return nil, err
 	}
@@ -135,17 +141,6 @@ func openOrQuarantineShard(path string, shard int) (*bolt.DB, error) {
 // error instead of hanging startup.
 func openTimeoutOptions() *bolt.Options {
 	return &bolt.Options{Timeout: 5 * time.Second}
-}
-
-// shardCountForQuota sizes the shard pool so a full store keeps files well
-// under their cap: one shard per ~7 GB, a power of two, bounded.
-func shardCountForQuota(quotaBytes int64) int {
-	count := minShards
-	for int64(count)*shardBytesTarget < quotaBytes && count < maxShards {
-		count *= 2
-	}
-
-	return count
 }
 
 // shardPath is the three-level fanout location of one shard file.

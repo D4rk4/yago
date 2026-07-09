@@ -20,6 +20,9 @@ type runtimeToggles struct {
 	// compaction holds the storage-compaction cadence in nanoseconds (0 = off);
 	// the compaction loop reads the current value each cycle.
 	compaction atomic.Int64
+	// autosplit gates automatic shard-pool growth; the growth loop reads it each
+	// cycle (ADR-0037).
+	autosplit atomic.Bool
 }
 
 func newRuntimeToggles(config nodeConfig) *runtimeToggles {
@@ -30,6 +33,7 @@ func newRuntimeToggles(config nodeConfig) *runtimeToggles {
 	toggles.robotsPolicy.Store(string(publicrobots.ParsePolicy(config.RobotsPolicy)))
 	toggles.greeting.Store(config.PortalGreeting)
 	toggles.compaction.Store(int64(config.StorageCompaction))
+	toggles.autosplit.Store(config.StorageAutosplit)
 
 	return toggles
 }
@@ -48,6 +52,19 @@ func (t *runtimeToggles) CompactionInterval() time.Duration {
 func (t *runtimeToggles) SetCompactionInterval(interval time.Duration) {
 	if t != nil {
 		t.compaction.Store(int64(interval))
+	}
+}
+
+// AutosplitEnabled reports whether the storage shard pool grows automatically.
+func (t *runtimeToggles) AutosplitEnabled() bool {
+	return t != nil && t.autosplit.Load()
+}
+
+// SetAutosplitEnabled turns automatic shard growth on or off without a restart;
+// the growth loop applies it on its next cycle.
+func (t *runtimeToggles) SetAutosplitEnabled(enabled bool) {
+	if t != nil {
+		t.autosplit.Store(enabled)
 	}
 }
 

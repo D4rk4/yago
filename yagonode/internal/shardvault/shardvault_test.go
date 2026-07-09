@@ -332,17 +332,7 @@ func TestValueEncodingEdges(t *testing.T) {
 	}
 }
 
-func TestShardCountAndManifest(t *testing.T) {
-	if got := shardCountForQuota(0); got != minShards {
-		t.Fatalf("zero quota shards = %d", got)
-	}
-	if got := shardCountForQuota(200 << 30); got != 32 {
-		t.Fatalf("200GB shards = %d", got)
-	}
-	if got := shardCountForQuota(1 << 50); got != maxShards {
-		t.Fatalf("huge quota shards = %d", got)
-	}
-
+func TestManifestCreateReloadCorrupt(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "vault")
 	first, err := loadOrCreateManifest(dir, 16)
 	if err != nil || first.Level != 4 || first.Split != 0 {
@@ -1050,7 +1040,7 @@ func TestConcurrentUpdatesOnDisjointShardsOverlap(t *testing.T) {
 // genuinely touch disjoint files.
 func disjointWriteTargets(t *testing.T) (string, string, string, string) {
 	t.Helper()
-	shards := shardCountForQuota(1 << 20)
+	shards := minShards
 	level, err := exactLog2(shards)
 	if err != nil {
 		t.Fatalf("shard count: %v", err)
