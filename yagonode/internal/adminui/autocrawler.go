@@ -27,6 +27,23 @@ var autocrawlerKeys = map[string]bool{
 	"autocrawler.crawl.recrawl_interval": true,
 }
 
+// withoutAutocrawlerKeys drops the settings the dedicated Autocrawler page owns
+// from the flat Configuration sheet: both discovery paths' toggles and crawl
+// profiles are edited there, so surfacing them again under the Swarm, Web
+// fallback, and Crawler tabs would leave two competing forms for the same keys
+// (mirrors withoutPortalCategory).
+func withoutAutocrawlerKeys(items []SettingItem) []SettingItem {
+	kept := make([]SettingItem, 0, len(items))
+	for _, item := range items {
+		if autocrawlerKeys[item.Key] {
+			continue
+		}
+		kept = append(kept, item)
+	}
+
+	return kept
+}
+
 type autocrawlerPageData struct {
 	AppName    string
 	ActivePath string

@@ -1187,7 +1187,9 @@ func (c *Console) configPage(r *http.Request, notice, errMsg string) configPageD
 	if c.settings != nil {
 		data.Editable = true
 		data.Settings = c.settings.Settings(r.Context())
-		data.SettingGroups = groupSettings(withoutPortalCategory(data.Settings.Items))
+		data.SettingGroups = groupSettings(
+			withoutPortalCategory(withoutAutocrawlerKeys(data.Settings.Items)),
+		)
 	}
 	if c.binding != nil {
 		data.Bindable = true
