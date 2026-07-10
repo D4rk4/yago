@@ -86,7 +86,7 @@ jobs:
                 id yago
                 test "$(dpkg-query -W -f="\${Version}" yago)" = "$2"
                 dpkg-query -W -f="\${Depends}" yago | grep -q ca-certificates
-                dpkg-query -W -f="\${Recommends}" yago | grep -q chromium
+                dpkg-query -W -f="\${Recommends}" yago | grep -q firefox
                 test "$(/opt/yago/bin/yago-node --version)" = "yago-node $2"
                 test "$(/opt/yago/bin/yagocrawler --version)" = "yago-crawler $2"
                 dpkg -P yago >/dev/null
@@ -117,7 +117,7 @@ jobs:
                 id yago
                 test "$(rpm -q --qf "%{VERSION}" yago)" = "$2"
                 rpm -q --requires yago | grep -q ca-certificates
-                rpm -q --recommends yago | grep -q chromium
+                rpm -q --recommends yago | grep -q firefox
                 test "$(/opt/yago/bin/yago-node --version)" = "yago-node $2"
                 test "$(/opt/yago/bin/yagocrawler --version)" = "yago-crawler $2"
                 rpm -e yago
