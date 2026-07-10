@@ -152,6 +152,7 @@ func bootNode(
 	}
 	storageVault.SetQuota(config.StorageQuotaByte)
 	storageVault.SetDeferredFsync(config.StorageDeferFsync)
+	storageVault.SetReadDeferBudget(config.StorageReadDefer)
 	if err := validateNodeBinds(config); err != nil {
 		return fmt.Errorf("validate listen addresses: %w", err)
 	}

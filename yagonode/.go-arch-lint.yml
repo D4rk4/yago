@@ -120,6 +120,8 @@ components:
     in: internal/filetypeclass/**
   modifierhint:
     in: internal/modifierhint/**
+  readpriority:
+    in: internal/readpriority/**
   searchindex:
     in: internal/searchindex/**
   searchlocal:
@@ -266,6 +268,7 @@ deps:
       - shardvault
       - vault
       - vaulttest
+      - readpriority
     canUse:
       - bbolt
       - xxhash
@@ -541,6 +544,9 @@ deps:
     mayDependOn:
       - modifierhint
       - searchcore
+  readpriority:
+    mayDependOn:
+      - readpriority
   searchindex:
     mayDependOn:
       - searchindex

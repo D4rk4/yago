@@ -24,6 +24,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	bolt "go.etcd.io/bbolt"
 
+	"github.com/D4rk4/yago/yagonode/internal/readpriority"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -201,6 +202,13 @@ type engine struct {
 	// the disk to interactive reads (IO-PRIO-01): an Update briefly defers
 	// while reads are running, bounded so readers can never starve writers.
 	viewsInFlight atomic.Int64
+	// readDeferBudget caps how long an Update yields to in-flight reads
+	// (IO-PRIO-01 / PERF-PRIO-02); zero selects readpriority.DefaultBudget so an
+	// untuned node behaves as before, and a negative budget disables the yield.
+	// readDeferNanos accumulates the time yielded — the saturation signal for
+	// read-vs-ingest contention, exported through ReadDeferred.
+	readDeferBudget atomic.Int64
+	readDeferNanos  atomic.Int64
 	// deferFsync records whether the shards run in deferred-fsync mode (bbolt
 	// NoSync): commits skip the per-commit disk flush and runDeferredSyncLoop
 	// flushes them on a cadence instead (ADR-0038). It is set once at boot,
@@ -340,22 +348,23 @@ func (e *engine) View(_ context.Context, fn func(vault.EngineTxn) error) error {
 	return nil
 }
 
-// yieldToReads briefly defers a write while read transactions are in flight,
-// so interactive reads (searches, admin pages, session lookups) reach the disk
+// yieldToReads briefly defers a write while read transactions are in flight, so
+// interactive reads (searches, admin pages, session lookups) reach the disk
 // ahead of bulk ingest writes and their fsyncs (IO-PRIO-01). The yield is
-// bounded: a read-heavy node delays its writers by at most yieldCap per
-// update, so writers cannot starve, and a node with no concurrent reads pays
-// nothing.
+// bounded by the read-defer budget, so a read-heavy node delays each writer by
+// at most that budget and writers cannot starve; a node with no concurrent
+// reads pays nothing. The time yielded accumulates for the saturation metric
+// (PERF-PRIO-02).
 func (e *engine) yieldToReads(ctx context.Context) {
-	const (
-		yieldStep = 2 * time.Millisecond
-		yieldCap  = 50 * time.Millisecond
-	)
-	for waited := time.Duration(0); waited < yieldCap; waited += yieldStep {
-		if e.viewsInFlight.Load() == 0 || ctx.Err() != nil {
-			return
-		}
-		time.Sleep(yieldStep)
+	budget := time.Duration(e.readDeferBudget.Load())
+	if budget == 0 {
+		budget = readpriority.DefaultBudget
+	}
+	waited := readpriority.Await(ctx, budget, func() bool {
+		return e.viewsInFlight.Load() > 0
+	})
+	if waited > 0 {
+		e.readDeferNanos.Add(int64(waited))
 	}
 }
 

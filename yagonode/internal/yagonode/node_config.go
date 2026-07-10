@@ -33,6 +33,7 @@ const (
 	envStorageCompaction   = "YAGO_STORAGE_COMPACTION_INTERVAL"
 	envStorageAutosplit    = "YAGO_STORAGE_AUTOSPLIT"
 	envStorageDeferFsync   = "YAGO_STORAGE_DEFER_FSYNC"
+	envStorageReadDefer    = "YAGO_STORAGE_READ_DEFER"
 	envTrustedProxies      = "YAGO_TRUSTED_PROXIES"
 	envEgressAllowLAN      = "YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS"
 	envSeedlistURLs        = "YAGO_SEEDLIST_URLS"
@@ -106,6 +107,7 @@ type nodeConfig struct {
 	SearchIndexPath        string
 	StorageQuotaByte       int64
 	StorageCompaction      time.Duration
+	StorageReadDefer       time.Duration
 	StorageAutosplit       bool
 	StorageDeferFsync      bool
 	TrustedProxies         []*net.IPNet
@@ -151,6 +153,7 @@ type configuredNodeData struct {
 	searchIndexPath string
 	quotaByte       int64
 	compaction      time.Duration
+	readDefer       time.Duration
 }
 
 func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
@@ -160,7 +163,6 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	}
 	peerAddr := envWithDefault(getenv, envPeerAddr, defaultPeerAddr)
 	seedlistURLs := splitList(getenv(envSeedlistURLs))
-
 	announceInterval, greetsPerCycle, err := announceCadence(getenv)
 	if err != nil {
 		return nodeConfig{}, err
@@ -203,6 +205,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		SearchIndexPath:       data.searchIndexPath,
 		StorageQuotaByte:      data.quotaByte,
 		StorageCompaction:     data.compaction,
+		StorageReadDefer:      data.readDefer,
 		StorageAutosplit:      derived.storageAutosplit,
 		StorageDeferFsync:     derived.storageDeferFsync,
 		TrustedProxies:        proxies,
@@ -578,12 +581,18 @@ func loadConfiguredNodeData(getenv func(string) string) (configuredNodeData, err
 		return configuredNodeData{}, err
 	}
 
+	readDefer, err := storageReadDeferBudget(getenv)
+	if err != nil {
+		return configuredNodeData{}, err
+	}
+
 	return configuredNodeData{
 		directory:       directory,
 		databasePath:    configuredDatabasePath(directory),
 		searchIndexPath: filepath.Join(directory, searchIndexDirName),
 		quotaByte:       quota,
 		compaction:      compaction,
+		readDefer:       readDefer,
 	}, nil
 }
 
@@ -669,6 +678,24 @@ func storageCompactionInterval(getenv func(string) string) (time.Duration, error
 	}
 
 	return interval, nil
+}
+
+// storageReadDeferBudget reads how long an ingest write yields to in-flight
+// interactive reads (IO-PRIO-01 / PERF-PRIO-02). An empty value keeps the engine
+// default (readpriority.DefaultBudget); a Go duration tunes it, and a negative
+// value disables the yield.
+func storageReadDeferBudget(getenv func(string) string) (time.Duration, error) {
+	raw := strings.TrimSpace(getenv(envStorageReadDefer))
+	if raw == "" {
+		return 0, nil
+	}
+
+	budget, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", envStorageReadDefer, err)
+	}
+
+	return budget, nil
 }
 
 func announceInterval(getenv func(string) string) (time.Duration, error) {

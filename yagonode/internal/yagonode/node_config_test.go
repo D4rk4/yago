@@ -457,6 +457,41 @@ func TestLoadNodeConfigStorageCompaction(t *testing.T) {
 	}
 }
 
+func TestLoadNodeConfigStorageReadDefer(t *testing.T) {
+	base := map[string]string{envPeerHash: "0123456789AB", envPeerName: "node"}
+	load := func(t *testing.T, value string) nodeConfig {
+		t.Helper()
+		env := map[string]string{}
+		for k, v := range base {
+			env[k] = v
+		}
+		if value != "" {
+			env[envStorageReadDefer] = value
+		}
+		config, err := loadNodeConfig(envFrom(env))
+		if err != nil {
+			t.Fatalf("load config %q: %v", value, err)
+		}
+
+		return config
+	}
+
+	if got := load(t, "").StorageReadDefer; got != 0 {
+		t.Errorf("default StorageReadDefer = %v, want 0 (engine default)", got)
+	}
+	if got := load(t, "150ms").StorageReadDefer; got != 150*time.Millisecond {
+		t.Errorf("StorageReadDefer(150ms) = %v, want 150ms", got)
+	}
+
+	env := map[string]string{envStorageReadDefer: "nonsense"}
+	for k, v := range base {
+		env[k] = v
+	}
+	if _, err := loadNodeConfig(envFrom(env)); err == nil {
+		t.Fatal("expected error for a malformed read-defer budget")
+	}
+}
+
 func TestLoadNodeConfigRejects(t *testing.T) {
 	cases := map[string]map[string]string{
 		"bad hash":         {envPeerHash: "short"},

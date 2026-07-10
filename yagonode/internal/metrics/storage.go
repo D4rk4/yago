@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -9,11 +10,15 @@ import (
 type StorageCapacity interface {
 	QuotaBytes() int64
 	UsedBytes(context.Context) (int64, error)
+	// ReadDeferred reports the cumulative time ingest writes have yielded to
+	// in-flight interactive reads (IO-PRIO-01 / PERF-PRIO-02).
+	ReadDeferred() time.Duration
 }
 
 type StorageMetrics struct {
-	quota prometheus.GaugeFunc
-	used  prometheus.GaugeFunc
+	quota     prometheus.GaugeFunc
+	used      prometheus.GaugeFunc
+	readDefer prometheus.CounterFunc
 }
 
 func NewStorageMetrics(registry prometheus.Registerer, capacity StorageCapacity) *StorageMetrics {
@@ -38,7 +43,14 @@ func NewStorageMetrics(registry prometheus.Registerer, capacity StorageCapacity)
 			return float64(bytes)
 		},
 	)
-	registry.MustRegister(quota, used)
+	readDefer := prometheus.NewCounterFunc(
+		prometheus.CounterOpts{
+			Name: "storage_read_defer_seconds_total",
+			Help: "Cumulative seconds ingest writes yielded to interactive reads (IO-PRIO-01).",
+		},
+		func() float64 { return capacity.ReadDeferred().Seconds() },
+	)
+	registry.MustRegister(quota, used, readDefer)
 
-	return &StorageMetrics{quota: quota, used: used}
+	return &StorageMetrics{quota: quota, used: used, readDefer: readDefer}
 }

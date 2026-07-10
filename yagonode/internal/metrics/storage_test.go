@@ -4,20 +4,24 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 type stubStorage struct {
-	quota int64
-	used  int64
-	err   error
+	quota        int64
+	used         int64
+	err          error
+	readDeferred time.Duration
 }
 
 func (s stubStorage) QuotaBytes() int64 { return s.quota }
 
 func (s stubStorage) UsedBytes(context.Context) (int64, error) { return s.used, s.err }
+
+func (s stubStorage) ReadDeferred() time.Duration { return s.readDeferred }
 
 func TestStorageReportsLevels(t *testing.T) {
 	storage := NewStorageMetrics(prometheus.NewRegistry(), stubStorage{quota: 1024, used: 256})
@@ -38,5 +42,15 @@ func TestStorageReportsZeroUsedOnError(t *testing.T) {
 
 	if got := testutil.ToFloat64(storage.used); got != 0 {
 		t.Errorf("used bytes = %v, want 0 on error", got)
+	}
+}
+
+func TestStorageReportsReadDeferral(t *testing.T) {
+	storage := NewStorageMetrics(
+		prometheus.NewRegistry(),
+		stubStorage{readDeferred: 2 * time.Second},
+	)
+	if got := testutil.ToFloat64(storage.readDefer); got != 2 {
+		t.Errorf("read-defer seconds = %v, want 2", got)
 	}
 }
