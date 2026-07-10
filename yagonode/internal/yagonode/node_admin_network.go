@@ -165,18 +165,23 @@ func (s networkSource) adminNetworkPeers(
 		health := adminui.SwarmHealthScore(
 			lastSeen.Time(), seen, uptime, seed.AgeDays(now), now,
 		)
+		var lastSeenAt time.Time
+		if seen {
+			lastSeenAt = lastSeen.Time()
+		}
 		peers = append(peers, adminui.NetworkPeer{
-			Name:      name,
-			Hash:      string(seed.Hash),
-			Address:   address,
-			Type:      string(peerType),
-			Flags:     seedFlagLabels(seed),
-			RWICount:  rwiCount,
-			LastSeen:  seedLastSeen(seed),
-			AgeDays:   seed.AgeDays(now),
-			Blocked:   isBlocked,
-			Health:    health,
-			HealthTag: adminui.SwarmHealthTag(health),
+			Name:       name,
+			Hash:       string(seed.Hash),
+			Address:    address,
+			Type:       string(peerType),
+			Flags:      seedFlagLabels(seed),
+			RWICount:   rwiCount,
+			LastSeen:   seedLastSeen(seed),
+			LastSeenAt: lastSeenAt,
+			AgeDays:    seed.AgeDays(now),
+			Blocked:    isBlocked,
+			Health:     health,
+			HealthTag:  adminui.SwarmHealthTag(health),
 		})
 	}
 

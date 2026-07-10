@@ -1,6 +1,9 @@
 package adminui
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // NetworkGate is one DHT distribution gate and whether it is open.
 type NetworkGate struct {
@@ -18,8 +21,11 @@ type NetworkPeer struct {
 	Flags    []string
 	RWICount int
 	LastSeen string
-	AgeDays  int
-	Blocked  bool
+	// LastSeenAt is the sortable timestamp behind the humanized LastSeen; zero
+	// when the peer has never been seen, so those rows sort oldest.
+	LastSeenAt time.Time
+	AgeDays    int
+	Blocked    bool
 	// Health is the passive-observation availability score (OPS-12) and
 	// HealthTag its healthy/aging/stale band.
 	Health    int

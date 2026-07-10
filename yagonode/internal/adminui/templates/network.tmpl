@@ -58,10 +58,10 @@
     <thead><tr>
       <th scope="col" aria-sort="{{$t.ColumnAriaSort "name"}}"><a href="{{$t.ColumnURL "name"}}">Peer{{with $t.ColumnIndicator "name"}} {{.}}{{end}}</a></th>
       <th scope="col" aria-sort="{{$t.ColumnAriaSort "type"}}"><a href="{{$t.ColumnURL "type"}}">Type{{with $t.ColumnIndicator "type"}} {{.}}{{end}}</a></th>
-      <th scope="col">Address</th>
+      <th scope="col" aria-sort="{{$t.ColumnAriaSort "address"}}"><a href="{{$t.ColumnURL "address"}}">Address{{with $t.ColumnIndicator "address"}} {{.}}{{end}}</a></th>
       <th scope="col">Flags</th>
       <th scope="col" aria-sort="{{$t.ColumnAriaSort "rwi"}}"><a href="{{$t.ColumnURL "rwi"}}">RWI count{{with $t.ColumnIndicator "rwi"}} {{.}}{{end}}</a></th>
-      <th scope="col">Last seen</th>
+      <th scope="col" aria-sort="{{$t.ColumnAriaSort "lastseen"}}"><a href="{{$t.ColumnURL "lastseen"}}">Last seen{{with $t.ColumnIndicator "lastseen"}} {{.}}{{end}}</a></th>
       <th scope="col" aria-sort="{{$t.ColumnAriaSort "health"}}"><a href="{{$t.ColumnURL "health"}}">Health{{with $t.ColumnIndicator "health"}} {{.}}{{end}}</a></th>
       <th scope="col" aria-sort="{{$t.ColumnAriaSort "age"}}"><a href="{{$t.ColumnURL "age"}}">Age (days){{with $t.ColumnIndicator "age"}} {{.}}{{end}}</a></th>
       <th scope="col">Hash</th>

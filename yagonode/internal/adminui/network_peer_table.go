@@ -1,10 +1,13 @@
 package adminui
 
 import (
+	"net"
+	"net/netip"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // peersPerPage bounds the peer table so a large roster does not render as one
@@ -15,11 +18,13 @@ const peersPerPage = 50
 // `?psort=` value that is not a key here is ignored (the source order stays), so
 // the query parameter can never select an unintended field.
 var peerSortColumns = map[string]bool{
-	"name":   true,
-	"type":   true,
-	"rwi":    true,
-	"health": true,
-	"age":    true,
+	"name":     true,
+	"type":     true,
+	"address":  true,
+	"rwi":      true,
+	"lastseen": true,
+	"health":   true,
+	"age":      true,
 }
 
 // PeerTableView is the peer roster narrowed to one sorted, paginated page. Every
@@ -108,7 +113,7 @@ func buildPeerTable(peers []NetworkPeer, rawSort, rawDir, rawPage string) PeerTa
 // text columns ascending.
 func peerSortDefaultDir(key string) string {
 	switch key {
-	case "rwi", "health", "age":
+	case "rwi", "health", "age", "lastseen":
 		return "desc"
 	default:
 		return "asc"
@@ -136,11 +141,64 @@ func peerLess(key string) func(a, b NetworkPeer) bool {
 		return peerIntLess(func(p NetworkPeer) int { return p.Health })
 	case "age":
 		return peerIntLess(func(p NetworkPeer) int { return p.AgeDays })
+	case "lastseen":
+		return peerTimeLess(func(p NetworkPeer) time.Time { return p.LastSeenAt })
 	case "type":
 		return peerTextLess(func(p NetworkPeer) string { return p.Type })
+	case "address":
+		return peerAddressLess
 	default: // name
 		return peerTextLess(func(p NetworkPeer) string { return p.Name })
 	}
+}
+
+// peerTimeLess orders peers ascending by a timestamp field (oldest first, so a
+// zero "never seen" time sorts oldest), hash breaking ties.
+func peerTimeLess(field func(NetworkPeer) time.Time) func(a, b NetworkPeer) bool {
+	return func(a, b NetworkPeer) bool {
+		if fa, fb := field(a), field(b); !fa.Equal(fb) {
+			return fa.Before(fb)
+		}
+
+		return a.Hash < b.Hash
+	}
+}
+
+// peerAddressLess orders peers by network address: an address that parses as an
+// IP sorts in numeric IP order and ahead of a hostname/unparsable address,
+// which falls back to a case-folded string order. Hash breaks ties.
+func peerAddressLess(a, b NetworkPeer) bool {
+	ipA, okA := peerIP(a.Address)
+	ipB, okB := peerIP(b.Address)
+	switch {
+	case okA && okB:
+		if c := ipA.Compare(ipB); c != 0 {
+			return c < 0
+		}
+	case okA != okB:
+		return okA
+	default:
+		if la, lb := strings.ToLower(a.Address), strings.ToLower(b.Address); la != lb {
+			return la < lb
+		}
+	}
+
+	return a.Hash < b.Hash
+}
+
+// peerIP extracts the IP from a "host:port" or bare address, reporting false for
+// a hostname or an unparsable value.
+func peerIP(address string) (netip.Addr, bool) {
+	host := address
+	if h, _, err := net.SplitHostPort(address); err == nil {
+		host = h
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return netip.Addr{}, false
+	}
+
+	return addr, true
 }
 
 // peerIntLess orders peers ascending by a numeric field, hash breaking ties.

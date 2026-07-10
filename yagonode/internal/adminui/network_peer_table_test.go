@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func peerNames(view PeerTableView) []string {
@@ -57,6 +58,33 @@ func TestBuildPeerTableUnknownSortPreservesSourceOrder(t *testing.T) {
 	}
 	if got := peerNames(view); !slices.Equal(got, []string{"bravo", "alpha"}) {
 		t.Fatalf("order = %v, want the source order preserved", got)
+	}
+}
+
+func TestBuildPeerTableSortsByAddressAndLastSeen(t *testing.T) {
+	t.Parallel()
+
+	base := time.Unix(1_700_000_000, 0)
+	roster := []NetworkPeer{
+		{Name: "c", Hash: "C", Address: "10.0.0.9:8090", LastSeenAt: base.Add(2 * time.Hour)},
+		{Name: "a", Hash: "A", Address: "9.0.0.1:8090", LastSeenAt: base},
+		{Name: "b", Hash: "B", Address: "example.org:8090", LastSeenAt: base.Add(time.Hour)},
+	}
+
+	// IP-aware: 9.0.0.1 sorts before 10.0.0.9 numerically (not lexically), and a
+	// hostname address sorts after the numeric IPs.
+	byAddr := peerNames(buildPeerTable(roster, "address", "asc", ""))
+	if !slices.Equal(byAddr, []string{"a", "c", "b"}) {
+		t.Fatalf("address asc = %v, want [a c b] (numeric IPs first, hostname last)", byAddr)
+	}
+
+	// Last seen opens most-recent-first.
+	if got := (PeerTableView{}).ColumnURL("lastseen"); !strings.Contains(got, "pdir=desc") {
+		t.Fatalf("lastseen default link = %q, want descending", got)
+	}
+	byRecent := peerNames(buildPeerTable(roster, "lastseen", "desc", ""))
+	if !slices.Equal(byRecent, []string{"c", "b", "a"}) {
+		t.Fatalf("lastseen desc = %v, want [c b a] (newest first)", byRecent)
 	}
 }
 
@@ -163,7 +191,8 @@ func TestConsoleNetworkPeerTableSortLinksAndPager(t *testing.T) {
 		t.Fatalf("status %d", first.status)
 	}
 	for _, want := range []string{
-		`href="/admin/network?`, "psort=rwi", `aria-sort="none"`, "Next ›", "Page 1 of 2",
+		`href="/admin/network?`, "psort=rwi", "psort=address", "psort=lastseen",
+		`aria-sort="none"`, "Next ›", "Page 1 of 2",
 	} {
 		if !strings.Contains(first.body, want) {
 			t.Fatalf("network page missing %q", want)
