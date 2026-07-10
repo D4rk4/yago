@@ -49,14 +49,25 @@
     </tbody>
   </table>
 </div>
-<h2 class="cds-h2">Peers</h2>
-{{if .Network.Peers}}
+<h2 class="cds-h2" id="peers">Peers</h2>
+{{if .PeerTable.Total}}
+{{$t := .PeerTable}}
+{{$links := .PeerLinks}}
 <div class="cds-scroll-x">
   <table class="cds-table">
-    <thead><tr><th scope="col">Peer</th><th scope="col">Type</th><th scope="col">Address</th><th scope="col">Flags</th><th scope="col">RWI count</th><th scope="col">Last seen</th><th scope="col">Health</th><th scope="col">Age (days)</th><th scope="col">Hash</th></tr></thead>
+    <thead><tr>
+      <th scope="col" aria-sort="{{$t.ColumnAriaSort "name"}}"><a href="{{$t.ColumnURL "name"}}">Peer{{with $t.ColumnIndicator "name"}} {{.}}{{end}}</a></th>
+      <th scope="col" aria-sort="{{$t.ColumnAriaSort "type"}}"><a href="{{$t.ColumnURL "type"}}">Type{{with $t.ColumnIndicator "type"}} {{.}}{{end}}</a></th>
+      <th scope="col">Address</th>
+      <th scope="col">Flags</th>
+      <th scope="col" aria-sort="{{$t.ColumnAriaSort "rwi"}}"><a href="{{$t.ColumnURL "rwi"}}">RWI count{{with $t.ColumnIndicator "rwi"}} {{.}}{{end}}</a></th>
+      <th scope="col">Last seen</th>
+      <th scope="col" aria-sort="{{$t.ColumnAriaSort "health"}}"><a href="{{$t.ColumnURL "health"}}">Health{{with $t.ColumnIndicator "health"}} {{.}}{{end}}</a></th>
+      <th scope="col" aria-sort="{{$t.ColumnAriaSort "age"}}"><a href="{{$t.ColumnURL "age"}}">Age (days){{with $t.ColumnIndicator "age"}} {{.}}{{end}}</a></th>
+      <th scope="col">Hash</th>
+    </tr></thead>
     <tbody>
-      {{$links := .PeerLinks}}
-      {{range .Network.Peers}}
+      {{range $t.Peers}}
       <tr>
         <th scope="row">{{if $links}}<a href="/admin/network/peer?hash={{.Hash}}">{{if .Name}}{{.Name}}{{else}}{{.Hash}}{{end}}</a>{{else if .Name}}{{.Name}}{{else}}—{{end}}{{if .Blocked}} <span class="cds-tag cds-tag--error">blocked</span>{{end}}</th>
         <td>{{if .Type}}{{.Type}}{{else}}—{{end}}</td>
@@ -72,6 +83,13 @@
     </tbody>
   </table>
 </div>
+{{if gt $t.Pages 1}}
+<nav class="cds-pager" aria-label="Peer pages">
+  {{if $t.HasPrev}}<a rel="prev" href="{{$t.PrevURL}}">‹ Previous</a>{{end}}
+  <span class="cds-muted">Page {{$t.Page}} of {{$t.Pages}} · peers {{$t.Start}}–{{$t.End}} of {{$t.Total}}</span>
+  {{if $t.HasNext}}<a rel="next" href="{{$t.NextURL}}">Next ›</a>{{end}}
+</nav>
+{{end}}
 {{else}}
 <div class="cds-empty" role="status">No peers yet.</div>
 {{end}}

@@ -1,0 +1,205 @@
+package adminui
+
+import (
+	"fmt"
+	"net/http"
+	"slices"
+	"strings"
+	"testing"
+)
+
+func peerNames(view PeerTableView) []string {
+	names := make([]string, len(view.Peers))
+	for i, p := range view.Peers {
+		names[i] = p.Name
+	}
+
+	return names
+}
+
+func TestBuildPeerTableSortsByColumn(t *testing.T) {
+	t.Parallel()
+
+	roster := []NetworkPeer{
+		{Name: "bravo", Hash: "B", Type: "senior", RWICount: 10, Health: 50, AgeDays: 9},
+		{Name: "alpha", Hash: "A", Type: "junior", RWICount: 30, Health: 90, AgeDays: 3},
+		{Name: "delta", Hash: "D", Type: "senior", RWICount: 20, Health: 10, AgeDays: 1},
+	}
+	for _, tc := range []struct {
+		sort, dir string
+		want      []string
+	}{
+		{"name", "asc", []string{"alpha", "bravo", "delta"}},
+		{"name", "desc", []string{"delta", "bravo", "alpha"}},
+		{"rwi", "desc", []string{"alpha", "delta", "bravo"}},
+		{"health", "asc", []string{"delta", "bravo", "alpha"}},
+		{"age", "desc", []string{"bravo", "alpha", "delta"}},
+		// junior < senior, then the senior tie breaks by hash (B < D).
+		{"type", "asc", []string{"alpha", "bravo", "delta"}},
+	} {
+		view := buildPeerTable(roster, tc.sort, tc.dir, "")
+		if got := peerNames(view); !slices.Equal(got, tc.want) {
+			t.Errorf("sort %s/%s = %v, want %v", tc.sort, tc.dir, got, tc.want)
+		}
+	}
+}
+
+func TestBuildPeerTableUnknownSortPreservesSourceOrder(t *testing.T) {
+	t.Parallel()
+
+	roster := []NetworkPeer{
+		{Name: "bravo", Hash: "B"},
+		{Name: "alpha", Hash: "A"},
+	}
+	view := buildPeerTable(roster, "bogus", "asc", "")
+	if view.SortKey != "" {
+		t.Fatalf("SortKey = %q, want empty for an unknown column", view.SortKey)
+	}
+	if got := peerNames(view); !slices.Equal(got, []string{"bravo", "alpha"}) {
+		t.Fatalf("order = %v, want the source order preserved", got)
+	}
+}
+
+func TestBuildPeerTablePaginates(t *testing.T) {
+	t.Parallel()
+
+	roster := make([]NetworkPeer, 120)
+	for i := range roster {
+		roster[i] = NetworkPeer{Name: fmt.Sprintf("peer%03d", i), Hash: fmt.Sprintf("H%03d", i)}
+	}
+
+	first := buildPeerTable(roster, "", "", "")
+	if first.Total != 120 || first.Pages != 3 || len(first.Peers) != peersPerPage {
+		t.Fatalf("page 1 = total %d pages %d len %d", first.Total, first.Pages, len(first.Peers))
+	}
+	if first.Page != 1 || first.HasPrev || !first.HasNext || first.Start != 1 || first.End != 50 {
+		t.Fatalf("page 1 nav = %+v", first)
+	}
+	if !strings.Contains(first.NextURL, "ppage=2") || !strings.HasSuffix(first.NextURL, "#peers") {
+		t.Fatalf("next url = %q", first.NextURL)
+	}
+
+	middle := buildPeerTable(roster, "", "", "2")
+	if middle.Page != 2 || !middle.HasPrev || !middle.HasNext || middle.Start != 51 ||
+		middle.End != 100 {
+		t.Fatalf("page 2 nav = %+v", middle)
+	}
+
+	last := buildPeerTable(roster, "", "", "3")
+	if last.Page != 3 || !last.HasPrev || last.HasNext || len(last.Peers) != 20 || last.End != 120 {
+		t.Fatalf("page 3 = %+v (len %d)", last, len(last.Peers))
+	}
+
+	if clamped := buildPeerTable(roster, "", "", "99"); clamped.Page != 3 {
+		t.Fatalf("out-of-range page = %d, want clamp to 3", clamped.Page)
+	}
+	if bad := buildPeerTable(roster, "", "", "not-a-number"); bad.Page != 1 {
+		t.Fatalf("unparsable page = %d, want 1", bad.Page)
+	}
+}
+
+func TestBuildPeerTableSinglePageHasNoPager(t *testing.T) {
+	t.Parallel()
+
+	view := buildPeerTable([]NetworkPeer{{Name: "only", Hash: "O"}}, "", "", "")
+	if view.Pages != 1 || view.HasPrev || view.HasNext {
+		t.Fatalf("single page nav = %+v", view)
+	}
+}
+
+func TestPeerTableColumnURLToggles(t *testing.T) {
+	t.Parallel()
+
+	// A numeric column opens descending; a second click on the active column
+	// flips it to ascending.
+	inactive := PeerTableView{}
+	if got := inactive.ColumnURL("rwi"); !strings.Contains(got, "psort=rwi") ||
+		!strings.Contains(got, "pdir=desc") {
+		t.Fatalf("inactive rwi link = %q, want default descending", got)
+	}
+	activeDesc := PeerTableView{SortKey: "rwi", SortDir: "desc"}
+	if got := activeDesc.ColumnURL("rwi"); !strings.Contains(got, "pdir=asc") {
+		t.Fatalf("active-desc rwi link = %q, want a flip to ascending", got)
+	}
+
+	// A text column opens ascending and flips to descending when active.
+	activeName := PeerTableView{SortKey: "name", SortDir: "asc"}
+	if got := activeName.ColumnURL("name"); !strings.Contains(got, "pdir=desc") {
+		t.Fatalf("active-asc name link = %q, want a flip to descending", got)
+	}
+
+	if activeDesc.ColumnAriaSort("rwi") != "descending" {
+		t.Fatal("active rwi column must report aria-sort descending")
+	}
+	if activeDesc.ColumnAriaSort("name") != "none" {
+		t.Fatal("inactive column must report aria-sort none")
+	}
+	if activeDesc.ColumnIndicator("rwi") != "▼" || activeName.ColumnIndicator("name") != "▲" {
+		t.Fatal("sort indicator glyphs wrong")
+	}
+	if activeName.ColumnIndicator("rwi") != "" {
+		t.Fatal("inactive column must have no indicator")
+	}
+}
+
+func TestConsoleNetworkPeerTableSortLinksAndPager(t *testing.T) {
+	t.Parallel()
+
+	roster := make([]NetworkPeer, 60)
+	for i := range roster {
+		roster[i] = NetworkPeer{
+			Name:      fmt.Sprintf("peer%02d", i),
+			Hash:      fmt.Sprintf("H%02d", i),
+			RWICount:  i,
+			HealthTag: "healthy",
+		}
+	}
+	console := New(
+		Options{Network: fakeNetwork{snap: NetworkStatus{Available: true, Peers: roster}}},
+	)
+
+	first := do(t, console, "/admin/network")
+	if first.status != http.StatusOK {
+		t.Fatalf("status %d", first.status)
+	}
+	for _, want := range []string{
+		`href="/admin/network?`, "psort=rwi", `aria-sort="none"`, "Next ›", "Page 1 of 2",
+	} {
+		if !strings.Contains(first.body, want) {
+			t.Fatalf("network page missing %q", want)
+		}
+	}
+	if strings.Contains(first.body, ">peer55<") {
+		t.Fatal("peer55 belongs on page 2, not the first page")
+	}
+
+	second := do(t, console, "/admin/network?ppage=2")
+	if !strings.Contains(second.body, ">peer55<") || !strings.Contains(second.body, "‹ Previous") {
+		t.Fatal("page 2 should show the tail peers and a previous link")
+	}
+}
+
+func TestConsoleNetworkPeerTableSortsDescending(t *testing.T) {
+	t.Parallel()
+
+	snap := NetworkStatus{Available: true, Peers: []NetworkPeer{
+		{Name: "rwismall", Hash: "L", RWICount: 1, HealthTag: "healthy"},
+		{Name: "rwibig", Hash: "H", RWICount: 99, HealthTag: "healthy"},
+	}}
+	got := do(
+		t,
+		New(Options{Network: fakeNetwork{snap: snap}}),
+		"/admin/network?psort=rwi&pdir=desc",
+	)
+	if got.status != http.StatusOK {
+		t.Fatalf("status %d", got.status)
+	}
+	if !strings.Contains(got.body, `aria-sort="descending"`) {
+		t.Fatal("expected the RWI column marked descending")
+	}
+	big := strings.Index(got.body, "rwibig")
+	small := strings.Index(got.body, "rwismall")
+	if big < 0 || small < 0 || big > small {
+		t.Fatalf("expected rwibig before rwismall under rwi-desc: big=%d small=%d", big, small)
+	}
+}

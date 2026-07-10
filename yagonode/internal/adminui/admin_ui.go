@@ -184,6 +184,7 @@ type pageData struct {
 	Overview        Overview
 	Index           IndexStats
 	Network         NetworkStatus
+	PeerTable       PeerTableView
 	PeerLinks       bool
 	PeerNews        []PeerNewsItem
 	PeerNewsEnabled bool
@@ -963,11 +964,21 @@ func (c *Console) handleNetwork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	status := c.network.Network(r.Context())
+	query := r.URL.Query()
+	peerTable := buildPeerTable(
+		status.Peers,
+		query.Get("psort"),
+		query.Get("pdir"),
+		query.Get("ppage"),
+	)
+
 	c.render(r.Context(), w, c.tpl.network, "layout", pageData{
 		AppName: appName, ActivePath: networkPath, Nav: navItems,
 		CSRF:            csrfToken(r),
 		Section:         sectionView{Heading: "Network", Available: true},
-		Network:         c.network.Network(r.Context()),
+		Network:         status,
+		PeerTable:       peerTable,
 		PeerLinks:       c.peerDetail != nil,
 		PeerNews:        c.peerNewsItems(r.Context()),
 		PeerNewsEnabled: c.peerNews != nil,
