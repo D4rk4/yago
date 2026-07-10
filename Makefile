@@ -78,7 +78,12 @@ cover:
 cover-check:
 	@set -e; for m in $(MODULES); do \
 		echo "==> cover-check $$m (min $(COVERAGE_MIN)%)"; \
-		( cd $$m && $(GO) test -race -coverprofile=$(COVER_PROFILE) ./... >/dev/null && \
+		( cd $$m && \
+			if ! $(GO) test -race -coverprofile=$(COVER_PROFILE) ./... > $(COVER_PROFILE).log 2>&1; then \
+				cat $(COVER_PROFILE).log; \
+				echo "cover-check: test run failed in $$m"; \
+				exit 1; \
+			fi; \
 			grep -vE '$(COVER_EXCLUDE)' $(COVER_PROFILE) > $(COVER_PROFILE).gated; \
 			stmts=$$(awk 'NR > 1 { sum += $$2 } END { print sum + 0 }' $(COVER_PROFILE).gated); \
 			if [ "$$stmts" -eq 0 ]; then echo "    no statements to cover"; exit 0; fi; \
