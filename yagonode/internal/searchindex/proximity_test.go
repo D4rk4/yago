@@ -46,3 +46,31 @@ func TestAllowsDocumentAuthorAndNear(t *testing.T) {
 		t.Fatal("distant terms admitted by the near filter")
 	}
 }
+
+func TestAllowsDocumentFileTypeInURLTLD(t *testing.T) {
+	pdf := documentstore.Document{
+		NormalizedURL: "https://arxiv.org/pdf/2401.12345",
+		ContentType:   "application/pdf",
+	}
+	if !allowsDocument(pdf, SearchRequest{FileType: "pdf"}) {
+		t.Fatal("an extension-less application/pdf document must pass filetype:pdf")
+	}
+	if allowsDocument(pdf, SearchRequest{FileType: "zip"}) {
+		t.Fatal("a pdf must not pass filetype:zip")
+	}
+	if !allowsDocument(pdf, SearchRequest{InURL: "ARXIV"}) {
+		t.Fatal("inurl must match the url case-insensitively")
+	}
+	if allowsDocument(pdf, SearchRequest{InURL: "wikipedia"}) {
+		t.Fatal("inurl must reject a missing substring")
+	}
+	if !allowsDocument(pdf, SearchRequest{TLD: ".org"}) {
+		t.Fatal("tld must match the host suffix")
+	}
+	if allowsDocument(pdf, SearchRequest{TLD: "net"}) {
+		t.Fatal("tld must reject a different top-level domain")
+	}
+	if !hostMatchesTLD("org", "org") || hostMatchesTLD("arxiv.net", "org") {
+		t.Fatal("hostMatchesTLD exact/negative branches failed")
+	}
+}

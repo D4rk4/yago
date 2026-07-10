@@ -107,3 +107,56 @@ func TestSearchReturnsFacetsWhenRequested(t *testing.T) {
 		t.Fatalf("facets missing: %+v", result)
 	}
 }
+
+func TestFacetsReflectFileTypeFilter(t *testing.T) {
+	index, err := NewBleveMemoryIndex(t.Context(), &fakeStoredDocuments{
+		documents: []documentstore.Document{
+			{
+				NormalizedURL: "https://arxiv.org/pdf/2401.12345",
+				Title:         "Paper",
+				ExtractedText: "quantum entanglement",
+				ContentType:   "application/pdf",
+			},
+			{
+				NormalizedURL: "https://blog.example/quantum.html",
+				Title:         "Blog",
+				ExtractedText: "quantum entanglement",
+				ContentType:   "text/html",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewBleveMemoryIndex: %v", err)
+	}
+	result, err := index.Search(t.Context(), SearchRequest{
+		Query: "quantum", MaxResults: 5, WithFacets: true, FileType: "pdf",
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if result.Total != 1 {
+		t.Fatalf("filetype:pdf must match only the pdf document, total = %d", result.Total)
+	}
+	hosts := facetTermCounts(result.Facets, "host")
+	if hosts["arxiv.org"] != 1 || hosts["blog.example"] != 0 {
+		t.Fatalf("host facet must count only the filtered document: %v", hosts)
+	}
+	if facetTermCounts(result.Facets, "filetype")["pdf"] != 1 {
+		t.Fatalf("filetype facet must classify the extension-less pdf: %+v", result.Facets)
+	}
+}
+
+// facetTermCounts flattens one facet dimension into term->count for assertions.
+func facetTermCounts(groups []FacetGroup, name string) map[string]int {
+	out := map[string]int{}
+	for _, group := range groups {
+		if group.Name != name {
+			continue
+		}
+		for _, term := range group.Terms {
+			out[term.Term] = term.Count
+		}
+	}
+
+	return out
+}

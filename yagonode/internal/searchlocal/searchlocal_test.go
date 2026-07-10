@@ -211,31 +211,19 @@ func TestCoreResultFallbacksAndOffset(t *testing.T) {
 	}
 }
 
-func TestResultFiltersRejectEachCondition(t *testing.T) {
+func TestResultFiltersURLMask(t *testing.T) {
 	filters, err := requestFilters(searchcore.Request{URLMaskFilter: "allowed"})
 	if err != nil {
 		t.Fatalf("requestFilters: %v", err)
 	}
-	if filters.match(searchcore.Request{}, searchcore.Result{URL: "https://blocked.example/"}) {
-		t.Fatal("url mask should reject")
+	if filters.match(searchcore.Result{URL: "https://blocked.example/"}) {
+		t.Fatal("url mask should reject a non-matching url")
 	}
-
-	cases := []searchcore.Request{
-		{InURL: "allowed"},
-		{TLD: "net"},
-		{FileType: "pdf"},
+	if !filters.match(searchcore.Result{URL: "https://allowed.example/"}) {
+		t.Fatal("url mask should accept a matching url")
 	}
-	for _, req := range cases {
-		if (resultFilters{}).match(req, searchcore.Result{
-			URL:  "https://example.org/file.html",
-			Host: "example.org",
-			File: "file.html",
-		}) {
-			t.Fatalf("filter accepted request %#v", req)
-		}
-	}
-	if !hostMatchesTLD("example.org", ".org") {
-		t.Fatal("case-insensitive tld match failed")
+	if !(resultFilters{}).match(searchcore.Result{URL: "https://anything.example/"}) {
+		t.Fatal("empty filters should accept every url")
 	}
 }
 

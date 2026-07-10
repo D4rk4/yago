@@ -16,6 +16,7 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/contentprior"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
+	"github.com/D4rk4/yago/yagonode/internal/filetypeclass"
 )
 
 const (
@@ -440,11 +441,31 @@ func allowsDocument(doc documentstore.Document, req SearchRequest) bool {
 	if !allowsContentDomain(doc, req.ContentDomain) {
 		return false
 	}
+	if req.FileType != "" &&
+		!filetypeclass.Matches(documentURL(doc), doc.ContentType, req.FileType) {
+		return false
+	}
+	if req.InURL != "" &&
+		!strings.Contains(strings.ToLower(documentURL(doc)), strings.ToLower(req.InURL)) {
+		return false
+	}
+	if req.TLD != "" && !hostMatchesTLD(host, req.TLD) {
+		return false
+	}
 	if !allowsDocumentDate(doc, req) {
 		return false
 	}
 
 	return true
+}
+
+// hostMatchesTLD reports whether host sits under the given top-level domain,
+// matching the host itself or any subdomain of it.
+func hostMatchesTLD(host, tld string) bool {
+	host = strings.ToLower(host)
+	tld = strings.TrimPrefix(strings.ToLower(tld), ".")
+
+	return host == tld || strings.HasSuffix(host, "."+tld)
 }
 
 // allowsDocumentDate applies the optional document-date bounds; when a bound

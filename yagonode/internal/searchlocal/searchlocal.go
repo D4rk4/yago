@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
-	"github.com/D4rk4/yago/yagonode/internal/filetypeclass"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
@@ -110,6 +109,9 @@ func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRe
 		ContentDomain:    string(req.ContentDomain),
 		MinDate:          req.MinDate,
 		MaxDate:          req.MaxDate,
+		FileType:         req.FileType,
+		InURL:            req.InURL,
+		TLD:              req.TLD,
 	}
 }
 
@@ -176,7 +178,7 @@ func coreResults(
 	out := make([]searchcore.Result, 0, len(results))
 	for _, result := range results {
 		core := coreResult(req, result)
-		if filters.match(req, core) {
+		if filters.match(core) {
 			out = append(out, core)
 		}
 	}
@@ -384,19 +386,8 @@ func requestFilters(req searchcore.Request) (resultFilters, error) {
 	return filters, nil
 }
 
-func (f resultFilters) match(req searchcore.Request, result searchcore.Result) bool {
+func (f resultFilters) match(result searchcore.Result) bool {
 	if f.urlMask != nil && !f.urlMask.MatchString(result.URL) {
-		return false
-	}
-	if req.InURL != "" &&
-		!strings.Contains(strings.ToLower(result.URL), strings.ToLower(req.InURL)) {
-		return false
-	}
-	if req.TLD != "" && !hostMatchesTLD(result.Host, req.TLD) {
-		return false
-	}
-	if req.FileType != "" &&
-		!filetypeclass.Matches(result.URL, result.ContentType, req.FileType) {
 		return false
 	}
 
@@ -411,13 +402,6 @@ func (f resultFilters) prefer(results []searchcore.Result) {
 		return f.preferPattern.MatchString(results[i].URL) &&
 			!f.preferPattern.MatchString(results[j].URL)
 	})
-}
-
-func hostMatchesTLD(host string, tld string) bool {
-	host = strings.TrimSuffix(strings.ToLower(host), ".")
-	tld = strings.TrimPrefix(strings.ToLower(tld), ".")
-
-	return host == tld || strings.HasSuffix(host, "."+tld)
 }
 
 func parsedURLParts(parsed *url.URL) (string, string, string) {

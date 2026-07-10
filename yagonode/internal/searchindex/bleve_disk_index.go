@@ -325,7 +325,10 @@ func hasPostFilters(req SearchRequest) bool {
 		!req.MaxDate.IsZero() ||
 		req.Author != "" ||
 		req.Near ||
-		req.ContentDomain != ""
+		req.ContentDomain != "" ||
+		req.FileType != "" ||
+		req.InURL != "" ||
+		req.TLD != ""
 }
 
 func (b *BleveDiskIndex) Stats(ctx context.Context) (IndexStats, error) {

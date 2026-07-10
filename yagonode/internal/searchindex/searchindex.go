@@ -54,6 +54,15 @@ type SearchRequest struct {
 	// MinDate and MaxDate bound results by document date when non-zero.
 	MinDate time.Time
 	MaxDate time.Time
+	// FileType keeps only documents whose file type — classified from the
+	// Content-Type with the URL extension as a fallback — matches; InURL keeps
+	// only documents whose URL contains the substring; TLD keeps only documents
+	// whose host sits under the top-level domain. They live here, beside the
+	// other post-retrieval filters, so the navigation facets are counted over the
+	// same set the results are drawn from.
+	FileType string
+	InURL    string
+	TLD      string
 }
 
 type SearchResultSet struct {
