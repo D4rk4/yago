@@ -1,7 +1,7 @@
 GO ?= go
 MODULES := yagonode yagomodel yagoproto yagocrawlcontract yagoegress yagocrawler
 COVER_PROFILE := coverage.out
-COVERAGE_MIN ?= 80
+COVERAGE_MIN ?= 100
 COVER_EXCLUDE := /internal/vaulttest/|/test/e2e/|/crawlrpc/
 
 TOOLS_BIN := $(CURDIR)/.toolchain/bin
