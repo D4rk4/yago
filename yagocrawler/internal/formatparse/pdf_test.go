@@ -240,3 +240,61 @@ func TestParsePDFDecodesLegacyFilterChains(t *testing.T) {
 		t.Fatal("image-only pdf must stay unparsed")
 	}
 }
+
+// TestPDFFilterChain pins /Filter parsing directly: a missing or empty entry
+// falls back to FlateDecode, a bare name reads as one filter, and a bracketed
+// array reads the chain in order whether the bracket sits against the keyword
+// or after whitespace.
+func TestPDFFilterChain(t *testing.T) {
+	cases := []struct {
+		name string
+		dict string
+		want []string
+	}{
+		{"missing filter entry", "<< /Length 5 >>", []string{"FlateDecode"}},
+		{"empty filter entry", "/Filter", []string{"FlateDecode"}},
+		{"single bare name", "/Filter /FlateDecode", []string{"FlateDecode"}},
+		{
+			"bracket against keyword",
+			"/Filter[/ASCII85Decode/LZWDecode]",
+			[]string{"ASCII85Decode", "LZWDecode"},
+		},
+		{"bracket after spaces", "/Filter  [ /LZWDecode ]", []string{"LZWDecode"}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := pdfFilterChain([]byte(testCase.dict))
+			if strings.Join(got, ",") != strings.Join(testCase.want, ",") {
+				t.Fatalf("pdfFilterChain(%q) = %v, want %v", testCase.dict, got, testCase.want)
+			}
+		})
+	}
+}
+
+// TestPDFDecodeHelperEdges pins each stream decoder's failure and edge paths:
+// a corrupt filter payload aborts the stream (nonnil error) rather than
+// emitting garbage, and an odd-length ASCIIHex run pads its final nibble.
+func TestPDFDecodeHelperEdges(t *testing.T) {
+	if _, err := pdfInflate([]byte("plainly not a zlib stream")); err == nil {
+		t.Fatal("bad zlib header must error")
+	}
+	if _, err := pdfInflate([]byte{0x78, 0x9c, 0x00}); err == nil {
+		t.Fatal("truncated deflate body must error with no output")
+	}
+	if _, err := pdfASCII85([]byte("vwxy")); err == nil {
+		t.Fatal("invalid ascii85 characters must error")
+	}
+	if _, err := pdfLZW([]byte{0xff, 0xff}); err == nil {
+		t.Fatal("invalid lzw code must error")
+	}
+	if _, err := pdfASCIIHex([]byte("zz")); err == nil {
+		t.Fatal("non-hex ascii must error")
+	}
+	got, err := pdfASCIIHex([]byte("41 4"))
+	if err != nil {
+		t.Fatalf("odd-length hex must pad and decode: %v", err)
+	}
+	if len(got) != 2 || got[0] != 0x41 || got[1] != 0x40 {
+		t.Fatalf("odd-length hex decode = % x, want 41 40", got)
+	}
+}

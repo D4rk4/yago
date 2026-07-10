@@ -243,6 +243,27 @@ func TestAdmitLinksDropsStructuralTraps(t *testing.T) {
 	}
 }
 
+// TestAdmitLinksDropsUnnormalizableURL pins that a link which clears scope and
+// URL-pattern admission but has no host to canonicalize (an opaque http URL such
+// as "http:opaque", which resolves with an empty host) is dropped at the
+// normalization step and never reaches the frontier, while an ordinary sibling
+// is still admitted.
+func TestAdmitLinksDropsUnnormalizableURL(t *testing.T) {
+	wide, _ := crawladmission.CompileProfile(yagocrawlcontract.CrawlProfile{
+		Scope:        yagocrawlcontract.ScopeWide,
+		URLMustMatch: yagocrawlcontract.MatchAll,
+	})
+
+	got := wide.AdmitLinks("https://example.com/", []string{
+		"https://example.com/keep",
+		"http:opaque",
+	})
+	want := []string{"https://example.com/keep"}
+	if !slices.Equal(got, want) {
+		t.Errorf("admit = %v, want %v (unnormalizable url dropped)", got, want)
+	}
+}
+
 func TestAdmitLinksBadBaseURL(t *testing.T) {
 	c, _ := crawladmission.CompileProfile(
 		yagocrawlcontract.CrawlProfile{URLMustMatch: yagocrawlcontract.MatchAll},

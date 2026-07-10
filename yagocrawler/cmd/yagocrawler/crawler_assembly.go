@@ -137,6 +137,8 @@ func assembleFrontier(
 	)
 }
 
+var newCrawlerAdaptivePace = crawldelay.NewAdaptivePace
+
 func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSource) error {
 	ctx, restart := newRestartController(ctx)
 
@@ -160,7 +162,7 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	if err != nil {
 		return fmt.Errorf("create crawl pace: %w", err)
 	}
-	pace, err := crawldelay.NewAdaptivePace(hostPace, crawl.HostCacheSize, metrics)
+	pace, err := newCrawlerAdaptivePace(hostPace, crawl.HostCacheSize, metrics)
 	if err != nil {
 		return fmt.Errorf("create adaptive crawl pace: %w", err)
 	}

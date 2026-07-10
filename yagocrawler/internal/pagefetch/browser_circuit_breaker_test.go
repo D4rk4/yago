@@ -180,6 +180,54 @@ func TestBrowserCircuitBreakerHalfOpenReopensOnFailedProbe(t *testing.T) {
 	}
 }
 
+// TestBrowserCircuitBreakerAdmitHalfOpenBlocksSecondProbe drives admit's
+// half-open arm directly: once the cooldown lapses the first admit promotes the
+// open breaker to half-open and lets a single probe through, and a second caller
+// arriving while that probe is still in flight is refused.
+func TestBrowserCircuitBreakerAdmitHalfOpenBlocksSecondProbe(t *testing.T) {
+	clock := &breakerClock{t: time.Unix(1_000_000, 0)}
+	breaker := newTestBreaker(&breakerStubSource{}, 2, clock)
+
+	breaker.state = breakerOpen
+	breaker.openedAt = clock.t
+	clock.advance(2 * time.Minute)
+
+	if !breaker.admit() {
+		t.Fatal("first admit after the cooldown should let the probe through")
+	}
+	if breaker.state != breakerHalfOpen {
+		t.Fatalf("state = %d, want half-open after admitting the probe", breaker.state)
+	}
+	if breaker.admit() {
+		t.Fatal("a second admit while half-open must be refused")
+	}
+}
+
+// TestBrowserCircuitBreakerRecordFailureWhileOpenRefreshesTimer drives record's
+// already-open arm (admit normally blocks calls while open): a malfunction
+// recorded in that state keeps the breaker open and moves the cooldown timer
+// forward to the latest failure.
+func TestBrowserCircuitBreakerRecordFailureWhileOpenRefreshesTimer(t *testing.T) {
+	clock := &breakerClock{t: time.Unix(1_000_000, 0)}
+	breaker := newTestBreaker(&breakerStubSource{}, 2, clock)
+
+	breaker.state = breakerOpen
+	breaker.openedAt = clock.t
+	clock.advance(30 * time.Second)
+
+	breaker.record(context.Background(), errors.New("boom"))
+	if breaker.state != breakerOpen {
+		t.Fatalf("state = %d, want the breaker to stay open", breaker.state)
+	}
+	if !breaker.openedAt.Equal(clock.t) {
+		t.Fatalf(
+			"openedAt = %v, want refreshed to the latest failure %v",
+			breaker.openedAt,
+			clock.t,
+		)
+	}
+}
+
 func TestNewBrowserCircuitBreakerDisabledReturnsInner(t *testing.T) {
 	inner := &breakerStubSource{}
 	if got := NewBrowserCircuitBreaker(inner, 0, time.Minute); got != PageSource(inner) {

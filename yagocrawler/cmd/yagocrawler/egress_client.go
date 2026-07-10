@@ -12,6 +12,10 @@ import (
 
 var errRedirectLimitReached = errors.New("redirect limit reached")
 
+var cloneBaseTransport = func() *http.Transport {
+	return http.DefaultTransport.(*http.Transport).Clone()
+}
+
 func newGuardedEgressClient(guard yagoegress.Guard, config CrawlConfig) *http.Client {
 	return newGuardedEgressClientWithTLS(guard, config, nil)
 }
@@ -59,7 +63,7 @@ func buildEgressClient(
 	http1Only bool,
 ) *http.Client {
 	dialer := &net.Dialer{Timeout: config.ConnectTimeout, Control: guard.DialControl}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport := cloneBaseTransport()
 	transport.Proxy = nil
 	transport.DialContext = yagoegress.PreferIPv4(nil, dialer.DialContext)
 	transport.TLSHandshakeTimeout = config.TLSTimeout

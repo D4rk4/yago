@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
@@ -125,5 +126,29 @@ func TestLimitedRedirectPolicyCanBlockFirstRedirect(t *testing.T) {
 	}
 	if err := policy(request, []*http.Request{request}); !errors.Is(err, errRedirectLimitReached) {
 		t.Fatalf("error = %v, want redirect limit", err)
+	}
+}
+
+func TestBuildEgressClientHTTP1SynthesizesTLSWhenCloneHasNone(t *testing.T) {
+	saved := cloneBaseTransport
+	t.Cleanup(func() { cloneBaseTransport = saved })
+	cloneBaseTransport = func() *http.Transport { return &http.Transport{} }
+
+	client := newHTTP1EgressClient(yagoegress.NewGuard(false), CrawlConfig{
+		RequestTimeout: time.Second,
+		MaxRedirects:   1,
+	}, nil)
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport type = %T", client.Transport)
+	}
+	if transport.TLSClientConfig == nil {
+		t.Fatal("http1 fallback must synthesize a TLS config when the clone has none")
+	}
+	if transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
+		t.Errorf("min version = %x, want TLS 1.2", transport.TLSClientConfig.MinVersion)
+	}
+	if got := transport.TLSClientConfig.NextProtos; len(got) != 1 || got[0] != "http/1.1" {
+		t.Errorf("next protos = %v, want [http/1.1]", got)
 	}
 }

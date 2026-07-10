@@ -187,6 +187,30 @@ func TestPrintVersionIgnoresOtherArgs(t *testing.T) {
 	}
 }
 
+// TestStartPrintsVersionAndExitsZero covers start's version short-circuit: when
+// os.Args carries --version, printVersion handles it and start returns 0 before
+// loading any config. Stdout is redirected so the stamped version line does not
+// leak into test output.
+func TestStartPrintsVersionAndExitsZero(t *testing.T) {
+	savedArgs := os.Args
+	savedStdout := os.Stdout
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatalf("open %s: %v", os.DevNull, err)
+	}
+	os.Stdout = devNull
+	os.Args = []string{"yagocrawler", "--version"}
+	t.Cleanup(func() {
+		os.Stdout = savedStdout
+		os.Args = savedArgs
+		_ = devNull.Close()
+	})
+
+	if code := start(); code != 0 {
+		t.Fatalf("code = %d, want 0 for --version", code)
+	}
+}
+
 func TestStartReturnsRestartCode(t *testing.T) {
 	restoreMainSeams(t)
 	loadCrawlerServiceConfig = func(func(string) string) (ServiceConfig, error) {

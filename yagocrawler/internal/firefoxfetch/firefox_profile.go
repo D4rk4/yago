@@ -36,12 +36,14 @@ func writeFirefoxProfile(profile firefoxProfile) (string, error) {
 		_ = os.RemoveAll(dir)
 		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "user.js"), []byte(prefs), 0o600); err != nil {
+	if err := writeFile(filepath.Join(dir, "user.js"), []byte(prefs), 0o600); err != nil {
 		_ = os.RemoveAll(dir)
 		return "", fmt.Errorf("write firefox user.js: %w", err)
 	}
 	return dir, nil
 }
+
+var writeFile = os.WriteFile
 
 func firefoxUserJS(profile firefoxProfile) (string, error) {
 	var b strings.Builder

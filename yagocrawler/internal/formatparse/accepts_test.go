@@ -94,3 +94,17 @@ func TestAcceptsHTMLAndUnknownTypes(t *testing.T) {
 		t.Fatal("query/fragment must not hide the extension")
 	}
 }
+
+// TestAcceptsMIMEWithoutExtension pins the MIME-only admission path: an
+// extensionless URL is still admitted when its content type matches a family's
+// MIME set, and rejected once that family's toggle is off.
+func TestAcceptsMIMEWithoutExtension(t *testing.T) {
+	if !Accepts("https://a.example/document", "application/pdf", allOn()) {
+		t.Fatal("pdf MIME must be accepted when the URL carries no extension")
+	}
+	off := allOn()
+	off.PDF = false
+	if Accepts("https://a.example/document", "application/pdf", off) {
+		t.Fatal("pdf MIME must be rejected when the toggle is off")
+	}
+}

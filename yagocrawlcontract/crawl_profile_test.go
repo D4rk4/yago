@@ -59,3 +59,17 @@ func TestNonRulesetFieldsDoNotChangeHandle(t *testing.T) {
 		t.Errorf("ruleset-irrelevant fields changed handle: %q vs %q", a.Handle, b.Handle)
 	}
 }
+
+// TestDefaultFormatTogglesEnablesEveryFamilyExceptArchives pins the shared
+// crawl default: every parseable family is on out of the box while archives,
+// whose unpacking is a deliberate security decision, stays off.
+func TestDefaultFormatTogglesEnablesEveryFamilyExceptArchives(t *testing.T) {
+	toggles := yagocrawlcontract.DefaultFormatToggles()
+	if !toggles.Text || !toggles.XMLFeeds || !toggles.PDF || !toggles.Office ||
+		!toggles.Images || !toggles.Audio || !toggles.Misc {
+		t.Fatalf("default toggles must enable every parseable family: %+v", toggles)
+	}
+	if toggles.Archives {
+		t.Fatal("archives must default off")
+	}
+}

@@ -3,6 +3,7 @@ package firefoxfetch
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -15,7 +16,7 @@ import (
 // firefoxStartupTimeout bounds how long launchFirefox waits for a freshly
 // spawned Firefox to accept a Marionette connection. A cold headless start on a
 // loaded box (including the QEMU prod VM) can take several seconds.
-const firefoxStartupTimeout = 45 * time.Second
+var firefoxStartupTimeout = 45 * time.Second
 
 // firefoxBinaries names the binaries firefoxBinary probes on PATH when the
 // operator leaves the browser path empty, ESR first to match the Debian package
@@ -59,17 +60,12 @@ func launchFirefox(launch BrowserLaunch, proxyURL string) (*firefoxSession, erro
 		"--headless", "--no-remote", "--new-instance",
 		"-profile", profile, "--marionette",
 	}
-	//nolint:gosec // launches the operator-configured browser binary.
-	cmd := exec.CommandContext(context.Background(), binary, args...)
-	cmd.Env = firefoxEnv(launch.Sandbox)
 	stderr := &tailBuffer{max: 4096}
-	cmd.Stderr = stderr
-	if err := cmd.Start(); err != nil {
+	cmd, exited, err := spawnFirefox(binary, args, firefoxEnv(launch.Sandbox), port, stderr)
+	if err != nil {
 		_ = os.RemoveAll(profile)
 		return nil, fmt.Errorf("start firefox %s: %w", binary, err)
 	}
-	exited := make(chan struct{})
-	go func() { _ = cmd.Wait(); close(exited) }()
 
 	session, err := openMarionetteSession(cmd, port, launch.Timeout, exited)
 	if err != nil {
@@ -81,6 +77,27 @@ func launchFirefox(launch BrowserLaunch, proxyURL string) (*firefoxSession, erro
 	return session, nil
 }
 
+var spawnFirefox = func(
+	binary string,
+	args, env []string,
+	_ int,
+	stderr io.Writer,
+) (*exec.Cmd, <-chan struct{}, error) {
+	//nolint:gosec // launches the operator-configured browser binary.
+	cmd := exec.CommandContext(context.Background(), binary, args...) // nosemgrep
+	cmd.Env = env
+	cmd.Stderr = stderr
+	if err := cmd.Start(); err != nil {
+		return nil, nil, err //nolint:wrapcheck // launchFirefox wraps this as "start firefox %s".
+	}
+	exited := make(chan struct{})
+	go func() { _ = cmd.Wait(); close(exited) }()
+
+	return cmd, exited, nil
+}
+
+var dialMarionette = connectMarionette
+
 // openMarionetteSession dials Marionette (retrying while Firefox warms up),
 // reads the greeting, and starts a WebDriver session under the startup
 // deadline. On success the deadline is cleared and per-fetch deadlines take
@@ -91,7 +108,7 @@ func openMarionetteSession(
 	pageLoad time.Duration,
 	exited <-chan struct{},
 ) (*firefoxSession, error) {
-	conn, err := connectMarionette(port, exited)
+	conn, err := dialMarionette(port, exited)
 	if err != nil {
 		return nil, err
 	}
@@ -256,8 +273,12 @@ func firefoxEnv(sandbox bool) []string {
 	return env
 }
 
+var listenLoopback = func() (net.Listener, error) {
+	return (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+}
+
 func freeLoopbackPort() (int, error) {
-	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	listener, err := listenLoopback()
 	if err != nil {
 		return 0, fmt.Errorf("reserve loopback port: %w", err)
 	}

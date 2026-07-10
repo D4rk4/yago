@@ -65,6 +65,15 @@ func TestRTFControlWordEdges(t *testing.T) {
 	}
 }
 
+// TestRTFIgnorableDestination pins the \* control symbol: it marks the
+// enclosing group as an ignorable destination whose contents never leak into
+// the extracted text.
+func TestRTFIgnorableDestination(t *testing.T) {
+	if got := rtfText([]byte(`a{\*\revtbl hidden revisions}b`)); got != "ab" {
+		t.Fatalf("ignorable destination = %q, want %q", got, "ab")
+	}
+}
+
 func TestParseMSGReadableRuns(t *testing.T) {
 	body := make([]byte, 0, 84)
 	body = append(body, 0xd0, 0xcf, 0x11, 0xe0, 0x01, 0x02)

@@ -15,6 +15,7 @@ import (
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
+	"github.com/D4rk4/yago/yagocrawler/internal/crawldelay"
 	"github.com/D4rk4/yago/yagocrawler/internal/httpfetch"
 	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yagocrawler/internal/publicweb"
@@ -372,5 +373,27 @@ func TestRunServiceReturnsInsecureRobotsAdmissionError(t *testing.T) {
 	err := RunService(ctx, serviceConfig(), htmlPageSource(map[string]string{}))
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
+	}
+}
+
+func TestRunServiceReturnsAdaptivePaceError(t *testing.T) {
+	restoreAssemblySeams(t)
+	stubExchange(t, &fakeExchange{ingested: make(chan *crawlrpc.IngestBatchMessage, 1)})
+	saved := newCrawlerAdaptivePace
+	t.Cleanup(func() { newCrawlerAdaptivePace = saved })
+	sentinel := errors.New("adaptive pace failed")
+	newCrawlerAdaptivePace = func(
+		*crawldelay.HostPace,
+		int,
+		crawldelay.BackoffObserver,
+	) (*crawldelay.AdaptivePace, error) {
+		return nil, sentinel
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := RunService(ctx, serviceConfig(), htmlPageSource(map[string]string{}))
+	if err == nil || !strings.Contains(err.Error(), "create adaptive crawl pace") {
+		t.Fatalf("error = %v, want create adaptive crawl pace error", err)
 	}
 }
