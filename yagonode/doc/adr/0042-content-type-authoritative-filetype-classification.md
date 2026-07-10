@@ -70,9 +70,15 @@ staged epic; each slice is independently `make verify`-green.
    filters, so the navigation counts are taken over the same set the results come
    from.
 
-3. **Modifier-only browse queries (SEARCH-FILETYPE-03).** When a query carries
-   modifiers but no terms, retrieve via a match-all query and then filter, so
-   `filetype:pdf` alone lists PDFs.
+3. **Modifier-only browse queries (SEARCH-FILETYPE-03).** A bare `filetype:pdf`
+   (or `site:`/`tld:`/`inurl:` with no keyword) stays keyword-seeded, matching
+   YaCy: retrieval walks the postings by word hash, so a match-all
+   retrieve-then-filter over the whole index would be a full-index scan on every
+   bare-operator query — a denial-of-service lever on the public node — for no
+   wire-compatibility gain. The surfaces keep the YaCy behavior and, when a
+   filter-only query returns nothing, show a one-line hint (the `modifierhint`
+   package) telling the searcher to add a word; facet navigation already lets a
+   searcher browse by type after any keyword query (SEARCH-FILETYPE-02).
 
 4. **Content-type/magic parser dispatch (CRAWL-FORMAT-01) and per-format live
    verification (CRAWL-FORMAT-02).** Dispatch the format families on the routing
@@ -92,5 +98,11 @@ staged epic; each slice is independently `make verify`-green.
   matches by content type), which is a compatible enrichment, not a break.
 - Local results now report a size like peer results, populated from the indexed
   text length (matching the RWI path's `size` convention).
+- A bare filter query (`filetype:pdf` with no keyword) still returns nothing, as
+  in YaCy — a match-all-then-filter retrieve would scan the whole index on every
+  such query, a denial-of-service lever on the public node, for no wire gain. The
+  portal and admin surfaces instead explain the empty result with a one-line hint
+  to add a keyword (`modifierhint`); the facet sidebar stays the zero-friction way
+  to narrow a keyword query by type.
 - One classifier owns the content-type↔extension mapping, so the crawler's parse
   dispatch and the search-side classification cannot drift apart per format.

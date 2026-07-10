@@ -10,6 +10,7 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/cachedpage"
 	"github.com/D4rk4/yago/yagonode/internal/faviconproxy"
+	"github.com/D4rk4/yago/yagonode/internal/modifierhint"
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/snippetmark"
@@ -106,6 +107,7 @@ func (s portalSource) Search(
 		Query:        query,
 		TotalResults: response.TotalResults,
 		PeersFailed:  len(response.PartialFailures),
+		Hint:         modifierhint.Text(response.Request, response.TotalResults),
 	}
 	if response.Recovered != "" {
 		out.Recovered = true

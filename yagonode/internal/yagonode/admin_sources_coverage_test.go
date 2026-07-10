@@ -118,6 +118,21 @@ func TestSearchSourceMapsResultsAndFailures(t *testing.T) {
 	}
 }
 
+func TestSearchSourceHintsFilterOnlyZeroResult(t *testing.T) {
+	ctx := context.Background()
+	searcher := &stubAdminSearcher{response: searchcore.Response{
+		TotalResults: 0,
+		Request:      searchcore.Request{TLD: "org"},
+	}}
+	got, err := newSearchSource(searcher).Search(ctx, adminui.SearchQuery{Query: "tld:org"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if got.Hint == "" {
+		t.Fatal("a filter-only zero-result query must carry a browse hint")
+	}
+}
+
 func TestLogsSourceCoversNilAndEvents(t *testing.T) {
 	if got := newLogsSource(nil).Logs(context.Background()); got != nil {
 		t.Fatal("nil recorder should yield nil logs")

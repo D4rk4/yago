@@ -34,6 +34,7 @@
 {{else if .Submitted}}
 {{with .Results}}
 <p class="cds-muted">{{.TotalResults}} result(s) for “{{.Query}}”{{if .Global}} (local + peers){{end}}.</p>
+{{if .Hint}}<div class="cds-inline-notification" role="status">{{.Hint}}</div>{{end}}
 {{range .Failures}}
 <div class="cds-inline-notification" role="status">Partial failure: {{.}}</div>
 {{end}}

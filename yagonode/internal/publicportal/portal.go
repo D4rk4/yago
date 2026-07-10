@@ -84,6 +84,10 @@ type SearchResults struct {
 	DidYouMeanURL string
 	// Facets renders the sidebar filter groups; empty hides the sidebar.
 	Facets []FacetGroup
+	// Hint carries browse guidance shown when a filter-only query (a filetype:,
+	// site:, tld: or inurl: operator with no keyword) matched nothing; empty
+	// hides it.
+	Hint string
 }
 
 // FacetGroup is one sidebar filter dimension over the local matches.

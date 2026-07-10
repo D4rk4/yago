@@ -118,6 +118,8 @@ components:
     in: internal/searcheval/**
   filetypeclass:
     in: internal/filetypeclass/**
+  modifierhint:
+    in: internal/modifierhint/**
   searchindex:
     in: internal/searchindex/**
   searchlocal:
@@ -535,6 +537,10 @@ deps:
   filetypeclass:
     mayDependOn:
       - filetypeclass
+  modifierhint:
+    mayDependOn:
+      - modifierhint
+      - searchcore
   searchindex:
     mayDependOn:
       - searchindex
@@ -828,6 +834,7 @@ deps:
       - crossorigin
       - compatibility
       - searchcore
+      - modifierhint
       - searchindex
       - searchlocal
       - judgments

@@ -93,6 +93,37 @@ func TestPortalSourceCarriesRecoverySuggestion(t *testing.T) {
 	}
 }
 
+func TestPortalSourceHintsFilterOnlyZeroResult(t *testing.T) {
+	t.Parallel()
+
+	searcher := &stubPortalSearcher{response: searchcore.Response{
+		TotalResults: 0,
+		Request:      searchcore.Request{FileType: "pdf"},
+	}}
+	hinted, err := newPortalSource(searcher).Search(context.Background(), "filetype:pdf", "", 0, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if hinted.Hint == "" {
+		t.Fatal("a filter-only zero-result query must carry a browse hint")
+	}
+
+	withResults := &stubPortalSearcher{response: searchcore.Response{
+		TotalResults: 1,
+		Results:      []searchcore.Result{{Title: "x", URL: "http://a/1"}},
+		Request:      searchcore.Request{FileType: "pdf", Terms: []string{"go"}},
+	}}
+	plain, err := newPortalSource(withResults).Search(
+		context.Background(), "go filetype:pdf", "", 0, 10,
+	)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if plain.Hint != "" {
+		t.Fatalf("a query with results must carry no hint, got %q", plain.Hint)
+	}
+}
+
 func TestPortalSourceWrapsError(t *testing.T) {
 	t.Parallel()
 

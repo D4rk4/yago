@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
+	"github.com/D4rk4/yago/yagonode/internal/modifierhint"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/snippetmark"
 )
@@ -42,6 +43,7 @@ func (s searchSource) Search(
 		TotalResults: response.TotalResults,
 		Results:      adminSearchResults(response.Results, response.Request.Terms),
 		Failures:     adminSearchFailures(response.PartialFailures),
+		Hint:         modifierhint.Text(response.Request, response.TotalResults),
 	}, nil
 }
 

@@ -48,6 +48,10 @@ type SearchResults struct {
 	TotalResults int
 	Results      []SearchResult
 	Failures     []string
+	// Hint carries browse guidance shown when a filter-only query (a filetype:,
+	// site:, tld: or inurl: operator with no keyword) matched nothing; empty
+	// hides it.
+	Hint string
 }
 
 // SearchSource runs an admin-console query against the node search core.
