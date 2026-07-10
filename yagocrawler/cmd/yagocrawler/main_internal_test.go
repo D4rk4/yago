@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagocrawler/internal/firefoxfetch"
@@ -159,6 +161,35 @@ func TestRunReturnsBrowserStartError(t *testing.T) {
 
 	if err := run(context.Background(), minimalServiceConfig(t)); !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
+	}
+}
+
+func TestRunWarnsOnChromiumBrowserPath(t *testing.T) {
+	restoreMainSeams(t)
+
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(
+		slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})),
+	)
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	newCrawlerBrowserFetcher = func(
+		firefoxfetch.BrowserLaunch, yagoegress.Guard,
+	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
+		return &firefoxfetch.BrowserPageFetcher{}, func() {}, nil
+	}
+	runCrawlerService = func(context.Context, ServiceConfig, pagefetch.PageSource) error {
+		return nil
+	}
+
+	cfg := minimalServiceConfig(t)
+	cfg.Crawl.BrowserPath = "/usr/bin/chromium"
+	if err := run(context.Background(), cfg); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(logs.String(), "non-Firefox browser path") {
+		t.Fatalf("want a chromium browser-path warning, got: %s", logs.String())
 	}
 }
 

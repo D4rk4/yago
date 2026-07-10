@@ -35,7 +35,11 @@ package dependencies rather than bundled:
   slow-path browser, driven headless over Marionette. The container image
   bundles `firefox-esr`; a host install points the crawler at the OS browser
   through `YAGOCRAWLER_BROWSER_PATH`. The crawler still runs without it, serving
-  only the HTTP fast path, so it is a recommended, not a required, dependency.
+  only the HTTP fast path, so it is a recommended, not a required, dependency. A
+  browser path left pointing at Chromium/Chrome — a leftover from before the
+  crawler moved to Firefox — is ignored with a startup warning, and the crawler
+  discovers Firefox on `PATH` instead, since the slow path is driven over
+  Firefox-only Marionette.
 
 ## Install and run
 

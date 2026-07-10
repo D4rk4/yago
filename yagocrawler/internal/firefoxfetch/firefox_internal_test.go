@@ -44,6 +44,40 @@ func TestFirefoxBinaryPrefersExplicitPath(t *testing.T) {
 	}
 }
 
+func TestFirefoxBinaryDiscardsChromiumPath(t *testing.T) {
+	restore := firefoxBinaries
+	t.Cleanup(func() { firefoxBinaries = restore })
+	firefoxBinaries = []string{"sh"}
+
+	got, err := firefoxBinary("/usr/bin/chromium")
+	if err != nil {
+		t.Fatalf("firefoxBinary: %v", err)
+	}
+	if strings.Contains(got, "chromium") {
+		t.Fatalf("binary = %q, want a discovered Firefox stand-in, not the chromium path", got)
+	}
+}
+
+func TestLooksLikeChromium(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{"/usr/bin/chromium", true},
+		{"/usr/bin/chromium-browser", true},
+		{"/usr/bin/chrome", true},
+		{"/opt/google/chrome/google-chrome", true},
+		{"/usr/bin/firefox-esr", false},
+		{"/usr/bin/firefox", false},
+		{"/opt/custom/firefox", false},
+		{"", false},
+	} {
+		if got := LooksLikeChromium(tc.path); got != tc.want {
+			t.Errorf("LooksLikeChromium(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
 func TestFirefoxBinaryErrorsWhenNoneOnPath(t *testing.T) {
 	restore := firefoxBinaries
 	t.Cleanup(func() { firefoxBinaries = restore })

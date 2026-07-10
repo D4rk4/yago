@@ -74,6 +74,18 @@ func printVersion(args []string, out io.Writer) bool {
 
 func run(ctx context.Context, cfg ServiceConfig) error {
 	crawl := cfg.Crawl
+	if firefoxfetch.LooksLikeChromium(crawl.BrowserPath) {
+		slog.WarnContext(
+			ctx,
+			"ignoring a non-Firefox browser path; the crawler slow path needs Firefox over Marionette",
+			slog.String("browserPath", crawl.BrowserPath),
+			slog.String("env", "YAGOCRAWLER_BROWSER_PATH"),
+			slog.String(
+				"action",
+				"discovering Firefox on PATH; set it to firefox-esr or leave it empty",
+			),
+		)
+	}
 	fetcher, closeBrowser, err := newCrawlerBrowserFetcher(
 		firefoxfetch.BrowserLaunch{
 			UserAgent: crawl.UserAgent,
