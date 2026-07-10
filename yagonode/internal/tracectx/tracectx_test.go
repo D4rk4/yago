@@ -2,6 +2,7 @@ package tracectx
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -69,5 +70,26 @@ func TestSamplingIsAMinorityShare(t *testing.T) {
 	}
 	if sampled == 0 || sampled > 2048/8 {
 		t.Fatalf("sampled = %d of 2048, want a small non-zero share", sampled)
+	}
+}
+
+func TestHeaderRendersSampledFlag(t *testing.T) {
+	sampled := Trace{TraceID: "abc", SpanID: "def", Sampled: true}.Header()
+	if sampled != "00-abc-def-01" {
+		t.Fatalf("sampled header = %q, want the 01 flag", sampled)
+	}
+	unsampled := Trace{TraceID: "abc", SpanID: "def"}.Header()
+	if unsampled != "00-abc-def-00" {
+		t.Fatalf("unsampled header = %q, want the 00 flag", unsampled)
+	}
+}
+
+func TestRandomHexFallsBackWhenEntropyFails(t *testing.T) {
+	saved := randRead
+	t.Cleanup(func() { randRead = saved })
+	randRead = func([]byte) (int, error) { return 0, errors.New("no entropy") }
+
+	if got, want := randomHex(8), strings.Repeat("0", 8*2-1)+"1"; got != want {
+		t.Fatalf("randomHex fallback = %q, want %q", got, want)
 	}
 }

@@ -100,6 +100,44 @@ func TestSweepSurvivesPerDocumentFailures(t *testing.T) {
 	}
 }
 
+// TestSweepSkipsVaultDeleteWhenEvictorFails pins that a condemned page whose
+// index delete succeeds but vault delete fails is logged and skipped, not
+// counted as removed, so the pair stays consistent for the next sweep.
+func TestSweepSkipsVaultDeleteWhenEvictorFails(t *testing.T) {
+	target := "https://bing.com/ck/a?u=a1one"
+	corpus := fakeCorpus{docs: []documentstore.Document{{NormalizedURL: target}}}
+	evictor := &fakeEvictor{fail: map[string]bool{target: true}}
+	index := &fakeIndex{}
+
+	New(corpus, evictor, index).Run(context.Background())
+
+	if len(index.deleted) != 1 || index.deleted[0] != target {
+		t.Fatalf("index deletions = %v, want the tracking url removed", index.deleted)
+	}
+	if len(evictor.deleted) != 0 {
+		t.Fatalf("a failing vault delete must record nothing: %v", evictor.deleted)
+	}
+}
+
+// TestSweepLogsCancelledCorpusScan pins that a context cancelled mid-scan aborts
+// the corpus walk through the visitor's own guard and leaves the store
+// untouched rather than deleting a partial set.
+func TestSweepLogsCancelledCorpusScan(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	corpus := fakeCorpus{docs: []documentstore.Document{
+		{NormalizedURL: "https://bing.com/ck/a?u=a1one"},
+	}}
+	evictor := &fakeEvictor{}
+	index := &fakeIndex{}
+
+	New(corpus, evictor, index).Run(ctx)
+
+	if len(index.deleted) != 0 || len(evictor.deleted) != 0 {
+		t.Fatalf("a cancelled scan must delete nothing: %v %v", index.deleted, evictor.deleted)
+	}
+}
+
 func TestNewDisablesOnMissingDependencies(t *testing.T) {
 	if New(nil, &fakeEvictor{}, &fakeIndex{}) != nil ||
 		New(fakeCorpus{}, nil, &fakeIndex{}) != nil ||

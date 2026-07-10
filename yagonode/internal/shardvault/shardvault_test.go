@@ -214,7 +214,7 @@ func TestUsedBytesExcludesFreedPages(t *testing.T) {
 		for i := range records {
 			key := fmt.Sprintf("doc-%05d", i)
 			keys = append(keys, key)
-			value := incompressibleValue(uint64(i), 1024)
+			value := incompressibleValue(uint64(i))
 			if err := values.Put(txn, vault.Key(key), value); err != nil {
 				return fmt.Errorf("put: %w", err)
 			}
@@ -275,7 +275,8 @@ func totalShardFileBytes(dir string) int64 {
 // incompressibleValue builds a distinct, poorly-compressible payload from a
 // chain of xxhash digests so the records actually occupy pages instead of
 // collapsing under zstd.
-func incompressibleValue(seed uint64, size int) string {
+func incompressibleValue(seed uint64) string {
+	const size = 1024
 	var b strings.Builder
 	b.Grow(size + 16)
 	state := seed

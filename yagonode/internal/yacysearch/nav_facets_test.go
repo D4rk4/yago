@@ -43,6 +43,24 @@ func TestHTMLRefineURLAppendsOperatorAndPreservesFilters(t *testing.T) {
 	}
 }
 
+func TestHTMLRefineURLDefaultsNilParams(t *testing.T) {
+	// With no client parameters maps.Clone returns nil, so the refine URL must
+	// still be built from a fresh value set rather than panicking.
+	got := htmlRefineURL("http://node.test/yacysearch.html", nil, "go", "filetype:pdf")
+
+	parsed, err := url.Parse(got)
+	if err != nil {
+		t.Fatalf("parse refine URL: %v", err)
+	}
+	q := parsed.Query()
+	if q.Get("query") != "go filetype:pdf" {
+		t.Fatalf("query = %q, want operator appended (%s)", q.Get("query"), got)
+	}
+	if q.Get("startRecord") != "0" {
+		t.Fatalf("startRecord = %q, want reset to the first page", q.Get("startRecord"))
+	}
+}
+
 func TestHTMLEndpointRendersNavigationFacets(t *testing.T) {
 	search := &fakeSearch{response: searchcore.Response{
 		TotalResults: 50,

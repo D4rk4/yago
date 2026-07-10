@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/blevesearch/bleve/v2"
+
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
 
@@ -61,6 +63,52 @@ func TestBleveDiskIndexBatchIndexesAcrossShards(t *testing.T) {
 		[]documentstore.Document{{Title: "no id"}},
 	); err == nil {
 		t.Fatal("a document without an id must fail the batch")
+	}
+}
+
+func TestBleveDiskIndexBatchContextAndClosed(t *testing.T) {
+	docs := []documentstore.Document{batchDoc("https://a.example/one", "alpha")}
+	index, err := NewBleveDiskIndex(
+		t.Context(),
+		t.TempDir(),
+		newFakeDocumentDirectory(docs...),
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewBleveDiskIndex: %v", err)
+	}
+	defer func() { _ = index.Close() }()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := index.IndexBatch(ctx, docs); err == nil {
+		t.Fatal("a cancelled context must fail the batch")
+	}
+
+	if err := index.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := index.IndexBatch(t.Context(), docs); err == nil {
+		t.Fatal("a closed index must fail the batch")
+	}
+}
+
+func TestBleveDiskIndexBatchPropagatesShardWriteError(t *testing.T) {
+	docs := []documentstore.Document{batchDoc("https://a.example/one", "alpha")}
+	index, err := NewBleveDiskIndex(
+		t.Context(),
+		t.TempDir(),
+		newFakeDocumentDirectory(docs...),
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewBleveDiskIndex: %v", err)
+	}
+	// Closing the underlying shards while the index still reads open forces the
+	// per-shard bleve batch write to fail, exercising the shard.Batch error path.
+	closeBleveShards(index.shards)
+	if err := index.IndexBatch(t.Context(), docs); err == nil {
+		t.Fatal("a closed underlying shard must fail the batch write")
 	}
 }
 
@@ -171,5 +219,26 @@ func TestSearchStopsHydratingAtFullPageWithoutFilters(t *testing.T) {
 	}
 	if filtered.Total != 0 {
 		t.Fatalf("filtered total = %d, want 0 (no Russian docs)", filtered.Total)
+	}
+}
+
+func TestBleveDiskIndexBatchStageDocumentError(t *testing.T) {
+	saved := stageBatchDocument
+	t.Cleanup(func() { stageBatchDocument = saved })
+	sentinel := errors.New("stage boom")
+	stageBatchDocument = func(*bleve.Batch, string, bleveDocument) error { return sentinel }
+
+	docs := []documentstore.Document{batchDoc("https://a.example/one", "alpha")}
+	index, err := NewBleveDiskIndex(
+		t.Context(),
+		t.TempDir(),
+		newFakeDocumentDirectory(docs...),
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewBleveDiskIndex: %v", err)
+	}
+	if err := index.IndexBatch(t.Context(), docs); !errors.Is(err, sentinel) {
+		t.Fatalf("IndexBatch err = %v, want %v", err, sentinel)
 	}
 }

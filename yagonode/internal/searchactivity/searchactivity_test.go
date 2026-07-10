@@ -71,6 +71,15 @@ func TestRingKeepsNewestAndOrders(t *testing.T) {
 	}
 }
 
+func TestModeReportsConfiguredMode(t *testing.T) {
+	if got := New(ModeFull).Mode(); got != ModeFull {
+		t.Fatalf("full tracker mode = %q, want full", got)
+	}
+	if got := New(ModeAggregate).Mode(); got != ModeAggregate {
+		t.Fatalf("aggregate tracker mode = %q, want aggregate", got)
+	}
+}
+
 func TestTopWords(t *testing.T) {
 	tracker := New(ModeFull)
 	tracker.Record(entry("осень ДДТ", 5))

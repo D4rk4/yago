@@ -741,6 +741,47 @@ func TestThemeWriteAndReadErrorsSurface(t *testing.T) {
 	}
 }
 
+func TestThemeDocumentSurfacesCorruptRead(t *testing.T) {
+	engine := newStubEngine()
+	v := stubVault(t, engine)
+	theme, err := portaltheme.Open(v, &captureSink{})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	ctx := context.Background()
+	if _, err := theme.SaveDocument(ctx, portaltheme.PageSearch, "<p>x</p>"); err != nil {
+		t.Fatalf("seed save: %v", err)
+	}
+
+	engine.corrupt("portal_theme_docs", "search")
+	if _, _, err := theme.Document(ctx, portaltheme.PageSearch); err == nil ||
+		!strings.Contains(err.Error(), "load theme document") {
+		t.Fatalf("Document must surface the corrupt read, got %v", err)
+	}
+}
+
+// TestThemeResetSurfacesDeleteError drives ResetDocument's in-transaction delete
+// error: a corrupt length counter makes the collection's Delete fail when it
+// adjusts the count, a branch a plain memvault delete never reaches.
+func TestThemeResetSurfacesDeleteError(t *testing.T) {
+	engine := newStubEngine()
+	v := stubVault(t, engine)
+	theme, err := portaltheme.Open(v, &captureSink{})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	ctx := context.Background()
+	if _, err := theme.SaveDocument(ctx, portaltheme.PageResults, "<p>x</p>"); err != nil {
+		t.Fatalf("seed save: %v", err)
+	}
+
+	engine.corrupt("__lengths__", "portal_theme_docs")
+	if _, err := theme.ResetDocument(ctx, portaltheme.PageResults); err == nil ||
+		!strings.Contains(err.Error(), "reset theme document") {
+		t.Fatalf("ResetDocument must surface the delete error, got %v", err)
+	}
+}
+
 func TestThemeEventMessagesNameTheDocument(t *testing.T) {
 	theme, sink := openTheme(t)
 	ctx := context.Background()

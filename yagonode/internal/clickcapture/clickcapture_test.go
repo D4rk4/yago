@@ -2,10 +2,14 @@ package clickcapture
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagonode/internal/memvault"
+	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
 func openStore(t *testing.T) *Store {
@@ -319,4 +323,127 @@ func TestEvictLightestPicksMinimumWeight(t *testing.T) {
 	if math.IsInf(urls["https://a.example/"].Weight, 0) {
 		t.Error("unexpected infinite weight")
 	}
+}
+
+func TestRecordSurfacesCorruptRecordReadError(t *testing.T) {
+	engine := newCCEngine()
+	v, err := vault.New(engine)
+	if err != nil {
+		t.Fatalf("vault.New: %v", err)
+	}
+	store, err := Open(v)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	engine.seed(clickBucket, "linux kernel", []byte("{corrupt"))
+	if err := store.Record(t.Context(), "linux kernel", "https://a.example/", 1); err == nil {
+		t.Fatal("expected a read error recording onto a corrupt record")
+	}
+}
+
+// ccEngine is an in-memory vault.Engine that lets a test seed raw (corrupt)
+// bytes into a bucket, reaching Record's decode-error branch the click codec
+// cannot produce through a healthy write.
+type ccEngine struct {
+	buckets map[vault.Name]map[string][]byte
+}
+
+func newCCEngine() *ccEngine {
+	return &ccEngine{buckets: map[vault.Name]map[string][]byte{}}
+}
+
+func (e *ccEngine) seed(bucket vault.Name, key string, raw []byte) {
+	if e.buckets[bucket] == nil {
+		e.buckets[bucket] = map[string][]byte{}
+	}
+	e.buckets[bucket][key] = raw
+}
+
+func (e *ccEngine) Provision(name vault.Name) error {
+	if _, ok := e.buckets[name]; !ok {
+		e.buckets[name] = map[string][]byte{}
+	}
+
+	return nil
+}
+
+func (e *ccEngine) Update(ctx context.Context, fn func(vault.EngineTxn) error) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("cc engine: %w", err)
+	}
+
+	return fn(ccTxn{engine: e, writable: true})
+}
+
+func (e *ccEngine) View(ctx context.Context, fn func(vault.EngineTxn) error) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("cc engine: %w", err)
+	}
+
+	return fn(ccTxn{engine: e})
+}
+
+func (e *ccEngine) Close() error                             { return nil }
+func (e *ccEngine) QuotaBytes() int64                        { return 0 }
+func (e *ccEngine) UsedBytes(context.Context) (int64, error) { return 0, nil }
+
+type ccTxn struct {
+	engine   *ccEngine
+	writable bool
+}
+
+func (t ccTxn) Writable() bool { return t.writable }
+
+func (t ccTxn) Bucket(name vault.Name) vault.EngineBucket {
+	if t.engine.buckets[name] == nil {
+		t.engine.buckets[name] = map[string][]byte{}
+	}
+
+	return ccBucket{entries: t.engine.buckets[name]}
+}
+
+type ccBucket struct {
+	entries map[string][]byte
+}
+
+func (b ccBucket) Get(key vault.Key) []byte {
+	val, ok := b.entries[string(key)]
+	if !ok {
+		return nil
+	}
+
+	return val
+}
+
+func (b ccBucket) Put(key vault.Key, val []byte) error {
+	b.entries[string(key)] = append([]byte(nil), val...)
+
+	return nil
+}
+
+func (b ccBucket) Delete(key vault.Key) error {
+	delete(b.entries, string(key))
+
+	return nil
+}
+
+func (b ccBucket) Scan(prefix vault.Key, fn func(vault.Key, []byte) (bool, error)) error {
+	keys := make([]string, 0, len(b.entries))
+	for k := range b.entries {
+		if strings.HasPrefix(k, string(prefix)) {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		keep, err := fn(vault.Key(k), b.entries[k])
+		if err != nil {
+			return fmt.Errorf("cc scan: %w", err)
+		}
+		if !keep {
+			return nil
+		}
+	}
+
+	return nil
 }

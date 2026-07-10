@@ -85,9 +85,11 @@ func FromContext(ctx context.Context) (Trace, bool) {
 	return trace, ok
 }
 
+var randRead = rand.Read
+
 func randomHex(bytes int) string {
 	raw := make([]byte, bytes)
-	if _, err := rand.Read(raw); err != nil {
+	if _, err := randRead(raw); err != nil {
 		return strings.Repeat("0", bytes*2-1) + "1"
 	}
 

@@ -109,6 +109,13 @@ func formatScheduleRun(at time.Time) string {
 	return at.UTC().Format("2006-01-02 15:04")
 }
 
+// newScheduleTicks is the poll-clock seam so tests can drive the loop.
+var newScheduleTicks = func() (<-chan time.Time, func()) {
+	ticker := time.NewTicker(scheduleCheckInterval)
+
+	return ticker.C, ticker.Stop
+}
+
 // runCrawlScheduleLoop dispatches due schedules until the context ends.
 func runCrawlScheduleLoop(
 	ctx context.Context,
@@ -118,13 +125,13 @@ func runCrawlScheduleLoop(
 	if store == nil || dispatch == nil {
 		return
 	}
-	ticker := time.NewTicker(scheduleCheckInterval)
-	defer ticker.Stop()
+	ticks, stop := newScheduleTicks()
+	defer stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticks:
 			dispatchDueSchedules(ctx, store, dispatch)
 		}
 	}

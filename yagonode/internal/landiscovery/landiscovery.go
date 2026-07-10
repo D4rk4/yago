@@ -32,6 +32,15 @@ const (
 	maxPacket     = 512
 )
 
+// marshalAnnouncement is the marshal seam for broadcast; the fixed Announcement
+// struct never fails to marshal in production, so this var exists only so tests
+// can force the marshal-error path.
+var marshalAnnouncement = json.Marshal
+
+// receiveReadTimeout bounds each blocking read in receiveLoop so the loop can
+// notice ctx cancellation between reads; a var so tests can shorten it.
+var receiveReadTimeout = time.Second
+
 // Announcement is the beacon payload. Only the hash, network, and peer port
 // travel; the peer's address is taken from the packet source, never from the
 // payload, so a beacon cannot point the greeter at a third party.
@@ -104,7 +113,7 @@ func (b *Beacon) Run(ctx context.Context) {
 }
 
 func (b *Beacon) broadcast(ctx context.Context, conn *net.UDPConn) {
-	payload, err := json.Marshal(Announcement{
+	payload, err := marshalAnnouncement(Announcement{
 		Magic:   beaconMagic,
 		Network: b.network,
 		Hash:    b.selfHash,
@@ -122,7 +131,7 @@ func (b *Beacon) broadcast(ctx context.Context, conn *net.UDPConn) {
 func (b *Beacon) receiveLoop(ctx context.Context, conn *net.UDPConn) {
 	buf := make([]byte, maxPacket)
 	for {
-		if err := conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		if err := conn.SetReadDeadline(time.Now().Add(receiveReadTimeout)); err != nil {
 			return
 		}
 		n, from, err := conn.ReadFromUDP(buf)

@@ -230,3 +230,55 @@ func TestQueryCacheEvictsExpiredOnPut(t *testing.T) {
 		t.Fatalf("get(b) = %#v, %v", got, ok)
 	}
 }
+
+func TestBackendsForBraveAndSafeParams(t *testing.T) {
+	if engines := backendsFor(backendBrave); len(engines) != 1 || engines[0].name != engineBrave {
+		t.Fatalf("backendsFor(brave) = %#v", engines)
+	}
+	cases := map[string]string{"strict": "strict", "off": "off", "moderate": ""}
+	for mode, want := range cases {
+		if got := braveSafeParams(mode).Get("safesearch"); got != want {
+			t.Errorf("braveSafeParams(%q) safesearch = %q, want %q", mode, got, want)
+		}
+	}
+}
+
+func TestParseBraveResultsHTMLError(t *testing.T) {
+	if _, err := parseBraveResults([]byte(deepNestedHTML())); err == nil {
+		t.Fatal("expected parse error on deeply nested HTML")
+	}
+}
+
+// braveEdgeFixture exercises the residual Brave branches: a web block whose only
+// link is relative (dropped), a web block with no snippet-title element (title
+// falls back to the link text and hasClassContaining sees classless nodes), and
+// a web block whose long snippet sits past a <script> leaf that must be skipped.
+const braveEdgeFixture = `<!doctype html><html><body>
+<div class="snippet" data-type="web"><a href="/relative-only">no absolute link</a></div>
+<div data-type="web"><a href="https://link-title.example/p">Title From The Link Text</a><div>short</div></div>
+<div class="snippet" data-type="web">
+  <a href="https://scripted.example/s" class="l1"><div class="snippet-title">Scripted Title</div></a>
+  <script>this script text is definitely longer than sixty runes yet must be skipped by the leaf walker entirely</script>
+  <div class="generic-content">This is the genuine long snippet body text that comfortably exceeds sixty runes so it is picked.</div>
+</div>
+</body></html>`
+
+func TestParseBraveResultsEdgeBlocks(t *testing.T) {
+	results, err := parseBraveResults([]byte(braveEdgeFixture))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("results = %d, want 2 (linkless web block dropped): %#v", len(results), results)
+	}
+	if results[0].URL != "https://link-title.example/p" ||
+		results[0].Title != "Title From The Link Text" {
+		t.Fatalf("title must fall back to the link text: %#v", results[0])
+	}
+	if !strings.Contains(results[1].Snippet, "genuine long snippet") {
+		t.Fatalf("snippet must be the long leaf past the <script>: %q", results[1].Snippet)
+	}
+	if strings.Contains(results[1].Snippet, "script text") {
+		t.Fatalf("<script> leaf text leaked into the snippet: %q", results[1].Snippet)
+	}
+}

@@ -290,6 +290,22 @@ func mustParseURL(tb testing.TB, raw string) *url.URL {
 	return parsed
 }
 
+func TestCoreImagesConvertsRefs(t *testing.T) {
+	images := coreImages([]searchindex.ResultImage{
+		{URL: "https://img.example/a.png", Alt: "alpha"},
+		{URL: "https://img.example/b.png", Alt: "beta"},
+	})
+	if len(images) != 2 {
+		t.Fatalf("images = %d, want 2", len(images))
+	}
+	if images[0] != (searchcore.ResultImage{URL: "https://img.example/a.png", Alt: "alpha"}) {
+		t.Fatalf("image[0] = %#v", images[0])
+	}
+	if images[1].URL != "https://img.example/b.png" || images[1].Alt != "beta" {
+		t.Fatalf("image[1] = %#v", images[1])
+	}
+}
+
 func TestSearcherThreadsProviderWeights(t *testing.T) {
 	index := &fakeIndex{}
 	want := searchindex.RankingWeights{Title: 7, Headings: 5, Anchors: 3, Body: 2, URL: 1}

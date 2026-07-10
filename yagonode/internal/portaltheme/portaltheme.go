@@ -82,10 +82,7 @@ func (documentCodec) Decode(data []byte) (Document, error) {
 type configCodec struct{}
 
 func (configCodec) Encode(value themeConfig) ([]byte, error) {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return nil, fmt.Errorf("encode theme config: %w", err)
-	}
+	data, _ := json.Marshal(value)
 
 	return data, nil
 }

@@ -17,6 +17,10 @@ type BatchIndexer interface {
 	IndexBatch(ctx context.Context, docs []documentstore.Document) error
 }
 
+var stageBatchDocument = func(batch *bleve.Batch, id string, doc bleveDocument) error {
+	return batch.Index(id, doc)
+}
+
 // IndexBatch indexes the documents through one bleve batch per shard. An empty
 // slice is a no-op; a document without an id fails the whole batch, matching
 // the single-document contract.
@@ -48,7 +52,7 @@ func (b *BleveDiskIndex) IndexBatch(
 			batch = shard.NewBatch()
 			batches[shard] = batch
 		}
-		if err := batch.Index(id, bleveDocumentFromStore(doc)); err != nil {
+		if err := stageBatchDocument(batch, id, bleveDocumentFromStore(doc)); err != nil {
 			return fmt.Errorf("stage document: %w", err)
 		}
 	}

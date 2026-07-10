@@ -30,6 +30,12 @@ func newTestSearchEndpoint(
 	)
 }
 
+func TestNewSearchEndpointWiresOpenAccess(t *testing.T) {
+	if NewSearchEndpoint(&fakeSearcher{}, &fakeDocuments{}) == nil {
+		t.Fatal("NewSearchEndpoint returned a nil handler")
+	}
+}
+
 type fakeSearcher struct {
 	response searchcore.Response
 	err      error

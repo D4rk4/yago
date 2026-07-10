@@ -34,7 +34,7 @@ func populateThenPrune(
 	ctx := context.Background()
 	if err := vaulted.Update(ctx, func(txn *vault.Txn) error {
 		for i := range total {
-			value := incompressibleValue(uint64(i), 1024)
+			value := incompressibleValue(uint64(i))
 			if err := values.Put(txn, vault.Key(fmt.Sprintf("doc-%05d", i)), value); err != nil {
 				return fmt.Errorf("put: %w", err)
 			}
@@ -91,7 +91,7 @@ func TestCompactReclaimsFreedPagesAndKeepsData(t *testing.T) {
 			if err != nil || !ok {
 				return fmt.Errorf("missing doc-%05d ok=%v err=%w", i, ok, err)
 			}
-			if got != incompressibleValue(uint64(i), 1024) {
+			if got != incompressibleValue(uint64(i)) {
 				return fmt.Errorf("doc-%05d corrupted after compaction", i)
 			}
 		}

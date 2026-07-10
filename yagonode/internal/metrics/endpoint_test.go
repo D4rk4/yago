@@ -33,3 +33,29 @@ func TestHTTPEndpointMetricsRegistry(t *testing.T) {
 		t.Fatal("registry is nil")
 	}
 }
+
+func TestObserveExemplarPinsTraceOnSampledRequest(t *testing.T) {
+	metrics := NewHTTPEndpointMetrics()
+
+	metrics.ObserveExemplar("/search", http.StatusOK, 5*time.Millisecond, "trace-abc")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", nil)
+	metrics.Handler().ServeHTTP(rec, req)
+	if body := rec.Body.String(); !strings.Contains(body, `endpoint="/search"`) {
+		t.Fatalf("metrics missing the observed endpoint label:\n%s", body)
+	}
+}
+
+func TestObserveExemplarFallsBackWithoutTraceID(t *testing.T) {
+	metrics := NewHTTPEndpointMetrics()
+
+	metrics.ObserveExemplar("", http.StatusInternalServerError, time.Second, "")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", nil)
+	metrics.Handler().ServeHTTP(rec, req)
+	if body := rec.Body.String(); !strings.Contains(body, `endpoint="unmatched"`) {
+		t.Fatalf("metrics missing the unmatched fallback label:\n%s", body)
+	}
+}

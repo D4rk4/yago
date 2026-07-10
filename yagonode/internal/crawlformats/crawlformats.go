@@ -21,10 +21,7 @@ var togglesKey = vault.Key("toggles")
 type togglesCodec struct{}
 
 func (togglesCodec) Encode(toggles yagocrawlcontract.FormatToggles) ([]byte, error) {
-	encoded, err := json.Marshal(toggles)
-	if err != nil {
-		return nil, fmt.Errorf("encode crawl formats: %w", err)
-	}
+	encoded, _ := json.Marshal(toggles)
 
 	return encoded, nil
 }

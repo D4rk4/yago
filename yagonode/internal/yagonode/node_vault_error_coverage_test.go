@@ -28,6 +28,9 @@ type ctrlEngine struct {
 	scans          int
 	failProvision  map[vault.Name]bool
 	failScanBucket map[vault.Name]bool
+	// failUpdate rejects every writable transaction while leaving read views
+	// intact, so a write that follows a successful read can be failed on its own.
+	failUpdate bool
 }
 
 func newCtrlEngine() *ctrlEngine {
@@ -70,6 +73,9 @@ func (e *ctrlEngine) Provision(name vault.Name) error {
 func (e *ctrlEngine) Update(_ context.Context, fn func(vault.EngineTxn) error) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.failUpdate {
+		return errors.New("update failed")
+	}
 
 	return fn(&ctrlTxn{engine: e, writable: true})
 }

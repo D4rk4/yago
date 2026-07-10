@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"testing"
 
 	"github.com/D4rk4/yago/yagonode/internal/yagonode"
@@ -11,12 +12,35 @@ func TestMainRunsNode(t *testing.T) {
 	ran := false
 	oldRunNode := runNode
 	runNode = func() { ran = true }
-	t.Cleanup(func() { runNode = oldRunNode })
+	oldArgs := os.Args
+	os.Args = []string{"yago-node"}
+	t.Cleanup(func() {
+		runNode = oldRunNode
+		os.Args = oldArgs
+	})
 
 	main()
 
 	if !ran {
 		t.Fatal("main did not run node")
+	}
+}
+
+func TestMainVersionSkipsNode(t *testing.T) {
+	ran := false
+	oldRunNode := runNode
+	runNode = func() { ran = true }
+	oldArgs := os.Args
+	os.Args = []string{"yago-node", "--version"}
+	t.Cleanup(func() {
+		runNode = oldRunNode
+		os.Args = oldArgs
+	})
+
+	main()
+
+	if ran {
+		t.Fatal("a --version request must return before starting the node")
 	}
 }
 

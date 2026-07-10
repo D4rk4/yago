@@ -19,6 +19,10 @@ const splittingSuffix = ".splitting"
 // compactTxMaxSize). It is a var so a test can lower it to exercise batching.
 var splitTxMaxBytes = int64(16) << 20
 
+// createBucketIfNotExists is a seam so a test can exercise the split copier's
+// bucket-creation failure path.
+var createBucketIfNotExists = (*bolt.Tx).CreateBucketIfNotExists
+
 // SplitStep grows the shard pool by one under linear hashing (ADR-0037): the
 // split-pointer shard is halved — its records that now hash into the new shard
 // move there — and the layout pointer advances. It runs under the exclusive
@@ -229,7 +233,7 @@ func newSplitCopier(dst *bolt.DB) (*splitCopier, error) {
 }
 
 func (c *splitCopier) startBucket(name []byte) error {
-	bucket, err := c.tx.CreateBucketIfNotExists(name)
+	bucket, err := createBucketIfNotExists(c.tx, name)
 	if err != nil {
 		return fmt.Errorf("create split bucket: %w", err)
 	}

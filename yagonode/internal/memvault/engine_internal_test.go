@@ -52,6 +52,15 @@ func TestMemBucketScanReturnsCallbackError(t *testing.T) {
 	}
 }
 
+func TestEngineSetQuotaBytes(t *testing.T) {
+	e := &engine{}
+	e.SetQuotaBytes(42)
+
+	if got := e.QuotaBytes(); got != 42 {
+		t.Fatalf("QuotaBytes after SetQuotaBytes = %d, want 42", got)
+	}
+}
+
 func TestSnapshotCopiesValues(t *testing.T) {
 	source := map[vault.Name]map[string][]byte{
 		vault.Name("bucket"): {"key": []byte("value")},

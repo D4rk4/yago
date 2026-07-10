@@ -287,6 +287,52 @@ func TestRunAnnouncesOnTicker(t *testing.T) {
 	}
 }
 
+func TestGreetDiscoveredRecordsProbeFailureAndSkipsRoster(t *testing.T) {
+	ctx := context.Background()
+	observer := &recordingObserver{}
+	roster := &stubRoster{}
+	a := &announcer{
+		self:     stubSelf{seed: callerSeed(t, "self", "203.0.113.9")},
+		roster:   roster,
+		greeter:  &stubGreeter{err: errors.New("boom")},
+		observer: observer,
+	}
+
+	a.GreetDiscovered(ctx, callerSeed(t, "peer", "203.0.113.1"))
+
+	if observer.failures.Load() != 1 {
+		t.Fatalf("probe failures = %d, want 1", observer.failures.Load())
+	}
+	if len(roster.discovered) != 0 || len(roster.reachable) != 0 {
+		t.Fatalf("a failed greet must not touch the roster: %v %v",
+			roster.discovered, roster.reachable)
+	}
+}
+
+func TestGreetDiscoveredVerifiesBeforeAdmittingToRoster(t *testing.T) {
+	ctx := context.Background()
+	peer := callerSeed(t, "peer", "203.0.113.1")
+	known := callerSeed(t, "known", "198.51.100.7")
+	roster := &stubRoster{}
+	a := &announcer{
+		self:   stubSelf{seed: callerSeed(t, "self", "203.0.113.9")},
+		roster: roster,
+		greeter: &stubGreeter{result: greetResult{
+			YourType: yagomodel.PeerSenior,
+			Known:    []yagomodel.Seed{known},
+		}},
+	}
+
+	a.GreetDiscovered(ctx, peer)
+
+	if len(roster.reachable) != 1 || roster.reachable[0] != peer.Hash {
+		t.Fatalf("reachable = %v, want the verified peer %v", roster.reachable, peer.Hash)
+	}
+	if len(roster.discovered) != 2 || roster.discovered[0].Hash != peer.Hash {
+		t.Fatalf("discovered = %v, want the verified peer then its gossip", roster.discovered)
+	}
+}
+
 func TestRunFetchesSeedSourceOnStart(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

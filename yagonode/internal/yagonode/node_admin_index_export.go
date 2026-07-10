@@ -148,7 +148,12 @@ func csvRowWriter(
 ) (write func(documentstore.Document) error, finish func() error, err error) {
 	encoder := csv.NewWriter(w)
 	header := []string{"url", "title", "content_type", "language", "indexed_at"}
-	if err := encoder.Write(header); err != nil {
+	// Flush the header eagerly so a broken sink surfaces at construction; csv
+	// buffers writes, so a bare Write never reaches the sink and Error() reports
+	// the failure only after a Flush.
+	_ = encoder.Write(header)
+	encoder.Flush()
+	if err := encoder.Error(); err != nil {
 		return nil, nil, fmt.Errorf("write csv header: %w", err)
 	}
 	write = func(doc documentstore.Document) error {

@@ -86,6 +86,27 @@ func TestClickEndpointRejectsBadInput(t *testing.T) {
 	}
 }
 
+func TestClickEndpointRejectsUnparsableForm(t *testing.T) {
+	// A POST body with invalid percent-encoding makes ParseForm fail before the
+	// endpoint reads any field, so the beacon is rejected rather than recorded.
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		pathSearchClick,
+		strings.NewReader("%zz"),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	recorder := &fakeRecorder{}
+	clickEndpoint{recorder: recorder}.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 on an unparsable form body", rec.Code)
+	}
+	if recorder.calls != 0 {
+		t.Fatalf("recorder called %d times, want 0", recorder.calls)
+	}
+}
+
 func TestClickEndpointSwallowsRecorderError(t *testing.T) {
 	recorder := &fakeRecorder{err: context.Canceled}
 	rec := postClick(t, clickEndpoint{recorder: recorder}, url.Values{

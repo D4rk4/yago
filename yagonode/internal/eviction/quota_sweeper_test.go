@@ -478,6 +478,48 @@ func TestEvictURLsDropsResolvedDocuments(t *testing.T) {
 	}
 }
 
+// TestEvictURLsSurfacesResolverError makes a resolver failure fail the purge:
+// without the metadata rows the documents side cannot resolve URLs to delete.
+func TestEvictURLsSurfacesResolverError(t *testing.T) {
+	v := openVault(t, 1024)
+	docs := &fakeDocuments{}
+	resolver := fakeResolver{err: errors.New("resolve boom")}
+	evictor := eviction.NewEvictor(
+		v, &fakePostings{}, fakeReferences{}, &fakeURLs{}, docs, resolver,
+	)
+
+	if _, err := evictor.EvictURLs(context.Background(), hashes(1)); err == nil {
+		t.Fatal("EvictURLs must surface a resolver error")
+	}
+}
+
+// TestEvictURLsSkipsUndecodableDocumentURL proves a metadata row whose URL does
+// not decode (here an empty wire form) is an idempotent skip, not a failure:
+// the decodable sibling still drops and only it is counted.
+func TestEvictURLsSkipsUndecodableDocumentURL(t *testing.T) {
+	v := openVault(t, 1024)
+	docs := &fakeDocuments{}
+	resolver := fakeResolver{rows: []yagomodel.URIMetadataRow{
+		{Properties: map[string]string{}},
+		urlMetaRow("http://good/"),
+	}}
+	evictor := eviction.NewEvictor(
+		v, &fakePostings{}, fakeReferences{word: yagomodel.WordHash("w")},
+		&fakeURLs{remaining: hashes(2)}, docs, resolver,
+	)
+
+	result, err := evictor.EvictURLs(context.Background(), hashes(2))
+	if err != nil {
+		t.Fatalf("EvictURLs: %v", err)
+	}
+	if result.DocumentsDeleted != 1 {
+		t.Fatalf("documents deleted = %d, want 1 (empty-url row skipped)", result.DocumentsDeleted)
+	}
+	if len(docs.deleted) != 1 || docs.deleted[0] != "http://good/" {
+		t.Fatalf("deleted = %v, want only the decodable url", docs.deleted)
+	}
+}
+
 // TestEvictURLsSurfacesDocumentError makes a failing document delete fail the
 // purge rather than silently dropping the postings and metadata.
 func TestEvictURLsSurfacesDocumentError(t *testing.T) {

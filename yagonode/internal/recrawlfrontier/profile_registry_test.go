@@ -200,6 +200,60 @@ func TestRecordFetchesSchedulesKnownAndSkipsUnknown(t *testing.T) {
 	}
 }
 
+// TestRecordFetchesDeduplicatesHandleResolution pins that a batch repeating one
+// handle resolves that profile once yet still schedules every fetch under it.
+func TestRecordFetchesDeduplicatesHandleResolution(t *testing.T) {
+	f := openTestFrontier(t)
+	ctx := context.Background()
+	profile := profileWithRecrawl("Example", time.Hour)
+	if err := f.RecordProfile(ctx, profile); err != nil {
+		t.Fatalf("record profile: %v", err)
+	}
+
+	err := f.RecordFetches(ctx,
+		[]string{"https://a.example/", "https://b.example/"},
+		[]string{profile.Handle, profile.Handle},
+		[]time.Time{testBase, testBase},
+	)
+	if err != nil {
+		t.Fatalf("record fetches: %v", err)
+	}
+
+	if due := claim(t, f, testBase.Add(time.Hour), 10); len(due) != 2 {
+		t.Fatalf("claimed %d, want both urls of the repeated handle", len(due))
+	}
+}
+
+func TestRecordFetchesProfileReadError(t *testing.T) {
+	f, engine := openCtrlFrontier(t)
+	engine.seed(profileBucket, "h", []byte("{corrupt"))
+	err := f.RecordFetches(context.Background(),
+		[]string{"https://a.example/"},
+		[]string{"h"},
+		[]time.Time{testBase},
+	)
+	if err == nil {
+		t.Fatal("expected a profile read error resolving a corrupt profile")
+	}
+}
+
+func TestRecordFetchesObserveError(t *testing.T) {
+	f, _ := openCtrlFrontier(t)
+	ctx := context.Background()
+	profile := profileWithRecrawl("Example", 48*time.Hour)
+	if err := f.RecordProfile(ctx, profile); err != nil {
+		t.Fatalf("record profile: %v", err)
+	}
+	err := f.RecordFetches(ctx,
+		[]string{"https://a.example/"},
+		[]string{profile.Handle},
+		[]time.Time{year10000Base},
+	)
+	if err == nil {
+		t.Fatal("expected an observe error scheduling a year-10000 due time")
+	}
+}
+
 func TestRecordFetchesRejectsMismatchedLengths(t *testing.T) {
 	f := openTestFrontier(t)
 	if err := f.RecordFetches(

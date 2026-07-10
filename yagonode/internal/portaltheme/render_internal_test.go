@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mailgun/raymond/v2"
 
@@ -14,6 +15,16 @@ import (
 type nopSink struct{}
 
 func (nopSink) Record(events.Severity, events.Category, string, string) {}
+
+// TestDocumentCodecEncodeRejectsUnmarshalableTime reaches the document codec's
+// encode-error branch: time.Time.MarshalJSON fails outside year [0,9999], the
+// one input a stored Document can carry that JSON cannot render.
+func TestDocumentCodecEncodeRejectsUnmarshalableTime(t *testing.T) {
+	badYear := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := (documentCodec{}).Encode(Document{SavedAt: badYear}); err == nil {
+		t.Fatal("expected an encode error for a year-10000 SavedAt")
+	}
+}
 
 // TestRenderRecoversFromPanicAndLogsOnce forces the panic branch raymond can
 // reach through Exec: the public portal must fall back to the built-in render
