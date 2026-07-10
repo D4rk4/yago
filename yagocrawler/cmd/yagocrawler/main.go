@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/D4rk4/yago/yagocrawler/internal/chromedpfetch"
+	"github.com/D4rk4/yago/yagocrawler/internal/firefoxfetch"
 	"github.com/D4rk4/yago/yagoegress"
 )
 
@@ -22,7 +22,7 @@ var notifyProcessContext = signal.NotifyContext
 
 var runConfiguredCrawler = run
 
-var newCrawlerBrowserFetcher = chromedpfetch.NewBrowserPageFetcher
+var newCrawlerBrowserFetcher = firefoxfetch.NewBrowserPageFetcher
 
 var runCrawlerService = RunService
 
@@ -75,7 +75,7 @@ func printVersion(args []string, out io.Writer) bool {
 func run(ctx context.Context, cfg ServiceConfig) error {
 	crawl := cfg.Crawl
 	fetcher, closeBrowser, err := newCrawlerBrowserFetcher(
-		chromedpfetch.BrowserLaunch{
+		firefoxfetch.BrowserLaunch{
 			UserAgent: crawl.UserAgent,
 			Timeout:   crawl.RequestTimeout,
 			MaxBytes:  crawl.MaxBodyBytes,

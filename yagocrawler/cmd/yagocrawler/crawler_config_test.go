@@ -171,14 +171,14 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 		EnvHeaderTimeout:      "2s",
 		EnvMaxRedirects:       "2",
 		EnvSitemapURLLimit:    "9",
-		EnvBrowserPath:        "/usr/bin/chromium",
+		EnvBrowserPath:        "/usr/bin/firefox-esr",
 		EnvBrowserSandbox:     "true",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if cfg.Crawl.BrowserPath != "/usr/bin/chromium" {
-		t.Errorf("browser path = %q, want /usr/bin/chromium", cfg.Crawl.BrowserPath)
+	if cfg.Crawl.BrowserPath != "/usr/bin/firefox-esr" {
+		t.Errorf("browser path = %q, want /usr/bin/firefox-esr", cfg.Crawl.BrowserPath)
 	}
 	if !cfg.Crawl.BrowserSandbox {
 		t.Error("browser sandbox = false, want true when the host opts in")

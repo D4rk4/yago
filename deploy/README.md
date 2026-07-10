@@ -31,9 +31,9 @@ package dependencies rather than bundled:
 
 - `ca-certificates` — trust roots for outbound TLS. The binaries read the system
   trust store; there is no baked-in certificate bundle on bare metal.
-- `chromium` on Debian or `chromium-browser` on Ubuntu (or any
-  `google-chrome-stable`) — the crawler's slow-path browser. The container image
-  bundles `headless-shell`; a host install points the crawler at the OS browser
+- `firefox-esr` on Debian (or `firefox` on Ubuntu/Fedora) — the crawler's
+  slow-path browser, driven headless over Marionette. The container image
+  bundles `firefox-esr`; a host install points the crawler at the OS browser
   through `YAGOCRAWLER_BROWSER_PATH`. The crawler still runs without it, serving
   only the HTTP fast path, so it is a recommended, not a required, dependency.
 
@@ -64,18 +64,19 @@ sudo systemctl enable --now yagocrawler   # optional crawler worker
 
 ## The browser sandbox on bare metal
 
-Headless Chrome has its own renderer sandbox. It needs unprivileged user
+Headless Firefox has its own content-process sandbox. It needs unprivileged user
 namespaces, which the container image and most current Linux hosts (Ubuntu
 23.10+, AppArmor userns restrictions) do not grant, so the crawler defaults to
-`YAGOCRAWLER_BROWSER_SANDBOX=false` and launches Chrome with `--no-sandbox`. On
-bare metal the systemd unit is the isolation boundary — it runs the crawler as an
-unprivileged user with `NoNewPrivileges`, a private `/tmp`, and a read-only
-system — and the crawler is already egress-guarded against private networks.
+`YAGOCRAWLER_BROWSER_SANDBOX=false` and launches Firefox with the content sandbox
+disabled (`MOZ_DISABLE_CONTENT_SANDBOX=1`). On bare metal the systemd unit is the
+isolation boundary — it runs the crawler as an unprivileged user with
+`NoNewPrivileges`, a private `/tmp`, and a read-only system — and the crawler is
+already egress-guarded against private networks.
 
 An operator on a host that supports the browser sandbox can opt back in by
 setting `YAGOCRAWLER_BROWSER_SANDBOX=true` **and** relaxing the unit
-(`NoNewPrivileges=no`, and allow user namespaces); Chrome cannot start its
-sandbox under `NoNewPrivileges`.
+(`NoNewPrivileges=no`, and allow user namespaces); Firefox cannot start its
+content sandbox under `NoNewPrivileges`.
 
 ## Debian package
 
@@ -89,8 +90,8 @@ services.
 
 `deploy/debian/build-deb.sh <version> <arch> <bindir> <outdir>` builds the
 package anywhere `dpkg-deb` exists. It installs into `/opt/yago`, depends on
-`ca-certificates` and `adduser` (recommends `chromium | chromium-browser`, so
-the crawler's browser resolves on both Debian and Ubuntu), creates the `yago`
+`ca-certificates` and `adduser` (recommends `firefox-esr | firefox`, so the
+crawler's browser resolves on both Debian and Ubuntu), creates the `yago`
 system user in postinst, enables the systemd units, and — validated end to end
 on Debian 12 and 13 and Ubuntu 24.04 and the latest LTS — keeps `/opt/yago/data`
 through purge while removing the edited env files. The binaries are static (CGO
@@ -102,7 +103,7 @@ short-lived interim releases in between) with no glibc coupling.
 `deploy/rpm/build-rpm.sh <version> <arch> <bindir> <outdir>` builds the same
 layout as an `.rpm` anywhere `rpmbuild` exists (the `<arch>` is the Go/deb
 `amd64|arm64`, mapped to the RPM `x86_64|aarch64`, so one release matrix drives
-both package builders). It requires `ca-certificates`, recommends `chromium`,
+both package builders). It requires `ca-certificates`, recommends `firefox`,
 creates the `yago` system user in a `%pre` scriptlet, enables the units in
 `%post`, and keeps `/opt/yago/data` on removal. The static binaries carry no
 shared-library dependencies, so debuginfo and strip post-processing are disabled

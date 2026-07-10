@@ -11,14 +11,15 @@ Group=yago
 ExecStart=/opt/yago/bin/yagocrawler
 EnvironmentFile=/opt/yago/etc/yagocrawler.env
 WorkingDirectory=/opt/yago
-# Chrome writes a profile and cache under HOME; keep it inside the data tree.
+# Firefox writes its profile, cache, and lock files under HOME; keep it inside
+# the data tree.
 Environment=HOME=/opt/yago/data/crawler
 Restart=on-failure
 RestartSec=5s
 
 # The service, not a container, is the isolation boundary on bare metal. Keeping
 # NoNewPrivileges requires the crawler's default YAGOCRAWLER_BROWSER_SANDBOX=false
-# (Chrome cannot start its own sandbox under NoNewPrivileges); see deploy/README.md.
+# (Firefox cannot start its content sandbox under NoNewPrivileges); see deploy/README.md.
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes

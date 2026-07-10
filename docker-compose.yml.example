@@ -77,11 +77,11 @@ services:
       # Default fetch pace per crawl run, pages per minute (0 = unlimited); the
       # crawl monitor can raise or zero a running crawl per run.
       YAGOCRAWLER_RUN_PAGES_PER_MINUTE: ${YAGOCRAWLER_RUN_PAGES_PER_MINUTE:-30}
-      # Slow-path browser: the container image bundles headless-shell on PATH, so
-      # BROWSER_PATH stays empty; a bare-metal/systemd install points it at the
-      # host browser (e.g. /usr/bin/chromium). BROWSER_SANDBOX is off so Chrome
-      # starts in the container and on hosts that restrict user namespaces; a
-      # hardened host may set it true.
+      # Slow-path browser: headless Firefox over Marionette. The container image
+      # bundles firefox-esr on PATH, so BROWSER_PATH stays empty; a bare-metal/
+      # systemd install points it at the host browser (e.g. /usr/bin/firefox-esr).
+      # BROWSER_SANDBOX is off so Firefox starts in the container and on hosts
+      # that restrict user namespaces; a hardened host may set it true.
       YAGOCRAWLER_BROWSER_PATH: ${YAGOCRAWLER_BROWSER_PATH:-}
       YAGOCRAWLER_BROWSER_SANDBOX: ${YAGOCRAWLER_BROWSER_SANDBOX:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

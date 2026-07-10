@@ -50,7 +50,7 @@ URL:            https://github.com/D4rk4/yago
 AutoReqProv:    no
 Requires:       ca-certificates
 Requires(pre):  shadow-utils
-Recommends:     chromium
+Recommends:     firefox
 
 %description
 A modern Go implementation of a YaCy-compatible peer-to-peer search engine:

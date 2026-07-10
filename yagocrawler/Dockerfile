@@ -32,31 +32,25 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -o /out/yagocrawler \
         ./yagocrawler/cmd/yagocrawler
 
-FROM docker.io/chromedp/headless-shell:148.0.7778.97 AS browser
-
-WORKDIR /runtime
+# The crawler's slow-path browser is headless Firefox, driven over Marionette.
+# Firefox is not distributed as a scratch-friendly bundle the way Chrome's
+# headless-shell was, so the runtime image is debian-slim with firefox-esr
+# installed: apt pulls Firefox's own shared-library and fontconfig dependencies,
+# and ca-certificates supplies the trust roots for outbound TLS. The static
+# crawler binary runs unchanged on this base.
+FROM docker.io/library/debian:trixie-slim
 
 RUN set -eux; \
-    mkdir -p etc usr var; \
-    cp -a /headless-shell headless-shell; \
-    cp -a /lib lib; \
-    if [ -e /lib64 ]; then cp -a /lib64 lib64; fi; \
-    cp -a /usr/lib usr/lib; \
-    if [ -e /usr/lib64 ]; then cp -a /usr/lib64 usr/lib64; fi; \
-    cp -a /etc/fonts etc/fonts; \
-    cp -a /etc/nsswitch.conf etc/nsswitch.conf; \
-    mkdir -m 1777 tmp var/tmp
-
-FROM scratch
+    apt-get update; \
+    apt-get install -y --no-install-recommends firefox-esr ca-certificates fonts-liberation; \
+    rm -rf /var/lib/apt/lists/*
 
 # Shared /opt/yago layout (OPS-04): the crawler is stateless (no data volume),
-# so only the binary moves under /opt/yago/bin.
-ENV HOME=/tmp XDG_CACHE_HOME=/tmp/.cache PATH=/opt/yago/bin:/headless-shell
+# so only the binary moves under /opt/yago/bin. HOME must be writable for the
+# throwaway Firefox profile; the crawler discovers firefox-esr on PATH, so
+# YAGOCRAWLER_BROWSER_PATH stays empty in the container.
+ENV HOME=/tmp XDG_CACHE_HOME=/tmp/.cache PATH=/opt/yago/bin:/usr/bin
 
-COPY --from=browser /runtime/ /
-# CA roots for outbound TLS: the scratch base and the headless-shell slices
-# carry none, so every https fetch failed x509 verification without this.
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/yagocrawler /opt/yago/bin/yagocrawler
 
 USER 65534:65534

@@ -71,13 +71,14 @@ targets under the same policy. Before robots.txt or browser navigation starts, t
 crawler also rejects non-HTTP(S), loopback, private, link-local, multicast,
 unspecified, documentation/test, and metadata-local destinations. The final
 rendered URL is checked against the same public-web policy.
-The default fetch path uses a bounded HTTP GET first and falls back to the
-headless browser only when that fast path rejects the page. The HTTP fast path
+The default fetch path uses a bounded HTTP GET first and falls back to a single
+long-lived headless Firefox (driven over the Marionette protocol) only when that
+fast path rejects the page. The HTTP fast path
 follows at most `YAGOCRAWLER_MAX_REDIRECTS` redirect hops and uses explicit
 request, connect, TLS, and response-header timeout budgets. Sitemap and
 sitelist expansion imports at most `YAGOCRAWLER_SITEMAP_URL_LIMIT` URLs per
 seed. The container image
-embeds the pinned headless-shell runtime in a scratch non-root image.
+bundles firefox-esr on a debian-slim base, run as a non-root user.
 
 When `YAGOCRAWLER_METRICS_ADDR` is set (for example `:9101`), the crawler serves
 Prometheus metrics at `/metrics` on that address: `yacy_crawler_jobs_active`,

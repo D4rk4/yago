@@ -22,8 +22,8 @@ components:
     in: internal/pagefetch/**
   httpfetch:
     in: internal/httpfetch/**
-  chromedpfetch:
-    in: internal/chromedpfetch/**
+  firefoxfetch:
+    in: internal/firefoxfetch/**
   botwall:
     in: internal/botwall/**
   publicweb:
@@ -84,8 +84,6 @@ vendors:
     in: golang.org/x/sync/singleflight
   trafilatura:
     in: github.com/markusmobius/go-trafilatura
-  chromedp:
-    in: github.com/chromedp/chromedp
   go-shiori-dom:
     in: github.com/go-shiori/dom
   google-uuid:
@@ -139,11 +137,10 @@ deps:
     mayDependOn:
       - httpfetch
       - pagefetch
-  chromedpfetch:
+  firefoxfetch:
     mayDependOn:
       - pagefetch
     canUse:
-      - chromedp
       - yagoegress
   botwall:
     mayDependOn:
@@ -261,7 +258,7 @@ deps:
   crawlercmd:
     mayDependOn:
       - botwall
-      - chromedpfetch
+      - firefoxfetch
       - crawldelay
       - crawlermetrics
       - crawlorder

@@ -1,4 +1,4 @@
-package chromedpfetch
+package firefoxfetch
 
 import (
 	"context"
@@ -7,8 +7,6 @@ import (
 	"net"
 	"net/http"
 	"time"
-
-	"github.com/chromedp/chromedp"
 )
 
 const (
@@ -20,12 +18,12 @@ var listenBrowserProxy = func() (net.Listener, error) {
 	return net.Listen("tcp", "127.0.0.1:0")
 }
 
-func proxyExecAllocatorOptions(proxyURL string) []chromedp.ExecAllocatorOption {
-	return []chromedp.ExecAllocatorOption{chromedp.ProxyServer(proxyURL)}
-}
-
 type dialFunc func(ctx context.Context, network, address string) (net.Conn, error)
 
+// guardedForwardProxy is the loopback HTTP/CONNECT proxy the headless browser
+// routes through so every browser-originated request passes the same egress
+// guard as the crawler's HTTP paths (the SSRF boundary). Firefox is pointed at
+// it through the profile's network.proxy prefs.
 type guardedForwardProxy struct {
 	server *http.Server
 	url    string

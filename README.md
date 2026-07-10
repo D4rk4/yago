@@ -77,10 +77,10 @@ its binaries (`yago-node`, `yagocrawler`).
 - **Format coverage beyond HTML**: PDF, DOCX/XLSX/PPTX, legacy DOC/XLS/PPT,
   ODT/ODS/ODP, RTF, EPUB, plain text/CSV/Markdown — parsed with stdlib-first
   parsers and validated against real files.
-- **Two-tier fetching**: fast HTTP first, headless-browser fallback (bundled
-  headless-shell) for bot-walled and JavaScript-rendered pages, both behind a
-  dial-time SSRF egress guard; per-profile toggles for robots, TLS authority,
-  and browser use.
+- **Two-tier fetching**: fast HTTP first, headless-browser fallback (headless
+  Firefox over Marionette, one long-lived process) for bot-walled and
+  JavaScript-rendered pages, both behind a dial-time SSRF egress guard;
+  per-profile toggles for robots, TLS authority, and browser use.
 - Politeness and defense: robots.txt with a sanitizer for real-world malformed
   files, per-host adaptive pacing and crawl delays, URL canonicalization,
   SimHash near-duplicate collapse, crawl-trap defense, per-host and per-run
