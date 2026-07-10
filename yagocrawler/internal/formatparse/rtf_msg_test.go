@@ -107,3 +107,25 @@ func TestParseMSGReadableRuns(t *testing.T) {
 		t.Fatal("msg without readable runs must stay unparsed")
 	}
 }
+
+func TestParseTextFamilyExtensionlessRTF(t *testing.T) {
+	toggles := yagocrawlcontract.DefaultFormatToggles()
+	rtf := []byte(`{\pard \b Heading\b0 \par Extension-less rtf body text.\par}`)
+	// An extension-less URL with an application/rtf type must reach the RTF
+	// control-word walker, not the plain-text fallback that leaks \control words.
+	page, parsed := parseTextFamily("https://a.example/download", "application/rtf", rtf)
+	if !parsed || !strings.Contains(page.Text, "Extension-less rtf body text.") ||
+		strings.Contains(page.Text, `\pard`) {
+		t.Fatalf("rtf by content type = %v %q", parsed, page.Text)
+	}
+	if page, parsed := parseTextFamily(
+		"https://a.example/download", "text/rtf", rtf,
+	); !parsed || strings.Contains(page.Text, `\par`) {
+		t.Fatalf("text/rtf by content type leaked control words = %v %q", parsed, page.Text)
+	}
+	if page, parsed := Parse(
+		"https://a.example/download", "application/rtf", rtf, toggles,
+	); !parsed || !strings.Contains(page.Text, "Extension-less rtf body text.") {
+		t.Fatalf("rtf registry routing = %v %q", parsed, page.Text)
+	}
+}

@@ -51,9 +51,12 @@ func documentFamilies() []family {
 		{
 			name:       "text",
 			extensions: set("txt", "tex", "csv", "rtf", "msg"),
-			mimes:      set("text/plain", "text/csv", "application/rtf"),
-			parse:      parseTextFamily,
-			enabled:    func(t yagocrawlcontract.FormatToggles) bool { return t.Text },
+			mimes: set(
+				"text/plain", "text/csv", "application/rtf", "text/rtf",
+				"application/vnd.ms-outlook",
+			),
+			parse:   parseTextFamily,
+			enabled: func(t yagocrawlcontract.FormatToggles) bool { return t.Text },
 		},
 		{
 			name:       "xmlfeeds",

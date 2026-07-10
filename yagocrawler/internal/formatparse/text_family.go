@@ -12,11 +12,13 @@ const textTitleRuneCap = 80
 // parseTextFamily handles the text family: txt and tex index as raw text, csv
 // as its cell text, RTF through its control-word walker, and Outlook MSG
 // through best-effort readable-run extraction.
-func parseTextFamily(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
-	switch urlExtension(rawURL) {
-	case "rtf":
+func parseTextFamily(rawURL, contentType string, body []byte) (pageparse.ParsedPage, bool) {
+	ext := urlExtension(rawURL)
+	mime := mimeType(contentType)
+	switch {
+	case ext == "rtf" || mime == "application/rtf" || mime == "text/rtf":
 		return parseRTF(rawURL, body)
-	case "msg":
+	case ext == "msg" || mime == "application/vnd.ms-outlook":
 		return parseMSG(rawURL, body)
 	}
 	text := strings.TrimSpace(strings.ToValidUTF8(string(body), ""))
