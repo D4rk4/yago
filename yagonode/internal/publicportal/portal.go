@@ -145,6 +145,12 @@ type portalData struct {
 	// Elapsed is the human-readable search duration ("0.42 s") shown next to
 	// the result count, so a searcher sees how fast the query ran.
 	Elapsed string
+	// ShownFrom and ShownTo are the 1-based rank range of the results rendered on
+	// this page, so the meta line can distinguish the page window ("showing
+	// 1–10") from the grand total match count, which spans this node and every
+	// reachable peer. Set only when the page holds results.
+	ShownFrom int
+	ShownTo   int
 }
 
 // verticalTab is one content-vertical link above the results.
@@ -231,6 +237,10 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			data.Submitted = true
 			data.Results = results
+			if shown := len(results.Results); shown > 0 {
+				data.ShownFrom = offset + 1
+				data.ShownTo = offset + shown
+			}
 			data.Elapsed = elapsedSeconds(portalClock().Sub(started))
 			data.Pagination = newPagination(
 				query,
