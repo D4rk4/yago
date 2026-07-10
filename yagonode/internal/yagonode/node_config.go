@@ -56,7 +56,6 @@ const (
 	envSearchLinksNewTab    = "YAGO_SEARCH_LINKS_NEW_TAB"
 	envSearchClickCapture   = "YAGO_SEARCH_CLICK_CAPTURE"
 	envSwarmSeedCrawl       = "YAGO_SWARM_SEED_CRAWL"
-	envSwarmSeedLimitDocs   = "YAGO_SWARM_SEED_LIMIT_DOCS"
 	envSwarmSeedDepth       = "YAGO_SWARM_SEED_DEPTH"
 	envSwarmSeedMaxPages    = "YAGO_SWARM_SEED_MAX_PAGES"
 	envSwarmMorphology      = "YAGO_SWARM_MORPHOLOGY"
@@ -279,23 +278,22 @@ type derivedConfigs struct {
 }
 
 // swarmSeedConfig gates YaCy-style greedy learning: bounded crawls of URLs
-// surfaced by swarm search, until the local index holds LimitDocs documents
-// (YaCy greedylearning.enabled + greedylearning.limit.doccount). SeedDepth and
-// SeedMaxPages tune how far each surfaced URL is crawled — the autocrawler
-// profile — mirroring the web-fallback seed knobs so both discovery paths are
-// equally tunable instead of the swarm path being hardcoded.
+// surfaced by swarm search (YaCy greedylearning.enabled). Seeding has no
+// document-count ceiling — a large index must keep discovering resources
+// neither it nor the swarm already holds, so growth never self-throttles.
+// SeedDepth and SeedMaxPages tune how far each surfaced URL is crawled — the
+// autocrawler profile — mirroring the web-fallback seed knobs so both discovery
+// paths are equally tunable instead of the swarm path being hardcoded.
 type swarmSeedConfig struct {
 	Enabled      bool
-	LimitDocs    int
 	SeedDepth    int
 	SeedMaxPages int
 }
 
 const (
-	defaultSwarmSeedLimitDocs = 15000
-	defaultSwarmSeedDepth     = 1
-	defaultSwarmSeedMaxPages  = 20
-	maxSwarmSeedDepth         = 8
+	defaultSwarmSeedDepth    = 1
+	defaultSwarmSeedMaxPages = 20
+	maxSwarmSeedDepth        = 8
 )
 
 // seedCrawlOptions carries the per-crawl toggles the autocrawler's automatic
@@ -328,17 +326,6 @@ func loadSwarmSeedConfig(getenv func(string) string) (swarmSeedConfig, error) {
 	if err != nil {
 		return swarmSeedConfig{}, fmt.Errorf("%s: %w", envSwarmSeedCrawl, err)
 	}
-	limit := defaultSwarmSeedLimitDocs
-	if raw := strings.TrimSpace(getenv(envSwarmSeedLimitDocs)); raw != "" {
-		limit, err = strconv.Atoi(raw)
-		if err != nil || limit <= 0 {
-			return swarmSeedConfig{}, fmt.Errorf(
-				"%s: want a positive integer, got %q",
-				envSwarmSeedLimitDocs,
-				raw,
-			)
-		}
-	}
 	depth, err := intRangeEnv(
 		getenv,
 		envSwarmSeedDepth,
@@ -356,7 +343,6 @@ func loadSwarmSeedConfig(getenv func(string) string) (swarmSeedConfig, error) {
 
 	return swarmSeedConfig{
 		Enabled:      enabled,
-		LimitDocs:    limit,
 		SeedDepth:    depth,
 		SeedMaxPages: maxPages,
 	}, nil

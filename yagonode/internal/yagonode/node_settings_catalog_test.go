@@ -51,10 +51,6 @@ func catalogRoundTripCases() map[string]catalogRoundTripCase {
 			return c.RemoteTimeout == 6*time.Second
 		}},
 		"swarm.seed.enabled": {"true", func(c nodeConfig) bool { return c.SwarmSeed.Enabled }},
-		"swarm.seed.limit": {
-			"5000",
-			func(c nodeConfig) bool { return c.SwarmSeed.LimitDocs == 5000 },
-		},
 		"swarm.seed.depth": {
 			"4",
 			func(c nodeConfig) bool { return c.SwarmSeed.SeedDepth == 4 },
@@ -80,7 +76,6 @@ func TestExtendedSettingCatalogRoundTrips(t *testing.T) {
 		QueryLogMode:       queryLogOff,
 	}
 	base.WebFallback.Privacy = webFallbackPrivacyDisabled
-	base.SwarmSeed.LimitDocs = 100
 
 	cases := catalogRoundTripCases()
 	byKey := indexSettingDefinitions()
@@ -109,9 +104,9 @@ func TestExtendedSettingCatalogRoundTrips(t *testing.T) {
 	// Overrides layer through the shared startup path too.
 	layered := applyRuntimeSettingOverrides(base, map[string]string{
 		"peer.name":        "layered",
-		"swarm.seed.limit": "42",
+		"swarm.seed.depth": "4",
 	})
-	if layered.Name != "layered" || layered.SwarmSeed.LimitDocs != 42 {
+	if layered.Name != "layered" || layered.SwarmSeed.SeedDepth != 4 {
 		t.Fatalf("layered = %+v", layered)
 	}
 }
@@ -120,12 +115,6 @@ func TestExtendedSettingValidation(t *testing.T) {
 	byKey := indexSettingDefinitions()
 	if _, err := byKey["peer.name"].normalize("two\nlines"); err == nil {
 		t.Fatal("multi-line value must fail")
-	}
-	if _, err := byKey["swarm.seed.limit"].normalize("-5"); err == nil {
-		t.Fatal("negative limit must fail")
-	}
-	if _, err := byKey["swarm.seed.limit"].normalize("many"); err == nil {
-		t.Fatal("non-numeric limit must fail")
 	}
 	if _, err := byKey["search.query.log"].normalize("noisy"); err == nil {
 		t.Fatal("unknown log mode must fail")

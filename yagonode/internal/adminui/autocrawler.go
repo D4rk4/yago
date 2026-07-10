@@ -13,7 +13,6 @@ const autocrawlerPath = "/admin/autocrawler"
 // swarm greedy learning and web-fallback seeding — plus their crawl profiles.
 var autocrawlerKeys = map[string]bool{
 	"swarm.seed.enabled":                 true,
-	"swarm.seed.limit":                   true,
 	"swarm.seed.depth":                   true,
 	"swarm.seed.max_pages":               true,
 	"web.fallback.seed_crawl":            true,

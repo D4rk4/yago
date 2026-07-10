@@ -2,9 +2,7 @@ package yagonode
 
 import (
 	"context"
-	"log/slog"
 
-	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
@@ -16,30 +14,26 @@ type urlSeeder interface {
 }
 
 // swarmSeedingSearcher enqueues bounded crawls of URLs surfaced by swarm
-// search, YaCy's greedy learning: a fresh peer grows a useful index from what
-// the network already answers with, until the local document count reaches
-// the configured limit (YaCy greedylearning.limit.doccount, after which
-// greedylearning.active turns off). Seeding runs off the request path.
+// search — YaCy's greedy learning: a fresh peer grows a useful index from what
+// the network already answers with. Seeding stays active for the life of the
+// node (there is no document-count ceiling), so even a large index keeps
+// discovering resources that neither it nor the swarm already holds instead of
+// silently switching greedy learning off once it fills up. It runs off the
+// request path.
 type swarmSeedingSearcher struct {
-	inner     searchcore.Searcher
-	seeder    urlSeeder
-	documents documentstore.DocumentDirectory
-	limitDocs int
-	spawn     func(func())
+	inner  searchcore.Searcher
+	seeder urlSeeder
+	spawn  func(func())
 }
 
 func withSwarmSeedCrawl(
 	inner searchcore.Searcher,
 	seeder urlSeeder,
-	documents documentstore.DocumentDirectory,
-	limitDocs int,
 ) searchcore.Searcher {
 	return swarmSeedingSearcher{
-		inner:     inner,
-		seeder:    seeder,
-		documents: documents,
-		limitDocs: limitDocs,
-		spawn:     func(work func()) { go work() },
+		inner:  inner,
+		seeder: seeder,
+		spawn:  func(work func()) { go work() },
 	}
 }
 
@@ -53,7 +47,7 @@ func (s swarmSeedingSearcher) Search(
 		return resp, err
 	}
 	remote := remoteResults(resp.Results)
-	if len(remote) == 0 || !s.underDocumentLimit(ctx) {
+	if len(remote) == 0 {
 		return resp, nil
 	}
 	urls := make([]string, 0, len(remote))
@@ -64,17 +58,4 @@ func (s swarmSeedingSearcher) Search(
 	s.spawn(func() { s.seeder.Seed(seedCtx, urls) })
 
 	return resp, nil
-}
-
-// underDocumentLimit reports whether greedy learning is still growing the
-// index; a count failure skips seeding rather than the search.
-func (s swarmSeedingSearcher) underDocumentLimit(ctx context.Context) bool {
-	count, err := s.documents.Count(ctx)
-	if err != nil {
-		slog.DebugContext(ctx, "swarm seed crawl skipped", slog.Any("error", err))
-
-		return false
-	}
-
-	return count < s.limitDocs
 }

@@ -459,18 +459,6 @@ func extendedGrowthDefinitions() []settingDefinition {
 			},
 		},
 		{
-			key:          "swarm.seed.limit",
-			title:        "Greedy learning document limit",
-			description:  "Stop swarm-seeded crawling once the index holds this many documents.",
-			defaultValue: func(config nodeConfig) string { return strconv.Itoa(config.SwarmSeed.LimitDocs) },
-			normalize:    normalizePositiveInt,
-			apply: func(config nodeConfig, value string) nodeConfig {
-				config.SwarmSeed.LimitDocs, _ = strconv.Atoi(value)
-
-				return config
-			},
-		},
-		{
 			key:          "crawl.ingest.quality_gate",
 			title:        "Ingest quality gate",
 			description:  "Reject crawled pages failing the deterministic Gopher/C4 content-quality rules before they are stored or indexed.",

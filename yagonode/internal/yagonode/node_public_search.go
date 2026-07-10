@@ -326,7 +326,8 @@ func assemblePublicSearcher(
 	}
 	if assembly.swarmSeed.Enabled && assembly.seedQueue != nil {
 		// Greedy learning (YaCy 1.5): crawl what swarm search surfaced, growing
-		// the index from real usage until the document limit is reached.
+		// the index from real usage — no document-count ceiling, so a large
+		// index keeps discovering what it and the swarm still lack.
 		search = withSwarmSeedCrawl(
 			search,
 			newCrawlSeeder(
@@ -340,8 +341,6 @@ func assemblePublicSearcher(
 					options:  assembly.autocrawlerCrawl,
 				},
 			),
-			assembly.storage.documentDirectory,
-			assembly.swarmSeed.LimitDocs,
 		)
 	}
 

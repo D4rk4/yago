@@ -9,17 +9,16 @@ import (
 
 func TestLoadNodeConfigReadsSwarmSeedSettings(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
-		envPeerHash:           "0123456789AB",
-		envPeerName:           "node",
-		envSwarmSeedCrawl:     "true",
-		envSwarmSeedLimitDocs: "500",
-		envSwarmSeedDepth:     "3",
-		envSwarmSeedMaxPages:  "75",
+		envPeerHash:          "0123456789AB",
+		envPeerName:          "node",
+		envSwarmSeedCrawl:    "true",
+		envSwarmSeedDepth:    "3",
+		envSwarmSeedMaxPages: "75",
 	}))
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if !config.SwarmSeed.Enabled || config.SwarmSeed.LimitDocs != 500 {
+	if !config.SwarmSeed.Enabled {
 		t.Fatalf("SwarmSeed = %#v", config.SwarmSeed)
 	}
 	if config.SwarmSeed.SeedDepth != 3 || config.SwarmSeed.SeedMaxPages != 75 {
@@ -27,7 +26,7 @@ func TestLoadNodeConfigReadsSwarmSeedSettings(t *testing.T) {
 	}
 }
 
-func TestLoadNodeConfigSwarmSeedDefaultsOffWithDocLimit(t *testing.T) {
+func TestLoadNodeConfigSwarmSeedDefaultsOff(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
 		envPeerHash: "0123456789AB",
 		envPeerName: "node",
@@ -35,7 +34,7 @@ func TestLoadNodeConfigSwarmSeedDefaultsOffWithDocLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if config.SwarmSeed.Enabled || config.SwarmSeed.LimitDocs != defaultSwarmSeedLimitDocs {
+	if config.SwarmSeed.Enabled {
 		t.Fatalf("SwarmSeed = %#v", config.SwarmSeed)
 	}
 	if config.SwarmSeed.SeedDepth != defaultSwarmSeedDepth ||
@@ -47,9 +46,6 @@ func TestLoadNodeConfigSwarmSeedDefaultsOffWithDocLimit(t *testing.T) {
 func TestLoadNodeConfigRejectsInvalidSwarmSeedSettings(t *testing.T) {
 	for _, item := range []map[string]string{
 		{envSwarmSeedCrawl: "maybe"},
-		{envSwarmSeedLimitDocs: "many"},
-		{envSwarmSeedLimitDocs: "0"},
-		{envSwarmSeedLimitDocs: "-5"},
 		{envSwarmSeedDepth: "-1"},
 		{envSwarmSeedDepth: "99"},
 		{envSwarmSeedDepth: "deep"},

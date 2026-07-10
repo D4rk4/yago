@@ -41,19 +41,11 @@ func (d countingDirectory) Count(context.Context) (int, error) {
 	return d.count, d.err
 }
 
-const testSeedLimitDocs = 100
-
 func syncSeedingSearcher(
 	inner searchcore.Searcher,
 	seeder urlSeeder,
-	documents documentstore.DocumentDirectory,
 ) swarmSeedingSearcher {
-	searcher, ok := withSwarmSeedCrawl(
-		inner,
-		seeder,
-		documents,
-		testSeedLimitDocs,
-	).(swarmSeedingSearcher)
+	searcher, ok := withSwarmSeedCrawl(inner, seeder).(swarmSeedingSearcher)
 	if !ok {
 		panic("unexpected searcher type")
 	}
@@ -121,7 +113,6 @@ func TestNodePublicSearchInstallsSwarmSeedCrawl(t *testing.T) {
 		seedQueue: nullCrawlQueue{},
 		swarmSeed: swarmSeedConfig{
 			Enabled:      true,
-			LimitDocs:    100,
 			SeedDepth:    2,
 			SeedMaxPages: 40,
 		},
@@ -140,7 +131,7 @@ func TestSwarmSeedCrawlSpawnsSeedingOffTheRequestPath(t *testing.T) {
 		{URL: "https://remote.example/doc", Source: searchcore.SourceRemote},
 	}}}
 	seeder := &signalingSeeder{done: make(chan struct{})}
-	searcher := withSwarmSeedCrawl(inner, seeder, countingDirectory{count: 0}, 100)
+	searcher := withSwarmSeedCrawl(inner, seeder)
 
 	if _, err := searcher.Search(t.Context(), searchcore.Request{Query: "go"}); err != nil {
 		t.Fatalf("Search: %v", err)
@@ -166,7 +157,7 @@ func TestSwarmSeedCrawlSeedsRemoteResultURLs(t *testing.T) {
 		{URL: "https://local.example/doc", Source: searchcore.SourceLocal},
 	}}}
 	seeder := &recordingSeeder{}
-	searcher := syncSeedingSearcher(inner, seeder, countingDirectory{count: 10})
+	searcher := syncSeedingSearcher(inner, seeder)
 
 	if _, err := searcher.Search(t.Context(), searchcore.Request{Query: "go"}); err != nil {
 		t.Fatalf("Search: %v", err)
@@ -176,26 +167,20 @@ func TestSwarmSeedCrawlSeedsRemoteResultURLs(t *testing.T) {
 	}
 }
 
-func TestSwarmSeedCrawlStopsAtDocumentLimit(t *testing.T) {
+// TestSwarmSeedCrawlSeedsRegardlessOfIndexSize proves greedy learning no longer
+// has a document-count ceiling: a large local index still seeds discovered URLs
+// so growth never self-throttles.
+func TestSwarmSeedCrawlSeedsRegardlessOfIndexSize(t *testing.T) {
 	inner := &fakeSearcher{resp: searchcore.Response{Results: []searchcore.Result{
 		{URL: "https://remote.example/doc", Source: searchcore.SourceRemote},
 	}}}
-
-	for _, item := range []struct {
-		name      string
-		directory countingDirectory
-	}{
-		{name: "at limit", directory: countingDirectory{count: 100}},
-		{name: "count failure", directory: countingDirectory{err: errors.New("boom")}},
-	} {
-		seeder := &recordingSeeder{}
-		searcher := syncSeedingSearcher(inner, seeder, item.directory)
-		if _, err := searcher.Search(t.Context(), searchcore.Request{Query: "go"}); err != nil {
-			t.Fatalf("%s: Search: %v", item.name, err)
-		}
-		if len(seeder.urls) != 0 {
-			t.Fatalf("%s: seeded urls = %#v, want none", item.name, seeder.urls)
-		}
+	seeder := &recordingSeeder{}
+	searcher := syncSeedingSearcher(inner, seeder)
+	if _, err := searcher.Search(t.Context(), searchcore.Request{Query: "go"}); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(seeder.urls) != 1 {
+		t.Fatalf("seeded urls = %#v, want the remote result even with a full index", seeder.urls)
 	}
 }
 
@@ -204,7 +189,7 @@ func TestSwarmSeedCrawlSkipsLocalOnlyResponsesAndErrors(t *testing.T) {
 	localOnly := &fakeSearcher{resp: searchcore.Response{Results: []searchcore.Result{
 		{URL: "https://local.example/doc", Source: searchcore.SourceLocal},
 	}}}
-	searcher := syncSeedingSearcher(localOnly, seeder, countingDirectory{})
+	searcher := syncSeedingSearcher(localOnly, seeder)
 	if _, err := searcher.Search(t.Context(), searchcore.Request{Query: "go"}); err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -213,7 +198,7 @@ func TestSwarmSeedCrawlSkipsLocalOnlyResponsesAndErrors(t *testing.T) {
 	}
 
 	failing := &fakeSearcher{err: errors.New("search down")}
-	searcher = syncSeedingSearcher(failing, seeder, countingDirectory{})
+	searcher = syncSeedingSearcher(failing, seeder)
 	if _, err := searcher.Search(t.Context(), searchcore.Request{Query: "go"}); err == nil {
 		t.Fatal("expected search error to pass through")
 	}
