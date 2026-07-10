@@ -1,11 +1,11 @@
 package searchindex
 
 import (
-	"path"
 	"sort"
 	"strings"
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
+	"github.com/D4rk4/yago/yagonode/internal/filetypeclass"
 )
 
 const (
@@ -97,12 +97,7 @@ func (c *facetCollector) groups() []FacetGroup {
 }
 
 func documentFileType(doc documentstore.Document) string {
-	ext := strings.TrimPrefix(strings.ToLower(path.Ext(urlPathOf(documentURL(doc)))), ".")
-	if len(ext) > 5 {
-		return ""
-	}
-
-	return ext
+	return filetypeclass.Canonical(documentURL(doc), doc.ContentType)
 }
 
 func documentProtocol(doc documentstore.Document) string {
@@ -122,20 +117,4 @@ func documentMonth(doc documentstore.Document) string {
 	}
 
 	return when.UTC().Format("2006-01")
-}
-
-func urlPathOf(rawURL string) string {
-	_, rest, found := strings.Cut(rawURL, "://")
-	if !found {
-		return ""
-	}
-	_, urlPath, found := strings.Cut(rest, "/")
-	if !found {
-		return ""
-	}
-	if question := strings.IndexByte(urlPath, '?'); question >= 0 {
-		urlPath = urlPath[:question]
-	}
-
-	return urlPath
 }

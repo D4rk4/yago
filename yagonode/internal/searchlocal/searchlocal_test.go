@@ -234,9 +234,8 @@ func TestResultFiltersRejectEachCondition(t *testing.T) {
 			t.Fatalf("filter accepted request %#v", req)
 		}
 	}
-	if !hostMatchesTLD("example.org", ".org") ||
-		!fileMatchesType("FILE.PDF", "pdf") {
-		t.Fatal("case-insensitive tld/filetype match failed")
+	if !hostMatchesTLD("example.org", ".org") {
+		t.Fatal("case-insensitive tld match failed")
 	}
 }
 

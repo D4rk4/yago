@@ -11,6 +11,7 @@ import (
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
+	"github.com/D4rk4/yago/yagonode/internal/filetypeclass"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/urlmeta"
@@ -205,12 +206,14 @@ func searchCoreResult(
 		title = rawURL
 	}
 	snippet := title
+	contentType := ""
 	if conversion.documents != nil && rawURL != "" {
 		doc, found, err := conversion.documents.Document(conversion.ctx, rawURL)
 		if err != nil {
 			return searchcore.Result{}, fmt.Errorf("document snippet: %w", err)
 		}
 		if found {
+			contentType = doc.ContentType
 			if doc.Title != "" {
 				title = doc.Title
 			}
@@ -232,6 +235,7 @@ func searchCoreResult(
 		Host:          host,
 		Path:          pathValue,
 		File:          file,
+		ContentType:   contentType,
 		URLHash:       hash.String(),
 		Size:          metadataSize(row),
 		Date:          row.Freshness(),
@@ -330,7 +334,8 @@ func (m coreResultMatchers) match(result searchcore.Result) bool {
 	if m.req.TLD != "" && !hostMatchesTLD(result.Host, m.req.TLD) {
 		return false
 	}
-	if m.req.FileType != "" && !fileMatchesType(result.File, m.req.FileType) {
+	if m.req.FileType != "" &&
+		!filetypeclass.Matches(result.URL, result.ContentType, m.req.FileType) {
 		return false
 	}
 
@@ -342,10 +347,6 @@ func hostMatchesTLD(host, tld string) bool {
 	tld = strings.TrimPrefix(strings.ToLower(tld), ".")
 
 	return host == tld || strings.HasSuffix(host, "."+tld)
-}
-
-func fileMatchesType(file, fileType string) bool {
-	return strings.TrimPrefix(strings.ToLower(path.Ext(file)), ".") == fileType
 }
 
 func (m coreResultMatchers) prefer(results []searchcore.Result) {

@@ -395,6 +395,8 @@ func searchResultFromDocument(
 		Author:             doc.Metadata["author"],
 		Keywords:           doc.Metadata["keywords"],
 		Publisher:          doc.Metadata["publisher"],
+		ContentType:        doc.ContentType,
+		Size:               len(doc.ExtractedText),
 		Images:             resultImages(doc, req),
 	}
 }

@@ -83,15 +83,6 @@ func TestFacetFieldHelpers(t *testing.T) {
 	if got := documentProtocol(documentstore.Document{NormalizedURL: "no-scheme"}); got != "" {
 		t.Fatalf("protocol without scheme = %q", got)
 	}
-	if got := urlPathOf("https://a.example"); got != "" {
-		t.Fatalf("path of bare host = %q", got)
-	}
-	if got := urlPathOf("no-scheme-at-all"); got != "" {
-		t.Fatalf("path without scheme = %q", got)
-	}
-	if got := urlPathOf("https://a.example/p/q.pdf?x=1"); got != "p/q.pdf" {
-		t.Fatalf("path = %q", got)
-	}
 }
 
 func TestSearchReturnsFacetsWhenRequested(t *testing.T) {

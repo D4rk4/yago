@@ -116,6 +116,8 @@ components:
     in: internal/landiscovery/**
   searcheval:
     in: internal/searcheval/**
+  filetypeclass:
+    in: internal/filetypeclass/**
   searchindex:
     in: internal/searchindex/**
   searchlocal:
@@ -499,6 +501,7 @@ deps:
       - urlmeta
       - httpguard
       - nodeidentity
+      - filetypeclass
     canUse:
       - yagomodel
       - yagoproto
@@ -529,12 +532,16 @@ deps:
   searcheval:
     mayDependOn:
       - searchcore
+  filetypeclass:
+    mayDependOn:
+      - filetypeclass
   searchindex:
     mayDependOn:
       - searchindex
       - documentstore
       - stopwords
       - contentprior
+      - filetypeclass
     canUse:
       - bleve
       - xxhash
@@ -547,6 +554,7 @@ deps:
       - searchindex
       - documentstore
       - hostrank
+      - filetypeclass
     canUse:
       - yagomodel
   rankingprofile:

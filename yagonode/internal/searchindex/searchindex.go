@@ -102,6 +102,13 @@ type SearchResult struct {
 	// IncludePositions is set, and lets the reranker score coverage and proximity
 	// over the document.
 	FieldTermPositions map[string]map[string][]int
+	// ContentType is the document's stored Content-Type, carried so the file
+	// type is classified from what the document actually is, not only its URL
+	// extension.
+	ContentType string
+	// Size is the indexed text length in bytes, carried onto the result so local
+	// hits report a size like peer results do.
+	Size int
 	// Images carries the document's extracted images for the image vertical.
 	Images []ResultImage
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/filetypeclass"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
@@ -341,7 +342,9 @@ func coreResult(
 		Host:               host,
 		Path:               pathValue,
 		File:               file,
+		ContentType:        result.ContentType,
 		URLHash:            hash,
+		Size:               result.Size,
 		Date:               result.PublishedDate.Format("20060102"),
 		ContentDomain:      req.ContentDomain,
 		Language:           req.Language,
@@ -392,7 +395,8 @@ func (f resultFilters) match(req searchcore.Request, result searchcore.Result) b
 	if req.TLD != "" && !hostMatchesTLD(result.Host, req.TLD) {
 		return false
 	}
-	if req.FileType != "" && !fileMatchesType(result.File, req.FileType) {
+	if req.FileType != "" &&
+		!filetypeclass.Matches(result.URL, result.ContentType, req.FileType) {
 		return false
 	}
 
@@ -414,11 +418,6 @@ func hostMatchesTLD(host string, tld string) bool {
 	tld = strings.TrimPrefix(strings.ToLower(tld), ".")
 
 	return host == tld || strings.HasSuffix(host, "."+tld)
-}
-
-func fileMatchesType(file string, fileType string) bool {
-	return strings.TrimPrefix(strings.ToLower(path.Ext(file)), ".") ==
-		strings.TrimPrefix(strings.ToLower(fileType), ".")
 }
 
 func parsedURLParts(parsed *url.URL) (string, string, string) {

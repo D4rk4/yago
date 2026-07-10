@@ -85,6 +85,7 @@ type Result struct {
 	Host          string
 	Path          string
 	File          string
+	ContentType   string
 	URLHash       string
 	Size          int
 	Date          string
