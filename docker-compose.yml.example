@@ -84,6 +84,9 @@ services:
       # that restrict user namespaces; a hardened host may set it true.
       YAGOCRAWLER_BROWSER_PATH: ${YAGOCRAWLER_BROWSER_PATH:-}
       YAGOCRAWLER_BROWSER_SANDBOX: ${YAGOCRAWLER_BROWSER_SANDBOX:-false}
+      # Consecutive browser malfunctions before the crawler pauses the browser
+      # fallback for a cooldown and serves only the HTTP fast path (0 disables).
+      YAGOCRAWLER_BROWSER_FAILURE_THRESHOLD: ${YAGOCRAWLER_BROWSER_FAILURE_THRESHOLD:-5}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
 # Optional TLS-terminating reverse proxy in front of the public and admin

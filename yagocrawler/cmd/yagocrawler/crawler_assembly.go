@@ -72,7 +72,13 @@ func buildFetchChains(
 	source pagefetch.PageSource,
 	metrics *crawlermetrics.Metrics,
 ) (fetchChains, error) {
-	slowSource := botwall.NewBotWallScreeningFetcher(source)
+	slowSource := botwall.NewBotWallScreeningFetcher(
+		pagefetch.NewBrowserCircuitBreaker(
+			source,
+			crawl.BrowserFailureThreshold,
+			pagefetch.DefaultBrowserBreakerCooldown,
+		),
+	)
 	fastSource := botwall.NewBotWallScreeningFetcher(
 		newCrawlerHTTPPageFetcher(client, crawl.UserAgent, crawl.MaxBodyBytes).
 			WithHTTP1Fallback(newHTTP1EgressClient(guard, crawl, nil)),

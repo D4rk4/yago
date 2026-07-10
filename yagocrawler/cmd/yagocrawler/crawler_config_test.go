@@ -4,6 +4,8 @@ import (
 	"net/netip"
 	"testing"
 	"time"
+
+	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
 )
 
 func envFrom(values map[string]string) func(string) string {
@@ -20,6 +22,10 @@ func TestDefaultCrawlConfig(t *testing.T) {
 	}
 	if cfg.SitemapURLLimit != DefaultSitemapURLLimit {
 		t.Errorf("sitemap URL limit = %d", cfg.SitemapURLLimit)
+	}
+	if cfg.BrowserFailureThreshold != pagefetch.DefaultBrowserFailureThreshold {
+		t.Errorf("browser failure threshold = %d, want %d",
+			cfg.BrowserFailureThreshold, pagefetch.DefaultBrowserFailureThreshold)
 	}
 	if cfg.MaxPagesPerRun != DefaultMaxPagesPerRun {
 		t.Errorf("max pages per run = %d, want %d", cfg.MaxPagesPerRun, DefaultMaxPagesPerRun)
@@ -150,29 +156,34 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 	if cfg.Crawl.BrowserSandbox {
 		t.Error("browser sandbox must default off so containers and userns-restricted hosts start")
 	}
+	if cfg.Crawl.BrowserFailureThreshold != pagefetch.DefaultBrowserFailureThreshold {
+		t.Errorf("browser failure threshold = %d, want %d",
+			cfg.Crawl.BrowserFailureThreshold, pagefetch.DefaultBrowserFailureThreshold)
+	}
 }
 
 func TestLoadServiceConfigOverrides(t *testing.T) {
 	cfg, err := LoadServiceConfig(envFrom(map[string]string{
-		EnvNodeRPCAddr:        "node:9091",
-		EnvWorkerID:           "worker-7",
-		EnvMetricsAddr:        "127.0.0.1:9100",
-		EnvShutdownGrace:      "5s",
-		EnvEgressAllowLAN:     "true",
-		EnvWorkers:            "3",
-		EnvMaxHostConcurrency: "6",
-		EnvMaxDepth:           "5",
-		EnvMaxPagesPerRun:     "12345",
-		EnvCrawlDelay:         "250ms",
-		EnvUserAgent:          "test-agent",
-		EnvRequestTimeout:     "20s",
-		EnvConnectTimeout:     "4s",
-		EnvTLSTimeout:         "3s",
-		EnvHeaderTimeout:      "2s",
-		EnvMaxRedirects:       "2",
-		EnvSitemapURLLimit:    "9",
-		EnvBrowserPath:        "/usr/bin/firefox-esr",
-		EnvBrowserSandbox:     "true",
+		EnvNodeRPCAddr:             "node:9091",
+		EnvWorkerID:                "worker-7",
+		EnvMetricsAddr:             "127.0.0.1:9100",
+		EnvShutdownGrace:           "5s",
+		EnvEgressAllowLAN:          "true",
+		EnvWorkers:                 "3",
+		EnvMaxHostConcurrency:      "6",
+		EnvMaxDepth:                "5",
+		EnvMaxPagesPerRun:          "12345",
+		EnvCrawlDelay:              "250ms",
+		EnvUserAgent:               "test-agent",
+		EnvRequestTimeout:          "20s",
+		EnvConnectTimeout:          "4s",
+		EnvTLSTimeout:              "3s",
+		EnvHeaderTimeout:           "2s",
+		EnvMaxRedirects:            "2",
+		EnvSitemapURLLimit:         "9",
+		EnvBrowserPath:             "/usr/bin/firefox-esr",
+		EnvBrowserSandbox:          "true",
+		EnvBrowserFailureThreshold: "9",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -182,6 +193,9 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	}
 	if !cfg.Crawl.BrowserSandbox {
 		t.Error("browser sandbox = false, want true when the host opts in")
+	}
+	if cfg.Crawl.BrowserFailureThreshold != 9 {
+		t.Errorf("browser failure threshold = %d, want 9", cfg.Crawl.BrowserFailureThreshold)
 	}
 	if cfg.WorkerID != "worker-7" {
 		t.Errorf("worker id = %q, want worker-7", cfg.WorkerID)
@@ -253,15 +267,16 @@ func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 func TestLoadServiceConfigRejectsParseErrors(t *testing.T) {
 	base := map[string]string{EnvNodeRPCAddr: "node:9091"}
 	cases := map[string]string{
-		EnvCrawlDelay:         "not-a-duration",
-		EnvRequestTimeout:     "not-a-duration",
-		EnvConnectTimeout:     "not-a-duration",
-		EnvTLSTimeout:         "not-a-duration",
-		EnvHeaderTimeout:      "not-a-duration",
-		EnvMaxRedirects:       "not-a-number",
-		EnvSitemapURLLimit:    "not-a-number",
-		EnvMaxHostConcurrency: "not-a-number",
-		EnvBrowserSandbox:     "not-a-bool",
+		EnvCrawlDelay:              "not-a-duration",
+		EnvRequestTimeout:          "not-a-duration",
+		EnvConnectTimeout:          "not-a-duration",
+		EnvTLSTimeout:              "not-a-duration",
+		EnvHeaderTimeout:           "not-a-duration",
+		EnvMaxRedirects:            "not-a-number",
+		EnvSitemapURLLimit:         "not-a-number",
+		EnvMaxHostConcurrency:      "not-a-number",
+		EnvBrowserSandbox:          "not-a-bool",
+		EnvBrowserFailureThreshold: "not-a-number",
 	}
 	for key, bad := range cases {
 		env := map[string]string{}
