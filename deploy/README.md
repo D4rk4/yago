@@ -78,6 +78,29 @@ setting `YAGOCRAWLER_BROWSER_SANDBOX=true` **and** relaxing the unit
 (`NoNewPrivileges=no`, and allow user namespaces); Firefox cannot start its
 content sandbox under `NoNewPrivileges`.
 
+## Crawler resource limits
+
+`yagocrawler.service` caps the headless-Firefox fetcher through cgroup controls
+so a runaway render cannot starve the co-located node: `MemoryHigh=60%` applies
+reclaim pressure (it throttles, never kills), `MemoryMax=85%` is a hard ceiling
+whose out-of-memory kill stays confined to the crawler cgroup (the node
+survives, systemd restarts the crawler, and the browser circuit-breaker degrades
+gracefully in the meantime), `TasksMax=4096` bounds thread/process explosion,
+and `CPUWeight=50` lets the node win the CPU under contention so search and admin
+stay responsive during a crawl. The percentages are relative to physical RAM, so
+they scale to any box. Tune them per host with a drop-in rather than editing the
+shipped unit:
+
+```
+systemctl edit yagocrawler
+# [Service]
+# MemoryHigh=2G
+# MemoryMax=3G
+```
+
+A small single-purpose box can raise the shares; a box that co-hosts other
+services can lower them or switch to absolute sizes as above.
+
 ## Debian package
 
 The `.deb` build automation (which installs this layout, ships these units,

@@ -30,5 +30,20 @@ ProtectControlGroups=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
 
+# Bound the headless-Firefox fetcher so a runaway render cannot starve the
+# co-located node. Percentages are relative to physical RAM, so these scale to
+# any box without hardcoding absolute sizes; override per host with a drop-in
+# (systemctl edit yagocrawler) sized to the machine — see deploy/README.md.
+# MemoryHigh throttles allocation (reclaim pressure, never kills); MemoryMax is
+# the hard ceiling that only a catastrophic runaway reaches, and its OOM stays
+# confined to the crawler cgroup so the node survives (Restart brings it back,
+# and the browser circuit-breaker degrades gracefully meanwhile). CPUWeight
+# below the default 100 lets the node win the CPU under contention, so
+# interactive search and admin stay responsive during a crawl.
+MemoryHigh=60%
+MemoryMax=85%
+TasksMax=4096
+CPUWeight=50
+
 [Install]
 WantedBy=multi-user.target

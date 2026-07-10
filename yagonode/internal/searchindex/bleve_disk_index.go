@@ -31,6 +31,14 @@ const (
 	// measured in documents, not bytes.
 	diskMaxSegmentDocs = 400_000
 	diskSnapshotsKept  = 3
+	// diskReclaimDeletesWeight biases scorch merge selection toward segments
+	// carrying the most deleted documents, above the 2.0 default but below the
+	// ~3.0 the planner warns is too aggressive. The node churns its index —
+	// re-ingest purges a URL's stale postings and eviction deletes whole
+	// documents — so reclaiming that tombstoned space sooner keeps segments
+	// smaller and cuts the disk a search or merge must read, without raising the
+	// total merge volume the way shrinking the tier width would (PERF-IO-02).
+	diskReclaimDeletesWeight = 2.5
 )
 
 type BleveDiskIndex struct {
@@ -75,7 +83,8 @@ func newBleveShard(path string, indexMapping mapping.IndexMapping) (bleve.Index,
 		scorch.Name,
 		map[string]interface{}{
 			"scorchMergePlanOptions": map[string]interface{}{
-				"MaxSegmentSize": diskMaxSegmentDocs,
+				"MaxSegmentSize":       diskMaxSegmentDocs,
+				"ReclaimDeletesWeight": diskReclaimDeletesWeight,
 			},
 			"numSnapshotsToKeep": diskSnapshotsKept,
 		},

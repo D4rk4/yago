@@ -59,3 +59,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0038](0038-bounded-loss-deferred-fsync.md) | Opt-in, restart-required deferred fsync (bbolt NoSync) with a staggered background flush that bounds the loss window | Accepted |
 | [0039](0039-binary-fuse-rwi-shard-filters.md) | Per-shard binary-fuse term filters skip RWI shards that provably lack a query term (adopts the xorfilter dependency) | Accepted |
 | [0040](0040-rwi-topk-pruning-not-maxscore.md) | Prune RWI top-k with bounded selection and reporting-gated scan early termination instead of the architecturally inapplicable MaxScore | Accepted |
+| [0041](0041-perf-io-scorch-reclaim-crawler-cgroup-no-bbolt-madvise.md) | PERF-IO-02: raise scorch delete-reclaim weight and bound the crawler with cgroup limits; do not add raw bbolt mmap madvise | Accepted |
