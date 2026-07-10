@@ -11,7 +11,7 @@ import (
 
 // parseMisc handles the misc family: vCard contacts, BitTorrent metadata, and
 // Android packages.
-func parseMisc(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
+func parseMisc(rawURL, contentType string, body []byte) (pageparse.ParsedPage, bool) {
 	switch urlExtension(rawURL) {
 	case "vcf":
 		return parseVCard(rawURL, body)
@@ -19,9 +19,30 @@ func parseMisc(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
 		return parseTorrent(rawURL, body)
 	case "apk":
 		return parseAPK(rawURL, body)
-	default:
-		return pageparse.ParsedPage{URL: rawURL}, false
 	}
+
+	return parseMiscByContent(rawURL, contentType, body)
+}
+
+// parseMiscByContent resolves a misc document served at an extension-less URL
+// from its Content-Type. A vCard also announces itself in its opening line, so
+// its text magic is a fallback; the binary torrent and APK formats are left to
+// their Content-Type, since their magic (bencode, a zip container) overlaps
+// other families.
+func parseMiscByContent(rawURL, contentType string, body []byte) (pageparse.ParsedPage, bool) {
+	switch mimeType(contentType) {
+	case "text/vcard", "text/x-vcard":
+		return parseVCard(rawURL, body)
+	case "application/x-bittorrent":
+		return parseTorrent(rawURL, body)
+	case "application/vnd.android.package-archive":
+		return parseAPK(rawURL, body)
+	}
+	if bytes.Contains(clipHead(body), []byte("BEGIN:VCARD")) {
+		return parseVCard(rawURL, body)
+	}
+
+	return pageparse.ParsedPage{URL: rawURL}, false
 }
 
 // vCardProperties lists the properties worth indexing, in output order.

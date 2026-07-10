@@ -43,6 +43,10 @@ var htmlMimes = map[string]bool{
 // families lists the YaCy TextParser format families and their toggles; parse
 // functions arrive with the per-family follow-up slices.
 func families() []family {
+	return append(documentFamilies(), mediaFamilies()...)
+}
+
+func documentFamilies() []family {
 	return []family{
 		{
 			name:       "text",
@@ -77,10 +81,25 @@ func families() []family {
 				"ott", "ots", "otp", "otg", "sxw", "sxc",
 				"vsd", "vss", "vst", "mm",
 			),
-			mimes:   set("application/msword", "application/vnd.oasis.opendocument.text"),
+			mimes: set(
+				"application/msword",
+				"application/vnd.ms-excel",
+				"application/vnd.ms-powerpoint",
+				"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+				"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+				"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+				"application/vnd.oasis.opendocument.text",
+				"application/vnd.oasis.opendocument.spreadsheet",
+				"application/vnd.oasis.opendocument.presentation",
+			),
 			parse:   parseOffice,
 			enabled: func(t yagocrawlcontract.FormatToggles) bool { return t.Office },
 		},
+	}
+}
+
+func mediaFamilies() []family {
+	return []family{
 		{
 			name: "images",
 			extensions: set(
@@ -107,9 +126,12 @@ func families() []family {
 		{
 			name:       "misc",
 			extensions: set("vcf", "torrent", "apk"),
-			mimes:      set("text/vcard", "application/x-bittorrent"),
-			parse:      parseMisc,
-			enabled:    func(t yagocrawlcontract.FormatToggles) bool { return t.Misc },
+			mimes: set(
+				"text/vcard", "text/x-vcard", "application/x-bittorrent",
+				"application/vnd.android.package-archive",
+			),
+			parse:   parseMisc,
+			enabled: func(t yagocrawlcontract.FormatToggles) bool { return t.Misc },
 		},
 		{
 			name: "archives",

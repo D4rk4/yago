@@ -204,3 +204,37 @@ func TestMiscRemainingBranches(t *testing.T) {
 		t.Fatalf("manifest-free apk strings = %q", got)
 	}
 }
+
+func TestParseMiscExtensionless(t *testing.T) {
+	vcard := []byte("BEGIN:VCARD\r\nVERSION:4.0\r\nFN:Erika Mustermann\r\n" +
+		"EMAIL:erika@example.com\r\nEND:VCARD")
+	torrent := []byte("d8:announce32:https://tracker.example/announce7:comment9:" +
+		"Demo data4:infod6:lengthi100e4:name7:Bundle112:piece lengthi16384eee")
+	apk := zipBody(t, map[string]string{
+		"AndroidManifest.xml": "com.example.app permission",
+		"classes.dex":         "code",
+	})
+	if page, ok := parseMisc("https://a.example/contact", "text/vcard", vcard); !ok ||
+		!strings.Contains(page.Text, "Erika Mustermann") {
+		t.Fatalf("vcard by mime = %v %q", ok, page.Text)
+	}
+	if page, ok := parseMisc("https://a.example/contact", "", vcard); !ok ||
+		!strings.Contains(page.Text, "Erika Mustermann") {
+		t.Fatalf("vcard by magic = %v %q", ok, page.Text)
+	}
+	if page, ok := parseMisc(
+		"https://a.example/dl", "application/x-bittorrent", torrent,
+	); !ok || !strings.Contains(page.Text, "Bundle1") {
+		t.Fatalf("torrent by mime = %v %q", ok, page.Text)
+	}
+	if page, ok := parseMisc(
+		"https://a.example/dl", "application/vnd.android.package-archive", apk,
+	); !ok || !strings.Contains(page.Text, "AndroidManifest.xml") {
+		t.Fatalf("apk by mime = %v %q", ok, page.Text)
+	}
+	if _, ok := parseMisc(
+		"https://a.example/dl", "application/octet-stream", []byte("plain bytes"),
+	); ok {
+		t.Fatal("non-misc bytes must stay unparsed")
+	}
+}

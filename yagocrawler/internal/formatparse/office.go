@@ -41,7 +41,7 @@ var (
 // plain XML; the legacy binary formats (doc/xls/ppt/Visio) are OLE2 compound
 // files decoded from their own text streams. Old StarOffice sxw/sxc use the
 // ODF container too, so they route with it.
-func parseOffice(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
+func parseOffice(rawURL, contentType string, body []byte) (pageparse.ParsedPage, bool) {
 	ext := urlExtension(rawURL)
 	switch {
 	case ooxmlExtensions[ext]:
@@ -52,8 +52,82 @@ func parseOffice(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
 		return parseFreeMind(rawURL, body)
 	case legacyOfficeExtensions[ext]:
 		return parseLegacyOffice(rawURL, body)
+	}
+
+	// An office document served at an extension-less URL (a CMS download route,
+	// a content-addressed store) carries no extension to switch on. Resolve the
+	// container from the Content-Type that routed it here, and fall back to the
+	// container magic when the type is generic.
+	return parseOfficeByContent(rawURL, contentType, body)
+}
+
+type officeContainer int
+
+const (
+	officeContainerUnknown officeContainer = iota
+	officeContainerOOXML
+	officeContainerODF
+	officeContainerLegacy
+)
+
+var (
+	ooxmlMIMEs = set(
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	)
+	odfMIMEs = set(
+		"application/vnd.oasis.opendocument.text",
+		"application/vnd.oasis.opendocument.spreadsheet",
+		"application/vnd.oasis.opendocument.presentation",
+	)
+	legacyOfficeMIMEs = set(
+		"application/msword",
+		"application/vnd.ms-excel",
+		"application/vnd.ms-powerpoint",
+	)
+	zipLocalFileHeader = []byte("PK\x03\x04")
+)
+
+// parseOfficeByContent resolves the container of an extension-less office
+// document. The Content-Type names the family for the common case where the
+// server labels it correctly; the container magic (OLE2 for the legacy binaries,
+// the zip local-file header for OOXML and OpenDocument) is the fallback for a
+// generic type. A zip-based document is tried as OOXML and then OpenDocument,
+// since either selector reports no text on the wrong container.
+func parseOfficeByContent(rawURL, contentType string, body []byte) (pageparse.ParsedPage, bool) {
+	switch officeMIMEContainer(contentType) {
+	case officeContainerOOXML:
+		return parseZipXMLText(rawURL, body, ooxmlContentPart)
+	case officeContainerODF:
+		return parseZipXMLText(rawURL, body, odfContentPart)
+	case officeContainerLegacy:
+		return parseLegacyOffice(rawURL, body)
+	}
+	switch {
+	case bytes.HasPrefix(body, cfbSignature):
+		return parseLegacyOffice(rawURL, body)
+	case bytes.HasPrefix(body, zipLocalFileHeader):
+		if page, ok := parseZipXMLText(rawURL, body, ooxmlContentPart); ok {
+			return page, true
+		}
+
+		return parseZipXMLText(rawURL, body, odfContentPart)
 	default:
 		return pageparse.ParsedPage{URL: rawURL}, false
+	}
+}
+
+func officeMIMEContainer(contentType string) officeContainer {
+	switch mime := mimeType(contentType); {
+	case ooxmlMIMEs[mime]:
+		return officeContainerOOXML
+	case odfMIMEs[mime]:
+		return officeContainerODF
+	case legacyOfficeMIMEs[mime]:
+		return officeContainerLegacy
+	default:
+		return officeContainerUnknown
 	}
 }
 

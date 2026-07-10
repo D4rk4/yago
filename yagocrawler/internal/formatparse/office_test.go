@@ -167,3 +167,85 @@ func TestOfficeAndDispatchEdges(t *testing.T) {
 		t.Fatal("container with only corrupt parts must stay unparsed")
 	}
 }
+
+func TestParseOfficeExtensionlessByMIME(t *testing.T) {
+	docx := zipBody(t, map[string]string{
+		"word/document.xml": `<?xml version="1.0"?><w:document xmlns:w="ns"><w:body>` +
+			`<w:p><w:r><w:t>Extension-less docx body.</w:t></w:r></w:p></w:body></w:document>`,
+	})
+	odt := zipBody(t, map[string]string{
+		"content.xml": `<office:document-content><office:body><office:text>` +
+			`<text:p>Extension-less odt body.</text:p></office:text></office:body></office:document-content>`,
+	})
+	legacy := buildCompoundFile([]cfbStream{
+		{name: "WordDocument", data: []byte("Extension-less legacy office body.")},
+	})
+	cases := []struct {
+		name        string
+		contentType string
+		body        []byte
+		want        string
+	}{
+		{
+			"ooxml",
+			"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+			docx,
+			"Extension-less docx body.",
+		},
+		{"odf", "application/vnd.oasis.opendocument.text", odt, "Extension-less odt body."},
+		{"legacy", "application/msword", legacy, "Extension-less legacy office body."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			page, parsed := parseOffice("https://a.example/download", tc.contentType, tc.body)
+			if !parsed || !strings.Contains(page.Text, tc.want) {
+				t.Fatalf("parseOffice(%s) = %v %q", tc.name, parsed, page.Text)
+			}
+		})
+	}
+}
+
+func TestParseOfficeExtensionlessByMagic(t *testing.T) {
+	docx := zipBody(t, map[string]string{
+		"word/document.xml": `<?xml version="1.0"?><w:document xmlns:w="ns"><w:body>` +
+			`<w:p><w:r><w:t>Magic-routed docx.</w:t></w:r></w:p></w:body></w:document>`,
+	})
+	odt := zipBody(t, map[string]string{
+		"content.xml": `<office:document-content><office:body><office:text>` +
+			`<text:p>Magic-routed odt.</text:p></office:text></office:body></office:document-content>`,
+	})
+	legacy := buildCompoundFile([]cfbStream{
+		{name: "WordDocument", data: []byte("Magic-routed legacy office.")},
+	})
+	if page, ok := parseOffice("https://a.example/blob", "application/octet-stream", legacy); !ok ||
+		!strings.Contains(page.Text, "Magic-routed legacy office.") {
+		t.Fatalf("ole2 magic legacy = %v %q", ok, page.Text)
+	}
+	if page, ok := parseOffice("https://a.example/blob", "", docx); !ok ||
+		!strings.Contains(page.Text, "Magic-routed docx.") {
+		t.Fatalf("zip magic ooxml = %v %q", ok, page.Text)
+	}
+	if page, ok := parseOffice("https://a.example/blob", "", odt); !ok ||
+		!strings.Contains(page.Text, "Magic-routed odt.") {
+		t.Fatalf("zip magic odf = %v %q", ok, page.Text)
+	}
+	if _, ok := parseOffice("https://a.example/blob", "", []byte("not an office file")); ok {
+		t.Fatal("non-office bytes must stay unparsed")
+	}
+}
+
+func TestParseExtensionlessOfficeRoutesThroughRegistry(t *testing.T) {
+	toggles := yagocrawlcontract.DefaultFormatToggles()
+	docx := zipBody(t, map[string]string{
+		"word/document.xml": `<?xml version="1.0"?><w:document xmlns:w="ns"><w:body>` +
+			`<w:p><w:r><w:t>Routed through the registry.</w:t></w:r></w:p></w:body></w:document>`,
+	})
+	page, parsed := Parse(
+		"https://a.example/download",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		docx, toggles,
+	)
+	if !parsed || !strings.Contains(page.Text, "Routed through the registry.") {
+		t.Fatalf("registry routing = %v %q", parsed, page.Text)
+	}
+}
