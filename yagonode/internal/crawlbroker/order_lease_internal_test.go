@@ -75,6 +75,33 @@ func leaseRecordFor(t *testing.T, q *DurableOrderQueue, leaseID string) (leaseRe
 	return record, found
 }
 
+func TestRequeueWorkerLeasesTargetsWorker(t *testing.T) {
+	queue := memQueue(t)
+	mine := leaseOne(t, queue, "mine", "w1")
+	other := leaseOne(t, queue, "other", "w2")
+	if err := queue.requeueWorkerLeases(context.Background(), "w1"); err != nil {
+		t.Fatalf("requeue worker leases: %v", err)
+	}
+	if _, ok := leaseRecordFor(t, queue, mine); ok {
+		t.Fatal("w1 lease was not requeued")
+	}
+	if _, ok := leaseRecordFor(t, queue, other); !ok {
+		t.Fatal("w2 lease must be left untouched")
+	}
+	if n := pendingCount(t, queue); n != 1 {
+		t.Fatalf("pending = %d, want only w1's order back", n)
+	}
+}
+
+func TestRequeueWorkerLeasesSurfacesError(t *testing.T) {
+	fixture := scriptedQueue(t)
+	leaseOne(t, fixture.queue, "boom", "w1")
+	fixture.engine.scanErrors[leaseBucket] = errors.New("scan failed")
+	if err := fixture.queue.requeueWorkerLeases(context.Background(), "w1"); err == nil {
+		t.Fatal("expected the lease-scan error to surface")
+	}
+}
+
 func TestAckLeaseDeletesLease(t *testing.T) {
 	queue := memQueue(t)
 	leaseID := leaseOne(t, queue, "done", "w1")

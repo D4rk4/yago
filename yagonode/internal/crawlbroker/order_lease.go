@@ -237,6 +237,25 @@ func (q *DurableOrderQueue) requeueAllLeases(ctx context.Context) error {
 	return q.requeueLeasesMatching(ctx, func(leaseRecord) bool { return true })
 }
 
+// requeueWorkerLeases returns every lease held by workerID to the pending queue
+// and forgets the worker's heartbeat-throttle mark. It runs when a worker's last
+// order stream disconnects: orders it was streamed but never acked would
+// otherwise stay leased, and a reconnecting worker's heartbeats keep extending
+// them past the sweeper's reach, so a crawler that dropped mid-batch would go
+// unfed until a node restart (issue #230).
+func (q *DurableOrderQueue) requeueWorkerLeases(ctx context.Context, workerID string) error {
+	if err := q.requeueLeasesMatching(ctx, func(record leaseRecord) bool {
+		return record.WorkerID == workerID
+	}); err != nil {
+		return err
+	}
+	q.mu.Lock()
+	delete(q.extendedAt, workerID)
+	q.mu.Unlock()
+
+	return nil
+}
+
 func (q *DurableOrderQueue) requeueLeasesMatching(
 	ctx context.Context,
 	match func(leaseRecord) bool,

@@ -42,7 +42,7 @@ func (s *exchangeServer) StreamOrders(
 	ctx := stream.Context()
 	workerID := reg.GetWorkerId()
 	s.control.register(workerID)
-	defer s.control.unregister(workerID)
+	defer s.releaseWorker(ctx, workerID)
 	for {
 		data, leaseID, err := s.queue.leaseNext(ctx, workerID)
 		if err != nil {
@@ -56,6 +56,18 @@ func (s *exchangeServer) StreamOrders(
 			return fmt.Errorf("send crawl order: %w", err)
 		}
 	}
+}
+
+// releaseWorker drops the worker's stream registration when StreamOrders exits
+// and, if that was its last stream, returns the orders it still holds to the
+// queue so a crawler that disconnected mid-batch is fed again on reconnect
+// rather than only after a node restart (issue #230). The stream context is
+// already cancelled on disconnect, so the requeue runs detached from it.
+func (s *exchangeServer) releaseWorker(ctx context.Context, workerID string) {
+	if !s.control.unregister(workerID) {
+		return
+	}
+	_ = s.queue.requeueWorkerLeases(context.WithoutCancel(ctx), workerID)
 }
 
 func (s *exchangeServer) AckOrder(

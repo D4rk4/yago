@@ -94,6 +94,54 @@ func TestStreamOrdersReturnsWhenContextCancelled(t *testing.T) {
 	}
 }
 
+func TestStreamOrdersRequeuesInFlightLeaseOnDisconnect(t *testing.T) {
+	queue := memQueue(t)
+	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
+	if err := queue.Publish(context.Background(), testOrder("reconnect")); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := &fakeOrderStream{ctx: ctx, onSend: cancel}
+	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{WorkerId: "w1"}, stream)
+	if len(stream.sent) != 1 {
+		t.Fatalf("sent %d orders, want the order delivered before the drop", len(stream.sent))
+	}
+
+	// The dropped worker's delivered-but-unacked order is back in the pending
+	// queue, so the reconnecting worker is fed again without a node restart.
+	if n := pendingCount(t, queue); n != 1 {
+		t.Fatalf("pending = %d, want the in-flight order requeued on disconnect", n)
+	}
+}
+
+func TestReleaseWorkerRequeuesOnlyOnLastStream(t *testing.T) {
+	queue := memQueue(t)
+	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
+	leaseID := leaseOne(t, queue, "held", "w1")
+
+	// Two live streams for one worker id model a reconnect overlap: releasing
+	// one must not requeue, since the other may still be working those orders.
+	server.control.register("w1")
+	server.control.register("w1")
+	server.releaseWorker(context.Background(), "w1")
+	if _, ok := leaseRecordFor(t, queue, leaseID); !ok {
+		t.Fatal("lease requeued while a second stream is still connected")
+	}
+	if n := pendingCount(t, queue); n != 0 {
+		t.Fatalf("pending = %d, want the lease held while a stream lives", n)
+	}
+
+	// The last stream's release reclaims the worker's in-flight orders.
+	server.releaseWorker(context.Background(), "w1")
+	if _, ok := leaseRecordFor(t, queue, leaseID); ok {
+		t.Fatal("lease not reclaimed after the last stream released")
+	}
+	if n := pendingCount(t, queue); n != 1 {
+		t.Fatalf("pending = %d, want the in-flight order requeued", n)
+	}
+}
+
 func TestSubmitIngestAbsorbsBatch(t *testing.T) {
 	out := make(chan crawlresults.IngestDelivery)
 	server := newExchangeServer(memQueue(t), out)

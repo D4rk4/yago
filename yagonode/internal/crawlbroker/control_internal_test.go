@@ -160,6 +160,21 @@ func TestControlRegistryRestartWorkers(t *testing.T) {
 	}
 }
 
+func TestControlRegistryUnregisterReportsLastConnection(t *testing.T) {
+	registry := newControlRegistry()
+	registry.register("w1")
+	registry.register("w1")
+	if last := registry.unregister("w1"); last {
+		t.Fatal("first unregister of two connections must not report last")
+	}
+	if last := registry.unregister("w1"); !last {
+		t.Fatal("dropping the final connection must report last")
+	}
+	if last := registry.unregister(""); last {
+		t.Fatal("blank worker id reports no connection")
+	}
+}
+
 func TestStreamOrdersRegistersWorkerForRestart(t *testing.T) {
 	queue := memQueue(t)
 	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))

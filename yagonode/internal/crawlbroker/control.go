@@ -39,10 +39,12 @@ func (r *ControlRegistry) register(workerID string) {
 	r.workers[workerID]++
 }
 
-// unregister drops one of a worker's order-stream connections.
-func (r *ControlRegistry) unregister(workerID string) {
+// unregister drops one of a worker's order-stream connections and reports
+// whether it was the worker's last one — the moment its still-held leases are
+// safe to reclaim without racing another live stream for the same id.
+func (r *ControlRegistry) unregister(workerID string) bool {
 	if workerID == "" {
-		return
+		return false
 	}
 
 	r.mu.Lock()
@@ -51,9 +53,11 @@ func (r *ControlRegistry) unregister(workerID string) {
 	if r.workers[workerID] <= 1 {
 		delete(r.workers, workerID)
 
-		return
+		return true
 	}
 	r.workers[workerID]--
+
+	return false
 }
 
 // RestartWorkers queues a restart directive for every connected worker and
