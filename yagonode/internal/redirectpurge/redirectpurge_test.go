@@ -138,6 +138,38 @@ func TestSweepLogsCancelledCorpusScan(t *testing.T) {
 	}
 }
 
+type cancellingIndex struct {
+	cancel  context.CancelFunc
+	deleted []string
+}
+
+func (c *cancellingIndex) Delete(_ context.Context, docID string) error {
+	c.cancel()
+	c.deleted = append(c.deleted, docID)
+
+	return nil
+}
+
+// TestSweepAbortsDeletesOnCancel pins the shutdown contract behind
+// SERVE-LIFECYCLE-01: once the context is cancelled, Run returns between
+// documents instead of finishing the delete pass, so a shutdown joining the
+// sweep is never held for the remaining corpus.
+func TestSweepAbortsDeletesOnCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	corpus := fakeCorpus{docs: []documentstore.Document{
+		{NormalizedURL: "https://bing.com/ck/a?u=a1one"},
+		{NormalizedURL: "https://bing.com/ck/a?u=a1two"},
+	}}
+	index := &cancellingIndex{cancel: cancel}
+
+	New(corpus, &fakeEvictor{}, index).Run(ctx)
+
+	if len(index.deleted) != 1 {
+		t.Fatalf("index deletions = %v, want the pass aborted after one", index.deleted)
+	}
+}
+
 func TestNewDisablesOnMissingDependencies(t *testing.T) {
 	if New(nil, &fakeEvictor{}, &fakeIndex{}) != nil ||
 		New(fakeCorpus{}, nil, &fakeIndex{}) != nil ||

@@ -168,7 +168,7 @@ func bootNode(
 	configureSetupWizard(authService, sources.settings, config, restart.Trigger)
 	sources.restart = restart.Trigger
 	historySampler := metrichistory.New(obs.endpoints.Registry(), performanceHistoryCapacity)
-	go historySampler.Run(ctx, performanceHistorySampleInterval)
+	defer startPerformanceHistorySampler(ctx, historySampler)()
 	sources.perfHistory = newPerformanceHistorySource(historySampler)
 
 	assembled, err := assembleRuntimeNode(
@@ -262,12 +262,12 @@ func serve(
 	servers ...namedServer,
 ) error {
 	ctx, cancel := context.WithCancel(ctx)
-
+	listenAndServe := listenAndServeHTTP
 	var background sync.WaitGroup
 	background.Add(4)
 	startPeerPresenceLoops(ctx, &background, assembled)
-	go runRedirectPurge(ctx, assembled)
-	go runCrawlScheduleLoop(ctx, assembled.schedules, adminCrawlDispatch(assembled))
+	startRedirectPurge(ctx, &background, assembled)
+	startCrawlScheduleLoop(ctx, &background, assembled)
 	go func() {
 		defer background.Done()
 		runEvictionLoop(ctx, assembled.sweeper, evictionMetrics)
@@ -322,7 +322,7 @@ func serve(
 				slog.String("service", s.name),
 				slog.String("addr", s.server.Addr),
 			)
-			errs <- listenAndServeHTTP(s.server)
+			errs <- listenAndServe(s.server)
 		}(s)
 	}
 

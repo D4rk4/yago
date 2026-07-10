@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
@@ -114,6 +115,18 @@ var newScheduleTicks = func() (<-chan time.Time, func()) {
 	ticker := time.NewTicker(scheduleCheckInterval)
 
 	return ticker.C, ticker.Stop
+}
+
+// startCrawlScheduleLoop runs the due-schedule dispatcher under serve's
+// WaitGroup so it cannot outlive serve and read the vault-backed schedule
+// store after the vault closes; the loop exits at its next poll once serve
+// cancels the context.
+func startCrawlScheduleLoop(ctx context.Context, background *sync.WaitGroup, assembled node) {
+	background.Add(1)
+	go func() {
+		defer background.Done()
+		runCrawlScheduleLoop(ctx, assembled.schedules, adminCrawlDispatch(assembled))
+	}()
 }
 
 // runCrawlScheduleLoop dispatches due schedules until the context ends.

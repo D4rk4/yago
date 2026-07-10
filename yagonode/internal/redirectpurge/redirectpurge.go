@@ -43,7 +43,8 @@ func New(
 
 // Run performs the sweep. A nil sweeper is a no-op. Per-document failures
 // are logged and skipped — a page that resists deletion today is caught by
-// the next restart's sweep.
+// the next restart's sweep. Run returns between documents once ctx is
+// cancelled, so a shutdown joining the sweep never waits out a full pass.
 func (s *Sweeper) Run(ctx context.Context) {
 	if s == nil {
 		return
@@ -51,6 +52,9 @@ func (s *Sweeper) Run(ctx context.Context) {
 	condemned := s.collect(ctx)
 	removed := 0
 	for _, docURL := range condemned {
+		if ctx.Err() != nil {
+			return
+		}
 		if err := s.index.Delete(ctx, docURL); err != nil {
 			slog.WarnContext(ctx, "redirect purge: index delete failed",
 				slog.String("url", docURL), slog.Any("error", err))
