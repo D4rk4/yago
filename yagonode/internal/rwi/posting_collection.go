@@ -7,10 +7,13 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
-const (
-	postingsBucket         vault.Name = "rwi"
-	outboundSelectedBucket vault.Name = "rwi_outbound_selected"
-)
+// PostingsBucket is the vault collection holding the reverse word index — term
+// postings keyed by word hash then URL hash. It is exported so the assembly
+// layer can point the storage engine's per-shard term filters at it
+// (PERF-READ-01).
+const PostingsBucket vault.Name = "rwi"
+
+const outboundSelectedBucket vault.Name = "rwi_outbound_selected"
 
 const postingKeyLength = yagomodel.HashLength + yagomodel.HashLength
 
@@ -32,7 +35,7 @@ func (postingCodec) Decode(raw []byte) (yagomodel.RWIPosting, error) {
 func registerPostings(
 	v *vault.Vault,
 ) (*vault.Collection[yagomodel.RWIPosting], error) {
-	collection, err := vault.Register(v, postingsBucket, postingCodec{})
+	collection, err := vault.Register(v, PostingsBucket, postingCodec{})
 	if err != nil {
 		return nil, fmt.Errorf("register rwi posting collection: %w", err)
 	}

@@ -84,6 +84,7 @@ func (e *engine) compactShard(index int) (int64, bool, error) {
 	reopened, err := swapShard(db, tmp, path)
 	if reopened != nil {
 		e.shards[index] = reopened
+		e.rebuildWordFilter(index)
 	}
 	if err != nil {
 		return 0, false, err

@@ -204,7 +204,7 @@ func corruptLength(t *testing.T, engine *scriptedEngine) {
 	t.Helper()
 	bucket, ok := engine.buckets[vault.Name("__lengths__")]
 	if ok {
-		bucket[string(postingsBucket)] = []byte("bad")
+		bucket[string(PostingsBucket)] = []byte("bad")
 		return
 	}
 	t.Fatal("length bucket not found")
@@ -277,7 +277,7 @@ func TestIntakeReturnsBadPostingError(t *testing.T) {
 
 func TestIntakeMapsVaultCapacityDuringStore(t *testing.T) {
 	_, _, receiver, _, engine := openScriptedRWI(t, fakeURLDirectory{})
-	engine.putErrors[postingsBucket] = vault.ErrAtCapacity
+	engine.putErrors[PostingsBucket] = vault.ErrAtCapacity
 
 	receipt, err := receiver.Receive(t.Context(), []yagomodel.RWIPosting{posting("w1", "u1")})
 	if err != nil {
@@ -290,7 +290,7 @@ func TestIntakeMapsVaultCapacityDuringStore(t *testing.T) {
 
 func TestIntakeReturnsStoreAndObserverErrors(t *testing.T) {
 	_, _, receiver, _, engine := openScriptedRWI(t, fakeURLDirectory{})
-	engine.putErrors[postingsBucket] = errors.New("put failed")
+	engine.putErrors[PostingsBucket] = errors.New("put failed")
 	if _, err := receiver.Receive(
 		t.Context(),
 		[]yagomodel.RWIPosting{posting("w1", "u1")},
@@ -328,7 +328,7 @@ func TestPurgePostingReturnsDeleteAndObserverErrors(t *testing.T) {
 	if _, err := receiver.Receive(t.Context(), []yagomodel.RWIPosting{entry}); err != nil {
 		t.Fatal(err)
 	}
-	engine.deleteErrors[postingsBucket] = errors.New("delete failed")
+	engine.deleteErrors[PostingsBucket] = errors.New("delete failed")
 	if err := storage.Update(t.Context(), func(tx *vault.Txn) error {
 		_, err := purger.PurgePosting(tx, yagomodel.WordHash("w1"), referencedHash(t, entry))
 		if err != nil {
@@ -417,7 +417,7 @@ func TestScanWordReturnsContextVisitorAndStorageErrors(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	engine.scanErrors[postingsBucket] = errors.New("scan failed")
+	engine.scanErrors[PostingsBucket] = errors.New("scan failed")
 	if err := index.ScanWord(
 		t.Context(),
 		yagomodel.WordHash("w1"),

@@ -98,6 +98,7 @@ func (e *engine) splitLocked(ctx context.Context) (bool, error) {
 	}
 	e.shards = append(e.shards, opened)
 	e.level, e.split = newLevel, newSplit
+	e.appendWordFilter(opened)
 	// Reclaim the now-misrouted copies from the source. A failure here is
 	// non-fatal: the records are already served from the new shard, so the leftover
 	// is dead space, not lost data.

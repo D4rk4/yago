@@ -51,8 +51,8 @@ var (
 // Open opens (or creates) the sharded vault rooted at dir with the given
 // quota. The shard count derives from the quota and is recorded in the layout
 // manifest on first open; later opens reuse the recorded count.
-func Open(dir string, quotaBytes int64) (*vault.Vault, error) {
-	shardEngine, err := openEngine(dir, quotaBytes)
+func Open(dir string, quotaBytes int64, opts ...Option) (*vault.Vault, error) {
+	shardEngine, err := openEngine(dir, quotaBytes, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func vaultOverEngine(shardEngine *engine) (*vault.Vault, error) {
 }
 
 // openEngine opens the shard files behind the manifest-recorded layout.
-func openEngine(dir string, quotaBytes int64) (*engine, error) {
+func openEngine(dir string, quotaBytes int64, opts ...Option) (*engine, error) {
 	// New vaults start at the concurrency floor and grow with the data (ADR-0037);
 	// the quota no longer sizes the layout.
 	manifest, err := loadOrCreateManifest(dir, minShards)
@@ -108,6 +108,10 @@ func openEngine(dir string, quotaBytes int64) (*engine, error) {
 		shardLocks: make([]sync.Mutex, maxShards),
 	}
 	e.quotaBytes.Store(quotaBytes)
+	for _, opt := range opts {
+		opt(e)
+	}
+	e.initWordFilters()
 
 	return e, nil
 }
@@ -203,6 +207,18 @@ type engine struct {
 	// before traffic; the setting is restart-required so NoSync is never flipped
 	// under a live writer.
 	deferFsync atomic.Bool
+	// wordFilters holds one approximate-membership filter per shard over the
+	// configured bucket's term-key prefixes (PERF-READ-01, ADR-0039), so a
+	// fan-out read skips the shards that provably lack a term. It is parallel to
+	// shards (len(wordFilters) == len(shards)) and mutated only under the
+	// exclusive gate; it stays nil when WithWordFilter is not set, which disables
+	// the optimization.
+	wordFilters []*wordFilter
+	// wordFilterBucket and wordFilterWidth name the filtered collection and its
+	// term-key prefix length, injected by the assembly layer so the engine stays
+	// independent of the RWI key layout. An empty bucket disables the filters.
+	wordFilterBucket vault.Name
+	wordFilterWidth  int
 }
 
 // errShardContended aborts a fast-path update whose next shard is locked by a
@@ -629,6 +645,7 @@ func (b *shardBucket) Put(key vault.Key, value []byte) error {
 	if err := bucket.Put(key, encodeValue(value)); err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
+	b.txn.engine.noteWordKey(b.name, key)
 
 	return nil
 }
@@ -680,6 +697,9 @@ func (b *shardBucket) Scan(prefix vault.Key, fn func(vault.Key, []byte) (bool, e
 func (b *shardBucket) openCursors(prefix vault.Key) (scanHeap, error) {
 	cursors := make(scanHeap, 0, len(b.txn.engine.shards))
 	for i := range b.txn.engine.shards {
+		if b.txn.engine.canSkipShard(i, b.name, prefix) {
+			continue
+		}
 		tx, err := b.txn.shard(i)
 		if err != nil {
 			return nil, err

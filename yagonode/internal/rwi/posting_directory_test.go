@@ -63,7 +63,7 @@ func TestRWIURLCountCountsOneWord(t *testing.T) {
 
 func TestRWIURLCountReturnsScanError(t *testing.T) {
 	_, index, _, _, engine := openScriptedRWI(t, fakeURLDirectory{})
-	engine.scanErrors[postingsBucket] = errors.New("scan failed")
+	engine.scanErrors[PostingsBucket] = errors.New("scan failed")
 
 	if _, err := index.RWIURLCount(t.Context(), yagomodel.WordHash("w1")); err == nil {
 		t.Fatal("expected scan error")

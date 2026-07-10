@@ -7,6 +7,7 @@ require (
 	github.com/D4rk4/yago/yagoegress v0.0.0
 	github.com/D4rk4/yago/yagomodel v0.0.0
 	github.com/D4rk4/yago/yagoproto v0.0.0
+	github.com/FastFilter/xorfilter v0.5.1
 	github.com/abadojack/whatlanggo v1.0.1
 	github.com/blevesearch/bleve/v2 v2.6.0
 	github.com/blevesearch/bleve_index_api v1.3.11

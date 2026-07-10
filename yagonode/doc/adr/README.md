@@ -57,3 +57,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0036](0036-storage-usage-accounting-document-eviction-and-compaction.md) | Truthful storage accounting (live bytes), evict documents on purge, and periodic configurable compaction | Accepted |
 | [0037](0037-dynamic-shard-growth-linear-hashing.md) | Grow the shard pool dynamically by linear hashing as data accumulates; make the storage quota a live byte ceiling | Accepted |
 | [0038](0038-bounded-loss-deferred-fsync.md) | Opt-in, restart-required deferred fsync (bbolt NoSync) with a staggered background flush that bounds the loss window | Accepted |
+| [0039](0039-binary-fuse-rwi-shard-filters.md) | Per-shard binary-fuse term filters skip RWI shards that provably lack a query term (adopts the xorfilter dependency) | Accepted |

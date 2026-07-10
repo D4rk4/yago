@@ -212,6 +212,8 @@ vendors:
     in: github.com/cespare/xxhash/v2
   klauspost-compress:
     in: github.com/klauspost/compress/**
+  xorfilter:
+    in: github.com/FastFilter/xorfilter
   bleve:
     in:
       - github.com/blevesearch/bleve/v2
@@ -264,6 +266,7 @@ deps:
       - bbolt
       - xxhash
       - klauspost-compress
+      - xorfilter
   memvault:
     mayDependOn:
       - memvault

@@ -12,8 +12,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/metrichistory"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
+	"github.com/D4rk4/yago/yagonode/internal/rwi"
 	"github.com/D4rk4/yago/yagonode/internal/shardvault"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -65,9 +67,12 @@ var userAgent = "yago/" + buildVersion +
 	" (+https://github.com/D4rk4/yago; YaCy/" + version + " compatible)"
 
 var (
-	exitProcess         = os.Exit
-	runNode             = run
-	openRuntimeVault    = shardvault.OpenAt
+	exitProcess      = os.Exit
+	runNode          = run
+	openRuntimeVault = func(path string, quotaBytes int64) (*vault.Vault, error) {
+		return shardvault.OpenAt(path, quotaBytes,
+			shardvault.WithWordFilter(rwi.PostingsBucket, yagomodel.HashLength))
+	}
 	assembleRuntimeNode = assembleNode
 	serveRuntimeNode    = serve
 	listenAndServeHTTP  = func(server *http.Server) error { return server.ListenAndServe() }

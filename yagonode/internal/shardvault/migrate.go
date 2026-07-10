@@ -16,8 +16,8 @@ const migratedSuffix = ".migrated.bak"
 // storage path. A legacy single-file vault found at the path streams into the
 // sharded layout once (compressing on the way) and is kept as a .migrated.bak
 // file until the operator removes it.
-func OpenAt(legacyPath string, quotaBytes int64) (*vault.Vault, error) {
-	shardEngine, err := openEngine(legacyPath+".vault", quotaBytes)
+func OpenAt(legacyPath string, quotaBytes int64, opts ...Option) (*vault.Vault, error) {
+	shardEngine, err := openEngine(legacyPath+".vault", quotaBytes, opts...)
 	if err != nil {
 		return nil, err
 	}

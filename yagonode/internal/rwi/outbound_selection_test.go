@@ -232,7 +232,7 @@ func TestSelectOutboundReturnsStorageAndObserverErrors(t *testing.T) {
 	if _, err := receiver.Receive(t.Context(), []yagomodel.RWIPosting{entry}); err != nil {
 		t.Fatalf("Receive: %v", err)
 	}
-	engine.scanErrors[postingsBucket] = errors.New("scan failed")
+	engine.scanErrors[PostingsBucket] = errors.New("scan failed")
 	if _, err := outboundStore(t, index).SelectOutbound(
 		t.Context(),
 		OutboundSelectionConfig{},
@@ -256,7 +256,7 @@ func TestSelectOutboundReturnsStorageAndObserverErrors(t *testing.T) {
 	if _, err := receiver.Receive(t.Context(), []yagomodel.RWIPosting{entry}); err != nil {
 		t.Fatalf("Receive: %v", err)
 	}
-	engine.deleteErrors[postingsBucket] = errors.New("delete failed")
+	engine.deleteErrors[PostingsBucket] = errors.New("delete failed")
 	if _, err := outboundStore(t, index).SelectOutbound(
 		t.Context(),
 		OutboundSelectionConfig{},
@@ -354,7 +354,7 @@ func TestRestoreOutboundReturnsStorageObserverAndPostingErrors(t *testing.T) {
 	}
 
 	_, index, _, _, engine := openScriptedRWI(t, fakeURLDirectory{})
-	engine.putErrors[postingsBucket] = errors.New("put failed")
+	engine.putErrors[PostingsBucket] = errors.New("put failed")
 	if _, err := outboundStore(
 		t,
 		index,
@@ -449,7 +449,7 @@ func TestRecoverOutboundReturnsStoragePostingObserverAndContextErrors(t *testing
 	).SelectOutbound(t.Context(), OutboundSelectionConfig{}); err != nil {
 		t.Fatalf("SelectOutbound: %v", err)
 	}
-	engine.putErrors[postingsBucket] = errors.New("put failed")
+	engine.putErrors[PostingsBucket] = errors.New("put failed")
 	if _, err := outboundStore(t, index).RecoverOutbound(t.Context()); err == nil {
 		t.Fatal("expected recovery put error")
 	}
@@ -490,7 +490,7 @@ func TestSelectOutboundReturnsMalformedStoredKeyError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
-	engine.buckets[postingsBucket]["short"] = raw
+	engine.buckets[PostingsBucket]["short"] = raw
 
 	if _, err := outboundStore(t, index).SelectOutbound(
 		t.Context(),
