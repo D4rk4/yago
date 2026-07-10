@@ -91,8 +91,13 @@ whose out-of-memory kill stays confined to the crawler cgroup (the node
 survives, systemd restarts the crawler, and the browser circuit-breaker degrades
 gracefully in the meantime), `TasksMax=4096` bounds thread/process explosion,
 and `CPUWeight=50` lets the node win the CPU under contention so search and admin
-stay responsive during a crawl. The percentages are relative to physical RAM, so
-they scale to any box. Tune them per host with a drop-in rather than editing the
+stay responsive during a crawl. On top of the cgroup weights the unit runs the
+crawler *process* at the lowest scheduling priority — `Nice=19` (lowest CPU nice)
+and `IOSchedulingClass=idle` (lowest disk-I/O class, honored by the BFQ I/O
+scheduler), with `IOWeight` capping its cgroup I/O share — so a crawl yields CPU
+and disk to a search the node is answering; `CPUWeight` stays the primary
+cross-cgroup CPU lever and can be lowered further to give the node an even larger
+share. The percentages are relative to physical RAM, so they scale to any box. Tune them per host with a drop-in rather than editing the
 shipped unit:
 
 ```

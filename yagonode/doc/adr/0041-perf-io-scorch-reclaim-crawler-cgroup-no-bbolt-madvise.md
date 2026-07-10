@@ -72,6 +72,13 @@ Ship the two parts that fit; do not add raw bbolt mmap madvise.
   weakened vet analyzer, no promoted dependency.
 - Search and merge over a churning index read less disk as deleted space is
   reclaimed faster; the crawler can no longer OOM or CPU-starve the node.
+- PERF-PRIO-01 (2026-07-10) reinforces the cgroup weighting by running the
+  crawler *process* at the lowest scheduling priority — `Nice=19` and
+  `IOSchedulingClass=idle` (a low `IOWeight` too) in the systemd unit, and the
+  cap-free `ionice` best-effort/7 plus `nice 19` in the container entrypoint — so
+  a crawl yields CPU and disk to the node's latency-sensitive search and admin
+  work even within a shared scheduler, not only across cgroups. Prompted by
+  yagoseek.dev running CPU-saturated (node ~2.5 cores, load ~7.9 on 4 cores).
 - If profiling ever shows the RWI shard mmaps are readahead-bound on a
   scan-heavy node, revisit with a mechanism that does not fight the vet gate — for
   example an upstream bbolt option, or a narrow one-shot `MADV_WILLNEED` prefault

@@ -45,5 +45,17 @@ MemoryMax=85%
 TasksMax=4096
 CPUWeight=50
 
+# Run the crawler at the lowest scheduling priority so it always yields to the
+# co-located node, whose search and admin work is latency-sensitive
+# (PERF-PRIO-01). Nice=19 is the lowest CPU nice; IOSchedulingClass=idle is the
+# lowest disk-I/O class (honored by the BFQ scheduler, a harmless no-op under
+# mq-deadline/none); IOWeight caps the crawler cgroup's share of the io
+# controller. CPUWeight above stays the primary cross-cgroup CPU lever; these
+# deprioritize the crawler further so a crawl never steals cycles or disk from a
+# search the node is answering.
+Nice=19
+IOSchedulingClass=idle
+IOWeight=10
+
 [Install]
 WantedBy=multi-user.target

@@ -55,4 +55,10 @@ COPY --from=build /out/yagocrawler /opt/yago/bin/yagocrawler
 
 USER 65534:65534
 
-ENTRYPOINT ["/opt/yago/bin/yagocrawler"]
+# Run the crawler at the lowest scheduling priority so it yields CPU and disk to
+# a co-located node (PERF-PRIO-01). ionice best-effort/7 and nice 19 are the
+# lowest priorities an unprivileged container process can set without extra
+# capabilities (the idle I/O class needs CAP_SYS_ADMIN on some kernels; systemd,
+# which runs privileged setup, uses idle instead). Both tools exec their target,
+# so yagocrawler stays PID 1 and still receives SIGTERM for graceful shutdown.
+ENTRYPOINT ["ionice", "-c", "2", "-n", "7", "nice", "-n", "19", "/opt/yago/bin/yagocrawler"]
