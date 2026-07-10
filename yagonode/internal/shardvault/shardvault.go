@@ -45,6 +45,7 @@ var (
 	commitTx = (*bolt.Tx).Commit
 	closeDB  = (*bolt.DB).Close
 	openBolt = bolt.Open
+	syncDB   = (*bolt.DB).Sync
 )
 
 // Open opens (or creates) the sharded vault rooted at dir with the given
@@ -196,6 +197,12 @@ type engine struct {
 	// the disk to interactive reads (IO-PRIO-01): an Update briefly defers
 	// while reads are running, bounded so readers can never starve writers.
 	viewsInFlight atomic.Int64
+	// deferFsync records whether the shards run in deferred-fsync mode (bbolt
+	// NoSync): commits skip the per-commit disk flush and runDeferredSyncLoop
+	// flushes them on a cadence instead (ADR-0038). It is set once at boot,
+	// before traffic; the setting is restart-required so NoSync is never flipped
+	// under a live writer.
+	deferFsync atomic.Bool
 }
 
 // errShardContended aborts a fast-path update whose next shard is locked by a
@@ -397,8 +404,92 @@ func (e *engine) QuotaBytes() int64 { return e.quotaBytes.Load() }
 // (ADR-0037 D).
 func (e *engine) SetQuotaBytes(quotaBytes int64) { e.quotaBytes.Store(quotaBytes) }
 
-func (e *engine) Close() error {
+// DeferredFsyncEnabled reports whether the shards defer their fsync (ADR-0038),
+// so the maintenance loop knows whether its flush pass has work to do.
+func (e *engine) DeferredFsyncEnabled() bool { return e.deferFsync.Load() }
+
+// SetDeferredFsync switches the shards between per-commit fsync (crash-safe on
+// any filesystem) and deferred fsync (bbolt NoSync — commits skip the flush and
+// SyncShards flushes them on a cadence). It walks every shard once at boot,
+// before traffic; the setting is restart-required so NoSync is never flipped
+// under a live writer (ADR-0038).
+func (e *engine) SetDeferredFsync(enabled bool) {
+	e.globalGate.RLock()
+	defer e.globalGate.RUnlock()
+
 	for _, db := range e.shards {
+		db.NoSync = enabled
+	}
+	e.deferFsync.Store(enabled)
+}
+
+// deferredSyncStagger spaces the per-shard flushes in a SyncShards pass so the
+// deferred fsyncs spread across the interval instead of landing as one
+// synchronized storm.
+const deferredSyncStagger = 50 * time.Millisecond
+
+// pauseBetweenShardSyncs is the inter-shard delay seam so tests drive SyncShards
+// without real time.
+var pauseBetweenShardSyncs = sleepWithContext
+
+// SyncShards flushes each shard's deferred writes to disk, pausing briefly
+// between shards so the fsyncs spread across the interval instead of landing as
+// one synchronized storm (ADR-0038). Each shard is flushed under the shared gate
+// so a concurrent split or compaction cannot close it mid-flush; the pause is
+// taken with the gate released. With per-commit fsync on, the writes are already
+// durable and each flush is cheap.
+func (e *engine) SyncShards(ctx context.Context) error {
+	for index := 0; ; index++ {
+		last, err := e.syncShard(index)
+		if err != nil {
+			return err
+		}
+		if last {
+			return nil
+		}
+		if err := pauseBetweenShardSyncs(ctx, deferredSyncStagger); err != nil {
+			return err
+		}
+	}
+}
+
+// syncShard flushes one shard by index under the shared gate and reports whether
+// it was the last shard. An index past the pool (an empty vault) reports done.
+func (e *engine) syncShard(index int) (last bool, err error) {
+	e.globalGate.RLock()
+	defer e.globalGate.RUnlock()
+
+	if index >= len(e.shards) {
+		return true, nil
+	}
+	if syncErr := syncDB(e.shards[index]); syncErr != nil {
+		return false, fmt.Errorf("sync shard %d: %w", index, syncErr)
+	}
+
+	return index == len(e.shards)-1, nil
+}
+
+// sleepWithContext waits for d or until ctx is cancelled, whichever comes first.
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("deferred sync interrupted: %w", ctx.Err())
+	case <-timer.C:
+		return nil
+	}
+}
+
+func (e *engine) Close() error {
+	deferred := e.deferFsync.Load()
+	for _, db := range e.shards {
+		if deferred {
+			if err := syncDB(db); err != nil {
+				return fmt.Errorf("sync storage: %w", err)
+			}
+		}
 		if err := wrapCloseError(closeDB(db)); err != nil {
 			return err
 		}

@@ -56,3 +56,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0035](0035-learned-log-linear-ranking-yagorank.md) | Learned log-linear ranking (YagoRank): fit ranking weights to NDCG, add quality + unordered-SDM features | Accepted |
 | [0036](0036-storage-usage-accounting-document-eviction-and-compaction.md) | Truthful storage accounting (live bytes), evict documents on purge, and periodic configurable compaction | Accepted |
 | [0037](0037-dynamic-shard-growth-linear-hashing.md) | Grow the shard pool dynamically by linear hashing as data accumulates; make the storage quota a live byte ceiling | Accepted |
+| [0038](0038-bounded-loss-deferred-fsync.md) | Opt-in, restart-required deferred fsync (bbolt NoSync) with a staggered background flush that bounds the loss window | Accepted |

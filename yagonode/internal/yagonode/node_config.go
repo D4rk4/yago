@@ -32,6 +32,7 @@ const (
 	envStorageQuota        = "YAGO_STORAGE_QUOTA"
 	envStorageCompaction   = "YAGO_STORAGE_COMPACTION_INTERVAL"
 	envStorageAutosplit    = "YAGO_STORAGE_AUTOSPLIT"
+	envStorageDeferFsync   = "YAGO_STORAGE_DEFER_FSYNC"
 	envTrustedProxies      = "YAGO_TRUSTED_PROXIES"
 	envEgressAllowLAN      = "YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS"
 	envSeedlistURLs        = "YAGO_SEEDLIST_URLS"
@@ -106,6 +107,7 @@ type nodeConfig struct {
 	StorageQuotaByte       int64
 	StorageCompaction      time.Duration
 	StorageAutosplit       bool
+	StorageDeferFsync      bool
 	TrustedProxies         []*net.IPNet
 	EgressAllowLAN         bool
 	EgressAllowedCIDRs     []netip.Prefix
@@ -156,7 +158,6 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	if err != nil {
 		return nodeConfig{}, err
 	}
-	name := strings.TrimSpace(getenv(envPeerName))
 	peerAddr := envWithDefault(getenv, envPeerAddr, defaultPeerAddr)
 	seedlistURLs := splitList(getenv(envSeedlistURLs))
 
@@ -188,7 +189,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	return nodeConfig{
 		Hash:                  hash,
 		NetworkName:           envWithDefault(getenv, envNetworkName, yagoproto.DefaultNetwork),
-		Name:                  name,
+		Name:                  strings.TrimSpace(getenv(envPeerName)),
 		DataDir:               data.directory,
 		AdvertiseHost:         adv.host,
 		AdvertisePort:         adv.port,
@@ -203,6 +204,7 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 		StorageQuotaByte:      data.quotaByte,
 		StorageCompaction:     data.compaction,
 		StorageAutosplit:      derived.storageAutosplit,
+		StorageDeferFsync:     derived.storageDeferFsync,
 		TrustedProxies:        proxies,
 		EgressAllowLAN:        egressAllowLAN,
 		EgressAllowedCIDRs:    egressAllowedCIDRs,
@@ -271,6 +273,7 @@ type derivedConfigs struct {
 	searchLinksNewTab   bool
 	searchClickCapture  bool
 	storageAutosplit    bool
+	storageDeferFsync   bool
 	swarmSeed           swarmSeedConfig
 	extractFetch        extractFetchConfig
 	remotePeerTimeout   time.Duration
@@ -410,6 +413,7 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 		searchLinksNewTab:   toggles.searchLinksNewTab,
 		searchClickCapture:  toggles.searchClickCapture,
 		storageAutosplit:    toggles.storageAutosplit,
+		storageDeferFsync:   toggles.storageDeferFsync,
 		swarmSeed:           swarmSeed,
 		extractFetch:        extractFetch,
 		remotePeerTimeout:   remotePeerTimeout,
@@ -432,6 +436,7 @@ type derivedBoolToggles struct {
 	searchClickCapture  bool
 	peerSnippetFetch    bool
 	storageAutosplit    bool
+	storageDeferFsync   bool
 }
 
 func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, error) {
@@ -491,11 +496,9 @@ func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, err
 	if err != nil {
 		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envSearchClickCapture, err)
 	}
-	// On by default: the shard pool grows with the data so no file grows oversized
-	// (ADR-0037); an operator can freeze the layout by turning it off.
-	storageAutosplit, err := boolEnv(getenv, envStorageAutosplit, true)
+	storageAutosplit, storageDeferFsync, err := loadStorageBoolToggles(getenv)
 	if err != nil {
-		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envStorageAutosplit, err)
+		return derivedBoolToggles{}, err
 	}
 
 	return derivedBoolToggles{
@@ -511,7 +514,25 @@ func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, err
 		searchLinksNewTab:   searchLinksNewTab,
 		searchClickCapture:  searchClickCapture,
 		storageAutosplit:    storageAutosplit,
+		storageDeferFsync:   storageDeferFsync,
 	}, nil
+}
+
+// loadStorageBoolToggles reads the storage engine's boolean switches: automatic
+// shard growth (default on, ADR-0037) and deferred fsync (default off, ADR-0038,
+// which trades crash durability for throughput and is only safe where a bounded
+// loss window is acceptable).
+func loadStorageBoolToggles(getenv func(string) string) (autosplit, deferFsync bool, err error) {
+	autosplit, err = boolEnv(getenv, envStorageAutosplit, true)
+	if err != nil {
+		return false, false, fmt.Errorf("%s: %w", envStorageAutosplit, err)
+	}
+	deferFsync, err = boolEnv(getenv, envStorageDeferFsync, false)
+	if err != nil {
+		return false, false, fmt.Errorf("%s: %w", envStorageDeferFsync, err)
+	}
+
+	return autosplit, deferFsync, nil
 }
 
 func egressConfig(getenv func(string) string) ([]*net.IPNet, bool, []netip.Prefix, error) {

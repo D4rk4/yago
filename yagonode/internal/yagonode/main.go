@@ -146,6 +146,7 @@ func bootNode(
 		return err
 	}
 	storageVault.SetQuota(config.StorageQuotaByte)
+	storageVault.SetDeferredFsync(config.StorageDeferFsync)
 	if err := validateNodeBinds(config); err != nil {
 		return fmt.Errorf("validate listen addresses: %w", err)
 	}
@@ -363,9 +364,10 @@ func startWordFormsLoop(ctx context.Context, background *sync.WaitGroup, assembl
 }
 
 // startMaintenanceLoops runs the background storage-maintenance passes: periodic
-// compaction (ADR-0036 C) and automatic shard growth (ADR-0037).
+// compaction (ADR-0036 C), automatic shard growth (ADR-0037), and the
+// deferred-fsync flush that backstops NoSync mode (ADR-0038).
 func startMaintenanceLoops(ctx context.Context, background *sync.WaitGroup, assembled node) {
-	background.Add(2)
+	background.Add(3)
 	go func() {
 		defer background.Done()
 		runCompactionLoop(ctx, assembled.vault, assembled.toggles)
@@ -373,6 +375,10 @@ func startMaintenanceLoops(ctx context.Context, background *sync.WaitGroup, asse
 	go func() {
 		defer background.Done()
 		runShardGrowthLoop(ctx, assembled.vault, assembled.toggles)
+	}()
+	go func() {
+		defer background.Done()
+		runDeferredSyncLoop(ctx, assembled.vault)
 	}()
 }
 

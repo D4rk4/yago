@@ -137,6 +137,61 @@ func (v *Vault) SetQuota(quotaBytes int64) {
 	}
 }
 
+// deferredSyncer is the optional engine capability behind deferred fsync
+// (ADR-0038): the sharded engine can run its shards in NoSync mode and flush
+// them on a cadence. The in-memory engine has nothing to flush, so it does not
+// implement it and the vault methods below are no-ops there.
+type deferredSyncer interface {
+	SetDeferredFsync(enabled bool)
+	SyncShards(ctx context.Context) error
+	DeferredFsyncEnabled() bool
+}
+
+// SetDeferredFsync switches the engine between per-commit fsync and deferred
+// fsync (ADR-0038). The node calls it once at boot with the operator's
+// restart-required setting; it is a no-op on engines that always fsync.
+func (v *Vault) SetDeferredFsync(enabled bool) {
+	if v == nil || v.engine == nil {
+		return
+	}
+	if syncer, ok := v.engine.(deferredSyncer); ok {
+		syncer.SetDeferredFsync(enabled)
+	}
+}
+
+// SyncShards flushes the engine's deferred writes to disk, spreading the fsync
+// load across its shards (ADR-0038). It is a no-op — returning nil — on engines
+// that always fsync, so the maintenance loop can call it unconditionally.
+func (v *Vault) SyncShards(ctx context.Context) error {
+	if v == nil || v.engine == nil {
+		return errVaultClosed
+	}
+	syncer, ok := v.engine.(deferredSyncer)
+	if !ok {
+		return nil
+	}
+	if err := syncer.SyncShards(ctx); err != nil {
+		return fmt.Errorf("sync shards: %w", err)
+	}
+
+	return nil
+}
+
+// DeferredFsyncEnabled reports whether the engine is deferring fsync, so the
+// maintenance loop knows whether its flush pass has work. False on engines that
+// always fsync.
+func (v *Vault) DeferredFsyncEnabled() bool {
+	if v == nil || v.engine == nil {
+		return false
+	}
+	syncer, ok := v.engine.(deferredSyncer)
+	if !ok {
+		return false
+	}
+
+	return syncer.DeferredFsyncEnabled()
+}
+
 func (v *Vault) AtCapacity(ctx context.Context) (bool, error) {
 	if v == nil || v.engine == nil {
 		return false, errVaultClosed

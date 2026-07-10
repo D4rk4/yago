@@ -44,6 +44,7 @@ func storageAndAccessDefinitions() []settingDefinition {
 		},
 		storageCompactionDefinition(),
 		storageAutosplitDefinition(),
+		storageDeferFsyncDefinition(),
 		{
 			key:          "search.api.scoped_access",
 			title:        "Require scoped API keys",
@@ -117,6 +118,32 @@ func storageAutosplitDefinition() settingDefinition {
 		},
 		applyLive: func(toggles *runtimeToggles, value string) {
 			toggles.SetAutosplitEnabled(value == settingBoolTrue)
+		},
+	}
+}
+
+// storageDeferFsyncDefinition is the restart-required durability switch for the
+// vault: on, shard commits skip the per-commit disk flush (bbolt NoSync) and a
+// background pass flushes them on a cadence, trading a bounded loss window for
+// far less write amplification; off (the default) fsyncs every commit, the only
+// crash-safe mode on filesystems without atomic same-file overwrite (ADR-0038).
+// It has no live-apply hook, so a change takes effect on the next restart — the
+// shards are reconfigured once at boot, never under live writers.
+func storageDeferFsyncDefinition() settingDefinition {
+	return settingDefinition{
+		key:   "storage.defer_fsync",
+		title: "Defer storage fsync",
+		description: "Skip the per-commit disk flush and flush storage shards " +
+			"periodically in the background instead. Faster writes, but a crash or " +
+			"power loss can lose the last few seconds of indexing. Leave off unless " +
+			"the host has reliable power; takes effect after a restart.",
+		options:      boolSettingOptions(),
+		defaultValue: func(config nodeConfig) string { return formatSettingBool(config.StorageDeferFsync) },
+		normalize:    normalizeSettingBool,
+		apply: func(config nodeConfig, value string) nodeConfig {
+			config.StorageDeferFsync = value == settingBoolTrue
+
+			return config
 		},
 	}
 }
