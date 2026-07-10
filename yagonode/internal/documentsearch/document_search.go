@@ -32,7 +32,9 @@ func (s searcher) search(ctx context.Context, criteria searchCriteria) (searchRe
 	if err != nil {
 		return searchResult{}, err
 	}
-	wanted, err := s.documentsMatchingTerms(ctx, criteria.terms, appearanceCriteria)
+	wanted, err := s.documentsMatchingTerms(
+		ctx, criteria.terms, appearanceCriteria, !criteria.allowEarlyTermination,
+	)
 	if err != nil {
 		return searchResult{}, err
 	}
@@ -43,10 +45,7 @@ func (s searcher) search(ctx context.Context, criteria searchCriteria) (searchRe
 		),
 		criteria.maxTermSpread,
 	)
-	mostRelevant := takeMostRelevant(
-		documentsOrderedByRelevance(matchingEveryTerm),
-		criteria.maxResults,
-	)
+	mostRelevant := mostRelevantDocuments(matchingEveryTerm, criteria.maxResults)
 	resources, err := s.documents.RowsByHash(ctx, mostRelevant)
 	if err != nil {
 		return searchResult{}, fmt.Errorf("rows by hash: %w", err)

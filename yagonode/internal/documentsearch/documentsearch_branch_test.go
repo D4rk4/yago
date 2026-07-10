@@ -45,6 +45,7 @@ func TestScanTermCapsKeptMatchesAndSkipsBadPostings(t *testing.T) {
 		t.Context(),
 		word,
 		termAppearanceCriteria{},
+		true,
 	)
 	if err != nil {
 		t.Fatal(err)

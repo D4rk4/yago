@@ -19,6 +19,13 @@ type matchReporting struct {
 	terms []yagomodel.Hash
 }
 
+// reportsTermCounts reports whether the mode surfaces exact per-term match totals
+// (the wire indexcount keys), which a scan must count exhaustively rather than
+// stopping at the per-term cap.
+func (r matchReporting) reportsTermCounts() bool {
+	return r.mode == reportTermWithMostMatches || r.mode == reportRequestedTerms
+}
+
 type contentKind int
 
 const (
@@ -42,4 +49,11 @@ type searchCriteria struct {
 	requiredProperties yagomodel.Bitfield
 	language           string
 	siteHash           string
+	// allowEarlyTermination lets each per-term scan stop once matchesPerTerm
+	// matches are kept, skipping the tail of long posting lists. It is opt-in and
+	// off by default so the scan stays exhaustive and wire-visible indexcount
+	// totals exact; a caller sets it only where those per-term totals are not
+	// reported downstream (the local searchcore path, and the P2P no-abstracts
+	// mode).
+	allowEarlyTermination bool
 }

@@ -55,6 +55,8 @@ func searchCriteriaFromRequest(req yagoproto.SearchRequest) (searchCriteria, err
 		return searchCriteria{}, err
 	}
 
+	reporting := matchReportingFromRequest(req)
+
 	return searchCriteria{
 		terms:              req.Query,
 		excludedTerms:      req.Exclude,
@@ -62,10 +64,13 @@ func searchCriteriaFromRequest(req yagoproto.SearchRequest) (searchCriteria, err
 		maxResults:         maxResults,
 		maxTermSpread:      req.MaxDist,
 		timeLimit:          timeLimit,
-		reporting:          matchReportingFromRequest(req),
+		reporting:          reporting,
 		contentKind:        contentKindFromDomain(req.ContentDom),
 		strictContentKind:  req.StrictContentDom,
 		requiredProperties: required,
+		// A peer that requests no index abstracts never reads per-term totals, so
+		// the scan may stop at the cap; abstract modes keep it exhaustive.
+		allowEarlyTermination: !reporting.reportsTermCounts(),
 		// Deliberate divergence from YaCy: only the /language/ modifier filters; the
 		// plain language field drives YaCy's ranking boost, which this node omits.
 		language: operators.Language,

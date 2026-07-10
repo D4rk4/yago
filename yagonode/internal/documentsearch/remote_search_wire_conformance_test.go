@@ -90,6 +90,70 @@ func TestRemoteSearchWireResponseIsPeerConsumable(t *testing.T) {
 	}
 }
 
+// TestRemoteSearchIndexCountStaysExactUnderCap is the wire guard for the
+// reporting-gated scan early-termination (PERF-CPU-01): a peer that asks for
+// index abstracts must receive the full per-term match count even when the kept
+// join is capped far below it, so early termination must not engage on this path.
+// Four postings per term with a cap of two would report two if the scan stopped
+// at the cap; the wire indexcount must still be four.
+func TestRemoteSearchIndexCountStaysExactUnderCap(t *testing.T) {
+	word1, word2 := hashFor("w1"), hashFor("w2")
+	mux := http.NewServeMux()
+	MountSearch(
+		httpguard.NewWireRouter(mux, httpguard.WireGate{
+			Guard:   httpguard.NewRequestGuard(4096, time.Second),
+			Respond: httpguard.NewWireResponder(searchWireStatus{}),
+			Address: httpguard.NewClientAddressResolver(nil),
+		}),
+		searchIdentity(),
+		SearchConfig{
+			Index: fakeScanner{postings: map[yagomodel.Hash][]yagomodel.RWIPosting{
+				word1: {
+					postingEntry(word1, "u1", 0, 1), postingEntry(word1, "u2", 0, 1),
+					postingEntry(word1, "u3", 0, 1), postingEntry(word1, "u4", 0, 1),
+				},
+				word2: {
+					postingEntry(word2, "u1", 0, 1), postingEntry(word2, "u2", 0, 1),
+					postingEntry(word2, "u3", 0, 1), postingEntry(word2, "u4", 0, 1),
+				},
+			}},
+			Documents:      fakeDirectory{rows: urlRows("u1", "u2", "u3", "u4")},
+			MatchesPerTerm: 2,
+		},
+	)
+
+	req := yagoproto.SearchRequest{
+		NetworkName: "freeworld",
+		Query:       []yagomodel.Hash{word1, word2},
+		Count:       10,
+		Abstracts:   yagoproto.SearchAbstractsAuto,
+	}
+	rec := httptest.NewRecorder()
+	httpReq := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		yagoproto.PathSearch+"?"+req.Form().Encode(),
+		nil,
+	)
+	mux.ServeHTTP(rec, httpReq)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	parsed, err := yagoproto.ParseSearchResponse(mustParseMessage(t, rec.Body.String()))
+	if err != nil {
+		t.Fatalf("peer parser rejected our response: %v", err)
+	}
+	for _, word := range []yagomodel.Hash{word1, word2} {
+		if parsed.IndexCount[word] != 4 {
+			t.Fatalf(
+				"indexcount.%s = %d, want 4 exact despite the cap of 2",
+				word,
+				parsed.IndexCount[word],
+			)
+		}
+	}
+}
+
 func mustParseMessage(t *testing.T, body string) yagomodel.Message {
 	t.Helper()
 	msg, err := yagomodel.ParseMessage(body)

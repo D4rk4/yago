@@ -11,6 +11,7 @@ func (s searcher) scanTerm(
 	ctx context.Context,
 	term yagomodel.Hash,
 	appearanceCriteria termAppearanceCriteria,
+	exhaustive bool,
 ) ([]termAppearance, int, error) {
 	var (
 		kept  []termAppearance
@@ -23,7 +24,7 @@ func (s searcher) scanTerm(
 		}
 		total++
 		if s.matchesPerTerm > 0 && len(kept) >= s.matchesPerTerm {
-			return true, nil
+			return exhaustive, nil
 		}
 		kept = append(kept, appearance)
 

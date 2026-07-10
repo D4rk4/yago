@@ -54,16 +54,7 @@ func documentsOrderedByRelevance(documents map[yagomodel.Hash]matchedDocument) [
 	for _, document := range documents {
 		ranked = append(ranked, document)
 	}
-	slices.SortFunc(ranked, func(a, b matchedDocument) int {
-		if a.occurrences != b.occurrences {
-			return compareDescending(a.occurrences, b.occurrences)
-		}
-		if a.termSpread() != b.termSpread() {
-			return compareAscending(a.termSpread(), b.termSpread())
-		}
-
-		return compareAscending(a.identifier, b.identifier)
-	})
+	slices.SortFunc(ranked, documentRelevanceOrder)
 
 	identifiers := make([]yagomodel.Hash, 0, len(ranked))
 	for _, document := range ranked {
@@ -71,6 +62,21 @@ func documentsOrderedByRelevance(documents map[yagomodel.Hash]matchedDocument) [
 	}
 
 	return identifiers
+}
+
+// documentRelevanceOrder ranks two matched documents by descending occurrences,
+// then ascending term spread, then ascending identifier. Because identifiers are
+// unique it is a strict total order, so the bounded top-k selection and the full
+// sort agree on a single ordering down to the last tie-break.
+func documentRelevanceOrder(a, b matchedDocument) int {
+	if a.occurrences != b.occurrences {
+		return compareDescending(a.occurrences, b.occurrences)
+	}
+	if a.termSpread() != b.termSpread() {
+		return compareAscending(a.termSpread(), b.termSpread())
+	}
+
+	return compareAscending(a.identifier, b.identifier)
 }
 
 func documentsWithinTermSpread(

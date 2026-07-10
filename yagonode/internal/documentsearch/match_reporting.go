@@ -52,7 +52,9 @@ func (s searcher) reportRequestedTerms(
 	wanted termMatches,
 ) (matchReport, error) {
 	appearanceCriteria, _ := s.appearanceCriteria(ctx, criteria, nil)
-	requested, err := s.documentsMatchingTerms(ctx, criteria.reporting.terms, appearanceCriteria)
+	requested, err := s.documentsMatchingTerms(
+		ctx, criteria.reporting.terms, appearanceCriteria, !criteria.allowEarlyTermination,
+	)
 	if err != nil {
 		return matchReport{}, err
 	}

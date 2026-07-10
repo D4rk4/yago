@@ -15,6 +15,7 @@ func (s searcher) documentsMatchingTerms(
 	ctx context.Context,
 	terms []yagomodel.Hash,
 	appearanceCriteria termAppearanceCriteria,
+	exhaustive bool,
 ) (termMatches, error) {
 	matches := termMatches{
 		documentsPerTerm: make(
@@ -24,7 +25,7 @@ func (s searcher) documentsMatchingTerms(
 		totalMatchesPerTerm: make(map[yagomodel.Hash]int, len(terms)),
 	}
 	for _, term := range terms {
-		appearances, total, err := s.scanTerm(ctx, term, appearanceCriteria)
+		appearances, total, err := s.scanTerm(ctx, term, appearanceCriteria, exhaustive)
 		if err != nil {
 			return termMatches{}, err
 		}

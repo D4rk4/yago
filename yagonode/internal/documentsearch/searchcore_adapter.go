@@ -88,6 +88,9 @@ func searchCoreCriteria(req searchcore.Request) (searchCriteria, error) {
 		language:          strings.ToLower(req.Language),
 		siteHash:          siteHash,
 		strictContentKind: req.ContentDomain != searchcore.ContentDomainAll,
+		// The searchcore response reports only the join total, never per-term
+		// counts, so each scan may stop at the cap.
+		allowEarlyTermination: true,
 	}, nil
 }
 
