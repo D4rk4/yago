@@ -2,6 +2,7 @@ package pageparse
 
 import (
 	"bytes"
+	"net/url"
 	"strings"
 
 	"github.com/go-shiori/dom"
@@ -19,6 +20,8 @@ var parseHTMLDocument = html.Parse
 const (
 	maxPageImages   = 32
 	imageAltRuneCap = 160
+	maxPageAnchors  = 1024
+	anchorTextCap   = 256
 )
 
 func ParseHTML(rawURL, contentType string, body []byte) ParsedPage {
@@ -34,6 +37,8 @@ func ParseHTML(rawURL, contentType string, body []byte) ParsedPage {
 	page := ParsedPage{URL: rawURL}
 	var text strings.Builder
 	readHTMLFields(root, rawURL, &page)
+	page.PublishedAt, page.ModifiedAt, page.DateConfidence, page.DateSource = readPageDates(root)
+	page.SafetyLabels = readSafetyLabels(root)
 	page.CanonicalURL = readCanonicalURL(root, rawURL)
 	collectText(root, &text)
 	page.Text = selectText(contentType, body, text.String())
@@ -48,6 +53,13 @@ func selectText(contentType string, body []byte, fallback string) string {
 }
 
 func readHTMLFields(root *html.Node, rawURL string, page *ParsedPage) {
+	readDocumentFields(root, page)
+	readHeadings(root, page)
+	readLinks(root, rawURL, page)
+	page.Images = readImageMetadata(root, rawURL)
+}
+
+func readDocumentFields(root *html.Node, page *ParsedPage) {
 	if htmlNode := dom.QuerySelector(root, "html"); htmlNode != nil {
 		page.Language = dom.GetAttribute(htmlNode, "lang")
 	}
@@ -59,6 +71,9 @@ func readHTMLFields(root *html.Node, rawURL string, page *ParsedPage) {
 	page.Keywords = readMetaKeywords(root)
 	page.Publisher = readMetaPublisher(root)
 	page.MetaNoindex, page.MetaNofollow = readMetaRobots(root)
+}
+
+func readHeadings(root *html.Node, page *ParsedPage) {
 	for _, name := range []string{"h1", "h2", "h3", "h4", "h5", "h6"} {
 		for _, heading := range dom.GetElementsByTagName(root, name) {
 			text := collapseSpaces(dom.TextContent(heading))
@@ -67,17 +82,61 @@ func readHTMLFields(root *html.Node, rawURL string, page *ParsedPage) {
 			}
 		}
 	}
+}
+
+func readLinks(root *html.Node, rawURL string, page *ParsedPage) {
+	baseURL, hasBaseURL := weburl.ParseBase(rawURL)
 	for _, link := range dom.GetElementsByTagName(root, "a") {
-		if href := dom.GetAttribute(link, "href"); href != "" {
-			page.Links = append(page.Links, href)
-			if hasLinkRelation(dom.GetAttribute(link, "rel"), "nofollow") {
-				page.NoFollowLinks = append(page.NoFollowLinks, href)
-				continue
-			}
+		href := dom.GetAttribute(link, "href")
+		if href == "" {
+			continue
+		}
+		page.Links = append(page.Links, href)
+		relation := dom.GetAttribute(link, "rel")
+		noFollow := page.MetaNofollow || hasLinkRelation(relation, "nofollow")
+		if noFollow {
+			page.NoFollowLinks = append(page.NoFollowLinks, href)
+		} else {
 			page.FollowableLinks = append(page.FollowableLinks, href)
 		}
+		if !hasBaseURL || len(page.OutboundAnchors) == maxPageAnchors {
+			continue
+		}
+		if anchor, ok := outboundAnchorFromLink(baseURL, link, href, noFollow); ok {
+			anchor.UserGenerated = hasLinkRelation(relation, "ugc")
+			anchor.Sponsored = hasLinkRelation(relation, "sponsored")
+			page.OutboundAnchors = append(page.OutboundAnchors, anchor)
+		}
 	}
-	page.Images = readImageMetadata(root, rawURL)
+}
+
+func outboundAnchorFromLink(
+	baseURL *url.URL,
+	link *html.Node,
+	href string,
+	noFollow bool,
+) (OutboundAnchor, bool) {
+	resolved, ok := weburl.Resolve(baseURL, href)
+	if !ok {
+		return OutboundAnchor{}, false
+	}
+	targetURL, ok := weburl.Normalize(resolved.String())
+	if !ok {
+		return OutboundAnchor{}, false
+	}
+	text := collapseSpaces(dom.TextContent(link))
+	if text == "" {
+		text = collapseSpaces(dom.GetAttribute(link, "aria-label"))
+	}
+	if text == "" {
+		text = collapseSpaces(dom.GetAttribute(link, "title"))
+	}
+	runes := []rune(text)
+	if len(runes) > anchorTextCap {
+		text = string(runes[:anchorTextCap])
+	}
+
+	return OutboundAnchor{TargetURL: targetURL, Text: text, NoFollow: noFollow}, true
 }
 
 func readCanonicalURL(root *html.Node, rawURL string) string {

@@ -9,12 +9,13 @@ import (
 )
 
 type CrawlJob struct {
-	URL           string
-	Depth         int
-	ProfileHandle string
-	Provenance    []byte
-	RunID         uuid.UUID
-	Index         bool
+	URL              string
+	Depth            int
+	ProfileHandle    string
+	Provenance       []byte
+	RunID            uuid.UUID
+	Index            bool
+	SourceModifiedAt time.Time
 	// CrawlDelay is the profile's requested politeness delay for this job's host.
 	// Zero means the crawler's global default delay applies.
 	CrawlDelay time.Duration

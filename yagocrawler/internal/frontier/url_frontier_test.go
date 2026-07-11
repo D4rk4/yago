@@ -78,6 +78,24 @@ func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
 	}
 }
 
+func TestSeedRunPreservesSourceModificationDate(t *testing.T) {
+	f := frontier.NewFrontier(1, nil)
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	modified := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	f.SeedRun(context.Background(), []yagocrawlcontract.CrawlRequest{{
+		URL: "https://example.com/", ProfileHandle: profile.Profile.Handle,
+		LastModified: modified,
+	}}, []byte("admin"), profile, nil)
+	job := receiveJob(t, f)
+	if job.SourceModifiedAt != modified {
+		t.Fatalf("source modification date = %v", job.SourceModifiedAt)
+	}
+}
+
 func TestDoneDrainsRunNotSucceededOnDeliveryFailure(t *testing.T) {
 	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yagocrawlcontract.CrawlProfile{

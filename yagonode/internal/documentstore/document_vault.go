@@ -10,8 +10,10 @@ import (
 const maxExtractedTextBytes = 1 << 20
 
 type documentVault struct {
-	vault      *vault.Vault
-	collection *vault.Collection[Document]
+	vault           *vault.Vault
+	collection      *vault.Collection[Document]
+	inboundAnchors  *vault.Collection[[]AnchorText]
+	outboundTargets *vault.Collection[[]string]
 }
 
 func (d documentVault) Receive(ctx context.Context, docs []Document) (Receipt, error) {
@@ -63,17 +65,16 @@ func (d documentVault) storeOne(
 		return fmt.Errorf("context: %w", err)
 	}
 
-	doc = normalizedDocument(doc)
-	if doc.NormalizedURL == "" {
+	doc, accepted, found, err := d.canonicalDocument(tx, doc)
+	if err != nil {
+		return err
+	}
+	if !accepted {
 		receipt.Rejected++
 		return nil
 	}
 
 	key := vault.Key(doc.NormalizedURL)
-	_, found, err := d.collection.Get(tx, key)
-	if err != nil {
-		return fmt.Errorf("read document: %w", err)
-	}
 	if err := d.collection.Put(tx, key, doc); err != nil {
 		return fmt.Errorf("store document: %w", err)
 	}
@@ -82,8 +83,63 @@ func (d documentVault) storeOne(
 	} else {
 		receipt.Stored++
 	}
+	receipt.CommittedDocuments = append(receipt.CommittedDocuments, doc)
 
 	return nil
+}
+
+func (d documentVault) CanonicalDocuments(
+	ctx context.Context,
+	docs []Document,
+) ([]Document, error) {
+	canonical := make([]Document, 0, len(docs))
+	err := d.vault.View(ctx, func(tx *vault.Txn) error {
+		for _, doc := range docs {
+			if err := ctx.Err(); err != nil {
+				return fmt.Errorf("context: %w", err)
+			}
+			prepared, accepted, _, err := d.canonicalDocument(tx, doc)
+			if err != nil {
+				return err
+			}
+			if accepted {
+				canonical = append(canonical, prepared)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("canonical documents: %w", err)
+	}
+
+	return canonical, nil
+}
+
+func (d documentVault) canonicalDocument(
+	tx *vault.Txn,
+	doc Document,
+) (Document, bool, bool, error) {
+	doc = normalizedDocument(doc)
+	if doc.NormalizedURL == "" {
+		return Document{}, false, false, nil
+	}
+
+	key := vault.Key(doc.NormalizedURL)
+	previous, found, err := d.collection.Get(tx, key)
+	if err != nil {
+		return Document{}, false, false, fmt.Errorf("read document: %w", err)
+	}
+	doc = mergeDocumentDates(previous, doc, found)
+	storedAnchors, anchorsFound, err := d.inboundAnchors.Get(tx, key)
+	if err != nil {
+		return Document{}, false, false, fmt.Errorf("read inbound anchors: %w", err)
+	}
+	if anchorsFound {
+		doc.Inlinks = canonicalAnchorTexts(append(doc.Inlinks, storedAnchors...))
+	}
+
+	return doc, true, found, nil
 }
 
 func (d documentVault) Document(
@@ -176,9 +232,11 @@ func normalizedDocument(doc Document) Document {
 		doc.CanonicalURL = doc.NormalizedURL
 	}
 	doc.ExtractedText = boundedText(doc.ExtractedText)
+	doc.ContentSafety = normalizedContentSafetyEvidence(doc.ContentSafety)
 	doc.Headings = append([]string(nil), doc.Headings...)
 	doc.Outlinks = append([]string(nil), doc.Outlinks...)
 	doc.Inlinks = append([]AnchorText(nil), doc.Inlinks...)
+	doc.OutboundAnchors = append([]OutboundAnchor(nil), doc.OutboundAnchors...)
 	doc.Images = append([]ImageMetadata(nil), doc.Images...)
 	if doc.Metadata != nil {
 		metadata := make(map[string]string, len(doc.Metadata))
@@ -207,7 +265,9 @@ func boundedText(text string) string {
 }
 
 var (
-	_ DocumentDirectory = documentVault{}
-	_ DocumentReceiver  = documentVault{}
-	_ StoredDocuments   = documentVault{}
+	_ DocumentDirectory          = documentVault{}
+	_ CanonicalDocumentDirectory = documentVault{}
+	_ DocumentReceiver           = documentVault{}
+	_ StoredDocuments            = documentVault{}
+	_ InboundAnchorReceiver      = documentVault{}
 )

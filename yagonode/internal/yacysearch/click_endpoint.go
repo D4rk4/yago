@@ -3,65 +3,69 @@ package yacysearch
 import (
 	"context"
 	"net/http"
-	"net/url"
 	"strconv"
+	"strings"
 )
 
-// pathSearchClick receives the result-click beacon from the public results page.
-// It is a yago-local endpoint, not a YaCy servlet, so it lives outside the
-// yagoproto path vocabulary.
-const pathSearchClick = "/searchclick"
+const (
+	pathSearchClick           = "/searchclick"
+	maximumClickBodyBytes     = 70000
+	maximumClickTokenBytes    = 65536
+	maximumClickIdentityBytes = 2048
+)
 
-// ClickRecorder persists a result click so the ranking learner can mine implicit
-// relevance judgments from real usage; the node supplies the clickcapture store.
-type ClickRecorder interface {
-	Record(ctx context.Context, query, target string, rank int) error
+type ImpressionCandidate struct {
+	URLIdentity     string
+	ClusterIdentity string
+	Position        int
 }
 
-// ClickCapture configures result-click capture on the results page: whether it
-// is enabled and where captured clicks are recorded.
+type PreparedImpression struct {
+	Token string
+	Order []int
+}
+
+type ImpressionRecorder interface {
+	PrepareImpression(
+		ctx context.Context,
+		query string,
+		candidates []ImpressionCandidate,
+	) (PreparedImpression, error)
+	RecordClick(ctx context.Context, token, urlIdentity string, position int) error
+}
+
 type ClickCapture struct {
 	Enabled  bool
-	Recorder ClickRecorder
+	Recorder ImpressionRecorder
 }
 
-// clickEndpoint records the clicks beaconed from the results page. It answers 204
-// whether or not recording succeeds, because the beacon is a best-effort signal
-// (navigator.sendBeacon) that must never disturb the user's navigation; only a
-// malformed request is rejected so the store is not fed junk.
 type clickEndpoint struct {
-	recorder ClickRecorder
+	recorder ImpressionRecorder
 }
 
 func (e clickEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maximumClickBodyBytes)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
+
 		return
 	}
-	query := r.PostForm.Get("q")
-	target := r.PostForm.Get("u")
-	if query == "" || !isHTTPURL(target) {
-		http.Error(w, "missing query or url", http.StatusBadRequest)
+	token := r.PostForm.Get("t")
+	identity := r.PostForm.Get("i")
+	position, err := strconv.Atoi(r.PostForm.Get("p"))
+	if err != nil || position < 1 || token == "" || identity == "" ||
+		len(token) > maximumClickTokenBytes || len(identity) > maximumClickIdentityBytes ||
+		strings.TrimSpace(identity) != identity {
+		http.Error(w, "invalid impression click", http.StatusBadRequest)
+
 		return
 	}
-	rank, _ := strconv.Atoi(r.PostForm.Get("p"))
-	_ = e.recorder.Record(r.Context(), query, target, rank)
+	_ = e.recorder.RecordClick(r.Context(), token, identity, position)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// isHTTPURL reports whether raw is an absolute http(s) URL, so the click store
-// never records relative paths or javascript:/data: schemes beaconed by a
-// misbehaving or hostile client.
-func isHTTPURL(raw string) bool {
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return false
-	}
-
-	return (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
 }

@@ -22,7 +22,14 @@ func themeEventSink(recorder *events.Recorder) portaltheme.EventSink {
 
 type noopThemeEvents struct{}
 
-func (noopThemeEvents) Record(events.Severity, events.Category, string, string) {}
+func (noopThemeEvents) Record(
+	severity events.Severity,
+	category events.Category,
+	name string,
+	message string,
+) {
+	_, _, _, _ = severity, category, name, message
+}
 
 // portalThemeAdmin adapts the portal theme store to the admin console's
 // ThemeStore port, converting the stored document into the console's view.

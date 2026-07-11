@@ -51,6 +51,9 @@ func TestSearcherMapsFieldFeatures(t *testing.T) {
 	if len(resp.Results) != 1 {
 		t.Fatalf("results = %d, want 1", len(resp.Results))
 	}
+	if !index.got.IncludeFieldScores || index.got.Explain {
+		t.Fatalf("ranking evidence request = %#v", index.got)
+	}
 	if resp.Results[0].FieldScores["title"] != 2.5 {
 		t.Errorf("FieldScores not mapped: %v", resp.Results[0].FieldScores)
 	}

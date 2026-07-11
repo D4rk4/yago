@@ -42,6 +42,39 @@ func ParseTextQuery(raw string) ParsedQuery {
 	return parsed
 }
 
+func RequestWithParsedQuery(req Request) Request {
+	if len(req.Terms) != 0 || strings.TrimSpace(req.Query) == "" {
+		return req
+	}
+	parsed := ParseTextQuery(req.Query)
+	req.Query = strings.Join(parsed.Terms, " ")
+	req.Terms = parsed.Terms
+	req.ExcludedTerms = parsed.ExcludedTerms
+	req.Phrases = parsed.Phrases()
+	if req.Language == "" {
+		req.Language = parsed.Language
+	}
+	if req.SiteHost == "" {
+		req.SiteHost = parsed.SiteHost
+	}
+	if req.InURL == "" {
+		req.InURL = parsed.InURL
+	}
+	if req.TLD == "" {
+		req.TLD = parsed.TLD
+	}
+	if req.FileType == "" {
+		req.FileType = parsed.FileType
+	}
+	if req.Author == "" {
+		req.Author = parsed.Author
+	}
+	req.SortByDate = req.SortByDate || parsed.SortByDate
+	req.Near = req.Near || parsed.Near
+
+	return req
+}
+
 func (p *ParsedQuery) addModifier(token string) bool {
 	if strings.HasPrefix(token, `"`) || strings.HasPrefix(token, "'") {
 		return false

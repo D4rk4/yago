@@ -55,7 +55,9 @@ For public search, `resource=local` searches the local full-text index over
 stored documents. `resource=global` searches the local node and performs bounded YaCy
 `/yacy/search.html` fanout to reachable peers selected by the query term hashes'
 YaCy DHT positions, configured redundancy, and configured vertical partition
-exponent. Multi-term remote searches first request YaCy `indexabstract` rows for
+exponent. Every outbound search carries the node's current compact seed in
+`myseed`, which current YaCy peers require before they execute the query.
+Multi-term remote searches first request YaCy `indexabstract` rows for
 each term, intersect the returned URL hashes locally, and then perform bounded
 secondary `urls=` retrieval for the intersected hashes. Peers must have a
 reachable address, advertise remote-index intake, pass the upstream age gate,

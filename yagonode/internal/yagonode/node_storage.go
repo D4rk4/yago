@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/D4rk4/yago/yagonode/internal/contentcluster"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
@@ -23,9 +24,7 @@ func (s nodeStorage) storedDocuments() documentstore.StoredDocuments {
 // documentEvictor exposes the document store's delete side so a URL purge can
 // drop the document alongside the postings and metadata (ADR-0036 B).
 func (s nodeStorage) documentEvictor() documentstore.DocumentEvictor {
-	evictor, _ := s.documentDirectory.(documentstore.DocumentEvictor)
-
-	return evictor
+	return newDocumentLineageEvictor(s)
 }
 
 type nodeStorage struct {
@@ -42,11 +41,13 @@ type nodeStorage struct {
 	outboundPostings  rwi.OutboundPostingStore
 	postingReceiver   rwi.PostingReceiver
 	postingPurger     rwi.PostingPurger
+	contentClusters   *contentcluster.Index
 }
 
 var (
 	openStalenessRanking = urlmetastaleness.Open
 	openDocuments        = documentstore.Open
+	openContentClusters  = contentcluster.Open
 	openSearchIndex      = func(
 		ctx context.Context,
 		path string,
@@ -68,6 +69,10 @@ func openNodeStorage(vault *vault.Vault, searchIndexPath string) (nodeStorage, e
 	documentDirectory, documentReceiver, err := openDocuments(vault)
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("document storage: %w", err)
+	}
+	contentClusters, err := openContentClusters(vault, contentcluster.Limits{})
+	if err != nil {
+		return nodeStorage{}, fmt.Errorf("content clusters: %w", err)
 	}
 
 	searchIndex, err := openSearchIndex(context.Background(), searchIndexPath, documentDirectory)
@@ -123,5 +128,6 @@ func openNodeStorage(vault *vault.Vault, searchIndexPath string) (nodeStorage, e
 		outboundPostings:  outboundPostings,
 		postingReceiver:   postingReceiver,
 		postingPurger:     postingPurger,
+		contentClusters:   contentClusters,
 	}, nil
 }

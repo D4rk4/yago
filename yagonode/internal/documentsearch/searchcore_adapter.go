@@ -207,13 +207,23 @@ func searchCoreResult(
 	}
 	snippet := title
 	contentType := ""
+	safetyRating := searchcore.SafetyUnknown
+	explicitProbability := 0.0
+	safetyConfidence := 0.0
+	clusterID := ""
+	representativeURL := ""
 	if conversion.documents != nil && rawURL != "" {
 		doc, found, err := conversion.documents.Document(conversion.ctx, rawURL)
 		if err != nil {
 			return searchcore.Result{}, fmt.Errorf("document snippet: %w", err)
 		}
 		if found {
+			clusterID = doc.ClusterID
+			representativeURL = doc.RepresentativeURL
 			contentType = doc.ContentType
+			safetyRating = searchcore.SafetyRating(doc.ContentSafety.Rating)
+			explicitProbability = doc.ContentSafety.ExplicitProbability
+			safetyConfidence = doc.ContentSafety.Confidence
 			if doc.Title != "" {
 				title = doc.Title
 			}
@@ -226,21 +236,26 @@ func searchCoreResult(
 	}
 
 	return searchcore.Result{
-		Title:         title,
-		URL:           rawURL,
-		DisplayURL:    displayURL(host, pathValue),
-		Snippet:       snippet,
-		Score:         float64(total - rank),
-		Source:        conversion.req.Source,
-		Host:          host,
-		Path:          pathValue,
-		File:          file,
-		ContentType:   contentType,
-		URLHash:       hash.String(),
-		Size:          metadataSize(row),
-		Date:          row.Freshness(),
-		ContentDomain: conversion.req.ContentDomain,
-		Language:      conversion.req.Language,
+		Title:               title,
+		URL:                 rawURL,
+		ClusterID:           clusterID,
+		RepresentativeURL:   representativeURL,
+		DisplayURL:          displayURL(host, pathValue),
+		Snippet:             snippet,
+		Score:               float64(total - rank),
+		Source:              conversion.req.Source,
+		Host:                host,
+		Path:                pathValue,
+		File:                file,
+		ContentType:         contentType,
+		URLHash:             hash.String(),
+		Size:                metadataSize(row),
+		Date:                row.Freshness(),
+		ContentDomain:       conversion.req.ContentDomain,
+		Language:            conversion.req.Language,
+		SafetyRating:        safetyRating,
+		ExplicitProbability: explicitProbability,
+		SafetyConfidence:    safetyConfidence,
 	}, nil
 }
 
@@ -324,6 +339,12 @@ func newCoreResultMatchers(req searchcore.Request) (coreResultMatchers, error) {
 }
 
 func (m coreResultMatchers) match(result searchcore.Result) bool {
+	if m.req.SafeSearch && (result.SafetyRating == searchcore.SafetyExplicit ||
+		((m.req.ContentDomain == searchcore.ContentDomainImage ||
+			result.ContentDomain == searchcore.ContentDomainImage) &&
+			result.SafetyRating != searchcore.SafetyGeneral)) {
+		return false
+	}
 	if m.urlMask != nil && !m.urlMask.MatchString(result.URL) {
 		return false
 	}

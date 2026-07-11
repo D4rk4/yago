@@ -68,13 +68,15 @@ func TestBleveMemoryIndexRebuildsAndSearchesDocuments(t *testing.T) {
 	index, err := NewBleveMemoryIndex(t.Context(), &fakeStoredDocuments{
 		documents: []documentstore.Document{
 			{
-				NormalizedURL: "https://example.org/go",
-				Title:         "Go Search",
-				Headings:      []string{"Crawler"},
-				ExtractedText: "Golang crawler document body.",
-				Language:      "en",
-				FetchedAt:     fetched,
-				Inlinks:       []documentstore.AnchorText{{Text: "search anchor"}},
+				NormalizedURL:  "https://example.org/go",
+				Title:          "Go Search",
+				Headings:       []string{"Crawler"},
+				ExtractedText:  "Golang crawler document body.",
+				Language:       "en",
+				FetchedAt:      fetched,
+				PublishedAt:    fetched,
+				DateConfidence: 1,
+				Inlinks:        []documentstore.AnchorText{{Text: "search anchor"}},
 				Metadata: map[string]string{
 					"author":    "Ada Lovelace",
 					"keywords":  "go, search",
@@ -135,11 +137,13 @@ func TestBleveMemoryIndexUpdatesDeletesAndFilters(t *testing.T) {
 	index.now = func() time.Time { return time.Date(2026, 7, 2, 11, 0, 0, 0, time.UTC) }
 
 	doc := documentstore.Document{
-		CanonicalURL:  "https://fallback.example/path/file.html",
-		Title:         "Fallback document",
-		ExtractedText: "Needle document text.",
-		Language:      "en",
-		IndexedAt:     time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		CanonicalURL:   "https://fallback.example/path/file.html",
+		Title:          "Fallback document",
+		ExtractedText:  "Needle document text.",
+		Language:       "en",
+		IndexedAt:      time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		PublishedAt:    time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		DateConfidence: 1,
 	}
 	if err := index.Index(t.Context(), doc); err != nil {
 		t.Fatalf("Index: %v", err)
@@ -318,13 +322,76 @@ func TestBleveMemoryIndexHelpers(t *testing.T) {
 	if got := snippet(" \n\t", "fallback"); got != "fallback" {
 		t.Fatalf("snippet fallback = %q", got)
 	}
+	assertDocumentHelpers(t)
 
-	doc := documentstore.Document{
-		NormalizedURL: "%",
-		Title:         "",
-		IndexedAt:     time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC),
+	req := SearchRequest{
+		IncludeDomain: []string{"allowed.example"},
+		ExcludeDomain: []string{"blocked.example"},
+		Language:      "en",
+		Since:         time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC),
+		Until:         time.Date(2026, 7, 3, 0, 0, 0, 0, time.UTC),
 	}
-	if documentHost(doc) != "" || documentTitle(doc) != "%" || documentTime(doc) != doc.IndexedAt {
+	cases := []documentstore.Document{
+		{
+			NormalizedURL:  "https://blocked.example/",
+			Language:       "en",
+			PublishedAt:    req.Since,
+			DateConfidence: 1,
+		},
+		{
+			NormalizedURL:  "https://other.example/",
+			Language:       "en",
+			PublishedAt:    req.Since,
+			DateConfidence: 1,
+		},
+		{
+			NormalizedURL:  "https://allowed.example/",
+			Language:       "fr",
+			PublishedAt:    req.Since,
+			DateConfidence: 1,
+		},
+		{
+			NormalizedURL:  "https://allowed.example/",
+			Language:       "en",
+			PublishedAt:    req.Since.Add(-time.Second),
+			DateConfidence: 1,
+		},
+		{
+			NormalizedURL:  "https://allowed.example/",
+			Language:       "en",
+			PublishedAt:    req.Until.Add(time.Second),
+			DateConfidence: 1,
+		},
+	}
+	for _, doc := range cases {
+		if allowsDocument(doc, req) {
+			t.Fatalf("document should be rejected: %#v", doc)
+		}
+	}
+	if !allowsDocument(
+		documentstore.Document{
+			NormalizedURL:  "https://allowed.example/",
+			Language:       "en",
+			PublishedAt:    req.Since,
+			DateConfidence: 1,
+		},
+		req,
+	) {
+		t.Fatal("document should be allowed")
+	}
+}
+
+func assertDocumentHelpers(t *testing.T) {
+	t.Helper()
+	doc := documentstore.Document{
+		NormalizedURL:  "%",
+		Title:          "",
+		IndexedAt:      time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC),
+		PublishedAt:    time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC),
+		DateConfidence: 1,
+	}
+	if documentHost(doc) != "" || documentTitle(doc) != "%" ||
+		documentTime(doc) != doc.PublishedAt {
 		t.Fatalf(
 			"helper values host=%q title=%q time=%v",
 			documentHost(doc),
@@ -337,44 +404,6 @@ func TestBleveMemoryIndexHelpers(t *testing.T) {
 	}
 	if !domainMatches("docs.example.org", ".example.org.") {
 		t.Fatal("suffix domain match should be true")
-	}
-
-	req := SearchRequest{
-		IncludeDomain: []string{"allowed.example"},
-		ExcludeDomain: []string{"blocked.example"},
-		Language:      "en",
-		Since:         time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC),
-		Until:         time.Date(2026, 7, 3, 0, 0, 0, 0, time.UTC),
-	}
-	cases := []documentstore.Document{
-		{NormalizedURL: "https://blocked.example/", Language: "en", FetchedAt: req.Since},
-		{NormalizedURL: "https://other.example/", Language: "en", FetchedAt: req.Since},
-		{NormalizedURL: "https://allowed.example/", Language: "fr", FetchedAt: req.Since},
-		{
-			NormalizedURL: "https://allowed.example/",
-			Language:      "en",
-			FetchedAt:     req.Since.Add(-time.Second),
-		},
-		{
-			NormalizedURL: "https://allowed.example/",
-			Language:      "en",
-			FetchedAt:     req.Until.Add(time.Second),
-		},
-	}
-	for _, doc := range cases {
-		if allowsDocument(doc, req) {
-			t.Fatalf("document should be rejected: %#v", doc)
-		}
-	}
-	if !allowsDocument(
-		documentstore.Document{
-			NormalizedURL: "https://allowed.example/",
-			Language:      "en",
-			FetchedAt:     req.Since,
-		},
-		req,
-	) {
-		t.Fatal("document should be allowed")
 	}
 }
 

@@ -14,7 +14,6 @@ import (
 	"github.com/blevesearch/bleve/v2/search"
 	blevequery "github.com/blevesearch/bleve/v2/search/query"
 
-	"github.com/D4rk4/yago/yagonode/internal/contentprior"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/filetypeclass"
 )
@@ -160,7 +159,7 @@ func (b *BleveMemoryIndex) Search(
 
 	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req, b.gram, b.multilingual))
 	searchRequest.Size = len(b.documents)
-	searchRequest.Explain = req.Explain
+	searchRequest.Explain = req.Explain || req.IncludeFieldScores
 	searchRequest.IncludeLocations = req.IncludePositions
 	result, err := b.index.SearchInContext(ctx, searchRequest)
 	if err != nil {
@@ -213,9 +212,12 @@ func bleveSearchQuery(req SearchRequest, gram bool, multilingual bool) blevequer
 	}
 	primary := analyzers[0]
 	var main blevequery.Query
-	if req.Fuzzy {
+	switch {
+	case req.Fuzzy:
 		main = fuzzyRecoveryQuery(req, gram, analyzers, weights)
-	} else {
+	case req.MinimumTermMatches > 0:
+		main = minimumTermsQuery(req, analyzers, weights)
+	default:
 		// The precise path requires every query word somewhere in the document,
 		// matching YaCy's all-words RWI join; expansion terms only reorder.
 		main = requiredTermsQuery(req, analyzers, weights)
@@ -379,26 +381,40 @@ func searchResultFromDocument(
 	if req.IncludeRaw {
 		rawContent = doc.ExtractedText
 	}
+	published, dateConfidence := documentstore.PublicationDate(doc)
 
 	return SearchResult{
-		DocumentID:         hit.ID,
-		Title:              documentTitle(doc),
-		URL:                documentURL(doc),
-		Snippet:            queryBiasedSnippet(doc.ExtractedText, req.Terms, documentTitle(doc)),
-		RawContent:         rawContent,
-		Score:              hit.Score,
-		Explanation:        hitExplanation(req, hit),
-		Quality:            contentprior.Score(doc.ExtractedText),
-		Proximity:          unorderedProximity(doc.ExtractedText, req.Terms),
-		FieldScores:        hitFieldScores(req, hit),
-		FieldTermPositions: hitFieldTermPositions(req, hit),
-		PublishedDate:      documentTime(doc),
-		Author:             doc.Metadata["author"],
-		Keywords:           doc.Metadata["keywords"],
-		Publisher:          doc.Metadata["publisher"],
-		ContentType:        doc.ContentType,
-		Size:               len(doc.ExtractedText),
-		Images:             resultImages(doc, req),
+		DocumentID:           hit.ID,
+		ClusterID:            doc.ClusterID,
+		RepresentativeURL:    doc.RepresentativeURL,
+		Title:                documentTitle(doc),
+		URL:                  documentURL(doc),
+		Snippet:              queryBiasedSnippet(doc.ExtractedText, req.Terms, documentTitle(doc)),
+		RawContent:           rawContent,
+		Score:                hit.Score,
+		Explanation:          hitExplanation(req, hit),
+		Quality:              doc.ContentQuality.Score,
+		QualityKnown:         doc.ContentQuality.Known,
+		SpamRisk:             doc.ContentQuality.SpamRisk,
+		FunctionWordFraction: doc.ContentQuality.FunctionWordFraction,
+		SymbolFraction:       doc.ContentQuality.SymbolFraction,
+		AlphabeticFraction:   doc.ContentQuality.AlphabeticFraction,
+		UniqueTokenFraction:  doc.ContentQuality.UniqueTokenFraction,
+		SafetyRating:         doc.ContentSafety.Rating,
+		ExplicitProbability:  doc.ContentSafety.ExplicitProbability,
+		SafetyConfidence:     doc.ContentSafety.Confidence,
+		Proximity:            unorderedProximity(doc.ExtractedText, req.Terms),
+		OrderedProximity:     orderedProximity(doc.ExtractedText, req.Terms),
+		FieldScores:          hitFieldScores(req, hit),
+		FieldTermPositions:   hitFieldTermPositions(req, hit),
+		PublishedDate:        published,
+		DateConfidence:       dateConfidence,
+		Author:               doc.Metadata["author"],
+		Keywords:             doc.Metadata["keywords"],
+		Publisher:            doc.Metadata["publisher"],
+		ContentType:          doc.ContentType,
+		Size:                 len(doc.ExtractedText),
+		Images:               resultImages(doc, req),
 	}
 }
 
@@ -412,6 +428,23 @@ func hitExplanation(req SearchRequest, hit *search.DocumentMatch) string {
 
 func allowsDocument(doc documentstore.Document, req SearchRequest) bool {
 	host := documentHost(doc)
+	if !allowsDocumentSource(doc, req, host) {
+		return false
+	}
+	if !allowsDocumentPublication(doc, req) {
+		return false
+	}
+	if !allowsDocumentAttributes(doc, req) {
+		return false
+	}
+
+	return allowsDocumentLocation(doc, req, host)
+}
+
+func allowsDocumentSource(doc documentstore.Document, req SearchRequest, host string) bool {
+	if req.SafeSearch && !allowsSafeDocument(doc, req.ContentDomain) {
+		return false
+	}
 	if excludedDomain(host, req.ExcludeDomain) {
 		return false
 	}
@@ -421,6 +454,11 @@ func allowsDocument(doc documentstore.Document, req SearchRequest) bool {
 	if req.Language != "" && !strings.EqualFold(doc.Language, req.Language) {
 		return false
 	}
+
+	return true
+}
+
+func allowsDocumentPublication(doc documentstore.Document, req SearchRequest) bool {
 	published := documentTime(doc)
 	if !req.Since.IsZero() && published.Before(req.Since) {
 		return false
@@ -428,6 +466,11 @@ func allowsDocument(doc documentstore.Document, req SearchRequest) bool {
 	if !req.Until.IsZero() && published.After(req.Until) {
 		return false
 	}
+
+	return true
+}
+
+func allowsDocumentAttributes(doc documentstore.Document, req SearchRequest) bool {
 	if req.Author != "" &&
 		!strings.Contains(
 			strings.ToLower(doc.Metadata["author"]),
@@ -441,6 +484,11 @@ func allowsDocument(doc documentstore.Document, req SearchRequest) bool {
 	if !allowsContentDomain(doc, req.ContentDomain) {
 		return false
 	}
+
+	return true
+}
+
+func allowsDocumentLocation(doc documentstore.Document, req SearchRequest, host string) bool {
 	if req.FileType != "" &&
 		!filetypeclass.Matches(documentURL(doc), doc.ContentType, req.FileType) {
 		return false
@@ -452,7 +500,15 @@ func allowsDocument(doc documentstore.Document, req SearchRequest) bool {
 	if req.TLD != "" && !hostMatchesTLD(host, req.TLD) {
 		return false
 	}
-	if !allowsDocumentDate(doc, req) {
+	return allowsDocumentDate(doc, req)
+}
+
+func allowsSafeDocument(doc documentstore.Document, contentDomain string) bool {
+	if doc.ContentSafety.Rating == documentstore.SafetyExplicit {
+		return false
+	}
+	if strings.EqualFold(contentDomain, "image") &&
+		doc.ContentSafety.Rating == documentstore.SafetyUnknown {
 		return false
 	}
 
@@ -555,11 +611,9 @@ func documentHost(doc documentstore.Document) string {
 }
 
 func documentTime(doc documentstore.Document) time.Time {
-	if !doc.FetchedAt.IsZero() {
-		return doc.FetchedAt
-	}
+	published, _ := documentstore.PublicationDate(doc)
 
-	return doc.IndexedAt
+	return published
 }
 
 // resultImages surfaces the document's extracted images for the image vertical;
@@ -582,6 +636,9 @@ func resultImages(doc documentstore.Document, req SearchRequest) []ResultImage {
 func anchorTexts(anchors []documentstore.AnchorText) []string {
 	out := make([]string, 0, len(anchors))
 	for _, anchor := range anchors {
+		if anchor.NoFollow || anchor.UserGenerated || anchor.Sponsored || anchor.Text == "" {
+			continue
+		}
 		out = append(out, anchor.Text)
 	}
 

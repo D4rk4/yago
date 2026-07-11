@@ -41,7 +41,7 @@ func Mount(
 		search:       search,
 		suggestions:  suggestions,
 		newTab:       linksNewTab,
-		clickCapture: clicks.Enabled && clicks.Recorder != nil,
+		clickCapture: enabledImpressionRecorder(clicks),
 	})
 	mux.Handle(yagoproto.PathOpenSearch, openSearchEndpoint{})
 	mux.Handle(yagoproto.PathSuggestJSON, suggestEndpoint{index: index, suggestions: suggestions})
@@ -49,6 +49,14 @@ func Mount(
 	if clicks.Enabled && clicks.Recorder != nil {
 		mux.Handle(pathSearchClick, clickEndpoint{recorder: clicks.Recorder})
 	}
+}
+
+func enabledImpressionRecorder(clicks ClickCapture) ImpressionRecorder {
+	if !clicks.Enabled {
+		return nil
+	}
+
+	return clicks.Recorder
 }
 
 func (e jsonEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {

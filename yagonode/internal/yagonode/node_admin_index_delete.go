@@ -34,11 +34,9 @@ type indexAdminController struct {
 }
 
 func newIndexAdminController(storage nodeStorage, v *vault.Vault) *indexAdminController {
-	deleter, _ := storage.documentDirectory.(documentstore.DocumentEvictor)
-
 	return &indexAdminController{
 		index:     storage.searchIndex,
-		documents: deleter,
+		documents: storage.documentEvictor(),
 		stored:    storage.storedDocuments(),
 		evictor: eviction.NewEvictor(
 			// Documents are dropped explicitly by deleteOne here, so the evictor

@@ -296,6 +296,9 @@ func TestAssembleNodeSurfacesStoreOpenErrors(t *testing.T) {
 	}{
 		{"judgments", "search_judgments"},
 		{"clicks", "search_clicks"},
+		{"ranking models", "ranking_models"},
+		{"content safety models", "content_safety_model"},
+		{"peer reputation", "peer_reputation"},
 		{"schedules", "crawl_schedules"},
 	}
 	for _, tc := range cases {

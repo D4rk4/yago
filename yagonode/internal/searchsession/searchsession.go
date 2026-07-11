@@ -9,8 +9,8 @@ package searchsession
 import (
 	"container/list"
 	"context"
+	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -160,17 +160,9 @@ func (e *session) respond(req searchcore.Request) searchcore.Response {
 // sessionKey canonicalizes every request field that changes the result set;
 // paging fields stay out so all pages of one query share a session.
 func sessionKey(req searchcore.Request) string {
-	var key strings.Builder
-	fmt.Fprintf(&key, "%s|%s|%s|%s|", req.Query, req.Source, req.ContentDomain, req.Language)
-	fmt.Fprintf(&key, "%s|%s|%s|%s|%s|", req.SiteHost, req.InURL, req.TLD, req.FileType, req.Author)
-	fmt.Fprintf(&key, "%s|%s|%s|", req.URLMaskFilter, req.PreferMaskFilter, req.Navigation)
-	fmt.Fprintf(&key, "%v|%v|%v|%v|", req.SortByDate, req.Near, req.Fuzzy, req.AllowWebFallback)
-	fmt.Fprintf(&key, "%d|%d|", req.MinDate.Unix(), req.MaxDate.Unix())
-	fmt.Fprintf(&key, "%s|%s|%s",
-		strings.Join(req.Terms, " "),
-		strings.Join(req.ExcludedTerms, " "),
-		strings.Join(req.Phrases, " "),
-	)
+	req.Offset = 0
+	req.Limit = 0
+	encoded, _ := json.Marshal(req)
 
-	return key.String()
+	return string(encoded)
 }

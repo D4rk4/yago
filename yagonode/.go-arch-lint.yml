@@ -26,6 +26,8 @@ components:
     in: internal/peerbirth/**
   peeridentity:
     in: internal/peeridentity/**
+  peerreputation:
+    in: internal/peerreputation/**
   peernews:
     in: internal/peernews/**
   transfertally:
@@ -104,10 +106,14 @@ components:
     in: internal/searchcore/**
   stopwords:
     in: internal/stopwords/**
-  neardup:
-    in: internal/neardup/**
+  contentcluster:
+    in: internal/contentcluster/**
   contentquality:
     in: internal/contentquality/**
+  contentsafety:
+    in: internal/contentsafety/**
+  safetymodel:
+    in: internal/safetymodel/**
   contentprior:
     in: internal/contentprior/**
   snippetfetch:
@@ -132,6 +138,12 @@ components:
     in: internal/rankingprofile/**
   rankfit:
     in: internal/rankfit/**
+  learnedrank:
+    in: internal/learnedrank/**
+  rankingmodel:
+    in: internal/rankingmodel/**
+  rankingtrain:
+    in: internal/rankingtrain/**
   recrawlfrontier:
     in: internal/recrawlfrontier/**
   searchremote:
@@ -312,6 +324,12 @@ deps:
       - vault
     canUse:
       - yagomodel
+  peerreputation:
+    mayDependOn:
+      - peerreputation
+      - vault
+      - memvault
+      - boltvault
   peernews:
     mayDependOn:
       - peernews
@@ -510,18 +528,30 @@ deps:
     canUse:
       - yagomodel
       - yagoproto
+  safetymodel:
+    mayDependOn:
+      - safetymodel
+      - contentsafety
+      - vault
+      - memvault
+      - boltvault
   searchcore:
     mayDependOn:
       - searchcore
       - stopwords
-  neardup:
+  contentcluster:
     mayDependOn:
-      - neardup
-      - stopwords
+      - contentcluster
+      - vault
+      - memvault
+      - boltvault
   contentquality:
     mayDependOn:
       - contentquality
       - stopwords
+  contentsafety:
+    mayDependOn:
+      - contentsafety
   contentprior:
     mayDependOn:
       - contentprior
@@ -582,6 +612,27 @@ deps:
       - searchcore
       - searcheval
       - searchindex
+  learnedrank:
+    mayDependOn:
+      - learnedrank
+      - rankfit
+      - searchcore
+  rankingmodel:
+    mayDependOn:
+      - rankingmodel
+      - learnedrank
+      - rankfit
+      - searchcore
+      - vault
+      - memvault
+      - boltvault
+  rankingtrain:
+    mayDependOn:
+      - rankingtrain
+      - learnedrank
+      - rankfit
+      - searchcore
+      - searcheval
   portaltheme:
     mayDependOn:
       - portaltheme
@@ -632,6 +683,7 @@ deps:
       - stopwords
       - dhttarget
       - tracectx
+      - peerreputation
     canUse:
       - yagomodel
       - yagoproto
@@ -694,6 +746,8 @@ deps:
   hostrank:
     mayDependOn:
       - hostrank
+    canUse:
+      - xnet
   spellcheck:
     mayDependOn:
       - spellcheck
@@ -730,8 +784,11 @@ deps:
   crawlresults:
     mayDependOn:
       - crawlresults
+      - contentcluster
+      - contentprior
+      - contentsafety
       - documentstore
-      - neardup
+      - memvault
       - searchindex
       - urlmeta
       - rwi
@@ -771,7 +828,7 @@ deps:
       - yagoproto
   yagonode:
     mayDependOn:
-      - neardup
+      - contentcluster
       - tracectx
       - redirectpurge
       - publicrobots
@@ -788,6 +845,7 @@ deps:
       - peeradmission
       - peerbirth
       - peeridentity
+      - peerreputation
       - peerroster
       - peerannouncement
       - hostlinks
@@ -847,6 +905,11 @@ deps:
       - clickcapture
       - rankfit
       - searcheval
+      - learnedrank
+      - rankingmodel
+      - rankingtrain
+      - safetymodel
+      - contentsafety
       - searchremote
       - rankingprofile
       - tavilyapi

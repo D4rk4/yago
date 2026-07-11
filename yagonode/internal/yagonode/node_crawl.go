@@ -16,7 +16,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/crawlruns"
 	"github.com/D4rk4/yago/yagonode/internal/eviction"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
-	"github.com/D4rk4/yago/yagonode/internal/neardup"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/recrawlfrontier"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -77,7 +76,7 @@ func buildCrawlRuntime(
 	)
 	consumer.RecordFetches(frontier)
 	consumer.CheckOwnership(frontier)
-	consumer.CollapseNearDuplicates(neardup.NewWindow(0))
+	consumer.TrackContentClusters(storage.contentClusters)
 	evictor := eviction.NewEvictor(
 		storageVault, storage.postingPurger, storage.references, storage.urlEvictor,
 		storage.documentEvictor(), storage.urlDirectory,
@@ -115,6 +114,24 @@ func (r *crawlRuntime) mountDispatch(mux *http.ServeMux) {
 
 func (r *crawlRuntime) observe(observer crawlresults.IngestObserver) {
 	r.consumer.Observe(observer)
+}
+
+func (r *crawlRuntime) useContentSafetyClassifier(
+	classifier crawlresults.ContentSafetyClassifier,
+) {
+	r.consumer.UseContentSafetyClassifier(classifier)
+}
+
+func attachContentSafetyClassifier(
+	runtime crawlProcess,
+	classifier crawlresults.ContentSafetyClassifier,
+) {
+	consumer, ok := runtime.(interface {
+		useContentSafetyClassifier(crawlresults.ContentSafetyClassifier)
+	})
+	if ok {
+		consumer.useContentSafetyClassifier(classifier)
+	}
 }
 
 func (r *crawlRuntime) orderQueue() crawldispatch.CrawlOrderQueue {

@@ -13,20 +13,25 @@ import (
 )
 
 type scriptedDocumentEngine struct {
-	buckets   map[vault.Name]map[string][]byte
-	putErrors map[vault.Name]error
-	delErrors map[vault.Name]error
+	buckets         map[vault.Name]map[string][]byte
+	provisionErrors map[vault.Name]error
+	putErrors       map[vault.Name]error
+	delErrors       map[vault.Name]error
 }
 
 func newScriptedDocumentEngine() *scriptedDocumentEngine {
 	return &scriptedDocumentEngine{
-		buckets:   map[vault.Name]map[string][]byte{},
-		putErrors: map[vault.Name]error{},
-		delErrors: map[vault.Name]error{},
+		buckets:         map[vault.Name]map[string][]byte{},
+		provisionErrors: map[vault.Name]error{},
+		putErrors:       map[vault.Name]error{},
+		delErrors:       map[vault.Name]error{},
 	}
 }
 
 func (e *scriptedDocumentEngine) Provision(name vault.Name) error {
+	if err := e.provisionErrors[name]; err != nil {
+		return err
+	}
 	if e.buckets[name] == nil {
 		e.buckets[name] = map[string][]byte{}
 	}
@@ -190,6 +195,10 @@ func TestReceiveStoresDocument(t *testing.T) {
 	if receipt.Stored != 1 || receipt.Updated != 0 || receipt.Rejected != 0 {
 		t.Fatalf("receipt = %#v", receipt)
 	}
+	if len(receipt.CommittedDocuments) != 1 ||
+		receipt.CommittedDocuments[0].Title != doc.Title {
+		t.Fatalf("committed documents = %#v", receipt.CommittedDocuments)
+	}
 
 	got, ok, err := directory.Document(context.Background(), doc.NormalizedURL)
 	if err != nil {
@@ -210,8 +219,14 @@ func TestReceiveDefaultsCanonicalURLAndCopiesValues(t *testing.T) {
 		Headings:      []string{"Heading"},
 		Outlinks:      []string{"https://example.org/a"},
 		Inlinks:       []AnchorText{{URL: "https://example.org/from", Text: "anchor"}},
-		Images:        []ImageMetadata{{URL: "https://example.org/image.png", AltText: "image"}},
-		Metadata:      map[string]string{"url_hash": "abc"},
+		OutboundAnchors: []OutboundAnchor{{
+			TargetURL: "https://example.org/target", Text: "target",
+		}},
+		OutboundAnchorEvidenceKnown: true,
+		Images: []ImageMetadata{
+			{URL: "https://example.org/image.png", AltText: "image"},
+		},
+		Metadata: map[string]string{"url_hash": "abc"},
 	}
 
 	if _, err := receiver.Receive(context.Background(), []Document{doc}); err != nil {
@@ -220,6 +235,7 @@ func TestReceiveDefaultsCanonicalURLAndCopiesValues(t *testing.T) {
 	doc.Headings[0] = "Changed"
 	doc.Outlinks[0] = "https://changed.example/"
 	doc.Inlinks[0].Text = "changed"
+	doc.OutboundAnchors[0].Text = "changed"
 	doc.Images[0].AltText = "changed"
 	doc.Metadata["url_hash"] = "changed"
 
@@ -235,6 +251,7 @@ func TestReceiveDefaultsCanonicalURLAndCopiesValues(t *testing.T) {
 	}
 	if got.Headings[0] != "Heading" || got.Outlinks[0] != "https://example.org/a" ||
 		got.Inlinks[0].Text != "anchor" || got.Images[0].AltText != "image" ||
+		got.OutboundAnchors[0].Text != "target" || !got.OutboundAnchorEvidenceKnown ||
 		got.Metadata["url_hash"] != "abc" {
 		t.Fatalf("document retained caller mutation: %#v", got)
 	}
@@ -246,8 +263,86 @@ func TestReceiveNoopsWithoutDocuments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("receive: %v", err)
 	}
-	if receipt != (Receipt{}) {
+	if receipt.Busy || receipt.Stored != 0 || receipt.Updated != 0 ||
+		receipt.Rejected != 0 || len(receipt.CommittedDocuments) != 0 {
 		t.Fatalf("receipt = %#v", receipt)
+	}
+}
+
+func TestCanonicalDocumentsMergePersistedEvidenceWithoutWriting(t *testing.T) {
+	directory, receiver := openDocuments(t)
+	url := "https://target.example/"
+	if _, err := receiver.Receive(t.Context(), []Document{{
+		NormalizedURL: url,
+		Title:         "stored",
+		ContentHash:   "same",
+	}}); err != nil {
+		t.Fatalf("seed document: %v", err)
+	}
+	if _, err := anchorReceiver(t, receiver).ReplaceOutboundAnchors(
+		t.Context(),
+		[]OutboundAnchorSet{{
+			SourceURL: "https://source.example/",
+			Anchors:   []OutboundAnchor{{TargetURL: url, Text: "trusted"}},
+		}},
+	); err != nil {
+		t.Fatalf("seed inbound anchor: %v", err)
+	}
+
+	canonical := receiver.(CanonicalDocumentDirectory)
+	docs, err := canonical.CanonicalDocuments(t.Context(), []Document{
+		{NormalizedURL: url, Title: "incoming", ContentHash: "same"},
+		{Title: "rejected"},
+	})
+	if err != nil || len(docs) != 1 || docs[0].Title != "incoming" ||
+		len(docs[0].Inlinks) != 1 || docs[0].Inlinks[0].Text != "trusted" {
+		t.Fatalf("canonical documents = %#v, %v", docs, err)
+	}
+	stored, found, err := directory.Document(t.Context(), url)
+	if err != nil || !found || stored.Title != "stored" {
+		t.Fatalf("stored document = %#v, %v, %v", stored, found, err)
+	}
+}
+
+func TestCanonicalDocumentsSurfaceContextAndVaultFailures(t *testing.T) {
+	v, _, receiver := openDocumentsWithVault(t, 0)
+	canonical := receiver.(CanonicalDocumentDirectory)
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := canonical.CanonicalDocuments(cancelled, []Document{{
+		NormalizedURL: "https://example.org/",
+	}}); err == nil {
+		t.Fatal("cancelled canonicalization succeeded")
+	}
+	delayed := &errAfterContext{
+		Context:   context.Background(),
+		remaining: 2,
+		err:       context.Canceled,
+	}
+	if _, err := canonical.CanonicalDocuments(delayed, []Document{{
+		NormalizedURL: "https://example.org/",
+	}}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("delayed cancellation = %v", err)
+	}
+	if err := v.Close(); err != nil {
+		t.Fatalf("close vault: %v", err)
+	}
+	if _, err := canonical.CanonicalDocuments(t.Context(), []Document{{
+		NormalizedURL: "https://example.org/",
+	}}); err == nil {
+		t.Fatal("closed vault canonicalization succeeded")
+	}
+}
+
+func TestCanonicalDocumentsSurfaceStoredDecodeFailure(t *testing.T) {
+	_, receiver, engine := openScriptedDocuments(t)
+	url := "https://example.org/"
+	engine.buckets[bucketName][url] = []byte("invalid")
+	canonical := receiver.(CanonicalDocumentDirectory)
+	if _, err := canonical.CanonicalDocuments(t.Context(), []Document{{
+		NormalizedURL: url,
+	}}); err == nil {
+		t.Fatal("invalid stored document canonicalization succeeded")
 	}
 }
 

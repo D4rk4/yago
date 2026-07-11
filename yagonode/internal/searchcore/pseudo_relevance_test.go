@@ -43,7 +43,7 @@ func TestPseudoRelevanceExpandsThinRecallQuery(t *testing.T) {
 		{URL: "3", Title: "alpha", Snippet: "unrelated words here totally"},
 	}}
 	second := Response{Results: []Result{
-		{URL: "1", Title: "alpha", Snippet: "montenegro balkan travel"},
+		{URL: "1", Title: "alpha", Snippet: "montenegro balkan travel", Score: 7.5},
 		{URL: "4", Title: "montenegro facts", Snippet: "expanded recall hit"},
 	}}
 	inner := &scriptedSearcher{responses: []Response{first, second}}
@@ -74,6 +74,17 @@ func TestPseudoRelevanceExpandsThinRecallQuery(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expanded recall hit missing: %v", urls(resp.Results))
+	}
+	for _, result := range resp.Results {
+		if result.URL != "1" {
+			continue
+		}
+		if rank, known := result.Evidence.Value(SignalFeedbackRank); !known || rank != 1 {
+			t.Fatalf("feedback rank = %v/%v", rank, known)
+		}
+		if score, known := result.Evidence.Value(SignalFeedbackScore); !known || score != 7.5 {
+			t.Fatalf("feedback score = %v/%v", score, known)
+		}
 	}
 }
 
@@ -142,42 +153,42 @@ func TestPseudoRelevanceFirstPassErrorPropagates(t *testing.T) {
 
 func TestMinePseudoRelevanceTerms(t *testing.T) {
 	results := []Result{
-		{Title: "montenegro travel", Snippet: "balkan montenegro coast"},
-		{Title: "montenegro guide", Snippet: "balkan beaches"},
-		{Title: "other", Snippet: "montenegro balkan"},
+		{URL: "one", Title: "montenegro travel", Snippet: "balkan montenegro coast"},
+		{URL: "two", Title: "montenegro guide", Snippet: "balkan beaches"},
+		{URL: "three", Title: "other", Snippet: "montenegro balkan"},
 	}
 	// "montenegro" and "balkan" appear in >=2 docs; the query term and stopwords
 	// are excluded; "coast"/"beaches" appear once and drop out.
-	got := minePseudoRelevanceTerms(results, []string{"travel"})
+	got := minePseudoRelevanceTerms(results, []string{"travel"}, nil)
 	if len(got) != 2 || got[0] != "montenegro" || got[1] != "balkan" {
 		t.Fatalf("expansion terms = %v, want [montenegro balkan]", got)
 	}
 
 	// The query term is never re-added, short tokens and stopwords are dropped.
 	filtered := minePseudoRelevanceTerms([]Result{
-		{Snippet: "the and для montenegro"},
-		{Snippet: "the montenegro cat"},
-	}, []string{"cat"})
+		{URL: "one", Snippet: "the and для montenegro"},
+		{URL: "two", Snippet: "the montenegro cat"},
+	}, []string{"cat"}, nil)
 	if len(filtered) != 1 || filtered[0] != "montenegro" {
 		t.Fatalf("filtered expansion = %v, want [montenegro]", filtered)
 	}
 
 	// Higher document frequency ranks ahead of lower, independent of total count.
 	byDocFreq := minePseudoRelevanceTerms([]Result{
-		{Snippet: "montenegro balkan"},
-		{Snippet: "montenegro balkan"},
-		{Snippet: "montenegro coast beaches"},
-	}, nil)
+		{URL: "one", Snippet: "montenegro balkan"},
+		{URL: "two", Snippet: "montenegro balkan"},
+		{URL: "three", Snippet: "montenegro coast beaches"},
+	}, nil, nil)
 	if len(byDocFreq) != 2 || byDocFreq[0] != "montenegro" || byDocFreq[1] != "balkan" {
 		t.Fatalf("doc-frequency order = %v, want [montenegro balkan]", byDocFreq)
 	}
 
 	// The expansion cap bounds how many terms are returned.
 	crowded := []Result{
-		{Snippet: "aaaa bbbb cccc dddd eeee"},
-		{Snippet: "aaaa bbbb cccc dddd eeee"},
+		{URL: "one", Snippet: "aaaa bbbb cccc dddd eeee"},
+		{URL: "two", Snippet: "aaaa bbbb cccc dddd eeee"},
 	}
-	if got := minePseudoRelevanceTerms(crowded, nil); len(got) != prfExpansionTerms {
+	if got := minePseudoRelevanceTerms(crowded, nil, nil); len(got) != prfExpansionTerms {
 		t.Fatalf("expansion not capped: %v", got)
 	}
 }

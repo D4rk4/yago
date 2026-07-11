@@ -122,16 +122,67 @@ func TestSearchEndpointReturnsTavilyShape(t *testing.T) {
 	assertRichSearchResponse(t, decodeSearchResponse(t, rec), search, documents)
 }
 
+func TestSearchEndpointSafeSearchImagesRequireGeneralEvidence(t *testing.T) {
+	tests := []struct {
+		name       string
+		rating     searchcore.SafetyRating
+		wantImages int
+	}{
+		{name: "unknown", rating: searchcore.SafetyUnknown},
+		{name: "general", rating: searchcore.SafetyGeneral, wantImages: 1},
+		{name: "explicit", rating: searchcore.SafetyExplicit},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resultURL := "https://example.org/document"
+			search := &fakeSearcher{response: searchcore.Response{Results: []searchcore.Result{{
+				Title: "Title", URL: resultURL, Snippet: "Content", SafetyRating: test.rating,
+			}}}}
+			documents := &fakeDocuments{rows: map[string]documentstore.Document{
+				resultURL: {Images: []documentstore.ImageMetadata{{
+					URL: "https://example.org/image.png", AltText: "Image",
+				}}},
+			}}
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequestWithContext(
+				t.Context(),
+				http.MethodPost,
+				PathSearch,
+				strings.NewReader(`{"query":"topic","safe_search":true,"include_images":true}`),
+			)
+			req.Header.Set("Authorization", "Bearer "+searchTestKey)
+			newTestSearchEndpoint(search, documents).ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+			}
+			got := decodeSearchResponse(t, rec)
+			if len(got.Results) != 1 || len(got.Results[0].Images) != test.wantImages {
+				t.Fatalf("results = %#v, want %d images", got.Results, test.wantImages)
+			}
+			encodedImages, err := json.Marshal(got.Images)
+			if err != nil {
+				t.Fatalf("marshal images: %v", err)
+			}
+			var topImages []string
+			if err := json.Unmarshal(encodedImages, &topImages); err != nil ||
+				len(topImages) != test.wantImages {
+				t.Fatalf("top-level images = %#v, want %d (%v)", got.Images, test.wantImages, err)
+			}
+		})
+	}
+}
+
 func richSearchEndpoint() (searchEndpoint, *fakeSearcher, *fakeDocuments) {
 	search := &fakeSearcher{response: searchcore.Response{
 		Results: []searchcore.Result{
 			{
-				Title:   "Metadata title",
-				URL:     "https://example.org/doc",
-				Snippet: "metadata snippet",
-				Score:   9.5,
-				Host:    "example.org",
-				Date:    "2026-07-02",
+				Title:        "Metadata title",
+				URL:          "https://example.org/doc",
+				Snippet:      "metadata snippet",
+				Score:        9.5,
+				Host:         "example.org",
+				Date:         "2026-07-02",
+				SafetyRating: searchcore.SafetyGeneral,
 			},
 			{
 				Title:   "Excluded",
@@ -207,6 +258,7 @@ func assertRichSearchResponse(
 	}
 	if search.got.Source != searchcore.SourceGlobal ||
 		search.got.Limit != 2 ||
+		!search.got.SafeSearch ||
 		search.got.SiteHost != "example.org" ||
 		search.got.ContentDomain != searchcore.ContentDomainText ||
 		documents.got != "https://example.org/doc" {

@@ -22,11 +22,11 @@ func TestFreshnessPriorLiftsRecentDocuments(t *testing.T) {
 		Results: []searchindex.SearchResult{
 			{
 				Title: "Stale", URL: "https://a.example/deep/old/page", Score: 1.0,
-				PublishedDate: mustDate(t, stale),
+				PublishedDate: mustDate(t, stale), DateConfidence: 1,
 			},
 			{
 				Title: "Fresh", URL: "https://b.example/deep/new/page", Score: 1.0,
-				PublishedDate: mustDate(t, fresh),
+				PublishedDate: mustDate(t, fresh), DateConfidence: 1,
 			},
 			{Title: "Undated", URL: "https://c.example/deep/nodate/page", Score: 1.0},
 		},
@@ -61,10 +61,11 @@ func TestFreshnessPriorClampsFutureDates(t *testing.T) {
 		Total: 1,
 		Results: []searchindex.SearchResult{
 			{
-				Title:         "Future",
-				URL:           "https://a.example/p",
-				Score:         1.0,
-				PublishedDate: mustDate(t, future),
+				Title:          "Future",
+				URL:            "https://a.example/p",
+				Score:          1.0,
+				PublishedDate:  mustDate(t, future),
+				DateConfidence: 1,
 			},
 		},
 	}}
@@ -82,6 +83,37 @@ func TestFreshnessPriorClampsFutureDates(t *testing.T) {
 	}
 	if resp.Results[0].Score <= 1.0 {
 		t.Fatalf("future date must earn the full freshness bonus: %v", resp.Results[0].Score)
+	}
+}
+
+func TestFreshnessPriorUsesDateConfidence(t *testing.T) {
+	published := time.Now().AddDate(0, 0, -1)
+	index := &fakeIndex{response: searchindex.SearchResultSet{
+		Total: 2,
+		Results: []searchindex.SearchResult{
+			{
+				Title: "Uncertain", URL: "https://a.example/page", Score: 1,
+				PublishedDate: published, DateConfidence: 0.5,
+			},
+			{
+				Title: "Certain", URL: "https://b.example/page", Score: 1,
+				PublishedDate: published, DateConfidence: 1,
+			},
+		},
+	}}
+	searcher := NewSearcherWithRanking(
+		index,
+		func() searchindex.RankingWeights {
+			return searchindex.RankingWeights{Title: 1, Freshness: 1}
+		},
+		nil,
+	)
+	resp, err := searcher.Search(t.Context(), searchcore.Request{Query: "q"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if got := resultTitles(resp.Results); got[0] != "Certain" {
+		t.Fatalf("order = %v", got)
 	}
 }
 
@@ -133,10 +165,17 @@ func TestURLLengthPriorSaturates(t *testing.T) {
 // keyword-stuffed one (low quality score).
 func TestQualityPriorLiftsCleanContent(t *testing.T) {
 	index := &fakeIndex{response: searchindex.SearchResultSet{
-		Total: 2,
+		Total: 3,
 		Results: []searchindex.SearchResult{
-			{Title: "Spam", URL: "https://a.example/page", Score: 1.0, Quality: 0.1},
-			{Title: "Clean", URL: "https://b.example/page", Score: 1.0, Quality: 0.9},
+			{
+				Title: "Spam", URL: "https://a.example/page", Score: 1,
+				Quality: -1, QualityKnown: true,
+			},
+			{Title: "Unknown", URL: "https://b.example/page", Score: 1},
+			{
+				Title: "Clean", URL: "https://c.example/page", Score: 1,
+				Quality: 1, QualityKnown: true,
+			},
 		},
 	}}
 	searcher := NewSearcherWithRanking(
@@ -151,8 +190,9 @@ func TestQualityPriorLiftsCleanContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if titles := resultTitles(resp.Results); titles[0] != "Clean" {
-		t.Fatalf("order = %v, want the clean page first", titles)
+	if titles := resultTitles(resp.Results); titles[0] != "Clean" ||
+		titles[1] != "Unknown" || titles[2] != "Spam" {
+		t.Fatalf("order = %v", titles)
 	}
 }
 
@@ -222,4 +262,4 @@ func mustDate(t *testing.T, yyyymmdd string) time.Time {
 	return parsed
 }
 
-var _ = hostrank.Table{}
+var _ = hostrank.AuthorityTable{}

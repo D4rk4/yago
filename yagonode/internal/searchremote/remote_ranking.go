@@ -1,10 +1,23 @@
 package searchremote
 
 import (
+	"cmp"
+	"slices"
 	"strings"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
+
+func rankRemoteResults(results []searchcore.Result) []searchcore.Result {
+	slices.SortStableFunc(results, func(a, b searchcore.Result) int {
+		return cmp.Or(
+			cmp.Compare(b.Score, a.Score),
+			strings.Compare(remoteResultIdentity(a), remoteResultIdentity(b)),
+		)
+	})
+
+	return results
+}
 
 // RankingWeights is the slice of the local ranking profile that remote
 // results can honor: peers return only URL metadata, so the title and the URL

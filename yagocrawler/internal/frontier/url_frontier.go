@@ -484,10 +484,11 @@ func (s *frontierState) seed(
 			continue
 		}
 		if s.accept(ctx, runID, frontierCandidate{
-			normURL:       norm,
-			depth:         req.Depth,
-			profileHandle: req.ProfileHandle,
-			provenance:    provenance,
+			normURL:          norm,
+			depth:            req.Depth,
+			profileHandle:    req.ProfileHandle,
+			provenance:       provenance,
+			sourceModifiedAt: req.LastModified,
 		}) {
 			queued++
 		}
@@ -533,10 +534,11 @@ func (s *frontierState) submit(
 }
 
 type frontierCandidate struct {
-	normURL       string
-	depth         int
-	profileHandle string
-	provenance    []byte
+	normURL          string
+	depth            int
+	profileHandle    string
+	provenance       []byte
+	sourceModifiedAt time.Time
 }
 
 func (s *frontierState) accept(
@@ -587,6 +589,7 @@ func (s *frontierState) accept(
 		Provenance:               candidate.provenance,
 		RunID:                    runID,
 		Index:                    profile.IndexAllowed(candidate.normURL),
+		SourceModifiedAt:         candidate.sourceModifiedAt,
 		CrawlDelay:               profile.Profile.CrawlDelay,
 		IgnoreTLSAuthority:       profile.Profile.IgnoreTLSAuthority,
 		IgnoreRobots:             profile.Profile.IgnoreRobots,

@@ -1,54 +1,69 @@
-# Lexical ranking research & implementation (SEARCH-38)
+# Ranking research, July 2026
 
-Operator request: «реализуй нормальное адекватное ранжирование». The audit
-showed ranking exists (BM25 scoring, field boosts, RRF fusion, MMR diversity,
-lexical rerank) but three research-backed signals were missing and one was
-disabled by default. Research sources: arxiv/SIGIR/TREC listed per section.
+## Scope
 
-## What the pipeline already had (audit)
+The research target was a state-of-the-art ranking path compatible with the
+existing Bleve document index and YaCy RWI federation. Deployment constraints
+exclude GPUs, external APIs, sidecars, separate training binaries, native model
+runtimes, and mandatory semantic services.
 
-BM25 scoring in bleve (SEARCH-26); query-time field boosts over
-title/headings/anchors/body/url; RRF fusion k=60 over local+peer lists
-(Cormack et al., SIGIR 2009 — correct for incomparable score scales); lexical
-rerank (coverage+proximity over title+snippet, w=0.25, window 50); MMR λ=0.7 +
-host-crowding cap + SimHash dedup; RM3 pseudo-relevance feedback.
+## Findings
 
-## What was missing → what shipped
+Modern web ranking still benefits from a strong lexical candidate set before
+learning-to-rank. The practical CPU-only path is fielded BM25 with term
+dependencies, conservative relevance-model feedback, deterministic rank fusion,
+document and graph evidence, and supervised listwise or pairwise reranking.
 
-1. **Term dependencies (SDM)** — Metzler & Croft, SIGIR 2005: unigram /
-   ordered-window / unordered-window at 0.85/0.10/0.05. Shipped as automatic
-   adjacent-pair phrase boosts over title and body at 0.12 of the field weight
-   (≈0.10/0.85), the recommended cheap approximation on an inverted index.
-   Boytsov (arXiv:2012.08020) shows BM25+proximity+fields+fusion beats early
-   BERT rerankers on MS MARCO docs — this stack, exactly.
-2. **Entry-page URL prior** — Kraaij, Westerveld & Hiemstra, SIGIR 2002:
-   URL form alone puts >70 % of entry pages at rank 1. Shipped as the
-   saturating static feature from TREC-13 (Zaragoza): `0.1·20/(20+len(path))`
-   folded into the post-retrieval multiplier.
-3. **Freshness prior** — Li & Croft, CIKM 2003 time-based models. Shipped as
-   `Freshness·2^(−age/180d)` on dated documents; undated documents are not
-   punished. Default weight 0.2.
-4. **Host authority was OFF** — the YBR block-rank multiplier existed but
-   `HostRank` defaulted to 0. Defaults now enable it at 0.3.
-5. **Field weights** moved toward the TREC-13 practical range (Robertson &
-   Zaragoza, CIKM 2004): title 6, anchors 4 (anchor text is what *other*
-   pages call this one), url 2, headings 3, body 1.
+LambdaMART remains a strong tabular ranking method. ILMART shows that interaction
+constraints can retain much of LambdaMART's quality while improving
+interpretability. A signed linear LambdaRank model is a safer cold-start choice
+when judgments are limited.
 
-Final local score:
+Clicks cannot be treated as direct relevance labels. Position and trust bias
+require randomized exposure, measured propensities, and clipped estimators.
+FairPairs and team-draft interleaving provide bounded experiments without
+replacing the normal result page.
 
-```
-bm25f-ish(title·6, headings·3, anchors·4, body·1, url·2)
-  + SDM bigram phrase boosts (0.12·field)
-→ score ×= 1 + 0.3·hostRank + 0.2·2^(−age/180d) + 0.1·20/(20+pathLen)
-→ RRF(k=60) fusion with peers → lexical rerank → MMR/host-cap/dedup
-```
+Federated result scores are not comparable across peers. Reciprocal-rank fusion
+is stable without score calibration. Persistent reliability can weight a peer's
+contribution, but network-group influence must be capped so multiple identities
+from one address range cannot dominate.
 
-## Deliberately not done
+Publication evidence must be separated from fetch time. Freshness works best as
+a confidence-weighted, query-mode-dependent signal rather than a universal boost.
+Anchor evidence, domain authority, content quality, safety, and duplicate
+clusters must be computed from stored crawl data instead of request-time text
+heuristics.
 
-- True pre-saturation BM25F (single composite weighted field) — needs an
-  index-format migration; the query-time boost approximation is the standard
-  Lucene/bleve practice and the delta is small at these scales.
-- Unordered-window SDM feature — no cheap bleve operator; ablations attribute
-  most of the gain to the ordered feature.
-- Tuned convex score fusion (Bruch et al., arXiv:2210.11934) — beats RRF only
-  with training queries, which a self-hosted node does not have.
+## Selected implementation
+
+| Area | Selection |
+| --- | --- |
+| Candidate retrieval | Strict plus 60%-match fielded BM25, phrase/SDM evidence, bounded RM3 |
+| Fusion | Deterministic RRF with decayed peer reliability and `/24`/`/48` group caps |
+| Evidence | Fixed 33-signal immutable vector with explicit missingness |
+| Low-data model | Signed linear LambdaRank |
+| Higher-data model | Histogram LambdaMART, 64 trees, depth 4, 32 bins, constrained interactions |
+| Evaluation | Query-cluster and chronological holdouts, cluster-level paired bootstrap, recall/NDCG/ERR/MRR/diversity/discounted safety exposure/resource metrics |
+| Promotion | Candidate beats lexical and active incumbent on one frozen pool; at least 20 clusters, 2% held-out NDCG gain, and a non-negative 95% lower bound |
+| Clicks | HMAC impressions, FairPairs, team draft, clipped IPS and SNIPS, aggregate storage only |
+| Duplicates | Exact identity then bounded SimHash-LSH candidates with Jaccard confirmation |
+| Final policy | Persistent cluster consolidation, MMR, host crowding, date ordering, paging, once |
+
+Rejected options were neural cross-encoders, SPLADE, ONNX, FAISS, Qdrant,
+LightGBM/Python training, and hosted reranking APIs. They violate the deployment
+constraints or add a runtime boundary that the node does not need for this
+feature set.
+
+## Primary sources
+
+- [From RankNet to LambdaRank to LambdaMART](https://www.microsoft.com/en-us/research/publication/from-ranknet-to-lambdarank-to-lambdamart-an-overview/)
+- [ILMART: Interpretable LambdaMART](https://arxiv.org/abs/2206.00473)
+- [A Markov Random Field Model for Term Dependencies](https://doi.org/10.1145/1076034.1076115)
+- [Reciprocal Rank Fusion](https://doi.org/10.1145/1571941.1572114)
+- [NIST TREC relevance-model feedback](https://trec.nist.gov/pubs/trec17/papers/cmu.rf.rev.pdf)
+- [Position-bias estimation for unbiased learning to rank](https://research.google/pubs/position-bias-estimation-for-unbiased-learning-to-rank-in-personal-search/)
+- [Addressing trust bias for unbiased learning to rank](https://research.google/pubs/addressing-trust-bias-for-unbiased-learning-to-rank/)
+- [Efficient online evaluation with interleaving](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/fp041-schuthA.pdf)
+- [TrustRank](https://www.vldb.org/conf/2004/RS15P3.PDF)
+- [Detecting near-duplicates for web crawling](https://doi.org/10.1145/1242572.1242592)

@@ -269,6 +269,7 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 		fetched.Body,
 		job.Formats,
 	)
+	page = pageWithSourceDate(page, fetched.LastModified, job.SourceModifiedAt)
 	slog.DebugContext(ctx, msgPageCrawled,
 		slog.String("url", page.URL),
 		slog.Int("links", len(page.Links)),

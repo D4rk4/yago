@@ -1,11 +1,21 @@
 package searchcore
 
-import "sort"
+import (
+	"cmp"
+	"slices"
+	"strings"
+)
 
 // rrfK is the standard Reciprocal Rank Fusion constant (Cormack et al., SIGIR
 // 2009): large enough that deep ranks still contribute, small enough that top
 // ranks dominate.
 const rrfK = 60
+
+type reciprocalRankFusion struct {
+	results   []Result
+	weights   map[string]float64
+	positions map[string]int
+}
 
 // FuseByReciprocalRank merges independently-ranked result lists with
 // Reciprocal Rank Fusion: each list contributes 1/(k+rank) per result, scores
@@ -18,27 +28,76 @@ const rrfK = 60
 // weight. The fused weight replaces Score so downstream ordering, paging, and
 // diversification keep working unchanged.
 func FuseByReciprocalRank(lists ...[]Result) []Result {
-	fused := make([]Result, 0, totalResults(lists))
-	weights := map[string]float64{}
-	position := map[string]int{}
+	fusion := reciprocalRankFusion{
+		results:   make([]Result, 0, totalResults(lists)),
+		weights:   map[string]float64{},
+		positions: map[string]int{},
+	}
 	for _, list := range lists {
-		for rank, result := range list {
-			key := resultIdentity(result)
-			if _, exists := weights[key]; !exists {
-				position[key] = len(fused)
-				fused = append(fused, result)
-			}
-			weights[key] += 1.0 / float64(rrfK+rank+1)
-		}
+		fusion.addRankedList(list)
 	}
-	for key, index := range position {
-		fused[index].Score = weights[key]
+	for key, index := range fusion.positions {
+		fusion.results[index].Score = fusion.weights[key]
 	}
-	sort.SliceStable(fused, func(i, j int) bool {
-		return fused[i].Score > fused[j].Score
+	slices.SortStableFunc(fusion.results, func(left, right Result) int {
+		return cmp.Or(
+			cmp.Compare(right.Score, left.Score),
+			strings.Compare(resultIdentity(left), resultIdentity(right)),
+		)
 	})
 
-	return fused
+	return fusion.results
+}
+
+func (f *reciprocalRankFusion) addRankedList(list []Result) {
+	seen := make(map[string]struct{}, len(list))
+	for rank, result := range list {
+		key := resultIdentity(result)
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = reciprocalRankResult(result, rank)
+		f.mergeResult(key, result)
+		f.weights[key] += 1.0 / float64(rrfK+rank+1)
+	}
+}
+
+func (f *reciprocalRankFusion) mergeResult(key string, result Result) {
+	if _, exists := f.weights[key]; !exists {
+		f.positions[key] = len(f.results)
+		f.results = append(f.results, result)
+
+		return
+	}
+	index := f.positions[key]
+	existingPeerSupport, hasExistingPeerSupport := f.results[index].Evidence.Value(
+		SignalPeerSupport,
+	)
+	f.results[index].Evidence = f.results[index].Evidence.Overlay(result.Evidence)
+	f.results[index].Evidence = f.results[index].Evidence.Add(SignalSourceCount, 1)
+	if result.Source == SourceRemote && hasExistingPeerSupport {
+		incomingPeerSupport, _ := result.Evidence.Value(SignalPeerSupport)
+		f.results[index].Evidence = f.results[index].Evidence.With(
+			SignalPeerSupport,
+			existingPeerSupport+incomingPeerSupport,
+		)
+	}
+}
+
+func reciprocalRankResult(result Result, rank int) Result {
+	result.Evidence = result.Evidence.With(SignalSourceCount, 1)
+	if result.Source == SourceRemote {
+		result.Evidence = result.Evidence.With(SignalRemoteRank, float64(rank+1))
+		if _, known := result.Evidence.Value(SignalPeerSupport); !known {
+			result.Evidence = result.Evidence.With(SignalPeerSupport, 1)
+		}
+
+		return result
+	}
+	result.Evidence = result.Evidence.With(SignalLocalRank, float64(rank+1))
+
+	return result
 }
 
 func totalResults(lists [][]Result) int {

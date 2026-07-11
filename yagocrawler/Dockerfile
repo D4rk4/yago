@@ -32,24 +32,18 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -o /out/yagocrawler \
         ./yagocrawler/cmd/yagocrawler
 
-# The crawler's slow-path browser is headless Firefox, driven over Marionette.
-# Firefox is not distributed as a scratch-friendly bundle the way Chrome's
-# headless-shell was, so the runtime image is debian-slim with firefox-esr
-# installed: apt pulls Firefox's own shared-library and fontconfig dependencies,
-# and ca-certificates supplies the trust roots for outbound TLS. The static
-# crawler binary runs unchanged on this base.
-FROM docker.io/library/debian:trixie-slim
+FROM docker.io/library/alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends firefox-esr ca-certificates fonts-liberation; \
-    rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache \
+    ca-certificates=20260611-r0 \
+    firefox-esr=140.12.0-r0 \
+    font-liberation=2.1.5-r2
 
 # Shared /opt/yago layout (OPS-04): the crawler is stateless (no data volume),
 # so only the binary moves under /opt/yago/bin. HOME must be writable for the
 # throwaway Firefox profile; the crawler discovers firefox-esr on PATH, so
 # YAGOCRAWLER_BROWSER_PATH stays empty in the container.
-ENV HOME=/tmp XDG_CACHE_HOME=/tmp/.cache PATH=/opt/yago/bin:/usr/bin
+ENV HOME=/tmp XDG_CACHE_HOME=/tmp/.cache PATH=/opt/yago/bin:/usr/bin:/bin
 
 COPY --from=build /out/yagocrawler /opt/yago/bin/yagocrawler
 

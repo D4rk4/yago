@@ -58,19 +58,58 @@ func BuildDocument(
 	outlinks = append(outlinks, stats.ExternalLinks...)
 
 	return yagocrawlcontract.DocumentIngest{
-		CanonicalURL:  documentCanonicalURL(page),
-		NormalizedURL: page.URL,
-		Title:         page.Title,
-		Headings:      append([]string(nil), page.Headings...),
-		ExtractedText: boundedText(page.Text),
-		Language:      NormalizeLanguage(page.Language),
-		FetchStatus:   "fetched",
-		IndexedAt:     indexedAt.UTC(),
-		ContentHash:   hex.EncodeToString(hash[:]),
-		Outlinks:      outlinks,
-		Images:        imageMetadataFromPage(page.Images),
-		Metadata:      documentMetadata(page, metadata),
+		CanonicalURL:   documentCanonicalURL(page),
+		NormalizedURL:  page.URL,
+		Title:          page.Title,
+		Headings:       append([]string(nil), page.Headings...),
+		ExtractedText:  boundedText(page.Text),
+		Language:       NormalizeLanguage(page.Language),
+		FetchStatus:    "fetched",
+		IndexedAt:      indexedAt.UTC(),
+		PublishedAt:    page.PublishedAt.UTC(),
+		ModifiedAt:     page.ModifiedAt.UTC(),
+		DateConfidence: page.DateConfidence,
+		DateSource:     page.DateSource,
+		ContentHash:    hex.EncodeToString(hash[:]),
+		Outlinks:       outlinks,
+		OutboundAnchors: outboundAnchorsFromPage(
+			page.OutboundAnchors,
+		),
+		OutboundAnchorEvidenceKnown: true,
+		SafetyLabels:                safetyLabelsFromPage(page.SafetyLabels),
+		Images:                      imageMetadataFromPage(page.Images),
+		Metadata:                    documentMetadata(page, metadata),
 	}
+}
+
+func safetyLabelsFromPage(in pageparse.SafetyLabels) yagocrawlcontract.SafetyLabels {
+	var familyFriendly *bool
+	if in.FamilyFriendly != nil {
+		value := *in.FamilyFriendly
+		familyFriendly = &value
+	}
+
+	return yagocrawlcontract.SafetyLabels{
+		RatingValues:   append([]string(nil), in.RatingValues...),
+		FamilyFriendly: familyFriendly,
+	}
+}
+
+func outboundAnchorsFromPage(
+	in []pageparse.OutboundAnchor,
+) []yagocrawlcontract.OutboundAnchor {
+	out := make([]yagocrawlcontract.OutboundAnchor, 0, len(in))
+	for _, anchor := range in {
+		out = append(out, yagocrawlcontract.OutboundAnchor{
+			TargetURL:     anchor.TargetURL,
+			Text:          anchor.Text,
+			NoFollow:      anchor.NoFollow,
+			UserGenerated: anchor.UserGenerated,
+			Sponsored:     anchor.Sponsored,
+		})
+	}
+
+	return out
 }
 
 // boundedText truncates text to maxExtractedTextBytes on a UTF-8 rune boundary,

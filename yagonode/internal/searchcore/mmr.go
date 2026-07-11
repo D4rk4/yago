@@ -28,7 +28,7 @@ func rerankMarginalRelevance(results []Result) []Result {
 	for i, result := range top {
 		tokens[i] = tokenSet(result.Title + " " + result.Snippet)
 	}
-	scale := top[0].Score
+	scale := resultDiversityRelevance(top[0])
 	if scale <= 0 {
 		scale = 1
 	}
@@ -70,7 +70,7 @@ func mmrValue(
 	index int,
 	scale float64,
 ) float64 {
-	relevance := top[index].Score / scale
+	relevance := resultDiversityRelevance(top[index]) / scale
 	maxSimilarity := 0.0
 	for _, chosen := range picked {
 		if similarity := jaccard(tokens[index], chosen); similarity > maxSimilarity {
@@ -79,6 +79,14 @@ func mmrValue(
 	}
 
 	return mmrLambda*relevance - (1-mmrLambda)*maxSimilarity
+}
+
+func resultDiversityRelevance(result Result) float64 {
+	if result.diversityRelevanceSet {
+		return result.diversityRelevance
+	}
+
+	return result.Score
 }
 
 func tokenSet(text string) map[string]bool {

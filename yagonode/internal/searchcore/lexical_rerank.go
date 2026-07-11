@@ -18,7 +18,10 @@ const (
 	// only breaks near-ties — it lifts a result whose query terms are all present
 	// and close together over one that merely mentions them, without overriding
 	// BM25/RRF retrieval order.
-	lexicalRerankWeight = 0.25
+	lexicalRerankWeight           = 0.25
+	minimumRankingCandidateWindow = 50
+	maximumRankingCandidateWindow = 100
+	rankingCandidateMultiplier    = 5
 )
 
 // NewLexicalRerankSearcher reranks the merged top window of a searcher's results
@@ -27,24 +30,80 @@ const (
 // federated merge so both local and remote results compete on the same textual
 // evidence the user sees.
 func NewLexicalRerankSearcher(inner Searcher) Searcher {
-	return lexicalRerankSearcher{inner: inner}
+	return NewFinalRankingSearcher(NewLexicalEvidenceSearcher(inner))
 }
 
-type lexicalRerankSearcher struct {
+func NewLexicalEvidenceSearcher(inner Searcher) Searcher {
+	return lexicalEvidenceSearcher{inner: inner}
+}
+
+func NewFinalRankingSearcher(inner Searcher) Searcher {
+	return finalRankingSearcher{inner: inner}
+}
+
+type lexicalEvidenceSearcher struct {
 	inner Searcher
 }
 
-func (s lexicalRerankSearcher) Search(
+func (s lexicalEvidenceSearcher) Search(
+	ctx context.Context,
+	req Request,
+) (Response, error) {
+	response, err := s.inner.Search(ctx, rankingCandidateRequest(req))
+	if err != nil {
+		return Response{}, fmt.Errorf("lexical rerank inner search: %w", err)
+	}
+	if !req.SortByDate {
+		response.Results = rerankLexicalProximity(response.Results, req)
+	}
+	response.Request = req
+
+	return response, nil
+}
+
+type finalRankingSearcher struct {
+	inner Searcher
+}
+
+func (s finalRankingSearcher) Search(
 	ctx context.Context,
 	req Request,
 ) (Response, error) {
 	response, err := s.inner.Search(ctx, req)
 	if err != nil {
-		return Response{}, fmt.Errorf("lexical rerank inner search: %w", err)
+		return Response{}, fmt.Errorf("final ranking inner search: %w", err)
 	}
-	response.Results = rerankLexicalProximity(response.Results, req)
+	response.Results = DiversifyResults(response.Results, req)
+	OrderByDateWhenRequested(response.Results, req)
+	response.Results = offsetResults(response.Results, req.Offset, rankingResultLimit(req))
+	response.Request = req
 
 	return response, nil
+}
+
+func rankingCandidateRequest(req Request) Request {
+	window := req
+	window.Offset = 0
+	requested := req.Offset + rankingResultLimit(req)
+	if requested >= maximumRankingCandidateWindow {
+		window.Limit = requested
+
+		return window
+	}
+	window.Limit = min(
+		maximumRankingCandidateWindow,
+		max(minimumRankingCandidateWindow, requested*rankingCandidateMultiplier),
+	)
+
+	return window
+}
+
+func rankingResultLimit(req Request) int {
+	if req.Limit <= 0 {
+		return DefaultPublicLimit
+	}
+
+	return req.Limit
 }
 
 // rerankLexicalProximity reorders the top window by (1−w)·normScore + w·lexical,
@@ -65,12 +124,15 @@ func rerankLexicalProximity(results []Result, req Request) []Result {
 	}
 
 	keys := make([]float64, window)
+	coverages := make([]float64, window)
+	proximities := make([]float64, window)
 	for i, result := range top {
 		normScore := 0.0
 		if maxScore > minScore {
 			normScore = (result.Score - minScore) / (maxScore - minScore)
 		}
-		lexical := lexicalSignal(result, terms)
+		coverages[i], proximities[i] = lexicalComponents(result, terms)
+		lexical := (coverages[i] + proximities[i]) / 2
 		keys[i] = (1-lexicalRerankWeight)*normScore + lexicalRerankWeight*lexical
 	}
 
@@ -83,7 +145,11 @@ func rerankLexicalProximity(results []Result, req Request) []Result {
 	})
 	reranked := make([]Result, 0, len(results))
 	for _, index := range order {
-		reranked = append(reranked, top[index])
+		result := top[index]
+		result.Evidence = result.Evidence.With(SignalTermCoverage, coverages[index])
+		result.Evidence = result.Evidence.With(SignalGlobalProximity, proximities[index])
+		result = WithDiversityRelevance(result, keys[index])
+		reranked = append(reranked, result)
 	}
 
 	return append(reranked, results[window:]...)
@@ -125,11 +191,20 @@ func rerankQueryTerms(req Request) []string {
 // measure spans the whole document, and falling back to the title-plus-snippet
 // text for remote results, which carry no positions.
 func lexicalSignal(result Result, terms []string) float64 {
-	if score, ok := lexicalScoreFromPositions(result.FieldTermPositions, terms); ok {
-		return score
+	coverage, proximity := lexicalComponents(result, terms)
+
+	return (coverage + proximity) / 2
+}
+
+func lexicalComponents(result Result, terms []string) (float64, float64) {
+	if coverage, proximity, ok := lexicalComponentsFromPositions(
+		result.FieldTermPositions,
+		terms,
+	); ok {
+		return coverage, proximity
 	}
 
-	return lexicalScore(result.Title+" "+result.Snippet, terms)
+	return lexicalTextComponents(result.Title+" "+result.Snippet, terms)
 }
 
 // lexicalScoreFromPositions scores coverage and proximity from per-field matched
@@ -142,8 +217,17 @@ func lexicalScoreFromPositions(
 	fieldPositions map[string]map[string][]int,
 	terms []string,
 ) (float64, bool) {
+	coverage, proximity, ok := lexicalComponentsFromPositions(fieldPositions, terms)
+
+	return (coverage + proximity) / 2, ok
+}
+
+func lexicalComponentsFromPositions(
+	fieldPositions map[string]map[string][]int,
+	terms []string,
+) (float64, float64, bool) {
 	if len(fieldPositions) == 0 {
-		return 0, false
+		return 0, 0, false
 	}
 	termIndex := make(map[string]int, len(terms))
 	for i, term := range terms {
@@ -157,10 +241,10 @@ func lexicalScoreFromPositions(
 		bestProximity = max(bestProximity, proximity)
 	}
 	if len(covered) == 0 {
-		return 0, false
+		return 0, 0, false
 	}
 
-	return (float64(len(covered))/float64(len(terms)) + bestProximity) / 2, true
+	return float64(len(covered)) / float64(len(terms)), bestProximity, true
 }
 
 // fieldHits flattens one field's term→positions into position-sorted parallel
@@ -207,6 +291,12 @@ func distinctTerms(hitTerm []int) int {
 // lexicalScore is the mean of term coverage (share of query terms present) and
 // proximity (closeness of the matched terms), both in [0,1].
 func lexicalScore(text string, terms []string) float64 {
+	coverage, proximity := lexicalTextComponents(text, terms)
+
+	return (coverage + proximity) / 2
+}
+
+func lexicalTextComponents(text string, terms []string) (float64, float64) {
 	index := map[string]int{}
 	for i, term := range terms {
 		index[term] = i
@@ -223,7 +313,7 @@ func lexicalScore(text string, terms []string) float64 {
 	}
 	coverage := float64(len(matched)) / float64(len(terms))
 
-	return (coverage + proximityScore(hitTerm, hitPos, len(matched))) / 2
+	return coverage, proximityScore(hitTerm, hitPos, len(matched))
 }
 
 // proximityScore maps the smallest absolute token span covering every distinct

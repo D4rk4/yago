@@ -2,47 +2,18 @@ package searchcore
 
 import "testing"
 
-func longSnippet(prefix string) string {
-	return prefix + " quick brown fox jumps over the lazy dog near the river bank today"
-}
-
-func TestDiversifyResultsDropsNearDuplicates(t *testing.T) {
+func TestDiversifyResultsKeepsUnclusteredSimilarDocuments(t *testing.T) {
 	results := []Result{
-		// A mirror: the same content served from a different URL.
-		{URL: "https://a.example/1", Title: "Widget guide", Snippet: longSnippet("alpha")},
-		{URL: "https://b.example/2", Title: "Widget guide", Snippet: longSnippet("alpha")},
-		// The same tokens reshuffled: SimHash is order-independent.
-		{
-			URL:     "https://d.example/4",
-			Title:   "guide Widget",
-			Snippet: "alpha brown quick fox jumps the over lazy dog near the river bank today",
-		},
-		{
-			URL:     "https://c.example/3",
-			Title:   "Something else",
-			Snippet: longSnippet("totally different topic entirely unrelated"),
-		},
+		{URL: "https://a.example/1", Title: "Widget guide", Snippet: "same text"},
+		{URL: "https://b.example/2", Title: "Widget guide", Snippet: "same text"},
 	}
 
-	diversified := DiversifyResults(results, Request{})
+	diversified := DiversifyResults(results, Request{SiteHost: "example"})
 
 	if len(diversified) != 2 ||
 		diversified[0].URL != "https://a.example/1" ||
-		diversified[1].URL != "https://c.example/3" {
+		diversified[1].URL != "https://b.example/2" {
 		t.Fatalf("diversified = %#v", diversified)
-	}
-}
-
-func TestDiversifyResultsKeepsShortTextsApart(t *testing.T) {
-	results := []Result{
-		{URL: "https://a.example/1", Title: "Go"},
-		{URL: "https://b.example/2", Title: "Go"},
-		{URL: "https://c.example/3"},
-		{URL: "https://d.example/4"},
-	}
-
-	if got := DiversifyResults(results, Request{}); len(got) != 4 {
-		t.Fatalf("short texts must not dedupe: %#v", got)
 	}
 }
 

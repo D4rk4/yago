@@ -53,10 +53,13 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0032](0032-private-query-search-no-go.md) | Do not adopt Tiptoe-style private search; keep it behind the dense side | Accepted |
 | [0033](0033-operator-editable-public-portal-handlebars.md) | Operator-editable public portal via server-side Handlebars with a GrapesJS admin editor | Accepted |
 | [0034](0034-dead-page-removal-on-recrawl.md) | Remove a dead page from the index when a recrawl finds it permanently gone (404/410) | Accepted |
-| [0035](0035-learned-log-linear-ranking-yagorank.md) | Learned log-linear ranking (YagoRank): fit ranking weights to NDCG, add quality + unordered-SDM features | Accepted |
+| [0035](0035-learned-log-linear-ranking-yagorank.md) | Learned log-linear ranking (YagoRank): fit ranking weights to NDCG, add quality + unordered-SDM features | Superseded by [ADR-0043](0043-pure-go-evidence-learning-to-rank.md) |
 | [0036](0036-storage-usage-accounting-document-eviction-and-compaction.md) | Truthful storage accounting (live bytes), evict documents on purge, and periodic configurable compaction | Accepted |
 | [0037](0037-dynamic-shard-growth-linear-hashing.md) | Grow the shard pool dynamically by linear hashing as data accumulates; make the storage quota a live byte ceiling | Accepted |
 | [0038](0038-bounded-loss-deferred-fsync.md) | Opt-in, restart-required deferred fsync (bbolt NoSync) with a staggered background flush that bounds the loss window | Accepted |
 | [0039](0039-binary-fuse-rwi-shard-filters.md) | Per-shard binary-fuse term filters skip RWI shards that provably lack a query term (adopts the xorfilter dependency) | Accepted |
 | [0040](0040-rwi-topk-pruning-not-maxscore.md) | Prune RWI top-k with bounded selection and reporting-gated scan early termination instead of the architecturally inapplicable MaxScore | Accepted |
 | [0041](0041-perf-io-scorch-reclaim-crawler-cgroup-no-bbolt-madvise.md) | PERF-IO-02: raise scorch delete-reclaim weight and bound the crawler with cgroup limits; do not add raw bbolt mmap madvise | Accepted |
+| [0042](0042-content-type-authoritative-filetype-classification.md) | Classify file types from authoritative content type with URL suffix fallback | Accepted |
+| [0043](0043-pure-go-evidence-learning-to-rank.md) | Pure-Go evidence learning-to-rank with held-out promotion | Accepted |
+| [0044](0044-alpine-browser-crawler-runtime.md) | Alpine browser crawler runtime | Accepted |

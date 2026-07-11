@@ -51,13 +51,13 @@ its binaries (`yago-node`, `yagocrawler`).
 - Local index (sharded [Bleve](https://blevesearch.com/)) + federated swarm
   fan-out + optional web fallback (off by default), merged with
   **reciprocal-rank fusion** and **MMR result diversity**.
-- **[YagoRank](yagonode/doc/yagorank.md)** — a learned log-linear ranker whose
-  weights are fit offline to NDCG against a judgment set, not hand-tuned: per-field
-  BM25, the full Sequential Dependence Model (ordered *and* unordered proximity),
-  host-authority, freshness, and a content-quality prior, all learned by
-  coordinate ascent. The judgment set combines operator-curated qrels with
-  optional implicit judgments mined from position-debiased result clicks. Pure-Go,
-  CPU-only, no model runtime, no wire change.
+- **[YagoRank](yagonode/doc/yagorank.md)** — strict and relaxed fielded BM25,
+  phrase/SDM evidence, bounded RM3, deterministic peer RRF, persistent date,
+  anchor, authority, quality, safety, duplicate-cluster, and reputation signals,
+  followed by a signed linear LambdaRank or bounded histogram LambdaMART model.
+  Query-clustered and chronological holdouts gate atomic promotion; authenticated
+  randomized impressions provide clipped IPS/SNIPS click evidence. Pure Go,
+  CPU-only, no external API, sidecar, model runtime, or YaCy wire change.
 - **Multilingual morphology**: documents route to per-language analyzers
   (Snowball stemming), single-word swarm queries can expand into
   corpus-observed inflections, and partial words match through trigram fields.
@@ -83,9 +83,9 @@ its binaries (`yago-node`, `yagocrawler`).
   per-profile toggles for robots, TLS authority, and browser use.
 - Politeness and defense: robots.txt with a sanitizer for real-world malformed
   files, per-host adaptive pacing and crawl delays, URL canonicalization,
-  SimHash near-duplicate collapse, crawl-trap defense, per-host and per-run
-  page budgets, boilerplate extraction, and a deterministic content-quality
-  gate.
+  persistent near-duplicate clustering, crawl-trap defense, per-host and
+  per-run page budgets, boilerplate extraction, and a deterministic
+  content-quality gate.
 - **A living index**: a default 30-day recrawl cadence refreshes pages, and a
   recrawl that finds a page permanently gone (404/410) tombstones it out of
   the index — no eternal dead links.

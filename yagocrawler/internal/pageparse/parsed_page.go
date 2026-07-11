@@ -1,5 +1,7 @@
 package pageparse
 
+import "time"
+
 type ParsedPage struct {
 	URL             string
 	CanonicalURL    string
@@ -7,6 +9,10 @@ type ParsedPage struct {
 	Author          string
 	Keywords        string
 	Publisher       string
+	PublishedAt     time.Time
+	ModifiedAt      time.Time
+	DateConfidence  float64
+	DateSource      string
 	Title           string
 	Headings        []string
 	Language        string
@@ -14,6 +20,8 @@ type ParsedPage struct {
 	Links           []string
 	FollowableLinks []string
 	NoFollowLinks   []string
+	OutboundAnchors []OutboundAnchor
+	SafetyLabels    SafetyLabels
 	Images          []ImageMetadata
 	// MetaNoindex reports a page-level <meta name="robots"> noindex (or none)
 	// directive: the page asked not to be indexed.
@@ -33,4 +41,17 @@ type PageStats struct {
 type ImageMetadata struct {
 	URL     string
 	AltText string
+}
+
+type OutboundAnchor struct {
+	TargetURL     string
+	Text          string
+	NoFollow      bool
+	UserGenerated bool
+	Sponsored     bool
+}
+
+type SafetyLabels struct {
+	RatingValues   []string
+	FamilyFriendly *bool
 }

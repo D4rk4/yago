@@ -53,14 +53,43 @@ func TestHostRankRefreshOnceBuildsAuthorityTable(t *testing.T) {
 	sweeper.refreshOnce(context.Background())
 
 	table := holder.Current()
-	target := testHostHash(t, "http://target.com/one.html")
-	source := testHostHash(t, "http://source.net/a.html")
+	target := hostrank.RegistrableDomain("http://target.com/one.html")
+	source := hostrank.RegistrableDomain("http://source.net/a.html")
 	if table.Rank(target) != 1 {
 		t.Fatalf("cited host rank = %v, want normalized 1: %v", table.Rank(target), table)
 	}
 	if table.Rank(target) <= table.Rank(source) {
 		t.Fatalf("cited host (%v) must outrank the citing host (%v)",
 			table.Rank(target), table.Rank(source))
+	}
+}
+
+func TestDocumentAuthorityCitationsHonorAnchorRelations(t *testing.T) {
+	doc := documentstore.Document{
+		CanonicalURL:                "https://source.example/page",
+		OutboundAnchorEvidenceKnown: true,
+		Outlinks:                    []string{"https://legacy.example/"},
+		OutboundAnchors: []documentstore.OutboundAnchor{
+			{TargetURL: "https://trusted.example/", Text: "trusted"},
+			{TargetURL: "https://nofollow.example/", NoFollow: true},
+			{TargetURL: "https://community.example/", UserGenerated: true},
+			{TargetURL: "https://promotion.example/", Sponsored: true},
+		},
+	}
+	citations := documentAuthorityCitations(doc)
+	if len(citations) != 1 || citations[0].SourceURL != doc.CanonicalURL ||
+		citations[0].TargetURL != "https://trusted.example/" ||
+		citations[0].Confidence != 1 {
+		t.Fatalf("citations = %#v", citations)
+	}
+	doc.OutboundAnchorEvidenceKnown = false
+	citations = documentAuthorityCitations(doc)
+	if len(citations) != 1 || citations[0].TargetURL != "https://legacy.example/" ||
+		citations[0].Confidence != 0.4 {
+		t.Fatalf("legacy citations = %#v", citations)
+	}
+	if citations := documentAuthorityCitations(documentstore.Document{}); citations != nil {
+		t.Fatalf("empty document citations = %#v", citations)
 	}
 }
 
@@ -85,6 +114,22 @@ func TestHostRankRefreshOnceSkipsOnScanError(t *testing.T) {
 
 	if got := holder.Current(); len(got) != 0 {
 		t.Fatalf("failed scan produced a table: %v", got)
+	}
+}
+
+func TestHostRankRefreshOnceSkipsCanceledComputation(t *testing.T) {
+	holder := hostrank.NewHolder()
+	sweeper := hostRankSweeper{
+		documents: scriptedStoredDocuments{docs: citedDocuments()},
+		holder:    holder,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	sweeper.refreshOnce(ctx)
+
+	if got := holder.Current(); len(got) != 0 {
+		t.Fatalf("canceled computation produced a table: %v", got)
 	}
 }
 

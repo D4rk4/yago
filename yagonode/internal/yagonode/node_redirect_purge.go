@@ -11,9 +11,7 @@ import (
 // documentEvictorOf exposes the vault's delete capability when the directory
 // implementation provides one; a read-only store disables the purge.
 func documentEvictorOf(storage nodeStorage) documentstore.DocumentEvictor {
-	evictor, _ := storage.documentDirectory.(documentstore.DocumentEvictor)
-
-	return evictor
+	return storage.documentEvictor()
 }
 
 // runRedirectPurge sweeps pre-SEARCH-28 search-engine tracking redirects out

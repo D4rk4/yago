@@ -158,7 +158,7 @@ func newTestTuner(t *testing.T) rankingTuner {
 
 	return newRankingTuner(
 		testTuneIndex(t),
-		func() hostrank.Table { return nil },
+		func() hostrank.AuthorityTable { return nil },
 		testRankingHolder(t),
 		linuxCurated(),
 		nil,
@@ -220,6 +220,33 @@ func TestTuneEndToEndOverRealIndex(t *testing.T) {
 	}
 	if report.Rounds == 0 {
 		t.Errorf("Rounds = 0, want at least one sweep")
+	}
+}
+
+func TestTuneUsesServingCandidateAndQueryFeatures(t *testing.T) {
+	index := &searchExplainScript{result: searchindex.SearchResultSet{
+		Total: 1,
+		Results: []searchindex.SearchResult{{
+			URL:       "https://good.example/",
+			Title:     "linux kernel",
+			Score:     1,
+			Proximity: 1,
+		}},
+	}}
+	tuner := newRankingTuner(
+		index,
+		nil,
+		testRankingHolder(t),
+		linuxCurated(),
+		nil,
+	)
+	if _, err := tuner.Tune(t.Context()); err != nil {
+		t.Fatalf("Tune: %v", err)
+	}
+	if index.got.Query != "linux kernel" || len(index.got.Terms) != 2 ||
+		!index.got.IncludePositions || index.got.MaxResults != 100 ||
+		index.got.MinimumTermMatches != 1 {
+		t.Fatalf("tuning index request = %#v", index.got)
 	}
 }
 

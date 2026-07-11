@@ -45,6 +45,16 @@ func TestHitFieldScoresOmittedUnlessExplained(t *testing.T) {
 	}
 }
 
+func TestHitFieldScoresAvailableWithoutDiagnosticExplanation(t *testing.T) {
+	hit := &search.DocumentMatch{Expl: &search.Explanation{
+		Value: 1, Message: "weight(title:linux^6.000000 in doc), product of:",
+	}}
+	got := hitFieldScores(SearchRequest{IncludeFieldScores: true}, hit)
+	if got["title"] != 1 {
+		t.Fatalf("title score = %v, want 1", got["title"])
+	}
+}
+
 func TestHitFieldScoresNilWithoutExplanation(t *testing.T) {
 	hit := &search.DocumentMatch{}
 	if got := hitFieldScores(SearchRequest{Explain: true}, hit); got != nil {
@@ -92,6 +102,15 @@ func TestSearchSurfacesFieldFeaturesEndToEnd(t *testing.T) {
 		NormalizedURL: "https://a.example/linux",
 		Title:         "linux kernel guide",
 		ExtractedText: "the linux kernel scheduler manages processes; the kernel is core",
+		ContentQuality: documentstore.ContentQualityEvidence{
+			Known:                true,
+			Score:                0.25,
+			FunctionWordFraction: 0.2,
+			SymbolFraction:       0.01,
+			AlphabeticFraction:   0.9,
+			UniqueTokenFraction:  0.7,
+			SpamRisk:             0.375,
+		},
 	}}}
 	index, err := NewBleveMemoryIndex(t.Context(), stored)
 	if err != nil {
@@ -99,11 +118,11 @@ func TestSearchSurfacesFieldFeaturesEndToEnd(t *testing.T) {
 	}
 
 	set, err := index.Search(t.Context(), SearchRequest{
-		Query:            "linux kernel",
-		Terms:            []string{"linux", "kernel"},
-		MaxResults:       5,
-		Explain:          true,
-		IncludePositions: true,
+		Query:              "linux kernel",
+		Terms:              []string{"linux", "kernel"},
+		MaxResults:         5,
+		IncludeFieldScores: true,
+		IncludePositions:   true,
 	})
 	if err != nil {
 		t.Fatalf("search: %v", err)
@@ -112,10 +131,12 @@ func TestSearchSurfacesFieldFeaturesEndToEnd(t *testing.T) {
 		t.Fatalf("results = %d, want 1", len(set.Results))
 	}
 	result := set.Results[0]
-	// The document is under the scored-word floor, so the quality prior is neutral
-	// rather than left at the zero value — proving it was computed and mapped.
-	if result.Quality != 1.0 {
-		t.Errorf("Quality = %v, want the neutral 1.0 for short text", result.Quality)
+	if result.Explanation != "" {
+		t.Fatalf("diagnostic explanation leaked into ranking evidence: %q", result.Explanation)
+	}
+	if result.Quality != 0.25 || !result.QualityKnown || result.SpamRisk != 0.375 {
+		t.Errorf("quality evidence = (%v, %v, %v)",
+			result.Quality, result.QualityKnown, result.SpamRisk)
 	}
 	// "linux" and "kernel" sit adjacent in the body, so the single query-word pair
 	// co-occurs within the window and the SDM proximity feature is fully satisfied.

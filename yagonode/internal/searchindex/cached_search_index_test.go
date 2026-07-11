@@ -14,6 +14,7 @@ type countingIndex struct {
 	deletes   int
 	closes    int
 	results   SearchResultSet
+	resultFor func(SearchRequest) SearchResultSet
 	searchErr error
 	writeErr  error
 	closeErr  error
@@ -33,10 +34,13 @@ func (c *countingIndex) Delete(context.Context, string) error {
 	return c.writeErr
 }
 
-func (c *countingIndex) Search(context.Context, SearchRequest) (SearchResultSet, error) {
+func (c *countingIndex) Search(_ context.Context, req SearchRequest) (SearchResultSet, error) {
 	c.searches++
 	if c.onSearch != nil {
 		c.onSearch()
+	}
+	if c.resultFor != nil {
+		return c.resultFor(req), c.searchErr
 	}
 
 	return c.results, c.searchErr

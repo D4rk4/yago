@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -21,8 +22,13 @@ const judgmentBucket = "search_judgments"
 // Judgment is one query with the graded relevance of result URLs: grade 0 marks
 // an explicitly non-relevant URL, higher grades are more relevant.
 type Judgment struct {
-	Query  string         `json:"query"`
-	Grades map[string]int `json:"grades"`
+	Query          string              `json:"query"`
+	QueryCluster   string              `json:"query_cluster,omitempty"`
+	ObservedAt     time.Time           `json:"observed_at,omitempty"`
+	Grades         map[string]int      `json:"grades"`
+	ClusterIntents map[string][]string `json:"cluster_intents,omitempty"`
+	Navigational   bool                `json:"navigational,omitempty"`
+	SliceNames     []string            `json:"slice_names,omitempty"`
 }
 
 type judgmentCodec struct{}
@@ -87,13 +93,31 @@ func (s *Store) Put(ctx context.Context, judgment Judgment) error {
 		grades[trimmed] = grade
 	}
 
+	persisted := Judgment{
+		Query:          query,
+		QueryCluster:   normalizeQuery(judgment.QueryCluster),
+		ObservedAt:     judgment.ObservedAt.UTC(),
+		Grades:         grades,
+		ClusterIntents: cloneClusterIntents(judgment.ClusterIntents),
+		Navigational:   judgment.Navigational,
+		SliceNames:     append([]string(nil), judgment.SliceNames...),
+	}
 	if err := s.vault.Update(ctx, func(tx *vault.Txn) error {
-		return s.records.Put(tx, vault.Key(query), Judgment{Query: query, Grades: grades})
+		return s.records.Put(tx, vault.Key(query), persisted)
 	}); err != nil {
 		return fmt.Errorf("put judgment: %w", err)
 	}
 
 	return nil
+}
+
+func cloneClusterIntents(intents map[string][]string) map[string][]string {
+	cloned := make(map[string][]string, len(intents))
+	for identity, values := range intents {
+		cloned[identity] = append([]string(nil), values...)
+	}
+
+	return cloned
 }
 
 // Delete removes a curated judgment, reporting whether one existed.

@@ -2,6 +2,7 @@ package judgments
 
 import (
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/memvault"
 )
@@ -64,12 +65,22 @@ func TestPutNormalizesUpsertsAndListsSorted(t *testing.T) {
 func TestPutTrimsURLWhitespace(t *testing.T) {
 	store := openStore(t)
 	paddedURL := "  https://trim.example/  "
+	intents := map[string][]string{"https://trim.example/": {"reference"}}
+	slices := []string{"technical"}
+	observedAt := time.Date(2026, 7, 11, 12, 0, 0, 0, time.FixedZone("local", 3600))
 	if err := store.Put(t.Context(), Judgment{
-		Query:  "trim",
-		Grades: map[string]int{paddedURL: 2},
+		Query:          "trim",
+		QueryCluster:   "  Trim Cluster ",
+		ObservedAt:     observedAt,
+		Grades:         map[string]int{paddedURL: 2},
+		ClusterIntents: intents,
+		Navigational:   true,
+		SliceNames:     slices,
 	}); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
+	intents["https://trim.example/"][0] = "changed"
+	slices[0] = "changed"
 
 	list, err := store.List(t.Context())
 	if err != nil {
@@ -77,6 +88,12 @@ func TestPutTrimsURLWhitespace(t *testing.T) {
 	}
 	if _, ok := list[0].Grades["https://trim.example/"]; !ok {
 		t.Fatalf("URL whitespace was not trimmed: %+v", list[0].Grades)
+	}
+	if list[0].QueryCluster != "trim cluster" ||
+		!list[0].ObservedAt.Equal(observedAt.UTC()) || !list[0].Navigational ||
+		list[0].ClusterIntents["https://trim.example/"][0] != "reference" ||
+		list[0].SliceNames[0] != "technical" {
+		t.Fatalf("metadata = %+v", list[0])
 	}
 }
 

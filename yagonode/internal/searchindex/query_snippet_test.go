@@ -68,8 +68,10 @@ func TestQueryBiasedSnippetFallbacks(t *testing.T) {
 
 func TestAllowsDocumentDateBounds(t *testing.T) {
 	dated := documentstore.Document{
-		NormalizedURL: "https://a.example/x",
-		FetchedAt:     time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+		NormalizedURL:  "https://a.example/x",
+		FetchedAt:      time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+		PublishedAt:    time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+		DateConfidence: 1,
 	}
 	undated := documentstore.Document{NormalizedURL: "https://a.example/y"}
 	minDate := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
@@ -102,14 +104,18 @@ func TestSearchAppliesDateBounds(t *testing.T) {
 	index, err := NewBleveMemoryIndex(t.Context(), &fakeStoredDocuments{
 		documents: []documentstore.Document{
 			{
-				NormalizedURL: "https://a.example/fresh",
-				ExtractedText: "golang fresh document",
-				FetchedAt:     time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+				NormalizedURL:  "https://a.example/fresh",
+				ExtractedText:  "golang fresh document",
+				FetchedAt:      time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+				PublishedAt:    time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+				DateConfidence: 1,
 			},
 			{
-				NormalizedURL: "https://a.example/stale",
-				ExtractedText: "golang stale document",
-				FetchedAt:     time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+				NormalizedURL:  "https://a.example/stale",
+				ExtractedText:  "golang stale document",
+				FetchedAt:      time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+				PublishedAt:    time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+				DateConfidence: 1,
 			},
 		},
 	})

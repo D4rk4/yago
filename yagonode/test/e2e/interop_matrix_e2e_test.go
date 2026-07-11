@@ -112,7 +112,7 @@ func TestGlobalSearchFindsRealYaCyResults(t *testing.T) {
 		"maximumRecords": {"10"},
 	}.Encode()
 
-	found := waitFor(120*time.Second, func() bool {
+	found := waitForEvery(120*time.Second, 4*time.Second, func() bool {
 		result := probe.Get(ctx, searchURL)
 		return result.ok && strings.Contains(result.body, "transfer.example.invalid")
 	})

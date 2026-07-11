@@ -2,10 +2,59 @@
 <nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / YagoRank</nav>
 <h1 class="cds-h1">YagoRank</h1>
 {{template "toasts" .}}
-<p class="cds-muted">The learned ranking profile. Field boosts weight per-field BM25 during retrieval; priors multiply the score afterwards. Tuning fits every weight to mean NDCG@10 over the judgment set and proposes new values — nothing changes until you save.</p>
+{{if .LearnedModel}}
+<section class="cds-settings-form" aria-labelledby="learned-model-heading">
+  <h2 class="cds-h2" id="learned-model-heading">Learned model</h2>
+  <div class="cds-setting-row">
+    <span class="cds-setting-row__label">Active kind</span>
+    <span class="cds-setting-row__control"><span class="cds-tag cds-tag--info">{{.LearnedModel.ActiveKind}}</span></span>
+  </div>
+  <div class="cds-setting-row">
+    <span class="cds-setting-row__label">Active revision</span>
+    <span class="cds-setting-row__control cds-mono">{{.LearnedModel.ActiveRevision}}</span>
+  </div>
+  <div class="cds-setting-row">
+    <span class="cds-setting-row__label">Rollback</span>
+    <span class="cds-setting-row__control">{{if .LearnedModel.RollbackAvailable}}<span class="cds-tag cds-tag--success">Available</span>{{else}}<span class="cds-tag cds-tag--debug">Unavailable</span>{{end}}</span>
+  </div>
+  <form class="cds-actions cds-control-row" method="post" action="/admin/yagorank" hx-boost="false">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <button class="cds-btn" type="submit" name="action" value="train-linear"{{if eq .JudgmentCount 0}} disabled{{end}}>Train linear model</button>
+    <button class="cds-btn cds-btn--secondary" type="submit" name="action" value="train-tree"{{if eq .JudgmentCount 0}} disabled{{end}}>Train tree model</button>
+    <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="rollback-model"{{if not .LearnedModel.RollbackAvailable}} disabled{{end}}>Rollback model</button>
+  </form>
+</section>
+{{end}}
+{{if .TrainOutcome}}
+<section class="cds-settings-form" aria-labelledby="training-outcome-heading">
+  <h2 class="cds-h2" id="training-outcome-heading">Training outcome</h2>
+  <div class="cds-setting-row">
+    <span class="cds-setting-row__label">Promotion</span>
+    <span class="cds-setting-row__control">{{if .TrainOutcome.Promoted}}<span class="cds-tag cds-tag--success">Promoted</span>{{else}}<span class="cds-tag cds-tag--warn">Not promoted</span>{{end}}</span>
+  </div>
+  <div class="cds-setting-row">
+    <span class="cds-setting-row__label">Held-out NDCG gain</span>
+    <span class="cds-setting-row__control cds-mono">{{printf "%+.4f" .TrainOutcome.HeldOutNDCGGain}}</span>
+  </div>
+  <div class="cds-setting-row">
+    <span class="cds-setting-row__label">Confidence</span>
+    <span class="cds-setting-row__control cds-mono">{{printf "%.4f" .TrainOutcome.Confidence}}</span>
+  </div>
+  <div class="cds-setting-row">
+    <span class="cds-setting-row__label">Query split</span>
+    <span class="cds-setting-row__control cds-mono">Train {{.TrainOutcome.TrainQueryCount}} / Dev {{.TrainOutcome.DevelopmentQueryCount}} / Test {{.TrainOutcome.TestQueryCount}}</span>
+  </div>
+  {{if .TrainOutcome.Reasons}}
+  <div class="cds-setting-row">
+    <span class="cds-setting-row__label">Reasons</span>
+    <span class="cds-setting-row__control"><span>{{range .TrainOutcome.Reasons}}{{.}}<br>{{end}}</span></span>
+  </div>
+  {{end}}
+</section>
+{{end}}
 {{if .Tune}}
 <div class="cds-inline-notification cds-inline-notification--success" role="status">
-  Tuning preview: mean NDCG@10 {{printf "%.4f" .Tune.BeforeNDCG}} → {{printf "%.4f" .Tune.AfterNDCG}} over {{.Tune.Rounds}} round{{if ne .Tune.Rounds 1}}s{{end}}. {{if .Tune.Improved}}The proposed weights are loaded below — save to apply them.{{else}}The current weights are already at a local optimum.{{end}}
+  Tuning preview: mean NDCG@10 {{printf "%.4f" .Tune.BeforeNDCG}} → {{printf "%.4f" .Tune.AfterNDCG}}; {{.Tune.Rounds}} round{{if ne .Tune.Rounds 1}}s{{end}}.
 </div>
 {{end}}
 <form class="cds-settings-form" method="post" action="/admin/yagorank" hx-boost="false">
@@ -24,9 +73,9 @@
   </fieldset>
   {{end}}
   <div class="cds-actions">
-    <button class="cds-btn" type="submit" name="action" value="save">Save</button>
-    <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="tune"{{if eq .JudgmentCount 0}} disabled{{end}}>Tune from judgments</button>
+    <button class="cds-btn" type="submit" name="action" value="save">Save weights</button>
+    <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="tune"{{if eq .JudgmentCount 0}} disabled{{end}}>Tune weights</button>
   </div>
-  <p class="cds-muted">{{.JudgmentCount}} judgment{{if ne .JudgmentCount 1}}s{{end}} in the set.{{if eq .JudgmentCount 0}} Add curated judgments before tuning.{{end}}</p>
+  <p class="cds-muted">{{.JudgmentCount}} judgment{{if ne .JudgmentCount 1}}s{{end}}</p>
 </form>
 {{end}}

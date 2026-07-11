@@ -123,11 +123,21 @@ func deliver(
 		Batch: yagocrawlcontract.IngestBatch{
 			SourceURL: "https://example.org",
 			Document: yagocrawlcontract.DocumentIngest{
-				NormalizedURL: "https://example.org",
-				ExtractedText: "body",
+				NormalizedURL:    "https://example.org",
+				ExtractedText:    "body",
+				PublishedAt:      time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+				ModifiedAt:       time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC),
+				FirstSeenAt:      time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+				ContentChangedAt: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC),
+				DateConfidence:   0.9,
+				DateSource:       "itemprop",
 				Inlinks: []yagocrawlcontract.AnchorText{
 					{URL: "https://source.example/", Text: "source"},
 				},
+				OutboundAnchors: []yagocrawlcontract.OutboundAnchor{{
+					TargetURL: "https://target.example/", Text: "target", NoFollow: true,
+				}},
+				OutboundAnchorEvidenceKnown: true,
 				Images: []yagocrawlcontract.ImageMetadata{{
 					URL:     "https://example.org/image.png",
 					AltText: "Example image",
@@ -204,6 +214,17 @@ func TestAbsorbStoresMetadataBeforePostingsAndAcks(t *testing.T) {
 		documents.doc.Images[0].URL != "https://example.org/image.png" ||
 		documents.doc.Images[0].AltText != "Example image" {
 		t.Fatalf("document images = %#v", documents.doc.Images)
+	}
+	if documents.doc.PublishedAt.IsZero() || documents.doc.ModifiedAt.IsZero() ||
+		documents.doc.FirstSeenAt.IsZero() || documents.doc.ContentChangedAt.IsZero() ||
+		documents.doc.DateConfidence != 0.9 || documents.doc.DateSource != "itemprop" {
+		t.Fatalf("document date evidence = %#v", documents.doc)
+	}
+	if len(documents.doc.OutboundAnchors) != 1 ||
+		documents.doc.OutboundAnchors[0].TargetURL != "https://target.example/" ||
+		!documents.doc.OutboundAnchors[0].NoFollow ||
+		!documents.doc.OutboundAnchorEvidenceKnown {
+		t.Fatalf("document outbound anchors = %#v", documents.doc)
 	}
 }
 

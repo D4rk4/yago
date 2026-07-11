@@ -31,7 +31,15 @@ func (i *fakeIndex) Search(
 		return searchindex.SearchResultSet{}, i.err
 	}
 
-	return i.response, nil
+	response := i.response
+	if len(response.Results) > req.MaxResults {
+		response.Results = append(
+			[]searchindex.SearchResult(nil),
+			response.Results[:req.MaxResults]...,
+		)
+	}
+
+	return response, nil
 }
 
 func (i *fakeIndex) Stats(context.Context) (searchindex.IndexStats, error) {
@@ -40,33 +48,7 @@ func (i *fakeIndex) Stats(context.Context) (searchindex.IndexStats, error) {
 
 func TestSearcherTranslatesAndFiltersResults(t *testing.T) {
 	published := time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC)
-	index := &fakeIndex{response: searchindex.SearchResultSet{
-		Total: 3,
-		Results: []searchindex.SearchResult{
-			{
-				Title:         "Second",
-				URL:           "https://docs.example.org/guide.pdf",
-				Snippet:       "second snippet",
-				Score:         2,
-				PublishedDate: published,
-			},
-			{
-				Title:     "First",
-				URL:       "https://example.org/file.pdf",
-				Snippet:   "first snippet",
-				Score:     1,
-				Author:    "Ada Lovelace",
-				Keywords:  "go, search",
-				Publisher: "Example Press",
-			},
-			{
-				Title:   "Rejected",
-				URL:     "https://example.net/file.txt",
-				Snippet: "rejected",
-				Score:   3,
-			},
-		},
-	}}
+	index := translatedSearchIndex(published)
 
 	resp, err := NewSearcher(index).Search(t.Context(), searchcore.Request{
 		Query:            "golang",
@@ -83,6 +65,7 @@ func TestSearcherTranslatesAndFiltersResults(t *testing.T) {
 		FileType:         ".pdf",
 		URLMaskFilter:    `https://.*`,
 		PreferMaskFilter: `docs`,
+		SafeSearch:       true,
 	})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -92,13 +75,51 @@ func TestSearcherTranslatesAndFiltersResults(t *testing.T) {
 		index.got.Language != "en" ||
 		len(index.got.ExcludeTerms) != 1 ||
 		len(index.got.IncludeDomain) != 1 ||
-		index.got.IncludeDomain[0] != "example.org" {
+		index.got.IncludeDomain[0] != "example.org" || !index.got.SafeSearch {
 		t.Fatalf("index request = %#v", index.got)
 	}
 	if resp.TotalResults != 3 || len(resp.Results) != 1 {
 		t.Fatalf("response = %#v", resp)
 	}
-	result := resp.Results[0]
+	assertTranslatedResult(t, resp.Results[0])
+}
+
+func translatedSearchIndex(published time.Time) *fakeIndex {
+	return &fakeIndex{response: searchindex.SearchResultSet{
+		Total: 3,
+		Results: []searchindex.SearchResult{
+			{
+				Title:          "Second",
+				URL:            "https://docs.example.org/guide.pdf",
+				Snippet:        "second snippet",
+				Score:          2,
+				PublishedDate:  published,
+				DateConfidence: 0.8,
+			},
+			{
+				Title:               "First",
+				URL:                 "https://example.org/file.pdf",
+				Snippet:             "first snippet",
+				Score:               1,
+				Author:              "Ada Lovelace",
+				Keywords:            "go, search",
+				Publisher:           "Example Press",
+				SafetyRating:        documentstore.SafetyGeneral,
+				ExplicitProbability: 0.1,
+				SafetyConfidence:    0.8,
+			},
+			{
+				Title:   "Rejected",
+				URL:     "https://example.net/file.txt",
+				Snippet: "rejected",
+				Score:   3,
+			},
+		},
+	}}
+}
+
+func assertTranslatedResult(t *testing.T, result searchcore.Result) {
+	t.Helper()
 	if result.Title != "First" ||
 		result.URL != "https://example.org/file.pdf" ||
 		result.DisplayURL != "example.org/file.pdf" ||
@@ -109,6 +130,8 @@ func TestSearcherTranslatesAndFiltersResults(t *testing.T) {
 		result.URLHash == "" ||
 		result.ContentDomain != searchcore.ContentDomainText ||
 		result.Language != "EN" ||
+		result.SafetyRating != searchcore.SafetyGeneral ||
+		result.ExplicitProbability != 0.1 || result.SafetyConfidence != 0.8 ||
 		result.Author != "Ada Lovelace" ||
 		result.Keywords != "go, search" ||
 		result.Publisher != "Example Press" {
@@ -125,8 +148,41 @@ func TestSearcherUsesTermsAndDefaultLimit(t *testing.T) {
 		t.Fatalf("Search: %v", err)
 	}
 	if index.got.Query != "one two" ||
-		index.got.MaxResults != searchcore.DefaultPublicLimit {
+		index.got.MaxResults != searchcore.DefaultPublicLimit*proximityCandidateMultiplier {
 		t.Fatalf("index request = %#v", index.got)
+	}
+}
+
+func TestSearcherReranksBoundedCandidateWindow(t *testing.T) {
+	index := &fakeIndex{response: searchindex.SearchResultSet{
+		Total: 2,
+		Results: []searchindex.SearchResult{
+			{Title: "Retrieved first", URL: "https://a.example/deep/page", Score: 1},
+			{
+				Title:        "Prior winner",
+				URL:          "https://b.example/deep/page",
+				Score:        0.8,
+				Quality:      1,
+				QualityKnown: true,
+			},
+		},
+	}}
+	searcher := searchcore.NewLexicalRerankSearcher(NewSearcherWithRanking(
+		index,
+		func() searchindex.RankingWeights {
+			return searchindex.RankingWeights{Title: 1, Quality: 1}
+		},
+		nil,
+	))
+	resp, err := searcher.Search(t.Context(), searchcore.Request{Query: "rank", Limit: 1})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if index.got.MaxResults != 50 {
+		t.Fatalf("MaxResults = %d, want 50", index.got.MaxResults)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].Title != "Prior winner" {
+		t.Fatalf("results = %+v", resp.Results)
 	}
 }
 
@@ -183,9 +239,17 @@ func TestCoreResultFallbacksAndOffset(t *testing.T) {
 
 	result := coreResult(
 		searchcore.Request{},
-		searchindex.SearchResult{Title: "Local", URL: "/local", Snippet: "snippet"},
+		searchindex.SearchResult{
+			Title: "Local", URL: "/local", Snippet: "snippet", DateConfidence: 0.8,
+			Quality: 0.4, QualityKnown: true, SpamRisk: 0.3,
+			FunctionWordFraction: 0.2, SymbolFraction: 0.1,
+			AlphabeticFraction: 0.8, UniqueTokenFraction: 0.7,
+		},
 	)
-	if result.DisplayURL != "/local" || result.URLHash == "" {
+	if result.DisplayURL != "/local" || result.URLHash == "" || result.DateConfidence != 0.8 ||
+		result.Quality != 0.4 || !result.QualityKnown || result.SpamRisk != 0.3 ||
+		result.FunctionWordFraction != 0.2 || result.SymbolFraction != 0.1 ||
+		result.AlphabeticFraction != 0.8 || result.UniqueTokenFraction != 0.7 {
 		t.Fatalf("result = %#v", result)
 	}
 	result = coreResult(
@@ -227,7 +291,7 @@ func TestResultFiltersURLMask(t *testing.T) {
 	}
 }
 
-func TestSearcherLimitsResultsPerHost(t *testing.T) {
+func TestSearcherLeavesHostCrowdingToFinalRankingStage(t *testing.T) {
 	results := []searchindex.SearchResult{
 		{Title: "a1", URL: "https://a.example/1"},
 		{Title: "a2", URL: "https://a.example/2"},
@@ -238,32 +302,31 @@ func TestSearcherLimitsResultsPerHost(t *testing.T) {
 		{Title: "empty", URL: ""},
 		{Title: "b1", URL: "https://b.example/1"},
 	}
-	resp, err := NewSearcher(&fakeIndex{response: searchindex.SearchResultSet{
+	indexResult := searchindex.SearchResultSet{
 		Total:   len(results),
 		Results: results,
-	}}).Search(t.Context(), searchcore.Request{Query: "golang", Limit: 20})
+	}
+	resp, err := NewSearcher(&fakeIndex{response: indexResult}).Search(
+		t.Context(),
+		searchcore.Request{Query: "golang", Limit: 20},
+	)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if len(resp.Results) != len(results) {
-		t.Fatalf(
-			"results = %d, want %d (diversity must not drop results)",
-			len(resp.Results),
-			len(results),
-		)
+	if len(resp.Results) != len(results) || resp.Results[5].Host != "a.example" ||
+		resp.Results[7].Host != "b.example" {
+		t.Fatalf("retrieval order = %+v", resp.Results)
 	}
 
-	fromHostA := 0
-	for _, result := range resp.Results[:len(resp.Results)-1] {
-		if result.Host == "a.example" {
-			fromHostA++
-		}
+	final, err := searchcore.NewLexicalRerankSearcher(
+		NewSearcher(&fakeIndex{response: indexResult}),
+	).Search(t.Context(), searchcore.Request{Query: "golang", Limit: 20})
+	if err != nil {
+		t.Fatalf("final search: %v", err)
 	}
-	if fromHostA != 5 {
-		t.Fatalf("a.example in the kept results = %d, want 5 (capped)", fromHostA)
-	}
-	if last := resp.Results[len(resp.Results)-1]; last.Host != "a.example" {
-		t.Fatalf("last result host = %q, want the demoted a.example overflow", last.Host)
+	if len(final.Results) != len(results) || final.Results[3].Host != "b.example" ||
+		final.Results[4].Host != "a.example" {
+		t.Fatalf("final order = %+v", final.Results)
 	}
 }
 

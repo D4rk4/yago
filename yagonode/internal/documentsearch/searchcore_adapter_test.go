@@ -432,6 +432,27 @@ func TestCoreResultMatchersRejectEachFilter(t *testing.T) {
 	}
 }
 
+func TestCoreResultMatchersApplyLocalSafeSearch(t *testing.T) {
+	text := coreResultMatchers{req: searchcore.Request{
+		SafeSearch: true, ContentDomain: searchcore.ContentDomainText,
+	}}
+	if text.match(searchcore.Result{SafetyRating: searchcore.SafetyExplicit}) {
+		t.Fatal("explicit local result was accepted")
+	}
+	if !text.match(searchcore.Result{}) {
+		t.Fatal("unknown local text result was rejected")
+	}
+	image := coreResultMatchers{req: searchcore.Request{
+		SafeSearch: true, ContentDomain: searchcore.ContentDomainImage,
+	}}
+	if image.match(searchcore.Result{}) {
+		t.Fatal("unknown local image result was accepted")
+	}
+	if !image.match(searchcore.Result{SafetyRating: searchcore.SafetyGeneral}) {
+		t.Fatal("general local image result was rejected")
+	}
+}
+
 func mustParseURL(tb testing.TB, raw string) *url.URL {
 	tb.Helper()
 	parsed, err := url.Parse(raw)

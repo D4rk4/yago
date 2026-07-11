@@ -41,15 +41,27 @@ func (s denylistFilterSearcher) Search(
 		return resp, err //nolint:wrapcheck // pass the wrapped searcher's error through unchanged.
 	}
 
-	snapshot, err := s.deny.Snapshot(ctx)
+	return filterDenylistedResponse(ctx, resp, s.deny), nil
+}
+
+func filterDenylistedResponse(
+	ctx context.Context,
+	resp searchcore.Response,
+	deny denylistSnapshotter,
+) searchcore.Response {
+	if deny == nil {
+		return resp
+	}
+
+	snapshot, err := deny.Snapshot(ctx)
 	if err != nil {
 		slog.WarnContext(ctx, "denylist snapshot failed; serving unfiltered results",
 			slog.Any("error", err))
 
-		return resp, nil
+		return resp
 	}
 	if snapshot.IsEmpty() {
-		return resp, nil
+		return resp
 	}
 
 	kept := make([]searchcore.Result, 0, len(resp.Results))
@@ -69,5 +81,5 @@ func (s denylistFilterSearcher) Search(
 		resp.TotalResults = 0
 	}
 
-	return resp, nil
+	return resp
 }

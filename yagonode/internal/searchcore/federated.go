@@ -60,11 +60,10 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 	// Reciprocal Rank Fusion is the single merge point: local and remote
 	// lists fuse by rank, so incomparable peer scores never need calibration
 	// (SEARCH-12; Cormack et al., SIGIR 2009).
-	merged := DiversifyResults(FuseByReciprocalRank(
+	merged := FuseByReciprocalRank(
 		localResp.Results,
 		remoteResp.Results,
-	), req)
-	OrderByDateWhenRequested(merged, req)
+	)
 
 	return Response{
 		Request:         req,

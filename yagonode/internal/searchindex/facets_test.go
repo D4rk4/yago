@@ -9,10 +9,12 @@ import (
 
 func facetDoc(url, lang, author string, fetched time.Time) documentstore.Document {
 	return documentstore.Document{
-		NormalizedURL: url,
-		Language:      lang,
-		Metadata:      map[string]string{"author": author},
-		FetchedAt:     fetched,
+		NormalizedURL:  url,
+		Language:       lang,
+		Metadata:       map[string]string{"author": author},
+		FetchedAt:      fetched,
+		PublishedAt:    fetched,
+		DateConfidence: 1,
 	}
 }
 

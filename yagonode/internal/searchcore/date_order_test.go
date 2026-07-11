@@ -38,22 +38,32 @@ func TestOrderByDateWhenRequestedKeepsRelevanceOrderWithoutModifier(t *testing.T
 	}
 }
 
-func TestFederatedSearcherHonorsDateSort(t *testing.T) {
+func TestFinalRankingStageOwnsFederatedDateSort(t *testing.T) {
 	local := &fakeCoreSearcher{response: Response{Results: []Result{
-		{URL: "old", URLHash: "old", Date: "20240101", Score: 10},
+		{URL: "a-old", URLHash: "a-old", Date: "20240101", Score: 10},
 	}}}
 	remote := &fakeCoreSearcher{response: Response{Results: []Result{
-		{URL: "new", URLHash: "new", Date: "20260101", Score: 0.1},
+		{URL: "z-new", URLHash: "z-new", Date: "20260101", Score: 0.1},
 	}}}
 
-	resp, err := NewFederatedSearcher(local, remote).Search(
+	federated := NewFederatedSearcher(local, remote)
+	req := Request{Source: SourceGlobal, Limit: 10, SortByDate: true}
+	raw, err := federated.Search(
 		t.Context(),
-		Request{Source: SourceGlobal, Limit: 10, SortByDate: true},
+		req,
 	)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if len(resp.Results) != 2 || resp.Results[0].URL != "new" {
+	if len(raw.Results) != 2 || raw.Results[0].URL != "a-old" {
+		t.Fatalf("federated candidate order = %#v", raw.Results)
+	}
+
+	resp, err := NewLexicalRerankSearcher(federated).Search(t.Context(), req)
+	if err != nil {
+		t.Fatalf("final Search: %v", err)
+	}
+	if len(resp.Results) != 2 || resp.Results[0].URL != "z-new" {
 		t.Fatalf("results = %#v, want the newest first despite lower score", resp.Results)
 	}
 }

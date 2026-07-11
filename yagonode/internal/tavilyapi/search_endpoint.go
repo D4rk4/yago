@@ -296,6 +296,7 @@ func coreRequest(req SearchRequest) (searchcore.Request, error) {
 		TLD:           parsed.TLD,
 		FileType:      parsed.FileType,
 		Verify:        searchcore.VerifyFalse,
+		SafeSearch:    req.SafeSearch,
 		SortByDate:    parsed.SortByDate,
 		Near:          parsed.Near,
 		MinDate:       minDate,
@@ -528,7 +529,9 @@ func (e searchEndpoint) responseResult(
 				raw = &rawText
 			}
 		}
-		resultImages, imageDetails = resultImagesFromDocument(req, doc)
+		if !req.SafeSearch || result.SafetyRating == searchcore.SafetyGeneral {
+			resultImages, imageDetails = resultImagesFromDocument(req, doc)
+		}
 	}
 	if content == "" {
 		content = result.Title

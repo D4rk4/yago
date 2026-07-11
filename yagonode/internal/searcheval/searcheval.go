@@ -8,16 +8,24 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
+
+const maximumRelevanceGrade = 30
 
 // Judgment is one query paired with the graded relevance of documents by URL: a
 // grade of 0 (or an absent URL) is non-relevant, higher grades are more
 // relevant.
 type Judgment struct {
-	Query    string
-	Relevant map[string]int
+	Query          string
+	QueryCluster   string
+	ObservedAt     time.Time
+	Relevant       map[string]int
+	ClusterIntents map[string][]string
+	Navigational   bool
+	SliceNames     []string
 }
 
 // Report summarizes an evaluation run: the NDCG@k of each query and their mean.
@@ -53,7 +61,7 @@ func NDCG(results []searchcore.Result, relevant map[string]int, k int) float64 {
 func discountedSum(grades []int, k int) float64 {
 	sum := 0.0
 	for rank := 1; rank <= k && rank <= len(grades); rank++ {
-		gain := math.Exp2(float64(grades[rank-1])) - 1
+		gain := math.Exp2(float64(boundedGrade(grades[rank-1]))) - 1
 		sum += gain / math.Log2(float64(rank)+1)
 	}
 
@@ -65,7 +73,7 @@ func discountedSum(grades []int, k int) float64 {
 func idealGains(relevant map[string]int) []int {
 	grades := make([]int, 0, len(relevant))
 	for _, grade := range relevant {
-		grades = append(grades, grade)
+		grades = append(grades, boundedGrade(grade))
 	}
 	sort.Sort(sort.Reverse(sort.IntSlice(grades)))
 
@@ -83,7 +91,11 @@ func Evaluate(
 	report := Report{K: k, PerQuery: make(map[string]float64, len(judgments))}
 	total := 0.0
 	for _, judgment := range judgments {
-		response, err := searcher.Search(ctx, searchcore.Request{Query: judgment.Query, Limit: k})
+		request := searchcore.RequestWithParsedQuery(searchcore.Request{
+			Query: judgment.Query,
+			Limit: k,
+		})
+		response, err := searcher.Search(ctx, request)
 		if err != nil {
 			return Report{}, fmt.Errorf("evaluate query %q: %w", judgment.Query, err)
 		}
@@ -121,6 +133,7 @@ func PseudoJudgments(labels []Label) []Judgment {
 		if grade <= 0 {
 			grade = 1
 		}
+		grade = boundedGrade(grade)
 		if _, ok := byQuery[label.Query]; !ok {
 			byQuery[label.Query] = map[string]int{}
 			order = append(order, label.Query)
@@ -133,4 +146,8 @@ func PseudoJudgments(labels []Label) []Judgment {
 	}
 
 	return judgments
+}
+
+func boundedGrade(grade int) int {
+	return min(max(grade, 0), maximumRelevanceGrade)
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/contentcluster"
 	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/dhtexchange"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
@@ -261,6 +262,7 @@ func restoreAssemblySeams(t *testing.T) {
 func restoreStorageSeams(t *testing.T) {
 	t.Helper()
 	oldOpenDocuments := openDocuments
+	oldOpenContentClusters := openContentClusters
 	oldOpenSearchIndex := openSearchIndex
 	oldOpenStalenessRanking := openStalenessRanking
 	oldOpenURLMetadata := openURLMetadata
@@ -268,6 +270,7 @@ func restoreStorageSeams(t *testing.T) {
 	oldOpenRWIStorage := openRWIStorage
 	t.Cleanup(func() {
 		openDocuments = oldOpenDocuments
+		openContentClusters = oldOpenContentClusters
 		openSearchIndex = oldOpenSearchIndex
 		openStalenessRanking = oldOpenStalenessRanking
 		openURLMetadata = oldOpenURLMetadata
@@ -404,7 +407,7 @@ func TestRunMountsCrawlDispatchAndServes(t *testing.T) {
 			announcer:     fakeAnnouncer{},
 			sweeper:       &scriptedSweeper{},
 			crawl:         crawl,
-			searchExplain: newSearchExplainEndpoint(nil),
+			searchExplain: newSearchExplainEndpoint(nil, nil, nil, nil, nil),
 		}, nil
 	}
 	serveRuntimeNode = func(
@@ -446,7 +449,7 @@ func TestRunOmitsPublicServerWhenDisabled(t *testing.T) {
 		return node{
 			announcer:     fakeAnnouncer{},
 			sweeper:       &scriptedSweeper{},
-			searchExplain: newSearchExplainEndpoint(nil),
+			searchExplain: newSearchExplainEndpoint(nil, nil, nil, nil, nil),
 		}, nil
 	}
 	served := 0
@@ -766,6 +769,20 @@ func TestOpenNodeStorageReturnsOpenErrors(t *testing.T) {
 			t.Fatalf("open error = %v, want %v", err, sentinel)
 		}
 	})
+}
+
+func TestOpenNodeStorageReturnsContentClusterOpenError(t *testing.T) {
+	sentinel := errors.New("open failed")
+	restoreStorageSeams(t)
+	openContentClusters = func(
+		*vault.Vault,
+		contentcluster.Limits,
+	) (*contentcluster.Index, error) {
+		return nil, sentinel
+	}
+	if _, err := openNodeStorage(openTestVault(t), ""); !errors.Is(err, sentinel) {
+		t.Fatalf("open error = %v, want %v", err, sentinel)
+	}
 }
 
 func TestOpenNodeStorageReturnsSearchIndexOpenError(t *testing.T) {

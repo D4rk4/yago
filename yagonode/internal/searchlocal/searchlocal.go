@@ -3,7 +3,6 @@ package searchlocal
 import (
 	"context"
 	"fmt"
-	"math"
 	"net/url"
 	"path"
 	"regexp"
@@ -17,12 +16,10 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 )
 
-const defaultMaxResultsPerHost = 5
-
 type localSearcher struct {
 	index    searchindex.SearchIndex
 	weights  func() searchindex.RankingWeights
-	hostRank func() hostrank.Table
+	hostRank func() hostrank.AuthorityTable
 }
 
 func NewSearcher(index searchindex.SearchIndex) searchcore.Searcher {
@@ -46,7 +43,7 @@ func NewSearcherWithWeights(
 func NewSearcherWithRanking(
 	index searchindex.SearchIndex,
 	weights func() searchindex.RankingWeights,
-	hostRank func() hostrank.Table,
+	hostRank func() hostrank.AuthorityTable,
 ) searchcore.Searcher {
 	return localSearcher{index: index, weights: weights, hostRank: hostRank}
 }
@@ -59,7 +56,7 @@ func (s localSearcher) Search(
 		return searchcore.Response{}, fmt.Errorf("search index unavailable")
 	}
 	indexReq := s.indexRequest(req)
-	resultSet, err := s.index.Search(ctx, indexReq)
+	resultSet, err := s.searchCandidates(ctx, indexReq)
 	if err != nil {
 		return searchcore.Response{}, fmt.Errorf("search index: %w", err)
 	}
@@ -68,9 +65,6 @@ func (s localSearcher) Search(
 	if err != nil {
 		return searchcore.Response{}, err
 	}
-
-	results = searchcore.DiversifyResults(results, req)
-	searchcore.OrderByDateWhenRequested(results, req)
 
 	return searchcore.Response{
 		Request:      req,
@@ -92,26 +86,29 @@ func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRe
 	}
 
 	return searchindex.SearchRequest{
-		Query:            query,
-		ExcludeTerms:     append([]string(nil), req.ExcludedTerms...),
-		Phrases:          append([]string(nil), req.Phrases...),
-		MaxResults:       req.Offset + requestLimit(req),
-		IncludeDomain:    includeDomains(req),
-		Language:         strings.ToLower(req.Language),
-		Weights:          weights,
-		IncludePositions: multiTermQuery(query, req.Terms),
-		Fuzzy:            req.Fuzzy,
-		Author:           req.Author,
-		Terms:            append([]string(nil), req.Terms...),
-		ExpansionTerms:   append([]string(nil), req.ExpansionTerms...),
-		Near:             req.Near,
-		WithFacets:       req.WithFacets,
-		ContentDomain:    string(req.ContentDomain),
-		MinDate:          req.MinDate,
-		MaxDate:          req.MaxDate,
-		FileType:         req.FileType,
-		InURL:            req.InURL,
-		TLD:              req.TLD,
+		Query:              query,
+		ExcludeTerms:       append([]string(nil), req.ExcludedTerms...),
+		Phrases:            append([]string(nil), req.Phrases...),
+		MaxResults:         req.Offset + requestLimit(req),
+		IncludeDomain:      includeDomains(req),
+		SafeSearch:         req.SafeSearch,
+		Language:           strings.ToLower(req.Language),
+		Weights:            weights,
+		Explain:            req.Explain,
+		IncludeFieldScores: true,
+		IncludePositions:   multiTermQuery(query, req.Terms),
+		Fuzzy:              req.Fuzzy,
+		Author:             req.Author,
+		Terms:              append([]string(nil), req.Terms...),
+		ExpansionTerms:     append([]string(nil), req.ExpansionTerms...),
+		Near:               req.Near,
+		WithFacets:         req.WithFacets,
+		ContentDomain:      string(req.ContentDomain),
+		MinDate:            req.MinDate,
+		MaxDate:            req.MaxDate,
+		FileType:           req.FileType,
+		InURL:              req.InURL,
+		TLD:                req.TLD,
 	}
 }
 
@@ -182,34 +179,21 @@ func coreResults(
 			out = append(out, core)
 		}
 	}
-	scorer.rescore(out)
+	scorer.rescore(out, req)
 	filters.prefer(out)
 
-	return diversifyByHost(out, defaultMaxResultsPerHost), nil
+	return out, nil
 }
 
-// hostRankScorer folds the query-independent document priors into result
-// scores after retrieval (SEARCH-38): host authority (YBR block rank), a
-// freshness decay over the document date, and a saturating URL-length prior
-// (Kraaij, Westerveld & Hiemstra, SIGIR 2002: root-like URLs are far likelier
-// entry pages; Zaragoza's TREC-13 static feature w·k/(k+len)). Each prior is
-// additive inside one multiplier, so relevance stays dominant:
-//
-//	score ×= 1 + wHost·rank(host) + wFresh·2^(−age/halfLife) + urlPrior(path)
-//
-// Undated documents skip the freshness term rather than being punished.
 type hostRankScorer struct {
 	hostWeight  float64
 	freshWeight float64
 	qualWeight  float64
 	proxWeight  float64
-	table       hostrank.Table
+	table       hostrank.AuthorityTable
 	now         time.Time
+	freshness   freshnessDecayProfile
 }
-
-// freshnessHalfLife is the age at which the recency prior halves; half a year
-// keeps news-ish pages ahead without burying a reference archive.
-const freshnessHalfLife = 180 * 24 * time.Hour
 
 // URL-length prior constants: weight and saturation length in path runes
 // (k≈20 chars per the TREC-13 static feature).
@@ -246,12 +230,15 @@ func (s localSearcher) hostRankScorer() *hostRankScorer {
 	return scorer
 }
 
-func (h *hostRankScorer) rescore(results []searchcore.Result) {
+func (h *hostRankScorer) rescore(results []searchcore.Result, req searchcore.Request) {
 	if h == nil {
 		return
 	}
+	if h.freshWeight > 0 {
+		h.freshness = freshnessProfileFor(req, results, h.now)
+	}
 	for i := range results {
-		results[i].Score *= 1 + h.priors(results[i])
+		results[i].Score *= 1 + h.priors(&results[i])
 	}
 	sort.SliceStable(results, func(i, j int) bool {
 		return results[i].Score > results[j].Score
@@ -259,21 +246,36 @@ func (h *hostRankScorer) rescore(results []searchcore.Result) {
 }
 
 // priors sums the enabled query-independent bonuses for one result.
-func (h *hostRankScorer) priors(result searchcore.Result) float64 {
-	total := urlLengthPrior(result.URL)
+func (h *hostRankScorer) priors(result *searchcore.Result) float64 {
+	urlPrior := urlLengthPrior(result.URL)
+	result.Evidence = result.Evidence.With(searchcore.SignalURLPrior, urlPrior)
+	total := urlPrior
 	if h.hostWeight > 0 && h.table != nil {
-		total += h.hostWeight * h.table.Rank(hostHashOf(result.URL))
+		if authority, known := h.table[hostrank.RegistrableDomain(result.URL)]; known {
+			result.Evidence = result.Evidence.With(
+				searchcore.SignalAuthority,
+				authority.Score,
+			)
+			result.Evidence = result.Evidence.With(
+				searchcore.SignalAuthorityConfidence,
+				authority.Confidence,
+			)
+			total += h.hostWeight * authority.Score * authority.Confidence
+		}
 	}
 	if h.freshWeight > 0 {
-		if published, err := time.Parse("20060102", result.Date); err == nil {
+		if published, err := time.Parse("20060102", result.Date); err == nil &&
+			result.DateConfidence > 0 {
 			age := h.now.Sub(published)
 			if age < 0 {
 				age = 0
 			}
-			total += h.freshWeight * math.Exp2(-age.Hours()/freshnessHalfLife.Hours())
+			freshness := result.DateConfidence * h.freshness.Score(age)
+			result.Evidence = result.Evidence.With(searchcore.SignalFreshness, freshness)
+			total += h.freshWeight * freshness
 		}
 	}
-	if h.qualWeight > 0 {
+	if h.qualWeight > 0 && result.QualityKnown {
 		total += h.qualWeight * result.Quality
 	}
 	if h.proxWeight > 0 {
@@ -295,34 +297,6 @@ func urlLengthPrior(rawURL string) float64 {
 	return urlPriorWeight * urlPriorK / (urlPriorK + pathLen)
 }
 
-// hostHashOf derives the YaCy host hash of rawURL the same way the host-link graph
-// does (HashURL then HostHash), yielding "" for a URL that cannot be hashed so the
-// lookup falls back to a neutral rank.
-func hostHashOf(rawURL string) string {
-	urlHash, _ := yagomodel.HashURL(rawURL)
-	hostHash, _ := urlHash.HostHash()
-
-	return hostHash
-}
-
-func diversifyByHost(results []searchcore.Result, maxPerHost int) []searchcore.Result {
-	counts := make(map[string]int, len(results))
-	kept := make([]searchcore.Result, 0, len(results))
-	var overflow []searchcore.Result
-	for _, result := range results {
-		host := strings.ToLower(result.Host)
-		if host == "" || counts[host] < maxPerHost {
-			counts[host]++
-			kept = append(kept, result)
-
-			continue
-		}
-		overflow = append(overflow, result)
-	}
-
-	return append(kept, overflow...)
-}
-
 func coreResult(
 	req searchcore.Request,
 	result searchindex.SearchResult,
@@ -335,29 +309,43 @@ func coreResult(
 	}
 
 	return searchcore.Result{
-		Title:              result.Title,
-		URL:                result.URL,
-		DisplayURL:         displayURL(host, pathValue),
-		Snippet:            result.Snippet,
-		Score:              result.Score,
-		Source:             req.Source,
-		Host:               host,
-		Path:               pathValue,
-		File:               file,
-		ContentType:        result.ContentType,
-		URLHash:            hash,
-		Size:               result.Size,
-		Date:               result.PublishedDate.Format("20060102"),
-		ContentDomain:      req.ContentDomain,
-		Language:           req.Language,
-		Author:             result.Author,
-		Keywords:           result.Keywords,
-		Publisher:          result.Publisher,
-		Quality:            result.Quality,
-		Proximity:          result.Proximity,
-		FieldScores:        result.FieldScores,
-		FieldTermPositions: result.FieldTermPositions,
-		Images:             coreImages(result.Images),
+		Title:                result.Title,
+		URL:                  result.URL,
+		ClusterID:            result.ClusterID,
+		RepresentativeURL:    result.RepresentativeURL,
+		DisplayURL:           displayURL(host, pathValue),
+		Snippet:              result.Snippet,
+		Score:                result.Score,
+		Evidence:             localRankingEvidence(req, result),
+		Source:               req.Source,
+		Host:                 host,
+		Path:                 pathValue,
+		File:                 file,
+		ContentType:          result.ContentType,
+		URLHash:              hash,
+		Size:                 result.Size,
+		Date:                 result.PublishedDate.Format("20060102"),
+		DateConfidence:       result.DateConfidence,
+		ContentDomain:        req.ContentDomain,
+		Language:             req.Language,
+		Author:               result.Author,
+		Keywords:             result.Keywords,
+		Publisher:            result.Publisher,
+		Quality:              result.Quality,
+		QualityKnown:         result.QualityKnown,
+		SpamRisk:             result.SpamRisk,
+		FunctionWordFraction: result.FunctionWordFraction,
+		SymbolFraction:       result.SymbolFraction,
+		AlphabeticFraction:   result.AlphabeticFraction,
+		UniqueTokenFraction:  result.UniqueTokenFraction,
+		SafetyRating:         searchcore.SafetyRating(result.SafetyRating),
+		ExplicitProbability:  result.ExplicitProbability,
+		SafetyConfidence:     result.SafetyConfidence,
+		Proximity:            result.Proximity,
+		FieldScores:          result.FieldScores,
+		FieldTermPositions:   result.FieldTermPositions,
+		Explanation:          result.Explanation,
+		Images:               coreImages(result.Images),
 	}
 }
 

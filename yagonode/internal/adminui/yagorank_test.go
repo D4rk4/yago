@@ -179,7 +179,7 @@ func TestConsoleYagoRankTuneWithoutImprovement(t *testing.T) {
 	}
 	console := New(Options{Ranking: ranking})
 	got := doPost(t, console, "/admin/yagorank", url.Values{"action": {"tune"}})
-	if !strings.Contains(got.body, "already at a local optimum") {
+	if !strings.Contains(got.body, "Tuning found no improvement") {
 		t.Fatalf("no-improvement notice missing: %s", got.body)
 	}
 }

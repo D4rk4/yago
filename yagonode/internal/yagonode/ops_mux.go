@@ -233,6 +233,24 @@ func mountOpsExtras(opsMux *http.ServeMux, assembled node) {
 	if assembled.searchTune != nil {
 		opsMux.Handle(pathSearchRankingTune, assembled.searchTune)
 	}
+	if assembled.searchModel != nil {
+		opsMux.Handle(pathSearchRankingModel, assembled.searchModel)
+	}
+	if assembled.searchTrain != nil {
+		opsMux.Handle(pathSearchRankingTrain, assembled.searchTrain)
+	}
+	if assembled.searchRollback != nil {
+		opsMux.Handle(pathSearchRankingRollback, assembled.searchRollback)
+	}
+	if assembled.safetyModel != nil {
+		opsMux.Handle(pathSearchSafetyModel, assembled.safetyModel)
+	}
+	if assembled.safetyTrain != nil {
+		opsMux.Handle(pathSearchSafetyTrain, assembled.safetyTrain)
+	}
+	if assembled.safetyRollback != nil {
+		opsMux.Handle(pathSearchSafetyRollback, assembled.safetyRollback)
+	}
 	if assembled.judgmentsAPI != nil {
 		opsMux.Handle(pathSearchJudgments, assembled.judgmentsAPI)
 	}

@@ -9,24 +9,41 @@ import (
 )
 
 func TestIngestBatchRoundTrip(t *testing.T) {
+	familyFriendly := false
 	batch := IngestBatch{
 		SourceURL:     "https://example.org/a",
 		Provenance:    []byte("admin"),
 		ProfileHandle: "abcdef012345",
 		Document: DocumentIngest{
-			CanonicalURL:  "https://example.org/a",
-			NormalizedURL: "https://example.org/a",
-			Title:         "Title",
-			Headings:      []string{"Heading"},
-			ExtractedText: "body text",
-			Language:      "en",
-			ContentType:   "text/html",
-			FetchStatus:   "fetched",
-			FetchedAt:     time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC),
-			IndexedAt:     time.Date(2026, 7, 2, 10, 0, 1, 0, time.UTC),
-			ContentHash:   "abc",
-			Outlinks:      []string{"https://example.org/b"},
-			Inlinks:       []AnchorText{{URL: "https://example.org/", Text: "anchor"}},
+			CanonicalURL:     "https://example.org/a",
+			NormalizedURL:    "https://example.org/a",
+			Title:            "Title",
+			Headings:         []string{"Heading"},
+			ExtractedText:    "body text",
+			Language:         "en",
+			ContentType:      "text/html",
+			FetchStatus:      "fetched",
+			FetchedAt:        time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC),
+			IndexedAt:        time.Date(2026, 7, 2, 10, 0, 1, 0, time.UTC),
+			PublishedAt:      time.Date(2026, 6, 1, 8, 0, 0, 0, time.UTC),
+			ModifiedAt:       time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC),
+			FirstSeenAt:      time.Date(2026, 6, 2, 10, 0, 0, 0, time.UTC),
+			ContentChangedAt: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC),
+			DateConfidence:   1,
+			DateSource:       "json-ld",
+			ContentHash:      "abc",
+			Outlinks:         []string{"https://example.org/b"},
+			Inlinks: []AnchorText{{
+				URL: "https://example.org/", Text: "anchor", UserGenerated: true,
+			}},
+			OutboundAnchors: []OutboundAnchor{{
+				TargetURL: "https://example.org/b", Text: "next", Sponsored: true,
+			}},
+			OutboundAnchorEvidenceKnown: true,
+			SafetyLabels: SafetyLabels{
+				RatingValues:   []string{"adult"},
+				FamilyFriendly: &familyFriendly,
+			},
 			Images: []ImageMetadata{{
 				URL:     "https://example.org/image.png",
 				AltText: "Example image",

@@ -13,7 +13,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searcheval"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
-	"github.com/D4rk4/yago/yagonode/internal/searchlocal"
 )
 
 const (
@@ -53,7 +52,7 @@ type rankingTuner struct {
 // is unavailable rather than ranking against an empty index.
 func newRankingTuner(
 	index searchindex.SearchIndex,
-	hostRank func() hostrank.Table,
+	hostRank func() hostrank.AuthorityTable,
 	ranking *rankingprofile.Holder,
 	curated curatedJudgments,
 	implicit implicitJudgments,
@@ -61,11 +60,11 @@ func newRankingTuner(
 	var factory rankfit.SearcherFactory
 	if index != nil {
 		factory = func(weights searchindex.RankingWeights) searchcore.Searcher {
-			return searchlocal.NewSearcherWithRanking(
+			return searchcore.NewLexicalRerankSearcher(newLocalRankingSearcher(
 				index,
 				func() searchindex.RankingWeights { return weights },
 				hostRank,
-			)
+			))
 		}
 	}
 
@@ -118,8 +117,13 @@ func (t rankingTuner) trainingJudgments(
 	for _, judgment := range stored {
 		curatedQueries[judgment.Query] = struct{}{}
 		graded = append(graded, searcheval.Judgment{
-			Query:    judgment.Query,
-			Relevant: judgment.Grades,
+			Query:          judgment.Query,
+			QueryCluster:   judgment.QueryCluster,
+			ObservedAt:     judgment.ObservedAt,
+			Relevant:       judgment.Grades,
+			ClusterIntents: judgment.ClusterIntents,
+			Navigational:   judgment.Navigational,
+			SliceNames:     judgment.SliceNames,
 		})
 	}
 	if t.implicit == nil {

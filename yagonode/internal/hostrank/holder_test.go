@@ -17,12 +17,12 @@ func TestHolderServesEmptyTableBeforeFirstStore(t *testing.T) {
 func TestHolderStoreThenCurrentReturnsLatest(t *testing.T) {
 	holder := NewHolder()
 
-	holder.Store(Table{"a": 0.5})
+	holder.Store(AuthorityTable{"a": {Score: 0.5, Confidence: 0.4}})
 	if got := holder.Current().Rank("a"); got != 0.5 {
 		t.Fatalf("stored rank = %v, want 0.5", got)
 	}
 
-	holder.Store(Table{"b": 0.9})
+	holder.Store(AuthorityTable{"b": {Score: 0.9, Confidence: 0.8}})
 	if got := holder.Current().Rank("a"); got != 0 {
 		t.Fatalf("stale host still present after overwrite: %v", got)
 	}

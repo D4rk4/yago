@@ -29,10 +29,12 @@ func writePreGramIndex(t *testing.T) string {
 func TestNewBleveDiskIndexMigratesPreGramIndex(t *testing.T) {
 	path := writePreGramIndex(t)
 	doc := documentstore.Document{
-		NormalizedURL: "https://example.org/news",
-		Title:         "Зеленский",
-		ExtractedText: "Новости про Зеленского.",
-		FetchedAt:     time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC),
+		NormalizedURL:  "https://example.org/news",
+		Title:          "Зеленский",
+		ExtractedText:  "Новости про Зеленского.",
+		FetchedAt:      time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC),
+		PublishedAt:    time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC),
+		DateConfidence: 1,
 	}
 	stored := &fakeStoredDocuments{documents: []documentstore.Document{doc}}
 

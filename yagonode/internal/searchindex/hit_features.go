@@ -44,12 +44,8 @@ func hitFieldTermPositions(
 	return out
 }
 
-// hitFieldScores walks the score explanation and sums, per field, the per-term
-// BM25 weights — each field:term counted once. It returns nil when the
-// explanation was not requested, is absent, or carries no recognised weight
-// nodes, so a caller can treat the feature as simply unavailable.
 func hitFieldScores(req SearchRequest, hit *search.DocumentMatch) map[string]float64 {
-	if !req.Explain || hit.Expl == nil {
+	if (!req.Explain && !req.IncludeFieldScores) || hit.Expl == nil {
 		return nil
 	}
 	perField := map[string]map[string]float64{}

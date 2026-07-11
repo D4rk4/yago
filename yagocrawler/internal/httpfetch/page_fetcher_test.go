@@ -40,6 +40,7 @@ func TestPageFetcherReturnsHTMLPage(t *testing.T) {
 			t.Fatalf("user agent = %q", r.Header.Get("User-Agent"))
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Last-Modified", "Wed, 01 Jul 2026 10:00:00 GMT")
 		_, _ = w.Write([]byte("<html><body>hello</body></html>"))
 	}))
 	defer server.Close()
@@ -60,6 +61,9 @@ func TestPageFetcherReturnsHTMLPage(t *testing.T) {
 	}
 	if string(page.Body) != "<html><body>hello</body></html>" {
 		t.Fatalf("body = %q", page.Body)
+	}
+	if page.LastModified != time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC) {
+		t.Fatalf("last modified = %v", page.LastModified)
 	}
 }
 

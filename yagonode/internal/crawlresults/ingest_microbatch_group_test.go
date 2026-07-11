@@ -10,11 +10,13 @@ import (
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
-	"github.com/D4rk4/yago/yagonode/internal/neardup"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 	"github.com/D4rk4/yago/yagonode/internal/urlmeta"
 )
+
+const clusteredPageText = "routing platform hypervisor interface configuration " +
+	"tunnel policy route firmware console command log debugging monitoring"
 
 // settleCounter tallies how a micro-batch's deliveries were acknowledged.
 type settleCounter struct {
@@ -84,8 +86,9 @@ func groupDocBatch(url, text string) yagocrawlcontract.IngestBatch {
 	return yagocrawlcontract.IngestBatch{
 		SourceURL: url,
 		Document: yagocrawlcontract.DocumentIngest{
-			NormalizedURL: url,
-			ExtractedText: text,
+			NormalizedURL:               url,
+			ExtractedText:               text,
+			OutboundAnchorEvidenceKnown: true,
 		},
 	}
 }
@@ -175,25 +178,29 @@ func (r *batchGroupRecorder) calls() int {
 	return r.batchCalls
 }
 
-// TestGroupSendsMetadataOnlyAndNearDuplicateToTail covers the grouped
-// document-split branches: a metadata-only delivery and a near-duplicate both
-// skip the shared document store yet stay in the absorbed tail.
-func TestGroupSendsMetadataOnlyAndNearDuplicateToTail(t *testing.T) {
+func TestGroupStoresEveryDocumentAndSendsMetadataOnlyToTail(t *testing.T) {
 	documents := &batchRecordingReceiver{}
 	index := &batchRecordingIndex{}
 	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery, 4)}
 	consumer := crawlresults.NewIngestConsumerWithIndex(
 		stream, documents, index, &recordingURLReceiver{}, &recordingPostingReceiver{},
 	)
-	consumer.CollapseNearDuplicates(neardup.NewWindow(16))
-	observer := &recordingObserver{}
-	consumer.Observe(observer)
 
 	var wg sync.WaitGroup
 	counter := &settleCounter{}
 	stream.out <- groupDelivery(metaOnlyBatch("https://example.org/meta"), &wg, counter, nil)
-	stream.out <- groupDelivery(groupDocBatch("https://example.org/a", nearDupPageText), &wg, counter, nil)
-	stream.out <- groupDelivery(groupDocBatch("https://example.org/b", nearDupPageText), &wg, counter, nil)
+	stream.out <- groupDelivery(
+		groupDocBatch("https://example.org/a", clusteredPageText),
+		&wg,
+		counter,
+		nil,
+	)
+	stream.out <- groupDelivery(
+		groupDocBatch("https://example.org/b", clusteredPageText),
+		&wg,
+		counter,
+		nil,
+	)
 	drainGroup(consumer, &wg)
 
 	if acks, naks := counter.counts(); acks != 3 || naks != 0 {
@@ -201,11 +208,13 @@ func TestGroupSendsMetadataOnlyAndNearDuplicateToTail(t *testing.T) {
 	}
 	documents.mu.Lock()
 	defer documents.mu.Unlock()
-	if documents.calls != 1 || documents.sizes[0] != 1 {
-		t.Fatalf("stored sizes = %v, want one call carrying the single unique doc", documents.sizes)
+	if documents.calls != 1 || documents.sizes[0] != 2 {
+		t.Fatalf("stored sizes = %v, want one call carrying both documents", documents.sizes)
 	}
-	if observer.duplicates != 1 {
-		t.Fatalf("duplicates = %d, want 1", observer.duplicates)
+	index.mu.Lock()
+	defer index.mu.Unlock()
+	if index.batchCalls != 1 || index.batchSizes[0] != 2 {
+		t.Fatalf("index sizes = %v, want one batch carrying both documents", index.batchSizes)
 	}
 }
 

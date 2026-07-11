@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -202,5 +203,54 @@ func TestSessionKeySeparatesDifferentQueries(t *testing.T) {
 	paged.Offset, paged.Limit = 20, 10
 	if sessionKey(paged) != same {
 		t.Fatal("paging fields must not separate sessions")
+	}
+}
+
+func TestSessionKeyCoversEveryResultAffectingRequestField(t *testing.T) {
+	requestType := reflect.TypeOf(searchcore.Request{})
+	base := reflect.New(requestType).Elem()
+	baseKey := sessionKey(base.Interface().(searchcore.Request))
+	for index := 0; index < requestType.NumField(); index++ {
+		fieldType := requestType.Field(index)
+		if fieldType.Name == "Offset" || fieldType.Name == "Limit" {
+			continue
+		}
+		changed := reflect.New(requestType).Elem()
+		field := changed.Field(index)
+		switch {
+		case field.Type() == reflect.TypeOf(time.Time{}):
+			field.Set(reflect.ValueOf(time.Unix(1, 0).UTC()))
+		case field.Kind() == reflect.String:
+			field.SetString("changed")
+		case field.Kind() == reflect.Bool:
+			field.SetBool(true)
+		case field.Kind() == reflect.Slice:
+			field.Set(reflect.ValueOf([]string{"changed"}))
+		default:
+			t.Fatalf("unsupported request field %s with type %s", fieldType.Name, fieldType.Type)
+		}
+		if sessionKey(changed.Interface().(searchcore.Request)) == baseKey {
+			t.Fatalf("request field %s does not separate sessions", fieldType.Name)
+		}
+	}
+}
+
+func TestStableWindowDoesNotReuseDifferentPolicySession(t *testing.T) {
+	inner := &shufflingSearcher{}
+	searcher := WithStableWindow(inner)
+	ctx := context.Background()
+
+	if _, err := searcher.Search(ctx, searchcore.Request{
+		Query: "go", Verify: searchcore.VerifyFalse,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := searcher.Search(ctx, searchcore.Request{
+		Query: "go", Offset: 10, Verify: searchcore.VerifyIfExist, SafeSearch: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if inner.calls != 2 {
+		t.Fatalf("policy-changing deep page reused a session: calls=%d", inner.calls)
 	}
 }

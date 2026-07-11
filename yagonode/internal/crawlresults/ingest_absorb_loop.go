@@ -18,7 +18,6 @@ const (
 	msgIngestAckFailed     = "ingest batch ack failed"
 	msgIngestNakFailed     = "ingest batch nak failed"
 	msgRecrawlRecordFailed = "recrawl schedule record failed"
-	msgIngestNearDuplicate = "ingest document near-duplicate collapsed"
 	msgIngestLowQuality    = "ingest document rejected by quality gate"
 	msgIngestRemovalPurged = "ingest dead page purged"
 )
@@ -83,6 +82,14 @@ func (c *IngestConsumer) absorbRemoval(ctx context.Context, delivery IngestDeliv
 
 		return
 	}
+	if c.clearOutboundAnchors(ctx, delivery) {
+		return
+	}
+	if err := c.deleteDocumentCluster(ctx, batch.SourceURL); err != nil {
+		c.redeliver(ctx, delivery, batch.SourceURL, "content cluster removal", err)
+
+		return
+	}
 	if err := c.purger.Purge(ctx, []yagomodel.Hash{hash.Hash()}); err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "purge removal", err)
 
@@ -131,6 +138,9 @@ func (c *IngestConsumer) passesGates(ctx context.Context, delivery IngestDeliver
 // the delivery; it runs after the document (if any) is stored and indexed.
 func (c *IngestConsumer) absorbTail(ctx context.Context, delivery IngestDelivery) {
 	batch := delivery.Batch
+	if c.updateInboundAnchors(ctx, []IngestDelivery{delivery}) {
+		return
+	}
 	urlReceipt, err := c.urls.Receive(ctx, batch.Metadata)
 	if err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "url metadata store", err)
@@ -186,11 +196,20 @@ func (c *IngestConsumer) storeDocument(
 		return false
 	}
 
-	doc := documentFromIngest(batch.Document)
-	if c.collapseNearDuplicate(ctx, doc) {
-		return false
+	doc := documentFromIngestWithSafety(batch.Document, c.safety)
+	docs, err := c.canonicalDocuments(ctx, []documentstore.Document{doc})
+	if err != nil {
+		c.redeliver(ctx, delivery, batch.SourceURL, "document canonicalization", err)
+
+		return true
 	}
-	receipt, err := c.documents.Receive(ctx, []documentstore.Document{doc})
+	docs, err = c.clusterDocuments(ctx, docs)
+	if err != nil {
+		c.redeliver(ctx, delivery, batch.SourceURL, "content cluster", err)
+
+		return true
+	}
+	receipt, err := c.documents.Receive(ctx, docs)
 	if err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "document store", err)
 		return true
@@ -199,8 +218,9 @@ func (c *IngestConsumer) storeDocument(
 		c.redeliver(ctx, delivery, batch.SourceURL, "document store at capacity", nil)
 		return true
 	}
+	docs = c.committedDocuments(receipt, docs)
 	if c.index != nil {
-		if err := c.index.Index(ctx, doc); err != nil {
+		if err := c.indexDocuments(ctx, docs); err != nil {
 			c.redeliver(ctx, delivery, batch.SourceURL, "search index", err)
 			return true
 		}
@@ -254,33 +274,6 @@ func (c *IngestConsumer) rejectLowQuality(
 		slog.WarnContext(ctx, msgIngestAckFailed,
 			slog.String("sourceUrl", delivery.Batch.SourceURL), slog.Any("error", err))
 	}
-}
-
-// collapseNearDuplicate reports whether the document's text near-duplicates a
-// recently stored page: the duplicate keeps its URL metadata and postings (the
-// URL is real and its links count) but is not stored or indexed as another
-// copy, so mirrors and session-id spellings collapse to one index entry.
-func (c *IngestConsumer) collapseNearDuplicate(
-	ctx context.Context,
-	doc documentstore.Document,
-) bool {
-	if c.nearDup == nil {
-		return false
-	}
-	key := doc.NormalizedURL
-	if key == "" {
-		key = doc.CanonicalURL
-	}
-	original, duplicate := c.nearDup.Observe(key, doc.ExtractedText)
-	if !duplicate {
-		return false
-	}
-	c.observer.ObserveDuplicate()
-	slog.DebugContext(ctx, msgIngestNearDuplicate,
-		slog.String("url", key),
-		slog.String("duplicateOf", original))
-
-	return true
 }
 
 // recordFetch feeds the recrawl schedule after a page batch is absorbed. It is
@@ -341,30 +334,70 @@ func hasDocument(doc yagocrawlcontract.DocumentIngest) bool {
 }
 
 func documentFromIngest(doc yagocrawlcontract.DocumentIngest) documentstore.Document {
+	return documentFromIngestWithSafety(doc, nil)
+}
+
+func documentFromIngestWithSafety(
+	doc yagocrawlcontract.DocumentIngest,
+	classifier ContentSafetyClassifier,
+) documentstore.Document {
 	return documentstore.Document{
-		CanonicalURL:        doc.CanonicalURL,
-		NormalizedURL:       doc.NormalizedURL,
-		Title:               doc.Title,
-		Headings:            doc.Headings,
-		ExtractedText:       doc.ExtractedText,
-		RawContentReference: doc.RawContentReference,
-		Language:            doc.Language,
-		ContentType:         doc.ContentType,
-		FetchStatus:         doc.FetchStatus,
-		FetchedAt:           doc.FetchedAt,
-		IndexedAt:           doc.IndexedAt,
-		ContentHash:         doc.ContentHash,
-		Outlinks:            doc.Outlinks,
-		Inlinks:             anchorTextFromIngest(doc.Inlinks),
-		Images:              imageMetadataFromIngest(doc.Images),
-		Metadata:            doc.Metadata,
+		CanonicalURL:                doc.CanonicalURL,
+		NormalizedURL:               doc.NormalizedURL,
+		Title:                       doc.Title,
+		Headings:                    doc.Headings,
+		ExtractedText:               doc.ExtractedText,
+		ContentQuality:              contentQualityFromText(doc.ExtractedText),
+		ContentSafety:               contentSafetyFromIngest(doc, classifier),
+		RawContentReference:         doc.RawContentReference,
+		Language:                    doc.Language,
+		ContentType:                 doc.ContentType,
+		FetchStatus:                 doc.FetchStatus,
+		FetchedAt:                   doc.FetchedAt,
+		IndexedAt:                   doc.IndexedAt,
+		PublishedAt:                 doc.PublishedAt,
+		ModifiedAt:                  doc.ModifiedAt,
+		FirstSeenAt:                 doc.FirstSeenAt,
+		ContentChangedAt:            doc.ContentChangedAt,
+		DateConfidence:              doc.DateConfidence,
+		DateSource:                  doc.DateSource,
+		ContentHash:                 doc.ContentHash,
+		Outlinks:                    doc.Outlinks,
+		Inlinks:                     anchorTextFromIngest(doc.Inlinks),
+		OutboundAnchors:             outboundAnchorsFromIngest(doc.OutboundAnchors),
+		OutboundAnchorEvidenceKnown: doc.OutboundAnchorEvidenceKnown,
+		Images:                      imageMetadataFromIngest(doc.Images),
+		Metadata:                    doc.Metadata,
 	}
+}
+
+func outboundAnchorsFromIngest(
+	in []yagocrawlcontract.OutboundAnchor,
+) []documentstore.OutboundAnchor {
+	out := make([]documentstore.OutboundAnchor, 0, len(in))
+	for _, anchor := range in {
+		out = append(out, documentstore.OutboundAnchor{
+			TargetURL:     anchor.TargetURL,
+			Text:          anchor.Text,
+			NoFollow:      anchor.NoFollow,
+			UserGenerated: anchor.UserGenerated,
+			Sponsored:     anchor.Sponsored,
+		})
+	}
+
+	return out
 }
 
 func anchorTextFromIngest(in []yagocrawlcontract.AnchorText) []documentstore.AnchorText {
 	out := make([]documentstore.AnchorText, 0, len(in))
 	for _, anchor := range in {
-		out = append(out, documentstore.AnchorText{URL: anchor.URL, Text: anchor.Text})
+		out = append(out, documentstore.AnchorText{
+			URL:           anchor.URL,
+			Text:          anchor.Text,
+			NoFollow:      anchor.NoFollow,
+			UserGenerated: anchor.UserGenerated,
+			Sponsored:     anchor.Sponsored,
+		})
 	}
 	return out
 }

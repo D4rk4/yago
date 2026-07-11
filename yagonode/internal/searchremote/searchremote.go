@@ -46,8 +46,9 @@ const (
 )
 
 var (
-	errRemoteSearchFailed    = errors.New("remote search failed")
-	errRemoteSearchTransport = errors.New("peer transport failed")
+	errRemoteSearchFailed        = errors.New("remote search failed")
+	errRemoteSearchTransport     = errors.New("peer transport failed")
+	errRemoteSearchInvalidResult = errors.New("peer returned invalid search response")
 )
 
 // PeerSource supplies the candidate peers a remote search may target. Following
@@ -61,41 +62,53 @@ type PeerSource interface {
 }
 
 type Config struct {
-	Client             *http.Client
-	NetworkName        string
-	Peers              PeerSource
-	MaxPeers           int
-	Redundancy         int
-	MinimumPeerAgeDays int
-	MinimumPeerRWIs    int
-	PartitionExponent  int
-	Concurrency        int
-	PerPeerTimeout     time.Duration
-	OverallTimeout     time.Duration
-	RandomTargetIndex  func(int) (int, error)
-	Weights            func() RankingWeights
-	PreferHTTPS        bool
+	Client                       *http.Client
+	NetworkName                  string
+	Peers                        PeerSource
+	MaxPeers                     int
+	Redundancy                   int
+	MinimumPeerAgeDays           int
+	MinimumPeerRWIs              int
+	PartitionExponent            int
+	Concurrency                  int
+	PerPeerTimeout               time.Duration
+	OverallTimeout               time.Duration
+	RandomTargetIndex            func(int) (int, error)
+	Weights                      func() RankingWeights
+	PreferHTTPS                  bool
+	ReputationSnapshots          ReputationSnapshotSource
+	ReputationObservations       ReputationObservationSink
+	ReputationNetworkGroup       ReputationNetworkGroup
+	MaximumNetworkGroupInfluence float64
+	ReputationClock              func() time.Time
+	SelfSeed                     func(context.Context) yagomodel.Seed
 	// ExpandWord returns the inflected surface forms to also search for a
 	// single-word query; nil disables swarm morphology.
 	ExpandWord func(string) []string
 }
 
 type searcher struct {
-	client             *http.Client
-	networkName        string
-	peers              PeerSource
-	maxPeers           int
-	redundancy         int
-	minimumPeerAgeDays int
-	minimumPeerRWIs    int
-	partitionExponent  int
-	concurrency        int
-	perPeerTimeout     time.Duration
-	overallTimeout     time.Duration
-	randomTargetIndex  func(int) (int, error)
-	weights            func() RankingWeights
-	preferHTTPS        bool
-	expandWord         func(string) []string
+	client                       *http.Client
+	networkName                  string
+	peers                        PeerSource
+	maxPeers                     int
+	redundancy                   int
+	minimumPeerAgeDays           int
+	minimumPeerRWIs              int
+	partitionExponent            int
+	concurrency                  int
+	perPeerTimeout               time.Duration
+	overallTimeout               time.Duration
+	randomTargetIndex            func(int) (int, error)
+	weights                      func() RankingWeights
+	preferHTTPS                  bool
+	expandWord                   func(string) []string
+	reputationSnapshots          ReputationSnapshotSource
+	reputationObservations       ReputationObservationSink
+	reputationNetworkGroup       ReputationNetworkGroup
+	maximumNetworkGroupInfluence float64
+	reputationClock              func() time.Time
+	selfSeed                     func(context.Context) yagomodel.Seed
 }
 
 type peerSearchResult struct {
@@ -124,21 +137,29 @@ func NewSearcher(config Config) searchcore.Searcher {
 		client = http.DefaultClient
 	}
 	return searcher{
-		client:             client,
-		networkName:        config.NetworkName,
-		peers:              config.Peers,
-		maxPeers:           positiveOrDefault(config.MaxPeers, DefaultMaxPeers),
-		redundancy:         positiveOrDefault(config.Redundancy, DefaultRedundancy),
-		minimumPeerAgeDays: defaultMinimumPeerAgeDays(config.MinimumPeerAgeDays),
-		minimumPeerRWIs:    defaultMinimumPeerRWIs(config.MinimumPeerRWIs),
-		partitionExponent:  normalizedPartitionExponent(config.PartitionExponent),
-		concurrency:        positiveOrDefault(config.Concurrency, DefaultConcurrency),
-		perPeerTimeout:     durationOrDefault(config.PerPeerTimeout, DefaultPerPeerTimeout),
-		overallTimeout:     durationOrDefault(config.OverallTimeout, DefaultOverallTimeout),
-		randomTargetIndex:  randomTargetIndexOrDefault(config.RandomTargetIndex),
-		weights:            weightsOrDefault(config.Weights),
-		preferHTTPS:        config.PreferHTTPS,
-		expandWord:         config.ExpandWord,
+		client:                 client,
+		networkName:            config.NetworkName,
+		peers:                  config.Peers,
+		maxPeers:               positiveOrDefault(config.MaxPeers, DefaultMaxPeers),
+		redundancy:             positiveOrDefault(config.Redundancy, DefaultRedundancy),
+		minimumPeerAgeDays:     defaultMinimumPeerAgeDays(config.MinimumPeerAgeDays),
+		minimumPeerRWIs:        defaultMinimumPeerRWIs(config.MinimumPeerRWIs),
+		partitionExponent:      normalizedPartitionExponent(config.PartitionExponent),
+		concurrency:            positiveOrDefault(config.Concurrency, DefaultConcurrency),
+		perPeerTimeout:         durationOrDefault(config.PerPeerTimeout, DefaultPerPeerTimeout),
+		overallTimeout:         durationOrDefault(config.OverallTimeout, DefaultOverallTimeout),
+		randomTargetIndex:      randomTargetIndexOrDefault(config.RandomTargetIndex),
+		weights:                weightsOrDefault(config.Weights),
+		preferHTTPS:            config.PreferHTTPS,
+		expandWord:             config.ExpandWord,
+		reputationSnapshots:    config.ReputationSnapshots,
+		reputationObservations: config.ReputationObservations,
+		reputationNetworkGroup: config.ReputationNetworkGroup,
+		maximumNetworkGroupInfluence: maximumGroupInfluenceOrDefault(
+			config.MaximumNetworkGroupInfluence,
+		),
+		reputationClock: reputationClockOrDefault(config.ReputationClock),
+		selfSeed:        config.SelfSeed,
 	}
 }
 
@@ -148,17 +169,29 @@ func (s searcher) Search(
 ) (searchcore.Response, error) {
 	ctx, cancel := s.overallContext(ctx)
 	defer cancel()
+	reputation, reputationErr := s.beginReputation(ctx)
 
+	var response searchcore.Response
 	if variants := s.swarmMorphologyVariants(req); len(variants) > 1 {
-		return s.searchVariants(ctx, req, variants), nil
+		response = s.searchVariants(ctx, req, variants, reputation)
+	} else {
+		response = s.searchExact(ctx, req, reputation)
+	}
+	reputation.flush(ctx)
+	if reputationErr != nil {
+		response.PartialFailures = append(response.PartialFailures, searchcore.PartialFailure{
+			Source: "peer-reputation",
+			Reason: reputationErr.Error(),
+		})
 	}
 
-	return s.searchExact(ctx, req), nil
+	return response, nil
 }
 
 func (s searcher) searchExact(
 	ctx context.Context,
 	req searchcore.Request,
+	reputation *reputationSession,
 ) searchcore.Response {
 	hashes := termHashes(req.Terms)
 	peers, noPeersReason := s.remotePeers(ctx, hashes)
@@ -184,14 +217,19 @@ func (s searcher) searchExact(
 	// single peer holds all words). It is a best-effort enhancement layered on top
 	// of the primary results, not a replacement for them.
 	if len(hashes) > 1 {
-		secondaryResults, secondaryFailures := s.secondaryAbstractSearch(ctx, req, hashes)
-		resp := s.response(ctx, req, append(results, secondaryResults...))
+		secondaryResults, secondaryFailures := s.secondaryAbstractSearch(
+			ctx,
+			req,
+			hashes,
+			reputation,
+		)
+		resp := s.response(ctx, req, append(results, secondaryResults...), reputation)
 		resp.PartialFailures = append(secondaryFailures, resp.PartialFailures...)
 
 		return resp
 	}
 
-	return s.response(ctx, req, results)
+	return s.response(ctx, req, results, reputation)
 }
 
 // swarmMorphologyVariants returns the surface-form variants to search for a
@@ -215,6 +253,7 @@ func (s searcher) searchVariants(
 	ctx context.Context,
 	req searchcore.Request,
 	variants []string,
+	reputation *reputationSession,
 ) searchcore.Response {
 	lists := make([][]searchcore.Result, 0, len(variants))
 	failures := make([]searchcore.PartialFailure, 0, len(variants))
@@ -222,7 +261,7 @@ func (s searcher) searchVariants(
 		variantReq := req
 		variantReq.Terms = []string{variant}
 		variantReq.Query = variant
-		resp := s.searchExact(ctx, variantReq)
+		resp := s.searchExact(ctx, variantReq, reputation)
 		lists = append(lists, resp.Results)
 		failures = append(failures, resp.PartialFailures...)
 	}
@@ -305,28 +344,31 @@ func (s searcher) queryPeerJobs(
 	}
 
 	workerCount := min(s.concurrency, len(requests))
-	jobs := make(chan peerSearchJob)
-	results := make(chan peerSearchResult, len(requests))
+	jobs := make(chan int)
+	results := make(chan peerSearchCompletion, len(requests))
 	var wg sync.WaitGroup
 	for range workerCount {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for job := range jobs {
-				results <- s.queryPeerJob(ctx, job)
+			for requestPosition := range jobs {
+				results <- peerSearchCompletion{
+					requestPosition: requestPosition,
+					result:          s.queryPeerJob(ctx, requests[requestPosition]),
+				}
 			}
 		}()
 	}
-	for _, job := range requests {
-		jobs <- job
+	for requestPosition := range requests {
+		jobs <- requestPosition
 	}
 	close(jobs)
 	wg.Wait()
 	close(results)
 
-	out := make([]peerSearchResult, 0, len(requests))
-	for result := range results {
-		out = append(out, result)
+	out := make([]peerSearchResult, len(requests))
+	for completion := range results {
+		out[completion.requestPosition] = completion.result
 	}
 
 	return out
@@ -360,10 +402,11 @@ func (s searcher) secondaryAbstractSearch(
 	ctx context.Context,
 	req searchcore.Request,
 	terms []yagomodel.Hash,
+	reputation *reputationSession,
 ) ([]peerSearchResult, []searchcore.PartialFailure) {
 	targets, failures := s.termTargets(ctx, terms)
 
-	abstracts, abstractFailures := s.termAbstracts(ctx, req, targets)
+	abstracts, abstractFailures := s.termAbstracts(ctx, req, targets, reputation)
 	failures = append(failures, abstractFailures...)
 	urls := intersectTermAbstracts(terms, abstracts)
 	if len(urls) == 0 {
@@ -406,6 +449,7 @@ func (s searcher) termAbstracts(
 	ctx context.Context,
 	req searchcore.Request,
 	targets []termPeerTargets,
+	reputation *reputationSession,
 ) (map[yagomodel.Hash]map[yagomodel.Hash]struct{}, []searchcore.PartialFailure) {
 	results := s.queryPeerJobs(ctx, abstractSearchJobs(
 		req,
@@ -418,6 +462,7 @@ func (s searcher) termAbstracts(
 	var failures []searchcore.PartialFailure
 	for _, result := range results {
 		if result.err != nil {
+			reputation.record(result.peer, observationOutcome(result.err, false))
 			failures = append(failures, peerFailure(result.peer, result.err))
 			continue
 		}
@@ -426,9 +471,11 @@ func (s searcher) termAbstracts(
 			result.response.IndexAbstract[result.term],
 		)
 		if err != nil {
+			reputation.record(result.peer, observationOutcome(nil, true))
 			failures = append(failures, peerFailure(result.peer, err))
 			continue
 		}
+		reputation.record(result.peer, observationOutcome(nil, false))
 		if abstracts[result.term] == nil {
 			abstracts[result.term] = map[yagomodel.Hash]struct{}{}
 		}
@@ -571,6 +618,9 @@ func (s searcher) sendRemoteSearch(
 	peer yagomodel.Seed,
 	searchReq yagoproto.SearchRequest,
 ) (yagoproto.SearchResponse, error) {
+	if s.selfSeed != nil {
+		searchReq.MySeed = yagomodel.Some(s.selfSeed(ctx))
+	}
 	targets, err := peer.ProtocolEndpoints(yagoproto.PathSearch, s.preferHTTPS)
 	if err != nil {
 		return yagoproto.SearchResponse{}, fmt.Errorf("%w: target: %w", errRemoteSearchFailed, err)
@@ -706,16 +756,18 @@ func readRemoteSearchResponse(body io.Reader) (yagoproto.SearchResponse, error) 
 	}
 	if len(raw) > remoteSearchBodyCap {
 		return yagoproto.SearchResponse{}, fmt.Errorf(
-			"%w: response too large",
+			"%w: %w: response too large",
 			errRemoteSearchFailed,
+			errRemoteSearchInvalidResult,
 		)
 	}
 	msg, _ := yagomodel.ParseMessage(string(raw))
 	parsed, err := yagoproto.ParseSearchResponse(msg)
 	if err != nil {
 		return yagoproto.SearchResponse{}, fmt.Errorf(
-			"%w: search response: %w",
+			"%w: %w: search response: %w",
 			errRemoteSearchFailed,
+			errRemoteSearchInvalidResult,
 			err,
 		)
 	}
@@ -727,12 +779,17 @@ func (s searcher) response(
 	ctx context.Context,
 	req searchcore.Request,
 	results []peerSearchResult,
+	reputation *reputationSession,
 ) searchcore.Response {
 	var resp searchcore.Response
 	resp.Request = req
 	scorer := newRemoteScorer(req.Terms, s.weights())
-	for _, result := range results {
+	peerOrder := make([]string, 0, len(results))
+	peerResults := make(map[string][]searchcore.Result, len(results))
+	peerSeeds := make(map[string]yagomodel.Seed, len(results))
+	for _, result := range orderedPeerSearchResults(results) {
 		if result.err != nil {
+			reputation.record(result.peer, observationOutcome(result.err, false))
 			resp.PartialFailures = append(
 				resp.PartialFailures,
 				peerFailure(result.peer, result.err),
@@ -741,18 +798,57 @@ func (s searcher) response(
 		}
 		normalized, err := searchResults(ctx, req, result.response.Resources, scorer)
 		if err != nil {
+			reputation.record(result.peer, observationOutcome(nil, true))
 			resp.PartialFailures = append(resp.PartialFailures, peerFailure(result.peer, err))
 			continue
 		}
-		resp.Results = append(resp.Results, normalized...)
+		invalid := result.response.Count > len(result.response.Resources) ||
+			len(normalized) < len(cappedPeerRows(
+				result.response.Resources,
+				req.Offset+req.Limit,
+			))
+		reputation.record(result.peer, observationOutcome(nil, invalid))
+		if len(normalized) == 0 {
+			continue
+		}
+		identity := peerRankingIdentity(result.peer)
+		if _, found := peerResults[identity]; !found {
+			peerOrder = append(peerOrder, identity)
+			peerSeeds[identity] = result.peer
+		}
+		peerResults[identity] = append(peerResults[identity], normalized...)
 	}
-	deduped := searchcore.DiversifyResults(dedupeSearchResults(resp.Results), req)
-	searchcore.OrderByDateWhenRequested(deduped, req)
+	peerRankings := make([][]searchcore.Result, 0, len(peerOrder))
+	peerInfluenceWeights := make([]float64, 0, len(peerOrder))
+	peerReputationWeights := make([]float64, 0, len(peerOrder))
+	influenceWeights, reputationWeights, reputationErr := reputation.fusionWeights(
+		peerOrder,
+		peerSeeds,
+	)
+	if reputationErr != nil {
+		resp.PartialFailures = append(resp.PartialFailures, searchcore.PartialFailure{
+			Source: "peer-reputation",
+			Reason: reputationErr.Error(),
+		})
+	}
+	for _, identity := range peerOrder {
+		peerRankings = append(peerRankings, dedupeSearchResults(peerResults[identity]))
+		peerInfluenceWeights = append(peerInfluenceWeights, influenceWeights[identity])
+		peerReputationWeights = append(peerReputationWeights, reputationWeights[identity])
+	}
+	fused := fusePeerRankings(peerRankings)
+	if reputation != nil && reputation.snapshotAvailable && reputationErr == nil {
+		fused = fuseWeightedPeerRankings(
+			peerRankings,
+			peerInfluenceWeights,
+			peerReputationWeights,
+		)
+	}
 	// The honest remote total is the verified, deduplicated rows actually in
 	// hand, not the peers' claimed join counts: an unverifiable claim must not
 	// inflate the result counter or fabricate result pages.
-	resp.TotalResults = len(deduped)
-	resp.Results = offsetResults(deduped, req.Offset, req.Limit)
+	resp.TotalResults = len(fused)
+	resp.Results = offsetResults(fused, req.Offset, req.Limit)
 
 	return resp
 }
@@ -803,10 +899,24 @@ func searchResults(
 			return nil, err
 		}
 		result.Score = scorer.score(result, i, len(rows))
+		result.Evidence = searchcore.NewRankingEvidence(
+			searchcore.RankingSignalValue{
+				Signal: searchcore.SignalRetrievalScore,
+				Value:  result.Score,
+			},
+			searchcore.RankingSignalValue{
+				Signal: searchcore.SignalRemoteRank,
+				Value:  float64(i + 1),
+			},
+			searchcore.RankingSignalValue{
+				Signal: searchcore.SignalPeerSupport,
+				Value:  1,
+			},
+		)
 		results = append(results, result)
 	}
 
-	return languageFiltered(req, verifiedPeerResults(req, results)), nil
+	return rankRemoteResults(languageFiltered(req, results)), nil
 }
 
 func searchResult(

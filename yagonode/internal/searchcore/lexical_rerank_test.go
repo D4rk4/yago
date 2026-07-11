@@ -12,6 +12,20 @@ type stubSearcher struct {
 	err      error
 }
 
+type capturingRankingSearcher struct {
+	got      Request
+	response Response
+}
+
+func (s *capturingRankingSearcher) Search(
+	_ context.Context,
+	req Request,
+) (Response, error) {
+	s.got = req
+
+	return s.response, nil
+}
+
 func (s stubSearcher) Search(context.Context, Request) (Response, error) {
 	return s.response, s.err
 }
@@ -37,6 +51,14 @@ func TestLexicalRerankLiftsWellMatchedResult(t *testing.T) {
 	}
 	if len(got) != 3 {
 		t.Fatalf("length changed: %v", urls(got))
+	}
+	for signal, want := range map[RankingSignal]float64{
+		SignalTermCoverage:    1,
+		SignalGlobalProximity: 1,
+	} {
+		if value, known := got[0].Evidence.Value(signal); !known || value != want {
+			t.Fatalf("evidence %s = %v/%v, want %v", signal.Name(), value, known, want)
+		}
 	}
 }
 
@@ -143,6 +165,83 @@ func TestLexicalRerankSearcher(t *testing.T) {
 		stubSearcher{err: errors.New("backend down")},
 	).Search(context.Background(), Request{Query: "alpha beta"}); err == nil {
 		t.Fatal("expected inner error to propagate")
+	}
+}
+
+func TestLexicalRerankSearcherOwnsCandidateAndResultWindows(t *testing.T) {
+	inner := &capturingRankingSearcher{response: Response{Results: []Result{
+		{URL: "a", Score: 3},
+		{URL: "b", Score: 2},
+		{URL: "c", Score: 1},
+	}}}
+	resp, err := NewLexicalRerankSearcher(inner).Search(
+		t.Context(),
+		Request{Query: "alpha", Limit: 1},
+	)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if inner.got.Offset != 0 || inner.got.Limit != 50 {
+		t.Fatalf("candidate request = %+v", inner.got)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].URL != "a" || resp.Request.Limit != 1 {
+		t.Fatalf("response = %+v", resp)
+	}
+}
+
+func TestRankingCandidateRequest(t *testing.T) {
+	cases := []struct {
+		req  Request
+		want int
+	}{
+		{Request{}, 50},
+		{Request{Limit: 11}, 55},
+		{Request{Limit: 20}, 100},
+		{Request{Limit: 10, Offset: 90}, 100},
+		{Request{Limit: 10, Offset: 100}, 110},
+	}
+	for _, tc := range cases {
+		got := rankingCandidateRequest(tc.req)
+		if got.Offset != 0 || got.Limit != tc.want {
+			t.Errorf("rankingCandidateRequest(%+v) = %+v, want limit %d", tc.req, got, tc.want)
+		}
+	}
+}
+
+func TestLexicalRerankSearcherPreservesDateOrder(t *testing.T) {
+	inner := stubSearcher{response: Response{Results: []Result{
+		{URL: "old", Score: 1, Title: "alpha beta", Date: "20200101"},
+		{URL: "middle", Score: 0.9, Title: "alpha beta", Date: "20240101"},
+		{URL: "new", Score: 0.8, Title: "alpha beta", Date: "20260101"},
+	}}}
+	resp, err := NewLexicalRerankSearcher(inner).Search(
+		t.Context(),
+		Request{Terms: []string{"alpha", "beta"}, SortByDate: true},
+	)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if got := urls(resp.Results); got[0] != "new" || got[1] != "middle" || got[2] != "old" {
+		t.Fatalf("date order = %v", got)
+	}
+}
+
+func TestLexicalRerankSearcherAppliesFinalHostCrowding(t *testing.T) {
+	inner := stubSearcher{response: Response{Results: []Result{
+		{URL: "a1", Host: "a.example", Score: 1, Title: "alpha beta"},
+		{URL: "a2", Host: "a.example", Score: 0.99, Title: "alpha beta"},
+		{URL: "a3", Host: "a.example", Score: 0.98, Title: "alpha beta"},
+		{URL: "b1", Host: "b.example", Score: 0.1, Title: "other result"},
+	}}}
+	resp, err := NewLexicalRerankSearcher(inner).Search(
+		t.Context(),
+		Request{Terms: []string{"alpha", "beta"}},
+	)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if got := urls(resp.Results); got[2] != "b1" || got[3] != "a3" {
+		t.Fatalf("crowded order = %v", got)
 	}
 }
 

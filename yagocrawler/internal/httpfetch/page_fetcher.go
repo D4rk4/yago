@@ -100,11 +100,21 @@ func (f *PageFetcher) Fetch(
 		finalURL = response.Request.URL
 	}
 	return pagefetch.FetchedPage{
-		URL:         finalURL,
-		ContentType: contentType,
-		Body:        body,
-		RobotsTag:   robotsTag,
+		URL:          finalURL,
+		ContentType:  contentType,
+		Body:         body,
+		LastModified: responseLastModified(response.Header.Get("Last-Modified")),
+		RobotsTag:    robotsTag,
 	}, nil
+}
+
+func responseLastModified(value string) time.Time {
+	parsed, err := http.ParseTime(value)
+	if err != nil {
+		return time.Time{}
+	}
+
+	return parsed.UTC()
 }
 
 func readBody(body io.Reader, maxBytes int64) ([]byte, error) {

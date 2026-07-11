@@ -63,12 +63,7 @@ func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery
 
 			continue
 		}
-		doc := documentFromIngest(batch.Document)
-		if c.collapseNearDuplicate(ctx, doc) {
-			tail = append(tail, delivery)
-
-			continue
-		}
+		doc := documentFromIngestWithSafety(batch.Document, c.safety)
 		withDocs = append(withDocs, delivery)
 		docs = append(docs, doc)
 	}
@@ -91,6 +86,9 @@ func (c *IngestConsumer) absorbTailGroup(ctx context.Context, group []IngestDeli
 	if len(group) == 1 {
 		c.absorbTail(ctx, group[0])
 
+		return
+	}
+	if c.updateInboundAnchors(ctx, group) {
 		return
 	}
 	metadata := make([]yagomodel.URIMetadataRow, 0, len(group))
@@ -274,6 +272,19 @@ func (c *IngestConsumer) storeDocumentGroup(
 	deliveries []IngestDelivery,
 	docs []documentstore.Document,
 ) bool {
+	canonical, err := c.canonicalDocuments(ctx, docs)
+	if err != nil {
+		c.redeliverGroup(ctx, deliveries, "document canonicalization", err)
+
+		return false
+	}
+	clustered, err := c.clusterDocuments(ctx, canonical)
+	if err != nil {
+		c.redeliverGroup(ctx, deliveries, "content cluster", err)
+
+		return false
+	}
+	docs = clustered
 	receipt, err := c.documents.Receive(ctx, docs)
 	if err != nil {
 		c.redeliverGroup(ctx, deliveries, "document store", err)
@@ -285,6 +296,7 @@ func (c *IngestConsumer) storeDocumentGroup(
 
 		return false
 	}
+	docs = c.committedDocuments(receipt, docs)
 	if c.index == nil {
 		return true
 	}

@@ -162,6 +162,8 @@ func throttledPath(r *http.Request) bool {
 		return true
 	case path == "/suggest.json" || path == "/opensearch/suggest":
 		return true
+	case path == "/searchclick":
+		return true
 	case path == "/" && r.URL.Query().Get("q") != "":
 		return true
 	default:

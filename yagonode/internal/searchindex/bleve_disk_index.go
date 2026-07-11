@@ -247,13 +247,23 @@ func (b *BleveDiskIndex) searchHits(
 	if count == 0 {
 		return SearchResultSet{}, nil, nil
 	}
+	indexedDocuments := bleveDocumentCount(count)
+	if req.WithFacets || hasPostFilters(req) {
+		return b.searchCompleteHits(ctx, req, indexedDocuments)
+	}
 
 	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req, b.gram, b.multilingual))
-	searchRequest.Size = diskSearchSize(req.MaxResults, bleveDocumentCount(count))
-	searchRequest.Explain = req.Explain
+	searchRequest.Size = diskSearchSize(req.MaxResults, indexedDocuments)
+	searchRequest.Explain = req.Explain || req.IncludeFieldScores
 	searchRequest.IncludeLocations = req.IncludePositions
 	result, err := b.alias.SearchInContext(ctx, searchRequest)
 	if err != nil {
+		return SearchResultSet{}, nil, fmt.Errorf(
+			"search documents: %w",
+			bleveSearchOperationError(ctx, err),
+		)
+	}
+	if err := bleveSearchCompletionError(ctx, result); err != nil {
 		return SearchResultSet{}, nil, fmt.Errorf("search documents: %w", err)
 	}
 
@@ -293,9 +303,6 @@ func (b *BleveDiskIndex) collectHits(
 
 			continue
 		}
-		if !allowsDocument(doc, req) {
-			continue
-		}
 		facets.observe(doc)
 		total++
 		if len(results) < req.MaxResults {
@@ -316,7 +323,8 @@ func (b *BleveDiskIndex) collectHits(
 // stored document can answer, forcing the hit loop to hydrate past a full
 // page for honest totals.
 func hasPostFilters(req SearchRequest) bool {
-	return req.Language != "" ||
+	return req.SafeSearch ||
+		req.Language != "" ||
 		len(req.IncludeDomain) > 0 ||
 		len(req.ExcludeDomain) > 0 ||
 		!req.Since.IsZero() ||
@@ -325,10 +333,16 @@ func hasPostFilters(req SearchRequest) bool {
 		!req.MaxDate.IsZero() ||
 		req.Author != "" ||
 		req.Near ||
-		req.ContentDomain != "" ||
+		contentDomainNeedsPostFilter(req.ContentDomain) ||
 		req.FileType != "" ||
 		req.InURL != "" ||
 		req.TLD != ""
+}
+
+func contentDomainNeedsPostFilter(contentDomain string) bool {
+	return contentDomain != "" &&
+		!strings.EqualFold(contentDomain, "text") &&
+		!strings.EqualFold(contentDomain, "all")
 }
 
 func (b *BleveDiskIndex) Stats(ctx context.Context) (IndexStats, error) {

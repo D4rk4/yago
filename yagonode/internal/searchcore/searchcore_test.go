@@ -1,6 +1,9 @@
 package searchcore
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestParseTextQueryExtractsTermsAndOperators(t *testing.T) {
 	got := ParseTextQuery(
@@ -24,6 +27,39 @@ func TestParseTextQueryAcceptsSlashLanguage(t *testing.T) {
 	got := ParseTextQuery(`- /language/de frei`)
 	if got.Language != "de" || len(got.Terms) != 1 || got.Terms[0] != "frei" {
 		t.Fatalf("parsed = %#v", got)
+	}
+}
+
+func TestRequestWithParsedQueryBuildsServingRequest(t *testing.T) {
+	req := RequestWithParsedQuery(Request{
+		Query:    `author:doe site:parsed.example filetype:.PDF tld:DE inurl:guide language:ru /date near "go search" -java`,
+		Language: "en",
+		SiteHost: "caller.example",
+	})
+	if req.Query != "go search" ||
+		!slices.Equal(req.Terms, []string{"go", "search"}) ||
+		!slices.Equal(req.ExcludedTerms, []string{"java"}) ||
+		!slices.Equal(req.Phrases, []string{"go search"}) {
+		t.Fatalf("query fields = %+v", req)
+	}
+	if req.Author != "doe" || req.SiteHost != "caller.example" || req.FileType != "pdf" ||
+		req.TLD != "de" || req.InURL != "guide" || req.Language != "en" ||
+		!req.SortByDate || !req.Near {
+		t.Fatalf("operators = %+v", req)
+	}
+	parsedFields := RequestWithParsedQuery(Request{Query: "site:parsed.example language:ru alpha"})
+	if parsedFields.SiteHost != "parsed.example" || parsedFields.Language != "ru" {
+		t.Fatalf("parsed fields = %+v", parsedFields)
+	}
+
+	preset := Request{Query: "ignored", Terms: []string{"kept"}}
+	if got := RequestWithParsedQuery(preset); !slices.Equal(got.Terms, preset.Terms) ||
+		got.Query != preset.Query {
+		t.Fatalf("preset request changed: %+v", got)
+	}
+	blank := RequestWithParsedQuery(Request{Query: "   "})
+	if blank.Query != "   " || len(blank.Terms) != 0 {
+		t.Fatalf("blank request changed: %+v", blank)
 	}
 }
 

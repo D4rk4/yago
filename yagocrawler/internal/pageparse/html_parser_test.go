@@ -1,6 +1,7 @@
 package pageparse_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -66,9 +67,10 @@ func TestParseHTMLSplitsNoFollowLinks(t *testing.T) {
 		"https://example.com/page",
 		"text/html",
 		[]byte(`<html><body>
-<a href="/follow">follow</a>
-<a rel="UGC,nofollow" href="/blocked">blocked</a>
-</body></html>`),
+	<a href="/follow">follow</a>
+	<a rel="UGC,nofollow sponsored" href="/blocked">blocked</a>
+	<a href="">empty</a>
+	</body></html>`),
 	)
 
 	if len(page.Links) != 2 {
@@ -79,6 +81,57 @@ func TestParseHTMLSplitsNoFollowLinks(t *testing.T) {
 	}
 	if len(page.NoFollowLinks) != 1 || page.NoFollowLinks[0] != "/blocked" {
 		t.Fatalf("nofollow links = %v", page.NoFollowLinks)
+	}
+	if len(page.OutboundAnchors) != 2 ||
+		page.OutboundAnchors[0].TargetURL != "https://example.com/follow" ||
+		page.OutboundAnchors[0].Text != "follow" ||
+		!page.OutboundAnchors[1].NoFollow ||
+		!page.OutboundAnchors[1].UserGenerated ||
+		!page.OutboundAnchors[1].Sponsored {
+		t.Fatalf("outbound anchors = %#v", page.OutboundAnchors)
+	}
+}
+
+func TestParseHTMLBoundsAndNormalizesOutboundAnchors(t *testing.T) {
+	longText := strings.Repeat("x", 300)
+	page := pageparse.ParseHTML(
+		"https://example.com/dir/page",
+		"text/html",
+		[]byte(`<html><body>
+<a href="../text#part"> visible   text </a>
+<a href="/aria" aria-label="Accessible label"></a>
+<a href="/title" title="Title label"></a>
+<a href="/long">`+longText+`</a>
+<a href="mailto:editor@example.com">mail</a>
+<a href="http:/missing-host">missing host</a>
+</body></html>`),
+	)
+
+	if len(page.OutboundAnchors) != 4 {
+		t.Fatalf("outbound anchors = %#v", page.OutboundAnchors)
+	}
+	if page.OutboundAnchors[0].TargetURL != "https://example.com/text" ||
+		page.OutboundAnchors[0].Text != "visible text" ||
+		page.OutboundAnchors[1].Text != "Accessible label" ||
+		page.OutboundAnchors[2].Text != "Title label" ||
+		len([]rune(page.OutboundAnchors[3].Text)) != 256 {
+		t.Fatalf("outbound anchors = %#v", page.OutboundAnchors)
+	}
+}
+
+func TestParseHTMLBoundsOutboundAnchorCardinality(t *testing.T) {
+	var body strings.Builder
+	body.WriteString("<html><body>")
+	for index := 0; index < 1025; index++ {
+		body.WriteString(`<a href="/target/`)
+		body.WriteString(strconv.Itoa(index))
+		body.WriteString(`">target</a>`)
+	}
+	body.WriteString("</body></html>")
+	page := pageparse.ParseHTML("https://example.com/page", "text/html", []byte(body.String()))
+
+	if len(page.Links) != 1025 || len(page.OutboundAnchors) != 1024 {
+		t.Fatalf("links/anchors = %d/%d", len(page.Links), len(page.OutboundAnchors))
 	}
 }
 

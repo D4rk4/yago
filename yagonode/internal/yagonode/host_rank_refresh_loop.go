@@ -49,9 +49,9 @@ func (s hostRankSweeper) refreshOnce(ctx context.Context) {
 		return
 	}
 
-	incoming := map[string]map[string]hostLinkReference{}
+	citations := make([]hostrank.Citation, 0)
 	err := s.documents.StoredDocuments(ctx, func(doc documentstore.Document) (bool, error) {
-		collectDocumentHostLinks(incoming, doc)
+		citations = append(citations, documentAuthorityCitations(doc)...)
 
 		return true, nil
 	})
@@ -61,20 +61,43 @@ func (s hostRankSweeper) refreshOnce(ctx context.Context) {
 		return
 	}
 
-	s.holder.Store(hostrank.Compute(hostCitationCounts(incoming)))
+	table, err := hostrank.ComputeDomainAuthority(ctx, citations, hostrank.DomainOptions{})
+	if err != nil {
+		slog.WarnContext(ctx, hostRankRefreshFailedMessage, slog.Any("error", err))
+
+		return
+	}
+	s.holder.Store(table)
 }
 
-func hostCitationCounts(
-	incoming map[string]map[string]hostLinkReference,
-) map[string]map[string]int {
-	counts := make(map[string]map[string]int, len(incoming))
-	for target, sources := range incoming {
-		targetCounts := make(map[string]int, len(sources))
-		for source, reference := range sources {
-			targetCounts[source] = reference.Count
+func documentAuthorityCitations(doc documentstore.Document) []hostrank.Citation {
+	sourceURL := doc.NormalizedURL
+	if sourceURL == "" {
+		sourceURL = doc.CanonicalURL
+	}
+	if sourceURL == "" {
+		return nil
+	}
+	if doc.OutboundAnchorEvidenceKnown {
+		citations := make([]hostrank.Citation, 0, len(doc.OutboundAnchors))
+		for _, anchor := range doc.OutboundAnchors {
+			if anchor.NoFollow || anchor.UserGenerated || anchor.Sponsored {
+				continue
+			}
+			citations = append(citations, hostrank.Citation{
+				SourceURL: sourceURL, TargetURL: anchor.TargetURL, Confidence: 1,
+			})
 		}
-		counts[target] = targetCounts
+
+		return citations
 	}
 
-	return counts
+	citations := make([]hostrank.Citation, 0, len(doc.Outlinks))
+	for _, targetURL := range doc.Outlinks {
+		citations = append(citations, hostrank.Citation{
+			SourceURL: sourceURL, TargetURL: targetURL, Confidence: 0.4,
+		})
+	}
+
+	return citations
 }

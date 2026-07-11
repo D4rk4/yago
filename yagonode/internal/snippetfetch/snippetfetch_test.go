@@ -52,6 +52,24 @@ func peerRow(url, title string) searchcore.Result {
 	}
 }
 
+func TestSafeSearchBelowEnrichmentPreventsUnknownRemoteFetch(t *testing.T) {
+	fetcher := &scriptedFetcher{pages: map[string]string{
+		"https://unknown.example/": "query body",
+	}}
+	search := WithSnippetEnrichment(
+		searchcore.NewSafeSearchSearcher(innerSearcher{resp: searchcore.Response{
+			Results: []searchcore.Result{peerRow("https://unknown.example/", "query")},
+		}}),
+		NewEnricher(fetcher.fetch),
+	)
+	response, err := search.Search(t.Context(), searchcore.Request{
+		Query: "query", Terms: []string{"query"}, SafeSearch: true,
+	})
+	if err != nil || len(response.Results) != 0 || fetcher.calls != 0 {
+		t.Fatalf("response/fetches = %#v/%d/%v", response, fetcher.calls, err)
+	}
+}
+
 // TestEnrichmentBuildsVerifiedSnippetsFromFetchedPages is the SEARCH-31/32
 // acceptance on the reported bug: a peer row titled only «ДДТ (группа)» gains
 // a body excerpt containing «осень», a fetched page missing the query words is

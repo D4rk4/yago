@@ -126,11 +126,6 @@ func purgeURLs(
 	return result, nil
 }
 
-// purgeDocuments resolves each URL hash to the URL its document is keyed by and
-// deletes that document. A hash may legitimately have no metadata row or no
-// document (near-duplicate collapse and the quality gate store a row and
-// postings without a document), so a miss is an idempotent no-op. A nil evictor
-// or resolver skips the documents side entirely.
 func purgeDocuments(
 	ctx context.Context,
 	documents DocumentEvictor,

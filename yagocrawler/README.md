@@ -77,8 +77,8 @@ fast path rejects the page. The HTTP fast path
 follows at most `YAGOCRAWLER_MAX_REDIRECTS` redirect hops and uses explicit
 request, connect, TLS, and response-header timeout budgets. Sitemap and
 sitelist expansion imports at most `YAGOCRAWLER_SITEMAP_URL_LIMIT` URLs per
-seed. The container image
-bundles firefox-esr on a debian-slim base, run as a non-root user.
+seed. The container image bundles Firefox ESR on a pinned Alpine runtime and
+runs as a non-root user.
 
 When `YAGOCRAWLER_METRICS_ADDR` is set (for example `:9101`), the crawler serves
 Prometheus metrics at `/metrics` on that address: `yacy_crawler_jobs_active`,

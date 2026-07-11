@@ -3,7 +3,6 @@ package yagonode
 import (
 	"context"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -13,6 +12,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/faviconproxy"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/landing"
+	"github.com/D4rk4/yago/yagonode/internal/learnedrank"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
@@ -22,7 +22,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchactivity"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
-	"github.com/D4rk4/yago/yagonode/internal/searchlocal"
 	"github.com/D4rk4/yago/yagonode/internal/searchremote"
 	"github.com/D4rk4/yago/yagonode/internal/searchsession"
 	"github.com/D4rk4/yago/yagonode/internal/snippetfetch"
@@ -52,7 +51,7 @@ type publicSearchAssembly struct {
 	activity             *searchactivity.Tracker
 	searchMetrics        *metrics.SearchMetrics
 	rankingWeights       func() searchindex.RankingWeights
-	hostRank             func() hostrank.Table
+	hostRank             func() hostrank.AuthorityTable
 	spellCorrector       func() *spellcheck.Corrector
 	denylist             denylistSnapshotter
 	snippetEnricher      *snippetfetch.Enricher
@@ -63,12 +62,13 @@ type publicSearchAssembly struct {
 	swarmSeed            swarmSeedConfig
 	autocrawlerCrawl     seedCrawlOptions
 	linksNewTab          bool
-	// clickCapture enables result-click capture on the results page, and
-	// clickRecorder is where captured clicks land (the clickcapture store); the
-	// recorder is always wired so historical clicks train the learner even when
-	// capture is currently off, while clickCapture gates the live beacon.
-	clickCapture  bool
-	clickRecorder yacysearch.ClickRecorder
+	clickCapture         bool
+	clickRecorder        yacysearch.ImpressionRecorder
+	learnedRanker        *learnedrank.Ranker
+	peerReputation       searchremote.ReputationSnapshotSource
+	peerObservations     searchremote.ReputationObservationSink
+	peerNetworkGroup     searchremote.ReputationNetworkGroup
+	selfSeed             func(context.Context) yagomodel.Seed
 	// theme carries the operator portal theme (ADR-0033) into the portal
 	// mount; nil keeps the built-in render only.
 	theme *portaltheme.Theme
@@ -126,44 +126,10 @@ func (s parsedQuerySearcher) Search(
 	ctx context.Context,
 	req searchcore.Request,
 ) (searchcore.Response, error) {
-	if len(req.Terms) == 0 && strings.TrimSpace(req.Query) != "" {
-		parsed := searchcore.ParseTextQuery(req.Query)
-		req.Terms = parsed.Terms
-		req.ExcludedTerms = parsed.ExcludedTerms
-		req.Phrases = parsed.Phrases()
-		applyParsedOperators(&req, parsed)
-	}
+	req = searchcore.RequestWithParsedQuery(req)
 
 	//nolint:wrapcheck // pass the wrapped searcher's error through unchanged.
 	return s.inner.Search(ctx, req)
-}
-
-// applyParsedOperators maps the query operators onto the request for surfaces
-// that pass a raw query string (the portal, the admin console): each field is
-// filled only when the caller left it empty, and the query itself is replaced
-// by the bare terms so the index never matches operator tokens literally.
-func applyParsedOperators(req *searchcore.Request, parsed searchcore.ParsedQuery) {
-	req.Query = strings.Join(parsed.Terms, " ")
-	if req.Language == "" {
-		req.Language = parsed.Language
-	}
-	if req.SiteHost == "" {
-		req.SiteHost = parsed.SiteHost
-	}
-	if req.InURL == "" {
-		req.InURL = parsed.InURL
-	}
-	if req.TLD == "" {
-		req.TLD = parsed.TLD
-	}
-	if req.FileType == "" {
-		req.FileType = parsed.FileType
-	}
-	if req.Author == "" {
-		req.Author = parsed.Author
-	}
-	req.SortByDate = req.SortByDate || parsed.SortByDate
-	req.Near = req.Near || parsed.Near
 }
 
 // remoteSearchClient picks the peer-protocol client for the remote search
@@ -207,7 +173,7 @@ func mountNodePublicSearch(
 	mux *http.ServeMux,
 	assembly publicSearchAssembly,
 ) (searchcore.Searcher, searchcore.Searcher) {
-	local := searchlocal.NewSearcherWithRanking(
+	local := newLocalRankingSearcher(
 		assembly.storage.searchIndex,
 		assembly.rankingWeights,
 		assembly.hostRank,
@@ -221,18 +187,22 @@ func mountNodePublicSearch(
 		)
 	}
 	remote := searchremote.NewSearcher(searchremote.Config{
-		Client:             remoteSearchClient(assembly),
-		NetworkName:        assembly.identity.NetworkName,
-		Peers:              searchTargetPeers{roster: assembly.roster},
-		Redundancy:         assembly.dht.Redundancy,
-		MinimumPeerAgeDays: assembly.dht.MinimumPeerAgeDays,
-		PartitionExponent:  assembly.dht.PartitionExponent,
-		RandomTargetIndex:  assembly.dhtSearchTargetIndex,
-		Weights:            remoteRankingWeights(assembly.rankingWeights),
-		PreferHTTPS:        assembly.peerHTTPSPreferred,
-		ExpandWord:         swarmMorphologyExpander(assembly),
-		PerPeerTimeout:     assembly.remoteTimeouts.perPeer,
-		OverallTimeout:     assembly.remoteTimeouts.overall,
+		Client:                 remoteSearchClient(assembly),
+		NetworkName:            assembly.identity.NetworkName,
+		Peers:                  searchTargetPeers{roster: assembly.roster},
+		Redundancy:             assembly.dht.Redundancy,
+		MinimumPeerAgeDays:     assembly.dht.MinimumPeerAgeDays,
+		PartitionExponent:      assembly.dht.PartitionExponent,
+		RandomTargetIndex:      assembly.dhtSearchTargetIndex,
+		Weights:                remoteRankingWeights(assembly.rankingWeights),
+		PreferHTTPS:            assembly.peerHTTPSPreferred,
+		ExpandWord:             swarmMorphologyExpander(assembly),
+		PerPeerTimeout:         assembly.remoteTimeouts.perPeer,
+		OverallTimeout:         assembly.remoteTimeouts.overall,
+		ReputationSnapshots:    assembly.peerReputation,
+		ReputationObservations: assembly.peerObservations,
+		ReputationNetworkGroup: assembly.peerNetworkGroup,
+		SelfSeed:               assembly.selfSeed,
 	})
 	search := assemblePublicSearcher(local, remote, assembly)
 	access := searchAccessPolicy(assembly)
@@ -294,23 +264,25 @@ func assemblePublicSearcher(
 	// recovery, so a window it demotes to nothing still triggers both, and below
 	// the rerank, so ranking sees the fetched page evidence instead of bare
 	// titles.
-	enriched := snippetfetch.WithSnippetEnrichment(
+	merged := searchcore.NewSafeSearchSearcher(
 		searchcore.NewFederatedSearcher(localWithFeedback, remote),
+	)
+	enriched := snippetfetch.WithSnippetEnrichment(
+		merged,
 		assembly.snippetEnricher,
 	)
-	federated := withWebFallback(enriched, assembly)
+	federated := searchcore.NewSafeSearchSearcher(withWebFallback(enriched, assembly))
 	// Rerank the merged local+remote window by query-term coverage and proximity
 	// over the visible title and snippet, so both sources compete on the same
 	// textual evidence before filtering and paging freeze the order.
-	reranked := searchcore.NewLexicalRerankSearcher(federated)
-	filtered := withDenylistFilter(reranked, assembly.denylist)
+	filtered := assembleRankingStages(federated, assembly)
 	// Zero-result recovery sits above the filters; its fuzzy retry targets the
 	// denylist-filtered LOCAL index only — peers and the web provider do not
 	// understand fuzzy matching, so re-running the whole pipeline only repeated
 	// their latency (PERF-04).
 	recovering := withZeroResultRecovery(
 		filtered,
-		withDenylistFilter(local, assembly.denylist),
+		assembleRankingStages(searchcore.NewSafeSearchSearcher(local), assembly),
 		assembly.spellCorrector,
 	)
 	// The session cache makes paging stable (YaCy SearchEventCache): page one
@@ -345,6 +317,17 @@ func assemblePublicSearcher(
 	}
 
 	return search
+}
+
+func assembleRankingStages(
+	inner searchcore.Searcher,
+	assembly publicSearchAssembly,
+) searchcore.Searcher {
+	evidence := searchcore.NewLexicalEvidenceSearcher(inner)
+	learned := learnedrank.NewSearcher(evidence, assembly.learnedRanker)
+	filtered := withDenylistFilter(learned, assembly.denylist)
+
+	return searchcore.NewFinalRankingSearcher(filtered)
 }
 
 // mountPortalOpenSearch registers the portal's OpenSearch description document

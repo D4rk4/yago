@@ -3,10 +3,6 @@ package searchcore
 import (
 	"context"
 	"fmt"
-	"sort"
-	"strings"
-
-	"github.com/D4rk4/yago/yagonode/internal/stopwords"
 )
 
 const (
@@ -25,7 +21,11 @@ const (
 	// prfActivateBelow gates expansion to recall-poor queries: when the first
 	// pass already returns this many results there is enough to rank and
 	// expansion would only risk drift.
-	prfActivateBelow = 50
+	prfActivateBelow         = 50
+	prfMaximumDocumentTokens = 256
+	prfMaximumQueryTokens    = 32
+	prfMaximumTermRunes      = 48
+	prfOriginalQueryWeight   = 0.5
 )
 
 // NewPseudoRelevanceSearcher expands a recall-poor query with terms mined from
@@ -55,7 +55,11 @@ func (s pseudoRelevanceSearcher) Search(
 	if len(first.Results) == 0 || len(first.Results) >= prfActivateBelow {
 		return first, nil
 	}
-	expansion := minePseudoRelevanceTerms(first.Results, rerankQueryTerms(req))
+	expansion := minePseudoRelevanceTerms(
+		first.Results,
+		pseudoRelevanceQueryTerms(req),
+		req.ExcludedTerms,
+	)
 	if len(expansion) == 0 {
 		return first, nil
 	}
@@ -67,59 +71,14 @@ func (s pseudoRelevanceSearcher) Search(
 		// Expansion is best-effort: a failed second pass keeps the first result.
 		return first, nil //nolint:nilerr // the original answer stands.
 	}
+	for index := range second.Results {
+		second.Results[index].Evidence = second.Results[index].Evidence.With(
+			SignalFeedbackRank,
+			float64(index+1),
+		).With(SignalFeedbackScore, second.Results[index].Score)
+	}
 
 	first.Results = FuseByReciprocalRank(first.Results, second.Results)
 
 	return first, nil
-}
-
-// minePseudoRelevanceTerms selects the most topically central expansion terms
-// from the feedback documents' titles and snippets: tokens absent from the query
-// and stoplist, at least prfMinTermLen long, appearing in at least
-// prfMinFeedbackDocFreq feedback documents, ranked by document then total
-// frequency (ties broken by the term for determinism).
-func minePseudoRelevanceTerms(results []Result, queryTerms []string) []string {
-	query := map[string]bool{}
-	for _, term := range queryTerms {
-		query[term] = true
-	}
-	docFreq := map[string]int{}
-	totalFreq := map[string]int{}
-	feedback := min(len(results), prfFeedbackDocs)
-	for _, result := range results[:feedback] {
-		seen := map[string]bool{}
-		for _, token := range strings.Fields(strings.ToLower(result.Title + " " + result.Snippet)) {
-			if len(token) < prfMinTermLen || query[token] || stopwords.IsStopword(token) {
-				continue
-			}
-			totalFreq[token]++
-			if !seen[token] {
-				seen[token] = true
-				docFreq[token]++
-			}
-		}
-	}
-
-	candidates := make([]string, 0, len(docFreq))
-	for token, freq := range docFreq {
-		if freq >= prfMinFeedbackDocFreq {
-			candidates = append(candidates, token)
-		}
-	}
-	sort.Slice(candidates, func(i, j int) bool {
-		a, b := candidates[i], candidates[j]
-		if docFreq[a] != docFreq[b] {
-			return docFreq[a] > docFreq[b]
-		}
-		if totalFreq[a] != totalFreq[b] {
-			return totalFreq[a] > totalFreq[b]
-		}
-
-		return a < b
-	})
-	if len(candidates) > prfExpansionTerms {
-		candidates = candidates[:prfExpansionTerms]
-	}
-
-	return candidates
 }

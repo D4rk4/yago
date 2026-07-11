@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"strings"
 	"testing"
+	"time"
 )
 
 const yacyAdminAuthHeader = "Authorization: Basic YWRtaW46eWFjeQ=="
@@ -44,13 +45,15 @@ func pushDocument(
 		map[string]string{"data-0": strings.Join(tokens, " ")},
 	)
 
-	result := probe.PostRaw(ctx, yacyURL+"/api/push_p.json", body,
-		"Content-Type: "+contentType, yacyAdminAuthHeader)
-	if !result.ok {
+	var result probeResult
+	pushed := waitForEvery(30*time.Second, time.Second, func() bool {
+		result = probe.PostRaw(ctx, yacyURL+"/api/push_p.json", body,
+			"Content-Type: "+contentType, yacyAdminAuthHeader)
+
+		return result.ok && strings.Contains(result.body, "successall")
+	})
+	if !pushed {
 		t.Fatalf("push_p.json request to YaCy failed: %s", result.diag())
-	}
-	if !strings.Contains(result.body, "successall") {
-		t.Fatalf("push_p.json did not report success: %s", result.body)
 	}
 }
 

@@ -29,13 +29,15 @@ func TestSearcherAppliesHostRankBoost(t *testing.T) {
 			{Title: "High", URL: highURL, Score: 0.9},
 		},
 	}}
-	table := hostrank.Table{hostHashOf(highURL): 1.0}
+	table := hostrank.AuthorityTable{
+		hostrank.RegistrableDomain(highURL): {Score: 1, Confidence: 1},
+	}
 	searcher := NewSearcherWithRanking(
 		index,
 		func() searchindex.RankingWeights {
 			return searchindex.RankingWeights{Title: 1, HostRank: 1}
 		},
-		func() hostrank.Table { return table },
+		func() hostrank.AuthorityTable { return table },
 	)
 
 	resp, err := searcher.Search(t.Context(), searchcore.Request{Query: "q"})
@@ -44,6 +46,13 @@ func TestSearcherAppliesHostRankBoost(t *testing.T) {
 	}
 	if got := resultTitles(resp.Results); len(got) != 2 || got[0] != "High" || got[1] != "Low" {
 		t.Fatalf("host-rank order = %v, want [High Low]", got)
+	}
+	for signal, want := range map[searchcore.RankingSignal]float64{
+		searchcore.SignalAuthority: 1, searchcore.SignalAuthorityConfidence: 1,
+	} {
+		if got, known := resp.Results[0].Evidence.Value(signal); !known || got != want {
+			t.Fatalf("authority evidence %s = %v/%v", signal.Name(), got, known)
+		}
 	}
 }
 
@@ -59,7 +68,10 @@ func TestSearcherSkipsHostRankWhenWeightZero(t *testing.T) {
 	searcher := NewSearcherWithRanking(
 		index,
 		func() searchindex.RankingWeights { return searchindex.RankingWeights{Title: 1} },
-		func() hostrank.Table { consulted = true; return hostrank.Table{} },
+		func() hostrank.AuthorityTable {
+			consulted = true
+			return hostrank.AuthorityTable{}
+		},
 	)
 
 	resp, err := searcher.Search(t.Context(), searchcore.Request{Query: "q"})

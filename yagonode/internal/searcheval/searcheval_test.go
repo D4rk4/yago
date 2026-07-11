@@ -14,6 +14,19 @@ type fakeSearcher struct {
 	err     error
 }
 
+type requestSearcher struct {
+	got searchcore.Request
+}
+
+func (s *requestSearcher) Search(
+	_ context.Context,
+	req searchcore.Request,
+) (searchcore.Response, error) {
+	s.got = req
+
+	return searchcore.Response{Results: results("relevant")}, nil
+}
+
 func (f fakeSearcher) Search(
 	_ context.Context,
 	req searchcore.Request,
@@ -66,6 +79,10 @@ func TestNDCG(t *testing.T) {
 	if !(high > low) || math.Abs(high-1) > 1e-9 {
 		t.Fatalf("graded NDCG high=%v low=%v", high, low)
 	}
+	extreme := NDCG(results("a", "b"), map[string]int{"a": math.MaxInt, "b": -1}, 2)
+	if math.IsNaN(extreme) || math.IsInf(extreme, 0) || extreme != 1 {
+		t.Fatalf("bounded NDCG = %v", extreme)
+	}
 }
 
 func TestEvaluate(t *testing.T) {
@@ -112,6 +129,23 @@ func TestEvaluate(t *testing.T) {
 	}
 }
 
+func TestEvaluateUsesServingQueryConstruction(t *testing.T) {
+	searcher := &requestSearcher{}
+	_, err := Evaluate(t.Context(), searcher, []Judgment{{
+		Query:    `near site:example.org "alpha beta" -noise`,
+		Relevant: map[string]int{"relevant": 1},
+	}}, 7)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if searcher.got.Query != "alpha beta" || searcher.got.Limit != 7 ||
+		len(searcher.got.Terms) != 2 || len(searcher.got.Phrases) != 1 ||
+		len(searcher.got.ExcludedTerms) != 1 || !searcher.got.Near ||
+		searcher.got.SiteHost != "example.org" {
+		t.Fatalf("request = %+v", searcher.got)
+	}
+}
+
 func TestPseudoJudgments(t *testing.T) {
 	labels := []Label{
 		{Query: "montenegro", URL: "https://a/1"},
@@ -132,5 +166,9 @@ func TestPseudoJudgments(t *testing.T) {
 	}
 	if judgments[1].Query != "graded" || judgments[1].Relevant["https://a/4"] != 5 {
 		t.Fatalf("graded judgment = %+v", judgments[1])
+	}
+	extreme := PseudoJudgments([]Label{{Query: "extreme", URL: "u", Grade: math.MaxInt}})
+	if extreme[0].Relevant["u"] != maximumRelevanceGrade {
+		t.Fatalf("extreme grade = %d", extreme[0].Relevant["u"])
 	}
 }

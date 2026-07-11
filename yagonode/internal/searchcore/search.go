@@ -35,6 +35,14 @@ const (
 	VerifyIfExist   VerifyMode = "ifexist"
 )
 
+type SafetyRating uint8
+
+const (
+	SafetyUnknown SafetyRating = iota
+	SafetyGeneral
+	SafetyExplicit
+)
+
 type Request struct {
 	Query         string
 	Terms         []string
@@ -64,33 +72,38 @@ type Request struct {
 	// The local index scores them as optional evidence only: they lift documents
 	// that already match every required query term and never admit one that does
 	// not (RM3 drift control; Lavrenko & Croft, SIGIR 2001).
-	ExpansionTerms []string
-	// Verify controls the term-containment check on peer-supplied results,
-	// following YaCy's verify parameter: VerifyFalse trusts peers verbatim, every
-	// other mode drops rows whose own metadata never mentions a query term.
+	ExpansionTerms   []string
 	Verify           VerifyMode
 	Navigation       string
 	SortByDate       bool
 	Near             bool
 	AllowWebFallback bool
+	SafeSearch       bool
+	Explain          bool
 }
 
 type Result struct {
-	Title         string
-	URL           string
-	DisplayURL    string
-	Snippet       string
-	Score         float64
-	Source        Source
-	Host          string
-	Path          string
-	File          string
-	ContentType   string
-	URLHash       string
-	Size          int
-	Date          string
-	ContentDomain ContentDomain
-	Language      string
+	Title                 string
+	URL                   string
+	ClusterID             string
+	RepresentativeURL     string
+	DisplayURL            string
+	Snippet               string
+	Score                 float64
+	Evidence              RankingEvidence
+	diversityRelevance    float64
+	diversityRelevanceSet bool
+	Source                Source
+	Host                  string
+	Path                  string
+	File                  string
+	ContentType           string
+	URLHash               string
+	Size                  int
+	Date                  string
+	DateConfidence        float64
+	ContentDomain         ContentDomain
+	Language              string
 	// Author is the document's extracted author metadata (HTML meta author),
 	// surfaced for the yacysearch RSS dc:creator field; empty when the document
 	// carried none or for remote results that did not include it.
@@ -100,11 +113,17 @@ type Result struct {
 	Keywords string
 	// Publisher is the document's extracted publisher metadata, surfaced for the
 	// yacysearch RSS dc:publisher field; empty when absent or for remote results.
-	Publisher string
-	// Quality is the document's content-quality prior in [0,1] (contentprior) for
-	// local results, folded into the score by the ranking profile; zero for remote
-	// results, which carry no prior.
-	Quality float64
+	Publisher            string
+	Quality              float64
+	QualityKnown         bool
+	SpamRisk             float64
+	FunctionWordFraction float64
+	SymbolFraction       float64
+	AlphabeticFraction   float64
+	UniqueTokenFraction  float64
+	SafetyRating         SafetyRating
+	ExplicitProbability  float64
+	SafetyConfidence     float64
 	// Proximity is the document's SDM unordered-window feature in [0,1] for local
 	// results, folded into the score by the ranking profile; zero for remote
 	// results, which carry no document text to scan.
@@ -117,6 +136,7 @@ type Result struct {
 	// and proximity over the document instead of the snippet; nil for remote
 	// results, which fall back to the snippet.
 	FieldTermPositions map[string]map[string][]int
+	Explanation        string
 	// Images carries the page's extracted images for the image vertical.
 	Images []ResultImage
 }

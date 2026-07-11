@@ -15,7 +15,6 @@ func TestCrawlMetricsCountsIngest(t *testing.T) {
 	crawl.ObserveDeferred()
 	crawl.ObserveRejected()
 	crawl.ObserveRejected()
-	crawl.ObserveDuplicate()
 	crawl.ObserveLowQuality()
 
 	for _, tc := range []struct {
@@ -26,7 +25,6 @@ func TestCrawlMetricsCountsIngest(t *testing.T) {
 		{"absorbed", crawl.absorbed, 2},
 		{"deferred", crawl.deferred, 1},
 		{"rejected", crawl.rejected, 2},
-		{"duplicates", crawl.duplicates, 1},
 		{"lowQuality", crawl.lowQuality, 1},
 		{"bytes", crawl.bytes, 200},
 		{"urls", crawl.urls, 4},

@@ -6,22 +6,29 @@
 // future work, so a node ranks with the authority it can observe locally.
 package hostrank
 
-import "sort"
+import (
+	"math"
+	"sort"
+)
 
 const (
 	dampingFactor  = 0.85
 	iterationCount = 40
 )
 
-// Table maps a host hash to its normalized authority rank in [0,1]. The most
-// authoritative host scores 1; a host absent from the table scores 0, so an
-// unknown host receives no ranking boost rather than a penalty.
-type Table map[string]float64
+type AuthorityEvidence struct {
+	Score      float64
+	Confidence float64
+}
 
-// Rank returns the normalized authority of hostHash, or 0 when it is unknown or
-// the table is empty.
-func (t Table) Rank(hostHash string) float64 {
-	return t[hostHash]
+type AuthorityTable map[string]AuthorityEvidence
+
+func (t AuthorityTable) Rank(domain string) float64 {
+	return t[domain].Score
+}
+
+func (t AuthorityTable) Confidence(domain string) float64 {
+	return t[domain].Confidence
 }
 
 // Compute derives a host authority table from the incoming citation graph.
@@ -29,10 +36,10 @@ func (t Table) Rank(hostHash string) float64 {
 // target host. It runs damped iterative rank propagation at host granularity (a
 // host-level PageRank) and normalizes the result so the top host scores 1.
 // Non-positive edge counts are ignored.
-func Compute(citations map[string]map[string]int) Table {
+func Compute(citations map[string]map[string]int) AuthorityTable {
 	graph := newCitationGraph(citations)
 	if len(graph.hosts) == 0 {
-		return Table{}
+		return AuthorityTable{}
 	}
 
 	rank := make(map[string]float64, len(graph.hosts))
@@ -44,7 +51,7 @@ func Compute(citations map[string]map[string]int) Table {
 		rank = graph.propagate(rank)
 	}
 
-	return normalize(rank)
+	return normalize(rank, graph.incoming)
 }
 
 type citationGraph struct {
@@ -105,7 +112,10 @@ func (g citationGraph) propagate(rank map[string]float64) map[string]float64 {
 	return next
 }
 
-func normalize(rank map[string]float64) Table {
+func normalize(
+	rank map[string]float64,
+	incoming map[string]map[string]int,
+) AuthorityTable {
 	highest := 0.0
 	for _, value := range rank {
 		if value > highest {
@@ -113,9 +123,12 @@ func normalize(rank map[string]float64) Table {
 		}
 	}
 
-	table := make(Table, len(rank))
+	table := make(AuthorityTable, len(rank))
 	for host, value := range rank {
-		table[host] = value / highest
+		table[host] = AuthorityEvidence{
+			Score:      value / highest,
+			Confidence: 1 - math.Exp(-float64(len(incoming[host]))/3),
+		}
 	}
 
 	return table

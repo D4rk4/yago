@@ -18,6 +18,7 @@ const (
 	envNodeImage    = "YAGO_NODE_IMAGE"
 	nodeAlias       = "node"
 	nodePeerPort    = "8090"
+	nodePublicPort  = "8080"
 	nodeOpsPort     = "9090"
 	nodeCrawlRPCEnv = ":9091"
 
@@ -29,8 +30,8 @@ const (
 )
 
 type nodeBroker struct {
-	opsURL  string
-	peerURL string
+	opsURL    string
+	publicURL string
 }
 
 func startNodeBroker(t *testing.T, ctx context.Context, networkName string) nodeBroker {
@@ -39,15 +40,20 @@ func startNodeBroker(t *testing.T, ctx context.Context, networkName string) node
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		Started: true,
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:          image,
-			Name:           nodeAlias,
-			ExposedPorts:   []string{nodePeerPort + "/tcp", nodeOpsPort + "/tcp"},
+			Image: image,
+			Name:  nodeAlias,
+			ExposedPorts: []string{
+				nodePeerPort + "/tcp",
+				nodePublicPort + "/tcp",
+				nodeOpsPort + "/tcp",
+			},
 			Networks:       []string{networkName},
 			NetworkAliases: map[string][]string{networkName: {nodeAlias}},
 			Env: map[string]string{
 				"YAGO_PEER_HASH":      nodePeerHash,
 				"YAGO_PEER_NAME":      "lease-e2e-node",
 				"YAGO_PEER_ADDR":      ":" + nodePeerPort,
+				"YAGO_PUBLIC_ADDR":    ":" + nodePublicPort,
 				"YAGO_OPS_ADDR":       ":" + nodeOpsPort,
 				"YAGO_ADVERTISE_HOST": nodeAlias,
 				"YAGO_ADVERTISE_PORT": nodePeerPort,
@@ -81,8 +87,8 @@ func startNodeBroker(t *testing.T, ctx context.Context, networkName string) node
 	dumpLogsOnFailure(t, "node", container)
 
 	return nodeBroker{
-		opsURL:  mappedBaseURL(t, ctx, container, nodeOpsPort),
-		peerURL: mappedBaseURL(t, ctx, container, nodePeerPort),
+		opsURL:    mappedBaseURL(t, ctx, container, nodeOpsPort),
+		publicURL: mappedBaseURL(t, ctx, container, nodePublicPort),
 	}
 }
 

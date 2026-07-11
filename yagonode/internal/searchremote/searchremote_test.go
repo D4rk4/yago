@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerreputation"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagoproto"
 )
@@ -36,10 +37,12 @@ func (s fakePeerSource) SearchTargetPeers(context.Context) []yagomodel.Seed {
 func TestRemoteSearcherQueriesPeersAndNormalizesResults(t *testing.T) {
 	word := yagomodel.WordHash("golang")
 	hash := hashFor("doc1")
+	self := searchSeed(t, "Self")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != yagoproto.PathSearch ||
 			r.URL.Query().Get(yagoproto.FieldQuery) != word.String() ||
-			r.URL.Query().Get(yagoproto.FieldNetworkName) != "freeworld" {
+			r.URL.Query().Get(yagoproto.FieldNetworkName) != "freeworld" ||
+			r.URL.Query().Get(yagoproto.FieldMySeed) == "" {
 			t.Fatalf("request path/query = %s %s", r.URL.Path, r.URL.RawQuery)
 		}
 		response := yagoproto.SearchResponse{
@@ -59,6 +62,9 @@ func TestRemoteSearcherQueriesPeersAndNormalizesResults(t *testing.T) {
 		Client:      server.Client(),
 		NetworkName: "freeworld",
 		Peers:       fakePeerSource{peers: []yagomodel.Seed{serverSeed(t, server.URL)}},
+		SelfSeed: func(context.Context) yagomodel.Seed {
+			return self
+		},
 	}).Search(t.Context(), searchcore.Request{
 		Terms:         []string{"golang"},
 		Source:        searchcore.SourceGlobal,
@@ -73,13 +79,11 @@ func TestRemoteSearcherQueriesPeersAndNormalizesResults(t *testing.T) {
 		t.Fatalf("response = %#v", resp)
 	}
 	result := resp.Results[0]
-	// The title and URL carry no query term, so only the peer-order share of
-	// the profile-based score remains.
 	if result.Title != "Remote Result" ||
 		result.URL != "https://example.org/doc.html" ||
 		result.Source != searchcore.SourceRemote ||
 		result.URLHash != hash.String() ||
-		result.Score != remotePeerOrderShare {
+		result.Score != 1.0/61.0 {
 		t.Fatalf("result = %#v", result)
 	}
 }
@@ -374,6 +378,8 @@ func TestRemoteSearcherReportsNoDHTTargets(t *testing.T) {
 func TestRemoteSearcherReportsMalformedIndexAbstract(t *testing.T) {
 	alpha := yagomodel.WordHash("alpha")
 	beta := yagomodel.WordHash("beta")
+	at := time.Unix(1_800_000_000, 0).UTC()
+	sink := &capturedReputationObservations{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Query().Get(yagoproto.FieldAbstracts) {
 		case alpha.String():
@@ -394,13 +400,16 @@ func TestRemoteSearcherReportsMalformedIndexAbstract(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+	peer := serverSeed(t, server.URL)
 
 	resp, err := NewSearcher(Config{
-		Client:      server.Client(),
-		Peers:       fakePeerSource{peers: []yagomodel.Seed{serverSeed(t, server.URL)}},
-		MaxPeers:    1,
-		Redundancy:  1,
-		Concurrency: 1,
+		Client:                 server.Client(),
+		Peers:                  fakePeerSource{peers: []yagomodel.Seed{peer}},
+		MaxPeers:               1,
+		Redundancy:             1,
+		Concurrency:            1,
+		ReputationObservations: sink,
+		ReputationClock:        func() time.Time { return at },
 	}).Search(t.Context(), searchcore.Request{
 		Terms: []string{"alpha", "beta"},
 		Limit: 10,
@@ -412,6 +421,11 @@ func TestRemoteSearcherReportsMalformedIndexAbstract(t *testing.T) {
 		len(resp.PartialFailures) != 1 ||
 		!strings.Contains(resp.PartialFailures[0].Reason, "index abstract") {
 		t.Fatalf("response = %#v", resp)
+	}
+	if len(sink.batches) != 1 || len(sink.batches[0]) != 3 ||
+		countReputationOutcome(sink.batches[0], peerreputation.OutcomeSuccess) != 2 ||
+		countReputationOutcome(sink.batches[0], peerreputation.OutcomeInvalidResult) != 1 {
+		t.Fatalf("abstract observations = %#v", sink.batches)
 	}
 }
 
@@ -449,6 +463,7 @@ func TestRemoteSearcherReportsMissingIndexAbstractResponses(t *testing.T) {
 		t.Context(),
 		searchcore.Request{},
 		[]termPeerTargets{{term: term}},
+		nil,
 	)
 	if len(abstracts) != 0 ||
 		len(failures) != 1 ||

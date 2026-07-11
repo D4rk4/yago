@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
@@ -124,46 +122,4 @@ func (c *CachedSearchIndex) store(key string, generation uint64, results SearchR
 		delete(c.entries, c.order[0])
 		c.order = c.order[1:]
 	}
-}
-
-func cacheKey(req SearchRequest) string {
-	var builder strings.Builder
-	writeCacheField(&builder, req.Query)
-	writeCacheField(&builder, strconv.Itoa(req.MaxResults))
-	writeCacheField(&builder, strconv.FormatBool(req.IncludeRaw))
-	writeCacheField(&builder, req.Language)
-	writeCacheField(&builder, strings.Join(req.ExcludeTerms, "\x1f"))
-	writeCacheField(&builder, strings.Join(req.Phrases, "\x1f"))
-	writeCacheField(&builder, strings.Join(req.IncludeDomain, "\x1f"))
-	writeCacheField(&builder, strings.Join(req.ExcludeDomain, "\x1f"))
-	writeCacheField(&builder, strconv.FormatInt(req.Since.UnixNano(), 10))
-	writeCacheField(&builder, strconv.FormatInt(req.Until.UnixNano(), 10))
-	writeCacheField(&builder, strconv.FormatBool(req.Explain))
-	writeCacheField(&builder, strconv.FormatBool(req.IncludePositions))
-	writeCacheWeights(&builder, req.Weights.orDefault())
-
-	return builder.String()
-}
-
-func writeCacheWeights(builder *strings.Builder, weights RankingWeights) {
-	writeCacheField(builder, strconv.FormatFloat(weights.Title, 'g', -1, 64))
-	writeCacheField(builder, strconv.FormatFloat(weights.Headings, 'g', -1, 64))
-	writeCacheField(builder, strconv.FormatFloat(weights.Anchors, 'g', -1, 64))
-	writeCacheField(builder, strconv.FormatFloat(weights.Body, 'g', -1, 64))
-	writeCacheField(builder, strconv.FormatFloat(weights.URL, 'g', -1, 64))
-}
-
-func writeCacheField(builder *strings.Builder, value string) {
-	builder.WriteString(value)
-	builder.WriteByte(0)
-}
-
-func cloneResultSet(set SearchResultSet) SearchResultSet {
-	if set.Results == nil {
-		return SearchResultSet{Total: set.Total}
-	}
-	results := make([]SearchResult, len(set.Results))
-	copy(results, set.Results)
-
-	return SearchResultSet{Results: results, Total: set.Total}
 }

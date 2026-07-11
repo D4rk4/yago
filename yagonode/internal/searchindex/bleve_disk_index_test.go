@@ -3,6 +3,7 @@ package searchindex
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -52,13 +53,15 @@ func (d *fakeDocumentDirectory) Count(context.Context) (int, error) {
 func TestBleveDiskIndexCreatesReopensAndSearches(t *testing.T) {
 	fetched := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 	doc := documentstore.Document{
-		NormalizedURL: "https://example.org/go",
-		Title:         "Go Search",
-		Headings:      []string{"Crawler"},
-		ExtractedText: "Golang crawler document body.",
-		Language:      "en",
-		FetchedAt:     fetched,
-		Inlinks:       []documentstore.AnchorText{{Text: "search anchor"}},
+		NormalizedURL:  "https://example.org/go",
+		Title:          "Go Search",
+		Headings:       []string{"Crawler"},
+		ExtractedText:  "Golang crawler document body.",
+		Language:       "en",
+		FetchedAt:      fetched,
+		PublishedAt:    fetched,
+		DateConfidence: 1,
+		Inlinks:        []documentstore.AnchorText{{Text: "search anchor"}},
 	}
 	directory := newFakeDocumentDirectory(doc)
 	stored := &fakeStoredDocuments{documents: []documentstore.Document{doc}}
@@ -131,11 +134,13 @@ func TestBleveDiskIndexCreatesReopensAndSearches(t *testing.T) {
 
 func TestBleveDiskIndexUpdatesDeletesAndFilters(t *testing.T) {
 	doc := documentstore.Document{
-		CanonicalURL:  "https://fallback.example/path/file.html",
-		Title:         "Fallback document",
-		ExtractedText: "Needle document text.",
-		Language:      "en",
-		IndexedAt:     time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		CanonicalURL:   "https://fallback.example/path/file.html",
+		Title:          "Fallback document",
+		ExtractedText:  "Needle document text.",
+		Language:       "en",
+		IndexedAt:      time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		PublishedAt:    time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		DateConfidence: 1,
 	}
 	directory := newFakeDocumentDirectory(doc)
 	index, err := NewBleveDiskIndex(
@@ -402,6 +407,7 @@ func TestBleveDiskIndexHandlesEmptyMissingAndFailedSearches(t *testing.T) {
 	if stats.Documents != 0 {
 		t.Fatalf("orphaned entry not healed, documents = %d", stats.Documents)
 	}
+	assertCompleteOrphanSearch(t, index, doc)
 
 	directory.documents[doc.NormalizedURL] = doc
 	if err := index.Index(t.Context(), doc); err != nil {
@@ -414,12 +420,34 @@ func TestBleveDiskIndexHandlesEmptyMissingAndFailedSearches(t *testing.T) {
 	); err == nil {
 		t.Fatal("expected document load error")
 	}
+	if _, err := index.Search(
+		t.Context(),
+		SearchRequest{Query: "needle", MaxResults: 1, WithFacets: true},
+	); err == nil {
+		t.Fatal("expected complete document load error")
+	}
 	directory.err = nil
 
 	canceled, cancel := context.WithCancel(t.Context())
 	cancel()
 	if _, err := index.Search(canceled, SearchRequest{Query: "needle", MaxResults: 1}); err == nil {
 		t.Fatal("expected canceled search error")
+	}
+}
+
+func assertCompleteOrphanSearch(
+	t *testing.T,
+	index *BleveDiskIndex,
+	doc documentstore.Document,
+) {
+	t.Helper()
+	if err := index.Index(t.Context(), doc); err != nil {
+		t.Fatalf("re-index missing document: %v", err)
+	}
+	if _, err := index.Search(t.Context(), SearchRequest{
+		Query: "needle", MaxResults: 1, WithFacets: true,
+	}); err != nil {
+		t.Fatalf("complete orphan search: %v", err)
 	}
 }
 
@@ -542,6 +570,142 @@ func TestBleveDocumentCount(t *testing.T) {
 	}
 	if got := bleveDocumentCount(uint64(maxInt) + 1); got != maxInt {
 		t.Fatalf("large count = %d, want %d", got, maxInt)
+	}
+}
+
+func TestBleveDiskSearchFindsEligibleTailAfterRejectedHead(t *testing.T) {
+	documents := make([]documentstore.Document, 0, 6)
+	for index := 0; index < 5; index++ {
+		documents = append(documents, documentstore.Document{
+			NormalizedURL: fmt.Sprintf("https://rejected.example/%d", index),
+			Title:         "common common common common common",
+			ExtractedText: "common common common common common",
+			Language:      "de",
+		})
+	}
+	documents = append(documents, documentstore.Document{
+		NormalizedURL: "https://eligible.example/tail",
+		ExtractedText: "common",
+		Language:      "en",
+	})
+	index, err := NewBleveDiskIndex(
+		t.Context(), filepath.Join(t.TempDir(), "tail.bleve"),
+		newFakeDocumentDirectory(documents...),
+		&fakeStoredDocuments{documents: documents},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = index.Close() })
+	result, err := index.Search(t.Context(), SearchRequest{
+		Query: "common", Language: "en", MaxResults: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Total != 1 || len(result.Results) != 1 ||
+		result.Results[0].URL != "https://eligible.example/tail" {
+		t.Fatalf("eligible tail result = %#v", result)
+	}
+	missing, err := index.Search(t.Context(), SearchRequest{
+		Query: "absent", MaxResults: 1, WithFacets: true,
+	})
+	if err != nil || missing.Total != 0 {
+		t.Fatalf("missing complete result = %#v, %v", missing, err)
+	}
+	partial, err := index.Search(t.Context(), SearchRequest{
+		Query: "tail", MaxResults: 1, WithFacets: true,
+	})
+	if err != nil || partial.Total != 1 {
+		t.Fatalf("partial complete result = %#v, %v", partial, err)
+	}
+}
+
+func TestContentDomainPostFilterClassification(t *testing.T) {
+	for _, contentDomain := range []string{"", "text", "TEXT", "all", "ALL"} {
+		if contentDomainNeedsPostFilter(contentDomain) {
+			t.Fatalf("content domain %q requires a post-filter", contentDomain)
+		}
+	}
+	if !contentDomainNeedsPostFilter("image") {
+		t.Fatal("image content domain skipped its post-filter")
+	}
+}
+
+func TestBleveDiskFacetsCoverMoreThanOneThousandHits(t *testing.T) {
+	documents := make([]documentstore.Document, bleveSearchHitCap+1)
+	for index := range documents {
+		documents[index] = documentstore.Document{
+			NormalizedURL: fmt.Sprintf("https://docs.example/%04d", index),
+			ExtractedText: "common searchable document",
+			Language:      "en",
+		}
+	}
+	index, err := NewBleveDiskIndex(
+		t.Context(), filepath.Join(t.TempDir(), "facets.bleve"),
+		newFakeDocumentDirectory(documents...),
+		&fakeStoredDocuments{documents: documents},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = index.Close() })
+	result, err := index.Search(t.Context(), SearchRequest{
+		Query: "common", MaxResults: 1, WithFacets: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Total != len(documents) ||
+		facetTermCounts(result.Facets, "language")["en"] != len(documents) {
+		t.Fatalf("complete facet result = %#v", result)
+	}
+	if _, _, err := index.searchCompleteHitsWithin(
+		t.Context(),
+		SearchRequest{Query: "common", MaxResults: 1, WithFacets: true},
+		len(documents),
+		2,
+	); !errors.Is(err, ErrCompleteSearchBudgetExceeded) {
+		t.Fatalf("complete search budget error = %v", err)
+	}
+}
+
+func TestCompleteSearchAcceptsExactHitBudget(t *testing.T) {
+	documents := []documentstore.Document{
+		{NormalizedURL: "https://docs.example/one", ExtractedText: "bounded match"},
+		{NormalizedURL: "https://docs.example/two", ExtractedText: "bounded match"},
+		{NormalizedURL: "https://docs.example/other", ExtractedText: "different text"},
+	}
+	index, err := NewBleveDiskIndex(
+		t.Context(), filepath.Join(t.TempDir(), "boundary.bleve"),
+		newFakeDocumentDirectory(documents...),
+		&fakeStoredDocuments{documents: documents},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = index.Close() })
+	result, _, err := index.searchCompleteHitsWithin(
+		t.Context(),
+		SearchRequest{Query: "bounded", MaxResults: 1, WithFacets: true},
+		len(documents),
+		2,
+	)
+	if err != nil || result.Total != 2 || len(result.Results) != 1 {
+		t.Fatalf("exact-budget result = %#v, %v", result, err)
+	}
+}
+
+func TestInsertCompleteResultKeepsBoundedScoreOrder(t *testing.T) {
+	results := insertCompleteResult(nil, SearchResult{DocumentID: "b", Score: 1}, 2)
+	results = insertCompleteResult(results, SearchResult{DocumentID: "c", Score: 0.5}, 2)
+	results = insertCompleteResult(results, SearchResult{DocumentID: "a", Score: 1}, 2)
+	results = insertCompleteResult(results, SearchResult{DocumentID: "d", Score: 0.1}, 2)
+	if len(results) != 2 || results[0].DocumentID != "a" || results[1].DocumentID != "b" {
+		t.Fatalf("bounded complete results = %#v", results)
+	}
+	if got := insertCompleteResult(results, SearchResult{}, 0); got != nil {
+		t.Fatalf("zero-limit complete results = %#v", got)
 	}
 }
 

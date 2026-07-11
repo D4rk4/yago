@@ -93,8 +93,8 @@ by that URL. Two ordering/robustness rules:
   atomicity by design, ADR-0025) nor assumed elsewhere — `deleteOne` in the
   admin delete path already deletes across the index, documents, and evictor as
   separate steps.
-- A resolved hash may legitimately have **no** document: near-duplicate collapse
-  and the quality gate store a url-metadata row and postings without a document.
+- A resolved hash may legitimately have **no** document: the quality gate can
+  store a url-metadata row and postings without a document.
   `Delete` returning `(false, nil)` is the intended idempotent no-op.
 
 The recrawl tombstone path routes through the same `purgeURLs`, so it gains

@@ -33,9 +33,21 @@ func TestNodeBrokerDrivesCrawlerToIndex(t *testing.T) {
 	}
 
 	if !waitFor(30*time.Second, func() bool {
-		return searchFindsTerm(ctx, node.peerURL, "words")
+		return searchFindsTerm(ctx, node.publicURL, "words")
 	}) {
-		t.Logf("search: %s", rawGet(ctx, node.peerURL+pathSearchJSON+"?query=words", ""))
+		t.Logf("search: %s", rawGet(ctx, node.publicURL+pathSearchJSON+"?query=words", ""))
 		t.Fatal("indexed document was not returned by a body-term search")
+	}
+	if !rankingExplainFindsTerm(ctx, node.opsURL, session, "words") {
+		t.Fatal("YagoRank explain did not expose field evidence for the indexed document")
+	}
+	if !rankingModelIsInactive(ctx, node.opsURL, session) {
+		t.Fatal("fresh node did not report an inactive learned ranking model")
+	}
+	if !rankingTrainingRejectsColdStart(ctx, node.opsURL, session) {
+		t.Fatal("ranking training did not reject an empty judgment corpus")
+	}
+	if !rankingModelIsInactive(ctx, node.opsURL, session) {
+		t.Fatal("rejected training changed the active ranking model")
 	}
 }

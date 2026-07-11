@@ -17,6 +17,9 @@ const (
 	pathAdminLogin = "/api/admin/v1/auth/login"
 	pathCrawl      = "/crawl"
 	pathIndexStats = "/api/admin/v1/index/stats"
+	pathExplain    = "/api/admin/v1/search/explain"
+	pathModel      = "/api/admin/v1/search/ranking/model"
+	pathTrain      = "/api/admin/v1/search/ranking/model/train"
 	pathSearchJSON = "/yacysearch.json"
 	sessionCookie  = "yago_admin_session"
 	csrfHeader     = "X-CSRF-Token"
@@ -159,6 +162,113 @@ func searchFindsTerm(ctx context.Context, peerURL, term string) bool {
 	channel := decoded.Channels[0]
 
 	return len(channel.Items) > 0 || (channel.TotalResults != "" && channel.TotalResults != "0")
+}
+
+func rankingExplainFindsTerm(
+	ctx context.Context,
+	opsURL string,
+	session adminSession,
+	term string,
+) bool {
+	body := fmt.Sprintf(`{"query":%q}`, term)
+	resp, ok := authenticatedPost(ctx, opsURL+pathExplain, session, body)
+	if !ok {
+		return false
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var decoded struct {
+		Query   string `json:"query"`
+		Results []struct {
+			URL         string             `json:"url"`
+			FieldScores map[string]float64 `json:"fieldScores"`
+		} `json:"results"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		return false
+	}
+
+	return decoded.Query == term && len(decoded.Results) > 0 &&
+		decoded.Results[0].URL != "" && len(decoded.Results[0].FieldScores) > 0
+}
+
+func rankingModelIsInactive(
+	ctx context.Context,
+	opsURL string,
+	session adminSession,
+) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, opsURL+pathModel, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Cookie", sessionCookie+"="+session.cookie)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	var decoded struct {
+		Status struct {
+			Current struct {
+				Active bool `json:"active"`
+			} `json:"current"`
+			Rollback []json.RawMessage `json:"rollback"`
+		} `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		return false
+	}
+
+	return !decoded.Status.Current.Active && len(decoded.Status.Rollback) == 0
+}
+
+func rankingTrainingRejectsColdStart(
+	ctx context.Context,
+	opsURL string,
+	session adminSession,
+) bool {
+	resp, ok := authenticatedPost(
+		ctx,
+		opsURL+pathTrain,
+		session,
+		`{"model_kind":"linear_lambdarank"}`,
+	)
+	if !ok {
+		return false
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, _ := io.ReadAll(resp.Body)
+
+	return resp.StatusCode == http.StatusBadRequest &&
+		strings.Contains(string(raw), "train ranking model")
+}
+
+func authenticatedPost(
+	ctx context.Context,
+	endpoint string,
+	session adminSession,
+	body string,
+) (*http.Response, bool) {
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		endpoint,
+		strings.NewReader(body),
+	)
+	if err != nil {
+		return nil, false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(csrfHeader, session.csrf)
+	req.Header.Set("Cookie", sessionCookie+"="+session.cookie)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, false
+	}
+
+	return resp, true
 }
 
 func rawGet(ctx context.Context, endpoint, cookie string) string {

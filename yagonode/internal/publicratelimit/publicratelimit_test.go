@@ -151,10 +151,17 @@ func TestWrapThrottlesSearchPathsOnly(t *testing.T) {
 	); rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("suggest = %d", rec.Code)
 	}
+	if rec := do(
+		"/searchclick",
+		"203.0.113.9:1006",
+		"",
+	); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("search click = %d", rec.Code)
+	}
 	// Authenticated callers ride the multiplier.
 	if rec := do(
 		"/yacysearch.json?query=x",
-		"203.0.113.9:1006",
+		"203.0.113.9:1007",
 		"Bearer good",
 	); rec.Code != http.StatusOK {
 		t.Fatalf("authenticated = %d", rec.Code)

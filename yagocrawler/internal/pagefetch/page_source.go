@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"time"
 )
 
 var ErrPageRejected = errors.New("page rejected")
@@ -17,9 +18,10 @@ var ErrPageRejected = errors.New("page rejected")
 var ErrUnsupportedContentType = fmt.Errorf("unsupported content type: %w", ErrPageRejected)
 
 type FetchedPage struct {
-	URL         *url.URL
-	ContentType string
-	Body        []byte
+	URL          *url.URL
+	ContentType  string
+	Body         []byte
+	LastModified time.Time
 	// RobotsTag carries the response's X-Robots-Tag header verbatim so the
 	// pipeline can honor header-level noindex/nofollow directives. The
 	// headless-browser fetch path cannot observe response headers and leaves

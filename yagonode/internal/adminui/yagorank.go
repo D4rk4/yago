@@ -63,6 +63,8 @@ type yagorankPageData struct {
 	Groups        []rankingWeightGroup
 	JudgmentCount int
 	Tune          *RankingTuneResult
+	LearnedModel  *learnedModelStatusView
+	TrainOutcome  *LearnedModelTrainOutcome
 	Notice        string
 	Error         string
 }
@@ -70,10 +72,11 @@ type yagorankPageData struct {
 // yagorankView carries the variable parts of a YagoRank render: the weights to
 // show in the inputs, an optional tune preview, and the toast messages.
 type yagorankView struct {
-	weights []RankingWeight
-	tune    *RankingTuneResult
-	notice  string
-	errMsg  string
+	weights      []RankingWeight
+	tune         *RankingTuneResult
+	trainOutcome *LearnedModelTrainOutcome
+	notice       string
+	errMsg       string
 }
 
 func (c *Console) handleYagoRank(w http.ResponseWriter, r *http.Request) {
@@ -98,6 +101,12 @@ func (c *Console) handleYagoRankAction(w http.ResponseWriter, r *http.Request) {
 		c.applyYagoRankTune(w, r)
 	case "save":
 		c.applyYagoRankSave(w, r)
+	case "train-linear":
+		c.applyYagoRankModelTraining(w, r, LearnedModelLinearLambdaRank)
+	case "train-tree":
+		c.applyYagoRankModelTraining(w, r, LearnedModelHistogramLambdaMART)
+	case "rollback-model":
+		c.applyYagoRankModelRollback(w, r)
 	default:
 		c.renderYagoRank(w, r, yagorankView{
 			weights: c.ranking.Profile(r.Context()).Weights,
@@ -163,6 +172,8 @@ func (c *Console) renderYagoRank(w http.ResponseWriter, r *http.Request, view ya
 		Groups:        groupRankingWeights(view.weights),
 		JudgmentCount: c.ranking.Profile(r.Context()).JudgmentCount,
 		Tune:          view.tune,
+		LearnedModel:  learnedModelStatus(r.Context(), c.ranking),
+		TrainOutcome:  view.trainOutcome,
 		Notice:        view.notice,
 		Error:         view.errMsg,
 	})
@@ -189,14 +200,13 @@ func groupRankingWeights(weights []RankingWeight) []rankingWeightGroup {
 func tuneNotice(result RankingTuneResult) string {
 	if result.Improved {
 		return fmt.Sprintf(
-			"Tuning lifted mean NDCG@10 from %.4f to %.4f over %d rounds. "+
-				"Review the proposed weights and Save to apply them.",
+			"Tuning lifted mean NDCG@10 from %.4f to %.4f over %d rounds.",
 			result.BeforeNDCG, result.AfterNDCG, result.Rounds,
 		)
 	}
 
 	return fmt.Sprintf(
-		"Tuning found no improvement over the current weights (NDCG@10 %.4f); they are already at a local optimum.",
+		"Tuning found no improvement over the current weights (NDCG@10 %.4f).",
 		result.BeforeNDCG,
 	)
 }

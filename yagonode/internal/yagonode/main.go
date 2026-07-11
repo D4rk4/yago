@@ -311,7 +311,7 @@ func serve(
 		}()
 	}
 	defer background.Wait()
-	defer cancel()
+	defer stopPeerReputation(cancel, assembled.peerEvents)
 
 	errs := make(chan error, len(servers))
 	for _, s := range servers {

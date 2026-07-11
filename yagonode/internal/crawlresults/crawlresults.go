@@ -10,8 +10,8 @@ import (
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/contentsafety"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
-	"github.com/D4rk4/yago/yagonode/internal/neardup"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 	"github.com/D4rk4/yago/yagonode/internal/urlmeta"
@@ -27,16 +27,10 @@ type IngestStream interface {
 	Receive() <-chan IngestDelivery
 }
 
-// IngestObserver receives the node-side outcome of each crawl ingest batch so an
-// edge can meter crawl throughput. Its methods are called once per batch and must
-// not block. ObserveRejected counts a malformed batch that was dropped rather than
-// absorbed or deferred; ObserveDuplicate counts a page whose text near-duplicated
-// an already stored page, so its document was collapsed instead of indexed.
 type IngestObserver interface {
 	ObserveAbsorbed(contentBytes, urls, postings int)
 	ObserveDeferred()
 	ObserveRejected()
-	ObserveDuplicate()
 	ObserveLowQuality()
 }
 
@@ -47,8 +41,6 @@ func (noopIngestObserver) ObserveAbsorbed(int, int, int) {}
 func (noopIngestObserver) ObserveDeferred() {}
 
 func (noopIngestObserver) ObserveRejected() {}
-
-func (noopIngestObserver) ObserveDuplicate() {}
 
 func (noopIngestObserver) ObserveLowQuality() {}
 
@@ -116,6 +108,7 @@ func (noopStaleSweeper) PurgeStalePostings(
 type IngestConsumer struct {
 	stream    IngestStream
 	documents documentstore.DocumentReceiver
+	anchors   documentstore.InboundAnchorReceiver
 	index     searchindex.SearchIndex
 	urls      urlmeta.URLReceiver
 	postings  rwi.PostingReceiver
@@ -124,13 +117,18 @@ type IngestConsumer struct {
 	owner     OwnershipCheck
 	purger    URLPurger
 	stale     StalePostingSweeper
-	nearDup   *neardup.Window
+	clusters  ContentClusters
+	safety    ContentSafetyClassifier
 	// quality names the rule a document's text violates, "" for indexable text;
 	// nil skips the gate.
 	quality func(text string) string
 	// hashURL derives a tombstone's URL hash; a field so a test can force the
 	// (otherwise unreachable) hashing failure.
 	hashURL func(string) (yagomodel.URLHash, error)
+}
+
+type ContentSafetyClassifier interface {
+	Classify(text string) contentsafety.Evidence
 }
 
 func NewIngestConsumer(
@@ -149,9 +147,12 @@ func NewIngestConsumerWithIndex(
 	urls urlmeta.URLReceiver,
 	postings rwi.PostingReceiver,
 ) *IngestConsumer {
+	anchors, _ := documents.(documentstore.InboundAnchorReceiver)
+
 	return &IngestConsumer{
 		stream:    stream,
 		documents: documents,
+		anchors:   anchors,
 		index:     index,
 		urls:      urls,
 		postings:  postings,
@@ -172,15 +173,6 @@ func (c *IngestConsumer) Observe(observer IngestObserver) {
 	}
 }
 
-// CollapseNearDuplicates installs a fingerprint window so pages whose text
-// near-duplicates an already stored page keep their URL metadata and postings
-// but are not stored or indexed again (CRAWL-10). A nil window is ignored.
-func (c *IngestConsumer) CollapseNearDuplicates(window *neardup.Window) {
-	if window != nil {
-		c.nearDup = window
-	}
-}
-
 // GateQuality installs a content-quality rule check: a batch whose document
 // text violates a rule is dropped whole — spam postings must not reach the
 // shared index — with the rejection counted and the rule named in the log
@@ -188,6 +180,12 @@ func (c *IngestConsumer) CollapseNearDuplicates(window *neardup.Window) {
 func (c *IngestConsumer) GateQuality(gate func(text string) string) {
 	if gate != nil {
 		c.quality = gate
+	}
+}
+
+func (c *IngestConsumer) UseContentSafetyClassifier(classifier ContentSafetyClassifier) {
+	if classifier != nil {
+		c.safety = classifier
 	}
 }
 

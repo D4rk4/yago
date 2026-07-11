@@ -4,7 +4,7 @@ Date: 2026-07-08
 
 ## Status
 
-Accepted
+Superseded by [ADR-0043](0043-pure-go-evidence-learning-to-rank.md)
 
 ## Context
 

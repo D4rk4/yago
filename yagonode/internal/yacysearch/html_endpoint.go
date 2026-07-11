@@ -20,7 +20,7 @@ type htmlEndpoint struct {
 	search       searchcore.Searcher
 	suggestions  *recentQueries
 	newTab       bool
-	clickCapture bool
+	clickCapture ImpressionRecorder
 }
 
 type htmlSearchPage struct {
@@ -49,6 +49,7 @@ type htmlSearchPage struct {
 	NewTab             bool
 	NavGroups          []htmlNavGroup
 	ClickCapture       bool
+	ImpressionToken    string
 }
 
 type htmlPageLink struct {
@@ -85,6 +86,7 @@ type htmlSearchItem struct {
 	CachedURL   string
 	Provenance  string
 	Rank        int
+	Identity    string
 }
 
 var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!doctype html>
@@ -145,10 +147,10 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 {{range .PartialFailures}}<li>{{.Source}}: {{.Reason}}</li>{{end}}
 </ul>
 {{end}}
-<ol{{if .ClickCapture}} data-q="{{.Query}}"{{end}}>
+<ol{{if .ClickCapture}} data-t="{{.ImpressionToken}}"{{end}}>
 {{range .Items}}
 <li>
-<h2><a href="{{.URL}}"{{if $.ClickCapture}} data-p="{{.Rank}}"{{end}}{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{.Title}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"> (opens in new tab)</span>{{end}}</a></h2>
+<h2><a href="{{.URL}}"{{if $.ClickCapture}} data-p="{{.Rank}}" data-i="{{.Identity}}"{{end}}{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{.Title}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"> (opens in new tab)</span>{{end}}</a></h2>
 <p>{{.Description}}</p>
 <p>{{.DisplayURL}}{{if .Provenance}} [{{.Provenance}}]{{end}} {{.SizeName}} {{.Date}}{{if .CachedURL}} <a href="{{.CachedURL}}">cached</a>{{end}}</p>
 </li>
@@ -226,14 +228,14 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 </script>
 {{if .ClickCapture}}<script>
 (function () {
-  var ol = document.querySelector("ol[data-q]");
-  if (!ol || !navigator.sendBeacon) return;
-  var q = ol.getAttribute("data-q");
+  var ol = document.querySelector("ol[data-t]");
+	if (!ol || !navigator.sendBeacon) return;
+	var token = ol.getAttribute("data-t");
   function beacon(a) {
     try {
       var body = new URLSearchParams();
-      body.set("q", q);
-      body.set("u", a.href);
+		body.set("t", token);
+		body.set("i", a.getAttribute("data-i") || "");
       body.set("p", a.getAttribute("data-p") || "");
       navigator.sendBeacon("/searchclick", body);
     } catch (e) {}
@@ -269,10 +271,9 @@ func (e htmlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	page := responseHTML(r, resp)
+	page := responseHTMLWithImpression(r, resp, e.clickCapture)
 	page.Elapsed = fmt.Sprintf("%.2f s", htmlClock().Sub(started).Seconds())
 	page.NewTab = e.newTab
-	page.ClickCapture = e.clickCapture
 	_ = htmlSearchTemplate.Execute(w, page)
 }
 
@@ -441,8 +442,9 @@ func responseHTMLItems(
 	items := make([]htmlSearchItem, 0, len(results))
 	for index, result := range results {
 		item := htmlSearchItem{
-			Title: result.Title,
-			URL:   result.URL,
+			Title:    result.Title,
+			URL:      result.URL,
+			Identity: result.URL,
 			// Rank is the result's 1-based position across all pages, so click
 			// capture debiases by the position the searcher actually examined.
 			Rank:       offset + index + 1,

@@ -1,214 +1,224 @@
 # YagoRank
 
-YagoRank is the node's results-ranking stack: a **learned log-linear ranker**
-whose weights are fit offline to NDCG against a persisted judgment set, layered on
-the retrieval and fusion machinery the node already runs. It is pure-Go, CPU-only,
-carries no model runtime and no extra dependency, and changes nothing on the wire —
-the RWI and every peer-protocol surface are untouched, so swarm interop is
-unaffected.
+YagoRank is the ranking pipeline used by local and federated search. It runs in
+the `yago-node` process, uses Go code and persisted model data only, and does not
+require a GPU, an external API, a sidecar, a native model runtime, or a separate
+training binary. YaCy RWI remains the peer exchange format and is not changed by
+ranking.
 
-The design and its rationale are recorded in
-[ADR-0035](adr/0035-learned-log-linear-ranking-yagorank.md); this document
-describes what is actually shipped and how to operate it.
+## Serving pipeline
 
-## Why it exists
+Every search follows the same bounded stages:
 
-Java YaCy ranks with a hand-tuned linear combination of Solr field boosts plus
-Block Rank and date boosts: no term dependence, no content-quality model, no
-learned calibration. Its weights are set by hand and stay that way.
+1. Build a candidate window from strict fielded BM25, a relaxed 60% term-match
+   branch, phrases, ordered and unordered term-dependence signals, and bounded
+   RM3 feedback. Strict and relaxed lists are fused by reciprocal rank. Feedback
+   uses at most five distinct documents, 256 tokens per document, and three
+   expansion terms that occur in at least two feedback documents. Required query
+   terms remain required.
+2. Merge local and YaCy peer lists deterministically. A peer contributes one
+   list regardless of response timing. Persistent peer reliability adjusts its
+   RRF contribution, while IPv4 `/24` and IPv6 `/48` influence caps limit a
+   network group's aggregate effect. Search reads an immutable in-memory
+   reputation snapshot; a bounded worker persists observations and refreshes
+   that snapshot after writes and every five minutes outside the request path.
+   It retries one monotonic batch with capped backoff until persistence or
+   shutdown, reconciles a superseded sequence, stops admission before draining,
+   and gives concurrent shutdown callers one bounded completion point. A failed
+   refresh keeps the last good snapshot. Unresolved hostname peers share one
+   conservative influence group.
+3. Attach an immutable 33-signal evidence vector to each candidate. Missing
+   evidence is represented explicitly and remains neutral.
+4. Apply the active learned model to at most 100 locally stored candidates.
+   Federated and web-fallback rows keep their fusion order because the training
+   set contains no representative federated evidence. A node without an active
+   model keeps the complete lexical ranking path.
+5. Apply safety policy, persistent content-cluster consolidation, MMR, host
+   crowding, requested date ordering, and paging once. Similar unclustered
+   results are not deleted.
 
-YagoRank keeps the same *shape* — a transparent linear model a human can read — but
-makes every weight **fit to measured relevance** instead of guessed. That is the
-one structural difference from YaCy, and it is deliberately modest: the goal is a
-decisively better ranker that stays KISS, not a "slow monster" of learned
-components nobody can explain.
+Index-cache identity covers every request field and ranking weight. Paging
+sessions structurally include every result- or policy-affecting request field
+except offset and limit. Cached facets, maps, positions, and media values are
+cloned before delivery. Disk post-filters and facets traverse matching documents
+with a bounded identifier cursor and retain only a bounded score top-k, so an
+eligible tail and counts beyond 1,000 matches remain visible without unbounded
+memory. A complete scan has a five-second internal deadline and 100,000-hit cap.
+Deadline, cap, incomplete page, and partial-shard conditions fail honestly
+instead of returning truncated counts. The scan keeps one consistent index view,
+so indexing can wait behind work bounded by both controls.
 
-## The scoring pipeline
+## Candidate evidence
 
-A query flows through four stages. YagoRank spans the first three; the fourth is
-presentation.
+The learned feature catalog is fixed and versioned. It includes:
 
-```
-                       searchindex layer                     searchcore layer
- query ─▶ ① retrieval ─────────────────▶ ② priors ─▶ ③ fusion + rerank ─▶ ④ diversify ─▶ results
-          per-field BM25 (bleve)          score ×=      RRF across            MMR + SimHash
-          + SDM ordered bigrams           1 + Σ prior   local/remote/web      + host-crowding cap
-```
+- strict, relaxed, feedback, local, remote, and fused retrieval scores and ranks;
+- title, heading, trusted inbound-anchor, URL, and body evidence;
+- term coverage plus ordered, unordered, and whole-document proximity;
+- signed content quality, spam risk, text-shape measures, and missingness;
+- publication-date confidence and multi-timescale freshness;
+- registrable-domain authority and authority confidence;
+- URL prior, source count, peer support, and peer reputation.
 
-1. **Retrieval — `searchindex` (bleve).** Each query term is a weighted
-   disjunction over the fields (title, headings, anchors, url, body), so a hit's
-   base score is the field-boost-weighted sum of per-field BM25. On top ride the
-   **SDM ordered-bigram** phrase clauses (adjacent query-word pairs), which lift
-   documents where the words appear as an ordered window.
+Publication and modification dates come from structured page metadata, HTTP
+headers, or sitemap evidence with source confidence. First-seen and actual
+content-change timestamps are stored separately. Fetch time is never presented
+as publication time, future dates are rejected, and an unchanged recrawl cannot
+refresh a page's rank.
 
-2. **Priors — `searchlocal` (`hostRankScorer`).** The retrieval score is scaled by
-   a multiplicative envelope of query-independent and proximity signals:
+Inbound anchors are replaced atomically when a source page is recrawled. Links
+marked `nofollow`, `ugc`, or `sponsored` do not contribute ranking anchor text or
+authority. Domain authority uses a bounded in-process link graph with PageRank
+and TrustRank-style teleport evidence, distinct-source limits, and confidence.
+Admin deletion, quota eviction, redirect purge, and crawl tombstones share one
+lineage cleanup that removes the source's anchors and cluster membership, then
+refreshes any surviving representative in storage and search.
 
-   ```
-   final(d) = retrieval(d) × ( 1
-              + urlPrior(path)          # fixed saturating URL-length prior, always on
-              + wHost  · rank(host)     # host block-rank authority
-              + wFresh · 2^(−age/180d)  # exponential freshness decay, half-life 180 days
-              + wQual  · quality(d)     # content-quality prior            (RANK-02)
-              + wProx  · proximity(d,q) # SDM unordered-window feature      (RANK-03) )
-   ```
+Content quality is computed during ingest as signed evidence in `[-1,1]`.
+Unknown, short, or unsupported-script evidence is neutral. It never receives a
+maximum-quality bonus.
 
-   Each `w·signal` term is added only when its weight is positive, so a profile
-   that zeroes a prior pays nothing for it.
+Exact content identity is assigned before near-duplicate clustering. Near
+duplicates use bounded shingles, SimHash LSH candidates, and Jaccard
+confirmation. Every URL remains stored; the final list selects a deterministic
+representative by canonical declaration, quality, authority, and URL order.
+The committed canonical document, including merged lifecycle dates and inbound
+anchors, is the exact value sent to clustering and the search index.
 
-3. **Fusion + rerank — `searchcore`.** Local, remote-peer, and (optional) web
-   results are merged with **reciprocal-rank fusion** (RRF, k=60), which sidesteps
-   the incomparable-score problem across sources. A learning-free lexical reranker
-   then gently reorders the merged top window by query-term coverage and global
-   proximity — a tie-break, not an override (25% of the reorder key).
+## Learned models
 
-4. **Diversify — `searchcore`.** MMR relevance/novelty trade-off, SimHash near-dup
-   drop, and a per-host crowding cap produce the final list.
+Two pure-Go model families are available:
 
-## The learnable weights
+- signed linear LambdaRank with robust per-query normalization, NDCG-weighted
+  pair gradients, regularization, top-k constraints, and feature-sign bounds;
+- histogram LambdaMART with at most 64 trees, depth 4, 32 bins, Newton leaf
+  values, monotonic constraints, and feature-interaction allowlists.
 
-Nine weights make up the live **ranking profile**
-(`searchindex/ranking_weights.go`). Coordinate ascent fits all nine; the shipped
-defaults are the starting point.
+The linear model is the preferred low-data model. Histogram LambdaMART is useful
+only when the judgment set is large and representative enough to pass held-out
+promotion. Coordinate ascent over the visible field/prior weights remains an
+operator preview and a small-data fallback.
 
-| Weight | Default | Stage | What it scales |
-| --- | --- | --- | --- |
-| `title` | 6 | retrieval | BM25 on the title field |
-| `anchors` | 4 | retrieval | BM25 on inbound anchor text (ADR-0029) |
-| `headings` | 3 | retrieval | BM25 on headings |
-| `url` | 2 | retrieval | BM25 on the URL field |
-| `body` | 1 | retrieval | BM25 on the body |
-| `hostRank` | 0.3 | prior | host block-rank authority |
-| `freshness` | 0.2 | prior | recency decay bonus |
-| `quality` | 0.2 | prior | content-quality prior |
-| `proximity` | 0.15 | prior | SDM unordered-window proximity |
+Model snapshots have a fixed feature catalog and versioned JSON format. The
+vault stores the active revision and eight rollback revisions. Status and
+snapshot are read as one atomic catalog view. Promotion uses compare-and-swap
+activation, so a model cannot replace an incumbent that changed during training.
+Rollback is atomic, and the active model is restored on restart.
 
-The field boosts sit in the practical BM25F range (Robertson & Zaragoza, CIKM
-2004); our per-field boost vector approximates BM25F's intent without forking the
-scorer. The saturating URL-length prior (Kraaij, Westerveld & Hiemstra, SIGIR
-2002) is a fixed always-on term, not one of the nine.
+## Evaluation and promotion
 
-A ranking profile persisted before a given prior existed decodes that weight as
-zero, so the prior stays off until the profile is re-saved or re-tuned — old
-profiles keep working, they just do not benefit from the newer signals yet.
+Training accepts at most 1,000 queries, retrieves at most 200 candidates per
+query from the same lexical evidence boundary used by serving, and bounds the
+full pool at 200,000 results, 100,000 model examples, and 1,000,000 preference
+pairs. Candidate enumeration and pairwise gradients observe request
+cancellation. Query clusters are kept together across deterministic train,
+development, and test partitions; chronological holdout is supported when dates
+are present.
 
-## The Sequential Dependence Model
+Lexical baseline, active incumbent, and proposal are evaluated on one frozen
+candidate pool. A proposal must beat both lexical ranking and the incumbent. An
+equal learned score preserves the incoming lexical order.
 
-YagoRank implements all three feature classes of the SDM (Metzler & Croft, SIGIR
-2005), which is worth ≈+7–15% MAP on web collections:
+The evaluation report includes Recall@100/200, NDCG@10, ERR@10, navigational
+MRR, alpha-NDCG, intent coverage, duplicate-cluster rate, domain coverage,
+unsafe and spam counts, discounted unsafe and spam exposure at top 10, peer
+bytes and timeouts, and p50/p95 CPU latency.
 
-- **T — unigrams.** Per-field BM25 over the individual query terms (the retrieval
-  stage). Always present.
-- **O — ordered window.** Adjacent query-word pairs scored as phrase clauses that
-  ride the bleve query (`sdm_bigrams.go`), at a fixed 0.12 of the field weight.
-  bleve can express an ordered phrase, so this is a query-time feature.
-- **U — unordered window.** The fraction of adjacent query-word pairs whose two
-  words co-occur within a small token window of the document, order-independent
-  (`sdm_unordered.go`). bleve has **no** unordered-window operator, so this is
-  computed by a body scan in the searchindex layer at result mapping and folded in
-  as the learnable `proximity` prior — its contribution is therefore fit to NDCG
-  rather than fixed at a constant.
+A proposal is promoted only when all gates pass:
 
-This local, pairwise proximity is complementary to the searchcore reranker's
-*global* all-terms minimum-window tie-break: a long query whose words cluster
-locally in phrase-sized runs but span the whole document scores well on U and
-poorly on the global window, and vice-versa.
+- held-out relative NDCG gain is at least 2%;
+- at least 20 independent held-out query clusters are present;
+- the query-cluster paired-bootstrap interval at 95% confidence does not cross
+  zero;
+- Recall@100/200, discounted top-10 safety/spam exposure, and named query slices
+  do not regress;
+- p95 CPU latency, peer traffic, and peer timeout budgets do not regress beyond
+  their configured evaluation policy.
 
-## The content-quality prior
+A rejected proposal is returned with its metrics and reasons but is not
+activated.
 
-`quality(d)` is a deterministic, language-agnostic score in `[0,1]`
-(`contentprior/`) computed at index/mapping time from the document text. It reuses
-the feature family of the crawl-time content-quality gate (function-word fraction —
-Bendersky, Croft & Diao, WSDM 2011; symbol and alphabetic ratios — FineWeb,
-arXiv:2406.17557) but **grades** instead of rejecting: the crawl gate is a hard
-boolean that a keyword-stuffed page can still clear (a handful of function words in
-hundreds), and the graded prior demotes exactly those pages relative to clean
-prose. Text too short to grade, or in an unsegmented script, scores the neutral 1.0.
+## Click evidence
 
-## Learning: judgments → coordinate ascent → profile
+Click capture is off by default. When enabled, the result page creates a
+short-lived HMAC-SHA256 impression token containing the normalized query, model
+assignment, ordered result identities, positions, propensities, expiry, and a
+random nonce. The click endpoint accepts only a URL and position present in that
+signed impression. Replays and clicks per impression are bounded.
 
-All learning is **offline, pure-Go, and zero query-time cost**.
+Adjacent FairPairs randomization measures exposure at propensity `0.5`.
+Team-draft interleaving is available for bounded model comparisons. Only
+aggregate query/model/cluster evidence is persisted. Implicit judgments require
+minimum randomized exposure and combine clipped IPS and SNIPS estimates; curated
+qrels replace implicit evidence for the same query.
 
-1. **Judgment set (qrels).** Graded `query → {url: grade}` judgments come from two
-   sources. Operator-curated entries persist in the vault (`judgments/`) and are
-   authoritative. Implicit judgments (RANK-00b) are mined from real result clicks:
-   when click capture is enabled (`search.click.capture`, off by default), the
-   `/yacysearch.html` results page beacons each clicked result's `(query, url,
-   rank)` to `/searchclick`, and the vault-backed `clickcapture` store aggregates
-   them per query with an inverse-propensity position weight (`log2(rank+1)`, which
-   upweights clicks on less-examined lower ranks to correct position bias) before
-   deriving graded judgments — a query's dominant clicked URLs are highly relevant,
-   the rest relevant, and queries below a click floor are dropped as noise. The
-   tuner unions both sets, curated winning wholesale on any query it covers, so a
-   human label is never diluted. Captured data is aggregate-only (no per-user,
-   per-session, or per-event records). The set doubles as a regression guard —
-   every ranking change is scored against it.
+## Safety model
 
-2. **Coordinate ascent.** `rankfit` runs a coordinate-wise line search over the
-   nine weights, maximizing **mean NDCG@10** across the judgment set
-   (`searcheval` provides the NDCG harness). This is the learned path the
-   architecture actually admits — "most effective when the number of features and
-   examples is small" (Metzler & Croft, SIGIR 2007) — as opposed to GBDT, which
-   would need thousands of labels and a non-Go trainer.
+Safe search first uses blocking structured labels from page metadata. Adult and
+RTA ratings or `isFamilyFriendly=false` classify a page as explicit. A positive
+publisher `isFamilyFriendly=true` claim is not trusted as general evidence and
+does not bypass the optional pure-Go signed Unicode character n-gram logistic
+classifier. Training accepts at most 256 labeled documents and 8,192 runes per
+document. The model is versioned, persisted, and rollback-capable. Training
+labels are not retained.
 
-3. **Preview, then apply.** An operator triggers a tune run from the admin console;
-   it returns a **before/after NDCG preview and the proposed weights but does not
-   auto-apply**. The operator reviews and writes the new profile explicitly.
+Explicit results are removed when safe search is requested. Unknown peer and web
+results are also removed; unknown local text results remain eligible, while
+unknown image results are removed. Tavily image fields require classified
+general evidence when `safe_search` and `include_images` are both enabled.
 
-## Admin surface
+## Operator surfaces
 
-All four endpoints live under the ops listener (`:9090`), admin-authenticated:
+The YagoRank console shows the active revision and model kind, rollback
+availability, held-out gain and confidence, split sizes, and promotion reasons.
+It can train the linear or histogram model and roll back one revision.
+
+The admin JSON endpoints are:
 
 | Endpoint | Method | Purpose |
 | --- | --- | --- |
-| `/api/admin/v1/search/ranking` | GET / POST | read or replace the live ranking profile (the nine weights) |
-| `/api/admin/v1/search/ranking/tune` | POST | run coordinate ascent over the judgment set; returns `{before, after, beforeNdcg, afterNdcg, rounds, improved}` — a preview, never auto-applied |
-| `/api/admin/v1/search/judgments` | GET / POST / DELETE | manage the qrels judgment set |
-| `/api/admin/v1/search/explain` | POST | per-result score breakdown: per-field BM25 sub-scores, the `quality` and `proximity` features, and the bleve explanation tree |
+| `/api/admin/v1/search/ranking` | GET, POST | Read or replace lexical profile weights |
+| `/api/admin/v1/search/ranking/tune` | POST | Preview coordinate-ascent weights |
+| `/api/admin/v1/search/ranking/model` | GET | Read active model status and snapshot |
+| `/api/admin/v1/search/ranking/model/train` | POST | Train, evaluate, and conditionally promote a model |
+| `/api/admin/v1/search/ranking/model/rollback` | POST | Roll back the active ranking model |
+| `/api/admin/v1/search/judgments` | GET, POST, DELETE | Manage curated qrels |
+| `/api/admin/v1/search/explain` | POST | Inspect retrieval, learned contributions, tree paths, and final ranks |
+| `/api/admin/v1/search/safety/model` | GET | Read content-safety model status |
+| `/api/admin/v1/search/safety/model/train` | POST | Train and activate a bounded safety model |
+| `/api/admin/v1/search/safety/model/rollback` | POST | Roll back the safety model |
 
-## What YagoRank deliberately does not do
+## Runtime limits
 
-These were considered and rejected in ADR-0035; the omissions are load-bearing, not
-gaps:
-
-- **No BM25F / per-field k1,b fork.** bleve hides the scorer's k1/b, so any of these
-  means forking it (dependency-grade), and the gain is marginal once anything is
-  tuned (Trotman, Puurula & Burgess, ADCS 2014). The learned field-boost vector
-  already approximates BM25F.
-- **No LambdaMART / GBDT.** It needs thousands of labels we do not have and a
-  Python/LightGBM trainer that is off-limits in the pipeline; pure-Go `leaves` does
-  inference only. Coordinate ascent captures most of the benefit for our small
-  linear model. Revisit only if a large labeled corpus ever materializes.
-- **No xQuAD / PM-2 diversification.** They beat MMR only with a query-intent model
-  we do not have; SimHash near-dup drop plus the host-crowding cap already deliver
-  the visible diversity wins in a small federated corpus.
-- **No score-based fusion (CombSUM/CombMNZ) replacing RRF.** RRF sidesteps
-  incomparable local/remote/web scores and beats score fusion in the literature.
-- **No query segmentation.** Marginal and risky ("leave unsegmented when unsure");
-  the SDM bigrams already capture most of the value.
+YagoRank has no runtime network dependency. Training and inference are in-process
+and CPU-only. Candidate windows, documents, tokens, features, histogram bins,
+tree count, depth, snapshots, click tokens, replay state, peers, and network-group
+influence are bounded. Search remains functional with no learned or safety model.
 
 ## Code map
 
 | Concern | Location |
 | --- | --- |
-| Ranking profile + weights, validation, defaults | `internal/searchindex/ranking_weights.go` |
-| Per-field BM25 + term positions extraction | `internal/searchindex/hit_features.go` |
-| SDM ordered bigrams (O) | `internal/searchindex/sdm_bigrams.go` |
-| SDM unordered window (U) | `internal/searchindex/sdm_unordered.go` |
-| Content-quality prior | `internal/contentprior/` |
-| Multiplicative priors envelope | `internal/searchlocal/searchlocal.go` (`hostRankScorer`) |
-| RRF fusion, lexical rerank, MMR, diversity | `internal/searchcore/` |
-| NDCG evaluation harness | `internal/searcheval/` |
-| Coordinate-ascent learner | `internal/rankfit/` |
-| Judgment-set persistence | `internal/judgments/` |
-| Admin endpoints (ranking, tune, judgments, explain) | `internal/yagonode/search_*_endpoint.go` |
+| Candidate retrieval and cache | `internal/searchindex`, `internal/searchlocal` |
+| RM3, RRF, evidence, cluster policy, MMR | `internal/searchcore` |
+| Learned inference and snapshots | `internal/learnedrank`, `internal/rankingmodel` |
+| Linear LambdaRank and histogram LambdaMART | `internal/rankfit` |
+| Held-out dataset and promotion | `internal/rankingtrain`, `internal/searcheval` |
+| Click integrity and debiasing | `internal/clickcapture` |
+| Dates, anchors, clusters, safety evidence | `internal/documentstore`, `internal/crawlresults` |
+| Domain authority and peer reputation | `internal/hostrank`, `internal/peerreputation` |
+| Admin runtime adapters | `internal/yagonode`, `internal/adminui` |
 
-## References
+## Research basis
 
-- Metzler & Croft, *A Markov Random Field Model for Term Dependencies* (SIGIR 2005) — SDM.
-- Metzler & Croft, *Linear feature-based models for information retrieval* (Inf. Retr. 2007) — coordinate ascent.
-- Robertson & Zaragoza, *Simple BM25 Extension to Multiple Weighted Fields* (CIKM 2004) — BM25F.
-- Kraaij, Westerveld & Hiemstra, *The Importance of Prior Probabilities for Entry Page Search* (SIGIR 2002) — URL-length prior.
-- Bendersky, Croft & Diao, *Quality-Biased Ranking of Web Documents* (WSDM 2011) — quality features.
-- Cormack, Clarke & Büttcher, *Reciprocal Rank Fusion* (SIGIR 2009) — RRF.
-- Trotman, Puurula & Burgess, *Improvements to BM25 and Language Models Examined* (ADCS 2014) — why not to fork the scorer.
+- [From RankNet to LambdaRank to LambdaMART](https://www.microsoft.com/en-us/research/publication/from-ranknet-to-lambdarank-to-lambdamart-an-overview/)
+- [Query-level stability and generalization in learning to rank](https://www.microsoft.com/en-us/research/publication/query-level-stability-and-generalization-in-learning-to-rank/)
+- [ILMART: Interpretable LambdaMART](https://arxiv.org/abs/2206.00473)
+- [A Markov Random Field Model for Term Dependencies](https://doi.org/10.1145/1076034.1076115)
+- [Reciprocal Rank Fusion](https://doi.org/10.1145/1571941.1572114)
+- [NIST TREC relevance-model feedback](https://trec.nist.gov/pubs/trec17/papers/cmu.rf.rev.pdf)
+- [Position-bias estimation for unbiased learning to rank](https://research.google/pubs/position-bias-estimation-for-unbiased-learning-to-rank-in-personal-search/)
+- [Addressing trust bias for unbiased learning to rank](https://research.google/pubs/addressing-trust-bias-for-unbiased-learning-to-rank/)
+- [Efficient online evaluation with interleaving](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/fp041-schuthA.pdf)
+- [TrustRank](https://www.vldb.org/conf/2004/RS15P3.PDF)
+- [Detecting near-duplicates for web crawling](https://doi.org/10.1145/1242572.1242592)

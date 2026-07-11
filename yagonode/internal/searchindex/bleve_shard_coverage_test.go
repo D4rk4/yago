@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/blevesearch/bleve/v2"
+	"github.com/blevesearch/bleve/v2/search"
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
@@ -98,23 +99,122 @@ func TestAliasSearchErrorSurfaces(t *testing.T) {
 	); err == nil {
 		t.Fatal("alias search failure must surface")
 	}
+	if _, err := index.Search(
+		t.Context(),
+		SearchRequest{Query: "needle", MaxResults: 1, WithFacets: true},
+	); err == nil {
+		t.Fatal("complete alias search failure must surface")
+	}
+	partial := &bleve.SearchResult{Status: &bleve.SearchStatus{
+		Total: 8, Successful: 7, Failed: 1,
+		Errors: bleve.IndexErrMap{"failed": errors.New("shard failed")},
+	}}
+	index.alias = searchErrorBleveIndex{result: partial}
+	if _, err := index.Search(
+		t.Context(), SearchRequest{Query: "needle", MaxResults: 1},
+	); !errors.Is(err, errIncompleteBleveSearch) {
+		t.Fatalf("partial alias error = %v", err)
+	}
+	if _, err := index.Search(
+		t.Context(), SearchRequest{Query: "needle", MaxResults: 1, WithFacets: true},
+	); !errors.Is(err, errIncompleteBleveSearch) {
+		t.Fatalf("partial complete alias error = %v", err)
+	}
 	index.alias = bleve.NewIndexAlias(index.shards...)
 	if err := index.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
 }
 
+func TestBleveSearchCompletionClassification(t *testing.T) {
+	if err := bleveSearchCompletionError(t.Context(), nil); !errors.Is(
+		err,
+		errIncompleteBleveSearch,
+	) {
+		t.Fatalf("absent result error = %v", err)
+	}
+	if err := bleveSearchCompletionError(
+		t.Context(),
+		&bleve.SearchResult{},
+	); err != nil {
+		t.Fatalf("empty successful result error = %v", err)
+	}
+	partial := &bleve.SearchResult{Status: &bleve.SearchStatus{
+		Errors: bleve.IndexErrMap{"failed": errors.New("failed")},
+	}}
+	if err := bleveSearchCompletionError(t.Context(), partial); !errors.Is(
+		err,
+		errIncompleteBleveSearch,
+	) {
+		t.Fatalf("status error = %v", err)
+	}
+	budgetContext, cancel := context.WithCancelCause(t.Context())
+	cancel(ErrCompleteSearchBudgetExceeded)
+	if err := bleveSearchCompletionError(budgetContext, partial); !errors.Is(
+		err,
+		ErrCompleteSearchBudgetExceeded,
+	) {
+		t.Fatalf("budget status error = %v", err)
+	}
+	sentinel := errors.New("search failed")
+	if err := bleveSearchOperationError(t.Context(), sentinel); !errors.Is(err, sentinel) {
+		t.Fatalf("operation error = %v", err)
+	}
+	if err := bleveSearchOperationError(budgetContext, sentinel); !errors.Is(
+		err,
+		ErrCompleteSearchBudgetExceeded,
+	) {
+		t.Fatalf("budget operation error = %v", err)
+	}
+}
+
+func TestCompleteSearchRejectsIncompletePages(t *testing.T) {
+	document := documentstore.Document{
+		NormalizedURL: "https://example.org/needle",
+		ExtractedText: "needle text",
+	}
+	directory := newFakeDocumentDirectory(document)
+	for name, result := range map[string]*bleve.SearchResult{
+		"empty": {
+			Status: &bleve.SearchStatus{Total: 1, Successful: 1},
+			Total:  1,
+		},
+		"short": {
+			Status: &bleve.SearchStatus{Total: 1, Successful: 1},
+			Total:  2,
+			Hits: search.DocumentMatchCollection{&search.DocumentMatch{
+				ID: document.NormalizedURL, DecodedSort: []string{document.NormalizedURL},
+			}},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			index := &BleveDiskIndex{
+				alias: searchErrorBleveIndex{result: result}, documents: directory,
+			}
+			if _, _, err := index.searchCompleteHitsWithin(
+				t.Context(),
+				SearchRequest{Query: "needle", MaxResults: 1, WithFacets: true},
+				2,
+				2,
+			); !errors.Is(err, errIncompleteBleveSearch) {
+				t.Fatalf("incomplete page error = %v", err)
+			}
+		})
+	}
+}
+
 // searchErrorBleveIndex fails every search; the rest of the contract is inert.
 type searchErrorBleveIndex struct {
 	bleveIndexContract
-	err error
+	result *bleve.SearchResult
+	err    error
 }
 
 func (i searchErrorBleveIndex) SearchInContext(
 	context.Context,
 	*bleve.SearchRequest,
 ) (*bleve.SearchResult, error) {
-	return nil, i.err
+	return i.result, i.err
 }
 
 func TestLegacyRetireFailureAndPreGramShard(t *testing.T) {
