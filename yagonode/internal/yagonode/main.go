@@ -44,6 +44,9 @@ const (
 	evictionBatch          = 256
 
 	serverReadHeaderTimeout = 10 * time.Second
+	serverReadTimeout       = 2 * time.Minute
+	serverIdleTimeout       = 2 * time.Minute
+	serverMaxHeaderBytes    = 64 << 10
 	shutdownTimeout         = 15 * time.Second
 )
 
@@ -252,6 +255,9 @@ func buildServer(addr string, handler http.Handler) *http.Server {
 		Addr:              addr,
 		Handler:           handler,
 		ReadHeaderTimeout: serverReadHeaderTimeout,
+		ReadTimeout:       serverReadTimeout,
+		IdleTimeout:       serverIdleTimeout,
+		MaxHeaderBytes:    serverMaxHeaderBytes,
 	}
 }
 

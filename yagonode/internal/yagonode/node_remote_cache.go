@@ -95,17 +95,24 @@ func remoteResults(results []searchcore.Result) []searchcore.Result {
 type remoteCachingSearcher struct {
 	inner searchcore.Searcher
 	store remoteResultStore
-	spawn func(func())
+	spawn func(func()) bool
 }
+
+const (
+	remoteCacheConcurrentWrites = 2
+	remoteCacheWriteTimeout     = 30 * time.Second
+)
 
 func withRemoteIndexCache(
 	inner searchcore.Searcher,
 	store remoteResultStore,
 ) searchcore.Searcher {
+	admission := newRemoteCacheWriteAdmission(remoteCacheConcurrentWrites)
+
 	return remoteCachingSearcher{
 		inner: inner,
 		store: store,
-		spawn: func(work func()) { go work() },
+		spawn: admission.try,
 	}
 }
 
@@ -122,8 +129,16 @@ func (s remoteCachingSearcher) Search(
 	if len(remote) > 0 {
 		// Detach from the request context so the write finishes after the response
 		// is served rather than being cancelled with it.
-		cacheCtx := context.WithoutCancel(ctx)
-		s.spawn(func() { s.store.store(cacheCtx, remote) })
+		cacheCtx, cancel := context.WithTimeout(
+			context.WithoutCancel(ctx),
+			remoteCacheWriteTimeout,
+		)
+		if !s.spawn(func() {
+			defer cancel()
+			s.store.store(cacheCtx, remote)
+		}) {
+			cancel()
+		}
 	}
 
 	return resp, nil

@@ -14,6 +14,7 @@ import (
 const (
 	defaultWordFormsRefreshInterval = 10 * time.Minute
 	wordFormsRefreshFailedMessage   = "word-form expander refresh scan failed"
+	wordFormsVocabularyTerms        = 32_768
 )
 
 // wordFormsSweeper rebuilds the swarm morphology expander from the stored
@@ -51,10 +52,10 @@ func (s wordFormsSweeper) refreshOnce(ctx context.Context) {
 		return
 	}
 
-	frequency := map[string]int{}
+	frequency := spellcheck.NewFrequencySynopsis(wordFormsVocabularyTerms)
 	err := s.documents.StoredDocuments(ctx, func(doc documentstore.Document) (bool, error) {
-		spellcheck.TermFrequencies(frequency, doc.Title)
-		spellcheck.TermFrequencies(frequency, doc.ExtractedText)
+		frequency.ObserveText(doc.Title)
+		frequency.ObserveText(doc.ExtractedText)
 
 		return true, nil
 	})
@@ -64,5 +65,5 @@ func (s wordFormsSweeper) refreshOnce(ctx context.Context) {
 		return
 	}
 
-	s.holder.Store(wordforms.New(frequency, searchindex.StemWord))
+	s.holder.Store(wordforms.New(frequency.Frequencies(), searchindex.StemWord))
 }

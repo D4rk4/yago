@@ -23,6 +23,7 @@ import (
 var ErrDisallowed = errors.New("robots.txt disallowed")
 
 const (
+	maximumRobotsBytes      = 500 * 1024
 	msgRobotsRequestFailed  = "robots request build failed"
 	msgRobotsFetchFailed    = "robots fetch failed"
 	msgRobotsBodyCloseFail  = "robots body close failed"
@@ -132,7 +133,7 @@ func (f *RobotsAdmissionFetcher) fetchRobotsGroup(
 			)
 		}
 	}()
-	body, err := io.ReadAll(response.Body)
+	body, err := io.ReadAll(io.LimitReader(response.Body, maximumRobotsBytes))
 	if err != nil {
 		slog.WarnContext(
 			ctx,

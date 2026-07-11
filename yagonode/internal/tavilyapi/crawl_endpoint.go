@@ -115,7 +115,18 @@ func (e crawlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req CrawlRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+	if err := decodeJSONRequest(w, r, &req); err != nil {
+		if isJSONRequestTooLarge(err) {
+			writeError(
+				w,
+				http.StatusRequestEntityTooLarge,
+				requestTooLargeErrorCode,
+				requestTooLargeErrorMessage,
+				id,
+			)
+
+			return
+		}
 		writeError(w, http.StatusBadRequest, "bad_request", "invalid JSON body", id)
 
 		return

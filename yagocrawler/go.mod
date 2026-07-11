@@ -6,6 +6,7 @@ require (
 	github.com/D4rk4/yago/yagocrawlcontract v0.0.0
 	github.com/D4rk4/yago/yagoegress v0.0.0
 	github.com/D4rk4/yago/yagomodel v0.0.0
+	github.com/RadhiFadlillah/whatlanggo v0.0.0-20240916001553-aac1f0f737fc
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
@@ -18,7 +19,6 @@ require (
 )
 
 require (
-	github.com/RadhiFadlillah/whatlanggo v0.0.0-20240916001553-aac1f0f737fc // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de // indirect
 	github.com/beorn7/perks v1.0.1 // indirect

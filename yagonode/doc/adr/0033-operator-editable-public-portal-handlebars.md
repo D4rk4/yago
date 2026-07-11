@@ -54,9 +54,11 @@ falls back to the built-in default.
   vendored self-hosted (`grapes.min.js` + `grapes.min.css` + the webpage preset
   `grapesjs-preset-webpage` v1.0.3). No CDN: the admin CSP is
   `script-src 'self'`, so every asset is committed under `adminui/assets/` and
-  served from origin, embedded via `go:embed`.
+  served from origin, embedded via `go:embed`. Its remaining legacy icon-font
+  controls use the local dependency approved in ADR-0046.
 - **CodeMirror 5**, pinned **v5.65.21** (last 5.x line; recorded in the vendored
-  asset header), MIT — the Handlebars source editor paired with GrapesJS's canvas,
+  asset header), MIT — the Handlebars source editor and its required simple and
+  multiplex mode addons, paired with GrapesJS's canvas,
   also vendored self-hosted. CodeMirror 5 ships as standalone files (no bundler),
   which fits the repo's no-build, `go:embed` asset convention (htmx,
   autocomplete.js) far better than CodeMirror 6's npm graph.
@@ -71,10 +73,11 @@ script. On the admin side one narrow, page-scoped relaxation proved necessary at
 implementation time: the GrapesJS canvas is an `about:blank` iframe that inherits
 the embedding page's CSP and styles its editable content by injecting `<style>`
 elements, which `style-src 'self'` blocks. The Public-portal page (and only that
-page) therefore serves `style-src 'self' 'unsafe-inline'`; `script-src` stays
-`'self'` everywhere, every other console page keeps the strict policy, and the
-residual (inline styles on one authenticated admin page whose operator already
-edits the very markup being styled) is accepted.
+page) therefore serves `style-src 'self' 'unsafe-inline'` and `font-src 'self'`
+for the local ADR-0046 icon font; `script-src` stays `'self'` everywhere, every
+other console page keeps the strict policy, and the residual (inline styles on
+one authenticated admin page whose operator already edits the very markup
+being styled) is accepted.
 
 ### Template storage and data model
 

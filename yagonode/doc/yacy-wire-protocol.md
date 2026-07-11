@@ -14,6 +14,8 @@ JSONP callback, and minimum peer version.
 Seed import accepts the documented signed `UTC` offset form and the timestamp
 form observed in current freeworld seedlists, preserving whichever value the
 remote seed carries.
+Compact gzip (`z|`) wire forms may inflate to at most 4 MiB. Larger payloads
+are rejected before their seed, message, or metadata value is parsed.
 The shared blacklist endpoint `/yacy/list.html` is also raw text. It checks the
 YaCy network unit and returns the `col=black` list files named by
 `YAGO_DATA_DIR/SETTINGS/yacy.conf` `BlackLists.Shared`, read from
@@ -22,7 +24,10 @@ as well and returns CRLF-terminated `key=value` profile properties loaded from
 `YAGO_DATA_DIR/SETTINGS/profile.txt` when present.
 The host-link endpoint `/yacy/idx.json?object=host` returns
 JSON with version, uptime, YaCy's host-reference row definition, and a bounded
-incoming host-link index inferred from stored URL metadata referrers.
+incoming host-link index inferred from stored URL metadata referrers. Collection
+is capped at 10,000 target hosts and 200 source hosts per target before graph
+entries are allocated. A successful immutable snapshot is reused for five
+minutes; concurrent callers share one refresh and a failed scan is not cached.
 The peer message endpoint `/yacy/message.html` supports permission checks and
 stores inbound peer messages; `iam` is optional, permission checks ignore
 post-only body fields, and attachments are advertised as size `0`. These match

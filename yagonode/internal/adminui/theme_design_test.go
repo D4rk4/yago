@@ -2,7 +2,9 @@ package adminui
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -116,11 +118,17 @@ func TestPortalDesignTabsRenderEditors(t *testing.T) {
 		`>Save design</button>`,
 		"/admin/assets/vendor/grapes.min.js",
 		"/admin/assets/vendor/codemirror.min.js",
-		"/admin/assets/portal_designer.js",
+		"/admin/assets/vendor/cm-simple.min.js",
+		"/admin/assets/portal_designer.js?v=2",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Errorf("design tabs missing %q", want)
 		}
+	}
+	simple := strings.Index(got.body, "/cm-simple.min.js")
+	handlebars := strings.Index(got.body, "/cm-handlebars.min.js")
+	if simple < 0 || handlebars < 0 || simple > handlebars {
+		t.Error("CodeMirror simple mode must load before Handlebars mode")
 	}
 	if got.header.Get("Content-Security-Policy") != portalContentPol {
 		t.Errorf("portal page CSP = %q, want the editor policy",
@@ -366,6 +374,9 @@ func TestPortalDesignVendorAssetsServed(t *testing.T) {
 		"/admin/assets/vendor/cm-htmlmixed.min.js",
 		"/admin/assets/vendor/cm-handlebars.min.js",
 		"/admin/assets/vendor/cm-multiplex.min.js",
+		"/admin/assets/vendor/cm-simple.min.js",
+		"/admin/assets/vendor/font-awesome.min.css",
+		"/admin/assets/fonts/fontawesome-webfont.woff2",
 		"/admin/assets/portal_designer.js",
 		"/admin/assets/portal_designer.css",
 	} {
@@ -375,12 +386,48 @@ func TestPortalDesignVendorAssetsServed(t *testing.T) {
 
 			continue
 		}
-		if got.header.Get("X-Content-Type-Options") != "nosniff" ||
-			got.header.Get("Cache-Control") == "" {
-			t.Errorf("%s: asset headers missing", path)
+		assertPortalDesignerAssetHeaders(t, path, got)
+		assertPortalDesignerVendorLicense(t, path, got)
+		assertPortalDesignerIconFont(t, path, got)
+		assertPortalDesignerBootstrap(t, path, got)
+	}
+}
+
+func assertPortalDesignerAssetHeaders(t *testing.T, path string, got capture) {
+	t.Helper()
+	if got.header.Get("X-Content-Type-Options") != "nosniff" ||
+		got.header.Get("Cache-Control") == "" {
+		t.Errorf("%s: asset headers missing", path)
+	}
+}
+
+func assertPortalDesignerVendorLicense(t *testing.T, path string, got capture) {
+	t.Helper()
+	if strings.Contains(path, "/vendor/") && !strings.HasPrefix(got.body, "/*!") {
+		t.Errorf("%s: vendored asset lost its license header", path)
+	}
+}
+
+func assertPortalDesignerIconFont(t *testing.T, path string, got capture) {
+	t.Helper()
+	if strings.HasSuffix(path, "/font-awesome.min.css") &&
+		(!strings.Contains(got.body, "url('../fonts/fontawesome-webfont.woff2?v=4.7.0')") ||
+			strings.Contains(got.body, "url('http")) {
+		t.Errorf("%s: icon font is not pinned to the local WOFF2 asset", path)
+	}
+	if strings.HasSuffix(path, "/fontawesome-webfont.woff2") {
+		sum := fmt.Sprintf("%x", sha256.Sum256([]byte(got.body)))
+		if sum != "2adefcbc041e7d18fcf2d417879dc5a09997aa64d675b7a3c4b6ce33da13f3fe" {
+			t.Errorf("%s: icon font content changed: %s", path, sum)
 		}
-		if strings.Contains(path, "/vendor/") && !strings.HasPrefix(got.body, "/*!") {
-			t.Errorf("%s: vendored asset lost its license header", path)
-		}
+	}
+}
+
+func assertPortalDesignerBootstrap(t *testing.T, path string, got capture) {
+	t.Helper()
+	if strings.HasSuffix(path, "/portal_designer.js") &&
+		(!strings.Contains(got.body, `root.matches("form")`) ||
+			!strings.Contains(got.body, `cssIcons: "/admin/assets/vendor/font-awesome.min.css?v=4.7.0"`)) {
+		t.Errorf("%s: editor bootstrap lost its form or local-asset guard", path)
 	}
 }

@@ -8,6 +8,7 @@ package spellcheck
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -17,6 +18,7 @@ const (
 	// defaultMinTermLen skips short tokens where a two-edit correction would be
 	// more guess than fix.
 	defaultMinTermLen = 4
+	defaultMaxTermLen = 32
 )
 
 // Corrector suggests spelling corrections from a fixed term-frequency
@@ -26,7 +28,6 @@ type Corrector struct {
 	frequency       map[string]int
 	deleteIndex     map[string][]string
 	maxEditDistance int
-	minTermLen      int
 }
 
 // New builds a corrector from a term→frequency dictionary. Terms are lowercased;
@@ -36,11 +37,10 @@ func New(frequency map[string]int) *Corrector {
 		frequency:       make(map[string]int, len(frequency)),
 		deleteIndex:     map[string][]string{},
 		maxEditDistance: defaultMaxEditDistance,
-		minTermLen:      defaultMinTermLen,
 	}
 	for term, freq := range frequency {
 		term = strings.ToLower(strings.TrimSpace(term))
-		if term == "" || freq <= 0 {
+		if !correctableTerm(term) || freq <= 0 {
 			continue
 		}
 		corrector.frequency[term] += freq
@@ -59,7 +59,7 @@ func New(frequency map[string]int) *Corrector {
 // close dictionary word returns the input unchanged.
 func (c *Corrector) Suggest(term string) (string, bool) {
 	term = strings.ToLower(strings.TrimSpace(term))
-	if c == nil || len(c.frequency) == 0 || len([]rune(term)) < c.minTermLen {
+	if c == nil || len(c.frequency) == 0 || !correctableTerm(term) {
 		return term, false
 	}
 	if _, ok := c.frequency[term]; ok {
@@ -204,11 +204,21 @@ func minInt(values ...int) int {
 // than the minimum correctable length are skipped so the dictionary stays
 // relevant to what the corrector can act on.
 func TermFrequencies(dst map[string]int, text string) {
-	for _, token := range strings.FieldsFunc(strings.ToLower(text), isNotWordRune) {
-		if len([]rune(token)) >= defaultMinTermLen {
-			dst[token]++
+	termsInText(text, func(term string) { dst[term]++ })
+}
+
+func termsInText(text string, visit func(string)) {
+	for _, term := range strings.FieldsFunc(strings.ToLower(text), isNotWordRune) {
+		if correctableTerm(term) {
+			visit(term)
 		}
 	}
+}
+
+func correctableTerm(term string) bool {
+	length := utf8.RuneCountInString(term)
+
+	return length >= defaultMinTermLen && length <= defaultMaxTermLen
 }
 
 // isNotWordRune splits on any non-letter, non-digit rune so punctuation and

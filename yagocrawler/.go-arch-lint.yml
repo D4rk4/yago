@@ -84,6 +84,8 @@ vendors:
     in: golang.org/x/sync/singleflight
   trafilatura:
     in: github.com/markusmobius/go-trafilatura
+  whatlanggo:
+    in: github.com/RadhiFadlillah/whatlanggo
   go-shiori-dom:
     in: github.com/go-shiori/dom
   google-uuid:
@@ -212,6 +214,7 @@ deps:
     canUse:
       - yagocrawlcontract
       - yagomodel
+      - whatlanggo
   ingest:
     mayDependOn:
       - ingest

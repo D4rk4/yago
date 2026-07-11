@@ -97,7 +97,6 @@ func (s portalSource) Search(
 		ContentDomain: domain,
 		Offset:        offset,
 		Limit:         limit,
-		WithFacets:    true,
 	})
 	if err != nil {
 		return publicportal.SearchResults{}, fmt.Errorf("portal search: %w", err)

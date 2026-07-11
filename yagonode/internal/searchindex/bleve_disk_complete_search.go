@@ -13,6 +13,7 @@ import (
 const (
 	completeDiskSearchMaximumDuration = 5 * time.Second
 	completeDiskSearchMaximumHits     = 100_000
+	completeDiskSearchPageHits        = 256
 )
 
 var ErrCompleteSearchBudgetExceeded = errors.New("complete search scan budget exceeded")
@@ -52,7 +53,7 @@ func (b *BleveDiskIndex) searchCompleteHitsWithin(
 		if matchedDocumentsKnown {
 			remainingDocuments = matchedDocuments - offset
 		}
-		pageSize := min(bleveSearchHitCap, remainingDocuments, maximumHits-offset)
+		pageSize := min(completeDiskSearchPageHits, remainingDocuments, maximumHits-offset)
 		page, err := b.completeSearchPage(ctx, req, pageSize, searchAfter)
 		if err != nil {
 			return SearchResultSet{}, nil, err

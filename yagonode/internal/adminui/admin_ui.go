@@ -22,21 +22,17 @@ import (
 //go:embed templates/*.tmpl
 var templateFS embed.FS
 
-//go:embed assets/carbon.css assets/photon.css assets/htmx.min.js assets/autocomplete.js assets/tabs.js assets/portal_designer.js assets/portal_designer.css assets/vendor
+//go:embed assets/carbon.css assets/photon.css assets/htmx.min.js assets/autocomplete.js assets/tabs.js assets/portal_designer.js assets/portal_designer.css assets/vendor assets/fonts
 var assetFS embed.FS
 
 // BasePath is where the console mounts on the operations listener.
 const BasePath = "/admin/"
 
 const (
-	appName    = "yago"
-	htmlType   = "text/html; charset=utf-8"
-	contentPol = "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
-	// portalContentPol is the Public-portal page's CSP: identical to contentPol
-	// except that inline styles are allowed, because the GrapesJS canvas is an
-	// about:blank iframe that inherits this policy and styles its editable page
-	// by injecting <style> elements (ADR-0033). Every script stays 'self'.
-	portalContentPol = "default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+	appName          = "yago"
+	htmlType         = "text/html; charset=utf-8"
+	contentPol       = "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+	portalContentPol = "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
 	assetMaxAge      = "public, max-age=86400"
 
 	overviewPath        = "/admin/overview"

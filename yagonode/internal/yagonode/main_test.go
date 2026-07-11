@@ -79,6 +79,16 @@ func assembleTestNode(t *testing.T, config nodeConfig, vault *vault.Vault) node 
 	return assembled
 }
 
+func TestBuildServerBoundsRequestResources(t *testing.T) {
+	server := buildServer("127.0.0.1:0", http.NotFoundHandler())
+	if server.ReadHeaderTimeout != serverReadHeaderTimeout ||
+		server.ReadTimeout != serverReadTimeout ||
+		server.IdleTimeout != serverIdleTimeout ||
+		server.MaxHeaderBytes != serverMaxHeaderBytes {
+		t.Fatalf("server limits = %#v", server)
+	}
+}
+
 func TestServeReturnsNilAfterCancel(t *testing.T) {
 	assembled := assembleTestNode(t, testConfig(t), openTestVault(t))
 

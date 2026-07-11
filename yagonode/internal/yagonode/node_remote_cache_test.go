@@ -257,7 +257,7 @@ func TestRemoteCachingSearcherPassesInnerError(t *testing.T) {
 	searcher := remoteCachingSearcher{
 		inner: &fakeSearcher{err: errors.New("boom")},
 		store: store,
-		spawn: func(work func()) { work() },
+		spawn: func(work func()) bool { work(); return true },
 	}
 
 	if _, err := searcher.Search(t.Context(), searchcore.Request{}); err == nil {
@@ -276,7 +276,7 @@ func TestRemoteCachingSearcherStoresRemoteResults(t *testing.T) {
 			{URL: "https://remote", Source: searchcore.SourceRemote},
 		}}},
 		store: store,
-		spawn: func(work func()) { work() },
+		spawn: func(work func()) bool { work(); return true },
 	}
 
 	if _, err := searcher.Search(t.Context(), searchcore.Request{}); err != nil {
@@ -297,7 +297,7 @@ func TestRemoteCachingSearcherIgnoresWhenNoRemote(t *testing.T) {
 			{URL: "https://local", Source: searchcore.SourceLocal},
 		}}},
 		store: store,
-		spawn: func(work func()) { work() },
+		spawn: func(work func()) bool { work(); return true },
 	}
 
 	if _, err := searcher.Search(t.Context(), searchcore.Request{}); err != nil {

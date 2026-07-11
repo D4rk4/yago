@@ -40,6 +40,7 @@ func (b *contentIndexBuilder) Build(
 	stats pageparse.PageStats,
 ) (Artifacts, error) {
 	indexedAt := b.clock()
+	page.Language = resolveContentLanguage(page.Text, page.Language)
 	postings := BuildPostings(page, stats)
 	metadata := BuildMetadata(page, stats, indexedAt)
 	document := BuildDocument(page, stats, metadata, indexedAt)

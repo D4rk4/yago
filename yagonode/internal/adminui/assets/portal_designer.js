@@ -33,7 +33,7 @@
     if (root.classList.contains("designer-ready")) {
       return;
     }
-    var form = root.querySelector("form");
+    var form = root.matches("form") ? root : root.querySelector("form");
     var tplArea = root.querySelector("textarea[data-designer-template]");
     var cssArea = root.querySelector("textarea[data-designer-styles]");
     var canvas = root.querySelector(".designer-canvas");
@@ -91,19 +91,23 @@
           fromElement: false,
           components: docParts.body,
           style: cssCM.getValue(),
+          cssIcons: "/admin/assets/vendor/font-awesome.min.css?v=4.7.0",
           storageManager: false,
           plugins: plugins
         });
       }
       visual = true;
       root.classList.add("designer-visual");
+      canvas.setAttribute("aria-hidden", "false");
       toggle.textContent = "Code editor";
+      grapes.refresh();
     }
 
     function leaveVisual() {
       syncFromVisual();
       visual = false;
       root.classList.remove("designer-visual");
+      canvas.setAttribute("aria-hidden", "true");
       toggle.textContent = "Visual editor";
       tplCM.refresh();
       cssCM.refresh();

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -38,7 +39,12 @@ func NewHTTPEndpointMetrics() *HTTPEndpointMetrics {
 		},
 		[]string{labelEndpoint},
 	)
-	registry.MustRegister(requests, durations)
+	registry.MustRegister(
+		requests,
+		durations,
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+	)
 
 	return &HTTPEndpointMetrics{registry: registry, requests: requests, durations: durations}
 }

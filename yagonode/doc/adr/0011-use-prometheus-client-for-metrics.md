@@ -32,6 +32,9 @@ exposition format.
   single `unmatched` label so scanners cannot inflate label cardinality.
 - Storage usage moves from `expvar` to a Prometheus `GaugeFunc`, so `/metrics` is a single
   Prometheus surface and `expvar` is dropped.
+- The shared registry includes the official Go runtime and process collectors, exposing heap,
+  garbage-collection, goroutine, resident-memory, CPU-time, file-descriptor, and process-start
+  families. These make memory-pressure and pre-OOM alerts possible without exposing pprof.
 
 ## Consequences
 
@@ -42,3 +45,5 @@ exposition format.
   superseded by the per-endpoint `http_requests_total` counter.
 - Metrics now aggregate naturally across nodes in a Prometheus server, and latency percentiles
   are computed from histogram buckets rather than maintained per instance.
+- Operators can alert on both Go live heap and process RSS. The collectors diagnose growth; they
+  do not replace cardinality bounds in corpus-derived data structures.

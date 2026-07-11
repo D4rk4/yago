@@ -158,10 +158,33 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", id)
 		return
 	}
+	credentialAuthorized := false
+	if e.access.Authorizer == nil {
+		if decision := e.access.authorize(r, ScopeRead); decision != DecisionAllow {
+			writeAuthDecision(w, decision, id)
+
+			return
+		}
+		credentialAuthorized = true
+	} else if _, ok := bearerToken(r.Header.Get("Authorization")); !ok {
+		writeAuthDecision(w, DecisionUnauthenticated, id)
+
+		return
+	}
 
 	var req SearchRequest
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&req); err != nil {
+	if err := decodeJSONRequest(w, r, &req); err != nil {
+		if isJSONRequestTooLarge(err) {
+			writeError(
+				w,
+				http.StatusRequestEntityTooLarge,
+				requestTooLargeErrorCode,
+				requestTooLargeErrorMessage,
+				id,
+			)
+
+			return
+		}
 		message := "invalid search request"
 		if isBadRequest(err) {
 			message = err.Error()
@@ -169,9 +192,11 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_search_request", message, id)
 		return
 	}
-	if decision := e.access.authorize(r, searchScope(req)); decision != DecisionAllow {
-		writeAuthDecision(w, decision, id)
-		return
+	if !credentialAuthorized {
+		if decision := e.access.authorize(r, searchScope(req)); decision != DecisionAllow {
+			writeAuthDecision(w, decision, id)
+			return
+		}
 	}
 
 	start := e.now()

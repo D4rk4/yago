@@ -15,6 +15,7 @@ const (
 	// spellMinTermFrequency drops singletons so corrections target words the
 	// corpus actually uses repeatedly, not one-off typos or junk tokens.
 	spellMinTermFrequency = 2
+	spellVocabularyTerms  = 8_192
 )
 
 // spellSweeper rebuilds the spelling corrector from the stored documents' titles
@@ -52,10 +53,10 @@ func (s spellSweeper) refreshOnce(ctx context.Context) {
 		return
 	}
 
-	frequency := map[string]int{}
+	frequency := spellcheck.NewFrequencySynopsis(spellVocabularyTerms)
 	err := s.documents.StoredDocuments(ctx, func(doc documentstore.Document) (bool, error) {
-		spellcheck.TermFrequencies(frequency, doc.Title)
-		spellcheck.TermFrequencies(frequency, doc.ExtractedText)
+		frequency.ObserveText(doc.Title)
+		frequency.ObserveText(doc.ExtractedText)
 
 		return true, nil
 	})
@@ -65,7 +66,7 @@ func (s spellSweeper) refreshOnce(ctx context.Context) {
 		return
 	}
 
-	s.holder.Store(spellcheck.New(prunedVocabulary(frequency)))
+	s.holder.Store(spellcheck.New(prunedVocabulary(frequency.Frequencies())))
 }
 
 // prunedVocabulary keeps only terms seen at least spellMinTermFrequency times,

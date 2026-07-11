@@ -200,6 +200,29 @@ func TestRobotsAdmissionAllowsOnRobotsReadError(t *testing.T) {
 	}
 }
 
+func TestRobotsAdmissionLimitsRobotsBody(t *testing.T) {
+	const expectedBytes = 500 * 1024
+	body := "User-agent: *\nDisallow: /private\n" + strings.Repeat("#", expectedBytes)
+	var consumed strings.Builder
+	client := &http.Client{Transport: roundTripFunc(
+		func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(io.TeeReader(strings.NewReader(body), &consumed)),
+			}, nil
+		},
+	)}
+	fetcher := newFetcher(t, deliveringSource(), client, 8)
+
+	_, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/private"))
+	if !errors.Is(err, pagefetch.ErrPageRejected) {
+		t.Fatalf("Fetch error = %v, want ErrPageRejected", err)
+	}
+	if consumed.Len() != expectedBytes {
+		t.Fatalf("robots body bytes read = %d, want %d", consumed.Len(), expectedBytes)
+	}
+}
+
 func TestRobotsAdmissionAllowsOnUnexpectedRobotsStatus(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(
 		func(*http.Request) (*http.Response, error) {

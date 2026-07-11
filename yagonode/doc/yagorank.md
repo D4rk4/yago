@@ -50,7 +50,8 @@ except offset and limit. Cached facets, maps, positions, and media values are
 cloned before delivery. Disk post-filters and facets traverse matching documents
 with a bounded identifier cursor and retain only a bounded score top-k, so an
 eligible tail and counts beyond 1,000 matches remain visible without unbounded
-memory. A complete scan has a five-second internal deadline and 100,000-hit cap.
+memory. A complete scan has a five-second internal deadline, 100,000-hit cap,
+and 256-hit page cap to bound transient Bleve explanation and location trees.
 Deadline, cap, incomplete page, and partial-shard conditions fail honestly
 instead of returning truncated counts. The scan keeps one consistent index view,
 so indexing can wait behind work bounded by both controls.

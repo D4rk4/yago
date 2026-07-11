@@ -1,6 +1,9 @@
 package spellcheck
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestCorrectorSuggest(t *testing.T) {
 	corrector := New(map[string]int{
@@ -42,12 +45,24 @@ func TestCorrectorTieBreaking(t *testing.T) {
 	}
 }
 
-func TestCorrectorHandlesShortDictionaryTerms(t *testing.T) {
-	// A two-character dictionary term exercises delete generation bottoming out
-	// at single-character variants without panicking.
+func TestCorrectorDropsShortDictionaryTerms(t *testing.T) {
 	corrector := New(map[string]int{"ab": 3, "golang": 4})
+	if _, found := corrector.frequency["ab"]; found {
+		t.Fatal("short dictionary term was retained")
+	}
 	if got, ok := corrector.Suggest("golnag"); !ok || got != "golang" {
 		t.Fatalf("Suggest(golnag) = %q %v, want golang", got, ok)
+	}
+}
+
+func TestCorrectorRejectsOversizedTerms(t *testing.T) {
+	oversized := strings.Repeat("a", defaultMaxTermLen+1)
+	corrector := New(map[string]int{oversized: 10, "golang": 5})
+	if len(corrector.frequency) != 1 {
+		t.Fatalf("dictionary = %#v", corrector.frequency)
+	}
+	if got, ok := corrector.Suggest(oversized); ok || got != oversized {
+		t.Fatalf("oversized suggestion = %q/%v", got, ok)
 	}
 }
 
@@ -84,7 +99,8 @@ func TestCorrectQuery(t *testing.T) {
 
 func TestTermFrequencies(t *testing.T) {
 	freq := map[string]int{}
-	TermFrequencies(freq, "Montenegro, montenegro! A tiny — go — країна")
+	oversized := strings.Repeat("a", defaultMaxTermLen+1)
+	TermFrequencies(freq, "Montenegro, montenegro! A tiny — go — країна "+oversized)
 	if freq["montenegro"] != 2 {
 		t.Fatalf("montenegro count = %d, want 2", freq["montenegro"])
 	}
@@ -93,6 +109,9 @@ func TestTermFrequencies(t *testing.T) {
 	}
 	if freq["країна"] != 1 {
 		t.Fatalf("unicode token count = %d, want 1", freq["країна"])
+	}
+	if _, found := freq[oversized]; found {
+		t.Fatal("oversized token should be skipped")
 	}
 }
 
@@ -110,6 +129,13 @@ func TestEditDistance(t *testing.T) {
 		if got := editDistance(tc.a, tc.b); got != tc.want {
 			t.Fatalf("editDistance(%q,%q) = %d, want %d", tc.a, tc.b, got, tc.want)
 		}
+	}
+}
+
+func TestDeleteVariantsStopsAtOneRune(t *testing.T) {
+	variants := deleteVariants("a", 2)
+	if len(variants) != 1 || !variants["a"] {
+		t.Fatalf("variants = %#v", variants)
 	}
 }
 

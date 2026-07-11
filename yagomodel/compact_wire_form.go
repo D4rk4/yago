@@ -14,9 +14,14 @@ const (
 	wireFormBase64 = 'b'
 	wireFormGzip   = 'z'
 	wireFormSep    = '|'
+
+	maximumInflatedWireFormBytes int64 = 4 << 20
 )
 
-var ErrBadWireForm = errors.New("bad wire form")
+var (
+	ErrBadWireForm              = errors.New("bad wire form")
+	errInflatedWireFormTooLarge = errors.New("inflated wire form too large")
+)
 
 func EncodeCompactWireForm(payload string) string {
 	shortest := tagged(wireFormPlain, payload)
@@ -79,9 +84,16 @@ func gzipDecompress(b []byte) (string, error) {
 		return "", fmt.Errorf("gzip reader: %w", err)
 	}
 	defer func() { _ = r.Close() }()
-	out, err := io.ReadAll(r)
+	out, err := io.ReadAll(io.LimitReader(r, maximumInflatedWireFormBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("gzip read: %w", err)
+	}
+	if int64(len(out)) > maximumInflatedWireFormBytes {
+		return "", fmt.Errorf(
+			"%w: maximum %d bytes",
+			errInflatedWireFormTooLarge,
+			maximumInflatedWireFormBytes,
+		)
 	}
 	return string(out), nil
 }

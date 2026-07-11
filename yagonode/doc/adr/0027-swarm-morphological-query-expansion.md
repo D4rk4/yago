@@ -71,11 +71,14 @@ Verified findings:
    consistently and no endings are hardcoded anywhere.
 
 3. **Background vocabulary sweep (`internal/yagonode`).** A `wordFormsSweeper`
-   scans the stored documents on a coarse interval, builds the vocabulary from
-   `Title`/`ExtractedText`, and publishes a rebuilt `Expander` through an atomic
-   `Holder` for lock-free reads on the query path — mirroring the SymSpell
-   refresh loop. The sweep runs only when the feature is enabled, so a node
-   without swarm morphology pays no scan.
+   scans the stored documents on a coarse interval and feeds a heap-backed
+   Space-Saving frequency synopsis instead of retaining every distinct token.
+   Morphology retains at most 32,768 frequent terms; spelling retains at most
+   8,192. Tokens outside the searchable 4-through-32-rune range are rejected
+   before SymSpell generates its quadratic delete variants. The rebuilt
+   `Expander` is published through an atomic `Holder` for lock-free reads on the
+   query path. The sweep runs only when the feature is enabled, so a node without
+   swarm morphology pays no scan.
 
 4. **Opt-in, single-word only (`internal/searchremote`).** The remote searcher
    takes an `ExpandWord func(string) []string`. When it is wired and the query is
@@ -101,10 +104,11 @@ Verified findings:
 - The feature is opt-in because expansion multiplies the per-word peer fan-out
   (one query word becomes up to `maxVariants` DHT searches); operators enable it
   when recall matters more than round-trips.
-- A second background sweep runs when enabled. It reuses the document scan shape
-  of the SymSpell sweep but stems every vocabulary term, so it is heavier than
-  the plain frequency count; the coarse interval amortizes it and the gate keeps
-  it off for nodes that do not use the feature.
+- A second background sweep runs when enabled. Its scan cost follows corpus
+  bytes, but its retained vocabulary and the structures built from it have fixed
+  cardinality bounds instead of growing with every distinct page token. The
+  coarse interval amortizes the pass and the gate keeps it off for nodes that do
+  not use the feature.
 - Expansion quality tracks the local corpus: a stem the node has never indexed
   under more than one form yields only the base word, so a freshly seeded node
   expands little until it has crawled enough vocabulary.

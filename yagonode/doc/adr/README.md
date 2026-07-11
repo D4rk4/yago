@@ -64,3 +64,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0043](0043-pure-go-evidence-learning-to-rank.md) | Pure-Go evidence learning-to-rank with held-out promotion | Accepted |
 | [0044](0044-alpine-browser-crawler-runtime.md) | Alpine browser crawler runtime | Accepted |
 | [0045](0045-digest-pinned-image-provenance.md) | Pin container bases by digest and label source provenance | Accepted |
+| [0046](0046-vendor-font-awesome-for-grapesjs-icons.md) | Vendor Font Awesome for GrapesJS legacy controls | Accepted |

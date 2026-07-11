@@ -31,9 +31,18 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 		TotalResults: 3,
 		Results: []searchcore.Result{
 			// A local hit in a global search carries the request source.
-			{Title: "local", URL: "http://a/1", DisplayURL: "a/1", Source: searchcore.SourceGlobal},
-			{Title: "web", URL: "http://b/2", DisplayURL: "b/2", Source: searchcore.SourceWeb},
-			{Title: "peer", URL: "http://c/3", DisplayURL: "c/3", Source: searchcore.SourceRemote},
+			{
+				Title: "local", URL: "http://a/1", DisplayURL: "a/1",
+				Host: "a", Language: "en", Source: searchcore.SourceGlobal,
+			},
+			{
+				Title: "web", URL: "http://b/2", DisplayURL: "b/2",
+				Host: "b", Language: "en", Source: searchcore.SourceWeb,
+			},
+			{
+				Title: "peer", URL: "http://c/3", DisplayURL: "c/3",
+				Host: "c", Language: "ru", Source: searchcore.SourceRemote,
+			},
 		},
 	}}
 
@@ -50,6 +59,13 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 	}
 	if searcher.gotRequest.Source != searchcore.SourceGlobal {
 		t.Fatalf("source = %q, want global", searcher.gotRequest.Source)
+	}
+	if searcher.gotRequest.WithFacets || len(results.Facets) != 2 {
+		t.Fatalf(
+			"portal facets request=%v results=%+v",
+			searcher.gotRequest.WithFacets,
+			results.Facets,
+		)
 	}
 	if results.LocalCount != 1 || results.WebCount != 1 || results.PeerCount != 1 {
 		t.Fatalf("provenance counts = %d/%d/%d, want 1/1/1",

@@ -22,6 +22,11 @@ collectors still run harmlessly in the background.
 
 The registry publishes:
 
+- **Runtime and process** — Go heap, allocation, garbage-collection, goroutine,
+  resident-memory, virtual-memory, CPU-time, file-descriptor, and process-start
+  families from the official Prometheus Go and process collectors
+  (`go_*`, `process_*`). These are the primary signals for memory-pressure and
+  pre-OOM alerts.
 - **HTTP requests** — per-endpoint request counts, latencies and error classes
   for the served surfaces.
 - **Storage** — configured quota and bytes currently used

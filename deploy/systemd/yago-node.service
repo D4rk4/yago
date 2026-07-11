@@ -24,6 +24,9 @@ ProtectKernelTunables=yes
 ProtectControlGroups=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
+MemoryHigh=75%
+MemoryMax=90%
+TasksMax=8192
 
 [Install]
 WantedBy=multi-user.target

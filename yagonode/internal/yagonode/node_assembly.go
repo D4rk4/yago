@@ -176,9 +176,11 @@ func assembleNode(
 		vault:    vault,
 		client:   peerClient,
 		peer:     telemetry.peer,
-		host:     storedDocumentHostLinks{documents: storage.storedDocuments()},
-		roster:   roster,
-		news:     news,
+		host: newCachedStoredDocumentHostLinks(storedDocumentHostLinks{
+			documents: storage.storedDocuments(),
+		}),
+		roster: roster,
+		news:   news,
 	})
 	if err != nil {
 		return node{}, err

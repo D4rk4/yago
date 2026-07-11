@@ -110,6 +110,32 @@ systemctl edit yagocrawler
 A small single-purpose box can raise the shares; a box that co-hosts other
 services can lower them or switch to absolute sizes as above.
 
+## Node resource limits
+
+`yago-node.service` applies `MemoryHigh=75%`, `MemoryMax=90%`, and
+`TasksMax=8192`. The soft boundary gives the kernel room to reclaim mapped index
+pages before the host is exhausted; the hard boundary confines a future runaway
+allocation to the node cgroup, where `Restart=on-failure` can recover it instead
+of invoking the host-wide OOM killer. These limits are a final containment layer,
+not a memory-management strategy: corpus-derived vocabularies, search pages,
+background writes, and compatibility graphs remain bounded in the process.
+
+Monitor `go_memstats_heap_alloc_bytes` and `process_resident_memory_bytes` after
+an upgrade, then use an absolute-size drop-in on a co-hosted machine when its
+steady-state working set is known:
+
+```
+systemctl edit yago-node
+# [Service]
+# MemoryHigh=6G
+# MemoryMax=8G
+```
+
+Keep enough space above the measured live heap for garbage collection and above
+the resident working set for the mapped vault and Bleve shards. A limit below
+the live set causes reclaim or GC churn and cannot repair an unbounded data
+structure.
+
 ## Debian package
 
 The `.deb` build automation (which installs this layout, ships these units,

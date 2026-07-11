@@ -127,7 +127,18 @@ func (e extractEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req ExtractRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSONRequest(w, r, &req); err != nil {
+		if isJSONRequestTooLarge(err) {
+			writeError(
+				w,
+				http.StatusRequestEntityTooLarge,
+				requestTooLargeErrorCode,
+				requestTooLargeErrorMessage,
+				id,
+			)
+
+			return
+		}
 		message := "invalid extract request"
 		if isBadRequest(err) {
 			message = err.Error()

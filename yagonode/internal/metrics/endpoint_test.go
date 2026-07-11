@@ -24,6 +24,10 @@ func TestHTTPEndpointMetricsObservesUnmatchedEndpoint(t *testing.T) {
 	if !strings.Contains(body, `code="404"`) {
 		t.Fatalf("metrics missing status label:\n%s", body)
 	}
+	if !strings.Contains(body, "go_memstats_heap_alloc_bytes") ||
+		!strings.Contains(body, "process_resident_memory_bytes") {
+		t.Fatalf("metrics missing runtime memory families:\n%s", body)
+	}
 }
 
 func TestHTTPEndpointMetricsRegistry(t *testing.T) {

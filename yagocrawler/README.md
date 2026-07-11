@@ -47,6 +47,15 @@ metadata and bounded image URL/alt metadata when available. Links marked
 `rel=nofollow` are not submitted for frontier expansion or local outlink
 evidence unless the crawl profile opts in.
 
+HTML is decoded to UTF-8 with browser-compatible WHATWG encoding labels from
+the HTTP `Content-Type` and early HTML metadata. Before one page becomes a
+document, URL metadata, and RWI postings, the crawler resolves their shared
+ISO 639-1 language once from at most 64 KiB of extracted main text. Reliable
+content evidence wins; a valid HTML `lang` declaration is the fallback for
+uncertain text, and English is used only when neither source identifies a
+language. This includes legacy pages served as Windows-1251 without a `lang`
+attribute.
+
 Crawl requests can start from normal URLs, XML sitemaps, sitemap indexes, plain
 text sitelists, or a host's `robots.txt`. Sitemap and sitelist starts are fetched
 through the same proxied public-web egress path as page fetches, parsed before
@@ -70,7 +79,9 @@ the browser routes through a loopback-bound guarded proxy that resolves and dial
 targets under the same policy. Before robots.txt or browser navigation starts, the
 crawler also rejects non-HTTP(S), loopback, private, link-local, multicast,
 unspecified, documentation/test, and metadata-local destinations. The final
-rendered URL is checked against the same public-web policy.
+rendered URL is checked against the same public-web policy. Each fetched
+`robots.txt` is limited to the first 500 KiB before parsing, as required by RFC
+9309, so an untrusted host cannot force an unbounded allocation.
 The default fetch path uses a bounded HTTP GET first and falls back to a single
 long-lived headless Firefox (driven over the Marionette protocol) only when that
 fast path rejects the page. The HTTP fast path

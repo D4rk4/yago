@@ -74,6 +74,19 @@ Bulgarian, Macedonian) and Latin is not only English (German, French, Spanish,
 Serbian-Latin, …). Distinguishing them requires content-based language
 detection.
 
+A production crawl exposed the persistence-side version of this problem.
+ArtOfWar correctly serves Russian HTML as `text/html; charset=windows-1251`, but
+does not declare `<html lang>`. The crawler already decoded those bytes through
+`golang.org/x/net/html/charset`, whose label table follows the WHATWG Encoding
+Standard, so extracted titles and text were valid Unicode. The later artifact
+builder nevertheless replaced every missing language declaration with `en` and
+copied it into the document, URL metadata, and every RWI posting. The node's
+content detector could choose a Russian analyzer, but it could not repair the
+stored language facet or exchanged metadata. Language ID in the Wild
+(Caswell et al., arXiv:2010.14571) also shows that held-out language-ID scores
+overstate precision on noisy web crawls, so an uncertain classifier must retain
+a valid publisher declaration rather than blindly overriding it.
+
 Language-detection libraries considered:
 
 - **`github.com/abadojack/whatlanggo`** (MIT, pure Go, chosen): 84 languages,
@@ -81,6 +94,11 @@ Language-detection libraries considered:
   with an `IsReliable` confidence flag. Small memory footprint. ~92% on
   document-length text (its weakness — short strings — does not matter because
   we run it on document bodies, not queries).
+- **`github.com/RadhiFadlillah/whatlanggo`** at pinned revision
+  `v0.0.0-20240916001553-aac1f0f737fc` (MIT, pure Go): the maintained fork
+  already linked into `yagocrawler` by the pinned trafilatura extractor. The
+  crawler declares that existing module directly for the same trigram model and
+  reliability signal, avoiding a second language-model copy in its binary.
 - **`github.com/pemistahl/lingua-go`** (Apache-2.0): best short-text accuracy
   (79/81/97%) but the high-accuracy models hold ~1.5 GB of n-gram data in RAM
   with all languages loaded — unacceptable for a peer node meant to run on
@@ -99,12 +117,17 @@ Language-detection libraries considered:
    NFKC, no stemming) so it still ranks on exact words and recovers through
    n-grams.
 
-2. **Index-time language detection.** Detect each document's language from its
-   extracted text with whatlanggo, using the crawl-time HTML `lang` attribute
-   (`documentstore.Document.Language`) as a prior and tie-breaker and the
-   dominant Unicode script as a floor. Store the resolved analyzer name on the
-   document and route the document to the matching per-analyzer document
-   mapping through bleve's `TypeField`. One analyzer per document, one set of
+2. **Index-time language detection.** After extraction, the crawler runs
+   whatlanggo over at most the first 64 KiB of UTF-8 main text and resolves one
+   ISO 639-1 value before building any artifact. Reliable content detection
+   wins; a syntactically usable HTML `lang` value wins when content evidence is
+   uncertain; the detector's best content result is used when no declaration
+   exists; and `en` remains only the no-signal compatibility fallback. Resolving
+   once keeps the document, URL metadata, and RWI postings consistent and bounds
+   classifier work. The node independently selects the Bleve analyzer from
+   stored text, using the resolved crawl language as its prior and the dominant
+   Unicode script as its floor. It stores the analyzer name and routes the
+   document through Bleve's `TypeField`. One analyzer per document, one set of
    field names — no per-language sub-field explosion.
 
 3. **Query-time routing without query LID.** Determine the query's dominant
@@ -135,6 +158,9 @@ Language-detection libraries considered:
 - Russian, and every language with a bleve analyzer, gains real morphological
   recall; the `черногория` flood is replaced by precise, inflection-aware
   matching rather than merely suppressed.
+- Legacy-encoded HTML without a language declaration retains its decoded
+  content language consistently across local documents, facets, RWI postings,
+  and YaCy URL metadata after the page is crawled again.
 - Serbian works through the Croatian analyzer once content detection routes it
   there; Chinese works through `cjk`; Arabic gains light stemming; Hebrew and
   unlisted languages degrade gracefully to exact-plus-n-gram recall until a

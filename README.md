@@ -82,8 +82,16 @@ its binaries (`yago-node`, `yagocrawler`).
   Firefox over Marionette, one long-lived process) for bot-walled and
   JavaScript-rendered pages, both behind a dial-time SSRF egress guard;
   per-profile toggles for robots, TLS authority, and browser use.
-- Politeness and defense: robots.txt with a sanitizer for real-world malformed
-  files, per-host adaptive pacing and crawl delays, URL canonicalization,
+- **Legacy-web text correctness**: browser-compatible charset decoding handles
+  Windows-1251 and other WHATWG encodings, while bounded content-language
+  detection keeps documents, facets, RWI postings, and URL metadata aligned.
+- **Bounded corpus-derived memory**: spelling and morphology retain fixed-size
+  frequent-term summaries, complete Bleve scans use small transient pages, peer
+  cache writes and host-link snapshots are bounded, and `/metrics` exposes Go
+  heap plus process RSS for pre-OOM alerts.
+- Politeness and defense: robots.txt with a standards-compliant 500 KiB parsing
+  limit and a sanitizer for real-world malformed files, per-host adaptive pacing
+  and crawl delays, URL canonicalization,
   persistent near-duplicate clustering, crawl-trap defense, per-host and
   per-run page budgets, boilerplate extraction, and a deterministic
   content-quality gate.

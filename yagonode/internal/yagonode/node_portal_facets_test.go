@@ -11,11 +11,10 @@ func TestPortalSourceRendersFacetSidebar(t *testing.T) {
 	t.Parallel()
 
 	searcher := &stubPortalSearcher{response: searchcore.Response{
-		TotalResults: 1,
-		Results:      []searchcore.Result{{Title: "Go", URL: "http://a/1"}},
-		Facets: []searchcore.FacetGroup{
-			{Name: "host", Terms: []searchcore.FacetTerm{{Term: "a.example", Count: 3}}},
-			{Name: "month", Terms: []searchcore.FacetTerm{{Term: "2026-05", Count: 2}}},
+		TotalResults: 2,
+		Results: []searchcore.Result{
+			{Title: "Go", URL: "http://a.example/1", Host: "a.example", Language: "en"},
+			{Title: "Search", URL: "http://a.example/2", Host: "a.example", Language: "en"},
 		},
 	}}
 
@@ -23,17 +22,17 @@ func TestPortalSourceRendersFacetSidebar(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if !searcher.gotRequest.WithFacets {
-		t.Fatal("portal must request facets")
+	if searcher.gotRequest.WithFacets {
+		t.Fatal("portal requested a complete corpus facet scan")
 	}
 	if len(results.Facets) != 2 || results.Facets[0].Title != "Host" {
 		t.Fatalf("facets = %+v", results.Facets)
 	}
 	host := results.Facets[0].Items[0]
-	if host.URL != "/?q=go+site%3Aa.example" || host.Count != 3 {
+	if host.URL != "/?q=go+site%3Aa.example" || host.Count != 2 {
 		t.Fatalf("host item = %+v, want site: operator link", host)
 	}
-	if month := results.Facets[1].Items[0]; month.URL != "" {
-		t.Fatalf("month item = %+v, want plain count without a link", month)
+	if language := results.Facets[1].Items[0]; language.URL != "/?q=go+language%3Aen" {
+		t.Fatalf("language item = %+v, want language: operator link", language)
 	}
 }

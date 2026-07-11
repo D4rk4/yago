@@ -31,10 +31,24 @@ type hostLinkReference struct {
 	Count       int
 }
 
+type hostLinkCapacity struct {
+	linkedHosts       int
+	referencesPerHost int
+}
+
 func (s storedDocumentHostLinks) IncomingHostLinks(ctx context.Context) hostlinks.Graph {
+	graph, err := s.scan(ctx)
+	if err != nil {
+		slog.WarnContext(ctx, hostLinkGraphScanFailedMessage, slog.Any("error", err))
+	}
+
+	return graph
+}
+
+func (s storedDocumentHostLinks) scan(ctx context.Context) (hostlinks.Graph, error) {
 	graph := hostlinks.Graph{RowDefinition: hostlinks.HostReferenceRowDefinition}
 	if s.documents == nil {
-		return graph
+		return graph, nil
 	}
 
 	incoming := map[string]map[string]hostLinkReference{}
@@ -44,14 +58,12 @@ func (s storedDocumentHostLinks) IncomingHostLinks(ctx context.Context) hostlink
 		return true, nil
 	})
 	if err != nil {
-		slog.WarnContext(ctx, hostLinkGraphScanFailedMessage, slog.Any("error", err))
-
-		return graph
+		return graph, fmt.Errorf("scan stored documents for host links: %w", err)
 	}
 
 	graph.LinkedHosts = hostLinkGraphHosts(incoming)
 
-	return graph
+	return graph, nil
 }
 
 func collectDocumentHostLinks(
@@ -70,17 +82,42 @@ func collectDocumentHostLinks(
 			continue
 		}
 
-		references := incoming[target]
-		if references == nil {
-			references = map[string]hostLinkReference{}
-			incoming[target] = references
-		}
-
-		reference := references[source]
-		reference.Count++
-		reference.ModifiedDay = max(reference.ModifiedDay, day)
-		references[source] = reference
+		recordHostLink(
+			incoming,
+			target,
+			source,
+			day,
+			hostLinkCapacity{
+				linkedHosts:       hostLinkMaxLinkedHosts,
+				referencesPerHost: hostLinkMaxReferencesPerHost,
+			},
+		)
 	}
+}
+
+func recordHostLink(
+	incoming map[string]map[string]hostLinkReference,
+	target string,
+	source string,
+	modifiedDay int64,
+	capacity hostLinkCapacity,
+) {
+	references := incoming[target]
+	if references == nil {
+		if len(incoming) >= capacity.linkedHosts {
+			return
+		}
+		references = map[string]hostLinkReference{}
+		incoming[target] = references
+	}
+	if _, found := references[source]; !found &&
+		len(references) >= capacity.referencesPerHost {
+		return
+	}
+	reference := references[source]
+	reference.Count++
+	reference.ModifiedDay = max(reference.ModifiedDay, modifiedDay)
+	references[source] = reference
 }
 
 func documentHostHash(rawURL string) (string, bool) {
