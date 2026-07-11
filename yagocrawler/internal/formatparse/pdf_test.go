@@ -96,7 +96,7 @@ func TestParsePDFRejectsGarbageAndMissingText(t *testing.T) {
 		t.Fatalf("fallback title = %v %+v", parsed, page)
 	}
 	// An unterminated BT block ends the content walk.
-	if got := pdfTextFromContent([]byte("BT (never closed)")); got != "" {
+	if got := pdfTextFromContent([]byte("BT (never closed)"), nil); got != "" {
 		t.Fatalf("unterminated BT = %q", got)
 	}
 }
@@ -132,7 +132,7 @@ func TestParsePostScript(t *testing.T) {
 }
 
 func TestPDFLiteralEdges(t *testing.T) {
-	if got := pdfEscape('n'); got != ' ' {
+	if got, _ := pdfEscapedBytes([]byte("n")); string(got) != " " {
 		t.Fatalf("escape n = %q", got)
 	}
 	if got, _ := pdfStringLiteral(
@@ -260,6 +260,18 @@ func TestPDFFilterChain(t *testing.T) {
 			[]string{"ASCII85Decode", "LZWDecode"},
 		},
 		{"bracket after spaces", "/Filter  [ /LZWDecode ]", []string{"LZWDecode"}},
+		{
+			"keys after the filter stay out of the chain",
+			"<< /Filter /FlateDecode /Length 5 >>",
+			[]string{"FlateDecode"},
+		},
+		{
+			"keys after a bracketed chain stay out",
+			"<< /Filter [ /ASCII85Decode ] /Length 5 >>",
+			[]string{"ASCII85Decode"},
+		},
+		{"empty bracketed chain", "/Filter [ ] /Length 5", []string{"FlateDecode"}},
+		{"indirect reference value", "/Filter 5 0 R /Length 5", []string{"FlateDecode"}},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -268,6 +280,138 @@ func TestPDFFilterChain(t *testing.T) {
 				t.Fatalf("pdfFilterChain(%q) = %v, want %v", testCase.dict, got, testCase.want)
 			}
 		})
+	}
+}
+
+// pdfTeXStyle assembles a PDF the way pdfTeX writes them: the stream
+// dictionary lists /Filter before /Length, the text shows through TJ arrays
+// whose kerns split words, ligatures ride octal codes, and a watermark uses a
+// hex string. This is the live-verified arXiv shape (SEARCH-PDF-01).
+func pdfTeXStyle(t *testing.T, content string) []byte {
+	t.Helper()
+	var z bytes.Buffer
+	writer := zlib.NewWriter(&z)
+	if _, err := writer.Write([]byte(content)); err != nil {
+		t.Fatalf("zlib: %v", err)
+	}
+	_ = writer.Close()
+	var pdf bytes.Buffer
+	pdf.WriteString("%PDF-1.7\n5 0 obj\n<< /Filter /FlateDecode /Length 99 >>\nstream\n")
+	pdf.Write(z.Bytes())
+	pdf.WriteString("\nendstream\nendobj\n%%EOF")
+
+	return pdf.Bytes()
+}
+
+// TestParsePDFReadsTeXOutput pins the arXiv regression: a filter-first stream
+// dictionary must still decode (the old value parser swallowed /Length as a
+// filter name and dropped every such stream), TJ kerns must split words only
+// at inter-word gaps, octal ligature codes must expand, and hex strings must
+// read.
+func TestParsePDFReadsTeXOutput(t *testing.T) {
+	content := `BT /F58 11.9552 Tf [(On)-375(the)-375(Author)-375(h)31(ydrogen-ric)31(h)` +
+		`-375(\015ux)-375(trapping)]TJ ET` + "\n" +
+		`BT [<41725869763A32343132> -400 <2E3037373932>]TJ ET` + "\n" +
+		`BT /Span << /ActualText (hidden) >> BDC [(shown)]TJ EMC ET`
+	page, parsed := parsePDF("https://a.example/2412.07792", "application/pdf",
+		pdfTeXStyle(t, content))
+	if !parsed {
+		t.Fatal("tex-style pdf must parse")
+	}
+	for _, want := range []string{
+		"On the Author", "hydrogen-rich", "flux trapping", "ArXiv:2412 .07792", "shown",
+	} {
+		if !strings.Contains(page.Text, want) {
+			t.Fatalf("tex pdf missing %q in %q", want, page.Text)
+		}
+	}
+	if strings.Contains(page.Text, "hidden") {
+		t.Fatal("marked-content properties must not index")
+	}
+	if strings.Contains(page.Text, "h ydrogen") {
+		t.Fatalf("kerned word split survived: %q", page.Text)
+	}
+}
+
+// TestPDFStringDecodingEdges pins the show-string byte decoder: UTF-16BE
+// strings decode through their BOM (surrogate pairs included, controls become
+// separators), Latin-1 high bytes read as text, raw line breaks inside a
+// literal separate words, escaped line breaks continue them, and the b/f
+// escapes drop.
+func TestPDFStringDecodingEdges(t *testing.T) {
+	utf16Hello := "\xFE\xFF\x00H\x00i\x00\x09\xD8\x3D\xDE\x00"
+	if got := pdfDecodeStringBytes([]byte(utf16Hello)); got != "Hi \U0001F600" {
+		t.Fatalf("utf16 string = %q", got)
+	}
+	if got := pdfDecodeStringBytes([]byte{'c', 'a', 'f', 0xE9}); got != "café" {
+		t.Fatalf("latin-1 string = %q", got)
+	}
+	if got, _ := pdfStringLiteral([]byte("(line\nbreak)")); got != "line break" {
+		t.Fatalf("raw newline = %q", got)
+	}
+	if got, _ := pdfStringLiteral([]byte("(con\\\r\ntinued)")); got != "continued" {
+		t.Fatalf("crlf continuation = %q", got)
+	}
+	if got, _ := pdfStringLiteral([]byte("(con\\\rtinued)")); got != "continued" {
+		t.Fatalf("cr continuation = %q", got)
+	}
+	if got, _ := pdfStringLiteral([]byte("(con\\\ntinued)")); got != "continued" {
+		t.Fatalf("lf continuation = %q", got)
+	}
+	if got, _ := pdfStringLiteral([]byte("(a\\bb)")); got != "ab" {
+		t.Fatalf("backspace escape = %q", got)
+	}
+	if got, _ := pdfStringLiteral([]byte("(\\101\\13)")); got != "Aff" {
+		t.Fatalf("octal escapes = %q", got)
+	}
+	if got, _ := pdfStringLiteral([]byte("(\\034rmly)")); got != "firmly" {
+		t.Fatalf("t1 ligature = %q", got)
+	}
+}
+
+// TestPDFShownStringHelpers pins the block-walk helpers directly: hex strings
+// missing their terminator or carrying junk yield nothing, dictionaries skip
+// whether terminated or not, and only large in-array kerns insert a space.
+func TestPDFShownStringHelpers(t *testing.T) {
+	if got, consumed := pdfHexString([]byte("<41 42")); got != "" ||
+		consumed != len("<41 42") {
+		t.Fatalf("unterminated hex = %q %d", got, consumed)
+	}
+	if got, _ := pdfHexString([]byte("<zz>")); got != "" {
+		t.Fatalf("junk hex = %q", got)
+	}
+	if got := pdfSkipDictionary([]byte("<< /K /V >> tail")); got != len("<< /K /V >") {
+		t.Fatalf("dict skip = %d", got)
+	}
+	if got := pdfSkipDictionary([]byte("<< never closed")); got != len("<< never closed") {
+		t.Fatalf("open dict skip = %d", got)
+	}
+	if _, space := pdfArrayKernSpace([]byte("-400"), false); space {
+		t.Fatal("kern outside an array must not space")
+	}
+	if _, space := pdfArrayKernSpace([]byte("-31(x)"), true); space {
+		t.Fatal("small kern must not space")
+	}
+	consumed, space := pdfArrayKernSpace([]byte("-99999999999(x)"), true)
+	if !space || consumed != len("-99999999999")-1 {
+		t.Fatalf("huge kern = %d %v", consumed, space)
+	}
+	var out strings.Builder
+	writeShownStrings(&out, []byte("BT <41> Tj ET"), nil, nil)
+	if !strings.Contains(out.String(), "A") {
+		t.Fatalf("hex show outside array = %q", out.String())
+	}
+}
+
+// TestPDFHexTitle pins the UTF-16 document title path: pdfTeX and Word write
+// /Title as a BOM-led hex string.
+func TestPDFHexTitle(t *testing.T) {
+	body := []byte("%PDF-1.7\n1 0 obj\n<< /Title <FEFF0054006900740072006500> >>\nendobj\n")
+	if got := pdfInfoTitle(body); got != "Titre" {
+		t.Fatalf("hex title = %q", got)
+	}
+	if got := pdfInfoTitle([]byte("%PDF\n/Title {none}")); got != "" {
+		t.Fatalf("unstringed title = %q", got)
 	}
 }
 
