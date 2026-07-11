@@ -78,6 +78,7 @@ func TestCatalogIncludesCurrentAdminSurfaces(t *testing.T) {
 		"/api/admin/v1/compatibility",
 		"/api/admin/v1/network/dht/gates",
 		"/api/admin/v1/index/stats",
+		"/api/admin/v1/search/ranking/trust",
 	} {
 		if got := paths[path]; got.State != Implemented {
 			t.Fatalf("%s state = %q, want implemented", path, got.State)

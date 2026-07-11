@@ -17,6 +17,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/events"
 	"github.com/D4rk4/yago/yagonode/internal/eviction"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
+	"github.com/D4rk4/yago/yagonode/internal/hosttrust"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagonode/internal/judgments"
 	"github.com/D4rk4/yago/yagonode/internal/landiscovery"
@@ -61,6 +62,7 @@ type node struct {
 	safetyTrain    http.Handler
 	safetyRollback http.Handler
 	judgmentsAPI   http.Handler
+	hostTrustAPI   http.Handler
 	rankingConsole adminui.RankingSource
 	report         nodestatus.Report
 	searcher       searchcore.Searcher
@@ -71,6 +73,7 @@ type node struct {
 	activity       *searchactivity.Tracker
 	schedules      *crawlschedule.Store
 	hostRank       *hostrank.Holder
+	hostTrust      *hosttrust.Catalog
 	spell          *spellcheck.Holder
 	wordForms      *wordforms.Holder
 	swarmMorph     bool
@@ -217,6 +220,7 @@ func assembleNode(
 		clicks:     surfaces.clicks,
 		models:     surfaces.models,
 		safety:     surfaces.safety,
+		hostTrust:  surfaces.trust,
 		peerEvents: surfaces.peerEvents,
 		swarmMorph: config.SwarmMorphology,
 	}, telemetry.toggles), nil
@@ -263,6 +267,7 @@ type nodeSurfaces struct {
 	clicks     *clickcapture.Store
 	models     *rankingmodel.Catalog
 	safety     *safetymodel.Catalog
+	trust      *hosttrust.Catalog
 	activity   *searchactivity.Tracker
 	schedules  *crawlschedule.Store
 	theme      *portaltheme.Theme
@@ -329,7 +334,6 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 			searchAPIKey:     in.config.SearchAPIKey,
 		}).AuthenticatedRead,
 	)
-
 	return nodeSurfaces{
 		crawl:      runtime,
 		dht:        dht,
@@ -348,6 +352,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		clicks:     learning.clicks,
 		models:     learning.models,
 		safety:     learning.safety,
+		trust:      learning.trust,
 		peerEvents: learning.peerEvents,
 	}, nil
 }
@@ -375,42 +380,43 @@ func newPublicSearchAssembly(
 	parts publicSearchParts,
 ) publicSearchAssembly {
 	return publicSearchAssembly{
-		storage:            in.storage,
-		hostRank:           parts.hostRank.Current,
-		spellCorrector:     parts.spell.Current,
-		wordForms:          parts.words.Current,
-		roster:             in.roster,
-		identity:           in.identity,
-		dht:                in.config.DHT,
-		client:             in.client,
-		peerClient:         in.peerClient,
-		peerHTTPSPreferred: in.config.PeerHTTPSPreferred,
-		searchAPIKey:       in.config.SearchAPIKey,
-		searchAuthorizer:   in.telemetry.searchAuthorizer,
-		extractFetcher:     buildExtractFetcher(in.config, in.client),
-		webFallback:        in.config.WebFallback,
-		seedQueue:          crawlOrderQueue(parts.runtime),
-		toggles:            in.toggles,
-		queryLogMode:       in.config.QueryLogMode,
-		activity:           parts.activity,
-		searchMetrics:      in.telemetry.search,
-		rankingWeights:     parts.ranking.Current,
-		denylist:           parts.denylist,
-		snippetEnricher:    buildSnippetEnricher(in.config, in.client),
-		remoteTimeouts:     configRemoteTimeouts(in.config),
-		indexRemoteResults: in.config.IndexRemoteResults,
-		swarmMorphology:    in.config.SwarmMorphology,
-		swarmSeed:          in.config.SwarmSeed,
-		autocrawlerCrawl:   in.config.AutocrawlerCrawl,
-		linksNewTab:        in.config.SearchLinksNewTab,
-		clickCapture:       in.config.SearchClickCapture,
-		clickRecorder:      newClickCaptureAdapter(parts.clicks),
-		learnedRanker:      parts.models.Ranker(),
-		peerReputation:     parts.reputation,
-		peerObservations:   parts.peerEvents,
-		peerNetworkGroup:   peerReputationNetworkGroup,
-		selfSeed:           in.report.SelfSeed,
-		theme:              parts.theme,
+		storage:             in.storage,
+		hostRank:            parts.hostRank.Current,
+		spellCorrector:      parts.spell.Current,
+		wordForms:           parts.words.Current,
+		roster:              in.roster,
+		identity:            in.identity,
+		dht:                 in.config.DHT,
+		client:              in.client,
+		peerClient:          in.peerClient,
+		peerHTTPSPreferred:  in.config.PeerHTTPSPreferred,
+		searchAPIKey:        in.config.SearchAPIKey,
+		searchAuthorizer:    in.telemetry.searchAuthorizer,
+		extractFetcher:      buildExtractFetcher(in.config, in.client),
+		webFallback:         in.config.WebFallback,
+		seedQueue:           crawlOrderQueue(parts.runtime),
+		toggles:             in.toggles,
+		queryLogMode:        in.config.QueryLogMode,
+		activity:            parts.activity,
+		searchMetrics:       in.telemetry.search,
+		rankingWeights:      parts.ranking.Current,
+		denylist:            parts.denylist,
+		snippetEnricher:     buildSnippetEnricher(in.config, in.client),
+		remoteTimeouts:      configRemoteTimeouts(in.config),
+		indexRemoteResults:  in.config.IndexRemoteResults,
+		swarmMorphology:     in.config.SwarmMorphology,
+		swarmSeed:           in.config.SwarmSeed,
+		autocrawlerCrawl:    in.config.AutocrawlerCrawl,
+		linksNewTab:         in.config.SearchLinksNewTab,
+		clickCapture:        in.config.SearchClickCapture,
+		clickRecorder:       newClickCaptureAdapter(parts.clicks, parts.models.Ranker()),
+		portalClickRecorder: newPortalClickCaptureAdapter(parts.clicks, parts.models.Ranker()),
+		learnedRanker:       parts.models.Ranker(),
+		peerReputation:      parts.reputation,
+		peerObservations:    parts.peerEvents,
+		peerNetworkGroup:    peerReputationNetworkGroup,
+		selfSeed:            in.report.SelfSeed,
+		theme:               parts.theme,
 	}
 }
 
@@ -436,6 +442,7 @@ type nodeParts struct {
 	identity   nodeidentity.Identity
 	ranking    *rankingprofile.Holder
 	hostRank   *hostrank.Holder
+	hostTrust  *hosttrust.Catalog
 	spell      *spellcheck.Holder
 	wordForms  *wordforms.Holder
 	judgments  *judgments.Store
@@ -487,11 +494,14 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 		safetyTrain:    newSearchSafetyTrainEndpoint(parts.safety),
 		safetyRollback: newSearchSafetyRollbackEndpoint(parts.safety),
 		judgmentsAPI:   newSearchJudgmentsEndpoint(parts.judgments),
+		hostTrustAPI:   newSearchHostTrustEndpoint(parts.hostTrust),
 		rankingConsole: newRankingConsole(
 			parts.ranking,
 			tuner,
 			parts.judgments,
-			rankingConsoleLearning{trainer: modelTrainer, models: parts.models},
+			rankingConsoleLearning{
+				trainer: modelTrainer, models: parts.models, trust: parts.hostTrust,
+			},
 		),
 		report:       parts.report,
 		searcher:     parts.searcher,
@@ -502,6 +512,7 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 		activity:     parts.activity,
 		schedules:    parts.schedules,
 		hostRank:     parts.hostRank,
+		hostTrust:    parts.hostTrust,
 		spell:        parts.spell,
 		wordForms:    parts.wordForms,
 		swarmMorph:   parts.swarmMorph,

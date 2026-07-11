@@ -19,13 +19,24 @@ Docker daemon, and must never run as part of the standard quality gate.
 
 ## Decision
 
-Use `github.com/testcontainers/testcontainers-go` to manage the YaCy and node containers in a separate
-`test/e2e` Go module, behind the `e2e` build tag and a dedicated `make e2e` target.
+Use `github.com/testcontainers/testcontainers-go` in two isolated Go modules,
+`yagonode/test/e2e` and `yagocrawler/test/e2e`, behind the `e2e` build tag and a dedicated
+`make e2e` target. The node module manages native-node fleets and a real YaCy server. The crawler
+module manages the node, crawler, and deterministic origin fixtures used for crawl and ingest
+workflows.
 
-The module is isolated from the main module so testcontainers and its transitive Docker client
-dependencies never enter the runtime dependency graph, the `make verify` gate, or the architecture
-linter scope. The e2e module imports only the published `yagomodel` and `yagoproto` modules for wire
-encoding and parsing; the node under test runs as a container built from `yagonode/Dockerfile`.
+Both modules are isolated from the production modules so testcontainers and its transitive Docker
+client dependencies never enter the runtime dependency graph, the `make verify` gate, or the
+architecture linter scope. The node module imports only published model and protocol boundaries for
+wire encoding and parsing. Product processes under test run as containers built from
+`yagonode/Dockerfile` and `yagocrawler/Dockerfile`.
+
+The crawler module includes a successful learned-ranking promotion workflow. It ingests 66
+documents for 22 query clusters through the node's crawl transport, stores graded judgments, and
+uses 1 training, 1 development, and 20 test clusters. The test requires held-out improvement,
+promotion and activation of the candidate model, an explanation that names the learned evidence,
+and a public-search top result that changes from the deliberately weak document to the relevant
+document.
 
 ## Considered alternatives
 
@@ -38,7 +49,7 @@ reason at a lower level of abstraction, with more code to maintain than the CLI 
 
 ## Consequences
 
-End-to-end interoperability is verified against a real YaCy server on demand. The testcontainers
-dependency is confined to `test/e2e/go.mod`; the main module, its release artifact, and `make verify`
-are unaffected. Running `make e2e` requires a working Docker daemon and network access to pull the YaCy
-image.
+End-to-end interoperability, crawl-to-index delivery, and ranking promotion are verified in real
+product containers on demand. The testcontainers dependency is confined to the two e2e modules;
+production modules, release artifacts, and `make verify` are unaffected. Running `make e2e`
+requires a working Docker daemon and network access for any image that is not already local.

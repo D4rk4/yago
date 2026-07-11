@@ -193,7 +193,9 @@ func newRankingTrainingCandidateSource(
 	}
 
 	return searchcore.NewLexicalEvidenceSearcher(
-		newLocalRankingSearcher(index, weights, authority),
+		searchcore.NewPseudoRelevanceSearcher(
+			newLocalRankingSearcher(index, weights, authority),
+		),
 	)
 }
 
@@ -217,10 +219,10 @@ type rankingMetricSummary struct {
 	SpamErrors                      int     `json:"spam_errors"`
 	UnsafeExposureAt10              float64 `json:"unsafe_exposure_at_10"`
 	SpamExposureAt10                float64 `json:"spam_exposure_at_10"`
-	PeerBytes                       int64   `json:"peer_bytes"`
-	PeerTimeouts                    int     `json:"peer_timeouts"`
-	CPULatencyP50Milliseconds       float64 `json:"cpu_latency_p50_ms"`
-	CPULatencyP95Milliseconds       float64 `json:"cpu_latency_p95_ms"`
+	PeerBytes                       *int64  `json:"peer_bytes"`
+	PeerTimeouts                    *int    `json:"peer_timeouts"`
+	RerankLatencyP50Milliseconds    float64 `json:"rerank_wall_latency_p50_ms"`
+	RerankLatencyP95Milliseconds    float64 `json:"rerank_wall_latency_p95_ms"`
 }
 
 type rankingEvaluationSummary struct {
@@ -359,7 +361,7 @@ func rankingEvaluationSummaryFor(
 }
 
 func rankingMetricSummaryFor(metrics searcheval.MetricSet) rankingMetricSummary {
-	return rankingMetricSummary{
+	summary := rankingMetricSummary{
 		Queries:                         metrics.Queries,
 		RecallAt100:                     metrics.RecallAt100,
 		RecallAt200:                     metrics.RecallAt200,
@@ -374,11 +376,15 @@ func rankingMetricSummaryFor(metrics searcheval.MetricSet) rankingMetricSummary 
 		SpamErrors:                      metrics.SpamErrors,
 		UnsafeExposureAt10:              metrics.UnsafeExposureAt10,
 		SpamExposureAt10:                metrics.SpamExposureAt10,
-		PeerBytes:                       metrics.PeerBytes,
-		PeerTimeouts:                    metrics.PeerTimeouts,
-		CPULatencyP50Milliseconds:       durationMilliseconds(metrics.CPULatencyP50),
-		CPULatencyP95Milliseconds:       durationMilliseconds(metrics.CPULatencyP95),
+		RerankLatencyP50Milliseconds:    durationMilliseconds(metrics.RerankLatencyP50),
+		RerankLatencyP95Milliseconds:    durationMilliseconds(metrics.RerankLatencyP95),
 	}
+	if metrics.PeerResourcesMeasured {
+		summary.PeerBytes = &metrics.PeerBytes
+		summary.PeerTimeouts = &metrics.PeerTimeouts
+	}
+
+	return summary
 }
 
 func rankingPromotionSummaryFor(decision searcheval.PromotionDecision) rankingPromotionSummary {

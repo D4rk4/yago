@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/D4rk4/yago/yagonode/internal/clickcapture"
+	"github.com/D4rk4/yago/yagonode/internal/hosttrust"
 	"github.com/D4rk4/yago/yagonode/internal/judgments"
 	"github.com/D4rk4/yago/yagonode/internal/learnedrank"
 	"github.com/D4rk4/yago/yagonode/internal/peerreputation"
@@ -18,6 +19,7 @@ type searchLearningStores struct {
 	clicks     *clickcapture.Store
 	models     *rankingmodel.Catalog
 	safety     *safetymodel.Catalog
+	trust      *hosttrust.Catalog
 	reputation *peerReputationObserver
 	peerEvents *peerReputationObserver
 }
@@ -25,6 +27,7 @@ type searchLearningStores struct {
 var (
 	openRuntimePeerReputation = peerreputation.Open
 	newRuntimePeerObserver    = newPeerReputationObserver
+	openRuntimeHostTrust      = hosttrust.Open
 )
 
 func openSearchLearningStores(
@@ -47,6 +50,10 @@ func openSearchLearningStores(
 	if err != nil {
 		return searchLearningStores{}, fmt.Errorf("open content safety models: %w", err)
 	}
+	trust, err := openRuntimeHostTrust(ctx, storage)
+	if err != nil {
+		return searchLearningStores{}, fmt.Errorf("open host trust catalog: %w", err)
+	}
 	reputation, err := openRuntimePeerReputation(
 		storage,
 		peerreputation.DefaultConfiguration(),
@@ -64,6 +71,7 @@ func openSearchLearningStores(
 		clicks:     clickStore,
 		models:     models,
 		safety:     safety,
+		trust:      trust,
 		reputation: peerEvents,
 		peerEvents: peerEvents,
 	}, nil

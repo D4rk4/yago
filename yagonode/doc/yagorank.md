@@ -8,7 +8,9 @@ ranking.
 
 ## Serving pipeline
 
-Every search follows the same bounded stages:
+Serving, explanation, and training use the same bounded local candidate stages:
+local retrieval, bounded RM3 feedback, then lexical evidence construction. Every
+search follows these stages:
 
 1. Build a candidate window from strict fielded BM25, a relaxed 60% term-match
    branch, phrases, ordered and unordered term-dependence signals, and bounded
@@ -27,12 +29,17 @@ Every search follows the same bounded stages:
    and gives concurrent shutdown callers one bounded completion point. A failed
    refresh keeps the last good snapshot. Unresolved hostname peers share one
    conservative influence group.
-3. Attach an immutable 33-signal evidence vector to each candidate. Missing
-   evidence is represented explicitly and remains neutral.
+3. Attach an immutable 33-signal evidence vector to each candidate. A presence
+   mask distinguishes an observed zero from missing evidence. Missing values do
+   not affect robust normalization or a linear score, and an explanation marks
+   them as unknown and unused.
 4. Apply the active learned model to at most 100 locally stored candidates.
    Federated and web-fallback rows keep their fusion order because the training
    set contains no representative federated evidence. A node without an active
-   model keeps the complete lexical ranking path.
+   model keeps the complete lexical ranking path. Global search requests at
+   least twice the learned window from the merged list and scans it only until
+   the bounded local window is collected; peer and web slots are not consumed
+   as local model capacity.
 5. Apply safety policy, persistent content-cluster consolidation, MMR, host
    crowding, requested date ordering, and paging once. Similar unclustered
    results are not deleted.
@@ -70,6 +77,14 @@ Inbound anchors are replaced atomically when a source page is recrawled. Links
 marked `nofollow`, `ugc`, or `sponsored` do not contribute ranking anchor text or
 authority. Domain authority uses a bounded in-process link graph with PageRank
 and TrustRank-style teleport evidence, distinct-source limits, and confidence.
+Graph refresh retains a deterministic hash-priority sample of at most 1,048,576
+unique citations, so scanning a large document collection cannot create an
+unbounded citation slice.
+
+TrustRank teleport seeds are an operator policy stored in the node vault. The
+default policy is empty; operators can select a blend in `[0,1]` and at most 256
+canonical domain names or IP literals. A policy change refreshes domain
+authority immediately rather than waiting for the periodic refresh.
 Admin deletion, quota eviction, redirect purge, and crawl tombstones share one
 lineage cleanup that removes the source's anchors and cluster membership, then
 refreshes any surviving representative in storage and search.
@@ -99,8 +114,20 @@ only when the judgment set is large and representative enough to pass held-out
 promotion. Coordinate ascent over the visible field/prior weights remains an
 operator preview and a small-data fallback.
 
-Model snapshots have a fixed feature catalog and versioned JSON format. The
-vault stores the active revision and eight rollback revisions. Status and
+Newly trained snapshots use `yago-linear-lambdarank-v2` or
+`yago-histogram-lambdamart-v2`. Robust centers, scales, and histogram thresholds
+use observed values only. A missing histogram split terminates that tree with a
+zero contribution instead of choosing a branch. Readers retain the `v1`
+zero-imputation and tree-routing semantics, and a loaded legacy snapshot
+reserializes in its original format.
+
+Production histogram training defaults to 64 trees, depth 4, and 32 bins. Each
+tree is restricted to one named allowlist: candidate retrieval, field and term
+dependence, content quality, temporal authority, federation support, or a small
+cross-family relevance-quality set. A tree can use multiple features from its
+selected family, preserving bounded, inspectable interactions.
+
+The vault stores the active revision and eight rollback revisions. Status and
 snapshot are read as one atomic catalog view. Promotion uses compare-and-swap
 activation, so a model cannot replace an incumbent that changed during training.
 Rollback is atomic, and the active model is restored on restart.
@@ -121,8 +148,9 @@ equal learned score preserves the incoming lexical order.
 
 The evaluation report includes Recall@100/200, NDCG@10, ERR@10, navigational
 MRR, alpha-NDCG, intent coverage, duplicate-cluster rate, domain coverage,
-unsafe and spam counts, discounted unsafe and spam exposure at top 10, peer
-bytes and timeouts, and p50/p95 CPU latency.
+unsafe and spam counts, discounted unsafe and spam exposure at top 10, and
+p50/p95 rerank wall latency. Peer bytes and timeouts are nullable: local-only
+evaluation leaves them unmeasured instead of reporting false zeros.
 
 A proposal is promoted only when all gates pass:
 
@@ -132,8 +160,10 @@ A proposal is promoted only when all gates pass:
   zero;
 - Recall@100/200, discounted top-10 safety/spam exposure, and named query slices
   do not regress;
-- p95 CPU latency, peer traffic, and peer timeout budgets do not regress beyond
-  their configured evaluation policy.
+- p95 rerank wall latency does not regress beyond its configured evaluation
+  policy;
+- peer traffic and timeout gates pass when both compared arms measured those
+  resources, and otherwise remain explicitly unavailable.
 
 A rejected proposal is returned with its metrics and reasons but is not
 activated.
@@ -146,11 +176,17 @@ assignment, ordered result identities, positions, propensities, expiry, and a
 random nonce. The click endpoint accepts only a URL and position present in that
 signed impression. Replays and clicks per impression are bounded.
 
-Adjacent FairPairs randomization measures exposure at propensity `0.5`.
-Team-draft interleaving is available for bounded model comparisons. Only
-aggregate query/model/cluster evidence is persisted. Implicit judgments require
-minimum randomized exposure and combine clipped IPS and SNIPS estimates; curated
-qrels replace implicit evidence for the same query.
+When an active learned revision has a comparable lexical order, the node
+automatically team-draft interleaves that revision with the lexical baseline and
+stores aggregate impression and click credit for the two revisions. Team-draft
+evidence is an online comparison only and is never converted into relevance
+labels. Without a comparable active revision, adjacent FairPairs randomization
+measures exposure at propensity `0.5`.
+
+Implicit judgments come only from FairPairs winners whose 95% Wilson interval
+excludes an even click split after the configured minimum impressions and
+clicks. Legacy pointwise click aggregates are readable for migration but do not
+become qrels. Curated qrels replace implicit evidence for the same query.
 
 ## Safety model
 
@@ -171,7 +207,8 @@ general evidence when `safe_search` and `include_images` are both enabled.
 
 The YagoRank console shows the active revision and model kind, rollback
 availability, held-out gain and confidence, split sizes, and promotion reasons.
-It can train the linear or histogram model and roll back one revision.
+It can train the linear or histogram model, roll back one revision, and edit the
+vault-backed trusted-domain list and TrustRank blend.
 
 The admin JSON endpoints are:
 
@@ -182,6 +219,7 @@ The admin JSON endpoints are:
 | `/api/admin/v1/search/ranking/model` | GET | Read active model status and snapshot |
 | `/api/admin/v1/search/ranking/model/train` | POST | Train, evaluate, and conditionally promote a model |
 | `/api/admin/v1/search/ranking/model/rollback` | POST | Roll back the active ranking model |
+| `/api/admin/v1/search/ranking/trust` | GET, PUT | Read or replace trusted domains and TrustRank blend |
 | `/api/admin/v1/search/judgments` | GET, POST, DELETE | Manage curated qrels |
 | `/api/admin/v1/search/explain` | POST | Inspect retrieval, learned contributions, tree paths, and final ranks |
 | `/api/admin/v1/search/safety/model` | GET | Read content-safety model status |

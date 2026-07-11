@@ -14,6 +14,9 @@ func (m HistogramLambdaMARTModel) Validate() error {
 	if err := validateFeatureDefinitions(m.featureDefinitions); err != nil {
 		return err
 	}
+	if !m.missingPolicy.valid() {
+		return fmt.Errorf("missing evidence policy is invalid")
+	}
 	if !finiteHistogramValue(m.learningRate, 1, false) {
 		return fmt.Errorf("model learning rate must be finite and in (0, 1]")
 	}

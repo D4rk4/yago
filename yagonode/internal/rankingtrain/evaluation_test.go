@@ -176,8 +176,10 @@ func TestEvaluateRankingModelMeasuresBothArms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if comparison.Baseline.Metrics.CPULatencyP95 != time.Millisecond ||
-		comparison.Candidate.Metrics.CPULatencyP95 != 3*time.Millisecond {
+	if comparison.Baseline.Metrics.RerankLatencyP95 != time.Millisecond ||
+		comparison.Candidate.Metrics.RerankLatencyP95 != 3*time.Millisecond ||
+		comparison.Baseline.Metrics.PeerResourcesMeasured ||
+		comparison.Candidate.Metrics.PeerResourcesMeasured {
 		t.Fatalf("latencies = %+v", comparison)
 	}
 }

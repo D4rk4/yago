@@ -97,6 +97,7 @@ func TrainLinearLambdaRank(
 	return LinearLambdaRankModel{
 		featureDefinitions: append([]FeatureDefinition(nil), featureDefinitions...),
 		weights:            weights,
+		missingPolicy:      missingEvidenceNeutral,
 	}, report, nil
 }
 
@@ -152,7 +153,11 @@ func normalizeTrainingGroups(
 			return nil, fmt.Errorf("normalize training queries: %w", err)
 		}
 		var err error
-		normalized[index], err = normalizeQueryGroup(group, dimension)
+		normalized[index], err = normalizeQueryGroup(
+			group,
+			dimension,
+			missingEvidenceNeutral,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("normalize training query: %w", err)
 		}

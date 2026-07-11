@@ -117,11 +117,12 @@ func (b histogramTreeBuilder) bestSplit(
 			return histogramSplitCandidate{}, false, fmt.Errorf("build histogram split: %w", err)
 		}
 		thresholds := b.set.thresholds[feature]
-		buckets := b.buckets(rowIndices, feature, thresholds)
+		buckets, missing := b.buckets(rowIndices, feature, thresholds)
+		observed := subtractHistogramStatistics(total, missing)
 		left := histogramNodeStatistics{}
 		for index, threshold := range thresholds {
 			left = addHistogramStatistics(left, buckets[index])
-			right := subtractHistogramStatistics(total, left)
+			right := subtractHistogramStatistics(observed, left)
 			candidate, ok := b.splitCandidate(
 				feature,
 				threshold,
@@ -220,16 +221,23 @@ func (b histogramTreeBuilder) buckets(
 	rowIndices []int,
 	feature int,
 	thresholds []float64,
-) []histogramBucket {
+) ([]histogramBucket, histogramNodeStatistics) {
 	buckets := make([]histogramBucket, len(thresholds)+1)
+	missing := histogramNodeStatistics{}
 	for _, row := range rowIndices {
+		if !b.set.rows[row].known[feature] {
+			missing.count++
+			missing.gradient += b.derivatives.gradients[row]
+			missing.hessian += b.derivatives.hessians[row]
+			continue
+		}
 		bin := histogramBin(thresholds, b.set.rows[row].values[feature])
 		buckets[bin].count++
 		buckets[bin].gradient += b.derivatives.gradients[row]
 		buckets[bin].hessian += b.derivatives.hessians[row]
 	}
 
-	return buckets
+	return buckets, missing
 }
 
 func (b histogramTreeBuilder) leafValue(
@@ -260,6 +268,9 @@ func (b histogramTreeBuilder) partitionRows(
 	left := make([]int, 0, len(rowIndices))
 	right := make([]int, 0, len(rowIndices))
 	for _, row := range rowIndices {
+		if !b.set.rows[row].known[split.featureIndex] {
+			continue
+		}
 		if b.set.rows[row].values[split.featureIndex] <= split.threshold {
 			left = append(left, row)
 		} else {

@@ -117,7 +117,8 @@ func (s portalSource) Search(
 		}
 	}
 	out.Results = make([]publicportal.SearchResult, 0, len(response.Results))
-	for _, result := range response.Results {
+	lexicalPositions := searchcore.LexicalPositions(response.Results, response.Request.Offset)
+	for index, result := range response.Results {
 		provenance := resultProvenance(result)
 		switch provenance {
 		case "web":
@@ -127,19 +128,30 @@ func (s portalSource) Search(
 		default:
 			out.LocalCount++
 		}
+		clusterIdentity := result.ClusterID
+		if clusterIdentity == "" {
+			clusterIdentity = result.URLHash
+		}
+		if clusterIdentity == "" {
+			clusterIdentity = result.URL
+		}
 		out.Results = append(out.Results, publicportal.SearchResult{
-			Title:       result.Title,
-			URL:         result.URL,
-			DisplayURL:  result.DisplayURL,
-			Snippet:     result.Snippet,
-			SnippetHTML: snippetmark.Highlight(result.Snippet, response.Request.Terms),
-			Host:        result.Host,
-			Date:        result.DisplayDate(),
-			SizeName:    resultSizeName(result.Size),
-			CachedURL:   cachedCopyURL(result),
-			Provenance:  provenance,
-			FaviconURL:  resultFaviconURL(result),
-			Images:      portalImages(result),
+			Title:           result.Title,
+			URL:             result.URL,
+			DisplayURL:      result.DisplayURL,
+			Snippet:         result.Snippet,
+			SnippetHTML:     snippetmark.Highlight(result.Snippet, response.Request.Terms),
+			Host:            result.Host,
+			Date:            result.DisplayDate(),
+			SizeName:        resultSizeName(result.Size),
+			CachedURL:       cachedCopyURL(result),
+			Provenance:      provenance,
+			FaviconURL:      resultFaviconURL(result),
+			Images:          portalImages(result),
+			URLIdentity:     result.URL,
+			ClusterIdentity: clusterIdentity,
+			Position:        response.Request.Offset + index + 1,
+			LexicalPosition: lexicalPositions[index],
 		})
 	}
 

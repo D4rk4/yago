@@ -44,6 +44,8 @@ components:
     in: internal/hostlinks/**
   hostrank:
     in: internal/hostrank/**
+  hosttrust:
+    in: internal/hosttrust/**
   cachedpage:
     in: internal/cachedpage/**
   faviconproxy:
@@ -748,6 +750,13 @@ deps:
       - hostrank
     canUse:
       - xnet
+  hosttrust:
+    mayDependOn:
+      - hosttrust
+      - hostrank
+      - vault
+      - memvault
+      - boltvault
   spellcheck:
     mayDependOn:
       - spellcheck
@@ -850,6 +859,7 @@ deps:
       - peerannouncement
       - hostlinks
       - hostrank
+      - hosttrust
       - spellcheck
       - wordforms
       - cachedpage

@@ -7,6 +7,7 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
+	"github.com/D4rk4/yago/yagonode/internal/hosttrust"
 )
 
 const (
@@ -21,6 +22,12 @@ const (
 type hostRankSweeper struct {
 	documents documentstore.StoredDocuments
 	holder    *hostrank.Holder
+	trust     hostTrustPolicySource
+}
+
+type hostTrustPolicySource interface {
+	Current() hosttrust.Policy
+	Changes() <-chan struct{}
 }
 
 var newHostRankRefreshTicks = func(interval time.Duration) (<-chan time.Time, func()) {
@@ -34,11 +41,17 @@ func runHostRankRefreshLoop(ctx context.Context, sweeper hostRankSweeper) {
 
 	ticks, stop := newHostRankRefreshTicks(defaultHostRankRefreshInterval)
 	defer stop()
+	var trustChanges <-chan struct{}
+	if sweeper.trust != nil {
+		trustChanges = sweeper.trust.Changes()
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticks:
+			sweeper.refreshOnce(ctx)
+		case <-trustChanges:
 			sweeper.refreshOnce(ctx)
 		}
 	}
@@ -49,9 +62,9 @@ func (s hostRankSweeper) refreshOnce(ctx context.Context) {
 		return
 	}
 
-	citations := make([]hostrank.Citation, 0)
+	citations := hostrank.NewCitationSample()
 	err := s.documents.StoredDocuments(ctx, func(doc documentstore.Document) (bool, error) {
-		citations = append(citations, documentAuthorityCitations(doc)...)
+		citations.Add(documentAuthorityCitations(doc)...)
 
 		return true, nil
 	})
@@ -61,7 +74,13 @@ func (s hostRankSweeper) refreshOnce(ctx context.Context) {
 		return
 	}
 
-	table, err := hostrank.ComputeDomainAuthority(ctx, citations, hostrank.DomainOptions{})
+	options := hostrank.DomainOptions{}
+	if s.trust != nil {
+		policy := s.trust.Current()
+		options.TrustedDomains = policy.Domains
+		options.TrustBlend = policy.Blend
+	}
+	table, err := hostrank.ComputeDomainAuthority(ctx, citations.Citations(), options)
 	if err != nil {
 		slog.WarnContext(ctx, hostRankRefreshFailedMessage, slog.Any("error", err))
 

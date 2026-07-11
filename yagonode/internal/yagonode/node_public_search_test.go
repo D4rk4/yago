@@ -65,9 +65,10 @@ func TestNodePublicSearchMountsYaCySearchSurfaces(t *testing.T) {
 			postings:     publicSearchPostingIndex{},
 			urlDirectory: publicSearchURLDirectory{},
 		},
-		identity: nodeidentity.Identity{NetworkName: "freeworld"},
-		dht:      defaultPublicSearchDHTConfig(),
-		client:   http.DefaultClient,
+		identity:     nodeidentity.Identity{NetworkName: "freeworld"},
+		dht:          defaultPublicSearchDHTConfig(),
+		client:       http.DefaultClient,
+		clickCapture: true,
 	})
 
 	for _, path := range []string{

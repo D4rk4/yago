@@ -15,21 +15,7 @@ func responseHTMLWithImpression(
 	if recorder == nil || len(response.Results) == 0 {
 		return page
 	}
-	candidates := make([]ImpressionCandidate, len(response.Results))
-	for index, result := range response.Results {
-		clusterIdentity := result.ClusterID
-		if clusterIdentity == "" {
-			clusterIdentity = result.URLHash
-		}
-		if clusterIdentity == "" {
-			clusterIdentity = result.URL
-		}
-		candidates[index] = ImpressionCandidate{
-			URLIdentity:     result.URL,
-			ClusterIdentity: clusterIdentity,
-			Position:        response.Request.Offset + index + 1,
-		}
-	}
+	candidates := impressionCandidates(response)
 	prepared, err := recorder.PrepareImpression(r.Context(), response.Request.Query, candidates)
 	if err != nil || prepared.Token == "" ||
 		!validImpressionOrder(prepared.Order, len(candidates)) {
@@ -45,6 +31,28 @@ func responseHTMLWithImpression(
 	page.ImpressionToken = prepared.Token
 
 	return page
+}
+
+func impressionCandidates(response searchcore.Response) []ImpressionCandidate {
+	candidates := make([]ImpressionCandidate, len(response.Results))
+	lexicalPositions := searchcore.LexicalPositions(response.Results, response.Request.Offset)
+	for index, result := range response.Results {
+		clusterIdentity := result.ClusterID
+		if clusterIdentity == "" {
+			clusterIdentity = result.URLHash
+		}
+		if clusterIdentity == "" {
+			clusterIdentity = result.URL
+		}
+		candidates[index] = ImpressionCandidate{
+			URLIdentity:     result.URL,
+			ClusterIdentity: clusterIdentity,
+			Position:        response.Request.Offset + index + 1,
+			LexicalPosition: lexicalPositions[index],
+		}
+	}
+
+	return candidates
 }
 
 func validImpressionOrder(order []int, length int) bool {

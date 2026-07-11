@@ -120,6 +120,37 @@ func TestSnapshotJSONRoundTripsBothModels(t *testing.T) {
 	}
 }
 
+func TestSnapshotJSONPreservesLegacyNestedModelFormats(t *testing.T) {
+	snapshots := []Snapshot{
+		mustSnapshot(t, "linear-legacy", mustLinearModel(t, linearWeights(nil))),
+		mustHistogramSnapshot(t, "tree-legacy", mustHistogramModel(t)),
+	}
+	replacements := [][2]string{
+		{"yago-linear-lambdarank-v2", "yago-linear-lambdarank-v1"},
+		{"yago-histogram-lambdamart-v2", "yago-histogram-lambdamart-v1"},
+	}
+	for index, snapshot := range snapshots {
+		encoded, err := json.Marshal(snapshot)
+		if err != nil {
+			t.Fatalf("marshal snapshot: %v", err)
+		}
+		legacy := strings.Replace(
+			string(encoded),
+			replacements[index][0],
+			replacements[index][1],
+			1,
+		)
+		parsed, err := ParseSnapshot([]byte(legacy))
+		if err != nil {
+			t.Fatalf("parse legacy snapshot: %v", err)
+		}
+		encodedAgain, err := json.Marshal(parsed)
+		if err != nil || string(encodedAgain) != legacy {
+			t.Fatalf("legacy snapshot changed: %s, %v", encodedAgain, err)
+		}
+	}
+}
+
 func TestSnapshotJSONRejectsMalformedAndUnsupportedDataTransactionally(t *testing.T) {
 	valid := mustSnapshot(t, "stable", mustLinearModel(t, linearWeights(nil)))
 	validJSON, err := json.Marshal(valid)

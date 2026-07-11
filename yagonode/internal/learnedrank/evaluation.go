@@ -133,11 +133,15 @@ func rankingCandidates(
 	results []searchcore.Result,
 	candidateWindow int,
 ) ([]rankingCandidate, error) {
-	window := min(len(results), candidateWindow)
-	candidates := make([]rankingCandidate, 0, window)
-	for index, result := range results[:window] {
+	candidates := make([]rankingCandidate, 0, min(len(results), candidateWindow))
+	localSlots := 0
+	for index, result := range results {
 		if !result.StoredLocally() {
 			continue
+		}
+		localSlots++
+		if localSlots > candidateWindow {
+			break
 		}
 		features, known, err := MapRankingEvidence(result.Evidence)
 		if err != nil {

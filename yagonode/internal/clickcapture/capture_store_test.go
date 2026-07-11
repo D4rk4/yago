@@ -84,13 +84,15 @@ func assertStoredClickEvidence(t *testing.T, store *Store, clicked DisplayedCand
 	if measuredPropensity(clicked.Propensity) && result.ClippedClickWeight == 0 {
 		t.Fatalf("randomized click lacks weight: %#v", result)
 	}
+	if len(model.FairPairs) == 0 {
+		t.Fatalf("fair-pair evidence = %#v", model)
+	}
 	judgments, err := store.ImplicitJudgments(t.Context(), 1)
 	if err != nil {
 		t.Fatalf("ImplicitJudgments: %v", err)
 	}
-	if len(judgments) != 1 ||
-		!judgments[0].ObservedAt.Equal(time.Unix(1_800_000_000, 0).UTC()) {
-		t.Fatalf("implicit judgment time = %#v", judgments)
+	if len(judgments) != 0 {
+		t.Fatalf("insufficient pair evidence produced judgments = %#v", judgments)
 	}
 }
 
@@ -138,7 +140,6 @@ func TestStoreBoundsModelsResultsQueriesAndCounters(t *testing.T) {
 	); err == nil {
 		t.Fatal("model above bound succeeded")
 	}
-
 	for batch := range 8 {
 		results := make([]DisplayedCandidate, 10)
 		for index := range results {
@@ -198,6 +199,25 @@ func TestStoreBoundsModelsResultsQueriesAndCounters(t *testing.T) {
 	}
 	if queryImpressions(full) != maximumAggregateValue {
 		t.Fatal("query impression saturation failed")
+	}
+}
+
+func TestStoreBoundsInterleavingModels(t *testing.T) {
+	store := openClickStore(t)
+	for modelIndex := range maximumModelsPerQuery {
+		claims := storeClaims("q", fmt.Sprintf("model-%d", modelIndex), displayedFixture("url"))
+		if err := store.recordImpression(t.Context(), claims); err != nil {
+			t.Fatalf("record model %d: %v", modelIndex, err)
+		}
+	}
+	candidate := []Candidate{{
+		URLIdentity: "url", ClusterIdentity: "cluster", Position: 1,
+	}}
+	if _, err := store.PrepareTeamDraft(
+		t.Context(), "q", draftRanking("active", candidate),
+		draftRanking(LexicalRevision, candidate), 1,
+	); err == nil {
+		t.Fatal("interleaving model above bound succeeded")
 	}
 }
 
@@ -266,11 +286,20 @@ func TestEvidenceCodecMigrationRoundTripAndRejection(t *testing.T) {
 	if decoded.Query != current.Query || decoded.Version != clickEvidenceVersion {
 		t.Fatalf("decoded = %#v", decoded)
 	}
+	migrated, err := evidenceCodec{}.Decode([]byte(
+		`{"version":2,"query":"q","models":{}}`,
+	))
+	if err != nil || migrated.Version != clickEvidenceVersion {
+		t.Fatalf("v2 migration = %#v, %v", migrated, err)
+	}
 	invalid := [][]byte{
 		[]byte("{"),
 		[]byte(`{}`),
 		[]byte(`{"query":{}}`),
-		[]byte(`{"version":3,"query":"q","models":{}}`),
+		[]byte(`{"version":4,"query":"q","models":{}}`),
+		[]byte(`{"version":2,"query":[],"models":{}}`),
+		[]byte(`{"version":3,"query":[],"models":{}}`),
+		[]byte(`{"version":3,"query":"","models":{}}`),
 		[]byte(`{"version":2,"query":"q","models":[]}`),
 		[]byte(`{"version":2,"query":"","models":{}}`),
 	}
@@ -297,7 +326,7 @@ func TestEvidenceCodecMigrationRoundTripAndRejection(t *testing.T) {
 
 func TestEvidenceCodecPersistsOnlyAggregates(t *testing.T) {
 	evidence := queryEvidenceFixture("query", 3, map[string]ResultEvidence{
-		"cluster": evidenceFixture("cluster", 3, 3, 1, evidenceWeights{6, 2}),
+		"cluster": evidenceFixture(3, 3, 1, evidenceWeights{6, 2}),
 	})
 	encoded, err := evidenceCodec{}.Encode(evidence)
 	if err != nil {
@@ -318,7 +347,7 @@ func TestEvidenceCodecPersistsOnlyAggregates(t *testing.T) {
 
 func TestValidateQueryEvidenceRejectsInvalidAggregates(t *testing.T) {
 	validResult := evidenceWithURL(
-		evidenceFixture("cluster", 2, 1, 1, evidenceWeights{2, 1}),
+		evidenceFixture(2, 1, 1, evidenceWeights{2, 1}),
 		"url",
 	)
 	valid := newQueryEvidence("query")
@@ -351,33 +380,43 @@ func TestValidateQueryEvidenceRejectsInvalidAggregates(t *testing.T) {
 		}),
 		withEvidenceResult(valid, "other", validResult),
 		withEvidenceResult(valid, "cluster", evidenceWithURL(
-			evidenceFixture("cluster", 1, 1, 0, evidenceWeights{1, 0}), "",
+			evidenceFixture(1, 1, 0, evidenceWeights{1, 0}), "",
 		)),
 		withEvidenceResult(
 			valid,
 			"cluster",
-			evidenceFixture("cluster", -1, 0, 0, evidenceWeights{}),
+			evidenceFixture(-1, 0, 0, evidenceWeights{}),
 		),
 		withEvidenceResult(
 			valid,
 			"cluster",
-			evidenceFixture("cluster", 1, 2, 0, evidenceWeights{}),
+			evidenceFixture(1, 2, 0, evidenceWeights{}),
 		),
 		withEvidenceResult(
 			valid,
 			"cluster",
-			evidenceFixture("cluster", 1, 1, 2, evidenceWeights{2, 1}),
+			evidenceFixture(1, 1, 2, evidenceWeights{2, 1}),
 		),
 		withEvidenceResult(
 			valid,
 			"cluster",
-			evidenceFixture("cluster", 1, 1, 1, evidenceWeights{-1, 0}),
+			evidenceFixture(1, 1, 1, evidenceWeights{-1, 0}),
 		),
 		withEvidenceResult(
 			valid,
 			"cluster",
-			evidenceFixture("cluster", 1, 1, 1, evidenceWeights{1, 2}),
+			evidenceFixture(1, 1, 1, evidenceWeights{1, 2}),
 		),
+		withEvidenceModel(valid, "model", ModelEvidence{
+			Assignment: "model", Results: map[string]ResultEvidence{},
+			FairPairs: map[string]FairPairEvidence{"bad": {}},
+		}),
+		withEvidenceModel(valid, "model", ModelEvidence{
+			Assignment: "model", Results: map[string]ResultEvidence{},
+			Interleaving: &InterleavingOutcome{
+				PrimaryRevision: "one", SecondaryRevision: "two", Impressions: 1,
+			},
+		}),
 	}
 	for index, evidence := range invalid {
 		if err := validateQueryEvidence(evidence); err == nil {

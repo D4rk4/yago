@@ -68,7 +68,9 @@ func assertLinearRerankOutcome(t *testing.T, outcome Outcome) {
 			retrieval.Contribution != retrieval.NormalizedValue {
 			t.Fatalf("retrieval explanation = %#v", retrieval)
 		}
-		if explanation.Signals[1].Known || !explanation.Signals[1].Used {
+		if explanation.Signals[1].Known || explanation.Signals[1].Used ||
+			explanation.Signals[1].NormalizedValue != 0 ||
+			explanation.Signals[1].Contribution != 0 {
 			t.Fatalf("unknown signal explanation = %#v", explanation.Signals[1])
 		}
 	}
@@ -143,7 +145,8 @@ func TestHistogramRerankExposesTreePathsAndSupportsPredictionOnly(t *testing.T) 
 		}
 		decision := explanation.Trees[0].Decisions[0]
 		if decision.Signal != searchcore.SignalRetrievalScore ||
-			!explanation.Signals[0].Used || explanation.Signals[0].NormalizedValue != decision.NormalizedValue {
+			!decision.Known || !explanation.Signals[0].Used ||
+			explanation.Signals[0].NormalizedValue != decision.NormalizedValue {
 			t.Fatalf("tree decision = %#v, signal = %#v", decision, explanation.Signals[0])
 		}
 	}
@@ -400,6 +403,32 @@ func TestCandidateConstruction(t *testing.T) {
 	if err != nil || len(candidates) != 2 ||
 		candidates[0].features.Dimension() != len(rankingFeatures) {
 		t.Fatalf("ranking candidates = %#v, %v", candidates, err)
+	}
+}
+
+func TestTreeExplanationDistinguishesNeutralAndLegacyMissingEvidence(t *testing.T) {
+	signals := rawSignalExplanations(retrievalEvidence(1))
+	trees := treeExplanations([]rankfit.HistogramTreeContribution{
+		{
+			TreeIndex: 1,
+			Decisions: []rankfit.HistogramTreeDecision{{
+				FeatureName:       searchcore.SignalStrictScore.Name(),
+				TerminatedMissing: true,
+			}},
+		},
+		{
+			TreeIndex: 2,
+			Decisions: []rankfit.HistogramTreeDecision{{
+				FeatureName: searchcore.SignalRelaxedScore.Name(),
+				Threshold:   1,
+				WentLeft:    true,
+			}},
+		},
+	}, signals)
+	if len(trees) != 2 || !trees[0].Decisions[0].TerminatedMissing ||
+		signals[1].Used || !signals[3].Used ||
+		trees[0].Decisions[0].Known || trees[1].Decisions[0].Known {
+		t.Fatalf("missing tree explanations = %#v, %#v", trees, signals)
 	}
 }
 

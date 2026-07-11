@@ -199,23 +199,25 @@ func promotionComparison(
 		reasons = append(reasons, "spam-result top-10 exposure increased")
 	}
 	if durationRegressed(
-		reference.Metrics.CPULatencyP95,
-		candidate.Metrics.CPULatencyP95,
+		reference.Metrics.RerankLatencyP95,
+		candidate.Metrics.RerankLatencyP95,
 		policy.MaximumRelativeLatencyIncrease,
 		policy.LatencySlack,
 	) {
-		reasons = append(reasons, "cpu latency p95 exceeded the promotion budget")
+		reasons = append(reasons, "rerank wall latency p95 exceeded the promotion budget")
 	}
-	if resourceRegressed(
-		reference.Metrics.PeerBytes,
-		candidate.Metrics.PeerBytes,
-		policy.MaximumRelativePeerByteIncrease,
-		policy.PeerByteSlack,
-	) {
-		reasons = append(reasons, "peer bytes exceeded the promotion budget")
-	}
-	if candidate.Metrics.PeerTimeouts > reference.Metrics.PeerTimeouts {
-		reasons = append(reasons, "peer timeouts increased")
+	if reference.Metrics.PeerResourcesMeasured && candidate.Metrics.PeerResourcesMeasured {
+		if resourceRegressed(
+			reference.Metrics.PeerBytes,
+			candidate.Metrics.PeerBytes,
+			policy.MaximumRelativePeerByteIncrease,
+			policy.PeerByteSlack,
+		) {
+			reasons = append(reasons, "peer bytes exceeded the promotion budget")
+		}
+		if candidate.Metrics.PeerTimeouts > reference.Metrics.PeerTimeouts {
+			reasons = append(reasons, "peer timeouts increased")
+		}
 	}
 	reasons = append(reasons, sliceRegressionReasons(reference.Slices, candidate.Slices)...)
 
@@ -340,7 +342,7 @@ func validatePromotionMetricSet(metrics MetricSet) error {
 	}
 	if metrics.Queries < 0 || metrics.UnsafeErrors < 0 || metrics.SpamErrors < 0 ||
 		metrics.PeerBytes < 0 || metrics.PeerTimeouts < 0 ||
-		metrics.CPULatencyP50 < 0 || metrics.CPULatencyP95 < 0 {
+		metrics.RerankLatencyP50 < 0 || metrics.RerankLatencyP95 < 0 {
 		return fmt.Errorf("count and latency metrics must be non-negative")
 	}
 

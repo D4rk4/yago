@@ -91,6 +91,18 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Notes:    "Requires a valid admin session with a CSRF token, or an API key with the search:read scope.",
 	},
 	{
+		Name:     "Search ranking trusted domains",
+		Path:     "/api/admin/v1/search/ranking/trust",
+		Methods:  []string{"GET", "PUT"},
+		State:    Implemented,
+		Behavior: "Reads or atomically replaces the bounded operator-curated trusted-domain policy used by domain authority.",
+		Evidence: []string{
+			"yagonode/internal/hosttrust/*_test.go",
+			"yagonode/internal/yagonode/search_host_trust_endpoint_test.go",
+		},
+		Notes: "GET requires an admin session or admin:read API key. PUT requires a session with CSRF or an admin:write API key.",
+	},
+	{
 		Name:     "Crawl dispatch",
 		Path:     "/crawl",
 		Methods:  []string{"POST"},

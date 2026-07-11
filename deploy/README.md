@@ -158,6 +158,29 @@ previous tag, and a GitHub Release carries the assets. Container images are not
 published by CI; build them locally from the Dockerfiles (`docker compose
 build`) when a container deployment is wanted.
 
+## Container build provenance
+
+Both product Dockerfiles pin the Go builder and final runtime base images by
+SHA-256 digest. Base-image changes are therefore explicit source changes rather
+than mutable-tag resolution at build time. The readable tags remain beside the
+digests so operators can see the selected release.
+
+Set `SOURCE_REVISION` explicitly when building a source checkout. Compose passes
+it to both product images and each final image records it in the
+`org.opencontainers.image.revision` label; the source repository is recorded in
+`org.opencontainers.image.source`.
+
+```sh
+SOURCE_REVISION=$(git rev-parse HEAD) docker compose build
+docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }} {{ index .Config.Labels "org.opencontainers.image.source" }}' yago-node:latest
+docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }} {{ index .Config.Labels "org.opencontainers.image.source" }}' yagocrawler:latest
+```
+
+The default revision is `unknown`, which makes an omitted caller stamp visible
+instead of guessing from a possibly dirty worktree. `SOURCE_REVISION` identifies
+source provenance; the separate release `VERSION` build argument controls the
+binary version reported by `--version`.
+
 ## Container layout migration (OPS-04)
 
 Since the `/opt/yago` layout landed, the container images use the same tree as

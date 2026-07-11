@@ -35,9 +35,10 @@ type QueryMetrics struct {
 	SpamErrors                      int
 	UnsafeExposureAt10              float64
 	SpamExposureAt10                float64
+	PeerResourcesMeasured           bool
 	PeerBytes                       int64
 	PeerTimeouts                    int
-	CPULatency                      time.Duration
+	RerankLatency                   time.Duration
 }
 
 type MetricSet struct {
@@ -55,10 +56,11 @@ type MetricSet struct {
 	SpamErrors                      int
 	UnsafeExposureAt10              float64
 	SpamExposureAt10                float64
+	PeerResourcesMeasured           bool
 	PeerBytes                       int64
 	PeerTimeouts                    int
-	CPULatencyP50                   time.Duration
-	CPULatencyP95                   time.Duration
+	RerankLatencyP50                time.Duration
+	RerankLatencyP95                time.Duration
 }
 
 type EvaluationReport struct {
@@ -104,7 +106,8 @@ func validateObservation(observation QueryObservation) error {
 	if observationID(observation) == "" {
 		return fmt.Errorf("observation id and query cluster are empty")
 	}
-	if observation.PeerBytes < 0 || observation.PeerTimeouts < 0 || observation.CPULatency < 0 {
+	if observation.PeerBytes < 0 || observation.PeerTimeouts < 0 ||
+		observation.RerankLatency < 0 {
 		return fmt.Errorf(
 			"observation %q has negative resource measurements",
 			observationID(observation),
@@ -139,9 +142,10 @@ func measureQuery(id string, observation QueryObservation) QueryMetrics {
 		IntentCoverageAt10:              intentCoverage(candidates, judgment, relevanceCutoff),
 		DuplicateClusterRateAt10:        duplicateClusterRate(candidates, relevanceCutoff),
 		UniqueRegistrableDomainCoverage: registrableDomainCoverage(candidates, relevanceCutoff),
+		PeerResourcesMeasured:           observation.PeerResourcesMeasured,
 		PeerBytes:                       observation.PeerBytes,
 		PeerTimeouts:                    observation.PeerTimeouts,
-		CPULatency:                      observation.CPULatency,
+		RerankLatency:                   observation.RerankLatency,
 	}
 	if judgment.Navigational {
 		metrics.NavigationalReciprocalRank = canonicalReciprocalRank(
@@ -507,6 +511,7 @@ func metricSetFor(queries []QueryMetrics) MetricSet {
 	navigational := 0
 	intentQueries := 0
 	latencies := make([]time.Duration, 0, len(queries))
+	metrics.PeerResourcesMeasured = true
 	for _, query := range queries {
 		metrics.RecallAt100 += query.RecallAt100
 		metrics.RecallAt200 += query.RecallAt200
@@ -518,9 +523,13 @@ func metricSetFor(queries []QueryMetrics) MetricSet {
 		metrics.SpamErrors += query.SpamErrors
 		metrics.UnsafeExposureAt10 += query.UnsafeExposureAt10
 		metrics.SpamExposureAt10 += query.SpamExposureAt10
-		metrics.PeerBytes += query.PeerBytes
-		metrics.PeerTimeouts += query.PeerTimeouts
-		latencies = append(latencies, query.CPULatency)
+		metrics.PeerResourcesMeasured = metrics.PeerResourcesMeasured &&
+			query.PeerResourcesMeasured
+		if query.PeerResourcesMeasured {
+			metrics.PeerBytes += query.PeerBytes
+			metrics.PeerTimeouts += query.PeerTimeouts
+		}
+		latencies = append(latencies, query.RerankLatency)
 		if query.Navigational {
 			metrics.NavigationalMRR += query.NavigationalReciprocalRank
 			navigational++
@@ -547,8 +556,8 @@ func metricSetFor(queries []QueryMetrics) MetricSet {
 		metrics.AlphaNDCGAt10 /= float64(intentQueries)
 		metrics.IntentCoverageAt10 /= float64(intentQueries)
 	}
-	metrics.CPULatencyP50 = durationPercentile(latencies, 0.5)
-	metrics.CPULatencyP95 = durationPercentile(latencies, 0.95)
+	metrics.RerankLatencyP50 = durationPercentile(latencies, 0.5)
+	metrics.RerankLatencyP95 = durationPercentile(latencies, 0.95)
 
 	return metrics
 }

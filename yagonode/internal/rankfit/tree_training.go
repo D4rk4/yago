@@ -70,6 +70,7 @@ func TrainHistogramLambdaMART(
 		featureDefinitions: append([]FeatureDefinition(nil), featureDefinitions...),
 		learningRate:       options.LearningRate,
 		trees:              cloneHistogramRankingTrees(trees),
+		missingPolicy:      missingEvidenceNeutral,
 	}
 
 	return model, report, model.Validate()
@@ -159,7 +160,12 @@ func updateHistogramScores(
 	learningRate float64,
 ) {
 	for _, row := range set.rows {
-		value, _ := tree.evaluate(row.values, nil, false)
+		value, _ := tree.evaluate(
+			normalizedRankingExample{values: row.values, known: row.known},
+			nil,
+			missingEvidenceNeutral,
+			false,
+		)
 		scores[row.queryIndex][row.exampleIndex] += learningRate * value
 	}
 }

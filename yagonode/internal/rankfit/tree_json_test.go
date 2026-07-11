@@ -94,6 +94,64 @@ func TestHistogramModelJSONRejectsInvalidDocumentsWithoutMutation(t *testing.T) 
 	}
 }
 
+func TestHistogramModelFormatsPreserveMissingEvidenceSemantics(t *testing.T) {
+	legacyJSON := `{"format":"yago-histogram-lambdamart-v1","features":[{"name":"quality","direction":0}],"learning_rate":1,"trees":[{"interaction_group":"quality","allowed_feature_indices":[0],"root":{"feature":0,"threshold":0,"left":{"leaf":-1},"right":{"leaf":1}}}]}`
+	var legacy HistogramLambdaMARTModel
+	if err := json.Unmarshal([]byte(legacyJSON), &legacy); err != nil {
+		t.Fatalf("decode legacy model: %v", err)
+	}
+	neutral := mustHistogramModel(
+		t,
+		definitionsForTest("quality"),
+		1,
+		histogramTree(
+			"quality",
+			[]int{0},
+			histogramSplit(0, 0, histogramLeaf(-1), histogramLeaf(1)),
+		),
+	)
+	group := mustQueryGroup(
+		t,
+		"missing",
+		mustKnownRankingExample(t, "missing", []float64{0}, []bool{false}),
+		mustKnownRankingExample(t, "low", []float64{-1}, []bool{true}),
+		mustKnownRankingExample(t, "high", []float64{1}, []bool{true}),
+	)
+	assertMissingHistogramDecision(t, legacy, group, -1, false)
+	assertMissingHistogramDecision(t, neutral, group, 0, true)
+	encodedLegacy, err := json.Marshal(legacy)
+	if err != nil || !strings.Contains(string(encodedLegacy), histogramLambdaMARTLegacyFormat) {
+		t.Fatalf("legacy encoding = %s, %v", encodedLegacy, err)
+	}
+}
+
+func assertMissingHistogramDecision(
+	t *testing.T,
+	model HistogramLambdaMARTModel,
+	group QueryGroup,
+	wantScore float64,
+	wantTermination bool,
+) {
+	t.Helper()
+	explanations, err := model.Explain(group)
+	if err != nil {
+		t.Fatalf("explain missing evidence: %v", err)
+	}
+	for _, explanation := range explanations {
+		if explanation.DocumentIdentifier != "missing" {
+			continue
+		}
+		decision := explanation.TreeContributions[0].Decisions[0]
+		if explanation.Score != wantScore || decision.Known ||
+			decision.TerminatedMissing != wantTermination {
+			t.Fatalf("missing tree explanation = %#v", explanation)
+		}
+
+		return
+	}
+	t.Fatal("missing tree explanation was not found")
+}
+
 func TestHistogramTreeDocumentConversionErrors(t *testing.T) {
 	zero := 0.0
 	feature := 0

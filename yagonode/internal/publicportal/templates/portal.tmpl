@@ -157,11 +157,11 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   {{end}}{{end}}
   </ul>
   {{else}}
-  {{if .Results}}<ul class="results">{{end}}
+  {{if .Results}}<ul class="results"{{if $.ClickCapture}} data-t="{{$.ImpressionToken}}"{{end}}>{{end}}
   {{range .Results}}
   <li class="result">
     {{if .FaviconURL}}<img class="fav" src="{{.FaviconURL}}" alt="" width="16" height="16" loading="lazy">{{end}}
-    <a class="title" href="{{.URL}}"{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span class="sr-only"> (opens in new tab)</span>{{end}}</a>
+    <a class="title" href="{{.URL}}"{{if $.ClickCapture}} data-p="{{.Position}}" data-i="{{.URLIdentity}}"{{end}}{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span class="sr-only"> (opens in new tab)</span>{{end}}</a>
     <div class="url">{{if .DisplayURL}}{{.DisplayURL}}{{else}}{{.URL}}{{end}}{{if .Provenance}} · <span class="prov prov-{{.Provenance}}">{{.Provenance}}</span>{{end}}{{if .Date}} · {{.Date}}{{end}}{{if .SizeName}} · {{.SizeName}}{{end}}{{if .CachedURL}} · <a href="{{.CachedURL}}">cached</a>{{end}}</div>
     {{if .SnippetHTML}}<p>{{.SnippetHTML}}</p>{{else if .Snippet}}<p>{{.Snippet}}</p>{{end}}
   </li>
@@ -257,6 +257,19 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
     else if (e.key === "Escape") { close(); }
   });
   input.addEventListener("blur", function () { setTimeout(close, 120); });
+})();
+(function () {
+  var results = document.querySelector("ul.results[data-t]");
+  if (!results || !navigator.sendBeacon) return;
+  results.addEventListener("click", function (event) {
+    var link = event.target.closest("a[data-p][data-i]");
+    if (!link) return;
+    var body = new URLSearchParams();
+    body.set("t", results.getAttribute("data-t"));
+    body.set("i", link.getAttribute("data-i"));
+    body.set("p", link.getAttribute("data-p"));
+    navigator.sendBeacon("/searchclick", body);
+  });
 })();
 </script>
 </body>

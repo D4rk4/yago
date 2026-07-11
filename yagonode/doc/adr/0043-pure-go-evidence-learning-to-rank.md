@@ -20,31 +20,63 @@ could be confused with fetch time, missing quality evidence was positive, click
 evidence was not tied to a signed impression, and ranking policy ran in more than
 one stage.
 
+The first learned-model formats also collapsed an observed zero and missing
+evidence into one value. Training did not include the serving RM3 stage, global
+fusion could consume the local learned window with foreign rows, local-only
+evaluation reported peer resources as zero, and click aggregates did not provide
+an operationally separated online-comparison and implicit-qrel path.
+
 ## Decision
 
 YagoRank uses a bounded in-process pipeline:
 
-1. Strict and relaxed fielded BM25, phrases, SDM, and bounded RM3 form the local
-   candidate union. Local and YaCy peer lists use deterministic RRF.
+1. Strict and relaxed fielded BM25 and phrase and SDM evidence form the initial
+   local candidate union. Serving, explanation, and training then apply bounded
+   RM3 before constructing lexical evidence. Local and YaCy peer lists use
+   deterministic RRF. Global serving retrieves at least twice the learned
+   window from the merged list and scans only until its bounded local candidate
+   window is full, preserving peer and web slots.
 2. Crawl and peer evidence is persisted before search: lifecycle dates, inbound
    anchors, content quality and safety, exact and near-duplicate clusters,
    registrable-domain authority, and decayed peer reputation.
-3. Candidates carry a fixed 33-signal evidence vector. A signed linear
-   LambdaRank model is the low-data learned model. A bounded histogram
-   LambdaMART model is available for larger judgment sets.
-4. Active snapshots are versioned JSON in the vault. Status and snapshot are one
+   Domain authority reads a deterministic bounded sample of at most 1,048,576
+   unique citations. An operator can persist at most 256 canonical domain names
+   or IP literals and a TrustRank blend in `[0,1]` in the vault; the
+   default list is empty. Authenticated GET and PUT at
+   `/api/admin/v1/search/ranking/trust` and the YagoRank console edit the same
+   policy, and a change triggers an immediate authority refresh.
+3. Candidates carry a fixed 33-signal evidence vector plus a presence mask.
+   Current `v2` linear and histogram formats exclude unknown values from robust
+   centers and scales. Linear unknowns contribute zero. Histogram thresholds use
+   observed values only, and a tree path that reaches a missing split terminates
+   with zero contribution. Readers preserve `v1` zero-imputation and tree-routing
+   behavior and deterministic legacy reserialization, while newly trained models
+   use `v2`.
+4. A signed linear LambdaRank model is the low-data learned model. Production
+   histogram LambdaMART defaults to 64 trees, depth 4, and 32 bins. Every tree
+   selects one named interaction allowlist: candidate retrieval, field and term
+   dependence, content quality, temporal authority, federation support, or a
+   small cross-family relevance-quality set. Multiple features within that set
+   may occur on one path.
+5. Active snapshots are versioned JSON in the vault. Status and snapshot are one
    atomic view. Compare-and-swap activation rejects a proposal if its evaluated
    incumbent changed and keeps eight rollback revisions.
-5. Query-clustered train, development, and test partitions, including dated
+6. Query-clustered train, development, and test partitions, including dated
    chronological clusters, gate promotion. One frozen candidate pool compares
    lexical baseline, active incumbent, and proposal. The proposal must beat both
    references by at least 2% held-out NDCG with a non-negative 95% cluster-level
    paired-bootstrap lower bound over at least 20 independent query clusters. It
-   rejects recall, discounted top-10 safety/spam exposure, slice, latency,
-   peer-byte, and peer-timeout regressions.
-6. HMAC-bound randomized impressions provide aggregate clipped IPS and SNIPS
-   click evidence. Curated judgments replace click evidence for the same query.
-7. Learned scoring applies only to locally stored candidates until representative
+   rejects recall, discounted top-10 safety/spam exposure, slice, and p95 rerank
+   wall-latency regressions. Peer bytes and timeouts are nullable and gate a
+   comparison only when both arms measured them.
+7. HMAC-bound impressions run automatic Team Draft between a comparable active
+   revision and the lexical baseline. That aggregate click credit is only online
+   comparison evidence. Without a comparable revision, adjacent FairPairs use
+   equal randomized exposure. Only a FairPairs winner whose 95% Wilson interval
+   excludes an even click split after the minimum evidence threshold becomes an
+   implicit qrel. Legacy pointwise aggregates are not qrels, and curated
+   judgments replace implicit evidence for the same query.
+8. Learned scoring applies only to locally stored candidates until representative
    federated training evidence exists. Safety, persistent cluster consolidation,
    MMR, host crowding, date order, and paging run once afterward.
 
@@ -60,8 +92,8 @@ pool is limited to 200,000 results, 100,000 model examples, 8,000,000 feature
 values, and 1,000,000 preference pairs. The histogram model is limited to 64
 trees, depth 4, and 32 bins. RM3 uses five documents, 256 tokens per document,
 and three expansion terms. Model history, peer evidence, click aggregates, HMAC
-replay state, safety training data, and content-cluster candidate sets have fixed
-limits.
+replay state, safety training data, content-cluster candidate sets, trusted
+domains, and authority citations have fixed limits.
 
 ## Consequences
 
@@ -69,6 +101,11 @@ Search remains pure Go and CPU-only. Training is slower than coordinate ascent
 but is admin-triggered, context-cancellable, and bounded. Learned snapshots can
 only change serving after held-out promotion or explicit rollback. YaCy wire
 formats and RWI exchange remain unchanged.
+
+New model snapshots distinguish missing evidence without changing the result of
+loading an existing `v1` snapshot. Evaluation does not invent zero-valued peer
+resource measurements, and click-derived qrels now require randomized pairwise
+evidence with a statistically decisive outcome.
 
 The model is limited to stored lexical, graph, quality, safety, temporal, and
 peer signals. It does not provide dense semantic retrieval. That is an explicit

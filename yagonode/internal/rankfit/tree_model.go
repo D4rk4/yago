@@ -2,12 +2,16 @@ package rankfit
 
 import "slices"
 
-const histogramLambdaMARTFormat = "yago-histogram-lambdamart-v1"
+const (
+	histogramLambdaMARTLegacyFormat = "yago-histogram-lambdamart-v1"
+	histogramLambdaMARTFormat       = "yago-histogram-lambdamart-v2"
+)
 
 type HistogramLambdaMARTModel struct {
 	featureDefinitions []FeatureDefinition
 	learningRate       float64
 	trees              []histogramRankingTree
+	missingPolicy      missingEvidencePolicy
 }
 
 type histogramRankingTree struct {
@@ -26,10 +30,12 @@ type histogramTreeNode struct {
 }
 
 type HistogramTreeDecision struct {
-	FeatureName string
-	Value       float64
-	Threshold   float64
-	WentLeft    bool
+	FeatureName       string
+	Known             bool
+	TerminatedMissing bool
+	Value             float64
+	Threshold         float64
+	WentLeft          bool
 }
 
 type HistogramTreeContribution struct {
@@ -57,10 +63,25 @@ func newHistogramLambdaMARTModel(
 	learningRate float64,
 	trees []histogramRankingTree,
 ) (HistogramLambdaMARTModel, error) {
+	return newHistogramLambdaMARTModelWithPolicy(
+		featureDefinitions,
+		learningRate,
+		trees,
+		missingEvidenceNeutral,
+	)
+}
+
+func newHistogramLambdaMARTModelWithPolicy(
+	featureDefinitions []FeatureDefinition,
+	learningRate float64,
+	trees []histogramRankingTree,
+	missingPolicy missingEvidencePolicy,
+) (HistogramLambdaMARTModel, error) {
 	model := HistogramLambdaMARTModel{
 		featureDefinitions: append([]FeatureDefinition(nil), featureDefinitions...),
 		learningRate:       learningRate,
 		trees:              cloneHistogramRankingTrees(trees),
+		missingPolicy:      missingPolicy,
 	}
 	if err := model.Validate(); err != nil {
 		return HistogramLambdaMARTModel{}, err
@@ -127,7 +148,7 @@ func (m HistogramLambdaMARTModel) normalizedGroup(
 		return normalizedQueryGroup{}, err
 	}
 
-	return normalizeQueryGroup(group, len(m.featureDefinitions))
+	return normalizeQueryGroup(group, len(m.featureDefinitions), m.missingPolicy)
 }
 
 func (m HistogramLambdaMARTModel) evaluateHistogramGroup(
@@ -161,7 +182,12 @@ func (m HistogramLambdaMARTModel) evaluateHistogramExample(
 		evaluation.contributions = make([]HistogramTreeContribution, 0, len(m.trees))
 	}
 	for index, tree := range m.trees {
-		value, decisions := tree.evaluate(example.values, m.featureDefinitions, includePath)
+		value, decisions := tree.evaluate(
+			example,
+			m.featureDefinitions,
+			m.missingPolicy,
+			includePath,
+		)
 		contribution := m.learningRate * value
 		evaluation.score += contribution
 		if includePath {
@@ -181,18 +207,32 @@ func (m HistogramLambdaMARTModel) evaluateHistogramExample(
 }
 
 func (t histogramRankingTree) evaluate(
-	values []float64,
+	example normalizedRankingExample,
 	featureDefinitions []FeatureDefinition,
+	missingPolicy missingEvidencePolicy,
 	includePath bool,
 ) (float64, []HistogramTreeDecision) {
 	node := t.root
 	var decisions []HistogramTreeDecision
 	for !node.leaf {
-		wentLeft := values[node.featureIndex] <= node.threshold
+		known := example.known[node.featureIndex]
+		if !known && missingPolicy == missingEvidenceNeutral {
+			if includePath {
+				decisions = append(decisions, HistogramTreeDecision{
+					FeatureName:       featureDefinitions[node.featureIndex].Name,
+					TerminatedMissing: true,
+					Threshold:         node.threshold,
+				})
+			}
+
+			return 0, decisions
+		}
+		wentLeft := example.values[node.featureIndex] <= node.threshold
 		if includePath {
 			decisions = append(decisions, HistogramTreeDecision{
 				FeatureName: featureDefinitions[node.featureIndex].Name,
-				Value:       values[node.featureIndex],
+				Known:       known,
+				Value:       example.values[node.featureIndex],
 				Threshold:   node.threshold,
 				WentLeft:    wentLeft,
 			})

@@ -15,14 +15,15 @@ import (
 
 const (
 	clickBucket                 vault.Name = "search_clicks"
-	clickEvidenceVersion                   = 2
+	clickEvidenceVersion                   = 3
+	legacyClickEvidenceVersion             = 2
 	maximumModelsPerQuery                  = 8
 	maximumResultsPerModel                 = 64
 	maximumStoredQueries                   = 4096
 	maximumAggregateValue                  = 1_000_000_000
 	maximumAggregateWeight                 = 10_000_000_000
 	maximumInversePropensity               = 10.0
-	adjacentPairModelAssignment            = "fair-pairs-v1"
+	adjacentPairModelAssignment            = "fair-pairs-v2"
 )
 
 type ResultEvidence struct {
@@ -36,10 +37,12 @@ type ResultEvidence struct {
 }
 
 type ModelEvidence struct {
-	Assignment            string                    `json:"assignment"`
-	Impressions           int                       `json:"impressions"`
-	RandomizedImpressions int                       `json:"randomized_impressions"`
-	Results               map[string]ResultEvidence `json:"results"`
+	Assignment            string                      `json:"assignment"`
+	Impressions           int                         `json:"impressions"`
+	RandomizedImpressions int                         `json:"randomized_impressions"`
+	Results               map[string]ResultEvidence   `json:"results"`
+	FairPairs             map[string]FairPairEvidence `json:"fair_pairs,omitempty"`
+	Interleaving          *InterleavingOutcome        `json:"interleaving,omitempty"`
 }
 
 type QueryEvidence struct {
@@ -52,6 +55,11 @@ type QueryEvidence struct {
 type PreparedImpression struct {
 	Token      string
 	Candidates []DisplayedCandidate
+}
+
+type DraftRanking struct {
+	Revision   string
+	Candidates []Candidate
 }
 
 type evidenceCodec struct{}
@@ -87,6 +95,18 @@ func (evidenceCodec) Decode(raw []byte) (QueryEvidence, error) {
 		}
 
 		return newQueryEvidence(query), nil
+	}
+	if header.Version == legacyClickEvidenceVersion {
+		var evidence QueryEvidence
+		if err := json.Unmarshal(raw, &evidence); err != nil {
+			return QueryEvidence{}, fmt.Errorf("decode legacy click evidence: %w", err)
+		}
+		evidence.Version = clickEvidenceVersion
+		if err := validateQueryEvidence(evidence); err != nil {
+			return QueryEvidence{}, err
+		}
+
+		return evidence, nil
 	}
 	if header.Version != clickEvidenceVersion {
 		return QueryEvidence{}, fmt.Errorf(
@@ -158,6 +178,37 @@ func (s *Store) PrepareImpression(
 	return PreparedImpression{Token: token, Candidates: displayed}, nil
 }
 
+func (s *Store) PrepareTeamDraft(
+	ctx context.Context,
+	query string,
+	primary DraftRanking,
+	secondary DraftRanking,
+	limit int,
+) (PreparedImpression, error) {
+	seed, err := s.issuer.experimentSeed()
+	if err != nil {
+		return PreparedImpression{}, err
+	}
+	displayed := TeamDraftInterleave(primary.Candidates, secondary.Candidates, seed, limit)
+	assignment, err := teamDraftAssignment(primary.Revision, secondary.Revision)
+	if err != nil {
+		return PreparedImpression{}, err
+	}
+	token, claims, err := s.issuer.issue(query, assignment, displayed)
+	if err != nil {
+		return PreparedImpression{}, err
+	}
+	comparison := InterleavingOutcome{
+		PrimaryRevision:   primary.Revision,
+		SecondaryRevision: secondary.Revision,
+	}
+	if err := s.recordInterleavingImpression(ctx, claims, comparison); err != nil {
+		return PreparedImpression{}, err
+	}
+
+	return PreparedImpression{Token: token, Candidates: displayed}, nil
+}
+
 func (s *Store) RecordClick(
 	ctx context.Context,
 	token string,
@@ -192,6 +243,10 @@ func (s *Store) RecordClick(
 			)
 		}
 		model.Results[click.Candidate.ClusterIdentity] = result
+		if click.Pair != nil {
+			addFairPairClick(&model, click.Candidate.ClusterIdentity, *click.Pair)
+		}
+		addInterleavingClick(&model, click.Candidate.Attribution)
 		record.Models[click.ModelAssignment] = model
 
 		return s.records.Put(tx, vault.Key(click.Query), record)
@@ -207,6 +262,20 @@ func (s *Store) recordImpression(ctx context.Context, claims impressionClaims) e
 		return s.updateImpressionEvidence(tx, claims)
 	}); err != nil {
 		return fmt.Errorf("record impression: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Store) recordInterleavingImpression(
+	ctx context.Context,
+	claims impressionClaims,
+	comparison InterleavingOutcome,
+) error {
+	if err := s.vault.Update(ctx, func(tx *vault.Txn) error {
+		return s.updateInterleavingEvidence(tx, claims, comparison)
+	}); err != nil {
+		return fmt.Errorf("record interleaving impression: %w", err)
 	}
 
 	return nil
@@ -231,11 +300,43 @@ func (s *Store) updateImpressionEvidence(tx *vault.Txn, claims impressionClaims)
 		return err
 	}
 	addImpressionResults(&model, claims.results)
+	addFairPairImpressions(&model, claims.results)
 	record.Models[claims.modelAssignment] = model
 	record.ObservedAtUnix = max(record.ObservedAtUnix, claims.issuedAt)
 
 	if err := s.records.Put(tx, vault.Key(claims.query), record); err != nil {
 		return fmt.Errorf("store impression evidence: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Store) updateInterleavingEvidence(
+	tx *vault.Txn,
+	claims impressionClaims,
+	comparison InterleavingOutcome,
+) error {
+	record, ok, err := s.records.Get(tx, vault.Key(claims.query))
+	if err != nil {
+		return fmt.Errorf("read interleaving evidence: %w", err)
+	}
+	if !ok {
+		if err := s.ensureQueryCapacity(tx); err != nil {
+			return err
+		}
+		record = newQueryEvidence(claims.query)
+	}
+	model, err := impressionModel(record, claims.modelAssignment)
+	if err != nil {
+		return err
+	}
+	comparison.Impressions = incrementAggregate(comparison.Impressions)
+	model.Interleaving = mergeInterleavingOutcome(model.Interleaving, comparison)
+	addImpressionResults(&model, claims.results)
+	record.Models[claims.modelAssignment] = model
+	record.ObservedAtUnix = max(record.ObservedAtUnix, claims.issuedAt)
+	if err := s.records.Put(tx, vault.Key(claims.query), record); err != nil {
+		return fmt.Errorf("store interleaving evidence: %w", err)
 	}
 
 	return nil
@@ -412,21 +513,35 @@ func validateQueryEvidence(evidence QueryEvidence) error {
 		return fmt.Errorf("click evidence model set is invalid")
 	}
 	for assignment, model := range evidence.Models {
-		if assignment == "" || assignment != strings.TrimSpace(assignment) ||
-			len(assignment) > maximumModelAssignmentBytes || model.Assignment != assignment {
-			return fmt.Errorf("click evidence model identity is invalid")
+		if err := validateModelEvidence(assignment, model); err != nil {
+			return err
 		}
-		if !boundedAggregate(model.Impressions) ||
-			!boundedAggregate(model.RandomizedImpressions) ||
-			model.RandomizedImpressions > model.Impressions || model.Results == nil ||
-			len(model.Results) > maximumResultsPerModel {
-			return fmt.Errorf("click evidence model aggregate is invalid")
+	}
+
+	return nil
+}
+
+func validateModelEvidence(assignment string, model ModelEvidence) error {
+	if assignment == "" || assignment != strings.TrimSpace(assignment) ||
+		len(assignment) > maximumModelAssignmentBytes || model.Assignment != assignment {
+		return fmt.Errorf("click evidence model identity is invalid")
+	}
+	if !boundedAggregate(model.Impressions) ||
+		!boundedAggregate(model.RandomizedImpressions) ||
+		model.RandomizedImpressions > model.Impressions || model.Results == nil ||
+		len(model.Results) > maximumResultsPerModel {
+		return fmt.Errorf("click evidence model aggregate is invalid")
+	}
+	for identity, result := range model.Results {
+		if err := validateResultEvidence(identity, result); err != nil {
+			return err
 		}
-		for identity, result := range model.Results {
-			if err := validateResultEvidence(identity, result); err != nil {
-				return err
-			}
-		}
+	}
+	if err := validateFairPairEvidence(model.FairPairs); err != nil {
+		return err
+	}
+	if err := validateInterleavingEvidence(assignment, model.Interleaving); err != nil {
+		return err
 	}
 
 	return nil

@@ -39,8 +39,8 @@ type HistogramLambdaMARTTrainingReport struct {
 
 func DefaultHistogramLambdaMARTTrainingOptions() HistogramLambdaMARTTrainingOptions {
 	return HistogramLambdaMARTTrainingOptions{
-		MaximumTrees:                             32,
-		MaximumDepth:                             3,
+		MaximumTrees:                             maximumHistogramTrees,
+		MaximumDepth:                             maximumHistogramDepth,
 		MaximumBins:                              32,
 		LearningRate:                             0.05,
 		L2Regularization:                         1,

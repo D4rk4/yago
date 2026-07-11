@@ -1,0 +1,25 @@
+#!/bin/sh
+
+set -eu
+
+profile=${1:?coverage profile is required}
+minimum=${2:-100}
+
+awk -v minimum="$minimum" '
+NR > 1 {
+	total += $2
+	if ($3 > 0) {
+		covered += $2
+	}
+}
+END {
+	if (total == 0) {
+		print "    no statements to cover"
+		exit 0
+	}
+	printf "    total: %.6f%% (%d/%d statements)\n", covered * 100 / total, covered, total
+	if (covered * 100 < minimum * total) {
+		exit 1
+	}
+}
+' "$profile"

@@ -65,6 +65,7 @@ type yagorankPageData struct {
 	Tune          *RankingTuneResult
 	LearnedModel  *learnedModelStatusView
 	TrainOutcome  *LearnedModelTrainOutcome
+	HostTrust     *hostTrustStatusView
 	Notice        string
 	Error         string
 }
@@ -75,6 +76,7 @@ type yagorankView struct {
 	weights      []RankingWeight
 	tune         *RankingTuneResult
 	trainOutcome *LearnedModelTrainOutcome
+	trust        *hostTrustStatusView
 	notice       string
 	errMsg       string
 }
@@ -107,6 +109,8 @@ func (c *Console) handleYagoRankAction(w http.ResponseWriter, r *http.Request) {
 		c.applyYagoRankModelTraining(w, r, LearnedModelHistogramLambdaMART)
 	case "rollback-model":
 		c.applyYagoRankModelRollback(w, r)
+	case "save-trust":
+		c.applyYagoRankHostTrust(w, r)
 	default:
 		c.renderYagoRank(w, r, yagorankView{
 			weights: c.ranking.Profile(r.Context()).Weights,
@@ -174,6 +178,7 @@ func (c *Console) renderYagoRank(w http.ResponseWriter, r *http.Request, view ya
 		Tune:          view.tune,
 		LearnedModel:  learnedModelStatus(r.Context(), c.ranking),
 		TrainOutcome:  view.trainOutcome,
+		HostTrust:     hostTrustStatus(r.Context(), c.ranking, view.trust),
 		Notice:        view.notice,
 		Error:         view.errMsg,
 	})

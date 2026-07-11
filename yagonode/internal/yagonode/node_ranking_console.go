@@ -42,11 +42,13 @@ type rankingConsole struct {
 	curated curatedJudgments
 	trainer rankingTrainingRunner
 	models  rankingModelCatalog
+	trust   trustedDomainCatalog
 }
 
 type rankingConsoleLearning struct {
 	trainer rankingTrainingRunner
 	models  rankingModelCatalog
+	trust   trustedDomainCatalog
 }
 
 // newRankingConsole wires the console section; a nil holder (the in-memory
@@ -65,6 +67,7 @@ func newRankingConsole(
 	if len(learning) != 0 {
 		console.trainer = learning[0].trainer
 		console.models = learning[0].models
+		console.trust = learning[0].trust
 	}
 
 	return console

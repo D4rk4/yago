@@ -80,6 +80,7 @@ type ValidatedClick struct {
 	Query           string
 	ModelAssignment string
 	Candidate       DisplayedCandidate
+	Pair            *FairPairMember
 }
 
 func NewIssuer(entropy io.Reader, clock func() time.Time) (*Issuer, error) {
@@ -193,6 +194,7 @@ func (i *Issuer) ValidateClick(
 		Query:           claims.query,
 		ModelAssignment: claims.modelAssignment,
 		Candidate:       *matched,
+		Pair:            pairedFairPairMember(claims.results, *matched),
 	}, nil
 }
 

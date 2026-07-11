@@ -36,7 +36,7 @@ func TestRobustQueryNormalization(t *testing.T) {
 		mustRankingExample(t, "e", 0, 1),
 		mustRankingExample(t, "f", 0, 100),
 	)
-	normalized, err := normalizeQueryGroup(group, 1)
+	normalized, err := normalizeQueryGroup(group, 1, missingEvidenceNeutral)
 	if err != nil {
 		t.Fatalf("normalizeQueryGroup: %v", err)
 	}
@@ -44,11 +44,32 @@ func TestRobustQueryNormalization(t *testing.T) {
 		normalized.examples[len(normalized.examples)-1].values[0] != maximumNormalizedFeatureMagnitude {
 		t.Fatalf("normalized outlier was not bounded: %#v", normalized)
 	}
-	if _, err := normalizeQueryGroup(QueryGroup{}, 1); err == nil {
+	if _, err := normalizeQueryGroup(QueryGroup{}, 1, missingEvidenceNeutral); err == nil {
 		t.Errorf("normalizeQueryGroup accepted an invalid group")
 	}
-	if _, err := normalizeQueryGroup(group, 2); err == nil {
+	if _, err := normalizeQueryGroup(group, 2, missingEvidenceNeutral); err == nil {
 		t.Errorf("normalizeQueryGroup accepted the wrong dimension")
+	}
+	if _, err := normalizeQueryGroup(group, 1, 0); err == nil {
+		t.Errorf("normalizeQueryGroup accepted an invalid missing policy")
+	}
+
+	sparse := mustQueryGroup(
+		t,
+		"sparse",
+		mustKnownRankingExample(t, "low", []float64{0, 0}, []bool{true, false}),
+		mustKnownRankingExample(t, "missing", []float64{0, 0}, []bool{false, false}),
+		mustKnownRankingExample(t, "high", []float64{2, 0}, []bool{true, false}),
+	)
+	normalized, err = normalizeQueryGroup(sparse, 2, missingEvidenceNeutral)
+	if err != nil {
+		t.Fatalf("normalize sparse query: %v", err)
+	}
+	if normalized.examples[0].values[0] != -1 ||
+		normalized.examples[1].values[0] != 0 ||
+		normalized.examples[2].values[0] != 1 ||
+		normalized.examples[1].known[0] || normalized.examples[0].known[1] {
+		t.Fatalf("sparse normalization = %#v", normalized.examples)
 	}
 }
 

@@ -27,12 +27,13 @@ type RankedCandidate struct {
 }
 
 type QueryObservation struct {
-	ID           string
-	Judgment     CanonicalJudgment
-	Candidates   []RankedCandidate
-	PeerBytes    int64
-	PeerTimeouts int
-	CPULatency   time.Duration
+	ID                    string
+	Judgment              CanonicalJudgment
+	Candidates            []RankedCandidate
+	PeerResourcesMeasured bool
+	PeerBytes             int64
+	PeerTimeouts          int
+	RerankLatency         time.Duration
 }
 
 func PoolCandidates(rankings ...[]RankedCandidate) []RankedCandidate {

@@ -30,9 +30,13 @@ func (s rankingSearcher) Search(
 		if limit <= 0 {
 			limit = searchcore.DefaultPublicLimit
 		}
+		candidateWindow := s.ranker.CandidateWindow()
+		if request.Source == searchcore.SourceGlobal {
+			candidateWindow *= 2
+		}
 		candidateRequest.Offset = 0
 		candidateRequest.Limit = max(
-			s.ranker.CandidateWindow(),
+			candidateWindow,
 			request.Offset+limit,
 		)
 	}

@@ -15,12 +15,13 @@ import (
 )
 
 const (
-	envNodeImage    = "YAGO_NODE_IMAGE"
-	nodeAlias       = "node"
-	nodePeerPort    = "8090"
-	nodePublicPort  = "8080"
-	nodeOpsPort     = "9090"
-	nodeCrawlRPCEnv = ":9091"
+	envNodeImage     = "YAGO_NODE_IMAGE"
+	nodeAlias        = "node"
+	nodePeerPort     = "8090"
+	nodePublicPort   = "8080"
+	nodeOpsPort      = "9090"
+	nodeCrawlRPCPort = "9091"
+	nodeCrawlRPCEnv  = ":" + nodeCrawlRPCPort
 
 	// nodePeerHash is a fixed valid peer hash minted by cmd/yago-peer-hash; the
 	// node runs standalone here so any well-formed hash is sufficient.
@@ -30,8 +31,9 @@ const (
 )
 
 type nodeBroker struct {
-	opsURL    string
-	publicURL string
+	opsURL          string
+	publicURL       string
+	crawlRPCAddress string
 }
 
 func startNodeBroker(t *testing.T, ctx context.Context, networkName string) nodeBroker {
@@ -46,6 +48,7 @@ func startNodeBroker(t *testing.T, ctx context.Context, networkName string) node
 				nodePeerPort + "/tcp",
 				nodePublicPort + "/tcp",
 				nodeOpsPort + "/tcp",
+				nodeCrawlRPCPort + "/tcp",
 			},
 			Networks:       []string{networkName},
 			NetworkAliases: map[string][]string{networkName: {nodeAlias}},
@@ -87,12 +90,24 @@ func startNodeBroker(t *testing.T, ctx context.Context, networkName string) node
 	dumpLogsOnFailure(t, "node", container)
 
 	return nodeBroker{
-		opsURL:    mappedBaseURL(t, ctx, container, nodeOpsPort),
-		publicURL: mappedBaseURL(t, ctx, container, nodePublicPort),
+		opsURL:          mappedBaseURL(t, ctx, container, nodeOpsPort),
+		publicURL:       mappedBaseURL(t, ctx, container, nodePublicPort),
+		crawlRPCAddress: mappedAddress(t, ctx, container, nodeCrawlRPCPort),
 	}
 }
 
 func mappedBaseURL(
+	t *testing.T,
+	ctx context.Context,
+	container testcontainers.Container,
+	port string,
+) string {
+	t.Helper()
+
+	return "http://" + mappedAddress(t, ctx, container, port)
+}
+
+func mappedAddress(
 	t *testing.T,
 	ctx context.Context,
 	container testcontainers.Container,
@@ -108,7 +123,7 @@ func mappedBaseURL(
 		t.Fatalf("mapped port %s: %v", port, err)
 	}
 
-	return "http://" + net.JoinHostPort(host, mapped.Port())
+	return net.JoinHostPort(host, mapped.Port())
 }
 
 func requireImage(t *testing.T, env, label string) string {

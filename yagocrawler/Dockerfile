@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.26 AS build
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.26@sha256:079e59808d2d252516e27e3f3a9c003740dee7f75e55aa71528766d52bcfc16a AS build
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -46,6 +46,11 @@ RUN apk add --no-cache \
 ENV HOME=/tmp XDG_CACHE_HOME=/tmp/.cache PATH=/opt/yago/bin:/usr/bin:/bin
 
 COPY --from=build /out/yagocrawler /opt/yago/bin/yagocrawler
+
+ARG SOURCE_REVISION=unknown
+
+LABEL org.opencontainers.image.revision="${SOURCE_REVISION}" \
+    org.opencontainers.image.source="https://github.com/D4rk4/yago"
 
 USER 65534:65534
 

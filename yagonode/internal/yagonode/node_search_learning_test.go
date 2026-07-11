@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/D4rk4/yago/yagonode/internal/hosttrust"
 	"github.com/D4rk4/yago/yagonode/internal/memvault"
 	"github.com/D4rk4/yago/yagonode/internal/peerreputation"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -37,6 +38,21 @@ func TestOpenSearchLearningStoresSurfacesPeerObserverFailures(t *testing.T) {
 	}
 	if _, err := openSearchLearningStores(context.Background(), learningVault(t)); err == nil {
 		t.Fatal("peer observation open failure did not surface")
+	}
+}
+
+func TestOpenSearchLearningStoresSurfacesHostTrustFailure(t *testing.T) {
+	original := openRuntimeHostTrust
+	defer func() { openRuntimeHostTrust = original }()
+	openRuntimeHostTrust = func(
+		context.Context,
+		*vault.Vault,
+	) (*hosttrust.Catalog, error) {
+		return nil, errors.New("open")
+	}
+
+	if _, err := openSearchLearningStores(context.Background(), learningVault(t)); err == nil {
+		t.Fatal("host trust open failure did not surface")
 	}
 }
 

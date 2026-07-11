@@ -20,7 +20,8 @@ func TestHistogramTrainingDefaultsAndSingletonGroups(t *testing.T) {
 	if !reflect.DeepEqual(groups, want) {
 		t.Fatalf("groups = %#v, want %#v", groups, want)
 	}
-	if options.MaximumTrees != 32 || options.MaximumDepth != 3 ||
+	if options.MaximumTrees != maximumHistogramTrees ||
+		options.MaximumDepth != maximumHistogramDepth ||
 		options.MaximumBins != 32 || options.LearningRate != 0.05 ||
 		options.L2Regularization != 1 || options.MinimumLeafExamples != 5 ||
 		options.NormalizedDiscountedCumulativeGainCutoff != 10 {

@@ -56,8 +56,9 @@ its binaries (`yago-node`, `yagocrawler`).
   anchor, authority, quality, safety, duplicate-cluster, and reputation signals,
   followed by a signed linear LambdaRank or bounded histogram LambdaMART model.
   Query-clustered and chronological holdouts gate atomic promotion; authenticated
-  randomized impressions provide clipped IPS/SNIPS click evidence. Pure Go,
-  CPU-only, no external API, sidecar, model runtime, or YaCy wire change.
+  Team Draft compares complete rankings online, while confidence-filtered
+  FairPairs outcomes provide implicit relevance evidence.
+  Pure Go, CPU-only, no external API, sidecar, model runtime, or YaCy wire change.
 - **Multilingual morphology**: documents route to per-language analyzers
   (Snowball stemming), single-word swarm queries can expand into
   corpus-observed inflections, and partial words match through trigram fields.
@@ -124,6 +125,9 @@ its binaries (`yago-node`, `yagocrawler`).
 - One static binary per role; Docker/Compose on the shared `/opt/yago`
   layout, hardened systemd units, and Debian packages built by a tag-driven
   release pipeline with generated notes.
+- Docker builds pin every builder and runtime base by digest. The node and
+  crawler images carry OCI source and revision labels when the caller supplies
+  `SOURCE_REVISION`, so two images can be traced to the same source commit.
 - Prometheus `/metrics` (RED/USE + saturation), burn-rate alert rules with an
   SLO doc, health/readiness endpoints, auth-gated pprof, trace-correlated
   structured logs (never secrets), and a durable event store.
@@ -238,20 +242,27 @@ flowchart LR
 | `yagomodel` / `yagoproto` | the YaCy wire model and protocol helpers — reusable on their own |
 | `yagoegress` | the shared dial-time SSRF egress guard |
 
-Architecture decisions live in [ADRs](yagonode/doc/adr/README.md) (36 and
-counting, including the deliberate no-gos); the full feature ledger with
+Architecture decisions live in [ADRs](yagonode/doc/adr/README.md), including
+the deliberate no-gos; the full feature ledger with
 per-feature test pointers is [FEATURES.md](FEATURES.md).
 
 ## 🛠️ Development
 
 ```sh
-make verify   # fmt-check · vet · lint · arch · race tests · coverage · build
+make verify   # fmt-check · vet · lint · arch · race tests · exact coverage · build
 make e2e      # containerized end-to-end suites (node, crawler, backup/restore)
 ```
 
 Every feature lands with tests; new third-party dependencies require an ADR
 first; `make verify` plus Semgrep and Trivy scans gate every commit. Build and
 lint tools are pinned and installed under `.toolchain/` by `make tools`.
+Coverage is checked from raw statement totals across all six Go modules; a
+self-test proves the checker rejects a profile that display rounding would call
+100%. The two isolated testcontainers modules cover the node and crawler. The
+crawler suite also exercises the complete YagoRank promotion path with 66
+documents across 22 query clusters, split into 1 training, 1 development, and
+20 test clusters, and verifies that the promoted model changes the public top
+result.
 
 ## 📚 Documentation
 

@@ -7,25 +7,32 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
-func TestDeriveJudgmentsUsesClippedIPSAndSNIPSFloors(t *testing.T) {
-	aggregates := []QueryEvidence{
-		queryEvidenceFixture("zeta", 4, map[string]ResultEvidence{
-			"top":  evidenceFixture("top", 4, 4, 2, evidenceWeights{8, 4}),
-			"mid":  evidenceFixture("mid", 4, 4, 1, evidenceWeights{8, 2}),
-			"weak": evidenceFixture("weak", 4, 4, 1, evidenceWeights{8, 1}),
-			"none": evidenceFixture("none", 4, 4, 0, evidenceWeights{8, 0}),
-		}),
-		queryEvidenceFixture("below", 2, map[string]ResultEvidence{
-			"one": evidenceFixture("one", 2, 2, 1, evidenceWeights{4, 2}),
-		}),
-		queryEvidenceFixture("alpha", 4, map[string]ResultEvidence{
-			"zero":         evidenceFixture("zero", 4, 4, 0, evidenceWeights{8, 0}),
-			"below-result": evidenceFixture("below-result", 4, 2, 1, evidenceWeights{4, 2}),
-			"no-exposure":  evidenceFixture("no-exposure", 4, 4, 1, evidenceWeights{}),
-		}),
-	}
-	aggregates[0].ObservedAtUnix = 1_800_000_000
-	judgments := DeriveJudgments(aggregates, 3)
+func TestDeriveJudgmentsUsesConfidentFairPairPreferences(t *testing.T) {
+	zeta := pairQueryEvidenceFixture("zeta", "first", map[string]FairPairEvidence{
+		fairPairKey("other-top", "top"): pairEvidence(
+			pairCandidate("other-top", "https://other-top/"),
+			pairCandidate("top", "https://top/"), 20, 0, 20,
+		),
+		fairPairKey("mid", "other-mid"): pairEvidence(
+			pairCandidate("mid", "https://mid/"),
+			pairCandidate("other-mid", "https://other-mid/"), 20, 18, 2,
+		),
+		fairPairKey("other-weak", "weak"): pairEvidence(
+			pairCandidate("other-weak", "https://other-weak/"),
+			pairCandidate("weak", "https://weak/"), 20, 5, 15,
+		),
+		fairPairKey("none", "uncertain"): pairEvidence(
+			pairCandidate("none", "https://none/"),
+			pairCandidate("uncertain", "https://uncertain/"), 20, 9, 11,
+		),
+	})
+	zeta.ObservedAtUnix = 1_800_000_000
+	below := pairQueryEvidenceFixture("below", "first", map[string]FairPairEvidence{
+		fairPairKey("a", "b"): pairEvidence(
+			pairCandidate("a", "https://a/"), pairCandidate("b", "https://b/"), 2, 0, 2,
+		),
+	})
+	judgments := DeriveJudgments([]QueryEvidence{zeta, below}, 3)
 	if len(judgments) != 1 || judgments[0].Query != "zeta" {
 		t.Fatalf("judgments = %#v", judgments)
 	}
@@ -35,49 +42,48 @@ func TestDeriveJudgmentsUsesClippedIPSAndSNIPSFloors(t *testing.T) {
 		relevant["https://weak/"] != gradeRelevant {
 		t.Fatalf("relevant = %#v", relevant)
 	}
-	if _, present := relevant["https://none/"]; present {
-		t.Fatal("nonclick result became relevant")
+	if _, present := relevant["https://uncertain/"]; present {
+		t.Fatal("uncertain pair produced relevance")
 	}
 	if !judgments[0].ObservedAt.Equal(time.Unix(1_800_000_000, 0).UTC()) {
 		t.Fatalf("observed at = %v", judgments[0].ObservedAt)
 	}
 }
 
-func TestDeriveJudgmentsClampsFloorCombinesModelsAndSorts(t *testing.T) {
-	first := queryEvidenceFixture("zeta", 1, map[string]ResultEvidence{
-		"cluster": evidenceWithURL(
-			evidenceFixture("cluster", 1, 1, 1, evidenceWeights{2, 2}),
-			"https://z/",
+func TestDeriveJudgmentsCombinesModelsClampsFloorAndSorts(t *testing.T) {
+	zeta := pairQueryEvidenceFixture("zeta", "first", map[string]FairPairEvidence{
+		fairPairKey("cluster", "loser"): pairEvidence(
+			pairCandidate("cluster", "https://z/"),
+			pairCandidate("loser", "https://loser/"), 20, 20, 0,
 		),
 	})
-	secondModel := first.Models["model"]
-	secondModel.Assignment = "second"
-	secondModel.Results["cluster"] = evidenceWithURL(evidenceFixture(
-		"cluster",
-		1,
-		1,
-		1,
-		evidenceWeights{2, 1},
-	), "https://a/")
-	first.Models["second"] = secondModel
-	second := queryEvidenceFixture("alpha", 1, map[string]ResultEvidence{
-		"alpha": evidenceFixture("alpha", 1, 1, 1, evidenceWeights{2, 2}),
+	second := pairQueryEvidenceFixture("zeta", "second", map[string]FairPairEvidence{
+		fairPairKey("cluster", "other"): pairEvidence(
+			pairCandidate("cluster", "https://a/"),
+			pairCandidate("other", "https://other/"), 20, 20, 0,
+		),
 	})
-	judgments := DeriveJudgments([]QueryEvidence{first, second}, 0)
-	if len(judgments) != 2 || judgments[0].Query != "alpha" || judgments[1].Query != "zeta" {
+	zeta.Models["second"] = second.Models["second"]
+	alpha := pairQueryEvidenceFixture("alpha", "first", map[string]FairPairEvidence{
+		fairPairKey("alpha", "other"): pairEvidence(
+			pairCandidate("alpha", "https://alpha/"),
+			pairCandidate("other", "https://other/"), 20, 20, 0,
+		),
+	})
+	judgments := DeriveJudgments([]QueryEvidence{zeta, alpha}, 0)
+	if len(judgments) != 2 || judgments[0].Query != "alpha" ||
+		judgments[1].Query != "zeta" ||
+		judgments[1].Relevant["https://a/"] != gradeHighlyRelevant {
 		t.Fatalf("judgments = %#v", judgments)
-	}
-	if judgments[1].Relevant["https://a/"] != gradeHighlyRelevant {
-		t.Fatalf("combined representative = %#v", judgments[1].Relevant)
 	}
 }
 
 func TestImplicitJudgmentsReadsStore(t *testing.T) {
 	store := openClickStore(t)
-	evidence := queryEvidenceFixture("query", 3, map[string]ResultEvidence{
-		"cluster": evidenceWithURL(
-			evidenceFixture("cluster", 3, 3, 1, evidenceWeights{6, 2}),
-			"https://result/",
+	evidence := pairQueryEvidenceFixture("query", "first", map[string]FairPairEvidence{
+		fairPairKey("cluster", "other"): pairEvidence(
+			pairCandidate("cluster", "https://result/"),
+			pairCandidate("other", "https://other/"), 20, 20, 0,
 		),
 	})
 	if err := store.vault.Update(t.Context(), func(tx *vault.Txn) error {
@@ -94,47 +100,45 @@ func TestImplicitJudgmentsReadsStore(t *testing.T) {
 	}
 }
 
-func queryEvidenceFixture(
+func TestNonpositiveFairPairEstimateStaysNonrelevant(t *testing.T) {
+	if relevant := gradedEstimateURLs([]resultEstimate{
+		{url: "zero", score: 0},
+		{url: "winner", score: 1},
+	}, 1); len(relevant) != 1 || relevant["winner"] != gradeHighlyRelevant {
+		t.Fatalf("graded estimates = %#v", relevant)
+	}
+}
+
+func pairQueryEvidenceFixture(
 	query string,
-	randomizedImpressions int,
-	results map[string]ResultEvidence,
+	assignment string,
+	pairs map[string]FairPairEvidence,
 ) QueryEvidence {
 	evidence := newQueryEvidence(query)
-	evidence.Models["model"] = ModelEvidence{
-		Assignment:            "model",
-		Impressions:           randomizedImpressions,
-		RandomizedImpressions: randomizedImpressions,
-		Results:               results,
+	evidence.Models[assignment] = ModelEvidence{
+		Assignment:  assignment,
+		Impressions: 20,
+		Results:     map[string]ResultEvidence{},
+		FairPairs:   pairs,
 	}
 
 	return evidence
 }
 
-type evidenceWeights struct {
-	exposure float64
-	click    float64
-}
-
-func evidenceFixture(
-	identity string,
+func pairEvidence(
+	first Candidate,
+	second Candidate,
 	impressions int,
-	randomizedImpressions int,
-	clicks int,
-	weights evidenceWeights,
-) ResultEvidence {
-	return ResultEvidence{
-		URLIdentity:           "https://" + identity + "/",
-		ClusterIdentity:       identity,
-		Impressions:           impressions,
-		RandomizedImpressions: randomizedImpressions,
-		Clicks:                clicks,
-		ClippedExposureWeight: weights.exposure,
-		ClippedClickWeight:    weights.click,
+	firstClicks int,
+	secondClicks int,
+) FairPairEvidence {
+	return FairPairEvidence{
+		FirstCluster: first.ClusterIdentity, FirstURL: first.URLIdentity,
+		SecondCluster: second.ClusterIdentity, SecondURL: second.URLIdentity,
+		Impressions: impressions, FirstClicks: firstClicks, SecondClicks: secondClicks,
 	}
 }
 
-func evidenceWithURL(evidence ResultEvidence, url string) ResultEvidence {
-	evidence.URLIdentity = url
-
-	return evidence
+func pairCandidate(cluster, url string) Candidate {
+	return Candidate{ClusterIdentity: cluster, URLIdentity: url}
 }

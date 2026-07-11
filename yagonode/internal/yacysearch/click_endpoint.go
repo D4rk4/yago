@@ -18,6 +18,7 @@ type ImpressionCandidate struct {
 	URLIdentity     string
 	ClusterIdentity string
 	Position        int
+	LexicalPosition int
 }
 
 type PreparedImpression struct {

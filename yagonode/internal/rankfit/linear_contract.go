@@ -32,14 +32,27 @@ type FeatureDefinition struct {
 
 type FeatureVector struct {
 	values []float64
+	known  []bool
 }
 
 func NewFeatureVector(values []float64) (FeatureVector, error) {
+	known := make([]bool, len(values))
+	for index := range known {
+		known[index] = true
+	}
+
+	return NewFeatureVectorWithKnownValues(values, known)
+}
+
+func NewFeatureVectorWithKnownValues(values []float64, known []bool) (FeatureVector, error) {
 	if len(values) == 0 || len(values) > maximumLinearFeatures {
 		return FeatureVector{}, fmt.Errorf(
 			"feature dimension must be between 1 and %d",
 			maximumLinearFeatures,
 		)
+	}
+	if len(known) != len(values) {
+		return FeatureVector{}, fmt.Errorf("feature presence dimension differs from values")
 	}
 	for _, value := range values {
 		if math.IsNaN(value) || math.IsInf(value, 0) ||
@@ -48,7 +61,10 @@ func NewFeatureVector(values []float64) (FeatureVector, error) {
 		}
 	}
 
-	return FeatureVector{values: append([]float64(nil), values...)}, nil
+	return FeatureVector{
+		values: append([]float64(nil), values...),
+		known:  append([]bool(nil), known...),
+	}, nil
 }
 
 func (v FeatureVector) Dimension() int {
@@ -59,8 +75,12 @@ func (v FeatureVector) Values() []float64 {
 	return append([]float64(nil), v.values...)
 }
 
+func (v FeatureVector) Known(index int) bool {
+	return index >= 0 && index < len(v.known) && v.known[index]
+}
+
 func (v FeatureVector) validate() error {
-	_, err := NewFeatureVector(v.values)
+	_, err := NewFeatureVectorWithKnownValues(v.values, v.known)
 
 	return err
 }
@@ -174,7 +194,10 @@ func (g QueryGroup) validate() error {
 }
 
 func cloneFeatureVector(vector FeatureVector) FeatureVector {
-	return FeatureVector{values: append([]float64(nil), vector.values...)}
+	return FeatureVector{
+		values: append([]float64(nil), vector.values...),
+		known:  append([]bool(nil), vector.known...),
+	}
 }
 
 func cloneRankingExample(example RankingExample) RankingExample {

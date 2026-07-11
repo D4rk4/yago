@@ -174,7 +174,7 @@ func linearSignalExplanations(
 ) []SignalExplanation {
 	signals := rawSignalExplanations(evidence)
 	for index, contribution := range contributions {
-		signals[index].Used = true
+		signals[index].Used = contribution.Used
 		signals[index].NormalizedValue = contribution.NormalizedValue
 		signals[index].Weight = contribution.Weight
 		signals[index].Contribution = contribution.Contribution
@@ -192,14 +192,16 @@ func treeExplanations(
 		decisions := make([]TreeDecision, len(contribution.Decisions))
 		for decisionIndex, decision := range contribution.Decisions {
 			featureIndex, _ := rankingFeatureIndex(decision.FeatureName)
-			signals[featureIndex].Used = true
+			signals[featureIndex].Used = decision.Known || !decision.TerminatedMissing
 			signals[featureIndex].NormalizedValue = decision.Value
 			decisions[decisionIndex] = TreeDecision{
-				Signal:          rankingFeatures[featureIndex].signal,
-				Name:            decision.FeatureName,
-				NormalizedValue: decision.Value,
-				Threshold:       decision.Threshold,
-				WentLeft:        decision.WentLeft,
+				Signal:            rankingFeatures[featureIndex].signal,
+				Name:              decision.FeatureName,
+				Known:             decision.Known,
+				TerminatedMissing: decision.TerminatedMissing,
+				NormalizedValue:   decision.Value,
+				Threshold:         decision.Threshold,
+				WentLeft:          decision.WentLeft,
 			}
 		}
 		trees[index] = TreeExplanation{

@@ -53,7 +53,11 @@ type SearchResult struct {
 	// origin sites never see the searcher's browser before a click.
 	FaviconURL string
 	// Images carries the page's extracted images (proxied) for the image grid.
-	Images []ResultImage
+	Images          []ResultImage
+	URLIdentity     string
+	ClusterIdentity string
+	Position        int
+	LexicalPosition int
 }
 
 // ResultImage is one image-grid cell: the proxied thumbnail and its source page.
@@ -110,6 +114,26 @@ type SearchSource interface {
 	Search(ctx context.Context, query, dom string, offset, limit int) (SearchResults, error)
 }
 
+type ImpressionCandidate struct {
+	URLIdentity     string
+	ClusterIdentity string
+	Position        int
+	LexicalPosition int
+}
+
+type PreparedImpression struct {
+	Token string
+	Order []int
+}
+
+type ImpressionRecorder interface {
+	PrepareImpression(
+		ctx context.Context,
+		query string,
+		candidates []ImpressionCandidate,
+	) (PreparedImpression, error)
+}
+
 // pagination carries the prev/next navigation for a results page. The URLs are
 // built server-side (properly query-encoded) so the template never has to
 // assemble a URL from parts.
@@ -148,7 +172,9 @@ type portalData struct {
 	JSONURL string
 	// Elapsed is the human-readable search duration ("0.42 s") shown next to
 	// the result count, so a searcher sees how fast the query ran.
-	Elapsed string
+	Elapsed         string
+	ClickCapture    bool
+	ImpressionToken string
 	// ShownFrom and ShownTo are the 1-based rank range of the results rendered on
 	// this page, so the meta line can distinguish the page window ("showing
 	// 1–10") from the grand total match count, which spans this node and every
@@ -200,7 +226,12 @@ type Portal struct {
 	newTab bool
 	// theme optionally renders operator-authored page templates (ADR-0033);
 	// nil or a declining theme falls through to the built-in template.
-	theme ThemeRenderer
+	theme    ThemeRenderer
+	recorder ImpressionRecorder
+}
+
+func (p *Portal) SetImpressionRecorder(recorder ImpressionRecorder) {
+	p.recorder = recorder
 }
 
 // New builds the portal with its embedded template and search source.
@@ -274,10 +305,55 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	data = p.prepareImpression(r.Context(), data)
 
 	if err := p.page.ExecuteTemplate(w, "portal", data); err != nil {
 		slog.WarnContext(r.Context(), "public portal render failed", slog.Any("error", err))
 	}
+}
+
+func (p *Portal) prepareImpression(ctx context.Context, data portalData) portalData {
+	if p.recorder == nil || data.Dom == "image" || len(data.Results.Results) == 0 {
+		return data
+	}
+	candidates := make([]ImpressionCandidate, len(data.Results.Results))
+	for index, result := range data.Results.Results {
+		candidates[index] = ImpressionCandidate{
+			URLIdentity: result.URLIdentity, ClusterIdentity: result.ClusterIdentity,
+			Position: result.Position, LexicalPosition: result.LexicalPosition,
+		}
+	}
+	prepared, err := p.recorder.PrepareImpression(ctx, data.Query, candidates)
+	if err != nil || prepared.Token == "" ||
+		!validPortalImpressionOrder(prepared.Order, len(candidates)) {
+		return data
+	}
+	reordered := make([]SearchResult, len(data.Results.Results))
+	firstPosition := data.Results.Results[0].Position
+	for index, original := range prepared.Order {
+		reordered[index] = data.Results.Results[original]
+		reordered[index].Position = firstPosition + index
+	}
+	data.Results.Results = reordered
+	data.ClickCapture = true
+	data.ImpressionToken = prepared.Token
+
+	return data
+}
+
+func validPortalImpressionOrder(order []int, length int) bool {
+	if len(order) != length {
+		return false
+	}
+	seen := make([]bool, length)
+	for _, index := range order {
+		if index < 0 || index >= length || seen[index] {
+			return false
+		}
+		seen[index] = true
+	}
+
+	return true
 }
 
 // parsePortalPage reads the 1-based page number from the ?p= parameter, clamping

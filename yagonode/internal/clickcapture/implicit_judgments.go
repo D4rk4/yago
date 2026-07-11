@@ -102,27 +102,19 @@ func queryEstimates(
 ) []resultEstimate {
 	byCluster := map[string]resultEstimate{}
 	for _, model := range aggregate.Models {
-		if model.RandomizedImpressions < minimumImpressions {
-			continue
-		}
-		for cluster, result := range model.Results {
-			if result.RandomizedImpressions < minimumImpressions ||
-				result.ClippedExposureWeight <= 0 {
+		for _, pair := range model.FairPairs {
+			cluster, url, score, confident := confidentFairPairWinner(
+				pair,
+				minimumImpressions,
+			)
+			if !confident {
 				continue
 			}
-			ips := min(
-				result.ClippedClickWeight/float64(result.RandomizedImpressions),
-				1,
-			)
-			snips := min(result.ClippedClickWeight/result.ClippedExposureWeight, 1)
-			score := 0.0
-			if ips > 0 && snips > 0 {
-				score = 2 * ips * snips / (ips + snips)
-			}
+			clicks := pair.FirstClicks + pair.SecondClicks
 			estimate := byCluster[cluster]
-			estimate.url = representativeURL(estimate.url, result.URLIdentity)
-			estimate.score += score * float64(result.RandomizedImpressions)
-			estimate.weight += float64(result.RandomizedImpressions)
+			estimate.url = representativeURL(estimate.url, url)
+			estimate.score += score * float64(clicks)
+			estimate.weight += float64(clicks)
 			byCluster[cluster] = estimate
 		}
 	}

@@ -56,13 +56,50 @@ func TestHistogramMonotoneBoundsRejectInvertedChildren(t *testing.T) {
 	}
 }
 
+func TestHistogramTreeBuilderExcludesMissingSplitValues(t *testing.T) {
+	builder := histogramBuilderFixture(t.Context())
+	builder.set.rows = append(builder.set.rows, histogramTrainingRow{
+		values: []float64{0},
+		known:  []bool{false},
+	})
+	builder.derivatives.gradients = append(builder.derivatives.gradients, 0)
+	builder.derivatives.hessians = append(builder.derivatives.hessians, 1)
+	rows := allHistogramRowIndices(len(builder.set.rows))
+	buckets, missing := builder.buckets(rows, 0, builder.set.thresholds[0])
+	if missing.count != 1 || missing.gradient != 0 || len(buckets) != 2 {
+		t.Fatalf("missing statistics = %#v, buckets = %#v", missing, buckets)
+	}
+	total := builder.statistics(rows)
+	split, found, err := builder.bestSplit(
+		rows,
+		total,
+		histogramValueBounds{lower: -1, upper: 1},
+	)
+	if err != nil || !found {
+		t.Fatalf("bestSplit = %#v, %v, %v", split, found, err)
+	}
+	left, right := builder.partitionRows(rows, split)
+	if len(left) != 1 || len(right) != 1 {
+		t.Fatalf("partitioned rows = %v, %v", left, right)
+	}
+	builder.derivatives.gradients[len(builder.derivatives.gradients)-1] = 100
+	total = builder.statistics(rows)
+	if split, found, err = builder.bestSplit(
+		rows,
+		total,
+		histogramValueBounds{lower: -1, upper: 1},
+	); err != nil || found {
+		t.Fatalf("expensive missing split = %#v, %v, %v", split, found, err)
+	}
+}
+
 func histogramBuilderFixture(ctx context.Context) histogramTreeBuilder {
 	return histogramTreeBuilder{
 		ctx: ctx,
 		set: histogramTrainingSet{
 			rows: []histogramTrainingRow{
-				{values: []float64{-1}},
-				{values: []float64{1}},
+				{values: []float64{-1}, known: []bool{true}},
+				{values: []float64{1}, known: []bool{true}},
 			},
 			thresholds: [][]float64{{0}},
 		},

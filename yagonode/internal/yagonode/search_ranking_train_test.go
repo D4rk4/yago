@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -446,8 +447,23 @@ func rankingMetricFixture(ndcg float64) searcheval.MetricSet {
 		ERRAt10: 0.3, NavigationalMRR: 0.4, AlphaNDCGAt10: 0.5,
 		IntentCoverageAt10: 0.6, DuplicateClusterRateAt10: 0.1,
 		UniqueRegistrableDomainCoverage: 0.8, UnsafeErrors: 1, SpamErrors: 2,
-		PeerBytes: 3, PeerTimeouts: 4, CPULatencyP50: time.Millisecond,
-		CPULatencyP95: 2 * time.Millisecond,
+		PeerResourcesMeasured: true, PeerBytes: 3, PeerTimeouts: 4,
+		RerankLatencyP50: time.Millisecond, RerankLatencyP95: 2 * time.Millisecond,
+	}
+}
+
+func TestRankingMetricSummaryMarksPeerResourcesUnavailable(t *testing.T) {
+	summary := rankingMetricSummaryFor(searcheval.MetricSet{})
+	encoded, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(encoded)
+	if summary.PeerBytes != nil || summary.PeerTimeouts != nil ||
+		!strings.Contains(text, `"peer_bytes":null`) ||
+		!strings.Contains(text, `"peer_timeouts":null`) ||
+		!strings.Contains(text, `"rerank_wall_latency_p95_ms":0`) {
+		t.Fatalf("unmeasured summary = %s", text)
 	}
 }
 

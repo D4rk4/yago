@@ -34,14 +34,15 @@ func heldoutMetricObservations() []QueryObservation {
 			{URL: "x", CanonicalCluster: "x"},
 			{URL: "c", CanonicalCluster: "c", RegistrableDomain: "c.example"},
 		},
-		PeerBytes: 100, PeerTimeouts: 1, CPULatency: 10 * time.Millisecond,
+		PeerResourcesMeasured: true, PeerBytes: 100, PeerTimeouts: 1,
+		RerankLatency: 10 * time.Millisecond,
 	}
 	second := QueryObservation{
 		ID: "q2",
 		Judgment: CanonicalJudgment{
 			Query: "second", SliceNames: []string{"plain"},
 		},
-		PeerBytes: 200, CPULatency: 20 * time.Millisecond,
+		PeerResourcesMeasured: true, PeerBytes: 200, RerankLatency: 20 * time.Millisecond,
 	}
 	third := QueryObservation{
 		ID: "q3",
@@ -49,7 +50,7 @@ func heldoutMetricObservations() []QueryObservation {
 			Query: "third", RelevantClusters: map[string]int{"missing": 2},
 			Navigational: true, SliceNames: []string{"head"},
 		},
-		PeerBytes: 300, CPULatency: 100 * time.Millisecond,
+		PeerResourcesMeasured: true, PeerBytes: 300, RerankLatency: 100 * time.Millisecond,
 	}
 
 	return []QueryObservation{longRecallObservation(), third, first, second}
@@ -73,8 +74,9 @@ func longRecallObservation() QueryObservation {
 			Query: "fourth", RelevantClusters: map[string]int{"early": 1, "late": 1},
 			SliceNames: []string{"long"},
 		},
-		Candidates: longCandidates,
-		PeerBytes:  400, PeerTimeouts: 2, CPULatency: 30 * time.Millisecond,
+		Candidates:            longCandidates,
+		PeerResourcesMeasured: true, PeerBytes: 400, PeerTimeouts: 2,
+		RerankLatency: 30 * time.Millisecond,
 	}
 }
 
@@ -85,8 +87,9 @@ func TestEvaluateHeldoutMeasuresCanonicalRankingAndOperations(t *testing.T) {
 	}
 	if report.Metrics.Queries != 4 || report.Metrics.PeerBytes != 1000 ||
 		report.Metrics.PeerTimeouts != 3 ||
-		report.Metrics.CPULatencyP50 != 20*time.Millisecond ||
-		report.Metrics.CPULatencyP95 != 100*time.Millisecond {
+		!report.Metrics.PeerResourcesMeasured ||
+		report.Metrics.RerankLatencyP50 != 20*time.Millisecond ||
+		report.Metrics.RerankLatencyP95 != 100*time.Millisecond {
 		t.Fatalf("operations = %+v", report.Metrics)
 	}
 	if report.Queries[0].ID != "q1" || report.Queries[0].RecallAt100 != 1 ||
@@ -116,7 +119,7 @@ func TestEvaluateHeldoutMeasuresCanonicalRankingAndOperations(t *testing.T) {
 
 func TestEvaluateHeldoutEmptyAndValidation(t *testing.T) {
 	report, err := EvaluateHeldout(nil)
-	if err != nil || report.Metrics.Queries != 0 || report.Metrics.CPULatencyP50 != 0 ||
+	if err != nil || report.Metrics.Queries != 0 || report.Metrics.RerankLatencyP50 != 0 ||
 		len(report.Slices) != 0 {
 		t.Fatalf("empty report = %+v err=%v", report, err)
 	}
@@ -132,6 +135,16 @@ func TestEvaluateHeldoutEmptyAndValidation(t *testing.T) {
 	}
 	if _, err := EvaluateHeldout([]QueryObservation{{ID: "same"}, {ID: "same"}}); err == nil {
 		t.Fatal("duplicate observation id accepted")
+	}
+}
+
+func TestEvaluateHeldoutMarksMixedPeerResourcesUnmeasured(t *testing.T) {
+	observations := heldoutMetricObservations()
+	observations[0].PeerResourcesMeasured = false
+	report, err := EvaluateHeldout(observations)
+	if err != nil || report.Metrics.PeerResourcesMeasured || report.Metrics.PeerBytes != 600 ||
+		report.Metrics.PeerTimeouts != 1 {
+		t.Fatalf("mixed peer resources = %+v, %v", report.Metrics, err)
 	}
 }
 

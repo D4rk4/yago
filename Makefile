@@ -3,13 +3,14 @@ MODULES := yagonode yagomodel yagoproto yagocrawlcontract yagoegress yagocrawler
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 100
 COVER_EXCLUDE := /internal/vaulttest/|/test/e2e/|/crawlrpc/
+COVERAGE_CHECK := $(CURDIR)/tools/require-exact-coverage
 
 TOOLS_BIN := $(CURDIR)/.toolchain/bin
 TOOLS_STAMP := $(TOOLS_BIN)/.installed
 GOLANGCI_LINT := $(TOOLS_BIN)/golangci-lint
 GO_ARCH_LINT := $(TOOLS_BIN)/go-arch-lint
 
-.PHONY: tools proto-tools proto fmt fmt-check lint vet arch test cover cover-check build verify e2e e2e-node e2e-crawler e2e-node-image e2e-crawler-image peer-hash
+.PHONY: tools proto-tools proto fmt fmt-check lint vet arch test cover coverage-check-test cover-check build verify e2e e2e-node e2e-crawler e2e-node-image e2e-crawler-image peer-hash
 
 PROTOC ?= protoc
 PROTO_MODULE := github.com/D4rk4/yago/yagocrawlcontract
@@ -19,6 +20,7 @@ PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
 E2E_TIMEOUT ?= 10m
 E2E_NODE_IMAGE ?= yago-node:e2e
 E2E_CRAWLER_IMAGE ?= yago-crawler:e2e
+SOURCE_REVISION ?= unknown
 
 E2E_CONTAINER_CLI := $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
 E2E_RUNTIME_DIR := $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))
@@ -75,6 +77,9 @@ cover:
 			$(GO) tool cover -func=$(COVER_PROFILE).gated ); \
 	done
 
+coverage-check-test:
+	@./tools/require-exact-coverage-test
+
 cover-check:
 	@set -e; for m in $(MODULES); do \
 		echo "==> cover-check $$m (min $(COVERAGE_MIN)%)"; \
@@ -85,14 +90,8 @@ cover-check:
 				exit 1; \
 			fi; \
 			grep -vE '$(COVER_EXCLUDE)' $(COVER_PROFILE) > $(COVER_PROFILE).gated; \
-			stmts=$$(awk 'NR > 1 { sum += $$2 } END { print sum + 0 }' $(COVER_PROFILE).gated); \
-			if [ "$$stmts" -eq 0 ]; then echo "    no statements to cover"; exit 0; fi; \
-			total=$$($(GO) tool cover -func=$(COVER_PROFILE).gated | \
-				awk '/^total:/ { gsub(/%/, "", $$3); print $$3 }'); \
-			echo "    total: $${total:-0}%"; \
-			awk -v c="$${total:-0}" -v min="$(COVERAGE_MIN)" \
-				'BEGIN { if (c + 0 < min + 0) { exit 1 } }' || \
-				{ echo "coverage $${total:-0}% below $(COVERAGE_MIN)% in $$m"; exit 1; } ); \
+			$(COVERAGE_CHECK) $(COVER_PROFILE).gated $(COVERAGE_MIN) || \
+				{ echo "coverage below $(COVERAGE_MIN)% in $$m"; exit 1; } ); \
 	done
 
 build:
@@ -114,13 +113,17 @@ proto:
 peer-hash:
 	cd yagonode && $(GO) run ./cmd/yago-peer-hash
 
-verify: fmt-check vet lint arch test cover-check build
+verify: fmt-check vet lint arch coverage-check-test test cover-check build
 
 e2e-node-image:
-	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yagonode/Dockerfile -t $(E2E_NODE_IMAGE) .
+	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build \
+		--build-arg SOURCE_REVISION=$(SOURCE_REVISION) \
+		-f yagonode/Dockerfile -t $(E2E_NODE_IMAGE) .
 
 e2e-crawler-image:
-	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build -f yagocrawler/Dockerfile -t $(E2E_CRAWLER_IMAGE) .
+	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build \
+		--build-arg SOURCE_REVISION=$(SOURCE_REVISION) \
+		-f yagocrawler/Dockerfile -t $(E2E_CRAWLER_IMAGE) .
 
 e2e-node:
 	cd yagonode/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YAGO_NODE_IMAGE=$(E2E_NODE_IMAGE) \

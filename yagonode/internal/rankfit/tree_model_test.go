@@ -63,6 +63,55 @@ func TestHistogramModelPredictionExplanationAndImmutability(t *testing.T) {
 	assertHistogramExplanations(t, explanations)
 }
 
+func TestHistogramModelKeepsMissingSplitEvidenceNeutral(t *testing.T) {
+	model := mustHistogramModel(
+		t,
+		definitionsForTest("quality"),
+		1,
+		histogramTree(
+			"quality",
+			[]int{0},
+			histogramSplit(0, 0, histogramLeaf(-1), histogramLeaf(1)),
+		),
+	)
+	group := mustQueryGroup(
+		t,
+		"missing",
+		mustKnownRankingExample(t, "missing", []float64{0}, []bool{false}),
+		mustKnownRankingExample(t, "low", []float64{-1}, []bool{true}),
+		mustKnownRankingExample(t, "high", []float64{1}, []bool{true}),
+	)
+	predictions, err := model.Predict(group)
+	if err != nil {
+		t.Fatalf("Predict: %v", err)
+	}
+	if got := []string{
+		predictions[0].DocumentIdentifier,
+		predictions[1].DocumentIdentifier,
+		predictions[2].DocumentIdentifier,
+	}; !reflect.DeepEqual(got, []string{"high", "missing", "low"}) ||
+		predictions[1].Score != 0 {
+		t.Fatalf("missing prediction = %#v", predictions)
+	}
+	explanations, err := model.Explain(group)
+	if err != nil {
+		t.Fatalf("Explain: %v", err)
+	}
+	for _, explanation := range explanations {
+		if explanation.DocumentIdentifier != "missing" {
+			continue
+		}
+		decision := explanation.TreeContributions[0].Decisions[0]
+		if explanation.Score != 0 || decision.Known || !decision.TerminatedMissing ||
+			decision.FeatureName != "quality" {
+			t.Fatalf("missing explanation = %#v", explanation)
+		}
+
+		return
+	}
+	t.Fatal("missing explanation was not returned")
+}
+
 func assertHistogramPredictions(t *testing.T, predictions []RankedDocument) {
 	t.Helper()
 	if got := []string{
@@ -130,6 +179,14 @@ func TestHistogramModelDeterministicTiesAndValidationFailures(t *testing.T) {
 }
 
 func TestHistogramModelValidationRejectsCorruption(t *testing.T) {
+	if _, err := newHistogramLambdaMARTModelWithPolicy(
+		definitionsForTest("feature"),
+		0.1,
+		nil,
+		0,
+	); err == nil {
+		t.Fatal("invalid missing policy was accepted")
+	}
 	for name, model := range invalidHistogramModels() {
 		t.Run(name, func(t *testing.T) {
 			if err := model.Validate(); err == nil {
@@ -206,12 +263,16 @@ func invalidHistogramHeaderModels(
 	}
 
 	return map[string]HistogramLambdaMARTModel{
-		"definitions":   {learningRate: 0.1},
-		"learning rate": {featureDefinitions: definitions},
+		"definitions": {learningRate: 0.1, missingPolicy: missingEvidenceNeutral},
+		"learning rate": {
+			featureDefinitions: definitions,
+			missingPolicy:      missingEvidenceNeutral,
+		},
 		"tree limit": {
 			featureDefinitions: definitions,
 			learningRate:       0.1,
 			trees:              tooManyTrees,
+			missingPolicy:      missingEvidenceNeutral,
 		},
 	}
 }
@@ -371,5 +432,6 @@ func histogramValidationModel(
 		featureDefinitions: definitions,
 		learningRate:       0.1,
 		trees:              []histogramRankingTree{tree},
+		missingPolicy:      missingEvidenceNeutral,
 	}
 }

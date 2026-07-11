@@ -10,22 +10,38 @@ func TestHistogramTrainingSetAndBoundedThresholds(t *testing.T) {
 		{
 			queryIdentifier: "first",
 			examples: []normalizedRankingExample{
-				{documentIdentifier: "a", values: []float64{0, 7}},
-				{documentIdentifier: "b", values: []float64{1, 7}},
+				{
+					documentIdentifier: "a",
+					values:             []float64{0, 7},
+					known:              []bool{true, true},
+				},
+				{
+					documentIdentifier: "b",
+					values:             []float64{1, 99},
+					known:              []bool{true, false},
+				},
 			},
 		},
 		{
 			queryIdentifier: "second",
 			examples: []normalizedRankingExample{
-				{documentIdentifier: "c", values: []float64{2, 7}},
-				{documentIdentifier: "d", values: []float64{3, 7}},
+				{
+					documentIdentifier: "c",
+					values:             []float64{2, 7},
+					known:              []bool{true, true},
+				},
+				{
+					documentIdentifier: "d",
+					values:             []float64{3, 7},
+					known:              []bool{true, true},
+				},
 			},
 		},
 	}
 	set := newHistogramTrainingSet(groups, 2, 3)
 	if len(set.rows) != 4 || set.rows[2].queryIndex != 1 || set.rows[2].exampleIndex != 0 ||
 		!reflect.DeepEqual(set.thresholds[0], []float64{0.5, 1.5}) ||
-		set.thresholds[1] != nil {
+		set.thresholds[1] != nil || set.rows[1].known[1] {
 		t.Fatalf("training set = %#v", set)
 	}
 	if got := boundedHistogramThresholds([]float64{2, 1, 1, 0}, 32); !reflect.DeepEqual(

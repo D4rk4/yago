@@ -128,3 +128,57 @@ func TestSearcherNoRankerAndFailures(t *testing.T) {
 		t.Fatal("ranking failure was not returned")
 	}
 }
+
+func TestGlobalSearcherCollectsTheCompleteLocalCandidateWindow(t *testing.T) {
+	ranker, err := NewRanker(3)
+	if err != nil {
+		t.Fatalf("NewRanker: %v", err)
+	}
+	if err := ranker.Activate(mustSnapshot(
+		t,
+		"global",
+		mustLinearModel(t, linearWeights(map[int]float64{0: 1})),
+	)); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	results := []searchcore.Result{
+		remoteRankingResult("remote-1", 9),
+		rankingResult("local-low", 1, 1),
+		remoteRankingResult("remote-2", 8),
+		rankingResult("local-middle", 2, 2),
+		remoteRankingResult("remote-3", 7),
+		rankingResult("local-high", 3, 3),
+	}
+	var innerRequest searchcore.Request
+	response, err := NewSearcher(searcherFixture{
+		request:  &innerRequest,
+		response: searchcore.Response{Results: results},
+	}, ranker).Search(t.Context(), searchcore.Request{
+		Query:  "global",
+		Source: searchcore.SourceGlobal,
+		Limit:  2,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if innerRequest.Offset != 0 || innerRequest.Limit != 6 {
+		t.Fatalf("global candidate request = %#v", innerRequest)
+	}
+	if got := resultURLs(response.Results); !reflect.DeepEqual(got, []string{
+		"remote-1",
+		"local-high",
+		"remote-2",
+		"local-middle",
+		"remote-3",
+		"local-low",
+	}) {
+		t.Fatalf("global reranking = %v", got)
+	}
+}
+
+func remoteRankingResult(url string, score float64) searchcore.Result {
+	result := rankingResult(url, score, score)
+	result.Source = searchcore.SourceRemote
+
+	return result
+}

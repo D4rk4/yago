@@ -1,6 +1,7 @@
 package rankfit
 
 import (
+	"fmt"
 	"math"
 	"slices"
 )
@@ -11,6 +12,7 @@ type normalizedRankingExample struct {
 	documentIdentifier string
 	relevance          int
 	values             []float64
+	known              []bool
 }
 
 type normalizedQueryGroup struct {
@@ -18,9 +20,16 @@ type normalizedQueryGroup struct {
 	examples        []normalizedRankingExample
 }
 
-func normalizeQueryGroup(group QueryGroup, dimension int) (normalizedQueryGroup, error) {
+func normalizeQueryGroup(
+	group QueryGroup,
+	dimension int,
+	missingPolicy missingEvidencePolicy,
+) (normalizedQueryGroup, error) {
 	if err := group.validate(); err != nil {
 		return normalizedQueryGroup{}, err
+	}
+	if !missingPolicy.valid() {
+		return normalizedQueryGroup{}, fmt.Errorf("missing evidence policy is invalid")
 	}
 	if group.examples[0].features.Dimension() != dimension {
 		return normalizedQueryGroup{}, dimensionMismatchError(
@@ -32,9 +41,15 @@ func normalizeQueryGroup(group QueryGroup, dimension int) (normalizedQueryGroup,
 	centers := make([]float64, dimension)
 	scales := make([]float64, dimension)
 	for feature := range dimension {
-		values := make([]float64, len(group.examples))
-		for index, example := range group.examples {
-			values[index] = example.features.values[feature]
+		values := make([]float64, 0, len(group.examples))
+		for _, example := range group.examples {
+			if example.features.known[feature] || missingPolicy == missingEvidenceAsObservedZero {
+				values = append(values, example.features.values[feature])
+			}
+		}
+		if len(values) == 0 {
+			scales[feature] = 1
+			continue
 		}
 		centers[feature], scales[feature] = robustCenterAndScale(values)
 	}
@@ -46,6 +61,9 @@ func normalizeQueryGroup(group QueryGroup, dimension int) (normalizedQueryGroup,
 	for index, example := range group.examples {
 		values := make([]float64, dimension)
 		for feature := range dimension {
+			if !example.features.known[feature] && missingPolicy == missingEvidenceNeutral {
+				continue
+			}
 			value := (example.features.values[feature] - centers[feature]) / scales[feature]
 			values[feature] = max(
 				-maximumNormalizedFeatureMagnitude,
@@ -56,6 +74,7 @@ func normalizeQueryGroup(group QueryGroup, dimension int) (normalizedQueryGroup,
 			documentIdentifier: example.documentIdentifier,
 			relevance:          example.relevance,
 			values:             values,
+			known:              append([]bool(nil), example.features.known...),
 		}
 	}
 

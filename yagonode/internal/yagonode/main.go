@@ -277,6 +277,7 @@ func serve(
 		runHostRankRefreshLoop(ctx, hostRankSweeper{
 			documents: assembled.docScan,
 			holder:    assembled.hostRank,
+			trust:     assembled.hostTrust,
 		})
 	}()
 	go func() {
@@ -325,7 +326,6 @@ func serve(
 			errs <- listenAndServe(s.server)
 		}(s)
 	}
-
 	select {
 	case err := <-errs:
 		if errors.Is(err, http.ErrServerClosed) {

@@ -67,9 +67,10 @@ func TeamDraftInterleave(
 	}
 	interleaved := make([]DisplayedCandidate, 0, min(limit, len(primary)+len(secondary)))
 	state := teamDraftState{
-		seen:        make(map[string]struct{}, len(primary)+len(secondary)),
-		interleaved: &interleaved,
-		limit:       limit,
+		seen:          make(map[string]struct{}, len(primary)+len(secondary)),
+		interleaved:   &interleaved,
+		limit:         limit,
+		firstPosition: firstCandidatePosition(primary, secondary),
 	}
 	primaryIndex := 0
 	secondaryIndex := 0
@@ -110,9 +111,10 @@ func TeamDraftInterleave(
 }
 
 type teamDraftState struct {
-	seen        map[string]struct{}
-	interleaved *[]DisplayedCandidate
-	limit       int
+	seen          map[string]struct{}
+	interleaved   *[]DisplayedCandidate
+	limit         int
+	firstPosition int
 }
 
 func (s teamDraftState) draftCandidate(
@@ -129,7 +131,7 @@ func (s teamDraftState) draftCandidate(
 			continue
 		}
 		s.seen[identity] = struct{}{}
-		candidate.Position = len(*s.interleaved) + 1
+		candidate.Position = s.firstPosition + len(*s.interleaved)
 		*s.interleaved = append(*s.interleaved, DisplayedCandidate{
 			Candidate:     candidate,
 			OriginalIndex: originalIndex,
@@ -139,6 +141,22 @@ func (s teamDraftState) draftCandidate(
 	}
 
 	return start
+}
+
+func firstCandidatePosition(rankings ...[]Candidate) int {
+	position := MaximumImpressionPosition
+	for _, ranking := range rankings {
+		for _, candidate := range ranking {
+			if candidate.Position > 0 {
+				position = min(position, candidate.Position)
+			}
+		}
+	}
+	if position == MaximumImpressionPosition {
+		return 1
+	}
+
+	return position
 }
 
 func candidateIdentity(candidate Candidate) string {

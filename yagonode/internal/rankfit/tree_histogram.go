@@ -9,6 +9,7 @@ type histogramTrainingRow struct {
 	queryIndex   int
 	exampleIndex int
 	values       []float64
+	known        []bool
 }
 
 type histogramTrainingSet struct {
@@ -36,9 +37,12 @@ func newHistogramTrainingSet(
 				queryIndex:   queryIndex,
 				exampleIndex: exampleIndex,
 				values:       example.values,
+				known:        example.known,
 			})
 			for feature, value := range example.values {
-				featureValues[feature] = append(featureValues[feature], value)
+				if example.known[feature] {
+					featureValues[feature] = append(featureValues[feature], value)
+				}
 			}
 		}
 	}

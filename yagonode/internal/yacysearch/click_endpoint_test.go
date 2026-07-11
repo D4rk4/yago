@@ -200,12 +200,41 @@ func TestHTMLCaptureIssuesTokenReordersAndKeepsDirectLinks(t *testing.T) {
 	if recorder.query != "foo" || len(recorder.candidates) != 2 ||
 		recorder.candidates[0].ClusterIdentity != "cluster-a" ||
 		recorder.candidates[1].ClusterIdentity != "https://b.example/doc" ||
-		recorder.candidates[0].Position != 11 {
+		recorder.candidates[0].Position != 11 ||
+		recorder.candidates[0].LexicalPosition != 11 {
 		t.Fatalf("prepared candidates = %#v", recorder.candidates)
 	}
 	for _, forbidden := range []string{`data-q=`, `body.set("q"`, `body.set("u"`} {
 		if strings.Contains(body, forbidden) {
 			t.Errorf("page contains legacy beacon field %q", forbidden)
+		}
+	}
+}
+
+func TestImpressionCandidatesReconstructLocalLexicalOrder(t *testing.T) {
+	withRank := func(url string, rank float64) searchcore.Result {
+		return searchcore.Result{
+			URL: url,
+			Evidence: searchcore.NewRankingEvidence(searchcore.RankingSignalValue{
+				Signal: searchcore.SignalLocalRank,
+				Value:  rank,
+			}),
+		}
+	}
+	response := searchcore.Response{
+		Request: searchcore.Request{Offset: 10},
+		Results: []searchcore.Result{
+			withRank("https://local-three/", 3),
+			withRank("https://local-one/", 1),
+			{URL: "https://peer/", Source: searchcore.SourceRemote},
+			withRank("https://local-two/", 2),
+			{URL: "https://local-unknown/"},
+		},
+	}
+	candidates := impressionCandidates(response)
+	for index, expected := range []int{14, 11, 13, 12, 15} {
+		if candidates[index].LexicalPosition != expected {
+			t.Fatalf("lexical positions = %#v", candidates)
 		}
 	}
 }

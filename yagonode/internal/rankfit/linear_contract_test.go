@@ -18,6 +18,35 @@ func mustLinearFeatureVector(t *testing.T, values ...float64) FeatureVector {
 	return vector
 }
 
+func mustKnownFeatureVector(t *testing.T, values []float64, known []bool) FeatureVector {
+	t.Helper()
+	vector, err := NewFeatureVectorWithKnownValues(values, known)
+	if err != nil {
+		t.Fatalf("NewFeatureVectorWithKnownValues: %v", err)
+	}
+
+	return vector
+}
+
+func mustKnownRankingExample(
+	t *testing.T,
+	documentIdentifier string,
+	values []float64,
+	known []bool,
+) RankingExample {
+	t.Helper()
+	example, err := NewRankingExample(
+		documentIdentifier,
+		0,
+		mustKnownFeatureVector(t, values, known),
+	)
+	if err != nil {
+		t.Fatalf("NewRankingExample: %v", err)
+	}
+
+	return example
+}
+
 func mustRankingExample(
 	t *testing.T,
 	documentIdentifier string,
@@ -59,6 +88,18 @@ func TestFeatureVectorValidationAndImmutability(t *testing.T) {
 	if vector.Dimension() != 2 || !reflect.DeepEqual(vector.Values(), []float64{1, 2}) {
 		t.Fatalf("vector changed through caller slices: %#v", vector.Values())
 	}
+	known := []bool{true, false}
+	sparse, err := NewFeatureVectorWithKnownValues([]float64{3, 0}, known)
+	if err != nil {
+		t.Fatalf("NewFeatureVectorWithKnownValues: %v", err)
+	}
+	known[0] = false
+	if !sparse.Known(0) || sparse.Known(1) || sparse.Known(-1) || sparse.Known(2) {
+		t.Fatalf("sparse feature presence changed")
+	}
+	if _, err := NewFeatureVectorWithKnownValues([]float64{1}, nil); err == nil {
+		t.Fatalf("mismatched feature presence was accepted")
+	}
 
 	invalid := [][]float64{
 		nil,
@@ -82,10 +123,12 @@ func TestRankingExampleValidationAndImmutability(t *testing.T) {
 	}
 	copyOfFeatures := example.Features()
 	copyOfFeatures.values[0] = 9
+	copyOfFeatures.known[0] = false
 	if example.DocumentIdentifier() != "document" || example.Relevance() != 3 {
 		t.Fatalf("example accessors returned unexpected values")
 	}
-	if !reflect.DeepEqual(example.Features().Values(), []float64{1, 2}) {
+	if !reflect.DeepEqual(example.Features().Values(), []float64{1, 2}) ||
+		!example.Features().Known(0) {
 		t.Fatalf("example features changed through accessor")
 	}
 
@@ -252,7 +295,8 @@ func assertLinearExplanations(t *testing.T, explanations []RankingExplanation) {
 		total := 0.0
 		for _, contribution := range explanation.FeatureContributions {
 			total += contribution.Contribution
-			if contribution.FeatureName == "" || contribution.Weight == 0 {
+			if contribution.FeatureName == "" || contribution.Weight == 0 ||
+				!contribution.Known || !contribution.Used {
 				t.Errorf("incomplete contribution: %#v", contribution)
 			}
 		}
@@ -264,6 +308,9 @@ func assertLinearExplanations(t *testing.T, explanations []RankingExplanation) {
 
 func TestLinearModelValidationFailures(t *testing.T) {
 	validDefinitions := definitionsForTest("feature")
+	if _, err := newLinearLambdaRankModel(validDefinitions, []float64{1}, 0); err == nil {
+		t.Errorf("newLinearLambdaRankModel accepted an invalid missing policy")
+	}
 	cases := []struct {
 		definitions []FeatureDefinition
 		weights     []float64
@@ -363,6 +410,80 @@ func TestLinearModelJSONRoundTripAndRejection(t *testing.T) {
 	if !strings.Contains(string(encoded), linearLambdaRankFormat) {
 		t.Errorf("encoded model lacks format: %s", encoded)
 	}
+}
+
+func TestLinearModelFormatsPreserveMissingEvidenceSemantics(t *testing.T) {
+	var legacy LinearLambdaRankModel
+	if err := json.Unmarshal([]byte(
+		`{"format":"yago-linear-lambdarank-v1","features":[{"name":"quality","direction":0}],"weights":[1]}`,
+	), &legacy); err != nil {
+		t.Fatalf("decode legacy model: %v", err)
+	}
+	neutral, err := NewLinearLambdaRankModel(definitionsForTest("quality"), []float64{1})
+	if err != nil {
+		t.Fatalf("new neutral model: %v", err)
+	}
+	group := mustQueryGroup(
+		t,
+		"missing",
+		mustKnownRankingExample(t, "low", []float64{1}, []bool{true}),
+		mustKnownRankingExample(t, "missing", []float64{0}, []bool{false}),
+		mustKnownRankingExample(t, "high", []float64{3}, []bool{true}),
+	)
+	legacyRanked, err := legacy.Predict(group)
+	if err != nil {
+		t.Fatalf("legacy prediction: %v", err)
+	}
+	neutralRanked, err := neutral.Predict(group)
+	if err != nil {
+		t.Fatalf("neutral prediction: %v", err)
+	}
+	if got := []string{
+		legacyRanked[0].DocumentIdentifier,
+		legacyRanked[1].DocumentIdentifier,
+		legacyRanked[2].DocumentIdentifier,
+	}; !reflect.DeepEqual(got, []string{"high", "low", "missing"}) {
+		t.Fatalf("legacy order = %v", got)
+	}
+	if got := []string{
+		neutralRanked[0].DocumentIdentifier,
+		neutralRanked[1].DocumentIdentifier,
+		neutralRanked[2].DocumentIdentifier,
+	}; !reflect.DeepEqual(got, []string{"high", "missing", "low"}) {
+		t.Fatalf("neutral order = %v", got)
+	}
+	assertMissingLinearContribution(t, legacy, group, true)
+	assertMissingLinearContribution(t, neutral, group, false)
+	encodedLegacy, err := json.Marshal(legacy)
+	if err != nil || !strings.Contains(string(encodedLegacy), linearLambdaRankLegacyFormat) {
+		t.Fatalf("legacy encoding = %s, %v", encodedLegacy, err)
+	}
+}
+
+func assertMissingLinearContribution(
+	t *testing.T,
+	model LinearLambdaRankModel,
+	group QueryGroup,
+	legacy bool,
+) {
+	t.Helper()
+	explanations, err := model.Explain(group)
+	if err != nil {
+		t.Fatalf("explain missing evidence: %v", err)
+	}
+	for _, explanation := range explanations {
+		if explanation.DocumentIdentifier != "missing" {
+			continue
+		}
+		contribution := explanation.FeatureContributions[0]
+		if contribution.Known || contribution.Used != legacy ||
+			(contribution.Contribution != 0) != legacy {
+			t.Fatalf("missing contribution = %#v", contribution)
+		}
+
+		return
+	}
+	t.Fatal("missing contribution was not found")
 }
 
 func definitionsForTest(names ...string) []FeatureDefinition {

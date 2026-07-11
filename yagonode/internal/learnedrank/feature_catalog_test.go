@@ -11,7 +11,7 @@ import (
 
 func TestFeatureCatalogCoversRankingEvidenceInSignalOrder(t *testing.T) {
 	definitions := FeatureDefinitions()
-	if len(definitions) != len(rankingFeatures) {
+	if len(definitions) != rankingFeatureCount || rankingFeatureCount != 33 {
 		t.Fatalf("feature definitions = %d", len(definitions))
 	}
 	for index, definition := range definitions {
@@ -20,7 +20,8 @@ func TestFeatureCatalogCoversRankingEvidenceInSignalOrder(t *testing.T) {
 			t.Fatalf("feature %d = %#v", index, definition)
 		}
 	}
-	if (searchcore.SignalSourceCount + 1).Name() != "" {
+	if searchcore.SignalSourceCount != rankingFeatureCount-1 ||
+		(searchcore.SignalSourceCount+1).Name() != "" {
 		t.Fatalf("feature catalog omits signal %d", len(definitions))
 	}
 	if definitions[2].Direction != rankfit.FeatureDecreasing ||
@@ -49,7 +50,8 @@ func TestMapRankingEvidencePreservesKnownValuesAndUnknownZeros(t *testing.T) {
 	if !known || values[0] != 4.5 || values[17] != 0 || values[18] != 0.2 {
 		t.Fatalf("mapped values = %v, known = %v", values, known)
 	}
-	if values[1] != 0 || len(values) != len(rankingFeatures) {
+	if values[1] != 0 || len(values) != len(rankingFeatures) ||
+		!vector.Known(0) || !vector.Known(17) || vector.Known(1) {
 		t.Fatalf("unknown mapping = %v", values)
 	}
 
@@ -59,6 +61,11 @@ func TestMapRankingEvidencePreservesKnownValuesAndUnknownZeros(t *testing.T) {
 		make([]float64, len(rankingFeatures)),
 	) {
 		t.Fatalf("empty mapping = %v, %v, %v", empty.Values(), known, err)
+	}
+	for index := range rankingFeatures {
+		if empty.Known(index) {
+			t.Fatalf("empty feature %d was marked known", index)
+		}
 	}
 }
 

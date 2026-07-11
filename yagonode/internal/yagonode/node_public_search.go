@@ -64,6 +64,7 @@ type publicSearchAssembly struct {
 	linksNewTab          bool
 	clickCapture         bool
 	clickRecorder        yacysearch.ImpressionRecorder
+	portalClickRecorder  publicportal.ImpressionRecorder
 	learnedRanker        *learnedrank.Ranker
 	peerReputation       searchremote.ReputationSnapshotSource
 	peerObservations     searchremote.ReputationObservationSink
@@ -221,6 +222,9 @@ func mountNodePublicSearch(
 	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access, assembly.extractFetcher)
 	tavilyapi.MountCrawl(mux, access, crawlPageFetcher(assembly.extractFetcher))
 	portal := publicportal.New(newPortalSource(search), assembly.linksNewTab)
+	if assembly.clickCapture {
+		portal.SetImpressionRecorder(assembly.portalClickRecorder)
+	}
 	if assembly.theme != nil {
 		portal.SetTheme(assembly.theme)
 	}

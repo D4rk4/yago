@@ -33,7 +33,10 @@ func (m HistogramLambdaMARTModel) MarshalJSON() ([]byte, error) {
 	if err := m.Validate(); err != nil {
 		return nil, err
 	}
-	encoded := append([]byte(`{"format":`), strconv.Quote(histogramLambdaMARTFormat)...)
+	encoded := append(
+		[]byte(`{"format":`),
+		strconv.Quote(histogramModelFormat(m.missingPolicy))...,
+	)
 	encoded = append(encoded, `,"features":[`...)
 	for index, definition := range m.featureDefinitions {
 		if index > 0 {
@@ -69,17 +72,19 @@ func (m *HistogramLambdaMARTModel) UnmarshalJSON(data []byte) error {
 	if err := requireHistogramJSONEnd(decoder); err != nil {
 		return err
 	}
-	if document.Format != histogramLambdaMARTFormat {
+	missingPolicy, valid := histogramMissingEvidencePolicy(document.Format)
+	if !valid {
 		return fmt.Errorf("unsupported histogram LambdaMART model format %q", document.Format)
 	}
 	trees, err := histogramTreesFromDocuments(document.Trees)
 	if err != nil {
 		return err
 	}
-	model, err := newHistogramLambdaMARTModel(
+	model, err := newHistogramLambdaMARTModelWithPolicy(
 		document.FeatureDefinitions,
 		document.LearningRate,
 		trees,
+		missingPolicy,
 	)
 	if err != nil {
 		return fmt.Errorf("validate histogram LambdaMART model: %w", err)
@@ -87,6 +92,25 @@ func (m *HistogramLambdaMARTModel) UnmarshalJSON(data []byte) error {
 	*m = model
 
 	return nil
+}
+
+func histogramModelFormat(policy missingEvidencePolicy) string {
+	if policy == missingEvidenceAsObservedZero {
+		return histogramLambdaMARTLegacyFormat
+	}
+
+	return histogramLambdaMARTFormat
+}
+
+func histogramMissingEvidencePolicy(format string) (missingEvidencePolicy, bool) {
+	switch format {
+	case histogramLambdaMARTLegacyFormat:
+		return missingEvidenceAsObservedZero, true
+	case histogramLambdaMARTFormat:
+		return missingEvidenceNeutral, true
+	default:
+		return 0, false
+	}
 }
 
 func requireHistogramJSONEnd(decoder *json.Decoder) error {

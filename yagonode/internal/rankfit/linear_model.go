@@ -8,11 +8,15 @@ import (
 	"strconv"
 )
 
-const linearLambdaRankFormat = "yago-linear-lambdarank-v1"
+const (
+	linearLambdaRankLegacyFormat = "yago-linear-lambdarank-v1"
+	linearLambdaRankFormat       = "yago-linear-lambdarank-v2"
+)
 
 type LinearLambdaRankModel struct {
 	featureDefinitions []FeatureDefinition
 	weights            []float64
+	missingPolicy      missingEvidencePolicy
 }
 
 type RankedDocument struct {
@@ -23,6 +27,8 @@ type RankedDocument struct {
 
 type FeatureContribution struct {
 	FeatureName     string
+	Known           bool
+	Used            bool
 	NormalizedValue float64
 	Weight          float64
 	Contribution    float64
@@ -45,8 +51,19 @@ func NewLinearLambdaRankModel(
 	featureDefinitions []FeatureDefinition,
 	weights []float64,
 ) (LinearLambdaRankModel, error) {
+	return newLinearLambdaRankModel(featureDefinitions, weights, missingEvidenceNeutral)
+}
+
+func newLinearLambdaRankModel(
+	featureDefinitions []FeatureDefinition,
+	weights []float64,
+	missingPolicy missingEvidencePolicy,
+) (LinearLambdaRankModel, error) {
 	if err := validateFeatureDefinitions(featureDefinitions); err != nil {
 		return LinearLambdaRankModel{}, err
+	}
+	if !missingPolicy.valid() {
+		return LinearLambdaRankModel{}, fmt.Errorf("missing evidence policy is invalid")
 	}
 	if len(weights) != len(featureDefinitions) {
 		return LinearLambdaRankModel{}, dimensionMismatchError(
@@ -74,6 +91,7 @@ func NewLinearLambdaRankModel(
 	return LinearLambdaRankModel{
 		featureDefinitions: append([]FeatureDefinition(nil), featureDefinitions...),
 		weights:            append([]float64(nil), weights...),
+		missingPolicy:      missingPolicy,
 	}, nil
 }
 
@@ -86,7 +104,7 @@ func (m LinearLambdaRankModel) Weights() []float64 {
 }
 
 func (m LinearLambdaRankModel) Validate() error {
-	_, err := NewLinearLambdaRankModel(m.featureDefinitions, m.weights)
+	_, err := newLinearLambdaRankModel(m.featureDefinitions, m.weights, m.missingPolicy)
 
 	return err
 }
@@ -120,8 +138,11 @@ func (m LinearLambdaRankModel) Explain(group QueryGroup) ([]RankingExplanation, 
 		contributions := make([]FeatureContribution, len(m.weights))
 		for feature, weight := range m.weights {
 			value := evaluation.values[feature]
+			known := evaluation.known[feature]
 			contributions[feature] = FeatureContribution{
 				FeatureName:     m.featureDefinitions[feature].Name,
+				Known:           known,
+				Used:            known || m.missingPolicy == missingEvidenceAsObservedZero,
 				NormalizedValue: value,
 				Weight:          weight,
 				Contribution:    value * weight,
@@ -142,7 +163,7 @@ func (m LinearLambdaRankModel) MarshalJSON() ([]byte, error) {
 	if err := m.Validate(); err != nil {
 		return nil, err
 	}
-	encoded := append([]byte(`{"format":`), strconv.Quote(linearLambdaRankFormat)...)
+	encoded := append([]byte(`{"format":`), strconv.Quote(linearModelFormat(m.missingPolicy))...)
 	encoded = append(encoded, `,"features":[`...)
 	for index, definition := range m.featureDefinitions {
 		if index > 0 {
@@ -171,10 +192,15 @@ func (m *LinearLambdaRankModel) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &document); err != nil {
 		return fmt.Errorf("decode linear LambdaRank model: %w", err)
 	}
-	if document.Format != linearLambdaRankFormat {
+	missingPolicy, valid := linearMissingEvidencePolicy(document.Format)
+	if !valid {
 		return fmt.Errorf("unsupported linear LambdaRank model format %q", document.Format)
 	}
-	model, err := NewLinearLambdaRankModel(document.FeatureDefinitions, document.Weights)
+	model, err := newLinearLambdaRankModel(
+		document.FeatureDefinitions,
+		document.Weights,
+		missingPolicy,
+	)
 	if err != nil {
 		return fmt.Errorf("validate linear LambdaRank model: %w", err)
 	}
@@ -186,6 +212,7 @@ func (m *LinearLambdaRankModel) UnmarshalJSON(data []byte) error {
 type linearEvaluation struct {
 	documentIdentifier string
 	values             []float64
+	known              []bool
 	score              float64
 }
 
@@ -194,7 +221,7 @@ func (m LinearLambdaRankModel) normalizedGroup(group QueryGroup) (normalizedQuer
 		return normalizedQueryGroup{}, err
 	}
 
-	return normalizeQueryGroup(group, len(m.weights))
+	return normalizeQueryGroup(group, len(m.weights), m.missingPolicy)
 }
 
 func (m LinearLambdaRankModel) evaluate(group normalizedQueryGroup) []linearEvaluation {
@@ -207,6 +234,7 @@ func (m LinearLambdaRankModel) evaluate(group normalizedQueryGroup) []linearEval
 		evaluations[index] = linearEvaluation{
 			documentIdentifier: example.documentIdentifier,
 			values:             example.values,
+			known:              example.known,
 			score:              score,
 		}
 	}
@@ -222,6 +250,25 @@ func (m LinearLambdaRankModel) evaluate(group normalizedQueryGroup) []linearEval
 	})
 
 	return evaluations
+}
+
+func linearModelFormat(policy missingEvidencePolicy) string {
+	if policy == missingEvidenceAsObservedZero {
+		return linearLambdaRankLegacyFormat
+	}
+
+	return linearLambdaRankFormat
+}
+
+func linearMissingEvidencePolicy(format string) (missingEvidencePolicy, bool) {
+	switch format {
+	case linearLambdaRankLegacyFormat:
+		return missingEvidenceAsObservedZero, true
+	case linearLambdaRankFormat:
+		return missingEvidenceNeutral, true
+	default:
+		return 0, false
+	}
 }
 
 func compareIdentifiers(left, right string) int {

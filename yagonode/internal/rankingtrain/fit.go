@@ -79,11 +79,12 @@ func trainRankingModel(
 			Iterations:      report.Iterations,
 		}, nil
 	case FamilyHistogramLambdaMART:
+		options := yagorankHistogramTrainingOptions()
 		model, report, err := rankfit.TrainHistogramLambdaMART(
 			ctx,
 			definitions,
 			groups,
-			rankfit.DefaultHistogramLambdaMARTTrainingOptions(),
+			options,
 		)
 		if err != nil {
 			return trainedRankingModel{}, learnedrank.Snapshot{}, TrainingReport{},

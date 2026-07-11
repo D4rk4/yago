@@ -9,12 +9,22 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
+	"github.com/D4rk4/yago/yagonode/internal/hosttrust"
 )
 
 type signalingStoredDocuments struct {
 	docs  []documentstore.Document
 	scans chan struct{}
 }
+
+type hostTrustPolicyFixture struct {
+	policy  hosttrust.Policy
+	changes chan struct{}
+}
+
+func (f hostTrustPolicyFixture) Current() hosttrust.Policy { return f.policy }
+
+func (f hostTrustPolicyFixture) Changes() <-chan struct{} { return f.changes }
 
 func (s signalingStoredDocuments) StoredDocuments(
 	_ context.Context,
@@ -61,6 +71,27 @@ func TestHostRankRefreshOnceBuildsAuthorityTable(t *testing.T) {
 	if table.Rank(target) <= table.Rank(source) {
 		t.Fatalf("cited host (%v) must outrank the citing host (%v)",
 			table.Rank(target), table.Rank(source))
+	}
+}
+
+func TestHostRankRefreshOnceAppliesTrustedTeleport(t *testing.T) {
+	holder := hostrank.NewHolder()
+	sweeper := hostRankSweeper{
+		documents: scriptedStoredDocuments{docs: []documentstore.Document{
+			{NormalizedURL: "https://a.example/", Outlinks: []string{"https://b.example/"}},
+			{NormalizedURL: "https://b.example/", Outlinks: []string{"https://a.example/"}},
+		}},
+		holder: holder,
+		trust: hostTrustPolicyFixture{policy: hosttrust.Policy{
+			Blend: 0.5, Domains: []string{"a.example"},
+		}},
+	}
+
+	sweeper.refreshOnce(context.Background())
+
+	table := holder.Current()
+	if table.Rank("a.example") <= table.Rank("b.example") {
+		t.Fatalf("trusted authority = %#v", table)
 	}
 }
 
@@ -146,6 +177,7 @@ func TestHostRankRefreshLoopRunsAndStops(t *testing.T) {
 	sweeper := hostRankSweeper{
 		documents: signalingStoredDocuments{docs: citedDocuments(), scans: make(chan struct{}, 4)},
 		holder:    holder,
+		trust:     hostTrustPolicyFixture{changes: make(chan struct{}, 1)},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -167,6 +199,12 @@ func TestHostRankRefreshLoopRunsAndStops(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("ticked refresh did not run")
 	}
+	sweeper.trust.(hostTrustPolicyFixture).changes <- struct{}{}
+	select {
+	case <-scans:
+	case <-time.After(time.Second):
+		t.Fatal("trust change refresh did not run")
+	}
 
 	cancel()
 	select {
@@ -177,4 +215,11 @@ func TestHostRankRefreshLoopRunsAndStops(t *testing.T) {
 	if !stopped.Load() {
 		t.Fatal("ticker was not stopped")
 	}
+}
+
+func TestHostRankRefreshLoopStopsWithoutTrustSource(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	runHostRankRefreshLoop(ctx, hostRankSweeper{})
 }

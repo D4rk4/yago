@@ -254,4 +254,7 @@ func mountOpsExtras(opsMux *http.ServeMux, assembled node) {
 	if assembled.judgmentsAPI != nil {
 		opsMux.Handle(pathSearchJudgments, assembled.judgmentsAPI)
 	}
+	if assembled.hostTrustAPI != nil {
+		opsMux.Handle(pathSearchHostTrust, assembled.hostTrustAPI)
+	}
 }

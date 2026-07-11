@@ -19,10 +19,10 @@ constraints can retain much of LambdaMART's quality while improving
 interpretability. A signed linear LambdaRank model is a safer cold-start choice
 when judgments are limited.
 
-Clicks cannot be treated as direct relevance labels. Position and trust bias
-require randomized exposure, measured propensities, and clipped estimators.
-FairPairs and team-draft interleaving provide bounded experiments without
-replacing the normal result page.
+Clicks cannot be treated as direct relevance labels. Adjacent FairPairs provide
+randomized equal exposure, and confidence intervals can reject inconclusive
+pair outcomes. Team-draft interleaving compares two complete rankings online
+without turning its click credit into relevance labels.
 
 Federated result scores are not comparable across peers. Reciprocal-rank fusion
 is stable without score calibration. Persistent reliability can weight a peer's
@@ -39,14 +39,15 @@ heuristics.
 
 | Area | Selection |
 | --- | --- |
-| Candidate retrieval | Strict plus 60%-match fielded BM25, phrase/SDM evidence, bounded RM3 |
+| Candidate retrieval | Strict plus 60%-match fielded BM25, bounded RM3, then lexical evidence through one train/explain/serve sequence; global serving fetches a larger merged window only to collect its bounded local model window |
 | Fusion | Deterministic RRF with decayed peer reliability and `/24`/`/48` group caps |
-| Evidence | Fixed 33-signal immutable vector with explicit missingness |
-| Low-data model | Signed linear LambdaRank |
-| Higher-data model | Histogram LambdaMART, 64 trees, depth 4, 32 bins, constrained interactions |
-| Evaluation | Query-cluster and chronological holdouts, cluster-level paired bootstrap, recall/NDCG/ERR/MRR/diversity/discounted safety exposure/resource metrics |
+| Evidence | Fixed 33-signal immutable vector with a presence mask; unknown values are excluded from robust statistics and model contributions |
+| Low-data model | Signed linear LambdaRank with neutral missing evidence and versioned legacy reads |
+| Higher-data model | Histogram LambdaMART, 64 trees, depth 4, 32 bins, observed-only thresholds, neutral missing paths, and named interaction families |
+| Authority | PageRank plus bounded citation sampling and a vault-backed operator TrustRank policy of at most 256 canonical domain names or IP literals |
+| Evaluation | Query-cluster and chronological holdouts, cluster-level paired bootstrap, recall/NDCG/ERR/MRR/diversity/discounted safety exposure, rerank wall latency, and peer resources only when measured |
 | Promotion | Candidate beats lexical and active incumbent on one frozen pool; at least 20 clusters, 2% held-out NDCG gain, and a non-negative 95% lower bound |
-| Clicks | HMAC impressions, FairPairs, team draft, clipped IPS and SNIPS, aggregate storage only |
+| Clicks | HMAC impressions; automatic Team Draft for active-versus-lexical comparison; otherwise adjacent FairPairs, with only 95%-confidence pair winners eligible as implicit qrels |
 | Duplicates | Exact identity then bounded SimHash-LSH candidates with Jaccard confirmation |
 | Final policy | Persistent cluster consolidation, MMR, host crowding, date ordering, paging, once |
 

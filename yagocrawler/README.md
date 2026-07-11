@@ -78,7 +78,11 @@ follows at most `YAGOCRAWLER_MAX_REDIRECTS` redirect hops and uses explicit
 request, connect, TLS, and response-header timeout budgets. Sitemap and
 sitelist expansion imports at most `YAGOCRAWLER_SITEMAP_URL_LIMIT` URLs per
 seed. The container image bundles Firefox ESR on a pinned Alpine runtime and
-runs as a non-root user.
+runs as a non-root user. Its Go builder and Alpine runtime bases are pinned by
+SHA-256 digest. A build with
+`SOURCE_REVISION=$(git rev-parse HEAD) docker compose build yagocrawler` records
+that commit and the repository URL in the final image's OCI revision and source
+labels; an unstamped build records revision `unknown`.
 
 When `YAGOCRAWLER_METRICS_ADDR` is set (for example `:9101`), the crawler serves
 Prometheus metrics at `/metrics` on that address: `yacy_crawler_jobs_active`,

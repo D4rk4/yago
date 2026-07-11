@@ -12,7 +12,9 @@ type rankingFeature struct {
 	direction rankfit.FeatureDirection
 }
 
-var rankingFeatures = [...]rankingFeature{
+const rankingFeatureCount = 33
+
+var rankingFeatures = [rankingFeatureCount]rankingFeature{
 	{searchcore.SignalRetrievalScore, rankfit.FeatureIncreasing},
 	{searchcore.SignalStrictScore, rankfit.FeatureIncreasing},
 	{searchcore.SignalStrictRank, rankfit.FeatureDecreasing},
@@ -64,11 +66,13 @@ func MapRankingEvidence(
 	evidence searchcore.RankingEvidence,
 ) (rankfit.FeatureVector, bool, error) {
 	values := make([]float64, len(rankingFeatures))
+	knownValues := make([]bool, len(rankingFeatures))
 	knownSignals := 0
 	for index, feature := range rankingFeatures {
 		value, known := evidence.Value(feature.signal)
 		if known {
 			values[index] = value
+			knownValues[index] = true
 			knownSignals++
 		}
 	}
@@ -77,7 +81,7 @@ func MapRankingEvidence(
 			"ranking evidence contains a signal outside the feature catalog",
 		)
 	}
-	vector, err := rankfit.NewFeatureVector(values)
+	vector, err := rankfit.NewFeatureVectorWithKnownValues(values, knownValues)
 	if err != nil {
 		return rankfit.FeatureVector{}, false, fmt.Errorf("map ranking evidence: %w", err)
 	}

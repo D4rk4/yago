@@ -57,6 +57,28 @@
   Tuning preview: mean NDCG@10 {{printf "%.4f" .Tune.BeforeNDCG}} → {{printf "%.4f" .Tune.AfterNDCG}}; {{.Tune.Rounds}} round{{if ne .Tune.Rounds 1}}s{{end}}.
 </div>
 {{end}}
+{{if .HostTrust}}
+<form class="cds-settings-form" method="post" action="/admin/yagorank" hx-boost="false" aria-labelledby="host-trust-heading">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <h2 class="cds-h2" id="host-trust-heading">Host trust</h2>
+  <div class="cds-setting-row">
+    <span class="cds-setting-row__label"><label for="trust-blend">Trust blend</label></span>
+    <span class="cds-setting-row__control">
+      <input class="cds-input" type="number" step="any" min="0" max="1" id="trust-blend" name="trust_blend" value="{{.HostTrust.Blend}}" autocomplete="off" inputmode="decimal">
+    </span>
+  </div>
+  <div class="cds-setting-row">
+    <span class="cds-setting-row__label"><label for="trust-domains">Trusted domains</label></span>
+    <span class="cds-setting-row__control">
+      <textarea class="cds-input cds-textarea" id="trust-domains" name="trust_domains" rows="5" autocomplete="off">{{.HostTrust.Domains}}</textarea>
+    </span>
+  </div>
+  <div class="cds-actions">
+    <button class="cds-btn" type="submit" name="action" value="save-trust">Save host trust</button>
+  </div>
+  <p class="cds-muted">{{.HostTrust.DomainCount}} trusted domain{{if ne .HostTrust.DomainCount 1}}s{{end}}</p>
+</form>
+{{end}}
 <form class="cds-settings-form" method="post" action="/admin/yagorank" hx-boost="false">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
   {{range .Groups}}

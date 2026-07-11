@@ -1,0 +1,23 @@
+#!/bin/sh
+
+set -eu
+
+checker=$(dirname "$0")/require-exact-coverage
+workspace=$(mktemp -d)
+trap 'rm -rf "$workspace"' EXIT
+
+printf 'mode: atomic\nexample.go:1.1,1.2 22590 1\n' > "$workspace/exact.out"
+printf 'mode: atomic\nexample.go:1.1,1.2 22579 1\nexample.go:2.1,2.2 11 0\n' > "$workspace/rounded.out"
+printf 'mode: atomic\n' > "$workspace/empty.out"
+
+"$checker" "$workspace/exact.out" 100 > /dev/null
+if "$checker" "$workspace/rounded.out" 100 > /dev/null 2>&1; then
+	echo "rounded coverage passed the exact gate"
+	exit 1
+fi
+"$checker" "$workspace/rounded.out" 99.95 > /dev/null
+if "$checker" "$workspace/rounded.out" 99.96 > /dev/null 2>&1; then
+	echo "coverage passed above its raw percentage"
+	exit 1
+fi
+"$checker" "$workspace/empty.out" 100 > /dev/null

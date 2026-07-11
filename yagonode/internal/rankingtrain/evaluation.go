@@ -95,10 +95,10 @@ func rankedObservation(
 	latency time.Duration,
 ) searcheval.QueryObservation {
 	return searcheval.QueryObservation{
-		ID:         dataset.judgment.Query,
-		Judgment:   dataset.judgment,
-		Candidates: canonicalRankedCandidates(results),
-		CPULatency: latency,
+		ID:            dataset.judgment.Query,
+		Judgment:      dataset.judgment,
+		Candidates:    canonicalRankedCandidates(results),
+		RerankLatency: latency,
 	}
 }
 

@@ -14,11 +14,13 @@ type SignalExplanation struct {
 }
 
 type TreeDecision struct {
-	Signal          searchcore.RankingSignal `json:"signal"`
-	Name            string                   `json:"name"`
-	NormalizedValue float64                  `json:"normalized_value"`
-	Threshold       float64                  `json:"threshold"`
-	WentLeft        bool                     `json:"went_left"`
+	Signal            searchcore.RankingSignal `json:"signal"`
+	Name              string                   `json:"name"`
+	Known             bool                     `json:"known"`
+	TerminatedMissing bool                     `json:"terminated_missing"`
+	NormalizedValue   float64                  `json:"normalized_value"`
+	Threshold         float64                  `json:"threshold"`
+	WentLeft          bool                     `json:"went_left"`
 }
 
 type TreeExplanation struct {

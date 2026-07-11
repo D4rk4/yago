@@ -147,6 +147,17 @@ func TestStoreSurfacesCorruptRecordReads(t *testing.T) {
 	); err == nil {
 		t.Fatal("impression over corrupt evidence succeeded")
 	}
+	interleavingStore, interleavingEngine := openFaultStore(t)
+	interleavingEngine.buckets[clickBucket].values["query"] = []byte("{")
+	if _, err := interleavingStore.PrepareTeamDraft(
+		t.Context(), "query", draftRanking("model", []Candidate{{
+			URLIdentity: "url", ClusterIdentity: "cluster", Position: 1,
+		}}), draftRanking(LexicalRevision, []Candidate{{
+			URLIdentity: "url", ClusterIdentity: "cluster", Position: 1,
+		}}), 1,
+	); err == nil {
+		t.Fatal("interleaving over corrupt evidence succeeded")
+	}
 }
 
 func TestStoreSurfacesCapacityFailures(t *testing.T) {
@@ -167,6 +178,15 @@ func TestStoreSurfacesCapacityFailures(t *testing.T) {
 		storeClaims("query", "model", displayedFixture("url")),
 	); err == nil {
 		t.Fatal("capacity scan failure succeeded")
+	}
+	if _, err := scanStore.PrepareTeamDraft(
+		t.Context(), "query", draftRanking("model", []Candidate{{
+			URLIdentity: "url", ClusterIdentity: "cluster", Position: 1,
+		}}), draftRanking(LexicalRevision, []Candidate{{
+			URLIdentity: "url", ClusterIdentity: "cluster", Position: 1,
+		}}), 1,
+	); err == nil {
+		t.Fatal("interleaving capacity scan failure succeeded")
 	}
 
 	emptyStore, emptyEngine := openFaultStore(t)
@@ -200,6 +220,17 @@ func TestStoreSurfacesCapacityFailures(t *testing.T) {
 		storeClaims("query", "model", displayedFixture("url")),
 	); err == nil {
 		t.Fatal("impression put failure succeeded")
+	}
+	interleavingPutStore, interleavingPutEngine := openFaultStore(t)
+	interleavingPutEngine.buckets[clickBucket].putErr = errors.New("put failed")
+	if _, err := interleavingPutStore.PrepareTeamDraft(
+		t.Context(), "query", draftRanking("model", []Candidate{{
+			URLIdentity: "url", ClusterIdentity: "cluster", Position: 1,
+		}}), draftRanking(LexicalRevision, []Candidate{{
+			URLIdentity: "url", ClusterIdentity: "cluster", Position: 1,
+		}}), 1,
+	); err == nil {
+		t.Fatal("interleaving put failure succeeded")
 	}
 }
 

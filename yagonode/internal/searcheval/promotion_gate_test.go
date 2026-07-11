@@ -64,7 +64,8 @@ func TestDecideHeldoutPromotionPassesDeterministically(t *testing.T) {
 
 func TestDecideHeldoutPromotionRejectsQualityAndSliceRegressions(t *testing.T) {
 	baseline := promotionReport([]float64{0.5, 0.5, 0.5, 0.5})
-	baseline.Metrics.CPULatencyP95 = 10 * time.Millisecond
+	baseline.Metrics.RerankLatencyP95 = 10 * time.Millisecond
+	baseline.Metrics.PeerResourcesMeasured = true
 	baseline.Metrics.PeerBytes = 1000
 	baseline.Metrics.PeerTimeouts = 1
 	below := promotionReport([]float64{0.505, 0.505, 0.505, 0.505})
@@ -92,7 +93,8 @@ func TestDecideHeldoutPromotionRejectsQualityAndSliceRegressions(t *testing.T) {
 	regressed.Metrics.RecallAt200 = 0.8
 	regressed.Metrics.UnsafeExposureAt10 = 0.1
 	regressed.Metrics.SpamExposureAt10 = 0.1
-	regressed.Metrics.CPULatencyP95 = 20 * time.Millisecond
+	regressed.Metrics.RerankLatencyP95 = 20 * time.Millisecond
+	regressed.Metrics.PeerResourcesMeasured = true
 	regressed.Metrics.PeerBytes = 3000
 	regressed.Metrics.PeerTimeouts = 2
 	regressedSlice := regressed.Slices["head"]

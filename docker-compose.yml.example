@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: yagonode/Dockerfile
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
     image: yago-node:latest
     restart: unless-stopped
     ports:
@@ -57,6 +59,8 @@ services:
     build:
       context: .
       dockerfile: yagocrawler/Dockerfile
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
     image: yagocrawler:latest
     restart: unless-stopped
     depends_on:
