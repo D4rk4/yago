@@ -119,6 +119,12 @@ being styled) is accepted.
   - **Results design** — GrapesJS + CodeMirror editing the results-page template.
 - Saves are admin-authenticated and CSRF-protected like every other console write,
   and recorded as config events.
+- The visual editor uses the light console palette. Operator-authored shared CSS
+  is applied directly to its iframe, while only styles created by GrapesJS are
+  stored between the `grapes:start` and `grapes:end` markers. Switching between
+  visual and code modes therefore preserves cascade order, inherited colors,
+  CSS variables, formatting outside the marker, and the public page background
+  without duplicating stale rules.
 
 ## Consequences
 

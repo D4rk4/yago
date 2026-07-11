@@ -107,10 +107,10 @@ its binaries (`yago-node`, `yagocrawler`).
   keyboard navigation), mobile-friendly, with OpenSearch browser integration
   and RSS/JSON output for every query.
 - **Operator-themeable end to end**: the search and results pages are
-  Handlebars templates editable from the console — visually with an embedded
-  GrapesJS editor or as code with CodeMirror — with one-click return to the
-  built-in design and a fallback that keeps a broken template from ever
-  blanking the public surface.
+  Handlebars templates editable from the console — visually with a light
+  GrapesJS editor that previews the shared portal CSS, or as code with
+  CodeMirror — with one-click return to the built-in design and a fallback
+  that keeps a broken template from ever blanking the public surface.
 
 ### 🛠️ An admin console with everything in one place
 

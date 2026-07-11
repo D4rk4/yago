@@ -119,7 +119,7 @@ func TestPortalDesignTabsRenderEditors(t *testing.T) {
 		"/admin/assets/vendor/grapes.min.js",
 		"/admin/assets/vendor/codemirror.min.js",
 		"/admin/assets/vendor/cm-simple.min.js",
-		"/admin/assets/portal_designer.js?v=2",
+		"/admin/assets/portal_designer.js?v=3",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Errorf("design tabs missing %q", want)
@@ -425,9 +425,41 @@ func assertPortalDesignerIconFont(t *testing.T, path string, got capture) {
 
 func assertPortalDesignerBootstrap(t *testing.T, path string, got capture) {
 	t.Helper()
-	if strings.HasSuffix(path, "/portal_designer.js") &&
-		(!strings.Contains(got.body, `root.matches("form")`) ||
-			!strings.Contains(got.body, `cssIcons: "/admin/assets/vendor/font-awesome.min.css?v=4.7.0"`)) {
-		t.Errorf("%s: editor bootstrap lost its form or local-asset guard", path)
+	if strings.HasSuffix(path, "/portal_designer.js") {
+		for _, want := range []string{
+			`root.matches("form")`,
+			`canvas: { frameStyle: styleParts.frame }`,
+			`protectedCss: ""`,
+			`style: styleParts.visual`,
+			`avoidProtected: true, keepUnusedStyles: true`,
+			`webpagePlugin(editor, { useCustomTheme: false })`,
+			`cssIcons: "/admin/assets/vendor/font-awesome.min.css?v=4.7.0"`,
+			`grapes.destroy()`,
+		} {
+			if !strings.Contains(got.body, want) {
+				t.Errorf("%s: editor bootstrap missing %q", path, want)
+			}
+		}
+		for _, stale := range []string{
+			`style: cssCM.getValue()`,
+			`setStyle(cssCM.getValue())`,
+		} {
+			if strings.Contains(got.body, stale) {
+				t.Errorf("%s: editor restored stale full-stylesheet import %q", path, stale)
+			}
+		}
+	}
+	if strings.HasSuffix(path, "/portal_designer.css") {
+		for _, want := range []string{
+			`--gjs-primary-color: #ffffff`,
+			`--gjs-secondary-color: #161616`,
+			`--gjs-left-width: 11rem`,
+			`.designer .gjs-frame { background: #ffffff; }`,
+			`.designer .gjs-editor { min-width: 48rem; }`,
+		} {
+			if !strings.Contains(got.body, want) {
+				t.Errorf("%s: light editor theme missing %q", path, want)
+			}
+		}
 	}
 }

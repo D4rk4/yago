@@ -15,18 +15,38 @@
     return { prefix: match[1], body: match[2], suffix: match[3] };
   }
 
-  function mergeGrapesCss(existing, generated) {
+  function splitPortalStyles(existing) {
     var start = existing.indexOf(CSS_START);
-    var end = existing.indexOf(CSS_END);
-    var base = existing;
-    if (start >= 0 && end > start) {
-      base = existing.slice(0, start) + existing.slice(end + CSS_END.length);
+    var contentStart = start + CSS_START.length;
+    var end = start >= 0 ? existing.indexOf(CSS_END, contentStart) : -1;
+    if (start < 0 || end < contentStart) {
+      return {
+        frame: existing,
+        visual: "",
+        before: null,
+        after: null
+      };
     }
-    base = base.replace(/\s+$/, "");
-    if (!generated) {
-      return base + "\n";
+
+    return {
+      frame: existing.slice(0, start) + existing.slice(end + CSS_END.length),
+      visual: existing.slice(contentStart, end).replace(/^\r?\n|\r?\n$/g, ""),
+      before: existing.slice(0, start),
+      after: existing.slice(end + CSS_END.length)
+    };
+  }
+
+  function mergeGrapesCss(existing, generated) {
+    var parts = splitPortalStyles(existing);
+    var visual = (generated || "").replace(/^\s+|\s+$/g, "");
+    var block = visual ? CSS_START + "\n" + visual + "\n" + CSS_END : "";
+    if (parts.before !== null) {
+      return parts.before + block + parts.after;
     }
-    return base + "\n" + CSS_START + "\n" + generated + "\n" + CSS_END + "\n";
+    if (!block) {
+      return existing;
+    }
+    return existing + (existing && !/\r?\n$/.test(existing) ? "\n" : "") + block + "\n";
   }
 
   function initDesigner(root) {
@@ -69,7 +89,10 @@
         return;
       }
       tplCM.setValue(docParts.prefix + grapes.getHtml() + docParts.suffix);
-      cssCM.setValue(mergeGrapesCss(cssCM.getValue(), grapes.getCss() || ""));
+      cssCM.setValue(mergeGrapesCss(
+        cssCM.getValue(),
+        grapes.getCss({ avoidProtected: true, keepUnusedStyles: true }) || ""
+      ));
     }
 
     function enterVisual() {
@@ -77,25 +100,28 @@
         return;
       }
       docParts = splitDocument(tplCM.getValue());
-      if (grapes) {
-        grapes.setComponents(docParts.body);
-        grapes.setStyle(cssCM.getValue());
-      } else {
-        var plugins = [];
-        if (typeof window["grapesjs-preset-webpage"] !== "undefined") {
-          plugins.push(window["grapesjs-preset-webpage"]);
-        }
-        grapes = grapesjs.init({
-          container: canvas,
-          height: "480px",
-          fromElement: false,
-          components: docParts.body,
-          style: cssCM.getValue(),
-          cssIcons: "/admin/assets/vendor/font-awesome.min.css?v=4.7.0",
-          storageManager: false,
-          plugins: plugins
+      var styleParts = splitPortalStyles(cssCM.getValue());
+      var plugins = [];
+      if (typeof window["grapesjs-preset-webpage"] !== "undefined") {
+        var webpagePreset = window["grapesjs-preset-webpage"];
+        var webpagePlugin = typeof webpagePreset === "function" ?
+          webpagePreset : webpagePreset.default;
+        plugins.push(function (editor) {
+          webpagePlugin(editor, { useCustomTheme: false });
         });
       }
+      grapes = grapesjs.init({
+        container: canvas,
+        height: "480px",
+        fromElement: false,
+        components: docParts.body,
+        style: styleParts.visual,
+        protectedCss: "",
+        canvas: { frameStyle: styleParts.frame },
+        cssIcons: "/admin/assets/vendor/font-awesome.min.css?v=4.7.0",
+        storageManager: false,
+        plugins: plugins
+      });
       visual = true;
       root.classList.add("designer-visual");
       canvas.setAttribute("aria-hidden", "false");
@@ -109,6 +135,10 @@
       root.classList.remove("designer-visual");
       canvas.setAttribute("aria-hidden", "true");
       toggle.textContent = "Visual editor";
+      grapes.destroy();
+      grapes = null;
+      docParts = null;
+      canvas.textContent = "";
       tplCM.refresh();
       cssCM.refresh();
     }

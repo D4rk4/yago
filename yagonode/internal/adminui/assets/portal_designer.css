@@ -1,8 +1,29 @@
 /* Portal design tabs (ADR-0033): layout for the code/visual editor forms. */
-.designer { display: flex; flex-direction: column; gap: 0.75rem; }
+:root {
+  --gjs-primary-color: #ffffff;
+  --gjs-secondary-color: #161616;
+  --gjs-tertiary-color: #e0e0e0;
+  --gjs-quaternary-color: #0f62fe;
+  --gjs-main-color: #ffffff;
+  --gjs-main-dark-color: #e0e0e0;
+  --gjs-main-light-color: #f4f4f4;
+  --gjs-secondary-dark-color: #c6c6c6;
+  --gjs-secondary-light-color: #525252;
+  --gjs-soft-light-color: #f4f4f4;
+  --gjs-font-color: #161616;
+  --gjs-font-color-active: #0f62fe;
+  --gjs-light-border: #e0e0e0;
+  --gjs-arrow-color: #525252;
+  --gjs-dark-text-shadow: transparent;
+  --gjs-left-width: 11rem;
+}
+.designer { display: flex; flex-direction: column; gap: 0.75rem; max-width: 100%; min-width: 0; }
 .designer-toolbar { display: flex; gap: 0.5rem; align-items: center; }
-.designer-canvas { display: none; }
+.designer-canvas { box-sizing: border-box; display: none; max-width: 100%; min-width: 0; overflow-x: auto; width: 100%; }
 .designer.designer-visual .designer-canvas { display: block; border: 1px solid var(--cds-border, #8d8d8d); min-height: 480px; }
+.designer .gjs-cv-canvas { background: #f4f4f4; }
+.designer .gjs-frame { background: #ffffff; }
+.designer .gjs-editor { min-width: 48rem; }
 .designer textarea { width: 100%; box-sizing: border-box; font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; }
 .designer .CodeMirror { border: 1px solid var(--cds-border, #8d8d8d); height: auto; min-height: 12rem; max-height: 60vh; }
 .designer .CodeMirror-scroll { max-height: 60vh; }
