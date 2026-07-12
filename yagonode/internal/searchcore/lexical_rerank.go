@@ -76,6 +76,7 @@ func (s finalRankingSearcher) Search(
 	response.Results = DiversifyResults(response.Results, req)
 	OrderByDateWhenRequested(response.Results, req)
 	response.Results = offsetResults(response.Results, req.Offset, rankingResultLimit(req))
+	finalizeRankingPayload(response.Results, req.Explain)
 	response.Request = req
 
 	return response, nil

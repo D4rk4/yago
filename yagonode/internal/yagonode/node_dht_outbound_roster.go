@@ -7,18 +7,18 @@ import (
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/dhtexchange"
+	"github.com/D4rk4/yago/yagonode/internal/indextransfer"
 )
 
 const (
-	dhtOutboundPeerConfirmedMessage           = "dht outbound peer confirmed"
-	dhtOutboundPeerRemoteIndexRejectedMessage = "dht outbound peer remote index rejected"
-	dhtOutboundPeerQuarantinedMessage         = "dht outbound peer quarantined"
+	dhtOutboundPeerConfirmedMessage   = "dht outbound peer confirmed"
+	dhtOutboundHandoffRejectedMessage = "dht outbound handoff rejected"
+	dhtOutboundPeerQuarantinedMessage = "dht outbound peer quarantined"
 )
 
 type dhtOutboundPeerRoster interface {
 	ConfirmReachable(context.Context, yagomodel.Hash)
 	ConfirmUnreachable(context.Context, yagomodel.Hash)
-	RejectRemoteIndex(context.Context, yagomodel.Seed)
 }
 
 type dhtOutboundRosterCycle struct {
@@ -56,14 +56,10 @@ func (c dhtOutboundRosterCycle) observe(
 
 		return
 	}
-	if receipt.Distribution.State == dhtexchange.DistributionHandoffRejected &&
-		receipt.Distribution.Target.Hash != "" {
-		c.roster.RejectRemoteIndex(ctx, receipt.Distribution.Target)
-		slog.WarnContext(
-			ctx,
-			dhtOutboundPeerRemoteIndexRejectedMessage,
-			slog.String("peer", peer.String()),
-		)
+	if receipt.Distribution.State == dhtexchange.DistributionHandoffRejected {
+		logDHTOutboundHandoffRejection(ctx, peer, receipt.Distribution.Handoff)
+
+		return
 	}
 	if receipt.Retry.Status == dhtexchange.OutboundRetryQuarantined {
 		c.roster.ConfirmUnreachable(ctx, peer)
@@ -75,4 +71,27 @@ func (c dhtOutboundRosterCycle) observe(
 			slog.Time("until", receipt.Retry.QuarantineUntil),
 		)
 	}
+}
+
+func logDHTOutboundHandoffRejection(
+	ctx context.Context,
+	peer yagomodel.Hash,
+	handoff indextransfer.HandoffReceipt,
+) {
+	stage := "url"
+	result := string(handoff.URL.Result)
+	pause := 0
+	if handoff.State == indextransfer.HandoffRWIRejected {
+		stage = "rwi"
+		result = string(handoff.RWI.Result)
+		pause = handoff.RWI.Pause
+	}
+	slog.WarnContext(
+		ctx,
+		dhtOutboundHandoffRejectedMessage,
+		slog.String("peer", peer.String()),
+		slog.String("stage", stage),
+		slog.String("result", result),
+		slog.Int("pause", pause),
+	)
 }

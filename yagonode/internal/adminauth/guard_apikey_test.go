@@ -165,8 +165,12 @@ func TestGuardAPIKeyRateLimited(t *testing.T) {
 		http.MethodGet,
 		"/protected",
 		key.Key,
-	); rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("second request = %d, want 429", rec.Code)
+	); rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") != "1" {
+		t.Fatalf(
+			"second request = %d retry=%q, want 429/1",
+			rec.Code,
+			rec.Header().Get("Retry-After"),
+		)
 	}
 }
 
@@ -176,8 +180,8 @@ func TestGuardAPIKeySurfacesAuthError(t *testing.T) {
 	key := createKey(t, service, ScopeAdminRead)
 	engine.buckets[adminAPIKeysBucket][key.ID] = []byte("{corrupt")
 	rec := doBearerRequest(surface, http.MethodGet, "/protected", key.Key)
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", rec.Code)
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") != "1" {
+		t.Fatalf("status = %d retry=%q, want 503/1", rec.Code, rec.Header().Get("Retry-After"))
 	}
 }
 

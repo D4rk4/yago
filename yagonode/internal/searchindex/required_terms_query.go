@@ -26,18 +26,40 @@ func requiredTermsQuery(
 	req SearchRequest,
 	analyzers []string,
 	weights RankingWeights,
+	analyzerScope bool,
 ) blevequery.Query {
-	terms := requirableTerms(queryTermWords(req), analyzers)
-	if len(terms) == 0 {
-		return crossFieldTermClause(req.Query, analyzers, weights, 1)
+	if !analyzerScope {
+		return strictRequiredTermsQuery(req, analyzers, weights)
 	}
-	required := make([]blevequery.Query, 0, len(terms))
-	for _, term := range terms {
-		required = append(required, crossFieldTermClause(term, analyzers, weights, 1))
+	strict := req
+	strict.ExpansionTerms = nil
+	branches := []blevequery.Query{strictRequiredTermsQuery(
+		strict,
+		[]string{standardTextAnalyzer},
+		weights,
+	)}
+	for _, analyzer := range analyzers {
+		terms := requirableTermsForAnalyzer(queryTermWords(req), analyzer)
+		if len(terms) == 0 {
+			continue
+		}
+		required := make([]blevequery.Query, 0, len(terms)+1)
+		required = append(required, analyzerScopeClause(analyzer))
+		for _, term := range terms {
+			required = append(
+				required,
+				crossFieldTermClauseForAnalyzer(term, analyzer, weights, 1),
+			)
+		}
+		branch := required[0]
+		if len(required) > 1 {
+			branch = bleve.NewConjunctionQuery(required...)
+		}
+		branches = append(branches, branch)
 	}
-	main := required[0]
-	if len(required) > 1 {
-		main = blevequery.Query(bleve.NewConjunctionQuery(required...))
+	main := branches[0]
+	if len(branches) > 1 {
+		main = bleve.NewDisjunctionQuery(branches...)
 	}
 	if len(req.ExpansionTerms) == 0 {
 		return main
@@ -50,6 +72,63 @@ func requiredTermsQuery(
 	}
 
 	return query
+}
+
+func strictRequiredTermsQuery(
+	req SearchRequest,
+	analyzers []string,
+	weights RankingWeights,
+) blevequery.Query {
+	terms := requirableTerms(queryTermWords(req), analyzers)
+	if len(terms) == 0 {
+		return crossFieldTermClause(req.Query, analyzers, weights, 1)
+	}
+	required := make([]blevequery.Query, 0, len(terms))
+	for _, term := range terms {
+		required = append(required, crossFieldTermClause(term, analyzers, weights, 1))
+	}
+	main := required[0]
+	if len(required) > 1 {
+		main = bleve.NewConjunctionQuery(required...)
+	}
+	if len(req.ExpansionTerms) == 0 {
+		return main
+	}
+	query := bleve.NewBooleanQuery()
+	query.AddMust(main)
+	for _, term := range req.ExpansionTerms {
+		query.AddShould(crossFieldTermClause(term, analyzers, weights, expansionBoostFactor))
+	}
+
+	return query
+}
+
+func analyzerScopeClause(analyzer string) blevequery.Query {
+	query := bleve.NewTermQuery(analyzer)
+	query.SetField(documentAnalyzerField)
+	query.SetBoost(0)
+
+	return query
+}
+
+func crossFieldTermClauseForAnalyzer(
+	text string,
+	analyzer string,
+	weights RankingWeights,
+	factor float64,
+) blevequery.Query {
+	clause := bleve.NewDisjunctionQuery()
+	for _, field := range textSearchFields() {
+		clause.AddQuery(fieldMatchWithAnalyzer(
+			field,
+			text,
+			textFieldWeight(field, weights)*factor,
+			analyzer,
+		))
+	}
+	clause.AddQuery(fieldMatch("url", text, weights.URL*factor))
+
+	return clause
 }
 
 // crossFieldTermClause matches one term (or the raw query text, for the
@@ -87,8 +166,10 @@ func queryTermWords(req SearchRequest) []string {
 	return strings.Fields(req.Query)
 }
 
-// requirableTerms keeps the words that may be demanded of every document,
-// dropping those some candidate analyzer folds away entirely.
+func queryAnalyzerText(req SearchRequest) string {
+	return strings.Join(queryTermWords(req), " ")
+}
+
 func requirableTerms(terms []string, analyzers []string) []string {
 	out := make([]string, 0, len(terms))
 	for _, term := range terms {
@@ -102,25 +183,46 @@ func requirableTerms(terms []string, analyzers []string) []string {
 	return out
 }
 
-// analyzedAway reports whether any candidate stemming analyzer analyzes the
-// term to nothing — a stopword of a plausible query language. Such a word was
-// stripped from same-language documents at index time, so a mandatory clause
-// for it would exclude exactly the documents it should find. The standard
-// analyzer keeps every word and carries no stopword signal, so it is skipped;
-// with no resolvable mapping every term stays requirable.
-func analyzedAway(term string, analyzers []string) bool {
+func requirableTermsForAnalyzer(terms []string, analyzer string) []string {
+	out := make([]string, 0, len(terms))
+	for _, term := range terms {
+		term = strings.TrimSpace(term)
+		if term == "" || analyzerDropsTerm(term, analyzer) {
+			continue
+		}
+		out = append(out, term)
+	}
+
+	return out
+}
+
+func analyzerDropsTerm(term string, analyzer string) bool {
+	if analyzer == "" || analyzer == standardTextAnalyzer {
+		return false
+	}
 	indexMapping := loadStemmingMapping()
 	if indexMapping == nil {
 		return false
 	}
+	resolved := indexMapping.AnalyzerNamed(analyzer)
+	if resolved == nil {
+		return false
+	}
+
+	return len(resolved.Analyze([]byte(term))) == 0
+}
+
+func analyzedAway(term string, analyzers []string) bool {
+	resolved := false
 	for _, name := range analyzers {
 		if name == "" || name == standardTextAnalyzer {
 			continue
 		}
-		if len(indexMapping.AnalyzerNamed(name).Analyze([]byte(term))) == 0 {
-			return true
+		resolved = true
+		if !analyzerDropsTerm(term, name) {
+			return false
 		}
 	}
 
-	return false
+	return resolved
 }

@@ -258,6 +258,7 @@ func assertRichSearchResponse(
 	}
 	if search.got.Source != searchcore.SourceGlobal ||
 		search.got.Limit != 2 ||
+		!search.got.AllowWebFallback ||
 		!search.got.SafeSearch ||
 		search.got.SiteHost != "example.org" ||
 		search.got.ContentDomain != searchcore.ContentDomainText ||
@@ -290,6 +291,7 @@ func TestSearchEndpointDefaultsToLocalAndMetadataSnippet(t *testing.T) {
 	got := decodeSearchResponse(t, rec)
 	if search.got.Source != searchcore.SourceLocal ||
 		search.got.Limit != defaultMaxResults ||
+		!search.got.AllowWebFallback ||
 		got.Results[0].Content != "metadata snippet" ||
 		got.Results[0].RawContent != nil {
 		t.Fatalf("request=%#v response=%#v", search.got, got)
@@ -691,7 +693,7 @@ func TestSearchEndpointReturnsSearchAndDocumentErrors(t *testing.T) {
 
 func TestSearchEndpointMountsRoute(t *testing.T) {
 	mux := http.NewServeMux()
-	Mount(mux, &fakeSearcher{}, nil, SearchAccessPolicy{BearerToken: searchTestKey})
+	Mount(mux, &fakeSearcher{}, nil, SearchAccessPolicy{BearerToken: searchTestKey}, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(

@@ -217,7 +217,7 @@ func TestResultHostRejectsMalformedURL(t *testing.T) {
 
 func TestQueryCacheEvictsExpiredOnPut(t *testing.T) {
 	clock := time.Unix(1_700_000_000, 0)
-	cache := newQueryCache(time.Minute, 1, func() time.Time { return clock })
+	cache := newQueryCache(time.Minute, 1, defaultCacheBytes, func() time.Time { return clock })
 
 	cache.put("a", []Result{{Title: "a"}})
 	clock = clock.Add(2 * time.Minute)

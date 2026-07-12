@@ -47,6 +47,8 @@ type SearchResponse struct {
 	IndexAbstract map[yagomodel.Hash]string
 }
 
+const maximumParsedSearchResources = 1024
+
 func (r SearchRequest) Form() url.Values {
 	form := url.Values{}
 	putString(form, FieldNetworkName, r.NetworkName)
@@ -256,25 +258,18 @@ func searchResponseCount(m yagomodel.Message) (int, error) {
 
 func parseSearchResources(m yagomodel.Message, count int) []yagomodel.URIMetadataRow {
 	var rows []yagomodel.URIMetadataRow
+	limit := maximumParsedSearchResources
 	if count > 0 {
-		for i := range count {
-			raw, ok := m[indexedKey(prefixResource, i)]
-			if !ok {
-				continue
-			}
-			row, err := yagomodel.ParseURIMetadataRow(raw)
-			if err != nil {
-				continue
-			}
-			rows = append(rows, row)
-		}
-		return rows
+		limit = min(count, maximumParsedSearchResources)
 	}
 
-	for i := 0; ; i++ {
+	for i := range limit {
 		raw, ok := m[indexedKey(prefixResource, i)]
 		if !ok {
-			return rows
+			if count <= 0 {
+				break
+			}
+			continue
 		}
 
 		row, err := yagomodel.ParseURIMetadataRow(raw)
@@ -284,6 +279,8 @@ func parseSearchResources(m yagomodel.Message, count int) []yagomodel.URIMetadat
 
 		rows = append(rows, row)
 	}
+
+	return rows
 }
 
 func parseSearchIndexes(

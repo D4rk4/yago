@@ -11,7 +11,7 @@ import (
 
 func TestBuildLinearProposalIsDeterministicAndImmutable(t *testing.T) {
 	judgments, firstSearcher := rankingFixture()
-	config := Config{Revision: "linear-v1"}
+	config := deterministicProposalConfig("linear-v1", FamilyLinearLambdaRank)
 	first, err := BuildProposal(t.Context(), firstSearcher, judgments, config)
 	if err != nil {
 		t.Fatalf("BuildProposal first: %v", err)
@@ -59,7 +59,7 @@ func TestBuildLinearProposalIsDeterministicAndImmutable(t *testing.T) {
 
 func TestBuildHistogramProposal(t *testing.T) {
 	judgments, searcher := rankingFixture()
-	config := DefaultConfig("histogram-v1", FamilyHistogramLambdaMART)
+	config := deterministicProposalConfig("histogram-v1", FamilyHistogramLambdaMART)
 	proposal, err := BuildProposal(t.Context(), searcher, judgments, config)
 	if err != nil {
 		t.Fatalf("BuildProposal: %v", err)
@@ -76,18 +76,19 @@ func TestBuildHistogramProposal(t *testing.T) {
 
 func TestBuildProposalRequiresGainOverFrozenIncumbent(t *testing.T) {
 	judgments, firstSearcher := rankingFixture()
+	firstConfig := deterministicProposalConfig("first", FamilyLinearLambdaRank)
 	first, err := BuildProposal(
 		t.Context(),
 		firstSearcher,
 		judgments,
-		DefaultConfig("first", FamilyLinearLambdaRank),
+		firstConfig,
 	)
 	if err != nil {
 		t.Fatalf("BuildProposal first: %v", err)
 	}
 	incumbent := first.Snapshot()
 	_, secondSearcher := rankingFixture()
-	config := DefaultConfig("second", FamilyLinearLambdaRank)
+	config := deterministicProposalConfig("second", FamilyLinearLambdaRank)
 	config.Incumbent = &incumbent
 	second, err := BuildProposal(t.Context(), secondSearcher, judgments, config)
 	if err != nil {

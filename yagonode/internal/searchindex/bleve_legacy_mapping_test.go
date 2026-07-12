@@ -10,28 +10,27 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
 
-// writePreGramIndex creates an on-disk index the way releases before the
-// trigram analyzer did: a mapping with no text_gram analyzer registered.
-func writePreGramIndex(t *testing.T) string {
+func writeLegacySearchIndex(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "search.bleve")
-	old, err := bleve.New(path, bleve.NewIndexMapping())
+	legacy, err := bleve.New(path, bleve.NewIndexMapping())
 	if err != nil {
-		t.Fatalf("create pre-gram index: %v", err)
+		t.Fatalf("create legacy index: %v", err)
 	}
-	if err := old.Close(); err != nil {
-		t.Fatalf("close pre-gram index: %v", err)
+	if err := legacy.Close(); err != nil {
+		t.Fatalf("close legacy index: %v", err)
 	}
 
 	return path
 }
 
-func TestNewBleveDiskIndexMigratesPreGramIndex(t *testing.T) {
-	path := writePreGramIndex(t)
+func TestNewBleveDiskIndexMigratesLegacyMapping(t *testing.T) {
+	path := writeLegacySearchIndex(t)
 	doc := documentstore.Document{
 		NormalizedURL:  "https://example.org/news",
 		Title:          "Зеленский",
 		ExtractedText:  "Новости про Зеленского.",
+		Language:       "ru",
 		FetchedAt:      time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC),
 		PublishedAt:    time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC),
 		DateConfidence: 1,
@@ -44,15 +43,13 @@ func TestNewBleveDiskIndexMigratesPreGramIndex(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = index.Close() })
 
-	if !index.gram || stored.scans != 1 {
+	if !index.analyzerScope || stored.scans != 1 {
 		t.Fatalf(
-			"pre-gram index should be rebuilt under the current mapping: gram=%v scans=%d",
-			index.gram,
+			"legacy migration scope=%v scans=%d",
+			index.analyzerScope,
 			stored.scans,
 		)
 	}
-	// The morphological variant only matches through the gram fields (recovery
-	// path), proving the migrated index carries the current mapping.
 	results, err := index.Search(
 		t.Context(),
 		SearchRequest{Query: "зеленски", MaxResults: 5, Fuzzy: true},
@@ -61,12 +58,12 @@ func TestNewBleveDiskIndexMigratesPreGramIndex(t *testing.T) {
 		t.Fatalf("Search: %v", err)
 	}
 	if results.Total != 1 || len(results.Results) != 1 {
-		t.Fatalf("results = %#v, want the morphological match", results)
+		t.Fatalf("results = %#v", results)
 	}
 }
 
-func TestBleveDiskIndexServesPreGramIndexWithoutRebuildSource(t *testing.T) {
-	path := writePreGramIndex(t)
+func TestBleveDiskIndexServesLegacyMappingWithoutRebuildSource(t *testing.T) {
+	path := writeLegacySearchIndex(t)
 
 	index, err := NewBleveDiskIndex(t.Context(), path, newFakeDocumentDirectory(), nil)
 	if err != nil {
@@ -74,14 +71,12 @@ func TestBleveDiskIndexServesPreGramIndexWithoutRebuildSource(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = index.Close() })
 
-	if index.gram {
-		t.Fatal("a pre-gram index kept without a rebuild source must not claim gram support")
+	if index.analyzerScope || index.storedCandidates {
+		t.Fatal("legacy index without a rebuild source claimed current mapping")
 	}
-	// Before the fix this failed the whole search with
-	// "no analyzer named 'text_gram' registered".
 	results, err := index.Search(t.Context(), SearchRequest{Query: "golang", MaxResults: 5})
 	if err != nil {
-		t.Fatalf("Search on a pre-gram index: %v", err)
+		t.Fatalf("Search on legacy index: %v", err)
 	}
 	if results.Total != 0 {
 		t.Fatalf("results = %#v", results)

@@ -94,6 +94,7 @@ type rssGUID struct {
 func responseRSS(r *http.Request, resp searchcore.Response) rssFeed {
 	base := searchBaseURL(r)
 	link := searchURL(base, resp.Request)
+	query := resp.Request.SubmittedText()
 
 	return rssFeed{
 		Version:         "2.0",
@@ -105,12 +106,12 @@ func responseRSS(r *http.Request, resp searchcore.Response) rssFeed {
 		XMLNSGeo:        "http://www.w3.org/2003/01/geo/wgs84_pos#",
 		XMLNSEvent:      "http://purl.org/rss/1.0/modules/event/",
 		Channel: rssChannel{
-			Title:       "YaCy P2P-Search: " + resp.Request.Query,
-			Description: "Search for " + resp.Request.Query,
+			Title:       "YaCy P2P-Search: " + query,
+			Description: "Search for " + query,
 			Link:        link,
 			Image: rssImage{
 				URL:   searchImageURL(r),
-				Title: "Search for " + resp.Request.Query,
+				Title: "Search for " + query,
 				Link:  link,
 			},
 			StartIndex:   strconv.Itoa(resp.Request.Offset),
@@ -122,10 +123,10 @@ func responseRSS(r *http.Request, resp searchcore.Response) rssFeed {
 			},
 			Query: rssQuery{
 				Role:        "request",
-				SearchTerms: resp.Request.Query,
+				SearchTerms: query,
 			},
 			Items:        responseRSSItems(resp.Results),
-			Navigation:   responseRSSNavigation(buildNavigation(resp.Request.Query, resp.Facets)),
+			Navigation:   responseRSSNavigation(buildNavigation(query, resp.Facets)),
 			TotalResults: strconv.Itoa(resp.TotalResults),
 		},
 	}

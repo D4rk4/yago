@@ -8,6 +8,11 @@ import (
 const DefaultPublicLimit = 10
 
 func NormalizePublicRequest(req Request, limitCap int) (Request, error) {
+	var err error
+	req, err = ParsePublicRequest(req)
+	if err != nil {
+		return Request{}, err
+	}
 	if limitCap <= 0 {
 		limitCap = DefaultPublicLimit
 	}

@@ -29,7 +29,7 @@ func (e rssEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "search failed", http.StatusInternalServerError)
 		return
 	}
-	e.suggestions.Record(req.Query)
+	e.suggestions.Record(req.SubmittedText())
 
 	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)

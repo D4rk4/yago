@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagoproto"
@@ -12,7 +13,10 @@ import (
 const publicSearchLimitCap = 10
 
 func searchRequestFromValues(values url.Values) (searchcore.Request, error) {
-	parsed := searchcore.ParseTextQuery(values.Get(yagoproto.FieldQuery))
+	parsed, err := searchcore.ParsePublicTextQuery(values.Get(yagoproto.FieldQuery))
+	if err != nil {
+		return searchcore.Request{}, fmt.Errorf("public search request: %w", err)
+	}
 	// maximumRecords is the SRU name; count is the OpenSearch alias YaCy also honors.
 	limit, err := optionalRequestInt(values, yagoproto.FieldMaximumRecords, yagoproto.FieldCount)
 	if err != nil {
@@ -45,7 +49,7 @@ func searchRequestFromValues(values url.Values) (searchcore.Request, error) {
 		Navigation:       navigation,
 		// A nav request asks the local index to tally facet counts; without it the
 		// scan stays cheap.
-		WithFacets: navigation != "",
+		WithFacets: navigation != "" && !strings.EqualFold(navigation, "none"),
 		SortByDate: parsed.SortByDate,
 		Near:       parsed.Near,
 	}, publicSearchLimitCap)

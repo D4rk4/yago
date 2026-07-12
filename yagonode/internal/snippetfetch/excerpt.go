@@ -1,42 +1,35 @@
 package snippetfetch
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
-// excerptRuneCap matches the local index's snippet length so peer and local
-// rows read alike.
 const excerptRuneCap = 320
 
-// queryBiasedExcerpt centers a snippet-length window of the text on the
-// earliest content-term occurrence, with a little lead so the sentence context
-// survives (Tombros & Sanderson, SIGIR 1998 — query-biased summaries let the
-// searcher judge relevance without opening the page).
-func queryBiasedExcerpt(text string, terms []string) string {
-	text = strings.Join(strings.Fields(text), " ")
-	runes := []rune(text)
-	if len(runes) <= excerptRuneCap {
-		return text
+func evidenceExcerpt(text string, evidence TextEvidence) (string, bool) {
+	if evidence.Start < 0 || evidence.End <= evidence.Start || evidence.End > len(text) ||
+		!utf8.ValidString(text) || !utf8.ValidString(text[evidence.Start:evidence.End]) {
+		return "", false
 	}
-	folded := strings.ToLower(text)
-	anchor := -1
-	for _, term := range terms {
-		term = strings.ToLower(strings.TrimSpace(term))
-		if term == "" {
-			continue
-		}
-		if at := strings.Index(folded, term); at >= 0 && (anchor < 0 || at < anchor) {
-			anchor = at
-		}
+	prefix := []rune(text[:evidence.Start])
+	witness := []rune(text[evidence.Start:evidence.End])
+	suffix := []rune(text[evidence.End:])
+	if len(witness) > excerptRuneCap {
+		return "", false
 	}
-	if anchor < 0 {
-		return strings.TrimSpace(string(runes[:excerptRuneCap]))
-	}
-	runeAnchor := len([]rune(folded[:anchor]))
-	start := max(runeAnchor-excerptRuneCap/4, 0)
-	end := min(start+excerptRuneCap, len(runes))
-	excerpt := strings.TrimSpace(string(runes[start:end]))
-	if start > 0 {
+	remaining := excerptRuneCap - len(witness)
+	lead := min(len(prefix), remaining/4)
+	trail := min(len(suffix), remaining-lead)
+	lead = min(len(prefix), lead+remaining-lead-trail)
+	window := make([]rune, 0, lead+len(witness)+trail)
+	window = append(window, prefix[len(prefix)-lead:]...)
+	window = append(window, witness...)
+	window = append(window, suffix[:trail]...)
+	excerpt := strings.Join(strings.Fields(string(window)), " ")
+	if lead < len(prefix) && utf8.RuneCountInString(excerpt) <= excerptRuneCap-2 {
 		excerpt = "… " + excerpt
 	}
 
-	return excerpt
+	return excerpt, excerpt != ""
 }

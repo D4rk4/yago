@@ -17,8 +17,9 @@ import (
 
 const (
 	hostLinkGraphScanFailedMessage = "host link graph scan failed"
-	hostLinkMaxLinkedHosts         = 10000
-	hostLinkMaxReferencesPerHost   = 200
+	hostLinkMaxLinkedHosts         = 4096
+	hostLinkMaxReferencesPerHost   = 64
+	hostLinkMaxReferences          = 32768
 	secondsPerDay                  = 86400
 )
 
@@ -34,6 +35,12 @@ type hostLinkReference struct {
 type hostLinkCapacity struct {
 	linkedHosts       int
 	referencesPerHost int
+	references        int
+}
+
+type hostLinkAccumulator struct {
+	incoming   map[string]map[string]hostLinkReference
+	references int
 }
 
 func (s storedDocumentHostLinks) IncomingHostLinks(ctx context.Context) hostlinks.Graph {
@@ -51,9 +58,11 @@ func (s storedDocumentHostLinks) scan(ctx context.Context) (hostlinks.Graph, err
 		return graph, nil
 	}
 
-	incoming := map[string]map[string]hostLinkReference{}
+	accumulator := hostLinkAccumulator{
+		incoming: map[string]map[string]hostLinkReference{},
+	}
 	err := s.documents.StoredDocuments(ctx, func(doc documentstore.Document) (bool, error) {
-		collectDocumentHostLinks(incoming, doc)
+		collectDocumentHostLinks(&accumulator, doc)
 
 		return true, nil
 	})
@@ -61,13 +70,13 @@ func (s storedDocumentHostLinks) scan(ctx context.Context) (hostlinks.Graph, err
 		return graph, fmt.Errorf("scan stored documents for host links: %w", err)
 	}
 
-	graph.LinkedHosts = hostLinkGraphHosts(incoming)
+	graph.LinkedHosts = hostLinkGraphHosts(accumulator.incoming)
 
 	return graph, nil
 }
 
 func collectDocumentHostLinks(
-	incoming map[string]map[string]hostLinkReference,
+	accumulator *hostLinkAccumulator,
 	doc documentstore.Document,
 ) {
 	source, ok := documentHostHash(doc.NormalizedURL)
@@ -83,36 +92,44 @@ func collectDocumentHostLinks(
 		}
 
 		recordHostLink(
-			incoming,
+			accumulator,
 			target,
 			source,
 			day,
 			hostLinkCapacity{
 				linkedHosts:       hostLinkMaxLinkedHosts,
 				referencesPerHost: hostLinkMaxReferencesPerHost,
+				references:        hostLinkMaxReferences,
 			},
 		)
 	}
 }
 
 func recordHostLink(
-	incoming map[string]map[string]hostLinkReference,
+	accumulator *hostLinkAccumulator,
 	target string,
 	source string,
 	modifiedDay int64,
 	capacity hostLinkCapacity,
 ) {
-	references := incoming[target]
+	references := accumulator.incoming[target]
+	_, referenceFound := references[source]
+	if !referenceFound && accumulator.references >= capacity.references {
+		return
+	}
 	if references == nil {
-		if len(incoming) >= capacity.linkedHosts {
+		if len(accumulator.incoming) >= capacity.linkedHosts {
 			return
 		}
 		references = map[string]hostLinkReference{}
-		incoming[target] = references
+		accumulator.incoming[target] = references
 	}
-	if _, found := references[source]; !found &&
+	if !referenceFound &&
 		len(references) >= capacity.referencesPerHost {
 		return
+	}
+	if !referenceFound {
+		accumulator.references++
 	}
 	reference := references[source]
 	reference.Count++

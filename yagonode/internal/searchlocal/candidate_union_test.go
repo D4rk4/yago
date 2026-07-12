@@ -18,6 +18,28 @@ type candidateIndex struct {
 	requests  []searchindex.SearchRequest
 }
 
+type deferredEvidenceCandidateIndex struct {
+	candidateIndex
+	evidenceCalls int
+	evidenceReq   searchindex.SearchRequest
+	evidenceInput []searchindex.SearchResult
+}
+
+func (d *deferredEvidenceCandidateIndex) SearchEvidence(
+	_ context.Context,
+	req searchindex.SearchRequest,
+	results []searchindex.SearchResult,
+) ([]searchindex.SearchResult, error) {
+	d.evidenceCalls++
+	d.evidenceReq = req
+	d.evidenceInput = append([]searchindex.SearchResult(nil), results...)
+	for index := range results {
+		results[index].Snippet = "matched evidence"
+	}
+
+	return results, nil
+}
+
 func (c *candidateIndex) Index(context.Context, documentstore.Document) error { return nil }
 func (c *candidateIndex) Delete(context.Context, string) error                { return nil }
 func (c *candidateIndex) Stats(context.Context) (searchindex.IndexStats, error) {
@@ -72,7 +94,7 @@ func TestSearchCandidatesFusesStrictAndRelaxedBranches(t *testing.T) {
 		t.Fatalf("searchCandidates: %v", err)
 	}
 	if len(index.requests) != 2 || index.requests[0].WithFacets ||
-		index.requests[0].MaxResults != 6 || index.requests[1].MaxResults != 6 ||
+		index.requests[0].MaxResults != 3 || index.requests[1].MaxResults != 3 ||
 		index.requests[1].MinimumTermMatches != 1 || !index.requests[1].WithFacets {
 		t.Fatalf("requests = %#v", index.requests)
 	}
@@ -86,22 +108,41 @@ func TestSearchCandidatesFusesStrictAndRelaxedBranches(t *testing.T) {
 	}
 }
 
-func TestProximityCandidateLimitIsBoundedAndNeverShrinks(t *testing.T) {
-	cases := []struct {
-		req  searchindex.SearchRequest
-		want int
-	}{
-		{searchindex.SearchRequest{}, 0},
-		{searchindex.SearchRequest{MaxResults: 20, Query: "one"}, 20},
-		{searchindex.SearchRequest{MaxResults: 20, Query: "one two", Fuzzy: true}, 20},
-		{searchindex.SearchRequest{MaxResults: 60, Query: "one two"}, 120},
-		{searchindex.SearchRequest{MaxResults: 150, Terms: []string{"one", "two"}}, 200},
-		{searchindex.SearchRequest{MaxResults: 250, Query: "one two"}, 250},
+func TestSearchCandidatesDefersEvidenceUntilAfterFusion(t *testing.T) {
+	index := &deferredEvidenceCandidateIndex{candidateIndex: candidateIndex{
+		strict: searchindex.SearchResultSet{Results: []searchindex.SearchResult{
+			{DocumentID: "shared", Score: 4},
+			{DocumentID: "strict", Score: 3},
+		}},
+		relaxed: searchindex.SearchResultSet{Results: []searchindex.SearchResult{
+			{DocumentID: "shared", Score: 2},
+			{DocumentID: "relaxed", Score: 1},
+		}},
+	}}
+	set, err := (localSearcher{index: index}).searchCandidates(
+		t.Context(),
+		searchindex.SearchRequest{
+			Query: "alpha beta", Terms: []string{"alpha", "beta"}, MaxResults: 2,
+		},
+	)
+	if err != nil {
+		t.Fatalf("searchCandidates: %v", err)
 	}
-	for _, test := range cases {
-		if got := proximityCandidateLimit(test.req); got != test.want {
-			t.Errorf("proximityCandidateLimit(%#v) = %d, want %d", test.req, got, test.want)
-		}
+	if len(index.requests) != 2 || !index.requests[0].CandidateOnly ||
+		!index.requests[1].CandidateOnly {
+		t.Fatalf("candidate requests = %#v", index.requests)
+	}
+	if index.evidenceCalls != 1 || index.evidenceReq.CandidateOnly ||
+		len(index.evidenceInput) != 2 {
+		t.Fatalf(
+			"evidence calls=%d req=%#v input=%#v",
+			index.evidenceCalls,
+			index.evidenceReq,
+			index.evidenceInput,
+		)
+	}
+	if len(set.Results) != 2 || set.Results[0].Snippet != "matched evidence" {
+		t.Fatalf("results = %#v", set.Results)
 	}
 }
 

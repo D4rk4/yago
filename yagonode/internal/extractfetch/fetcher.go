@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	defaultMaxBytes int64 = 2 << 20
-	fetchUserAgent        = "Mozilla/5.0 (compatible; yago-extract/1.0; " +
+	defaultMaxBytes           int64 = 2 << 20
+	maximumFetchResponseBytes int64 = 4 << 20
+	fetchUserAgent                  = "Mozilla/5.0 (compatible; yago-extract/1.0; " +
 		"+https://github.com/D4rk4/yago)"
 )
 
@@ -38,6 +39,7 @@ func New(client *http.Client, timeout time.Duration, maxBytes int64) *Fetcher {
 	if maxBytes <= 0 {
 		maxBytes = defaultMaxBytes
 	}
+	maxBytes = min(maxBytes, maximumFetchResponseBytes)
 
 	return &Fetcher{client: client, maxBytes: maxBytes, timeout: timeout}
 }
@@ -76,9 +78,13 @@ func (f *Fetcher) fetchDocument(ctx context.Context, rawURL string) (*html.Node,
 		return nil, fmt.Errorf("fetch %s: unsupported content type", rawURL)
 	}
 
-	doc, err := html.Parse(io.LimitReader(resp.Body, f.maxBytes))
+	limited := &io.LimitedReader{R: resp.Body, N: f.maxBytes + 1}
+	doc, err := html.Parse(limited)
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", rawURL, err)
+	}
+	if limited.N == 0 {
+		return nil, fmt.Errorf("fetch %s: response exceeds %d bytes", rawURL, f.maxBytes)
 	}
 
 	return doc, nil

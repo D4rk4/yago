@@ -3,6 +3,7 @@ package adminauth
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 type countingAuthObserver struct {
@@ -105,5 +106,46 @@ func TestAPIKeyAuthorizerThrottles(t *testing.T) {
 	}
 	if observer.throttled != 1 {
 		t.Fatalf("throttled audit = %d, want 1", observer.throttled)
+	}
+}
+
+func TestAPIKeyAuthorizerTouchesOnlyAfterRateLimitAdmission(t *testing.T) {
+	clock := &mutableClock{now: time.Unix(1000, 0)}
+	service, err := New(testVault(t), Config{
+		APIKeyMaxPerWindow: 1,
+		APIKeyWindow:       time.Minute,
+		Now:                clock.Now,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	created, err := service.apiKeys.create(
+		context.Background(), "search", []Scope{ScopeSearchRead},
+	)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	authorizer := service.APIKeyAuthorizer()
+	clock.now = time.Unix(2000, 0)
+	if outcome := authorizer.Authorize(
+		context.Background(), created.Key, ScopeSearchRead,
+	); outcome != APIKeyAuthorized {
+		t.Fatalf("first outcome = %v, want authorized", outcome)
+	}
+	infos, err := service.apiKeys.list(context.Background())
+	if err != nil || len(infos) != 1 || !infos[0].LastUsedAt.Equal(clock.now) {
+		t.Fatalf("keys after admission = %#v, %v", infos, err)
+	}
+	firstUse := infos[0].LastUsedAt
+
+	clock.now = time.Unix(2001, 0)
+	if outcome := authorizer.Authorize(
+		context.Background(), created.Key, ScopeSearchRead,
+	); outcome != APIKeyThrottled {
+		t.Fatalf("second outcome = %v, want throttled", outcome)
+	}
+	infos, err = service.apiKeys.list(context.Background())
+	if err != nil || len(infos) != 1 || !infos[0].LastUsedAt.Equal(firstUse) {
+		t.Fatalf("keys after throttle = %#v, %v", infos, err)
 	}
 }

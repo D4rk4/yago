@@ -37,17 +37,18 @@ func (a *APIKeyAuthorizer) Authorize(
 	token string,
 	required Scope,
 ) APIKeyOutcome {
-	id, _, ok := parseAPIKey(token)
+	_, _, ok := parseAPIKey(token)
 	if !ok {
 		a.observer.APIKeyRejected()
 
 		return APIKeyUnauthenticated
 	}
-	if !a.limiter.allow(id) {
-		a.observer.APIKeyThrottled()
-
-		return APIKeyThrottled
+	release, admitted := acquireAPIKeyAuthentication()
+	if !admitted {
+		return APIKeyUnavailable
 	}
+	defer release()
+
 	info, ok, err := a.keys.authenticate(ctx, token)
 	if err != nil {
 		return APIKeyUnavailable
@@ -56,6 +57,14 @@ func (a *APIKeyAuthorizer) Authorize(
 		a.observer.APIKeyRejected()
 
 		return APIKeyUnauthenticated
+	}
+	if !a.limiter.allow(info.ID) {
+		a.observer.APIKeyThrottled()
+
+		return APIKeyThrottled
+	}
+	if err := a.keys.touchLastUsed(ctx, info.ID); err != nil {
+		return APIKeyUnavailable
 	}
 	if !info.hasScope(required) {
 		a.observer.APIKeyForbidden()

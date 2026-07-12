@@ -30,10 +30,15 @@ an operationally separated online-comparison and implicit-qrel path.
 
 YagoRank uses a bounded in-process pipeline:
 
-1. Strict and relaxed fielded BM25 and phrase and SDM evidence form the initial
-   local candidate union. Serving, explanation, and training then apply bounded
-   RM3 before constructing lexical evidence. Local and YaCy peer lists use
-   deterministic RRF. Global serving retrieves at least twice the learned
+1. Strict all-term and relaxed 60%-match fielded BM25 form the initial local
+   candidate union and fuse before stored documents are inspected. Bounded RM3
+   widens recall while required terms remain mandatory. Quoted phrases add a
+   bounded positive preference only when analyzer-normalized terms are adjacent
+   in one stored field of a leading evidence candidate. Other phrase and proximity
+   evidence is then derived from visible text and, for explicit ranking-feature,
+   explain, or near consumers, capped stored-document positions. Ordinary
+   retrieval issues no Bleve phrase or location query. Local and YaCy peer lists
+   use deterministic RRF. Global serving retrieves at least twice the learned
    window from the merged list and scans only until its bounded local candidate
    window is full, preserving peer and web slots.
 2. Crawl and peer evidence is persisted before search: lifecycle dates, inbound

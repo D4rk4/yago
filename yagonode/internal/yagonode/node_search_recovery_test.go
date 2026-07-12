@@ -3,7 +3,9 @@ package yagonode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
@@ -22,6 +24,23 @@ type scriptedRecoverySearcher struct {
 	fuzzyErr     error
 	requests     []searchcore.Request
 	fuzzyCalls   int
+}
+
+type deadlineRecoverySearcher struct {
+	canceled bool
+}
+
+func (s *deadlineRecoverySearcher) Search(
+	ctx context.Context,
+	req searchcore.Request,
+) (searchcore.Response, error) {
+	if !req.Fuzzy {
+		return searchcore.Response{Request: req}, nil
+	}
+	<-ctx.Done()
+	s.canceled = true
+
+	return searchcore.Response{}, fmt.Errorf("recovery deadline: %w", ctx.Err())
 }
 
 func (s *scriptedRecoverySearcher) Search(
@@ -118,6 +137,24 @@ func TestRecoveryKeepsHonestEmptyAndSkipsWhenNotEligible(t *testing.T) {
 	}
 }
 
+func TestRecoveryStopsAtItsBudget(t *testing.T) {
+	previous := recoverySearchBudget
+	recoverySearchBudget = 10 * time.Millisecond
+	t.Cleanup(func() { recoverySearchBudget = previous })
+
+	inner := &deadlineRecoverySearcher{}
+	response, err := withZeroResultRecovery(inner, inner, nil).Search(
+		t.Context(),
+		searchcore.Request{Query: "missing", Terms: []string{"missing"}},
+	)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if !inner.canceled || len(response.Results) != 0 {
+		t.Fatalf("budgeted recovery = canceled %v response %#v", inner.canceled, response)
+	}
+}
+
 func TestRecoverySuggestsFromIndexVocabularyOnTotalMiss(t *testing.T) {
 	// The fuzzy retry also finds nothing, but the index-vocabulary corrector
 	// still points at the intended spelling.
@@ -152,6 +189,22 @@ func TestRecoveryPrefersVocabularyCorrectionOverTitles(t *testing.T) {
 	}
 	if resp.DidYouMean != "golang" {
 		t.Fatalf("did you mean = %q, want golang from the vocabulary", resp.DidYouMean)
+	}
+}
+
+func TestRecoverySuggestsTheReportedRussianCorrection(t *testing.T) {
+	inner := &scriptedRecoverySearcher{fuzzyResults: []searchcore.Result{{
+		Title: "Психопаты в литературе", URL: "https://a.example/psychology",
+	}}}
+	response, err := withZeroResultRecovery(inner, nil, nil).Search(
+		t.Context(),
+		searchcore.Request{Query: "псилобаты", Terms: []string{"псилобаты"}},
+	)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if response.Recovered != "fuzzy" || response.DidYouMean != "психопаты" {
+		t.Fatalf("recovery = %#v", response)
 	}
 }
 

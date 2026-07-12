@@ -131,12 +131,7 @@ func ParseHelloResponse(ctx context.Context, m yagomodel.Message) (HelloResponse
 }
 
 func decodeSeed(ctx context.Context, raw string) (yagomodel.Seed, error) {
-	plain, err := yagomodel.DecodeWireForm(ctx, raw)
-	if err != nil {
-		return yagomodel.Seed{}, fmt.Errorf("seed wire form: %w", err)
-	}
-
-	seed, err := yagomodel.ParseSeed(ctx, plain)
+	seed, err := yagomodel.ParseSeedWireForm(ctx, raw)
 	if err != nil {
 		return yagomodel.Seed{}, fmt.Errorf("seed: %w", err)
 	}

@@ -45,11 +45,14 @@ func Mount(
 	status RuntimeStatus,
 	links IncomingHostLinks,
 ) {
-	httpguard.MountRaw(
+	httpguard.MountRawWithAdmission(
 		router,
-		yagoproto.PathIndex,
-		yagoproto.IndexEndpointMethods,
-		yagoproto.ParseIndexRequest,
-		endpoint{networkName: networkName, status: status, links: links}.Serve,
+		httpguard.RawRouteAdmission[yagoproto.IndexRequest]{
+			Path:      yagoproto.PathIndex,
+			Methods:   yagoproto.IndexEndpointMethods,
+			Parse:     yagoproto.ParseIndexRequest,
+			Serve:     endpoint{networkName: networkName, status: status, links: links}.Serve,
+			Admission: httpguard.NewIntakeGate(maximumConcurrentIndexResponses),
+		},
 	)
 }

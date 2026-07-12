@@ -954,7 +954,6 @@ func TestResultHelpers(t *testing.T) {
 	hash := hashFor("doc1")
 	result, err := searchResult(
 		t.Context(),
-		searchcore.Request{},
 		metadataRow(t, hash, "not a url", ""),
 	)
 	if err != nil {
@@ -971,14 +970,12 @@ func TestResultHelpers(t *testing.T) {
 	}
 	if _, err := searchResult(
 		t.Context(),
-		searchcore.Request{},
 		yagomodel.URIMetadataRow{Properties: map[string]string{yagomodel.URLMetaHash: "bad"}},
 	); err == nil {
 		t.Fatal("expected bad hash error")
 	}
 	if _, err := searchResult(
 		t.Context(),
-		searchcore.Request{},
 		yagomodel.URIMetadataRow{Properties: map[string]string{
 			yagomodel.URLMetaHash:           hash.String(),
 			yagomodel.URLMetaURL:            "z|@@@",

@@ -147,18 +147,29 @@ func (s *apiKeyStore) authenticate(
 		return apiKeyInfo{}, false, nil
 	}
 
-	record.LastUsedAt = s.now()
+	return infoFromRecord(id, record), true, nil
+}
+
+func (s *apiKeyStore) touchLastUsed(ctx context.Context, id string) error {
 	if err := s.vault.Update(ctx, func(tx *vault.Txn) error {
+		record, found, err := s.records.Get(tx, vault.Key(id))
+		if err != nil {
+			return fmt.Errorf("read api key record for touch: %w", err)
+		}
+		if !found {
+			return nil
+		}
+		record.LastUsedAt = s.now()
 		if err := s.records.Put(tx, vault.Key(id), record); err != nil {
 			return fmt.Errorf("touch api key record: %w", err)
 		}
 
 		return nil
 	}); err != nil {
-		return apiKeyInfo{}, false, fmt.Errorf("update api keys: %w", err)
+		return fmt.Errorf("update api keys: %w", err)
 	}
 
-	return infoFromRecord(id, record), true, nil
+	return nil
 }
 
 func (s *apiKeyStore) list(ctx context.Context) ([]apiKeyInfo, error) {

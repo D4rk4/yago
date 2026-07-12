@@ -51,6 +51,7 @@ type cachedView struct {
 
 type endpoint struct {
 	documents documentstore.DocumentDirectory
+	admission *cachedPageAdmission
 }
 
 // Mount serves GET /cached?u=<url> from the stored document directory. A nil
@@ -59,7 +60,10 @@ func Mount(mux *http.ServeMux, documents documentstore.DocumentDirectory) {
 	if documents == nil {
 		return
 	}
-	mux.Handle("GET "+Path, endpoint{documents: documents})
+	mux.Handle("GET "+Path, endpoint{
+		documents: documents,
+		admission: newCachedPageAdmission(maximumConcurrentCachedPages),
+	})
 }
 
 func (e endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +73,19 @@ func (e endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	if len(rawURL) > maximumCachedPageURLBytes {
+		http.Error(w, "u parameter is too long", http.StatusBadRequest)
+
+		return
+	}
+	release, admitted := e.admission.tryAcquire()
+	if !admitted {
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "cached copy capacity exceeded", http.StatusServiceUnavailable)
+
+		return
+	}
+	defer release()
 	doc, found, err := e.documents.Document(r.Context(), rawURL)
 	if err != nil {
 		slog.WarnContext(r.Context(), "cached copy lookup failed", slog.Any("error", err))

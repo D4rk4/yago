@@ -112,6 +112,10 @@ func (b boltBucket) Get(key vault.Key) []byte {
 	return b.bucket.Get(key)
 }
 
+func (b boltBucket) Contains(key vault.Key) bool {
+	return b.bucket.Get(key) != nil
+}
+
 func (b boltBucket) Put(key vault.Key, val []byte) error {
 	if err := b.bucket.Put(key, val); err != nil {
 		return fmt.Errorf("store: %w", err)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -19,10 +18,6 @@ const (
 	defaultCacheMax = 256
 )
 
-// DDGSConfig configures the keyless DDGS-family metasearch provider. Client must
-// be an egress-guarded HTTP client so outbound requests cannot reach private
-// addresses (see ADR-0013). Backend selects the engine list; "auto" excludes
-// DuckDuckGo because it aggressively rate-limits automated queries (ADR-0021).
 type DDGSConfig struct {
 	Client     *http.Client
 	Backend    string
@@ -32,13 +27,7 @@ type DDGSConfig struct {
 	CacheTTL   time.Duration
 	CacheMax   int
 	Now        func() time.Time
-	// Accept filters one engine's parsed results before they are accepted as
-	// the answer; an engine whose entire answer is filtered away counts as
-	// having yielded nothing, so the loop walks on to the next engine. Bing's
-	// bot-tier response answers only the first query word with dictionary
-	// pages — plausible-looking, entirely off-topic — and without this hook it
-	// would satisfy the loop while post-hoc verification then emptied the SERP.
-	Accept func(query string, results []Result) []Result
+	Accept     func(query string, results []Result) []Result
 }
 
 // DDGSProvider is a best-effort metasearch client over keyless public search
@@ -53,14 +42,12 @@ type DDGSProvider struct {
 	now        func() time.Time
 	cache      *queryCache
 	accept     func(query string, results []Result) []Result
+	admission  *engineFetchAdmission
 
 	mu       sync.Mutex
 	backoffs map[string]*engineBackoff
 }
 
-// engineBackoff tracks one engine's rate-limit window. Backoff is per engine
-// deliberately: with DuckDuckGo in front of the chain, its aggressive limiting
-// must pause only DuckDuckGo while Brave, Mojeek, and Bing keep answering.
 type engineBackoff struct {
 	until   time.Time
 	backoff time.Duration
@@ -87,8 +74,9 @@ func NewDDGSProvider(config DDGSConfig) *DDGSProvider {
 		maxResults: config.MaxResults,
 		timeout:    config.Timeout,
 		now:        now,
-		cache:      newQueryCache(config.CacheTTL, cacheMax, now),
+		cache:      newQueryCache(config.CacheTTL, cacheMax, defaultCacheBytes, now),
 		accept:     config.Accept,
+		admission:  processEngineFetchAdmission,
 		backoffs:   map[string]*engineBackoff{},
 	}
 }
@@ -108,6 +96,7 @@ func (p *DDGSProvider) Search(ctx context.Context, query string, limit int) ([]R
 	if err != nil {
 		return nil, err
 	}
+	results = normalizeResults(results, p.cachedResultLimit())
 	// An empty answer is a miss, not an answer: engines rate-limit and bot-wall
 	// intermittently, and caching the miss would pin the failure for the whole
 	// TTL while the next attempt might succeed.
@@ -119,44 +108,7 @@ func (p *DDGSProvider) Search(ctx context.Context, query string, limit int) ([]R
 }
 
 func (p *DDGSProvider) query(ctx context.Context, query string) ([]Result, bool, error) {
-	var lastErr error
-	allRateLimited := true
-	for _, backend := range p.engines {
-		if p.backedOff(backend.name) {
-			continue
-		}
-		results, rateLimited, err := p.fetch(ctx, backend, query)
-		fetched := len(results)
-		if err == nil && p.accept != nil {
-			results = p.accept(query, results)
-		}
-		slog.DebugContext(ctx, "web-search engine attempt",
-			slog.String("engine", backend.name),
-			slog.Int("fetched", fetched),
-			slog.Int("accepted", len(results)),
-			slog.Bool("rateLimited", rateLimited),
-			slog.Any("error", err))
-		if rateLimited {
-			p.recordBackoff(backend.name)
-
-			continue
-		}
-		p.resetBackoff(backend.name)
-		allRateLimited = false
-		if err != nil {
-			lastErr = err
-
-			continue
-		}
-		if len(results) > 0 {
-			return results, false, nil
-		}
-	}
-	if allRateLimited {
-		return nil, true, nil
-	}
-
-	return nil, false, lastErr
+	return newEngineRace(p, ctx, query).run()
 }
 
 func (p *DDGSProvider) fetch(

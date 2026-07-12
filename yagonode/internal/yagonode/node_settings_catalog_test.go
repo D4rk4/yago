@@ -149,6 +149,20 @@ func TestExtendedSettingValidation(t *testing.T) {
 	}
 }
 
+func TestWebFallbackBackendDescribesHedgedExecution(t *testing.T) {
+	definition := indexSettingDefinitions()["web.fallback.backend"]
+	if !strings.Contains(definition.description, "hedges") ||
+		!strings.Contains(definition.description, "50 ms") {
+		t.Fatalf("description = %q", definition.description)
+	}
+	for _, option := range definition.options {
+		if option.value == "auto" && option.label == "Auto (hedged engines)" {
+			return
+		}
+	}
+	t.Fatal("auto option does not describe hedged execution")
+}
+
 func TestAutocrawlerSettingValidation(t *testing.T) {
 	byKey := indexSettingDefinitions()
 	for _, key := range []string{"swarm.seed.depth", "web.fallback.seed_depth"} {

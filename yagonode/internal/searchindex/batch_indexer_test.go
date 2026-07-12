@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/blevesearch/bleve/v2"
 
@@ -240,5 +241,53 @@ func TestBleveDiskIndexBatchStageDocumentError(t *testing.T) {
 	}
 	if err := index.IndexBatch(t.Context(), docs); !errors.Is(err, sentinel) {
 		t.Fatalf("IndexBatch err = %v, want %v", err, sentinel)
+	}
+}
+
+func TestBleveDiskIndexSerializesMutations(t *testing.T) {
+	docs := []documentstore.Document{
+		batchDoc("https://a.example/one", "alpha"),
+		batchDoc("https://b.example/two", "beta"),
+	}
+	index, err := NewBleveDiskIndex(
+		t.Context(),
+		t.TempDir(),
+		newFakeDocumentDirectory(docs...),
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewBleveDiskIndex: %v", err)
+	}
+	t.Cleanup(func() { _ = index.Close() })
+
+	saved := stageBatchDocument
+	t.Cleanup(func() { stageBatchDocument = saved })
+	staging := make(chan struct{})
+	release := make(chan struct{})
+	stageBatchDocument = func(batch *bleve.Batch, id string, doc bleveDocument) error {
+		close(staging)
+		<-release
+
+		return saved(batch, id, doc)
+	}
+
+	batchDone := make(chan error, 1)
+	go func() { batchDone <- index.IndexBatch(t.Context(), docs[:1]) }()
+	<-staging
+	indexDone := make(chan error, 1)
+	go func() { indexDone <- index.Index(t.Context(), docs[1]) }()
+	select {
+	case err := <-indexDone:
+		close(release)
+		<-batchDone
+		t.Fatalf("concurrent mutation completed before batch staging: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	if err := <-batchDone; err != nil {
+		t.Fatalf("IndexBatch: %v", err)
+	}
+	if err := <-indexDone; err != nil {
+		t.Fatalf("Index: %v", err)
 	}
 }

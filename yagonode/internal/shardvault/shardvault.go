@@ -646,6 +646,15 @@ func (b *shardBucket) Get(key vault.Key) []byte {
 	return value
 }
 
+func (b *shardBucket) Contains(key vault.Key) bool {
+	bucket, err := b.boltBucketFor(key)
+	if err != nil {
+		return false
+	}
+
+	return bucket.Get(key) != nil
+}
+
 func (b *shardBucket) Put(key vault.Key, value []byte) error {
 	bucket, err := b.boltBucketFor(key)
 	if err != nil {

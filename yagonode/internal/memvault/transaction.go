@@ -32,6 +32,12 @@ func (b memBucket) Get(key vault.Key) []byte {
 	return value
 }
 
+func (b memBucket) Contains(key vault.Key) bool {
+	_, found := b.entries[string(key)]
+
+	return found
+}
+
 func (b memBucket) Put(key vault.Key, value []byte) error {
 	b.entries[string(key)] = copyValue(value)
 

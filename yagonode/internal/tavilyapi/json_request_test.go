@@ -168,7 +168,7 @@ func TestSiblingJSONEndpointsRejectOversizedBodies(t *testing.T) {
 }
 
 func searchRequestBody(size int) string {
-	prefix := `{"query":"`
+	prefix := `{"query":"x","padding":"`
 	suffix := `"}`
 
 	return prefix + strings.Repeat("x", size-len(prefix)-len(suffix)) + suffix

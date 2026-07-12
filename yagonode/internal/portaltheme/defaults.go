@@ -40,7 +40,7 @@ const defaultSearchForm = `    <div class="brand"><b>ya</b>go</div>
     <details class="ophelp">
       <summary>Search operators</summary>
       <ul>
-<li><code>"exact phrase"</code> — match words adjacently</li>
+<li><code>"quoted phrase"</code> — prefer results where the words appear adjacently</li>
 <li><code>-word</code> — exclude a word</li>
 <li><code>site:example.org</code> — one host only</li>
 <li><code>inurl:blog</code> — URL must contain text</li>
@@ -165,6 +165,9 @@ const defaultResultsBody = `<!doctype html>
   {{else}}{{#if submitted}}
   {{#if results.recovered}}
   <p class="meta" role="status">No exact matches for “{{results.query}}” — showing close matches instead.{{#if results.didYouMean}} Did you mean <a href="{{results.didYouMeanUrl}}">{{results.didYouMean}}</a>?{{/if}}</p>
+  {{else}}{{#if results.didYouMean}}
+  <p class="meta" role="status">No results matched. Did you mean <a href="{{results.didYouMeanUrl}}">{{results.didYouMean}}</a>?</p>
+  {{/if}}
   {{/if}}
   <p class="meta" role="status">{{formatNumber results.totalResults}} {{pluralize results.totalResults "result" "results"}} for “{{results.query}}”{{#if elapsed}} ({{elapsed}}){{/if}}.{{#if results.results}} On this page: {{results.localCount}} from this node · {{results.peerCount}} from peers · {{results.webCount}} from the web.{{/if}}{{#if results.peersFailed}} {{results.peersFailed}} peer(s) unreachable or timed out.{{/if}}</p>
   {{#if results.facets}}<div class="serp-grid"><aside class="facets" aria-label="Filter results">

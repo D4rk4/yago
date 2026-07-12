@@ -8,6 +8,14 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
 
+type nilMappingIndex struct {
+	bleveIndexContract
+}
+
+func (nilMappingIndex) Mapping() mapping.IndexMapping {
+	return nil
+}
+
 func TestNewSearchIndexMappingTunesFields(t *testing.T) {
 	indexMapping, err := newSearchIndexMapping()
 	if err != nil {
@@ -25,9 +33,28 @@ func TestNewSearchIndexMappingTunesFields(t *testing.T) {
 	for _, field := range searchIndexedFields() {
 		assertTunedSearchField(t, field, indexMapping.DefaultMapping.Properties[field])
 	}
+	analyzer := indexMapping.DefaultMapping.Properties[documentAnalyzerField]
+	if analyzer == nil || len(analyzer.Fields) != 1 ||
+		analyzer.Fields[0].Analyzer != "keyword" ||
+		!analyzer.Fields[0].Index || !analyzer.Fields[0].Store {
+		t.Fatalf("analyzer scope mapping = %#v", analyzer)
+	}
+	candidate := indexMapping.DefaultMapping.Properties[storedCandidateField]
+	if candidate == nil || len(candidate.Fields) != 1 || candidate.Fields[0].Index ||
+		!candidate.Fields[0].Store || candidate.Fields[0].IncludeTermVectors ||
+		candidate.Fields[0].DocValues {
+		t.Fatalf("stored candidate mapping = %#v", candidate)
+	}
 
 	if host := indexMapping.DefaultMapping.Properties["host"]; host != nil {
 		t.Fatalf("host field should not be mapped, got %#v", host)
+	}
+}
+
+func TestStoredCandidateProjectionRejectsAbsentMapping(t *testing.T) {
+	if supportsStoredCandidateProjection(nilMappingIndex{}) ||
+		supportsAnalyzerScope(nilMappingIndex{}) {
+		t.Fatal("nil mapping supports current fields")
 	}
 }
 
@@ -42,24 +69,16 @@ func defaultMappingAnalyzer(field string) string {
 	return standardTextAnalyzer
 }
 
-// assertTunedSearchField checks a source field maps to a tuned-down exact word
-// field (correct analyzer, term vectors on for positional queries, no
-// store/doc-values) plus, for grammed fields, a trigram sub-field named
-// "<field>_gram" with the gram analyzer.
 func assertTunedSearchField(t *testing.T, field string, document *mapping.DocumentMapping) {
 	t.Helper()
 
-	wantFields := 1
-	if fieldSupportsGrams(field) {
-		wantFields = 2 // exact word field plus its trigram sub-field
-	}
-	if document == nil || len(document.Fields) != wantFields {
+	if document == nil || len(document.Fields) != 1 {
 		t.Fatalf("field %q mapping = %#v", field, document)
 	}
 
 	exact := document.Fields[0]
-	if !exact.Index || !exact.IncludeTermVectors {
-		t.Fatalf("field %q must be indexed with term vectors: %#v", field, exact)
+	if !exact.Index || exact.IncludeTermVectors {
+		t.Fatalf("field %q indexing options = %#v", field, exact)
 	}
 	if exact.Store || exact.IncludeInAll || exact.DocValues {
 		t.Fatalf("field %q exact sub-field not tuned down: %#v", field, exact)
@@ -71,17 +90,6 @@ func assertTunedSearchField(t *testing.T, field string, document *mapping.Docume
 			exact.Analyzer,
 			defaultMappingAnalyzer(field),
 		)
-	}
-
-	if !fieldSupportsGrams(field) {
-		return
-	}
-	gram := document.Fields[1]
-	if gram.Name != field+gramFieldSuffix || gram.Analyzer != searchGramAnalyzer {
-		t.Fatalf("field %q gram sub-field = %#v", field, gram)
-	}
-	if gram.Store || gram.IncludeInAll || gram.DocValues {
-		t.Fatalf("field %q gram sub-field not tuned down: %#v", field, gram)
 	}
 }
 
@@ -151,7 +159,7 @@ func TestSearchMatchesDigitInURL(t *testing.T) {
 	}
 }
 
-func TestSearchMatchesTruncatedWordViaTrigrams(t *testing.T) {
+func TestFuzzySearchMatchesTruncatedWord(t *testing.T) {
 	index, err := NewBleveMemoryIndex(t.Context(), &fakeStoredDocuments{
 		documents: []documentstore.Document{{
 			NormalizedURL: "https://example.net/news",
@@ -163,11 +171,6 @@ func TestSearchMatchesTruncatedWordViaTrigrams(t *testing.T) {
 		t.Fatalf("NewBleveMemoryIndex: %v", err)
 	}
 
-	// A truncated query ("зеленски" for indexed "Зеленский") shares every trigram
-	// of the query. The exact word field alone returns nothing, so the trigram
-	// recall only fires on the zero-result recovery path (Fuzzy) — that is where
-	// the language-agnostic gram field earns its keep without flooding ordinary
-	// queries.
 	results, err := index.Search(
 		t.Context(),
 		SearchRequest{Query: "зеленски", MaxResults: 5, Fuzzy: true},
@@ -180,10 +183,7 @@ func TestSearchMatchesTruncatedWordViaTrigrams(t *testing.T) {
 	}
 }
 
-// TestTrigramsDoNotFloodOrdinaryQueries locks in the flooding fix: a long
-// same-script document that shares every trigram of the query word but never
-// mentions it must not match on the ordinary (non-recovery) query path.
-func TestTrigramsDoNotFloodOrdinaryQueries(t *testing.T) {
+func TestOrdinaryQueriesRejectScatteredPartialWords(t *testing.T) {
 	index, err := NewBleveMemoryIndex(t.Context(), &fakeStoredDocuments{
 		documents: []documentstore.Document{
 			{

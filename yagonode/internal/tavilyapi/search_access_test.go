@@ -32,12 +32,13 @@ func TestSearchEndpointScopedAuthDecisions(t *testing.T) {
 		name     string
 		decision AuthDecision
 		code     int
+		retry    string
 	}{
-		{"allow", DecisionAllow, http.StatusOK},
-		{"unauthenticated", DecisionUnauthenticated, http.StatusUnauthorized},
-		{"forbidden", DecisionForbidden, http.StatusForbidden},
-		{"throttled", DecisionThrottled, http.StatusTooManyRequests},
-		{"unavailable", DecisionUnavailable, http.StatusInternalServerError},
+		{"allow", DecisionAllow, http.StatusOK, ""},
+		{"unauthenticated", DecisionUnauthenticated, http.StatusUnauthorized, ""},
+		{"forbidden", DecisionForbidden, http.StatusForbidden, ""},
+		{"throttled", DecisionThrottled, http.StatusTooManyRequests, "1"},
+		{"unavailable", DecisionUnavailable, http.StatusServiceUnavailable, "1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			authorizer := &stubScopeAuthorizer{decision: tc.decision}
@@ -58,6 +59,9 @@ func TestSearchEndpointScopedAuthDecisions(t *testing.T) {
 
 			if rec.Code != tc.code {
 				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+			}
+			if retry := rec.Header().Get("Retry-After"); retry != tc.retry {
+				t.Fatalf("Retry-After = %q, want %q", retry, tc.retry)
 			}
 			if authorizer.gotToken != "id.secret" {
 				t.Fatalf("token = %q", authorizer.gotToken)

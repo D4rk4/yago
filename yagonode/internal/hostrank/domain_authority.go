@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	maximumDomainCitations      = 1 << 20
 	maximumTrustedDomains       = 256
 	maximumSourcePagesPerDomain = 8
 )
@@ -77,7 +76,9 @@ func newWeightedDomainGraph(
 	ctx context.Context,
 	citations []Citation,
 ) (weightedDomainGraph, error) {
-	ordered := append([]Citation(nil), citations...)
+	sample := NewCitationSample()
+	sample.Add(citations...)
+	ordered := sample.Citations()
 	sort.Slice(ordered, func(left, right int) bool {
 		if ordered[left].SourceURL != ordered[right].SourceURL {
 			return ordered[left].SourceURL < ordered[right].SourceURL
@@ -88,7 +89,6 @@ func newWeightedDomainGraph(
 
 		return ordered[left].Confidence > ordered[right].Confidence
 	})
-	ordered = boundedCitations(ordered, maximumDomainCitations)
 	votes := make(map[string]map[string]map[string]float64)
 	for index, citation := range ordered {
 		if index%1024 == 0 {
@@ -119,14 +119,6 @@ func newWeightedDomainGraph(
 	}
 
 	return weightedGraphFromVotes(votes), nil
-}
-
-func boundedCitations(citations []Citation, limit int) []Citation {
-	if len(citations) > limit {
-		return citations[:limit]
-	}
-
-	return citations
 }
 
 func weightedGraphFromVotes(
@@ -274,14 +266,14 @@ func RegistrableDomain(rawURL string) string {
 		return ""
 	}
 	if net.ParseIP(host) != nil {
-		return host
+		return strings.Clone(host)
 	}
 	domain, err := publicsuffix.EffectiveTLDPlusOne(host)
 	if err != nil {
-		return host
+		return strings.Clone(host)
 	}
 
-	return domain
+	return strings.Clone(domain)
 }
 
 func domainFromValue(value string) string {

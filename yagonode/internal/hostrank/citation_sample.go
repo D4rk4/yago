@@ -8,10 +8,18 @@ import (
 	"sort"
 )
 
+const (
+	maximumCitationURLBytes      = 2 << 10
+	maximumCitationSampleBytes   = 16 << 20
+	maximumCitationRetainedBytes = 5 << 10
+	maximumDomainCitations       = maximumCitationSampleBytes / maximumCitationRetainedBytes
+)
+
 type CitationSample struct {
-	limit     int
-	citations citationPriorityQueue
-	keys      map[string]struct{}
+	limit         int
+	retainedBytes int
+	citations     citationPriorityQueue
+	keys          map[string]struct{}
 }
 
 type scoredCitation struct {
@@ -27,9 +35,11 @@ func NewCitationSample() *CitationSample {
 }
 
 func newCitationSample(limit int) *CitationSample {
+	limit = min(max(0, limit), maximumDomainCitations)
+
 	return &CitationSample{
 		limit: limit,
-		keys:  make(map[string]struct{}),
+		keys:  make(map[string]struct{}, limit),
 	}
 }
 
@@ -38,6 +48,10 @@ func (s *CitationSample) Add(citations ...Citation) {
 		return
 	}
 	for _, citation := range citations {
+		if len(citation.SourceURL) > maximumCitationURLBytes ||
+			len(citation.TargetURL) > maximumCitationURLBytes {
+			continue
+		}
 		candidate := scoredCitationFor(citation)
 		if _, exists := s.keys[candidate.key]; exists {
 			continue
@@ -45,6 +59,7 @@ func (s *CitationSample) Add(citations ...Citation) {
 		if len(s.citations) < s.limit {
 			heap.Push(&s.citations, candidate)
 			s.keys[candidate.key] = struct{}{}
+			s.retainedBytes += maximumCitationRetainedBytes
 			continue
 		}
 		if !citationPrecedes(candidate, s.citations[0]) {
@@ -74,9 +89,14 @@ func (s *CitationSample) Citations() []Citation {
 }
 
 func scoredCitationFor(citation Citation) scoredCitation {
-	confidence := make([]byte, 8)
-	binary.BigEndian.PutUint64(confidence, math.Float64bits(citation.Confidence))
-	key := citation.SourceURL + "\x00" + citation.TargetURL + "\x00" + string(confidence)
+	var confidence [8]byte
+	binary.BigEndian.PutUint64(confidence[:], math.Float64bits(citation.Confidence))
+	key := citation.SourceURL + "\x00" + citation.TargetURL + "\x00" + string(confidence[:])
+	sourceEnd := len(citation.SourceURL)
+	targetStart := sourceEnd + 1
+	targetEnd := targetStart + len(citation.TargetURL)
+	citation.SourceURL = key[:sourceEnd]
+	citation.TargetURL = key[targetStart:targetEnd]
 	digest := fnv.New64a()
 	_, _ = digest.Write([]byte(key))
 

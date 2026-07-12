@@ -502,6 +502,35 @@ func TestDocumentReturnsMissing(t *testing.T) {
 	}
 }
 
+func TestDocumentPresenceChecksRawEntriesWithoutDecoding(t *testing.T) {
+	directory, _, engine := openScriptedDocuments(t)
+	presence := directory.(DocumentPresence)
+	url := "https://example.org/raw"
+	engine.buckets[bucketName][url] = []byte("{")
+
+	found, err := presence.DocumentExists(t.Context(), url)
+	if err != nil || !found {
+		t.Fatalf("existing presence = %t, %v", found, err)
+	}
+	found, err = presence.DocumentExists(t.Context(), "https://example.org/missing")
+	if err != nil || found {
+		t.Fatalf("missing presence = %t, %v", found, err)
+	}
+}
+
+func TestDocumentPresenceReturnsVaultFailure(t *testing.T) {
+	v, directory, _ := openDocumentsWithVault(t, 0)
+	if err := v.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := directory.(DocumentPresence).DocumentExists(
+		t.Context(),
+		"https://example.org/",
+	); err == nil {
+		t.Fatal("closed vault presence succeeded")
+	}
+}
+
 func TestDocumentReturnsReadError(t *testing.T) {
 	v, directory, _ := openDocumentsWithVault(t, 0)
 	if err := v.Close(); err != nil {

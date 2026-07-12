@@ -20,8 +20,9 @@ equivalent of:
 - **Per-field BM25 with tuned field weights** (`searchindex/ranking_weights.go`:
   title 6, anchors 4, headings 3, url 2, body 1 — practical BM25F range,
   Robertson & Zaragoza CIKM 2004), a weighted disjunction per query term.
-- **Sequential Dependence Model, ordered feature** (`searchindex/sdm_bigrams.go`:
-  adjacent-pair phrase clauses, Metzler & Croft SIGIR 2005).
+- **Bounded lexical term dependence** over visible title/snippet evidence, with
+  optional capped stored-document positions for explicit ranking consumers
+  (Metzler & Croft SIGIR 2005).
 - **Multiplicative static priors** (`searchlocal.go` `hostRankScorer`:
   `score ×= 1 + wHost·rank(host) + wFresh·2^(−age/180d) + urlPrior(path)`; host
   block-rank, freshness decay, saturating URL-length — Kraaij-Westerveld-Hiemstra
@@ -43,13 +44,11 @@ without violating KISS.
 Three facts about our architecture gate what is worth building:
 
 1. **Layer split.** Bleve fields are stored with `Store=false`; the full document
-   lives in a Go-side document map. Inside the **searchindex** layer, per hit, we
-   have the full body, headings, anchors, url, and **term-vector positions**
-   (`IncludeTermVectors=true`) and the per-clause `Explain` tree. The **searchcore**
-   reranker/fusion layer sees only `Result{Title, Snippet≤320, URL, Score, Host,
-   Date}` — no positions, no full body — so today's snippet-scoped proximity in
-   `lexical_rerank.go` is weak. Any real proximity, quality, or per-field feature
-   work must live in searchindex, or be plumbed up from it.
+   lives in the document store. Candidate retrieval returns identities, scores,
+   and optional explanation trees without retaining raw bodies. A separate
+   bounded evidence pass can expose stored-text positions to explicit ranking
+   consumers. The **searchcore** reranker/fusion layer otherwise sees only
+   `Result{Title, Snippet≤320, URL, Score, Host, Date}`.
 
 2. **Bleve hides k1/b.** The scorer's BM25 parameters are fixed (~1.2/0.75) and not
    exposed through the mapping API. BM25F, BM25+/BM25L, and per-field b/k1 all
@@ -104,10 +103,9 @@ Ordered slices:
   the current weights are guesses — before any new feature exists.
 
 - **RANK-ENABLER — expose per-field BM25 + positions.** Plumb per-field BM25
-  sub-scores (via `req.Explain`) and matched-term positions (via
-  `IncludeLocations`; term vectors are already on) from searchindex into
-  searchcore Results, so proximity and coverage are computed over the document,
-  not the 320-rune snippet. Unblocks the next two slices and richer features.
+  sub-scores through explanations and matched-term positions through the bounded
+  stored-document evidence pass. Interactive retrieval never requests Bleve
+  term-vector locations.
 
 - **RANK-02 — content-quality prior.** Deterministic, language-agnostic per-document
   features at index time (stopword fraction and coverage, term-distribution
@@ -159,7 +157,8 @@ Ordered slices:
   small federated corpus.
 - **Query segmentation / phrase detection.** Rejected as marginal and risky: the
   literature finding is "in-doubt-without" (leave a query unsegmented when
-  unsure), and our SDM bigrams already capture most of the value cheaply.
+  unsure), and bounded visible lexical proximity captures the useful signal
+  without query-time phrase clauses.
 - **Replacing RRF with score-based fusion (CombSUM/CombMNZ) across sources.**
   Rejected. RRF sidesteps the incomparable-score problem between local BM25,
   remote peers, and web fallback, and beats score fusion in the fusion literature;

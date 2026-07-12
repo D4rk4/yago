@@ -343,7 +343,6 @@ func TestThemeDefaultBodiesParseAndRender(t *testing.T) {
 		"body { font-family: Arial, Helvetica, sans-serif;",
 		`<a href="/yacysearch.rss?query=cats">RSS</a>`,
 	})
-
 	imageView := resultsView()
 	imageView["imageVertical"] = true
 	grid, ok := theme.Render(context.Background(), portaltheme.PageResults, imageView)
@@ -368,8 +367,34 @@ func TestThemeDefaultBodiesParseAndRender(t *testing.T) {
 		"<title>my node search</title>",
 		`<div class="brand"><b>ya</b>go</div>`,
 		"Search operators",
+		`"quoted phrase"`,
+		"prefer results where the words appear adjacently",
 		`<div class="home">`,
 	})
+}
+
+func TestThemeDefaultResultsRenderTotalMissSuggestion(t *testing.T) {
+	theme, _ := openTheme(t)
+	if err := theme.SetEnabled(t.Context(), true); err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+	if _, err := theme.SaveDocument(
+		t.Context(),
+		portaltheme.PageResults,
+		portaltheme.DefaultBody(portaltheme.PageResults),
+	); err != nil {
+		t.Fatalf("save default results: %v", err)
+	}
+	missView := resultsView()
+	missResults, _ := missView["results"].(map[string]any)
+	missResults["recovered"] = false
+	missResults["totalResults"] = 0
+	missResults["results"] = []map[string]any{}
+	miss, ok := theme.Render(t.Context(), portaltheme.PageResults, missView)
+	if !ok || !strings.Contains(miss, "No results matched. Did you mean") ||
+		strings.Contains(miss, "showing close matches") {
+		t.Fatalf("total-miss suggestion render = %q", miss)
+	}
 }
 
 func assertContainsAll(t *testing.T, label, html string, wants []string) {

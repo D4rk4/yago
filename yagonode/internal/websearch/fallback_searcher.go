@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
@@ -14,16 +15,13 @@ const (
 	webResultDecay    = 0.01
 )
 
-// FallbackSearcher wraps a primary searcher and, only on a true miss (the primary
-// returned zero results) and only when the privacy policy permits this request,
-// augments the response with results from a web-search Provider stamped as
-// SourceWeb. The permit closure receives the request so a per-request opt-in
-// policy can gate whether the query is allowed to leave the node.
 type FallbackSearcher struct {
-	primary  searchcore.Searcher
-	provider Provider
-	permit   func(searchcore.Request) bool
-	seeder   CrawlSeeder
+	primary        searchcore.Searcher
+	provider       Provider
+	permit         func(searchcore.Request) bool
+	seeder         CrawlSeeder
+	providerBudget time.Duration
+	spawnSeedWork  func(func()) bool
 }
 
 func NewFallbackSearcher(
@@ -35,6 +33,9 @@ func NewFallbackSearcher(
 	searcher := &FallbackSearcher{primary: primary, provider: provider, permit: permit}
 	for _, opt := range opts {
 		opt(searcher)
+	}
+	if searcher.seeder != nil {
+		searcher.spawnSeedWork = webSeedProcessAdmission.try
 	}
 
 	return searcher
@@ -51,7 +52,7 @@ func (s *FallbackSearcher) Search(
 	if !s.shouldFallback(resp, req) {
 		return resp, nil
 	}
-	results, provErr := s.provider.Search(ctx, req.Query, req.Limit)
+	results, provErr := s.searchProvider(ctx, req.SubmittedText(), req.Limit)
 	if provErr != nil {
 		slog.DebugContext(ctx, msgFallbackFailed, slog.Any("error", provErr))
 
@@ -61,7 +62,7 @@ func (s *FallbackSearcher) Search(
 	resp.Results = toCoreResults(results, req.Limit)
 	resp.TotalResults = len(resp.Results)
 	if s.seeder != nil && len(results) > 0 {
-		s.seeder.Seed(ctx, resultURLs(results))
+		s.seedWebResults(ctx, results)
 	}
 
 	return resp, nil
@@ -79,7 +80,8 @@ func resultURLs(results []Result) []string {
 }
 
 func (s *FallbackSearcher) shouldFallback(resp searchcore.Response, req searchcore.Request) bool {
-	if len(resp.Results) > 0 || s.provider == nil {
+	if len(resp.Results) > 0 || s.provider == nil ||
+		(req.Source == searchcore.SourceLocal && !req.AllowWebFallback) {
 		return false
 	}
 	// A non-text vertical (images, audio, video, apps) must not fall back: the
@@ -92,7 +94,7 @@ func (s *FallbackSearcher) shouldFallback(resp searchcore.Response, req searchco
 		return false
 	}
 
-	return strings.TrimSpace(req.Query) != ""
+	return strings.TrimSpace(req.SubmittedText()) != ""
 }
 
 func toCoreResults(results []Result, limit int) []searchcore.Result {

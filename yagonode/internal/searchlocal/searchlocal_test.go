@@ -104,6 +104,7 @@ func translatedSearchIndex(published time.Time) *fakeIndex {
 				Author:              "Ada Lovelace",
 				Keywords:            "go, search",
 				Publisher:           "Example Press",
+				Language:            "ru",
 				SafetyRating:        documentstore.SafetyGeneral,
 				ExplicitProbability: 0.1,
 				SafetyConfidence:    0.8,
@@ -129,7 +130,7 @@ func assertTranslatedResult(t *testing.T, result searchcore.Result) {
 		result.File != "file.pdf" ||
 		result.URLHash == "" ||
 		result.ContentDomain != searchcore.ContentDomainText ||
-		result.Language != "EN" ||
+		result.Language != "ru" ||
 		result.SafetyRating != searchcore.SafetyGeneral ||
 		result.ExplicitProbability != 0.1 || result.SafetyConfidence != 0.8 ||
 		result.Author != "Ada Lovelace" ||
@@ -148,7 +149,7 @@ func TestSearcherUsesTermsAndDefaultLimit(t *testing.T) {
 		t.Fatalf("Search: %v", err)
 	}
 	if index.got.Query != "one two" ||
-		index.got.MaxResults != searchcore.DefaultPublicLimit*proximityCandidateMultiplier {
+		index.got.MaxResults != searchcore.DefaultPublicLimit {
 		t.Fatalf("index request = %#v", index.got)
 	}
 }

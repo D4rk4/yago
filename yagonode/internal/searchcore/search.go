@@ -44,12 +44,13 @@ const (
 )
 
 type Request struct {
-	Query         string
-	Terms         []string
-	ExcludedTerms []string
-	Phrases       []string
-	Source        Source
-	Limit         int
+	Query          string
+	SubmittedQuery string
+	Terms          []string
+	ExcludedTerms  []string
+	Phrases        []string
+	Source         Source
+	Limit          int
 	// Fuzzy asks the local index for approximate (edit-distance) term matching;
 	// the zero-result recovery retry sets it, remote fan-out ignores it.
 	Fuzzy bool
@@ -80,9 +81,13 @@ type Request struct {
 	AllowWebFallback bool
 	SafeSearch       bool
 	Explain          bool
+	RankingFeatures  bool
 }
 
 type Result struct {
+	DocumentID            string
+	Analyzer              string
+	EvidenceReady         bool
 	Title                 string
 	URL                   string
 	ClusterID             string

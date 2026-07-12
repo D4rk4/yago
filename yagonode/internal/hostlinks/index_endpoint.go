@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagoproto"
@@ -42,14 +43,14 @@ func (e endpoint) Serve(
 		resp.Index = graphIndex(graph)
 	}
 
-	body, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
+	var body strings.Builder
+	if err := json.NewEncoder(&body).Encode(resp); err != nil {
 		return httpguard.RawResponse{}, fmt.Errorf("encode host link index: %w", err)
 	}
 
 	return httpguard.RawResponse{
 		ContentType: indexContentType,
-		Body:        string(body),
+		Body:        body.String(),
 	}, nil
 }
 

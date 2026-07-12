@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
@@ -27,7 +28,7 @@ func (f fallbackRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { 
 
 const mojeekListFixture = `<ul><li><h2><a href="https://web.example/x">Hit about gap</a></h2><p>snippet</p></li></ul>`
 
-func TestWithWebFallbackWrapsWhenConfigured(t *testing.T) {
+func TestWithWebFallbackEnabledRunsOnFederatedMissWithoutRequestOptIn(t *testing.T) {
 	client := &http.Client{
 		Transport: fallbackRoundTrip(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
@@ -48,11 +49,59 @@ func TestWithWebFallbackWrapsWhenConfigured(t *testing.T) {
 	}
 
 	search := withWebFallback(stubPrimarySearcher{}, assembly)
-	resp, err := search.Search(context.Background(), searchcore.Request{Query: "gap", Limit: 10})
+	resp, err := search.Search(
+		context.Background(),
+		searchcore.Request{Query: "gap", Limit: 10},
+	)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
 	if len(resp.Results) != 1 || resp.Results[0].Source != searchcore.SourceWeb {
+		t.Fatalf("results = %#v", resp.Results)
+	}
+}
+
+func TestWithWebFallbackEnabledKeepsFederatedAnswerBeforeWeb(t *testing.T) {
+	webCalls := 0
+	client := &http.Client{
+		Transport: fallbackRoundTrip(func(*http.Request) (*http.Response, error) {
+			webCalls++
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(mojeekListFixture)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+	primary := stubPrimarySearcher{resp: searchcore.Response{
+		Results: []searchcore.Result{{
+			Title:  "swarm answer",
+			URL:    "https://peer.example/answer",
+			Source: searchcore.SourceRemote,
+		}},
+		TotalResults: 1,
+	}}
+	search := withWebFallback(primary, publicSearchAssembly{
+		client: client,
+		webFallback: webFallbackConfig{
+			Privacy:  webFallbackPrivacyEnabled,
+			Provider: webFallbackProviderDDGS,
+			Backend:  "mojeek",
+		},
+	})
+
+	resp, err := search.Search(
+		context.Background(),
+		searchcore.Request{Query: "answer", Limit: 10},
+	)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if webCalls != 0 {
+		t.Fatalf("web fallback ran %d time(s) after the swarm answered", webCalls)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].Source != searchcore.SourceRemote {
 		t.Fatalf("results = %#v", resp.Results)
 	}
 }
@@ -67,7 +116,7 @@ func TestWithWebFallbackInstallsSeeder(t *testing.T) {
 			}, nil
 		}),
 	}
-	queue := &fakeCrawlQueue{}
+	queue := &fakeCrawlQueue{published: make(chan struct{}, 1)}
 	assembly := publicSearchAssembly{
 		client:    client,
 		storage:   nodeStorage{documentDirectory: fakeSeedDocuments{stored: map[string]bool{}}},
@@ -89,6 +138,11 @@ func TestWithWebFallbackInstallsSeeder(t *testing.T) {
 		searchcore.Request{Query: "gap", Limit: 10},
 	); err != nil {
 		t.Fatalf("search: %v", err)
+	}
+	select {
+	case <-queue.published:
+	case <-time.After(time.Second):
+		t.Fatal("crawl seed was not published")
 	}
 	if len(queue.orders) != 1 || queue.keys[0] != "https://web.example/x" {
 		t.Fatalf("seeded orders = %#v keys = %#v", queue.orders, queue.keys)
@@ -136,6 +190,7 @@ func fixtureFallbackClient() *http.Client {
 }
 
 func TestWithWebFallbackDisabledPrivacySkipsProvider(t *testing.T) {
+	primary := &stubPrimarySearcher{}
 	assembly := publicSearchAssembly{
 		client: fixtureFallbackClient(),
 		webFallback: webFallbackConfig{
@@ -146,7 +201,10 @@ func TestWithWebFallbackDisabledPrivacySkipsProvider(t *testing.T) {
 		},
 	}
 
-	search := withWebFallback(stubPrimarySearcher{}, assembly)
+	search := withWebFallback(primary, assembly)
+	if search != primary {
+		t.Fatal("disabled privacy installed a web fallback")
+	}
 	resp, err := search.Search(context.Background(), searchcore.Request{Query: "gap", Limit: 10})
 	if err != nil {
 		t.Fatalf("search: %v", err)
@@ -186,7 +244,8 @@ func TestWithWebFallbackExplicitRequiresOptIn(t *testing.T) {
 }
 
 func TestWebFallbackPermit(t *testing.T) {
-	if !webFallbackPermit(webFallbackPrivacyEnabled)(searchcore.Request{}) {
+	enabled := webFallbackPermit(webFallbackPrivacyEnabled)
+	if !enabled(searchcore.Request{}) {
 		t.Error("enabled mode must permit every request")
 	}
 

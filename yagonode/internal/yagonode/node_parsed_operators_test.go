@@ -20,8 +20,9 @@ func (s *capturingSearcher) Search(
 
 func TestParsedQueryAppliesOperatorsForRawQuerySurfaces(t *testing.T) {
 	inner := &capturingSearcher{}
+	submitted := `author:doe site:example.org filetype:pdf tld:de inurl:blog language:ru /date near golang tools`
 	_, err := withParsedQuery(inner).Search(context.Background(), searchcore.Request{
-		Query: `author:doe site:example.org filetype:pdf tld:de inurl:blog language:ru /date near golang tools`,
+		Query: submitted,
 	})
 	if err != nil {
 		t.Fatalf("search: %v", err)
@@ -34,6 +35,9 @@ func TestParsedQueryAppliesOperatorsForRawQuerySurfaces(t *testing.T) {
 	}
 	if got.Query != "golang tools" {
 		t.Fatalf("query = %q, want the bare terms so the index never sees operators", got.Query)
+	}
+	if got.SubmittedQuery != submitted {
+		t.Fatalf("submitted query = %q", got.SubmittedQuery)
 	}
 }
 

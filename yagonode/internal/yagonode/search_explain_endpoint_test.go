@@ -132,8 +132,8 @@ func TestSearchExplainEndpointReturnsScoredResults(t *testing.T) {
 		!index.got.Near || !index.got.IncludePositions {
 		t.Fatalf("parsed index request = %#v", index.got)
 	}
-	if index.got.MaxResults != 100 {
-		t.Fatalf("candidate window = %d, want 100", index.got.MaxResults)
+	if index.got.MaxResults != 50 {
+		t.Fatalf("candidate window = %d, want 50", index.got.MaxResults)
 	}
 	if index.got.Weights.Title != 5 {
 		t.Fatalf("weights not forwarded: %#v", index.got.Weights)

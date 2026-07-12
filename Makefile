@@ -17,14 +17,14 @@ PROTO_MODULE := github.com/D4rk4/yago/yagocrawlcontract
 PROTOC_GEN_GO_VERSION ?= v1.36.6
 PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
 
-E2E_TIMEOUT ?= 10m
+E2E_TIMEOUT ?= 25m
 E2E_NODE_IMAGE ?= yago-node:e2e
 E2E_CRAWLER_IMAGE ?= yago-crawler:e2e
 SOURCE_REVISION ?= unknown
 
 E2E_CONTAINER_CLI := $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
 E2E_RUNTIME_DIR := $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))
-E2E_DOCKER_HOST := $(or $(DOCKER_HOST),unix://$(E2E_RUNTIME_DIR)/podman/podman.sock)
+E2E_DOCKER_HOST := $(or $(DOCKER_HOST),$(if $(filter docker,$(E2E_CONTAINER_CLI)),unix:///var/run/docker.sock,unix://$(E2E_RUNTIME_DIR)/podman/podman.sock))
 E2E_DOCKER_ENV := DOCKER_HOST=$(E2E_DOCKER_HOST) TESTCONTAINERS_RYUK_DISABLED=true
 
 $(TOOLS_STAMP): tools/install tools/tools.lock

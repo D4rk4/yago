@@ -25,16 +25,21 @@ Since that list was written, three later slices changed the picture:
 
 - **SEARCH-24** proved the trigram AND-clause floods ordinary queries (a Russian
   query for `черногория` pulled in unrelated Cyrillic pages because a word's
-  common trigrams occur scattered across any long same-script document) and gated
-  the trigram clause to the zero-result recovery path only.
+  common trigrams occur scattered across any long same-script document).
 - **SEARCH-25** (ADR-0026) added real per-language Snowball stemming with
   content-language detection and per-analyzer routing: `работать`/`работает`
   conflate to one stem for Russian and for every language bleve ships an analyzer
   for, precisely and without flooding.
-- **SEARCH-14** added query-time fuzzy zero-result recovery (bleve
-  `SetFuzziness(1)` on the main field clauses) and a SymSpell corrector that
-  proposes a "did you mean" from the indexed vocabulary; autocomplete already
-  offers prefix completion from local titles.
+- **SEARCH-14** added query-time fuzzy zero-result recovery and a SymSpell
+  corrector that proposes a "did you mean" from the indexed vocabulary;
+  autocomplete already offers prefix completion from local titles.
+- A production query for `псилобаты` showed that moving trigram conjunctions to
+  recovery was insufficient: scattered grams admitted 47 unrelated pages and
+  made the retry scan for several seconds. Recovery now excludes gram fields,
+  requires every parsed term, and uses bounded analyzer-consistent edit distance,
+  including adjacent transpositions: distance one, or two for terms of at least
+  eight runes. Distance two requires four stable leading runes, fuzzy matching is
+  disabled above 64 runes, and the retry has a 250 ms budget.
 
 ## Decision
 
@@ -51,12 +56,11 @@ written:
    value for scripts with no analyzer (Hebrew and unlisted languages), which
    ADR-0026 already records as a separate, later follow-up. It is not part of
    SEARCH-11.
-3. **Follow-up 2 (query-time fuzzy) is delivered** by SEARCH-14's fuzzy recovery
-   plus the SymSpell corrector; no additional auto-fuzziness pass is added on the
-   ordinary query path, where it would reintroduce the same precision loss the
-   trigram gating removed.
+3. **Follow-up 2 (query-time fuzzy) is delivered** by the bounded zero-result
+   recovery plus the SymSpell corrector. It is not enabled on the ordinary query
+   path.
 4. **Follow-up 1 (edge-ngram prefix field) is deferred.** With stemming,
-   trigram-based recovery, and title autocomplete all in place, a dedicated
+   bounded fuzzy recovery, and title autocomplete all in place, a dedicated
    edge-ngram field adds marginal recall for truncated words at the cost of a new
    index field and a full reindex. If a future need for exact prefix matching in
    the ranked results (beyond autocomplete) is demonstrated on the SEARCH-16 eval
@@ -64,11 +68,12 @@ written:
 
 ## Consequences
 
-- SEARCH-11's intent — language-agnostic morphology and partial-word matching —
-  is met by the composition of the trigram recovery floor (SEARCH-11 base +
-  SEARCH-24 gating) and per-language stemming (SEARCH-25), with fuzzy/SymSpell
-  recovery (SEARCH-14) for typos.
-- No new index field, reindex, or dependency is incurred to close the task.
+- SEARCH-11's morphology intent is met by per-language stemming, with bounded
+  fuzzy/SymSpell recovery for typos. The analyzer-scope schema migration retires
+  legacy trigram fields and term vectors, reducing index write amplification
+  and persisted size.
+- Existing shards rebuild once from the document store when a rebuild source is
+  available. No new dependency is introduced.
 - The genuinely-open morphology gap is narrowed to unstemmed scripts (Hebrew and
   unlisted languages), tracked under ADR-0026's dictionary-analyzer follow-up, not
   under SEARCH-11.

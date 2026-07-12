@@ -11,18 +11,17 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 )
 
-const (
-	candidateFusionK                = 60
-	maximumProximityCandidateWindow = 200
-	proximityCandidateMultiplier    = 2
-)
+const candidateFusionK = 60
 
 func (s localSearcher) searchCandidates(
 	ctx context.Context,
 	req searchindex.SearchRequest,
 ) (searchindex.SearchResultSet, error) {
 	originalLimit := req.MaxResults
-	req.MaxResults = proximityCandidateLimit(req)
+	evidence, deferredEvidence := s.index.(searchindex.SearchEvidenceSource)
+	if deferredEvidence {
+		req.CandidateOnly = true
+	}
 	minimum := relaxedMinimumTermMatches(req)
 	strictRequest := req
 	if minimum > 0 && req.WithFacets {
@@ -33,7 +32,9 @@ func (s localSearcher) searchCandidates(
 		return searchindex.SearchResultSet{}, fmt.Errorf("strict candidates: %w", err)
 	}
 	if minimum == 0 {
-		return strict, nil
+		strict.Results = limitCandidateResults(strict.Results, originalLimit)
+
+		return finishCandidateEvidence(ctx, evidence, deferredEvidence, req, strict)
 	}
 
 	relaxedRequest := req
@@ -43,22 +44,40 @@ func (s localSearcher) searchCandidates(
 		return searchindex.SearchResultSet{}, fmt.Errorf("relaxed candidates: %w", err)
 	}
 
-	return fuseCandidateSets(strict, relaxed, max(originalLimit, req.MaxResults)), nil
+	set := fuseCandidateSets(strict, relaxed, originalLimit)
+
+	return finishCandidateEvidence(ctx, evidence, deferredEvidence, req, set)
 }
 
-func proximityCandidateLimit(req searchindex.SearchRequest) int {
-	if req.Fuzzy || req.MaxResults <= 0 {
-		return req.MaxResults
+func finishCandidateEvidence(
+	ctx context.Context,
+	evidence searchindex.SearchEvidenceSource,
+	deferred bool,
+	req searchindex.SearchRequest,
+	set searchindex.SearchResultSet,
+) (searchindex.SearchResultSet, error) {
+	if !deferred {
+		return set, nil
 	}
-	terms := distinctCandidateTerms(req)
-	if len(terms) < 2 {
-		return req.MaxResults
+	req.CandidateOnly = false
+	results, err := evidence.SearchEvidence(ctx, req, set.Results)
+	if err != nil {
+		return searchindex.SearchResultSet{}, fmt.Errorf("search evidence: %w", err)
 	}
-	if req.MaxResults >= maximumProximityCandidateWindow {
-		return req.MaxResults
+	set.Results = results
+
+	return set, nil
+}
+
+func limitCandidateResults(
+	results []searchindex.SearchResult,
+	limit int,
+) []searchindex.SearchResult {
+	if limit >= 0 && len(results) > limit {
+		return results[:limit]
 	}
 
-	return min(maximumProximityCandidateWindow, req.MaxResults*proximityCandidateMultiplier)
+	return results
 }
 
 func distinctCandidateTerms(req searchindex.SearchRequest) map[string]struct{} {

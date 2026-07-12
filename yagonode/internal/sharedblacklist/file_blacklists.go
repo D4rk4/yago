@@ -1,7 +1,11 @@
 package sharedblacklist
 
 import (
+	"bufio"
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -19,7 +23,8 @@ const (
 )
 
 type FileBlacklists struct {
-	files fs.FS
+	files                 fs.FS
+	maximumAggregateBytes int
 }
 
 func NewFileBlacklists(dataDir string) FileBlacklists {
@@ -27,46 +32,125 @@ func NewFileBlacklists(dataDir string) FileBlacklists {
 }
 
 func (b FileBlacklists) SharedList(ctx context.Context, name string) string {
-	if err := ctx.Err(); err != nil {
+	list, err := b.sharedList(ctx, name)
+	if err != nil {
 		return ""
 	}
 
-	shared, ok := b.sharedNames(ctx)
-	if !ok {
-		return ""
+	return list
+}
+
+func (b FileBlacklists) sharedList(ctx context.Context, name string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("shared blacklist context: %w", err)
+	}
+	retention := newSharedBlacklistRetention(b.maximumAggregateBytes)
+	shared, configured, err := b.sharedNames(ctx, retention)
+	if err != nil || !configured {
+		return "", err
 	}
 
 	var out strings.Builder
 	for _, selected := range selectedSharedNames(shared, name) {
+		if err := ctx.Err(); err != nil {
+			return "", fmt.Errorf("shared blacklist context: %w", err)
+		}
 		if !validSharedBlacklistName(selected) {
 			continue
 		}
-		out.WriteString(b.listText(ctx, selected))
-		out.WriteString(sharedBlacklistLineBreak)
+		if err := b.appendList(ctx, selected, retention, &out); err != nil {
+			return "", err
+		}
+		if err := appendSharedBlacklistResponse(
+			&out,
+			retention,
+			sharedBlacklistLineBreak,
+		); err != nil {
+			return "", err
+		}
 	}
 
-	return out.String()
+	return out.String(), nil
 }
 
-func (b FileBlacklists) sharedNames(ctx context.Context) ([]string, bool) {
-	raw, err := fs.ReadFile(b.files, sharedBlacklistConfigFileName)
+func (b FileBlacklists) sharedNames(
+	ctx context.Context,
+	retention *sharedBlacklistRetention,
+) ([]string, bool, error) {
+	file, err := b.files.Open(sharedBlacklistConfigFileName)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			slog.WarnContext(ctx, blacklistConfigReadFailed, slog.Any("error", err))
 		}
 
-		return nil, false
+		return nil, false, nil
 	}
+	defer func() { _ = file.Close() }()
+	reader := bufio.NewReader(sharedBlacklistReader{ctx: ctx, source: file, retention: retention})
+	for {
+		line, readErr := reader.ReadString('\n')
+		if err := ctx.Err(); err != nil {
+			return nil, false, fmt.Errorf("shared blacklist config context: %w", err)
+		}
+		names, found, err := configuredSharedBlacklistNames(line, retention)
+		if err != nil || found {
+			return names, found, err
+		}
+		if readErr == nil {
+			continue
+		}
 
-	return sharedBlacklistNames(settingValue(string(raw), sharedBlacklistConfigKey)), true
+		configured, err := sharedBlacklistConfigReadResult(ctx, readErr)
+
+		return nil, configured, err
+	}
 }
 
-func (b FileBlacklists) listText(ctx context.Context, name string) string {
-	if !validSharedBlacklistName(name) {
-		return ""
+func configuredSharedBlacklistNames(
+	line string,
+	retention *sharedBlacklistRetention,
+) ([]string, bool, error) {
+	if line == "" {
+		return nil, false, nil
 	}
+	key, value, ok := settingParts(line)
+	if !ok || key != sharedBlacklistConfigKey {
+		return nil, false, nil
+	}
+	if err := retention.retain(len(line)); err != nil {
+		return nil, true, err
+	}
+	names, err := retainedSharedBlacklistNames(value, retention)
 
-	raw, err := fs.ReadFile(b.files, path.Join(sharedBlacklistDirectoryName, name))
+	return names, true, err
+}
+
+func sharedBlacklistConfigReadResult(
+	ctx context.Context,
+	readErr error,
+) (bool, error) {
+	if errors.Is(readErr, io.EOF) {
+		return true, nil
+	}
+	if errors.Is(readErr, errSharedBlacklistBudgetExceeded) ||
+		errors.Is(readErr, context.Canceled) || errors.Is(readErr, context.DeadlineExceeded) {
+		return false, fmt.Errorf("read shared blacklist config: %w", readErr)
+	}
+	slog.WarnContext(ctx, blacklistConfigReadFailed, slog.Any("error", readErr))
+
+	return false, nil
+}
+
+func (b FileBlacklists) appendList(
+	ctx context.Context,
+	name string,
+	retention *sharedBlacklistRetention,
+	out *strings.Builder,
+) error {
+	if !validSharedBlacklistName(name) {
+		return nil
+	}
+	file, err := b.files.Open(path.Join(sharedBlacklistDirectoryName, name))
 	if err != nil {
 		if !os.IsNotExist(err) {
 			slog.WarnContext(
@@ -77,10 +161,123 @@ func (b FileBlacklists) listText(ctx context.Context, name string) string {
 			)
 		}
 
+		return nil
+	}
+	defer func() { _ = file.Close() }()
+	reader := bufio.NewReader(sharedBlacklistReader{ctx: ctx, source: file, retention: retention})
+	wrote := false
+	for {
+		line, readErr := reader.ReadString('\n')
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("shared blacklist file context: %w", err)
+		}
+		retained, err := appendSharedBlacklistLine(out, retention, line)
+		if err != nil {
+			return err
+		}
+		wrote = wrote || retained
+		if readErr == nil {
+			continue
+		}
+
+		return sharedBlacklistFileReadResult(ctx, name, wrote, readErr)
+	}
+}
+
+func appendSharedBlacklistLine(
+	out *strings.Builder,
+	retention *sharedBlacklistRetention,
+	line string,
+) (bool, error) {
+	line = strings.TrimRight(line, "\r\n")
+	if line == "" || strings.HasPrefix(line, "#") {
+		return false, nil
+	}
+	if err := retention.retain(len(line) + len(sharedBlacklistLineBreak)); err != nil {
+		return false, err
+	}
+	out.WriteString(line)
+	out.WriteString(sharedBlacklistLineBreak)
+
+	return true, nil
+}
+
+func sharedBlacklistFileReadResult(
+	ctx context.Context,
+	name string,
+	wrote bool,
+	readErr error,
+) error {
+	if errors.Is(readErr, io.EOF) {
+		return nil
+	}
+	if errors.Is(readErr, errSharedBlacklistBudgetExceeded) ||
+		errors.Is(readErr, context.Canceled) || errors.Is(readErr, context.DeadlineExceeded) {
+		return fmt.Errorf("read shared blacklist file %q: %w", name, readErr)
+	}
+	slog.WarnContext(
+		ctx,
+		blacklistFileReadFailedMessage,
+		slog.String("name", name),
+		slog.Any("error", readErr),
+	)
+	if wrote {
+		return fmt.Errorf("read shared blacklist file %q: %w", name, readErr)
+	}
+
+	return nil
+}
+
+func (b FileBlacklists) listText(ctx context.Context, name string) string {
+	retention := newSharedBlacklistRetention(b.maximumAggregateBytes)
+	var out strings.Builder
+	if err := b.appendList(ctx, name, retention, &out); err != nil {
 		return ""
 	}
 
-	return sharedBlacklistText(string(raw))
+	return out.String()
+}
+
+func appendSharedBlacklistResponse(
+	out *strings.Builder,
+	retention *sharedBlacklistRetention,
+	value string,
+) error {
+	if err := retention.retain(len(value)); err != nil {
+		return err
+	}
+	out.WriteString(value)
+
+	return nil
+}
+
+func retainedSharedBlacklistNames(
+	raw string,
+	retention *sharedBlacklistRetention,
+) ([]string, error) {
+	names := make([]string, 0, min(8, maximumSharedBlacklistFiles))
+	var retainErr error
+	visitSharedBlacklistNames(raw, func(name string) bool {
+		if len(names) >= maximumSharedBlacklistFiles {
+			retainErr = fmt.Errorf(
+				"%w: maximum %d configured lists",
+				errSharedBlacklistBudgetExceeded,
+				maximumSharedBlacklistFiles,
+			)
+
+			return false
+		}
+		if err := retention.retain(len(name) + retainedSharedBlacklistNameBytes); err != nil {
+			retainErr = err
+
+			return false
+		}
+		names = append(names, strings.Clone(name))
+
+		return true
+	})
+
+	return names, retainErr
 }
 
 func selectedSharedNames(names []string, requested string) []string {
@@ -88,25 +285,27 @@ func selectedSharedNames(names []string, requested string) []string {
 		return names
 	}
 
-	for _, name := range names {
+	for position, name := range names {
 		if name == requested {
-			return []string{name}
+			return names[position : position+1]
 		}
 	}
 
 	return nil
 }
 
-func sharedBlacklistNames(raw string) []string {
-	var names []string
-	for _, name := range strings.Split(raw, ",") {
+func visitSharedBlacklistNames(raw string, visit func(string) bool) {
+	for {
+		name, remainder, more := strings.Cut(raw, ",")
 		name = strings.TrimSpace(name)
-		if name != "" {
-			names = append(names, name)
+		if name != "" && !visit(name) {
+			return
 		}
+		if !more {
+			return
+		}
+		raw = remainder
 	}
-
-	return names
 }
 
 func validSharedBlacklistName(name string) bool {
@@ -117,14 +316,15 @@ func validSharedBlacklistName(name string) bool {
 }
 
 func sharedBlacklistText(raw string) string {
+	retention := newSharedBlacklistRetention(maximumSharedBlacklistAggregateBytes)
+	if err := retention.retain(len(raw)); err != nil {
+		return ""
+	}
 	var out strings.Builder
 	for line := range strings.Lines(raw) {
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
+		if _, err := appendSharedBlacklistLine(&out, retention, line); err != nil {
+			return ""
 		}
-		out.WriteString(line)
-		out.WriteString(sharedBlacklistLineBreak)
 	}
 
 	return out.String()

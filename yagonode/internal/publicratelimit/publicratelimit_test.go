@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -77,6 +79,22 @@ func TestAuthenticatedMultiplierAndZeroBudget(t *testing.T) {
 	}
 }
 
+func TestLimiterAllowsHTTPRequests(t *testing.T) {
+	limiter, _ := scriptedLimiter(Tiers{Per3Seconds: 1, PerMinute: 1, Per10Minutes: 1})
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+	req.RemoteAddr = "203.0.113.14:1"
+	if allowed, _ := limiter.AllowRequest(req, false); !allowed {
+		t.Fatal("first HTTP request must pass")
+	}
+	if allowed, retryAfter := limiter.AllowRequest(
+		req,
+		false,
+	); allowed ||
+		retryAfter != 3*time.Second {
+		t.Fatalf("second HTTP request = %v %v", allowed, retryAfter)
+	}
+}
+
 func TestLimiterEvictsStaleClients(t *testing.T) {
 	limiter, now := scriptedLimiter(DefaultPublicTiers())
 	for i := 0; i < maxTrackedClients; i++ {
@@ -84,21 +102,119 @@ func TestLimiterEvictsStaleClients(t *testing.T) {
 			t.Fatalf("fill request %d denied", i)
 		}
 	}
-	// While every tracked client is still live, eviction keeps them all.
 	*now = now.Add(time.Minute)
-	if ok, _ := limiter.Allow("early-bird", false); !ok {
-		t.Fatal("early client must pass while others are live")
+	if ok, retry := limiter.Allow("overflow-client", false); ok || retry != 10*time.Minute {
+		t.Fatalf("overflow admission = %v %v", ok, retry)
 	}
-	if len(limiter.clients) <= maxTrackedClients {
-		t.Fatalf("live clients evicted: %d", len(limiter.clients))
+	if len(limiter.clients) != maxTrackedClients {
+		t.Fatalf("tracked clients = %d, want %d", len(limiter.clients), maxTrackedClients)
+	}
+	if ok, _ := limiter.Allow("10.0.0.0", false); !ok {
+		t.Fatal("tracked active client must retain its budget")
+	}
+	*now = now.Add(9*time.Minute + 59*time.Second)
+	if ok, _ := limiter.Allow("fresh-before-expiry", false); !ok {
+		t.Fatal("fresh client must pass after stale eviction")
+	}
+	if len(limiter.clients) != 2 {
+		t.Fatalf("clients after partial expiry = %d, want 2", len(limiter.clients))
 	}
 
 	*now = now.Add(11 * time.Minute)
 	if ok, _ := limiter.Allow("fresh-client", false); !ok {
 		t.Fatal("fresh client must pass after eviction")
 	}
-	if len(limiter.clients) > 3 {
+	if len(limiter.clients) != 1 {
 		t.Fatalf("stale clients kept: %d", len(limiter.clients))
+	}
+}
+
+func TestLimiterCapsConcurrentFreshClients(t *testing.T) {
+	limiter, _ := scriptedLimiter(DefaultPublicTiers())
+	start := make(chan struct{})
+	var accepted atomic.Int64
+	var requests sync.WaitGroup
+	for i := 0; i < maxTrackedClients+64; i++ {
+		requests.Add(1)
+		go func(client int) {
+			defer requests.Done()
+			<-start
+			if ok, _ := limiter.Allow(fmt.Sprintf("client-%d", client), false); ok {
+				accepted.Add(1)
+			}
+		}(i)
+	}
+	close(start)
+	requests.Wait()
+	if len(limiter.clients) != maxTrackedClients {
+		t.Fatalf("tracked clients = %d, want %d", len(limiter.clients), maxTrackedClients)
+	}
+	if got := accepted.Load(); got != maxTrackedClients {
+		t.Fatalf("accepted clients = %d, want %d", got, maxTrackedClients)
+	}
+}
+
+func TestLimiterBoundsRetainedEventsUnderExtremeTiers(t *testing.T) {
+	tiers := Tiers{Per3Seconds: 1 << 20, PerMinute: 1 << 20, Per10Minutes: 1 << 20}
+	perClient, _ := scriptedLimiter(tiers)
+	for range maximumRetainedClientEvents {
+		if allowed, _ := perClient.Allow("shared", false); !allowed {
+			t.Fatal("per-client event budget rejected early")
+		}
+	}
+	if allowed, retry := perClient.Allow("shared", false); allowed || retry != 10*time.Minute ||
+		perClient.retainedEvents != maximumRetainedClientEvents {
+		t.Fatalf(
+			"per-client overflow = %t %v retained=%d",
+			allowed,
+			retry,
+			perClient.retainedEvents,
+		)
+	}
+
+	global, now := scriptedLimiter(tiers)
+	eventsPerClient := maximumRetainedPublicEvents / maxTrackedClients
+	for client := range maxTrackedClients {
+		for range eventsPerClient {
+			if allowed, _ := global.Allow(fmt.Sprintf("client-%d", client), false); !allowed {
+				t.Fatalf("global event budget rejected client %d early", client)
+			}
+		}
+	}
+	if allowed, retry := global.Allow("client-0", false); allowed || retry != 10*time.Minute ||
+		global.retainedEvents != maximumRetainedPublicEvents {
+		t.Fatalf("global overflow = %t %v retained=%d", allowed, retry, global.retainedEvents)
+	}
+	*now = now.Add(11 * time.Minute)
+	if allowed, _ := global.Allow("fresh", false); !allowed || global.retainedEvents != 1 {
+		t.Fatalf("stale event reclamation = %t retained=%d", allowed, global.retainedEvents)
+	}
+}
+
+func TestLimiterReleasesExpiredEventCapacityForActiveClient(t *testing.T) {
+	tiers := Tiers{Per3Seconds: 1 << 20, PerMinute: 1 << 20, Per10Minutes: 1 << 20}
+	limiter, now := scriptedLimiter(tiers)
+	for range 2048 {
+		if allowed, _ := limiter.Allow("active", false); !allowed {
+			t.Fatal("history fixture rejected early")
+		}
+	}
+	*now = now.Add(9 * time.Minute)
+	if allowed, _ := limiter.Allow("active", false); !allowed {
+		t.Fatal("recent event rejected")
+	}
+	*now = now.Add(2 * time.Minute)
+	if allowed, _ := limiter.Allow("active", false); !allowed {
+		t.Fatal("post-expiry event rejected")
+	}
+	entry := limiter.clients["active"]
+	if len(entry.stamps) != 2 || cap(entry.stamps) > 64 || limiter.retainedEvents != 2 {
+		t.Fatalf(
+			"compacted history len=%d cap=%d retained=%d",
+			len(entry.stamps),
+			cap(entry.stamps),
+			limiter.retainedEvents,
+		)
 	}
 }
 

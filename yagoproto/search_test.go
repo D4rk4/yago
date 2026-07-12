@@ -1,8 +1,10 @@
 package yagoproto_test
 
 import (
+	"math"
 	"net/url"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -277,5 +279,49 @@ func TestParseSearchResponseReadsOpenEndedResources(t *testing.T) {
 	}
 	if len(got.Resources) != 1 || !reflect.DeepEqual(got.Resources[0], valid) {
 		t.Fatalf("resources = %+v", got.Resources)
+	}
+}
+
+func TestParseSearchResponseBoundsDeclaredResourceCount(t *testing.T) {
+	t.Parallel()
+
+	first := sampleURLRow(t, "url-a")
+	beyondLimit := sampleURLRow(t, "url-b")
+	msg := yagomodel.Message{
+		yagoproto.FieldCount: strconv.Itoa(math.MaxInt),
+		"resource0":          first.String(),
+		"resource1024":       beyondLimit.String(),
+	}
+	got, err := yagoproto.ParseSearchResponse(msg)
+	if err != nil {
+		t.Fatalf("ParseSearchResponse: %v", err)
+	}
+	if got.Count != math.MaxInt {
+		t.Fatalf("count = %d, want %d", got.Count, math.MaxInt)
+	}
+	if len(got.Resources) != 1 || !reflect.DeepEqual(got.Resources[0], first) {
+		t.Fatalf("resources = %+v", got.Resources)
+	}
+}
+
+func TestParseSearchResponsePreservesSparseDeclaredResources(t *testing.T) {
+	t.Parallel()
+
+	first := sampleURLRow(t, "url-a")
+	last := sampleURLRow(t, "url-b")
+	beyondCount := sampleURLRow(t, "url-c")
+	msg := yagomodel.Message{
+		yagoproto.FieldCount: "5",
+		"resource0":          first.String(),
+		"resource4":          last.String(),
+		"resource5":          beyondCount.String(),
+	}
+	got, err := yagoproto.ParseSearchResponse(msg)
+	if err != nil {
+		t.Fatalf("ParseSearchResponse: %v", err)
+	}
+	want := []yagomodel.URIMetadataRow{first, last}
+	if !reflect.DeepEqual(got.Resources, want) {
+		t.Fatalf("resources = %+v, want %+v", got.Resources, want)
 	}
 }

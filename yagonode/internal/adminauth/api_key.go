@@ -23,8 +23,19 @@ func parseAPIKey(presented string) (id, secret string, ok bool) {
 		return "", "", false
 	}
 	body := presented[len(apiKeyScheme):]
+	id = body[:apiKeyIDLen]
+	secret = body[apiKeyIDLen:]
+	var decoded [apiKeySecretBytes]byte
+	decodedID, err := base64.RawURLEncoding.Decode(decoded[:apiKeyIDBytes], []byte(id))
+	if err != nil || decodedID != apiKeyIDBytes {
+		return "", "", false
+	}
+	decodedSecret, err := base64.RawURLEncoding.Decode(decoded[:], []byte(secret))
+	if err != nil || decodedSecret != apiKeySecretBytes {
+		return "", "", false
+	}
 
-	return body[:apiKeyIDLen], body[apiKeyIDLen:], true
+	return id, secret, true
 }
 
 func formatAPIKey(id, secret string) string {

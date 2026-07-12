@@ -16,7 +16,11 @@ func responseHTMLWithImpression(
 		return page
 	}
 	candidates := impressionCandidates(response)
-	prepared, err := recorder.PrepareImpression(r.Context(), response.Request.Query, candidates)
+	prepared, err := recorder.PrepareImpression(
+		r.Context(),
+		response.Request.SubmittedText(),
+		candidates,
+	)
 	if err != nil || prepared.Token == "" ||
 		!validImpressionOrder(prepared.Order, len(candidates)) {
 		return page

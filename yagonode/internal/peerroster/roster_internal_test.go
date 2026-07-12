@@ -21,6 +21,7 @@ type scriptedEngine struct {
 	putErrors    map[vault.Name]error
 	deleteErrors map[vault.Name]error
 	scanErrors   map[vault.Name]error
+	scanObserver func(vault.Name)
 }
 
 func newScriptedEngine() *scriptedEngine {
@@ -100,6 +101,9 @@ func (b scriptedBucket) Delete(key vault.Key) error {
 func (b scriptedBucket) Scan(prefix vault.Key, fn func(vault.Key, []byte) (bool, error)) error {
 	if err := b.engine.scanErrors[b.name]; err != nil {
 		return err
+	}
+	if b.engine.scanObserver != nil {
+		b.engine.scanObserver(b.name)
 	}
 	keys := make([]string, 0, len(b.engine.buckets[b.name]))
 	for key := range b.engine.buckets[b.name] {
@@ -344,6 +348,29 @@ func TestSelectInactiveSkipsActiveAndDropsPastLimit(t *testing.T) {
 	)
 	if len(got) != 1 {
 		t.Fatalf("inactive selection = %d, want capped at 1", len(got))
+	}
+}
+
+func TestSelectInactiveKeepsFreshestInOrder(t *testing.T) {
+	r, _ := openScriptedRoster(t, 8, 4)
+	now := time.Unix(100, 0)
+	r.now = func() time.Time {
+		now = now.Add(time.Second)
+
+		return now
+	}
+	first := internalSeed(t, "first", "203.0.113.1")
+	second := internalSeed(t, "second", "203.0.113.2")
+	third := internalSeed(t, "third", "203.0.113.3")
+	r.Discover(t.Context(), first)
+	r.Discover(t.Context(), second)
+	r.Discover(t.Context(), third)
+
+	got := r.selectInactive(t.Context(), nil, 2, func(left, right rosterEntry) bool {
+		return left.lastSeen.After(right.lastSeen)
+	})
+	if len(got) != 2 || got[0].seed.Hash != third.Hash || got[1].seed.Hash != second.Hash {
+		t.Fatalf("fresh inactive peers = %#v, want third then second", got)
 	}
 }
 

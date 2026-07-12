@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchactivity"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
+	"github.com/D4rk4/yago/yagonode/internal/searchlocal"
 	"github.com/D4rk4/yago/yagonode/internal/searchremote"
 	"github.com/D4rk4/yago/yagonode/internal/searchsession"
 	"github.com/D4rk4/yago/yagonode/internal/snippetfetch"
@@ -43,6 +45,7 @@ type publicSearchAssembly struct {
 	dhtSearchTargetIndex func(int) (int, error)
 	searchAPIKey         string
 	searchAuthorizer     tavilyapi.ScopeAuthorizer
+	searchAdmission      tavilyapi.SearchAdmission
 	extractFetcher       tavilyapi.ContentFetcher
 	webFallback          webFallbackConfig
 	seedQueue            crawldispatch.CrawlOrderQueue
@@ -127,7 +130,11 @@ func (s parsedQuerySearcher) Search(
 	ctx context.Context,
 	req searchcore.Request,
 ) (searchcore.Response, error) {
-	req = searchcore.RequestWithParsedQuery(req)
+	var err error
+	req, err = searchcore.ParsePublicRequest(req)
+	if err != nil {
+		return searchcore.Response{}, fmt.Errorf("parse public search request: %w", err)
+	}
 
 	//nolint:wrapcheck // pass the wrapped searcher's error through unchanged.
 	return s.inner.Search(ctx, req)
@@ -218,7 +225,13 @@ func mountNodePublicSearch(
 	cachedpage.Mount(mux, assembly.storage.documentDirectory)
 	faviconproxy.Mount(mux, assembly.client)
 	faviconproxy.MountImages(mux, assembly.client)
-	tavilyapi.Mount(mux, search, assembly.storage.documentDirectory, access)
+	tavilyapi.Mount(
+		mux,
+		search,
+		assembly.storage.documentDirectory,
+		access,
+		assembly.searchAdmission,
+	)
 	tavilyapi.MountExtract(mux, assembly.storage.documentDirectory, access, assembly.extractFetcher)
 	tavilyapi.MountCrawl(mux, access, crawlPageFetcher(assembly.extractFetcher))
 	portal := publicportal.New(newPortalSource(search), assembly.linksNewTab)
@@ -249,10 +262,6 @@ func swarmMorphologyExpander(assembly publicSearchAssembly) func(string) []strin
 	return func(word string) []string { return assembly.wordForms().Variants(word) }
 }
 
-// assemblePublicSearcher stacks the federated searcher decorators in order: merge
-// local and remote, rerank the merged window on lexical evidence, apply the
-// denylist, recover zero-result queries, stabilize the paging window, then layer
-// observability, remote-result caching, and greedy-learning seed crawls.
 func assemblePublicSearcher(
 	local searchcore.Searcher,
 	remote searchcore.Searcher,
@@ -262,37 +271,32 @@ func assemblePublicSearcher(
 	// mined from their own top results (RM3) before the swarm merge; peers run
 	// their own retrieval, so only the local searcher is wrapped.
 	localWithFeedback := searchcore.NewPseudoRelevanceSearcher(local)
-	// Peer rows trade their peer-sent titles for verified, query-biased snippets
-	// fetched from the pages themselves (YaCy TextSnippet parity). Enrichment
-	// sits directly on the merge — below the web fallback and the zero-result
-	// recovery, so a window it demotes to nothing still triggers both, and below
-	// the rerank, so ranking sees the fetched page evidence instead of bare
-	// titles.
+	budgetedRemote := withWebFallbackSwarmBudget(remote, assembly.webFallback)
 	merged := searchcore.NewSafeSearchSearcher(
-		searchcore.NewFederatedSearcher(localWithFeedback, remote),
+		searchcore.NewFederatedSearcher(localWithFeedback, budgetedRemote),
 	)
 	enriched := snippetfetch.WithSnippetEnrichment(
 		merged,
 		assembly.snippetEnricher,
+		remoteTextEvidence,
 	)
-	federated := searchcore.NewSafeSearchSearcher(withWebFallback(enriched, assembly))
-	// Rerank the merged local+remote window by query-term coverage and proximity
-	// over the visible title and snippet, so both sources compete on the same
-	// textual evidence before filtering and paging freeze the order.
-	filtered := assembleRankingStages(federated, assembly)
-	// Zero-result recovery sits above the filters; its fuzzy retry targets the
-	// denylist-filtered LOCAL index only — peers and the web provider do not
-	// understand fuzzy matching, so re-running the whole pipeline only repeated
-	// their latency (PERF-04).
+	admitted := withDenylistFilter(enriched, assembly.denylist)
 	recovering := withZeroResultRecovery(
-		filtered,
-		assembleRankingStages(searchcore.NewSafeSearchSearcher(local), assembly),
+		admitted,
+		withDenylistFilter(searchcore.NewSafeSearchSearcher(local), assembly.denylist),
 		assembly.spellCorrector,
 	)
+	fallback := searchcore.NewSafeSearchSearcher(withWebFallback(recovering, assembly))
+	filtered := withDenylistFilter(fallback, assembly.denylist)
+	ranked := assembleRankingStages(filtered, assembly)
 	// The session cache makes paging stable (YaCy SearchEventCache): page one
 	// runs one deep search, deeper pages slice the cached result list.
-	stable := searchsession.WithStableWindow(recovering)
-	search := withQueryLogging(stable, assembly.queryLogMode, assembly.activity)
+	stable := searchsession.WithStableWindow(ranked)
+	pageEvidence := searchlocal.NewPageEvidenceSearcher(
+		stable,
+		searchEvidenceSource(assembly.storage.searchIndex),
+	)
+	search := withQueryLogging(pageEvidence, assembly.queryLogMode, assembly.activity)
 	search = withSearchMetrics(search, assembly.searchMetrics)
 	search = withParsedQuery(search)
 	if assembly.indexRemoteResults && assembly.storage.searchIndex != nil {
@@ -320,7 +324,13 @@ func assemblePublicSearcher(
 		)
 	}
 
-	return search
+	return withInteractiveSearchBudget(search)
+}
+
+func searchEvidenceSource(index searchindex.SearchIndex) searchindex.SearchEvidenceSource {
+	source, _ := index.(searchindex.SearchEvidenceSource)
+
+	return source
 }
 
 func assembleRankingStages(
@@ -329,9 +339,8 @@ func assembleRankingStages(
 ) searchcore.Searcher {
 	evidence := searchcore.NewLexicalEvidenceSearcher(inner)
 	learned := learnedrank.NewSearcher(evidence, assembly.learnedRanker)
-	filtered := withDenylistFilter(learned, assembly.denylist)
 
-	return searchcore.NewFinalRankingSearcher(filtered)
+	return searchcore.NewFinalRankingSearcher(learned)
 }
 
 // mountPortalOpenSearch registers the portal's OpenSearch description document
@@ -389,9 +398,6 @@ func (d *rootDispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	d.landing.ServeHTTP(w, r)
 }
 
-// searchAccessPolicy prefers scoped API-key auth when the operator requires it,
-// falling back to the legacy static bearer token (or public access when neither
-// is configured).
 func searchAccessPolicy(assembly publicSearchAssembly) tavilyapi.SearchAccessPolicy {
 	if assembly.searchAuthorizer != nil {
 		return tavilyapi.SearchAccessPolicy{Authorizer: assembly.searchAuthorizer}
@@ -422,7 +428,7 @@ func withWebFallback(
 		Accept:     websearch.VerifiedForQuery,
 	})
 
-	var opts []websearch.Option
+	opts := []websearch.Option{websearch.WithProviderBudget(webFallbackProviderBudget)}
 	if config.SeedCrawl && assembly.seedQueue != nil {
 		opts = append(opts, websearch.WithSeeder(newWebCrawlSeeder(
 			assembly.seedQueue,
@@ -441,9 +447,6 @@ func withWebFallback(
 	)
 }
 
-// webFallbackPermit maps the privacy mode to the per-request decision the
-// fallback searcher applies: enabled permits every query, while explicit permits
-// only a query that opted in. Disabled is handled before installation.
 func webFallbackPermit(privacy webFallbackPrivacy) func(searchcore.Request) bool {
 	if privacy == webFallbackPrivacyEnabled {
 		return func(searchcore.Request) bool { return true }

@@ -28,44 +28,57 @@ signal that should feed the crawler.
 Drop the outbound upstream-Tavily provider entirely. In its place, offer an
 optional, admin-toggled **DDGS web-search fallback**:
 
-- It triggers only on a true miss — after both local search and federated
-  peer/cache search return zero results for the request window.
-- It uses a DDGS/DuckDuckGo-family metasearch backend, which is keyless. DDGS is a
-  Python library and a rate-limited, unofficial scraper, so the Go node ships its
-  own `WebSearchProvider` implementation; the concrete backend (an in-house
-  `html.duckduckgo.com/html` + `lite.duckduckgo.com/lite` client with `auto`-style
-  backend fallback, or a vetted third-party Go dependency that would need its own
-  ADR) is chosen when TAVILY-04 is implemented.
-- Its results carry an internal `ddgs` provenance so external hits are never
-  confused with owned local or federated hits. The provenance is a shared
-  mechanism with surface-specific presentation: the human search surfaces (the
-  public search portal, the admin search UI, and the `/yacysearch.*` endpoints
-  they call) render it as a visible `[ddgs]` marker, while the Tavily-compatible
-  `POST /search` API strips it and returns the same results unmarked and
-  Tavily-shaped, so that surface stays a drop-in replacement for the Tavily
-  Search API. The Tavily surface is search-only and does not browse result pages.
+- It can run only after exact/morphological local-plus-peer retrieval and bounded
+  local fuzzy recovery both miss, and only when the operator permits it.
+  Privacy mode `enabled` authorizes fallback on every such complete miss,
+  `explicit` requires the individual request to consent, and `disabled` does not
+  install the fallback. A local-only request never reaches peers or this
+  provider, regardless of privacy mode.
+- A Tavily-compatible `/search` call explicitly permits web fallback because it
+  is itself a web-search request. Basic depth can therefore use local exact and
+  fuzzy recovery before web without enabling swarm fan-out; YaCy
+  `resource=local` and admin `scope=local`
+  remain strictly local.
+- It uses the pure-Go keyless provider selected in ADR-0021. `auto` starts the
+  preferred engine immediately, hedges later engines at 50-millisecond intervals,
+  and cancels the remaining attempts when one answer survives relevance checks.
+- Local and swarm retrieval receive only the parsed search terms and structured
+  fields. The fallback submits the bounded original query, including supported
+  provider operators, then independently enforces site, TLD, file type, URL, and
+  excluded-term constraints that can be verified from each returned row.
+- Its results carry internal `ddgs` provenance so external hits are never
+  confused with owned local or federated hits. Human renderers expose web
+  provenance, while a compatible Tavily-shaped adapter omits project-specific
+  provenance.
 - Discovered URLs the node has never seen are handed to the crawler through the
   existing crawl-order queue (TAVILY-06), using a conservative, robots-respecting,
   egress-guarded profile with per-host caps and URL deduplication, so the next
   identical query is answered from the local index.
 
-The fallback is disabled by default, flipped through admin config
-(`YAGO_WEB_FALLBACK_*`), and gated by the SEC-05 privacy mode (off /
-explicit-per-request / enabled). Outbound queries pass the in-process egress
-guard; responses are rate-limit backed off and briefly cached.
+The fallback is disabled by default and installed through admin config
+(`YAGO_WEB_FALLBACK_*`). Outbound queries pass the in-process egress guard;
+responses are rate-limit backed off and briefly cached under a fixed 4 MiB and
+256-entry limit after per-field normalization. Interactive requests run the
+ordered exact local-plus-swarm, local fuzzy, then web cascade inside a fixed
+deadline; the web stage is capped independently so engine timeouts cannot consume
+the whole response budget. The timing and memory budgets do not remove either
+the swarm stage or an operator-permitted provider stage.
 
 ## Consequences
 
-The node no longer depends on a paid, keyed external search API, and never sends a
-user query outside the node by default. When an operator opts in, misses become
-useful — both by returning `[ddgs]`-marked results on the human search surfaces
-(the Tavily drop-in API returns them unmarked) and by seeding the crawler so the
-index grows toward the operator's real query traffic.
+The node no longer depends on a paid, keyed external search API. An operator can
+keep all misses local plus peers, require request-level consent, or permit every
+global search surface to return provenance-marked fallback results after a true
+miss.
+Fallback results can seed the crawler so the local index grows toward its query
+traffic. Durable queue publishing runs after the search response through a
+process-wide two-work admission with a ten-second deadline. Saturation drops the
+optional seed operation instead of adding search latency or an unbounded queue.
 
-The costs are external: DuckDuckGo/DDGS is an unofficial, rate-limited surface with
-its own terms of service, so the provider must back off on `202 Ratelimit`, cache,
-and degrade to an empty result rather than fail the request. Search-miss crawl
-seeding is an amplification vector, so it stays conservative and deduplicated and
-respects robots, egress deny, and per-host caps. Both behaviors are opt-in and
-carry explicit UI indicators. The `WebSearchProvider` seam keeps the concrete
-backend replaceable without touching the search core.
+The providers are external rate-limited surfaces with their own terms of service,
+so the client backs off, caches briefly, and degrades to an empty result rather
+than fail the request. Search-miss crawl seeding is an amplification vector, so it
+stays conservative and deduplicated and respects robots, egress deny, and per-host
+caps. Background admission also bounds concurrent durable queue writes. Both
+behaviors require opt-in. The `WebSearchProvider` seam keeps the
+concrete backend replaceable without touching the search core.

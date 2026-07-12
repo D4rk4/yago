@@ -14,20 +14,30 @@ JSONP callback, and minimum peer version.
 Seed import accepts the documented signed `UTC` offset form and the timestamp
 form observed in current freeworld seedlists, preserving whichever value the
 remote seed carries.
-Compact gzip (`z|`) wire forms may inflate to at most 4 MiB. Larger payloads
-are rejected before their seed, message, or metadata value is parsed.
+Bare, plain (`p|`), base64 (`b|`), and gzip (`z|`) wire forms are checked against
+the receiving field's decoded-size budget before parsing. The compatibility
+default is 4 MiB. A compact seed is limited to 32 KiB, 128 properties,
+128-byte keys, 8 KiB generic or news values, and a 256-byte peer name;
+bootstrap retains at most 4,096 seeds/16 MiB and peer selection reuses a
+4,096-peer/16 MiB owned snapshot.
 The shared blacklist endpoint `/yacy/list.html` is also raw text. It checks the
 YaCy network unit and returns the `col=black` list files named by
 `YAGO_DATA_DIR/SETTINGS/yacy.conf` `BlackLists.Shared`, read from
 `YAGO_DATA_DIR/LISTS`. The peer profile endpoint `/yacy/profile.html` is raw text
 as well and returns CRLF-terminated `key=value` profile properties loaded from
-`YAGO_DATA_DIR/SETTINGS/profile.txt` when present.
+`YAGO_DATA_DIR/SETTINGS/profile.txt` when present. Both routes admit four
+requests before form parsing. Blacklist config, names, files, and response share
+a 16 MiB budget. Profile input is capped at 1 MiB and 1,024 properties/1 MiB of
+owned property data; its encoded response is capped at 2 MiB. Either route
+returns its compatible empty response instead of partial data on overflow.
 The host-link endpoint `/yacy/idx.json?object=host` returns
 JSON with version, uptime, YaCy's host-reference row definition, and a bounded
-incoming host-link index inferred from stored URL metadata referrers. Collection
-is capped at 10,000 target hosts and 200 source hosts per target before graph
-entries are allocated. A successful immutable snapshot is reused for five
-minutes; concurrent callers share one refresh and a failed scan is not cached.
+incoming host-link index inferred from stored document outlinks. Collection
+is capped at 4,096 target hosts, 64 source hosts per target, and 32,768 total
+references before graph entries are allocated. One collection scan runs
+process-wide and four endpoint requests are admitted concurrently. A successful
+immutable snapshot is reused for five minutes; concurrent callers share one
+refresh and a failed scan is not cached.
 The peer message endpoint `/yacy/message.html` supports permission checks and
 stores inbound peer messages; `iam` is optional, permission checks ignore
 post-only body fields, and attachments are advertised as size `0`. These match

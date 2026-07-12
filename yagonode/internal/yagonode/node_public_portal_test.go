@@ -109,6 +109,28 @@ func TestPortalSourceCarriesRecoverySuggestion(t *testing.T) {
 	}
 }
 
+func TestPortalSourceCarriesTotalMissSuggestion(t *testing.T) {
+	t.Parallel()
+
+	searcher := &stubPortalSearcher{response: searchcore.Response{
+		DidYouMean: "golang",
+	}}
+	results, err := newPortalSource(searcher).Search(
+		context.Background(),
+		"golnag",
+		"",
+		0,
+		10,
+	)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if results.Recovered || results.DidYouMean != "golang" ||
+		results.DidYouMeanURL != "/?q=golang" {
+		t.Fatalf("miss suggestion = %+v", results)
+	}
+}
+
 func TestPortalSourceHintsFilterOnlyZeroResult(t *testing.T) {
 	t.Parallel()
 

@@ -192,7 +192,7 @@ func TestDiscoveredSeedRejectsUnparseableHost(t *testing.T) {
 	}
 }
 
-func TestBuildSnippetEnricherToleratesFetchError(t *testing.T) {
+func TestBuildSnippetEnricherDropsFetchErrorWithoutVisibleEvidence(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, _ *http.Request) {
@@ -210,14 +210,14 @@ func TestBuildSnippetEnricherToleratesFetchError(t *testing.T) {
 			Snippet: "original",
 			Source:  searchcore.SourceRemote,
 		}},
-	}}, enricher)
+	}}, enricher, remoteTextEvidence)
 
 	resp, err := search.Search(t.Context(), searchcore.Request{Terms: []string{"x"}})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if len(resp.Results) != 1 {
-		t.Fatalf("results = %d, want 1", len(resp.Results))
+	if len(resp.Results) != 0 || resp.TotalResults != 0 {
+		t.Fatalf("response = %#v", resp)
 	}
 }
 

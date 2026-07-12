@@ -60,11 +60,13 @@ func newRankingTuner(
 	var factory rankfit.SearcherFactory
 	if index != nil {
 		factory = func(weights searchindex.RankingWeights) searchcore.Searcher {
-			return searchcore.NewLexicalRerankSearcher(newLocalRankingSearcher(
-				index,
-				func() searchindex.RankingWeights { return weights },
-				hostRank,
-			))
+			return rankingTrainingSearcher{
+				searcher: searchcore.NewLexicalRerankSearcher(newLocalRankingSearcher(
+					index,
+					func() searchindex.RankingWeights { return weights },
+					hostRank,
+				)),
+			}
 		}
 	}
 

@@ -236,18 +236,17 @@ func TestLegacyRetireFailureAndPreGramShard(t *testing.T) {
 	}
 	removeBleveDisk = oldRemove
 
-	// A pre-gram shard inside the sharded layout recreates on open.
 	root := filepath.Join(t.TempDir(), "sharded.bleve")
 	shardPath := diskShardPath(root, 0)
 	if err := os.MkdirAll(filepath.Dir(shardPath), 0o750); err != nil {
 		t.Fatalf("mk: %v", err)
 	}
-	preGram, err := bleve.New(shardPath, bleve.NewIndexMapping())
+	legacy, err := bleve.New(shardPath, bleve.NewIndexMapping())
 	if err != nil {
-		t.Fatalf("pre-gram shard: %v", err)
+		t.Fatalf("legacy shard: %v", err)
 	}
-	if err := preGram.Close(); err != nil {
-		t.Fatalf("close pre-gram: %v", err)
+	if err := legacy.Close(); err != nil {
+		t.Fatalf("close legacy: %v", err)
 	}
 	index, err := NewBleveDiskIndex(
 		t.Context(), root,
@@ -255,10 +254,10 @@ func TestLegacyRetireFailureAndPreGramShard(t *testing.T) {
 		&fakeStoredDocuments{},
 	)
 	if err != nil {
-		t.Fatalf("recreate pre-gram shard: %v", err)
+		t.Fatalf("recreate legacy shard: %v", err)
 	}
-	if !index.gram {
-		t.Fatal("recreated shards must carry the gram mapping")
+	if !index.analyzerScope {
+		t.Fatal("recreated shards must carry analyzer scope")
 	}
 	if err := index.Close(); err != nil {
 		t.Fatalf("close: %v", err)

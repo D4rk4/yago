@@ -248,8 +248,8 @@ func TestCrawlWalkEdgeBranches(t *testing.T) {
 		t.Fatalf("select_domains walk: %v", err)
 	}
 	for _, entry := range entries[1:] {
-		if !strings.Contains(entry.url, "other.example") {
-			t.Fatalf("select_domains leak: %v", entry.url)
+		if !strings.Contains(entry.URL, "other.example") {
+			t.Fatalf("select_domains leak: %v", entry.URL)
 		}
 	}
 	excluded, _, err := endpoint.walk(t.Context(), CrawlRequest{
@@ -259,7 +259,7 @@ func TestCrawlWalkEdgeBranches(t *testing.T) {
 		t.Fatalf("exclude_domains walk: %v", err)
 	}
 	for _, entry := range excluded {
-		if strings.Contains(entry.url, "www.site.example") {
+		if strings.Contains(entry.URL, "www.site.example") {
 			t.Fatal("exclude_domains leak")
 		}
 	}

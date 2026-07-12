@@ -38,6 +38,10 @@ func startNodeFleet(
 			alias:       alias,
 			hash:        hash,
 			seedlistURL: seedlistURL,
+			extraEnv: map[string]string{
+				"YAGO_ANNOUNCE_INTERVAL": "1h",
+				"YAGO_GREETS_PER_CYCLE":  "1",
+			},
 		})
 		fleet[i] = fleetNode{alias: alias, hash: hash, url: url}
 	}

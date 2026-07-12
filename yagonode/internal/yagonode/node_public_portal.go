@@ -108,12 +108,12 @@ func (s portalSource) Search(
 		PeersFailed:  len(response.PartialFailures),
 		Hint:         modifierhint.Text(response.Request, response.TotalResults),
 	}
+	out.DidYouMean = response.DidYouMean
+	if response.DidYouMean != "" {
+		out.DidYouMeanURL = "/?q=" + url.QueryEscape(response.DidYouMean)
+	}
 	if response.Recovered != "" {
 		out.Recovered = true
-		out.DidYouMean = response.DidYouMean
-		if response.DidYouMean != "" {
-			out.DidYouMeanURL = "/?q=" + url.QueryEscape(response.DidYouMean)
-		}
 	}
 	out.Results = make([]publicportal.SearchResult, 0, len(response.Results))
 	lexicalPositions := searchcore.LexicalPositions(response.Results, response.Request.Offset)

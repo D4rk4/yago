@@ -188,6 +188,40 @@ func TestShardVaultCompressesLargeValues(t *testing.T) {
 	}
 }
 
+func TestShardBucketContainsDoesNotDecodeStoredValue(t *testing.T) {
+	engine, err := openEngine(filepath.Join(t.TempDir(), "vault"), 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closeShards(engine.shards) })
+	if err := engine.Provision(vault.Name("docs")); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.Update(t.Context(), func(tx vault.EngineTxn) error {
+		bucket := tx.Bucket(vault.Name("docs")).(*shardBucket)
+		raw, err := bucket.boltBucketFor(vault.Key("corrupt"))
+		if err != nil {
+			return err
+		}
+		if err := raw.Put([]byte("corrupt"), []byte{0x7f}); err != nil {
+			return fmt.Errorf("store corrupt value: %w", err)
+		}
+		if !bucket.Contains(vault.Key("corrupt")) || bucket.Get(vault.Key("corrupt")) != nil ||
+			bucket.Contains(vault.Key("missing")) {
+			return errors.New("shard presence mismatch")
+		}
+		if tx.Bucket(vault.Name("unprovisioned")).(*shardBucket).Contains(
+			vault.Key("missing"),
+		) {
+			return errors.New("unprovisioned shard presence mismatch")
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestUsedBytesExcludesFreedPages pins the accounting change behind the storage
 // fix: UsedBytes reports live data, not raw file size. Populating then deleting
 // every record must make UsedBytes fall (the pages are freed), even though the

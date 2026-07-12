@@ -2,11 +2,17 @@ package yagonode
 
 import (
 	"context"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
 const swarmSeedProfileName = "swarm-seed"
+
+const (
+	swarmSeedConcurrentWrites = 2
+	swarmSeedWriteTimeout     = 10 * time.Second
+)
 
 // urlSeeder enqueues conservative crawl orders for search-surfaced URLs.
 type urlSeeder interface {
@@ -23,17 +29,19 @@ type urlSeeder interface {
 type swarmSeedingSearcher struct {
 	inner  searchcore.Searcher
 	seeder urlSeeder
-	spawn  func(func())
+	spawn  func(func()) bool
 }
 
 func withSwarmSeedCrawl(
 	inner searchcore.Searcher,
 	seeder urlSeeder,
 ) searchcore.Searcher {
+	admission := newSwarmSeedAdmission(swarmSeedConcurrentWrites)
+
 	return swarmSeedingSearcher{
 		inner:  inner,
 		seeder: seeder,
-		spawn:  func(work func()) { go work() },
+		spawn:  admission.try,
 	}
 }
 
@@ -54,8 +62,13 @@ func (s swarmSeedingSearcher) Search(
 	for _, result := range remote {
 		urls = append(urls, result.URL)
 	}
-	seedCtx := context.WithoutCancel(ctx)
-	s.spawn(func() { s.seeder.Seed(seedCtx, urls) })
+	seedCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), swarmSeedWriteTimeout)
+	if !s.spawn(func() {
+		defer cancel()
+		s.seeder.Seed(seedCtx, urls)
+	}) {
+		cancel()
+	}
 
 	return resp, nil
 }

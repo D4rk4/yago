@@ -49,10 +49,11 @@ its binaries (`yago-node`, `yagocrawler`).
 ### 🔍 Search that ranks, not just matches
 
 - Local index (sharded [Bleve](https://blevesearch.com/)) + federated swarm
-  fan-out + optional web fallback (off by default), merged with
+  fan-out + optional operator-enabled web fallback after a miss. The provider is
+  off by default, and local-only requests never reach it. Results are merged with
   **reciprocal-rank fusion** and **MMR result diversity**.
 - **[YagoRank](yagonode/doc/yagorank.md)** — strict and relaxed fielded BM25,
-  phrase/SDM evidence, bounded RM3, deterministic peer RRF, persistent date,
+  bounded lexical evidence and RM3, deterministic peer RRF, persistent date,
   anchor, authority, quality, safety, duplicate-cluster, and reputation signals,
   followed by a signed linear LambdaRank or bounded histogram LambdaMART model.
   Query-clustered and chronological holdouts gate atomic promotion; authenticated
@@ -61,14 +62,21 @@ its binaries (`yago-node`, `yagocrawler`).
   Pure Go, CPU-only, no external API, sidecar, model runtime, or YaCy wire change.
 - **Multilingual morphology**: documents route to per-language analyzers
   (Snowball stemming), single-word swarm queries can expand into
-  corpus-observed inflections, and partial words match through trigram fields.
+  corpus-observed inflections, and zero-result typo recovery uses bounded
+  analyzer-consistent edit distance without document-wide character grams.
 - YaCy query operators (`site:`, `inurl:`, `filetype:`, `language:`, `tld:`,
   `author:`, `"phrase"`, `-not`, `near`, `/date`), facet sidebar, content
   verticals (images/audio/video/apps with a lightbox grid), spell-check
   ("did you mean"), zero-result fuzzy recovery, query-term-highlighted
   snippets, anchor-text document expansion, and an explainable ranking API.
-- **Tavily-compatible `/search` and `/extract`** with API keys and scopes —
-  point LLM agents at your own index.
+  Local and swarm retrieval use parsed bare terms; an eligible web fallback
+  receives the bounded original operator-bearing query and verifies supported
+  structured constraints again on returned rows.
+  Quoted phrases prefer locally stored candidates whose analyzer-normalized words
+  are adjacent; they do not exclude other all-term matches.
+- **Tavily-compatible `/search`, `/extract`, `/crawl`, and `/map`** with API
+  keys and scopes. Raw-content work has fixed concurrency, time, fetch, and
+  response-memory budgets, while ordinary search stays on the low-cost path.
 
 ### 🕷️ A crawler built for the hostile web
 
@@ -85,10 +93,11 @@ its binaries (`yago-node`, `yagocrawler`).
 - **Legacy-web text correctness**: browser-compatible charset decoding handles
   Windows-1251 and other WHATWG encodings, while bounded content-language
   detection keeps documents, facets, RWI postings, and URL metadata aligned.
-- **Bounded corpus-derived memory**: spelling and morphology retain fixed-size
-  frequent-term summaries, complete Bleve scans use small transient pages, peer
-  cache writes and host-link snapshots are bounded, and `/metrics` exposes Go
-  heap plus process RSS for pre-OOM alerts.
+- **Bounded search memory**: spelling and morphology retain fixed-size
+  frequent-term summaries; candidate scans avoid full document bodies; peer and
+  web responses, index results, paging sessions, background cache writes, and
+  host-link snapshots have process-wide byte or admission limits. `/metrics`
+  exposes Go heap plus process RSS for pre-OOM alerts.
 - Politeness and defense: robots.txt with a standards-compliant 500 KiB parsing
   limit and a sanitizer for real-world malformed files, per-host adaptive pacing
   and crawl delays, URL canonicalization,
@@ -179,6 +188,7 @@ unaffected. Remote crawl for the swarm is answered but disabled by default
 Requirements: Docker (or Podman); for source builds, Go 1.26.
 
 ```sh
+export YAGO_SEARCH_API_KEY='replace-with-a-long-random-secret'
 cp docker-compose.yml.example docker-compose.yml
 docker compose up -d
 ```
@@ -186,7 +196,7 @@ docker compose up -d
 | Port | Listener | Serves |
 | --- | --- | --- |
 | `8090` | Peer (P2P) | the YaCy wire protocol (`/yacy/*`) — keep reachable |
-| `8080` | Public search | portal, `yacysearch.*`, OpenSearch, Tavily `/search` + `/extract` |
+| `8080` | Public search | portal, `yacysearch.*`, OpenSearch, Tavily `/search`, `/extract`, `/crawl`, `/map` |
 | `9090` | Admin & ops | console, `/health`, `/ready`, `/metrics` |
 
 Open `http://localhost:9090/admin/` — the first-run **setup wizard** creates
@@ -199,6 +209,7 @@ Try it from the command line:
 ```sh
 curl -fsS 'http://127.0.0.1:8080/yacysearch.json?query=test&resource=local'
 curl -fsS -H 'content-type: application/json' \
+  -H "authorization: Bearer ${YAGO_SEARCH_API_KEY}" \
   -d '{"query":"test","max_results":5}' http://127.0.0.1:8080/search
 ```
 

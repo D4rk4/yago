@@ -22,6 +22,7 @@ func IsStopword(word string) bool {
 func ContentTerms(terms []string) []string {
 	content := make([]string, 0, len(terms))
 	for _, term := range terms {
+		term = strings.TrimSpace(term)
 		if term == "" || IsStopword(term) {
 			continue
 		}

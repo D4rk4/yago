@@ -1,5 +1,7 @@
 package spellcheck
 
+import "strings"
+
 type FrequencySynopsis struct {
 	limit   int
 	entries map[string]*frequencySynopsisEntry
@@ -50,6 +52,7 @@ func (s *FrequencySynopsis) observeTerm(term string) {
 		return
 	}
 	if len(s.entries) < s.limit {
+		term = strings.Clone(term)
 		entry := &frequencySynopsisEntry{term: term, frequency: 1}
 		s.entries[term] = entry
 		s.queue.push(entry)
@@ -60,9 +63,9 @@ func (s *FrequencySynopsis) observeTerm(term string) {
 	entry := s.queue[0]
 	delete(s.entries, entry.term)
 	entry.error = entry.frequency
-	entry.term = term
+	entry.term = strings.Clone(term)
 	entry.frequency++
-	s.entries[term] = entry
+	s.entries[entry.term] = entry
 	s.queue.increased(0)
 }
 

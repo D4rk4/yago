@@ -8,7 +8,7 @@ import (
 	"net/http"
 )
 
-const maximumJSONRequestBodyBytes int64 = 1 << 20
+const maximumJSONRequestBodyBytes int64 = 64 << 10
 
 const (
 	requestTooLargeErrorCode    = "request_too_large"

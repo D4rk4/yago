@@ -24,23 +24,24 @@ const (
 )
 
 type BleveMemoryIndex struct {
-	mu           sync.RWMutex
-	index        bleve.Index
-	documents    map[string]documentstore.Document
-	updatedAt    time.Time
-	gram         bool
-	multilingual bool
-	now          func() time.Time
+	mu            sync.RWMutex
+	index         bleve.Index
+	documents     map[string]documentstore.Document
+	updatedAt     time.Time
+	multilingual  bool
+	analyzerScope bool
+	now           func() time.Time
 }
 
 type bleveDocument struct {
-	URL      string   `json:"url"`
-	Title    string   `json:"title"`
-	Headings []string `json:"headings"`
-	Body     string   `json:"body"`
-	Anchors  []string `json:"anchors"`
-	Language string   `json:"language"`
-	Host     string   `json:"host"`
+	URL       string   `json:"url"`
+	Title     string   `json:"title"`
+	Headings  []string `json:"headings"`
+	Body      string   `json:"body"`
+	Anchors   []string `json:"anchors"`
+	Language  string   `json:"language"`
+	Host      string   `json:"host"`
+	Candidate string   `json:"_candidate"`
 	// Analyzer is the TypeField that routes the document to its per-language
 	// analyzer mapping; see documentAnalyzerField.
 	Analyzer string `json:"_analyzer"`
@@ -76,11 +77,11 @@ func NewBleveMemoryIndex(
 	}
 
 	out := &BleveMemoryIndex{
-		index:        index,
-		documents:    map[string]documentstore.Document{},
-		gram:         supportsGramAnalyzer(index),
-		multilingual: supportsMultilingualAnalyzers(index),
-		now:          time.Now,
+		index:         index,
+		documents:     map[string]documentstore.Document{},
+		multilingual:  supportsMultilingualAnalyzers(index),
+		analyzerScope: supportsAnalyzerScope(index),
+		now:           time.Now,
 	}
 	if stored == nil {
 		return out, nil
@@ -113,7 +114,11 @@ func (b *BleveMemoryIndex) Index(
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if err := b.index.Index(id, bleveDocumentFromStore(doc)); err != nil {
+	indexed, err := bleveDocumentFromStore(doc)
+	if err != nil {
+		return err
+	}
+	if err := b.index.Index(id, indexed); err != nil {
 		return fmt.Errorf("index document: %w", err)
 	}
 	b.documents[id] = doc
@@ -157,10 +162,15 @@ func (b *BleveMemoryIndex) Search(
 		return SearchResultSet{}, nil
 	}
 
-	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req, b.gram, b.multilingual))
+	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(
+		req,
+		b.multilingual,
+		b.analyzerScope,
+	))
 	searchRequest.Size = len(b.documents)
 	searchRequest.Explain = req.Explain || req.IncludeFieldScores
-	searchRequest.IncludeLocations = req.IncludePositions
+	searchRequest.IncludeLocations = false
+	searchRequest.Fields = []string{documentAnalyzerField}
 	result, err := b.index.SearchInContext(ctx, searchRequest)
 	if err != nil {
 		return SearchResultSet{}, fmt.Errorf("search documents: %w", err)
@@ -177,12 +187,15 @@ func (b *BleveMemoryIndex) Search(
 		facets.observe(doc)
 		total++
 		if len(results) < req.MaxResults {
-			results = append(
-				results,
-				searchResultFromDocument(hit, doc, req),
-			)
+			mapped, err := searchResultFromStoredDocument(ctx, hit, doc, req)
+			if err != nil {
+				return SearchResultSet{}, err
+			}
+			results = append(results, mapped)
 		}
 	}
+	rescoreStoredQuotedPhrasePrefix(results, req)
+	rescoreStoredProximity(results, req)
 
 	return SearchResultSet{Results: results, Total: total, Facets: facets.groups()}, nil
 }
@@ -198,7 +211,11 @@ func (b *BleveMemoryIndex) Stats(context.Context) (IndexStats, error) {
 	}, nil
 }
 
-func bleveSearchQuery(req SearchRequest, gram bool, multilingual bool) blevequery.Query {
+func bleveSearchQuery(
+	req SearchRequest,
+	multilingual bool,
+	analyzerScope bool,
+) blevequery.Query {
 	weights := req.Weights.orDefault()
 	// Interpret the query with the analyzers that serve its script (documents
 	// were routed to a per-language analyzer at index time). Each candidate
@@ -208,45 +225,29 @@ func bleveSearchQuery(req SearchRequest, gram bool, multilingual bool) blevequer
 	// there the query keeps the single default-analyzer clause set (empty name).
 	analyzers := []string{""}
 	if multilingual {
-		analyzers = queryAnalyzers(req.Query)
+		analyzers = queryAnalyzers(queryAnalyzerText(req))
 	}
-	primary := analyzers[0]
 	var main blevequery.Query
 	switch {
 	case req.Fuzzy:
-		main = fuzzyRecoveryQuery(req, gram, analyzers, weights)
+		main = fuzzyRecoveryQuery(req, analyzers, weights, analyzerScope)
 	case req.MinimumTermMatches > 0:
 		main = minimumTermsQuery(req, analyzers, weights)
 	default:
 		// The precise path requires every query word somewhere in the document,
 		// matching YaCy's all-words RWI join; expansion terms only reorder.
-		main = requiredTermsQuery(req, analyzers, weights)
+		main = requiredTermsQuery(req, analyzers, weights, analyzerScope)
 	}
-	phrases := phraseBoosts(req.Phrases, weights, primary)
-	// Term-dependency boosts (SDM, Metzler & Croft 2005): documents where
-	// adjacent query words appear as an ordered pair outrank bags of the same
-	// words. The fuzzy recovery path skips them — its terms are approximate.
-	var bigrams []blevequery.Query
-	if !req.Fuzzy {
-		bigrams = sdmBigramBoosts(req.Terms, weights, primary)
-	}
-	if len(req.ExcludeTerms) == 0 && len(phrases) == 0 && len(bigrams) == 0 {
+	if len(req.ExcludeTerms) == 0 {
 		return main
 	}
 
 	query := bleve.NewBooleanQuery()
 	query.AddMust(main)
-	for _, phrase := range phrases {
-		query.AddShould(phrase)
-	}
-	for _, bigram := range bigrams {
-		query.AddShould(bigram)
-	}
 	for _, term := range req.ExcludeTerms {
 		term = strings.TrimSpace(term)
 		if term != "" {
-			query.AddMustNot(fieldMatchWithAnalyzer("body", term, 1, primary))
-			query.AddMustNot(fieldMatchWithAnalyzer("title", term, 1, primary))
+			query.AddMustNot(crossFieldTermClause(term, analyzers, weights, 1))
 		}
 	}
 
@@ -273,31 +274,11 @@ func textFieldWeight(field string, weights RankingWeights) float64 {
 	}
 }
 
-// phraseBoosts turns each quoted phrase into an optional, weighted phrase match
-// across the text fields, analyzed with the query's primary analyzer. Added as
-// SHOULD clauses, they lift documents where the words appear adjacently without
-// excluding the term-only matches the main disjunction already covers.
-func phraseBoosts(phrases []string, weights RankingWeights, analyzer string) []blevequery.Query {
-	boosts := make([]blevequery.Query, 0, len(phrases))
-	for _, phrase := range phrases {
-		phrase = strings.TrimSpace(phrase)
-		if phrase == "" {
-			continue
-		}
-		boosts = append(boosts, bleve.NewDisjunctionQuery(
-			fieldPhrase("title", phrase, weights.Title, analyzer),
-			fieldPhrase("headings", phrase, weights.Headings, analyzer),
-			fieldPhrase("body", phrase, weights.Body, analyzer),
-		))
-	}
-
-	return boosts
-}
-
 func fieldMatch(field string, text string, boost float64) *blevequery.MatchQuery {
 	query := bleve.NewMatchQuery(text)
 	query.SetField(field)
 	query.SetBoost(boost)
+	query.SetOperator(blevequery.MatchQueryOperatorAnd)
 
 	return query
 }
@@ -320,50 +301,23 @@ func fieldMatchWithAnalyzer(
 	return query
 }
 
-// gramMatch matches a trigram sub-field with AND semantics: every trigram the
-// query analyzes into must be present in the document, so the clause fires only
-// for words that actually share the query's character runs (precision, and no
-// flooding on common single grams) rather than any partial overlap.
-func gramMatch(field string, text string, boost float64) *blevequery.MatchQuery {
-	query := bleve.NewMatchQuery(text)
-	query.SetField(field)
-	query.SetBoost(boost)
-	query.SetOperator(blevequery.MatchQueryOperatorAnd)
-	// The gram sub-field is named "<field>_gram" but lives at path "<field>", so
-	// the mapping cannot resolve its analyzer by name; set it explicitly so the
-	// query text is cut into the same trigrams the field was indexed with.
-	query.Analyzer = searchGramAnalyzer
-
-	return query
-}
-
-func fieldPhrase(
-	field string,
-	text string,
-	boost float64,
-	analyzer string,
-) *blevequery.MatchPhraseQuery {
-	query := bleve.NewMatchPhraseQuery(text)
-	query.SetField(field)
-	query.SetBoost(boost)
-	if analyzer != "" {
-		query.Analyzer = analyzer
+func bleveDocumentFromStore(doc documentstore.Document) (bleveDocument, error) {
+	candidate, err := encodeStoredCandidateProjection(doc)
+	if err != nil {
+		return bleveDocument{}, fmt.Errorf("encode search candidate: %w", err)
 	}
 
-	return query
-}
-
-func bleveDocumentFromStore(doc documentstore.Document) bleveDocument {
 	return bleveDocument{
-		URL:      documentURL(doc),
-		Title:    doc.Title,
-		Headings: append([]string(nil), doc.Headings...),
-		Body:     doc.ExtractedText,
-		Anchors:  anchorTexts(doc.Inlinks),
-		Language: strings.ToLower(doc.Language),
-		Host:     documentHost(doc),
-		Analyzer: detectDocumentAnalyzer(analyzerDetectionText(doc), doc.Language),
-	}
+		URL:       documentURL(doc),
+		Title:     doc.Title,
+		Headings:  append([]string(nil), doc.Headings...),
+		Body:      doc.ExtractedText,
+		Anchors:   anchorTexts(doc.Inlinks),
+		Language:  strings.ToLower(doc.Language),
+		Host:      documentHost(doc),
+		Analyzer:  detectDocumentAnalyzer(analyzerDetectionText(doc), doc.Language),
+		Candidate: candidate,
+	}, nil
 }
 
 // analyzerDetectionText assembles the text language detection runs on: the
@@ -378,10 +332,11 @@ func searchResultFromDocument(
 	req SearchRequest,
 ) SearchResult {
 	rawContent := ""
-	if req.IncludeRaw {
+	if req.IncludeRaw && !req.CandidateOnly {
 		rawContent = doc.ExtractedText
 	}
 	published, dateConfidence := documentstore.PublicationDate(doc)
+	proximity, orderedProximity := resultProximity(req, hit)
 
 	return SearchResult{
 		DocumentID:           hit.ID,
@@ -389,7 +344,7 @@ func searchResultFromDocument(
 		RepresentativeURL:    doc.RepresentativeURL,
 		Title:                documentTitle(doc),
 		URL:                  documentURL(doc),
-		Snippet:              queryBiasedSnippet(doc.ExtractedText, req.Terms, documentTitle(doc)),
+		Snippet:              resultSnippet(hit, doc, req),
 		RawContent:           rawContent,
 		Score:                hit.Score,
 		Explanation:          hitExplanation(req, hit),
@@ -400,11 +355,12 @@ func searchResultFromDocument(
 		SymbolFraction:       doc.ContentQuality.SymbolFraction,
 		AlphabeticFraction:   doc.ContentQuality.AlphabeticFraction,
 		UniqueTokenFraction:  doc.ContentQuality.UniqueTokenFraction,
+		Analyzer:             indexedAnalyzerName(hit, doc),
 		SafetyRating:         doc.ContentSafety.Rating,
 		ExplicitProbability:  doc.ContentSafety.ExplicitProbability,
 		SafetyConfidence:     doc.ContentSafety.Confidence,
-		Proximity:            unorderedProximity(doc.ExtractedText, req.Terms),
-		OrderedProximity:     orderedProximity(doc.ExtractedText, req.Terms),
+		Proximity:            proximity,
+		OrderedProximity:     orderedProximity,
 		FieldScores:          hitFieldScores(req, hit),
 		FieldTermPositions:   hitFieldTermPositions(req, hit),
 		PublishedDate:        published,
@@ -412,10 +368,20 @@ func searchResultFromDocument(
 		Author:               doc.Metadata["author"],
 		Keywords:             doc.Metadata["keywords"],
 		Publisher:            doc.Metadata["publisher"],
+		Language:             doc.Language,
 		ContentType:          doc.ContentType,
 		Size:                 len(doc.ExtractedText),
 		Images:               resultImages(doc, req),
 	}
+}
+
+func resultProximity(req SearchRequest, hit *search.DocumentMatch) (float64, float64) {
+	if !req.IncludePositions {
+		return 0, 0
+	}
+	terms := queryTermWords(req)
+
+	return hitUnorderedProximity(hit, terms), hitOrderedProximity(hit, terms)
 }
 
 func hitExplanation(req SearchRequest, hit *search.DocumentMatch) string {
@@ -646,14 +612,12 @@ func anchorTexts(anchors []documentstore.AnchorText) []string {
 }
 
 func snippet(text string, fallback string) string {
-	text = strings.Join(strings.Fields(text), " ")
-	if text == "" {
+	if strings.TrimSpace(text) == "" {
 		return fallback
 	}
-	runes := []rune(text)
-	if len(runes) <= snippetRuneCap {
-		return text
+	if textWithinRuneLimit(text, snippetRuneCap) {
+		return normalizedSnippetWindow(text, false, fallback)
 	}
 
-	return string(runes[:snippetRuneCap])
+	return snippetAtByte(text, 0, fallback)
 }

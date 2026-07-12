@@ -25,33 +25,22 @@ const (
 // dictionary. The zero value corrects nothing, so an unbuilt corrector is safe
 // to consult.
 type Corrector struct {
-	frequency       map[string]int
-	deleteIndex     map[string][]string
-	maxEditDistance int
+	frequency        map[string]int
+	vocabulary       []string
+	deleteIndex      map[string][]int
+	deleteReferences int
+	deleteBytes      int
+	maxEditDistance  int
 }
 
 // New builds a corrector from a term→frequency dictionary. Terms are lowercased;
 // frequency breaks ties so the more common spelling wins.
 func New(frequency map[string]int) *Corrector {
-	corrector := &Corrector{
-		frequency:       make(map[string]int, len(frequency)),
-		deleteIndex:     map[string][]string{},
-		maxEditDistance: defaultMaxEditDistance,
-	}
-	for term, freq := range frequency {
-		term = strings.ToLower(strings.TrimSpace(term))
-		if !correctableTerm(term) || freq <= 0 {
-			continue
-		}
-		corrector.frequency[term] += freq
-	}
-	for term := range corrector.frequency {
-		for variant := range deleteVariants(term, corrector.maxEditDistance) {
-			corrector.deleteIndex[variant] = append(corrector.deleteIndex[variant], term)
-		}
-	}
-
-	return corrector
+	return newCorrector(frequency, correctorLimits{
+		vocabularyTerms:  maximumVocabularyTerms,
+		deleteReferences: maximumDeleteReferences,
+		deleteBytes:      maximumDeleteIndexBytes,
+	})
 }
 
 // Suggest returns the best correction for one term and whether it differs from
@@ -66,15 +55,16 @@ func (c *Corrector) Suggest(term string) (string, bool) {
 		return term, false
 	}
 
-	candidates := map[string]bool{}
+	candidates := map[int]struct{}{}
 	for variant := range deleteVariants(term, c.maxEditDistance) {
-		for _, word := range c.deleteIndex[variant] {
-			candidates[word] = true
+		for _, identifier := range c.deleteIndex[variant] {
+			candidates[identifier] = struct{}{}
 		}
 	}
 
 	best := candidate{distance: c.maxEditDistance + 1}
-	for word := range candidates {
+	for identifier := range candidates {
+		word := c.vocabulary[identifier]
 		current := candidate{
 			term:      word,
 			distance:  editDistance(term, word),

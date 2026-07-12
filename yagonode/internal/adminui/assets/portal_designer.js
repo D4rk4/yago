@@ -15,6 +15,74 @@
     return { prefix: match[1], body: match[2], suffix: match[3] };
   }
 
+  function preservationToken(src) {
+    var used = Object.create(null);
+    var pattern = /yago-preserved-markup-(\d+)-marker/g;
+    var match = null;
+    while ((match = pattern.exec(src)) !== null) {
+      used[match[1]] = true;
+    }
+    var sequence = 0;
+    while (used[sequence]) {
+      sequence++;
+    }
+    return "yago-preserved-markup-" + sequence + "-marker";
+  }
+
+  function preserveScripts(src) {
+    var token = preservationToken(src);
+    var blocks = [];
+    var document = src.replace(
+      /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi,
+      function (block) {
+        var index = blocks.length;
+        blocks.push(block);
+        return '<template data-yago-preserved-script="' + token + ":" +
+          index + '"></template>';
+      }
+    );
+    return { document: document, blocks: blocks, token: token };
+  }
+
+  function restoreScripts(document, preservation) {
+    var restored = [];
+    var marker = /<template\b(?=[^>]*\bdata-yago-preserved-script=["'](yago-preserved-markup-\d+-marker):(\d+)["'])[^>]*>[\s\S]*?<\/template\s*>/gi;
+    var html = document.replace(marker, function (placeholder, token, rawIndex) {
+      if (token !== preservation.token) {
+        return placeholder;
+      }
+      var index = Number(rawIndex);
+      if (!Number.isInteger(index) || !preservation.blocks[index] || restored[index]) {
+        return "";
+      }
+      restored[index] = true;
+      return preservation.blocks[index];
+    });
+    var missing = "";
+    for (var j = 0; j < preservation.blocks.length; j++) {
+      if (!restored[j]) {
+        missing += preservation.blocks[j];
+      }
+    }
+    if (missing) {
+      var bodyEnd = html.toLowerCase().lastIndexOf("</body>");
+      if (bodyEnd === -1) {
+        html += missing;
+      } else {
+        html = html.slice(0, bodyEnd) + missing + html.slice(bodyEnd);
+      }
+    }
+    return html;
+  }
+
+  function visualComponents(editor) {
+    var wrapper = editor.getWrapper();
+    if (wrapper && typeof wrapper.getInnerHTML === "function") {
+      return wrapper.getInnerHTML();
+    }
+    return editor.getHtml();
+  }
+
   function splitPortalStyles(existing) {
     var start = existing.indexOf(CSS_START);
     var contentStart = start + CSS_START.length;
@@ -88,7 +156,10 @@
       if (!grapes || !docParts) {
         return;
       }
-      tplCM.setValue(docParts.prefix + grapes.getHtml() + docParts.suffix);
+      tplCM.setValue(restoreScripts(
+        docParts.prefix + visualComponents(grapes) + docParts.suffix,
+        docParts.preservation
+      ));
       cssCM.setValue(mergeGrapesCss(
         cssCM.getValue(),
         grapes.getCss({ avoidProtected: true, keepUnusedStyles: true }) || ""
@@ -99,7 +170,9 @@
       if (typeof grapesjs === "undefined") {
         return;
       }
-      docParts = splitDocument(tplCM.getValue());
+      var preservedScripts = preserveScripts(tplCM.getValue());
+      docParts = splitDocument(preservedScripts.document);
+      docParts.preservation = preservedScripts;
       var styleParts = splitPortalStyles(cssCM.getValue());
       var plugins = [];
       if (typeof window["grapesjs-preset-webpage"] !== "undefined") {

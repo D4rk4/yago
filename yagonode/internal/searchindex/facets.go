@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	facetTermLimit = 8
-	facetMaxLabel  = 48
+	facetTermLimit       = 8
+	facetSynopsisEntries = 256
+	facetMaxLabel        = 48
 )
 
 // FacetGroup is one facet dimension with its most frequent terms among every
@@ -28,7 +29,7 @@ type FacetTerm struct {
 
 // facetCollector tallies facet dimensions over matching documents.
 type facetCollector struct {
-	counts map[string]map[string]int
+	counts map[string]*facetFrequencySynopsis
 }
 
 func newFacetCollector(enabled bool) *facetCollector {
@@ -36,7 +37,7 @@ func newFacetCollector(enabled bool) *facetCollector {
 		return nil
 	}
 
-	return &facetCollector{counts: map[string]map[string]int{}}
+	return &facetCollector{counts: map[string]*facetFrequencySynopsis{}}
 }
 
 func (c *facetCollector) observe(doc documentstore.Document) {
@@ -58,10 +59,10 @@ func (c *facetCollector) add(name, term string) {
 	}
 	group := c.counts[name]
 	if group == nil {
-		group = map[string]int{}
+		group = newFacetFrequencySynopsis(facetSynopsisEntries)
 		c.counts[name] = group
 	}
-	group[term]++
+	group.observe(term)
 }
 
 // groups renders the tallied dimensions in a stable order with their most
@@ -73,13 +74,10 @@ func (c *facetCollector) groups() []FacetGroup {
 	out := make([]FacetGroup, 0, len(c.counts))
 	for _, name := range []string{"host", "filetype", "language", "author", "protocol", "month"} {
 		group := c.counts[name]
-		if len(group) == 0 {
+		if group == nil || len(group.entries) == 0 {
 			continue
 		}
-		terms := make([]FacetTerm, 0, len(group))
-		for term, count := range group {
-			terms = append(terms, FacetTerm{Term: term, Count: count})
-		}
+		terms := group.terms()
 		sort.Slice(terms, func(i, j int) bool {
 			if terms[i].Count != terms[j].Count {
 				return terms[i].Count > terms[j].Count

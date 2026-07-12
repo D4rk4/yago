@@ -16,21 +16,25 @@ func newRequiredTermsFixture(t *testing.T) *BleveMemoryIndex {
 				NormalizedURL: "https://example.org/mn-beaches",
 				Title:         "Черногория",
 				ExtractedText: "Черногория и её пляжи на побережье Адриатики.",
+				Language:      "ru",
 			},
 			{
 				NormalizedURL: "https://example.org/es-beaches",
 				Title:         "Пляжи",
 				ExtractedText: "Пляжи Испании считаются одними из лучших в Европе.",
+				Language:      "ru",
 			},
 			{
 				NormalizedURL: "https://anticisco.ru/forum",
 				Title:         "Интернет-ресурсы",
 				ExtractedText: "Интернет ресурсы по маршрутизаторам и сетям, форум провайдеров.",
+				Language:      "ru",
 			},
 			{
 				NormalizedURL: "https://example.org/mn-isp",
 				Title:         "Интернет в Черногории",
 				ExtractedText: "Черногория и её интернет провайдеры на побережье.",
+				Language:      "ru",
 			},
 		},
 	})
@@ -73,6 +77,125 @@ func TestSearchStopwordDoesNotVetoConjunction(t *testing.T) {
 	}
 	if got.Total != 1 || got.Results[0].URL != "https://example.org/mn-isp" {
 		t.Fatalf("stopword query results = %#v", got.Results)
+	}
+}
+
+func TestSearchUsesAnalyzerSpecificStopwordConjunctions(t *testing.T) {
+	index, err := NewBleveMemoryIndex(t.Context(), &fakeStoredDocuments{
+		documents: []documentstore.Document{
+			{
+				NormalizedURL: "https://example.org/english-cat",
+				ExtractedText: "A cat sleeps quietly.",
+				Language:      "en",
+			},
+			{
+				NormalizedURL: "https://example.org/english-hard",
+				ExtractedText: "A hard problem.",
+				Language:      "en",
+			},
+			{
+				NormalizedURL: "https://example.org/english-die-hard",
+				ExtractedText: "The Die Hard film.",
+				Language:      "en",
+			},
+			{
+				NormalizedURL: "https://example.org/german-cat",
+				ExtractedText: "Eine Katze schläft.",
+				Language:      "de",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewBleveMemoryIndex: %v", err)
+	}
+	theCat, err := index.Search(t.Context(), SearchRequest{
+		Query: "the cat", Terms: []string{"the", "cat"}, MaxResults: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search the cat: %v", err)
+	}
+	if theCat.Total != 1 || theCat.Results[0].URL != "https://example.org/english-cat" {
+		t.Fatalf("the cat results = %#v", theCat.Results)
+	}
+	dieHard, err := index.Search(t.Context(), SearchRequest{
+		Query: "die hard", Terms: []string{"die", "hard"}, MaxResults: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search die hard: %v", err)
+	}
+	if dieHard.Total != 1 ||
+		dieHard.Results[0].URL != "https://example.org/english-die-hard" {
+		t.Fatalf("die hard results = %#v", dieHard.Results)
+	}
+	dieKatze, err := index.Search(t.Context(), SearchRequest{
+		Query: "die katze", Terms: []string{"die", "katze"}, MaxResults: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search die katze: %v", err)
+	}
+	if dieKatze.Total != 1 || dieKatze.Results[0].URL != "https://example.org/german-cat" {
+		t.Fatalf("die katze results = %#v", dieKatze.Results)
+	}
+}
+
+func TestExcludedTermsUseTheDocumentAnalyzerAcrossFields(t *testing.T) {
+	index, err := NewBleveMemoryIndex(t.Context(), &fakeStoredDocuments{
+		documents: []documentstore.Document{{
+			NormalizedURL: "https://example.org/hunde",
+			Title:         "Hunde",
+			Headings:      []string{"Laufen"},
+			ExtractedText: "Hunde laufen schnell.",
+			Language:      "de",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewBleveMemoryIndex: %v", err)
+	}
+
+	result, err := index.Search(t.Context(), SearchRequest{
+		Query: "hund", Terms: []string{"hund"}, ExcludeTerms: []string{"laufen"}, MaxResults: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if result.Total != 0 || len(result.Results) != 0 {
+		t.Fatalf("excluded German stem admitted: %#v", result.Results)
+	}
+}
+
+func TestDiskSearchFiltersCrossLanguageStopwordBranches(t *testing.T) {
+	documents := []documentstore.Document{
+		{
+			NormalizedURL: "https://example.org/hard-only",
+			ExtractedText: "A hard problem.",
+			Language:      "en",
+		},
+		{
+			NormalizedURL: "https://example.org/die-hard",
+			ExtractedText: "The Die Hard film.",
+			Language:      "en",
+		},
+	}
+	directory := newFakeDocumentDirectory(documents...)
+	index, err := NewBleveDiskIndex(
+		t.Context(),
+		t.TempDir(),
+		directory,
+		&fakeStoredDocuments{documents: documents},
+	)
+	if err != nil {
+		t.Fatalf("NewBleveDiskIndex: %v", err)
+	}
+	t.Cleanup(func() { _ = index.Close() })
+	got, err := index.Search(t.Context(), SearchRequest{
+		Query: "die hard", Terms: []string{"die", "hard"}, MaxResults: 10,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if got.Total != 1 || len(got.Results) != 1 ||
+		got.Results[0].URL != "https://example.org/die-hard" {
+		t.Fatalf("disk results = %#v", got.Results)
 	}
 }
 
@@ -123,6 +246,24 @@ func TestRequirableTermsWithoutMappingKeepsEveryWord(t *testing.T) {
 	terms := requirableTerms([]string{"в", "черногории", " "}, []string{"ru"})
 	if len(terms) != 2 {
 		t.Fatalf("terms without mapping = %#v", terms)
+	}
+}
+
+func TestRequirableTermsKeepWordsMeaningfulInAnyCandidateLanguage(t *testing.T) {
+	terms := requirableTerms(
+		[]string{"die", "hard"},
+		[]string{"en", "de", standardTextAnalyzer},
+	)
+	if len(terms) != 2 || terms[0] != "die" || terms[1] != "hard" {
+		t.Fatalf("multilingual terms = %#v", terms)
+	}
+	if terms := requirableTerms(
+		[]string{"в"},
+		[]string{"ru", standardTextAnalyzer},
+	); len(
+		terms,
+	) != 0 {
+		t.Fatalf("universal stopword terms = %#v", terms)
 	}
 }
 

@@ -50,6 +50,10 @@ func EncodeSearchIndexAbstract(urlHashes []Hash) string {
 }
 
 func DecodeSearchIndexAbstract(raw string) ([]Hash, error) {
+	return DecodeSearchIndexAbstractWithLimit(raw, len(raw)/hostHashLength)
+}
+
+func DecodeSearchIndexAbstractWithLimit(raw string, maximumHashes int) ([]Hash, error) {
 	if raw == "" || raw == "{}" {
 		return nil, nil
 	}
@@ -57,26 +61,61 @@ func DecodeSearchIndexAbstract(raw string) ([]Hash, error) {
 		return nil, fmt.Errorf("%w: index abstract envelope", ErrInvalidHash)
 	}
 
-	body := strings.TrimSuffix(strings.TrimPrefix(raw, "{"), "}")
+	body := raw[1 : len(raw)-1]
+	maximumHashes = max(0, maximumHashes)
 	var hashes []Hash
-	for _, group := range strings.Split(body, ",") {
-		domain, paths, ok := strings.Cut(group, ":")
-		if !ok || len(domain) != hostHashLength || len(paths)%hostHashLength != 0 {
-			return nil, fmt.Errorf("%w: index abstract group %q", ErrInvalidHash, group)
+	if maximumHashes > 0 {
+		hashes = make([]Hash, 0, min(maximumHashes, len(body)/HashLength))
+	}
+	for body != "" {
+		group, remainder, more := strings.Cut(body, ",")
+		var err error
+		hashes, err = decodeSearchIndexAbstractGroup(group, hashes, maximumHashes)
+		if err != nil {
+			return nil, err
 		}
-		if _, err := ParseHash(domain + domain); err != nil {
-			return nil, fmt.Errorf("%w: index abstract host %q", err, domain)
+		if more && remainder == "" {
+			return nil, fmt.Errorf("%w: index abstract group %q", ErrInvalidHash, remainder)
 		}
-		for start := 0; start < len(paths); start += hostHashLength {
-			hash, err := ParseHash(paths[start:start+hostHashLength] + domain)
-			if err != nil {
-				return nil, fmt.Errorf("%w: index abstract path", err)
-			}
-			hashes = append(hashes, hash)
+		body = remainder
+	}
+
+	return hashes, nil
+}
+
+func decodeSearchIndexAbstractGroup(
+	group string,
+	hashes []Hash,
+	maximumHashes int,
+) ([]Hash, error) {
+	domain, paths, ok := strings.Cut(group, ":")
+	if !ok || len(domain) != hostHashLength || len(paths)%hostHashLength != 0 {
+		return nil, fmt.Errorf("%w: index abstract group %q", ErrInvalidHash, group)
+	}
+	if !validAbstractHashPart(domain) {
+		return nil, fmt.Errorf("%w: index abstract host %q", ErrInvalidHash, domain)
+	}
+	for start := 0; start < len(paths); start += hostHashLength {
+		path := paths[start : start+hostHashLength]
+		if !validAbstractHashPart(path) {
+			return nil, fmt.Errorf("%w: index abstract path", ErrInvalidHash)
+		}
+		if len(hashes) < maximumHashes {
+			hashes = append(hashes, Hash(path+domain))
 		}
 	}
 
 	return hashes, nil
+}
+
+func validAbstractHashPart(part string) bool {
+	for position := range len(part) {
+		if decodeTable[part[position]] < 0 {
+			return false
+		}
+	}
+
+	return true
 }
 
 func compareBase64Strings(a, b string) int {

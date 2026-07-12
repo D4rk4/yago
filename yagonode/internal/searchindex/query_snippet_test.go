@@ -26,6 +26,19 @@ func TestQueryBiasedSnippetCentersOnTerms(t *testing.T) {
 	}
 }
 
+func TestQueryBiasedSnippetUsesOriginalByteOffsetForEvidence(t *testing.T) {
+	text := strings.Repeat("İ prefix words. ", 40) + "Needle evidence appears here."
+	got := queryBiasedSnippetWithEvidence(
+		text,
+		[]string{"needle"},
+		"Needle",
+		"fallback",
+	)
+	if !strings.Contains(got, "Needle evidence") {
+		t.Fatalf("evidence missing: %q", got)
+	}
+}
+
 func TestQueryBiasedSnippetFallbacks(t *testing.T) {
 	// Term missing falls back to the leading snippet.
 	long := strings.Repeat("plain words without the query term at all. ", 40)
@@ -54,10 +67,6 @@ func TestQueryBiasedSnippetFallbacks(t *testing.T) {
 		"lead words",
 	) {
 		t.Fatalf("no terms = %q", got)
-	}
-	// Blank terms are skipped when anchoring.
-	if got := firstTermAnchor("body text", []string{" ", ""}); got != -1 {
-		t.Fatalf("blank terms anchor = %d", got)
 	}
 	// A term early in the text opens the window at the start (no ellipsis).
 	early := "needle appears immediately here. " + strings.Repeat("rest of the body words. ", 40)
@@ -153,7 +162,12 @@ func TestQueryBiasedSnippetAnchorsOnContentTerm(t *testing.T) {
 	text := "Ну вот я и не понимаю, что я делаю не так. " +
 		strings.Repeat("Форумные сообщения о маршрутизаторах и настройке. ", 20) +
 		"У меня отвалилось после обновления прошлой осенью, вроде бы."
-	got := queryBiasedSnippet(text, []string{"что", "такое", "осень"}, "fallback")
+	got := queryBiasedSnippetWithEvidence(
+		text,
+		[]string{"что", "такое", "осень"},
+		"осенью",
+		"fallback",
+	)
 	if !strings.Contains(got, "осенью") {
 		t.Fatalf("snippet not anchored on the content term: %q", got)
 	}

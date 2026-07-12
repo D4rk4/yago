@@ -76,7 +76,7 @@ func (e jsonEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "search failed", http.StatusInternalServerError)
 		return
 	}
-	e.suggestions.Record(req.Query)
+	e.suggestions.Record(req.SubmittedText())
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

@@ -50,11 +50,6 @@ func TestDDGSProviderReturnsResults(t *testing.T) {
 	}
 }
 
-// TestDDGSProviderAutoAsksDuckDuckGoFirst: the auto chain is ordered by
-// answer quality — DuckDuckGo is the only keyless engine with solid
-// multilingual coverage, so it goes first and an answered query touches no
-// other engine; per-engine backoff keeps its rate limiting from pausing the
-// rest of the chain.
 func TestDDGSProviderAutoAsksDuckDuckGoFirst(t *testing.T) {
 	var hosts []string
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -237,20 +232,29 @@ func TestDDGSProviderErrorsOnBadStatus(t *testing.T) {
 	}
 }
 
-func TestDDGSProviderCapsToMaxResults(t *testing.T) {
+func TestDDGSProviderCachesConfiguredBoundBeforeCallerCap(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return htmlResponse(http.StatusOK, listFixture), nil
 	})}
 	provider := NewDDGSProvider(DDGSConfig{
-		Client: client, Backend: backendMojeek, MaxResults: 1, Now: fixedClock(),
+		Client: client, Backend: backendMojeek, MaxResults: 2,
+		CacheTTL: time.Minute, Now: fixedClock(),
 	})
 
-	results, err := provider.Search(context.Background(), "example", 10)
+	results, err := provider.Search(context.Background(), "example", 1)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
 	if len(results) != 1 {
-		t.Fatalf("results = %d, want 1 (capped by MaxResults)", len(results))
+		t.Fatalf("results = %d, want 1 (capped by caller)", len(results))
+	}
+	cached, ok := provider.cache.get("example")
+	if !ok || len(cached) != 2 {
+		t.Fatalf("cached results = %d, %v, want 2, true", len(cached), ok)
+	}
+	results, err = provider.Search(context.Background(), "example", 10)
+	if err != nil || len(results) != 2 {
+		t.Fatalf("configured-cap results = %d, err = %v, want 2, nil", len(results), err)
 	}
 }
 
@@ -268,10 +272,6 @@ func TestDDGSProviderIgnoresBlankQuery(t *testing.T) {
 	}
 }
 
-// TestDDGSProviderWalksPastOffTopicEngineAnswers: an engine answering only
-// the first query word with dictionary pages (Bing's bot-tier behavior) is
-// treated as empty by the acceptance hook, and the walk continues to an
-// engine whose answer actually mentions the query.
 func TestDDGSProviderWalksPastOffTopicEngineAnswers(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		if r.URL.Host == "html.duckduckgo.com" {

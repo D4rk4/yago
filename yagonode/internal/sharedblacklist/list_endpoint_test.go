@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -23,6 +25,25 @@ func (r *recordingBlacklists) SharedList(_ context.Context, name string) string 
 	r.name = name
 
 	return "example.org/.*\r\nblocked.example/.*\r\n"
+}
+
+type fixedSharedBlacklists struct {
+	body  string
+	calls int
+}
+
+func (b *fixedSharedBlacklists) SharedList(context.Context, string) string {
+	b.calls++
+
+	return b.body
+}
+
+func sharedBlacklistEndpointRequest() yagoproto.ListRequest {
+	return yagoproto.ListRequest{
+		NetworkName: "freeworld",
+		Column:      yagoproto.ListColumnBlack,
+		Name:        "url.default.black",
+	}
 }
 
 func TestListExportsSharedBlacklistEntries(t *testing.T) {
@@ -48,6 +69,64 @@ func TestListExportsSharedBlacklistEntries(t *testing.T) {
 	if resp.Body != "example.org/.*\r\nblocked.example/.*\r\n" {
 		t.Fatalf("Body = %q", resp.Body)
 	}
+}
+
+func TestListEndpointBoundsAndOwnsProviderBody(t *testing.T) {
+	exactBody := strings.Repeat("x", maximumSharedBlacklistAggregateBytes)
+	exact := &fixedSharedBlacklists{body: exactBody}
+	response, err := endpoint{networkName: "freeworld", blacklists: exact}.Serve(
+		t.Context(),
+		sharedBlacklistEndpointRequest(),
+	)
+	if err != nil || response.Body != exactBody || exact.calls != 1 {
+		t.Fatalf("exact provider body len=%d calls=%d err=%v", len(response.Body), exact.calls, err)
+	}
+
+	overflow := &fixedSharedBlacklists{
+		body: strings.Repeat("x", maximumSharedBlacklistAggregateBytes+1),
+	}
+	response, err = endpoint{networkName: "freeworld", blacklists: overflow}.Serve(
+		t.Context(),
+		sharedBlacklistEndpointRequest(),
+	)
+	if err != nil || response.Body != "" || overflow.calls != 1 {
+		t.Fatalf(
+			"overflow provider body len=%d calls=%d err=%v",
+			len(response.Body),
+			overflow.calls,
+			err,
+		)
+	}
+}
+
+func retainedSharedBlacklistSubstring(t *testing.T) string {
+	t.Helper()
+	backing := strings.Repeat("x", maximumSharedBlacklistAggregateBytes*2)
+	substring := backing[:16]
+	provider := &fixedSharedBlacklists{body: substring}
+	response, err := endpoint{networkName: "freeworld", blacklists: provider}.Serve(
+		t.Context(),
+		sharedBlacklistEndpointRequest(),
+	)
+	if err != nil || response.Body != substring {
+		t.Fatalf("substring response = %q err=%v", response.Body, err)
+	}
+
+	return response.Body
+}
+
+func TestListEndpointDetachesShortProviderSubstring(t *testing.T) {
+	runtime.GC()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+	body := retainedSharedBlacklistSubstring(t)
+	runtime.GC()
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+	if after.HeapAlloc > before.HeapAlloc+maximumSharedBlacklistAggregateBytes/2 {
+		t.Fatalf("short response retained %d heap bytes", after.HeapAlloc-before.HeapAlloc)
+	}
+	runtime.KeepAlive(body)
 }
 
 func TestListIgnoresUnsupportedColumn(t *testing.T) {

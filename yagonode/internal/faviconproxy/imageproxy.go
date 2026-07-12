@@ -4,6 +4,7 @@ import (
 	"context"
 	"html/template"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,10 +16,11 @@ import (
 const ImagePath = "/imgproxy"
 
 const (
-	maxImageBytes       = 512 << 10
-	imageCacheBytes     = 64 << 20
-	imageCacheEntries   = 4096
-	imageFetchSlotCount = 8
+	maxImageBytes        = 512 << 10
+	imageCacheBytes      = 32 << 20
+	imageCacheEntries    = 4096
+	imageFetchSlotCount  = 8
+	maximumImageURLBytes = 8 << 10
 )
 
 // ImageURLFor returns the proxied link for a page image URL.
@@ -128,6 +130,9 @@ func (p *ImageProxy) fetch(ctx context.Context, target string) fetchedIcon {
 // userinfo; anything else is rejected before a fetch is attempted.
 func normalizedImageURL(raw string) string {
 	raw = strings.TrimSpace(raw)
+	if len(raw) > maximumImageURLBytes {
+		return ""
+	}
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.User != nil || parsed.Hostname() == "" {
 		return ""
@@ -135,6 +140,27 @@ func normalizedImageURL(raw string) string {
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return ""
 	}
+	hostname := strings.ToLower(parsed.Hostname())
+	if net.ParseIP(hostname) == nil && !validDNSHost(hostname) {
+		return ""
+	}
 
-	return parsed.String()
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	port := parsed.Port()
+	switch {
+	case port != "":
+		parsed.Host = net.JoinHostPort(hostname, port)
+	case strings.Contains(hostname, ":"):
+		parsed.Host = "[" + hostname + "]"
+	default:
+		parsed.Host = hostname
+	}
+	parsed.Fragment = ""
+	parsed.RawFragment = ""
+	normalized := parsed.String()
+	if len(normalized) > maximumImageURLBytes {
+		return ""
+	}
+
+	return normalized
 }

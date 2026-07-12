@@ -298,6 +298,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		return nodeSurfaces{}, fmt.Errorf("open portal theme: %w", err)
 	}
 	publicMux := http.NewServeMux()
+	searchLimiter := publicratelimit.NewLimiter(searchRateTiers(in.config.SearchRate))
 	activityTracker := searchactivity.New(searchactivity.Mode(in.config.QueryLogMode))
 	hostRankHolder, spellHolder := hostrank.NewHolder(), spellcheck.NewHolder()
 	wordFormsHolder := wordforms.NewHolder()
@@ -316,6 +317,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 			models:     learning.models,
 			reputation: learning.reputation,
 			peerEvents: learning.peerEvents,
+			admission:  newTavilySearchAdmission(searchLimiter),
 		},
 	))
 	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
@@ -328,14 +330,11 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		client:      in.peerClient,
 		observer:    tallyOutboundObserver{next: in.telemetry.dhtOutbound, tally: in.tally},
 	})
-	limitedPublic := publicratelimit.Wrap(
-		publicMux,
-		publicratelimit.NewLimiter(searchRateTiers(in.config.SearchRate)),
-		searchAccessPolicy(publicSearchAssembly{
-			searchAuthorizer: in.telemetry.searchAuthorizer,
-			searchAPIKey:     in.config.SearchAPIKey,
-		}).AuthenticatedRead,
-	)
+	searchAccess := searchAccessPolicy(publicSearchAssembly{
+		searchAuthorizer: in.telemetry.searchAuthorizer,
+		searchAPIKey:     in.config.SearchAPIKey,
+	})
+	limitedPublic := publicratelimit.Wrap(publicMux, searchLimiter, searchAccess.AuthenticatedRead)
 	return nodeSurfaces{
 		crawl:      runtime,
 		dht:        dht,
@@ -375,6 +374,7 @@ type publicSearchParts struct {
 	models     *rankingmodel.Catalog
 	reputation *peerReputationObserver
 	peerEvents *peerReputationObserver
+	admission  tavilyapi.SearchAdmission
 }
 
 func newPublicSearchAssembly(
@@ -394,6 +394,7 @@ func newPublicSearchAssembly(
 		peerHTTPSPreferred:  in.config.PeerHTTPSPreferred,
 		searchAPIKey:        in.config.SearchAPIKey,
 		searchAuthorizer:    in.telemetry.searchAuthorizer,
+		searchAdmission:     parts.admission,
 		extractFetcher:      buildExtractFetcher(in.config, in.client),
 		webFallback:         in.config.WebFallback,
 		seedQueue:           crawlOrderQueue(parts.runtime),
@@ -550,6 +551,7 @@ func newRuntimeWireGate(
 		),
 		Respond: httpguard.NewWireResponder(report),
 		Address: httpguard.NewClientAddressResolver(config.TrustedProxies),
+		Intake:  httpguard.NewIntakeGate(maximumConcurrentWireRequests),
 	}
 }
 

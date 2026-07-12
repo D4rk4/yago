@@ -10,8 +10,9 @@ import (
 )
 
 type fakeCrawlQueue struct {
-	keys   []string
-	orders []yagocrawlcontract.CrawlOrder
+	keys      []string
+	orders    []yagocrawlcontract.CrawlOrder
+	published chan struct{}
 }
 
 func (q *fakeCrawlQueue) PublishOnce(
@@ -21,6 +22,9 @@ func (q *fakeCrawlQueue) PublishOnce(
 ) (bool, error) {
 	q.keys = append(q.keys, key)
 	q.orders = append(q.orders, order)
+	if q.published != nil {
+		q.published <- struct{}{}
+	}
 
 	return false, nil
 }

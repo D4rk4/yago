@@ -48,7 +48,13 @@ func buildConfigView(config nodeConfig) adminui.ConfigView {
 			{Name: "Require API key", Value: yesNo(config.SearchRequireAPIKey)},
 			{Name: "Search API key", Value: redactedSecret(config.SearchAPIKey)},
 			{Name: "Public search portal", Value: enabledDisabled(config.PublicSearchUIEnabled)},
-			{Name: "Web fallback", Value: enabledDisabled(config.WebFallback.Enabled)},
+			{
+				Name: "Web fallback",
+				Value: enabledDisabled(
+					config.WebFallback.Privacy == webFallbackPrivacyExplicit ||
+						config.WebFallback.Privacy == webFallbackPrivacyEnabled,
+				),
+			},
 		}},
 		{Title: "Network policy", Settings: []adminui.ConfigSetting{
 			{Name: "Egress allows LAN", Value: yesNo(config.EgressAllowLAN)},

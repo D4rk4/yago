@@ -64,7 +64,9 @@ func (s hostRankSweeper) refreshOnce(ctx context.Context) {
 
 	citations := hostrank.NewCitationSample()
 	err := s.documents.StoredDocuments(ctx, func(doc documentstore.Document) (bool, error) {
-		citations.Add(documentAuthorityCitations(doc)...)
+		visitDocumentAuthorityCitations(doc, func(citation hostrank.Citation) {
+			citations.Add(citation)
+		})
 
 		return true, nil
 	})
@@ -87,36 +89,4 @@ func (s hostRankSweeper) refreshOnce(ctx context.Context) {
 		return
 	}
 	s.holder.Store(table)
-}
-
-func documentAuthorityCitations(doc documentstore.Document) []hostrank.Citation {
-	sourceURL := doc.NormalizedURL
-	if sourceURL == "" {
-		sourceURL = doc.CanonicalURL
-	}
-	if sourceURL == "" {
-		return nil
-	}
-	if doc.OutboundAnchorEvidenceKnown {
-		citations := make([]hostrank.Citation, 0, len(doc.OutboundAnchors))
-		for _, anchor := range doc.OutboundAnchors {
-			if anchor.NoFollow || anchor.UserGenerated || anchor.Sponsored {
-				continue
-			}
-			citations = append(citations, hostrank.Citation{
-				SourceURL: sourceURL, TargetURL: anchor.TargetURL, Confidence: 1,
-			})
-		}
-
-		return citations
-	}
-
-	citations := make([]hostrank.Citation, 0, len(doc.Outlinks))
-	for _, targetURL := range doc.Outlinks {
-		citations = append(citations, hostrank.Citation{
-			SourceURL: sourceURL, TargetURL: targetURL, Confidence: 0.4,
-		})
-	}
-
-	return citations
 }

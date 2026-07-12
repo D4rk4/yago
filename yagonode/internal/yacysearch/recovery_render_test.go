@@ -32,3 +32,23 @@ func TestHTMLEndpointRendersRecoveryLine(t *testing.T) {
 		t.Fatalf("did-you-mean link missing: %s", body)
 	}
 }
+
+func TestHTMLEndpointRendersTotalMissSuggestion(t *testing.T) {
+	search := &fakeSearch{response: searchcore.Response{
+		DidYouMean: "golang",
+	}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"http://node.test/yacysearch.html?query=golnag",
+		nil,
+	)
+	htmlEndpoint{search: search, suggestions: newRecentQueries()}.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "No results matched. Did you mean") ||
+		!strings.Contains(body, "query=golang") {
+		t.Fatalf("total-miss suggestion missing: %s", body)
+	}
+}

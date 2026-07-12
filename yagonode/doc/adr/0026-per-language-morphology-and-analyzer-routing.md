@@ -15,8 +15,8 @@ morphological normalization for any non-English language**. The only
 cross-language recall was a character-trigram sub-field matched with AND
 semantics, which flooded ordinary queries (a Russian query for `черногория`
 pulled in unrelated Cyrillic pages because the eight common trigrams of the
-word occur scattered across almost any long Russian document — SEARCH-24
-restricted that clause to the zero-result recovery path as a stop-gap).
+word occur scattered across almost any long Russian document. Recovery no longer
+queries those fields either; it uses bounded analyzer-consistent fuzzy terms.
 
 The requirement is DuckDuckGo-level morphology across popular languages: a
 query for `черногория` must also match the inflected `черногории` and
@@ -52,10 +52,10 @@ literature):
   frequently wrong in content; content-based detection stays authoritative.
 - **bleve mechanisms are present:** per-document analyzer selection via
   `TypeField` (verified: two document mappings, one field, the right analyzer
-  per document, queried with an explicit per-request analyzer); BM25 scoring
-  (adopted in ADR-0026's sibling change, SEARCH-26); positional
-  `MatchPhraseQuery` (needs term vectors, currently disabled — quoted-phrase
-  boosts silently match nothing on the scorch shards).
+  per document, queried with an explicit per-request analyzer) and BM25 scoring
+  (adopted in ADR-0026's sibling change, SEARCH-26). Query-time phrase clauses
+  and term-vector locations are excluded from the interactive path because
+  large-body measurements exceeded both the latency and memory budgets.
 
 Coverage for the languages the requirement calls out, each verified against a
 scorch index:
@@ -66,7 +66,7 @@ scorch index:
 | Arabic | Arabic | `ar` | Normalization + light affix/article stemming (not root-pattern conflation). |
 | Chinese | Han | `cjk` | Bigram segmentation — correct for an uninflected language; no stemmer needed. |
 | Serbian | Latin / Cyrillic | `hr` (Serbo-Croatian) | Latin conflates inflections via `hr`; Cyrillic Serbian is indistinguishable from Russian by script alone and needs content detection to route to `hr`. |
-| Hebrew | Hebrew | **none** | No bleve or Snowball Hebrew stemmer exists; falls back to no-stemming (exact word + n-gram recall). Root-pattern morphology needs a dictionary analyzer (HebMorph-class), tracked as a follow-up. |
+| Hebrew | Hebrew | **none** | No bleve or Snowball Hebrew stemmer exists; falls back to no-stemming exact words plus bounded typo recovery. Root-pattern morphology needs a dictionary analyzer (HebMorph-class), tracked as a follow-up. |
 
 The lesson from Serbian and Hebrew is decisive: **routing by script alone is
 insufficient.** Cyrillic is not only Russian (also Serbian, Ukrainian,
@@ -114,8 +114,8 @@ Language-detection libraries considered:
    `hr` (Serbo-Croatian); Chinese, Japanese, and Korean map to `cjk`; a
    language with no analyzer (Hebrew and any unlisted language) maps to a
    script-agnostic **`standard`** analyzer (Unicode tokenizer + lowercase +
-   NFKC, no stemming) so it still ranks on exact words and recovers through
-   n-grams.
+   NFKC, no stemming) so it still ranks on exact words and participates in
+   bounded typo recovery.
 
 2. **Index-time language detection.** After extraction, the crawler runs
    whatlanggo over at most the first 64 KiB of UTF-8 main text and resolves one
@@ -138,20 +138,26 @@ Language-detection libraries considered:
    `standard`-analyzed clause so a proper noun still matches a document in any
    language. The query string itself is never language-identified.
 
-4. **Term vectors on.** Enable `IncludeTermVectors` on the text fields so
-   positional queries work — this fixes the quoted-phrase boosts (silently
-   broken on scorch today) and unlocks a future `NGramPhraseQuery` substring
-   clause to replace the recovery-only trigram AND.
+4. **Bounded stored evidence.** Keep term vectors off. Candidate retrieval
+   returns scores and document identities first; only the leading ten local
+   results are then scanned for a morphology-aware snippet. The scan rejects
+   unrelated tokens before invoking a language analyzer, caps stored positions,
+   and uses a single-pass component lookup for CJK. Paging performs the same
+   bounded enrichment on later visible rows without changing their order.
 
 5. **Unify the in-memory fallback on scorch.** Replace the upside-down
    `NewMemOnly` index with an in-memory scorch index so the fallback honors
-   BM25 (ADR sibling SEARCH-26) and the same analyzer routing and positional
-   queries as the on-disk shards.
+   BM25 (ADR sibling SEARCH-26) and the same analyzer routing and bounded
+   stored-evidence behavior as the on-disk shards.
 
-6. **Migration.** The mapping change is incompatible with the persisted
-   single-analyzer mapping, so existing shards rebuild from the document store
-   through the mechanism that already handles the pre-trigram migration; a
-   shard with no rebuild source keeps serving under its old mapping.
+6. **Migration.** The indexed and stored analyzer scope is incompatible with
+   the persisted mapping, so existing shards rebuild from the document store.
+   The same rebuild retires legacy character-gram fields and term vectors. A
+   sibling marker is written before any destructive migration and cleared only
+   after the complete scan. A restart that finds the marker discards the partial
+   index and repeats the full rebuild before serving. A legacy shard with no
+   rebuild source keeps serving under its old mapping; a marked partial rebuild
+   without a source fails closed.
 
 ## Consequences
 
@@ -163,13 +169,13 @@ Language-detection libraries considered:
   and YaCy URL metadata after the page is crawled again.
 - Serbian works through the Croatian analyzer once content detection routes it
   there; Chinese works through `cjk`; Arabic gains light stemming; Hebrew and
-  unlisted languages degrade gracefully to exact-plus-n-gram recall until a
+  unlisted languages degrade gracefully to exact words plus typo recovery until a
   dictionary analyzer is added.
 - One new pure-Go, cgo-free, MIT dependency (`whatlanggo`); no cgo, no
   multi-hundred-megabyte model.
-- The index grows: term vectors add positional postings, and per-language
-  routing means a shard holds several analyzers' token streams. Both are
-  bounded by the existing per-shard size policy (ADR-0025).
+- Per-language routing means a shard resolves several analyzers, but each
+  document still writes one analyzed token stream. Removing legacy gram fields
+  and term vectors reduces index write amplification and persisted size.
 - Upgrading nodes reindex once from the document store.
 - Query fan-out across a script's analyzers adds clauses; it is bounded by
   restricting to the query script's analyzers, not all languages, and the

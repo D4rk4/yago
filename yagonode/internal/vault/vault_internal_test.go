@@ -79,6 +79,30 @@ type scriptedBucket struct {
 	scanErr   error
 }
 
+type presenceTxn struct {
+	bucket EngineBucket
+}
+
+func (t presenceTxn) Bucket(Name) EngineBucket {
+	return t.bucket
+}
+
+func (presenceTxn) Writable() bool {
+	return false
+}
+
+type directPresenceBucket struct {
+	*scriptedBucket
+	checks int
+}
+
+func (b *directPresenceBucket) Contains(key Key) bool {
+	b.checks++
+	_, found := b.values[string(key)]
+
+	return found
+}
+
 func (b *scriptedBucket) Get(key Key) []byte {
 	return b.values[string(key)]
 }
@@ -132,6 +156,20 @@ func newScriptedCollection(
 				lengthBucket: lengths,
 			},
 		}}
+}
+
+func TestCollectionContainsUsesPresenceCapabilityAndGetFallback(t *testing.T) {
+	collection := &Collection[string]{name: Name("data"), codec: internalStringCodec{}}
+	stored := &scriptedBucket{values: map[string][]byte{"key": []byte("value")}}
+	direct := &directPresenceBucket{scriptedBucket: stored}
+	if !collection.Contains(&Txn{etx: presenceTxn{bucket: direct}}, Key("key")) ||
+		direct.checks != 1 {
+		t.Fatalf("direct presence checks = %d", direct.checks)
+	}
+	if !collection.Contains(&Txn{etx: presenceTxn{bucket: stored}}, Key("key")) ||
+		collection.Contains(&Txn{etx: presenceTxn{bucket: stored}}, Key("missing")) {
+		t.Fatal("fallback presence mismatch")
+	}
 }
 
 func TestNewReturnsProvisionError(t *testing.T) {

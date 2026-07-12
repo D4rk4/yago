@@ -125,6 +125,13 @@ being styled) is accepted.
   visual and code modes therefore preserves cascade order, inherited colors,
   CSS variables, formatting outside the marker, and the public page background
   without duplicating stale rules.
+- Inline script blocks are masked across the full document with source-unique,
+  inert template markers before the body is split or parsed by GrapesJS, then
+  restored byte-for-byte from the wrapper's inner HTML when returning to code
+  mode. This keeps script position and JavaScript operators intact and prevents
+  the editor wrapper from creating a nested body element. Loading or saving a
+  document also repairs the exact built-in script block damaged by the legacy
+  round-trip without rewriting operator-authored examples or scripts.
 
 ## Consequences
 

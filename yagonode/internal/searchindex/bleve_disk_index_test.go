@@ -11,14 +11,39 @@ import (
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/mapping"
+	"github.com/blevesearch/bleve/v2/search"
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
 
 type fakeDocumentDirectory struct {
-	documents map[string]documentstore.Document
-	err       error
-	loads     int
+	documents   map[string]documentstore.Document
+	err         error
+	presenceErr error
+	loads       int
+}
+
+type blockingDocumentDirectory struct {
+	document documentstore.Document
+	started  chan struct{}
+	release  chan struct{}
+}
+
+func (d *blockingDocumentDirectory) Document(
+	_ context.Context,
+	_ string,
+) (documentstore.Document, bool, error) {
+	select {
+	case d.started <- struct{}{}:
+	default:
+	}
+	<-d.release
+
+	return d.document, true, nil
+}
+
+func (d *blockingDocumentDirectory) Count(context.Context) (int, error) {
+	return 1, nil
 }
 
 func newFakeDocumentDirectory(docs ...documentstore.Document) *fakeDocumentDirectory {
@@ -48,6 +73,18 @@ func (d *fakeDocumentDirectory) Count(context.Context) (int, error) {
 	}
 
 	return len(d.documents), nil
+}
+
+func (d *fakeDocumentDirectory) DocumentExists(
+	_ context.Context,
+	normalizedURL string,
+) (bool, error) {
+	if d.presenceErr != nil {
+		return false, d.presenceErr
+	}
+	_, found := d.documents[normalizedURL]
+
+	return found, nil
 }
 
 func TestBleveDiskIndexCreatesReopensAndSearches(t *testing.T) {
@@ -129,6 +166,63 @@ func TestBleveDiskIndexCreatesReopensAndSearches(t *testing.T) {
 	}
 	if reopenedStats.Documents != 1 || reopenedStats.UpdatedAt.IsZero() {
 		t.Fatalf("reopened stats = %#v", reopenedStats)
+	}
+}
+
+func TestBleveDiskIndexAllowsIngestDuringResultHydration(t *testing.T) {
+	indexed := documentstore.Document{
+		NormalizedURL: "https://a.example/indexed",
+		Title:         "Needle document",
+		ExtractedText: "needle",
+	}
+	directory := &blockingDocumentDirectory{
+		document: indexed,
+		started:  make(chan struct{}, 1),
+		release:  make(chan struct{}),
+	}
+	index, err := NewBleveDiskIndex(
+		t.Context(),
+		filepath.Join(t.TempDir(), "search.bleve"),
+		directory,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewBleveDiskIndex: %v", err)
+	}
+	t.Cleanup(func() { _ = index.Close() })
+	if err := index.Index(t.Context(), indexed); err != nil {
+		t.Fatalf("Index: %v", err)
+	}
+
+	searchDone := make(chan error, 1)
+	go func() {
+		_, searchErr := index.Search(t.Context(), SearchRequest{Query: "needle", MaxResults: 1})
+		searchDone <- searchErr
+	}()
+	<-directory.started
+	writeDone := make(chan error, 1)
+	go func() {
+		writeDone <- index.Index(t.Context(), documentstore.Document{
+			NormalizedURL: "https://b.example/new",
+			Title:         "New document",
+			ExtractedText: "new",
+		})
+	}()
+	select {
+	case err := <-writeDone:
+		if err != nil {
+			close(directory.release)
+			<-searchDone
+			t.Fatalf("concurrent Index: %v", err)
+		}
+	case <-time.After(time.Second):
+		close(directory.release)
+		<-searchDone
+		t.Fatal("ingest waited for result hydration")
+	}
+	close(directory.release)
+	if err := <-searchDone; err != nil {
+		t.Fatalf("Search: %v", err)
 	}
 }
 
@@ -696,15 +790,18 @@ func TestCompleteSearchAcceptsExactHitBudget(t *testing.T) {
 	}
 }
 
-func TestInsertCompleteResultKeepsBoundedScoreOrder(t *testing.T) {
-	results := insertCompleteResult(nil, SearchResult{DocumentID: "b", Score: 1}, 2)
-	results = insertCompleteResult(results, SearchResult{DocumentID: "c", Score: 0.5}, 2)
-	results = insertCompleteResult(results, SearchResult{DocumentID: "a", Score: 1}, 2)
-	results = insertCompleteResult(results, SearchResult{DocumentID: "d", Score: 0.1}, 2)
-	if len(results) != 2 || results[0].DocumentID != "a" || results[1].DocumentID != "b" {
+func TestInsertCompleteHitKeepsBoundedScoreOrder(t *testing.T) {
+	candidate := func(id string, score float64) *search.DocumentMatch {
+		return &search.DocumentMatch{ID: id, Score: score}
+	}
+	results := insertCompleteHit(nil, candidate("b", 1), 2)
+	results = insertCompleteHit(results, candidate("c", 0.5), 2)
+	results = insertCompleteHit(results, candidate("a", 1), 2)
+	results = insertCompleteHit(results, candidate("d", 0.1), 2)
+	if len(results) != 2 || results[0].ID != "a" || results[1].ID != "b" {
 		t.Fatalf("bounded complete results = %#v", results)
 	}
-	if got := insertCompleteResult(results, SearchResult{}, 0); got != nil {
+	if got := insertCompleteHit(results, nil, 0); got != nil {
 		t.Fatalf("zero-limit complete results = %#v", got)
 	}
 }

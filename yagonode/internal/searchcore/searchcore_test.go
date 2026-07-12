@@ -31,8 +31,9 @@ func TestParseTextQueryAcceptsSlashLanguage(t *testing.T) {
 }
 
 func TestRequestWithParsedQueryBuildsServingRequest(t *testing.T) {
+	submitted := `author:doe site:parsed.example filetype:.PDF tld:DE inurl:guide language:ru /date near "go search" -java`
 	req := RequestWithParsedQuery(Request{
-		Query:    `author:doe site:parsed.example filetype:.PDF tld:DE inurl:guide language:ru /date near "go search" -java`,
+		Query:    submitted,
 		Language: "en",
 		SiteHost: "caller.example",
 	})
@@ -41,6 +42,9 @@ func TestRequestWithParsedQueryBuildsServingRequest(t *testing.T) {
 		!slices.Equal(req.ExcludedTerms, []string{"java"}) ||
 		!slices.Equal(req.Phrases, []string{"go search"}) {
 		t.Fatalf("query fields = %+v", req)
+	}
+	if req.SubmittedQuery != submitted {
+		t.Fatalf("submitted query = %q", req.SubmittedQuery)
 	}
 	if req.Author != "doe" || req.SiteHost != "caller.example" || req.FileType != "pdf" ||
 		req.TLD != "de" || req.InURL != "guide" || req.Language != "en" ||
@@ -52,14 +56,34 @@ func TestRequestWithParsedQueryBuildsServingRequest(t *testing.T) {
 		t.Fatalf("parsed fields = %+v", parsedFields)
 	}
 
-	preset := Request{Query: "ignored", Terms: []string{"kept"}}
+	preset := Request{
+		Query: `site:example.org "ignored phrase" -blocked`, Terms: []string{"kept"},
+	}
 	if got := RequestWithParsedQuery(preset); !slices.Equal(got.Terms, preset.Terms) ||
-		got.Query != preset.Query {
+		got.Query != "kept" || got.SubmittedQuery != preset.Query ||
+		got.SiteHost != "example.org" ||
+		!slices.Equal(got.ExcludedTerms, []string{"blocked"}) ||
+		!slices.Equal(got.Phrases, []string{"ignored phrase"}) {
 		t.Fatalf("preset request changed: %+v", got)
 	}
 	blank := RequestWithParsedQuery(Request{Query: "   "})
-	if blank.Query != "   " || len(blank.Terms) != 0 {
+	if blank.Query != "   " || blank.SubmittedQuery != "   " || len(blank.Terms) != 0 {
 		t.Fatalf("blank request changed: %+v", blank)
+	}
+	termsOnly := RequestWithParsedQuery(Request{Terms: []string{"kept"}})
+	if termsOnly.Query != "kept" || termsOnly.SubmittedQuery != "" {
+		t.Fatalf("terms-only request = %+v", termsOnly)
+	}
+}
+
+func TestRequestSubmittedTextPrefersOriginalQuery(t *testing.T) {
+	request := Request{Query: "canonical", SubmittedQuery: "site:example.org canonical"}
+	if got := request.SubmittedText(); got != request.SubmittedQuery {
+		t.Fatalf("submitted text = %q", got)
+	}
+	request.SubmittedQuery = "   "
+	if got := request.SubmittedText(); got != request.Query {
+		t.Fatalf("fallback submitted text = %q", got)
 	}
 }
 

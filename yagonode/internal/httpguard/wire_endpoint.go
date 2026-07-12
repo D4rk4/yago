@@ -18,6 +18,7 @@ type WireGate struct {
 	Guard   RequestGuard
 	Respond WireResponder
 	Address ClientAddressResolver
+	Intake  *IntakeGate
 }
 
 func Serve[Req any, Resp WireResponse](
@@ -27,6 +28,11 @@ func Serve[Req any, Resp WireResponse](
 	serve func(ctx context.Context, req Req) (Resp, error),
 ) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		release, admitted := enterWireIntake(w, gate.Intake)
+		if !admitted {
+			return
+		}
+		defer release()
 		form, ctx, cancel, ok := gate.Guard.Parse(w, r, methods)
 		if !ok {
 			return

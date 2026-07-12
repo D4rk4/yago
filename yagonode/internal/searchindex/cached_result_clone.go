@@ -1,5 +1,7 @@
 package searchindex
 
+import "strings"
+
 func cloneResultSet(set SearchResultSet) SearchResultSet {
 	return SearchResultSet{
 		Facets:  cloneFacetGroups(set.Facets),
@@ -14,8 +16,10 @@ func cloneFacetGroups(groups []FacetGroup) []FacetGroup {
 	}
 	cloned := make([]FacetGroup, len(groups))
 	for index, group := range groups {
-		cloned[index] = group
-		cloned[index].Terms = cloneValues(group.Terms)
+		cloned[index] = FacetGroup{
+			Name:  strings.Clone(group.Name),
+			Terms: cloneFacetTerms(group.Terms),
+		}
 	}
 
 	return cloned
@@ -28,9 +32,10 @@ func cloneSearchResults(results []SearchResult) []SearchResult {
 	cloned := make([]SearchResult, len(results))
 	for index, result := range results {
 		cloned[index] = result
+		cloneSearchResultStrings(&cloned[index])
 		cloned[index].FieldScores = cloneFieldScores(result.FieldScores)
 		cloned[index].FieldTermPositions = cloneFieldTermPositions(result.FieldTermPositions)
-		cloned[index].Images = cloneValues(result.Images)
+		cloned[index].Images = cloneResultImages(result.Images)
 	}
 
 	return cloned
@@ -42,7 +47,7 @@ func cloneFieldScores(scores map[string]float64) map[string]float64 {
 	}
 	cloned := make(map[string]float64, len(scores))
 	for field, score := range scores {
-		cloned[field] = score
+		cloned[strings.Clone(field)] = score
 	}
 
 	return cloned
@@ -56,7 +61,7 @@ func cloneFieldTermPositions(
 	}
 	cloned := make(map[string]map[string][]int, len(positions))
 	for field, terms := range positions {
-		cloned[field] = cloneTermPositions(terms)
+		cloned[strings.Clone(field)] = cloneTermPositions(terms)
 	}
 
 	return cloned
@@ -68,7 +73,51 @@ func cloneTermPositions(positions map[string][]int) map[string][]int {
 	}
 	cloned := make(map[string][]int, len(positions))
 	for term, values := range positions {
-		cloned[term] = cloneValues(values)
+		cloned[strings.Clone(term)] = cloneValues(values)
+	}
+
+	return cloned
+}
+
+func cloneSearchResultStrings(result *SearchResult) {
+	result.DocumentID = strings.Clone(result.DocumentID)
+	result.ClusterID = strings.Clone(result.ClusterID)
+	result.RepresentativeURL = strings.Clone(result.RepresentativeURL)
+	result.Title = strings.Clone(result.Title)
+	result.URL = strings.Clone(result.URL)
+	result.Snippet = strings.Clone(result.Snippet)
+	result.RawContent = strings.Clone(result.RawContent)
+	result.Explanation = strings.Clone(result.Explanation)
+	result.Author = strings.Clone(result.Author)
+	result.Keywords = strings.Clone(result.Keywords)
+	result.Publisher = strings.Clone(result.Publisher)
+	result.Language = strings.Clone(result.Language)
+	result.Analyzer = strings.Clone(result.Analyzer)
+	result.ContentType = strings.Clone(result.ContentType)
+}
+
+func cloneFacetTerms(terms []FacetTerm) []FacetTerm {
+	if terms == nil {
+		return nil
+	}
+	cloned := make([]FacetTerm, len(terms))
+	for index, term := range terms {
+		cloned[index] = FacetTerm{Term: strings.Clone(term.Term), Count: term.Count}
+	}
+
+	return cloned
+}
+
+func cloneResultImages(images []ResultImage) []ResultImage {
+	if images == nil {
+		return nil
+	}
+	cloned := make([]ResultImage, len(images))
+	for index, image := range images {
+		cloned[index] = ResultImage{
+			URL: strings.Clone(image.URL),
+			Alt: strings.Clone(image.Alt),
+		}
 	}
 
 	return cloned

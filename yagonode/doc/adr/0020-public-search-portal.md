@@ -22,9 +22,9 @@ targets evergreen browsers and assumes a modern JavaScript runtime, so serving t
 public portal as the same React SPA would break the legacy-browser and
 no-JavaScript requirement.
 
-The DDGS web-search fallback (ADR-0019) also lands here: fallback hits must show
-their `[ddgs]` marker on this human surface, whereas the Tavily-compatible
-`POST /search` API stays a separate, unmarked drop-in.
+The portal searches local and peer results first. When the operator sets web
+fallback privacy to `enabled`, a true miss can continue to the external provider;
+`explicit` does not grant the anonymous portal request-level consent.
 
 ## Decision
 
@@ -45,9 +45,8 @@ rather than as part of the admin React SPA:
 - It exposes only search (and, when enabled, the OpenSearch description and
   suggestions); it never exposes admin APIs and it honors the SEC-05 privacy mode
   for query logging.
-- DDGS-fallback results appear here with the visible `[ddgs]` marker; the
-  Tavily-compatible `POST /search` API remains a separate unmarked drop-in
-  (ADR-0019).
+- It renders DDGS results with visible web provenance and explains that the
+  external provider received the query (ADR-0019).
 
 ## Consequences
 
@@ -57,6 +56,7 @@ broadest possible reach. Sharing Carbon tokens keeps them visually consistent, b
 the portal cannot lean on the full `@carbon/react` component set, so some
 components are hand-authored against Carbon tokens or chosen for their graceful
 degradation. This is the cost of the legacy-browser and no-JavaScript guarantees.
-Keeping the portal search-only and admin-free bounds its attack surface, and
-routing it through the same privacy mode and DDGS presentation rules keeps
-behavior consistent with the rest of the search stack.
+Keeping the portal search-only and admin-free bounds its attack surface. The
+operator's web-fallback privacy mode controls whether a miss that remains after
+local-plus-peer exact/morphological retrieval and local fuzzy recovery can leave
+the node.

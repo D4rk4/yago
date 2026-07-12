@@ -47,14 +47,13 @@ func relevantChunks(text string, terms []string, limit int) string {
 		limit = 1
 	}
 	chunks := make([]string, 0, limit)
-	for _, sentence := range splitSentences(text) {
-		if len(chunks) >= limit {
-			break
-		}
+	visitSentences(text, func(sentence string) bool {
 		if mentionsAnyTerm(strings.ToLower(sentence), terms) {
-			chunks = append(chunks, sentence)
+			chunks = append(chunks, strings.Clone(sentence))
 		}
-	}
+
+		return len(chunks) < limit
+	})
 	if len(chunks) == 0 {
 		return snippet(text)
 	}

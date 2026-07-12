@@ -26,6 +26,7 @@ func (s rankingSearcher) Search(
 ) (searchcore.Response, error) {
 	candidateRequest := request
 	if _, active := s.ranker.ActiveSnapshot(); active {
+		candidateRequest.RankingFeatures = true
 		limit := request.Limit
 		if limit <= 0 {
 			limit = searchcore.DefaultPublicLimit

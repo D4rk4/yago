@@ -28,14 +28,21 @@ To receive index transfer, the seed `Flags` field must set bit 2
 (`FLAG_ACCEPT_REMOTE_INDEX`). Without that bit, YaCy's sender-side DHT target
 selection skips the peer even if its `PeerType` is `senior`.
 
-Public `resource=global` search uses the same DHT target selector as outbound
-index distribution. For each query term hash, the node computes YaCy DHT
-positions and queries only reachable peers that advertise remote-index intake
-pass the age gate, and advertise non-empty RWI inventory. When the DHT position
-has more redundant eligible candidates than the configured query fanout will
-use, the node samples the target set randomly. Missing DHT targets are reported
-as partial search failures instead of broad-fanning the query to arbitrary
-reachable peers.
+Public `resource=global` search uses YaCy DHT positions but draws candidates from
+the known senior-peer roster, including peers that have not completed an inbound
+callback. This matches YaCy remote search and lets a node behind NAT search the
+swarm; an unreachable candidate becomes a partial failure. Outbound index
+distribution remains stricter and uses confirmed reachability. Search targets
+must pass the age and advertised RWI-inventory gates, and redundant candidates
+are sampled randomly instead of broad-fanning to the roster.
+
+Inbound compact seeds remain wire-compatible but are decoded under fixed limits:
+32 KiB of plain seed data, 128 properties, 128 bytes per property key, 8 KiB per
+generic property or news value, and 256 bytes for the peer name. Bootstrap keeps
+at most 4,096 decoded seeds and 16 MiB of detached seed data. Search target
+selection reuses a context-aware 4,096-peer/16 MiB candidate snapshot and
+invalidates it on roster mutations, so query traffic does not rescan the entire
+persistent roster.
 
 Inbound DHT transfer metrics are exposed on the ops listener. The RWI receiver
 publishes `yacy_rwi_received_postings_total`,
@@ -123,9 +130,11 @@ and protocol rejections into bounded exponential retry delays with jitter.
 Successful handoffs clear the peer's retry state. Repeated failed cycles produce
 a quarantine decision for the peer. The runtime scheduler honors retry readiness
 when dequeuing chunks and records every scheduler receipt in the outbound DHT
-Prometheus counters. Successful outbound handoffs confirm the peer as reachable
-in the local roster, and quarantine decisions remove the peer from the reachable
-and known peer sets so target selection stops using it.
+Prometheus counters. Successful outbound handoffs confirm the peer as reachable.
+A transport or capacity quarantine removes an unresponsive peer from the local
+roster. A protocol rejection retains roster reachability and the advertised
+remote-index flag because YaCy uses the same rejection values for operator
+policy, load shedding, admission pressure, discovery races, and target mismatch.
 
 The Prometheus edge registers outbound DHT counters for batches, postings,
 failures, and unknown URL requests (see [metrics.md](metrics.md)). The
@@ -172,10 +181,9 @@ The Go selector preserves that
 target order and eligibility logic for the peer-routing step. The runtime
 defaults to YaCy freeworld senior redundancy `3` and vertical partition exponent
 `4`, and operators can override those network-unit values for private networks.
-When a transfer target rejects the handoff and the current roster entry still
-shares the failed target's advertised address, the Go scheduler clears that
-peer's remote-index flag so future DHT target selection skips it. The peer can
-stay reachable for other P2P operations.
+Transfer rejection values never overwrite the seed's remote-index flag. The
+failed chunk remains queued behind bounded retry readiness, while later seed
+announcements remain the source of target capability.
 
 Before transfer, YaCy splits a word's RWI rows by the URL hash's vertical DHT
 partition, accumulates each partition into the chunk for its primary target,

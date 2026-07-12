@@ -1,6 +1,7 @@
 package yagomodel_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -17,6 +18,36 @@ func TestEncodeSearchIndexAbstractGroupsURLHashes(t *testing.T) {
 	want := "{AAAAAA:bbbbbbcccccc,BBBBBB:aaaaaa}"
 	if got != want {
 		t.Fatalf("abstract = %q, want %q", got, want)
+	}
+}
+
+func TestDecodeSearchIndexAbstractRetainsOnlyRequestedHashes(t *testing.T) {
+	t.Parallel()
+	raw := "{AAAAAA:" + strings.Repeat("bbbbbb", 40_000) + "}"
+	got, err := yagomodel.DecodeSearchIndexAbstractWithLimit(raw, 3)
+	if err != nil {
+		t.Fatalf("DecodeSearchIndexAbstractWithLimit: %v", err)
+	}
+	if len(got) != 3 || cap(got) != 3 {
+		t.Fatalf("bounded hashes len=%d cap=%d", len(got), cap(got))
+	}
+	zero, err := yagomodel.DecodeSearchIndexAbstractWithLimit(raw, -1)
+	if err != nil || zero != nil {
+		t.Fatalf("zero limit = %v, %v", zero, err)
+	}
+}
+
+func TestDecodeSearchIndexAbstractValidatesBeyondRetentionLimit(t *testing.T) {
+	t.Parallel()
+	raw := "{AAAAAA:bbbbbb" + strings.Repeat("cccccc", 100) + "ccccc@}"
+	if _, err := yagomodel.DecodeSearchIndexAbstractWithLimit(raw, 1); err == nil {
+		t.Fatal("malformed tail passed bounded decoding")
+	}
+	if _, err := yagomodel.DecodeSearchIndexAbstractWithLimit(
+		"{AAAAAA:bbbbbb,}",
+		1,
+	); err == nil {
+		t.Fatal("trailing group passed bounded decoding")
 	}
 }
 

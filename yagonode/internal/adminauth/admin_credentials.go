@@ -85,7 +85,7 @@ func (s *credentialStore) exists(ctx context.Context) (bool, error) {
 }
 
 func (s *credentialStore) setAdmin(ctx context.Context, username, password string) error {
-	hash, err := hashPassword(password)
+	hash, err := hashCredentialPassword(password)
 	if err != nil {
 		return err
 	}
@@ -106,15 +106,31 @@ func (s *credentialStore) setAdmin(ctx context.Context, username, password strin
 }
 
 func (s *credentialStore) createIfAbsent(ctx context.Context, username, password string) error {
-	present, err := s.exists(ctx)
+	hash, err := hashCredentialPassword(password)
 	if err != nil {
 		return err
 	}
-	if present {
-		return errAdminExists
+	if err := s.vault.Update(ctx, func(tx *vault.Txn) error {
+		_, found, err := s.records.Get(tx, adminKey)
+		if err != nil {
+			return fmt.Errorf("read admin record: %w", err)
+		}
+		if found {
+			return errAdminExists
+		}
+		if err := s.records.Put(tx, adminKey, adminRecord{
+			Username:     username,
+			PasswordHash: hash,
+		}); err != nil {
+			return fmt.Errorf("store admin record: %w", err)
+		}
+
+		return nil
+	}); err != nil {
+		return fmt.Errorf("create admin credentials: %w", err)
 	}
 
-	return s.setAdmin(ctx, username, password)
+	return nil
 }
 
 func (s *credentialStore) verify(ctx context.Context, username, password string) (bool, error) {
@@ -133,12 +149,15 @@ func (s *credentialStore) verify(ctx context.Context, username, password string)
 	}
 
 	if !found || record.Username != username {
-		_, _ = verifyPassword(dummyPasswordHash, password)
+		_, err := verifyCredentialPassword(dummyPasswordHash, password)
+		if err != nil {
+			return false, err
+		}
 
 		return false, nil
 	}
 
-	ok, err := verifyPassword(record.PasswordHash, password)
+	ok, err := verifyCredentialPassword(record.PasswordHash, password)
 	if err != nil {
 		return false, err
 	}

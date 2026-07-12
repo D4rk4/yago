@@ -95,8 +95,8 @@ func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRe
 		Language:           strings.ToLower(req.Language),
 		Weights:            weights,
 		Explain:            req.Explain,
-		IncludeFieldScores: true,
-		IncludePositions:   multiTermQuery(query, req.Terms),
+		IncludeFieldScores: req.Explain || req.RankingFeatures,
+		IncludePositions:   req.Explain || req.RankingFeatures || req.Near,
 		Fuzzy:              req.Fuzzy,
 		Author:             req.Author,
 		Terms:              append([]string(nil), req.Terms...),
@@ -134,17 +134,6 @@ func coreFacets(groups []searchindex.FacetGroup) []searchcore.FacetGroup {
 	}
 
 	return out
-}
-
-// multiTermQuery reports whether the request carries at least two query words,
-// the case where matched-term positions add proximity signal; single-term
-// queries skip the location cost since proximity needs a pair.
-func multiTermQuery(query string, terms []string) bool {
-	if len(terms) >= 2 {
-		return true
-	}
-
-	return len(strings.Fields(query)) >= 2
 }
 
 func requestLimit(req searchcore.Request) int {
@@ -309,6 +298,9 @@ func coreResult(
 	}
 
 	return searchcore.Result{
+		DocumentID:           result.DocumentID,
+		Analyzer:             result.Analyzer,
+		EvidenceReady:        result.EvidenceReady,
 		Title:                result.Title,
 		URL:                  result.URL,
 		ClusterID:            result.ClusterID,
@@ -327,7 +319,7 @@ func coreResult(
 		Date:                 result.PublishedDate.Format("20060102"),
 		DateConfidence:       result.DateConfidence,
 		ContentDomain:        req.ContentDomain,
-		Language:             req.Language,
+		Language:             result.Language,
 		Author:               result.Author,
 		Keywords:             result.Keywords,
 		Publisher:            result.Publisher,

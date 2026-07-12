@@ -222,10 +222,14 @@ func TestNodePublicSearchInstallsRemoteResultCache(t *testing.T) {
 		indexRemoteResults: true,
 	})
 
-	if _, ok := searcher.(remoteCachingSearcher); !ok {
+	budgeted, ok := searcher.(interactiveBudgetSearcher)
+	if !ok {
+		t.Fatalf("searcher = %T, want an interactiveBudgetSearcher", searcher)
+	}
+	if _, ok := budgeted.inner.(remoteCachingSearcher); !ok {
 		t.Fatalf(
-			"searcher = %T, want a remoteCachingSearcher when result caching is enabled",
-			searcher,
+			"inner searcher = %T, want a remoteCachingSearcher when result caching is enabled",
+			budgeted.inner,
 		)
 	}
 }

@@ -124,6 +124,63 @@ func TestDecodeSeedlistReturnsScannerError(t *testing.T) {
 	}
 }
 
+func TestDecodeSeedlistRejectsCompressedSeedInflation(t *testing.T) {
+	bomb := yagomodel.EncodeCompactWireForm(
+		"Hash=AAAAAAAAAAAA,Custom=" + strings.Repeat("x", 33<<10),
+	)
+	valid := seedlistLine(t, "BBBBBBBBBBBB", "203.0.113.2")
+	seeds, err := decodeSeedlist(
+		t.Context(),
+		strings.NewReader(bomb+"\n"+valid),
+		"http://example.test/seed.txt",
+	)
+	if err != nil {
+		t.Fatalf("decodeSeedlist: %v", err)
+	}
+	if len(seeds) != 1 || seeds[0].Hash != "BBBBBBBBBBBB" {
+		t.Fatalf("decoded seeds = %#v, want only valid seed", seeds)
+	}
+}
+
+func TestDecodeSeedlistBoundsDecodedEntries(t *testing.T) {
+	line := seedlistLine(t, "AAAAAAAAAAAA", "203.0.113.1") + "\n"
+	seeds, err := decodeSeedlist(
+		t.Context(),
+		strings.NewReader(strings.Repeat(line, seedlistMaxEntries+1)),
+		"http://example.test/seed.txt",
+	)
+	if err != nil {
+		t.Fatalf("decodeSeedlist: %v", err)
+	}
+	if len(seeds) != seedlistMaxEntries {
+		t.Fatalf("decoded seeds = %d, want %d", len(seeds), seedlistMaxEntries)
+	}
+}
+
+func TestDecodeSeedlistBoundsRetainedBytes(t *testing.T) {
+	line := yagomodel.EncodeCompactWireForm(
+		"Hash=AAAAAAAAAAAA,Custom="+strings.Repeat("x", 8<<10),
+	) + "\n"
+	seeds, err := decodeSeedlist(
+		t.Context(),
+		strings.NewReader(strings.Repeat(line, seedlistMaxEntries)),
+		"http://example.test/seed.txt",
+	)
+	if err != nil {
+		t.Fatalf("decodeSeedlist: %v", err)
+	}
+	retainedBytes := 0
+	for _, seed := range seeds {
+		retainedBytes += seed.RetainedBytes()
+	}
+	if retainedBytes > seedlistMaxRetainedBytes {
+		t.Fatalf("retained seed bytes = %d, maximum %d", retainedBytes, seedlistMaxRetainedBytes)
+	}
+	if len(seeds) == 0 || len(seeds) >= seedlistMaxEntries {
+		t.Fatalf("retained seeds = %d, want bounded non-empty subset", len(seeds))
+	}
+}
+
 func TestCloseResponseBodyLogsCloseError(t *testing.T) {
 	closeResponseBody(context.Background(), failingCloser{}, "test")
 }

@@ -14,6 +14,14 @@ type SearchIndex interface {
 	Stats(ctx context.Context) (IndexStats, error)
 }
 
+type SearchEvidenceSource interface {
+	SearchEvidence(
+		ctx context.Context,
+		req SearchRequest,
+		results []SearchResult,
+	) ([]SearchResult, error)
+}
+
 type SearchRequest struct {
 	Query              string
 	ExcludeTerms       []string
@@ -34,9 +42,8 @@ type SearchRequest struct {
 	// can measure query-term coverage and proximity over the document itself
 	// rather than the truncated snippet.
 	IncludePositions bool
-	// Fuzzy widens the main field matches to edit-distance-1 term matching for
-	// the zero-result recovery retry.
-	Fuzzy bool
+	CandidateOnly    bool
+	Fuzzy            bool
 	// Author keeps only documents whose extracted author metadata contains this
 	// text (case-insensitive).
 	Author string
@@ -97,6 +104,7 @@ type SearchResult struct {
 	// Publisher is the document's extracted publisher metadata
 	// (doc.Metadata["publisher"]), surfaced for the yacysearch RSS dc:publisher field.
 	Publisher            string
+	Language             string
 	Quality              float64
 	QualityKnown         bool
 	SpamRisk             float64
@@ -104,6 +112,8 @@ type SearchResult struct {
 	SymbolFraction       float64
 	AlphabeticFraction   float64
 	UniqueTokenFraction  float64
+	Analyzer             string
+	EvidenceReady        bool
 	SafetyRating         documentstore.SafetyRating
 	ExplicitProbability  float64
 	SafetyConfidence     float64
@@ -131,7 +141,8 @@ type SearchResult struct {
 	// hits report a size like peer results do.
 	Size int
 	// Images carries the document's extracted images for the image vertical.
-	Images []ResultImage
+	Images                 []ResultImage
+	quotedPhrasePreference float64
 }
 
 // ResultImage is one extracted page image surfaced by the image vertical.

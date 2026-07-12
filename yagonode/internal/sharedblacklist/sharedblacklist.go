@@ -18,11 +18,14 @@ func (NoSharedBlacklists) SharedList(context.Context, string) string {
 }
 
 func Mount(router httpguard.WireRouter, networkName string, blacklists Blacklists) {
-	httpguard.MountRaw(
+	httpguard.MountRawWithAdmission(
 		router,
-		yagoproto.PathList,
-		yagoproto.ListEndpointMethods,
-		yagoproto.ParseListRequest,
-		endpoint{networkName: networkName, blacklists: blacklists}.Serve,
+		httpguard.RawRouteAdmission[yagoproto.ListRequest]{
+			Path:      yagoproto.PathList,
+			Methods:   yagoproto.ListEndpointMethods,
+			Parse:     yagoproto.ParseListRequest,
+			Serve:     endpoint{networkName: networkName, blacklists: blacklists}.Serve,
+			Admission: httpguard.NewIntakeGate(maximumConcurrentSharedBlacklist),
+		},
 	)
 }

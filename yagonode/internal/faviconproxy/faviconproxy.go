@@ -15,7 +15,6 @@ import (
 	"image/png"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -64,8 +63,6 @@ func Mount(mux *http.ServeMux, client *http.Client) {
 	mux.Handle("GET "+Path, New(client, defaultFetchSlots))
 }
 
-// New builds the proxy with a bounded number of concurrent origin fetches and
-// the LRU icon cache (256 MiB of deduplicated icon bodies).
 func New(client *http.Client, fetchSlots int) *Proxy {
 	return newWithCache(client, fetchSlots, newIconCache(maxCacheBytes, maxCacheEntries))
 }
@@ -160,8 +157,6 @@ func (p *Proxy) fetch(ctx context.Context, host string) fetchedIcon {
 	}
 }
 
-// negative marks a host as having no usable icon: the entry carries no body, so
-// it costs the cache nothing and the placeholder answers until it expires.
 func (p *Proxy) negative() fetchedIcon {
 	return fetchedIcon{
 		contentType: "image/png",
@@ -180,11 +175,7 @@ func rasterImageType(contentType string) bool {
 // userinfo, or IP-literal brackets — the fetch always goes to https://<host>/.
 func normalizedHost(raw string) string {
 	host := strings.ToLower(strings.TrimSpace(raw))
-	if host == "" || strings.ContainsAny(host, "/@:[] \t") {
-		return ""
-	}
-	parsed, err := url.Parse("https://" + host)
-	if err != nil || parsed.Hostname() != host {
+	if !validDNSHost(host) {
 		return ""
 	}
 

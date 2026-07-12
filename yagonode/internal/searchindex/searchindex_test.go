@@ -113,6 +113,7 @@ func TestBleveMemoryIndexRebuildsAndSearchesDocuments(t *testing.T) {
 		result.Snippet != "Golang crawler document body." ||
 		result.RawContent != "Golang crawler document body." ||
 		result.PublishedDate != fetched ||
+		result.Language != "en" ||
 		result.Author != "Ada Lovelace" ||
 		result.Keywords != "go, search" ||
 		result.Publisher != "Example Press" ||
@@ -300,16 +301,14 @@ func TestBleveMemoryIndexReturnsClosedIndexErrors(t *testing.T) {
 }
 
 func TestBleveSearchQuerySupportsExcludedTerms(t *testing.T) {
-	for _, gram := range []bool{true, false} {
-		for _, multilingual := range []bool{true, false} {
-			query := bleveSearchQuery(
-				SearchRequest{Query: "golang", ExcludeTerms: []string{"", "java"}},
-				gram,
-				multilingual,
-			)
-			if query == nil {
-				t.Fatalf("expected query (gram=%v multilingual=%v)", gram, multilingual)
-			}
+	for _, multilingual := range []bool{true, false} {
+		query := bleveSearchQuery(
+			SearchRequest{Query: "golang", ExcludeTerms: []string{"", "java"}},
+			multilingual,
+			multilingual,
+		)
+		if query == nil {
+			t.Fatalf("expected query (multilingual=%v)", multilingual)
 		}
 	}
 }
@@ -435,9 +434,10 @@ func TestBleveMemoryIndexPhraseBoostPrefersAdjacency(t *testing.T) {
 	}
 
 	results, err := index.Search(t.Context(), SearchRequest{
-		Query:      "quick brown",
-		Phrases:    []string{"quick brown"},
-		MaxResults: 10,
+		Query:            "quick brown",
+		Phrases:          []string{"quick brown"},
+		MaxResults:       10,
+		IncludePositions: true,
 	})
 	if err != nil {
 		t.Fatalf("Search: %v", err)

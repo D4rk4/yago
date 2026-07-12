@@ -3,29 +3,20 @@ package faviconproxy
 import (
 	"container/list"
 	"crypto/sha256"
-	"encoding/hex"
+	"strings"
 	"sync"
 	"time"
 )
 
 const (
-	// maxCacheBytes bounds the memory the cache spends on unique icon bodies.
-	maxCacheBytes = 256 << 20
-	// maxCacheEntries backstops the per-host bookkeeping: negative entries carry
-	// no body bytes, so a byte budget alone would let host records grow without
-	// bound under a scan of icon-less hosts.
+	maxCacheBytes   = 32 << 20
 	maxCacheEntries = 65536
 )
 
-// iconCache is an LRU keyed by host with the icon bodies deduplicated by
-// content digest: hosts sharing one icon (CDN defaults, subdomain families)
-// hold references to a single stored body, and eviction pops least-recently
-// used hosts until both the unique-body byte budget and the entry backstop
-// hold. Negative (placeholder) entries reference no body and cost no bytes.
 type iconCache struct {
 	mu         sync.Mutex
 	hosts      map[string]*hostEntry
-	bodies     map[string]*iconBody
+	bodies     map[[sha256.Size]byte]*iconBody
 	order      *list.List
 	totalBytes int
 	maxBytes   int
@@ -33,22 +24,25 @@ type iconCache struct {
 }
 
 type hostEntry struct {
-	host        string
-	digest      string
-	contentType string
-	expires     time.Time
-	element     *list.Element
+	host          string
+	digest        [sha256.Size]byte
+	contentType   string
+	expires       time.Time
+	element       *list.Element
+	retainedBytes int
+	hasBody       bool
 }
 
 type iconBody struct {
-	data []byte
-	refs int
+	data          []byte
+	refs          int
+	retainedBytes int
 }
 
 func newIconCache(maxBytes, maxEntries int) *iconCache {
 	return &iconCache{
 		hosts:      map[string]*hostEntry{},
-		bodies:     map[string]*iconBody{},
+		bodies:     map[[sha256.Size]byte]*iconBody{},
 		order:      list.New(),
 		maxBytes:   maxBytes,
 		maxEntries: maxEntries,
@@ -70,7 +64,7 @@ func (c *iconCache) get(host string) (body []byte, contentType string, ok bool) 
 		return nil, "", false
 	}
 	c.order.MoveToFront(entry.element)
-	if entry.digest == "" {
+	if !entry.hasBody {
 		return nil, entry.contentType, true
 	}
 
@@ -81,48 +75,80 @@ func (c *iconCache) get(host string) (body []byte, contentType string, ok bool) 
 // deduplicating the body by digest and evicting least-recently-used hosts
 // until the byte and entry budgets hold.
 func (c *iconCache) put(host string, body []byte, contentType string, expires time.Time) {
+	entryBytes := retainedIconHostBytes(host, contentType)
+	hasBody := len(body) > 0
+	var digest [sha256.Size]byte
+	if hasBody {
+		digest = bodyDigest(body)
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	minimumBodyBytes := 0
+	additionalBodyBytes := 0
+	storedBody, bodyFound := c.bodies[digest]
+	if hasBody {
+		minimumBodyBytes = retainedIconBodyBytes(len(body))
+		additionalBodyBytes = minimumBodyBytes
+		if bodyFound {
+			minimumBodyBytes = storedBody.retainedBytes
+			additionalBodyBytes = 0
+		}
+	}
+	if c.maxBytes <= 0 || c.maxEntries <= 0 ||
+		entryBytes+minimumBodyBytes > c.maxBytes {
+		return
+	}
+	if hasBody {
+		if bodyFound {
+			storedBody.refs++
+		} else {
+			ownedBody := make([]byte, len(body))
+			copy(ownedBody, body)
+			storedBody = &iconBody{
+				data:          ownedBody,
+				refs:          1,
+				retainedBytes: additionalBodyBytes,
+			}
+			c.bodies[digest] = storedBody
+			c.totalBytes += additionalBodyBytes
+		}
+	}
 	if existing, found := c.hosts[host]; found {
 		c.removeLocked(existing)
 	}
-
-	entry := &hostEntry{host: host, contentType: contentType, expires: expires}
-	if len(body) > 0 {
-		entry.digest = bodyDigest(body)
-		if stored, found := c.bodies[entry.digest]; found {
-			stored.refs++
-		} else {
-			c.bodies[entry.digest] = &iconBody{data: body, refs: 1}
-			c.totalBytes += len(body)
-		}
-	}
-	entry.element = c.order.PushFront(entry)
-	c.hosts[host] = entry
-
-	for (c.totalBytes > c.maxBytes || c.order.Len() > c.maxEntries) && c.order.Len() > 1 {
-		// The list is owned by this file and holds host entries only.
+	for (c.totalBytes+entryBytes > c.maxBytes || c.order.Len() >= c.maxEntries) &&
+		c.order.Len() > 0 {
 		oldest, _ := c.order.Back().Value.(*hostEntry)
 		c.removeLocked(oldest)
 	}
+	entry := &hostEntry{
+		host:          strings.Clone(host),
+		digest:        digest,
+		contentType:   strings.Clone(contentType),
+		expires:       expires,
+		retainedBytes: entryBytes,
+		hasBody:       hasBody,
+	}
+	entry.element = c.order.PushFront(entry)
+	c.hosts[entry.host] = entry
+	c.totalBytes += entry.retainedBytes
 }
 
 func (c *iconCache) removeLocked(entry *hostEntry) {
 	c.order.Remove(entry.element)
 	delete(c.hosts, entry.host)
-	if entry.digest == "" {
+	c.totalBytes -= entry.retainedBytes
+	if !entry.hasBody {
 		return
 	}
 	body := c.bodies[entry.digest]
 	body.refs--
 	if body.refs == 0 {
-		c.totalBytes -= len(body.data)
+		c.totalBytes -= body.retainedBytes
 		delete(c.bodies, entry.digest)
 	}
 }
 
-func bodyDigest(body []byte) string {
-	sum := sha256.Sum256(body)
-
-	return hex.EncodeToString(sum[:])
+func bodyDigest(body []byte) [sha256.Size]byte {
+	return sha256.Sum256(body)
 }

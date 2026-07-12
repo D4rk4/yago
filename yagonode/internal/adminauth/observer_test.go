@@ -15,6 +15,16 @@ type countingObserver struct {
 	keyForbidden   int
 }
 
+func TestNoopAuthObserverAcceptsEveryOutcome(t *testing.T) {
+	observer := noopAuthObserver{}
+	observer.LoginSucceeded()
+	observer.LoginFailed()
+	observer.LoginThrottled()
+	observer.APIKeyRejected()
+	observer.APIKeyThrottled()
+	observer.APIKeyForbidden()
+}
+
 func (c *countingObserver) LoginSucceeded()  { c.loginSuccess++ }
 func (c *countingObserver) LoginFailed()     { c.loginFailure++ }
 func (c *countingObserver) LoginThrottled()  { c.loginThrottled++ }

@@ -16,7 +16,7 @@ redirect, public base URL, autocrawler profile — plus the groups this review
 added:
 
 - `storage.quota` — the disk budget (the 1 GB default is trial-only).
-- `search.api.require_key` — scoped-key enforcement for the agent API.
+- `search.api.scoped_access` — scoped-key enforcement for the agent API.
 - `network.peer.https_preferred`, `network.announce.interval`,
   `network.announce.greets_per_cycle` — swarm presence.
 - `dht.*` — participation, distribution, busy-gates, interval, redundancy,

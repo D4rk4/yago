@@ -78,6 +78,10 @@ type DocumentDirectory interface {
 	Count(ctx context.Context) (int, error)
 }
 
+type DocumentPresence interface {
+	DocumentExists(ctx context.Context, normalizedURL string) (bool, error)
+}
+
 type StoredDocuments interface {
 	StoredDocuments(ctx context.Context, visit func(Document) (bool, error)) error
 }
@@ -119,6 +123,7 @@ func Open(v *vault.Vault) (DocumentDirectory, DocumentReceiver, error) {
 		collection:      collection,
 		inboundAnchors:  inboundAnchors,
 		outboundTargets: outboundTargets,
+		scanAdmission:   make(chan struct{}, 1),
 	}
 	return documents, documents, nil
 }

@@ -3,6 +3,7 @@ package yagonode
 import (
 	"context"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -14,6 +15,8 @@ const (
 	didYouMeanMinTermRunes    = 3
 	didYouMeanTitleSample     = 10
 )
+
+var recoverySearchBudget = 250 * time.Millisecond
 
 // recoveringSearcher runs the zero-result recovery cascade (YaCy DidYouMean
 // parity): when a query with parsed terms finds nothing, it retries once with
@@ -55,7 +58,9 @@ func (s recoveringSearcher) Search(
 
 	retry := req
 	retry.Fuzzy = true
-	recovered, retryErr := s.retry.Search(ctx, retry)
+	retryCtx, cancel := context.WithTimeout(ctx, recoverySearchBudget)
+	defer cancel()
+	recovered, retryErr := s.retry.Search(retryCtx, retry)
 	if retryErr != nil || len(recovered.Results) == 0 {
 		// The recovery retry is best-effort: when it fails or stays empty, the
 		// caller gets the primary search's honest empty answer — still carrying a
@@ -63,7 +68,7 @@ func (s recoveringSearcher) Search(
 		// point at the likely intended query.
 		resp.DidYouMean = s.spellSuggestion(req.Terms)
 
-		return resp, nil //nolint:nilerr // deliberate fallback to the empty answer.
+		return resp, nil
 	}
 	recovered.Request = req
 	recovered.Recovered = "fuzzy"

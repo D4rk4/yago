@@ -62,23 +62,24 @@ type jsonNavigation struct {
 func responseJSON(r *http.Request, resp searchcore.Response) jsonResponse {
 	base := searchBaseURL(r)
 	link := searchLink(base, resp.Request)
+	query := resp.Request.SubmittedText()
 
 	return jsonResponse{Channels: []jsonChannel{
 		{
-			Title:       "YaCy P2P-Search for " + resp.Request.Query,
-			Description: "Search for " + resp.Request.Query,
+			Title:       "YaCy P2P-Search for " + query,
+			Description: "Search for " + query,
 			Link:        link,
 			Image: jsonImage{
 				URL:   searchImageURL(r),
-				Title: "Search for " + resp.Request.Query,
+				Title: "Search for " + query,
 				Link:  link,
 			},
 			StartIndex:   strconv.Itoa(resp.Request.Offset),
 			ItemsPerPage: strconv.Itoa(resp.Request.Limit),
-			SearchTerms:  url.QueryEscape(resp.Request.Query),
+			SearchTerms:  url.QueryEscape(query),
 			Items:        responseItems(resp.Results),
 			Navigation: responseJSONNavigation(
-				buildNavigation(resp.Request.Query, resp.Facets),
+				buildNavigation(query, resp.Facets),
 			),
 			TotalResults:    strconv.Itoa(resp.TotalResults),
 			PartialFailures: resp.PartialFailures,
@@ -143,7 +144,7 @@ func searchLink(base string, req searchcore.Request) string {
 }
 
 func searchURL(base string, req searchcore.Request) string {
-	return base + "?query=" + url.QueryEscape(req.Query) +
+	return base + "?query=" + url.QueryEscape(req.SubmittedText()) +
 		"&resource=" + url.QueryEscape(string(req.Source)) +
 		"&contentdom=" + url.QueryEscape(string(req.ContentDomain))
 }

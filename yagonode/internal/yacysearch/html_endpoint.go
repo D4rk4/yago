@@ -115,7 +115,7 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 <details>
 <summary>Search operators</summary>
 <ul>
-<li><code>"exact phrase"</code> — match words adjacently</li>
+<li><code>"quoted phrase"</code> — prefer results where the words appear adjacently</li>
 <li><code>-word</code> — exclude a word</li>
 <li><code>site:example.org</code> — one host only</li>
 <li><code>inurl:blog</code> — URL must contain text</li>
@@ -130,7 +130,7 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 {{if .ShowResults}}
 <section id="results" tabindex="-1">
 <h1>Search for {{.Query}}</h1>
-{{if .Recovered}}<p role="status">No exact matches — showing close matches instead.{{if .DidYouMean}} Did you mean <a href="{{.DidYouMeanURL}}">{{.DidYouMean}}</a>?{{end}}</p>{{end}}
+{{if .Recovered}}<p role="status">No exact matches — showing close matches instead.{{if .DidYouMean}} Did you mean <a href="{{.DidYouMeanURL}}">{{.DidYouMean}}</a>?{{end}}</p>{{else if .DidYouMean}}<p role="status">No results matched. Did you mean <a href="{{.DidYouMeanURL}}">{{.DidYouMean}}</a>?</p>{{end}}
 <p role="status">{{.TotalResults}} results{{if .Elapsed}} ({{.Elapsed}}){{end}}</p>
 {{if .NavGroups}}
 <nav aria-label="Refine results">
@@ -267,7 +267,7 @@ func (e htmlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "search failed", http.StatusInternalServerError)
 		return
 	}
-	e.suggestions.Record(req.Query)
+	e.suggestions.Record(req.SubmittedText())
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -283,9 +283,10 @@ var htmlClock = time.Now
 func responseHTML(r *http.Request, resp searchcore.Response) htmlSearchPage {
 	base := searchBaseURL(r)
 	rawSearchURL := searchURL(base, resp.Request)
+	query := resp.Request.SubmittedText()
 
 	page := htmlSearchPage{
-		Query:         resp.Request.Query,
+		Query:         query,
 		Resource:      string(resp.Request.Source),
 		ContentDomain: string(resp.Request.ContentDomain),
 		SearchURL:     searchBaseURL(r),
@@ -301,7 +302,7 @@ func responseHTML(r *http.Request, resp searchcore.Response) htmlSearchPage {
 			resp.Request.Offset,
 		),
 		PartialFailures:    resp.PartialFailures,
-		ShowResults:        resp.Request.Query != "",
+		ShowResults:        query != "",
 		ShowPartialFailure: len(resp.PartialFailures) > 0,
 	}
 	if resp.DidYouMean != "" {
@@ -321,14 +322,15 @@ func responseHTML(r *http.Request, resp searchcore.Response) htmlSearchPage {
 // first page, so refining never drops the operator's neighbours (the wire
 // surfaces keep the query-only refine URL that YaCy clients expect).
 func htmlNavGroups(base string, params url.Values, resp searchcore.Response) []htmlNavGroup {
-	built := buildNavigation(resp.Request.Query, resp.Facets)
+	query := resp.Request.SubmittedText()
+	built := buildNavigation(query, resp.Facets)
 	groups := make([]htmlNavGroup, 0, len(built))
 	for _, group := range built {
 		elements := make([]htmlNavElement, 0, len(group.elements))
 		for _, element := range group.elements {
 			nav := htmlNavElement{Name: element.name, Count: element.count}
 			if element.modifier != "" {
-				nav.URL = htmlRefineURL(base, params, resp.Request.Query, element.modifier)
+				nav.URL = htmlRefineURL(base, params, query, element.modifier)
 			}
 			elements = append(elements, nav)
 		}

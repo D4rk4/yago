@@ -19,10 +19,14 @@ type rosterEntry struct {
 type rosterEntryCodec struct{}
 
 func (rosterEntryCodec) Encode(entry rosterEntry) ([]byte, error) {
-	out := make([]byte, lastSeenWidth, lastSeenWidth+len(entry.seed.String()))
+	encoded := entry.seed.String()
+	if _, err := yagomodel.ParseSeed(context.Background(), encoded); err != nil {
+		return nil, fmt.Errorf("encode roster entry: %w", err)
+	}
+	out := make([]byte, lastSeenWidth, lastSeenWidth+len(encoded))
 	binary.BigEndian.PutUint64(out, uint64(entry.lastSeen.UnixNano()))
 
-	return append(out, entry.seed.String()...), nil
+	return append(out, encoded...), nil
 }
 
 func (rosterEntryCodec) Decode(raw []byte) (rosterEntry, error) {

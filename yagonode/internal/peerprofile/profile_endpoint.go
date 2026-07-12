@@ -34,24 +34,22 @@ func (e endpoint) Serve(
 }
 
 func encodeProperties(properties []Property) string {
+	size, ok := profileResponseSize(properties)
+	if !ok {
+		return ""
+	}
 	var b strings.Builder
+	b.Grow(size)
 	for _, property := range properties {
-		key := sanitizePropertyPart(property.Key)
-		value := sanitizePropertyPart(property.Value)
-		if key == "" || value == "" {
+		if sanitizedProfilePartSize(property.Key, size) == 0 ||
+			sanitizedProfilePartSize(property.Value, size) == 0 {
 			continue
 		}
-		b.WriteString(key)
+		writeSanitizedProfilePart(&b, property.Key)
 		b.WriteByte('=')
-		b.WriteString(value)
+		writeSanitizedProfilePart(&b, property.Value)
 		b.WriteString(profileLineBreak)
 	}
 
 	return b.String()
-}
-
-func sanitizePropertyPart(value string) string {
-	value = strings.ReplaceAll(value, "\r", "")
-
-	return strings.ReplaceAll(value, "\n", "\\n")
 }

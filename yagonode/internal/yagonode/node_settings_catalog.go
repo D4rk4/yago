@@ -354,7 +354,7 @@ func remoteSearchDefinitions() []settingDefinition {
 		{
 			key:          "search.remote.peer_timeout",
 			title:        "Swarm per-peer timeout",
-			description:  "How long one peer may take to answer a swarm search (e.g. 3s); real YaCy peers answer in one to five seconds.",
+			description:  "How long one peer may take to contribute to an interactive swarm search.",
 			defaultValue: func(config nodeConfig) string { return config.RemotePeerTimeout.String() },
 			normalize:    normalizeSettingDuration,
 			apply: func(config nodeConfig, value string) nodeConfig {
@@ -366,7 +366,7 @@ func remoteSearchDefinitions() []settingDefinition {
 		{
 			key:          "search.remote.timeout",
 			title:        "Swarm overall timeout",
-			description:  "Budget for the whole peer fan-out per query (e.g. 4s); it runs concurrently with the local search.",
+			description:  "Budget for the whole peer fan-out inside the interactive response deadline.",
 			defaultValue: func(config nodeConfig) string { return config.RemoteTimeout.String() },
 			normalize:    normalizeSettingDuration,
 			apply: func(config nodeConfig, value string) nodeConfig {
@@ -384,11 +384,11 @@ func webFallbackDefinitions() []settingDefinition {
 		{
 			key:         "web.fallback.privacy",
 			title:       "Web search fallback (DDGS)",
-			description: "Fall back to anonymous web search when the index has no answer.",
+			description: "Control anonymous web search after exact local and swarm retrieval plus bounded local fuzzy recovery return no results.",
 			options: []settingOption{
 				{value: string(webFallbackPrivacyDisabled), label: "Disabled"},
 				{value: string(webFallbackPrivacyExplicit), label: "Only when requested"},
-				{value: string(webFallbackPrivacyEnabled), label: "Enabled"},
+				{value: string(webFallbackPrivacyEnabled), label: "Enabled on search miss"},
 			},
 			defaultValue: func(config nodeConfig) string { return string(config.WebFallback.Privacy) },
 			normalize: func(raw string) (string, error) {
@@ -410,9 +410,9 @@ func webFallbackDefinitions() []settingDefinition {
 		{
 			key:         "web.fallback.backend",
 			title:       "Web fallback engines",
-			description: "Which keyless engines answer the web fallback; auto walks DuckDuckGo, Brave, Mojeek, then Bing until one answer mentions the query.",
+			description: "Which keyless engines answer the web fallback; auto starts DuckDuckGo HTML first, then hedges DuckDuckGo Lite, Brave, Mojeek, and Bing at 50 ms intervals until one answer mentions the query.",
 			options: []settingOption{
-				{value: "auto", label: "Auto (DuckDuckGo → Brave → Mojeek → Bing)"},
+				{value: "auto", label: "Auto (hedged engines)"},
 				{value: "ddg", label: "DuckDuckGo only"},
 				{value: "brave", label: "Brave only"},
 				{value: "mojeek", label: "Mojeek only"},

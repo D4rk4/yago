@@ -83,6 +83,13 @@ func TestSearchRequestFromValuesNavEnablesFacets(t *testing.T) {
 	if without.WithFacets {
 		t.Fatal("no nav must keep the facet scan off")
 	}
+	disabled, err := searchRequestFromValues(url.Values{"query": {"golang"}, "nav": {"none"}})
+	if err != nil {
+		t.Fatalf("disabled nav: %v", err)
+	}
+	if disabled.WithFacets {
+		t.Fatal("nav=none must keep the facet scan off")
+	}
 }
 
 func TestBuildNavigation(t *testing.T) {

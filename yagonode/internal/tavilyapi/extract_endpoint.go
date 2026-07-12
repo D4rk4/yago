@@ -78,10 +78,11 @@ type ContentFetcher interface {
 }
 
 type extractEndpoint struct {
-	documents documentstore.DocumentDirectory
-	access    SearchAccessPolicy
-	fetcher   ContentFetcher
-	now       func() time.Time
+	documents    documentstore.DocumentDirectory
+	access       SearchAccessPolicy
+	fetcher      ContentFetcher
+	now          func() time.Time
+	workDuration time.Duration
 }
 
 func MountExtract(
@@ -109,7 +110,13 @@ func NewExtractEndpointWithFetcher(
 	access SearchAccessPolicy,
 	fetcher ContentFetcher,
 ) http.Handler {
-	return extractEndpoint{documents: documents, access: access, fetcher: fetcher, now: time.Now}
+	return extractEndpoint{
+		documents:    documents,
+		access:       access,
+		fetcher:      fetcher,
+		now:          time.Now,
+		workDuration: maximumRawContentWorkDuration,
+	}
 }
 
 func (e extractEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +132,16 @@ func (e extractEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	release, admitted := enterRawContentWork(w, id)
+	if !admitted {
+		return
+	}
+	defer release()
+	ctx, cancel := rawContentWorkContext(r.Context(), e.workDuration)
+	defer cancel()
+	stopBodyClose := closeRequestBodyWhenDone(ctx, r.Body)
+	defer stopBodyClose()
+	r = r.WithContext(ctx)
 
 	var req ExtractRequest
 	if err := decodeJSONRequest(w, r, &req); err != nil {
@@ -150,12 +167,11 @@ func (e extractEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := e.extractResponse(r.Context(), req, e.now(), id)
 	if err != nil {
-		status := http.StatusInternalServerError
-		code := "extract_failed"
-		if isBadRequest(err) {
-			status = http.StatusBadRequest
-			code = "invalid_extract_request"
-		}
+		status, code := rawContentResponseError(
+			err,
+			"extract_failed",
+			"invalid_extract_request",
+		)
 		writeError(w, status, code, err.Error(), id)
 
 		return
@@ -176,10 +192,15 @@ func (e extractEndpoint) extractResponse(
 		return ExtractResponse{}, err
 	}
 
+	budget := &rawContentBudget{
+		retained: rawContentEnvelopeBytes + len(id) +
+			len(req.URLs)*(rawContentExtractResultBytes+rawContentExtractFailureBytes),
+		output: rawContentEnvelopeBytes + rawContentJSONStringBytes(id),
+	}
 	results := make([]ExtractResult, 0, len(req.URLs))
-	failures := make([]ExtractFailure, 0)
+	failures := make([]ExtractFailure, 0, len(req.URLs))
 	for _, raw := range req.URLs {
-		result, failure, err := e.extractOne(ctx, req, raw)
+		result, failure, err := e.extractOne(ctx, req, raw, budget)
 		if err != nil {
 			return ExtractResponse{}, err
 		}
@@ -203,63 +224,156 @@ func (e extractEndpoint) extractOne(
 	ctx context.Context,
 	req ExtractRequest,
 	raw string,
+	budget *rawContentBudget,
 ) (ExtractResult, *ExtractFailure, error) {
 	normalized, ok := normalizeExtractURL(raw)
 	if !ok {
-		return ExtractResult{}, &ExtractFailure{
-			URL:   raw,
-			Error: "url must be an absolute http or https URL",
-		}, nil
+		failure, err := retainExtractFailure(
+			budget,
+			raw,
+			"url must be an absolute http or https URL",
+		)
+
+		return ExtractResult{}, failure, err
 	}
 	doc, found, err := e.lookup(ctx, normalized)
 	if err != nil {
 		return ExtractResult{}, nil, err
 	}
 	if found {
-		return extractResult(req, raw, doc), nil, nil
+		return retainDocumentExtractResult(req, raw, doc, budget)
 	}
 	if e.fetcher == nil {
-		return ExtractResult{}, &ExtractFailure{
-			URL:   raw,
-			Error: "url is not in the index and fetch-on-extract is disabled",
-		}, nil
+		failure, failureErr := retainExtractFailure(
+			budget,
+			raw,
+			"url is not in the index and fetch-on-extract is disabled",
+		)
+
+		return ExtractResult{}, failure, failureErr
 	}
 
 	fetched, err := e.fetcher.Fetch(ctx, normalized)
 	if err != nil {
-		//nolint:nilerr // a fetch failure is a per-URL failed_result, not a fatal request error.
-		return ExtractResult{}, &ExtractFailure{
-			URL:   raw,
-			Error: "fetch-on-extract failed",
-		}, nil
+		failure, failureErr := retainExtractFailure(budget, raw, "fetch-on-extract failed")
+
+		return ExtractResult{}, failure, failureErr
 	}
 
-	return fetchedExtractResult(req, raw, fetched), nil, nil
+	return retainFetchedExtractResult(req, raw, fetched, budget)
 }
 
-func fetchedExtractResult(
+func retainDocumentExtractResult(
+	req ExtractRequest,
+	requestedURL string,
+	doc documentstore.Document,
+	budget *rawContentBudget,
+) (ExtractResult, *ExtractFailure, error) {
+	raw := doc.ExtractedText
+	if strings.EqualFold(strings.TrimSpace(req.Format), "markdown") {
+		var ok bool
+		raw, ok = boundedDocumentMarkdown(doc, maximumRawContentResponseBytes-budget.retained)
+		if !ok {
+			return rejectedExtractResult(budget, requestedURL)
+		}
+	}
+	images := make([]string, 0, maxResultImages)
+	if req.IncludeImages {
+		for _, image := range doc.Images {
+			if len(images) >= maxResultImages {
+				break
+			}
+			if image.URL != "" {
+				images = append(images, image.URL)
+			}
+		}
+	}
+
+	return retainExtractResult(budget, requestedURL, raw, images, req.IncludeFavicon)
+}
+
+func retainFetchedExtractResult(
 	req ExtractRequest,
 	requestedURL string,
 	content FetchedContent,
-) ExtractResult {
+	budget *rawContentBudget,
+) (ExtractResult, *ExtractFailure, error) {
 	raw := content.Text
 	if strings.EqualFold(strings.TrimSpace(req.Format), "markdown") {
-		raw = fetchedMarkdown(content)
-	}
-	result := ExtractResult{URL: requestedURL, RawContent: raw}
-	if req.IncludeFavicon {
-		result.Favicon = faviconURL(requestedURL)
+		var ok bool
+		raw, ok = boundedFetchedMarkdown(content, maximumRawContentResponseBytes-budget.retained)
+		if !ok {
+			return rejectedExtractResult(budget, requestedURL)
+		}
 	}
 
-	return result
+	return retainExtractResult(budget, requestedURL, raw, nil, req.IncludeFavicon)
 }
 
-func fetchedMarkdown(content FetchedContent) string {
-	if content.Title == "" {
-		return content.Text
+func retainExtractResult(
+	budget *rawContentBudget,
+	requestedURL string,
+	raw string,
+	images []string,
+	includeFavicon bool,
+) (ExtractResult, *ExtractFailure, error) {
+	favicon := ""
+	if includeFavicon {
+		favicon = faviconURL(requestedURL)
+	}
+	retained := len(requestedURL) + len(raw) + len(favicon) +
+		len(images)*rawContentStringHeaderBytes
+	output := rawContentResultJSONBytes + rawContentJSONStringBytes(requestedURL) +
+		rawContentJSONStringBytes(raw) + rawContentJSONStringBytes(favicon)
+	for _, image := range images {
+		retained += len(image)
+		output += rawContentJSONStringBytes(image)
+	}
+	if !budget.reserve(retained, output) {
+		return rejectedExtractResult(budget, requestedURL)
+	}
+	result := ExtractResult{
+		URL:        strings.Clone(requestedURL),
+		RawContent: strings.Clone(raw),
+		Favicon:    strings.Clone(favicon),
+	}
+	if len(images) > 0 {
+		result.Images = make([]string, len(images))
+		for index, image := range images {
+			result.Images[index] = strings.Clone(image)
+		}
 	}
 
-	return "# " + content.Title + "\n\n" + content.Text
+	return result, nil, nil
+}
+
+func rejectedExtractResult(
+	budget *rawContentBudget,
+	requestedURL string,
+) (ExtractResult, *ExtractFailure, error) {
+	failure, err := retainExtractFailure(
+		budget,
+		requestedURL,
+		"extracted content exceeds response limit",
+	)
+
+	return ExtractResult{}, failure, err
+}
+
+func retainExtractFailure(
+	budget *rawContentBudget,
+	requestedURL string,
+	message string,
+) (*ExtractFailure, error) {
+	if !budget.reserve(
+		len(requestedURL)+len(message),
+		rawContentResultJSONBytes+rawContentJSONStringBytes(requestedURL)+
+			rawContentJSONStringBytes(message),
+	) {
+		return nil, errRawContentBudgetExceeded
+	}
+
+	return &ExtractFailure{URL: strings.Clone(requestedURL), Error: strings.Clone(message)}, nil
 }
 
 func (e extractEndpoint) lookup(
@@ -307,55 +421,6 @@ func validateExtractFormat(format string) error {
 	default:
 		return badRequest("unsupported format")
 	}
-}
-
-func extractResult(
-	req ExtractRequest,
-	requestedURL string,
-	doc documentstore.Document,
-) ExtractResult {
-	result := ExtractResult{
-		URL:        requestedURL,
-		RawContent: extractContent(req.Format, doc),
-	}
-	if req.IncludeImages {
-		result.Images = extractImages(doc)
-	}
-	if req.IncludeFavicon {
-		result.Favicon = faviconURL(requestedURL)
-	}
-
-	return result
-}
-
-func extractContent(format string, doc documentstore.Document) string {
-	if strings.EqualFold(strings.TrimSpace(format), "markdown") {
-		return markdownContent(doc)
-	}
-
-	return doc.ExtractedText
-}
-
-func markdownContent(doc documentstore.Document) string {
-	return documentMarkdown(doc)
-}
-
-func extractImages(doc documentstore.Document) []string {
-	urls := make([]string, 0)
-	for _, image := range doc.Images {
-		if len(urls) >= maxResultImages {
-			break
-		}
-		if image.URL == "" {
-			continue
-		}
-		urls = append(urls, image.URL)
-	}
-	if len(urls) == 0 {
-		return nil
-	}
-
-	return urls
 }
 
 func faviconURL(rawURL string) string {

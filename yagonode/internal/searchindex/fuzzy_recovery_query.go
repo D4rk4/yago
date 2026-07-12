@@ -1,57 +1,159 @@
 package searchindex
 
 import (
+	"unicode/utf8"
+
 	"github.com/blevesearch/bleve/v2"
 	blevequery "github.com/blevesearch/bleve/v2/search/query"
 )
 
-// fuzzyRecoveryQuery is the recall-first query the zero-result recovery retry
-// runs: the whole query text ORed across every candidate analyzer's text fields
-// and the url field, tolerating one edit per term so slightly misspelled
-// queries still reach close matches. It runs only when the precise query found
-// nothing, so its looseness cannot flood an ordinary answer.
+const maximumFuzzyTermRunes = 64
+
 func fuzzyRecoveryQuery(
 	req SearchRequest,
-	gram bool,
+	analyzers []string,
+	weights RankingWeights,
+	analyzerScope bool,
+) blevequery.Query {
+	if !analyzerScope {
+		return strictFuzzyRecoveryQuery(req, analyzers, weights)
+	}
+	branches := []blevequery.Query{strictFuzzyRecoveryQuery(
+		req,
+		[]string{standardTextAnalyzer},
+		weights,
+	)}
+	for _, analyzer := range analyzers {
+		terms := requirableTermsForAnalyzer(queryTermWords(req), analyzer)
+		if len(terms) == 0 {
+			continue
+		}
+		required := make([]blevequery.Query, 0, len(terms)+1)
+		required = append(required, analyzerScopeClause(analyzer))
+		for _, term := range terms {
+			required = append(
+				required,
+				fuzzyCrossFieldTermClauseForAnalyzer(term, analyzer, weights),
+			)
+		}
+		branch := required[0]
+		if len(required) > 1 {
+			branch = bleve.NewConjunctionQuery(required...)
+		}
+		branches = append(branches, branch)
+	}
+	if len(branches) == 1 {
+		return branches[0]
+	}
+
+	return bleve.NewDisjunctionQuery(branches...)
+}
+
+func strictFuzzyRecoveryQuery(
+	req SearchRequest,
 	analyzers []string,
 	weights RankingWeights,
 ) blevequery.Query {
-	main := bleve.NewDisjunctionQuery()
+	terms := requirableTerms(queryTermWords(req), analyzers)
+	if len(terms) == 0 {
+		terms = []string{req.Query}
+	}
+	required := make([]blevequery.Query, 0, len(terms))
+	for _, term := range terms {
+		required = append(required, fuzzyCrossFieldTermClause(term, analyzers, weights))
+	}
+	if len(required) == 1 {
+		return required[0]
+	}
+
+	return bleve.NewConjunctionQuery(required...)
+}
+
+func fuzzyCrossFieldTermClauseForAnalyzer(
+	term string,
+	analyzer string,
+	weights RankingWeights,
+) blevequery.Query {
+	clause := bleve.NewDisjunctionQuery()
+	prefix := fuzzyPrefixLength(term)
+	distance := fuzzyEditDistance(term)
+	for _, field := range textSearchFields() {
+		match := fieldMatchWithAnalyzer(
+			field,
+			term,
+			textFieldWeight(field, weights),
+			analyzer,
+		)
+		match.SetFuzziness(distance)
+		match.SetPrefix(prefix)
+		clause.AddQuery(match)
+	}
+	urlMatch := fieldMatch("url", term, weights.URL)
+	urlMatch.SetFuzziness(distance)
+	urlMatch.SetPrefix(prefix)
+	clause.AddQuery(urlMatch)
+
+	return clause
+}
+
+func fuzzyCrossFieldTermClause(
+	term string,
+	analyzers []string,
+	weights RankingWeights,
+) blevequery.Query {
+	clause := bleve.NewDisjunctionQuery()
+	prefix := fuzzyPrefixLength(term)
+	distance := fuzzyEditDistance(term)
 	for _, analyzer := range analyzers {
 		for _, field := range textSearchFields() {
 			match := fieldMatchWithAnalyzer(
 				field,
-				req.Query,
+				term,
 				textFieldWeight(field, weights),
 				analyzer,
 			)
-			match.SetFuzziness(1)
-			main.AddQuery(match)
+			match.SetFuzziness(distance)
+			match.SetPrefix(prefix)
+			clause.AddQuery(match)
 		}
 	}
-	urlMatch := fieldMatch("url", req.Query, weights.URL)
-	urlMatch.SetFuzziness(1)
-	main.AddQuery(urlMatch)
-	if gram {
-		// Language-agnostic trigram recall, restricted to the zero-result
-		// recovery path. Matching a word's character trigrams with AND semantics
-		// does NOT require them to be contiguous or in one word, so over a long
-		// body every common trigram of a query word (e.g. Russian "черногория" ->
-		// чер, ерн, рно, ...) occurs scattered in nearly every same-script
-		// document, flooding ordinary queries with unrelated content. Restoring
-		// contiguity needs positional term vectors (a reindex), and morphology is
-		// better served by per-language stemming, so grams now only widen recall
-		// when the precise query already found nothing rather than on every search.
-		// Skipped when the index mapping predates the trigram analyzer: such an
-		// index can neither resolve the analyzer nor hold gram fields, and a
-		// query referencing it fails the whole search.
-		main.AddQuery(
-			gramMatch("title"+gramFieldSuffix, req.Query, weights.Title*gramWeightFactor),
-			gramMatch("headings"+gramFieldSuffix, req.Query, weights.Headings*gramWeightFactor),
-			gramMatch("anchors"+gramFieldSuffix, req.Query, weights.Anchors*gramWeightFactor),
-			gramMatch("body"+gramFieldSuffix, req.Query, weights.Body*gramWeightFactor),
-		)
+	urlMatch := fieldMatch("url", term, weights.URL)
+	urlMatch.SetFuzziness(distance)
+	urlMatch.SetPrefix(prefix)
+	clause.AddQuery(urlMatch)
+
+	return clause
+}
+
+func fuzzyEditDistance(term string) int {
+	switch runes := utf8.RuneCountInString(term); {
+	case runes <= 2 || runes > maximumFuzzyTermRunes:
+		return 0
+	case runes >= 8:
+		return 2
 	}
 
-	return main
+	return 1
+}
+
+func fuzzyPrefixLength(term string) int {
+	desiredRunes := 0
+	switch runes := utf8.RuneCountInString(term); {
+	case fuzzyEditDistance(term) == 2:
+		desiredRunes = 4
+	case runes >= 6:
+		desiredRunes = 2
+	case runes >= 4:
+		desiredRunes = 1
+	}
+	bytes := 0
+	for _, character := range term {
+		if desiredRunes == 0 {
+			break
+		}
+		bytes += utf8.RuneLen(character)
+		desiredRunes--
+	}
+
+	return bytes
 }

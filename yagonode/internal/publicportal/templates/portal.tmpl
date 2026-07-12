@@ -104,7 +104,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
     <details class="ophelp">
       <summary>Search operators</summary>
       <ul>
-<li><code>"exact phrase"</code> — match words adjacently</li>
+<li><code>"quoted phrase"</code> — prefer results where the words appear adjacently</li>
 <li><code>-word</code> — exclude a word</li>
 <li><code>site:example.org</code> — one host only</li>
 <li><code>inurl:blog</code> — URL must contain text</li>
@@ -125,6 +125,8 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   {{with .Results}}
   {{if .Recovered}}
   <p class="meta" role="status">No exact matches for “{{.Query}}” — showing close matches instead.{{if .DidYouMean}} Did you mean <a href="{{.DidYouMeanURL}}">{{.DidYouMean}}</a>?{{end}}</p>
+  {{else if .DidYouMean}}
+  <p class="meta" role="status">No results matched. Did you mean <a href="{{.DidYouMeanURL}}">{{.DidYouMean}}</a>?</p>
   {{end}}
   <p class="meta" role="status">{{.TotalResults}} result(s) for “{{.Query}}”{{if $.Elapsed}} ({{$.Elapsed}}){{end}}.{{if .Results}} Showing {{$.ShownFrom}}–{{$.ShownTo}} on this page: {{.LocalCount}} from this node · {{.PeerCount}} from peers · {{.WebCount}} from the web.{{end}}{{if .PeersFailed}} {{.PeersFailed}} peer(s) unreachable or timed out.{{end}}</p>
   {{if .Hint}}<p class="meta" role="status">{{.Hint}}</p>{{end}}

@@ -2,7 +2,6 @@ package searchindex
 
 import (
 	"regexp"
-	"sort"
 
 	"github.com/blevesearch/bleve/v2/search"
 )
@@ -26,19 +25,7 @@ func hitFieldTermPositions(
 	}
 	out := make(map[string]map[string][]int, len(hit.Locations))
 	for field, terms := range hit.Locations {
-		termPositions := make(map[string][]int, len(terms))
-		for term, locations := range terms {
-			positions := make([]int, 0, len(locations))
-			for _, location := range locations {
-				// A token position is bounded by the document's token count
-				// (documents are size-capped), so it always fits int.
-				pos := int(location.Pos) //nolint:gosec // G115: bounded token position
-				positions = append(positions, pos)
-			}
-			sort.Ints(positions)
-			termPositions[term] = positions
-		}
-		out[field] = termPositions
+		out[field] = boundedFieldTermPositions(req, terms)
 	}
 
 	return out

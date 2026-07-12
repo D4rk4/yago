@@ -146,39 +146,20 @@ func (s *Service) guardAPIKey(
 	required Scope,
 	next http.Handler,
 ) {
-	id, _, ok := parseAPIKey(token)
-	if !ok {
-		s.observer.APIKeyRejected()
+	switch s.APIKeyAuthorizer().Authorize(r.Context(), token, required) {
+	case APIKeyAuthorized:
+		next.ServeHTTP(w, r)
+	case APIKeyUnauthenticated:
 		writeError(w, http.StatusUnauthorized, "authentication required")
-
-		return
-	}
-	if !s.keyLimiter.allow(id) {
-		s.observer.APIKeyThrottled()
+	case APIKeyThrottled:
+		w.Header().Set("Retry-After", "1")
 		writeError(w, http.StatusTooManyRequests, "too many requests, try again later")
-
-		return
-	}
-	info, ok, err := s.apiKeys.authenticate(r.Context(), token)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "authentication failed")
-
-		return
-	}
-	if !ok {
-		s.observer.APIKeyRejected()
-		writeError(w, http.StatusUnauthorized, "authentication required")
-
-		return
-	}
-	if !info.hasScope(required) {
-		s.observer.APIKeyForbidden()
+	case APIKeyForbidden:
 		writeError(w, http.StatusForbidden, "insufficient scope")
-
-		return
+	default:
+		w.Header().Set("Retry-After", "1")
+		writeError(w, http.StatusServiceUnavailable, "authentication unavailable")
 	}
-
-	next.ServeHTTP(w, r)
 }
 
 func bearerToken(r *http.Request) (string, bool) {

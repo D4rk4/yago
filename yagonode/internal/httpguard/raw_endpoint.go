@@ -23,7 +23,28 @@ func MountRaw[Req any](
 	parse func(ctx context.Context, form url.Values) (Req, error),
 	serve func(ctx context.Context, req Req) (RawResponse, error),
 ) {
-	router.mux.Handle(path, ServeRaw(router.gate, methods, parse, serve))
+	MountRawWithAdmission(router, RawRouteAdmission[Req]{
+		Path:    path,
+		Methods: methods,
+		Parse:   parse,
+		Serve:   serve,
+	})
+}
+
+func MountRawWithAdmission[Req any](
+	router WireRouter,
+	route RawRouteAdmission[Req],
+) {
+	router.mux.Handle(
+		route.Path,
+		ServeRawWithAdmission(
+			router.gate,
+			route.Methods,
+			route.Parse,
+			route.Serve,
+			route.Admission,
+		),
+	)
 }
 
 func ServeRaw[Req any](
@@ -32,7 +53,30 @@ func ServeRaw[Req any](
 	parse func(ctx context.Context, form url.Values) (Req, error),
 	serve func(ctx context.Context, req Req) (RawResponse, error),
 ) http.Handler {
+	return ServeRawWithAdmission(gate, methods, parse, serve, nil)
+}
+
+func ServeRawWithAdmission[Req any](
+	gate WireGate,
+	methods yagoproto.EndpointMethodSet,
+	parse func(ctx context.Context, form url.Values) (Req, error),
+	serve func(ctx context.Context, req Req) (RawResponse, error),
+	admission *IntakeGate,
+) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		release, admitted := admission.TryAcquire()
+		if !admitted {
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, "request capacity exceeded", http.StatusServiceUnavailable)
+
+			return
+		}
+		defer release()
+		releaseWire, admitted := enterWireIntake(w, gate.Intake)
+		if !admitted {
+			return
+		}
+		defer releaseWire()
 		form, ctx, cancel, ok := gate.Guard.Parse(w, r, methods)
 		if !ok {
 			return

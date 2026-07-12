@@ -194,6 +194,7 @@ func TestSearchRequestFromValuesMergesOperatorsAndParams(t *testing.T) {
 		got.Limit != 3 ||
 		got.Offset != 2 ||
 		got.Navigation != "none" ||
+		got.WithFacets ||
 		!got.SortByDate ||
 		!got.Near {
 		t.Fatalf("request = %#v", got)

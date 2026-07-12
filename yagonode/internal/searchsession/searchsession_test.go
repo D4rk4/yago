@@ -15,8 +15,9 @@ import (
 // shufflingSearcher returns a different result set on every invocation, the way
 // the live federated fan-out does with its random DHT peer sample.
 type shufflingSearcher struct {
-	calls int
-	err   error
+	calls  int
+	err    error
+	limits []int
 }
 
 func (s *shufflingSearcher) Search(
@@ -27,6 +28,7 @@ func (s *shufflingSearcher) Search(
 		return searchcore.Response{}, s.err
 	}
 	s.calls++
+	s.limits = append(s.limits, req.Limit)
 	results := make([]searchcore.Result, 25)
 	for i := range results {
 		results[i] = searchcore.Result{
@@ -37,7 +39,7 @@ func (s *shufflingSearcher) Search(
 
 	return searchcore.Response{
 		Request:      req,
-		TotalResults: 2000, // the raw exaggerated total the session must correct
+		TotalResults: len(results),
 		Results:      results,
 	}, nil
 }
@@ -68,6 +70,9 @@ func TestStableWindowPagesFromOneSession(t *testing.T) {
 	if inner.calls != 1 {
 		t.Fatalf("inner searched %d times for three pages, want 1 session", inner.calls)
 	}
+	if len(inner.limits) != 1 || inner.limits[0] != sessionDepth {
+		t.Fatalf("initial candidate window = %v, want %d", inner.limits, sessionDepth)
+	}
 	if page1.TotalResults != 25 || page2.TotalResults != 25 {
 		t.Fatalf("total = %d, want the honest collected count", page1.TotalResults)
 	}
@@ -81,6 +86,25 @@ func TestStableWindowPagesFromOneSession(t *testing.T) {
 		Query: "go", Terms: []string{"go"}, Offset: 30, Limit: 10,
 	}); err != nil || len(window.Results) != 0 {
 		t.Fatalf("beyond the session = %d results, want 0", len(window.Results))
+	}
+}
+
+func TestStableWindowResponseDoesNotAliasSession(t *testing.T) {
+	inner := &shufflingSearcher{}
+	searcher := WithStableWindow(inner)
+	ctx := context.Background()
+	first, err := searcher.Search(ctx, searchcore.Request{Query: "go", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Results[1].Title = "changed"
+
+	cached, err := searcher.Search(ctx, searchcore.Request{Query: "go", Offset: 1, Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached.Results[0].Title != "call1-result1" {
+		t.Fatalf("cached result changed through response alias: %q", cached.Results[0].Title)
 	}
 }
 

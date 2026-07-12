@@ -229,7 +229,11 @@ func TestIconCacheDeduplicatesSharedBodies(t *testing.T) {
 	if len(cache.bodies) != 2 {
 		t.Fatalf("unique bodies = %d, want 2 (shared icon deduplicated)", len(cache.bodies))
 	}
-	if cache.totalBytes != len(icon)+len("different") {
+	wantBytes := retainedIconHostBytes("a.example", "image/png") +
+		retainedIconHostBytes("b.example", "image/png") +
+		retainedIconHostBytes("c.example", "image/png") +
+		retainedIconBodyBytes(len(icon)) + retainedIconBodyBytes(len("different"))
+	if cache.totalBytes != wantBytes {
 		t.Fatalf("total bytes = %d, want deduplicated sum", cache.totalBytes)
 	}
 	if body, _, ok := cache.get("b.example"); !ok || !bytes.Equal(body, icon) {
@@ -238,13 +242,14 @@ func TestIconCacheDeduplicatesSharedBodies(t *testing.T) {
 }
 
 func TestIconCacheEvictsLeastRecentlyUsedByBytes(t *testing.T) {
-	// Budget holds two 8-byte bodies; the third insert evicts the LRU host.
-	cache := newIconCache(16, maxCacheEntries)
+	entryBytes := retainedIconHostBytes("old.example", "image/png")
+	bodyBytes := retainedIconBodyBytes(8)
+	budget := 2 * (entryBytes + bodyBytes)
+	cache := newIconCache(budget, maxCacheEntries)
 	expires := clock().Add(time.Hour)
 
 	cache.put("old.example", []byte("11111111"), "image/png", expires)
 	cache.put("mid.example", []byte("22222222"), "image/png", expires)
-	// Touch the oldest so recency protects it and "mid" becomes the victim.
 	if _, _, ok := cache.get("old.example"); !ok {
 		t.Fatal("touch miss")
 	}
@@ -258,7 +263,7 @@ func TestIconCacheEvictsLeastRecentlyUsedByBytes(t *testing.T) {
 			t.Fatalf("%s evicted despite recency", host)
 		}
 	}
-	if cache.totalBytes > 16 {
+	if cache.totalBytes > budget {
 		t.Fatalf("total bytes = %d, want within budget", cache.totalBytes)
 	}
 }
@@ -296,7 +301,9 @@ func TestIconCacheDropsExpiredOnGetAndReplacesOnPut(t *testing.T) {
 
 	cache.put("a.example", []byte("body-one"), "image/png", current.Add(time.Hour))
 	cache.put("a.example", []byte("body-two!"), "image/png", current.Add(time.Hour))
-	if cache.totalBytes != len("body-two!") {
+	wantBytes := retainedIconHostBytes("a.example", "image/png") +
+		retainedIconBodyBytes(len("body-two!"))
+	if cache.totalBytes != wantBytes {
 		t.Fatalf("replacing a host's icon leaked bytes: %d", cache.totalBytes)
 	}
 }

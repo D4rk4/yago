@@ -101,21 +101,32 @@ func mentionsAnyTerm(sentence string, terms []string) bool {
 // terminator with the sentence.
 func splitSentences(text string) []string {
 	sentences := make([]string, 0, 8)
-	var current strings.Builder
-	for _, r := range text {
-		current.WriteRune(r)
-		if r == '.' || r == '!' || r == '?' {
-			if sentence := strings.TrimSpace(current.String()); sentenceWorthKeeping(sentence) {
-				sentences = append(sentences, sentence)
-			}
-			current.Reset()
-		}
-	}
-	if sentence := strings.TrimSpace(current.String()); sentenceWorthKeeping(sentence) {
+	visitSentences(text, func(sentence string) bool {
 		sentences = append(sentences, sentence)
-	}
+
+		return true
+	})
 
 	return sentences
+}
+
+func visitSentences(text string, visit func(string) bool) {
+	start := 0
+	for index, current := range text {
+		if current != '.' && current != '!' && current != '?' {
+			continue
+		}
+		end := index + 1
+		sentence := strings.TrimSpace(text[start:end])
+		if sentenceWorthKeeping(sentence) && !visit(sentence) {
+			return
+		}
+		start = end
+	}
+	sentence := strings.TrimSpace(text[start:])
+	if sentenceWorthKeeping(sentence) {
+		visit(sentence)
+	}
 }
 
 // sentenceWorthKeeping drops fragments too short to inform an answer.

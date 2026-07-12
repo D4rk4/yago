@@ -80,18 +80,25 @@ type MapResponse struct {
 }
 
 type crawlEndpoint struct {
-	access  SearchAccessPolicy
-	fetcher PageFetcher
-	now     func() time.Time
-	mapOnly bool
+	access       SearchAccessPolicy
+	fetcher      PageFetcher
+	now          func() time.Time
+	mapOnly      bool
+	workDuration time.Duration
 }
 
 // MountCrawl serves the Tavily-compatible POST /crawl and POST /map.
 func MountCrawl(mux *http.ServeMux, access SearchAccessPolicy, fetcher PageFetcher) {
-	mux.Handle(PathCrawl, crawlEndpoint{access: access, fetcher: fetcher, now: time.Now})
+	mux.Handle(PathCrawl, crawlEndpoint{
+		access: access, fetcher: fetcher, now: time.Now,
+		workDuration: maximumRawContentWorkDuration,
+	})
 	mux.Handle(
 		PathMap,
-		crawlEndpoint{access: access, fetcher: fetcher, now: time.Now, mapOnly: true},
+		crawlEndpoint{
+			access: access, fetcher: fetcher, now: time.Now, mapOnly: true,
+			workDuration: maximumRawContentWorkDuration,
+		},
 	)
 }
 
@@ -114,6 +121,16 @@ func (e crawlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	release, admitted := enterRawContentWork(w, id)
+	if !admitted {
+		return
+	}
+	defer release()
+	ctx, cancel := rawContentWorkContext(r.Context(), e.workDuration)
+	defer cancel()
+	stopBodyClose := closeRequestBodyWhenDone(ctx, r.Body)
+	defer stopBodyClose()
+	r = r.WithContext(ctx)
 	var req CrawlRequest
 	if err := decodeJSONRequest(w, r, &req); err != nil {
 		if isJSONRequestTooLarge(err) {
@@ -134,12 +151,11 @@ func (e crawlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := e.now()
 	pages, baseURL, err := e.walk(r.Context(), req)
 	if err != nil {
-		status := http.StatusInternalServerError
-		code := "crawl_failed"
-		if isBadRequest(err) {
-			status = http.StatusBadRequest
-			code = "invalid_crawl_request"
-		}
+		status, code := rawContentResponseError(
+			err,
+			"crawl_failed",
+			"invalid_crawl_request",
+		)
 		writeError(w, status, code, err.Error(), id)
 
 		return
@@ -155,18 +171,12 @@ func (e crawlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.NewEncoder(w).Encode(CrawlResponse{
-		BaseURL: baseURL, Results: crawlResults(req, pages), ResponseTime: elapsed, RequestID: id,
+		BaseURL: baseURL, Results: pages, ResponseTime: elapsed, RequestID: id,
 	})
 }
 
-// crawledEntry pairs a URL with its fetched page.
-type crawledEntry struct {
-	url  string
-	page CrawledPage
-}
-
 // walk runs the bounded breadth-first crawl.
-func (e crawlEndpoint) walk(ctx context.Context, req CrawlRequest) ([]crawledEntry, string, error) {
+func (e crawlEndpoint) walk(ctx context.Context, req CrawlRequest) ([]CrawlResult, string, error) {
 	bounds, err := crawlBounds(req)
 	if err != nil {
 		return nil, "", err
@@ -175,21 +185,43 @@ func (e crawlEndpoint) walk(ctx context.Context, req CrawlRequest) ([]crawledEnt
 	if err != nil || base.Host == "" || base.Scheme != "http" && base.Scheme != "https" {
 		return nil, "", badRequest("url must be absolute http(s)")
 	}
+	baseURL := base.String()
+	if len(baseURL) > maximumRawContentURLBytes {
+		return nil, "", badRequest("url exceeds maximum length")
+	}
 	filters, err := newCrawlFilters(req, base)
 	if err != nil {
 		return nil, "", err
 	}
 
+	budget := &rawContentBudget{output: rawContentEnvelopeBytes}
+	retainedEntries := bounds.limit * rawContentCrawlResultBytes
+	if e.mapOnly {
+		retainedEntries += bounds.limit * rawContentStringHeaderBytes
+	}
+	budget.retained = rawContentEnvelopeBytes + retainedEntries + len(baseURL) +
+		rawContentMapEntryBytes + rawContentQueueEntryBytes
+	budget.output += 2 * rawContentJSONStringBytes(baseURL)
+	retainedBase := strings.Clone(baseURL)
+	queue := make([]queuedPage, 1, bounds.limit)
+	queue[0] = queuedPage{url: retainedBase, depth: 0}
+	seen := make(map[string]bool, bounds.limit)
+	seen[retainedBase] = true
 	walker := &crawlWalker{
 		endpoint: e,
+		request:  req,
 		bounds:   bounds,
 		filters:  filters,
-		seen:     map[string]bool{base.String(): true},
-		queue:    []queuedPage{{url: base.String(), depth: 0}},
+		budget:   budget,
+		seen:     seen,
+		queue:    queue,
+		entries:  make([]CrawlResult, 0, bounds.limit),
 	}
-	walker.run(ctx)
+	if err := walker.run(ctx); err != nil {
+		return nil, "", err
+	}
 
-	return walker.entries, base.String(), nil
+	return walker.entries, retainedBase, nil
 }
 
 // queuedPage is one frontier entry of the bounded walk.
@@ -202,44 +234,114 @@ type queuedPage struct {
 // skip the page (partial results serve, matching Tavily's behavior).
 type crawlWalker struct {
 	endpoint crawlEndpoint
+	request  CrawlRequest
 	bounds   crawlBoundsSet
 	filters  crawlFilters
+	budget   *rawContentBudget
 	seen     map[string]bool
 	queue    []queuedPage
-	entries  []crawledEntry
+	entries  []CrawlResult
+	attempts int
+	next     int
 }
 
-func (w *crawlWalker) run(ctx context.Context) {
-	for len(w.queue) > 0 && len(w.entries) < w.bounds.limit {
-		if ctx.Err() != nil {
-			return
+func (w *crawlWalker) run(ctx context.Context) error {
+	for w.next < len(w.queue) && len(w.entries) < w.bounds.limit && w.attempts < w.bounds.limit {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
 		}
-		head := w.queue[0]
-		w.queue = w.queue[1:]
+		head := w.queue[w.next]
+		w.queue[w.next] = queuedPage{}
+		w.next++
+		w.attempts++
 		page, err := w.endpoint.fetcher.FetchPage(ctx, head.url)
 		if err != nil {
 			continue
 		}
-		w.entries = append(w.entries, crawledEntry{url: head.url, page: page})
+		result, links, err := w.consumePage(head.url, page)
+		if err != nil {
+			return err
+		}
+		w.entries = append(w.entries, result)
 		if head.depth < w.bounds.depth {
-			w.enqueueLinks(page.Links, head.depth+1)
+			w.enqueueLinks(links, head.depth+1)
 		}
 	}
+
+	return nil
+}
+
+func (w *crawlWalker) consumePage(
+	url string,
+	page CrawledPage,
+) (CrawlResult, []string, error) {
+	result, err := w.retainResult(url, page)
+
+	return result, page.Links, err
+}
+
+func (w *crawlWalker) retainResult(url string, page CrawledPage) (CrawlResult, error) {
+	if w.endpoint.mapOnly {
+		return CrawlResult{URL: url}, nil
+	}
+	content := page.Text
+	if strings.EqualFold(strings.TrimSpace(w.request.Format), "markdown") && page.Title != "" {
+		bounded, ok := boundedFetchedMarkdown(
+			FetchedContent{Title: page.Title, Text: page.Text},
+			maximumRawContentResponseBytes-w.budget.retained,
+		)
+		if !ok {
+			return CrawlResult{}, errRawContentBudgetExceeded
+		}
+		content = bounded
+	}
+	favicon := ""
+	if w.request.IncludeFavicon {
+		favicon = faviconURL(url)
+	}
+	if !w.budget.reserve(
+		len(content)+len(favicon),
+		rawContentResultJSONBytes+rawContentJSONStringBytes(url)+
+			rawContentJSONStringBytes(content)+rawContentJSONStringBytes(favicon),
+	) {
+		return CrawlResult{}, errRawContentBudgetExceeded
+	}
+
+	return CrawlResult{
+		URL: url, RawContent: strings.Clone(content), Favicon: strings.Clone(favicon),
+	}, nil
 }
 
 func (w *crawlWalker) enqueueLinks(links []string, depth int) {
 	breadth := 0
 	for _, link := range links {
-		if breadth >= w.bounds.breadth || len(w.seen) >= w.bounds.limit*4 {
+		if breadth >= w.bounds.breadth || len(w.seen) >= w.bounds.limit {
 			return
 		}
-		if w.seen[link] || !w.filters.allows(link) {
+		if len(link) > maximumRawContentURLBytes || w.seen[link] || !w.filters.allows(link) {
 			continue
 		}
-		w.seen[link] = true
+		retained, ok := retainCrawlURL(w.budget, link)
+		if !ok {
+			return
+		}
+		w.seen[retained] = true
 		breadth++
-		w.queue = append(w.queue, queuedPage{url: link, depth: depth})
+		w.queue = append(w.queue, queuedPage{url: retained, depth: depth})
 	}
+}
+
+func retainCrawlURL(budget *rawContentBudget, value string) (string, bool) {
+	if !budget.reserve(
+		len(value)+rawContentMapEntryBytes+rawContentQueueEntryBytes,
+		rawContentJSONStringBytes(value),
+	) {
+		return "", false
+	}
+
+	return strings.Clone(value), true
 }
 
 type crawlBoundsSet struct {
@@ -368,29 +470,11 @@ func sameSite(host, baseHost string) bool {
 	return trim(host) == trim(baseHost)
 }
 
-func pageURLs(entries []crawledEntry) []string {
+func pageURLs(entries []CrawlResult) []string {
 	urls := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		urls = append(urls, entry.url)
+		urls = append(urls, entry.URL)
 	}
 
 	return urls
-}
-
-func crawlResults(req CrawlRequest, entries []crawledEntry) []CrawlResult {
-	results := make([]CrawlResult, 0, len(entries))
-	markdown := strings.EqualFold(strings.TrimSpace(req.Format), "markdown")
-	for _, entry := range entries {
-		content := entry.page.Text
-		if markdown && entry.page.Title != "" {
-			content = "# " + entry.page.Title + "\n\n" + content
-		}
-		result := CrawlResult{URL: entry.url, RawContent: content}
-		if req.IncludeFavicon {
-			result.Favicon = faviconURL(entry.url)
-		}
-		results = append(results, result)
-	}
-
-	return results
 }

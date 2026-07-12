@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	seedlistMaxBodyBytes int64 = 8 << 20
-	seedlistMaxLineBytes       = 1 << 20
+	seedlistMaxBodyBytes     int64 = 8 << 20
+	seedlistMaxLineBytes           = 1 << 20
+	seedlistMaxEntries             = 4096
+	seedlistMaxRetainedBytes       = 16 << 20
 )
 
 var errSeedlistFetchFailed = errors.New("seedlist fetch failed")
@@ -48,26 +50,21 @@ func (f httpSeedlistFetcher) Fetch(ctx context.Context, url string) ([]yagomodel
 
 func decodeSeedlist(ctx context.Context, body io.Reader, url string) ([]yagomodel.Seed, error) {
 	var seeds []yagomodel.Seed
+	entries := 0
+	retainedBytes := 0
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), seedlistMaxLineBytes)
 	for scanner.Scan() {
+		entries++
+		if entries > seedlistMaxEntries {
+			break
+		}
 		line := scanner.Text()
 		if line == "" {
 			continue
 		}
 
-		plain, err := yagomodel.DecodeWireForm(ctx, line)
-		if err != nil {
-			slog.WarnContext(
-				ctx,
-				"seedlist line discarded",
-				slog.String("url", url),
-				slog.Any("error", err),
-			)
-
-			continue
-		}
-		seed, err := yagomodel.ParseSeed(ctx, plain)
+		seed, err := yagomodel.ParseSeedWireForm(ctx, line)
 		if err != nil {
 			slog.WarnContext(
 				ctx,
@@ -79,7 +76,12 @@ func decodeSeedlist(ctx context.Context, body io.Reader, url string) ([]yagomode
 			continue
 		}
 
+		seedBytes := seed.RetainedBytes()
+		if seedBytes > seedlistMaxRetainedBytes-retainedBytes {
+			continue
+		}
 		seeds = append(seeds, seed)
+		retainedBytes += seedBytes
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("%w: %w", errSeedlistFetchFailed, err)

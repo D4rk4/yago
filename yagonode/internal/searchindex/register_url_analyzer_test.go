@@ -41,15 +41,3 @@ func TestRegisterURLAnalyzerRejectsDuplicateAnalyzer(t *testing.T) {
 		t.Fatal("expected a duplicate-analyzer registration error")
 	}
 }
-
-func TestPhraseBoostsSkipsBlankPhrases(t *testing.T) {
-	if got := phraseBoosts(
-		[]string{"  ", "", "\t"},
-		RankingWeights{},
-		standardTextAnalyzer,
-	); len(
-		got,
-	) != 0 {
-		t.Fatalf("boosts = %d, want none for blank phrases", len(got))
-	}
-}

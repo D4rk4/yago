@@ -119,7 +119,7 @@ func TestPortalDesignTabsRenderEditors(t *testing.T) {
 		"/admin/assets/vendor/grapes.min.js",
 		"/admin/assets/vendor/codemirror.min.js",
 		"/admin/assets/vendor/cm-simple.min.js",
-		"/admin/assets/portal_designer.js?v=3",
+		"/admin/assets/portal_designer.js?v=4",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Errorf("design tabs missing %q", want)
@@ -434,6 +434,11 @@ func assertPortalDesignerBootstrap(t *testing.T, path string, got capture) {
 			`avoidProtected: true, keepUnusedStyles: true`,
 			`webpagePlugin(editor, { useCustomTheme: false })`,
 			`cssIcons: "/admin/assets/vendor/font-awesome.min.css?v=4.7.0"`,
+			`preserveScripts(tplCM.getValue())`,
+			`docParts = splitDocument(preservedScripts.document)`,
+			`data-yago-preserved-script=`,
+			`docParts.prefix + visualComponents(grapes) + docParts.suffix`,
+			`document.replace(marker, function (placeholder, token, rawIndex)`,
 			`grapes.destroy()`,
 		} {
 			if !strings.Contains(got.body, want) {

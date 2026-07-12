@@ -33,11 +33,6 @@ import (
 	"github.com/blevesearch/bleve/v2/mapping"
 )
 
-// standardTextAnalyzer is the no-stemming fallback for languages without a
-// bleve stemmer (Hebrew and any script we do not route): the Unicode tokenizer
-// splits words in any script, lowercasing folds case, and NFKC normalization
-// folds width and compatibility variants. Documents in these languages still
-// rank on exact words and recover through the trigram field.
 const standardTextAnalyzer = "standard_text"
 
 // stemmingAnalyzers lists the bleve language analyzers a document may be routed
@@ -146,7 +141,10 @@ func scriptAnalyzers(script *unicode.RangeTable) []string {
 	case unicode.Cyrillic:
 		return []string{"ru"}
 	case unicode.Latin:
-		return []string{searchTextAnalyzer, "de", "fr", "es", "it", "pt", "nl"}
+		return []string{
+			searchTextAnalyzer, "da", "de", "es", "fi", "fr", "hr", "hu", "it",
+			"nl", "no", "pl", "pt", "ro", "sv", "tr",
+		}
 	case unicode.Arabic:
 		return []string{"ar", "fa"}
 	case unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul:

@@ -66,6 +66,7 @@ func writeAuthDecision(w http.ResponseWriter, decision AuthDecision, id string) 
 	case DecisionForbidden:
 		writeError(w, http.StatusForbidden, "forbidden", "insufficient scope", id)
 	case DecisionThrottled:
+		w.Header().Set("Retry-After", "1")
 		writeError(
 			w,
 			http.StatusTooManyRequests,
@@ -74,9 +75,10 @@ func writeAuthDecision(w http.ResponseWriter, decision AuthDecision, id string) 
 			id,
 		)
 	case DecisionUnavailable:
+		w.Header().Set("Retry-After", "1")
 		writeError(
 			w,
-			http.StatusInternalServerError,
+			http.StatusServiceUnavailable,
 			"auth_unavailable",
 			"authorization failed",
 			id,

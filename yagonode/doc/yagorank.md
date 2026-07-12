@@ -12,12 +12,13 @@ Serving, explanation, and training use the same bounded local candidate stages:
 local retrieval, bounded RM3 feedback, then lexical evidence construction. Every
 search follows these stages:
 
-1. Build a candidate window from strict fielded BM25, a relaxed 60% term-match
-   branch, phrases, ordered and unordered term-dependence signals, and bounded
-   RM3 feedback. Strict and relaxed lists are fused by reciprocal rank. Feedback
-   uses at most five distinct documents, 256 tokens per document, and three
-   expansion terms that occur in at least two feedback documents. Required query
-   terms remain required.
+1. Build a candidate window from strict all-term fielded BM25 and a relaxed 60%
+   term-match branch, then fuse the two lists by reciprocal rank before stored
+   documents are inspected. Bounded RM3 feedback uses at most five distinct
+   documents, 256 tokens per document, and three expansion terms that occur in
+   at least two feedback documents. Required query terms remain mandatory.
+   Visible text supplies ordinary lexical proximity; explicit ranking-feature,
+   explain, or near consumers may request capped stored-document positions.
 2. Merge local and YaCy peer lists deterministically. A peer contributes one
    list regardless of response timing. Persistent peer reliability adjusts its
    RRF contribution, while IPv4 `/24` and IPv6 `/48` influence caps limit a
@@ -44,14 +45,22 @@ search follows these stages:
    crowding, requested date ordering, and paging once. Similar unclustered
    results are not deleted.
 
-Index-cache identity covers every request field and ranking weight. Paging
+Index-cache identity covers every request field and ranking weight. Its
+byte-aware LRU retains at most 256 entries and 16 MiB, deep-clones owned payloads,
+and clears stale generations immediately after an index mutation. Paging
 sessions structurally include every result- or policy-affecting request field
-except offset and limit. Cached facets, maps, positions, and media values are
-cloned before delivery. Disk post-filters and facets traverse matching documents
+except offset and limit; their byte-aware LRU retains at most 128 sessions and
+32 MiB. Both caches serve an oversized result once without retaining it. Cached
+strings, facets, maps, positions, and media values are deeply detached before
+retention and delivery. Disk post-filters and facets traverse matching documents
 with a bounded identifier cursor and retain only a bounded score top-k, so an
 eligible tail and counts beyond 1,000 matches remain visible without unbounded
-memory. A complete scan has a five-second internal deadline, 100,000-hit cap,
-and 256-hit page cap to bound transient Bleve explanation and location trees.
+memory. Candidate-only disk scans read a stored size-bounded projection instead
+of full document bodies; selected evidence may still load the leading ten full
+documents. A complete scan has a five-second internal deadline, 100,000-hit cap,
+256-hit page cap, and bounded identifier cursor. Bleve locations remain
+disabled; explicit position maps come from the capped stored-document evidence
+pass. Deadlines and hit caps bound explanations and stored evidence.
 Deadline, cap, incomplete page, and partial-shard conditions fail honestly
 instead of returning truncated counts. The scan keeps one consistent index view,
 so indexing can wait behind work bounded by both controls.

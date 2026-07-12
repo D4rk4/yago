@@ -1,7 +1,9 @@
 package hostrank
 
 import (
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -50,5 +52,58 @@ func TestCitationSampleHandlesEmptyAndPriorityTies(t *testing.T) {
 	queue.Swap(0, 1)
 	if queue[0].key != "a" || !citationPrecedes(queue[0], queue[1]) {
 		t.Fatal("citation priority tie is not deterministic")
+	}
+}
+
+func TestCitationSampleHasHardCountAndRetainedByteBounds(t *testing.T) {
+	sample := newCitationSample(maximumDomainCitations + 1)
+	for index := range maximumDomainCitations + 128 {
+		sample.Add(Citation{
+			SourceURL:  fmt.Sprintf("https://source.example/%d", index),
+			TargetURL:  fmt.Sprintf("https://target.example/%d", index),
+			Confidence: 1,
+		})
+	}
+	if sample.limit != maximumDomainCitations || len(sample.Citations()) != maximumDomainCitations {
+		t.Fatalf("sample limits = %d/%d", sample.limit, len(sample.Citations()))
+	}
+	if sample.retainedBytes != len(sample.citations)*maximumCitationRetainedBytes ||
+		sample.retainedBytes > maximumCitationSampleBytes {
+		t.Fatalf("sample retained bytes = %d", sample.retainedBytes)
+	}
+}
+
+func TestCitationSampleRejectsOversizedURLsAndOwnsCompactStorage(t *testing.T) {
+	oversized := strings.Repeat("x", maximumCitationURLBytes+1)
+	rejected := newCitationSample(1)
+	rejected.Add(Citation{SourceURL: oversized, TargetURL: "target", Confidence: 1})
+	rejected.Add(Citation{SourceURL: "source", TargetURL: oversized, Confidence: 1})
+	if len(rejected.Citations()) != 0 || rejected.retainedBytes != 0 {
+		t.Fatalf("oversized citations retained = %#v", rejected.Citations())
+	}
+	boundary := newCitationSample(1)
+	exact := strings.Repeat("x", maximumCitationURLBytes)
+	boundary.Add(Citation{SourceURL: exact, TargetURL: exact, Confidence: 1})
+	if len(boundary.Citations()) != 1 || boundary.retainedBytes != maximumCitationRetainedBytes {
+		t.Fatalf("boundary citation retained = %#v", boundary.Citations())
+	}
+
+	backing := strings.Repeat("x", 1<<20)
+	source := backing[100:120]
+	target := backing[200:225]
+	sample := newCitationSample(1)
+	sample.Add(Citation{SourceURL: source, TargetURL: target, Confidence: 1})
+	retained := sample.citations[0]
+	backingStart := uintptr(reflect.ValueOf(backing).UnsafePointer())
+	backingEnd := backingStart + uintptr(len(backing))
+	sourceStart := uintptr(reflect.ValueOf(retained.citation.SourceURL).UnsafePointer())
+	targetStart := uintptr(reflect.ValueOf(retained.citation.TargetURL).UnsafePointer())
+	keyStart := uintptr(reflect.ValueOf(retained.key).UnsafePointer())
+	if sourceStart >= backingStart && sourceStart < backingEnd ||
+		targetStart >= backingStart && targetStart < backingEnd {
+		t.Fatal("citation sample retained source storage")
+	}
+	if sourceStart != keyStart || targetStart != keyStart+uintptr(len(source)+1) {
+		t.Fatal("citation URLs do not share the compact identity storage")
 	}
 }

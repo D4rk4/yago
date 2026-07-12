@@ -10,28 +10,36 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
 const (
-	PathSearch        = "/search"
-	requestIDHeader   = "X-Request-ID"
-	defaultMaxResults = 5
-	maxResultsCap     = 20
-	snippetRuneCap    = 320
-	tavilyDateLayout  = "2006-01-02"
-	maxResultImages   = 5
-	maxResponseImages = 20
+	PathSearch            = "/search"
+	requestIDHeader       = "X-Request-ID"
+	defaultMaxResults     = 5
+	maxResultsCap         = 20
+	snippetRuneCap        = 320
+	tavilyDateLayout      = "2006-01-02"
+	maxResultImages       = 5
+	maxResponseImages     = 20
+	maximumRequestIDBytes = 128
 )
 
 type searchEndpoint struct {
-	search    searchcore.Searcher
-	documents documentstore.DocumentDirectory
-	access    SearchAccessPolicy
-	now       func() time.Time
+	search          searchcore.Searcher
+	documents       documentstore.DocumentDirectory
+	access          SearchAccessPolicy
+	admission       SearchAdmission
+	intake          *requestAdmission
+	now             func() time.Time
+	rawWorkDuration time.Duration
 }
+
+type SearchAdmission func(*http.Request) (func(), int, time.Duration)
 
 type SearchAccessPolicy struct {
 	BearerToken string
@@ -127,8 +135,9 @@ func Mount(
 	search searchcore.Searcher,
 	documents documentstore.DocumentDirectory,
 	access SearchAccessPolicy,
+	admission SearchAdmission,
 ) {
-	mux.Handle(PathSearch, NewSearchEndpointWithAccess(search, documents, access))
+	mux.Handle(PathSearch, newSearchEndpoint(search, documents, access, admission))
 }
 
 func NewSearchEndpoint(
@@ -143,11 +152,23 @@ func NewSearchEndpointWithAccess(
 	documents documentstore.DocumentDirectory,
 	access SearchAccessPolicy,
 ) http.Handler {
+	return newSearchEndpoint(search, documents, access, nil)
+}
+
+func newSearchEndpoint(
+	search searchcore.Searcher,
+	documents documentstore.DocumentDirectory,
+	access SearchAccessPolicy,
+	admission SearchAdmission,
+) http.Handler {
 	return searchEndpoint{
-		search:    search,
-		documents: documents,
-		access:    access,
-		now:       time.Now,
+		search:          search,
+		documents:       documents,
+		access:          access,
+		admission:       admission,
+		intake:          newRequestAdmission(maximumConcurrentSearchRequestBodies),
+		now:             time.Now,
+		rawWorkDuration: maximumRawContentWorkDuration,
 	}
 }
 
@@ -171,10 +192,16 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	releaseIntake, admitted := enterSearchRequestIntake(w, id, e.intake)
+	if !admitted {
+		return
+	}
 
 	var req SearchRequest
-	if err := decodeJSONRequest(w, r, &req); err != nil {
-		if isJSONRequestTooLarge(err) {
+	decodeErr := decodeJSONRequest(w, r, &req)
+	releaseIntake()
+	if decodeErr != nil {
+		if isJSONRequestTooLarge(decodeErr) {
 			writeError(
 				w,
 				http.StatusRequestEntityTooLarge,
@@ -186,8 +213,8 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		message := "invalid search request"
-		if isBadRequest(err) {
-			message = err.Error()
+		if isBadRequest(decodeErr) {
+			message = decodeErr.Error()
 		}
 		writeError(w, http.StatusBadRequest, "invalid_search_request", message, id)
 		return
@@ -198,16 +225,25 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	r, releaseWork, admitted := e.enterWork(
+		w,
+		r,
+		id,
+		req.IncludeRawContent.Enabled(),
+	)
+	if !admitted {
+		return
+	}
+	defer releaseWork()
 
 	start := e.now()
 	resp, err := e.searchResponse(r.Context(), req, start, id)
 	if err != nil {
-		status := http.StatusInternalServerError
-		code := "search_failed"
-		if isBadRequest(err) {
-			status = http.StatusBadRequest
-			code = "invalid_search_request"
-		}
+		status, code := rawContentResponseError(
+			err,
+			"search_failed",
+			"invalid_search_request",
+		)
 		writeError(w, status, code, err.Error(), id)
 		return
 	}
@@ -304,29 +340,33 @@ func coreRequest(req SearchRequest) (searchcore.Request, error) {
 	if err != nil {
 		return searchcore.Request{}, err
 	}
-	parsed := searchcore.ParseTextQuery(query)
+	parsed, err := searchcore.ParsePublicTextQuery(query)
+	if err != nil {
+		return searchcore.Request{}, badRequest(err.Error())
+	}
 	minDate, maxDate := requestTimeBounds(req)
 
-	coreReq, _ := searchcore.NormalizePublicRequest(searchcore.Request{
-		Query:         query,
-		Terms:         parsed.Terms,
-		ExcludedTerms: parsed.ExcludedTerms,
-		Phrases:       parsed.Phrases(),
-		Source:        source,
-		Limit:         limit,
-		ContentDomain: searchcore.ContentDomainText,
-		Language:      parsed.Language,
-		SiteHost:      retrievalDomain(req.IncludeDomains),
-		InURL:         parsed.InURL,
-		TLD:           parsed.TLD,
-		FileType:      parsed.FileType,
-		Verify:        searchcore.VerifyFalse,
-		SafeSearch:    req.SafeSearch,
-		SortByDate:    parsed.SortByDate,
-		Near:          parsed.Near,
-		MinDate:       minDate,
-		MaxDate:       maxDate,
-	}, maxResultsCap)
+	coreReq := searchcore.Request{
+		Query:            query,
+		Terms:            parsed.Terms,
+		ExcludedTerms:    parsed.ExcludedTerms,
+		Phrases:          parsed.Phrases(),
+		Source:           source,
+		Limit:            limit,
+		ContentDomain:    searchcore.ContentDomainText,
+		Language:         parsed.Language,
+		SiteHost:         retrievalDomain(req.IncludeDomains),
+		InURL:            parsed.InURL,
+		TLD:              parsed.TLD,
+		FileType:         parsed.FileType,
+		Verify:           searchcore.VerifyFalse,
+		SafeSearch:       req.SafeSearch,
+		SortByDate:       parsed.SortByDate,
+		Near:             parsed.Near,
+		AllowWebFallback: true,
+		MinDate:          minDate,
+		MaxDate:          maxDate,
+	}
 	if limit == 0 {
 		coreReq.Limit = 0
 	}
@@ -502,8 +542,12 @@ func (e searchEndpoint) responseResults(
 	if err != nil {
 		return nil, nil, err
 	}
-	out := make([]SearchResult, 0, len(results))
-	images := make([]SearchImage, 0)
+	var budget *rawContentBudget
+	if req.IncludeRawContent.Enabled() {
+		budget = newRawSearchResultBudget(limit)
+	}
+	out := make([]SearchResult, 0, limit)
+	images := make([]SearchImage, 0, maxResponseImages)
 	for _, result := range results {
 		if len(out) >= limit {
 			break
@@ -518,6 +562,12 @@ func (e searchEndpoint) responseResults(
 		}
 		if !include {
 			continue
+		}
+		if budget != nil {
+			item, itemImages, err = retainRawSearchResult(budget, item, itemImages)
+			if err != nil {
+				return nil, nil, err
+			}
 		}
 		out = append(out, item)
 		images = appendResponseImages(images, itemImages)
@@ -546,12 +596,9 @@ func (e searchEndpoint) responseResult(
 		}
 		if doc.ExtractedText != "" {
 			content = documentContent(req, coreReq, doc)
-			if req.IncludeRawContent.Enabled() {
-				rawText := doc.ExtractedText
-				if strings.EqualFold(string(req.IncludeRawContent), "markdown") {
-					rawText = documentMarkdown(doc)
-				}
-				raw = &rawText
+			raw, err = rawDocumentResultContent(req, doc)
+			if err != nil {
+				return SearchResult{}, nil, false, err
 			}
 		}
 		if !req.SafeSearch || result.SafetyRating == searchcore.SafetyGeneral {
@@ -671,13 +718,29 @@ func normalizeDomain(domain string) string {
 }
 
 func snippet(text string) string {
-	text = strings.Join(strings.Fields(text), " ")
-	runes := []rune(text)
-	if len(runes) <= snippetRuneCap {
-		return text
+	var out strings.Builder
+	out.Grow(min(len(text), snippetRuneCap*utf8.UTFMax))
+	pendingSpace := false
+	runes := 0
+	for _, current := range text {
+		if unicode.IsSpace(current) {
+			pendingSpace = runes > 0
+
+			continue
+		}
+		if pendingSpace && runes < snippetRuneCap {
+			out.WriteByte(' ')
+			runes++
+		}
+		if runes >= snippetRuneCap {
+			break
+		}
+		out.WriteRune(current)
+		runes++
+		pendingSpace = false
 	}
 
-	return string(runes[:snippetRuneCap])
+	return out.String()
 }
 
 // responseAnswer synthesizes the extractive answer from the served results.
@@ -923,11 +986,15 @@ func (m rawContentMode) Enabled() bool {
 }
 
 func requestID(r *http.Request) string {
-	if id := strings.TrimSpace(r.Header.Get(requestIDHeader)); id != "" {
-		return id
+	if id := strings.TrimSpace(r.Header.Get(requestIDHeader)); validRequestID(id) {
+		return strings.Clone(id)
 	}
 
 	return generatedRequestID()
+}
+
+func validRequestID(id string) bool {
+	return id != "" && len(id) <= maximumRequestIDBytes
 }
 
 func generatedRequestID() string {

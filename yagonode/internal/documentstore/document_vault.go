@@ -14,6 +14,7 @@ type documentVault struct {
 	collection      *vault.Collection[Document]
 	inboundAnchors  *vault.Collection[[]AnchorText]
 	outboundTargets *vault.Collection[[]string]
+	scanAdmission   chan struct{}
 }
 
 func (d documentVault) Receive(ctx context.Context, docs []Document) (Receipt, error) {
@@ -165,6 +166,23 @@ func (d documentVault) Document(
 	return doc, found, nil
 }
 
+func (d documentVault) DocumentExists(
+	ctx context.Context,
+	normalizedURL string,
+) (bool, error) {
+	var found bool
+	err := d.vault.View(ctx, func(tx *vault.Txn) error {
+		found = d.collection.Contains(tx, vault.Key(normalizedURL))
+
+		return nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("document presence: %w", err)
+	}
+
+	return found, nil
+}
+
 func (d documentVault) Delete(ctx context.Context, normalizedURL string) (bool, error) {
 	var removed bool
 	if err := d.vault.Update(ctx, func(tx *vault.Txn) error {
@@ -204,7 +222,13 @@ func (d documentVault) StoredDocuments(
 	ctx context.Context,
 	visit func(Document) (bool, error),
 ) error {
-	err := d.vault.View(ctx, func(tx *vault.Txn) error {
+	release, err := d.enterStoredDocumentScan(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	err = d.vault.View(ctx, func(tx *vault.Txn) error {
 		return d.collection.Scan(
 			tx,
 			nil,
@@ -266,6 +290,7 @@ func boundedText(text string) string {
 
 var (
 	_ DocumentDirectory          = documentVault{}
+	_ DocumentPresence           = documentVault{}
 	_ CanonicalDocumentDirectory = documentVault{}
 	_ DocumentReceiver           = documentVault{}
 	_ StoredDocuments            = documentVault{}

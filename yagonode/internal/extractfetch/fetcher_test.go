@@ -64,14 +64,31 @@ func TestFetcherRejectsNonHTML(t *testing.T) {
 	}
 }
 
-func TestFetcherBoundsResponseSize(t *testing.T) {
-	body := "<html><body>" + strings.Repeat("a", 1000) + "</body></html>"
-	content, err := New(htmlClient(body, "text/html"), 0, 16).
-		Fetch(context.Background(), "https://example.com/")
+func TestFetcherRejectsResponseSizePlusOne(t *testing.T) {
+	body := "<html><body>x</body></html>"
+	content, err := New(htmlClient(body, "text/html"), 0, int64(len(body))).Fetch(
+		context.Background(),
+		"https://example.com/",
+	)
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if len(content.Text) > 16 {
-		t.Errorf("text not bounded: %q", content.Text)
+	if content.Text != "x" {
+		t.Fatalf("text = %q", content.Text)
+	}
+	if _, err := New(htmlClient(body+"x", "text/html"), 0, int64(len(body))).Fetch(
+		context.Background(),
+		"https://example.com/",
+	); err == nil {
+		t.Fatal("maximum plus one response accepted")
+	}
+}
+
+func TestFetcherClampsConfiguredResponseSize(t *testing.T) {
+	if got := New(nil, 0, maximumFetchResponseBytes).maxBytes; got != maximumFetchResponseBytes {
+		t.Fatalf("exact maximum = %d", got)
+	}
+	if got := New(nil, 0, maximumFetchResponseBytes+1).maxBytes; got != maximumFetchResponseBytes {
+		t.Fatalf("maximum plus one = %d", got)
 	}
 }

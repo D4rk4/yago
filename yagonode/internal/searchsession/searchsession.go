@@ -1,9 +1,5 @@
-// Package searchsession keeps paging stable: like YaCy's SearchEventCache, the
-// first page of a query runs one deep federated search and caches the assembled
-// result list; later pages slice that cached list instead of re-running the
-// fan-out (whose random DHT peer sample would reshuffle every page). The
-// reported total is the number of results actually collected and pageable, so
-// pagers never promise pages that would come up empty.
+// Package searchsession keeps paging stable by caching assembled result prefixes
+// and extending them in bounded windows when a deeper page needs more results.
 package searchsession
 
 import (
@@ -11,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,26 +15,29 @@ import (
 )
 
 const (
-	// sessionDepth is how many assembled results one search session holds — the
-	// paging horizon (e.g. 20 portal pages of 10).
-	sessionDepth = 200
-	sessionTTL   = 5 * time.Minute
-	maxSessions  = 128
+	sessionDepth             = 50
+	maxSessionDepth          = 500
+	sessionTTL               = 5 * time.Minute
+	maxSessions              = 128
+	sessionCacheMaximumBytes = 32 << 20
 )
 
 // clock feeds session expiry; tests substitute a scripted time.
 var clock = time.Now
 
 type session struct {
-	key        string
-	results    []searchcore.Result
-	failures   []searchcore.PartialFailure
-	total      int
-	recovered  string
-	didYouMean string
-	facets     []searchcore.FacetGroup
-	expires    time.Time
-	element    *list.Element
+	windowMu    sync.RWMutex
+	key         string
+	results     []searchcore.Result
+	failures    []searchcore.PartialFailure
+	total       int
+	searchDepth int
+	recovered   string
+	didYouMean  string
+	facets      []searchcore.FacetGroup
+	expires     time.Time
+	element     *list.Element
+	retained    int
 }
 
 type stableSearcher struct {
@@ -46,6 +46,8 @@ type stableSearcher struct {
 	mu       sync.Mutex
 	sessions map[string]*session
 	order    *list.List
+	retained int
+	limit    int
 }
 
 // WithStableWindow decorates the searcher with the per-query session cache.
@@ -54,6 +56,7 @@ func WithStableWindow(inner searchcore.Searcher) searchcore.Searcher {
 		inner:    inner,
 		sessions: map[string]*session{},
 		order:    list.New(),
+		limit:    sessionCacheMaximumBytes,
 	}
 }
 
@@ -62,22 +65,29 @@ func (s *stableSearcher) Search(
 	req searchcore.Request,
 ) (searchcore.Response, error) {
 	key := sessionKey(req)
-	// A fresh query (page one) always re-runs the search so a repeated query
-	// sees new content; deeper pages serve the session that page one built.
 	if req.Offset > 0 {
 		if cached, ok := s.lookup(key); ok {
+			if err := s.extend(ctx, cached, req); err != nil {
+				return searchcore.Response{}, fmt.Errorf("extend session search: %w", err)
+			}
+
 			return cached.respond(req), nil
 		}
 	}
 
 	deep := req
 	deep.Offset = 0
-	deep.Limit = sessionDepth
+	deep.Limit = requestedSearchDepth(req)
 	resp, err := s.inner.Search(ctx, deep)
 	if err != nil {
 		return searchcore.Response{}, fmt.Errorf("session search: %w", err)
 	}
-	stored := s.store(key, resp)
+	stored := s.store(key, resp, deep.Limit)
+	if req.Offset > 0 {
+		if err := s.extend(ctx, stored, req); err != nil {
+			return searchcore.Response{}, fmt.Errorf("extend new session search: %w", err)
+		}
+	}
 
 	return stored.respond(req), nil
 }
@@ -85,13 +95,9 @@ func (s *stableSearcher) Search(
 func (s *stableSearcher) lookup(key string) (*session, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.purgeExpiredLocked(clock())
 	entry, ok := s.sessions[key]
 	if !ok {
-		return nil, false
-	}
-	if clock().After(entry.expires) {
-		s.removeLocked(entry)
-
 		return nil, false
 	}
 	s.order.MoveToFront(entry.element)
@@ -99,28 +105,36 @@ func (s *stableSearcher) lookup(key string) (*session, bool) {
 	return entry, true
 }
 
-func (s *stableSearcher) store(key string, resp searchcore.Response) *session {
+func (s *stableSearcher) store(key string, resp searchcore.Response, searchDepth int) *session {
+	now := clock()
+	key = strings.Clone(key)
+	resp.Results = boundedResults(resp.Results, searchDepth)
+	entry := &session{
+		key:         key,
+		results:     resp.Results,
+		failures:    cloneSessionFailures(resp.PartialFailures),
+		total:       advertisedTotal(resp),
+		searchDepth: searchDepth,
+		recovered:   strings.Clone(resp.Recovered),
+		didYouMean:  strings.Clone(resp.DidYouMean),
+		facets:      cloneSessionFacets(resp.Facets),
+		expires:     now.Add(sessionTTL),
+	}
+	entry.retained = retainedSessionBytes(entry)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.purgeExpiredLocked(now)
 	if existing, ok := s.sessions[key]; ok {
 		s.removeLocked(existing)
 	}
-	entry := &session{
-		key:        key,
-		results:    resp.Results,
-		failures:   resp.PartialFailures,
-		total:      len(resp.Results),
-		recovered:  resp.Recovered,
-		didYouMean: resp.DidYouMean,
-		facets:     resp.Facets,
-		expires:    clock().Add(sessionTTL),
+	if entry.retained > s.limit {
+		return entry
 	}
 	entry.element = s.order.PushFront(entry)
 	s.sessions[key] = entry
-	for len(s.sessions) > maxSessions {
-		oldest, _ := s.order.Back().Value.(*session)
-		s.removeLocked(oldest)
-	}
+	s.retained += entry.retained
+	s.enforceRetentionLocked()
 
 	return entry
 }
@@ -128,11 +142,12 @@ func (s *stableSearcher) store(key string, resp searchcore.Response) *session {
 func (s *stableSearcher) removeLocked(entry *session) {
 	s.order.Remove(entry.element)
 	delete(s.sessions, entry.key)
+	s.retained -= entry.retained
 }
 
-// respond slices the session window for the request and reports the honest
-// pageable total, so no pager link ever leads to an empty page.
 func (e *session) respond(req searchcore.Request) searchcore.Response {
+	e.windowMu.RLock()
+	defer e.windowMu.RUnlock()
 	limit := req.Limit
 	if limit <= 0 {
 		limit = searchcore.DefaultPublicLimit
@@ -149,11 +164,11 @@ func (e *session) respond(req searchcore.Request) searchcore.Response {
 	return searchcore.Response{
 		Request:         req,
 		TotalResults:    e.total,
-		Results:         e.results[start:end],
-		PartialFailures: e.failures,
-		Recovered:       e.recovered,
-		DidYouMean:      e.didYouMean,
-		Facets:          e.facets,
+		Results:         cloneSessionResults(e.results[start:end]),
+		PartialFailures: cloneSessionFailures(e.failures),
+		Recovered:       strings.Clone(e.recovered),
+		DidYouMean:      strings.Clone(e.didYouMean),
+		Facets:          cloneSessionFacets(e.facets),
 	}
 }
 

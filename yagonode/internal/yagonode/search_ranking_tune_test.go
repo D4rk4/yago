@@ -244,7 +244,8 @@ func TestTuneUsesServingCandidateAndQueryFeatures(t *testing.T) {
 		t.Fatalf("Tune: %v", err)
 	}
 	if index.got.Query != "linux kernel" || len(index.got.Terms) != 2 ||
-		!index.got.IncludePositions || index.got.MaxResults != 100 ||
+		!index.got.IncludePositions || !index.got.IncludeFieldScores ||
+		index.got.MaxResults != 50 ||
 		index.got.MinimumTermMatches != 1 {
 		t.Fatalf("tuning index request = %#v", index.got)
 	}

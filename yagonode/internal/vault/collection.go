@@ -24,6 +24,15 @@ func (c *Collection[V]) Get(tx *Txn, key Key) (V, bool, error) {
 	return val, true, nil
 }
 
+func (c *Collection[V]) Contains(tx *Txn, key Key) bool {
+	bucket := tx.etx.Bucket(c.name)
+	if presence, ok := bucket.(interface{ Contains(Key) bool }); ok {
+		return presence.Contains(key)
+	}
+
+	return bucket.Get(key) != nil
+}
+
 func (c *Collection[V]) Put(tx *Txn, key Key, val V) error {
 	if !tx.etx.Writable() {
 		return errReadOnly

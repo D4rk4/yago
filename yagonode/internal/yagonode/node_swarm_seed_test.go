@@ -49,7 +49,11 @@ func syncSeedingSearcher(
 	if !ok {
 		panic("unexpected searcher type")
 	}
-	searcher.spawn = func(work func()) { work() }
+	searcher.spawn = func(work func()) bool {
+		work()
+
+		return true
+	}
 
 	return searcher
 }
@@ -118,10 +122,14 @@ func TestNodePublicSearchInstallsSwarmSeedCrawl(t *testing.T) {
 		},
 	})
 
-	if _, ok := searcher.(swarmSeedingSearcher); !ok {
+	budgeted, ok := searcher.(interactiveBudgetSearcher)
+	if !ok {
+		t.Fatalf("searcher = %T, want an interactiveBudgetSearcher", searcher)
+	}
+	if _, ok := budgeted.inner.(swarmSeedingSearcher); !ok {
 		t.Fatalf(
-			"searcher = %T, want a swarmSeedingSearcher when greedy learning is enabled",
-			searcher,
+			"inner searcher = %T, want a swarmSeedingSearcher when greedy learning is enabled",
+			budgeted.inner,
 		)
 	}
 }
@@ -164,6 +172,28 @@ func TestSwarmSeedCrawlSeedsRemoteResultURLs(t *testing.T) {
 	}
 	if len(seeder.urls) != 1 || seeder.urls[0] != "https://remote.example/doc" {
 		t.Fatalf("seeded urls = %#v, want only the remote result", seeder.urls)
+	}
+}
+
+func TestSwarmSeedCrawlSkipsWorkWhenAdmissionIsFull(t *testing.T) {
+	seeder := &recordingSeeder{}
+	spawnCalled := false
+	searcher := swarmSeedingSearcher{
+		inner: &fakeSearcher{resp: searchcore.Response{Results: []searchcore.Result{{
+			URL: "https://remote.example/doc", Source: searchcore.SourceRemote,
+		}}}},
+		seeder: seeder,
+		spawn: func(func()) bool {
+			spawnCalled = true
+
+			return false
+		},
+	}
+	if _, err := searcher.Search(t.Context(), searchcore.Request{Query: "go"}); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if !spawnCalled || len(seeder.urls) != 0 {
+		t.Fatalf("spawn called = %v, seeded URLs = %#v", spawnCalled, seeder.urls)
 	}
 }
 

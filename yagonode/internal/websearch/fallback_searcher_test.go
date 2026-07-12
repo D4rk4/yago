@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
@@ -127,6 +128,62 @@ func TestFallbackSkippedWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestFallbackSkipsLocalSourceWithoutConsent(t *testing.T) {
+	primary := &stubSearcher{}
+	provider := &stubProvider{results: []Result{{Title: "web gap"}}}
+	searcher := NewFallbackSearcher(primary, provider, enabled)
+
+	resp, err := searcher.Search(context.Background(), searchcore.Request{
+		Query: "gap", Source: searchcore.SourceLocal, Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if provider.calls != 0 {
+		t.Fatal("provider ran for a local-only request")
+	}
+	if len(resp.Results) != 0 {
+		t.Fatalf("local-only results = %#v", resp.Results)
+	}
+}
+
+func TestFallbackRunsForConsentingLocalRetrieval(t *testing.T) {
+	primary := &stubSearcher{}
+	provider := &stubProvider{results: []Result{{Title: "web gap"}}}
+	searcher := NewFallbackSearcher(primary, provider, enabled)
+
+	resp, err := searcher.Search(context.Background(), searchcore.Request{
+		Query: "gap", Source: searchcore.SourceLocal, Limit: 10, AllowWebFallback: true,
+	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if provider.calls != 1 || len(resp.Results) != 1 {
+		t.Fatalf("provider calls = %d, results = %#v", provider.calls, resp.Results)
+	}
+}
+
+func TestFallbackUsesSubmittedQuery(t *testing.T) {
+	primary := &stubSearcher{}
+	provider := &stubProvider{results: []Result{{
+		Title: "Golang tools", URL: "https://example.org/golang-tools.pdf",
+	}}}
+	searcher := NewFallbackSearcher(primary, provider, enabled)
+	submitted := `site:example.org filetype:pdf "golang tools" -java`
+
+	resp, err := searcher.Search(context.Background(), searchcore.Request{
+		Query: "golang tools", SubmittedQuery: submitted,
+		Terms: []string{"golang", "tools"}, SiteHost: "example.org",
+		FileType: "pdf", ExcludedTerms: []string{"java"}, Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.gotQuery != submitted || len(resp.Results) != 1 {
+		t.Fatalf("provider query = %q, results = %#v", provider.gotQuery, resp.Results)
+	}
+}
+
 func TestFallbackSkippedWhenQueryBlank(t *testing.T) {
 	primary := &stubSearcher{}
 	provider := &stubProvider{results: []Result{{Title: "web"}}}
@@ -180,11 +237,15 @@ func TestFallbackPropagatesPrimaryError(t *testing.T) {
 type stubSeeder struct {
 	urls  []string
 	calls int
+	done  chan struct{}
 }
 
 func (s *stubSeeder) Seed(_ context.Context, urls []string) {
 	s.calls++
 	s.urls = urls
+	if s.done != nil {
+		close(s.done)
+	}
 }
 
 func TestFallbackSeedsProviderURLs(t *testing.T) {
@@ -193,7 +254,7 @@ func TestFallbackSeedsProviderURLs(t *testing.T) {
 		{URL: "https://a.example/gap-intro"},
 		{URL: "https://b.example/mind-the-gap"},
 	}}
-	seeder := &stubSeeder{}
+	seeder := &stubSeeder{done: make(chan struct{})}
 	searcher := NewFallbackSearcher(primary, provider, enabled, WithSeeder(seeder))
 
 	if _, err := searcher.Search(
@@ -201,6 +262,11 @@ func TestFallbackSeedsProviderURLs(t *testing.T) {
 		searchcore.Request{Query: "gap", Limit: 10},
 	); err != nil {
 		t.Fatalf("search: %v", err)
+	}
+	select {
+	case <-seeder.done:
+	case <-time.After(time.Second):
+		t.Fatal("seeding did not run")
 	}
 	if seeder.calls != 1 || len(seeder.urls) != 2 {
 		t.Fatalf("seeder = %#v", seeder)

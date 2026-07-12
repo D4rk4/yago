@@ -101,12 +101,10 @@ func TestListAPIKeysOmitsSecretAndTracksUse(t *testing.T) {
 		t.Fatalf("before use = %#v", before)
 	}
 
-	if _, ok, err := service.apiKeys.authenticate(
-		context.Background(),
-		created.Key,
-	); err != nil ||
-		!ok {
-		t.Fatalf("authenticate = %v, %v", ok, err)
+	if outcome := service.APIKeyAuthorizer().Authorize(
+		context.Background(), created.Key, ScopeAdminRead,
+	); outcome != APIKeyAuthorized {
+		t.Fatalf("authorize = %v", outcome)
 	}
 	after := listKeys(t, handler)
 	if len(after) != 1 || after[0].LastUsedAt == nil {

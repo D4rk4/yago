@@ -102,6 +102,68 @@ func TestCachedCopyErrorPaths(t *testing.T) {
 	}
 }
 
+func TestCachedCopyBoundsURLBeforeDocumentLookup(t *testing.T) {
+	exact := strings.Repeat("x", maximumCachedPageURLBytes)
+	if rec := get(t, fakeDirectory{}, URLFor(exact)); rec.Code != http.StatusNotFound {
+		t.Fatalf("exact URL status = %d, want 404", rec.Code)
+	}
+	oversized := strings.Repeat("x", maximumCachedPageURLBytes+1)
+	if rec := get(
+		t,
+		fakeDirectory{err: errors.New("lookup reached")},
+		URLFor(oversized),
+	); rec.Code != http.StatusBadRequest {
+		t.Fatalf("oversized URL status = %d, want 400", rec.Code)
+	}
+}
+
+func TestCachedCopyAdmissionBoundsLookupAndReleases(t *testing.T) {
+	gate := newCachedPageAdmission(1)
+	release, admitted := gate.tryAcquire()
+	if !admitted {
+		t.Fatal("failed to reserve admission fixture")
+	}
+	e := endpoint{
+		documents: fakeDirectory{err: errors.New("boom")},
+		admission: gate,
+	}
+	request := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		URLFor("https://example.org/a"),
+		nil,
+	)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, request)
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") != "1" {
+		t.Fatalf("saturated status = %d retry=%q", rec.Code, rec.Header().Get("Retry-After"))
+	}
+	release()
+
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, request)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("lookup error status = %d, want 500", rec.Code)
+	}
+	finalRelease, admitted := gate.tryAcquire()
+	if !admitted {
+		t.Fatal("lookup retained admission slot")
+	}
+	finalRelease()
+}
+
+func TestCachedCopyAdmissionAllowsUnlimitedWorkWhenDisabled(t *testing.T) {
+	gate := newCachedPageAdmission(0)
+	if gate != nil {
+		t.Fatal("disabled admission is not nil")
+	}
+	release, admitted := gate.tryAcquire()
+	if !admitted {
+		t.Fatal("disabled admission rejected work")
+	}
+	release()
+}
+
 type failingWriter struct{ header http.Header }
 
 func (w failingWriter) Header() http.Header       { return w.header }

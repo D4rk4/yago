@@ -31,7 +31,11 @@ func pushDocument(
 	tokens []string,
 ) {
 	t.Helper()
-	wantURL := fmt.Sprintf("http://transfer.example.invalid/doc-%d.txt", len(tokens))
+	wantURL := fmt.Sprintf(
+		"http://transfer.example.invalid/doc-%d-%s.txt",
+		len(tokens),
+		tokens[0],
+	)
 
 	body, contentType := buildMultipart(
 		map[string]string{

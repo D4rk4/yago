@@ -7,7 +7,6 @@ import (
 	_ "github.com/blevesearch/bleve/v2/analysis/analyzer/custom"
 	_ "github.com/blevesearch/bleve/v2/analysis/lang/en"
 	_ "github.com/blevesearch/bleve/v2/analysis/token/lowercase"
-	"github.com/blevesearch/bleve/v2/analysis/token/ngram"
 	"github.com/blevesearch/bleve/v2/analysis/token/unicodenorm"
 	_ "github.com/blevesearch/bleve/v2/analysis/tokenizer/regexp"
 	_ "github.com/blevesearch/bleve/v2/analysis/tokenizer/unicode"
@@ -33,23 +32,7 @@ const (
 	urlWordSplitter   = "weburl_word"
 	lowercaseFilter   = "to_lower"
 	urlWordRegexp     = `[\p{L}\p{N}\p{M}]+`
-	// searchGramAnalyzer indexes overlapping character trigrams so a query finds a
-	// morphological variant or truncation of an indexed word ("зеленски" ->
-	// "зеленский") in ANY language, with no per-language stemmer. The unicode
-	// tokenizer + lowercasing + NFKC normalization make the grams script-agnostic;
-	// trigrams (McNamee & Mayfield 2004: n=3-4 substitutes for stemming, gains
-	// correlate with morphological richness). It supplements, never replaces, the
-	// exact fields: gram matches are OR'd into the main disjunction at a lower
-	// boost so full-word matches keep ranking above shared-gram matches. Follow-up:
-	// an edge-ngram prefix field, query-time fuzzy, and an OR-recall variant.
-	searchGramAnalyzer = "text_gram"
-	gramTokenFilter    = "trigram"
-	unicodeNormFilter  = "normalize_nfkc"
-	gramFieldSuffix    = "_gram"
-	gramSize           = 3.0
-	// gramWeightFactor scales a field's ranking weight for its trigram clause so a
-	// document matching all query trigrams (AND) ranks below an exact word match.
-	gramWeightFactor = 0.5
+	unicodeNormFilter = "normalize_nfkc"
 )
 
 func searchIndexedFields() []string {
@@ -67,7 +50,7 @@ var newSearchIndexMapping = func() (*mapping.IndexMappingImpl, error) {
 	if err := registerURLAnalyzer(indexMapping); err != nil {
 		return nil, err
 	}
-	if err := registerGramAnalyzer(indexMapping); err != nil {
+	if err := registerUnicodeNormalizer(indexMapping); err != nil {
 		return nil, err
 	}
 	if err := registerStandardTextAnalyzer(indexMapping); err != nil {
@@ -95,24 +78,28 @@ var newSearchIndexMapping = func() (*mapping.IndexMappingImpl, error) {
 	return indexMapping, nil
 }
 
-// newDocumentMapping builds the field mappings for one text analyzer: the text
-// fields (title/headings/anchors/body) stem with the given analyzer and carry
-// term vectors so positional and phrase queries work; the url field keeps its
-// punctuation splitter; every text field keeps its language-agnostic trigram
-// sub-field for the recovery path.
 func newDocumentMapping(textAnalyzer string) *mapping.DocumentMapping {
 	document := bleve.NewDocumentMapping()
 	document.Dynamic = false
+	analyzerField := bleve.NewKeywordFieldMapping()
+	analyzerField.Store = true
+	analyzerField.IncludeInAll = false
+	analyzerField.IncludeTermVectors = false
+	analyzerField.DocValues = false
+	document.AddFieldMappingsAt(documentAnalyzerField, analyzerField)
+	candidateField := bleve.NewKeywordFieldMapping()
+	candidateField.Index = false
+	candidateField.Store = true
+	candidateField.IncludeInAll = false
+	candidateField.IncludeTermVectors = false
+	candidateField.DocValues = false
+	document.AddFieldMappingsAt(storedCandidateField, candidateField)
 	for _, field := range searchIndexedFields() {
 		analyzer := textAnalyzer
 		if field == "url" {
 			analyzer = searchURLAnalyzer
 		}
-		fields := []*mapping.FieldMapping{newSearchTextField(analyzer)}
-		if fieldSupportsGrams(field) {
-			fields = append(fields, newSearchGramField(field+gramFieldSuffix))
-		}
-		document.AddFieldMappingsAt(field, fields...)
+		document.AddFieldMappingsAt(field, newSearchTextField(analyzer))
 	}
 
 	return document
@@ -154,39 +141,10 @@ func newSearchTextField(analyzer string) *mapping.FieldMapping {
 	field.Analyzer = analyzer
 	field.Store = false
 	field.IncludeInAll = false
-	// Term vectors carry token positions so phrase and other positional queries
-	// work on the scorch backend; without them a quoted-phrase clause silently
-	// matches nothing.
-	field.IncludeTermVectors = true
+	field.IncludeTermVectors = false
 	field.DocValues = false
 
 	return field
-}
-
-// fieldSupportsGrams reports whether a source field also gets a trigram sub-field.
-// The url field keeps only its punctuation-splitting analyzer; trigrams over host
-// labels and path segments add noise without helping word-level recall.
-func fieldSupportsGrams(field string) bool {
-	return field != "url"
-}
-
-// newSearchGramField maps a source field a second time under a "<field>_gram"
-// name analyzed into character trigrams, so the same document text is searchable
-// both as whole words (precision) and as language-agnostic grams (recall).
-func newSearchGramField(name string) *mapping.FieldMapping {
-	field := newSearchTextField(searchGramAnalyzer)
-	field.Name = name
-
-	return field
-}
-
-// supportsGramAnalyzer reports whether the index's mapping can resolve the
-// trigram analyzer. An index created before the analyzer existed keeps its
-// original persisted mapping for life, and a query that references the
-// analyzer against such an index fails the whole search with
-// "no analyzer named 'text_gram' registered".
-func supportsGramAnalyzer(index bleve.Index) bool {
-	return index.Mapping().AnalyzerNamed(searchGramAnalyzer) != nil
 }
 
 // supportsMultilingualAnalyzers reports whether the index's mapping carries the
@@ -197,39 +155,40 @@ func supportsMultilingualAnalyzers(index bleve.Index) bool {
 	return index.Mapping().AnalyzerNamed(standardTextAnalyzer) != nil
 }
 
-// shardMappingIsCurrent reports whether a persisted shard was built under the
-// current mapping — it must resolve both the trigram analyzer and the
-// per-language routing. A shard missing either is rebuilt when a source exists.
-func shardMappingIsCurrent(index bleve.Index) bool {
-	return supportsGramAnalyzer(index) && supportsMultilingualAnalyzers(index)
+func supportsAnalyzerScope(index bleve.Index) bool {
+	indexMapping := index.Mapping()
+	if indexMapping == nil {
+		return false
+	}
+	field := indexMapping.FieldMappingForPath(documentAnalyzerField)
+	if field.Type == "" {
+		return false
+	}
+
+	return field.Analyzer == "keyword" && field.Index
 }
 
-// registerGramAnalyzer wires the language-agnostic trigram analyzer: the unicode
-// tokenizer splits any script into words, lowercasing and NFKC normalization fold
-// case and width/compatibility variants, and the ngram filter emits overlapping
-// character trigrams. It is a package var so a test can force a registration
-// failure. See searchGramAnalyzer for the rationale.
-var registerGramAnalyzer = func(indexMapping *mapping.IndexMappingImpl) error {
-	if err := indexMapping.AddCustomTokenFilter(unicodeNormFilter, map[string]any{
-		"type": unicodenorm.Name,
-		"form": unicodenorm.NFKC,
-	}); err != nil {
-		return fmt.Errorf("register unicode normaliser: %w", err)
+func supportsStoredCandidateProjection(index bleve.Index) bool {
+	indexMapping := index.Mapping()
+	if indexMapping == nil {
+		return false
 	}
-	if err := indexMapping.AddCustomTokenFilter(gramTokenFilter, map[string]any{
-		"type": ngram.Name,
-		"min":  gramSize,
-		"max":  gramSize,
-	}); err != nil {
-		return fmt.Errorf("register trigram filter: %w", err)
-	}
-	if err := indexMapping.AddCustomAnalyzer(searchGramAnalyzer, map[string]any{
-		"type":          "custom",
-		"tokenizer":     "unicode",
-		"token_filters": []string{lowercaseFilter, unicodeNormFilter, gramTokenFilter},
-	}); err != nil {
-		return fmt.Errorf("register gram analyzer: %w", err)
+	field := indexMapping.FieldMappingForPath(storedCandidateField)
+	if field.Type == "" {
+		return false
 	}
 
-	return nil
+	return field.Store && !field.Index && !field.IncludeTermVectors && !field.DocValues
+}
+
+func shardMappingIsCurrent(index bleve.Index) bool {
+	return supportsMultilingualAnalyzers(index) && supportsAnalyzerScope(index) &&
+		supportsStoredCandidateProjection(index)
+}
+
+var registerUnicodeNormalizer = func(indexMapping *mapping.IndexMappingImpl) error {
+	return indexMapping.AddCustomTokenFilter(unicodeNormFilter, map[string]any{
+		"type": unicodenorm.Name,
+		"form": unicodenorm.NFKC,
+	})
 }

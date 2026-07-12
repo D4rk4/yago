@@ -41,11 +41,12 @@ func Open(
 	}
 
 	return &roster{
-		vault:        storage,
-		peers:        peers,
-		now:          now,
-		reservoirCap: reservoirCap,
-		activeCap:    activeCap,
-		active:       make(map[yagomodel.Hash]yagomodel.Seed),
+		vault:              storage,
+		peers:              peers,
+		now:                now,
+		reservoirCap:       reservoirCap,
+		activeCap:          activeCap,
+		active:             make(map[yagomodel.Hash]yagomodel.Seed),
+		candidateByteLimit: candidateSnapshotMaximumBytes,
 	}, nil
 }

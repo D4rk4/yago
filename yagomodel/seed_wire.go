@@ -28,19 +28,52 @@ const (
 )
 
 func ParseSeed(ctx context.Context, s string) (Seed, error) {
+	if len(s) > maximumSeedPlainBytes {
+		return Seed{}, fmt.Errorf(
+			"%w: seed exceeds %d bytes",
+			ErrBadSeed,
+			maximumSeedPlainBytes,
+		)
+	}
 	if strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}") {
 		s = s[1 : len(s)-1]
 	}
 	var seed Seed
 	hashSet := false
+	properties := 0
 	for pair := range strings.SplitSeq(s, ",") {
 		if strings.TrimSpace(pair) == "" {
 			continue
+		}
+		properties++
+		if properties > maximumSeedProperties {
+			return Seed{}, fmt.Errorf(
+				"%w: seed exceeds %d properties",
+				ErrBadSeed,
+				maximumSeedProperties,
+			)
 		}
 		key, value, found := strings.Cut(pair, "=")
 		if !found || key == "" {
 			return Seed{}, fmt.Errorf("%w: malformed field %q", ErrBadSeed, pair)
 		}
+		if len(key) > maximumSeedPropertyKey {
+			return Seed{}, fmt.Errorf(
+				"%w: seed property key exceeds %d bytes",
+				ErrBadSeed,
+				maximumSeedPropertyKey,
+			)
+		}
+		if limit := seedPropertyLimit(key); len(value) > limit {
+			return Seed{}, fmt.Errorf(
+				"%w: seed property %s exceeds %d bytes",
+				ErrBadSeed,
+				key,
+				limit,
+			)
+		}
+		key = strings.Clone(key)
+		value = strings.Clone(value)
 		if key == SeedHash {
 			hashSet = true
 		}
@@ -52,6 +85,15 @@ func ParseSeed(ctx context.Context, s string) (Seed, error) {
 		return Seed{}, fmt.Errorf("%w: missing %s", ErrBadSeed, SeedHash)
 	}
 	return seed, nil
+}
+
+func ParseSeedWireForm(ctx context.Context, form string) (Seed, error) {
+	plain, err := DecodeWireFormWithLimit(ctx, form, maximumSeedPlainBytes)
+	if err != nil {
+		return Seed{}, fmt.Errorf("seed wire form: %w", err)
+	}
+
+	return ParseSeed(ctx, plain)
 }
 
 func parseSeedField(seed *Seed, key, value string) error {

@@ -7,7 +7,6 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
-	"strings"
 )
 
 //go:embed templates/*.tmpl
@@ -73,9 +72,6 @@ func (s *Service) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handleLoginForm(w http.ResponseWriter, r *http.Request) {
-	username := r.PostFormValue(usernameField)
-	password := r.PostFormValue(passwordField)
-
 	caller := clientIP(r)
 	if !s.limiter.allow(caller) {
 		s.observer.LoginThrottled()
@@ -83,8 +79,43 @@ func (s *Service) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	release, admitted := acquireAuthRequestAdmission()
+	if !admitted {
+		writeAuthRequestAdmissionUnavailableHTML(w)
 
-	valid, err := s.creds.verify(r.Context(), username, password)
+		return
+	}
+	boundAuthRequestBody(w, r)
+	parsed := func() bool {
+		defer release()
+
+		return parseAuthForm(w, r)
+	}()
+	if !parsed {
+		s.limiter.recordFailure(caller)
+		s.observer.LoginFailed()
+
+		return
+	}
+	credentials, err := credentialsFromForm(r, false)
+	if err != nil {
+		s.limiter.recordFailure(caller)
+		s.observer.LoginFailed()
+		redirectAuth(w, r, PathLoginPage+"?error=invalid")
+
+		return
+	}
+
+	valid, err := s.creds.verify(
+		r.Context(),
+		credentials.Username,
+		credentials.Password,
+	)
+	if errors.Is(err, errCredentialWorkUnavailable) {
+		writeCredentialWorkUnavailableHTML(w)
+
+		return
+	}
 	if err != nil {
 		redirectAuth(w, r, PathLoginPage+"?error=server")
 
@@ -99,7 +130,7 @@ func (s *Service) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 	}
 	s.limiter.reset(caller)
 
-	created, err := s.sessions.create(r.Context(), username)
+	created, err := s.sessions.create(r.Context(), credentials.Username)
 	if err != nil {
 		redirectAuth(w, r, PathLoginPage+"?error=server")
 
@@ -129,15 +160,54 @@ func (s *Service) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handleSetupForm(w http.ResponseWriter, r *http.Request) {
-	username := strings.TrimSpace(r.PostFormValue(usernameField))
-	password := r.PostFormValue(passwordField)
-	if username == "" || password == "" {
+	release, admitted := acquireAuthRequestAdmission()
+	if !admitted {
+		writeAuthRequestAdmissionUnavailableHTML(w)
+
+		return
+	}
+	boundAuthRequestBody(w, r)
+	ready := func() bool {
+		defer release()
+		present, err := s.creds.exists(r.Context())
+		if err != nil {
+			redirectAuth(w, r, PathSetupPage+"?error=server")
+
+			return false
+		}
+		if present {
+			redirectAuth(w, r, PathLoginPage)
+
+			return false
+		}
+
+		return parseAuthForm(w, r)
+	}()
+	if !ready {
+		return
+	}
+	credentials, err := credentialsFromForm(r, true)
+	if errors.Is(err, errCredentialsRequired) {
 		redirectAuth(w, r, PathSetupPage+"?error=missing")
 
 		return
 	}
+	if err != nil {
+		redirectAuth(w, r, PathSetupPage+"?error=invalid")
 
-	err := s.creds.createIfAbsent(r.Context(), username, password)
+		return
+	}
+
+	err = s.creds.createIfAbsent(
+		r.Context(),
+		credentials.Username,
+		credentials.Password,
+	)
+	if errors.Is(err, errCredentialWorkUnavailable) {
+		writeCredentialWorkUnavailableHTML(w)
+
+		return
+	}
 	if errors.Is(err, errAdminExists) {
 		redirectAuth(w, r, PathLoginPage)
 
@@ -149,7 +219,7 @@ func (s *Service) handleSetupForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.wizardApply != nil {
-		if err := s.wizardApply(r.Context(), wizardChoices(r.PostFormValue)); err != nil {
+		if err := s.wizardApply(r.Context(), wizardChoices(r.PostForm.Get)); err != nil {
 			// The administrator exists; the node-mode settings can be redone
 			// in the console, so surface the partial success honestly.
 			redirectAuth(w, r, PathLoginPage+"?notice=created&error=wizard")
@@ -224,6 +294,8 @@ func setupErrorMessage(code string) string {
 	switch code {
 	case "missing":
 		return "Username and password are required."
+	case "invalid":
+		return "Username or password is too long."
 	case "server":
 		return "Setup failed. Please try again."
 	default:

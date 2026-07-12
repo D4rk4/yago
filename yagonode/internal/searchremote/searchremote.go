@@ -11,12 +11,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
-	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -29,15 +27,9 @@ const (
 	// four-worker pool, thirteen targets took four sequential waves of up to
 	// three seconds each and the overall budget expired before the later
 	// waves even started — every peer reported as timed out (SEARCH-37).
-	DefaultConcurrency = 32
-	// DefaultPerPeerTimeout and DefaultOverallTimeout budget the swarm
-	// fan-out. Real YaCy peers answer a remote search in one to five seconds,
-	// so the old one-second per-peer budget discarded most honest answers —
-	// «0 from peers» at exactly the overall deadline (SEARCH-35). Since the
-	// fan-out runs concurrently with the local query (PERF-02), a longer
-	// budget costs latency only when peers actually take that long.
-	DefaultPerPeerTimeout     = 3 * time.Second
-	DefaultOverallTimeout     = 4 * time.Second
+	DefaultConcurrency        = 32
+	DefaultPerPeerTimeout     = 1200 * time.Millisecond
+	DefaultOverallTimeout     = 1300 * time.Millisecond
 	DefaultMinimumPeerAgeDays = 3
 	DefaultMinimumPeerRWIs    = 1
 	maxPartitionExponent      = 8
@@ -109,19 +101,25 @@ type searcher struct {
 	maximumNetworkGroupInfluence float64
 	reputationClock              func() time.Time
 	selfSeed                     func(context.Context) yagomodel.Seed
+	fetchAdmission               chan struct{}
 }
 
 type peerSearchResult struct {
-	term     yagomodel.Hash
-	peer     yagomodel.Seed
-	response yagoproto.SearchResponse
-	err      error
+	term               yagomodel.Hash
+	peer               yagomodel.Seed
+	response           yagoproto.SearchResponse
+	err                error
+	responseBytes      int
+	resourcesTruncated bool
+	responseIncomplete bool
 }
 
 type peerSearchJob struct {
-	term    yagomodel.Hash
-	peer    yagomodel.Seed
-	request yagoproto.SearchRequest
+	term                yagomodel.Hash
+	peer                yagomodel.Seed
+	request             yagoproto.SearchRequest
+	responseBodyLimit   int
+	responseBodyLimited bool
 }
 
 type termPeerTargets struct {
@@ -170,12 +168,13 @@ func (s searcher) Search(
 	ctx, cancel := s.overallContext(ctx)
 	defer cancel()
 	reputation, reputationErr := s.beginReputation(ctx)
+	budget := newRemoteQueryBudget()
 
 	var response searchcore.Response
 	if variants := s.swarmMorphologyVariants(req); len(variants) > 1 {
-		response = s.searchVariants(ctx, req, variants, reputation)
+		response = s.searchVariants(ctx, req, variants, reputation, budget)
 	} else {
-		response = s.searchExact(ctx, req, reputation)
+		response = s.searchExact(ctx, req, reputation, budget)
 	}
 	reputation.flush(ctx)
 	if reputationErr != nil {
@@ -192,6 +191,7 @@ func (s searcher) searchExact(
 	ctx context.Context,
 	req searchcore.Request,
 	reputation *reputationSession,
+	budget *remoteQueryBudget,
 ) searchcore.Response {
 	hashes := termHashes(req.Terms)
 	peers, noPeersReason := s.remotePeers(ctx, hashes)
@@ -210,7 +210,7 @@ func (s searcher) searchExact(
 	// and returns documents matching all words. This mirrors YaCy's primary remote
 	// search (search.java searchConjunction) and is the main result source for
 	// both single- and multi-word queries.
-	results := s.queryPeers(ctx, peers, req)
+	results := s.queryPeers(ctx, peers, req, budget)
 
 	// For multi-word queries also run the index-abstract secondary search, which
 	// recovers documents whose matching words are held by different peers (no
@@ -222,14 +222,21 @@ func (s searcher) searchExact(
 			req,
 			hashes,
 			reputation,
+			budget,
 		)
-		resp := s.response(ctx, req, append(results, secondaryResults...), reputation)
+		resp := s.responseWithinBudget(
+			ctx,
+			req,
+			append(results, secondaryResults...),
+			reputation,
+			budget,
+		)
 		resp.PartialFailures = append(secondaryFailures, resp.PartialFailures...)
 
 		return resp
 	}
 
-	return s.response(ctx, req, results, reputation)
+	return s.responseWithinBudget(ctx, req, results, reputation, budget)
 }
 
 // swarmMorphologyVariants returns the surface-form variants to search for a
@@ -254,6 +261,7 @@ func (s searcher) searchVariants(
 	req searchcore.Request,
 	variants []string,
 	reputation *reputationSession,
+	budget *remoteQueryBudget,
 ) searchcore.Response {
 	lists := make([][]searchcore.Result, 0, len(variants))
 	failures := make([]searchcore.PartialFailure, 0, len(variants))
@@ -261,7 +269,7 @@ func (s searcher) searchVariants(
 		variantReq := req
 		variantReq.Terms = []string{variant}
 		variantReq.Query = variant
-		resp := s.searchExact(ctx, variantReq, reputation)
+		resp := s.searchExact(ctx, variantReq, reputation, budget)
 		lists = append(lists, resp.Results)
 		failures = append(failures, resp.PartialFailures...)
 	}
@@ -325,6 +333,7 @@ func (s searcher) queryPeers(
 	ctx context.Context,
 	peers []yagomodel.Seed,
 	req searchcore.Request,
+	budget *remoteQueryBudget,
 ) []peerSearchResult {
 	searchReq := remoteSearchRequest(req, s.networkName, s.perPeerTimeout)
 	jobs := make([]peerSearchJob, 0, len(peers))
@@ -332,61 +341,46 @@ func (s searcher) queryPeers(
 		jobs = append(jobs, peerSearchJob{peer: peer, request: searchReq})
 	}
 
-	return s.queryPeerJobs(ctx, jobs)
+	return s.queryPeerJobsWithinBudget(ctx, jobs, budget)
 }
 
 func (s searcher) queryPeerJobs(
 	ctx context.Context,
 	requests []peerSearchJob,
 ) []peerSearchResult {
-	if len(requests) == 0 {
-		return nil
-	}
-
-	workerCount := min(s.concurrency, len(requests))
-	jobs := make(chan int)
-	results := make(chan peerSearchCompletion, len(requests))
-	var wg sync.WaitGroup
-	for range workerCount {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for requestPosition := range jobs {
-				results <- peerSearchCompletion{
-					requestPosition: requestPosition,
-					result:          s.queryPeerJob(ctx, requests[requestPosition]),
-				}
-			}
-		}()
-	}
-	for requestPosition := range requests {
-		jobs <- requestPosition
-	}
-	close(jobs)
-	wg.Wait()
-	close(results)
-
-	out := make([]peerSearchResult, len(requests))
-	for completion := range results {
-		out[completion.requestPosition] = completion.result
-	}
-
-	return out
+	return s.queryPeerJobsWithinBudget(ctx, requests, newRemoteQueryBudget())
 }
 
 func (s searcher) queryPeerJob(
 	ctx context.Context,
 	job peerSearchJob,
 ) peerSearchResult {
+	if job.responseBodyLimited && job.responseBodyLimit == 0 {
+		return peerSearchResult{
+			term: job.term,
+			peer: job.peer,
+			err:  errRemoteSearchBudgetExhausted,
+		}
+	}
 	peerCtx, cancel := context.WithTimeout(ctx, s.perPeerTimeout)
 	defer cancel()
 
-	resp, err := s.sendRemoteSearch(peerCtx, job.peer, job.request)
+	responseBodyLimit := remoteSearchBodyCap
+	if job.responseBodyLimited {
+		responseBodyLimit = job.responseBodyLimit
+	}
+	resp, responseBytes, err := s.sendRemoteSearchWithinLimit(
+		peerCtx,
+		job.peer,
+		job.request,
+		responseBodyLimit,
+	)
 	return peerSearchResult{
-		term:     job.term,
-		peer:     job.peer,
-		response: resp,
-		err:      err,
+		term:          job.term,
+		peer:          job.peer,
+		response:      resp,
+		err:           err,
+		responseBytes: responseBytes,
 	}
 }
 
@@ -403,23 +397,30 @@ func (s searcher) secondaryAbstractSearch(
 	req searchcore.Request,
 	terms []yagomodel.Hash,
 	reputation *reputationSession,
+	budget *remoteQueryBudget,
 ) ([]peerSearchResult, []searchcore.PartialFailure) {
 	targets, failures := s.termTargets(ctx, terms)
 
-	abstracts, abstractFailures := s.termAbstracts(ctx, req, targets, reputation)
+	abstracts, abstractFailures := s.termAbstractsWithinBudget(
+		ctx,
+		req,
+		targets,
+		reputation,
+		budget,
+	)
 	failures = append(failures, abstractFailures...)
 	urls := intersectTermAbstracts(terms, abstracts)
 	if len(urls) == 0 {
 		return nil, failures
 	}
 
-	results := s.queryPeerJobs(ctx, secondarySearchJobs(
+	results := s.queryPeerJobsWithinBudget(ctx, secondarySearchJobs(
 		req,
 		targets,
 		limitSecondaryURLs(req, urls),
 		s.networkName,
 		s.perPeerTimeout,
-	))
+	), budget)
 
 	return results, failures
 }
@@ -451,48 +452,13 @@ func (s searcher) termAbstracts(
 	targets []termPeerTargets,
 	reputation *reputationSession,
 ) (map[yagomodel.Hash]map[yagomodel.Hash]struct{}, []searchcore.PartialFailure) {
-	results := s.queryPeerJobs(ctx, abstractSearchJobs(
+	return s.termAbstractsWithinBudget(
+		ctx,
 		req,
 		targets,
-		s.networkName,
-		s.perPeerTimeout,
-	))
-	abstracts := make(map[yagomodel.Hash]map[yagomodel.Hash]struct{}, len(targets))
-	successes := make(map[yagomodel.Hash]int, len(targets))
-	var failures []searchcore.PartialFailure
-	for _, result := range results {
-		if result.err != nil {
-			reputation.record(result.peer, observationOutcome(result.err, false))
-			failures = append(failures, peerFailure(result.peer, result.err))
-			continue
-		}
-		successes[result.term]++
-		urls, err := yagomodel.DecodeSearchIndexAbstract(
-			result.response.IndexAbstract[result.term],
-		)
-		if err != nil {
-			reputation.record(result.peer, observationOutcome(nil, true))
-			failures = append(failures, peerFailure(result.peer, err))
-			continue
-		}
-		reputation.record(result.peer, observationOutcome(nil, false))
-		if abstracts[result.term] == nil {
-			abstracts[result.term] = map[yagomodel.Hash]struct{}{}
-		}
-		for _, url := range urls {
-			abstracts[result.term][url] = struct{}{}
-		}
-	}
-	for _, target := range targets {
-		if successes[target.term] == 0 {
-			failures = append(failures, searchcore.PartialFailure{
-				Source: "remote-yacy",
-				Reason: fmt.Sprintf("no index abstract responses for %s", target.term),
-			})
-		}
-	}
-
-	return abstracts, failures
+		reputation,
+		newRemoteQueryBudget(),
+	)
 }
 
 func abstractSearchJobs(
@@ -618,65 +584,14 @@ func (s searcher) sendRemoteSearch(
 	peer yagomodel.Seed,
 	searchReq yagoproto.SearchRequest,
 ) (yagoproto.SearchResponse, error) {
-	if s.selfSeed != nil {
-		searchReq.MySeed = yagomodel.Some(s.selfSeed(ctx))
-	}
-	targets, err := peer.ProtocolEndpoints(yagoproto.PathSearch, s.preferHTTPS)
-	if err != nil {
-		return yagoproto.SearchResponse{}, fmt.Errorf("%w: target: %w", errRemoteSearchFailed, err)
-	}
+	response, _, err := s.sendRemoteSearchWithinLimit(
+		ctx,
+		peer,
+		searchReq,
+		remoteSearchBodyCap,
+	)
 
-	var lastErr error
-	for _, target := range targets {
-		response, err := s.sendRemoteSearchTo(ctx, target, searchReq)
-		if err == nil {
-			return response, nil
-		}
-		lastErr = err
-		// Retry over the next candidate scheme only when the transport
-		// failed; an HTTP status means the peer answered (YaCy retries
-		// https as http on IOException only).
-		if !errors.Is(err, errRemoteSearchTransport) {
-			break
-		}
-	}
-
-	return yagoproto.SearchResponse{}, lastErr
-}
-
-func (s searcher) sendRemoteSearchTo(
-	ctx context.Context,
-	target *url.URL,
-	searchReq yagoproto.SearchRequest,
-) (yagoproto.SearchResponse, error) {
-	target.RawQuery = searchReq.Form().Encode()
-
-	httpReq, err := newRemoteSearchRequest(ctx, http.MethodGet, target.String(), nil)
-	if err != nil {
-		return yagoproto.SearchResponse{}, fmt.Errorf("%w: request: %w", errRemoteSearchFailed, err)
-	}
-	if trace, ok := tracectx.FromContext(ctx); ok {
-		httpReq.Header.Set(tracectx.Header, trace.Child().Header())
-	}
-	httpResp, err := s.client.Do(httpReq)
-	if err != nil {
-		return yagoproto.SearchResponse{}, fmt.Errorf(
-			"%w: %w: %w",
-			errRemoteSearchFailed,
-			errRemoteSearchTransport,
-			err,
-		)
-	}
-	defer func() { _ = httpResp.Body.Close() }()
-	if httpResp.StatusCode != http.StatusOK {
-		return yagoproto.SearchResponse{}, fmt.Errorf(
-			"%w: status %d",
-			errRemoteSearchFailed,
-			httpResp.StatusCode,
-		)
-	}
-
-	return readRemoteSearchResponse(httpResp.Body)
+	return response, err
 }
 
 func baseRemoteSearchRequest(
@@ -739,6 +654,10 @@ func remoteSearchRequest(
 func termHashes(terms []string) []yagomodel.Hash {
 	hashes := make([]yagomodel.Hash, 0, len(terms))
 	for _, term := range terms {
+		term = strings.TrimSpace(term)
+		if term == "" {
+			continue
+		}
 		hashes = append(hashes, yagomodel.WordHash(term))
 	}
 
@@ -746,33 +665,9 @@ func termHashes(terms []string) []yagomodel.Hash {
 }
 
 func readRemoteSearchResponse(body io.Reader) (yagoproto.SearchResponse, error) {
-	raw, err := io.ReadAll(io.LimitReader(body, remoteSearchBodyCap+1))
-	if err != nil {
-		return yagoproto.SearchResponse{}, fmt.Errorf(
-			"%w: read response: %w",
-			errRemoteSearchFailed,
-			err,
-		)
-	}
-	if len(raw) > remoteSearchBodyCap {
-		return yagoproto.SearchResponse{}, fmt.Errorf(
-			"%w: %w: response too large",
-			errRemoteSearchFailed,
-			errRemoteSearchInvalidResult,
-		)
-	}
-	msg, _ := yagomodel.ParseMessage(string(raw))
-	parsed, err := yagoproto.ParseSearchResponse(msg)
-	if err != nil {
-		return yagoproto.SearchResponse{}, fmt.Errorf(
-			"%w: %w: search response: %w",
-			errRemoteSearchFailed,
-			errRemoteSearchInvalidResult,
-			err,
-		)
-	}
+	response, _, err := readRemoteSearchResponseWithinLimit(body, remoteSearchBodyCap)
 
-	return parsed, nil
+	return response, err
 }
 
 func (s searcher) response(
@@ -780,6 +675,16 @@ func (s searcher) response(
 	req searchcore.Request,
 	results []peerSearchResult,
 	reputation *reputationSession,
+) searchcore.Response {
+	return s.responseWithinBudget(ctx, req, results, reputation, newRemoteQueryBudget())
+}
+
+func (s searcher) responseWithinBudget(
+	ctx context.Context,
+	req searchcore.Request,
+	results []peerSearchResult,
+	reputation *reputationSession,
+	budget *remoteQueryBudget,
 ) searchcore.Response {
 	var resp searchcore.Response
 	resp.Request = req
@@ -789,20 +694,35 @@ func (s searcher) response(
 	peerSeeds := make(map[string]yagomodel.Seed, len(results))
 	for _, result := range orderedPeerSearchResults(results) {
 		if result.err != nil {
-			reputation.record(result.peer, observationOutcome(result.err, false))
+			recordPeerFailure(reputation, result.peer, result.err)
 			resp.PartialFailures = append(
 				resp.PartialFailures,
 				peerFailure(result.peer, result.err),
 			)
 			continue
 		}
-		normalized, err := searchResults(ctx, req, result.response.Resources, scorer)
+		normalized, err := searchResultsWithinBudget(
+			ctx,
+			req,
+			result.response.Resources,
+			scorer,
+			budget,
+		)
 		if err != nil {
+			if errors.Is(err, errRemoteSearchDecodedBudgetExhausted) {
+				resp.PartialFailures = append(resp.PartialFailures, searchcore.PartialFailure{
+					Source: "remote-yacy",
+					Reason: err.Error(),
+				})
+				break
+			}
 			reputation.record(result.peer, observationOutcome(nil, true))
 			resp.PartialFailures = append(resp.PartialFailures, peerFailure(result.peer, err))
 			continue
 		}
-		invalid := result.response.Count > len(result.response.Resources) ||
+		invalid := result.responseIncomplete ||
+			(!result.resourcesTruncated &&
+				result.response.Count > len(result.response.Resources)) ||
 			len(normalized) < len(cappedPeerRows(
 				result.response.Resources,
 				req.Offset+req.Limit,
@@ -818,11 +738,10 @@ func (s searcher) response(
 		}
 		peerResults[identity] = append(peerResults[identity], normalized...)
 	}
-	peerRankings := make([][]searchcore.Result, 0, len(peerOrder))
-	peerInfluenceWeights := make([]float64, 0, len(peerOrder))
-	peerReputationWeights := make([]float64, 0, len(peerOrder))
-	influenceWeights, reputationWeights, reputationErr := reputation.fusionWeights(
+	fused, reputationErr := fusedPeerResponseResults(
+		reputation,
 		peerOrder,
+		peerResults,
 		peerSeeds,
 	)
 	if reputationErr != nil {
@@ -830,19 +749,6 @@ func (s searcher) response(
 			Source: "peer-reputation",
 			Reason: reputationErr.Error(),
 		})
-	}
-	for _, identity := range peerOrder {
-		peerRankings = append(peerRankings, dedupeSearchResults(peerResults[identity]))
-		peerInfluenceWeights = append(peerInfluenceWeights, influenceWeights[identity])
-		peerReputationWeights = append(peerReputationWeights, reputationWeights[identity])
-	}
-	fused := fusePeerRankings(peerRankings)
-	if reputation != nil && reputation.snapshotAvailable && reputationErr == nil {
-		fused = fuseWeightedPeerRankings(
-			peerRankings,
-			peerInfluenceWeights,
-			peerReputationWeights,
-		)
 	}
 	// The honest remote total is the verified, deduplicated rows actually in
 	// hand, not the peers' claimed join counts: an unverifiable claim must not
@@ -891,10 +797,20 @@ func searchResults(
 	rows []yagomodel.URIMetadataRow,
 	scorer remoteScorer,
 ) ([]searchcore.Result, error) {
+	return searchResultsWithinBudget(ctx, req, rows, scorer, newRemoteQueryBudget())
+}
+
+func searchResultsWithinBudget(
+	ctx context.Context,
+	req searchcore.Request,
+	rows []yagomodel.URIMetadataRow,
+	scorer remoteScorer,
+	budget *remoteQueryBudget,
+) ([]searchcore.Result, error) {
 	rows = cappedPeerRows(rows, req.Offset+req.Limit)
 	results := make([]searchcore.Result, 0, len(rows))
 	for i, row := range rows {
-		result, err := searchResult(ctx, req, row)
+		result, err := searchResultWithinBudget(ctx, req, row, budget)
 		if err != nil {
 			return nil, err
 		}
@@ -921,14 +837,34 @@ func searchResults(
 
 func searchResult(
 	ctx context.Context,
-	req searchcore.Request,
 	row yagomodel.URIMetadataRow,
 ) (searchcore.Result, error) {
-	rawURL, err := decodedMetadataProperty(ctx, row, yagomodel.URLMetaURL)
+	return searchResultWithinBudget(ctx, searchcore.Request{}, row, newRemoteQueryBudget())
+}
+
+func searchResultWithinBudget(
+	ctx context.Context,
+	req searchcore.Request,
+	row yagomodel.URIMetadataRow,
+	budget *remoteQueryBudget,
+) (searchcore.Result, error) {
+	rawURL, err := decodedMetadataPropertyWithinBudget(
+		ctx,
+		row,
+		yagomodel.URLMetaURL,
+		remoteMetadataURLByteLimit,
+		budget,
+	)
 	if err != nil {
 		return searchcore.Result{}, err
 	}
-	title, err := decodedMetadataProperty(ctx, row, yagomodel.URLMetaColDescription)
+	title, err := decodedMetadataPropertyWithinBudget(
+		ctx,
+		row,
+		yagomodel.URLMetaColDescription,
+		remoteMetadataTitleByteLimit,
+		budget,
+	)
 	if err != nil {
 		return searchcore.Result{}, err
 	}
@@ -940,6 +876,10 @@ func searchResult(
 	host, pathValue, file := parsedURLParts(parsed)
 	if title == "" {
 		title = rawURL
+	}
+	language, err := boundedRowLanguage(row, budget)
+	if err != nil {
+		return searchcore.Result{}, err
 	}
 
 	return searchcore.Result{
@@ -955,25 +895,8 @@ func searchResult(
 		Size:          metadataSize(row),
 		Date:          row.Freshness(),
 		ContentDomain: req.ContentDomain,
-		Language:      rowLanguage(row),
+		Language:      language,
 	}, nil
-}
-
-func decodedMetadataProperty(
-	ctx context.Context,
-	row yagomodel.URIMetadataRow,
-	key string,
-) (string, error) {
-	raw := row.Properties[key]
-	if raw == "" {
-		return "", nil
-	}
-	value, err := yagomodel.DecodeWireForm(ctx, raw)
-	if err != nil {
-		return "", fmt.Errorf("decode url metadata %s: %w", key, err)
-	}
-
-	return value, nil
 }
 
 func parsedURLParts(parsed *url.URL) (string, string, string) {

@@ -1,8 +1,14 @@
 package adminauth
 
 import (
+	"strings"
 	"sync"
 	"time"
+)
+
+const (
+	maximumTrackedLoginClients    = 4096
+	maximumLoginFailuresPerClient = 64
 )
 
 type loginRateLimiter struct {
@@ -20,7 +26,7 @@ func newLoginRateLimiter(
 ) *loginRateLimiter {
 	return &loginRateLimiter{
 		failures: map[string][]time.Time{},
-		max:      maxFailures,
+		max:      min(max(1, maxFailures), maximumLoginFailuresPerClient),
 		window:   window,
 		now:      now,
 	}
@@ -29,15 +35,34 @@ func newLoginRateLimiter(
 func (l *loginRateLimiter) allow(key string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	now := l.now()
+	l.purgeStaleLocked(now)
+	recent, found := l.failures[key]
+	if !found && len(l.failures) >= maximumTrackedLoginClients {
+		return false
+	}
 
-	return len(l.recentLocked(key)) < l.max
+	return len(recent) < l.max
 }
 
 func (l *loginRateLimiter) recordFailure(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	now := l.now()
+	l.purgeStaleLocked(now)
+	recent, found := l.failures[key]
+	if !found {
+		if len(l.failures) >= maximumTrackedLoginClients {
+			return
+		}
+		key = strings.Clone(key)
+		recent = make([]time.Time, 0, l.max)
+	}
+	if len(recent) >= l.max {
+		return
+	}
 
-	l.failures[key] = append(l.recentLocked(key), l.now())
+	l.failures[key] = append(recent, now)
 }
 
 func (l *loginRateLimiter) reset(key string) {
@@ -47,8 +72,14 @@ func (l *loginRateLimiter) reset(key string) {
 	delete(l.failures, key)
 }
 
-func (l *loginRateLimiter) recentLocked(key string) []time.Time {
-	cutoff := l.now().Add(-l.window)
+func (l *loginRateLimiter) purgeStaleLocked(now time.Time) {
+	for key := range l.failures {
+		l.recentLocked(key, now)
+	}
+}
+
+func (l *loginRateLimiter) recentLocked(key string, now time.Time) []time.Time {
+	cutoff := now.Add(-l.window)
 	kept := l.failures[key][:0]
 	for _, at := range l.failures[key] {
 		if at.After(cutoff) {

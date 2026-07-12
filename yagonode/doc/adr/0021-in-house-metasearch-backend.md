@@ -14,10 +14,10 @@ family is a keyless metasearch idea: rotate queries across several public search
 engines. Two concrete decisions were open: which engines, and whether to build
 the client in-house or take a third-party Go dependency.
 
-The obvious first choice — DuckDuckGo's own `html`/`lite` endpoints — turns out to
-be the wrong default. DuckDuckGo aggressively rate-limits and blocks automated
-queries (it answers with `202 Ratelimit` quickly), so leaning on it for the
-default `auto` backend would make the fallback fail in practice.
+DuckDuckGo's `html` and `lite` endpoints offer useful multilingual coverage but
+aggressively rate-limit automated queries. A default that waits for each engine
+in sequence also multiplies tail latency when an endpoint stalls or returns an
+off-topic bot-tier response.
 
 The node has no HTML parser of its own. `golang.org/x/net` is already in the
 module graph as an indirect dependency (v0.56.0); its `html` package is what the
@@ -31,22 +31,28 @@ BSD-3-Clause) to a direct dependency of `yagonode` for HTML parsing.
 
 Engine selection:
 
-- The default `auto` backend deliberately **excludes DuckDuckGo**. It queries
-  keyless, scraper-tolerant engines in order — Mojeek (an independent index with a
-  stable, direct-link result list) first, then Bing — and returns the first
-  engine's non-empty results.
-- DuckDuckGo (`html` then `lite`) is available only when an operator selects it
-  explicitly (`YAGO_WEB_FALLBACK_BACKEND=duckduckgo`), with the understanding that
-  it rate-limits hard.
+- The default `auto` backend orders DuckDuckGo HTML, DuckDuckGo Lite, Brave,
+  Mojeek, and Bing by expected answer quality. It starts the preferred engine
+  immediately, hedges another after 50 milliseconds, immediately replaces an
+  empty, failed, or rate-limited attempt, and cancels outstanding requests on the
+  first accepted answer.
+- Engine-specific selection remains available for operators who prefer one
+  provider. Rate-limit backoff is independent per engine, so one blocked endpoint
+  does not pause the rest.
 - Parsing is structure-driven rather than pinned to fragile class names: Mojeek and
   Bing share one list parser (`<li>` container, `<h2><a href>` title, `<p>`
   snippet, direct URLs); DuckDuckGo has its own parser that unwraps the `/l/?uddg=`
   redirector.
 
-Resilience is built into the provider, not the caller: it caches responses briefly
-(bounded, TTL), backs off exponentially on `202`/`429`, and degrades to an empty
-result on rate limiting or a backend error rather than failing the search.
-Outbound requests go through the egress-guarded HTTP client (ADR-0013).
+Resilience is built into the provider, not the caller: it caches normalized
+responses under a 4 MiB/256-entry byte-aware cache and the configured TTL, retains
+at most 20 rows per query with bounded fields, backs off exponentially on
+`202`/`429`, and degrades to an empty result when every engine fails rather than
+failing the search. The interactive caller caps the complete engine race at 650
+milliseconds. A process-wide admission bound allows at most eight active engine
+fetch-and-parse attempts; saturated attempts wait only within that existing
+caller context. Outbound requests go through the egress-guarded HTTP client
+(ADR-0013).
 
 ## Consequences
 
@@ -56,5 +62,8 @@ an engine can change its markup or block the client. This is mitigated by
 structure-driven parsing, the multi-engine `auto` list, backoff, caching, and
 degrade-to-empty, and the engine list is easy to extend. The fallback is
 best-effort by design and off by default; when it fails, the search simply returns
-the original miss. `golang.org/x/net` becomes a direct dependency, pinned in
-`go.mod` and already vetted through the crawler's use of the same package.
+the original miss. Privacy mode `enabled` runs it automatically only after
+exact/morphological local-plus-peer retrieval and bounded local fuzzy recovery
+both miss, while `explicit` still requires request-level consent.
+`golang.org/x/net` becomes a direct dependency, pinned in `go.mod` and already
+vetted through the crawler's use of the same package.

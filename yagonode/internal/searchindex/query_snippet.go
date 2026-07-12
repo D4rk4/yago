@@ -2,6 +2,7 @@ package searchindex
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/D4rk4/yago/yagonode/internal/stopwords"
 )
@@ -13,12 +14,19 @@ import (
 // searcher judge relevance without opening the page (Tombros & Sanderson,
 // SIGIR 1998).
 func queryBiasedSnippet(text string, terms []string, fallback string) string {
-	text = strings.Join(strings.Fields(text), " ")
-	if text == "" {
+	return queryBiasedSnippetWithEvidence(text, terms, "", fallback)
+}
+
+func queryBiasedSnippetWithEvidence(
+	text string,
+	terms []string,
+	evidence string,
+	fallback string,
+) string {
+	if strings.TrimSpace(text) == "" {
 		return fallback
 	}
-	runes := []rune(text)
-	if len(runes) <= snippetRuneCap || len(terms) == 0 {
+	if textWithinRuneLimit(text, snippetRuneCap) || len(terms) == 0 {
 		return snippet(text, fallback)
 	}
 	// Anchor on a content word: a function word («что», "the") occurs earlier
@@ -28,38 +36,73 @@ func queryBiasedSnippet(text string, terms []string, fallback string) string {
 	if len(anchorTerms) == 0 {
 		anchorTerms = terms
 	}
-	anchor := firstTermAnchor(strings.ToLower(text), anchorTerms)
+	anchor := -1
+	if evidence != "" {
+		anchor = strings.Index(text, evidence)
+	}
 	if anchor < 0 {
-		anchor = firstTermAnchor(strings.ToLower(text), terms)
+		anchor = firstTextTermAnchor(text, anchorTerms)
+	}
+	if anchor < 0 {
+		anchor = firstTextTermAnchor(text, terms)
 	}
 	if anchor < 0 {
 		return snippet(text, fallback)
 	}
-	// Convert the byte anchor to a rune offset and open the window a little
-	// before the match so the sentence context survives.
-	runeAnchor := len([]rune(strings.ToLower(text)[:anchor]))
-	start := max(runeAnchor-snippetRuneCap/4, 0)
-	end := min(start+snippetRuneCap, len(runes))
-	excerpt := strings.TrimSpace(string(runes[start:end]))
-	if start > 0 {
-		excerpt = "… " + excerpt
-	}
 
-	return excerpt
+	return snippetAtByte(text, anchor, fallback)
 }
 
-// firstTermAnchor finds the earliest occurrence of any query term.
-func firstTermAnchor(lowered string, terms []string) int {
-	anchor := -1
-	for _, term := range terms {
-		term = strings.ToLower(strings.TrimSpace(term))
-		if term == "" {
-			continue
-		}
-		if index := strings.Index(lowered, term); index >= 0 && (anchor < 0 || index < anchor) {
-			anchor = index
+func snippetAtByte(text string, anchor int, fallback string) string {
+	anchor = min(max(anchor, 0), len(text))
+	start := anchor
+	for count := 0; start > 0 && count < snippetRuneCap/4; count++ {
+		_, size := utf8.DecodeLastRuneInString(text[:start])
+		start -= size
+	}
+	end := start
+	for count := 0; end < len(text) && count < snippetRuneCap; count++ {
+		_, size := utf8.DecodeRuneInString(text[end:])
+		end += size
+	}
+
+	return normalizedSnippetWindow(text[start:end], start > 0, fallback)
+}
+
+func textWithinRuneLimit(text string, limit int) bool {
+	count := 0
+	for range text {
+		count++
+		if count > limit {
+			return false
 		}
 	}
 
-	return anchor
+	return true
+}
+
+func normalizedSnippetWindow(text string, ellipsis bool, fallback string) string {
+	text = strings.Join(strings.Fields(text), " ")
+	if text == "" {
+		return fallback
+	}
+	if ellipsis {
+		return "… " + text
+	}
+
+	return text
+}
+
+func firstTextTermAnchor(text string, terms []string) int {
+	return newSnippetTermAnchorScan(text, terms).first()
+}
+
+func tokenMatchesAnyTerm(token string, terms []string) bool {
+	for _, term := range terms {
+		if strings.EqualFold(token, strings.TrimSpace(term)) {
+			return true
+		}
+	}
+
+	return false
 }

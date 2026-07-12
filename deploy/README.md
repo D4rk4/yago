@@ -136,13 +136,21 @@ the resident working set for the mapped vault and Bleve shards. A limit below
 the live set causes reclaim or GC churn and cannot repair an unbounded data
 structure.
 
-## Debian package
+## Full-text schema rebuilds
 
-The `.deb` build automation (which installs this layout, ships these units,
-seeds the env files, and creates the `yago` user) lives in
-[debian/](debian/) and runs in the release pipeline. The runtime is
-deployment-agnostic, so the package only has to place files and register the
-services.
+An upgrade that changes the embedded Bleve mapping rebuilds all eight search
+shards from the document vault before the public and peer listeners start. The
+node records the rebuild as in progress and repeats it from the beginning after
+an interrupted attempt, so a partial index is never served. Rebuild writes use
+16-document batches to limit transient segment memory, but startup downtime,
+merge I/O, and temporary disk use still scale with the stored corpus.
+
+For a bare-metal package upgrade, back up the data directory, stop both services,
+install the published package, and start `yago-node` first while watching its
+journal, RSS, and free disk space. Start `yagocrawler` only after the node is
+ready. Do not use the normal restart window for a mapping-changing release until
+the same corpus size has been timed on representative storage and the maintenance
+window covers the measured rebuild.
 
 ## Debian package
 
@@ -171,8 +179,9 @@ to end on Fedora and Rocky 9.
 
 ## Releases
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`: `make verify` gates
-the release, binaries build for amd64 and arm64 (CGO off, trimmed) with the tag
+Pushing a `v*` tag whose commit belongs to `main` runs
+`.github/workflows/release.yml`: `make verify` gates the release, binaries build
+for amd64 and arm64 (CGO off, trimmed) with the tag
 stamped in as the build version (`yago-node --version` / `yagocrawler
 --version` report it), each arch ships as a tarball (binaries + install.sh +
 units + backup doc), a `.deb`, and an `.rpm`. The amd64 `.deb` is smoke-installed

@@ -181,6 +181,25 @@ func TestBoltBucketRejectsReadOnlyMutation(t *testing.T) {
 	}
 }
 
+func TestBoltBucketContains(t *testing.T) {
+	db := openTestBolt(t)
+	if err := db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket([]byte("bucket")).Put([]byte("key"), []byte("value"))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.View(func(tx *bolt.Tx) error {
+		bucket := boltBucket{bucket: tx.Bucket([]byte("bucket"))}
+		if !bucket.Contains(vault.Key("key")) || bucket.Contains(vault.Key("missing")) {
+			t.Fatal("bolt presence mismatch")
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestBoltBucketScanReturnsCallbackError(t *testing.T) {
 	sentinel := errors.New("scan failed")
 	db := openTestBolt(t)

@@ -707,6 +707,7 @@ deps:
       - websearch
       - searchcore
       - stopwords
+      - filetypeclass
     canUse:
       - xnet
   extractfetch:

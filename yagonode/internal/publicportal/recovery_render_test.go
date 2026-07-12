@@ -10,6 +10,8 @@ import (
 
 type recoveredSource struct{}
 
+type missSuggestionSource struct{}
+
 func (recoveredSource) Search(context.Context, string, string, int, int) (SearchResults, error) {
 	return SearchResults{
 		Query:         "golnag",
@@ -19,6 +21,20 @@ func (recoveredSource) Search(context.Context, string, string, int, int) (Search
 		DidYouMean:    "golang",
 		DidYouMeanURL: "/?q=golang",
 		Results:       []SearchResult{{Title: "Golang", URL: "https://a.example/"}},
+	}, nil
+}
+
+func (missSuggestionSource) Search(
+	context.Context,
+	string,
+	string,
+	int,
+	int,
+) (SearchResults, error) {
+	return SearchResults{
+		Query:         "golnag",
+		DidYouMean:    "golang",
+		DidYouMeanURL: "/?q=golang",
 	}, nil
 }
 
@@ -35,5 +51,17 @@ func TestPortalRendersRecoveryLineWithSuggestion(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("recovery line missing %q: %s", want, body)
 		}
+	}
+}
+
+func TestPortalRendersTotalMissSuggestion(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/?q=golnag", nil)
+	New(missSuggestionSource{}, false).ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "No results matched. Did you mean") ||
+		!strings.Contains(body, `href="/?q=golang"`) {
+		t.Fatalf("total-miss suggestion missing: %s", body)
 	}
 }

@@ -53,31 +53,44 @@ func TestNodeDistributesRWIToRealYaCy(t *testing.T) {
 			"YAGO_PUBLIC_SELF_TEST_URL":        "http://" + outboundNodeAlias + ":8090",
 		},
 	})
+	announceFleetToYaCy(t, ctx, probe, yacyURL, []fleetNode{{
+		alias: outboundNodeAlias,
+		hash:  outboundNodeHash,
+		url:   nodeURL,
+	}})
 
+	words := buildOutboundWords()
 	seedNodeIndex(
 		t,
 		ctx,
 		probe,
 		nodeURL,
 		outboundNodeHash,
-		buildOutboundWords(),
+		words,
 		"http://outbound.example.invalid/doc.txt",
 	)
 
-	baseline, ok := peerQueryCount(ctx, probe, yacyURL, yacyHash, yagoproto.ObjectRWICount)
-	if !ok {
-		t.Fatal("real YaCy did not answer its rwicount probe")
+	word := yagomodel.WordHash(words[0])
+	for _, candidate := range words[1:] {
+		candidateHash := yagomodel.WordHash(candidate)
+		if candidateHash.String() < word.String() {
+			word = candidateHash
+		}
 	}
 
 	received := waitFor(180*time.Second, func() bool {
-		count, ok := peerQueryCount(ctx, probe, yacyURL, yacyHash, yagoproto.ObjectRWICount)
-		return ok && count > baseline
+		postings, postingsOK := peerQueryCountWithEnv(
+			ctx,
+			probe,
+			yacyURL,
+			yacyHash,
+			yagoproto.ObjectRWIURLCount,
+			word.String(),
+		)
+		return postingsOK && postings > 0
 	})
 	if !received {
-		t.Fatalf(
-			"real YaCy rwicount never grew above baseline %d after node DHT handoff",
-			baseline,
-		)
+		t.Fatalf("real YaCy never stored transferred word %s", word)
 	}
 }
 

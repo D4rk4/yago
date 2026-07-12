@@ -173,11 +173,8 @@ func TestWeightedDomainGraphCapsRepeatedSourcePages(t *testing.T) {
 		graph.confidence["target.example"] <= 0 {
 		t.Fatalf("weighted graph = %#v", graph)
 	}
-	if got := boundedCitations(make([]Citation, 3), 2); len(got) != 2 {
-		t.Fatalf("bounded citations = %d", len(got))
-	}
-	if got := boundedCitations(make([]Citation, 2), 3); len(got) != 2 {
-		t.Fatalf("unbounded citations = %d", len(got))
+	if maximumDomainCitations*maximumCitationRetainedBytes > maximumCitationSampleBytes {
+		t.Fatal("citation retention constants exceed the byte budget")
 	}
 }
 

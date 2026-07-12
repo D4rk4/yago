@@ -2,6 +2,7 @@ package sharedblacklist
 
 import (
 	"context"
+	"strings"
 
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagoproto"
@@ -27,9 +28,15 @@ func (e endpoint) Serve(
 	if req.Column != yagoproto.ListColumnBlack {
 		return httpguard.RawResponse{ContentType: listContentType}, nil
 	}
+	body := e.blacklists.SharedList(ctx, req.Name)
+	if len(body) > maximumSharedBlacklistAggregateBytes {
+		body = ""
+	} else if body != "" {
+		body = strings.Clone(body)
+	}
 
 	return httpguard.RawResponse{
 		ContentType: listContentType,
-		Body:        e.blacklists.SharedList(ctx, req.Name),
+		Body:        body,
 	}, nil
 }

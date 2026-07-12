@@ -8,6 +8,8 @@ import (
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/dhtexchange"
+	"github.com/D4rk4/yago/yagonode/internal/indextransfer"
+	"github.com/D4rk4/yago/yagoproto"
 )
 
 type recordingDHTRoster struct {
@@ -26,6 +28,99 @@ func (r *recordingDHTRoster) ConfirmUnreachable(_ context.Context, peer yagomode
 
 func (r *recordingDHTRoster) RejectRemoteIndex(_ context.Context, peer yagomodel.Seed) {
 	r.remoteIndexRejected = append(r.remoteIndexRejected, peer)
+}
+
+type rejectedDHTHandoffCase struct {
+	name     string
+	handoff  indextransfer.HandoffReceipt
+	retry    dhtexchange.OutboundRetryStatus
+	failures int
+}
+
+func rejectedRWIHandoff(
+	result yagoproto.TransferRWIResult,
+	pause int,
+) indextransfer.HandoffReceipt {
+	return indextransfer.HandoffReceipt{
+		State: indextransfer.HandoffRWIRejected,
+		RWI:   yagoproto.TransferRWIResponse{Result: result, Pause: pause},
+	}
+}
+
+func rejectedURLHandoff(result yagoproto.TransferURLResult) indextransfer.HandoffReceipt {
+	return indextransfer.HandoffReceipt{
+		State: indextransfer.HandoffURLRejected,
+		URL:   yagoproto.TransferURLResponse{Result: result},
+	}
+}
+
+func rejectedDHTHandoffCases() []rejectedDHTHandoffCase {
+	return []rejectedDHTHandoffCase{
+		{
+			name:    "rwi busy",
+			handoff: rejectedRWIHandoff(yagoproto.ResultBusy, 9),
+			retry:   dhtexchange.OutboundRetryDelayed,
+		},
+		{
+			name:     "rwi high load quarantined",
+			handoff:  rejectedRWIHandoff(yagoproto.ResultTooHighLoad, 0),
+			retry:    dhtexchange.OutboundRetryQuarantined,
+			failures: 3,
+		},
+		{
+			name:    "rwi not granted",
+			handoff: rejectedRWIHandoff(yagoproto.ResultNotGranted, 0),
+			retry:   dhtexchange.OutboundRetryDelayed,
+		},
+		{
+			name: "rwi wrong target",
+			handoff: rejectedRWIHandoff(
+				yagoproto.TransferRWIResult(yagoproto.ResultWrongTarget),
+				0,
+			),
+			retry: dhtexchange.OutboundRetryDelayed,
+		},
+		{
+			name:    "rwi not authenticated",
+			handoff: rejectedRWIHandoff(yagoproto.ResultNotAuthentified, 0),
+			retry:   dhtexchange.OutboundRetryDelayed,
+		},
+		{
+			name:    "rwi receiver unavailable",
+			handoff: rejectedRWIHandoff(yagoproto.ResultPostOrEnvIsNull, 0),
+			retry:   dhtexchange.OutboundRetryDelayed,
+		},
+		{
+			name:    "rwi missing word count",
+			handoff: rejectedRWIHandoff(yagoproto.ResultMissingWordC, 0),
+			retry:   dhtexchange.OutboundRetryDelayed,
+		},
+		{
+			name:    "rwi missing entry count",
+			handoff: rejectedRWIHandoff(yagoproto.ResultMissingEntryC, 0),
+			retry:   dhtexchange.OutboundRetryDelayed,
+		},
+		{
+			name:    "rwi missing indexes",
+			handoff: rejectedRWIHandoff(yagoproto.ResultMissingIndexes, 0),
+			retry:   dhtexchange.OutboundRetryDelayed,
+		},
+		{
+			name:    "url not granted",
+			handoff: rejectedURLHandoff(yagoproto.ResultErrorNotGranted),
+			retry:   dhtexchange.OutboundRetryDelayed,
+		},
+		{
+			name:    "url wrong target",
+			handoff: rejectedURLHandoff(yagoproto.TransferURLResult(yagoproto.ResultWrongTarget)),
+			retry:   dhtexchange.OutboundRetryDelayed,
+		},
+		{
+			name:    "url empty auth response",
+			handoff: rejectedURLHandoff(""),
+			retry:   dhtexchange.OutboundRetryDelayed,
+		},
+	}
 }
 
 func TestDHTOutboundRosterCycleConfirmsSentPeer(t *testing.T) {
@@ -96,35 +191,43 @@ func TestDHTOutboundRosterCycleQuarantinesPeerOnRepeatedFailure(t *testing.T) {
 	}
 }
 
-func TestDHTOutboundRosterCycleRejectsRemoteIndexOnRejectedHandoff(t *testing.T) {
+func TestDHTOutboundRosterCyclePreservesAdvertisedCapabilityOnRejectedHandoff(t *testing.T) {
 	t.Parallel()
 
 	target := dhtOutboundPeer(t)
-	roster := &recordingDHTRoster{}
-	receipt, err := (dhtOutboundRosterCycle{
-		cycle: &scriptedDHTOutboundCycle{
-			receipt: dhtexchange.ScheduledDistributionReceipt{
-				Distribution: dhtexchange.DistributionReceipt{
-					State:  dhtexchange.DistributionHandoffRejected,
-					Peer:   target.Hash,
-					Target: target,
+	for _, test := range rejectedDHTHandoffCases() {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			roster := &recordingDHTRoster{}
+			receipt, err := (dhtOutboundRosterCycle{
+				cycle: &scriptedDHTOutboundCycle{
+					receipt: dhtexchange.ScheduledDistributionReceipt{
+						Distribution: dhtexchange.DistributionReceipt{
+							State:   dhtexchange.DistributionHandoffRejected,
+							Peer:    target.Hash,
+							Target:  target,
+							Handoff: test.handoff,
+						},
+						Retry: dhtexchange.OutboundRetryDecision{
+							Status:   test.retry,
+							Peer:     target.Hash,
+							Failures: test.failures,
+						},
+					},
 				},
-				Retry: dhtexchange.OutboundRetryDecision{
-					Status: dhtexchange.OutboundRetryDelayed,
-					Peer:   target.Hash,
-				},
-			},
-		},
-		roster: roster,
-	}).RunOnce(context.Background())
-	if err != nil {
-		t.Fatalf("RunOnce: %v", err)
-	}
-	if receipt.Distribution.State != dhtexchange.DistributionHandoffRejected ||
-		len(roster.remoteIndexRejected) != 1 ||
-		roster.remoteIndexRejected[0].Hash != target.Hash ||
-		len(roster.unreachable) != 0 {
-		t.Fatalf("receipt/roster = %#v/%#v", receipt, roster)
+				roster: roster,
+			}).RunOnce(context.Background())
+			if err != nil {
+				t.Fatalf("RunOnce: %v", err)
+			}
+			if receipt.Distribution.Handoff.State != test.handoff.State ||
+				len(roster.remoteIndexRejected) != 0 ||
+				len(roster.unreachable) != 0 ||
+				len(roster.reachable) != 0 {
+				t.Fatalf("receipt/roster = %#v/%#v", receipt, roster)
+			}
+		})
 	}
 }
 

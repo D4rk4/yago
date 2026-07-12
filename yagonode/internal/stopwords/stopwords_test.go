@@ -16,7 +16,7 @@ func TestIsStopwordAcrossLanguages(t *testing.T) {
 }
 
 func TestContentTermsKeepsMeaningBearingWords(t *testing.T) {
-	got := ContentTerms([]string{"что", "такое", "осень", ""})
+	got := ContentTerms([]string{"что", "такое", " осень ", "", " "})
 	if len(got) != 1 || got[0] != "осень" {
 		t.Fatalf("content terms = %#v", got)
 	}

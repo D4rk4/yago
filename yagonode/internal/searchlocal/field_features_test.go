@@ -7,15 +7,20 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 )
 
-func TestSearcherRequestsPositionsByTermCount(t *testing.T) {
+func TestSearcherRequestsPositionsOnlyForExplicitConsumers(t *testing.T) {
 	cases := []struct {
 		name string
 		req  searchcore.Request
 		want bool
 	}{
-		{"two parsed terms", searchcore.Request{Terms: []string{"a", "b"}}, true},
-		{"two query words", searchcore.Request{Query: "linux kernel"}, true},
-		{"single word", searchcore.Request{Query: "linux"}, false},
+		{"ordinary multi-term", searchcore.Request{Terms: []string{"a", "b"}}, false},
+		{
+			"ranking features",
+			searchcore.Request{Query: "linux kernel", RankingFeatures: true},
+			true,
+		},
+		{"operator explain", searchcore.Request{Query: "linux", Explain: true}, true},
+		{"near filter", searchcore.Request{Query: "linux kernel", Near: true}, true},
 	}
 	for _, tc := range cases {
 		index := &fakeIndex{}
@@ -33,6 +38,18 @@ func TestSearcherRequestsPositionsByTermCount(t *testing.T) {
 	}
 }
 
+func TestSearcherSkipsFieldScoresWithoutAConsumer(t *testing.T) {
+	index := &fakeIndex{}
+	if _, err := NewSearcher(
+		index,
+	).Search(t.Context(), searchcore.Request{Query: "linux"}); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if index.got.IncludeFieldScores || index.got.Explain {
+		t.Fatalf("ordinary request enabled explanations: %#v", index.got)
+	}
+}
+
 func TestSearcherMapsFieldFeatures(t *testing.T) {
 	index := &fakeIndex{response: searchindex.SearchResultSet{
 		Total: 1,
@@ -44,7 +61,9 @@ func TestSearcherMapsFieldFeatures(t *testing.T) {
 			FieldTermPositions: map[string]map[string][]int{"body": {"kernel": {1, 2}}},
 		}},
 	}}
-	resp, err := NewSearcher(index).Search(t.Context(), searchcore.Request{Query: "linux kernel"})
+	resp, err := NewSearcher(index).Search(t.Context(), searchcore.Request{
+		Query: "linux kernel", RankingFeatures: true,
+	})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}

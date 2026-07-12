@@ -51,3 +51,40 @@ func TestBuildConfigViewMarksUnsetValues(t *testing.T) {
 		t.Fatal("expected a zero storage quota to render as Unlimited")
 	}
 }
+
+func TestBuildConfigViewDerivesWebFallbackFromPrivacy(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		fallback webFallbackConfig
+		expected string
+	}{
+		{
+			name: "explicit ignores disabled legacy flag",
+			fallback: webFallbackConfig{
+				Enabled: false, Privacy: webFallbackPrivacyExplicit,
+			},
+			expected: "Web fallbackEnabled",
+		},
+		{
+			name: "enabled policy",
+			fallback: webFallbackConfig{
+				Privacy: webFallbackPrivacyEnabled,
+			},
+			expected: "Web fallbackEnabled",
+		},
+		{
+			name: "disabled ignores enabled legacy flag",
+			fallback: webFallbackConfig{
+				Enabled: true, Privacy: webFallbackPrivacyDisabled,
+			},
+			expected: "Web fallbackDisabled",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			flat := flattenConfig(buildConfigView(nodeConfig{WebFallback: test.fallback}))
+			if !strings.Contains(flat, test.expected) {
+				t.Fatalf("config view = %q, want %q", flat, test.expected)
+			}
+		})
+	}
+}

@@ -104,26 +104,28 @@ peer listener is behind a reverse proxy or NAT and the external address differs)
 | `YAGO_STORAGE_QUOTA` | `1GB` | Storage quota, as a human-readable size (e.g. `512MB`, `1GB`, `20GB`). |
 | `YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS` | `false` | Allow outbound connections to RFC 1918 and unique-local addresses. Enable only for LAN or private-network deployments; loopback, link-local, and reserved ranges stay blocked. |
 | `YAGO_EGRESS_ALLOW_CIDRS` | _(empty)_ | Comma-separated private CIDRs the egress guard admits even when `YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS` is false, so intranet mode reaches only named ranges instead of all private space. Only relaxes the private check: loopback, link-local (including the cloud metadata range), and reserved ranges stay blocked, so a non-private entry never grants access to them. |
-| `YAGO_SEARCH_API_KEY` | _(empty)_ | Optional legacy static bearer token for the Tavily-compatible `POST /search` and `POST /extract` endpoints. When set, callers must send `Authorization: Bearer <token>`. This is a local key for the node's own endpoint, not a key for any external search service; the node uses no keyed external search API. Ignored when `YAGO_SEARCH_REQUIRE_API_KEY` is on. |
-| `YAGO_SEARCH_REQUIRE_API_KEY` | `false` | Require scoped API keys on the Tavily-compatible surface. When on, `POST /search` and `POST /extract` accept only admin-minted API keys (`Authorization: Bearer <key>`): `/search` needs `search:read` (or `search:raw` for raw content) and `/extract` needs `search:raw`. Missing/invalid keys return `401`, insufficient scope `403`, and rate-limited keys `429`. Takes precedence over `YAGO_SEARCH_API_KEY`; when both are unset the surface is public. |
-| `YAGO_PUBLIC_SEARCH_UI_ENABLED` | `false` | Serve the anonymous public search portal on the public listener's root (`/`). Off by default; while off, the root serves the landing page and the portal is not mounted. When on, a minimal, server-rendered, no-JavaScript search page runs queries against the node's search core (local plus peers, DDGS fallback included) and shows the `[ddgs]` marker on fallback hits. It exposes only search — never admin APIs — and does not log the query text. Overridable live from the admin console (see Runtime overrides). |
+| `YAGO_SEARCH_API_KEY` | _(empty)_ | Optional legacy static bearer token for the Tavily-compatible `POST /search`, `POST /extract`, `POST /crawl`, and `POST /map` endpoints. Callers send `Authorization: Bearer <token>`. This local node credential is not a key for an external search service; the node uses no keyed external search API. Ignored when `YAGO_SEARCH_REQUIRE_API_KEY` is on. When neither this token nor scoped authorization is configured, the agent endpoints deny access. |
+| `YAGO_SEARCH_REQUIRE_API_KEY` | `false` | Require scoped API keys on the Tavily-compatible surface. When on, `POST /search`, `POST /extract`, `POST /crawl`, and `POST /map` accept only admin-minted API keys (`Authorization: Bearer <key>`): ordinary `/search` needs `search:read`, while raw-content search, extract, crawl, and map need `search:raw`. Missing/invalid keys return `401`, insufficient scope `403`, and rate-limited keys `429`. Takes precedence over `YAGO_SEARCH_API_KEY`; when neither scoped authorization nor a static key is configured, these endpoints deny access rather than becoming public. |
+| `YAGO_PUBLIC_SEARCH_UI_ENABLED` | `false` | Serve the anonymous public search portal on the public listener's root (`/`). Off by default; while off, the root serves the landing page and the portal is not mounted. When on, a minimal, server-rendered, no-JavaScript search page runs exact/morphological retrieval against the local index plus YaCy peers, retries a true miss with bounded local fuzzy recovery, and uses the configured provider only when recovery also misses and web fallback privacy is `enabled`. It exposes only search — never admin APIs — and does not log the query text. Overridable live from the admin console (see Runtime overrides). |
 | `YAGO_HTTPS_REDIRECT` | `false` | Redirect plain-HTTP requests to the `https://` origin with a 308, preserving path and query. Off by default. TLS termination is expected in front (a reverse proxy sets `X-Forwarded-Proto`); loopback requests are never redirected. Overridable live from the admin console (see Runtime overrides). |
 | `YAGO_EXTRACT_FETCH_ENABLED` | `false` | Enable fetch-on-extract for `POST /extract`. Off by default, so an uncached URL is a controlled `failed_result` with no outbound request. When on, an uncached URL is fetched through the shared egress-guarded client (private networks stay default-denied — no SSRF) and its title and visible text are extracted. |
 | `YAGO_EXTRACT_FETCH_TIMEOUT` | `10s` | Per-request timeout for a fetch-on-extract fetch. |
-| `YAGO_EXTRACT_FETCH_MAX_BYTES` | `2097152` | Maximum response bytes read per fetch-on-extract fetch (2 MiB). |
+| `YAGO_EXTRACT_FETCH_MAX_BYTES` | `2097152` | Maximum response bytes read per fetch-on-extract fetch. The default is 2 MiB and the process clamps larger values to a 4 MiB hard ceiling before HTML parsing. An over-limit response is rejected, not truncated into a partial document. |
 | `YAGO_ADMIN_USER` | _(empty)_ | Administrator username. When set with `YAGO_ADMIN_PASSWORD`, the admin is provisioned on every start and those credentials are authoritative. |
 | `YAGO_ADMIN_PASSWORD` | _(empty)_ | Administrator password, stored as an Argon2id hash. Leave both admin variables empty to create the first admin with `POST /api/admin/v1/auth/setup` on first run. There is no default password. |
 | `YAGO_ADMIN_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the operations surface. Empty denies all cross-origin requests. Use `*` to echo any origin (required for a credentialed admin UI on an unknown origin, but broad). |
-| `YAGO_SEARCH_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the public search endpoints on the peer listener. Empty denies all cross-origin requests; `*` allows any origin without credentials. |
-| `YAGO_WEB_FALLBACK_ENABLED` | `false` | Legacy on/off switch for the optional DDGS web-search fallback, kept for compatibility. It is the default source for `YAGO_WEB_FALLBACK_PRIVACY` when that variable is unset (`true` → `enabled`, `false` → `disabled`). Prefer setting the privacy mode directly. When active, a query that returns nothing locally and across peers is answered by an external keyless metasearch and the results are marked `[ddgs]` on the human search surfaces (never on the Tavily `POST /search` drop-in). |
-| `YAGO_WEB_FALLBACK_PRIVACY` | _(from `ENABLED`)_ | Governs whether a query may leave the node for the external provider. `disabled` never sends a query (the fallback is not even installed); `explicit` sends only for a request that opted in; `enabled` sends on any local-and-peer miss. Defaults to `disabled` unless the legacy `YAGO_WEB_FALLBACK_ENABLED` is `true`. |
+| `YAGO_SEARCH_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the public search endpoints on the public listener. Empty denies all cross-origin requests; `*` allows any origin without credentials. |
+| `YAGO_SEARCH_REMOTE_PEER_TIMEOUT` | `1200ms` | Maximum contribution time for one YaCy peer inside an interactive search. |
+| `YAGO_SEARCH_REMOTE_TIMEOUT` | `1300ms` | Aggregate YaCy peer fan-out budget. The public pipeline enforces a 1.8-second end-to-end deadline; a request permitted to continue to web fallback caps its swarm stage at 800ms so later recovery stages retain time. One query additionally shares fixed limits of 8 MiB response data, 1,024 metadata rows, and 8,192 abstract hashes across exact and morphology passes; at most 32 peer HTTP attempts run process-wide. These limits preserve partial swarm results and do not penalize a peer when local admission is saturated. |
+| `YAGO_WEB_FALLBACK_ENABLED` | `false` | Legacy on/off switch for the optional DDGS web-search fallback, kept for compatibility. It is the default source for `YAGO_WEB_FALLBACK_PRIVACY` when that variable is unset (`true` -> `enabled`, `false` -> `disabled`). Prefer setting the privacy mode directly. When active, a global exact/morphological local-plus-peer miss first receives bounded local fuzzy recovery; only a second miss reaches the external keyless HTML search. A local-only request never leaves the node. |
+| `YAGO_WEB_FALLBACK_PRIVACY` | _(from `ENABLED`)_ | Governs whether an eligible miss may leave the node for the external provider. `disabled` never sends a query and does not install the fallback; `explicit` sends only for a request that opted in; `enabled` sends automatically after exact/morphological retrieval and local fuzzy recovery both miss. A Tavily-compatible `/search` call opts in by its web-search contract, including at basic depth. YaCy `resource=local` and admin `scope=local` never use the provider. Defaults to `disabled` unless legacy `YAGO_WEB_FALLBACK_ENABLED` is `true`. |
 | `YAGO_WEB_FALLBACK_PROVIDER` | `ddgs` | Selects the fallback provider family. Only the keyless `ddgs` metasearch is available; `YAGO_WEB_FALLBACK_BACKEND` chooses the engine within it. |
-| `YAGO_WEB_FALLBACK_BACKEND` | `auto` | Engine selection for the fallback. `auto` excludes DuckDuckGo (which hard-blocks automated queries) and uses Mojeek then Bing; `mojeek`, `bing`, or `duckduckgo` pick a single engine. See `doc/adr/0021-in-house-metasearch-backend.md`. |
+| `YAGO_WEB_FALLBACK_BACKEND` | `auto` | Engine selection for the fallback. `auto` starts DuckDuckGo HTML first, then hedges DuckDuckGo Lite, Brave, Mojeek, and Bing at 50ms intervals until one answer survives relevance checks. At most eight engine fetch-and-parse attempts run process-wide. `mojeek`, `bing`, `brave`, or `duckduckgo` restrict the engine set. See `doc/adr/0021-in-house-metasearch-backend.md`. |
 | `YAGO_WEB_FALLBACK_MAX_RESULTS` | `10` | Maximum fallback results (1–20). |
-| `YAGO_WEB_FALLBACK_TIMEOUT` | `10s` | Per-request timeout for an outbound fallback query. |
+| `YAGO_WEB_FALLBACK_TIMEOUT` | `10s` | Per-engine timeout ceiling. Interactive search additionally caps the complete hedged web stage at 650ms inside its 1.8-second deadline. |
 | `YAGO_WEB_FALLBACK_SAFESEARCH` | `moderate` | Safe-search preference passed to engines that support it (`strict`, `moderate`, `off`). |
-| `YAGO_WEB_FALLBACK_CACHE_TTL` | `5m` | How long to cache a fallback response to respect engine rate limits and reduce repeat egress. |
-| `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | When on (and crawling is enabled), URLs surfaced by the fallback are published as conservative crawl orders so the next identical query can be answered locally. URLs already in the document store are skipped; the durable queue deduplicates by URL. No effect when crawling is disabled. |
+| `YAGO_WEB_FALLBACK_CACHE_TTL` | `5m` | How long to cache a fallback response to respect engine rate limits and reduce repeat egress. Normalized responses share a fixed 4 MiB/256-entry byte-aware cache, retain at most 20 rows per query, and bound each title, URL, and snippet before insertion. |
+| `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | When on (and crawling is enabled), URLs surfaced by the fallback are published as conservative crawl orders so the next identical query can be answered locally. Publishing runs after the search response through a process-wide two-work admission with a ten-second deadline; saturated admission skips optional seed work. URLs already in the document store are skipped, and the durable queue deduplicates by URL. No effect when crawling is disabled. |
 | `YAGO_WEB_FALLBACK_SEED_DEPTH` | `1` | Crawl depth for seeded orders (0–8). Kept shallow to bound amplification. |
 | `YAGO_WEB_FALLBACK_SEED_MAX_PAGES` | `20` | Per-host page cap for seeded crawl orders. |
 | `YAGO_QUERY_LOG_MODE` | `off` | How much of a search query is written to the node's logs. `off` records nothing; `aggregate` records only the query length and result count (never the text); `full` records the query text. The default keeps queries out of the logs. |
@@ -134,8 +136,9 @@ peer listener is behind a reverse proxy or NAT and the external address differs)
 
 ## Privacy
 
-The default posture is that no search query leaves the node and no query text is
-written to the logs. Two independent controls widen that when an operator opts in.
+By default, no query is sent to an external web-search provider and no query text
+is logged. Global search may still send query terms to YaCy peers; peer
+federation and external-provider egress are separate controls.
 
 **Query logging (`YAGO_QUERY_LOG_MODE`).** A single decorator wraps the composed
 searcher, so every search surface — the human portal, the YaCy-compatible
@@ -150,18 +153,30 @@ nothing locally or across peers, the node can consult an external keyless
 metasearch provider. The provider necessarily receives the query, and any pages
 it returns may be queued for this node to crawl (see `YAGO_WEB_FALLBACK_SEED_CRAWL`).
 `disabled` (default) never contacts the provider; `explicit` contacts it only for
-a request that opted in; `enabled` contacts it on any miss. The public portal
-tags such results with `[ddgs]` and its footer states that these results came
-from an external provider that received the query and that the pages may be
-crawled.
+a request that opted in; `enabled` contacts it after exact/morphological
+local-plus-peer retrieval and bounded local fuzzy recovery both miss. Human
+search surfaces tag such results with `[ddgs]` and state that the external
+provider received the query.
 
 **Retention.** Cached fallback responses are held for `YAGO_WEB_FALLBACK_CACHE_TTL`
 (the only outbound-search cache) and then discarded, bounding how long external
-result text lingers. Query logs are emitted to the node's structured log stream,
-so their retention is governed by the operator's log pipeline rather than the
-node. Retention windows for stored document snippets and crawl logs follow the
-storage eviction settings under **Crawling** and are not yet independently
-tunable.
+result text lingers. The local index-result cache is a fixed 16 MiB/256-entry LRU,
+and public paging sessions share a fixed 32 MiB/128-session LRU with a five-minute
+TTL. Both caches count detached payload bytes, evict by bytes and recency, and do
+not retain a single entry larger than their budget. These fixed safety ceilings
+do not add environment-only controls. Query logs are emitted to the node's
+structured log stream, so their retention is governed by the operator's log
+pipeline rather than the node. Retention windows for stored document snippets
+and crawl logs follow the storage eviction settings under **Crawling** and are
+not yet independently tunable.
+
+**Fixed safety ceilings.** Tavily-compatible JSON bodies are limited to 64 KiB.
+Raw-content search, extract, crawl, and map share four work slots, a 30-second
+request deadline, and 16 MiB retained/output budgets; one live HTML fetch is
+hard-capped at 4 MiB. YaCy blacklist and profile exports each admit four
+requests before parsing. Blacklist input and output share 16 MiB; profile input,
+owned properties, and output are capped at 1 MiB, 1 MiB, and 2 MiB. These are
+process safety invariants rather than operator tuning knobs.
 
 ## Admin authentication
 
@@ -182,6 +197,13 @@ Login and API-key outcomes are exported on `/metrics` as
 `admin_api_key_auth_total` (results `rejected`, `throttled`, `forbidden`) so
 operators can alert on brute-force pressure.
 
+Login and setup accept at most 16 KiB per JSON or form body, a 256-byte
+username, and a 1 KiB password. One 32-slot process gate covers unauthenticated
+login/setup body decoding across the JSON and HTML surfaces; saturation returns
+`503` with `Retry-After` before reading the body. Argon2 hashing and verification
+use a separate two-slot process gate. Login tracking retains at most 4,096
+client identities and 64 failures per identity.
+
 For non-interactive clients, create an API key with
 `POST /api/admin/v1/auth/api-keys` (a session or an `admin:write` key is required
 to manage keys). The response returns the secret exactly once; the node stores
@@ -193,7 +215,11 @@ changes and key management), `crawl:write` (`POST /crawl`), and `search:read` /
 `search:raw`, which gate the public Tavily-compatible search API when
 `YAGO_SEARCH_REQUIRE_API_KEY` is on. `GET
 /api/admin/v1/auth/api-keys` lists key metadata and last-used time without the
-secret, and `DELETE /api/admin/v1/auth/api-keys/{id}` revokes a key. Prometheus
+secret, and `DELETE /api/admin/v1/auth/api-keys/{id}` revokes a key. API-key
+lookup and last-used persistence share a 32-slot process-wide nonblocking gate.
+Saturation or authentication storage failure returns `503` with `Retry-After: 1`;
+per-key throttling returns `429` with the same header. Last-used time is written
+only after the request passes the per-key limiter. Prometheus
 can scrape `/metrics` with an `admin:read` key or a logged-in session cookie;
 otherwise bind `YAGO_OPS_ADDR` to a trusted network. `GET
 /api/admin/v1/events` returns a bounded, in-memory log of recent structured

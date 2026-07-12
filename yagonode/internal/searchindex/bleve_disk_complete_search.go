@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/blevesearch/bleve/v2"
+	"github.com/blevesearch/bleve/v2/search"
 )
 
 const (
@@ -41,8 +42,8 @@ func (b *BleveDiskIndex) searchCompleteHitsWithin(
 	)
 	defer cancel()
 	accumulator := completeSearchAccumulator{
-		results: make([]SearchResult, 0, min(req.MaxResults, indexedDocuments)),
-		facets:  newFacetCollector(req.WithFacets),
+		hits:   make([]*search.DocumentMatch, 0, min(req.MaxResults, indexedDocuments)),
+		facets: newFacetCollector(req.WithFacets),
 	}
 	offset := 0
 	matchedDocuments := indexedDocuments
@@ -83,15 +84,22 @@ func (b *BleveDiskIndex) searchCompleteHitsWithin(
 		}
 	}
 
+	results, err := b.finalCompleteResults(ctx, req, accumulator.hits)
+	if err != nil {
+		return SearchResultSet{}, nil, err
+	}
+	rescoreStoredQuotedPhrasePrefix(results, req)
+	rescoreStoredProximity(results, req)
+
 	return SearchResultSet{
-		Results: accumulator.results,
+		Results: results,
 		Total:   accumulator.total,
 		Facets:  accumulator.facets.groups(),
 	}, accumulator.orphans, nil
 }
 
 type completeSearchAccumulator struct {
-	results []SearchResult
+	hits    []*search.DocumentMatch
 	orphans []string
 	total   int
 	facets  *facetCollector
@@ -103,12 +111,17 @@ func (b *BleveDiskIndex) completeSearchPage(
 	pageSize int,
 	searchAfter []string,
 ) (*bleve.SearchResult, error) {
-	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(req, b.gram, b.multilingual))
+	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(
+		req,
+		b.multilingual,
+		b.analyzerScope,
+	))
 	searchRequest.Size = pageSize
 	searchRequest.SortBy([]string{"_id"})
 	searchRequest.SetSearchAfter(searchAfter)
 	searchRequest.Explain = req.Explain || req.IncludeFieldScores
-	searchRequest.IncludeLocations = req.IncludePositions
+	searchRequest.IncludeLocations = false
+	searchRequest.Fields = storedSearchFields(req, b.storedCandidates)
 	page, err := b.alias.SearchInContext(ctx, searchRequest)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -153,7 +166,7 @@ func (accumulator *completeSearchAccumulator) collect(
 	page *bleve.SearchResult,
 ) error {
 	for _, hit := range page.Hits {
-		doc, found, err := index.documents.Document(ctx, hit.ID)
+		projection, found, err := index.loadSearchHitProjection(ctx, hit, req)
 		if err != nil {
 			return fmt.Errorf("load search document: %w", err)
 		}
@@ -162,14 +175,14 @@ func (accumulator *completeSearchAccumulator) collect(
 
 			continue
 		}
-		if !allowsDocument(doc, req) {
+		if !allowsDocument(projection.document, req) {
 			continue
 		}
-		accumulator.facets.observe(doc)
+		accumulator.facets.observe(projection.document)
 		accumulator.total++
-		accumulator.results = insertCompleteResult(
-			accumulator.results,
-			searchResultFromDocument(hit, doc, req),
+		accumulator.hits = insertCompleteHit(
+			accumulator.hits,
+			hit,
 			req.MaxResults,
 		)
 	}
@@ -177,11 +190,11 @@ func (accumulator *completeSearchAccumulator) collect(
 	return nil
 }
 
-func insertCompleteResult(
-	results []SearchResult,
-	candidate SearchResult,
+func insertCompleteHit(
+	results []*search.DocumentMatch,
+	candidate *search.DocumentMatch,
 	limit int,
-) []SearchResult {
+) []*search.DocumentMatch {
 	if limit <= 0 {
 		return nil
 	}
@@ -190,12 +203,12 @@ func insertCompleteResult(
 			return results[index].Score < candidate.Score
 		}
 
-		return results[index].DocumentID > candidate.DocumentID
+		return results[index].ID > candidate.ID
 	})
 	if position >= limit {
 		return results
 	}
-	results = append(results, SearchResult{})
+	results = append(results, nil)
 	copy(results[position+1:], results[position:])
 	results[position] = candidate
 	if len(results) > limit {
@@ -203,4 +216,28 @@ func insertCompleteResult(
 	}
 
 	return results
+}
+
+func (b *BleveDiskIndex) finalCompleteResults(
+	ctx context.Context,
+	req SearchRequest,
+	hits []*search.DocumentMatch,
+) ([]SearchResult, error) {
+	results := make([]SearchResult, 0, len(hits))
+	for _, hit := range hits {
+		projection, found, err := b.loadSearchHitProjection(ctx, hit, req)
+		if err != nil {
+			return nil, fmt.Errorf("reload final search document: %w", err)
+		}
+		if !found {
+			continue
+		}
+		mapped, err := projection.result(ctx, hit, req)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, mapped)
+	}
+
+	return results, nil
 }

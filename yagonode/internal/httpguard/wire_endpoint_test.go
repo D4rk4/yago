@@ -132,6 +132,57 @@ func TestServeRejectsDisallowedMethod(t *testing.T) {
 	}
 }
 
+func TestServeWireIntakeShedsBeforeBodyAndReleases(t *testing.T) {
+	intake := httpguard.NewIntakeGate(1)
+	release, admitted := intake.TryAcquire()
+	if !admitted {
+		t.Fatal("failed to reserve wire intake fixture")
+	}
+	gate := testGate()
+	gate.Intake = intake
+	handler := httpguard.Serve(
+		gate,
+		yagoproto.TransferURLEndpointMethods,
+		func(context.Context, url.Values) (echoResponse, error) {
+			return echoResponse{}, nil
+		},
+		func(_ context.Context, resp echoResponse) (echoResponse, error) {
+			return resp, nil
+		},
+	)
+	body := &unreadRawBody{}
+	request := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		yagoproto.PathTransferURL,
+		body,
+	)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, request)
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") != "1" ||
+		body.read {
+		t.Fatalf(
+			"saturated response = %d retry=%q read=%t",
+			rec.Code,
+			rec.Header().Get("Retry-After"),
+			body.read,
+		)
+	}
+	release()
+
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, postForm())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("released response = %d, want 200", rec.Code)
+	}
+	finalRelease, admitted := intake.TryAcquire()
+	if !admitted {
+		t.Fatal("successful wire response retained intake slot")
+	}
+	finalRelease()
+}
+
 func TestMountServesMuxRoute(t *testing.T) {
 	mux := http.NewServeMux()
 	router := httpguard.NewWireRouter(mux, testGate())

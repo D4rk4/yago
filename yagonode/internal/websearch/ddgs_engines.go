@@ -68,15 +68,6 @@ func allEngines() map[string]engine {
 	}
 }
 
-// backendsFor resolves a backend selector to an ordered engine list. The query
-// loop walks engines in order and stops at the first one whose answer survives
-// acceptance, so "auto" is ordered by answer quality: the DuckDuckGo endpoints
-// first — the only keyless engines with solid multilingual coverage — then
-// Brave, then Mojeek (little non-English coverage) and Bing (its bot-tier
-// response answers only the first query word) as the tail. DuckDuckGo's
-// aggressive rate limiting (ADR-0021) is handled by the per-engine backoff:
-// a limited engine is skipped for its own backoff window while the rest of
-// the chain keeps answering.
 func backendsFor(name string) []engine {
 	engines := allEngines()
 	switch strings.ToLower(strings.TrimSpace(name)) {

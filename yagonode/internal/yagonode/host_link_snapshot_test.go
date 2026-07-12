@@ -11,14 +11,18 @@ import (
 )
 
 func TestRecordHostLinkBoundsRetainedGraph(t *testing.T) {
-	incoming := map[string]map[string]hostLinkReference{}
-	capacity := hostLinkCapacity{linkedHosts: 2, referencesPerHost: 2}
-	recordHostLink(incoming, "target-a", "source-a", 1, capacity)
-	recordHostLink(incoming, "target-a", "source-a", 2, capacity)
-	recordHostLink(incoming, "target-a", "source-b", 1, capacity)
-	recordHostLink(incoming, "target-a", "source-c", 3, capacity)
-	recordHostLink(incoming, "target-b", "source-a", 1, capacity)
-	recordHostLink(incoming, "target-c", "source-a", 1, capacity)
+	accumulator := hostLinkAccumulator{
+		incoming: map[string]map[string]hostLinkReference{},
+	}
+	capacity := hostLinkCapacity{linkedHosts: 2, referencesPerHost: 2, references: 3}
+	recordHostLink(&accumulator, "target-a", "source-a", 1, capacity)
+	recordHostLink(&accumulator, "target-a", "source-a", 2, capacity)
+	recordHostLink(&accumulator, "target-a", "source-b", 1, capacity)
+	recordHostLink(&accumulator, "target-a", "source-c", 3, capacity)
+	recordHostLink(&accumulator, "target-b", "source-a", 1, capacity)
+	recordHostLink(&accumulator, "target-b", "source-b", 1, capacity)
+	recordHostLink(&accumulator, "target-c", "source-a", 1, capacity)
+	incoming := accumulator.incoming
 
 	if len(incoming) != 2 || len(incoming["target-a"]) != 2 {
 		t.Fatalf("retained graph = %#v", incoming)
@@ -31,6 +35,30 @@ func TestRecordHostLinkBoundsRetainedGraph(t *testing.T) {
 	}
 	if _, found := incoming["target-c"]; found {
 		t.Fatal("target beyond the graph cap was retained")
+	}
+	if accumulator.references != capacity.references ||
+		len(incoming["target-b"]) != 1 {
+		t.Fatalf("total retained references = %d/%#v", accumulator.references, incoming)
+	}
+}
+
+func TestRecordHostLinkBoundsLinkedHostsBeforeReferences(t *testing.T) {
+	accumulator := hostLinkAccumulator{
+		incoming: map[string]map[string]hostLinkReference{},
+	}
+	capacity := hostLinkCapacity{linkedHosts: 1, referencesPerHost: 2, references: 3}
+	recordHostLink(&accumulator, "target-a", "source-a", 1, capacity)
+	recordHostLink(&accumulator, "target-b", "source-b", 1, capacity)
+
+	if len(accumulator.incoming) != 1 || accumulator.references != 1 {
+		t.Fatalf(
+			"retained graph = %#v, references = %d",
+			accumulator.incoming,
+			accumulator.references,
+		)
+	}
+	if _, found := accumulator.incoming["target-b"]; found {
+		t.Fatal("target beyond the linked-host cap was retained")
 	}
 }
 

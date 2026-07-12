@@ -2,6 +2,7 @@ package peerprofile
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -11,12 +12,12 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
-	"github.com/D4rk4/yago/yagoproto"
 )
 
 const (
 	profileFileName              = "SETTINGS/profile.txt"
 	profileFileReadFailedMessage = "profile file read failed"
+	profileFileLimitMessage      = "profile file exceeded limits"
 )
 
 type Property struct {
@@ -47,16 +48,32 @@ func (p ProfileFile) Properties(ctx context.Context) []Property {
 		return nil
 	}
 
-	raw, err := fs.ReadFile(p.files, profileFileName)
+	raw, err := readProfileSource(ctx, p.files)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			slog.WarnContext(ctx, profileFileReadFailedMessage, slog.Any("error", err))
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			if errors.Is(err, errProfileSourceTooLarge) {
+				slog.WarnContext(ctx, profileFileLimitMessage, slog.Any("error", err))
+			} else {
+				slog.WarnContext(ctx, profileFileReadFailedMessage, slog.Any("error", err))
+			}
 		}
 
 		return nil
 	}
 
-	return parseProfileProperties(string(raw))
+	properties, err := parseProfileProperties(ctx, string(raw))
+	if err != nil {
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			slog.WarnContext(ctx, profileFileLimitMessage, slog.Any("error", err))
+		}
+
+		return nil
+	}
+
+	return properties
 }
 
 func Mount(
@@ -64,30 +81,10 @@ func Mount(
 	identity nodeidentity.Identity,
 	profile Properties,
 ) {
-	if profile == nil {
-		profile = NoPeerProfile{}
-	}
-
-	httpguard.MountRaw(
-		router,
-		yagoproto.PathProfile,
-		yagoproto.ProfileEndpointMethods,
-		yagoproto.ParseProfileRequest,
-		endpoint{identity: identity, profile: profile}.Serve,
+	mountWithAdmission(
+		router, identity, profile,
+		httpguard.NewIntakeGate(maximumConcurrentProfileRequests),
 	)
-}
-
-func parseProfileProperties(raw string) []Property {
-	var properties []Property
-	for line := range strings.Lines(raw) {
-		key, value, ok := profilePropertyParts(line)
-		if !ok {
-			continue
-		}
-		properties = append(properties, Property{Key: key, Value: value})
-	}
-
-	return properties
 }
 
 func profilePropertyParts(line string) (string, string, bool) {

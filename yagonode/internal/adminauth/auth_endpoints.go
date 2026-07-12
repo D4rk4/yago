@@ -15,11 +15,6 @@ const (
 	PathSession = "/api/admin/v1/auth/session"
 )
 
-type credentialsRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 type loginResponse struct {
 	Username  string    `json:"username"`
 	CSRFToken string    `json:"csrfToken"`
@@ -49,11 +44,6 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	req, ok := decodeCredentials(w, r)
-	if !ok {
-		return
-	}
-
 	caller := clientIP(r)
 	if !s.limiter.allow(caller) {
 		s.observer.LoginThrottled()
@@ -61,8 +51,31 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	release, admitted := acquireAuthRequestAdmission()
+	if !admitted {
+		writeAuthRequestAdmissionUnavailableJSON(w)
+
+		return
+	}
+	boundAuthRequestBody(w, r)
+	req, ok := func() (credentialsRequest, bool) {
+		defer release()
+
+		return decodeCredentials(w, r)
+	}()
+	if !ok {
+		s.limiter.recordFailure(caller)
+		s.observer.LoginFailed()
+
+		return
+	}
 
 	valid, err := s.creds.verify(r.Context(), req.Username, req.Password)
+	if errors.Is(err, errCredentialWorkUnavailable) {
+		writeCredentialWorkUnavailableJSON(w)
+
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "login failed")
 
@@ -98,12 +111,42 @@ func (s *Service) handleSetup(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	req, ok := decodeCredentials(w, r)
-	if !ok {
+	release, admitted := acquireAuthRequestAdmission()
+	if !admitted {
+		writeAuthRequestAdmissionUnavailableJSON(w)
+
+		return
+	}
+	boundAuthRequestBody(w, r)
+	var req credentialsRequest
+	ready := func() bool {
+		defer release()
+		present, err := s.creds.exists(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "setup failed")
+
+			return false
+		}
+		if present {
+			writeError(w, http.StatusConflict, "an administrator already exists")
+
+			return false
+		}
+		var ok bool
+		req, ok = decodeCredentials(w, r)
+
+		return ok
+	}()
+	if !ready {
 		return
 	}
 
 	err := s.creds.createIfAbsent(r.Context(), req.Username, req.Password)
+	if errors.Is(err, errCredentialWorkUnavailable) {
+		writeCredentialWorkUnavailableJSON(w)
+
+		return
+	}
 	if errors.Is(err, errAdminExists) {
 		writeError(w, http.StatusConflict, "an administrator already exists")
 
@@ -150,22 +193,6 @@ func (s *Service) handleSession(w http.ResponseWriter, r *http.Request) {
 		Username:  record.Username,
 		ExpiresAt: record.ExpiresAt,
 	})
-}
-
-func decodeCredentials(w http.ResponseWriter, r *http.Request) (credentialsRequest, bool) {
-	var req credentialsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-
-		return credentialsRequest{}, false
-	}
-	if req.Username == "" || req.Password == "" {
-		writeError(w, http.StatusBadRequest, "username and password are required")
-
-		return credentialsRequest{}, false
-	}
-
-	return req, true
 }
 
 func clientIP(r *http.Request) string {

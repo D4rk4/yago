@@ -52,6 +52,13 @@ func TestMemBucketScanReturnsCallbackError(t *testing.T) {
 	}
 }
 
+func TestMemBucketContains(t *testing.T) {
+	bucket := memBucket{entries: map[string][]byte{"key": nil}}
+	if !bucket.Contains(vault.Key("key")) || bucket.Contains(vault.Key("missing")) {
+		t.Fatal("memory presence mismatch")
+	}
+}
+
 func TestEngineSetQuotaBytes(t *testing.T) {
 	e := &engine{}
 	e.SetQuotaBytes(42)

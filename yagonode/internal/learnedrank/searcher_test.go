@@ -67,7 +67,8 @@ func TestSearcherAppliesActiveModelAndPreservesResponse(t *testing.T) {
 		len(response.PartialFailures) != 1 {
 		t.Fatalf("response metadata = %#v", response)
 	}
-	if innerRequest.Offset != 0 || innerRequest.Limit != ranker.CandidateWindow() {
+	if innerRequest.Offset != 0 || innerRequest.Limit != ranker.CandidateWindow() ||
+		!innerRequest.RankingFeatures {
 		t.Fatalf("inner request = %#v", innerRequest)
 	}
 	var deepRequest searchcore.Request

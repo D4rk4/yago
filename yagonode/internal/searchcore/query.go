@@ -43,14 +43,27 @@ func ParseTextQuery(raw string) ParsedQuery {
 }
 
 func RequestWithParsedQuery(req Request) Request {
-	if len(req.Terms) != 0 || strings.TrimSpace(req.Query) == "" {
+	if req.SubmittedQuery == "" && req.Query != "" {
+		req.SubmittedQuery = req.Query
+	}
+	if strings.TrimSpace(req.SubmittedQuery) == "" {
+		if len(req.Terms) != 0 {
+			req.Query = strings.Join(req.Terms, " ")
+		}
+
 		return req
 	}
-	parsed := ParseTextQuery(req.Query)
-	req.Query = strings.Join(parsed.Terms, " ")
-	req.Terms = parsed.Terms
-	req.ExcludedTerms = parsed.ExcludedTerms
-	req.Phrases = parsed.Phrases()
+	parsed := ParseTextQuery(req.SubmittedQuery)
+	if len(req.Terms) == 0 {
+		req.Terms = parsed.Terms
+	}
+	if len(req.ExcludedTerms) == 0 {
+		req.ExcludedTerms = parsed.ExcludedTerms
+	}
+	if len(req.Phrases) == 0 {
+		req.Phrases = parsed.Phrases()
+	}
+	req.Query = strings.Join(req.Terms, " ")
 	if req.Language == "" {
 		req.Language = parsed.Language
 	}
