@@ -154,12 +154,6 @@ func NewBleveDiskIndex(
 	return out, nil
 }
 
-func (b *BleveDiskIndex) warm(ctx context.Context) {
-	request := bleve.NewSearchRequest(bleve.NewMatchAllQuery())
-	request.Size = 1
-	_, _ = b.alias.SearchInContext(ctx, request)
-}
-
 func (b *BleveDiskIndex) Index(
 	ctx context.Context,
 	doc documentstore.Document,

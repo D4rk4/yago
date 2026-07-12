@@ -3,8 +3,10 @@ package yagonode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
@@ -13,6 +15,17 @@ type webFallbackBudgetProbe struct {
 	mu          sync.Mutex
 	hadDeadline bool
 	err         error
+}
+
+type webFallbackDeadlineProbe struct{}
+
+func (webFallbackDeadlineProbe) Search(
+	ctx context.Context,
+	req searchcore.Request,
+) (searchcore.Response, error) {
+	<-ctx.Done()
+
+	return searchcore.Response{Request: req}, fmt.Errorf("exact work: %w", ctx.Err())
 }
 
 func (p *webFallbackBudgetProbe) Search(
@@ -27,16 +40,16 @@ func (p *webFallbackBudgetProbe) Search(
 	return searchcore.Response{Request: req}, p.err
 }
 
-func TestWebFallbackSwarmBudgetWrapsSearchError(t *testing.T) {
+func TestWebFallbackExactStageBudgetWrapsSearchError(t *testing.T) {
 	sentinel := errors.New("swarm failed")
-	searcher := withWebFallbackSwarmBudget(
+	searcher := withWebFallbackExactStageBudget(
 		&webFallbackBudgetProbe{err: sentinel},
 		webFallbackConfig{
 			Provider: webFallbackProviderDDGS,
 			Privacy:  webFallbackPrivacyEnabled,
 		},
 	)
-	_, err := searcher.Search(context.Background(), searchcore.Request{})
+	_, err := searcher.Search(context.Background(), searchcore.Request{Query: "query"})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("search error = %v, want wrapped sentinel", err)
 	}
@@ -49,8 +62,8 @@ func (p *webFallbackBudgetProbe) deadline() bool {
 	return p.hadDeadline
 }
 
-func TestWebFallbackSwarmBudgetFollowsOperatorPolicy(t *testing.T) {
-	if withWebFallbackSwarmBudget(nil, webFallbackConfig{}) != nil {
+func TestWebFallbackExactStageBudgetFollowsOperatorPolicy(t *testing.T) {
+	if withWebFallbackExactStageBudget(nil, webFallbackConfig{}) != nil {
 		t.Fatal("nil swarm searcher changed")
 	}
 
@@ -61,16 +74,38 @@ func TestWebFallbackSwarmBudgetFollowsOperatorPolicy(t *testing.T) {
 		budgeted bool
 	}{
 		{name: "disabled", privacy: webFallbackPrivacyDisabled},
-		{name: "enabled", privacy: webFallbackPrivacyEnabled, budgeted: true},
-		{name: "explicit without consent", privacy: webFallbackPrivacyExplicit},
+		{
+			name: "enabled", privacy: webFallbackPrivacyEnabled,
+			request: searchcore.Request{Query: "query"}, budgeted: true,
+		},
+		{
+			name: "enabled local scope", privacy: webFallbackPrivacyEnabled,
+			request: searchcore.Request{Source: searchcore.SourceLocal},
+		},
+		{
+			name: "enabled local fallback", privacy: webFallbackPrivacyEnabled,
+			request: searchcore.Request{
+				Query: "query", Source: searchcore.SourceLocal, AllowWebFallback: true,
+			},
+			budgeted: true,
+		},
+		{
+			name: "explicit without consent", privacy: webFallbackPrivacyExplicit,
+			request: searchcore.Request{Query: "query"},
+		},
 		{
 			name: "explicit with consent", privacy: webFallbackPrivacyExplicit,
-			request: searchcore.Request{AllowWebFallback: true}, budgeted: true,
+			request: searchcore.Request{Query: "query", AllowWebFallback: true}, budgeted: true,
 		},
+		{
+			name: "non-text", privacy: webFallbackPrivacyEnabled,
+			request: searchcore.Request{Query: "query", ContentDomain: searchcore.ContentDomainImage},
+		},
+		{name: "blank", privacy: webFallbackPrivacyEnabled},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			probe := &webFallbackBudgetProbe{}
-			searcher := withWebFallbackSwarmBudget(probe, webFallbackConfig{
+			searcher := withWebFallbackExactStageBudget(probe, webFallbackConfig{
 				Provider: webFallbackProviderDDGS,
 				Privacy:  test.privacy,
 			})
@@ -84,7 +119,7 @@ func TestWebFallbackSwarmBudgetFollowsOperatorPolicy(t *testing.T) {
 	}
 
 	probe := &webFallbackBudgetProbe{}
-	searcher := withWebFallbackSwarmBudget(probe, webFallbackConfig{
+	searcher := withWebFallbackExactStageBudget(probe, webFallbackConfig{
 		Provider: "other", Privacy: webFallbackPrivacyEnabled,
 	})
 	if _, err := searcher.Search(context.Background(), searchcore.Request{}); err != nil {
@@ -92,5 +127,29 @@ func TestWebFallbackSwarmBudgetFollowsOperatorPolicy(t *testing.T) {
 	}
 	if probe.deadline() {
 		t.Fatal("unconfigured provider shortened the swarm deadline")
+	}
+}
+
+func TestWebFallbackExactStageDeadlineContinuesTheMissCascade(t *testing.T) {
+	previous := webFallbackExactStageBudget
+	webFallbackExactStageBudget = 10 * time.Millisecond
+	t.Cleanup(func() { webFallbackExactStageBudget = previous })
+
+	searcher := withWebFallbackExactStageBudget(
+		webFallbackDeadlineProbe{},
+		webFallbackConfig{
+			Provider: webFallbackProviderDDGS,
+			Privacy:  webFallbackPrivacyEnabled,
+		},
+	)
+	response, err := searcher.Search(t.Context(), searchcore.Request{
+		Query: "missing", Source: searchcore.SourceGlobal,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Results) != 0 || len(response.PartialFailures) != 1 ||
+		response.PartialFailures[0].Source != "exact-stage" {
+		t.Fatalf("response = %#v", response)
 	}
 }

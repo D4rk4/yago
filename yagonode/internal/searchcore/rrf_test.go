@@ -79,3 +79,15 @@ func TestFuseByReciprocalRankIdentityAndEdges(t *testing.T) {
 		t.Fatalf("peer support = %v/%v, want 2", support, known)
 	}
 }
+
+func TestFuseByReciprocalRankDoesNotMarkWebResultsAsLocal(t *testing.T) {
+	fused := FuseByReciprocalRank([]Result{{
+		URL: "https://web.example/", Source: SourceWeb,
+	}})
+	if len(fused) != 1 {
+		t.Fatalf("fused = %#v", fused)
+	}
+	if _, known := fused[0].Evidence.Value(SignalLocalRank); known {
+		t.Fatalf("web result has local rank: %#v", fused[0])
+	}
+}

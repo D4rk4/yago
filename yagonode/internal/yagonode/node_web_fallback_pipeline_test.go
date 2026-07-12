@@ -139,6 +139,39 @@ func TestPublicSearchKeepsLocalFuzzyRecoveryBeforeWeb(t *testing.T) {
 	}
 }
 
+func TestPublicSearchParallelModeCombinesFuzzyAndWebAnswers(t *testing.T) {
+	events := &fallbackPipelineEvents{}
+	assembly, webCalls := fallbackPipelineAssembly(t, events)
+	assembly.webFallback.Trigger = webFallbackTriggerParallel
+	searcher := assemblePublicSearcher(
+		fallbackPipelineSearcher{
+			name: "local", events: events,
+			fuzzyResults: []searchcore.Result{{
+				Title: "Recovered gap", URL: "https://local.example/gap",
+				Source: searchcore.SourceLocal,
+			}},
+		},
+		fallbackPipelineSearcher{name: "swarm", events: events},
+		assembly,
+	)
+	response, err := searcher.Search(t.Context(), searchcore.Request{
+		Query: "gap", Source: searchcore.SourceGlobal, Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Results) != 2 || response.Recovered != "fuzzy" || webCalls.Load() != 1 {
+		t.Fatalf("response = %#v web calls = %d", response, webCalls.Load())
+	}
+	sources := map[searchcore.Source]bool{}
+	for _, result := range response.Results {
+		sources[result.Source] = true
+	}
+	if !sources[searchcore.SourceLocal] || !sources[searchcore.SourceWeb] {
+		t.Fatalf("sources = %#v", sources)
+	}
+}
+
 func TestPublicSearchKeepsSwarmHitBeforeRecoveryAndWeb(t *testing.T) {
 	events := &fallbackPipelineEvents{}
 	assembly, webCalls := fallbackPipelineAssembly(t, events)

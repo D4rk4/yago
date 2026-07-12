@@ -65,6 +65,39 @@ func TestConsoleConfigRendersEditableSettings(t *testing.T) {
 	}
 }
 
+func TestConsoleConfigRendersParallelWebSearchTiming(t *testing.T) {
+	t.Parallel()
+
+	view := SettingsView{Items: []SettingItem{{
+		Key: "web.fallback.trigger", Title: "Web search timing", Value: "miss",
+		Category: "Web fallback", RestartRequired: true,
+		Options: []SettingOption{
+			{Value: "miss", Label: "After local and peer miss"},
+			{Value: "parallel", Label: "Alongside local and peers"},
+		},
+	}}}
+	settings := &fakeSettings{view: view, result: SettingsResult{OK: true}}
+	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Settings: settings})
+	response := do(t, console, "/admin/configuration")
+	for _, want := range []string{
+		`id="panel-web-fallback"`, `name="value:web.fallback.trigger"`,
+		`value="parallel"`, "Alongside local and peers",
+	} {
+		if !strings.Contains(response.body, want) {
+			t.Fatalf("web timing setting missing %q", want)
+		}
+	}
+
+	doPost(t, console, "/admin/configuration", url.Values{
+		"key":                        {"web.fallback.trigger"},
+		"value:web.fallback.trigger": {"parallel"},
+	})
+	if settings.calls != 1 || settings.change.Key != "web.fallback.trigger" ||
+		settings.change.Value != "parallel" {
+		t.Fatalf("change = %#v, calls = %d", settings.change, settings.calls)
+	}
+}
+
 // TestConsoleConfigTabRendersOneFormWithOneSave is the operator-feedback
 // acceptance: each tab is a single form under one shared Save button, with each
 // setting collapsed to one aligned row rather than its own stacked form.

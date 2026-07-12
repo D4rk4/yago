@@ -2,8 +2,8 @@ package yagonode
 
 import (
 	"context"
+	"fmt"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -15,8 +15,6 @@ const (
 	didYouMeanMinTermRunes    = 3
 	didYouMeanTitleSample     = 10
 )
-
-var recoverySearchBudget = 250 * time.Millisecond
 
 // recoveringSearcher runs the zero-result recovery cascade (YaCy DidYouMean
 // parity): when a query with parsed terms finds nothing, it retries once with
@@ -55,18 +53,27 @@ func (s recoveringSearcher) Search(
 		//nolint:wrapcheck // pass the wrapped searcher's error through unchanged.
 		return resp, err
 	}
+	for _, failure := range resp.PartialFailures {
+		if failure.Source == webFallbackExactStageFailureSource {
+			resp.DidYouMean = s.spellSuggestion(req.Terms)
+
+			return resp, nil
+		}
+	}
 
 	retry := req
 	retry.Fuzzy = true
-	retryCtx, cancel := context.WithTimeout(ctx, recoverySearchBudget)
-	defer cancel()
-	recovered, retryErr := s.retry.Search(retryCtx, retry)
-	if retryErr != nil || len(recovered.Results) == 0 {
+	recovered, retryErr := withRecoverySearchBudget(s.retry).Search(ctx, retry)
+	if retryErr != nil {
+		return resp, fmt.Errorf("fuzzy recovery: %w", retryErr)
+	}
+	if len(recovered.Results) == 0 {
 		// The recovery retry is best-effort: when it fails or stays empty, the
 		// caller gets the primary search's honest empty answer — still carrying a
 		// dictionary spelling suggestion when one exists, so a total miss can
 		// point at the likely intended query.
 		resp.DidYouMean = s.spellSuggestion(req.Terms)
+		resp.PartialFailures = append(resp.PartialFailures, recovered.PartialFailures...)
 
 		return resp, nil
 	}

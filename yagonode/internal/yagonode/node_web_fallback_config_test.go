@@ -16,11 +16,40 @@ func TestLoadWebFallbackConfigDefaults(t *testing.T) {
 	if config.Provider != "ddgs" || config.Backend != "auto" {
 		t.Errorf("provider/backend = %q/%q", config.Provider, config.Backend)
 	}
+	if config.Trigger != webFallbackTriggerMiss {
+		t.Errorf("trigger = %q", config.Trigger)
+	}
 	if config.MaxResults != defaultWebFallbackMaxResults {
 		t.Errorf("maxResults = %d", config.MaxResults)
 	}
 	if config.SeedCrawl {
 		t.Error("seed crawl must be off by default")
+	}
+}
+
+func TestLoadWebFallbackTrigger(t *testing.T) {
+	config, err := loadWebFallbackConfig(func(key string) string {
+		if key == envWebFallbackTrigger {
+			return " PARALLEL "
+		}
+
+		return ""
+	})
+	if err != nil || config.Trigger != webFallbackTriggerParallel {
+		t.Fatalf("config = %#v, error = %v", config, err)
+	}
+}
+
+func TestLoadWebFallbackTriggerRejectsUnknownValue(t *testing.T) {
+	_, err := loadWebFallbackConfig(func(key string) string {
+		if key == envWebFallbackTrigger {
+			return "sometimes"
+		}
+
+		return ""
+	})
+	if err == nil {
+		t.Fatal("expected error for an unknown trigger")
 	}
 }
 

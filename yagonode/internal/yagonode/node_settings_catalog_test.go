@@ -32,6 +32,9 @@ func catalogRoundTripCases() map[string]catalogRoundTripCase {
 		"web.fallback.backend": {"brave", func(c nodeConfig) bool {
 			return c.WebFallback.Backend == "brave"
 		}},
+		"web.fallback.trigger": {"parallel", func(c nodeConfig) bool {
+			return c.WebFallback.Trigger == webFallbackTriggerParallel
+		}},
 		"web.fallback.seed_crawl": {"true", func(c nodeConfig) bool {
 			return c.WebFallback.SeedCrawl
 		}},
@@ -125,6 +128,9 @@ func TestExtendedSettingValidation(t *testing.T) {
 	if _, err := byKey["web.fallback.backend"].normalize("google"); err == nil {
 		t.Fatal("unsupported backend must fail")
 	}
+	if _, err := byKey["web.fallback.trigger"].normalize("later"); err == nil {
+		t.Fatal("unsupported trigger must fail")
+	}
 	if normalized, err := byKey["web.fallback.backend"].normalize(" DDG "); err != nil ||
 		normalized != "ddg" {
 		t.Fatalf("backend normalize = %q %v", normalized, err)
@@ -147,6 +153,22 @@ func TestExtendedSettingValidation(t *testing.T) {
 	if !byKey["peer.name"].restartRequired() {
 		t.Fatal("peer.name must require a restart")
 	}
+	if !byKey["web.fallback.trigger"].restartRequired() {
+		t.Fatal("web fallback trigger must require a restart")
+	}
+}
+
+func TestWebFallbackTriggerDescribesParallelRetrieval(t *testing.T) {
+	definition := indexSettingDefinitions()["web.fallback.trigger"]
+	if !strings.Contains(definition.description, "alongside local and peer") {
+		t.Fatalf("description = %q", definition.description)
+	}
+	for _, option := range definition.options {
+		if option.value == "parallel" && option.label == "Alongside local and peers" {
+			return
+		}
+	}
+	t.Fatal("parallel option is missing")
 }
 
 func TestWebFallbackBackendDescribesHedgedExecution(t *testing.T) {

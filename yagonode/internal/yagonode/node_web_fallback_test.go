@@ -106,6 +106,52 @@ func TestWithWebFallbackEnabledKeepsFederatedAnswerBeforeWeb(t *testing.T) {
 	}
 }
 
+func TestWithWebFallbackParallelCombinesPrimaryAndWebAnswers(t *testing.T) {
+	webCalls := 0
+	client := &http.Client{
+		Transport: fallbackRoundTrip(func(*http.Request) (*http.Response, error) {
+			webCalls++
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(mojeekListFixture)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+	primary := stubPrimarySearcher{resp: searchcore.Response{
+		Results: []searchcore.Result{{
+			Title: "local gap", URL: "https://local.example/gap", Source: searchcore.SourceLocal,
+		}},
+		TotalResults: 1,
+	}}
+	search := withWebFallback(primary, publicSearchAssembly{
+		client: client,
+		webFallback: webFallbackConfig{
+			Privacy: webFallbackPrivacyEnabled, Trigger: webFallbackTriggerParallel,
+			Provider: webFallbackProviderDDGS, Backend: "mojeek",
+		},
+	})
+
+	response, err := search.Search(
+		t.Context(),
+		searchcore.Request{Query: "gap", Limit: 10},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if webCalls != 1 || len(response.Results) != 2 || response.TotalResults != 2 {
+		t.Fatalf("response = %#v, web calls = %d", response, webCalls)
+	}
+	sources := map[searchcore.Source]bool{}
+	for _, result := range response.Results {
+		sources[result.Source] = true
+	}
+	if !sources[searchcore.SourceLocal] || !sources[searchcore.SourceWeb] {
+		t.Fatalf("sources = %#v", sources)
+	}
+}
+
 func TestWithWebFallbackInstallsSeeder(t *testing.T) {
 	client := &http.Client{
 		Transport: fallbackRoundTrip(func(*http.Request) (*http.Response, error) {

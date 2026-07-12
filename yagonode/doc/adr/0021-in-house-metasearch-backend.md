@@ -48,7 +48,7 @@ Resilience is built into the provider, not the caller: it caches normalized
 responses under a 4 MiB/256-entry byte-aware cache and the configured TTL, retains
 at most 20 rows per query with bounded fields, backs off exponentially on
 `202`/`429`, and degrades to an empty result when every engine fails rather than
-failing the search. The interactive caller caps the complete engine race at 650
+failing the search. The interactive caller caps the complete engine race at 950
 milliseconds. A process-wide admission bound allows at most eight active engine
 fetch-and-parse attempts; saturated attempts wait only within that existing
 caller context. Outbound requests go through the egress-guarded HTTP client
@@ -60,10 +60,11 @@ The node depends on no paid or keyed search API and ships a single Go appliance
 with no extra runtime service. Scraping public result pages is inherently brittle:
 an engine can change its markup or block the client. This is mitigated by
 structure-driven parsing, the multi-engine `auto` list, backoff, caching, and
-degrade-to-empty, and the engine list is easy to extend. The fallback is
-best-effort by design and off by default; when it fails, the search simply returns
-the original miss. Privacy mode `enabled` runs it automatically only after
-exact/morphological local-plus-peer retrieval and bounded local fuzzy recovery
-both miss, while `explicit` still requires request-level consent.
+degrade-to-empty, and the engine list is easy to extend. Web search is best-effort
+by design and off by default; when it fails, search preserves the primary result
+or original miss. Privacy mode `enabled` permits automatic web search, while
+`explicit` still requires request-level consent. The independent start trigger
+defaults to a complete miss and can explicitly overlap web with local and peer
+retrieval.
 `golang.org/x/net` becomes a direct dependency, pinned in `go.mod` and already
 vetted through the crawler's use of the same package.

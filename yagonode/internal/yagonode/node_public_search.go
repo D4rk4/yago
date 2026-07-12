@@ -271,9 +271,8 @@ func assemblePublicSearcher(
 	// mined from their own top results (RM3) before the swarm merge; peers run
 	// their own retrieval, so only the local searcher is wrapped.
 	localWithFeedback := searchcore.NewPseudoRelevanceSearcher(local)
-	budgetedRemote := withWebFallbackSwarmBudget(remote, assembly.webFallback)
 	merged := searchcore.NewSafeSearchSearcher(
-		searchcore.NewFederatedSearcher(localWithFeedback, budgetedRemote),
+		searchcore.NewFederatedSearcher(localWithFeedback, remote),
 	)
 	enriched := snippetfetch.WithSnippetEnrichment(
 		merged,
@@ -281,8 +280,9 @@ func assemblePublicSearcher(
 		remoteTextEvidence,
 	)
 	admitted := withDenylistFilter(enriched, assembly.denylist)
+	budgetedExact := withWebFallbackExactStageBudget(admitted, assembly.webFallback)
 	recovering := withZeroResultRecovery(
-		admitted,
+		budgetedExact,
 		withDenylistFilter(searchcore.NewSafeSearchSearcher(local), assembly.denylist),
 		assembly.spellCorrector,
 	)
@@ -439,12 +439,12 @@ func withWebFallback(
 		)))
 	}
 
-	return websearch.NewFallbackSearcher(
-		search,
-		provider,
-		webFallbackPermit(config.Privacy),
-		opts...,
-	)
+	permit := webFallbackPermit(config.Privacy)
+	if effectiveWebFallbackTrigger(config.Trigger) == webFallbackTriggerParallel {
+		return websearch.NewParallelSearcher(search, provider, permit, opts...)
+	}
+
+	return websearch.NewFallbackSearcher(search, provider, permit, opts...)
 }
 
 func webFallbackPermit(privacy webFallbackPrivacy) func(searchcore.Request) bool {

@@ -49,9 +49,10 @@ its binaries (`yago-node`, `yagocrawler`).
 ### 🔍 Search that ranks, not just matches
 
 - Local index (sharded [Bleve](https://blevesearch.com/)) + federated swarm
-  fan-out + optional operator-enabled web fallback after a miss. The provider is
-  off by default, and local-only requests never reach it. Results are merged with
-  **reciprocal-rank fusion** and **MMR result diversity**.
+  fan-out + optional operator-enabled web search. The provider is off by default,
+  local-only requests never reach it, and the operator chooses miss-only or
+  parallel local/peer/web retrieval. Results are merged with **reciprocal-rank
+  fusion** and **MMR result diversity**.
 - **[YagoRank](yagonode/doc/yagorank.md)** — strict and relaxed fielded BM25,
   bounded lexical evidence and RM3, deterministic peer RRF, persistent date,
   anchor, authority, quality, safety, duplicate-cluster, and reputation signals,
@@ -69,9 +70,9 @@ its binaries (`yago-node`, `yagocrawler`).
   verticals (images/audio/video/apps with a lightbox grid), spell-check
   ("did you mean"), zero-result fuzzy recovery, query-term-highlighted
   snippets, anchor-text document expansion, and an explainable ranking API.
-  Local and swarm retrieval use parsed bare terms; an eligible web fallback
-  receives the bounded original operator-bearing query and verifies supported
-  structured constraints again on returned rows.
+  Local and swarm retrieval use parsed bare terms; eligible web search receives
+  the bounded original operator-bearing query and verifies supported structured
+  constraints again on returned rows.
   Quoted phrases prefer locally stored candidates whose analyzer-normalized words
   are adjacent; they do not exclude other all-term matches.
 - **Tavily-compatible `/search`, `/extract`, `/crawl`, and `/map`** with API
@@ -97,7 +98,10 @@ its binaries (`yago-node`, `yagocrawler`).
   frequent-term summaries; candidate scans avoid full document bodies; peer and
   web responses, index results, paging sessions, background cache writes, and
   host-link snapshots have process-wide byte or admission limits. `/metrics`
-  exposes Go heap plus process RSS for pre-OOM alerts.
+  exposes Go heap plus process RSS for pre-OOM alerts. Interactive searches have
+  a hard 1.8-second response deadline and four process-wide execution slots;
+  saturation returns an immediate partial empty response while existing work
+  finishes within the fixed concurrency bound.
 - Politeness and defense: robots.txt with a standards-compliant 500 KiB parsing
   limit and a sanitizer for real-world malformed files, per-host adaptive pacing
   and crawl delays, URL canonicalization,

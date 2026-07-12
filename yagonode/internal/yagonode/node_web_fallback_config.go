@@ -50,6 +50,7 @@ const (
 type webFallbackConfig struct {
 	Enabled      bool
 	Privacy      webFallbackPrivacy
+	Trigger      webFallbackTrigger
 	Provider     string
 	Backend      string
 	MaxResults   int
@@ -94,6 +95,10 @@ func loadWebFallbackConfig(getenv func(string) string) (webFallbackConfig, error
 	if err != nil {
 		return webFallbackConfig{}, err
 	}
+	trigger, err := loadWebFallbackTrigger(getenv)
+	if err != nil {
+		return webFallbackConfig{}, err
+	}
 	maxResults, err := intRangeEnv(
 		getenv, envWebFallbackMaxResults,
 		defaultWebFallbackMaxResults, minWebFallbackResults, maxWebFallbackResults,
@@ -130,6 +135,7 @@ func loadWebFallbackConfig(getenv func(string) string) (webFallbackConfig, error
 	return webFallbackConfig{
 		Enabled:    enabled,
 		Privacy:    privacy,
+		Trigger:    trigger,
 		Provider:   envWithDefault(getenv, envWebFallbackProvider, webFallbackProviderDDGS),
 		Backend:    envWithDefault(getenv, envWebFallbackBackend, defaultWebFallbackBackend),
 		MaxResults: maxResults,

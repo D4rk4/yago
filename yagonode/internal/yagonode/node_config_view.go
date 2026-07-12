@@ -55,6 +55,10 @@ func buildConfigView(config nodeConfig) adminui.ConfigView {
 						config.WebFallback.Privacy == webFallbackPrivacyEnabled,
 				),
 			},
+			{
+				Name:  "Web search timing",
+				Value: webFallbackTriggerDisplay(config.WebFallback.Trigger),
+			},
 		}},
 		{Title: "Network policy", Settings: []adminui.ConfigSetting{
 			{Name: "Egress allows LAN", Value: yesNo(config.EgressAllowLAN)},
@@ -73,6 +77,14 @@ func buildConfigView(config nodeConfig) adminui.ConfigView {
 			{Name: "Password", Value: redactedSecret(config.Admin.Password)},
 		}},
 	}}
+}
+
+func webFallbackTriggerDisplay(trigger webFallbackTrigger) string {
+	if effectiveWebFallbackTrigger(trigger) == webFallbackTriggerParallel {
+		return "Alongside local and peers"
+	}
+
+	return "After local and peer miss"
 }
 
 func publicListenerDisplay(addr string) string {

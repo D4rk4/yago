@@ -95,7 +95,9 @@ func reciprocalRankResult(result Result, rank int) Result {
 
 		return result
 	}
-	result.Evidence = result.Evidence.With(SignalLocalRank, float64(rank+1))
+	if result.StoredLocally() {
+		result.Evidence = result.Evidence.With(SignalLocalRank, float64(rank+1))
+	}
 
 	return result
 }

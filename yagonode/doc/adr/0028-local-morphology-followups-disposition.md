@@ -39,7 +39,7 @@ Since that list was written, three later slices changed the picture:
   requires every parsed term, and uses bounded analyzer-consistent edit distance,
   including adjacent transpositions: distance one, or two for terms of at least
   eight runes. Distance two requires four stable leading runes, fuzzy matching is
-  disabled above 64 runes, and the retry has a 250 ms budget.
+  disabled above 64 runes, and the retry has a 150 ms budget.
 
 ## Decision
 

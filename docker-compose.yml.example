@@ -48,6 +48,7 @@ services:
       YAGO_SEARCH_REMOTE_TIMEOUT: ${YAGO_SEARCH_REMOTE_TIMEOUT:-1300ms}
       YAGO_WEB_FALLBACK_ENABLED: ${YAGO_WEB_FALLBACK_ENABLED:-false}
       YAGO_WEB_FALLBACK_PRIVACY: ${YAGO_WEB_FALLBACK_PRIVACY:-}
+      YAGO_WEB_FALLBACK_TRIGGER: ${YAGO_WEB_FALLBACK_TRIGGER:-miss}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       # Shared /opt/yago layout (OPS-04): index and identity live under

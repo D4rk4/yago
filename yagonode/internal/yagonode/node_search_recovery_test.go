@@ -155,6 +155,19 @@ func TestRecoveryStopsAtItsBudget(t *testing.T) {
 	}
 }
 
+func TestRecoveryPreservesParentCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	searcher := &scriptedRecoverySearcher{}
+	_, err := withZeroResultRecovery(searcher, searcher, nil).Search(
+		ctx,
+		searchcore.Request{Query: "missing", Terms: []string{"missing"}},
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestRecoverySuggestsFromIndexVocabularyOnTotalMiss(t *testing.T) {
 	// The fuzzy retry also finds nothing, but the index-vocabulary corrector
 	// still points at the intended spelling.

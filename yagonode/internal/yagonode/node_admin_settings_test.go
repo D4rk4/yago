@@ -259,6 +259,7 @@ func TestSettingCategory(t *testing.T) {
 		"extract.fetch.enabled":        "Extraction",
 		"metrics.enabled":              "Monitoring",
 		"web.fallback.backend":         "Web fallback",
+		"web.fallback.trigger":         "Web fallback",
 		"web.robots.policy":            "Public portal",
 		"portal.enabled":               "Public portal",
 		"public.base.url":              "Public portal",

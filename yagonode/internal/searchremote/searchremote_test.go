@@ -34,6 +34,17 @@ func (s fakePeerSource) SearchTargetPeers(context.Context) []yagomodel.Seed {
 	return s.peers
 }
 
+type countingPeerSource struct {
+	peers []yagomodel.Seed
+	calls atomic.Int32
+}
+
+func (s *countingPeerSource) SearchTargetPeers(context.Context) []yagomodel.Seed {
+	s.calls.Add(1)
+
+	return s.peers
+}
+
 func TestRemoteSearcherQueriesPeersAndNormalizesResults(t *testing.T) {
 	word := yagomodel.WordHash("golang")
 	hash := hashFor("doc1")
@@ -1167,6 +1178,45 @@ func TestRemoteSearcherExpandsSingleWordMorphology(t *testing.T) {
 	// requested limit.
 	if len(resp.Results) != 1 {
 		t.Fatalf("variant fusion not capped to the limit: %d", len(resp.Results))
+	}
+}
+
+func TestRemoteSearcherStopsMorphologyPlanningAtSharedDeadline(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(
+		_ http.ResponseWriter,
+		request *http.Request,
+	) {
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+
+	peers := &countingPeerSource{
+		peers: []yagomodel.Seed{serverSeed(t, server.URL)},
+	}
+	started := time.Now()
+	response, err := NewSearcher(Config{
+		Client:         server.Client(),
+		NetworkName:    "freeworld",
+		Peers:          peers,
+		PerPeerTimeout: time.Second,
+		OverallTimeout: 40 * time.Millisecond,
+		ExpandWord: func(word string) []string {
+			return []string{word, word + "a", word + "b", word + "c", word + "d", word + "e"}
+		},
+	}).Search(t.Context(), searchcore.Request{
+		Terms: []string{"morphology"}, Source: searchcore.SourceGlobal, Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if peers.calls.Load() != 1 {
+		t.Fatalf("peer snapshots = %d, want 1", peers.calls.Load())
+	}
+	if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
+		t.Fatalf("elapsed = %v", elapsed)
+	}
+	if len(response.Results) != 0 {
+		t.Fatalf("results = %#v", response.Results)
 	}
 }
 

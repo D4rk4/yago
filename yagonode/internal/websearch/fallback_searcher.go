@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -80,21 +79,7 @@ func resultURLs(results []Result) []string {
 }
 
 func (s *FallbackSearcher) shouldFallback(resp searchcore.Response, req searchcore.Request) bool {
-	if len(resp.Results) > 0 || s.provider == nil ||
-		(req.Source == searchcore.SourceLocal && !req.AllowWebFallback) {
-		return false
-	}
-	// A non-text vertical (images, audio, video, apps) must not fall back: the
-	// web provider serves generic text results, so an empty image search would
-	// silently turn into unfiltered text links (SEARCH-40).
-	if req.ContentDomain != "" && req.ContentDomain != searchcore.ContentDomainText {
-		return false
-	}
-	if s.permit == nil || !s.permit(req) {
-		return false
-	}
-
-	return strings.TrimSpace(req.SubmittedText()) != ""
+	return len(resp.Results) == 0 && s.providerEligible(req)
 }
 
 func toCoreResults(results []Result, limit int) []searchcore.Result {

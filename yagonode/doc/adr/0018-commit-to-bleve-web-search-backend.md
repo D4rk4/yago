@@ -32,8 +32,10 @@ sidecar from the roadmap. Invest in tuning Bleve for web search instead:
 - a custom index mapping that indexes only the queried fields, without the `_all`
   composite field, stored fields, term vectors, or doc values the node does not
   use;
-- a bounded hot-query result cache with generation-based invalidation, and index
-  warmup on open;
+- a bounded hot-query result cache with generation-based invalidation, and a
+  fixed-field startup warmup that opens every lexical BM25 term dictionary on
+  each shard without a query term, result collection, document hydration, or
+  corpus scan;
 - web-search relevance and analyzer tuning behind the `SearchIndex` seam.
 
 RWI stays the YaCy peer-to-peer exchange and DHT-interop format, never the primary

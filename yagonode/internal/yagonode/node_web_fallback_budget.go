@@ -2,23 +2,47 @@ package yagonode
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
 var (
-	webFallbackSwarmBudget    = 800 * time.Millisecond
-	webFallbackProviderBudget = 650 * time.Millisecond
+	webFallbackExactStageBudget           = 600 * time.Millisecond
+	webFallbackProviderBudget             = 950 * time.Millisecond
+	processWebFallbackExactStageAdmission = newInteractiveSearchAdmission(
+		interactiveSearchConcurrentWork,
+	)
 )
 
-type webFallbackSwarmBudgetSearcher struct {
-	inner  searchcore.Searcher
-	permit func(searchcore.Request) bool
+const (
+	webFallbackExactStageCancellationGrace = 50 * time.Millisecond
+	webFallbackExactStageFailureSource     = "exact-stage"
+	webFallbackExactStageTimeoutFailure    = "exact search deadline exceeded"
+	webFallbackExactStageCapacityFailure   = "exact search capacity exhausted"
+	webFallbackExactStagePanicMessage      = "exact search stage panicked"
+)
+
+type webFallbackExactStageBudgetSearcher struct {
+	inner     searchcore.Searcher
+	permit    func(searchcore.Request) bool
+	budget    time.Duration
+	grace     time.Duration
+	admission *interactiveSearchAdmission
+	panicLog  func(context.Context, string, ...any)
 }
 
-func withWebFallbackSwarmBudget(
+type webFallbackExactStageOutcome struct {
+	response searchcore.Response
+	err      error
+	failure  any
+}
+
+func withWebFallbackExactStageBudget(
 	inner searchcore.Searcher,
 	config webFallbackConfig,
 ) searchcore.Searcher {
@@ -27,27 +51,111 @@ func withWebFallbackSwarmBudget(
 		return inner
 	}
 
-	return webFallbackSwarmBudgetSearcher{
-		inner:  inner,
-		permit: webFallbackPermit(config.Privacy),
+	return webFallbackExactStageBudgetSearcher{
+		inner:     inner,
+		permit:    webFallbackPermit(config.Privacy),
+		budget:    webFallbackExactStageBudget,
+		grace:     webFallbackExactStageCancellationGrace,
+		admission: processWebFallbackExactStageAdmission,
+		panicLog:  slog.ErrorContext,
 	}
 }
 
-func (s webFallbackSwarmBudgetSearcher) Search(
+func (s webFallbackExactStageBudgetSearcher) Search(
 	ctx context.Context,
 	req searchcore.Request,
 ) (searchcore.Response, error) {
-	stageContext := ctx
-	cancel := func() {}
-	if s.permit(req) {
-		stageContext, cancel = context.WithTimeout(ctx, webFallbackSwarmBudget)
-	}
-	defer cancel()
+	budgeted := s.permit(req) &&
+		(req.Source != searchcore.SourceLocal || req.AllowWebFallback) &&
+		(req.ContentDomain == "" || req.ContentDomain == searchcore.ContentDomainText) &&
+		strings.TrimSpace(req.SubmittedText()) != ""
+	if !budgeted {
+		response, err := s.inner.Search(ctx, req)
+		if err != nil {
+			return searchcore.Response{}, fmt.Errorf("search exact stage: %w", err)
+		}
 
-	response, err := s.inner.Search(stageContext, req)
+		return response, nil
+	}
+
+	hardContext, hardCancel := context.WithTimeout(ctx, s.budget)
+	defer hardCancel()
+	stageBudget := s.budget - s.grace
+	if stageBudget <= 0 {
+		stageBudget = s.budget / 2
+	}
+	stageContext, stageCancel := context.WithTimeout(hardContext, stageBudget)
+	defer stageCancel()
+
+	release, err := s.admission.tryAcquire(stageContext)
 	if err != nil {
-		return searchcore.Response{}, fmt.Errorf("search swarm stage: %w", err)
-	}
+		if errors.Is(err, errInteractiveSearchCapacity) {
+			return webFallbackExactStageFailure(req, webFallbackExactStageCapacityFailure), nil
+		}
 
-	return response, nil
+		return searchcore.Response{}, fmt.Errorf("search exact stage admission: %w", err)
+	}
+	outcomes := make(chan webFallbackExactStageOutcome, 1)
+	go s.run(stageContext, req, release, outcomes)
+
+	select {
+	case outcome := <-outcomes:
+		if outcome.failure != nil {
+			panic(outcome.failure)
+		}
+		if outcome.err == nil {
+			return outcome.response, nil
+		}
+		if errors.Is(outcome.err, context.DeadlineExceeded) {
+			outcome.response.Request = req
+			outcome.response.PartialFailures = append(
+				outcome.response.PartialFailures,
+				searchcore.PartialFailure{
+					Source: webFallbackExactStageFailureSource,
+					Reason: webFallbackExactStageTimeoutFailure,
+				},
+			)
+
+			return outcome.response, nil
+		}
+
+		return searchcore.Response{}, fmt.Errorf("search exact stage: %w", outcome.err)
+	case <-hardContext.Done():
+		if ctx.Err() != nil {
+			return searchcore.Response{}, fmt.Errorf("search exact stage: %w", ctx.Err())
+		}
+
+		return webFallbackExactStageFailure(req, webFallbackExactStageTimeoutFailure), nil
+	}
+}
+
+func (s webFallbackExactStageBudgetSearcher) run(
+	ctx context.Context,
+	req searchcore.Request,
+	release func(),
+	outcomes chan<- webFallbackExactStageOutcome,
+) {
+	outcome := webFallbackExactStageOutcome{}
+	defer func() {
+		outcome.failure = recover()
+		if outcome.failure != nil {
+			s.panicLog(ctx, webFallbackExactStagePanicMessage, slog.Any("panic", outcome.failure))
+		}
+		release()
+		outcomes <- outcome
+	}()
+	outcome.response, outcome.err = s.inner.Search(ctx, req)
+}
+
+func webFallbackExactStageFailure(
+	req searchcore.Request,
+	reason string,
+) searchcore.Response {
+	return searchcore.Response{
+		Request: req,
+		PartialFailures: []searchcore.PartialFailure{{
+			Source: webFallbackExactStageFailureSource,
+			Reason: reason,
+		}},
+	}
 }

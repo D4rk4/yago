@@ -88,3 +88,16 @@ func TestBuildConfigViewDerivesWebFallbackFromPrivacy(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildConfigViewShowsWebSearchTiming(t *testing.T) {
+	parallel := flattenConfig(buildConfigView(nodeConfig{WebFallback: webFallbackConfig{
+		Trigger: webFallbackTriggerParallel,
+	}}))
+	if !strings.Contains(parallel, "Web search timingAlongside local and peers") {
+		t.Fatalf("parallel config view = %q", parallel)
+	}
+	miss := flattenConfig(buildConfigView(nodeConfig{}))
+	if !strings.Contains(miss, "Web search timingAfter local and peer miss") {
+		t.Fatalf("miss config view = %q", miss)
+	}
+}

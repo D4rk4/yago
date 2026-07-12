@@ -266,6 +266,9 @@ func (s searcher) searchVariants(
 	lists := make([][]searchcore.Result, 0, len(variants))
 	failures := make([]searchcore.PartialFailure, 0, len(variants))
 	for _, variant := range variants {
+		if ctx.Err() != nil {
+			break
+		}
 		variantReq := req
 		variantReq.Terms = []string{variant}
 		variantReq.Query = variant

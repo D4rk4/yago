@@ -380,7 +380,8 @@ func remoteSearchDefinitions() []settingDefinition {
 
 // webFallbackDefinitions holds the web-search fallback knobs.
 func webFallbackDefinitions() []settingDefinition {
-	return []settingDefinition{
+	definitions := make([]settingDefinition, 0, 3)
+	definitions = append(definitions, []settingDefinition{
 		{
 			key:         "web.fallback.privacy",
 			title:       "Web search fallback (DDGS)",
@@ -426,7 +427,9 @@ func webFallbackDefinitions() []settingDefinition {
 				return config
 			},
 		},
-	}
+	}...)
+
+	return append(definitions, webFallbackTriggerDefinition())
 }
 
 // normalizeWebFallbackBackend accepts the engine selectors the websearch

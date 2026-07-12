@@ -28,12 +28,13 @@ signal that should feed the crawler.
 Drop the outbound upstream-Tavily provider entirely. In its place, offer an
 optional, admin-toggled **DDGS web-search fallback**:
 
-- It can run only after exact/morphological local-plus-peer retrieval and bounded
-  local fuzzy recovery both miss, and only when the operator permits it.
-  Privacy mode `enabled` authorizes fallback on every such complete miss,
-  `explicit` requires the individual request to consent, and `disabled` does not
-  install the fallback. A local-only request never reaches peers or this
-  provider, regardless of privacy mode.
+- It runs only when the operator permits it. Privacy mode `enabled` authorizes
+  eligible global queries, `explicit` requires the individual request to consent,
+  and `disabled` does not install web search. The separate start trigger defaults
+  to `miss`, after exact/morphological local-plus-peer retrieval and bounded local
+  fuzzy recovery both miss. `parallel` is an explicit operator choice that starts
+  web retrieval alongside local and peer work and fuses their completed rankings.
+  A local-only request never reaches peers or this provider.
 - A Tavily-compatible `/search` call explicitly permits web fallback because it
   is itself a web-search request. Basic depth can therefore use local exact and
   fuzzy recovery before web without enabling swarm fan-out; YaCy
@@ -58,18 +59,20 @@ optional, admin-toggled **DDGS web-search fallback**:
 The fallback is disabled by default and installed through admin config
 (`YAGO_WEB_FALLBACK_*`). Outbound queries pass the in-process egress guard;
 responses are rate-limit backed off and briefly cached under a fixed 4 MiB and
-256-entry limit after per-field normalization. Interactive requests run the
-ordered exact local-plus-swarm, local fuzzy, then web cascade inside a fixed
-deadline; the web stage is capped independently so engine timeouts cannot consume
-the whole response budget. The timing and memory budgets do not remove either
-the swarm stage or an operator-permitted provider stage.
+256-entry limit after per-field normalization. Interactive miss-only requests run
+the ordered exact local-plus-swarm, local fuzzy, then web cascade inside a fixed
+deadline. Parallel mode overlaps the web stage with the primary ranking and
+deduplicates the fused result set. Exact, fuzzy, and web stages are capped
+independently, and retained exact or fuzzy work holds bounded admission until it
+exits, so a context-insensitive local query cannot starve the provider or
+accumulate work.
 
 ## Consequences
 
 The node no longer depends on a paid, keyed external search API. An operator can
-keep all misses local plus peers, require request-level consent, or permit every
-global search surface to return provenance-marked fallback results after a true
-miss.
+keep all searches local plus peers, require request-level consent, permit
+provenance-marked web results after a true miss, or explicitly run bounded web
+retrieval alongside every eligible local and peer query.
 Fallback results can seed the crawler so the local index grows toward its query
 traffic. Durable queue publishing runs after the search response through a
 process-wide two-work admission with a ten-second deadline. Saturation drops the
