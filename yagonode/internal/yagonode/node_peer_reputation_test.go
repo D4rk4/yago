@@ -147,13 +147,10 @@ func TestPeerReputationObserverFailurePaths(t *testing.T) {
 	failed.snapshotErr = errors.New("refresh")
 	failed.lock.Unlock()
 	waitForPeerApplications(t, failed, 1)
+	waitForPeerSnapshots(t, failed, 2)
 	failed.lock.Lock()
-	snapshotCalls := len(failed.snapshotAt)
 	attempted := append([]peerreputation.ObservationBatch(nil), failed.attempted...)
 	failed.lock.Unlock()
-	if snapshotCalls < 2 {
-		t.Fatal("successful observation did not refresh the snapshot")
-	}
 	if len(attempted) <= peerReputationMaximumAttempts {
 		t.Fatalf("attempted batches = %#v", attempted)
 	}
