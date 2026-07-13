@@ -169,6 +169,7 @@ func (f *Frontier) ClaimDue(ctx context.Context, now time.Time, limit int) ([]Du
 	}
 	claimed := make([]DueURL, 0, limit)
 	err := f.vault.Update(ctx, func(tx *vault.Txn) error {
+		claimed = claimed[:0]
 		due, err := f.collectDue(tx, now, limit)
 		if err != nil {
 			return err

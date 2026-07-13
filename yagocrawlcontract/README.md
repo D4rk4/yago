@@ -10,14 +10,16 @@ behavioral contract that is not obvious from the type definitions.
 
 ## Message flow
 
-The contract has two one-way message flows:
+The contract has a leased work flow and a feedback-bearing ingest flow:
 
 ```text
-          CrawlOrder
-node ------------------> crawler
+          WorkerRegistration + CrawlOrderDelivery(lease ID)
+node --------------------------------------------------> crawler
+     <---------------- AckOrder/NAK + Heartbeat + progress
 
-          IngestBatch
-node <------------------ crawler
+          SubmitIngest(IngestBatch)
+node <----------------------------------------------- crawler
+     -----------------------------------------------> accepted/backpressure
 ```
 
 `CrawlOrder` carries crawl work from the node to crawler instances. The order includes
@@ -29,10 +31,17 @@ before frontier admission.
 
 `IngestBatch` carries references back to the node for one fetched page: document
 content metadata, bounded image metadata, RWI postings, URL metadata, and the
-attribution data needed by the node.
+attribution data needed by the node. Live pages and removal tombstones carry a
+stable observation ID and UTC observation time so the node can order separate
+deliveries and recognize a committed retry after an acknowledgement is lost.
+Older batches without those fields remain accepted: observation time falls back
+to `Document.FetchedAt`, and the node derives a stable identity from the batch.
+The node persists the latest completed observation per source URL after ingest
+side effects and before acknowledging the submission.
 
-Each flow is one-way so multiple crawler instances can share the same work stream and
-publish results back to one node without per-crawler addressing.
+Multiple crawler processes register distinct worker identities, share the durable
+order queue, and publish results to one node. Order settlement and ingest replies
+remain bound to the crawler call that initiated them.
 
 ## Provenance
 
@@ -51,13 +60,32 @@ recrawl policy remains a crawler/frontier decision.
 
 ## Backpressure
 
-There is no per-order acknowledgement. The order stream is bounded: when crawlers are
-saturated, publishing more work blocks or fails according to the queue implementation.
-The node decides whether to accept more crawl work before it publishes an order.
+Every streamed order has a durable lease ID. `AckOrder` deletes completed work;
+the same call with requeue semantics naks unfinished work. `Heartbeat` renews the
+leases held by one registered worker, and `ReportProgress` carries run tallies.
+The node can durably enqueue more orders than a crawler currently has in its
+frontier; crawler saturation is handled by lease ownership rather than by
+blocking order creation.
 
-There is also no per-batch feedback topic. Ingest backpressure belongs to the ingest
-stream, and a shared reply topic could not reliably route feedback to the crawler that
-published a specific batch.
+Invalid order modes, URLs, profiles, deterministic fetch responses, and malformed
+seed documents terminate the lease. Network, server, throttle, timeout, and
+cancellation failures requeue it. Settlement calls are idempotent: a live crawler
+retries transient ACK/NAK failures, while shutdown stops after a bounded detached
+attempt so the lease can expire after heartbeats stop.
+
+`SubmitIngest` is unary, so acceptance or retryable backpressure returns directly
+to the crawler that submitted the batch. There is no shared feedback topic.
+
+`IngestBatch` JSON is limited to 4 MiB minus 64 KiB of transport headroom, and
+the enclosing gRPC message is limited to 4 MiB. The crawler bounds text, URLs,
+headings, links, metadata, images, anchors, and postings before submission, then
+fits optional collections to the encoded limit. Identity URLs over 2,048 bytes
+are rejected, and overlong URL-bearing collection elements are dropped rather
+than changed by truncation. The node reports temporary
+pipeline or storage saturation as gRPC `Unavailable`; the crawler retries it
+with a jittered exponential delay. It also retries the legacy `ResourceExhausted`
+saturation code used by older nodes. Current crawler payloads are fitted below
+the shared transport ceiling before either retry path can run.
 
 ## Crawl profile scope
 

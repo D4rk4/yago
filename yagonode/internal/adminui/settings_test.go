@@ -65,35 +65,35 @@ func TestConsoleConfigRendersEditableSettings(t *testing.T) {
 	}
 }
 
-func TestConsoleConfigRendersParallelWebSearchTiming(t *testing.T) {
+func TestConsoleConfigRendersAlwaysWebFallbackMode(t *testing.T) {
 	t.Parallel()
 
 	view := SettingsView{Items: []SettingItem{{
-		Key: "web.fallback.trigger", Title: "Web search timing", Value: "miss",
+		Key: "web.fallback.privacy", Title: "Web search fallback (DDGS)", Value: "enabled",
 		Category: "Web fallback", RestartRequired: true,
 		Options: []SettingOption{
-			{Value: "miss", Label: "After local and peer miss"},
-			{Value: "parallel", Label: "Alongside local and peers"},
+			{Value: "enabled", Label: "Enabled on search miss"},
+			{Value: "always", Label: "Always"},
 		},
 	}}}
 	settings := &fakeSettings{view: view, result: SettingsResult{OK: true}}
 	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Settings: settings})
 	response := do(t, console, "/admin/configuration")
 	for _, want := range []string{
-		`id="panel-web-fallback"`, `name="value:web.fallback.trigger"`,
-		`value="parallel"`, "Alongside local and peers",
+		`id="panel-web-fallback"`, `name="value:web.fallback.privacy"`,
+		`value="always"`, "Always",
 	} {
 		if !strings.Contains(response.body, want) {
-			t.Fatalf("web timing setting missing %q", want)
+			t.Fatalf("web fallback setting missing %q", want)
 		}
 	}
 
 	doPost(t, console, "/admin/configuration", url.Values{
-		"key":                        {"web.fallback.trigger"},
-		"value:web.fallback.trigger": {"parallel"},
+		"key":                        {"web.fallback.privacy"},
+		"value:web.fallback.privacy": {"always"},
 	})
-	if settings.calls != 1 || settings.change.Key != "web.fallback.trigger" ||
-		settings.change.Value != "parallel" {
+	if settings.calls != 1 || settings.change.Key != "web.fallback.privacy" ||
+		settings.change.Value != "always" {
 		t.Fatalf("change = %#v, calls = %d", settings.change, settings.calls)
 	}
 }

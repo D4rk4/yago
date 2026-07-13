@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawler/internal/boundedqueue"
@@ -25,7 +26,11 @@ func TestBatchEmitterAssemblesEnvelope(t *testing.T) {
 
 	postings := []yagomodel.RWIPosting{{WordHash: yagomodel.WordHash("kangaroo")}}
 	metadata := yagomodel.URIMetadataRow{Properties: map[string]string{"u": "x"}}
-	document := yagocrawlcontract.DocumentIngest{NormalizedURL: "http://example.com/"}
+	fetchedAt := time.Date(2026, 7, 13, 8, 30, 0, 0, time.FixedZone("test", 3600))
+	document := yagocrawlcontract.DocumentIngest{
+		NormalizedURL: "http://example.com/",
+		FetchedAt:     fetchedAt,
+	}
 	envelope := ingest.Envelope{
 		SourceURL:     "http://example.com/",
 		Provenance:    []byte("peer"),
@@ -57,6 +62,12 @@ func TestBatchEmitterAssemblesEnvelope(t *testing.T) {
 	}
 	if batch.Document.NormalizedURL != document.NormalizedURL {
 		t.Errorf("document = %#v", batch.Document)
+	}
+	if batch.ObservationID == "" {
+		t.Error("observation id is empty")
+	}
+	if !batch.ObservedAt.Equal(fetchedAt) || batch.ObservedAt.Location() != time.UTC {
+		t.Errorf("observed at = %v, want %v in UTC", batch.ObservedAt, fetchedAt)
 	}
 }
 
@@ -100,6 +111,9 @@ func TestBatchEmitterEmitsRemovalTombstone(t *testing.T) {
 	if batch.Document.NormalizedURL != "" ||
 		len(batch.Postings) != 0 || len(batch.Metadata) != 0 {
 		t.Fatalf("removal batch must be empty of content: %#v", batch)
+	}
+	if batch.ObservationID == "" || batch.ObservedAt.IsZero() {
+		t.Fatalf("removal observation identity is incomplete: %#v", batch)
 	}
 }
 

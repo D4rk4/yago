@@ -129,13 +129,13 @@ func TestRobotsAdmissionFetchesRobotsOncePerHost(t *testing.T) {
 	}
 }
 
-func TestRobotsAdmissionAllowsOnFetchFailure(t *testing.T) {
+func TestRobotsAdmissionBlocksOnFetchFailure(t *testing.T) {
 	fetcher := newFetcher(t, deliveringSource(), http.DefaultClient, 8)
 	if _, err := fetcher.Fetch(
 		context.Background(),
 		mustParse(t, "http://127.0.0.1:0/page"),
-	); err != nil {
-		t.Errorf("unreachable robots should allow, got %v", err)
+	); !errors.Is(err, pagefetch.ErrPageRejected) {
+		t.Errorf("unreachable robots error = %v, want ErrPageRejected", err)
 	}
 }
 
@@ -166,18 +166,18 @@ func TestRobotsAdmissionPropagatesInnerFetchError(t *testing.T) {
 	}
 }
 
-func TestRobotsAdmissionAllowsOnBadRobotsRequestURL(t *testing.T) {
+func TestRobotsAdmissionBlocksOnBadRobotsRequestURL(t *testing.T) {
 	fetcher := newFetcher(t, deliveringSource(), http.DefaultClient, 8)
 
 	if _, err := fetcher.Fetch(
 		context.Background(),
 		&url.URL{Scheme: "http", Host: "bad host", Path: "/page"},
-	); err != nil {
-		t.Fatalf("bad robots request URL should fail open, got %v", err)
+	); !errors.Is(err, pagefetch.ErrPageRejected) {
+		t.Fatalf("bad robots request error = %v, want ErrPageRejected", err)
 	}
 }
 
-func TestRobotsAdmissionAllowsOnRobotsReadError(t *testing.T) {
+func TestRobotsAdmissionBlocksOnRobotsReadError(t *testing.T) {
 	sentinel := errors.New("read failed")
 	client := &http.Client{Transport: roundTripFunc(
 		func(*http.Request) (*http.Response, error) {
@@ -195,8 +195,8 @@ func TestRobotsAdmissionAllowsOnRobotsReadError(t *testing.T) {
 	if _, err := fetcher.Fetch(
 		context.Background(),
 		mustParse(t, "http://example.com/page"),
-	); err != nil {
-		t.Fatalf("robots read error should fail open, got %v", err)
+	); !errors.Is(err, pagefetch.ErrPageRejected) {
+		t.Fatalf("robots read error = %v, want ErrPageRejected", err)
 	}
 }
 
@@ -263,12 +263,7 @@ func TestRobotsAdmissionLogsBodyCloseErrorAndUsesRules(t *testing.T) {
 	}
 }
 
-// TestRobotsAdmissionDoesNotCacheFetchFailure is the regression guard for the
-// fail-open caching bug: a transient robots.txt fetch failure allows the current
-// request (availability) but must NOT be cached, so the next request re-fetches
-// robots and then honors the real rules. Without the fix the first failure caches
-// allow-all and the disallowed path is crawled anyway.
-func TestRobotsAdmissionDoesNotCacheFetchFailure(t *testing.T) {
+func TestRobotsAdmissionCachesFetchFailure(t *testing.T) {
 	var robotsHits int32
 	client := &http.Client{Transport: roundTripFunc(
 		func(*http.Request) (*http.Response, error) {
@@ -287,19 +282,16 @@ func TestRobotsAdmissionDoesNotCacheFetchFailure(t *testing.T) {
 	if _, err := fetcher.Fetch(
 		context.Background(),
 		mustParse(t, "http://example.com/private"),
-	); err != nil {
-		t.Fatalf("transient robots failure should fail open, got %v", err)
+	); !errors.Is(err, pagefetch.ErrPageRejected) {
+		t.Fatalf("transient robots error = %v, want ErrPageRejected", err)
 	}
 
 	_, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/private"))
 	if !errors.Is(err, pagefetch.ErrPageRejected) {
-		t.Fatalf(
-			"second fetch = %v, want ErrPageRejected (rules re-fetched, not cached-allow)",
-			err,
-		)
+		t.Fatalf("second fetch = %v, want ErrPageRejected", err)
 	}
-	if got := atomic.LoadInt32(&robotsHits); got != 2 {
-		t.Errorf("robots fetches = %d, want 2 (transient failure must not be cached)", got)
+	if got := atomic.LoadInt32(&robotsHits); got != 1 {
+		t.Errorf("robots fetches = %d, want 1", got)
 	}
 }
 

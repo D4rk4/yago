@@ -12,6 +12,8 @@ import (
 
 func TestControlRegistryEnqueueDrain(t *testing.T) {
 	registry := newControlRegistry()
+	registry.register("w1")
+	registry.register("w2")
 	registry.Enqueue(
 		"w1",
 		yagocrawlcontract.CrawlControlDirective{Kind: yagocrawlcontract.CrawlControlPause},
@@ -45,6 +47,22 @@ func TestControlRegistryIgnoresBlankWorker(t *testing.T) {
 	)
 	if drained := registry.drain(""); len(drained) != 0 {
 		t.Fatalf("blank worker drain = %+v, want empty", drained)
+	}
+}
+
+func TestControlRegistryRejectsOfflineWorkerAndDropsPendingOnDisconnect(t *testing.T) {
+	registry := newControlRegistry()
+	directive := yagocrawlcontract.CrawlControlDirective{Kind: yagocrawlcontract.CrawlControlPause}
+	if registry.Enqueue("offline", directive) {
+		t.Fatal("offline worker accepted a control directive")
+	}
+	registry.register("worker")
+	if !registry.Enqueue("worker", directive) {
+		t.Fatal("connected worker rejected a control directive")
+	}
+	registry.unregister("worker")
+	if drained := registry.drain("worker"); len(drained) != 0 {
+		t.Fatalf("disconnected worker retained directives: %v", drained)
 	}
 }
 
@@ -94,6 +112,7 @@ func TestDirectiveToProtoMalformedRunIDTargetsWorker(t *testing.T) {
 
 func TestExchangeHeartbeatDeliversControlDirectives(t *testing.T) {
 	server := newExchangeServer(memQueue(t), make(chan crawlresults.IngestDelivery))
+	server.control.register("w1")
 	server.control.Enqueue("w1", yagocrawlcontract.CrawlControlDirective{
 		Kind:  yagocrawlcontract.CrawlControlCancel,
 		RunID: "ab",

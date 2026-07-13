@@ -21,9 +21,24 @@ func (w *fakeCrawlWorker) RunWorkers(acceptCtx, fetchCtx context.Context, _ int)
 	<-acceptCtx.Done()
 }
 
-type fakeOrderConsumer struct{}
+type fakeOrderConsumer struct {
+	cancelActive func()
+	wait         func()
+}
 
 func (fakeOrderConsumer) Run(ctx context.Context) { <-ctx.Done() }
+
+func (c fakeOrderConsumer) CancelActiveRuns() {
+	if c.cancelActive != nil {
+		c.cancelActive()
+	}
+}
+
+func (c fakeOrderConsumer) WaitForSettlements() {
+	if c.wait != nil {
+		c.wait()
+	}
+}
 
 func runSupervise(
 	t *testing.T,
@@ -55,4 +70,38 @@ func TestSuperviseCrawlStopsWorkersOnSignal(t *testing.T) {
 func TestSuperviseCrawlAbortsInFlightAfterGrace(t *testing.T) {
 	worker := &fakeCrawlWorker{started: make(chan struct{}), blockUntilFetchEnd: true}
 	runSupervise(t, worker, worker.started, 50*time.Millisecond)
+}
+
+func TestSuperviseCrawlCancelsRunsAndWaitsForSettlement(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	worker := &fakeCrawlWorker{started: make(chan struct{})}
+	activeCancelled := make(chan struct{})
+	releaseSettlement := make(chan struct{})
+	consumer := fakeOrderConsumer{
+		cancelActive: func() { close(activeCancelled) },
+		wait:         func() { <-releaseSettlement },
+	}
+	done := make(chan struct{})
+	go func() {
+		superviseCrawl(ctx, worker, consumer, 1, time.Second)
+		close(done)
+	}()
+	<-worker.started
+	cancel()
+	select {
+	case <-activeCancelled:
+	case <-time.After(time.Second):
+		t.Fatal("active runs were not cancelled during shutdown")
+	}
+	select {
+	case <-done:
+		t.Fatal("supervisor returned before order settlement")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(releaseSettlement)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("supervisor did not return after order settlement")
+	}
 }

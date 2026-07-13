@@ -75,7 +75,7 @@ func TestSetupPageShowsWizardWhenConfigured(t *testing.T) {
 		"Node mode", `value="local" checked`, `value="peer"`, `value="search"`,
 		`name="peer_name"`, `value="my-node"`,
 		`value="auto.example"`, `value="https://seeds.example/a"`,
-		"Web search fallback",
+		"Web search fallback", `value="always"`, "Always",
 		// The mode radios must reset the base full-width input geometry, else the
 		// tall 2.5rem input box pushes each label off its radio (regression: the
 		// wizard's "Node mode" choices rendered with the text wrapped below the

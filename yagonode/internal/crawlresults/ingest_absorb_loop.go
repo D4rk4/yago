@@ -45,6 +45,11 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 	if !c.passesGates(ctx, delivery) {
 		return
 	}
+	current := c.beginObservations(ctx, []IngestDelivery{delivery})
+	if len(current) == 0 {
+		return
+	}
+	delivery = current[0]
 	if deferred := c.storeDocument(ctx, delivery, delivery.Batch); deferred {
 		return
 	}
@@ -59,23 +64,19 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 // is acked. A purge failure redelivers so the tombstone is retried; a malformed
 // source URL is a poison batch and is dropped.
 func (c *IngestConsumer) absorbRemoval(ctx context.Context, delivery IngestDelivery) {
+	if !c.passesGates(ctx, delivery) {
+		return
+	}
+	current := c.beginObservations(ctx, []IngestDelivery{delivery})
+	if len(current) == 0 {
+		return
+	}
+	delivery = current[0]
+	c.purgeRemoval(ctx, delivery)
+}
+
+func (c *IngestConsumer) purgeRemoval(ctx context.Context, delivery IngestDelivery) {
 	batch := delivery.Batch
-	if batch.SourceURL == "" {
-		c.reject(ctx, delivery, "missing source url")
-
-		return
-	}
-	owned, err := c.owner.OwnsProfile(ctx, batch.ProfileHandle)
-	if err != nil {
-		c.redeliver(ctx, delivery, batch.SourceURL, "ownership check", err)
-
-		return
-	}
-	if !owned {
-		c.reject(ctx, delivery, "unowned profile")
-
-		return
-	}
 	hash, err := c.hashURL(batch.SourceURL)
 	if err != nil {
 		c.reject(ctx, delivery, "hash source url")
@@ -93,6 +94,9 @@ func (c *IngestConsumer) absorbRemoval(ctx context.Context, delivery IngestDeliv
 	if err := c.purger.Purge(ctx, []yagomodel.Hash{hash.Hash()}); err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "purge removal", err)
 
+		return
+	}
+	if !c.completeObservations(ctx, []IngestDelivery{delivery}) {
 		return
 	}
 	if err := delivery.Ack(ctx); err != nil {
@@ -165,12 +169,15 @@ func (c *IngestConsumer) absorbTail(ctx context.Context, delivery IngestDelivery
 		return
 	}
 
+	c.recordFetch(ctx, batch)
+	if !c.completeObservations(ctx, []IngestDelivery{delivery}) {
+		return
+	}
 	c.observer.ObserveAbsorbed(
 		len(batch.Document.ExtractedText),
 		len(batch.Metadata),
 		len(batch.Postings),
 	)
-	c.recordFetch(ctx, batch)
 	if err := delivery.Ack(ctx); err != nil {
 		slog.WarnContext(ctx, msgIngestAckFailed,
 			slog.String("sourceUrl", batch.SourceURL), slog.Any("error", err))

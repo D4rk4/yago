@@ -2,6 +2,7 @@ package crawlseed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
@@ -29,7 +30,10 @@ func (e *Expander) Expand(
 	for _, request := range requests {
 		mode, ok := yagocrawlcontract.NormalizeCrawlRequestMode(request.Mode)
 		if !ok {
-			return nil, fmt.Errorf("unsupported crawl request mode %q", request.Mode)
+			return nil, permanentExpansionFailuref(
+				"unsupported crawl request mode %q",
+				request.Mode,
+			)
 		}
 		switch mode {
 		case yagocrawlcontract.CrawlRequestModeURL:
@@ -77,11 +81,14 @@ func (e *Expander) expandRobots(
 	}
 	robotsURL, ok := weburl.RobotsURL(request.URL)
 	if !ok {
-		return nil, fmt.Errorf("derive robots URL from %q", request.URL)
+		return nil, permanentExpansionFailuref(
+			"derive robots URL from %q",
+			request.URL,
+		)
 	}
-	queue, ok := e.robotsSitemapQueue(ctx, request, robotsURL)
-	if !ok {
-		return nil, nil
+	queue, err := e.robotsSitemapQueue(ctx, request, robotsURL)
+	if err != nil {
+		return nil, err
 	}
 	return e.expandSitemapQueue(ctx, queue)
 }
@@ -90,10 +97,15 @@ func (e *Expander) robotsSitemapQueue(
 	ctx context.Context,
 	parent yagocrawlcontract.CrawlRequest,
 	robotsURL string,
-) ([]yagocrawlcontract.CrawlRequest, bool) {
+) ([]yagocrawlcontract.CrawlRequest, error) {
 	page, err := e.fetch(ctx, robotsURL)
 	if err != nil {
-		return nil, false
+		var gone *pagefetch.GoneError
+		if errors.As(err, &gone) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("fetch robots %q: %w", robotsURL, err)
 	}
 	discovered := sitemap.ParseRobotsSitemaps(page.Body, maxSitemapFiles)
 	queue := make([]yagocrawlcontract.CrawlRequest, 0, len(discovered))
@@ -102,7 +114,7 @@ func (e *Expander) robotsSitemapQueue(
 			queue = append(queue, next)
 		}
 	}
-	return queue, true
+	return queue, nil
 }
 
 func (e *Expander) expandSitemapQueue(
@@ -126,7 +138,11 @@ func (e *Expander) expandSitemapQueue(
 		}
 		doc, err := sitemap.ParseXML(page.Body, e.limit-len(out))
 		if err != nil {
-			return nil, fmt.Errorf("parse sitemap %q: %w", current.URL, err)
+			return nil, permanentExpansionFailuref(
+				"parse sitemap %q: %w",
+				current.URL,
+				err,
+			)
 		}
 		out = e.appendURLRequests(out, current, page, doc.URLs)
 		queue = e.appendSitemapRequests(queue, current, page, doc.Sitemaps)
@@ -202,7 +218,7 @@ func (e *Expander) fetch(
 ) (pagefetch.FetchedPage, error) {
 	target, ok := weburl.ParseBase(rawURL)
 	if !ok {
-		return pagefetch.FetchedPage{}, fmt.Errorf("parse seed URL")
+		return pagefetch.FetchedPage{}, permanentExpansionFailuref("parse seed URL")
 	}
 	page, err := e.source.Fetch(ctx, target)
 	if err != nil {

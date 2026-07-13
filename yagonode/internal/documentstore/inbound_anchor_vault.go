@@ -37,6 +37,7 @@ func (d documentVault) ReplaceOutboundAnchors(
 
 	affected := make(map[string]Document)
 	err := d.vault.Update(ctx, func(tx *vault.Txn) error {
+		affected = make(map[string]Document)
 		for _, set := range sets {
 			if err := d.replaceOutboundAnchorSet(ctx, tx, set, affected); err != nil {
 				return err
@@ -120,6 +121,7 @@ func (d documentVault) replaceTargetAnchors(
 	if !anchorsFound && documentFound {
 		anchors = doc.Inlinks
 	}
+	previousAnchors := append([]AnchorText(nil), anchors...)
 	kept := anchors[:0]
 	for _, anchor := range anchors {
 		if anchor.URL != sourceURL {
@@ -127,6 +129,9 @@ func (d documentVault) replaceTargetAnchors(
 		}
 	}
 	anchors = canonicalAnchorTexts(append(kept, incoming...))
+	if slices.Equal(previousAnchors, anchors) {
+		return nil
+	}
 	if len(anchors) == 0 {
 		if _, err := d.inboundAnchors.Delete(tx, key); err != nil {
 			return fmt.Errorf("delete target anchors: %w", err)

@@ -165,8 +165,9 @@ func (d postingDirectory) selectOutboundPostings(
 	ctx context.Context,
 	config OutboundSelectionConfig,
 ) ([]selectedPosting, error) {
-	selector := newOutboundSelector(config)
+	var selected []selectedPosting
 	err := d.vault.Update(ctx, func(tx *vault.Txn) error {
+		selector := newOutboundSelector(config)
 		if err := d.postings.Scan(tx, nil, func(
 			key vault.Key,
 			entry yagomodel.RWIPosting,
@@ -178,6 +179,7 @@ func (d postingDirectory) selectOutboundPostings(
 		if err := d.journalOutboundSelection(tx, selector.selected); err != nil {
 			return err
 		}
+		selected = append(selected[:0], selector.selected...)
 
 		return d.deleteOutboundSelection(tx, selector.selected)
 	})
@@ -185,7 +187,7 @@ func (d postingDirectory) selectOutboundPostings(
 		return nil, fmt.Errorf("select outbound rwi: %w", err)
 	}
 
-	return selector.selected, nil
+	return selected, nil
 }
 
 func (s *outboundSelector) visit(

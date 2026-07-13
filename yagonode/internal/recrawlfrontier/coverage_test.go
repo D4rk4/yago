@@ -16,10 +16,11 @@ import (
 // branches of the frontier: it can be told to fail Provision, Put or Delete on a
 // named bucket, and lets tests seed raw (possibly corrupt) bytes into a bucket.
 type ctrlEngine struct {
-	buckets  map[vault.Name]map[string][]byte
-	failProv map[vault.Name]bool
-	failPut  map[vault.Name]bool
-	failDel  map[vault.Name]bool
+	buckets    map[vault.Name]map[string][]byte
+	failProv   map[vault.Name]bool
+	failPut    map[vault.Name]bool
+	failDel    map[vault.Name]bool
+	replayNext bool
 }
 
 func newCtrlEngine() *ctrlEngine {
@@ -52,6 +53,13 @@ func (e *ctrlEngine) Provision(name vault.Name) error {
 func (e *ctrlEngine) Update(ctx context.Context, fn func(vault.EngineTxn) error) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("scripted engine: %w", err)
+	}
+	if e.replayNext {
+		e.replayNext = false
+		staged := snapshotCtrl(e.buckets)
+		if err := fn(&ctrlTxn{engine: e, buckets: staged, writable: true}); err != nil {
+			return err
+		}
 	}
 	staged := snapshotCtrl(e.buckets)
 	if err := fn(&ctrlTxn{engine: e, buckets: staged, writable: true}); err != nil {
@@ -177,6 +185,28 @@ func openCtrlFrontier(t *testing.T) (*Frontier, *ctrlEngine) {
 	}
 
 	return frontier, engine
+}
+
+func TestClaimDuePublishesOnlyTheCommittedReplay(t *testing.T) {
+	frontier, engine := openCtrlFrontier(t)
+	fetchedAt := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	if err := frontier.Observe(
+		t.Context(),
+		"https://example.org/",
+		"profile",
+		time.Hour,
+		fetchedAt,
+	); err != nil {
+		t.Fatal(err)
+	}
+	engine.replayNext = true
+	claimed, err := frontier.ClaimDue(t.Context(), fetchedAt.Add(2*time.Hour), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(claimed) != 1 || claimed[0].URL != "https://example.org/" {
+		t.Fatalf("claimed = %#v, want one committed URL", claimed)
+	}
 }
 
 func hashKey(t *testing.T, url string) string {

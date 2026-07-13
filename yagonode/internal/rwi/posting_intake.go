@@ -22,6 +22,9 @@ func (i postingIntake) Receive(
 	ctx context.Context,
 	entries []yagomodel.RWIPosting,
 ) (Receipt, error) {
+	if len(entries) == 0 {
+		return Receipt{}, nil
+	}
 	atCapacity, err := i.vault.AtCapacity(ctx)
 	if err != nil {
 		return Receipt{}, fmt.Errorf("check capacity: %w", err)
@@ -32,6 +35,7 @@ func (i postingIntake) Receive(
 
 	referenced := make([]yagomodel.Hash, 0, len(entries))
 	err = i.vault.Update(ctx, func(tx *vault.Txn) error {
+		referenced = referenced[:0]
 		for _, entry := range entries {
 			if err := ctx.Err(); err != nil {
 				return fmt.Errorf("context: %w", err)

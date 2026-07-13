@@ -464,7 +464,7 @@ func responseHTMLItems(
 		}
 		switch {
 		case result.FromWeb():
-			item.Provenance = "web"
+			item.Provenance = string(searchcore.SourceWeb)
 		case result.FromPeer():
 			item.Provenance = "peer"
 		}

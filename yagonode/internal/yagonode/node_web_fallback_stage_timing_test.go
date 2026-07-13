@@ -223,7 +223,7 @@ func TestPublicSearchParallelModeIncludesWebBesidePrimaryHit(t *testing.T) {
 	attempts := &productionShapeWebAttempts{}
 	client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
 	assembly := productionShapeSearchAssembly(client)
-	assembly.webFallback.Trigger = webFallbackTriggerParallel
+	assembly.webFallback.Privacy = webFallbackPrivacyAlways
 	searcher := assemblePublicSearcher(
 		productionShapeLocalHit{},
 		productionShapeEvidenceFreeSwarm{},
@@ -264,7 +264,7 @@ func TestPublicSearchParallelModeReturnsWebWhileFuzzyIgnoresCancellation(t *test
 	attempts := &productionShapeWebAttempts{}
 	client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
 	assembly := productionShapeSearchAssembly(client)
-	assembly.webFallback.Trigger = webFallbackTriggerParallel
+	assembly.webFallback.Privacy = webFallbackPrivacyAlways
 	searcher := assemblePublicSearcher(local, productionShapeSwarmMiss{}, assembly)
 
 	started := time.Now()

@@ -23,6 +23,25 @@ func (e scriptedExpander) Expand(
 	return e.requests, e.err
 }
 
+type unexpectedExpander struct{}
+
+func (unexpectedExpander) Expand(
+	context.Context,
+	[]yagocrawlcontract.CrawlRequest,
+) ([]yagocrawlcontract.CrawlRequest, error) {
+	panic("invalid order reached request expansion")
+}
+
+type scriptedPermanentExpansionError struct{}
+
+func (scriptedPermanentExpansionError) Error() string {
+	return "invalid expanded content"
+}
+
+func (scriptedPermanentExpansionError) Permanent() bool {
+	return true
+}
+
 func consumerProfile() yagocrawlcontract.CrawlProfile {
 	return yagocrawlcontract.NewCrawlProfile(yagocrawlcontract.CrawlProfile{
 		Scope:           yagocrawlcontract.ScopeDomain,
@@ -46,12 +65,17 @@ func TestAcceptLogsTermError(t *testing.T) {
 		frontier.NewFrontier(1, nil),
 	)
 	termed := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
-	consumer.accept(context.Background(), CrawlOrderDelivery{
+	consumer.accept(ctx, CrawlOrderDelivery{
 		Order: yagocrawlcontract.CrawlOrder{
 			Profile: yagocrawlcontract.CrawlProfile{URLMustMatch: "("},
 		},
-		Term: func(context.Context) error {
+		Term: func(settlementCtx context.Context) error {
+			if settlementCtx.Err() != nil {
+				t.Errorf("term context error = %v, want live context", settlementCtx.Err())
+			}
 			close(termed)
 			return errors.New("term failed")
 		},
@@ -78,23 +102,101 @@ func TestAcceptLogsAckError(t *testing.T) {
 	waitCallback(t, acked)
 }
 
-func TestAcceptTermsExpansionError(t *testing.T) {
-	consumer := NewCrawlOrderConsumer(
-		boundedqueue.NewBoundedQueue[CrawlOrderDelivery](1),
-		frontier.NewFrontier(1, nil),
-		scriptedExpander{err: errors.New("expand failed")},
-	)
-	termed := make(chan struct{})
-
-	consumer.accept(context.Background(), CrawlOrderDelivery{
-		Order: yagocrawlcontract.CrawlOrder{Profile: consumerProfile()},
-		Term: func(context.Context) error {
-			close(termed)
-			return errors.New("term failed")
+func TestAcceptClassifiesExpansionFailures(t *testing.T) {
+	cases := []struct {
+		name          string
+		err           error
+		settlementErr error
+		want          string
+	}{
+		{
+			name:          "transient",
+			err:           errors.New("expand failed"),
+			settlementErr: errors.New("nak failed"),
+			want:          "nak",
 		},
-	})
+		{name: "cancelled", err: context.Canceled, want: "nak"},
+		{name: "deadline", err: context.DeadlineExceeded, want: "nak"},
+		{name: "permanent", err: scriptedPermanentExpansionError{}, want: "term"},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			consumer := NewCrawlOrderConsumer(
+				boundedqueue.NewBoundedQueue[CrawlOrderDelivery](1),
+				frontier.NewFrontier(1, nil),
+				scriptedExpander{err: test.err},
+			)
+			settled := make(chan string, 1)
+			settle := func(result string) func(context.Context) error {
+				return func(settlementCtx context.Context) error {
+					if settlementCtx.Err() != nil {
+						t.Errorf(
+							"%s context error = %v, want live context",
+							result,
+							settlementCtx.Err(),
+						)
+					}
+					settled <- result
 
-	waitCallback(t, termed)
+					return test.settlementErr
+				}
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			consumer.accept(ctx, CrawlOrderDelivery{
+				LeaseID: "lease-" + test.name,
+				Order: yagocrawlcontract.CrawlOrder{
+					Profile: consumerProfile(),
+					Requests: []yagocrawlcontract.CrawlRequest{{
+						URL: "https://example.org/",
+					}},
+				},
+				Ack:  settle("ack"),
+				Nak:  settle("nak"),
+				Term: settle("term"),
+			})
+			select {
+			case got := <-settled:
+				if got != test.want {
+					t.Fatalf("settlement = %q, want %q", got, test.want)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("expansion failure was not settled")
+			}
+		})
+	}
+}
+
+func TestAcceptTermsInvalidCrawlRequestsBeforeExpansion(t *testing.T) {
+	cases := []yagocrawlcontract.CrawlRequest{
+		{URL: "https://example.org/", Mode: "archive"},
+		{URL: "://invalid", Mode: yagocrawlcontract.CrawlRequestModeSitemap},
+	}
+	for _, request := range cases {
+		consumer := NewCrawlOrderConsumer(
+			boundedqueue.NewBoundedQueue[CrawlOrderDelivery](1),
+			frontier.NewFrontier(1, nil),
+			unexpectedExpander{},
+		)
+		termed := make(chan struct{})
+		consumer.accept(t.Context(), CrawlOrderDelivery{
+			Order: yagocrawlcontract.CrawlOrder{
+				Profile:  consumerProfile(),
+				Requests: []yagocrawlcontract.CrawlRequest{request},
+			},
+			Nak: func(context.Context) error {
+				t.Error("invalid order must not be requeued")
+
+				return nil
+			},
+			Term: func(context.Context) error {
+				close(termed)
+
+				return nil
+			},
+		})
+		waitCallback(t, termed)
+	}
 }
 
 func TestAcceptSeedsExpandedRequests(t *testing.T) {
@@ -124,7 +226,10 @@ func TestAcceptSeedsExpandedRequests(t *testing.T) {
 			return nil
 		},
 	})
-	job := <-f.Jobs()
+	job, ok := f.Take(t.Context())
+	if !ok {
+		t.Fatal("frontier closed before sitemap job")
+	}
 	if job.URL != "https://example.org/from-sitemap" {
 		t.Fatalf("job URL = %q", job.URL)
 	}
@@ -143,7 +248,10 @@ func TestAcceptNaksCanceledRunAndLogsNakError(t *testing.T) {
 
 	consumer.accept(ctx, CrawlOrderDelivery{
 		Order: yagocrawlcontract.CrawlOrder{Profile: consumerProfile()},
-		Nak: func(context.Context) error {
+		Nak: func(settlementCtx context.Context) error {
+			if settlementCtx.Err() != nil {
+				t.Errorf("nak context error = %v, want live context", settlementCtx.Err())
+			}
 			close(naked)
 			return errors.New("nak failed")
 		},
@@ -174,6 +282,60 @@ func TestAcceptNaksFrontierCancelledRun(t *testing.T) {
 	waitCallback(t, naked)
 	if f.WasCancelled(provenance) {
 		t.Fatal("finishRun should clear the cancelled mark once the run settles")
+	}
+}
+
+func TestAcceptJoinsRedeliveredOrderToActiveRun(t *testing.T) {
+	f := frontier.NewFrontier(4, nil)
+	consumer := NewCrawlOrderConsumer(
+		boundedqueue.NewBoundedQueue[CrawlOrderDelivery](2),
+		f,
+	)
+	profile := consumerProfile()
+	order := yagocrawlcontract.CrawlOrder{
+		Provenance: []byte("reconnected-order"),
+		Profile:    profile,
+		Requests: []yagocrawlcontract.CrawlRequest{{
+			URL:           "https://example.org/",
+			ProfileHandle: profile.Handle,
+		}},
+	}
+	acked := make(chan string, 2)
+	delivery := func(leaseID string) CrawlOrderDelivery {
+		return CrawlOrderDelivery{
+			LeaseID: leaseID,
+			Order:   order,
+			Ack: func(context.Context) error {
+				acked <- leaseID
+
+				return nil
+			},
+		}
+	}
+	consumer.accept(t.Context(), delivery("stale-lease"))
+	consumer.accept(t.Context(), delivery("current-lease"))
+	job, ok := f.Take(t.Context())
+	if !ok {
+		t.Fatal("frontier closed before active run job")
+	}
+	f.Done(job, false)
+	select {
+	case leaseID := <-acked:
+		if leaseID != "current-lease" {
+			t.Fatalf("acknowledged lease %q, want current lease", leaseID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("current lease was not acknowledged")
+	}
+	select {
+	case leaseID := <-acked:
+		t.Fatalf("unexpected additional acknowledgement for %q", leaseID)
+	case <-time.After(20 * time.Millisecond):
+	}
+	duplicateCtx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	if duplicate, open := f.Take(duplicateCtx); open {
+		t.Fatalf("redelivered order seeded duplicate job %q", duplicate.URL)
 	}
 }
 

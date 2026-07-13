@@ -440,15 +440,25 @@ func withWebFallback(
 	}
 
 	permit := webFallbackPermit(config.Privacy)
-	if effectiveWebFallbackTrigger(config.Trigger) == webFallbackTriggerParallel {
+	if effectiveWebFallbackPrivacy(config) == webFallbackPrivacyAlways {
 		return websearch.NewParallelSearcher(search, provider, permit, opts...)
 	}
 
 	return websearch.NewFallbackSearcher(search, provider, permit, opts...)
 }
 
+func effectiveWebFallbackPrivacy(config webFallbackConfig) webFallbackPrivacy {
+	if config.Privacy == webFallbackPrivacyAlways ||
+		config.Privacy == webFallbackPrivacyEnabled &&
+			effectiveWebFallbackTrigger(config.Trigger) == webFallbackTriggerParallel {
+		return webFallbackPrivacyAlways
+	}
+
+	return config.Privacy
+}
+
 func webFallbackPermit(privacy webFallbackPrivacy) func(searchcore.Request) bool {
-	if privacy == webFallbackPrivacyEnabled {
+	if privacy == webFallbackPrivacyEnabled || privacy == webFallbackPrivacyAlways {
 		return func(searchcore.Request) bool { return true }
 	}
 

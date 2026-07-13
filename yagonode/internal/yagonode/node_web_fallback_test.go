@@ -128,7 +128,7 @@ func TestWithWebFallbackParallelCombinesPrimaryAndWebAnswers(t *testing.T) {
 	search := withWebFallback(primary, publicSearchAssembly{
 		client: client,
 		webFallback: webFallbackConfig{
-			Privacy: webFallbackPrivacyEnabled, Trigger: webFallbackTriggerParallel,
+			Privacy:  webFallbackPrivacyAlways,
 			Provider: webFallbackProviderDDGS, Backend: "mojeek",
 		},
 	})

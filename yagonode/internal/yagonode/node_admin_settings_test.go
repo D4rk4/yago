@@ -100,6 +100,39 @@ func TestSettingsSourceReportsStoredOverride(t *testing.T) {
 	}
 }
 
+func TestSettingsSourceReportsWebFallbackEnvironmentSentinel(t *testing.T) {
+	environment := nodeConfig{WebFallback: webFallbackConfig{Privacy: webFallbackPrivacyAlways}}
+	source, store, _ := newTestSettingsSource(t, environment)
+	if err := store.Set(
+		context.Background(),
+		settingKeyWebFallbackPrivacy,
+		webFallbackSettingEnvironment,
+	); err != nil {
+		t.Fatal(err)
+	}
+	definition := indexSettingDefinitions()[settingKeyWebFallbackPrivacy]
+	item := source.item(context.Background(), definition)
+	if item.Value != string(webFallbackPrivacyAlways) || item.Overridden {
+		t.Fatalf("item = %q/%v, want environment always", item.Value, item.Overridden)
+	}
+}
+
+func TestSettingsSourceReportsCanonicalWebFallbackOverride(t *testing.T) {
+	source, store, _ := newTestSettingsSource(t, nodeConfig{})
+	if err := store.Set(
+		context.Background(),
+		settingKeyWebFallbackPrivacy,
+		encodeWebFallbackSetting(webFallbackPrivacyAlways),
+	); err != nil {
+		t.Fatal(err)
+	}
+	definition := indexSettingDefinitions()[settingKeyWebFallbackPrivacy]
+	item := source.item(context.Background(), definition)
+	if item.Value != string(webFallbackPrivacyAlways) || !item.Overridden {
+		t.Fatalf("item = %q/%v, want overridden always", item.Value, item.Overridden)
+	}
+}
+
 func TestSettingsSourceUpdatePersistsAndRecordsEvent(t *testing.T) {
 	t.Parallel()
 
@@ -259,7 +292,7 @@ func TestSettingCategory(t *testing.T) {
 		"extract.fetch.enabled":        "Extraction",
 		"metrics.enabled":              "Monitoring",
 		"web.fallback.backend":         "Web fallback",
-		"web.fallback.trigger":         "Web fallback",
+		"web.fallback.privacy":         "Web fallback",
 		"web.robots.policy":            "Public portal",
 		"portal.enabled":               "Public portal",
 		"public.base.url":              "Public portal",

@@ -15,12 +15,16 @@ const (
 )
 
 const (
+	DocTypeText  = 't'
 	DocTypeImage = 'i'
 	DocTypeAudio = 'a'
 	DocTypeMovie = 'm'
 )
 
 func (e RWIPosting) DocType() (byte, bool) {
+	if _, ok := e.Properties[ColDocType]; !ok {
+		return 0, false
+	}
 	value, err := e.ByteValue(ColDocType)
 	if err != nil {
 		slog.WarnContext(context.Background(), "rwi doctype discarded", slog.Any("error", err))

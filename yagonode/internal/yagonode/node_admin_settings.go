@@ -39,9 +39,14 @@ func loadRuntimeSettings(
 	if err != nil {
 		return consoleAdminSources{}, nil, config, fmt.Errorf("load runtime settings: %w", err)
 	}
+	if err := initializeWebFallbackOverride(ctx, store, config, overrides); err != nil {
+		return consoleAdminSources{}, nil, config, err
+	}
 
 	envConfig := config
+	envConfig.WebFallback.Privacy = effectiveWebFallbackPrivacy(envConfig.WebFallback)
 	config = applyRuntimeSettingOverrides(config, overrides)
+	config.WebFallback.Privacy = effectiveWebFallbackPrivacy(config.WebFallback)
 	config = applyBindOverrides(config, overrides)
 	config, err = resolvePeerIdentity(ctx, storage, config)
 	if err != nil {
@@ -99,8 +104,15 @@ func (s *settingsSource) item(ctx context.Context, def settingDefinition) adminu
 	overridden := false
 
 	if stored, set, err := s.store.Get(ctx, def.key); err == nil && set {
-		if normalized, normErr := def.normalize(stored); normErr == nil {
-			value, overridden = normalized, true
+		mode, authoritative, environment := decodeWebFallbackSetting(stored)
+		switch {
+		case def.key == settingKeyWebFallbackPrivacy && authoritative && environment:
+		case def.key == settingKeyWebFallbackPrivacy && authoritative:
+			value, overridden = string(mode), true
+		default:
+			if normalized, normErr := def.normalize(stored); normErr == nil {
+				value, overridden = normalized, true
+			}
 		}
 	}
 
@@ -184,7 +196,11 @@ func (s *settingsSource) set(
 		return adminui.SettingsResult{Message: "Invalid value for " + def.title + "."}, nil
 	}
 
-	if err := s.store.Set(ctx, def.key, value); err != nil {
+	stored := value
+	if def.key == settingKeyWebFallbackPrivacy {
+		stored = encodeWebFallbackSetting(webFallbackPrivacy(value))
+	}
+	if err := s.store.Set(ctx, def.key, stored); err != nil {
 		return adminui.SettingsResult{}, fmt.Errorf("store setting %q: %w", def.key, err)
 	}
 	s.applyLive(def, value)
@@ -201,7 +217,11 @@ func (s *settingsSource) reset(
 	ctx context.Context,
 	def settingDefinition,
 ) (adminui.SettingsResult, error) {
-	if err := s.store.Unset(ctx, def.key); err != nil {
+	if def.key == settingKeyWebFallbackPrivacy {
+		if err := s.store.Set(ctx, def.key, webFallbackSettingEnvironment); err != nil {
+			return adminui.SettingsResult{}, fmt.Errorf("clear setting %q: %w", def.key, err)
+		}
+	} else if err := s.store.Unset(ctx, def.key); err != nil {
 		return adminui.SettingsResult{}, fmt.Errorf("clear setting %q: %w", def.key, err)
 	}
 	s.applyLive(def, def.defaultValue(s.envConfig))

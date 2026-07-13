@@ -23,6 +23,7 @@ type scriptedEngine struct {
 	putErrors    map[vault.Name]error
 	deleteErrors map[vault.Name]error
 	updateErr    error
+	replayNext   bool
 }
 
 func newScriptedEngine() *scriptedEngine {
@@ -40,7 +41,29 @@ func (e *scriptedEngine) Update(ctx context.Context, fn func(vault.EngineTxn) er
 	if e.updateErr != nil {
 		return e.updateErr
 	}
+	if e.replayNext {
+		e.replayNext = false
+		before := cloneScriptedURLBuckets(e.buckets)
+		if err := fn(scriptedTxn{engine: e, writable: true}); err != nil {
+			return err
+		}
+		e.buckets = before
+	}
 	return fn(scriptedTxn{engine: e, writable: true})
+}
+
+func cloneScriptedURLBuckets(
+	source map[vault.Name]map[string][]byte,
+) map[vault.Name]map[string][]byte {
+	cloned := make(map[vault.Name]map[string][]byte, len(source))
+	for name, bucket := range source {
+		cloned[name] = make(map[string][]byte, len(bucket))
+		for key, value := range bucket {
+			cloned[name][key] = append([]byte(nil), value...)
+		}
+	}
+
+	return cloned
 }
 
 func (e *scriptedEngine) View(ctx context.Context, fn func(vault.EngineTxn) error) error {
@@ -135,14 +158,17 @@ func (c *errAfterContext) Err() error {
 	return c.err
 }
 
-func openScriptedModule(t *testing.T) (*vault.Vault, urlPorts, *scriptedEngine) {
+func openScriptedModule(
+	t *testing.T,
+	watchers ...URLMetadataObserver,
+) (*vault.Vault, urlPorts, *scriptedEngine) {
 	t.Helper()
 	engine := newScriptedEngine()
 	storage, err := vault.New(engine)
 	if err != nil {
 		t.Fatalf("vault.New: %v", err)
 	}
-	directory, evictor, receiver, err := Open(storage)
+	directory, evictor, receiver, err := Open(storage, watchers...)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -201,6 +227,17 @@ func TestIntakeReturnsCapacityCheckError(t *testing.T) {
 		[]yagomodel.URIMetadataRow{urlRow(t, "a")},
 	); err == nil {
 		t.Fatal("expected capacity check error")
+	}
+}
+
+func TestEmptyIntakeDoesNotAccessClosedVault(t *testing.T) {
+	v, module, _ := openScriptedModule(t)
+	if err := v.Close(); err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := module.Receiver.Receive(t.Context(), nil)
+	if err != nil || receipt.Busy || receipt.Double != 0 || len(receipt.ErrorURL) != 0 {
+		t.Fatalf("empty receipt = %+v/%v", receipt, err)
 	}
 }
 

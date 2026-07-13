@@ -121,12 +121,12 @@ func TestDispatchDrainsCooldownJobOnClose(t *testing.T) {
 	f.Done(receiveJob(t, f), false)
 	f.Release()
 	f.Done(receiveJob(t, f), false)
-	select {
-	case _, ok := <-f.Jobs():
-		if ok {
-			t.Fatal("expected jobs channel to be closed after drain")
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("jobs channel never closed after cooldown drain")
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	if _, ok := f.Take(ctx); ok {
+		t.Fatal("expected frontier to close after drain")
+	}
+	if ctx.Err() != nil {
+		t.Fatal("frontier never closed after cooldown drain")
 	}
 }

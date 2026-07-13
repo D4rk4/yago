@@ -106,7 +106,7 @@ peer listener is behind a reverse proxy or NAT and the external address differs)
 | `YAGO_EGRESS_ALLOW_CIDRS` | _(empty)_ | Comma-separated private CIDRs the egress guard admits even when `YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS` is false, so intranet mode reaches only named ranges instead of all private space. Only relaxes the private check: loopback, link-local (including the cloud metadata range), and reserved ranges stay blocked, so a non-private entry never grants access to them. |
 | `YAGO_SEARCH_API_KEY` | _(empty)_ | Optional legacy static bearer token for the Tavily-compatible `POST /search`, `POST /extract`, `POST /crawl`, and `POST /map` endpoints. Callers send `Authorization: Bearer <token>`. This local node credential is not a key for an external search service; the node uses no keyed external search API. Ignored when `YAGO_SEARCH_REQUIRE_API_KEY` is on. When neither this token nor scoped authorization is configured, the agent endpoints deny access. |
 | `YAGO_SEARCH_REQUIRE_API_KEY` | `false` | Require scoped API keys on the Tavily-compatible surface. When on, `POST /search`, `POST /extract`, `POST /crawl`, and `POST /map` accept only admin-minted API keys (`Authorization: Bearer <key>`): ordinary `/search` needs `search:read`, while raw-content search, extract, crawl, and map need `search:raw`. Missing/invalid keys return `401`, insufficient scope `403`, and rate-limited keys `429`. Takes precedence over `YAGO_SEARCH_API_KEY`; when neither scoped authorization nor a static key is configured, these endpoints deny access rather than becoming public. |
-| `YAGO_PUBLIC_SEARCH_UI_ENABLED` | `false` | Serve the anonymous public search portal on the public listener's root (`/`). Off by default; while off, the root serves the landing page and the portal is not mounted. When on, a minimal, server-rendered, no-JavaScript search page runs exact/morphological retrieval against the local index plus YaCy peers and bounded local fuzzy recovery. Operator-permitted web search runs after a miss or in parallel according to `YAGO_WEB_FALLBACK_TRIGGER`. It exposes only search — never admin APIs — and does not log the query text. Overridable live from the admin console (see Runtime overrides). |
+| `YAGO_PUBLIC_SEARCH_UI_ENABLED` | `false` | Serve the anonymous public search portal on the public listener's root (`/`). Off by default; while off, the root serves the landing page and the portal is not mounted. When on, a minimal, server-rendered, no-JavaScript search page runs exact/morphological retrieval against the local index plus YaCy peers and bounded local fuzzy recovery. The `enabled` DDGS mode runs after a miss; `always` runs DDGS alongside local and swarm retrieval. It exposes only search — never admin APIs — and does not log the query text. Overridable live from the admin console (see Runtime overrides). |
 | `YAGO_HTTPS_REDIRECT` | `false` | Redirect plain-HTTP requests to the `https://` origin with a 308, preserving path and query. Off by default. TLS termination is expected in front (a reverse proxy sets `X-Forwarded-Proto`); loopback requests are never redirected. Overridable live from the admin console (see Runtime overrides). |
 | `YAGO_EXTRACT_FETCH_ENABLED` | `false` | Enable fetch-on-extract for `POST /extract`. Off by default, so an uncached URL is a controlled `failed_result` with no outbound request. When on, an uncached URL is fetched through the shared egress-guarded client (private networks stay default-denied — no SSRF) and its title and visible text are extracted. |
 | `YAGO_EXTRACT_FETCH_TIMEOUT` | `10s` | Per-request timeout for a fetch-on-extract fetch. |
@@ -117,9 +117,8 @@ peer listener is behind a reverse proxy or NAT and the external address differs)
 | `YAGO_SEARCH_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the public search endpoints on the public listener. Empty denies all cross-origin requests; `*` allows any origin without credentials. |
 | `YAGO_SEARCH_REMOTE_PEER_TIMEOUT` | `1200ms` | Maximum contribution time for one YaCy peer inside an interactive search. |
 | `YAGO_SEARCH_REMOTE_TIMEOUT` | `1300ms` | Aggregate YaCy peer fan-out budget. The public pipeline enforces a 1.8-second end-to-end deadline; a request permitted to continue to web fallback caps its complete exact local-plus-swarm and peer-evidence stage at 600ms so later recovery stages retain time. One query additionally shares fixed limits of 8 MiB response data, 1,024 metadata rows, and 8,192 abstract hashes across exact and morphology passes; at most 32 peer HTTP attempts run process-wide. These limits preserve partial swarm results and do not penalize a peer when local admission is saturated. |
-| `YAGO_WEB_FALLBACK_ENABLED` | `false` | Legacy on/off switch for optional DDGS web search, kept for compatibility. It is the default source for `YAGO_WEB_FALLBACK_PRIVACY` when that variable is unset (`true` -> `enabled`, `false` -> `disabled`). Prefer setting the privacy mode directly. The separate start trigger defaults to miss-only behavior. A local-only request never leaves the node. |
-| `YAGO_WEB_FALLBACK_PRIVACY` | _(from `ENABLED`)_ | Governs whether an eligible query may leave the node for the external provider. `disabled` never sends a query and does not install web search; `explicit` sends only for a request that opted in; `enabled` permits automatic external search. A Tavily-compatible `/search` call opts in by its web-search contract, including at basic depth. YaCy `resource=local` and admin `scope=local` never use the provider. Defaults to `disabled` unless legacy `YAGO_WEB_FALLBACK_ENABLED` is `true`. |
-| `YAGO_WEB_FALLBACK_TRIGGER` | `miss` | Chooses when a privacy-permitted web query starts. `miss` preserves the ordered exact local-plus-peer, local fuzzy, then web cascade. `parallel` starts bounded web retrieval alongside local and peer retrieval on every eligible query, then rank-fuses and deduplicates the completed local, peer, and web results. Both values are available as the `Web search timing` Admin UI setting and take effect after restart. |
+| `YAGO_WEB_FALLBACK_ENABLED` | `false` | Legacy on/off switch for optional DDGS web search, kept for compatibility. It is the default source for `YAGO_WEB_FALLBACK_PRIVACY` when that variable is unset (`true` -> `enabled`, `false` -> `disabled`). Prefer setting the mode directly. A local-only request never leaves the node. |
+| `YAGO_WEB_FALLBACK_PRIVACY` | _(from `ENABLED`)_ | Controls the `Web search fallback (DDGS)` Admin setting. `disabled` never sends a query; `explicit` requires request consent; `enabled` runs web search after exact local-plus-swarm and bounded fuzzy recovery miss; `always` starts bounded web retrieval alongside local and swarm for every eligible global query, then rank-fuses and deduplicates all completed results. Tavily `/search` opts in by contract. YaCy `resource=local` and admin `scope=local` never use the provider. Defaults to `disabled` unless legacy `YAGO_WEB_FALLBACK_ENABLED` is `true`. |
 | `YAGO_WEB_FALLBACK_PROVIDER` | `ddgs` | Selects the fallback provider family. Only the keyless `ddgs` metasearch is available; `YAGO_WEB_FALLBACK_BACKEND` chooses the engine within it. |
 | `YAGO_WEB_FALLBACK_BACKEND` | `auto` | Engine selection for the fallback. `auto` starts DuckDuckGo HTML first, then hedges DuckDuckGo Lite, Brave, Mojeek, and Bing at 50ms intervals until one answer survives relevance checks. At most eight engine fetch-and-parse attempts run process-wide. `mojeek`, `bing`, `brave`, or `duckduckgo` restrict the engine set. See `doc/adr/0021-in-house-metasearch-backend.md`. |
 | `YAGO_WEB_FALLBACK_MAX_RESULTS` | `10` | Maximum fallback results (1–20). |
@@ -153,11 +152,18 @@ what people searched for.
 an external keyless metasearch provider. The provider necessarily receives the
 query, and any pages it returns may be queued for this node to crawl (see
 `YAGO_WEB_FALLBACK_SEED_CRAWL`). `disabled` (default) never contacts the provider;
-`explicit` contacts it only for a request that opted in; `enabled` permits it for
-every eligible global query. `YAGO_WEB_FALLBACK_TRIGGER=miss` waits for exact,
-peer, and fuzzy retrieval to miss; `parallel` starts the provider alongside local
-and peer retrieval and merges all completed rankings. Human search surfaces tag
+`explicit` contacts it only for a request that opted in; `enabled` waits for
+exact local-plus-swarm and bounded fuzzy recovery to miss; `always` starts the
+provider alongside local and swarm retrieval and merges all completed rankings.
+Human search surfaces tag
 external rows with `[ddgs]` and state that the provider received the query.
+
+The former `YAGO_WEB_FALLBACK_TRIGGER` input is accepted only to migrate old
+deployments. `enabled` plus legacy `parallel` becomes `always`; saved legacy
+timing overrides are collapsed into one versioned, authoritative DDGS mode
+record. New Admin updates and resets write only that record, so a legacy trigger
+cannot partially change the selected mode. The trigger is no longer a separate
+Admin UI setting or a canonical deployment variable.
 
 **Retention.** Cached fallback responses are held for `YAGO_WEB_FALLBACK_CACHE_TTL`
 (the only outbound-search cache) and then discarded, bounding how long external
@@ -248,16 +254,17 @@ P2P. Terminate TLS at that proxy so the session cookie is marked `Secure`.
 
 ## Crawling
 
-The node can drive a crawl fleet over gRPC: it serves a `CrawlExchange` endpoint that crawlers dial. Operators start a crawl by posting seed URLs to `/crawl` on the ops address; the node enqueues orders in a durable, store-backed FIFO and streams them to connected crawlers, and crawled pages flow back in as ingest batches. Crawling is off until `YAGO_CRAWL_RPC_ADDR` is set; without it the node behaves as a pure peer.
+The node can drive a crawl fleet over gRPC: it serves a `CrawlExchange` endpoint that crawlers dial. Operators start a crawl by posting seed URLs to `/crawl` on the ops address; the node enqueues orders in a durable, store-backed FIFO and streams them to connected crawlers, and crawled pages flow back in as bounded ingest batches. Local identity and encoded-size validation stops an invalid payload before RPC. A node-returned `Unavailable` or legacy `ResourceExhausted` saturation status retries with jittered exponential delay capped at five seconds until the crawl context ends. The endpoint defaults to loopback at `127.0.0.1:9091` for a co-located crawler; set `YAGO_CRAWL_RPC_ADDR=off` for a pure peer or an explicit bind such as `:9091` for remote workers.
 
 The `/crawl` request body accepts `seeds` and optional `startMode`. Supported
 start modes are `url`, `sitemap`, `sitelist`, and `robots`; empty mode is treated
 as `url`. Sitemap and sitelist starts are expanded by the crawler into bounded URL
 roots before normal frontier admission. A `robots` start reads each seed host's
 `robots.txt`, expands the sitemaps named in its `Sitemap:` directives, and admits
-those URLs; a missing or unreadable `robots.txt` discovers nothing rather than
-failing the crawl.
+those URLs. A 404 or 410 discovers nothing; transient fetch failures requeue the
+leased order. Invalid order input and malformed sitemap content terminate without
+a poison retry loop.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `YAGO_CRAWL_RPC_ADDR` | _(empty)_ | Address the node serves the crawl gRPC endpoint on (e.g. `:9091`). Empty disables crawling. |
+| `YAGO_CRAWL_RPC_ADDR` | `127.0.0.1:9091` | Address the node serves the crawl gRPC endpoint on. `off` disables crawling; use an explicit bind such as `:9091` for remote workers. |

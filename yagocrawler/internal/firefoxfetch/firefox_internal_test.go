@@ -155,7 +155,7 @@ func TestConnectMarionetteGivesUpWhenProcessExits(t *testing.T) {
 	exited := make(chan struct{})
 	close(exited)
 
-	if _, err := connectMarionette(port, exited); err == nil ||
+	if _, err := connectMarionette(t.Context(), port, exited); err == nil ||
 		!strings.Contains(err.Error(), "exited before marionette") {
 		t.Fatalf("error = %v, want an exited-before-marionette failure", err)
 	}
@@ -167,7 +167,7 @@ func TestOpenMarionetteSessionCompletesHandshake(t *testing.T) {
 	})
 	exited := make(chan struct{})
 
-	session, err := openMarionetteSession(&exec.Cmd{}, port, time.Second, exited)
+	session, err := openMarionetteSession(t.Context(), &exec.Cmd{}, port, time.Second, exited)
 	if err != nil {
 		t.Fatalf("open marionette session: %v", err)
 	}

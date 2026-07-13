@@ -11,8 +11,6 @@ Group=yago
 ExecStart=/opt/yago/bin/yagocrawler
 EnvironmentFile=/opt/yago/etc/yagocrawler.env
 WorkingDirectory=/opt/yago
-# Firefox writes its profile, cache, and lock files under HOME; keep it inside
-# the data tree.
 Environment=HOME=/opt/yago/data/crawler
 Restart=on-failure
 RestartSec=5s
@@ -30,32 +28,15 @@ ProtectControlGroups=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
 
-# Bound the headless-Firefox fetcher so a runaway render cannot starve the
-# co-located node. Percentages are relative to physical RAM, so these scale to
-# any box without hardcoding absolute sizes; override per host with a drop-in
-# (systemctl edit yagocrawler) sized to the machine — see deploy/README.md.
-# MemoryHigh throttles allocation (reclaim pressure, never kills); MemoryMax is
-# the hard ceiling that only a catastrophic runaway reaches, and its OOM stays
-# confined to the crawler cgroup so the node survives (Restart brings it back,
-# and the browser circuit-breaker degrades gracefully meanwhile). CPUWeight
-# below the default 100 lets the node win the CPU under contention, so
-# interactive search and admin stay responsive during a crawl.
 MemoryHigh=60%
 MemoryMax=85%
 TasksMax=4096
 CPUWeight=50
 
-# Run the crawler at the lowest scheduling priority so it always yields to the
-# co-located node, whose search and admin work is latency-sensitive
-# (PERF-PRIO-01). Nice=19 is the lowest CPU nice; IOSchedulingClass=idle is the
-# lowest disk-I/O class (honored by the BFQ scheduler, a harmless no-op under
-# mq-deadline/none); IOWeight caps the crawler cgroup's share of the io
-# controller. CPUWeight above stays the primary cross-cgroup CPU lever; these
-# deprioritize the crawler further so a crawl never steals cycles or disk from a
-# search the node is answering.
-Nice=19
-IOSchedulingClass=idle
-IOWeight=10
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+IOWeight=50
 
 [Install]
 WantedBy=multi-user.target

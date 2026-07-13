@@ -798,9 +798,11 @@ deps:
       - contentprior
       - contentsafety
       - documentstore
+      - boltvault
       - memvault
       - searchindex
       - urlmeta
+      - vault
       - rwi
     canUse:
       - yagocrawlcontract

@@ -60,7 +60,7 @@ func TestStreamOrdersDeliversQueuedOrder(t *testing.T) {
 	}
 }
 
-func TestStreamOrdersRequeuesOnSendError(t *testing.T) {
+func TestStreamOrdersKeepsLeaseOnSendError(t *testing.T) {
 	queue := memQueue(t)
 	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
 	if err := queue.Publish(context.Background(), testOrder("requeue")); err != nil {
@@ -68,16 +68,22 @@ func TestStreamOrdersRequeuesOnSendError(t *testing.T) {
 	}
 
 	stream := &fakeOrderStream{ctx: context.Background(), sendErr: errors.New("stream broken")}
-	if err := server.StreamOrders(&crawlrpc.WorkerRegistration{}, stream); err == nil {
+	if err := server.StreamOrders(
+		&crawlrpc.WorkerRegistration{WorkerId: "w1"},
+		stream,
+	); err == nil {
 		t.Fatal("expected send error")
 	}
 
-	data, _, _, err := queue.leasePop(context.Background(), "worker")
-	if err != nil {
-		t.Fatalf("lease pop: %v", err)
+	if n := pendingCount(t, queue); n != 0 {
+		t.Fatalf("pending = %d, want failed delivery held by its lease", n)
 	}
-	if data == nil {
-		t.Fatal("order was not requeued after send failure")
+	leasedOrders, err := queue.leasedOrdersForWorker(context.Background(), "w1")
+	if err != nil {
+		t.Fatalf("read worker leases: %v", err)
+	}
+	if len(leasedOrders) != 1 {
+		t.Fatalf("leased orders = %d, want 1", len(leasedOrders))
 	}
 }
 
@@ -87,14 +93,14 @@ func TestStreamOrdersReturnsWhenContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := server.StreamOrders(
-		&crawlrpc.WorkerRegistration{},
+		&crawlrpc.WorkerRegistration{WorkerId: "w1"},
 		&fakeOrderStream{ctx: ctx},
 	); err == nil {
 		t.Fatal("expected cancellation error")
 	}
 }
 
-func TestStreamOrdersRequeuesInFlightLeaseOnDisconnect(t *testing.T) {
+func TestStreamOrdersKeepsInFlightLeaseOnDisconnect(t *testing.T) {
 	queue := memQueue(t)
 	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
 	if err := queue.Publish(context.Background(), testOrder("reconnect")); err != nil {
@@ -108,37 +114,53 @@ func TestStreamOrdersRequeuesInFlightLeaseOnDisconnect(t *testing.T) {
 		t.Fatalf("sent %d orders, want the order delivered before the drop", len(stream.sent))
 	}
 
-	// The dropped worker's delivered-but-unacked order is back in the pending
-	// queue, so the reconnecting worker is fed again without a node restart.
-	if n := pendingCount(t, queue); n != 1 {
-		t.Fatalf("pending = %d, want the in-flight order requeued on disconnect", n)
+	if n := pendingCount(t, queue); n != 0 {
+		t.Fatalf("pending = %d, want the in-flight order held across disconnect", n)
+	}
+	if _, ok := leaseRecordFor(t, queue, stream.sent[0].GetLeaseId()); !ok {
+		t.Fatal("in-flight lease was not retained across disconnect")
 	}
 }
 
-func TestReleaseWorkerRequeuesOnlyOnLastStream(t *testing.T) {
+func TestReleaseWorkerLeavesLeaseAcrossOverlappingStreams(t *testing.T) {
 	queue := memQueue(t)
 	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
 	leaseID := leaseOne(t, queue, "held", "w1")
 
-	// Two live streams for one worker id model a reconnect overlap: releasing
-	// one must not requeue, since the other may still be working those orders.
 	server.control.register("w1")
 	server.control.register("w1")
-	server.releaseWorker(context.Background(), "w1")
+	queue.extendedAt["w1"] = time.Now()
+	server.releaseWorker("w1")
 	if _, ok := leaseRecordFor(t, queue, leaseID); !ok {
-		t.Fatal("lease requeued while a second stream is still connected")
+		t.Fatal("lease removed while a second stream is still connected")
 	}
 	if n := pendingCount(t, queue); n != 0 {
 		t.Fatalf("pending = %d, want the lease held while a stream lives", n)
 	}
-
-	// The last stream's release reclaims the worker's in-flight orders.
-	server.releaseWorker(context.Background(), "w1")
-	if _, ok := leaseRecordFor(t, queue, leaseID); ok {
-		t.Fatal("lease not reclaimed after the last stream released")
+	if _, found := queue.extendedAt["w1"]; !found {
+		t.Fatal("heartbeat state removed while a second stream is connected")
 	}
-	if n := pendingCount(t, queue); n != 1 {
-		t.Fatalf("pending = %d, want the in-flight order requeued", n)
+
+	server.releaseWorker("w1")
+	if _, ok := leaseRecordFor(t, queue, leaseID); !ok {
+		t.Fatal("lease removed after the last stream disconnected")
+	}
+	if n := pendingCount(t, queue); n != 0 {
+		t.Fatalf("pending = %d, want the lease held after disconnect", n)
+	}
+	if _, found := queue.extendedAt["w1"]; !found {
+		t.Fatal("heartbeat state was dropped while the worker may reconnect")
+	}
+}
+
+func TestStreamOrdersRejectsEmptyWorkerID(t *testing.T) {
+	server := newExchangeServer(memQueue(t), make(chan crawlresults.IngestDelivery))
+	err := server.StreamOrders(
+		&crawlrpc.WorkerRegistration{},
+		&fakeOrderStream{ctx: context.Background()},
+	)
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("error = %v, want InvalidArgument", err)
 	}
 }
 
@@ -165,8 +187,8 @@ func TestSubmitIngestReportsSaturation(t *testing.T) {
 	}()
 
 	_, err := server.SubmitIngest(context.Background(), ingestMessage(t, "https://example.org/b"))
-	if status.Code(err) != codes.ResourceExhausted {
-		t.Fatalf("error = %v, want ResourceExhausted", err)
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("error = %v, want Unavailable", err)
 	}
 }
 
@@ -271,6 +293,14 @@ func TestHeartbeatSettlesLeases(t *testing.T) {
 		&crawlrpc.WorkerHeartbeat{WorkerId: "w1"},
 	); err != nil {
 		t.Fatalf("heartbeat: %v", err)
+	}
+}
+
+func TestHeartbeatRejectsEmptyWorkerID(t *testing.T) {
+	server := newExchangeServer(memQueue(t), make(chan crawlresults.IngestDelivery))
+	_, err := server.Heartbeat(context.Background(), &crawlrpc.WorkerHeartbeat{})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("error = %v, want InvalidArgument", err)
 	}
 }
 

@@ -49,7 +49,7 @@ func sampleResults() SearchResults {
 				Title:      "Web hit",
 				URL:        "http://b.example/2",
 				DisplayURL: "b.example/2",
-				Source:     "web",
+				Source:     "ddgs",
 			},
 		},
 	}
@@ -275,13 +275,13 @@ func TestConsoleSearchRendersResultsWithMarker(t *testing.T) {
 	if got.status != http.StatusOK {
 		t.Fatalf("status %d", got.status)
 	}
-	for _, want := range []string{"Local hit", "Web hit", ">web</span>", "result(s) for", "(local + peers)"} {
+	for _, want := range []string{"Local hit", "Web hit", ">[ddgs]</span>", "result(s) for", "(local + peers)"} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("search results missing %q", want)
 		}
 	}
-	if strings.Contains(got.body, "[ddgs]") {
-		t.Fatalf("admin search must not show the [ddgs] badge: %s", got.body)
+	if strings.Contains(got.body, ">web</span>") {
+		t.Fatalf("admin search must use the [ddgs] badge: %s", got.body)
 	}
 }
 

@@ -93,19 +93,28 @@ func hitView(hit SearchResult) map[string]any {
 	}
 
 	return map[string]any{
-		"title":       hit.Title,
-		"url":         hit.URL,
-		"displayUrl":  hit.DisplayURL,
-		"snippet":     hit.Snippet,
-		"snippetHtml": string(hit.SnippetHTML),
-		"host":        hit.Host,
-		"date":        hit.Date,
-		"sizeName":    hit.SizeName,
-		"cachedUrl":   hit.CachedURL,
-		"provenance":  hit.Provenance,
-		"faviconUrl":  hit.FaviconURL,
-		"images":      images,
+		"title":           hit.Title,
+		"url":             hit.URL,
+		"displayUrl":      hit.DisplayURL,
+		"snippet":         hit.Snippet,
+		"snippetHtml":     string(hit.SnippetHTML),
+		"host":            hit.Host,
+		"date":            hit.Date,
+		"sizeName":        hit.SizeName,
+		"cachedUrl":       hit.CachedURL,
+		"provenance":      hit.Provenance,
+		"provenanceLabel": provenanceLabel(hit.Provenance),
+		"faviconUrl":      hit.FaviconURL,
+		"images":          images,
 	}
+}
+
+func provenanceLabel(provenance string) string {
+	if provenance == "ddgs" {
+		return "[ddgs]"
+	}
+
+	return provenance
 }
 
 func verticalViews(tabs []verticalTab) []map[string]any {

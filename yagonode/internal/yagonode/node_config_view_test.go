@@ -63,14 +63,21 @@ func TestBuildConfigViewDerivesWebFallbackFromPrivacy(t *testing.T) {
 			fallback: webFallbackConfig{
 				Enabled: false, Privacy: webFallbackPrivacyExplicit,
 			},
-			expected: "Web fallbackEnabled",
+			expected: "Web fallbackOnly when requested",
 		},
 		{
 			name: "enabled policy",
 			fallback: webFallbackConfig{
 				Privacy: webFallbackPrivacyEnabled,
 			},
-			expected: "Web fallbackEnabled",
+			expected: "Web fallbackEnabled on search miss",
+		},
+		{
+			name: "always policy",
+			fallback: webFallbackConfig{
+				Privacy: webFallbackPrivacyAlways,
+			},
+			expected: "Web fallbackAlways",
 		},
 		{
 			name: "disabled ignores enabled legacy flag",
@@ -86,18 +93,5 @@ func TestBuildConfigViewDerivesWebFallbackFromPrivacy(t *testing.T) {
 				t.Fatalf("config view = %q, want %q", flat, test.expected)
 			}
 		})
-	}
-}
-
-func TestBuildConfigViewShowsWebSearchTiming(t *testing.T) {
-	parallel := flattenConfig(buildConfigView(nodeConfig{WebFallback: webFallbackConfig{
-		Trigger: webFallbackTriggerParallel,
-	}}))
-	if !strings.Contains(parallel, "Web search timingAlongside local and peers") {
-		t.Fatalf("parallel config view = %q", parallel)
-	}
-	miss := flattenConfig(buildConfigView(nodeConfig{}))
-	if !strings.Contains(miss, "Web search timingAfter local and peer miss") {
-		t.Fatalf("miss config view = %q", miss)
 	}
 }

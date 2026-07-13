@@ -70,11 +70,5 @@ func (c *Completion) Pending(runID uuid.UUID) int {
 func (c *Completion) Settle(
 	runID uuid.UUID,
 ) (finish func(succeeded bool), succeeded, drained bool) {
-	run := c.runs[runID]
-	run.pending--
-	if run.pending == 0 {
-		delete(c.runs, runID)
-		return run.finish, !run.failed, true
-	}
-	return nil, false, false
+	return c.SettleMany(runID, 1)
 }

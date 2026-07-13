@@ -51,12 +51,10 @@ func (c *IngestConsumer) replaceDocumentClusters(
 	ctx context.Context,
 	docs []documentstore.Document,
 ) (documentClusterReplacement, error) {
-	replacement := documentClusterReplacement{
-		documents:          docs,
-		currentURLs:        make(map[string]struct{}, len(docs)),
-		affectedClusterIDs: make(map[string]struct{}, len(docs)),
-		assignedClusterIDs: make(map[string]struct{}, len(docs)),
+	if clusters, ok := c.clusters.(contentClusterBatch); ok {
+		return c.replaceDocumentClusterBatch(ctx, docs, clusters)
 	}
+	replacement := newDocumentClusterReplacement(docs)
 	for index := range docs {
 		previous, found, err := c.clusters.Lookup(ctx, documentClusterURL(docs[index]))
 		if err != nil {
@@ -79,6 +77,17 @@ func (c *IngestConsumer) replaceDocumentClusters(
 	}
 
 	return replacement, nil
+}
+
+func newDocumentClusterReplacement(
+	docs []documentstore.Document,
+) documentClusterReplacement {
+	return documentClusterReplacement{
+		documents:          docs,
+		currentURLs:        make(map[string]struct{}, len(docs)),
+		affectedClusterIDs: make(map[string]struct{}, len(docs)),
+		assignedClusterIDs: make(map[string]struct{}, len(docs)),
+	}
 }
 
 func (c *IngestConsumer) refreshDocumentClusters(
@@ -122,28 +131,42 @@ func (c *IngestConsumer) assignDocumentCluster(
 	ctx context.Context,
 	doc documentstore.Document,
 ) (documentstore.Document, error) {
-	url := documentClusterURL(doc)
-	contentHash := documentClusterHash(doc, url)
-	assignment, err := c.clusters.Replace(ctx, contentcluster.Evidence{
-		URL:                url,
-		Text:               documentClusterText(doc),
-		ContentHash:        contentHash,
-		CanonicalPreferred: doc.CanonicalURL != "" && doc.CanonicalURL == url,
-		Quality:            documentClusterQuality(doc),
-		InboundAuthority:   documentInboundAuthority(doc),
-	})
+	assignment, err := c.clusters.Replace(ctx, documentClusterEvidence(doc))
 	if err != nil {
 		return documentstore.Document{}, fmt.Errorf("replace content cluster: %w", err)
 	}
+
+	return assignedDocumentCluster(doc, assignment), nil
+}
+
+func documentClusterEvidence(doc documentstore.Document) contentcluster.Evidence {
+	url := documentClusterURL(doc)
+	doc.NormalizedURL = url
+
+	return contentcluster.Evidence{
+		URL:                url,
+		Text:               documentClusterText(doc),
+		ContentHash:        documentClusterHash(doc, url),
+		CanonicalPreferred: doc.CanonicalURL != "" && doc.CanonicalURL == url,
+		Quality:            documentClusterQuality(doc),
+		InboundAuthority:   documentInboundAuthority(doc),
+	}
+}
+
+func assignedDocumentCluster(
+	doc documentstore.Document,
+	assignment contentcluster.Assignment,
+) documentstore.Document {
+	url := documentClusterURL(doc)
 	doc.NormalizedURL = url
 	if doc.CanonicalURL == "" {
 		doc.CanonicalURL = url
 	}
-	doc.ContentHash = contentHash
+	doc.ContentHash = documentClusterHash(doc, url)
 	doc.ClusterID = assignment.ClusterID
 	doc.RepresentativeURL = assignment.RepresentativeURL
 
-	return doc, nil
+	return doc
 }
 
 func (c *IngestConsumer) storedClusterUpdates(

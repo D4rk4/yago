@@ -2,7 +2,9 @@ package pageindex
 
 import (
 	"maps"
+	"strconv"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawler/internal/pageparse"
 	"github.com/D4rk4/yago/yagocrawler/internal/stopwords"
 	"github.com/D4rk4/yago/yagomodel"
@@ -25,8 +27,14 @@ func BuildPostings(
 			continue
 		}
 		if _, seen := frequency[token]; !seen {
+			if len(order) == yagocrawlcontract.MaximumIngestPostings {
+				continue
+			}
 			firstPosition[token] = position
 			order = append(order, token)
+			frequency[token] = 1
+
+			continue
 		}
 		frequency[token]++
 	}
@@ -37,6 +45,10 @@ func BuildPostings(
 	shared := map[string]string{
 		yagomodel.ColURLHash:  urlHash.String(),
 		yagomodel.ColLanguage: language,
+		yagomodel.ColDocType: strconv.FormatUint(
+			uint64(yagomodel.DocTypeText),
+			10,
+		),
 		yagomodel.ColTextWordCount: yagomodel.FormatRWICardinal(
 			cardinalValue(len(stats.Tokens), maxUint16),
 		),

@@ -73,6 +73,7 @@ func printVersion(args []string, out io.Writer) bool {
 }
 
 func run(ctx context.Context, cfg ServiceConfig) error {
+	cfg.WorkerID = instanceWorkerID(cfg.WorkerID)
 	crawl := cfg.Crawl
 	if firefoxfetch.LooksLikeChromium(crawl.BrowserPath) {
 		slog.WarnContext(
@@ -88,11 +89,12 @@ func run(ctx context.Context, cfg ServiceConfig) error {
 	}
 	fetcher, closeBrowser, err := newCrawlerBrowserFetcher(
 		firefoxfetch.BrowserLaunch{
-			UserAgent: crawl.UserAgent,
-			Timeout:   crawl.RequestTimeout,
-			MaxBytes:  crawl.MaxBodyBytes,
-			ExecPath:  crawl.BrowserPath,
-			Sandbox:   crawl.BrowserSandbox,
+			UserAgent:        crawl.UserAgent,
+			Timeout:          crawl.RequestTimeout,
+			MaxBytes:         crawl.MaxBodyBytes,
+			ExecPath:         crawl.BrowserPath,
+			Sandbox:          crawl.BrowserSandbox,
+			FailureThreshold: crawl.BrowserFailureThreshold,
 		},
 		yagoegress.NewGuard(
 			cfg.EgressAllowLAN,

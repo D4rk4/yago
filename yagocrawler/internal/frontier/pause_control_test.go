@@ -31,11 +31,7 @@ func TestPauseWithholdsRunJobsUntilResume(t *testing.T) {
 		t.Fatalf("queued = %d, want 1", seeded.Queued)
 	}
 
-	select {
-	case job := <-f.Jobs():
-		t.Fatalf("paused run dispatched %q, want nothing", job.URL)
-	case <-time.After(200 * time.Millisecond):
-	}
+	assertNoJob(t, f, 200*time.Millisecond)
 
 	f.Resume(provenance)
 	job := receiveJob(t, f)
@@ -77,11 +73,7 @@ func TestCancelDropsPendingJobsAndDrainsRun(t *testing.T) {
 	if !f.WasCancelled(provenance) {
 		t.Fatal("WasCancelled = false after Cancel")
 	}
-	select {
-	case job := <-f.Jobs():
-		t.Fatalf("cancelled run dispatched %q, want nothing", job.URL)
-	case <-time.After(100 * time.Millisecond):
-	}
+	assertNoJob(t, f, 100*time.Millisecond)
 
 	f.ClearCancelled(provenance)
 	if f.WasCancelled(provenance) {
@@ -149,11 +141,7 @@ func TestCancelRejectsDiscoveredLinks(t *testing.T) {
 	f.Submit(context.Background(), work, discoveredLinks("https://example.com/child"))
 	f.Done(work, false)
 
-	select {
-	case job := <-f.Jobs():
-		t.Fatalf("cancelled run dispatched discovered link %q, want nothing", job.URL)
-	case <-time.After(100 * time.Millisecond):
-	}
+	assertNoJob(t, f, 100*time.Millisecond)
 }
 
 // TestDefaultRunRateThrottlesFromFirstJob: with a frontier-wide default rate,
@@ -182,11 +170,7 @@ func TestDefaultRunRateThrottlesFromFirstJob(t *testing.T) {
 
 	// One page per minute spaces dispatches 60s apart, so the second job stays
 	// withheld well beyond the test window without any explicit SetRate.
-	select {
-	case job := <-f.Jobs():
-		t.Fatalf("default-rated run dispatched %q too soon", job.URL)
-	case <-time.After(200 * time.Millisecond):
-	}
+	assertNoJob(t, f, 200*time.Millisecond)
 
 	// An explicit zero rate overrides the default and unleashes the run.
 	f.SetRate(provenance, 0)
@@ -218,11 +202,7 @@ func TestSetRateThrottlesRunDispatch(t *testing.T) {
 	first := receiveJob(t, f)
 	f.Done(first, false)
 
-	select {
-	case job := <-f.Jobs():
-		t.Fatalf("throttled run dispatched %q too soon", job.URL)
-	case <-time.After(200 * time.Millisecond):
-	}
+	assertNoJob(t, f, 200*time.Millisecond)
 
 	// Lifting the throttle releases the withheld job at once.
 	f.SetRate(provenance, 0)

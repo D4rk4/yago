@@ -308,7 +308,11 @@ func (e *engine) runUpdate(fn func(vault.EngineTxn) error, tryLocks bool) error 
 		open:     make([]*bolt.Tx, len(e.shards)),
 	}
 	defer txn.releaseLocks()
-	if err := fn(txn); err != nil {
+	err := fn(txn)
+	if txn.accessErr != nil {
+		err = txn.accessErr
+	}
+	if err != nil {
 		txn.rollback()
 		if errors.Is(err, errShardContended) {
 			return errShardContended
@@ -539,14 +543,21 @@ func storageAtCapacityError(err error) bool {
 
 // shardTxn is the lazy multi-shard transaction handed to Engine callers.
 type shardTxn struct {
-	engine   *engine
-	writable bool
-	tryLocks bool
-	held     []int
-	open     []*bolt.Tx
+	engine    *engine
+	writable  bool
+	tryLocks  bool
+	held      []int
+	open      []*bolt.Tx
+	accessErr error
 }
 
 func (t *shardTxn) Writable() bool { return t.writable }
+
+func (t *shardTxn) latchAccessError(err error) {
+	if t.accessErr == nil && errors.Is(err, errShardContended) {
+		t.accessErr = err
+	}
+}
 
 // shard returns the open transaction for one shard, opening it on demand. A
 // fast-path writer must take the shard's lock first; a locked shard aborts
@@ -636,6 +647,7 @@ func (b *shardBucket) boltBucketFor(key vault.Key) (*bolt.Bucket, error) {
 func (b *shardBucket) Get(key vault.Key) []byte {
 	bucket, err := b.boltBucketFor(key)
 	if err != nil {
+		b.txn.latchAccessError(err)
 		return nil
 	}
 	value, err := decodeValue(bucket.Get(key))
@@ -649,6 +661,7 @@ func (b *shardBucket) Get(key vault.Key) []byte {
 func (b *shardBucket) Contains(key vault.Key) bool {
 	bucket, err := b.boltBucketFor(key)
 	if err != nil {
+		b.txn.latchAccessError(err)
 		return false
 	}
 

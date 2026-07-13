@@ -46,7 +46,8 @@ type Receipt struct {
 }
 
 type PurgeResult struct {
-	URLsDeleted int
+	URLsDeleted      int
+	observerFailures []urlObserverFailure
 }
 
 func Open(

@@ -143,6 +143,8 @@ func (p *Pool) NextPublication(ctx context.Context) (Record, bool, error) {
 		found  bool
 	)
 	err := p.vault.Update(ctx, func(tx *vault.Txn) error {
+		record = Record{}
+		found = false
 		key, wire, ok, err := p.popHead(tx, Outgoing)
 		if err != nil || !ok {
 			return err
@@ -175,6 +177,7 @@ func (p *Pool) EnqueueIncomingNews(ctx context.Context, record Record) (bool, er
 
 	stored := false
 	err := p.vault.Update(ctx, func(tx *vault.Txn) error {
+		stored = false
 		_, exists, err := p.known.Get(tx, vault.Key(record.ID()))
 		if err != nil {
 			return fmt.Errorf("check known news: %w", err)

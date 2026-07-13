@@ -16,9 +16,6 @@ func TestLoadWebFallbackConfigDefaults(t *testing.T) {
 	if config.Provider != "ddgs" || config.Backend != "auto" {
 		t.Errorf("provider/backend = %q/%q", config.Provider, config.Backend)
 	}
-	if config.Trigger != webFallbackTriggerMiss {
-		t.Errorf("trigger = %q", config.Trigger)
-	}
 	if config.MaxResults != defaultWebFallbackMaxResults {
 		t.Errorf("maxResults = %d", config.MaxResults)
 	}
@@ -27,15 +24,34 @@ func TestLoadWebFallbackConfigDefaults(t *testing.T) {
 	}
 }
 
-func TestLoadWebFallbackTrigger(t *testing.T) {
+func TestLoadLegacyParallelWebFallbackAsAlways(t *testing.T) {
 	config, err := loadWebFallbackConfig(func(key string) string {
-		if key == envWebFallbackTrigger {
+		switch key {
+		case envWebFallbackEnabled:
+			return "true"
+		case envWebFallbackTrigger:
 			return " PARALLEL "
 		}
 
 		return ""
 	})
-	if err != nil || config.Trigger != webFallbackTriggerParallel {
+	if err != nil || effectiveWebFallbackPrivacy(config) != webFallbackPrivacyAlways {
+		t.Fatalf("config = %#v, error = %v", config, err)
+	}
+}
+
+func TestLoadLegacyParallelDoesNotOverrideExplicitConsent(t *testing.T) {
+	config, err := loadWebFallbackConfig(func(key string) string {
+		switch key {
+		case envWebFallbackPrivacy:
+			return string(webFallbackPrivacyExplicit)
+		case envWebFallbackTrigger:
+			return string(webFallbackTriggerParallel)
+		}
+
+		return ""
+	})
+	if err != nil || config.Privacy != webFallbackPrivacyExplicit {
 		t.Fatalf("config = %#v, error = %v", config, err)
 	}
 }
@@ -104,6 +120,19 @@ func TestLoadWebFallbackPrivacyDefaultsToDisabled(t *testing.T) {
 	}
 	if config.Privacy != webFallbackPrivacyDisabled {
 		t.Fatalf("privacy = %q, want disabled", config.Privacy)
+	}
+}
+
+func TestLoadWebFallbackPrivacyAlways(t *testing.T) {
+	config, err := loadWebFallbackConfig(func(key string) string {
+		if key == envWebFallbackPrivacy {
+			return string(webFallbackPrivacyAlways)
+		}
+
+		return ""
+	})
+	if err != nil || config.Privacy != webFallbackPrivacyAlways {
+		t.Fatalf("config = %#v, error = %v", config, err)
 	}
 }
 

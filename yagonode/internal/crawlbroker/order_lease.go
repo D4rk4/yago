@@ -95,6 +95,9 @@ func (q *DurableOrderQueue) leasePop(
 	var key vault.Key
 	found := false
 	err = q.vault.Update(ctx, func(tx *vault.Txn) error {
+		data = nil
+		key = nil
+		found = false
 		if err := q.orders.Scan(tx, nil, func(k vault.Key, v []byte) (bool, error) {
 			key = k
 			data = append([]byte(nil), v...)
@@ -191,7 +194,9 @@ func (q *DurableOrderQueue) heartbeat(ctx context.Context, workerID string) erro
 		return nil
 	}
 	deadline := now.Add(q.leaseTTL).UnixNano()
+	extended := false
 	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
+		extended = false
 		var keys []vault.Key
 		var records []leaseRecord
 		if err := q.leases.Scan(tx, nil, func(k vault.Key, record leaseRecord) (bool, error) {
@@ -210,13 +215,18 @@ func (q *DurableOrderQueue) heartbeat(ctx context.Context, workerID string) erro
 				return fmt.Errorf("extend crawl lease: %w", err)
 			}
 		}
+		extended = len(keys) > 0
 
 		return nil
 	}); err != nil {
 		return fmt.Errorf("heartbeat crawl leases: %w", err)
 	}
 	q.mu.Lock()
-	q.extendedAt[workerID] = now
+	if extended {
+		q.extendedAt[workerID] = now
+	} else {
+		delete(q.extendedAt, workerID)
+	}
 	q.mu.Unlock()
 
 	return nil
@@ -224,36 +234,25 @@ func (q *DurableOrderQueue) heartbeat(ctx context.Context, workerID string) erro
 
 // sweepExpired returns every lease past its deadline to the pending queue.
 func (q *DurableOrderQueue) sweepExpired(ctx context.Context) error {
-	now := nowFunc().UnixNano()
-
-	return q.requeueLeasesMatching(ctx, func(record leaseRecord) bool {
-		return record.ExpiresAtUnixNano <= now
-	})
-}
-
-// requeueAllLeases returns every lease to the pending queue, used at startup to
-// reclaim orders leased by workers that a node restart disconnected.
-func (q *DurableOrderQueue) requeueAllLeases(ctx context.Context) error {
-	return q.requeueLeasesMatching(ctx, func(leaseRecord) bool { return true })
-}
-
-// requeueWorkerLeases returns every lease held by workerID to the pending queue
-// and forgets the worker's heartbeat-throttle mark. It runs when a worker's last
-// order stream disconnects: orders it was streamed but never acked would
-// otherwise stay leased, and a reconnecting worker's heartbeats keep extending
-// them past the sweeper's reach, so a crawler that dropped mid-batch would go
-// unfed until a node restart (issue #230).
-func (q *DurableOrderQueue) requeueWorkerLeases(ctx context.Context, workerID string) error {
+	now := nowFunc()
 	if err := q.requeueLeasesMatching(ctx, func(record leaseRecord) bool {
-		return record.WorkerID == workerID
+		return record.ExpiresAtUnixNano <= now.UnixNano()
 	}); err != nil {
 		return err
 	}
 	q.mu.Lock()
-	delete(q.extendedAt, workerID)
+	for workerID, extendedAt := range q.extendedAt {
+		if now.Sub(extendedAt) >= q.leaseTTL {
+			delete(q.extendedAt, workerID)
+		}
+	}
 	q.mu.Unlock()
 
 	return nil
+}
+
+func (q *DurableOrderQueue) requeueAllLeases(ctx context.Context) error {
+	return q.requeueLeasesMatching(ctx, func(leaseRecord) bool { return true })
 }
 
 func (q *DurableOrderQueue) requeueLeasesMatching(
@@ -262,6 +261,7 @@ func (q *DurableOrderQueue) requeueLeasesMatching(
 ) error {
 	requeued := false
 	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
+		requeued = false
 		var keys []vault.Key
 		var payloads [][]byte
 		if err := q.leases.Scan(tx, nil, func(k vault.Key, record leaseRecord) (bool, error) {

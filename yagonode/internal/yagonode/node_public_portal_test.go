@@ -72,7 +72,7 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 			results.LocalCount, results.PeerCount, results.WebCount)
 	}
 	if results.Results[0].Provenance != "local" ||
-		results.Results[1].Provenance != "web" ||
+		results.Results[1].Provenance != "ddgs" ||
 		results.Results[2].Provenance != "peer" {
 		t.Fatalf("provenance labels = %q/%q/%q",
 			results.Results[0].Provenance,

@@ -8,28 +8,34 @@ import (
 const MinWordLength = 2
 
 func Tokenize(text string) []string {
-	raw := splitWords([]rune(text))
+	return tokenize(text, 0)
+}
+
+func tokenize(text string, maximum int) []string {
+	raw := splitWords([]rune(text), maximum)
 	tokens := make([]string, 0, len(raw))
 	for _, w := range raw {
 		lower := strings.ToLower(w)
-		if len([]rune(lower)) < MinWordLength {
-			continue
-		}
 		tokens = append(tokens, lower)
+		if maximum > 0 && len(tokens) == maximum {
+			break
+		}
 	}
 	return tokens
 }
 
 //nolint:gocognit,revive // FIXME: split token classification transitions after the new lint rules are committed.
-func splitWords(r []rune) []string {
+func splitWords(r []rune, maximum int) []string {
 	out := make([]string, 0)
 	var sb []rune
 	wasDigitSep := false
-	flush := func() {
-		if len(sb) > 0 {
+	flush := func() bool {
+		if len(sb) >= MinWordLength {
 			out = append(out, string(sb))
-			sb = nil
 		}
+		sb = nil
+
+		return maximum > 0 && len(out) == maximum
 	}
 	n := len(r)
 	for i := range n {
@@ -44,24 +50,31 @@ func splitWords(r []rune) []string {
 			continue
 		}
 		if wasDigitSep && isLetter(c) {
-			flush()
 			wasDigitSep = false
 		}
 		switch {
 		case isPunctuation(c):
 			if len(sb) > 0 && !wasDigitSep {
-				flush()
+				if flush() {
+					return out
+				}
 			}
 			sb = append(sb, c)
-			flush()
+			if flush() {
+				return out
+			}
 			wasDigitSep = false
 		case isInvisible(c):
-			flush()
+			if flush() {
+				return out
+			}
 			wasDigitSep = false
 		default:
 			sb = append(sb, c)
 			if i < n-1 && isDigit(c) && isLetter(r[i+1]) {
-				flush()
+				if flush() {
+					return out
+				}
 			}
 		}
 	}

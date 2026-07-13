@@ -10,6 +10,15 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 )
 
+type acceptingCrawlControl struct{}
+
+func (acceptingCrawlControl) Enqueue(
+	string,
+	yagocrawlcontract.CrawlControlDirective,
+) bool {
+	return true
+}
+
 func controlSourceWithRun(t *testing.T, runID, workerID string) *crawlControlSource {
 	t.Helper()
 	runtime := liveCrawlRuntime(t)
@@ -21,7 +30,7 @@ func controlSourceWithRun(t *testing.T, runID, workerID string) *crawlControlSou
 		})
 	}
 
-	return newCrawlControlSource(runtime.runRegistry(), runtime.controlRegistry(), nil)
+	return newCrawlControlSource(runtime.runRegistry(), acceptingCrawlControl{}, nil)
 }
 
 func TestCrawlControlSourceSteersRun(t *testing.T) {
@@ -43,7 +52,7 @@ func TestCrawlControlSourceRemembersRateForMonitorPrefill(t *testing.T) {
 	runtime.runRegistry().Record(context.Background(), yagocrawlcontract.CrawlRunProgress{
 		RunID: "ab", WorkerID: "worker-1", State: yagocrawlcontract.CrawlRunRunning,
 	})
-	source := newCrawlControlSource(runtime.runRegistry(), runtime.controlRegistry(), nil)
+	source := newCrawlControlSource(runtime.runRegistry(), acceptingCrawlControl{}, nil)
 
 	if err := source.Control(context.Background(), adminui.CrawlControlRequest{
 		RunID: "ab", Action: "set_rate", PagesPerMinute: 45,
@@ -153,7 +162,21 @@ func restartControlSource(
 		State:         yagocrawlcontract.CrawlRunFinished,
 	})
 
-	return newCrawlControlSource(runtime.runRegistry(), runtime.controlRegistry(), restarter)
+	return newCrawlControlSource(runtime.runRegistry(), acceptingCrawlControl{}, restarter)
+}
+
+func TestCrawlControlSourceRejectsOfflineWorker(t *testing.T) {
+	runtime := liveCrawlRuntime(t)
+	runtime.runRegistry().Record(context.Background(), yagocrawlcontract.CrawlRunProgress{
+		RunID: "ab", WorkerID: "offline-worker", State: yagocrawlcontract.CrawlRunRunning,
+	})
+	source := newCrawlControlSource(runtime.runRegistry(), runtime.controlRegistry(), nil)
+	err := source.Control(context.Background(), adminui.CrawlControlRequest{
+		RunID: "ab", Action: "pause",
+	})
+	if !errors.Is(err, errCrawlWorkerOffline) {
+		t.Fatalf("error = %v, want errCrawlWorkerOffline", err)
+	}
 }
 
 func TestCrawlControlSourceRestartsFinishedRunByProfile(t *testing.T) {

@@ -102,6 +102,47 @@ func TestReplaceOutboundAnchorsUpdatesStoredAndFutureTargets(t *testing.T) {
 	}
 }
 
+func TestReplaceOutboundAnchorsSkipsUnchangedTargetDocuments(t *testing.T) {
+	_, receiver := openDocuments(t)
+	target := "https://target.example/page"
+	set := OutboundAnchorSet{
+		SourceURL: "https://source.example/page",
+		Anchors:   []OutboundAnchor{{TargetURL: target, Text: "stable"}},
+	}
+	if _, err := receiver.Receive(t.Context(), []Document{{NormalizedURL: target}}); err != nil {
+		t.Fatalf("receive target: %v", err)
+	}
+	anchors := anchorReceiver(t, receiver)
+	first, err := anchors.ReplaceOutboundAnchors(t.Context(), []OutboundAnchorSet{set})
+	if err != nil || len(first.Documents) != 1 {
+		t.Fatalf("first update = %#v/%v", first, err)
+	}
+	second, err := anchors.ReplaceOutboundAnchors(t.Context(), []OutboundAnchorSet{set})
+	if err != nil || len(second.Documents) != 0 {
+		t.Fatalf("unchanged update = %#v/%v, want no documents", second, err)
+	}
+}
+
+func TestReplaceOutboundAnchorsReplayDropsAbortedAffectedDocuments(t *testing.T) {
+	_, receiver, engine := openScriptedDocuments(t)
+	target := "https://target.example/page"
+	if _, err := receiver.Receive(t.Context(), []Document{{NormalizedURL: target}}); err != nil {
+		t.Fatal(err)
+	}
+	engine.replayNext = true
+	engine.commitFirst = true
+	update, err := anchorReceiver(t, receiver).ReplaceOutboundAnchors(
+		t.Context(),
+		[]OutboundAnchorSet{{
+			SourceURL: "https://source.example/page",
+			Anchors:   []OutboundAnchor{{TargetURL: target, Text: "stable"}},
+		}},
+	)
+	if err != nil || len(update.Documents) != 0 {
+		t.Fatalf("replayed update = %#v/%v, want no stale affected documents", update, err)
+	}
+}
+
 func TestReplaceOutboundAnchorsBoundsSourcesAndTargets(t *testing.T) {
 	anchors := make([]OutboundAnchor, maximumOutboundAnchors+1)
 	for index := range anchors {

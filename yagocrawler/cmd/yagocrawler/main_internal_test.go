@@ -128,6 +128,34 @@ func TestRunClosesBrowserOnSuccess(t *testing.T) {
 	}
 }
 
+func TestRunUsesOneUniqueWorkerIdentityPerProcessInvocation(t *testing.T) {
+	restoreMainSeams(t)
+	newCrawlerBrowserFetcher = func(
+		firefoxfetch.BrowserLaunch, yagoegress.Guard,
+	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
+		return &firefoxfetch.BrowserPageFetcher{}, func() {}, nil
+	}
+	var workerIDs []string
+	runCrawlerService = func(_ context.Context, cfg ServiceConfig, _ pagefetch.PageSource) error {
+		workerIDs = append(workerIDs, cfg.WorkerID)
+
+		return nil
+	}
+	for range 2 {
+		if err := run(context.Background(), minimalServiceConfig(t)); err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	}
+	if len(workerIDs) != 2 || workerIDs[0] == workerIDs[1] {
+		t.Fatalf("worker identities = %v, want two unique values", workerIDs)
+	}
+	for _, workerID := range workerIDs {
+		if !strings.HasPrefix(workerID, DefaultWorkerID+"-") {
+			t.Fatalf("worker identity = %q, want default prefix", workerID)
+		}
+	}
+}
+
 func TestRunClosesBrowserOnServiceError(t *testing.T) {
 	restoreMainSeams(t)
 	sentinel := errors.New("service failed")

@@ -188,8 +188,24 @@ func normalizeSettingBool(raw string) (string, error) {
 // configuration at startup. Unknown or unparsable overrides are ignored so the
 // environment default stands.
 func applyRuntimeSettingOverrides(config nodeConfig, overrides map[string]string) nodeConfig {
+	mode, authoritative, environment := decodeWebFallbackSetting(
+		overrides[settingKeyWebFallbackPrivacy],
+	)
+	if !authoritative {
+		raw, found := overrides[settingKeyLegacyWebFallbackTrigger]
+		if found {
+			if value, err := loadWebFallbackTrigger(
+				func(string) string { return raw },
+			); err == nil {
+				config.WebFallback.Trigger = value
+			}
+		}
+	}
 	byKey := indexSettingDefinitions()
 	for key, raw := range overrides {
+		if authoritative && key == settingKeyWebFallbackPrivacy {
+			continue
+		}
 		def, ok := byKey[key]
 		if !ok {
 			continue
@@ -199,6 +215,10 @@ func applyRuntimeSettingOverrides(config nodeConfig, overrides map[string]string
 			continue
 		}
 		config = def.apply(config, value)
+	}
+	if authoritative && !environment {
+		config.WebFallback.Privacy = mode
+		config.WebFallback.Trigger = webFallbackTriggerMiss
 	}
 
 	return config

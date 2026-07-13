@@ -7,13 +7,6 @@ import (
 
 const (
 	envCrawlRPCAddr = "YAGO_CRAWL_RPC_ADDR"
-	// defaultCrawlRPCAddr is the loopback endpoint the co-located crawler dials
-	// when YAGO_CRAWL_RPC_ADDR is unset. It matches the crawler's own default
-	// (YAGOCRAWLER_NODE_RPC_ADDR=127.0.0.1:9091), so a package install that
-	// enables both the node and the crawler works with no configuration. It
-	// binds loopback rather than a public interface because the crawl exchange
-	// is unauthenticated and the crawler is normally on the same host; a split
-	// deployment (the container compose file) sets YAGO_CRAWL_RPC_ADDR=:9091.
 	defaultCrawlRPCAddr = "127.0.0.1:9091"
 	// crawlRPCDisabled is the explicit value that turns the crawl exchange off
 	// for a node that runs no crawler, now that an unset value means "default".

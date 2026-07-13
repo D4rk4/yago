@@ -2,10 +2,13 @@ package crawlseed_test
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawler/internal/crawlseed"
+	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
 )
 
 func TestExpanderDiscoversSitemapsFromRobots(t *testing.T) {
@@ -61,7 +64,9 @@ func TestExpanderRobotsWithoutSitemapsIsEmpty(t *testing.T) {
 }
 
 func TestExpanderRobotsMissingFileFailsOpen(t *testing.T) {
-	got, err := crawlseed.NewExpander(seedSource{}, 10).
+	got, err := crawlseed.NewExpander(failingSeedSource{
+		err: &pagefetch.GoneError{Status: http.StatusNotFound},
+	}, 10).
 		Expand(context.Background(), []yagocrawlcontract.CrawlRequest{{
 			URL:  "https://example.org/",
 			Mode: yagocrawlcontract.CrawlRequestModeRobots,
@@ -71,6 +76,19 @@ func TestExpanderRobotsMissingFileFailsOpen(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Fatalf("requests = %#v, want none", got)
+	}
+}
+
+func TestExpanderRobotsPropagatesRetryableFetchFailures(t *testing.T) {
+	for _, failure := range []error{errors.New("network failed"), context.Canceled} {
+		_, err := crawlseed.NewExpander(failingSeedSource{err: failure}, 10).
+			Expand(context.Background(), []yagocrawlcontract.CrawlRequest{{
+				URL:  "https://example.org/",
+				Mode: yagocrawlcontract.CrawlRequestModeRobots,
+			}})
+		if !errors.Is(err, failure) {
+			t.Fatalf("error = %v, want %v", err, failure)
+		}
 	}
 }
 

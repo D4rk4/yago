@@ -34,6 +34,7 @@ func (e Evictor) PurgeStalePostingsForURLs(
 ) (int, error) {
 	purged := 0
 	err := e.vault.Update(ctx, func(tx *vault.Txn) error {
+		purged = 0
 		for url, live := range staleByURL {
 			count, err := e.purgeStaleInTx(tx, url, live)
 			if err != nil {

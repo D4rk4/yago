@@ -48,7 +48,6 @@ services:
       YAGO_SEARCH_REMOTE_TIMEOUT: ${YAGO_SEARCH_REMOTE_TIMEOUT:-1300ms}
       YAGO_WEB_FALLBACK_ENABLED: ${YAGO_WEB_FALLBACK_ENABLED:-false}
       YAGO_WEB_FALLBACK_PRIVACY: ${YAGO_WEB_FALLBACK_PRIVACY:-}
-      YAGO_WEB_FALLBACK_TRIGGER: ${YAGO_WEB_FALLBACK_TRIGGER:-miss}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       # Shared /opt/yago layout (OPS-04): index and identity live under
@@ -73,6 +72,12 @@ services:
     environment:
       YAGOCRAWLER_NODE_RPC_ADDR: ${YAGOCRAWLER_NODE_RPC_ADDR:-yago-node:9091}
       YAGOCRAWLER_WORKER_ID: ${YAGOCRAWLER_WORKER_ID:-}
+      YAGOCRAWLER_WORKERS: ${YAGOCRAWLER_WORKERS:-4}
+      YAGOCRAWLER_MAX_HOST_CONCURRENCY: ${YAGOCRAWLER_MAX_HOST_CONCURRENCY:-2}
+      YAGOCRAWLER_MAX_DEPTH: ${YAGOCRAWLER_MAX_DEPTH:-2}
+      YAGOCRAWLER_MAX_PAGES_PER_RUN: ${YAGOCRAWLER_MAX_PAGES_PER_RUN:-50000}
+      YAGOCRAWLER_CRAWL_DELAY: ${YAGOCRAWLER_CRAWL_DELAY:-500ms}
+      YAGOCRAWLER_USER_AGENT: ${YAGOCRAWLER_USER_AGENT:-}
       YAGOCRAWLER_METRICS_ADDR: ${YAGOCRAWLER_METRICS_ADDR:-}
       YAGOCRAWLER_SHUTDOWN_GRACE: ${YAGOCRAWLER_SHUTDOWN_GRACE:-10s}
       YAGOCRAWLER_ALLOW_PRIVATE_NETWORKS: ${YAGOCRAWLER_ALLOW_PRIVATE_NETWORKS:-false}
@@ -86,15 +91,8 @@ services:
       # Default fetch pace per crawl run, pages per minute (0 = unlimited); the
       # crawl monitor can raise or zero a running crawl per run.
       YAGOCRAWLER_RUN_PAGES_PER_MINUTE: ${YAGOCRAWLER_RUN_PAGES_PER_MINUTE:-30}
-      # Slow-path browser: headless Firefox over Marionette. The container image
-      # bundles firefox-esr on PATH, so BROWSER_PATH stays empty; a bare-metal/
-      # systemd install points it at the host browser (e.g. /usr/bin/firefox-esr).
-      # BROWSER_SANDBOX is off so Firefox starts in the container and on hosts
-      # that restrict user namespaces; a hardened host may set it true.
       YAGOCRAWLER_BROWSER_PATH: ${YAGOCRAWLER_BROWSER_PATH:-}
       YAGOCRAWLER_BROWSER_SANDBOX: ${YAGOCRAWLER_BROWSER_SANDBOX:-false}
-      # Consecutive browser malfunctions before the crawler pauses the browser
-      # fallback for a cooldown and serves only the HTTP fast path (0 disables).
       YAGOCRAWLER_BROWSER_FAILURE_THRESHOLD: ${YAGOCRAWLER_BROWSER_FAILURE_THRESHOLD:-5}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 

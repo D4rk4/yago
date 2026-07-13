@@ -266,6 +266,17 @@ func TestLoadRuntimeSettingsAllError(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeSettingsInitializationWriteError(t *testing.T) {
+	engine := newCtrlEngine()
+	engine.failUpdate = true
+	v := ctrlVault(t, engine)
+	if _, _, _, err := loadRuntimeSettings(
+		context.Background(), v, testConfig(t), nil,
+	); err == nil {
+		t.Fatal("loadRuntimeSettings should surface initialization write failure")
+	}
+}
+
 func TestAttachDurableEventsRecentError(t *testing.T) {
 	engine := newCtrlEngine()
 	engine.scanBudget = 1 // resume() scan succeeds; Recent()'s scan fails

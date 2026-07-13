@@ -75,33 +75,6 @@ func leaseRecordFor(t *testing.T, q *DurableOrderQueue, leaseID string) (leaseRe
 	return record, found
 }
 
-func TestRequeueWorkerLeasesTargetsWorker(t *testing.T) {
-	queue := memQueue(t)
-	mine := leaseOne(t, queue, "mine", "w1")
-	other := leaseOne(t, queue, "other", "w2")
-	if err := queue.requeueWorkerLeases(context.Background(), "w1"); err != nil {
-		t.Fatalf("requeue worker leases: %v", err)
-	}
-	if _, ok := leaseRecordFor(t, queue, mine); ok {
-		t.Fatal("w1 lease was not requeued")
-	}
-	if _, ok := leaseRecordFor(t, queue, other); !ok {
-		t.Fatal("w2 lease must be left untouched")
-	}
-	if n := pendingCount(t, queue); n != 1 {
-		t.Fatalf("pending = %d, want only w1's order back", n)
-	}
-}
-
-func TestRequeueWorkerLeasesSurfacesError(t *testing.T) {
-	fixture := scriptedQueue(t)
-	leaseOne(t, fixture.queue, "boom", "w1")
-	fixture.engine.scanErrors[leaseBucket] = errors.New("scan failed")
-	if err := fixture.queue.requeueWorkerLeases(context.Background(), "w1"); err == nil {
-		t.Fatal("expected the lease-scan error to surface")
-	}
-}
-
 func TestAckLeaseDeletesLease(t *testing.T) {
 	queue := memQueue(t)
 	leaseID := leaseOne(t, queue, "done", "w1")
@@ -242,6 +215,38 @@ func TestSweepExpiredRequeuesOnlyExpired(t *testing.T) {
 	}
 }
 
+func TestSweepExpiredPurgesStaleHeartbeatGates(t *testing.T) {
+	set := withClock(t)
+	base := time.Unix(2500, 0)
+	set(base)
+	queue := memQueue(t)
+	queue.leaseTTL = time.Minute
+	queue.extendedAt["stopped-worker"] = base
+	set(base.Add(time.Minute))
+	if err := queue.sweepExpired(context.Background()); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if _, retained := queue.extendedAt["stopped-worker"]; retained {
+		t.Fatal("stale heartbeat gate remained after sweep")
+	}
+}
+
+func TestHeartbeatWithoutLeasesRemovesWorkerGate(t *testing.T) {
+	set := withClock(t)
+	base := time.Unix(2600, 0)
+	set(base)
+	queue := memQueue(t)
+	queue.leaseTTL = time.Minute
+	queue.extendedAt["worker"] = base
+	set(base.Add(time.Minute))
+	if err := queue.heartbeat(context.Background(), "worker"); err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+	if _, retained := queue.extendedAt["worker"]; retained {
+		t.Fatal("worker without leases retained a heartbeat gate")
+	}
+}
+
 func TestRequeueAllLeasesReturnsEverything(t *testing.T) {
 	queue := memQueue(t)
 	_ = leaseOne(t, queue, "a", "w1")
@@ -295,6 +300,27 @@ func TestLeasePopSurfacesLeasePutError(t *testing.T) {
 	fixture.engine.putErrors[leaseBucket] = errors.New("lease put failed")
 	if _, _, _, err := fixture.queue.leasePop(context.Background(), "w1"); err == nil {
 		t.Fatal("expected lease pop to surface a lease put error")
+	}
+}
+
+func TestLeasePopReplayDropsAbortedOrderState(t *testing.T) {
+	fixture := scriptedQueue(t)
+	if err := fixture.queue.Publish(context.Background(), testOrder("stale")); err != nil {
+		t.Fatal(err)
+	}
+	fixture.engine.replayNext = true
+	fixture.engine.betweenReplay = func() {
+		clear(fixture.engine.buckets[orderBucket])
+	}
+	data, _, found, err := fixture.queue.leasePop(context.Background(), "worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found || data != nil {
+		t.Fatalf("lease = %q/%v, want empty replay result", data, found)
+	}
+	if len(fixture.engine.buckets[leaseBucket]) != 0 {
+		t.Fatalf("leases = %v, want no stale lease", fixture.engine.buckets[leaseBucket])
 	}
 }
 

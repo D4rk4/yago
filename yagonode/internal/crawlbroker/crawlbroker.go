@@ -14,6 +14,7 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -40,7 +41,11 @@ var (
 		return net.Listen("tcp", addr)
 	}
 	// nosemgrep: go.grpc.security.grpc-server-insecure-connection.grpc-server-insecure-connection -- internal node-crawler control plane on a trusted network; transport security is deferred (ADR-0014).
-	newGRPCServer = func() *grpc.Server { return grpc.NewServer() }
+	newGRPCServer = func() *grpc.Server {
+		return grpc.NewServer(grpc.MaxRecvMsgSize(
+			yagocrawlcontract.MaximumIngestMessageBytes,
+		))
+	}
 )
 
 func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker, error) {

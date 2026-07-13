@@ -17,6 +17,8 @@ type scriptedDocumentEngine struct {
 	provisionErrors map[vault.Name]error
 	putErrors       map[vault.Name]error
 	delErrors       map[vault.Name]error
+	replayNext      bool
+	commitFirst     bool
 }
 
 func newScriptedDocumentEngine() *scriptedDocumentEngine {
@@ -42,7 +44,31 @@ func (e *scriptedDocumentEngine) Update(ctx context.Context, fn func(vault.Engin
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
+	if e.replayNext {
+		e.replayNext = false
+		before := cloneDocumentBuckets(e.buckets)
+		if err := fn(scriptedDocumentTxn{engine: e, writable: true}); err != nil {
+			return err
+		}
+		if !e.commitFirst {
+			e.buckets = before
+		}
+	}
 	return fn(scriptedDocumentTxn{engine: e, writable: true})
+}
+
+func cloneDocumentBuckets(
+	source map[vault.Name]map[string][]byte,
+) map[vault.Name]map[string][]byte {
+	cloned := make(map[vault.Name]map[string][]byte, len(source))
+	for name, bucket := range source {
+		cloned[name] = make(map[string][]byte, len(bucket))
+		for key, value := range bucket {
+			cloned[name][key] = append([]byte(nil), value...)
+		}
+	}
+
+	return cloned
 }
 
 func (e *scriptedDocumentEngine) View(ctx context.Context, fn func(vault.EngineTxn) error) error {
@@ -209,6 +235,21 @@ func TestReceiveStoresDocument(t *testing.T) {
 	}
 	if got.Title != doc.Title || got.ExtractedText != doc.ExtractedText {
 		t.Fatalf("document = %#v", got)
+	}
+}
+
+func TestReceivePublishesOnlyTheCommittedReplayReceipt(t *testing.T) {
+	_, receiver, engine := openScriptedDocuments(t)
+	engine.replayNext = true
+	receipt, err := receiver.Receive(t.Context(), []Document{
+		{NormalizedURL: "https://example.org/a"},
+		{NormalizedURL: "https://example.org/b"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Stored != 2 || receipt.Updated != 0 || len(receipt.CommittedDocuments) != 2 {
+		t.Fatalf("receipt = %#v, want one committed attempt", receipt)
 	}
 }
 

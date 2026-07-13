@@ -1,6 +1,8 @@
 package yagomodel
 
 import (
+	"bytes"
+	"log/slog"
 	"strconv"
 	"testing"
 )
@@ -16,9 +18,30 @@ func TestRWIPostingDocType(t *testing.T) {
 }
 
 func TestRWIPostingDocTypeMissing(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
 	entry := RWIPosting{Properties: map[string]string{}}
 	if _, ok := entry.DocType(); ok {
 		t.Fatal("DocType() ok = true for missing column, want false")
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("missing document type log = %q", logs.String())
+	}
+}
+
+func TestRWIPostingDocTypeMalformed(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	entry := RWIPosting{Properties: map[string]string{ColDocType: "not-a-byte"}}
+	if _, ok := entry.DocType(); ok {
+		t.Fatal("DocType() ok = true for malformed column, want false")
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("rwi doctype discarded")) {
+		t.Fatalf("malformed document type log = %q", logs.String())
 	}
 }
 

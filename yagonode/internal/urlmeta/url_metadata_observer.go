@@ -12,29 +12,46 @@ const urlObserverFailed = "url metadata observer failed"
 
 type observers []URLMetadataObserver
 
+type urlObserverFailure struct {
+	event string
+	err   error
+}
+
 func (o observers) stored(
-	ctx context.Context,
 	tx *vault.Txn,
 	hash yagomodel.Hash,
 	freshness string,
-) {
+) []urlObserverFailure {
+	failures := make([]urlObserverFailure, 0)
 	for _, observer := range o {
 		if err := observer.URLStored(tx, hash, freshness); err != nil {
-			slog.WarnContext(ctx, urlObserverFailed,
-				slog.String("event", "stored"),
-				slog.Any("error", err),
-			)
+			failures = append(failures, urlObserverFailure{event: "stored", err: err})
 		}
+	}
+
+	return failures
+}
+
+func (o observers) purged(tx *vault.Txn, hash yagomodel.Hash) []urlObserverFailure {
+	failures := make([]urlObserverFailure, 0)
+	for _, observer := range o {
+		if err := observer.URLPurged(tx, hash); err != nil {
+			failures = append(failures, urlObserverFailure{event: "purged", err: err})
+		}
+	}
+
+	return failures
+}
+
+func logURLObserverFailures(ctx context.Context, failures []urlObserverFailure) {
+	for _, failure := range failures {
+		slog.WarnContext(ctx, urlObserverFailed,
+			slog.String("event", failure.event),
+			slog.Any("error", failure.err),
+		)
 	}
 }
 
-func (o observers) purged(ctx context.Context, tx *vault.Txn, hash yagomodel.Hash) {
-	for _, observer := range o {
-		if err := observer.URLPurged(tx, hash); err != nil {
-			slog.WarnContext(ctx, urlObserverFailed,
-				slog.String("event", "purged"),
-				slog.Any("error", err),
-			)
-		}
-	}
+func (r PurgeResult) ReportObserverFailures(ctx context.Context) {
+	logURLObserverFailures(ctx, r.observerFailures)
 }

@@ -25,12 +25,22 @@ func compiled(
 
 func receiveJob(t *testing.T, f *frontier.Frontier) crawljob.CrawlJob {
 	t.Helper()
-	select {
-	case job := <-f.Jobs():
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	if job, ok := f.Take(ctx); ok {
 		return job
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for job")
-		return crawljob.CrawlJob{}
+	}
+	t.Fatal("timed out waiting for job")
+
+	return crawljob.CrawlJob{}
+}
+
+func assertNoJob(t *testing.T, f *frontier.Frontier, wait time.Duration) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), wait)
+	defer cancel()
+	if job, ok := f.Take(ctx); ok {
+		t.Fatalf("unexpected crawl job %q", job.URL)
 	}
 }
 
@@ -285,11 +295,7 @@ func TestSubmitFollowsLinksWithinDepth(t *testing.T) {
 	f.Submit(context.Background(), child, discoveredLinks("https://example.com/grandchild"))
 	f.Done(child, false)
 	f.Done(root, false)
-	select {
-	case extra := <-f.Jobs():
-		t.Errorf("did not expect job past max depth: %+v", extra)
-	case <-time.After(200 * time.Millisecond):
-	}
+	assertNoJob(t, f, 200*time.Millisecond)
 }
 
 func TestSubmitForUnknownRunIsIgnored(t *testing.T) {
@@ -299,11 +305,7 @@ func TestSubmitForUnknownRunIsIgnored(t *testing.T) {
 		crawljob.CrawlJob{URL: "https://example.com/"},
 		discoveredLinks("https://example.com/x"),
 	)
-	select {
-	case job := <-f.Jobs():
-		t.Errorf("unknown run should produce no jobs, got %+v", job)
-	case <-time.After(200 * time.Millisecond):
-	}
+	assertNoJob(t, f, 200*time.Millisecond)
 }
 
 func TestSubmitForUnknownProfileIsIgnored(t *testing.T) {
@@ -326,11 +328,7 @@ func TestSubmitForUnknownProfileIsIgnored(t *testing.T) {
 
 	f.Submit(context.Background(), root, discoveredLinks("https://example.com/child"))
 	f.Done(crawljob.CrawlJob{RunID: seeded.RunID}, false)
-	select {
-	case job := <-f.Jobs():
-		t.Errorf("unknown profile should produce no jobs, got %+v", job)
-	case <-time.After(200 * time.Millisecond):
-	}
+	assertNoJob(t, f, 200*time.Millisecond)
 }
 
 func TestSubmitSkipsNoFollowLinksByDefault(t *testing.T) {
@@ -357,11 +355,7 @@ func TestSubmitSkipsNoFollowLinksByDefault(t *testing.T) {
 	if child.URL != "https://example.com/child" {
 		t.Fatalf("child URL = %q", child.URL)
 	}
-	select {
-	case extra := <-f.Jobs():
-		t.Fatalf("nofollow link should not be queued by default: %+v", extra)
-	case <-time.After(200 * time.Millisecond):
-	}
+	assertNoJob(t, f, 200*time.Millisecond)
 }
 
 func TestSubmitFollowsNoFollowLinksWhenProfileAllows(t *testing.T) {
@@ -414,11 +408,7 @@ func TestFrontierBoundsPerHostConcurrency(t *testing.T) {
 
 	first := receiveJob(t, f)
 	second := receiveJob(t, f)
-	select {
-	case extra := <-f.Jobs():
-		t.Fatalf("dispatched %s while host at concurrency cap", extra.URL)
-	case <-time.After(200 * time.Millisecond):
-	}
+	assertNoJob(t, f, 200*time.Millisecond)
 
 	// Completing one in-flight fetch frees a host slot for the withheld job.
 	f.Done(first, false)

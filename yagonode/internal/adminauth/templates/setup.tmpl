@@ -34,7 +34,8 @@
     <select id="wf" name="web_fallback">
       <option value="disabled"{{if eq .Defaults.WebFallback "disabled"}} selected{{end}}>Disabled</option>
       <option value="explicit"{{if eq .Defaults.WebFallback "explicit"}} selected{{end}}>Only when requested</option>
-      <option value="enabled"{{if eq .Defaults.WebFallback "enabled"}} selected{{end}}>Enabled</option>
+      <option value="enabled"{{if eq .Defaults.WebFallback "enabled"}} selected{{end}}>Enabled on search miss</option>
+      <option value="always"{{if eq .Defaults.WebFallback "always"}} selected{{end}}>Always</option>
     </select>
     {{end}}
     <button type="submit">Create administrator</button>

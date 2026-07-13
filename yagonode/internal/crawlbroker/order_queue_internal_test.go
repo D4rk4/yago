@@ -20,6 +20,8 @@ type scriptedEngine struct {
 	putErrors       map[vault.Name]error
 	deleteErrors    map[vault.Name]error
 	scanErrors      map[vault.Name]error
+	replayNext      bool
+	betweenReplay   func()
 }
 
 func newScriptedEngine() *scriptedEngine {
@@ -36,8 +38,33 @@ func (e *scriptedEngine) Update(ctx context.Context, fn func(vault.EngineTxn) er
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
+	if e.replayNext {
+		e.replayNext = false
+		before := cloneScriptedBuckets(e.buckets)
+		if err := fn(scriptedTxn{engine: e, writable: true}); err != nil {
+			return err
+		}
+		e.buckets = before
+		if e.betweenReplay != nil {
+			e.betweenReplay()
+		}
+	}
 
 	return fn(scriptedTxn{engine: e, writable: true})
+}
+
+func cloneScriptedBuckets(
+	source map[vault.Name]map[string][]byte,
+) map[vault.Name]map[string][]byte {
+	cloned := make(map[vault.Name]map[string][]byte, len(source))
+	for name, bucket := range source {
+		cloned[name] = make(map[string][]byte, len(bucket))
+		for key, value := range bucket {
+			cloned[name][key] = append([]byte(nil), value...)
+		}
+	}
+
+	return cloned
 }
 
 func (e *scriptedEngine) View(ctx context.Context, fn func(vault.EngineTxn) error) error {

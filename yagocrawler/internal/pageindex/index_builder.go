@@ -3,6 +3,7 @@ package pageindex
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"time"
 	"unicode/utf8"
 
@@ -11,11 +12,7 @@ import (
 	"github.com/D4rk4/yago/yagomodel"
 )
 
-// maxExtractedTextBytes bounds the extracted page text the crawler ships, so a
-// pathological page cannot send an unbounded body over the wire. It matches the
-// node document store's own bound, so this only trims text the node would discard
-// anyway while keeping the crawler's memory and payload bounded.
-const maxExtractedTextBytes = 1 << 20
+const maxExtractedTextBytes = yagocrawlcontract.MaximumDocumentTextBytes
 
 type Artifacts struct {
 	Postings []yagomodel.RWIPosting
@@ -39,6 +36,12 @@ func (b *contentIndexBuilder) Build(
 	page pageparse.ParsedPage,
 	stats pageparse.PageStats,
 ) (Artifacts, error) {
+	if len(page.URL) > yagocrawlcontract.MaximumCrawlURLBytes {
+		return Artifacts{}, fmt.Errorf(
+			"page URL exceeds %d bytes",
+			yagocrawlcontract.MaximumCrawlURLBytes,
+		)
+	}
 	indexedAt := b.clock()
 	page.Language = resolveContentLanguage(page.Text, page.Language)
 	postings := BuildPostings(page, stats)
@@ -59,10 +62,14 @@ func BuildDocument(
 	outlinks = append(outlinks, stats.ExternalLinks...)
 
 	return yagocrawlcontract.DocumentIngest{
-		CanonicalURL:   documentCanonicalURL(page),
-		NormalizedURL:  page.URL,
-		Title:          page.Title,
-		Headings:       append([]string(nil), page.Headings...),
+		CanonicalURL:  documentCanonicalURL(page),
+		NormalizedURL: page.URL,
+		Title:         boundedTextBytes(page.Title, yagocrawlcontract.MaximumDocumentTitleBytes),
+		Headings: boundedStrings(
+			page.Headings,
+			yagocrawlcontract.MaximumDocumentHeadings,
+			yagocrawlcontract.MaximumDocumentHeadingBytes,
+		),
 		ExtractedText:  boundedText(page.Text),
 		Language:       NormalizeLanguage(page.Language),
 		FetchStatus:    "fetched",
@@ -72,7 +79,10 @@ func BuildDocument(
 		DateConfidence: page.DateConfidence,
 		DateSource:     page.DateSource,
 		ContentHash:    hex.EncodeToString(hash[:]),
-		Outlinks:       outlinks,
+		Outlinks: boundedURLs(
+			outlinks,
+			yagocrawlcontract.MaximumDocumentOutlinks,
+		),
 		OutboundAnchors: outboundAnchorsFromPage(
 			page.OutboundAnchors,
 		),
@@ -99,15 +109,28 @@ func safetyLabelsFromPage(in pageparse.SafetyLabels) yagocrawlcontract.SafetyLab
 func outboundAnchorsFromPage(
 	in []pageparse.OutboundAnchor,
 ) []yagocrawlcontract.OutboundAnchor {
-	out := make([]yagocrawlcontract.OutboundAnchor, 0, len(in))
+	out := make(
+		[]yagocrawlcontract.OutboundAnchor,
+		0,
+		min(len(in), yagocrawlcontract.MaximumDocumentAnchors),
+	)
 	for _, anchor := range in {
+		if len(anchor.TargetURL) > yagocrawlcontract.MaximumCrawlURLBytes {
+			continue
+		}
 		out = append(out, yagocrawlcontract.OutboundAnchor{
-			TargetURL:     anchor.TargetURL,
-			Text:          anchor.Text,
+			TargetURL: anchor.TargetURL,
+			Text: boundedTextBytes(
+				anchor.Text,
+				yagocrawlcontract.MaximumDocumentMetadataBytes,
+			),
 			NoFollow:      anchor.NoFollow,
 			UserGenerated: anchor.UserGenerated,
 			Sponsored:     anchor.Sponsored,
 		})
+		if len(out) == yagocrawlcontract.MaximumDocumentAnchors {
+			break
+		}
 	}
 
 	return out
@@ -116,10 +139,14 @@ func outboundAnchorsFromPage(
 // boundedText truncates text to maxExtractedTextBytes on a UTF-8 rune boundary,
 // so a partial rune is never emitted. Text within the bound is returned unchanged.
 func boundedText(text string) string {
-	if len(text) <= maxExtractedTextBytes {
+	return boundedTextBytes(text, maxExtractedTextBytes)
+}
+
+func boundedTextBytes(text string, maximum int) string {
+	if len(text) <= maximum {
 		return text
 	}
-	end := maxExtractedTextBytes
+	end := maximum
 	for end > 0 && !utf8.RuneStart(text[end]) {
 		end--
 	}
@@ -127,20 +154,59 @@ func boundedText(text string) string {
 	return text[:end]
 }
 
+func boundedStrings(values []string, maximum, maximumBytes int) []string {
+	values = values[:min(len(values), maximum)]
+	bounded := make([]string, len(values))
+	for index, value := range values {
+		bounded[index] = boundedTextBytes(value, maximumBytes)
+	}
+
+	return bounded
+}
+
+func boundedURLs(values []string, maximum int) []string {
+	bounded := make([]string, 0, min(len(values), maximum))
+	for _, value := range values {
+		if len(value) > yagocrawlcontract.MaximumCrawlURLBytes {
+			continue
+		}
+		bounded = append(bounded, value)
+		if len(bounded) == maximum {
+			break
+		}
+	}
+
+	return bounded
+}
+
 func imageMetadataFromPage(in []pageparse.ImageMetadata) []yagocrawlcontract.ImageMetadata {
-	out := make([]yagocrawlcontract.ImageMetadata, 0, len(in))
+	out := make(
+		[]yagocrawlcontract.ImageMetadata,
+		0,
+		min(len(in), yagocrawlcontract.MaximumDocumentImages),
+	)
 	for _, image := range in {
+		if len(image.URL) > yagocrawlcontract.MaximumCrawlURLBytes {
+			continue
+		}
 		out = append(out, yagocrawlcontract.ImageMetadata{
-			URL:     image.URL,
-			AltText: image.AltText,
+			URL: image.URL,
+			AltText: boundedTextBytes(
+				image.AltText,
+				yagocrawlcontract.MaximumDocumentMetadataBytes,
+			),
 		})
+		if len(out) == yagocrawlcontract.MaximumDocumentImages {
+			break
+		}
 	}
 
 	return out
 }
 
 func documentCanonicalURL(page pageparse.ParsedPage) string {
-	if page.CanonicalURL != "" {
+	if page.CanonicalURL != "" &&
+		len(page.CanonicalURL) <= yagocrawlcontract.MaximumCrawlURLBytes {
 		return page.CanonicalURL
 	}
 	return page.URL
@@ -152,16 +218,28 @@ func documentMetadata(
 ) map[string]string {
 	values := map[string]string{"url_hash": metadata.Properties[yagomodel.URLMetaHash]}
 	if page.Description != "" {
-		values["description"] = page.Description
+		values["description"] = boundedTextBytes(
+			page.Description,
+			yagocrawlcontract.MaximumDocumentMetadataBytes,
+		)
 	}
 	if page.Author != "" {
-		values["author"] = page.Author
+		values["author"] = boundedTextBytes(
+			page.Author,
+			yagocrawlcontract.MaximumDocumentMetadataBytes,
+		)
 	}
 	if page.Keywords != "" {
-		values["keywords"] = page.Keywords
+		values["keywords"] = boundedTextBytes(
+			page.Keywords,
+			yagocrawlcontract.MaximumDocumentMetadataBytes,
+		)
 	}
 	if page.Publisher != "" {
-		values["publisher"] = page.Publisher
+		values["publisher"] = boundedTextBytes(
+			page.Publisher,
+			yagocrawlcontract.MaximumDocumentMetadataBytes,
+		)
 	}
 	return values
 }

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -27,6 +28,42 @@ type deadlineFailingConn struct {
 	net.Conn
 	calls  int
 	failOn int
+}
+
+type readSignalingConn struct {
+	net.Conn
+	once    sync.Once
+	started chan struct{}
+}
+
+type cancelOnSecondReplyConn struct {
+	net.Conn
+	cancel context.CancelFunc
+	once   sync.Once
+	seen   string
+}
+
+func (c *cancelOnSecondReplyConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	c.seen += string(p[:n])
+	if strings.Contains(c.seen, "[1,2,") {
+		c.once.Do(c.cancel)
+	}
+	if err != nil {
+		return n, fmt.Errorf("read cancellation connection: %w", err)
+	}
+
+	return n, nil
+}
+
+func (c *readSignalingConn) Read(p []byte) (int, error) {
+	c.once.Do(func() { close(c.started) })
+	n, err := c.Conn.Read(p)
+	if err != nil {
+		return n, fmt.Errorf("read signaling connection: %w", err)
+	}
+
+	return n, nil
 }
 
 func (c *deadlineFailingConn) SetDeadline(time.Time) error {
@@ -191,9 +228,36 @@ func TestConnectMarionetteTimesOutWhenUnreachable(t *testing.T) {
 		t.Fatalf("freeLoopbackPort: %v", err)
 	}
 	exited := make(chan struct{})
-	if _, err := connectMarionette(port, exited); err == nil ||
+	if _, err := connectMarionette(t.Context(), port, exited); err == nil ||
 		!strings.Contains(err.Error(), "marionette unreachable") {
 		t.Fatalf("error = %v, want an unreachable timeout", err)
+	}
+}
+
+func TestConnectMarionetteHonorsContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := connectMarionette(ctx, 1, make(chan struct{})); !errors.Is(err, context.Canceled) {
+		t.Fatalf("connect error = %v, want cancellation", err)
+	}
+}
+
+func TestConnectMarionetteHonorsContextDuringRetry(t *testing.T) {
+	port, err := freeLoopbackPort()
+	if err != nil {
+		t.Fatalf("freeLoopbackPort: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := connectMarionette(
+		ctx,
+		port,
+		make(chan struct{}),
+	); !errors.Is(
+		err,
+		context.DeadlineExceeded,
+	) {
+		t.Fatalf("connect error = %v, want deadline", err)
 	}
 }
 
@@ -204,7 +268,13 @@ func TestOpenMarionetteSessionErrorsWhenConnectFails(t *testing.T) {
 	}
 	exited := make(chan struct{})
 	close(exited)
-	if _, err := openMarionetteSession(&exec.Cmd{}, port, time.Second, exited); err == nil ||
+	if _, err := openMarionetteSession(
+		t.Context(),
+		&exec.Cmd{},
+		port,
+		time.Second,
+		exited,
+	); err == nil ||
 		!strings.Contains(err.Error(), "exited before marionette") {
 		t.Fatalf("error = %v, want a connect failure", err)
 	}
@@ -213,9 +283,68 @@ func TestOpenMarionetteSessionErrorsWhenConnectFails(t *testing.T) {
 func TestOpenMarionetteSessionErrorsOnHandshake(t *testing.T) {
 	port := acceptThenClose(t)
 	exited := make(chan struct{})
-	if _, err := openMarionetteSession(&exec.Cmd{}, port, time.Second, exited); err == nil ||
+	if _, err := openMarionetteSession(
+		t.Context(),
+		&exec.Cmd{},
+		port,
+		time.Second,
+		exited,
+	); err == nil ||
 		!strings.Contains(err.Error(), "read marionette greeting") {
 		t.Fatalf("error = %v, want a handshake failure", err)
+	}
+}
+
+func TestOpenMarionetteSessionUsesEarlierContextDeadline(t *testing.T) {
+	port := fakeMarionetteServer(t, greetingResponder)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	session, err := openMarionetteSession(ctx, &exec.Cmd{}, port, time.Second, make(chan struct{}))
+	if err != nil {
+		t.Fatalf("open marionette session: %v", err)
+	}
+	_ = session.conn.close()
+}
+
+func TestOpenMarionetteSessionTranslatesHandshakeCancellation(t *testing.T) {
+	restore := dialMarionette
+	t.Cleanup(func() { dialMarionette = restore })
+	clientSide, serverSide := net.Pipe()
+	t.Cleanup(func() { _ = clientSide.Close(); _ = serverSide.Close() })
+	started := make(chan struct{})
+	conn := newMarionetteConn(&readSignalingConn{Conn: clientSide, started: started})
+	dialMarionette = func(context.Context, int, <-chan struct{}) (*marionetteConn, error) {
+		return conn, nil
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	result := make(chan error, 1)
+	go func() {
+		_, err := openMarionetteSession(ctx, &exec.Cmd{}, 0, time.Second, make(chan struct{}))
+		result <- err
+	}()
+	<-started
+	cancel()
+	if err := <-result; !errors.Is(err, context.Canceled) ||
+		!strings.Contains(err.Error(), "marionette handshake") {
+		t.Fatalf("open error = %v, want handshake cancellation", err)
+	}
+}
+
+func TestOpenMarionetteSessionRejectsCancellationAfterTimeoutSetup(t *testing.T) {
+	restore := dialMarionette
+	t.Cleanup(func() { dialMarionette = restore })
+	clientSide, serverSide := net.Pipe()
+	t.Cleanup(func() { _ = clientSide.Close(); _ = serverSide.Close() })
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	dialMarionette = func(context.Context, int, <-chan struct{}) (*marionetteConn, error) {
+		return newMarionetteConn(&cancelOnSecondReplyConn{Conn: clientSide, cancel: cancel}), nil
+	}
+	serveMarionette(serverSide, greetingResponder)
+	_, err := openMarionetteSession(ctx, &exec.Cmd{}, 0, time.Second, make(chan struct{}))
+	if !errors.Is(err, context.Canceled) ||
+		!strings.Contains(err.Error(), "open marionette session") {
+		t.Fatalf("open error = %v, want post-timeout cancellation", err)
 	}
 }
 
@@ -246,6 +375,7 @@ func TestOpenMarionetteSessionErrorsFromCommands(t *testing.T) {
 			port := fakeMarionetteServer(t, tc.responder)
 			exited := make(chan struct{})
 			if _, err := openMarionetteSession(
+				t.Context(),
 				&exec.Cmd{},
 				port,
 				time.Second,
@@ -292,14 +422,57 @@ func TestLaunchFirefoxErrorsWhenBinaryMissing(t *testing.T) {
 	t.Cleanup(func() { firefoxBinaries = restore })
 	firefoxBinaries = []string{"yago-no-such-browser-zzz"}
 
-	if _, err := launchFirefox(BrowserLaunch{}, ""); err == nil ||
+	if _, err := launchFirefox(t.Context(), BrowserLaunch{}, ""); err == nil ||
 		!strings.Contains(err.Error(), "locate firefox") {
 		t.Fatalf("error = %v, want a locate-firefox failure", err)
 	}
 }
 
+func TestLaunchFirefoxRejectsCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := launchFirefox(
+		ctx,
+		BrowserLaunch{ExecPath: "/bin/true"},
+		"",
+	); !errors.Is(
+		err,
+		context.Canceled,
+	) {
+		t.Fatalf("launch error = %v, want cancellation", err)
+	}
+}
+
+func TestLaunchFirefoxRemovesProfileWhenCanceledAfterCreation(t *testing.T) {
+	restore := createFirefoxProfile
+	t.Cleanup(func() { createFirefoxProfile = restore })
+	ctx, cancel := context.WithCancel(t.Context())
+	var profile string
+	createFirefoxProfile = func(configuration firefoxProfile) (string, error) {
+		created, err := writeFirefoxProfile(configuration)
+		profile = created
+		cancel()
+
+		return created, err
+	}
+	if _, err := launchFirefox(
+		ctx,
+		BrowserLaunch{ExecPath: "/bin/true"},
+		"",
+	); !errors.Is(
+		err,
+		context.Canceled,
+	) {
+		t.Fatalf("launch error = %v, want cancellation", err)
+	}
+	if _, err := os.Stat(profile); !os.IsNotExist(err) {
+		t.Fatalf("profile remains after cancellation: %v", err)
+	}
+}
+
 func TestLaunchFirefoxErrorsWhenProfileFails(t *testing.T) {
 	if _, err := launchFirefox(
+		t.Context(),
 		BrowserLaunch{ExecPath: "/bin/true"},
 		"http://no-port-here",
 	); err == nil || !strings.Contains(err.Error(), "port") {
@@ -309,6 +482,7 @@ func TestLaunchFirefoxErrorsWhenProfileFails(t *testing.T) {
 
 func TestLaunchFirefoxErrorsWhenSpawnFails(t *testing.T) {
 	if _, err := launchFirefox(
+		t.Context(),
 		BrowserLaunch{ExecPath: "/nonexistent/yago-firefox-xyz"},
 		"",
 	); err == nil || !strings.Contains(err.Error(), "start firefox") {
@@ -322,6 +496,7 @@ func TestLaunchFirefoxErrorsWhenSessionFails(t *testing.T) {
 	firefoxStartupTimeout = 100 * time.Millisecond
 
 	if _, err := launchFirefox(
+		t.Context(),
 		BrowserLaunch{ExecPath: "/bin/true"},
 		"",
 	); err == nil || !strings.Contains(err.Error(), "firefox stderr") {
@@ -335,6 +510,7 @@ func TestLaunchFirefoxReturnsSessionOnSuccess(t *testing.T) {
 	spawnFirefox = fakeSpawn(t, greetingResponder)
 
 	session, err := launchFirefox(
+		t.Context(),
 		BrowserLaunch{ExecPath: "/bin/true", Timeout: time.Second},
 		"",
 	)
@@ -355,7 +531,7 @@ func TestStartFirefoxSessionReturnsError(t *testing.T) {
 	t.Cleanup(func() { firefoxBinaries = restore })
 	firefoxBinaries = []string{"yago-no-such-browser-zzz"}
 
-	if _, err := startFirefoxSession(BrowserLaunch{}, ""); err == nil {
+	if _, err := startFirefoxSession(t.Context(), BrowserLaunch{}, ""); err == nil {
 		t.Fatal("expected an error when firefox cannot launch")
 	}
 }
@@ -366,6 +542,7 @@ func TestStartFirefoxSessionReturnsSession(t *testing.T) {
 	spawnFirefox = fakeSpawn(t, greetingResponder)
 
 	session, err := startFirefoxSession(
+		t.Context(),
 		BrowserLaunch{ExecPath: "/bin/true", Timeout: time.Second},
 		"",
 	)
@@ -398,7 +575,7 @@ func TestLaunchFirefoxErrorsWhenPortReservationFails(t *testing.T) {
 	t.Cleanup(func() { listenLoopback = restore })
 	listenLoopback = func() (net.Listener, error) { return nil, errFakeListen }
 
-	if _, err := launchFirefox(BrowserLaunch{ExecPath: "/bin/true"}, ""); err == nil ||
+	if _, err := launchFirefox(t.Context(), BrowserLaunch{ExecPath: "/bin/true"}, ""); err == nil ||
 		!strings.Contains(err.Error(), "reserve marionette port") {
 		t.Fatalf("error = %v, want a reserve-marionette-port failure", err)
 	}
@@ -410,10 +587,16 @@ func TestOpenMarionetteSessionErrorsOnStartupDeadline(t *testing.T) {
 	clientSide, serverSide := net.Pipe()
 	t.Cleanup(func() { _ = clientSide.Close(); _ = serverSide.Close() })
 	conn := newMarionetteConn(&deadlineFailingConn{Conn: clientSide, failOn: 1})
-	dialMarionette = func(int, <-chan struct{}) (*marionetteConn, error) { return conn, nil }
+	dialMarionette = func(context.Context, int, <-chan struct{}) (*marionetteConn, error) { return conn, nil }
 
 	exited := make(chan struct{})
-	if _, err := openMarionetteSession(&exec.Cmd{}, 0, time.Second, exited); err == nil ||
+	if _, err := openMarionetteSession(
+		t.Context(),
+		&exec.Cmd{},
+		0,
+		time.Second,
+		exited,
+	); err == nil ||
 		!strings.Contains(err.Error(), "set marionette deadline") {
 		t.Fatalf("error = %v, want a startup set-deadline failure", err)
 	}
@@ -426,10 +609,16 @@ func TestOpenMarionetteSessionErrorsClearingDeadline(t *testing.T) {
 	t.Cleanup(func() { _ = clientSide.Close(); _ = serverSide.Close() })
 	serveMarionette(serverSide, greetingResponder)
 	conn := newMarionetteConn(&deadlineFailingConn{Conn: clientSide, failOn: 2})
-	dialMarionette = func(int, <-chan struct{}) (*marionetteConn, error) { return conn, nil }
+	dialMarionette = func(context.Context, int, <-chan struct{}) (*marionetteConn, error) { return conn, nil }
 
 	exited := make(chan struct{})
-	if _, err := openMarionetteSession(&exec.Cmd{}, 0, time.Second, exited); err == nil ||
+	if _, err := openMarionetteSession(
+		t.Context(),
+		&exec.Cmd{},
+		0,
+		time.Second,
+		exited,
+	); err == nil ||
 		!strings.Contains(err.Error(), "set marionette deadline") {
 		t.Fatalf("error = %v, want a clear-deadline failure", err)
 	}

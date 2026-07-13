@@ -36,18 +36,73 @@ func TestHTTPSourceFetchesBoundedBody(t *testing.T) {
 	}
 }
 
-func TestHTTPSourceRejectsNonSuccessStatus(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "missing", http.StatusNotFound)
-	}))
-	defer server.Close()
+func TestHTTPSourceClassifiesPermanentStatuses(t *testing.T) {
+	for _, test := range []struct {
+		statusCode int
+		wantGone   bool
+	}{
+		{statusCode: http.StatusNotFound, wantGone: true},
+		{statusCode: http.StatusForbidden},
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, http.StatusText(test.statusCode), test.statusCode)
+		}))
+		_, err := crawlseed.NewHTTPSource(server.Client(), "", 0).Fetch(
+			context.Background(),
+			mustParse(t, server.URL),
+		)
+		server.Close()
+		if !errors.Is(err, pagefetch.ErrPageRejected) {
+			t.Fatalf("status %d error = %v, want page rejected", test.statusCode, err)
+		}
+		_, gone := pagefetch.AsGone(err)
+		if gone != test.wantGone {
+			t.Fatalf("status %d gone = %v, want %v", test.statusCode, gone, test.wantGone)
+		}
+		if !expansionFailureIsPermanent(err) {
+			t.Fatalf("status %d error = %v, want permanent failure", test.statusCode, err)
+		}
+	}
+}
 
-	_, err := crawlseed.NewHTTPSource(server.Client(), "", 0).Fetch(
-		context.Background(),
-		mustParse(t, server.URL),
-	)
-	if !errors.Is(err, pagefetch.ErrPageRejected) {
-		t.Fatalf("error = %v, want page rejected", err)
+func TestHTTPSourceClassifiesRetryableStatuses(t *testing.T) {
+	for _, statusCode := range []int{
+		http.StatusServiceUnavailable,
+		http.StatusInternalServerError,
+		http.StatusRequestTimeout,
+	} {
+		transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: statusCode,
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader("unavailable")),
+				Request:    request,
+			}, nil
+		})
+		client := &http.Client{Transport: transport}
+		_, err := crawlseed.NewHTTPSource(client, "", 0).Fetch(
+			context.Background(),
+			mustParse(t, "https://example.org/sitemap.xml"),
+		)
+		if err == nil {
+			t.Fatalf("status %d returned no error", statusCode)
+		}
+		if statusCode == http.StatusServiceUnavailable {
+			if throttled, ok := pagefetch.AsThrottled(err); !ok ||
+				throttled.Status != statusCode {
+				t.Fatalf("status %d error = %v, want throttle", statusCode, err)
+			}
+			if expansionFailureIsPermanent(err) {
+				t.Fatalf("status %d error = %v, must be retryable", statusCode, err)
+			}
+			continue
+		}
+		if errors.Is(err, pagefetch.ErrPageRejected) {
+			t.Fatalf("status %d error = %v, must remain retryable", statusCode, err)
+		}
+		if expansionFailureIsPermanent(err) {
+			t.Fatalf("status %d error = %v, must be retryable", statusCode, err)
+		}
 	}
 }
 

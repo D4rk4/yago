@@ -1,8 +1,11 @@
 package urlmeta
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -59,6 +62,44 @@ func TestPurgeSurvivesObserverFailure(t *testing.T) {
 	}
 	if result.URLsDeleted != 1 {
 		t.Fatalf("URLsDeleted = %d, want 1 despite observer failure", result.URLsDeleted)
+	}
+}
+
+func TestPurgeLogsObserverFailureOnceAfterReplay(t *testing.T) {
+	observer := &recordingObserver{}
+	storage, module, engine := openScriptedModule(t, observer)
+	row := urlRow(t, "purge-replay")
+	if _, err := module.Receiver.Receive(
+		t.Context(),
+		[]yagomodel.URIMetadataRow{row},
+	); err != nil {
+		t.Fatal(err)
+	}
+	observer.fail = true
+	engine.replayNext = true
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	var result PurgeResult
+	if err := storage.Update(t.Context(), func(tx *vault.Txn) error {
+		var err error
+		result, err = module.Evictor.Purge(
+			t.Context(),
+			tx,
+			[]yagomodel.Hash{rowHash(t, row)},
+		)
+		if err != nil {
+			return fmt.Errorf("purge URL row: %w", err)
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result.ReportObserverFailures(t.Context())
+	if count := strings.Count(output.String(), urlObserverFailed); count != 1 {
+		t.Fatalf("observer logs = %d, want one: %s", count, output.String())
 	}
 }
 

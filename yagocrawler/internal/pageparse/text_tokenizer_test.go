@@ -23,6 +23,19 @@ func TestTokenizeDropsShortTokens(t *testing.T) {
 	}
 }
 
+func TestBoundedTokenizeCountsAcceptedWords(t *testing.T) {
+	stats := pageparse.BuildBoundedPageStats(
+		pageparse.ParsedPage{Text: "a b useful words after short tokens"},
+		2,
+		0,
+		0,
+	)
+	want := []string{"useful", "words"}
+	if !reflect.DeepEqual(stats.Tokens, want) {
+		t.Fatalf("tokens = %v, want %v", stats.Tokens, want)
+	}
+}
+
 func TestTokenizeKeepsHyphenAndDigitSeparators(t *testing.T) {
 	got := pageparse.Tokenize("go-lang 1,234 4.7Ohm")
 	want := []string{"go-lang", "1,234", "4.7", "ohm"}

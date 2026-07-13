@@ -68,6 +68,20 @@ func richResults() SearchResults {
 	}
 }
 
+func TestHitViewMarksDDGSProvenance(t *testing.T) {
+	t.Parallel()
+
+	view := hitView(SearchResult{Provenance: "ddgs"})
+	if view["provenance"] != "ddgs" || view["provenanceLabel"] != "[ddgs]" {
+		t.Fatalf("DDGS provenance view = %#v", view)
+	}
+
+	local := hitView(SearchResult{Provenance: "local"})
+	if local["provenanceLabel"] != "local" {
+		t.Fatalf("local provenance label = %#v", local["provenanceLabel"])
+	}
+}
+
 func TestThemedPortalServesOperatorPage(t *testing.T) {
 	t.Parallel()
 

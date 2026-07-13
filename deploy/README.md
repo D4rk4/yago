@@ -19,10 +19,16 @@ The Debian package and the systemd units share one layout:
 | --- | --- |
 | `/opt/yago/bin` | the `yago-node` and `yagocrawler` binaries |
 | `/opt/yago/etc` | the environment files below |
-| `/opt/yago/data` | all mutable state (indexes, vaults, the crawler's browser profile) |
+| `/opt/yago/data` | durable node state (indexes and vaults) |
 
 The package creates a system `yago` user that owns `/opt/yago/data`. Removing the
 package leaves that directory intact.
+
+The crawler creates throwaway Firefox profiles in its private process temporary
+directory. They are not durable state. `YAGOCRAWLER_WORKER_ID` is likewise a display-name prefix;
+each crawler process appends a random suffix so simultaneous workers never share
+a lease identity. `YAGOCRAWLER_MAX_PAGES_PER_RUN` bounds lossless pending work per
+run at 50,000 pages by default; `0` removes that safety bound.
 
 ## Package dependencies
 
@@ -33,8 +39,8 @@ package dependencies rather than bundled:
   trust store; there is no baked-in certificate bundle on bare metal.
 - `firefox-esr` on Debian (or `firefox` on Ubuntu/Fedora) — the crawler's
   slow-path browser, driven headless over Marionette. The container image
-  bundles `firefox-esr`; a host install points the crawler at the OS browser
-  through `YAGOCRAWLER_BROWSER_PATH`. The crawler still runs without it, serving
+  bundles `firefox-esr`; a host install discovers the OS browser on `PATH`, while
+  `YAGOCRAWLER_BROWSER_PATH` can pin a non-standard location. The crawler still runs without it, serving
   only the HTTP fast path, so it is a recommended, not a required, dependency. A
   browser path left pointing at Chromium/Chrome — a leftover from before the
   crawler moved to Firefox — is ignored with a startup warning, and the crawler
@@ -84,20 +90,20 @@ content sandbox under `NoNewPrivileges`.
 
 ## Crawler resource limits
 
-`yagocrawler.service` caps the headless-Firefox fetcher through cgroup controls
-so a runaway render cannot starve the co-located node: `MemoryHigh=60%` applies
-reclaim pressure (it throttles, never kills), `MemoryMax=85%` is a hard ceiling
-whose out-of-memory kill stays confined to the crawler cgroup (the node
-survives, systemd restarts the crawler, and the browser circuit-breaker degrades
-gracefully in the meantime), `TasksMax=4096` bounds thread/process explosion,
-and `CPUWeight=50` lets the node win the CPU under contention so search and admin
-stay responsive during a crawl. On top of the cgroup weights the unit runs the
-crawler *process* at the lowest scheduling priority — `Nice=19` (lowest CPU nice)
-and `IOSchedulingClass=idle` (lowest disk-I/O class, honored by the BFQ I/O
-scheduler), with `IOWeight` capping its cgroup I/O share — so a crawl yields CPU
-and disk to a search the node is answering; `CPUWeight` stays the primary
-cross-cgroup CPU lever and can be lowered further to give the node an even larger
-share. The percentages are relative to physical RAM, so they scale to any box. Tune them per host with a drop-in rather than editing the
+`yagocrawler.service` applies cgroup controls to bound headless-Firefox memory
+and task growth while giving the co-located node greater relative CPU weight:
+`MemoryHigh=60%` applies reclaim pressure (it throttles, never kills), and
+`MemoryMax=85%` confines its out-of-memory selection to the crawler cgroup. A
+killed Firefox child is replaced by its session manager; repeated launch or
+render failures cool only that session. If the crawler process is killed,
+`Restart=on-failure` restarts the service. `TasksMax=4096` bounds thread/process
+explosion, and `CPUWeight=50` weights the node more heavily under contention.
+The process uses the moderate `Nice=5` and
+best-effort I/O priority 6, with `IOWeight=50`, so it still yields to the node
+without the indexing starvation caused by the previous lowest-possible CPU and
+idle-I/O policy. `CPUWeight` remains the primary cross-cgroup CPU lever and can
+be lowered further to give the node a larger share. The percentages are relative
+to physical RAM, so they scale to any box. Tune them per host with a drop-in rather than editing the
 shipped unit:
 
 ```

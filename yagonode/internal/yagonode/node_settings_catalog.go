@@ -380,23 +380,25 @@ func remoteSearchDefinitions() []settingDefinition {
 
 // webFallbackDefinitions holds the web-search fallback knobs.
 func webFallbackDefinitions() []settingDefinition {
-	definitions := make([]settingDefinition, 0, 3)
+	definitions := make([]settingDefinition, 0, 2)
 	definitions = append(definitions, []settingDefinition{
 		{
-			key:         "web.fallback.privacy",
+			key:         settingKeyWebFallbackPrivacy,
 			title:       "Web search fallback (DDGS)",
-			description: "Control anonymous web search after exact local and swarm retrieval plus bounded local fuzzy recovery return no results.",
+			description: "Choose whether DDGS stays disabled, requires request consent, runs after a search miss, or always runs alongside local and swarm retrieval.",
 			options: []settingOption{
 				{value: string(webFallbackPrivacyDisabled), label: "Disabled"},
 				{value: string(webFallbackPrivacyExplicit), label: "Only when requested"},
 				{value: string(webFallbackPrivacyEnabled), label: "Enabled on search miss"},
+				{value: string(webFallbackPrivacyAlways), label: "Always"},
 			},
 			defaultValue: func(config nodeConfig) string { return string(config.WebFallback.Privacy) },
 			normalize: func(raw string) (string, error) {
 				switch webFallbackPrivacy(strings.TrimSpace(strings.ToLower(raw))) {
 				case webFallbackPrivacyDisabled,
 					webFallbackPrivacyExplicit,
-					webFallbackPrivacyEnabled:
+					webFallbackPrivacyEnabled,
+					webFallbackPrivacyAlways:
 					return strings.TrimSpace(strings.ToLower(raw)), nil
 				default:
 					return "", fmt.Errorf("invalid web fallback privacy")
@@ -429,7 +431,7 @@ func webFallbackDefinitions() []settingDefinition {
 		},
 	}...)
 
-	return append(definitions, webFallbackTriggerDefinition())
+	return definitions
 }
 
 // normalizeWebFallbackBackend accepts the engine selectors the websearch

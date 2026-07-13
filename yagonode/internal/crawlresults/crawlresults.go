@@ -106,19 +106,20 @@ func (noopStaleSweeper) PurgeStalePostings(
 }
 
 type IngestConsumer struct {
-	stream    IngestStream
-	documents documentstore.DocumentReceiver
-	anchors   documentstore.InboundAnchorReceiver
-	index     searchindex.SearchIndex
-	urls      urlmeta.URLReceiver
-	postings  rwi.PostingReceiver
-	observer  IngestObserver
-	recorder  FetchRecorder
-	owner     OwnershipCheck
-	purger    URLPurger
-	stale     StalePostingSweeper
-	clusters  ContentClusters
-	safety    ContentSafetyClassifier
+	stream       IngestStream
+	documents    documentstore.DocumentReceiver
+	anchors      documentstore.InboundAnchorReceiver
+	index        searchindex.SearchIndex
+	urls         urlmeta.URLReceiver
+	postings     rwi.PostingReceiver
+	observer     IngestObserver
+	recorder     FetchRecorder
+	owner        OwnershipCheck
+	purger       URLPurger
+	stale        StalePostingSweeper
+	clusters     ContentClusters
+	safety       ContentSafetyClassifier
+	observations observationHistory
 	// quality names the rule a document's text violates, "" for indexable text;
 	// nil skips the gate.
 	quality func(text string) string
@@ -150,18 +151,19 @@ func NewIngestConsumerWithIndex(
 	anchors, _ := documents.(documentstore.InboundAnchorReceiver)
 
 	return &IngestConsumer{
-		stream:    stream,
-		documents: documents,
-		anchors:   anchors,
-		index:     index,
-		urls:      urls,
-		postings:  postings,
-		observer:  noopIngestObserver{},
-		recorder:  noopFetchRecorder{},
-		owner:     allowAllOwnership{},
-		purger:    noopURLPurger{},
-		stale:     noopStaleSweeper{},
-		hashURL:   yagomodel.HashURL,
+		stream:       stream,
+		documents:    documents,
+		anchors:      anchors,
+		index:        index,
+		urls:         urls,
+		postings:     postings,
+		observer:     noopIngestObserver{},
+		recorder:     noopFetchRecorder{},
+		owner:        allowAllOwnership{},
+		purger:       noopURLPurger{},
+		stale:        noopStaleSweeper{},
+		hashURL:      yagomodel.HashURL,
+		observations: acceptAllObservationHistory{},
 	}
 }
 

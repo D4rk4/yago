@@ -82,6 +82,16 @@ func TestApplyRuntimeSettingOverridesIgnoresInvalidValue(t *testing.T) {
 	}
 }
 
+func TestApplyRuntimeSettingOverridesMigratesLegacyParallelTrigger(t *testing.T) {
+	config := applyRuntimeSettingOverrides(
+		nodeConfig{WebFallback: webFallbackConfig{Trigger: webFallbackTriggerMiss}},
+		map[string]string{settingKeyLegacyWebFallbackTrigger: string(webFallbackTriggerParallel)},
+	)
+	if config.WebFallback.Trigger != webFallbackTriggerParallel {
+		t.Fatalf("trigger = %q, want parallel", config.WebFallback.Trigger)
+	}
+}
+
 func TestApplyRuntimeSettingOverridesEnablesHTTPSRedirect(t *testing.T) {
 	t.Parallel()
 

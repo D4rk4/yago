@@ -32,6 +32,10 @@ func (f resolverFunc) LookupNetIP(
 
 type fetchFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
 
+type permanentFailure interface {
+	Permanent() bool
+}
+
 func (f fetchFunc) Fetch(ctx context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
 	return f(ctx, target)
 }
@@ -155,6 +159,10 @@ func TestAdmissionFetcherRejectsUnsafeTargetsBeforeInnerFetch(t *testing.T) {
 			if !errors.Is(err, pagefetch.ErrPageRejected) {
 				t.Fatalf("error = %v, want page rejected", err)
 			}
+			var permanent permanentFailure
+			if !errors.As(err, &permanent) || !permanent.Permanent() {
+				t.Fatalf("error = %v, want permanent admission failure", err)
+			}
 		})
 	}
 }
@@ -230,20 +238,25 @@ func TestAdmissionFetcherReturnsInnerFetchError(t *testing.T) {
 
 func TestAdmissionFetcherRejectsResolverFailureBeforeInnerFetch(t *testing.T) {
 	innerCalls := 0
+	resolverFailure := errors.New("dns failed")
 	fetcher := admissionFetcher(
 		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
 			innerCalls++
 			return pagefetch.FetchedPage{}, nil
 		}),
 		resolverFunc(func(context.Context, string, string) ([]netip.Addr, error) {
-			return nil, errors.New("dns failed")
+			return nil, resolverFailure
 		}),
 	)
 
 	_, err := fetcher.Fetch(context.Background(), mustParse(t, "https://example.com/"))
-	if !errors.Is(err, pagefetch.ErrPageRejected) ||
+	if !errors.Is(err, pagefetch.ErrPageRejected) || !errors.Is(err, resolverFailure) ||
 		!strings.Contains(err.Error(), "dns failed") {
 		t.Fatalf("error = %v, want resolver rejection", err)
+	}
+	var permanent permanentFailure
+	if errors.As(err, &permanent) {
+		t.Fatalf("resolver error = %v, want retryable failure", err)
 	}
 	if innerCalls != 0 {
 		t.Fatalf("inner calls = %d", innerCalls)

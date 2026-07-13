@@ -59,7 +59,11 @@ type BleveDiskIndex struct {
 
 // diskShard picks the shard for one document id.
 func diskShard(shards []bleve.Index, docID string) bleve.Index {
-	return shards[int(xxhash.Sum64String(docID)%uint64(len(shards)))] //nolint:gosec // bounded by len.
+	return shards[diskShardNumber(shards, docID)]
+}
+
+func diskShardNumber(shards []bleve.Index, docID string) int {
+	return int(xxhash.Sum64String(docID) % uint64(len(shards))) //nolint:gosec // bounded by len.
 }
 
 // diskShardPath is the three-level fanout location of one index shard.

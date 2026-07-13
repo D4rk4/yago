@@ -139,6 +139,7 @@ func (i *Index) Delete(ctx context.Context, url string) (bool, error) {
 	}
 	var deleted bool
 	err = i.vault.Update(ctx, func(tx *vault.Txn) error {
+		deleted = false
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("check deletion context: %w", err)
 		}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,10 +53,12 @@ func staticRender(
 func TestFirefoxManagerReusesOneSession(t *testing.T) {
 	session := &fakeSession{aliveVal: true, renderFunc: staticRender("http://example.com/")}
 	starts := 0
-	manager := &firefoxManager{start: func(BrowserLaunch, string) (browserSession, error) {
-		starts++
-		return session, nil
-	}}
+	manager := &firefoxManager{
+		start: func(context.Context, BrowserLaunch, string) (browserSession, error) {
+			starts++
+			return session, nil
+		},
+	}
 
 	for i := 0; i < 3; i++ {
 		if _, err := manager.render(context.Background(), "http://example.com/"); err != nil {
@@ -75,13 +78,15 @@ func TestFirefoxManagerRelaunchesAfterRenderError(t *testing.T) {
 	}
 	healthy := &fakeSession{aliveVal: true, renderFunc: staticRender("http://example.com/next")}
 	starts := 0
-	manager := &firefoxManager{start: func(BrowserLaunch, string) (browserSession, error) {
-		starts++
-		if starts == 1 {
-			return broken, nil
-		}
-		return healthy, nil
-	}}
+	manager := &firefoxManager{
+		start: func(context.Context, BrowserLaunch, string) (browserSession, error) {
+			starts++
+			if starts == 1 {
+				return broken, nil
+			}
+			return healthy, nil
+		},
+	}
 
 	if _, err := manager.render(
 		context.Background(),
@@ -111,13 +116,15 @@ func TestFirefoxManagerRelaunchesDeadSession(t *testing.T) {
 	first := &fakeSession{aliveVal: true, renderFunc: staticRender("http://example.com/a")}
 	second := &fakeSession{aliveVal: true, renderFunc: staticRender("http://example.com/b")}
 	starts := 0
-	manager := &firefoxManager{start: func(BrowserLaunch, string) (browserSession, error) {
-		starts++
-		if starts == 1 {
-			return first, nil
-		}
-		return second, nil
-	}}
+	manager := &firefoxManager{
+		start: func(context.Context, BrowserLaunch, string) (browserSession, error) {
+			starts++
+			if starts == 1 {
+				return first, nil
+			}
+			return second, nil
+		},
+	}
 
 	if _, err := manager.render(context.Background(), "http://example.com/a"); err != nil {
 		t.Fatalf("first render: %v", err)
@@ -141,9 +148,11 @@ func TestFirefoxManagerRelaunchesDeadSession(t *testing.T) {
 
 func TestFirefoxManagerReturnsLaunchError(t *testing.T) {
 	boom := errors.New("no firefox binary")
-	manager := &firefoxManager{start: func(BrowserLaunch, string) (browserSession, error) {
-		return nil, boom
-	}}
+	manager := &firefoxManager{
+		start: func(context.Context, BrowserLaunch, string) (browserSession, error) {
+			return nil, boom
+		},
+	}
 	if _, err := manager.render(
 		context.Background(),
 		"http://example.com/",
@@ -155,11 +164,73 @@ func TestFirefoxManagerReturnsLaunchError(t *testing.T) {
 	}
 }
 
+func TestFirefoxManagerCircuitBreakerCoolsAndProbes(t *testing.T) {
+	now := time.Date(2026, time.July, 13, 12, 0, 0, 0, time.UTC)
+	starts := 0
+	manager := &firefoxManager{
+		launch: BrowserLaunch{FailureThreshold: 2},
+		start: func(context.Context, BrowserLaunch, string) (browserSession, error) {
+			starts++
+
+			return nil, errors.New("firefox unavailable")
+		},
+		now: func() time.Time { return now },
+	}
+	if _, err := manager.render(t.Context(), "https://example.org/first"); err == nil {
+		t.Fatal("first failure returned nil")
+	}
+	if !manager.retryAfter.IsZero() {
+		t.Fatalf("first failure retry time = %s, want zero", manager.retryAfter)
+	}
+	if _, err := manager.render(t.Context(), "https://example.org/second"); err == nil {
+		t.Fatal("threshold failure returned nil")
+	}
+	wantRetry := now.Add(pagefetch.DefaultBrowserBreakerCooldown)
+	if !manager.retryAfter.Equal(wantRetry) {
+		t.Fatalf("retry time = %s, want %s", manager.retryAfter, wantRetry)
+	}
+	if _, err := manager.render(t.Context(), "https://example.org/cooling"); err == nil ||
+		!strings.Contains(err.Error(), "cooling down") {
+		t.Fatalf("cooldown error = %v", err)
+	}
+	now = wantRetry
+	if _, err := manager.render(t.Context(), "https://example.org/probe"); err == nil {
+		t.Fatal("failed probe returned nil")
+	}
+	if manager.failures != 0 ||
+		!manager.retryAfter.Equal(now.Add(pagefetch.DefaultBrowserBreakerCooldown)) {
+		t.Fatalf("failed probe state = failures %d retry %s", manager.failures, manager.retryAfter)
+	}
+	if starts != 3 {
+		t.Fatalf("launches = %d, want 3", starts)
+	}
+}
+
+func TestFirefoxManagerDoesNotLaunchForExpiredRender(t *testing.T) {
+	starts := 0
+	manager := &firefoxManager{
+		start: func(context.Context, BrowserLaunch, string) (browserSession, error) {
+			starts++
+			return nil, errors.New("unexpected launch")
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := manager.render(ctx, "http://example.com/"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context cancellation", err)
+	}
+	if starts != 0 {
+		t.Fatalf("launches = %d, want 0", starts)
+	}
+}
+
 func TestFirefoxManagerCloseTearsDownSession(t *testing.T) {
 	session := &fakeSession{aliveVal: true, renderFunc: staticRender("http://example.com/")}
-	manager := &firefoxManager{start: func(BrowserLaunch, string) (browserSession, error) {
-		return session, nil
-	}}
+	manager := &firefoxManager{
+		start: func(context.Context, BrowserLaunch, string) (browserSession, error) {
+			return session, nil
+		},
+	}
 	if _, err := manager.render(context.Background(), "http://example.com/"); err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -169,6 +240,15 @@ func TestFirefoxManagerCloseTearsDownSession(t *testing.T) {
 	}
 	if manager.session != nil {
 		t.Fatal("manager still holds a session after close")
+	}
+	if _, err := manager.render(
+		t.Context(),
+		"http://example.com/",
+	); !errors.Is(
+		err,
+		context.Canceled,
+	) {
+		t.Fatalf("render after close = %v, want cancellation", err)
 	}
 }
 

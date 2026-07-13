@@ -56,13 +56,16 @@ Ship the two parts that fit; do not add raw bbolt mmap madvise.
    shrinking the tier width would, which matters for an I/O-oriented change.
 
 2. **Crawler cgroup limits.** Add `MemoryHigh=60%`, `MemoryMax=85%`,
-   `TasksMax=4096`, and `CPUWeight=50` to the packaged `yagocrawler.service` so a
-   runaway headless-Firefox render cannot starve the co-located node. The
+   `TasksMax=4096`, and `CPUWeight=50` to the packaged `yagocrawler.service` to
+   bound headless-Firefox memory and task growth while giving the co-located node
+   greater relative CPU weight. The
    percentages are relative to physical RAM (box-agnostic); `MemoryHigh` throttles
    without killing; a `MemoryMax` out-of-memory kill stays confined to the crawler
-   cgroup, and the browser circuit-breaker (BROWSER-04) plus `Restart=on-failure`
-   recover it; `CPUWeight` below the node's default lets interactive search win the
-   CPU during a crawl. Operators tune the values per host with a systemd drop-in.
+   cgroup. A killed Firefox child is replaced by its session manager; repeated
+   launch or render failures cool only that session (BROWSER-04).
+   `Restart=on-failure` restarts the service if the crawler process is killed;
+   `CPUWeight` below the node's default favors interactive search during a crawl.
+   Operators tune the values per host with a systemd drop-in.
 
 3. **No bbolt mmap madvise.** Declined for the two reasons above.
 
@@ -71,14 +74,14 @@ Ship the two parts that fit; do not add raw bbolt mmap madvise.
 - The quality gate is untouched: no `unsafe`, no CGO, no build-tag split, no
   weakened vet analyzer, no promoted dependency.
 - Search and merge over a churning index read less disk as deleted space is
-  reclaimed faster; the crawler can no longer OOM or CPU-starve the node.
-- PERF-PRIO-01 (2026-07-10) reinforces the cgroup weighting by running the
-  crawler *process* at the lowest scheduling priority — `Nice=19` and
-  `IOSchedulingClass=idle` (a low `IOWeight` too) in the systemd unit, and the
-  cap-free `ionice` best-effort/7 plus `nice 19` in the container entrypoint — so
-  a crawl yields CPU and disk to the node's latency-sensitive search and admin
-  work even within a shared scheduler, not only across cgroups. Prompted by
-  yagoseek.dev running CPU-saturated (node ~2.5 cores, load ~7.9 on 4 cores).
+  reclaimed faster; the packaged systemd crawler bounds its own cgroup memory and
+  gives the node greater relative CPU weight under contention.
+- PERF-PRIO-01 was refined on 2026-07-13 after production indexing showed that
+  the lowest-possible `Nice=19` and idle I/O policy starved crawler progress under
+  normal node load. The cgroup weighting remains, while the process uses
+  `Nice=5`, best-effort I/O priority 6, and `IOWeight=50`; the container uses the
+  equivalent `ionice` best-effort/6 plus `nice 5`. The crawler still yields to the
+  node without losing useful indexing throughput.
 - If profiling ever shows the RWI shard mmaps are readahead-bound on a
   scan-heavy node, revisit with a mechanism that does not fight the vet gate — for
   example an upstream bbolt option, or a narrow one-shot `MADV_WILLNEED` prefault

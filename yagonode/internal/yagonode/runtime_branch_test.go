@@ -1033,6 +1033,27 @@ func TestBuildCrawlRuntimeReturnsBrokerError(t *testing.T) {
 	}
 }
 
+func TestBuildCrawlRuntimeReturnsObservationHistoryError(t *testing.T) {
+	restoreCrawlBrokerSeam(t)
+	openCrawlBroker = func(
+		crawlbroker.Config,
+		*vault.Vault,
+		crawlbroker.ProgressSink,
+	) (*crawlbroker.CrawlBroker, error) {
+		return &crawlbroker.CrawlBroker{}, nil
+	}
+	_, err := buildCrawlRuntime(
+		crawlConfig{ListenAddr: "127.0.0.1:0"},
+		nodeIdentity(testConfig(t)),
+		nodeStorage{},
+		nil,
+	)
+	if err == nil || err.Error() !=
+		"open crawl observation history: register URL observation history: vault closed" {
+		t.Fatalf("build error = %v, want observation history error", err)
+	}
+}
+
 func TestMemVaultOpenRuntimeSeam(t *testing.T) {
 	v, err := memvault.Open(0)
 	if err != nil {

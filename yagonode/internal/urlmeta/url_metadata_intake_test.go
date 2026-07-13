@@ -1,9 +1,11 @@
 package urlmeta
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -329,5 +331,51 @@ func TestIntakeRetriesContendedStoreInsteadOfDropping(t *testing.T) {
 	rows, err := directory.RowsByHash(context.Background(), []yagomodel.Hash{rowHash(t, row)})
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("row missing after retry: rows=%d err=%v", len(rows), err)
+	}
+}
+
+func TestIntakeLogsDiscardAfterSuccessfulReplay(t *testing.T) {
+	engine := newContendOnceEngine()
+	store, err := vault.New(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	_, _, receiver, err := Open(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	_, err = receiver.Receive(t.Context(), []yagomodel.URIMetadataRow{
+		{Properties: map[string]string{}},
+		urlRow(t, "replayed-log"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count := strings.Count(output.String(), urlRowDiscarded); count != 1 {
+		t.Fatalf("discard logs = %d, want one: %s", count, output.String())
+	}
+}
+
+func TestIntakeLogsObserverFailureOnceAfterReplay(t *testing.T) {
+	observer := &recordingObserver{fail: true}
+	_, module, engine := openScriptedModule(t, observer)
+	engine.replayNext = true
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	if _, err := module.Receiver.Receive(
+		t.Context(),
+		[]yagomodel.URIMetadataRow{urlRow(t, "observer-replay")},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if count := strings.Count(output.String(), urlObserverFailed); count != 1 {
+		t.Fatalf("observer logs = %d, want one: %s", count, output.String())
 	}
 }

@@ -214,11 +214,25 @@ func TestPostingPurgedReturnsDeleteAndReferenceErrors(t *testing.T) {
 	}); err == nil {
 		t.Fatal("expected referenced delete error")
 	}
+
+	engine.deleteErrors[referencedURLBucket] = nil
+	engine.buckets[wordsByURLBucket][string(wordByURL{
+		url:  url,
+		word: yagomodel.WordHash("w2"),
+	}.key())] = []byte{}
+	delete(engine.buckets[referencedURLBucket], url.String())
+	engine.putErrors[referencedURLBucket] = errors.New("referenced restore failed")
+	if err := storage.Update(t.Context(), func(tx *vault.Txn) error {
+		return references.PostingPurged(tx, word, url)
+	}); err == nil {
+		t.Fatal("expected referenced restore error")
+	}
 }
 
 func TestWordsReferencingReturnsBadKeyAndScanErrors(t *testing.T) {
 	storage, references, engine := openScriptedReferences(t)
 	url := yagomodel.WordHash("u1")
+	engine.buckets[referencedURLBucket][url.String()] = []byte{}
 	engine.buckets[wordsByURLBucket][url.String()+"short"] = []byte{}
 
 	if err := storage.View(t.Context(), func(tx *vault.Txn) error {
@@ -235,6 +249,31 @@ func TestWordsReferencingReturnsBadKeyAndScanErrors(t *testing.T) {
 		return err
 	}); err == nil {
 		t.Fatal("expected scan error")
+	}
+}
+
+func TestWordsReferencingRecoversMissingReferenceMarker(t *testing.T) {
+	storage, references, engine := openScriptedReferences(t)
+	url := yagomodel.WordHash("fresh")
+	word := yagomodel.WordHash("word")
+	remaining := yagomodel.WordHash("left")
+	engine.buckets[wordsByURLBucket][string(wordByURL{url: url, word: word}.key())] = []byte{}
+	engine.buckets[wordsByURLBucket][string(wordByURL{url: url, word: remaining}.key())] = []byte{}
+	if err := storage.Update(t.Context(), func(tx *vault.Txn) error {
+		words, err := references.WordsReferencing(tx, url)
+		if err != nil {
+			return fmt.Errorf("words: %w", err)
+		}
+		if len(words) != 2 || !slices.Contains(words, word) || !slices.Contains(words, remaining) {
+			return fmt.Errorf("words = %v, want %v and %v", words, word, remaining)
+		}
+
+		return references.PostingPurged(tx, word, url)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := engine.buckets[referencedURLBucket][url.String()]; !found {
+		t.Fatal("missing reference marker was not restored")
 	}
 }
 
@@ -261,6 +300,7 @@ func TestReferencedURLCountReturnsErrors(t *testing.T) {
 func TestReferencedURLsReturnsScanAndViewErrors(t *testing.T) {
 	storage, references, engine := openScriptedReferences(t)
 	url := yagomodel.WordHash("u1")
+	engine.buckets[referencedURLBucket][url.String()] = []byte{}
 
 	engine.scanErrors[wordsByURLBucket] = errors.New("scan failed")
 	if _, err := references.ReferencedURLs(t.Context(), []yagomodel.Hash{url}); err == nil {

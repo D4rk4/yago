@@ -239,6 +239,34 @@ func TestRecrawlAndDeleteRetainStableMembership(t *testing.T) {
 	}
 }
 
+func TestDeleteResetsResultAcrossChangedStateReplay(t *testing.T) {
+	engine := newClusterFaultEngine()
+	store, err := vault.New(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	index, err := Open(store, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence := Evidence{
+		URL:         "https://replay.example/page",
+		ContentHash: "replayed",
+		Text:        "replayed content",
+	}
+	if _, err := index.Replace(t.Context(), evidence); err != nil {
+		t.Fatal(err)
+	}
+	engine.replayUpdate = func(engine *clusterFaultEngine) {
+		delete(engine.buckets[fingerprintBucketName], evidence.URL)
+	}
+	deleted, err := index.Delete(t.Context(), evidence.URL)
+	if err != nil || deleted {
+		t.Fatalf("replayed delete = %v/%v, want false", deleted, err)
+	}
+}
+
 func TestPostingAndClusterLimitsKeepEveryURL(t *testing.T) {
 	limits := DefaultLimits()
 	limits.MaximumBucketMembers = 2

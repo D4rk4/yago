@@ -12,6 +12,8 @@ type crawlWorker interface {
 
 type orderConsumer interface {
 	Run(ctx context.Context)
+	CancelActiveRuns()
+	WaitForSettlements()
 }
 
 // superviseCrawl runs the workers and the order consumer until ctx is cancelled,
@@ -40,6 +42,7 @@ func superviseCrawl(
 	}()
 
 	<-consumerDone
+	consumer.CancelActiveRuns()
 	select {
 	case <-workersDone:
 	case <-time.After(grace):
@@ -48,4 +51,5 @@ func superviseCrawl(
 		cancelFetch()
 		<-workersDone
 	}
+	consumer.WaitForSettlements()
 }

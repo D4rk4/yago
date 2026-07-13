@@ -43,11 +43,7 @@ func (s *HTTPSource) Fetch(
 	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return pagefetch.FetchedPage{}, fmt.Errorf(
-			"status %d: %w",
-			response.StatusCode,
-			pagefetch.ErrPageRejected,
-		)
+		return pagefetch.FetchedPage{}, seedSourceStatusError(response)
 	}
 
 	body, err := sourceBody(response.Body, s.maxBytes)

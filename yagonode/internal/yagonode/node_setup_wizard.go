@@ -66,7 +66,7 @@ func wizardSeedlistDefault(configured []string) string {
 func setupWizardApplier(settings adminui.SettingsSource) adminauth.SetupApplier {
 	return func(ctx context.Context, choices adminauth.SetupChoices) error {
 		changes := []adminui.SettingsChange{
-			{Key: "web.fallback.privacy", Value: choices.WebFallback},
+			{Key: settingKeyWebFallbackPrivacy, Value: choices.WebFallback},
 		}
 		if choices.PeerName != "" {
 			changes = append(changes,

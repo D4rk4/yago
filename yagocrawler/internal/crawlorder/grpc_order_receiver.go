@@ -2,7 +2,6 @@ package crawlorder
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -143,6 +142,7 @@ func drainOrderStream(
 		order, err := yagocrawlcontract.UnmarshalCrawlOrder(msg.GetOrderJson())
 		if err != nil {
 			slog.WarnContext(ctx, msgOrderDecodeFailed, slog.Any("error", err))
+			settleMalformedOrder(ctx, client, msg.GetLeaseId())
 
 			continue
 		}
@@ -160,30 +160,16 @@ func deliverOrder(
 	leaseID string,
 ) bool {
 	delivery := CrawlOrderDelivery{
-		Order: order,
-		Ack:   settleLease(client, leaseID, false),
-		Nak:   settleLease(client, leaseID, true),
-		Term:  settleLease(client, leaseID, false),
+		LeaseID: leaseID,
+		Order:   order,
+		Ack:     settleLease(ctx, client, leaseID, false),
+		Nak:     settleLease(ctx, client, leaseID, true),
+		Term:    settleLease(ctx, client, leaseID, false),
 	}
 	select {
 	case out <- delivery:
 		return true
 	case <-ctx.Done():
 		return false
-	}
-}
-
-func settleLease(client OrderStreamer, leaseID string, requeue bool) func(context.Context) error {
-	return func(ctx context.Context) error {
-		callCtx, cancel := context.WithTimeout(ctx, orderAckTimeout)
-		defer cancel()
-		if _, err := client.AckOrder(
-			callCtx,
-			&crawlrpc.OrderAck{LeaseId: leaseID, Requeue: requeue},
-		); err != nil {
-			return fmt.Errorf("settle crawl order lease: %w", err)
-		}
-
-		return nil
 	}
 }

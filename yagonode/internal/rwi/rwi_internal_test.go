@@ -246,6 +246,17 @@ func TestIntakeReturnsCapacityCheckError(t *testing.T) {
 	}
 }
 
+func TestEmptyIntakeDoesNotAccessClosedVault(t *testing.T) {
+	h := openHarness(t, 0, 100)
+	if err := h.vault.Close(); err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := h.rwi.Receiver.Receive(t.Context(), nil)
+	if err != nil || len(receipt.UnknownURL) != 0 || receipt.Busy || receipt.Pause != 0 {
+		t.Fatalf("empty receipt = %+v/%v", receipt, err)
+	}
+}
+
 func TestIntakeReturnsContextErrorInsideBatch(t *testing.T) {
 	h := openHarness(t, 0, 100)
 	ctx := &errAfterContext{

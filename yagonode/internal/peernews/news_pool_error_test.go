@@ -16,6 +16,7 @@ type newsStubEngine struct {
 	putErrors    map[vault.Name]error
 	deleteErrors map[vault.Name]error
 	scanErrors   map[vault.Name]error
+	replayUpdate func(*newsStubEngine)
 }
 
 func newNewsStubEngine() *newsStubEngine {
@@ -28,6 +29,16 @@ func newNewsStubEngine() *newsStubEngine {
 }
 
 func (e *newsStubEngine) Update(_ context.Context, fn func(vault.EngineTxn) error) error {
+	replay := e.replayUpdate
+	e.replayUpdate = nil
+	if replay == nil {
+		return fn(newsStubTxn{engine: e, writable: true})
+	}
+	if err := fn(newsStubTxn{engine: e, writable: true}); err != nil {
+		return err
+	}
+	replay(e)
+
 	return fn(newsStubTxn{engine: e, writable: true})
 }
 
@@ -301,5 +312,39 @@ func TestNewsPoolSurvivesReopenOnSameStorage(t *testing.T) {
 	}
 	if record.Distributed != 1 {
 		t.Fatalf("distributed = %d, want 1", record.Distributed)
+	}
+}
+
+func TestNextPublicationClearsAbortedAttemptResult(t *testing.T) {
+	engine := newNewsStubEngine()
+	pool := openStubPool(t, engine)
+	if err := pool.PublishOwnNews(
+		t.Context(),
+		yagomodel.WordHash("myseed"),
+		"TestCat",
+		nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+	engine.replayUpdate = func(engine *newsStubEngine) {
+		engine.buckets[queueBucket] = map[string][]byte{}
+	}
+	record, found, err := pool.NextPublication(t.Context())
+	if err != nil || found {
+		t.Fatalf("publication = %#v/%v/%v", record, found, err)
+	}
+}
+
+func TestEnqueueIncomingNewsClearsAbortedAttemptResult(t *testing.T) {
+	engine := newNewsStubEngine()
+	pool := openStubPool(t, engine)
+	engine.replayUpdate = func(*newsStubEngine) {}
+	stored, err := pool.EnqueueIncomingNews(t.Context(), Record{
+		Originator: yagomodel.WordHash("peer"),
+		Created:    fixedNow(),
+		Category:   CategoryCrawlStart,
+	})
+	if err != nil || stored {
+		t.Fatalf("stored = %v/%v, want false after replay", stored, err)
 	}
 }

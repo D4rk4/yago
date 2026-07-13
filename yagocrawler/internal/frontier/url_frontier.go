@@ -16,27 +16,47 @@ import (
 )
 
 const (
-	msgSeedURLRejected      = "seed url rejected"
-	msgSubmitRunUnknown     = "links submitted for unknown run"
-	msgSubmitProfileUnknown = "links submitted for unknown profile"
-	msgAcceptProfileUnknown = "crawl job accepted for unknown profile"
-	msgSeedProfileMismatch  = "seed profile handle does not match order"
-	msgRunPageBudgetReached = "crawl run reached its page budget"
+	msgSeedURLRejected        = "seed url rejected"
+	msgSubmitRunUnknown       = "links submitted for unknown run"
+	msgSubmitProfileUnknown   = "links submitted for unknown profile"
+	msgAcceptProfileUnknown   = "crawl job accepted for unknown profile"
+	msgSeedProfileMismatch    = "seed profile handle does not match order"
+	msgRunPageBudgetReached   = "crawl run reached its page budget"
+	frontierMutationBatchSize = 256
 )
 
 type Frontier struct {
-	jobs   chan crawljob.CrawlJob
 	signal chan struct{}
 	pace   CrawlPace
 
 	maxPerHost int
+	maxReady   int
 
-	scorer ValueScorer
+	scorer       ValueScorer
+	prepareSeeds func(
+		context.Context,
+		[]yagocrawlcontract.CrawlRequest,
+		[]byte,
+		crawladmission.AdmissionProfile,
+	) []frontierCandidate
+	prepareLinks func(
+		crawljob.CrawlJob,
+		crawljob.DiscoveredLinks,
+		crawladmission.AdmissionProfile,
+	) []frontierCandidate
 
-	mu       sync.Mutex
-	state    *frontierState
-	inflight map[string]int
-	paused   map[string]struct{}
+	mu                sync.Mutex
+	settlements       sync.WaitGroup
+	state             *frontierState
+	inflight          map[string]int
+	paused            map[string]struct{}
+	controlSeen       map[string]time.Time
+	cancelRuns        map[string]int
+	readyPerRun       map[uuid.UUID]int
+	dispatchOrder     map[uuid.UUID]uint64
+	nextDispatchOrder uint64
+	readyOrder        map[uuid.UUID]uint64
+	nextReadyOrder    uint64
 	// rate throttles a run to a page budget: rateInterval holds the minimum gap
 	// between the run's dispatches (an explicit zero entry lifts the throttle),
 	// and rateNextDue the earliest time its next job may dispatch, both keyed by
@@ -95,11 +115,20 @@ type frontierState struct {
 }
 
 type crawlRun struct {
-	visited        map[string]struct{}
-	hostPages      map[string]int
-	profiles       map[string]crawladmission.AdmissionProfile
-	pages          int
-	budgetExceeded bool
+	visited         map[string]struct{}
+	hostPages       map[string]int
+	profiles        map[string]crawladmission.AdmissionProfile
+	provenance      string
+	provenanceValue []byte
+	seeding         bool
+	pendingByHost   map[string]*pendingHostPages
+	pendingHosts    []*pendingHostPages
+	pendingCursor   int
+	pendingHostLive int
+	pendingPages    int
+	pages           int
+	budgetExceeded  bool
+	cancelled       bool
 }
 
 type SeededRun struct {
@@ -112,30 +141,32 @@ func NewFrontier(capacity int, pace CrawlPace, opts ...Option) *Frontier {
 		pace = alwaysDuePace{}
 	}
 	frontier := &Frontier{
-		jobs:   make(chan crawljob.CrawlJob, capacity),
-		signal: make(chan struct{}, 1),
-		scorer: DefaultValueScorer,
-		pace:   pace,
+		signal:       make(chan struct{}, 1),
+		scorer:       DefaultValueScorer,
+		pace:         pace,
+		maxReady:     min(max(1, capacity), maximumFrontierReadyJobs),
+		prepareSeeds: prepareSeedCandidates,
+		prepareLinks: prepareDiscoveredCandidates,
 		state: &frontierState{
 			runs:       make(map[uuid.UUID]*crawlRun),
 			completion: crawlrun.NewCompletion(),
 			tally:      noopRunTally{},
 			cancelled:  make(map[string]struct{}),
 		},
-		inflight:     make(map[string]int),
-		paused:       make(map[string]struct{}),
-		rateInterval: make(map[string]time.Duration),
-		rateNextDue:  make(map[string]time.Time),
+		inflight:      make(map[string]int),
+		paused:        make(map[string]struct{}),
+		controlSeen:   make(map[string]time.Time),
+		cancelRuns:    make(map[string]int),
+		readyPerRun:   make(map[uuid.UUID]int),
+		dispatchOrder: make(map[uuid.UUID]uint64),
+		readyOrder:    make(map[uuid.UUID]uint64),
+		rateInterval:  make(map[string]time.Duration),
+		rateNextDue:   make(map[string]time.Time),
 	}
 	for _, opt := range opts {
 		opt(frontier)
 	}
-	go frontier.run()
 	return frontier
-}
-
-func (f *Frontier) Jobs() <-chan crawljob.CrawlJob {
-	return f.jobs
 }
 
 func (f *Frontier) Hold() {
@@ -160,14 +191,48 @@ func (f *Frontier) SeedRun(
 	profile crawladmission.AdmissionProfile,
 	finish func(succeeded bool),
 ) SeededRun {
+	candidates := f.prepareSeeds(ctx, requests, provenance, profile)
+	runID := uuid.New()
+
 	f.mu.Lock()
-	seeded, settled := f.state.seed(ctx, requests, provenance, profile, finish)
+	f.state.beginRun(runID, provenance, profile, finish)
+	provenanceKey := string(provenance)
+	delete(f.controlSeen, provenanceKey)
+	if _, cancelled := f.state.cancelled[provenanceKey]; cancelled {
+		f.state.runs[runID].cancelled = true
+		f.cancelRuns[provenanceKey]++
+	}
+	f.mu.Unlock()
+
+	queued := 0
+	for start := 0; start < len(candidates); start += frontierMutationBatchSize {
+		end := min(start+frontierMutationBatchSize, len(candidates))
+		f.mu.Lock()
+		for _, candidate := range candidates[start:end] {
+			if f.acceptLocked(ctx, runID, candidate) {
+				queued++
+			}
+		}
+		f.rebalanceReadyLocked()
+		f.mu.Unlock()
+	}
+
+	f.mu.Lock()
+	f.state.runs[runID].seeding = false
+	f.demoteControlBlockedReadyLocked()
+	f.rebalanceReadyLocked()
+	f.refillReadyLocked()
+	settled, succeeded, drained := f.state.completion.Settle(runID)
+	if drained {
+		f.cleanupRunLocked(runID)
+	}
 	f.mu.Unlock()
 	f.wake()
-	if settled != nil {
-		go settled()
+	if drained && settled != nil {
+		f.scheduleSettlement(settled, succeeded)
 	}
-	return seeded
+
+	return SeededRun{RunID: runID, Queued: queued}
 }
 
 func (f *Frontier) Submit(
@@ -175,10 +240,50 @@ func (f *Frontier) Submit(
 	work crawljob.CrawlJob,
 	links crawljob.DiscoveredLinks,
 ) {
+	compiled, ok := f.submissionProfile(ctx, work)
+	if !ok || work.Depth >= compiled.Profile.MaxDepth {
+		return
+	}
+	candidates := f.prepareLinks(work, links, compiled)
+	for start := 0; start < len(candidates); start += frontierMutationBatchSize {
+		end := min(start+frontierMutationBatchSize, len(candidates))
+		f.mu.Lock()
+		for _, candidate := range candidates[start:end] {
+			f.acceptLocked(ctx, work.RunID, candidate)
+		}
+		f.rebalanceReadyLocked()
+		f.mu.Unlock()
+		f.wake()
+	}
+}
+
+func (f *Frontier) submissionProfile(
+	ctx context.Context,
+	work crawljob.CrawlJob,
+) (crawladmission.AdmissionProfile, bool) {
 	f.mu.Lock()
-	f.state.submit(ctx, work, links)
+	run, runKnown := f.state.runs[work.RunID]
+	var compiled crawladmission.AdmissionProfile
+	profileKnown := false
+	if runKnown {
+		compiled, profileKnown = run.profiles[work.ProfileHandle]
+	}
 	f.mu.Unlock()
-	f.wake()
+	if !runKnown {
+		slog.WarnContext(ctx, msgSubmitRunUnknown, slog.String("runId", work.RunID.String()))
+
+		return crawladmission.AdmissionProfile{}, false
+	}
+	if !profileKnown {
+		slog.WarnContext(ctx, msgSubmitProfileUnknown,
+			slog.String("runId", work.RunID.String()),
+			slog.String("profileHandle", work.ProfileHandle),
+		)
+
+		return crawladmission.AdmissionProfile{}, false
+	}
+
+	return compiled, true
 }
 
 // RunPending reports a run's outstanding page count (queued plus in-flight), so a
@@ -198,12 +303,15 @@ func (f *Frontier) Done(work crawljob.CrawlJob, deliveryFailed bool) {
 		f.state.completion.Fail(work.RunID)
 	}
 	finish, succeeded, drained := f.state.completion.Settle(work.RunID)
+	if drained {
+		f.cleanupRunLocked(work.RunID)
+	}
 	f.mu.Unlock()
 	// Releasing a host slot may make a withheld same-host job dispatchable, so
 	// nudge the run loop to re-evaluate rather than wait for the next signal.
 	f.wake()
 	if drained && finish != nil {
-		go finish(succeeded)
+		f.scheduleSettlement(finish, succeeded)
 	}
 }
 
@@ -250,8 +358,12 @@ func (f *Frontier) wake() {
 // fetches finish normally. A run is identified by its provenance token.
 func (f *Frontier) Pause(provenance []byte) {
 	f.mu.Lock()
+	f.retainPendingControlLocked(string(provenance))
 	f.paused[string(provenance)] = struct{}{}
+	f.demoteControlBlockedReadyLocked()
+	f.refillReadyLocked()
 	f.mu.Unlock()
+	f.wake()
 }
 
 // Resume lifts a pause and wakes the dispatch loop so the run's withheld jobs
@@ -279,29 +391,20 @@ func (f *Frontier) Cancel(provenance []byte) {
 	key := string(provenance)
 
 	f.mu.Lock()
+	f.retainPendingControlLocked(key)
 	f.state.cancelled[key] = struct{}{}
-	delete(f.paused, key)
-	var finishes []func()
-	kept := f.state.ready[:0]
-	for _, job := range f.state.ready {
-		if string(job.Provenance) != key {
-			kept = append(kept, job)
-
-			continue
-		}
-		if finish, succeeded, drained := f.state.completion.Settle(
-			job.RunID,
-		); drained &&
-			finish != nil {
-			finishes = append(finishes, func() { finish(succeeded) })
+	for _, run := range f.state.runs {
+		if run.provenance == key && !run.cancelled {
+			run.cancelled = true
+			f.cancelRuns[key]++
 		}
 	}
-	f.state.ready = kept
+	delete(f.paused, key)
+	finishes := make([]runFinish, 0, len(f.state.runs))
+	finishes = append(finishes, f.cancelQueuedLocked(key)...)
 	f.mu.Unlock()
 
-	for _, finish := range finishes {
-		go finish()
-	}
+	f.scheduleSettlements(finishes)
 	f.wake()
 }
 
@@ -321,7 +424,14 @@ func (f *Frontier) ClearCancelled(provenance []byte) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	delete(f.state.cancelled, string(provenance))
+	key := string(provenance)
+	if f.cancelRuns[key] > 1 {
+		f.cancelRuns[key]--
+
+		return
+	}
+	delete(f.cancelRuns, key)
+	delete(f.state.cancelled, key)
 }
 
 // SetRate throttles a run to at most pagesPerMinute dispatches, spacing its jobs
@@ -331,6 +441,7 @@ func (f *Frontier) SetRate(provenance []byte, pagesPerMinute uint32) {
 	key := string(provenance)
 
 	f.mu.Lock()
+	f.retainPendingControlLocked(key)
 	if pagesPerMinute == 0 {
 		// An explicit zero entry overrides the default rate; deleting it would
 		// silently re-apply the default on the next dispatch.
@@ -342,6 +453,16 @@ func (f *Frontier) SetRate(provenance []byte, pagesPerMinute uint32) {
 	f.mu.Unlock()
 
 	f.wake()
+}
+
+func (f *Frontier) hasProvenanceLocked(provenance string) bool {
+	for _, run := range f.state.runs {
+		if run.provenance == provenance {
+			return true
+		}
+	}
+
+	return false
 }
 
 // rateIntervalLocked resolves a run's effective dispatch gap: its explicit
@@ -374,71 +495,19 @@ func (f *Frontier) recordRateVisitLocked(provenance []byte, at time.Time) {
 	}
 }
 
-func (f *Frontier) run() {
-	for {
-		now := time.Now()
-		f.mu.Lock()
-		next, index, wait, due := f.nextDue(now)
-		var send chan crawljob.CrawlJob
-		if due {
-			send = f.jobs
-		}
-		closeJobs := f.closing && len(f.state.ready) == 0
-		f.mu.Unlock()
-
-		if closeJobs {
-			close(f.jobs)
-			return
-		}
-
-		var wakeup <-chan time.Time
-		var timer *time.Timer
-		if !due && wait > 0 {
-			timer = time.NewTimer(wait)
-			wakeup = timer.C
-		}
-
-		select {
-		case <-f.signal:
-		case <-wakeup:
-		case send <- next:
-			f.mu.Lock()
-			dispatchedAt := time.Now()
-			f.pace.Visited(next, dispatchedAt)
-			f.recordRateVisitLocked(next.Provenance, dispatchedAt)
-			f.acquireHost(next.URL)
-			f.state.ready = append(f.state.ready[:index], f.state.ready[index+1:]...)
-			f.mu.Unlock()
-		}
-
-		if timer != nil {
-			timer.Stop()
-		}
-	}
-}
-
-// nextDue picks the highest-value dispatchable job: among the ready jobs that
-// are unpaused, under their host's in-flight cap, and past their politeness
-// due time, the one the value scorer ranks best goes first (ties keep
-// submission order); with none due it reports how long until the soonest.
 func (f *Frontier) nextDue(now time.Time) (crawljob.CrawlJob, int, time.Duration, bool) {
 	var soonest time.Duration
 	bestIndex := -1
 	bestScore := 0.0
 	for i, job := range f.state.ready {
-		if f.isPausedLocked(job.Provenance) {
+		due, eligible := f.jobDueLocked(job, now)
+		if !eligible {
 			continue
-		}
-		if f.hostAtCapacity(job.URL) {
-			continue
-		}
-		due := f.pace.DueAt(job, now)
-		if rateDue, throttled := f.rateDueLocked(job.Provenance); throttled && rateDue.After(due) {
-			due = rateDue
 		}
 		wait := due.Sub(now)
 		if wait <= 0 {
-			if score := f.jobValueLocked(job); bestIndex < 0 || score > bestScore {
+			score := f.jobValueLocked(job)
+			if f.preferReadyJobLocked(job, score, bestIndex, bestScore) {
 				bestIndex, bestScore = i, score
 			}
 
@@ -455,90 +524,81 @@ func (f *Frontier) nextDue(now time.Time) (crawljob.CrawlJob, int, time.Duration
 	return crawljob.CrawlJob{}, 0, soonest, false
 }
 
-func (s *frontierState) seed(
-	ctx context.Context,
-	requests []yagocrawlcontract.CrawlRequest,
+func (f *Frontier) jobDueLocked(
+	job crawljob.CrawlJob,
+	now time.Time,
+) (time.Time, bool) {
+	if f.isPausedLocked(job.Provenance) || f.hostAtCapacity(job.URL) {
+		return time.Time{}, false
+	}
+	run := f.state.runs[job.RunID]
+	if run == nil || run.seeding {
+		return time.Time{}, false
+	}
+
+	return f.dispatchDueLocked(job, now), true
+}
+
+func (f *Frontier) dispatchDueLocked(job crawljob.CrawlJob, now time.Time) time.Time {
+	due := f.pace.DueAt(job, now)
+	if rateDue, throttled := f.rateDueLocked(job.Provenance); throttled && rateDue.After(due) {
+		due = rateDue
+	}
+
+	return due
+}
+
+func (f *Frontier) preferReadyJobLocked(
+	job crawljob.CrawlJob,
+	score float64,
+	bestIndex int,
+	bestScore float64,
+) bool {
+	if bestIndex < 0 {
+		return true
+	}
+	order := f.dispatchOrder[job.RunID]
+	bestOrder := f.dispatchOrder[f.state.ready[bestIndex].RunID]
+
+	return order < bestOrder || order == bestOrder && score > bestScore
+}
+
+func (s *frontierState) beginRun(
+	runID uuid.UUID,
 	provenance []byte,
 	profile crawladmission.AdmissionProfile,
 	finish func(succeeded bool),
-) (SeededRun, func()) {
-	runID := uuid.New()
-	s.runDedup(runID, profile)
-	s.completion.Begin(runID, finish)
-	queued := 0
-	for _, req := range requests {
-		if req.ProfileHandle != profile.Profile.Handle {
-			slog.WarnContext(ctx, msgSeedProfileMismatch,
-				slog.String("url", req.URL),
-				slog.String("seedProfileHandle", req.ProfileHandle),
-				slog.String("orderProfileHandle", profile.Profile.Handle),
-			)
-			continue
-		}
-		norm, ok := weburl.Normalize(req.URL)
-		if !ok {
-			slog.WarnContext(ctx, msgSeedURLRejected,
-				slog.String("url", req.URL),
-				slog.String("profileHandle", req.ProfileHandle),
-			)
-			continue
-		}
-		if s.accept(ctx, runID, frontierCandidate{
-			normURL:          norm,
-			depth:            req.Depth,
-			profileHandle:    req.ProfileHandle,
-			provenance:       provenance,
-			sourceModifiedAt: req.LastModified,
-		}) {
-			queued++
-		}
-	}
-	if finish, succeeded, drained := s.completion.Settle(runID); drained && finish != nil {
-		return SeededRun{RunID: runID, Queued: queued}, func() { finish(succeeded) }
-	}
-	return SeededRun{RunID: runID, Queued: queued}, nil
-}
-
-func (s *frontierState) submit(
-	ctx context.Context,
-	work crawljob.CrawlJob,
-	links crawljob.DiscoveredLinks,
 ) {
-	run, ok := s.runs[work.RunID]
-	if !ok {
-		slog.WarnContext(ctx, msgSubmitRunUnknown, slog.String("runId", work.RunID.String()))
-		return
+	s.runs[runID] = &crawlRun{
+		visited:       make(map[string]struct{}),
+		hostPages:     make(map[string]int),
+		pendingByHost: make(map[string]*pendingHostPages),
+		profiles: map[string]crawladmission.AdmissionProfile{
+			profile.Profile.Handle: profile,
+		},
+		provenance:      string(provenance),
+		provenanceValue: provenance,
+		seeding:         true,
 	}
-	compiled, ok := run.profiles[work.ProfileHandle]
-	if !ok {
-		slog.WarnContext(ctx, msgSubmitProfileUnknown,
-			slog.String("runId", work.RunID.String()),
-			slog.String("profileHandle", work.ProfileHandle),
-		)
-		return
-	}
-	if work.Depth >= compiled.Profile.MaxDepth {
-		return
-	}
-	for _, norm := range compiled.AdmitLinks(
-		work.URL,
-		links.ByPolicy(compiled.Profile.FollowNoFollowLinks),
-	) {
-		s.accept(ctx, work.RunID, frontierCandidate{
-			normURL:       norm,
-			depth:         work.Depth + 1,
-			profileHandle: work.ProfileHandle,
-			provenance:    work.Provenance,
-		})
-	}
+	s.completion.Begin(runID, finish)
 }
 
 type frontierCandidate struct {
 	normURL          string
+	host             string
 	depth            int
 	profileHandle    string
 	provenance       []byte
 	sourceModifiedAt time.Time
+	indexAllowed     bool
+}
+
+type pendingPage struct {
+	normURL          string
+	depth            int
+	profileHandle    string
+	sourceModifiedAt time.Time
+	indexAllowed     bool
 }
 
 func (s *frontierState) accept(
@@ -549,8 +609,15 @@ func (s *frontierState) accept(
 	if _, cancelled := s.cancelled[string(candidate.provenance)]; cancelled {
 		return false
 	}
-	host := weburl.Host(candidate.normURL)
-	run := s.runDedup(runID, crawladmission.AdmissionProfile{})
+	run, runKnown := s.runs[runID]
+	if !runKnown {
+		slog.WarnContext(ctx, msgAcceptProfileUnknown,
+			slog.String("url", candidate.normURL),
+			slog.String("profileHandle", candidate.profileHandle),
+		)
+
+		return false
+	}
 	profile, ok := run.profiles[candidate.profileHandle]
 	if !ok {
 		slog.WarnContext(ctx, msgAcceptProfileUnknown,
@@ -564,7 +631,7 @@ func (s *frontierState) accept(
 		return false
 	}
 	if profile.Profile.MaxPagesPerHost != yagocrawlcontract.UnlimitedPagesPerHost &&
-		run.hostPages[host] >= profile.Profile.MaxPagesPerHost {
+		run.hostPages[candidate.host] >= profile.Profile.MaxPagesPerHost {
 		return false
 	}
 	if s.maxPagesPerRun > 0 && run.pages >= s.maxPagesPerRun {
@@ -579,40 +646,9 @@ func (s *frontierState) accept(
 		return false
 	}
 	run.visited[candidate.normURL] = struct{}{}
-	run.hostPages[host]++
+	run.hostPages[candidate.host]++
 	run.pages++
 	s.completion.Track(runID)
-	s.ready = append(s.ready, crawljob.CrawlJob{
-		URL:                      candidate.normURL,
-		Depth:                    candidate.depth,
-		ProfileHandle:            candidate.profileHandle,
-		Provenance:               candidate.provenance,
-		RunID:                    runID,
-		Index:                    profile.IndexAllowed(candidate.normURL),
-		SourceModifiedAt:         candidate.sourceModifiedAt,
-		CrawlDelay:               profile.Profile.CrawlDelay,
-		IgnoreTLSAuthority:       profile.Profile.IgnoreTLSAuthority,
-		IgnoreRobots:             profile.Profile.IgnoreRobots,
-		DisableBrowser:           profile.Profile.DisableBrowser,
-		FollowNoFollowLinks:      profile.Profile.FollowNoFollowLinks,
-		NoindexCanonicalMismatch: profile.Profile.NoindexCanonicalMismatch,
-		Formats:                  profile.Profile.Formats,
-	})
+	s.ready = append(s.ready, candidateJob(runID, candidate, profile))
 	return true
-}
-
-func (s *frontierState) runDedup(id uuid.UUID, profile crawladmission.AdmissionProfile) *crawlRun {
-	run, ok := s.runs[id]
-	if !ok {
-		run = &crawlRun{
-			visited:   make(map[string]struct{}),
-			hostPages: make(map[string]int),
-			profiles:  make(map[string]crawladmission.AdmissionProfile),
-		}
-		s.runs[id] = run
-	}
-	if profile.Profile.Handle != "" {
-		run.profiles[profile.Profile.Handle] = profile
-	}
-	return run
 }

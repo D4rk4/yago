@@ -94,7 +94,10 @@ func purgeURLs(
 	}
 
 	result := Result{DocumentsDeleted: documentsDeleted}
+	var urlResult urlmeta.PurgeResult
 	err = v.Update(ctx, func(tx *vault.Txn) error {
+		result.PostingsDeleted = 0
+		result.URLsDeleted = 0
 		for _, url := range urls {
 			words, err := references.WordsReferencing(tx, url)
 			if err != nil {
@@ -111,7 +114,8 @@ func purgeURLs(
 			}
 		}
 
-		urlResult, err := evictor.Purge(ctx, tx, urls)
+		var err error
+		urlResult, err = evictor.Purge(ctx, tx, urls)
 		if err != nil {
 			return fmt.Errorf("purge urls: %w", err)
 		}
@@ -122,6 +126,7 @@ func purgeURLs(
 	if err != nil {
 		return Result{}, fmt.Errorf("purge batch: %w", err)
 	}
+	urlResult.ReportObserverFailures(ctx)
 
 	return result, nil
 }

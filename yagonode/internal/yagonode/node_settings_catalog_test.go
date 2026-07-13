@@ -26,14 +26,11 @@ func catalogRoundTripCases() map[string]catalogRoundTripCase {
 		"search.query.log": {"aggregate", func(c nodeConfig) bool {
 			return c.QueryLogMode == queryLogAggregate
 		}},
-		"web.fallback.privacy": {"enabled", func(c nodeConfig) bool {
-			return c.WebFallback.Privacy == webFallbackPrivacyEnabled
+		"web.fallback.privacy": {"always", func(c nodeConfig) bool {
+			return c.WebFallback.Privacy == webFallbackPrivacyAlways
 		}},
 		"web.fallback.backend": {"brave", func(c nodeConfig) bool {
 			return c.WebFallback.Backend == "brave"
-		}},
-		"web.fallback.trigger": {"parallel", func(c nodeConfig) bool {
-			return c.WebFallback.Trigger == webFallbackTriggerParallel
 		}},
 		"web.fallback.seed_crawl": {"true", func(c nodeConfig) bool {
 			return c.WebFallback.SeedCrawl
@@ -128,9 +125,6 @@ func TestExtendedSettingValidation(t *testing.T) {
 	if _, err := byKey["web.fallback.backend"].normalize("google"); err == nil {
 		t.Fatal("unsupported backend must fail")
 	}
-	if _, err := byKey["web.fallback.trigger"].normalize("later"); err == nil {
-		t.Fatal("unsupported trigger must fail")
-	}
 	if normalized, err := byKey["web.fallback.backend"].normalize(" DDG "); err != nil ||
 		normalized != "ddg" {
 		t.Fatalf("backend normalize = %q %v", normalized, err)
@@ -153,22 +147,26 @@ func TestExtendedSettingValidation(t *testing.T) {
 	if !byKey["peer.name"].restartRequired() {
 		t.Fatal("peer.name must require a restart")
 	}
-	if !byKey["web.fallback.trigger"].restartRequired() {
-		t.Fatal("web fallback trigger must require a restart")
+	if !byKey[settingKeyWebFallbackPrivacy].restartRequired() {
+		t.Fatal("web fallback mode must require a restart")
 	}
 }
 
-func TestWebFallbackTriggerDescribesParallelRetrieval(t *testing.T) {
-	definition := indexSettingDefinitions()["web.fallback.trigger"]
-	if !strings.Contains(definition.description, "alongside local and peer") {
+func TestWebFallbackAlwaysDescribesParallelRetrieval(t *testing.T) {
+	definitions := indexSettingDefinitions()
+	if _, found := definitions[settingKeyLegacyWebFallbackTrigger]; found {
+		t.Fatal("legacy timing setting remains visible")
+	}
+	definition := definitions[settingKeyWebFallbackPrivacy]
+	if !strings.Contains(definition.description, "alongside local and swarm") {
 		t.Fatalf("description = %q", definition.description)
 	}
 	for _, option := range definition.options {
-		if option.value == "parallel" && option.label == "Alongside local and peers" {
+		if option.value == "always" && option.label == "Always" {
 			return
 		}
 	}
-	t.Fatal("parallel option is missing")
+	t.Fatal("always option is missing")
 }
 
 func TestWebFallbackBackendDescribesHedgedExecution(t *testing.T) {

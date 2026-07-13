@@ -71,7 +71,7 @@ func (f *AdmissionFetcher) admit(ctx context.Context, target *url.URL) error {
 
 	addresses, err := f.resolver.LookupNetIP(ctx, "ip", host)
 	if err != nil {
-		return fmt.Errorf("resolve host %s: %w", err.Error(), pagefetch.ErrPageRejected)
+		return fmt.Errorf("resolve host: %w: %w", pagefetch.ErrPageRejected, err)
 	}
 	if len(addresses) == 0 {
 		return reject("empty resolution")
@@ -99,7 +99,9 @@ func (f *AdmissionFetcher) admit(ctx context.Context, target *url.URL) error {
 
 func (f *AdmissionFetcher) admitAddress(addr netip.Addr) error {
 	if err := f.guard.AdmitAddr(addr); err != nil {
-		return fmt.Errorf("%w: %w", err, pagefetch.ErrPageRejected)
+		return markPermanentAdmissionFailure(
+			fmt.Errorf("%w: %w", err, pagefetch.ErrPageRejected),
+		)
 	}
 	return nil
 }
@@ -119,5 +121,7 @@ func localHostName(host string) bool {
 }
 
 func reject(reason string) error {
-	return fmt.Errorf("%s: %w", reason, pagefetch.ErrPageRejected)
+	return markPermanentAdmissionFailure(
+		fmt.Errorf("%s: %w", reason, pagefetch.ErrPageRejected),
+	)
 }

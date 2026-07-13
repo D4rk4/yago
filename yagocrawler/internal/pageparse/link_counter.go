@@ -3,6 +3,10 @@ package pageparse
 import "github.com/D4rk4/yago/yagocrawler/internal/weburl"
 
 func ResolveLinks(base string, links []string) (local, external []string) {
+	return resolveLinks(base, links, 0)
+}
+
+func resolveLinks(base string, links []string, maximum int) (local, external []string) {
 	baseURL, ok := weburl.ParseBase(base)
 	if !ok {
 		return nil, nil
@@ -10,6 +14,9 @@ func ResolveLinks(base string, links []string) (local, external []string) {
 	local = make([]string, 0, len(links))
 	external = make([]string, 0, len(links))
 	for _, raw := range links {
+		if maximum > 0 && len(local)+len(external) == maximum {
+			break
+		}
 		resolved, ok := weburl.Resolve(baseURL, raw)
 		if !ok {
 			continue

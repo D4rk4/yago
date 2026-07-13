@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawler/internal/crawljob"
 	"github.com/D4rk4/yago/yagocrawler/internal/formatparse"
 	"github.com/D4rk4/yago/yagocrawler/internal/ingest"
@@ -20,7 +21,7 @@ import (
 )
 
 type Frontier interface {
-	Jobs() <-chan crawljob.CrawlJob
+	Take(context.Context) (crawljob.CrawlJob, bool)
 	Submit(ctx context.Context, work crawljob.CrawlJob, links crawljob.DiscoveredLinks)
 	Done(work crawljob.CrawlJob, deliveryFailed bool)
 	// ResolveRedirect checks a job's post-redirect final URL against the run's
@@ -37,6 +38,7 @@ const (
 	msgPageNoindex       = "crawl page noindex"
 	msgPageNofollow      = "crawl page nofollow"
 	msgRedirectDuplicate = "crawl redirect target already visited"
+	msgRedirectRejected  = "crawl redirect target rejected"
 )
 
 type Pipeline struct {
@@ -96,33 +98,27 @@ func (p *Pipeline) RunWorkers(acceptCtx, fetchCtx context.Context, workers int) 
 
 func (p *Pipeline) run(acceptCtx, fetchCtx context.Context) {
 	for {
-		select {
-		case <-acceptCtx.Done():
+		job, ok := p.frontier.Take(acceptCtx)
+		if !ok {
 			return
-		case job, ok := <-p.frontier.Jobs():
-			if !ok {
-				return
-			}
-			err := p.process(fetchCtx, job)
-			switch {
-			case err == nil:
-			case errors.Is(err, pagefetch.ErrPageRejected):
-				// Info, not debug: a rejected seed is the difference between
-				// a working crawl and a silently empty run.
-				slog.InfoContext(
-					fetchCtx,
-					msgPageRejected,
-					slog.String("url", job.URL),
-					slog.Any("reason", err),
-				)
-			default:
-				slog.WarnContext(
-					fetchCtx,
-					"crawl job failed",
-					slog.String("url", job.URL),
-					slog.Any("error", err),
-				)
-			}
+		}
+		err := p.process(fetchCtx, job)
+		switch {
+		case err == nil:
+		case errors.Is(err, pagefetch.ErrPageRejected):
+			slog.InfoContext(
+				fetchCtx,
+				msgPageRejected,
+				slog.String("url", job.URL),
+				slog.Any("reason", err),
+			)
+		default:
+			slog.WarnContext(
+				fetchCtx,
+				"crawl job failed",
+				slog.String("url", job.URL),
+				slog.Any("error", err),
+			)
 		}
 	}
 }
@@ -304,6 +300,11 @@ func (p *Pipeline) redirectAdmitted(ctx context.Context, job crawljob.CrawlJob, 
 	if !ok {
 		return true
 	}
+	if len(normFinal) > yagocrawlcontract.MaximumCrawlURLBytes {
+		slog.DebugContext(ctx, msgRedirectRejected, slog.String("finalUrl", final))
+
+		return false
+	}
 	normJob, ok := weburl.Normalize(job.URL)
 	if !ok || normFinal == normJob {
 		return true
@@ -388,7 +389,7 @@ func (p *Pipeline) indexAndEmit(
 	page pageparse.ParsedPage,
 	contentType string,
 ) (deliveryFailed bool, err error) {
-	stats := pageparse.BuildPageStats(page)
+	stats := pageindex.BuildPageStats(page)
 	artifacts, err := p.index.Build(page, stats)
 	if err != nil {
 		return false, fmt.Errorf("index: %w", err)

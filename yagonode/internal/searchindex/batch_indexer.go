@@ -42,17 +42,18 @@ func (b *BleveDiskIndex) IndexBatch(
 	}
 	b.mutationMu.Lock()
 	defer b.mutationMu.Unlock()
-	batches := make(map[bleve.Index]*bleve.Batch, len(b.shards))
+	batches := make([]*bleve.Batch, len(b.shards))
 	for _, doc := range docs {
 		id := documentID(doc)
 		if id == "" {
 			return fmt.Errorf("document id required")
 		}
-		shard := diskShard(b.shards, id)
-		batch, ok := batches[shard]
-		if !ok {
+		shardNumber := diskShardNumber(b.shards, id)
+		shard := b.shards[shardNumber]
+		batch := batches[shardNumber]
+		if batch == nil {
 			batch = shard.NewBatch()
-			batches[shard] = batch
+			batches[shardNumber] = batch
 		}
 		indexed, err := bleveDocumentFromStore(doc)
 		if err != nil {
@@ -62,10 +63,8 @@ func (b *BleveDiskIndex) IndexBatch(
 			return fmt.Errorf("stage document: %w", err)
 		}
 	}
-	for shard, batch := range batches {
-		if err := shard.Batch(batch); err != nil {
-			return fmt.Errorf("index batch: %w", err)
-		}
+	if err := commitBleveShardBatches(b.shards, batches); err != nil {
+		return err
 	}
 	b.markUpdated()
 

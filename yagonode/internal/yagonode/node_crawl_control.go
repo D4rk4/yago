@@ -15,6 +15,7 @@ import (
 var (
 	errUnknownCrawlRun    = errors.New("unknown crawl run")
 	errUnknownCrawlAction = errors.New("unknown crawl control action")
+	errCrawlWorkerOffline = errors.New("crawl worker is offline")
 )
 
 // crawlControlRegistry returns the broker's control registry when the runtime is a
@@ -36,8 +37,12 @@ func crawlControlRegistry(runtime crawlProcess) *crawlbroker.ControlRegistry {
 // run registry and enqueues on the broker's control registry.
 type crawlControlSource struct {
 	runs      *crawlruns.Registry
-	control   *crawlbroker.ControlRegistry
+	control   crawlControlDispatcher
 	restarter crawlRestarter
+}
+
+type crawlControlDispatcher interface {
+	Enqueue(string, yagocrawlcontract.CrawlControlDirective) bool
 }
 
 // crawlRestartSource wraps a dispatcher as a restarter, keeping a nil
@@ -58,7 +63,7 @@ type crawlRestarter interface {
 
 func newCrawlControlSource(
 	runs *crawlruns.Registry,
-	control *crawlbroker.ControlRegistry,
+	control crawlControlDispatcher,
 	restarter crawlRestarter,
 ) *crawlControlSource {
 	return &crawlControlSource{runs: runs, control: control, restarter: restarter}
@@ -80,11 +85,13 @@ func (s *crawlControlSource) Control(ctx context.Context, req adminui.CrawlContr
 		return fmt.Errorf("%w: %q", errUnknownCrawlRun, req.RunID)
 	}
 
-	s.control.Enqueue(worker, yagocrawlcontract.CrawlControlDirective{
+	if !s.control.Enqueue(worker, yagocrawlcontract.CrawlControlDirective{
 		Kind:           kind,
 		RunID:          req.RunID,
 		PagesPerMinute: req.PagesPerMinute,
-	})
+	}) {
+		return fmt.Errorf("%w: %q", errCrawlWorkerOffline, worker)
+	}
 	if kind == yagocrawlcontract.CrawlControlSetRate {
 		s.runs.SetRate(req.RunID, req.PagesPerMinute)
 	}

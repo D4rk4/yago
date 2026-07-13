@@ -52,11 +52,22 @@ func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery
 			admitted = append(admitted, delivery)
 		}
 	}
+	admitted = coalesceIngestDeliveries(admitted)
+	admitted = c.beginObservations(ctx, admitted)
 
-	withDocs := make([]IngestDelivery, 0, len(admitted))
-	docs := make([]documentstore.Document, 0, len(admitted))
-	tail := make([]IngestDelivery, 0, len(admitted))
+	regular := make([]IngestDelivery, 0, len(admitted))
 	for _, delivery := range admitted {
+		if delivery.Batch.Removed {
+			c.purgeRemoval(ctx, delivery)
+			continue
+		}
+		regular = append(regular, delivery)
+	}
+
+	withDocs := make([]IngestDelivery, 0, len(regular))
+	docs := make([]documentstore.Document, 0, len(regular))
+	tail := make([]IngestDelivery, 0, len(regular))
+	for _, delivery := range regular {
 		batch := delivery.Batch
 		if c.documents == nil || !hasDocument(batch.Document) {
 			tail = append(tail, delivery)
@@ -129,6 +140,9 @@ func (c *IngestConsumer) absorbTailGroup(ctx context.Context, group []IngestDeli
 	}
 
 	c.recordFetchGroup(ctx, group)
+	if !c.completeObservations(ctx, group) {
+		return
+	}
 	for _, delivery := range group {
 		c.finishAbsorbed(ctx, delivery)
 	}

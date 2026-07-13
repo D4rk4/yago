@@ -22,10 +22,9 @@ targets evergreen browsers and assumes a modern JavaScript runtime, so serving t
 public portal as the same React SPA would break the legacy-browser and
 no-JavaScript requirement.
 
-The portal always searches local and peer sources. When the operator sets web
-privacy to `enabled`, the start trigger chooses whether external search follows a
-true miss or runs alongside local and peer retrieval. `explicit` does not grant
-the anonymous portal request-level consent.
+The portal always searches local and peer sources. Web mode `enabled` adds
+external search after a true miss, while `always` runs it alongside local and peer
+retrieval. `explicit` does not grant the anonymous portal request-level consent.
 
 ## Decision
 
@@ -58,5 +57,5 @@ the portal cannot lean on the full `@carbon/react` component set, so some
 components are hand-authored against Carbon tokens or chosen for their graceful
 degradation. This is the cost of the legacy-browser and no-JavaScript guarantees.
 Keeping the portal search-only and admin-free bounds its attack surface. The
-operator's web privacy mode controls whether a query can leave the node, and the
-separate start trigger chooses miss-only or parallel retrieval.
+operator's web fallback mode controls whether a query can leave the node and
+whether it runs after a miss or alongside local and peer retrieval.

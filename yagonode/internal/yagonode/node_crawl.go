@@ -57,6 +57,10 @@ func buildCrawlRuntime(
 	if err != nil {
 		return nil, fmt.Errorf("open crawl broker: %w", err)
 	}
+	observationHistory, err := crawlresults.OpenURLObservationHistory(storageVault)
+	if err != nil {
+		return nil, fmt.Errorf("open crawl observation history: %w", err)
+	}
 
 	frontier, err := recrawlfrontier.Open(storageVault)
 	if err != nil {
@@ -74,6 +78,7 @@ func buildCrawlRuntime(
 		storage.urlReceiver,
 		storage.postingReceiver,
 	)
+	consumer.OrderObservations(observationHistory)
 	consumer.RecordFetches(frontier)
 	consumer.CheckOwnership(frontier)
 	consumer.TrackContentClusters(storage.contentClusters)

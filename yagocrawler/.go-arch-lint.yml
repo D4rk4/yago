@@ -179,6 +179,8 @@ deps:
   urltrap:
     mayDependOn:
       - urltrap
+    canUse:
+      - yagomodel
   frontier:
     mayDependOn:
       - frontier

@@ -132,7 +132,10 @@ func (d urlDirectory) Purge(
 		if !deleted {
 			continue
 		}
-		d.observers.purged(ctx, tx, hash)
+		result.observerFailures = append(
+			result.observerFailures,
+			d.observers.purged(tx, hash)...,
+		)
 		result.URLsDeleted++
 	}
 

@@ -4,14 +4,14 @@ Date: 2026-07-03
 
 ## Status
 
-Accepted
+Accepted; delivery semantics amended by [ADR-0017](0017-crawl-order-lease-delivery.md)
 
 Supersedes [ADR-0007](0007-use-nats-jetstream-for-node-crawler-queue.md)
 
 ## Context
 
-The node and the disposable crawl service exchange two one-way flows: crawl orders down to
-crawlers, ingest batches back up. ADR-0007 stood a NATS JetStream broker in that seam. In
+The node and the disposable crawl service exchange crawl orders, order settlement and
+heartbeats, progress, and ingest batches. ADR-0007 stood a NATS JetStream broker in that seam. In
 practice the broker was a third always-on process to run, secure, and reason about on
 Pi-class hardware, and it duplicated durability the node already owns: the node has an
 embedded transactional store (ADR-0010) that survives restarts. Running a separate durable
@@ -19,10 +19,9 @@ log beside a durable node is redundant operational surface.
 
 The seam's committed properties still hold and must be preserved:
 
-- **Two one-way flows** with no reply addressing.
-- **Fan-in**: many crawlers feed one node; orders fan back out without per-instance addressing.
-- **Backpressure, not acknowledgement**: a saturated node slows the crawler rather than
-  dropping ingest.
+- **Fan-in**: many registered crawlers feed one node and share its durable order queue.
+- **Explicit settlement**: leased orders remain durable until ACK, NAK, expiry, or startup reclaim.
+- **Backpressure**: a saturated node slows the submitting crawler rather than dropping ingest.
 - **Independent lifecycles**: crawlers are disposable; queued orders survive a node restart.
 - **One swap point**: the node keeps the `CrawlOrderQueue` and ingest-stream ports the inner
   packages consume; only the edge adapter changes.
@@ -30,18 +29,22 @@ The seam's committed properties still hold and must be preserved:
 ## Decision
 
 Make the node the server and the crawler the client, speaking one gRPC service,
-`CrawlExchange`, defined in the shared contract module and generated into `crawlrpc`. It has
-two methods: `StreamOrders` (server-streaming) delivers claimed orders to a crawler as they
-arrive; `SubmitIngest` (unary) hands one batch to the node and blocks until the node absorbs
-it. Both payloads wrap the existing JSON codecs as opaque `bytes`, so the wire contract for
-order and ingest bodies is unchanged.
+`CrawlExchange`, defined in the shared contract module and generated into `crawlrpc`.
+`StreamOrders` registers a worker and server-streams leased orders; `AckOrder` settles or
+requeues one lease; `Heartbeat` renews a worker's leases and carries control directives;
+`ReportProgress` updates run tallies; and unary `SubmitIngest` hands one batch to the node
+and waits until the node absorbs it. Order and ingest payloads wrap the existing JSON codecs
+as opaque `bytes`.
 
-Durability moves into the node. Orders are enqueued in a FIFO backed by the node's store, keyed
-by a monotonic sequence, and deleted only once streamed to a worker; a queued order therefore
-survives a node restart. Backpressure is the unary call itself: `SubmitIngest` blocks until the
-ingest consumer takes the batch and returns `ResourceExhausted` when the pipeline is saturated,
-on which the crawler retries. Internal control-plane traffic uses insecure transport credentials
-on a private network.
+Durability moves into the node. Orders are enqueued in a FIFO backed by the node's store,
+keyed by a monotonic sequence, and move into durable worker leases when streamed. An ACK
+deletes the order; a NAK, deadline expiry, or node startup returns it to the FIFO. Backpressure
+is the unary ingest call itself: temporary pipeline or storage saturation returns
+`Unavailable`, which the crawler retries with a jittered exponential delay. Ingest JSON is
+bounded below the 4 MiB gRPC message ceiling. The crawler also retries `ResourceExhausted`
+from older nodes that used it for application saturation; the current crawler fits the
+payload before either retry path can run. Internal control-plane traffic uses insecure
+transport credentials on a private network.
 
 ## Considered alternatives
 
@@ -63,8 +66,7 @@ removes, with no offsetting simplicity once the queue already lives in the node.
 The crawler no longer needs a broker address; it dials the node's crawl RPC endpoint
 (`YAGOCRAWLER_NODE_RPC_ADDR`), and the node listens on `YAGO_CRAWL_RPC_ADDR`. gRPC and protobuf
 become runtime dependencies of the node, the crawler, and the contract module; NATS is dropped
-from all three. Order delivery is now at-most-once from the crawler's view: the node forgets an
-order once streamed, so an order in flight when a crawler dies is not redelivered, where
-JetStream would have re-queued it. Ingest keeps its at-least-once guarantee through the blocking
-call and crawler-side retry. The queue seam is unchanged, so pipeline stages, the ingest
-consumer, and the crawl-dispatch endpoint are untouched.
+from all three. ADR-0017 makes order delivery at-least-once through durable leases and worker
+heartbeats. Ingest keeps its at-least-once guarantee through the blocking call, durable
+observation ordering, and crawler-side retry. The queue seam is unchanged, so pipeline stages,
+the ingest consumer, and the crawl-dispatch endpoint are untouched.

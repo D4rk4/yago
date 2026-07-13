@@ -14,6 +14,7 @@ func (d postingDirectory) ConfirmOutbound(
 ) (int, error) {
 	confirmed := 0
 	err := d.vault.Update(ctx, func(tx *vault.Txn) error {
+		confirmed = 0
 		for _, posting := range postings {
 			if err := ctx.Err(); err != nil {
 				return fmt.Errorf("context: %w", err)
@@ -43,6 +44,7 @@ func (d postingDirectory) ConfirmOutbound(
 func (d postingDirectory) RecoverOutbound(ctx context.Context) (int, error) {
 	recovered := 0
 	err := d.vault.Update(ctx, func(tx *vault.Txn) error {
+		recovered = 0
 		pending, err := d.pendingOutboundSelections(ctx, tx)
 		if err != nil {
 			return err

@@ -39,9 +39,6 @@ func (r *ControlRegistry) register(workerID string) {
 	r.workers[workerID]++
 }
 
-// unregister drops one of a worker's order-stream connections and reports
-// whether it was the worker's last one — the moment its still-held leases are
-// safe to reclaim without racing another live stream for the same id.
 func (r *ControlRegistry) unregister(workerID string) bool {
 	if workerID == "" {
 		return false
@@ -52,6 +49,7 @@ func (r *ControlRegistry) unregister(workerID string) bool {
 
 	if r.workers[workerID] <= 1 {
 		delete(r.workers, workerID)
+		delete(r.pending, workerID)
 
 		return true
 	}
@@ -82,15 +80,20 @@ func (r *ControlRegistry) RestartWorkers() int {
 func (r *ControlRegistry) Enqueue(
 	workerID string,
 	directive yagocrawlcontract.CrawlControlDirective,
-) {
+) bool {
 	if workerID == "" {
-		return
+		return false
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.workers[workerID] == 0 {
+		return false
+	}
 
 	r.pending[workerID] = append(r.pending[workerID], directive)
+
+	return true
 }
 
 // drain returns and clears the directives queued for a worker.

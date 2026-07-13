@@ -2,7 +2,9 @@ package ingest
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawler/internal/boundedqueue"
@@ -53,6 +55,8 @@ func (e *batchEmitter) Emit(
 		SourceURL:     envelope.SourceURL,
 		Provenance:    envelope.Provenance,
 		ProfileHandle: envelope.ProfileHandle,
+		ObservationID: rand.Text(),
+		ObservedAt:    ingestObservationTime(document.FetchedAt),
 		Document:      document,
 		Postings:      postings,
 		Metadata:      []yagomodel.URIMetadataRow{metadata},
@@ -73,10 +77,20 @@ func (e *batchEmitter) EmitRemoval(
 		SourceURL:     sourceURL,
 		Provenance:    provenance,
 		ProfileHandle: profileHandle,
+		ObservationID: rand.Text(),
+		ObservedAt:    time.Now().UTC(),
 		Removed:       true,
 	}
 	if err := e.queue.Publish(ctx, batch); err != nil {
 		return fmt.Errorf("publish removal batch %s: %w", sourceURL, err)
 	}
 	return nil
+}
+
+func ingestObservationTime(fetchedAt time.Time) time.Time {
+	if !fetchedAt.IsZero() {
+		return fetchedAt.UTC()
+	}
+
+	return time.Now().UTC()
 }

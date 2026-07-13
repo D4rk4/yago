@@ -94,7 +94,10 @@ func TestAcceptEmitsPeriodicRunningReports(t *testing.T) {
 	// report proves the periodic ticker fired while the run was in flight.
 	waitForRunning(t, progress, 2)
 
-	job := <-f.Jobs()
+	job, ok := f.Take(t.Context())
+	if !ok {
+		t.Fatal("frontier closed before progress job")
+	}
 	f.Done(job, false)
 	waitCallback(t, acked)
 

@@ -13,12 +13,14 @@ package urltrap
 import (
 	"net/url"
 	"strings"
+
+	"github.com/D4rk4/yago/yagomodel"
 )
 
 const (
 	// maxURLLength refuses URLs longer than a browser or server would normally
 	// emit; recursion traps grow the URL without bound.
-	maxURLLength = 2048
+	maxURLLength = yagomodel.MaximumURLIdentityBytes
 	// maxPathSegments refuses pathologically deep paths; real sites rarely nest
 	// beyond a handful of segments while a recursion trap deepens indefinitely.
 	maxPathSegments = 24

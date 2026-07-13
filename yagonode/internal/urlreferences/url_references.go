@@ -53,6 +53,11 @@ func (r *urlReferences) PostingPurged(tx *vault.Txn, word, url yagomodel.Hash) e
 		return err
 	}
 	if len(remaining) > 0 {
+		if !r.referenced.Contains(tx, vault.Key(url)) {
+			if err := r.referenced.Put(tx, vault.Key(url), struct{}{}); err != nil {
+				return fmt.Errorf("restore referenced url: %w", err)
+			}
+		}
 		return nil
 	}
 	if _, err := r.referenced.Delete(tx, vault.Key(url)); err != nil {

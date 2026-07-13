@@ -10,6 +10,7 @@ import (
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 	"github.com/D4rk4/yago/yagocrawler/internal/botwall"
 	"github.com/D4rk4/yago/yagocrawler/internal/crawldelay"
@@ -29,7 +30,13 @@ import (
 )
 
 var newCrawlerExchange = func(addr string) (crawlrpc.CrawlExchangeClient, io.Closer, error) {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(
+		addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(
+			yagocrawlcontract.MaximumIngestMessageBytes,
+		)),
+	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("new crawl exchange client: %w", err)
 	}
@@ -72,13 +79,7 @@ func buildFetchChains(
 	source pagefetch.PageSource,
 	metrics *crawlermetrics.Metrics,
 ) (fetchChains, error) {
-	slowSource := botwall.NewBotWallScreeningFetcher(
-		pagefetch.NewBrowserCircuitBreaker(
-			source,
-			crawl.BrowserFailureThreshold,
-			pagefetch.DefaultBrowserBreakerCooldown,
-		),
-	)
+	slowSource := botwall.NewBotWallScreeningFetcher(source)
 	fastSource := botwall.NewBotWallScreeningFetcher(
 		newCrawlerHTTPPageFetcher(client, crawl.UserAgent, crawl.MaxBodyBytes).
 			WithHTTP1Fallback(newHTTP1EgressClient(guard, crawl, nil)),

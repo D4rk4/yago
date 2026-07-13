@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 	"github.com/D4rk4/yago/yagocrawler/internal/crawldelay"
+	"github.com/D4rk4/yago/yagocrawler/internal/crawlermetrics"
 	"github.com/D4rk4/yago/yagocrawler/internal/httpfetch"
 	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yagocrawler/internal/publicweb"
@@ -28,6 +30,14 @@ type fakeExchange struct {
 	ingested  chan *crawlrpc.IngestBatchMessage
 	progress  chan *crawlrpc.CrawlProgressReport
 	streamErr error
+}
+
+type crawlerRobotsRoundTrip func(*http.Request) (*http.Response, error)
+
+func (transport crawlerRobotsRoundTrip) RoundTrip(
+	request *http.Request,
+) (*http.Response, error) {
+	return transport(request)
 }
 
 func (f *fakeExchange) StreamOrders(
@@ -128,12 +138,99 @@ func stubExchange(t *testing.T, exchange *fakeExchange) {
 	}
 }
 
+func TestFetchChainsLeaveBrowserFailureIsolationToThePool(t *testing.T) {
+	restoreAssemblySeams(t)
+	newCrawlerPublicWebAdmissionFetcher = func(
+		inner pagefetch.PageSource,
+		_ publicweb.Resolver,
+		_ yagoegress.Guard,
+	) pagefetch.PageSource {
+		return inner
+	}
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "retry through browser", http.StatusForbidden)
+	}))
+	defer origin.Close()
+
+	crawl := DefaultCrawlConfig()
+	crawl.BrowserFailureThreshold = 2
+	calls := 0
+	slow := pageSourceFunc(func(
+		_ context.Context,
+		target *url.URL,
+	) (pagefetch.FetchedPage, error) {
+		calls++
+		if calls <= crawl.BrowserFailureThreshold {
+			return pagefetch.FetchedPage{}, errors.New("browser slot failed")
+		}
+
+		return pagefetch.FetchedPage{
+			URL:         target,
+			ContentType: "text/html",
+			Body:        []byte("<html><body>browser pool recovered</body></html>"),
+		}, nil
+	})
+	chains, err := buildFetchChains(
+		yagoegress.NewGuard(true),
+		origin.Client(),
+		crawl,
+		slow,
+		crawlermetrics.New(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := url.Parse(origin.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range crawl.BrowserFailureThreshold {
+		if _, err := chains.verifyingDirect.Fetch(t.Context(), target); err == nil {
+			t.Fatal("browser slot failure was not returned")
+		}
+	}
+	page, err := chains.verifyingDirect.Fetch(t.Context(), target)
+	if err != nil {
+		t.Fatalf("browser pool recovery: %v", err)
+	}
+	if calls != crawl.BrowserFailureThreshold+1 || len(page.Body) == 0 {
+		t.Fatalf("browser calls/body = %d/%q", calls, page.Body)
+	}
+}
+
 // serveViaSlowSource points the fast fetcher at a real HTTP client (which the
 // egress guard refuses for the loopback origin) and strips the public-web
 // admission layer, so page content is served by the fallback `source` handed to
 // RunService — letting a test drive deterministic page bodies in-process.
 func serveViaSlowSource(t *testing.T) {
 	t.Helper()
+	newCrawlerRobotsAdmissionFetcher = func(
+		inner pagefetch.PageSource,
+		_ *http.Client,
+		userAgent string,
+		hostCacheSize int,
+		options ...robots.Option,
+	) (*robots.RobotsAdmissionFetcher, error) {
+		client := &http.Client{Transport: crawlerRobotsRoundTrip(
+			func(request *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body: io.NopCloser(strings.NewReader(
+						"User-agent: *\nAllow: /\n",
+					)),
+					Request: request,
+				}, nil
+			},
+		)}
+
+		return robots.NewRobotsAdmissionFetcher(
+			inner,
+			client,
+			userAgent,
+			hostCacheSize,
+			options...,
+		)
+	}
 	newCrawlerHTTPPageFetcher = func(*http.Client, string, int64) *httpfetch.PageFetcher {
 		return httpfetch.NewPageFetcher(http.DefaultClient, "", 0)
 	}
@@ -148,16 +245,7 @@ func serveViaSlowSource(t *testing.T) {
 
 func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
 	restoreAssemblySeams(t)
-	newCrawlerHTTPPageFetcher = func(*http.Client, string, int64) *httpfetch.PageFetcher {
-		return httpfetch.NewPageFetcher(http.DefaultClient, "", 0)
-	}
-	newCrawlerPublicWebAdmissionFetcher = func(
-		inner pagefetch.PageSource,
-		_ publicweb.Resolver,
-		_ yagoegress.Guard,
-	) pagefetch.PageSource {
-		return inner
-	}
+	serveViaSlowSource(t)
 
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "fast client forbidden", http.StatusForbidden)

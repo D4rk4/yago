@@ -41,8 +41,23 @@ func (s *exchangeServer) StreamOrders(
 ) error {
 	ctx := stream.Context()
 	workerID := reg.GetWorkerId()
+	if workerID == "" {
+		return status.Error(codes.InvalidArgument, "empty worker id")
+	}
 	s.control.register(workerID)
-	defer s.releaseWorker(ctx, workerID)
+	defer s.releaseWorker(workerID)
+	leasedOrders, err := s.queue.leasedOrdersForWorker(ctx, workerID)
+	if err != nil {
+		return err
+	}
+	for _, leasedOrder := range leasedOrders {
+		if err := stream.Send(&crawlrpc.CrawlOrderMessage{
+			OrderJson: leasedOrder.OrderData,
+			LeaseId:   leasedOrder.LeaseID,
+		}); err != nil {
+			return fmt.Errorf("send crawl order: %w", err)
+		}
+	}
 	for {
 		data, leaseID, err := s.queue.leaseNext(ctx, workerID)
 		if err != nil {
@@ -51,23 +66,13 @@ func (s *exchangeServer) StreamOrders(
 		if err := stream.Send(
 			&crawlrpc.CrawlOrderMessage{OrderJson: data, LeaseId: leaseID},
 		); err != nil {
-			_ = s.queue.requeueLease(context.WithoutCancel(ctx), leaseID)
-
 			return fmt.Errorf("send crawl order: %w", err)
 		}
 	}
 }
 
-// releaseWorker drops the worker's stream registration when StreamOrders exits
-// and, if that was its last stream, returns the orders it still holds to the
-// queue so a crawler that disconnected mid-batch is fed again on reconnect
-// rather than only after a node restart (issue #230). The stream context is
-// already cancelled on disconnect, so the requeue runs detached from it.
-func (s *exchangeServer) releaseWorker(ctx context.Context, workerID string) {
-	if !s.control.unregister(workerID) {
-		return
-	}
-	_ = s.queue.requeueWorkerLeases(context.WithoutCancel(ctx), workerID)
+func (s *exchangeServer) releaseWorker(workerID string) {
+	s.control.unregister(workerID)
 }
 
 func (s *exchangeServer) AckOrder(
@@ -93,12 +98,16 @@ func (s *exchangeServer) Heartbeat(
 	ctx context.Context,
 	req *crawlrpc.WorkerHeartbeat,
 ) (*crawlrpc.WorkerHeartbeatResult, error) {
-	if err := s.queue.heartbeat(ctx, req.GetWorkerId()); err != nil {
+	workerID := req.GetWorkerId()
+	if workerID == "" {
+		return nil, status.Error(codes.InvalidArgument, "empty worker id")
+	}
+	if err := s.queue.heartbeat(ctx, workerID); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &crawlrpc.WorkerHeartbeatResult{
-		Directives: directivesToProto(s.control.drain(req.GetWorkerId())),
+		Directives: directivesToProto(s.control.drain(workerID)),
 	}, nil
 }
 
@@ -135,7 +144,7 @@ func (s *exchangeServer) SubmitIngest(
 	select {
 	case absorbErr := <-result:
 		if absorbErr != nil {
-			return nil, status.Error(codes.ResourceExhausted, absorbErr.Error())
+			return nil, status.Error(codes.Unavailable, absorbErr.Error())
 		}
 
 		return &crawlrpc.IngestAck{}, nil

@@ -6,15 +6,13 @@ import (
 	"time"
 )
 
-// webFallbackPrivacy governs whether a search query may be sent to the external
-// web-search provider. Disabled never sends a query; explicit sends only when the
-// request opts in; enabled sends on any local miss.
 type webFallbackPrivacy string
 
 const (
 	webFallbackPrivacyDisabled webFallbackPrivacy = "disabled"
 	webFallbackPrivacyExplicit webFallbackPrivacy = "explicit"
 	webFallbackPrivacyEnabled  webFallbackPrivacy = "enabled"
+	webFallbackPrivacyAlways   webFallbackPrivacy = "always"
 )
 
 const (
@@ -79,7 +77,10 @@ func loadWebFallbackPrivacy(
 	}
 
 	switch webFallbackPrivacy(raw) {
-	case webFallbackPrivacyDisabled, webFallbackPrivacyExplicit, webFallbackPrivacyEnabled:
+	case webFallbackPrivacyDisabled,
+		webFallbackPrivacyExplicit,
+		webFallbackPrivacyEnabled,
+		webFallbackPrivacyAlways:
 		return webFallbackPrivacy(raw), nil
 	default:
 		return "", fmt.Errorf("%s: unknown mode %q", envWebFallbackPrivacy, raw)

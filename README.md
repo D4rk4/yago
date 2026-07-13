@@ -50,8 +50,9 @@ its binaries (`yago-node`, `yagocrawler`).
 
 - Local index (sharded [Bleve](https://blevesearch.com/)) + federated swarm
   fan-out + optional operator-enabled web search. The provider is off by default,
-  local-only requests never reach it, and the operator chooses miss-only or
-  parallel local/peer/web retrieval. Results are merged with **reciprocal-rank
+  local-only requests never reach it, and the single **Web search fallback
+  (DDGS)** mode selector chooses consent-only, miss-only, or always-parallel
+  local/peer/web retrieval. Results are merged with **reciprocal-rank
   fusion** and **MMR result diversity**.
 - **[YagoRank](yagonode/doc/yagorank.md)** — strict and relaxed fielded BM25,
   bounded lexical evidence and RM3, deterministic peer RRF, persistent date,
@@ -88,8 +89,8 @@ its binaries (`yago-node`, `yagocrawler`).
   ODT/ODS/ODP, RTF, EPUB, plain text/CSV/Markdown — parsed with stdlib-first
   parsers and validated against real files.
 - **Two-tier fetching**: fast HTTP first, headless-browser fallback (headless
-  Firefox over Marionette, one long-lived process) for bot-walled and
-  JavaScript-rendered pages, both behind a dial-time SSRF egress guard;
+  Firefox over Marionette, a lazy pool of at most two long-lived processes) for
+  bot-walled and JavaScript-rendered pages, both behind a dial-time SSRF egress guard;
   per-profile toggles for robots, TLS authority, and browser use.
 - **Legacy-web text correctness**: browser-compatible charset decoding handles
   Windows-1251 and other WHATWG encodings, while bounded content-language
@@ -226,7 +227,7 @@ peer identity on first run. The variables you are most likely to touch:
 | `YAGO_SEEDLIST_URLS` | example list | YaCy seedlists to bootstrap the swarm from |
 | `YAGO_PUBLIC_ADDR` | `:8080` | public listener; `off` runs a pure peer node |
 | `YAGO_PUBLIC_SEARCH_UI_ENABLED` | `false` | serve the portal at the public root |
-| `YAGO_CRAWL_RPC_ADDR` | empty | set (e.g. `:9091`) to enable the crawler integration |
+| `YAGO_CRAWL_RPC_ADDR` | `127.0.0.1:9091` | crawler integration listener; `off` disables it and `:9091` admits remote workers |
 | `YAGO_STORAGE_QUOTA` | `1GB` | storage cap; eviction keeps the node inside it |
 
 The full reference — every variable and its default — is

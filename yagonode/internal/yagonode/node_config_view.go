@@ -49,15 +49,8 @@ func buildConfigView(config nodeConfig) adminui.ConfigView {
 			{Name: "Search API key", Value: redactedSecret(config.SearchAPIKey)},
 			{Name: "Public search portal", Value: enabledDisabled(config.PublicSearchUIEnabled)},
 			{
-				Name: "Web fallback",
-				Value: enabledDisabled(
-					config.WebFallback.Privacy == webFallbackPrivacyExplicit ||
-						config.WebFallback.Privacy == webFallbackPrivacyEnabled,
-				),
-			},
-			{
-				Name:  "Web search timing",
-				Value: webFallbackTriggerDisplay(config.WebFallback.Trigger),
+				Name:  "Web fallback",
+				Value: webFallbackPrivacyDisplay(effectiveWebFallbackPrivacy(config.WebFallback)),
 			},
 		}},
 		{Title: "Network policy", Settings: []adminui.ConfigSetting{
@@ -79,12 +72,17 @@ func buildConfigView(config nodeConfig) adminui.ConfigView {
 	}}
 }
 
-func webFallbackTriggerDisplay(trigger webFallbackTrigger) string {
-	if effectiveWebFallbackTrigger(trigger) == webFallbackTriggerParallel {
-		return "Alongside local and peers"
+func webFallbackPrivacyDisplay(privacy webFallbackPrivacy) string {
+	switch privacy {
+	case webFallbackPrivacyExplicit:
+		return "Only when requested"
+	case webFallbackPrivacyEnabled:
+		return "Enabled on search miss"
+	case webFallbackPrivacyAlways:
+		return "Always"
+	default:
+		return "Disabled"
 	}
-
-	return "After local and peer miss"
 }
 
 func publicListenerDisplay(addr string) string {

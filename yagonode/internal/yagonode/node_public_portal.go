@@ -74,7 +74,7 @@ func resultFaviconURL(result searchcore.Result) string {
 func resultProvenance(result searchcore.Result) string {
 	switch {
 	case result.FromWeb():
-		return "web"
+		return string(searchcore.SourceWeb)
 	case result.FromPeer():
 		return "peer"
 	default:
@@ -120,7 +120,7 @@ func (s portalSource) Search(
 	for index, result := range response.Results {
 		provenance := resultProvenance(result)
 		switch provenance {
-		case "web":
+		case string(searchcore.SourceWeb):
 			out.WebCount++
 		case "peer":
 			out.PeerCount++

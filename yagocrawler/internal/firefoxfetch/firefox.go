@@ -24,6 +24,8 @@ var firefoxStartupTimeout = 45 * time.Second
 // dependency.
 var firefoxBinaries = []string{"firefox-esr", "firefox"}
 
+var createFirefoxProfile = writeFirefoxProfile
+
 // firefoxSession is one long-lived headless Firefox process and its Marionette
 // session. The manager keeps a single session for the crawler's lifetime and
 // drives every page through it; a broken session is closed and replaced.
@@ -38,7 +40,14 @@ type firefoxSession struct {
 // WebDriver session, and arms the page-load timeout. Every failure path kills
 // the process and removes the throwaway profile so a failed launch leaks
 // neither a process nor a temp directory.
-func launchFirefox(launch BrowserLaunch, proxyURL string) (*firefoxSession, error) {
+func launchFirefox(
+	ctx context.Context,
+	launch BrowserLaunch,
+	proxyURL string,
+) (*firefoxSession, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("launch firefox: %w", err)
+	}
 	binary, err := firefoxBinary(launch.ExecPath)
 	if err != nil {
 		return nil, err
@@ -47,7 +56,7 @@ func launchFirefox(launch BrowserLaunch, proxyURL string) (*firefoxSession, erro
 	if err != nil {
 		return nil, fmt.Errorf("reserve marionette port: %w", err)
 	}
-	profile, err := writeFirefoxProfile(firefoxProfile{
+	profile, err := createFirefoxProfile(firefoxProfile{
 		MarionettePort: port,
 		ProxyURL:       proxyURL,
 		UserAgent:      launch.UserAgent,
@@ -55,6 +64,11 @@ func launchFirefox(launch BrowserLaunch, proxyURL string) (*firefoxSession, erro
 	})
 	if err != nil {
 		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		_ = os.RemoveAll(profile)
+
+		return nil, fmt.Errorf("launch firefox: %w", err)
 	}
 
 	args := []string{
@@ -68,7 +82,7 @@ func launchFirefox(launch BrowserLaunch, proxyURL string) (*firefoxSession, erro
 		return nil, fmt.Errorf("start firefox %s: %w", binary, err)
 	}
 
-	session, err := openMarionetteSession(cmd, port, launch.Timeout, exited)
+	session, err := openMarionetteSession(ctx, cmd, port, launch.Timeout, exited)
 	if err != nil {
 		killFirefox(cmd, exited)
 		_ = os.RemoveAll(profile)
@@ -104,30 +118,42 @@ var dialMarionette = connectMarionette
 // deadline. On success the deadline is cleared and per-fetch deadlines take
 // over.
 func openMarionetteSession(
+	ctx context.Context,
 	cmd *exec.Cmd,
 	port int,
 	pageLoad time.Duration,
 	exited <-chan struct{},
 ) (*firefoxSession, error) {
-	conn, err := dialMarionette(port, exited)
+	conn, err := dialMarionette(ctx, port, exited)
 	if err != nil {
 		return nil, err
 	}
-	if err := conn.setDeadline(time.Now().Add(firefoxStartupTimeout)); err != nil {
+	deadline := time.Now().Add(firefoxStartupTimeout)
+	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
+		deadline = contextDeadline
+	}
+	if err := conn.setDeadline(deadline); err != nil {
 		_ = conn.close()
 		return nil, err
 	}
+	stop := context.AfterFunc(ctx, func() { _ = conn.setDeadline(time.Now()) })
+	defer stop()
 	if err := conn.handshake(); err != nil {
 		_ = conn.close()
-		return nil, err
+		return nil, marionetteSessionError(ctx, "marionette handshake", err)
 	}
 	if err := conn.newSession(); err != nil {
 		_ = conn.close()
-		return nil, fmt.Errorf("marionette new session: %w", err)
+		return nil, marionetteSessionError(ctx, "marionette new session", err)
 	}
 	if err := conn.setPageLoadTimeout(pageLoad); err != nil {
 		_ = conn.close()
-		return nil, fmt.Errorf("marionette set timeouts: %w", err)
+		return nil, marionetteSessionError(ctx, "marionette set timeouts", err)
+	}
+	if err := ctx.Err(); err != nil {
+		_ = conn.close()
+
+		return nil, fmt.Errorf("open marionette session: %w", err)
 	}
 	if err := conn.setDeadline(time.Time{}); err != nil {
 		_ = conn.close()
@@ -136,26 +162,43 @@ func openMarionetteSession(
 	return &firefoxSession{cmd: cmd, conn: conn, exited: exited}, nil
 }
 
+func marionetteSessionError(ctx context.Context, operation string, err error) error {
+	if contextErr := ctx.Err(); contextErr != nil {
+		err = contextErr
+	}
+
+	return fmt.Errorf("%s: %w", operation, err)
+}
+
 // connectMarionette dials the Marionette port, retrying until Firefox is
 // listening or the startup budget runs out, and gives up early if the process
 // exits.
-func connectMarionette(port int, exited <-chan struct{}) (*marionetteConn, error) {
+func connectMarionette(
+	ctx context.Context,
+	port int,
+	exited <-chan struct{},
+) (*marionetteConn, error) {
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 	dialer := net.Dialer{Timeout: time.Second}
 	deadline := time.Now().Add(firefoxStartupTimeout)
 	var lastErr error
 	for {
-		conn, err := dialer.DialContext(context.Background(), "tcp", addr)
+		conn, err := dialer.DialContext(ctx, "tcp", addr)
 		if err == nil {
 			return newMarionetteConn(conn), nil
+		}
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("connect marionette: %w", ctx.Err())
 		}
 		lastErr = err
 		select {
 		case <-exited:
 			return nil, fmt.Errorf("firefox exited before marionette listened on %s", addr)
-		default:
+		case <-ctx.Done():
+			return nil, fmt.Errorf("connect marionette: %w", ctx.Err())
+		case <-time.After(200 * time.Millisecond):
 		}
-		if time.Now().After(deadline) {
+		if !time.Now().Before(deadline) {
 			return nil, fmt.Errorf(
 				"marionette unreachable on %s within %s: %w",
 				addr,
@@ -163,7 +206,6 @@ func connectMarionette(port int, exited <-chan struct{}) (*marionetteConn, error
 				lastErr,
 			)
 		}
-		time.Sleep(200 * time.Millisecond)
 	}
 }
 

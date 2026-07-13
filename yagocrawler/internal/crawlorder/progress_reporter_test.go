@@ -64,10 +64,11 @@ func TestConsumerReportsRunLifecycle(t *testing.T) {
 		t.Fatalf("publish delivery: %v", err)
 	}
 
-	select {
-	case job := <-f.Jobs():
+	takeCtx, cancelTake := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancelTake()
+	if job, ok := f.Take(takeCtx); ok {
 		f.Done(job, false)
-	case <-time.After(3 * time.Second):
+	} else {
 		t.Fatal("frontier never received seeded job")
 	}
 	select {
@@ -152,10 +153,11 @@ func TestConsumerReportsRunOutcomeTally(t *testing.T) {
 		t.Fatalf("publish delivery: %v", err)
 	}
 
-	select {
-	case job := <-f.Jobs():
+	takeCtx, cancelTake := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancelTake()
+	if job, ok := f.Take(takeCtx); ok {
 		f.Done(job, false)
-	case <-time.After(3 * time.Second):
+	} else {
 		t.Fatal("frontier never received seeded job")
 	}
 	select {

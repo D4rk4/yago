@@ -9,9 +9,7 @@ import (
 	"net/http"
 	"net/url"
 
-	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/temoto/robotstxt"
-	"golang.org/x/sync/singleflight"
 
 	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
 )
@@ -29,14 +27,14 @@ const (
 	msgRobotsBodyCloseFail  = "robots body close failed"
 	msgRobotsBodyReadFailed = "robots body read failed"
 	msgRobotsParseFailed    = "robots parse failed"
+	msgRobotsUnavailable    = "robots unavailable"
 )
 
 type RobotsAdmissionFetcher struct {
 	inner     pagefetch.PageSource
 	client    *http.Client
 	userAgent string
-	groups    *lru.Cache[string, *robotstxt.Group]
-	fetches   singleflight.Group
+	policies  *originPolicyCache
 	observer  DenialObserver
 }
 
@@ -47,15 +45,15 @@ func NewRobotsAdmissionFetcher(
 	hostCacheSize int,
 	opts ...Option,
 ) (*RobotsAdmissionFetcher, error) {
-	groups, err := lru.New[string, *robotstxt.Group](hostCacheSize)
+	policies, err := newOriginPolicyCache(hostCacheSize)
 	if err != nil {
-		return nil, fmt.Errorf("robots host cache: %w", err)
+		return nil, fmt.Errorf("robots origin cache: %w", err)
 	}
 	fetcher := &RobotsAdmissionFetcher{
 		inner:     inner,
 		client:    client,
 		userAgent: userAgent,
-		groups:    groups,
+		policies:  policies,
 		observer:  noopDenialObserver{},
 	}
 	for _, opt := range opts {
@@ -84,24 +82,10 @@ func (f *RobotsAdmissionFetcher) Fetch(
 	return page, nil
 }
 
-func (f *RobotsAdmissionFetcher) group(ctx context.Context, target *url.URL) *robotstxt.Group {
-	if group, ok := f.groups.Get(target.Host); ok {
-		return group
-	}
-	resolved, _, _ := f.fetches.Do(target.Host, func() (any, error) {
-		group, ok := f.fetchRobotsGroup(ctx, target)
-		if ok {
-			f.groups.Add(target.Host, group)
-		}
-		return group, nil
-	})
-	return resolved.(*robotstxt.Group)
-}
-
 func (f *RobotsAdmissionFetcher) fetchRobotsGroup(
 	ctx context.Context,
 	target *url.URL,
-) (*robotstxt.Group, bool) {
+) originPolicyRefresh {
 	robotsURL := target.Scheme + "://" + target.Host + "/robots.txt"
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, robotsURL, nil)
 	if err != nil {
@@ -111,7 +95,7 @@ func (f *RobotsAdmissionFetcher) fetchRobotsGroup(
 			slog.String("host", target.Host),
 			slog.Any("error", err),
 		)
-		return allowAll(), false
+		return unreachableOriginPolicy()
 	}
 	response, err := f.client.Do(request)
 	if err != nil {
@@ -121,7 +105,7 @@ func (f *RobotsAdmissionFetcher) fetchRobotsGroup(
 			slog.String("host", target.Host),
 			slog.Any("error", err),
 		)
-		return allowAll(), false
+		return unreachableOriginPolicy()
 	}
 	defer func() {
 		if cerr := response.Body.Close(); cerr != nil {
@@ -133,6 +117,15 @@ func (f *RobotsAdmissionFetcher) fetchRobotsGroup(
 			)
 		}
 	}()
+	if response.StatusCode >= http.StatusInternalServerError && response.StatusCode < 600 {
+		slog.WarnContext(
+			ctx,
+			msgRobotsUnavailable,
+			slog.String("host", target.Host),
+			slog.Int("status", response.StatusCode),
+		)
+		return unreachableOriginPolicy()
+	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, maximumRobotsBytes))
 	if err != nil {
 		slog.WarnContext(
@@ -141,9 +134,12 @@ func (f *RobotsAdmissionFetcher) fetchRobotsGroup(
 			slog.String("host", target.Host),
 			slog.Any("error", err),
 		)
-		return allowAll(), false
+		return unreachableOriginPolicy()
 	}
-	return f.parseRobotsGroup(ctx, target.Host, response.StatusCode, body), true
+	return originPolicyRefresh{
+		group:    f.parseRobotsGroup(ctx, target.Host, response.StatusCode, body),
+		lifetime: robotsPolicyFreshness,
+	}
 }
 
 // parseRobotsGroup resolves a fetched robots.txt body into this crawler's group.
@@ -179,5 +175,10 @@ func (f *RobotsAdmissionFetcher) parseRobotsGroup(
 
 func allowAll() *robotstxt.Group {
 	data, _ := robotstxt.FromBytes(nil)
+	return data.FindGroup("*")
+}
+
+func disallowAll() *robotstxt.Group {
+	data, _ := robotstxt.FromBytes([]byte("User-agent: *\nDisallow: /\n"))
 	return data.FindGroup("*")
 }

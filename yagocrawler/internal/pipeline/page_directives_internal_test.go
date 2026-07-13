@@ -2,8 +2,10 @@ package pipeline
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawler/internal/crawljob"
 	"github.com/D4rk4/yago/yagocrawler/internal/pageparse"
 )
@@ -115,5 +117,20 @@ func TestRedirectAdmittedToleratesUnnormalizableURLs(t *testing.T) {
 	}
 	if !p.redirectAdmitted(ctx, crawljob.CrawlJob{URL: "ftp://x/"}, "https://example.com/") {
 		t.Error("an unnormalizable job URL must admit the page")
+	}
+}
+
+func TestRedirectAdmittedRejectsOverlongIdentityURL(t *testing.T) {
+	p := &Pipeline{}
+	finalURL := "https://example.com/" + strings.Repeat(
+		"x",
+		yagocrawlcontract.MaximumCrawlURLBytes,
+	)
+	if p.redirectAdmitted(
+		context.Background(),
+		crawljob.CrawlJob{URL: "https://example.com/start"},
+		finalURL,
+	) {
+		t.Fatal("overlong redirect target must not be indexed")
 	}
 }

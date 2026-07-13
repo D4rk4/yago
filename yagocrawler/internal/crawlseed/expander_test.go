@@ -35,6 +35,25 @@ type countingSeedSource struct {
 	calls int
 }
 
+type failingSeedSource struct {
+	err error
+}
+
+func (s failingSeedSource) Fetch(
+	context.Context,
+	*url.URL,
+) (pagefetch.FetchedPage, error) {
+	return pagefetch.FetchedPage{}, s.err
+}
+
+func expansionFailureIsPermanent(err error) bool {
+	var permanent interface {
+		Permanent() bool
+	}
+
+	return errors.As(err, &permanent) && permanent.Permanent()
+}
+
 func (s *countingSeedSource) Fetch(
 	ctx context.Context,
 	target *url.URL,
@@ -55,6 +74,19 @@ func TestExpanderPassesURLRequestsThrough(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Mode != yagocrawlcontract.CrawlRequestModeURL {
 		t.Fatalf("requests = %#v", got)
+	}
+}
+
+func TestExpanderMarksUnsupportedModePermanent(t *testing.T) {
+	_, err := crawlseed.NewExpander(nil, 10).Expand(
+		context.Background(),
+		[]yagocrawlcontract.CrawlRequest{{
+			URL:  "https://example.org/",
+			Mode: "archive",
+		}},
+	)
+	if !expansionFailureIsPermanent(err) {
+		t.Fatalf("unsupported mode error = %v, want permanent failure", err)
 	}
 }
 
@@ -247,6 +279,9 @@ func TestExpanderRejectsInvalidSeedURLWithSource(t *testing.T) {
 	if err == nil {
 		t.Fatal("invalid seed URL should fail")
 	}
+	if !expansionFailureIsPermanent(err) {
+		t.Fatalf("invalid seed URL error = %v, want permanent failure", err)
+	}
 }
 
 func TestExpanderSkipsInvalidExpandedURLs(t *testing.T) {
@@ -293,5 +328,8 @@ func TestExpanderRejectsInvalidSitemapXML(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("invalid sitemap should fail")
+	}
+	if !expansionFailureIsPermanent(err) {
+		t.Fatalf("invalid sitemap error = %v, want permanent failure", err)
 	}
 }

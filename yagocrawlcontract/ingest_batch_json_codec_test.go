@@ -14,6 +14,8 @@ func TestIngestBatchRoundTrip(t *testing.T) {
 		SourceURL:     "https://example.org/a",
 		Provenance:    []byte("admin"),
 		ProfileHandle: "abcdef012345",
+		ObservationID: "5e93886c-58f8-47d6-b38d-52e5d96b82e3",
+		ObservedAt:    time.Date(2026, 7, 2, 10, 0, 2, 0, time.UTC),
 		Document: DocumentIngest{
 			CanonicalURL:     "https://example.org/a",
 			NormalizedURL:    "https://example.org/a",
@@ -85,6 +87,8 @@ func TestIngestBatchRemovedRoundTrip(t *testing.T) {
 		SourceURL:     "https://example.org/gone",
 		Provenance:    []byte("admin"),
 		ProfileHandle: "abcdef012345",
+		ObservationID: "a136c9a7-b5c9-4bf4-ae3a-cb4ee62d1f16",
+		ObservedAt:    time.Date(2026, 7, 2, 10, 0, 2, 0, time.UTC),
 		Removed:       true,
 	}
 

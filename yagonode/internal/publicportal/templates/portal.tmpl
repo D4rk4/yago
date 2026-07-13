@@ -45,7 +45,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   .prov { border: 1px solid #c6c6c6; border-radius: 3px; padding: 0 0.3rem; font-size: 0.72rem; color: #525252; }
   .prov-local { border-color: #a7f0ba; background: #defbe6; color: #0e6027; }
   .prov-peer { border-color: #bae6ff; background: #e5f6ff; color: #003a6d; }
-  .prov-web { border-color: #ffd6e8; background: #fff0f7; color: #740937; }
+  .prov-ddgs { border-color: #ffd6e8; background: #fff0f7; color: #740937; }
   .tabs { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; }
   .tabs a, .tabs span[aria-current] { display: inline-block; padding: 0.35rem 0.7rem; color: #0f62fe; text-decoration: none; }
   .tabs span[aria-current] { color: #161616; border-bottom: 2px solid #d81c2f; }
@@ -128,7 +128,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   {{else if .DidYouMean}}
   <p class="meta" role="status">No results matched. Did you mean <a href="{{.DidYouMeanURL}}">{{.DidYouMean}}</a>?</p>
   {{end}}
-  <p class="meta" role="status">{{.TotalResults}} result(s) for “{{.Query}}”{{if $.Elapsed}} ({{$.Elapsed}}){{end}}.{{if .Results}} Showing {{$.ShownFrom}}–{{$.ShownTo}} on this page: {{.LocalCount}} from this node · {{.PeerCount}} from peers · {{.WebCount}} from the web.{{end}}{{if .PeersFailed}} {{.PeersFailed}} peer(s) unreachable or timed out.{{end}}</p>
+  <p class="meta" role="status">{{.TotalResults}} result(s) for “{{.Query}}”{{if $.Elapsed}} ({{$.Elapsed}}){{end}}.{{if .Results}} Showing {{$.ShownFrom}}–{{$.ShownTo}} on this page: {{.LocalCount}} from this node · {{.PeerCount}} from peers · {{.WebCount}} from DDGS.{{end}}{{if .PeersFailed}} {{.PeersFailed}} peer(s) unreachable or timed out.{{end}}</p>
   {{if .Hint}}<p class="meta" role="status">{{.Hint}}</p>{{end}}
   {{if .Facets}}<div class="serp-grid"><aside class="facets" aria-label="Filter results">
   <details open>
@@ -164,7 +164,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   <li class="result">
     {{if .FaviconURL}}<img class="fav" src="{{.FaviconURL}}" alt="" width="16" height="16" loading="lazy">{{end}}
     <a class="title" href="{{.URL}}"{{if $.ClickCapture}} data-p="{{.Position}}" data-i="{{.URLIdentity}}"{{end}}{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span class="sr-only"> (opens in new tab)</span>{{end}}</a>
-    <div class="url">{{if .DisplayURL}}{{.DisplayURL}}{{else}}{{.URL}}{{end}}{{if .Provenance}} · <span class="prov prov-{{.Provenance}}">{{.Provenance}}</span>{{end}}{{if .Date}} · {{.Date}}{{end}}{{if .SizeName}} · {{.SizeName}}{{end}}{{if .CachedURL}} · <a href="{{.CachedURL}}">cached</a>{{end}}</div>
+    <div class="url">{{if .DisplayURL}}{{.DisplayURL}}{{else}}{{.URL}}{{end}}{{if .Provenance}} · <span class="prov prov-{{.Provenance}}">{{if eq .Provenance "ddgs"}}[{{.Provenance}}]{{else}}{{.Provenance}}{{end}}</span>{{end}}{{if .Date}} · {{.Date}}{{end}}{{if .SizeName}} · {{.SizeName}}{{end}}{{if .CachedURL}} · <a href="{{.CachedURL}}">cached</a>{{end}}</div>
     {{if .SnippetHTML}}<p>{{.SnippetHTML}}</p>{{else if .Snippet}}<p>{{.Snippet}}</p>{{end}}
   </li>
   {{else}}
@@ -188,7 +188,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   {{end}}
   </div>
   <div class="foot">{{.Brand}} — free software under the GNU AGPL v3.<br>
-  Searches fan out to peers in the YaCy network, which see your query terms; results are labelled by where they came from (<span class="prov prov-local">local</span> this node's index, <span class="prov prov-peer">peer</span> another node, <span class="prov prov-web">web</span> an external provider that receives your query, whose pages may be queued for this node to crawl).</div>
+  Searches fan out to peers in the YaCy network, which see your query terms; results are labelled by where they came from (<span class="prov prov-local">local</span> this node's index, <span class="prov prov-peer">peer</span> another node, <span class="prov prov-ddgs">[ddgs]</span> an external provider that receives your query, whose pages may be queued for this node to crawl).</div>
 </div>
 <script>
 (function () {

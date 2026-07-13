@@ -62,9 +62,8 @@ an engine can change its markup or block the client. This is mitigated by
 structure-driven parsing, the multi-engine `auto` list, backoff, caching, and
 degrade-to-empty, and the engine list is easy to extend. Web search is best-effort
 by design and off by default; when it fails, search preserves the primary result
-or original miss. Privacy mode `enabled` permits automatic web search, while
-`explicit` still requires request-level consent. The independent start trigger
-defaults to a complete miss and can explicitly overlap web with local and peer
-retrieval.
+or original miss. Mode `enabled` permits automatic web search after a complete
+miss, while `explicit` still requires request-level consent and `always` overlaps
+web with local and peer retrieval.
 `golang.org/x/net` becomes a direct dependency, pinned in `go.mod` and already
 vetted through the crawler's use of the same package.

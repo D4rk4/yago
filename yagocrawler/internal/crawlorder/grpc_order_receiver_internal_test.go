@@ -9,6 +9,8 @@ import (
 	"time"
 
 	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
@@ -52,6 +54,8 @@ type fakeStreamer struct {
 
 	mu             sync.Mutex
 	acks           []*crawlrpc.OrderAck
+	ackCalls       []*crawlrpc.OrderAck
+	ackErrors      []error
 	heartbeats     []string
 	beatCalls      int
 	ackErr         error
@@ -84,12 +88,27 @@ func (f *fakeStreamer) AckOrder(
 ) (*crawlrpc.OrderAckResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.ackCalls = append(f.ackCalls, in)
+	if len(f.ackErrors) > 0 {
+		err := f.ackErrors[0]
+		f.ackErrors = f.ackErrors[1:]
+		if err != nil {
+			return nil, err
+		}
+	}
 	if f.ackErr != nil {
 		return nil, f.ackErr
 	}
 	f.acks = append(f.acks, in)
 
 	return &crawlrpc.OrderAckResult{}, nil
+}
+
+func (f *fakeStreamer) acknowledgementCalls() []*crawlrpc.OrderAck {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]*crawlrpc.OrderAck(nil), f.ackCalls...)
 }
 
 func (f *fakeStreamer) Heartbeat(
@@ -191,8 +210,16 @@ func TestGRPCOrderReceiverDeliversOrderAndSettlesLease(t *testing.T) {
 }
 
 func TestSettleLeaseReportsAckError(t *testing.T) {
-	client := &fakeStreamer{ctx: context.Background(), ackErr: errors.New("ack rejected")}
-	if err := settleLease(client, "lease-x", false)(context.Background()); err == nil {
+	client := &fakeStreamer{
+		ctx:    context.Background(),
+		ackErr: status.Error(codes.InvalidArgument, "ack rejected"),
+	}
+	if err := settleLease(
+		context.Background(),
+		client,
+		"lease-x",
+		false,
+	)(context.Background()); err == nil {
 		t.Fatal("expected settleLease to surface the ack error")
 	}
 }
@@ -262,12 +289,15 @@ func TestGRPCOrderReceiverReconnectsAfterStreamError(t *testing.T) {
 	drainUntilClosed(t, receiver)
 }
 
-func TestGRPCOrderReceiverSkipsUndecodableOrders(t *testing.T) {
+func TestGRPCOrderReceiverTerminatesUndecodableOrders(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	client := &fakeStreamer{
 		ctx: ctx,
 		attempts: []streamAttempt{{results: []recvResult{
-			{msg: &crawlrpc.CrawlOrderMessage{OrderJson: []byte("not json")}},
+			{msg: &crawlrpc.CrawlOrderMessage{
+				OrderJson: []byte("not json"),
+				LeaseId:   "lease-malformed",
+			}},
 			orderResult(t, "good"),
 		}}},
 	}
@@ -275,6 +305,36 @@ func TestGRPCOrderReceiverSkipsUndecodableOrders(t *testing.T) {
 	receiver := NewGRPCOrderReceiver(ctx, client, "worker-1", nil)
 	if got := awaitOrder(t, receiver).Order.Profile.Name; got != "good" {
 		t.Fatalf("order = %q, want good", got)
+	}
+	acks := client.ackedLeases()
+	if len(acks) != 1 || acks[0].GetLeaseId() != "lease-malformed" || acks[0].GetRequeue() {
+		t.Fatalf("malformed order settlements = %+v", acks)
+	}
+	cancel()
+	drainUntilClosed(t, receiver)
+}
+
+func TestGRPCOrderReceiverContinuesAfterMalformedSettlementFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &fakeStreamer{
+		ctx:    ctx,
+		ackErr: status.Error(codes.InvalidArgument, "settlement rejected"),
+		attempts: []streamAttempt{{results: []recvResult{
+			{msg: &crawlrpc.CrawlOrderMessage{
+				OrderJson: []byte("not json"),
+				LeaseId:   "lease-malformed",
+			}},
+			orderResult(t, "good"),
+		}}},
+	}
+
+	receiver := NewGRPCOrderReceiver(ctx, client, "worker-1", nil)
+	if got := awaitOrder(t, receiver).Order.Profile.Name; got != "good" {
+		t.Fatalf("order = %q, want good", got)
+	}
+	if calls := client.acknowledgementCalls(); len(calls) != 1 ||
+		calls[0].GetLeaseId() != "lease-malformed" {
+		t.Fatalf("malformed order settlement calls = %+v", calls)
 	}
 	cancel()
 	drainUntilClosed(t, receiver)

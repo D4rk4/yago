@@ -7,7 +7,6 @@ import (
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawler/internal/boundedqueue"
-	"github.com/D4rk4/yago/yagocrawler/internal/crawladmission"
 	"github.com/D4rk4/yago/yagocrawler/internal/frontier"
 )
 
@@ -19,6 +18,8 @@ const (
 	msgOrderAckFailed        = "crawl order ack failed"
 	msgOrderNakFailed        = "crawl order nak failed"
 	msgOrderTermFailed       = "crawl order term failed"
+	msgOrderJoinedActiveRun  = "crawl order joined active run"
+	msgCompletedOrderReplay  = "completed crawl order replay received"
 )
 
 type RequestExpander interface {
@@ -34,6 +35,7 @@ type CrawlOrderConsumer struct {
 	expander RequestExpander
 	progress ProgressReporter
 	tally    RunTallySource
+	active   *activeOrders
 }
 
 func NewCrawlOrderConsumer(
@@ -45,13 +47,13 @@ func NewCrawlOrderConsumer(
 	if len(expander) > 0 && expander[0] != nil {
 		selected = expander[0]
 	}
-
 	return &CrawlOrderConsumer{
 		orders:   orders,
 		frontier: frontier,
 		expander: selected,
 		progress: noopProgressReporter{},
 		tally:    noopRunTallySource{},
+		active:   newActiveOrders(),
 	}
 }
 
@@ -91,6 +93,16 @@ func (c *CrawlOrderConsumer) Run(ctx context.Context) {
 	}
 }
 
+func (c *CrawlOrderConsumer) CancelActiveRuns() {
+	for _, provenance := range c.active.provenances() {
+		c.frontier.Cancel(provenance)
+	}
+}
+
+func (c *CrawlOrderConsumer) WaitForSettlements() {
+	c.frontier.WaitForSettlements()
+}
+
 func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDelivery) {
 	order := delivery.Order
 	slog.InfoContext(
@@ -99,40 +111,30 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 		slog.String("handle", order.Profile.Handle),
 		slog.Int("seeds", len(order.Requests)),
 	)
-	profile, err := crawladmission.CompileProfile(order.Profile)
-	if err != nil {
-		slog.WarnContext(
-			ctx,
-			msgProfileRegisterFailed,
+	switch c.active.claim(order.Provenance, delivery) {
+	case activeOrderJoinsRun:
+		slog.DebugContext(ctx, msgOrderJoinedActiveRun,
 			slog.String("handle", order.Profile.Handle),
-			slog.Any("error", err),
 		)
-		if err := delivery.Term(ctx); err != nil {
+
+		return
+	case activeOrderAlreadyCompleted:
+		slog.DebugContext(ctx, msgCompletedOrderReplay,
+			slog.String("handle", order.Profile.Handle),
+		)
+		if err := delivery.Ack(context.WithoutCancel(ctx)); err != nil {
 			slog.WarnContext(
 				ctx,
-				msgOrderTermFailed,
+				msgOrderAckFailed,
 				slog.String("handle", order.Profile.Handle),
 				slog.Any("error", err),
 			)
 		}
+
 		return
 	}
-	requests, err := c.expander.Expand(ctx, order.Requests)
-	if err != nil {
-		slog.WarnContext(
-			ctx,
-			msgOrderExpansionFailed,
-			slog.String("handle", order.Profile.Handle),
-			slog.Any("error", err),
-		)
-		if err := delivery.Term(ctx); err != nil {
-			slog.WarnContext(
-				ctx,
-				msgOrderTermFailed,
-				slog.String("handle", order.Profile.Handle),
-				slog.Any("error", err),
-			)
-		}
+	profile, requests, prepared := c.prepareCrawlOrder(ctx, order, delivery)
+	if !prepared {
 		return
 	}
 	c.reportRun(ctx, order, yagocrawlcontract.CrawlRunRunning, len(requests))
@@ -163,13 +165,6 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 	)
 }
 
-// finishRun builds the run's completion callback: it reports the terminal run
-// state (cancelled during shutdown, finished otherwise) and settles the order's
-// lease. A run that drained with succeeded=false lost at least one page's
-// references in delivery, so it naks down the same redelivery path as a
-// cancelled run rather than acking with those references lost. The report uses a
-// cancel-detached context so a report still reaches the node while the worker is
-// draining on shutdown.
 func (c *CrawlOrderConsumer) finishRun(
 	ctx context.Context,
 	order yagocrawlcontract.CrawlOrder,
@@ -187,26 +182,35 @@ func (c *CrawlOrderConsumer) finishRun(
 		}
 		c.reportRun(context.WithoutCancel(ctx), order, state, 0)
 		c.tally.Forget(order.Provenance)
-		if cancelled || !succeeded {
-			if err := delivery.Nak(context.Background()); err != nil {
-				slog.WarnContext(
-					context.Background(),
-					msgOrderNakFailed,
-					slog.String("handle", order.Profile.Handle),
-					slog.Any("error", err),
-				)
-			}
+		retainCompletion := !cancelled && succeeded
+		c.active.settle(
+			order.Provenance,
+			delivery,
+			retainCompletion,
+			func(delivery CrawlOrderDelivery) {
+				settlementCtx := context.WithoutCancel(ctx)
+				if cancelled || !succeeded {
+					if err := delivery.Nak(settlementCtx); err != nil {
+						slog.WarnContext(
+							settlementCtx,
+							msgOrderNakFailed,
+							slog.String("handle", order.Profile.Handle),
+							slog.Any("error", err),
+						)
+					}
 
-			return
-		}
-		if err := delivery.Ack(context.Background()); err != nil {
-			slog.WarnContext(
-				context.Background(),
-				msgOrderAckFailed,
-				slog.String("handle", order.Profile.Handle),
-				slog.Any("error", err),
-			)
-		}
+					return
+				}
+				if err := delivery.Ack(settlementCtx); err != nil {
+					slog.WarnContext(
+						settlementCtx,
+						msgOrderAckFailed,
+						slog.String("handle", order.Profile.Handle),
+						slog.Any("error", err),
+					)
+				}
+			},
+		)
 	}
 }
 

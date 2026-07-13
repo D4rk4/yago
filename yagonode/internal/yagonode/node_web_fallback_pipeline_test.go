@@ -142,7 +142,7 @@ func TestPublicSearchKeepsLocalFuzzyRecoveryBeforeWeb(t *testing.T) {
 func TestPublicSearchParallelModeCombinesFuzzyAndWebAnswers(t *testing.T) {
 	events := &fallbackPipelineEvents{}
 	assembly, webCalls := fallbackPipelineAssembly(t, events)
-	assembly.webFallback.Trigger = webFallbackTriggerParallel
+	assembly.webFallback.Privacy = webFallbackPrivacyAlways
 	searcher := assemblePublicSearcher(
 		fallbackPipelineSearcher{
 			name: "local", events: events,

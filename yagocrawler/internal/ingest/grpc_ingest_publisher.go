@@ -2,7 +2,11 @@ package ingest
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"fmt"
+	"io"
+	"log/slog"
+	"math/big"
 	"time"
 
 	grpc "google.golang.org/grpc"
@@ -15,7 +19,11 @@ import (
 
 type IngestBatch = yagocrawlcontract.IngestBatch
 
-const DefaultIngestRetryWait = 100 * time.Millisecond
+const (
+	DefaultIngestRetryWait = 100 * time.Millisecond
+	maximumIngestRetryWait = 5 * time.Second
+	msgIngestBackpressure  = "crawl ingest delayed by node backpressure"
+)
 
 // IngestSubmitter is the slice of the node's CrawlExchange client the publisher
 // needs: a unary submission that blocks until the node absorbs the batch.
@@ -27,31 +35,64 @@ type IngestSubmitter interface {
 	) (*crawlrpc.IngestAck, error)
 }
 
-// GRPCIngestPublisher forwards ingest batches to the node over gRPC. The node
-// reports a saturated pipeline with ResourceExhausted, on which the publisher
-// retries so backpressure never drops a batch.
 type GRPCIngestPublisher struct {
 	client    IngestSubmitter
 	retryWait time.Duration
 }
 
 func NewGRPCIngestPublisher(client IngestSubmitter) *GRPCIngestPublisher {
-	return &GRPCIngestPublisher{client: client, retryWait: DefaultIngestRetryWait}
+	return &GRPCIngestPublisher{
+		client:    client,
+		retryWait: DefaultIngestRetryWait,
+	}
 }
 
 func (p *GRPCIngestPublisher) Publish(ctx context.Context, batch IngestBatch) error {
-	data, _ := yagocrawlcontract.MarshalIngestBatch(batch)
+	data, err := prepareIngestMessage(batch)
+	if err != nil {
+		return fmt.Errorf("prepare ingest batch %s: %w", batch.SourceURL, err)
+	}
 	msg := &crawlrpc.IngestBatchMessage{BatchJson: data}
+	retryWait := p.retryWait
+	retries := 0
 	for {
-		if _, err := p.client.SubmitIngest(ctx, msg); err == nil {
+		_, err := p.client.SubmitIngest(ctx, msg)
+		if err == nil {
 			return nil
-		} else if status.Code(err) != codes.ResourceExhausted {
+		}
+		if !retryableIngestStatus(status.Code(err)) {
 			return fmt.Errorf("submit ingest batch %s: %w", batch.SourceURL, err)
 		}
+		retries++
+		if retries == 1 {
+			slog.WarnContext(
+				ctx,
+				msgIngestBackpressure,
+				slog.String("sourceUrl", batch.SourceURL),
+				slog.Int("payloadBytes", len(data)),
+			)
+		}
+		timer := time.NewTimer(jitteredIngestRetryWait(retryWait, cryptorand.Reader))
 		select {
-		case <-time.After(p.retryWait):
+		case <-timer.C:
 		case <-ctx.Done():
+			timer.Stop()
 			return fmt.Errorf("submit ingest batch %s: %w", batch.SourceURL, ctx.Err())
 		}
+		retryWait = min(maximumIngestRetryWait, retryWait*2)
 	}
+}
+
+func retryableIngestStatus(code codes.Code) bool {
+	return code == codes.Unavailable || code == codes.ResourceExhausted
+}
+
+func jitteredIngestRetryWait(wait time.Duration, entropy io.Reader) time.Duration {
+	half := wait / 2
+	offset, err := cryptorand.Int(entropy, big.NewInt(int64(wait-half)))
+	if err != nil {
+		return half
+	}
+
+	return half + time.Duration(offset.Int64())
 }

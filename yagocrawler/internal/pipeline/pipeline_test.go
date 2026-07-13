@@ -40,7 +40,14 @@ func newRecordingFrontier() *recordingFrontier {
 	}
 }
 
-func (f *recordingFrontier) Jobs() <-chan crawljob.CrawlJob { return f.jobs }
+func (f *recordingFrontier) Take(ctx context.Context) (crawljob.CrawlJob, bool) {
+	select {
+	case job, ok := <-f.jobs:
+		return job, ok
+	case <-ctx.Done():
+		return crawljob.CrawlJob{}, false
+	}
+}
 
 func (f *recordingFrontier) Submit(
 	_ context.Context,

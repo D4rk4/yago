@@ -20,6 +20,8 @@ type clusterFaultEngine struct {
 	provisionFailure vault.Name
 	putFailure       vault.Name
 	deleteFailure    vault.Name
+	updates          int
+	replayUpdate     func(*clusterFaultEngine)
 }
 
 type clusterFaultTxn struct {
@@ -59,6 +61,17 @@ func (e *clusterFaultEngine) Update(
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.updates++
+	replay := e.replayUpdate
+	e.replayUpdate = nil
+	if replay != nil {
+		staged := cloneClusterBuckets(e.buckets)
+		transaction := &clusterFaultTxn{engine: e, buckets: staged, writable: true}
+		if err := fn(transaction); err != nil {
+			return err
+		}
+		replay(e)
+	}
 	staged := cloneClusterBuckets(e.buckets)
 	transaction := &clusterFaultTxn{engine: e, buckets: staged, writable: true}
 	if err := fn(transaction); err != nil {

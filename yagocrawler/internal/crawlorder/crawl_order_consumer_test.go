@@ -41,8 +41,9 @@ func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
 		t.Fatalf("publish delivery: %v", err)
 	}
 
-	select {
-	case job := <-f.Jobs():
+	takeCtx, cancelTake := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancelTake()
+	if job, ok := f.Take(takeCtx); ok {
 		if job.URL != "https://example.com/" {
 			t.Errorf("seeded job url = %q", job.URL)
 		}
@@ -53,7 +54,7 @@ func TestConsumerSeedsFrontierAndAcks(t *testing.T) {
 			t.Errorf("profile handle = %q want %q", job.ProfileHandle, profile.Handle)
 		}
 		f.Done(job, false)
-	case <-time.After(3 * time.Second):
+	} else {
 		t.Fatal("frontier never received seeded job")
 	}
 
@@ -95,10 +96,11 @@ func TestConsumerNaksWhenRunHasDeliveryFailure(t *testing.T) {
 		t.Fatalf("publish delivery: %v", err)
 	}
 
-	select {
-	case job := <-f.Jobs():
+	takeCtx, cancelTake := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancelTake()
+	if job, ok := f.Take(takeCtx); ok {
 		f.Done(job, true)
-	case <-time.After(3 * time.Second):
+	} else {
 		t.Fatal("frontier never received seeded job")
 	}
 

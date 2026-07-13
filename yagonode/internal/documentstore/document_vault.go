@@ -41,6 +41,7 @@ func (d documentVault) Receive(ctx context.Context, docs []Document) (Receipt, e
 func (d documentVault) store(ctx context.Context, docs []Document) (Receipt, error) {
 	var receipt Receipt
 	err := d.vault.Update(ctx, func(tx *vault.Txn) error {
+		receipt = Receipt{}
 		for _, doc := range docs {
 			if err := d.storeOne(ctx, tx, doc, &receipt); err != nil {
 				return err

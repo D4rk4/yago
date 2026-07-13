@@ -7,8 +7,9 @@ import (
 )
 
 type CrawlOrderDelivery struct {
-	Order yagocrawlcontract.CrawlOrder
-	Ack   func(context.Context) error
-	Nak   func(context.Context) error
-	Term  func(context.Context) error
+	LeaseID string
+	Order   yagocrawlcontract.CrawlOrder
+	Ack     func(context.Context) error
+	Nak     func(context.Context) error
+	Term    func(context.Context) error
 }
