@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	envCrawlRPCAddr = "YAGO_CRAWL_RPC_ADDR"
+	envCrawlRPCAddr     = "YAGO_CRAWL_RPC_ADDR"
 	defaultCrawlRPCAddr = "127.0.0.1:9091"
 	// crawlRPCDisabled is the explicit value that turns the crawl exchange off
 	// for a node that runs no crawler, now that an unset value means "default".
