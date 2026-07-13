@@ -39,11 +39,11 @@ func TestHTMLEndpointLinksCachedCopyAndFormats(t *testing.T) {
 	if !strings.Contains(body, "[peer]") {
 		t.Fatalf("peer result missing provenance label: %s", body)
 	}
-	if !strings.Contains(body, "[ddgs]") {
+	if !strings.Contains(body, "[web]") {
 		t.Fatalf("web-fallback result missing provenance label: %s", body)
 	}
-	if strings.Contains(body, "[web]") {
-		t.Fatalf("web-fallback result must not carry a generic web badge: %s", body)
+	if strings.Contains(body, "[ddgs]") {
+		t.Fatalf("web-fallback result carries its internal provider name: %s", body)
 	}
 	if !strings.Contains(body, "/yacysearch.json") || !strings.Contains(body, ">JSON</a>") {
 		t.Fatalf("visible JSON format link missing: %s", body)

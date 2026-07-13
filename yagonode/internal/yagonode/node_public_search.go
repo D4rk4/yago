@@ -272,7 +272,10 @@ func assemblePublicSearcher(
 	// their own retrieval, so only the local searcher is wrapped.
 	localWithFeedback := searchcore.NewPseudoRelevanceSearcher(local)
 	merged := searchcore.NewSafeSearchSearcher(
-		searchcore.NewFederatedSearcher(localWithFeedback, remote),
+		searchcore.NewFederatedSearcher(
+			localWithFeedback,
+			withRemoteSearchRetention(remote),
+		),
 	)
 	enriched := snippetfetch.WithSnippetEnrichment(
 		merged,
@@ -281,9 +284,14 @@ func assemblePublicSearcher(
 	)
 	admitted := withDenylistFilter(enriched, assembly.denylist)
 	budgetedExact := withWebFallbackExactStageBudget(admitted, assembly.webFallback)
+	localRetry := withDenylistFilter(
+		searchcore.NewSafeSearchSearcher(local),
+		assembly.denylist,
+	)
+	locallyRecovered := withLocalExactRecovery(budgetedExact, localRetry)
 	recovering := withZeroResultRecovery(
-		budgetedExact,
-		withDenylistFilter(searchcore.NewSafeSearchSearcher(local), assembly.denylist),
+		locallyRecovered,
+		localRetry,
 		assembly.spellCorrector,
 	)
 	fallback := searchcore.NewSafeSearchSearcher(withWebFallback(recovering, assembly))
@@ -291,14 +299,12 @@ func assemblePublicSearcher(
 	ranked := assembleRankingStages(filtered, assembly)
 	// The session cache makes paging stable (YaCy SearchEventCache): page one
 	// runs one deep search, deeper pages slice the cached result list.
-	stable := searchsession.WithStableWindow(ranked)
+	stable := searchsession.NewStableWindow(ranked)
 	pageEvidence := searchlocal.NewPageEvidenceSearcher(
 		stable,
 		searchEvidenceSource(assembly.storage.searchIndex),
 	)
-	search := withQueryLogging(pageEvidence, assembly.queryLogMode, assembly.activity)
-	search = withSearchMetrics(search, assembly.searchMetrics)
-	search = withParsedQuery(search)
+	search := pageEvidence
 	if assembly.indexRemoteResults && assembly.storage.searchIndex != nil {
 		// Cache swarm results into the local index (YaCy addResultsToLocalIndex),
 		// but only when the full-text backend is available to make them findable.
@@ -324,7 +330,12 @@ func assemblePublicSearcher(
 		)
 	}
 
-	return withInteractiveSearchBudget(search)
+	search = withInteractiveSearchBudget(search)
+	search = searchsession.WithRecentSuccessOnIncompleteRefresh(search, stable)
+	search = withQueryLogging(search, assembly.queryLogMode, assembly.activity)
+	search = withSearchMetrics(search, assembly.searchMetrics)
+
+	return withParsedQuery(search)
 }
 
 func searchEvidenceSource(index searchindex.SearchIndex) searchindex.SearchEvidenceSource {

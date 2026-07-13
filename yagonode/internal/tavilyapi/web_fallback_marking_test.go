@@ -45,10 +45,14 @@ func TestSearchEndpointDoesNotMarkWebFallbackResults(t *testing.T) {
 	if len(got.Results) != 1 {
 		t.Fatalf("results = %#v", got.Results)
 	}
-	if strings.Contains(got.Results[0].Title, "[ddgs]") {
+	if got.Results[0].Title != "Web Result" {
 		t.Errorf("Tavily drop-in title must be unmarked, got %q", got.Results[0].Title)
 	}
-	if got.Results[0].Source == string(searchcore.SourceWeb) {
-		t.Errorf("Tavily result must not carry the ddgs source, got %q", got.Results[0].Source)
+	if got.Results[0].Source != string(searchcore.SourceLocal) {
+		t.Errorf(
+			"Tavily result source = %q, want request scope %q",
+			got.Results[0].Source,
+			searchcore.SourceLocal,
+		)
 	}
 }

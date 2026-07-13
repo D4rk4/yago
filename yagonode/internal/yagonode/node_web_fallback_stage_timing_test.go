@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -75,6 +76,23 @@ func (productionShapeSwarmMiss) Search(
 }
 
 type productionShapeEvidenceFreeSwarm struct{}
+
+type productionShapeUncooperativeSwarm struct {
+	release  <-chan struct{}
+	finished chan<- struct{}
+	calls    atomic.Int32
+}
+
+func (s *productionShapeUncooperativeSwarm) Search(
+	context.Context,
+	searchcore.Request,
+) (searchcore.Response, error) {
+	s.calls.Add(1)
+	<-s.release
+	s.finished <- struct{}{}
+
+	return searchcore.Response{}, nil
+}
 
 type productionShapeWebAttempts struct {
 	mu      sync.Mutex
@@ -297,7 +315,9 @@ func TestPublicSearchParallelModeReturnsWebWhileFuzzyIgnoresCancellation(t *test
 }
 
 func TestPublicSearchStageBudgetsLeaveAssemblyHeadroom(t *testing.T) {
-	stages := webFallbackExactStageBudget + recoverySearchBudget + webFallbackProviderBudget
+	stages := webFallbackExactStageBudget +
+		max(recoverySearchBudget, localExactRecoveryBudget) +
+		webFallbackProviderBudget
 	if webFallbackProviderBudget < 900*time.Millisecond {
 		t.Fatalf("web budget = %v", webFallbackProviderBudget)
 	}
@@ -330,5 +350,50 @@ func TestExactStageDeadlinePreservesCompletedLocalResults(t *testing.T) {
 	if len(response.Results) != 1 ||
 		response.Results[0].URL != "https://local.example/needle" {
 		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestRepeatedGlobalSearchKeepsLocalHitWhileSwarmIgnoresCancellation(t *testing.T) {
+	previous := webFallbackExactStageBudget
+	previousRemoteAdmission := processRemoteSearchAdmission
+	webFallbackExactStageBudget = 20 * time.Millisecond
+	processRemoteSearchAdmission = make(chan struct{}, interactiveSearchConcurrentWork)
+	t.Cleanup(func() {
+		webFallbackExactStageBudget = previous
+		processRemoteSearchAdmission = previousRemoteAdmission
+	})
+
+	release := make(chan struct{})
+	finished := make(chan struct{}, 6)
+	remote := &productionShapeUncooperativeSwarm{release: release, finished: finished}
+	attempts := &productionShapeWebAttempts{}
+	client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
+	searcher := assemblePublicSearcher(
+		productionShapeLocalHit{},
+		remote,
+		productionShapeSearchAssembly(client),
+	)
+	for attempt := range 6 {
+		response, err := searcher.Search(t.Context(), searchcore.Request{
+			Query: "drunklab", Source: searchcore.SourceGlobal, Limit: 10,
+		})
+		if err != nil || len(response.Results) == 0 ||
+			response.Results[0].URL != "https://local.example/needle" {
+			t.Fatalf("attempt %d response = %#v, error = %v", attempt+1, response, err)
+		}
+	}
+	if hosts, _ := attempts.snapshot(); len(hosts) != 0 {
+		t.Fatalf("provider hosts = %v", hosts)
+	}
+	if remote.calls.Load() != interactiveSearchConcurrentWork {
+		t.Fatalf("remote calls = %d", remote.calls.Load())
+	}
+	close(release)
+	for range interactiveSearchConcurrentWork {
+		select {
+		case <-finished:
+		case <-time.After(time.Second):
+			t.Fatal("remote search did not finish")
+		}
 	}
 }

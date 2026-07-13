@@ -21,7 +21,7 @@ var (
 
 const (
 	webFallbackExactStageCancellationGrace = 50 * time.Millisecond
-	webFallbackExactStageFailureSource     = "exact-stage"
+	webFallbackExactStageFailureSource     = searchcore.PartialFailureSourceExactStage
 	webFallbackExactStageTimeoutFailure    = "exact search deadline exceeded"
 	webFallbackExactStageCapacityFailure   = "exact search capacity exhausted"
 	webFallbackExactStagePanicMessage      = "exact search stage panicked"

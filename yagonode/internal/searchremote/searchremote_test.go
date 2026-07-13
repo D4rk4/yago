@@ -776,7 +776,10 @@ func TestRemoteSearchRequestHelpers(t *testing.T) {
 		normalizedPartitionExponent(2) != 2 {
 		t.Fatal("normalizedPartitionExponent failed")
 	}
-	if got := peerFailure(yagomodel.Seed{}, context.Canceled); got.Source != "remote-yacy" {
+	if got := peerFailure(
+		yagomodel.Seed{},
+		context.Canceled,
+	); got.Source != searchcore.PartialFailureSourceRemoteYaCy {
 		t.Fatalf("peer failure = %#v", got)
 	}
 }

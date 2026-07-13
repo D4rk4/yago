@@ -15,10 +15,11 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/searchsession"
 )
 
 type deadlineSearch struct {
-	cause error
+	cause chan error
 }
 
 type blockingInteractiveSearch struct {
@@ -99,22 +100,25 @@ func (s *deadlineSearch) Search(
 	_ searchcore.Request,
 ) (searchcore.Response, error) {
 	<-ctx.Done()
-	s.cause = context.Cause(ctx)
+	if s.cause != nil {
+		s.cause <- context.Cause(ctx)
+	}
 
 	return searchcore.Response{}, fmt.Errorf("deadline search: %w", ctx.Err())
 }
 
 func TestInteractiveSearchBudgetCancelsSlowPipeline(t *testing.T) {
-	inner := &deadlineSearch{}
+	inner := &deadlineSearch{cause: make(chan error, 1)}
 	response, err := interactiveBudgetFixture(inner, 10*time.Millisecond).Search(
 		t.Context(),
 		searchcore.Request{Query: "slow"},
 	)
-	if err != nil || response.Request.Query != "slow" ||
+	cause := <-inner.cause
+	if !errors.Is(err, context.DeadlineExceeded) || response.Request.Query != "slow" ||
 		len(response.PartialFailures) != 1 ||
 		response.PartialFailures[0].Source != interactiveSearchFailureSource ||
-		!errors.Is(inner.cause, context.DeadlineExceeded) {
-		t.Fatalf("deadline = response %#v error %v cause %v", response, err, inner.cause)
+		!errors.Is(cause, context.DeadlineExceeded) {
+		t.Fatalf("deadline = response %#v error %v cause %v", response, err, cause)
 	}
 }
 
@@ -155,7 +159,8 @@ func TestInteractiveSearchBudgetReturnsBeforeUncooperativeWorkStops(t *testing.T
 	<-inner.started
 	cancel(context.DeadlineExceeded)
 	outcome := <-result
-	if outcome.err != nil || outcome.response.Request.Query != "slow" ||
+	if !errors.Is(outcome.err, context.DeadlineExceeded) ||
+		outcome.response.Request.Query != "slow" ||
 		len(outcome.response.PartialFailures) != 1 {
 		t.Fatalf("hard deadline result = %#v, %v", outcome.response, outcome.err)
 	}
@@ -168,7 +173,8 @@ func TestInteractiveSearchBudgetReturnsBeforeUncooperativeWorkStops(t *testing.T
 	default:
 	}
 	busy, err := searcher.Search(t.Context(), searchcore.Request{Query: "busy"})
-	if err != nil || busy.Request.Query != "busy" || len(busy.PartialFailures) != 1 ||
+	if !errors.Is(err, errInteractiveSearchCapacity) || busy.Request.Query != "busy" ||
+		len(busy.PartialFailures) != 1 ||
 		busy.PartialFailures[0].Reason != interactiveSearchCapacityFailure ||
 		inner.calls.Load() != 1 {
 		t.Fatalf("busy search = %#v, %v, calls %d", busy, err, inner.calls.Load())
@@ -181,7 +187,7 @@ func TestInteractiveSearchBudgetReturnsBeforeUncooperativeWorkStops(t *testing.T
 			t.Context(),
 			searchcore.Request{Query: "next"},
 		)
-		if searchErr != nil {
+		if searchErr != nil && !errors.Is(searchErr, errInteractiveSearchCapacity) {
 			t.Fatalf("search after release: %v", searchErr)
 		}
 		if len(response.PartialFailures) == 0 {
@@ -280,7 +286,8 @@ func TestInteractiveSearchBudgetContainsPanicAfterDeadline(t *testing.T) {
 	}()
 	<-inner.started
 	cancel(context.DeadlineExceeded)
-	if outcome := <-result; outcome.err != nil || len(outcome.response.PartialFailures) != 1 {
+	if outcome := <-result; !errors.Is(outcome.err, context.DeadlineExceeded) ||
+		len(outcome.response.PartialFailures) != 1 {
 		t.Fatalf("deadline response = %#v, %v", outcome.response, outcome.err)
 	}
 	close(inner.release)
@@ -288,7 +295,7 @@ func TestInteractiveSearchBudgetContainsPanicAfterDeadline(t *testing.T) {
 	deadline := time.Now().Add(time.Second)
 	for {
 		response, err := searcher.Search(t.Context(), searchcore.Request{Query: "after-panic"})
-		if err != nil {
+		if err != nil && !errors.Is(err, errInteractiveSearchCapacity) {
 			t.Fatalf("search after panic: %v", err)
 		}
 		if len(response.PartialFailures) == 0 {
@@ -321,7 +328,7 @@ func TestInteractiveSearchHardDeadlineRendersPortalHTTP200(t *testing.T) {
 	portal.ServeHTTP(response, httptest.NewRequestWithContext(
 		t.Context(), http.MethodGet, "/?q=slow", nil,
 	))
-	if response.Code != http.StatusOK || strings.Contains(
+	if response.Code != http.StatusOK || !strings.Contains(
 		response.Body.String(),
 		"Search is temporarily unavailable.",
 	) {
@@ -329,6 +336,40 @@ func TestInteractiveSearchHardDeadlineRendersPortalHTTP200(t *testing.T) {
 	}
 	close(inner.release)
 	<-inner.finished
+}
+
+func TestInteractiveSearchDeadlineReturnsRecentParsedSession(t *testing.T) {
+	stable := searchsession.NewStableWindow(staticSearcher{resp: searchcore.Response{
+		TotalResults: 1,
+		Results: []searchcore.Result{{
+			Title: "DrunkLab", URL: "https://drunklab.example/", Source: searchcore.SourceLocal,
+		}},
+	}})
+	req := searchcore.Request{Query: "drunklab", Limit: 10}
+	if _, err := withParsedQuery(stable).Search(t.Context(), req); err != nil {
+		t.Fatal(err)
+	}
+
+	inner := &blockingInteractiveSearch{
+		started: make(chan struct{}), release: make(chan struct{}), finished: make(chan struct{}),
+	}
+	searcher := withParsedQuery(searchsession.WithRecentSuccessOnIncompleteRefresh(
+		interactiveBudgetFixture(inner, 20*time.Millisecond),
+		stable,
+	))
+	response, err := searcher.Search(t.Context(), req)
+	if err != nil || len(response.Results) != 1 ||
+		response.Results[0].URL != "https://drunklab.example/" ||
+		len(response.PartialFailures) != 1 ||
+		response.PartialFailures[0].Source != interactiveSearchFailureSource {
+		t.Fatalf("response = %#v, error = %v", response, err)
+	}
+	close(inner.release)
+	select {
+	case <-inner.finished:
+	case <-time.After(time.Second):
+		t.Fatal("interactive search did not finish")
+	}
 }
 
 type panicSearcher struct {

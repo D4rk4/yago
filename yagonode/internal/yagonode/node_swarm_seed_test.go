@@ -12,6 +12,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/searchsession"
 )
 
 type recordingSeeder struct {
@@ -122,9 +123,17 @@ func TestNodePublicSearchInstallsSwarmSeedCrawl(t *testing.T) {
 		},
 	})
 
-	budgeted, ok := searcher.(interactiveBudgetSearcher)
+	parsed, ok := searcher.(parsedQuerySearcher)
 	if !ok {
-		t.Fatalf("searcher = %T, want an interactiveBudgetSearcher", searcher)
+		t.Fatalf("searcher = %T, want a parsedQuerySearcher", searcher)
+	}
+	continuity, ok := parsed.inner.(searchsession.RecentSuccessSearcher)
+	if !ok {
+		t.Fatalf("parsed inner = %T, want a RecentSuccessSearcher", parsed.inner)
+	}
+	budgeted, ok := continuity.Inner.(interactiveBudgetSearcher)
+	if !ok {
+		t.Fatalf("continuity inner = %T, want an interactiveBudgetSearcher", continuity.Inner)
 	}
 	if _, ok := budgeted.inner.(swarmSeedingSearcher); !ok {
 		t.Fatalf(

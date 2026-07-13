@@ -54,7 +54,7 @@ const defaultSearchForm = `    <div class="brand"><b>ya</b>go</div>
     </details>`
 
 const defaultFoot = `  <div class="foot">{{brand}} — free software under the GNU AGPL v3.<br>
-  Searches fan out to peers in the YaCy network, which see your query terms; results are labelled by where they came from (<span class="prov prov-local">local</span> this node's index, <span class="prov prov-peer">peer</span> another node, <span class="prov prov-ddgs">[ddgs]</span> an external provider that receives your query, whose pages may be queued for this node to crawl).</div>`
+  Searches fan out to peers in the YaCy network, which see your query terms; results are labelled by where they came from (<span class="prov prov-local">local</span> this node's index, <span class="prov prov-peer">peer</span> another node, <span class="prov prov-web">web</span> an external provider that receives your query, whose pages may be queued for this node to crawl).</div>`
 
 const defaultScripts = `<script>
 (function () {
@@ -169,7 +169,7 @@ const defaultResultsBody = `<!doctype html>
   <p class="meta" role="status">No results matched. Did you mean <a href="{{results.didYouMeanUrl}}">{{results.didYouMean}}</a>?</p>
   {{/if}}
   {{/if}}
-  <p class="meta" role="status">{{formatNumber results.totalResults}} {{pluralize results.totalResults "result" "results"}} for “{{results.query}}”{{#if elapsed}} ({{elapsed}}){{/if}}.{{#if results.results}} On this page: {{results.localCount}} from this node · {{results.peerCount}} from peers · {{results.webCount}} from DDGS.{{/if}}{{#if results.peersFailed}} {{results.peersFailed}} peer(s) unreachable or timed out.{{/if}}</p>
+  <p class="meta" role="status">{{formatNumber results.totalResults}} {{pluralize results.totalResults "result" "results"}} for “{{results.query}}”{{#if elapsed}} ({{elapsed}}){{/if}}.{{#if results.results}} On this page: {{results.localCount}} from this node · {{results.peerCount}} from peers · {{results.webCount}} from the web.{{/if}}{{#if results.peersFailed}} {{results.peersFailed}} peer(s) unreachable or timed out.{{/if}}</p>
   {{#if results.facets}}<div class="serp-grid"><aside class="facets" aria-label="Filter results">
   <details open>
   <summary>Filters</summary>
@@ -204,7 +204,7 @@ const defaultResultsBody = `<!doctype html>
   <li class="result">
     {{#if faviconUrl}}<img class="fav" src="{{faviconUrl}}" alt="" width="16" height="16" loading="lazy">{{/if}}
     <a class="title" href="{{url}}"{{#if ../newTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{/if}}>{{#if title}}{{title}}{{else}}{{url}}{{/if}}{{#if ../newTab}}<span aria-hidden="true"> ↗</span><span class="sr-only"> (opens in new tab)</span>{{/if}}</a>
-    <div class="url">{{#if displayUrl}}{{displayUrl}}{{else}}{{url}}{{/if}}{{#if provenance}} · <span class="prov prov-{{provenance}}">{{provenanceLabel}}</span>{{/if}}{{#if date}} · {{date}}{{/if}}{{#if sizeName}} · {{sizeName}}{{/if}}{{#if cachedUrl}} · <a href="{{cachedUrl}}">cached</a>{{/if}}</div>
+    <div class="url">{{#if displayUrl}}{{displayUrl}}{{else}}{{url}}{{/if}}{{#if provenance}} · <span class="prov prov-{{provenance}}">{{provenance}}</span>{{/if}}{{#if date}} · {{date}}{{/if}}{{#if sizeName}} · {{sizeName}}{{/if}}{{#if cachedUrl}} · <a href="{{cachedUrl}}">cached</a>{{/if}}</div>
     {{#if snippetHtml}}<p>{{{snippetHtml}}}</p>{{else}}{{#if snippet}}<p>{{snippet}}</p>{{/if}}{{/if}}
   </li>
   {{else}}
@@ -270,7 +270,7 @@ nav.pager .page { color: #525252; }
 .prov { border: 1px solid #c6c6c6; border-radius: 3px; padding: 0 0.3rem; font-size: 0.72rem; color: #525252; }
 .prov-local { border-color: #a7f0ba; background: #defbe6; color: #0e6027; }
 .prov-peer { border-color: #bae6ff; background: #e5f6ff; color: #003a6d; }
-.prov-ddgs { border-color: #ffd6e8; background: #fff0f7; color: #740937; }
+.prov-web { border-color: #ffd6e8; background: #fff0f7; color: #740937; }
 .tabs { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; }
 .tabs a, .tabs span[aria-current] { display: inline-block; padding: 0.35rem 0.7rem; color: #0f62fe; text-decoration: none; }
 .tabs span[aria-current] { color: #161616; border-bottom: 2px solid #d81c2f; }

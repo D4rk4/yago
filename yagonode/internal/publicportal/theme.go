@@ -111,7 +111,7 @@ func hitView(hit SearchResult) map[string]any {
 
 func provenanceLabel(provenance string) string {
 	if provenance == "ddgs" {
-		return "[ddgs]"
+		return "web"
 	}
 
 	return provenance

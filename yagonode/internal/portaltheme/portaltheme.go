@@ -192,8 +192,8 @@ func (t *Theme) Document(ctx context.Context, page string) (Document, bool, erro
 	if err != nil {
 		return Document{}, false, fmt.Errorf("load theme document: %w", err)
 	}
-	if found && page != SharedStyles {
-		doc.Body = repairLegacyVisualScript(doc.Body)
+	if found {
+		doc.Body = repairLegacyPortalDocument(page, doc.Body)
 	}
 
 	return doc, found, nil
@@ -207,9 +207,7 @@ func (t *Theme) SaveDocument(ctx context.Context, page, body string) (Document, 
 	if err := validPage(page); err != nil {
 		return Document{}, err
 	}
-	if page != SharedStyles {
-		body = repairLegacyVisualScript(body)
-	}
+	body = repairLegacyPortalDocument(page, body)
 	if len(body) > MaxDocumentBytes {
 		return Document{}, fmt.Errorf(
 			"theme document %q is %d bytes, above the %d byte cap",
@@ -276,9 +274,7 @@ func (t *Theme) reload(ctx context.Context) error {
 				return fmt.Errorf("read document %q: %w", page, err)
 			}
 			if stored {
-				if page != SharedStyles {
-					doc.Body = repairLegacyVisualScript(doc.Body)
-				}
+				doc.Body = repairLegacyPortalDocument(page, doc.Body)
 				t.refreshPage(page, doc, true)
 			}
 		}

@@ -144,7 +144,7 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 {{end}}
 {{if .ShowPartialFailure}}
 <ul>
-{{range .PartialFailures}}<li>{{.Source}}: {{.Reason}}</li>{{end}}
+{{range .PartialFailures}}<li>{{.SourceLabel}}: {{.Reason}}</li>{{end}}
 </ul>
 {{end}}
 <ol{{if .ClickCapture}} data-t="{{.ImpressionToken}}"{{end}}>
@@ -464,7 +464,7 @@ func responseHTMLItems(
 		}
 		switch {
 		case result.FromWeb():
-			item.Provenance = string(searchcore.SourceWeb)
+			item.Provenance = "web"
 		case result.FromPeer():
 			item.Provenance = "peer"
 		}

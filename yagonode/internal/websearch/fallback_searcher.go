@@ -54,6 +54,7 @@ func (s *FallbackSearcher) Search(
 	results, provErr := s.searchProvider(ctx, req.SubmittedText(), req.Limit)
 	if provErr != nil {
 		slog.DebugContext(ctx, msgFallbackFailed, slog.Any("error", provErr))
+		resp.PartialFailures = append(resp.PartialFailures, webProviderFailure())
 
 		return resp, nil
 	}
@@ -65,6 +66,13 @@ func (s *FallbackSearcher) Search(
 	}
 
 	return resp, nil
+}
+
+func webProviderFailure() searchcore.PartialFailure {
+	return searchcore.PartialFailure{
+		Source: searchcore.PartialFailureSourceWeb,
+		Reason: msgFallbackFailed,
+	}
 }
 
 func resultURLs(results []Result) []string {

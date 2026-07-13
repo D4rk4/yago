@@ -53,7 +53,10 @@ its binaries (`yago-node`, `yagocrawler`).
   local-only requests never reach it, and the single **Web search fallback
   (DDGS)** mode selector chooses consent-only, miss-only, or always-parallel
   local/peer/web retrieval. Results are merged with **reciprocal-rank
-  fusion** and **MMR result diversity**.
+  fusion** and **MMR result diversity**. A slow swarm branch cannot discard a
+  completed local answer, and a transient refresh cannot replace a recent
+  nonempty search session with an infrastructure-generated zero, including when
+  the bounded remote-stage admission is full.
 - **[YagoRank](yagonode/doc/yagorank.md)** — strict and relaxed fielded BM25,
   bounded lexical evidence and RM3, deterministic peer RRF, persistent date,
   anchor, authority, quality, safety, duplicate-cluster, and reputation signals,
@@ -100,9 +103,10 @@ its binaries (`yago-node`, `yagocrawler`).
   web responses, index results, paging sessions, background cache writes, and
   host-link snapshots have process-wide byte or admission limits. `/metrics`
   exposes Go heap plus process RSS for pre-OOM alerts. Interactive searches have
-  a hard 1.8-second response deadline and four process-wide execution slots;
-  saturation returns an immediate partial empty response while existing work
-  finishes within the fixed concurrency bound.
+  a hard 1.8-second response deadline and four process-wide outer execution
+  slots. A cold outer deadline or capacity failure is surfaced as unavailable;
+  an unexpired successful session may instead be served with the current failure
+  evidence, and timed-out work retains its slot until it exits.
 - Politeness and defense: robots.txt with a standards-compliant 500 KiB parsing
   limit and a sanitizer for real-world malformed files, per-host adaptive pacing
   and crawl delays, URL canonicalization,
@@ -296,8 +300,8 @@ result.
 | [yagorank.md](yagonode/doc/yagorank.md) | the learned ranking stack: model, features, and the tuning loop |
 | [configuration.md](yagonode/doc/configuration.md) | every environment variable and its default |
 | [specification.md](yagonode/doc/specification.md) | the node's behavior specification |
-| [metrics.md](yagonode/doc/metrics.md) · [slo.md](yagonode/doc/slo.md) | observability and alerting |
-| [backup-restore.md](yagonode/doc/backup-restore.md) | the offline backup/restore procedure |
+| [metrics.md](yagonode/doc/metrics.md) · [slo.md](doc/slo.md) | observability and alerting |
+| [backup-restore.md](doc/backup-restore.md) | the offline backup/restore procedure |
 | [yacy-dht-interop.md](yagonode/doc/yacy-dht-interop.md) | how DHT transfer selection works |
 | [remote-crawl-policy.md](yagonode/doc/remote-crawl-policy.md) | why remote crawl is off by default |
 | [ADR index](yagonode/doc/adr/README.md) | every architecture decision, including the no-gos |

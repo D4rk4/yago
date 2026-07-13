@@ -50,8 +50,21 @@ type stableSearcher struct {
 	limit    int
 }
 
+type RecentWindow interface {
+	Recent(searchcore.Request) (searchcore.Response, bool)
+}
+
+type StableWindow interface {
+	searchcore.Searcher
+	RecentWindow
+}
+
 // WithStableWindow decorates the searcher with the per-query session cache.
 func WithStableWindow(inner searchcore.Searcher) searchcore.Searcher {
+	return NewStableWindow(inner)
+}
+
+func NewStableWindow(inner searchcore.Searcher) StableWindow {
 	return &stableSearcher{
 		inner:    inner,
 		sessions: map[string]*session{},
@@ -82,6 +95,16 @@ func (s *stableSearcher) Search(
 	if err != nil {
 		return searchcore.Response{}, fmt.Errorf("session search: %w", err)
 	}
+	if cause := context.Cause(ctx); cause != nil {
+		return searchcore.Response{}, fmt.Errorf("session search: %w", cause)
+	}
+	if req.Offset == 0 && incompleteRefresh(resp) {
+		if recent, ok := s.Recent(req); ok {
+			return responseWithRefreshFailures(recent, resp.PartialFailures), nil
+		}
+
+		return resp, nil
+	}
 	stored := s.store(key, resp, deep.Limit)
 	if req.Offset > 0 {
 		if err := s.extend(ctx, stored, req); err != nil {
@@ -90,6 +113,19 @@ func (s *stableSearcher) Search(
 	}
 
 	return stored.respond(req), nil
+}
+
+func (s *stableSearcher) Recent(req searchcore.Request) (searchcore.Response, bool) {
+	entry, ok := s.lookup(sessionKey(req))
+	if !ok {
+		return searchcore.Response{}, false
+	}
+	response := entry.respond(req)
+	if len(response.Results) == 0 {
+		return searchcore.Response{}, false
+	}
+
+	return response, true
 }
 
 func (s *stableSearcher) lookup(key string) (*session, bool) {

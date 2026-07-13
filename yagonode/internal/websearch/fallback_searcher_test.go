@@ -212,6 +212,9 @@ func TestFallbackDegradesOnProviderError(t *testing.T) {
 	if len(resp.Results) != 0 {
 		t.Errorf("results = %#v, want empty", resp.Results)
 	}
+	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0] != webProviderFailure() {
+		t.Errorf("partial failures = %#v", resp.PartialFailures)
+	}
 }
 
 func TestFallbackPropagatesPrimaryError(t *testing.T) {

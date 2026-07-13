@@ -88,8 +88,20 @@ func TestFirefoxPoolHonorsContextWhileAllSessionsAreBusy(t *testing.T) {
 	}()
 	<-started
 	ctx, cancel := context.WithCancel(context.Background())
+	second := make(chan error, 1)
+	go func() {
+		_, err := pool.render(ctx, "https://example.org/second")
+		second <- err
+	}()
+	deadline := time.Now().Add(time.Second)
+	for len(pool.selection) != 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if len(pool.selection) != 0 {
+		t.Fatal("second render did not reach session wait")
+	}
 	cancel()
-	if _, err := pool.render(ctx, "https://example.org/second"); !errors.Is(err, context.Canceled) {
+	if err := <-second; !errors.Is(err, context.Canceled) {
 		t.Fatalf("render error = %v, want context cancellation", err)
 	}
 	close(release)

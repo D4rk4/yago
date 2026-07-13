@@ -35,7 +35,7 @@ type interactiveSearchOutcome struct {
 }
 
 const (
-	interactiveSearchFailureSource  = "local-search"
+	interactiveSearchFailureSource  = searchcore.PartialFailureSourceLocalSearch
 	interactiveSearchTimeoutFailure = "local search deadline exceeded"
 	interactiveSearchPanicMessage   = "interactive search pipeline panicked"
 )
@@ -119,7 +119,7 @@ func interactiveSearchResult(
 				Source: interactiveSearchFailureSource,
 				Reason: interactiveSearchTimeoutFailure,
 			}},
-		}, nil
+		}, interactiveSearchError(err)
 	}
 	if errors.Is(err, errInteractiveSearchCapacity) {
 		return searchcore.Response{
@@ -128,7 +128,7 @@ func interactiveSearchResult(
 				Source: interactiveSearchFailureSource,
 				Reason: interactiveSearchCapacityFailure,
 			}},
-		}, nil
+		}, interactiveSearchError(err)
 	}
 
 	return response, interactiveSearchError(err)

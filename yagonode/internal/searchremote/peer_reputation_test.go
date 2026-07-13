@@ -167,7 +167,7 @@ func TestResponseAppliesReputationAndFallsBackOnInvalidCap(t *testing.T) {
 		Limit: 10, Verify: searchcore.VerifyFalse,
 	}, results, &invalidCap)
 	if len(fallback.PartialFailures) != 1 ||
-		fallback.PartialFailures[0].Source != "peer-reputation" ||
+		fallback.PartialFailures[0].Source != searchcore.PartialFailureSourcePeerReputation ||
 		fallback.Results[0].Score != 1.0/61.0 || fallback.Results[1].Score != 1.0/61.0 {
 		t.Fatalf("invalid cap fallback = %#v", fallback)
 	}
@@ -270,7 +270,7 @@ func TestSearcherReputationSnapshotLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(response.PartialFailures) != 2 ||
-		response.PartialFailures[1].Source != "peer-reputation" ||
+		response.PartialFailures[1].Source != searchcore.PartialFailureSourcePeerReputation ||
 		!strings.Contains(response.PartialFailures[1].Reason, "snapshot failed") {
 		t.Fatalf("snapshot failure = %#v", response.PartialFailures)
 	}

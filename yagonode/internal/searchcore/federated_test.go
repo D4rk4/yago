@@ -174,6 +174,84 @@ func TestFederatedSearchRunsBranchesConcurrently(t *testing.T) {
 	}
 }
 
+func TestFederatedSearchKeepsCompletedLocalResultsAtRemoteDeadline(t *testing.T) {
+	remoteStarted := make(chan struct{})
+	releaseRemote := make(chan struct{})
+	remoteFinished := make(chan struct{})
+	local := searchFunc(func(context.Context, Request) (Response, error) {
+		return Response{
+			TotalResults: 2,
+			Results: []Result{
+				{URL: "https://local.example/first"},
+				{URL: "https://local.example/second"},
+			},
+			PartialFailures: []PartialFailure{{Source: "local", Reason: "degraded"}},
+			Facets:          []FacetGroup{{Name: "host"}},
+		}, nil
+	})
+	remote := searchFunc(func(context.Context, Request) (Response, error) {
+		close(remoteStarted)
+		<-releaseRemote
+		close(remoteFinished)
+
+		return Response{}, nil
+	})
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	response, err := NewFederatedSearcher(local, remote).Search(
+		ctx,
+		Request{Source: SourceGlobal, Offset: 1, Limit: 1},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Results) != 1 ||
+		response.Results[0].URL != "https://local.example/second" ||
+		response.TotalResults != 2 ||
+		len(response.PartialFailures) != 2 ||
+		response.PartialFailures[1].Source != PartialFailureSourceRemoteYaCy ||
+		len(response.Facets) != 1 {
+		t.Fatalf("response = %#v", response)
+	}
+	select {
+	case <-remoteStarted:
+	default:
+		t.Fatal("remote search did not start")
+	}
+	close(releaseRemote)
+	select {
+	case <-remoteFinished:
+	case <-time.After(time.Second):
+		t.Fatal("remote search did not finish")
+	}
+}
+
+func TestFederatedSearchPreservesParentCancellation(t *testing.T) {
+	remoteStarted := make(chan struct{})
+	releaseRemote := make(chan struct{})
+	remote := searchFunc(func(context.Context, Request) (Response, error) {
+		close(remoteStarted)
+		<-releaseRemote
+
+		return Response{}, nil
+	})
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		_, err := NewFederatedSearcher(&fakeCoreSearcher{}, remote).Search(
+			ctx,
+			Request{Source: SourceGlobal, Limit: 1},
+		)
+		done <- err
+	}()
+	<-remoteStarted
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v", err)
+	}
+	close(releaseRemote)
+}
+
 type searchFunc func(context.Context, Request) (Response, error)
 
 func (f searchFunc) Search(ctx context.Context, req Request) (Response, error) {

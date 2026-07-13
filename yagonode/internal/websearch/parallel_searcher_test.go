@@ -67,8 +67,11 @@ func TestParallelSearcherStartsBothBranchesAndFusesTheirRankings(t *testing.T) {
 					Source: searchcore.SourceLocal,
 				},
 			},
-			PartialFailures: []searchcore.PartialFailure{{Source: "remote-yacy", Reason: "late"}},
-			Facets:          []searchcore.FacetGroup{{Name: "host"}},
+			PartialFailures: []searchcore.PartialFailure{{
+				Source: searchcore.PartialFailureSourceRemoteYaCy,
+				Reason: "late",
+			}},
+			Facets: []searchcore.FacetGroup{{Name: "host"}},
 		},
 	}
 	provider := parallelBarrierProvider{
@@ -151,7 +154,8 @@ func TestParallelSearcherProviderFailureKeepsPrimaryAnswer(t *testing.T) {
 		&stubProvider{err: errors.New("provider failed")},
 		enabled,
 	).Search(t.Context(), searchcore.Request{Query: "gap", Limit: 10})
-	if err != nil || len(response.Results) != 1 || response.Results[0].Title != "Local gap" {
+	if err != nil || len(response.Results) != 1 || response.Results[0].Title != "Local gap" ||
+		len(response.PartialFailures) != 1 || response.PartialFailures[0] != webProviderFailure() {
 		t.Fatalf("response = %#v, error = %v", response, err)
 	}
 }

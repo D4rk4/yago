@@ -334,13 +334,15 @@ func (e *engine) runUpdate(fn func(vault.EngineTxn) error, tryLocks bool) error 
 	return nil
 }
 
-func (e *engine) View(_ context.Context, fn func(vault.EngineTxn) error) error {
+func (e *engine) View(ctx context.Context, fn func(vault.EngineTxn) error) error {
 	// Readers hold the gate shared so a compaction swap (exclusive) waits for
 	// in-flight reads to finish and no read starts mid-swap. The rollback defer
 	// is declared last so it runs before the gate is released.
 	e.viewsInFlight.Add(1)
 	defer e.viewsInFlight.Add(-1)
-	e.globalGate.RLock()
+	if err := acquireGlobalRead(ctx, &e.globalGate); err != nil {
+		return err
+	}
 	defer e.globalGate.RUnlock()
 
 	txn := &shardTxn{engine: e, open: make([]*bolt.Tx, len(e.shards))}

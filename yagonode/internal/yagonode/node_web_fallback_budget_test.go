@@ -149,7 +149,7 @@ func TestWebFallbackExactStageDeadlineContinuesTheMissCascade(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(response.Results) != 0 || len(response.PartialFailures) != 1 ||
-		response.PartialFailures[0].Source != "exact-stage" {
+		response.PartialFailures[0].Source != searchcore.PartialFailureSourceExactStage {
 		t.Fatalf("response = %#v", response)
 	}
 }

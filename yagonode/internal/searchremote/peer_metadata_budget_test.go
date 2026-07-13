@@ -108,7 +108,7 @@ func TestResponseStopsAtDecodedBudgetWithoutPenalizingPeer(t *testing.T) {
 		budget,
 	)
 	if len(response.Results) != 0 || len(response.PartialFailures) != 1 ||
-		response.PartialFailures[0].Source != "remote-yacy" ||
+		response.PartialFailures[0].Source != searchcore.PartialFailureSourceRemoteYaCy ||
 		!strings.Contains(
 			response.PartialFailures[0].Reason,
 			errRemoteSearchDecodedBudgetExhausted.Error(),

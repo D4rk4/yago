@@ -53,6 +53,14 @@ func (s *stableSearcher) extend(
 		if err != nil {
 			return fmt.Errorf("search deeper window: %w", err)
 		}
+		if cause := context.Cause(ctx); cause != nil {
+			return fmt.Errorf("search deeper window: %w", cause)
+		}
+		if incompleteRefresh(resp) {
+			entry.failures = mergedSessionFailures(entry.failures, resp.PartialFailures)
+
+			return nil
+		}
 		previousLength := len(entry.results)
 		entry.results = appendUnseen(entry.results, resp.Results, targetDepth)
 		entry.searchDepth = targetDepth

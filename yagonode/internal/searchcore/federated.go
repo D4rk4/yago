@@ -46,12 +46,21 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 	if err != nil {
 		return Response{}, fmt.Errorf("local search: %w", err)
 	}
-	remote := <-remoteOutcome
+	var remote searchOutcome
+	select {
+	case remote = <-remoteOutcome:
+	case <-ctx.Done():
+		if ctx.Err() == context.Canceled {
+			return Response{}, fmt.Errorf("remote search: %w", ctx.Err())
+		}
+
+		return localFederatedResponse(req, localResp, ctx.Err()), nil
+	}
 	remoteResp := remote.resp
 	if remote.err != nil {
 		remoteResp = Response{
 			PartialFailures: []PartialFailure{{
-				Source: "remote-yacy",
+				Source: PartialFailureSourceRemoteYaCy,
 				Reason: remote.err.Error(),
 			}},
 		}

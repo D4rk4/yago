@@ -72,7 +72,7 @@ func TestHitViewMarksDDGSProvenance(t *testing.T) {
 	t.Parallel()
 
 	view := hitView(SearchResult{Provenance: "ddgs"})
-	if view["provenance"] != "ddgs" || view["provenanceLabel"] != "[ddgs]" {
+	if view["provenance"] != "ddgs" || view["provenanceLabel"] != "web" {
 		t.Fatalf("DDGS provenance view = %#v", view)
 	}
 

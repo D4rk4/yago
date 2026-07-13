@@ -87,7 +87,7 @@ func TestPortalRendersResultsWithProvenance(t *testing.T) {
 				Title:      "Web hit",
 				URL:        "http://b.example/2",
 				DisplayURL: "b.example/2",
-				Provenance: "ddgs",
+				Provenance: "web",
 			},
 		},
 	}}
@@ -96,7 +96,7 @@ func TestPortalRendersResultsWithProvenance(t *testing.T) {
 		t.Fatalf("status %d", status)
 	}
 	for _, want := range []string{
-		"Local hit", "Web hit", `class="prov prov-ddgs">[ddgs]</span>`, "result(s) for",
+		"Local hit", "Web hit", `class="prov prov-web">web</span>`, "result(s) for",
 		`rel="noreferrer nofollow"`,
 	} {
 		if !strings.Contains(body, want) {

@@ -299,7 +299,7 @@ func (reduction *termAbstractReduction) finish(
 	for _, target := range targets {
 		if successes[target.term] == 0 {
 			failures = append(failures, searchcore.PartialFailure{
-				Source: "remote-yacy",
+				Source: searchcore.PartialFailureSourceRemoteYaCy,
 				Reason: "no index abstract responses for " + target.term.String(),
 			})
 		}

@@ -89,9 +89,7 @@ func (s *ParallelSearcher) Search(
 		panic(provider.failure)
 	}
 	if provider.err != nil {
-		slog.DebugContext(ctx, msgFallbackFailed, slog.Any("error", provider.err))
-
-		return primary.response, nil
+		return failedParallelProviderResponse(ctx, primary.response, provider.err), nil
 	}
 
 	provider.results = verifiedWebResults(req, provider.results)
@@ -114,6 +112,17 @@ func (s *ParallelSearcher) Search(
 	primary.response.Request = req
 
 	return primary.response, nil
+}
+
+func failedParallelProviderResponse(
+	ctx context.Context,
+	response searchcore.Response,
+	err error,
+) searchcore.Response {
+	slog.DebugContext(ctx, msgFallbackFailed, slog.Any("error", err))
+	response.PartialFailures = append(response.PartialFailures, webProviderFailure())
+
+	return response
 }
 
 func parallelResultIdentities(

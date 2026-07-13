@@ -72,7 +72,7 @@ func adminSearchResults(
 func adminSearchFailures(failures []searchcore.PartialFailure) []string {
 	rendered := make([]string, 0, len(failures))
 	for _, failure := range failures {
-		rendered = append(rendered, failure.Source+": "+failure.Reason)
+		rendered = append(rendered, failure.SourceLabel()+": "+failure.Reason)
 	}
 
 	return rendered

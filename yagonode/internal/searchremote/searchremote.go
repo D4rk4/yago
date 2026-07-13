@@ -167,6 +167,7 @@ func (s searcher) Search(
 ) (searchcore.Response, error) {
 	ctx, cancel := s.overallContext(ctx)
 	defer cancel()
+	s = s.withSelfSeedSnapshot(ctx)
 	reputation, reputationErr := s.beginReputation(ctx)
 	budget := newRemoteQueryBudget()
 
@@ -179,7 +180,7 @@ func (s searcher) Search(
 	reputation.flush(ctx)
 	if reputationErr != nil {
 		response.PartialFailures = append(response.PartialFailures, searchcore.PartialFailure{
-			Source: "peer-reputation",
+			Source: searchcore.PartialFailureSourcePeerReputation,
 			Reason: reputationErr.Error(),
 		})
 	}
@@ -199,7 +200,7 @@ func (s searcher) searchExact(
 		return searchcore.Response{
 			Request: req,
 			PartialFailures: []searchcore.PartialFailure{{
-				Source: "remote-yacy",
+				Source: searchcore.PartialFailureSourceRemoteYaCy,
 				Reason: noPeersReason,
 			}},
 		}
@@ -438,7 +439,7 @@ func (s searcher) termTargets(
 		peers, reason := s.remotePeers(ctx, []yagomodel.Hash{term})
 		if len(peers) == 0 {
 			failures = append(failures, searchcore.PartialFailure{
-				Source: "remote-yacy",
+				Source: searchcore.PartialFailureSourceRemoteYaCy,
 				Reason: fmt.Sprintf("no dht search targets for %s: %s", term, reason),
 			})
 			continue
@@ -714,7 +715,7 @@ func (s searcher) responseWithinBudget(
 		if err != nil {
 			if errors.Is(err, errRemoteSearchDecodedBudgetExhausted) {
 				resp.PartialFailures = append(resp.PartialFailures, searchcore.PartialFailure{
-					Source: "remote-yacy",
+					Source: searchcore.PartialFailureSourceRemoteYaCy,
 					Reason: err.Error(),
 				})
 				break
@@ -749,7 +750,7 @@ func (s searcher) responseWithinBudget(
 	)
 	if reputationErr != nil {
 		resp.PartialFailures = append(resp.PartialFailures, searchcore.PartialFailure{
-			Source: "peer-reputation",
+			Source: searchcore.PartialFailureSourcePeerReputation,
 			Reason: reputationErr.Error(),
 		})
 	}
@@ -788,7 +789,7 @@ func remoteResultIdentity(result searchcore.Result) string {
 func peerFailure(peer yagomodel.Seed, err error) searchcore.PartialFailure {
 	source := peer.Hash.String()
 	if source == "" {
-		source = "remote-yacy"
+		source = searchcore.PartialFailureSourceRemoteYaCy
 	}
 
 	return searchcore.PartialFailure{Source: source, Reason: err.Error()}

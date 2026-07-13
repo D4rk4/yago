@@ -19,11 +19,12 @@ var (
 
 const (
 	recoverySearchCancellationGrace = 25 * time.Millisecond
-	recoverySearchFailureSource     = "fuzzy-stage"
+	recoverySearchFailureSource     = searchcore.PartialFailureSourceFuzzyStage
 	recoverySearchTimeoutFailure    = "fuzzy search deadline exceeded"
 	recoverySearchCapacityFailure   = "fuzzy search capacity exhausted"
 	recoverySearchFailed            = "fuzzy search failed"
 	recoverySearchPanicMessage      = "fuzzy search stage panicked"
+	recoveryStageFailedLogMessage   = "bounded search recovery failed"
 )
 
 type recoveryBudgetSearcher struct {
@@ -32,6 +33,16 @@ type recoveryBudgetSearcher struct {
 	grace     time.Duration
 	admission *interactiveSearchAdmission
 	panicLog  func(context.Context, string, ...any)
+	profile   recoveryStageProfile
+}
+
+type recoveryStageProfile struct {
+	operation       string
+	failureSource   string
+	timeoutFailure  string
+	capacityFailure string
+	failedMessage   string
+	panicMessage    string
 }
 
 type recoverySearchOutcome struct {
@@ -54,6 +65,7 @@ func (s recoveryBudgetSearcher) Search(
 	ctx context.Context,
 	req searchcore.Request,
 ) (searchcore.Response, error) {
+	profile := s.effectiveProfile()
 	hardContext, hardCancel := context.WithTimeout(ctx, s.budget)
 	defer hardCancel()
 	stageBudget := s.budget - s.grace
@@ -66,10 +78,10 @@ func (s recoveryBudgetSearcher) Search(
 	release, err := s.admission.tryAcquire(stageContext)
 	if err != nil {
 		if errors.Is(err, errInteractiveSearchCapacity) {
-			return recoverySearchFailure(req, recoverySearchCapacityFailure), nil
+			return recoverySearchFailure(req, profile, profile.capacityFailure), nil
 		}
 
-		return searchcore.Response{}, fmt.Errorf("fuzzy search admission: %w", err)
+		return searchcore.Response{}, fmt.Errorf("%s admission: %w", profile.operation, err)
 	}
 	outcomes := make(chan recoverySearchOutcome, 1)
 	go s.run(stageContext, req, release, outcomes)
@@ -87,30 +99,33 @@ func (s recoveryBudgetSearcher) Search(
 			outcome.response.PartialFailures = append(
 				outcome.response.PartialFailures,
 				searchcore.PartialFailure{
-					Source: recoverySearchFailureSource,
-					Reason: recoverySearchTimeoutFailure,
+					Source: profile.failureSource,
+					Reason: profile.timeoutFailure,
 				},
 			)
 
 			return outcome.response, nil
 		}
 		outcome.response.Request = req
-		slog.WarnContext(ctx, recoverySearchFailed, slog.Any("error", outcome.err))
+		slog.WarnContext(ctx, recoveryStageFailedLogMessage,
+			slog.String("stage", profile.failureSource),
+			slog.Any("error", outcome.err),
+		)
 		outcome.response.PartialFailures = append(
 			outcome.response.PartialFailures,
 			searchcore.PartialFailure{
-				Source: recoverySearchFailureSource,
-				Reason: recoverySearchFailed,
+				Source: profile.failureSource,
+				Reason: profile.failedMessage,
 			},
 		)
 
 		return outcome.response, nil
 	case <-hardContext.Done():
 		if ctx.Err() != nil {
-			return searchcore.Response{}, fmt.Errorf("fuzzy search: %w", ctx.Err())
+			return searchcore.Response{}, fmt.Errorf("%s: %w", profile.operation, ctx.Err())
 		}
 
-		return recoverySearchFailure(req, recoverySearchTimeoutFailure), nil
+		return recoverySearchFailure(req, profile, profile.timeoutFailure), nil
 	}
 }
 
@@ -124,7 +139,7 @@ func (s recoveryBudgetSearcher) run(
 	defer func() {
 		outcome.failure = recover()
 		if outcome.failure != nil {
-			s.panicLog(ctx, recoverySearchPanicMessage, slog.Any("panic", outcome.failure))
+			s.panicLog(ctx, s.effectiveProfile().panicMessage, slog.Any("panic", outcome.failure))
 		}
 		release()
 		outcomes <- outcome
@@ -134,13 +149,29 @@ func (s recoveryBudgetSearcher) run(
 
 func recoverySearchFailure(
 	req searchcore.Request,
+	profile recoveryStageProfile,
 	reason string,
 ) searchcore.Response {
 	return searchcore.Response{
 		Request: req,
 		PartialFailures: []searchcore.PartialFailure{{
-			Source: recoverySearchFailureSource,
+			Source: profile.failureSource,
 			Reason: reason,
 		}},
+	}
+}
+
+func (s recoveryBudgetSearcher) effectiveProfile() recoveryStageProfile {
+	if s.profile.failureSource != "" {
+		return s.profile
+	}
+
+	return recoveryStageProfile{
+		operation:       "fuzzy search",
+		failureSource:   recoverySearchFailureSource,
+		timeoutFailure:  recoverySearchTimeoutFailure,
+		capacityFailure: recoverySearchCapacityFailure,
+		failedMessage:   recoverySearchFailed,
+		panicMessage:    recoverySearchPanicMessage,
 	}
 }
