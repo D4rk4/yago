@@ -210,6 +210,10 @@ func TestPDFPageContentsSyntaxEdges(t *testing.T) {
 			t.Fatalf("malformed contents references = %v for %q", references, value)
 		}
 	}
+	direct := pdfPageContentsReferences([]byte("<< /Contents [1 0 R 2 0 R] >>"))
+	if strings.Join(direct, ",") != "1 0,2 0" {
+		t.Fatalf("direct contents references = %v", direct)
+	}
 
 	streamValue := []byte("<< >>\nstream\npayload\nendstream")
 	objectByReference := map[string]pdfIndirectObject{
