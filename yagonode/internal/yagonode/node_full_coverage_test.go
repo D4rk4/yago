@@ -14,7 +14,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/snippetfetch"
 	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
-	"github.com/D4rk4/yago/yagonode/internal/urldenylist"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -37,22 +36,6 @@ func (w *failAfterWriter) Write(p []byte) (int, error) {
 	w.ok--
 
 	return len(p), nil
-}
-
-// bareDenylistStore satisfies denylistStore but not denylistSnapshotter, so the
-// blacklist probe's unsupported-store branch is reachable.
-type bareDenylistStore struct{}
-
-func (bareDenylistStore) Entries(context.Context) ([]urldenylist.Entry, error) {
-	return nil, nil
-}
-
-func (bareDenylistStore) Add(context.Context, urldenylist.Kind, string) error {
-	return nil
-}
-
-func (bareDenylistStore) Remove(context.Context, urldenylist.Kind, string) (bool, error) {
-	return false, nil
 }
 
 // failingDispatch rejects every crawl start so the schedule loop's dispatch-error

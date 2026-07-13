@@ -30,9 +30,11 @@ an operationally separated online-comparison and implicit-qrel path.
 
 YagoRank uses a bounded in-process pipeline:
 
-1. Strict all-term and relaxed 60%-match fielded BM25 form the initial local
-   candidate union and fuse before stored documents are inspected. Bounded RM3
-   widens recall while required terms remain mandatory. Quoted phrases add a
+1. Strict all-term fielded BM25 forms every initial local candidate set. Queries
+   with at least three distinct terms also run a relaxed branch requiring the
+   ceiling of 60% term coverage; strict matches precede relaxed-only matches after
+   fusion and before stored documents are inspected. Bounded RM3 widens recall
+   without reducing either branch's coverage rule. Quoted phrases add a
    bounded positive preference only when analyzer-normalized terms are adjacent
    in one stored field of a leading evidence candidate. Other phrase and proximity
    evidence is then derived from visible text and, for explicit ranking-feature,
@@ -44,9 +46,10 @@ YagoRank uses a bounded in-process pipeline:
 2. Crawl and peer evidence is persisted before search: lifecycle dates, inbound
    anchors, content quality and safety, exact and near-duplicate clusters,
    registrable-domain authority, and decayed peer reputation.
-   Domain authority reads a deterministic bounded sample of at most 1,048,576
-   unique citations. An operator can persist at most 256 canonical domain names
-   or IP literals and a TrustRank blend in `[0,1]` in the vault; the
+   Domain authority rejects invalid and same-domain links, caps every domain edge
+   at eight distinct source-page votes, and reads a deterministic 16 MiB sample
+   of at most 3,276 cross-domain votes. An operator can persist at most 256
+   canonical domain names or IP literals and a TrustRank blend in `[0,1]` in the vault; the
    default list is empty. Authenticated GET and PUT at
    `/api/admin/v1/search/ranking/trust` and the YagoRank console edit the same
    policy, and a change triggers an immediate authority refresh.

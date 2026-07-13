@@ -16,16 +16,8 @@ import (
 
 // BlacklistBlocks reports whether the denylist would block rawURL right now,
 // through the same snapshot matcher the search filter uses.
-func (c *blacklistController) BlacklistBlocks(ctx context.Context, rawURL string) (bool, error) {
-	snapshotter, ok := c.store.(denylistSnapshotter)
-	if !ok {
-		return false, fmt.Errorf("denylist store cannot answer probes")
-	}
-	snapshot, err := snapshotter.Snapshot(ctx)
-	if err != nil {
-		return false, fmt.Errorf("denylist snapshot: %w", err)
-	}
-
+func (c *blacklistController) BlacklistBlocks(_ context.Context, rawURL string) (bool, error) {
+	snapshot := c.store.Snapshot()
 	return snapshot.Blocks(strings.TrimSpace(rawURL)), nil
 }
 

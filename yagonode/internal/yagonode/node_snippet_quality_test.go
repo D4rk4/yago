@@ -27,12 +27,19 @@ func TestPortalSourceHighlightsSnippetsAndCarriesMeta(t *testing.T) {
 			Host:    "example.org",
 			Date:    "20260701",
 			Size:    2048,
+		}, {
+			Title:   "Unknown publication",
+			URL:     "https://example.org/unknown",
+			Snippet: "Golang publication unknown",
 		}},
 	}}
 
 	results, err := newPortalSource(inner).Search(t.Context(), "golang", "", 0, 10)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
+	}
+	if len(results.Results) != 2 || results.Results[1].Date != "" {
+		t.Fatalf("unknown publication date = %#v", results.Results)
 	}
 	result := results.Results[0]
 	if !strings.Contains(string(result.SnippetHTML), "<mark>Golang</mark>") ||

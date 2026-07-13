@@ -35,7 +35,7 @@ func (s *fakeSearch) Search(
 
 func TestJSONEndpointReturnsYaCySearchShape(t *testing.T) {
 	search := &fakeSearch{response: searchcore.Response{
-		TotalResults: 1,
+		TotalResults: 2,
 		Results: []searchcore.Result{{
 			Title:      "Result",
 			URL:        "https://example.org/doc",
@@ -49,6 +49,10 @@ func TestJSONEndpointReturnsYaCySearchShape(t *testing.T) {
 			Date:       "20260101",
 			Source:     searchcore.SourceLocal,
 			DisplayURL: "example.org/doc",
+		}, {
+			Title:   "Unknown publication",
+			URL:     "https://example.org/unknown",
+			URLHash: "BBBBBBBBBBBB",
 		}},
 	}}
 	rec := httptest.NewRecorder()
@@ -71,17 +75,21 @@ func TestJSONEndpointReturnsYaCySearchShape(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 	channel := got.Channels[0]
-	if channel.TotalResults != "1" ||
+	if channel.TotalResults != "2" ||
 		channel.ItemsPerPage != "10" ||
 		channel.Link != "http://node.test/yacysearch.html?query=golang+site%3Aexample.org&amp;resource=local&amp;contentdom=text" ||
-		len(channel.Items) != 1 {
+		len(channel.Items) != 2 {
 		t.Fatalf("channel = %#v", channel)
 	}
 	if item := channel.Items[0]; item.Title != "Result" ||
+		item.PubDate != "20260101" ||
 		item.Size != "12" ||
 		item.SizeName != "12 bytes" ||
 		item.Ranking != "7" {
 		t.Fatalf("item = %#v", item)
+	}
+	if item := channel.Items[1]; item.PubDate != "" {
+		t.Fatalf("unknown publication item = %#v", item)
 	}
 	if search.got.SiteHost != "example.org" ||
 		search.got.Limit != publicSearchLimitCap ||

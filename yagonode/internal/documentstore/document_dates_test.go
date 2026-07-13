@@ -117,6 +117,7 @@ func TestPublicationDateRequiresCredibleChangedEvidence(t *testing.T) {
 	for _, doc := range []Document{
 		{PublishedAt: published},
 		{ModifiedAt: modified, DateConfidence: 1},
+		{FetchedAt: modified, IndexedAt: published, DateConfidence: 1},
 	} {
 		when, confidence = PublicationDate(doc)
 		if !when.IsZero() || confidence != 0 {

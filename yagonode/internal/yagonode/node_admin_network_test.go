@@ -77,6 +77,39 @@ func TestNetworkSourceSurfacesReachabilityAndSeedlists(t *testing.T) {
 	}
 }
 
+type boundedNetworkRoster struct {
+	reachableRoster
+	requested int
+}
+
+func (r *boundedNetworkRoster) FreshestPeers(
+	_ context.Context,
+	limit int,
+) []yagomodel.Seed {
+	r.requested = limit
+
+	return r.peers[:min(limit, len(r.peers))]
+}
+
+func TestNetworkSourceIncludesCompleteRoster(t *testing.T) {
+	peers := make([]yagomodel.Seed, 270)
+	for i := range peers {
+		peers[i] = networkTestSeed(t)
+	}
+	roster := &boundedNetworkRoster{reachableRoster: reachableRoster{peers: peers}}
+	source := newNetworkSource(dhtGateStatusSource{}, roster, nil, nil, nil)
+
+	status := source.Network(context.Background())
+	if roster.requested != 270 || status.KnownPeers != 270 || len(status.Peers) != 270 {
+		t.Fatalf(
+			"requested=%d known=%d peers=%d",
+			roster.requested,
+			status.KnownPeers,
+			len(status.Peers),
+		)
+	}
+}
+
 func TestSeedFlagLabelsEmptyWithoutFlags(t *testing.T) {
 	if labels := seedFlagLabels(yagomodel.Seed{}); labels != nil {
 		t.Fatalf("expected no labels for a seed without flags, got %v", labels)

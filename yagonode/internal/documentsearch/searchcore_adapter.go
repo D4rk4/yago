@@ -212,6 +212,8 @@ func searchCoreResult(
 	safetyConfidence := 0.0
 	clusterID := ""
 	representativeURL := ""
+	publicationDate := ""
+	dateConfidence := 0.0
 	if conversion.documents != nil && rawURL != "" {
 		doc, found, err := conversion.documents.Document(conversion.ctx, rawURL)
 		if err != nil {
@@ -232,6 +234,7 @@ func searchCoreResult(
 			} else {
 				snippet = title
 			}
+			publicationDate, dateConfidence = searchCorePublicationDate(doc)
 		}
 	}
 
@@ -250,7 +253,8 @@ func searchCoreResult(
 		ContentType:         contentType,
 		URLHash:             hash.String(),
 		Size:                metadataSize(row),
-		Date:                row.Freshness(),
+		Date:                publicationDate,
+		DateConfidence:      dateConfidence,
 		ContentDomain:       conversion.req.ContentDomain,
 		Language:            conversion.req.Language,
 		SafetyRating:        safetyRating,

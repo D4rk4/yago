@@ -12,11 +12,12 @@ Serving, explanation, and training use the same bounded local candidate stages:
 local retrieval, bounded RM3 feedback, then lexical evidence construction. Every
 search follows these stages:
 
-1. Build a candidate window from strict all-term fielded BM25 and a relaxed 60%
-   term-match branch, then fuse the two lists by reciprocal rank before stored
-   documents are inspected. Bounded RM3 feedback uses at most five distinct
+1. Build a candidate window from strict all-term fielded BM25. Queries with at
+   least three distinct terms also run a relaxed branch requiring the ceiling of
+   60% term coverage; strict matches always precede relaxed-only matches after
+   reciprocal-rank fusion and before stored documents are inspected. Bounded RM3 feedback uses at most five distinct
    documents, 256 tokens per document, and three expansion terms that occur in
-   at least two feedback documents. Required query terms remain mandatory.
+   at least two feedback documents and does not reduce either branch's term-coverage rule.
    Visible text supplies ordinary lexical proximity; explicit ranking-feature,
    explain, or near consumers may request capped stored-document positions.
 2. Merge local and YaCy peer lists deterministically. A peer contributes one
@@ -87,9 +88,18 @@ Inbound anchors are replaced atomically when a source page is recrawled. Links
 marked `nofollow`, `ugc`, or `sponsored` do not contribute ranking anchor text or
 authority. Domain authority uses a bounded in-process link graph with PageRank
 and TrustRank-style teleport evidence, distinct-source limits, and confidence.
-Graph refresh retains a deterministic hash-priority sample of at most 1,048,576
-unique citations, so scanning a large document collection cannot create an
-unbounded citation slice.
+Graph refresh rejects invalid and same-domain links, then retains at most eight
+deterministic distinct source-page votes for each source-target domain edge.
+The resulting hash-priority sample stays within 16 MiB and holds at most 3,276
+cross-domain page votes, so high-volume sites and large document collections
+cannot create an unbounded or internal-link-dominated citation slice.
+
+Authority, spelling, and optional swarm-morphology signals are collected in one
+completion-relative background pass. Its full-document view does not claim the
+interactive-read preference that briefly defers ingest writes. The next pass
+starts ten minutes after the previous pass finishes, so slow scans cannot form a
+continuous backlog. A trust-policy change recomputes authority from the retained
+citation sample and does not rescan the corpus.
 
 TrustRank teleport seeds are an operator policy stored in the node vault. The
 default policy is empty; operators can select a blend in `[0,1]` and at most 256

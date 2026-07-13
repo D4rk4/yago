@@ -336,8 +336,10 @@ func (e *engine) View(ctx context.Context, fn func(vault.EngineTxn) error) error
 	// Readers hold the gate shared so a compaction swap (exclusive) waits for
 	// in-flight reads to finish and no read starts mid-swap. The rollback defer
 	// is declared last so it runs before the gate is released.
-	e.viewsInFlight.Add(1)
-	defer e.viewsInFlight.Add(-1)
+	if !vault.IsBackgroundRead(ctx) {
+		e.viewsInFlight.Add(1)
+		defer e.viewsInFlight.Add(-1)
+	}
 	if err := acquireGlobalRead(ctx, &e.globalGate); err != nil {
 		return err
 	}

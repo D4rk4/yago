@@ -87,7 +87,8 @@ func TestSearchCandidatesFusesStrictAndRelaxedBranches(t *testing.T) {
 	set, err := (localSearcher{index: index}).searchCandidates(
 		t.Context(),
 		searchindex.SearchRequest{
-			Query: "alpha beta", Terms: []string{"alpha", "beta"}, MaxResults: 3, WithFacets: true,
+			Query: "alpha beta gamma",
+			Terms: []string{"alpha", "beta", "gamma"}, MaxResults: 3, WithFacets: true,
 		},
 	)
 	if err != nil {
@@ -95,7 +96,7 @@ func TestSearchCandidatesFusesStrictAndRelaxedBranches(t *testing.T) {
 	}
 	if len(index.requests) != 2 || index.requests[0].WithFacets ||
 		index.requests[0].MaxResults != 3 || index.requests[1].MaxResults != 3 ||
-		index.requests[1].MinimumTermMatches != 1 || !index.requests[1].WithFacets {
+		index.requests[1].MinimumTermMatches != 2 || !index.requests[1].WithFacets {
 		t.Fatalf("requests = %#v", index.requests)
 	}
 	if set.Total != 3 || !reflect.DeepEqual(set.Facets, facets) || len(set.Results) != 3 {
@@ -122,7 +123,8 @@ func TestSearchCandidatesDefersEvidenceUntilAfterFusion(t *testing.T) {
 	set, err := (localSearcher{index: index}).searchCandidates(
 		t.Context(),
 		searchindex.SearchRequest{
-			Query: "alpha beta", Terms: []string{"alpha", "beta"}, MaxResults: 2,
+			Query: "alpha beta gamma",
+			Terms: []string{"alpha", "beta", "gamma"}, MaxResults: 2,
 		},
 	)
 	if err != nil {
@@ -146,7 +148,7 @@ func TestSearchCandidatesDefersEvidenceUntilAfterFusion(t *testing.T) {
 	}
 }
 
-func TestSearchCandidatesLimitsUnionAndUsesStableTie(t *testing.T) {
+func TestSearchCandidatesPrioritizesStrictCoverageAtLimit(t *testing.T) {
 	strict := searchindex.SearchResult{DocumentID: "b", Score: 1}
 	relaxed := searchindex.SearchResult{DocumentID: "a", Score: 1}
 	set := fuseCandidateSets(
@@ -154,8 +156,29 @@ func TestSearchCandidatesLimitsUnionAndUsesStableTie(t *testing.T) {
 		searchindex.SearchResultSet{Results: []searchindex.SearchResult{relaxed}},
 		1,
 	)
-	if len(set.Results) != 1 || set.Results[0].DocumentID != "a" || set.Total != 1 {
+	if len(set.Results) != 1 || set.Results[0].DocumentID != "b" || set.Total != 1 {
 		t.Fatalf("set = %#v", set)
+	}
+}
+
+func TestSearchCandidatesKeepsTwoTermRetrievalConjunctive(t *testing.T) {
+	index := &candidateIndex{
+		strict: searchindex.SearchResultSet{},
+		relaxed: searchindex.SearchResultSet{Results: []searchindex.SearchResult{{
+			DocumentID: "one-term-noise",
+		}}},
+	}
+	set, err := (localSearcher{index: index}).searchCandidates(
+		t.Context(),
+		searchindex.SearchRequest{
+			Query: "alpha beta", Terms: []string{"alpha", "beta"}, MaxResults: 10,
+		},
+	)
+	if err != nil {
+		t.Fatalf("searchCandidates: %v", err)
+	}
+	if len(index.requests) != 1 || len(set.Results) != 0 {
+		t.Fatalf("requests = %#v, results = %#v", index.requests, set.Results)
 	}
 }
 
@@ -163,6 +186,7 @@ func TestSearchCandidatesSkipsRelaxedIneligibleRequests(t *testing.T) {
 	requests := []searchindex.SearchRequest{
 		{Query: "one"},
 		{Terms: []string{"same", "same"}},
+		{Terms: []string{"one", "two"}},
 		{Terms: []string{"one", "two"}, Fuzzy: true},
 		{Terms: []string{"one", "two"}, Near: true},
 		{Terms: []string{"one", "two"}, MinimumTermMatches: 1},
@@ -194,7 +218,7 @@ func TestSearchCandidatesReturnsBranchErrors(t *testing.T) {
 	}
 	index = &candidateIndex{relaxErr: sentinel}
 	_, err = (localSearcher{index: index}).searchCandidates(t.Context(), searchindex.SearchRequest{
-		Terms: []string{"one", "two"},
+		Terms: []string{"one", "two", "three"},
 	})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("relaxed error = %v", err)

@@ -185,8 +185,9 @@ func TestConsumerReportsRunOutcomeTally(t *testing.T) {
 }
 
 type fakeProgressClient struct {
-	mu   sync.Mutex
-	last *crawlrpc.CrawlProgressReport
+	mu       sync.Mutex
+	last     *crawlrpc.CrawlProgressReport
+	reported chan struct{}
 }
 
 func (c *fakeProgressClient) ReportProgress(
@@ -197,12 +198,18 @@ func (c *fakeProgressClient) ReportProgress(
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.last = in
+	if c.reported != nil {
+		select {
+		case c.reported <- struct{}{}:
+		default:
+		}
+	}
 
 	return &crawlrpc.CrawlProgressAck{}, nil
 }
 
 func TestGRPCProgressReporterMapsReportToProto(t *testing.T) {
-	client := &fakeProgressClient{}
+	client := &fakeProgressClient{reported: make(chan struct{}, 1)}
 	reporter := crawlorder.NewGRPCProgressReporter(client, "worker-9")
 
 	reporter.ReportRun(context.Background(), crawlorder.RunReport{
@@ -213,7 +220,14 @@ func TestGRPCProgressReporterMapsReportToProto(t *testing.T) {
 		Tally:         yagocrawlcontract.CrawlRunTally{Fetched: 3, Indexed: 2, Pending: 1},
 	})
 
+	select {
+	case <-client.reported:
+	case <-time.After(time.Second):
+		t.Fatal("no report sent")
+	}
+	client.mu.Lock()
 	got := client.last
+	client.mu.Unlock()
 	if got == nil {
 		t.Fatal("no report sent")
 	}
@@ -230,5 +244,8 @@ func TestGRPCProgressReporterMapsReportToProto(t *testing.T) {
 		got.GetTally().GetIndexed() != 2 ||
 		got.GetTally().GetPending() != 1 {
 		t.Fatalf("tally = %+v", got.GetTally())
+	}
+	if err := reporter.Close(t.Context()); err != nil {
+		t.Fatalf("close reporter: %v", err)
 	}
 }

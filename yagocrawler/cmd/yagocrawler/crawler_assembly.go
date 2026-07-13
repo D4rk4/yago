@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 
 	grpc "google.golang.org/grpc"
@@ -143,13 +142,19 @@ var newCrawlerAdaptivePace = crawldelay.NewAdaptivePace
 func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSource) error {
 	ctx, restart := newRestartController(ctx)
 
-	exchange, closer, err := newCrawlerExchange(cfg.NodeRPCAddr)
+	controlExchange, controlCloser, err := newCrawlerExchange(cfg.NodeRPCAddr)
 	if err != nil {
-		return fmt.Errorf("dial node rpc: %w", err)
+		return fmt.Errorf("dial node control rpc: %w", err)
 	}
-	defer func() { _ = closer.Close() }()
+	defer func() { _ = controlCloser.Close() }()
 
-	emitter := ingest.NewBatchEmitter(ingest.NewGRPCIngestPublisher(exchange))
+	ingestExchange, ingestCloser, err := newCrawlerExchange(cfg.NodeRPCAddr)
+	if err != nil {
+		return fmt.Errorf("dial node ingest rpc: %w", err)
+	}
+	defer func() { _ = ingestCloser.Close() }()
+
+	emitter := ingest.NewBatchEmitter(ingest.NewGRPCIngestPublisher(ingestExchange))
 
 	metrics := crawlermetrics.New()
 	metricsCloser, err := startCrawlerMetrics(ctx, cfg.MetricsAddr, metrics.Handler())
@@ -169,9 +174,11 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	}
 	tally := runtally.New()
 	frontier := assembleFrontier(crawl, pace, tally)
+	receiverCtx, cancelReceiver := context.WithCancel(ctx)
+	defer cancelReceiver()
 	orders := crawlorder.NewGRPCOrderReceiver(
-		ctx,
-		exchange,
+		receiverCtx,
+		controlExchange,
 		cfg.WorkerID,
 		crawlorder.NewRestartControlHandler(
 			restart.Trigger,
@@ -200,20 +207,15 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 		pipeline.WithRobotsIgnoringFetchers(chains.verifyingDirect, chains.insecureDirect),
 		pipeline.WithHostLoadFeedback(pace),
 	)
+	progress := crawlorder.NewGRPCProgressReporter(controlExchange, cfg.WorkerID)
 	consumer := crawlorder.NewCrawlOrderConsumer(
 		orders,
 		frontier,
 		newCrawlRequestExpander(client, crawl, guard),
-	).WithProgressReporter(crawlorder.NewGRPCProgressReporter(exchange, cfg.WorkerID)).
+	).WithProgressReporter(progress).
 		WithRunTally(tally)
 
-	slog.InfoContext(ctx, "crawler started",
-		slog.String("nodeRpcAddr", cfg.NodeRPCAddr),
-		slog.String("workerId", cfg.WorkerID),
-		slog.Int("workers", crawl.Workers),
-	)
-	superviseCrawl(ctx, worker, consumer, crawl.Workers, cfg.ShutdownGrace)
-	slog.InfoContext(ctx, "crawler stopped")
+	runCrawlerLifecycle(ctx, worker, consumer, progress, cfg)
 
 	return restart.Wrap(nil)
 }

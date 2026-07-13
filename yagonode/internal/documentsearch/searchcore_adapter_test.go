@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
@@ -53,6 +54,7 @@ func TestCoreLocalSearcherUsesDocumentStoreSnippet(t *testing.T) {
 	word := yagomodel.WordHash("golang")
 	urlHash := hashFor("doc1")
 	rawURL := "https://example.org/docs/page.html"
+	published := time.Date(2024, 1, 2, 23, 0, 0, 0, time.FixedZone("test", 3600))
 	searcher := NewLocalSearcherWithDocuments(
 		fakeScanner{postings: map[yagomodel.Hash][]yagomodel.RWIPosting{
 			word: {postingEntry(word, "doc1", 0, 3)},
@@ -62,8 +64,10 @@ func TestCoreLocalSearcherUsesDocumentStoreSnippet(t *testing.T) {
 		}},
 		fakeDocumentDirectory{documents: map[string]documentstore.Document{
 			rawURL: {
-				Title:         "Stored document title",
-				ExtractedText: "First line\n\nsecond\tline with  spaces.",
+				Title:          "Stored document title",
+				ExtractedText:  "First line\n\nsecond\tline with  spaces.",
+				PublishedAt:    published,
+				DateConfidence: 0.8,
 			},
 		}},
 		100,
@@ -85,7 +89,9 @@ func TestCoreLocalSearcherUsesDocumentStoreSnippet(t *testing.T) {
 	if result.Title != "Stored document title" ||
 		result.Snippet != "First line second line with spaces." ||
 		result.URL != rawURL ||
-		result.URLHash != urlHash.String() {
+		result.URLHash != urlHash.String() ||
+		result.Date != "20240102" ||
+		result.DateConfidence != 0.8 {
 		t.Fatalf("result = %#v", result)
 	}
 }
@@ -341,8 +347,19 @@ func TestCoreResultFallbacks(t *testing.T) {
 		result.Host != "" ||
 		result.DisplayURL != "not%20a%20url" ||
 		result.File != "not a url" ||
-		result.Size != 12 {
+		result.Size != 12 ||
+		result.Date != "" ||
+		result.DateConfidence != 0 {
 		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestSearchCorePublicationDateRejectsYearOne(t *testing.T) {
+	date, confidence := searchCorePublicationDate(documentstore.Document{
+		PublishedAt: time.Date(1, 1, 2, 0, 0, 0, 0, time.UTC), DateConfidence: 1,
+	})
+	if date != "" || confidence != 0 {
+		t.Fatalf("year-one publication = %q/%v", date, confidence)
 	}
 }
 

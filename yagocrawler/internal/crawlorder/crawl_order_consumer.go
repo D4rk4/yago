@@ -51,8 +51,6 @@ func NewCrawlOrderConsumer(
 		orders:   orders,
 		frontier: frontier,
 		expander: selected,
-		progress: noopProgressReporter{},
-		tally:    noopRunTallySource{},
 		active:   newActiveOrders(),
 	}
 }
@@ -155,7 +153,7 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 			c.frontier.RunPending(seeded.RunID),
 		)
 	})
-	reporter.start(ctx, progressReportInterval)
+	reporter.start(ctx, progressReportInterval, order.Provenance)
 	slog.InfoContext(
 		ctx,
 		msgRunSeeded,
@@ -181,7 +179,9 @@ func (c *CrawlOrderConsumer) finishRun(
 			state = yagocrawlcontract.CrawlRunCancelled
 		}
 		c.reportRun(context.WithoutCancel(ctx), order, state, 0)
-		c.tally.Forget(order.Provenance)
+		if c.tally != nil {
+			c.tally.Forget(order.Provenance)
+		}
 		retainCompletion := !cancelled && succeeded
 		c.active.settle(
 			order.Provenance,
@@ -222,9 +222,15 @@ func (c *CrawlOrderConsumer) reportRun(
 	state yagocrawlcontract.CrawlRunState,
 	pending int,
 ) {
-	tally := c.tally.Snapshot(order.Provenance)
+	var tally yagocrawlcontract.CrawlRunTally
+	if c.tally != nil {
+		tally = c.tally.Snapshot(order.Provenance)
+	}
 	if pending > 0 {
 		tally.Pending = uint64(pending)
+	}
+	if c.progress == nil {
+		return
 	}
 	c.progress.ReportRun(ctx, RunReport{
 		Provenance:    order.Provenance,

@@ -58,7 +58,9 @@ its binaries (`yago-node`, `yagocrawler`).
   nonempty search session with an infrastructure-generated zero, including when
   the bounded remote-stage admission is full. An incomplete global request may
   reuse an unexpired equivalent local session without extending its lifetime or
-  recording a synthetic global success.
+  recording a synthetic global success. Operational search-stage errors retain
+  completed rows as a partial answer, and recent paging windows remain readable
+  while a deeper page is being extended.
 - **[YagoRank](yagonode/doc/yagorank.md)** — strict and relaxed fielded BM25,
   bounded lexical evidence and RM3, deterministic peer RRF, persistent date,
   anchor, authority, quality, safety, duplicate-cluster, and reputation signals,
@@ -81,18 +83,29 @@ its binaries (`yago-node`, `yagocrawler`).
   constraints again on returned rows.
   Quoted phrases prefer locally stored candidates whose analyzer-normalized words
   are adjacent; they do not exclude other all-term matches.
+  An unknown publication date stays empty on every result surface; fetch and
+  index time are never presented as publication time.
 - **Tavily-compatible `/search`, `/extract`, `/crawl`, and `/map`** with API
   keys and scopes. Raw-content work has fixed concurrency, time, fetch, and
   response-memory budgets, while ordinary search stays on the low-cost path.
 
 ### 🕷️ A crawler built for the hostile web
 
-- Separate `yagocrawler` worker(s) connected over gRPC with durable leased
-  orders, absolute-tally progress reports, and backpressured at-least-once
-  ingest — restart anything, lose nothing.
+- Separate `yagocrawler` worker(s) connected over dedicated control and ingest
+  gRPC channels with durable leased orders, nonblocking coalesced progress
+  reports, and backpressured at-least-once ingest — restart anything, lose
+  nothing. Run-report phases are staggered across concurrent crawls; terminal
+  snapshots admitted to the bounded queue receive delivery priority, retry, and
+  graceful-shutdown drain attempts, while admitted same-ID NAK phases retain
+  their ordered lifecycle. Saturation drops a new phase only after expendable
+  singleton running state is exhausted and never collapses a protected chain.
 - **Format coverage beyond HTML**: PDF, DOCX/XLSX/PPTX, legacy DOC/XLS/PPT,
   ODT/ODS/ODP, RTF, EPUB, plain text/CSV/Markdown — parsed with stdlib-first
-  parsers and validated against real files.
+  parsers and validated against real files. PDF extraction follows Page
+  `/Contents` and page-reachable Form streams instead of indexing decoded image,
+  font, or container payloads. One document shares a 32 MiB decoded-stream budget and a
+  1 MiB UTF-8 text limit; an already-indexed PDF needs one recrawl to replace
+  old extracted text.
 - **Two-tier fetching**: fast HTTP first, headless-browser fallback (headless
   Firefox over Marionette, a lazy pool of at most two long-lived processes) for
   bot-walled and JavaScript-rendered pages, both behind a dial-time SSRF egress guard;
@@ -100,17 +113,21 @@ its binaries (`yago-node`, `yagocrawler`).
 - **Legacy-web text correctness**: browser-compatible charset decoding handles
   Windows-1251 and other WHATWG encodings, while bounded content-language
   detection keeps documents, facets, RWI postings, and URL metadata aligned.
-- **Bounded search memory**: spelling and morphology retain fixed-size
-  frequent-term summaries; candidate scans avoid full document bodies; peer and
+- **Bounded search memory**: authority, spelling, and optional morphology refresh
+  from one completion-relative corpus pass, with fixed-size cross-domain
+  citation and frequent-term summaries. The background pass never claims interactive-read
+  priority from ingest writes; candidate scans avoid full document bodies; peer and
   web responses, index results, paging sessions, background cache writes, and
   host-link snapshots have process-wide byte or admission limits. `/metrics`
   exposes Go heap plus process RSS for pre-OOM alerts. Interactive searches have
   a hard 1.8-second response deadline and four process-wide outer execution
-  slots. A cold outer deadline or capacity failure is surfaced as unavailable;
-  an unexpired successful session may instead be served with the current failure
-  evidence, and timed-out work retains its slot until it exits. Conflicting vault
-  updates serialize behind writer-only admission while read snapshots remain
-  available; served-result denylist checks use an immutable in-memory snapshot,
+  slots. Endpoint-owned deadline, capacity, and operational failures are carried
+  as partial evidence instead of replacing completed rows with an unavailable
+  page; an unexpired successful session may instead be served with the current
+  failure evidence, and timed-out work retains its slot until it exits.
+  Conflicting vault updates serialize behind writer-only admission while read
+  snapshots remain available; served-result denylist checks use an immutable
+  in-memory snapshot even after a completed search stage's context ends,
   and the request path waits at most 50 milliseconds for optional click-impression
   preparation while at most four retained impression tasks remain admitted and
   are joined before storage closes. A click waits for its matching in-flight
@@ -146,7 +163,8 @@ its binaries (`yago-node`, `yagocrawler`).
 - Sections: Overview, Search (with suggestions), Activity, Public portal
   (settings + design tabs), Autocrawler, Crawler (dispatch, live monitor,
   pause/resume/rate control, health), Network (peers, seedlists, news,
-  blocking), Index (browse, delete, blacklist, export, schema), Performance
+  blocking, and the complete sortable roster paged at exactly 20 peers), Index
+  (browse, delete, blacklist, export, schema), Performance
   (live tiles **and sampled history sparklines**), Backup & restore,
   Configuration (runtime settings with checkboxes, batch save, per-setting
   reset), Security (Argon2id admin login, session management, scoped API
@@ -165,7 +183,10 @@ its binaries (`yago-node`, `yagocrawler`).
   `SOURCE_REVISION`, so two images can be traced to the same source commit.
 - Prometheus `/metrics` (RED/USE + saturation), burn-rate alert rules with an
   SLO doc, health/readiness endpoints, auth-gated pprof, trace-correlated
-  structured logs (never secrets), and a durable event store.
+  structured logs (never secrets), and a durable event store fed through a
+  bounded asynchronous queue. Shutdown drains it for up to five seconds; if a
+  writer remains stuck, service shutdown proceeds and storage close waits for
+  writer quiescence.
 - **Offline backup/restore scripts** for docker and systemd — covered by an
   automated end-to-end round-trip test — plus a console page that shows
   storage usage and hands you the exact commands.
@@ -263,8 +284,8 @@ flowchart LR
         X[("sharded Bleve index")]
         S["search core<br/>RRF + MMR + morphology"]
     end
-    I -- "gRPC ingest (at-least-once)" --> B --> V --> X --> S
-    B -- "orders / control / progress" --> F
+    I -- "ingest gRPC channel (at-least-once)" --> B --> V --> X --> S
+    B <-->|control gRPC: orders · heartbeat · settlement · progress| F
     S --> PEER["peer listener :8090<br/>YaCy RWI/DHT"]
     S --> PUB["public listener :8080<br/>portal · yacysearch · Tavily API"]
     S --> OPS["ops listener :9090<br/>admin console · metrics"]

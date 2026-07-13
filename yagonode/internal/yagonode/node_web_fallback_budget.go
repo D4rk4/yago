@@ -24,7 +24,9 @@ const (
 	webFallbackExactStageFailureSource     = searchcore.PartialFailureSourceExactStage
 	webFallbackExactStageTimeoutFailure    = "exact search deadline exceeded"
 	webFallbackExactStageCapacityFailure   = "exact search capacity exhausted"
+	webFallbackExactStageFailed            = "exact search failed"
 	webFallbackExactStagePanicMessage      = "exact search stage panicked"
+	webFallbackExactStageFailedLogMessage  = "bounded exact search failed"
 )
 
 type webFallbackExactStageBudgetSearcher struct {
@@ -93,7 +95,7 @@ func (s webFallbackExactStageBudgetSearcher) Search(
 			return webFallbackExactStageFailure(req, webFallbackExactStageCapacityFailure), nil
 		}
 
-		return searchcore.Response{}, fmt.Errorf("search exact stage admission: %w", err)
+		return webFallbackExactStageResult(ctx, req, searchcore.Response{}, err)
 	}
 	outcomes := make(chan webFallbackExactStageOutcome, 1)
 	go s.run(stageContext, req, release, outcomes)
@@ -106,27 +108,45 @@ func (s webFallbackExactStageBudgetSearcher) Search(
 		if outcome.err == nil {
 			return outcome.response, nil
 		}
-		if errors.Is(outcome.err, context.DeadlineExceeded) {
-			outcome.response.Request = req
-			outcome.response.PartialFailures = append(
-				outcome.response.PartialFailures,
-				searchcore.PartialFailure{
-					Source: webFallbackExactStageFailureSource,
-					Reason: webFallbackExactStageTimeoutFailure,
-				},
-			)
 
-			return outcome.response, nil
-		}
-
-		return searchcore.Response{}, fmt.Errorf("search exact stage: %w", outcome.err)
+		return webFallbackExactStageResult(ctx, req, outcome.response, outcome.err)
 	case <-hardContext.Done():
-		if ctx.Err() != nil {
-			return searchcore.Response{}, fmt.Errorf("search exact stage: %w", ctx.Err())
-		}
-
-		return webFallbackExactStageFailure(req, webFallbackExactStageTimeoutFailure), nil
+		return webFallbackExactStageResult(
+			ctx,
+			req,
+			searchcore.Response{},
+			context.Cause(hardContext),
+		)
 	}
+}
+
+func webFallbackExactStageResult(
+	ctx context.Context,
+	req searchcore.Request,
+	response searchcore.Response,
+	err error,
+) (searchcore.Response, error) {
+	if cause := context.Cause(ctx); cause != nil {
+		return response, fmt.Errorf("search exact stage: %w", cause)
+	}
+	reason := webFallbackExactStageFailed
+	if errors.Is(err, context.DeadlineExceeded) {
+		reason = webFallbackExactStageTimeoutFailure
+	} else {
+		slog.WarnContext(ctx, webFallbackExactStageFailedLogMessage,
+			slog.Any("error", err),
+		)
+	}
+	response.Request = req
+	response.PartialFailures = append(
+		response.PartialFailures,
+		searchcore.PartialFailure{
+			Source: webFallbackExactStageFailureSource,
+			Reason: reason,
+		},
+	)
+
+	return response, nil
 }
 
 func (s webFallbackExactStageBudgetSearcher) run(

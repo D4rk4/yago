@@ -188,7 +188,8 @@ func TestSearchCriteriaRequestBranches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if criteria.maxResults != defaultSearchCount || criteria.timeLimit != defaultSearchTime {
+	if criteria.maxResults != remoteSearchMaximumCount ||
+		criteria.timeLimit != remoteSearchMaximumTime {
 		t.Fatalf("defaults = %d/%s", criteria.maxResults, criteria.timeLimit)
 	}
 	if _, err := searchCriteriaFromRequest(
@@ -269,15 +270,16 @@ func TestEndpointReturnsCriteriaAndSearchErrors(t *testing.T) {
 		t.Fatal("expected criteria error")
 	}
 
+	scanFailure := errors.New("scan failed")
 	endpoint = searchEndpoint{
 		identity: searchIdentity(),
-		searcher: searcher{index: fakeScanner{err: errors.New("scan failed")}},
+		searcher: searcher{index: fakeScanner{err: scanFailure}},
 	}
 	if _, err := endpoint.Serve(t.Context(), yagoproto.SearchRequest{
 		NetworkName: "freeworld",
 		Query:       []yagomodel.Hash{hashFor("w1")},
-	}); err == nil {
-		t.Fatal("expected search error")
+	}); !errors.Is(err, scanFailure) {
+		t.Fatalf("error = %v, want scan failure", err)
 	}
 }
 

@@ -397,7 +397,9 @@ func TestPDFShownStringHelpers(t *testing.T) {
 		t.Fatalf("huge kern = %d %v", consumed, space)
 	}
 	var out strings.Builder
-	writeShownStrings(&out, []byte("BT <41> Tj ET"), nil, nil)
+	if current := writeShownStrings(&out, []byte("BT <41> Tj ET"), nil, nil); current != nil {
+		t.Fatalf("unexpected selected font = %#v", current)
+	}
 	if !strings.Contains(out.String(), "A") {
 		t.Fatalf("hex show outside array = %q", out.String())
 	}

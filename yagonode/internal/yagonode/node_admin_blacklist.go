@@ -10,12 +10,11 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/urldenylist"
 )
 
-// denylistStore is the subset of the denylist store the admin console mutates and
-// lists.
 type denylistStore interface {
 	Entries(ctx context.Context) ([]urldenylist.Entry, error)
 	Add(ctx context.Context, kind urldenylist.Kind, value string) error
 	Remove(ctx context.Context, kind urldenylist.Kind, value string) (bool, error)
+	Snapshot() urldenylist.Snapshot
 }
 
 // blacklistController adapts the durable denylist store to the admin console's

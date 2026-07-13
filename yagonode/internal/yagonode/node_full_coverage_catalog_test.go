@@ -15,16 +15,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/urldenylist"
 )
 
-func TestBlacklistBlocksRejectsNonSnapshotStore(t *testing.T) {
-	t.Parallel()
-	controller := newBlacklistController(bareDenylistStore{})
-	if _, err := controller.BlacklistBlocks(
-		context.Background(), "https://x.example/",
-	); err == nil {
-		t.Fatal("a store without Snapshot must fail the probe")
-	}
-}
-
 func TestBlacklistPorterKeepsCachedProbeAndSurfacesStoreErrors(t *testing.T) {
 	t.Parallel()
 	v, err := memvault.Open(0)
@@ -50,8 +40,11 @@ func TestBlacklistPorterKeepsCachedProbeAndSurfacesStoreErrors(t *testing.T) {
 	}
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := controller.BlacklistBlocks(canceled, "https://x.example/"); err == nil {
-		t.Fatal("BlacklistBlocks must surface the canceled snapshot")
+	if blocked, err := controller.BlacklistBlocks(
+		canceled,
+		"https://x.example/",
+	); err != nil || blocked {
+		t.Fatalf("cached BlacklistBlocks = %t, %v", blocked, err)
 	}
 	if _, err := controller.ExportBlacklist(ctx); err == nil {
 		t.Fatal("ExportBlacklist must surface the entries error")

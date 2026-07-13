@@ -2,6 +2,7 @@ package searchsession
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -115,6 +116,29 @@ func TestStableWindowByteLimitEvictsLeastRecentSession(t *testing.T) {
 	if stable.sessions["first"] != first || stable.sessions["third"] == nil ||
 		stable.retained > stable.limit {
 		t.Fatalf("retained sessions/bytes = %#v/%d", stable.sessions, stable.retained)
+	}
+}
+
+func TestRecentWindowRefreshesLeastRecentSession(t *testing.T) {
+	stable := WithStableWindow(&shufflingSearcher{}).(*stableSearcher)
+	response := searchcore.Response{Results: []searchcore.Result{{URL: "https://result.example/"}}}
+	hotRequest := searchcore.Request{Query: "hot"}
+	hotKey := sessionKey(hotRequest)
+	stable.store(hotKey, response, 1)
+	for index := 1; index < maxSessions; index++ {
+		request := searchcore.Request{Query: fmt.Sprintf("cold-%d", index)}
+		stable.store(sessionKey(request), response, 1)
+	}
+	if recent, found := stable.Recent(hotRequest); !found || len(recent.Results) != 1 {
+		t.Fatalf("recent hot session = %#v, %t", recent, found)
+	}
+	overflow := searchcore.Request{Query: "overflow"}
+	stable.store(sessionKey(overflow), response, 1)
+	if stable.sessions[hotKey] == nil {
+		t.Fatal("recently recovered session was evicted")
+	}
+	if stable.sessions[sessionKey(searchcore.Request{Query: "cold-1"})] != nil {
+		t.Fatal("untouched least-recent session survived")
 	}
 }
 

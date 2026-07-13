@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/events"
 	"github.com/D4rk4/yago/yagonode/internal/eventstore"
@@ -22,6 +24,7 @@ type runtimeObservability struct {
 	crawlRuns    *metrics.CrawlRunMetrics
 	saturation   *metrics.SaturationMetrics
 	recorder     *events.Recorder
+	persistence  *eventPersistence
 	authObserver authObserverFanOut
 }
 
@@ -36,7 +39,8 @@ func provisionObservability(
 	metrics.NewStorageMetrics(endpoints.Registry(), storage)
 
 	recorder := events.NewRecorder(events.DefaultCapacity)
-	if err := attachDurableEvents(ctx, storage, recorder); err != nil {
+	persistence, err := attachDurableEvents(ctx, storage, recorder)
+	if err != nil {
 		return runtimeObservability{}, fmt.Errorf("configure event log: %w", err)
 	}
 	authMetrics := metrics.NewAuthMetrics(endpoints.Registry())
@@ -53,39 +57,134 @@ func provisionObservability(
 		crawl:        metrics.NewCrawlMetrics(endpoints.Registry()),
 		crawlRuns:    metrics.NewCrawlRunMetrics(endpoints.Registry()),
 		recorder:     recorder,
+		persistence:  persistence,
 		authObserver: authObserverFanOut{authMetrics, authEventObserver{recorder: recorder}},
 	}, nil
 }
 
-// eventSink write-through persists each recorded event to the durable event log.
-// It is best-effort: a persistence failure is logged and never blocks recording.
-type eventSink struct {
-	store *eventstore.Store
+const (
+	eventPersistenceCapacity     = 256
+	eventPersistenceShutdownWait = 5 * time.Second
+	msgEventPersistenceFailed    = "persist event failed"
+	msgEventPersistenceFull      = "event persistence queue full"
+	msgEventPersistenceTimeout   = "event persistence shutdown grace elapsed"
+)
+
+type eventPersistence struct {
+	appender eventAppender
+
+	mu     sync.Mutex
+	queue  chan events.Event
+	closed bool
+	done   chan struct{}
+	cancel context.CancelFunc
 }
 
-func (s eventSink) Persist(event events.Event) {
-	if err := s.store.Append(context.Background(), event); err != nil {
-		slog.WarnContext(context.Background(), "persist event failed", slog.Any("error", err))
+type eventAppender interface {
+	Append(context.Context, events.Event) error
+}
+
+func newEventPersistence(appender eventAppender) *eventPersistence {
+	workerCtx, cancel := context.WithCancel(context.Background())
+	persistence := &eventPersistence{
+		appender: appender,
+		queue:    make(chan events.Event, eventPersistenceCapacity),
+		done:     make(chan struct{}),
+		cancel:   cancel,
+	}
+	go persistence.run(workerCtx)
+
+	return persistence
+}
+
+func (p *eventPersistence) Persist(event events.Event) {
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+
+		return
+	}
+	select {
+	case p.queue <- event:
+		p.mu.Unlock()
+	default:
+		p.mu.Unlock()
+		slog.WarnContext(context.Background(), msgEventPersistenceFull,
+			slog.String("event", event.Name))
 	}
 }
 
-// attachDurableEvents opens the durable event log, seeds the recorder with the
-// events that survived the last restart, and installs a write-through sink so new
-// events are persisted.
+func (p *eventPersistence) run(ctx context.Context) {
+	defer close(p.done)
+	for {
+		select {
+		case event, ok := <-p.queue:
+			if !ok {
+				return
+			}
+			if ctx.Err() != nil {
+				return
+			}
+			if err := p.appender.Append(ctx, event); err != nil {
+				slog.WarnContext(context.Background(), msgEventPersistenceFailed,
+					slog.String("event", event.Name),
+					slog.Any("error", err))
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (p *eventPersistence) Close(ctx context.Context) error {
+	p.mu.Lock()
+	if !p.closed {
+		p.closed = true
+		close(p.queue)
+	}
+	p.mu.Unlock()
+
+	select {
+	case <-p.done:
+		p.cancel()
+
+		return nil
+	case <-ctx.Done():
+		p.cancel()
+
+		return fmt.Errorf("close event persistence: %w", ctx.Err())
+	}
+}
+
 func attachDurableEvents(
 	ctx context.Context,
 	storage *vault.Vault,
 	recorder *events.Recorder,
-) error {
+) (*eventPersistence, error) {
 	store, err := eventstore.Open(ctx, storage)
 	if err != nil {
-		return fmt.Errorf("open event store: %w", err)
+		return nil, fmt.Errorf("open event store: %w", err)
 	}
 	history, err := store.Recent(ctx)
 	if err != nil {
-		return fmt.Errorf("load event history: %w", err)
+		return nil, fmt.Errorf("load event history: %w", err)
 	}
-	recorder.Attach(eventSink{store: store}, history)
+	persistence := newEventPersistence(store)
+	recorder.Attach(persistence, history)
 
-	return nil
+	return persistence, nil
+}
+
+func closeEventPersistence(persistence *eventPersistence) {
+	closeEventPersistenceWithin(persistence, eventPersistenceShutdownWait)
+}
+
+func closeEventPersistenceWithin(persistence *eventPersistence, wait time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	defer cancel()
+	if err := persistence.Close(ctx); err != nil {
+		slog.WarnContext(context.Background(), msgEventPersistenceTimeout,
+			slog.Duration("grace", wait),
+			slog.Any("error", err))
+	}
 }

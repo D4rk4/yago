@@ -1,9 +1,3 @@
-// Package hostrank computes a per-host authority score from the incoming
-// host-citation graph — a local approximation of YaCy Block Rank (YBR): hosts
-// that are linked to by many well-linked hosts score higher. The score is a
-// bounded, opt-in ranking signal derived from this node's own crawl graph;
-// exchanging and aggregating rank tables across peers is deliberately left as
-// future work, so a node ranks with the authority it can observe locally.
 package hostrank
 
 import (

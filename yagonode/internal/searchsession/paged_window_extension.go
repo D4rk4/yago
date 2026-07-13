@@ -32,6 +32,7 @@ func (s *stableSearcher) extend(
 	entry.windowMu.Lock()
 	defer func() {
 		retained := retainedSessionBytes(entry)
+		entry.replaceVisibleWindowLocked()
 		entry.windowMu.Unlock()
 		s.refreshRetention(entry, retained)
 	}()

@@ -229,7 +229,7 @@ func (d documentVault) StoredDocuments(
 	}
 	defer release()
 
-	err = d.vault.View(ctx, func(tx *vault.Txn) error {
+	err = d.vault.View(vault.BackgroundRead(ctx), func(tx *vault.Txn) error {
 		return d.collection.Scan(
 			tx,
 			nil,

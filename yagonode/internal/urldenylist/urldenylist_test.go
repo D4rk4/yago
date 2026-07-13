@@ -102,10 +102,7 @@ func TestSnapshotBlocks(t *testing.T) {
 		t.Fatalf("add url: %v", err)
 	}
 
-	snap, err := store.Snapshot(ctx)
-	if err != nil {
-		t.Fatalf("snapshot: %v", err)
-	}
+	snap := store.Snapshot()
 	if snap.IsEmpty() {
 		t.Fatal("snapshot should not be empty")
 	}
@@ -116,12 +113,16 @@ func TestSnapshotBlocks(t *testing.T) {
 	}{
 		{"https://blocked.example/anything", true}, // domain match
 		{"https://sub.blocked.example/x", true},    // subdomain match
-		{"https://ok.example/bad-page", true},      // exact URL match
-		{"https://ok.example/good-page", false},    // same host, different path
-		{"https://notblocked.example/", false},     // unrelated host
-		{"https://myblocked.example/", false},      // suffix but not a subdomain boundary
-		{"mailto:someone", false},                  // no host
-		{"http://[", false},                        // unparseable URL
+		{"https://USER@DEEP.SUB.BLOCKED.EXAMPLE.:443/x", true},
+		{"//deep.sub.blocked.example/x", true},
+		{"https://ok.example/bad-page", true},
+		{"https://ok.example/good-page", false},
+		{"https://notblocked.example/", false},
+		{"https://myblocked.example/", false},
+		{"https://blocked.example.evil/", false},
+		{"blocked.example/path", false},
+		{"mailto:someone", false},
+		{"http://[", false},
 	}
 	for _, tc := range cases {
 		if got := snap.Blocks(tc.url); got != tc.want {
@@ -131,10 +132,7 @@ func TestSnapshotBlocks(t *testing.T) {
 }
 
 func TestSnapshotEmpty(t *testing.T) {
-	snap, err := openStore(t).Snapshot(context.Background())
-	if err != nil {
-		t.Fatalf("snapshot: %v", err)
-	}
+	snap := openStore(t).Snapshot()
 	if !snap.IsEmpty() {
 		t.Fatal("a fresh store should snapshot empty")
 	}

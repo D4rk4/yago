@@ -25,16 +25,19 @@ not stored or shipped by default.
 flowchart LR
     node["yago-node<br/>(Pi-class, always-on)"]
     crawler["yagocrawler<br/>(powerful host, on-demand)"]
-    node -- crawl orders --> crawler
-    crawler -- "ingest batches (documents + references)" --> node
+    node <-->|control: orders, heartbeat, settlement, progress| crawler
+    crawler -- "ingest channel: documents + references" --> node
 ```
 
 ## How it runs
 
-The crawler is a long-running, order-driven service. It dials the node's crawl gRPC
-endpoint on startup and then idles until work arrives: the node streams crawl orders
-to the crawler, the crawler fetches pages, builds document/RWI/URL metadata
-artifacts, and submits ingest batches back to the node over the same connection.
+The crawler is a long-running, order-driven service. It opens separate control
+and ingest connections to the node's crawl gRPC endpoint on startup and then
+idles until work arrives. The control connection carries orders, heartbeats,
+settlement, and progress; the ingest connection carries document/RWI/URL metadata
+batches. A large ingest call therefore cannot queue lease or progress traffic on
+the same transport.
+
 Multiple crawler instances can each stream orders from the node to load-balance,
 and the node's blocking ingest call applies backpressure when it
 falls behind. Each order is leased rather than handed off: the crawler acks a
@@ -46,8 +49,20 @@ configured worker-ID prefix, so a crashed replacement does not claim the old
 process's leases; heartbeat expiry and the node sweeper reassign them. Graceful
 shutdown naks active leases for prompt redelivery, and node startup requeues every
 persisted lease with a new lease identity.
-Because an order can therefore be delivered more than once, each live page and tombstone
-carries a stable observation ID and UTC observation time. The node durably keeps
+
+Progress reporting never blocks crawl execution. Each run publishes absolute
+snapshots into one bounded ordered per-run queue; adjacent running updates
+coalesce, only one RPC is active, and deterministic phases spread periodic
+reports across the interval instead of synchronizing 20 or more runs on one tick. A terminal update
+receives delivery priority and bounded jittered exponential retry, including
+drain attempts within the graceful-shutdown window. A later admitted same-ID
+retry remains a separate running phase after that terminal phase, preserving the
+order of accepted attempts. At hard capacity, a terminal update first evicts an
+expendable singleton running update; if only protected phase chains remain, the
+new update is logged and dropped without deleting a separating running phase.
+
+Because an order can therefore be delivered more than once, each live page and
+tombstone carries a stable observation ID and UTC observation time. The node durably keeps
 the newest completed observation per URL before acknowledging ingest, so a lost
 acknowledgement or an older redelivery cannot replace newer indexed state.
 Document ingest includes the fetched URL and any resolved
@@ -76,6 +91,17 @@ uncertain text, and English is used only when neither source identifies a
 language. This includes legacy pages served as Windows-1251 without a `lang`
 attribute.
 
+PDF extraction follows the document structure rather than scanning every decoded
+stream. When Page objects are available, it selects their referenced `/Contents`
+streams, including indirect arrays, and only Form XObjects reachable from page
+resources. A PDF whose Page objects cannot be resolved uses a bounded fallback
+that excludes known non-page and binary stream classes. Image data, embedded font
+programs, metadata, object containers, cross-reference streams, embedded files, and CMaps are excluded from text extraction. This prevents binary payloads
+such as those in the reported Berkeley `battelle_ucb07.pdf` from entering cached
+text or the index. CMap and page/Form decoding share one 32 MiB document budget,
+and extracted UTF-8 text stops at 1 MiB. Documents stored by an older extractor
+need one normal recrawl to replace their existing text; no OCR is performed.
+
 Crawl requests can start from normal URLs, XML sitemaps, sitemap indexes, plain
 text sitelists, or a host's `robots.txt`. Sitemap and sitelist starts are fetched
 through the same proxied public-web egress path as page fetches, parsed before
@@ -99,7 +125,11 @@ stay blocked either way). The service runs until it receives `SIGINT` or
 in-flight page fetches finish, waiting up to `YAGOCRAWLER_SHUTDOWN_GRACE`
 (default `10s`) before aborting any still running. It drops queued local work,
 naks every still-active lease, and waits for those terminal settlements before
-closing the node exchange.
+draining terminal progress and closing both node connections. NAK redelivery
+keeps the same run identity; admitted progress phases therefore preserve the prior
+terminal state, the reopened running state, and the next terminal state in
+order instead of treating the retry as a late update.
+
 Outbound fetches, including the headless browser, are screened in-process at dial
 time against the connected IP address, so no external forward proxy is required;
 the browser routes through a loopback-bound guarded proxy that resolves and dials

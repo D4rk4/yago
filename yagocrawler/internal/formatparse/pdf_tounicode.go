@@ -3,15 +3,15 @@ package formatparse
 import (
 	"bytes"
 	"encoding/hex"
-	"fmt"
 	"regexp"
 	"strings"
 )
 
 const (
-	pdfMaxFontTables   = 64
-	pdfMaxCMapEntries  = 8192
-	pdfMaxObjScanBytes = 16 << 20
+	pdfMaxFontTables    = 64
+	pdfMaxCMapEntries   = 8192
+	pdfMaxCMapTextBytes = 8 << 20
+	pdfMaxObjScanBytes  = 16 << 20
 )
 
 // pdfCMap is one font's parsed ToUnicode table: the text each show-string
@@ -36,12 +36,30 @@ var (
 // ground truth. A name bound to two different font objects is dropped rather
 // than guessed at.
 func pdfToUnicodeTables(body []byte) map[string]*pdfCMap {
+	return pdfToUnicodeTablesWithQuota(body, newPDFDecodeQuota(pdfMaxDecodedDocumentBytes))
+}
+
+func pdfToUnicodeTablesWithQuota(
+	body []byte,
+	quota *pdfDecodeQuota,
+) map[string]*pdfCMap {
 	if len(body) > pdfMaxObjScanBytes {
 		body = body[:pdfMaxObjScanBytes]
 	}
+	lookup := newPDFObjectLookup(body)
+	fontNames, objectOf := pdfFontObjectReferences(body)
+
+	return pdfToUnicodeTablesFromObjects(fontNames, objectOf, lookup.value, quota)
+}
+
+func pdfFontObjectReferences(body []byte) ([]string, map[string]string) {
 	objectOf := map[string]string{}
-	for _, ref := range pdfFontRefPattern.FindAllSubmatch(body, -1) {
+	fontNames := make([]string, 0, pdfMaxFontTables)
+	for _, ref := range pdfFontRefPattern.FindAllSubmatch(body, pdfMaxIndirectObjects) {
 		name, object := string(ref[1]), string(ref[2])
+		if _, exists := objectOf[name]; !exists {
+			fontNames = append(fontNames, name)
+		}
 		if seen, ok := objectOf[name]; ok && seen != object {
 			objectOf[name] = ""
 
@@ -49,13 +67,25 @@ func pdfToUnicodeTables(body []byte) map[string]*pdfCMap {
 		}
 		objectOf[name] = object
 	}
+
+	return fontNames, objectOf
+}
+
+func pdfToUnicodeTablesFromObjects(
+	fontNames []string,
+	objectOf map[string]string,
+	objectValue func(string) []byte,
+	quota *pdfDecodeQuota,
+) map[string]*pdfCMap {
 	tables := map[string]*pdfCMap{}
 	cmaps := map[string]*pdfCMap{}
-	for name, object := range objectOf {
+	cmapQuota := newPDFCMapQuota(pdfMaxCMapEntries, pdfMaxCMapTextBytes)
+	for _, name := range fontNames {
+		object := objectOf[name]
 		if object == "" || len(tables) >= pdfMaxFontTables {
 			continue
 		}
-		cmapObject := pdfToUnicodeObjectOf(body, object)
+		cmapObject := pdfToUnicodeObjectOf(objectValue, object)
 		if cmapObject == "" {
 			continue
 		}
@@ -64,7 +94,10 @@ func pdfToUnicodeTables(body []byte) map[string]*pdfCMap {
 
 			continue
 		}
-		table := pdfParseCMap(pdfObjectStream(body, cmapObject))
+		table := pdfParseCMapWithQuota(
+			pdfObjectStreamWithQuota(objectValue, cmapObject, quota),
+			cmapQuota,
+		)
 		if table == nil {
 			continue
 		}
@@ -77,8 +110,8 @@ func pdfToUnicodeTables(body []byte) map[string]*pdfCMap {
 
 // pdfToUnicodeObjectOf reads the /ToUnicode reference out of one font
 // object's dictionary; empty when the font carries none.
-func pdfToUnicodeObjectOf(body []byte, object string) string {
-	dict := pdfObjectBody(body, object)
+func pdfToUnicodeObjectOf(objectValue func(string) []byte, object string) string {
+	dict := objectValue(object + " 0")
 	if dict == nil {
 		return ""
 	}
@@ -93,35 +126,22 @@ func pdfToUnicodeObjectOf(body []byte, object string) string {
 	return string(ref[1])
 }
 
-// pdfObjectBody returns the bytes of "N 0 obj .. endobj", nil when absent.
-func pdfObjectBody(body []byte, object string) []byte {
-	marker := []byte(fmt.Sprintf("%s 0 obj", object))
-	at := 0
-	for {
-		index := bytes.Index(body[at:], marker)
-		if index < 0 {
-			return nil
-		}
-		start := at + index
-		if start > 0 && body[start-1] >= '0' && body[start-1] <= '9' {
-			at = start + len(marker)
-
-			continue
-		}
-		rest := body[start+len(marker):]
-		end := bytes.Index(rest, []byte("endobj"))
-		if end < 0 {
-			return rest
-		}
-
-		return rest[:end]
-	}
-}
-
 // pdfObjectStream decodes the stream carried by object N through its own
 // /Filter chain; nil when the object or its stream is missing or undecodable.
-func pdfObjectStream(body []byte, object string) []byte {
-	objectBody := pdfObjectBody(body, object)
+func pdfObjectStream(lookup pdfObjectLookup, object string) []byte {
+	return pdfObjectStreamWithQuota(
+		lookup.value,
+		object,
+		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
+	)
+}
+
+func pdfObjectStreamWithQuota(
+	objectValue func(string) []byte,
+	object string,
+	quota *pdfDecodeQuota,
+) []byte {
+	objectBody := objectValue(object + " 0")
 	if objectBody == nil {
 		return nil
 	}
@@ -129,7 +149,6 @@ func pdfObjectStream(body []byte, object string) []byte {
 	if index < 0 {
 		return nil
 	}
-	filters := pdfFilterChain(objectBody[:index])
 	start := index + len("stream")
 	if start < len(objectBody) && objectBody[start] == '\r' {
 		start++
@@ -141,7 +160,10 @@ func pdfObjectStream(body []byte, object string) []byte {
 	if end < 0 {
 		return nil
 	}
-	decoded, ok := pdfDecodeChain(objectBody[start:start+end], filters)
+	decoded, ok := quota.decode(pdfEncodedStream{
+		dictionary: objectBody[:index],
+		encoded:    objectBody[start : start+end],
+	})
 	if !ok {
 		return nil
 	}
@@ -154,22 +176,31 @@ func pdfObjectStream(body []byte, object string) []byte {
 // skipped (their codes fall back to the byte decoder), and ranges are capped
 // so a hostile CMap cannot balloon the table.
 func pdfParseCMap(src []byte) *pdfCMap {
+	return pdfParseCMapWithQuota(
+		src,
+		newPDFCMapQuota(pdfMaxCMapEntries, pdfMaxCMapTextBytes),
+	)
+}
+
+func pdfParseCMapWithQuota(src []byte, quota *pdfCMapQuota) *pdfCMap {
 	if src == nil {
 		return nil
 	}
 	table := &pdfCMap{codeLen: pdfCMapCodeLen(src), text: map[uint32]string{}}
 	for _, section := range pdfCMapSections(src, "bfchar") {
-		tokens := pdfHexTokenPattern.FindAllSubmatch(section, -1)
+		tokens := pdfHexTokenPattern.FindAllSubmatch(section, quota.remainingEntries*2)
 		for i := 0; i+1 < len(tokens) && len(table.text) < pdfMaxCMapEntries; i += 2 {
 			code, ok := pdfHexValue(tokens[i][1])
 			if !ok {
 				continue
 			}
-			table.text[code] = pdfHexUTF16(tokens[i+1][1])
+			if !quota.put(table, code, pdfHexUTF16(tokens[i+1][1])) {
+				break
+			}
 		}
 	}
 	for _, section := range pdfCMapSections(src, "bfrange") {
-		pdfParseBFRanges(table, section)
+		pdfParseBFRanges(table, section, quota)
 	}
 	if len(table.text) == 0 {
 		return nil
@@ -180,8 +211,14 @@ func pdfParseCMap(src []byte) *pdfCMap {
 
 // pdfParseBFRanges folds one bfrange section's <lo> <hi> <dst> rows into the
 // table, incrementing dst's last code point across the range.
-func pdfParseBFRanges(table *pdfCMap, section []byte) {
-	for _, line := range bytes.Split(section, []byte("\n")) {
+func pdfParseBFRanges(
+	table *pdfCMap,
+	section []byte,
+	quota *pdfCMapQuota,
+) {
+	for len(section) > 0 && quota.remainingEntries > 0 {
+		var line []byte
+		line, section, _ = bytes.Cut(section, []byte("\n"))
 		if bytes.ContainsRune(line, '[') {
 			continue
 		}
@@ -195,12 +232,17 @@ func pdfParseBFRanges(table *pdfCMap, section []byte) {
 			continue
 		}
 		base := []rune(pdfHexUTF16(tokens[2][1]))
+		if len(base) == 0 {
+			continue
+		}
 		for code := low; code <= high && len(table.text) < pdfMaxCMapEntries; code++ {
 			mapped := make([]rune, len(base))
 			copy(mapped, base)
 			delta := code - low
 			mapped[len(mapped)-1] += rune(delta) //nolint:gosec // capped below rune width
-			table.text[code] = string(mapped)
+			if !quota.put(table, code, string(mapped)) {
+				break
+			}
 		}
 	}
 }

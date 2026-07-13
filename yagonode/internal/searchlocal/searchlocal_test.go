@@ -248,6 +248,7 @@ func TestCoreResultFallbacksAndOffset(t *testing.T) {
 		},
 	)
 	if result.DisplayURL != "/local" || result.URLHash == "" || result.DateConfidence != 0.8 ||
+		result.Date != "" ||
 		result.Quality != 0.4 || !result.QualityKnown || result.SpamRisk != 0.3 ||
 		result.FunctionWordFraction != 0.2 || result.SymbolFraction != 0.1 ||
 		result.AlphabeticFraction != 0.8 || result.UniqueTokenFraction != 0.7 {

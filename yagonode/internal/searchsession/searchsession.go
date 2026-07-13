@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -27,6 +28,7 @@ var clock = time.Now
 
 type session struct {
 	windowMu    sync.RWMutex
+	visible     atomic.Pointer[sessionWindow]
 	key         string
 	results     []searchcore.Result
 	failures    []searchcore.PartialFailure
@@ -157,6 +159,7 @@ func (s *stableSearcher) store(key string, resp searchcore.Response, searchDepth
 		expires:     now.Add(sessionTTL),
 	}
 	entry.retained = retainedSessionBytes(entry)
+	entry.replaceVisibleWindowLocked()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -182,30 +185,7 @@ func (s *stableSearcher) removeLocked(entry *session) {
 }
 
 func (e *session) respond(req searchcore.Request) searchcore.Response {
-	e.windowMu.RLock()
-	defer e.windowMu.RUnlock()
-	limit := req.Limit
-	if limit <= 0 {
-		limit = searchcore.DefaultPublicLimit
-	}
-	start := req.Offset
-	if start > len(e.results) {
-		start = len(e.results)
-	}
-	end := start + limit
-	if end > len(e.results) {
-		end = len(e.results)
-	}
-
-	return searchcore.Response{
-		Request:         req,
-		TotalResults:    e.total,
-		Results:         cloneSessionResults(e.results[start:end]),
-		PartialFailures: cloneSessionFailures(e.failures),
-		Recovered:       strings.Clone(e.recovered),
-		DidYouMean:      strings.Clone(e.didYouMean),
-		Facets:          cloneSessionFacets(e.facets),
-	}
+	return e.visible.Load().respond(req)
 }
 
 // sessionKey canonicalizes every request field that changes the result set;

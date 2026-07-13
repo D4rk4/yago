@@ -13,6 +13,7 @@ type fakeDenylistStore struct {
 	entries    []urldenylist.Entry
 	entered    []urldenylist.Entry
 	removed    []urldenylist.Entry
+	snapshot   urldenylist.Snapshot
 	entriesErr error
 	writeErr   error
 }
@@ -35,6 +36,10 @@ func (f *fakeDenylistStore) Remove(
 	f.removed = append(f.removed, urldenylist.Entry{Kind: kind, Value: value})
 
 	return f.writeErr == nil, f.writeErr
+}
+
+func (f *fakeDenylistStore) Snapshot() urldenylist.Snapshot {
+	return f.snapshot
 }
 
 func TestBlacklistEntriesMapsAndFormats(t *testing.T) {

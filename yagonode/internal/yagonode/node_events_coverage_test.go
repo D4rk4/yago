@@ -33,7 +33,7 @@ func TestAttachDurableEventsFailsWhenStoreUnavailable(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	if err := attachDurableEvents(
+	if _, err := attachDurableEvents(
 		context.Background(), v, events.NewRecorder(4),
 	); err == nil {
 		t.Fatal("attachDurableEvents should fail on a closed store")
@@ -53,12 +53,15 @@ func TestEventSinkPersistToleratesAppendFailure(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	// Append fails against the closed store; Persist must log and never panic.
-	eventSink{store: store}.Persist(events.Event{
+	persistence := newEventPersistence(store)
+	persistence.Persist(events.Event{
 		Time:     time.Unix(0, 0).UTC(),
 		Severity: events.SeverityInfo,
 		Category: events.CategoryConfig,
 		Name:     "probe",
 		Message:  "durable append should fail quietly",
 	})
+	if err := persistence.Close(t.Context()); err != nil {
+		t.Fatalf("close persistence: %v", err)
+	}
 }

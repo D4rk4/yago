@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	grpc "google.golang.org/grpc"
 
@@ -25,22 +26,36 @@ func TestProtoRunStateMapsEveryState(t *testing.T) {
 	}
 }
 
-type erroringProgressClient struct{}
+type erroringProgressClient struct {
+	observed chan struct{}
+}
 
-func (erroringProgressClient) ReportProgress(
+func (c erroringProgressClient) ReportProgress(
 	context.Context,
 	*crawlrpc.CrawlProgressReport,
 	...grpc.CallOption,
 ) (*crawlrpc.CrawlProgressAck, error) {
+	select {
+	case c.observed <- struct{}{}:
+	default:
+	}
+
 	return nil, errors.New("report boom")
 }
 
-// TestGRPCProgressReporterDropsFailedReport covers the best-effort path: a failed
-// report is logged and swallowed rather than propagated to the caller.
 func TestGRPCProgressReporterDropsFailedReport(t *testing.T) {
-	reporter := NewGRPCProgressReporter(erroringProgressClient{}, "worker-err")
+	observed := make(chan struct{}, 1)
+	reporter := NewGRPCProgressReporter(erroringProgressClient{observed: observed}, "worker-err")
 	reporter.ReportRun(
 		context.Background(),
 		RunReport{State: yagocrawlcontract.CrawlRunRunning},
 	)
+	select {
+	case <-observed:
+	case <-time.After(time.Second):
+		t.Fatal("progress failure path was not attempted")
+	}
+	if err := reporter.Close(t.Context()); err != nil {
+		t.Fatalf("close reporter: %v", err)
+	}
 }

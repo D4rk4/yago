@@ -77,17 +77,24 @@ func newWeightedDomainGraph(
 	citations []Citation,
 ) (weightedDomainGraph, error) {
 	sample := NewCitationSample()
-	sample.Add(citations...)
+	for index, citation := range citations {
+		if index%1024 == 0 {
+			if err := ctx.Err(); err != nil {
+				return weightedDomainGraph{}, fmt.Errorf(
+					"sample domain authority citations: %w",
+					err,
+				)
+			}
+		}
+		sample.Add(citation)
+	}
 	ordered := sample.Citations()
 	sort.Slice(ordered, func(left, right int) bool {
 		if ordered[left].SourceURL != ordered[right].SourceURL {
 			return ordered[left].SourceURL < ordered[right].SourceURL
 		}
-		if ordered[left].TargetURL != ordered[right].TargetURL {
-			return ordered[left].TargetURL < ordered[right].TargetURL
-		}
 
-		return ordered[left].Confidence > ordered[right].Confidence
+		return ordered[left].TargetURL < ordered[right].TargetURL
 	})
 	votes := make(map[string]map[string]map[string]float64)
 	for index, citation := range ordered {
@@ -98,12 +105,7 @@ func newWeightedDomainGraph(
 		}
 		sourceDomain := RegistrableDomain(citation.SourceURL)
 		targetDomain := RegistrableDomain(citation.TargetURL)
-		if sourceDomain == "" || targetDomain == "" || sourceDomain == targetDomain ||
-			math.IsNaN(citation.Confidence) || math.IsInf(citation.Confidence, 0) ||
-			citation.Confidence <= 0 {
-			continue
-		}
-		confidence := min(1, citation.Confidence)
+		confidence := citation.Confidence
 		sources := votes[targetDomain]
 		if sources == nil {
 			sources = make(map[string]map[string]float64)

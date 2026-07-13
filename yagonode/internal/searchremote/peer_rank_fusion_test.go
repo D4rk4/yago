@@ -165,7 +165,7 @@ func TestPeerSearchFailuresAndTimeoutsHaveStableOrder(t *testing.T) {
 	}
 }
 
-func TestPeerResponseLeavesDateOrderingForFinalPipeline(t *testing.T) {
+func TestPeerResponseDoesNotTreatFreshnessAsPublicationDate(t *testing.T) {
 	older := metadataRow(t, hashFor("older"), "https://example.org/older", "Older result")
 	older.Properties[yagomodel.ColLoadDate] = "20200101"
 	newer := metadataRow(t, hashFor("newer"), "https://example.org/newer", "Newer result")
@@ -177,8 +177,11 @@ func TestPeerResponseLeavesDateOrderingForFinalPipeline(t *testing.T) {
 		peer:     yagomodel.Seed{Hash: hashFor("peer")},
 		response: yagoproto.SearchResponse{Resources: []yagomodel.URIMetadataRow{older, newer}},
 	}}, nil)
-	if len(resp.Results) != 2 || resp.Results[0].URL != "https://example.org/older" {
-		t.Fatalf("branch response was finalized early: %#v", resp.Results)
+	if len(resp.Results) != 2 ||
+		resp.Results[0].URL != "https://example.org/older" ||
+		resp.Results[0].Date != "" ||
+		resp.Results[1].Date != "" {
+		t.Fatalf("peer freshness became publication: %#v", resp.Results)
 	}
 }
 

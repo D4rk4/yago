@@ -17,6 +17,7 @@ type scriptedDocumentEngine struct {
 	provisionErrors map[vault.Name]error
 	putErrors       map[vault.Name]error
 	delErrors       map[vault.Name]error
+	backgroundView  bool
 	replayNext      bool
 	commitFirst     bool
 }
@@ -75,6 +76,7 @@ func (e *scriptedDocumentEngine) View(ctx context.Context, fn func(vault.EngineT
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
+	e.backgroundView = vault.IsBackgroundRead(ctx)
 	return fn(scriptedDocumentTxn{engine: e})
 }
 
@@ -664,6 +666,24 @@ func TestStoredDocumentsStopsWhenVisitorStops(t *testing.T) {
 	}
 	if visits != 1 {
 		t.Fatalf("visits = %d, want 1", visits)
+	}
+}
+
+func TestStoredDocumentsUsesBackgroundReadPriority(t *testing.T) {
+	directory, receiver, engine := openScriptedDocuments(t)
+	if _, err := receiver.Receive(t.Context(), []Document{{
+		NormalizedURL: "https://example.org/",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := directory.(StoredDocuments).StoredDocuments(
+		t.Context(),
+		func(Document) (bool, error) { return false, nil },
+	); err != nil {
+		t.Fatal(err)
+	}
+	if !engine.backgroundView {
+		t.Fatal("stored document scan used interactive read priority")
 	}
 }
 

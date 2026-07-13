@@ -114,7 +114,7 @@ func TestInteractiveSearchBudgetCancelsSlowPipeline(t *testing.T) {
 		searchcore.Request{Query: "slow"},
 	)
 	cause := <-inner.cause
-	if !errors.Is(err, context.DeadlineExceeded) || response.Request.Query != "slow" ||
+	if err != nil || response.Request.Query != "slow" ||
 		len(response.PartialFailures) != 1 ||
 		response.PartialFailures[0].Source != interactiveSearchFailureSource ||
 		!errors.Is(cause, context.DeadlineExceeded) {
@@ -160,8 +160,7 @@ func TestInteractiveSearchBudgetReturnsBeforeUncooperativeWorkStops(t *testing.T
 	cancel(context.DeadlineExceeded)
 	outcome := <-result
 	if !errors.Is(outcome.err, context.DeadlineExceeded) ||
-		outcome.response.Request.Query != "slow" ||
-		len(outcome.response.PartialFailures) != 1 {
+		len(outcome.response.PartialFailures) != 0 {
 		t.Fatalf("hard deadline result = %#v, %v", outcome.response, outcome.err)
 	}
 	if len(admission.slots) != 1 {
@@ -173,7 +172,7 @@ func TestInteractiveSearchBudgetReturnsBeforeUncooperativeWorkStops(t *testing.T
 	default:
 	}
 	busy, err := searcher.Search(t.Context(), searchcore.Request{Query: "busy"})
-	if !errors.Is(err, errInteractiveSearchCapacity) || busy.Request.Query != "busy" ||
+	if err != nil || busy.Request.Query != "busy" ||
 		len(busy.PartialFailures) != 1 ||
 		busy.PartialFailures[0].Reason != interactiveSearchCapacityFailure ||
 		inner.calls.Load() != 1 {
@@ -243,12 +242,18 @@ func TestInteractiveSearchBudgetPreservesParentCancellation(t *testing.T) {
 	}
 }
 
-func TestInteractiveSearchBudgetPreservesErrorsAndPanics(t *testing.T) {
+func TestInteractiveSearchBudgetClassifiesErrorsAndPreservesPanics(t *testing.T) {
 	wantErr := errors.New("search failed")
-	if _, err := interactiveBudgetFixture(
+	response, err := interactiveBudgetFixture(
 		errorInteractiveSearch{err: wantErr}, time.Second,
-	).Search(t.Context(), searchcore.Request{}); !errors.Is(err, wantErr) {
-		t.Fatalf("wrapped error = %v", err)
+	).Search(t.Context(), searchcore.Request{Query: "failed"})
+	if err != nil || response.Request.Query != "failed" ||
+		len(response.PartialFailures) != 1 ||
+		response.PartialFailures[0] != (searchcore.PartialFailure{
+			Source: interactiveSearchFailureSource,
+			Reason: interactiveSearchFailed,
+		}) {
+		t.Fatalf("operational failure = %#v, %v", response, err)
 	}
 
 	wantPanic := "search panic"
@@ -287,7 +292,7 @@ func TestInteractiveSearchBudgetContainsPanicAfterDeadline(t *testing.T) {
 	<-inner.started
 	cancel(context.DeadlineExceeded)
 	if outcome := <-result; !errors.Is(outcome.err, context.DeadlineExceeded) ||
-		len(outcome.response.PartialFailures) != 1 {
+		len(outcome.response.PartialFailures) != 0 {
 		t.Fatalf("deadline response = %#v, %v", outcome.response, outcome.err)
 	}
 	close(inner.release)
@@ -328,10 +333,10 @@ func TestInteractiveSearchHardDeadlineRendersPortalHTTP200(t *testing.T) {
 	portal.ServeHTTP(response, httptest.NewRequestWithContext(
 		t.Context(), http.MethodGet, "/?q=slow", nil,
 	))
-	if response.Code != http.StatusOK || !strings.Contains(
+	if response.Code != http.StatusOK || strings.Contains(
 		response.Body.String(),
 		"Search is temporarily unavailable.",
-	) {
+	) || !strings.Contains(response.Body.String(), "Nothing found.") {
 		t.Fatalf("portal response = %d %q", response.Code, response.Body.String())
 	}
 	close(inner.release)

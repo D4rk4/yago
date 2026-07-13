@@ -81,6 +81,30 @@ func TestViewEntersAfterGlobalWriterReleases(t *testing.T) {
 	}
 }
 
+func TestBackgroundViewDoesNotClaimInteractiveReadPriority(t *testing.T) {
+	engine := &engine{}
+	err := engine.View(vault.BackgroundRead(t.Context()), func(vault.EngineTxn) error {
+		if got := engine.viewsInFlight.Load(); got != 0 {
+			t.Fatalf("background views = %d", got)
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = engine.View(t.Context(), func(vault.EngineTxn) error {
+		if got := engine.viewsInFlight.Load(); got != 1 {
+			t.Fatalf("interactive views = %d", got)
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestGlobalReadReleasesGateWhenCancellationRacesAcquisition(t *testing.T) {
 	ctx := &cancellationRaceContext{Context: context.Background(), cancelAt: 2}
 	gate := &sync.RWMutex{}

@@ -28,7 +28,7 @@ func (s RecentSuccessSearcher) Search(
 	req searchcore.Request,
 ) (searchcore.Response, error) {
 	response, err := s.Inner.Search(ctx, req)
-	if context.Cause(ctx) != nil || !incompleteRefresh(response) {
+	if context.Cause(ctx) != nil || err == nil && !incompleteRefresh(response) {
 		return recentSearchResult(response, err)
 	}
 	recent, ok := recentCoverage(s.recent, req)

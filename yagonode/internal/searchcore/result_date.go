@@ -7,7 +7,7 @@ import "time"
 // unknown or malformed dates render empty so the meta line simply omits them.
 func (r Result) DisplayDate() string {
 	parsed, err := time.Parse("20060102", r.Date)
-	if err != nil {
+	if err != nil || parsed.Year() <= 1 {
 		return ""
 	}
 

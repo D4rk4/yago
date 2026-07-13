@@ -127,42 +127,80 @@ func TestPDFToUnicodeTableCap(t *testing.T) {
 	}
 }
 
-// TestPDFObjectResolutionEdges pins the raw object scanner: a longer object
-// number must not match a shorter search (106 vs 6), a missing endobj keeps
-// the tail, and stream extraction survives padding and refuses undecodable
-// or unterminated payloads.
+func TestPDFToUnicodeObjectLookupWorkIsLinear(t *testing.T) {
+	var pdf bytes.Buffer
+	pdf.WriteString("%PDF-1.7\n")
+	for index := 0; index < pdfMaxIndirectObjects; index++ {
+		object := 10_000 + index
+		fmt.Fprintf(&pdf, "/F%d %d 0 R\n", index, object)
+		fmt.Fprintf(&pdf, "%d 0 obj\n<< /Type /Font >>\nendobj\n", object)
+	}
+	body := pdf.Bytes()
+	lookup := newPDFObjectLookup(body)
+	fontNames, objectOf := pdfFontObjectReferences(body)
+	reads := 0
+	tables := pdfToUnicodeTablesFromObjects(
+		fontNames,
+		objectOf,
+		func(reference string) []byte {
+			reads++
+
+			return lookup.value(reference)
+		},
+		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
+	)
+	if len(lookup.objects) != pdfMaxIndirectObjects ||
+		len(fontNames) != pdfMaxIndirectObjects ||
+		reads != pdfMaxIndirectObjects || len(tables) != 0 {
+		t.Fatalf(
+			"lookup work = %d objects/%d fonts/%d reads/%d tables",
+			len(lookup.objects),
+			len(fontNames),
+			reads,
+			len(tables),
+		)
+	}
+}
+
 func TestPDFObjectResolutionEdges(t *testing.T) {
 	body := []byte("106 0 obj\n<< /A /B >>\nendobj\n6 0 obj\n<< /C /D >>\nendobj\n")
-	if got := pdfObjectBody(body, "6"); !bytes.Contains(got, []byte("/C")) {
+	lookup := newPDFObjectLookup(body)
+	if got := lookup.value("6 0"); !bytes.Contains(got, []byte("/C")) {
 		t.Fatalf("object 6 = %q", got)
 	}
-	if got := pdfObjectBody([]byte("5 0 obj\n<< /Tail >>"), "5"); !bytes.Contains(
-		got, []byte("Tail"),
-	) {
+	if got := newPDFObjectLookup([]byte("5 0 obj\n<< /Tail >>")).value("5 0"); got != nil {
 		t.Fatalf("unterminated object = %q", got)
 	}
-	if got := pdfObjectBody(body, "7"); got != nil {
+	if got := lookup.value("7 0"); got != nil {
 		t.Fatalf("missing object = %q", got)
 	}
-	if got := pdfObjectStream(body, "7"); got != nil {
+	if got := pdfObjectStream(lookup, "7"); got != nil {
 		t.Fatalf("missing object stream = %q", got)
 	}
-	if got := pdfObjectStream(body, "6"); got != nil {
+	if got := pdfObjectStream(lookup, "6"); got != nil {
 		t.Fatalf("streamless object = %q", got)
 	}
 	raw := []byte("8 0 obj\n<< >>\nstream\r\nplain\nendstream\nendobj")
-	if got := pdfObjectStream(raw, "8"); got != nil {
+	if got := pdfObjectStream(newPDFObjectLookup(raw), "8"); got != nil {
 		t.Fatalf("non-flate stream = %q", got)
 	}
 	unterminated := []byte("9 0 obj\n<< >>\nstream\nabc")
-	if got := pdfObjectStream(unterminated, "9"); got != nil {
+	if got := pdfObjectStream(newPDFObjectLookup(unterminated), "9"); got != nil {
 		t.Fatalf("unterminated stream = %q", got)
 	}
+	if got := pdfObjectStreamWithQuota(
+		func(string) []byte { return []byte("<< >>\nstream\nunterminated") },
+		"9",
+		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
+	); got != nil {
+		t.Fatalf("unterminated direct stream = %q", got)
+	}
 	fontNoDict := []byte("3 0 obj\nstream\n/ToUnicode 4 0 R\nendstream\nendobj")
-	if got := pdfToUnicodeObjectOf(fontNoDict, "3"); got != "" {
+	fontLookup := newPDFObjectLookup(fontNoDict)
+	if got := pdfToUnicodeObjectOf(fontLookup.value, "3"); got != "" {
 		t.Fatalf("stream-only tounicode = %q", got)
 	}
-	if got := pdfToUnicodeObjectOf(fontNoDict, "4"); got != "" {
+	if got := pdfToUnicodeObjectOf(fontLookup.value, "4"); got != "" {
 		t.Fatalf("missing font object = %q", got)
 	}
 }

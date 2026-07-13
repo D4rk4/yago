@@ -101,7 +101,7 @@ func relaxedMinimumTermMatches(req searchindex.SearchRequest) int {
 		return 0
 	}
 	count := len(distinctCandidateTerms(req))
-	if count < 2 {
+	if count < 3 {
 		return 0
 	}
 	minimum := int(math.Ceil(float64(count) * 0.6))
@@ -124,6 +124,7 @@ func fuseCandidateSets(
 	}
 	slices.SortStableFunc(results, func(left, right searchindex.SearchResult) int {
 		return cmp.Or(
+			cmp.Compare(min(1, right.StrictRank), min(1, left.StrictRank)),
 			cmp.Compare(right.Score, left.Score),
 			strings.Compare(candidateIdentity(left), candidateIdentity(right)),
 		)

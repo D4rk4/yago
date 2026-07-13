@@ -2,6 +2,7 @@ package crawlruns
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -144,5 +145,54 @@ func TestRegistryIgnoresEmptyRunID(t *testing.T) {
 	reg.Record(context.Background(), yagocrawlcontract.CrawlRunProgress{RunID: ""})
 	if reg.Len() != 0 {
 		t.Fatalf("len = %d, want 0", reg.Len())
+	}
+}
+
+func TestRegistryRecordsRepeatedAttemptsWithTheSameRunID(t *testing.T) {
+	reg := New(4)
+	var transitions []struct {
+		state         yagocrawlcontract.CrawlRunState
+		newlyTerminal bool
+		active        int
+	}
+	reg.AddObserver(func(run Run, newlyTerminal bool, active int) {
+		transitions = append(transitions, struct {
+			state         yagocrawlcontract.CrawlRunState
+			newlyTerminal bool
+			active        int
+		}{run.State, newlyTerminal, active})
+	})
+	reg.Record(context.Background(), yagocrawlcontract.CrawlRunProgress{
+		RunID: "settled",
+		State: yagocrawlcontract.CrawlRunFinished,
+		Tally: yagocrawlcontract.CrawlRunTally{Indexed: 4},
+	})
+	reg.Record(context.Background(), yagocrawlcontract.CrawlRunProgress{
+		RunID: "settled",
+		State: yagocrawlcontract.CrawlRunRunning,
+		Tally: yagocrawlcontract.CrawlRunTally{Indexed: 1, Pending: 3},
+	})
+	reg.Record(context.Background(), yagocrawlcontract.CrawlRunProgress{
+		RunID: "settled",
+		State: yagocrawlcontract.CrawlRunCancelled,
+		Tally: yagocrawlcontract.CrawlRunTally{Indexed: 2},
+	})
+
+	runs := reg.Recent()
+	if len(runs) != 1 || runs[0].State != yagocrawlcontract.CrawlRunCancelled ||
+		runs[0].Tally.Indexed != 2 || runs[0].Tally.Pending != 0 {
+		t.Fatalf("repeated run = %+v", runs)
+	}
+	want := []struct {
+		state         yagocrawlcontract.CrawlRunState
+		newlyTerminal bool
+		active        int
+	}{
+		{yagocrawlcontract.CrawlRunFinished, true, 0},
+		{yagocrawlcontract.CrawlRunRunning, false, 1},
+		{yagocrawlcontract.CrawlRunCancelled, true, 0},
+	}
+	if !reflect.DeepEqual(transitions, want) {
+		t.Fatalf("transitions = %+v, want %+v", transitions, want)
 	}
 }

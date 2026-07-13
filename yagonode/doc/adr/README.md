@@ -42,7 +42,7 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0021](0021-in-house-metasearch-backend.md) | In-house multi-engine metasearch backend for the DDGS fallback | Accepted |
 | [0022](0022-server-rendered-admin-console.md) | Server-rendered admin console with htmx instead of a React SPA | Accepted |
 | [0023](0023-rename-go-modules-yacy-to-yago.md) | Rename the Go modules and import paths from yacy* to yago* | Accepted |
-| [0024](0024-local-host-block-rank-signal.md) | Local host block-rank as an opt-in ranking signal | Accepted |
+| [0024](0024-local-host-block-rank-signal.md) | Local host block-rank ranking signal | Accepted |
 | [0025](0025-sharded-compressed-vault-and-index.md) | Shard the vault and search index into bounded compressed files | Accepted |
 | [0026](0026-per-language-morphology-and-analyzer-routing.md) | Route documents to per-language analyzers for multilingual morphology | Accepted |
 | [0027](0027-swarm-morphological-query-expansion.md) | Expand single-word swarm queries into corpus-observed inflections | Accepted |

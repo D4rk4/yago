@@ -1,4 +1,4 @@
-# 24. Local host block-rank as an opt-in ranking signal
+# 24. Local host block-rank ranking signal
 
 Date: 2026-07-05
 
@@ -27,21 +27,24 @@ surface. Shipping that in one step risks a broad, half-tested change.
 ## Decision
 
 Compute a **local** host block-rank from this node's own crawl graph and fold it
-into result scoring as an **opt-in** signal, deferring the distributed exchange.
+into result scoring, deferring the distributed exchange.
 
-- A new pure package `internal/hostrank` computes a normalized authority `Table`
-  (`map[hostHash]float64`, top host = 1) via damped iterative rank propagation at
-  host granularity over the incoming citation graph. Unknown hosts rank 0, so they
-  are neutral rather than penalized.
-- A background loop (`runHostRankRefreshLoop`, mirroring the recrawl/eviction
-  sweeps) rescans the document store on a coarse interval and republishes the
-  table through an atomic `hostrank.Holder`, so the search path reads it lock-free
-  and never scans the store inline.
-- `RankingWeights` gains a `HostRank` coefficient (default 0 = off). It is a
-  post-retrieval multiplier — a result's score is scaled by `1 + HostRank*rank(host)`
+- A new pure package `internal/hostrank` computes normalized authority evidence
+  keyed by registrable domain via damped iterative rank propagation over the
+  incoming citation graph. Unknown domains remain neutral rather than penalized.
+- The shared completion-relative corpus loop (`runCorpusSignalRefreshLoop`)
+  collects a bounded cross-domain citation sample alongside spelling and optional
+  morphology frequencies. Invalid and same-domain links are discarded, and each
+  domain edge retains at most eight distinct source-page votes before the global
+  sample. The loop then republishes the table through an atomic `hostrank.Holder`,
+  so the search path reads it lock-free and never scans the store inline.
+- `RankingWeights` gains a `HostRank` coefficient, enabled by default at 0.3. It
+  is a post-retrieval multiplier — a result's score is scaled by
+  `1 + HostRank*rank(host)`
   and the local results are re-sorted — not a text-field boost, so it does not
   count toward the "at least one positive weight" relevance requirement and the
-  Bleve field query ignores it. With the default weight the rescore is a no-op.
+  Bleve field query ignores it. Setting the coefficient to zero disables the
+  rescore.
 - The signal applies to local full-text results in `searchlocal`; remote results
   keep their calibrated federated scores.
 
@@ -67,12 +70,11 @@ ranking value; peer aggregation extends coverage to hosts we have not crawled.
 
 ## Consequences
 
-Ranking gains a host-authority dimension that operators enable by setting a
-positive `hostRank` weight via the existing `/api/admin/v1/search/ranking` profile
-(the JSON already round-trips the new field). Left at the default it changes
-nothing. The node runs one more coarse-interval background scan of the document
-store. The host hash is derived as `HashURL(url).HostHash()` to match the graph
-builder; results whose URL scheme/port differ from how their host appears in the
-crawl graph may miss the table and fall back to a neutral rank — acceptable for a
-soft signal. Distributed host-rank exchange and aggregation across peers remain
+Ranking gains a host-authority dimension that operators tune through the
+positive `hostRank` weight in the existing `/api/admin/v1/search/ranking` profile
+(the JSON round-trips the field). Authority shares one completion-relative document pass with spelling
+and optional morphology signals, so it adds no independent periodic scan. The
+authority keys use the registrable domain derived from normalized source and
+target URLs, so scheme, port, and subdomain differences do not split one domain's
+evidence. Distributed host-rank exchange and aggregation across peers remain
 future work (the second slice of the YBR epic).

@@ -12,7 +12,7 @@ import (
 
 // peersPerPage bounds the peer table so a large roster does not render as one
 // unbounded wall; the operator pages through the rest.
-const peersPerPage = 50
+const peersPerPage = 20
 
 // peerSortColumns is the allowlist of sortable peer columns. An arbitrary
 // `?psort=` value that is not a key here is ignored (the source order stays), so

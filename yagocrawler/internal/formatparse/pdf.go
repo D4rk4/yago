@@ -16,9 +16,10 @@ import (
 )
 
 const (
-	pdfMaxStreams     = 256
-	pdfMaxStreamBytes = 8 << 20
-	pdfMaxTextBytes   = 1 << 20
+	pdfMaxStreams              = 256
+	pdfMaxStreamBytes          = 8 << 20
+	pdfMaxDecodedDocumentBytes = 32 << 20
+	pdfMaxTextBytes            = 1 << 20
 )
 
 // parsePDF extracts a PDF's embedded text (no OCR, like YaCy): FlateDecode
@@ -35,15 +36,11 @@ func parsePDF(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
 	if !bytes.HasPrefix(body, []byte("%PDF")) {
 		return pageparse.ParsedPage{URL: rawURL}, false
 	}
-	tables := pdfToUnicodeTables(body)
-	var text strings.Builder
-	for _, stream := range pdfContentStreams(body) {
-		text.WriteString(pdfTextFromContent(stream, tables))
-		if text.Len() > pdfMaxTextBytes {
-			break
-		}
-	}
-	extracted := strings.TrimSpace(collapseBlankRuns(text.String()))
+	quota := newPDFDecodeQuota(pdfMaxDecodedDocumentBytes)
+	tables := pdfToUnicodeTablesWithQuota(body, quota)
+	extracted := strings.TrimSpace(collapseBlankRuns(
+		pdfPageText(body, tables, quota, pdfMaxTextBytes),
+	))
 	if !hasIndexableText(extracted) {
 		return pageparse.ParsedPage{URL: rawURL}, false
 	}
@@ -55,43 +52,28 @@ func parsePDF(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
 	return pageparse.ParsedPage{URL: rawURL, Title: title, Text: extracted}, true
 }
 
-// pdfContentStreams decodes every content stream in the file, bounded. The
-// stream dictionary's /Filter entry names the decode chain; besides the
-// modern FlateDecode this covers the 1990s combination ASCII85Decode +
-// LZWDecode (real archives are full of PDF 1.0 files built exactly that
-// way — CRAWL-17 follow-up) and ASCIIHexDecode. Image filters (DCTDecode,
-// JPXDecode) carry no text and are skipped.
 func pdfContentStreams(body []byte) [][]byte {
+	return pdfContentStreamsWithQuota(
+		body,
+		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
+	)
+}
+
+func pdfContentStreamsWithQuota(body []byte, quota *pdfDecodeQuota) [][]byte {
 	streams := make([][]byte, 0, 8)
-	at := 0
-	for len(streams) < pdfMaxStreams {
-		index := bytes.Index(body[at:], []byte("stream"))
-		if index < 0 {
-			break
-		}
-		dictStart := bytes.LastIndex(body[at:at+index], []byte("<<"))
-		filters := []string{"FlateDecode"}
-		if dictStart >= 0 {
-			filters = pdfFilterChain(body[at+dictStart : at+index])
-		}
-		start := at + index + len("stream")
-		if start < len(body) && body[start] == '\r' {
-			start++
-		}
-		if start < len(body) && body[start] == '\n' {
-			start++
-		}
-		end := bytes.Index(body[start:], []byte("endstream"))
-		if end < 0 {
-			break
-		}
-		raw := body[start : start+end]
-		at = start + end + len("endstream")
-		decoded, ok := pdfDecodeChain(raw, filters)
+	for _, stream := range pdfPageDescriptionStreams(body) {
+		decoded, ok := quota.decode(stream)
 		if !ok || len(decoded) == 0 {
+			if quota.exhausted() {
+				break
+			}
+
 			continue
 		}
 		streams = append(streams, decoded)
+		if quota.exhausted() {
+			break
+		}
 	}
 
 	return streams
@@ -135,39 +117,41 @@ var (
 	pdfLeadingNamePattern = regexp.MustCompile(`^/([A-Za-z0-9]+)`)
 )
 
-// pdfDecodeChain applies the named filters in order; an unknown or image
-// filter aborts the stream (ok=false) rather than emitting garbage.
-func pdfDecodeChain(raw []byte, filters []string) ([]byte, bool) {
-	data := raw
-	for _, filter := range filters {
-		var err error
-		switch filter {
-		case "FlateDecode", "Fl":
-			data, err = pdfInflate(data)
-		case "ASCII85Decode", "A85":
-			data, err = pdfASCII85(data)
-		case "ASCIIHexDecode", "AHx":
-			data, err = pdfASCIIHex(data)
-		case "LZWDecode", "LZW":
-			data, err = pdfLZW(data)
-		default:
-			return nil, false
-		}
-		if err != nil {
-			return nil, false
-		}
+func pdfDecodeFilter(raw []byte, filter string, limit int) ([]byte, bool) {
+	var (
+		decoded []byte
+		err     error
+	)
+	switch filter {
+	case "FlateDecode", "Fl":
+		decoded, err = pdfInflateWithin(raw, limit)
+	case "ASCII85Decode", "A85":
+		decoded, err = pdfASCII85Within(raw, limit)
+	case "ASCIIHexDecode", "AHx":
+		decoded, err = pdfASCIIHexWithin(raw, limit)
+	case "LZWDecode", "LZW":
+		decoded, err = pdfLZWWithin(raw, limit)
+	default:
+		return nil, false
+	}
+	if err != nil {
+		return nil, false
 	}
 
-	return data, true
+	return decoded, true
 }
 
 func pdfInflate(raw []byte) ([]byte, error) {
+	return pdfInflateWithin(raw, pdfMaxStreamBytes)
+}
+
+func pdfInflateWithin(raw []byte, limit int) ([]byte, error) {
 	reader, err := zlib.NewReader(bytes.NewReader(raw))
 	if err != nil {
 		return nil, fmt.Errorf("zlib: %w", err)
 	}
 	defer func() { _ = reader.Close() }()
-	data, err := io.ReadAll(io.LimitReader(reader, pdfMaxStreamBytes))
+	data, err := io.ReadAll(io.LimitReader(reader, int64(max(0, limit))))
 	if err != nil && len(data) == 0 {
 		return nil, fmt.Errorf("inflate: %w", err)
 	}
@@ -176,10 +160,14 @@ func pdfInflate(raw []byte) ([]byte, error) {
 }
 
 func pdfASCII85(raw []byte) ([]byte, error) {
+	return pdfASCII85Within(raw, pdfMaxStreamBytes)
+}
+
+func pdfASCII85Within(raw []byte, limit int) ([]byte, error) {
 	raw = bytes.TrimSpace(raw)
 	raw = bytes.TrimSuffix(raw, []byte("~>"))
 	decoder := ascii85.NewDecoder(bytes.NewReader(raw))
-	data, err := io.ReadAll(io.LimitReader(decoder, pdfMaxStreamBytes))
+	data, err := io.ReadAll(io.LimitReader(decoder, int64(max(0, limit))))
 	if err != nil && len(data) == 0 {
 		return nil, fmt.Errorf("ascii85: %w", err)
 	}
@@ -188,12 +176,20 @@ func pdfASCII85(raw []byte) ([]byte, error) {
 }
 
 func pdfASCIIHex(raw []byte) ([]byte, error) {
-	compact := make([]byte, 0, len(raw))
+	return pdfASCIIHexWithin(raw, pdfMaxStreamBytes)
+}
+
+func pdfASCIIHexWithin(raw []byte, limit int) ([]byte, error) {
+	limit = max(0, limit)
+	maximumDigits := limit * 2
+	compact := make([]byte, 0, min(len(raw), maximumDigits))
 	for _, char := range raw {
 		switch char {
 		case '>', ' ', '\n', '\r', '\t':
 		default:
-			compact = append(compact, char)
+			if len(compact) < maximumDigits {
+				compact = append(compact, char)
+			}
 		}
 	}
 	if len(compact)%2 == 1 {
@@ -210,9 +206,13 @@ func pdfASCIIHex(raw []byte) ([]byte, error) {
 // pdfLZW decodes PDF's LZW variant; Go's MSB reader matches the common
 // EarlyChange=1 encoding real files use.
 func pdfLZW(raw []byte) ([]byte, error) {
+	return pdfLZWWithin(raw, pdfMaxStreamBytes)
+}
+
+func pdfLZWWithin(raw []byte, limit int) ([]byte, error) {
 	reader := lzw.NewReader(bytes.NewReader(raw), lzw.MSB, 8)
 	defer func() { _ = reader.Close() }()
-	data, err := io.ReadAll(io.LimitReader(reader, pdfMaxStreamBytes))
+	data, err := io.ReadAll(io.LimitReader(reader, int64(max(0, limit))))
 	if err != nil && len(data) == 0 {
 		return nil, fmt.Errorf("lzw: %w", err)
 	}
@@ -225,23 +225,8 @@ func pdfLZW(raw []byte) ([]byte, error) {
 // across blocks the way the graphics state does, so a page-long font choice
 // keeps its ToUnicode table.
 func pdfTextFromContent(content []byte, tables map[string]*pdfCMap) string {
-	var out strings.Builder
-	var current *pdfCMap
-	at := 0
-	for {
-		begin := bytes.Index(content[at:], []byte("BT"))
-		if begin < 0 {
-			break
-		}
-		blockStart := at + begin + 2
-		end := bytes.Index(content[blockStart:], []byte("ET"))
-		if end < 0 {
-			break
-		}
-		current = writeShownStrings(&out, content[blockStart:blockStart+end], tables, current)
-		out.WriteByte('\n')
-		at = blockStart + end + 2
-	}
+	out := newPDFTextCollector(pdfMaxTextBytes)
+	pdfWriteContentText(out, content, tables)
 
 	return out.String()
 }
@@ -260,58 +245,11 @@ func writeShownStrings(
 	tables map[string]*pdfCMap,
 	current *pdfCMap,
 ) *pdfCMap {
-	inArray := false
-	for at := 0; at < len(block); at++ {
-		switch block[at] {
-		case '(':
-			raw, consumed := pdfRawStringLiteral(block[at:])
-			out.WriteString(pdfShownText(raw, current))
-			at += consumed
-			if !inArray {
-				out.WriteByte(' ')
-			}
-		case '<':
-			if at+1 < len(block) && block[at+1] == '<' {
-				at += pdfSkipDictionary(block[at:])
-
-				continue
-			}
-			raw, consumed := pdfRawHexString(block[at:])
-			out.WriteString(pdfShownText(raw, current))
-			at += consumed
-			if !inArray {
-				out.WriteByte(' ')
-			}
-		case '[':
-			inArray = true
-		case ']':
-			inArray = false
-			out.WriteByte(' ')
-		case '-':
-			if consumed, space := pdfArrayKernSpace(block[at:], inArray); space {
-				out.WriteByte(' ')
-				at += consumed
-			}
-		case '/':
-			name, consumed := pdfName(block[at:])
-			if selected, ok := tables[name]; ok {
-				current = selected
-			}
-			at += consumed
-		}
-	}
+	bounded := newPDFTextCollector(max(0, pdfMaxTextBytes-out.Len()))
+	current = pdfWriteShownStrings(bounded, block, tables, current)
+	out.WriteString(bounded.String())
 
 	return current
-}
-
-// pdfShownText renders one show-string's raw bytes through the selected
-// font's ToUnicode table, or through the byte decoder when none is selected.
-func pdfShownText(raw []byte, current *pdfCMap) string {
-	if current != nil {
-		return pdfMapString(raw, current)
-	}
-
-	return pdfDecodeStringBytes(raw)
 }
 
 // pdfName reads the name token starting at data[0]=='/'.
@@ -531,14 +469,16 @@ func pdfInfoTitle(body []byte) string {
 	if open < 0 {
 		return ""
 	}
-	title := ""
+	title := newPDFTextCollector(pdfMaxTextBytes)
 	if rest[open] == '(' {
-		title, _ = pdfStringLiteral(rest[open:])
+		raw, _ := pdfRawStringLiteralWithin(rest[open:], title.rawOperandLimit())
+		pdfWriteDecodedStringBytes(title, raw)
 	} else {
-		title, _ = pdfHexString(rest[open:])
+		raw, _ := pdfRawHexStringWithin(rest[open:], title.rawOperandLimit())
+		pdfWriteDecodedStringBytes(title, raw)
 	}
 
-	return strings.TrimSpace(title)
+	return strings.TrimSpace(title.String())
 }
 
 // parsePostScript extracts the parenthesized text literals of a PostScript

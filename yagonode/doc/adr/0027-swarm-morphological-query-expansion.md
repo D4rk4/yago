@@ -43,10 +43,10 @@ Verified findings:
   language's observed inflection of that stem — derived from data, not from a
   hand table, for every language with a stemmer, with graceful fallback (a
   script with no stemmer folds to the word itself).
-- **The vocabulary is already being swept.** SEARCH-14's SymSpell corrector runs
-  a periodic scan of the stored documents' `Title`/`ExtractedText` to build a
-  term-frequency dictionary. The morphology expander needs the same term
-  frequencies, so it is the same kind of background sweep on the same source.
+- **The vocabulary is already being swept.** SEARCH-14's SymSpell corrector and
+  host authority already need a periodic pass over stored documents. The
+  morphology expander needs the same title and extracted-text frequencies, so
+  all enabled signals are collected in that one pass.
 - **Corpus-grounded forms are wire-safe and cheap.** Because the forms come from
   words the node has actually indexed, each is a real word that hashes to an
   ordinary exact-word hash, and the expansion only ever emits forms that some
@@ -70,15 +70,15 @@ Verified findings:
    unchanged. This is the injected stemmer, so query and vocabulary are grouped
    consistently and no endings are hardcoded anywhere.
 
-3. **Background vocabulary sweep (`internal/yagonode`).** A `wordFormsSweeper`
-   scans the stored documents on a coarse interval and feeds a heap-backed
-   Space-Saving frequency synopsis instead of retaining every distinct token.
-   Morphology retains at most 32,768 frequent terms; spelling retains at most
-   8,192. Tokens outside the searchable 4-through-32-rune range are rejected
-   before SymSpell generates its quadratic delete variants. The rebuilt
-   `Expander` is published through an atomic `Holder` for lock-free reads on the
-   query path. The sweep runs only when the feature is enabled, so a node without
-   swarm morphology pays no scan.
+3. **Shared corpus signal pass (`internal/yagonode`).** One completion-relative
+   pass collects bounded authority citations, spelling frequencies, and, only
+   when enabled, morphology frequencies. It feeds heap-backed Space-Saving
+   synopses instead of retaining every distinct token. Morphology retains at most
+   32,768 frequent terms; spelling retains at most 8,192. Tokens outside the
+   searchable 4-through-32-rune range are rejected before SymSpell generates its
+   quadratic delete variants. The rebuilt `Expander` is published through an
+   atomic `Holder` for lock-free reads on the query path. A node without swarm
+   morphology pays no extra vocabulary collection or separate scan.
 
 4. **Opt-in, single-word only (`internal/searchremote`).** The remote searcher
    takes an `ExpandWord func(string) []string`. When it is wired and the query is
@@ -104,11 +104,11 @@ Verified findings:
 - The feature is opt-in because expansion multiplies the per-word peer fan-out
   (one query word becomes up to `maxVariants` DHT searches); operators enable it
   when recall matters more than round-trips.
-- A second background sweep runs when enabled. Its scan cost follows corpus
-  bytes, but its retained vocabulary and the structures built from it have fixed
-  cardinality bounds instead of growing with every distinct page token. The
-  coarse interval amortizes the pass and the gate keeps it off for nodes that do
-  not use the feature.
+- Enabling morphology adds its bounded frequency synopsis to the existing shared
+  corpus pass; it does not add another scan. The retained vocabulary and the
+  structures built from it have fixed cardinality bounds instead of growing with
+  every distinct page token. The next pass starts only after the coarse interval
+  has elapsed from completion of the previous pass.
 - Expansion quality tracks the local corpus: a stem the node has never indexed
   under more than one form yields only the base word, so a freshly seeded node
   expands little until it has crawled enough vocabulary.

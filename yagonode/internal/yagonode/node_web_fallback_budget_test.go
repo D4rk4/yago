@@ -15,6 +15,7 @@ type webFallbackBudgetProbe struct {
 	mu          sync.Mutex
 	hadDeadline bool
 	err         error
+	response    searchcore.Response
 }
 
 type webFallbackDeadlineProbe struct{}
@@ -37,21 +38,38 @@ func (p *webFallbackBudgetProbe) Search(
 	p.hadDeadline = deadline
 	p.mu.Unlock()
 
-	return searchcore.Response{Request: req}, p.err
+	response := p.response
+	response.Request = req
+
+	return response, p.err
 }
 
-func TestWebFallbackExactStageBudgetWrapsSearchError(t *testing.T) {
+func TestWebFallbackExactStageBudgetPreservesAndClassifiesSearchError(t *testing.T) {
 	sentinel := errors.New("swarm failed")
 	searcher := withWebFallbackExactStageBudget(
-		&webFallbackBudgetProbe{err: sentinel},
+		&webFallbackBudgetProbe{
+			err: sentinel,
+			response: searchcore.Response{Results: []searchcore.Result{{
+				URL: "https://local.example/", Source: searchcore.SourceLocal,
+			}}},
+		},
 		webFallbackConfig{
 			Provider: webFallbackProviderDDGS,
 			Privacy:  webFallbackPrivacyEnabled,
 		},
 	)
-	_, err := searcher.Search(context.Background(), searchcore.Request{Query: "query"})
-	if !errors.Is(err, sentinel) {
-		t.Fatalf("search error = %v, want wrapped sentinel", err)
+	response, err := searcher.Search(
+		context.Background(),
+		searchcore.Request{Query: "query"},
+	)
+	if err != nil || len(response.Results) != 1 ||
+		response.Results[0].URL != "https://local.example/" ||
+		len(response.PartialFailures) != 1 ||
+		response.PartialFailures[0] != (searchcore.PartialFailure{
+			Source: webFallbackExactStageFailureSource,
+			Reason: webFallbackExactStageFailed,
+		}) {
+		t.Fatalf("search response = %#v, error = %v", response, err)
 	}
 }
 

@@ -148,11 +148,13 @@ func TestComputeDomainAuthorityValidatesAndCancels(t *testing.T) {
 	}}, DomainOptions{}); err == nil {
 		t.Fatal("canceled graph build succeeded")
 	}
-	ctx := &authorityContext{Context: t.Context(), remaining: 1}
-	if _, err := ComputeDomainAuthority(ctx, []Citation{{
-		SourceURL: "https://a.example/", TargetURL: "https://b.example/", Confidence: 1,
-	}}, DomainOptions{}); err == nil {
-		t.Fatal("canceled propagation succeeded")
+	for remaining := 1; remaining <= 2; remaining++ {
+		ctx := &authorityContext{Context: t.Context(), remaining: remaining}
+		if _, err := ComputeDomainAuthority(ctx, []Citation{{
+			SourceURL: "https://a.example/", TargetURL: "https://b.example/", Confidence: 1,
+		}}, DomainOptions{}); err == nil {
+			t.Fatalf("canceled authority stage %d succeeded", remaining)
+		}
 	}
 	empty, err := ComputeDomainAuthority(t.Context(), nil, DomainOptions{})
 	if err != nil || len(empty) != 0 {

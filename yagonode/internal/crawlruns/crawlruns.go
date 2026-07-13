@@ -90,8 +90,6 @@ func (r *Registry) Record(_ context.Context, progress yagocrawlcontract.CrawlRun
 
 	r.evictLocked()
 
-	// Detecting the terminal transition under the lock guarantees exactly one
-	// newly-terminal notification per run, even under concurrent reports.
 	newlyTerminal := isTerminal(run.State) && (!existed || !isTerminal(prev.State))
 	active := r.activeCountLocked()
 	observers := r.observers
@@ -122,10 +120,6 @@ func (r *Registry) SetRate(runID string, pagesPerMinute uint32) {
 	r.runs[runID] = run
 }
 
-// AddObserver registers a callback invoked after each recorded report with the
-// run's current snapshot, whether this report was its first terminal transition,
-// and the number of runs still active. Observers are registered at assembly time,
-// before the broker serves, so registration never races a report.
 func (r *Registry) AddObserver(observe func(run Run, newlyTerminal bool, active int)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

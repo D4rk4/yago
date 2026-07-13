@@ -316,7 +316,7 @@ func coreResult(
 		ContentType:          result.ContentType,
 		URLHash:              hash,
 		Size:                 result.Size,
-		Date:                 result.PublishedDate.Format("20060102"),
+		Date:                 compactPublicationDate(result.PublishedDate),
 		DateConfidence:       result.DateConfidence,
 		ContentDomain:        req.ContentDomain,
 		Language:             result.Language,

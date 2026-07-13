@@ -126,12 +126,15 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("open storage: %w", err)
 	}
-	defer closeVault(storageVault)
+	var eventDrain <-chan struct{}
+	defer func() { closeVaultAfterEventDrain(storageVault, eventDrain) }()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	return bootNode(ctx, config, storageVault, client)
+	eventDrain, err = bootNodeWithEventDrain(ctx, config, storageVault, client)
+
+	return err
 }
 
 // bootNode drives the node once its configuration is loaded and its durable
@@ -145,25 +148,38 @@ func bootNode(
 	storageVault *vault.Vault,
 	client *http.Client,
 ) error {
+	_, err := bootNodeWithEventDrain(ctx, config, storageVault, client)
+
+	return err
+}
+
+func bootNodeWithEventDrain(
+	ctx context.Context,
+	config nodeConfig,
+	storageVault *vault.Vault,
+	client *http.Client,
+) (<-chan struct{}, error) {
 	obs, err := provisionObservability(ctx, storageVault)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	defer closeEventPersistence(obs.persistence)
+	eventDrain := obs.persistence.done
 
 	sources, toggles, config, err := loadRuntimeSettings(ctx, storageVault, config, obs.recorder)
 	if err != nil {
-		return err
+		return eventDrain, err
 	}
 	storageVault.SetQuota(config.StorageQuotaByte)
 	storageVault.SetDeferredFsync(config.StorageDeferFsync)
 	storageVault.SetReadDeferBudget(config.StorageReadDefer)
 	if err := validateNodeBinds(config); err != nil {
-		return fmt.Errorf("validate listen addresses: %w", err)
+		return eventDrain, fmt.Errorf("validate listen addresses: %w", err)
 	}
 
 	authService, err := provisionAdminAuth(ctx, config, storageVault, obs.authObserver)
 	if err != nil {
-		return fmt.Errorf("configure admin auth: %w", err)
+		return eventDrain, fmt.Errorf("configure admin auth: %w", err)
 	}
 	sources.security = newSecuritySource(authService)
 	// The serve context is governed by the restart controller so the setup
@@ -194,7 +210,7 @@ func bootNode(
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("assemble node: %w", err)
+		return eventDrain, fmt.Errorf("assemble node: %w", err)
 	}
 	defer assembled.clicks.StopImpressionPreparations()
 
@@ -212,7 +228,7 @@ func bootNode(
 		servers = append(servers, buildPublicServer(config, obs.endpoints, assembled, toggles))
 	}
 
-	return restart.Wrap(serveRuntimeNode(ctx, assembled, obs.eviction, servers...))
+	return eventDrain, restart.Wrap(serveRuntimeNode(ctx, assembled, obs.eviction, servers...))
 }
 
 // buildPublicServer builds the dedicated public search listener: the portal,
@@ -274,7 +290,7 @@ func serve(
 	ctx, cancel := context.WithCancel(ctx)
 	listenAndServe := listenAndServeHTTP
 	var background sync.WaitGroup
-	background.Add(4)
+	background.Add(3)
 	startPeerPresenceLoops(ctx, &background, assembled)
 	startRedirectPurge(ctx, &background, assembled)
 	startCrawlScheduleLoop(ctx, &background, assembled)
@@ -284,21 +300,16 @@ func serve(
 	}()
 	go func() {
 		defer background.Done()
-		runHostRankRefreshLoop(ctx, hostRankSweeper{
-			documents: assembled.docScan,
-			holder:    assembled.hostRank,
-			trust:     assembled.hostTrust,
-		})
-	}()
-	go func() {
-		defer background.Done()
-		runSpellRefreshLoop(ctx, spellSweeper{
-			documents: assembled.docScan,
-			holder:    assembled.spell,
+		runCorpusSignalRefreshLoop(ctx, &corpusSignalRefresh{
+			documents:        assembled.docScan,
+			hostRank:         assembled.hostRank,
+			spell:            assembled.spell,
+			wordForms:        assembled.wordForms,
+			includeWordForms: assembled.swarmMorph,
+			trust:            assembled.hostTrust,
 		})
 	}()
 	startMaintenanceLoops(ctx, &background, assembled)
-	startWordFormsLoop(ctx, &background, assembled)
 	if assembled.crawl != nil {
 		defer assembled.crawl.Close()
 		background.Add(1)
@@ -359,22 +370,6 @@ func startPeerPresenceLoops(ctx context.Context, background *sync.WaitGroup, ass
 	}()
 }
 
-// startWordFormsLoop launches the swarm-morphology vocabulary sweep, but only
-// when the feature is enabled — a peer without swarm morphology pays no scan.
-func startWordFormsLoop(ctx context.Context, background *sync.WaitGroup, assembled node) {
-	if !assembled.swarmMorph {
-		return
-	}
-	background.Add(1)
-	go func() {
-		defer background.Done()
-		runWordFormsRefreshLoop(ctx, wordFormsSweeper{
-			documents: assembled.docScan,
-			holder:    assembled.wordForms,
-		})
-	}()
-}
-
 // startMaintenanceLoops runs the background storage-maintenance passes: periodic
 // compaction (ADR-0036 C), automatic shard growth (ADR-0037), and the
 // deferred-fsync flush that backstops NoSync mode (ADR-0038).
@@ -401,5 +396,22 @@ type vaultCloser interface {
 func closeVault(storage vaultCloser) {
 	if err := storage.Close(); err != nil {
 		slog.ErrorContext(context.Background(), "storage close failed", slog.Any("error", err))
+	}
+}
+
+func closeVaultAfterEventDrain(storage vaultCloser, done <-chan struct{}) {
+	if done == nil {
+		closeVault(storage)
+
+		return
+	}
+	select {
+	case <-done:
+		closeVault(storage)
+	default:
+		go func() {
+			<-done
+			closeVault(storage)
+		}()
 	}
 }

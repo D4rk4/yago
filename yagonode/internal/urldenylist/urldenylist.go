@@ -177,12 +177,8 @@ type Snapshot struct {
 	domains map[string]struct{}
 }
 
-func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {
-	if err := ctx.Err(); err != nil {
-		return Snapshot{}, fmt.Errorf("view denylist: %w", err)
-	}
-
-	return *s.snapshots.current.Load(), nil
+func (s *Store) Snapshot() Snapshot {
+	return *s.snapshots.current.Load()
 }
 
 func (s *Store) loadSnapshot(ctx context.Context) (Snapshot, error) {
@@ -222,13 +218,16 @@ func (s Snapshot) Blocks(rawURL string) bool {
 	if host == "" {
 		return false
 	}
-	for domain := range s.domains {
-		if host == domain || strings.HasSuffix(host, "."+domain) {
+	for {
+		if _, ok := s.domains[host]; ok {
 			return true
 		}
+		separator := strings.IndexByte(host, '.')
+		if separator < 0 {
+			return false
+		}
+		host = host[separator+1:]
 	}
-
-	return false
 }
 
 func (s *Store) key(kind Kind, value string) vault.Key {
@@ -259,5 +258,5 @@ func hostOf(rawURL string) string {
 		return ""
 	}
 
-	return strings.ToLower(parsed.Hostname())
+	return strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
 }

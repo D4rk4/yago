@@ -5,15 +5,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 )
 
-func documentAuthorityCitations(doc documentstore.Document) []hostrank.Citation {
-	var citations []hostrank.Citation
-	visitDocumentAuthorityCitations(doc, func(citation hostrank.Citation) {
-		citations = append(citations, citation)
-	})
-
-	return citations
-}
-
 func visitDocumentAuthorityCitations(
 	doc documentstore.Document,
 	visit func(hostrank.Citation),

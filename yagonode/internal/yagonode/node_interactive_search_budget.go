@@ -37,6 +37,7 @@ type interactiveSearchOutcome struct {
 const (
 	interactiveSearchFailureSource  = searchcore.PartialFailureSourceLocalSearch
 	interactiveSearchTimeoutFailure = "local search deadline exceeded"
+	interactiveSearchFailed         = "local search failed"
 	interactiveSearchPanicMessage   = "interactive search pipeline panicked"
 )
 
@@ -61,7 +62,7 @@ func (s interactiveBudgetSearcher) Search(
 
 	release, err := s.admission.tryAcquire(searchCtx)
 	if err != nil {
-		return interactiveSearchResult(req, searchcore.Response{}, err)
+		return interactiveSearchFailure(ctx, req, searchcore.Response{}, err)
 	}
 	outcomes := make(chan interactiveSearchOutcome, 1)
 	go s.run(searchCtx, req, release, outcomes)
@@ -72,12 +73,13 @@ func (s interactiveBudgetSearcher) Search(
 			panic(outcome.failure)
 		}
 		if outcome.err != nil {
-			return interactiveSearchResult(req, searchcore.Response{}, outcome.err)
+			return interactiveSearchFailure(ctx, req, outcome.response, outcome.err)
 		}
 
 		return outcome.response, nil
 	case <-hardCtx.Done():
-		return interactiveSearchResult(
+		return interactiveSearchFailure(
+			ctx,
 			req,
 			searchcore.Response{},
 			context.Cause(hardCtx),
@@ -107,29 +109,39 @@ func interactiveSearchError(err error) error {
 	return fmt.Errorf("interactive search: %w", err)
 }
 
+func interactiveSearchFailure(
+	ctx context.Context,
+	req searchcore.Request,
+	response searchcore.Response,
+	err error,
+) (searchcore.Response, error) {
+	if cause := context.Cause(ctx); cause != nil {
+		return response, interactiveSearchError(cause)
+	}
+
+	return interactiveSearchResult(req, response, err)
+}
+
 func interactiveSearchResult(
 	req searchcore.Request,
 	response searchcore.Response,
 	err error,
 ) (searchcore.Response, error) {
+	reason := interactiveSearchFailed
 	if errors.Is(err, context.DeadlineExceeded) {
-		return searchcore.Response{
-			Request: req,
-			PartialFailures: []searchcore.PartialFailure{{
-				Source: interactiveSearchFailureSource,
-				Reason: interactiveSearchTimeoutFailure,
-			}},
-		}, interactiveSearchError(err)
+		reason = interactiveSearchTimeoutFailure
 	}
 	if errors.Is(err, errInteractiveSearchCapacity) {
-		return searchcore.Response{
-			Request: req,
-			PartialFailures: []searchcore.PartialFailure{{
-				Source: interactiveSearchFailureSource,
-				Reason: interactiveSearchCapacityFailure,
-			}},
-		}, interactiveSearchError(err)
+		reason = interactiveSearchCapacityFailure
 	}
+	response.Request = req
+	response.PartialFailures = append(
+		response.PartialFailures,
+		searchcore.PartialFailure{
+			Source: interactiveSearchFailureSource,
+			Reason: reason,
+		},
+	)
 
-	return response, interactiveSearchError(err)
+	return response, nil
 }

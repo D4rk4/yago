@@ -897,7 +897,6 @@ func searchResultWithinBudget(
 		File:          file,
 		URLHash:       hash.String(),
 		Size:          metadataSize(row),
-		Date:          row.Freshness(),
 		ContentDomain: req.ContentDomain,
 		Language:      language,
 	}, nil

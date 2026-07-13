@@ -26,13 +26,25 @@ import (
 )
 
 type fakeExchange struct {
-	orders    []*crawlrpc.CrawlOrderMessage
-	ingested  chan *crawlrpc.IngestBatchMessage
-	progress  chan *crawlrpc.CrawlProgressReport
-	streamErr error
+	orders        []*crawlrpc.CrawlOrderMessage
+	ingested      chan *crawlrpc.IngestBatchMessage
+	progress      chan *crawlrpc.CrawlProgressReport
+	streamContext chan context.Context
+	streamDone    chan struct{}
+	streamErr     error
 }
 
 type crawlerRobotsRoundTrip func(*http.Request) (*http.Response, error)
+
+type closeRecorder struct {
+	closed chan struct{}
+}
+
+func (c closeRecorder) Close() error {
+	close(c.closed)
+
+	return nil
+}
 
 func (transport crawlerRobotsRoundTrip) RoundTrip(
 	request *http.Request,
@@ -48,8 +60,13 @@ func (f *fakeExchange) StreamOrders(
 	if f.streamErr != nil {
 		return nil, f.streamErr
 	}
+	if f.streamContext != nil {
+		f.streamContext <- ctx
+	}
 
-	return &fakeOrderClientStream{ctx: ctx, orders: f.orders}, nil
+	return &fakeOrderClientStream{
+		ctx: ctx, orders: f.orders, done: f.streamDone,
+	}, nil
 }
 
 func (f *fakeExchange) SubmitIngest(
@@ -99,6 +116,7 @@ type fakeOrderClientStream struct {
 	ctx    context.Context
 	orders []*crawlrpc.CrawlOrderMessage
 	index  int
+	done   chan<- struct{}
 }
 
 func (s *fakeOrderClientStream) Recv() (*crawlrpc.CrawlOrderMessage, error) {
@@ -109,6 +127,9 @@ func (s *fakeOrderClientStream) Recv() (*crawlrpc.CrawlOrderMessage, error) {
 		return msg, nil
 	}
 	<-s.ctx.Done()
+	if s.done != nil {
+		close(s.done)
+	}
 
 	return nil, io.EOF
 }
@@ -252,11 +273,20 @@ func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
 	}))
 	defer origin.Close()
 
-	exchange := &fakeExchange{
+	controlExchange := &fakeExchange{
 		orders:   []*crawlrpc.CrawlOrderMessage{orderMessage(t, origin.URL)},
-		ingested: make(chan *crawlrpc.IngestBatchMessage, 1),
+		progress: make(chan *crawlrpc.CrawlProgressReport, 4),
 	}
-	stubExchange(t, exchange)
+	ingestExchange := &fakeExchange{ingested: make(chan *crawlrpc.IngestBatchMessage, 1)}
+	dials := 0
+	newCrawlerExchange = func(string) (crawlrpc.CrawlExchangeClient, io.Closer, error) {
+		dials++
+		if dials == 1 {
+			return controlExchange, io.NopCloser(nil), nil
+		}
+
+		return ingestExchange, io.NopCloser(nil), nil
+	}
 
 	source := htmlPageSource(map[string]string{"/": "words here"})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -266,7 +296,7 @@ func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
 	go func() { runDone <- RunService(ctx, serviceConfig(), source) }()
 
 	select {
-	case msg := <-exchange.ingested:
+	case msg := <-ingestExchange.ingested:
 		batch, err := yagocrawlcontract.UnmarshalIngestBatch(msg.GetBatchJson())
 		if err != nil {
 			t.Fatalf("decode ingest: %v", err)
@@ -287,6 +317,9 @@ func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("service did not shut down after cancel")
 	}
+	if dials != 2 {
+		t.Fatalf("crawl exchange dials = %d, want separate control and ingest connections", dials)
+	}
 }
 
 func TestRunServiceReturnsDialError(t *testing.T) {
@@ -297,8 +330,33 @@ func TestRunServiceReturnsDialError(t *testing.T) {
 	}
 
 	err := RunService(context.Background(), serviceConfig(), htmlPageSource(map[string]string{}))
-	if err == nil || !strings.Contains(err.Error(), "dial node rpc") {
-		t.Fatalf("error = %v, want dial node rpc error", err)
+	if err == nil || !strings.Contains(err.Error(), "dial node control rpc") {
+		t.Fatalf("error = %v, want dial node control rpc error", err)
+	}
+}
+
+func TestRunServiceClosesControlConnectionWhenIngestDialFails(t *testing.T) {
+	restoreAssemblySeams(t)
+	sentinel := errors.New("ingest dial failed")
+	closed := make(chan struct{})
+	calls := 0
+	newCrawlerExchange = func(string) (crawlrpc.CrawlExchangeClient, io.Closer, error) {
+		calls++
+		if calls == 1 {
+			return &fakeExchange{}, closeRecorder{closed: closed}, nil
+		}
+
+		return nil, nil, sentinel
+	}
+
+	err := RunService(context.Background(), serviceConfig(), htmlPageSource(map[string]string{}))
+	if !errors.Is(err, sentinel) || !strings.Contains(err.Error(), "dial node ingest rpc") {
+		t.Fatalf("error = %v, want ingest dial error", err)
+	}
+	select {
+	case <-closed:
+	default:
+		t.Fatal("control connection was not closed")
 	}
 }
 
@@ -316,7 +374,12 @@ func TestRunServiceReturnsCrawlPaceError(t *testing.T) {
 
 func TestRunServiceReturnsRobotsAdmissionError(t *testing.T) {
 	restoreAssemblySeams(t)
-	stubExchange(t, &fakeExchange{ingested: make(chan *crawlrpc.IngestBatchMessage, 1)})
+	exchange := &fakeExchange{
+		ingested:      make(chan *crawlrpc.IngestBatchMessage, 1),
+		streamContext: make(chan context.Context, 1),
+		streamDone:    make(chan struct{}),
+	}
+	stubExchange(t, exchange)
 	sentinel := errors.New("robots failed")
 	newCrawlerRobotsAdmissionFetcher = func(
 		pagefetch.PageSource,
@@ -333,6 +396,21 @@ func TestRunServiceReturnsRobotsAdmissionError(t *testing.T) {
 	err := RunService(ctx, serviceConfig(), htmlPageSource(map[string]string{}))
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
+	}
+	select {
+	case receiverCtx := <-exchange.streamContext:
+		select {
+		case <-receiverCtx.Done():
+		default:
+			t.Fatal("order receiver context remained active after assembly failure")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("order stream did not start before assembly failure")
+	}
+	select {
+	case <-exchange.streamDone:
+	case <-time.After(time.Second):
+		t.Fatal("order stream did not stop after assembly failure")
 	}
 }
 

@@ -9,11 +9,3 @@ type RunTallySource interface {
 	Snapshot(provenance []byte) yagocrawlcontract.CrawlRunTally
 	Forget(provenance []byte)
 }
-
-type noopRunTallySource struct{}
-
-func (noopRunTallySource) Snapshot([]byte) yagocrawlcontract.CrawlRunTally {
-	return yagocrawlcontract.CrawlRunTally{}
-}
-
-func (noopRunTallySource) Forget([]byte) {}

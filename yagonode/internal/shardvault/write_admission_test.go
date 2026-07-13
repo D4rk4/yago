@@ -303,16 +303,39 @@ func waitForContendedWriter(t *testing.T, admission *writeAdmission) {
 func TestUpdateReleasesConcurrentAdmissionWhenGlobalReadCancels(t *testing.T) {
 	engine := &engine{}
 	engine.globalGate.Lock()
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Millisecond)
-	defer cancel()
-	if err := engine.Update(ctx, func(vault.EngineTxn) error { return nil }); err == nil {
-		t.Fatal("update ignored global read cancellation")
-	}
+	ctx, cancel := context.WithCancel(t.Context())
+	result := make(chan error, 1)
+	go func() {
+		result <- engine.Update(ctx, func(vault.EngineTxn) error { return nil })
+	}()
+	waitForConcurrentWriter(t, &engine.writeAdmission)
+	cancel()
+	err := <-result
 	engine.globalGate.Unlock()
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("update error = %v, want cancellation", err)
+	}
 	if err := engine.writeAdmission.enterContended(t.Context()); err != nil {
 		t.Fatalf("update retained concurrent admission: %v", err)
 	}
 	engine.writeAdmission.leaveContended()
+}
+
+func waitForConcurrentWriter(t *testing.T, admission *writeAdmission) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		admission.lock.Lock()
+		concurrent := admission.concurrent
+		admission.lock.Unlock()
+		if concurrent > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("concurrent writer did not enter admission")
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 func TestUpdateStopsWhenConcurrentAdmissionCancels(t *testing.T) {

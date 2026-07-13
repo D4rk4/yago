@@ -2,6 +2,7 @@ package documentsearch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -10,11 +11,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagoproto"
-)
-
-const (
-	defaultSearchCount = 10
-	defaultSearchTime  = 3 * time.Second
 )
 
 type searchEndpoint struct {
@@ -50,6 +46,7 @@ func (e searchEndpoint) Serve(
 				slog.Any("options", ignored),
 			)
 		}
+		searchStarted := time.Now()
 		searchCtx := ctx
 		if criteria.timeLimit > 0 {
 			var cancel func()
@@ -59,16 +56,24 @@ func (e searchEndpoint) Serve(
 
 		result, err := e.searcher.search(searchCtx, criteria)
 		if err != nil {
-			return yagoproto.SearchResponse{}, fmt.Errorf("search: %w", err)
+			if errors.Is(err, context.DeadlineExceeded) &&
+				errors.Is(searchCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+				resp.SearchTime = int(time.Since(searchStarted) / time.Millisecond)
+				slog.DebugContext(ctx, msgRemoteSearchDeadline,
+					slog.Int("searchTimeMilliseconds", resp.SearchTime),
+				)
+			} else {
+				return yagoproto.SearchResponse{}, fmt.Errorf("search: %w", err)
+			}
+		} else {
+			resp.SearchTime = int(result.searchDuration / time.Millisecond)
+			resp.References = strings.Join(result.topics, ",")
+			resp.JoinCount = result.totalDocumentsMatchingEveryTerm
+			resp.Count = len(result.resources)
+			resp.Resources = result.resources
+			resp.IndexCount = result.totalMatchesPerTerm
+			resp.IndexAbstract = result.documentsMatchingEachReportedTerm
 		}
-
-		resp.SearchTime = int(result.searchDuration / time.Millisecond)
-		resp.References = strings.Join(result.topics, ",")
-		resp.JoinCount = result.totalDocumentsMatchingEveryTerm
-		resp.Count = len(result.resources)
-		resp.Resources = result.resources
-		resp.IndexCount = result.totalMatchesPerTerm
-		resp.IndexAbstract = result.documentsMatchingEachReportedTerm
 	}
 
 	slog.DebugContext(ctx, "search completed",

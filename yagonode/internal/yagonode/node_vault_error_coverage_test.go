@@ -282,7 +282,7 @@ func TestAttachDurableEventsRecentError(t *testing.T) {
 	engine.scanBudget = 1 // resume() scan succeeds; Recent()'s scan fails
 	v := ctrlVault(t, engine)
 
-	if err := attachDurableEvents(
+	if _, err := attachDurableEvents(
 		context.Background(), v, events.NewRecorder(4),
 	); err == nil {
 		t.Fatal("attachDurableEvents should surface the Recent() scan error")

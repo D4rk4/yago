@@ -23,7 +23,3 @@ type RunReport struct {
 type ProgressReporter interface {
 	ReportRun(ctx context.Context, report RunReport)
 }
-
-type noopProgressReporter struct{}
-
-func (noopProgressReporter) ReportRun(context.Context, RunReport) {}

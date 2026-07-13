@@ -12,24 +12,27 @@ import (
 )
 
 type fakeSearcher struct {
-	resp  searchcore.Response
-	err   error
-	calls int
+	resp     searchcore.Response
+	err      error
+	calls    int
+	complete func()
 }
 
 func (f *fakeSearcher) Search(context.Context, searchcore.Request) (searchcore.Response, error) {
 	f.calls++
+	if f.complete != nil {
+		f.complete()
+	}
 
 	return f.resp, f.err
 }
 
 type fakeSnapshotter struct {
 	snap urldenylist.Snapshot
-	err  error
 }
 
-func (f fakeSnapshotter) Snapshot(context.Context) (urldenylist.Snapshot, error) {
-	return f.snap, f.err
+func (f fakeSnapshotter) Snapshot() urldenylist.Snapshot {
+	return f.snap
 }
 
 func openDenylistStore(t *testing.T, entries map[urldenylist.Kind][]string) *urldenylist.Store {
@@ -86,6 +89,22 @@ func TestDenylistFilterRemovesBlockedResults(t *testing.T) {
 	}
 }
 
+func TestDenylistFilterUsesSnapshotAfterSearchContextEnds(t *testing.T) {
+	store := openDenylistStore(t, map[urldenylist.Kind][]string{
+		urldenylist.KindDomain: {"blocked.example"},
+	})
+	next := &fakeSearcher{resp: resultsResponse(2,
+		"https://blocked.example/x",
+		"https://ok.example/good",
+	)}
+	ctx, cancel := context.WithCancel(t.Context())
+	next.complete = cancel
+	resp, err := withDenylistFilter(next, store).Search(ctx, searchcore.Request{})
+	if err != nil || len(resp.Results) != 1 || resp.Results[0].URL != "https://ok.example/good" {
+		t.Fatalf("canceled-context results = %#v, error = %v", resp.Results, err)
+	}
+}
+
 func TestDenylistFilterNilPassesThrough(t *testing.T) {
 	next := &fakeSearcher{}
 	if withDenylistFilter(next, nil) != searchcore.Searcher(next) {
@@ -102,19 +121,6 @@ func TestDenylistFilterPropagatesSearchError(t *testing.T) {
 		store,
 	).Search(context.Background(), searchcore.Request{}); err == nil {
 		t.Fatal("a search error should propagate")
-	}
-}
-
-func TestDenylistFilterFailsOpenOnSnapshotError(t *testing.T) {
-	next := &fakeSearcher{resp: resultsResponse(1, "https://blocked.example/x")}
-	deny := fakeSnapshotter{err: errors.New("snapshot failed")}
-
-	resp, err := withDenylistFilter(next, deny).Search(context.Background(), searchcore.Request{})
-	if err != nil {
-		t.Fatalf("a snapshot error should fail open, not error: %v", err)
-	}
-	if len(resp.Results) != 1 {
-		t.Fatalf("results should be served unfiltered on snapshot error: %#v", resp.Results)
 	}
 }
 

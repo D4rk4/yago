@@ -2,6 +2,7 @@ package crawlorder
 
 import (
 	"context"
+	"hash/fnv"
 	"sync"
 	"time"
 )
@@ -42,11 +43,33 @@ func (r *runProgressReporter) reportWith(report func()) {
 
 // start launches the periodic reporter and returns immediately; the goroutine
 // exits when Stop is called or ctx is cancelled.
-func (r *runProgressReporter) start(ctx context.Context, interval time.Duration) {
-	go r.run(ctx, interval)
+func (r *runProgressReporter) start(
+	ctx context.Context,
+	interval time.Duration,
+	provenance []byte,
+) {
+	go r.run(ctx, interval, progressReportPhase(provenance, interval))
 }
 
-func (r *runProgressReporter) run(ctx context.Context, interval time.Duration) {
+func (r *runProgressReporter) run(
+	ctx context.Context,
+	interval time.Duration,
+	initialDelay time.Duration,
+) {
+	initial := time.NewTimer(initialDelay)
+	select {
+	case <-ctx.Done():
+		initial.Stop()
+
+		return
+	case <-r.stop:
+		initial.Stop()
+
+		return
+	case <-initial.C:
+		r.reportRunning()
+	}
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -59,6 +82,13 @@ func (r *runProgressReporter) run(ctx context.Context, interval time.Duration) {
 			r.reportRunning()
 		}
 	}
+}
+
+func progressReportPhase(provenance []byte, interval time.Duration) time.Duration {
+	hash := fnv.New64a()
+	_, _ = hash.Write(provenance)
+
+	return time.Duration(int64(hash.Sum64()>>1) % interval.Nanoseconds())
 }
 
 // reportRunning emits one running-state report unless the run has finished or no

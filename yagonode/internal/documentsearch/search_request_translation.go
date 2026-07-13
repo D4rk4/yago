@@ -3,7 +3,6 @@ package documentsearch
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagoproto"
@@ -42,14 +41,8 @@ func searchCriteriaFromRequest(req yagoproto.SearchRequest) (searchCriteria, err
 	if err != nil {
 		return searchCriteria{}, err
 	}
-	maxResults := req.Count
-	if maxResults <= 0 {
-		maxResults = defaultSearchCount
-	}
-	timeLimit := time.Duration(req.Time) * time.Millisecond
-	if timeLimit <= 0 {
-		timeLimit = defaultSearchTime
-	}
+	maxResults := receiverSearchCount(req.Count)
+	timeLimit := receiverSearchTime(req.Time)
 	required, err := requiredProperties(req.Constraint)
 	if err != nil {
 		return searchCriteria{}, err

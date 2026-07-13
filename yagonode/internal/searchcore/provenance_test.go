@@ -6,7 +6,7 @@ func TestResultDisplayDateCanonicalForm(t *testing.T) {
 	if got := (Result{Date: "20260520"}).DisplayDate(); got != "Wed, 20 May 2026" {
 		t.Fatalf("display date = %q, want canonical form", got)
 	}
-	for _, raw := range []string{"", "not-a-date", "2026052"} {
+	for _, raw := range []string{"", "00010101", "00010102", "not-a-date", "2026052"} {
 		if got := (Result{Date: raw}).DisplayDate(); got != "" {
 			t.Fatalf("display date for %q = %q, want empty", raw, got)
 		}

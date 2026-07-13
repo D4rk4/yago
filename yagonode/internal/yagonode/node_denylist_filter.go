@@ -2,7 +2,6 @@ package yagonode
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/urldenylist"
@@ -10,13 +9,9 @@ import (
 
 // denylistSnapshotter loads the current denylist as an in-memory snapshot.
 type denylistSnapshotter interface {
-	Snapshot(ctx context.Context) (urldenylist.Snapshot, error)
+	Snapshot() urldenylist.Snapshot
 }
 
-// denylistFilterSearcher drops results whose URL is on the operator denylist, so
-// blocked content never reaches the caller regardless of which searcher produced
-// it (local index, remote peers, or the web fallback). A snapshot load failure
-// fails open — search stays available — with a warning.
 type denylistFilterSearcher struct {
 	next searchcore.Searcher
 	deny denylistSnapshotter
@@ -41,11 +36,10 @@ func (s denylistFilterSearcher) Search(
 		return resp, err //nolint:wrapcheck // pass the wrapped searcher's error through unchanged.
 	}
 
-	return filterDenylistedResponse(ctx, resp, s.deny), nil
+	return filterDenylistedResponse(resp, s.deny), nil
 }
 
 func filterDenylistedResponse(
-	ctx context.Context,
 	resp searchcore.Response,
 	deny denylistSnapshotter,
 ) searchcore.Response {
@@ -53,13 +47,7 @@ func filterDenylistedResponse(
 		return resp
 	}
 
-	snapshot, err := deny.Snapshot(ctx)
-	if err != nil {
-		slog.WarnContext(ctx, "denylist snapshot failed; serving unfiltered results",
-			slog.Any("error", err))
-
-		return resp
-	}
+	snapshot := deny.Snapshot()
 	if snapshot.IsEmpty() {
 		return resp
 	}

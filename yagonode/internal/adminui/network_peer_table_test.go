@@ -91,16 +91,16 @@ func TestBuildPeerTableSortsByAddressAndLastSeen(t *testing.T) {
 func TestBuildPeerTablePaginates(t *testing.T) {
 	t.Parallel()
 
-	roster := make([]NetworkPeer, 120)
+	roster := make([]NetworkPeer, 270)
 	for i := range roster {
 		roster[i] = NetworkPeer{Name: fmt.Sprintf("peer%03d", i), Hash: fmt.Sprintf("H%03d", i)}
 	}
 
 	first := buildPeerTable(roster, "", "", "")
-	if first.Total != 120 || first.Pages != 3 || len(first.Peers) != peersPerPage {
+	if first.Total != 270 || first.Pages != 14 || len(first.Peers) != peersPerPage {
 		t.Fatalf("page 1 = total %d pages %d len %d", first.Total, first.Pages, len(first.Peers))
 	}
-	if first.Page != 1 || first.HasPrev || !first.HasNext || first.Start != 1 || first.End != 50 {
+	if first.Page != 1 || first.HasPrev || !first.HasNext || first.Start != 1 || first.End != 20 {
 		t.Fatalf("page 1 nav = %+v", first)
 	}
 	if !strings.Contains(first.NextURL, "ppage=2") || !strings.HasSuffix(first.NextURL, "#peers") {
@@ -108,21 +108,29 @@ func TestBuildPeerTablePaginates(t *testing.T) {
 	}
 
 	middle := buildPeerTable(roster, "", "", "2")
-	if middle.Page != 2 || !middle.HasPrev || !middle.HasNext || middle.Start != 51 ||
-		middle.End != 100 {
+	if middle.Page != 2 || !middle.HasPrev || !middle.HasNext || middle.Start != 21 ||
+		middle.End != 40 {
 		t.Fatalf("page 2 nav = %+v", middle)
 	}
 
-	last := buildPeerTable(roster, "", "", "3")
-	if last.Page != 3 || !last.HasPrev || last.HasNext || len(last.Peers) != 20 || last.End != 120 {
-		t.Fatalf("page 3 = %+v (len %d)", last, len(last.Peers))
+	last := buildPeerTable(roster, "", "", "14")
+	if last.Page != 14 || !last.HasPrev || last.HasNext || len(last.Peers) != 10 ||
+		last.Start != 261 || last.End != 270 {
+		t.Fatalf("page 14 = %+v (len %d)", last, len(last.Peers))
 	}
 
-	if clamped := buildPeerTable(roster, "", "", "99"); clamped.Page != 3 {
-		t.Fatalf("out-of-range page = %d, want clamp to 3", clamped.Page)
+	if clamped := buildPeerTable(roster, "", "", "99"); clamped.Page != 14 {
+		t.Fatalf("out-of-range page = %d, want clamp to 14", clamped.Page)
 	}
 	if bad := buildPeerTable(roster, "", "", "not-a-number"); bad.Page != 1 {
 		t.Fatalf("unparsable page = %d, want 1", bad.Page)
+	}
+
+	sorted := buildPeerTable(roster, "name", "desc", "7")
+	for _, target := range []string{sorted.PrevURL, sorted.NextURL} {
+		if !strings.Contains(target, "psort=name") || !strings.Contains(target, "pdir=desc") {
+			t.Fatalf("sorted page navigation lost sort state: %q", target)
+		}
 	}
 }
 
@@ -155,6 +163,10 @@ func TestPeerTableColumnURLToggles(t *testing.T) {
 	if got := activeName.ColumnURL("name"); !strings.Contains(got, "pdir=desc") {
 		t.Fatalf("active-asc name link = %q, want a flip to descending", got)
 	}
+	pageFour := PeerTableView{SortKey: "name", SortDir: "asc", Page: 4}
+	if got := pageFour.ColumnURL("name"); strings.Contains(got, "ppage=") {
+		t.Fatalf("sort link = %q, want page reset", got)
+	}
 
 	if activeDesc.ColumnAriaSort("rwi") != "descending" {
 		t.Fatal("active rwi column must report aria-sort descending")
@@ -173,7 +185,7 @@ func TestPeerTableColumnURLToggles(t *testing.T) {
 func TestConsoleNetworkPeerTableSortLinksAndPager(t *testing.T) {
 	t.Parallel()
 
-	roster := make([]NetworkPeer, 60)
+	roster := make([]NetworkPeer, 270)
 	for i := range roster {
 		roster[i] = NetworkPeer{
 			Name:      fmt.Sprintf("peer%02d", i),
@@ -192,19 +204,23 @@ func TestConsoleNetworkPeerTableSortLinksAndPager(t *testing.T) {
 	}
 	for _, want := range []string{
 		`href="/admin/network?`, "psort=rwi", "psort=address", "psort=lastseen",
-		`aria-sort="none"`, "Next ›", "Page 1 of 2",
+		`aria-sort="none"`, "Next ›", "Page 1 of 14", "peers 1–20 of 270",
 	} {
 		if !strings.Contains(first.body, want) {
 			t.Fatalf("network page missing %q", want)
 		}
 	}
-	if strings.Contains(first.body, ">peer55<") {
-		t.Fatal("peer55 belongs on page 2, not the first page")
+	if strings.Contains(first.body, ">peer265<") {
+		t.Fatal("peer265 belongs on page 14, not the first page")
 	}
 
-	second := do(t, console, "/admin/network?ppage=2")
-	if !strings.Contains(second.body, ">peer55<") || !strings.Contains(second.body, "‹ Previous") {
-		t.Fatal("page 2 should show the tail peers and a previous link")
+	last := do(t, console, "/admin/network?ppage=14")
+	if !strings.Contains(last.body, ">peer265<") || !strings.Contains(last.body, "‹ Previous") ||
+		!strings.Contains(
+			last.body,
+			"peers 261–270 of 270",
+		) || strings.Contains(last.body, "Next ›") {
+		t.Fatal("page 14 should show the tail peers, its range, and only a previous link")
 	}
 }
 

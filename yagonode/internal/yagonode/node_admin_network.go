@@ -12,8 +12,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/seedimport"
 )
 
-const adminNetworkPeerLimit = 20
-
 // seedImportStatusReader reads the durable last-import status per seed-list URL.
 // A nil reader leaves the seedlist table without import history.
 type seedImportStatusReader interface {
@@ -79,7 +77,7 @@ func (s networkSource) Network(ctx context.Context) adminui.NetworkStatus {
 	if s.roster != nil {
 		status.KnownPeers = s.roster.KnownPeerCount(ctx)
 		status.ReachablePeers = s.roster.ReachablePeerCount(ctx)
-		status.Peers = s.adminNetworkPeers(ctx, s.roster.FreshestPeers(ctx, adminNetworkPeerLimit))
+		status.Peers = s.adminNetworkPeers(ctx, s.roster.FreshestPeers(ctx, status.KnownPeers))
 	}
 
 	return status

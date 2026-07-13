@@ -166,7 +166,7 @@ func (e searchExplainEndpoint) rankingOutcome(
 			)
 		}
 	}
-	filtered := filterDenylistedResponse(ctx, searchcore.Response{
+	filtered := filterDenylistedResponse(searchcore.Response{
 		Request: resultSet.Request, TotalResults: resultSet.TotalResults, Results: outcome.Results,
 	}, e.deny)
 	outcome.Results = searchcore.DiversifyResults(filtered.Results, resultSet.Request)
