@@ -399,6 +399,11 @@ func TestProgressDeliveryCloseDeadlineCancelsBlockedTerminal(t *testing.T) {
 	if err := queue.close(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("close error = %v, want deadline", err)
 	}
+	select {
+	case <-queue.done:
+	case <-time.After(time.Second):
+		t.Fatal("progress worker did not stop after deadline cancellation")
+	}
 }
 
 func TestProgressDeliveryCloseDropsQueuedRunningState(t *testing.T) {
