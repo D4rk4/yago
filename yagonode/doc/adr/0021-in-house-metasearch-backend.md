@@ -48,7 +48,7 @@ Resilience is built into the provider, not the caller: it caches normalized
 responses under a 4 MiB/256-entry byte-aware cache and the configured TTL, retains
 at most 20 rows per query with bounded fields, backs off exponentially on
 `202`/`429`, and degrades to an empty result when every engine fails rather than
-failing the search. The interactive caller caps the complete engine race at 950
+failing the search. The interactive caller caps the complete engine race at 900
 milliseconds. A process-wide admission bound allows at most eight active engine
 fetch-and-parse attempts; saturated attempts wait only within that existing
 caller context. Outbound requests go through the egress-guarded HTTP client

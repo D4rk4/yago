@@ -184,14 +184,23 @@ Click capture is off by default. When enabled, the result page creates a
 short-lived HMAC-SHA256 impression token containing the normalized query, model
 assignment, ordered result identities, positions, propensities, expiry, and a
 random nonce. The click endpoint accepts only a URL and position present in that
-signed impression. Replays and clicks per impression are bounded.
+signed impression. The request path waits at most 50 milliseconds for preparation
+and persistence, with at most four context-insensitive tasks retained. Capacity,
+a planning timeout, or a persistence error returned within the budget preserves
+the original order without capture metadata. Persistence pending at the deadline
+continues independently in its retained task slot until it returns. Node shutdown
+joins every admitted impression task before closing storage. Replays and clicks
+per impression are bounded. A click waits for the matching in-flight impression
+commit before validation. An emitted token whose commit fails remains rejected
+until its expiry, and the bounded failure registry stops issuing new impressions
+at capacity instead of attributing the click to older aggregate evidence.
 
-When an active learned revision has a comparable lexical order, the node
-automatically team-draft interleaves that revision with the lexical baseline and
-stores aggregate impression and click credit for the two revisions. Team-draft
-evidence is an online comparison only and is never converted into relevance
-labels. Without a comparable active revision, adjacent FairPairs randomization
-measures exposure at propensity `0.5`.
+When an active learned revision has a comparable lexical order, a successfully
+prepared impression team-draft interleaves that revision with the lexical
+baseline. A successful persistence commit stores aggregate impression and click
+credit for the two revisions. Team-draft evidence is an online comparison only and is never
+converted into relevance labels. Without a comparable active revision, adjacent
+FairPairs randomization measures exposure at propensity `0.5`.
 
 Implicit judgments come only from FairPairs winners whose 95% Wilson interval
 excludes an even click split after the configured minimum impressions and

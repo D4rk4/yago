@@ -228,6 +228,7 @@ func restoreMainSeams(t *testing.T) {
 	oldServeRuntimeNode := serveRuntimeNode
 	oldListenAndServeHTTP := listenAndServeHTTP
 	oldShutdownHTTPServer := shutdownHTTPServer
+	oldCloseHTTPServer := closeHTTPServer
 	t.Cleanup(func() {
 		exitProcess = oldExitProcess
 		runNode = oldRunNode
@@ -236,6 +237,7 @@ func restoreMainSeams(t *testing.T) {
 		serveRuntimeNode = oldServeRuntimeNode
 		listenAndServeHTTP = oldListenAndServeHTTP
 		shutdownHTTPServer = oldShutdownHTTPServer
+		closeHTTPServer = oldCloseHTTPServer
 	})
 }
 
@@ -507,6 +509,27 @@ func TestServeHandlesClosedServerAndCrawlRuntime(t *testing.T) {
 			)
 		}
 	})
+}
+
+func TestServeShutsDownAfterListenerFailure(t *testing.T) {
+	restoreMainSeams(t)
+	sentinel := errors.New("listener failed")
+	listenAndServeHTTP = func(*http.Server) error { return sentinel }
+	shutdowns := 0
+	shutdownHTTPServer = func(*http.Server, context.Context) error {
+		shutdowns++
+
+		return nil
+	}
+	err := serve(
+		context.Background(),
+		node{announcer: fakeAnnouncer{}, sweeper: &scriptedSweeper{}},
+		metrics.NewEvictionMetrics(prometheus.NewRegistry()),
+		namedServer{"failed", buildServer("127.0.0.1:0", http.NewServeMux())},
+	)
+	if !errors.Is(err, sentinel) || shutdowns != 1 {
+		t.Fatalf("serve error = %v, shutdowns = %d", err, shutdowns)
+	}
 }
 
 func TestShutdownReturnsServerErrors(t *testing.T) {

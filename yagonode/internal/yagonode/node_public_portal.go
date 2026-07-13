@@ -95,6 +95,7 @@ func (s portalSource) Search(
 		Query:         query,
 		Source:        searchcore.SourceGlobal,
 		ContentDomain: domain,
+		Verify:        searchcore.VerifyIfExist,
 		Offset:        offset,
 		Limit:         limit,
 	})

@@ -62,9 +62,10 @@ type Entry struct {
 
 // Store persists the operator's URL/domain denylist.
 type Store struct {
-	vault   *vault.Vault
-	records *vault.Collection[record]
-	now     func() time.Time
+	vault     *vault.Vault
+	records   *vault.Collection[record]
+	now       func() time.Time
+	snapshots snapshotCache
 }
 
 // Open registers the denylist collection on the shared vault.
@@ -74,7 +75,14 @@ func Open(v *vault.Vault, now func() time.Time) (*Store, error) {
 		return nil, fmt.Errorf("register url denylist: %w", err)
 	}
 
-	return &Store{vault: v, records: records, now: now}, nil
+	store := &Store{vault: v, records: records, now: now}
+	snapshot, err := store.loadSnapshot(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("load url denylist: %w", err)
+	}
+	store.snapshots.current.Store(&snapshot)
+
+	return store, nil
 }
 
 // Add puts a URL or domain on the denylist. Adding an existing entry refreshes
@@ -84,6 +92,8 @@ func (s *Store) Add(ctx context.Context, kind Kind, value string) error {
 	if value == "" {
 		return fmt.Errorf("denylist %s value is empty", kind)
 	}
+	s.snapshots.mutations.Lock()
+	defer s.snapshots.mutations.Unlock()
 
 	rec := record{AddedAt: s.now().UTC()}
 	if err := s.vault.Update(ctx, func(tx *vault.Txn) error {
@@ -93,8 +103,15 @@ func (s *Store) Add(ctx context.Context, kind Kind, value string) error {
 
 		return nil
 	}); err != nil {
-		return fmt.Errorf("update denylist: %w", err)
+		return s.reconcileFailedMutation(
+			ctx,
+			fmt.Errorf("update denylist: %w", err),
+			kind,
+			value,
+			true,
+		)
 	}
+	s.snapshots.storeAdded(kind, value)
 
 	return nil
 }
@@ -102,6 +119,8 @@ func (s *Store) Add(ctx context.Context, kind Kind, value string) error {
 // Remove drops an entry, reporting whether it was present.
 func (s *Store) Remove(ctx context.Context, kind Kind, value string) (bool, error) {
 	value = normalize(kind, value)
+	s.snapshots.mutations.Lock()
+	defer s.snapshots.mutations.Unlock()
 
 	var removed bool
 	if err := s.vault.Update(ctx, func(tx *vault.Txn) error {
@@ -113,8 +132,15 @@ func (s *Store) Remove(ctx context.Context, kind Kind, value string) (bool, erro
 
 		return nil
 	}); err != nil {
-		return false, fmt.Errorf("update denylist: %w", err)
+		return false, s.reconcileFailedMutation(
+			ctx,
+			fmt.Errorf("update denylist: %w", err),
+			kind,
+			value,
+			false,
+		)
 	}
+	s.snapshots.storeRemoved(kind, value)
 
 	return removed, nil
 }
@@ -151,8 +177,15 @@ type Snapshot struct {
 	domains map[string]struct{}
 }
 
-// Snapshot loads the whole denylist into memory.
 func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, fmt.Errorf("view denylist: %w", err)
+	}
+
+	return *s.snapshots.current.Load(), nil
+}
+
+func (s *Store) loadSnapshot(ctx context.Context) (Snapshot, error) {
 	snap := Snapshot{urls: map[string]struct{}{}, domains: map[string]struct{}{}}
 	if err := s.vault.View(ctx, func(tx *vault.Txn) error {
 		return s.records.Scan(tx, nil, func(key vault.Key, _ record) (bool, error) {

@@ -25,7 +25,7 @@ func TestBlacklistBlocksRejectsNonSnapshotStore(t *testing.T) {
 	}
 }
 
-func TestBlacklistPorterSurfacesStoreErrors(t *testing.T) {
+func TestBlacklistPorterKeepsCachedProbeAndSurfacesStoreErrors(t *testing.T) {
 	t.Parallel()
 	v, err := memvault.Open(0)
 	if err != nil {
@@ -41,8 +41,17 @@ func TestBlacklistPorterSurfacesStoreErrors(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	if _, err := controller.BlacklistBlocks(ctx, "https://x.example/"); err == nil {
-		t.Fatal("BlacklistBlocks must surface the snapshot error")
+	if blocked, err := controller.BlacklistBlocks(
+		ctx,
+		"https://x.example/",
+	); err != nil ||
+		blocked {
+		t.Fatalf("BlacklistBlocks = %t, %v", blocked, err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := controller.BlacklistBlocks(canceled, "https://x.example/"); err == nil {
+		t.Fatal("BlacklistBlocks must surface the canceled snapshot")
 	}
 	if _, err := controller.ExportBlacklist(ctx); err == nil {
 		t.Fatal("ExportBlacklist must surface the entries error")

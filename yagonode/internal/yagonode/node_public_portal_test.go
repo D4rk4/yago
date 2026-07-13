@@ -60,6 +60,9 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 	if searcher.gotRequest.Source != searchcore.SourceGlobal {
 		t.Fatalf("source = %q, want global", searcher.gotRequest.Source)
 	}
+	if searcher.gotRequest.Verify != searchcore.VerifyIfExist {
+		t.Fatalf("verify = %q, want ifexist", searcher.gotRequest.Verify)
+	}
 	if searcher.gotRequest.WithFacets || len(results.Facets) != 2 {
 		t.Fatalf(
 			"portal facets request=%v results=%+v",

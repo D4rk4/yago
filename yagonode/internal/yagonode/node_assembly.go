@@ -92,6 +92,7 @@ type node struct {
 	client         *http.Client
 	peerBlock      *peerblock.Store
 	denylist       *urldenylist.Store
+	clicks         *clickcapture.Store
 	identity       nodeidentity.Identity
 	theme          *portaltheme.Theme
 	peerEvents     *peerReputationObserver
@@ -475,7 +476,6 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 		parts.models,
 		time.Now,
 	)
-
 	return node{
 		peerMux:    parts.mux,
 		publicMux:  parts.publicMux,
@@ -534,6 +534,7 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 		client:       parts.client,
 		peerBlock:    parts.peerBlock,
 		denylist:     parts.denylist,
+		clicks:       parts.clicks,
 		identity:     parts.identity,
 		theme:        parts.theme,
 		peerEvents:   parts.peerEvents,

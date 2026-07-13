@@ -8,7 +8,7 @@ import (
 var ErrAtCapacity = errors.New("vault at capacity")
 
 // ErrContended marks a write aborted by shard contention. The engine retries
-// the whole update under its exclusive gate when the update callback RETURNS
+// the whole update when the update callback RETURNS
 // this error — a callback that swallows it turns a retryable abort into data
 // loss (STOR-05), so callbacks must propagate it.
 var ErrContended = errors.New("storage contended")

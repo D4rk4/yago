@@ -185,19 +185,11 @@ type engine struct {
 	// 2^level + split shards and route reads them to place a record. They change
 	// only under the exclusive globalGate (a split), so a gate-holding reader
 	// always sees a consistent pair.
-	level int
-	split int
-	// Writers hold shardLocks for the shards they touch, so updates landing on
-	// disjoint shards commit concurrently (PERF-06). bbolt allows one write
-	// transaction per file, and lazily opening several shards from concurrent
-	// updates in data-driven order can deadlock — a writer that fails to take a
-	// shard lock therefore rolls back, upgrades to the exclusive globalGate,
-	// and retries alone. Fast-path writers hold the gate shared. Inserts into
-	// one collection still serialize on its length-counter shard (the counter
-	// key is the collection name), so the win is between different collections
-	// and on update-in-place writes.
-	shardLocks []sync.Mutex
-	globalGate sync.RWMutex
+	level          int
+	split          int
+	shardLocks     []sync.Mutex
+	globalGate     sync.RWMutex
+	writeAdmission writeAdmission
 	// viewsInFlight counts active read transactions so bulk writes can yield
 	// the disk to interactive reads (IO-PRIO-01): an Update briefly defers
 	// while reads are running, bounded so readers can never starve writers.
@@ -229,8 +221,6 @@ type engine struct {
 	wordFilterWidth  int
 }
 
-// errShardContended aborts a fast-path update whose next shard is locked by a
-// concurrent writer; the update retries under the exclusive gate.
 var errShardContended = fmt.Errorf("shard contended: %w", vault.ErrContended)
 
 // route picks the shard for one record under the current linear-hashing state.
@@ -277,23 +267,31 @@ func (e *engine) Provision(name vault.Name) error {
 	return nil
 }
 
-// Update runs fn over a lazy multi-shard transaction: a shard's write
-// transaction opens on first touch and every opened transaction commits when
-// fn succeeds (or rolls back when it fails). Commits are per shard — the
-// relaxed atomicity ADR-0025 documents. Updates touching disjoint shards run
-// concurrently; on shard contention fn is rolled back and re-run once under
-// the exclusive gate, so fn must not leak side effects before it returns.
 func (e *engine) Update(ctx context.Context, fn func(vault.EngineTxn) error) error {
 	e.yieldToReads(ctx)
-	e.globalGate.RLock()
+	if err := e.writeAdmission.enterConcurrent(ctx); err != nil {
+		return err
+	}
+	if err := acquireGlobalRead(ctx, &e.globalGate); err != nil {
+		e.writeAdmission.leaveConcurrent()
+
+		return err
+	}
 	err := e.runUpdate(fn, true)
 	e.globalGate.RUnlock()
+	e.writeAdmission.leaveConcurrent()
 	if !errors.Is(err, errShardContended) {
 		return err
 	}
 
-	e.globalGate.Lock()
-	defer e.globalGate.Unlock()
+	if err := e.writeAdmission.enterContended(ctx); err != nil {
+		return err
+	}
+	defer e.writeAdmission.leaveContended()
+	if err := acquireGlobalRead(ctx, &e.globalGate); err != nil {
+		return err
+	}
+	defer e.globalGate.RUnlock()
 
 	return e.runUpdate(fn, false)
 }

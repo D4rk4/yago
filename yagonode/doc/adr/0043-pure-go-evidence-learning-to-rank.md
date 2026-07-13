@@ -74,13 +74,21 @@ YagoRank uses a bounded in-process pipeline:
    rejects recall, discounted top-10 safety/spam exposure, slice, and p95 rerank
    wall-latency regressions. Peer bytes and timeouts are nullable and gate a
    comparison only when both arms measured them.
-7. HMAC-bound impressions run automatic Team Draft between a comparable active
-   revision and the lexical baseline. That aggregate click credit is only online
-   comparison evidence. Without a comparable revision, adjacent FairPairs use
-   equal randomized exposure. Only a FairPairs winner whose 95% Wilson interval
-   excludes an even click split after the minimum evidence threshold becomes an
-   implicit qrel. Legacy pointwise aggregates are not qrels, and curated
-   judgments replace implicit evidence for the same query.
+7. HMAC-bound impressions run Team Draft between a comparable active revision
+   and the lexical baseline after preparation returns successfully. The request path waits
+   at most 50 milliseconds and retains at most four context-insensitive tasks.
+   Capacity, a planning timeout, or a persistence error returned within the
+   budget preserves original ordering without capture metadata; persistence
+   pending at the deadline continues independently in its retained slot until it
+   returns. A click waits for the matching persistence outcome, and a handed-off
+   token whose persistence fails stays rejected through expiry in a bounded
+   registry that stops new preparation at capacity. Shutdown joins every admitted
+   task before storage closes. Aggregate Team Draft credit is
+   only online comparison evidence. Without a comparable revision, adjacent
+   FairPairs use equal randomized exposure. Only a FairPairs winner whose 95%
+   Wilson interval excludes an even click split after the minimum evidence
+   threshold becomes an implicit qrel. Legacy pointwise aggregates are not
+   qrels, and curated judgments replace implicit evidence for the same query.
 8. Learned scoring applies only to locally stored candidates until representative
    federated training evidence exists. Safety, persistent cluster consolidation,
    MMR, host crowding, date order, and paging run once afterward.

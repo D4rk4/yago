@@ -318,10 +318,11 @@ func TestPublicSearchStageBudgetsLeaveAssemblyHeadroom(t *testing.T) {
 	stages := webFallbackExactStageBudget +
 		max(recoverySearchBudget, localExactRecoveryBudget) +
 		webFallbackProviderBudget
-	if webFallbackProviderBudget < 900*time.Millisecond {
+	if webFallbackProviderBudget != 900*time.Millisecond {
 		t.Fatalf("web budget = %v", webFallbackProviderBudget)
 	}
-	if headroom := interactiveSearchBudget - stages; headroom < 100*time.Millisecond {
+	workerBudget := interactiveSearchBudget - interactiveSearchCancellationGrace
+	if headroom := workerBudget - stages; headroom < 100*time.Millisecond {
 		t.Fatalf("stage total = %v, headroom = %v", stages, headroom)
 	}
 }

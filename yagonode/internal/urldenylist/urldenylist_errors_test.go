@@ -15,10 +15,11 @@ import (
 // fakeEngine is a minimal vault.Engine whose bucket operations can be forced to
 // fail, exercising the store's error branches a healthy backend never triggers.
 type fakeEngine struct {
-	buckets  map[vault.Name]map[string][]byte
-	failPut  bool
-	failDel  bool
-	failScan bool
+	buckets   map[vault.Name]map[string][]byte
+	failPut   bool
+	failDel   bool
+	failScan  bool
+	updateErr error
 }
 
 func newFakeEngine() *fakeEngine {
@@ -38,7 +39,11 @@ func (e *fakeEngine) Update(ctx context.Context, fn func(vault.EngineTxn) error)
 		return fmt.Errorf("scripted engine: %w", err)
 	}
 
-	return fn(&fakeTxn{engine: e, writable: true})
+	if err := fn(&fakeTxn{engine: e, writable: true}); err != nil {
+		return err
+	}
+
+	return e.updateErr
 }
 
 func (e *fakeEngine) View(ctx context.Context, fn func(vault.EngineTxn) error) error {
@@ -177,13 +182,15 @@ func TestEntriesReturnsScanError(t *testing.T) {
 	}
 }
 
-func TestSnapshotReturnsScanError(t *testing.T) {
+func TestOpenReturnsSnapshotScanError(t *testing.T) {
 	engine := newFakeEngine()
-	store := fakeStore(t, engine)
 	engine.failScan = true
-
-	if _, err := store.Snapshot(context.Background()); err == nil {
-		t.Fatal("Snapshot should surface a scan failure")
+	v, err := vault.New(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := urldenylist.Open(v, time.Now); err == nil {
+		t.Fatal("Open should surface a snapshot scan failure")
 	}
 }
 
@@ -197,14 +204,16 @@ func TestEntriesReturnsDecodeError(t *testing.T) {
 	}
 }
 
-func TestSnapshotReturnsDecodeError(t *testing.T) {
+func TestOpenReturnsSnapshotDecodeError(t *testing.T) {
 	engine := newFakeEngine()
-	store := fakeStore(t, engine)
 	engine.buckets["urldenylist"] = map[string][]byte{
 		"url\x00https://bad.example/": []byte("not-json"),
 	}
-
-	if _, err := store.Snapshot(context.Background()); err == nil {
-		t.Fatal("Snapshot should surface a decode failure for a corrupt record")
+	v, err := vault.New(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := urldenylist.Open(v, time.Now); err == nil {
+		t.Fatal("Open should surface a snapshot decode failure")
 	}
 }

@@ -126,9 +126,10 @@ func (evidenceCodec) Decode(raw []byte) (QueryEvidence, error) {
 }
 
 type Store struct {
-	vault   *vault.Vault
-	records *vault.Collection[QueryEvidence]
-	issuer  *Issuer
+	vault        *vault.Vault
+	records      *vault.Collection[QueryEvidence]
+	issuer       *Issuer
+	preparations *impressionPreparationLifecycle
 }
 
 func Open(v *vault.Vault) (*Store, error) {
@@ -149,7 +150,19 @@ func OpenWithSources(
 		return nil, fmt.Errorf("register search click evidence: %w", err)
 	}
 
-	return &Store{vault: v, records: records, issuer: issuer}, nil
+	return &Store{
+		vault:        v,
+		records:      records,
+		issuer:       issuer,
+		preparations: newImpressionPreparationLifecycle(issuer.clock),
+	}, nil
+}
+
+func (s *Store) StopImpressionPreparations() {
+	if s == nil {
+		return
+	}
+	s.preparations.stop()
 }
 
 func (s *Store) PrepareImpression(
@@ -157,25 +170,30 @@ func (s *Store) PrepareImpression(
 	query string,
 	candidates []Candidate,
 ) (PreparedImpression, error) {
-	seed, err := s.issuer.experimentSeed()
-	if err != nil {
-		return PreparedImpression{}, err
-	}
-	displayed := AdjacentPairRandomization(candidates, seed)
-	normalizedQuery := normalizeQuery(query)
-	token, claims, err := s.issuer.issue(
-		normalizedQuery,
-		adjacentPairModelAssignment,
-		displayed,
-	)
-	if err != nil {
-		return PreparedImpression{}, err
-	}
-	if err := s.recordImpression(ctx, claims); err != nil {
-		return PreparedImpression{}, err
-	}
+	return s.preparations.prepareWithinBudget(ctx, func() (impressionPreparation, error) {
+		seed, err := s.issuer.experimentSeed()
+		if err != nil {
+			return impressionPreparation{}, err
+		}
+		displayed := AdjacentPairRandomization(candidates, seed)
+		normalizedQuery := normalizeQuery(query)
+		token, claims, err := s.issuer.issue(
+			normalizedQuery,
+			adjacentPairModelAssignment,
+			displayed,
+		)
+		if err != nil {
+			return impressionPreparation{}, err
+		}
 
-	return PreparedImpression{Token: token, Candidates: displayed}, nil
+		return impressionPreparation{
+			prepared: PreparedImpression{Token: token, Candidates: displayed},
+			expires:  time.Unix(claims.expiresAt, 0),
+			persist: func(ctx context.Context) error {
+				return s.recordImpression(ctx, claims)
+			},
+		}, nil
+	})
 }
 
 func (s *Store) PrepareTeamDraft(
@@ -185,28 +203,32 @@ func (s *Store) PrepareTeamDraft(
 	secondary DraftRanking,
 	limit int,
 ) (PreparedImpression, error) {
-	seed, err := s.issuer.experimentSeed()
-	if err != nil {
-		return PreparedImpression{}, err
-	}
-	displayed := TeamDraftInterleave(primary.Candidates, secondary.Candidates, seed, limit)
-	assignment, err := teamDraftAssignment(primary.Revision, secondary.Revision)
-	if err != nil {
-		return PreparedImpression{}, err
-	}
-	token, claims, err := s.issuer.issue(query, assignment, displayed)
-	if err != nil {
-		return PreparedImpression{}, err
-	}
-	comparison := InterleavingOutcome{
-		PrimaryRevision:   primary.Revision,
-		SecondaryRevision: secondary.Revision,
-	}
-	if err := s.recordInterleavingImpression(ctx, claims, comparison); err != nil {
-		return PreparedImpression{}, err
-	}
-
-	return PreparedImpression{Token: token, Candidates: displayed}, nil
+	return s.preparations.prepareWithinBudget(ctx, func() (impressionPreparation, error) {
+		seed, err := s.issuer.experimentSeed()
+		if err != nil {
+			return impressionPreparation{}, err
+		}
+		displayed := TeamDraftInterleave(primary.Candidates, secondary.Candidates, seed, limit)
+		assignment, err := teamDraftAssignment(primary.Revision, secondary.Revision)
+		if err != nil {
+			return impressionPreparation{}, err
+		}
+		token, claims, err := s.issuer.issue(query, assignment, displayed)
+		if err != nil {
+			return impressionPreparation{}, err
+		}
+		comparison := InterleavingOutcome{
+			PrimaryRevision:   primary.Revision,
+			SecondaryRevision: secondary.Revision,
+		}
+		return impressionPreparation{
+			prepared: PreparedImpression{Token: token, Candidates: displayed},
+			expires:  time.Unix(claims.expiresAt, 0),
+			persist: func(ctx context.Context) error {
+				return s.recordInterleavingImpression(ctx, claims, comparison)
+			},
+		}, nil
+	})
 }
 
 func (s *Store) RecordClick(
@@ -215,6 +237,9 @@ func (s *Store) RecordClick(
 	urlIdentity string,
 	position int,
 ) error {
+	if err := s.preparations.awaitPersistence(ctx, token); err != nil {
+		return err
+	}
 	click, err := s.issuer.ValidateClick(token, urlIdentity, position)
 	if err != nil {
 		return err

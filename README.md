@@ -56,7 +56,9 @@ its binaries (`yago-node`, `yagocrawler`).
   fusion** and **MMR result diversity**. A slow swarm branch cannot discard a
   completed local answer, and a transient refresh cannot replace a recent
   nonempty search session with an infrastructure-generated zero, including when
-  the bounded remote-stage admission is full.
+  the bounded remote-stage admission is full. An incomplete global request may
+  reuse an unexpired equivalent local session without extending its lifetime or
+  recording a synthetic global success.
 - **[YagoRank](yagonode/doc/yagorank.md)** — strict and relaxed fielded BM25,
   bounded lexical evidence and RM3, deterministic peer RRF, persistent date,
   anchor, authority, quality, safety, duplicate-cluster, and reputation signals,
@@ -106,7 +108,14 @@ its binaries (`yago-node`, `yagocrawler`).
   a hard 1.8-second response deadline and four process-wide outer execution
   slots. A cold outer deadline or capacity failure is surfaced as unavailable;
   an unexpired successful session may instead be served with the current failure
-  evidence, and timed-out work retains its slot until it exits.
+  evidence, and timed-out work retains its slot until it exits. Conflicting vault
+  updates serialize behind writer-only admission while read snapshots remain
+  available; served-result denylist checks use an immutable in-memory snapshot,
+  and the request path waits at most 50 milliseconds for optional click-impression
+  preparation while at most four retained impression tasks remain admitted and
+  are joined before storage closes. A click waits for its matching in-flight
+  impression commit, and a token whose late commit failed remains rejected until
+  it expires.
 - Politeness and defense: robots.txt with a standards-compliant 500 KiB parsing
   limit and a sanitizer for real-world malformed files, per-host adaptive pacing
   and crawl delays, URL canonicalization,

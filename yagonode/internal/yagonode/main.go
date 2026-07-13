@@ -80,6 +80,7 @@ var (
 	serveRuntimeNode    = serve
 	listenAndServeHTTP  = func(server *http.Server) error { return server.ListenAndServe() }
 	shutdownHTTPServer  = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
+	closeHTTPServer     = func(server *http.Server) error { return server.Close() }
 )
 
 func Main() {
@@ -195,6 +196,7 @@ func bootNode(
 	if err != nil {
 		return fmt.Errorf("assemble node: %w", err)
 	}
+	defer assembled.clicks.StopImpressionPreparations()
 
 	opsMux := buildOpsMux(obs.endpoints, config, assembled, obs.recorder, sources)
 	opsHandler := wrapAdminCORS(
@@ -251,9 +253,11 @@ type namedServer struct {
 }
 
 func buildServer(addr string, handler http.Handler) *http.Server {
+	requests := newHTTPRequestLifecycle(handler)
+
 	return &http.Server{
 		Addr:              addr,
-		Handler:           handler,
+		Handler:           requests,
 		ReadHeaderTimeout: serverReadHeaderTimeout,
 		ReadTimeout:       serverReadTimeout,
 		IdleTimeout:       serverIdleTimeout,
@@ -334,11 +338,7 @@ func serve(
 	}
 	select {
 	case err := <-errs:
-		if errors.Is(err, http.ErrServerClosed) {
-			return shutdown(servers)
-		}
-
-		return err
+		return settleListenerExit(err, servers)
 	case <-ctx.Done():
 		return shutdown(servers)
 	}
@@ -392,21 +392,6 @@ func startMaintenanceLoops(ctx context.Context, background *sync.WaitGroup, asse
 		defer background.Done()
 		runDeferredSyncLoop(ctx, assembled.vault)
 	}()
-}
-
-func shutdown(servers []namedServer) error {
-	slog.InfoContext(context.Background(), "shutting down")
-	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-
-	var failures error
-	for _, s := range servers {
-		if err := shutdownHTTPServer(s.server, ctx); err != nil {
-			failures = errors.Join(failures, fmt.Errorf("shutdown %s: %w", s.name, err))
-		}
-	}
-
-	return failures
 }
 
 type vaultCloser interface {
