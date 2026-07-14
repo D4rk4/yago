@@ -281,6 +281,7 @@ func TestAssembleNodeSurfacesStoreOpenErrors(t *testing.T) {
 		{"clicks", "search_clicks"},
 		{"ranking models", "ranking_models"},
 		{"content safety models", "content_safety_model"},
+		{"corpus signal checkpoints", "corpus_signal_checkpoints"},
 		{"peer reputation", "peer_reputation"},
 		{"schedules", "crawl_schedules"},
 	}

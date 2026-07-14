@@ -58,7 +58,7 @@ func TestEngineRaceCancelsWithoutLaunchingAtParserSaturation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	race := newEngineRace(second, ctx, "second")
+	race := newEngineRace(second, ctx, newProviderQuery("second"))
 	_, _, err := race.run()
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("saturated race error = %v, want cancellation", err)

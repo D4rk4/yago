@@ -439,7 +439,9 @@ func withWebFallback(
 		Accept:     websearch.VerifiedForQuery,
 	})
 
-	opts := []websearch.Option{websearch.WithProviderBudget(webFallbackProviderBudget)}
+	opts := []websearch.Option{websearch.WithProviderBudget(
+		webFallbackProviderStageBudget(config),
+	)}
 	if config.SeedCrawl && assembly.seedQueue != nil {
 		opts = append(opts, websearch.WithSeeder(newWebCrawlSeeder(
 			assembly.seedQueue,

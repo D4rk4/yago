@@ -77,6 +77,7 @@ type node struct {
 	spell          *spellcheck.Holder
 	wordForms      *wordforms.Holder
 	swarmMorph     bool
+	corpusPass     *corpusSignalRefresh
 	indexAdmin     *indexAdminController
 	postings       rwi.PostingIndex
 	urlDirectory   urlmeta.URLDirectory
@@ -225,6 +226,7 @@ func assembleNode(
 		safety:     surfaces.safety,
 		hostTrust:  surfaces.trust,
 		peerEvents: surfaces.peerEvents,
+		corpusPass: surfaces.corpusPass,
 		swarmMorph: config.SwarmMorphology,
 	}, telemetry.toggles), nil
 }
@@ -275,6 +277,7 @@ type nodeSurfaces struct {
 	schedules  *crawlschedule.Store
 	theme      *portaltheme.Theme
 	peerEvents *peerReputationObserver
+	corpusPass *corpusSignalRefresh
 }
 
 func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
@@ -301,8 +304,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	publicMux := http.NewServeMux()
 	searchLimiter := publicratelimit.NewLimiter(searchRateTiers(in.config.SearchRate))
 	activityTracker := searchactivity.New(searchactivity.Mode(in.config.QueryLogMode))
-	hostRankHolder, spellHolder := hostrank.NewHolder(), spellcheck.NewHolder()
-	wordFormsHolder := wordforms.NewHolder()
+	corpusSignals := newCorpusSignalSet(in, learning)
 	searcher, suggest := mountNodePublicSearch(publicMux, newPublicSearchAssembly(
 		in,
 		publicSearchParts{
@@ -310,9 +312,9 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 			ranking:    ranking,
 			denylist:   denylist,
 			activity:   activityTracker,
-			hostRank:   hostRankHolder,
-			spell:      spellHolder,
-			words:      wordFormsHolder,
+			hostRank:   corpusSignals.authority,
+			spell:      corpusSignals.spelling,
+			words:      corpusSignals.wordForms,
 			theme:      theme,
 			clicks:     learning.clicks,
 			models:     learning.models,
@@ -344,9 +346,9 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		publicMux:  limitedPublic,
 		theme:      theme,
 		ranking:    ranking,
-		hostRank:   hostRankHolder,
-		spell:      spellHolder,
-		wordForms:  wordFormsHolder,
+		hostRank:   corpusSignals.authority,
+		spell:      corpusSignals.spelling,
+		wordForms:  corpusSignals.wordForms,
 		denylist:   denylist,
 		activity:   activityTracker,
 		schedules:  schedules,
@@ -356,6 +358,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		safety:     learning.safety,
 		trust:      learning.trust,
 		peerEvents: learning.peerEvents,
+		corpusPass: corpusSignals.refresh,
 	}, nil
 }
 
@@ -456,26 +459,11 @@ type nodeParts struct {
 	swarmMorph bool
 	theme      *portaltheme.Theme
 	peerEvents *peerReputationObserver
+	corpusPass *corpusSignalRefresh
 }
 
 func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
-	tuner := newRankingTuner(
-		parts.storage.searchIndex,
-		parts.hostRank.Current,
-		parts.ranking,
-		parts.judgments,
-		parts.clicks,
-	)
-	modelTrainer := newRankingModelTrainer(
-		newRankingTrainingCandidateSource(
-			parts.storage.searchIndex,
-			parts.ranking.Current,
-			parts.hostRank.Current,
-		),
-		tuner,
-		parts.models,
-		time.Now,
-	)
+	rankingRuntime := newNodeRankingRuntime(parts)
 	return node{
 		peerMux:    parts.mux,
 		publicMux:  parts.publicMux,
@@ -489,9 +477,9 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 			parts.denylist,
 		),
 		searchRanking:  newSearchRankingEndpoint(parts.ranking),
-		searchTune:     newSearchRankingTuneEndpoint(tuner),
+		searchTune:     newSearchRankingTuneEndpoint(rankingRuntime.tuner),
 		searchModel:    newSearchRankingModelEndpoint(parts.models),
-		searchTrain:    newSearchRankingTrainEndpoint(modelTrainer),
+		searchTrain:    newSearchRankingTrainEndpoint(rankingRuntime.trainer),
 		searchRollback: newSearchRankingRollbackEndpoint(parts.models),
 		safetyModel:    newSearchSafetyModelEndpoint(parts.safety),
 		safetyTrain:    newSearchSafetyTrainEndpoint(parts.safety),
@@ -500,10 +488,10 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 		hostTrustAPI:   newSearchHostTrustEndpoint(parts.hostTrust),
 		rankingConsole: newRankingConsole(
 			parts.ranking,
-			tuner,
+			rankingRuntime.tuner,
 			parts.judgments,
 			rankingConsoleLearning{
-				trainer: modelTrainer, models: parts.models, trust: parts.hostTrust,
+				trainer: rankingRuntime.trainer, models: parts.models, trust: parts.hostTrust,
 			},
 		),
 		report:       parts.report,
@@ -519,6 +507,7 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 		spell:        parts.spell,
 		wordForms:    parts.wordForms,
 		swarmMorph:   parts.swarmMorph,
+		corpusPass:   parts.corpusPass,
 		indexAdmin:   newIndexAdminController(parts.storage, parts.vault),
 		postings:     parts.storage.postings,
 		urlDirectory: parts.storage.urlDirectory,

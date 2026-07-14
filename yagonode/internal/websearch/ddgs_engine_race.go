@@ -21,7 +21,7 @@ type engineAttempt struct {
 type engineRace struct {
 	provider *DDGSProvider
 	ctx      context.Context
-	query    string
+	query    providerQuery
 	engines  []engine
 	attempts chan engineAttempt
 	launched int
@@ -30,7 +30,11 @@ type engineRace struct {
 	limited  []bool
 }
 
-func newEngineRace(provider *DDGSProvider, ctx context.Context, query string) *engineRace {
+func newEngineRace(
+	provider *DDGSProvider,
+	ctx context.Context,
+	query providerQuery,
+) *engineRace {
 	engines := make([]engine, 0, len(provider.engines))
 	for _, backend := range provider.engines {
 		if !provider.backedOff(backend.name) {
@@ -111,7 +115,7 @@ func (r *engineRace) launchNext() {
 	r.launched++
 	go func() {
 		defer r.provider.admission.release()
-		results, rateLimited, err := r.provider.fetch(r.ctx, backend, r.query)
+		results, rateLimited, err := r.provider.fetch(r.ctx, backend, r.query.outboundText)
 		attempt := engineAttempt{
 			preference:  preference,
 			backend:     backend,
@@ -147,14 +151,14 @@ func (r *engineRace) evaluate(attempts []engineAttempt) []Result {
 		r.finished++
 		fetched := len(attempt.results)
 		if attempt.err == nil && r.provider.accept != nil {
-			attempt.results = r.provider.accept(r.query, attempt.results)
+			attempt.results = r.provider.accept(r.query.submittedText, attempt.results)
 		}
 		slog.DebugContext(r.ctx, "web-search engine attempt",
 			slog.String("engine", attempt.backend.name),
 			slog.Int("fetched", fetched),
 			slog.Int("accepted", len(attempt.results)),
 			slog.Bool("rateLimited", attempt.rateLimited),
-			slog.Any("error", attempt.err))
+			slog.String("failure", webSearchFailureReason(attempt.err)))
 		if attempt.rateLimited {
 			r.provider.recordBackoff(attempt.backend.name)
 			r.limited[attempt.preference] = true

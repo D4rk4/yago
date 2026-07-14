@@ -34,7 +34,7 @@ func ParseTextQuery(raw string) ParsedQuery {
 	var words []string
 	for _, token := range queryTokens(raw) {
 		if !parsed.addModifier(token) {
-			words = append(words, token)
+			words = append(words, normalizeQueryTokenDashes(token))
 		}
 	}
 	parsed.addQueryWords(strings.Join(words, " "))

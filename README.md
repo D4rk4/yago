@@ -52,7 +52,9 @@ its binaries (`yago-node`, `yagocrawler`).
   fan-out + optional operator-enabled web search. The provider is off by default,
   local-only requests never reach it, and the single **Web search fallback
   (DDGS)** mode selector chooses consent-only, miss-only, or always-parallel
-  local/peer/web retrieval. Results are merged with **reciprocal-rank
+  local/peer/web retrieval. A hyphen or dash inside an ordinary query word
+  separates searchable words across local and web retrieval, while a leading
+  minus remains an exclusion operator. Results are merged with **reciprocal-rank
   fusion** and **MMR result diversity**. A slow swarm branch cannot discard a
   completed local answer, and a transient refresh cannot replace a recent
   nonempty search session with an infrastructure-generated zero, including when
@@ -115,8 +117,12 @@ its binaries (`yago-node`, `yagocrawler`).
   detection keeps documents, facets, RWI postings, and URL metadata aligned.
 - **Bounded search memory**: authority, spelling, and optional morphology refresh
   from one completion-relative corpus pass, with fixed-size cross-domain
-  citation and frequent-term summaries. The background pass never claims interactive-read
-  priority from ingest writes; candidate scans avoid full document bodies; peer and
+  citation and frequent-term summaries. The last complete summary is atomically
+  stored in the node vault and restored before search listeners open. A fresh
+  summary waits only until its original ten-minute due time; a stale summary is
+  still served immediately while its replacement scan starts in the background.
+  The background pass never claims interactive-read priority from ingest writes;
+  candidate scans avoid full document bodies; peer and
   web responses, index results, paging sessions, background cache writes, and
   host-link snapshots have process-wide byte or admission limits. `/metrics`
   exposes Go heap plus process RSS for pre-OOM alerts. Interactive searches have
@@ -186,7 +192,10 @@ its binaries (`yago-node`, `yagocrawler`).
   structured logs (never secrets), and a durable event store fed through a
   bounded asynchronous queue. Shutdown drains it for up to five seconds; if a
   writer remains stuck, service shutdown proceeds and storage close waits for
-  writer quiescence.
+  writer quiescence. HTTP listeners share a fixed fifteen-second shutdown
+  budget: ten seconds for graceful requests and five seconds for forced close
+  and handler drain. A completed forced close is a clean stop; close or drain
+  failures remain actionable errors.
 - **Offline backup/restore scripts** for docker and systemd — covered by an
   automated end-to-end round-trip test — plus a console page that shows
   storage usage and hands you the exact commands.

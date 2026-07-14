@@ -53,7 +53,11 @@ func (s *FallbackSearcher) Search(
 	}
 	results, provErr := s.searchProvider(ctx, req.SubmittedText(), req.Limit)
 	if provErr != nil {
-		slog.DebugContext(ctx, msgFallbackFailed, slog.Any("error", provErr))
+		slog.DebugContext(
+			ctx,
+			msgFallbackFailed,
+			slog.String("reason", webSearchFailureReason(provErr)),
+		)
 		resp.PartialFailures = append(resp.PartialFailures, webProviderFailure())
 
 		return resp, nil

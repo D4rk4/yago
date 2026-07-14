@@ -48,6 +48,7 @@ const (
 	serverIdleTimeout       = 2 * time.Minute
 	serverMaxHeaderBytes    = 64 << 10
 	shutdownTimeout         = 15 * time.Second
+	shutdownForcedWait      = 5 * time.Second
 )
 
 // buildVersion is yago's own calendar build version (YYYY.M), a brand identity
@@ -300,14 +301,7 @@ func serve(
 	}()
 	go func() {
 		defer background.Done()
-		runCorpusSignalRefreshLoop(ctx, &corpusSignalRefresh{
-			documents:        assembled.docScan,
-			hostRank:         assembled.hostRank,
-			spell:            assembled.spell,
-			wordForms:        assembled.wordForms,
-			includeWordForms: assembled.swarmMorph,
-			trust:            assembled.hostTrust,
-		})
+		runCorpusSignalRefreshLoop(ctx, corpusSignalRefreshForNode(ctx, assembled))
 	}()
 	startMaintenanceLoops(ctx, &background, assembled)
 	if assembled.crawl != nil {

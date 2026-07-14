@@ -196,14 +196,13 @@ func (q *progressDeliveryQueue) run(ctx context.Context) {
 			timer := time.NewTimer(wait)
 			select {
 			case <-timer.C:
-				continue
 			case <-q.signal:
 				stopProgressTimer(timer)
-				continue
 			case <-ctx.Done():
 				stopProgressTimer(timer)
 				return
 			}
+			continue
 		}
 		q.deliver(ctx, delivery)
 	}

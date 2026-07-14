@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 )
 
 type httpShutdownResult struct {
@@ -13,15 +14,27 @@ type httpShutdownResult struct {
 }
 
 func shutdown(servers []namedServer) error {
+	return shutdownWithin(
+		servers,
+		shutdownTimeout-shutdownForcedWait,
+		shutdownForcedWait,
+	)
+}
+
+func shutdownWithin(
+	servers []namedServer,
+	gracefulWait time.Duration,
+	forcedWait time.Duration,
+) error {
 	slog.InfoContext(context.Background(), "shutting down")
-	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), gracefulWait)
 	defer cancel()
 	results := make(chan httpShutdownResult, len(servers))
 	for position, server := range servers {
 		go func() {
 			results <- httpShutdownResult{
 				position: position,
-				err:      shutdownHTTPRequests(ctx, server),
+				err:      shutdownHTTPRequestsWithin(ctx, server, forcedWait),
 			}
 		}()
 	}
@@ -34,7 +47,11 @@ func shutdown(servers []namedServer) error {
 	return errors.Join(failures...)
 }
 
-func shutdownHTTPRequests(ctx context.Context, server namedServer) error {
+func shutdownHTTPRequestsWithin(
+	ctx context.Context,
+	server namedServer,
+	forcedWait time.Duration,
+) error {
 	requests, _ := server.server.Handler.(*httpRequestLifecycle)
 	if requests != nil {
 		requests.stopAccepting()
@@ -44,14 +61,9 @@ func shutdownHTTPRequests(ctx context.Context, server namedServer) error {
 	if shutdownError != nil {
 		closeError = closeHTTPServer(server.server)
 	}
-	if requests != nil {
-		requests.wait()
-	}
+	drainError := waitForHTTPRequests(requests, forcedWait)
 
-	return errors.Join(
-		wrapHTTPShutdownError(server.name, "shutdown", shutdownError),
-		wrapHTTPShutdownError(server.name, "close", closeError),
-	)
+	return resolveHTTPShutdown(server.name, shutdownError, closeError, drainError)
 }
 
 func wrapHTTPShutdownError(service string, operation string, err error) error {

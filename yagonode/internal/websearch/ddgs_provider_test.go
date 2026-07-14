@@ -2,6 +2,7 @@ package websearch
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -207,8 +208,8 @@ func TestDDGSProviderBacksOffOnRateLimit(t *testing.T) {
 
 	for range 3 {
 		results, err := provider.Search(context.Background(), "example", 10)
-		if err != nil {
-			t.Fatalf("rate limit must degrade, got %v", err)
+		if !errors.Is(err, errWebSearchEnginesUnavailable) {
+			t.Fatalf("rate limit error = %v", err)
 		}
 		if len(results) != 0 {
 			t.Fatalf("results = %#v, want empty", results)

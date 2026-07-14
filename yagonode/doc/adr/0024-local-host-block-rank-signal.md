@@ -38,6 +38,12 @@ into result scoring, deferring the distributed exchange.
   domain edge retains at most eight distinct source-page votes before the global
   sample. The loop then republishes the table through an atomic `hostrank.Holder`,
   so the search path reads it lock-free and never scans the store inline.
+- One bounded vault checkpoint atomically retains the last complete authority
+  table, citation sample, spelling vocabulary, optional morphology vocabulary,
+  trust policy, and completion time. Startup publishes it before listeners open.
+  A fresh checkpoint schedules the first scan for its original due time; a stale
+  checkpoint stays available while an immediate replacement scan runs. Failed
+  and cancelled passes leave the prior checkpoint intact.
 - `RankingWeights` gains a `HostRank` coefficient, enabled by default at 0.3. It
   is a post-retrieval multiplier — a result's score is scaled by
   `1 + HostRank*rank(host)`
@@ -74,6 +80,9 @@ Ranking gains a host-authority dimension that operators tune through the
 positive `hostRank` weight in the existing `/api/admin/v1/search/ranking` profile
 (the JSON round-trips the field). Authority shares one completion-relative document pass with spelling
 and optional morphology signals, so it adds no independent periodic scan. The
+successful pass replaces one bounded checkpoint at most once per refresh
+interval; trust-policy changes may replace it without advancing its corpus
+completion time. The
 authority keys use the registrable domain derived from normalized source and
 target URLs, so scheme, port, and subdomain differences do not split one domain's
 evidence. Distributed host-rank exchange and aggregation across peers remain

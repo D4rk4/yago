@@ -1,6 +1,8 @@
 package yagonode
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"sync"
 )
@@ -43,6 +45,16 @@ func (l *httpRequestLifecycle) stopAccepting() {
 	l.state.Unlock()
 }
 
-func (l *httpRequestLifecycle) wait() {
-	l.active.Wait()
+func (l *httpRequestLifecycle) wait(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		l.active.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("wait for active HTTP requests: %w", ctx.Err())
+	}
 }

@@ -44,6 +44,8 @@ components:
     in: internal/hostlinks/**
   hostrank:
     in: internal/hostrank/**
+  corpussignals:
+    in: internal/corpussignals/**
   hosttrust:
     in: internal/hosttrust/**
   cachedpage:
@@ -751,6 +753,13 @@ deps:
       - hostrank
     canUse:
       - xnet
+  corpussignals:
+    mayDependOn:
+      - corpussignals
+      - hostrank
+      - vault
+      - memvault
+      - boltvault
   hosttrust:
     mayDependOn:
       - hosttrust
@@ -862,6 +871,7 @@ deps:
       - peerannouncement
       - hostlinks
       - hostrank
+      - corpussignals
       - hosttrust
       - spellcheck
       - wordforms

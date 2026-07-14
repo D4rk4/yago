@@ -101,6 +101,16 @@ starts ten minutes after the previous pass finishes, so slow scans cannot form a
 continuous backlog. A trust-policy change recomputes authority from the retained
 citation sample and does not rescan the corpus.
 
+The last successfully completed pass is stored as one atomic vault checkpoint.
+It contains the bounded authority table, citation sample, spelling vocabulary,
+optional morphology vocabulary, trust policy, and completion time. The node
+loads and publishes it before search listeners open. A checkpoint younger than
+ten minutes postpones the first scan only until that pass would normally be due;
+an older or future-dated checkpoint is still published immediately but starts a
+replacement scan in the background. Enabling morphology when the checkpoint has
+no morphology vocabulary also starts an immediate scan. Failed or cancelled
+passes never replace the durable checkpoint.
+
 TrustRank teleport seeds are an operator policy stored in the node vault. The
 default policy is empty; operators can select a blend in `[0,1]` and at most 256
 canonical domain names or IP literals. A policy change refreshes domain

@@ -1,8 +1,8 @@
-// Package websearch provides an optional, admin-gated web-search fallback that
-// answers a query only after the local index and the federated peers return
-// nothing. Fallback results are stamped with searchcore.SourceWeb so the human
-// search surfaces can label them with a "web" provenance badge while the
-// Tavily-compatible API returns them unmarked.
+// Package websearch provides optional, admin-gated web retrieval after a local
+// and federated miss or alongside those sources in always mode. Results are
+// stamped with searchcore.SourceWeb so human search surfaces can label them with
+// a "web" provenance badge while the Tavily-compatible API returns them
+// unmarked.
 package websearch
 
 import "context"
@@ -14,9 +14,9 @@ type Result struct {
 	Snippet string
 }
 
-// Provider searches an external web-search backend. Implementations must degrade
-// to an empty result on rate limiting or backend failure rather than propagate a
-// hard error that would fail the caller's search.
+// Provider searches an external web-search backend. Implementations report
+// operational failures to the fallback decorators, which preserve any primary
+// answer and expose the provider as a partial failure.
 type Provider interface {
 	Search(ctx context.Context, query string, limit int) ([]Result, error)
 }

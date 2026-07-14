@@ -119,7 +119,11 @@ func failedParallelProviderResponse(
 	response searchcore.Response,
 	err error,
 ) searchcore.Response {
-	slog.DebugContext(ctx, msgFallbackFailed, slog.Any("error", err))
+	slog.DebugContext(
+		ctx,
+		msgFallbackFailed,
+		slog.String("reason", webSearchFailureReason(err)),
+	)
 	response.PartialFailures = append(response.PartialFailures, webProviderFailure())
 
 	return response

@@ -77,8 +77,11 @@ Verified findings:
    32,768 frequent terms; spelling retains at most 8,192. Tokens outside the
    searchable 4-through-32-rune range are rejected before SymSpell generates its
    quadratic delete variants. The rebuilt `Expander` is published through an
-   atomic `Holder` for lock-free reads on the query path. A node without swarm
-   morphology pays no extra vocabulary collection or separate scan.
+   atomic `Holder` for lock-free reads on the query path. The bounded vocabulary
+   shares the corpus-signal vault checkpoint and is restored before listeners
+   open. Enabling morphology when the last checkpoint has no morphology summary
+   starts a replacement corpus scan immediately. A node without swarm morphology
+   pays no extra vocabulary collection or separate scan.
 
 4. **Opt-in, single-word only (`internal/searchremote`).** The remote searcher
    takes an `ExpandWord func(string) []string`. When it is wired and the query is

@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/D4rk4/yago/yagonode/internal/corpussignals"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/hosttrust"
-	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
 	"github.com/D4rk4/yago/yagonode/internal/wordforms"
 )
@@ -29,14 +29,21 @@ type hostTrustPolicySource interface {
 }
 
 type corpusSignalRefresh struct {
-	documents        documentstore.StoredDocuments
-	hostRank         *hostrank.Holder
-	spell            *spellcheck.Holder
-	wordForms        *wordforms.Holder
-	includeWordForms bool
-	trust            hostTrustPolicySource
-	citations        []hostrank.Citation
-	citationsReady   bool
+	documents            documentstore.StoredDocuments
+	hostRank             *hostrank.Holder
+	spell                *spellcheck.Holder
+	wordForms            *wordforms.Holder
+	includeWordForms     bool
+	trust                hostTrustPolicySource
+	citations            []hostrank.Citation
+	citationsReady       bool
+	spellingVocabulary   map[string]int
+	wordFormsVocabulary  map[string]int
+	wordFormsReady       bool
+	completedAtUnixMilli int64
+	checkpoints          corpusSignalCheckpointRepository
+	initialRefreshDelay  time.Duration
+	readTime             func() time.Time
 }
 
 var newCorpusSignalRefreshDelay = func(interval time.Duration) (<-chan time.Time, func()) {
@@ -46,6 +53,12 @@ var newCorpusSignalRefreshDelay = func(interval time.Duration) (<-chan time.Time
 }
 
 func runCorpusSignalRefreshLoop(ctx context.Context, refresh *corpusSignalRefresh) {
+	if refresh == nil {
+		return
+	}
+	if refresh.initialRefreshDelay > 0 && !refresh.waitFor(ctx, refresh.initialRefreshDelay) {
+		return
+	}
 	for ctx.Err() == nil {
 		refresh.scanAndPublish(ctx)
 		if !refresh.wait(ctx) {
@@ -55,7 +68,11 @@ func runCorpusSignalRefreshLoop(ctx context.Context, refresh *corpusSignalRefres
 }
 
 func (r *corpusSignalRefresh) wait(ctx context.Context) bool {
-	delay, stop := newCorpusSignalRefreshDelay(defaultCorpusSignalRefreshInterval)
+	return r.waitFor(ctx, defaultCorpusSignalRefreshInterval)
+}
+
+func (r *corpusSignalRefresh) waitFor(ctx context.Context, interval time.Duration) bool {
+	delay, stop := newCorpusSignalRefreshDelay(interval)
 	defer stop()
 	var trustChanges <-chan struct{}
 	if r.trust != nil {
@@ -108,9 +125,10 @@ func (r *corpusSignalRefresh) scanAndPublish(ctx context.Context) {
 	}
 
 	citations := citationSample.Citations()
-	var authority hostrank.AuthorityTable
+	trustPolicy := r.currentTrustPolicy()
+	authority := hostrank.AuthorityTable{}
 	if r.hostRank != nil {
-		table, err := r.computeAuthority(ctx, citations)
+		table, err := r.computeAuthority(ctx, citations, trustPolicy)
 		if err != nil {
 			slog.WarnContext(ctx, hostAuthorityRefreshFailedMessage, slog.Any("error", err))
 
@@ -118,53 +136,53 @@ func (r *corpusSignalRefresh) scanAndPublish(ctx context.Context) {
 		}
 		authority = table
 	}
-	var corrector *spellcheck.Corrector
-	if r.spell != nil {
-		corrector = spellcheck.New(prunedVocabulary(spellFrequency.Frequencies()))
+	spellingVocabulary := prunedVocabulary(spellFrequency.Frequencies())
+	wordFormsVocabulary := map[string]int{}
+	wordFormsReady := wordFormsFrequency != nil
+	if wordFormsReady {
+		wordFormsVocabulary = wordFormsFrequency.Frequencies()
 	}
-	var expander *wordforms.Expander
-	if r.wordForms != nil && wordFormsFrequency != nil {
-		expander = wordforms.New(wordFormsFrequency.Frequencies(), searchindex.StemWord)
+	checkpoint := r.checkpointWithTrustPolicy(corpussignals.Checkpoint{
+		Authority: authority, Citations: citations, Spelling: spellingVocabulary,
+		WordForms: wordFormsVocabulary, WordFormsReady: wordFormsReady,
+		CompletedAtUnixMilli: r.currentTime().UnixMilli(),
+	}, trustPolicy)
+	if ctx.Err() != nil {
+		return
 	}
-
-	r.citations = citations
-	r.citationsReady = true
-	if r.hostRank != nil {
-		r.hostRank.Store(authority)
-	}
-	if r.spell != nil {
-		r.spell.Store(corrector)
-	}
-	if expander != nil {
-		r.wordForms.Store(expander)
-	}
+	r.persistCheckpoint(ctx, checkpoint)
+	r.acceptCheckpoint(checkpoint)
 }
 
 func (r *corpusSignalRefresh) publishAuthority(ctx context.Context) {
 	if r.hostRank == nil || !r.citationsReady {
 		return
 	}
-	table, err := r.computeAuthority(ctx, r.citations)
+	trustPolicy := r.currentTrustPolicy()
+	table, err := r.computeAuthority(ctx, r.citations, trustPolicy)
 	if err != nil {
 		slog.WarnContext(ctx, hostAuthorityRefreshFailedMessage, slog.Any("error", err))
 
 		return
 	}
+	checkpoint := r.checkpointWithTrustPolicy(corpussignals.Checkpoint{
+		Authority: table, Citations: r.citations, Spelling: r.spellingVocabulary,
+		WordForms: r.wordFormsVocabulary, WordFormsReady: r.wordFormsReady,
+		CompletedAtUnixMilli: r.completedAtUnixMilli,
+	}, trustPolicy)
+	r.persistCheckpoint(ctx, checkpoint)
 	r.hostRank.Store(table)
 }
 
 func (r *corpusSignalRefresh) computeAuthority(
 	ctx context.Context,
 	citations []hostrank.Citation,
+	policy hosttrust.Policy,
 ) (hostrank.AuthorityTable, error) {
-	options := hostrank.DomainOptions{}
-	if r.trust != nil {
-		policy := r.trust.Current()
-		options.TrustedDomains = policy.Domains
-		options.TrustBlend = policy.Blend
-	}
-
-	table, err := hostrank.ComputeDomainAuthority(ctx, citations, options)
+	table, err := hostrank.ComputeDomainAuthority(ctx, citations, hostrank.DomainOptions{
+		TrustedDomains: policy.Domains,
+		TrustBlend:     policy.Blend,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("compute host authority: %w", err)
 	}
@@ -181,4 +199,12 @@ func prunedVocabulary(frequency map[string]int) map[string]int {
 	}
 
 	return pruned
+}
+
+func (r *corpusSignalRefresh) currentTime() time.Time {
+	if r.readTime != nil {
+		return r.readTime()
+	}
+
+	return time.Now()
 }

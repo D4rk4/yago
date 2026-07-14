@@ -2,6 +2,7 @@ package websearch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,7 +33,8 @@ type DDGSConfig struct {
 
 // DDGSProvider is a best-effort metasearch client over keyless public search
 // engines. It caches responses briefly and backs off on rate limiting,
-// degrading to an empty result rather than failing the caller's search.
+// returning an operational error that the search decorator exposes as a
+// partial web failure without discarding primary results.
 type DDGSProvider struct {
 	client     *http.Client
 	engines    []engine
@@ -44,8 +46,9 @@ type DDGSProvider struct {
 	accept     func(query string, results []Result) []Result
 	admission  *engineFetchAdmission
 
-	mu       sync.Mutex
-	backoffs map[string]*engineBackoff
+	mu                  sync.Mutex
+	backoffs            map[string]*engineBackoff
+	unavailableReported bool
 }
 
 type engineBackoff struct {
@@ -82,32 +85,50 @@ func NewDDGSProvider(config DDGSConfig) *DDGSProvider {
 }
 
 func (p *DDGSProvider) Search(ctx context.Context, query string, limit int) ([]Result, error) {
-	query = strings.TrimSpace(query)
-	if query == "" {
+	return p.searchProviderQuery(ctx, newProviderQuery(query), limit)
+}
+
+func (p *DDGSProvider) searchProviderQuery(
+	ctx context.Context,
+	query providerQuery,
+	limit int,
+) ([]Result, error) {
+	query.outboundText = strings.TrimSpace(query.outboundText)
+	if query.outboundText == "" {
 		return nil, nil
 	}
-	if cached, ok := p.cache.get(query); ok {
+	if cached, ok := p.cache.get(query.outboundText); ok {
 		return capResults(cached, p.limit(limit)), nil
 	}
 	results, rateLimited, err := p.query(ctx, query)
 	if rateLimited {
-		return nil, nil
+		p.reportUnavailable(ctx, errWebSearchEnginesUnavailable)
+
+		return nil, errWebSearchEnginesUnavailable
 	}
 	if err != nil {
+		if !errors.Is(err, context.Canceled) {
+			p.reportUnavailable(ctx, err)
+		}
+
 		return nil, err
 	}
+	p.markAvailable()
 	results = normalizeResults(results, p.cachedResultLimit())
 	// An empty answer is a miss, not an answer: engines rate-limit and bot-wall
 	// intermittently, and caching the miss would pin the failure for the whole
 	// TTL while the next attempt might succeed.
 	if len(results) > 0 {
-		p.cache.put(query, results)
+		p.cache.put(query.outboundText, results)
 	}
 
 	return capResults(results, p.limit(limit)), nil
 }
 
-func (p *DDGSProvider) query(ctx context.Context, query string) ([]Result, bool, error) {
+func (p *DDGSProvider) query(
+	ctx context.Context,
+	query providerQuery,
+) ([]Result, bool, error) {
 	return newEngineRace(p, ctx, query).run()
 }
 
