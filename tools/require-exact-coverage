@@ -10,6 +10,8 @@ NR > 1 {
 	total += $2
 	if ($3 > 0) {
 		covered += $2
+	} else if ($2 > 0) {
+		uncovered[++uncovered_count] = sprintf("    uncovered: %s (%d statements)", $1, $2)
 	}
 }
 END {
@@ -19,6 +21,9 @@ END {
 	}
 	printf "    total: %.6f%% (%d/%d statements)\n", covered * 100 / total, covered, total
 	if (covered * 100 < minimum * total) {
+		for (entry = 1; entry <= uncovered_count; entry++) {
+			print uncovered[entry]
+		}
 		exit 1
 	}
 }

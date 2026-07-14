@@ -11,10 +11,17 @@ printf 'mode: atomic\nexample.go:1.1,1.2 22579 1\nexample.go:2.1,2.2 11 0\n' > "
 printf 'mode: atomic\n' > "$workspace/empty.out"
 
 "$checker" "$workspace/exact.out" 100 > /dev/null
-if "$checker" "$workspace/rounded.out" 100 > /dev/null 2>&1; then
+if rounded_failure=$("$checker" "$workspace/rounded.out" 100 2>&1); then
 	echo "rounded coverage passed the exact gate"
 	exit 1
 fi
+case "$rounded_failure" in
+	*"uncovered: example.go:2.1,2.2 (11 statements)"*) ;;
+	*)
+		echo "rounded coverage did not identify the uncovered range"
+		exit 1
+		;;
+esac
 "$checker" "$workspace/rounded.out" 99.95 > /dev/null
 if "$checker" "$workspace/rounded.out" 99.96 > /dev/null 2>&1; then
 	echo "coverage passed above its raw percentage"
