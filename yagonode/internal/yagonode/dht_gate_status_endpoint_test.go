@@ -18,7 +18,13 @@ func TestDHTGateStatusEndpointReturnsReport(t *testing.T) {
 				LocalPeerKnown:   true,
 				ConnectedPeers:   2,
 				LocalRWIWords:    5,
+				LocalRWIKnown:    true,
+				CrawlQueueSize:   7,
+				CrawlQueueKnown:  true,
+				IndexQueueSize:   3,
+				IndexQueueKnown:  true,
 				StorageAvailable: true,
+				StorageKnown:     true,
 			}
 		},
 		config: dhtexchange.GateConfig{
@@ -48,6 +54,9 @@ func TestDHTGateStatusEndpointReturnsReport(t *testing.T) {
 	if got.Open ||
 		got.BlockingReason != dhtexchange.GatePublicReachabilityReason ||
 		got.State.ConnectedPeers != 2 ||
+		got.State.CrawlQueueSize != 7 || !got.State.CrawlQueueKnown ||
+		got.State.IndexQueueSize != 3 || !got.State.IndexQueueKnown ||
+		!got.State.LocalRWIKnown || !got.State.StorageKnown ||
 		got.Config.MinimumConnectedPeer != 3 ||
 		len(got.Gates) != 11 {
 		t.Fatalf("response = %#v", got)

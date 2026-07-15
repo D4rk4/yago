@@ -27,7 +27,7 @@ func TestOpenSearchDescribe(t *testing.T) {
 	for _, want := range []string{
 		"<?xml",
 		`xmlns="` + osddNamespace + `"`,
-		"<ShortName>yago</ShortName>",
+		"<ShortName>yago search</ShortName>",
 		`template="http://node.example/?q={searchTerms}"`,
 		`template="http://node.example/opensearch/suggest?q={searchTerms}"`,
 		"AGPL",

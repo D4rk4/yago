@@ -80,36 +80,27 @@ func searchEvidenceResults(
 	req.CandidateOnly = false
 	enriched := make([]SearchResult, 0, len(results))
 	limit := min(maximumSearchEvidenceResults, len(results))
-	processedAll := true
-	tailStart := limit
+	processed := 0
 	for index, candidate := range results[:limit] {
 		if ctx.Err() != nil {
-			processedAll = false
-			tailStart = index
 			break
 		}
 		mapped, found, err := searchEvidenceResult(ctx, req, candidate, index, document)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				processedAll = false
-				tailStart = index
 				break
 			}
 
 			return nil, err
 		}
+		processed = index + 1
 		if found {
 			enriched = append(enriched, mapped)
 		}
 	}
 	rescoreStoredQuotedPhrasePrefix(enriched, req)
-	if !processedAll {
-		enriched = append(enriched, results[tailStart:]...)
-	}
-	if processedAll && limit < len(results) {
-		enriched = append(enriched, results[limit:]...)
-	}
-	if processedAll && limit == len(results) && req.IncludePositions {
+	enriched = appendSafeEvidenceTail(enriched, results[processed:], req)
+	if processed == len(results) && req.IncludePositions {
 		rescoreStoredProximity(enriched, req)
 	}
 
@@ -130,9 +121,17 @@ func searchEvidenceResult(
 	if !found {
 		return SearchResult{}, false, nil
 	}
-	mapped, err := storedEvidenceResult(ctx, req, candidate, doc)
+	evidenceRequest := req
+	if candidate.StrictRank > 0 {
+		evidenceRequest.MinimumTermMatches = 0
+		evidenceRequest.Relaxed = false
+	}
+	mapped, err := storedEvidenceResult(ctx, evidenceRequest, candidate, doc)
 	if err != nil {
 		return SearchResult{}, false, err
+	}
+	if requiresRelaxedPassage(req, candidate) && !mapped.relaxedPassageEvidence {
+		return SearchResult{}, false, nil
 	}
 
 	return mapped, true, nil
@@ -165,4 +164,22 @@ func storedEvidenceResult(
 	mapped.RelaxedRank = candidate.RelaxedRank
 
 	return mapped, nil
+}
+
+func appendSafeEvidenceTail(
+	enriched []SearchResult,
+	tail []SearchResult,
+	req SearchRequest,
+) []SearchResult {
+	for _, candidate := range tail {
+		if !requiresRelaxedPassage(req, candidate) {
+			enriched = append(enriched, candidate)
+		}
+	}
+
+	return enriched
+}
+
+func requiresRelaxedPassage(req SearchRequest, candidate SearchResult) bool {
+	return (req.Relaxed || req.MinimumTermMatches > 0) && candidate.StrictRank == 0
 }

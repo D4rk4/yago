@@ -36,10 +36,10 @@ YagoRank uses a bounded in-process pipeline:
    fusion and before stored documents are inspected. Bounded RM3 widens recall
    without reducing either branch's coverage rule. Quoted phrases add a
    bounded positive preference only when analyzer-normalized terms are adjacent
-   in one stored field of a leading evidence candidate. Other phrase and proximity
-   evidence is then derived from visible text and, for explicit ranking-feature,
-   explain, or near consumers, capped stored-document positions. Ordinary
-   retrieval issues no Bleve phrase or location query. Local and YaCy peer lists
+   in one stored field of a leading evidence candidate. Final lexical ranking,
+   explain, and `near` consumers request capped stored-document positions for
+   their bounded local windows. Peer and web rows fall back to visible title and
+   snippet evidence. Ordinary retrieval issues no Bleve phrase or location query. Local and YaCy peer lists
    use deterministic RRF. Global serving retrieves at least twice the learned
    window from the merged list and scans only until its bounded local candidate
    window is full, preserving peer and web slots.

@@ -15,11 +15,8 @@ type fakeCoreSearcher struct {
 
 func (s *fakeCoreSearcher) Search(_ context.Context, req Request) (Response, error) {
 	s.got = req
-	if s.err != nil {
-		return Response{}, s.err
-	}
 
-	return s.response, nil
+	return s.response, s.err
 }
 
 func TestFederatedSearcherCallsLocalOnlyForLocalRequest(t *testing.T) {
@@ -89,16 +86,20 @@ func TestFederatedSearcherReportsRemoteErrorAsPartialFailure(t *testing.T) {
 	}
 	if len(resp.Results) != 1 ||
 		len(resp.PartialFailures) != 1 ||
-		resp.PartialFailures[0].Reason != "remote down" {
+		resp.PartialFailures[0].Reason != federatedRemoteSearchFailed {
 		t.Fatalf("response = %#v", resp)
 	}
 }
 
 func TestFederatedSearcherUsesDefaultWindowForEmptyLimit(t *testing.T) {
-	local := &fakeCoreSearcher{}
-	remote := &fakeCoreSearcher{}
+	local := &fakeCoreSearcher{response: Response{
+		Results: []Result{{URL: "https://local.example/hit"}},
+	}}
+	remote := &fakeCoreSearcher{response: Response{
+		Results: []Result{{URL: "https://peer.example/hit"}},
+	}}
 
-	_, err := NewFederatedSearcher(local, remote).Search(
+	response, err := NewFederatedSearcher(local, remote).Search(
 		t.Context(),
 		Request{Source: SourceGlobal},
 	)
@@ -108,15 +109,128 @@ func TestFederatedSearcherUsesDefaultWindowForEmptyLimit(t *testing.T) {
 	if local.got.Limit != DefaultPublicLimit || remote.got.Limit != DefaultPublicLimit {
 		t.Fatalf("window local=%#v remote=%#v", local.got, remote.got)
 	}
+	if len(response.Results) != 2 {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestFederatedSearcherUsesDefaultLimitForSingleBranchAnswers(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		local  Response
+		remote Response
+		want   string
+	}{
+		{
+			name:  "local",
+			local: Response{Results: []Result{{URL: "https://local.example/hit"}}},
+			want:  "https://local.example/hit",
+		},
+		{
+			name:   "peer",
+			remote: Response{Results: []Result{{URL: "https://peer.example/hit"}}},
+			want:   "https://peer.example/hit",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response, err := NewFederatedSearcher(
+				&fakeCoreSearcher{response: test.local},
+				&fakeCoreSearcher{response: test.remote},
+			).Search(t.Context(), Request{Source: SourceGlobal})
+			if err != nil || len(response.Results) != 1 ||
+				response.Results[0].URL != test.want {
+				t.Fatalf("response = %#v, error = %v", response, err)
+			}
+		})
+	}
+}
+
+func TestFederatedSearcherReturnsHonestEmptyGlobalAnswer(t *testing.T) {
+	response, err := NewFederatedSearcher(
+		&fakeCoreSearcher{},
+		&fakeCoreSearcher{},
+	).Search(t.Context(), Request{Source: SourceGlobal, Limit: 10})
+	if err != nil || len(response.Results) != 0 || len(response.PartialFailures) != 0 {
+		t.Fatalf("response = %#v, error = %v", response, err)
+	}
 }
 
 func TestFederatedSearcherReturnsLocalError(t *testing.T) {
-	_, err := NewFederatedSearcher(
+	response, err := NewFederatedSearcher(
 		&fakeCoreSearcher{err: errors.New("local failed")},
 		&fakeCoreSearcher{},
 	).Search(t.Context(), Request{Source: SourceGlobal, Limit: 10})
-	if err == nil {
-		t.Fatal("expected local error")
+	if !errors.Is(err, errFederatedSearchUnavailable) ||
+		len(response.PartialFailures) != 1 ||
+		response.PartialFailures[0].Reason != federatedLocalSearchFailed ||
+		response.PartialFailures[0].Reason == "local failed" {
+		t.Fatalf("response = %#v, error = %v", response, err)
+	}
+}
+
+func TestFederatedSearcherKeepsPeerHitAfterLocalFailure(t *testing.T) {
+	response, err := NewFederatedSearcher(
+		&fakeCoreSearcher{err: errors.New("private local failure")},
+		&fakeCoreSearcher{response: Response{
+			Results: []Result{{URL: "https://peer.example/hit", Source: SourceRemote}},
+		}},
+	).Search(t.Context(), Request{Source: SourceGlobal, Limit: 10})
+	if err != nil || len(response.Results) != 1 ||
+		response.Results[0].URL != "https://peer.example/hit" ||
+		response.TotalResults != 1 || len(response.PartialFailures) != 1 ||
+		response.PartialFailures[0].Reason != federatedLocalSearchFailed {
+		t.Fatalf("response = %#v, error = %v", response, err)
+	}
+}
+
+func TestFederatedSearcherKeepsBothRowsAfterLocalOperationalFailure(t *testing.T) {
+	response, err := NewFederatedSearcher(
+		&fakeCoreSearcher{
+			response: Response{Results: []Result{{URL: "https://local.example/hit"}}},
+			err:      errors.New("private local failure"),
+		},
+		&fakeCoreSearcher{response: Response{
+			Results: []Result{{URL: "https://peer.example/hit", Source: SourceRemote}},
+		}},
+	).Search(t.Context(), Request{Source: SourceGlobal, Limit: 10})
+	if err != nil || len(response.Results) != 2 || response.TotalResults != 2 ||
+		len(response.PartialFailures) != 1 ||
+		response.PartialFailures[0].Reason != federatedLocalSearchFailed {
+		t.Fatalf("response = %#v, error = %v", response, err)
+	}
+}
+
+func TestFederatedSearcherKeepsRemoteRowsReturnedWithError(t *testing.T) {
+	response, err := NewFederatedSearcher(
+		&fakeCoreSearcher{},
+		&fakeCoreSearcher{
+			response: Response{Results: []Result{{
+				URL: "https://peer.example/partial", Source: SourceRemote,
+			}}},
+			err: errors.New("private remote failure"),
+		},
+	).Search(t.Context(), Request{Source: SourceGlobal, Limit: 10})
+	if err != nil || len(response.Results) != 1 || response.TotalResults != 1 ||
+		len(response.PartialFailures) != 1 ||
+		response.PartialFailures[0].Reason != federatedRemoteSearchFailed {
+		t.Fatalf("response = %#v, error = %v", response, err)
+	}
+}
+
+func TestFederatedSearcherReturnsStableFailureWhenBothBranchesFail(t *testing.T) {
+	response, err := NewFederatedSearcher(
+		&fakeCoreSearcher{err: errors.New("private local failure")},
+		&fakeCoreSearcher{err: errors.New("private remote failure")},
+	).Search(t.Context(), Request{Source: SourceGlobal, Limit: 10})
+	if !errors.Is(err, errFederatedSearchUnavailable) ||
+		len(response.PartialFailures) != 2 {
+		t.Fatalf("response = %#v, error = %v", response, err)
+	}
+	for _, failure := range response.PartialFailures {
+		if failure.Reason == "private local failure" ||
+			failure.Reason == "private remote failure" {
+			t.Fatalf("private failure escaped: %#v", response.PartialFailures)
+		}
 	}
 }
 
@@ -250,6 +364,73 @@ func TestFederatedSearchPreservesParentCancellation(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 	close(releaseRemote)
+}
+
+func TestDrainRemoteOutcomeKeepsQueuedCompletion(t *testing.T) {
+	outcomes := make(chan searchOutcome, 1)
+	want := searchOutcome{resp: Response{Results: []Result{{URL: "https://peer.example/"}}}}
+	outcomes <- want
+	got, ready := drainRemoteOutcome(outcomes)
+	if !ready || len(got.resp.Results) != 1 ||
+		got.resp.Results[0].URL != want.resp.Results[0].URL {
+		t.Fatalf("outcome = %#v, ready = %v", got, ready)
+	}
+	if got, ready = drainRemoteOutcome(outcomes); ready || len(got.resp.Results) != 0 {
+		t.Fatalf("empty outcome = %#v, ready = %v", got, ready)
+	}
+}
+
+func TestFederatedSearchKeepsPeerCompletionAtCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	peerCompleted := make(chan struct{})
+	remote := searchFunc(func(context.Context, Request) (Response, error) {
+		close(peerCompleted)
+
+		return Response{Results: []Result{{URL: "https://peer.example/hit"}}}, nil
+	})
+	local := searchFunc(func(ctx context.Context, _ Request) (Response, error) {
+		<-ctx.Done()
+
+		return Response{}, ctx.Err()
+	})
+	outcomes := make(chan searchOutcome, 1)
+	go func() {
+		response, err := NewFederatedSearcher(local, remote).Search(
+			ctx,
+			Request{Source: SourceGlobal, Limit: 10},
+		)
+		outcomes <- searchOutcome{resp: response, err: err}
+	}()
+	<-peerCompleted
+	cancel()
+	outcome := <-outcomes
+	if outcome.err != nil || len(outcome.resp.Results) != 1 ||
+		outcome.resp.Results[0].URL != "https://peer.example/hit" {
+		t.Fatalf("response = %#v, error = %v", outcome.resp, outcome.err)
+	}
+}
+
+func TestFederatedSearchCancellationDrainRemainsBounded(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	releaseRemote := make(chan struct{})
+	defer close(releaseRemote)
+	remote := searchFunc(func(context.Context, Request) (Response, error) {
+		<-releaseRemote
+
+		return Response{}, nil
+	})
+	started := time.Now()
+	response, err := NewFederatedSearcher(&fakeCoreSearcher{}, remote).Search(
+		ctx,
+		Request{Source: SourceGlobal, Limit: 10},
+	)
+	if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
+		t.Fatalf("elapsed = %s", elapsed)
+	}
+	if !errors.Is(err, context.Canceled) || len(response.Results) != 0 {
+		t.Fatalf("response = %#v, error = %v", response, err)
+	}
 }
 
 type searchFunc func(context.Context, Request) (Response, error)

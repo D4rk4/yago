@@ -49,9 +49,9 @@ func (r nodeReport) SelfSeed(ctx context.Context) yagomodel.Seed {
 	seed.Uptime = yagomodel.Some(r.id.Uptime(now))
 	seed.UTC = yagomodel.Some(yagomodel.SeedUTCOffsetFromTime(now))
 	seed.LastSeen = yagomodel.Some(yagomodel.NewSeedLastSeenUTC(now))
-	seed.RWICount = yagomodel.Some(countOrZero(ctx, r.sources.RWI.RWICount))
-	seed.URLCount = yagomodel.Some(countOrZero(ctx, r.sources.URLs.Count))
-	seed.KnownSeedCount = yagomodel.Some(r.sources.Peers.KnownPeerCount(ctx))
+	seed.RWICount = countSeedStatistic(ctx, r.sources.RWI.RWICount)
+	seed.URLCount = countSeedStatistic(ctx, r.sources.URLs.Count)
+	seed.KnownSeedCount = knownPeerStatistic(ctx, r.sources.Peers)
 	seed.News = yagomodel.Some(r.sources.News.SeedNews(ctx))
 	seed.NoticedURLCount = yagomodel.Some(0)
 	seed.OfferedURLCount = yagomodel.Some(0)
@@ -61,12 +61,36 @@ func (r nodeReport) SelfSeed(ctx context.Context) yagomodel.Seed {
 	seed.UplinkSpeed = yagomodel.Some(0)
 
 	transfers := r.sources.Transfers.TransferTotals(ctx)
-	seed.SentWordCount = yagomodel.Some(transfers.SentWords)
-	seed.ReceivedWordCount = yagomodel.Some(transfers.ReceivedWords)
-	seed.SentURLCount = yagomodel.Some(transfers.SentURLs)
-	seed.ReceivedURLCount = yagomodel.Some(transfers.ReceivedURLs)
+	if transfers.Known {
+		seed.SentWordCount = yagomodel.Some(transfers.SentWords)
+		seed.ReceivedWordCount = yagomodel.Some(transfers.ReceivedWords)
+		seed.SentURLCount = yagomodel.Some(transfers.SentURLs)
+		seed.ReceivedURLCount = yagomodel.Some(transfers.ReceivedURLs)
+	}
 
 	return seed
+}
+
+type observedKnownPeerCounter interface {
+	ObservedKnownPeerCount(ctx context.Context) (int, error)
+}
+
+func knownPeerStatistic(
+	ctx context.Context,
+	peers KnownPeerCounter,
+) yagomodel.Optional[int] {
+	observed, ok := peers.(observedKnownPeerCounter)
+	if !ok {
+		return yagomodel.Some(max(0, peers.KnownPeerCount(ctx)))
+	}
+	count, err := observed.ObservedKnownPeerCount(ctx)
+	if err != nil {
+		slog.WarnContext(ctx, msgCountUnavailable, slog.Any("error", err))
+
+		return yagomodel.None[int]()
+	}
+
+	return yagomodel.Some(max(0, count))
 }
 
 func baseSeed(id nodeidentity.Identity) yagomodel.Seed {
@@ -88,13 +112,16 @@ func baseSeed(id nodeidentity.Identity) yagomodel.Seed {
 	return seed
 }
 
-func countOrZero(ctx context.Context, fn func(context.Context) (int, error)) int {
+func countSeedStatistic(
+	ctx context.Context,
+	fn func(context.Context) (int, error),
+) yagomodel.Optional[int] {
 	n, err := fn(ctx)
 	if err != nil {
 		slog.WarnContext(ctx, msgCountUnavailable, slog.Any("error", err))
 
-		return 0
+		return yagomodel.None[int]()
 	}
 
-	return n
+	return yagomodel.Some(max(0, n))
 }

@@ -34,10 +34,11 @@ The host-link endpoint `/yacy/idx.json?object=host` returns
 JSON with version, uptime, YaCy's host-reference row definition, and a bounded
 incoming host-link index inferred from stored document outlinks. Collection
 is capped at 4,096 target hosts, 64 source hosts per target, and 32,768 total
-references before graph entries are allocated. One collection scan runs
-process-wide and four endpoint requests are admitted concurrently. A successful
-immutable snapshot is reused for five minutes; concurrent callers share one
-refresh and a failed scan is not cached.
+references before graph entries are allocated. The completion-relative
+background corpus pass builds the graph with the other corpus signals, stores
+it in the same atomic checkpoint, and publishes an immutable snapshot before
+listeners open. Four endpoint requests are admitted concurrently; they only
+read the snapshot and never start or wait for a document-store scan.
 The peer message endpoint `/yacy/message.html` supports permission checks and
 stores inbound peer messages; `iam` is optional, permission checks ignore
 post-only body fields, and attachments are advertised as size `0`. These match

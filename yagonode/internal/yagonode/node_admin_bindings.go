@@ -35,50 +35,7 @@ func newBindingSource(
 }
 
 func (s *bindingSource) Bindings(ctx context.Context) adminui.BindingsView {
-	addresses, err := discoverBindAddresses(s.interfaces)
-	view := adminui.BindingsView{}
-	if err != nil {
-		view.Error = "Could not read the host's network interfaces."
-		addresses = []bindAddress{{host: "", label: bindAllInterfacesLabel}}
-	}
-
-	options := bindInterfaceOptions(addresses)
-	for _, def := range bindDefinitions() {
-		view.Items = append(view.Items, s.item(ctx, def, options))
-	}
-
-	return view
-}
-
-func (s *bindingSource) item(
-	ctx context.Context,
-	def bindDefinition,
-	options []adminui.BindInterface,
-) adminui.BindItem {
-	addr := def.current(s.envConfig)
-	overridden := false
-
-	if stored, set, err := s.store.Get(ctx, def.key); err == nil && set {
-		if host, port, splitErr := splitBindAddr(stored); splitErr == nil {
-			addr, overridden = formatBindAddr(host, port), true
-		}
-	}
-
-	host, port, err := splitBindAddr(addr)
-	portText := ""
-	if err == nil {
-		portText = fmt.Sprintf("%d", port)
-	}
-
-	return adminui.BindItem{
-		Key:         def.key,
-		Title:       def.title,
-		Description: def.description,
-		Host:        host,
-		Port:        portText,
-		Overridden:  overridden,
-		Interfaces:  options,
-	}
+	return s.bindingsView(ctx)
 }
 
 func (s *bindingSource) UpdateBinding(

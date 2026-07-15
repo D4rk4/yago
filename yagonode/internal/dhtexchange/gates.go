@@ -22,18 +22,22 @@ const (
 )
 
 const (
-	GateOpenReason                 = "open"
-	GateOnlineCautionReason        = "online caution is active"
-	GatePublicReachabilityReason   = "public endpoint is not reachable"
-	GateLocalPeerMissingReason     = "local peer seed is unavailable"
-	GateLocalPeerVirginReason      = "local peer is virgin"
-	GateNetworkTooSmallReason      = "network is too small"
-	GateNetworkDHTDisabledReason   = "network dht is disabled"
-	GateDistributionDisabledReason = "index distribution is disabled"
-	GateLocalRWITooSmallReason     = "not enough local rwi words"
-	GateCrawlActiveReason          = "crawl is in progress"
-	GateIndexActiveReason          = "indexing is in progress"
-	GateStorageUnavailableReason   = "storage is unavailable"
+	GateOpenReason                     = "open"
+	GateOnlineCautionReason            = "online caution is active"
+	GatePublicReachabilityReason       = "public endpoint is not reachable"
+	GateLocalPeerMissingReason         = "local peer seed is unavailable"
+	GateLocalPeerVirginReason          = "local peer is virgin"
+	GateNetworkTooSmallReason          = "network is too small"
+	GateNetworkDHTDisabledReason       = "network dht is disabled"
+	GateDistributionDisabledReason     = "index distribution is disabled"
+	GateLocalRWITooSmallReason         = "not enough local rwi words"
+	GateLocalRWIUnavailableReason      = "local rwi state is unavailable"
+	GateCrawlActiveReason              = "crawl is in progress"
+	GateCrawlQueueUnavailableReason    = "crawl queue state is unavailable"
+	GateIndexActiveReason              = "indexing is in progress"
+	GateIndexQueueUnavailableReason    = "index queue state is unavailable"
+	GateStorageUnavailableReason       = "storage is unavailable"
+	GateStorageStatusUnavailableReason = "storage status is unavailable"
 )
 
 type GateConfig struct {
@@ -52,9 +56,13 @@ type GateState struct {
 	LocalPeerVirgin  bool
 	ConnectedPeers   int
 	LocalRWIWords    int
+	LocalRWIKnown    bool
 	CrawlQueueSize   int
+	CrawlQueueKnown  bool
 	IndexQueueSize   int
+	IndexQueueKnown  bool
 	StorageAvailable bool
+	StorageKnown     bool
 }
 
 type GateResult struct {
@@ -100,22 +108,34 @@ func EvaluateGates(state GateState, config GateConfig) GateReport {
 		),
 		gate(GateNetworkDHT, config.NetworkDHTEnabled, GateNetworkDHTDisabledReason),
 		gate(GateDistributionEnabled, config.DistributionEnabled, GateDistributionDisabledReason),
-		gate(
+		observedGate(
 			GateLocalRWI,
+			state.LocalRWIKnown,
 			state.LocalRWIWords >= config.MinimumRWIWord,
 			GateLocalRWITooSmallReason,
+			GateLocalRWIUnavailableReason,
 		),
-		gate(
+		observedGate(
 			GateCrawlIdle,
+			config.AllowWhileCrawling || state.CrawlQueueKnown,
 			config.AllowWhileCrawling || state.CrawlQueueSize == 0,
 			GateCrawlActiveReason,
+			GateCrawlQueueUnavailableReason,
 		),
-		gate(
+		observedGate(
 			GateIndexIdle,
+			config.AllowWhileIndexing || state.IndexQueueKnown,
 			config.AllowWhileIndexing || state.IndexQueueSize <= 1,
 			GateIndexActiveReason,
+			GateIndexQueueUnavailableReason,
 		),
-		gate(GateStorageAvailable, state.StorageAvailable, GateStorageUnavailableReason),
+		observedGate(
+			GateStorageAvailable,
+			state.StorageKnown,
+			state.StorageAvailable,
+			GateStorageUnavailableReason,
+			GateStorageStatusUnavailableReason,
+		),
 	}
 
 	report := GateReport{Open: true, Results: results}

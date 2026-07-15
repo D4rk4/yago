@@ -9,6 +9,14 @@ import (
 	"testing"
 )
 
+type fakePublicSearchStatusSource struct {
+	status PublicSearchStatus
+}
+
+func (s *fakePublicSearchStatusSource) PublicSearchStatus(context.Context) PublicSearchStatus {
+	return s.status
+}
+
 func requestWithHost(host string) *http.Request {
 	req := httptest.NewRequestWithContext(
 		context.Background(), http.MethodGet, "/admin/overview", nil)
@@ -119,5 +127,48 @@ func TestPublicSearchLinkOmittedWhenDisabled(t *testing.T) {
 	got := do(t, console, "/admin/configuration")
 	if strings.Contains(got.body, "Public search") {
 		t.Fatalf("public search link rendered while disabled: %s", got.body)
+	}
+}
+
+func TestPublicSearchHrefTracksLivePortalStatus(t *testing.T) {
+	t.Parallel()
+
+	status := &fakePublicSearchStatusSource{status: PublicSearchStatus{
+		Enabled: true,
+		BaseURL: "https://one.example/",
+	}}
+	console := New(Options{PublicSearch: status, PublicAddr: ":8090"})
+	request := requestWithHost("node.local:9090")
+	if got := console.publicSearchHref(request); got != "https://one.example" {
+		t.Fatalf("initial href = %q", got)
+	}
+
+	status.status = PublicSearchStatus{Enabled: false, BaseURL: "https://two.example"}
+	if got := console.publicSearchHref(request); got != "" {
+		t.Fatalf("disabled href = %q", got)
+	}
+
+	status.status = PublicSearchStatus{Enabled: true}
+	if got := console.publicSearchHref(request); got != "http://node.local:8090/" {
+		t.Fatalf("derived live href = %q", got)
+	}
+}
+
+func TestConfigurationLabelsStartupSnapshot(t *testing.T) {
+	t.Parallel()
+
+	got := do(t, New(Options{Config: fakeConfig{view: ConfigView{}}}), "/admin/configuration")
+	for _, want := range []string{
+		"Startup snapshot",
+		"Values applied when this process started.",
+		"Editable values above are the desired settings",
+		"pending restart",
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("configuration page missing %q", want)
+		}
+	}
+	if strings.Contains(got.body, "Values in effect for this node") {
+		t.Fatal("configuration page claims the startup snapshot is live")
 	}
 }

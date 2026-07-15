@@ -16,8 +16,23 @@ type fakeHostTrustRanking struct {
 	applyErr   error
 }
 
-func (ranking *fakeHostTrustRanking) HostTrust(context.Context) HostTrustView {
-	return ranking.trust
+type unavailableHostTrustRanking struct {
+	*fakeRanking
+}
+
+func (unavailableHostTrustRanking) HostTrust(context.Context) (HostTrustView, bool) {
+	return HostTrustView{}, false
+}
+
+func (unavailableHostTrustRanking) ApplyHostTrust(
+	context.Context,
+	HostTrustView,
+) error {
+	return context.Canceled
+}
+
+func (ranking *fakeHostTrustRanking) HostTrust(context.Context) (HostTrustView, bool) {
+	return ranking.trust, true
 }
 
 func (ranking *fakeHostTrustRanking) ApplyHostTrust(
@@ -54,6 +69,18 @@ func TestConsoleYagoRankRendersHostTrust(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("host trust page missing %q", want)
 		}
+	}
+}
+
+func TestConsoleYagoRankHidesUnavailableHostTrust(t *testing.T) {
+	t.Parallel()
+
+	ranking := unavailableHostTrustRanking{
+		fakeRanking: &fakeRanking{profile: sampleRankingProfile()},
+	}
+	body := do(t, New(Options{Ranking: ranking}), "/admin/yagorank").body
+	if strings.Contains(body, "Host trust") || strings.Contains(body, "trusted domain") {
+		t.Fatalf("unavailable host trust rendered as known: %s", body)
 	}
 }
 

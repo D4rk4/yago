@@ -113,6 +113,18 @@ func TestConsoleSecurityUnavailableWithoutSource(t *testing.T) {
 	}
 }
 
+func TestConsoleSecurityReadErrorDoesNotClaimNoKeysExist(t *testing.T) {
+	t.Parallel()
+
+	got := do(t, New(Options{Security: &fakeSecurity{view: SecurityView{
+		Error: "Could not load API keys.",
+	}}}), "/admin/security")
+	if !strings.Contains(got.body, "Could not load API keys.") ||
+		strings.Contains(got.body, "No API keys yet.") {
+		t.Fatalf("security error rendered as an empty key set: %s", got.body)
+	}
+}
+
 func TestConsoleSecurityMintShowsSecretOnce(t *testing.T) {
 	t.Parallel()
 

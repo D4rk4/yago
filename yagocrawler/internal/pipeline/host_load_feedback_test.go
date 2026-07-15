@@ -2,6 +2,7 @@ package pipeline_test
 
 import (
 	"context"
+	"net"
 	"net/url"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yagocrawler/internal/pageindex"
 	"github.com/D4rk4/yago/yagocrawler/internal/pipeline"
+	"github.com/D4rk4/yago/yagocrawler/internal/robots"
 	"github.com/D4rk4/yago/yagomodel"
 )
 
@@ -28,10 +30,21 @@ func (f *recordingFeedback) Throttled(rawURL string, retryAfter time.Duration, _
 
 func (f *recordingFeedback) Succeeded(string, time.Time) { f.successes++ }
 
-// TestPipelineFeedsHostLoadSignals: a throttled fetch reports the Retry-After
-// wish, a served page reports success, and a plain failure reports neither.
+type hostOutcomeFrontier struct {
+	*recordingFrontier
+	outcomes []bool
+}
+
+func (f *hostOutcomeFrontier) RecordHostFetchOutcome(
+	_ context.Context,
+	_ crawljob.CrawlJob,
+	failed bool,
+) {
+	f.outcomes = append(f.outcomes, failed)
+}
+
 func TestPipelineFeedsHostLoadSignals(t *testing.T) {
-	frontier := newRecordingFrontier()
+	frontier := &hostOutcomeFrontier{recordingFrontier: newRecordingFrontier()}
 	feedback := &recordingFeedback{}
 	p := pipeline.NewPipeline(
 		frontier,
@@ -44,6 +57,16 @@ func TestPipelineFeedsHostLoadSignals(t *testing.T) {
 				}
 			case "/broken":
 				return pagefetch.FetchedPage{}, pagefetch.ErrPageRejected
+			case "/robots":
+				return pagefetch.FetchedPage{}, robots.ErrDisallowed
+			case "/connection":
+				return pagefetch.FetchedPage{}, &net.DNSError{
+					Err: "timeout", Name: target.Host, IsTimeout: true,
+				}
+			case "/unsupported":
+				return pagefetch.FetchedPage{
+					URL: target, ContentType: "application/x-proprietary", Body: []byte("body"),
+				}, nil
 			default:
 				return htmlPage(), nil
 			}
@@ -57,21 +80,29 @@ func TestPipelineFeedsHostLoadSignals(t *testing.T) {
 		pipeline.WithHostLoadFeedback(feedback),
 	)
 
-	frontier.jobs = make(chan crawljob.CrawlJob, 3)
+	frontier.jobs = make(chan crawljob.CrawlJob, 6)
 	frontier.jobs <- crawljob.CrawlJob{URL: "https://busy.example/throttled"}
 	frontier.jobs <- crawljob.CrawlJob{URL: "https://busy.example/broken"}
+	frontier.jobs <- crawljob.CrawlJob{URL: "https://busy.example/robots"}
+	frontier.jobs <- crawljob.CrawlJob{URL: "https://busy.example/connection"}
+	frontier.jobs <- crawljob.CrawlJob{URL: "https://busy.example/unsupported"}
 	frontier.jobs <- crawljob.CrawlJob{URL: "https://calm.example/page"}
 	close(frontier.jobs)
 	p.RunWorkers(context.Background(), context.Background(), 1)
 
-	if len(feedback.throttled) != 1 || feedback.throttled[0] != time.Minute {
+	if len(feedback.throttled) != 2 ||
+		feedback.throttled[0] != time.Minute || feedback.throttled[1] != 0 {
 		t.Fatalf("throttle signals = %v", feedback.throttled)
 	}
-	if feedback.lastTarget != "https://busy.example/throttled" {
+	if feedback.lastTarget != "https://busy.example/connection" {
 		t.Fatalf("throttle target = %q", feedback.lastTarget)
 	}
 	if feedback.successes != 1 {
 		t.Fatalf("successes = %d, want 1", feedback.successes)
+	}
+	if len(frontier.outcomes) != 3 || !frontier.outcomes[0] ||
+		!frontier.outcomes[1] || frontier.outcomes[2] {
+		t.Fatalf("host availability outcomes = %v", frontier.outcomes)
 	}
 }
 

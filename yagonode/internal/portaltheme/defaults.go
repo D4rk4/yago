@@ -23,7 +23,7 @@ const defaultHead = `<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>{{#if query}}{{query}} — {{/if}}{{brand}} search</title>
-<link rel="search" type="application/opensearchdescription+xml" title="{{brand}} search" href="/opensearch.xml">
+<link rel="search" type="application/opensearchdescription+xml" title="{{openSearchTitle}}" href="/opensearch.xml">
 {{#if rssUrl}}<link rel="alternate" type="application/rss+xml" title="{{brand}}: {{query}}" href="{{rssUrl}}">{{/if}}
 <style>{{{styles}}}</style>`
 
@@ -165,16 +165,18 @@ const defaultResultsBody = `<!doctype html>
   {{else}}{{#if submitted}}
   {{#if results.recovered}}
   <p class="meta" role="status">No exact matches for “{{results.query}}” — showing close matches instead.{{#if results.didYouMean}} Did you mean <a href="{{results.didYouMeanUrl}}">{{results.didYouMean}}</a>?{{/if}}</p>
-  {{else}}{{#if results.didYouMean}}
+  {{else}}{{#if results.incomplete}}{{else}}{{#if results.didYouMean}}
   <p class="meta" role="status">No results matched. Did you mean <a href="{{results.didYouMeanUrl}}">{{results.didYouMean}}</a>?</p>
   {{/if}}
   {{/if}}
-  <p class="meta" role="status">{{formatNumber results.totalResults}} {{pluralize results.totalResults "result" "results"}} for “{{results.query}}”{{#if elapsed}} ({{elapsed}}){{/if}}.{{#if results.results}} On this page: {{results.localCount}} from this node · {{results.peerCount}} from peers · {{results.webCount}} from the web.{{/if}}{{#if results.peersFailed}} {{results.peersFailed}} peer(s) unreachable or timed out.{{/if}}</p>
+  {{/if}}
+  {{#if results.incomplete}}<p class="meta" role="status">Some enabled search sources were unavailable; {{#if results.results}}this result window may be incomplete.{{else}}no complete result set is available. Please try again.{{/if}}{{#if results.federationUnavailable}} Peer federation was unavailable for part of this search.{{/if}}{{#if results.peersFailed}} {{results.peersFailed}} identified peer response(s) failed.{{/if}}</p>{{/if}}
+  <p class="meta" role="status">{{#if results.totalResults}}Up to {{formatNumber results.totalResults}} {{pluralize results.totalResults "result" "results"}} available in this search window{{else}}{{#if results.incomplete}}No results are currently available{{else}}0 results{{/if}}{{/if}} for “{{results.query}}”{{#if elapsed}} ({{elapsed}}){{/if}}.{{#if results.results}} On this page: {{results.localCount}} from this node · {{results.peerCount}} from peers · {{results.webCount}} from the web.{{/if}}</p>
   {{#if results.facets}}<div class="serp-grid"><aside class="facets" aria-label="Filter results">
   <details open>
   <summary>Filters</summary>
   {{#each results.facets}}
-  <fieldset><legend>{{title}}</legend>
+  <fieldset><legend>{{title}} — counts from {{scope}}</legend>
   <ul>
   {{#each items}}<li>{{#if url}}<a href="{{url}}">{{label}}</a>{{else}}{{label}}{{/if}} <span class="count">({{count}})</span></li>
   {{/each}}

@@ -17,5 +17,6 @@ func (f *Frontier) cleanupRunLocked(runID uuid.UUID) {
 	delete(f.paused, provenance)
 	delete(f.controlSeen, provenance)
 	delete(f.rateInterval, provenance)
+	delete(f.pagesPerMinute, provenance)
 	delete(f.rateNextDue, provenance)
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/corpussignals"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
+	"github.com/D4rk4/yago/yagonode/internal/hostlinks"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/hosttrust"
 	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
@@ -33,6 +34,7 @@ type corpusSignalRefresh struct {
 	hostRank             *hostrank.Holder
 	spell                *spellcheck.Holder
 	wordForms            *wordforms.Holder
+	hostLinks            *hostlinks.SnapshotHolder
 	includeWordForms     bool
 	trust                hostTrustPolicySource
 	citations            []hostrank.Citation
@@ -40,6 +42,8 @@ type corpusSignalRefresh struct {
 	spellingVocabulary   map[string]int
 	wordFormsVocabulary  map[string]int
 	wordFormsReady       bool
+	hostLinkGraph        hostlinks.Graph
+	hostLinksReady       bool
 	completedAtUnixMilli int64
 	checkpoints          corpusSignalCheckpointRepository
 	initialRefreshDelay  time.Duration
@@ -105,19 +109,21 @@ func (r *corpusSignalRefresh) scanAndPublish(ctx context.Context) {
 	if r.includeWordForms {
 		wordFormsFrequency = spellcheck.NewFrequencySynopsis(wordFormsVocabularyTerms)
 	}
-	err := r.documents.StoredDocuments(ctx, func(doc documentstore.Document) (bool, error) {
-		visitDocumentAuthorityCitations(doc, func(citation hostrank.Citation) {
-			citationSample.Add(citation)
-		})
-		spellFrequency.ObserveText(doc.Title)
-		spellFrequency.ObserveText(doc.ExtractedText)
-		if wordFormsFrequency != nil {
-			wordFormsFrequency.ObserveText(doc.Title)
-			wordFormsFrequency.ObserveText(doc.ExtractedText)
-		}
+	hostLinkAccumulator := hostLinkAccumulator{incoming: map[string]map[string]hostLinkReference{}}
+	err := scanCorpusSignalDocuments(
+		ctx,
+		r.documents,
+		func(doc documentstore.Document) (bool, error) {
+			visitDocumentAuthorityCitations(doc, func(citation hostrank.Citation) {
+				citationSample.Add(citation)
+			})
+			collectDocumentHostLinks(&hostLinkAccumulator, doc)
+			spellcheck.ObserveTextFrequencies(doc.Title, spellFrequency, wordFormsFrequency)
+			spellcheck.ObserveTextFrequencies(doc.ExtractedText, spellFrequency, wordFormsFrequency)
 
-		return true, nil
-	})
+			return true, nil
+		},
+	)
 	if err != nil {
 		slog.WarnContext(ctx, corpusSignalRefreshFailedMessage, slog.Any("error", err))
 
@@ -142,9 +148,14 @@ func (r *corpusSignalRefresh) scanAndPublish(ctx context.Context) {
 	if wordFormsReady {
 		wordFormsVocabulary = wordFormsFrequency.Frequencies()
 	}
+	hostLinkGraph := hostlinks.Graph{
+		RowDefinition: hostlinks.HostReferenceRowDefinition,
+		LinkedHosts:   hostLinkGraphHosts(hostLinkAccumulator.incoming),
+	}
 	checkpoint := r.checkpointWithTrustPolicy(corpussignals.Checkpoint{
 		Authority: authority, Citations: citations, Spelling: spellingVocabulary,
 		WordForms: wordFormsVocabulary, WordFormsReady: wordFormsReady,
+		HostLinks: hostLinkGraph, HostLinksReady: true,
 		CompletedAtUnixMilli: r.currentTime().UnixMilli(),
 	}, trustPolicy)
 	if ctx.Err() != nil {
@@ -168,6 +179,7 @@ func (r *corpusSignalRefresh) publishAuthority(ctx context.Context) {
 	checkpoint := r.checkpointWithTrustPolicy(corpussignals.Checkpoint{
 		Authority: table, Citations: r.citations, Spelling: r.spellingVocabulary,
 		WordForms: r.wordFormsVocabulary, WordFormsReady: r.wordFormsReady,
+		HostLinks: r.hostLinkGraph, HostLinksReady: r.hostLinksReady,
 		CompletedAtUnixMilli: r.completedAtUnixMilli,
 	}, trustPolicy)
 	r.persistCheckpoint(ctx, checkpoint)

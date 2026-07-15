@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
+	"github.com/D4rk4/yago/yagonode/internal/hostlinks"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/hosttrust"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
@@ -100,11 +101,13 @@ func TestCorpusSignalRefreshPublishesAllSignalsFromOneScan(t *testing.T) {
 	hostRank := hostrank.NewHolder()
 	spell := spellcheck.NewHolder()
 	forms := wordforms.NewHolder()
+	hostLinkSnapshot := hostlinks.NewSnapshotHolder()
 	refresh := &corpusSignalRefresh{
 		documents:        corpus,
 		hostRank:         hostRank,
 		spell:            spell,
 		wordForms:        forms,
+		hostLinks:        hostLinkSnapshot,
 		includeWordForms: true,
 	}
 
@@ -125,6 +128,11 @@ func TestCorpusSignalRefreshPublishesAllSignalsFromOneScan(t *testing.T) {
 	}
 	if !refresh.citationsReady || len(refresh.citations) != 2 {
 		t.Fatalf("retained citations = %t, %d", refresh.citationsReady, len(refresh.citations))
+	}
+	graph := hostLinkSnapshot.IncomingHostLinks(t.Context())
+	if graph.RowDefinition != hostlinks.HostReferenceRowDefinition ||
+		len(graph.LinkedHosts) != 1 || len(graph.LinkedHosts[0].References) != 2 {
+		t.Fatalf("host-link snapshot = %#v", graph)
 	}
 }
 
@@ -166,11 +174,17 @@ func TestCorpusSignalRefreshFailurePreservesPublishedSignals(t *testing.T) {
 		map[string]int{"черногория": 5, "черногории": 3},
 		searchindex.StemWord,
 	))
+	hostLinkSnapshot := hostlinks.NewSnapshotHolder()
+	hostLinkSnapshot.Replace(hostlinks.Graph{
+		RowDefinition: hostlinks.HostReferenceRowDefinition,
+		LinkedHosts:   []hostlinks.LinkedHost{{HostHash: "retain"}},
+	})
 	refresh := &corpusSignalRefresh{
 		documents:        &countedCorpus{err: errors.New("scan failed")},
 		hostRank:         hostRank,
 		spell:            spell,
 		wordForms:        forms,
+		hostLinks:        hostLinkSnapshot,
 		includeWordForms: true,
 	}
 
@@ -187,6 +201,12 @@ func TestCorpusSignalRefreshFailurePreservesPublishedSignals(t *testing.T) {
 	}
 	if refresh.citationsReady {
 		t.Fatal("failed scan replaced retained citations")
+	}
+	if graph := hostLinkSnapshot.IncomingHostLinks(
+		t.Context(),
+	); len(graph.LinkedHosts) != 1 ||
+		graph.LinkedHosts[0].HostHash != "retain" {
+		t.Fatalf("preserved host links = %#v", graph)
 	}
 }
 

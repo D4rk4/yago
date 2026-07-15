@@ -2,7 +2,15 @@ package searchcore
 
 import (
 	"context"
+	"errors"
 	"fmt"
+)
+
+var errFederatedSearchUnavailable = errors.New("federated search unavailable")
+
+const (
+	federatedLocalSearchFailed  = "local search failed"
+	federatedRemoteSearchFailed = "remote search failed"
 )
 
 type federatedSearcher struct {
@@ -24,64 +32,83 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 	if req.Source != SourceGlobal || s.remote == nil {
 		resp, err := s.local.Search(ctx, req)
 		if err != nil {
-			return Response{}, fmt.Errorf("local search: %w", err)
+			resp = federatedBranchFailure(
+				resp,
+				PartialFailureSourceLocalSearch,
+				federatedLocalSearchFailed,
+			)
+			resp.Request = req
+			if len(resp.Results) > 0 {
+				return resp, nil
+			}
+			if cause := context.Cause(ctx); cause != nil {
+				return resp, fmt.Errorf("federated search: %w", cause)
+			}
+
+			return resp, errFederatedSearchUnavailable
 		}
 
 		return resp, nil
 	}
 
 	window := requestWindow(req)
-	// The peer fan-out runs concurrently with the local query: remote search
-	// spends seconds waiting on peers while the local index answers in
-	// milliseconds, so running them in sequence added the whole local latency
-	// to every federated query (PERF-02). The channel is buffered, so the
-	// remote goroutine never leaks even when the local error path returns
-	// without draining it.
 	remoteOutcome := make(chan searchOutcome, 1)
 	go func() {
 		resp, err := s.remote.Search(ctx, window)
 		remoteOutcome <- searchOutcome{resp: resp, err: err}
 	}()
-	localResp, err := s.local.Search(ctx, window)
-	if err != nil {
-		return Response{}, fmt.Errorf("local search: %w", err)
-	}
+	localResp, localErr := s.local.Search(ctx, window)
 	var remote searchOutcome
+	remoteReady := false
 	select {
 	case remote = <-remoteOutcome:
+		remoteReady = true
 	case <-ctx.Done():
-		if ctx.Err() == context.Canceled {
-			return Response{}, fmt.Errorf("remote search: %w", ctx.Err())
-		}
-
-		return localFederatedResponse(req, localResp, ctx.Err()), nil
+		remote, remoteReady = drainRemoteOutcome(remoteOutcome)
+	}
+	if !remoteReady {
+		remote.err = context.Cause(ctx)
+	}
+	if localErr != nil {
+		localResp = federatedBranchFailure(
+			localResp,
+			PartialFailureSourceLocalSearch,
+			federatedLocalSearchFailed,
+		)
 	}
 	remoteResp := remote.resp
 	if remote.err != nil {
-		remoteResp = Response{
-			PartialFailures: []PartialFailure{{
-				Source: PartialFailureSourceRemoteYaCy,
-				Reason: remote.err.Error(),
-			}},
-		}
+		remoteResp = federatedBranchFailure(
+			remoteResp,
+			PartialFailureSourceRemoteYaCy,
+			federatedRemoteSearchFailed,
+		)
 	}
 
-	// Reciprocal Rank Fusion is the single merge point: local and remote
-	// lists fuse by rank, so incomparable peer scores never need calibration
-	// (SEARCH-12; Cormack et al., SIGIR 2009).
 	merged := FuseByReciprocalRank(
 		localResp.Results,
 		remoteResp.Results,
 	)
 
-	return Response{
-		Request:         req,
-		TotalResults:    localResp.TotalResults + remoteResp.TotalResults,
-		Results:         offsetResults(merged, req.Offset, req.Limit),
+	response := Response{
+		Request: req,
+		TotalResults: federatedBranchTotal(localResp, localErr) +
+			federatedBranchTotal(remoteResp, remote.err),
+		Results:         offsetResults(merged, req.Offset, rankingResultLimit(req)),
 		PartialFailures: append(localResp.PartialFailures, remoteResp.PartialFailures...),
-		// Facets describe the local corpus only; peers report no counts.
-		Facets: localResp.Facets,
-	}, nil
+		Facets:          localResp.Facets,
+	}
+	if len(merged) > 0 {
+		return response, nil
+	}
+	if cause := context.Cause(ctx); cause != nil {
+		return response, fmt.Errorf("federated search: %w", cause)
+	}
+	if localErr != nil {
+		return response, errFederatedSearchUnavailable
+	}
+
+	return response, nil
 }
 
 func requestWindow(req Request) Request {

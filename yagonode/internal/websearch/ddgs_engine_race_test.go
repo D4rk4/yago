@@ -43,6 +43,41 @@ func TestEngineRaceReturnsFirstAcceptedAnswer(t *testing.T) {
 	}
 }
 
+func TestEngineRaceContinuesAfterInsufficientTermCoverage(t *testing.T) {
+	var firstCalls atomic.Int32
+	var secondCalls atomic.Int32
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Host {
+		case "first.example":
+			firstCalls.Add(1)
+		case "second.example":
+			secondCalls.Add(1)
+		}
+
+		return htmlResponse(http.StatusOK, "answer"), nil
+	})
+	provider := NewDDGSProvider(DDGSConfig{
+		Client: &http.Client{Transport: transport},
+		Accept: VerifiedForQuery,
+		Now:    fixedClock(),
+	})
+	provider.engines = []engine{
+		tracingEngine("first", Result{Title: "alpha", URL: "https://weak.example/"}),
+		tracingEngine("second", Result{Title: "alpha beta", URL: "https://strong.example/"}),
+	}
+
+	results, err := provider.Search(t.Context(), "alpha beta gamma", 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 1 || results[0].URL != "https://strong.example/" {
+		t.Fatalf("results = %#v", results)
+	}
+	if firstCalls.Load() != 1 || secondCalls.Load() != 1 {
+		t.Fatalf("engine calls = first:%d second:%d", firstCalls.Load(), secondCalls.Load())
+	}
+}
+
 func TestEngineRaceCancelsSlowPreferredEngine(t *testing.T) {
 	canceled := make(chan struct{})
 	client := &http.Client{

@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>{{if .Query}}{{.Query}} — {{end}}{{.Brand}} search</title>
-<link rel="search" type="application/opensearchdescription+xml" title="{{.Brand}} search" href="/opensearch.xml">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="search" type="application/opensearchdescription+xml" title="{{.OpenSearchTitle}}" href="/opensearch.xml">
 {{if .RSSURL}}<link rel="alternate" type="application/rss+xml" title="{{.Brand}}: {{.Query}}" href="{{.RSSURL}}">{{end}}
 <style>
   body { font-family: Arial, Helvetica, sans-serif; color: #161616; background: #ffffff; margin: 0; }
@@ -125,16 +126,17 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   {{with .Results}}
   {{if .Recovered}}
   <p class="meta" role="status">No exact matches for “{{.Query}}” — showing close matches instead.{{if .DidYouMean}} Did you mean <a href="{{.DidYouMeanURL}}">{{.DidYouMean}}</a>?{{end}}</p>
-  {{else if .DidYouMean}}
+  {{else if and .DidYouMean (not .Incomplete)}}
   <p class="meta" role="status">No results matched. Did you mean <a href="{{.DidYouMeanURL}}">{{.DidYouMean}}</a>?</p>
   {{end}}
-  <p class="meta" role="status">{{.TotalResults}} result(s) for “{{.Query}}”{{if $.Elapsed}} ({{$.Elapsed}}){{end}}.{{if .Results}} Showing {{$.ShownFrom}}–{{$.ShownTo}} on this page: {{.LocalCount}} from this node · {{.PeerCount}} from peers · {{.WebCount}} from the web.{{end}}{{if .PeersFailed}} {{.PeersFailed}} peer(s) unreachable or timed out.{{end}}</p>
+  {{if .Incomplete}}<p class="meta" role="status">Some enabled search sources were unavailable; {{if .Results}}this result window may be incomplete.{{else}}no complete result set is available. Please try again.{{end}}{{if .FederationUnavailable}} Peer federation was unavailable for part of this search.{{end}}{{if .PeersFailed}} {{.PeersFailed}} identified peer response(s) failed.{{end}}</p>{{end}}
+  <p class="meta" role="status">{{if .TotalResults}}Up to {{.TotalResults}} result(s) available in this search window{{else if .Incomplete}}No results are currently available{{else}}0 result(s){{end}} for “{{.Query}}”{{if $.Elapsed}} ({{$.Elapsed}}){{end}}.{{if .Results}} Showing {{$.ShownFrom}}–{{$.ShownTo}} on this page: {{.LocalCount}} from this node · {{.PeerCount}} from peers · {{.WebCount}} from the web.{{end}}</p>
   {{if .Hint}}<p class="meta" role="status">{{.Hint}}</p>{{end}}
   {{if .Facets}}<div class="serp-grid"><aside class="facets" aria-label="Filter results">
   <details open>
   <summary>Filters</summary>
   {{range .Facets}}
-  <fieldset><legend>{{.Title}}</legend>
+  <fieldset><legend>{{.Title}} — counts from {{.Scope}}</legend>
   <ul>
   {{range .Items}}<li>{{if .URL}}<a href="{{.URL}}">{{.Label}}</a>{{else}}{{.Label}}{{end}} <span class="count">({{.Count}})</span></li>
   {{end}}

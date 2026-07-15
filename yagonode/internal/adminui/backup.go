@@ -28,6 +28,7 @@ type backupPageData struct {
 	Nav        []NavItem
 	CSRF       string
 	Section    sectionView
+	Available  bool
 	Error      string
 	DataDir    string
 	Used       string
@@ -59,9 +60,10 @@ func (c *Console) handleBackup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		data.Error = "Reading the storage status failed: " + err.Error()
 	} else {
+		data.Available = true
 		data.DataDir = status.DataDir
 		data.Used = formatByteSize(status.UsedBytes)
-		data.Quota = formatByteSize(status.QuotaBytes)
+		data.Quota = formatStorageQuota(status.QuotaBytes)
 		data.DockerBackup = "deploy/backup.sh docker docker-compose.yml yago-node yago-data ./backups"
 		data.DockerRestore = "deploy/restore.sh docker docker-compose.yml yago-node yago-data ./backups/<archive>.tar.gz"
 		data.SystemdBackup = fmt.Sprintf(
@@ -76,11 +78,9 @@ func (c *Console) handleBackup(w http.ResponseWriter, r *http.Request) {
 	c.render(r.Context(), w, c.tpl.backup, "layout", data)
 }
 
-// formatByteSize renders a byte count for operators; a zero quota reads as
-// unlimited because the vault treats it that way.
 func formatByteSize(count int64) string {
 	if count <= 0 {
-		return "unlimited"
+		return "0 B"
 	}
 	units := []string{"B", "KiB", "MiB", "GiB", "TiB"}
 	value := float64(count)
@@ -91,4 +91,12 @@ func formatByteSize(count int64) string {
 	}
 
 	return fmt.Sprintf("%.1f %s", value, units[unit])
+}
+
+func formatStorageQuota(count int64) string {
+	if count <= 0 {
+		return "unlimited"
+	}
+
+	return formatByteSize(count)
 }

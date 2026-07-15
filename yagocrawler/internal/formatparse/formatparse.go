@@ -9,6 +9,7 @@ package formatparse
 import (
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawler/internal/pageparse"
@@ -43,8 +44,17 @@ var htmlMimes = map[string]bool{
 // families lists the YaCy TextParser format families and their toggles; parse
 // functions arrive with the per-family follow-up slices.
 func families() []family {
-	return append(documentFamilies(), mediaFamilies()...)
+	registeredFamiliesOnce.Do(func() {
+		registeredFamilies = append(documentFamilies(), mediaFamilies()...)
+	})
+
+	return registeredFamilies
 }
+
+var (
+	registeredFamiliesOnce sync.Once
+	registeredFamilies     []family
+)
 
 func documentFamilies() []family {
 	return []family{
@@ -172,27 +182,28 @@ func Parse(
 ) (pageparse.ParsedPage, bool) {
 	ext := urlExtension(rawURL)
 	mime := mimeType(contentType)
-	if htmlMimes[mime] || (mime == "" || strings.HasPrefix(mime, "text/")) && htmlExtensions[ext] {
+	if (htmlMimes[mime] ||
+		(mime == "" || strings.HasPrefix(mime, "text/")) && htmlExtensions[ext]) &&
+		bodyAllowsTextFallback(body) {
 		return pageparse.ParseHTML(rawURL, contentType, body), true
 	}
 
 	// The URL extension is more specific than generic MIME bindings (a
 	// FreeMind .mm arrives as text/xml), so extension matches win.
-	registered := families()
-	for _, entry := range registered {
-		if entry.extensions[ext] {
-			return entry.dispatch(rawURL, contentType, body, toggles)
-		}
-	}
-	for _, entry := range registered {
-		if entry.mimes[mime] {
-			return entry.dispatch(rawURL, contentType, body, toggles)
-		}
+	if page, parsed, matched := dispatchRegisteredFamily(
+		rawURL,
+		contentType,
+		body,
+		toggles,
+	); matched {
+		return page, parsed
 	}
 
-	// Unknown types fall back to the HTML parser, which degrades to link-less
-	// text handling — the pre-registry behavior.
-	return pageparse.ParseHTML(rawURL, contentType, body), true
+	if (mime == "" || strings.HasPrefix(mime, "text/")) && bodyAllowsTextFallback(body) {
+		return pageparse.ParseHTML(rawURL, contentType, body), true
+	}
+
+	return pageparse.ParsedPage{URL: rawURL}, false
 }
 
 func urlExtension(rawURL string) string {

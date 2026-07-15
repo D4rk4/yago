@@ -43,5 +43,6 @@ func (f *Frontier) discardPendingControlLocked(provenance string) {
 	delete(f.paused, provenance)
 	delete(f.state.cancelled, provenance)
 	delete(f.rateInterval, provenance)
+	delete(f.pagesPerMinute, provenance)
 	delete(f.rateNextDue, provenance)
 }

@@ -10,11 +10,12 @@ import (
 // order provenance token so the node and worker agree on run identity without the
 // node owning the worker's in-memory frontier.
 type RunReport struct {
-	Provenance    []byte
-	ProfileHandle string
-	ProfileName   string
-	State         yagocrawlcontract.CrawlRunState
-	Tally         yagocrawlcontract.CrawlRunTally
+	Provenance     []byte
+	ProfileHandle  string
+	ProfileName    string
+	State          yagocrawlcontract.CrawlRunState
+	Tally          yagocrawlcontract.CrawlRunTally
+	PagesPerMinute uint32
 }
 
 // ProgressReporter receives the run lifecycle snapshots the consumer emits as a

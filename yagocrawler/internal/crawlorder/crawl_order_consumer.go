@@ -233,11 +233,12 @@ func (c *CrawlOrderConsumer) reportRun(
 		return
 	}
 	c.progress.ReportRun(ctx, RunReport{
-		Provenance:    order.Provenance,
-		ProfileHandle: order.Profile.Handle,
-		ProfileName:   order.Profile.Name,
-		State:         state,
-		Tally:         tally,
+		Provenance:     order.Provenance,
+		ProfileHandle:  order.Profile.Handle,
+		ProfileName:    order.Profile.Name,
+		State:          state,
+		Tally:          tally,
+		PagesPerMinute: c.frontier.EffectivePagesPerMinute(order.Provenance),
 	})
 }
 

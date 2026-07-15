@@ -5,11 +5,11 @@
 <div class="cds-tile-grid">
   <section class="cds-tile">
     <div class="cds-metric__label">Known peers</div>
-    <div class="cds-metric__value">{{.Network.KnownPeers}}</div>
+    <div class="cds-metric__value">{{if .Network.RosterAvailable}}{{.Network.KnownPeers}}{{else}}Unavailable{{end}}</div>
   </section>
   <section class="cds-tile">
     <div class="cds-metric__label">Reachable peers</div>
-    <div class="cds-metric__value">{{.Network.ReachablePeers}}</div>
+    <div class="cds-metric__value">{{if .Network.RosterAvailable}}{{.Network.ReachablePeers}}{{else}}Unavailable{{end}}</div>
   </section>
   <section class="cds-tile">
     <div class="cds-metric__label">DHT distribution</div>
@@ -50,7 +50,9 @@
   </table>
 </div>
 <h2 class="cds-h2" id="peers">Peers</h2>
-{{if .PeerTable.Total}}
+{{if not .Network.RosterAvailable}}
+<div class="cds-inline-notification cds-inline-notification--error" role="alert">Peer roster is unavailable.</div>
+{{else if .PeerTable.Total}}
 {{$t := .PeerTable}}
 {{$links := .PeerLinks}}
 <div class="cds-scroll-x">
@@ -69,14 +71,14 @@
     <tbody>
       {{range $t.Peers}}
       <tr>
-        <th scope="row">{{if $links}}<a href="/admin/network/peer?hash={{.Hash}}">{{if .Name}}{{.Name}}{{else}}{{.Hash}}{{end}}</a>{{else if .Name}}{{.Name}}{{else}}—{{end}}{{if .Blocked}} <span class="cds-tag cds-tag--error">blocked</span>{{end}}</th>
+        <th scope="row">{{if $links}}<a href="/admin/network/peer?hash={{.Hash}}">{{if .Name}}{{.Name}}{{else}}{{.Hash}}{{end}}</a>{{else if .Name}}{{.Name}}{{else}}—{{end}}{{if .BlockStatusKnown}}{{if .Blocked}} <span class="cds-tag cds-tag--error">blocked</span>{{end}}{{else}} <span class="cds-tag cds-tag--debug">block status unavailable</span>{{end}}</th>
         <td>{{if .Type}}{{.Type}}{{else}}—{{end}}</td>
         <td>{{if .Address}}{{.Address}}{{else}}—{{end}}</td>
         <td>{{range .Flags}}<span class="cds-tag cds-tag--info">{{.}}</span> {{else}}—{{end}}</td>
-        <td>{{.RWICount}}</td>
+        <td>{{if .RWIKnown}}{{.RWICount}}{{else}}—{{end}}</td>
         <td>{{if .LastSeen}}{{.LastSeen}}{{else}}—{{end}}</td>
-        <td><span class="cds-tag cds-tag--{{if eq .HealthTag "healthy"}}info{{else if eq .HealthTag "aging"}}warn{{else}}error{{end}}">{{.Health}} {{.HealthTag}}</span></td>
-        <td>{{.AgeDays}}</td>
+        <td>{{if .HealthKnown}}<span class="cds-tag cds-tag--{{if eq .HealthTag "healthy"}}info{{else if eq .HealthTag "aging"}}warn{{else}}error{{end}}">{{.Health}} {{.HealthTag}}</span>{{else}}—{{end}}</td>
+        <td>{{if .AgeKnown}}{{.AgeDays}}{{else}}—{{end}}</td>
         <td class="cds-mono">{{.Hash}}</td>
       </tr>
       {{end}}
@@ -105,8 +107,8 @@
       {{range .Network.Seedlists}}
       <tr>
         <td class="cds-mono">{{.URL}}</td>
-        <td>{{if .Imported}}{{.LastImport}}{{else}}—{{end}}</td>
-        <td>{{if .Imported}}<span class="cds-tag cds-tag--{{if .OK}}success{{else}}error{{end}}">{{.Result}}</span>{{else}}<span class="cds-muted">never</span>{{end}}</td>
+        <td>{{if and .StatusKnown .Imported}}{{.LastImport}}{{else}}—{{end}}</td>
+        <td>{{if not .StatusKnown}}<span class="cds-tag cds-tag--error">Unavailable</span>{{else if .Imported}}<span class="cds-tag cds-tag--{{if .OK}}success{{else}}error{{end}}">{{.Result}}</span>{{else}}<span class="cds-muted">never</span>{{end}}</td>
         {{if $refresh}}
         <td>
           <form method="post" action="/admin/network/seedlist/refresh">
@@ -127,7 +129,9 @@
 {{if .PeerNewsEnabled}}
 <h2 class="cds-h2">Peer news</h2>
 <p class="cds-muted">Recent news records received from other peers, newest first.</p>
-{{if .PeerNews}}
+{{if not .PeerNewsAvailable}}
+<div class="cds-inline-notification cds-inline-notification--error" role="alert">Peer news is unavailable.</div>
+{{else if .PeerNews}}
 <div class="cds-scroll-x">
   <table class="cds-table">
     <thead><tr><th scope="col">Category</th><th scope="col">Originator</th><th scope="col">Age</th><th scope="col">Detail</th></tr></thead>

@@ -27,10 +27,11 @@ func (f *fakeBinding) UpdateBinding(_ context.Context, change BindChange) (BindR
 
 func peerBindingView() BindingsView {
 	return BindingsView{Items: []BindItem{{
-		Key:   "bind.peer",
-		Title: "Peer protocol (P2P)",
-		Host:  "",
-		Port:  "8090",
+		Key:             "bind.peer",
+		Title:           "Peer protocol (P2P)",
+		Host:            "",
+		Port:            "8090",
+		ListenerEnabled: true,
 		Interfaces: []BindInterface{
 			{Value: "", Label: "All interfaces"},
 			{Value: "127.0.0.1", Label: "127.0.0.1 (loopback)"},
@@ -52,10 +53,37 @@ func TestConsoleConfigRendersBindEditor(t *testing.T) {
 	for _, want := range []string{
 		"Listen addresses", "Peer protocol (P2P)", `name="host"`,
 		`name="port"`, `value="binding"`, "127.0.0.1 (loopback)",
+		"Current desired listener: all interfaces, port 8090.",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("bind editor missing %q", want)
 		}
+	}
+}
+
+func TestConsoleConfigLabelsDisabledOptionalListener(t *testing.T) {
+	t.Parallel()
+
+	view := BindingsView{Items: []BindItem{{
+		Key:        "bind.public",
+		Title:      "Public search",
+		Interfaces: []BindInterface{{Value: "", Label: "All interfaces"}},
+	}}}
+	body := do(t, New(Options{
+		Config:  fakeConfig{view: ConfigView{}},
+		Binding: &fakeBinding{view: view},
+	}), "/admin/configuration").body
+	for _, want := range []string{
+		"Public search",
+		`<span class="cds-tag cds-tag--debug">disabled</span>`,
+		"Current desired listener: disabled.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("disabled listener missing %q", want)
+		}
+	}
+	if strings.Contains(body, "Current desired listener: all interfaces") {
+		t.Fatal("disabled listener rendered as an active all-interface bind")
 	}
 }
 

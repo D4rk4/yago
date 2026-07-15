@@ -2,7 +2,6 @@ package httpguard
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -10,8 +9,6 @@ import (
 )
 
 const wireContentType = "text/plain; charset=UTF-8"
-
-const msgWireResponseWriteFailed = "wire response write failed"
 
 type RuntimeStatus interface {
 	Version(ctx context.Context) string
@@ -34,6 +31,6 @@ func (r WireResponder) Write(ctx context.Context, w http.ResponseWriter, msg yag
 func writeWireMessage(ctx context.Context, w http.ResponseWriter, msg yagomodel.Message) {
 	w.Header().Set("Content-Type", wireContentType)
 	if err := writeResponseText(w, msg.Encode()); err != nil {
-		slog.WarnContext(ctx, msgWireResponseWriteFailed, slog.Any("error", err))
+		reportWireResponseWriteFailure(ctx, err)
 	}
 }

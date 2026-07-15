@@ -89,6 +89,23 @@ func (r *crawlRun) clearPending() int {
 	return pages
 }
 
+func (r *crawlRun) clearPendingHost(host string) int {
+	bucket := r.pendingByHost[host]
+	if bucket == nil {
+		return 0
+	}
+	pages := len(bucket.returned) - bucket.returnedHead + len(bucket.queued) - bucket.queuedHead
+	clear(bucket.returned)
+	clear(bucket.queued)
+	delete(r.pendingByHost, host)
+	r.pendingHosts[bucket.slot] = nil
+	r.pendingHostLive--
+	r.pendingPages -= pages
+	r.compactPendingHosts()
+
+	return pages
+}
+
 func (r *crawlRun) compactPendingHosts() {
 	if r.pendingHostLive == 0 {
 		clear(r.pendingHosts)

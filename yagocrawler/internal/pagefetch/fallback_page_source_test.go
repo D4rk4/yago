@@ -116,6 +116,27 @@ func TestFallbackPageSourceReturnsFallbackFetchError(t *testing.T) {
 	}
 }
 
+func TestFallbackPageSourcePreservesPrimaryStatusWhenBrowserFails(t *testing.T) {
+	browserError := errors.New("browser failed")
+	source := pagefetch.NewFallbackPageSource(
+		sourceFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			return pagefetch.FetchedPage{}, &pagefetch.HTTPStatusError{Status: 502}
+		}),
+		sourceFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			return pagefetch.FetchedPage{}, browserError
+		}),
+	)
+
+	_, err := source.Fetch(context.Background(), exampleURL(t))
+	statusError, ok := pagefetch.AsHTTPStatus(err)
+	if !ok || statusError.Status != 502 {
+		t.Fatalf("primary status = %v, %t", statusError, ok)
+	}
+	if !errors.Is(err, browserError) {
+		t.Fatalf("browser error lost: %v", err)
+	}
+}
+
 func exampleURL(t *testing.T) *url.URL {
 	t.Helper()
 	parsed, err := url.Parse("https://example.com/")

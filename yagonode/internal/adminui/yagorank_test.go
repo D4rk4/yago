@@ -33,12 +33,46 @@ func (f *fakeRanking) Apply(_ context.Context, weights map[string]float64) error
 
 func sampleRankingProfile() RankingProfile {
 	return RankingProfile{
-		JudgmentCount: 3,
+		JudgmentCount:               3,
+		JudgmentsAvailable:          true,
+		TrainingReadinessAvailable:  true,
+		ModelTrainingReady:          true,
+		TrainingJudgmentCount:       120,
+		TrainingQueryClusterCount:   120,
+		HeldoutQueryClusterCount:    25,
+		MinimumHeldoutQueryClusters: 20,
 		Weights: []RankingWeight{
-			{Key: "title", Label: "Title", Group: "Field boosts", Value: 6},
-			{Key: "body", Label: "Body", Group: "Field boosts", Value: 1},
-			{Key: "quality", Label: "Content quality", Group: "Priors", Value: 0.2},
+			{
+				Key: "title", Label: "Title", Group: "Field boosts", Value: 6,
+				Default: 6, Maximum: 64,
+			},
+			{
+				Key: "body", Label: "Body", Group: "Field boosts", Value: 1,
+				Default: 1, Maximum: 64,
+			},
+			{
+				Key: "quality", Label: "Content quality", Group: "Priors", Value: 0.2,
+				Default: 0.2, Maximum: 1,
+			},
 		},
+	}
+}
+
+func TestConsoleYagoRankJudgmentsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	profile := sampleRankingProfile()
+	profile.JudgmentCount = 0
+	profile.JudgmentsAvailable = false
+	body := do(t, New(Options{Ranking: &fakeRanking{profile: profile}}), "/admin/yagorank").body
+	if !strings.Contains(body, "Judgments: Unavailable") {
+		t.Fatal("failed judgment read should render unavailable")
+	}
+	if strings.Contains(body, "0 judgments") {
+		t.Fatal("failed judgment read rendered a fabricated zero count")
+	}
+	if !strings.Contains(body, `value="tune" disabled aria-describedby="judgment-status"`) {
+		t.Fatal("tune action should be unavailable while judgment state is unknown")
 	}
 }
 
@@ -54,10 +88,30 @@ func TestConsoleYagoRankRendersProfile(t *testing.T) {
 		"YagoRank", "Field boosts", "Priors", "Content quality",
 		`name="title"`, `value="6"`, `name="quality"`, `value="0.2"`,
 		"3 judgments", `value="save"`, `value="tune"`,
+		"Default 6; allowed 0–64.",
+		"every operator-safe live scoring coefficient",
+		"RM3 blend, RRF, remote calibration, MMR and per-site caps",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("profile page missing %q", want)
 		}
+	}
+}
+
+func TestConsoleYagoRankMarksActiveLegacyWeightOutsideWriteRange(t *testing.T) {
+	profile := sampleRankingProfile()
+	profile.Weights[0].Value = 65
+	profile.Weights[0].OutOfRange = true
+	body := do(
+		t,
+		New(Options{Ranking: &fakeRanking{profile: profile}}),
+		"/admin/yagorank",
+	).body
+	if !strings.Contains(body, `name="title" value="65"`) || !strings.Contains(
+		body,
+		"The active legacy value is outside the allowed range",
+	) {
+		t.Fatalf("legacy range state missing: %s", body)
 	}
 }
 

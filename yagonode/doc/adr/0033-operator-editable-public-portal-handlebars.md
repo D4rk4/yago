@@ -96,9 +96,9 @@ being styled) is accepted.
 - A new renderer in `internal/portaltheme` compiles the operator template with
   raymond against a **fixed, safe view model** — the same struct the Go default
   already builds (query, results with escaped fields, pagination, greeting,
-  base URL, feature flags) — and a **curated helper allowlist** (formatting,
-  URL-encode, pluralize, truncate). No helper touches the filesystem, network,
-  environment, or process.
+  the bounded OpenSearch engine title, base URL, feature flags) — and a **curated
+  helper allowlist** (formatting, URL-encode, pluralize, truncate). No helper
+  touches the filesystem, network, environment, or process.
 - When no operator template is active, or the active one fails to parse **or**
   fails at render time, the portal renders the existing Go `html/template`
   default. A bad operator template can never blank or break the public portal.
@@ -131,7 +131,8 @@ being styled) is accepted.
   mode. This keeps script position and JavaScript operators intact and prevents
   the editor wrapper from creating a nested body element. Loading or saving a
   document also repairs the exact built-in script block damaged by the legacy
-  round-trip without rewriting operator-authored examples or scripts.
+  round-trip and the exact legacy default OpenSearch advertisement without
+  rewriting operator-authored examples, scripts, or custom discovery markup.
 
 ## Consequences
 

@@ -67,18 +67,27 @@ func (f fakeOverview) Overview(context.Context) Overview { return f.snap }
 
 func sampleOverview() Overview {
 	return Overview{
-		PeerName:      "test-peer",
-		PeerHash:      "ABCDEFGHIJKL",
-		PeerType:      "senior",
-		Version:       "1.2.3",
-		UptimeSeconds: 90061,
-		Documents:     42,
-		Words:         100,
-		KnownPeers:    7,
-		SentWords:     5,
-		ReceivedWords: 6,
-		SentURLs:      3,
-		ReceivedURLs:  4,
+		PeerName:                "test-peer",
+		PeerHash:                "ABCDEFGHIJKL",
+		PeerType:                "senior",
+		Version:                 "1.2.3",
+		UptimeSeconds:           90061,
+		IndexedDocuments:        42,
+		IndexedDocumentsKnown:   true,
+		URLMetadataRecords:      57,
+		URLMetadataRecordsKnown: true,
+		Words:                   100,
+		WordsKnown:              true,
+		KnownPeers:              7,
+		KnownPeersKnown:         true,
+		SentWords:               5,
+		SentWordsKnown:          true,
+		ReceivedWords:           6,
+		ReceivedWordsKnown:      true,
+		SentURLs:                3,
+		SentURLsKnown:           true,
+		ReceivedURLs:            4,
+		ReceivedURLsKnown:       true,
 	}
 }
 
@@ -134,6 +143,9 @@ func TestConsoleSetsSecurityHeaders(t *testing.T) {
 	if got.header.Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatal("missing nosniff")
 	}
+	if got.header.Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("dynamic cache policy = %q", got.header.Get("Cache-Control"))
+	}
 }
 
 func TestConsoleOverviewUnavailableWithoutSource(t *testing.T) {
@@ -164,7 +176,11 @@ func TestConsoleOverviewRendersLiveStatus(t *testing.T) {
 	if got.status != http.StatusOK {
 		t.Fatalf("status %d", got.status)
 	}
-	for _, want := range []string{"test-peer", "ABCDEFGHIJKL", "senior", ">42<", "1d 1h 1m", "overview-metrics"} {
+	for _, want := range []string{
+		"test-peer", "ABCDEFGHIJKL", "senior", ">42<", ">57<", "1d 1h 1m",
+		"overview-metrics", "Local indexed documents", "YaCy URL metadata records",
+		"separate populations",
+	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("overview missing %q", want)
 		}
@@ -189,8 +205,20 @@ func TestConsoleOverviewMetricsPartialIsFragment(t *testing.T) {
 	if !strings.Contains(got.body, ">42<") {
 		t.Fatal("fragment missing document count")
 	}
+	if !strings.Contains(got.body, ">57<") {
+		t.Fatal("fragment missing URL metadata count")
+	}
 	if strings.Contains(got.body, "<header") || strings.Contains(got.body, "<nav") {
 		t.Fatal("partial must not include the full shell")
+	}
+}
+
+func TestConsoleOverviewRendersUnavailableStatisticsWithoutFalseZeros(t *testing.T) {
+	t.Parallel()
+
+	got := do(t, New(Options{Overview: fakeOverview{snap: Overview{}}}), "/admin/overview")
+	if count := strings.Count(got.body, "Unavailable"); count != 8 {
+		t.Fatalf("unavailable overview statistics = %d, want 8", count)
 	}
 }
 
@@ -215,8 +243,8 @@ func TestConsoleServesEmbeddedAssets(t *testing.T) {
 	if css.status != http.StatusOK {
 		t.Fatalf("css status %d", css.status)
 	}
-	if css.header.Get("Cache-Control") == "" {
-		t.Fatal("assets should be cacheable")
+	if css.header.Get("Cache-Control") != assetMaxAge {
+		t.Fatalf("asset cache policy = %q", css.header.Get("Cache-Control"))
 	}
 	if !strings.Contains(css.body, "--cds-interactive") {
 		t.Fatal("carbon tokens missing")
@@ -262,7 +290,7 @@ func TestConsoleSearchFormRendersWithoutQuery(t *testing.T) {
 	if !strings.Contains(got.body, `name="q"`) {
 		t.Fatal("search form missing")
 	}
-	if strings.Contains(got.body, "result(s) for") {
+	if strings.Contains(got.body, "available in this search window") {
 		t.Fatal("no results should render before a query")
 	}
 }
@@ -275,7 +303,11 @@ func TestConsoleSearchRendersResultsWithMarker(t *testing.T) {
 	if got.status != http.StatusOK {
 		t.Fatalf("status %d", got.status)
 	}
-	for _, want := range []string{"Local hit", "Web hit", ">web</span>", "result(s) for", "(local + peers)"} {
+	for _, want := range []string{
+		"Local hit", "Web hit", ">web</span>",
+		"Up to 2 result(s) available in this search window", "(all enabled sources)",
+		"All enabled sources",
+	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("search results missing %q", want)
 		}
@@ -289,10 +321,12 @@ type recordingSearch struct {
 	lastGlobal bool
 	lastOffset int
 	lastLimit  int
+	calls      int
 	results    SearchResults
 }
 
 func (r *recordingSearch) Search(_ context.Context, q SearchQuery) (SearchResults, error) {
+	r.calls++
 	r.lastGlobal = q.Global
 	r.lastOffset = q.Offset
 	r.lastLimit = q.Limit
@@ -330,7 +364,10 @@ func TestConsoleSearchDefaultsToGlobalScope(t *testing.T) {
 func TestConsoleSearchPaginationParsesPageIntoOffset(t *testing.T) {
 	t.Parallel()
 
-	rec := &recordingSearch{results: SearchResults{TotalResults: 200}}
+	rec := &recordingSearch{results: SearchResults{
+		TotalResults: 200,
+		Results:      []SearchResult{{Title: "hit", URL: "http://a/1"}},
+	}}
 	if got := do(
 		t,
 		New(Options{Search: rec}),
@@ -367,10 +404,56 @@ func TestConsoleSearchPaginationClampsPage(t *testing.T) {
 	t.Parallel()
 
 	rec := &recordingSearch{results: SearchResults{TotalResults: 5}}
-	do(t, New(Options{Search: rec}), "/admin/search?q=go&p=99999")
+	got := do(t, New(Options{Search: rec}), "/admin/search?q=go&scope=local&p=99999")
+	if got.status != http.StatusSeeOther {
+		t.Fatalf("over-max status = %d, want %d", got.status, http.StatusSeeOther)
+	}
+	if location := got.header.Get("Location"); location != "/admin/search?p=1&q=go&scope=local" {
+		t.Fatalf(
+			"over-max location = %q, want %q",
+			location,
+			"/admin/search?p=1&q=go&scope=local",
+		)
+	}
 	if rec.lastOffset != (adminSearchMaxPage-1)*adminSearchPageSize {
 		t.Fatalf("over-max offset = %d, want %d",
 			rec.lastOffset, (adminSearchMaxPage-1)*adminSearchPageSize)
+	}
+	if rec.calls != 1 {
+		t.Fatalf("over-max search calls = %d, want 1", rec.calls)
+	}
+
+	computedLast := &recordingSearch{results: SearchResults{TotalResults: 45}}
+	got = do(t, New(Options{Search: computedLast}), "/admin/search?q=go&p=99999")
+	if got.status != http.StatusSeeOther ||
+		got.header.Get("Location") != "/admin/search?p=3&q=go&scope=global" {
+		t.Fatalf(
+			"computed-last redirect = %d %q, want %d %q",
+			got.status,
+			got.header.Get("Location"),
+			http.StatusSeeOther,
+			"/admin/search?p=3&q=go&scope=global",
+		)
+	}
+
+	emptyWindow := &recordingSearch{results: SearchResults{TotalResults: 100}}
+	got = do(t, New(Options{Search: emptyWindow}), "/admin/search?q=go&p=2")
+	if got.status != http.StatusSeeOther ||
+		got.header.Get("Location") != "/admin/search?p=1&q=go&scope=global" {
+		t.Fatalf(
+			"empty-window redirect = %d %q, want %d %q",
+			got.status,
+			got.header.Get("Location"),
+			http.StatusSeeOther,
+			"/admin/search?p=1&q=go&scope=global",
+		)
+	}
+
+	junk := &recordingSearch{results: SearchResults{TotalResults: 5}}
+	got = do(t, New(Options{Search: junk}), "/admin/search?q=go&p=not-a-page")
+	if got.status != http.StatusOK || junk.lastOffset != 0 {
+		t.Fatalf("junk page = status %d offset %d, want status %d offset 0",
+			got.status, junk.lastOffset, http.StatusOK)
 	}
 }
 
@@ -407,7 +490,7 @@ func TestConsoleIndexRendersStats(t *testing.T) {
 	if got.status != http.StatusOK {
 		t.Fatalf("status %d", got.status)
 	}
-	for _, want := range []string{">99<", "bleve", "Indexed documents"} {
+	for _, want := range []string{">99<", "bleve", "Local indexed documents"} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("index section missing %q", want)
 		}
@@ -431,6 +514,7 @@ func TestConsoleNetworkRendersStatus(t *testing.T) {
 
 	snap := NetworkStatus{
 		Available:       true,
+		RosterAvailable: true,
 		DHTOpen:         false,
 		PublicReachable: true,
 		BlockingReason:  "not enough peers",
@@ -446,23 +530,27 @@ func TestConsoleNetworkRendersStatus(t *testing.T) {
 		},
 		Peers: []NetworkPeer{
 			{
-				Name:     "peerA",
-				Hash:     "HHHHHH",
-				Address:  "1.2.3.4:8090",
-				Type:     "senior",
-				Flags:    []string{"remote-index"},
-				RWICount: 42,
-				LastSeen: "2026-01-02T03:04:05Z",
-				AgeDays:  3,
+				Name:             "peerA",
+				Hash:             "HHHHHH",
+				Address:          "1.2.3.4:8090",
+				Type:             "senior",
+				Flags:            []string{"remote-index"},
+				RWICount:         42,
+				RWIKnown:         true,
+				LastSeen:         "2026-01-02T03:04:05Z",
+				AgeDays:          3,
+				AgeKnown:         true,
+				BlockStatusKnown: true,
 			},
 		},
 		Seedlists: []SeedlistEntry{
 			{
-				URL:        "https://seeds.example/seed.txt",
-				Imported:   true,
-				OK:         true,
-				LastImport: "2026-07-04T09:00:00Z",
-				Result:     "12 seeds",
+				URL:         "https://seeds.example/seed.txt",
+				Imported:    true,
+				OK:          true,
+				LastImport:  "2026-07-04T09:00:00Z",
+				Result:      "12 seeds",
+				StatusKnown: true,
 			},
 		},
 	}
@@ -487,7 +575,9 @@ func TestConsoleNetworkEmptyStates(t *testing.T) {
 
 	got := do(
 		t,
-		New(Options{Network: fakeNetwork{snap: NetworkStatus{Available: true}}}),
+		New(Options{Network: fakeNetwork{snap: NetworkStatus{
+			Available: true, RosterAvailable: true,
+		}}}),
 		"/admin/network",
 	)
 	if !strings.Contains(got.body, "No gate data.") {
@@ -514,7 +604,7 @@ func (f *fakeSeedlistRefresh) RefreshSeedlist(_ context.Context, url string) err
 
 func networkWithSeedlist() fakeNetwork {
 	return fakeNetwork{snap: NetworkStatus{
-		Available: true,
+		Available: true, RosterAvailable: true,
 		Seedlists: []SeedlistEntry{{URL: "https://seeds.example/seed.txt"}},
 	}}
 }
@@ -600,21 +690,25 @@ func TestConsoleNetworkUnavailableWithoutSource(t *testing.T) {
 type fakePeerDetail struct {
 	detail  PeerDetail
 	ok      bool
+	err     error
 	gotHash string
 }
 
-func (f *fakePeerDetail) PeerDetail(_ context.Context, hash string) (PeerDetail, bool) {
+func (f *fakePeerDetail) PeerDetail(
+	_ context.Context,
+	hash string,
+) (PeerDetail, bool, error) {
 	f.gotHash = hash
 
-	return f.detail, f.ok
+	return f.detail, f.ok, f.err
 }
 
 func TestConsoleNetworkLinksToPeerDetail(t *testing.T) {
 	t.Parallel()
 
 	snap := NetworkStatus{
-		Available: true,
-		Peers:     []NetworkPeer{{Name: "peerA", Hash: "HHHHHHHHHHHH"}},
+		Available: true, RosterAvailable: true,
+		Peers: []NetworkPeer{{Name: "peerA", Hash: "HHHHHHHHHHHH", BlockStatusKnown: true}},
 	}
 
 	linked := do(
@@ -638,7 +732,9 @@ func TestConsoleNetworkPeerRendersDetail(t *testing.T) {
 	source := &fakePeerDetail{ok: true, detail: PeerDetail{
 		Name: "peerA", Hash: "HHHHHHHHHHHH", Address: "1.2.3.4:8090", Version: "1.83",
 		Type: "senior", Flags: []string{"remote-index"},
-		RWIWords: 42, URLs: 1234, SentWords: 11, ReceivedURLs: 44,
+		RWIWords: 42, RWIWordsKnown: true, URLs: 1234, URLsKnown: true,
+		SentWords: 11, SentWordsKnown: true, ReceivedURLs: 44, ReceivedURLsKnown: true,
+		BlockStatusKnown: true,
 	}}
 	got := do(t, New(Options{PeerDetail: source}), "/admin/network/peer?hash=HHHHHHHHHHHH")
 	if got.status != http.StatusOK {
@@ -654,6 +750,20 @@ func TestConsoleNetworkPeerRendersDetail(t *testing.T) {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("peer detail missing %q", want)
 		}
+	}
+}
+
+func TestConsoleNetworkPeerRendersUnknownStatisticsAsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	source := &fakePeerDetail{ok: true, detail: PeerDetail{
+		Hash: "HHHHHHHHHHHH", BlockStatusKnown: true,
+	}}
+	got := do(t, New(Options{PeerDetail: source}), "/admin/network/peer?hash=HHHHHHHHHHHH")
+	if strings.Contains(got.body, `class="cds-metric__value">0<`) ||
+		strings.Contains(got.body, `class="cds-mono">0<`) ||
+		strings.Contains(got.body, "01 Jan 0001") {
+		t.Fatalf("unknown peer facts rendered as zero or year one: %s", got.body)
 	}
 }
 
@@ -700,7 +810,9 @@ func (f *fakePeerBlock) Unblock(_ context.Context, hash string) error {
 func TestConsolePeerDetailShowsBlockControls(t *testing.T) {
 	t.Parallel()
 
-	open := &fakePeerDetail{ok: true, detail: PeerDetail{Hash: "HHHHHHHHHHHH"}}
+	open := &fakePeerDetail{ok: true, detail: PeerDetail{
+		Hash: "HHHHHHHHHHHH", BlockStatusKnown: true,
+	}}
 	with := do(
 		t,
 		New(Options{PeerDetail: open, PeerBlock: &fakePeerBlock{}}),
@@ -712,8 +824,10 @@ func TestConsolePeerDetailShowsBlockControls(t *testing.T) {
 	}
 
 	blockedSource := &fakePeerDetail{
-		ok:     true,
-		detail: PeerDetail{Hash: "HHHHHHHHHHHH", Blocked: true},
+		ok: true,
+		detail: PeerDetail{
+			Hash: "HHHHHHHHHHHH", Blocked: true, BlockStatusKnown: true,
+		},
 	}
 	blocked := do(
 		t,
@@ -794,15 +908,20 @@ func TestConsolePeerBlockRedirectsOnError(t *testing.T) {
 	}
 }
 
-type fakePeerNews struct{ items []PeerNewsItem }
+type fakePeerNews struct {
+	items       []PeerNewsItem
+	unavailable bool
+}
 
-func (f fakePeerNews) PeerNews(context.Context) []PeerNewsItem { return f.items }
+func (f fakePeerNews) PeerNews(context.Context) ([]PeerNewsItem, bool) {
+	return f.items, !f.unavailable
+}
 
 func TestConsoleNetworkRendersPeerNews(t *testing.T) {
 	t.Parallel()
 
 	console := New(Options{
-		Network: fakeNetwork{snap: NetworkStatus{Available: true}},
+		Network: fakeNetwork{snap: NetworkStatus{Available: true, RosterAvailable: true}},
 		PeerNews: fakePeerNews{items: []PeerNewsItem{{
 			Category: "crwlstrt", Originator: "PEERHASH1234",
 			Age: "3h", Detail: "startURL=http://x/",
@@ -822,7 +941,7 @@ func TestConsoleNetworkPeerNewsEmptyState(t *testing.T) {
 	t.Parallel()
 
 	console := New(Options{
-		Network:  fakeNetwork{snap: NetworkStatus{Available: true}},
+		Network:  fakeNetwork{snap: NetworkStatus{Available: true, RosterAvailable: true}},
 		PeerNews: fakePeerNews{},
 	})
 	got := do(t, console, "/admin/network")
@@ -836,7 +955,9 @@ func TestConsoleNetworkHidesPeerNewsWithoutSource(t *testing.T) {
 
 	got := do(
 		t,
-		New(Options{Network: fakeNetwork{snap: NetworkStatus{Available: true}}}),
+		New(Options{Network: fakeNetwork{snap: NetworkStatus{
+			Available: true, RosterAvailable: true,
+		}}}),
 		"/admin/network",
 	)
 	if strings.Contains(got.body, "Peer news") {
@@ -889,8 +1010,19 @@ func TestConsoleLogsEmptyState(t *testing.T) {
 	t.Parallel()
 
 	got := do(t, New(Options{Logs: fakeLogs{}}), "/admin/logs")
-	if !strings.Contains(got.body, "No events recorded yet.") {
+	if !strings.Contains(got.body, "No recent events recorded.") {
 		t.Fatal("expected empty events state")
+	}
+}
+
+func TestConsoleLogsFilteredEmptyStateDoesNotClaimNoEventsExist(t *testing.T) {
+	t.Parallel()
+
+	entries := []LogEntry{{Severity: "info", Category: "config", Name: "node.started"}}
+	got := do(t, New(Options{Logs: fakeLogs{entries: entries}}), "/admin/logs?severity=error")
+	if !strings.Contains(got.body, "No recent events match the current filters.") ||
+		strings.Contains(got.body, "No recent events recorded.") {
+		t.Fatalf("filtered empty state is not scoped to filters: %s", got.body)
 	}
 }
 
@@ -1127,6 +1259,21 @@ func TestConsoleCrawlStartDispatches(t *testing.T) {
 	}
 	if !strings.Contains(got.body, "Crawl accepted") || !strings.Contains(got.body, "PH123") {
 		t.Fatalf("expected acceptance, got %s", got.body)
+	}
+}
+
+func TestConsoleDuplicateCrawlDoesNotClaimSeedsWereQueued(t *testing.T) {
+	t.Parallel()
+
+	crawl := &fakeCrawl{result: CrawlDispatch{ProfileHandle: "PH123", Seeds: 2, Duplicate: true}}
+	got := doPost(t, New(Options{Crawl: crawl}), "/admin/crawl", url.Values{
+		"seeds": {"http://a.example\nhttp://b.example"},
+	})
+	if !strings.Contains(got.body, "no new seeds were enqueued") {
+		t.Fatalf("duplicate result missing truthful status: %s", got.body)
+	}
+	if strings.Contains(got.body, "seed(s) queued") {
+		t.Fatalf("duplicate result claims seeds were queued: %s", got.body)
 	}
 }
 

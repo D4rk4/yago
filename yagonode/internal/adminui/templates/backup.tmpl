@@ -2,6 +2,7 @@
 <nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Backup &amp; restore</nav>
 <h1 class="cds-h1">Backup &amp; restore</h1>
 {{if .Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>{{end}}
+{{if .Available}}
 <div class="cds-tile-grid">
   <section class="cds-tile">
     <div class="cds-metric__label">Data directory</div>
@@ -29,4 +30,5 @@
 <h3 class="cds-h3">systemd deployment</h3>
 <pre class="cds-code">{{.SystemdRestore}}</pre>
 <p class="cds-muted">The full procedure and cross-version compatibility notes live in <code>doc/backup-restore.md</code>.</p>
+{{end}}
 {{end}}

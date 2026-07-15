@@ -8,9 +8,10 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/metrichistory"
-	"github.com/D4rk4/yago/yagonode/internal/searchindex"
+	"github.com/D4rk4/yago/yagonode/internal/redirectpurge"
 )
 
 type blockingCorpus struct {
@@ -28,13 +29,7 @@ func (b blockingCorpus) StoredDocuments(
 	return nil
 }
 
-type noopEvictor struct{}
-
-func (noopEvictor) Delete(context.Context, string) (bool, error) { return false, nil }
-
-type noopIndexDeleter struct{ searchindex.SearchIndex }
-
-func (noopIndexDeleter) Delete(context.Context, string) error { return nil }
+func noopLineagePurge(context.Context, []string, []yagomodel.Hash) error { return nil }
 
 // TestStartRedirectPurgeJoinsBeforeWaitGroupReleases pins the SERVE-LIFECYCLE-01
 // fix: serve's WaitGroup must not release while the redirect purge still scans
@@ -45,9 +40,7 @@ func TestStartRedirectPurgeJoinsBeforeWaitGroupReleases(t *testing.T) {
 	defer cancel()
 	var background sync.WaitGroup
 	startRedirectPurge(ctx, &background, node{
-		docScan:    corpus,
-		docEvictor: noopEvictor{},
-		index:      noopIndexDeleter{},
+		redirectPurge: redirectpurge.New(corpus, noopLineagePurge),
 	})
 	<-corpus.started
 	waited := make(chan struct{})

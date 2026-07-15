@@ -63,3 +63,48 @@ func TestPortalRejectsUnknownDom(t *testing.T) {
 		t.Fatalf("dom = %q, want bogus vertical rejected", source.gotDom)
 	}
 }
+
+type imagePaginationSource struct{}
+
+func (imagePaginationSource) Search(
+	context.Context,
+	string,
+	string,
+	int,
+	int,
+) (SearchResults, error) {
+	return SearchResults{
+		Query:        "go",
+		TotalResults: 100,
+		Results: []SearchResult{{
+			Title: "Pictured",
+			URL:   "https://a.example/p.html",
+			Images: []ResultImage{{
+				ProxyURL: "/imgproxy?u=shot",
+				Alt:      "Shot",
+				PageURL:  "https://a.example/p.html",
+			}},
+		}},
+	}, nil
+}
+
+func TestPortalImageVerticalPaginationKeepsDomain(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"/?q=go&dom=image&p=2",
+		nil,
+	)
+	New(imagePaginationSource{}, false).ServeHTTP(recorder, request)
+
+	body := recorder.Body.String()
+	for _, link := range []string{
+		`rel="prev" href="/?dom=image&amp;p=1&amp;q=go"`,
+		`rel="next" href="/?dom=image&amp;p=3&amp;q=go"`,
+	} {
+		if !strings.Contains(body, link) {
+			t.Fatalf("image pagination missing %q", link)
+		}
+	}
+}

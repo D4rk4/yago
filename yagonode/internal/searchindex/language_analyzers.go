@@ -58,10 +58,7 @@ func documentAnalyzers() []string {
 // Chinese, Japanese, and Korean share the CJK bigram analyzer; a language with
 // no bleve analyzer (Hebrew, Thai, ...) falls through to the standard analyzer.
 func languageToAnalyzer(code string) string {
-	code = strings.ToLower(strings.TrimSpace(code))
-	if index := strings.IndexAny(code, "-_"); index > 0 {
-		code = code[:index]
-	}
+	code = normalizedLanguageCode(code)
 	switch code {
 	case "sr", "bs":
 		return "hr"
@@ -87,8 +84,11 @@ func languageToAnalyzer(code string) string {
 // guess). Detection runs on document bodies, where language identification is
 // accurate, never on queries.
 func detectDocumentAnalyzer(text string, htmlLang string) string {
+	if analyzer, ok := scriptQualifiedLanguageAnalyzer(htmlLang, text); ok {
+		return analyzer
+	}
 	if info := whatlanggo.Detect(text); info.IsReliable() && info.Lang.Iso6391() != "" {
-		return languageToAnalyzer(info.Lang.Iso6391())
+		return reliableLanguageAnalyzer(info.Lang.Iso6391(), text)
 	}
 	if analyzer, ok := analyzerFromLangHint(htmlLang); ok {
 		return analyzer
@@ -120,7 +120,7 @@ func analyzerFromLangHint(htmlLang string) (string, bool) {
 // is unreliable on short strings). The standard analyzer is always included so
 // an exact word or proper noun matches a document in any language.
 func queryAnalyzers(query string) []string {
-	candidates := scriptAnalyzers(dominantScript(query))
+	candidates := scriptAnalyzers(queryAnalyzerScript(query))
 	analyzers := make([]string, 0, len(candidates)+1)
 	seen := map[string]bool{}
 	for _, analyzer := range append(candidates, standardTextAnalyzer) {
@@ -146,7 +146,7 @@ func scriptAnalyzers(script *unicode.RangeTable) []string {
 			"nl", "no", "pl", "pt", "ro", "sv", "tr",
 		}
 	case unicode.Arabic:
-		return []string{"ar", "fa"}
+		return []string{"ar", "fa", "ckb"}
 	case unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul:
 		return []string{"cjk"}
 	case unicode.Devanagari:

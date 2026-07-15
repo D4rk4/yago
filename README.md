@@ -52,13 +52,20 @@ its binaries (`yago-node`, `yagocrawler`).
   fan-out + optional operator-enabled web search. The provider is off by default,
   local-only requests never reach it, and the single **Web search fallback
   (DDGS)** mode selector chooses consent-only, miss-only, or always-parallel
-  local/peer/web retrieval. A hyphen or dash inside an ordinary query word
+  local/peer/web retrieval. Human-facing surfaces call external results `web`,
+  YaCy HTML marks them `[web]`, and Tavily-compatible responses keep their
+  standard shape without a provider field. A hyphen or dash inside an ordinary query word
   separates searchable words across local and web retrieval, while a leading
-  minus remains an exclusion operator. Results are merged with **reciprocal-rank
+  minus remains an exclusion operator. A web row must independently cover the
+  query before it can appear or seed a crawl: one token occurrence cannot stand
+  in for several query words, and another language's stopword list cannot weaken
+  that check. Results are merged with **reciprocal-rank
   fusion** and **MMR result diversity**. A slow swarm branch cannot discard a
   completed local answer, and a transient refresh cannot replace a recent
   nonempty search session with an infrastructure-generated zero, including when
-  the bounded remote-stage admission is full. An incomplete global request may
+  the bounded remote-stage admission is full. Completed local, peer, and web
+  branches survive a sibling branch's recoverable error or cancellation race.
+  An incomplete global request may
   reuse an unexpired equivalent local session without extending its lifetime or
   recording a synthetic global success. Operational search-stage errors retain
   completed rows as a partial answer, and recent paging windows remain readable
@@ -70,9 +77,20 @@ its binaries (`yago-node`, `yagocrawler`).
   Query-clustered and chronological holdouts gate atomic promotion; authenticated
   Team Draft compares complete rankings online, while confidence-filtered
   FairPairs outcomes provide implicit relevance evidence.
+  Its console exposes all 13 operator-safe live coefficients: five field boosts,
+  authority, freshness, quality, short-URL prior, ordered and unordered
+  proximity, lexical blend, and original-gap agreement. Latency windows,
+  evidence-confidence rules, safety gates, and learned-model weights remain
+  evaluated policy rather than unchecked runtime knobs.
   Pure Go, CPU-only, no external API, sidecar, model runtime, or YaCy wire change.
-- **Multilingual morphology**: documents route to per-language analyzers
-  (Snowball stemming), single-word swarm queries can expand into
+- **Language-aware lexical search**: documents route to bounded per-language
+  analyzers. Supported inflectional analyzers contribute lower-confidence
+  word-form proximity below exact wording; Arabic receives normalization and
+  light stemming, Chinese/Japanese/Korean use contiguous CJK bigrams, and
+  Hebrew currently keeps Unicode-normalized exact-word proximity without a
+  morphology analyzer. CJK does not convert Simplified and Traditional text,
+  and a single-character query is not guaranteed to match that character
+  inside a longer unsegmented run. Single-word swarm queries can expand into
   corpus-observed inflections, and zero-result typo recovery uses bounded
   analyzer-consistent edit distance without document-wide character grams.
 - YaCy query operators (`site:`, `inurl:`, `filetype:`, `language:`, `tld:`,
@@ -101,6 +119,12 @@ its binaries (`yago-node`, `yagocrawler`).
   graceful-shutdown drain attempts, while admitted same-ID NAK phases retain
   their ordered lifecycle. Saturation drops a new phase only after expendable
   singleton running state is exhausted and never collapses a protected chain.
+  Concurrent document, anchor, URL-metadata, and RWI admission checks share one
+  live-capacity observation for at most one second instead of repeating a
+  shard-wide disk measurement for every phase; exact metrics and eviction reads
+  remain exact and refresh that observation. The node coalesces at most 16 ready
+  ingest deliveries for shared vault and Bleve commits, waiting no more than a
+  cancel-aware 2 milliseconds for a partial group.
 - **Format coverage beyond HTML**: PDF, DOCX/XLSX/PPTX, legacy DOC/XLS/PPT,
   ODT/ODS/ODP, RTF, EPUB, plain text/CSV/Markdown — parsed with stdlib-first
   parsers and validated against real files. PDF extraction follows Page
@@ -121,7 +145,15 @@ its binaries (`yago-node`, `yagocrawler`).
   stored in the node vault and restored before search listeners open. A fresh
   summary waits only until its original ten-minute due time; a stale summary is
   still served immediately while its replacement scan starts in the background.
-  The background pass never claims interactive-read priority from ingest writes;
+  The background pass briefly fences document admission to capture the last key
+  of both the legacy and admission-ordered partitions, then reads through those
+  boundaries in fixed 16-document keyset pages. Each vault view is released before
+  document decoding and analysis, so continuous ingest cannot prolong one pass
+  indefinitely and the pass never retains one long Bolt read transaction or claims
+  interactive-read priority from ingest writes. Later admissions are included by
+  the next pass.
+  It also checkpoints and atomically publishes the bounded YaCy host-link graph,
+  so peer host-link requests never scan the document vault;
   candidate scans avoid full document bodies; peer and
   web responses, index results, paging sessions, background cache writes, and
   host-link snapshots have process-wide byte or admission limits. `/metrics`
@@ -141,13 +173,22 @@ its binaries (`yago-node`, `yagocrawler`).
   it expires.
 - Politeness and defense: robots.txt with a standards-compliant 500 KiB parsing
   limit and a sanitizer for real-world malformed files, per-host adaptive pacing
-  and crawl delays, URL canonicalization,
+  and crawl delays, URL canonicalization. Discovered links with an unambiguous
+  disabled or unsupported file suffix are rejected before frontier admission;
+  explicit seeds, extensionless routes, and unknown suffixes still fetch once so
+  authoritative response media types can decide. Five consecutive typed availability
+  failures retire only that host's remaining URLs in the current run; a success
+  resets the evidence, and URL-specific rejections do not penalize a healthy
+  host. A single-host run then finishes while a multi-host run continues,
   persistent near-duplicate clustering, crawl-trap defense, per-host and
   per-run page budgets, boilerplate extraction, and a deterministic
   content-quality gate.
 - **A living index**: a default 30-day recrawl cadence refreshes pages, and a
   recrawl that finds a page permanently gone (404/410) tombstones it out of
-  the index — no eternal dead links.
+  the index — no eternal dead links. Quota eviction, crawler tombstones, Admin
+  deletion, and redirect cleanup share one complete page-lineage owner, so a
+  concurrent re-index cannot leave or erase only the document, anchors,
+  duplicate cluster, full-text row, postings, or URL metadata.
 - Autocrawler: swarm greedy-learning and web-fallback seeding fill a young
   index automatically, fully tunable from the console.
 
@@ -155,7 +196,9 @@ its binaries (`yago-node`, `yagocrawler`).
 
 - Server-rendered, **works without JavaScript**, accessible (skip links, ARIA,
   keyboard navigation), mobile-friendly, with OpenSearch browser integration
-  and RSS/JSON output for every query.
+  advertised on every landing and results page so Firefox can offer it as a
+  search engine, including when an older saved default theme is active, plus
+  RSS/JSON output for every query.
 - **Operator-themeable end to end**: the search and results pages are
   Handlebars templates editable from the console — visually with a light
   GrapesJS editor that previews the shared portal CSS, or as code with
@@ -176,6 +219,11 @@ its binaries (`yago-node`, `yagocrawler`).
   reset), Security (Argon2id admin login, session management, scoped API
   keys), Logs (filterable events), Restart (node and crawler fleet, can be
   disabled by config).
+- Overview and Index use the authoritative local Bleve document count. Overview
+  separately labels YaCy URL metadata records because those populations can
+  differ. The Crawler monitor combines every profile in one 20-row-paged view;
+  totals and health use the complete snapshot, and each running row keeps its
+  controls plus the effective pages-per-minute value together.
 - First-run **setup wizard**, CSRF everywhere, strict CSP, login rate
   limiting, and a config-events audit trail.
 

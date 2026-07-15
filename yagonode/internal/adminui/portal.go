@@ -25,6 +25,7 @@ type portalPageData struct {
 	// (no theme store wired) keeps the tabs as placeholders.
 	DesignSearch  *designFormData
 	DesignResults *designFormData
+	DesignWired   bool
 }
 
 func (c *Console) handlePortal(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +63,7 @@ func (c *Console) renderPortalPage(
 	data := c.portalPage(r, notice, errMsg)
 	policy := contentPol
 	if c.theme != nil {
+		data.DesignWired = true
 		search, results, err := c.portalDesignForms(r.Context(), data.CSRF)
 		if err != nil && data.Error == "" {
 			data.Error = "Loading the stored design failed: " + err.Error()
@@ -101,7 +103,7 @@ func portalSettings(ctx context.Context, source SettingsSource) SettingsView {
 		}
 	}
 
-	return SettingsView{Items: items}
+	return SettingsView{Items: items, Error: full.Error}
 }
 
 // withoutPortalCategory drops the portal-facing settings from the flat

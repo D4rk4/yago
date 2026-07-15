@@ -52,9 +52,13 @@ func (s *FallbackPageSource) Fetch(
 		return FetchedPage{}, fmt.Errorf("primary fetch: %w", err)
 	}
 
+	primaryError := err
 	page, err = s.fallback.Fetch(ctx, target)
 	if err != nil {
-		return FetchedPage{}, fmt.Errorf("fallback fetch: %w", err)
+		return FetchedPage{}, fmt.Errorf(
+			"fallback fetch: %w",
+			errors.Join(primaryError, err),
+		)
 	}
 	return page, nil
 }

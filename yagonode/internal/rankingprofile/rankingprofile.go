@@ -31,8 +31,20 @@ func (weightsCodec) Encode(weights searchindex.RankingWeights) ([]byte, error) {
 }
 
 func (weightsCodec) Decode(raw []byte) (searchindex.RankingWeights, error) {
+	fields := map[string]json.RawMessage{}
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return searchindex.RankingWeights{}, fmt.Errorf("decode ranking weights: %w", err)
+	}
 	var weights searchindex.RankingWeights
 	if err := json.Unmarshal(raw, &weights); err != nil {
+		return searchindex.RankingWeights{}, fmt.Errorf("decode ranking weights: %w", err)
+	}
+	for _, definition := range searchindex.RankingWeightDefinitions() {
+		if _, present := fields[definition.Key]; !present && definition.BackfillWhenMissing {
+			weights.Set(definition.Key, definition.Default)
+		}
+	}
+	if err := weights.ValidatePersisted(); err != nil {
 		return searchindex.RankingWeights{}, fmt.Errorf("decode ranking weights: %w", err)
 	}
 

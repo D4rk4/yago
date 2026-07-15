@@ -40,6 +40,7 @@ type SeedNewsSource interface {
 }
 
 type TransferTotals struct {
+	Known         bool
 	SentWords     int64
 	ReceivedWords int64
 	SentURLs      int64

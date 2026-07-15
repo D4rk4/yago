@@ -24,6 +24,7 @@ type urlPorts struct {
 	Directory URLDirectory
 	Evictor   URLEvictor
 	Receiver  URLReceiver
+	Vault     *vault.Vault
 }
 
 func openModule(t *testing.T, quotaBytes int64) urlPorts {
@@ -44,7 +45,7 @@ func openModule(t *testing.T, quotaBytes int64) urlPorts {
 		t.Fatalf("Open: %v", err)
 	}
 
-	return urlPorts{Directory: directory, Evictor: evictor, Receiver: receiver}
+	return urlPorts{Directory: directory, Evictor: evictor, Receiver: receiver, Vault: v}
 }
 
 func urlRow(t *testing.T, seed string) yagomodel.URIMetadataRow {
@@ -144,6 +145,9 @@ func TestIntakeBusyAtCapacity(t *testing.T) {
 	}
 	if receipt.Busy {
 		t.Fatalf("first receipt = %+v, want stored", receipt)
+	}
+	if _, err := module.Vault.UsedBytes(ctx); err != nil {
+		t.Fatalf("UsedBytes: %v", err)
 	}
 
 	receipt, err = module.Receiver.Receive(ctx, []yagomodel.URIMetadataRow{urlRow(t, "b")})

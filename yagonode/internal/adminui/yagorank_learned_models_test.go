@@ -60,6 +60,8 @@ func TestConsoleYagoRankRendersLearnedModelStatusAndCommands(t *testing.T) {
 		"Train linear model",
 		"Train tree model",
 		"Rollback model",
+		"Ready: 120 usable judgments across 120 independent query clusters; held-out 25/20 required.",
+		"Manage judgments through the API",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("learned model page missing %q", want)
@@ -77,6 +79,10 @@ func TestConsoleYagoRankRendersInactiveLearnedModelControls(t *testing.T) {
 
 	profile := sampleRankingProfile()
 	profile.JudgmentCount = 0
+	profile.ModelTrainingReady = false
+	profile.TrainingJudgmentCount = 1
+	profile.TrainingQueryClusterCount = 1
+	profile.HeldoutQueryClusterCount = 0
 	ranking := &fakeLearnedRanking{fakeRanking: &fakeRanking{profile: profile}}
 	body := do(t, New(Options{Ranking: ranking}), "/admin/yagorank").body
 	for _, want := range []string{
@@ -87,6 +93,7 @@ func TestConsoleYagoRankRendersInactiveLearnedModelControls(t *testing.T) {
 		`value="train-tree" disabled`,
 		`value="rollback-model" disabled`,
 		"0 judgments",
+		"Not ready: 1 usable judgment across 1 independent query cluster; held-out 0/20 required.",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("inactive model page missing %q", want)
@@ -175,8 +182,11 @@ func TestConsoleYagoRankTrainsLearnedModels(t *testing.T) {
 func TestConsoleYagoRankSurfacesLearnedModelTrainingError(t *testing.T) {
 	t.Parallel()
 
+	profile := sampleRankingProfile()
+	profile.JudgmentCount = 0
+	profile.JudgmentsAvailable = false
 	ranking := &fakeLearnedRanking{
-		fakeRanking: &fakeRanking{profile: sampleRankingProfile()},
+		fakeRanking: &fakeRanking{profile: profile},
 		trainErr:    context.DeadlineExceeded,
 	}
 	body := doPost(
@@ -187,6 +197,9 @@ func TestConsoleYagoRankSurfacesLearnedModelTrainingError(t *testing.T) {
 	).body
 	if !strings.Contains(body, "Model training failed: context deadline exceeded") {
 		t.Fatalf("training error missing: %s", body)
+	}
+	if !strings.Contains(body, "Judgments: Unavailable") || strings.Contains(body, "0 judgments") {
+		t.Fatalf("training error rendered a false judgment count: %s", body)
 	}
 }
 

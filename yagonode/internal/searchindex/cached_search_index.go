@@ -103,7 +103,7 @@ func (c *CachedSearchIndex) SearchEvidence(
 ) ([]SearchResult, error) {
 	source, ok := c.inner.(SearchEvidenceSource)
 	if !ok {
-		return results, nil
+		return appendSafeEvidenceTail(nil, results, req), nil
 	}
 
 	enriched, err := source.SearchEvidence(ctx, req, results)

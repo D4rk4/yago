@@ -75,32 +75,32 @@ func (s networkSource) Network(ctx context.Context) adminui.NetworkStatus {
 	}
 
 	if s.roster != nil {
-		status.KnownPeers = s.roster.KnownPeerCount(ctx)
-		status.ReachablePeers = s.roster.ReachablePeerCount(ctx)
-		status.Peers = s.adminNetworkPeers(ctx, s.roster.FreshestPeers(ctx, status.KnownPeers))
+		roster := s.peerRosterSnapshot(ctx)
+		status.RosterAvailable = roster.available
+		status.KnownPeers = roster.knownPeers
+		status.ReachablePeers = roster.reachablePeers
+		status.Peers = s.adminNetworkPeers(ctx, roster.seeds)
 	}
 
 	return status
 }
 
-// blockedSet loads the current blocklist once as a set for marking the peer
-// table. A read error degrades to no marks rather than hiding the table.
-func (s networkSource) blockedSet(ctx context.Context) map[yagomodel.Hash]struct{} {
+func (s networkSource) blockedSet(ctx context.Context) (map[yagomodel.Hash]struct{}, bool) {
 	if s.blocks == nil {
-		return nil
+		return nil, true
 	}
 	entries, err := s.blocks.Blocked(ctx)
 	if err != nil {
 		slog.WarnContext(ctx, "read peer blocklist for admin table failed", slog.Any("error", err))
 
-		return nil
+		return nil, false
 	}
 	set := make(map[yagomodel.Hash]struct{}, len(entries))
 	for _, entry := range entries {
 		set[entry.Hash] = struct{}{}
 	}
 
-	return set
+	return set, true
 }
 
 func (s networkSource) adminSeedlists(ctx context.Context) []adminui.SeedlistEntry {
@@ -108,7 +108,11 @@ func (s networkSource) adminSeedlists(ctx context.Context) []adminui.SeedlistEnt
 	for _, url := range s.seedlistURLs {
 		entry := adminui.SeedlistEntry{URL: url}
 		if s.status != nil {
-			if st, found, err := s.status.Get(ctx, url); err == nil && found {
+			st, found, err := s.status.Get(ctx, url)
+			if err == nil {
+				entry.StatusKnown = true
+			}
+			if err == nil && found {
 				entry.Imported = true
 				entry.OK = st.OK
 				entry.LastImport = st.LastImport.UTC().Format(time.RFC3339)
@@ -150,36 +154,43 @@ func (s networkSource) adminNetworkPeers(
 	seeds []yagomodel.Seed,
 ) []adminui.NetworkPeer {
 	now := s.now()
-	blocked := s.blockedSet(ctx)
+	blocked, blockStatusKnown := s.blockedSet(ctx)
 	peers := make([]adminui.NetworkPeer, 0, len(seeds))
 	for _, seed := range seeds {
 		name, _ := seed.Name.Get()
 		address, _ := seed.NetworkAddress()
 		peerType, _ := seed.PeerType.Get()
-		rwiCount, _ := seed.RWICount.Get()
+		rwiCount, rwiKnown := seedStatistic(seed.RWICount)
 		_, isBlocked := blocked[seed.Hash]
-		lastSeen, seen := seed.LastSeen.Get()
-		uptime, _ := seed.Uptime.Get()
-		health := adminui.SwarmHealthScore(
-			lastSeen.Time(), seen, uptime, seed.AgeDays(now), now,
-		)
+		lastSeen, lastSeenKnown := seedLastSeenStatistic(seed, now)
+		uptime, uptimeKnown := seedStatistic(seed.Uptime)
+		ageDays, ageKnown := seedAgeStatistic(seed, now)
+		healthKnown := lastSeenKnown && uptimeKnown && ageKnown
+		health := 0
+		if healthKnown {
+			health = adminui.SwarmHealthScore(lastSeen, true, uptime, ageDays, now)
+		}
 		var lastSeenAt time.Time
-		if seen {
-			lastSeenAt = lastSeen.Time()
+		if lastSeenKnown {
+			lastSeenAt = lastSeen
 		}
 		peers = append(peers, adminui.NetworkPeer{
-			Name:       name,
-			Hash:       string(seed.Hash),
-			Address:    address,
-			Type:       string(peerType),
-			Flags:      seedFlagLabels(seed),
-			RWICount:   rwiCount,
-			LastSeen:   seedLastSeen(seed),
-			LastSeenAt: lastSeenAt,
-			AgeDays:    seed.AgeDays(now),
-			Blocked:    isBlocked,
-			Health:     health,
-			HealthTag:  adminui.SwarmHealthTag(health),
+			Name:             name,
+			Hash:             string(seed.Hash),
+			Address:          address,
+			Type:             string(peerType),
+			Flags:            seedFlagLabels(seed),
+			RWICount:         rwiCount,
+			RWIKnown:         rwiKnown,
+			LastSeen:         seedLastSeen(seed, now),
+			LastSeenAt:       lastSeenAt,
+			AgeDays:          ageDays,
+			AgeKnown:         ageKnown,
+			Blocked:          isBlocked,
+			BlockStatusKnown: blockStatusKnown,
+			Health:           health,
+			HealthTag:        adminui.SwarmHealthTag(health),
+			HealthKnown:      healthKnown,
 		})
 	}
 
@@ -201,38 +212,48 @@ func newPeerDetailSource(roster peerroster.Roster, blocks peerBlockStore) peerDe
 func (s peerDetailSource) PeerDetail(
 	ctx context.Context,
 	hash string,
-) (adminui.PeerDetail, bool) {
-	parsed, err := yagomodel.ParseHash(hash)
-	if err != nil {
-		return adminui.PeerDetail{}, false
+) (adminui.PeerDetail, bool, error) {
+	parsed, valid := parseAdminPeerHash(hash)
+	if !valid {
+		return adminui.PeerDetail{}, false, nil
 	}
-	seed, ok := s.roster.PeerByHash(ctx, parsed)
+	if s.roster == nil {
+		return adminui.PeerDetail{}, false, nil
+	}
+	seed, ok, err := readAdminPeer(ctx, s.roster, parsed)
+	if err != nil {
+		return adminui.PeerDetail{}, false, fmt.Errorf("read admin peer: %w", err)
+	}
 	if !ok {
-		return adminui.PeerDetail{}, false
+		return adminui.PeerDetail{}, false, nil
 	}
 
 	detail := peerDetailFromSeed(seed, s.now())
+	detail.BlockStatusKnown = true
 	if s.blocks != nil {
 		if blocked, err := s.blocks.IsBlocked(ctx, parsed); err == nil {
 			detail.Blocked = blocked
+		} else {
+			detail.BlockStatusKnown = false
 		}
 	}
 
-	return detail, true
+	return detail, true, nil
 }
 
 func peerDetailFromSeed(seed yagomodel.Seed, now time.Time) adminui.PeerDetail {
 	name, _ := seed.Name.Get()
 	address, _ := seed.NetworkAddress()
 	peerType, _ := seed.PeerType.Get()
-	rwi, _ := seed.RWICount.Get()
-	urls, _ := seed.URLCount.Get()
-	knownSeeds, _ := seed.KnownSeedCount.Get()
-	uptime, _ := seed.Uptime.Get()
-	sentWords, _ := seed.SentWordCount.Get()
-	receivedWords, _ := seed.ReceivedWordCount.Get()
-	sentURLs, _ := seed.SentURLCount.Get()
-	receivedURLs, _ := seed.ReceivedURLCount.Get()
+	rwi, rwiKnown := seedStatistic(seed.RWICount)
+	urls, urlsKnown := seedStatistic(seed.URLCount)
+	knownSeeds, knownSeedsKnown := seedStatistic(seed.KnownSeedCount)
+	uptime, uptimeKnown := seedStatistic(seed.Uptime)
+	sentWords, sentWordsKnown := seedTransferStatistic(seed.SentWordCount)
+	receivedWords, receivedWordsKnown := seedTransferStatistic(seed.ReceivedWordCount)
+	sentURLs, sentURLsKnown := seedTransferStatistic(seed.SentURLCount)
+	receivedURLs, receivedURLsKnown := seedTransferStatistic(seed.ReceivedURLCount)
+	ageDays, ageKnown := seedAgeStatistic(seed, now)
 
 	version := ""
 	if v, ok := seed.Version.Get(); ok {
@@ -240,22 +261,31 @@ func peerDetailFromSeed(seed yagomodel.Seed, now time.Time) adminui.PeerDetail {
 	}
 
 	return adminui.PeerDetail{
-		Name:          name,
-		Hash:          string(seed.Hash),
-		Address:       address,
-		Version:       version,
-		Type:          string(peerType),
-		Flags:         seedFlagLabels(seed),
-		LastSeen:      seedLastSeen(seed),
-		AgeDays:       seed.AgeDays(now),
-		UptimeMinutes: uptime,
-		RWIWords:      rwi,
-		URLs:          urls,
-		KnownSeeds:    knownSeeds,
-		SentWords:     sentWords,
-		ReceivedWords: receivedWords,
-		SentURLs:      sentURLs,
-		ReceivedURLs:  receivedURLs,
+		Name:               name,
+		Hash:               string(seed.Hash),
+		Address:            address,
+		Version:            version,
+		Type:               string(peerType),
+		Flags:              seedFlagLabels(seed),
+		LastSeen:           seedLastSeen(seed, now),
+		AgeDays:            ageDays,
+		AgeKnown:           ageKnown,
+		UptimeMinutes:      uptime,
+		UptimeKnown:        uptimeKnown,
+		RWIWords:           rwi,
+		RWIWordsKnown:      rwiKnown,
+		URLs:               urls,
+		URLsKnown:          urlsKnown,
+		KnownSeeds:         knownSeeds,
+		KnownSeedsKnown:    knownSeedsKnown,
+		SentWords:          sentWords,
+		SentWordsKnown:     sentWordsKnown,
+		ReceivedWords:      receivedWords,
+		ReceivedWordsKnown: receivedWordsKnown,
+		SentURLs:           sentURLs,
+		SentURLsKnown:      sentURLsKnown,
+		ReceivedURLs:       receivedURLs,
+		ReceivedURLsKnown:  receivedURLsKnown,
 	}
 }
 
@@ -303,11 +333,11 @@ func seedFlagLabels(seed yagomodel.Seed) []string {
 	return labels
 }
 
-func seedLastSeen(seed yagomodel.Seed) string {
-	last, ok := seed.LastSeen.Get()
+func seedLastSeen(seed yagomodel.Seed, now time.Time) string {
+	last, ok := seedLastSeenStatistic(seed, now)
 	if !ok {
 		return ""
 	}
 
-	return last.Time().UTC().Format(time.RFC3339)
+	return last.UTC().Format(time.RFC3339)
 }

@@ -17,10 +17,12 @@ type readDeferrer interface {
 // operator's restart-required setting; it is a no-op on engines that do not
 // defer.
 func (v *Vault) SetReadDeferBudget(budget time.Duration) {
-	if v == nil || v.engine == nil {
+	lease, err := v.acquireEngineLease()
+	if err != nil {
 		return
 	}
-	if deferrer, ok := v.engine.(readDeferrer); ok {
+	defer lease.release()
+	if deferrer, ok := lease.engine.(readDeferrer); ok {
 		deferrer.SetReadDeferBudget(budget)
 	}
 }
@@ -28,10 +30,12 @@ func (v *Vault) SetReadDeferBudget(budget time.Duration) {
 // ReadDeferred reports the cumulative time the engine has yielded writes to
 // in-flight reads (PERF-PRIO-02), or zero on engines that do not defer.
 func (v *Vault) ReadDeferred() time.Duration {
-	if v == nil || v.engine == nil {
+	lease, err := v.acquireEngineLease()
+	if err != nil {
 		return 0
 	}
-	deferrer, ok := v.engine.(readDeferrer)
+	defer lease.release()
+	deferrer, ok := lease.engine.(readDeferrer)
 	if !ok {
 		return 0
 	}

@@ -77,11 +77,7 @@ func (f *PageFetcher) Fetch(
 			return pagefetch.FetchedPage{}, &pagefetch.GoneError{Status: response.StatusCode}
 		}
 
-		return pagefetch.FetchedPage{}, fmt.Errorf(
-			"status %d: %w",
-			response.StatusCode,
-			pagefetch.ErrPageRejected,
-		)
+		return pagefetch.FetchedPage{}, &pagefetch.HTTPStatusError{Status: response.StatusCode}
 	}
 
 	robotsTag := response.Header.Get("X-Robots-Tag")

@@ -6,25 +6,37 @@ import (
 )
 
 func peerSearchFailureTotal(failures []searchcore.PartialFailure) int {
-	total := 0
+	peers := map[yagomodel.Hash]struct{}{}
 	for _, failure := range failures {
 		switch failure.Source {
 		case searchcore.PartialFailureSourceRemoteYaCy,
-			searchcore.PartialFailureSourcePeerReputation:
-			total++
-
-			continue
-		case searchcore.PartialFailureSourceExactStage,
+			searchcore.PartialFailureSourceRemoteStage,
+			searchcore.PartialFailureSourcePeerReputation,
+			searchcore.PartialFailureSourceExactStage,
 			searchcore.PartialFailureSourceLocalExactStage,
 			searchcore.PartialFailureSourceFuzzyStage,
 			searchcore.PartialFailureSourceLocalSearch,
 			searchcore.PartialFailureSourceWeb:
 			continue
 		}
-		if _, err := yagomodel.ParseHash(failure.Source); err == nil {
-			total++
+		peer, err := yagomodel.ParseHash(failure.Source)
+		if err == nil {
+			peers[peer] = struct{}{}
 		}
 	}
 
-	return total
+	return len(peers)
+}
+
+func federationSearchUnavailable(failures []searchcore.PartialFailure) bool {
+	for _, failure := range failures {
+		switch failure.Source {
+		case searchcore.PartialFailureSourceRemoteYaCy,
+			searchcore.PartialFailureSourceRemoteStage,
+			searchcore.PartialFailureSourcePeerReputation:
+			return true
+		}
+	}
+
+	return false
 }

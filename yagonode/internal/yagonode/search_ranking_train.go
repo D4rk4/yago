@@ -192,10 +192,11 @@ func newRankingTrainingCandidateSource(
 		return nil
 	}
 
-	return searchcore.NewLexicalEvidenceSearcher(
+	return searchcore.NewLexicalEvidenceSearcherWithWeights(
 		searchcore.NewPseudoRelevanceSearcher(
 			newLocalRankingSearcher(index, weights, authority),
 		),
+		lexicalRankingWeights(weights),
 	)
 }
 

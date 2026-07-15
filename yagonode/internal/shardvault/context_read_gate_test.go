@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	bolt "go.etcd.io/bbolt"
+
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -126,6 +128,14 @@ func TestGlobalReadStopsWhenCancellationRacesRetry(t *testing.T) {
 	gate.Unlock()
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestUsedBytesStopsBetweenShardMeasurements(t *testing.T) {
+	engine := &engine{shards: make([]*bolt.DB, 1)}
+	ctx := &cancellationRaceContext{Context: context.Background(), cancelAt: 3}
+	if _, err := engine.UsedBytes(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context cancellation", err)
 	}
 }
 

@@ -25,6 +25,11 @@ type deferredEvidenceCandidateIndex struct {
 	evidenceInput []searchindex.SearchResult
 }
 
+type searchOnlyCandidateIndex struct {
+	searches int
+	set      searchindex.SearchResultSet
+}
+
 func (d *deferredEvidenceCandidateIndex) SearchEvidence(
 	_ context.Context,
 	req searchindex.SearchRequest,
@@ -35,6 +40,19 @@ func (d *deferredEvidenceCandidateIndex) SearchEvidence(
 	d.evidenceInput = append([]searchindex.SearchResult(nil), results...)
 	for index := range results {
 		results[index].Snippet = "matched evidence"
+		results[index].EvidenceReady = true
+	}
+
+	return results, nil
+}
+
+func (c *candidateIndex) SearchEvidence(
+	_ context.Context,
+	_ searchindex.SearchRequest,
+	results []searchindex.SearchResult,
+) ([]searchindex.SearchResult, error) {
+	for index := range results {
+		results[index].EvidenceReady = true
 	}
 
 	return results, nil
@@ -46,12 +64,33 @@ func (c *candidateIndex) Stats(context.Context) (searchindex.IndexStats, error) 
 	return searchindex.IndexStats{}, nil
 }
 
+func (s *searchOnlyCandidateIndex) Index(context.Context, documentstore.Document) error {
+	return nil
+}
+
+func (s *searchOnlyCandidateIndex) Delete(context.Context, string) error { return nil }
+
+func (s *searchOnlyCandidateIndex) Stats(
+	context.Context,
+) (searchindex.IndexStats, error) {
+	return searchindex.IndexStats{}, nil
+}
+
+func (s *searchOnlyCandidateIndex) Search(
+	context.Context,
+	searchindex.SearchRequest,
+) (searchindex.SearchResultSet, error) {
+	s.searches++
+
+	return s.set, nil
+}
+
 func (c *candidateIndex) Search(
 	_ context.Context,
 	req searchindex.SearchRequest,
 ) (searchindex.SearchResultSet, error) {
 	c.requests = append(c.requests, req)
-	if req.MinimumTermMatches > 0 {
+	if req.Relaxed || req.MinimumTermMatches > 0 {
 		return c.relaxed, c.relaxErr
 	}
 
@@ -96,7 +135,8 @@ func TestSearchCandidatesFusesStrictAndRelaxedBranches(t *testing.T) {
 	}
 	if len(index.requests) != 2 || index.requests[0].WithFacets ||
 		index.requests[0].MaxResults != 3 || index.requests[1].MaxResults != 3 ||
-		index.requests[1].MinimumTermMatches != 2 || !index.requests[1].WithFacets {
+		index.requests[1].MinimumTermMatches != 2 || !index.requests[1].Relaxed ||
+		!index.requests[1].WithFacets {
 		t.Fatalf("requests = %#v", index.requests)
 	}
 	if set.Total != 3 || !reflect.DeepEqual(set.Facets, facets) || len(set.Results) != 3 {
@@ -135,6 +175,8 @@ func TestSearchCandidatesDefersEvidenceUntilAfterFusion(t *testing.T) {
 		t.Fatalf("candidate requests = %#v", index.requests)
 	}
 	if index.evidenceCalls != 1 || index.evidenceReq.CandidateOnly ||
+		index.evidenceReq.MinimumTermMatches != 2 ||
+		!index.evidenceReq.Relaxed ||
 		len(index.evidenceInput) != 2 {
 		t.Fatalf(
 			"evidence calls=%d req=%#v input=%#v",
@@ -182,6 +224,59 @@ func TestSearchCandidatesKeepsTwoTermRetrievalConjunctive(t *testing.T) {
 	}
 }
 
+func TestSearchCandidatesDisablesRelaxationWithoutEvidenceSource(t *testing.T) {
+	index := &searchOnlyCandidateIndex{set: searchindex.SearchResultSet{
+		Results: []searchindex.SearchResult{{DocumentID: "strict"}},
+	}}
+	set, err := (localSearcher{index: index}).searchCandidates(
+		t.Context(),
+		searchindex.SearchRequest{
+			Query:      "alpha beta gamma",
+			Terms:      []string{"alpha", "beta", "gamma"},
+			MaxResults: 1,
+		},
+	)
+	if err != nil {
+		t.Fatalf("searchCandidates: %v", err)
+	}
+	if index.searches != 1 || len(set.Results) != 1 || set.Results[0].DocumentID != "strict" {
+		t.Fatalf("searches=%d results=%#v", index.searches, set.Results)
+	}
+}
+
+func TestValidatedCandidateEvidenceRejectsUnreadyRelaxedRows(t *testing.T) {
+	results := validatedCandidateEvidence(
+		[]searchindex.SearchResult{
+			{DocumentID: "strict", StrictRank: 1},
+			{DocumentID: "ready", RelaxedRank: 1, EvidenceReady: true},
+			{DocumentID: "unready", RelaxedRank: 2},
+		},
+		searchindex.SearchRequest{Relaxed: true},
+	)
+	if len(results) != 2 || results[0].DocumentID != "strict" ||
+		results[1].DocumentID != "ready" {
+		t.Fatalf("results = %#v", results)
+	}
+}
+
+func TestSearchCandidatesDerivesRelaxationFromRawRequirements(t *testing.T) {
+	if got := relaxedMinimumTermMatches(searchindex.SearchRequest{
+		Terms: []string{"alpha", "beta", "for", "gamma"},
+	}); got != 3 {
+		t.Fatalf("raw requirement minimum = %d", got)
+	}
+	if got := relaxedMinimumTermMatches(searchindex.SearchRequest{
+		Terms: []string{"alpha", "for", "beta"},
+	}); got != 2 {
+		t.Fatalf("three-requirement minimum = %d", got)
+	}
+	if got := relaxedMinimumTermMatches(searchindex.SearchRequest{
+		Terms: []string{"the", "for", "and"},
+	}); got != 2 {
+		t.Fatalf("all-stopword minimum = %d", got)
+	}
+}
+
 func TestSearchCandidatesSkipsRelaxedIneligibleRequests(t *testing.T) {
 	requests := []searchindex.SearchRequest{
 		{Query: "one"},
@@ -189,6 +284,7 @@ func TestSearchCandidatesSkipsRelaxedIneligibleRequests(t *testing.T) {
 		{Terms: []string{"one", "two"}},
 		{Terms: []string{"one", "two"}, Fuzzy: true},
 		{Terms: []string{"one", "two"}, Near: true},
+		{Terms: []string{"one", "two"}, Relaxed: true},
 		{Terms: []string{"one", "two"}, MinimumTermMatches: 1},
 	}
 	for _, req := range requests {

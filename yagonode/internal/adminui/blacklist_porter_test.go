@@ -18,8 +18,8 @@ type fakePorterBlacklist struct {
 
 func (f *fakePorterBlacklist) BlacklistEntries(
 	context.Context,
-) []BlacklistEntry {
-	return f.entries
+) ([]BlacklistEntry, error) {
+	return f.entries, nil
 }
 
 func (f *fakePorterBlacklist) AddBlacklist(context.Context, string, string) error {

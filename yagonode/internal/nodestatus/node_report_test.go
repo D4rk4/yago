@@ -31,6 +31,16 @@ type stubPeers struct {
 
 func (p stubPeers) KnownPeerCount(context.Context) int { return p.known }
 
+type stubObservedPeers struct {
+	stubPeers
+	observed int
+	err      error
+}
+
+func (p stubObservedPeers) ObservedKnownPeerCount(context.Context) (int, error) {
+	return p.observed, p.err
+}
+
 type stubNews struct {
 	attachment string
 }
@@ -69,6 +79,7 @@ func reportAt(start time.Time, elapsed time.Duration, rwi, urls stubCounter) nod
 		Peers: stubPeers{known: 4},
 		News:  stubNews{attachment: "b|news"},
 		Transfers: stubTransfers{totals: TransferTotals{
+			Known:         true,
 			SentWords:     11,
 			ReceivedWords: 22,
 			SentURLs:      33,
@@ -134,6 +145,40 @@ func TestSelfSeedRefreshesDynamicFields(t *testing.T) {
 	}
 }
 
+func TestSelfSeedKeepsUnavailablePeerCountUnknown(t *testing.T) {
+	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
+	id := testIdentity()
+	id.Start = start
+	report := newReport(id, clockAt(start), ReportSources{
+		RWI:       stubCounter{},
+		URLs:      stubCounter{},
+		Peers:     stubObservedPeers{err: errors.New("closed")},
+		News:      stubNews{},
+		Transfers: stubTransfers{},
+	})
+
+	if _, known := report.SelfSeed(t.Context()).KnownSeedCount.Get(); known {
+		t.Fatal("unavailable peer count was published as known")
+	}
+}
+
+func TestSelfSeedPublishesObservedPeerCount(t *testing.T) {
+	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
+	id := testIdentity()
+	id.Start = start
+	report := newReport(id, clockAt(start), ReportSources{
+		RWI:       stubCounter{},
+		URLs:      stubCounter{},
+		Peers:     stubObservedPeers{stubPeers: stubPeers{known: 4}, observed: 7},
+		News:      stubNews{},
+		Transfers: stubTransfers{},
+	})
+
+	if got, known := report.SelfSeed(t.Context()).KnownSeedCount.Get(); got != 7 || !known {
+		t.Fatalf("KnownSeedCount = %d known=%t, want 7 true", got, known)
+	}
+}
+
 func TestSelfSeedCarriesPersistentBirthDate(t *testing.T) {
 	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
 	birth := time.Date(2025, time.January, 5, 12, 0, 0, 0, time.UTC)
@@ -184,18 +229,31 @@ func TestSelfSeedKeepsIdentityFields(t *testing.T) {
 	}
 }
 
-func TestSelfSeedCountErrorsReportZero(t *testing.T) {
+func TestSelfSeedCountErrorsRemainUnavailable(t *testing.T) {
 	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
 	counts := stubCounter{rwi: 5, urls: 9, err: errors.New("boom")}
 	report := reportAt(start, time.Hour, counts, counts)
 
 	seed := report.SelfSeed(context.Background())
 
-	if got, _ := seed.RWICount.Get(); got != 0 {
-		t.Fatalf("RWICount = %d, want 0 on error", got)
+	if got, known := seed.RWICount.Get(); got != 0 || known {
+		t.Fatalf("RWICount = %d known=%t, want unavailable on error", got, known)
 	}
-	if got, _ := seed.URLCount.Get(); got != 0 {
-		t.Fatalf("URLCount = %d, want 0 on error", got)
+	if got, known := seed.URLCount.Get(); got != 0 || known {
+		t.Fatalf("URLCount = %d known=%t, want unavailable on error", got, known)
+	}
+}
+
+func TestSelfSeedNegativeCountsClampToZero(t *testing.T) {
+	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
+	counts := stubCounter{rwi: -5, urls: -9}
+	seed := reportAt(start, time.Hour, counts, counts).SelfSeed(context.Background())
+
+	if got, known := seed.RWICount.Get(); got != 0 || !known {
+		t.Fatalf("RWICount = %d known=%t, want 0 true", got, known)
+	}
+	if got, known := seed.URLCount.Get(); got != 0 || !known {
+		t.Fatalf("URLCount = %d known=%t, want 0 true", got, known)
 	}
 }
 

@@ -42,6 +42,12 @@ func TestNetworkSourceMapsPeerDetail(t *testing.T) {
 	if peer.Name != "peerA" || peer.Type != "senior" || peer.RWICount != 42 {
 		t.Fatalf("peer = %+v", peer)
 	}
+	if !peer.RWIKnown {
+		t.Fatal("peer RWI count should be known")
+	}
+	if !peer.BlockStatusKnown {
+		t.Fatal("an absent blocklist means the peer is effectively unblocked")
+	}
 	if peer.Address != "1.2.3.4:8090" {
 		t.Fatalf("address = %q", peer.Address)
 	}
@@ -50,6 +56,23 @@ func TestNetworkSourceMapsPeerDetail(t *testing.T) {
 	}
 	if peer.LastSeen != "2026-01-02T03:04:05Z" {
 		t.Fatalf("lastSeen = %q", peer.LastSeen)
+	}
+}
+
+func TestNetworkSourceComputesHealthFromCompleteStatistics(t *testing.T) {
+	now := time.Date(2026, 1, 3, 3, 4, 5, 0, time.UTC)
+	seed := networkTestSeed(t)
+	seed.BirthDate = yagomodel.Some(
+		yagomodel.NewSeedBirthDateUTC(now.Add(-48 * time.Hour)),
+	)
+	seed.Uptime = yagomodel.Some(600)
+	source := newNetworkSource(dhtGateStatusSource{}, nil, nil, nil, nil)
+	source.now = func() time.Time { return now }
+
+	peers := source.adminNetworkPeers(t.Context(), []yagomodel.Seed{seed})
+	if len(peers) != 1 || !peers[0].HealthKnown || !peers[0].AgeKnown ||
+		peers[0].AgeDays != 2 {
+		t.Fatalf("complete peer health = %+v", peers)
 	}
 }
 
@@ -128,8 +151,8 @@ func TestPeerDetailSourceMapsSeed(t *testing.T) {
 	seed.ReceivedURLCount = yagomodel.Some(int64(44))
 	source := newPeerDetailSource(reachableRoster{peers: []yagomodel.Seed{seed}}, nil)
 
-	detail, ok := source.PeerDetail(context.Background(), string(seed.Hash))
-	if !ok {
+	detail, ok, err := source.PeerDetail(context.Background(), string(seed.Hash))
+	if err != nil || !ok {
 		t.Fatal("a known peer must resolve")
 	}
 	switch {
@@ -144,18 +167,50 @@ func TestPeerDetailSourceMapsSeed(t *testing.T) {
 	case len(detail.Flags) != 1 || detail.Flags[0] != "remote-index":
 		t.Fatalf("flags = %v", detail.Flags)
 	}
+	if !detail.RWIWordsKnown || !detail.URLsKnown || !detail.KnownSeedsKnown ||
+		!detail.UptimeKnown || !detail.SentWordsKnown || !detail.ReceivedWordsKnown ||
+		!detail.SentURLsKnown || !detail.ReceivedURLsKnown || !detail.BlockStatusKnown {
+		t.Fatalf("known peer statistics lost availability: %+v", detail)
+	}
+}
+
+func TestPeerDetailSourceKeepsMissingAndNegativeStatisticsUnavailable(t *testing.T) {
+	seed := networkTestSeed(t)
+	seed.BirthDate = yagomodel.None[yagomodel.SeedBirthDateUTC]()
+	seed.Uptime = yagomodel.Some(-1)
+	seed.RWICount = yagomodel.Some(-2)
+	seed.URLCount = yagomodel.None[int]()
+	seed.KnownSeedCount = yagomodel.None[int]()
+	seed.SentWordCount = yagomodel.Some[int64](-3)
+	source := newPeerDetailSource(reachableRoster{peers: []yagomodel.Seed{seed}}, nil)
+
+	detail, ok, err := source.PeerDetail(context.Background(), string(seed.Hash))
+	if err != nil || !ok {
+		t.Fatal("a known peer must resolve")
+	}
+	if detail.AgeKnown || detail.UptimeKnown || detail.RWIWordsKnown || detail.URLsKnown ||
+		detail.KnownSeedsKnown || detail.SentWordsKnown {
+		t.Fatalf("invalid or missing peer facts marked known: %+v", detail)
+	}
 }
 
 func TestPeerDetailSourceRejectsMalformedHash(t *testing.T) {
 	source := newPeerDetailSource(reachableRoster{}, nil)
-	if _, ok := source.PeerDetail(context.Background(), "too-short"); ok {
+	if _, ok, err := source.PeerDetail(context.Background(), "too-short"); err != nil || ok {
 		t.Fatal("a malformed hash must not resolve")
 	}
 }
 
 func TestPeerDetailSourceReportsUnknownPeer(t *testing.T) {
 	source := newPeerDetailSource(reachableRoster{}, nil)
-	if _, ok := source.PeerDetail(context.Background(), "HHHHHHHHHHHH"); ok {
+	if _, ok, err := source.PeerDetail(
+		context.Background(), "HHHHHHHHHHHH",
+	); err != nil || ok {
 		t.Fatal("an unknown but well-formed hash must not resolve")
+	}
+	if _, ok, err := newPeerDetailSource(nil, nil).PeerDetail(
+		context.Background(), "HHHHHHHHHHHH",
+	); err != nil || ok {
+		t.Fatal("an unavailable roster must not resolve a peer")
 	}
 }

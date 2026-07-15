@@ -182,16 +182,14 @@ func TestRunNodeLoadRuntimeSettingsError(t *testing.T) {
 	}
 }
 
-func TestRunNodePeerBlockOpenError(t *testing.T) {
+func TestOpenPeerStoresPeerBlockOpenError(t *testing.T) {
 	engine := newCtrlEngine()
 	engine.failProvision["peerblock"] = true
 	v := ctrlVault(t, engine)
-	config := testConfig(t)
 
-	if err := bootNode(
-		context.Background(), config, v, newRuntimeEgressClient(config),
-	); err == nil {
-		t.Fatal("bootNode should surface the peer blocklist open error")
+	_, _, _, _, err := openPeerStores(v, nil)
+	if err == nil || !strings.Contains(err.Error(), "open peer blocklist") {
+		t.Fatalf("openPeerStores error = %v, want peer blocklist open error", err)
 	}
 }
 
@@ -339,6 +337,7 @@ func TestSecurityChangePasswordVerifyError(t *testing.T) {
 		context.Background(), http.MethodPost, "/api/admin/v1/auth/login",
 		strings.NewReader(`{"username":"admin","password":"pw"}`),
 	)
+	loginReq.Header.Set("Content-Type", "application/json")
 	handler.ServeHTTP(loginRec, loginReq)
 	if loginRec.Code != http.StatusOK {
 		t.Fatalf("login = %d, want 200", loginRec.Code)

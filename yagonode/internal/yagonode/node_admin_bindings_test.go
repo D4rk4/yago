@@ -23,6 +23,12 @@ func newTestBindingSource(
 	envConfig nodeConfig,
 ) (*bindingSource, *settingsstore.Store, *events.Recorder) {
 	t.Helper()
+	if envConfig.PeerAddr == "" {
+		envConfig.PeerAddr = ":8090"
+	}
+	if envConfig.OpsAddr == "" {
+		envConfig.OpsAddr = ":9090"
+	}
 
 	v, err := memvault.Open(0)
 	if err != nil {
@@ -64,12 +70,33 @@ func TestBindingSourceReportsEnvironmentAddress(t *testing.T) {
 	if item.Host != "" || item.Port != "8090" {
 		t.Fatalf("item = (%q,%q), want (\"\",\"8090\")", item.Host, item.Port)
 	}
+	if !item.ListenerEnabled {
+		t.Fatal("configured peer listener reported disabled")
+	}
 	if item.Overridden {
 		t.Fatal("no override stored, item should not be overridden")
 	}
 	if len(item.Interfaces) == 0 {
 		t.Fatal("no interface options offered")
 	}
+}
+
+func TestBindingSourceReportsDisabledOptionalListener(t *testing.T) {
+	t.Parallel()
+
+	source, _, _ := newTestBindingSource(t, nodeConfig{PeerAddr: ":8090", OpsAddr: ":9090"})
+	view := source.Bindings(context.Background())
+	for _, item := range view.Items {
+		if item.Key != bindKeyPublic {
+			continue
+		}
+		if item.ListenerEnabled || item.Host != "" || item.Port != "" {
+			t.Fatalf("disabled public listener = %+v", item)
+		}
+
+		return
+	}
+	t.Fatal("public bind item not present")
 }
 
 func TestBindingSourceReportsStoredOverride(t *testing.T) {
@@ -88,6 +115,36 @@ func TestBindingSourceReportsStoredOverride(t *testing.T) {
 			item.Port,
 			item.Overridden,
 		)
+	}
+}
+
+func TestBindingSourceReportsUnavailableStoredState(t *testing.T) {
+	t.Parallel()
+
+	source, store, _ := newTestBindingSource(t, nodeConfig{PeerAddr: ":8090"})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	view := source.Bindings(ctx)
+	if view.Error != storedBindingsUnavailable || len(view.Items) != 0 {
+		t.Fatalf("cancelled read = %+v", view)
+	}
+
+	if err := store.Set(context.Background(), bindKeyPeer, "invalid"); err != nil {
+		t.Fatalf("Set invalid bind: %v", err)
+	}
+	view = source.Bindings(context.Background())
+	if view.Error != storedBindingsUnavailable || len(view.Items) != 0 {
+		t.Fatalf("invalid bind = %+v", view)
+	}
+}
+
+func TestBindingSourceReportsInvalidConfiguredAddress(t *testing.T) {
+	t.Parallel()
+
+	source, _, _ := newTestBindingSource(t, nodeConfig{PeerAddr: "invalid"})
+	view := source.Bindings(context.Background())
+	if view.Error != storedBindingsUnavailable || len(view.Items) != 0 {
+		t.Fatalf("invalid configured bind = %+v", view)
 	}
 }
 

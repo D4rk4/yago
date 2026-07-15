@@ -27,6 +27,11 @@ func TestOverviewSourceMapsReport(t *testing.T) {
 	if overview.Version == report.Version(context.Background()) {
 		t.Fatalf("overview version %q leaked the wire protocol version", overview.Version)
 	}
+	if overview.IndexedDocumentsKnown || overview.URLMetadataRecordsKnown ||
+		overview.WordsKnown || overview.SentWordsKnown ||
+		overview.ReceivedWordsKnown || overview.SentURLsKnown || overview.ReceivedURLsKnown {
+		t.Fatalf("absent report statistics marked known: %+v", overview)
+	}
 }
 
 type stubSearchIndex struct {
@@ -47,6 +52,25 @@ func (stubSearchIndex) Search(
 
 func (s stubSearchIndex) Stats(context.Context) (searchindex.IndexStats, error) {
 	return s.stats, s.err
+}
+
+func TestOverviewSourceSeparatesIndexedDocumentsFromURLMetadata(t *testing.T) {
+	ctx := context.Background()
+	report := stubReport{seed: yagomodel.Seed{URLCount: yagomodel.Some(23)}}
+	overview := newOverviewSource(report).withLocalIndex(stubSearchIndex{
+		stats: searchindex.IndexStats{Documents: 9},
+	}).Overview(ctx)
+	if !overview.IndexedDocumentsKnown || overview.IndexedDocuments != 9 ||
+		!overview.URLMetadataRecordsKnown || overview.URLMetadataRecords != 23 {
+		t.Fatalf("overview document populations = %+v", overview)
+	}
+
+	unavailable := newOverviewSource(report).withLocalIndex(stubSearchIndex{
+		err: errors.New("boom"),
+	}).Overview(ctx)
+	if unavailable.IndexedDocumentsKnown || !unavailable.URLMetadataRecordsKnown {
+		t.Fatalf("overview failed index statistics = %+v", unavailable)
+	}
 }
 
 func TestIndexSourceCoversAllPaths(t *testing.T) {

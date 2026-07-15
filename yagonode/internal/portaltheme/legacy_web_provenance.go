@@ -14,6 +14,9 @@ const (
 func repairLegacyPortalDocument(page, body string) string {
 	if page != SharedStyles {
 		body = repairLegacyVisualScript(body)
+		body = repairLegacyOpenSearchDiscovery(body)
+		body = repairLegacyResultTotal(body)
+		body = repairLegacySearchTruth(body)
 		body = strings.ReplaceAll(body, legacyWebFooterFragment, currentWebFooterFragment)
 		body = strings.ReplaceAll(body, legacyWebCountFragment, currentWebCountFragment)
 

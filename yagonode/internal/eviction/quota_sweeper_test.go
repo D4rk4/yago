@@ -101,11 +101,12 @@ func (f *fakePostings) PurgePosting(
 }
 
 type fakeURLs struct {
-	remaining []yagomodel.Hash
-	selected  [][]yagomodel.Hash
-	selectErr error
-	noDelete  bool
-	purgeErr  error
+	remaining   []yagomodel.Hash
+	selected    [][]yagomodel.Hash
+	selectErr   error
+	noDelete    bool
+	purgeErr    error
+	beforePurge func() error
 }
 
 func (f *fakeURLs) StalestURLs(_ context.Context, limit int) ([]yagomodel.Hash, error) {
@@ -126,6 +127,11 @@ func (f *fakeURLs) Purge(
 	_ *vault.Txn,
 	urls []yagomodel.Hash,
 ) (urlmeta.PurgeResult, error) {
+	if f.beforePurge != nil {
+		if err := f.beforePurge(); err != nil {
+			return urlmeta.PurgeResult{}, err
+		}
+	}
 	if f.purgeErr != nil {
 		return urlmeta.PurgeResult{}, f.purgeErr
 	}
@@ -431,6 +437,59 @@ type fakeDocuments struct {
 	err     error
 }
 
+type fakeReservedDocumentEviction struct {
+	deleted  []string
+	released bool
+	err      error
+}
+
+func (f *fakeReservedDocumentEviction) Delete(
+	_ context.Context,
+	url string,
+) (bool, error) {
+	f.deleted = append(f.deleted, url)
+	if f.err != nil {
+		return false, f.err
+	}
+
+	return true, nil
+}
+
+func (f *fakeReservedDocumentEviction) Release() {
+	f.released = true
+}
+
+type fakeDocumentEvictionReserver struct {
+	reservation *fakeReservedDocumentEviction
+	reserved    []string
+	direct      int
+	err         error
+}
+
+func (f *fakeDocumentEvictionReserver) Delete(
+	context.Context,
+	string,
+) (bool, error) {
+	f.direct++
+
+	return true, nil
+}
+
+func (f *fakeDocumentEvictionReserver) ReserveDocumentEvictions(
+	_ context.Context,
+	urls []string,
+) (eviction.ReservedDocumentEviction, error) {
+	f.reserved = append([]string(nil), urls...)
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.reservation == nil {
+		return nil, nil
+	}
+
+	return f.reservation, nil
+}
+
 func (f *fakeDocuments) Delete(_ context.Context, url string) (bool, error) {
 	if f.err != nil {
 		return false, f.err
@@ -475,6 +534,120 @@ func TestEvictURLsDropsResolvedDocuments(t *testing.T) {
 	}
 	if result.DocumentsDeleted != 1 {
 		t.Fatalf("documents deleted = %d, want 1 (the present one)", result.DocumentsDeleted)
+	}
+}
+
+func TestPurgeResolvedHoldsDocumentReservationThroughURLPurge(t *testing.T) {
+	v := openVault(t, 1024)
+	reservation := &fakeReservedDocumentEviction{}
+	documents := &fakeDocumentEvictionReserver{reservation: reservation}
+	urls := &fakeURLs{remaining: hashes(1)}
+	urls.beforePurge = func() error {
+		if reservation.released {
+			return fmt.Errorf("reservation released before URL purge")
+		}
+		if len(reservation.deleted) != 2 {
+			return fmt.Errorf("documents deleted = %d", len(reservation.deleted))
+		}
+
+		return nil
+	}
+	evictor := eviction.NewEvictor(
+		v,
+		&fakePostings{},
+		fakeReferences{word: yagomodel.WordHash("w")},
+		urls,
+		documents,
+		nil,
+	)
+	if err := evictor.PurgeResolved(
+		t.Context(),
+		[]string{
+			" https://z.example/ ",
+			"https://source.example/",
+			"https://z.example/",
+			" ",
+		},
+		hashes(1),
+	); err != nil {
+		t.Fatalf("PurgeResolved: %v", err)
+	}
+	if !reservation.released || documents.direct != 0 ||
+		len(documents.reserved) != 2 ||
+		documents.reserved[0] != "https://source.example/" ||
+		documents.reserved[1] != "https://z.example/" {
+		t.Fatalf(
+			"reservation = released:%t direct:%d urls:%v",
+			reservation.released,
+			documents.direct,
+			documents.reserved,
+		)
+	}
+}
+
+func TestPurgeResolvedRejectsEmptyDocumentReservation(t *testing.T) {
+	v := openVault(t, 1024)
+	documents := &fakeDocumentEvictionReserver{}
+	evictor := eviction.NewEvictor(
+		v,
+		&fakePostings{},
+		fakeReferences{word: yagomodel.WordHash("w")},
+		&fakeURLs{remaining: hashes(1)},
+		documents,
+		nil,
+	)
+	if err := evictor.PurgeResolved(
+		t.Context(),
+		[]string{"https://source.example/"},
+		hashes(1),
+	); err == nil {
+		t.Fatal("PurgeResolved should reject an empty document reservation")
+	}
+}
+
+func TestPurgeResolvedSurfacesDocumentReservationFailure(t *testing.T) {
+	v := openVault(t, 1024)
+	wantErr := errors.New("reservation failed")
+	documents := &fakeDocumentEvictionReserver{err: wantErr}
+	evictor := eviction.NewEvictor(
+		v,
+		&fakePostings{},
+		fakeReferences{word: yagomodel.WordHash("w")},
+		&fakeURLs{remaining: hashes(1)},
+		documents,
+		nil,
+	)
+	if err := evictor.PurgeResolved(
+		t.Context(),
+		[]string{"https://source.example/"},
+		hashes(1),
+	); !errors.Is(err, wantErr) {
+		t.Fatalf("PurgeResolved error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestPurgeResolvedReleasesDocumentReservationAfterFailure(t *testing.T) {
+	v := openVault(t, 1024)
+	reservation := &fakeReservedDocumentEviction{}
+	documents := &fakeDocumentEvictionReserver{reservation: reservation}
+	wantErr := errors.New("url purge failed")
+	evictor := eviction.NewEvictor(
+		v,
+		&fakePostings{},
+		fakeReferences{word: yagomodel.WordHash("w")},
+		&fakeURLs{remaining: hashes(1), purgeErr: wantErr},
+		documents,
+		nil,
+	)
+	if err := evictor.PurgeResolved(
+		t.Context(),
+		[]string{"https://source.example/"},
+		hashes(1),
+	); !errors.Is(err, wantErr) {
+		t.Fatalf("PurgeResolved error = %v, want %v", err, wantErr)
+	}
+	if !reservation.released {
+		t.Fatal("document reservation was not released")
 	}
 }
 

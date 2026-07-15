@@ -13,14 +13,14 @@ func TestHitFieldTermPositionsOmittedUnlessRequested(t *testing.T) {
 	hit := &search.DocumentMatch{Locations: search.FieldTermLocationMap{
 		"body": {"linux": {{Pos: 2}}},
 	}}
-	if got := hitFieldTermPositions(SearchRequest{IncludePositions: false}, hit); got != nil {
+	if got := hitFieldTermPositions(SearchRequest{IncludePositions: false}, hit, ""); got != nil {
 		t.Fatalf("positions returned without request: %v", got)
 	}
 }
 
 func TestHitFieldTermPositionsNilWithoutLocations(t *testing.T) {
 	hit := &search.DocumentMatch{}
-	if got := hitFieldTermPositions(SearchRequest{IncludePositions: true}, hit); got != nil {
+	if got := hitFieldTermPositions(SearchRequest{IncludePositions: true}, hit, ""); got != nil {
 		t.Fatalf("positions returned without locations: %v", got)
 	}
 }
@@ -29,7 +29,7 @@ func TestHitFieldTermPositionsSortsPositions(t *testing.T) {
 	hit := &search.DocumentMatch{Locations: search.FieldTermLocationMap{
 		"body": {"kernel": {{Pos: 8}, {Pos: 3}}, "linux": {{Pos: 2}}},
 	}}
-	got := hitFieldTermPositions(SearchRequest{IncludePositions: true}, hit)
+	got := hitFieldTermPositions(SearchRequest{IncludePositions: true}, hit, "")
 	if want := []int{3, 8}; !slices.Equal(got["body"]["kernel"], want) {
 		t.Fatalf("kernel positions = %v, want %v", got["body"]["kernel"], want)
 	}

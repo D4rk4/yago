@@ -55,13 +55,14 @@ func (s localSearcher) Search(
 	if s.index == nil {
 		return searchcore.Response{}, fmt.Errorf("search index unavailable")
 	}
-	indexReq := s.indexRequest(req)
+	weights := s.currentRankingWeights()
+	indexReq := s.indexRequestWithWeights(req, weights)
 	resultSet, err := s.searchCandidates(ctx, indexReq)
 	if err != nil {
 		return searchcore.Response{}, fmt.Errorf("search index: %w", err)
 	}
 
-	results, err := coreResults(req, resultSet.Results, s.hostRankScorer())
+	results, err := coreResults(req, resultSet.Results, s.hostRankScorer(req, weights))
 	if err != nil {
 		return searchcore.Response{}, err
 	}
@@ -75,14 +76,24 @@ func (s localSearcher) Search(
 }
 
 func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRequest {
+	return s.indexRequestWithWeights(req, s.currentRankingWeights())
+}
+
+func (s localSearcher) currentRankingWeights() searchindex.RankingWeights {
+	if s.weights == nil {
+		return searchindex.RankingWeights{}
+	}
+
+	return s.weights()
+}
+
+func (s localSearcher) indexRequestWithWeights(
+	req searchcore.Request,
+	weights searchindex.RankingWeights,
+) searchindex.SearchRequest {
 	query := strings.TrimSpace(req.Query)
 	if query == "" {
 		query = strings.Join(req.Terms, " ")
-	}
-
-	var weights searchindex.RankingWeights
-	if s.weights != nil {
-		weights = s.weights()
 	}
 
 	return searchindex.SearchRequest{
@@ -175,13 +186,15 @@ func coreResults(
 }
 
 type hostRankScorer struct {
-	hostWeight  float64
-	freshWeight float64
-	qualWeight  float64
-	proxWeight  float64
-	table       hostrank.AuthorityTable
-	now         time.Time
-	freshness   freshnessDecayProfile
+	hostWeight        float64
+	freshWeight       float64
+	qualWeight        float64
+	urlWeight         float64
+	authorityEvidence bool
+	freshnessEvidence bool
+	table             hostrank.AuthorityTable
+	now               time.Time
+	freshness         freshnessDecayProfile
 }
 
 // URL-length prior constants: weight and saturation length in path runes
@@ -194,25 +207,30 @@ const (
 // hostRankScorer returns a scorer when any prior is enabled by the live
 // ranking profile; with every prior weight at zero it returns nil and rescore
 // is a no-op.
-func (s localSearcher) hostRankScorer() *hostRankScorer {
+func (s localSearcher) hostRankScorer(
+	req searchcore.Request,
+	weights searchindex.RankingWeights,
+) *hostRankScorer {
 	if s.weights == nil {
 		return nil
 	}
-	weights := s.weights()
+	evidenceRequested := req.RankingFeatures || req.Explain
 	scorer := &hostRankScorer{
-		hostWeight:  weights.HostRank,
-		freshWeight: weights.Freshness,
-		qualWeight:  weights.Quality,
-		proxWeight:  weights.Proximity,
-		now:         time.Now(),
+		hostWeight:        weights.HostRank,
+		freshWeight:       weights.Freshness,
+		qualWeight:        weights.Quality,
+		urlWeight:         weights.URLPrior,
+		authorityEvidence: evidenceRequested,
+		freshnessEvidence: evidenceRequested,
+		now:               time.Now(),
 	}
 	// The host table is consulted only when its weight enables it, so a
 	// profile with host authority off pays no table snapshot.
-	if scorer.hostWeight > 0 && s.hostRank != nil {
+	if (scorer.hostWeight > 0 || scorer.authorityEvidence) && s.hostRank != nil {
 		scorer.table = s.hostRank()
 	}
-	if scorer.table == nil && scorer.freshWeight <= 0 &&
-		scorer.qualWeight <= 0 && scorer.proxWeight <= 0 {
+	if scorer.table == nil && scorer.freshWeight <= 0 && scorer.qualWeight <= 0 &&
+		scorer.urlWeight <= 0 && !scorer.freshnessEvidence {
 		return nil
 	}
 
@@ -223,54 +241,29 @@ func (h *hostRankScorer) rescore(results []searchcore.Result, req searchcore.Req
 	if h == nil {
 		return
 	}
-	if h.freshWeight > 0 {
+	if h.freshWeight > 0 || h.freshnessEvidence {
 		h.freshness = freshnessProfileFor(req, results, h.now)
 	}
 	for i := range results {
 		results[i].Score *= 1 + h.priors(&results[i])
 	}
-	sort.SliceStable(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
-	})
+	if h.hostWeight > 0 || h.freshWeight > 0 || h.qualWeight > 0 || h.urlWeight > 0 {
+		sort.SliceStable(results, func(i, j int) bool {
+			return results[i].Score > results[j].Score
+		})
+	}
 }
 
 // priors sums the enabled query-independent bonuses for one result.
 func (h *hostRankScorer) priors(result *searchcore.Result) float64 {
 	urlPrior := urlLengthPrior(result.URL)
 	result.Evidence = result.Evidence.With(searchcore.SignalURLPrior, urlPrior)
-	total := urlPrior
-	if h.hostWeight > 0 && h.table != nil {
-		if authority, known := h.table[hostrank.RegistrableDomain(result.URL)]; known {
-			result.Evidence = result.Evidence.With(
-				searchcore.SignalAuthority,
-				authority.Score,
-			)
-			result.Evidence = result.Evidence.With(
-				searchcore.SignalAuthorityConfidence,
-				authority.Confidence,
-			)
-			total += h.hostWeight * authority.Score * authority.Confidence
-		}
-	}
-	if h.freshWeight > 0 {
-		if published, err := time.Parse("20060102", result.Date); err == nil &&
-			result.DateConfidence > 0 {
-			age := h.now.Sub(published)
-			if age < 0 {
-				age = 0
-			}
-			freshness := result.DateConfidence * h.freshness.Score(age)
-			result.Evidence = result.Evidence.With(searchcore.SignalFreshness, freshness)
-			total += h.freshWeight * freshness
-		}
-	}
+	total := h.urlWeight * urlPrior
+	total += h.authorityPrior(result)
+	total += h.freshnessPrior(result)
 	if h.qualWeight > 0 && result.QualityKnown {
 		total += h.qualWeight * result.Quality
 	}
-	if h.proxWeight > 0 {
-		total += h.proxWeight * result.Proximity
-	}
-
 	return total
 }
 

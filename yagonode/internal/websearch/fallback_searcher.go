@@ -52,6 +52,7 @@ func (s *FallbackSearcher) Search(
 		return resp, nil
 	}
 	results, provErr := s.searchProvider(ctx, req.SubmittedText(), req.Limit)
+	results = verifiedWebResults(req, results)
 	if provErr != nil {
 		slog.DebugContext(
 			ctx,
@@ -59,11 +60,13 @@ func (s *FallbackSearcher) Search(
 			slog.String("reason", webSearchFailureReason(provErr)),
 		)
 		resp.PartialFailures = append(resp.PartialFailures, webProviderFailure())
-
+	}
+	webResults := toCoreResults(results, req.Limit)
+	if provErr != nil && len(webResults) == 0 {
 		return resp, nil
 	}
-	results = verifiedWebResults(req, results)
-	resp.Results = toCoreResults(results, req.Limit)
+	clearPrimaryMissRecoveryForWebAnswer(&resp, webResults)
+	resp.Results = webResults
 	resp.TotalResults = len(resp.Results)
 	if s.seeder != nil && len(results) > 0 {
 		s.seedWebResults(ctx, results)

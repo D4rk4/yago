@@ -74,6 +74,7 @@ func TestSecuritySourceChangePasswordThroughGuard(t *testing.T) {
 		context.Background(), http.MethodPost, adminauth.PathLogin,
 		strings.NewReader(`{"username":"admin","password":"pw"}`),
 	)
+	loginReq.Header.Set("Content-Type", "application/json")
 	handler.ServeHTTP(loginRec, loginReq)
 	if loginRec.Code != http.StatusOK {
 		t.Fatalf("login = %d, want 200", loginRec.Code)

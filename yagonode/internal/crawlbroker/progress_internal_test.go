@@ -26,6 +26,7 @@ func TestReportProgressTranslatesAndForwards(t *testing.T) {
 	server.progress = sink
 
 	runID := []byte{0xde, 0xad, 0xbe, 0xef}
+	pagesPerMinute := uint32(30)
 	_, err := server.ReportProgress(context.Background(), &crawlrpc.CrawlProgressReport{
 		WorkerId:      "worker-1",
 		RunId:         runID,
@@ -35,6 +36,7 @@ func TestReportProgressTranslatesAndForwards(t *testing.T) {
 		Tally: &crawlrpc.CrawlRunTally{
 			Fetched: 5, Indexed: 4, Failed: 1, RobotsDenied: 2, Duplicates: 3, Pending: 6,
 		},
+		PagesPerMinute: &pagesPerMinute,
 	})
 	if err != nil {
 		t.Fatalf("report: %v", err)
@@ -57,6 +59,18 @@ func TestReportProgressTranslatesAndForwards(t *testing.T) {
 	}
 	if got.Tally != wantTally {
 		t.Fatalf("tally = %+v, want %+v", got.Tally, wantTally)
+	}
+	if !got.RateKnown || got.PagesPerMinute != 30 {
+		t.Fatalf("rate = %d/%v, want known 30", got.PagesPerMinute, got.RateKnown)
+	}
+}
+
+func TestProgressFromReportPreservesUnknownRate(t *testing.T) {
+	t.Parallel()
+
+	got := progressFromReport(&crawlrpc.CrawlProgressReport{})
+	if got.RateKnown || got.PagesPerMinute != 0 {
+		t.Fatalf("rate = %d/%v, want unknown", got.PagesPerMinute, got.RateKnown)
 	}
 }
 

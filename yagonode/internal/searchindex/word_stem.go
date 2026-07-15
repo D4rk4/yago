@@ -39,8 +39,11 @@ func StemWord(word string) string {
 		return ""
 	}
 	analyzerName := queryAnalyzers(word)[0]
+	if analyzerName == standardTextAnalyzer || analyzerName == "cjk" {
+		return normalizedUnstemmedWord(word, analyzerName)
+	}
 	indexMapping := loadStemmingMapping()
-	if analyzerName == standardTextAnalyzer || indexMapping == nil {
+	if indexMapping == nil {
 		return word
 	}
 	// queryAnalyzers only ever names an analyzer the built mapping registers, so a

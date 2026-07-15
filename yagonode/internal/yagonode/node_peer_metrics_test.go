@@ -2,9 +2,12 @@ package yagonode
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerroster"
 )
 
 type countingPeerRoster struct {
@@ -52,6 +55,41 @@ type recordingPeerMetrics struct {
 	lastLive  int
 }
 
+type observationCountingRoster struct {
+	countingPeerRoster
+	observation peerroster.PeerObservation
+	err         error
+}
+
+func (r *observationCountingRoster) PeerObservations(
+	context.Context,
+) ([]peerroster.PeerObservation, int, int, error) {
+	if r.err != nil {
+		return nil, 0, 0, r.err
+	}
+
+	return []peerroster.PeerObservation{r.observation}, 1, 0, nil
+}
+
+func (r *observationCountingRoster) PeerObservation(
+	context.Context,
+	yagomodel.Hash,
+) (peerroster.PeerObservation, bool, error) {
+	if r.err != nil {
+		return peerroster.PeerObservation{}, false, r.err
+	}
+
+	return r.observation, true, nil
+}
+
+func (r *observationCountingRoster) ObservedKnownPeerCount(context.Context) (int, error) {
+	if r.err != nil {
+		return 0, r.err
+	}
+
+	return r.known, nil
+}
+
 func (m *recordingPeerMetrics) ObservePeerRoster(known, active int) {
 	m.calls++
 	m.lastKnown = known
@@ -92,5 +130,64 @@ func TestObservedPeerRosterUpdatesCounts(t *testing.T) {
 			observer.lastKnown,
 			observer.lastLive,
 		)
+	}
+}
+
+func TestObservedPeerRosterForwardsPeerObservations(t *testing.T) {
+	when := time.Unix(100, 0)
+	base := &observationCountingRoster{observation: peerroster.PeerObservation{
+		Seed: yagomodel.Seed{Hash: yagomodel.Hash("AAAAAAAAAAAA")}, LastSeen: when,
+	}}
+	wrapped := observePeerRoster(t.Context(), base, &recordingPeerMetrics{})
+	reader := wrapped.(peerroster.ObservationReader)
+	observations, known, reachable, err := reader.PeerObservations(t.Context())
+	if err != nil || known != 1 || reachable != 0 || len(observations) != 1 ||
+		observations[0].LastSeen != when {
+		t.Fatalf("PeerObservations = %+v/%d/%d/%v", observations, known, reachable, err)
+	}
+	observation, found, err := reader.PeerObservation(
+		t.Context(), yagomodel.Hash("AAAAAAAAAAAA"),
+	)
+	if err != nil || !found || observation.LastSeen != when {
+		t.Fatalf("PeerObservation = %+v/%v/%v", observation, found, err)
+	}
+	countReader := wrapped.(observedKnownPeerCounter)
+	if count, err := countReader.ObservedKnownPeerCount(t.Context()); err != nil || count != 0 {
+		t.Fatalf("ObservedKnownPeerCount = %d/%v", count, err)
+	}
+
+	base.err = errors.New("read failed")
+	if _, _, _, err := reader.PeerObservations(t.Context()); err == nil {
+		t.Fatal("PeerObservations should surface the wrapped failure")
+	}
+	if _, _, err := reader.PeerObservation(
+		t.Context(), yagomodel.Hash("AAAAAAAAAAAA"),
+	); err == nil {
+		t.Fatal("PeerObservation should surface the wrapped failure")
+	}
+	if _, err := countReader.ObservedKnownPeerCount(t.Context()); err == nil {
+		t.Fatal("ObservedKnownPeerCount should surface the wrapped failure")
+	}
+}
+
+func TestObservedPeerRosterReportsUnsupportedObservations(t *testing.T) {
+	wrapped := observePeerRoster(
+		t.Context(), &countingPeerRoster{}, &recordingPeerMetrics{},
+	)
+	reader := wrapped.(peerroster.ObservationReader)
+	if _, _, _, err := reader.PeerObservations(
+		t.Context(),
+	); !errors.Is(err, errPeerObservationsUnavailable) {
+		t.Fatalf("PeerObservations error = %v", err)
+	}
+	if _, _, err := reader.PeerObservation(
+		t.Context(), yagomodel.Hash("AAAAAAAAAAAA"),
+	); !errors.Is(err, errPeerObservationsUnavailable) {
+		t.Fatalf("PeerObservation error = %v", err)
+	}
+	if count, err := wrapped.(observedKnownPeerCounter).ObservedKnownPeerCount(
+		t.Context(),
+	); err != nil || count != 0 {
+		t.Fatalf("fallback ObservedKnownPeerCount = %d/%v", count, err)
 	}
 }

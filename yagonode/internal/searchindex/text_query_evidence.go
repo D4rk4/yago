@@ -39,16 +39,59 @@ func FindTextQueryEvidence(
 		}
 		seen[analyzer] = struct{}{}
 		matcher := newStoredEvidenceMatcher(SearchRequest{Terms: terms}, analyzer)
-		locations, err := scanStoredField(ctx, matcher, []string{text}, true)
+		field, err := scanStoredFieldEvidence(ctx, matcher, []string{text}, true)
 		if err != nil {
 			return TextQueryEvidence{}, false
 		}
-		if evidence, found := minimumTextQueryEvidence(text, matcher, locations); found {
+		if evidence, found := minimumTargetTextQueryEvidence(
+			text,
+			matcher,
+			field.targetTerms,
+		); found {
 			return evidence, true
 		}
 	}
 
 	return TextQueryEvidence{}, false
+}
+
+func minimumTargetTextQueryEvidence(
+	text string,
+	matcher *storedEvidenceMatcher,
+	locations map[int]search.Locations,
+) (TextQueryEvidence, bool) {
+	flat := make([]textQueryLocation, 0, len(matcher.targets))
+	for requirement := range matcher.targets {
+		targetLocations := locations[requirement]
+		if len(targetLocations) == 0 {
+			return TextQueryEvidence{}, false
+		}
+		valid := 0
+		for _, location := range targetLocations {
+			if location == nil || location.End <= location.Start ||
+				location.End > uint64(len(text)) {
+				continue
+			}
+			flat = append(flat, textQueryLocation{
+				requirement: requirement,
+				start:       len(text[:location.Start]),
+				end:         len(text[:location.End]),
+			})
+			valid++
+		}
+		if valid == 0 {
+			return TextQueryEvidence{}, false
+		}
+	}
+	sort.Slice(flat, func(left int, right int) bool {
+		if flat[left].start != flat[right].start {
+			return flat[left].start < flat[right].start
+		}
+
+		return flat[left].end < flat[right].end
+	})
+
+	return tightestTextQueryEvidence(flat, len(matcher.targets), len(text))
 }
 
 func minimumTextQueryEvidence(

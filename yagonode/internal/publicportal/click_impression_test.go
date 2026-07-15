@@ -27,7 +27,7 @@ func (r *portalImpressionRecorder) PrepareImpression(
 
 func impressionResults() SearchResults {
 	return SearchResults{
-		Query: "query", TotalResults: 2,
+		Query: "query", TotalResults: 40,
 		Results: []SearchResult{
 			{
 				Title: "First", URL: "https://first/", URLIdentity: "https://first/",

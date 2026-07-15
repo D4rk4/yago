@@ -164,6 +164,9 @@ func TestIntakeBusyAtCapacity(t *testing.T) {
 	if receipt.Busy {
 		t.Fatalf("first receipt = %+v, want stored", receipt)
 	}
+	if _, err := h.vault.UsedBytes(ctx); err != nil {
+		t.Fatalf("UsedBytes: %v", err)
+	}
 
 	receipt, err = h.rwi.Receiver.Receive(ctx, []yagomodel.RWIPosting{posting("w2", "u2")})
 	if err != nil {

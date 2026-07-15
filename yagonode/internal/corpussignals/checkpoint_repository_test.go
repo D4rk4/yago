@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/boltvault"
+	"github.com/D4rk4/yago/yagonode/internal/hostlinkgraph"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/memvault"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -99,9 +100,17 @@ func validCheckpoint() Checkpoint {
 			TargetURL:  "https://target.example/page",
 			Confidence: 1,
 		}},
-		Spelling:             map[string]int{"golang": 4},
-		WordForms:            map[string]int{"черногория": 3, "черногории": 2},
-		WordFormsReady:       true,
+		Spelling:       map[string]int{"golang": 4},
+		WordForms:      map[string]int{"черногория": 3, "черногории": 2},
+		WordFormsReady: true,
+		HostLinks: hostlinkgraph.Graph{
+			RowDefinition: hostlinkgraph.HostReferenceRowDefinition,
+			LinkedHosts: []hostlinkgraph.LinkedHost{{
+				HostHash:   "target",
+				References: []json.RawMessage{json.RawMessage(`{"h":"source"}`)},
+			}},
+		},
+		HostLinksReady:       true,
 		TrustDomains:         []string{"source.example"},
 		TrustBlend:           0.25,
 		CompletedAtUnixMilli: time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC).UnixMilli(),
@@ -134,6 +143,8 @@ func TestCheckpointRepositoryPersistsOwnedAtomicSnapshot(t *testing.T) {
 	input.Citations[0].SourceURL = "https://changed.example/"
 	input.Spelling["golang"] = 1
 	input.WordForms["черногория"] = 1
+	input.HostLinks.LinkedHosts[0].HostHash = "change"
+	input.HostLinks.LinkedHosts[0].References[0][2] = 'x'
 	input.TrustDomains[0] = "changed.example"
 
 	loaded, found, err := repository.Load(t.Context())
@@ -144,6 +155,8 @@ func TestCheckpointRepositoryPersistsOwnedAtomicSnapshot(t *testing.T) {
 	loaded.Citations[0].TargetURL = "https://changed.example/"
 	loaded.Spelling["golang"] = 1
 	loaded.WordForms["черногории"] = 1
+	loaded.HostLinks.LinkedHosts[0].HostHash = "change"
+	loaded.HostLinks.LinkedHosts[0].References[0][2] = 'x'
 	loaded.TrustDomains[0] = "changed.example"
 	reloaded, found, err := repository.Load(t.Context())
 	if err != nil || !found || !reflect.DeepEqual(reloaded, want) {

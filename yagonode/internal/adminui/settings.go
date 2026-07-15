@@ -24,6 +24,7 @@ type SettingItem struct {
 	Value           string
 	Overridden      bool
 	RestartRequired bool
+	PendingRestart  bool
 	Options         []SettingOption
 	Category        string
 	// Boolean marks an Enabled/Disabled setting so the console renders it as a
@@ -34,6 +35,7 @@ type SettingItem struct {
 // SettingsView is the editable runtime-settings subset of the configuration.
 type SettingsView struct {
 	Items []SettingItem
+	Error string
 }
 
 // SettingGroup is a category of runtime settings, rendered as one tab.

@@ -17,42 +17,12 @@ type candidateMatch struct {
 	distance   int
 }
 
-func (i *Index) replace(
+func (i *Index) publishedAssignment(
 	tx *vault.Txn,
 	ctx context.Context,
-	prepared preparedEvidence,
+	clusterID string,
 ) (Assignment, error) {
-	if err := ctx.Err(); err != nil {
-		return Assignment{}, fmt.Errorf("check replacement context: %w", err)
-	}
-	previous, exists, err := i.fingerprints.Get(tx, vault.Key(prepared.URL))
-	if err != nil {
-		return Assignment{}, fmt.Errorf("read previous content fingerprint: %w", err)
-	}
-	if exists && sameEvidence(previous, prepared) {
-		return i.existingAssignment(tx, previous.ClusterID)
-	}
-	if err := i.removePrevious(tx, ctx, previous, exists); err != nil {
-		return Assignment{}, err
-	}
-	match, matched, err := i.findMatch(tx, ctx, prepared)
-	if err != nil {
-		return Assignment{}, err
-	}
-	clusterID := stableClusterID(prepared.URL, prepared.ContentHash)
-	if matched {
-		clusterID = match.record.ClusterID
-	}
-	record := recordFrom(prepared, clusterID)
-	if err := i.persistFingerprint(tx, ctx, record, prepared.Bands); err != nil {
-		return Assignment{}, err
-	}
-
-	return i.attachCluster(tx, ctx, record)
-}
-
-func (i *Index) existingAssignment(tx *vault.Txn, clusterID string) (Assignment, error) {
-	cluster, found, err := i.clusters.Get(tx, vault.Key(clusterID))
+	cluster, found, err := i.publishedCluster(tx, ctx, clusterID)
 	if err != nil {
 		return Assignment{}, fmt.Errorf("read existing content cluster: %w", err)
 	}
@@ -61,143 +31,6 @@ func (i *Index) existingAssignment(tx *vault.Txn, clusterID string) (Assignment,
 	}
 
 	return assignmentFrom(cluster), nil
-}
-
-func (i *Index) removePrevious(
-	tx *vault.Txn,
-	ctx context.Context,
-	previous fingerprintRecord,
-	exists bool,
-) error {
-	if !exists {
-		return nil
-	}
-	if err := i.detach(tx, ctx, previous); err != nil {
-		return err
-	}
-	if _, err := i.fingerprints.Delete(tx, vault.Key(previous.URL)); err != nil {
-		return fmt.Errorf("delete previous content fingerprint: %w", err)
-	}
-
-	return nil
-}
-
-func (i *Index) persistFingerprint(
-	tx *vault.Txn,
-	ctx context.Context,
-	record fingerprintRecord,
-	bands [bandCount]uint8,
-) error {
-	if err := i.fingerprints.Put(tx, vault.Key(record.URL), record); err != nil {
-		return fmt.Errorf("store content fingerprint: %w", err)
-	}
-	if err := i.addPosting(
-		tx,
-		i.exactBuckets,
-		vault.Key(record.ContentHash),
-		record.URL,
-	); err != nil {
-		return err
-	}
-	if len(record.Shingles) == 0 {
-		return nil
-	}
-	for band, value := range bands {
-		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("check fingerprint band context: %w", err)
-		}
-		if err := i.addPosting(
-			tx,
-			i.bandBuckets,
-			bandKey(uint8(band), value),
-			record.URL,
-		); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (i *Index) attachCluster(
-	tx *vault.Txn,
-	ctx context.Context,
-	record fingerprintRecord,
-) (Assignment, error) {
-	clusterID := record.ClusterID
-	cluster, found, err := i.clusters.Get(tx, vault.Key(clusterID))
-	if err != nil {
-		return Assignment{}, fmt.Errorf("read target content cluster: %w", err)
-	}
-	if !found {
-		cluster = clusterRecord{ID: clusterID}
-	}
-	cluster.Members = insertSorted(cluster.Members, record.URL)
-	if len(cluster.Members) > i.limits.MaximumClusterMembers {
-		return Assignment{}, fmt.Errorf("content cluster %q reached its member limit", clusterID)
-	}
-	representative, err := i.chooseRepresentative(tx, ctx, cluster.Members)
-	if err != nil {
-		return Assignment{}, err
-	}
-	cluster.Representative = representative
-	if err := i.clusters.Put(tx, vault.Key(cluster.ID), cluster); err != nil {
-		return Assignment{}, fmt.Errorf("store target content cluster: %w", err)
-	}
-
-	return assignmentFrom(cluster), nil
-}
-
-func (i *Index) detach(tx *vault.Txn, ctx context.Context, record fingerprintRecord) error {
-	if err := i.removePosting(
-		tx,
-		i.exactBuckets,
-		vault.Key(record.ContentHash),
-		record.URL,
-	); err != nil {
-		return err
-	}
-	if len(record.Shingles) > 0 {
-		for band, value := range fingerprintBands(record.Fingerprint) {
-			if err := ctx.Err(); err != nil {
-				return fmt.Errorf("check detached fingerprint context: %w", err)
-			}
-			if err := i.removePosting(
-				tx,
-				i.bandBuckets,
-				bandKey(uint8(band), value),
-				record.URL,
-			); err != nil {
-				return err
-			}
-		}
-	}
-	cluster, found, err := i.clusters.Get(tx, vault.Key(record.ClusterID))
-	if err != nil {
-		return fmt.Errorf("read detached content cluster: %w", err)
-	}
-	if !found {
-		return fmt.Errorf("content cluster %q is missing", record.ClusterID)
-	}
-	cluster.Members = removeSorted(cluster.Members, record.URL)
-	if len(cluster.Members) == 0 {
-		_, err = i.clusters.Delete(tx, vault.Key(cluster.ID))
-		if err != nil {
-			return fmt.Errorf("delete empty content cluster: %w", err)
-		}
-
-		return nil
-	}
-	cluster.Representative, err = i.chooseRepresentative(tx, ctx, cluster.Members)
-	if err != nil {
-		return err
-	}
-
-	if err := i.clusters.Put(tx, vault.Key(cluster.ID), cluster); err != nil {
-		return fmt.Errorf("store detached content cluster: %w", err)
-	}
-
-	return nil
 }
 
 func (i *Index) findMatch(
@@ -264,7 +97,7 @@ func (i *Index) bestCandidate(
 		if err := ctx.Err(); err != nil {
 			return candidateMatch{}, false, fmt.Errorf("check verification context: %w", err)
 		}
-		candidate, eligible, err := i.candidate(tx, prepared, url, exact)
+		candidate, eligible, err := i.candidate(tx, ctx, prepared, url, exact)
 		if err != nil {
 			return candidateMatch{}, false, err
 		}
@@ -282,6 +115,7 @@ func (i *Index) bestCandidate(
 
 func (i *Index) candidate(
 	tx *vault.Txn,
+	ctx context.Context,
 	prepared preparedEvidence,
 	url string,
 	exact bool,
@@ -293,11 +127,14 @@ func (i *Index) candidate(
 	if !exists || record.URL == prepared.URL {
 		return candidateMatch{}, false, nil
 	}
-	cluster, exists, err := i.clusters.Get(tx, vault.Key(record.ClusterID))
+	cluster, exists, err := i.publishedCluster(tx, ctx, record.ClusterID)
 	if err != nil {
 		return candidateMatch{}, false, fmt.Errorf("read candidate content cluster: %w", err)
 	}
 	if !exists || len(cluster.Members) >= i.limits.MaximumClusterMembers {
+		return candidateMatch{}, false, nil
+	}
+	if exact && record.ContentHash != prepared.ContentHash {
 		return candidateMatch{}, false, nil
 	}
 	similarity := 1.0
@@ -332,35 +169,6 @@ func betterCandidate(left, right candidateMatch) bool {
 	return left.record.ClusterID < right.record.ClusterID
 }
 
-func (i *Index) chooseRepresentative(
-	tx *vault.Txn,
-	ctx context.Context,
-	members []string,
-) (representativeRecord, error) {
-	if len(members) > i.limits.MaximumClusterMembers {
-		return representativeRecord{}, fmt.Errorf("content cluster exceeds its member limit")
-	}
-	var representative representativeRecord
-	for position, url := range members {
-		if err := ctx.Err(); err != nil {
-			return representativeRecord{}, fmt.Errorf("check representative context: %w", err)
-		}
-		record, exists, err := i.fingerprints.Get(tx, vault.Key(url))
-		if err != nil {
-			return representativeRecord{}, fmt.Errorf("read representative fingerprint: %w", err)
-		}
-		if !exists {
-			return representativeRecord{}, fmt.Errorf("content fingerprint %q is missing", url)
-		}
-		candidate := representativeFrom(record)
-		if position == 0 || betterRepresentative(candidate, representative) {
-			representative = candidate
-		}
-	}
-
-	return representative, nil
-}
-
 func betterRepresentative(left, right representativeRecord) bool {
 	if left.CanonicalPreferred != right.CanonicalPreferred {
 		return left.CanonicalPreferred
@@ -375,62 +183,9 @@ func betterRepresentative(left, right representativeRecord) bool {
 	return left.URL < right.URL
 }
 
-func (i *Index) addPosting(
-	tx *vault.Txn,
-	collection *vault.Collection[postingRecord],
-	key vault.Key,
-	url string,
-) error {
-	posting, _, err := collection.Get(tx, key)
-	if err != nil {
-		return fmt.Errorf("read content candidate posting: %w", err)
-	}
-	posting.URLs = insertSorted(posting.URLs, url)
-	if len(posting.URLs) > i.limits.MaximumBucketMembers {
-		posting.URLs = posting.URLs[:i.limits.MaximumBucketMembers]
-	}
-
-	if err := collection.Put(tx, key, posting); err != nil {
-		return fmt.Errorf("store content candidate posting: %w", err)
-	}
-
-	return nil
-}
-
-func (i *Index) removePosting(
-	tx *vault.Txn,
-	collection *vault.Collection[postingRecord],
-	key vault.Key,
-	url string,
-) error {
-	posting, found, err := collection.Get(tx, key)
-	if err != nil || !found {
-		if err != nil {
-			return fmt.Errorf("read removed content candidate posting: %w", err)
-		}
-
-		return nil
-	}
-	posting.URLs = removeSorted(posting.URLs, url)
-	if len(posting.URLs) == 0 {
-		_, err = collection.Delete(tx, key)
-		if err != nil {
-			return fmt.Errorf("delete empty content candidate posting: %w", err)
-		}
-
-		return nil
-	}
-
-	if err := collection.Put(tx, key, posting); err != nil {
-		return fmt.Errorf("store removed content candidate posting: %w", err)
-	}
-
-	return nil
-}
-
 func (i *Index) postingURLs(
 	tx *vault.Txn,
-	collection *vault.Collection[postingRecord],
+	collection *vault.Keyspace[postingRecord],
 	key vault.Key,
 ) ([]string, error) {
 	posting, found, err := collection.Get(tx, key)
@@ -468,15 +223,6 @@ func insertSorted(values []string, value string) []string {
 	values[position] = value
 
 	return values
-}
-
-func removeSorted(values []string, value string) []string {
-	position, exists := slices.BinarySearch(values, value)
-	if !exists {
-		return values
-	}
-
-	return append(values[:position], values[position+1:]...)
 }
 
 func stableClusterID(url string, contentHash string) string {

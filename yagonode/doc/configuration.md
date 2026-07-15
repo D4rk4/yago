@@ -28,7 +28,10 @@ description document at `/opensearch.xml` (pointing at the portal root's `q`
 parameter) plus a suggestions endpoint at `/opensearch/suggest`. Both are served
 only while the portal is on, expose only public search, and — honouring the
 SEC-05 privacy stance — the suggestions endpoint keeps no query history and
-always returns an empty completion list. This is separate from the
+always returns an empty completion list. The page advertisement and description
+share one OpenSearch engine name within the 16-character browser limit; stored
+copies of the earlier default theme are repaired when loaded, so Firefox can
+offer the portal as a search engine after an upgrade. This is separate from the
 YaCy-compatible `/opensearchdescription.xml`, which describes the `/yacysearch.*`
 endpoints. The **HTTP→HTTPS
 redirect** toggle overrides `YAGO_HTTPS_REDIRECT` (off by default): when on, a
@@ -168,6 +171,16 @@ record. New Admin updates and resets write only that record, so a legacy trigger
 cannot partially change the selected mode. The trigger is no longer a separate
 Admin UI setting or a canonical deployment variable.
 
+**Ranking controls.** The YagoRank console persists all 13 operator-safe live
+coefficients: five field boosts, host authority, freshness, content quality,
+short-URL prior, ordered and unordered proximity, lexical blend, and
+original-gap agreement. They apply to the next search without a restart and are
+not bootstrap environment variables. Candidate and evidence windows,
+evidence-confidence rules, relaxed admission, RM3 drift limits, source fusion,
+diversity, safety thresholds, and search deadlines are fixed algorithm or safety
+policy rather than operator settings. Learned feature weights change only through
+held-out model promotion or rollback.
+
 **Retention.** Cached fallback responses are held for `YAGO_WEB_FALLBACK_CACHE_TTL`
 (the only outbound-search cache) and then discarded, bounding how long external
 result text lingers. The local index-result cache is a fixed 16 MiB/256-entry LRU,
@@ -206,6 +219,14 @@ Login and API-key outcomes are exported on `/metrics` as
 `admin_login_attempts_total` (results `success`, `failure`, `throttled`) and
 `admin_api_key_auth_total` (results `rejected`, `throttled`, `forbidden`) so
 operators can alert on brute-force pressure.
+
+The JSON login and setup endpoints require `Content-Type: application/json`
+(an optional charset is accepted). The browser setup page issues a short-lived,
+signed token in both its host-only `HttpOnly`, `SameSite=Strict` cookie and its
+hidden form field; setup rejects a missing, altered, expired, or cross-site token
+and clears the cookie after the attempt. Dynamic login, setup, and admin pages are
+served as `private, no-store`. Auth pages load only same-origin static CSS and
+icons under a policy that disables every other content source and forbids framing.
 
 Login and setup accept at most 16 KiB per JSON or form body, a 256-byte
 username, and a 1 KiB password. One 32-slot process gate covers unauthenticated

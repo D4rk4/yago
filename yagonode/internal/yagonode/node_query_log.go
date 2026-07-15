@@ -70,6 +70,8 @@ func (s queryLoggingSearcher) Search(
 		QueryLength: len([]rune(req.Query)),
 		Terms:       len(req.Terms),
 		Results:     resp.TotalResults,
+		Failed:      err != nil,
+		Incomplete:  err == nil && len(resp.PartialFailures) > 0,
 		Duration:    time.Since(started),
 		Source:      string(req.Source),
 	})

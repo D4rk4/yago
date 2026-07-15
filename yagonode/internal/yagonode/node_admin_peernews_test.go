@@ -39,7 +39,10 @@ func TestPeerNewsSourceMapsRecords(t *testing.T) {
 	source := newPeerNewsSource(reader)
 	source.now = fixedPeerNewsNow
 
-	items := source.PeerNews(context.Background())
+	items, available := source.PeerNews(context.Background())
+	if !available {
+		t.Fatal("successful peer-news read should be available")
+	}
 	if len(items) != 1 {
 		t.Fatalf("items = %d, want 1", len(items))
 	}
@@ -55,10 +58,11 @@ func TestPeerNewsSourceMapsRecords(t *testing.T) {
 	}
 }
 
-func TestPeerNewsSourceLogsErrorAndReturnsNil(t *testing.T) {
+func TestPeerNewsSourceReportsUnavailableOnError(t *testing.T) {
 	source := newPeerNewsSource(fakePeerNewsReader{err: errors.New("read failed")})
-	if got := source.PeerNews(context.Background()); got != nil {
-		t.Fatalf("PeerNews = %v, want nil on error", got)
+	items, available := source.PeerNews(context.Background())
+	if available || items != nil {
+		t.Fatalf("PeerNews = %v/%v, want unavailable on error", items, available)
 	}
 }
 
@@ -71,7 +75,7 @@ func TestPeerNewsAgeHumanizes(t *testing.T) {
 		"minutes": {now.Add(-30 * time.Minute), "30m"},
 		"hours":   {now.Add(-5 * time.Hour), "5h"},
 		"days":    {now.Add(-50 * time.Hour), "2d"},
-		"future":  {now.Add(time.Hour), "0m"},
+		"future":  {now.Add(time.Hour), ""},
 	}
 	for name, tc := range cases {
 		if got := peerNewsAge(peernews.Record{Received: tc.stamp}, now); got != tc.want {
@@ -80,6 +84,9 @@ func TestPeerNewsAgeHumanizes(t *testing.T) {
 	}
 	if got := peerNewsAge(peernews.Record{Created: now.Add(-90 * time.Minute)}, now); got != "1h" {
 		t.Fatalf("created-fallback age = %q, want 1h", got)
+	}
+	if got := peerNewsAge(peernews.Record{Created: now.Add(time.Hour)}, now); got != "" {
+		t.Fatalf("future created age = %q, want unavailable", got)
 	}
 	if got := peerNewsAge(peernews.Record{}, now); got != "" {
 		t.Fatalf("no-stamp age = %q, want empty", got)

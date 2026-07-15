@@ -22,6 +22,17 @@ type urlEvictor interface {
 	EvictURLs(ctx context.Context, urls []yagomodel.Hash) (eviction.Result, error)
 }
 
+type resolvedURLEvictor interface {
+	PurgeResolved(context.Context, []string, []yagomodel.Hash) error
+}
+
+type reservedDocumentEvictor interface {
+	ReserveDocumentEvictions(
+		context.Context,
+		[]string,
+	) (eviction.ReservedDocumentEviction, error)
+}
+
 // indexAdminController removes indexed documents from every store lineage they
 // participate in: the full-text index (by normalized URL), the document store,
 // and the RWI postings + URL metadata (keyed by the document's URL hash).
@@ -39,10 +50,8 @@ func newIndexAdminController(storage nodeStorage, v *vault.Vault) *indexAdminCon
 		documents: storage.documentEvictor(),
 		stored:    storage.storedDocuments(),
 		evictor: eviction.NewEvictor(
-			// Documents are dropped explicitly by deleteOne here, so the evictor
-			// skips the documents side (nil) to avoid a redundant second delete.
 			v, storage.postingPurger, storage.references, storage.urlEvictor,
-			nil, nil,
+			storage.documentEvictor(), storage.urlDirectory,
 		),
 		hashURL: yagomodel.HashURL,
 	}
@@ -89,6 +98,9 @@ func (c *indexAdminController) DeleteDomain(ctx context.Context, domain string) 
 }
 
 func (c *indexAdminController) deleteOne(ctx context.Context, normalizedURL string) error {
+	if resolved, ok := c.evictor.(resolvedURLEvictor); ok {
+		return c.deleteResolvedOne(ctx, normalizedURL, resolved)
+	}
 	if err := c.index.Delete(ctx, normalizedURL); err != nil {
 		return fmt.Errorf("delete from search index: %w", err)
 	}

@@ -17,15 +17,22 @@ type contentClusterDocumentEvictor interface {
 
 type documentUpdateIndexer interface {
 	Index(context.Context, documentstore.Document) error
+	Delete(context.Context, string) error
+}
+
+type documentBatchUpdateIndexer interface {
+	IndexBatch(context.Context, []documentstore.Document) error
 }
 
 type documentLineageEvictor struct {
-	directory documentstore.DocumentDirectory
-	receiver  documentstore.DocumentReceiver
-	documents documentstore.DocumentEvictor
-	anchors   documentstore.InboundAnchorReceiver
-	clusters  contentClusterDocumentEvictor
-	index     documentUpdateIndexer
+	directory       documentstore.DocumentDirectory
+	receiver        documentstore.DocumentReceiver
+	documents       documentstore.DocumentEvictor
+	anchors         documentstore.InboundAnchorReceiver
+	lineages        documentstore.DocumentLineageReserver
+	reservedAnchors documentstore.ReservedOutboundAnchorReceiver
+	clusters        contentClusterDocumentEvictor
+	index           documentUpdateIndexer
 }
 
 func newDocumentLineageEvictor(storage nodeStorage) documentstore.DocumentEvictor {
@@ -34,14 +41,18 @@ func newDocumentLineageEvictor(storage nodeStorage) documentstore.DocumentEvicto
 		return nil
 	}
 	anchors, _ := storage.documentReceiver.(documentstore.InboundAnchorReceiver)
+	lineages, _ := storage.documentReceiver.(documentstore.DocumentLineageReserver)
+	reservedAnchors, _ := storage.documentReceiver.(documentstore.ReservedOutboundAnchorReceiver)
 
 	return documentLineageEvictor{
-		directory: storage.documentDirectory,
-		receiver:  storage.documentReceiver,
-		documents: documents,
-		anchors:   anchors,
-		clusters:  storage.contentClusters,
-		index:     storage.searchIndex,
+		directory:       storage.documentDirectory,
+		receiver:        storage.documentReceiver,
+		documents:       documents,
+		anchors:         anchors,
+		lineages:        lineages,
+		reservedAnchors: reservedAnchors,
+		clusters:        storage.contentClusters,
+		index:           storage.searchIndex,
 	}
 }
 
@@ -49,83 +60,73 @@ func (d documentLineageEvictor) Delete(
 	ctx context.Context,
 	normalizedURL string,
 ) (bool, error) {
-	updates := make(map[string]documentstore.Document)
-	if d.anchors != nil {
-		update, err := d.anchors.ReplaceOutboundAnchors(ctx, []documentstore.OutboundAnchorSet{{
-			SourceURL: normalizedURL,
-		}})
-		if err != nil {
-			return false, fmt.Errorf("clear outbound anchor contributions: %w", err)
-		}
-		if update.Busy {
-			return false, fmt.Errorf("clear outbound anchor contributions at capacity")
-		}
-		for _, doc := range update.Documents {
-			updates[doc.NormalizedURL] = doc
-		}
-	}
-
-	clusterUpdates, err := d.deleteContentCluster(ctx, normalizedURL)
+	reservation, err := d.ReserveDocumentEvictions(ctx, []string{normalizedURL})
 	if err != nil {
 		return false, err
 	}
-	for _, doc := range clusterUpdates {
-		updates[doc.NormalizedURL] = doc
-	}
+	defer reservation.Release()
 
-	if err := d.commitUpdates(ctx, updates); err != nil {
-		return false, err
-	}
-
-	removed, err := d.documents.Delete(ctx, normalizedURL)
+	removed, err := reservation.Delete(ctx, normalizedURL)
 	if err != nil {
-		return false, fmt.Errorf("delete stored document: %w", err)
+		return false, fmt.Errorf("delete reserved document lineage: %w", err)
 	}
 
 	return removed, nil
 }
 
-func (d documentLineageEvictor) deleteContentCluster(
+func (d documentLineageEvictor) deleteReservedDocumentLineage(
 	ctx context.Context,
+	reservation documentstore.DocumentLineageReservation,
 	normalizedURL string,
-) ([]documentstore.Document, error) {
-	if d.clusters == nil {
-		return nil, nil
-	}
-	assignment, found, err := d.clusters.Lookup(ctx, normalizedURL)
+) (bool, error) {
+	clusterDeletion, err := d.beginContentClusterDeletion(ctx, normalizedURL)
 	if err != nil {
-		return nil, fmt.Errorf("look up document content cluster: %w", err)
+		return false, err
 	}
-	if _, err := d.clusters.Delete(ctx, normalizedURL); err != nil {
-		return nil, fmt.Errorf("delete document content cluster: %w", err)
-	}
-	if !found {
-		return nil, nil
-	}
-	cluster, found, err := d.clusters.Cluster(ctx, assignment.ClusterID)
+	defer clusterDeletion.release()
+	sourceDocument, sourceFound, err := d.deletedDocumentLineage(ctx, normalizedURL)
 	if err != nil {
-		return nil, fmt.Errorf("read surviving document content cluster: %w", err)
+		return false, err
 	}
-	if !found || d.directory == nil {
-		return nil, nil
+	clusterDeletion, err = d.projectContentClusterDeletion(
+		ctx,
+		clusterDeletion,
+		normalizedURL,
+		sourceDocument,
+		sourceFound,
+	)
+	if err != nil {
+		return false, err
+	}
+	if err := d.clearOutboundAnchorContributions(
+		ctx,
+		reservation,
+		normalizedURL,
+	); err != nil {
+		return false, err
 	}
 
-	updates := make([]documentstore.Document, 0, len(cluster.MemberURLs))
-	for _, memberURL := range cluster.MemberURLs {
-		doc, found, err := d.directory.Document(ctx, memberURL)
-		if err != nil {
-			return nil, fmt.Errorf("read surviving clustered document: %w", err)
+	updates := make(map[string]documentstore.Document, len(clusterDeletion.updates))
+	for _, doc := range clusterDeletion.updates {
+		updates[doc.NormalizedURL] = doc
+	}
+	if err := d.commitUpdates(ctx, updates); err != nil {
+		return false, err
+	}
+	removed, err := d.documents.Delete(ctx, normalizedURL)
+	if err != nil {
+		return false, fmt.Errorf("delete stored document: %w", err)
+	}
+	if d.index != nil {
+		if err := d.index.Delete(ctx, normalizedURL); err != nil {
+			return false, fmt.Errorf("delete indexed document: %w", err)
 		}
-		if !found || doc.ClusterID == cluster.ID &&
-			doc.RepresentativeURL == cluster.RepresentativeURL {
-			continue
-		}
-		doc.ClusterID = cluster.ID
-		doc.RepresentativeURL = cluster.RepresentativeURL
-		updates = append(updates, doc)
+	}
+	if err := clusterDeletion.finalize(ctx); err != nil {
+		return false, err
 	}
 
-	return updates, nil
+	return removed, nil
 }
 
 func (d documentLineageEvictor) commitUpdates(
@@ -158,6 +159,13 @@ func (d documentLineageEvictor) commitUpdates(
 		}
 	}
 	if d.index == nil {
+		return nil
+	}
+	if batch, ok := d.index.(documentBatchUpdateIndexer); ok {
+		if err := batch.IndexBatch(ctx, docs); err != nil {
+			return fmt.Errorf("index document lineage update batch: %w", err)
+		}
+
 		return nil
 	}
 	for _, doc := range docs {

@@ -6,7 +6,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
-func TestReplaceBatchCommitsOneTransaction(t *testing.T) {
+func TestReplaceBatchCommitsFourAmortizedPhases(t *testing.T) {
 	index, engine := openFaultIndex(t, Limits{})
 	before := engine.updates
 	evidence := []Evidence{
@@ -18,8 +18,8 @@ func TestReplaceBatchCommitsOneTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if engine.updates-before != 1 {
-		t.Fatalf("transactions = %d, want 1", engine.updates-before)
+	if engine.updates-before != 4 {
+		t.Fatalf("transactions = %d, want 4", engine.updates-before)
 	}
 	if len(replacements) != len(evidence) {
 		t.Fatalf("replacements = %d, want %d", len(replacements), len(evidence))

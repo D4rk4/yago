@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>Set up — yago admin</title>
-{{template "authstyle"}}
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/admin/auth.css">
 </head>
 <body>
 <div class="card">
@@ -13,6 +14,7 @@
   <p class="lede">Create the administrator account for this node.</p>
   {{if .Error}}<div class="err" role="alert">{{.Error}}</div>{{end}}
   <form method="post" action="/admin/setup">
+    <input type="hidden" name="setup_token" value="{{.SetupToken}}">
     <label for="u">Username</label>
     <input id="u" name="username" autocomplete="username" autofocus required>
     <label for="p">Password</label>

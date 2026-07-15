@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"sort"
 	"sync"
 	"testing"
@@ -12,7 +13,10 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
-var errInjectedClusterVault = errors.New("injected content cluster vault failure")
+var (
+	errInjectedClusterVault         = errors.New("injected content cluster vault failure")
+	errInjectedRelaxedClusterCommit = errors.New("injected relaxed cluster commit failure")
+)
 
 type clusterFaultEngine struct {
 	mu               sync.RWMutex
@@ -22,12 +26,19 @@ type clusterFaultEngine struct {
 	deleteFailure    vault.Name
 	updates          int
 	replayUpdate     func(*clusterFaultEngine)
+	partialUpdate    int
+	partialAfter     int
+	readGateBucket   vault.Name
+	readGateKey      string
+	readGateEntered  chan struct{}
+	readGateRelease  <-chan struct{}
 }
 
 type clusterFaultTxn struct {
 	engine   *clusterFaultEngine
 	buckets  map[vault.Name]map[string][]byte
 	writable bool
+	touched  map[int]struct{}
 }
 
 type clusterFaultBucket struct {
@@ -36,7 +47,10 @@ type clusterFaultBucket struct {
 }
 
 func newClusterFaultEngine() *clusterFaultEngine {
-	return &clusterFaultEngine{buckets: make(map[vault.Name]map[string][]byte)}
+	return &clusterFaultEngine{
+		buckets:      make(map[vault.Name]map[string][]byte),
+		partialAfter: -1,
+	}
 }
 
 func (e *clusterFaultEngine) Provision(name vault.Name) error {
@@ -66,16 +80,33 @@ func (e *clusterFaultEngine) Update(
 	e.replayUpdate = nil
 	if replay != nil {
 		staged := cloneClusterBuckets(e.buckets)
-		transaction := &clusterFaultTxn{engine: e, buckets: staged, writable: true}
+		transaction := &clusterFaultTxn{
+			engine:   e,
+			buckets:  staged,
+			writable: true,
+			touched:  make(map[int]struct{}),
+		}
 		if err := fn(transaction); err != nil {
 			return err
 		}
 		replay(e)
 	}
 	staged := cloneClusterBuckets(e.buckets)
-	transaction := &clusterFaultTxn{engine: e, buckets: staged, writable: true}
+	transaction := &clusterFaultTxn{
+		engine:   e,
+		buckets:  staged,
+		writable: true,
+		touched:  make(map[int]struct{}),
+	}
 	if err := fn(transaction); err != nil {
 		return err
+	}
+	if e.partialUpdate == e.updates {
+		e.applyRelaxedCommit(staged, transaction.touched, e.partialAfter)
+		e.partialUpdate = 0
+		e.partialAfter = -1
+
+		return errInjectedRelaxedClusterCommit
 	}
 	e.buckets = staged
 
@@ -92,7 +123,7 @@ func (e *clusterFaultEngine) View(
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	return fn(&clusterFaultTxn{engine: e, buckets: e.buckets})
+	return fn(&clusterFaultTxn{engine: e, buckets: e.buckets, touched: make(map[int]struct{})})
 }
 
 func (e *clusterFaultEngine) UsedBytes(context.Context) (int64, error) {
@@ -122,6 +153,60 @@ func (e *clusterFaultEngine) deleteRaw(name vault.Name, key vault.Key) {
 	delete(e.buckets[name], string(key))
 }
 
+func (e *clusterFaultEngine) failRelaxedUpdateAfter(offset int, committedShards int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.partialUpdate = e.updates + offset
+	e.partialAfter = committedShards
+}
+
+func (e *clusterFaultEngine) applyRelaxedCommit(
+	staged map[vault.Name]map[string][]byte,
+	touched map[int]struct{},
+	committedShards int,
+) {
+	shards := make([]int, 0, len(touched))
+	for shard := range touched {
+		shards = append(shards, shard)
+	}
+	sort.Ints(shards)
+	committedShards = min(max(committedShards, 0), len(shards))
+	shards = shards[:committedShards]
+	for _, shard := range shards {
+		e.applyRelaxedShard(staged, shard)
+	}
+}
+
+func (e *clusterFaultEngine) applyRelaxedShard(
+	staged map[vault.Name]map[string][]byte,
+	shard int,
+) {
+	for name, bucket := range staged {
+		if _, exists := e.buckets[name]; !exists {
+			e.buckets[name] = make(map[string][]byte)
+		}
+		for key := range e.buckets[name] {
+			if e.route(name, vault.Key(key)) == shard {
+				delete(e.buckets[name], key)
+			}
+		}
+		for key, raw := range bucket {
+			if e.route(name, vault.Key(key)) == shard {
+				e.buckets[name][key] = append([]byte(nil), raw...)
+			}
+		}
+	}
+}
+
+func (e *clusterFaultEngine) route(name vault.Name, key vault.Key) int {
+	hasher := fnv.New32a()
+	_, _ = hasher.Write([]byte(name))
+	_, _ = hasher.Write(key)
+	routes := [...]int{0, 1, 2, 3, 4, 5, 6, 7}
+
+	return routes[hasher.Sum32()&7]
+}
+
 func (t *clusterFaultTxn) Bucket(name vault.Name) vault.EngineBucket {
 	return &clusterFaultBucket{transaction: t, name: name}
 }
@@ -131,6 +216,15 @@ func (t *clusterFaultTxn) Writable() bool {
 }
 
 func (b *clusterFaultBucket) Get(key vault.Key) []byte {
+	if b.name == b.transaction.engine.readGateBucket &&
+		string(key) == b.transaction.engine.readGateKey {
+		select {
+		case b.transaction.engine.readGateEntered <- struct{}{}:
+		default:
+		}
+		<-b.transaction.engine.readGateRelease
+	}
+
 	return append([]byte(nil), b.transaction.buckets[b.name][string(key)]...)
 }
 
@@ -142,6 +236,7 @@ func (b *clusterFaultBucket) Put(key vault.Key, raw []byte) error {
 		b.transaction.buckets[b.name] = make(map[string][]byte)
 	}
 	b.transaction.buckets[b.name][string(key)] = append([]byte(nil), raw...)
+	b.transaction.touched[b.transaction.engine.route(b.name, key)] = struct{}{}
 
 	return nil
 }
@@ -151,6 +246,7 @@ func (b *clusterFaultBucket) Delete(key vault.Key) error {
 		return errInjectedClusterVault
 	}
 	delete(b.transaction.buckets[b.name], string(key))
+	b.transaction.touched[b.transaction.engine.route(b.name, key)] = struct{}{}
 
 	return nil
 }
@@ -206,6 +302,23 @@ func openFaultIndex(t *testing.T, limits Limits) (*Index, *clusterFaultEngine) {
 	}
 
 	return index, engine
+}
+
+func reopenFaultIndex(
+	t *testing.T,
+	engine *clusterFaultEngine,
+) *Index {
+	t.Helper()
+	v, err := vault.New(engine)
+	if err != nil {
+		t.Fatalf("reopen fault vault: %v", err)
+	}
+	index, err := Open(v, Limits{})
+	if err != nil {
+		t.Fatalf("reopen fault index: %v", err)
+	}
+
+	return index
 }
 
 type stagedCancellationContext struct {

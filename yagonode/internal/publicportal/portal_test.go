@@ -13,6 +13,7 @@ import (
 type fakeSource struct {
 	results   SearchResults
 	err       error
+	calls     int
 	gotOffset int
 	gotLimit  int
 }
@@ -23,6 +24,7 @@ func (f *fakeSource) Search(
 	_ string,
 	offset, limit int,
 ) (SearchResults, error) {
+	f.calls++
 	f.gotOffset = offset
 	f.gotLimit = limit
 
@@ -65,7 +67,7 @@ func TestPortalHomepageWithoutQuery(t *testing.T) {
 			t.Fatalf("homepage missing %q", want)
 		}
 	}
-	if strings.Contains(body, "result(s) for") {
+	if strings.Contains(body, "available in this search window") {
 		t.Fatal("no results before a query")
 	}
 }
@@ -96,7 +98,8 @@ func TestPortalRendersResultsWithProvenance(t *testing.T) {
 		t.Fatalf("status %d", status)
 	}
 	for _, want := range []string{
-		"Local hit", "Web hit", `class="prov prov-web">web</span>`, "result(s) for",
+		"Local hit", "Web hit", `class="prov prov-web">web</span>`,
+		"Up to 2 result(s) available in this search window",
 		`rel="noreferrer nofollow"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -114,6 +117,32 @@ func TestPortalEmptyResults(t *testing.T) {
 	}
 	if !strings.Contains(body, "Nothing found.") {
 		t.Fatal("expected empty results message")
+	}
+}
+
+func TestPortalDistinguishesIncompleteEmptyResponse(t *testing.T) {
+	t.Parallel()
+
+	status, body := get(t, New(&fakeSource{results: SearchResults{
+		Query: "x", Incomplete: true, FederationUnavailable: true, PeersFailed: 2,
+	}}, false), "/?q=x")
+	if status != http.StatusOK {
+		t.Fatalf("status %d", status)
+	}
+	for _, want := range []string{
+		"Some enabled search sources were unavailable",
+		"no complete result set is available",
+		"Peer federation was unavailable for part of this search",
+		"2 identified peer response(s) failed",
+		"No results are currently available",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("incomplete response missing %q", want)
+		}
+	}
+	if strings.Contains(body, "0 result(s) for") ||
+		strings.Contains(body, "No results matched") {
+		t.Fatal("incomplete response must not claim an honest zero-result search")
 	}
 }
 
@@ -147,7 +176,11 @@ func TestPortalRejectsNonGet(t *testing.T) {
 func TestPortalPaginationParsesPageIntoOffset(t *testing.T) {
 	t.Parallel()
 
-	source := &fakeSource{results: SearchResults{Query: "go", TotalResults: 100}}
+	source := &fakeSource{results: SearchResults{
+		Query:        "go",
+		TotalResults: 100,
+		Results:      []SearchResult{{Title: "hit", URL: "http://a.example/1"}},
+	}}
 	if _, body := get(
 		t,
 		New(source, false),
@@ -209,9 +242,55 @@ func TestPortalPaginationClampsPage(t *testing.T) {
 	}
 
 	over := &fakeSource{results: SearchResults{Query: "go", TotalResults: 5}}
-	get(t, New(over, false), "/?q=go&p=99999")
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"/?q=go&dom=image&p=99999",
+		nil,
+	)
+	recorder := httptest.NewRecorder()
+	New(over, false).ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusSeeOther {
+		t.Fatalf("over-max status = %d, want %d", recorder.Code, http.StatusSeeOther)
+	}
+	if location := recorder.Header().Get("Location"); location != "/?dom=image&p=1&q=go" {
+		t.Fatalf("over-max location = %q, want %q", location, "/?dom=image&p=1&q=go")
+	}
 	if over.gotOffset != (portalMaxPage-1)*portalPageSize {
 		t.Fatalf("over-max page offset = %d, want %d",
 			over.gotOffset, (portalMaxPage-1)*portalPageSize)
+	}
+	if over.calls != 1 {
+		t.Fatalf("over-max search calls = %d, want 1", over.calls)
+	}
+
+	computedLast := &fakeSource{results: SearchResults{Query: "go", TotalResults: 45}}
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/?q=go&p=99999", nil)
+	recorder = httptest.NewRecorder()
+	New(computedLast, false).ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusSeeOther ||
+		recorder.Header().Get("Location") != "/?p=5&q=go" {
+		t.Fatalf(
+			"computed-last redirect = %d %q, want %d %q",
+			recorder.Code,
+			recorder.Header().Get("Location"),
+			http.StatusSeeOther,
+			"/?p=5&q=go",
+		)
+	}
+
+	emptyWindow := &fakeSource{results: SearchResults{Query: "go", TotalResults: 100}}
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/?q=go&p=3", nil)
+	recorder = httptest.NewRecorder()
+	New(emptyWindow, false).ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusSeeOther ||
+		recorder.Header().Get("Location") != "/?p=1&q=go" {
+		t.Fatalf(
+			"empty-window redirect = %d %q, want %d %q",
+			recorder.Code,
+			recorder.Header().Get("Location"),
+			http.StatusSeeOther,
+			"/?p=1&q=go",
+		)
 	}
 }

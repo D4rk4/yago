@@ -8,19 +8,19 @@
 {{end}}
 <div class="cds-tile-grid" role="group" aria-label="Search activity totals">
   <section class="cds-tile">
-    <div class="cds-metric__label">Searches since start</div>
+    <div class="cds-metric__label">Search attempts since start</div>
     <div class="cds-metric__value">{{.Activity.Total}}</div>
   </section>
   <section class="cds-tile">
-    <div class="cds-metric__label">Zero-result searches</div>
-    <div class="cds-metric__value">{{.Activity.ZeroResults}}</div>
+    <div class="cds-metric__label">Confirmed zero-result searches</div>
+    <div class="cds-metric__value">{{.Activity.ConfirmedZeroResults}}</div>
   </section>
 </div>
 {{if .Activity.TopWords}}
-<h2 class="cds-h2">Top query words</h2>
+<h2 class="cds-h2">Top query words from up to 200 retained recent search attempts</h2>
 <div class="cds-scroll-x">
   <table class="cds-table">
-    <thead><tr><th scope="col">Word</th><th scope="col">Count</th></tr></thead>
+    <thead><tr><th scope="col">Word</th><th scope="col">Occurrences</th></tr></thead>
     <tbody>
       {{range .Activity.TopWords}}<tr><td>{{.Word}}</td><td>{{.Count}}</td></tr>{{end}}
     </tbody>
@@ -30,7 +30,7 @@
 <h2 class="cds-h2">Recent searches</h2>
 <div class="cds-scroll-x">
   <table class="cds-table">
-    <thead><tr><th scope="col">Time</th>{{if eq .Activity.Mode "full"}}<th scope="col">Query</th>{{end}}<th scope="col">Length</th><th scope="col">Terms</th><th scope="col">Results</th><th scope="col">Took</th><th scope="col">Scope</th></tr></thead>
+    <thead><tr><th scope="col">Time (UTC)</th>{{if eq .Activity.Mode "full"}}<th scope="col">Query</th>{{end}}<th scope="col">Length</th><th scope="col">Terms</th><th scope="col">Search-window upper bound</th><th scope="col">Took</th><th scope="col">Scope</th></tr></thead>
     <tbody>
       {{$full := eq .Activity.Mode "full"}}
       {{range .Activity.Entries}}
@@ -39,12 +39,12 @@
         {{if $full}}<td>{{.Query}}</td>{{end}}
         <td>{{.Length}}</td>
         <td>{{.Terms}}</td>
-        <td>{{.Results}}</td>
+        <td>{{if .ResultsKnown}}Up to {{.Results}}{{if not .Complete}} (partial){{end}}{{else}}Unavailable{{end}}</td>
         <td class="cds-mono">{{.Duration}}</td>
         <td>{{.Source}}</td>
       </tr>
       {{else}}
-      <tr><td colspan="7">No searches recorded yet.</td></tr>
+      <tr><td colspan="{{if $full}}7{{else}}6{{end}}">No searches recorded yet.</td></tr>
       {{end}}
     </tbody>
   </table>

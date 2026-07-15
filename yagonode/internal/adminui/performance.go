@@ -6,10 +6,14 @@ import "context"
 type PerformanceStatus struct {
 	Available        bool
 	CrawlQueueSize   int
+	CrawlQueueKnown  bool
 	IndexQueueSize   int
+	IndexQueueKnown  bool
 	ConnectedPeers   int
 	LocalRWIWords    int
+	LocalRWIKnown    bool
 	StorageAvailable bool
+	StorageKnown     bool
 }
 
 // PerformanceSource supplies the operational snapshot on each request.

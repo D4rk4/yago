@@ -38,13 +38,11 @@ type openSearchURL struct {
 // privacy-preserving suggestions endpoint so a browser can add the portal as a
 // search engine. It exposes only the public search surface and never records the
 // query.
-type OpenSearch struct {
-	brand string
-}
+type OpenSearch struct{}
 
 // NewOpenSearch builds the OpenSearch handler for the public portal.
 func NewOpenSearch() *OpenSearch {
-	return &OpenSearch{brand: brand}
+	return &OpenSearch{}
 }
 
 // DescribePath is the route that serves the OpenSearch description document.
@@ -57,10 +55,11 @@ func (o *OpenSearch) SuggestPath() string { return suggestPath }
 // templates from the request's own origin so the browser searches this node.
 func (o *OpenSearch) Describe(w http.ResponseWriter, r *http.Request) {
 	base := requestOrigin(r)
+	displayBrand := portalBrand()
 	doc := openSearchDescription{
 		Namespace:     osddNamespace,
-		ShortName:     o.brand,
-		Description:   "Search the " + o.brand + " network",
+		ShortName:     openSearchTitle(displayBrand),
+		Description:   "Search the " + displayBrand + " network",
 		InputEncoding: "UTF-8",
 		URLs: []openSearchURL{
 			{Type: resultLinkType, Method: http.MethodGet, Template: base + "/?q={searchTerms}"},
@@ -70,7 +69,7 @@ func (o *OpenSearch) Describe(w http.ResponseWriter, r *http.Request) {
 				Template: base + suggestPath + "?q={searchTerms}",
 			},
 		},
-		Attribution: o.brand + " — free software under the GNU AGPL v3.",
+		Attribution: displayBrand + " — free software under the GNU AGPL v3.",
 	}
 
 	w.Header().Set("Content-Type", osddContentType)

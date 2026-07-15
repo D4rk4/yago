@@ -172,6 +172,7 @@ deps:
   crawladmission:
     mayDependOn:
       - crawladmission
+      - formatparse
       - urltrap
       - weburl
     canUse:

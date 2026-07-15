@@ -16,7 +16,7 @@ func (facetedSource) Search(context.Context, string, string, int, int) (SearchRe
 		TotalResults: 1,
 		Results:      []SearchResult{{Title: "Go", URL: "https://a.example/x"}},
 		Facets: []FacetGroup{{
-			Title: "Host",
+			Title: "Host", Scope: "the local corpus",
 			Items: []FacetItem{
 				{Label: "a.example", Count: 3, URL: "/?q=go+site%3Aa.example"},
 				{Label: "plain.example", Count: 1},
@@ -34,7 +34,7 @@ func TestPortalRendersFacetSidebar(t *testing.T) {
 	for _, want := range []string{
 		`<aside class="facets" aria-label="Filter results">`,
 		"<summary>Filters</summary>",
-		"<fieldset><legend>Host</legend>",
+		"<fieldset><legend>Host — counts from the local corpus</legend>",
 		"&#43;site%3Aa.example",
 		`>a.example</a> <span class="count">(3)</span>`,
 		`plain.example <span class="count">(1)</span>`,

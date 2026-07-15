@@ -56,52 +56,56 @@ Fix all three, in three slices, behind this ADR.
 PendingPageN) * PageSize` — the in-use bytes, excluding the freelist — inside a
 read transaction, mirroring `boltvault`. This alone makes the metric truthful
 and lets the eviction sweep observe space that deletes actually free, so it stops
-thrashing. It does **not** shrink the files on disk; that is slice C.
+thrashing. Exact measurements also refresh the one-second observation shared by
+concurrent admission preflights, so an eviction pass immediately updates their
+capacity view without turning admin or eviction reads into cached estimates. It
+does **not** shrink the files on disk; that is slice C.
 
-### B. Evict the document alongside the rest of a URL
+### B. Evict one complete source lineage
 
-`purgeURLs` also drops the URL's `documents` entry, so both the quota sweep and
-the on-demand/ tombstone `Evictor` remove the whole URL, not just its index side.
+Documents use normalized URL keys, while RWI postings, URL references, and URL
+metadata use the YaCy URL hash. Deletion therefore needs both identities when
+they are known; a hash alone cannot reconstruct an absent document key.
 
-The key-shape mismatch is the crux. Postings, word-references, and url-metadata
-are keyed by the **URL hash**; documents are keyed by the **normalized URL
-string**. `purgeURLs` starts from hashes (the quota sweep selects stale URLs by
-hash; the tombstone path hashes its `SourceURL`). The bridge, confirmed by
-tracing the ingest:
+Quota eviction, crawler tombstones, Admin deletion, and the startup redirect
+sweep delegate to one full-lineage owner. A known-URL caller passes both the URL
+and its hash. Quota eviction begins with a hash and resolves the stored URL from
+URL metadata before taking ownership. The compatibility hash-only path still
+does that resolution when metadata exists and always removes the addressable
+hash-keyed rows, but it cannot guess a document key after metadata is already
+missing. A crawler tombstone carries `SourceURL`, so it can delete the complete
+lineage even in that state. An unhashable Admin URL delegates once to the
+document-lineage owner; there are no addressable RWI or metadata rows to purge.
 
-- The crawler builds the document and the url-metadata row from the same
-  `page.URL`. The document's `NormalizedURL` **is** `page.URL`
-  (`yagocrawler/internal/pageindex`); the url-metadata row stores
-  `Properties["url"] = EncodeBase64WireForm(page.URL)` and is keyed by
-  `HashURL(page.URL)`.
-- Therefore `DecodeWireForm(row.Properties["url"])` is a **byte-for-byte match**
-  for the `documents` key, and the row's hash equals `HashURL(NormalizedURL)`.
-  (This URL↔hash identity is already relied on in
-  `node_admin_index_delete.go`, which deletes a document by URL then evicts by
-  `HashURL(url)`.)
+Live ingest and deletion share the same ordered, per-source lifecycle
+reservation. Ingest reserves the batch source URL plus the document's normalized
+and canonical source identities after admission and holds them through content
+cluster assignment, document and Bleve publication, anchor publication, URL
+metadata, stale-RWI cleanup, posting intake, observation completion, and
+acknowledgement. Deletion canonicalizes, deduplicates, and sorts its known source
+URLs before reserving them. The reservation is scoped to those sources, so
+unrelated crawls remain concurrent and a global ingest lock is unnecessary.
 
-So `purgeURLs` resolves each hash to its stored URL via
-`urlmeta.URLDirectory.RowsByHash` + `DecodeWireForm`, then deletes the document
-by that URL. Two ordering/robustness rules:
+The full-lineage owner performs deletion in crash-recoverable order:
 
-- **Resolve and delete the document *before* purging the url-metadata rows.**
-  Once the metadata row is gone the URL can no longer be resolved from a hash, so
-  a crash after the metadata purge but before the document delete would orphan
-  the document forever. Deleting the document first makes a mid-purge crash
-  self-heal: the still-present metadata lets the next sweep re-resolve and retry.
-  Full cross-store atomicity is neither available (the vault relaxes cross-shard
-  atomicity by design, ADR-0025) nor assumed elsewhere — `deleteOne` in the
-  admin delete path already deletes across the index, documents, and evictor as
-  separate steps.
-- A resolved hash may legitimately have **no** document: the quality gate can
-  store a url-metadata row and postings without a document.
-  `Delete` returning `(false, nil)` is the intended idempotent no-op.
+1. Begin the durable content-cluster deletion transition and read the affected
+   source and survivor projections.
+2. Clear the source's outbound-anchor contribution, project and finalize the
+   affected inbound anchors, and refresh surviving cluster documents and Bleve
+   rows.
+3. Delete the source document and Bleve row, then finalize the durable cluster
+   transition.
+4. While the source reservation is still held, purge RWI postings before URL
+   metadata, report the observation outcome, and release the reservation.
 
-The recrawl tombstone path routes through the same `purgeURLs`, so it gains
-document eviction with no special-casing, and resolving the exact stored URL
-(rather than re-using the tombstone's `SourceURL`) is robust against recrawl
-spelling drift, since `HashURL` collapses spellings the exact document key does
-not.
+The durable cluster transition stays visible to replay until external document
+and index projection succeeds; partially projected cluster evidence is hidden
+from normal reads. URL metadata remains the last hash-to-URL recovery aid for a
+legacy hash-only retry. These rules make a crash or a returned error retryable,
+but they do not claim one transaction across the document store, Bleve, content
+clusters, anchors, RWI, and URL metadata. Cross-shard vault atomicity remains
+relaxed by ADR-0025. Missing documents and repeated deletions remain idempotent
+no-ops.
 
 ### C. Periodic, configurable compaction returns freed pages to the OS
 
@@ -135,13 +139,17 @@ background maintenance pass compacts the shards on a schedule.
   live usage; an operator watching them will see usage fall after eviction and
   compaction instead of a stuck peak. Dashboards keyed to the old file-size
   semantics will read lower.
-- Eviction becomes effective: it can drop below the high-water mark and it now
-  reclaims the dominant consumer (documents), so a node under quota pressure
-  bounds its storage instead of thrashing postings to the floor.
+- Eviction becomes effective: it can drop below the high-water mark and one
+  owner reclaims the complete source lineage, including the dominant document
+  payload, so a node under quota pressure bounds storage instead of thrashing
+  postings to the floor.
+- Concurrent ingest and deletion serialize only on the affected source
+  identities. Admin, redirect, quota, and tombstone callers cannot race separate
+  partial deletion sequences or erase a newer ingest tail.
 - Compaction periodically quiesces the engine per over-full shard. This is a
   brief, bounded, once-per-interval stall, off by setting `off`.
-- A dead-page tombstone now removes the document too, closing the ADR-0034
-  orphan.
+- A dead-page tombstone carrying URL plus hash removes the complete lineage even
+  when URL metadata is already missing, closing the ADR-0034 orphan.
 - No wire-format or peer-protocol change. Accounting, eviction scope, and an
   internal maintenance pass only.
 
@@ -156,8 +164,9 @@ background maintenance pass compacts the shards on a schedule.
   shared `globalGate` on `View` keeps the uncontended cost to one atomic and only
   blocks during the rare swap. Rejected in favor of the gate.
 - **Keying documents by URL hash** to remove the resolve step. A data migration
-  of the existing document corpus for no functional gain. Rejected; the
-  `RowsByHash` + `DecodeWireForm` resolve is exact and cheap for bounded batches.
+  of the existing document corpus for no functional gain. Rejected; known-URL
+  callers already carry the document identity, and the bounded legacy hash-only
+  path resolves it through URL metadata when that metadata exists.
 - **Counting free pages in `UsedBytes` (status quo) and only compacting.**
   Leaves the metric lying between compactions and keeps the eviction sweep
   thrashing. Rejected; truthful accounting is the core fix.

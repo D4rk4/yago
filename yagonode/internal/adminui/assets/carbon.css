@@ -33,6 +33,43 @@
 
 * { box-sizing: border-box; }
 
+.cds-icon-sprite { position: absolute; overflow: hidden; }
+.htmx-indicator { opacity: 0; }
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator { opacity: 1; transition: opacity 200ms ease-in; }
+
+.cds-restarting-page {
+  font-family: 'Helvetica Neue', Helvetica, 'Nimbus Sans', Arial, sans-serif;
+  background: #6f829c;
+  color: #17150e;
+  margin: 0;
+}
+.cds-restarting-card {
+  max-width: 26rem;
+  margin: 14vh auto;
+  background: #c9c6c0;
+  border: 1px solid #46443d;
+  box-shadow: inset 1px 1px 0 #fbfaf6, inset -1px -1px 0 #5c5a52,
+    inset 2px 2px 0 #ece9e3, inset -2px -2px 0 #8b887f;
+}
+.cds-restarting-card__bar {
+  background: linear-gradient(180deg, #304f88 0%, #24447d 60%, #18366f 100%);
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  padding: 0.25rem 0.75rem;
+  border-bottom: 1px solid #10274f;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.cds-restarting-card__bar b { color: #ffb3b8; }
+.cds-restarting-card__body { padding: 1.25rem; }
+.cds-restarting-card__body h1 {
+  font-size: 1.1875rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem;
+}
+.cds-restarting-card__body p { color: #46443c; font-size: 0.8125rem; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -293,18 +330,31 @@ select:focus-visible, [tabindex]:focus-visible {
 }
 .cds-input--rate { width: 8rem; }
 
-/* Row of inline control forms in a table Actions cell: keep the buttons and the
-   rate field on one line instead of letting each block-level form stack. */
 .cds-control-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--cds-spacing-05);
 }
+.cds-control-row--crawl-actions {
+  flex-wrap: nowrap;
+  min-width: max-content;
+  gap: var(--cds-spacing-03);
+}
 .cds-inline-form {
   display: flex;
   align-items: center;
   gap: var(--cds-spacing-03);
+}
+.cds-control-row--crawl-actions .cds-inline-form { flex: 0 0 auto; }
+.cds-control-row--crawl-actions .cds-btn {
+  min-height: 2rem;
+  padding: 0 var(--cds-spacing-03);
+}
+.cds-control-row--crawl-actions .cds-input--rate {
+  width: 4rem;
+  height: 2rem;
+  padding: 0 var(--cds-spacing-03);
 }
 
 /* Tags */

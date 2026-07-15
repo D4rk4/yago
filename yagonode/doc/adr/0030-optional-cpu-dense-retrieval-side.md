@@ -1,10 +1,10 @@
-# 0030. Approve an optional, default-off CPU dense retrieval side, gated on the eval harness
+# 0030. Reject a CPU dense retrieval side for the current architecture
 
 Date: 2026-07-06
 
 ## Status
 
-Accepted
+Superseded by [ADR-0048](0048-bounded-google-yandex-ranking-research-disposition.md)
 
 ## Context
 
@@ -51,49 +51,39 @@ Findings (current to 2024–2026):
 
 ## Decision
 
-**Conditional go.** Approve the architecture and its dependencies, ship it dark,
-and gate enablement on measured quality:
+Reject the dense side for the current architecture. The earlier conditional
+approval is superseded and grants no dependency approval.
 
-1. **Architecture.** An optional, node-local dense side: a Model2Vec-static
-   embedder (cgo-free, matrix lookup + mean pool) over a `coder/hnsw` graph, fused
-   with the BM25 results through the existing RRF merge. The index is strictly
-   local — no RWI/DHT change. The embedder sits behind a Go interface so a
-   cgo-free bi-encoder (GoMLX SimpleGo path) can replace the static model later
-   without touching the fusion or index wiring.
-2. **Approved dependencies** (this ADR is their gate): the Model2Vec artifact
-   (MIT) consumed as an exported vector matrix + tokenizer, and `coder/hnsw` (or
-   an equally-maintained pure-Go HNSW), both cgo-free.
-3. **Default off.** The dense side is disabled by default and controlled by an
-   environment variable with a matching runtime admin setting (settings-parity
-   rule). It costs no RAM and runs no code until an operator enables it.
-4. **Enablement gate.** Before the dense side is recommended for general use, it
-   must show an NDCG@10 improvement over the BM25 baseline on the SEARCH-16 eval
-   harness (a BEIR-style subset). If the static embedder does not clear the bar,
-   the interface lets us swap in a cgo-free bi-encoder and re-measure before
-   shipping — we never enable a dense side that does not beat BM25 on the harness.
+1. The static embedder is weaker than the lexical baseline in the cited public
+   evaluation, and Yago has no representative held-out evidence that its fusion
+   improves the measured search failures.
+2. The in-memory graph and vectors add roughly 1.3 KiB per document in the
+   reviewed design, conflicting with the modest-hardware target and current
+   storage bounds.
+3. A stronger bi-encoder adds a transformer runtime and document-wide inference
+   cost. No measured latency or indexing reserve justifies that runtime boundary.
+4. Multilingual analyzers, anchors, RM3, ordered and unordered proximity,
+   original-gap agreement, authority, freshness, and learned lexical evidence
+   address the demonstrated backlog without dense request-time semantics.
 
 ## Consequences
 
-- Semantic recall becomes available as an optional, RRF-fused complement to BM25
-  at near-zero query latency, with no protocol change and no cgo.
-- The node stays pure-Go and model-free by default; the model artifact and ANM
-  graph exist only when an operator turns the feature on.
-- Memory is the binding cost when enabled (~1.3 KB/doc resident); the default-off
-  posture and the per-node opt-in keep modest hardware unaffected unless chosen.
-- The eval-harness gate protects the ranking baseline: a static embedder that
-  would drag exact-match web queries below BM25 cannot ship enabled.
-- Implementation is a separate slice; this ADR only authorizes the approach and
-  the dependencies.
+- No dense index, model artifact, dependency, environment variable, admin
+  setting, or request-time stage is added.
+- RWI remains the YaCy exchange format and the local index remains the bounded
+  Bleve lexical path.
+- Dense retrieval is not a deferred ranking requirement. A materially different
+  architecture and representative evidence would require a new ADR rather than
+  reopening this approval implicitly.
 
 ## Alternatives considered
 
-- **A real bi-encoder (E5/BGE-small) as the default embedder.** Higher quality,
-  but a transformer forward pass at index and query time; cgo-free Go runtimes are
-  5–8× slower and the index-time CPU tax is heavy on modest hardware. Kept as the
-  behind-the-interface upgrade path, not the default.
-- **No dense side at all.** Rejected as a permanent stance: BM25 + anchor-text +
-  stemming structurally miss paraphrase/synonym recall that dense fusion recovers
-  cheaply; but this is why the dense side is *optional and gated*, not mandatory.
+- **A real bi-encoder (E5/BGE-small).** Rejected: it adds a transformer forward
+  pass at index and query time plus a model runtime without representative Yago
+  evidence or a measured resource budget.
+- **A static Model2Vec and HNSW side.** Rejected: its reviewed retrieval score is
+  below BM25 and the resident graph is too costly for an unproven fusion gain.
 - **A dense side on the shared index / DHT.** Rejected outright: embeddings and ANN
   do not fit the word-hash RWI wire contract (the same boundary ADR-0031 draws for
-  learned-sparse). Dense stays a strictly local, secondary signal.
+  learned-sparse). A future independently approved design could only be local;
+  this ADR does not approve one.

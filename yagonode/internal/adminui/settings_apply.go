@@ -80,7 +80,10 @@ func (c *Console) applyChangedSettings(
 	r *http.Request,
 	keys []string,
 ) (SettingsResult, error) {
-	current := currentSettingValues(ctx, c.settings)
+	current, err := currentSettingValues(ctx, c.settings)
+	if err != nil {
+		return SettingsResult{}, err
+	}
 	applied := 0
 	restart := false
 	for _, key := range keys {
@@ -118,14 +121,20 @@ func batchMessage(applied int) string {
 
 // currentSettingValues snapshots the node's current setting values by key so a
 // batch save can detect which rows actually changed.
-func currentSettingValues(ctx context.Context, source SettingsSource) map[string]string {
+func currentSettingValues(
+	ctx context.Context,
+	source SettingsSource,
+) (map[string]string, error) {
 	view := source.Settings(ctx)
+	if view.Error != "" {
+		return nil, fmt.Errorf("read current runtime settings")
+	}
 	values := make(map[string]string, len(view.Items))
 	for _, item := range view.Items {
 		values[item.Key] = item.Value
 	}
 
-	return values
+	return values, nil
 }
 
 // submittedSettingValue reads the value a settings form submitted for key. An

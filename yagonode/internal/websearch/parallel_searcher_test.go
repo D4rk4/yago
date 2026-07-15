@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,36 +112,275 @@ func TestParallelSearcherStartsBothBranchesAndFusesTheirRankings(t *testing.T) {
 	}
 }
 
-type parallelCancellationProvider struct {
-	canceled chan struct{}
+func TestParallelSearcherKeepsVerifiedWebAnswerAfterPrimaryFailure(t *testing.T) {
+	response, err := NewParallelSearcher(
+		&stubSearcher{err: errors.New("private primary detail")},
+		&stubProvider{results: []Result{{
+			Title: "Web gap", URL: "https://web.example/gap",
+		}}},
+		enabled,
+	).Search(t.Context(), searchcore.Request{Query: "gap", Limit: 10})
+	if err != nil || len(response.Results) != 1 ||
+		response.Results[0].Source != searchcore.SourceWeb || response.TotalResults != 1 ||
+		len(response.PartialFailures) != 1 ||
+		response.PartialFailures[0] != (searchcore.PartialFailure{
+			Source: searchcore.PartialFailureSourceLocalSearch,
+			Reason: msgParallelPrimaryFailed,
+		}) {
+		t.Fatalf("response = %#v, error = %v", response, err)
+	}
 }
 
-func (p parallelCancellationProvider) Search(
+func TestParallelSearcherKeepsPrimaryRowsAfterOperationalFailure(t *testing.T) {
+	response, err := NewParallelSearcher(
+		&stubSearcher{
+			resp: searchcore.Response{
+				Results: []searchcore.Result{{
+					Title: "Local gap", URL: "https://local.example/gap",
+				}},
+				TotalResults: 1,
+			},
+			err: errors.New("private primary detail"),
+		},
+		&stubProvider{err: errors.New("private provider detail")},
+		enabled,
+	).Search(t.Context(), searchcore.Request{Query: "gap", Limit: 10})
+	if err != nil || len(response.Results) != 1 || response.TotalResults != 1 ||
+		len(response.PartialFailures) != 2 {
+		t.Fatalf("response = %#v, error = %v", response, err)
+	}
+	for _, failure := range response.PartialFailures {
+		if strings.Contains(failure.Reason, "private") {
+			t.Fatalf("private failure escaped: %#v", response.PartialFailures)
+		}
+	}
+}
+
+func TestParallelSearcherReturnsStableFailureWhenBothBranchesFail(t *testing.T) {
+	response, err := NewParallelSearcher(
+		&stubSearcher{err: errors.New("private primary detail")},
+		&stubProvider{err: errors.New("private provider detail")},
+		enabled,
+	).Search(t.Context(), searchcore.Request{Query: "gap", Limit: 10})
+	if !errors.Is(err, errParallelSearchUnavailable) ||
+		strings.Contains(err.Error(), "private") || len(response.PartialFailures) != 2 {
+		t.Fatalf("response = %#v, error = %v", response, err)
+	}
+}
+
+type parallelCompletedProvider struct {
+	completed chan struct{}
+	results   []Result
+}
+
+func (p parallelCompletedProvider) Search(
+	context.Context,
+	string,
+	int,
+) ([]Result, error) {
+	close(p.completed)
+
+	return p.results, nil
+}
+
+type parallelCanceledPrimary struct{}
+
+func (parallelCanceledPrimary) Search(
+	ctx context.Context,
+	_ searchcore.Request,
+) (searchcore.Response, error) {
+	<-ctx.Done()
+
+	return searchcore.Response{}, fmt.Errorf("primary cancellation: %w", ctx.Err())
+}
+
+func TestParallelSearcherDeadlineCannotReplaceCompletedWebBranch(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	completed := make(chan struct{})
+	outcome := make(chan parallelPrimaryOutcome, 1)
+	go func() {
+		response, err := NewParallelSearcher(
+			parallelCanceledPrimary{},
+			parallelCompletedProvider{
+				completed: completed,
+				results:   []Result{{Title: "Web gap", URL: "https://web.example/gap"}},
+			},
+			enabled,
+		).Search(ctx, searchcore.Request{Query: "gap", Limit: 10})
+		outcome <- parallelPrimaryOutcome{response: response, err: err}
+	}()
+	<-completed
+	cancel()
+	result := <-outcome
+	if result.err != nil || len(result.response.Results) != 1 ||
+		result.response.Results[0].Source != searchcore.SourceWeb {
+		t.Fatalf("response = %#v, error = %v", result.response, result.err)
+	}
+}
+
+type parallelCompletedPrimary struct {
+	completed chan struct{}
+}
+
+func (p parallelCompletedPrimary) Search(
+	context.Context,
+	searchcore.Request,
+) (searchcore.Response, error) {
+	close(p.completed)
+
+	return searchcore.Response{
+		Results: []searchcore.Result{{
+			Title: "Local gap", URL: "https://local.example/gap",
+		}},
+		TotalResults: 1,
+	}, nil
+}
+
+type parallelCanceledProvider struct{}
+
+func (parallelCanceledProvider) Search(
 	ctx context.Context,
 	_ string,
 	_ int,
 ) ([]Result, error) {
 	<-ctx.Done()
-	close(p.canceled)
 
 	return nil, fmt.Errorf("provider cancellation: %w", ctx.Err())
 }
 
-func TestParallelSearcherCancelsProviderAfterPrimaryFailure(t *testing.T) {
-	want := errors.New("primary failed")
-	provider := parallelCancellationProvider{canceled: make(chan struct{})}
-	_, err := NewParallelSearcher(
-		&stubSearcher{err: want},
-		provider,
+func TestParallelSearcherDeadlineCannotReplaceCompletedPrimaryBranch(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	completed := make(chan struct{})
+	outcome := make(chan parallelPrimaryOutcome, 1)
+	go func() {
+		response, err := NewParallelSearcher(
+			parallelCompletedPrimary{completed: completed},
+			parallelCanceledProvider{},
+			enabled,
+		).Search(ctx, searchcore.Request{Query: "gap", Limit: 10})
+		outcome <- parallelPrimaryOutcome{response: response, err: err}
+	}()
+	<-completed
+	cancel()
+	result := <-outcome
+	if result.err != nil || len(result.response.Results) != 1 ||
+		result.response.Results[0].URL != "https://local.example/gap" {
+		t.Fatalf("response = %#v, error = %v", result.response, result.err)
+	}
+}
+
+func TestParallelSearcherReturnsContextCauseWithoutCompletedBranch(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	response, err := NewParallelSearcher(
+		parallelCanceledPrimary{},
+		parallelCanceledProvider{},
+		enabled,
+	).Search(ctx, searchcore.Request{Query: "gap", Limit: 10})
+	if !errors.Is(err, context.Canceled) || len(response.Results) != 0 {
+		t.Fatalf("response = %#v, error = %v", response, err)
+	}
+}
+
+func TestParallelSearcherReturnsHonestEmptyAnswer(t *testing.T) {
+	response, err := NewParallelSearcher(
+		&stubSearcher{},
+		&stubProvider{},
 		enabled,
 	).Search(t.Context(), searchcore.Request{Query: "gap", Limit: 10})
-	if !errors.Is(err, want) {
-		t.Fatalf("error = %v", err)
+	if err != nil || len(response.Results) != 0 || len(response.PartialFailures) != 0 {
+		t.Fatalf("response = %#v, error = %v", response, err)
 	}
-	select {
-	case <-provider.canceled:
-	case <-time.After(time.Second):
-		t.Fatal("provider did not observe cancellation")
+}
+
+func TestDrainParallelOutcomesKeepsQueuedCompletions(t *testing.T) {
+	primaryOutcomes := make(chan parallelPrimaryOutcome, 1)
+	providerOutcomes := make(chan parallelProviderOutcome, 1)
+	primaryOutcomes <- parallelPrimaryOutcome{err: errors.New("primary")}
+	providerOutcomes <- parallelProviderOutcome{err: errors.New("provider")}
+	outcomes := drainParallelOutcomes(
+		parallelOutcomes{},
+		primaryOutcomes,
+		providerOutcomes,
+	)
+	if !outcomes.primaryReady || !outcomes.providerReady ||
+		outcomes.primary.err == nil || outcomes.provider.err == nil {
+		t.Fatalf(
+			"primary = %#v/%v, provider = %#v/%v",
+			outcomes.primary,
+			outcomes.primaryReady,
+			outcomes.provider,
+			outcomes.providerReady,
+		)
+	}
+	outcomes = drainParallelOutcomes(
+		parallelOutcomes{},
+		primaryOutcomes,
+		providerOutcomes,
+	)
+	if outcomes.primaryReady || outcomes.providerReady {
+		t.Fatalf("empty drain = %v/%v", outcomes.primaryReady, outcomes.providerReady)
+	}
+}
+
+func TestCollectParallelOutcomesKeepsCompletionQueuedBeforeCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	primaryOutcomes := make(chan parallelPrimaryOutcome, 1)
+	providerOutcomes := make(chan parallelProviderOutcome)
+	primaryOutcomes <- parallelPrimaryOutcome{response: searchcore.Response{
+		Results: []searchcore.Result{{Title: "Local gap"}},
+	}}
+	cancel()
+	outcomes := collectParallelOutcomes(ctx, primaryOutcomes, providerOutcomes)
+	if !outcomes.primaryReady || len(outcomes.primary.response.Results) != 1 ||
+		outcomes.providerReady {
+		t.Fatalf("outcomes = %#v", outcomes)
+	}
+}
+
+type parallelBlockedPrimary struct {
+	release <-chan struct{}
+}
+
+func (p parallelBlockedPrimary) Search(
+	context.Context,
+	searchcore.Request,
+) (searchcore.Response, error) {
+	<-p.release
+
+	return searchcore.Response{}, nil
+}
+
+type parallelBlockedProvider struct {
+	release <-chan struct{}
+}
+
+func (p parallelBlockedProvider) Search(
+	context.Context,
+	string,
+	int,
+) ([]Result, error) {
+	<-p.release
+
+	return nil, nil
+}
+
+func TestParallelSearcherCancellationDrainRemainsBounded(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	release := make(chan struct{})
+	defer close(release)
+	started := time.Now()
+	response, err := NewParallelSearcher(
+		parallelBlockedPrimary{release: release},
+		parallelBlockedProvider{release: release},
+		enabled,
+	).Search(ctx, searchcore.Request{Query: "gap", Limit: 10})
+	if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
+		t.Fatalf("elapsed = %s", elapsed)
+	}
+	if !errors.Is(err, context.Canceled) || len(response.Results) != 0 {
+		t.Fatalf("response = %#v, error = %v", response, err)
 	}
 }
 
@@ -157,6 +397,60 @@ func TestParallelSearcherProviderFailureKeepsPrimaryAnswer(t *testing.T) {
 	if err != nil || len(response.Results) != 1 || response.Results[0].Title != "Local gap" ||
 		len(response.PartialFailures) != 1 || response.PartialFailures[0] != webProviderFailure() {
 		t.Fatalf("response = %#v, error = %v", response, err)
+	}
+}
+
+func TestParallelSearcherKeepsAndSeedsVerifiedPartialProviderRows(t *testing.T) {
+	seeder := &stubSeeder{}
+	searcher := NewParallelSearcher(
+		&stubSearcher{},
+		&stubProvider{
+			results: []Result{{Title: "Web gap", URL: "https://web.example/gap"}},
+			err:     errors.New("provider failed after rows"),
+		},
+		enabled,
+		WithSeeder(seeder),
+	)
+	searcher.fallback.spawnSeedWork = func(work func()) bool {
+		work()
+
+		return true
+	}
+	response, err := searcher.Search(
+		t.Context(),
+		searchcore.Request{Query: "gap", Limit: 10},
+	)
+	if err != nil || len(response.Results) != 1 ||
+		response.Results[0].Source != searchcore.SourceWeb ||
+		len(response.PartialFailures) != 1 || seeder.calls != 1 ||
+		len(seeder.urls) != 1 || seeder.urls[0] != "https://web.example/gap" {
+		t.Fatalf("response = %#v, seeder = %#v, error = %v", response, seeder, err)
+	}
+}
+
+func TestParallelSearcherRejectsAndDoesNotSeedUnverifiedPartialProviderRows(t *testing.T) {
+	seeder := &stubSeeder{}
+	searcher := NewParallelSearcher(
+		&stubSearcher{},
+		&stubProvider{
+			results: []Result{{Title: "Unrelated", URL: "https://web.example/other"}},
+			err:     errors.New("provider failed after rows"),
+		},
+		enabled,
+		WithSeeder(seeder),
+	)
+	searcher.fallback.spawnSeedWork = func(work func()) bool {
+		work()
+
+		return true
+	}
+	response, err := searcher.Search(
+		t.Context(),
+		searchcore.Request{Query: "gap", Limit: 10},
+	)
+	if err != nil || len(response.Results) != 0 ||
+		len(response.PartialFailures) != 1 || seeder.calls != 0 {
+		t.Fatalf("response = %#v, seeder = %#v, error = %v", response, seeder, err)
 	}
 }
 

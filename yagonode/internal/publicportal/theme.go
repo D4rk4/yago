@@ -45,29 +45,32 @@ func (d portalData) themeView() map[string]any {
 	}
 
 	return map[string]any{
-		"brand":         d.Brand,
-		"query":         d.Query,
-		"dom":           d.Dom,
-		"imageVertical": d.Dom == "image",
-		"submitted":     d.Submitted,
-		"error":         d.Error,
-		"newTab":        d.NewTab,
-		"rssUrl":        d.RSSURL,
-		"jsonUrl":       d.JSONURL,
-		"elapsed":       d.Elapsed,
-		"verticals":     verticalViews(d.Verticals),
+		"brand":           d.Brand,
+		"openSearchTitle": d.OpenSearchTitle,
+		"query":           d.Query,
+		"dom":             d.Dom,
+		"imageVertical":   d.Dom == "image",
+		"submitted":       d.Submitted,
+		"error":           d.Error,
+		"newTab":          d.NewTab,
+		"rssUrl":          d.RSSURL,
+		"jsonUrl":         d.JSONURL,
+		"elapsed":         d.Elapsed,
+		"verticals":       verticalViews(d.Verticals),
 		"results": map[string]any{
-			"query":         d.Results.Query,
-			"totalResults":  d.Results.TotalResults,
-			"localCount":    d.Results.LocalCount,
-			"peerCount":     d.Results.PeerCount,
-			"webCount":      d.Results.WebCount,
-			"peersFailed":   d.Results.PeersFailed,
-			"recovered":     d.Results.Recovered,
-			"didYouMean":    d.Results.DidYouMean,
-			"didYouMeanUrl": d.Results.DidYouMeanURL,
-			"results":       results,
-			"facets":        facetViews(d.Results.Facets),
+			"query":                 d.Results.Query,
+			"totalResults":          d.Results.TotalResults,
+			"localCount":            d.Results.LocalCount,
+			"peerCount":             d.Results.PeerCount,
+			"webCount":              d.Results.WebCount,
+			"peersFailed":           d.Results.PeersFailed,
+			"federationUnavailable": d.Results.FederationUnavailable,
+			"incomplete":            d.Results.Incomplete,
+			"recovered":             d.Results.Recovered,
+			"didYouMean":            d.Results.DidYouMean,
+			"didYouMeanUrl":         d.Results.DidYouMeanURL,
+			"results":               results,
+			"facets":                facetViews(d.Results.Facets),
 		},
 		"pagination": map[string]any{
 			"show": d.Pagination.HasPrev || d.Pagination.HasNext ||
@@ -141,7 +144,11 @@ func facetViews(groups []FacetGroup) []map[string]any {
 				"url":   item.URL,
 			})
 		}
-		views = append(views, map[string]any{"title": group.Title, "items": items})
+		views = append(views, map[string]any{
+			"title": group.Title,
+			"scope": group.Scope,
+			"items": items,
+		})
 	}
 
 	return views

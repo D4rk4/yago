@@ -132,7 +132,7 @@ func TestReportedTransferTallyMapsTotals(t *testing.T) {
 
 	totals := reportedTransferTally{tally: tally}.TransferTotals(ctx)
 
-	if totals.SentWords != 7 {
-		t.Fatalf("sent words = %d, want 7", totals.SentWords)
+	if totals.SentWords != 7 || !totals.Known {
+		t.Fatalf("totals = %+v, want sent words 7 and known", totals)
 	}
 }

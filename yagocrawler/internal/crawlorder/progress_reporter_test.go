@@ -35,7 +35,7 @@ func (r *captureReporter) snapshot() []crawlorder.RunReport {
 
 func TestConsumerReportsRunLifecycle(t *testing.T) {
 	queue := boundedqueue.NewBoundedQueue[crawlorder.CrawlOrderDelivery](4)
-	f := frontier.NewFrontier(8, nil)
+	f := frontier.NewFrontier(8, nil, frontier.WithDefaultRunRate(30))
 	reporter := &captureReporter{}
 	consumer := crawlorder.NewCrawlOrderConsumer(queue, f).WithProgressReporter(reporter)
 
@@ -84,7 +84,8 @@ func TestConsumerReportsRunLifecycle(t *testing.T) {
 	if reports[0].State != yagocrawlcontract.CrawlRunRunning ||
 		string(reports[0].Provenance) != "run-1" ||
 		reports[0].ProfileName != "Example" ||
-		reports[0].Tally.Pending != 1 {
+		reports[0].Tally.Pending != 1 ||
+		reports[0].PagesPerMinute != 30 {
 		t.Fatalf("first report = %+v, want running run-1 pending 1", reports[0])
 	}
 	if reports[1].State != yagocrawlcontract.CrawlRunFinished {
@@ -213,11 +214,12 @@ func TestGRPCProgressReporterMapsReportToProto(t *testing.T) {
 	reporter := crawlorder.NewGRPCProgressReporter(client, "worker-9")
 
 	reporter.ReportRun(context.Background(), crawlorder.RunReport{
-		Provenance:    []byte("run-1"),
-		ProfileHandle: "h1",
-		ProfileName:   "Profile One",
-		State:         yagocrawlcontract.CrawlRunFinished,
-		Tally:         yagocrawlcontract.CrawlRunTally{Fetched: 3, Indexed: 2, Pending: 1},
+		Provenance:     []byte("run-1"),
+		ProfileHandle:  "h1",
+		ProfileName:    "Profile One",
+		State:          yagocrawlcontract.CrawlRunFinished,
+		Tally:          yagocrawlcontract.CrawlRunTally{Fetched: 3, Indexed: 2, Pending: 1},
+		PagesPerMinute: 45,
 	})
 
 	select {
@@ -244,6 +246,9 @@ func TestGRPCProgressReporterMapsReportToProto(t *testing.T) {
 		got.GetTally().GetIndexed() != 2 ||
 		got.GetTally().GetPending() != 1 {
 		t.Fatalf("tally = %+v", got.GetTally())
+	}
+	if got.PagesPerMinute == nil || got.GetPagesPerMinute() != 45 {
+		t.Fatalf("pages per minute = %v, want known 45", got.PagesPerMinute)
 	}
 	if err := reporter.Close(t.Context()); err != nil {
 		t.Fatalf("close reporter: %v", err)

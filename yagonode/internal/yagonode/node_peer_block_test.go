@@ -187,21 +187,21 @@ func TestPeerDetailSourceMarksBlocked(t *testing.T) {
 	blocks := newFakePeerBlocks(seed.Hash)
 	source := newPeerDetailSource(reachableRoster{peers: []yagomodel.Seed{seed}}, blocks)
 
-	detail, ok := source.PeerDetail(context.Background(), string(seed.Hash))
-	if !ok || !detail.Blocked {
+	detail, ok, err := source.PeerDetail(context.Background(), string(seed.Hash))
+	if err != nil || !ok || !detail.BlockStatusKnown || !detail.Blocked {
 		t.Fatalf("detail.Blocked = %v (ok=%v), want blocked", detail.Blocked, ok)
 	}
 }
 
-func TestPeerDetailSourceIgnoresBlockLookupError(t *testing.T) {
+func TestPeerDetailSourceMarksBlockStatusUnknownOnLookupError(t *testing.T) {
 	seed := networkTestSeed(t)
 	blocks := newFakePeerBlocks()
 	blocks.isBlockedErr = errors.New("read failed")
 	source := newPeerDetailSource(reachableRoster{peers: []yagomodel.Seed{seed}}, blocks)
 
-	detail, ok := source.PeerDetail(context.Background(), string(seed.Hash))
-	if !ok || detail.Blocked {
-		t.Fatal("a block lookup error should leave the peer unmarked, not blocked")
+	detail, ok, err := source.PeerDetail(context.Background(), string(seed.Hash))
+	if err != nil || !ok || detail.BlockStatusKnown {
+		t.Fatal("a block lookup error should mark block status unknown")
 	}
 }
 
@@ -213,12 +213,12 @@ func TestNetworkSourceMarksBlockedPeers(t *testing.T) {
 	)
 
 	status := source.Network(context.Background())
-	if len(status.Peers) != 1 || !status.Peers[0].Blocked {
+	if len(status.Peers) != 1 || !status.Peers[0].BlockStatusKnown || !status.Peers[0].Blocked {
 		t.Fatalf("peers = %+v, want the peer marked blocked", status.Peers)
 	}
 }
 
-func TestNetworkSourceLeavesPeersUnmarkedOnBlockReadError(t *testing.T) {
+func TestNetworkSourceMarksPeerBlockStatusUnknownOnReadError(t *testing.T) {
 	seed := networkTestSeed(t)
 	blocks := newFakePeerBlocks()
 	blocks.blockedErr = errors.New("read failed")
@@ -227,7 +227,7 @@ func TestNetworkSourceLeavesPeersUnmarkedOnBlockReadError(t *testing.T) {
 	)
 
 	status := source.Network(context.Background())
-	if len(status.Peers) != 1 || status.Peers[0].Blocked {
-		t.Fatal("a blocklist read error should leave the table unmarked")
+	if len(status.Peers) != 1 || status.Peers[0].BlockStatusKnown {
+		t.Fatal("a blocklist read error should mark table block status unknown")
 	}
 }

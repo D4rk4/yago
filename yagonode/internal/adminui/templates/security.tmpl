@@ -12,7 +12,8 @@
 
 <h2 class="cds-h2">API keys</h2>
 <p class="cds-muted">Keys authenticate programmatic access. Only the key identifier and scopes are stored; the secret is shown once at creation.</p>
-{{if .Security.Keys}}
+{{if .Security.Error}}
+{{else if .Security.Keys}}
 <div class="cds-scroll-x">
 <table class="cds-table">
   <thead><tr><th scope="col">Identifier</th><th scope="col">Label</th><th scope="col">Type</th><th scope="col">Scopes</th><th scope="col">Created</th><th scope="col">Last used</th><th scope="col">Actions</th></tr></thead>
@@ -67,6 +68,9 @@
 <form class="cds-form" method="post" action="/admin/security" hx-boost="false">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
   <input type="hidden" name="form" value="password">
+  <label class="cds-sr-only" for="pw-username">Username</label>
+  <input class="cds-sr-only" type="text" id="pw-username" name="username"
+         value="{{.Username}}" autocomplete="username" tabindex="-1" readonly>
   <div class="cds-field">
     <label class="cds-label" for="pw-current">Current password</label>
     <input class="cds-input" type="password" id="pw-current" name="current" autocomplete="current-password">

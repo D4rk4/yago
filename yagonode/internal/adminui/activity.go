@@ -10,13 +10,15 @@ import "context"
 // ActivityEntry is one recorded search as rendered in the activity table.
 // Query is empty outside full mode.
 type ActivityEntry struct {
-	Time     string
-	Query    string
-	Length   int
-	Terms    int
-	Results  int
-	Duration string
-	Source   string
+	Time         string
+	Query        string
+	Length       int
+	Terms        int
+	Results      int
+	ResultsKnown bool
+	Complete     bool
+	Duration     string
+	Source       string
 }
 
 // ActivityWord is one row of the top-words tally (full mode only).
@@ -28,12 +30,11 @@ type ActivityWord struct {
 // ActivityView is the Search-activity snapshot.
 type ActivityView struct {
 	// Mode is the effective privacy mode: off, aggregate, or full.
-	Mode string
-	// Total and ZeroResults count searches since the node started.
-	Total       uint64
-	ZeroResults uint64
-	Entries     []ActivityEntry
-	TopWords    []ActivityWord
+	Mode                 string
+	Total                uint64
+	ConfirmedZeroResults uint64
+	Entries              []ActivityEntry
+	TopWords             []ActivityWord
 }
 
 // ActivitySource supplies the activity snapshot; nil hides the section body.

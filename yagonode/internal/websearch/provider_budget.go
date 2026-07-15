@@ -56,7 +56,7 @@ func (s *FallbackSearcher) searchProvider(
 
 func providerResults(results []Result, err error) ([]Result, error) {
 	if err != nil {
-		return nil, fmt.Errorf("search web provider: %w", err)
+		return results, fmt.Errorf("search web provider: %w", err)
 	}
 
 	return results, nil

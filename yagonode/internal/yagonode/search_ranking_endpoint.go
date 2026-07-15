@@ -45,7 +45,7 @@ func (e searchRankingEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request)
 }
 
 func (e searchRankingEndpoint) update(w http.ResponseWriter, r *http.Request) {
-	var body searchRankingRequest
+	body := searchRankingRequest{Weights: e.holder.Current()}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, fmt.Sprintf("decode request: %v", err), http.StatusBadRequest)
 

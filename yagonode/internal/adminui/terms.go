@@ -10,12 +10,13 @@ type TermPosting struct {
 
 // TermReport is the result of an admin term lookup against the RWI index.
 type TermReport struct {
-	Term     string
-	Hash     string
-	Count    int
-	Sample   []TermPosting
-	NotFound bool
-	Error    string
+	Term        string
+	Hash        string
+	Count       int
+	Sample      []TermPosting
+	NotFound    bool
+	Error       error
+	SampleError error
 }
 
 // TermSource looks up a term's posting count and a bounded sample of its

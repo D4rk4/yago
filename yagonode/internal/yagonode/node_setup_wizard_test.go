@@ -180,10 +180,30 @@ func TestConfigureSetupWizardArmsMandatoryRestart(t *testing.T) {
 
 	mux := http.NewServeMux()
 	adminauth.MountHTML(mux, service)
+	setupPage := httptest.NewRecorder()
+	setupPageRequest := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		adminauth.PathSetupPage,
+		nil,
+	)
+	mux.ServeHTTP(setupPage, setupPageRequest)
+	setupCookie := setupPage.Result().Cookies()[0]
+	const fieldPrefix = `name="setup_token" value="`
+	tokenStart := strings.Index(setupPage.Body.String(), fieldPrefix)
+	if tokenStart < 0 {
+		t.Fatal("setup token missing")
+	}
+	tokenRemainder := setupPage.Body.String()[tokenStart+len(fieldPrefix):]
+	tokenEnd := strings.IndexByte(tokenRemainder, '"')
+	if tokenEnd < 0 {
+		t.Fatal("setup token malformed")
+	}
 	form := url.Values{
-		"username": {"admin"},
-		"password": {"correct horse battery staple"},
-		"mode":     {"search"},
+		"username":    {"admin"},
+		"password":    {"correct horse battery staple"},
+		"mode":        {"search"},
+		"setup_token": {tokenRemainder[:tokenEnd]},
 	}
 	req := httptest.NewRequestWithContext(
 		t.Context(),
@@ -192,6 +212,7 @@ func TestConfigureSetupWizardArmsMandatoryRestart(t *testing.T) {
 		strings.NewReader(form.Encode()),
 	)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(setupCookie)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 

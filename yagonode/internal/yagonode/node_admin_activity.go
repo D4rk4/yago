@@ -29,20 +29,22 @@ func newActivitySource(tracker *searchactivity.Tracker) adminui.ActivitySource {
 func (s activitySource) Activity(_ context.Context) adminui.ActivityView {
 	entries, total, zero := s.tracker.Snapshot()
 	view := adminui.ActivityView{
-		Mode:        string(s.tracker.Mode()),
-		Total:       total,
-		ZeroResults: zero,
-		Entries:     make([]adminui.ActivityEntry, 0, len(entries)),
+		Mode:                 string(s.tracker.Mode()),
+		Total:                total,
+		ConfirmedZeroResults: zero,
+		Entries:              make([]adminui.ActivityEntry, 0, len(entries)),
 	}
 	for _, entry := range entries {
 		view.Entries = append(view.Entries, adminui.ActivityEntry{
-			Time:     entry.At.Format("15:04:05"),
-			Query:    entry.Query,
-			Length:   entry.QueryLength,
-			Terms:    entry.Terms,
-			Results:  entry.Results,
-			Duration: entry.Duration.Round(time.Millisecond).String(),
-			Source:   entry.Source,
+			Time:         entry.At.UTC().Format("2006-01-02 15:04:05 UTC"),
+			Query:        entry.Query,
+			Length:       entry.QueryLength,
+			Terms:        entry.Terms,
+			Results:      entry.Results,
+			ResultsKnown: !entry.Failed,
+			Complete:     !entry.Failed && !entry.Incomplete,
+			Duration:     entry.Duration.Round(time.Millisecond).String(),
+			Source:       entry.Source,
 		})
 	}
 	for _, word := range s.tracker.TopWords(activityTopWords) {

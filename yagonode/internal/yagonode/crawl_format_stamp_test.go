@@ -10,7 +10,8 @@ import (
 )
 
 type capturedOrderQueue struct {
-	got yagocrawlcontract.CrawlOrder
+	got   yagocrawlcontract.CrawlOrder
+	calls int
 }
 
 func (q *capturedOrderQueue) PublishOnce(
@@ -18,9 +19,31 @@ func (q *capturedOrderQueue) PublishOnce(
 	_ string,
 	order yagocrawlcontract.CrawlOrder,
 ) (bool, error) {
+	q.calls++
 	q.got = order
 
 	return false, nil
+}
+
+func TestFormatStampingQueueStopsOnUnavailableToggles(t *testing.T) {
+	v, err := memvault.Open(0)
+	if err != nil {
+		t.Fatalf("memvault: %v", err)
+	}
+	store, err := crawlformats.Open(v)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	inner := &capturedOrderQueue{}
+	queue := formatStampingQueue{inner: inner, formats: store}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := queue.PublishOnce(ctx, "k", yagocrawlcontract.CrawlOrder{}); err == nil {
+		t.Fatal("unavailable format settings must stop crawl publication")
+	}
+	if inner.calls != 0 {
+		t.Fatalf("crawl published without format settings: %d", inner.calls)
+	}
 }
 
 func TestFormatStampingQueueStampsSharedToggles(t *testing.T) {

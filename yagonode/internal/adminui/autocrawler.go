@@ -44,14 +44,15 @@ func withoutAutocrawlerKeys(items []SettingItem) []SettingItem {
 }
 
 type autocrawlerPageData struct {
-	AppName    string
-	ActivePath string
-	Nav        []NavItem
-	CSRF       string
-	Section    sectionView
-	Settings   SettingsView
-	// Formats carries the shared document-format toggles; nil hides the block.
-	Formats *FormatSettings
+	AppName      string
+	ActivePath   string
+	Nav          []NavItem
+	CSRF         string
+	Section      sectionView
+	Settings     SettingsView
+	Formats      *FormatSettings
+	FormatsOn    bool
+	FormatsError string
 	// FormatsNote flashes the outcome of a formats save.
 	FormatsNote string
 	Notice      string
@@ -95,8 +96,18 @@ func (c *Console) autocrawlerPage(r *http.Request, notice, errMsg string) autocr
 		Error:    errMsg,
 	}
 	if c.crawlFormats != nil {
-		settings := c.crawlFormats.CurrentFormats(r.Context())
-		data.Formats = &settings
+		data.FormatsOn = true
+		settings, err := c.crawlFormats.CurrentFormats(r.Context())
+		if err != nil {
+			slog.WarnContext(
+				r.Context(),
+				"load admin autocrawler formats failed",
+				slog.Any("error", err),
+			)
+			data.FormatsError = "Document format settings are unavailable."
+		} else {
+			data.Formats = &settings
+		}
 	}
 
 	return data
@@ -148,5 +159,5 @@ func autocrawlerSettings(ctx context.Context, source SettingsSource) SettingsVie
 		}
 	}
 
-	return SettingsView{Items: items}
+	return SettingsView{Items: items, Error: full.Error}
 }

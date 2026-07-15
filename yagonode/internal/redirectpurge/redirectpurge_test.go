@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
 
@@ -23,30 +24,25 @@ func (f fakeCorpus) StoredDocuments(
 	return nil
 }
 
-type fakeEvictor struct {
-	deleted []string
-	fail    map[string]bool
+type fakeLineagePurger struct {
+	purged []string
+	hashes []yagomodel.Hash
+	fail   map[string]bool
 }
 
-func (f *fakeEvictor) Delete(_ context.Context, url string) (bool, error) {
-	if f.fail[url] {
-		return false, errors.New("vault busy")
+func (f *fakeLineagePurger) PurgeResolved(
+	_ context.Context,
+	urls []string,
+	hashes []yagomodel.Hash,
+) error {
+	if len(urls) == 0 {
+		return nil
 	}
-	f.deleted = append(f.deleted, url)
-
-	return true, nil
-}
-
-type fakeIndex struct {
-	deleted []string
-	fail    map[string]bool
-}
-
-func (f *fakeIndex) Delete(_ context.Context, docID string) error {
-	if f.fail[docID] {
-		return errors.New("index busy")
+	if f.fail[urls[0]] {
+		return errors.New("lineage busy")
 	}
-	f.deleted = append(f.deleted, docID)
+	f.purged = append(f.purged, urls...)
+	f.hashes = append(f.hashes, hashes...)
 
 	return nil
 }
@@ -61,61 +57,60 @@ func TestSweepRemovesTrackingRedirects(t *testing.T) {
 		{NormalizedURL: "https://kept.example/x", CanonicalURL: "https://bing.com/ck/a?u=a1x"},
 		{NormalizedURL: "https://bingo.combo.example/ck/a"},
 	}}
-	evictor := &fakeEvictor{}
-	index := &fakeIndex{}
+	purger := &fakeLineagePurger{}
 
-	New(corpus, evictor, index).Run(context.Background())
+	New(corpus, purger.PurgeResolved).Run(context.Background())
 
 	want := []string{
 		"https://www.bing.com/ck/a?u=a1aHR0cHM6Ly9leGFtcGxlLm9yZw",
 		"https://kept.example/x",
 	}
-	if len(index.deleted) != 2 || index.deleted[0] != want[0] || index.deleted[1] != want[1] {
-		t.Fatalf("index deletions = %v", index.deleted)
-	}
-	if len(evictor.deleted) != 2 {
-		t.Fatalf("vault deletions = %v", evictor.deleted)
+	if len(purger.purged) != 2 || purger.purged[0] != want[0] ||
+		purger.purged[1] != want[1] || len(purger.hashes) != 2 {
+		t.Fatalf("lineage purges = %v / %v", purger.purged, purger.hashes)
 	}
 }
 
-// TestSweepSurvivesPerDocumentFailures pins the resilience contract: one
-// stubborn document does not stop the sweep, and an index failure skips the
-// vault delete so the pair stays consistent.
 func TestSweepSurvivesPerDocumentFailures(t *testing.T) {
 	first := "https://bing.com/ck/a?u=a1one"
 	second := "https://bing.com/ck/b?u=a1two"
 	corpus := fakeCorpus{docs: []documentstore.Document{
 		{NormalizedURL: first}, {NormalizedURL: second},
 	}}
-	evictor := &fakeEvictor{}
-	index := &fakeIndex{fail: map[string]bool{first: true}}
+	purger := &fakeLineagePurger{fail: map[string]bool{first: true}}
 
-	New(corpus, evictor, index).Run(context.Background())
+	New(corpus, purger.PurgeResolved).Run(context.Background())
 
-	if len(index.deleted) != 1 || index.deleted[0] != second {
-		t.Fatalf("index deletions = %v", index.deleted)
-	}
-	if len(evictor.deleted) != 1 || evictor.deleted[0] != second {
-		t.Fatalf("failed index delete must skip the vault: %v", evictor.deleted)
+	if len(purger.purged) != 1 || purger.purged[0] != second {
+		t.Fatalf("failed lineage purge must not stop the pass: %v", purger.purged)
 	}
 }
 
-// TestSweepSkipsVaultDeleteWhenEvictorFails pins that a condemned page whose
-// index delete succeeds but vault delete fails is logged and skipped, not
-// counted as removed, so the pair stays consistent for the next sweep.
-func TestSweepSkipsVaultDeleteWhenEvictorFails(t *testing.T) {
+func TestSweepSkipsFailedLineagePurge(t *testing.T) {
 	target := "https://bing.com/ck/a?u=a1one"
 	corpus := fakeCorpus{docs: []documentstore.Document{{NormalizedURL: target}}}
-	evictor := &fakeEvictor{fail: map[string]bool{target: true}}
-	index := &fakeIndex{}
+	purger := &fakeLineagePurger{fail: map[string]bool{target: true}}
 
-	New(corpus, evictor, index).Run(context.Background())
+	New(corpus, purger.PurgeResolved).Run(context.Background())
 
-	if len(index.deleted) != 1 || index.deleted[0] != target {
-		t.Fatalf("index deletions = %v, want the tracking url removed", index.deleted)
+	if len(purger.purged) != 0 {
+		t.Fatalf("a failing lineage purge must record nothing: %v", purger.purged)
 	}
-	if len(evictor.deleted) != 0 {
-		t.Fatalf("a failing vault delete must record nothing: %v", evictor.deleted)
+}
+
+func TestSweepSkipsUnhashableRedirect(t *testing.T) {
+	target := "https://bing.com/ck/a?u=a1one"
+	purger := &fakeLineagePurger{}
+	sweeper := New(
+		fakeCorpus{docs: []documentstore.Document{{NormalizedURL: target}}},
+		purger.PurgeResolved,
+	)
+	sweeper.hashURL = func(string) (yagomodel.URLHash, error) {
+		return "", errors.New("hash failed")
+	}
+	sweeper.Run(t.Context())
+	if len(purger.purged) != 0 {
+		t.Fatalf("unhashable redirect purge = %v", purger.purged)
 	}
 }
 
@@ -128,24 +123,27 @@ func TestSweepLogsCancelledCorpusScan(t *testing.T) {
 	corpus := fakeCorpus{docs: []documentstore.Document{
 		{NormalizedURL: "https://bing.com/ck/a?u=a1one"},
 	}}
-	evictor := &fakeEvictor{}
-	index := &fakeIndex{}
+	purger := &fakeLineagePurger{}
 
-	New(corpus, evictor, index).Run(ctx)
+	New(corpus, purger.PurgeResolved).Run(ctx)
 
-	if len(index.deleted) != 0 || len(evictor.deleted) != 0 {
-		t.Fatalf("a cancelled scan must delete nothing: %v %v", index.deleted, evictor.deleted)
+	if len(purger.purged) != 0 {
+		t.Fatalf("a cancelled scan must delete nothing: %v", purger.purged)
 	}
 }
 
-type cancellingIndex struct {
-	cancel  context.CancelFunc
-	deleted []string
+type cancellingLineagePurger struct {
+	cancel context.CancelFunc
+	purged []string
 }
 
-func (c *cancellingIndex) Delete(_ context.Context, docID string) error {
+func (c *cancellingLineagePurger) PurgeResolved(
+	_ context.Context,
+	urls []string,
+	_ []yagomodel.Hash,
+) error {
 	c.cancel()
-	c.deleted = append(c.deleted, docID)
+	c.purged = append(c.purged, urls...)
 
 	return nil
 }
@@ -161,19 +159,19 @@ func TestSweepAbortsDeletesOnCancel(t *testing.T) {
 		{NormalizedURL: "https://bing.com/ck/a?u=a1one"},
 		{NormalizedURL: "https://bing.com/ck/a?u=a1two"},
 	}}
-	index := &cancellingIndex{cancel: cancel}
+	purger := &cancellingLineagePurger{cancel: cancel}
 
-	New(corpus, &fakeEvictor{}, index).Run(ctx)
+	New(corpus, purger.PurgeResolved).Run(ctx)
 
-	if len(index.deleted) != 1 {
-		t.Fatalf("index deletions = %v, want the pass aborted after one", index.deleted)
+	if len(purger.purged) != 1 {
+		t.Fatalf("lineage purges = %v, want the pass aborted after one", purger.purged)
 	}
 }
 
 func TestNewDisablesOnMissingDependencies(t *testing.T) {
-	if New(nil, &fakeEvictor{}, &fakeIndex{}) != nil ||
-		New(fakeCorpus{}, nil, &fakeIndex{}) != nil ||
-		New(fakeCorpus{}, &fakeEvictor{}, nil) != nil {
+	purger := &fakeLineagePurger{}
+	if New(nil, purger.PurgeResolved) != nil ||
+		New(fakeCorpus{}, nil) != nil {
 		t.Fatal("missing dependency must disable the sweeper")
 	}
 	var disabled *Sweeper

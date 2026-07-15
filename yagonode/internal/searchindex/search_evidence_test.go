@@ -89,6 +89,64 @@ func TestSearchEvidencePreservesCandidatesAtDeadline(t *testing.T) {
 	}
 }
 
+func TestSearchEvidenceDropsUnvalidatedRelaxedTail(t *testing.T) {
+	results := make([]SearchResult, maximumSearchEvidenceResults+1)
+	for index := range results {
+		results[index] = SearchResult{
+			DocumentID:  fmt.Sprintf("relaxed-%02d", index),
+			RelaxedRank: index + 1,
+			Score:       float64(index + 1),
+		}
+	}
+	loads := 0
+	enriched, err := searchEvidenceResults(
+		t.Context(),
+		SearchRequest{
+			Query:   "alpha beta gamma",
+			Terms:   []string{"alpha", "beta", "gamma"},
+			Relaxed: true,
+		},
+		results,
+		func(int) (documentstore.Document, bool, error) {
+			loads++
+			return documentstore.Document{ExtractedText: "alpha nearby beta"}, true, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("searchEvidenceResults: %v", err)
+	}
+	if loads != maximumSearchEvidenceResults || len(enriched) != maximumSearchEvidenceResults {
+		t.Fatalf("loads=%d results=%#v", loads, enriched)
+	}
+	for _, result := range enriched {
+		if result.DocumentID == results[len(results)-1].DocumentID {
+			t.Fatalf("unvalidated tail surfaced: %#v", enriched)
+		}
+	}
+}
+
+func TestSearchEvidenceDeadlineCannotAdmitRelaxedCandidates(t *testing.T) {
+	results := []SearchResult{
+		{DocumentID: "one", RelaxedRank: 1},
+		{DocumentID: "two", RelaxedRank: 2},
+	}
+	enriched, err := searchEvidenceResults(
+		t.Context(),
+		SearchRequest{
+			Query:   "alpha beta gamma",
+			Terms:   []string{"alpha", "beta", "gamma"},
+			Relaxed: true,
+		},
+		results,
+		func(int) (documentstore.Document, bool, error) {
+			return documentstore.Document{}, false, context.DeadlineExceeded
+		},
+	)
+	if err != nil || len(enriched) != 0 {
+		t.Fatalf("results=%#v error=%v", enriched, err)
+	}
+}
+
 func TestSearchEvidenceReturnsDocumentErrors(t *testing.T) {
 	sentinel := errors.New("read failed")
 	_, err := searchEvidenceResults(

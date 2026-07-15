@@ -27,14 +27,14 @@ func newBlacklistController(store denylistStore) *blacklistController {
 	return &blacklistController{store: store}
 }
 
-// BlacklistEntries lists the denylist for display; a read error degrades to an
-// empty list rather than failing the page.
-func (c *blacklistController) BlacklistEntries(ctx context.Context) []adminui.BlacklistEntry {
+func (c *blacklistController) BlacklistEntries(
+	ctx context.Context,
+) ([]adminui.BlacklistEntry, error) {
 	entries, err := c.store.Entries(ctx)
 	if err != nil {
 		slog.WarnContext(ctx, "list denylist entries failed", slog.Any("error", err))
 
-		return nil
+		return nil, fmt.Errorf("list denylist entries: %w", err)
 	}
 
 	views := make([]adminui.BlacklistEntry, 0, len(entries))
@@ -46,7 +46,7 @@ func (c *blacklistController) BlacklistEntries(ctx context.Context) []adminui.Bl
 		})
 	}
 
-	return views
+	return views, nil
 }
 
 // AddBlacklist blocks a URL or domain.

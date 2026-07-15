@@ -2,7 +2,6 @@ package yagonode
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
@@ -16,22 +15,6 @@ import (
 // satisfies it, and a fake stands in for it under test.
 type ranker interface {
 	Tune(ctx context.Context) (rankfit.Report, error)
-}
-
-// rankingWeightMeta is the console's display order, label, and group for each
-// ranking weight. The values themselves come from the live profile keyed by the
-// weight's JSON field name, so the weight set stays defined once (on
-// RankingWeights) and this list only carries presentation.
-var rankingWeightMeta = []struct{ key, label, group string }{
-	{"title", "Title", "Field boosts"},
-	{"anchors", "Anchor text", "Field boosts"},
-	{"headings", "Headings", "Field boosts"},
-	{"url", "URL", "Field boosts"},
-	{"body", "Body", "Field boosts"},
-	{"hostRank", "Host authority", "Priors"},
-	{"freshness", "Freshness", "Priors"},
-	{"quality", "Content quality", "Priors"},
-	{"proximity", "Proximity (SDM)", "Priors"},
 }
 
 // rankingConsole adapts the ranking holder, the coordinate-ascent tuner, and the
@@ -74,24 +57,35 @@ func newRankingConsole(
 }
 
 func (rc *rankingConsole) Profile(ctx context.Context) adminui.RankingProfile {
-	return adminui.RankingProfile{
-		Weights:       weightsView(rc.holder.Current()),
-		JudgmentCount: rc.judgmentCount(ctx),
+	judgmentCount, judgmentsAvailable := rc.judgmentStatus(ctx)
+	profile := adminui.RankingProfile{
+		Weights:            weightsView(rc.holder.Current()),
+		JudgmentCount:      judgmentCount,
+		JudgmentsAvailable: judgmentsAvailable,
 	}
+	if source, ok := rc.tuner.(rankingTrainingReadinessSource); ok {
+		readiness := source.TrainingReadiness(ctx)
+		profile.TrainingReadinessAvailable = readiness.Available
+		profile.ModelTrainingReady = readiness.Ready
+		profile.TrainingJudgmentCount = readiness.Judgments
+		profile.TrainingQueryClusterCount = readiness.QueryClusters
+		profile.HeldoutQueryClusterCount = readiness.HeldoutQueryClusters
+		profile.MinimumHeldoutQueryClusters = readiness.MinimumHeldoutQueryClusters
+	}
+
+	return profile
 }
 
-// judgmentCount reports how many curated judgments the tuner would train on; a
-// missing store or a read error degrades to zero rather than failing the page.
-func (rc *rankingConsole) judgmentCount(ctx context.Context) int {
+func (rc *rankingConsole) judgmentStatus(ctx context.Context) (int, bool) {
 	if rc.curated == nil {
-		return 0
+		return 0, false
 	}
 	stored, err := rc.curated.List(ctx)
 	if err != nil {
-		return 0
+		return 0, false
 	}
 
-	return len(stored)
+	return len(stored), true
 }
 
 func (rc *rankingConsole) Tune(ctx context.Context) (adminui.RankingTuneResult, error) {
@@ -141,6 +135,14 @@ func (rc *rankingConsole) TrainLearnedModel(
 	if rc.trainer == nil {
 		return adminui.LearnedModelTrainOutcome{}, fmt.Errorf("ranking model trainer unavailable")
 	}
+	if source, ok := rc.tuner.(rankingTrainingReadinessSource); ok {
+		readiness := source.TrainingReadiness(ctx)
+		if !readiness.Ready {
+			return adminui.LearnedModelTrainOutcome{}, fmt.Errorf(
+				"ranking evidence is not ready for held-out model promotion",
+			)
+		}
+	}
 	family := rankingtrain.ModelFamily(kind)
 	outcome, err := rc.trainer.Train(ctx, "", family)
 	if err != nil {
@@ -177,28 +179,23 @@ func (rc *rankingConsole) RollbackLearnedModel(ctx context.Context) (bool, error
 // weightsView renders the live weights in the console's display order, reading
 // each value from the profile by its JSON key.
 func weightsView(weights searchindex.RankingWeights) []adminui.RankingWeight {
-	values := weightsToMap(weights)
-	view := make([]adminui.RankingWeight, 0, len(rankingWeightMeta))
-	for _, meta := range rankingWeightMeta {
+	definitions := searchindex.RankingWeightDefinitions()
+	view := make([]adminui.RankingWeight, 0, len(definitions))
+	for _, definition := range definitions {
+		value, _ := weights.Value(definition.Key)
 		view = append(view, adminui.RankingWeight{
-			Key:   meta.key,
-			Label: meta.label,
-			Group: meta.group,
-			Value: values[meta.key],
+			Key:        definition.Key,
+			Label:      definition.Label,
+			Group:      definition.Group,
+			Value:      value,
+			Default:    definition.Default,
+			Minimum:    definition.Minimum,
+			Maximum:    definition.Maximum,
+			OutOfRange: value < definition.Minimum || value > definition.Maximum,
 		})
 	}
 
 	return view
-}
-
-// weightsToMap projects the ranking weights onto their JSON field names so the
-// console reads and writes them by key without re-listing every field.
-func weightsToMap(weights searchindex.RankingWeights) map[string]float64 {
-	encoded, _ := json.Marshal(weights)
-	values := map[string]float64{}
-	_ = json.Unmarshal(encoded, &values)
-
-	return values
 }
 
 // weightsFromMap overlays the supplied values onto the base weights by JSON key,
@@ -207,13 +204,9 @@ func weightsFromMap(
 	base searchindex.RankingWeights,
 	overlay map[string]float64,
 ) searchindex.RankingWeights {
-	values := weightsToMap(base)
 	for key, value := range overlay {
-		values[key] = value
+		base.Set(key, value)
 	}
-	encoded, _ := json.Marshal(values)
-	var weights searchindex.RankingWeights
-	_ = json.Unmarshal(encoded, &weights)
 
-	return weights
+	return base
 }

@@ -188,14 +188,17 @@ func TestConsoleNetworkPeerTableSortLinksAndPager(t *testing.T) {
 	roster := make([]NetworkPeer, 270)
 	for i := range roster {
 		roster[i] = NetworkPeer{
-			Name:      fmt.Sprintf("peer%02d", i),
-			Hash:      fmt.Sprintf("H%02d", i),
-			RWICount:  i,
-			HealthTag: "healthy",
+			Name:             fmt.Sprintf("peer%02d", i),
+			Hash:             fmt.Sprintf("H%02d", i),
+			RWICount:         i,
+			HealthTag:        "healthy",
+			BlockStatusKnown: true,
 		}
 	}
 	console := New(
-		Options{Network: fakeNetwork{snap: NetworkStatus{Available: true, Peers: roster}}},
+		Options{Network: fakeNetwork{snap: NetworkStatus{
+			Available: true, RosterAvailable: true, Peers: roster,
+		}}},
 	)
 
 	first := do(t, console, "/admin/network")
@@ -227,9 +230,9 @@ func TestConsoleNetworkPeerTableSortLinksAndPager(t *testing.T) {
 func TestConsoleNetworkPeerTableSortsDescending(t *testing.T) {
 	t.Parallel()
 
-	snap := NetworkStatus{Available: true, Peers: []NetworkPeer{
-		{Name: "rwismall", Hash: "L", RWICount: 1, HealthTag: "healthy"},
-		{Name: "rwibig", Hash: "H", RWICount: 99, HealthTag: "healthy"},
+	snap := NetworkStatus{Available: true, RosterAvailable: true, Peers: []NetworkPeer{
+		{Name: "rwismall", Hash: "L", RWICount: 1, HealthTag: "healthy", BlockStatusKnown: true},
+		{Name: "rwibig", Hash: "H", RWICount: 99, HealthTag: "healthy", BlockStatusKnown: true},
 	}}
 	got := do(
 		t,

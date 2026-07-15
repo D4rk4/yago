@@ -214,6 +214,9 @@ func doRequest(
 		path,
 		strings.NewReader(body),
 	)
+	if method == http.MethodPost && (path == PathLogin || path == PathSetup) {
+		req.Header.Set("Content-Type", authJSONMediaType)
+	}
 	for _, cookie := range cookies {
 		req.AddCookie(cookie)
 	}

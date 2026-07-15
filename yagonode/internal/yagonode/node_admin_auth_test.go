@@ -37,6 +37,9 @@ func adminRequestCode(t *testing.T, handler http.Handler, method, path, body str
 		path,
 		strings.NewReader(body),
 	)
+	if method == http.MethodPost && (path == adminauth.PathLogin || path == adminauth.PathSetup) {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 

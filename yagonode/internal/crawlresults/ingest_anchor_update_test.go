@@ -27,6 +27,26 @@ func (r *recordingAnchorReceiver) ReplaceOutboundAnchors(
 	return r.update, r.err
 }
 
+func (r *recordingAnchorReceiver) FinalizeOutboundAnchors(
+	context.Context,
+	[]documentstore.OutboundAnchorFinalization,
+) error {
+	return r.err
+}
+
+func (*recordingAnchorReceiver) VisitOutboundAnchorDocuments(
+	context.Context,
+	[]documentstore.OutboundAnchorFinalization,
+	func([]documentstore.Document) error,
+) error {
+	return nil
+}
+
+func (*recordingAnchorReceiver) ReleaseOutboundAnchors(
+	[]documentstore.OutboundAnchorFinalization,
+) {
+}
+
 func TestSingleIngestRedeliversWhenInboundAnchorStoreFails(t *testing.T) {
 	receiver := &recordingAnchorReceiver{err: errors.New("anchor store failed")}
 	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery, 1)}
@@ -88,7 +108,7 @@ func TestGroupedIngestRedeliversWhenInboundAnchorStoreIsBusy(t *testing.T) {
 	}
 }
 
-func TestRemovalRedeliversWhenOutboundAnchorClearFails(t *testing.T) {
+func TestRemovalDelegatesAnchorCleanupToConfiguredPurger(t *testing.T) {
 	receiver := &recordingAnchorReceiver{err: errors.New("anchor clear failed")}
 	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery, 1)}
 	var wg sync.WaitGroup
@@ -107,11 +127,10 @@ func TestRemovalRedeliversWhenOutboundAnchorClearFails(t *testing.T) {
 	)
 	drainGroup(consumer, &wg)
 
-	if acks, naks := counter.counts(); acks != 0 || naks != 1 {
+	if acks, naks := counter.counts(); acks != 1 || naks != 0 {
 		t.Fatalf("acks/naks = %d/%d", acks, naks)
 	}
-	if len(receiver.sets) != 1 || receiver.sets[0].SourceURL != removalURL ||
-		len(receiver.sets[0].Anchors) != 0 {
+	if len(receiver.sets) != 0 {
 		t.Fatalf("clear sets = %#v", receiver.sets)
 	}
 }

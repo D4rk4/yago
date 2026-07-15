@@ -24,6 +24,9 @@ type documentClusterReplacement struct {
 	currentURLs        map[string]struct{}
 	affectedClusterIDs map[string]struct{}
 	assignedClusterIDs map[string]struct{}
+	finalizations      []contentcluster.EvidenceFinalization
+	transitions        contentClusterTransitionFinalizer
+	replay             bool
 }
 
 func (c *IngestConsumer) TrackContentClusters(clusters ContentClusters) {
@@ -32,19 +35,30 @@ func (c *IngestConsumer) TrackContentClusters(clusters ContentClusters) {
 	}
 }
 
-func (c *IngestConsumer) clusterDocuments(
+func (c *IngestConsumer) prepareDocumentClusters(
 	ctx context.Context,
 	docs []documentstore.Document,
-) ([]documentstore.Document, error) {
+) (documentClusterProjection, error) {
 	if c.clusters == nil || len(docs) == 0 {
-		return docs, nil
+		return documentClusterProjection{documents: docs}, nil
 	}
 	replacement, err := c.replaceDocumentClusters(ctx, docs)
 	if err != nil {
-		return nil, err
+		return documentClusterProjection{}, err
+	}
+	projection := documentClusterProjection{
+		finalizations: replacement.finalizations,
+		transitions:   replacement.transitions,
+		replay:        replacement.replay,
+	}
+	projection.documents, err = c.refreshDocumentClusters(ctx, replacement)
+	if err != nil {
+		projection.release()
+
+		return documentClusterProjection{}, err
 	}
 
-	return c.refreshDocumentClusters(ctx, replacement)
+	return projection, nil
 }
 
 func (c *IngestConsumer) replaceDocumentClusters(
@@ -117,7 +131,12 @@ func (c *IngestConsumer) refreshDocumentClusters(
 				replacement.documents[index].RepresentativeURL = cluster.RepresentativeURL
 			}
 		}
-		updates, err := c.storedClusterUpdates(ctx, cluster, replacement.currentURLs)
+		updates, err := c.storedClusterProjection(
+			ctx,
+			cluster,
+			replacement.currentURLs,
+			replacement.replay,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -174,6 +193,15 @@ func (c *IngestConsumer) storedClusterUpdates(
 	cluster contentcluster.Cluster,
 	excluded map[string]struct{},
 ) ([]documentstore.Document, error) {
+	return c.storedClusterProjection(ctx, cluster, excluded, false)
+}
+
+func (c *IngestConsumer) storedClusterProjection(
+	ctx context.Context,
+	cluster contentcluster.Cluster,
+	excluded map[string]struct{},
+	includeUnchanged bool,
+) ([]documentstore.Document, error) {
 	directory, ok := c.documents.(documentstore.DocumentDirectory)
 	if !ok {
 		return nil, nil
@@ -187,7 +215,7 @@ func (c *IngestConsumer) storedClusterUpdates(
 		if err != nil {
 			return nil, fmt.Errorf("read clustered document: %w", err)
 		}
-		if !found || doc.ClusterID == cluster.ID &&
+		if !found || !includeUnchanged && doc.ClusterID == cluster.ID &&
 			doc.RepresentativeURL == cluster.RepresentativeURL {
 			continue
 		}
@@ -202,6 +230,9 @@ func (c *IngestConsumer) storedClusterUpdates(
 func (c *IngestConsumer) deleteDocumentCluster(ctx context.Context, url string) error {
 	if c.clusters == nil {
 		return nil
+	}
+	if transitions, ok := c.clusters.(contentClusterTransitionDeleter); ok {
+		return c.deleteDocumentClusterTransition(ctx, url, transitions)
 	}
 	assignment, found, err := c.clusters.Lookup(ctx, url)
 	if err != nil {

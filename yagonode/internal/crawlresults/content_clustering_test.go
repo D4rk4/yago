@@ -32,6 +32,30 @@ type replacedClusterScript struct {
 	previousClusterID string
 }
 
+type orderedRemovalClusterScript struct {
+	contentClusterScript
+	events *[]string
+}
+
+type orderedRemovalPurger struct {
+	events *[]string
+}
+
+func (p orderedRemovalPurger) Purge(context.Context, []yagomodel.Hash) error {
+	*p.events = append(*p.events, "purge")
+
+	return nil
+}
+
+func (s *orderedRemovalClusterScript) Delete(
+	ctx context.Context,
+	url string,
+) (bool, error) {
+	*s.events = append(*s.events, "cluster")
+
+	return s.contentClusterScript.Delete(ctx, url)
+}
+
 func (s *replacedClusterScript) Cluster(
 	_ context.Context,
 	clusterID string,
@@ -153,18 +177,23 @@ func persistClusterLifecycleDocument(
 	doc documentstore.Document,
 ) []documentstore.Document {
 	t.Helper()
-	writes, err := lifecycle.consumer.clusterDocuments(
+	projection, err := lifecycle.consumer.prepareDocumentClusters(
 		t.Context(),
 		[]documentstore.Document{doc},
 	)
 	if err != nil {
 		t.Fatalf("cluster document: %v", err)
 	}
+	defer projection.release()
+	writes := projection.documents
 	if _, err := lifecycle.receiver.Receive(t.Context(), writes); err != nil {
 		t.Fatalf("store document: %v", err)
 	}
 	if err := lifecycle.consumer.indexDocuments(t.Context(), writes); err != nil {
 		t.Fatalf("index document: %v", err)
+	}
+	if err := projection.finalize(t.Context()); err != nil {
+		t.Fatalf("finalize cluster document: %v", err)
 	}
 
 	return writes
@@ -355,9 +384,11 @@ func TestClusterDocumentsToleratesEmptyPreviousCluster(t *testing.T) {
 		previousClusterID: "old",
 	}
 	consumer := &IngestConsumer{clusters: script}
-	docs, err := consumer.clusterDocuments(t.Context(), []documentstore.Document{{
+	projection, err := consumer.prepareDocumentClusters(t.Context(), []documentstore.Document{{
 		NormalizedURL: "https://example.org/",
 	}})
+	defer projection.release()
+	docs := projection.documents
 	if err != nil || len(docs) != 1 || docs[0].ClusterID != "new" {
 		t.Fatalf("replacement cluster = %#v, %v", docs, err)
 	}
@@ -381,18 +412,7 @@ func TestStoreDocumentClustersAndIndexesCanonicalEvidence(t *testing.T) {
 		t.Fatalf("seed document: %v", err)
 	}
 	anchors := receiver.(documentstore.InboundAnchorReceiver)
-	if _, err := anchors.ReplaceOutboundAnchors(
-		t.Context(),
-		[]documentstore.OutboundAnchorSet{{
-			SourceURL: "https://source.example/",
-			Anchors: []documentstore.OutboundAnchor{{
-				TargetURL: url,
-				Text:      "trusted",
-			}},
-		}},
-	); err != nil {
-		t.Fatalf("seed anchors: %v", err)
-	}
+	seedClusterAnchorEvidence(t, anchors, url)
 	clusters := &contentClusterScript{
 		assignment: contentcluster.Assignment{
 			ClusterID:         "cluster",
@@ -437,6 +457,33 @@ func TestStoreDocumentClustersAndIndexesCanonicalEvidence(t *testing.T) {
 	stored, found, err := directory.Document(t.Context(), url)
 	if err != nil || !found || len(stored.Inlinks) != 1 || stored.ClusterID != "cluster" {
 		t.Fatalf("stored canonical document = %#v, %v, %v", stored, found, err)
+	}
+}
+
+func seedClusterAnchorEvidence(
+	t *testing.T,
+	anchors documentstore.InboundAnchorReceiver,
+	targetURL string,
+) {
+	t.Helper()
+	update, err := anchors.ReplaceOutboundAnchors(
+		t.Context(),
+		[]documentstore.OutboundAnchorSet{{
+			SourceURL: "https://source.example/",
+			Anchors: []documentstore.OutboundAnchor{{
+				TargetURL: targetURL,
+				Text:      "trusted",
+			}},
+		}},
+	)
+	if err != nil {
+		t.Fatalf("seed anchors: %v", err)
+	}
+	if err := anchors.FinalizeOutboundAnchors(
+		t.Context(),
+		update.Finalizations,
+	); err != nil {
+		t.Fatalf("finalize seed anchors: %v", err)
 	}
 }
 
@@ -486,7 +533,7 @@ func TestAssignDocumentClusterUsesPreparedQualityCanonicalAndAuthorityEvidence(t
 	}
 }
 
-func TestRemovalTombstoneDeletesContentClusterBeforeAck(t *testing.T) {
+func TestRemovalTombstoneLeavesClusterDeletionToConfiguredPurger(t *testing.T) {
 	script := &contentClusterScript{}
 	consumer := &IngestConsumer{
 		clusters: script,
@@ -512,9 +559,31 @@ func TestRemovalTombstoneDeletesContentClusterBeforeAck(t *testing.T) {
 			return nil
 		},
 	})
-	if !acked || len(script.deletedURLs) != 1 ||
-		script.deletedURLs[0] != "https://gone.example" {
+	if !acked || len(script.deletedURLs) != 0 {
 		t.Fatalf("tombstone cluster deletion = %v, %v", acked, script.deletedURLs)
+	}
+}
+
+func TestRemovalTombstoneInvokesConfiguredPurgerOnce(t *testing.T) {
+	events := []string{}
+	clusters := &orderedRemovalClusterScript{events: &events}
+	consumer := NewIngestConsumer(stubStream{}, nil, nil, nil)
+	consumer.clusters = clusters
+	consumer.PurgeURLs(orderedRemovalPurger{events: &events})
+	acked := false
+	consumer.purgeRemoval(t.Context(), IngestDelivery{
+		Batch: yagocrawlcontract.IngestBatch{
+			SourceURL: "https://gone.example/",
+			Removed:   true,
+		},
+		Ack: func(context.Context) error {
+			acked = true
+
+			return nil
+		},
+	})
+	if !acked || len(events) != 1 || events[0] != "purge" {
+		t.Fatalf("removal ordering = %t, %#v", acked, events)
 	}
 }
 
@@ -522,14 +591,14 @@ func TestContentClusterFailuresRedeliverAdmissionAndRemoval(t *testing.T) {
 	sentinel := errors.New("cluster unavailable")
 	replaceScript := &contentClusterScript{lookupErr: sentinel}
 	consumer := &IngestConsumer{clusters: replaceScript}
-	if _, err := consumer.clusterDocuments(t.Context(), []documentstore.Document{{
+	if _, err := consumer.prepareDocumentClusters(t.Context(), []documentstore.Document{{
 		NormalizedURL: "https://a.example",
 	}}); !errors.Is(err, sentinel) {
 		t.Fatalf("replacement lookup failure = %v", err)
 	}
 	replaceScript.lookupErr = nil
 	replaceScript.replaceErr = sentinel
-	if _, err := consumer.clusterDocuments(t.Context(), []documentstore.Document{{
+	if _, err := consumer.prepareDocumentClusters(t.Context(), []documentstore.Document{{
 		NormalizedURL: "https://a.example",
 	}}); !errors.Is(err, sentinel) {
 		t.Fatalf("replacement failure = %v", err)
@@ -568,13 +637,13 @@ func TestContentClusterSetterAndNoopPaths(t *testing.T) {
 	}
 	withoutClusters := &IngestConsumer{}
 	docs := []documentstore.Document{{NormalizedURL: "https://a.example"}}
-	got, err := withoutClusters.clusterDocuments(t.Context(), docs)
-	if err != nil || len(got) != 1 {
-		t.Fatalf("clusterless documents = %+v, %v", got, err)
+	projection, err := withoutClusters.prepareDocumentClusters(t.Context(), docs)
+	if err != nil || len(projection.documents) != 1 {
+		t.Fatalf("clusterless documents = %+v, %v", projection.documents, err)
 	}
-	got, err = consumer.clusterDocuments(t.Context(), nil)
-	if err != nil || got != nil {
-		t.Fatalf("empty documents = %+v, %v", got, err)
+	projection, err = consumer.prepareDocumentClusters(t.Context(), nil)
+	if err != nil || projection.documents != nil {
+		t.Fatalf("empty documents = %+v, %v", projection.documents, err)
 	}
 	if err := withoutClusters.deleteDocumentCluster(t.Context(), "https://a.example"); err != nil {
 		t.Fatalf("clusterless deletion: %v", err)
@@ -595,7 +664,7 @@ func TestClusterDocumentsReportsClusterAndDirectoryFailures(t *testing.T) {
 		},
 	} {
 		consumer := &IngestConsumer{clusters: script}
-		if _, err := consumer.clusterDocuments(
+		if _, err := consumer.prepareDocumentClusters(
 			t.Context(),
 			[]documentstore.Document{doc},
 		); err == nil {
@@ -616,7 +685,10 @@ func TestClusterDocumentsReportsClusterAndDirectoryFailures(t *testing.T) {
 		clusterFound: true,
 	}
 	consumer := &IngestConsumer{clusters: script, documents: directory}
-	if _, err := consumer.clusterDocuments(t.Context(), []documentstore.Document{doc}); err == nil {
+	if _, err := consumer.prepareDocumentClusters(
+		t.Context(),
+		[]documentstore.Document{doc},
+	); err == nil {
 		t.Fatal("clustered document read failure succeeded")
 	}
 }
@@ -834,7 +906,7 @@ func TestClusterFailuresUseAdmissionRedeliveryPaths(t *testing.T) {
 	}
 }
 
-func TestRemovalClusterFailureRedeliversTombstone(t *testing.T) {
+func TestRemovalTombstoneDoesNotInvokeIndependentClusterFallback(t *testing.T) {
 	sentinel := errors.New("cluster failed")
 	consumer := &IngestConsumer{
 		clusters: &contentClusterScript{lookupErr: sentinel},
@@ -843,24 +915,24 @@ func TestRemovalClusterFailureRedeliversTombstone(t *testing.T) {
 		hashURL:  yagomodel.HashURL,
 		observer: noopIngestObserver{},
 	}
-	naked := false
+	acked := false
 	consumer.absorbRemoval(t.Context(), IngestDelivery{
 		Batch: yagocrawlcontract.IngestBatch{
 			SourceURL: "https://gone.example",
 			Removed:   true,
 		},
 		Ack: func(context.Context) error {
-			t.Fatal("unexpected tombstone ack")
+			acked = true
 
 			return nil
 		},
 		Nak: func(context.Context) error {
-			naked = true
+			t.Fatal("unexpected tombstone redelivery")
 
 			return nil
 		},
 	})
-	if !naked {
-		t.Fatal("cluster deletion failure did not redeliver tombstone")
+	if !acked {
+		t.Fatal("tombstone was not acknowledged")
 	}
 }

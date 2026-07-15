@@ -34,14 +34,16 @@ func (f *fakeControl) Control(_ context.Context, req CrawlControlRequest) error 
 func sampleMonitor() CrawlMonitor {
 	return CrawlMonitor{
 		Runs: []CrawlRunView{{
-			RunID:   "run-abc",
-			Profile: "news-crawl",
-			State:   "running",
-			Fetched: 12,
-			Indexed: 9,
-			Failed:  1,
-			Pending: 4,
-			Runtime: "2m0s",
+			RunID:          "run-abc",
+			Profile:        "news-crawl",
+			State:          "running",
+			Fetched:        12,
+			Indexed:        9,
+			Failed:         1,
+			Pending:        4,
+			Runtime:        "2m0s",
+			PagesPerMinute: 30,
+			RateKnown:      true,
 		}},
 		Totals: CrawlTotals{
 			Fetched:      12,
@@ -50,8 +52,9 @@ func sampleMonitor() CrawlMonitor {
 			RobotsDenied: 3,
 			Duplicates:   5,
 		},
-		QueuePending: 7,
-		QueueLeased:  2,
+		QueueAvailable: true,
+		QueuePending:   7,
+		QueueLeased:    2,
 	}
 }
 
@@ -65,7 +68,7 @@ func TestConsoleCrawlRendersMonitor(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Crawl monitor", "news-crawl", "cds-tag--info", "7 pending, 2 leased",
-		"Crawl results and rejections", "Robots-denied",
+		"Crawl results and rejections", "Robots-denied", "currently retained in this monitor",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("crawl page missing %q", want)
@@ -82,6 +85,50 @@ func TestConsoleCrawlMonitorRendersResultTotals(t *testing.T) {
 	for _, want := range []string{"Fetched", "Indexed", "Failed", "Duplicates", ">42<", ">7<"} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("results rollup missing %q", want)
+		}
+	}
+}
+
+func TestConsoleCrawlMonitorShowsUnavailableQueue(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{Crawl: &fakeCrawl{}, Monitor: fakeMonitor{snap: CrawlMonitor{}}})
+	got := do(t, console, "/admin/crawl/monitor")
+	if !strings.Contains(got.body, "order queue: Unavailable") {
+		t.Fatal("failed queue probe should render unavailable")
+	}
+	if strings.Contains(got.body, "0 pending, 0 leased") {
+		t.Fatal("failed queue probe rendered fabricated zero depths")
+	}
+}
+
+func TestConsoleCrawlMonitorLabelsFailureRatePopulation(t *testing.T) {
+	t.Parallel()
+
+	monitor := CrawlMonitor{Totals: CrawlTotals{Failed: 100}}
+	console := New(Options{Crawl: &fakeCrawl{}, Monitor: fakeMonitor{snap: monitor}})
+	got := do(t, console, "/admin/crawl/monitor")
+	for _, want := range []string{"Failure rate", "100%", "failed / (fetched + failed)"} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("failure-rate tile missing %q", want)
+		}
+	}
+}
+
+func TestConsoleCrawlMonitorLabelsLinkRedundancyPopulation(t *testing.T) {
+	t.Parallel()
+
+	monitor := CrawlMonitor{
+		Totals: CrawlTotals{Fetched: 100, Failed: 5, RobotsDenied: 5, Duplicates: 10},
+	}
+	console := New(Options{Crawl: &fakeCrawl{}, Monitor: fakeMonitor{snap: monitor}})
+	got := do(t, console, "/admin/crawl/monitor")
+	for _, want := range []string{
+		"Link redundancy",
+		"duplicates / (duplicates + fetched + failed + robots-denied)",
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("link-redundancy tile missing %q", want)
 		}
 	}
 }
@@ -161,18 +208,31 @@ func TestConsoleCrawlMonitorLaysControlsOnOneLine(t *testing.T) {
 	})
 	got := do(t, console, "/admin/crawl/monitor")
 	for _, want := range []string{
-		`class="cds-control-row"`,
+		`class="cds-control-row cds-control-row--crawl-actions"`,
 		`class="cds-input cds-input--rate"`,
-		`placeholder="pages/min"`,
+		`for="crawl-rate-run-abc"`,
+		`id="crawl-rate-run-abc"`,
+		`value="30"`,
+		`title="0 means unlimited"`,
+		`aria-label="Pages per minute for news-crawl; zero means unlimited"`,
+		`class="cds-scroll-x" role="region" aria-label="Crawl tasks" tabindex="0"`,
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("monitor controls missing %q", want)
 		}
 	}
-	// A run with no operator-applied rate leaves the field empty (placeholder
-	// only), not pre-filled with a misleading zero.
-	if strings.Contains(got.body, `value="0"`) {
-		t.Fatal("an unset rate must not pre-fill the field with zero")
+
+	css := do(t, console, "/admin/assets/carbon.css")
+	for _, want := range []string{
+		".cds-control-row {\n  display: flex;\n  flex-wrap: wrap;",
+		".cds-control-row--crawl-actions {\n  flex-wrap: nowrap;\n  min-width: max-content;\n  gap: var(--cds-spacing-03);\n}",
+		".cds-control-row--crawl-actions .cds-inline-form { flex: 0 0 auto; }",
+		".cds-control-row--crawl-actions .cds-btn {\n  min-height: 2rem;\n  padding: 0 var(--cds-spacing-03);\n}",
+		".cds-control-row--crawl-actions .cds-input--rate {\n  width: 4rem;\n  height: 2rem;\n  padding: 0 var(--cds-spacing-03);\n}",
+	} {
+		if !strings.Contains(css.body, want) {
+			t.Fatalf("crawler control CSS missing %q", want)
+		}
 	}
 }
 
@@ -184,6 +244,7 @@ func TestConsoleCrawlMonitorPrefillsCurrentRate(t *testing.T) {
 		Profile:        "news-crawl",
 		State:          "running",
 		PagesPerMinute: 45,
+		RateKnown:      true,
 	}}}
 	console := New(Options{
 		Crawl:   &fakeCrawl{},
@@ -196,15 +257,41 @@ func TestConsoleCrawlMonitorPrefillsCurrentRate(t *testing.T) {
 	}
 }
 
+func TestConsoleCrawlMonitorPrefillsUnlimitedRate(t *testing.T) {
+	t.Parallel()
+
+	monitor := CrawlMonitor{Runs: []CrawlRunView{{
+		RunID:          "run-zero",
+		Profile:        "wide-crawl",
+		State:          "running",
+		PagesPerMinute: 0,
+		RateKnown:      true,
+	}}}
+	console := New(Options{Monitor: fakeMonitor{snap: monitor}, Control: &fakeControl{}})
+	got := do(t, console, "/admin/crawl/monitor")
+	if !strings.Contains(got.body, `id="crawl-rate-run-zero"`) ||
+		!strings.Contains(got.body, `value="0"`) {
+		t.Fatal("known unlimited rate should pre-fill the rate field with zero")
+	}
+}
+
 func TestParsePagesPerMinute(t *testing.T) {
 	t.Parallel()
 
-	cases := map[string]uint32{
-		"45": 45, "0": 0, "": 0, "abc": 0, "-5": 0, "999999999999": 0,
+	valid := map[string]uint32{
+		"45":  45,
+		"0":   0,
+		"\t7": 7,
 	}
-	for raw, want := range cases {
-		if got := parsePagesPerMinute(raw); got != want {
-			t.Fatalf("parsePagesPerMinute(%q) = %d, want %d", raw, got, want)
+	for raw, want := range valid {
+		got, err := parsePagesPerMinute(raw)
+		if err != nil || got != want {
+			t.Fatalf("parsePagesPerMinute(%q) = %d, %v; want %d, nil", raw, got, err, want)
+		}
+	}
+	for _, raw := range []string{"", "abc", "-5", "999999999999"} {
+		if got, err := parsePagesPerMinute(raw); err == nil {
+			t.Fatalf("parsePagesPerMinute(%q) = %d, nil; want an error", raw, got)
 		}
 	}
 }
@@ -223,6 +310,24 @@ func TestConsoleCrawlControlSetRateParsesPagesPerMinute(t *testing.T) {
 	}
 	if control.got.Action != "set_rate" || control.got.PagesPerMinute != 90 {
 		t.Fatalf("control received %+v, want set_rate/90", control.got)
+	}
+}
+
+func TestConsoleCrawlControlRejectsInvalidRateWithoutLiftingThrottle(t *testing.T) {
+	t.Parallel()
+
+	control := &fakeControl{}
+	got := doPost(t, New(Options{Control: control}), "/admin/crawl/control", url.Values{
+		"runId":  {"run-abc"},
+		"action": {"set_rate"},
+		"ppm":    {"not-a-rate"},
+	})
+	if got.status != http.StatusBadRequest ||
+		!strings.Contains(got.body, "Invalid pages/minute rate") {
+		t.Fatalf("response = %d %q, want a clear 400", got.status, got.body)
+	}
+	if control.got.Action != "" {
+		t.Fatalf("invalid rate reached control: %+v", control.got)
 	}
 }
 

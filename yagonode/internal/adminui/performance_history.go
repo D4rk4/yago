@@ -26,16 +26,15 @@ type PerformanceHistorySource interface {
 	Series() []HistorySeries
 }
 
-// historyView is one rendered history chart: the current value plus a
-// server-rendered SVG sparkline, so the page needs no charting JavaScript.
 type historyView struct {
-	Name    string
-	Unit    string
-	Current string
-	Peak    string
-	Window  string
-	SVG     template.HTML
-	Samples int
+	Name       string
+	Unit       string
+	Latest     string
+	ObservedAt string
+	Peak       string
+	Window     string
+	SVG        template.HTML
+	Samples    int
 }
 
 const (
@@ -54,11 +53,13 @@ func performanceHistory(source PerformanceHistorySource) []historyView {
 		if len(series.Points) < 2 {
 			continue
 		}
+		latest := series.Points[len(series.Points)-1]
 		views = append(views, historyView{
-			Name:    series.Name,
-			Unit:    series.Unit,
-			Current: formatHistoryValue(series.Points[len(series.Points)-1].Value),
-			Peak:    formatHistoryValue(peakValue(series.Points)),
+			Name:       series.Name,
+			Unit:       series.Unit,
+			Latest:     formatHistoryValue(latest.Value),
+			ObservedAt: latest.At.UTC().Format(time.RFC3339),
+			Peak:       formatHistoryValue(peakValue(series.Points)),
 			Window: series.Points[len(series.Points)-1].At.
 				Sub(series.Points[0].At).Round(time.Second).String(),
 			SVG:     sparklineSVG(series.Points),

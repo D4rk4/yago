@@ -3,11 +3,12 @@
 <h1 class="cds-h1">Configuration</h1>
 {{template "toasts" .}}
 <p class="cds-muted">The node's settings, grouped into tabs. Runtime overrides are stored on the node and layer over the environment defaults; unset settings fall back to the environment.</p>
+{{if .Settings.Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Settings.Error}}</div>{{end}}
 <div class="cds-tabs" data-tabs>
   <div class="cds-tablist" role="tablist" aria-label="Configuration sections">
     {{if .Editable}}{{range .SettingGroups}}<button type="button" role="tab" class="cds-tab" id="tab-{{.ID}}" aria-controls="panel-{{.ID}}" aria-selected="false">{{.Title}}</button>
     {{end}}{{end}}{{if .Bindable}}<button type="button" role="tab" class="cds-tab" id="tab-listen" aria-controls="panel-listen" aria-selected="false">Listen addresses</button>
-    {{end}}<button type="button" role="tab" class="cds-tab" id="tab-effective" aria-controls="panel-effective" aria-selected="false">Effective configuration</button>
+    {{end}}<button type="button" role="tab" class="cds-tab" id="tab-effective" aria-controls="panel-effective" aria-selected="false">Startup snapshot</button>
   </div>
 
   {{if .Editable}}{{range .SettingGroups}}
@@ -22,6 +23,7 @@
           <span class="cds-setting-row__label">
             <label for="setting-{{.Key}}">{{.Title}}</label>
             {{if .Overridden}}<span class="cds-tag cds-tag--info">overridden</span>{{end}}
+            {{if .PendingRestart}}<span class="cds-tag cds-tag--warn">pending restart</span>{{end}}
           </span>
           <span class="cds-setting-row__control">
             {{if .Boolean}}
@@ -63,8 +65,9 @@
       <input type="hidden" name="form" value="binding">
       <input type="hidden" name="key" value="{{.Key}}">
       <div class="cds-field">
-        <label class="cds-label" for="bind-host-{{.Key}}">{{.Title}}{{if .Overridden}} <span class="cds-tag cds-tag--info">overridden</span>{{end}}</label>
+        <label class="cds-label" for="bind-host-{{.Key}}">{{.Title}}{{if .Overridden}} <span class="cds-tag cds-tag--info">overridden</span>{{end}}{{if not .ListenerEnabled}} <span class="cds-tag cds-tag--debug">disabled</span>{{end}}</label>
         {{if .Description}}<p class="cds-muted">{{.Description}}</p>{{end}}
+        {{if .ListenerEnabled}}<p class="cds-muted">Current desired listener: {{if .Host}}interface {{.Host}}{{else}}all interfaces{{end}}, port {{.Port}}.</p>{{else}}<p class="cds-muted">Current desired listener: disabled. Choose an interface and port to enable it after restart.</p>{{end}}
         {{$host := .Host}}
         <select class="cds-input" id="bind-host-{{.Key}}" name="host">
           {{range .Interfaces}}<option value="{{.Value}}"{{if eq .Value $host}} selected{{end}}>{{.Label}}</option>{{end}}
@@ -81,8 +84,8 @@
   {{end}}
 
   <section class="cds-tabpanel" role="tabpanel" id="panel-effective" aria-labelledby="tab-effective">
-    <h2 class="cds-h2 cds-tabpanel__heading">Effective configuration</h2>
-    <p class="cds-muted">Values in effect for this node. Secrets are redacted; any runtime overrides above are already applied.</p>
+    <h2 class="cds-h2 cds-tabpanel__heading">Startup snapshot</h2>
+    <p class="cds-muted">Values applied when this process started. Editable values above are the desired settings; a “pending restart” tag means that value is stored but not yet applied. Secrets are redacted.</p>
     {{range .Config.Groups}}
     <h3 class="cds-h3">{{.Title}}</h3>
     <div class="cds-scroll-x">

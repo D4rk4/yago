@@ -58,7 +58,10 @@ func TestCrawlScheduleSourceRoundTrip(t *testing.T) {
 		t.Fatal("malformed interval must be rejected")
 	}
 
-	views := source.Schedules(ctx)
+	views, err := source.Schedules(ctx)
+	if err != nil {
+		t.Fatalf("Schedules: %v", err)
+	}
 	if len(views) != 1 || views[0].Name != "Docs" || views[0].Seeds != 1 ||
 		views[0].LastRun != "never" || !views[0].Enabled {
 		t.Fatalf("views = %+v", views)
@@ -67,13 +70,21 @@ func TestCrawlScheduleSourceRoundTrip(t *testing.T) {
 	if err := source.SetScheduleEnabled(ctx, views[0].ID, false); err != nil {
 		t.Fatalf("disable: %v", err)
 	}
-	if got := source.Schedules(ctx); got[0].Enabled {
+	got, err := source.Schedules(ctx)
+	if err != nil {
+		t.Fatalf("Schedules after disable: %v", err)
+	}
+	if got[0].Enabled {
 		t.Fatal("disable did not stick")
 	}
 	if err := source.DeleteSchedule(ctx, views[0].ID); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	if got := source.Schedules(ctx); len(got) != 0 {
+	got, err = source.Schedules(ctx)
+	if err != nil {
+		t.Fatalf("Schedules after delete: %v", err)
+	}
+	if len(got) != 0 {
 		t.Fatalf("delete left %+v", got)
 	}
 

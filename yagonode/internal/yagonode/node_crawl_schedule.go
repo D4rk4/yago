@@ -38,12 +38,12 @@ func newCrawlScheduleSource(
 	return crawlScheduleSource{store: store, dispatch: dispatch}
 }
 
-func (s crawlScheduleSource) Schedules(ctx context.Context) []adminui.CrawlScheduleView {
+func (s crawlScheduleSource) Schedules(
+	ctx context.Context,
+) ([]adminui.CrawlScheduleView, error) {
 	schedules, err := s.store.List(ctx)
 	if err != nil {
-		slog.WarnContext(ctx, "list crawl schedules failed", slog.Any("error", err))
-
-		return nil
+		return nil, fmt.Errorf("list crawl schedules: %w", err)
 	}
 	views := make([]adminui.CrawlScheduleView, 0, len(schedules))
 	for _, schedule := range schedules {
@@ -58,7 +58,7 @@ func (s crawlScheduleSource) Schedules(ctx context.Context) []adminui.CrawlSched
 		})
 	}
 
-	return views
+	return views, nil
 }
 
 func (s crawlScheduleSource) CreateSchedule(
@@ -107,7 +107,7 @@ func formatScheduleRun(at time.Time) string {
 		return "never"
 	}
 
-	return at.UTC().Format("2006-01-02 15:04")
+	return at.UTC().Format("2006-01-02 15:04 UTC")
 }
 
 // newScheduleTicks is the poll-clock seam so tests can drive the loop.

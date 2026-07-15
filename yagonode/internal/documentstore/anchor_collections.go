@@ -8,19 +8,23 @@ import (
 )
 
 const (
-	inboundAnchorBucket  vault.Name = "document_inbound_anchors"
-	outboundTargetBucket vault.Name = "document_outbound_targets"
+	inboundAnchorBucket             vault.Name = "document_inbound_anchors"
+	outboundTargetBucket            vault.Name = "document_outbound_targets"
+	outboundAnchorPublicationBucket vault.Name = "document_outbound_anchor_publications"
 )
 
-type anchorSliceCodec[V any] struct{}
+type anchorJSONCodec[V any] struct{}
 
-func (anchorSliceCodec[V]) Encode(value V) ([]byte, error) {
-	raw, _ := json.Marshal(value)
+func (anchorJSONCodec[V]) Encode(value V) ([]byte, error) {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("marshal anchor data: %w", err)
+	}
 
 	return raw, nil
 }
 
-func (anchorSliceCodec[V]) Decode(raw []byte) (V, error) {
+func (anchorJSONCodec[V]) Decode(raw []byte) (V, error) {
 	var value V
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return value, fmt.Errorf("unmarshal anchor data: %w", err)
@@ -31,15 +35,36 @@ func (anchorSliceCodec[V]) Decode(raw []byte) (V, error) {
 
 func registerAnchorCollections(
 	v *vault.Vault,
-) (*vault.Collection[[]AnchorText], *vault.Collection[[]string], error) {
-	inbound, err := vault.Register(v, inboundAnchorBucket, anchorSliceCodec[[]AnchorText]{})
+) (
+	*vault.Keyspace[[]AnchorText],
+	*vault.Keyspace[[]string],
+	*vault.Keyspace[outboundAnchorPublication],
+	error,
+) {
+	inbound, err := vault.RegisterKeyspace(
+		v,
+		inboundAnchorBucket,
+		anchorJSONCodec[[]AnchorText]{},
+	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("register inbound anchors: %w", err)
+		return nil, nil, nil, fmt.Errorf("register inbound anchors: %w", err)
 	}
-	outbound, err := vault.Register(v, outboundTargetBucket, anchorSliceCodec[[]string]{})
+	outbound, err := vault.RegisterKeyspace(
+		v,
+		outboundTargetBucket,
+		anchorJSONCodec[[]string]{},
+	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("register outbound targets: %w", err)
+		return nil, nil, nil, fmt.Errorf("register outbound targets: %w", err)
+	}
+	publications, err := vault.RegisterKeyspace(
+		v,
+		outboundAnchorPublicationBucket,
+		anchorJSONCodec[outboundAnchorPublication]{},
+	)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("register outbound anchor publications: %w", err)
 	}
 
-	return inbound, outbound, nil
+	return inbound, outbound, publications, nil
 }

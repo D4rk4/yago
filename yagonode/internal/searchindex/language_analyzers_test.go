@@ -93,7 +93,7 @@ func TestQueryAnalyzers(t *testing.T) {
 func TestScriptAnalyzers(t *testing.T) {
 	cases := map[*unicode.RangeTable][]string{
 		unicode.Cyrillic:   {"ru"},
-		unicode.Arabic:     {"ar", "fa"},
+		unicode.Arabic:     {"ar", "fa", "ckb"},
 		unicode.Han:        {"cjk"},
 		unicode.Hiragana:   {"cjk"},
 		unicode.Devanagari: {"hi"},

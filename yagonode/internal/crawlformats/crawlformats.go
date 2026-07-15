@@ -51,19 +51,28 @@ func Open(v *vault.Vault) (*Store, error) {
 	return &Store{vault: v, values: values}, nil
 }
 
-// Current returns the persisted toggles, or the defaults (everything on except
-// archives) when none were saved or the record does not decode.
-func (s *Store) Current(ctx context.Context) yagocrawlcontract.FormatToggles {
+func (s *Store) Current(
+	ctx context.Context,
+) (yagocrawlcontract.FormatToggles, error) {
 	toggles := yagocrawlcontract.DefaultFormatToggles()
-	_ = s.vault.View(ctx, func(tx *vault.Txn) error {
-		if stored, ok, err := s.values.Get(tx, togglesKey); err == nil && ok {
+	if err := s.vault.View(ctx, func(tx *vault.Txn) error {
+		stored, ok, err := s.values.Get(tx, togglesKey)
+		if err != nil {
+			return fmt.Errorf("read crawl formats: %w", err)
+		}
+		if ok {
 			toggles = stored
 		}
 
 		return nil
-	})
+	}); err != nil {
+		return yagocrawlcontract.FormatToggles{}, fmt.Errorf(
+			"load crawl formats: %w",
+			err,
+		)
+	}
 
-	return toggles
+	return toggles, nil
 }
 
 // Set persists new toggles.

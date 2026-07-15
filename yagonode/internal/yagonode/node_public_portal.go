@@ -104,10 +104,12 @@ func (s portalSource) Search(
 	}
 
 	out := publicportal.SearchResults{
-		Query:        query,
-		TotalResults: response.TotalResults,
-		PeersFailed:  peerSearchFailureTotal(response.PartialFailures),
-		Hint:         modifierhint.Text(response.Request, response.TotalResults),
+		Query:                 query,
+		TotalResults:          response.TotalResults,
+		PeersFailed:           peerSearchFailureTotal(response.PartialFailures),
+		FederationUnavailable: federationSearchUnavailable(response.PartialFailures),
+		Incomplete:            len(response.PartialFailures) > 0,
+		Hint:                  modifierhint.Text(response.Request, response.TotalResults),
 	}
 	out.DidYouMean = response.DidYouMean
 	if response.DidYouMean != "" {
@@ -155,17 +157,27 @@ func (s portalSource) Search(
 		})
 	}
 
-	facets := response.Facets
-	if len(facets) == 0 && len(response.Results) > 0 {
-		// Peer and web rows carry no corpus facet counts, so a page answered
-		// by the swarm or the web fallback rendered without a sidebar at all.
-		// Deriving groups from the visible rows keeps the filters available;
-		// the counts honestly describe this result window, not a corpus.
-		facets = facetsFromResults(response.Results)
-	}
-	out.Facets = portalFacets(query, facets)
+	out.Facets = portalFacetGroups(query, response)
 
 	return out, nil
+}
+
+func portalFacetGroups(
+	query string,
+	response searchcore.Response,
+) []publicportal.FacetGroup {
+	if len(response.Facets) > 0 {
+		return portalFacets(query, response.Facets, "the local corpus")
+	}
+	if len(response.Results) > 0 {
+		return portalFacets(
+			query,
+			facetsFromResults(response.Results),
+			"this visible result window",
+		)
+	}
+
+	return nil
 }
 
 // facetsFromResults tallies facet groups over the result rows themselves —
@@ -236,9 +248,11 @@ var facetTitles = map[string]string{
 	"month":    "Month",
 }
 
-// portalFacets renders the local facet groups as sidebar filters: clicking a
-// value re-runs the query with the matching operator appended.
-func portalFacets(query string, groups []searchcore.FacetGroup) []publicportal.FacetGroup {
+func portalFacets(
+	query string,
+	groups []searchcore.FacetGroup,
+	scope string,
+) []publicportal.FacetGroup {
 	out := make([]publicportal.FacetGroup, 0, len(groups))
 	for _, group := range groups {
 		items := make([]publicportal.FacetItem, 0, len(group.Terms))
@@ -249,7 +263,9 @@ func portalFacets(query string, groups []searchcore.FacetGroup) []publicportal.F
 			}
 			items = append(items, item)
 		}
-		out = append(out, publicportal.FacetGroup{Title: facetTitles[group.Name], Items: items})
+		out = append(out, publicportal.FacetGroup{
+			Title: facetTitles[group.Name], Scope: scope, Items: items,
+		})
 	}
 
 	return out

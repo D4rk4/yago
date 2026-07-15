@@ -33,8 +33,8 @@ func TestRankingPositionTermsMatchesLexicalSelection(t *testing.T) {
 	content := rankingPositionTerms(SearchRequest{
 		Terms: []string{" The ", "Alpha", "alpha", "и", "Beta", " "},
 	})
-	if !slices.Equal(content, []string{"alpha", "beta"}) {
-		t.Fatalf("content terms = %v", content)
+	if !slices.Equal(content, []string{"the", "alpha", "и", "beta"}) {
+		t.Fatalf("requirements = %v", content)
 	}
 	allStopwords := rankingPositionTerms(SearchRequest{Query: "the и the"})
 	if !slices.Equal(allStopwords, []string{"the", "и"}) {

@@ -32,6 +32,7 @@ type Frontier interface {
 
 const (
 	msgPageRejected      = "crawl page rejected"
+	msgCrawlJobFailed    = "crawl job failed"
 	msgJobFetching       = "crawl job fetching"
 	msgPageCrawled       = "crawl page crawled"
 	msgPageNotIndexed    = "crawl page not indexed"
@@ -103,22 +104,18 @@ func (p *Pipeline) run(acceptCtx, fetchCtx context.Context) {
 			return
 		}
 		err := p.process(fetchCtx, job)
-		switch {
-		case err == nil:
-		case errors.Is(err, pagefetch.ErrPageRejected):
-			slog.InfoContext(
-				fetchCtx,
-				msgPageRejected,
-				slog.String("url", job.URL),
-				slog.Any("reason", err),
-			)
-		default:
-			slog.WarnContext(
-				fetchCtx,
-				"crawl job failed",
-				slog.String("url", job.URL),
-				slog.Any("error", err),
-			)
+		if err != nil {
+			if crawlJobLogLevel(err) == slog.LevelDebug {
+				slog.DebugContext(fetchCtx, msgPageRejected,
+					slog.String("url", job.URL),
+					slog.Any("error", err),
+				)
+			} else {
+				slog.WarnContext(fetchCtx, msgCrawlJobFailed,
+					slog.String("url", job.URL),
+					slog.Any("error", err),
+				)
+			}
 		}
 	}
 }
@@ -153,10 +150,6 @@ func WithInsecureFetcher(source pagefetch.PageSource) Option {
 	}
 }
 
-// HostLoadFeedback receives per-fetch server-load outcomes: Throttled after a
-// 429/503 (with the server's Retry-After wish, zero when absent) and Succeeded
-// after a served page, so an adaptive pace can widen and narrow each host's
-// delay. Implementations must not block.
 type HostLoadFeedback interface {
 	Throttled(rawURL string, retryAfter time.Duration, at time.Time)
 	Succeeded(rawURL string, at time.Time)
@@ -210,16 +203,17 @@ func (p *Pipeline) fetchJob(
 			p.observer.FetchFailed()
 			p.tally.Failed(job.Provenance)
 		}
-		if throttled, ok := pagefetch.AsThrottled(err); ok && p.loadFeedback != nil {
-			p.loadFeedback.Throttled(job.URL, throttled.RetryAfter, time.Now())
+		hostFailed := p.recordHostFetchError(ctx, job, err)
+		if hostFailed && p.loadFeedback != nil {
+			var retryAfter time.Duration
+			if throttled, ok := pagefetch.AsThrottled(err); ok {
+				retryAfter = throttled.RetryAfter
+			}
+			p.loadFeedback.Throttled(job.URL, retryAfter, time.Now())
 		}
 
 		return pagefetch.FetchedPage{}, fmt.Errorf("fetch: %w", err)
 	}
-	if p.loadFeedback != nil {
-		p.loadFeedback.Succeeded(job.URL, time.Now())
-	}
-
 	return fetched, nil
 }
 
@@ -257,6 +251,7 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 			pagefetch.ErrUnsupportedContentType,
 		)
 	}
+	p.recordHostFetchSuccess(ctx, job)
 	p.observer.FetchSucceeded(len(fetched.Body))
 	p.tally.Fetched(job.Provenance)
 	page, parsed := formatparse.Parse(

@@ -47,7 +47,10 @@ func TestBlacklistEntriesMapsAndFormats(t *testing.T) {
 		{Kind: urldenylist.KindDomain, Value: "example.com", AddedAt: time.Unix(1000, 0)},
 		{Kind: urldenylist.KindURL, Value: "https://a.example/", AddedAt: time.Time{}},
 	}}
-	views := newBlacklistController(store).BlacklistEntries(context.Background())
+	views, err := newBlacklistController(store).BlacklistEntries(context.Background())
+	if err != nil {
+		t.Fatalf("entries: %v", err)
+	}
 
 	if len(views) != 2 {
 		t.Fatalf("views = %#v", views)
@@ -60,10 +63,11 @@ func TestBlacklistEntriesMapsAndFormats(t *testing.T) {
 	}
 }
 
-func TestBlacklistEntriesDegradesOnError(t *testing.T) {
+func TestBlacklistEntriesReturnsError(t *testing.T) {
 	store := &fakeDenylistStore{entriesErr: errors.New("scan failed")}
-	if views := newBlacklistController(store).BlacklistEntries(context.Background()); views != nil {
-		t.Fatalf("a read error should degrade to nil, got %#v", views)
+	views, err := newBlacklistController(store).BlacklistEntries(context.Background())
+	if err == nil || views != nil {
+		t.Fatalf("read result = %#v, %v", views, err)
 	}
 }
 

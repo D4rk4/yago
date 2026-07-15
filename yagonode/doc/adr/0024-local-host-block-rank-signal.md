@@ -15,10 +15,10 @@ peers. This node had none of it: search results were ordered by field-weighted
 relevance only (`RankingWeights` over title/headings/anchors/body/url), with
 host-based signals limited to crowding *diversity*, never authority.
 
-The substrate for a citation rank already exists. The node builds an incoming
-host-link graph from stored document outlinks (`storedDocumentHostLinks`,
-`collectDocumentHostLinks`) and serves it at `/yacy/idx.json?object=host`, but the
-graph is recomputed per request and thrown away, and nothing ranks with it.
+The substrate for a citation rank already existed. The node could collect an
+incoming host-link graph from stored document outlinks and serve it at
+`/yacy/idx.json?object=host`, but the original graph was refreshed from the
+request path and nothing ranked with it.
 
 Full YBR parity is large: it needs a persisted host graph, a peer consumer that
 fetches other peers' tables, cross-peer aggregation, and a rank-table exchange
@@ -27,7 +27,8 @@ surface. Shipping that in one step risks a broad, half-tested change.
 ## Decision
 
 Compute a **local** host block-rank from this node's own crawl graph and fold it
-into result scoring, deferring the distributed exchange.
+into result scoring. Distributed rank-table exchange is not part of the local
+ranking contract.
 
 - A new pure package `internal/hostrank` computes normalized authority evidence
   keyed by registrable domain via damped iterative rank propagation over the
@@ -40,7 +41,8 @@ into result scoring, deferring the distributed exchange.
   so the search path reads it lock-free and never scans the store inline.
 - One bounded vault checkpoint atomically retains the last complete authority
   table, citation sample, spelling vocabulary, optional morphology vocabulary,
-  trust policy, and completion time. Startup publishes it before listeners open.
+  YaCy host-link graph, trust policy, and completion time. Startup publishes the
+  search signals and host-link snapshot before listeners open.
   A fresh checkpoint schedules the first scan for its original due time; a stale
   checkpoint stays available while an immediate replacement scan runs. Failed
   and cancelled passes leave the prior checkpoint intact.
@@ -69,21 +71,28 @@ Computing authority as raw inbound host in-degree (1-hop) was rejected in favor 
 iterative propagation, which is the actual BlockRank mechanic (authority flows
 through the graph) and is only marginally more code.
 
-Full distributed YBR now — persisted graph, peer idx.json consumer, cross-peer
-aggregation, rank-table exchange — was deferred to keep this slice self-contained
-and fully tested. Local authority from our own crawl graph delivers the core
-ranking value; peer aggregation extends coverage to hosts we have not crawled.
+Full distributed YBR — a peer idx.json consumer, cross-peer aggregation, and
+rank-table exchange — is unnecessary for the shipped local authority signal and
+is not a deferred ranking requirement. Accepting untrusted peer rank tables would
+also add a Sybil surface and a separate compatibility protocol. Any future
+exchange proposal therefore needs its own security and interoperability decision
+rather than inheriting approval from this ADR.
 
 ## Consequences
 
 Ranking gains a host-authority dimension that operators tune through the
 positive `hostRank` weight in the existing `/api/admin/v1/search/ranking` profile
-(the JSON round-trips the field). Authority shares one completion-relative document pass with spelling
-and optional morphology signals, so it adds no independent periodic scan. The
-successful pass replaces one bounded checkpoint at most once per refresh
+(the JSON round-trips the field). Authority shares one completion-relative
+document pass with spelling, optional morphology signals, and the YaCy host-link
+graph, so it adds no independent periodic scan. Stored documents are read through
+fixed 16-document keyset pages through immutable last keys captured for the
+legacy and admission-ordered partitions under a brief document-admission fence,
+and each vault view is released before decoding and analysis. Later admissions
+are included by the next pass. Peer host-link requests read the atomically published graph and never
+trigger a document scan. The successful pass replaces one bounded checkpoint at
+most once per refresh
 interval; trust-policy changes may replace it without advancing its corpus
 completion time. The
 authority keys use the registrable domain derived from normalized source and
 target URLs, so scheme, port, and subdomain differences do not split one domain's
-evidence. Distributed host-rank exchange and aggregation across peers remain
-future work (the second slice of the YBR epic).
+evidence. Peer rank-table aggregation is outside the accepted ranking design.

@@ -109,11 +109,10 @@ func TestNearMatchRequiresBoundedJaccard(t *testing.T) {
 		t.Fatalf("prepare distant evidence: %v", err)
 	}
 	err = v.Update(t.Context(), func(tx *vault.Txn) error {
-		return index.addPosting(
+		return index.bandBuckets.Put(
 			tx,
-			index.bandBuckets,
 			bandKey(0, prepared.Bands[0]),
-			"https://base.example/page",
+			postingRecord{URLs: []string{"https://base.example/page"}},
 		)
 	})
 	if err != nil {

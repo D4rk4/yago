@@ -16,25 +16,6 @@ import (
 // document-at-a-time ingest the crawl bottleneck (PERF-05).
 const ingestMicroBatch = 16
 
-// drainPending returns the received delivery plus whatever is already waiting
-// on the stream, without blocking, up to the micro-batch cap.
-func (c *IngestConsumer) drainPending(first IngestDelivery) []IngestDelivery {
-	group := []IngestDelivery{first}
-	for len(group) < ingestMicroBatch {
-		select {
-		case delivery, ok := <-c.stream.Receive():
-			if !ok {
-				return group
-			}
-			group = append(group, delivery)
-		default:
-			return group
-		}
-	}
-
-	return group
-}
-
 // absorbGroup absorbs the deliveries as one unit: admission gates run per
 // delivery, the surviving documents are stored and indexed together, and the
 // per-delivery tail (metadata, postings, ack) runs for everything that made it
@@ -63,6 +44,13 @@ func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery
 		}
 		regular = append(regular, delivery)
 	}
+	reservation, err := c.reserveIngestDocumentLineages(ctx, regular)
+	if err != nil {
+		c.redeliverGroup(ctx, regular, "document lineage reservation", err)
+
+		return
+	}
+	defer c.releaseIngestDocumentLineages(reservation)
 
 	withDocs := make([]IngestDelivery, 0, len(regular))
 	docs := make([]documentstore.Document, 0, len(regular))
@@ -79,10 +67,15 @@ func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery
 		docs = append(docs, doc)
 	}
 
-	if len(docs) > 0 && !c.storeDocumentGroup(ctx, withDocs, docs) {
+	if len(docs) > 0 && !c.storeReservedDocumentGroup(
+		ctx,
+		withDocs,
+		docs,
+		reservation,
+	) {
 		withDocs = nil
 	}
-	c.absorbTailGroup(ctx, append(tail, withDocs...))
+	c.absorbReservedTailGroup(ctx, append(tail, withDocs...), reservation)
 }
 
 // absorbTailGroup persists the group's URL metadata, stale sweeps, postings,
@@ -91,15 +84,23 @@ func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery
 // surviving delivery. Group-level failures redeliver the whole group, the same
 // coarsening the document group already accepts.
 func (c *IngestConsumer) absorbTailGroup(ctx context.Context, group []IngestDelivery) {
+	c.absorbReservedTailGroup(ctx, group, nil)
+}
+
+func (c *IngestConsumer) absorbReservedTailGroup(
+	ctx context.Context,
+	group []IngestDelivery,
+	reservation documentstore.DocumentLineageReservation,
+) {
 	if len(group) == 0 {
 		return
 	}
 	if len(group) == 1 {
-		c.absorbTail(ctx, group[0])
+		c.absorbReservedTail(ctx, group[0], reservation)
 
 		return
 	}
-	if c.updateInboundAnchors(ctx, group) {
+	if c.updateReservedInboundAnchors(ctx, group, reservation) {
 		return
 	}
 	metadata := make([]yagomodel.URIMetadataRow, 0, len(group))
@@ -286,19 +287,29 @@ func (c *IngestConsumer) storeDocumentGroup(
 	deliveries []IngestDelivery,
 	docs []documentstore.Document,
 ) bool {
-	canonical, err := c.canonicalDocuments(ctx, docs)
+	return c.storeReservedDocumentGroup(ctx, deliveries, docs, nil)
+}
+
+func (c *IngestConsumer) storeReservedDocumentGroup(
+	ctx context.Context,
+	deliveries []IngestDelivery,
+	docs []documentstore.Document,
+	reservation documentstore.DocumentLineageReservation,
+) bool {
+	canonical, err := c.canonicalIngestDocuments(ctx, reservation, docs)
 	if err != nil {
 		c.redeliverGroup(ctx, deliveries, "document canonicalization", err)
 
 		return false
 	}
-	clustered, err := c.clusterDocuments(ctx, canonical)
+	projection, err := c.prepareDocumentClusters(ctx, canonical)
 	if err != nil {
 		c.redeliverGroup(ctx, deliveries, "content cluster", err)
 
 		return false
 	}
-	docs = clustered
+	defer projection.release()
+	docs = projection.documents
 	receipt, err := c.documents.Receive(ctx, docs)
 	if err != nil {
 		c.redeliverGroup(ctx, deliveries, "document store", err)
@@ -311,11 +322,18 @@ func (c *IngestConsumer) storeDocumentGroup(
 		return false
 	}
 	docs = c.committedDocuments(receipt, docs)
-	if c.index == nil {
-		return true
+	if projection.replay {
+		docs = projection.documents
 	}
-	if err := c.indexDocuments(ctx, docs); err != nil {
-		c.redeliverGroup(ctx, deliveries, "search index", err)
+	if c.index != nil {
+		if err := c.indexDocuments(ctx, docs); err != nil {
+			c.redeliverGroup(ctx, deliveries, "search index", err)
+
+			return false
+		}
+	}
+	if err := projection.finalize(ctx); err != nil {
+		c.redeliverGroup(ctx, deliveries, "content cluster finalization", err)
 
 		return false
 	}

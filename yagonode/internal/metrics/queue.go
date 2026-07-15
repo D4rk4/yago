@@ -2,13 +2,14 @@ package metrics
 
 import (
 	"context"
+	"math"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 type QueueDepthSource interface {
-	CrawlQueueDepth(context.Context) int
-	IndexQueueDepth(context.Context) int
+	CrawlQueueDepth(context.Context) (int, bool)
+	IndexQueueDepth(context.Context) (int, bool)
 }
 
 type QueueDepthMetrics struct {
@@ -25,14 +26,28 @@ func NewQueueDepthMetrics(
 			Name: "queue_crawl_depth",
 			Help: "URLs queued for crawling that are not yet fetched.",
 		},
-		func() float64 { return float64(source.CrawlQueueDepth(context.Background())) },
+		func() float64 {
+			depth, known := source.CrawlQueueDepth(context.Background())
+			if !known {
+				return math.NaN()
+			}
+
+			return float64(max(0, depth))
+		},
 	)
 	index := prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
 			Name: "queue_index_depth",
 			Help: "Fetched documents queued for indexing that are not yet indexed.",
 		},
-		func() float64 { return float64(source.IndexQueueDepth(context.Background())) },
+		func() float64 {
+			depth, known := source.IndexQueueDepth(context.Background())
+			if !known {
+				return math.NaN()
+			}
+
+			return float64(max(0, depth))
+		},
 	)
 	registry.MustRegister(crawl, index)
 

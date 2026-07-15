@@ -263,13 +263,15 @@ func progressDeliveryBefore(left, right progressDelivery) bool {
 
 func (q *progressDeliveryQueue) deliver(ctx context.Context, delivery progressDelivery) {
 	callCtx, cancel := context.WithTimeout(ctx, q.policy.rpcTimeout)
+	pagesPerMinute := delivery.report.PagesPerMinute
 	_, err := q.client.ReportProgress(callCtx, &crawlrpc.CrawlProgressReport{
-		WorkerId:      q.workerID,
-		RunId:         delivery.report.Provenance,
-		ProfileHandle: delivery.report.ProfileHandle,
-		ProfileName:   delivery.report.ProfileName,
-		State:         protoRunState(delivery.report.State),
-		Tally:         protoRunTally(delivery.report.Tally),
+		WorkerId:       q.workerID,
+		RunId:          delivery.report.Provenance,
+		ProfileHandle:  delivery.report.ProfileHandle,
+		ProfileName:    delivery.report.ProfileName,
+		State:          protoRunState(delivery.report.State),
+		Tally:          protoRunTally(delivery.report.Tally),
+		PagesPerMinute: &pagesPerMinute,
 	})
 	cancel()
 	q.settle(delivery, err)

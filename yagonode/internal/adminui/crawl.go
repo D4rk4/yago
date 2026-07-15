@@ -59,7 +59,7 @@ type FormatSettings struct {
 // CrawlFormatsSource reads and saves the shared format toggles. A nil source
 // hides the formats block.
 type CrawlFormatsSource interface {
-	CurrentFormats(ctx context.Context) FormatSettings
+	CurrentFormats(ctx context.Context) (FormatSettings, error)
 	SaveFormats(ctx context.Context, settings FormatSettings) error
 }
 
@@ -88,7 +88,7 @@ type CrawlScheduleRequest struct {
 // CrawlScheduleSource manages recurring crawls. A nil provider hides the
 // schedules block.
 type CrawlScheduleSource interface {
-	Schedules(ctx context.Context) []CrawlScheduleView
+	Schedules(ctx context.Context) ([]CrawlScheduleView, error)
 	CreateSchedule(ctx context.Context, req CrawlScheduleRequest) error
 	DeleteSchedule(ctx context.Context, id string) error
 	SetScheduleEnabled(ctx context.Context, id string, enabled bool) error

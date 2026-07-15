@@ -100,6 +100,9 @@ func parseSeedField(seed *Seed, key, value string) error {
 	if ok, err := parseCoreSeedField(seed, key, value); ok {
 		return seedFieldError(key, err)
 	}
+	if ok, err := parseSeedStatisticsField(seed, key, value); ok {
+		return seedFieldError(key, err)
+	}
 	if seed.customProperties == nil {
 		seed.customProperties = map[string]string{}
 	}

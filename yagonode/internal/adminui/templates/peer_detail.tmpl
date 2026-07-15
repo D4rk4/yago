@@ -1,7 +1,10 @@
 {{define "content"}}
 <nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / <a href="/admin/network">Network</a> / Peer</nav>
-<h1 class="cds-h1">{{if .Peer.Name}}{{.Peer.Name}}{{else}}Peer{{end}}{{if .Peer.Blocked}} <span class="cds-tag cds-tag--error">blocked</span>{{end}}</h1>
+<h1 class="cds-h1">{{if .Peer.Name}}{{.Peer.Name}}{{else}}Peer{{end}}{{if and .Peer.BlockStatusKnown .Peer.Blocked}} <span class="cds-tag cds-tag--error">blocked</span>{{end}}</h1>
 <p class="cds-muted">Read-only view of the peer's published profile as advertised in its seed DNA.</p>
+{{if not .Peer.BlockStatusKnown}}
+<div class="cds-inline-notification cds-inline-notification--error" role="alert">Block status is unavailable.</div>
+{{end}}
 
 {{if .BlockEnabled}}
 <div class="cds-actions">
@@ -35,8 +38,8 @@
       <tr><th scope="row">Version</th><td>{{if .Peer.Version}}{{.Peer.Version}}{{else}}—{{end}}</td></tr>
       <tr><th scope="row">Flags</th><td>{{range .Peer.Flags}}<span class="cds-tag cds-tag--info">{{.}}</span> {{else}}—{{end}}</td></tr>
       <tr><th scope="row">Last seen</th><td>{{if .Peer.LastSeen}}{{.Peer.LastSeen}}{{else}}—{{end}}</td></tr>
-      <tr><th scope="row">Age (days)</th><td>{{.Peer.AgeDays}}</td></tr>
-      <tr><th scope="row">Uptime (minutes)</th><td>{{.Peer.UptimeMinutes}}</td></tr>
+      <tr><th scope="row">Age (days)</th><td>{{if .Peer.AgeKnown}}{{.Peer.AgeDays}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Uptime (minutes)</th><td>{{if .Peer.UptimeKnown}}{{.Peer.UptimeMinutes}}{{else}}—{{end}}</td></tr>
     </tbody>
   </table>
 </div>
@@ -45,15 +48,15 @@
 <div class="cds-tile-grid">
   <section class="cds-tile">
     <div class="cds-metric__label">RWI words</div>
-    <div class="cds-metric__value">{{.Peer.RWIWords}}</div>
+    <div class="cds-metric__value">{{if .Peer.RWIWordsKnown}}{{.Peer.RWIWords}}{{else}}—{{end}}</div>
   </section>
   <section class="cds-tile">
     <div class="cds-metric__label">URLs</div>
-    <div class="cds-metric__value">{{.Peer.URLs}}</div>
+    <div class="cds-metric__value">{{if .Peer.URLsKnown}}{{.Peer.URLs}}{{else}}—{{end}}</div>
   </section>
   <section class="cds-tile">
     <div class="cds-metric__label">Known seeds</div>
-    <div class="cds-metric__value">{{.Peer.KnownSeeds}}</div>
+    <div class="cds-metric__value">{{if .Peer.KnownSeedsKnown}}{{.Peer.KnownSeeds}}{{else}}—{{end}}</div>
   </section>
 </div>
 
@@ -62,8 +65,8 @@
   <table class="cds-table">
     <thead><tr><th scope="col">Direction</th><th scope="col">Words</th><th scope="col">URLs</th></tr></thead>
     <tbody>
-      <tr><th scope="row">Sent</th><td class="cds-mono">{{.Peer.SentWords}}</td><td class="cds-mono">{{.Peer.SentURLs}}</td></tr>
-      <tr><th scope="row">Received</th><td class="cds-mono">{{.Peer.ReceivedWords}}</td><td class="cds-mono">{{.Peer.ReceivedURLs}}</td></tr>
+      <tr><th scope="row">Sent</th><td class="cds-mono">{{if .Peer.SentWordsKnown}}{{.Peer.SentWords}}{{else}}—{{end}}</td><td class="cds-mono">{{if .Peer.SentURLsKnown}}{{.Peer.SentURLs}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Received</th><td class="cds-mono">{{if .Peer.ReceivedWordsKnown}}{{.Peer.ReceivedWords}}{{else}}—{{end}}</td><td class="cds-mono">{{if .Peer.ReceivedURLsKnown}}{{.Peer.ReceivedURLs}}{{else}}—{{end}}</td></tr>
     </tbody>
   </table>
 </div>

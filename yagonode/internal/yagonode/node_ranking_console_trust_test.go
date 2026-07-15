@@ -35,8 +35,8 @@ func TestRankingConsoleHostTrustOperations(t *testing.T) {
 		fakeRanker{},
 		fakeCurated{},
 	).(adminui.HostTrustSource)
-	if got := base.HostTrust(t.Context()); got.Domains == nil || len(got.Domains) != 0 {
-		t.Fatalf("missing catalog view = %#v", got)
+	if got, available := base.HostTrust(t.Context()); available || got.Domains != nil {
+		t.Fatalf("missing catalog view = %#v/%v", got, available)
 	}
 	if err := base.ApplyHostTrust(t.Context(), adminui.HostTrustView{}); err == nil {
 		t.Fatal("missing catalog accepted a policy")
@@ -51,7 +51,10 @@ func TestRankingConsoleHostTrustOperations(t *testing.T) {
 		fakeCurated{},
 		rankingConsoleLearning{trust: catalog},
 	).(adminui.HostTrustSource)
-	view := source.HostTrust(t.Context())
+	view, available := source.HostTrust(t.Context())
+	if !available {
+		t.Fatal("host trust policy is unavailable")
+	}
 	if !reflect.DeepEqual(view, adminui.HostTrustView{
 		Blend: 0.35, Domains: []string{"a.example"},
 	}) {

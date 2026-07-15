@@ -202,8 +202,17 @@ func TestFallbackSkippedWhenQueryBlank(t *testing.T) {
 
 func TestFallbackDegradesOnProviderError(t *testing.T) {
 	primary := &stubSearcher{}
-	provider := &stubProvider{err: errors.New("boom")}
-	searcher := NewFallbackSearcher(primary, provider, enabled)
+	provider := &stubProvider{
+		results: []Result{{Title: "Unrelated", URL: "https://web.example/other"}},
+		err:     errors.New("boom"),
+	}
+	seeder := &stubSeeder{}
+	searcher := NewFallbackSearcher(primary, provider, enabled, WithSeeder(seeder))
+	searcher.spawnSeedWork = func(work func()) bool {
+		work()
+
+		return true
+	}
 
 	resp, err := searcher.Search(context.Background(), searchcore.Request{Query: "gap", Limit: 10})
 	if err != nil {
@@ -214,6 +223,37 @@ func TestFallbackDegradesOnProviderError(t *testing.T) {
 	}
 	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0] != webProviderFailure() {
 		t.Errorf("partial failures = %#v", resp.PartialFailures)
+	}
+	if seeder.calls != 0 {
+		t.Fatalf("seeder = %#v", seeder)
+	}
+}
+
+func TestFallbackKeepsAndSeedsVerifiedPartialProviderRows(t *testing.T) {
+	seeder := &stubSeeder{}
+	searcher := NewFallbackSearcher(
+		&stubSearcher{},
+		&stubProvider{
+			results: []Result{{Title: "Web gap", URL: "https://web.example/gap"}},
+			err:     errors.New("boom"),
+		},
+		enabled,
+		WithSeeder(seeder),
+	)
+	searcher.spawnSeedWork = func(work func()) bool {
+		work()
+
+		return true
+	}
+	response, err := searcher.Search(
+		t.Context(),
+		searchcore.Request{Query: "gap", Limit: 10},
+	)
+	if err != nil || len(response.Results) != 1 || response.TotalResults != 1 ||
+		response.Results[0].Source != searchcore.SourceWeb ||
+		len(response.PartialFailures) != 1 || seeder.calls != 1 ||
+		len(seeder.urls) != 1 || seeder.urls[0] != "https://web.example/gap" {
+		t.Fatalf("response = %#v, seeder = %#v, error = %v", response, seeder, err)
 	}
 }
 

@@ -24,6 +24,33 @@ func postForm(
 	form url.Values,
 	cookies ...*http.Cookie,
 ) *httptest.ResponseRecorder {
+	preparedForm := form
+	preparedCookies := cookies
+	if path == PathSetupPage {
+		setup := doRequest(handler, http.MethodGet, PathSetupPage, "")
+		if setup.Code == http.StatusOK {
+			if token := setupTokenFromBody(setup.Body.String()); token != "" {
+				preparedForm = make(url.Values, len(form)+1)
+				for key, values := range form {
+					preparedForm[key] = append([]string(nil), values...)
+				}
+				preparedForm.Set(setupFormTokenField, token)
+			}
+			if cookie := setupCookieFromResponse(setup); cookie != nil {
+				preparedCookies = append(append([]*http.Cookie{}, cookies...), cookie)
+			}
+		}
+	}
+
+	return postFormRaw(handler, path, preparedForm, preparedCookies...)
+}
+
+func postFormRaw(
+	handler http.Handler,
+	path string,
+	form url.Values,
+	cookies ...*http.Cookie,
+) *httptest.ResponseRecorder {
 	req := httptest.NewRequestWithContext(
 		context.Background(),
 		http.MethodPost,
@@ -38,6 +65,31 @@ func postForm(
 	handler.ServeHTTP(rec, req)
 
 	return rec
+}
+
+func setupTokenFromBody(body string) string {
+	const prefix = `name="setup_token" value="`
+	start := strings.Index(body, prefix)
+	if start < 0 {
+		return ""
+	}
+	value := body[start+len(prefix):]
+	end := strings.IndexByte(value, '"')
+	if end < 0 {
+		return ""
+	}
+
+	return value[:end]
+}
+
+func setupCookieFromResponse(rec *httptest.ResponseRecorder) *http.Cookie {
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == setupFormCookieName {
+			return cookie
+		}
+	}
+
+	return nil
 }
 
 func TestLoginPageRendersForm(t *testing.T) {

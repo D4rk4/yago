@@ -29,7 +29,7 @@ type RankingWeights struct {
 }
 
 func DefaultRankingWeights() RankingWeights {
-	return RankingWeights{Title: 4, URL: 1}
+	return RankingWeights{Title: 6, URL: 2}
 }
 
 const (

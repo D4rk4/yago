@@ -71,15 +71,15 @@ type ResultImage struct {
 // counts feed the transparency line so a searcher sees how much of the page
 // came from this node, from peers, and from the web fallback.
 type SearchResults struct {
-	Query        string
-	TotalResults int
-	LocalCount   int
-	PeerCount    int
-	WebCount     int
-	// PeersFailed counts peers that errored or timed out during the fan-out,
-	// so «0 from peers» is distinguishable from «peers had nothing».
-	PeersFailed int
-	Results     []SearchResult
+	Query                 string
+	TotalResults          int
+	LocalCount            int
+	PeerCount             int
+	WebCount              int
+	PeersFailed           int
+	FederationUnavailable bool
+	Incomplete            bool
+	Results               []SearchResult
 	// Recovered marks results found by the zero-result fuzzy retry, so the page
 	// says these are close matches rather than exact ones.
 	Recovered bool
@@ -94,9 +94,9 @@ type SearchResults struct {
 	Hint string
 }
 
-// FacetGroup is one sidebar filter dimension over the local matches.
 type FacetGroup struct {
 	Title string
+	Scope string
 	Items []FacetItem
 }
 
@@ -157,15 +157,16 @@ type pageLink struct {
 const pagerWindow = 10
 
 type portalData struct {
-	Brand      string
-	Query      string
-	Dom        string
-	Verticals  []verticalTab
-	Submitted  bool
-	Error      string
-	Results    SearchResults
-	Pagination pagination
-	NewTab     bool
+	Brand           string
+	OpenSearchTitle string
+	Query           string
+	Dom             string
+	Verticals       []verticalTab
+	Submitted       bool
+	Error           string
+	Results         SearchResults
+	Pagination      pagination
+	NewTab          bool
 	// RSSURL and JSONURL expose the current query in the machine-readable
 	// output formats this node already serves; empty before a query is run.
 	RSSURL  string
@@ -257,7 +258,14 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	dom := portalDom(r.URL.Query().Get("dom"))
 	page := parsePortalPage(r.URL.Query().Get("p"))
-	data := portalData{Brand: portalBrand(), Query: query, Dom: dom, NewTab: p.newTab}
+	displayBrand := portalBrand()
+	data := portalData{
+		Brand:           displayBrand,
+		OpenSearchTitle: openSearchTitle(displayBrand),
+		Query:           query,
+		Dom:             dom,
+		NewTab:          p.newTab,
+	}
 
 	if query != "" {
 		data.RSSURL = formatURL("/yacysearch.rss", query)
@@ -270,6 +278,13 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			slog.WarnContext(r.Context(), "public portal search failed", slog.Any("error", err))
 			data.Error = "Search is temporarily unavailable."
 		} else {
+			window := portalSearchWindow{
+				Query: query, Dom: dom, Page: page, Offset: offset,
+				Shown: len(results.Results), Total: results.TotalResults,
+			}
+			if redirectPortalSearchWindow(w, r, window) {
+				return
+			}
 			data.Submitted = true
 			data.Results = results
 			if shown := len(results.Results); shown > 0 {
@@ -277,13 +292,7 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				data.ShownTo = offset + shown
 			}
 			data.Elapsed = elapsedSeconds(portalClock().Sub(started))
-			data.Pagination = newPagination(
-				query,
-				page,
-				offset,
-				len(results.Results),
-				results.TotalResults,
-			)
+			data.Pagination = newPagination(window)
 		}
 	}
 
@@ -374,26 +383,26 @@ func parsePortalPage(raw string) int {
 // next link appears only while there are more results than the current window
 // covers and the page cap has not been reached; a previous link appears past the
 // first page.
-func newPagination(query string, page, offset, shown, total int) pagination {
+func newPagination(window portalSearchWindow) pagination {
 	nav := pagination{
-		Page:    page,
-		HasPrev: page > 1,
-		HasNext: offset+shown < total && page < portalMaxPage,
+		Page:    window.Page,
+		HasPrev: window.Page > 1,
+		HasNext: window.Offset+window.Shown < window.Total && window.Page < portalMaxPage,
 	}
 	if nav.HasPrev {
-		nav.PrevURL = portalPageURL(query, page-1)
+		nav.PrevURL = portalPageURL(window.Query, window.Dom, window.Page-1)
 	}
 	if nav.HasNext {
-		nav.NextURL = portalPageURL(query, page+1)
+		nav.NextURL = portalPageURL(window.Query, window.Dom, window.Page+1)
 	}
-	nav.Pages = numberedPages(query, page, total)
+	nav.Pages = numberedPages(window.Query, window.Dom, window.Page, window.Total)
 
 	return nav
 }
 
 // numberedPages builds up to pagerWindow page links centered on the current
 // page, bounded by the honest total and the portal's page cap.
-func numberedPages(query string, page, total int) []pageLink {
+func numberedPages(query, dom string, page, total int) []pageLink {
 	last := (total + portalPageSize - 1) / portalPageSize
 	if last > portalMaxPage {
 		last = portalMaxPage
@@ -412,7 +421,7 @@ func numberedPages(query string, page, total int) []pageLink {
 	for number := start; number <= last && len(pages) < pagerWindow; number++ {
 		pages = append(pages, pageLink{
 			Number:  number,
-			URL:     portalPageURL(query, number),
+			URL:     portalPageURL(query, dom, number),
 			Current: number == page,
 		})
 	}
@@ -420,10 +429,13 @@ func numberedPages(query string, page, total int) []pageLink {
 	return pages
 }
 
-func portalPageURL(query string, page int) string {
+func portalPageURL(query, dom string, page int) string {
 	values := url.Values{}
 	values.Set("q", query)
 	values.Set("p", strconv.Itoa(page))
+	if dom != "" {
+		values.Set("dom", dom)
+	}
 
 	return "/?" + values.Encode()
 }

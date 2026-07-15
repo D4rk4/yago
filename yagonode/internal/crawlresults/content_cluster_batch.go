@@ -28,7 +28,15 @@ func (c *IngestConsumer) replaceDocumentClusterBatch(
 	if err != nil {
 		return documentClusterReplacement{}, fmt.Errorf("replace content clusters: %w", err)
 	}
+	transitions, durable := clusters.(contentClusterTransitionFinalizer)
+	finalizations := make([]contentcluster.EvidenceFinalization, 0, len(replacements))
+	for _, replacement := range replacements {
+		finalizations = append(finalizations, replacement.Finalization)
+	}
 	if len(replacements) != len(docs) {
+		if durable {
+			transitions.ReleaseEvidenceTransitions(finalizations)
+		}
 		return documentClusterReplacement{}, fmt.Errorf(
 			"content cluster replacements = %d, want %d",
 			len(replacements),
@@ -37,9 +45,17 @@ func (c *IngestConsumer) replaceDocumentClusterBatch(
 	}
 
 	replacement := newDocumentClusterReplacement(docs)
+	if durable {
+		replacement.transitions = transitions
+		replacement.finalizations = finalizations
+	}
 	for position, doc := range docs {
 		transition := replacements[0]
 		replacements = replacements[1:]
+		replacement.replay = replacement.replay || transition.Replay
+		for _, clusterID := range transition.AffectedClusterIDs {
+			replacement.affectedClusterIDs[clusterID] = struct{}{}
+		}
 		if transition.PreviousFound {
 			replacement.affectedClusterIDs[transition.Previous.ClusterID] = struct{}{}
 		}

@@ -10,6 +10,11 @@ import (
 
 const storedQuotedPhraseMaximumBoost = 0.15
 
+type storedPhraseTerm struct {
+	term   string
+	offset uint64
+}
+
 func storedEvidenceAnalyzer(name string) analysis.Analyzer {
 	indexMapping := loadStemmingMapping()
 	if indexMapping == nil {
@@ -47,32 +52,45 @@ func storedQuotedPhrasePreference(
 	return float64(matched) / float64(measured)
 }
 
-func analyzedStoredPhraseTerms(phrase string, analyzer analysis.Analyzer) []string {
+func analyzedStoredPhraseTerms(phrase string, analyzer analysis.Analyzer) []storedPhraseTerm {
 	if analyzer != nil {
 		tokens := analyzer.Analyze([]byte(phrase))
-		terms := make([]string, 0, len(tokens))
+		terms := make([]storedPhraseTerm, 0, len(tokens))
+		firstPosition := 0
 		for _, token := range tokens {
-			terms = append(terms, string(token.Term))
+			if firstPosition == 0 {
+				firstPosition = token.Position
+			}
+			terms = append(terms, storedPhraseTerm{
+				term:   string(token.Term),
+				offset: storedLocationCoordinate(token.Position - firstPosition),
+			})
 		}
 
 		return terms
 	}
-	terms := make([]string, 0)
+	terms := make([]storedPhraseTerm, 0)
 	for start, end := range rangeStoredTokens(phrase) {
-		terms = append(terms, strings.ToLower(phrase[start:end]))
+		terms = append(terms, storedPhraseTerm{
+			term:   strings.ToLower(phrase[start:end]),
+			offset: uint64(len(terms)),
+		})
 	}
 
 	return terms
 }
 
-func storedPhrasePresent(locations search.FieldTermLocationMap, terms []string) bool {
+func storedPhrasePresent(
+	locations search.FieldTermLocationMap,
+	terms []storedPhraseTerm,
+) bool {
 	for _, field := range locations {
-		for _, first := range field[terms[0]] {
+		for _, first := range field[terms[0].term] {
 			present := true
-			for offset, term := range terms[1:] {
+			for _, term := range terms[1:] {
 				if !storedPhraseLocationPresent(
-					field[term],
-					first.Pos+uint64(offset+1),
+					field[term.term],
+					first.Pos+term.offset,
 					first.ArrayPositions,
 				) {
 					present = false

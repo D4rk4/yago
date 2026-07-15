@@ -19,7 +19,10 @@ func TestStoreDefaultsAndRoundTrip(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	defaults := store.Current(ctx)
+	defaults, err := store.Current(ctx)
+	if err != nil {
+		t.Fatalf("current defaults: %v", err)
+	}
 	if defaults != yagocrawlcontract.DefaultFormatToggles() {
 		t.Fatalf("defaults = %+v", defaults)
 	}
@@ -31,7 +34,11 @@ func TestStoreDefaultsAndRoundTrip(t *testing.T) {
 	if err := store.Set(ctx, custom); err != nil {
 		t.Fatalf("set: %v", err)
 	}
-	if got := store.Current(ctx); got != custom {
+	got, err := store.Current(ctx)
+	if err != nil {
+		t.Fatalf("current custom: %v", err)
+	}
+	if got != custom {
 		t.Fatalf("current = %+v, want %+v", got, custom)
 	}
 }

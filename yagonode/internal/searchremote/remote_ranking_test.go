@@ -11,6 +11,12 @@ func almostEqual(a float64, b float64) bool {
 	return math.Abs(a-b) < 1e-12
 }
 
+func TestDefaultRankingWeightsMatchLocalProfileFields(t *testing.T) {
+	if got := DefaultRankingWeights(); got != (RankingWeights{Title: 6, URL: 2}) {
+		t.Fatalf("default remote weights = %#v", got)
+	}
+}
+
 func TestRemoteScorerAppliesLocalProfileToTitleAndURL(t *testing.T) {
 	scorer := newRemoteScorer([]string{"Go", "tutorial"}, RankingWeights{Title: 4, URL: 1})
 	for _, item := range []struct {

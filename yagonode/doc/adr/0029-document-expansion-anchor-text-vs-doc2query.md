@@ -1,4 +1,4 @@
-# 0029. Deliver document expansion via inbound anchor text; defer model-based doc2query
+# 0029. Deliver document expansion via inbound anchor text; reject model-based doc2query
 
 Date: 2026-07-06
 
@@ -51,15 +51,12 @@ Two facts constrain the choice:
    by expansion terms they do not literally contain, with the wire format
    unchanged.
 
-2. **Defer model-based doc2query generation** as an optional, offline, default-off
-   enhancement, contingent on two gates:
-   - a **dependency ADR** approving a specific small seq2seq generator and a
-     cgo-free (or explicitly-accepted) inference path, since it introduces a
-     mandatory-at-index-time ML model; and
-   - a **measured win on the SEARCH-16 eval harness**: the generated expansion
-     must show an NDCG@10 improvement over the current anchor-text + BM25 +
-     per-language-stemming baseline before it ships, so we never pay a model's
-     cost for a gain the lexical stack already captures.
+2. **Reject model-based doc2query generation for the current architecture.** It
+   requires transformer inference, model storage, dependency review, expanded
+   postings, and a representative multilingual evaluation corpus. The accepted
+   anchor, morphology, RM3, and positional paths already cover the demonstrated
+   vocabulary failures inside the node's bounded pure-Go budget. There is no
+   measured residual gain that justifies another model and poisoning surface.
 
 ## Consequences
 
@@ -67,18 +64,16 @@ Two facts constrain the choice:
   production and needs no protocol change; SEARCH-15's core value is delivered.
 - No ML model, transformer runtime, or cgo dependency is added now; the node stays
   pure-Go and model-free by default.
-- Documents with no inbound links get no expansion. That is the residual gap
-  model-based doc2query would fill (especially for freshly crawled or sparsely
-  linked pages); it is deferred, not dismissed, behind the two gates above.
-- SEARCH-16's harness becomes the merge gate for any future generative expansion,
-  keeping the "no regression vs the lexical baseline" contract.
+- Documents with no inbound links still rely on their own text, morphology,
+  bounded RM3, and other stored evidence. Generative expansion is not a deferred
+  requirement for those pages.
 
 ## Alternatives considered
 
 - **Adopt docTTTTTquery now.** Rejected: it makes an ML model and a transformer
   runtime mandatory at index time, breaking the cgo-free/no-mandatory-model
-  posture, for a gain the anchor-text + stemming + (future) dense stack largely
-  overlaps. It must clear a dependency ADR and the eval gate first.
+  posture, for a gain the anchor-text, morphology, RM3, and positional stack
+  already overlap without a demonstrated evaluation win.
 - **A purely lexical "pseudo-doc2query"** (mine expansion terms from the
   document's own top-TF/IDF terms). Rejected: re-injecting a document's own
   frequent terms is re-weighting, not expansion — it adds no vocabulary the

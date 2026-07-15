@@ -2,6 +2,7 @@
 <nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / YagoRank</nav>
 <h1 class="cds-h1">YagoRank</h1>
 {{template "toasts" .}}
+<p class="cds-muted">This page exposes every operator-safe live scoring coefficient. Candidate and evidence windows, the quoted-phrase cap, analyzer confidence, relaxed quorum, RM3 blend, RRF, remote calibration, MMR and per-site caps, and safety and abuse gates remain fixed policy rather than manual controls.</p>
 {{if .LearnedModel}}
 <section class="cds-settings-form" aria-labelledby="learned-model-heading">
   <h2 class="cds-h2" id="learned-model-heading">Learned model</h2>
@@ -19,10 +20,11 @@
   </div>
   <form class="cds-actions cds-control-row" method="post" action="/admin/yagorank" hx-boost="false">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <button class="cds-btn" type="submit" name="action" value="train-linear"{{if eq .JudgmentCount 0}} disabled{{end}}>Train linear model</button>
-    <button class="cds-btn cds-btn--secondary" type="submit" name="action" value="train-tree"{{if eq .JudgmentCount 0}} disabled{{end}}>Train tree model</button>
+    <button class="cds-btn" type="submit" name="action" value="train-linear"{{if not .ModelTrainingReady}} disabled{{end}} aria-describedby="training-readiness-status">Train linear model</button>
+    <button class="cds-btn cds-btn--secondary" type="submit" name="action" value="train-tree"{{if not .ModelTrainingReady}} disabled{{end}} aria-describedby="training-readiness-status">Train tree model</button>
     <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="rollback-model"{{if not .LearnedModel.RollbackAvailable}} disabled{{end}}>Rollback model</button>
   </form>
+  <p class="cds-muted" id="training-readiness-status" role="status">{{if .TrainingReadinessAvailable}}{{if .ModelTrainingReady}}Ready{{else}}Not ready{{end}}: {{.TrainingJudgmentCount}} usable judgment{{if ne .TrainingJudgmentCount 1}}s{{end}} across {{.TrainingQueryClusterCount}} independent query cluster{{if ne .TrainingQueryClusterCount 1}}s{{end}}; held-out {{.HeldoutQueryClusterCount}}/{{.MinimumHeldoutQueryClusters}} required.{{else}}Training readiness: Unavailable.{{end}} <a href="/api/admin/v1/search/judgments">Manage judgments through the API</a>.</p>
 </section>
 {{end}}
 {{if .TrainOutcome}}
@@ -88,7 +90,9 @@
     <div class="cds-setting-row">
       <span class="cds-setting-row__label"><label for="setting-{{.Key}}">{{.Label}}</label></span>
       <span class="cds-setting-row__control">
-        <input class="cds-input" type="number" step="any" min="0" id="setting-{{.Key}}" name="{{.Key}}" value="{{printf "%g" .Value}}" autocomplete="off" inputmode="decimal">
+        <input class="cds-input" type="number" step="any" min="{{printf "%g" .Minimum}}" max="{{printf "%g" .Maximum}}" id="setting-{{.Key}}" name="{{.Key}}" value="{{printf "%g" .Value}}" autocomplete="off" inputmode="decimal">
+        <span class="cds-muted">Default {{printf "%g" .Default}}; allowed {{printf "%g" .Minimum}}–{{printf "%g" .Maximum}}.</span>
+        {{if .OutOfRange}}<span class="cds-muted">The active legacy value is outside the allowed range and remains active until this profile is saved.</span>{{end}}
       </span>
     </div>
     {{end}}
@@ -96,8 +100,8 @@
   {{end}}
   <div class="cds-actions">
     <button class="cds-btn" type="submit" name="action" value="save">Save weights</button>
-    <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="tune"{{if eq .JudgmentCount 0}} disabled{{end}}>Tune weights</button>
+    <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="tune"{{if or (not .JudgmentsAvailable) (eq .JudgmentCount 0)}} disabled{{end}} aria-describedby="judgment-status">Tune weights</button>
   </div>
-  <p class="cds-muted">{{.JudgmentCount}} judgment{{if ne .JudgmentCount 1}}s{{end}}</p>
+  <p class="cds-muted" id="judgment-status" role="status">{{if .JudgmentsAvailable}}{{.JudgmentCount}} judgment{{if ne .JudgmentCount 1}}s{{end}}{{else}}Judgments: Unavailable{{end}}</p>
 </form>
 {{end}}

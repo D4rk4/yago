@@ -9,7 +9,7 @@ import (
 	"net/http"
 )
 
-//go:embed templates/*.tmpl
+//go:embed templates/*.tmpl assets/auth.css
 var authTemplateFS embed.FS
 
 var authPages = template.Must(template.ParseFS(authTemplateFS, "templates/*.tmpl"))
@@ -29,8 +29,9 @@ const (
 )
 
 type authPageData struct {
-	Error  string
-	Notice string
+	Error      string
+	Notice     string
+	SetupToken string
 	// Wizard arms the node-mode step of the first-run setup page.
 	Wizard   bool
 	Defaults SetupDefaults
@@ -52,11 +53,15 @@ func CSRFTokenFromContext(ctx context.Context) (string, bool) {
 // handlers. Their method+path patterns take precedence over a broader admin
 // console subtree handler on the same mux.
 func MountHTML(mux *http.ServeMux, service *Service) {
-	mux.HandleFunc("GET "+PathLoginPage, service.handleLoginPage)
-	mux.HandleFunc("POST "+PathLoginPage, service.handleLoginForm)
-	mux.HandleFunc("GET "+PathSetupPage, service.handleSetupPage)
-	mux.HandleFunc("POST "+PathSetupPage, service.handleSetupForm)
-	mux.HandleFunc("POST "+PathLogoutForm, service.handleLogoutForm)
+	mux.Handle("GET "+PathLoginPage, withAuthPagePolicy(http.HandlerFunc(service.handleLoginPage)))
+	mux.Handle("POST "+PathLoginPage, withAuthPagePolicy(http.HandlerFunc(service.handleLoginForm)))
+	mux.Handle("GET "+PathSetupPage, withAuthPagePolicy(http.HandlerFunc(service.handleSetupPage)))
+	mux.Handle("POST "+PathSetupPage, withAuthPagePolicy(http.HandlerFunc(service.handleSetupForm)))
+	mux.Handle(
+		"POST "+PathLogoutForm,
+		withAuthPagePolicy(http.HandlerFunc(service.handleLogoutForm)),
+	)
+	mux.HandleFunc("GET "+PathAuthStylesheet, serveAuthStylesheet)
 }
 
 func (s *Service) handleLoginPage(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +142,10 @@ func (s *Service) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.observer.LoginSucceeded()
-	http.SetCookie(w, sessionCookie(created.Token, r.TLS != nil, created.ExpiresAt))
+	http.SetCookie(
+		w,
+		sessionCookie(sessionCookieName, "/", created.Token, r.TLS != nil, created.ExpiresAt),
+	)
 	redirectAuth(w, r, overviewRedirect)
 }
 
@@ -147,43 +155,27 @@ func (s *Service) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	setupToken, err := s.issueSetupFormToken(w, r)
+	if err != nil {
+		http.Error(w, "setup is temporarily unavailable", http.StatusServiceUnavailable)
+
+		return
+	}
 	s.renderAuthPage(
 		w,
 		r,
 		"setup",
 		authPageData{
-			Error:    setupErrorMessage(r.URL.Query().Get("error")),
-			Wizard:   s.wizardApply != nil,
-			Defaults: s.wizardDefaults,
+			Error:      setupErrorMessage(r.URL.Query().Get("error")),
+			SetupToken: setupToken,
+			Wizard:     s.wizardApply != nil,
+			Defaults:   s.wizardDefaults,
 		},
 	)
 }
 
 func (s *Service) handleSetupForm(w http.ResponseWriter, r *http.Request) {
-	release, admitted := acquireAuthRequestAdmission()
-	if !admitted {
-		writeAuthRequestAdmissionUnavailableHTML(w)
-
-		return
-	}
-	boundAuthRequestBody(w, r)
-	ready := func() bool {
-		defer release()
-		present, err := s.creds.exists(r.Context())
-		if err != nil {
-			redirectAuth(w, r, PathSetupPage+"?error=server")
-
-			return false
-		}
-		if present {
-			redirectAuth(w, r, PathLoginPage)
-
-			return false
-		}
-
-		return parseAuthForm(w, r)
-	}()
-	if !ready {
+	if !s.acceptSetupForm(w, r) {
 		return
 	}
 	credentials, err := credentialsFromForm(r, true)
@@ -243,7 +235,7 @@ func (s *Service) handleLogoutForm(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(sessionCookieName); err == nil {
 		_ = s.sessions.delete(r.Context(), cookie.Value)
 	}
-	http.SetCookie(w, clearedSessionCookie(r.TLS != nil))
+	http.SetCookie(w, clearedSessionCookie(sessionCookieName, "/", r.TLS != nil))
 	redirectAuth(w, r, PathLoginPage+"?notice=out")
 }
 
@@ -254,8 +246,6 @@ func (s *Service) renderAuthPage(
 	data authPageData,
 ) {
 	w.Header().Set("Content-Type", authHTMLType)
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Referrer-Policy", "no-referrer")
 
 	if err := authPages.ExecuteTemplate(w, name, data); err != nil {
 		slog.WarnContext(r.Context(), "auth page render failed", slog.Any("error", err))

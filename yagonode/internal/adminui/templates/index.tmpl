@@ -4,18 +4,18 @@
 {{if .Index.Available}}
 <div class="cds-tile-grid">
   <section class="cds-tile">
-    <div class="cds-metric__label">Indexed documents</div>
+    <div class="cds-metric__label">Local indexed documents</div>
     <div class="cds-metric__value">{{.Index.Documents}}</div>
   </section>
 </div>
 <div class="cds-tile">
   <table class="cds-table">
     <tbody>
-      <tr><th scope="row">Backend</th><td>{{if .Index.Backend}}{{.Index.Backend}}{{else}}—{{end}}</td></tr>
-      <tr><th scope="row">Last updated</th><td>{{if .Index.UpdatedAt}}{{.Index.UpdatedAt}}{{else}}—{{end}}</td></tr>
-      <tr><th scope="row">Search index on disk</th><td>{{if .Index.DiskSize}}{{.Index.DiskSize}}{{else}}—{{end}}</td></tr>
-      <tr><th scope="row">Data vault on disk</th><td>{{if .Index.VaultUsed}}{{.Index.VaultUsed}}{{else}}—{{end}}</td></tr>
-      <tr><th scope="row">Vault quota (maximum)</th><td>{{if .Index.VaultQuota}}{{.Index.VaultQuota}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Backend</th><td>{{if .Index.Backend}}{{.Index.Backend}}{{else}}Unavailable{{end}}</td></tr>
+      <tr><th scope="row">Last updated</th><td>{{if .Index.UpdatedAt}}{{.Index.UpdatedAt}}{{else}}Not recorded{{end}}</td></tr>
+      <tr><th scope="row">Search index on disk</th><td>{{if .Index.DiskSize}}{{.Index.DiskSize}}{{else}}Unavailable{{end}}</td></tr>
+      <tr><th scope="row">Data vault on disk</th><td>{{if .Index.VaultUsed}}{{.Index.VaultUsed}}{{else}}Unavailable{{end}}</td></tr>
+      <tr><th scope="row">Vault quota (maximum)</th><td>{{if .Index.VaultQuota}}{{.Index.VaultQuota}}{{else}}Unavailable{{end}}</td></tr>
     </tbody>
   </table>
 </div>
@@ -28,11 +28,21 @@
 </form>
 {{if .TermQueried}}
   {{if .Term.Error}}
-  <div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Term.Error}}</div>
+  <div class="cds-inline-notification cds-inline-notification--error" role="alert">The term lookup is unavailable.</div>
   {{else if .Term.NotFound}}
   <p class="cds-muted">No postings for “{{.Term.Term}}” (word hash <span class="cds-mono">{{.Term.Hash}}</span>).</p>
   {{else}}
-  <p class="cds-muted">{{.Term.Count}} posting(s) for “{{.Term.Term}}” (word hash <span class="cds-mono">{{.Term.Hash}}</span>). Showing up to {{len .Term.Sample}}.</p>
+  <p class="cds-muted">{{.Term.Count}} posting(s) for “{{.Term.Term}}” (word hash <span class="cds-mono">{{.Term.Hash}}</span>).</p>
+  {{if .Term.SampleError}}
+    {{if .Term.Sample}}
+    <div class="cds-inline-notification cds-inline-notification--error" role="alert">Resolved {{len .Term.Sample}} document(s) before sampling failed; this is a partial sample.</div>
+    {{else}}
+    <div class="cds-inline-notification cds-inline-notification--error" role="alert">The document sample is unavailable. The posting count above is still available.</div>
+    {{end}}
+  {{else}}
+  <p class="cds-muted">Resolved {{len .Term.Sample}} document(s) in this bounded sample.</p>
+  {{end}}
+  {{if .Term.Sample}}
   <div class="cds-scroll-x">
     <table class="cds-table">
       <thead><tr><th scope="col">Title</th><th scope="col">URL</th></tr></thead>
@@ -41,6 +51,7 @@
       </tbody>
     </table>
   </div>
+  {{end}}
   {{end}}
 {{end}}
 {{end}}
@@ -77,8 +88,13 @@
   <button class="cds-btn cds-btn--danger" type="submit">Delete all from {{.DocDomain}}</button>
 </form>
 {{end}}
+{{if .Documents.ScanFailed}}
+<div class="cds-inline-notification cds-inline-notification--error" role="alert">Document browser is unavailable.{{if .Documents.Documents}} Showing {{len .Documents.Documents}} document(s) collected before the scan failed; this is a partial list.{{end}}</div>
+{{end}}
 {{if .Documents.Documents}}
+{{if not .Documents.ScanFailed}}
 <p class="cds-muted">{{if .Documents.Sampled}}Showing the first {{len .Documents.Documents}} document(s); the scan stops early so this page stays fast.{{else}}{{.Documents.Matched}} matching document(s){{if .Documents.Truncated}}, showing the first {{.Documents.Limit}}{{end}}.{{end}}</p>
+{{end}}
 <div class="cds-scroll-x">
   <table class="cds-table">
     <thead><tr><th scope="col">URL</th><th scope="col">Title</th><th scope="col">Type</th><th scope="col">Lang</th><th scope="col">Indexed</th>{{if $del}}<th scope="col">Action</th>{{end}}</tr></thead>
@@ -107,7 +123,9 @@
   </table>
 </div>
 {{else}}
+{{if not .Documents.ScanFailed}}
 <div class="cds-empty" role="status">No documents match.</div>
+{{end}}
 {{end}}
 {{end}}
 {{if .BlacklistEnabled}}
@@ -146,7 +164,9 @@
   </div>
   <button class="cds-btn" type="submit">Import</button>
 </form>
-{{if .Blacklist}}
+{{if .BlacklistError}}
+<div class="cds-inline-notification cds-inline-notification--error" role="alert">Blacklist entries are unavailable.</div>
+{{else if .Blacklist}}
 <div class="cds-scroll-x">
   <table class="cds-table">
     <thead><tr><th scope="col">Kind</th><th scope="col">Value</th><th scope="col">Added</th><th scope="col">Action</th></tr></thead>

@@ -3,6 +3,8 @@ package documentstore
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -10,17 +12,45 @@ import (
 const maxExtractedTextBytes = 1 << 20
 
 type documentVault struct {
-	vault           *vault.Vault
-	collection      *vault.Collection[Document]
-	inboundAnchors  *vault.Collection[[]AnchorText]
-	outboundTargets *vault.Collection[[]string]
-	scanAdmission   chan struct{}
+	vault                *vault.Vault
+	legacyDocuments      *vault.Keyspace[Document]
+	orderedDocuments     *vault.Keyspace[Document]
+	documentLocations    *vault.Keyspace[uint64]
+	inboundAnchors       *vault.Keyspace[[]AnchorText]
+	outboundTargets      *vault.Keyspace[[]string]
+	outboundPublications *vault.Keyspace[outboundAnchorPublication]
+	scanAdmission        chan struct{}
+	writeBoundary        *storedDocumentWriteBoundary
+	admissionKeys        *storedDocumentAdmissionKeys
+	urlBoundaries        *storedDocumentURLBoundaries
+	outboundBoundaries   *storedDocumentURLBoundaries
+}
+
+type stagedStoredDocument struct {
+	document Document
+	location storedDocumentLocation
 }
 
 func (d documentVault) Receive(ctx context.Context, docs []Document) (Receipt, error) {
 	if len(docs) == 0 {
 		return Receipt{}, nil
 	}
+	prepared := make([]Document, len(docs))
+	urls := make([]string, 0, len(docs))
+	for index, document := range docs {
+		prepared[index] = normalizedDocument(document)
+		urls = append(urls, prepared[index].NormalizedURL)
+	}
+	releaseWrite, err := d.enterStoredDocumentWrite(ctx)
+	if err != nil {
+		return Receipt{}, err
+	}
+	defer releaseWrite()
+	releaseURLs, err := d.urlBoundaries.lockWrites(ctx, urls)
+	if err != nil {
+		return Receipt{}, err
+	}
+	defer releaseURLs()
 
 	atCapacity, err := d.vault.AtCapacity(ctx)
 	if err != nil {
@@ -29,8 +59,11 @@ func (d documentVault) Receive(ctx context.Context, docs []Document) (Receipt, e
 	if atCapacity {
 		return Receipt{Busy: true}, nil
 	}
-
-	receipt, err := d.store(ctx, docs)
+	plan, err := d.planStoredDocumentWrites(ctx, prepared)
+	if err != nil {
+		return Receipt{}, err
+	}
+	receipt, err := d.store(ctx, prepared, plan)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -38,20 +71,39 @@ func (d documentVault) Receive(ctx context.Context, docs []Document) (Receipt, e
 	return receipt, nil
 }
 
-func (d documentVault) store(ctx context.Context, docs []Document) (Receipt, error) {
+func (d documentVault) store(
+	ctx context.Context,
+	docs []Document,
+	plan storedDocumentWritePlan,
+) (Receipt, error) {
 	var receipt Receipt
+	pendingLocations := make(map[string]storedDocumentLocationPublication)
 	err := d.vault.Update(ctx, func(tx *vault.Txn) error {
-		receipt = Receipt{}
-		for _, doc := range docs {
-			if err := d.storeOne(ctx, tx, doc, &receipt); err != nil {
+		attempt := newStoredDocumentWriteAttempt(plan)
+		for _, document := range docs {
+			if err := d.storeOne(
+				ctx,
+				tx,
+				document,
+				&attempt,
+			); err != nil {
 				return err
 			}
 		}
+		receipt = attempt.receipt
+		pendingLocations = attempt.pendingLocations
 
 		return nil
 	})
 	if err != nil {
-		return Receipt{}, fmt.Errorf("store documents: %w", err)
+		return Receipt{}, fmt.Errorf("store document rows: %w", err)
+	}
+	if err := d.publishDocumentLocations(ctx, pendingLocations); err != nil {
+		return Receipt{}, d.recoverFailedDocumentPublication(
+			ctx,
+			pendingLocations,
+			err,
+		)
 	}
 
 	return receipt, nil
@@ -60,32 +112,110 @@ func (d documentVault) store(ctx context.Context, docs []Document) (Receipt, err
 func (d documentVault) storeOne(
 	ctx context.Context,
 	tx *vault.Txn,
-	doc Document,
-	receipt *Receipt,
+	document Document,
+	attempt *storedDocumentWriteAttempt,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
-
-	doc, accepted, found, err := d.canonicalDocument(tx, doc)
+	document, location, accepted, found, err := d.canonicalDocument(
+		tx,
+		document,
+		attempt.staged,
+	)
 	if err != nil {
 		return err
 	}
 	if !accepted {
-		receipt.Rejected++
+		attempt.receipt.Rejected++
+
 		return nil
 	}
-
-	key := vault.Key(doc.NormalizedURL)
-	if err := d.collection.Put(tx, key, doc); err != nil {
-		return fmt.Errorf("store document: %w", err)
+	if !found {
+		admission, planned := attempt.plan.admissions[document.NormalizedURL]
+		if !planned {
+			return fmt.Errorf("document admission was not reserved")
+		}
+		location = storedDocumentLocation{admission: admission}
+		attempt.pendingLocations[document.NormalizedURL] = storedDocumentLocationPublication{
+			admission:         admission,
+			previousAdmission: attempt.plan.previousAdmissions[document.NormalizedURL],
+		}
+	}
+	if err := d.putStoredDocument(tx, location, document); err != nil {
+		return err
+	}
+	attempt.staged[document.NormalizedURL] = stagedStoredDocument{
+		document: document,
+		location: location,
 	}
 	if found {
-		receipt.Updated++
+		attempt.receipt.Updated++
 	} else {
-		receipt.Stored++
+		attempt.receipt.Stored++
 	}
-	receipt.CommittedDocuments = append(receipt.CommittedDocuments, doc)
+	attempt.receipt.CommittedDocuments = append(
+		attempt.receipt.CommittedDocuments,
+		document,
+	)
+
+	return nil
+}
+
+func (d documentVault) publishDocumentLocations(
+	ctx context.Context,
+	locations map[string]storedDocumentLocationPublication,
+) error {
+	if len(locations) == 0 {
+		return nil
+	}
+	urls := slices.Sorted(maps.Keys(locations))
+	err := d.vault.Update(ctx, func(tx *vault.Txn) error {
+		for _, normalizedURL := range urls {
+			if err := d.publishDocumentLocation(
+				tx,
+				normalizedURL,
+				locations[normalizedURL],
+			); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("publish document locations: %w", err)
+	}
+
+	return nil
+}
+
+func (d documentVault) publishDocumentLocation(
+	tx *vault.Txn,
+	normalizedURL string,
+	publication storedDocumentLocationPublication,
+) error {
+	current, located, err := d.documentLocations.Get(tx, vault.Key(normalizedURL))
+	if err != nil {
+		return fmt.Errorf("read published document location: %w", err)
+	}
+	if located && current == publication.admission {
+		return nil
+	}
+	if publication.previousAdmission == 0 && located {
+		return fmt.Errorf("document location changed before publication")
+	}
+	if publication.previousAdmission > 0 &&
+		(!located || current != publication.previousAdmission) {
+		return fmt.Errorf("document location changed before publication")
+	}
+	if err := d.documentLocations.Put(
+		tx,
+		vault.Key(normalizedURL),
+		publication.admission,
+	); err != nil {
+		return fmt.Errorf("publish document location: %w", err)
+	}
 
 	return nil
 }
@@ -94,18 +224,33 @@ func (d documentVault) CanonicalDocuments(
 	ctx context.Context,
 	docs []Document,
 ) ([]Document, error) {
+	prepared := make([]Document, len(docs))
+	urls := make([]string, 0, len(docs))
+	for index, document := range docs {
+		prepared[index] = normalizedDocument(document)
+		urls = append(urls, prepared[index].NormalizedURL)
+	}
+	releaseURLs, err := d.urlBoundaries.lockReads(ctx, urls)
+	if err != nil {
+		return nil, err
+	}
+	defer releaseURLs()
 	canonical := make([]Document, 0, len(docs))
-	err := d.vault.View(ctx, func(tx *vault.Txn) error {
-		for _, doc := range docs {
+	err = d.vault.View(ctx, func(tx *vault.Txn) error {
+		for _, document := range prepared {
 			if err := ctx.Err(); err != nil {
 				return fmt.Errorf("context: %w", err)
 			}
-			prepared, accepted, _, err := d.canonicalDocument(tx, doc)
+			stored, _, accepted, _, err := d.canonicalDocument(
+				tx,
+				document,
+				nil,
+			)
 			if err != nil {
 				return err
 			}
 			if accepted {
-				canonical = append(canonical, prepared)
+				canonical = append(canonical, stored)
 			}
 		}
 
@@ -120,60 +265,98 @@ func (d documentVault) CanonicalDocuments(
 
 func (d documentVault) canonicalDocument(
 	tx *vault.Txn,
-	doc Document,
-) (Document, bool, bool, error) {
-	doc = normalizedDocument(doc)
-	if doc.NormalizedURL == "" {
-		return Document{}, false, false, nil
+	document Document,
+	staged map[string]stagedStoredDocument,
+) (Document, storedDocumentLocation, bool, bool, error) {
+	document = normalizedDocument(document)
+	if document.NormalizedURL == "" {
+		return Document{}, storedDocumentLocation{}, false, false, nil
 	}
-
-	key := vault.Key(doc.NormalizedURL)
-	previous, found, err := d.collection.Get(tx, key)
-	if err != nil {
-		return Document{}, false, false, fmt.Errorf("read document: %w", err)
+	var location storedDocumentLocation
+	var previous Document
+	var found bool
+	if stagedDocument, stagedEarlier := staged[document.NormalizedURL]; stagedEarlier {
+		previous = stagedDocument.document
+		location = stagedDocument.location
+		found = true
+	} else {
+		var err error
+		previous, location, found, err = d.readStoredDocument(
+			tx,
+			document.NormalizedURL,
+		)
+		if err != nil {
+			return Document{}, storedDocumentLocation{}, false, false, err
+		}
 	}
-	doc = mergeDocumentDates(previous, doc, found)
+	document = mergeDocumentDates(previous, document, found)
+	key := vault.Key(document.NormalizedURL)
 	storedAnchors, anchorsFound, err := d.inboundAnchors.Get(tx, key)
 	if err != nil {
-		return Document{}, false, false, fmt.Errorf("read inbound anchors: %w", err)
+		return Document{}, storedDocumentLocation{}, false, false, fmt.Errorf(
+			"read inbound anchors: %w",
+			err,
+		)
 	}
 	if anchorsFound {
-		doc.Inlinks = canonicalAnchorTexts(append(doc.Inlinks, storedAnchors...))
+		document.Inlinks = canonicalAnchorTexts(append(document.Inlinks, storedAnchors...))
 	}
 
-	return doc, true, found, nil
+	return document, location, true, found, nil
 }
 
 func (d documentVault) Document(
 	ctx context.Context,
 	normalizedURL string,
 ) (Document, bool, error) {
-	var doc Document
+	releaseURL, err := d.urlBoundaries.lockReads(ctx, []string{normalizedURL})
+	if err != nil {
+		return Document{}, false, err
+	}
+	defer releaseURL()
+	var document Document
 	var found bool
-	err := d.vault.View(ctx, func(tx *vault.Txn) error {
-		got, ok, err := d.collection.Get(tx, vault.Key(normalizedURL))
-		if err != nil {
-			return fmt.Errorf("read document: %w", err)
-		}
+	err = d.vault.View(ctx, func(tx *vault.Txn) error {
+		read, _, present, err := d.readStoredDocument(tx, normalizedURL)
+		document = read
+		found = present
 
-		doc = got
-		found = ok
-		return nil
+		return err
 	})
 	if err != nil {
 		return Document{}, false, fmt.Errorf("document: %w", err)
 	}
 
-	return doc, found, nil
+	return document, found, nil
 }
 
 func (d documentVault) DocumentExists(
 	ctx context.Context,
 	normalizedURL string,
 ) (bool, error) {
+	releaseURL, err := d.urlBoundaries.lockReads(ctx, []string{normalizedURL})
+	if err != nil {
+		return false, err
+	}
+	defer releaseURL()
 	var found bool
-	err := d.vault.View(ctx, func(tx *vault.Txn) error {
-		found = d.collection.Contains(tx, vault.Key(normalizedURL))
+	err = d.vault.View(ctx, func(tx *vault.Txn) error {
+		location, present, err := d.locateStoredDocument(tx, normalizedURL)
+		if err != nil || !present {
+			found = false
+
+			return err
+		}
+		if location.admission == 0 {
+			found = true
+
+			return nil
+		}
+		key, err := orderedDocumentKey(location.admission, normalizedURL)
+		if err != nil {
+			return err
+		}
+		found = d.orderedDocuments.Contains(tx, key)
 
 		return nil
 	})
@@ -185,33 +368,30 @@ func (d documentVault) DocumentExists(
 }
 
 func (d documentVault) Delete(ctx context.Context, normalizedURL string) (bool, error) {
-	var removed bool
-	if err := d.vault.Update(ctx, func(tx *vault.Txn) error {
-		deleted, err := d.collection.Delete(tx, vault.Key(normalizedURL))
-		if err != nil {
-			return fmt.Errorf("delete document: %w", err)
-		}
-		removed = deleted
-
-		return nil
-	}); err != nil {
-		return false, fmt.Errorf("delete document: %w", err)
+	releaseWrite, err := d.enterStoredDocumentWrite(ctx)
+	if err != nil {
+		return false, err
 	}
+	defer releaseWrite()
+	releaseURL, err := d.urlBoundaries.lockWrites(ctx, []string{normalizedURL})
+	if err != nil {
+		return false, err
+	}
+	defer releaseURL()
 
-	return removed, nil
+	return d.deleteStoredDocument(ctx, normalizedURL)
 }
 
 func (d documentVault) Count(ctx context.Context) (int, error) {
-	var count int
-	err := d.vault.View(ctx, func(tx *vault.Txn) error {
-		length, err := d.collection.Len(tx)
-		if err != nil {
-			return fmt.Errorf("read document length: %w", err)
-		}
-		count = length
+	count := 0
+	err := d.ScanStoredDocumentPages(
+		ctx,
+		func(Document) (bool, error) {
+			count++
 
-		return nil
-	})
+			return true, nil
+		},
+	)
 	if err != nil {
 		return 0, fmt.Errorf("document count: %w", err)
 	}
@@ -223,26 +403,10 @@ func (d documentVault) StoredDocuments(
 	ctx context.Context,
 	visit func(Document) (bool, error),
 ) error {
-	release, err := d.enterStoredDocumentScan(ctx)
-	if err != nil {
-		return err
-	}
-	defer release()
-
-	err = d.vault.View(vault.BackgroundRead(ctx), func(tx *vault.Txn) error {
-		return d.collection.Scan(
-			tx,
-			nil,
-			func(_ vault.Key, doc Document) (bool, error) {
-				if err := ctx.Err(); err != nil {
-					return false, fmt.Errorf("context: %w", err)
-				}
-
-				return visit(doc)
-			},
-		)
-	})
-	if err != nil {
+	if err := d.ScanStoredDocumentPages(
+		ctx,
+		visit,
+	); err != nil {
 		return fmt.Errorf("stored documents: %w", err)
 	}
 
@@ -286,6 +450,7 @@ func boundedText(text string) string {
 		}
 		end = index
 	}
+
 	return text[:end]
 }
 

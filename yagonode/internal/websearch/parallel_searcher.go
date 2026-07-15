@@ -2,10 +2,12 @@ package websearch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
@@ -13,6 +15,12 @@ import (
 type ParallelSearcher struct {
 	fallback *FallbackSearcher
 }
+
+var errParallelSearchUnavailable = errors.New("parallel search unavailable")
+
+const msgParallelPrimaryFailed = "primary search failed"
+
+const parallelOutcomeCancellationGrace = 25 * time.Millisecond
 
 type parallelPrimaryOutcome struct {
 	response searchcore.Response
@@ -24,6 +32,13 @@ type parallelProviderOutcome struct {
 	results []Result
 	err     error
 	failure any
+}
+
+type parallelOutcomes struct {
+	primary       parallelPrimaryOutcome
+	provider      parallelProviderOutcome
+	primaryReady  bool
+	providerReady bool
 }
 
 func NewParallelSearcher(
@@ -51,6 +66,57 @@ func (s *ParallelSearcher) Search(
 	branchContext, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	primaryOutcome, providerOutcome := s.startParallelSearches(branchContext, req)
+	outcomes := collectParallelOutcomes(
+		ctx,
+		primaryOutcome,
+		providerOutcome,
+	)
+	primary := outcomes.primary
+	provider := outcomes.provider
+	if primary.failure != nil {
+		cancel()
+		panic(primary.failure)
+	}
+	if provider.failure != nil {
+		cancel()
+		panic(provider.failure)
+	}
+	if !outcomes.primaryReady {
+		primary.err = context.Cause(ctx)
+	}
+	if !outcomes.providerReady {
+		provider.err = context.Cause(ctx)
+	}
+	primary.response.Request = req
+	if primary.err != nil {
+		primary.response = failedParallelPrimaryResponse(primary.response)
+	}
+	provider.results = verifiedWebResults(req, provider.results)
+	if provider.err != nil {
+		primary.response = failedParallelProviderResponse(ctx, primary.response, provider.err)
+	}
+	if s.fallback.seeder != nil && len(provider.results) > 0 {
+		s.fallback.seedWebResults(ctx, provider.results)
+	}
+	webResults := toCoreResults(provider.results, req.Limit)
+	if len(primary.response.Results) > 0 || len(webResults) > 0 {
+		return mergeParallelResults(primary.response, webResults, req), nil
+	}
+	if cause := context.Cause(ctx); cause != nil {
+		return primary.response, fmt.Errorf("parallel search: %w", cause)
+	}
+	if primary.err != nil {
+		return primary.response, errParallelSearchUnavailable
+	}
+
+	return primary.response, nil
+}
+
+func (s *ParallelSearcher) startParallelSearches(
+	ctx context.Context,
+	req searchcore.Request,
+) (<-chan parallelPrimaryOutcome, <-chan parallelProviderOutcome) {
 	primaryOutcome := make(chan parallelPrimaryOutcome, 1)
 	providerOutcome := make(chan parallelProviderOutcome, 1)
 	go func() {
@@ -59,7 +125,7 @@ func (s *ParallelSearcher) Search(
 			outcome.failure = recover()
 			primaryOutcome <- outcome
 		}()
-		outcome.response, outcome.err = s.fallback.primary.Search(branchContext, req)
+		outcome.response, outcome.err = s.fallback.primary.Search(ctx, req)
 	}()
 	go func() {
 		outcome := parallelProviderOutcome{}
@@ -68,50 +134,95 @@ func (s *ParallelSearcher) Search(
 			providerOutcome <- outcome
 		}()
 		outcome.results, outcome.err = s.fallback.searchProvider(
-			branchContext,
+			ctx,
 			req.SubmittedText(),
 			req.Limit,
 		)
 	}()
 
-	primary := <-primaryOutcome
-	if primary.failure != nil {
-		cancel()
-		panic(primary.failure)
-	}
-	if primary.err != nil {
-		cancel()
+	return primaryOutcome, providerOutcome
+}
 
-		return primary.response, fmt.Errorf("search primary: %w", primary.err)
-	}
-	provider := <-providerOutcome
-	if provider.failure != nil {
-		panic(provider.failure)
-	}
-	if provider.err != nil {
-		return failedParallelProviderResponse(ctx, primary.response, provider.err), nil
+func collectParallelOutcomes(
+	ctx context.Context,
+	primaryOutcomes <-chan parallelPrimaryOutcome,
+	providerOutcomes <-chan parallelProviderOutcome,
+) parallelOutcomes {
+	outcomes := parallelOutcomes{}
+	for !outcomes.primaryReady || !outcomes.providerReady {
+		select {
+		case outcomes.primary = <-primaryOutcomes:
+			outcomes.primaryReady = true
+		case outcomes.provider = <-providerOutcomes:
+			outcomes.providerReady = true
+		case <-ctx.Done():
+			return drainParallelOutcomes(
+				outcomes,
+				primaryOutcomes,
+				providerOutcomes,
+			)
+		}
 	}
 
-	provider.results = verifiedWebResults(req, provider.results)
-	if s.fallback.seeder != nil && len(provider.results) > 0 {
-		s.fallback.seedWebResults(ctx, provider.results)
+	return outcomes
+}
+
+func drainParallelOutcomes(
+	outcomes parallelOutcomes,
+	primaryOutcomes <-chan parallelPrimaryOutcome,
+	providerOutcomes <-chan parallelProviderOutcome,
+) parallelOutcomes {
+	timer := time.NewTimer(parallelOutcomeCancellationGrace)
+	defer timer.Stop()
+	for !outcomes.primaryReady || !outcomes.providerReady {
+		select {
+		case outcomes.primary = <-primaryOutcomes:
+			outcomes.primaryReady = true
+		case outcomes.provider = <-providerOutcomes:
+			outcomes.providerReady = true
+		case <-timer.C:
+			return outcomes
+		}
 	}
-	webResults := toCoreResults(provider.results, req.Limit)
+
+	return outcomes
+}
+
+func failedParallelPrimaryResponse(
+	response searchcore.Response,
+) searchcore.Response {
+	response.PartialFailures = append(response.PartialFailures, searchcore.PartialFailure{
+		Source: searchcore.PartialFailureSourceLocalSearch,
+		Reason: msgParallelPrimaryFailed,
+	})
+
+	return response
+}
+
+func mergeParallelResults(
+	response searchcore.Response,
+	webResults []searchcore.Result,
+	req searchcore.Request,
+) searchcore.Response {
 	if len(webResults) == 0 {
-		return primary.response, nil
+		return response
 	}
-
-	webResults = parallelResultIdentities(primary.response.Results, webResults)
-	merged := searchcore.FuseByReciprocalRank(primary.response.Results, webResults)
-	duplicateCount := len(primary.response.Results) + len(webResults) - len(merged)
-	primary.response.TotalResults += len(webResults) - duplicateCount
+	if len(response.Results) == 0 {
+		clearPrimaryMissRecoveryForWebAnswer(&response, webResults)
+		response.TotalResults = 0
+	}
+	webResults = parallelResultIdentities(response.Results, webResults)
+	merged := searchcore.FuseByReciprocalRank(response.Results, webResults)
+	duplicateCount := len(response.Results) + len(webResults) - len(merged)
+	response.TotalResults = max(response.TotalResults, len(response.Results)) +
+		len(webResults) - duplicateCount
 	if req.Limit > 0 && len(merged) > req.Limit {
 		merged = merged[:req.Limit]
 	}
-	primary.response.Results = merged
-	primary.response.Request = req
+	response.Results = merged
+	response.Request = req
 
-	return primary.response, nil
+	return response
 }
 
 func failedParallelProviderResponse(

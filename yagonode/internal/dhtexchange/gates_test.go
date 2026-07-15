@@ -8,7 +8,11 @@ func openGateState() GateState {
 		LocalPeerKnown:   true,
 		ConnectedPeers:   DefaultMinimumConnectedPeers,
 		LocalRWIWords:    DefaultMinimumRWIWords,
+		LocalRWIKnown:    true,
+		CrawlQueueKnown:  true,
+		IndexQueueKnown:  true,
 		StorageAvailable: true,
+		StorageKnown:     true,
 	}
 }
 
@@ -59,9 +63,13 @@ func TestEvaluateGatesReportsEveryClosedGateReason(t *testing.T) {
 		LocalPeerVirgin:  true,
 		ConnectedPeers:   DefaultMinimumConnectedPeers - 1,
 		LocalRWIWords:    DefaultMinimumRWIWords - 1,
+		LocalRWIKnown:    true,
 		CrawlQueueSize:   1,
+		CrawlQueueKnown:  true,
 		IndexQueueSize:   2,
+		IndexQueueKnown:  true,
 		StorageAvailable: false,
+		StorageKnown:     true,
 	}
 
 	report := EvaluateGates(state, config)

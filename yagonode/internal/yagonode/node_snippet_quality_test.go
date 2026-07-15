@@ -59,7 +59,16 @@ func TestAdminSearchSourceHighlightsSnippets(t *testing.T) {
 			Title:   "Go",
 			URL:     "https://example.org/go",
 			Snippet: "Golang guide",
+			Date:    "20260701",
 			Size:    1024,
+		}, {
+			Title: "Unknown publication",
+			URL:   "https://example.org/unknown",
+			Date:  "00010101",
+		}, {
+			Title: "Malformed publication",
+			URL:   "https://example.org/malformed",
+			Date:  "July 2026",
 		}},
 	}}
 
@@ -72,7 +81,10 @@ func TestAdminSearchSourceHighlightsSnippets(t *testing.T) {
 	}
 	result := results.Results[0]
 	if !strings.Contains(string(result.SnippetHTML), "<mark>Golang</mark>") ||
-		result.SizeName != "1024 bytes" {
+		result.SizeName != "1024 bytes" || result.Date != "Wed, 01 Jul 2026" {
 		t.Fatalf("result = %#v", result)
+	}
+	if results.Results[1].Date != "" || results.Results[2].Date != "" {
+		t.Fatalf("unknown publication dates = %#v", results.Results[1:])
 	}
 }

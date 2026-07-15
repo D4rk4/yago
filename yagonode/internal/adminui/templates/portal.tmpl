@@ -13,6 +13,7 @@
     <h2 class="cds-h2 cds-tabpanel__heading">Configuration</h2>
     {{if .Notice}}<div class="cds-inline-notification cds-inline-notification--success" role="status">{{.Notice}}</div>{{end}}
     {{if .Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>{{end}}
+    {{if .Settings.Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Settings.Error}}</div>{{end}}
     {{if .Settings.Items}}
     <form class="cds-settings-form" method="post" action="/admin/portal" hx-boost="false">
       <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
@@ -49,14 +50,14 @@
   <section class="cds-tabpanel" role="tabpanel" id="panel-portal-design" aria-labelledby="tab-portal-design">
     <h2 class="cds-h2 cds-tabpanel__heading">Portal design</h2>
     {{if .DesignSearch}}{{template "design_form" .DesignSearch}}{{else}}
-    <p class="cds-muted">The design store is not available on this deployment, so the search-page editor cannot load.</p>
+    <p class="cds-muted">{{if .DesignWired}}The search-page editor could not be loaded.{{else}}The design store is not available on this deployment, so the search-page editor cannot load.{{end}}</p>
     {{end}}
   </section>
 
   <section class="cds-tabpanel" role="tabpanel" id="panel-portal-results" aria-labelledby="tab-portal-results">
     <h2 class="cds-h2 cds-tabpanel__heading">Results design</h2>
     {{if .DesignResults}}{{template "design_form" .DesignResults}}{{else}}
-    <p class="cds-muted">The design store is not available on this deployment, so the results-page editor cannot load.</p>
+    <p class="cds-muted">{{if .DesignWired}}The results-page editor could not be loaded.{{else}}The design store is not available on this deployment, so the results-page editor cannot load.{{end}}</p>
     {{end}}
   </section>
 </div>

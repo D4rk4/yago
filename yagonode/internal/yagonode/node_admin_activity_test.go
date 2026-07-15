@@ -29,11 +29,13 @@ func TestActivitySourceRendersTrackerState(t *testing.T) {
 	})
 
 	view := newActivitySource(tracker).Activity(context.Background())
-	if view.Mode != "full" || view.Total != 2 || view.ZeroResults != 1 {
+	if view.Mode != "full" || view.Total != 2 || view.ConfirmedZeroResults != 1 {
 		t.Fatalf("view header = %+v", view)
 	}
 	if len(view.Entries) != 2 || view.Entries[0].Query != "осень" ||
-		view.Entries[0].Time != "10:31:00" || view.Entries[1].Duration != "1.512s" {
+		view.Entries[0].Time != "2026-07-07 10:31:00 UTC" ||
+		view.Entries[1].Duration != "1.512s" || !view.Entries[0].ResultsKnown ||
+		!view.Entries[0].Complete {
 		t.Fatalf("entries = %+v", view.Entries)
 	}
 	if len(view.TopWords) == 0 || view.TopWords[0].Word != "осень" ||

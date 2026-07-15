@@ -15,9 +15,15 @@ type fakeScheduleSource struct {
 	deleted []string
 	toggled map[string]bool
 	err     error
+	readErr error
 }
 
-func (f *fakeScheduleSource) Schedules(context.Context) []CrawlScheduleView { return f.views }
+func (f *fakeScheduleSource) Schedules(
+	context.Context,
+) ([]CrawlScheduleView, error) {
+	return f.views, f.readErr
+}
+
 func (f *fakeScheduleSource) CreateSchedule(_ context.Context, req CrawlScheduleRequest) error {
 	f.created = append(f.created, req)
 
@@ -102,5 +108,43 @@ func TestCrawlSchedulePost(t *testing.T) {
 	none.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("no source = %d, want 404", rec.Code)
+	}
+}
+
+func TestCrawlScheduleReadTruth(t *testing.T) {
+	t.Parallel()
+
+	failed := &fakeScheduleSource{readErr: context.Canceled}
+	got := do(t, New(Options{Crawl: &fakeCrawl{}, Schedules: failed}), "/admin/crawl")
+	if !strings.Contains(got.body, "Crawl schedules are unavailable.") {
+		t.Fatalf("missing unavailable schedule state: %.120q", got.body)
+	}
+
+	available := &fakeScheduleSource{views: []CrawlScheduleView{{
+		ID: "docs", Name: "Docs", Seeds: 1, Scope: "domain",
+		Interval: "24h0m0s", LastRun: "2026-07-01 15:04 UTC", Enabled: true,
+	}}}
+	got = do(t, New(Options{Crawl: &fakeCrawl{}, Schedules: available}), "/admin/crawl")
+	for _, want := range []string{"Last dispatch (UTC)", "2026-07-01 15:04 UTC"} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("schedule truth missing %q", want)
+		}
+	}
+}
+
+func TestCrawlFormLabelsInheritedCrawlerDelay(t *testing.T) {
+	t.Parallel()
+
+	body := do(t, New(Options{Crawl: &fakeCrawl{}}), "/admin/crawl").body
+	for _, want := range []string{
+		"blank = each crawler's configured default",
+		`placeholder="crawler default"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("crawl delay inheritance missing %q", want)
+		}
+	}
+	if strings.Contains(body, `placeholder="1s"`) {
+		t.Fatal("inherited crawl delay rendered an invented one-second default")
 	}
 }

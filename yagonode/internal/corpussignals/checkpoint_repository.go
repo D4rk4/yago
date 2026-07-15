@@ -7,6 +7,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/D4rk4/yago/yagonode/internal/hostlinkgraph"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -33,6 +34,8 @@ type Checkpoint struct {
 	Spelling             map[string]int          `json:"spelling"`
 	WordForms            map[string]int          `json:"word_forms"`
 	WordFormsReady       bool                    `json:"word_forms_ready"`
+	HostLinks            hostlinkgraph.Graph     `json:"host_links"`
+	HostLinksReady       bool                    `json:"host_links_ready"`
 	TrustDomains         []string                `json:"trust_domains"`
 	TrustBlend           float64                 `json:"trust_blend"`
 	CompletedAtUnixMilli int64                   `json:"completed_at_unix_milli"`
@@ -135,19 +138,8 @@ func validateCheckpointRecord(record checkpointRecord) error {
 		return fmt.Errorf("unsupported corpus signal checkpoint format %q", record.Format)
 	}
 	checkpoint := record.Checkpoint
-	if checkpoint.Authority == nil || checkpoint.Citations == nil || checkpoint.Spelling == nil ||
-		checkpoint.WordForms == nil || checkpoint.TrustDomains == nil {
-		return fmt.Errorf("corpus signal checkpoint contains missing collections")
-	}
-	if len(checkpoint.Authority) > maximumCheckpointAuthorityDomains ||
-		len(checkpoint.Citations) > maximumCheckpointCitations ||
-		len(checkpoint.Spelling) > maximumCheckpointSpellingTerms ||
-		len(checkpoint.WordForms) > maximumCheckpointWordFormTerms ||
-		len(checkpoint.TrustDomains) > maximumCheckpointTrustDomains {
-		return fmt.Errorf("corpus signal checkpoint exceeds collection limits")
-	}
-	if !checkpoint.WordFormsReady && len(checkpoint.WordForms) > 0 {
-		return fmt.Errorf("corpus signal checkpoint has unavailable word forms")
+	if err := validateCheckpointCollections(checkpoint); err != nil {
+		return err
 	}
 	if checkpoint.CompletedAtUnixMilli <= 0 {
 		return fmt.Errorf("corpus signal checkpoint completion time is invalid")
@@ -242,6 +234,7 @@ func cloneCheckpoint(checkpoint Checkpoint) Checkpoint {
 	}
 	spelling := cloneVocabulary(checkpoint.Spelling)
 	wordForms := cloneVocabulary(checkpoint.WordForms)
+	hostLinks := hostlinkgraph.Clone(checkpoint.HostLinks)
 	trustDomains := make([]string, len(checkpoint.TrustDomains))
 	for index, domain := range checkpoint.TrustDomains {
 		trustDomains[index] = strings.Clone(domain)
@@ -249,7 +242,8 @@ func cloneCheckpoint(checkpoint Checkpoint) Checkpoint {
 
 	return Checkpoint{
 		Authority: authority, Citations: citations, Spelling: spelling, WordForms: wordForms,
-		WordFormsReady: checkpoint.WordFormsReady, TrustDomains: trustDomains,
+		WordFormsReady: checkpoint.WordFormsReady, HostLinks: hostLinks,
+		HostLinksReady: checkpoint.HostLinksReady, TrustDomains: trustDomains,
 		TrustBlend: checkpoint.TrustBlend, CompletedAtUnixMilli: checkpoint.CompletedAtUnixMilli,
 	}
 }

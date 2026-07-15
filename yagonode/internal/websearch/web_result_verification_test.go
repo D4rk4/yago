@@ -50,6 +50,66 @@ func TestVerifiedWebResultsTrustsWhenVerifyFalse(t *testing.T) {
 	}
 }
 
+func TestResultsMentioningTermsRequireBoundedDistinctCoverage(t *testing.T) {
+	results := []Result{
+		{Title: "alpha only", URL: "https://weak.example/"},
+		{Title: "alpha beta", URL: "https://first.example/"},
+		{Snippet: "beta gamma", URL: "https://second.example/"},
+		{Title: "unrelated", URL: "https://other.example/"},
+	}
+
+	got := resultsMentioningTerms([]string{"alpha", "ALPHA", "beta", "gamma"}, results)
+	if len(got) != 2 || got[0].URL != "https://first.example/" ||
+		got[1].URL != "https://second.example/" {
+		t.Fatalf("results = %#v", got)
+	}
+}
+
+func TestResultsMentioningTermsRequireBothTermsInTwoTermQuery(t *testing.T) {
+	results := []Result{
+		{Title: "alpha only", URL: "https://weak.example/"},
+		{Title: "alpha beta", URL: "https://strong.example/"},
+	}
+
+	got := resultsMentioningTerms([]string{"alpha", "beta"}, results)
+	if len(got) != 1 || got[0].URL != "https://strong.example/" {
+		t.Fatalf("results = %#v", got)
+	}
+}
+
+func TestResultsMentioningTermsKeepAmbiguousCrossLanguageWords(t *testing.T) {
+	results := []Result{
+		{Title: "Spyder history", URL: "https://weak.example/"},
+		{Title: "Can-Am Spyder guide", URL: "https://strong.example/"},
+	}
+
+	got := resultsMentioningTerms([]string{"can", "am", "spyder"}, results)
+	if len(got) != 1 || got[0].URL != "https://strong.example/" {
+		t.Fatalf("results = %#v", got)
+	}
+}
+
+func TestResultsMentioningTermsAcceptTwoAmbiguousWordsWhenBothMatch(t *testing.T) {
+	results := []Result{{Title: "Can Spyder owners guide", URL: "https://strong.example/"}}
+
+	got := resultsMentioningTerms([]string{"can", "spyder"}, results)
+	if len(got) != 1 || got[0].URL != "https://strong.example/" {
+		t.Fatalf("results = %#v", got)
+	}
+}
+
+func TestResultsMentioningTermsRetainOrdinaryFunctionWordRequirements(t *testing.T) {
+	results := []Result{
+		{Title: "Weather forecast", URL: "https://weak.example/"},
+		{Title: "What is weather forecast", URL: "https://strong.example/"},
+	}
+
+	got := resultsMentioningTerms([]string{"what", "is", "the", "weather"}, results)
+	if len(got) != 1 || got[0].URL != "https://strong.example/" {
+		t.Fatalf("results = %#v", got)
+	}
+}
+
 func TestVerifiedWebResultsEnforcesStructuredConstraints(t *testing.T) {
 	tests := []struct {
 		name     string

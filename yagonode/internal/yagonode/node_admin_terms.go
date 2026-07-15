@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
@@ -37,7 +38,7 @@ func (s *termSource) LookupTerm(ctx context.Context, term string) adminui.TermRe
 	report.Hash = hash.String()
 	count, err := s.postings.RWIURLCount(ctx, hash)
 	if err != nil {
-		report.Error = "The term lookup failed."
+		report.Error = fmt.Errorf("count term postings: %w", err)
 
 		return report
 	}
@@ -48,37 +49,9 @@ func (s *termSource) LookupTerm(ctx context.Context, term string) adminui.TermRe
 
 		return report
 	}
-	report.Sample = s.termSample(ctx, hash)
+	report.Sample, report.SampleError = s.termSample(ctx, hash)
 
 	return report
-}
-
-func (s *termSource) termSample(ctx context.Context, hash yagomodel.Hash) []adminui.TermPosting {
-	hashes := make([]yagomodel.Hash, 0, termSampleLimit)
-	scan := func(posting yagomodel.RWIPosting) (bool, error) {
-		location, err := posting.URLHash()
-		if err == nil {
-			hashes = append(hashes, location.Hash())
-		}
-
-		return len(hashes) < termSampleLimit, nil
-	}
-	if err := s.postings.ScanWord(ctx, hash, scan); err != nil {
-		return nil
-	}
-
-	rows, err := s.urls.RowsByHash(ctx, hashes)
-	if err != nil {
-		return nil
-	}
-	sample := make([]adminui.TermPosting, 0, len(rows))
-	for _, row := range rows {
-		rawURL, _ := yagomodel.DecodeWireForm(ctx, row.Properties[yagomodel.URLMetaURL])
-		title, _ := row.Title(ctx)
-		sample = append(sample, adminui.TermPosting{URL: rawURL, Title: title})
-	}
-
-	return sample
 }
 
 // indexSchemaGroups is the read-only reference of the fields each index stores,

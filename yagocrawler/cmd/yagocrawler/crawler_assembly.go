@@ -113,10 +113,18 @@ func buildFetchChains(
 	}
 
 	return fetchChains{
-		verifying:       newCrawlerPublicWebAdmissionFetcher(admitted, nil, guard),
-		insecure:        newCrawlerPublicWebAdmissionFetcher(insecureAdmitted, nil, guard),
-		verifyingDirect: newCrawlerPublicWebAdmissionFetcher(verifyingCore, nil, guard),
-		insecureDirect:  newCrawlerPublicWebAdmissionFetcher(insecureCore, nil, guard),
+		verifying: pagefetch.NewDuplicatePageFetchSuppressor(
+			newCrawlerPublicWebAdmissionFetcher(admitted, nil, guard),
+		),
+		insecure: pagefetch.NewDuplicatePageFetchSuppressor(
+			newCrawlerPublicWebAdmissionFetcher(insecureAdmitted, nil, guard),
+		),
+		verifyingDirect: pagefetch.NewDuplicatePageFetchSuppressor(
+			newCrawlerPublicWebAdmissionFetcher(verifyingCore, nil, guard),
+		),
+		insecureDirect: pagefetch.NewDuplicatePageFetchSuppressor(
+			newCrawlerPublicWebAdmissionFetcher(insecureCore, nil, guard),
+		),
 	}, nil
 }
 

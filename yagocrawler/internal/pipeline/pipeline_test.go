@@ -70,6 +70,13 @@ func (f *recordingFrontier) ResolveRedirect(job crawljob.CrawlJob, finalURL stri
 	return f.resolveRedirect(job, finalURL)
 }
 
+func (*recordingFrontier) RecordHostFetchOutcome(
+	context.Context,
+	crawljob.CrawlJob,
+	bool,
+) {
+}
+
 type fetchFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
 
 func (f fetchFunc) Fetch(ctx context.Context, target *url.URL) (pagefetch.FetchedPage, error) {

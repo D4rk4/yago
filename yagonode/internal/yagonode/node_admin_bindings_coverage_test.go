@@ -28,8 +28,8 @@ func TestBindingSourceHandlesInterfaceAndStoreErrors(t *testing.T) {
 	src.interfaces = failingInterfaceAddrs
 	ctx := context.Background()
 
-	if view := src.Bindings(ctx); view.Error == "" {
-		t.Fatal("Bindings should report an interface-discovery error")
+	if view := src.Bindings(ctx); view.Error != hostInterfacesUnavailable || len(view.Items) != 0 {
+		t.Fatalf("Bindings should report unavailable interfaces: %+v", view)
 	}
 
 	// With interface discovery failing, only the empty host counts as local, so a

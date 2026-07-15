@@ -158,6 +158,13 @@ ready. Do not use the normal restart window for a mapping-changing release until
 the same corpus size has been timed on representative storage and the maintenance
 window covers the measured rebuild.
 
+The append-ordered document layout is a forward-compatible upgrade, not an
+in-place downgrade format. An older binary ignores documents admitted into the
+ordered partition and can create conflicting legacy rows. Rollback therefore
+requires stopping both services, restoring the stopped pre-upgrade data backup,
+installing the older package, and then starting the node before the crawler.
+Never run an older package against a data directory already opened by this layout.
+
 ## Debian package
 
 `deploy/debian/build-deb.sh <version> <arch> <bindir> <outdir>` builds the

@@ -12,43 +12,59 @@ import (
 	"github.com/blevesearch/bleve/v2/search"
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
+	"github.com/D4rk4/yago/yagonode/internal/queryidentifier"
 )
 
 const analyzedTokenCacheEntries = 4096
 
-const (
-	storedOrderedProximityWeight   = 0.12
-	storedUnorderedProximityWeight = 0.05
-)
-
 type storedEvidenceTarget struct {
-	requirement   int
-	raw           string
-	analyzed      string
-	analyzedRunes []rune
-	anchor        []rune
-	distance      int
-	prefix        int
+	requirement    int
+	rawRequirement int
+	raw            string
+	analyzed       string
+	analyzedRunes  []rune
+	anchor         []rune
+	surfaceAnchor  []rune
+	distance       int
+	prefix         int
 }
 
 type storedEvidenceMatcher struct {
-	analyzer analysis.Analyzer
-	targets  []storedEvidenceTarget
-	required []string
-	lookup   map[string][]int
-	fuzzy    bool
-	cache    map[string][]int
-	queries  int
-	name     string
-	distance [3][maximumFuzzyTermRunes + 1]int
+	analyzer                    analysis.Analyzer
+	targets                     []storedEvidenceTarget
+	required                    []string
+	rawRequirements             []string
+	rawRequirementOrdinals      []int
+	lookup                      map[string][]int
+	rawRequirementAnalyzedTerms map[string][]string
+	fuzzy                       bool
+	cache                       map[string]storedTokenEvidence
+	queries                     int
+	name                        string
+	distance                    [3][maximumFuzzyTermRunes + 1]int
+	minimumPassage              int
+	relaxedPassageEvidence      bool
+	exactIdentifierRequirements []int
+	quotedPhrases               storedPhraseTokenMatcher
+}
+
+type storedTokenEvidence struct {
+	targets  []int
+	analyzed analysis.TokenStream
 }
 
 type storedFieldEvidence struct {
-	terms      search.TermLocationMap
-	latest     map[int]*search.Location
-	witnesses  map[int]*search.Location
-	bestSpan   int
-	queryTerms int
+	terms            search.TermLocationMap
+	requirementTerms search.TermLocationMap
+	targetTerms      map[int]search.Locations
+	exactTerms       search.TermLocationMap
+	phraseTerms      search.TermLocationMap
+	latest           map[int]*search.Location
+	latestRaw        map[int]*search.Location
+	exactLatest      map[int]*search.Location
+	witnesses        map[int]*search.Location
+	bestSpan         int
+	queryTerms       int
 }
 
 type storedFieldScan struct {
@@ -56,6 +72,7 @@ type storedFieldScan struct {
 	evidence         *storedFieldEvidence
 	includePositions bool
 	position         uint64
+	phrasePosition   uint64
 }
 
 type storedCJKValue struct {
@@ -73,6 +90,16 @@ type storedLocationCoordinates struct {
 	arrayLength int
 }
 
+type storedDocumentEvidence struct {
+	locations        search.FieldTermLocationMap
+	exactLocations   search.FieldTermLocationMap
+	phraseLocations  search.FieldTermLocationMap
+	rawRequirements  []string
+	relaxedPassage   bool
+	proximity        float64
+	orderedProximity float64
+}
+
 func searchResultFromStoredEvidence(
 	ctx context.Context,
 	hit *search.DocumentMatch,
@@ -80,15 +107,29 @@ func searchResultFromStoredEvidence(
 	req SearchRequest,
 ) (SearchResult, error) {
 	analyzerName := indexedAnalyzerName(hit, doc)
-	locations, err := storedDocumentLocations(ctx, doc, req, analyzerName)
+	evidence, err := storedDocumentLocations(
+		ctx,
+		doc,
+		req,
+		analyzerName,
+	)
 	if err != nil {
 		return SearchResult{}, err
 	}
-	hit.Locations = locations
+	hit.Locations = evidence.locations
 	result := searchResultFromDocument(hit, doc, req)
+	if req.IncludePositions {
+		result.FieldTermPositions = exactSurfaceFieldTermPositions(
+			req,
+			evidence.exactLocations,
+		)
+		result.Proximity = evidence.proximity
+		result.OrderedProximity = evidence.orderedProximity
+	}
 	result.EvidenceReady = true
+	result.relaxedPassageEvidence = evidence.relaxedPassage
 	result.quotedPhrasePreference = storedQuotedPhrasePreference(
-		locations,
+		evidence.phraseLocations,
 		req.Phrases,
 		storedEvidenceAnalyzer(analyzerName),
 	)
@@ -115,10 +156,14 @@ func storedDocumentLocations(
 	doc documentstore.Document,
 	req SearchRequest,
 	analyzerName string,
-) (search.FieldTermLocationMap, error) {
+) (storedDocumentEvidence, error) {
 	matcher := newStoredEvidenceMatcher(req, analyzerName)
 	includePositions := req.IncludePositions || len(req.Phrases) > 0
 	locations := search.FieldTermLocationMap{}
+	exactLocations := search.FieldTermLocationMap{}
+	phraseLocations := search.FieldTermLocationMap{}
+	proximity := 0.0
+	orderedProximity := 0.0
 	covered := make(map[string]struct{}, matcher.queries)
 	fields := []struct {
 		name   string
@@ -130,28 +175,60 @@ func storedDocumentLocations(
 		{name: "body", values: []string{doc.ExtractedText}},
 	}
 	for _, field := range fields {
-		terms, err := scanStoredField(ctx, matcher, field.values, includePositions)
+		evidence, err := scanStoredFieldEvidence(ctx, matcher, field.values, includePositions)
 		if err != nil {
-			return nil, err
+			return storedDocumentEvidence{}, err
 		}
-		if len(terms) > 0 {
-			locations[field.name] = terms
-			for term := range terms {
+		locations[field.name] = evidence.terms
+		exactLocations[field.name] = evidence.exactTerms
+		phraseLocations[field.name] = evidence.phraseTerms
+		if req.IncludePositions {
+			fieldProximity, fieldOrderedProximity := storedWordFormProximity(
+				evidence.exactTerms,
+				evidence.requirementTerms,
+				matcher.rawRequirements,
+				matcher.rawRequirementOrdinals,
+				!req.Fuzzy,
+			)
+			analyzerProximity, analyzerOrderedProximity := storedSingleRequirementAnalyzerProximity(
+				matcher,
+				evidence.targetTerms,
+				!req.Fuzzy,
+			)
+			fieldProximity = max(fieldProximity, analyzerProximity)
+			fieldOrderedProximity = max(
+				fieldOrderedProximity,
+				analyzerOrderedProximity,
+			)
+			proximity = max(proximity, fieldProximity)
+			orderedProximity = max(orderedProximity, fieldOrderedProximity)
+		}
+		for term, termLocations := range evidence.terms {
+			if len(termLocations) > 0 {
 				covered[term] = struct{}{}
 			}
 		}
-		if !includePositions && matcher.queries > 0 && len(covered) == matcher.queries {
+		if !includePositions && matcher.queries > 0 && len(covered) == matcher.queries &&
+			(matcher.minimumPassage == 0 || matcher.relaxedPassageEvidence) {
 			break
 		}
 	}
 
-	return locations, nil
+	return storedDocumentEvidence{
+		locations:        locations,
+		exactLocations:   exactLocations,
+		phraseLocations:  phraseLocations,
+		rawRequirements:  append([]string(nil), matcher.rawRequirements...),
+		relaxedPassage:   matcher.relaxedPassageEvidence,
+		proximity:        proximity,
+		orderedProximity: orderedProximity,
+	}, nil
 }
 
 func newStoredEvidenceMatcher(req SearchRequest, analyzerName string) *storedEvidenceMatcher {
-	query := make([]string, 0, len(queryTermWords(req)))
+	query := make([]storedRawRequirement, 0, len(queryTermWords(req)))
 	seen := map[string]struct{}{}
-	for _, term := range queryTermWords(req) {
+	for ordinal, term := range queryTermWords(req) {
 		term = strings.ToLower(strings.TrimSpace(term))
 		if term == "" {
 			continue
@@ -160,61 +237,137 @@ func newStoredEvidenceMatcher(req SearchRequest, analyzerName string) *storedEvi
 			continue
 		}
 		seen[term] = struct{}{}
-		query = append(query, term)
+		query = append(query, storedRawRequirement{term: term, ordinal: ordinal})
 	}
 	matcher := &storedEvidenceMatcher{
 		fuzzy:  req.Fuzzy,
-		cache:  make(map[string][]int, min(analyzedTokenCacheEntries, len(query)*64)),
+		cache:  make(map[string]storedTokenEvidence, min(analyzedTokenCacheEntries, len(query)*64)),
 		name:   analyzerName,
 		lookup: make(map[string][]int),
 	}
 	indexMapping := loadStemmingMapping()
 	if indexMapping == nil {
-		for _, term := range query {
-			matcher.addTarget(term, term)
+		for _, requirement := range query {
+			matcher.addTargetAtOrdinal(
+				requirement.term,
+				requirement.term,
+				requirement.ordinal,
+			)
 		}
 		matcher.queries = len(matcher.required)
+		matcher.minimumPassage = matcher.relaxedPassageMinimum(req)
+		matcher.quotedPhrases = newStoredPhraseTokenMatcher(req.Phrases, nil)
+		matcher.quotedPhrases.bindSearchTargets(matcher.lookup)
 
 		return matcher
 	}
 	matcher.analyzer = storedEvidenceAnalyzer(analyzerName)
-	for _, term := range query {
-		analyzed := matcher.analyzer.Analyze([]byte(term))
+	for _, requirement := range query {
+		analyzed := matcher.analyzer.Analyze([]byte(requirement.term))
 		for _, token := range analyzed {
-			matcher.addTarget(term, string(token.Term))
+			matcher.addTargetAtOrdinal(
+				requirement.term,
+				string(token.Term),
+				requirement.ordinal,
+			)
 		}
 	}
 	if len(matcher.targets) == 0 && len(query) > 0 {
 		matcher.analyzer = indexMapping.AnalyzerNamed(standardTextAnalyzer)
 		matcher.name = standardTextAnalyzer
-		for _, term := range query {
-			for _, token := range matcher.analyzer.Analyze([]byte(term)) {
-				matcher.addTarget(term, string(token.Term))
+		for _, requirement := range query {
+			for _, token := range matcher.analyzer.Analyze([]byte(requirement.term)) {
+				matcher.addTargetAtOrdinal(
+					requirement.term,
+					string(token.Term),
+					requirement.ordinal,
+				)
 			}
 		}
 	}
 	matcher.queries = len(matcher.required)
+	matcher.minimumPassage = matcher.relaxedPassageMinimum(req)
+	matcher.quotedPhrases = newStoredPhraseTokenMatcher(req.Phrases, matcher.analyzer)
+	matcher.quotedPhrases.bindSearchTargets(matcher.lookup)
 
 	return matcher
 }
 
 func (m *storedEvidenceMatcher) addTarget(raw string, analyzed string) {
+	m.addTargetAtOrdinal(raw, analyzed, len(m.rawRequirements))
+}
+
+func (m *storedEvidenceMatcher) addTargetAtOrdinal(
+	raw string,
+	analyzed string,
+	ordinal int,
+) {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	analyzed = strings.ToLower(strings.TrimSpace(analyzed))
 	if analyzed == "" {
 		return
 	}
-	if _, exists := m.lookup[analyzed]; exists {
-		return
+	if m.rawRequirementAnalyzedTerms == nil {
+		m.rawRequirementAnalyzedTerms = make(map[string][]string)
 	}
-	requirement := len(m.required)
-	m.required = append(m.required, analyzed)
+	published := m.rawRequirementAnalyzedTerms[raw]
+	registered := false
+	for _, existing := range published {
+		if existing == analyzed {
+			registered = true
+			break
+		}
+	}
+	if !registered {
+		m.rawRequirementAnalyzedTerms[raw] = append(published, analyzed)
+	}
+	rawRequirement := -1
+	for index, requirement := range m.rawRequirements {
+		if requirement == raw {
+			rawRequirement = index
+			break
+		}
+	}
+	if rawRequirement < 0 {
+		rawRequirement = len(m.rawRequirements)
+		m.rawRequirements = append(m.rawRequirements, raw)
+		m.rawRequirementOrdinals = append(m.rawRequirementOrdinals, ordinal)
+		if queryidentifier.MixedAlphanumeric(raw) {
+			m.exactIdentifierRequirements = append(
+				m.exactIdentifierRequirements,
+				rawRequirement,
+			)
+		}
+	}
+	requirement := -1
+	for index, required := range m.required {
+		if required == analyzed {
+			requirement = index
+			break
+		}
+	}
+	if requirement < 0 {
+		requirement = len(m.required)
+		m.required = append(m.required, analyzed)
+	}
+	for _, targetIndex := range m.lookup[analyzed] {
+		if m.targets[targetIndex].rawRequirement == rawRequirement {
+			return
+		}
+	}
 	m.targets = append(
 		m.targets,
-		newStoredEvidenceTarget(requirement, raw, analyzed),
+		newStoredEvidenceTarget(requirement, rawRequirement, raw, analyzed),
 	)
 	m.lookup[analyzed] = append(m.lookup[analyzed], len(m.targets)-1)
 }
 
-func newStoredEvidenceTarget(requirement int, raw string, analyzed string) storedEvidenceTarget {
+func newStoredEvidenceTarget(
+	requirement int,
+	rawRequirement int,
+	raw string,
+	analyzed string,
+) storedEvidenceTarget {
 	distance := fuzzyEditDistance(raw)
 	prefix := fuzzyPrefixLength(raw)
 	analyzedRunes := []rune(analyzed)
@@ -226,15 +379,23 @@ func newStoredEvidenceTarget(requirement int, raw string, analyzed string) store
 		}
 	}
 	anchorRunes = min(anchorRunes, len(analyzedRunes))
+	surfaceRunes := []rune(raw)
+	surfaceAnchor := surfaceRunes[:min(anchorRunes, len(surfaceRunes))]
+	analyzedAnchor := analyzedRunes[:anchorRunes]
+	if string(surfaceAnchor) == string(analyzedAnchor) {
+		surfaceAnchor = nil
+	}
 
 	return storedEvidenceTarget{
-		requirement:   requirement,
-		raw:           raw,
-		analyzed:      analyzed,
-		analyzedRunes: analyzedRunes,
-		anchor:        append([]rune(nil), analyzedRunes[:anchorRunes]...),
-		distance:      distance,
-		prefix:        prefix,
+		requirement:    requirement,
+		rawRequirement: rawRequirement,
+		raw:            raw,
+		analyzed:       analyzed,
+		analyzedRunes:  analyzedRunes,
+		anchor:         append([]rune(nil), analyzedAnchor...),
+		surfaceAnchor:  append([]rune(nil), surfaceAnchor...),
+		distance:       distance,
+		prefix:         prefix,
 	}
 }
 
@@ -248,20 +409,16 @@ func indexedAnalyzerName(hit *search.DocumentMatch, doc documentstore.Document) 
 	return detectDocumentAnalyzer(analyzerDetectionText(doc), doc.Language)
 }
 
-func scanStoredField(
+func scanStoredFieldEvidence(
 	ctx context.Context,
 	matcher *storedEvidenceMatcher,
 	values []string,
 	includePositions bool,
-) (search.TermLocationMap, error) {
+) (storedFieldEvidence, error) {
 	if matcher.name == "cjk" {
-		return scanStoredCJKField(ctx, matcher, values, includePositions)
+		return scanStoredCJKFieldEvidence(ctx, matcher, values, includePositions)
 	}
-	field := storedFieldEvidence{
-		terms:      search.TermLocationMap{},
-		bestSpan:   int(^uint(0) >> 1),
-		queryTerms: matcher.queries,
-	}
+	field := newStoredFieldEvidence(matcher)
 	scan := storedFieldScan{
 		matcher:          matcher,
 		evidence:         &field,
@@ -269,14 +426,17 @@ func scanStoredField(
 	}
 	for arrayIndex, value := range values {
 		field.latest = map[int]*search.Location{}
+		field.latestRaw = map[int]*search.Location{}
+		field.exactLatest = map[int]*search.Location{}
+		scan.phrasePosition = 0
 		if err := scan.scanValue(ctx, value, arrayIndex, len(values)); err != nil {
-			return nil, err
+			return storedFieldEvidence{}, err
 		}
 		scan.position++
 	}
 	field.preserveWitnesses(matcher)
 
-	return field.terms, nil
+	return field, nil
 }
 
 func (s *storedFieldScan) scanValue(
@@ -289,24 +449,26 @@ func (s *storedFieldScan) scanValue(
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("stored search evidence: %w", err)
 		}
+		token := value[start:end]
+		evidence := s.matcher.match(token)
+		s.observePhraseToken(evidence.analyzed, start, end, arrayIndex, arrayLength)
 		s.position++
-		matched := s.matcher.match(value[start:end])
+		matched := evidence.targets
 		if len(matched) == 0 {
 			continue
 		}
-		for _, targetIndex := range matched {
-			target := s.matcher.targets[targetIndex]
-			location := newStoredLocation(storedLocationCoordinates{
-				position:    s.position,
-				start:       start,
-				end:         end,
-				arrayIndex:  arrayIndex,
-				arrayLength: arrayLength,
-			})
-			s.evidence.add(target, location)
-		}
+		location := newStoredLocation(storedLocationCoordinates{
+			position:    s.position,
+			start:       start,
+			end:         end,
+			arrayIndex:  arrayIndex,
+			arrayLength: arrayLength,
+		})
+		s.evidence.addMatches(s.matcher, matched, location, token)
 		s.evidence.observeWindow()
-		if !s.includePositions && len(s.evidence.latest) == s.evidence.queryTerms {
+		s.matcher.observeRelaxedPassage(s.evidence.exactLatest)
+		if !s.includePositions && len(s.evidence.latest) == s.evidence.queryTerms &&
+			(s.matcher.minimumPassage == 0 || s.matcher.relaxedPassageEvidence) {
 			break
 		}
 	}
@@ -320,14 +482,23 @@ func scanStoredCJKField(
 	values []string,
 	includePositions bool,
 ) (search.TermLocationMap, error) {
-	field := storedFieldEvidence{
-		terms:      search.TermLocationMap{},
-		bestSpan:   int(^uint(0) >> 1),
-		queryTerms: matcher.queries,
-	}
+	evidence, err := scanStoredCJKFieldEvidence(ctx, matcher, values, includePositions)
+
+	return evidence.terms, err
+}
+
+func scanStoredCJKFieldEvidence(
+	ctx context.Context,
+	matcher *storedEvidenceMatcher,
+	values []string,
+	includePositions bool,
+) (storedFieldEvidence, error) {
+	field := newStoredFieldEvidence(matcher)
 	position := uint64(0)
 	for arrayIndex, value := range values {
 		field.latest = map[int]*search.Location{}
+		field.latestRaw = map[int]*search.Location{}
+		field.exactLatest = map[int]*search.Location{}
 		cjkValue := storedCJKValue{
 			matcher:     matcher,
 			text:        value,
@@ -336,14 +507,15 @@ func scanStoredCJKField(
 		}
 		for start, end := range rangeStoredTokens(value) {
 			if err := ctx.Err(); err != nil {
-				return nil, fmt.Errorf("stored search evidence: %w", err)
+				return storedFieldEvidence{}, fmt.Errorf("stored search evidence: %w", err)
 			}
 			token := value[start:end]
 			if !containsStoredCJK(token) {
 				position++
 				field.addCJKMatches(
 					matcher,
-					strings.ToLower(token),
+					normalizedUnstemmedWord(token, "cjk"),
+					token,
 					storedLocationCoordinates{
 						position:    position,
 						start:       start,
@@ -361,26 +533,25 @@ func scanStoredCJKField(
 				)
 			}
 			field.observeWindow()
-			if !includePositions && len(field.latest) == field.queryTerms {
+			matcher.observeRelaxedPassage(field.exactLatest)
+			if !includePositions && len(field.latest) == field.queryTerms &&
+				(matcher.minimumPassage == 0 || matcher.relaxedPassageEvidence) {
 				break
 			}
 		}
 		position++
 	}
 	field.preserveWitnesses(matcher)
+	if matcher.quotedPhrases.enabled() {
+		field.phraseTerms = field.terms
+	}
 
-	return field.terms, nil
+	return field, nil
 }
 
 func containsStoredCJK(text string) bool {
 	for _, character := range text {
-		if unicode.In(
-			character,
-			unicode.Han,
-			unicode.Hiragana,
-			unicode.Katakana,
-			unicode.Hangul,
-		) {
+		if storedCJKCharacter(character) {
 			return true
 		}
 	}
@@ -397,64 +568,51 @@ func (f *storedFieldEvidence) addCJKSequence(
 	previousStart := -1
 	previousEnd := -1
 	sequence := 0
+	literalStart := -1
 	for offset, character := range value.text[start:end] {
 		absoluteStart := start + offset
 		absoluteEnd := absoluteStart + utf8.RuneLen(character)
-		if !unicode.In(
-			character,
-			unicode.Han,
-			unicode.Hiragana,
-			unicode.Katakana,
-			unicode.Hangul,
-		) {
+		if !storedCJKCharacter(character) {
 			if sequence == 1 {
-				position++
-				f.addCJKMatches(
-					value.matcher,
-					value.text[previousStart:previousEnd],
-					storedLocationCoordinates{
-						position:    position,
-						start:       previousStart,
-						end:         previousEnd,
-						arrayIndex:  value.arrayIndex,
-						arrayLength: value.arrayLength,
-					},
+				position = f.addCJKSurfaceTerm(
+					value,
+					previousStart,
+					previousEnd,
+					position,
 				)
 			}
 			sequence = 0
 			previousStart = -1
+			if literalStart < 0 {
+				literalStart = absoluteStart
+			}
 			continue
 		}
+		if literalStart >= 0 {
+			position = f.addCJKSurfaceTerm(value, literalStart, absoluteStart, position)
+			literalStart = -1
+		}
 		if sequence > 0 {
-			position++
-			f.addCJKMatches(
-				value.matcher,
-				value.text[previousStart:absoluteEnd],
-				storedLocationCoordinates{
-					position:    position,
-					start:       previousStart,
-					end:         absoluteEnd,
-					arrayIndex:  value.arrayIndex,
-					arrayLength: value.arrayLength,
-				},
+			position = f.addCJKSurfaceTerm(
+				value,
+				previousStart,
+				absoluteEnd,
+				position,
 			)
 		}
 		sequence++
 		previousStart = absoluteStart
 		previousEnd = absoluteEnd
 	}
+	if literalStart >= 0 {
+		return f.addCJKSurfaceTerm(value, literalStart, end, position)
+	}
 	if sequence == 1 {
-		position++
-		f.addCJKMatches(
-			value.matcher,
-			value.text[previousStart:previousEnd],
-			storedLocationCoordinates{
-				position:    position,
-				start:       previousStart,
-				end:         previousEnd,
-				arrayIndex:  value.arrayIndex,
-				arrayLength: value.arrayLength,
-			},
+		position = f.addCJKSurfaceTerm(
+			value,
+			previousStart,
+			previousEnd,
+			position,
 		)
 	}
 
@@ -464,12 +622,11 @@ func (f *storedFieldEvidence) addCJKSequence(
 func (f *storedFieldEvidence) addCJKMatches(
 	matcher *storedEvidenceMatcher,
 	term string,
+	surface string,
 	coordinates storedLocationCoordinates,
 ) {
-	for _, targetIndex := range matcher.lookup[term] {
-		location := newStoredLocation(coordinates)
-		f.add(matcher.targets[targetIndex], location)
-	}
+	location := newStoredLocation(coordinates)
+	f.addMatches(matcher, matcher.lookup[term], location, surface)
 }
 
 func newStoredLocation(coordinates storedLocationCoordinates) *search.Location {
@@ -500,7 +657,12 @@ func rangeStoredTokens(text string) func(func(int, int) bool) {
 		start := -1
 		for index, character := range text {
 			wordCharacter := unicode.IsLetter(character) || unicode.IsNumber(character) ||
-				unicode.IsMark(character)
+				unicode.IsMark(character) || storedApostropheContinuesWord(
+				text,
+				index,
+				character,
+				start,
+			)
 			if wordCharacter {
 				if start < 0 {
 					start = index
@@ -518,39 +680,61 @@ func rangeStoredTokens(text string) func(func(int, int) bool) {
 	}
 }
 
-func (m *storedEvidenceMatcher) match(token string) []int {
+func storedApostropheContinuesWord(
+	text string,
+	index int,
+	character rune,
+	start int,
+) bool {
+	if start < 0 || (character != '\'' && character != '’' && character != '＇') {
+		return false
+	}
+	_, width := utf8.DecodeRuneInString(text[index:])
+	next, _ := utf8.DecodeRuneInString(text[index+width:])
+
+	return unicode.IsLetter(next) || unicode.IsNumber(next) || unicode.IsMark(next)
+}
+
+func (m *storedEvidenceMatcher) match(token string) storedTokenEvidence {
 	if cached, ok := m.cache[token]; ok {
 		return cached
 	}
-	if !m.mightMatch(token) {
-		return nil
+	mightMatchTarget := m.mightMatch(token)
+	if !mightMatchTarget && !m.quotedPhrases.independentlyMightMatch(token) {
+		return storedTokenEvidence{}
 	}
-	analyzedTerms := []string{strings.ToLower(token)}
+	analyzed := analysis.TokenStream{
+		&analysis.Token{Term: []byte(strings.ToLower(token)), Position: 1},
+	}
 	if m.analyzer != nil {
-		analyzedTerms = analyzedTerms[:0]
-		for _, analyzed := range m.analyzer.Analyze([]byte(token)) {
-			analyzedTerms = append(analyzedTerms, string(analyzed.Term))
-		}
+		analyzed = m.analyzer.Analyze([]byte(token))
 	}
 	matched := make([]int, 0, 1)
-	for index, target := range m.targets {
-		for _, analyzed := range analyzedTerms {
-			if m.analyzedTermMatches(analyzed, target) {
-				matched = append(matched, index)
-				break
+	if mightMatchTarget {
+		for index, target := range m.targets {
+			for _, analyzedToken := range analyzed {
+				if m.analyzedTermMatches(string(analyzedToken.Term), target) {
+					matched = append(matched, index)
+					break
+				}
 			}
 		}
 	}
+	evidence := storedTokenEvidence{targets: matched}
+	if m.quotedPhrases.enabled() {
+		evidence.analyzed = analyzed
+	}
 	if len(m.cache) < analyzedTokenCacheEntries {
-		m.cache[token] = matched
+		m.cache[token] = evidence
 	}
 
-	return matched
+	return evidence
 }
 
 func (m *storedEvidenceMatcher) mightMatch(token string) bool {
 	for _, target := range m.targets {
-		if len(target.anchor) == 0 || containsFoldedRunes(token, target.anchor) {
+		if len(target.anchor) == 0 || containsFoldedRunes(token, target.anchor) ||
+			(len(target.surfaceAnchor) > 0 && containsFoldedRunes(token, target.surfaceAnchor)) {
 			return true
 		}
 	}
@@ -736,13 +920,14 @@ func hitBodyPositions(hit *search.DocumentMatch, terms []string) map[string][]in
 }
 
 func rescoreStoredProximity(results []SearchResult, req SearchRequest) {
-	if !req.IncludePositions || len(distinctWords(queryTermWords(req))) < 2 {
+	if !storedProximityEligible(results, req) {
 		return
 	}
+	weights := req.Weights.orDefault()
 	for index := range results {
 		results[index].Score *= 1 +
-			storedOrderedProximityWeight*results[index].OrderedProximity +
-			storedUnorderedProximityWeight*results[index].Proximity
+			weights.OrderedProximity*results[index].OrderedProximity +
+			weights.Proximity*results[index].Proximity
 	}
 	sort.SliceStable(results, func(left int, right int) bool {
 		if results[left].Score != results[right].Score {
@@ -751,20 +936,6 @@ func rescoreStoredProximity(results []SearchResult, req SearchRequest) {
 
 		return results[left].DocumentID < results[right].DocumentID
 	})
-}
-
-func (f *storedFieldEvidence) add(
-	target storedEvidenceTarget,
-	location *search.Location,
-) {
-	locations := f.terms[target.analyzed]
-	if len(locations) < maximumTermPositionsPerField {
-		locations = append(locations, location)
-	} else {
-		locations[len(locations)-1] = location
-	}
-	f.terms[target.analyzed] = locations
-	f.latest[target.requirement] = location
 }
 
 func (f *storedFieldEvidence) observeWindow() {

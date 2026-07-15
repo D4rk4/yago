@@ -65,7 +65,9 @@ the same call with requeue semantics naks unfinished work. `Heartbeat` renews th
 leases held by one registered worker, and `ReportProgress` carries run tallies.
 The node can durably enqueue more orders than a crawler currently has in its
 frontier; crawler saturation is handled by lease ownership rather than by
-blocking order creation.
+blocking order creation. Each progress report carries the run's effective
+pages-per-minute limit, including the crawler default and an explicit zero for
+unlimited dispatch, so the node does not infer worker configuration.
 
 Invalid order modes, URLs, profiles, deterministic fetch responses, and malformed
 seed documents terminate the lease. Network, server, throttle, timeout, and

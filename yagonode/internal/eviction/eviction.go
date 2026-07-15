@@ -34,10 +34,20 @@ type Sweeper interface {
 // DocumentEvictor drops a stored document by its normalized URL. Documents are
 // keyed by the URL string, not the URL hash the postings and metadata use, so a
 // purge resolves the hash to its URL (URLResolver) before deleting the document
-// (ADR-0036 B). A nil DocumentEvictor skips the documents side of the purge —
-// the operator-delete path manages documents itself.
 type DocumentEvictor interface {
 	Delete(ctx context.Context, normalizedURL string) (bool, error)
+}
+
+type ReservedDocumentEviction interface {
+	Delete(context.Context, string) (bool, error)
+	Release()
+}
+
+type documentEvictionReserver interface {
+	ReserveDocumentEvictions(
+		context.Context,
+		[]string,
+	) (ReservedDocumentEviction, error)
 }
 
 // URLResolver recovers the URL a document is keyed by from a URL hash, by
@@ -110,6 +120,31 @@ func (e Evictor) EvictURLs(ctx context.Context, urls []yagomodel.Hash) (Result, 
 // a recrawl found a URL permanently gone and only needs it purged, idempotently.
 func (e Evictor) Purge(ctx context.Context, urls []yagomodel.Hash) error {
 	if _, err := e.EvictURLs(ctx, urls); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (e Evictor) PurgeResolved(
+	ctx context.Context,
+	normalizedURLs []string,
+	urls []yagomodel.Hash,
+) error {
+	deletion := resolvedURLLineageDeletion{
+		vault:     e.vault,
+		documents: e.documents,
+		projections: urlProjectionDeletion{
+			postings:   e.postings,
+			references: e.references,
+			metadata:   e.urls,
+		},
+	}
+	if _, err := deletion.purge(
+		ctx,
+		normalizedURLs,
+		urls,
+	); err != nil {
 		return err
 	}
 

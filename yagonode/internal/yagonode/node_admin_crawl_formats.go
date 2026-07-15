@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
@@ -25,8 +26,13 @@ func crawlFormatsAdmin(runtime crawlProcess) adminui.CrawlFormatsSource {
 	return crawlFormatsSource{store: provider.formatStore()}
 }
 
-func (s crawlFormatsSource) CurrentFormats(ctx context.Context) adminui.FormatSettings {
-	toggles := s.store.Current(ctx)
+func (s crawlFormatsSource) CurrentFormats(
+	ctx context.Context,
+) (adminui.FormatSettings, error) {
+	toggles, err := s.store.Current(ctx)
+	if err != nil {
+		return adminui.FormatSettings{}, fmt.Errorf("read crawl formats: %w", err)
+	}
 
 	return adminui.FormatSettings{
 		Text:     toggles.Text,
@@ -37,7 +43,7 @@ func (s crawlFormatsSource) CurrentFormats(ctx context.Context) adminui.FormatSe
 		Audio:    toggles.Audio,
 		Misc:     toggles.Misc,
 		Archives: toggles.Archives,
-	}
+	}, nil
 }
 
 func (s crawlFormatsSource) SaveFormats(

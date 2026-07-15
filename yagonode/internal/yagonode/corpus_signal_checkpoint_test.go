@@ -12,6 +12,7 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/corpussignals"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
+	"github.com/D4rk4/yago/yagonode/internal/hostlinks"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/hosttrust"
 	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
@@ -95,7 +96,9 @@ func copyCorpusSignalCheckpoint(checkpoint corpussignals.Checkpoint) corpussigna
 
 	return corpussignals.Checkpoint{
 		Authority: authority, Citations: citations, Spelling: spelling, WordForms: forms,
-		WordFormsReady: checkpoint.WordFormsReady, TrustDomains: domains,
+		WordFormsReady: checkpoint.WordFormsReady,
+		HostLinks:      hostlinks.CloneGraph(checkpoint.HostLinks),
+		HostLinksReady: checkpoint.HostLinksReady, TrustDomains: domains,
 		TrustBlend: checkpoint.TrustBlend, CompletedAtUnixMilli: checkpoint.CompletedAtUnixMilli,
 	}
 }
@@ -114,6 +117,8 @@ func restoredCorpusSignalCheckpoint(completedAt time.Time) corpussignals.Checkpo
 		Spelling:             map[string]int{"golang": 4},
 		WordForms:            map[string]int{"черногория": 4, "черногории": 3},
 		WordFormsReady:       true,
+		HostLinks:            hostlinks.Graph{RowDefinition: hostlinks.HostReferenceRowDefinition},
+		HostLinksReady:       true,
 		TrustDomains:         []string{},
 		CompletedAtUnixMilli: completedAt.UnixMilli(),
 	}
@@ -129,8 +134,10 @@ func TestCorpusSignalCheckpointRestoresSignalsAndDefersUntilDue(t *testing.T) {
 	hostRank := hostrank.NewHolder()
 	spell := spellcheck.NewHolder()
 	forms := wordforms.NewHolder()
+	hostLinkSnapshot := hostlinks.NewSnapshotHolder()
 	refresh := &corpusSignalRefresh{
 		documents: corpus, hostRank: hostRank, spell: spell, wordForms: forms,
+		hostLinks:        hostLinkSnapshot,
 		includeWordForms: true, checkpoints: repository, readTime: func() time.Time { return now },
 	}
 	refresh.initialRefreshDelay = refresh.restoreCheckpoint(t.Context())
@@ -138,15 +145,7 @@ func TestCorpusSignalCheckpointRestoresSignalsAndDefersUntilDue(t *testing.T) {
 	if refresh.initialRefreshDelay != 7*time.Minute {
 		t.Fatalf("initial refresh delay = %v", refresh.initialRefreshDelay)
 	}
-	if got := hostRank.Current().Rank("target.example"); got != 1 {
-		t.Fatalf("restored authority = %v", got)
-	}
-	if got, ok := spell.Current().Suggest("golnag"); !ok || got != "golang" {
-		t.Fatalf("restored spelling = %q, %t", got, ok)
-	}
-	if got := forms.Current().Variants("черногория"); !slices.Contains(got, "черногории") {
-		t.Fatalf("restored word forms = %v", got)
-	}
+	assertRestoredCorpusSignals(t, hostRank, spell, forms, hostLinkSnapshot)
 	if corpus.scans.Load() != 0 {
 		t.Fatal("fresh checkpoint triggered an eager scan")
 	}
@@ -195,6 +194,30 @@ func TestCorpusSignalCheckpointRestoresSignalsAndDefersUntilDue(t *testing.T) {
 	}
 }
 
+func assertRestoredCorpusSignals(
+	t *testing.T,
+	hostRank *hostrank.Holder,
+	spell *spellcheck.Holder,
+	forms *wordforms.Holder,
+	hostLinkSnapshot *hostlinks.SnapshotHolder,
+) {
+	t.Helper()
+	if got := hostRank.Current().Rank("target.example"); got != 1 {
+		t.Fatalf("restored authority = %v", got)
+	}
+	if got, ok := spell.Current().Suggest("golnag"); !ok || got != "golang" {
+		t.Fatalf("restored spelling = %q, %t", got, ok)
+	}
+	if got := forms.Current().Variants("черногория"); !slices.Contains(got, "черногории") {
+		t.Fatalf("restored word forms = %v", got)
+	}
+	if got := hostLinkSnapshot.IncomingHostLinks(
+		t.Context(),
+	); got.RowDefinition != hostlinks.HostReferenceRowDefinition {
+		t.Fatalf("restored host links = %#v", got)
+	}
+}
+
 func TestCorpusSignalCheckpointPublishesStaleButRefreshesImmediately(t *testing.T) {
 	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
 	for _, completedAt := range []time.Time{
@@ -239,6 +262,23 @@ func TestCorpusSignalCheckpointPublishesStaleButRefreshesImmediately(t *testing.
 		[]string{"черногория"},
 	) {
 		t.Fatalf("unavailable restored word forms = %v", got)
+	}
+
+	missingLinks := restoredCorpusSignalCheckpoint(now.Add(-time.Minute))
+	missingLinks.HostLinks = hostlinks.Graph{}
+	missingLinks.HostLinksReady = false
+	linksRepository := &memoryCorpusSignalCheckpoints{checkpoint: missingLinks, found: true}
+	links := hostlinks.NewSnapshotHolder()
+	refresh = &corpusSignalRefresh{
+		hostLinks: links, checkpoints: linksRepository, readTime: func() time.Time { return now },
+	}
+	if delay := refresh.restoreCheckpoint(t.Context()); delay != 0 {
+		t.Fatalf("incomplete host-link checkpoint delay = %v", delay)
+	}
+	if got := links.IncomingHostLinks(
+		t.Context(),
+	); got.RowDefinition != hostlinks.HostReferenceRowDefinition {
+		t.Fatalf("unavailable restored host links = %#v", got)
 	}
 }
 
@@ -350,15 +390,18 @@ func TestCorpusSignalRefreshPersistsOnlySuccessfulCompleteScan(t *testing.T) {
 	corpus := &countedCorpus{documents: corpusSignalDocuments()}
 	trust := &mutableHostTrustPolicy{changes: make(chan struct{}, 1)}
 	holder := hostrank.NewHolder()
+	hostLinkSnapshot := hostlinks.NewSnapshotHolder()
 	refresh := &corpusSignalRefresh{
 		documents: corpus, hostRank: holder, spell: spellcheck.NewHolder(),
 		wordForms: wordforms.NewHolder(), includeWordForms: true, trust: trust,
+		hostLinks:   hostLinkSnapshot,
 		checkpoints: repository, readTime: func() time.Time { return now },
 	}
 	refresh.scanAndPublish(t.Context())
 	stored, attempts, replacements := repository.snapshot()
 	if attempts != 1 || replacements != 1 || stored.CompletedAtUnixMilli != now.UnixMilli() ||
-		len(stored.Citations) != 2 || !stored.WordFormsReady || stored.Spelling["golang"] != 4 {
+		len(stored.Citations) != 2 || !stored.WordFormsReady || stored.Spelling["golang"] != 4 ||
+		!stored.HostLinksReady || stored.HostLinks.RowDefinition != hostlinks.HostReferenceRowDefinition {
 		t.Fatalf("successful checkpoint = %#v, %d, %d", stored, attempts, replacements)
 	}
 
@@ -381,7 +424,8 @@ func TestCorpusSignalRefreshPersistsOnlySuccessfulCompleteScan(t *testing.T) {
 	refresh.publishAuthority(t.Context())
 	trusted, currentAttempts, currentReplacements := repository.snapshot()
 	if currentAttempts != attempts+1 || currentReplacements != replacements+1 ||
-		trusted.CompletedAtUnixMilli != stored.CompletedAtUnixMilli {
+		trusted.CompletedAtUnixMilli != stored.CompletedAtUnixMilli ||
+		!reflect.DeepEqual(trusted.HostLinks, stored.HostLinks) {
 		t.Fatalf("trust checkpoint = %#v, %d, %d", trusted, currentAttempts, currentReplacements)
 	}
 

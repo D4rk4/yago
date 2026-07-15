@@ -40,9 +40,12 @@ func newBlockingRoster(inner peerroster.Roster, blocks peerBlockStore) peerroste
 
 func (r blockingRoster) ReachablePeers(ctx context.Context) []yagomodel.Seed {
 	peers := r.Roster.ReachablePeers(ctx)
+	if peerBlockFanoutRequestEnded(ctx) {
+		return peers
+	}
 	blocked, err := r.blocks.Blocked(ctx)
 	if err != nil {
-		slog.WarnContext(ctx, "read peer blocklist for fan-out failed", slog.Any("error", err))
+		slog.WarnContext(ctx, peerBlockFanoutReadFailedMessage, slog.Any("error", err))
 
 		return peers
 	}

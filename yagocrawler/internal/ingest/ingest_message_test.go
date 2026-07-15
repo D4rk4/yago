@@ -141,12 +141,65 @@ func TestPrepareIngestMessageRejectsOverlongIdentity(t *testing.T) {
 	}
 }
 
-func TestPrepareIngestMessageRejectsOversizedEscapedScalar(t *testing.T) {
-	_, err := prepareIngestMessage(IngestBatch{Document: yagocrawlcontract.DocumentIngest{
+func TestPrepareIngestMessageFitsOversizedEscapedScalar(t *testing.T) {
+	data, err := prepareIngestMessage(IngestBatch{Document: yagocrawlcontract.DocumentIngest{
 		ExtractedText: strings.Repeat("\x00", yagocrawlcontract.MaximumDocumentTextBytes),
 	}})
+	if err != nil {
+		t.Fatalf("prepare ingest: %v", err)
+	}
+	if len(data) > yagocrawlcontract.MaximumIngestBatchBytes {
+		t.Fatalf("payload bytes = %d", len(data))
+	}
+	decoded, err := yagocrawlcontract.UnmarshalIngestBatch(data)
+	if err != nil {
+		t.Fatalf("decode prepared ingest: %v", err)
+	}
+	if len(decoded.Document.ExtractedText) == 0 ||
+		len(decoded.Document.ExtractedText) >= yagocrawlcontract.MaximumDocumentTextBytes {
+		t.Fatalf("fitted text bytes = %d", len(decoded.Document.ExtractedText))
+	}
+}
+
+func TestPrepareIngestMessageFitsEscapedTextAtUTF8Boundary(t *testing.T) {
+	text := strings.Repeat("я\x00\x00\x00", yagocrawlcontract.MaximumDocumentTextBytes/5)
+	data, err := prepareIngestMessage(IngestBatch{Document: yagocrawlcontract.DocumentIngest{
+		ExtractedText: text,
+	}})
+	if err != nil {
+		t.Fatalf("prepare ingest: %v", err)
+	}
+	decoded, err := yagocrawlcontract.UnmarshalIngestBatch(data)
+	if err != nil {
+		t.Fatalf("decode prepared ingest: %v", err)
+	}
+	if !utf8.ValidString(decoded.Document.ExtractedText) ||
+		!strings.HasPrefix(text, decoded.Document.ExtractedText) ||
+		len(decoded.Document.ExtractedText) >= len(text) {
+		t.Fatalf("fitted text is not a valid source prefix")
+	}
+}
+
+func TestPrepareIngestMessageRejectsOversizedRequiredScalar(t *testing.T) {
+	_, err := prepareIngestMessage(IngestBatch{
+		ObservationID: strings.Repeat("\x00", yagocrawlcontract.MaximumDocumentTextBytes),
+	})
 	if !errors.Is(err, errIngestBatchTooLarge) {
-		t.Fatalf("error = %v", err)
+		t.Fatalf("error = %v, want transport limit", err)
+	}
+}
+
+func TestHalvePropertiesIsDeterministicAndDropsSingleton(t *testing.T) {
+	if halved := halveProperties(map[string]string{"only": "value"}); halved != nil {
+		t.Fatalf("singleton properties = %v, want nil", halved)
+	}
+	halved := halveProperties(map[string]string{
+		"charlie": "3",
+		"alpha":   "1",
+		"bravo":   "2",
+	})
+	if len(halved) != 1 || halved["alpha"] != "1" {
+		t.Fatalf("halved properties = %v", halved)
 	}
 }
 
@@ -193,6 +246,8 @@ func ingestCollectionFitCases() []ingestCollectionFitCase {
 		headingsFitCase(),
 		imagesFitCase(largeURL, escapedMetadata),
 		metadataFitCase(escapedMetadata),
+		documentMetadataFitCase(escapedMetadata),
+		safetyRatingsFitCase(escapedMetadata),
 	}
 }
 
@@ -311,6 +366,45 @@ func metadataFitCase(escapedMetadata string) ingestCollectionFitCase {
 		}}},
 		collectionLength: func(batch IngestBatch) int {
 			return len(batch.Metadata)
+		},
+	}
+}
+
+func documentMetadataFitCase(escapedMetadata string) ingestCollectionFitCase {
+	properties := make(map[string]string, yagocrawlcontract.MaximumPropertyEntries)
+	for index := range yagocrawlcontract.MaximumPropertyEntries {
+		key := string(rune(33+index)) + strings.Repeat(
+			"\x00",
+			yagocrawlcontract.MaximumDocumentMetadataBytes-1,
+		)
+		properties[key] = escapedMetadata
+	}
+
+	return ingestCollectionFitCase{
+		name: "document metadata",
+		batch: IngestBatch{Document: yagocrawlcontract.DocumentIngest{
+			Metadata: properties,
+		}},
+		collectionLength: func(batch IngestBatch) int {
+			return len(batch.Document.Metadata)
+		},
+	}
+}
+
+func safetyRatingsFitCase(escapedMetadata string) ingestCollectionFitCase {
+	return ingestCollectionFitCase{
+		name: "safety ratings",
+		batch: IngestBatch{Document: yagocrawlcontract.DocumentIngest{
+			ExtractedText: strings.Repeat("\x00", 500_000),
+			SafetyLabels: yagocrawlcontract.SafetyLabels{
+				RatingValues: repeatedValues(
+					escapedMetadata,
+					yagocrawlcontract.MaximumDocumentMetadata,
+				),
+			},
+		}},
+		collectionLength: func(batch IngestBatch) int {
+			return len(batch.Document.SafetyLabels.RatingValues)
 		},
 	}
 }

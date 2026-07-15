@@ -57,6 +57,25 @@ func TestConsoleIndexRendersTermBrowserAndSchema(t *testing.T) {
 	}
 }
 
+func TestConsoleIndexLabelsUnavailableStorageFacts(t *testing.T) {
+	t.Parallel()
+
+	body := do(t, New(Options{
+		Index: fakeIndex{snap: IndexStats{Available: true}},
+	}), "/admin/index").body
+	for _, want := range []string{
+		`<tr><th scope="row">Backend</th><td>Unavailable</td></tr>`,
+		`<tr><th scope="row">Last updated</th><td>Not recorded</td></tr>`,
+		`<tr><th scope="row">Search index on disk</th><td>Unavailable</td></tr>`,
+		`<tr><th scope="row">Data vault on disk</th><td>Unavailable</td></tr>`,
+		`<tr><th scope="row">Vault quota (maximum)</th><td>Unavailable</td></tr>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("index status missing %q", want)
+		}
+	}
+}
+
 func TestConsoleIndexTermLookupShowsResults(t *testing.T) {
 	t.Parallel()
 
@@ -80,10 +99,83 @@ func TestConsoleIndexTermLookupShowsResults(t *testing.T) {
 	if terms.last != "golang" {
 		t.Fatalf("term not passed to source: %q", terms.last)
 	}
-	for _, want := range []string{"2 posting(s)", "WWWWWWWWWWWW", "http://a.example/1", "Alpha"} {
+	for _, want := range []string{
+		"2 posting(s)", "Resolved 1 document(s) in this bounded sample.",
+		"WWWWWWWWWWWW", "http://a.example/1", "Alpha",
+	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("term results missing %q", want)
 		}
+	}
+}
+
+func TestConsoleIndexTermSampleUnavailableKeepsKnownCount(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Index: fakeIndex{snap: IndexStats{Available: true}},
+		Terms: &fakeTerms{report: TermReport{
+			Term:        "golang",
+			Hash:        "WWWWWWWWWWWW",
+			Count:       5,
+			SampleError: errors.New("scan failed"),
+		}},
+	})
+	body := do(t, console, "/admin/index?term=golang").body
+	for _, want := range []string{
+		"5 posting(s)",
+		"The document sample is unavailable. The posting count above is still available.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("unavailable sample missing %q", want)
+		}
+	}
+	if strings.Contains(body, "Showing up to 0") {
+		t.Fatal("failed sample rendered a zero-sized successful sample")
+	}
+}
+
+func TestConsoleIndexTermSampleFailureLabelsResolvedRowsPartial(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Index: fakeIndex{snap: IndexStats{Available: true}},
+		Terms: &fakeTerms{report: TermReport{
+			Term:        "golang",
+			Hash:        "WWWWWWWWWWWW",
+			Count:       5,
+			Sample:      []TermPosting{{URL: "https://partial.example/"}},
+			SampleError: errors.New("rows failed"),
+		}},
+	})
+	body := do(t, console, "/admin/index?term=golang").body
+	for _, want := range []string{
+		"5 posting(s)",
+		"Resolved 1 document(s) before sampling failed; this is a partial sample.",
+		"https://partial.example/",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("partial sample missing %q", want)
+		}
+	}
+}
+
+func TestConsoleIndexTermLookupUnavailableIsGeneric(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Index: fakeIndex{snap: IndexStats{Available: true}},
+		Terms: &fakeTerms{report: TermReport{
+			Term:  "golang",
+			Error: errors.New("private storage detail"),
+		}},
+	})
+	body := do(t, console, "/admin/index?term=golang").body
+	if !strings.Contains(body, "The term lookup is unavailable.") {
+		t.Fatal("term lookup failure should render unavailable")
+	}
+	if strings.Contains(body, "private storage detail") {
+		t.Fatal("term lookup leaked a storage error")
 	}
 }
 
@@ -168,6 +260,48 @@ func TestConsoleIndexDocumentBrowserEmptyState(t *testing.T) {
 	)
 	if !strings.Contains(got.body, "No documents match.") {
 		t.Fatal("expected the empty document-browser state")
+	}
+}
+
+func TestConsoleIndexDocumentBrowserUnavailable(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Index:     fakeIndex{snap: IndexStats{Available: true}},
+		Documents: &fakeDocuments{page: DocumentPage{ScanFailed: true}},
+	})
+	body := do(t, console, "/admin/index").body
+	if !strings.Contains(body, "Document browser is unavailable.") {
+		t.Fatal("document scan failure should render unavailable")
+	}
+	if strings.Contains(body, "No documents match.") {
+		t.Fatal("document scan failure rendered an honest-empty state")
+	}
+}
+
+func TestConsoleIndexDocumentBrowserLabelsPartialScanFailure(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{
+		Index: fakeIndex{snap: IndexStats{Available: true}},
+		Documents: &fakeDocuments{page: DocumentPage{
+			Documents:  []DocumentSummary{{URL: "https://partial.example/1"}},
+			Matched:    1,
+			ScanFailed: true,
+		}},
+	})
+	body := do(t, console, "/admin/index").body
+	for _, want := range []string{
+		"Document browser is unavailable.",
+		"Showing 1 document(s) collected before the scan failed; this is a partial list.",
+		"https://partial.example/1",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("partial scan failure missing %q", want)
+		}
+	}
+	if strings.Contains(body, "1 matching document(s)") {
+		t.Fatal("partial scan failure rendered an exact match count")
 	}
 }
 
@@ -306,10 +440,15 @@ type fakeBlacklist struct {
 	entries []BlacklistEntry
 	added   []string
 	removed []string
+	readErr error
 	err     error
 }
 
-func (f *fakeBlacklist) BlacklistEntries(context.Context) []BlacklistEntry { return f.entries }
+func (f *fakeBlacklist) BlacklistEntries(
+	context.Context,
+) ([]BlacklistEntry, error) {
+	return f.entries, f.readErr
+}
 
 func (f *fakeBlacklist) AddBlacklist(_ context.Context, kind, value string) error {
 	f.added = append(f.added, kind+":"+value)
@@ -357,6 +496,28 @@ func TestConsoleIndexRendersBlacklist(t *testing.T) {
 	)
 	if strings.Contains(without.body, "Block a URL or a whole domain") {
 		t.Fatal("no blacklist manager should render without a source")
+	}
+}
+
+func TestConsoleIndexBlacklistReadFailureIsNotEmpty(t *testing.T) {
+	t.Parallel()
+
+	body := do(t, New(Options{
+		Index: fakeIndex{snap: IndexStats{Available: true}},
+		Blacklist: &fakeBlacklist{
+			readErr: errors.New("read failed"),
+		},
+	}), "/admin/index").body
+	if !strings.Contains(body, "Blacklist entries are unavailable.") {
+		t.Fatal("blacklist read failure should render unavailable")
+	}
+	if strings.Contains(body, "The blacklist is empty.") {
+		t.Fatal("blacklist read failure rendered an honest-empty state")
+	}
+	for _, want := range []string{">Block<", ">Check<", ">Export<", ">Import<"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("blacklist read failure hid control %q", want)
+		}
 	}
 }
 

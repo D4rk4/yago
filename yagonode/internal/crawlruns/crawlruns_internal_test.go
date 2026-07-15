@@ -51,11 +51,10 @@ func TestRegistrySetRateRemembersRateAcrossReports(t *testing.T) {
 	})
 
 	reg.SetRate("a", 45)
-	if got := reg.Recent()[0].PagesPerMinute; got != 45 {
-		t.Fatalf("rate after SetRate = %d, want 45", got)
+	if got := reg.Recent()[0]; got.PagesPerMinute != 45 || !got.RateKnown {
+		t.Fatalf("rate after SetRate = %d/%v, want known 45", got.PagesPerMinute, got.RateKnown)
 	}
 
-	// A later worker report must not wipe the operator-applied rate.
 	reg.Record(ctx, yagocrawlcontract.CrawlRunProgress{
 		RunID: "a", State: yagocrawlcontract.CrawlRunRunning,
 		Tally: yagocrawlcontract.CrawlRunTally{Fetched: 9},
@@ -65,10 +64,32 @@ func TestRegistrySetRateRemembersRateAcrossReports(t *testing.T) {
 		t.Fatalf("run = %+v, want rate 45 preserved with fresh tally", run)
 	}
 
-	// Lifting the throttle resets it to zero.
 	reg.SetRate("a", 0)
-	if got := reg.Recent()[0].PagesPerMinute; got != 0 {
-		t.Fatalf("rate after lifting throttle = %d, want 0", got)
+	if got := reg.Recent()[0]; got.PagesPerMinute != 0 || !got.RateKnown {
+		t.Fatalf(
+			"rate after lifting throttle = %d/%v, want known 0",
+			got.PagesPerMinute,
+			got.RateKnown,
+		)
+	}
+}
+
+func TestRegistryReconcilesWorkerEffectiveRate(t *testing.T) {
+	t.Parallel()
+
+	reg := New(4)
+	reg.Record(context.Background(), yagocrawlcontract.CrawlRunProgress{
+		RunID: "default", PagesPerMinute: 30, RateKnown: true,
+	})
+	if got := reg.Recent()[0]; got.PagesPerMinute != 30 || !got.RateKnown {
+		t.Fatalf("default rate = %d/%v, want known 30", got.PagesPerMinute, got.RateKnown)
+	}
+
+	reg.Record(context.Background(), yagocrawlcontract.CrawlRunProgress{
+		RunID: "default", PagesPerMinute: 0, RateKnown: true,
+	})
+	if got := reg.Recent()[0]; got.PagesPerMinute != 0 || !got.RateKnown {
+		t.Fatalf("unlimited rate = %d/%v, want known 0", got.PagesPerMinute, got.RateKnown)
 	}
 }
 

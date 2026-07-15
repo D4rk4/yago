@@ -21,12 +21,14 @@ func (noopProgressSink) Record(context.Context, yagocrawlcontract.CrawlRunProgre
 
 func progressFromReport(report *crawlrpc.CrawlProgressReport) yagocrawlcontract.CrawlRunProgress {
 	return yagocrawlcontract.CrawlRunProgress{
-		RunID:         hex.EncodeToString(report.GetRunId()),
-		WorkerID:      report.GetWorkerId(),
-		ProfileHandle: report.GetProfileHandle(),
-		ProfileName:   report.GetProfileName(),
-		State:         runStateFromProto(report.GetState()),
-		Tally:         tallyFromProto(report.GetTally()),
+		RunID:          hex.EncodeToString(report.GetRunId()),
+		WorkerID:       report.GetWorkerId(),
+		ProfileHandle:  report.GetProfileHandle(),
+		ProfileName:    report.GetProfileName(),
+		State:          runStateFromProto(report.GetState()),
+		Tally:          tallyFromProto(report.GetTally()),
+		PagesPerMinute: report.GetPagesPerMinute(),
+		RateKnown:      report.PagesPerMinute != nil,
 	}
 }
 

@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 
@@ -72,6 +71,7 @@ const (
 	configUnavailable      = "Configuration is not available."
 	indexUnavailable       = "The search index is not available."
 	networkUnavailable     = "Network status is not available."
+	peerDetailUnavailable  = "Peer detail is not available."
 	logsUnavailable        = "Event log is not available."
 	securityUnavailable    = "Security settings are not available."
 	performanceUnavailable = "Performance metrics are not available."
@@ -124,6 +124,7 @@ type Options struct {
 	Network      NetworkSource
 	Config       ConfigSource
 	Settings     SettingsSource
+	PublicSearch PublicSearchStatusSource
 	// Theme persists the operator portal design (ADR-0033); nil renders the
 	// design tabs as placeholders.
 	Theme    ThemeStore
@@ -172,21 +173,22 @@ type sectionView struct {
 }
 
 type pageData struct {
-	AppName         string
-	ActivePath      string
-	Nav             []NavItem
-	CSRF            string
-	Section         sectionView
-	Overview        Overview
-	Index           IndexStats
-	Network         NetworkStatus
-	PeerTable       PeerTableView
-	PeerLinks       bool
-	PeerNews        []PeerNewsItem
-	PeerNewsEnabled bool
-	SeedlistRefresh bool
-	Config          ConfigView
-	Logs            []LogEntry
+	AppName           string
+	ActivePath        string
+	Nav               []NavItem
+	CSRF              string
+	Section           sectionView
+	Overview          Overview
+	Index             IndexStats
+	Network           NetworkStatus
+	PeerTable         PeerTableView
+	PeerLinks         bool
+	PeerNews          []PeerNewsItem
+	PeerNewsEnabled   bool
+	PeerNewsAvailable bool
+	SeedlistRefresh   bool
+	Config            ConfigView
+	Logs              []LogEntry
 }
 
 type peerDetailPageData struct {
@@ -240,17 +242,18 @@ type crawlForm struct {
 }
 
 type crawlPageData struct {
-	AppName    string
-	ActivePath string
-	Nav        []NavItem
-	CSRF       string
-	Section    sectionView
-	Form       crawlForm
-	Monitor    *crawlMonitorView
-	Result     *CrawlDispatch
-	Error      string
-	// Formats carries the shared document-format toggles; nil hides the block.
-	Formats *FormatSettings
+	AppName      string
+	ActivePath   string
+	Nav          []NavItem
+	CSRF         string
+	Section      sectionView
+	Form         crawlForm
+	Monitor      *crawlMonitorView
+	Result       *CrawlDispatch
+	Error        string
+	Formats      *FormatSettings
+	FormatsOn    bool
+	FormatsError string
 	// FormatsNote flashes the outcome of a formats save.
 	FormatsNote string
 	// Schedules lists the recurring crawls; nil source hides the block.
@@ -263,6 +266,7 @@ type crawlPageData struct {
 // control buttons need: the CSRF token and whether control actions are wired.
 type crawlMonitorView struct {
 	Monitor      CrawlMonitor
+	Pagination   CrawlRunPagination
 	Health       CrawlHealth
 	CSRF         string
 	Controllable bool
@@ -307,6 +311,7 @@ type indexPageData struct {
 	DeleteEnabled    bool
 	BlacklistEnabled bool
 	Blacklist        []BlacklistEntry
+	BlacklistError   bool
 	BlacklistProbe   string
 }
 
@@ -315,6 +320,7 @@ type securityPageData struct {
 	ActivePath string
 	Nav        []NavItem
 	CSRF       string
+	Username   string
 	Section    sectionView
 	Security   SecurityView
 	Minted     *MintedAPIKey
@@ -399,6 +405,7 @@ type Console struct {
 	network         NetworkSource
 	config          ConfigSource
 	settings        SettingsSource
+	publicSearch    PublicSearchStatusSource
 	theme           ThemeStore
 	binding         BindingSource
 	logs            LogsSource
@@ -449,6 +456,7 @@ func New(opts Options) *Console {
 		network:         opts.Network,
 		config:          opts.Config,
 		settings:        opts.Settings,
+		publicSearch:    opts.PublicSearch,
 		theme:           opts.Theme,
 		binding:         opts.Binding,
 		logs:            opts.Logs,
@@ -593,8 +601,16 @@ type publicSearchHrefKey struct{}
 // listener's port. It is empty when the public surface is disabled, which hides
 // the header link rather than pointing it at the admin origin.
 func (c *Console) publicSearchHref(r *http.Request) string {
-	if c.publicBase != "" {
-		return c.publicBase
+	publicBase := c.publicBase
+	if c.publicSearch != nil {
+		status := c.publicSearch.PublicSearchStatus(r.Context())
+		if !status.Enabled {
+			return ""
+		}
+		publicBase = strings.TrimRight(status.BaseURL, "/")
+	}
+	if publicBase != "" {
+		return publicBase
 	}
 	if c.publicPort == "" || r.Host == "" {
 		return ""
@@ -712,7 +728,9 @@ func (c *Console) renderIndexPage(w http.ResponseWriter, r *http.Request, notes 
 	}
 	if c.blacklist != nil {
 		data.BlacklistEnabled = true
-		data.Blacklist = c.blacklist.BlacklistEntries(r.Context())
+		var err error
+		data.Blacklist, err = c.blacklist.BlacklistEntries(r.Context())
+		data.BlacklistError = err != nil
 		data.BlacklistProbe = notes.BlacklistProbe
 	}
 
@@ -961,6 +979,7 @@ func (c *Console) handleNetwork(w http.ResponseWriter, r *http.Request) {
 	}
 
 	status := c.network.Network(r.Context())
+	peerNews, peerNewsAvailable := c.peerNewsSnapshot(r.Context())
 	query := r.URL.Query()
 	peerTable := buildPeerTable(
 		status.Peers,
@@ -971,14 +990,15 @@ func (c *Console) handleNetwork(w http.ResponseWriter, r *http.Request) {
 
 	c.render(r.Context(), w, c.tpl.network, "layout", pageData{
 		AppName: appName, ActivePath: networkPath, Nav: navItems,
-		CSRF:            csrfToken(r),
-		Section:         sectionView{Heading: "Network", Available: true},
-		Network:         status,
-		PeerTable:       peerTable,
-		PeerLinks:       c.peerDetail != nil,
-		PeerNews:        c.peerNewsItems(r.Context()),
-		PeerNewsEnabled: c.peerNews != nil,
-		SeedlistRefresh: c.seedlistRefresh != nil,
+		CSRF:              csrfToken(r),
+		Section:           sectionView{Heading: "Network", Available: true},
+		Network:           status,
+		PeerTable:         peerTable,
+		PeerLinks:         c.peerDetail != nil,
+		PeerNews:          peerNews,
+		PeerNewsEnabled:   c.peerNews != nil,
+		PeerNewsAvailable: peerNewsAvailable,
+		SeedlistRefresh:   c.seedlistRefresh != nil,
 	})
 }
 
@@ -998,11 +1018,9 @@ func (c *Console) handleSeedlistRefresh(w http.ResponseWriter, r *http.Request) 
 	http.Redirect(w, r, networkPath, http.StatusSeeOther)
 }
 
-// peerNewsItems returns the recent peer-news items, or nil when no source is
-// wired so the Network section omits the peer-news sub-view.
-func (c *Console) peerNewsItems(ctx context.Context) []PeerNewsItem {
+func (c *Console) peerNewsSnapshot(ctx context.Context) ([]PeerNewsItem, bool) {
 	if c.peerNews == nil {
-		return nil
+		return nil, false
 	}
 
 	return c.peerNews.PeerNews(ctx)
@@ -1015,7 +1033,13 @@ func (c *Console) handleNetworkPeer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	detail, ok := c.peerDetail.PeerDetail(r.Context(), r.URL.Query().Get("hash"))
+	detail, ok, err := c.peerDetail.PeerDetail(r.Context(), r.URL.Query().Get("hash"))
+	if err != nil {
+		slog.WarnContext(r.Context(), "admin peer detail failed", slog.Any("error", err))
+		c.renderUnavailable(w, r, networkPath, "Peer detail", peerDetailUnavailable)
+
+		return
+	}
 	if !ok {
 		http.NotFound(w, r)
 
@@ -1027,7 +1051,7 @@ func (c *Console) handleNetworkPeer(w http.ResponseWriter, r *http.Request) {
 		CSRF:         csrfToken(r),
 		Section:      sectionView{Heading: "Peer detail", Available: true},
 		Peer:         detail,
-		BlockEnabled: c.peerBlock != nil,
+		BlockEnabled: c.peerBlock != nil && detail.BlockStatusKnown,
 	})
 }
 
@@ -1320,9 +1344,11 @@ func (c *Console) securityPage(
 	notice, errMsg string,
 	minted *MintedAPIKey,
 ) securityPageData {
+	username, _ := adminauth.PrincipalFromContext(r.Context())
+
 	return securityPageData{
 		AppName: appName, ActivePath: securityPath, Nav: navItems,
-		CSRF:     csrfToken(r),
+		CSRF: csrfToken(r), Username: username,
 		Section:  sectionView{Heading: "Security", Available: true},
 		Security: c.security.Security(r.Context()),
 		Minted:   minted,
@@ -1360,6 +1386,15 @@ func (c *Console) handleSearch(w http.ResponseWriter, r *http.Request) {
 			slog.WarnContext(r.Context(), "admin search failed", slog.Any("error", err))
 			data.Error = "Search failed."
 		} else {
+			if canonicalPage, redirect := canonicalAdminSearchPage(
+				page,
+				len(results.Results),
+				results.TotalResults,
+			); redirect {
+				redirectAdminSearchPage(w, query, global, canonicalPage)
+
+				return
+			}
 			data.Results = results
 			data.Pagination = newSearchPagination(
 				query, global, page, len(results.Results), results.TotalResults,
@@ -1402,19 +1437,6 @@ func newSearchPagination(query string, global bool, page, shown, total int) Sear
 	}
 
 	return nav
-}
-
-func adminSearchPageURL(query string, global bool, page int) string {
-	scope := "global"
-	if !global {
-		scope = "local"
-	}
-	values := url.Values{}
-	values.Set("q", query)
-	values.Set("scope", scope)
-	values.Set("p", strconv.Itoa(page))
-
-	return searchPath + "?" + values.Encode()
 }
 
 func (c *Console) handleCrawl(w http.ResponseWriter, r *http.Request) {
@@ -1487,12 +1509,32 @@ func (c *Console) crawlPage(r *http.Request, form crawlForm) crawlPageData {
 		Monitor: c.crawlMonitorView(r),
 	}
 	if c.crawlFormats != nil {
-		settings := c.crawlFormats.CurrentFormats(r.Context())
-		data.Formats = &settings
+		data.FormatsOn = true
+		settings, err := c.crawlFormats.CurrentFormats(r.Context())
+		if err != nil {
+			slog.WarnContext(
+				r.Context(),
+				"load admin crawl formats failed",
+				slog.Any("error", err),
+			)
+			data.FormatsError = "Document format settings are unavailable."
+		} else {
+			data.Formats = &settings
+		}
 	}
 	if c.schedules != nil {
 		data.SchedulesOn = true
-		data.Schedules = c.schedules.Schedules(r.Context())
+		schedules, err := c.schedules.Schedules(r.Context())
+		if err != nil {
+			slog.WarnContext(
+				r.Context(),
+				"load admin crawl schedules failed",
+				slog.Any("error", err),
+			)
+			data.ScheduleError = "Crawl schedules are unavailable."
+		} else {
+			data.Schedules = schedules
+		}
 	}
 
 	return data
@@ -1580,9 +1622,11 @@ func (c *Console) crawlMonitorView(r *http.Request) *crawlMonitorView {
 	}
 
 	monitor := c.monitor.Monitor(r.Context())
+	pagination := buildCrawlRunPagination(monitor.Runs, r.FormValue("cpage"))
 
 	return &crawlMonitorView{
 		Monitor:      monitor,
+		Pagination:   pagination,
 		Health:       crawlHealth(monitor),
 		CSRF:         csrfToken(r),
 		Controllable: c.control != nil,
@@ -1607,9 +1651,17 @@ func (c *Console) handleCrawlControl(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := CrawlControlRequest{
-		RunID:          strings.TrimSpace(r.PostFormValue("runId")),
-		Action:         r.PostFormValue("action"),
-		PagesPerMinute: parsePagesPerMinute(r.PostFormValue("ppm")),
+		RunID:  strings.TrimSpace(r.PostFormValue("runId")),
+		Action: r.PostFormValue("action"),
+	}
+	if req.Action == "set_rate" {
+		pagesPerMinute, err := parsePagesPerMinute(r.PostFormValue("ppm"))
+		if err != nil {
+			http.Error(w, "Invalid pages/minute rate.", http.StatusBadRequest)
+
+			return
+		}
+		req.PagesPerMinute = pagesPerMinute
 	}
 	if err := c.control.Control(r.Context(), req); err != nil {
 		slog.WarnContext(r.Context(), "admin crawl control failed",
@@ -1624,19 +1676,16 @@ func (c *Console) handleCrawlControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, crawlPath, http.StatusSeeOther)
+	redirectCrawlRunPage(w, requestedCrawlRunPage(r.FormValue("cpage")))
 }
 
-// parsePagesPerMinute reads a set-rate form value, treating anything unparseable as
-// zero, which lifts the throttle. ParseUint bounds the value to 32 bits, so the
-// conversion cannot overflow.
-func parsePagesPerMinute(raw string) uint32 {
+func parsePagesPerMinute(raw string) (uint32, error) {
 	value, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 32)
 	if err != nil {
-		return 0
+		return 0, fmt.Errorf("parse pages per minute: %w", err)
 	}
 
-	return uint32(value)
+	return uint32(value), nil
 }
 
 func defaultCrawlForm() crawlForm {
@@ -1752,6 +1801,7 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 
 func writeHTMLHeadersPolicy(w http.ResponseWriter, policy string) {
 	header := w.Header()
+	header.Set("Cache-Control", "private, no-store")
 	header.Set("Content-Type", htmlType)
 	header.Set("Content-Security-Policy", policy)
 	header.Set("X-Content-Type-Options", "nosniff")

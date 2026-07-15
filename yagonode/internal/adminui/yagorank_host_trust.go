@@ -14,7 +14,7 @@ type HostTrustView struct {
 }
 
 type HostTrustSource interface {
-	HostTrust(context.Context) HostTrustView
+	HostTrust(context.Context) (HostTrustView, bool)
 	ApplyHostTrust(context.Context, HostTrustView) error
 }
 
@@ -36,7 +36,10 @@ func hostTrustStatus(
 	if override != nil {
 		return override
 	}
-	trust := source.HostTrust(ctx)
+	trust, available := source.HostTrust(ctx)
+	if !available {
+		return nil
+	}
 
 	return &hostTrustStatusView{
 		Blend:       strconv.FormatFloat(trust.Blend, 'g', -1, 64),

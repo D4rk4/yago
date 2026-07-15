@@ -241,6 +241,9 @@ func TestNilVaultQuotaBytes(t *testing.T) {
 	if got := v.QuotaBytes(); got != 0 {
 		t.Fatalf("QuotaBytes = %d, want 0", got)
 	}
+	if err := v.Close(); err != nil {
+		t.Fatalf("Close = %v", err)
+	}
 }
 
 func TestCollectionGetReportsMissingKey(t *testing.T) {

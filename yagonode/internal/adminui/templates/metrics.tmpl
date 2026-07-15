@@ -3,22 +3,27 @@
      hx-swap="outerHTML" role="region" aria-label="Node status">
   <div class="cds-tile-grid">
     <section class="cds-tile">
-      <div class="cds-metric__label">Documents</div>
-      <div class="cds-metric__value">{{.Documents}}</div>
+      <div class="cds-metric__label">Local indexed documents</div>
+      <div class="cds-metric__value">{{if .IndexedDocumentsKnown}}{{.IndexedDocuments}}{{else}}Unavailable{{end}}</div>
+    </section>
+    <section class="cds-tile">
+      <div class="cds-metric__label">YaCy URL metadata records</div>
+      <div class="cds-metric__value">{{if .URLMetadataRecordsKnown}}{{.URLMetadataRecords}}{{else}}Unavailable{{end}}</div>
     </section>
     <section class="cds-tile">
       <div class="cds-metric__label">RWI words</div>
-      <div class="cds-metric__value">{{.Words}}</div>
+      <div class="cds-metric__value">{{if .WordsKnown}}{{.Words}}{{else}}Unavailable{{end}}</div>
     </section>
     <section class="cds-tile">
       <div class="cds-metric__label">Known peers</div>
-      <div class="cds-metric__value">{{.KnownPeers}}</div>
+      <div class="cds-metric__value">{{if .KnownPeersKnown}}{{.KnownPeers}}{{else}}Unavailable{{end}}</div>
     </section>
     <section class="cds-tile">
       <div class="cds-metric__label">Uptime</div>
       <div class="cds-metric__value">{{dur .UptimeSeconds}}</div>
     </section>
   </div>
+  <p class="cds-muted">These are separate populations: peer URL metadata can exist without local page content, and locally cached search documents can exist without YaCy URL metadata.</p>
   <div class="cds-tile">
     <h2 class="cds-h2">Identity</h2>
     <table class="cds-table">
@@ -36,8 +41,8 @@
       <table class="cds-table">
         <thead><tr><th scope="col">Direction</th><th scope="col">Words</th><th scope="col">URLs</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Sent</th><td>{{.SentWords}}</td><td>{{.SentURLs}}</td></tr>
-          <tr><th scope="row">Received</th><td>{{.ReceivedWords}}</td><td>{{.ReceivedURLs}}</td></tr>
+          <tr><th scope="row">Sent</th><td>{{if .SentWordsKnown}}{{.SentWords}}{{else}}Unavailable{{end}}</td><td>{{if .SentURLsKnown}}{{.SentURLs}}{{else}}Unavailable{{end}}</td></tr>
+          <tr><th scope="row">Received</th><td>{{if .ReceivedWordsKnown}}{{.ReceivedWords}}{{else}}Unavailable{{end}}</td><td>{{if .ReceivedURLsKnown}}{{.ReceivedURLs}}{{else}}Unavailable{{end}}</td></tr>
         </tbody>
       </table>
     </div>

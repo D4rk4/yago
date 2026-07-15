@@ -116,7 +116,7 @@ func TestDDGSVerificationKeepsCompoundOperatorLexical(t *testing.T) {
 		}
 
 		return htmlResponse(http.StatusOK, `<!doctype html><html><body>
-<div class="result"><a class="result__a" href="https://example.org/near">Near approach</a></div>
+<div class="result"><a class="result__a" href="https://example.org/near">Near death approach</a></div>
 </body></html>`), nil
 	})}
 	provider := NewDDGSProvider(DDGSConfig{

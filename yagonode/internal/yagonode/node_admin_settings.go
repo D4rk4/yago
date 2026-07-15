@@ -48,6 +48,7 @@ func loadRuntimeSettings(
 	config = applyRuntimeSettingOverrides(config, overrides)
 	config.WebFallback.Privacy = effectiveWebFallbackPrivacy(config.WebFallback)
 	config = applyBindOverrides(config, overrides)
+	startupSettings := config
 	config, err = resolvePeerIdentity(ctx, storage, config)
 	if err != nil {
 		return consoleAdminSources{}, nil, config, err
@@ -56,8 +57,9 @@ func loadRuntimeSettings(
 	toggles.SetQuotaSink(storage.SetQuota)
 
 	sources := consoleAdminSources{
-		settings: newSettingsSource(store, envConfig, toggles, recorder),
-		binding:  newBindingSource(store, envConfig, recorder),
+		settings: newSettingsSource(store, envConfig, toggles, recorder).
+			withStartupConfig(startupSettings),
+		binding: newBindingSource(store, envConfig, recorder),
 	}
 
 	return sources, toggles, config, nil
@@ -68,11 +70,12 @@ func loadRuntimeSettings(
 // setting against its environment default, persists overrides, and records a
 // config event on every change.
 type settingsSource struct {
-	store       *settingsstore.Store
-	definitions []settingDefinition
-	envConfig   nodeConfig
-	toggles     *runtimeToggles
-	recorder    *events.Recorder
+	store         *settingsstore.Store
+	definitions   []settingDefinition
+	envConfig     nodeConfig
+	startupConfig nodeConfig
+	toggles       *runtimeToggles
+	recorder      *events.Recorder
 }
 
 func newSettingsSource(
@@ -82,51 +85,23 @@ func newSettingsSource(
 	recorder *events.Recorder,
 ) *settingsSource {
 	return &settingsSource{
-		store:       store,
-		definitions: allRuntimeSettingDefinitions(),
-		envConfig:   envConfig,
-		toggles:     toggles,
-		recorder:    recorder,
+		store:         store,
+		definitions:   allRuntimeSettingDefinitions(),
+		envConfig:     envConfig,
+		startupConfig: envConfig,
+		toggles:       toggles,
+		recorder:      recorder,
 	}
+}
+
+func (s *settingsSource) withStartupConfig(config nodeConfig) *settingsSource {
+	s.startupConfig = config
+
+	return s
 }
 
 func (s *settingsSource) Settings(ctx context.Context) adminui.SettingsView {
-	items := make([]adminui.SettingItem, 0, len(s.definitions))
-	for _, def := range s.definitions {
-		items = append(items, s.item(ctx, def))
-	}
-
-	return adminui.SettingsView{Items: items}
-}
-
-func (s *settingsSource) item(ctx context.Context, def settingDefinition) adminui.SettingItem {
-	value := def.defaultValue(s.envConfig)
-	overridden := false
-
-	if stored, set, err := s.store.Get(ctx, def.key); err == nil && set {
-		mode, authoritative, environment := decodeWebFallbackSetting(stored)
-		switch {
-		case def.key == settingKeyWebFallbackPrivacy && authoritative && environment:
-		case def.key == settingKeyWebFallbackPrivacy && authoritative:
-			value, overridden = string(mode), true
-		default:
-			if normalized, normErr := def.normalize(stored); normErr == nil {
-				value, overridden = normalized, true
-			}
-		}
-	}
-
-	return adminui.SettingItem{
-		Key:             def.key,
-		Title:           def.title,
-		Description:     def.description,
-		Value:           value,
-		Overridden:      overridden,
-		RestartRequired: def.restartRequired(),
-		Options:         adminSettingOptions(def.options),
-		Category:        settingCategory(def.key),
-		Boolean:         isBooleanSettingOptions(def.options),
-	}
+	return s.settingsView(ctx)
 }
 
 // isBooleanSettingOptions reports whether a setting's choices are exactly the

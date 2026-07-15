@@ -35,14 +35,19 @@ every language without a table.
 
 Verified findings:
 
-- **The stemmers we already ship are a generator in reverse.** ADR-0026 registers
-  Snowball analyzers for 32 languages. Running the node's own indexed vocabulary
-  through the analyzer of each term's script groups the terms by stem:
+- **A primary stemmer per script is a bounded generator in reverse.** ADR-0026
+  registers 21 complete language normalization or stemming analyzers plus the
+  CJK bigram analyzer. A single query word is too short for reliable language
+  identification, so the swarm expander uses one deterministic primary analyzer
+  for each supported script: English for Latin, Russian for Cyrillic, Arabic for
+  Arabic, and Hindi for Devanagari. Running the node's own indexed vocabulary
+  through that analyzer groups common forms by stem:
   `черногория`, `черногории`, `черногорию` all reduce to `черногор`; `running`
   and `runs` to `run`. The set of surface forms sharing a stem **is** the
-  language's observed inflection of that stem — derived from data, not from a
-  hand table, for every language with a stemmer, with graceful fallback (a
-  script with no stemmer folds to the word itself).
+  corpus's observed surface variants of that stem — derived from data, not from
+  a hand table. CJK and scripts without a selected morphology analyzer retain
+  the normalized source word unchanged. Other languages that share a script do
+  not gain their own morphology from this optional single-word swarm feature.
 - **The vocabulary is already being swept.** SEARCH-14's SymSpell corrector and
   host authority already need a periodic pass over stored documents. The
   morphology expander needs the same title and extracted-text frequencies, so
@@ -63,12 +68,13 @@ Verified findings:
    no language knowledge — the stemmer is a `func(string) string` dependency, so
    `wordforms` stays a pure leaf with no import of the index.
 
-2. **Reuse the ADR-0026 stemmers (`searchindex.StemWord`).** The index package
-   exposes `StemWord`, which reduces a word with the analyzer of its dominant
-   Unicode script — the same registered Snowball analyzer the index uses. A
-   script with no stemmer, or a stop-filtered token, folds to the lowercased word
-   unchanged. This is the injected stemmer, so query and vocabulary are grouped
-   consistently and no endings are hardcoded anywhere.
+2. **Reuse a bounded ADR-0026 analyzer (`searchindex.StemWord`).** The index
+   package exposes `StemWord`, which reduces a word with the deterministic
+   primary morphology analyzer for its dominant Unicode script. CJK, a script
+   with no selected stemmer, or a stop-filtered token folds to the normalized
+   word unchanged. Query and vocabulary are therefore grouped consistently and
+   no endings are hardcoded anywhere, without claiming language identification
+   from one word.
 
 3. **Shared corpus signal pass (`internal/yagonode`).** One completion-relative
    pass collects bounded authority citations, spelling frequencies, and, only
@@ -98,9 +104,9 @@ Verified findings:
 
 ## Consequences
 
-- A single-word swarm query gains inflection recall in every language that has a
-  Snowball stemmer, using only forms the swarm plausibly holds, with no
-  hand-maintained tables and no new dependency.
+- A single-word swarm query gains corpus-observed inflection recall for the
+  deterministic primary morphology analyzer of its script, using only forms the
+  swarm plausibly holds, with no hand-maintained tables or new dependency.
 - Wire compatibility is untouched: each variant is hashed as an ordinary
   exact-word hash, so stock YaCy peers answer normally and are unaware of the
   expansion.
@@ -134,5 +140,7 @@ Verified findings:
   compatibility rule.
 - **Expanding multi-word queries too**: multiplies the fan-out combinatorially
   (each word's variants × the others) for marginal recall over the conjunctive
-  exact search. Deferred; single-word expansion captures the common navigational
-  case where inflection hurts most.
+  exact search. Rejected for the current architecture: single-word expansion
+  captures the common navigational case where inflection hurts most, while
+  multi-word expansion would consume the bounded peer-search budget without a
+  demonstrated held-out gain.

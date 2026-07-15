@@ -5,8 +5,6 @@ import (
 	"strings"
 
 	"github.com/blevesearch/bleve/v2/search"
-
-	"github.com/D4rk4/yago/yagonode/internal/stopwords"
 )
 
 const maximumTermPositionsPerField = 64
@@ -47,7 +45,6 @@ func rankingPositionTerms(req SearchRequest) []string {
 		terms = strings.Fields(req.Query)
 	}
 	all := make([]string, 0, len(terms))
-	content := make([]string, 0, len(terms))
 	seen := make(map[string]struct{}, len(terms))
 	for _, term := range terms {
 		term = strings.ToLower(strings.TrimSpace(term))
@@ -59,12 +56,6 @@ func rankingPositionTerms(req SearchRequest) []string {
 		}
 		seen[term] = struct{}{}
 		all = append(all, term)
-		if !stopwords.IsStopword(term) {
-			content = append(content, term)
-		}
-	}
-	if len(content) > 0 {
-		return content
 	}
 
 	return all

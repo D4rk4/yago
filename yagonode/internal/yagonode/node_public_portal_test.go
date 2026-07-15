@@ -70,6 +70,11 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 			results.Facets,
 		)
 	}
+	for _, facet := range results.Facets {
+		if facet.Scope != "this visible result window" {
+			t.Fatalf("derived facet scope = %q", facet.Scope)
+		}
+	}
 	if results.LocalCount != 1 || results.WebCount != 1 || results.PeerCount != 1 {
 		t.Fatalf("provenance counts = %d/%d/%d, want 1/1/1",
 			results.LocalCount, results.PeerCount, results.WebCount)
@@ -87,6 +92,43 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 	}
 	if results.Results[1].CachedURL != "" || results.Results[2].CachedURL != "" {
 		t.Fatal("web and peer results must not carry cached links")
+	}
+}
+
+func TestPortalSourceCarriesBoundedPartialFailureState(t *testing.T) {
+	t.Parallel()
+
+	searcher := &stubPortalSearcher{response: searchcore.Response{
+		PartialFailures: []searchcore.PartialFailure{
+			{Source: searchcore.PartialFailureSourceRemoteStage, Reason: "capacity detail"},
+			{Source: searchcore.PartialFailureSourceWeb, Reason: "provider detail"},
+			{Source: "AAAAAAAAAAAA", Reason: "peer detail"},
+			{Source: "AAAAAAAAAAAA", Reason: "duplicate peer detail"},
+		},
+	}}
+	results, err := newPortalSource(searcher).Search(t.Context(), "go", "", 0, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if !results.Incomplete || !results.FederationUnavailable || results.PeersFailed != 1 {
+		t.Fatalf("partial state = %+v", results)
+	}
+}
+
+func TestPortalSourceLabelsCorpusFacetPopulation(t *testing.T) {
+	t.Parallel()
+
+	searcher := &stubPortalSearcher{response: searchcore.Response{
+		Facets: []searchcore.FacetGroup{{
+			Name: "host", Terms: []searchcore.FacetTerm{{Term: "example.org", Count: 42}},
+		}},
+	}}
+	results, err := newPortalSource(searcher).Search(t.Context(), "go", "", 0, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results.Facets) != 1 || results.Facets[0].Scope != "the local corpus" {
+		t.Fatalf("corpus facet state = %+v", results.Facets)
 	}
 }
 

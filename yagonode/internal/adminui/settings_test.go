@@ -65,6 +65,21 @@ func TestConsoleConfigRendersEditableSettings(t *testing.T) {
 	}
 }
 
+func TestConsoleConfigLabelsPendingRestartValues(t *testing.T) {
+	t.Parallel()
+
+	view := portalSettingsView(true)
+	view.Items[0].PendingRestart = true
+	got := do(t, New(Options{
+		Config: fakeConfig{view: ConfigView{}}, Settings: &fakeSettings{view: view},
+	}), "/admin/configuration")
+	for _, want := range []string{"pending restart", "desired settings", "stored but not yet applied"} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("pending-restart truth missing %q", want)
+		}
+	}
+}
+
 func TestConsoleConfigRendersAlwaysWebFallbackMode(t *testing.T) {
 	t.Parallel()
 
@@ -385,5 +400,53 @@ func TestConsoleConfigUpdateWithoutSettingsNotFound(t *testing.T) {
 	got := doPost(t, console, "/admin/configuration", url.Values{"key": {"portal.enabled"}})
 	if got.status != http.StatusNotFound {
 		t.Fatalf("status %d, want 404", got.status)
+	}
+}
+
+func TestRuntimeSettingsReadFailureRendersUnavailable(t *testing.T) {
+	t.Parallel()
+
+	const message = "Stored runtime settings are unavailable."
+	settings := &fakeSettings{view: SettingsView{Error: message}}
+	pages := []struct {
+		path    string
+		console *Console
+	}{
+		{
+			path: "/admin/configuration",
+			console: New(Options{
+				Config: fakeConfig{view: ConfigView{}}, Settings: settings,
+			}),
+		},
+		{path: "/admin/portal", console: New(Options{Settings: settings})},
+		{path: "/admin/autocrawler", console: New(Options{Settings: settings})},
+	}
+	for _, page := range pages {
+		got := do(t, page.console, page.path)
+		if got.status != http.StatusOK || !strings.Contains(got.body, message) {
+			t.Fatalf("%s missing unavailable state: %d %.120q", page.path, got.status, got.body)
+		}
+		if strings.Contains(got.body, `name="value:`) {
+			t.Fatalf("%s rendered invented setting values", page.path)
+		}
+	}
+}
+
+func TestRuntimeSettingsReadFailureBlocksSave(t *testing.T) {
+	t.Parallel()
+
+	settings := &fakeSettings{
+		view: SettingsView{Error: "Stored runtime settings are unavailable."},
+	}
+	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Settings: settings})
+	got := doPost(t, console, "/admin/configuration", url.Values{
+		"key":                  {"portal.enabled"},
+		"value:portal.enabled": {"false"},
+	})
+	if settings.calls != 0 {
+		t.Fatalf("updates during unavailable read = %d", settings.calls)
+	}
+	if !strings.Contains(got.body, "Update failed. Please try again.") {
+		t.Fatalf("missing safe update failure: %.120q", got.body)
 	}
 }

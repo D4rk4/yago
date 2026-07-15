@@ -8,6 +8,7 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/corpussignals"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
+	"github.com/D4rk4/yago/yagonode/internal/hostlinks"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/hosttrust"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
@@ -30,6 +31,7 @@ type corpusSignalAssembly struct {
 	authority        *hostrank.Holder
 	spelling         *spellcheck.Holder
 	wordForms        *wordforms.Holder
+	hostLinks        *hostlinks.SnapshotHolder
 	includeWordForms bool
 	trust            hostTrustPolicySource
 	checkpoint       corpusSignalCheckpointRepository
@@ -42,6 +44,7 @@ func newCorpusSignalRefresh(
 	refresh := &corpusSignalRefresh{
 		documents: assembly.documents, hostRank: assembly.authority,
 		spell: assembly.spelling, wordForms: assembly.wordForms,
+		hostLinks:        assembly.hostLinks,
 		includeWordForms: assembly.includeWordForms, trust: assembly.trust,
 		checkpoints: assembly.checkpoint,
 		readTime:    time.Now,
@@ -97,6 +100,9 @@ func (r *corpusSignalRefresh) restoreCheckpoint(ctx context.Context) time.Durati
 	if r.includeWordForms && !checkpoint.WordFormsReady {
 		return 0
 	}
+	if !checkpoint.HostLinksReady {
+		return 0
+	}
 
 	return remainingCorpusSignalRefreshDelay(
 		r.currentTime(),
@@ -110,6 +116,8 @@ func (r *corpusSignalRefresh) acceptCheckpoint(checkpoint corpussignals.Checkpoi
 	r.spellingVocabulary = checkpoint.Spelling
 	r.wordFormsVocabulary = checkpoint.WordForms
 	r.wordFormsReady = checkpoint.WordFormsReady
+	r.hostLinkGraph = hostlinks.CloneGraph(checkpoint.HostLinks)
+	r.hostLinksReady = checkpoint.HostLinksReady
 	r.completedAtUnixMilli = checkpoint.CompletedAtUnixMilli
 	if r.hostRank != nil {
 		r.hostRank.Store(checkpoint.Authority)
@@ -119,6 +127,9 @@ func (r *corpusSignalRefresh) acceptCheckpoint(checkpoint corpussignals.Checkpoi
 	}
 	if r.wordForms != nil && r.includeWordForms && checkpoint.WordFormsReady {
 		r.wordForms.Store(wordforms.New(checkpoint.WordForms, searchindex.StemWord))
+	}
+	if r.hostLinks != nil && checkpoint.HostLinksReady {
+		r.hostLinks.Replace(checkpoint.HostLinks)
 	}
 }
 
@@ -167,6 +178,7 @@ func newCorpusSignalSet(
 	set.refresh = newCorpusSignalRefresh(in.ctx, corpusSignalAssembly{
 		documents: in.storage.storedDocuments(), authority: set.authority,
 		spelling: set.spelling, wordForms: set.wordForms,
+		hostLinks:        in.hostLinks,
 		includeWordForms: in.config.SwarmMorphology, trust: learning.trust,
 		checkpoint: learning.checkpoint,
 	})

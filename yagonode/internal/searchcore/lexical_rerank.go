@@ -5,20 +5,12 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/D4rk4/yago/yagonode/internal/stopwords"
 )
 
 const (
 	// lexicalRerankWindow bounds the rerank to the ranks a searcher actually
 	// reads, matching the MMR window.
-	lexicalRerankWindow = 50
-	// lexicalRerankWeight is the share of the reorder key taken from the lexical
-	// signal; the rest stays with the retrieval score. Kept low so the reranker
-	// only breaks near-ties — it lifts a result whose query terms are all present
-	// and close together over one that merely mentions them, without overriding
-	// BM25/RRF retrieval order.
-	lexicalRerankWeight           = 0.25
+	lexicalRerankWindow           = 50
 	minimumRankingCandidateWindow = 50
 	maximumRankingCandidateWindow = 100
 	rankingCandidateMultiplier    = 5
@@ -33,8 +25,22 @@ func NewLexicalRerankSearcher(inner Searcher) Searcher {
 	return NewFinalRankingSearcher(NewLexicalEvidenceSearcher(inner))
 }
 
+func NewLexicalRerankSearcherWithWeights(
+	inner Searcher,
+	weights func() LexicalRankingWeights,
+) Searcher {
+	return NewFinalRankingSearcher(NewLexicalEvidenceSearcherWithWeights(inner, weights))
+}
+
 func NewLexicalEvidenceSearcher(inner Searcher) Searcher {
-	return lexicalEvidenceSearcher{inner: inner}
+	return NewLexicalEvidenceSearcherWithWeights(inner, nil)
+}
+
+func NewLexicalEvidenceSearcherWithWeights(
+	inner Searcher,
+	weights func() LexicalRankingWeights,
+) Searcher {
+	return lexicalEvidenceSearcher{inner: inner, weights: weights}
 }
 
 func NewFinalRankingSearcher(inner Searcher) Searcher {
@@ -42,7 +48,8 @@ func NewFinalRankingSearcher(inner Searcher) Searcher {
 }
 
 type lexicalEvidenceSearcher struct {
-	inner Searcher
+	inner   Searcher
+	weights func() LexicalRankingWeights
 }
 
 func (s lexicalEvidenceSearcher) Search(
@@ -54,7 +61,11 @@ func (s lexicalEvidenceSearcher) Search(
 		return Response{}, fmt.Errorf("lexical rerank inner search: %w", err)
 	}
 	if !req.SortByDate {
-		response.Results = rerankLexicalProximity(response.Results, req)
+		response.Results = rerankLexicalProximityWithWeights(
+			response.Results,
+			req,
+			lexicalRankingWeights(s.weights),
+		)
 	}
 	response.Request = req
 
@@ -85,6 +96,7 @@ func (s finalRankingSearcher) Search(
 func rankingCandidateRequest(req Request) Request {
 	window := req
 	window.Offset = 0
+	window.RankingFeatures = true
 	requested := req.Offset + rankingResultLimit(req)
 	if requested >= maximumRankingCandidateWindow {
 		window.Limit = requested
@@ -107,34 +119,55 @@ func rankingResultLimit(req Request) int {
 	return req.Limit
 }
 
-// rerankLexicalProximity reorders the top window by (1−w)·normScore + w·lexical,
-// where lexical is the mean of query-term coverage and proximity. The tail past
-// the window keeps its order. It is a no-op for single-term queries, where
-// coverage and proximity carry no signal the retrieval score does not.
 func rerankLexicalProximity(results []Result, req Request) []Result {
-	terms := rerankQueryTerms(req)
+	return rerankLexicalProximityWithWeights(
+		results,
+		req,
+		DefaultLexicalRankingWeights(),
+	)
+}
+
+func rerankLexicalProximityWithWeights(
+	results []Result,
+	req Request,
+	weights LexicalRankingWeights,
+) []Result {
 	window := min(len(results), lexicalRerankWindow)
-	if window < 3 || len(terms) < 2 {
+	if window < 3 {
 		return results
 	}
 	top := results[:window]
-	minScore, maxScore := top[0].Score, top[0].Score
+	maxScore := top[0].Score
 	for _, result := range top {
-		minScore = min(minScore, result.Score)
 		maxScore = max(maxScore, result.Score)
 	}
 
 	keys := make([]float64, window)
 	coverages := make([]float64, window)
 	proximities := make([]float64, window)
+	ordered := make([]float64, window)
 	for i, result := range top {
+		requirements := rerankResultRequirements(req, result)
+		terms := rerankRequirementTerms(requirements)
+		gapAgreement := 0.0
 		normScore := 0.0
-		if maxScore > minScore {
-			normScore = (result.Score - minScore) / (maxScore - minScore)
+		if maxScore > 0 {
+			normScore = max(0, result.Score/maxScore)
 		}
-		coverages[i], proximities[i] = lexicalComponents(result, terms)
-		lexical := (coverages[i] + proximities[i]) / 2
-		keys[i] = (1-lexicalRerankWeight)*normScore + lexicalRerankWeight*lexical
+		if len(terms) > 0 {
+			coverage, proximity, orderedValue, gapValue := lexicalDependenceComponents(
+				result,
+				terms,
+				requirements,
+			)
+			coverages[i] = coverage
+			proximities[i] = proximity
+			ordered[i] = orderedValue
+			gapAgreement = gapValue
+		}
+		lexical := (coverages[i] + proximities[i] + ordered[i]) / 3
+		lexical += weights.GapAgreement * gapAgreement * (1 - lexical)
+		keys[i] = (1-weights.Blend)*normScore + weights.Blend*lexical
 	}
 
 	order := make([]int, window)
@@ -149,42 +182,12 @@ func rerankLexicalProximity(results []Result, req Request) []Result {
 		result := top[index]
 		result.Evidence = result.Evidence.With(SignalTermCoverage, coverages[index])
 		result.Evidence = result.Evidence.With(SignalGlobalProximity, proximities[index])
+		result.Evidence = result.Evidence.With(SignalOrderedProximity, ordered[index])
 		result = WithDiversityRelevance(result, keys[index])
 		reranked = append(reranked, result)
 	}
 
 	return append(reranked, results[window:]...)
-}
-
-// rerankQueryTerms is the distinct lowercased content terms of the query,
-// preferring the parsed terms and falling back to whitespace splitting of the
-// raw query. Function words are excluded so coverage and proximity measure
-// the words that carry the query's meaning; an all-stopword query keeps every
-// term, there being nothing better to measure.
-func rerankQueryTerms(req Request) []string {
-	raw := req.Terms
-	if len(raw) == 0 {
-		raw = strings.Fields(req.Query)
-	}
-	seen := map[string]bool{}
-	terms := make([]string, 0, len(raw))
-	content := make([]string, 0, len(raw))
-	for _, term := range raw {
-		term = strings.ToLower(strings.TrimSpace(term))
-		if term == "" || seen[term] {
-			continue
-		}
-		seen[term] = true
-		terms = append(terms, term)
-		if !stopwords.IsStopword(term) {
-			content = append(content, term)
-		}
-	}
-	if len(content) > 0 {
-		return content
-	}
-
-	return terms
 }
 
 // lexicalSignal scores a result's query-term coverage and proximity, preferring
@@ -260,7 +263,7 @@ func fieldHits(
 	hits := make([]hit, 0, len(termPositions))
 	for term, positions := range termPositions {
 		index, ok := termIndex[term]
-		if !ok {
+		if !ok || len(positions) == 0 {
 			continue
 		}
 		covered[index] = true

@@ -60,12 +60,26 @@ type OutboundAnchorSet struct {
 }
 
 type AnchorUpdate struct {
-	Busy      bool
-	Documents []Document
+	Busy          bool
+	Finalizations []OutboundAnchorFinalization
+}
+
+type OutboundAnchorFinalization struct {
+	sourceURL string
+	expected  outboundAnchorPublication
+	desired   outboundAnchorPublication
+	lease     *outboundAnchorLease
 }
 
 type InboundAnchorReceiver interface {
 	ReplaceOutboundAnchors(ctx context.Context, sets []OutboundAnchorSet) (AnchorUpdate, error)
+	VisitOutboundAnchorDocuments(
+		ctx context.Context,
+		finalizations []OutboundAnchorFinalization,
+		visit func([]Document) error,
+	) error
+	FinalizeOutboundAnchors(ctx context.Context, finalizations []OutboundAnchorFinalization) error
+	ReleaseOutboundAnchors(finalizations []OutboundAnchorFinalization)
 }
 
 type ImageMetadata struct {
@@ -109,21 +123,37 @@ type Receipt struct {
 }
 
 func Open(v *vault.Vault) (DocumentDirectory, DocumentReceiver, error) {
-	collection, err := registerCollection(v)
+	legacyDocuments, orderedDocuments, documentLocations, documentAdmissions, err := registerDocumentCollections(
+		v,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
-	inboundAnchors, outboundTargets, err := registerAnchorCollections(v)
+	inboundAnchors, outboundTargets, outboundPublications, err := registerAnchorCollections(v)
+	if err != nil {
+		return nil, nil, err
+	}
+	admissionKeys, err := openStoredDocumentAdmissionKeys(
+		v,
+		documentAdmissions,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	documents := documentVault{
-		vault:           v,
-		collection:      collection,
-		inboundAnchors:  inboundAnchors,
-		outboundTargets: outboundTargets,
-		scanAdmission:   make(chan struct{}, 1),
+		vault:                v,
+		legacyDocuments:      legacyDocuments,
+		orderedDocuments:     orderedDocuments,
+		documentLocations:    documentLocations,
+		inboundAnchors:       inboundAnchors,
+		outboundTargets:      outboundTargets,
+		outboundPublications: outboundPublications,
+		scanAdmission:        make(chan struct{}, 1),
+		writeBoundary:        newStoredDocumentWriteBoundary(),
+		admissionKeys:        admissionKeys,
+		urlBoundaries:        &storedDocumentURLBoundaries{},
+		outboundBoundaries:   &storedDocumentURLBoundaries{},
 	}
 	return documents, documents, nil
 }

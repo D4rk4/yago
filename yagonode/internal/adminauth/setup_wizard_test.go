@@ -44,6 +44,9 @@ func doAuthRequest(
 	t.Helper()
 	mux := http.NewServeMux()
 	MountHTML(mux, service)
+	if method == http.MethodPost {
+		return postForm(mux, PathSetupPage, form)
+	}
 	var body *strings.Reader
 	if form != nil {
 		body = strings.NewReader(form.Encode())
@@ -76,12 +79,7 @@ func TestSetupPageShowsWizardWhenConfigured(t *testing.T) {
 		`name="peer_name"`, `value="my-node"`,
 		`value="auto.example"`, `value="https://seeds.example/a"`,
 		"Web search fallback", `value="always"`, "Always",
-		// The mode radios must reset the base full-width input geometry, else the
-		// tall 2.5rem input box pushes each label off its radio (regression: the
-		// wizard's "Node mode" choices rendered with the text wrapped below the
-		// button). A flex row keeps radio and label on one baseline.
-		".modes label { display: flex;",
-		".modes input { width: auto; height: auto;",
+		`<link rel="stylesheet" href="/admin/auth.css">`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("setup page missing %q", want)

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
+	"github.com/D4rk4/yago/yagocrawler/internal/formatparse"
 	"github.com/D4rk4/yago/yagocrawler/internal/urltrap"
 	"github.com/D4rk4/yago/yagocrawler/internal/weburl"
 )
@@ -35,6 +36,9 @@ func (c AdmissionProfile) admit(base *url.URL, link string) (string, bool) {
 		return "", false
 	}
 	if !c.URLAllowed(resolved.String()) {
+		return "", false
+	}
+	if !formatparse.URLFetchAllowed(resolved.String(), c.Profile.Formats) {
 		return "", false
 	}
 	normalized, ok := weburl.Normalize(resolved.String())

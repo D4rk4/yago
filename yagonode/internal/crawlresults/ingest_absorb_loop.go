@@ -31,7 +31,7 @@ func (c *IngestConsumer) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			c.absorbGroup(ctx, c.drainPending(delivery))
+			c.absorbGroup(ctx, c.drainPending(ctx, delivery))
 		}
 	}
 }
@@ -50,10 +50,22 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 		return
 	}
 	delivery = current[0]
-	if deferred := c.storeDocument(ctx, delivery, delivery.Batch); deferred {
+	reservation, err := c.reserveIngestDocumentLineages(ctx, []IngestDelivery{delivery})
+	if err != nil {
+		c.redeliver(ctx, delivery, delivery.Batch.SourceURL, "document lineage reservation", err)
+
 		return
 	}
-	c.absorbTail(ctx, delivery)
+	defer c.releaseIngestDocumentLineages(reservation)
+	if deferred := c.storeReservedDocument(
+		ctx,
+		delivery,
+		delivery.Batch,
+		reservation,
+	); deferred {
+		return
+	}
+	c.absorbReservedTail(ctx, delivery, reservation)
 }
 
 // absorbRemoval purges a dead-page tombstone (ADR-0034): a Removed batch names a
@@ -83,16 +95,18 @@ func (c *IngestConsumer) purgeRemoval(ctx context.Context, delivery IngestDelive
 
 		return
 	}
-	if c.clearOutboundAnchors(ctx, delivery) {
-		return
+	var purgeErr error
+	if resolved, ok := c.purger.(ResolvedURLPurger); ok {
+		purgeErr = resolved.PurgeResolved(
+			ctx,
+			[]string{batch.SourceURL},
+			[]yagomodel.Hash{hash.Hash()},
+		)
+	} else {
+		purgeErr = c.purger.Purge(ctx, []yagomodel.Hash{hash.Hash()})
 	}
-	if err := c.deleteDocumentCluster(ctx, batch.SourceURL); err != nil {
-		c.redeliver(ctx, delivery, batch.SourceURL, "content cluster removal", err)
-
-		return
-	}
-	if err := c.purger.Purge(ctx, []yagomodel.Hash{hash.Hash()}); err != nil {
-		c.redeliver(ctx, delivery, batch.SourceURL, "purge removal", err)
+	if purgeErr != nil {
+		c.redeliver(ctx, delivery, batch.SourceURL, "purge removal", purgeErr)
 
 		return
 	}
@@ -141,8 +155,16 @@ func (c *IngestConsumer) passesGates(ctx context.Context, delivery IngestDeliver
 // absorbTail persists the batch's URL metadata and postings and acknowledges
 // the delivery; it runs after the document (if any) is stored and indexed.
 func (c *IngestConsumer) absorbTail(ctx context.Context, delivery IngestDelivery) {
+	c.absorbReservedTail(ctx, delivery, nil)
+}
+
+func (c *IngestConsumer) absorbReservedTail(
+	ctx context.Context,
+	delivery IngestDelivery,
+	reservation documentstore.DocumentLineageReservation,
+) {
 	batch := delivery.Batch
-	if c.updateInboundAnchors(ctx, []IngestDelivery{delivery}) {
+	if c.updateReservedInboundAnchors(ctx, []IngestDelivery{delivery}, reservation) {
 		return
 	}
 	urlReceipt, err := c.urls.Receive(ctx, batch.Metadata)
@@ -199,23 +221,38 @@ func (c *IngestConsumer) storeDocument(
 	delivery IngestDelivery,
 	batch yagocrawlcontract.IngestBatch,
 ) bool {
+	return c.storeReservedDocument(ctx, delivery, batch, nil)
+}
+
+func (c *IngestConsumer) storeReservedDocument(
+	ctx context.Context,
+	delivery IngestDelivery,
+	batch yagocrawlcontract.IngestBatch,
+	reservation documentstore.DocumentLineageReservation,
+) bool {
 	if c.documents == nil || !hasDocument(batch.Document) {
 		return false
 	}
 
 	doc := documentFromIngestWithSafety(batch.Document, c.safety)
-	docs, err := c.canonicalDocuments(ctx, []documentstore.Document{doc})
+	docs, err := c.canonicalIngestDocuments(
+		ctx,
+		reservation,
+		[]documentstore.Document{doc},
+	)
 	if err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "document canonicalization", err)
 
 		return true
 	}
-	docs, err = c.clusterDocuments(ctx, docs)
+	projection, err := c.prepareDocumentClusters(ctx, docs)
 	if err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "content cluster", err)
 
 		return true
 	}
+	defer projection.release()
+	docs = projection.documents
 	receipt, err := c.documents.Receive(ctx, docs)
 	if err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "document store", err)
@@ -226,11 +263,19 @@ func (c *IngestConsumer) storeDocument(
 		return true
 	}
 	docs = c.committedDocuments(receipt, docs)
+	if projection.replay {
+		docs = projection.documents
+	}
 	if c.index != nil {
 		if err := c.indexDocuments(ctx, docs); err != nil {
 			c.redeliver(ctx, delivery, batch.SourceURL, "search index", err)
 			return true
 		}
+	}
+	if err := projection.finalize(ctx); err != nil {
+		c.redeliver(ctx, delivery, batch.SourceURL, "content cluster finalization", err)
+
+		return true
 	}
 
 	return false

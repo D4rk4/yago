@@ -60,6 +60,11 @@ retry remains a separate running phase after that terminal phase, preserving the
 order of accepted attempts. At hard capacity, a terminal update first evicts an
 expendable singleton running update; if only protected phase chains remain, the
 new update is logged and dropped without deleting a separating running phase.
+Each snapshot includes the run's effective pages-per-minute limit: its explicit
+override, the crawler default, or zero for unlimited dispatch. The node can
+therefore display the active rate without guessing the worker's configuration.
+Its Crawler monitor combines runs from every profile, renders exactly 20 rows per
+page, and keeps totals and health based on the complete snapshot.
 
 Because an order can therefore be delivered more than once, each live page and
 tombstone carries a stable observation ID and UTC observation time. The node durably keeps
@@ -71,16 +76,41 @@ metadata and bounded image URL/alt metadata when available. Links marked
 `rel=nofollow` are not submitted for frontier expansion or local outlink
 evidence unless the crawl profile opts in.
 
+Discovered links whose URL path has an unambiguous suffix for a disabled parser
+family, or for the unsupported AppImage, DEB, DMG, EXE, ISO, MPKG, MSI, PKG,
+RPM, TXZ, or XZ container formats, are rejected before frontier admission.
+Explicit seeds are still fetched once, and extensionless routes, unknown
+suffixes, and suffix-like query values remain eligible so the authoritative
+response media type can route them. Unknown or mislabeled binary bodies are
+sniffed before the HTML and plain-text fallback, while genuine Unicode text,
+HTML, and registered format parsers retain their normal routing.
+
+Concurrent runs requesting the same normalized URL share one in-flight fetch
+only when their TLS, robots, and browser-fallback policies match. Each run gets
+an independent page copy and still applies its own redirect, parser, directive,
+scope, indexing, tally, and delivery policy. A completed response is not cached.
+
+The HTTP and browser paths retain at most the configured body ceiling as a
+bounded prefix; exceeding it is not a fetch failure. This keeps large documents
+partially searchable without retaining an unbounded response, and all parsing
+and ingest limits apply to that same prefix.
+
 Every ingest JSON body is bounded below the 4 MiB gRPC message ceiling. Text,
 URLs, headings, links, metadata, and RWI term counts have explicit limits, and
 the crawler trims optional references before transport when their combined
-encoding would exceed that ceiling. Seed, redirect, source, normalized, and
+encoding would exceed that ceiling. If JSON escaping alone makes extracted text
+too large, the sender retains the longest fitting valid UTF-8 prefix and reduces
+optional document metadata deterministically. Seed, redirect, source, normalized, and
 canonical identity URLs longer than 2,048 bytes are rejected instead of being
 truncated into a different identity; overlong URL-bearing references are
 dropped. Current nodes report saturation separately as `Unavailable`, and the
 crawler also accepts the legacy `ResourceExhausted` saturation code only after
 fitting its payload below the shared ceiling. Both use bounded jittered exponential retry
 delays, so backpressure cannot become a tight localhost resend loop.
+The receiving node coalesces at most 16 ready deliveries for grouped document,
+Bleve, metadata, posting, stale-sweep, and recrawl commits. A partial group waits
+at most two milliseconds and stops waiting immediately when its context is
+cancelled, so batching cannot create an unbounded ingest delay.
 
 HTML is decoded to UTF-8 with browser-compatible WHATWG encoding labels from
 the HTTP `Content-Type` and early HTML metadata. Before one page becomes a
@@ -173,6 +203,21 @@ is acknowledged again without reseeding. ACK, NAK, and terminal settlement retry
 idempotently with jittered exponential backoff while the crawler remains live.
 Shutdown makes one detached five-second settlement attempt window; if the node
 stays unavailable, stopped heartbeats let the unresolved lease expire normally.
+
+Fetched and failed progress tallies are mutually exclusive terminal page
+outcomes, so the Admin failure rate is failed / (fetched + failed); HTTP protocol
+fallbacks and browser attempts within one page job do not inflate the numerator.
+Host availability is tracked separately from that display tally. Connection,
+DNS, timeout, 403, 408, 429, and server failures back off only their host; a
+served representation accepted for parsing resets the consecutive-failure
+evidence. Five consecutive
+availability failures retire the remaining URLs for that host in that run and
+emit one warning with the run, host, and dropped-page total. A single-host run
+then finishes normally, while a multi-host run continues its healthy hosts. A
+404/410 page, unsupported media type, ordinary client rejection, robots denial,
+operator cancellation, or permanent egress-policy rejection never retires a
+healthy host. Expected URL-specific, robots, and unsupported-format outcomes log
+at debug; actionable failures remain warnings.
 
 When `YAGOCRAWLER_METRICS_ADDR` is set (for example `:9101`), the crawler serves
 Prometheus metrics at `/metrics` on that address: `yacy_crawler_jobs_active`,

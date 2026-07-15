@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/crawlruns"
@@ -28,13 +29,14 @@ func crawlRunRegistry(runtime crawlProcess) *crawlruns.Registry {
 type crawlMonitorSource struct {
 	runs  *crawlruns.Registry
 	probe func(context.Context) (crawlbroker.QueueDepth, error)
+	now   func() time.Time
 }
 
 func newCrawlMonitorSource(
 	runs *crawlruns.Registry,
 	probe func(context.Context) (crawlbroker.QueueDepth, error),
 ) *crawlMonitorSource {
-	return &crawlMonitorSource{runs: runs, probe: probe}
+	return &crawlMonitorSource{runs: runs, probe: probe, now: time.Now}
 }
 
 // Monitor snapshots the known runs newest-first and, when a probe is available,
@@ -43,16 +45,24 @@ func newCrawlMonitorSource(
 func (s *crawlMonitorSource) Monitor(ctx context.Context) adminui.CrawlMonitor {
 	runs := s.runs.Recent()
 	monitor := adminui.CrawlMonitor{Runs: make([]adminui.CrawlRunView, 0, len(runs))}
+	now := s.now()
 	for _, run := range runs {
-		monitor.Runs = append(monitor.Runs, crawlRunView(run))
-		monitor.Totals.Fetched += run.Tally.Fetched
-		monitor.Totals.Indexed += run.Tally.Indexed
-		monitor.Totals.Failed += run.Tally.Failed
-		monitor.Totals.RobotsDenied += run.Tally.RobotsDenied
-		monitor.Totals.Duplicates += run.Tally.Duplicates
+		monitor.Runs = append(monitor.Runs, crawlRunView(run, now))
+		monitor.Totals.Fetched = crawlTallyTotal(monitor.Totals.Fetched, run.Tally.Fetched)
+		monitor.Totals.Indexed = crawlTallyTotal(monitor.Totals.Indexed, run.Tally.Indexed)
+		monitor.Totals.Failed = crawlTallyTotal(monitor.Totals.Failed, run.Tally.Failed)
+		monitor.Totals.RobotsDenied = crawlTallyTotal(
+			monitor.Totals.RobotsDenied,
+			run.Tally.RobotsDenied,
+		)
+		monitor.Totals.Duplicates = crawlTallyTotal(
+			monitor.Totals.Duplicates,
+			run.Tally.Duplicates,
+		)
 	}
 	if s.probe != nil {
 		if depth, err := s.probe(ctx); err == nil {
+			monitor.QueueAvailable = true
 			monitor.QueuePending = depth.Pending
 			monitor.QueueLeased = depth.Leased
 		}
@@ -61,7 +71,17 @@ func (s *crawlMonitorSource) Monitor(ctx context.Context) adminui.CrawlMonitor {
 	return monitor
 }
 
-func crawlRunView(run crawlruns.Run) adminui.CrawlRunView {
+func crawlRunView(run crawlruns.Run, now time.Time) adminui.CrawlRunView {
+	end := run.Updated
+	if run.State != yagocrawlcontract.CrawlRunFinished &&
+		run.State != yagocrawlcontract.CrawlRunCancelled {
+		end = now
+	}
+	runtime := end.Sub(run.FirstSeen)
+	if runtime < 0 {
+		runtime = 0
+	}
+
 	return adminui.CrawlRunView{
 		RunID:          run.RunID,
 		Profile:        crawlRunLabel(run),
@@ -73,7 +93,8 @@ func crawlRunView(run crawlruns.Run) adminui.CrawlRunView {
 		RobotsDenied:   run.Tally.RobotsDenied,
 		Duplicates:     run.Tally.Duplicates,
 		Pending:        run.Tally.Pending,
-		Runtime:        run.Updated.Sub(run.FirstSeen).Round(time.Second).String(),
+		Runtime:        runtime.Round(time.Second).String(),
 		PagesPerMinute: run.PagesPerMinute,
+		RateKnown:      run.RateKnown,
 	}
 }

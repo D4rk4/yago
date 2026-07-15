@@ -160,8 +160,8 @@ func TestCrawlScheduleSourceSurfacesStoreErrors(t *testing.T) {
 	if err := v.Close(); err != nil {
 		t.Fatalf("close vault: %v", err)
 	}
-	if views := source.Schedules(ctx); views != nil {
-		t.Fatalf("a failed list must degrade to nil, got %+v", views)
+	if views, err := source.Schedules(ctx); err == nil || views != nil {
+		t.Fatalf("a failed list must surface an error, got %+v, %v", views, err)
 	}
 	if err := source.DeleteSchedule(ctx, "missing"); err == nil {
 		t.Fatal("DeleteSchedule must surface the store error")
@@ -174,7 +174,7 @@ func TestCrawlScheduleSourceSurfacesStoreErrors(t *testing.T) {
 func TestFormatScheduleRunRendersTimestamp(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 7, 1, 15, 4, 0, 0, time.UTC)
-	if got := formatScheduleRun(at); got != "2026-07-01 15:04" {
+	if got := formatScheduleRun(at); got != "2026-07-01 15:04 UTC" {
 		t.Fatalf("formatScheduleRun = %q", got)
 	}
 	if got := formatScheduleRun(time.Time{}); got != "never" {

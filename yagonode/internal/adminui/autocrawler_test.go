@@ -53,11 +53,15 @@ func TestAutocrawlerSectionRendersItsSubsetBetweenSearchAndCrawler(t *testing.T)
 	}
 	for _, want := range []string{
 		"Autocrawler", "swarm.seed.enabled", "web.fallback.seed_crawl",
+		"while it is enabled",
 		`action="/admin/autocrawler"`,
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("autocrawler page missing %q", want)
 		}
+	}
+	if strings.Contains(got.body, "document limit") {
+		t.Fatal("autocrawler page must not claim a nonexistent document limit")
 	}
 	if strings.Contains(got.body, `name="key" value="peer.name"`) {
 		t.Fatal("foreign setting leaked into the autocrawler section")
@@ -217,5 +221,19 @@ func TestAutocrawlerUnavailableWithoutSettings(t *testing.T) {
 	posted := doPost(t, console, "/admin/autocrawler", url.Values{"key": {"swarm.seed.enabled"}})
 	if posted.status != http.StatusNotFound {
 		t.Fatalf("update without settings = %d, want 404", posted.status)
+	}
+}
+
+func TestAutocrawlerReportsUnavailableFormatToggles(t *testing.T) {
+	t.Parallel()
+
+	formats := &fakeFormats{readErr: context.Canceled}
+	console := New(Options{Settings: autocrawlerTestSettings(), CrawlFormats: formats})
+	got := do(t, console, "/admin/autocrawler")
+	if !strings.Contains(got.body, "Document format settings are unavailable.") {
+		t.Fatalf("missing unavailable format state: %.120q", got.body)
+	}
+	if strings.Contains(got.body, `name="text"`) {
+		t.Fatal("unavailable format settings rendered invented toggles")
 	}
 }

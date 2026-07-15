@@ -18,19 +18,16 @@ const defaultCapacity = 256
 // Run is the node's view of one crawl run, updated from worker progress reports
 // and stamped with the node clock so the console can order runs by recency.
 type Run struct {
-	RunID         string
-	WorkerID      string
-	ProfileHandle string
-	ProfileName   string
-	State         yagocrawlcontract.CrawlRunState
-	Tally         yagocrawlcontract.CrawlRunTally
-	FirstSeen     time.Time
-	Updated       time.Time
-	// PagesPerMinute is the last fetch-rate cap an operator applied to this run
-	// (0 means no cap). It is not reported by the worker, so it is remembered here
-	// and preserved across worker progress reports to pre-fill the monitor's rate
-	// control.
+	RunID          string
+	WorkerID       string
+	ProfileHandle  string
+	ProfileName    string
+	State          yagocrawlcontract.CrawlRunState
+	Tally          yagocrawlcontract.CrawlRunTally
+	FirstSeen      time.Time
+	Updated        time.Time
 	PagesPerMinute uint32
+	RateKnown      bool
 }
 
 // Registry is a bounded table of crawl runs keyed by run id, safe for concurrent
@@ -85,6 +82,10 @@ func (r *Registry) Record(_ context.Context, progress yagocrawlcontract.CrawlRun
 	run.ProfileName = progress.ProfileName
 	run.State = progress.State
 	run.Tally = progress.Tally
+	if progress.RateKnown {
+		run.PagesPerMinute = progress.PagesPerMinute
+		run.RateKnown = true
+	}
 	run.Updated = now
 	r.runs[progress.RunID] = run
 
@@ -100,10 +101,6 @@ func (r *Registry) Record(_ context.Context, progress yagocrawlcontract.CrawlRun
 	}
 }
 
-// SetRate remembers the operator-applied fetch-rate cap for a known run so the
-// monitor can pre-fill its rate control. It is a no-op for an unknown run (the
-// worker's next report will not carry a rate to restore), and it leaves the run's
-// recency untouched so a rate change does not reorder the monitor.
 func (r *Registry) SetRate(runID string, pagesPerMinute uint32) {
 	if runID == "" {
 		return
@@ -117,6 +114,7 @@ func (r *Registry) SetRate(runID string, pagesPerMinute uint32) {
 		return
 	}
 	run.PagesPerMinute = pagesPerMinute
+	run.RateKnown = true
 	r.runs[runID] = run
 }
 

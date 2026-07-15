@@ -73,26 +73,23 @@ DHT representation. Three wire-compatibility problems, the first decisive:
   stock YaCy peers; the swarm wire contract is preserved.
 - The **wire-safe subset** of learned-sparse's benefit — mitigating vocabulary
   mismatch by **expansion into real whole words** — is captured instead by
-  document-side expansion injected as ordinary word postings: inbound anchor text
-  (already shipped and indexed) and, if it clears its gates, model-based
-  doc2query (ADR-0029). Those keep YaCy word hashes and integer weights and
-  degrade gracefully among non-upgraded peers.
-- If a full learned-sparse engine is ever wanted, it belongs in an **optional,
-  strictly local secondary index or re-ranker (Seismic-style), never on the DHT
-  wire** — the same "keep it off the shared contract" boundary the dense-side ADR
-  (0030) draws. Building that would additionally require a cgo-free Go sparse-ANN,
-  which does not exist today.
+  document-side anchor expansion plus morphology and bounded RM3. Model-based
+  doc2query is rejected for the current architecture by ADR-0029 and ADR-0048.
+- A full learned-sparse engine is also rejected as a local ranking requirement.
+  It would add a model runtime, another index, and an unavailable cgo-free Go
+  sparse-ANN without representative evidence or a measured resource reserve.
 
 ## Alternatives considered
 
-- **Learned-sparse only on the document side, whole-word (doc2query).** This is
-  the wire-safe path and is adopted as its own decision in ADR-0029 — but it is
-  *not* SPLADE: it recovers the expansion-into-real-words half, not the
-  learned-subword-weights half.
+- **Learned-sparse only on the document side, whole-word (doc2query).** This
+  would preserve the RWI key shape, but ADR-0029 rejects it for the current
+  architecture because it adds transformer inference, model storage, expanded
+  postings, and a poisoning surface without representative measured gain. It is
+  *not* SPLADE: it covers expansion into real words, not learned subword weights.
 - **A parallel SPLADE key space alongside the word-hash RWI.** Rejected: it forks
   the swarm into incompatible index planes, doubles storage, and still cannot be
   merged with stock peers — all the cost of the wire break with none of the
   interop.
 - **cgo/FFI to the Rust Seismic crate for a local dense-sparse re-ranker.**
-  Deferred to the dense-side track (ADR-0030); it violates the cgo-free build and,
-  regardless, does not touch the DHT contract this spike is about.
+  Rejected: it violates the cgo-free build, adds a native runtime boundary, and
+  does not address the DHT contract this spike evaluates.

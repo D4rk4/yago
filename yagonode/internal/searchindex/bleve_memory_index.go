@@ -231,8 +231,8 @@ func bleveSearchQuery(
 	switch {
 	case req.Fuzzy:
 		main = fuzzyRecoveryQuery(req, analyzers, weights, analyzerScope)
-	case req.MinimumTermMatches > 0:
-		main = minimumTermsQuery(req, analyzers, weights)
+	case req.Relaxed || req.MinimumTermMatches > 0:
+		main = minimumTermsQuery(req, analyzers, weights, analyzerScope)
 	default:
 		// The precise path requires every query word somewhere in the document,
 		// matching YaCy's all-words RWI join; expansion terms only reorder.
@@ -337,6 +337,7 @@ func searchResultFromDocument(
 	}
 	published, dateConfidence := documentstore.PublicationDate(doc)
 	proximity, orderedProximity := resultProximity(req, hit)
+	analyzerName := indexedAnalyzerName(hit, doc)
 
 	return SearchResult{
 		DocumentID:           hit.ID,
@@ -355,14 +356,14 @@ func searchResultFromDocument(
 		SymbolFraction:       doc.ContentQuality.SymbolFraction,
 		AlphabeticFraction:   doc.ContentQuality.AlphabeticFraction,
 		UniqueTokenFraction:  doc.ContentQuality.UniqueTokenFraction,
-		Analyzer:             indexedAnalyzerName(hit, doc),
+		Analyzer:             analyzerName,
 		SafetyRating:         doc.ContentSafety.Rating,
 		ExplicitProbability:  doc.ContentSafety.ExplicitProbability,
 		SafetyConfidence:     doc.ContentSafety.Confidence,
 		Proximity:            proximity,
 		OrderedProximity:     orderedProximity,
 		FieldScores:          hitFieldScores(req, hit),
-		FieldTermPositions:   hitFieldTermPositions(req, hit),
+		FieldTermPositions:   hitFieldTermPositions(req, hit, analyzerName),
 		PublishedDate:        published,
 		DateConfidence:       dateConfidence,
 		Author:               doc.Metadata["author"],

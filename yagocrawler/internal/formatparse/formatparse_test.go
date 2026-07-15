@@ -70,12 +70,12 @@ func TestParseDisabledFamilySkips(t *testing.T) {
 	}
 }
 
-func TestParseUnknownTypeFallsBackToHTML(t *testing.T) {
+func TestParseUnknownBinaryTypeStaysUnparsed(t *testing.T) {
 	if _, parsed := Parse(
 		"https://a.example/data.unknownext", "application/octet-stream", []byte("x"),
 		yagocrawlcontract.FormatToggles{},
-	); !parsed {
-		t.Fatal("unknown types keep the pre-registry HTML fallback")
+	); parsed {
+		t.Fatal("unknown binary type reached the HTML fallback")
 	}
 }
 

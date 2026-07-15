@@ -21,7 +21,7 @@
           <td>{{.Message}}</td>
         </tr>
         {{else}}
-        <tr><td colspan="5">No events recorded yet.</td></tr>
+        <tr><td colspan="5">{{if or .Severity .Category .Query}}No recent events match the current filters.{{else}}No recent events recorded.{{end}}</td></tr>
         {{end}}
       </tbody>
     </table>

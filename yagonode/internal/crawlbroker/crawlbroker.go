@@ -74,6 +74,7 @@ func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker
 	ingest := newIngestReceiver()
 	server := newGRPCServer()
 	exchange := newExchangeServer(queue, ingest.out)
+	exchange.beginIngest = ingest.beginIngest
 	if progress != nil {
 		exchange.progress = progress
 	}

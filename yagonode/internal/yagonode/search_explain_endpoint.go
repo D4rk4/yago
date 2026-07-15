@@ -122,12 +122,14 @@ func (e searchExplainEndpoint) rankingOutcome(
 	query string,
 	weights searchindex.RankingWeights,
 ) (learnedrank.Outcome, error) {
-	searcher := searchcore.NewLexicalEvidenceSearcher(
+	weightProvider := func() searchindex.RankingWeights { return weights }
+	searcher := searchcore.NewLexicalEvidenceSearcherWithWeights(
 		searchcore.NewPseudoRelevanceSearcher(newLocalRankingSearcher(
 			e.index,
-			func() searchindex.RankingWeights { return weights },
+			weightProvider,
 			e.hostRank,
 		)),
+		lexicalRankingWeights(weightProvider),
 	)
 	servingRequest := searchcore.RequestWithParsedQuery(searchcore.Request{
 		Query:   query,

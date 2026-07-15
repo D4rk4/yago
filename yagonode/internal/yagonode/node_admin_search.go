@@ -60,7 +60,7 @@ func adminSearchResults(
 			Snippet:     result.Snippet,
 			SnippetHTML: snippetmark.Highlight(result.Snippet, terms),
 			Host:        result.Host,
-			Date:        result.Date,
+			Date:        result.DisplayDate(),
 			SizeName:    resultSizeName(result.Size),
 			Source:      resultProvenance(result),
 		})

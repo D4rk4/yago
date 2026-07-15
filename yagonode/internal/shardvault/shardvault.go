@@ -382,14 +382,17 @@ func (e *engine) yieldToReads(ctx context.Context) {
 // not the peak file size — otherwise the sweep can never drop below the mark
 // and thrashes. Compaction (the periodic maintenance pass) is what returns the
 // freed pages to the OS and shrinks the files.
-func (e *engine) UsedBytes(_ context.Context) (int64, error) {
-	// Shared gate: block only against a compaction swap (exclusive), never
-	// against other reads or writes.
-	e.globalGate.RLock()
+func (e *engine) UsedBytes(ctx context.Context) (int64, error) {
+	if err := acquireGlobalRead(ctx, &e.globalGate); err != nil {
+		return 0, err
+	}
 	defer e.globalGate.RUnlock()
 
 	var total int64
 	for i, db := range e.shards {
+		if err := ctx.Err(); err != nil {
+			return 0, fmt.Errorf("measure shard usage: %w", err)
+		}
 		live, err := liveBytes(db)
 		if err != nil {
 			return 0, fmt.Errorf("measure shard %d: %w", i, err)
@@ -717,6 +720,7 @@ func (b *shardBucket) Scan(prefix vault.Key, fn func(vault.Key, []byte) (bool, e
 			return nil
 		}
 		key, raw := head.cursor.Next()
+		key, raw = b.advancePastForeignEntries(head.shardIndex, head.cursor, key, raw)
 		if key != nil && (len(prefix) == 0 || bytes.HasPrefix(key, prefix)) {
 			head.key, head.raw = key, raw
 			heap.Push(&cursors, head)
@@ -729,11 +733,11 @@ func (b *shardBucket) Scan(prefix vault.Key, fn func(vault.Key, []byte) (bool, e
 // openCursors positions one cursor per shard at the scan prefix.
 func (b *shardBucket) openCursors(prefix vault.Key) (scanHeap, error) {
 	cursors := make(scanHeap, 0, len(b.txn.engine.shards))
-	for i := range b.txn.engine.shards {
-		if b.txn.engine.canSkipShard(i, b.name, prefix) {
+	for shardIndex := range b.txn.engine.shards {
+		if b.txn.engine.canSkipShard(shardIndex, b.name, prefix) {
 			continue
 		}
-		tx, err := b.txn.shard(i)
+		tx, err := b.txn.shard(shardIndex)
 		if err != nil {
 			return nil, err
 		}
@@ -748,10 +752,16 @@ func (b *shardBucket) openCursors(prefix vault.Key) (scanHeap, error) {
 		} else {
 			key, raw = cursor.Seek(prefix)
 		}
+		key, raw = b.advancePastForeignEntries(shardIndex, cursor, key, raw)
 		if key == nil || len(prefix) > 0 && !bytes.HasPrefix(key, prefix) {
 			continue
 		}
-		cursors = append(cursors, &shardCursor{cursor: cursor, key: key, raw: raw})
+		cursors = append(cursors, &shardCursor{
+			shardIndex: shardIndex,
+			cursor:     cursor,
+			key:        key,
+			raw:        raw,
+		})
 	}
 
 	return cursors, nil
@@ -759,9 +769,10 @@ func (b *shardBucket) openCursors(prefix vault.Key) (scanHeap, error) {
 
 // shardCursor is one shard's position in the merged scan.
 type shardCursor struct {
-	cursor *bolt.Cursor
-	key    []byte
-	raw    []byte
+	shardIndex int
+	cursor     *bolt.Cursor
+	key        []byte
+	raw        []byte
 }
 
 type scanHeap []*shardCursor

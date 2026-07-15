@@ -86,6 +86,8 @@ Settings parity: Every environment variable that controls node or crawler behavi
 
 Continuity: Maintain one workspace ledger in `CONTINUITY.md`. At the start of every assistant turn, read it, update it with the current goal, constraints, decisions, progress state, and important tool outcomes, then continue the work. Keep it short: facts only, bullets preferred, uncertainty marked `UNCONFIRMED`. Keep `functions.update_plan` for short-term execution scaffolding and `CONTINUITY.md` for durable session state. Replies start with a brief Ledger Snapshot containing Goal, Now/Next, and Open Questions. The ledger keeps these headings: Goal (incl. success criteria), Constraints/Assumptions, Key decisions, State, Done, Now, Next, Open questions, Working set (files/ids/commands).
 
+Жди EOF, а если ты его не видишь, значит файл неполный.
+
 Feature catalog: Maintain `FEATURES.md` in the workspace root. It describes project capabilities side by side across `yagonode`, `yagocrawler`, `yagocrawlcontract`, `yagomodel`, and `yagoproto` where relevant. When adding a feature or changing behavior, update the affected capability, surface, status, behavior summary, and relevant files/tests.
 
 Code structure: Follow OCP. Add features in new files and connect them through the smallest seam; do not grow existing files.
@@ -119,6 +121,8 @@ Research: During planning for every task, do a short internet and arXiv research
 Semantic behavior: Do not fix search, crawl routing, ranking, evidence selection, or compatibility behavior with ad hoc word lists, vendor facts, localized synonym buckets, or regexes that recognize specific meanings. Prefer protocol/data structures, parsed metadata, bounded model or ranking signals where such systems exist, and evidence from stored data. Regex is allowed for syntax-level parsing, protocol formats, numeric/unit tokenization, stable identifier normalization, security redaction, and file/URL/schema handling.
 
 Testing: Code lands with tests, written in the same change as the code they exercise — never deferred to a follow-up. Pure documentation/configuration changes need lightweight validation only. For code changes, run focused tests first when useful, then `make verify`. Record exact commands and results in `CONTINUITY.md` and the final response. If a test cannot be added or run, state the concrete reason and residual risk.
+
+UI validation: Always start a local instance for every UI change and verify the rendered result with screenshots in both Chrome or Chromium and Firefox. Automated markup or handler tests do not replace this visual cross-browser check.
 
 Coverage: If coverage drops, first remove or refactor code. Find uncovered statements/branches and ask whether they should exist. Delete dead or defensive-only code, collapse unexercised branches, or replace several paths with one covered path. Add tests only for required behavior. Filler tests written only to raise coverage fail the change.
 

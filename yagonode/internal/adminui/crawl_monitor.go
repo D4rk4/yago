@@ -8,20 +8,19 @@ import (
 // CrawlRunView is one row of the crawl monitor: a run the node currently knows
 // about, with its per-outcome tally and how long it has been running.
 type CrawlRunView struct {
-	RunID        string
-	Profile      string
-	Worker       string
-	State        string
-	Fetched      uint64
-	Indexed      uint64
-	Failed       uint64
-	RobotsDenied uint64
-	Duplicates   uint64
-	Pending      uint64
-	Runtime      string
-	// PagesPerMinute is the last operator-applied fetch-rate cap (0 = none), used
-	// to pre-fill the monitor's rate control.
+	RunID          string
+	Profile        string
+	Worker         string
+	State          string
+	Fetched        uint64
+	Indexed        uint64
+	Failed         uint64
+	RobotsDenied   uint64
+	Duplicates     uint64
+	Pending        uint64
+	Runtime        string
 	PagesPerMinute uint32
+	RateKnown      bool
 }
 
 // CrawlTotals is the crawl results/rejections rollup across the known runs: the
@@ -39,10 +38,11 @@ type CrawlTotals struct {
 // results/rejections rollup across them, and the broker's outstanding order
 // backlog.
 type CrawlMonitor struct {
-	Runs         []CrawlRunView
-	Totals       CrawlTotals
-	QueuePending int
-	QueueLeased  int
+	Runs           []CrawlRunView
+	Totals         CrawlTotals
+	QueueAvailable bool
+	QueuePending   int
+	QueueLeased    int
 }
 
 // CrawlMonitorSource supplies the crawl monitor snapshot on each request. A nil

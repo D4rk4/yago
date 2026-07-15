@@ -2,22 +2,13 @@ package adminui
 
 import "fmt"
 
-// Crawl-health signals derived from the run tallies (Olston & Najork,
-// "Web Crawling", FnTIR 2010): the harvest rate says how much of the fetch effort
-// became index entries — a spider trap luring the crawler into endless
-// near-identical or junk pages fetches a lot but indexes little, so a *low
-// harvest rate* is the trap smell — and the failure rate exposes a stuck or
-// blocked host. Raw duplicate volume is deliberately not a trap signal: the
-// frontier counts a duplicate every time a discovered link re-points at an
-// already-queued URL, which any densely intra-linked site does many times per
-// fetched page, so that count is unbounded against fetched pages and says nothing
-// about a trap. It is surfaced only as a bounded "link redundancy" share of all
-// links the frontier resolved. Rates render once a run has fetched enough pages
-// to make them meaningful.
 const (
 	crawlHealthMinFetched = 100
+	crawlHealthMinOutcome = 100
 	crawlTrapHarvestFloor = 0.2
 	crawlTrapFailShare    = 0.5
+	crawlHostFailureAlert = "%s: %s of fetched-or-failed page outcomes failed — " +
+		"inspect crawler logs; repeated host availability failures retire that host automatically"
 )
 
 // CrawlHealth is the derived health rollup shown as monitor tiles.
@@ -35,7 +26,17 @@ func crawlHealth(monitor CrawlMonitor) CrawlHealth {
 	if monitor.Totals.Fetched >= crawlHealthMinFetched {
 		health.HarvestRate = percentOf(monitor.Totals.Indexed, monitor.Totals.Fetched)
 		health.LinkRedundancy = linkRedundancy(monitor.Totals)
-		health.FailRate = percentOf(monitor.Totals.Failed, monitor.Totals.Fetched)
+	}
+	if crawlPopulationAtLeast(
+		crawlHealthMinOutcome,
+		monitor.Totals.Fetched,
+		monitor.Totals.Failed,
+	) {
+		health.FailRate = crawlPopulationPercent(
+			monitor.Totals.Failed,
+			monitor.Totals.Fetched,
+			monitor.Totals.Failed,
+		)
 	}
 	for _, run := range monitor.Runs {
 		if reason := trapSuspicion(run); reason != "" {
@@ -52,16 +53,20 @@ func crawlHealth(monitor CrawlMonitor) CrawlHealth {
 // failure check comes first because it is the more specific diagnosis for a run
 // that both fails and indexes little.
 func trapSuspicion(run CrawlRunView) string {
-	if run.State != "running" || run.Fetched < crawlHealthMinFetched {
+	if run.State != "running" {
+		return ""
+	}
+	if crawlPopulationAtLeast(crawlHealthMinOutcome, run.Fetched, run.Failed) &&
+		crawlPopulationShare(run.Failed, run.Fetched, run.Failed) > crawlTrapFailShare {
+		return fmt.Sprintf(
+			crawlHostFailureAlert,
+			run.Profile, crawlPopulationPercent(run.Failed, run.Fetched, run.Failed),
+		)
+	}
+	if run.Fetched < crawlHealthMinFetched {
 		return ""
 	}
 	fetched := float64(run.Fetched)
-	if float64(run.Failed)/fetched > crawlTrapFailShare {
-		return fmt.Sprintf(
-			"%s: %s of fetches fail — host may be blocking or down",
-			run.Profile, percentOf(run.Failed, run.Fetched),
-		)
-	}
 	if float64(run.Indexed)/fetched < crawlTrapHarvestFloor {
 		return fmt.Sprintf(
 			"%s: only %s of fetched pages produced an index entry — possible spider trap or junk pages",
@@ -78,15 +83,25 @@ func trapSuspicion(run CrawlRunView) string {
 // plus every fetched, failed, and robots-denied page), keeping it within
 // [0,100%) instead of the unbounded duplicates/fetched ratio.
 func linkRedundancy(totals CrawlTotals) string {
-	seen := totals.Duplicates + totals.Fetched + totals.Failed + totals.RobotsDenied
-
-	return percentOf(totals.Duplicates, seen)
+	return crawlPopulationPercent(
+		totals.Duplicates,
+		totals.Duplicates,
+		totals.Fetched,
+		totals.Failed,
+		totals.RobotsDenied,
+	)
 }
 
 func percentOf(part, whole uint64) string {
 	if whole == 0 {
 		return "0%"
 	}
+	if part > whole {
+		return "Unavailable"
+	}
+	if part == whole {
+		return "100%"
+	}
 
-	return fmt.Sprintf("%.0f%%", 100*float64(part)/float64(whole))
+	return crawlPopulationPercent(part, whole)
 }

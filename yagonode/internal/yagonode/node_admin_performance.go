@@ -6,30 +6,27 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 )
 
-// performanceSource adapts the DHT gate snapshot to the console's Performance
-// section, surfacing queue depths, connected-peer count and storage headroom. The
-// crawl queue size comes from the broker backlog rather than the gate state.
 type performanceSource struct {
 	gates dhtGateStatusSource
-	crawl crawlQueueDepthSource
 }
 
-func newPerformanceSource(
-	gates dhtGateStatusSource,
-	crawl crawlQueueDepthSource,
-) performanceSource {
-	return performanceSource{gates: gates, crawl: crawl}
+func newPerformanceSource(gates dhtGateStatusSource) performanceSource {
+	return performanceSource{gates: gates}
 }
 
 func (s performanceSource) Performance(ctx context.Context) adminui.PerformanceStatus {
 	state := s.gates.response(ctx).State
 
 	return adminui.PerformanceStatus{
-		Available:        true,
-		CrawlQueueSize:   s.crawl.outstanding(ctx),
+		Available:        s.gates.snapshot != nil,
+		CrawlQueueSize:   state.CrawlQueueSize,
+		CrawlQueueKnown:  state.CrawlQueueKnown,
 		IndexQueueSize:   state.IndexQueueSize,
+		IndexQueueKnown:  state.IndexQueueKnown,
 		ConnectedPeers:   state.ConnectedPeers,
 		LocalRWIWords:    state.LocalRWIWords,
+		LocalRWIKnown:    state.LocalRWIKnown,
 		StorageAvailable: state.StorageAvailable,
+		StorageKnown:     state.StorageKnown,
 	}
 }

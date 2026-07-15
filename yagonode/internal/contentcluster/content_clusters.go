@@ -61,12 +61,15 @@ type Cluster struct {
 }
 
 type Index struct {
-	vault        *vault.Vault
-	limits       Limits
-	fingerprints *vault.Collection[fingerprintRecord]
-	clusters     *vault.Collection[clusterRecord]
-	exactBuckets *vault.Collection[postingRecord]
-	bandBuckets  *vault.Collection[postingRecord]
+	vault               *vault.Vault
+	limits              Limits
+	fingerprints        *fingerprintKeyspace
+	clusters            *vault.Keyspace[clusterRecord]
+	exactBuckets        *vault.Keyspace[postingRecord]
+	bandBuckets         *vault.Keyspace[postingRecord]
+	boundaries          *evidenceBoundaries
+	candidateBoundaries *evidenceBoundaries
+	projections         *evidenceBoundaries
 }
 
 func DefaultLimits() Limits {
@@ -86,30 +89,33 @@ func Open(v *vault.Vault, requested Limits) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	fingerprints, err := vault.Register(v, fingerprintBucketName, jsonCodec[fingerprintRecord]{})
+	fingerprints, err := registerFingerprintKeyspace(v)
 	if err != nil {
 		return nil, fmt.Errorf("register content fingerprints: %w", err)
 	}
-	clusters, err := vault.Register(v, clusterBucketName, jsonCodec[clusterRecord]{})
+	clusters, err := vault.RegisterKeyspace(v, clusterBucketName, jsonCodec[clusterRecord]{})
 	if err != nil {
 		return nil, fmt.Errorf("register content clusters: %w", err)
 	}
-	exactBuckets, err := vault.Register(v, exactBucketName, jsonCodec[postingRecord]{})
+	exactBuckets, err := vault.RegisterKeyspace(v, exactBucketName, jsonCodec[postingRecord]{})
 	if err != nil {
 		return nil, fmt.Errorf("register exact content buckets: %w", err)
 	}
-	bandBuckets, err := vault.Register(v, bandBucketName, jsonCodec[postingRecord]{})
+	bandBuckets, err := vault.RegisterKeyspace(v, bandBucketName, jsonCodec[postingRecord]{})
 	if err != nil {
 		return nil, fmt.Errorf("register content fingerprint bands: %w", err)
 	}
 
 	return &Index{
-		vault:        v,
-		limits:       limits,
-		fingerprints: fingerprints,
-		clusters:     clusters,
-		exactBuckets: exactBuckets,
-		bandBuckets:  bandBuckets,
+		vault:               v,
+		limits:              limits,
+		fingerprints:        fingerprints,
+		clusters:            clusters,
+		exactBuckets:        exactBuckets,
+		bandBuckets:         bandBuckets,
+		boundaries:          newEvidenceBoundaries(),
+		candidateBoundaries: newEvidenceBoundaries(),
+		projections:         newEvidenceBoundaries(),
 	}, nil
 }
 
@@ -118,54 +124,45 @@ func (i *Index) Replace(ctx context.Context, evidence Evidence) (Assignment, err
 	if err != nil {
 		return Assignment{}, err
 	}
-	var assignment Assignment
-	err = i.vault.Update(ctx, func(tx *vault.Txn) error {
-		var replaceErr error
-		assignment, replaceErr = i.replace(tx, ctx, prepared)
-
-		return replaceErr
-	})
+	replacements, err := i.replacePreparedBatch(ctx, []preparedEvidence{prepared})
 	if err != nil {
 		return Assignment{}, fmt.Errorf("replace content cluster evidence: %w", err)
 	}
+	if replacements[0].Finalization.token != "" {
+		if err := i.FinalizeEvidenceTransitions(
+			ctx,
+			[]EvidenceFinalization{replacements[0].Finalization},
+		); err != nil {
+			i.ReleaseEvidenceTransitions([]EvidenceFinalization{
+				replacements[0].Finalization,
+			})
 
-	return assignment, nil
+			return Assignment{}, fmt.Errorf("finalize content cluster evidence: %w", err)
+		}
+	}
+
+	return replacements[0].Current, nil
 }
 
 func (i *Index) Delete(ctx context.Context, url string) (bool, error) {
-	normalizedURL, err := validateURL(url)
+	deletion, err := i.DeleteTransition(ctx, url)
 	if err != nil {
 		return false, err
 	}
-	var deleted bool
-	err = i.vault.Update(ctx, func(tx *vault.Txn) error {
-		deleted = false
-		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("check deletion context: %w", err)
-		}
-		record, exists, readErr := i.fingerprints.Get(tx, vault.Key(normalizedURL))
-		if readErr != nil {
-			return fmt.Errorf("read deleted content fingerprint: %w", readErr)
-		}
-		if !exists {
-			return nil
-		}
-		if detachErr := i.detach(tx, ctx, record); detachErr != nil {
-			return detachErr
-		}
-		deleted, readErr = i.fingerprints.Delete(tx, vault.Key(normalizedURL))
+	if deletion.Finalization.token != "" {
+		if err := i.FinalizeEvidenceTransitions(
+			ctx,
+			[]EvidenceFinalization{deletion.Finalization},
+		); err != nil {
+			i.ReleaseEvidenceTransitions([]EvidenceFinalization{
+				deletion.Finalization,
+			})
 
-		if readErr != nil {
-			return fmt.Errorf("delete content fingerprint: %w", readErr)
+			return false, fmt.Errorf("finalize deleted content cluster evidence: %w", err)
 		}
-
-		return nil
-	})
-	if err != nil {
-		return false, fmt.Errorf("delete content cluster evidence: %w", err)
 	}
 
-	return deleted, nil
+	return deletion.Deleted, nil
 }
 
 func (i *Index) Lookup(ctx context.Context, url string) (Assignment, bool, error) {
@@ -183,7 +180,7 @@ func (i *Index) Lookup(ctx context.Context, url string) (Assignment, bool, error
 		if !exists {
 			return nil
 		}
-		cluster, exists, readErr := i.clusters.Get(tx, vault.Key(record.ClusterID))
+		cluster, exists, readErr := i.publishedCluster(tx, ctx, record.ClusterID)
 		if readErr != nil {
 			return fmt.Errorf("read content cluster: %w", readErr)
 		}
@@ -210,15 +207,12 @@ func (i *Index) Cluster(ctx context.Context, clusterID string) (Cluster, bool, e
 	var cluster Cluster
 	var found bool
 	err := i.vault.View(ctx, func(tx *vault.Txn) error {
-		record, exists, readErr := i.clusters.Get(tx, vault.Key(clusterID))
+		record, exists, readErr := i.publishedCluster(tx, ctx, clusterID)
 		if readErr != nil {
 			return fmt.Errorf("read content cluster: %w", readErr)
 		}
 		if !exists {
 			return nil
-		}
-		if len(record.Members) > i.limits.MaximumClusterMembers {
-			return fmt.Errorf("content cluster exceeds its member limit")
 		}
 		cluster = Cluster{
 			ID:                record.ID,

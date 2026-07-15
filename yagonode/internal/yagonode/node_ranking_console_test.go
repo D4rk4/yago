@@ -41,50 +41,46 @@ func TestRankingConsoleProfile(t *testing.T) {
 	source := newRankingConsole(holder, fakeRanker{}, fakeCurated{count: 4})
 
 	profile := source.Profile(context.Background())
-	if profile.JudgmentCount != 4 {
+	if profile.JudgmentCount != 4 || !profile.JudgmentsAvailable {
 		t.Fatalf("judgment count = %d, want 4", profile.JudgmentCount)
 	}
-	if len(profile.Weights) != len(rankingWeightMeta) {
-		t.Fatalf("weight count = %d, want %d", len(profile.Weights), len(rankingWeightMeta))
+	definitions := searchindex.RankingWeightDefinitions()
+	if len(profile.Weights) != len(definitions) {
+		t.Fatalf("weight count = %d, want %d", len(profile.Weights), len(definitions))
 	}
-	current := weightsToMap(holder.Current())
-	seen := map[string]bool{}
-	for _, weight := range profile.Weights {
-		seen[weight.Key] = true
-		if weight.Value != current[weight.Key] {
-			t.Fatalf("%s value = %v, want %v", weight.Key, weight.Value, current[weight.Key])
+	for index, weight := range profile.Weights {
+		definition := definitions[index]
+		current, ok := holder.Current().Value(weight.Key)
+		if !ok || weight.Key != definition.Key || weight.Label != definition.Label ||
+			weight.Group != definition.Group || weight.Value != current {
+			t.Fatalf("%s value = %v, want %v", weight.Key, weight.Value, current)
 		}
-		switch weight.Key {
-		case "title":
-			if weight.Label != "Title" || weight.Group != "Field boosts" {
-				t.Fatalf("title meta = %q/%q", weight.Label, weight.Group)
-			}
-		case "proximity":
-			if weight.Label != "Proximity (SDM)" || weight.Group != "Priors" {
-				t.Fatalf("proximity meta = %q/%q", weight.Label, weight.Group)
-			}
+		if weight.Maximum <= weight.Minimum || weight.Default < weight.Minimum ||
+			weight.Default > weight.Maximum {
+			t.Fatalf("%s bounds = %+v", weight.Key, weight)
 		}
-	}
-	if !seen["title"] || !seen["proximity"] {
-		t.Fatalf("expected weights missing: %v", seen)
 	}
 }
 
-func TestRankingConsoleJudgmentCountDegradesToZero(t *testing.T) {
+func TestRankingConsoleJudgmentAvailability(t *testing.T) {
 	t.Parallel()
 
 	holder := testRankingHolder(t)
-	// A missing store and a read error both degrade to zero rather than failing.
-	if got := newRankingConsole(
+	missing := newRankingConsole(
 		holder,
 		fakeRanker{},
 		nil,
-	).Profile(context.Background()); got.JudgmentCount != 0 {
-		t.Fatalf("nil store count = %d, want 0", got.JudgmentCount)
+	).Profile(context.Background())
+	if missing.JudgmentsAvailable {
+		t.Fatal("nil judgment store should be unavailable")
 	}
 	failing := newRankingConsole(holder, fakeRanker{}, fakeCurated{err: errors.New("boom")})
-	if got := failing.Profile(context.Background()); got.JudgmentCount != 0 {
-		t.Fatalf("errored store count = %d, want 0", got.JudgmentCount)
+	if got := failing.Profile(context.Background()); got.JudgmentsAvailable {
+		t.Fatal("errored judgment store should be unavailable")
+	}
+	empty := newRankingConsole(holder, fakeRanker{}, fakeCurated{}).Profile(context.Background())
+	if empty.JudgmentCount != 0 || !empty.JudgmentsAvailable {
+		t.Fatalf("empty judgment store = %+v, want available zero", empty)
 	}
 }
 
@@ -105,6 +101,12 @@ func TestRankingConsoleApplyPersistsValidWeights(t *testing.T) {
 	if holder.Current().Body != before {
 		t.Fatalf("body changed to %v, want %v", holder.Current().Body, before)
 	}
+	if err := source.Apply(context.Background(), map[string]float64{"unknown": 1}); err != nil {
+		t.Fatalf("unknown overlay: %v", err)
+	}
+	if holder.Current().Body != before {
+		t.Fatalf("unknown overlay changed profile: %+v", holder.Current())
+	}
 }
 
 func TestRankingConsoleApplyRejectsInvalidWeights(t *testing.T) {
@@ -119,6 +121,21 @@ func TestRankingConsoleApplyRejectsInvalidWeights(t *testing.T) {
 	if holder.Current().Quality < 0 {
 		t.Fatal("an invalid apply must not persist")
 	}
+}
+
+func TestWeightsViewMarksLegacyValuesAboveCurrentWriteRange(t *testing.T) {
+	weights := searchindex.DefaultRankingWeights()
+	weights.Title = 65
+	for _, weight := range weightsView(weights) {
+		if weight.Key == "title" {
+			if !weight.OutOfRange || weight.Value != 65 || weight.Maximum != 64 {
+				t.Fatalf("legacy title view = %+v", weight)
+			}
+
+			return
+		}
+	}
+	t.Fatal("title control missing")
 }
 
 func TestRankingConsoleTuneMapsReport(t *testing.T) {

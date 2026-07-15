@@ -30,12 +30,12 @@ func newPeerNewsSource(news peerNewsReader) peerNewsSource {
 	return peerNewsSource{news: news, now: time.Now}
 }
 
-func (s peerNewsSource) PeerNews(ctx context.Context) []adminui.PeerNewsItem {
+func (s peerNewsSource) PeerNews(ctx context.Context) ([]adminui.PeerNewsItem, bool) {
 	records, err := s.news.Recent(ctx, peernews.Incoming, adminPeerNewsLimit)
 	if err != nil {
 		slog.WarnContext(ctx, "peer news snapshot failed", slog.Any("error", err))
 
-		return nil
+		return nil, false
 	}
 
 	now := s.now()
@@ -49,7 +49,7 @@ func (s peerNewsSource) PeerNews(ctx context.Context) []adminui.PeerNewsItem {
 		})
 	}
 
-	return items
+	return items, true
 }
 
 // peerNewsAge humanizes how long ago a record was received (or created, when the
@@ -65,7 +65,7 @@ func peerNewsAge(record peernews.Record, now time.Time) string {
 
 	elapsed := now.Sub(stamp)
 	if elapsed < 0 {
-		elapsed = 0
+		return ""
 	}
 	switch {
 	case elapsed < time.Hour:

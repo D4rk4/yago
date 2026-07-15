@@ -25,6 +25,7 @@ func cacheKey(req SearchRequest) string {
 	writeCacheField(&builder, strconv.FormatBool(req.IncludePositions))
 	writeCacheField(&builder, strconv.FormatBool(req.CandidateOnly))
 	writeCacheField(&builder, strconv.FormatBool(req.Fuzzy))
+	writeCacheField(&builder, strconv.FormatBool(req.Relaxed))
 	writeCacheField(&builder, req.Author)
 	writeCacheStrings(&builder, req.Terms)
 	writeCacheField(&builder, strconv.FormatBool(req.Near))
@@ -53,15 +54,10 @@ func writeCacheTime(builder *strings.Builder, value time.Time) {
 }
 
 func writeCacheWeights(builder *strings.Builder, weights RankingWeights) {
-	writeCacheField(builder, strconv.FormatFloat(weights.Title, 'g', -1, 64))
-	writeCacheField(builder, strconv.FormatFloat(weights.Headings, 'g', -1, 64))
-	writeCacheField(builder, strconv.FormatFloat(weights.Anchors, 'g', -1, 64))
-	writeCacheField(builder, strconv.FormatFloat(weights.Body, 'g', -1, 64))
-	writeCacheField(builder, strconv.FormatFloat(weights.URL, 'g', -1, 64))
-	writeCacheField(builder, strconv.FormatFloat(weights.HostRank, 'g', -1, 64))
-	writeCacheField(builder, strconv.FormatFloat(weights.Freshness, 'g', -1, 64))
-	writeCacheField(builder, strconv.FormatFloat(weights.Quality, 'g', -1, 64))
-	writeCacheField(builder, strconv.FormatFloat(weights.Proximity, 'g', -1, 64))
+	for _, definition := range rankingWeightDefinitions {
+		value, _ := weights.Value(definition.Key)
+		writeCacheField(builder, strconv.FormatFloat(value, 'g', -1, 64))
+	}
 }
 
 func writeCacheField(builder *strings.Builder, value string) {

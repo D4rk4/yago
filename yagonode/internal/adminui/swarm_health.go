@@ -31,20 +31,17 @@ func SwarmHealthScore(
 	now time.Time,
 ) int {
 	score := 0.0
-	if seen {
+	if seen && !lastSeen.After(now) {
 		age := now.Sub(lastSeen)
-		if age < 0 {
-			age = 0
-		}
 		score += swarmHealthRecencyPoints *
 			math.Exp2(-age.Hours()/swarmHealthRecencyHalfLife.Hours())
 	}
 	score += swarmHealthLongevityPoints *
-		math.Min(float64(ageDays)/swarmHealthMatureAgeDays, 1)
+		math.Max(0, math.Min(float64(ageDays)/swarmHealthMatureAgeDays, 1))
 	score += swarmHealthUptimePoints *
-		math.Min(float64(uptimeMinutes)/swarmHealthFullUptime, 1)
+		math.Max(0, math.Min(float64(uptimeMinutes)/swarmHealthFullUptime, 1))
 
-	return int(math.Round(score))
+	return int(math.Round(math.Max(0, math.Min(score, 100))))
 }
 
 // SwarmHealthTag folds the score into the three operator-facing bands.

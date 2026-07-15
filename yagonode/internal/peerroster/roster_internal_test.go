@@ -395,3 +395,134 @@ func TestRosterEntryDecodeRejectsBadRecords(t *testing.T) {
 		t.Fatal("expected seed parse error")
 	}
 }
+
+func TestPeerObservationsReportLocalRecencyAndCounts(t *testing.T) {
+	r, _ := openScriptedRoster(t, 8, 4)
+	now := time.Unix(100, 0)
+	r.now = func() time.Time {
+		now = now.Add(time.Second)
+
+		return now
+	}
+	first := internalSeed(t, "first", "203.0.113.1")
+	second := internalSeed(t, "second", "203.0.113.2")
+	r.Discover(t.Context(), first)
+	r.Discover(t.Context(), second)
+	r.ConfirmReachable(t.Context(), first.Hash)
+
+	observations, known, reachable, err := r.PeerObservations(t.Context())
+	if err != nil {
+		t.Fatalf("PeerObservations: %v", err)
+	}
+	if known != 2 || reachable != 1 || len(observations) != 2 {
+		t.Fatalf("observations/counts = %d/%d/%d", len(observations), known, reachable)
+	}
+	if count, err := r.ObservedKnownPeerCount(t.Context()); err != nil || count != 2 {
+		t.Fatalf("ObservedKnownPeerCount = %d/%v", count, err)
+	}
+	if observations[0].Seed.Hash != first.Hash ||
+		observations[0].LastSeen != time.Unix(103, 0) ||
+		observations[1].Seed.Hash != second.Hash ||
+		observations[1].LastSeen != time.Unix(102, 0) {
+		t.Fatalf("observations = %+v", observations)
+	}
+
+	observation, found, err := r.PeerObservation(t.Context(), first.Hash)
+	if err != nil || !found || observation.Seed.Hash != first.Hash ||
+		observation.LastSeen != time.Unix(103, 0) {
+		t.Fatalf("PeerObservation = %+v/%v/%v", observation, found, err)
+	}
+	if _, found, err := r.PeerObservation(
+		t.Context(), internalHashFor("ghost"),
+	); err != nil || found {
+		t.Fatalf("unknown PeerObservation = %v/%v", found, err)
+	}
+}
+
+func TestPeerObservationsUseHashToOrderEqualRecency(t *testing.T) {
+	r, _ := openScriptedRoster(t, 8, 4)
+	r.Discover(
+		t.Context(),
+		internalSeed(t, "second", "203.0.113.2"),
+		internalSeed(t, "first", "203.0.113.1"),
+	)
+
+	observations, _, _, err := r.PeerObservations(t.Context())
+	if err != nil || len(observations) != 2 ||
+		observations[0].Seed.Hash.String() >= observations[1].Seed.Hash.String() {
+		t.Fatalf("equal-recency observations = %+v/%v", observations, err)
+	}
+}
+
+func TestPeerObservationsSurfaceReadFailures(t *testing.T) {
+	r, engine := openScriptedRoster(t, 8, 4)
+	peer := internalSeed(t, "peer", "203.0.113.1")
+	r.Discover(t.Context(), peer)
+
+	engine.scanErrors[peersBucket] = errors.New("scan failed")
+	if observations, known, reachable, err := r.PeerObservations(
+		t.Context(),
+	); err == nil || observations != nil ||
+		known != 0 ||
+		reachable != 0 {
+		t.Fatalf("scan failure = %+v/%d/%d/%v", observations, known, reachable, err)
+	}
+	engine.scanErrors[peersBucket] = nil
+	corruptPeerCount(t, engine)
+	if count, err := r.ObservedKnownPeerCount(t.Context()); err == nil || count != 0 {
+		t.Fatalf("corrupt ObservedKnownPeerCount = %d/%v", count, err)
+	}
+	corruptPeerRecord(t, r, engine, peer.Hash)
+	if observation, found, err := r.PeerObservation(
+		t.Context(),
+		peer.Hash,
+	); err == nil || found ||
+		observation.Seed.Hash != "" ||
+		!observation.LastSeen.IsZero() {
+		t.Fatalf("lookup failure = %+v/%v/%v", observation, found, err)
+	}
+}
+
+func TestPeerObservationsSurfaceCanceledScan(t *testing.T) {
+	r, engine := openScriptedRoster(t, 8, 4)
+	r.Discover(t.Context(), internalSeed(t, "peer", "203.0.113.1"))
+	ctx, cancel := context.WithCancel(t.Context())
+	engine.scanObserver = func(name vault.Name) {
+		if name == peersBucket {
+			cancel()
+		}
+	}
+
+	if _, _, _, err := r.PeerObservations(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("PeerObservations error = %v, want context canceled", err)
+	}
+}
+
+func TestPeerObservationsSurfaceClosedVault(t *testing.T) {
+	storage, err := vault.New(newScriptedEngine())
+	if err != nil {
+		t.Fatalf("vault.New: %v", err)
+	}
+	opened, err := Open(storage, time.Now, 8, 4)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := storage.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	reader := opened.(ObservationReader)
+	if _, _, _, err := reader.PeerObservations(t.Context()); err == nil {
+		t.Fatal("PeerObservations on a closed vault succeeded")
+	}
+	if _, _, err := reader.PeerObservation(
+		t.Context(), internalHashFor("peer"),
+	); err == nil {
+		t.Fatal("PeerObservation on a closed vault succeeded")
+	}
+	if count, err := opened.(*roster).ObservedKnownPeerCount(
+		t.Context(),
+	); err == nil ||
+		count != 0 {
+		t.Fatalf("ObservedKnownPeerCount on a closed vault = %d/%v", count, err)
+	}
+}

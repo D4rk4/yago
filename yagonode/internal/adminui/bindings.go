@@ -12,13 +12,14 @@ type BindInterface struct {
 // BindItem is one bindable surface: its current listen host and port and the
 // host addresses discovered on the machine.
 type BindItem struct {
-	Key         string
-	Title       string
-	Description string
-	Host        string
-	Port        string
-	Overridden  bool
-	Interfaces  []BindInterface
+	Key             string
+	Title           string
+	Description     string
+	Host            string
+	Port            string
+	ListenerEnabled bool
+	Overridden      bool
+	Interfaces      []BindInterface
 }
 
 // BindingsView is the per-surface bind editor for the Configuration section. A

@@ -53,6 +53,35 @@ func TestBackupPageSurfacesStatusFailure(t *testing.T) {
 	if !strings.Contains(got.body, "Reading the storage status failed") {
 		t.Fatal("status failure must be surfaced")
 	}
+	for _, falseFact := range []string{
+		"Storage used",
+		"Storage quota",
+		"deploy/backup.sh",
+		"deploy/restore.sh",
+	} {
+		if strings.Contains(got.body, falseFact) {
+			t.Fatalf("failed status read rendered %q", falseFact)
+		}
+	}
+}
+
+func TestBackupPageDistinguishesZeroUsageFromUnlimitedQuota(t *testing.T) {
+	t.Parallel()
+
+	console := New(Options{Backup: fakeBackup{status: BackupStatus{
+		DataDir: "/opt/yago/data",
+	}}})
+	got := do(t, console, "/admin/backup")
+	for _, want := range []string{
+		`<div class="cds-metric__label">Storage used</div>
+    <div class="cds-metric__value">0 B</div>`,
+		`<div class="cds-metric__label">Storage quota</div>
+    <div class="cds-metric__value">unlimited</div>`,
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Errorf("backup page missing %q", want)
+		}
+	}
 }
 
 func TestBackupPageUnavailableWithoutSource(t *testing.T) {
@@ -68,8 +97,8 @@ func TestFormatByteSize(t *testing.T) {
 	t.Parallel()
 
 	for count, want := range map[int64]string{
-		0:              "unlimited",
-		-1:             "unlimited",
+		0:              "0 B",
+		-1:             "0 B",
 		512:            "512.0 B",
 		1536:           "1.5 KiB",
 		5 << 20:        "5.0 MiB",
@@ -78,6 +107,20 @@ func TestFormatByteSize(t *testing.T) {
 	} {
 		if got := formatByteSize(count); got != want {
 			t.Errorf("formatByteSize(%d) = %q, want %q", count, got, want)
+		}
+	}
+}
+
+func TestFormatStorageQuota(t *testing.T) {
+	t.Parallel()
+
+	for count, want := range map[int64]string{
+		0:    "unlimited",
+		-1:   "unlimited",
+		1536: "1.5 KiB",
+	} {
+		if got := formatStorageQuota(count); got != want {
+			t.Errorf("formatStorageQuota(%d) = %q, want %q", count, got, want)
 		}
 	}
 }

@@ -8,7 +8,8 @@ import (
 )
 
 type overviewSource struct {
-	report nodestatus.Report
+	report         nodestatus.Report
+	localDocuments overviewLocalDocuments
 }
 
 func newOverviewSource(report nodestatus.Report) overviewSource {
@@ -20,13 +21,14 @@ func (s overviewSource) Overview(ctx context.Context) adminui.Overview {
 
 	name, _ := seed.Name.Get()
 	peerType, _ := seed.PeerType.Get()
-	documents, _ := seed.URLCount.Get()
-	words, _ := seed.RWICount.Get()
-	knownPeers, _ := seed.KnownSeedCount.Get()
-	sentWords, _ := seed.SentWordCount.Get()
-	receivedWords, _ := seed.ReceivedWordCount.Get()
-	sentURLs, _ := seed.SentURLCount.Get()
-	receivedURLs, _ := seed.ReceivedURLCount.Get()
+	indexedDocuments, indexedDocumentsKnown := s.localDocuments.read(ctx)
+	urlMetadataRecords, urlMetadataRecordsKnown := seedStatistic(seed.URLCount)
+	words, wordsKnown := seedStatistic(seed.RWICount)
+	knownPeers, knownPeersKnown := seedStatistic(seed.KnownSeedCount)
+	sentWords, sentWordsKnown := seedTransferStatistic(seed.SentWordCount)
+	receivedWords, receivedWordsKnown := seedTransferStatistic(seed.ReceivedWordCount)
+	sentURLs, sentURLsKnown := seedTransferStatistic(seed.SentURLCount)
+	receivedURLs, receivedURLsKnown := seedTransferStatistic(seed.ReceivedURLCount)
 
 	return adminui.Overview{
 		PeerName: name,
@@ -36,14 +38,23 @@ func (s overviewSource) Overview(ctx context.Context) adminui.Overview {
 		// stamped by a release build), not the numeric YaCy-compatibility
 		// protocol version that report.Version carries for the wire — those two
 		// evolve independently and only the latter must stay a YaCy float.
-		Version:       Version(),
-		UptimeSeconds: s.report.UptimeSeconds(ctx),
-		Documents:     documents,
-		Words:         words,
-		KnownPeers:    knownPeers,
-		SentWords:     sentWords,
-		ReceivedWords: receivedWords,
-		SentURLs:      sentURLs,
-		ReceivedURLs:  receivedURLs,
+		Version:                 Version(),
+		UptimeSeconds:           s.report.UptimeSeconds(ctx),
+		IndexedDocuments:        indexedDocuments,
+		IndexedDocumentsKnown:   indexedDocumentsKnown,
+		URLMetadataRecords:      urlMetadataRecords,
+		URLMetadataRecordsKnown: urlMetadataRecordsKnown,
+		Words:                   words,
+		WordsKnown:              wordsKnown,
+		KnownPeers:              knownPeers,
+		KnownPeersKnown:         knownPeersKnown,
+		SentWords:               sentWords,
+		SentWordsKnown:          sentWordsKnown,
+		ReceivedWords:           receivedWords,
+		ReceivedWordsKnown:      receivedWordsKnown,
+		SentURLs:                sentURLs,
+		SentURLsKnown:           sentURLsKnown,
+		ReceivedURLs:            receivedURLs,
+		ReceivedURLsKnown:       receivedURLsKnown,
 	}
 }

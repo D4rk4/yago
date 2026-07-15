@@ -328,7 +328,8 @@ func TestThemeDefaultBodiesParseAndRender(t *testing.T) {
 	}
 	assertContainsAll(t, "default results", html, []string{
 		"<title>cats — my node search</title>",
-		"2 results for “cats” (0.42 s)",
+		`rel="search" type="application/opensearchdescription+xml" title="my node search"`,
+		"Up to 2 results available in this search window for “cats” (0.42 s)",
 		"1 from this node · 1 from peers · 0 from the web",
 		`href="https://example.com/a" target="_blank" rel="noopener noreferrer nofollow">First hit<span aria-hidden="true"> ↗</span>`,
 		"escaped &lt;mark&gt;snippet",
@@ -339,6 +340,7 @@ func TestThemeDefaultBodiesParseAndRender(t *testing.T) {
 		"Did you mean",
 		"showing close matches",
 		`<aside class="facets"`,
+		"Hosts — counts from the local corpus",
 		`<div class="brand"><b>ya</b>go</div>`,
 		"free software under the GNU AGPL v3",
 		"body { font-family: Arial, Helvetica, sans-serif;",
@@ -358,8 +360,9 @@ func TestThemeDefaultBodiesParseAndRender(t *testing.T) {
 	})
 
 	home, ok := theme.Render(context.Background(), portaltheme.PageSearch, map[string]any{
-		"brand": "my node",
-		"query": "",
+		"brand":           "my node",
+		"openSearchTitle": "my node search",
+		"query":           "",
 	})
 	if !ok {
 		t.Fatal("default search body must render")
@@ -396,6 +399,17 @@ func TestThemeDefaultResultsRenderTotalMissSuggestion(t *testing.T) {
 		strings.Contains(miss, "showing close matches") {
 		t.Fatalf("total-miss suggestion render = %q", miss)
 	}
+
+	missResults["incomplete"] = true
+	missResults["federationUnavailable"] = true
+	missResults["peersFailed"] = 0
+	incomplete, ok := theme.Render(t.Context(), portaltheme.PageResults, missView)
+	if !ok || !strings.Contains(incomplete, "no complete result set is available") ||
+		!strings.Contains(incomplete, "Peer federation was unavailable") ||
+		strings.Contains(incomplete, "0 results for") ||
+		strings.Contains(incomplete, "No results matched") {
+		t.Fatalf("incomplete-miss render = %q", incomplete)
+	}
 }
 
 func assertContainsAll(t *testing.T, label, html string, wants []string) {
@@ -409,15 +423,16 @@ func assertContainsAll(t *testing.T, label, html string, wants []string) {
 
 func resultsView() map[string]any {
 	return map[string]any{
-		"brand":         "my node",
-		"query":         "cats",
-		"imageVertical": false,
-		"submitted":     true,
-		"error":         "",
-		"newTab":        true,
-		"rssUrl":        "/yacysearch.rss?query=cats",
-		"jsonUrl":       "/yacysearch.json?query=cats",
-		"elapsed":       "0.42 s",
+		"brand":           "my node",
+		"openSearchTitle": "my node search",
+		"query":           "cats",
+		"imageVertical":   false,
+		"submitted":       true,
+		"error":           "",
+		"newTab":          true,
+		"rssUrl":          "/yacysearch.rss?query=cats",
+		"jsonUrl":         "/yacysearch.json?query=cats",
+		"elapsed":         "0.42 s",
 		"verticals": []map[string]any{
 			{"label": "All", "url": "/?q=cats", "current": true},
 		},
@@ -433,6 +448,7 @@ func resultsView() map[string]any {
 			"facets": []map[string]any{
 				{
 					"title": "Hosts",
+					"scope": "the local corpus",
 					"items": []map[string]any{
 						{"label": "example.com", "count": 5, "url": "/?q=cats+site%3Aexample.com"},
 					},

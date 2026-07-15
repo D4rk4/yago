@@ -333,6 +333,9 @@ func cacheRequestFilterFieldVariants(base SearchRequest) map[string]SearchReques
 	addCacheVariant(variants, "Fuzzy", base, func(req *SearchRequest) {
 		req.Fuzzy = false
 	})
+	addCacheVariant(variants, "Relaxed", base, func(req *SearchRequest) {
+		req.Relaxed = true
+	})
 	addCacheVariant(variants, "Author", base, func(req *SearchRequest) {
 		req.Author = "Grace"
 	})

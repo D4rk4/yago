@@ -19,7 +19,9 @@ type branchBlacklist struct {
 	importErr error
 }
 
-func (branchBlacklist) BlacklistEntries(context.Context) []BlacklistEntry { return nil }
+func (branchBlacklist) BlacklistEntries(context.Context) ([]BlacklistEntry, error) {
+	return nil, nil
+}
 
 func (branchBlacklist) AddBlacklist(context.Context, string, string) error { return nil }
 

@@ -5,11 +5,11 @@
 <div class="cds-tile-grid">
   <section class="cds-tile">
     <div class="cds-metric__label">Crawl queue</div>
-    <div class="cds-metric__value">{{.Performance.CrawlQueueSize}}</div>
+    <div class="cds-metric__value">{{if .Performance.CrawlQueueKnown}}{{.Performance.CrawlQueueSize}}{{else}}Unavailable{{end}}</div>
   </section>
   <section class="cds-tile">
     <div class="cds-metric__label">Index queue</div>
-    <div class="cds-metric__value">{{.Performance.IndexQueueSize}}</div>
+    <div class="cds-metric__value">{{if .Performance.IndexQueueKnown}}{{.Performance.IndexQueueSize}}{{else}}Unavailable{{end}}</div>
   </section>
   <section class="cds-tile">
     <div class="cds-metric__label">Connected peers</div>
@@ -17,11 +17,11 @@
   </section>
   <section class="cds-tile">
     <div class="cds-metric__label">Local RWI words</div>
-    <div class="cds-metric__value">{{.Performance.LocalRWIWords}}</div>
+    <div class="cds-metric__value">{{if .Performance.LocalRWIKnown}}{{.Performance.LocalRWIWords}}{{else}}Unavailable{{end}}</div>
   </section>
   <section class="cds-tile">
     <div class="cds-metric__label">Storage</div>
-    <div class="cds-metric__value">{{if .Performance.StorageAvailable}}Available{{else}}Full{{end}}</div>
+    <div class="cds-metric__value">{{if not .Performance.StorageKnown}}Unavailable{{else if .Performance.StorageAvailable}}Available{{else}}Full{{end}}</div>
   </section>
 </div>
 <p class="cds-muted">The crawl queue is the broker's outstanding order backlog, waiting or in flight. The index queue, peer count and storage headroom are read from the DHT gate snapshot. Backup and restore live on the <a href="/admin/backup">Backup &amp; restore</a> page.</p>
@@ -31,14 +31,14 @@
   {{range .History}}
   <section class="cds-tile">
     <div class="cds-metric__label">{{.Name}}</div>
-    <div class="cds-metric__value">{{.Current}} <span class="cds-metric__unit">{{.Unit}}</span></div>
+    <div class="cds-metric__value">{{.Latest}} <span class="cds-metric__unit">{{.Unit}}</span></div>
     {{.SVG}}
-    <div class="cds-muted cds-sparkline__meta">peak {{.Peak}} {{.Unit}} · {{.Samples}} samples over {{.Window}}</div>
+    <div class="cds-muted cds-sparkline__meta">latest observed {{.ObservedAt}} · peak {{.Peak}} {{.Unit}} · {{.Samples}} samples over {{.Window}}</div>
   </section>
   {{end}}
 </div>
 {{else}}
-<p class="cds-muted">History charts appear after the sampler has collected at least two points (about twenty seconds after start).</p>
+<p class="cds-muted">History charts appear after the sampler has collected at least two points (about thirty seconds after start).</p>
 {{end}}
 {{else}}
 <div class="cds-empty" role="status" aria-live="polite">Performance metrics are not available.</div>

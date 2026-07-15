@@ -50,12 +50,16 @@ func TestTransferRWIReportsBusy(t *testing.T) {
 		Indexes:     []yagomodel.RWIPosting{posting("w1", "u1")},
 	}
 
-	if _, err := h.endpoint().Serve(context.Background(), req); err != nil {
+	ctx := context.Background()
+	if _, err := h.endpoint().Serve(ctx, req); err != nil {
 		t.Fatalf("Serve: %v", err)
+	}
+	if _, err := h.vault.UsedBytes(ctx); err != nil {
+		t.Fatalf("UsedBytes: %v", err)
 	}
 
 	req.Indexes = []yagomodel.RWIPosting{posting("w2", "u2")}
-	resp, err := h.endpoint().Serve(context.Background(), req)
+	resp, err := h.endpoint().Serve(ctx, req)
 	if err != nil {
 		t.Fatalf("Serve over capacity: %v", err)
 	}

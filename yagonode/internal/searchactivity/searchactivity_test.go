@@ -94,6 +94,28 @@ func TestTopWords(t *testing.T) {
 	}
 }
 
+func TestConfirmedZeroExcludesIncompleteAndErroredSearches(t *testing.T) {
+	tracker := New(ModeAggregate)
+	confirmed := entry("confirmed", 0)
+	tracker.Record(confirmed)
+	incomplete := entry("incomplete", 0)
+	incomplete.Incomplete = true
+	tracker.Record(incomplete)
+	errored := entry("errored", 0)
+	errored.Failed = true
+	tracker.Record(errored)
+
+	entries, total, confirmedZero := tracker.Snapshot()
+	if len(entries) != 3 || total != 3 || confirmedZero != 1 {
+		t.Fatalf(
+			"activity = entries %d, total %d, confirmed zero %d",
+			len(entries),
+			total,
+			confirmedZero,
+		)
+	}
+}
+
 func TestConcurrentRecording(t *testing.T) {
 	tracker := New(ModeAggregate)
 	var wg sync.WaitGroup

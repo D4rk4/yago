@@ -19,13 +19,18 @@ var weightNodePattern = regexp.MustCompile(`^weight\(([^:]+):(.+)\^[0-9.]+ in `)
 func hitFieldTermPositions(
 	req SearchRequest,
 	hit *search.DocumentMatch,
+	analyzerName string,
 ) map[string]map[string][]int {
 	if !req.IncludePositions || len(hit.Locations) == 0 {
 		return nil
 	}
 	out := make(map[string]map[string][]int, len(hit.Locations))
+	matcher := newStoredEvidenceMatcher(req, analyzerName)
 	for field, terms := range hit.Locations {
-		out[field] = boundedFieldTermPositions(req, terms)
+		out[field] = boundedFieldTermPositions(
+			req,
+			publishedRequirementLocations(matcher.rawRequirementAnalyzedTerms, terms),
+		)
 	}
 
 	return out

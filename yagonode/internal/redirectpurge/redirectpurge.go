@@ -13,32 +13,27 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
 
-// IndexDeleter removes one document from the search index by its ID.
-type IndexDeleter interface {
-	Delete(ctx context.Context, docID string) error
-}
-
 // Sweeper walks the stored corpus once and removes tracking-redirect pages.
 type Sweeper struct {
-	docs  documentstore.StoredDocuments
-	evict documentstore.DocumentEvictor
-	index IndexDeleter
+	docs    documentstore.StoredDocuments
+	purge   func(context.Context, []string, []yagomodel.Hash) error
+	hashURL func(string) (yagomodel.URLHash, error)
 }
 
 // New wires a sweeper; any nil dependency disables it.
 func New(
 	docs documentstore.StoredDocuments,
-	evict documentstore.DocumentEvictor,
-	index IndexDeleter,
+	purge func(context.Context, []string, []yagomodel.Hash) error,
 ) *Sweeper {
-	if docs == nil || evict == nil || index == nil {
+	if docs == nil || purge == nil {
 		return nil
 	}
 
-	return &Sweeper{docs: docs, evict: evict, index: index}
+	return &Sweeper{docs: docs, purge: purge, hashURL: yagomodel.HashURL}
 }
 
 // Run performs the sweep. A nil sweeper is a no-op. Per-document failures
@@ -55,14 +50,15 @@ func (s *Sweeper) Run(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		if err := s.index.Delete(ctx, docURL); err != nil {
-			slog.WarnContext(ctx, "redirect purge: index delete failed",
+		hash, err := s.hashURL(docURL)
+		if err != nil {
+			slog.WarnContext(ctx, "redirect purge: url hash failed",
 				slog.String("url", docURL), slog.Any("error", err))
 
 			continue
 		}
-		if _, err := s.evict.Delete(ctx, docURL); err != nil {
-			slog.WarnContext(ctx, "redirect purge: vault delete failed",
+		if err := s.purge(ctx, []string{docURL}, []yagomodel.Hash{hash.Hash()}); err != nil {
+			slog.WarnContext(ctx, "redirect purge: document lineage failed",
 				slog.String("url", docURL), slog.Any("error", err))
 
 			continue

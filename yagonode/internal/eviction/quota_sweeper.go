@@ -3,6 +3,8 @@ package eviction
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
@@ -66,11 +68,6 @@ func (s quotaSweeper) purge(ctx context.Context, urls []yagomodel.Hash) (Result,
 	return purgeURLs(ctx, s.vault, s.postings, s.references, s.urls, s.documents, s.resolver, urls)
 }
 
-// purgeURLs drops the postings, metadata, and document of the given URLs. The
-// postings and metadata clear in one capacity-exempt transaction; the documents,
-// keyed by URL rather than hash, clear first (see purgeDocuments). It backs both
-// the quota sweep and the on-demand Evictor.
-//
 //nolint:revive // each argument is a distinct collection the purge touches; bundling them would invent a hollow type
 func purgeURLs(
 	ctx context.Context,
@@ -82,44 +79,62 @@ func purgeURLs(
 	resolver URLResolver,
 	urls []yagomodel.Hash,
 ) (Result, error) {
-	// Documents are keyed by the normalized URL, everything else by the URL
-	// hash, so the document drop must resolve the hash through the metadata row.
-	// It runs first, before that row is purged below: once the row is gone the
-	// URL can no longer be recovered, so a crash between the two steps would
-	// orphan the document forever, whereas doing it first lets the next sweep
-	// re-resolve and retry (ADR-0036 B).
-	documentsDeleted, err := purgeDocuments(ctx, documents, resolver, urls)
+	normalizedURLs, err := resolveDocumentURLs(ctx, documents, resolver, urls)
+	if err != nil {
+		return Result{}, err
+	}
+
+	deletion := resolvedURLLineageDeletion{
+		vault:     v,
+		documents: documents,
+		projections: urlProjectionDeletion{
+			postings:   postings,
+			references: references,
+			metadata:   evictor,
+		},
+	}
+
+	return deletion.purge(
+		ctx,
+		normalizedURLs,
+		urls,
+	)
+}
+
+type resolvedURLLineageDeletion struct {
+	vault       *vault.Vault
+	documents   DocumentEvictor
+	projections urlProjectionDeletion
+}
+
+func (d resolvedURLLineageDeletion) purge(
+	ctx context.Context,
+	normalizedURLs []string,
+	urls []yagomodel.Hash,
+) (Result, error) {
+	normalizedURLs = canonicalPurgeDocumentURLs(normalizedURLs)
+	reservation, err := reserveDocumentEvictions(ctx, d.documents, normalizedURLs)
+	if err != nil {
+		return Result{}, err
+	}
+	if reservation != nil {
+		defer reservation.Release()
+	}
+	documentsDeleted, err := purgeReservedDocuments(ctx, reservation, normalizedURLs)
 	if err != nil {
 		return Result{}, err
 	}
 
 	result := Result{DocumentsDeleted: documentsDeleted}
 	var urlResult urlmeta.PurgeResult
-	err = v.Update(ctx, func(tx *vault.Txn) error {
-		result.PostingsDeleted = 0
-		result.URLsDeleted = 0
-		for _, url := range urls {
-			words, err := references.WordsReferencing(tx, url)
-			if err != nil {
-				return fmt.Errorf("words referencing url: %w", err)
-			}
-			for _, word := range words {
-				deleted, err := postings.PurgePosting(tx, word, url)
-				if err != nil {
-					return fmt.Errorf("purge posting: %w", err)
-				}
-				if deleted {
-					result.PostingsDeleted++
-				}
-			}
-		}
-
-		var err error
-		urlResult, err = evictor.Purge(ctx, tx, urls)
+	err = d.vault.Update(ctx, func(tx *vault.Txn) error {
+		projected, purged, err := d.projections.delete(ctx, tx, urls)
 		if err != nil {
-			return fmt.Errorf("purge urls: %w", err)
+			return err
 		}
-		result.URLsDeleted = urlResult.URLsDeleted
+		projected.DocumentsDeleted = documentsDeleted
+		result = projected
+		urlResult = purged
 
 		return nil
 	})
@@ -131,28 +146,104 @@ func purgeURLs(
 	return result, nil
 }
 
-func purgeDocuments(
+func canonicalPurgeDocumentURLs(normalizedURLs []string) []string {
+	seen := make(map[string]struct{}, len(normalizedURLs))
+	canonical := make([]string, 0, len(normalizedURLs))
+	for _, rawURL := range normalizedURLs {
+		normalizedURL := strings.TrimSpace(rawURL)
+		if normalizedURL == "" {
+			continue
+		}
+		if _, duplicate := seen[normalizedURL]; duplicate {
+			continue
+		}
+		seen[normalizedURL] = struct{}{}
+		canonical = append(canonical, normalizedURL)
+	}
+	sort.Strings(canonical)
+
+	return canonical
+}
+
+func resolveDocumentURLs(
 	ctx context.Context,
 	documents DocumentEvictor,
 	resolver URLResolver,
 	urls []yagomodel.Hash,
-) (int, error) {
+) ([]string, error) {
 	if documents == nil || resolver == nil || len(urls) == 0 {
-		return 0, nil
+		return nil, nil
 	}
 
 	rows, err := resolver.RowsByHash(ctx, urls)
 	if err != nil {
-		return 0, fmt.Errorf("resolve urls for document purge: %w", err)
+		return nil, fmt.Errorf("resolve urls for document purge: %w", err)
 	}
 
-	deleted := 0
+	normalizedURLs := make([]string, 0, len(rows))
 	for _, row := range rows {
 		url, err := yagomodel.DecodeWireForm(ctx, row.Properties[yagomodel.URLMetaURL])
 		if err != nil || url == "" {
 			continue
 		}
-		removed, err := documents.Delete(ctx, url)
+		normalizedURLs = append(normalizedURLs, url)
+	}
+
+	return normalizedURLs, nil
+}
+
+func reserveDocumentEvictions(
+	ctx context.Context,
+	documents DocumentEvictor,
+	normalizedURLs []string,
+) (ReservedDocumentEviction, error) {
+	if documents == nil || len(normalizedURLs) == 0 {
+		return nil, nil
+	}
+	if reserver, ok := documents.(documentEvictionReserver); ok {
+		reservation, err := reserver.ReserveDocumentEvictions(ctx, normalizedURLs)
+		if err != nil {
+			return nil, fmt.Errorf("reserve document evictions: %w", err)
+		}
+		if reservation == nil {
+			return nil, fmt.Errorf("reserve document evictions: empty reservation")
+		}
+
+		return reservation, nil
+	}
+
+	return directDocumentEviction{documents: documents}, nil
+}
+
+type directDocumentEviction struct {
+	documents DocumentEvictor
+}
+
+func (d directDocumentEviction) Delete(
+	ctx context.Context,
+	normalizedURL string,
+) (bool, error) {
+	removed, err := d.documents.Delete(ctx, normalizedURL)
+	if err != nil {
+		return false, fmt.Errorf("delete direct document eviction: %w", err)
+	}
+
+	return removed, nil
+}
+
+func (directDocumentEviction) Release() {}
+
+func purgeReservedDocuments(
+	ctx context.Context,
+	reservation ReservedDocumentEviction,
+	normalizedURLs []string,
+) (int, error) {
+	if reservation == nil {
+		return 0, nil
+	}
+	deleted := 0
+	for _, normalizedURL := range normalizedURLs {
+		removed, err := reservation.Delete(ctx, normalizedURL)
 		if err != nil {
 			return 0, fmt.Errorf("delete document: %w", err)
 		}

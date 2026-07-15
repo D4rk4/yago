@@ -24,16 +24,27 @@ type RankingSource interface {
 
 // RankingWeight is one tunable ranking weight for display and editing.
 type RankingWeight struct {
-	Key   string
-	Label string
-	Group string
-	Value float64
+	Key        string
+	Label      string
+	Group      string
+	Value      float64
+	Default    float64
+	Minimum    float64
+	Maximum    float64
+	OutOfRange bool
 }
 
 // RankingProfile is the live ranking profile plus the judgment-set size.
 type RankingProfile struct {
-	Weights       []RankingWeight
-	JudgmentCount int
+	Weights                     []RankingWeight
+	JudgmentCount               int
+	JudgmentsAvailable          bool
+	TrainingReadinessAvailable  bool
+	ModelTrainingReady          bool
+	TrainingJudgmentCount       int
+	TrainingQueryClusterCount   int
+	HeldoutQueryClusterCount    int
+	MinimumHeldoutQueryClusters int
 }
 
 // RankingTuneResult is a coordinate-ascent preview: the mean NDCG@10 before and
@@ -55,19 +66,26 @@ type rankingWeightGroup struct {
 }
 
 type yagorankPageData struct {
-	AppName       string
-	ActivePath    string
-	Nav           []NavItem
-	CSRF          string
-	Section       sectionView
-	Groups        []rankingWeightGroup
-	JudgmentCount int
-	Tune          *RankingTuneResult
-	LearnedModel  *learnedModelStatusView
-	TrainOutcome  *LearnedModelTrainOutcome
-	HostTrust     *hostTrustStatusView
-	Notice        string
-	Error         string
+	AppName                     string
+	ActivePath                  string
+	Nav                         []NavItem
+	CSRF                        string
+	Section                     sectionView
+	Groups                      []rankingWeightGroup
+	JudgmentCount               int
+	JudgmentsAvailable          bool
+	TrainingReadinessAvailable  bool
+	ModelTrainingReady          bool
+	TrainingJudgmentCount       int
+	TrainingQueryClusterCount   int
+	HeldoutQueryClusterCount    int
+	MinimumHeldoutQueryClusters int
+	Tune                        *RankingTuneResult
+	LearnedModel                *learnedModelStatusView
+	TrainOutcome                *LearnedModelTrainOutcome
+	HostTrust                   *hostTrustStatusView
+	Notice                      string
+	Error                       string
 }
 
 // yagorankView carries the variable parts of a YagoRank render: the weights to
@@ -169,18 +187,26 @@ func (c *Console) applyYagoRankSave(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Console) renderYagoRank(w http.ResponseWriter, r *http.Request, view yagorankView) {
+	profile := c.ranking.Profile(r.Context())
 	c.render(r.Context(), w, c.tpl.yagorank, "layout", yagorankPageData{
 		AppName: appName, ActivePath: yagorankPath, Nav: navItems,
-		CSRF:          csrfToken(r),
-		Section:       sectionView{Heading: "YagoRank", Available: true},
-		Groups:        groupRankingWeights(view.weights),
-		JudgmentCount: c.ranking.Profile(r.Context()).JudgmentCount,
-		Tune:          view.tune,
-		LearnedModel:  learnedModelStatus(r.Context(), c.ranking),
-		TrainOutcome:  view.trainOutcome,
-		HostTrust:     hostTrustStatus(r.Context(), c.ranking, view.trust),
-		Notice:        view.notice,
-		Error:         view.errMsg,
+		CSRF:                        csrfToken(r),
+		Section:                     sectionView{Heading: "YagoRank", Available: true},
+		Groups:                      groupRankingWeights(view.weights),
+		JudgmentCount:               profile.JudgmentCount,
+		JudgmentsAvailable:          profile.JudgmentsAvailable,
+		TrainingReadinessAvailable:  profile.TrainingReadinessAvailable,
+		ModelTrainingReady:          profile.ModelTrainingReady,
+		TrainingJudgmentCount:       profile.TrainingJudgmentCount,
+		TrainingQueryClusterCount:   profile.TrainingQueryClusterCount,
+		HeldoutQueryClusterCount:    profile.HeldoutQueryClusterCount,
+		MinimumHeldoutQueryClusters: profile.MinimumHeldoutQueryClusters,
+		Tune:                        view.tune,
+		LearnedModel:                learnedModelStatus(r.Context(), c.ranking),
+		TrainOutcome:                view.trainOutcome,
+		HostTrust:                   hostTrustStatus(r.Context(), c.ranking, view.trust),
+		Notice:                      view.notice,
+		Error:                       view.errMsg,
 	})
 }
 

@@ -7,24 +7,37 @@ import (
 )
 
 func Register[V any](v *Vault, bucket Name, codec Codec[V]) (*Collection[V], error) {
-	if v == nil || v.engine == nil {
-		return nil, errVaultClosed
+	if err := registerBucket(v, bucket); err != nil {
+		return nil, err
+	}
+
+	return &Collection[V]{vault: v, name: bucket, codec: codec}, nil
+}
+
+func registerBucket(v *Vault, bucket Name) error {
+	if v == nil {
+		return errVaultClosed
 	}
 
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
 	if _, dup := v.registered[bucket]; dup {
-		return nil, fmt.Errorf("%w: %s", errDuplicateBucket, bucket)
+		return fmt.Errorf("%w: %s", errDuplicateBucket, bucket)
 	}
 
-	if err := v.engine.Provision(bucket); err != nil {
-		return nil, fmt.Errorf("register bucket %s: %w", bucket, err)
+	lease, err := v.acquireEngineLease()
+	if err != nil {
+		return err
+	}
+	defer lease.release()
+	if err := lease.engine.Provision(bucket); err != nil {
+		return fmt.Errorf("register bucket %s: %w", bucket, err)
 	}
 
 	v.registered[bucket] = struct{}{}
 
-	return &Collection[V]{vault: v, name: bucket, codec: codec}, nil
+	return nil
 }
 
 func readLength(tx *Txn, bucket Name) (int, error) {

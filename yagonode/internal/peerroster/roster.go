@@ -383,16 +383,8 @@ func (r *roster) selectInactive(
 }
 
 func (r *roster) peerCount(ctx context.Context) int {
-	total := 0
-	if err := r.vault.View(ctx, func(tx *vault.Txn) error {
-		count, err := r.peers.Len(tx)
-		if err != nil {
-			return fmt.Errorf("count peers: %w", err)
-		}
-		total = count
-
-		return nil
-	}); err != nil {
+	total, err := r.ObservedKnownPeerCount(ctx)
+	if err != nil {
 		slog.WarnContext(ctx, "peer roster count failed", slog.Any("error", err))
 
 		return 0

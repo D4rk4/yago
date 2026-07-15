@@ -18,21 +18,28 @@ pulled in unrelated Cyrillic pages because the eight common trigrams of the
 word occur scattered across almost any long Russian document. Recovery no longer
 queries those fields either; it uses bounded analyzer-consistent fuzzy terms.
 
-The requirement is DuckDuckGo-level morphology across popular languages: a
-query for `черногория` must also match the inflected `черногории` and
-`черногорию`, while never matching an unrelated document, and the same must
-hold for German, French, Spanish, Arabic, Chinese, Serbian, and the rest.
+The requirement is language-appropriate lexical recall across popular
+languages: a query for `черногория` must also match the inflected
+`черногории` and `черногорию` without matching an unrelated document, while
+languages without concatenative inflection or an available analyzer must use
+an honest bounded fallback rather than pretending to have morphology.
 
 Verified findings (bleve v2.6.0, checked against the module source and the IR
 literature):
 
-- **Stemming is the mechanism.** Skipping stemming costs about 50% of mean
-  average precision for Russian (Dolamic & Savoy, *Information Processing &
-  Management* 2009). bleve ships analyzers for 32 languages: `ar bg ca cjk ckb
-  cs da de el en es eu fa fi fr ga gl hi hr hu hy id in it nl no pl pt ro ru sv
-  tr`. A quick check confirmed the Russian analyzer conflates
-  `черногория`/`черногории`/`черногорию` to one stem and does not match Cisco
-  networking text.
+- **Stemming is the available bounded recall mechanism.** Skipping stemming
+  costs about 50% of mean average precision for Russian (Dolamic & Savoy,
+  *Information Processing & Management* 2009). The pinned Bleve packages
+  register 22 complete analyzers: `ar cjk ckb da de en es fa fi fr hi hr hu it
+  nl no pl pt ro ru sv tr`. Twenty-one provide language normalization or
+  stemming, while `cjk` provides character bigrams. Other Bleve language
+  directories expose individual filters rather than complete analyzers. A
+  quick check confirmed the Russian analyzer
+  conflates `черногория`/`черногории`/`черногорию` to one stem and does not
+  match Cisco networking text. Snowball conflation improves recall but is not
+  lemma analysis or exact-surface evidence;
+  [ADR-0047](0047-morphology-and-positional-ranking-evidence.md) keeps those
+  ranking signals separate.
 - **Character n-grams must never be a boolean AND.** A word's trigrams matched
   with AND over a whole document is only a candidate superset — Manning,
   Raghavan & Schütze (*Introduction to Information Retrieval*, 2008, §3.2.2)
@@ -56,6 +63,12 @@ literature):
   (adopted in ADR-0026's sibling change, SEARCH-26). Query-time phrase clauses
   and term-vector locations are excluded from the interactive path because
   large-body measurements exceeded both the latency and memory budgets.
+- **CJK bigrams have an explicit boundary.** Unicode Standard Annex #29 notes
+  that reliable word boundaries for Chinese and Japanese require dictionary or
+  equivalent tailoring. The current dependency-free CJK analyzer provides
+  bounded overlapping-bigram recall, not lexical segmentation; it therefore
+  does not guarantee that a one-character query matches inside a longer run.
+  See [Unicode Text Segmentation](https://www.unicode.org/reports/tr29/).
 
 Coverage for the languages the requirement calls out, each verified against a
 scorch index:
@@ -64,9 +77,9 @@ scorch index:
 |---|---|---|---|
 | Russian | Cyrillic | `ru` | Full Snowball stemming; inflections conflate. |
 | Arabic | Arabic | `ar` | Normalization + light affix/article stemming (not root-pattern conflation). |
-| Chinese | Han | `cjk` | Bigram segmentation — correct for an uninflected language; no stemmer needed. |
-| Serbian | Latin / Cyrillic | `hr` (Serbo-Croatian) | Latin conflates inflections via `hr`; Cyrillic Serbian is indistinguishable from Russian by script alone and needs content detection to route to `hr`. |
-| Hebrew | Hebrew | **none** | No bleve or Snowball Hebrew stemmer exists; falls back to no-stemming exact words plus bounded typo recovery. Root-pattern morphology needs a dictionary analyzer (HebMorph-class), tracked as a follow-up. |
+| Chinese | Han | `cjk` | Character-bigram recall and contiguous-chain evidence; no dictionary word segmentation, script conversion, or morphology. A one-character query is not guaranteed to match inside a longer run because the analyzer stores overlapping bigrams there. |
+| Serbian | Latin / Cyrillic | `hr` (Serbo-Croatian) for Latin | Latin conflates inflections via `hr`. Cyrillic Serbian retains normalized exact-word recall but has no Serbian morphology because short queries route through Russian and standard analysis, while the Croatian stemmer expects Latin text. |
+| Hebrew | Hebrew | **none** | No bleve or Snowball Hebrew stemmer exists; the supported behavior is no-stemming exact words plus bounded typo recovery. A dictionary analyzer is outside this dependency-free index architecture. |
 
 The lesson from Serbian and Hebrew is decisive: **routing by script alone is
 insufficient.** Cyrillic is not only Russian (also Serbian, Ukrainian,
@@ -113,7 +126,7 @@ Language-detection libraries considered:
    maps to its analyzer (`ru`→`ru`, `de`→`de`, …); Serbian and Bosnian map to
    `hr` (Serbo-Croatian); Chinese, Japanese, and Korean map to `cjk`; a
    language with no analyzer (Hebrew and any unlisted language) maps to a
-   script-agnostic **`standard`** analyzer (Unicode tokenizer + lowercase +
+   script-agnostic **`standard_text`** analyzer (Unicode tokenizer + lowercase +
    NFKC, no stemming) so it still ranks on exact words and participates in
    bounded typo recovery.
 
@@ -126,17 +139,19 @@ Language-detection libraries considered:
    once keeps the document, URL metadata, and RWI postings consistent and bounds
    classifier work. The node independently selects the Bleve analyzer from
    stored text, using the resolved crawl language as its prior and the dominant
-   Unicode script as its floor. It stores the analyzer name and routes the
+   Unicode script as its floor. Reliable `ku` content in Arabic script routes to
+   the Central Kurdish `ckb` analyzer; Latin-script `ku` retains the exact-token
+   fallback. It stores the analyzer name and routes the
    document through Bleve's `TypeField`. One analyzer per document, one set of
    field names — no per-language sub-field explosion.
 
 3. **Query-time routing without query LID.** Determine the query's dominant
    Unicode script deterministically (standard library `unicode` tables). Build
-   the field queries analyzed with the analyzers that serve that script (e.g. a
-   Cyrillic query is analyzed with `ru` and the other Cyrillic-script
-   analyzers; a Han query with `cjk`), OR-combined, alongside the exact
-   `standard`-analyzed clause so a proper noun still matches a document in any
-   language. The query string itself is never language-identified.
+   the field queries analyzed with the bounded candidates that serve that script
+   (Cyrillic with `ru`, Arabic script with `ar`, `fa`, and `ckb`, and Han with
+   `cjk`), OR-combined, alongside the exact `standard_text` clause so a proper
+   noun still matches a document in any language. The query string itself is
+   never language-identified.
 
 4. **Bounded stored evidence.** Keep term vectors off. Candidate retrieval
    returns scores and document identities first; only the leading ten local
@@ -161,16 +176,21 @@ Language-detection libraries considered:
 
 ## Consequences
 
-- Russian, and every language with a bleve analyzer, gains real morphological
-  recall; the `черногория` flood is replaced by precise, inflection-aware
-  matching rather than merely suppressed.
+- Russian, and every language routed to a registered complete analyzer, gains analyzer-based
+  morphological recall; the `черногория` flood is replaced by bounded,
+  analyzer-aware matching rather than merely suppressed.
 - Legacy-encoded HTML without a language declaration retains its decoded
   content language consistently across local documents, facets, RWI postings,
   and YaCy URL metadata after the page is crawled again.
-- Serbian works through the Croatian analyzer once content detection routes it
-  there; Chinese works through `cjk`; Arabic gains light stemming; Hebrew and
-  unlisted languages degrade gracefully to exact words plus typo recovery until a
-  dictionary analyzer is added.
+- Latin Serbian works through the Croatian analyzer; Cyrillic Serbian retains
+  exact-word recall without Serbian morphology. Chinese, Japanese, and Korean
+  use contiguous CJK bigram evidence;
+  Arabic gains light stemming; Hebrew and unlisted languages degrade
+  gracefully to normalized exact words plus typo recovery. CJK bigrams are not
+  dictionary segmentation, and the standard Hebrew fallback is not
+  morphological recall. CJK single-character substring recall is excluded: it
+  requires a larger index format and full reindex, while request-time substring
+  matching would violate the bounded retrieval path and lower precision.
 - One new pure-Go, cgo-free, MIT dependency (`whatlanggo`); no cgo, no
   multi-hundred-megabyte model.
 - Per-language routing means a shard resolves several analyzers, but each

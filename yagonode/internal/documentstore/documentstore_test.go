@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"testing"
@@ -16,10 +17,16 @@ type scriptedDocumentEngine struct {
 	buckets         map[vault.Name]map[string][]byte
 	provisionErrors map[vault.Name]error
 	putErrors       map[vault.Name]error
+	putCommitErrors map[vault.Name]error
 	delErrors       map[vault.Name]error
 	backgroundView  bool
 	replayNext      bool
 	commitFirst     bool
+	commitError     error
+	beforeUpdate    func()
+	usedBytes       int64
+	usedBytesErr    error
+	quotaBytes      int64
 }
 
 func newScriptedDocumentEngine() *scriptedDocumentEngine {
@@ -27,6 +34,7 @@ func newScriptedDocumentEngine() *scriptedDocumentEngine {
 		buckets:         map[vault.Name]map[string][]byte{},
 		provisionErrors: map[vault.Name]error{},
 		putErrors:       map[vault.Name]error{},
+		putCommitErrors: map[vault.Name]error{},
 		delErrors:       map[vault.Name]error{},
 	}
 }
@@ -42,6 +50,9 @@ func (e *scriptedDocumentEngine) Provision(name vault.Name) error {
 }
 
 func (e *scriptedDocumentEngine) Update(ctx context.Context, fn func(vault.EngineTxn) error) error {
+	if e.beforeUpdate != nil {
+		e.beforeUpdate()
+	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
@@ -55,7 +66,17 @@ func (e *scriptedDocumentEngine) Update(ctx context.Context, fn func(vault.Engin
 			e.buckets = before
 		}
 	}
-	return fn(scriptedDocumentTxn{engine: e, writable: true})
+	if err := fn(scriptedDocumentTxn{engine: e, writable: true}); err != nil {
+		return err
+	}
+	if e.commitError != nil {
+		err := e.commitError
+		e.commitError = nil
+
+		return err
+	}
+
+	return nil
 }
 
 func cloneDocumentBuckets(
@@ -80,9 +101,11 @@ func (e *scriptedDocumentEngine) View(ctx context.Context, fn func(vault.EngineT
 	return fn(scriptedDocumentTxn{engine: e})
 }
 
-func (e *scriptedDocumentEngine) UsedBytes(context.Context) (int64, error) { return 0, nil }
-func (e *scriptedDocumentEngine) QuotaBytes() int64                        { return 0 }
-func (e *scriptedDocumentEngine) Close() error                             { return nil }
+func (e *scriptedDocumentEngine) UsedBytes(context.Context) (int64, error) {
+	return e.usedBytes, e.usedBytesErr
+}
+func (e *scriptedDocumentEngine) QuotaBytes() int64 { return e.quotaBytes }
+func (e *scriptedDocumentEngine) Close() error      { return nil }
 
 type scriptedDocumentTxn struct {
 	engine   *scriptedDocumentEngine
@@ -113,6 +136,9 @@ func (b scriptedDocumentBucket) Put(key vault.Key, raw []byte) error {
 		return err
 	}
 	b.engine.buckets[b.name][string(key)] = append([]byte(nil), raw...)
+	if err := b.engine.putCommitErrors[b.name]; err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -145,6 +171,44 @@ func (b scriptedDocumentBucket) Scan(
 		}
 	}
 	return nil
+}
+
+func (b scriptedDocumentBucket) ReadPageAfter(
+	after vault.Key,
+	limit int,
+) (vault.BucketPage, error) {
+	keys := make([]string, 0, len(b.engine.buckets[b.name]))
+	for key := range b.engine.buckets[b.name] {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	start := sort.Search(len(keys), func(index int) bool {
+		return keys[index] > string(after)
+	})
+	end := min(start+limit, len(keys))
+	entries := make([]vault.BucketPageEntry, 0, end-start)
+	for _, key := range keys[start:end] {
+		entries = append(entries, vault.BucketPageEntry{
+			Key:   vault.Key(key),
+			Value: append([]byte(nil), b.engine.buckets[b.name][key]...),
+		})
+	}
+
+	return vault.BucketPage{Entries: entries, More: end < len(keys)}, nil
+}
+
+func (b scriptedDocumentBucket) LastKey() (vault.Key, error) {
+	var last string
+	for key := range b.engine.buckets[b.name] {
+		if key > last {
+			last = key
+		}
+	}
+	if last == "" {
+		return nil, nil
+	}
+
+	return vault.Key(last), nil
 }
 
 type errAfterContext struct {
@@ -204,6 +268,26 @@ func openScriptedDocuments(
 	return directory, receiver, engine
 }
 
+func scriptedOrderedDocumentKey(
+	t *testing.T,
+	engine *scriptedDocumentEngine,
+	normalizedURL string,
+) string {
+	t.Helper()
+	admission, err := decodeOrderedDocumentAdmission(
+		engine.buckets[documentLocationBucketName][normalizedURL],
+	)
+	if err != nil {
+		t.Fatalf("decode document location: %v", err)
+	}
+	key, err := orderedDocumentKey(admission, normalizedURL)
+	if err != nil {
+		t.Fatalf("ordered document key: %v", err)
+	}
+
+	return string(key)
+}
+
 func TestReceiveStoresDocument(t *testing.T) {
 	directory, receiver := openDocuments(t)
 	doc := Document{
@@ -240,8 +324,35 @@ func TestReceiveStoresDocument(t *testing.T) {
 	}
 }
 
+func TestReceiveRejectsUnencodableDocumentWithoutPublishing(t *testing.T) {
+	directory, receiver, engine := openScriptedDocuments(t)
+	url := "https://example.org/not-a-number"
+	_, err := receiver.Receive(t.Context(), []Document{{
+		NormalizedURL: url,
+		ContentQuality: ContentQualityEvidence{
+			Score: math.NaN(),
+		},
+	}})
+	if err == nil {
+		t.Fatal("unencodable document was accepted")
+	}
+	if len(engine.buckets[orderedDocumentBucketName]) != 0 ||
+		len(engine.buckets[documentLocationBucketName]) != 0 {
+		t.Fatalf(
+			"unencodable rows/locations = %d/%d",
+			len(engine.buckets[orderedDocumentBucketName]),
+			len(engine.buckets[documentLocationBucketName]),
+		)
+	}
+	assertDocumentMissing(t, directory, url)
+}
+
 func TestReceivePublishesOnlyTheCommittedReplayReceipt(t *testing.T) {
 	_, receiver, engine := openScriptedDocuments(t)
+	documents := receiver.(documentVault)
+	if _, err := documents.admissionKeys.issue(t.Context(), 2); err != nil {
+		t.Fatal(err)
+	}
 	engine.replayNext = true
 	receipt, err := receiver.Receive(t.Context(), []Document{
 		{NormalizedURL: "https://example.org/a"},
@@ -322,15 +433,14 @@ func TestCanonicalDocumentsMergePersistedEvidenceWithoutWriting(t *testing.T) {
 	}}); err != nil {
 		t.Fatalf("seed document: %v", err)
 	}
-	if _, err := anchorReceiver(t, receiver).ReplaceOutboundAnchors(
-		t.Context(),
+	replaceAndFinalizeOutboundAnchors(
+		t,
+		receiver,
 		[]OutboundAnchorSet{{
 			SourceURL: "https://source.example/",
 			Anchors:   []OutboundAnchor{{TargetURL: url, Text: "trusted"}},
 		}},
-	); err != nil {
-		t.Fatalf("seed inbound anchor: %v", err)
-	}
+	)
 
 	canonical := receiver.(CanonicalDocumentDirectory)
 	docs, err := canonical.CanonicalDocuments(t.Context(), []Document{
@@ -377,15 +487,17 @@ func TestCanonicalDocumentsSurfaceContextAndVaultFailures(t *testing.T) {
 	}
 }
 
-func TestCanonicalDocumentsSurfaceStoredDecodeFailure(t *testing.T) {
+func TestCanonicalDocumentsTreatMalformedStoredDocumentAsAbsent(t *testing.T) {
 	_, receiver, engine := openScriptedDocuments(t)
 	url := "https://example.org/"
 	engine.buckets[bucketName][url] = []byte("invalid")
 	canonical := receiver.(CanonicalDocumentDirectory)
-	if _, err := canonical.CanonicalDocuments(t.Context(), []Document{{
+	documents, err := canonical.CanonicalDocuments(t.Context(), []Document{{
 		NormalizedURL: url,
-	}}); err == nil {
-		t.Fatal("invalid stored document canonicalization succeeded")
+		Title:         "replacement",
+	}})
+	if err != nil || len(documents) != 1 || documents[0].Title != "replacement" {
+		t.Fatalf("malformed canonicalization = %#v, %v", documents, err)
 	}
 }
 
@@ -426,12 +538,15 @@ func TestReceiveRejectsDocumentWithoutURL(t *testing.T) {
 }
 
 func TestReceiveReportsBusyAtCapacity(t *testing.T) {
-	_, _, receiver := openDocumentsWithVault(t, 1)
+	v, _, receiver := openDocumentsWithVault(t, 1)
 	if _, err := receiver.Receive(
 		context.Background(),
 		[]Document{{NormalizedURL: "https://example.org/a"}},
 	); err != nil {
 		t.Fatalf("first receive: %v", err)
+	}
+	if _, err := v.UsedBytes(t.Context()); err != nil {
+		t.Fatalf("refresh capacity: %v", err)
 	}
 
 	receipt, err := receiver.Receive(
@@ -482,7 +597,7 @@ func TestReceiveReturnsContextErrorInsideStore(t *testing.T) {
 func TestReceiveReturnsPutError(t *testing.T) {
 	_, receiver, engine := openScriptedDocuments(t)
 	sentinel := errors.New("put failed")
-	engine.putErrors[bucketName] = sentinel
+	engine.putErrors[orderedDocumentBucketName] = sentinel
 
 	if _, err := receiver.Receive(
 		context.Background(),
@@ -495,21 +610,26 @@ func TestReceiveReturnsPutError(t *testing.T) {
 	}
 }
 
-func TestReceiveReturnsReadError(t *testing.T) {
-	_, receiver, engine := openScriptedDocuments(t)
+func TestReceiveRepairsMalformedOrderedDocument(t *testing.T) {
+	directory, receiver, engine := openScriptedDocuments(t)
 	if _, err := receiver.Receive(
 		context.Background(),
 		[]Document{{NormalizedURL: "https://example.org/"}},
 	); err != nil {
 		t.Fatalf("receive: %v", err)
 	}
-	engine.buckets[bucketName]["https://example.org/"] = []byte("{")
+	key := scriptedOrderedDocumentKey(t, engine, "https://example.org/")
+	engine.buckets[orderedDocumentBucketName][key] = []byte("{")
 
 	if _, err := receiver.Receive(
 		context.Background(),
-		[]Document{{NormalizedURL: "https://example.org/"}},
-	); err == nil {
-		t.Fatal("expected receive error")
+		[]Document{{NormalizedURL: "https://example.org/", Title: "replacement"}},
+	); err != nil {
+		t.Fatalf("repair receive: %v", err)
+	}
+	stored, found, err := directory.Document(t.Context(), "https://example.org/")
+	if err != nil || !found || stored.Title != "replacement" {
+		t.Fatalf("repaired document = %#v, %t, %v", stored, found, err)
 	}
 }
 
@@ -585,7 +705,7 @@ func TestDocumentReturnsReadError(t *testing.T) {
 	}
 }
 
-func TestDocumentReturnsDecodeError(t *testing.T) {
+func TestDocumentTreatsMalformedOrderedDocumentAsAbsent(t *testing.T) {
 	directory, receiver, engine := openScriptedDocuments(t)
 	if _, err := receiver.Receive(
 		context.Background(),
@@ -593,10 +713,12 @@ func TestDocumentReturnsDecodeError(t *testing.T) {
 	); err != nil {
 		t.Fatalf("receive: %v", err)
 	}
-	engine.buckets[bucketName]["https://example.org/"] = []byte("{")
+	key := scriptedOrderedDocumentKey(t, engine, "https://example.org/")
+	engine.buckets[orderedDocumentBucketName][key] = []byte("{")
 
-	if _, _, err := directory.Document(context.Background(), "https://example.org/"); err == nil {
-		t.Fatal("expected document error")
+	document, found, err := directory.Document(context.Background(), "https://example.org/")
+	if err != nil || found || document.NormalizedURL != "" {
+		t.Fatalf("malformed document = %#v, %t, %v", document, found, err)
 	}
 }
 
@@ -618,7 +740,7 @@ func TestCountReportsStoredDocuments(t *testing.T) {
 	}
 }
 
-func TestCountReturnsLengthError(t *testing.T) {
+func TestCountIgnoresLengthDrift(t *testing.T) {
 	directory, receiver, engine := openScriptedDocuments(t)
 	if _, err := receiver.Receive(
 		context.Background(),
@@ -628,8 +750,9 @@ func TestCountReturnsLengthError(t *testing.T) {
 	}
 	engine.buckets[vault.Name("__lengths__")][string(bucketName)] = []byte("bad")
 
-	if _, err := directory.Count(context.Background()); err == nil {
-		t.Fatal("expected count error")
+	count, err := directory.Count(context.Background())
+	if err != nil || count != 1 {
+		t.Fatalf("count with length drift = %d, %v", count, err)
 	}
 }
 
@@ -809,7 +932,7 @@ func TestDeleteReturnsCollectionError(t *testing.T) {
 	if _, err := receiver.Receive(context.Background(), []Document{doc}); err != nil {
 		t.Fatalf("receive: %v", err)
 	}
-	engine.delErrors[bucketName] = errors.New("delete boom")
+	engine.delErrors[orderedDocumentBucketName] = errors.New("delete boom")
 
 	if _, err := directory.(DocumentEvictor).Delete(
 		context.Background(),

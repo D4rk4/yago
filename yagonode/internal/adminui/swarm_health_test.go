@@ -33,8 +33,13 @@ func TestSwarmHealthScoreBands(t *testing.T) {
 	}
 
 	future := SwarmHealthScore(now.Add(time.Hour), true, 0, 0, now)
-	if future != 50 {
-		t.Fatalf("future last-seen clamps to full recency: %d", future)
+	if future != 0 {
+		t.Fatalf("future last-seen should not earn recency: %d", future)
+	}
+
+	invalid := SwarmHealthScore(now, true, -100, -10, now)
+	if invalid != 50 {
+		t.Fatalf("invalid negative seed facts score = %d, want 50", invalid)
 	}
 }
 

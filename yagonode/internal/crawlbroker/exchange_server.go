@@ -17,10 +17,11 @@ var errIngestDeferred = errors.New("ingest pipeline saturated")
 
 type exchangeServer struct {
 	crawlrpc.UnimplementedCrawlExchangeServer
-	queue    *DurableOrderQueue
-	ingest   chan<- crawlresults.IngestDelivery
-	progress ProgressSink
-	control  *ControlRegistry
+	queue       *DurableOrderQueue
+	ingest      chan<- crawlresults.IngestDelivery
+	beginIngest func() func()
+	progress    ProgressSink
+	control     *ControlRegistry
 }
 
 func newExchangeServer(
@@ -128,16 +129,21 @@ func (s *exchangeServer) SubmitIngest(
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "decode ingest batch: %v", err)
 	}
+	finish := func() {}
+	if s.beginIngest != nil {
+		finish = s.beginIngest()
+	}
 
 	result := make(chan error, 1)
 	delivery := crawlresults.IngestDelivery{
 		Batch: batch,
-		Ack:   func(context.Context) error { result <- nil; return nil },
-		Nak:   func(context.Context) error { result <- errIngestDeferred; return nil },
+		Ack:   func(context.Context) error { finish(); result <- nil; return nil },
+		Nak:   func(context.Context) error { finish(); result <- errIngestDeferred; return nil },
 	}
 	select {
 	case s.ingest <- delivery:
 	case <-ctx.Done():
+		finish()
 		return nil, status.FromContextError(ctx.Err()).Err()
 	}
 

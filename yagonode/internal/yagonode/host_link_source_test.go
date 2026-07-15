@@ -1,8 +1,6 @@
 package yagonode
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"testing"
@@ -11,28 +9,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/hostlinks"
 )
-
-type scriptedStoredDocuments struct {
-	docs []documentstore.Document
-	err  error
-}
-
-func (s scriptedStoredDocuments) StoredDocuments(
-	_ context.Context,
-	visit func(documentstore.Document) (bool, error),
-) error {
-	if s.err != nil {
-		return s.err
-	}
-	for _, doc := range s.docs {
-		again, err := visit(doc)
-		if err != nil || !again {
-			return err
-		}
-	}
-
-	return nil
-}
 
 func testHostHash(t *testing.T, rawURL string) string {
 	t.Helper()
@@ -44,8 +20,20 @@ func testHostHash(t *testing.T, rawURL string) string {
 	return hash
 }
 
-func TestStoredDocumentHostLinksReturnsRowDefinitionWithoutDocuments(t *testing.T) {
-	graph := storedDocumentHostLinks{}.IncomingHostLinks(context.Background())
+func hostLinkGraphFromDocuments(documents ...documentstore.Document) hostlinks.Graph {
+	accumulator := hostLinkAccumulator{incoming: map[string]map[string]hostLinkReference{}}
+	for _, document := range documents {
+		collectDocumentHostLinks(&accumulator, document)
+	}
+
+	return hostlinks.Graph{
+		RowDefinition: hostlinks.HostReferenceRowDefinition,
+		LinkedHosts:   hostLinkGraphHosts(accumulator.incoming),
+	}
+}
+
+func TestHostLinkCollectionReturnsRowDefinitionWithoutDocuments(t *testing.T) {
+	graph := hostLinkGraphFromDocuments()
 
 	if graph.RowDefinition != hostlinks.HostReferenceRowDefinition {
 		t.Fatalf("row definition = %q", graph.RowDefinition)
@@ -55,9 +43,9 @@ func TestStoredDocumentHostLinksReturnsRowDefinitionWithoutDocuments(t *testing.
 	}
 }
 
-func TestStoredDocumentHostLinksCountsOutlinksPerSourceHost(t *testing.T) {
+func TestHostLinkCollectionCountsOutlinksPerSourceHost(t *testing.T) {
 	fetched := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
-	source := scriptedStoredDocuments{docs: []documentstore.Document{{
+	document := documentstore.Document{
 		NormalizedURL: "http://source.net/page.html",
 		FetchedAt:     fetched,
 		Outlinks: []string{
@@ -67,9 +55,9 @@ func TestStoredDocumentHostLinksCountsOutlinksPerSourceHost(t *testing.T) {
 			"http://source.net/internal.html",
 			"",
 		},
-	}}}
+	}
 
-	graph := storedDocumentHostLinks{documents: source}.IncomingHostLinks(context.Background())
+	graph := hostLinkGraphFromDocuments(document)
 
 	if len(graph.LinkedHosts) != 1 {
 		t.Fatalf("linked hosts = %d, want 1", len(graph.LinkedHosts))
@@ -92,8 +80,8 @@ func TestStoredDocumentHostLinksCountsOutlinksPerSourceHost(t *testing.T) {
 	}
 }
 
-func TestStoredDocumentHostLinksAccumulatesAcrossDocuments(t *testing.T) {
-	source := scriptedStoredDocuments{docs: []documentstore.Document{
+func TestHostLinkCollectionAccumulatesAcrossDocuments(t *testing.T) {
+	documents := []documentstore.Document{
 		{
 			NormalizedURL: "http://source.net/a.html",
 			IndexedAt:     time.Date(2026, 7, 1, 8, 0, 0, 0, time.UTC),
@@ -107,25 +95,15 @@ func TestStoredDocumentHostLinksAccumulatesAcrossDocuments(t *testing.T) {
 			NormalizedURL: "http://other.org/c.html",
 			Outlinks:      []string{"http://target.com/three.html"},
 		},
-	}}
+	}
 
-	graph := storedDocumentHostLinks{documents: source}.IncomingHostLinks(context.Background())
+	graph := hostLinkGraphFromDocuments(documents...)
 
 	if len(graph.LinkedHosts) != 1 {
 		t.Fatalf("linked hosts = %d, want 1", len(graph.LinkedHosts))
 	}
 	if got := len(graph.LinkedHosts[0].References); got != 2 {
 		t.Fatalf("references = %d, want 2", got)
-	}
-}
-
-func TestStoredDocumentHostLinksReturnsEmptyGraphOnScanError(t *testing.T) {
-	source := scriptedStoredDocuments{err: errors.New("scan failed")}
-
-	graph := storedDocumentHostLinks{documents: source}.IncomingHostLinks(context.Background())
-
-	if len(graph.LinkedHosts) != 0 {
-		t.Fatalf("linked hosts = %d, want 0 on scan error", len(graph.LinkedHosts))
 	}
 }
 
@@ -155,13 +133,13 @@ func TestFirstSortedKeysCapsResults(t *testing.T) {
 	}
 }
 
-func TestStoredDocumentHostLinksSkipsDocumentsWithoutValidHost(t *testing.T) {
-	source := scriptedStoredDocuments{docs: []documentstore.Document{{
+func TestHostLinkCollectionSkipsDocumentsWithoutValidHost(t *testing.T) {
+	document := documentstore.Document{
 		NormalizedURL: "   ",
 		Outlinks:      []string{"http://target.com/one.html"},
-	}}}
+	}
 
-	graph := storedDocumentHostLinks{documents: source}.IncomingHostLinks(context.Background())
+	graph := hostLinkGraphFromDocuments(document)
 
 	if len(graph.LinkedHosts) != 0 {
 		t.Fatalf("linked hosts = %d, want 0", len(graph.LinkedHosts))

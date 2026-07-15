@@ -69,6 +69,8 @@ func fitIngestDocument(
 			encodedCollectionSize(batch.Document.Headings),
 			encodedCollectionSize(batch.Document.Images),
 			encodedCollectionSize(batch.Metadata),
+			encodedPropertiesSize(batch.Document.Metadata),
+			encodedCollectionSize(batch.Document.SafetyLabels.RatingValues),
 		}
 		largest := -1
 		largestSize := 0
@@ -91,11 +93,21 @@ func fitIngestDocument(
 			batch.Document.Images = halve(batch.Document.Images)
 		case 5:
 			batch.Metadata = halve(batch.Metadata)
+		case 6:
+			batch.Document.Metadata = halveProperties(batch.Document.Metadata)
+		case 7:
+			batch.Document.SafetyLabels.RatingValues = halve(
+				batch.Document.SafetyLabels.RatingValues,
+			)
 		default:
+			fitted, fittedData, ok := fitExtractedText(batch)
+			if ok {
+				return fitted, fittedData, nil
+			}
 			return IngestBatch{}, nil, fmt.Errorf(
 				"%w: %d bytes",
 				errIngestBatchTooLarge,
-				len(data),
+				len(fittedData),
 			)
 		}
 	}

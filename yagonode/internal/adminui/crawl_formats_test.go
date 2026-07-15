@@ -13,9 +13,12 @@ type fakeFormats struct {
 	current FormatSettings
 	saved   *FormatSettings
 	err     error
+	readErr error
 }
 
-func (f *fakeFormats) CurrentFormats(context.Context) FormatSettings { return f.current }
+func (f *fakeFormats) CurrentFormats(context.Context) (FormatSettings, error) {
+	return f.current, f.readErr
+}
 
 func (f *fakeFormats) SaveFormats(_ context.Context, settings FormatSettings) error {
 	f.saved = &settings
@@ -39,6 +42,19 @@ func TestConsoleCrawlRendersFormatToggles(t *testing.T) {
 	}
 	if strings.Contains(got.body, `name="archives" checked`) {
 		t.Fatal("archives rendered checked while off")
+	}
+}
+
+func TestConsoleCrawlReportsUnavailableFormatToggles(t *testing.T) {
+	t.Parallel()
+
+	formats := &fakeFormats{readErr: context.Canceled}
+	got := do(t, New(Options{Crawl: &fakeCrawl{}, CrawlFormats: formats}), "/admin/crawl")
+	if !strings.Contains(got.body, "Document format settings are unavailable.") {
+		t.Fatalf("missing unavailable format state: %.120q", got.body)
+	}
+	if strings.Contains(got.body, `name="text"`) {
+		t.Fatal("unavailable format settings rendered invented toggles")
 	}
 }
 

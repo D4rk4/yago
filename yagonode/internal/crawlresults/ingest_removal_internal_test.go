@@ -25,6 +25,56 @@ func (p *countingPurger) Purge(context.Context, []yagomodel.Hash) error {
 	return nil
 }
 
+type resolvedCountingPurger struct {
+	countingPurger
+	normalized []string
+	resolved   []yagomodel.Hash
+}
+
+func (p *resolvedCountingPurger) PurgeResolved(
+	_ context.Context,
+	normalized []string,
+	urls []yagomodel.Hash,
+) error {
+	p.normalized = append(p.normalized, normalized...)
+	p.resolved = append(p.resolved, urls...)
+
+	return nil
+}
+
+func TestAbsorbRemovalUsesResolvedLineagePurger(t *testing.T) {
+	purger := &resolvedCountingPurger{}
+	settled := make(chan bool, 1)
+	delivery := IngestDelivery{
+		Batch: yagocrawlcontract.IngestBatch{
+			SourceURL: "https://a.example/1",
+			Removed:   true,
+		},
+		Ack: func(context.Context) error {
+			settled <- true
+
+			return nil
+		},
+		Nak: func(context.Context) error {
+			settled <- false
+
+			return nil
+		},
+	}
+	consumer := NewIngestConsumer(stubStream{}, nil, nil, nil)
+	consumer.PurgeURLs(purger)
+	consumer.absorbRemoval(t.Context(), delivery)
+	if !<-settled || purger.calls != 0 || len(purger.normalized) != 1 ||
+		purger.normalized[0] != delivery.Batch.SourceURL || len(purger.resolved) != 1 {
+		t.Fatalf(
+			"resolved removal = direct:%d normalized:%v hashes:%v",
+			purger.calls,
+			purger.normalized,
+			purger.resolved,
+		)
+	}
+}
+
 // TestAbsorbRemovalRejectsUnhashableURL covers the defensive branch where a
 // tombstone's source URL cannot be hashed: HashURL never fails for a non-empty
 // URL in practice, so the failure is injected here. The batch must be dropped

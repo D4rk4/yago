@@ -116,12 +116,13 @@ func (s *Sampler) Sample() {
 		return
 	}
 	values := map[string]float64{
-		SeriesRequests:   rate(current.requests, previous.requests, elapsed),
-		SeriesErrors:     rate(current.errors, previous.errors, elapsed),
-		SeriesLatency:    latencyMillis(current, previous),
-		SeriesDHT:        rate(current.dhtPostings, previous.dhtPostings, elapsed),
-		SeriesCrawlQueue: gauges[SeriesCrawlQueue],
-		SeriesIndexQueue: gauges[SeriesIndexQueue],
+		SeriesRequests: rate(current.requests, previous.requests, elapsed),
+		SeriesErrors:   rate(current.errors, previous.errors, elapsed),
+		SeriesLatency:  latencyMillis(current, previous),
+		SeriesDHT:      rate(current.dhtPostings, previous.dhtPostings, elapsed),
+	}
+	for name, value := range gauges {
+		values[name] = value
 	}
 	s.ring = append(s.ring, sample{at: now, values: values})
 	if len(s.ring) > s.capacity {
@@ -145,7 +146,9 @@ func (s *Sampler) Series() []Series {
 	for _, spec := range specs {
 		points := make([]Point, 0, len(s.ring))
 		for _, entry := range s.ring {
-			points = append(points, Point{At: entry.at, Value: entry.values[spec.name]})
+			if value, known := entry.values[spec.name]; known {
+				points = append(points, Point{At: entry.at, Value: value})
+			}
 		}
 		out = append(out, Series{Name: spec.name, Unit: spec.unit, Points: points})
 	}
@@ -214,7 +217,11 @@ func readGauges(families []*dto.MetricFamily) map[string]float64 {
 			continue
 		}
 		for _, metric := range family.GetMetric() {
-			out[name] += metric.GetGauge().GetValue()
+			value := metric.GetGauge().GetValue()
+			if math.IsNaN(value) || math.IsInf(value, 0) {
+				continue
+			}
+			out[name] += value
 		}
 	}
 

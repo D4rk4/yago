@@ -87,14 +87,21 @@ func TestRequestHTTPSAndLoopbackBranches(t *testing.T) {
 }
 
 func TestSeedLastSeenPresent(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
 	seed := yagomodel.Seed{
 		LastSeen: yagomodel.Some(yagomodel.NewSeedLastSeenUTC(time.Unix(1_700_000_000, 0))),
 	}
-	if got := seedLastSeen(seed); got == "" {
+	if got := seedLastSeen(seed, now); got == "" {
 		t.Fatal("a present LastSeen should render a timestamp")
 	}
-	if got := seedLastSeen(yagomodel.Seed{}); got != "" {
+	if got := seedLastSeen(yagomodel.Seed{}, now); got != "" {
 		t.Fatalf("an absent LastSeen should render empty, got %q", got)
+	}
+	future := yagomodel.Seed{
+		LastSeen: yagomodel.Some(yagomodel.NewSeedLastSeenUTC(now.Add(time.Hour))),
+	}
+	if got := seedLastSeen(future, now); got != "" {
+		t.Fatalf("a future LastSeen should render empty, got %q", got)
 	}
 }
 

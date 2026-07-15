@@ -9,6 +9,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/events"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/seedimport"
+	"github.com/D4rk4/yago/yagonode/internal/siteicon"
 	"github.com/D4rk4/yago/yagonode/internal/yacysearch"
 )
 
@@ -17,8 +18,6 @@ const (
 	pathMetrics = "/metrics"
 )
 
-// registerQueueDepthMetrics exposes the DHT and crawl queue depths as metrics
-// and returns the crawl-depth source the Performance section shares.
 func registerQueueDepthMetrics(
 	endpoints *metrics.HTTPEndpointMetrics,
 	assembled node,
@@ -68,7 +67,7 @@ func buildOpsMux(
 	seedStatus, seedRefresh := seedImportSources(assembled, config, recorder)
 	blocks := assembledPeerBlocks(assembled)
 	options := adminui.Options{
-		Overview:    newOverviewSource(assembled.report),
+		Overview:    newOverviewSource(assembled.report).withLocalIndex(assembled.index),
 		Search:      newSearchSource(assembled.searcher),
 		Activity:    newActivitySource(assembled.activity),
 		IndexExport: newIndexExporter(assembled.docScan),
@@ -82,13 +81,14 @@ func buildOpsMux(
 		).withSelf(assembled.report),
 		Config:            newConfigSource(config),
 		Settings:          sources.settings,
+		PublicSearch:      newAdminPublicSearchStatusSource(assembled.toggles, config),
 		Binding:           sources.binding,
 		Logs:              newLogsSource(recorder),
 		Security:          sources.security,
 		Terms:             newTermSource(assembled.postings, assembled.urlDirectory),
 		Schema:            indexSchemaGroups(),
 		Ranking:           assembled.rankingConsole,
-		Performance:       newPerformanceSource(assembled.dht.gateStatus, crawlDepth),
+		Performance:       newPerformanceSource(assembled.dht.gateStatus),
 		SeedlistRefresh:   seedRefresh,
 		SearchLinksNewTab: config.SearchLinksNewTab,
 		Restart:           sources.restart,
@@ -194,6 +194,7 @@ func newOpsMux(
 	recentEvents http.Handler,
 ) *http.ServeMux {
 	mux := http.NewServeMux()
+	siteicon.Mount(mux)
 	mountProfiling(mux)
 	mux.HandleFunc(pathHealth, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

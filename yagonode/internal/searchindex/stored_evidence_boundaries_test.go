@@ -23,7 +23,7 @@ func TestStoredEvidenceMatcherDegradesWithoutAnalyzerMapping(t *testing.T) {
 		"missing",
 	)
 	if matcher.queries != 1 || len(matcher.targets) != 1 ||
-		len(matcher.match("NEEDLE")) != 1 {
+		len(matcher.match("NEEDLE").targets) != 1 {
 		t.Fatalf("matcher = %#v", matcher)
 	}
 	matcher.addTarget("ignored", "")
@@ -63,7 +63,7 @@ func TestStoredCJKFieldHandlesLatinTokensSeparatorsAndCancellation(t *testing.T)
 	matcher := &storedEvidenceMatcher{
 		name:   "cjk",
 		lookup: map[string][]int{},
-		cache:  map[string][]int{},
+		cache:  map[string]storedTokenEvidence{},
 	}
 	matcher.addTarget("go", "go")
 	matcher.addTarget("日", "日")
@@ -95,12 +95,11 @@ func TestStoredCJKFieldHandlesLatinTokensSeparatorsAndCancellation(t *testing.T)
 func TestStoredCJKSequenceRetainsSingleCharacterEvidence(t *testing.T) {
 	matcher := &storedEvidenceMatcher{lookup: map[string][]int{}}
 	matcher.addTarget("日", "日")
-	field := &storedFieldEvidence{
-		terms:      search.TermLocationMap{},
-		latest:     map[int]*search.Location{},
-		bestSpan:   int(^uint(0) >> 1),
-		queryTerms: 1,
-	}
+	matcher.queries = len(matcher.required)
+	field := newStoredFieldEvidence(matcher)
+	field.latest = map[int]*search.Location{}
+	field.latestRaw = map[int]*search.Location{}
+	field.exactLatest = map[int]*search.Location{}
 	position := field.addCJKSequence(
 		storedCJKValue{matcher: matcher, text: "日", arrayLength: 1},
 		0,
@@ -113,13 +112,15 @@ func TestStoredCJKSequenceRetainsSingleCharacterEvidence(t *testing.T) {
 
 	field.terms = search.TermLocationMap{}
 	field.latest = map[int]*search.Location{}
+	field.latestRaw = map[int]*search.Location{}
+	field.exactLatest = map[int]*search.Location{}
 	position = field.addCJKSequence(
 		storedCJKValue{matcher: matcher, text: "日1", arrayLength: 1},
 		0,
 		len("日1"),
 		0,
 	)
-	if position != 1 || len(field.terms["日"]) != 1 {
+	if position != 2 || len(field.terms["日"]) != 1 {
 		t.Fatalf("mixed position=%d terms=%#v", position, field.terms)
 	}
 }
@@ -138,7 +139,7 @@ func TestStoredLocationCoordinatesBoundInvalidAndArrayValues(t *testing.T) {
 
 func TestStoredFuzzyEvidenceRejectsPrefixAndDistanceBounds(t *testing.T) {
 	matcher := &storedEvidenceMatcher{fuzzy: true}
-	target := newStoredEvidenceTarget(0, "needle", "needle")
+	target := newStoredEvidenceTarget(0, 0, "needle", "needle")
 	if matcher.analyzedTermMatches("poodle", target) {
 		t.Fatal("different fuzzy prefix matched")
 	}
@@ -195,13 +196,20 @@ func TestStoredProximityHandlesSingleTermsNilHitsAndStableTies(t *testing.T) {
 }
 
 func TestStoredFieldEvidenceBoundsLocationsAndPreservesWitnesses(t *testing.T) {
-	target := newStoredEvidenceTarget(0, "needle", "needle")
-	field := &storedFieldEvidence{
-		terms:  search.TermLocationMap{},
-		latest: map[int]*search.Location{},
-	}
+	matcher := &storedEvidenceMatcher{lookup: map[string][]int{}}
+	matcher.addTarget("needle", "needle")
+	matcher.queries = len(matcher.required)
+	field := newStoredFieldEvidence(matcher)
+	field.latest = map[int]*search.Location{}
+	field.latestRaw = map[int]*search.Location{}
+	field.exactLatest = map[int]*search.Location{}
 	for position := 0; position <= maximumTermPositionsPerField; position++ {
-		field.add(target, &search.Location{Pos: storedLocationCoordinate(position)})
+		field.addMatches(
+			matcher,
+			[]int{0},
+			&search.Location{Pos: storedLocationCoordinate(position)},
+			"needle",
+		)
 	}
 	locations := field.terms["needle"]
 	if len(locations) != maximumTermPositionsPerField ||
@@ -209,7 +217,6 @@ func TestStoredFieldEvidenceBoundsLocationsAndPreservesWitnesses(t *testing.T) {
 		t.Fatalf("bounded locations = %#v", locations)
 	}
 
-	matcher := &storedEvidenceMatcher{required: []string{"needle"}}
 	field.terms = search.TermLocationMap{"needle": {}}
 	field.witnesses = map[int]*search.Location{0: {Pos: 999}}
 	field.preserveWitnesses(matcher)
@@ -225,5 +232,47 @@ func TestStoredFieldEvidenceBoundsLocationsAndPreservesWitnesses(t *testing.T) {
 	field.preserveWitnesses(matcher)
 	if field.terms["needle"][len(full)/2].Pos != 999 {
 		t.Fatalf("replaced witness = %#v", field.terms["needle"])
+	}
+}
+
+func TestStoredFieldEvidenceSelectsOneRawRequirementDeterministically(t *testing.T) {
+	compound := &storedEvidenceMatcher{lookup: map[string][]int{}}
+	compound.addTarget("compound", "alpha")
+	compound.addTarget("compound", "beta")
+	compoundField := newStoredFieldEvidence(compound)
+	compoundField.latestRaw = map[int]*search.Location{0: {Pos: 1}}
+	selected, found := compoundField.selectRawRequirement(
+		compound,
+		[]int{0, 1},
+		"other",
+	)
+	if !found || selected.rawRequirement != 0 {
+		t.Fatalf("compound selection = %#v/%t", selected, found)
+	}
+
+	collapsed := &storedEvidenceMatcher{lookup: map[string][]int{}}
+	collapsed.addTarget("gaming", "game")
+	collapsed.addTarget("games", "game")
+	collapsedField := newStoredFieldEvidence(collapsed)
+	collapsedField.latestRaw = map[int]*search.Location{
+		0: {Pos: 8},
+		1: {Pos: 3},
+	}
+	selected, found = collapsedField.selectRawRequirement(
+		collapsed,
+		[]int{0, 1},
+		"game",
+	)
+	if !found || selected.rawRequirement != 1 {
+		t.Fatalf("oldest selection = %#v/%t", selected, found)
+	}
+	collapsedField.latestRaw[0] = &search.Location{Pos: 3}
+	selected, found = collapsedField.selectRawRequirement(
+		collapsed,
+		[]int{1, 0},
+		"game",
+	)
+	if !found || selected.rawRequirement != 0 {
+		t.Fatalf("tie selection = %#v/%t", selected, found)
 	}
 }

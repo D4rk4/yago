@@ -639,15 +639,16 @@ func (x *CrawlRunTally) GetPending() uint64 {
 }
 
 type CrawlProgressReport struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
-	RunId         []byte                 `protobuf:"bytes,2,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	ProfileHandle string                 `protobuf:"bytes,3,opt,name=profile_handle,json=profileHandle,proto3" json:"profile_handle,omitempty"`
-	ProfileName   string                 `protobuf:"bytes,4,opt,name=profile_name,json=profileName,proto3" json:"profile_name,omitempty"`
-	State         CrawlRunState          `protobuf:"varint,5,opt,name=state,proto3,enum=yacycrawl.v1.CrawlRunState" json:"state,omitempty"`
-	Tally         *CrawlRunTally         `protobuf:"bytes,6,opt,name=tally,proto3" json:"tally,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId       string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	RunId          []byte                 `protobuf:"bytes,2,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	ProfileHandle  string                 `protobuf:"bytes,3,opt,name=profile_handle,json=profileHandle,proto3" json:"profile_handle,omitempty"`
+	ProfileName    string                 `protobuf:"bytes,4,opt,name=profile_name,json=profileName,proto3" json:"profile_name,omitempty"`
+	State          CrawlRunState          `protobuf:"varint,5,opt,name=state,proto3,enum=yacycrawl.v1.CrawlRunState" json:"state,omitempty"`
+	Tally          *CrawlRunTally         `protobuf:"bytes,6,opt,name=tally,proto3" json:"tally,omitempty"`
+	PagesPerMinute *uint32                `protobuf:"varint,7,opt,name=pages_per_minute,json=pagesPerMinute,proto3,oneof" json:"pages_per_minute,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CrawlProgressReport) Reset() {
@@ -720,6 +721,13 @@ func (x *CrawlProgressReport) GetTally() *CrawlRunTally {
 		return x.Tally
 	}
 	return nil
+}
+
+func (x *CrawlProgressReport) GetPagesPerMinute() uint32 {
+	if x != nil && x.PagesPerMinute != nil {
+		return *x.PagesPerMinute
+	}
+	return 0
 }
 
 type CrawlProgressAck struct {
@@ -795,14 +803,16 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\n" +
 	"duplicates\x18\x05 \x01(\x04R\n" +
 	"duplicates\x12\x18\n" +
-	"\apending\x18\x06 \x01(\x04R\apending\"\xf9\x01\n" +
+	"\apending\x18\x06 \x01(\x04R\apending\"\xbd\x02\n" +
 	"\x13CrawlProgressReport\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x15\n" +
 	"\x06run_id\x18\x02 \x01(\fR\x05runId\x12%\n" +
 	"\x0eprofile_handle\x18\x03 \x01(\tR\rprofileHandle\x12!\n" +
 	"\fprofile_name\x18\x04 \x01(\tR\vprofileName\x121\n" +
 	"\x05state\x18\x05 \x01(\x0e2\x1b.yacycrawl.v1.CrawlRunStateR\x05state\x121\n" +
-	"\x05tally\x18\x06 \x01(\v2\x1b.yacycrawl.v1.CrawlRunTallyR\x05tally\"\x12\n" +
+	"\x05tally\x18\x06 \x01(\v2\x1b.yacycrawl.v1.CrawlRunTallyR\x05tally\x12-\n" +
+	"\x10pages_per_minute\x18\a \x01(\rH\x00R\x0epagesPerMinute\x88\x01\x01B\x13\n" +
+	"\x11_pages_per_minute\"\x12\n" +
 	"\x10CrawlProgressAck*\xd3\x01\n" +
 	"\x10CrawlControlKind\x12\"\n" +
 	"\x1eCRAWL_CONTROL_KIND_UNSPECIFIED\x10\x00\x12\x1c\n" +
@@ -880,6 +890,7 @@ func file_crawlexchange_proto_init() {
 	if File_crawlexchange_proto != nil {
 		return
 	}
+	file_crawlexchange_proto_msgTypes[10].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

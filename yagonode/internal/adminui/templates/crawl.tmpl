@@ -7,7 +7,7 @@
 {{end}}
 {{with .Result}}
 <div class="cds-inline-notification cds-inline-notification--success" role="status">
-  Crawl accepted: {{.Seeds}} seed(s) queued under profile <code>{{.ProfileHandle}}</code>{{if .Duplicate}} — already queued, not enqueued again{{end}}.
+  {{if .Duplicate}}Existing crawl request recognized under profile <code>{{.ProfileHandle}}</code>; no new seeds were enqueued.{{else}}Crawl accepted: {{.Seeds}} seed(s) queued under profile <code>{{.ProfileHandle}}</code>.{{end}}
 </div>
 {{end}}
 <form class="cds-form" method="post" action="/admin/crawl" hx-boost="false">
@@ -68,8 +68,8 @@
       <input class="cds-input" type="number" id="maxPagesPerHost" name="maxPagesPerHost" min="0" value="{{.Form.MaxPagesPerHost}}">
     </div>
     <div class="cds-field">
-      <label class="cds-label" for="crawlDelay">Crawl delay per host (e.g. 1s, 500ms)</label>
-      <input class="cds-input" type="text" id="crawlDelay" name="crawlDelay" value="{{.Form.CrawlDelay}}" autocomplete="off" placeholder="1s">
+      <label class="cds-label" for="crawlDelay">Crawl delay per host (blank = each crawler's configured default)</label>
+      <input class="cds-input" type="text" id="crawlDelay" name="crawlDelay" value="{{.Form.CrawlDelay}}" autocomplete="off" placeholder="crawler default">
     </div>
     <div class="cds-field">
       <label class="cds-label" for="recrawlIfOlder">Recrawl if older than (e.g. 24h, blank = never)</label>
@@ -89,25 +89,31 @@
   <button class="cds-btn" type="submit">Start crawl</button>
 </form>
 
-{{if .Formats}}
+{{if .FormatsOn}}
 <h2 class="cds-h2">Document formats</h2>
+{{if .FormatsError}}
+<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.FormatsError}}</div>
+{{else}}
 <p class="cds-muted">Format families every crawl parses and indexes (shared by all crawls; YaCy TextParser parity). HTML/web text is always on. Archives are off by default: unpacking hostile archives is a security decision.</p>
 {{if .FormatsNote}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.FormatsNote}}</div>{{end}}
+{{with .Formats}}
 <form class="cds-form" method="post" action="/admin/crawl/formats" hx-boost="false">
-  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
   <fieldset class="cds-field">
     <legend class="cds-label">Enabled families</legend>
-    <label class="cds-checkbox"><input type="checkbox" name="text"{{if .Formats.Text}} checked{{end}}> Text (txt, tex, csv, rtf, msg)</label>
-    <label class="cds-checkbox"><input type="checkbox" name="xmlfeeds"{{if .Formats.XMLFeeds}} checked{{end}}> XML &amp; feeds (xml, rss, atom)</label>
-    <label class="cds-checkbox"><input type="checkbox" name="pdf"{{if .Formats.PDF}} checked{{end}}> PDF &amp; PostScript</label>
-    <label class="cds-checkbox"><input type="checkbox" name="office"{{if .Formats.Office}} checked{{end}}> Office (OOXML, OpenDocument, legacy Office, Visio, FreeMind)</label>
-    <label class="cds-checkbox"><input type="checkbox" name="images"{{if .Formats.Images}} checked{{end}}> Images (metadata only, no OCR)</label>
-    <label class="cds-checkbox"><input type="checkbox" name="audio"{{if .Formats.Audio}} checked{{end}}> Audio (tags only, no transcription)</label>
-    <label class="cds-checkbox"><input type="checkbox" name="misc"{{if .Formats.Misc}} checked{{end}}> vCard, torrent, APK</label>
-    <label class="cds-checkbox"><input type="checkbox" name="archives"{{if .Formats.Archives}} checked{{end}}> Archives (zip, jar, epub, tar, gz, bz2, xz) — security risk</label>
+    <label class="cds-checkbox"><input type="checkbox" name="text"{{if .Text}} checked{{end}}> Text (txt, tex, csv, rtf, msg)</label>
+    <label class="cds-checkbox"><input type="checkbox" name="xmlfeeds"{{if .XMLFeeds}} checked{{end}}> XML &amp; feeds (xml, rss, atom)</label>
+    <label class="cds-checkbox"><input type="checkbox" name="pdf"{{if .PDF}} checked{{end}}> PDF &amp; PostScript</label>
+    <label class="cds-checkbox"><input type="checkbox" name="office"{{if .Office}} checked{{end}}> Office (OOXML, OpenDocument, legacy Office, Visio, FreeMind)</label>
+    <label class="cds-checkbox"><input type="checkbox" name="images"{{if .Images}} checked{{end}}> Images (metadata only, no OCR)</label>
+    <label class="cds-checkbox"><input type="checkbox" name="audio"{{if .Audio}} checked{{end}}> Audio (tags only, no transcription)</label>
+    <label class="cds-checkbox"><input type="checkbox" name="misc"{{if .Misc}} checked{{end}}> vCard, torrent, APK</label>
+    <label class="cds-checkbox"><input type="checkbox" name="archives"{{if .Archives}} checked{{end}}> Archives (zip, jar, epub, tar, gz, bz2, xz) — security risk</label>
   </fieldset>
   <button class="cds-btn" type="submit">Save format settings</button>
 </form>
+{{end}}
+{{end}}
 {{end}}
 {{if .SchedulesOn}}
 <h2 class="cds-h2">Crawl schedules</h2>
@@ -152,7 +158,7 @@
 {{if .Schedules}}
 <div class="cds-scroll-x">
   <table class="cds-table">
-    <thead><tr><th scope="col">Name</th><th scope="col">Seeds</th><th scope="col">Scope</th><th scope="col">Every</th><th scope="col">Last run</th><th scope="col">State</th><th scope="col">Actions</th></tr></thead>
+    <thead><tr><th scope="col">Name</th><th scope="col">Seeds</th><th scope="col">Scope</th><th scope="col">Every</th><th scope="col">Last dispatch (UTC)</th><th scope="col">State</th><th scope="col">Actions</th></tr></thead>
     <tbody>
       {{$csrf := .CSRF}}
       {{range .Schedules}}

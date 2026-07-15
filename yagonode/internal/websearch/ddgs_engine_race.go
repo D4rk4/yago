@@ -114,15 +114,22 @@ func (r *engineRace) launchNext() {
 	backend := r.engines[preference]
 	r.launched++
 	go func() {
-		defer r.provider.admission.release()
-		results, rateLimited, err := r.provider.fetch(r.ctx, backend, r.query.outboundText)
-		attempt := engineAttempt{
-			preference:  preference,
-			backend:     backend,
-			results:     results,
-			rateLimited: rateLimited,
-			err:         err,
-		}
+		attempt := func() engineAttempt {
+			defer r.provider.admission.release()
+			results, rateLimited, err := r.provider.fetch(
+				r.ctx,
+				backend,
+				r.query.outboundText,
+			)
+
+			return engineAttempt{
+				preference:  preference,
+				backend:     backend,
+				results:     results,
+				rateLimited: rateLimited,
+				err:         err,
+			}
+		}()
 		select {
 		case r.attempts <- attempt:
 		case <-r.ctx.Done():

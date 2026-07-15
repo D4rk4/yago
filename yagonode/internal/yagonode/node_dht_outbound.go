@@ -26,6 +26,8 @@ type dhtGateStateSource struct {
 	storage      storageCapacity
 	postings     nodestatus.RWICounter
 	roster       peerroster.Roster
+	crawl        crawlQueueDepthSource
+	index        indexQueueDepthSource
 }
 
 type dhtOutboundRuntimeAssembly struct {
@@ -38,6 +40,8 @@ type dhtOutboundRuntimeAssembly struct {
 	client       *http.Client
 	observer     dhtexchange.DistributionObserver
 	reachability publicReachability
+	crawl        crawlQueueDepthSource
+	index        indexQueueDepthSource
 }
 
 func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundProcess {
@@ -56,6 +60,8 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 		storage:      assembly.storage,
 		postings:     assembly.nodeStorage.postings,
 		roster:       assembly.roster,
+		crawl:        assembly.crawl,
+		index:        assembly.index,
 	}
 	writer := indextransfer.NewHTTPPeerWriter(
 		assembly.client,
@@ -111,11 +117,13 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 
 func (s dhtGateStateSource) Snapshot(ctx context.Context) dhtexchange.GateState {
 	words, err := s.postings.RWICount(ctx)
+	localRWIKnown := err == nil
 	if err != nil {
 		slog.WarnContext(ctx, dhtLocalRWICountUnavailableMessage, slog.Any("error", err))
 	}
 
 	atCapacity, err := s.storage.AtCapacity(ctx)
+	storageKnown := err == nil
 	storageAvailable := err == nil && !atCapacity
 	if err != nil {
 		slog.WarnContext(ctx, dhtStorageCapacityUnavailableMessage, slog.Any("error", err))
@@ -125,12 +133,20 @@ func (s dhtGateStateSource) Snapshot(ctx context.Context) dhtexchange.GateState 
 	if s.reachability != nil {
 		publicReachable = s.reachability.Reachable(ctx)
 	}
+	crawlQueueSize, crawlQueueKnown := s.crawl.observation(ctx)
+	indexQueueSize, indexQueueKnown := s.index.observation(ctx)
 
 	return dhtexchange.GateState{
 		PublicReachable:  publicReachable,
 		LocalPeerKnown:   true,
 		ConnectedPeers:   len(s.roster.ReachablePeers(ctx)),
 		LocalRWIWords:    words,
+		LocalRWIKnown:    localRWIKnown,
+		CrawlQueueSize:   crawlQueueSize,
+		CrawlQueueKnown:  crawlQueueKnown,
+		IndexQueueSize:   indexQueueSize,
+		IndexQueueKnown:  indexQueueKnown,
 		StorageAvailable: storageAvailable,
+		StorageKnown:     storageKnown,
 	}
 }

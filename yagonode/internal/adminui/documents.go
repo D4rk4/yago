@@ -27,10 +27,11 @@ type DocumentQuery struct {
 // DocumentPage is a bounded slice of matching documents plus how many matched in
 // total, so the browser can note when results were truncated.
 type DocumentPage struct {
-	Documents []DocumentSummary
-	Matched   int
-	Limit     int
-	Truncated bool
+	Documents  []DocumentSummary
+	Matched    int
+	Limit      int
+	Truncated  bool
+	ScanFailed bool
 	// Sampled marks a page assembled without a full store scan: the browse
 	// stopped early (unfiltered page) or hit its scan budget (filtered), so
 	// Matched counts only what was seen, not the whole store.
@@ -64,7 +65,7 @@ type BlacklistEntry struct {
 // adding or removing them. Denylisted entries are filtered out of search results.
 // A nil provider hides the blacklist manager.
 type BlacklistSource interface {
-	BlacklistEntries(ctx context.Context) []BlacklistEntry
+	BlacklistEntries(ctx context.Context) ([]BlacklistEntry, error)
 	AddBlacklist(ctx context.Context, kind, value string) error
 	RemoveBlacklist(ctx context.Context, kind, value string) error
 }

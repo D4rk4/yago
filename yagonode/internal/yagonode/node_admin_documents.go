@@ -46,6 +46,7 @@ func (s documentBrowseSource) BrowseDocuments(
 	matched := 0
 	scanned := 0
 	sampled := false
+	scanFailed := false
 	if err := s.stored.StoredDocuments(ctx, func(doc documentstore.Document) (bool, error) {
 		scanned++
 		if filtered && scanned > documentScanBudget {
@@ -68,6 +69,7 @@ func (s documentBrowseSource) BrowseDocuments(
 
 		return true, nil
 	}); err != nil {
+		scanFailed = true
 		slog.WarnContext(ctx, "browse documents scan failed", slog.Any("error", err))
 	}
 
@@ -81,11 +83,12 @@ func (s documentBrowseSource) BrowseDocuments(
 	}
 
 	return adminui.DocumentPage{
-		Documents: summaries,
-		Matched:   matched,
-		Limit:     documentBrowseLimit,
-		Truncated: matched > len(summaries),
-		Sampled:   sampled,
+		Documents:  summaries,
+		Matched:    matched,
+		Limit:      documentBrowseLimit,
+		Truncated:  matched > len(summaries),
+		ScanFailed: scanFailed,
+		Sampled:    sampled,
 	}
 }
 

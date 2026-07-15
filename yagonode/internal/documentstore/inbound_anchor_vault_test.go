@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -18,6 +19,55 @@ func anchorReceiver(t *testing.T, receiver DocumentReceiver) InboundAnchorReceiv
 	}
 
 	return anchors
+}
+
+type outboundAnchorProjectionUpdate struct {
+	AnchorUpdate
+	Documents []Document
+}
+
+func collectOutboundAnchorDocuments(
+	t *testing.T,
+	anchors InboundAnchorReceiver,
+	finalizations []OutboundAnchorFinalization,
+) []Document {
+	t.Helper()
+	documents := make([]Document, 0)
+	if err := anchors.VisitOutboundAnchorDocuments(
+		t.Context(),
+		finalizations,
+		func(batch []Document) error {
+			documents = append(documents, batch...)
+
+			return nil
+		},
+	); err != nil {
+		t.Fatalf("visit outbound anchor documents: %v", err)
+	}
+
+	return documents
+}
+
+func replaceAndFinalizeOutboundAnchors(
+	t *testing.T,
+	receiver DocumentReceiver,
+	sets []OutboundAnchorSet,
+) outboundAnchorProjectionUpdate {
+	t.Helper()
+	anchors := anchorReceiver(t, receiver)
+	update, err := anchors.ReplaceOutboundAnchors(t.Context(), sets)
+	if err != nil {
+		t.Fatalf("replace outbound anchors: %v", err)
+	}
+	documents := collectOutboundAnchorDocuments(t, anchors, update.Finalizations)
+	if err := anchors.FinalizeOutboundAnchors(t.Context(), update.Finalizations); err != nil {
+		t.Fatalf("finalize outbound anchors: %v", err)
+	}
+
+	return outboundAnchorProjectionUpdate{
+		AnchorUpdate: update,
+		Documents:    documents,
+	}
 }
 
 func TestReplaceOutboundAnchorsUpdatesStoredAndFutureTargets(t *testing.T) {
@@ -33,8 +83,9 @@ func TestReplaceOutboundAnchorsUpdatesStoredAndFutureTargets(t *testing.T) {
 		t.Fatalf("receive target: %v", err)
 	}
 
-	update, err := anchorReceiver(t, receiver).ReplaceOutboundAnchors(
-		t.Context(),
+	update := replaceAndFinalizeOutboundAnchors(
+		t,
+		receiver,
 		[]OutboundAnchorSet{{
 			SourceURL: source,
 			Anchors: []OutboundAnchor{
@@ -48,9 +99,6 @@ func TestReplaceOutboundAnchorsUpdatesStoredAndFutureTargets(t *testing.T) {
 			},
 		}},
 	)
-	if err != nil {
-		t.Fatalf("replace anchors: %v", err)
-	}
 	if update.Busy || len(update.Documents) != 1 || update.Documents[0].NormalizedURL != targetA {
 		t.Fatalf("update = %#v", update)
 	}
@@ -72,15 +120,16 @@ func TestReplaceOutboundAnchorsUpdatesStoredAndFutureTargets(t *testing.T) {
 		t.Fatalf("target B = %#v/%v/%v", storedB, found, err)
 	}
 
-	update, err = anchorReceiver(t, receiver).ReplaceOutboundAnchors(
-		t.Context(),
+	update = replaceAndFinalizeOutboundAnchors(
+		t,
+		receiver,
 		[]OutboundAnchorSet{{SourceURL: source, Anchors: []OutboundAnchor{{
 			TargetURL: targetB,
 			Text:      "replacement",
 		}}}},
 	)
-	if err != nil || len(update.Documents) != 2 {
-		t.Fatalf("replace recrawl = %#v/%v", update, err)
+	if len(update.Documents) != 2 {
+		t.Fatalf("replace recrawl = %#v", update)
 	}
 	storedA, _, _ = directory.Document(t.Context(), targetA)
 	storedB, _, _ = directory.Document(t.Context(), targetB)
@@ -89,12 +138,13 @@ func TestReplaceOutboundAnchorsUpdatesStoredAndFutureTargets(t *testing.T) {
 		t.Fatalf("recrawl anchors = %#v / %#v", storedA.Inlinks, storedB.Inlinks)
 	}
 
-	update, err = anchorReceiver(t, receiver).ReplaceOutboundAnchors(
-		t.Context(),
+	update = replaceAndFinalizeOutboundAnchors(
+		t,
+		receiver,
 		[]OutboundAnchorSet{{SourceURL: source}},
 	)
-	if err != nil || len(update.Documents) != 1 {
-		t.Fatalf("clear anchors = %#v/%v", update, err)
+	if len(update.Documents) != 1 {
+		t.Fatalf("clear anchors = %#v", update)
 	}
 	storedB, _, _ = directory.Document(t.Context(), targetB)
 	if len(storedB.Inlinks) != 0 {
@@ -102,7 +152,7 @@ func TestReplaceOutboundAnchorsUpdatesStoredAndFutureTargets(t *testing.T) {
 	}
 }
 
-func TestReplaceOutboundAnchorsSkipsUnchangedTargetDocuments(t *testing.T) {
+func TestReplaceOutboundAnchorsSkipsFinalizedTargetDocuments(t *testing.T) {
 	_, receiver := openDocuments(t)
 	target := "https://target.example/page"
 	set := OutboundAnchorSet{
@@ -113,17 +163,76 @@ func TestReplaceOutboundAnchorsSkipsUnchangedTargetDocuments(t *testing.T) {
 		t.Fatalf("receive target: %v", err)
 	}
 	anchors := anchorReceiver(t, receiver)
-	first, err := anchors.ReplaceOutboundAnchors(t.Context(), []OutboundAnchorSet{set})
-	if err != nil || len(first.Documents) != 1 {
-		t.Fatalf("first update = %#v/%v", first, err)
+	first := replaceAndFinalizeOutboundAnchors(t, receiver, []OutboundAnchorSet{set})
+	if len(first.Documents) != 1 {
+		t.Fatalf("first update = %#v", first)
 	}
 	second, err := anchors.ReplaceOutboundAnchors(t.Context(), []OutboundAnchorSet{set})
-	if err != nil || len(second.Documents) != 0 {
-		t.Fatalf("unchanged update = %#v/%v, want no documents", second, err)
+	if err != nil {
+		t.Fatalf("unchanged update = %#v/%v, want finalized no-op", second, err)
+	}
+	secondDocuments := collectOutboundAnchorDocuments(t, anchors, second.Finalizations)
+	if len(secondDocuments) != 0 || len(second.Finalizations) != 0 {
+		t.Fatalf("unchanged update = %#v/%v, want finalized no-op", second, err)
 	}
 }
 
-func TestReplaceOutboundAnchorsReplayDropsAbortedAffectedDocuments(t *testing.T) {
+func TestReplaceOutboundAnchorsReconcilesPartialStorageCommit(t *testing.T) {
+	directory, receiver, engine := openScriptedDocuments(t)
+	target := "https://target.example/partial"
+	source := "https://source.example/partial"
+	if _, err := receiver.Receive(
+		t.Context(),
+		[]Document{{NormalizedURL: target}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	set := OutboundAnchorSet{
+		SourceURL: source,
+		Anchors:   []OutboundAnchor{{TargetURL: target, Text: "durable"}},
+	}
+	engine.putErrors[orderedDocumentBucketName] = errors.New("later shard commit failed")
+	if _, err := anchorReceiver(t, receiver).ReplaceOutboundAnchors(
+		t.Context(),
+		[]OutboundAnchorSet{set},
+	); err == nil {
+		t.Fatal("partial storage commit was not returned")
+	}
+	stored, found, err := directory.Document(t.Context(), target)
+	if err != nil || !found || len(stored.Inlinks) != 0 {
+		t.Fatalf("partially committed target = %#v/%t/%v", stored, found, err)
+	}
+	if engine.buckets[inboundAnchorBucket][target] == nil {
+		t.Fatal("earlier inbound anchor shard was not partially committed")
+	}
+	delete(engine.putErrors, orderedDocumentBucketName)
+	update, err := anchorReceiver(t, receiver).ReplaceOutboundAnchors(
+		t.Context(),
+		[]OutboundAnchorSet{set},
+	)
+	if err != nil {
+		t.Fatalf("partial commit replay = %#v/%v", update, err)
+	}
+	documents := collectOutboundAnchorDocuments(
+		t,
+		anchorReceiver(t, receiver),
+		update.Finalizations,
+	)
+	if len(documents) != 1 || documents[0].NormalizedURL != target {
+		t.Fatalf("partial commit replay documents = %#v", documents)
+	}
+	if err := anchorReceiver(t, receiver).FinalizeOutboundAnchors(
+		t.Context(),
+		update.Finalizations,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if engine.buckets[outboundAnchorPublicationBucket][source] == nil {
+		t.Fatal("outbound anchor publication was not finalized")
+	}
+}
+
+func TestReplaceOutboundAnchorsReplayRetainsPendingAffectedDocuments(t *testing.T) {
 	_, receiver, engine := openScriptedDocuments(t)
 	target := "https://target.example/page"
 	if _, err := receiver.Receive(t.Context(), []Document{{NormalizedURL: target}}); err != nil {
@@ -138,9 +247,18 @@ func TestReplaceOutboundAnchorsReplayDropsAbortedAffectedDocuments(t *testing.T)
 			Anchors:   []OutboundAnchor{{TargetURL: target, Text: "stable"}},
 		}},
 	)
-	if err != nil || len(update.Documents) != 0 {
-		t.Fatalf("replayed update = %#v/%v, want no stale affected documents", update, err)
+	if err != nil {
+		t.Fatalf("replayed update = %#v/%v, want pending target", update, err)
 	}
+	documents := collectOutboundAnchorDocuments(
+		t,
+		anchorReceiver(t, receiver),
+		update.Finalizations,
+	)
+	if len(documents) != 1 || len(update.Finalizations) != 1 {
+		t.Fatalf("replayed update documents = %#v, update = %#v", documents, update)
+	}
+	anchorReceiver(t, receiver).ReleaseOutboundAnchors(update.Finalizations)
 }
 
 func TestReplaceOutboundAnchorsBoundsSourcesAndTargets(t *testing.T) {
@@ -170,18 +288,30 @@ func TestReplaceOutboundAnchorsBoundsSourcesAndTargets(t *testing.T) {
 	}
 }
 
+func TestReplaceOutboundAnchorsRejectsSeventeenthDistinctSource(t *testing.T) {
+	_, receiver := openDocuments(t)
+	sets := make([]OutboundAnchorSet, maximumOutboundAnchorSources+1)
+	for index := range sets {
+		sets[index].SourceURL = fmt.Sprintf("https://source.example/%02d", index)
+	}
+	_, err := anchorReceiver(t, receiver).ReplaceOutboundAnchors(t.Context(), sets)
+	if err == nil || !strings.Contains(err.Error(), "source limit exceeded") {
+		t.Fatalf("source limit error = %v", err)
+	}
+}
+
 func TestReplaceOutboundAnchorsHandlesNoopCapacityAndContext(t *testing.T) {
 	_, receiver := openDocuments(t)
 	anchors := anchorReceiver(t, receiver)
 	update, err := anchors.ReplaceOutboundAnchors(t.Context(), nil)
-	if err != nil || update.Busy || len(update.Documents) != 0 {
+	if err != nil || update.Busy || len(update.Finalizations) != 0 {
 		t.Fatalf("empty update = %#v/%v", update, err)
 	}
 	update, err = anchors.ReplaceOutboundAnchors(
 		t.Context(),
 		[]OutboundAnchorSet{{SourceURL: " "}},
 	)
-	if err != nil || len(update.Documents) != 0 {
+	if err != nil || len(update.Finalizations) != 0 {
 		t.Fatalf("blank source update = %#v/%v", update, err)
 	}
 
@@ -190,6 +320,9 @@ func TestReplaceOutboundAnchorsHandlesNoopCapacityAndContext(t *testing.T) {
 		NormalizedURL: "https://target.example/",
 	}}); err != nil {
 		t.Fatalf("seed target: %v", err)
+	}
+	if _, err := v.UsedBytes(t.Context()); err != nil {
+		t.Fatalf("refresh capacity: %v", err)
 	}
 	update, err = anchorReceiver(t, receiver).ReplaceOutboundAnchors(
 		t.Context(),
@@ -223,8 +356,39 @@ func TestReplaceOutboundAnchorsHandlesNoopCapacityAndContext(t *testing.T) {
 	}
 }
 
+func TestReplaceOutboundAnchorsClearsInvalidEdgesAtCapacity(t *testing.T) {
+	v, directory, receiver := openDocumentsWithVault(t, 0)
+	source := "https://source.example/page"
+	target := "https://target.example/page"
+	if _, err := receiver.Receive(t.Context(), []Document{{NormalizedURL: target}}); err != nil {
+		t.Fatal(err)
+	}
+	replaceAndFinalizeOutboundAnchors(t, receiver, []OutboundAnchorSet{{
+		SourceURL: source,
+		Anchors:   []OutboundAnchor{{TargetURL: target, Text: "old"}},
+	}})
+	v.SetQuota(1)
+	if _, err := v.UsedBytes(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	update := replaceAndFinalizeOutboundAnchors(t, receiver, []OutboundAnchorSet{{
+		SourceURL: source,
+		Anchors: []OutboundAnchor{
+			{TargetURL: source, Text: "self"},
+			{TargetURL: strings.Repeat("x", yagomodel.MaximumURLIdentityBytes+1)},
+		},
+	}})
+	if update.Busy || len(update.Documents) != 1 {
+		t.Fatalf("capacity clear = %#v", update)
+	}
+	stored, found, err := directory.Document(t.Context(), target)
+	if err != nil || !found || len(stored.Inlinks) != 0 {
+		t.Fatalf("capacity-cleared target = %#v/%t/%v", stored, found, err)
+	}
+}
+
 func TestAnchorCollectionsCodecsAndRegistrationErrors(t *testing.T) {
-	codec := anchorSliceCodec[[]string]{}
+	codec := anchorJSONCodec[[]string]{}
 	raw, err := codec.Encode([]string{"a", "b"})
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -236,8 +400,15 @@ func TestAnchorCollectionsCodecsAndRegistrationErrors(t *testing.T) {
 	if _, err := codec.Decode([]byte("{")); err == nil {
 		t.Fatal("invalid anchor JSON should fail")
 	}
+	if _, err := (anchorJSONCodec[any]{}).Encode(make(chan int)); err == nil {
+		t.Fatal("unsupported anchor JSON should fail")
+	}
 
-	for _, bucket := range []vault.Name{inboundAnchorBucket, outboundTargetBucket} {
+	for _, bucket := range []vault.Name{
+		inboundAnchorBucket,
+		outboundTargetBucket,
+		outboundAnchorPublicationBucket,
+	} {
 		engine := newScriptedDocumentEngine()
 		storage, err := vault.New(engine)
 		if err != nil {
@@ -250,6 +421,34 @@ func TestAnchorCollectionsCodecsAndRegistrationErrors(t *testing.T) {
 	}
 }
 
+func TestAnchorKeyspacesDoNotMutateCollectionLengths(t *testing.T) {
+	_, receiver, engine := openScriptedDocuments(t)
+	source := "https://source.example/page"
+	target := "https://target.example/page"
+	if _, err := receiver.Receive(t.Context(), []Document{{NormalizedURL: target}}); err != nil {
+		t.Fatal(err)
+	}
+	replaceAndFinalizeOutboundAnchors(t, receiver, []OutboundAnchorSet{{
+		SourceURL: source,
+		Anchors:   []OutboundAnchor{{TargetURL: target, Text: "anchor"}},
+	}})
+	replaceAndFinalizeOutboundAnchors(
+		t,
+		receiver,
+		[]OutboundAnchorSet{{SourceURL: source}},
+	)
+	lengths := engine.buckets[vault.Name("__lengths__")]
+	for _, bucket := range []vault.Name{
+		inboundAnchorBucket,
+		outboundTargetBucket,
+		outboundAnchorPublicationBucket,
+	} {
+		if lengths[string(bucket)] != nil {
+			t.Fatalf("anchor keyspace %s mutated collection length", bucket)
+		}
+	}
+}
+
 func TestReplaceOutboundAnchorsSurfacesStorageFailures(t *testing.T) {
 	tests := []anchorStorageFailureCase{
 		{
@@ -257,23 +456,21 @@ func TestReplaceOutboundAnchorsSurfacesStorageFailures(t *testing.T) {
 			corruptKey: anchorFailureSource,
 		},
 		{
-			name: "target document decode", corruptBucket: bucketName,
-			corruptKey: anchorFailureTarget,
+			name: "publication decode", corruptBucket: outboundAnchorPublicationBucket,
+			corruptKey: anchorFailureSource,
 		},
 		{
 			name: "inbound decode", corruptBucket: inboundAnchorBucket,
 			corruptKey: anchorFailureTarget,
 		},
 		{name: "inbound put", putBucket: inboundAnchorBucket},
-		{name: "outbound put", putBucket: outboundTargetBucket},
-		{name: "target document put", seedTarget: true, putBucket: bucketName},
+		{
+			name: "target document put", seedTarget: true,
+			putBucket: orderedDocumentBucketName,
+		},
 		{
 			name: "inbound delete", seedEdge: true,
 			deleteBucket: inboundAnchorBucket, clear: true,
-		},
-		{
-			name: "outbound delete", seedEdge: true,
-			deleteBucket: outboundTargetBucket, clear: true,
 		},
 	}
 	for _, test := range tests {
@@ -319,11 +516,19 @@ func runAnchorStorageFailureCase(t *testing.T, test anchorStorageFailureCase) {
 		}
 	}
 	if test.seedEdge {
-		if _, err := anchors.ReplaceOutboundAnchors(
+		update, err := anchors.ReplaceOutboundAnchors(
 			t.Context(),
 			[]OutboundAnchorSet{edge},
-		); err != nil {
+		)
+		if err != nil {
 			t.Fatalf("seed edge: %v", err)
+		}
+		collectOutboundAnchorDocuments(t, anchors, update.Finalizations)
+		if err := anchors.FinalizeOutboundAnchors(
+			t.Context(),
+			update.Finalizations,
+		); err != nil {
+			t.Fatalf("finalize seed edge: %v", err)
 		}
 	}
 	if test.putBucket != "" {

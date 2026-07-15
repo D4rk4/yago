@@ -74,7 +74,12 @@ func TestSearchRankingEndpointPostAppliesWeights(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
-	want := searchindex.RankingWeights{Title: 9, Headings: 2, Anchors: 2, Body: 1, URL: 3}
+	want := searchindex.DefaultRankingWeights()
+	want.Title = 9
+	want.Headings = 2
+	want.Anchors = 2
+	want.Body = 1
+	want.URL = 3
 	if holder.Current() != want {
 		t.Fatalf("current = %+v, want %+v", holder.Current(), want)
 	}
@@ -82,9 +87,31 @@ func TestSearchRankingEndpointPostAppliesWeights(t *testing.T) {
 
 func TestSearchRankingEndpointPostRejectsInvalid(t *testing.T) {
 	endpoint := newSearchRankingEndpoint(testRankingHolder(t))
-	rec := serveRanking(t, endpoint, http.MethodPost, `{"weights":{}}`)
+	rec := serveRanking(t, endpoint, http.MethodPost, `{"weights":{"hostRank":-1}}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestSearchRankingEndpointPostPreservesOmittedLiveWeights(t *testing.T) {
+	holder := testRankingHolder(t)
+	before := holder.Current()
+	rec := serveRanking(
+		t,
+		newSearchRankingEndpoint(holder),
+		http.MethodPost,
+		`{"weights":{"title":7}}`,
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	after := holder.Current()
+	if after.Title != 7 {
+		t.Fatalf("title = %v, want 7", after.Title)
+	}
+	after.Title = before.Title
+	if after != before {
+		t.Fatalf("omitted weights changed: before=%+v after=%+v", before, after)
 	}
 }
 

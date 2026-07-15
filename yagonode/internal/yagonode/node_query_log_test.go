@@ -3,12 +3,23 @@ package yagonode
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
 
+	"github.com/D4rk4/yago/yagonode/internal/searchactivity"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
+
+type failedQueryLogSearcher struct{}
+
+func (failedQueryLogSearcher) Search(
+	context.Context,
+	searchcore.Request,
+) (searchcore.Response, error) {
+	return searchcore.Response{}, errors.New("search failed")
+}
 
 func TestParseQueryLogMode(t *testing.T) {
 	t.Parallel()
@@ -91,5 +102,39 @@ func TestQueryLoggingFullRecordsQueryText(t *testing.T) {
 	out := loggedSearch(t, queryLogFull, "public news query", 1)
 	if !strings.Contains(out, "public news query") {
 		t.Fatalf("full mode dropped the query text: %s", out)
+	}
+}
+
+func TestQueryActivityDistinguishesErrorsAndPartialAnswersFromMisses(t *testing.T) {
+	tracker := searchactivity.New(searchactivity.ModeAggregate)
+	logger := slog.New(slog.DiscardHandler)
+	errored := queryLoggingSearcher{
+		next: failedQueryLogSearcher{}, mode: queryLogAggregate, logger: logger, tracker: tracker,
+	}
+	if _, err := errored.Search(t.Context(), searchcore.Request{Query: "error"}); err == nil {
+		t.Fatal("errored search must return its error")
+	}
+	partial := queryLoggingSearcher{
+		next: stubPrimarySearcher{resp: searchcore.Response{
+			PartialFailures: []searchcore.PartialFailure{{Source: "remote-stage"}},
+		}},
+		mode: queryLogAggregate, logger: logger, tracker: tracker,
+	}
+	if _, err := partial.Search(t.Context(), searchcore.Request{Query: "partial"}); err != nil {
+		t.Fatalf("partial search: %v", err)
+	}
+
+	entries, total, confirmedZero := tracker.Snapshot()
+	if len(entries) != 2 || total != 2 || confirmedZero != 0 {
+		t.Fatalf(
+			"activity = entries %d, total %d, confirmed zero %d",
+			len(entries),
+			total,
+			confirmedZero,
+		)
+	}
+	if entries[0].Failed || !entries[0].Incomplete ||
+		!entries[1].Failed || entries[1].Incomplete {
+		t.Fatalf("activity states = %+v", entries)
 	}
 }

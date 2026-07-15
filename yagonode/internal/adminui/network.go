@@ -20,26 +20,31 @@ type NetworkPeer struct {
 	Type     string
 	Flags    []string
 	RWICount int
+	RWIKnown bool
 	LastSeen string
 	// LastSeenAt is the sortable timestamp behind the humanized LastSeen; zero
 	// when the peer has never been seen, so those rows sort oldest.
-	LastSeenAt time.Time
-	AgeDays    int
-	Blocked    bool
+	LastSeenAt       time.Time
+	AgeDays          int
+	AgeKnown         bool
+	Blocked          bool
+	BlockStatusKnown bool
 	// Health is the passive-observation availability score (OPS-12) and
 	// HealthTag its healthy/aging/stale band.
-	Health    int
-	HealthTag string
+	Health      int
+	HealthTag   string
+	HealthKnown bool
 }
 
 // SeedlistEntry is one configured bootstrap seed-list URL with the outcome of its
 // most recent import, shown in the Network section's seedlist table.
 type SeedlistEntry struct {
-	URL        string
-	LastImport string
-	Result     string
-	OK         bool
-	Imported   bool
+	URL         string
+	LastImport  string
+	Result      string
+	OK          bool
+	Imported    bool
+	StatusKnown bool
 }
 
 // NetworkFlag is one seed capability flag with the state this node advertises to
@@ -52,6 +57,7 @@ type NetworkFlag struct {
 // NetworkStatus is the peer-network snapshot the Network section renders.
 type NetworkStatus struct {
 	Available       bool
+	RosterAvailable bool
 	DHTOpen         bool
 	PublicReachable bool
 	BlockingReason  string
@@ -72,30 +78,40 @@ type NetworkSource interface {
 // identity, its self-reported statistics, its capability flags, and its per-peer
 // index-transfer counters. It is read-only and carries no secrets.
 type PeerDetail struct {
-	Name          string
-	Hash          string
-	Address       string
-	Version       string
-	Type          string
-	Flags         []string
-	LastSeen      string
-	AgeDays       int
-	UptimeMinutes int
-	RWIWords      int
-	URLs          int
-	KnownSeeds    int
-	SentWords     int64
-	ReceivedWords int64
-	SentURLs      int64
-	ReceivedURLs  int64
-	Blocked       bool
+	Name               string
+	Hash               string
+	Address            string
+	Version            string
+	Type               string
+	Flags              []string
+	LastSeen           string
+	AgeDays            int
+	AgeKnown           bool
+	UptimeMinutes      int
+	UptimeKnown        bool
+	RWIWords           int
+	RWIWordsKnown      bool
+	URLs               int
+	URLsKnown          bool
+	KnownSeeds         int
+	KnownSeedsKnown    bool
+	SentWords          int64
+	SentWordsKnown     bool
+	ReceivedWords      int64
+	ReceivedWordsKnown bool
+	SentURLs           int64
+	SentURLsKnown      bool
+	ReceivedURLs       int64
+	ReceivedURLsKnown  bool
+	Blocked            bool
+	BlockStatusKnown   bool
 }
 
 // PeerDetailSource resolves a peer hash to its detail. It reports false when the
 // roster has never seen the hash, so the console can render a 404. A nil provider
 // leaves the peer table without drill-down links.
 type PeerDetailSource interface {
-	PeerDetail(ctx context.Context, hash string) (PeerDetail, bool)
+	PeerDetail(ctx context.Context, hash string) (PeerDetail, bool, error)
 }
 
 // PeerNewsItem is one received peer-news record summarized for the Network
@@ -110,7 +126,7 @@ type PeerNewsItem struct {
 // PeerNewsSource supplies the most recent received peer-news items, newest first.
 // A nil provider hides the peer-news sub-view.
 type PeerNewsSource interface {
-	PeerNews(ctx context.Context) []PeerNewsItem
+	PeerNews(ctx context.Context) ([]PeerNewsItem, bool)
 }
 
 // SeedlistRefreshSource re-imports a configured seed list on the operator's

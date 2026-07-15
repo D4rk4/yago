@@ -34,9 +34,13 @@ type dhtGateStateResponse struct {
 	LocalPeerVirgin  bool   `json:"localPeerVirgin"`
 	ConnectedPeers   int    `json:"connectedPeers"`
 	LocalRWIWords    int    `json:"localRWIWords"`
+	LocalRWIKnown    bool   `json:"localRWIKnown"`
 	CrawlQueueSize   int    `json:"crawlQueueSize"`
+	CrawlQueueKnown  bool   `json:"crawlQueueKnown"`
 	IndexQueueSize   int    `json:"indexQueueSize"`
+	IndexQueueKnown  bool   `json:"indexQueueKnown"`
 	StorageAvailable bool   `json:"storageAvailable"`
+	StorageKnown     bool   `json:"storageKnown"`
 }
 
 type dhtGateConfigResponse struct {
@@ -94,9 +98,13 @@ func dhtGateState(state dhtexchange.GateState) dhtGateStateResponse {
 		LocalPeerVirgin:  state.LocalPeerVirgin,
 		ConnectedPeers:   state.ConnectedPeers,
 		LocalRWIWords:    state.LocalRWIWords,
+		LocalRWIKnown:    state.LocalRWIKnown,
 		CrawlQueueSize:   state.CrawlQueueSize,
+		CrawlQueueKnown:  state.CrawlQueueKnown,
 		IndexQueueSize:   state.IndexQueueSize,
+		IndexQueueKnown:  state.IndexQueueKnown,
 		StorageAvailable: state.StorageAvailable,
+		StorageKnown:     state.StorageKnown,
 	}
 }
 

@@ -60,10 +60,11 @@ module graph as indirect dependencies of bleve:
    `xxhash64(bucket ‖ key) mod N`; the shard file lives at
    `vault/aa/bb/cc/aabbcc.vlt` from the `%06x`-formatted shard id. Reads and
    scans fan out and merge; writes open transactions only on touched shards.
-   Cross-shard atomicity is relaxed by design: multi-shard updates commit the
-   document-metadata record last as the commit marker, and a crash leaves
-   re-ingestable partial state (re-crawl and DHT redistribution are the
-   systemic repair, as in YaCy).
+   Cross-shard atomicity is relaxed by design. A feature that spans shards
+   writes durable rows before a separate visibility marker, or retains its
+   prior identity as a replay marker until dependent index work completes.
+   Retries reconcile partial state from the same crawl observation; re-crawl
+   and DHT redistribution remain the wider systemic repair, as in YaCy.
 2. **Value compression in shardvault**: one shared `zstd.Encoder` at
    `SpeedFastest`; a one-byte format tag distinguishes raw from compressed
    values; values under 64 bytes or saving less than one eighth stay raw with

@@ -20,7 +20,7 @@
     <legend class="cds-label">Scope</legend>
     <label class="cds-radio">
       <input type="radio" name="scope" value="global"{{if .Global}} checked{{end}}>
-      Local + peer network (global)
+      All enabled sources
     </label>
     <label class="cds-radio">
       <input type="radio" name="scope" value="local"{{if not .Global}} checked{{end}}>
@@ -33,7 +33,7 @@
 <div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>
 {{else if .Submitted}}
 {{with .Results}}
-<p class="cds-muted">{{.TotalResults}} result(s) for “{{.Query}}”{{if .Global}} (local + peers){{end}}.</p>
+<p class="cds-muted">{{if .TotalResults}}Up to {{.TotalResults}} result(s) available in this search window{{else if .Failures}}No complete result set is available{{else}}0 result(s){{end}} for “{{.Query}}”{{if .Global}} (all enabled sources){{end}}.</p>
 {{if .Hint}}<div class="cds-inline-notification" role="status">{{.Hint}}</div>{{end}}
 {{range .Failures}}
 <div class="cds-inline-notification" role="status">Partial failure: {{.}}</div>
@@ -46,7 +46,7 @@
   {{if .SnippetHTML}}<p class="cds-result__snippet">{{.SnippetHTML}}</p>{{else if .Snippet}}<p class="cds-result__snippet">{{.Snippet}}</p>{{end}}
 </article>
 {{else}}
-<div class="cds-empty" role="status">No results.</div>
+<div class="cds-empty" role="status">{{if .Failures}}No results are currently available; one or more enabled sources failed.{{else}}No results.{{end}}</div>
 {{end}}
 {{end}}
 {{if or .Pagination.HasPrev .Pagination.HasNext}}

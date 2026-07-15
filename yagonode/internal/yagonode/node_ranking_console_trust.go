@@ -8,16 +8,16 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/hosttrust"
 )
 
-func (console *rankingConsole) HostTrust(context.Context) adminui.HostTrustView {
+func (console *rankingConsole) HostTrust(context.Context) (adminui.HostTrustView, bool) {
 	if console.trust == nil {
-		return adminui.HostTrustView{Domains: []string{}}
+		return adminui.HostTrustView{}, false
 	}
 	policy := console.trust.Current()
 
 	return adminui.HostTrustView{
 		Blend:   policy.Blend,
 		Domains: append([]string(nil), policy.Domains...),
-	}
+	}, true
 }
 
 func (console *rankingConsole) ApplyHostTrust(

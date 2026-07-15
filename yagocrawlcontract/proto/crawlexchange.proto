@@ -116,6 +116,7 @@ message CrawlProgressReport {
   string profile_name = 4;
   CrawlRunState state = 5;
   CrawlRunTally tally = 6;
+  optional uint32 pages_per_minute = 7;
 }
 
 message CrawlProgressAck {}

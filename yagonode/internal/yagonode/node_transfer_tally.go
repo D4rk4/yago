@@ -27,6 +27,7 @@ func (r reportedTransferTally) TransferTotals(ctx context.Context) nodestatus.Tr
 	}
 
 	return nodestatus.TransferTotals{
+		Known:         true,
 		SentWords:     totals.SentWords,
 		ReceivedWords: totals.ReceivedWords,
 		SentURLs:      totals.SentURLs,

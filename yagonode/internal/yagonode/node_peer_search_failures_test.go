@@ -6,7 +6,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
-func TestPeerSearchFailureTotalExcludesLocalAndWebStages(t *testing.T) {
+func TestPeerSearchFailureTotalCountsUniqueValidatedPeerHashes(t *testing.T) {
 	failures := []searchcore.PartialFailure{
 		{Source: searchcore.PartialFailureSourceRemoteYaCy},
 		{Source: searchcore.PartialFailureSourcePeerReputation},
@@ -17,8 +17,18 @@ func TestPeerSearchFailureTotalExcludesLocalAndWebStages(t *testing.T) {
 		{Source: searchcore.PartialFailureSourceLocalSearch},
 		{Source: searchcore.PartialFailureSourceWeb},
 		{Source: "not-a-peer"},
+		{Source: "AAAAAAAAAAAA"},
 	}
-	if got := peerSearchFailureTotal(failures); got != 3 {
-		t.Fatalf("peer failure total = %d, want 3", got)
+	if got := peerSearchFailureTotal(failures); got != 1 {
+		t.Fatalf("peer failure total = %d, want 1", got)
+	}
+	if !federationSearchUnavailable(failures) {
+		t.Fatal("aggregate federation failures must be reported without inventing peers")
+	}
+	if federationSearchUnavailable([]searchcore.PartialFailure{
+		{Source: "AAAAAAAAAAAA"},
+		{Source: searchcore.PartialFailureSourceWeb},
+	}) {
+		t.Fatal("identified peer and web failures are not aggregate federation failures")
 	}
 }

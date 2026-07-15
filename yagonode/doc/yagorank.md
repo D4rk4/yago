@@ -15,11 +15,17 @@ search follows these stages:
 1. Build a candidate window from strict all-term fielded BM25. Queries with at
    least three distinct terms also run a relaxed branch requiring the ceiling of
    60% term coverage; strict matches always precede relaxed-only matches after
-   reciprocal-rank fusion and before stored documents are inspected. Bounded RM3 feedback uses at most five distinct
+   reciprocal-rank fusion and before stored documents are inspected. A mixed
+   alphanumeric identifier remains a mandatory exact clause in that relaxed
+   branch and must occur inside the accepted exact-surface passage. Web rows must
+   show the same identifier exactly in their visible title, snippet, or URL
+   before their term-coverage quorum is evaluated. Bounded RM3 feedback uses at most five distinct
    documents, 256 tokens per document, and three expansion terms that occur in
    at least two feedback documents and does not reduce either branch's term-coverage rule.
-   Visible text supplies ordinary lexical proximity; explicit ranking-feature,
-   explain, or near consumers may request capped stored-document positions.
+   Final lexical ranking requests capped stored positions for its leading local
+   window and uses them when available. Peer and web rows, which carry no stored
+   positions, fall back to their visible title and snippet. Explain and `near`
+   requests use the same bounded position path.
 2. Merge local and YaCy peer lists deterministically. A peer contributes one
    list regardless of response timing. Persistent peer reliability adjusts its
    RRF contribution, while IPv4 `/24` and IPv6 `/48` influence caps limit a
@@ -72,7 +78,8 @@ The learned feature catalog is fixed and versioned. It includes:
 
 - strict, relaxed, feedback, local, remote, and fused retrieval scores and ranks;
 - title, heading, trusted inbound-anchor, URL, and body evidence;
-- term coverage plus ordered, unordered, and whole-document proximity;
+- term coverage plus ordered, unordered, original-query-gap, and whole-document
+  proximity;
 - signed content quality, spam risk, text-shape measures, and missingness;
 - publication-date confidence and multi-timescale freshness;
 - registrable-domain authority and authority confidence;
@@ -248,6 +255,27 @@ The YagoRank console shows the active revision and model kind, rollback
 availability, held-out gain and confidence, split sizes, and promotion reasons.
 It can train the linear or histogram model, roll back one revision, and edit the
 vault-backed trusted-domain list and TrustRank blend.
+
+The same console edits all 13 operator-safe live lexical coefficients from one
+catalog:
+
+| Group | Coefficients |
+| --- | --- |
+| Field boosts | title, anchor text, headings, URL text, body |
+| Bounded priors | host authority, freshness, content quality, short-URL prior |
+| Term dependence | ordered proximity, unordered proximity |
+| Final lexical reranking | lexical evidence blend, original-gap agreement |
+
+The catalog owns defaults, ranges, persistence migration, cache identity,
+coordinate-ascent tuning, and the console labels. A saved value is read for the
+next search without a restart. The trusted-domain list and its authority blend
+are a separate bounded policy, not a fourteenth ranking coefficient.
+
+Candidate and evidence windows, exact and analyzer-equivalent confidence,
+relaxed admission quorum, RM3 drift limits, source fusion, diversity, graph
+damping, safety thresholds, and search deadlines are fixed algorithm or safety
+policy. They are not operator weights. Learned feature weights are versioned
+model state and change only through held-out promotion or rollback.
 
 The admin JSON endpoints are:
 

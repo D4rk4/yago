@@ -221,7 +221,11 @@ func assertAuthBodyUnread(
 ) {
 	t.Helper()
 	probe := &authBodyProbe{}
-	rec := serveAuthBody(handler, path, formContentType, probe, -1)
+	contentType := formContentType
+	if path == PathLogin || path == PathSetup {
+		contentType = authJSONMediaType
+	}
+	rec := serveAuthBody(handler, path, contentType, probe, -1)
 	if probe.reads.Load() != 0 {
 		t.Fatalf("body reads = %d", probe.reads.Load())
 	}

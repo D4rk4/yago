@@ -13,10 +13,12 @@ func newQueueDepthSource(gates dhtGateStatusSource, crawl crawlQueueDepthSource)
 	return queueDepthSource{gates: gates, crawl: crawl}
 }
 
-func (s queueDepthSource) CrawlQueueDepth(ctx context.Context) int {
-	return s.crawl.outstanding(ctx)
+func (s queueDepthSource) CrawlQueueDepth(ctx context.Context) (int, bool) {
+	return s.crawl.observation(ctx)
 }
 
-func (s queueDepthSource) IndexQueueDepth(ctx context.Context) int {
-	return s.gates.response(ctx).State.IndexQueueSize
+func (s queueDepthSource) IndexQueueDepth(ctx context.Context) (int, bool) {
+	state := s.gates.response(ctx).State
+
+	return state.IndexQueueSize, state.IndexQueueKnown
 }

@@ -23,6 +23,9 @@ func (s localSearcher) searchCandidates(
 		req.CandidateOnly = true
 	}
 	minimum := relaxedMinimumTermMatches(req)
+	if !deferredEvidence {
+		minimum = 0
+	}
 	strictRequest := req
 	if minimum > 0 && req.WithFacets {
 		strictRequest.WithFacets = false
@@ -39,12 +42,15 @@ func (s localSearcher) searchCandidates(
 
 	relaxedRequest := req
 	relaxedRequest.MinimumTermMatches = minimum
+	relaxedRequest.Relaxed = true
 	relaxed, err := s.index.Search(ctx, relaxedRequest)
 	if err != nil {
 		return searchindex.SearchResultSet{}, fmt.Errorf("relaxed candidates: %w", err)
 	}
 
 	set := fuseCandidateSets(strict, relaxed, originalLimit)
+	req.MinimumTermMatches = minimum
+	req.Relaxed = true
 
 	return finishCandidateEvidence(ctx, evidence, deferredEvidence, req, set)
 }
@@ -64,9 +70,25 @@ func finishCandidateEvidence(
 	if err != nil {
 		return searchindex.SearchResultSet{}, fmt.Errorf("search evidence: %w", err)
 	}
-	set.Results = results
+	set.Results = validatedCandidateEvidence(results, req)
 
 	return set, nil
+}
+
+func validatedCandidateEvidence(
+	results []searchindex.SearchResult,
+	req searchindex.SearchRequest,
+) []searchindex.SearchResult {
+	validated := results[:0]
+	for _, result := range results {
+		if (req.Relaxed || req.MinimumTermMatches > 0) && result.StrictRank == 0 &&
+			!result.EvidenceReady {
+			continue
+		}
+		validated = append(validated, result)
+	}
+
+	return validated
 }
 
 func limitCandidateResults(
@@ -97,7 +119,7 @@ func distinctCandidateTerms(req searchindex.SearchRequest) map[string]struct{} {
 }
 
 func relaxedMinimumTermMatches(req searchindex.SearchRequest) int {
-	if req.Fuzzy || req.Near || req.MinimumTermMatches > 0 {
+	if req.Fuzzy || req.Near || req.Relaxed || req.MinimumTermMatches > 0 {
 		return 0
 	}
 	count := len(distinctCandidateTerms(req))

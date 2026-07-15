@@ -16,6 +16,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/events"
 	"github.com/D4rk4/yago/yagonode/internal/eviction"
+	"github.com/D4rk4/yago/yagonode/internal/hostlinks"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
 	"github.com/D4rk4/yago/yagonode/internal/hosttrust"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
@@ -69,7 +70,7 @@ type node struct {
 	suggest        searchcore.Searcher
 	index          searchindex.SearchIndex
 	docScan        documentstore.StoredDocuments
-	docEvictor     documentstore.DocumentEvictor
+	redirectPurge  redirectCorpusPurge
 	activity       *searchactivity.Tracker
 	schedules      *crawlschedule.Store
 	hostRank       *hostrank.Holder
@@ -170,6 +171,7 @@ func assembleNode(
 	mux, router := newNodeWireMux(config, report)
 	mountNodeWireHandlers(router, identity, storage, telemetry.saturation, config)
 	peerClient := nodePeerClient(config, client)
+	hostLinkSnapshot := hostlinks.NewSnapshotHolder()
 	exchange, err := assembleRuntimePeerExchange(peerExchange{
 		router:   router,
 		identity: identity,
@@ -178,11 +180,9 @@ func assembleNode(
 		vault:    vault,
 		client:   peerClient,
 		peer:     telemetry.peer,
-		host: newCachedStoredDocumentHostLinks(storedDocumentHostLinks{
-			documents: storage.storedDocuments(),
-		}),
-		roster: roster,
-		news:   news,
+		host:     hostLinkSnapshot,
+		roster:   roster,
+		news:     news,
 	})
 	if err != nil {
 		return node{}, err
@@ -191,6 +191,7 @@ func assembleNode(
 		ctx: ctx, config: config, vault: vault, client: client,
 		peerClient: peerClient, storage: storage, roster: roster, identity: identity,
 		report: report, tally: tally, telemetry: telemetry, toggles: telemetry.toggles,
+		hostLinks: hostLinkSnapshot,
 	})
 	if err != nil {
 		return node{}, err
@@ -255,6 +256,7 @@ type assembleSurfacesInput struct {
 	tally      *transfertally.Tally
 	telemetry  nodeTelemetry
 	toggles    *runtimeToggles
+	hostLinks  *hostlinks.SnapshotHolder
 }
 
 type nodeSurfaces struct {
@@ -323,16 +325,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 			admission:  newTavilySearchAdmission(searchLimiter),
 		},
 	))
-	dht := buildRuntimeDHTOutbound(dhtOutboundRuntimeAssembly{
-		ctx:         in.ctx,
-		config:      in.config,
-		storage:     in.vault,
-		nodeStorage: in.storage,
-		report:      in.report,
-		roster:      in.roster,
-		client:      in.peerClient,
-		observer:    tallyOutboundObserver{next: in.telemetry.dhtOutbound, tally: in.tally},
-	})
+	dht := buildSurfaceDHT(in, runtime)
 	searchAccess := searchAccessPolicy(publicSearchAssembly{
 		searchAuthorizer: in.telemetry.searchAuthorizer,
 		searchAPIKey:     in.config.SearchAPIKey,
@@ -494,39 +487,39 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 				trainer: rankingRuntime.trainer, models: parts.models, trust: parts.hostTrust,
 			},
 		),
-		report:       parts.report,
-		searcher:     parts.searcher,
-		suggest:      parts.suggest,
-		index:        parts.storage.searchIndex,
-		docScan:      parts.storage.storedDocuments(),
-		docEvictor:   documentEvictorOf(parts.storage),
-		activity:     parts.activity,
-		schedules:    parts.schedules,
-		hostRank:     parts.hostRank,
-		hostTrust:    parts.hostTrust,
-		spell:        parts.spell,
-		wordForms:    parts.wordForms,
-		swarmMorph:   parts.swarmMorph,
-		corpusPass:   parts.corpusPass,
-		indexAdmin:   newIndexAdminController(parts.storage, parts.vault),
-		postings:     parts.storage.postings,
-		urlDirectory: parts.storage.urlDirectory,
-		roster:       parts.roster,
-		news:         parts.news,
-		sweeper:      newStorageSweeper(parts.vault, parts.storage),
-		announcer:    parts.announcer,
-		lanBeacon:    parts.lanBeacon,
-		crawl:        parts.crawl,
-		dht:          parts.dht,
-		vault:        parts.vault,
-		toggles:      toggles,
-		client:       parts.client,
-		peerBlock:    parts.peerBlock,
-		denylist:     parts.denylist,
-		clicks:       parts.clicks,
-		identity:     parts.identity,
-		theme:        parts.theme,
-		peerEvents:   parts.peerEvents,
+		report:        parts.report,
+		searcher:      parts.searcher,
+		suggest:       parts.suggest,
+		index:         parts.storage.searchIndex,
+		docScan:       parts.storage.storedDocuments(),
+		redirectPurge: newNodeRedirectPurge(parts.storage, parts.vault),
+		activity:      parts.activity,
+		schedules:     parts.schedules,
+		hostRank:      parts.hostRank,
+		hostTrust:     parts.hostTrust,
+		spell:         parts.spell,
+		wordForms:     parts.wordForms,
+		swarmMorph:    parts.swarmMorph,
+		corpusPass:    parts.corpusPass,
+		indexAdmin:    newIndexAdminController(parts.storage, parts.vault),
+		postings:      parts.storage.postings,
+		urlDirectory:  parts.storage.urlDirectory,
+		roster:        parts.roster,
+		news:          parts.news,
+		sweeper:       newStorageSweeper(parts.vault, parts.storage),
+		announcer:     parts.announcer,
+		lanBeacon:     parts.lanBeacon,
+		crawl:         parts.crawl,
+		dht:           parts.dht,
+		vault:         parts.vault,
+		toggles:       toggles,
+		client:        parts.client,
+		peerBlock:     parts.peerBlock,
+		denylist:      parts.denylist,
+		clicks:        parts.clicks,
+		identity:      parts.identity,
+		theme:         parts.theme,
+		peerEvents:    parts.peerEvents,
 	}
 }
 

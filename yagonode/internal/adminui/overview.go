@@ -11,18 +11,27 @@ import (
 // Overview is the node-status snapshot the overview section renders. Its fields
 // are primitives so the console stays decoupled from the node's seed schema.
 type Overview struct {
-	PeerName      string
-	PeerHash      string
-	PeerType      string
-	Version       string
-	UptimeSeconds int
-	Documents     int
-	Words         int
-	KnownPeers    int
-	SentWords     int64
-	ReceivedWords int64
-	SentURLs      int64
-	ReceivedURLs  int64
+	PeerName                string
+	PeerHash                string
+	PeerType                string
+	Version                 string
+	UptimeSeconds           int
+	IndexedDocuments        int
+	IndexedDocumentsKnown   bool
+	URLMetadataRecords      int
+	URLMetadataRecordsKnown bool
+	Words                   int
+	WordsKnown              bool
+	KnownPeers              int
+	KnownPeersKnown         bool
+	SentWords               int64
+	SentWordsKnown          bool
+	ReceivedWords           int64
+	ReceivedWordsKnown      bool
+	SentURLs                int64
+	SentURLsKnown           bool
+	ReceivedURLs            int64
+	ReceivedURLsKnown       bool
 }
 
 // OverviewSource supplies the live overview snapshot on each request.

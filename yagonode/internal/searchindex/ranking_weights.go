@@ -11,6 +11,7 @@ type RankingWeights struct {
 	Anchors  float64 `json:"anchors"`
 	Body     float64 `json:"body"`
 	URL      float64 `json:"url"`
+	URLPrior float64 `json:"urlPrior"`
 	// HostRank scales the local host-authority boost (YBR-style block rank) folded
 	// into a result's score after retrieval. It is a post-retrieval multiplier, not
 	// a text-field boost, so it does not count toward the relevance-weight
@@ -34,73 +35,57 @@ type RankingWeights struct {
 	// mentions the words apart. It completes the Sequential Dependence Model beside
 	// the ordered bigram boost that rides the query, and like the other priors it
 	// is a post-retrieval multiplier that a pre-existing profile decodes as zero.
-	Proximity float64 `json:"proximity"`
+	Proximity           float64 `json:"proximity"`
+	OrderedProximity    float64 `json:"orderedProximity"`
+	LexicalBlend        float64 `json:"lexicalBlend"`
+	LexicalGapAgreement float64 `json:"lexicalGapAgreement"`
 }
 
 func DefaultRankingWeights() RankingWeights {
-	// Text-field weights follow BM25F practice (title ≫ headings ≫ anchors ≫
-	// body); the post-retrieval priors default ON — host authority (YBR) and a
-	// gentle freshness decay — because relevance alone cannot break ties in a
-	// small federated corpus (SEARCH-38).
-	// Field weights sit in the practical BM25F range from the TREC-13 web
-	// track (title and anchor text far above body; Robertson & Zaragoza,
-	// CIKM 2004): anchor text is what OTHER pages call this one — for
-	// navigational queries it outranks the page's own body by an order of
-	// magnitude in tuned systems.
-	return RankingWeights{
-		Title:     6,
-		Headings:  3,
-		Anchors:   4,
-		Body:      1,
-		URL:       2,
-		HostRank:  0.3,
-		Freshness: 0.2,
-		Quality:   0.2,
-		Proximity: 0.15,
+	var weights RankingWeights
+	for _, definition := range rankingWeightDefinitions {
+		weights.Set(definition.Key, definition.Default)
 	}
+
+	return weights
 }
 
 func (w RankingWeights) Validate() error {
-	fields := []struct {
-		name  string
-		value float64
-	}{
-		{"title", w.Title},
-		{"headings", w.Headings},
-		{"anchors", w.Anchors},
-		{"body", w.Body},
-		{"url", w.URL},
-	}
+	return w.validate(true)
+}
+
+func (w RankingWeights) ValidatePersisted() error {
+	return w.validate(false)
+}
+
+func (w RankingWeights) validate(enforceMaximum bool) error {
 	positive := false
-	for _, field := range fields {
-		if math.IsNaN(field.value) || math.IsInf(field.value, 0) {
-			return fmt.Errorf("ranking weight %s must be a finite number", field.name)
+	for _, definition := range rankingWeightDefinitions {
+		value, _ := w.Value(definition.Key)
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return fmt.Errorf("ranking weight %s must be a finite number", definition.Key)
 		}
-		if field.value < 0 {
-			return fmt.Errorf("ranking weight %s must not be negative", field.name)
+		if value < definition.Minimum {
+			return fmt.Errorf(
+				"ranking weight %s must be at least %g",
+				definition.Key,
+				definition.Minimum,
+			)
 		}
-		if field.value > 0 {
+		if enforceMaximum && value > definition.Maximum {
+			return fmt.Errorf(
+				"ranking weight %s must be between %g and %g",
+				definition.Key,
+				definition.Minimum,
+				definition.Maximum,
+			)
+		}
+		if definition.FieldBoost && value > 0 {
 			positive = true
 		}
 	}
 	if !positive {
-		return fmt.Errorf("at least one ranking weight must be positive")
-	}
-	for _, prior := range []struct {
-		name  string
-		value float64
-	}{
-		{"hostRank", w.HostRank},
-		{"freshness", w.Freshness},
-		{"quality", w.Quality},
-		{"proximity", w.Proximity},
-	} {
-		if math.IsNaN(prior.value) || math.IsInf(prior.value, 0) {
-			return fmt.Errorf("ranking weight %s must be a finite number", prior.name)
-		}
-		if prior.value < 0 {
-			return fmt.Errorf("ranking weight %s must not be negative", prior.name)
-		}
+		return fmt.Errorf("at least one field boost must be positive")
 	}
 
 	return nil

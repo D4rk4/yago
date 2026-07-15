@@ -44,6 +44,7 @@ type SearchRequest struct {
 	IncludePositions bool
 	CandidateOnly    bool
 	Fuzzy            bool
+	Relaxed          bool
 	// Author keeps only documents whose extracted author metadata contains this
 	// text (case-insensitive).
 	Author string
@@ -143,6 +144,7 @@ type SearchResult struct {
 	// Images carries the document's extracted images for the image vertical.
 	Images                 []ResultImage
 	quotedPhrasePreference float64
+	relaxedPassageEvidence bool
 }
 
 // ResultImage is one extracted page image surfaced by the image vertical.

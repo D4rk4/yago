@@ -1,10 +1,8 @@
 package yagonode
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,16 +14,8 @@ import (
 )
 
 const (
-	hostLinkGraphScanFailedMessage = "host link graph scan failed"
-	hostLinkMaxLinkedHosts         = 4096
-	hostLinkMaxReferencesPerHost   = 64
-	hostLinkMaxReferences          = 32768
-	secondsPerDay                  = 86400
+	secondsPerDay = 86400
 )
-
-type storedDocumentHostLinks struct {
-	documents documentstore.StoredDocuments
-}
 
 type hostLinkReference struct {
 	ModifiedDay int64
@@ -41,38 +31,6 @@ type hostLinkCapacity struct {
 type hostLinkAccumulator struct {
 	incoming   map[string]map[string]hostLinkReference
 	references int
-}
-
-func (s storedDocumentHostLinks) IncomingHostLinks(ctx context.Context) hostlinks.Graph {
-	graph, err := s.scan(ctx)
-	if err != nil {
-		slog.WarnContext(ctx, hostLinkGraphScanFailedMessage, slog.Any("error", err))
-	}
-
-	return graph
-}
-
-func (s storedDocumentHostLinks) scan(ctx context.Context) (hostlinks.Graph, error) {
-	graph := hostlinks.Graph{RowDefinition: hostlinks.HostReferenceRowDefinition}
-	if s.documents == nil {
-		return graph, nil
-	}
-
-	accumulator := hostLinkAccumulator{
-		incoming: map[string]map[string]hostLinkReference{},
-	}
-	err := s.documents.StoredDocuments(ctx, func(doc documentstore.Document) (bool, error) {
-		collectDocumentHostLinks(&accumulator, doc)
-
-		return true, nil
-	})
-	if err != nil {
-		return graph, fmt.Errorf("scan stored documents for host links: %w", err)
-	}
-
-	graph.LinkedHosts = hostLinkGraphHosts(accumulator.incoming)
-
-	return graph, nil
 }
 
 func collectDocumentHostLinks(
@@ -97,9 +55,9 @@ func collectDocumentHostLinks(
 			source,
 			day,
 			hostLinkCapacity{
-				linkedHosts:       hostLinkMaxLinkedHosts,
-				referencesPerHost: hostLinkMaxReferencesPerHost,
-				references:        hostLinkMaxReferences,
+				linkedHosts:       hostlinks.MaximumSnapshotLinkedHosts,
+				referencesPerHost: hostlinks.MaximumSnapshotReferencesPerHost,
+				references:        hostlinks.MaximumSnapshotReferences,
 			},
 		)
 	}
@@ -159,7 +117,7 @@ func documentModifiedDay(doc documentstore.Document) int64 {
 func hostLinkGraphHosts(
 	incoming map[string]map[string]hostLinkReference,
 ) []hostlinks.LinkedHost {
-	targets := firstSortedKeys(incoming, hostLinkMaxLinkedHosts)
+	targets := firstSortedKeys(incoming, hostlinks.MaximumSnapshotLinkedHosts)
 	hosts := make([]hostlinks.LinkedHost, 0, len(targets))
 	for _, target := range targets {
 		hosts = append(hosts, hostlinks.LinkedHost{
@@ -174,7 +132,7 @@ func hostLinkGraphHosts(
 func hostLinkReferenceMessages(
 	references map[string]hostLinkReference,
 ) []json.RawMessage {
-	sources := firstSortedKeys(references, hostLinkMaxReferencesPerHost)
+	sources := firstSortedKeys(references, hostlinks.MaximumSnapshotReferencesPerHost)
 	messages := make([]json.RawMessage, 0, len(sources))
 	for _, source := range sources {
 		reference := references[source]

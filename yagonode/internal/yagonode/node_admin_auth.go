@@ -7,6 +7,7 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/adminauth"
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
+	"github.com/D4rk4/yago/yagonode/internal/siteicon"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -52,6 +53,9 @@ func guardAdminSurface(service *adminauth.Service, opsMux *http.ServeMux) http.H
 			adminauth.PathSetup,
 			adminauth.PathLoginPage,
 			adminauth.PathSetupPage,
+			adminauth.PathAuthStylesheet,
+			siteicon.Path,
+			siteicon.LegacyPath,
 		},
 		map[string]adminauth.Scope{
 			crawldispatch.PathCrawlDispatch: adminauth.ScopeCrawlWrite,

@@ -33,14 +33,22 @@ func newTestSettingsSource(
 }
 
 func portalItem(t *testing.T, view adminui.SettingsView) adminui.SettingItem {
+	return settingViewItem(t, view, settingKeyPublicSearchPortal)
+}
+
+func settingViewItem(
+	t *testing.T,
+	view adminui.SettingsView,
+	key string,
+) adminui.SettingItem {
 	t.Helper()
 
 	for _, item := range view.Items {
-		if item.Key == settingKeyPublicSearchPortal {
+		if item.Key == key {
 			return item
 		}
 	}
-	t.Fatal("portal setting not present in view")
+	t.Fatalf("setting %q not present in view", key)
 
 	return adminui.SettingItem{}
 }
@@ -100,6 +108,47 @@ func TestSettingsSourceReportsStoredOverride(t *testing.T) {
 	}
 }
 
+func TestSettingsSourceDistinguishesAppliedAndPendingRestartOverrides(t *testing.T) {
+	environment := nodeConfig{Name: "environment-name"}
+	source, store, _ := newTestSettingsSource(t, environment)
+	startup := environment
+	startup.Name = "applied-name"
+	source.withStartupConfig(startup)
+	definition := indexSettingDefinitions()["peer.name"]
+
+	if err := store.Set(context.Background(), definition.key, "applied-name"); err != nil {
+		t.Fatalf("Set applied override: %v", err)
+	}
+	if item := settingViewItem(
+		t,
+		source.Settings(context.Background()),
+		definition.key,
+	); item.PendingRestart {
+		t.Fatalf("already applied override marked pending: %+v", item)
+	}
+
+	if err := store.Set(context.Background(), definition.key, "next-name"); err != nil {
+		t.Fatalf("Set pending override: %v", err)
+	}
+	if item := settingViewItem(
+		t,
+		source.Settings(context.Background()),
+		definition.key,
+	); !item.PendingRestart {
+		t.Fatalf("unapplied override not marked pending: %+v", item)
+	}
+	if err := store.Unset(context.Background(), definition.key); err != nil {
+		t.Fatalf("Unset pending override: %v", err)
+	}
+	if item := settingViewItem(
+		t,
+		source.Settings(context.Background()),
+		definition.key,
+	); !item.PendingRestart || item.Overridden {
+		t.Fatalf("unapplied reset not marked pending: %+v", item)
+	}
+}
+
 func TestSettingsSourceReportsWebFallbackEnvironmentSentinel(t *testing.T) {
 	environment := nodeConfig{WebFallback: webFallbackConfig{Privacy: webFallbackPrivacyAlways}}
 	source, store, _ := newTestSettingsSource(t, environment)
@@ -111,7 +160,7 @@ func TestSettingsSourceReportsWebFallbackEnvironmentSentinel(t *testing.T) {
 		t.Fatal(err)
 	}
 	definition := indexSettingDefinitions()[settingKeyWebFallbackPrivacy]
-	item := source.item(context.Background(), definition)
+	item := settingViewItem(t, source.Settings(context.Background()), definition.key)
 	if item.Value != string(webFallbackPrivacyAlways) || item.Overridden {
 		t.Fatalf("item = %q/%v, want environment always", item.Value, item.Overridden)
 	}
@@ -127,9 +176,66 @@ func TestSettingsSourceReportsCanonicalWebFallbackOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	definition := indexSettingDefinitions()[settingKeyWebFallbackPrivacy]
-	item := source.item(context.Background(), definition)
+	item := settingViewItem(t, source.Settings(context.Background()), definition.key)
 	if item.Value != string(webFallbackPrivacyAlways) || !item.Overridden {
 		t.Fatalf("item = %q/%v, want overridden always", item.Value, item.Overridden)
+	}
+}
+
+func TestSettingsSourceReportsUnavailableStoredState(t *testing.T) {
+	t.Parallel()
+
+	source, store, _ := newTestSettingsSource(t, nodeConfig{PublicSearchUIEnabled: true})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	view := source.Settings(ctx)
+	if view.Error != runtimeSettingsUnavailable || len(view.Items) != 0 {
+		t.Fatalf("cancelled read = %+v", view)
+	}
+
+	if err := store.Set(
+		context.Background(),
+		settingKeyPublicSearchPortal,
+		"not-a-boolean",
+	); err != nil {
+		t.Fatalf("Set invalid override: %v", err)
+	}
+	view = source.Settings(context.Background())
+	if view.Error != runtimeSettingsUnavailable || len(view.Items) != 0 {
+		t.Fatalf("invalid override = %+v", view)
+	}
+}
+
+func TestLoadRuntimeSettingsDoesNotMarkDerivedPeerNamePending(t *testing.T) {
+	t.Parallel()
+
+	v, err := memvault.Open(0)
+	if err != nil {
+		t.Fatalf("memvault.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = v.Close() })
+	config := testConfig(t)
+	config.Hash = ""
+	config.Name = ""
+	sources, _, effective, err := loadRuntimeSettings(
+		context.Background(),
+		v,
+		config,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("loadRuntimeSettings: %v", err)
+	}
+	if effective.Name == "" {
+		t.Fatal("peer identity did not derive a runtime name")
+	}
+	item := settingViewItem(
+		t,
+		sources.settings.Settings(context.Background()),
+		"peer.name",
+	)
+	if item.PendingRestart {
+		t.Fatalf("identity-derived peer name marked pending: %+v", item)
 	}
 }
 

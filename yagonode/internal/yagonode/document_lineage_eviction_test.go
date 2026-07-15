@@ -76,9 +76,43 @@ func (s *lineageDocumentScript) Delete(
 }
 
 type lineageAnchorScript struct {
-	update documentstore.AnchorUpdate
-	err    error
-	sets   []documentstore.OutboundAnchorSet
+	update        documentstore.AnchorUpdate
+	documents     []documentstore.Document
+	err           error
+	finalizeErr   error
+	sets          []documentstore.OutboundAnchorSet
+	finalizations []documentstore.OutboundAnchorFinalization
+	finalizeCalls int
+}
+
+func (s *lineageAnchorScript) VisitOutboundAnchorDocuments(
+	_ context.Context,
+	_ []documentstore.OutboundAnchorFinalization,
+	visit func([]documentstore.Document) error,
+) error {
+	if len(s.documents) == 0 {
+		return nil
+	}
+
+	return visit(s.documents)
+}
+
+func (s *lineageAnchorScript) FinalizeOutboundAnchors(
+	_ context.Context,
+	finalizations []documentstore.OutboundAnchorFinalization,
+) error {
+	s.finalizeCalls++
+	s.finalizations = append(
+		[]documentstore.OutboundAnchorFinalization(nil),
+		finalizations...,
+	)
+
+	return s.finalizeErr
+}
+
+func (*lineageAnchorScript) ReleaseOutboundAnchors(
+	[]documentstore.OutboundAnchorFinalization,
+) {
 }
 
 func (s *lineageAnchorScript) ReplaceOutboundAnchors(
@@ -125,8 +159,10 @@ func (s *lineageClusterScript) Cluster(
 }
 
 type lineageIndexScript struct {
-	docs []documentstore.Document
-	err  error
+	docs      []documentstore.Document
+	deleted   []string
+	err       error
+	deleteErr error
 }
 
 func (s *lineageIndexScript) Index(
@@ -134,6 +170,27 @@ func (s *lineageIndexScript) Index(
 	doc documentstore.Document,
 ) error {
 	s.docs = append(s.docs, doc)
+
+	return s.err
+}
+
+func (s *lineageIndexScript) Delete(_ context.Context, url string) error {
+	s.deleted = append(s.deleted, url)
+
+	return s.deleteErr
+}
+
+type lineageBatchIndexScript struct {
+	lineageIndexScript
+	batches int
+}
+
+func (s *lineageBatchIndexScript) IndexBatch(
+	_ context.Context,
+	docs []documentstore.Document,
+) error {
+	s.batches++
+	s.docs = append(s.docs, docs...)
 
 	return s.err
 }
@@ -159,12 +216,10 @@ func TestDocumentLineageEvictorRefreshesAnchorsAndCluster(t *testing.T) {
 		commitReceipt: true,
 	}
 	anchors := &lineageAnchorScript{
-		update: documentstore.AnchorUpdate{
-			Documents: []documentstore.Document{{
-				NormalizedURL: targetURL,
-				Title:         "anchor refresh",
-			}},
-		},
+		documents: []documentstore.Document{{
+			NormalizedURL: targetURL,
+			Title:         "anchor refresh",
+		}},
 	}
 	clusters := &lineageClusterScript{
 		assignment:  contentcluster.Assignment{ClusterID: "cluster"},
@@ -191,21 +246,79 @@ func TestDocumentLineageEvictorRefreshesAnchorsAndCluster(t *testing.T) {
 		t.Fatalf("delete lineage = %v, %v", removed, err)
 	}
 	if len(anchors.sets) != 1 || anchors.sets[0].SourceURL != sourceURL ||
-		len(anchors.sets[0].Anchors) != 0 {
+		len(anchors.sets[0].Anchors) != 0 || anchors.finalizeCalls != 1 {
 		t.Fatalf("anchor cleanup = %#v", anchors.sets)
 	}
-	if len(clusters.deleted) != 1 || len(documents.deleted) != 1 {
+	if len(clusters.deleted) != 1 || len(documents.deleted) != 1 ||
+		len(index.deleted) != 1 || index.deleted[0] != sourceURL {
 		t.Fatalf("deletions = %#v / %#v", clusters.deleted, documents.deleted)
 	}
-	if len(documents.received) != 2 || len(index.docs) != 2 {
+	if len(documents.received) != 2 || len(index.docs) != 3 {
 		t.Fatalf("refreshes = %#v / %#v", documents.received, index.docs)
 	}
 	member := documents.docs[memberURL]
 	if member.ClusterID != "cluster" || member.RepresentativeURL != memberURL {
 		t.Fatalf("surviving member = %#v", member)
 	}
-	if documents.docs[targetURL].Title != "anchor refresh" {
-		t.Fatalf("anchor target = %#v", documents.docs[targetURL])
+	if index.docs[0].NormalizedURL != targetURL || index.docs[0].Title != "anchor refresh" {
+		t.Fatalf("anchor target = %#v", index.docs[0])
+	}
+}
+
+func TestDocumentLineageEvictorReemitsSurvivorsAfterPartialIndexRetry(t *testing.T) {
+	source := "https://source.example/"
+	first := "https://member.example/first"
+	second := "https://member.example/second"
+	documents := &lineageDocumentScript{
+		docs: map[string]documentstore.Document{
+			source: {NormalizedURL: source, ClusterID: "cluster"},
+			first: {
+				NormalizedURL:     first,
+				ClusterID:         "cluster",
+				RepresentativeURL: first,
+			},
+			second: {
+				NormalizedURL:     second,
+				ClusterID:         "cluster",
+				RepresentativeURL: first,
+			},
+		},
+		commitReceipt: true,
+	}
+	clusters := &lineageClusterScript{
+		assignment:  contentcluster.Assignment{ClusterID: "cluster"},
+		lookupFound: true,
+		cluster: contentcluster.Cluster{
+			ID:                "cluster",
+			RepresentativeURL: first,
+			MemberURLs:        []string{source, first, second},
+		},
+		clusterFound: true,
+	}
+	indexFailure := errors.New("partial index failure")
+	index := &lineageIndexScript{err: indexFailure}
+	evictor := documentLineageEvictor{
+		directory: documents,
+		receiver:  documents,
+		documents: documents,
+		clusters:  clusters,
+		index:     index,
+	}
+	if removed, err := evictor.Delete(t.Context(), source); err == nil || removed {
+		t.Fatalf("partial delete = %t, %v", removed, err)
+	}
+	if len(index.docs) != 1 || len(documents.deleted) != 0 {
+		t.Fatalf("partial index/deletes = %#v/%#v", index.docs, documents.deleted)
+	}
+	clusters.lookupFound = false
+	index.err = nil
+	removed, err := evictor.Delete(t.Context(), source)
+	if err != nil || !removed {
+		t.Fatalf("retried delete = %t, %v", removed, err)
+	}
+	if len(index.docs) != 3 || index.docs[1].NormalizedURL != first ||
+		index.docs[2].NormalizedURL != second {
+		t.Fatalf("retried survivor index = %#v", index.docs)
 	}
 }
 
@@ -262,6 +375,15 @@ func TestDocumentLineageEvictorSurfacesAnchorAndPersistenceFailures(t *testing.T
 				anchors: &lineageAnchorScript{update: documentstore.AnchorUpdate{
 					Busy: true,
 				}},
+			},
+		},
+		{
+			name: "anchor finalization",
+			evictor: documentLineageEvictor{
+				documents: lineageDocumentsWithMember(),
+				anchors: &lineageAnchorScript{
+					finalizeErr: sentinel,
+				},
 			},
 		},
 		{
@@ -354,30 +476,6 @@ func TestDocumentLineageEvictorHandlesOptionalAndMissingState(t *testing.T) {
 		t.Fatalf("optional cleanup = %v, %v", removed, err)
 	}
 
-	missing := &lineageClusterScript{}
-	evictor = documentLineageEvictor{documents: documents, clusters: missing}
-	if updates, err := evictor.deleteContentCluster(
-		t.Context(),
-		"https://missing.example/",
-	); err != nil || updates != nil {
-		t.Fatalf("missing assignment = %#v, %v", updates, err)
-	}
-	missing.lookupFound = true
-	missing.assignment.ClusterID = "gone"
-	if updates, err := evictor.deleteContentCluster(
-		t.Context(),
-		"https://missing.example/",
-	); err != nil || updates != nil {
-		t.Fatalf("missing cluster = %#v, %v", updates, err)
-	}
-	missing.clusterFound = true
-	missing.cluster = contentcluster.Cluster{ID: "gone"}
-	if updates, err := evictor.deleteContentCluster(
-		t.Context(),
-		"https://missing.example/",
-	); err != nil || updates != nil {
-		t.Fatalf("missing directory = %#v, %v", updates, err)
-	}
 	if err := evictor.commitUpdates(t.Context(), nil); err != nil {
 		t.Fatalf("empty updates: %v", err)
 	}
@@ -385,6 +483,19 @@ func TestDocumentLineageEvictorHandlesOptionalAndMissingState(t *testing.T) {
 		"https://updated.example/": {NormalizedURL: "https://updated.example/"},
 	}); err != nil {
 		t.Fatalf("optional update persistence: %v", err)
+	}
+}
+
+func TestDocumentLineageEvictorIndexesLineageUpdatesInOneBatch(t *testing.T) {
+	index := &lineageBatchIndexScript{}
+	evictor := documentLineageEvictor{index: index}
+	err := evictor.commitUpdates(t.Context(), map[string]documentstore.Document{
+		"https://b.example/": {NormalizedURL: "https://b.example/"},
+		"https://a.example/": {NormalizedURL: "https://a.example/"},
+	})
+	if err != nil || index.batches != 1 || len(index.docs) != 2 ||
+		index.docs[0].NormalizedURL != "https://a.example/" {
+		t.Fatalf("batch lineage update = %v, %d, %#v", err, index.batches, index.docs)
 	}
 }
 

@@ -181,7 +181,7 @@ func TestLexicalRerankSearcherOwnsCandidateAndResultWindows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if inner.got.Offset != 0 || inner.got.Limit != 50 {
+	if inner.got.Offset != 0 || inner.got.Limit != 50 || !inner.got.RankingFeatures {
 		t.Fatalf("candidate request = %+v", inner.got)
 	}
 	if len(resp.Results) != 1 || resp.Results[0].URL != "a" || resp.Request.Limit != 1 {
@@ -202,7 +202,7 @@ func TestRankingCandidateRequest(t *testing.T) {
 	}
 	for _, tc := range cases {
 		got := rankingCandidateRequest(tc.req)
-		if got.Offset != 0 || got.Limit != tc.want {
+		if got.Offset != 0 || got.Limit != tc.want || !got.RankingFeatures {
 			t.Errorf("rankingCandidateRequest(%+v) = %+v, want limit %d", tc.req, got, tc.want)
 		}
 	}

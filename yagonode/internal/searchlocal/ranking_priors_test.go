@@ -135,7 +135,7 @@ func TestURLLengthPriorPrefersRootPages(t *testing.T) {
 	searcher := NewSearcherWithRanking(
 		index,
 		func() searchindex.RankingWeights {
-			return searchindex.RankingWeights{Title: 1, Freshness: 0.1}
+			return searchindex.RankingWeights{Title: 1, URLPrior: 1}
 		},
 		nil,
 	)
@@ -196,15 +196,12 @@ func TestQualityPriorLiftsCleanContent(t *testing.T) {
 	}
 }
 
-// TestProximityPriorLiftsClusteredTerms pins the RANK-03 SDM unordered-window
-// feature: with equal relevance a page where the query words cluster together
-// outranks one where they merely both appear.
-func TestProximityPriorLiftsClusteredTerms(t *testing.T) {
+func TestProximityPriorIsNotAppliedTwice(t *testing.T) {
 	index := &fakeIndex{response: searchindex.SearchResultSet{
 		Total: 2,
 		Results: []searchindex.SearchResult{
+			{Title: "Clustered", URL: "https://b.example/page", Score: 1.5, Proximity: 1.0},
 			{Title: "Scattered", URL: "https://a.example/page", Score: 1.0, Proximity: 0.0},
-			{Title: "Clustered", URL: "https://b.example/page", Score: 1.0, Proximity: 1.0},
 		},
 	}}
 	searcher := NewSearcherWithRanking(
@@ -222,6 +219,9 @@ func TestProximityPriorLiftsClusteredTerms(t *testing.T) {
 	if titles := resultTitles(resp.Results); titles[0] != "Clustered" {
 		t.Fatalf("order = %v, want the clustered page first", titles)
 	}
+	if resp.Results[0].Score != 1.5 {
+		t.Fatalf("clustered score = %v, proximity was applied twice", resp.Results[0].Score)
+	}
 }
 
 // TestHostRankDefaultEnabled pins the SEARCH-38 default flip: the default
@@ -230,7 +230,9 @@ func TestProximityPriorLiftsClusteredTerms(t *testing.T) {
 func TestHostRankDefaultEnabled(t *testing.T) {
 	weights := searchindex.DefaultRankingWeights()
 	if weights.HostRank <= 0 || weights.Freshness <= 0 ||
-		weights.Quality <= 0 || weights.Proximity <= 0 {
+		weights.Quality <= 0 || weights.URLPrior <= 0 ||
+		weights.OrderedProximity <= 0 || weights.Proximity <= 0 ||
+		weights.LexicalBlend <= 0 || weights.LexicalGapAgreement <= 0 {
 		t.Fatalf("default priors disabled: %+v", weights)
 	}
 	if err := weights.Validate(); err != nil {
@@ -249,6 +251,100 @@ func TestHostRankDefaultEnabled(t *testing.T) {
 	negativeProximity.Proximity = -1
 	if err := negativeProximity.Validate(); err == nil {
 		t.Fatal("negative proximity must fail validation")
+	}
+}
+
+func TestRankingFeaturesAttachAuthorityAndFreshnessAtZeroManualWeights(t *testing.T) {
+	published := time.Now().AddDate(0, 0, -1)
+	index := &fakeIndex{response: searchindex.SearchResultSet{Results: []searchindex.SearchResult{
+		{
+			URL:            "https://www.example.com/page",
+			Score:          2,
+			PublishedDate:  published,
+			DateConfidence: 1,
+		},
+	}}}
+	tableReads := 0
+	searcher := NewSearcherWithRanking(
+		index,
+		func() searchindex.RankingWeights { return searchindex.RankingWeights{Title: 1} },
+		func() hostrank.AuthorityTable {
+			tableReads++
+
+			return hostrank.AuthorityTable{
+				"example.com": {Score: 0.8, Confidence: 0.5},
+			}
+		},
+	)
+	response, err := searcher.Search(t.Context(), searchcore.Request{
+		Query: "query", RankingFeatures: true,
+	})
+	if err != nil {
+		t.Fatalf("search with evidence: %v", err)
+	}
+	if tableReads != 1 || response.Results[0].Score != 2 {
+		t.Fatalf("table reads = %d, result = %+v", tableReads, response.Results[0])
+	}
+	for signal, want := range map[searchcore.RankingSignal]float64{
+		searchcore.SignalAuthority:           0.8,
+		searchcore.SignalAuthorityConfidence: 0.5,
+	} {
+		value, known := response.Results[0].Evidence.Value(signal)
+		if !known || value != want {
+			t.Fatalf("signal %s = %v/%v, want %v", signal.Name(), value, known, want)
+		}
+	}
+	if value, known := response.Results[0].Evidence.Value(
+		searchcore.SignalFreshness,
+	); !known ||
+		value <= 0 {
+		t.Fatalf("freshness = %v/%v", value, known)
+	}
+
+	withoutEvidence, err := searcher.Search(t.Context(), searchcore.Request{Query: "query"})
+	if err != nil {
+		t.Fatalf("search without evidence: %v", err)
+	}
+	if tableReads != 1 {
+		t.Fatalf("ordinary search loaded authority table %d times", tableReads)
+	}
+	if _, known := withoutEvidence.Results[0].Evidence.Value(searchcore.SignalAuthority); known {
+		t.Fatal("ordinary zero-weight search attached authority evidence")
+	}
+	if _, known := withoutEvidence.Results[0].Evidence.Value(searchcore.SignalFreshness); known {
+		t.Fatal("ordinary zero-weight search attached freshness evidence")
+	}
+}
+
+func TestURLPriorWeightCanDisableScoreWithoutChangingEvidenceScale(t *testing.T) {
+	index := &fakeIndex{response: searchindex.SearchResultSet{Results: []searchindex.SearchResult{
+		{Title: "Deep", URL: "https://a.example/a/very/deep/page", Score: 1},
+		{Title: "Root", URL: "https://b.example/", Score: 1},
+	}}}
+	weights := searchindex.RankingWeights{Title: 1, URLPrior: 1}
+	searcher := NewSearcherWithRanking(
+		index,
+		func() searchindex.RankingWeights { return weights },
+		nil,
+	)
+	response, err := searcher.Search(t.Context(), searchcore.Request{Query: "query"})
+	if err != nil {
+		t.Fatalf("enabled search: %v", err)
+	}
+	if response.Results[0].Title != "Root" {
+		t.Fatalf("enabled order = %+v", response.Results)
+	}
+	value, known := response.Results[0].Evidence.Value(searchcore.SignalURLPrior)
+	if !known || value != urlPriorWeight {
+		t.Fatalf("URL evidence = %v/%v, want %v", value, known, urlPriorWeight)
+	}
+	weights.URLPrior = 0
+	response, err = searcher.Search(t.Context(), searchcore.Request{Query: "query"})
+	if err != nil {
+		t.Fatalf("disabled search: %v", err)
+	}
+	if response.Results[0].Title != "Deep" || response.Results[0].Score != 1 {
+		t.Fatalf("disabled order = %+v", response.Results)
 	}
 }
 

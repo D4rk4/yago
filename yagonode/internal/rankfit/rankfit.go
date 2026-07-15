@@ -45,49 +45,31 @@ func DefaultOptions() Options {
 }
 
 type dimension struct {
-	get func(searchindex.RankingWeights) float64
-	set func(*searchindex.RankingWeights, float64)
+	key string
+}
+
+func (dimension dimension) get(weights searchindex.RankingWeights) float64 {
+	value, _ := weights.Value(dimension.key)
+
+	return value
+}
+
+func (dimension dimension) set(weights *searchindex.RankingWeights, value float64) {
+	weights.Set(dimension.key, value)
 }
 
 // dimensions enumerates every tunable weight in a fixed order so the search is
 // deterministic and reproducible.
-var dimensions = []dimension{
-	{
-		func(w searchindex.RankingWeights) float64 { return w.Title },
-		func(w *searchindex.RankingWeights, v float64) { w.Title = v },
-	},
-	{
-		func(w searchindex.RankingWeights) float64 { return w.Headings },
-		func(w *searchindex.RankingWeights, v float64) { w.Headings = v },
-	},
-	{
-		func(w searchindex.RankingWeights) float64 { return w.Anchors },
-		func(w *searchindex.RankingWeights, v float64) { w.Anchors = v },
-	},
-	{
-		func(w searchindex.RankingWeights) float64 { return w.Body },
-		func(w *searchindex.RankingWeights, v float64) { w.Body = v },
-	},
-	{
-		func(w searchindex.RankingWeights) float64 { return w.URL },
-		func(w *searchindex.RankingWeights, v float64) { w.URL = v },
-	},
-	{
-		func(w searchindex.RankingWeights) float64 { return w.HostRank },
-		func(w *searchindex.RankingWeights, v float64) { w.HostRank = v },
-	},
-	{
-		func(w searchindex.RankingWeights) float64 { return w.Freshness },
-		func(w *searchindex.RankingWeights, v float64) { w.Freshness = v },
-	},
-	{
-		func(w searchindex.RankingWeights) float64 { return w.Quality },
-		func(w *searchindex.RankingWeights, v float64) { w.Quality = v },
-	},
-	{
-		func(w searchindex.RankingWeights) float64 { return w.Proximity },
-		func(w *searchindex.RankingWeights, v float64) { w.Proximity = v },
-	},
+var dimensions = rankingDimensions()
+
+func rankingDimensions() []dimension {
+	definitions := searchindex.RankingWeightDefinitions()
+	dimensions := make([]dimension, 0, len(definitions))
+	for _, definition := range definitions {
+		dimensions = append(dimensions, dimension{key: definition.Key})
+	}
+
+	return dimensions
 }
 
 // Ascend runs coordinate ascent from start, returning the best weights found,

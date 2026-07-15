@@ -186,7 +186,7 @@ func TestNetworkSourceSurfacesSeedlistStatus(t *testing.T) {
 		t.Fatalf("entries = %+v", entries)
 	}
 	entry := entries[0]
-	if !entry.Imported || !entry.OK || entry.Result != "12 seeds" {
+	if !entry.StatusKnown || !entry.Imported || !entry.OK || entry.Result != "12 seeds" {
 		t.Fatalf("entry = %+v", entry)
 	}
 	if entry.LastImport != "2026-07-04T09:00:00Z" {
@@ -194,7 +194,7 @@ func TestNetworkSourceSurfacesSeedlistStatus(t *testing.T) {
 	}
 }
 
-func TestNetworkSourceIgnoresSeedlistStatusError(t *testing.T) {
+func TestNetworkSourceMarksSeedlistStatusUnavailableOnError(t *testing.T) {
 	url := "https://seeds.example/seed.txt"
 	source := newNetworkSource(
 		dhtGateStatusSource{},
@@ -205,8 +205,8 @@ func TestNetworkSourceIgnoresSeedlistStatusError(t *testing.T) {
 	)
 
 	entries := source.Network(context.Background()).Seedlists
-	if len(entries) != 1 || entries[0].Imported {
-		t.Fatalf("a status read error should leave the entry un-imported: %+v", entries)
+	if len(entries) != 1 || entries[0].StatusKnown || entries[0].Imported {
+		t.Fatalf("a status read error should mark the entry unavailable: %+v", entries)
 	}
 }
 

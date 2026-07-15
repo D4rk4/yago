@@ -30,15 +30,17 @@ func (f *fakeTheme) Render(_ context.Context, page string, view map[string]any) 
 
 func richResults() SearchResults {
 	return SearchResults{
-		Query:         "cats",
-		TotalResults:  12,
-		LocalCount:    5,
-		PeerCount:     4,
-		WebCount:      3,
-		PeersFailed:   1,
-		Recovered:     true,
-		DidYouMean:    "cat",
-		DidYouMeanURL: "/?q=cat",
+		Query:                 "cats",
+		TotalResults:          12,
+		LocalCount:            5,
+		PeerCount:             4,
+		WebCount:              3,
+		PeersFailed:           1,
+		FederationUnavailable: true,
+		Incomplete:            true,
+		Recovered:             true,
+		DidYouMean:            "cat",
+		DidYouMeanURL:         "/?q=cat",
 		Results: []SearchResult{{
 			Title:       "First <hit>",
 			URL:         "https://example.com/a",
@@ -59,7 +61,7 @@ func richResults() SearchResults {
 		}},
 		Facets: []FacetGroup{
 			{
-				Title: "Hosts",
+				Title: "Hosts", Scope: "the local corpus",
 				Items: []FacetItem{
 					{Label: "example.com", Count: 5, URL: "/?q=cats+site%3Aexample.com"},
 				},
@@ -182,6 +184,9 @@ func assertTopLevelView(t *testing.T, view map[string]any) {
 	if view["query"] != "cats" || view["submitted"] != true || view["newTab"] != true {
 		t.Fatalf("top-level view mismatch: %+v", view)
 	}
+	if view["openSearchTitle"] != "yago search" {
+		t.Fatalf("OpenSearch title = %q, want yago search", view["openSearchTitle"])
+	}
 	if view["rssUrl"] != "/yacysearch.rss?query=cats" ||
 		view["jsonUrl"] != "/yacysearch.json?query=cats" {
 		t.Errorf("format links mismatch: %+v", view)
@@ -209,7 +214,8 @@ func assertResultsView(t *testing.T, view map[string]any) {
 	}
 	for key, want := range map[string]any{
 		"query": "cats", "totalResults": 12, "localCount": 5, "peerCount": 4,
-		"webCount": 3, "peersFailed": 1, "recovered": true,
+		"webCount": 3, "peersFailed": 1, "federationUnavailable": true,
+		"incomplete": true, "recovered": true,
 		"didYouMean": "cat", "didYouMeanUrl": "/?q=cat",
 	} {
 		if results[key] != want {
@@ -247,7 +253,8 @@ func assertHitView(t *testing.T, results map[string]any) {
 func assertFacetView(t *testing.T, results map[string]any) {
 	t.Helper()
 	facets, ok := results["facets"].([]map[string]any)
-	if !ok || len(facets) != 1 || facets[0]["title"] != "Hosts" {
+	if !ok || len(facets) != 1 || facets[0]["title"] != "Hosts" ||
+		facets[0]["scope"] != "the local corpus" {
 		t.Fatalf("facets mismatch: %+v", results["facets"])
 	}
 	items, ok := facets[0]["items"].([]map[string]any)

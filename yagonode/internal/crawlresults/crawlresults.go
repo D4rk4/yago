@@ -79,6 +79,14 @@ type URLPurger interface {
 	Purge(ctx context.Context, urls []yagomodel.Hash) error
 }
 
+type ResolvedURLPurger interface {
+	PurgeResolved(
+		ctx context.Context,
+		normalizedURLs []string,
+		urls []yagomodel.Hash,
+	) error
+}
+
 type noopURLPurger struct{}
 
 func (noopURLPurger) Purge(context.Context, []yagomodel.Hash) error { return nil }
@@ -106,20 +114,23 @@ func (noopStaleSweeper) PurgeStalePostings(
 }
 
 type IngestConsumer struct {
-	stream       IngestStream
-	documents    documentstore.DocumentReceiver
-	anchors      documentstore.InboundAnchorReceiver
-	index        searchindex.SearchIndex
-	urls         urlmeta.URLReceiver
-	postings     rwi.PostingReceiver
-	observer     IngestObserver
-	recorder     FetchRecorder
-	owner        OwnershipCheck
-	purger       URLPurger
-	stale        StalePostingSweeper
-	clusters     ContentClusters
-	safety       ContentSafetyClassifier
-	observations observationHistory
+	stream            IngestStream
+	documents         documentstore.DocumentReceiver
+	anchors           documentstore.InboundAnchorReceiver
+	lineages          documentstore.DocumentLineageReserver
+	reservedAnchors   documentstore.ReservedOutboundAnchorReceiver
+	reservedDocuments documentstore.ReservedCanonicalDocumentDirectory
+	index             searchindex.SearchIndex
+	urls              urlmeta.URLReceiver
+	postings          rwi.PostingReceiver
+	observer          IngestObserver
+	recorder          FetchRecorder
+	owner             OwnershipCheck
+	purger            URLPurger
+	stale             StalePostingSweeper
+	clusters          ContentClusters
+	safety            ContentSafetyClassifier
+	observations      observationHistory
 	// quality names the rule a document's text violates, "" for indexable text;
 	// nil skips the gate.
 	quality func(text string) string
@@ -149,21 +160,27 @@ func NewIngestConsumerWithIndex(
 	postings rwi.PostingReceiver,
 ) *IngestConsumer {
 	anchors, _ := documents.(documentstore.InboundAnchorReceiver)
+	lineages, _ := documents.(documentstore.DocumentLineageReserver)
+	reservedAnchors, _ := documents.(documentstore.ReservedOutboundAnchorReceiver)
+	reservedDocuments, _ := documents.(documentstore.ReservedCanonicalDocumentDirectory)
 
 	return &IngestConsumer{
-		stream:       stream,
-		documents:    documents,
-		anchors:      anchors,
-		index:        index,
-		urls:         urls,
-		postings:     postings,
-		observer:     noopIngestObserver{},
-		recorder:     noopFetchRecorder{},
-		owner:        allowAllOwnership{},
-		purger:       noopURLPurger{},
-		stale:        noopStaleSweeper{},
-		hashURL:      yagomodel.HashURL,
-		observations: acceptAllObservationHistory{},
+		stream:            stream,
+		documents:         documents,
+		anchors:           anchors,
+		lineages:          lineages,
+		reservedAnchors:   reservedAnchors,
+		reservedDocuments: reservedDocuments,
+		index:             index,
+		urls:              urls,
+		postings:          postings,
+		observer:          noopIngestObserver{},
+		recorder:          noopFetchRecorder{},
+		owner:             allowAllOwnership{},
+		purger:            noopURLPurger{},
+		stale:             noopStaleSweeper{},
+		hashURL:           yagomodel.HashURL,
+		observations:      acceptAllObservationHistory{},
 	}
 }
 

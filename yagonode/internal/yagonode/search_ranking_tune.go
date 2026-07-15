@@ -61,11 +61,16 @@ func newRankingTuner(
 	if index != nil {
 		factory = func(weights searchindex.RankingWeights) searchcore.Searcher {
 			return rankingTrainingSearcher{
-				searcher: searchcore.NewLexicalRerankSearcher(newLocalRankingSearcher(
-					index,
-					func() searchindex.RankingWeights { return weights },
-					hostRank,
-				)),
+				searcher: searchcore.NewLexicalRerankSearcherWithWeights(
+					newLocalRankingSearcher(
+						index,
+						func() searchindex.RankingWeights { return weights },
+						hostRank,
+					),
+					lexicalRankingWeights(
+						func() searchindex.RankingWeights { return weights },
+					),
+				),
 			}
 		}
 	}

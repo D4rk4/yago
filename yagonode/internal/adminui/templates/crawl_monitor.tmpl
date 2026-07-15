@@ -1,11 +1,12 @@
 {{define "crawl-monitor"}}
-<div id="crawl-monitor" hx-get="/admin/crawl/monitor" hx-trigger="every 5s"
+<div id="crawl-monitor" hx-get="{{.Pagination.RefreshURL}}" hx-trigger="every 5s"
      hx-swap="outerHTML" role="region" aria-label="Crawl monitor">
   <h2 class="cds-h2">Crawl monitor</h2>
+  <p class="cds-muted">Run totals and rates cover the crawl tasks currently retained in this monitor.</p>
   <p>
     <button class="cds-btn cds-btn--ghost" type="button"
-            hx-get="/admin/crawl/monitor" hx-target="#crawl-monitor" hx-swap="outerHTML">Refresh</button>
-    <span class="cds-muted">order queue: {{.Monitor.QueuePending}} pending, {{.Monitor.QueueLeased}} leased — updates every 5s</span>
+            hx-get="{{.Pagination.RefreshURL}}" hx-target="#crawl-monitor" hx-swap="outerHTML">Refresh</button>
+    <span class="cds-muted" role="status">order queue: {{if .Monitor.QueueAvailable}}{{.Monitor.QueuePending}} pending, {{.Monitor.QueueLeased}} leased{{else}}Unavailable{{end}} — updates every 5s</span>
   </p>
   <div class="cds-tile-grid" role="group" aria-label="Crawl results and rejections">
     <section class="cds-tile">
@@ -37,19 +38,21 @@
     <section class="cds-tile">
       <div class="cds-metric__label">Link redundancy</div>
       <div class="cds-metric__value">{{.Health.LinkRedundancy}}</div>
-      <div class="cds-muted">repeat links / links seen</div>
+      <div class="cds-muted">duplicates / (duplicates + fetched + failed + robots-denied)</div>
     </section>
+    {{end}}
+    {{if .Health.FailRate}}
     <section class="cds-tile">
       <div class="cds-metric__label">Failure rate</div>
       <div class="cds-metric__value">{{.Health.FailRate}}</div>
-      <div class="cds-muted">failed / fetched</div>
+      <div class="cds-muted">failed / (fetched + failed)</div>
     </section>
     {{end}}
   </div>
   {{range .Health.Suspects}}
   <p class="cds-inline-notification cds-inline-notification--warn" role="alert">{{.}}</p>
   {{end}}
-  <div class="cds-scroll-x">
+  <div class="cds-scroll-x" role="region" aria-label="Crawl tasks" tabindex="0">
     <table class="cds-table">
       <thead>
         <tr>
@@ -67,7 +70,7 @@
       </thead>
       <tbody>
         {{$root := .}}
-        {{range .Monitor.Runs}}
+        {{range .Pagination.Runs}}
         <tr>
           <td>{{.Profile}}</td>
           <td><span class="cds-tag{{with stateTag .State}} cds-tag--{{.}}{{end}}">{{.State}}</span></td>
@@ -81,10 +84,11 @@
           {{if $root.Controllable}}
           <td>
             {{if eq .State "running"}}
-            <div class="cds-control-row">
+            <div class="cds-control-row cds-control-row--crawl-actions">
               <form method="post" action="/admin/crawl/control" hx-boost="false" class="cds-inline-form">
                 <input type="hidden" name="csrf_token" value="{{$root.CSRF}}">
                 <input type="hidden" name="runId" value="{{.RunID}}">
+                <input type="hidden" name="cpage" value="{{$root.Pagination.Page}}">
                 <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="pause">Pause</button>
                 <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="resume">Resume</button>
                 <button class="cds-btn cds-btn--danger" type="submit" name="action" value="cancel"
@@ -95,10 +99,13 @@
               <form method="post" action="/admin/crawl/control" hx-boost="false" class="cds-inline-form">
                 <input type="hidden" name="csrf_token" value="{{$root.CSRF}}">
                 <input type="hidden" name="runId" value="{{.RunID}}">
+                <input type="hidden" name="cpage" value="{{$root.Pagination.Page}}">
                 <input type="hidden" name="action" value="set_rate">
-                <input class="cds-input cds-input--rate" type="number" name="ppm" min="0" step="1"
-                       {{if gt .PagesPerMinute 0}}value="{{.PagesPerMinute}}" {{end}}placeholder="pages/min"
-                       aria-label="Pages per minute for {{.Profile}}">
+                <label class="cds-muted" for="crawl-rate-{{.RunID}}">pages/min</label>
+                <input id="crawl-rate-{{.RunID}}" class="cds-input cds-input--rate" type="number"
+                       name="ppm" min="0" step="1" required title="0 means unlimited"
+                       aria-label="Pages per minute for {{.Profile}}; zero means unlimited"
+                       {{if .RateKnown}}value="{{.PagesPerMinute}}"{{end}}>
                 <button class="cds-btn cds-btn--ghost" type="submit">Apply rate</button>
               </form>
             </div>
@@ -106,6 +113,7 @@
             <form method="post" action="/admin/crawl/control" hx-boost="false" class="cds-inline-form">
               <input type="hidden" name="csrf_token" value="{{$root.CSRF}}">
               <input type="hidden" name="runId" value="{{.RunID}}">
+              <input type="hidden" name="cpage" value="{{$root.Pagination.Page}}">
               <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="restart"
                       hx-post="/admin/crawl/control" hx-include="closest form"
                       hx-target="#crawl-monitor" hx-swap="outerHTML">Restart</button>
@@ -120,5 +128,14 @@
       </tbody>
     </table>
   </div>
+  {{with .Pagination}}
+  {{if gt .Pages 1}}
+  <nav class="cds-pager" aria-label="Crawl task pages">
+    {{if .HasPrev}}<a rel="prev" href="{{.PrevURL}}">‹ Previous</a>{{end}}
+    <span class="cds-muted">Page {{.Page}} of {{.Pages}} · tasks {{.Start}}–{{.End}} of {{.Total}}</span>
+    {{if .HasNext}}<a rel="next" href="{{.NextURL}}">Next ›</a>{{end}}
+  </nav>
+  {{end}}
+  {{end}}
 </div>
 {{end}}

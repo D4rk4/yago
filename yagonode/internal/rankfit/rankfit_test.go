@@ -101,3 +101,15 @@ func TestAscendPropagatesMidSearchObjectiveError(t *testing.T) {
 		t.Fatalf("err = %v, want the mid-search objective error", err)
 	}
 }
+
+func TestCoordinateAscentDimensionsMatchRankingCatalog(t *testing.T) {
+	definitions := searchindex.RankingWeightDefinitions()
+	if len(dimensions) != len(definitions) {
+		t.Fatalf("dimensions = %d, definitions = %d", len(dimensions), len(definitions))
+	}
+	for index, definition := range definitions {
+		if dimensions[index].key != definition.Key {
+			t.Fatalf("dimension %d = %q, want %q", index, dimensions[index].key, definition.Key)
+		}
+	}
+}

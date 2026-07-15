@@ -4,20 +4,41 @@ import (
 	"context"
 	"sync"
 
-	"github.com/D4rk4/yago/yagonode/internal/documentstore"
+	"github.com/D4rk4/yago/yagonode/internal/eviction"
 	"github.com/D4rk4/yago/yagonode/internal/redirectpurge"
+	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
-// documentEvictorOf exposes the vault's delete capability when the directory
-// implementation provides one; a read-only store disables the purge.
-func documentEvictorOf(storage nodeStorage) documentstore.DocumentEvictor {
-	return storage.documentEvictor()
+type redirectCorpusPurge interface {
+	Run(context.Context)
+}
+
+func newNodeRedirectPurge(storage nodeStorage, v *vault.Vault) redirectCorpusPurge {
+	stored := storage.storedDocuments()
+	documents := storage.documentEvictor()
+	if v == nil || stored == nil || documents == nil || storage.searchIndex == nil ||
+		storage.postingPurger == nil || storage.references == nil ||
+		storage.urlEvictor == nil || storage.urlDirectory == nil {
+		return nil
+	}
+	purger := eviction.NewEvictor(
+		v,
+		storage.postingPurger,
+		storage.references,
+		storage.urlEvictor,
+		documents,
+		storage.urlDirectory,
+	)
+
+	return redirectpurge.New(stored, purger.PurgeResolved)
 }
 
 // runRedirectPurge sweeps pre-SEARCH-28 search-engine tracking redirects out
 // of the live corpus once per boot (SEARCH-29).
 func runRedirectPurge(ctx context.Context, assembled node) {
-	redirectpurge.New(assembled.docScan, assembled.docEvictor, assembled.index).Run(ctx)
+	if assembled.redirectPurge != nil {
+		assembled.redirectPurge.Run(ctx)
+	}
 }
 
 // startRedirectPurge runs the sweep under serve's WaitGroup so no purge

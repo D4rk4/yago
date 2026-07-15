@@ -32,22 +32,32 @@ auto-commit path and a transaction cannot escape its closure. Write methods call
 read-only transaction return an error. The kernel maintains each collection's length
 automatically and commits a write transaction durably before `Update` returns.
 
-`AtCapacity` reports whether used bytes have reached the quota. A module about to admit new
-data consults it first and returns backpressure when full; eviction never asks, so it deletes
-through the same `Update` path. An out-of-space failure from the operating system maps to the
-same capacity signal.
+`AtCapacity` reports whether used bytes have reached the quota. Concurrent admission calls
+share one successful live-usage observation for at most one second instead of repeating the
+same shard-wide measurement; an explicit `UsedBytes` call remains exact and refreshes that
+observation. Every capacity comparison uses the current quota, errors are not cached, and a
+cancelled waiter leaves promptly. A newer exact sample supersedes an older in-flight value or
+error, and overlapping exact samples cannot publish in reverse start order. A module about to
+admit new data consults the signal first and returns backpressure when full; eviction never
+asks, so it deletes through the same `Update` path. An out-of-space failure from the operating
+system maps to the same capacity signal. Every engine operation holds a lifecycle lease, so
+`Close` drains admitted transactions, usage reads, quota changes, and maintenance before the
+engine is closed.
 
 A transaction is opaque and may be passed across module boundaries, so several modules can
-mutate their own collections within one transaction — cross-module atomicity without a shared
-schema. No bolt type appears on the kernel's exported surface; only `boltvault` imports bbolt,
-and `.go-arch-lint.yml` enforces that.
+mutate their own collections without a shared schema. The single-file `boltvault` engine
+commits those mutations atomically. The production `shardvault` engine deliberately relaxes
+that guarantee across physical shards: callers order durable rows before visibility markers,
+make retries idempotent, and reconcile a partial commit from the retained crawl observation.
+No bolt type appears on the kernel's exported surface; only `boltvault` imports bbolt, and
+`.go-arch-lint.yml` enforces that.
 
 ## Consequences
 
-There is exactly one path to mutate stored data, and the durability and count invariants live
-in one place instead of in every feature. The kernel reports capacity and the data-admitting
-modules decide on it, so it never carries a feature's intent. Modules work with their domain
-values through a narrow generic interface and never see serialization or another module's
-bytes. Because no bolt type leaks, the underlying engine can be replaced behind this interface.
-The cost is a small generic layer between features and the database, which buys the ownership
-and isolation above.
+There is exactly one path to mutate stored data, and the per-shard durability and collection
+invariants live in one place instead of in every feature. The kernel reports capacity and the
+data-admitting modules decide on it, so it never carries a feature's intent. Modules work with
+their domain values through a narrow generic interface and never see serialization or another
+module's bytes. Because no bolt type leaks, the underlying engine can be replaced behind this
+interface. The cost is a small generic layer between features and the database, plus explicit
+publication ordering and replay reconciliation in features that span sharded collections.

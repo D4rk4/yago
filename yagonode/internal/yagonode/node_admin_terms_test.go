@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -10,13 +11,14 @@ import (
 type fakeTermPostings struct {
 	count    int
 	postings []yagomodel.RWIPosting
-	err      error
+	countErr error
+	scanErr  error
 }
 
 func (f fakeTermPostings) RWICount(context.Context) (int, error) { return 0, nil }
 
 func (f fakeTermPostings) RWIURLCount(context.Context, yagomodel.Hash) (int, error) {
-	return f.count, f.err
+	return f.count, f.countErr
 }
 
 func (f fakeTermPostings) ScanWord(
@@ -31,18 +33,19 @@ func (f fakeTermPostings) ScanWord(
 		}
 	}
 
-	return nil
+	return f.scanErr
 }
 
 type fakeTermURLs struct {
-	rows []yagomodel.URIMetadataRow
+	rows    []yagomodel.URIMetadataRow
+	rowsErr error
 }
 
 func (f fakeTermURLs) RowsByHash(
 	context.Context,
 	[]yagomodel.Hash,
 ) ([]yagomodel.URIMetadataRow, error) {
-	return f.rows, nil
+	return f.rows, f.rowsErr
 }
 
 func (f fakeTermURLs) MissingURLs(
@@ -80,7 +83,7 @@ func TestTermSourceLookupResolvesSample(t *testing.T) {
 	source := newTermSource(postings, urls)
 
 	report := source.LookupTerm(context.Background(), "golang")
-	if report.Count != 2 || report.NotFound || report.Error != "" {
+	if report.Count != 2 || report.NotFound || report.Error != nil || report.SampleError != nil {
 		t.Fatalf("report = %+v", report)
 	}
 	if report.Hash == "" {
@@ -91,6 +94,54 @@ func TestTermSourceLookupResolvesSample(t *testing.T) {
 	}
 	if report.Sample[0].URL != "http://a.example/1" || report.Sample[0].Title != "Alpha" {
 		t.Fatalf("first sample = %+v", report.Sample[0])
+	}
+}
+
+func TestTermSourceLookupKeepsPartialSampleError(t *testing.T) {
+	scanFailure := errors.New("scan stopped")
+	rowsFailure := errors.New("rows stopped")
+	postings := fakeTermPostings{
+		count:    3,
+		postings: []yagomodel.RWIPosting{termPosting("MNOPQRSTUVWX")},
+		scanErr:  scanFailure,
+	}
+	urls := fakeTermURLs{
+		rows:    []yagomodel.URIMetadataRow{termRow("http://a.example/1", "Alpha")},
+		rowsErr: rowsFailure,
+	}
+	report := newTermSource(postings, urls).LookupTerm(context.Background(), "golang")
+	if report.Error != nil || len(report.Sample) != 1 ||
+		!errors.Is(report.SampleError, scanFailure) ||
+		!errors.Is(report.SampleError, rowsFailure) {
+		t.Fatalf("partial report = %+v", report)
+	}
+}
+
+func TestTermSourceSampleOnlyCountsResolvedDocuments(t *testing.T) {
+	postings := fakeTermPostings{
+		count: 2,
+		postings: []yagomodel.RWIPosting{
+			termPosting("MNOPQRSTUVWX"),
+			termPosting("0123456789AB"),
+		},
+	}
+	urls := fakeTermURLs{rows: []yagomodel.URIMetadataRow{
+		termRow("http://a.example/1", "Alpha"),
+		{Properties: map[string]string{yagomodel.URLMetaURL: "x|invalid"}},
+	}}
+	report := newTermSource(postings, urls).LookupTerm(context.Background(), "golang")
+	if report.SampleError != nil || len(report.Sample) != 1 {
+		t.Fatalf("resolved sample = %+v", report)
+	}
+}
+
+func TestTermSourceEmptySuccessfulSample(t *testing.T) {
+	report := newTermSource(
+		fakeTermPostings{count: 1},
+		fakeTermURLs{},
+	).LookupTerm(context.Background(), "golang")
+	if report.SampleError != nil || len(report.Sample) != 0 {
+		t.Fatalf("empty sample = %+v", report)
 	}
 }
 

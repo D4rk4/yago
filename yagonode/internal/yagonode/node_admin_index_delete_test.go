@@ -37,6 +37,33 @@ type fakeURLEvictor struct {
 	err     error
 }
 
+type fakeResolvedURLEvictor struct {
+	fakeURLEvictor
+	normalized [][]string
+}
+
+func (f *fakeResolvedURLEvictor) PurgeResolved(
+	_ context.Context,
+	normalizedURLs []string,
+	urls []yagomodel.Hash,
+) error {
+	f.normalized = append(f.normalized, append([]string(nil), normalizedURLs...))
+	f.evicted = append(f.evicted, append([]yagomodel.Hash(nil), urls...))
+
+	return f.err
+}
+
+type fakeCompleteDocumentEvictor struct {
+	fakeDocDeleter
+}
+
+func (f *fakeCompleteDocumentEvictor) ReserveDocumentEvictions(
+	context.Context,
+	[]string,
+) (eviction.ReservedDocumentEviction, error) {
+	return nil, nil
+}
+
 func (f *fakeURLEvictor) EvictURLs(
 	_ context.Context,
 	urls []yagomodel.Hash,
@@ -81,6 +108,168 @@ func TestDeleteDocumentRemovesFromEveryLineage(t *testing.T) {
 	}
 	if len(evict.evicted) != 1 || len(evict.evicted[0]) != 1 {
 		t.Fatalf("evictions = %v", evict.evicted)
+	}
+}
+
+func TestDeleteDocumentUsesResolvedLineageOwnerOnce(t *testing.T) {
+	index := &fakeSearchDeleter{}
+	documents := &fakeCompleteDocumentEvictor{}
+	evictor := &fakeResolvedURLEvictor{}
+	controller := &indexAdminController{
+		index:     index,
+		documents: documents,
+		evictor:   evictor,
+		hashURL:   yagomodel.HashURL,
+	}
+	if err := controller.DeleteDocument(t.Context(), "https://a.example/1"); err != nil {
+		t.Fatalf("DeleteDocument: %v", err)
+	}
+	if len(index.deleted) != 0 || len(documents.deleted) != 0 ||
+		len(evictor.normalized) != 1 ||
+		len(evictor.normalized[0]) != 1 ||
+		evictor.normalized[0][0] != "https://a.example/1" {
+		t.Fatalf(
+			"resolved deletion = index:%v documents:%v resolved:%v",
+			index.deleted,
+			documents.deleted,
+			evictor.normalized,
+		)
+	}
+}
+
+func TestDeleteDocumentUsesResolvedOwnerWithSimpleDocumentEvictor(t *testing.T) {
+	index := &fakeSearchDeleter{}
+	documents := &fakeDocDeleter{}
+	evictor := &fakeResolvedURLEvictor{}
+	controller := &indexAdminController{
+		index:     index,
+		documents: documents,
+		evictor:   evictor,
+		hashURL:   yagomodel.HashURL,
+	}
+	if err := controller.DeleteDocument(t.Context(), "https://a.example/1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(index.deleted) != 1 || len(documents.deleted) != 0 ||
+		len(evictor.normalized) != 1 {
+		t.Fatalf(
+			"resolved simple deletion = index:%v documents:%v resolved:%v",
+			index.deleted,
+			documents.deleted,
+			evictor.normalized,
+		)
+	}
+}
+
+func TestDeleteDocumentResolvedHashFailureKeepsOneDocumentOwner(t *testing.T) {
+	for _, test := range []struct {
+		name              string
+		documents         documentstore.DocumentEvictor
+		wantIndexDeletes  int
+		wantDirectDeletes int
+	}{
+		{
+			name:              "simple",
+			documents:         &fakeDocDeleter{},
+			wantIndexDeletes:  1,
+			wantDirectDeletes: 1,
+		},
+		{
+			name:              "complete lineage",
+			documents:         &fakeCompleteDocumentEvictor{},
+			wantDirectDeletes: 1,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			index := &fakeSearchDeleter{}
+			evictor := &fakeResolvedURLEvictor{}
+			controller := &indexAdminController{
+				index:     index,
+				documents: test.documents,
+				evictor:   evictor,
+				hashURL: func(string) (yagomodel.URLHash, error) {
+					return "", errors.New("hash failed")
+				},
+			}
+			if err := controller.DeleteDocument(t.Context(), "https://a.example/1"); err != nil {
+				t.Fatal(err)
+			}
+			direct := 0
+			switch documents := test.documents.(type) {
+			case *fakeDocDeleter:
+				direct = len(documents.deleted)
+			case *fakeCompleteDocumentEvictor:
+				direct = len(documents.deleted)
+			}
+			if len(index.deleted) != test.wantIndexDeletes ||
+				direct != test.wantDirectDeletes || len(evictor.normalized) != 0 {
+				t.Fatalf(
+					"hash failure = index:%v direct:%d resolved:%v",
+					index.deleted,
+					direct,
+					evictor.normalized,
+				)
+			}
+		})
+	}
+}
+
+func TestDeleteDocumentResolvedPathSurfacesErrors(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		index     *fakeSearchDeleter
+		documents *fakeDocDeleter
+		evictor   *fakeResolvedURLEvictor
+		hashFails bool
+	}{
+		{
+			name:      "index",
+			index:     &fakeSearchDeleter{err: errors.New("index failed")},
+			documents: &fakeDocDeleter{},
+			evictor:   &fakeResolvedURLEvictor{},
+		},
+		{
+			name:      "index after hash failure",
+			index:     &fakeSearchDeleter{err: errors.New("index failed")},
+			documents: &fakeDocDeleter{},
+			evictor:   &fakeResolvedURLEvictor{},
+			hashFails: true,
+		},
+		{
+			name:      "document after hash failure",
+			index:     &fakeSearchDeleter{},
+			documents: &fakeDocDeleter{err: errors.New("document failed")},
+			evictor:   &fakeResolvedURLEvictor{},
+			hashFails: true,
+		},
+		{
+			name:      "resolved purge",
+			index:     &fakeSearchDeleter{},
+			documents: &fakeDocDeleter{},
+			evictor: &fakeResolvedURLEvictor{
+				fakeURLEvictor: fakeURLEvictor{err: errors.New("purge failed")},
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			controller := &indexAdminController{
+				index:     test.index,
+				documents: test.documents,
+				evictor:   test.evictor,
+				hashURL:   yagomodel.HashURL,
+			}
+			if test.hashFails {
+				controller.hashURL = func(string) (yagomodel.URLHash, error) {
+					return "", errors.New("hash failed")
+				}
+			}
+			if err := controller.DeleteDocument(
+				t.Context(),
+				"https://a.example/1",
+			); err == nil {
+				t.Fatal("resolved deletion failure succeeded")
+			}
+		})
 	}
 }
 

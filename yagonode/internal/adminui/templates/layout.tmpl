@@ -5,14 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>{{.Data.Section.Heading}} — {{.Data.AppName}} admin</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="/admin/assets/carbon.css">
 <link rel="stylesheet" href="/admin/assets/photon.css">
+<meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
 <script src="/admin/assets/htmx.min.js" defer></script>
 <script src="/admin/assets/tabs.js" defer></script>
 </head>
 <body hx-boost="true">
 <a class="cds-skip" href="#cds-main">Skip to main content</a>
-<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+<svg class="cds-icon-sprite" width="0" height="0" aria-hidden="true" focusable="false">
   <symbol id="ic-overview" viewBox="0 0 20 20"><path fill="currentColor" d="M3 3h6v6H3zm8 0h6v6h-6zM3 11h6v6H3zm8 0h6v6h-6z"/></symbol>
   <symbol id="ic-search" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8.5" cy="8.5" r="5"/><line x1="12.5" y1="12.5" x2="17" y2="17"/></g></symbol>
   <symbol id="ic-activity" viewBox="0 0 20 20"><polyline fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" points="2,11 6,11 8,4 12,16 14,11 18,11"/></symbol>

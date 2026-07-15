@@ -40,7 +40,7 @@ func TestDrainPendingStopsWhenStreamCloses(t *testing.T) {
 	close(out)
 	consumer := NewIngestConsumer(stubStream{out: out}, nil, nil, nil)
 
-	group := consumer.drainPending(IngestDelivery{})
+	group := consumer.drainPending(t.Context(), IngestDelivery{})
 	if len(group) != 1 {
 		t.Fatalf("drainPending len = %d, want 1 (only the first delivery)", len(group))
 	}
@@ -56,7 +56,7 @@ func TestDrainPendingStopsAtMicroBatchCap(t *testing.T) {
 	}
 	consumer := NewIngestConsumer(stubStream{out: out}, nil, nil, nil)
 
-	group := consumer.drainPending(IngestDelivery{})
+	group := consumer.drainPending(t.Context(), IngestDelivery{})
 	if len(group) != ingestMicroBatch {
 		t.Fatalf("drainPending len = %d, want the micro-batch cap %d", len(group), ingestMicroBatch)
 	}

@@ -3,11 +3,11 @@ package documentstore
 import (
 	"context"
 	"fmt"
-	"maps"
 	"slices"
 	"sort"
 	"strings"
 
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -22,61 +22,127 @@ func (d documentVault) ReplaceOutboundAnchors(
 	ctx context.Context,
 	sets []OutboundAnchorSet,
 ) (AnchorUpdate, error) {
+	var err error
+	sets, err = canonicalOutboundAnchorSets(sets)
+	if err != nil {
+		return AnchorUpdate{}, err
+	}
 	if len(sets) == 0 {
 		return AnchorUpdate{}, nil
 	}
-	if outboundAnchorSetsCarryEdges(sets) {
-		atCapacity, err := d.vault.AtCapacity(ctx)
-		if err != nil {
-			return AnchorUpdate{}, fmt.Errorf("check capacity: %w", err)
-		}
-		if atCapacity {
-			return AnchorUpdate{Busy: true}, nil
-		}
+	sources := make([]string, 0, len(sets))
+	for _, set := range sets {
+		sources = append(sources, set.SourceURL)
 	}
-
-	affected := make(map[string]Document)
-	err := d.vault.Update(ctx, func(tx *vault.Txn) error {
-		affected = make(map[string]Document)
-		for _, set := range sets {
-			if err := d.replaceOutboundAnchorSet(ctx, tx, set, affected); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
+	reservation, err := d.ReserveDocumentLineages(ctx, sources)
 	if err != nil {
-		return AnchorUpdate{}, fmt.Errorf("replace outbound anchors: %w", err)
-	}
-	urls := slices.Sorted(maps.Keys(affected))
-	documents := make([]Document, 0, len(urls))
-	for _, targetURL := range urls {
-		documents = append(documents, affected[targetURL])
+		return AnchorUpdate{}, err
 	}
 
-	return AnchorUpdate{Documents: documents}, nil
+	return d.replaceReservedOutboundAnchors(ctx, reservation, sets, true)
+}
+
+func (d documentVault) ReplaceReservedOutboundAnchors(
+	ctx context.Context,
+	reservation DocumentLineageReservation,
+	sets []OutboundAnchorSet,
+) (AnchorUpdate, error) {
+	var err error
+	sets, err = canonicalOutboundAnchorSets(sets)
+	if err != nil {
+		return AnchorUpdate{}, err
+	}
+	if len(sets) == 0 {
+		err := d.activeDocumentLineageLease(reservation, nil)
+
+		return AnchorUpdate{}, err
+	}
+
+	return d.replaceReservedOutboundAnchors(ctx, reservation, sets, false)
+}
+
+func (d documentVault) replaceReservedOutboundAnchors(
+	ctx context.Context,
+	reservation DocumentLineageReservation,
+	sets []OutboundAnchorSet,
+	releaseReservation bool,
+) (AnchorUpdate, error) {
+	sources := make([]string, 0, len(sets))
+	for _, set := range sets {
+		sources = append(sources, set.SourceURL)
+	}
+	if err := d.activeDocumentLineageLease(reservation, sources); err != nil {
+		d.releaseOwnedDocumentLineage(releaseReservation, reservation)
+
+		return AnchorUpdate{}, err
+	}
+	releaseWrite, err := d.enterStoredDocumentWrite(ctx)
+	if err != nil {
+		d.releaseOwnedDocumentLineage(releaseReservation, reservation)
+
+		return AnchorUpdate{}, err
+	}
+	defer releaseWrite()
+	targetURLs, err := d.outboundAnchorTargetURLs(ctx, sets)
+	if err != nil {
+		d.releaseOwnedDocumentLineage(releaseReservation, reservation)
+
+		return AnchorUpdate{}, err
+	}
+	releaseTargets, err := d.urlBoundaries.lockWrites(ctx, targetURLs)
+	if err != nil {
+		d.releaseOwnedDocumentLineage(releaseReservation, reservation)
+
+		return AnchorUpdate{}, err
+	}
+	releaseBoundaries := d.outboundAnchorBoundaryRelease(
+		releaseTargets,
+		releaseReservation,
+		reservation,
+	)
+	defer releaseCurrentOutboundAnchorBoundaries(&releaseBoundaries)
+	atCapacity, err := d.outboundAnchorUpdateAtCapacity(ctx, sets)
+	if err != nil {
+		return AnchorUpdate{}, err
+	}
+	if atCapacity {
+		return AnchorUpdate{Busy: true}, nil
+	}
+	urls, finalizations, err := d.replaceOutboundAnchorSets(ctx, sets)
+	if err != nil {
+		return AnchorUpdate{}, err
+	}
+	if len(finalizations) > 0 {
+		lease := newOutboundAnchorLease(releaseBoundaries, urls)
+		for index := range finalizations {
+			finalizations[index].lease = lease
+		}
+		releaseBoundaries = nil
+	}
+
+	return AnchorUpdate{Finalizations: finalizations}, nil
 }
 
 func (d documentVault) replaceOutboundAnchorSet(
 	ctx context.Context,
 	tx *vault.Txn,
 	set OutboundAnchorSet,
-	affected map[string]Document,
-) error {
+	affected map[string]struct{},
+) (OutboundAnchorFinalization, bool, error) {
 	sourceURL := strings.TrimSpace(set.SourceURL)
-	if sourceURL == "" {
-		return nil
-	}
 	incoming, incomingTargets := canonicalOutboundAnchors(sourceURL, set.Anchors)
-	previousTargets, _, err := d.outboundTargets.Get(tx, vault.Key(sourceURL))
+	previous, err := d.readOutboundAnchorPublication(tx, sourceURL)
 	if err != nil {
-		return fmt.Errorf("read outbound targets: %w", err)
+		return OutboundAnchorFinalization{}, false, fmt.Errorf("read outbound targets: %w", err)
 	}
-	targets := uniqueSortedStrings(append(previousTargets, incomingTargets...))
+	desired := desiredOutboundAnchorPublication(incoming, incomingTargets)
+	if outboundAnchorPublicationsEqual(previous, desired) {
+		return OutboundAnchorFinalization{}, false, nil
+	}
+	targets := uniqueSortedStrings(append(previous.Targets, incomingTargets...))
 	for _, targetURL := range targets {
 		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("context: %w", err)
+			return OutboundAnchorFinalization{}, false, fmt.Errorf("context: %w", err)
 		}
 		if err := d.replaceTargetAnchors(
 			tx,
@@ -85,21 +151,15 @@ func (d documentVault) replaceOutboundAnchorSet(
 			incoming[targetURL],
 			affected,
 		); err != nil {
-			return err
+			return OutboundAnchorFinalization{}, false, err
 		}
 	}
-	if len(incomingTargets) == 0 {
-		if _, err := d.outboundTargets.Delete(tx, vault.Key(sourceURL)); err != nil {
-			return fmt.Errorf("delete outbound targets: %w", err)
-		}
 
-		return nil
-	}
-	if err := d.outboundTargets.Put(tx, vault.Key(sourceURL), incomingTargets); err != nil {
-		return fmt.Errorf("store outbound targets: %w", err)
-	}
-
-	return nil
+	return OutboundAnchorFinalization{
+		sourceURL: sourceURL,
+		expected:  previous,
+		desired:   desired,
+	}, true, nil
 }
 
 func (d documentVault) replaceTargetAnchors(
@@ -107,10 +167,10 @@ func (d documentVault) replaceTargetAnchors(
 	sourceURL string,
 	targetURL string,
 	incoming []AnchorText,
-	affected map[string]Document,
+	affected map[string]struct{},
 ) error {
 	key := vault.Key(targetURL)
-	doc, documentFound, err := d.collection.Get(tx, key)
+	doc, location, documentFound, err := d.readStoredDocument(tx, targetURL)
 	if err != nil {
 		return fmt.Errorf("read anchor target document: %w", err)
 	}
@@ -129,24 +189,31 @@ func (d documentVault) replaceTargetAnchors(
 		}
 	}
 	anchors = canonicalAnchorTexts(append(kept, incoming...))
-	if slices.Equal(previousAnchors, anchors) {
-		return nil
-	}
+	inboundAnchorsChanged := !anchorsFound || !slices.Equal(previousAnchors, anchors)
 	if len(anchors) == 0 {
-		if _, err := d.inboundAnchors.Delete(tx, key); err != nil {
-			return fmt.Errorf("delete target anchors: %w", err)
+		if anchorsFound {
+			if _, err := d.inboundAnchors.Delete(tx, key); err != nil {
+				return fmt.Errorf("delete target anchors: %w", err)
+			}
 		}
-	} else if err := d.inboundAnchors.Put(tx, key, anchors); err != nil {
-		return fmt.Errorf("store target anchors: %w", err)
+	} else if inboundAnchorsChanged {
+		if err := d.inboundAnchors.Put(tx, key, anchors); err != nil {
+			return fmt.Errorf("store target anchors: %w", err)
+		}
 	}
 	if !documentFound {
 		return nil
 	}
+	if slices.Equal(doc.Inlinks, anchors) {
+		affected[targetURL] = struct{}{}
+
+		return nil
+	}
 	doc.Inlinks = append([]AnchorText(nil), anchors...)
-	if err := d.collection.Put(tx, key, doc); err != nil {
+	if err := d.putStoredDocument(tx, location, doc); err != nil {
 		return fmt.Errorf("store anchor target document: %w", err)
 	}
-	affected[targetURL] = normalizedDocument(doc)
+	affected[targetURL] = struct{}{}
 
 	return nil
 }
@@ -162,7 +229,7 @@ func canonicalOutboundAnchors(
 			break
 		}
 		targetURL := strings.TrimSpace(anchor.TargetURL)
-		if targetURL == "" || targetURL == sourceURL {
+		if !validOutboundAnchorIdentity(targetURL) || targetURL == sourceURL {
 			continue
 		}
 		grouped[targetURL] = append(grouped[targetURL], AnchorText{
@@ -244,7 +311,7 @@ func uniqueSortedStrings(values []string) []string {
 	unique := make([]string, 0, len(values))
 	for _, value := range values {
 		value = strings.TrimSpace(value)
-		if value == "" {
+		if !validOutboundAnchorIdentity(value) {
 			continue
 		}
 		if _, found := seen[value]; found {
@@ -258,9 +325,14 @@ func uniqueSortedStrings(values []string) []string {
 	return unique
 }
 
+func validOutboundAnchorIdentity(value string) bool {
+	return value != "" && len(value) <= yagomodel.MaximumURLIdentityBytes
+}
+
 func outboundAnchorSetsCarryEdges(sets []OutboundAnchorSet) bool {
 	for _, set := range sets {
-		if len(set.Anchors) > 0 {
+		_, targets := canonicalOutboundAnchors(set.SourceURL, set.Anchors)
+		if len(targets) > 0 {
 			return true
 		}
 	}

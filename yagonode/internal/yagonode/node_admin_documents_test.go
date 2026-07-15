@@ -127,8 +127,17 @@ func TestBrowseDocumentsToleratesScanError(t *testing.T) {
 	})
 
 	page := source.BrowseDocuments(context.Background(), adminui.DocumentQuery{})
-	if page.Matched != 1 || len(page.Documents) != 1 {
+	if !page.ScanFailed || page.Matched != 1 || len(page.Documents) != 1 {
 		t.Fatalf("a scan error should still return what was collected: %+v", page)
+	}
+}
+
+func TestBrowseDocumentsReportsScanErrorWithoutRows(t *testing.T) {
+	page := newDocumentBrowseSource(fakeStoredDocuments{err: errors.New("scan failed")}).
+		BrowseDocuments(context.Background(), adminui.DocumentQuery{})
+
+	if !page.ScanFailed || len(page.Documents) != 0 {
+		t.Fatalf("empty failed scan = %+v, want unavailable without rows", page)
 	}
 }
 

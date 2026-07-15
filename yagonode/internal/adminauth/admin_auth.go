@@ -53,20 +53,25 @@ func (c Config) withDefaults() Config {
 }
 
 type Service struct {
-	creds          *credentialStore
-	sessions       *sessionStore
-	apiKeys        *apiKeyStore
-	limiter        *loginRateLimiter
-	keyLimiter     *apiKeyRateLimiter
-	observer       AuthObserver
-	now            func() time.Time
-	wizardDefaults SetupDefaults
-	wizardApply    SetupApplier
-	wizardRestart  func()
+	creds               *credentialStore
+	sessions            *sessionStore
+	apiKeys             *apiKeyStore
+	setupFormSigningKey []byte
+	limiter             *loginRateLimiter
+	keyLimiter          *apiKeyRateLimiter
+	observer            AuthObserver
+	now                 func() time.Time
+	wizardDefaults      SetupDefaults
+	wizardApply         SetupApplier
+	wizardRestart       func()
 }
 
 func New(storage *vault.Vault, cfg Config) (*Service, error) {
 	cfg = cfg.withDefaults()
+	setupFormSigningKey, err := newSetupFormSigningKey()
+	if err != nil {
+		return nil, err
+	}
 	creds, err := newCredentialStore(storage)
 	if err != nil {
 		return nil, err
@@ -81,13 +86,18 @@ func New(storage *vault.Vault, cfg Config) (*Service, error) {
 	}
 
 	return &Service{
-		creds:      creds,
-		sessions:   sessions,
-		apiKeys:    apiKeys,
-		limiter:    newLoginRateLimiter(cfg.LoginMaxFailures, cfg.LoginWindow, cfg.Now),
-		keyLimiter: newAPIKeyRateLimiter(cfg.APIKeyMaxPerWindow, cfg.APIKeyWindow, cfg.Now),
-		observer:   cfg.Observer,
-		now:        cfg.Now,
+		creds:               creds,
+		sessions:            sessions,
+		apiKeys:             apiKeys,
+		setupFormSigningKey: setupFormSigningKey,
+		limiter:             newLoginRateLimiter(cfg.LoginMaxFailures, cfg.LoginWindow, cfg.Now),
+		keyLimiter: newAPIKeyRateLimiter(
+			cfg.APIKeyMaxPerWindow,
+			cfg.APIKeyWindow,
+			cfg.Now,
+		),
+		observer: cfg.Observer,
+		now:      cfg.Now,
 	}, nil
 }
 

@@ -34,18 +34,20 @@ type Entry struct {
 	QueryLength int
 	Terms       int
 	Results     int
+	Failed      bool
+	Incomplete  bool
 	Duration    time.Duration
 	Source      string
 }
 
 // Tracker is the concurrency-safe ring journal.
 type Tracker struct {
-	mu      sync.Mutex
-	mode    Mode
-	entries []Entry
-	next    int
-	total   uint64
-	zero    uint64
+	mu            sync.Mutex
+	mode          Mode
+	entries       []Entry
+	next          int
+	total         uint64
+	confirmedZero uint64
 }
 
 // New builds a tracker for the given privacy mode; ModeOff returns nil and
@@ -69,8 +71,8 @@ func (t *Tracker) Record(entry Entry) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.total++
-	if entry.Results == 0 {
-		t.zero++
+	if !entry.Failed && !entry.Incomplete && entry.Results == 0 {
+		t.confirmedZero++
 	}
 	if len(t.entries) < journalCapacity {
 		t.entries = append(t.entries, entry)
@@ -82,7 +84,7 @@ func (t *Tracker) Record(entry Entry) {
 }
 
 // Snapshot returns the journal newest-first plus the lifetime counters.
-func (t *Tracker) Snapshot() (entries []Entry, total, zeroResults uint64) {
+func (t *Tracker) Snapshot() (entries []Entry, total, confirmedZeroResults uint64) {
 	if t == nil {
 		return nil, 0, 0
 	}
@@ -93,7 +95,7 @@ func (t *Tracker) Snapshot() (entries []Entry, total, zeroResults uint64) {
 		entries = append(entries, t.entries[(t.next+i)%len(t.entries)])
 	}
 
-	return entries, t.total, t.zero
+	return entries, t.total, t.confirmedZero
 }
 
 // Mode reports the privacy mode the tracker runs in ("" for a nil tracker).

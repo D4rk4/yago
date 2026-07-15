@@ -41,6 +41,13 @@ orphans (SEARCH-30) — that pass is the restore verification. Check the log
 for integrity findings, then confirm `/health` on the ops listener answers
 200 and a `resource=local` search returns documents.
 
+Keep the stopped backup taken immediately before a storage-layout upgrade for
+the entire rollback window. The append-ordered document layout is readable by
+newer binaries, but an older binary ignores its new partition and must never run
+against the upgraded directory. To roll back, stop both services, restore that
+pre-upgrade archive, install the older package, then start the node before the
+crawler.
+
 ## Validated end to end
 
 The flow above was exercised against a live node: backup taken (≈100 MB

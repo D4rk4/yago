@@ -26,10 +26,12 @@ type CrawlRunTally struct {
 // order provenance token so the node and the worker agree on the run identity
 // without the node owning the worker's in-memory frontier.
 type CrawlRunProgress struct {
-	RunID         string
-	WorkerID      string
-	ProfileHandle string
-	ProfileName   string
-	State         CrawlRunState
-	Tally         CrawlRunTally
+	RunID          string
+	WorkerID       string
+	ProfileHandle  string
+	ProfileName    string
+	State          CrawlRunState
+	Tally          CrawlRunTally
+	PagesPerMinute uint32
+	RateKnown      bool
 }

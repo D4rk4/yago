@@ -139,6 +139,99 @@ func TestFindTextQueryEvidenceHandlesRepetitivePage(t *testing.T) {
 	}
 }
 
+func TestFindTextQueryEvidenceAssignsCollapsedStemOccurrencesOnce(t *testing.T) {
+	if evidence, found := FindTextQueryEvidence(
+		t.Context(),
+		"game",
+		[]string{"gaming", "games"},
+		"en",
+	); found {
+		t.Fatalf("one occurrence admitted two requirements: %#v", evidence)
+	}
+	if _, found := FindTextQueryEvidence(
+		t.Context(),
+		"game game",
+		[]string{"gaming", "games"},
+		"en",
+	); !found {
+		t.Fatal("two occurrences did not satisfy two collapsed requirements")
+	}
+}
+
+func TestMinimumTargetTextQueryEvidenceRequiresEveryAnalyzedComponent(t *testing.T) {
+	matcher := &storedEvidenceMatcher{
+		lookup: map[string][]int{},
+		cache:  map[string]storedTokenEvidence{},
+	}
+	matcher.addTarget("compound", "alpha")
+	matcher.addTarget("compound", "beta")
+	matcher.queries = len(matcher.required)
+	field, err := scanStoredFieldEvidence(
+		t.Context(),
+		matcher,
+		[]string{"alpha beta"},
+		true,
+	)
+	if err != nil {
+		t.Fatalf("scanStoredFieldEvidence: %v", err)
+	}
+	if _, found := minimumTargetTextQueryEvidence(
+		"alpha beta",
+		matcher,
+		field.targetTerms,
+	); !found {
+		t.Fatal("complete analyzed components were rejected")
+	}
+	field, err = scanStoredFieldEvidence(
+		t.Context(),
+		matcher,
+		[]string{"alpha"},
+		true,
+	)
+	if err != nil {
+		t.Fatalf("scanStoredFieldEvidence partial: %v", err)
+	}
+	if evidence, found := minimumTargetTextQueryEvidence(
+		"alpha",
+		matcher,
+		field.targetTerms,
+	); found {
+		t.Fatalf("partial analyzed components admitted: %#v", evidence)
+	}
+}
+
+func TestMinimumTargetTextQueryEvidenceRejectsInvalidLocationsAndOrdersEqualStarts(
+	t *testing.T,
+) {
+	matcher := &storedEvidenceMatcher{targets: make([]storedEvidenceTarget, 1)}
+	invalid := map[int]search.Locations{
+		0: {
+			nil,
+			{Start: 2, End: 1},
+			{Start: 0, End: 100},
+		},
+	}
+	if evidence, found := minimumTargetTextQueryEvidence(
+		"text",
+		matcher,
+		invalid,
+	); found {
+		t.Fatalf("invalid target evidence = %#v", evidence)
+	}
+	matcher.targets = make([]storedEvidenceTarget, 2)
+	evidence, found := minimumTargetTextQueryEvidence(
+		"ab",
+		matcher,
+		map[int]search.Locations{
+			0: {{Start: 0, End: 2}},
+			1: {{Start: 0, End: 1}},
+		},
+	)
+	if !found || evidence != (TextQueryEvidence{Start: 0, End: 2}) {
+		t.Fatalf("target evidence = %#v/%t", evidence, found)
+	}
+}
+
 func TestMinimumTextQueryEvidenceRejectsInvalidLocations(t *testing.T) {
 	matcher := &storedEvidenceMatcher{required: []string{"term"}}
 	locations := search.TermLocationMap{
@@ -162,5 +255,27 @@ func TestMinimumTextQueryEvidenceOrdersEqualStartsByEnd(t *testing.T) {
 	evidence, found := minimumTextQueryEvidence("ab", matcher, locations)
 	if !found || evidence != (TextQueryEvidence{Start: 0, End: 2}) {
 		t.Fatalf("evidence = %#v, found = %v", evidence, found)
+	}
+}
+
+func TestMinimumTextQueryEvidenceOrdersDifferentStartsAndRejectsMissingTerm(t *testing.T) {
+	matcher := &storedEvidenceMatcher{required: []string{"first", "second"}}
+	evidence, found := minimumTextQueryEvidence(
+		"a b",
+		matcher,
+		search.TermLocationMap{
+			"first":  {{Start: 2, End: 3}},
+			"second": {{Start: 0, End: 1}},
+		},
+	)
+	if !found || evidence != (TextQueryEvidence{Start: 0, End: 3}) {
+		t.Fatalf("evidence = %#v/%t", evidence, found)
+	}
+	if evidence, found := minimumTextQueryEvidence(
+		"a",
+		matcher,
+		search.TermLocationMap{"first": {{Start: 0, End: 1}}},
+	); found {
+		t.Fatalf("missing term evidence = %#v", evidence)
 	}
 }

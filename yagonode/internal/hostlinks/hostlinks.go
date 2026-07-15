@@ -2,8 +2,8 @@ package hostlinks
 
 import (
 	"context"
-	"encoding/json"
 
+	"github.com/D4rk4/yago/yagonode/internal/hostlinkgraph"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagoproto"
 )
@@ -12,7 +12,14 @@ import (
 // for host references: WebStructureGraph.hostReferenceFactory.getRow().toString().
 // The host-hash column carries no {b256} encoder — only the two cardinals do — so a
 // YaCy peer parsing the feed decodes the columns with the same widths and codecs.
-const HostReferenceRowDefinition = "String h-6, Cardinal m-4 {b256}, Cardinal c-4 {b256}"
+const (
+	HostReferenceRowDefinition       = hostlinkgraph.HostReferenceRowDefinition
+	SnapshotHostHashBytes            = hostlinkgraph.SnapshotHostHashBytes
+	MaximumSnapshotLinkedHosts       = hostlinkgraph.MaximumSnapshotLinkedHosts
+	MaximumSnapshotReferencesPerHost = hostlinkgraph.MaximumSnapshotReferencesPerHost
+	MaximumSnapshotReferences        = hostlinkgraph.MaximumSnapshotReferences
+	MaximumSnapshotReferenceBytes    = hostlinkgraph.MaximumSnapshotReferenceBytes
+)
 
 type RuntimeStatus interface {
 	Version(ctx context.Context) string
@@ -23,20 +30,14 @@ type IncomingHostLinks interface {
 	IncomingHostLinks(ctx context.Context) Graph
 }
 
-type Graph struct {
-	RowDefinition string
-	LinkedHosts   []LinkedHost
-}
+type Graph = hostlinkgraph.Graph
 
-type LinkedHost struct {
-	HostHash   string
-	References []json.RawMessage
-}
+type LinkedHost = hostlinkgraph.LinkedHost
 
 type NoIncomingHostLinks struct{}
 
 func (NoIncomingHostLinks) IncomingHostLinks(context.Context) Graph {
-	return Graph{}
+	return Graph{RowDefinition: HostReferenceRowDefinition}
 }
 
 func Mount(

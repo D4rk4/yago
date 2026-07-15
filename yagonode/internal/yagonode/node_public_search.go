@@ -26,6 +26,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchlocal"
 	"github.com/D4rk4/yago/yagonode/internal/searchremote"
 	"github.com/D4rk4/yago/yagonode/internal/searchsession"
+	"github.com/D4rk4/yago/yagonode/internal/siteicon"
 	"github.com/D4rk4/yago/yagonode/internal/snippetfetch"
 	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
 	"github.com/D4rk4/yago/yagonode/internal/tavilyapi"
@@ -181,6 +182,7 @@ func mountNodePublicSearch(
 	mux *http.ServeMux,
 	assembly publicSearchAssembly,
 ) (searchcore.Searcher, searchcore.Searcher) {
+	siteicon.Mount(mux)
 	local := newLocalRankingSearcher(
 		assembly.storage.searchIndex,
 		assembly.rankingWeights,
@@ -348,7 +350,10 @@ func assembleRankingStages(
 	inner searchcore.Searcher,
 	assembly publicSearchAssembly,
 ) searchcore.Searcher {
-	evidence := searchcore.NewLexicalEvidenceSearcher(inner)
+	evidence := searchcore.NewLexicalEvidenceSearcherWithWeights(
+		inner,
+		lexicalRankingWeights(assembly.rankingWeights),
+	)
 	learned := learnedrank.NewSearcher(evidence, assembly.learnedRanker)
 
 	return searchcore.NewFinalRankingSearcher(learned)

@@ -62,10 +62,12 @@ type Frontier struct {
 	// and rateNextDue the earliest time its next job may dispatch, both keyed by
 	// provenance and layered on top of the per-host crawl delay. A run without
 	// an explicit entry paces at defaultRateInterval (zero = no default).
-	rateInterval        map[string]time.Duration
-	rateNextDue         map[string]time.Time
-	defaultRateInterval time.Duration
-	closing             bool
+	rateInterval          map[string]time.Duration
+	rateNextDue           map[string]time.Time
+	defaultRateInterval   time.Duration
+	pagesPerMinute        map[string]uint32
+	defaultPagesPerMinute uint32
+	closing               bool
 }
 
 // Option configures a Frontier at construction.
@@ -94,6 +96,7 @@ func WithMaxPagesPerRun(maxPagesPerRun int) Option {
 // uses to deliberately unleash a run. A value of zero disables the default.
 func WithDefaultRunRate(pagesPerMinute uint32) Option {
 	return func(f *Frontier) {
+		f.defaultPagesPerMinute = pagesPerMinute
 		if pagesPerMinute > 0 {
 			f.defaultRateInterval = time.Minute / time.Duration(pagesPerMinute)
 		}
@@ -129,6 +132,8 @@ type crawlRun struct {
 	pages           int
 	budgetExceeded  bool
 	cancelled       bool
+	hostFailures    map[string]uint8
+	retiredHosts    map[string]struct{}
 }
 
 type SeededRun struct {
@@ -153,15 +158,16 @@ func NewFrontier(capacity int, pace CrawlPace, opts ...Option) *Frontier {
 			tally:      noopRunTally{},
 			cancelled:  make(map[string]struct{}),
 		},
-		inflight:      make(map[string]int),
-		paused:        make(map[string]struct{}),
-		controlSeen:   make(map[string]time.Time),
-		cancelRuns:    make(map[string]int),
-		readyPerRun:   make(map[uuid.UUID]int),
-		dispatchOrder: make(map[uuid.UUID]uint64),
-		readyOrder:    make(map[uuid.UUID]uint64),
-		rateInterval:  make(map[string]time.Duration),
-		rateNextDue:   make(map[string]time.Time),
+		inflight:       make(map[string]int),
+		paused:         make(map[string]struct{}),
+		controlSeen:    make(map[string]time.Time),
+		cancelRuns:     make(map[string]int),
+		readyPerRun:    make(map[uuid.UUID]int),
+		dispatchOrder:  make(map[uuid.UUID]uint64),
+		readyOrder:     make(map[uuid.UUID]uint64),
+		rateInterval:   make(map[string]time.Duration),
+		rateNextDue:    make(map[string]time.Time),
+		pagesPerMinute: make(map[string]uint32),
 	}
 	for _, opt := range opts {
 		opt(frontier)
@@ -450,6 +456,7 @@ func (f *Frontier) SetRate(provenance []byte, pagesPerMinute uint32) {
 	} else {
 		f.rateInterval[key] = time.Minute / time.Duration(pagesPerMinute)
 	}
+	f.pagesPerMinute[key] = pagesPerMinute
 	f.mu.Unlock()
 
 	f.wake()
@@ -573,6 +580,8 @@ func (s *frontierState) beginRun(
 		visited:       make(map[string]struct{}),
 		hostPages:     make(map[string]int),
 		pendingByHost: make(map[string]*pendingHostPages),
+		hostFailures:  make(map[string]uint8),
+		retiredHosts:  make(map[string]struct{}),
 		profiles: map[string]crawladmission.AdmissionProfile{
 			profile.Profile.Handle: profile,
 		},
@@ -616,6 +625,9 @@ func (s *frontierState) accept(
 			slog.String("profileHandle", candidate.profileHandle),
 		)
 
+		return false
+	}
+	if _, retired := run.retiredHosts[candidate.host]; retired {
 		return false
 	}
 	profile, ok := run.profiles[candidate.profileHandle]

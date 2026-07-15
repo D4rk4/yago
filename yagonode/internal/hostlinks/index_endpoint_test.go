@@ -183,8 +183,8 @@ func TestNoIncomingHostLinksReturnsEmptyGraph(t *testing.T) {
 	links := NoIncomingHostLinks{}
 	graph := links.IncomingHostLinks(t.Context())
 
-	if graph.RowDefinition != "" {
-		t.Fatalf("RowDefinition = %q, want empty", graph.RowDefinition)
+	if graph.RowDefinition != HostReferenceRowDefinition {
+		t.Fatalf("RowDefinition = %q", graph.RowDefinition)
 	}
 	if len(graph.LinkedHosts) != 0 {
 		t.Fatalf("LinkedHosts = %v, want empty", graph.LinkedHosts)

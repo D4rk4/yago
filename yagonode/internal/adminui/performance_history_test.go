@@ -37,7 +37,8 @@ func TestPerformanceHistoryBuildsSparklineViews(t *testing.T) {
 		t.Fatalf("views = %d, want the one-point series skipped", len(views))
 	}
 	first := views[0]
-	if first.Current != "2" || first.Peak != "4.25" || first.Window != "20s" || first.Samples != 3 {
+	if first.Latest != "2" || first.ObservedAt != "2026-07-08T12:00:20Z" ||
+		first.Peak != "4.25" || first.Window != "20s" || first.Samples != 3 {
 		t.Fatalf("view mismatch: %+v", first)
 	}
 	svg := string(first.SVG)
@@ -76,6 +77,7 @@ func TestPerformancePageRendersHistory(t *testing.T) {
 		"Recent history",
 		"HTTP requests",
 		"<polyline points=",
+		"latest observed 2026-07-08T12:00:10Z",
 		"2 samples over 10s",
 		`href="/admin/backup"`,
 	} {

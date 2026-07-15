@@ -3,6 +3,7 @@ package metrichistory
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -124,6 +125,25 @@ func TestSamplerBoundsTheRing(t *testing.T) {
 	}
 	if !points[2].At.After(points[0].At) {
 		t.Fatal("points must stay oldest-first")
+	}
+}
+
+func TestSamplerOmitsUnavailableQueueObservations(t *testing.T) {
+	h := newHarness(t, 8)
+	h.crawl.Set(math.NaN())
+	h.sampler.Sample()
+	h.advance()
+	h.sampler.Sample()
+	if points := seriesByName(t, h.sampler, SeriesCrawlQueue).Points; len(points) != 0 {
+		t.Fatalf("unknown queue observations = %v, want none", points)
+	}
+
+	h.crawl.Set(6)
+	h.advance()
+	h.sampler.Sample()
+	points := seriesByName(t, h.sampler, SeriesCrawlQueue).Points
+	if len(points) != 1 || points[0].Value != 6 {
+		t.Fatalf("known queue observations = %v, want one point of 6", points)
 	}
 }
 

@@ -44,6 +44,9 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	if !requireAuthJSONMediaType(w, r) {
+		return
+	}
 	caller := clientIP(r)
 	if !s.limiter.allow(caller) {
 		s.observer.LoginThrottled()
@@ -97,7 +100,10 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.observer.LoginSucceeded()
-	http.SetCookie(w, sessionCookie(created.Token, r.TLS != nil, created.ExpiresAt))
+	http.SetCookie(
+		w,
+		sessionCookie(sessionCookieName, "/", created.Token, r.TLS != nil, created.ExpiresAt),
+	)
 	writeJSON(w, http.StatusOK, loginResponse{
 		Username:  created.Username,
 		CSRFToken: created.CSRFToken,
@@ -109,6 +115,9 @@ func (s *Service) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w, http.MethodPost)
 
+		return
+	}
+	if !requireAuthJSONMediaType(w, r) {
 		return
 	}
 	release, admitted := acquireAuthRequestAdmission()
@@ -173,7 +182,7 @@ func (s *Service) handleLogout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	http.SetCookie(w, clearedSessionCookie(r.TLS != nil))
+	http.SetCookie(w, clearedSessionCookie(sessionCookieName, "/", r.TLS != nil))
 	w.WriteHeader(http.StatusNoContent)
 }
 

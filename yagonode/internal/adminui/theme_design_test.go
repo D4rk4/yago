@@ -189,6 +189,10 @@ func TestPortalDesignSurfacesLoadFailure(t *testing.T) {
 			if !strings.Contains(got.body, "Loading the stored design failed") {
 				t.Error("a store read failure must be surfaced")
 			}
+			if strings.Contains(got.body, "design store is not available") ||
+				!strings.Contains(got.body, "editor could not be loaded") {
+				t.Fatalf("read failure misreported as an unwired store: %s", got.body)
+			}
 		})
 	}
 }

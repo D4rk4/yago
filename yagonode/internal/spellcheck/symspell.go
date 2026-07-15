@@ -198,9 +198,9 @@ func TermFrequencies(dst map[string]int, text string) {
 }
 
 func termsInText(text string, visit func(string)) {
-	for _, term := range strings.FieldsFunc(strings.ToLower(text), isNotWordRune) {
+	for term := range strings.FieldsFuncSeq(text, isNotWordRune) {
 		if correctableTerm(term) {
-			visit(term)
+			visit(strings.ToLower(term))
 		}
 	}
 }

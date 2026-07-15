@@ -9,9 +9,11 @@ import (
 const lengthBucket = Name("__lengths__")
 
 type Vault struct {
-	engine     Engine
-	mu         sync.Mutex
-	registered map[Name]struct{}
+	engine      Engine
+	lifecycle   sync.RWMutex
+	mu          sync.Mutex
+	registered  map[Name]struct{}
+	capacityUse *capacityObservation
 }
 
 func New(engine Engine) (*Vault, error) {
@@ -22,14 +24,22 @@ func New(engine Engine) (*Vault, error) {
 		return nil, fmt.Errorf("provision length bucket: %w", err)
 	}
 
-	return &Vault{engine: engine, registered: map[Name]struct{}{}}, nil
+	return &Vault{
+		engine:      engine,
+		registered:  map[Name]struct{}{},
+		capacityUse: newCapacityObservation(),
+	}, nil
 }
 
 func (v *Vault) Close() error {
-	if v == nil || v.engine == nil {
+	if v == nil {
 		return nil
 	}
-
+	v.lifecycle.Lock()
+	defer v.lifecycle.Unlock()
+	if v.engine == nil {
+		return nil
+	}
 	err := v.engine.Close()
 	v.engine = nil
 	if err != nil {
@@ -40,21 +50,32 @@ func (v *Vault) Close() error {
 }
 
 func (v *Vault) QuotaBytes() int64 {
-	if v == nil || v.engine == nil {
+	lease, err := v.acquireEngineLease()
+	if err != nil {
 		return 0
 	}
+	defer lease.release()
 
-	return v.engine.QuotaBytes()
+	return lease.engine.QuotaBytes()
 }
 
 func (v *Vault) UsedBytes(ctx context.Context) (int64, error) {
-	if v == nil || v.engine == nil {
-		return 0, errVaultClosed
+	lease, err := v.acquireEngineLease()
+	if err != nil {
+		return 0, err
+	}
+	defer lease.release()
+	var exact exactCapacityMeasurement
+	if v.capacityUse != nil {
+		exact = v.capacityUse.beginExactMeasurement()
 	}
 
-	used, err := v.engine.UsedBytes(ctx)
+	used, err := lease.engine.UsedBytes(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("measure used bytes: %w", err)
+	}
+	if v.capacityUse != nil {
+		v.capacityUse.recordExactMeasurement(exact, used)
 	}
 
 	return used, nil
@@ -78,10 +99,12 @@ type compactor interface {
 // high-water size until compacted (ADR-0036 C). It is a no-op on engines that
 // do not support compaction.
 func (v *Vault) Compact(ctx context.Context) (CompactResult, error) {
-	if v == nil || v.engine == nil {
-		return CompactResult{}, errVaultClosed
+	lease, err := v.acquireEngineLease()
+	if err != nil {
+		return CompactResult{}, err
 	}
-	c, ok := v.engine.(compactor)
+	defer lease.release()
+	c, ok := lease.engine.(compactor)
 	if !ok {
 		return CompactResult{}, nil
 	}
@@ -102,10 +125,12 @@ type shardGrower interface {
 // GrowShards asks the engine to split its overfull shards, bounded to maxSplits
 // per call. It is a no-op on engines that do not shard (ADR-0037).
 func (v *Vault) GrowShards(ctx context.Context, maxSplits int) (int, error) {
-	if v == nil || v.engine == nil {
-		return 0, errVaultClosed
+	lease, err := v.acquireEngineLease()
+	if err != nil {
+		return 0, err
 	}
-	grower, ok := v.engine.(shardGrower)
+	defer lease.release()
+	grower, ok := lease.engine.(shardGrower)
 	if !ok {
 		return 0, nil
 	}
@@ -129,10 +154,12 @@ type quotaSetter interface {
 // ceiling takes effect on the next sweep — no restart, no reshard (ADR-0037 D).
 // It is a no-op on engines whose quota is fixed at open.
 func (v *Vault) SetQuota(quotaBytes int64) {
-	if v == nil || v.engine == nil {
+	lease, err := v.acquireEngineLease()
+	if err != nil {
 		return
 	}
-	if setter, ok := v.engine.(quotaSetter); ok {
+	defer lease.release()
+	if setter, ok := lease.engine.(quotaSetter); ok {
 		setter.SetQuotaBytes(quotaBytes)
 	}
 }
@@ -151,10 +178,12 @@ type deferredSyncer interface {
 // fsync (ADR-0038). The node calls it once at boot with the operator's
 // restart-required setting; it is a no-op on engines that always fsync.
 func (v *Vault) SetDeferredFsync(enabled bool) {
-	if v == nil || v.engine == nil {
+	lease, err := v.acquireEngineLease()
+	if err != nil {
 		return
 	}
-	if syncer, ok := v.engine.(deferredSyncer); ok {
+	defer lease.release()
+	if syncer, ok := lease.engine.(deferredSyncer); ok {
 		syncer.SetDeferredFsync(enabled)
 	}
 }
@@ -163,10 +192,12 @@ func (v *Vault) SetDeferredFsync(enabled bool) {
 // load across its shards (ADR-0038). It is a no-op — returning nil — on engines
 // that always fsync, so the maintenance loop can call it unconditionally.
 func (v *Vault) SyncShards(ctx context.Context) error {
-	if v == nil || v.engine == nil {
-		return errVaultClosed
+	lease, err := v.acquireEngineLease()
+	if err != nil {
+		return err
 	}
-	syncer, ok := v.engine.(deferredSyncer)
+	defer lease.release()
+	syncer, ok := lease.engine.(deferredSyncer)
 	if !ok {
 		return nil
 	}
@@ -181,10 +212,12 @@ func (v *Vault) SyncShards(ctx context.Context) error {
 // maintenance loop knows whether its flush pass has work. False on engines that
 // always fsync.
 func (v *Vault) DeferredFsyncEnabled() bool {
-	if v == nil || v.engine == nil {
+	lease, err := v.acquireEngineLease()
+	if err != nil {
 		return false
 	}
-	syncer, ok := v.engine.(deferredSyncer)
+	defer lease.release()
+	syncer, ok := lease.engine.(deferredSyncer)
 	if !ok {
 		return false
 	}
@@ -193,17 +226,31 @@ func (v *Vault) DeferredFsyncEnabled() bool {
 }
 
 func (v *Vault) AtCapacity(ctx context.Context) (bool, error) {
-	if v == nil || v.engine == nil {
-		return false, errVaultClosed
+	lease, err := v.acquireEngineLease()
+	if err != nil {
+		return false, err
 	}
-	if v.engine.QuotaBytes() <= 0 {
+	defer lease.release()
+	if lease.engine.QuotaBytes() <= 0 {
 		return false, nil
 	}
 
-	used, err := v.UsedBytes(ctx)
+	if v.capacityUse == nil {
+		used, err := lease.engine.UsedBytes(ctx)
+		if err != nil {
+			return false, fmt.Errorf("measure used bytes: %w", err)
+		}
+
+		quota := lease.engine.QuotaBytes()
+
+		return quota > 0 && used >= quota, nil
+	}
+	used, err := v.capacityUse.measure(ctx, lease.engine.UsedBytes)
 	if err != nil {
 		return false, err
 	}
 
-	return used >= v.engine.QuotaBytes(), nil
+	quota := lease.engine.QuotaBytes()
+
+	return quota > 0 && used >= quota, nil
 }
