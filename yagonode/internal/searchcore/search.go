@@ -94,6 +94,7 @@ type Result struct {
 	RepresentativeURL     string
 	DisplayURL            string
 	Snippet               string
+	QueryMatches          []QueryMatch
 	Score                 float64
 	Evidence              RankingEvidence
 	diversityRelevance    float64
@@ -144,6 +145,11 @@ type Result struct {
 	Explanation        string
 	// Images carries the page's extracted images for the image vertical.
 	Images []ResultImage
+}
+
+type QueryMatch struct {
+	Start int
+	End   int
 }
 
 type PartialFailure struct {

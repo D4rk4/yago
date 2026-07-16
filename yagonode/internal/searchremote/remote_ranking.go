@@ -70,14 +70,14 @@ func (s remoteScorer) profileMatchScore(result searchcore.Result) float64 {
 	if denominator <= 0 {
 		return 0
 	}
-	title := strings.ToLower(result.Title)
-	location := strings.ToLower(result.URL)
+	title := searchcore.NewVisibleTextTerms(result.Title)
+	location := searchcore.NewVisibleURLTerms(result.URL)
 	matched := 0.0
 	for _, term := range s.terms {
-		if strings.Contains(title, term) {
+		if title.Mentions(term) {
 			matched += s.weights.Title
 		}
-		if strings.Contains(location, term) {
+		if location.Mentions(term) {
 			matched += s.weights.URL
 		}
 	}

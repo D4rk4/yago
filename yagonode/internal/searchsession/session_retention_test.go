@@ -13,6 +13,8 @@ func TestRetainedSessionBytesAccountsCompletePayload(t *testing.T) {
 	positions := make([]int, 2, 3)
 	images := make([]searchcore.ResultImage, 1, 2)
 	images[0] = searchcore.ResultImage{URL: "x", Alt: "x"}
+	matches := make([]searchcore.QueryMatch, 1, 2)
+	matches[0] = searchcore.QueryMatch{Start: 0, End: 1}
 	results := make([]searchcore.Result, 1, 2)
 	results[0] = searchcore.Result{
 		DocumentID:         "x",
@@ -37,6 +39,7 @@ func TestRetainedSessionBytesAccountsCompletePayload(t *testing.T) {
 		Publisher:          "x",
 		Explanation:        "x",
 		Images:             images,
+		QueryMatches:       matches,
 		FieldScores:        map[string]float64{"x": 1},
 		FieldTermPositions: map[string]map[string][]int{"x": {"x": positions}},
 	}
@@ -56,6 +59,7 @@ func TestRetainedSessionBytesAccountsCompletePayload(t *testing.T) {
 	want += cap(results) * int(retainedResultWidth)
 	want += 21
 	want += cap(images)*int(retainedResultImageWidth) + 2
+	want += cap(matches) * int(retainedQueryMatchWidth)
 	want += retainedMapBytes + retainedMapEntryBytes + 1
 	want += retainedMapBytes + retainedMapEntryBytes + 1
 	want += retainedMapBytes + retainedMapEntryBytes + 1

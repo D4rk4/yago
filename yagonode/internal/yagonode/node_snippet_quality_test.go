@@ -5,7 +5,10 @@ import (
 	"testing"
 
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
+	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/searchindex"
+	"github.com/D4rk4/yago/yagonode/internal/searchlocal"
 )
 
 func TestResultSizeName(t *testing.T) {
@@ -86,5 +89,98 @@ func TestAdminSearchSourceHighlightsSnippets(t *testing.T) {
 	}
 	if results.Results[1].Date != "" || results.Results[2].Date != "" {
 		t.Fatalf("unknown publication dates = %#v", results.Results[1:])
+	}
+}
+
+func TestPortalSourceUsesAnalyzerQueryMatches(t *testing.T) {
+	inner := &fakeSearcher{resp: searchcore.Response{
+		Request: searchcore.Request{Terms: []string{"person"}},
+		Results: []searchcore.Result{{
+			Title:        "People",
+			URL:          "https://example.org/people",
+			Snippet:      "people",
+			QueryMatches: []searchcore.QueryMatch{{Start: 0, End: 6}},
+		}},
+	}}
+
+	results, err := newPortalSource(inner).Search(t.Context(), "person", "", 0, 10)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if got := results.Results[0].SnippetHTML; got != "<mark>people</mark>" {
+		t.Fatalf("SnippetHTML = %q", got)
+	}
+}
+
+func TestPortalSourceHonorsAuthoritativeEmptyQueryMatches(t *testing.T) {
+	inner := &fakeSearcher{resp: searchcore.Response{
+		Request: searchcore.Request{Terms: []string{"space"}},
+		Results: []searchcore.Result{{
+			Title:        "Spacecraft",
+			URL:          "https://example.org/spaceship",
+			Snippet:      "spaceship",
+			QueryMatches: []searchcore.QueryMatch{},
+		}},
+	}}
+
+	results, err := newPortalSource(inner).Search(t.Context(), "space", "", 0, 10)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if got := results.Results[0].SnippetHTML; got != "spaceship" {
+		t.Fatalf("SnippetHTML = %q", got)
+	}
+}
+
+func TestAdminSearchSourceUsesAnalyzerQueryMatches(t *testing.T) {
+	inner := &fakeSearcher{resp: searchcore.Response{
+		Request: searchcore.Request{Terms: []string{"person"}},
+		Results: []searchcore.Result{{
+			Title:        "People",
+			URL:          "https://example.org/people",
+			Snippet:      "people",
+			QueryMatches: []searchcore.QueryMatch{{Start: 0, End: 6}},
+		}},
+	}}
+
+	results, err := searchSource{searcher: inner}.Search(
+		t.Context(),
+		adminui.SearchQuery{Query: "person", Global: true, Limit: 10},
+	)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if got := results.Results[0].SnippetHTML; got != "<mark>people</mark>" {
+		t.Fatalf("SnippetHTML = %q", got)
+	}
+}
+
+func TestPortalSourceHighlightsRetrievedRussianInflections(t *testing.T) {
+	index, err := searchindex.NewBleveMemoryIndex(t.Context(), nil)
+	if err != nil {
+		t.Fatalf("NewBleveMemoryIndex: %v", err)
+	}
+	if err := index.Index(t.Context(), documentstore.Document{
+		NormalizedURL: "https://example.org/russian-morphology",
+		Title:         "Правовой обзор",
+		ExtractedText: "Чрезвычайных полномочий передали Путину.",
+		Language:      "ru",
+	}); err != nil {
+		t.Fatalf("Index: %v", err)
+	}
+
+	results, err := newPortalSource(searchlocal.NewSearcher(index)).Search(
+		t.Context(),
+		"Чрезвычайные полномочия Путина",
+		"",
+		0,
+		10,
+	)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	want := "<mark>Чрезвычайных</mark> <mark>полномочий</mark> передали <mark>Путину</mark>."
+	if len(results.Results) != 1 || string(results.Results[0].SnippetHTML) != want {
+		t.Fatalf("results = %#v", results.Results)
 	}
 }

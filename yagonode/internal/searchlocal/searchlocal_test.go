@@ -238,14 +238,17 @@ func TestCoreResultFallbacksAndOffset(t *testing.T) {
 		t.Fatalf("results = %#v", resp.Results)
 	}
 
-	result := coreResult(
-		searchcore.Request{},
-		searchindex.SearchResult{
-			Title: "Local", URL: "/local", Snippet: "snippet", DateConfidence: 0.8,
-			Quality: 0.4, QualityKnown: true, SpamRisk: 0.3,
-			FunctionWordFraction: 0.2, SymbolFraction: 0.1,
-			AlphabeticFraction: 0.8, UniqueTokenFraction: 0.7,
-		},
+	req := searchcore.Request{}
+	indexed := searchindex.SearchResult{
+		Title: "Local", URL: "/local", Snippet: "snippet", DateConfidence: 0.8,
+		Quality: 0.4, QualityKnown: true, SpamRisk: 0.3,
+		FunctionWordFraction: 0.2, SymbolFraction: 0.1,
+		AlphabeticFraction: 0.8, UniqueTokenFraction: 0.7,
+	}
+	result := coreResultWithQueryMatches(
+		req,
+		indexed,
+		newRequestSnippetMatches(req).result(indexed),
 	)
 	if result.DisplayURL != "/local" || result.URLHash == "" || result.DateConfidence != 0.8 ||
 		result.Date != "" ||
@@ -254,10 +257,8 @@ func TestCoreResultFallbacksAndOffset(t *testing.T) {
 		result.AlphabeticFraction != 0.8 || result.UniqueTokenFraction != 0.7 {
 		t.Fatalf("result = %#v", result)
 	}
-	result = coreResult(
-		searchcore.Request{},
-		searchindex.SearchResult{Title: "Bad URL", URL: "", Snippet: "snippet"},
-	)
+	indexed = searchindex.SearchResult{Title: "Bad URL", URL: "", Snippet: "snippet"}
+	result = coreResultWithQueryMatches(req, indexed, newRequestSnippetMatches(req).result(indexed))
 	if result.URLHash == "" {
 		t.Fatal("empty URL still has a YaCy hash")
 	}

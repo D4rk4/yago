@@ -42,7 +42,7 @@ func (p *pageEvidenceSource) SearchEvidence(
 		return results, nil
 	}
 	for index := range results {
-		results[index].Snippet = "late matched evidence"
+		results[index].Snippet = "передача полномочий"
 		results[index].EvidenceReady = true
 	}
 
@@ -65,19 +65,24 @@ func TestPageEvidenceEnrichesOnlyPendingLocalRows(t *testing.T) {
 		},
 	}}, source)
 	response, err := searcher.Search(t.Context(), searchcore.Request{
-		Query: "псилобаты", Terms: []string{"псилобаты"}, Limit: 10,
+		Query: "полномочия", Terms: []string{"полномочия"}, Limit: 10,
 	})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
 	if len(source.results) != 1 || source.results[0].DocumentID != "pending" ||
-		source.results[0].Analyzer != "ru" || source.req.Query != "псилобаты" {
+		source.results[0].Analyzer != "ru" || source.req.Query != "полномочия" {
 		t.Fatalf("source req=%#v results=%#v", source.req, source.results)
 	}
-	if response.Results[0].Snippet != "late matched evidence" ||
+	if response.Results[0].Snippet != "передача полномочий" ||
 		!response.Results[0].EvidenceReady || response.Results[1].Snippet != "ready" ||
 		response.Results[2].Snippet != "peer" {
 		t.Fatalf("response = %#v", response.Results)
+	}
+	matches := response.Results[0].QueryMatches
+	if len(matches) != 1 ||
+		response.Results[0].Snippet[matches[0].Start:matches[0].End] != "полномочий" {
+		t.Fatalf("query matches = %#v", matches)
 	}
 }
 

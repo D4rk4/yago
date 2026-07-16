@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 )
 
 const (
@@ -301,20 +300,15 @@ func lexicalScore(text string, terms []string) float64 {
 }
 
 func lexicalTextComponents(text string, terms []string) (float64, float64) {
-	index := map[string]int{}
+	if len(terms) == 0 {
+		return 0, 0
+	}
+	index := make(map[string]int, len(terms))
 	for i, term := range terms {
 		index[term] = i
 	}
 	matched := map[int]bool{}
-	hitTerm := make([]int, 0)
-	hitPos := make([]int, 0)
-	for position, token := range strings.Fields(strings.ToLower(text)) {
-		if termIndex, ok := index[token]; ok {
-			matched[termIndex] = true
-			hitTerm = append(hitTerm, termIndex)
-			hitPos = append(hitPos, position)
-		}
-	}
+	hitTerm, hitPos := fieldHits(lexicalTextTermPositions(text, terms), index, matched)
 	coverage := float64(len(matched)) / float64(len(terms))
 
 	return coverage, proximityScore(hitTerm, hitPos, len(matched))

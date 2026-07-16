@@ -76,6 +76,45 @@ func TestRemoteScorerTitleWeightOutranksPeerOrder(t *testing.T) {
 	}
 }
 
+func TestRemoteScorerMatchesRussianInflections(t *testing.T) {
+	scorer := newRemoteScorer(
+		[]string{"чрезвычайные", "полномочия", "путина"},
+		RankingWeights{Title: 1},
+	)
+	got := scorer.score(searchcore.Result{
+		Title: "Чрезвычайных полномочий передали Путину",
+	}, 0, 1)
+	if !almostEqual(got, remoteProfileShare+remotePeerOrderShare) {
+		t.Fatalf("Russian morphology score = %v", got)
+	}
+}
+
+func TestRemoteScorerRejectsTermEmbeddedInLatinWord(t *testing.T) {
+	scorer := newRemoteScorer([]string{"api"}, RankingWeights{Title: 1})
+	got := scorer.score(searchcore.Result{Title: "Capital markets"}, 0, 1)
+	if !almostEqual(got, remotePeerOrderShare) {
+		t.Fatalf("embedded Latin term score = %v", got)
+	}
+}
+
+func TestRemoteScorerMatchesUnsegmentedScriptSubstring(t *testing.T) {
+	scorer := newRemoteScorer([]string{"東京"}, RankingWeights{Title: 1})
+	got := scorer.score(searchcore.Result{Title: "東京タワーの案内"}, 0, 1)
+	if !almostEqual(got, remoteProfileShare+remotePeerOrderShare) {
+		t.Fatalf("unsegmented-script score = %v", got)
+	}
+}
+
+func TestRemoteScorerMatchesPercentEncodedURLWordForm(t *testing.T) {
+	scorer := newRemoteScorer([]string{"полномочия"}, RankingWeights{URL: 1})
+	got := scorer.score(searchcore.Result{
+		URL: "https://example.org/%D0%BF%D0%BE%D0%BB%D0%BD%D0%BE%D0%BC%D0%BE%D1%87%D0%B8%D0%B9",
+	}, 0, 1)
+	if !almostEqual(got, remoteProfileShare+remotePeerOrderShare) {
+		t.Fatalf("percent-encoded URL score = %v", got)
+	}
+}
+
 func TestRemoteScorerZeroWeightsRankByPeerOrderAlone(t *testing.T) {
 	scorer := newRemoteScorer([]string{"golang"}, RankingWeights{})
 	got := scorer.score(
@@ -125,5 +164,22 @@ func TestWeightsOrDefaultKeepsDeliberateZeroProfile(t *testing.T) {
 	zero := func() RankingWeights { return RankingWeights{} }
 	if got := weightsOrDefault(zero)(); got != (RankingWeights{}) {
 		t.Fatalf("deliberate zero profile replaced with %#v", got)
+	}
+}
+
+func BenchmarkRemoteScorerPreparedVisibleTerms(b *testing.B) {
+	scorer := newRemoteScorer(
+		[]string{"чрезвычайные", "полномочия", "путина"},
+		DefaultRankingWeights(),
+	)
+	result := searchcore.Result{
+		Title: "Чрезвычайных полномочий передали Путину",
+		URL:   "https://example.org/полномочий",
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if scorer.profileMatchScore(result) <= 0 {
+			b.Fatal("profile score changed")
+		}
 	}
 }

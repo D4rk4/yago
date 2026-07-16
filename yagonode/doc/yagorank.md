@@ -24,7 +24,14 @@ search follows these stages:
    at least two feedback documents and does not reduce either branch's term-coverage rule.
    Final lexical ranking requests capped stored positions for its leading local
    window and uses them when available. Peer and web rows, which carry no stored
-   positions, fall back to their visible title and snippet. Explain and `near`
+   positions, fall back to bounded Unicode word-form evidence in their visible
+   title and snippet. The fallback retains combining sequences, requires
+   bounded token tails, recognizes boundary-delimited literal identifiers, and
+   permits intra-token terms for unsegmented scripts. Local HTML snippets mark
+   authoritative offsets produced by the result's indexed language analyzer;
+   peer and web snippets use the same bounded visible-text fallback as their
+   lexical evidence. The peer profile scorer prepares title and decoded-URL
+   tokens once per row; web URLs remain admission evidence. Explain and `near`
    requests use the same bounded position path.
 2. Merge local and YaCy peer lists deterministically. A peer contributes one
    list regardless of response timing. Persistent peer reliability adjusts its

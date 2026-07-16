@@ -22,6 +22,7 @@ var (
 	retainedFacetGroupWidth    = reflect.TypeOf(searchcore.FacetGroup{}).Size()
 	retainedFacetTermWidth     = reflect.TypeOf(searchcore.FacetTerm{}).Size()
 	retainedResultImageWidth   = reflect.TypeOf(searchcore.ResultImage{}).Size()
+	retainedQueryMatchWidth    = reflect.TypeOf(searchcore.QueryMatch{}).Size()
 	retainedPositionValueWidth = reflect.TypeOf(int(0)).Size()
 )
 
@@ -123,6 +124,10 @@ func retainedResultBytes(retained int, result searchcore.Result) int {
 	for _, image := range result.Images {
 		retained = retainedStrings(retained, image.URL, image.Alt)
 	}
+	retained = retainedAdd(
+		retained,
+		retainedProduct(cap(result.QueryMatches), retainedQueryMatchWidth),
+	)
 	retained = retainedStringScores(retained, result.FieldScores)
 	retained = retainedTermPositions(retained, result.FieldTermPositions)
 

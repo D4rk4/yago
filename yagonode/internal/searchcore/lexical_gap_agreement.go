@@ -1,7 +1,5 @@
 package searchcore
 
-import "strings"
-
 func orderedPositionEvidence(
 	fields map[string]map[string][]int,
 	requirements []rerankQueryRequirement,
@@ -80,19 +78,15 @@ func orderedTextEvidence(
 	if len(requirements) < 2 {
 		return 0, 0
 	}
-	requirementTerms := make(map[string]bool, len(requirements))
-	for _, requirement := range requirements {
-		requirementTerms[requirement.term] = true
-	}
-	positions := make(map[string][]int, len(requirements))
-	for ordinal, token := range strings.Fields(strings.ToLower(text)) {
-		if requirementTerms[token] {
-			positions[token] = append(positions[token], ordinal)
-		}
+	requirementTerms := make([]string, len(requirements))
+	for index, requirement := range requirements {
+		requirementTerms[index] = requirement.term
 	}
 
 	return orderedPositionEvidence(
-		map[string]map[string][]int{"text": positions},
+		map[string]map[string][]int{
+			"text": lexicalTextTermPositions(text, requirementTerms),
+		},
 		requirements,
 	)
 }

@@ -85,6 +85,55 @@ func TestHTMLEndpointHighlightsQueryTerms(t *testing.T) {
 	}
 }
 
+func TestHTMLEndpointUsesAnalyzerQueryMatches(t *testing.T) {
+	search := &fakeSearch{response: searchcore.Response{
+		TotalResults: 1,
+		Results: []searchcore.Result{{
+			Title:        "People",
+			URL:          "https://example.org/people",
+			Snippet:      "people",
+			QueryMatches: []searchcore.QueryMatch{{Start: 0, End: 6}},
+		}},
+	}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"http://node.test/yacysearch.html?query=person",
+		nil,
+	)
+	htmlEndpoint{search: search, suggestions: newRecentQueries()}.ServeHTTP(rec, req)
+
+	if body := rec.Body.String(); !strings.Contains(body, "<mark>people</mark>") {
+		t.Fatalf("missing analyzer highlight in %s", body)
+	}
+}
+
+func TestHTMLEndpointHonorsAuthoritativeEmptyQueryMatches(t *testing.T) {
+	search := &fakeSearch{response: searchcore.Response{
+		TotalResults: 1,
+		Results: []searchcore.Result{{
+			Title:        "Spacecraft",
+			URL:          "https://example.org/spaceship",
+			Snippet:      "spaceship",
+			QueryMatches: []searchcore.QueryMatch{},
+		}},
+	}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"http://node.test/yacysearch.html?query=space",
+		nil,
+	)
+	htmlEndpoint{search: search, suggestions: newRecentQueries()}.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "<mark>spaceship</mark>") || !strings.Contains(body, "spaceship") {
+		t.Fatalf("unexpected fallback highlight in %s", body)
+	}
+}
+
 func TestHTMLEndpointRendersAccessibleAutocomplete(t *testing.T) {
 	body := htmlSearchBody(t, false)
 	for _, want := range []string{

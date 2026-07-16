@@ -74,6 +74,31 @@ func TestLexicalRerankBreaksScoreTiesByLexical(t *testing.T) {
 	}
 }
 
+func TestLexicalRerankUsesWordFormsForPeerAndWebRows(t *testing.T) {
+	results := []Result{
+		{
+			URL: "peer", Score: 1, Source: SourceRemote,
+			Snippet: "Чрезвычайных полномочий передали Путину",
+		},
+		{
+			URL: "web", Score: 0.9, Source: SourceWeb,
+			Snippet: "Чрезвычайных полномочий передали Путину",
+		},
+		{URL: "unrelated", Score: 0.8, Source: SourceLocal, Snippet: "Другой текст"},
+	}
+	got := rerankLexicalProximity(results, Request{
+		Terms: []string{"чрезвычайные", "полномочия", "путина"},
+	})
+	for _, result := range got[:2] {
+		coverage, coverageKnown := result.Evidence.Value(SignalTermCoverage)
+		proximity, proximityKnown := result.Evidence.Value(SignalGlobalProximity)
+		if !coverageKnown || coverage != 1 || !proximityKnown || proximity != 0.75 {
+			t.Fatalf("federated evidence for %s = %v/%v %v/%v", result.URL,
+				coverage, coverageKnown, proximity, proximityKnown)
+		}
+	}
+}
+
 func TestLexicalRerankNoop(t *testing.T) {
 	base := []Result{
 		{URL: "a", Score: 3, Title: "alpha beta"},
@@ -128,6 +153,91 @@ func TestLexicalScore(t *testing.T) {
 		if got := lexicalScore(text, terms); math.Abs(got-want) > 1e-9 {
 			t.Errorf("lexicalScore(%q) = %v, want %v", text, got, want)
 		}
+	}
+}
+
+func TestLexicalScoreMatchesRussianInflections(t *testing.T) {
+	coverage, proximity := lexicalTextComponents(
+		"Чрезвычайных полномочий Путину.",
+		[]string{"чрезвычайные", "полномочия", "путина"},
+	)
+	if coverage != 1 || proximity != 1 {
+		t.Fatalf("Russian morphology coverage/proximity = %v/%v", coverage, proximity)
+	}
+}
+
+func TestLexicalScoreDoesNotDoubleCountOneMorphologicalOccurrence(t *testing.T) {
+	coverage, proximity := lexicalTextComponents("games", []string{"game", "games"})
+	if coverage != 0.5 || proximity != 0 {
+		t.Fatalf("shared occurrence coverage/proximity = %v/%v", coverage, proximity)
+	}
+}
+
+func TestLexicalTextComponentsEmptyTerms(t *testing.T) {
+	coverage, proximity := lexicalTextComponents("text", nil)
+	if coverage != 0 || proximity != 0 {
+		t.Fatalf("empty coverage/proximity = %v/%v", coverage, proximity)
+	}
+}
+
+func TestLexicalTextComponentsKeepCombiningMarksInsideTokens(t *testing.T) {
+	coverage, proximity := lexicalTextComponents("שָׁלוֹם עולם", []string{"שָׁלוֹם"})
+	if coverage != 1 || proximity != 0 {
+		t.Fatalf("combining-mark coverage/proximity = %v/%v", coverage, proximity)
+	}
+}
+
+func TestLexicalTextComponentsMatchUnsegmentedScriptSubstring(t *testing.T) {
+	coverage, proximity := lexicalTextComponents("東京タワー", []string{"東京"})
+	if coverage != 1 || proximity != 0 {
+		t.Fatalf("unsegmented-script coverage/proximity = %v/%v", coverage, proximity)
+	}
+}
+
+func TestLexicalTextComponentsRequireCompletePunctuatedIdentifier(t *testing.T) {
+	coverage, proximity := lexicalTextComponents(
+		"Use Node.js guide",
+		[]string{"node.js", "guide"},
+	)
+	if coverage != 1 || proximity != 1 {
+		t.Fatalf("identifier coverage/proximity = %v/%v", coverage, proximity)
+	}
+	coverage, proximity = lexicalTextComponents("node server and node.jsp", []string{"node.js"})
+	if coverage != 0 || proximity != 0 {
+		t.Fatalf("partial identifier coverage/proximity = %v/%v", coverage, proximity)
+	}
+}
+
+func TestLexicalTextComponentsDoNotReuseIdentifierComponent(t *testing.T) {
+	coverage, proximity := lexicalTextComponents("node.js", []string{"node.js", "node"})
+	if coverage != 0.5 || proximity != 0 {
+		t.Fatalf("identifier component coverage/proximity = %v/%v", coverage, proximity)
+	}
+}
+
+func TestLexicalTextComponentsUseDistinctUnsegmentedSpans(t *testing.T) {
+	coverage, proximity := lexicalTextComponents(
+		"東京タワー",
+		[]string{"東京", "タワー"},
+	)
+	if coverage != 1 || proximity != 1 {
+		t.Fatalf("unsegmented spans coverage/proximity = %v/%v", coverage, proximity)
+	}
+}
+
+func TestLexicalQueryLiteralSpansPreferLongestNonOverlappingWitness(t *testing.T) {
+	text := "東京タワー"
+	spans := lexicalQueryLiteralSpans(text, []string{"東京", "東京タワー", "タワー"})
+	if len(spans) != 1 || spans[0].start != 0 || spans[0].end != len(text) ||
+		spans[0].term != "東京タワー" {
+		t.Fatalf("literal spans = %#v", spans)
+	}
+}
+
+func TestLexicalTextComponentsRejectUnsegmentedPrefixAffinity(t *testing.T) {
+	coverage, proximity := lexicalTextComponents("東京都庁内", []string{"東京都庁舎"})
+	if coverage != 0 || proximity != 0 {
+		t.Fatalf("unsegmented prefix coverage/proximity = %v/%v", coverage, proximity)
 	}
 }
 

@@ -59,12 +59,14 @@ func (s pageEvidenceSearcher) Search(
 	for _, result := range enriched {
 		byDocument[result.DocumentID] = result
 	}
+	queryMatches := newRequestSnippetMatches(req)
 	for index := range response.Results {
 		result, found := byDocument[response.Results[index].DocumentID]
 		if !found || !result.EvidenceReady {
 			continue
 		}
 		response.Results[index].Snippet = result.Snippet
+		response.Results[index].QueryMatches = queryMatches.result(result)
 		response.Results[index].EvidenceReady = result.EvidenceReady
 	}
 

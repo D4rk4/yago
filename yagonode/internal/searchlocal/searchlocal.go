@@ -173,8 +173,9 @@ func coreResults(
 		return nil, err
 	}
 	out := make([]searchcore.Result, 0, len(results))
+	queryMatches := newRequestSnippetMatches(req)
 	for _, result := range results {
-		core := coreResult(req, result)
+		core := coreResultWithQueryMatches(req, result, queryMatches.result(result))
 		if filters.match(core) {
 			out = append(out, core)
 		}
@@ -279,9 +280,10 @@ func urlLengthPrior(rawURL string) float64 {
 	return urlPriorWeight * urlPriorK / (urlPriorK + pathLen)
 }
 
-func coreResult(
+func coreResultWithQueryMatches(
 	req searchcore.Request,
 	result searchindex.SearchResult,
+	queryMatches []searchcore.QueryMatch,
 ) searchcore.Result {
 	parsed, _ := url.Parse(result.URL)
 	host, pathValue, file := parsedURLParts(parsed)
@@ -300,6 +302,7 @@ func coreResult(
 		RepresentativeURL:    result.RepresentativeURL,
 		DisplayURL:           displayURL(host, pathValue),
 		Snippet:              result.Snippet,
+		QueryMatches:         queryMatches,
 		Score:                result.Score,
 		Evidence:             localRankingEvidence(req, result),
 		Source:               req.Source,

@@ -12,7 +12,6 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/cachedpage"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
-	"github.com/D4rk4/yago/yagonode/internal/snippetmark"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -453,7 +452,7 @@ func responseHTMLItems(
 			DisplayURL: result.DisplayURL,
 			// Highlight escapes the snippet before adding <mark>, so this is
 			// the only HTML the description may carry.
-			Description: snippetmark.Highlight(result.Snippet, terms),
+			Description: highlightedResultSnippet(result, terms),
 			Date:        result.DisplayDate(),
 			SizeName:    sizeName(result.Size),
 		}

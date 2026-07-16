@@ -89,6 +89,29 @@ func TestOrderedTextFractionRequiresConsecutiveQueryTerms(t *testing.T) {
 	}
 }
 
+func TestOrderedTextFractionMatchesRussianInflections(t *testing.T) {
+	requirements := rerankQueryRequirements(Request{
+		Terms: []string{"чрезвычайные", "полномочия", "путина"},
+	})
+	if got := orderedTextFraction("чрезвычайных полномочий путина", requirements); got != 1 {
+		t.Fatalf("Russian ordered fraction = %v", got)
+	}
+}
+
+func TestOrderedTextFractionTreatsIdentifierAsOnePosition(t *testing.T) {
+	requirements := rerankQueryRequirements(Request{Terms: []string{"node.js", "guide"}})
+	if got := orderedTextFraction("Node.js guide", requirements); got != 1 {
+		t.Fatalf("identifier ordered fraction = %v", got)
+	}
+}
+
+func TestOrderedTextFractionUsesDistinctUnsegmentedSpans(t *testing.T) {
+	requirements := rerankQueryRequirements(Request{Terms: []string{"東京", "タワー"}})
+	if got := orderedTextFraction("東京タワー", requirements); got != 1 {
+		t.Fatalf("unsegmented ordered fraction = %v", got)
+	}
+}
+
 func TestOrderedDependencePreservesFilteredQueryDistance(t *testing.T) {
 	requirements := rerankQueryRequirements(
 		Request{Terms: []string{"alpha", "and", "beta"}},

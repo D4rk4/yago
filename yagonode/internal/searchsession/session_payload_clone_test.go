@@ -43,9 +43,10 @@ func TestStableWindowDetachesAndIsolatesCompletePayload(t *testing.T) {
 	inner := &payloadSearcher{response: searchcore.Response{
 		TotalResults: 1,
 		Results: []searchcore.Result{{
-			Title:  short,
-			URL:    "https://example.test/",
-			Images: []searchcore.ResultImage{{URL: "image", Alt: "alt"}},
+			Title:        short,
+			URL:          "https://example.test/",
+			Images:       []searchcore.ResultImage{{URL: "image", Alt: "alt"}},
+			QueryMatches: []searchcore.QueryMatch{{Start: 1, End: 2}},
 			FieldScores: map[string]float64{
 				"body": 1,
 			},
@@ -70,11 +71,13 @@ func TestStableWindowDetachesAndIsolatesCompletePayload(t *testing.T) {
 	}
 	first.Results[0].Title = "changed"
 	first.Results[0].Images[0].URL = "changed"
+	first.Results[0].QueryMatches[0].Start = 9
 	first.Results[0].FieldScores["body"] = 9
 	first.Results[0].FieldTermPositions["body"]["term"][0] = 9
 	first.PartialFailures[0].Reason = "changed"
 	first.Facets[0].Terms[0].Term = "changed"
 	inner.response.Results[0].Images[0].Alt = "changed"
+	inner.response.Results[0].QueryMatches[0].End = 9
 	inner.response.Results[0].FieldScores["body"] = 7
 	inner.response.Results[0].FieldTermPositions["body"]["term"][1] = 7
 	inner.response.PartialFailures[0].Source = "changed"
@@ -84,7 +87,8 @@ func TestStableWindowDetachesAndIsolatesCompletePayload(t *testing.T) {
 	result := cached.Results[0]
 	if result.Title != short || result.Images[0] != (searchcore.ResultImage{
 		URL: "image", Alt: "alt",
-	}) || result.FieldScores["body"] != 1 ||
+	}) || result.QueryMatches[0] != (searchcore.QueryMatch{Start: 1, End: 2}) ||
+		result.FieldScores["body"] != 1 ||
 		result.FieldTermPositions["body"]["term"][0] != 1 ||
 		result.FieldTermPositions["body"]["term"][1] != 2 ||
 		cached.PartialFailures[0] != (searchcore.PartialFailure{
@@ -132,10 +136,20 @@ func TestSessionPayloadClonePreservesNilCollections(t *testing.T) {
 	})
 	facets := cloneSessionFacets([]searchcore.FacetGroup{{Name: "host"}})
 	if cloneSessionResults(nil) != nil || cloneSessionFailures(nil) != nil ||
-		cloneSessionFacets(nil) != nil || result.Images != nil || result.FieldScores != nil ||
+		cloneSessionFacets(nil) != nil || result.Images != nil || result.QueryMatches != nil ||
+		result.FieldScores != nil ||
 		result.FieldTermPositions["title"] != nil ||
 		result.FieldTermPositions["body"]["term"] != nil || facets[0].Terms != nil {
 		t.Fatalf("nil collections changed: %#v/%#v", result, facets)
+	}
+}
+
+func TestSessionPayloadClonePreservesAuthoritativeEmptyQueryMatches(t *testing.T) {
+	results := cloneSessionResults([]searchcore.Result{{
+		QueryMatches: []searchcore.QueryMatch{},
+	}})
+	if results[0].QueryMatches == nil || len(results[0].QueryMatches) != 0 {
+		t.Fatalf("QueryMatches = %#v", results[0].QueryMatches)
 	}
 }
 

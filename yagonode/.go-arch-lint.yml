@@ -114,6 +114,8 @@ components:
     in: internal/documentsearch/**
   searchcore:
     in: internal/searchcore/**
+  querymatch:
+    in: internal/querymatch/**
   queryidentifier:
     in: internal/queryidentifier/**
   stopwords:
@@ -554,9 +556,13 @@ deps:
   searchcore:
     mayDependOn:
       - searchcore
+      - querymatch
       - stopwords
     canUse:
       - xnet
+  querymatch:
+    mayDependOn:
+      - querymatch
   queryidentifier:
     mayDependOn:
       - queryidentifier
@@ -725,6 +731,10 @@ deps:
       - cachedpage
     canUse:
       - yagoproto
+  snippetmark:
+    mayDependOn:
+      - snippetmark
+      - querymatch
   websearch:
     mayDependOn:
       - websearch

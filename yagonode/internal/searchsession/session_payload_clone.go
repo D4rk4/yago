@@ -41,10 +41,21 @@ func cloneSessionResult(result searchcore.Result) searchcore.Result {
 	result.Publisher = strings.Clone(result.Publisher)
 	result.Explanation = strings.Clone(result.Explanation)
 	result.Images = cloneSessionImages(result.Images)
+	result.QueryMatches = cloneSessionQueryMatches(result.QueryMatches)
 	result.FieldScores = cloneSessionScores(result.FieldScores)
 	result.FieldTermPositions = cloneSessionPositions(result.FieldTermPositions)
 
 	return result
+}
+
+func cloneSessionQueryMatches(matches []searchcore.QueryMatch) []searchcore.QueryMatch {
+	if matches == nil {
+		return nil
+	}
+	cloned := make([]searchcore.QueryMatch, len(matches))
+	copy(cloned, matches)
+
+	return cloned
 }
 
 func cloneSessionImages(images []searchcore.ResultImage) []searchcore.ResultImage {

@@ -7,7 +7,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/modifierhint"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
-	"github.com/D4rk4/yago/yagonode/internal/snippetmark"
 )
 
 type searchSource struct {
@@ -58,7 +57,7 @@ func adminSearchResults(
 			URL:         result.URL,
 			DisplayURL:  result.DisplayURL,
 			Snippet:     result.Snippet,
-			SnippetHTML: snippetmark.Highlight(result.Snippet, terms),
+			SnippetHTML: highlightedResultSnippet(result, terms),
 			Host:        result.Host,
 			Date:        result.DisplayDate(),
 			SizeName:    resultSizeName(result.Size),

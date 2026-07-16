@@ -9,14 +9,14 @@ import (
 
 func TestCoveredDistinctTermsRequiresIndependentTokenWitnesses(t *testing.T) {
 	result := searchcore.Result{
-		Title: "Checkpoint reference",
+		Title: "Games reference",
 		URL:   "https://example.org/reference",
 	}
-	if got := coveredDistinctTerms(result, []string{"check", "point"}); got != 1 {
+	if got := coveredDistinctTerms(result, []string{"game", "games"}); got != 1 {
 		t.Fatalf("covered terms = %d, want 1", got)
 	}
-	if resultCoversTerms(result, []string{"check", "point"}, 2) {
-		t.Fatal("one checkpoint token satisfied two requirements")
+	if resultCoversTerms(result, []string{"game", "games"}, 2) {
+		t.Fatal("one inflected token satisfied two requirements")
 	}
 }
 

@@ -102,6 +102,9 @@ its binaries (`yago-node`, `yagocrawler`).
   verticals (images/audio/video/apps with a lightbox grid), spell-check
   ("did you mean"), zero-result fuzzy recovery, query-term-highlighted
   snippets, anchor-text document expansion, and an explainable ranking API.
+  Local snippets use query-match offsets from the indexed language analyzer;
+  peer, web, and legacy RWI snippets use bounded Unicode word-form evidence,
+  preserving punctuation-bearing identifiers and unsegmented-script terms.
   Local and swarm retrieval use parsed bare terms; eligible web search receives
   the bounded original operator-bearing query and verifies supported structured
   constraints again on returned rows.

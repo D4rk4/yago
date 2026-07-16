@@ -13,7 +13,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/modifierhint"
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
-	"github.com/D4rk4/yago/yagonode/internal/snippetmark"
 )
 
 type portalSource struct {
@@ -142,7 +141,7 @@ func (s portalSource) Search(
 			URL:             result.URL,
 			DisplayURL:      result.DisplayURL,
 			Snippet:         result.Snippet,
-			SnippetHTML:     snippetmark.Highlight(result.Snippet, response.Request.Terms),
+			SnippetHTML:     highlightedResultSnippet(result, response.Request.Terms),
 			Host:            result.Host,
 			Date:            result.DisplayDate(),
 			SizeName:        resultSizeName(result.Size),
