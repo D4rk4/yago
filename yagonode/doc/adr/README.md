@@ -69,3 +69,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0048](0048-bounded-google-yandex-ranking-research-disposition.md) | Adopt only bounded and independently justified ranking evidence | Accepted |
 | [0049](0049-vendor-haiku-icons-for-admin-shelf.md) | Vendor Haiku icons for the Admin shelf | Accepted |
 | [0050](0050-attest-release-artifacts.md) | Attest release artifacts with GitHub-hosted provenance | Accepted |
+| [0051](0051-promote-validated-release-images-to-ghcr.md) | Promote validated release images to attested GHCR manifest lists | Accepted |

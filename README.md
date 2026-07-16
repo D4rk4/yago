@@ -250,7 +250,11 @@ its binaries (`yago-node`, `yagocrawler`).
   `SOURCE_REVISION`, so two images can be traced to the same source commit.
 - Release tags build and smoke-test both product images natively on amd64 and
   arm64, then reject HIGH or CRITICAL findings from the pinned Trivy image
-  scan. The runner-local images gate package publication but are not published.
+  scan. Their validated configuration and root-filesystem identities are
+  promoted without a rebuild into public, provenance-attested
+  multi-architecture manifest lists at `ghcr.io/d4rk4/yago-node:vX.Y.Z` and
+  `ghcr.io/d4rk4/yagocrawler:vX.Y.Z`. Releases publish no `latest` or shortened
+  version alias; deployments can pin the recorded manifest-list digest.
 - Prometheus `/metrics` (RED/USE + saturation), burn-rate alert rules with an
   SLO doc, health/readiness endpoints, auth-gated pprof, trace-correlated
   structured logs (never secrets), and a durable event store fed through a

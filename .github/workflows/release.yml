@@ -3,6 +3,8 @@ name: release
 on:
   push:
     tags: ["v*"]
+  release:
+    types: [edited]
 
 permissions:
   contents: read
@@ -17,7 +19,16 @@ jobs:
           fetch-depth: 0
 
       - name: Verify tag belongs to main
+        env:
+          RELEASE_ID: ${{ github.event.release.id }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
+          if test "$GITHUB_EVENT_NAME" = release; then
+            test "$RELEASE_ID" = 355175485
+            test "$RELEASE_TAG" = v0.0.10
+            test "$GITHUB_REF" = refs/tags/v0.0.10
+            test "$GITHUB_SHA" = 9bcc0bde61364c8248fba7f452c19f2446c72898
+          fi
           printf '%s\n' "$GITHUB_REF_NAME" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           git fetch --no-tags origin main:refs/remotes/origin/main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
@@ -65,6 +76,7 @@ jobs:
 
   build:
     needs: verify
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -184,7 +196,7 @@ jobs:
   containers:
     needs: verify
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -200,8 +212,105 @@ jobs:
       - name: Build, smoke-test, and scan release containers
         run: sh deploy/verify-release-containers.sh "$GITHUB_REF_NAME" "$GITHUB_SHA" "${{ matrix.architecture }}"
 
-  release:
+      - name: Checkout release workflow tooling
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-workflow
+
+      - name: Export validated release containers
+        run: sh .release-workflow/deploy/export-release-containers.sh "$GITHUB_REF_NAME" "$GITHUB_SHA" "${{ matrix.architecture }}" container-dist
+
+      - name: Upload validated release containers
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-containers-${{ matrix.architecture }}
+          path: container-dist/*
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  container_publish:
     needs: [build, containers]
+    if: ${{ always() && needs.containers.result == 'success' && (github.event_name == 'release' || needs.build.result == 'success') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    concurrency:
+      group: release-container-publish-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout release workflow tooling
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: release-workflow
+
+      - name: Download validated release containers
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: release-containers-*
+          path: container-dist
+          merge-multiple: true
+
+      - name: Log in to GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Publish multi-architecture release containers
+        id: publish
+        run: sh release-workflow/deploy/publish-release-containers.sh "$GITHUB_REF_NAME" "$GITHUB_SHA" container-dist >> "$GITHUB_OUTPUT"
+
+      - name: Attest node container manifest
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763
+        with:
+          subject-name: ghcr.io/d4rk4/yago-node
+          subject-digest: ${{ steps.publish.outputs.node_digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest crawler container manifest
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763
+        with:
+          subject-name: ghcr.io/d4rk4/yagocrawler
+          subject-digest: ${{ steps.publish.outputs.crawler_digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Verify container manifest attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NODE_DIGEST: ${{ steps.publish.outputs.node_digest }}
+          CRAWLER_DIGEST: ${{ steps.publish.outputs.crawler_digest }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          for subject in \
+            "oci://ghcr.io/d4rk4/yago-node@${NODE_DIGEST}" \
+            "oci://ghcr.io/d4rk4/yagocrawler@${CRAWLER_DIGEST}"; do
+            gh attestation verify "$subject" \
+              --bundle-from-oci \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --signer-digest "$WORKFLOW_SHA" \
+              --source-ref "$GITHUB_REF" \
+              --source-digest "$GITHUB_SHA" \
+              --deny-self-hosted-runners
+          done
+
+      - name: Verify public release containers without credentials
+        env:
+          NODE_DIGEST: ${{ steps.publish.outputs.node_digest }}
+          CRAWLER_DIGEST: ${{ steps.publish.outputs.crawler_digest }}
+        run: sh release-workflow/deploy/verify-public-release-containers.sh "$GITHUB_REF_NAME" "$GITHUB_SHA" "$NODE_DIGEST" "$CRAWLER_DIGEST"
+
+  release:
+    needs: [build, container_publish]
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -215,6 +324,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
+          pattern: dist-*
           path: dist
           merge-multiple: true
 

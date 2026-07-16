@@ -223,6 +223,18 @@ gh attestation verify "/tmp/yago-release/yago_${version#v}_amd64.deb" \
   --source-digest "$source_digest"
 ```
 
+### `yagoseek.dev` production exception
+
+The operator policy for deployments performed as `root@yagoseek.dev` skips a
+new pre-upgrade backup to keep the outage bounded. Retain every existing archive
+under `/opt/yago/backups` unchanged; do not delete, replace, prune, or reuse one
+as staging space. Download the release package under
+`/opt/yago/releases/vX.Y.Z`, verify its attestation and package identity there,
+stop `yagocrawler` and `yago-node`, install the package, then start and verify the
+node before starting the crawler. This target-specific exception accepts less
+rollback coverage and does not change the generic backup requirement for any
+other host.
+
 ## RPM package
 
 `deploy/rpm/build-rpm.sh <version> <arch> <bindir> <outdir>` builds the same
@@ -259,10 +271,94 @@ Linux amd64/arm64 matrix builds both product containers with
 Docker-reported architecture, OCI source and revision labels, exact binary
 versions, and bundled Firefox executable, then scans both images with Trivy
 0.72.0 for HIGH or CRITICAL vulnerabilities, secrets, and misconfigurations.
-The release job waits for every matrix member. These images are transient
-runner-local validation inputs: CI does not log in to a registry, push or
-upload them, create a registry manifest list, attest them, or attach them to the GitHub
-Release. Build deployment images locally with `make compose-images`.
+Each native job exports a checksum-protected archive of its validated images as
+a short-lived workflow artifact. After every matrix member succeeds, a separate job verifies
+and reloads those archives, rechecks their release identity, publishes the two
+platform manifests, and creates one multi-architecture GHCR manifest list per
+product. It attaches and verifies GitHub-hosted provenance for each final
+manifest-list digest before the GitHub Release is published. Container packages remain
+separate from the six GitHub Release file assets.
+
+The complete `vX.Y.Z` tag is the only operator-facing image reference;
+immutable `vX.Y.Z-amd64` and `vX.Y.Z-arm64` staging references exist only to
+compose the manifest list. CI does not create `latest`, major-only, minor-only, branch,
+or date aliases. A tightly pinned existing-release event can fill a missing
+image for an immutable historical tag after it matches the exact release
+identity, tag ref, source commit, and main ancestry; package construction and
+GitHub Release creation remain disabled. It cannot move the tag, replace an
+existing release manifest, rebuild package assets, or recreate the GitHub Release.
+Its evidence records current workflow tooling separately from the historical
+tag source while retaining the exact tag ref and source digest in the
+attestation. Build development images locally with `make compose-images`.
+
+## Published container images
+
+Every container release publishes these public manifest lists for Linux amd64
+and arm64:
+
+- `ghcr.io/d4rk4/yago-node:vX.Y.Z`;
+- `ghcr.io/d4rk4/yagocrawler:vX.Y.Z`.
+
+GHCR creates each new package as private. The package owner must change its
+visibility to Public once. The publication gate then uses an empty Docker
+credential directory to pull both the exact tag and its digest before it can
+succeed. A retry accepts an existing architecture tag or manifest list only
+when its image identity, labels, platforms, and child digests match the
+validated archives; registry authorization, network, and server failures stop
+publication rather than being interpreted as a missing tag.
+
+After that gate passes, select the exact version and verify the embedded product
+identity before use:
+
+```sh
+version=vX.Y.Z
+node_image=ghcr.io/d4rk4/yago-node
+crawler_image=ghcr.io/d4rk4/yagocrawler
+docker pull "$node_image:$version"
+docker pull "$crawler_image:$version"
+test "$(docker run --rm "$node_image:$version" --version)" = "yago-node $version"
+test "$(docker run --rm "$crawler_image:$version" --version)" = "yago-crawler $version"
+```
+
+The release memo and GHCR package page record each multi-architecture
+manifest-list digest. Pin that digest for a deployment so a tag lookup is not
+part of future selection, then verify its GitHub-hosted provenance:
+
+```sh
+version=vX.Y.Z
+node_image=ghcr.io/d4rk4/yago-node
+crawler_image=ghcr.io/d4rk4/yagocrawler
+source_digest=$(gh api "repos/D4rk4/yago/commits/$version" --jq .sha)
+workflow_digest=$source_digest
+node_digest=sha256:replace-with-the-recorded-node-manifest-digest
+crawler_digest=sha256:replace-with-the-recorded-crawler-manifest-digest
+docker pull "$node_image@$node_digest"
+docker pull "$crawler_image@$crawler_digest"
+gh attestation verify "oci://$node_image@$node_digest" \
+  --bundle-from-oci \
+  --repo D4rk4/yago \
+  --signer-workflow D4rk4/yago/.github/workflows/release.yml \
+  --signer-digest "$workflow_digest" \
+  --source-ref "refs/tags/$version" \
+  --source-digest "$source_digest" \
+  --deny-self-hosted-runners
+gh attestation verify "oci://$crawler_image@$crawler_digest" \
+  --bundle-from-oci \
+  --repo D4rk4/yago \
+  --signer-workflow D4rk4/yago/.github/workflows/release.yml \
+  --signer-digest "$workflow_digest" \
+  --source-ref "refs/tags/$version" \
+  --source-digest "$source_digest" \
+  --deny-self-hosted-runners
+```
+
+Constrain verification to `refs/tags/$version` and the commit resolved from that
+tag, as shown in the Debian package example. A controlled historical backfill
+retains those release-source constraints while recording its current workflow
+tooling separately; use the workflow run and manifest-list digests recorded in that
+release's dated factual correction. An attestation establishes provenance, not
+image safety, and does not replace the native smoke tests, Trivy policy, or
+runtime health checks.
 
 ## Container build provenance
 

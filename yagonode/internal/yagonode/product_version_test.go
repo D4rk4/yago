@@ -156,18 +156,23 @@ func TestReleaseWorkflowRequiresExactSemanticTag(t *testing.T) {
 	}
 }
 
-func TestReleaseContainerWorkflowBlocksPublication(t *testing.T) {
+func TestReleaseContainerWorkflowSeparatesValidationFromRegistryPublication(t *testing.T) {
 	contents, err := os.ReadFile("../../../.github/workflows/release.yml")
 	if err != nil {
 		t.Fatalf("read release workflow: %v", err)
 	}
 	text := string(contents)
 	containerStart := strings.Index(text, "\n  containers:\n")
-	releaseStart := strings.Index(text, "\n  release:\n")
-	if containerStart < 0 || releaseStart <= containerStart {
-		t.Fatal("release workflow does not define containers before release")
+	containerPublishStart := strings.Index(text, "\n  container_publish:\n")
+	if containerStart < 0 || containerPublishStart <= containerStart {
+		t.Fatal("release workflow does not separate validation and registry publication")
 	}
-	containerJob := text[containerStart:releaseStart]
+	releaseOffset := strings.Index(text[containerPublishStart:], "\n  release:\n")
+	if releaseOffset < 0 {
+		t.Fatal("release workflow does not define release publication after registry publication")
+	}
+	releaseStart := containerPublishStart + releaseOffset
+	containerJob := text[containerStart:containerPublishStart]
 	for _, required := range []string{
 		`needs: verify`,
 		`runner: ubuntu-24.04`,
@@ -175,6 +180,8 @@ func TestReleaseContainerWorkflowBlocksPublication(t *testing.T) {
 		`architecture: amd64`,
 		`architecture: arm64`,
 		`sh deploy/verify-release-containers.sh "$GITHUB_REF_NAME" "$GITHUB_SHA"`,
+		`sh .release-workflow/deploy/export-release-containers.sh`,
+		`name: release-containers-${{ matrix.architecture }}`,
 	} {
 		if !strings.Contains(containerJob, required) {
 			t.Fatalf("release container job missing %q", required)
@@ -184,7 +191,6 @@ func TestReleaseContainerWorkflowBlocksPublication(t *testing.T) {
 		`docker push`,
 		`docker login`,
 		`--push`,
-		`upload-artifact`,
 		`actions/attest`,
 		`docker manifest`,
 		`skopeo copy`,
@@ -195,8 +201,8 @@ func TestReleaseContainerWorkflowBlocksPublication(t *testing.T) {
 			t.Fatalf("release container job contains publishing operation %q", forbidden)
 		}
 	}
-	if !strings.Contains(text[releaseStart:], `needs: [build, containers]`) {
-		t.Fatal("release publication does not depend on the container gate")
+	if !strings.Contains(text[releaseStart:], `needs: [build, container_publish]`) {
+		t.Fatal("release publication does not depend on registry publication")
 	}
 }
 
