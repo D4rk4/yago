@@ -83,16 +83,9 @@ workflow, and hosted runner. It then checks the standard provenance subject,
 workflow, builder, and invocation and the complete identity predicate. It never
 represents the current workflow invocation as a historical tag event.
 
-### Historical release container identity
-
-The project-specific predicate is a JSON object with `schemaVersion` 1. Its
-`release` object identifies the release ID, semantic-version tag, tag ref,
-annotated tag object, and peeled source commit. Its `workflow` object identifies
-the manual event, current source ref and commit, workflow ref, and workflow
-definition commit. Its `validation` object identifies the completed run and
-attempt plus exactly two GitHub artifact IDs, names, and API digests. Its
-`manifests` object records the node and crawler manifest-list digests. Every
-field is mandatory and verification compares the complete signed object.
+The project-specific predicate type is the immutable workflow-commit permalink
+of `doc/release-container-identity-v1.md`. Keeping the type URI within GitHub's
+accepted length bound is part of the release-workflow contract.
 
 The backfill does not rebuild packages, recreate the GitHub Release, move the
 tag, replace an existing release manifest, or create a mutable alias. The

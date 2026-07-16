@@ -505,7 +505,7 @@ jobs:
         with:
           subject-name: ghcr.io/d4rk4/yago-node
           subject-digest: ${{ steps.publish.outputs.node_digest }}
-          predicate-type: https://github.com/D4rk4/yago/blob/${{ github.workflow_sha }}/yagonode/doc/adr/0051-promote-validated-release-images-to-ghcr.md#historical-release-container-identity
+          predicate-type: https://github.com/D4rk4/yago/blob/${{ github.workflow_sha }}/doc/release-container-identity-v1.md
           predicate-path: ${{ runner.temp }}/historical-release-container-identity.json
           push-to-registry: true
           create-storage-record: false
@@ -516,7 +516,7 @@ jobs:
         with:
           subject-name: ghcr.io/d4rk4/yagocrawler
           subject-digest: ${{ steps.publish.outputs.crawler_digest }}
-          predicate-type: https://github.com/D4rk4/yago/blob/${{ github.workflow_sha }}/yagonode/doc/adr/0051-promote-validated-release-images-to-ghcr.md#historical-release-container-identity
+          predicate-type: https://github.com/D4rk4/yago/blob/${{ github.workflow_sha }}/doc/release-container-identity-v1.md
           predicate-path: ${{ runner.temp }}/historical-release-container-identity.json
           push-to-registry: true
           create-storage-record: false
@@ -551,7 +551,7 @@ jobs:
           WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           build_type="https://actions.github.io/buildtypes/workflow/v1"
-          identity_type="https://github.com/${GITHUB_REPOSITORY}/blob/${WORKFLOW_SHA}/yagonode/doc/adr/0051-promote-validated-release-images-to-ghcr.md#historical-release-container-identity"
+          identity_type="https://github.com/${GITHUB_REPOSITORY}/blob/${WORKFLOW_SHA}/doc/release-container-identity-v1.md"
           builder="https://github.com/${GITHUB_WORKFLOW_REF}"
           invocation="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}"
           verify_historical_attestations() {

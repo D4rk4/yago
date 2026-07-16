@@ -251,7 +251,7 @@ func TestHistoricalReleaseContainerPublicationBindsIdentityAndEvidence(t *testin
 		`Attest historical crawler container provenance`,
 		`Attest historical node container identity`,
 		`Attest historical crawler container identity`,
-		`#historical-release-container-identity`,
+		`doc/release-container-identity-v1.md`,
 		`build_type="https://actions.github.io/buildtypes/workflow/v1"`,
 		`builder="https://github.com/${GITHUB_WORKFLOW_REF}"`,
 		`Verify historical manifest identities`,
@@ -272,6 +272,13 @@ func TestHistoricalReleaseContainerPublicationBindsIdentityAndEvidence(t *testin
 		if !strings.Contains(publishJob, required) {
 			t.Fatalf("historical release evidence guard missing %q", required)
 		}
+	}
+	identityType := "https://github.com/D4rk4/yago/blob/" + strings.Repeat(
+		"0",
+		40,
+	) + "/doc/release-container-identity-v1.md"
+	if len(identityType) > 128 {
+		t.Fatalf("historical identity predicate type length = %d", len(identityType))
 	}
 	identity := strings.Index(publishJob, `Reverify historical release identity before publication`)
 	if strings.Index(publishJob, `Download validated historical release containers`) > identity ||
