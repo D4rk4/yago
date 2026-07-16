@@ -3,8 +3,13 @@ name: release
 on:
   push:
     tags: ["v*"]
-  release:
-    types: [edited]
+  workflow_dispatch:
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && 'v0.0.10' || github.ref_name }}
+  RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && 'refs/tags/v0.0.10' || github.ref }}
+  RELEASE_TAG_OBJECT: ${{ github.event_name == 'workflow_dispatch' && '09ca7be1b1e5065155111479c9213bd0566801d8' || '' }}
+  RELEASE_SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && '9bcc0bde61364c8248fba7f452c19f2446c72898' || github.sha }}
 
 permissions:
   contents: read
@@ -18,24 +23,44 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify tag belongs to main
+      - name: Verify release identity
         env:
-          RELEASE_ID: ${{ github.event.release.id }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if test "$GITHUB_EVENT_NAME" = release; then
-            test "$RELEASE_ID" = 355175485
-            test "$RELEASE_TAG" = v0.0.10
-            test "$GITHUB_REF" = refs/tags/v0.0.10
-            test "$GITHUB_SHA" = 9bcc0bde61364c8248fba7f452c19f2446c72898
+          if test "$GITHUB_EVENT_NAME" = workflow_dispatch; then
+            test "$GITHUB_REF" = refs/heads/main
+            test "$GITHUB_SHA" = "$GITHUB_WORKFLOW_SHA"
+            release_json=$(gh api "/repos/${GITHUB_REPOSITORY}/releases/355175485")
+            test "$(printf '%s' "$release_json" | jq -r .id)" = 355175485
+            test "$(printf '%s' "$release_json" | jq -r .tag_name)" = v0.0.10
+            test "$(printf '%s' "$release_json" | jq -r .target_commitish)" = main
+            test "$(printf '%s' "$release_json" | jq -r .draft)" = false
+            test "$(printf '%s' "$release_json" | jq -r .prerelease)" = false
+            test "$(printf '%s' "$release_json" | jq -r .published_at)" != null
+            git fetch --force origin "$RELEASE_REF:$RELEASE_REF"
+            test "$(git ls-remote origin "$RELEASE_REF" | awk '{print $1}')" = "$RELEASE_TAG_OBJECT"
+            test "$(git cat-file -t "$RELEASE_TAG")" = tag
+            test "$(git rev-parse "$RELEASE_TAG")" = "$RELEASE_TAG_OBJECT"
+            test "$(git rev-parse "${RELEASE_TAG}^{}")" = "$RELEASE_SOURCE_SHA"
+          else
+            test "$GITHUB_REF" = "$RELEASE_REF"
+            test "$GITHUB_SHA" = "$RELEASE_SOURCE_SHA"
           fi
-          printf '%s\n' "$GITHUB_REF_NAME" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          printf '%s\n' "$RELEASE_TAG" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          test "$RELEASE_REF" = "refs/tags/${RELEASE_TAG}"
           git fetch --no-tags origin main:refs/remotes/origin/main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          git merge-base --is-ancestor "$RELEASE_SOURCE_SHA" origin/main
+
+      - name: Checkout release source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ env.RELEASE_SOURCE_SHA }}
+          fetch-depth: 0
 
       - name: Verify human-authored release notes
         run: |
-          notes="doc/releases/${GITHUB_REF_NAME}.md"
+          notes="doc/releases/${RELEASE_TAG}.md"
           test -f "$notes"
           test "$(grep -c '^<!--more-->$' "$notes")" -eq 1
           test "$(sed -n '1p' "$notes")" = '## Abstract'
@@ -208,9 +233,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ env.RELEASE_SOURCE_SHA }}
 
       - name: Build, smoke-test, and scan release containers
-        run: sh deploy/verify-release-containers.sh "$GITHUB_REF_NAME" "$GITHUB_SHA" "${{ matrix.architecture }}"
+        run: sh deploy/verify-release-containers.sh "$RELEASE_TAG" "$RELEASE_SOURCE_SHA" "${{ matrix.architecture }}"
 
       - name: Checkout release workflow tooling
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -219,7 +246,7 @@ jobs:
           path: .release-workflow
 
       - name: Export validated release containers
-        run: sh .release-workflow/deploy/export-release-containers.sh "$GITHUB_REF_NAME" "$GITHUB_SHA" "${{ matrix.architecture }}" container-dist
+        run: sh .release-workflow/deploy/export-release-containers.sh "$RELEASE_TAG" "$RELEASE_SOURCE_SHA" "${{ matrix.architecture }}" container-dist
 
       - name: Upload validated release containers
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -232,11 +259,11 @@ jobs:
 
   container_publish:
     needs: [build, containers]
-    if: ${{ always() && needs.containers.result == 'success' && (github.event_name == 'release' || needs.build.result == 'success') }}
+    if: ${{ always() && needs.containers.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.build.result == 'success') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     concurrency:
-      group: release-container-publish-${{ github.ref }}
+      group: release-container-publish-${{ github.event_name == 'workflow_dispatch' && 'refs/tags/v0.0.10' || github.ref }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -249,6 +276,7 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           path: release-workflow
+          fetch-depth: 0
 
       - name: Download validated release containers
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -257,6 +285,29 @@ jobs:
           path: container-dist
           merge-multiple: true
 
+      - name: Reverify historical release identity before publication
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_SHA" = "$GITHUB_WORKFLOW_SHA"
+          release_json=$(gh api "/repos/${GITHUB_REPOSITORY}/releases/355175485")
+          test "$(printf '%s' "$release_json" | jq -r .id)" = 355175485
+          test "$(printf '%s' "$release_json" | jq -r .tag_name)" = "$RELEASE_TAG"
+          test "$(printf '%s' "$release_json" | jq -r .target_commitish)" = main
+          test "$(printf '%s' "$release_json" | jq -r .draft)" = false
+          test "$(printf '%s' "$release_json" | jq -r .prerelease)" = false
+          test "$(printf '%s' "$release_json" | jq -r .published_at)" != null
+          tag_json=$(gh api "/repos/${GITHUB_REPOSITORY}/git/tags/${RELEASE_TAG_OBJECT}")
+          test "$(printf '%s' "$tag_json" | jq -r .tag)" = "$RELEASE_TAG"
+          test "$(printf '%s' "$tag_json" | jq -r .object.type)" = commit
+          test "$(printf '%s' "$tag_json" | jq -r .object.sha)" = "$RELEASE_SOURCE_SHA"
+          test "$(git -C release-workflow ls-remote origin "$RELEASE_REF" | awk '{print $1}')" = "$RELEASE_TAG_OBJECT"
+          git -C release-workflow fetch --no-tags origin main:refs/remotes/origin/main
+          git -C release-workflow merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          git -C release-workflow merge-base --is-ancestor "$RELEASE_SOURCE_SHA" origin/main
+
       - name: Log in to GitHub Container Registry
         env:
           GHCR_TOKEN: ${{ github.token }}
@@ -264,9 +315,70 @@ jobs:
 
       - name: Publish multi-architecture release containers
         id: publish
-        run: sh release-workflow/deploy/publish-release-containers.sh "$GITHUB_REF_NAME" "$GITHUB_SHA" container-dist >> "$GITHUB_OUTPUT"
+        run: sh release-workflow/deploy/publish-release-containers.sh "$RELEASE_TAG" "$RELEASE_SOURCE_SHA" container-dist >> "$GITHUB_OUTPUT"
+
+      - name: Record historical release container provenance
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          build_type="https://github.com/${GITHUB_REPOSITORY}/blob/${WORKFLOW_SHA}/yagonode/doc/adr/0051-promote-validated-release-images-to-ghcr.md#historical-release-container-backfill"
+          builder="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${WORKFLOW_SHA}"
+          invocation="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}"
+          jq -n \
+            --arg build_type "$build_type" \
+            --arg release_id 355175485 \
+            --arg release_tag "$RELEASE_TAG" \
+            --arg release_ref "$RELEASE_REF" \
+            --arg release_tag_object "$RELEASE_TAG_OBJECT" \
+            --arg release_source "$RELEASE_SOURCE_SHA" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow_ref "$GITHUB_WORKFLOW_REF" \
+            --arg workflow_sha "$WORKFLOW_SHA" \
+            --arg source_ref "$GITHUB_REF" \
+            --arg source_sha "$GITHUB_SHA" \
+            --arg builder "$builder" \
+            --arg invocation "$invocation" \
+            '{
+              buildDefinition: {
+                buildType: $build_type,
+                externalParameters: {
+                  release: {
+                    id: $release_id,
+                    tag: $release_tag,
+                    ref: $release_ref,
+                    tagObject: $release_tag_object,
+                    sourceCommit: $release_source
+                  }
+                },
+                internalParameters: {
+                  workflow: {
+                    event: "workflow_dispatch",
+                    ref: $source_ref,
+                    sourceDigest: $source_sha,
+                    definitionRef: $workflow_ref,
+                    definitionDigest: $workflow_sha
+                  }
+                },
+                resolvedDependencies: [
+                  {
+                    uri: ("git+https://github.com/" + $repository + "@" + $release_ref),
+                    digest: {gitCommit: $release_source}
+                  },
+                  {
+                    uri: ("git+https://github.com/" + $repository + "@refs/heads/main"),
+                    digest: {gitCommit: $workflow_sha}
+                  }
+                ]
+              },
+              runDetails: {
+                builder: {id: $builder},
+                metadata: {invocationId: $invocation}
+              }
+            }' > "$RUNNER_TEMP/historical-release-container-provenance.json"
 
       - name: Attest node container manifest
+        if: github.event_name == 'push'
         uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763
         with:
           subject-name: ghcr.io/d4rk4/yago-node
@@ -275,6 +387,7 @@ jobs:
           create-storage-record: false
 
       - name: Attest crawler container manifest
+        if: github.event_name == 'push'
         uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763
         with:
           subject-name: ghcr.io/d4rk4/yagocrawler
@@ -282,7 +395,30 @@ jobs:
           push-to-registry: true
           create-storage-record: false
 
+      - name: Attest historical node container manifest
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763
+        with:
+          subject-name: ghcr.io/d4rk4/yago-node
+          subject-digest: ${{ steps.publish.outputs.node_digest }}
+          predicate-type: https://slsa.dev/provenance/v1
+          predicate-path: ${{ runner.temp }}/historical-release-container-provenance.json
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest historical crawler container manifest
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763
+        with:
+          subject-name: ghcr.io/d4rk4/yagocrawler
+          subject-digest: ${{ steps.publish.outputs.crawler_digest }}
+          predicate-type: https://slsa.dev/provenance/v1
+          predicate-path: ${{ runner.temp }}/historical-release-container-provenance.json
+          push-to-registry: true
+          create-storage-record: false
+
       - name: Verify container manifest attestations
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
           NODE_DIGEST: ${{ steps.publish.outputs.node_digest }}
@@ -302,11 +438,89 @@ jobs:
               --deny-self-hosted-runners
           done
 
+      - name: Verify historical container manifest attestations
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NODE_DIGEST: ${{ steps.publish.outputs.node_digest }}
+          CRAWLER_DIGEST: ${{ steps.publish.outputs.crawler_digest }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          build_type="https://github.com/${GITHUB_REPOSITORY}/blob/${WORKFLOW_SHA}/yagonode/doc/adr/0051-promote-validated-release-images-to-ghcr.md#historical-release-container-backfill"
+          builder="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${WORKFLOW_SHA}"
+          invocation="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}"
+          verify_historical_attestation() {
+            subject_name="$1"
+            subject_digest="$2"
+            subject_sha="${subject_digest#sha256:}"
+            verification_file="$RUNNER_TEMP/$(basename "$subject_name")-historical-attestation.json"
+            gh attestation verify "oci://${subject_name}@${subject_digest}" \
+              --bundle-from-oci \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --signer-digest "$WORKFLOW_SHA" \
+              --source-ref "$GITHUB_REF" \
+              --source-digest "$GITHUB_SHA" \
+              --predicate-type https://slsa.dev/provenance/v1 \
+              --deny-self-hosted-runners \
+              --format json > "$verification_file"
+            jq -e \
+              --arg subject_name "$subject_name" \
+              --arg subject_sha "$subject_sha" \
+              --arg build_type "$build_type" \
+              --arg release_id 355175485 \
+              --arg release_tag "$RELEASE_TAG" \
+              --arg release_ref "$RELEASE_REF" \
+              --arg release_tag_object "$RELEASE_TAG_OBJECT" \
+              --arg release_source "$RELEASE_SOURCE_SHA" \
+              --arg repository "$GITHUB_REPOSITORY" \
+              --arg workflow_ref "$GITHUB_WORKFLOW_REF" \
+              --arg workflow_sha "$WORKFLOW_SHA" \
+              --arg source_ref "$GITHUB_REF" \
+              --arg source_sha "$GITHUB_SHA" \
+              --arg builder "$builder" \
+              --arg invocation "$invocation" \
+              'any(.[];
+                .verificationResult.statement as $statement |
+                ($statement.predicateType == "https://slsa.dev/provenance/v1") and
+                any($statement.subject[];
+                  (.name == $subject_name) and (.digest.sha256 == $subject_sha)
+                ) and
+                ($statement.predicate.buildDefinition.buildType == $build_type) and
+                ($statement.predicate.buildDefinition.externalParameters.release == {
+                  id: $release_id,
+                  tag: $release_tag,
+                  ref: $release_ref,
+                  tagObject: $release_tag_object,
+                  sourceCommit: $release_source
+                }) and
+                ($statement.predicate.buildDefinition.internalParameters.workflow == {
+                  event: "workflow_dispatch",
+                  ref: $source_ref,
+                  sourceDigest: $source_sha,
+                  definitionRef: $workflow_ref,
+                  definitionDigest: $workflow_sha
+                }) and
+                any($statement.predicate.buildDefinition.resolvedDependencies[];
+                  (.uri == ("git+https://github.com/" + $repository + "@" + $release_ref)) and
+                  (.digest.gitCommit == $release_source)
+                ) and
+                any($statement.predicate.buildDefinition.resolvedDependencies[];
+                  (.uri == ("git+https://github.com/" + $repository + "@refs/heads/main")) and
+                  (.digest.gitCommit == $workflow_sha)
+                ) and
+                ($statement.predicate.runDetails.builder.id == $builder) and
+                ($statement.predicate.runDetails.metadata.invocationId == $invocation)
+              )' "$verification_file"
+          }
+          verify_historical_attestation ghcr.io/d4rk4/yago-node "$NODE_DIGEST"
+          verify_historical_attestation ghcr.io/d4rk4/yagocrawler "$CRAWLER_DIGEST"
+
       - name: Verify public release containers without credentials
         env:
           NODE_DIGEST: ${{ steps.publish.outputs.node_digest }}
           CRAWLER_DIGEST: ${{ steps.publish.outputs.crawler_digest }}
-        run: sh release-workflow/deploy/verify-public-release-containers.sh "$GITHUB_REF_NAME" "$GITHUB_SHA" "$NODE_DIGEST" "$CRAWLER_DIGEST"
+        run: sh release-workflow/deploy/verify-public-release-containers.sh "$RELEASE_TAG" "$RELEASE_SOURCE_SHA" "$NODE_DIGEST" "$CRAWLER_DIGEST"
 
   release:
     needs: [build, container_publish]

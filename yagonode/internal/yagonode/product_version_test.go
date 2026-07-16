@@ -179,8 +179,8 @@ func TestReleaseContainerWorkflowSeparatesValidationFromRegistryPublication(t *t
 		`runner: ubuntu-24.04-arm`,
 		`architecture: amd64`,
 		`architecture: arm64`,
-		`sh deploy/verify-release-containers.sh "$GITHUB_REF_NAME" "$GITHUB_SHA"`,
-		`sh .release-workflow/deploy/export-release-containers.sh`,
+		`sh deploy/verify-release-containers.sh "$RELEASE_TAG" "$RELEASE_SOURCE_SHA"`,
+		`sh .release-workflow/deploy/export-release-containers.sh "$RELEASE_TAG" "$RELEASE_SOURCE_SHA"`,
 		`name: release-containers-${{ matrix.architecture }}`,
 	} {
 		if !strings.Contains(containerJob, required) {

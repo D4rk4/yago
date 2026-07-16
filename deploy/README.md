@@ -282,14 +282,15 @@ separate from the six GitHub Release file assets.
 The complete `vX.Y.Z` tag is the only operator-facing image reference;
 immutable `vX.Y.Z-amd64` and `vX.Y.Z-arm64` staging references exist only to
 compose the manifest list. CI does not create `latest`, major-only, minor-only, branch,
-or date aliases. A tightly pinned existing-release event can fill a missing
-image for an immutable historical tag after it matches the exact release
-identity, tag ref, source commit, and main ancestry; package construction and
-GitHub Release creation remain disabled. It cannot move the tag, replace an
-existing release manifest, rebuild package assets, or recreate the GitHub Release.
-Its evidence records current workflow tooling separately from the historical
-tag source while retaining the exact tag ref and source digest in the
-attestation. Build development images locally with `make compose-images`.
+or date aliases. The one-time v0.0.10 backfill uses a `workflow_dispatch` run
+from `main` with its release ID, tag, tag ref, annotated tag object, and source
+commit fixed in the workflow. It verifies that identity and main ancestry,
+then checks out the historical source while package construction and GitHub
+Release creation remain disabled. It cannot move the tag, replace an existing
+release manifest, rebuild package assets, or recreate the GitHub Release. Its
+evidence records the current workflow invocation and tooling separately from
+the historical tag source. Build development images locally with
+`make compose-images`.
 
 ## Published container images
 
@@ -299,13 +300,16 @@ and arm64:
 - `ghcr.io/d4rk4/yago-node:vX.Y.Z`;
 - `ghcr.io/d4rk4/yagocrawler:vX.Y.Z`.
 
-GHCR creates each new package as private. The package owner must change its
-visibility to Public once. The publication gate then uses an empty Docker
-credential directory to pull both the exact tag and its digest before it can
-succeed. A retry accepts an existing architecture tag or manifest list only
-when its image identity, labels, platforms, and child digests match the
-validated archives; registry authorization, network, and server failures stop
-publication rather than being interpreted as a missing tag.
+Images published with the repository `GITHUB_TOKEN` and OCI source label are
+expected to inherit the public repository's visibility. The publication gate
+uses an empty Docker credential directory to pull both the exact tag and its
+digest before it can succeed. If inheritance does not make a package public,
+an owner must change visibility through the package settings UI and retry; the
+package REST and GraphQL APIs do not expose a supported visibility mutation.
+A retry accepts an existing architecture tag or manifest list only when its
+image identity, labels, platforms, and child digests match the validated
+archives; registry authorization, network, and server failures stop publication
+rather than being interpreted as a missing tag.
 
 After that gate passes, select the exact version and verify the embedded product
 identity before use:
@@ -352,13 +356,18 @@ gh attestation verify "oci://$crawler_image@$crawler_digest" \
   --deny-self-hosted-runners
 ```
 
-Constrain verification to `refs/tags/$version` and the commit resolved from that
-tag, as shown in the Debian package example. A controlled historical backfill
-retains those release-source constraints while recording its current workflow
-tooling separately; use the workflow run and manifest-list digests recorded in that
-release's dated factual correction. An attestation establishes provenance, not
-image safety, and does not replace the native smoke tests, Trivy policy, or
-runtime health checks.
+Constrain normal release verification to `refs/tags/$version` and the commit
+resolved from that tag, as shown in the Debian package example. A historical
+backfill is different: its certificate truthfully names the current
+`refs/heads/main` workflow invocation and workflow-definition commit. Verify
+those certificate fields, then require the signed SLSA v1 predicate to contain
+the historical `git+https://github.com/D4rk4/yago@refs/tags/v0.0.10` resolved
+dependency with source commit
+`9bcc0bde61364c8248fba7f452c19f2446c72898`, the exact release fields, subject
+digest, builder, and invocation. Use the workflow run, workflow-definition
+commit, and manifest-list digests recorded in the release's dated factual
+correction. An attestation establishes provenance, not image safety, and does
+not replace the native smoke tests, Trivy policy, or runtime health checks.
 
 ## Container build provenance
 
