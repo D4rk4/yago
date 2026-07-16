@@ -13,8 +13,9 @@
 
   {{if .Editable}}{{range .SettingGroups}}
   <section class="cds-tabpanel" role="tabpanel" id="panel-{{.ID}}" aria-labelledby="tab-{{.ID}}">
-    <form id="cfg-{{.ID}}" class="cds-settings-form" method="post" action="/admin/configuration" hx-boost="false">
+    <form id="cfg-{{.ID}}" class="cds-settings-form" method="post" action="/admin/configuration#panel-{{.ID}}" hx-boost="false">
       <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+      {{range .Fieldsets}}
       <fieldset class="cds-fieldset">
         <legend class="cds-legend">{{.Title}}</legend>
         {{range .Items}}
@@ -37,12 +38,24 @@
             {{else}}
             <input class="cds-input" type="text" id="setting-{{.Key}}" name="value:{{.Key}}" value="{{.Value}}" autocomplete="off">
             {{end}}
+            {{if .Overridden}}<button class="cds-btn cds-btn--ghost cds-setting-row__reset" type="submit" name="reset" value="{{.Key}}" formnovalidate aria-label="Reset {{.Title}} to the environment default">Reset</button>{{end}}
           </span>
         </div>
         {{end}}
       </fieldset>
+      {{end}}
       {{if not (and (eq .ID "storage") $.CompactEnabled)}}<button class="cds-btn" type="submit">Save</button>{{end}}
     </form>
+    {{if eq .ID "crawler"}}
+    {{if $.FormatsOn}}
+    {{if $.FormatsError}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{$.FormatsError}}</div>
+    {{else}}
+    <p class="cds-muted">Format families every crawl parses and indexes. HTML/web text is always on. Archives are off by default because unpacking hostile archives is a security decision.</p>
+    {{if $.FormatsSaveError}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{$.FormatsSaveError}}</div>{{end}}
+    {{with $.FormatForm}}{{template "crawl-formats" .}}{{end}}
+    {{end}}
+    {{end}}
+    {{end}}
     {{if and (eq .ID "storage") $.CompactEnabled}}
     <form class="cds-actions" method="post" action="/admin/configuration" hx-boost="false">
       <input type="hidden" name="csrf_token" value="{{$.CSRF}}">

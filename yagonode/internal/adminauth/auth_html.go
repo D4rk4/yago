@@ -29,9 +29,11 @@ const (
 )
 
 type authPageData struct {
-	Error      string
-	Notice     string
-	SetupToken string
+	Error           string
+	Notice          string
+	SetupToken      string
+	Stylesheet      string
+	LoginNodeStatus LoginNodeStatus
 	// Wizard arms the node-mode step of the first-run setup page.
 	Wizard   bool
 	Defaults SetupDefaults
@@ -71,8 +73,9 @@ func (s *Service) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.renderAuthPage(w, r, "login", authPageData{
-		Error:  loginErrorMessage(r.URL.Query().Get("error")),
-		Notice: loginNoticeMessage(r.URL.Query().Get("notice")),
+		Error:           loginErrorMessage(r.URL.Query().Get("error")),
+		Notice:          loginNoticeMessage(r.URL.Query().Get("notice")),
+		LoginNodeStatus: normalizedLoginNodeStatus(r.Context(), s.loginNodeStatus),
 	})
 }
 
@@ -236,7 +239,7 @@ func (s *Service) handleLogoutForm(w http.ResponseWriter, r *http.Request) {
 		_ = s.sessions.delete(r.Context(), cookie.Value)
 	}
 	http.SetCookie(w, clearedSessionCookie(sessionCookieName, "/", r.TLS != nil))
-	redirectAuth(w, r, PathLoginPage+"?notice=out")
+	redirectAuth(w, r, PathLoginPage)
 }
 
 func (s *Service) renderAuthPage(
@@ -246,6 +249,7 @@ func (s *Service) renderAuthPage(
 	data authPageData,
 ) {
 	w.Header().Set("Content-Type", authHTMLType)
+	data.Stylesheet = authStylesheetReference
 
 	if err := authPages.ExecuteTemplate(w, name, data); err != nil {
 		slog.WarnContext(r.Context(), "auth page render failed", slog.Any("error", err))
@@ -273,8 +277,6 @@ func loginNoticeMessage(code string) string {
 	switch code {
 	case "created":
 		return "Administrator created. Sign in to continue."
-	case "out":
-		return "You have been signed out."
 	default:
 		return ""
 	}

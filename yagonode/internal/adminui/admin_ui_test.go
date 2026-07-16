@@ -217,7 +217,7 @@ func TestConsoleOverviewRendersUnavailableStatisticsWithoutFalseZeros(t *testing
 	t.Parallel()
 
 	got := do(t, New(Options{Overview: fakeOverview{snap: Overview{}}}), "/admin/overview")
-	if count := strings.Count(got.body, "Unavailable"); count != 8 {
+	if count := strings.Count(mainRegion(t, got.body), "Unavailable"); count != 8 {
 		t.Fatalf("unavailable overview statistics = %d, want 8", count)
 	}
 }
@@ -243,7 +243,7 @@ func TestConsoleServesEmbeddedAssets(t *testing.T) {
 	if css.status != http.StatusOK {
 		t.Fatalf("css status %d", css.status)
 	}
-	if css.header.Get("Cache-Control") != assetMaxAge {
+	if css.header.Get("Cache-Control") != adminAssetRevalidationCacheControl {
 		t.Fatalf("asset cache policy = %q", css.header.Get("Cache-Control"))
 	}
 	if !strings.Contains(css.body, "--cds-interactive") {

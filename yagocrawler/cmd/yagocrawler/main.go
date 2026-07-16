@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/D4rk4/yago/yagocrawler/internal/crawlermetrics"
 	"github.com/D4rk4/yago/yagocrawler/internal/firefoxfetch"
 	"github.com/D4rk4/yago/yagoegress"
 )
@@ -24,7 +25,7 @@ var runConfiguredCrawler = run
 
 var newCrawlerBrowserFetcher = firefoxfetch.NewBrowserPageFetcher
 
-var runCrawlerService = RunService
+var runCrawlerService = runServiceWithMetrics
 
 func main() {
 	exitProcess(start())
@@ -75,6 +76,7 @@ func printVersion(args []string, out io.Writer) bool {
 func run(ctx context.Context, cfg ServiceConfig) error {
 	cfg.WorkerID = instanceWorkerID(cfg.WorkerID)
 	crawl := cfg.Crawl
+	metrics := crawlermetrics.New()
 	if firefoxfetch.LooksLikeChromium(crawl.BrowserPath) {
 		slog.WarnContext(
 			ctx,
@@ -100,13 +102,14 @@ func run(ctx context.Context, cfg ServiceConfig) error {
 			cfg.EgressAllowLAN,
 			yagoegress.WithPrivateAllowlist(cfg.EgressAllowedCIDRs),
 		),
+		metrics.ObserveBrowserSlotAcquisitionDeadline,
 	)
 	if err != nil {
 		return fmt.Errorf("start browser fetcher: %w", err)
 	}
 	defer closeBrowser()
 
-	if err := runCrawlerService(ctx, cfg, fetcher); err != nil {
+	if err := runCrawlerService(ctx, cfg, fetcher, metrics); err != nil {
 		return fmt.Errorf("run crawler service: %w", err)
 	}
 	return nil

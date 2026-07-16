@@ -15,7 +15,9 @@ const (
 	CrawlControlSetRate CrawlControlKind = "set_rate"
 	// CrawlControlRestart asks the whole worker to shut down gracefully so its
 	// supervisor brings it back up; RunID is ignored since it targets the process.
-	CrawlControlRestart CrawlControlKind = "restart"
+	CrawlControlRestart                       CrawlControlKind = "restart"
+	CrawlControlSetWorkers                    CrawlControlKind = "set_workers"
+	CrawlControlSetAutomaticDiscoveryPriority CrawlControlKind = "set_automatic_discovery_priority"
 )
 
 // CrawlControlDirective steers one run identified by its provenance token (RunID,
@@ -23,7 +25,9 @@ const (
 // is empty. PagesPerMinute carries the cap for a CrawlControlSetRate directive and
 // is ignored otherwise.
 type CrawlControlDirective struct {
-	Kind           CrawlControlKind
-	RunID          string
-	PagesPerMinute uint32
+	Kind                         CrawlControlKind
+	RunID                        string
+	PagesPerMinute               uint32
+	FetchWorkers                 uint32
+	PrioritizeAutomaticDiscovery bool
 }

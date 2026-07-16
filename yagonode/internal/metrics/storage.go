@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -37,7 +38,7 @@ func NewStorageMetrics(registry prometheus.Registerer, capacity StorageCapacity)
 		func() float64 {
 			bytes, err := capacity.UsedBytes(context.Background())
 			if err != nil {
-				return 0
+				return math.NaN()
 			}
 
 			return float64(bytes)

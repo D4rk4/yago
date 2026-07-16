@@ -23,6 +23,7 @@ type Config struct {
 	APIKeyMaxPerWindow int
 	APIKeyWindow       time.Duration
 	Observer           AuthObserver
+	LoginNodeStatus    LoginNodeStatusSource
 	Now                func() time.Time
 }
 
@@ -60,6 +61,7 @@ type Service struct {
 	limiter             *loginRateLimiter
 	keyLimiter          *apiKeyRateLimiter
 	observer            AuthObserver
+	loginNodeStatus     LoginNodeStatusSource
 	now                 func() time.Time
 	wizardDefaults      SetupDefaults
 	wizardApply         SetupApplier
@@ -96,8 +98,9 @@ func New(storage *vault.Vault, cfg Config) (*Service, error) {
 			cfg.APIKeyWindow,
 			cfg.Now,
 		),
-		observer: cfg.Observer,
-		now:      cfg.Now,
+		observer:        cfg.Observer,
+		loginNodeStatus: cfg.LoginNodeStatus,
+		now:             cfg.Now,
 	}, nil
 }
 

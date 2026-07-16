@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
 )
 
@@ -16,6 +17,9 @@ func TestDefaultCrawlConfig(t *testing.T) {
 	cfg := DefaultCrawlConfig()
 	if cfg.Workers <= 0 || cfg.JobQueueSize <= 0 || cfg.MaxBodyBytes <= 0 {
 		t.Errorf("default config has non-positive bounds: %+v", cfg)
+	}
+	if !cfg.PrioritizeAutomaticDiscovery {
+		t.Error("automatic discovery priority must default on")
 	}
 	if cfg.MaxRedirects != DefaultMaxRedirects {
 		t.Errorf("redirects = %d", cfg.MaxRedirects)
@@ -35,6 +39,26 @@ func TestDefaultCrawlConfig(t *testing.T) {
 		cfg.TLSTimeout != DefaultTLSTimeout ||
 		cfg.HeaderTimeout != DefaultHeaderTimeout {
 		t.Errorf("default timeouts = %+v", cfg)
+	}
+}
+
+func TestLoadServiceConfigBoundsFetchWorkers(t *testing.T) {
+	if _, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNodeRPCAddr: "node:9091",
+		EnvWorkers:     "257",
+	})); err == nil {
+		t.Fatal("expected excessive fetch-worker concurrency to fail")
+	}
+	config, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNodeRPCAddr: "node:9091",
+		EnvWorkers:     "256",
+	}))
+	if err != nil {
+		t.Fatalf("load maximum fetch-worker concurrency: %v", err)
+	}
+	if config.Crawl.Workers != yagocrawlcontract.MaximumFetchWorkerConcurrency {
+		t.Fatalf("workers = %d, want %d", config.Crawl.Workers,
+			yagocrawlcontract.MaximumFetchWorkerConcurrency)
 	}
 }
 
@@ -164,26 +188,27 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 
 func TestLoadServiceConfigOverrides(t *testing.T) {
 	cfg, err := LoadServiceConfig(envFrom(map[string]string{
-		EnvNodeRPCAddr:             "node:9091",
-		EnvWorkerID:                "worker-7",
-		EnvMetricsAddr:             "127.0.0.1:9100",
-		EnvShutdownGrace:           "5s",
-		EnvEgressAllowLAN:          "true",
-		EnvWorkers:                 "3",
-		EnvMaxHostConcurrency:      "6",
-		EnvMaxDepth:                "5",
-		EnvMaxPagesPerRun:          "12345",
-		EnvCrawlDelay:              "250ms",
-		EnvUserAgent:               "test-agent",
-		EnvRequestTimeout:          "20s",
-		EnvConnectTimeout:          "4s",
-		EnvTLSTimeout:              "3s",
-		EnvHeaderTimeout:           "2s",
-		EnvMaxRedirects:            "2",
-		EnvSitemapURLLimit:         "9",
-		EnvBrowserPath:             "/usr/bin/firefox-esr",
-		EnvBrowserSandbox:          "true",
-		EnvBrowserFailureThreshold: "9",
+		EnvNodeRPCAddr:                  "node:9091",
+		EnvWorkerID:                     "worker-7",
+		EnvMetricsAddr:                  "127.0.0.1:9100",
+		EnvShutdownGrace:                "5s",
+		EnvEgressAllowLAN:               "true",
+		EnvWorkers:                      "3",
+		EnvPrioritizeAutomaticDiscovery: "false",
+		EnvMaxHostConcurrency:           "6",
+		EnvMaxDepth:                     "5",
+		EnvMaxPagesPerRun:               "12345",
+		EnvCrawlDelay:                   "250ms",
+		EnvUserAgent:                    "test-agent",
+		EnvRequestTimeout:               "20s",
+		EnvConnectTimeout:               "4s",
+		EnvTLSTimeout:                   "3s",
+		EnvHeaderTimeout:                "2s",
+		EnvMaxRedirects:                 "2",
+		EnvSitemapURLLimit:              "9",
+		EnvBrowserPath:                  "/usr/bin/firefox-esr",
+		EnvBrowserSandbox:               "true",
+		EnvBrowserFailureThreshold:      "9",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -211,6 +236,9 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	}
 	if cfg.Crawl.Workers != 3 || cfg.Crawl.MaxDepth != 5 {
 		t.Errorf("workers/depth = %d %d", cfg.Crawl.Workers, cfg.Crawl.MaxDepth)
+	}
+	if cfg.Crawl.PrioritizeAutomaticDiscovery {
+		t.Error("automatic discovery priority = true, want false override")
 	}
 	if cfg.Crawl.MaxPagesPerRun != 12345 {
 		t.Errorf("max pages per run = %d, want 12345", cfg.Crawl.MaxPagesPerRun)
@@ -267,16 +295,17 @@ func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 func TestLoadServiceConfigRejectsParseErrors(t *testing.T) {
 	base := map[string]string{EnvNodeRPCAddr: "node:9091"}
 	cases := map[string]string{
-		EnvCrawlDelay:              "not-a-duration",
-		EnvRequestTimeout:          "not-a-duration",
-		EnvConnectTimeout:          "not-a-duration",
-		EnvTLSTimeout:              "not-a-duration",
-		EnvHeaderTimeout:           "not-a-duration",
-		EnvMaxRedirects:            "not-a-number",
-		EnvSitemapURLLimit:         "not-a-number",
-		EnvMaxHostConcurrency:      "not-a-number",
-		EnvBrowserSandbox:          "not-a-bool",
-		EnvBrowserFailureThreshold: "not-a-number",
+		EnvCrawlDelay:                   "not-a-duration",
+		EnvRequestTimeout:               "not-a-duration",
+		EnvConnectTimeout:               "not-a-duration",
+		EnvTLSTimeout:                   "not-a-duration",
+		EnvHeaderTimeout:                "not-a-duration",
+		EnvMaxRedirects:                 "not-a-number",
+		EnvSitemapURLLimit:              "not-a-number",
+		EnvMaxHostConcurrency:           "not-a-number",
+		EnvBrowserSandbox:               "not-a-bool",
+		EnvBrowserFailureThreshold:      "not-a-number",
+		EnvPrioritizeAutomaticDiscovery: "not-a-bool",
 	}
 	for key, bad := range cases {
 		env := map[string]string{}

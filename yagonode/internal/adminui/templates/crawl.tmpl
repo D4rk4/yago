@@ -96,23 +96,7 @@
 {{else}}
 <p class="cds-muted">Format families every crawl parses and indexes (shared by all crawls; YaCy TextParser parity). HTML/web text is always on. Archives are off by default: unpacking hostile archives is a security decision.</p>
 {{if .FormatsNote}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.FormatsNote}}</div>{{end}}
-{{with .Formats}}
-<form class="cds-form" method="post" action="/admin/crawl/formats" hx-boost="false">
-  <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-  <fieldset class="cds-field">
-    <legend class="cds-label">Enabled families</legend>
-    <label class="cds-checkbox"><input type="checkbox" name="text"{{if .Text}} checked{{end}}> Text (txt, tex, csv, rtf, msg)</label>
-    <label class="cds-checkbox"><input type="checkbox" name="xmlfeeds"{{if .XMLFeeds}} checked{{end}}> XML &amp; feeds (xml, rss, atom)</label>
-    <label class="cds-checkbox"><input type="checkbox" name="pdf"{{if .PDF}} checked{{end}}> PDF &amp; PostScript</label>
-    <label class="cds-checkbox"><input type="checkbox" name="office"{{if .Office}} checked{{end}}> Office (OOXML, OpenDocument, legacy Office, Visio, FreeMind)</label>
-    <label class="cds-checkbox"><input type="checkbox" name="images"{{if .Images}} checked{{end}}> Images (metadata only, no OCR)</label>
-    <label class="cds-checkbox"><input type="checkbox" name="audio"{{if .Audio}} checked{{end}}> Audio (tags only, no transcription)</label>
-    <label class="cds-checkbox"><input type="checkbox" name="misc"{{if .Misc}} checked{{end}}> vCard, torrent, APK</label>
-    <label class="cds-checkbox"><input type="checkbox" name="archives"{{if .Archives}} checked{{end}}> Archives (zip, jar, epub, tar, gz, bz2, xz) — security risk</label>
-  </fieldset>
-  <button class="cds-btn" type="submit">Save format settings</button>
-</form>
-{{end}}
+{{with .FormatForm}}{{template "crawl-formats" .}}{{end}}
 {{end}}
 {{end}}
 {{if .SchedulesOn}}

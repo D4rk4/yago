@@ -9,231 +9,183 @@ import (
 	"testing"
 )
 
-type autocrawlerFakeSettings struct {
-	items  []SettingItem
-	got    SettingsChange
-	result SettingsResult
-}
-
-func (f *autocrawlerFakeSettings) Settings(context.Context) SettingsView {
-	return SettingsView{Items: f.items}
-}
-
-func (f *autocrawlerFakeSettings) Update(
-	_ context.Context,
-	change SettingsChange,
-) (SettingsResult, error) {
-	f.got = change
-
-	return f.result, nil
-}
-
-func autocrawlerTestSettings() *autocrawlerFakeSettings {
-	return &autocrawlerFakeSettings{
-		items: []SettingItem{
-			{Key: "swarm.seed.enabled", Title: "Greedy learning"},
-			{Key: "swarm.seed.depth", Title: "Autocrawler crawl depth", Value: "1"},
-			{Key: "web.fallback.seed_crawl", Title: "Web-discovery crawling"},
-			{Key: "peer.name", Title: "Peer name"},
+func automaticDiscoverySettingsView() SettingsView {
+	return SettingsView{Items: []SettingItem{
+		{
+			Key: "swarm.seed.enabled", Title: "Greedy learning", Value: "true",
+			Boolean: true, Category: "Swarm",
 		},
+		{Key: "swarm.seed.depth", Title: "Autocrawler crawl depth", Value: "5", Category: "Swarm"},
+		{
+			Key: "web.fallback.seed_crawl", Title: "Web-discovery crawling", Value: "false",
+			Boolean: true, Category: "Web fallback",
+		},
+		{
+			Key: "autocrawler.crawl.no_browser", Title: "Disable browser rendering",
+			Value: "true", Boolean: true, Category: "Crawler",
+		},
+		{
+			Key:   "crawler.prioritize_automatic_discovery",
+			Title: "Prioritize automatic discovery crawls", Value: "true",
+			Boolean: true, Category: "Crawler",
+		},
+		{
+			Key: "crawler.fetch_workers", Title: "Maximum fetch concurrency per crawler",
+			Value: "4", Category: "Crawler",
+		},
+	}}
+}
+
+func TestLegacyAutocrawlerRoutesRedirectToConfigurationCrawler(t *testing.T) {
+	console := New(Options{})
+	get := do(t, console, autocrawlerPath)
+	if get.status != http.StatusPermanentRedirect ||
+		get.header.Get("Location") != autocrawlerConfigurationLocation {
+		t.Fatalf("GET redirect = %d %q", get.status, get.header.Get("Location"))
+	}
+	for _, path := range []string{autocrawlerPath, autocrawlerPath + "/formats"} {
+		posted := doPost(t, console, path, url.Values{"text": {"on"}})
+		if posted.status != http.StatusSeeOther ||
+			posted.header.Get("Location") != autocrawlerConfigurationLocation {
+			t.Fatalf("POST %s redirect = %d %q", path, posted.status,
+				posted.header.Get("Location"))
+		}
+	}
+}
+
+func TestConfigurationCrawlerOwnsAutomaticDiscoveryAndFormats(t *testing.T) {
+	formats := &fakeFormats{current: FormatSettings{Text: true, PDF: true}}
+	console := New(Options{
+		Config:       fakeConfig{view: ConfigView{}},
+		Settings:     &fakeSettings{view: automaticDiscoverySettingsView()},
+		CrawlFormats: formats,
+	})
+	got := do(t, console, configPath)
+	for _, want := range []string{
+		`id="panel-crawler"`, `>Automatic discovery</legend>`,
+		`name="value:swarm.seed.enabled"`, `name="value:web.fallback.seed_crawl"`,
+		`name="value:crawler.prioritize_automatic_discovery"`,
+		`>Crawler</legend>`, `name="value:crawler.fetch_workers"`,
+		`>Document formats</legend>`, `action="/admin/configuration/formats#panel-crawler"`,
+		`name="text" checked`, `name="pdf" checked`, `name="archives"`,
+	} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("Configuration Crawler missing %q in %.1200s", want, got.body)
+		}
+	}
+	if strings.Contains(got.body, `cds-nav__label">Autocrawler</span>`) {
+		t.Fatal("obsolete Autocrawler navigation entry is still rendered")
+	}
+}
+
+func TestConfigurationCrawlerSavesAutomaticDiscoverySetting(t *testing.T) {
+	settings := &fakeSettings{
+		view:   automaticDiscoverySettingsView(),
 		result: SettingsResult{OK: true, Message: "Saved."},
 	}
-}
-
-// TestAutocrawlerSectionRendersItsSubsetBetweenSearchAndCrawler is the UI-14
-// acceptance: the section lives in the nav between Search and Crawler and
-// shows only the autocrawler settings, not the whole catalog.
-func TestAutocrawlerSectionRendersItsSubsetBetweenSearchAndCrawler(t *testing.T) {
-	t.Parallel()
-
-	console := New(Options{Settings: autocrawlerTestSettings()})
-	got := do(t, console, "/admin/autocrawler")
-	if got.status != http.StatusOK {
-		t.Fatalf("status = %d", got.status)
-	}
-	for _, want := range []string{
-		"Autocrawler", "swarm.seed.enabled", "web.fallback.seed_crawl",
-		"while it is enabled",
-		`action="/admin/autocrawler"`,
-	} {
-		if !strings.Contains(got.body, want) {
-			t.Fatalf("autocrawler page missing %q", want)
-		}
-	}
-	if strings.Contains(got.body, "document limit") {
-		t.Fatal("autocrawler page must not claim a nonexistent document limit")
-	}
-	if strings.Contains(got.body, `name="key" value="peer.name"`) {
-		t.Fatal("foreign setting leaked into the autocrawler section")
-	}
-	search := strings.Index(got.body, `cds-nav__label">Search</span>`)
-	auto := strings.Index(got.body, `cds-nav__label">Autocrawler</span>`)
-	crawler := strings.Index(got.body, `cds-nav__label">Crawler</span>`)
-	if search < 0 || search >= auto || auto >= crawler {
-		t.Fatalf("nav order wrong: search@%d autocrawler@%d crawler@%d", search, auto, crawler)
-	}
-}
-
-func TestAutocrawlerUpdateAcceptsOwnKeysOnly(t *testing.T) {
-	t.Parallel()
-
-	settings := autocrawlerTestSettings()
-	console := New(Options{Settings: settings})
-
-	posted := doPost(t, console, "/admin/autocrawler", url.Values{
-		"key": {"swarm.seed.depth"}, "value:swarm.seed.depth": {"3"},
+	console := New(Options{Config: fakeConfig{}, Settings: settings})
+	got := doPost(t, console, configPath, url.Values{
+		"key": {"crawler.prioritize_automatic_discovery"},
+		"bool:crawler.prioritize_automatic_discovery": {"1"},
 	})
-	if posted.status != http.StatusOK || !strings.Contains(posted.body, "1 setting updated.") {
-		t.Fatalf("update = %d %.60q", posted.status, posted.body)
+	if got.status != http.StatusOK || len(settings.changes) != 1 {
+		t.Fatalf("save = status %d changes %+v", got.status, settings.changes)
 	}
-	if settings.got.Key != "swarm.seed.depth" || settings.got.Value != "3" {
-		t.Fatalf("change = %+v", settings.got)
-	}
-
-	foreign := doPost(t, console, "/admin/autocrawler", url.Values{
-		"key": {"peer.name"}, "value:peer.name": {"sneaky"},
-	})
-	if foreign.status != http.StatusNotFound {
-		t.Fatalf("foreign key = %d, want 404", foreign.status)
+	if change := settings.changes[0]; change.Key != "crawler.prioritize_automatic_discovery" ||
+		change.Value != "false" {
+		t.Fatalf("saved change = %+v", change)
 	}
 }
 
-func TestAutocrawlerResetClearsOwnKey(t *testing.T) {
-	t.Parallel()
-
-	settings := autocrawlerTestSettings()
-	console := New(Options{Settings: settings})
-	doPost(t, console, "/admin/autocrawler", url.Values{"reset": {"swarm.seed.enabled"}})
-	if !settings.got.Reset || settings.got.Key != "swarm.seed.enabled" {
-		t.Fatalf("reset change = %+v", settings.got)
-	}
-
-	foreign := doPost(t, console, "/admin/autocrawler", url.Values{"reset": {"peer.name"}})
-	if foreign.status != http.StatusNotFound {
-		t.Fatalf("foreign reset = %d, want 404", foreign.status)
-	}
-}
-
-func TestAutocrawlerUpdateAcceptsCrawlOptionKeys(t *testing.T) {
-	t.Parallel()
-
-	settings := autocrawlerTestSettings()
-	console := New(Options{Settings: settings})
-	for _, key := range []string{
-		"autocrawler.crawl.query_urls",
-		"autocrawler.crawl.tls_insecure",
-		"autocrawler.crawl.ignore_robots",
-		"autocrawler.crawl.no_browser",
-		"autocrawler.crawl.follow_nofollow",
-	} {
-		posted := doPost(t, console, "/admin/autocrawler", url.Values{
-			"key": {key}, "value:" + key: {"true"},
-		})
-		if posted.status == http.StatusNotFound {
-			t.Fatalf("%s rejected as a foreign key", key)
-		}
-		if settings.got.Key != key {
-			t.Fatalf("change key = %q, want %q", settings.got.Key, key)
-		}
-	}
-}
-
-func TestAutocrawlerRendersFormatToggles(t *testing.T) {
-	t.Parallel()
-
-	formats := &fakeFormats{current: FormatSettings{Text: true, PDF: true}}
-	console := New(Options{Settings: autocrawlerTestSettings(), CrawlFormats: formats})
-	got := do(t, console, "/admin/autocrawler")
-	for _, want := range []string{
-		"Document formats", `name="text" checked`, `name="pdf" checked`,
-		`action="/admin/autocrawler/formats"`, `name="archives"`,
-	} {
-		if !strings.Contains(got.body, want) {
-			t.Fatalf("autocrawler page missing %q", want)
-		}
-	}
-	if strings.Contains(got.body, `name="archives" checked`) {
-		t.Fatal("archives rendered checked while off")
-	}
-}
-
-func TestAutocrawlerSavesFormatToggles(t *testing.T) {
-	t.Parallel()
-
+func TestConfigurationCrawlerSavesFormats(t *testing.T) {
 	formats := &fakeFormats{}
-	console := New(Options{Settings: autocrawlerTestSettings(), CrawlFormats: formats})
-	got := doPost(t, console, "/admin/autocrawler/formats", url.Values{
-		"text": {"on"}, "images": {"on"},
+	console := New(Options{Config: fakeConfig{}, CrawlFormats: formats})
+	got := doPost(t, console, configPath+"/formats", url.Values{
+		"text": {"on"}, "images": {"on"}, "archives": {"on"},
 	})
-	if got.status != http.StatusSeeOther {
-		t.Fatalf("status = %d, want 303", got.status)
-	}
-	if loc := got.header.Get("Location"); loc != autocrawlerPath {
-		t.Fatalf("redirect = %q, want %q", loc, autocrawlerPath)
+	if got.status != http.StatusSeeOther ||
+		got.header.Get("Location") != configPath+"?saved=formats#panel-crawler" {
+		t.Fatalf("format save redirect = %d %q", got.status, got.header.Get("Location"))
 	}
 	if formats.saved == nil || !formats.saved.Text || !formats.saved.Images ||
-		formats.saved.PDF || formats.saved.Archives {
-		t.Fatalf("saved = %+v", formats.saved)
+		!formats.saved.Archives || formats.saved.PDF {
+		t.Fatalf("saved formats = %+v", formats.saved)
 	}
-
-	bare := New(Options{Settings: autocrawlerTestSettings()})
-	if got := doPost(
-		t,
-		bare,
-		"/admin/autocrawler/formats",
-		url.Values{},
-	); got.status != http.StatusNotFound {
-		t.Fatalf("formats save without source = %d, want 404", got.status)
+	saved := do(t, console, configPath+"?saved=formats")
+	if !strings.Contains(
+		saved.body,
+		`class="cds-toast cds-toast--success" role="status">Document format settings updated.</div>`,
+	) {
+		t.Fatal("format save notice is missing")
+	}
+	if strings.Contains(
+		saved.body,
+		`cds-toast--error" role="alert">Document format settings updated.`,
+	) {
+		t.Fatal("format save success is styled as an error")
 	}
 }
 
-func TestAutocrawlerFormatsErrorPaths(t *testing.T) {
-	t.Parallel()
+func TestConfigurationCrawlerFormatsRequireBothSources(t *testing.T) {
+	tests := []struct {
+		name    string
+		options Options
+	}{
+		{name: "configuration only", options: Options{Config: fakeConfig{}}},
+		{name: "formats only", options: Options{CrawlFormats: &fakeFormats{}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := doPost(t, New(test.options), configPath+"/formats", url.Values{
+				"text": {"on"},
+			})
+			if got.status != http.StatusNotFound {
+				t.Fatalf("format save status = %d, want 404", got.status)
+			}
+		})
+	}
+}
 
-	failing := &fakeFormats{err: context.DeadlineExceeded}
-	console := New(Options{Settings: autocrawlerTestSettings(), CrawlFormats: failing})
-	got := doPost(t, console, "/admin/autocrawler/formats", url.Values{"text": {"on"}})
+func TestConfigurationCrawlerFormatErrorStates(t *testing.T) {
+	loadFailure := New(Options{
+		Config:       fakeConfig{},
+		Settings:     &fakeSettings{view: automaticDiscoverySettingsView()},
+		CrawlFormats: &fakeFormats{readErr: context.Canceled},
+	})
+	if got := do(t, loadFailure, configPath); !strings.Contains(
+		got.body,
+		"Document format settings are unavailable.",
+	) {
+		t.Fatal("format load error is missing")
+	}
+
+	saveFailure := New(Options{
+		Config:       fakeConfig{},
+		Settings:     &fakeSettings{view: automaticDiscoverySettingsView()},
+		CrawlFormats: &fakeFormats{err: context.Canceled},
+	})
+	got := doPost(t, saveFailure, configPath+"/formats", url.Values{"text": {"on"}})
 	if got.status != http.StatusOK ||
 		!strings.Contains(got.body, "Saving format settings failed.") {
-		t.Fatalf("save failure = %d, want rendered note", got.status)
+		t.Fatalf("format save failure = %d", got.status)
+	}
+	if !strings.Contains(
+		got.body,
+		`class="cds-inline-notification cds-inline-notification--error" role="alert">Saving format settings failed.</div>`,
+	) {
+		t.Fatal("format save failure is not styled as an error")
 	}
 
 	req := httptest.NewRequestWithContext(
-		context.Background(), http.MethodPost, "/admin/autocrawler/formats",
+		context.Background(),
+		http.MethodPost,
+		configPath+"/formats",
 		strings.NewReader("%zz"),
 	)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec := httptest.NewRecorder()
-	console.ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("malformed body = %d, want 400", rec.Code)
-	}
-}
-
-func TestAutocrawlerUnavailableWithoutSettings(t *testing.T) {
-	t.Parallel()
-
-	console := New(Options{})
-	got := do(t, console, "/admin/autocrawler")
-	if got.status != http.StatusOK || !strings.Contains(got.body, "not available") {
-		t.Fatalf("unavailable page = %d", got.status)
-	}
-	posted := doPost(t, console, "/admin/autocrawler", url.Values{"key": {"swarm.seed.enabled"}})
-	if posted.status != http.StatusNotFound {
-		t.Fatalf("update without settings = %d, want 404", posted.status)
-	}
-}
-
-func TestAutocrawlerReportsUnavailableFormatToggles(t *testing.T) {
-	t.Parallel()
-
-	formats := &fakeFormats{readErr: context.Canceled}
-	console := New(Options{Settings: autocrawlerTestSettings(), CrawlFormats: formats})
-	got := do(t, console, "/admin/autocrawler")
-	if !strings.Contains(got.body, "Document format settings are unavailable.") {
-		t.Fatalf("missing unavailable format state: %.120q", got.body)
-	}
-	if strings.Contains(got.body, `name="text"`) {
-		t.Fatal("unavailable format settings rendered invented toggles")
+	recorder := httptest.NewRecorder()
+	saveFailure.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("malformed format form = %d, want 400", recorder.Code)
 	}
 }

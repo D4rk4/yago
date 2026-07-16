@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/D4rk4/yago/yagonode/internal/adminauth"
+	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yagonode/internal/siteicon"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -21,7 +22,10 @@ func provisionAdminAuth(
 	storage *vault.Vault,
 	observer adminauth.AuthObserver,
 ) (*adminauth.Service, error) {
-	service, err := adminauth.New(storage, adminauth.Config{Observer: observer})
+	service, err := adminauth.New(storage, adminauth.Config{
+		Observer:        observer,
+		LoginNodeStatus: newLoginNodeStatusSource(config),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("build admin auth: %w", err)
 	}
@@ -45,7 +49,7 @@ func guardAdminSurface(service *adminauth.Service, opsMux *http.ServeMux) http.H
 	adminauth.Mount(opsMux, service)
 	adminauth.MountHTML(opsMux, service)
 
-	return service.Guard(
+	guarded := service.Guard(
 		[]string{
 			pathHealth,
 			pathReady,
@@ -63,4 +67,6 @@ func guardAdminSurface(service *adminauth.Service, opsMux *http.ServeMux) http.H
 		},
 		opsMux,
 	)
+
+	return adminui.RejectAdminAssetAliases(adminauth.RejectAuthStylesheetAliases(guarded))
 }

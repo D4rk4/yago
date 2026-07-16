@@ -58,6 +58,7 @@ type BrowserLaunch struct {
 func NewBrowserPageFetcher(
 	launch BrowserLaunch,
 	guard yagoegress.Guard,
+	observeBrowserSlotAcquisitionDeadline ...func(),
 ) (*BrowserPageFetcher, func(), error) {
 	proxy, err := startGuardedForwardProxy(
 		dialFunc(yagoegress.PreferIPv4(nil, (&net.Dialer{Control: guard.DialControl}).DialContext)),
@@ -65,7 +66,12 @@ func NewBrowserPageFetcher(
 	if err != nil {
 		return nil, nil, fmt.Errorf("start browser egress proxy: %w", err)
 	}
-	pool := newFirefoxPool(launch, proxy.url, startFirefoxSession)
+	pool := newFirefoxPool(
+		launch,
+		proxy.url,
+		startFirefoxSession,
+		observeBrowserSlotAcquisitionDeadline...,
+	)
 	fetcher := &BrowserPageFetcher{
 		render:   pool.render,
 		timeout:  launch.Timeout,

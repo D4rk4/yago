@@ -13,8 +13,9 @@ bundled assets by ADR-0033).
 | grapesjs-preset-webpage | 1.0.3 | BSD-3-Clause | https://github.com/GrapesJS/preset-webpage | `vendor/grapesjs-preset-webpage.min.js` |
 | CodeMirror | 5.65.21 | MIT | https://codemirror.net/5/ | `vendor/codemirror.min.js`, `vendor/codemirror.min.css`, `vendor/cm-xml.min.js`, `vendor/cm-javascript.min.js`, `vendor/cm-css.min.js`, `vendor/cm-htmlmixed.min.js`, `vendor/cm-handlebars.min.js`, `vendor/cm-multiplex.min.js`, `vendor/cm-simple.min.js` |
 | Font Awesome | 4.7.0 | MIT (CSS), SIL OFL 1.1 (font) | https://github.com/FortAwesome/Font-Awesome/tree/v4.7.0 | `vendor/font-awesome.min.css`, `fonts/fontawesome-webfont.woff2` |
+| Haiku Icons | 1.2 (`ba4ad17e120b50c87d22ae5127f044257bbbf257`) | MIT/X Consortium | https://github.com/lxmx/haiku-icons/tree/v1.2 | fifteen SVGs for fourteen shelf rows plus the System Monitor heading and `HAIKU-ICONS-LICENSE.txt` under `icons/`; the exact selection and checksums are recorded in ADR-0049 |
 
-First-party asset files in the same tree (`carbon.css`, `photon.css`,
+First-party asset files in the same tree (`carbon.css`, `photon.css`, `photon_shell.css`,
 `autocomplete.js`, `tabs.js`, `portal_designer.js`, `portal_designer.css`) are
 project code under the repository license (AGPL-3.0).
 

@@ -90,6 +90,36 @@ content sandbox under `NoNewPrivileges`.
 
 ## Crawler resource limits
 
+`YAGOCRAWLER_WORKERS` is a bootstrap value in both service environment files
+and must be kept equal. It is the exact number of page-fetch workers in each
+connected `yagocrawler` process, not a crawl-run or task limit, and accepts
+values from 1 through 256. After a crawler's first heartbeat, the persisted
+Configuration → Crawler value on `yago-node` becomes authoritative and is sent
+to every connected crawler. A live resize stops new page intake, lets the
+current in-flight fetches finish, and then starts the requested worker group;
+the crawler process does not restart. With several crawler processes the value
+applies independently to each process, so aggregate fetch concurrency is the
+per-process setting multiplied by the number of connected processes.
+
+Both service environment files bootstrap
+`YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY=true` and must be kept equal.
+When enabled, explicit swarm and web-discovery work receives at most three
+durable order leases and three due page dispatches before waiting normal work.
+Disabling it restores global FIFO across the durable priority classes and the crawler's
+existing run-fair, value-scored page selection across both classes. The first
+successful crawler heartbeat is authoritative before order intake. If that
+one-second startup attempt fails, the crawler uses its environment bootstrap until
+a periodic heartbeat succeeds. The Admin setting changes both live without
+moving, rewriting, or dropping queued orders.
+
+Pending order payloads remain in the established `crawlorders` bucket. The
+priority indexes are additive and contain only keys, so an older package ignores
+priority but continues to drain the complete queue in global FIFO order. After
+returning to the current package, startup indexes the orders admitted by the
+older node and selection removes stale keys for orders consumed while downgraded.
+An unsettled lease created while downgraded recovers its class from the retained
+order payload.
+
 `yagocrawler.service` applies cgroup controls to bound headless-Firefox memory
 and task growth while giving the co-located node greater relative CPU weight:
 `MemoryHigh=60%` applies reclaim pressure (it throttles, never kills), and
@@ -177,6 +207,22 @@ through purge while removing the edited env files. The binaries are static (CGO
 off), so the same package installs across every 24.04-and-newer release (and the
 short-lived interim releases in between) with no glibc coupling.
 
+Download and verify a published package before installation. The attestation
+binds its digest to the tagged source and release workflow in `D4rk4/yago`; it
+does not replace the backup and post-install health checks:
+
+```sh
+version=vX.Y.Z
+gh release download "$version" --repo D4rk4/yago \
+  --pattern "yago_${version#v}_amd64.deb" --dir /tmp/yago-release
+source_digest=$(gh api "repos/D4rk4/yago/commits/$version" --jq .sha)
+gh attestation verify "/tmp/yago-release/yago_${version#v}_amd64.deb" \
+  --repo D4rk4/yago \
+  --signer-workflow D4rk4/yago/.github/workflows/release.yml \
+  --source-ref "refs/tags/$version" \
+  --source-digest "$source_digest"
+```
+
 ## RPM package
 
 `deploy/rpm/build-rpm.sh <version> <arch> <bindir> <outdir>` builds the same
@@ -195,16 +241,21 @@ to end on Fedora and Rocky 9.
 Pushing a `v*` tag whose commit belongs to `main` runs
 `.github/workflows/release.yml`: `make verify` gates the release, binaries build
 for amd64 and arm64 (CGO off, trimmed) with the tag
-stamped in as the build version (`yago-node --version` / `yagocrawler
---version` report it), each arch ships as a tarball (binaries + install.sh +
+stamped in as the canonical `vN.N.N` product version (`yago-node --version` /
+`yagocrawler --version` report it), each arch ships as a tarball (binaries + install.sh +
 units + backup doc), a `.deb`, and an `.rpm`. The amd64 `.deb` is smoke-installed
 across Debian 12/13 and Ubuntu 24.04 + `ubuntu:latest`, and the amd64 `.rpm`
 across Fedora and Rocky 9 — each run checks the declared dependencies resolve,
 both binaries report the stamped version, and package removal keeps
-`/opt/yago/data`. Release notes are generated from the commit titles since the
-previous tag, and a GitHub Release carries the assets. Container images are not
-published by CI; build them locally from the Dockerfiles (`docker compose
-build`) when a container deployment is wanted.
+`/opt/yago/data`. Every tarball, Debian package, and RPM package receives
+Sigstore-signed GitHub provenance after package construction and the applicable
+amd64 smoke tests; the release job verifies
+the downloaded artifact attestations before publication. Before tagging, commit the human-authored engineering memo as
+`doc/releases/vX.Y.Z.md`. The workflow verifies its Abstract length, read-more
+delimiter, and stable section order, then uses that exact memo for the GitHub
+Release; a missing or malformed memo stops publication. Container images are
+not published by CI; build them locally with `make compose-images` when a
+container deployment is wanted.
 
 ## Container build provenance
 
@@ -219,15 +270,31 @@ it to both product images and each final image records it in the
 `org.opencontainers.image.source`.
 
 ```sh
-SOURCE_REVISION=$(git rev-parse HEAD) docker compose build
+SOURCE_REVISION=$(git rev-parse HEAD) make compose-images
 docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }} {{ index .Config.Labels "org.opencontainers.image.source" }}' yago-node:latest
 docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }} {{ index .Config.Labels "org.opencontainers.image.source" }}' yagocrawler:latest
 ```
 
 The default revision is `unknown`, which makes an omitted caller stamp visible
 instead of guessing from a possibly dirty worktree. `SOURCE_REVISION` identifies
-source provenance; the separate release `VERSION` build argument controls the
-binary version reported by `--version`.
+source provenance. `VERSION` is the product version carried by both binaries.
+The image Make targets use an exact `vN.N.N` tag at `HEAD` only when the
+checkout has no tracked, staged, or untracked change; every other checkout uses
+the current UTC build date as `YYYY.MM.DD-dev`. Deriving the
+date outside the Dockerfile makes it part of the cache key, so a later day's
+build cannot reuse an older dated binary layer. Build both Compose images with:
+
+```sh
+make compose-images
+```
+
+The Dockerfiles reject an empty or malformed `VERSION` rather than publish a
+mislabelled image. For a tagged direct Compose build, pass both facts explicitly:
+
+```sh
+test -z "$(git status --porcelain --untracked-files=normal)"
+SOURCE_REVISION=$(git rev-parse HEAD) VERSION=$(git describe --tags --exact-match) docker compose -f docker-compose.yml.example build
+```
 
 ## Container layout migration (OPS-04)
 

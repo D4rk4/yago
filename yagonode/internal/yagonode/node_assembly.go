@@ -106,6 +106,7 @@ type nodeTelemetry struct {
 	peer             *metrics.PeerMetrics
 	search           *metrics.SearchMetrics
 	crawl            *metrics.CrawlMetrics
+	indexWrites      *metrics.SearchIndexWriteMetrics
 	crawlRuns        *metrics.CrawlRunMetrics
 	recorder         *events.Recorder
 	searchAuthorizer tavilyapi.ScopeAuthorizer
@@ -288,6 +289,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		return nodeSurfaces{}, err
 	}
 	attachCrawlMetrics(runtime, in.telemetry.crawl)
+	attachSearchIndexWriteMetrics(runtime, in.telemetry.indexWrites)
 	attachCrawlRunObserver(runtime, in.telemetry.crawlRuns, in.telemetry.recorder)
 	ranking, denylist, schedules, err := openSurfaceStores(in.ctx, in.vault)
 	if err != nil {

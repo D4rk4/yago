@@ -77,9 +77,10 @@ func TestRestartIsANavItem(t *testing.T) {
 	t.Parallel()
 
 	got := do(t, New(Options{}), "/admin/overview")
+	restartIcon := mustAdminAssetReferences(assetFS)["icons/view-refresh.svg"]
 	if !strings.Contains(got.body, `href="/admin/restart"`) ||
 		!strings.Contains(got.body, `cds-nav__label">Restart</span>`) ||
-		!strings.Contains(got.body, `href="#ic-restart"`) {
+		!strings.Contains(got.body, `src="`+restartIcon+`"`) {
 		t.Fatal("Restart nav item with its icon is missing")
 	}
 }

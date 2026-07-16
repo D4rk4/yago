@@ -40,6 +40,7 @@ func (s performanceHistorySource) Series() []adminui.HistorySeries {
 			points = append(points, adminui.HistoryPoint{At: point.At, Value: point.Value})
 		}
 		out = append(out, adminui.HistorySeries{
+			Kind:   performanceHistoryKind(series.Name),
 			Name:   series.Name,
 			Unit:   series.Unit,
 			Points: points,
@@ -47,6 +48,25 @@ func (s performanceHistorySource) Series() []adminui.HistorySeries {
 	}
 
 	return out
+}
+
+func performanceHistoryKind(name string) adminui.HistorySeriesKind {
+	switch name {
+	case metrichistory.SeriesProcessCPU:
+		return adminui.HistorySeriesProcessCPU
+	case metrichistory.SeriesProcessMemory:
+		return adminui.HistorySeriesProcessMemory
+	case metrichistory.SeriesHostMemoryTotal:
+		return adminui.HistorySeriesHostMemoryTotal
+	case metrichistory.SeriesHostMemoryAvailable:
+		return adminui.HistorySeriesHostMemoryAvailable
+	case metrichistory.SeriesStorageUse:
+		return adminui.HistorySeriesStorageUse
+	case metrichistory.SeriesStorageCap:
+		return adminui.HistorySeriesStorageCapacity
+	default:
+		return adminui.HistorySeriesGeneral
+	}
 }
 
 // backupStatusSource reports the storage status the Backup & restore page
@@ -110,6 +130,7 @@ func applyCrawlAdminOptions(
 	assembled node,
 	crawlDepth crawlQueueDepthSource,
 ) {
+	attachCrawlRuntimeSettings(assembled.crawl, assembled.toggles)
 	dispatcher := crawlDispatcher(assembled.crawl)
 	if dispatcher != nil {
 		options.Crawl = newCrawlSource(dispatcher)
@@ -126,6 +147,7 @@ func applyCrawlAdminOptions(
 		}
 	}
 	if control := crawlControlRegistry(assembled.crawl); control != nil {
+		options.CrawlerFetchActivity = newCrawlerFetchActivitySource(control)
 		options.RestartCrawlers = control.RestartWorkers
 	}
 }

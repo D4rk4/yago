@@ -10,7 +10,7 @@ TOOLS_STAMP := $(TOOLS_BIN)/.installed
 GOLANGCI_LINT := $(TOOLS_BIN)/golangci-lint
 GO_ARCH_LINT := $(TOOLS_BIN)/go-arch-lint
 
-.PHONY: tools proto-tools proto fmt fmt-check lint vet arch test cover coverage-check-test cover-check build verify e2e e2e-node e2e-crawler e2e-node-image e2e-crawler-image peer-hash
+.PHONY: tools proto-tools proto tidy tidy-check fmt fmt-check lint vet arch test cover coverage-check-test cover-check build verify compose-images e2e e2e-node e2e-crawler e2e-node-image e2e-crawler-image peer-hash
 
 PROTOC ?= protoc
 PROTO_MODULE := github.com/D4rk4/yago/yagocrawlcontract
@@ -21,6 +21,7 @@ E2E_TIMEOUT ?= 25m
 E2E_NODE_IMAGE ?= yago-node:e2e
 E2E_CRAWLER_IMAGE ?= yago-crawler:e2e
 SOURCE_REVISION ?= unknown
+PRODUCT_VERSION ?= $(shell ./tools/product-version)
 
 E2E_CONTAINER_CLI := $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
 E2E_RUNTIME_DIR := $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))
@@ -32,6 +33,18 @@ $(TOOLS_STAMP): tools/install tools/tools.lock
 	@touch $@
 
 tools: $(TOOLS_STAMP)
+
+tidy:
+	@set -e; for m in $(MODULES); do \
+		echo "==> tidy $$m"; \
+		( cd $$m && $(GO) mod tidy ); \
+	done
+
+tidy-check:
+	@set -e; for m in $(MODULES); do \
+		echo "==> tidy-check $$m"; \
+		( cd $$m && $(GO) mod tidy -diff ); \
+	done
 
 fmt: $(TOOLS_STAMP)
 	@set -e; for m in $(MODULES); do \
@@ -100,6 +113,10 @@ build:
 		( cd $$m && $(GO) build ./... ); \
 	done
 
+compose-images:
+	VERSION=$(PRODUCT_VERSION) SOURCE_REVISION=$(SOURCE_REVISION) \
+		$(E2E_CONTAINER_CLI) compose -f docker-compose.yml.example build
+
 proto-tools:
 	GOBIN=$(TOOLS_BIN) $(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
 	GOBIN=$(TOOLS_BIN) $(GO) install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
@@ -113,16 +130,18 @@ proto:
 peer-hash:
 	cd yagonode && $(GO) run ./cmd/yago-peer-hash
 
-verify: fmt-check vet lint arch coverage-check-test test cover-check build
+verify: tidy-check fmt-check vet lint arch coverage-check-test test cover-check build
 
 e2e-node-image:
 	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build \
 		--build-arg SOURCE_REVISION=$(SOURCE_REVISION) \
+		--build-arg VERSION=$(PRODUCT_VERSION) \
 		-f yagonode/Dockerfile -t $(E2E_NODE_IMAGE) .
 
 e2e-crawler-image:
 	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build \
 		--build-arg SOURCE_REVISION=$(SOURCE_REVISION) \
+		--build-arg VERSION=$(PRODUCT_VERSION) \
 		-f yagocrawler/Dockerfile -t $(E2E_CRAWLER_IMAGE) .
 
 e2e-node:

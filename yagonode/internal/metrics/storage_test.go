@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -34,14 +35,14 @@ func TestStorageReportsLevels(t *testing.T) {
 	}
 }
 
-func TestStorageReportsZeroUsedOnError(t *testing.T) {
+func TestStorageReportsUnavailableUsedOnError(t *testing.T) {
 	storage := NewStorageMetrics(
 		prometheus.NewRegistry(),
 		stubStorage{used: 256, err: errors.New("unavailable")},
 	)
 
-	if got := testutil.ToFloat64(storage.used); got != 0 {
-		t.Errorf("used bytes = %v, want 0 on error", got)
+	if got := testutil.ToFloat64(storage.used); !math.IsNaN(got) {
+		t.Errorf("used bytes = %v, want unavailable on error", got)
 	}
 }
 

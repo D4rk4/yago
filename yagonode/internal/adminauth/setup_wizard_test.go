@@ -79,7 +79,7 @@ func TestSetupPageShowsWizardWhenConfigured(t *testing.T) {
 		`name="peer_name"`, `value="my-node"`,
 		`value="auto.example"`, `value="https://seeds.example/a"`,
 		"Web search fallback", `value="always"`, "Always",
-		`<link rel="stylesheet" href="/admin/auth.css">`,
+		`<link rel="stylesheet" href="` + authStylesheetReference + `">`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("setup page missing %q", want)

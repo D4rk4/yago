@@ -237,6 +237,48 @@ func TestAcceptSeedsExpandedRequests(t *testing.T) {
 	waitCallback(t, acked)
 }
 
+func TestAcceptPreservesAutomaticDiscoveryPriority(t *testing.T) {
+	f := frontier.NewFrontier(8, nil)
+	consumer := NewCrawlOrderConsumer(
+		boundedqueue.NewBoundedQueue[CrawlOrderDelivery](2),
+		f,
+	)
+	profile := consumerProfile()
+	accept := func(provenance, rawURL string, priority yagocrawlcontract.CrawlOrderPriority) {
+		consumer.accept(t.Context(), CrawlOrderDelivery{
+			Order: yagocrawlcontract.CrawlOrder{
+				Provenance: []byte(provenance),
+				Priority:   priority,
+				Profile:    profile,
+				Requests: []yagocrawlcontract.CrawlRequest{{
+					URL:           rawURL,
+					ProfileHandle: profile.Handle,
+				}},
+			},
+			Ack: func(context.Context) error { return nil },
+			Nak: func(context.Context) error { return nil },
+		})
+	}
+	accept("normal", "https://normal.example/", yagocrawlcontract.CrawlOrderPriorityNormal)
+	accept(
+		"automatic",
+		"https://automatic.example/",
+		yagocrawlcontract.CrawlOrderPriorityAutomaticDiscovery,
+	)
+
+	for _, provenance := range []string{"automatic", "normal"} {
+		job, ok := f.Take(t.Context())
+		if !ok {
+			t.Fatal("frontier closed before priority dispatch")
+		}
+		if got := string(job.Provenance); got != provenance {
+			t.Fatalf("dispatch = %q, want %q", got, provenance)
+		}
+		f.Done(job, false)
+	}
+	consumer.WaitForSettlements()
+}
+
 func TestAcceptNaksCanceledRunAndLogsNakError(t *testing.T) {
 	consumer := NewCrawlOrderConsumer(
 		boundedqueue.NewBoundedQueue[CrawlOrderDelivery](1),

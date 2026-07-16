@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
@@ -12,15 +13,21 @@ import (
 )
 
 const (
-	orderBucket       vault.Name = "crawlorders"
-	seqBucket         vault.Name = "crawlorderseq"
-	idempotencyBucket vault.Name = "crawlorderkeys"
+	orderBucket                vault.Name = "crawlorders"
+	normalOrderIndexBucket     vault.Name = "crawlordersnormal"
+	automaticOrderIndexBucket  vault.Name = "crawlordersautomatic"
+	seqBucket                  vault.Name = "crawlorderseq"
+	idempotencyBucket          vault.Name = "crawlorderkeys"
+	priorityIndexFormatVersion uint64     = 1
 )
 
 var (
-	seqKey            = vault.Key("next")
-	marshalCrawlOrder = yagocrawlcontract.MarshalCrawlOrder
-	beforeQueueWait   = func() {}
+	seqKey                 = vault.Key("next")
+	priorityIndexNextKey   = vault.Key("priorityIndexNext")
+	priorityIndexFormatKey = vault.Key("priorityIndexFormat")
+	priorityIndexMarker    = []byte{1}
+	marshalCrawlOrder      = yagocrawlcontract.MarshalCrawlOrder
+	beforeQueueWait        = func() {}
 )
 
 type orderCodec struct{}
@@ -52,13 +59,16 @@ func (sequenceCodec) Decode(raw []byte) (uint64, error) {
 // to a worker; a lease is settled by an ack, requeued by a nak, and reclaimed
 // when it expires without a heartbeat.
 type DurableOrderQueue struct {
-	vault    *vault.Vault
-	orders   *vault.Collection[[]byte]
-	seq      *vault.Collection[uint64]
-	keys     *vault.Collection[uint64]
-	leases   *vault.Collection[leaseRecord]
-	leaseTTL time.Duration
-	notify   chan struct{}
+	vault               *vault.Vault
+	orders              *vault.Collection[[]byte]
+	normalOrderIndex    *vault.Collection[[]byte]
+	automaticOrderIndex *vault.Collection[[]byte]
+	seq                 *vault.Collection[uint64]
+	keys                *vault.Collection[uint64]
+	leases              *vault.Collection[leaseRecord]
+	leaseTTL            time.Duration
+	notify              chan struct{}
+	prioritizeAutomatic atomic.Bool
 	// extendedAt remembers when each worker's leases were last durably
 	// extended, so frequent heartbeats (they also carry control directives, so
 	// their cadence is short) skip the per-beat fsync and only refresh the
@@ -71,6 +81,14 @@ func newDurableOrderQueue(v *vault.Vault, leaseTTL time.Duration) (*DurableOrder
 	orders, err := vault.Register(v, orderBucket, orderCodec{})
 	if err != nil {
 		return nil, fmt.Errorf("register crawl order queue: %w", err)
+	}
+	normalOrderIndex, err := vault.Register(v, normalOrderIndexBucket, orderCodec{})
+	if err != nil {
+		return nil, fmt.Errorf("register normal crawl order index: %w", err)
+	}
+	automaticOrderIndex, err := vault.Register(v, automaticOrderIndexBucket, orderCodec{})
+	if err != nil {
+		return nil, fmt.Errorf("register automatic crawl order index: %w", err)
 	}
 	seq, err := vault.Register(v, seqBucket, sequenceCodec{})
 	if err != nil {
@@ -85,16 +103,21 @@ func newDurableOrderQueue(v *vault.Vault, leaseTTL time.Duration) (*DurableOrder
 		return nil, fmt.Errorf("register crawl order leases: %w", err)
 	}
 
-	return &DurableOrderQueue{
-		vault:      v,
-		orders:     orders,
-		seq:        seq,
-		keys:       keys,
-		leases:     leases,
-		leaseTTL:   leaseTTL,
-		notify:     make(chan struct{}, 1),
-		extendedAt: map[string]time.Time{},
-	}, nil
+	queue := &DurableOrderQueue{
+		vault:               v,
+		orders:              orders,
+		normalOrderIndex:    normalOrderIndex,
+		automaticOrderIndex: automaticOrderIndex,
+		seq:                 seq,
+		keys:                keys,
+		leases:              leases,
+		leaseTTL:            leaseTTL,
+		notify:              make(chan struct{}, 1),
+		extendedAt:          map[string]time.Time{},
+	}
+	queue.prioritizeAutomatic.Store(true)
+
+	return queue, nil
 }
 
 // Publish enqueues a crawl order for delivery without idempotency. It satisfies
@@ -132,7 +155,7 @@ func (q *DurableOrderQueue) PublishOnce(
 				return nil
 			}
 		}
-		seq, err := q.enqueueTx(tx, data)
+		seq, err := q.enqueueTx(tx, data, order.Priority)
 		if err != nil {
 			return err
 		}
@@ -153,16 +176,27 @@ func (q *DurableOrderQueue) PublishOnce(
 	return duplicate, nil
 }
 
-func (q *DurableOrderQueue) enqueueTx(tx *vault.Txn, data []byte) (uint64, error) {
+func (q *DurableOrderQueue) enqueueTx(
+	tx *vault.Txn,
+	data []byte,
+	priority yagocrawlcontract.CrawlOrderPriority,
+) (uint64, error) {
 	next, _, err := q.seq.Get(tx, seqKey)
 	if err != nil {
 		return 0, fmt.Errorf("read order sequence: %w", err)
 	}
-	if err := q.orders.Put(tx, orderKey(next), data); err != nil {
+	key := orderKey(next)
+	if err := q.orders.Put(tx, key, data); err != nil {
 		return 0, fmt.Errorf("store crawl order: %w", err)
+	}
+	if err := q.priorityIndex(priority).Put(tx, key, priorityIndexMarker); err != nil {
+		return 0, fmt.Errorf("store crawl order priority: %w", err)
 	}
 	if err := q.seq.Put(tx, seqKey, next+1); err != nil {
 		return 0, fmt.Errorf("advance order sequence: %w", err)
+	}
+	if err := q.seq.Put(tx, priorityIndexNextKey, next+1); err != nil {
+		return 0, fmt.Errorf("advance crawl order priority index: %w", err)
 	}
 
 	return next, nil

@@ -18,6 +18,8 @@ components:
     in: internal/vaulttest/**
   httpguard:
     in: internal/httpguard/**
+  httproute:
+    in: internal/httproute/**
   nodeidentity:
     in: internal/nodeidentity/**
   peeradmission:
@@ -446,6 +448,7 @@ deps:
     mayDependOn:
       - adminui
       - adminauth
+      - httproute
     canUse:
       - yagocrawlcontract
   publicportal:
@@ -861,6 +864,7 @@ deps:
   adminauth:
     mayDependOn:
       - adminauth
+      - httproute
       - vault
       - memvault
     canUse:

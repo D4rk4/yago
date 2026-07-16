@@ -3,18 +3,24 @@ package yagonode
 import (
 	"fmt"
 	"strings"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 const (
-	envCrawlRPCAddr     = "YAGO_CRAWL_RPC_ADDR"
-	defaultCrawlRPCAddr = "127.0.0.1:9091"
+	envCrawlRPCAddr                 = "YAGO_CRAWL_RPC_ADDR"
+	envCrawlerWorkers               = "YAGOCRAWLER_WORKERS"
+	envPrioritizeAutomaticDiscovery = "YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY"
+	defaultCrawlRPCAddr             = "127.0.0.1:9091"
 	// crawlRPCDisabled is the explicit value that turns the crawl exchange off
 	// for a node that runs no crawler, now that an unset value means "default".
 	crawlRPCDisabled = "off"
 )
 
 type crawlConfig struct {
-	ListenAddr string
+	ListenAddr                   string
+	FetchWorkers                 int
+	PrioritizeAutomaticDiscovery bool
 	// QualityGate rejects crawled pages that fail the deterministic Gopher/C4
 	// content-quality rules before they are stored or indexed.
 	QualityGate bool
@@ -29,10 +35,30 @@ func loadCrawlConfig(getenv func(string) string) (crawlConfig, error) {
 	if err != nil {
 		return crawlConfig{}, fmt.Errorf("%s: %w", envIngestQualityGate, err)
 	}
+	fetchWorkers, err := intRangeEnv(
+		getenv,
+		envCrawlerWorkers,
+		yagocrawlcontract.DefaultFetchWorkerConcurrency,
+		1,
+		yagocrawlcontract.MaximumFetchWorkerConcurrency,
+	)
+	if err != nil {
+		return crawlConfig{}, err
+	}
+	prioritizeAutomaticDiscovery, err := boolEnv(
+		getenv,
+		envPrioritizeAutomaticDiscovery,
+		true,
+	)
+	if err != nil {
+		return crawlConfig{}, err
+	}
 
 	return crawlConfig{
-		ListenAddr:  crawlRPCListenAddr(getenv),
-		QualityGate: qualityGate,
+		ListenAddr:                   crawlRPCListenAddr(getenv),
+		FetchWorkers:                 fetchWorkers,
+		PrioritizeAutomaticDiscovery: prioritizeAutomaticDiscovery,
+		QualityGate:                  qualityGate,
 	}, nil
 }
 

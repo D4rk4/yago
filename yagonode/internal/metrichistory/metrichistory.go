@@ -20,13 +20,25 @@ import (
 // SeriesRequests through SeriesIndexQueue name the sampled series in the order
 // the Performance page presents them.
 const (
-	SeriesRequests   = "HTTP requests"
-	SeriesErrors     = "HTTP 5xx responses"
-	SeriesLatency    = "Request latency"
-	SeriesDHT        = "DHT postings sent"
-	SeriesCrawlQueue = "Crawl queue depth"
-	SeriesIndexQueue = "Index queue depth"
+	SeriesRequests            = "HTTP requests"
+	SeriesErrors              = "HTTP 5xx responses"
+	SeriesLatency             = "Request latency"
+	SeriesDHT                 = "DHT postings sent"
+	SeriesCrawlQueue          = "Crawl queue depth"
+	SeriesProcessCPU          = "Process CPU"
+	SeriesProcessMemory       = "Process memory"
+	SeriesHostMemoryTotal     = "Host memory total"
+	SeriesHostMemoryAvailable = "Host memory available"
+	SeriesStorageUse          = "Storage used"
+	SeriesStorageCap          = "Storage quota"
+	SeriesIndexQueue          = "Index queue depth"
 )
+
+type HostMemory struct {
+	TotalBytes        uint64
+	AvailableBytes    uint64
+	AvailableObserved bool
+}
 
 // Point is one sampled value.
 type Point struct {
@@ -49,9 +61,10 @@ type sample struct {
 // Sampler owns the ring. Sample is driven by Run's ticker; Series serves the
 // admin page.
 type Sampler struct {
-	gatherer prometheus.Gatherer
-	capacity int
-	clock    func() time.Time
+	gatherer   prometheus.Gatherer
+	capacity   int
+	clock      func() time.Time
+	hostMemory func() (HostMemory, bool)
 
 	mu       sync.Mutex
 	ring     []sample
@@ -65,21 +78,33 @@ type counters struct {
 	latencySum    float64
 	latencyCount  float64
 	dhtPostings   float64
+	processCPU    float64
+	processKnown  bool
 	seenGathering bool
 }
 
 // New builds a sampler over the node's shared metrics registry, keeping at
 // most capacity points per series.
-func New(gatherer prometheus.Gatherer, capacity int) *Sampler {
+func New(
+	gatherer prometheus.Gatherer,
+	capacity int,
+	hostMemory func() (HostMemory, bool),
+) *Sampler {
 	if capacity < 2 {
 		capacity = 2
 	}
 
-	return &Sampler{gatherer: gatherer, capacity: capacity, clock: time.Now}
+	return &Sampler{
+		gatherer:   gatherer,
+		capacity:   capacity,
+		clock:      time.Now,
+		hostMemory: hostMemory,
+	}
 }
 
 // Run samples on the interval until the context ends.
 func (s *Sampler) Run(ctx context.Context, interval time.Duration) {
+	s.Sample()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -103,6 +128,9 @@ func (s *Sampler) Sample() {
 	now := s.clock()
 	current := readCounters(families, now)
 	gauges := readGauges(families)
+	for name, value := range readHostMemory(s.hostMemory) {
+		gauges[name] = value
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -120,6 +148,9 @@ func (s *Sampler) Sample() {
 		SeriesErrors:   rate(current.errors, previous.errors, elapsed),
 		SeriesLatency:  latencyMillis(current, previous),
 		SeriesDHT:      rate(current.dhtPostings, previous.dhtPostings, elapsed),
+	}
+	if current.processKnown && previous.processKnown {
+		values[SeriesProcessCPU] = rate(current.processCPU, previous.processCPU, elapsed)
 	}
 	for name, value := range gauges {
 		values[name] = value
@@ -140,6 +171,12 @@ func (s *Sampler) Series() []Series {
 		{SeriesLatency, "ms"},
 		{SeriesDHT, "postings/s"},
 		{SeriesCrawlQueue, "entries"},
+		{SeriesProcessCPU, "cores"},
+		{SeriesProcessMemory, "bytes"},
+		{SeriesHostMemoryTotal, "bytes"},
+		{SeriesHostMemoryAvailable, "bytes"},
+		{SeriesStorageUse, "bytes"},
+		{SeriesStorageCap, "bytes"},
 		{SeriesIndexQueue, "entries"},
 	}
 	out := make([]Series, 0, len(specs))
@@ -180,28 +217,57 @@ func latencyMillis(current, previous counters) float64 {
 func readCounters(families []*dto.MetricFamily, now time.Time) counters {
 	out := counters{at: now, seenGathering: true}
 	for _, family := range families {
-		switch family.GetName() {
-		case "http_requests_total":
-			for _, metric := range family.GetMetric() {
-				value := metric.GetCounter().GetValue()
-				out.requests += value
-				if serverErrorCode(metric) {
-					out.errors += value
-				}
-			}
-		case "http_request_duration_seconds":
-			for _, metric := range family.GetMetric() {
-				out.latencySum += metric.GetHistogram().GetSampleSum()
-				out.latencyCount += float64(metric.GetHistogram().GetSampleCount())
-			}
-		case "yacy_dht_outbound_postings_total":
-			for _, metric := range family.GetMetric() {
-				out.dhtPostings += metric.GetCounter().GetValue()
-			}
-		}
+		addCounterFamily(&out, family)
 	}
 
 	return out
+}
+
+func addCounterFamily(out *counters, family *dto.MetricFamily) {
+	switch family.GetName() {
+	case "http_requests_total":
+		addRequestCounters(out, family.GetMetric())
+	case "http_request_duration_seconds":
+		addLatencyCounters(out, family.GetMetric())
+	case "yacy_dht_outbound_postings_total":
+		addDHTPostings(out, family.GetMetric())
+	case "process_cpu_seconds_total":
+		addProcessCPU(out, family.GetMetric())
+	}
+}
+
+func addRequestCounters(out *counters, metrics []*dto.Metric) {
+	for _, metric := range metrics {
+		value := metric.GetCounter().GetValue()
+		out.requests += value
+		if serverErrorCode(metric) {
+			out.errors += value
+		}
+	}
+}
+
+func addLatencyCounters(out *counters, metrics []*dto.Metric) {
+	for _, metric := range metrics {
+		out.latencySum += metric.GetHistogram().GetSampleSum()
+		out.latencyCount += float64(metric.GetHistogram().GetSampleCount())
+	}
+}
+
+func addDHTPostings(out *counters, metrics []*dto.Metric) {
+	for _, metric := range metrics {
+		out.dhtPostings += metric.GetCounter().GetValue()
+	}
+}
+
+func addProcessCPU(out *counters, metrics []*dto.Metric) {
+	for _, metric := range metrics {
+		value := metric.GetCounter().GetValue()
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			continue
+		}
+		out.processCPU += value
+		out.processKnown = true
+	}
 }
 
 func readGauges(families []*dto.MetricFamily) map[string]float64 {
@@ -213,6 +279,12 @@ func readGauges(families []*dto.MetricFamily) map[string]float64 {
 			name = SeriesCrawlQueue
 		case "queue_index_depth":
 			name = SeriesIndexQueue
+		case "process_resident_memory_bytes":
+			name = SeriesProcessMemory
+		case "storage_used_bytes":
+			name = SeriesStorageUse
+		case "storage_quota_bytes":
+			name = SeriesStorageCap
 		default:
 			continue
 		}
@@ -223,6 +295,23 @@ func readGauges(families []*dto.MetricFamily) map[string]float64 {
 			}
 			out[name] += value
 		}
+	}
+
+	return out
+}
+
+func readHostMemory(source func() (HostMemory, bool)) map[string]float64 {
+	out := map[string]float64{}
+	if source == nil {
+		return out
+	}
+	observation, available := source()
+	if !available || observation.TotalBytes == 0 || observation.TotalBytes > 1<<62 {
+		return out
+	}
+	out[SeriesHostMemoryTotal] = float64(observation.TotalBytes)
+	if observation.AvailableObserved && observation.AvailableBytes <= 1<<62 {
+		out[SeriesHostMemoryAvailable] = float64(observation.AvailableBytes)
 	}
 
 	return out

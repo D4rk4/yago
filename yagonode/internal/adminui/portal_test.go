@@ -31,7 +31,10 @@ func (f *portalFakeSettings) Update(
 func portalTestSettings() *portalFakeSettings {
 	return &portalFakeSettings{
 		items: []SettingItem{
-			{Key: "portal.enabled", Title: "Public portal enabled", Category: "Public portal"},
+			{
+				Key: "portal.enabled", Title: "Public portal enabled",
+				Category: "Public portal", Overridden: true,
+			},
 			{Key: "https.redirect", Title: "Redirect HTTP to HTTPS", Category: "Public portal"},
 			{Key: "web.robots.policy", Title: "Robots policy", Category: "Public portal"},
 			{Key: "peer.name", Title: "Peer name", Category: "Network & peers"},
@@ -54,7 +57,8 @@ func TestPortalSectionRendersTabsAndSubset(t *testing.T) {
 	for _, want := range []string{
 		"Configuration", "Portal design", "Results design",
 		"portal.enabled", "web.robots.policy",
-		`action="/admin/portal"`,
+		`action="/admin/portal"`, `name="reset" value="portal.enabled"`,
+		`aria-label="Reset Public portal enabled to the environment default"`,
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("portal page missing %q", want)
@@ -63,22 +67,57 @@ func TestPortalSectionRendersTabsAndSubset(t *testing.T) {
 	if strings.Contains(got.body, `name="key" value="peer.name"`) {
 		t.Fatal("foreign-category setting leaked into the portal section")
 	}
+	if resetControls := strings.Count(got.body, `name="reset"`); resetControls != 1 {
+		t.Fatalf("reset controls = %d, want 1 overridden setting", resetControls)
+	}
 }
 
-func TestPortalNavOrderBetweenActivityAndAutocrawler(t *testing.T) {
+func TestPortalResetAcceptsOwnKey(t *testing.T) {
+	t.Parallel()
+
+	settings := portalTestSettings()
+	console := New(Options{Settings: settings})
+	posted := doPost(t, console, "/admin/portal", url.Values{
+		"reset": {"portal.enabled"},
+	})
+	if posted.status != http.StatusOK {
+		t.Fatalf("reset status = %d", posted.status)
+	}
+	if settings.got.Key != "portal.enabled" || !settings.got.Reset {
+		t.Fatalf("reset change = %+v", settings.got)
+	}
+}
+
+func TestPortalResetRejectsForeignKey(t *testing.T) {
+	t.Parallel()
+
+	settings := portalTestSettings()
+	console := New(Options{Settings: settings})
+	posted := doPost(t, console, "/admin/portal", url.Values{
+		"reset": {"peer.name"},
+	})
+	if posted.status != http.StatusNotFound {
+		t.Fatalf("foreign reset status = %d, want 404", posted.status)
+	}
+	if settings.got != (SettingsChange{}) {
+		t.Fatalf("foreign reset reached settings source: %+v", settings.got)
+	}
+}
+
+func TestPortalNavOrderBetweenActivityAndCrawler(t *testing.T) {
 	t.Parallel()
 
 	console := New(Options{Settings: portalTestSettings()})
 	got := do(t, console, "/admin/portal")
 	activity := strings.Index(got.body, `cds-nav__label">Activity</span>`)
 	portal := strings.Index(got.body, `cds-nav__label">Public portal</span>`)
-	autocrawler := strings.Index(got.body, `cds-nav__label">Autocrawler</span>`)
-	if activity < 0 || activity >= portal || portal >= autocrawler {
+	crawler := strings.Index(got.body, `cds-nav__label">Crawler</span>`)
+	if activity < 0 || activity >= portal || portal >= crawler {
 		t.Fatalf(
-			"nav order wrong: activity@%d portal@%d autocrawler@%d",
+			"nav order wrong: activity@%d portal@%d crawler@%d",
 			activity,
 			portal,
-			autocrawler,
+			crawler,
 		)
 	}
 }

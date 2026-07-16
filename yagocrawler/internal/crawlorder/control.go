@@ -96,9 +96,11 @@ func directiveFromProto(
 	directive *crawlrpc.CrawlControlDirective,
 ) yagocrawlcontract.CrawlControlDirective {
 	return yagocrawlcontract.CrawlControlDirective{
-		Kind:           controlKindFromProto(directive.GetKind()),
-		RunID:          hex.EncodeToString(directive.GetRunId()),
-		PagesPerMinute: directive.GetPagesPerMinute(),
+		Kind:                         controlKindFromProto(directive.GetKind()),
+		RunID:                        hex.EncodeToString(directive.GetRunId()),
+		PagesPerMinute:               directive.GetPagesPerMinute(),
+		FetchWorkers:                 directive.GetFetchWorkers(),
+		PrioritizeAutomaticDiscovery: directive.GetPrioritizeAutomaticDiscovery(),
 	}
 }
 
@@ -114,6 +116,10 @@ func controlKindFromProto(kind crawlrpc.CrawlControlKind) yagocrawlcontract.Craw
 		return yagocrawlcontract.CrawlControlSetRate
 	case crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESTART:
 		return yagocrawlcontract.CrawlControlRestart
+	case crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_WORKERS:
+		return yagocrawlcontract.CrawlControlSetWorkers
+	case crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY:
+		return yagocrawlcontract.CrawlControlSetAutomaticDiscoveryPriority
 	default:
 		return ""
 	}

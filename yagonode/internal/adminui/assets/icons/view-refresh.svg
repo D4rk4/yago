@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<svg version="1.1" width="64" height="64" color-interpolation="linearRGB"
+     xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg">
+ <g>
+  <path style="fill:none; stroke:#000000; stroke-opacity:0.4; stroke-width:5.6366; stroke-linecap:round; stroke-linejoin:round"
+        d="M60.17 6.63V29.18H37.63L44.67 22.13C37.63 12.26 19.31 8.04 6.63 17.9C16.49 6.63 38.16 1.52 53.13 13.67L60.17 6.63z"
+        transform="matrix(0.8709,0,0,0.8708,4.1294,4.1329)"
+  />
+  <path style="fill:none; stroke:#004080; stroke-width:5.6366; stroke-linecap:round; stroke-linejoin:round"
+        d="M57.36 3.81V26.36H34.81L41.86 19.31C34.81 9.44 16.49 5.22 3.81 15.08C13.68 3.81 35.35 -1.28 50.31 10.85L57.36 3.81z"
+        transform="matrix(0.8709,0,0,0.8708,4.1294,4.1329)"
+  />
+  <linearGradient id="gradient0" gradientUnits="userSpaceOnUse" x1="181.35" y1="3.79" x2="181.35" y2="26.36">
+   <stop offset="0" stop-color="#abd5ff"/>
+   <stop offset="1" stop-color="#006cd9"/>
+  </linearGradient>
+  <path style="fill:url(#gradient0)"
+        d="M57.36 3.81V26.36H34.81L41.86 19.31C34.81 9.44 16.49 5.22 3.81 15.08C13.68 3.81 35.35 -1.28 50.31 10.85L57.36 3.81z"
+        transform="matrix(0.8709,0,0,0.8708,4.1294,4.1329)"
+  />
+  <path style="fill:none; stroke:#000000; stroke-opacity:0.4; stroke-width:5.6366; stroke-linecap:round; stroke-linejoin:round"
+        d="M6.63 60.18V37.63H29.18L22.13 44.68C29.18 54.54 47.5 58.77 60.18 48.91C50.31 60.18 28.64 65.28 13.68 53.14L6.63 60.18z"
+        transform="matrix(0.8709,0,0,0.8708,4.1294,4.1329)"
+  />
+  <path style="fill:none; stroke:#004080; stroke-width:5.6366; stroke-linecap:round; stroke-linejoin:round"
+        d="M3.82 57.36V34.81H26.36L19.32 41.86C26.36 51.73 44.68 55.95 57.36 46.09C47.5 57.36 25.83 62.47 10.86 50.32L3.82 57.36z"
+        transform="matrix(0.8709,0,0,0.8708,4.1294,4.1329)"
+  />
+  <linearGradient id="gradient1" gradientUnits="userSpaceOnUse" x1="-120.17" y1="57.38" x2="-120.17" y2="34.81">
+   <stop offset="0" stop-color="#006cd9"/>
+   <stop offset="1" stop-color="#aad4ff"/>
+  </linearGradient>
+  <path style="fill:url(#gradient1)"
+        d="M3.82 57.36V34.81H26.36L19.32 41.86C26.36 51.73 44.68 55.95 57.36 46.09C47.5 57.36 25.83 62.47 10.86 50.32L3.82 57.36z"
+        transform="matrix(0.8709,0,0,0.8708,4.1294,4.1329)"
+  />
+ </g>
+</svg>

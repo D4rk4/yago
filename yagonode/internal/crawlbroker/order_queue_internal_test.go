@@ -18,6 +18,7 @@ type scriptedEngine struct {
 	buckets         map[vault.Name]map[string][]byte
 	provisionErrors map[vault.Name]error
 	putErrors       map[vault.Name]error
+	putKeyErrors    map[vault.Name]map[string]error
 	deleteErrors    map[vault.Name]error
 	scanErrors      map[vault.Name]error
 	replayNext      bool
@@ -29,6 +30,7 @@ func newScriptedEngine() *scriptedEngine {
 		buckets:         map[vault.Name]map[string][]byte{},
 		provisionErrors: map[vault.Name]error{},
 		putErrors:       map[vault.Name]error{},
+		putKeyErrors:    map[vault.Name]map[string]error{},
 		deleteErrors:    map[vault.Name]error{},
 		scanErrors:      map[vault.Name]error{},
 	}
@@ -117,6 +119,9 @@ func (b scriptedBucket) Get(key vault.Key) []byte {
 
 func (b scriptedBucket) Put(key vault.Key, raw []byte) error {
 	if err := b.engine.putErrors[b.name]; err != nil {
+		return err
+	}
+	if err := b.engine.putKeyErrors[b.name][string(key)]; err != nil {
 		return err
 	}
 	b.engine.buckets[b.name][string(key)] = append([]byte(nil), raw...)
@@ -338,7 +343,10 @@ func TestSequenceCodecRejectsBadLength(t *testing.T) {
 }
 
 func TestNewDurableOrderQueueRegisterErrors(t *testing.T) {
-	for _, bucket := range []vault.Name{orderBucket, seqBucket, idempotencyBucket, leaseBucket} {
+	for _, bucket := range []vault.Name{
+		orderBucket, normalOrderIndexBucket, automaticOrderIndexBucket,
+		seqBucket, idempotencyBucket, leaseBucket,
+	} {
 		engine := newScriptedEngine()
 		engine.provisionErrors[bucket] = errors.New("provision failed")
 		v, err := vault.New(engine)
@@ -377,6 +385,20 @@ func TestDurableOrderQueueSurfaceVaultErrors(t *testing.T) {
 		t.Fatal("expected enqueue error on orders put failure")
 	}
 
+	priorityPut := scriptedQueue(t)
+	priorityPut.engine.putErrors[normalOrderIndexBucket] = errors.New("priority put failed")
+	if err := priorityPut.queue.Publish(ctx, testOrder("priority")); err == nil {
+		t.Fatal("expected enqueue error on priority put failure")
+	}
+
+	priorityWatermarkPut := scriptedQueue(t)
+	priorityWatermarkPut.engine.putKeyErrors[seqBucket] = map[string]error{
+		string(priorityIndexNextKey): errors.New("priority watermark put failed"),
+	}
+	if err := priorityWatermarkPut.queue.Publish(ctx, testOrder("watermark")); err == nil {
+		t.Fatal("expected enqueue error on priority watermark failure")
+	}
+
 	seqDecode := scriptedQueue(t)
 	seqDecode.engine.buckets[seqBucket][string(seqKey)] = []byte{1, 2, 3}
 	if err := seqDecode.queue.Publish(ctx, testOrder("z")); err == nil {
@@ -385,9 +407,29 @@ func TestDurableOrderQueueSurfaceVaultErrors(t *testing.T) {
 
 	scanFail := scriptedQueue(t)
 	_ = scanFail.queue.Publish(ctx, testOrder("y"))
-	scanFail.engine.scanErrors[orderBucket] = errors.New("scan failed")
+	scanFail.engine.scanErrors[normalOrderIndexBucket] = errors.New("scan failed")
 	if _, _, _, err := scanFail.queue.leasePop(ctx, "worker"); err == nil {
 		t.Fatal("expected pop error on scan failure")
+	}
+
+	automaticScanFail := scriptedQueue(t)
+	automaticScanFail.engine.scanErrors[automaticOrderIndexBucket] = errors.New("scan failed")
+	if _, _, _, err := automaticScanFail.queue.leasePop(ctx, "worker"); err == nil {
+		t.Fatal("expected pop error on automatic scan failure")
+	}
+
+	burstDecode := scriptedQueue(t)
+	burstDecode.engine.buckets[seqBucket][string(priorityBurstKey)] = []byte{1, 2, 3}
+	if _, _, _, err := burstDecode.queue.leasePop(ctx, "worker"); err == nil {
+		t.Fatal("expected pop error on priority burst decode failure")
+	}
+
+	burstPut := scriptedQueue(t)
+	_ = burstPut.queue.Publish(ctx, testOrder("normal"))
+	_ = burstPut.queue.Publish(ctx, automaticOrder("automatic"))
+	burstPut.engine.putErrors[seqBucket] = errors.New("burst put failed")
+	if _, _, _, err := burstPut.queue.leasePop(ctx, "worker"); err == nil {
+		t.Fatal("expected pop error on priority burst put failure")
 	}
 
 	deleteFail := scriptedQueue(t)
@@ -395,6 +437,13 @@ func TestDurableOrderQueueSurfaceVaultErrors(t *testing.T) {
 	deleteFail.engine.deleteErrors[orderBucket] = errors.New("delete failed")
 	if _, _, _, err := deleteFail.queue.leasePop(ctx, "worker"); err == nil {
 		t.Fatal("expected pop error on delete failure")
+	}
+
+	priorityDeleteFail := scriptedQueue(t)
+	_ = priorityDeleteFail.queue.Publish(ctx, testOrder("priority-delete"))
+	priorityDeleteFail.engine.deleteErrors[normalOrderIndexBucket] = errors.New("delete failed")
+	if _, _, _, err := priorityDeleteFail.queue.leasePop(ctx, "worker"); err == nil {
+		t.Fatal("expected pop error on priority delete failure")
 	}
 }
 

@@ -30,25 +30,26 @@ func restartContrastRatio(foreground, background [3]float64) float64 {
 }
 
 func TestRestartBannerTextMeetsWCAGAAContrast(t *testing.T) {
-	stylesheet, err := assetFS.ReadFile("assets/carbon.css")
+	stylesheet, err := assetFS.ReadFile("assets/photon.css")
 	if err != nil {
 		t.Fatalf("read stylesheet: %v", err)
 	}
-	for _, color := range []string{"#304f88", "#24447d", "#18366f", "#ffb3b8"} {
-		if !strings.Contains(string(stylesheet), color) {
-			t.Fatalf("restart stylesheet missing %s", color)
+	for _, contract := range []string{
+		"--ph-titlebar-hi: #7ba2e8",
+		"--cds-header-bg: #5c8bdf",
+		"background: linear-gradient(180deg, var(--ph-titlebar-hi) 0%, var(--cds-header-bg) 100%);",
+		"color: var(--cds-text-primary);",
+	} {
+		if !strings.Contains(string(stylesheet), contract) {
+			t.Fatalf("restart stylesheet missing %s", contract)
 		}
 	}
 
-	white := [3]float64{255, 255, 255}
-	brand := [3]float64{255, 179, 184}
-	backgrounds := [][3]float64{{48, 79, 136}, {36, 68, 125}, {24, 54, 111}}
+	dark := [3]float64{16, 16, 16}
+	backgrounds := [][3]float64{{123, 162, 232}, {92, 139, 223}}
 	for _, background := range backgrounds {
-		if ratio := restartContrastRatio(white, background); ratio < 4.5 {
-			t.Fatalf("white contrast = %.2f, want at least 4.5", ratio)
-		}
-		if ratio := restartContrastRatio(brand, background); ratio < 4.5 {
-			t.Fatalf("brand contrast = %.2f, want at least 4.5", ratio)
+		if ratio := restartContrastRatio(dark, background); ratio < 4.5 {
+			t.Fatalf("titlebar contrast = %.2f, want at least 4.5", ratio)
 		}
 	}
 }

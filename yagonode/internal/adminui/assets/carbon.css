@@ -341,6 +341,7 @@ select:focus-visible, [tabindex]:focus-visible {
   min-width: max-content;
   gap: var(--cds-spacing-03);
 }
+.cds-crawl-actions-cell { width: 1%; white-space: nowrap; }
 .cds-inline-form {
   display: flex;
   align-items: center;

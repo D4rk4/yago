@@ -138,10 +138,13 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 	c.reportRun(ctx, order, yagocrawlcontract.CrawlRunRunning, len(requests))
 	reporter := newRunProgressReporter()
 	c.frontier.Hold()
-	seeded := c.frontier.SeedRun(
+	seeded := c.frontier.SeedRunWithPriority(
 		ctx,
-		requests,
-		order.Provenance,
+		frontier.CrawlRunSeed{
+			Requests:   requests,
+			Provenance: order.Provenance,
+			Priority:   order.Priority,
+		},
 		profile,
 		c.finishRun(ctx, order, delivery, reporter),
 	)

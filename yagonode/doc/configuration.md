@@ -119,7 +119,7 @@ peer listener is behind a reverse proxy or NAT and the external address differs)
 | `YAGO_ADMIN_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the operations surface. Empty denies all cross-origin requests. Use `*` to echo any origin (required for a credentialed admin UI on an unknown origin, but broad). |
 | `YAGO_SEARCH_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the public search endpoints on the public listener. Empty denies all cross-origin requests; `*` allows any origin without credentials. |
 | `YAGO_SEARCH_REMOTE_PEER_TIMEOUT` | `1200ms` | Maximum contribution time for one YaCy peer inside an interactive search. |
-| `YAGO_SEARCH_REMOTE_TIMEOUT` | `1300ms` | Aggregate YaCy peer fan-out budget. The public pipeline enforces a 1.8-second end-to-end deadline; a request permitted to continue to web fallback caps its complete exact local-plus-swarm and peer-evidence stage at 600ms so the applicable local recovery and provider retain time. Four remote branches may run process-wide; a branch retains that admission until peer fan-out actually returns even when its local answer has already been released. One query additionally shares fixed limits of 8 MiB response data, 1,024 metadata rows, and 8,192 abstract hashes across exact and morphology passes; at most 32 peer HTTP attempts run process-wide. These limits preserve partial swarm results and do not penalize a peer when local admission is saturated. |
+| `YAGO_SEARCH_REMOTE_TIMEOUT` | `1300ms` | Aggregate YaCy peer fan-out budget. The public pipeline enforces a 1.8-second end-to-end deadline. Miss-triggered web fallback caps its complete exact local-plus-swarm and peer-evidence stage at 600ms so local recovery and the sequential provider retain time. `always` mode runs the provider concurrently and gives that primary stage up to 1400ms, so a cold local index can still publish its rows without extending the hard response boundary. Four remote branches may run process-wide; a branch retains that admission until peer fan-out actually returns even when its local answer has already been released. One query additionally shares fixed limits of 8 MiB response data, 1,024 metadata rows, and 8,192 abstract hashes across exact and morphology passes; at most 32 peer HTTP attempts run process-wide. These limits preserve partial swarm results and do not penalize a peer when local admission is saturated. |
 | `YAGO_WEB_FALLBACK_ENABLED` | `false` | Legacy on/off switch for optional DDGS web search, kept for compatibility. It is the default source for `YAGO_WEB_FALLBACK_PRIVACY` when that variable is unset (`true` -> `enabled`, `false` -> `disabled`). Prefer setting the mode directly. A local-only request never leaves the node. |
 | `YAGO_WEB_FALLBACK_PRIVACY` | _(from `ENABLED`)_ | Controls the `Web search fallback (DDGS)` Admin setting. `disabled` never sends a query; `explicit` requires request consent; `enabled` runs web search after exact local-plus-swarm and the applicable bounded local recovery miss; `always` starts bounded web retrieval alongside local and swarm for every eligible global query, then rank-fuses and deduplicates all completed results. Tavily `/search` opts in by contract. YaCy `resource=local` and admin `scope=local` never use the provider. Defaults to `disabled` unless legacy `YAGO_WEB_FALLBACK_ENABLED` is `true`. |
 | `YAGO_WEB_FALLBACK_PROVIDER` | `ddgs` | Selects the fallback provider family. Only the keyless `ddgs` metasearch is available; `YAGO_WEB_FALLBACK_BACKEND` chooses the engine within it. |
@@ -129,13 +129,15 @@ peer listener is behind a reverse proxy or NAT and the external address differs)
 | `YAGO_WEB_FALLBACK_SAFESEARCH` | `moderate` | Safe-search preference passed to engines that support it (`strict`, `moderate`, `off`). |
 | `YAGO_WEB_FALLBACK_CACHE_TTL` | `5m` | How long to cache a fallback response to respect engine rate limits and reduce repeat egress. Normalized responses share a fixed 4 MiB/256-entry byte-aware cache, retain at most 20 rows per query, and bound each title, URL, and snippet before insertion. |
 | `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | When on (and crawling is enabled), URLs surfaced by the fallback are published as conservative crawl orders so the next identical query can be answered locally. Publishing runs after the search response through a process-wide two-work admission with a ten-second deadline; saturated admission skips optional seed work. URLs already in the document store are skipped, and the durable queue deduplicates by URL. No effect when crawling is disabled. |
-| `YAGO_WEB_FALLBACK_SEED_DEPTH` | `1` | Crawl depth for seeded orders (0–8). Kept shallow to bound amplification. |
-| `YAGO_WEB_FALLBACK_SEED_MAX_PAGES` | `20` | Per-host page cap for seeded crawl orders. |
+| `YAGO_WEB_FALLBACK_SEED_DEPTH` | `5` | Crawl depth for web-discovery orders when web-discovery crawling is enabled (0–8). |
+| `YAGO_WEB_FALLBACK_SEED_MAX_PAGES` | `250` | Per-host page cap for web-discovery crawl orders when enabled. |
 | `YAGO_QUERY_LOG_MODE` | `off` | How much of a search query is written to the node's logs. `off` records nothing; `aggregate` records only the query length and result count (never the text); `full` records the query text. The default keeps queries out of the logs. |
 | `YAGO_INDEX_REMOTE_RESULTS` | `true` | Cache the metadata of results returned by peers into the local index after a swarm search, mirroring YaCy's `addResultsToLocalIndex`, so a later query for the same content is answered locally without re-fetching. Metadata only (title, snippet, URL — no crawl); a URL already in the store is never overwritten, so a locally crawled full page is preserved. Writes run off the request path, are limited to two concurrent operations with a 30-second deadline, and are skipped while that bounded admission is saturated. Set to `false` to leave the index unchanged by searches (a node that indexes only what it crawls). |
 | `YAGO_PEER_HTTPS_PREFERRED` | `false` | Prefer HTTPS for outbound YaCy peer-protocol calls (hello, remote search, transferRWI/transferURL, back-ping) to peers that advertise an SSL port and the SSL seed flag, mirroring YaCy's `network.unit.protocol.https.preferred`. A failed HTTPS transport attempt retries the same peer over plain HTTP, YaCy-style. Peer certificates in the wild are self-signed, so certificate verification is disabled for the peer-protocol client only — peer authenticity on the YaCy wire comes from protocol-level checks (target hash, network name, hello magic), not PKI — and the egress guard still applies. |
 | `YAGO_SEARCH_LINKS_NEW_TAB` | `false` | Open result links on the public portal, admin console search, and /yacysearch.html in a new tab. Off by default per NN/G guidance (opening new tabs breaks the back button and takes control from the user); when on, links carry `rel="noopener noreferrer nofollow"` and an accessible "opens in new tab" indicator (visible ↗ plus screen-reader text). |
-| `YAGO_SWARM_SEED_CRAWL` | `false` | Greedy learning (YaCy 1.5): enqueue a conservative, domain-scoped crawl order (depth 1, up to 20 pages per host, idempotent by URL, skipping URLs already stored) for every URL surfaced by swarm search, so the index grows from what the network already answers with. Requires crawler integration; orders respect the crawler's robots and blacklist handling. |
+| `YAGO_SWARM_SEED_CRAWL` | `true` | Greedy learning (YaCy 1.5): enqueue a domain-scoped crawl order (depth 5, up to 250 pages per host, idempotent by URL, skipping URLs already stored) for every URL surfaced by swarm search, so the index grows from what the network already answers with. Requires crawler integration; orders respect robots.txt and blacklist handling. |
+| `YAGO_SWARM_SEED_DEPTH` | `5` | Crawl depth for greedy-learning orders (0–8). |
+| `YAGO_SWARM_SEED_MAX_PAGES` | `250` | Per-host page cap for greedy-learning crawl orders. |
 
 ## Privacy
 
@@ -228,6 +230,19 @@ and clears the cookie after the attempt. Dynamic login, setup, and admin pages a
 served as `private, no-store`. Auth pages load only same-origin static CSS and
 icons under a policy that disables every other content source and forbids framing.
 
+The browser login page leaves the account name empty and displays only bounded
+public node facts: node name, the advertised swarm endpoint, processor model and
+logical processor count (with architecture as fallback), total and free memory,
+free space on the filesystem
+holding `YAGO_DATA_DIR`, YaGo version, and node uptime. A failed individual
+system read is shown as `Unavailable`; the page does not expose account names,
+private listener addresses, or the configured data path.
+
+The login and setup stylesheet URL carries the current embedded content digest.
+That exact revision is cacheable as immutable, while the canonical unversioned
+URL revalidates. A wrong, duplicate, extra, encoded, or noncanonical revision
+request returns `404` with `Cache-Control: private, no-store`.
+
 Login and setup accept at most 16 KiB per JSON or form body, a 256-byte
 username, and a 1 KiB password. One 32-slot process gate covers unauthenticated
 login/setup body decoding across the JSON and HTML surfaces; saturation returns
@@ -278,7 +293,44 @@ P2P. Terminate TLS at that proxy so the session cookie is marked `Secure`.
 
 ## Crawling
 
-The node can drive a crawl fleet over gRPC: it serves a `CrawlExchange` endpoint that crawlers dial. Operators start a crawl by posting seed URLs to `/crawl` on the ops address; the node enqueues orders in a durable, store-backed FIFO and streams them to connected crawlers, and crawled pages flow back in as bounded ingest batches. Local identity and encoded-size validation stops an invalid payload before RPC. A node-returned `Unavailable` or legacy `ResourceExhausted` saturation status retries with jittered exponential delay capped at five seconds until the crawl context ends. The endpoint defaults to loopback at `127.0.0.1:9091` for a co-located crawler; set `YAGO_CRAWL_RPC_ADDR=off` for a pure peer or an explicit bind such as `:9091` for remote workers.
+The node can drive a crawl fleet over gRPC: it serves a `CrawlExchange` endpoint that crawlers dial. Operators start a crawl by posting seed URLs to `/crawl` on the ops address; the node enqueues orders in a durable, store-backed queue and streams them to connected crawlers, and crawled pages flow back in as bounded ingest batches. Local identity and encoded-size validation stops an invalid payload before RPC. A node-returned `Unavailable` or legacy `ResourceExhausted` saturation status retries with jittered exponential delay capped at five seconds until the crawl context ends. The endpoint defaults to loopback at `127.0.0.1:9091` for a co-located crawler; set `YAGO_CRAWL_RPC_ADDR=off` for a pure peer or an explicit bind such as `:9091` for remote workers.
+
+Automatic swarm crawls are enabled by default at depth 5 and 250 pages per
+host. Web-discovery crawling remains disabled until the operator enables it;
+its ready profile uses the same depth and page cap. Both automatic paths crawl
+query-bearing URLs, accept untrusted TLS certificate authorities, use the HTTP
+fast path without browser rendering, honor robots.txt, skip links marked
+`rel=nofollow`, and schedule indexed pages for refresh after 30 days. These
+values are editable under Admin → Configuration → Crawler; runtime overrides
+take precedence over the environment-derived defaults. That tab contains
+separate Crawler, Automatic discovery, and Document formats fieldsets. The
+legacy `/admin/autocrawler` URLs redirect to this tab and do not keep a second
+settings surface.
+
+Automatic-discovery orders carry explicit priority metadata. With
+`YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY=true`, the durable queue selects at
+most three discovery orders before a waiting normal order, and each crawler
+dispatches at most three due discovery pages before a due normal page. Existing
+run fairness and value scoring select work within each class. With priority
+disabled, both durable priority classes use one shared global FIFO sequence and the crawler
+uses its existing run-fair, value-scored page selection across both classes.
+Priority and durable fairness state survive requeue, lease expiry, and node
+restart.
+
+Pending JSON payloads remain in the established `crawlorders` bucket. Secondary
+priority indexes contain only keys. A downgraded node ignores those indexes but
+still drains every order in global FIFO order; the current node reconciles the
+tail admitted during the downgrade and removes stale keys after it returns.
+
+The node and crawler environments must bootstrap the same priority value. The
+crawler completes one heartbeat attempt bounded to one second before opening its order stream;
+a successful response applies the persisted node value before intake. If that
+attempt fails, the environment bootstrap is the only available policy until a
+periodic heartbeat succeeds and applies the authoritative node value live.
+
+Accepting an untrusted certificate authority preserves encryption but does not
+authenticate the remote server and permits an on-path endpoint to substitute
+content. Disable this option when indexing requires verified server identity.
 
 The `/crawl` request body accepts `seeds` and optional `startMode`. Supported
 start modes are `url`, `sitemap`, `sitelist`, and `robots`; empty mode is treated
@@ -292,3 +344,11 @@ a poison retry loop.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `YAGO_CRAWL_RPC_ADDR` | `127.0.0.1:9091` | Address the node serves the crawl gRPC endpoint on. `off` disables crawling; use an explicit bind such as `:9091` for remote workers. |
+| `YAGOCRAWLER_WORKERS` | `4` | Bootstrap page-fetch concurrency for each connected crawler process (1–256). Keep the same bootstrap value in the crawler environment. The persisted Configuration → Crawler value is sent over heartbeat and becomes authoritative after connection; it limits neither crawl runs nor queued tasks. |
+| `YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY` | `true` | Bootstrap in both node and crawler environments. Gives explicit swarm and web-discovery work bounded three-order and three-page priority. `false` preserves exact global FIFO order leasing and disables class preference in crawler page dispatch. The one-second startup heartbeat is authoritative when successful; later heartbeat changes apply live. |
+
+A worker-count change pauses new page intake in each connected crawler, lets its
+active page fetches finish, and starts the latest requested worker group without
+restarting the process. The value applies independently to every crawler
+process; aggregate fleet concurrency is therefore this value multiplied by the
+number of connected processes.

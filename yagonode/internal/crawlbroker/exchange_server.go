@@ -27,12 +27,13 @@ type exchangeServer struct {
 func newExchangeServer(
 	queue *DurableOrderQueue,
 	ingest chan<- crawlresults.IngestDelivery,
+	defaults ...crawlerControlDefaults,
 ) *exchangeServer {
 	return &exchangeServer{
 		queue:    queue,
 		ingest:   ingest,
 		progress: noopProgressSink{},
-		control:  newControlRegistry(),
+		control:  newControlRegistry(defaults...),
 	}
 }
 
@@ -106,9 +107,10 @@ func (s *exchangeServer) Heartbeat(
 	if err := s.queue.heartbeat(ctx, workerID); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	s.control.recordActiveFetches(workerID, req.ActiveFetches)
 
 	return &crawlrpc.WorkerHeartbeatResult{
-		Directives: directivesToProto(s.control.drain(workerID)),
+		Directives: directivesToProto(s.control.drainForHeartbeat(workerID)),
 	}, nil
 }
 

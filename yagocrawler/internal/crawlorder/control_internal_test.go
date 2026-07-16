@@ -33,11 +33,13 @@ func (h *recordingControlHandler) snapshot() []yagocrawlcontract.CrawlControlDir
 
 func TestDirectiveFromProtoMapsKinds(t *testing.T) {
 	cases := map[crawlrpc.CrawlControlKind]yagocrawlcontract.CrawlControlKind{
-		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_PAUSE:    yagocrawlcontract.CrawlControlPause,
-		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESUME:   yagocrawlcontract.CrawlControlResume,
-		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_CANCEL:   yagocrawlcontract.CrawlControlCancel,
-		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_RATE: yagocrawlcontract.CrawlControlSetRate,
-		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESTART:  yagocrawlcontract.CrawlControlRestart,
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_PAUSE:                            yagocrawlcontract.CrawlControlPause,
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESUME:                           yagocrawlcontract.CrawlControlResume,
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_CANCEL:                           yagocrawlcontract.CrawlControlCancel,
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_RATE:                         yagocrawlcontract.CrawlControlSetRate,
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESTART:                          yagocrawlcontract.CrawlControlRestart,
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_WORKERS:                      yagocrawlcontract.CrawlControlSetWorkers,
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY: yagocrawlcontract.CrawlControlSetAutomaticDiscoveryPriority,
 		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_UNSPECIFIED: yagocrawlcontract.CrawlControlKind(
 			"",
 		),
@@ -51,9 +53,11 @@ func TestDirectiveFromProtoMapsKinds(t *testing.T) {
 
 func TestDirectiveFromProtoEncodesRunID(t *testing.T) {
 	directive := directiveFromProto(&crawlrpc.CrawlControlDirective{
-		Kind:           crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_RATE,
-		RunId:          []byte{0xab, 0xcd},
-		PagesPerMinute: 30,
+		Kind:                         crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_RATE,
+		RunId:                        []byte{0xab, 0xcd},
+		PagesPerMinute:               30,
+		FetchWorkers:                 7,
+		PrioritizeAutomaticDiscovery: true,
 	})
 	if directive.Kind != yagocrawlcontract.CrawlControlSetRate {
 		t.Fatalf("kind = %q", directive.Kind)
@@ -63,6 +67,12 @@ func TestDirectiveFromProtoEncodesRunID(t *testing.T) {
 	}
 	if directive.PagesPerMinute != 30 {
 		t.Fatalf("ppm = %d, want 30", directive.PagesPerMinute)
+	}
+	if directive.FetchWorkers != 7 {
+		t.Fatalf("fetch workers = %d, want 7", directive.FetchWorkers)
+	}
+	if !directive.PrioritizeAutomaticDiscovery {
+		t.Fatal("automatic discovery priority = false, want true")
 	}
 }
 

@@ -34,7 +34,9 @@ const (
 	CrawlControlKind_CRAWL_CONTROL_KIND_SET_RATE    CrawlControlKind = 4
 	// RESTART asks the whole worker to shut down gracefully so its supervisor
 	// brings it back up; run_id is ignored.
-	CrawlControlKind_CRAWL_CONTROL_KIND_RESTART CrawlControlKind = 5
+	CrawlControlKind_CRAWL_CONTROL_KIND_RESTART                          CrawlControlKind = 5
+	CrawlControlKind_CRAWL_CONTROL_KIND_SET_WORKERS                      CrawlControlKind = 6
+	CrawlControlKind_CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY CrawlControlKind = 7
 )
 
 // Enum value maps for CrawlControlKind.
@@ -46,14 +48,18 @@ var (
 		3: "CRAWL_CONTROL_KIND_CANCEL",
 		4: "CRAWL_CONTROL_KIND_SET_RATE",
 		5: "CRAWL_CONTROL_KIND_RESTART",
+		6: "CRAWL_CONTROL_KIND_SET_WORKERS",
+		7: "CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY",
 	}
 	CrawlControlKind_value = map[string]int32{
-		"CRAWL_CONTROL_KIND_UNSPECIFIED": 0,
-		"CRAWL_CONTROL_KIND_PAUSE":       1,
-		"CRAWL_CONTROL_KIND_RESUME":      2,
-		"CRAWL_CONTROL_KIND_CANCEL":      3,
-		"CRAWL_CONTROL_KIND_SET_RATE":    4,
-		"CRAWL_CONTROL_KIND_RESTART":     5,
+		"CRAWL_CONTROL_KIND_UNSPECIFIED":                      0,
+		"CRAWL_CONTROL_KIND_PAUSE":                            1,
+		"CRAWL_CONTROL_KIND_RESUME":                           2,
+		"CRAWL_CONTROL_KIND_CANCEL":                           3,
+		"CRAWL_CONTROL_KIND_SET_RATE":                         4,
+		"CRAWL_CONTROL_KIND_RESTART":                          5,
+		"CRAWL_CONTROL_KIND_SET_WORKERS":                      6,
+		"CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY": 7,
 	}
 )
 
@@ -323,6 +329,7 @@ func (*OrderAckResult) Descriptor() ([]byte, []int) {
 type WorkerHeartbeat struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	ActiveFetches *uint32                `protobuf:"varint,2,opt,name=active_fetches,json=activeFetches,proto3,oneof" json:"active_fetches,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -364,16 +371,25 @@ func (x *WorkerHeartbeat) GetWorkerId() string {
 	return ""
 }
 
+func (x *WorkerHeartbeat) GetActiveFetches() uint32 {
+	if x != nil && x.ActiveFetches != nil {
+		return *x.ActiveFetches
+	}
+	return 0
+}
+
 // CrawlControlDirective steers one run identified by its provenance token, or the
 // whole worker when run_id is empty. pages_per_minute carries the cap for
 // set_rate directives and is ignored otherwise.
 type CrawlControlDirective struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Kind           CrawlControlKind       `protobuf:"varint,1,opt,name=kind,proto3,enum=yacycrawl.v1.CrawlControlKind" json:"kind,omitempty"`
-	RunId          []byte                 `protobuf:"bytes,2,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	PagesPerMinute uint32                 `protobuf:"varint,3,opt,name=pages_per_minute,json=pagesPerMinute,proto3" json:"pages_per_minute,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state                        protoimpl.MessageState `protogen:"open.v1"`
+	Kind                         CrawlControlKind       `protobuf:"varint,1,opt,name=kind,proto3,enum=yacycrawl.v1.CrawlControlKind" json:"kind,omitempty"`
+	RunId                        []byte                 `protobuf:"bytes,2,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	PagesPerMinute               uint32                 `protobuf:"varint,3,opt,name=pages_per_minute,json=pagesPerMinute,proto3" json:"pages_per_minute,omitempty"`
+	FetchWorkers                 uint32                 `protobuf:"varint,4,opt,name=fetch_workers,json=fetchWorkers,proto3" json:"fetch_workers,omitempty"`
+	PrioritizeAutomaticDiscovery bool                   `protobuf:"varint,5,opt,name=prioritize_automatic_discovery,json=prioritizeAutomaticDiscovery,proto3" json:"prioritize_automatic_discovery,omitempty"`
+	unknownFields                protoimpl.UnknownFields
+	sizeCache                    protoimpl.SizeCache
 }
 
 func (x *CrawlControlDirective) Reset() {
@@ -425,6 +441,20 @@ func (x *CrawlControlDirective) GetPagesPerMinute() uint32 {
 		return x.PagesPerMinute
 	}
 	return 0
+}
+
+func (x *CrawlControlDirective) GetFetchWorkers() uint32 {
+	if x != nil {
+		return x.FetchWorkers
+	}
+	return 0
+}
+
+func (x *CrawlControlDirective) GetPrioritizeAutomaticDiscovery() bool {
+	if x != nil {
+		return x.PrioritizeAutomaticDiscovery
+	}
+	return false
 }
 
 // WorkerHeartbeatResult returns any control directives the node has queued for the
@@ -780,13 +810,17 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\bOrderAck\x12\x19\n" +
 	"\blease_id\x18\x01 \x01(\tR\aleaseId\x12\x18\n" +
 	"\arequeue\x18\x02 \x01(\bR\arequeue\"\x10\n" +
-	"\x0eOrderAckResult\".\n" +
+	"\x0eOrderAckResult\"m\n" +
 	"\x0fWorkerHeartbeat\x12\x1b\n" +
-	"\tworker_id\x18\x01 \x01(\tR\bworkerId\"\x8c\x01\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12*\n" +
+	"\x0eactive_fetches\x18\x02 \x01(\rH\x00R\ractiveFetches\x88\x01\x01B\x11\n" +
+	"\x0f_active_fetches\"\xf7\x01\n" +
 	"\x15CrawlControlDirective\x122\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1e.yacycrawl.v1.CrawlControlKindR\x04kind\x12\x15\n" +
 	"\x06run_id\x18\x02 \x01(\fR\x05runId\x12(\n" +
-	"\x10pages_per_minute\x18\x03 \x01(\rR\x0epagesPerMinute\"\\\n" +
+	"\x10pages_per_minute\x18\x03 \x01(\rR\x0epagesPerMinute\x12#\n" +
+	"\rfetch_workers\x18\x04 \x01(\rR\ffetchWorkers\x12D\n" +
+	"\x1eprioritize_automatic_discovery\x18\x05 \x01(\bR\x1cprioritizeAutomaticDiscovery\"\\\n" +
 	"\x15WorkerHeartbeatResult\x12C\n" +
 	"\n" +
 	"directives\x18\x01 \x03(\v2#.yacycrawl.v1.CrawlControlDirectiveR\n" +
@@ -813,14 +847,16 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x05tally\x18\x06 \x01(\v2\x1b.yacycrawl.v1.CrawlRunTallyR\x05tally\x12-\n" +
 	"\x10pages_per_minute\x18\a \x01(\rH\x00R\x0epagesPerMinute\x88\x01\x01B\x13\n" +
 	"\x11_pages_per_minute\"\x12\n" +
-	"\x10CrawlProgressAck*\xd3\x01\n" +
+	"\x10CrawlProgressAck*\xb0\x02\n" +
 	"\x10CrawlControlKind\x12\"\n" +
 	"\x1eCRAWL_CONTROL_KIND_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18CRAWL_CONTROL_KIND_PAUSE\x10\x01\x12\x1d\n" +
 	"\x19CRAWL_CONTROL_KIND_RESUME\x10\x02\x12\x1d\n" +
 	"\x19CRAWL_CONTROL_KIND_CANCEL\x10\x03\x12\x1f\n" +
 	"\x1bCRAWL_CONTROL_KIND_SET_RATE\x10\x04\x12\x1e\n" +
-	"\x1aCRAWL_CONTROL_KIND_RESTART\x10\x05*\x8a\x01\n" +
+	"\x1aCRAWL_CONTROL_KIND_RESTART\x10\x05\x12\"\n" +
+	"\x1eCRAWL_CONTROL_KIND_SET_WORKERS\x10\x06\x127\n" +
+	"3CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY\x10\a*\x8a\x01\n" +
 	"\rCrawlRunState\x12\x1f\n" +
 	"\x1bCRAWL_RUN_STATE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17CRAWL_RUN_STATE_RUNNING\x10\x01\x12\x1c\n" +
@@ -890,6 +926,7 @@ func file_crawlexchange_proto_init() {
 	if File_crawlexchange_proto != nil {
 		return
 	}
+	file_crawlexchange_proto_msgTypes[4].OneofWrappers = []any{}
 	file_crawlexchange_proto_msgTypes[10].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

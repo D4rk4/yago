@@ -81,6 +81,7 @@ func extendedSettingDefinitions() []settingDefinition {
 	definitions = append(definitions, autocrawlerDefinitions()...)
 	definitions = append(definitions, webDiscoveryDefinitions()...)
 	definitions = append(definitions, autocrawlerCrawlOptionDefinitions()...)
+	definitions = append(definitions, crawlerRuntimeDefinitions()...)
 
 	return append(definitions, parityGapDefinitions()...)
 }
@@ -183,7 +184,7 @@ func autocrawlerDefinitions() []settingDefinition {
 		{
 			key:          "swarm.seed.depth",
 			title:        "Autocrawler crawl depth",
-			description:  "How many link hops each swarm- or web-surfaced URL is crawled (0 crawls only the URL itself).",
+			description:  "How many link hops each swarm-surfaced URL is crawled (0 crawls only the URL itself).",
 			defaultValue: func(config nodeConfig) string { return strconv.Itoa(config.SwarmSeed.SeedDepth) },
 			normalize:    normalizeSwarmSeedDepth,
 			apply: func(config nodeConfig, value string) nodeConfig {

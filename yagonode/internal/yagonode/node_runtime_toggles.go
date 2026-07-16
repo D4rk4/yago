@@ -26,7 +26,9 @@ type runtimeToggles struct {
 	// storageQuota carries a new disk-budget ceiling to the vault. It is wired at
 	// boot to vault.SetQuota and holds a func(int64); a storage.quota admin change
 	// flows through it so the new ceiling applies without a restart (ADR-0037 D).
-	storageQuota atomic.Value
+	storageQuota               atomic.Value
+	crawlerFetchWorkers        atomic.Value
+	automaticDiscoveryPriority atomic.Value
 }
 
 func newRuntimeToggles(config nodeConfig) *runtimeToggles {

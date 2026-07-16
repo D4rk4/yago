@@ -23,7 +23,7 @@ func TestConsoleSearchRendersAutocompleteWhenSuggestWired(t *testing.T) {
 	got := do(t, console, "/admin/search")
 	for _, want := range []string{
 		`role="combobox"`, `id="ac-list"`, `role="listbox"`,
-		`<script src="/admin/assets/autocomplete.js" defer></script>`,
+		`<script src="` + mustAdminAssetReferences(assetFS)["autocomplete.js"] + `" defer></script>`,
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("search page missing %q", want)

@@ -2,6 +2,7 @@ package firefoxfetch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -10,18 +11,20 @@ import (
 const maximumFirefoxSessions = 2
 
 type firefoxPool struct {
-	available chan *firefoxManager
-	selection chan struct{}
-	managers  []*firefoxManager
-	ctx       context.Context
-	cancel    context.CancelFunc
-	closeOnce sync.Once
+	available                             chan *firefoxManager
+	selection                             chan struct{}
+	managers                              []*firefoxManager
+	ctx                                   context.Context
+	cancel                                context.CancelFunc
+	closeOnce                             sync.Once
+	observeBrowserSlotAcquisitionDeadline func()
 }
 
 func newFirefoxPool(
 	launch BrowserLaunch,
 	proxyURL string,
 	start func(context.Context, BrowserLaunch, string) (browserSession, error),
+	observeBrowserSlotAcquisitionDeadline ...func(),
 ) *firefoxPool {
 	sessions := launch.Sessions
 	if sessions <= 0 {
@@ -35,6 +38,9 @@ func newFirefoxPool(
 		managers:  make([]*firefoxManager, 0, sessions),
 		ctx:       ctx,
 		cancel:    cancel,
+		observeBrowserSlotAcquisitionDeadline: selectBrowserSlotAcquisitionDeadlineObserver(
+			observeBrowserSlotAcquisitionDeadline,
+		),
 	}
 	for range sessions {
 		manager := &firefoxManager{
@@ -66,6 +72,9 @@ func (p *firefoxPool) render(
 	}()
 	manager, earliest, err := p.acquireRenderable(renderCtx)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			p.observeBrowserSlotAcquisitionDeadline()
+		}
 		return renderedPage{}, err
 	}
 	if manager != nil {

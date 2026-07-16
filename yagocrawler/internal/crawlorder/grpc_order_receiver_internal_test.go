@@ -3,6 +3,7 @@ package crawlorder
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"testing"
@@ -51,16 +52,20 @@ type fakeStreamer struct {
 	ctx      context.Context
 	attempts []streamAttempt
 	index    int
+	onStream func()
 
 	mu             sync.Mutex
 	acks           []*crawlrpc.OrderAck
 	ackCalls       []*crawlrpc.OrderAck
 	ackErrors      []error
 	heartbeats     []string
+	heartbeatCalls []*crawlrpc.WorkerHeartbeat
 	beatCalls      int
 	ackErr         error
 	beatErr        error
+	beatErrors     []error
 	beatDirectives []*crawlrpc.CrawlControlDirective
+	blockHeartbeat bool
 }
 
 func (f *fakeStreamer) StreamOrders(
@@ -68,6 +73,9 @@ func (f *fakeStreamer) StreamOrders(
 	_ *crawlrpc.WorkerRegistration,
 	_ ...grpc.CallOption,
 ) (grpc.ServerStreamingClient[crawlrpc.CrawlOrderMessage], error) {
+	if f.onStream != nil {
+		f.onStream()
+	}
 	if f.index < len(f.attempts) {
 		attempt := f.attempts[f.index]
 		f.index++
@@ -112,19 +120,63 @@ func (f *fakeStreamer) acknowledgementCalls() []*crawlrpc.OrderAck {
 }
 
 func (f *fakeStreamer) Heartbeat(
-	_ context.Context,
+	ctx context.Context,
 	in *crawlrpc.WorkerHeartbeat,
 	_ ...grpc.CallOption,
 ) (*crawlrpc.WorkerHeartbeatResult, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.beatCalls++
+	f.heartbeatCalls = append(f.heartbeatCalls, in)
+	block := f.blockHeartbeat
+	f.mu.Unlock()
+	if block {
+		<-ctx.Done()
+
+		return nil, fmt.Errorf("blocked heartbeat: %w", ctx.Err())
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.beatErrors) > 0 {
+		err := f.beatErrors[0]
+		f.beatErrors = f.beatErrors[1:]
+		if err != nil {
+			return nil, err
+		}
+	}
 	if f.beatErr != nil {
 		return nil, f.beatErr
 	}
 	f.heartbeats = append(f.heartbeats, in.GetWorkerId())
 
 	return &crawlrpc.WorkerHeartbeatResult{Directives: f.beatDirectives}, nil
+}
+
+func TestGRPCOrderReceiverBoundsStartupHeartbeatBeforeStreaming(t *testing.T) {
+	restore := orderStartupHeartbeatTimeout
+	t.Cleanup(func() { orderStartupHeartbeatTimeout = restore })
+	orderStartupHeartbeatTimeout = 25 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	streamed := make(chan struct{}, 1)
+	client := &fakeStreamer{
+		ctx:            ctx,
+		blockHeartbeat: true,
+		onStream: func() {
+			streamed <- struct{}{}
+		},
+	}
+	started := time.Now()
+	receiver := NewGRPCOrderReceiver(ctx, client, "worker-bounded", nil)
+	select {
+	case <-streamed:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("order stream did not open after the bounded startup heartbeat")
+	}
+	if elapsed := time.Since(started); elapsed >= 500*time.Millisecond {
+		t.Fatalf("startup heartbeat blocked order intake for %s", elapsed)
+	}
+	cancel()
+	drainUntilClosed(t, receiver)
 }
 
 func (f *fakeStreamer) ackedLeases() []*crawlrpc.OrderAck {
@@ -146,6 +198,13 @@ func (f *fakeStreamer) beatCallCount() int {
 	defer f.mu.Unlock()
 
 	return f.beatCalls
+}
+
+func (f *fakeStreamer) heartbeatRequests() []*crawlrpc.WorkerHeartbeat {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]*crawlrpc.WorkerHeartbeat(nil), f.heartbeatCalls...)
 }
 
 func fastRetry(t *testing.T) {
@@ -209,6 +268,94 @@ func TestGRPCOrderReceiverDeliversOrderAndSettlesLease(t *testing.T) {
 	drainUntilClosed(t, receiver)
 }
 
+func TestGRPCOrderReceiverStopsBeforeStreamingWhenAlreadyCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client := &fakeStreamer{
+		ctx: ctx,
+		onStream: func() {
+			t.Error("cancelled receiver opened an order stream")
+		},
+	}
+
+	receiver := NewGRPCOrderReceiver(ctx, client, "worker-cancelled", nil)
+	if _, ok := <-receiver.Receive(); ok {
+		t.Fatal("cancelled receiver output remained open")
+	}
+}
+
+func TestGRPCOrderReceiverAppliesStartupPriorityBeforeStreaming(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	bootstrapEnabled := true
+	streamedBeforeControl := make(chan struct{}, 1)
+	handler := &recordingControlHandler{}
+	client := &fakeStreamer{
+		ctx: ctx,
+		attempts: []streamAttempt{{results: []recvResult{
+			orderResult(t, "priority"),
+		}}},
+		beatDirectives: []*crawlrpc.CrawlControlDirective{{
+			Kind: crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY,
+		}},
+		onStream: func() {
+			directives := handler.snapshot()
+			if len(directives) == 0 ||
+				directives[0].Kind != yagocrawlcontract.CrawlControlSetAutomaticDiscoveryPriority ||
+				directives[0].PrioritizeAutomaticDiscovery == bootstrapEnabled {
+				streamedBeforeControl <- struct{}{}
+			}
+		},
+	}
+
+	receiver := NewGRPCOrderReceiver(
+		ctx,
+		client,
+		"worker-priority",
+		handler,
+	)
+	if got := awaitOrder(t, receiver).Order.Profile.Name; got != "priority" {
+		t.Fatalf("order = %q, want priority", got)
+	}
+	if got := handler.snapshot()[0]; got.PrioritizeAutomaticDiscovery {
+		t.Fatalf("startup priority = %+v, want persisted node-disabled policy", got)
+	}
+	select {
+	case <-streamedBeforeControl:
+		t.Fatal("order stream started before startup priority control was applied")
+	default:
+	}
+}
+
+func TestGRPCOrderReceiverPeriodicHeartbeatConvergesAfterStartupFailure(t *testing.T) {
+	fastHeartbeat(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	handler := &recordingControlHandler{}
+	client := &fakeStreamer{
+		ctx:        ctx,
+		beatErrors: []error{errors.New("startup heartbeat unavailable")},
+		beatDirectives: []*crawlrpc.CrawlControlDirective{{
+			Kind: crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY,
+		}},
+	}
+	receiver := NewGRPCOrderReceiver(ctx, client, "worker-retry", handler)
+	deadline := time.After(2 * time.Second)
+	for len(handler.snapshot()) == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("periodic heartbeat did not converge after startup failure")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if got := handler.snapshot()[0]; got.Kind !=
+		yagocrawlcontract.CrawlControlSetAutomaticDiscoveryPriority ||
+		got.PrioritizeAutomaticDiscovery {
+		t.Fatalf("converged directive = %+v, want disabled automatic discovery priority", got)
+	}
+	cancel()
+	drainUntilClosed(t, receiver)
+}
+
 func TestSettleLeaseReportsAckError(t *testing.T) {
 	client := &fakeStreamer{
 		ctx:    context.Background(),
@@ -245,13 +392,17 @@ func TestGRPCOrderReceiverHeartbeatsWorker(t *testing.T) {
 	drainUntilClosed(t, receiver)
 }
 
-func TestHeartbeatOrdersLogsError(t *testing.T) {
+func TestPeriodicHeartbeatsLogsError(t *testing.T) {
 	fastHeartbeat(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	client := &fakeStreamer{ctx: ctx, beatErr: errors.New("heartbeat rejected")}
 	done := make(chan struct{})
 	go func() {
-		heartbeatOrders(ctx, client, "worker-1", orderHeartbeatInterval, nil)
+		periodicHeartbeats(
+			ctx,
+			heartbeatDelivery{client: client, workerID: "worker-1"},
+			orderHeartbeatInterval,
+		)
 		close(done)
 	}()
 	deadline := time.After(2 * time.Second)
@@ -266,7 +417,7 @@ func TestHeartbeatOrdersLogsError(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("heartbeatOrders did not stop on cancel")
+		t.Fatal("periodicHeartbeats did not stop on cancel")
 	}
 }
 

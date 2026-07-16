@@ -72,12 +72,14 @@ func TestDirectivesToProtoMapsFields(t *testing.T) {
 	}
 
 	kinds := map[yagocrawlcontract.CrawlControlKind]crawlrpc.CrawlControlKind{
-		yagocrawlcontract.CrawlControlPause:     crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_PAUSE,
-		yagocrawlcontract.CrawlControlResume:    crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESUME,
-		yagocrawlcontract.CrawlControlCancel:    crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_CANCEL,
-		yagocrawlcontract.CrawlControlSetRate:   crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_RATE,
-		yagocrawlcontract.CrawlControlRestart:   crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESTART,
-		yagocrawlcontract.CrawlControlKind("x"): crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_UNSPECIFIED,
+		yagocrawlcontract.CrawlControlPause:                         crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_PAUSE,
+		yagocrawlcontract.CrawlControlResume:                        crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESUME,
+		yagocrawlcontract.CrawlControlCancel:                        crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_CANCEL,
+		yagocrawlcontract.CrawlControlSetRate:                       crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_RATE,
+		yagocrawlcontract.CrawlControlRestart:                       crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESTART,
+		yagocrawlcontract.CrawlControlSetWorkers:                    crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_WORKERS,
+		yagocrawlcontract.CrawlControlSetAutomaticDiscoveryPriority: crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY,
+		yagocrawlcontract.CrawlControlKind("x"):                     crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_UNSPECIFIED,
 	}
 	for kind, want := range kinds {
 		if got := controlKindToProto(kind); got != want {
@@ -88,15 +90,89 @@ func TestDirectivesToProtoMapsFields(t *testing.T) {
 
 func TestDirectiveToProtoDecodesRunID(t *testing.T) {
 	proto := directiveToProto(yagocrawlcontract.CrawlControlDirective{
-		Kind:           yagocrawlcontract.CrawlControlSetRate,
-		RunID:          "abcd",
-		PagesPerMinute: 45,
+		Kind:                         yagocrawlcontract.CrawlControlSetRate,
+		RunID:                        "abcd",
+		PagesPerMinute:               45,
+		FetchWorkers:                 9,
+		PrioritizeAutomaticDiscovery: true,
 	})
 	if hex.EncodeToString(proto.GetRunId()) != "abcd" {
 		t.Fatalf("run id = %x, want abcd", proto.GetRunId())
 	}
 	if proto.GetPagesPerMinute() != 45 {
 		t.Fatalf("ppm = %d, want 45", proto.GetPagesPerMinute())
+	}
+	if proto.GetFetchWorkers() != 9 {
+		t.Fatalf("fetch workers = %d, want 9", proto.GetFetchWorkers())
+	}
+	if !proto.GetPrioritizeAutomaticDiscovery() {
+		t.Fatal("automatic discovery priority = false, want true")
+	}
+}
+
+func TestControlRegistryConvergesConnectedAndReconnectedWorkers(t *testing.T) {
+	registry := newControlRegistry(crawlerControlDefaults{
+		fetchWorkers:                 4,
+		prioritizeAutomaticDiscovery: false,
+	})
+	registry.register("w1")
+	initial := registry.drain("w1")
+	if len(initial) != 2 || initial[0].Kind != yagocrawlcontract.CrawlControlSetWorkers ||
+		initial[0].FetchWorkers != 4 ||
+		initial[1].Kind != yagocrawlcontract.CrawlControlSetAutomaticDiscoveryPriority ||
+		initial[1].PrioritizeAutomaticDiscovery {
+		t.Fatalf("initial directives = %+v, want set_workers/4 and disabled priority", initial)
+	}
+	registry.register("w2")
+	registry.drain("w2")
+	if signalled := registry.SetFetchWorkers(12); signalled != 2 {
+		t.Fatalf("set workers signalled %d workers, want 2", signalled)
+	}
+	if signalled := registry.SetAutomaticDiscoveryPriority(true); signalled != 2 {
+		t.Fatalf("set priority signalled %d workers, want 2", signalled)
+	}
+	for _, worker := range []string{"w1", "w2"} {
+		directives := registry.drain(worker)
+		if len(directives) != 2 || directives[0].FetchWorkers != 12 ||
+			!directives[1].PrioritizeAutomaticDiscovery {
+			t.Fatalf(
+				"%s directives = %+v, want workers/12 and enabled priority",
+				worker,
+				directives,
+			)
+		}
+	}
+	registry.unregister("w1")
+	registry.register("w1")
+	reconnected := registry.drain("w1")
+	if len(reconnected) != 2 || reconnected[0].FetchWorkers != 12 ||
+		!reconnected[1].PrioritizeAutomaticDiscovery {
+		t.Fatalf("reconnected directives = %+v, want workers/12 and enabled priority", reconnected)
+	}
+	if signalled := registry.SetFetchWorkers(0); signalled != 0 {
+		t.Fatalf("invalid worker limit signalled %d workers", signalled)
+	}
+}
+
+func TestUnregisteredHeartbeatReceivesAuthoritativeCrawlerDefaults(t *testing.T) {
+	server := newExchangeServer(
+		memQueue(t),
+		make(chan crawlresults.IngestDelivery),
+		crawlerControlDefaults{fetchWorkers: 7, prioritizeAutomaticDiscovery: false},
+	)
+
+	result, err := server.Heartbeat(
+		context.Background(),
+		&crawlrpc.WorkerHeartbeat{WorkerId: "starting-worker"},
+	)
+	if err != nil {
+		t.Fatalf("startup heartbeat: %v", err)
+	}
+	directives := result.GetDirectives()
+	if len(directives) != 2 || directives[0].GetFetchWorkers() != 7 ||
+		directives[1].GetKind() != crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY ||
+		directives[1].GetPrioritizeAutomaticDiscovery() {
+		t.Fatalf("startup directives = %+v, want workers/7 and disabled priority", directives)
 	}
 }
 

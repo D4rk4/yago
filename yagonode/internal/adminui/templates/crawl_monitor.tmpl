@@ -82,7 +82,7 @@
           <td class="cds-mono">{{.Pending}}</td>
           <td class="cds-mono">{{.Runtime}}</td>
           {{if $root.Controllable}}
-          <td>
+          <td class="cds-crawl-actions-cell">
             {{if eq .State "running"}}
             <div class="cds-control-row cds-control-row--crawl-actions">
               <form method="post" action="/admin/crawl/control" hx-boost="false" class="cds-inline-form">

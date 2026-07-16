@@ -129,7 +129,8 @@ func settingCategory(key string) string {
 		strings.HasPrefix(key, "peer.advertise."):
 		return "Network & peers"
 	case strings.HasPrefix(key, "autocrawler."),
-		strings.HasPrefix(key, "crawl."):
+		strings.HasPrefix(key, "crawl."),
+		strings.HasPrefix(key, "crawler."):
 		return "Crawler"
 	case strings.HasPrefix(key, "extract."):
 		return "Extraction"

@@ -21,7 +21,7 @@ import (
 //go:embed templates/*.tmpl
 var templateFS embed.FS
 
-//go:embed assets/carbon.css assets/photon.css assets/htmx.min.js assets/autocomplete.js assets/tabs.js assets/portal_designer.js assets/portal_designer.css assets/vendor assets/fonts
+//go:embed assets/carbon.css assets/photon.css assets/photon_shell.css assets/htmx.min.js assets/autocomplete.js assets/tabs.js assets/portal_designer.js assets/portal_designer.css assets/vendor assets/fonts assets/icons
 var assetFS embed.FS
 
 // BasePath is where the console mounts on the operations listener.
@@ -32,7 +32,6 @@ const (
 	htmlType         = "text/html; charset=utf-8"
 	contentPol       = "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
 	portalContentPol = "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
-	assetMaxAge      = "public, max-age=86400"
 
 	overviewPath        = "/admin/overview"
 	overviewMetricsPath = "/admin/overview/metrics"
@@ -82,49 +81,48 @@ const (
 type NavItem struct {
 	Title string
 	Path  string
-	// Icon names a symbol in the layout's SVG sprite drawn beside the label.
-	Icon string
+	Icon  string
 }
 
 var navItems = []NavItem{
-	{Title: "Overview", Path: overviewPath, Icon: "overview"},
-	{Title: "Search", Path: searchPath, Icon: "search"},
-	{Title: "Activity", Path: activityPath, Icon: "activity"},
-	{Title: "Public portal", Path: portalPath, Icon: "globe"},
-	{Title: "Autocrawler", Path: autocrawlerPath, Icon: "autocrawler"},
-	{Title: "Crawler", Path: "/admin/crawl", Icon: "crawler"},
-	{Title: "Network", Path: "/admin/network", Icon: "network"},
-	{Title: "Index", Path: indexPath, Icon: "index"},
-	{Title: "YagoRank", Path: yagorankPath, Icon: "yagorank"},
-	{Title: "Performance", Path: "/admin/performance", Icon: "performance"},
-	{Title: "Backup", Path: backupPath, Icon: "backup"},
-	{Title: "Configuration", Path: "/admin/configuration", Icon: "configuration"},
-	{Title: "Security", Path: "/admin/security", Icon: "security"},
-	{Title: "Logs", Path: "/admin/logs", Icon: "logs"},
-	{Title: "Restart", Path: restartPath, Icon: "restart"},
+	{Title: "Overview", Path: overviewPath, Icon: "icons/desktop.svg"},
+	{Title: "Search", Path: searchPath, Icon: "icons/system-search.svg"},
+	{Title: "Activity", Path: activityPath, Icon: "icons/appointment.svg"},
+	{Title: "Public portal", Path: portalPath, Icon: "icons/applications-internet.svg"},
+	{Title: "Crawler", Path: "/admin/crawl", Icon: "icons/gnome-robots.svg"},
+	{Title: "Network", Path: "/admin/network", Icon: "icons/network-workgroup.svg"},
+	{Title: "Index", Path: indexPath, Icon: "icons/drive-partition.svg"},
+	{Title: "YagoRank", Path: yagorankPath, Icon: "icons/applications-science.svg"},
+	{Title: "Performance", Path: "/admin/performance", Icon: "icons/speedometer.svg"},
+	{Title: "Backup", Path: backupPath, Icon: "icons/media-floppy.svg"},
+	{Title: "Configuration", Path: "/admin/configuration", Icon: "icons/preferences-system.svg"},
+	{Title: "Security", Path: "/admin/security", Icon: "icons/security-high.svg"},
+	{Title: "Logs", Path: "/admin/logs", Icon: "icons/accessories-text-editor.svg"},
+	{Title: "Restart", Path: restartPath, Icon: "icons/view-refresh.svg"},
 }
 
 // Options configures the console's data providers. A nil provider makes its
 // section render a controlled unavailable state.
 type Options struct {
-	Overview     OverviewSource
-	Search       SearchSource
-	Activity     ActivitySource
-	Crawl        CrawlSource
-	CrawlFormats CrawlFormatsSource
-	Monitor      CrawlMonitorSource
-	Schedules    CrawlScheduleSource
-	Control      CrawlControlSource
-	Index        IndexSource
-	Documents    DocumentBrowserSource
-	IndexAdmin   IndexAdminSource
-	Blacklist    BlacklistSource
-	IndexExport  IndexExporter
-	Compactor    Compactor
-	Network      NetworkSource
-	Config       ConfigSource
-	Settings     SettingsSource
-	PublicSearch PublicSearchStatusSource
+	Overview             OverviewSource
+	Search               SearchSource
+	Activity             ActivitySource
+	Crawl                CrawlSource
+	CrawlFormats         CrawlFormatsSource
+	Monitor              CrawlMonitorSource
+	CrawlerFetchActivity CrawlerFetchActivitySource
+	Schedules            CrawlScheduleSource
+	Control              CrawlControlSource
+	Index                IndexSource
+	Documents            DocumentBrowserSource
+	IndexAdmin           IndexAdminSource
+	Blacklist            BlacklistSource
+	IndexExport          IndexExporter
+	Compactor            Compactor
+	Network              NetworkSource
+	Config               ConfigSource
+	Settings             SettingsSource
+	PublicSearch         PublicSearchStatusSource
 	// Theme persists the operator portal design (ADR-0033); nil renders the
 	// design tabs as placeholders.
 	Theme    ThemeStore
@@ -252,6 +250,7 @@ type crawlPageData struct {
 	Result       *CrawlDispatch
 	Error        string
 	Formats      *FormatSettings
+	FormatForm   *formatSettingsForm
 	FormatsOn    bool
 	FormatsError string
 	// FormatsNote flashes the outcome of a formats save.
@@ -290,7 +289,12 @@ type configPageData struct {
 	Error         string
 	// CompactEnabled gates the Storage tab's "Compact now" action; it is set
 	// when the console has a storage compactor wired.
-	CompactEnabled bool
+	CompactEnabled   bool
+	Formats          *FormatSettings
+	FormatForm       *formatSettingsForm
+	FormatsOn        bool
+	FormatsError     string
+	FormatsSaveError string
 }
 
 type indexPageData struct {
@@ -335,6 +339,7 @@ type activityPageData struct {
 	CSRF       string
 	Section    sectionView
 	Activity   ActivityView
+	Pagination ActivityPagination
 }
 
 type performancePageData struct {
@@ -378,53 +383,53 @@ type templates struct {
 	yagorank    *template.Template
 	restart     *template.Template
 	backup      *template.Template
-	autocrawler *template.Template
 	portal      *template.Template
 }
 
 // Console is the server-rendered admin console handler.
 type Console struct {
-	mux             *http.ServeMux
-	tpl             templates
-	sections        map[string]sectionView
-	overview        OverviewSource
-	search          SearchSource
-	activity        ActivitySource
-	searchNewTab    bool
-	crawl           CrawlSource
-	crawlFormats    CrawlFormatsSource
-	monitor         CrawlMonitorSource
-	schedules       CrawlScheduleSource
-	control         CrawlControlSource
-	index           IndexSource
-	documents       DocumentBrowserSource
-	indexAdmin      IndexAdminSource
-	blacklist       BlacklistSource
-	indexExport     IndexExporter
-	compactor       Compactor
-	network         NetworkSource
-	config          ConfigSource
-	settings        SettingsSource
-	publicSearch    PublicSearchStatusSource
-	theme           ThemeStore
-	binding         BindingSource
-	logs            LogsSource
-	security        SecuritySource
-	terms           TermSource
-	schema          []SchemaGroup
-	ranking         RankingSource
-	performance     PerformanceSource
-	perfHistory     PerformanceHistorySource
-	backup          BackupSource
-	peerDetail      PeerDetailSource
-	peerNews        PeerNewsSource
-	seedlistRefresh SeedlistRefreshSource
-	peerBlock       PeerBlockSource
-	restart         func()
-	restartCrawlers func() int
-	searchSuggest   http.Handler
-	publicBase      string
-	publicPort      string
+	mux                  *http.ServeMux
+	tpl                  templates
+	sections             map[string]sectionView
+	overview             OverviewSource
+	search               SearchSource
+	activity             ActivitySource
+	searchNewTab         bool
+	crawl                CrawlSource
+	crawlFormats         CrawlFormatsSource
+	monitor              CrawlMonitorSource
+	crawlerFetchActivity CrawlerFetchActivitySource
+	schedules            CrawlScheduleSource
+	control              CrawlControlSource
+	index                IndexSource
+	documents            DocumentBrowserSource
+	indexAdmin           IndexAdminSource
+	blacklist            BlacklistSource
+	indexExport          IndexExporter
+	compactor            Compactor
+	network              NetworkSource
+	config               ConfigSource
+	settings             SettingsSource
+	publicSearch         PublicSearchStatusSource
+	theme                ThemeStore
+	binding              BindingSource
+	logs                 LogsSource
+	security             SecuritySource
+	terms                TermSource
+	schema               []SchemaGroup
+	ranking              RankingSource
+	performance          PerformanceSource
+	perfHistory          PerformanceHistorySource
+	backup               BackupSource
+	peerDetail           PeerDetailSource
+	peerNews             PeerNewsSource
+	seedlistRefresh      SeedlistRefreshSource
+	peerBlock            PeerBlockSource
+	restart              func()
+	restartCrawlers      func() int
+	searchSuggest        http.Handler
+	publicBase           string
+	publicPort           string
 }
 
 // New builds the console with its embedded templates, assets, and providers.
@@ -434,47 +439,48 @@ func New(opts Options) *Console {
 	assets, _ := fs.Sub(assetFS, "assets")
 
 	console := &Console{
-		mux:             http.NewServeMux(),
-		tpl:             buildTemplates(),
-		sections:        defaultSections(),
-		overview:        opts.Overview,
-		search:          opts.Search,
-		activity:        opts.Activity,
-		searchNewTab:    opts.SearchLinksNewTab,
-		searchSuggest:   opts.SearchSuggest,
-		crawl:           opts.Crawl,
-		crawlFormats:    opts.CrawlFormats,
-		monitor:         opts.Monitor,
-		schedules:       opts.Schedules,
-		control:         opts.Control,
-		index:           opts.Index,
-		documents:       opts.Documents,
-		indexAdmin:      opts.IndexAdmin,
-		blacklist:       opts.Blacklist,
-		indexExport:     opts.IndexExport,
-		compactor:       opts.Compactor,
-		network:         opts.Network,
-		config:          opts.Config,
-		settings:        opts.Settings,
-		publicSearch:    opts.PublicSearch,
-		theme:           opts.Theme,
-		binding:         opts.Binding,
-		logs:            opts.Logs,
-		security:        opts.Security,
-		terms:           opts.Terms,
-		schema:          opts.Schema,
-		ranking:         opts.Ranking,
-		performance:     opts.Performance,
-		perfHistory:     opts.PerformanceHistory,
-		backup:          opts.Backup,
-		peerDetail:      opts.PeerDetail,
-		peerNews:        opts.PeerNews,
-		seedlistRefresh: opts.SeedlistRefresh,
-		peerBlock:       opts.PeerBlock,
-		restart:         opts.Restart,
-		restartCrawlers: opts.RestartCrawlers,
-		publicBase:      strings.TrimRight(opts.PublicBaseURL, "/"),
-		publicPort:      publicListenerPort(opts.PublicAddr),
+		mux:                  http.NewServeMux(),
+		tpl:                  buildTemplates(),
+		sections:             defaultSections(),
+		overview:             opts.Overview,
+		search:               opts.Search,
+		activity:             opts.Activity,
+		searchNewTab:         opts.SearchLinksNewTab,
+		searchSuggest:        opts.SearchSuggest,
+		crawl:                opts.Crawl,
+		crawlFormats:         opts.CrawlFormats,
+		monitor:              opts.Monitor,
+		crawlerFetchActivity: opts.CrawlerFetchActivity,
+		schedules:            opts.Schedules,
+		control:              opts.Control,
+		index:                opts.Index,
+		documents:            opts.Documents,
+		indexAdmin:           opts.IndexAdmin,
+		blacklist:            opts.Blacklist,
+		indexExport:          opts.IndexExport,
+		compactor:            opts.Compactor,
+		network:              opts.Network,
+		config:               opts.Config,
+		settings:             opts.Settings,
+		publicSearch:         opts.PublicSearch,
+		theme:                opts.Theme,
+		binding:              opts.Binding,
+		logs:                 opts.Logs,
+		security:             opts.Security,
+		terms:                opts.Terms,
+		schema:               opts.Schema,
+		ranking:              opts.Ranking,
+		performance:          opts.Performance,
+		perfHistory:          opts.PerformanceHistory,
+		backup:               opts.Backup,
+		peerDetail:           opts.PeerDetail,
+		peerNews:             opts.PeerNews,
+		seedlistRefresh:      opts.SeedlistRefresh,
+		peerBlock:            opts.PeerBlock,
+		restart:              opts.Restart,
+		restartCrawlers:      opts.RestartCrawlers,
+		publicBase:           strings.TrimRight(opts.PublicBaseURL, "/"),
+		publicPort:           publicListenerPort(opts.PublicAddr),
 	}
 	console.registerRoutes(assets)
 
@@ -497,7 +503,13 @@ func publicListenerPort(addr string) string {
 }
 
 func buildTemplates() templates {
-	layout := template.Must(template.ParseFS(templateFS, "templates/layout.tmpl"))
+	layout := template.Must(
+		template.New("layout.tmpl").Funcs(adminAssetTemplateFunctions()).ParseFS(
+			templateFS,
+			"templates/layout.tmpl",
+			"templates/system_monitor.tmpl",
+		),
+	)
 	clone := func(fns template.FuncMap, files ...string) *template.Template {
 		return template.Must(template.Must(layout.Clone()).Funcs(fns).ParseFS(templateFS, files...))
 	}
@@ -507,30 +519,40 @@ func buildTemplates() templates {
 		overview:    clone(overviewFuncs, "templates/overview.tmpl", "templates/metrics.tmpl"),
 		search:      clone(nil, "templates/search.tmpl"),
 		activity:    clone(nil, "templates/activity.tmpl"),
-		crawl:       clone(crawlFuncs, "templates/crawl.tmpl", "templates/crawl_monitor.tmpl"),
-		index:       clone(nil, "templates/index.tmpl"),
-		network:     clone(nil, "templates/network.tmpl"),
-		peerDetail:  clone(nil, "templates/peer_detail.tmpl"),
-		config:      clone(nil, "templates/config.tmpl", "templates/toasts.tmpl"),
+		crawl: clone(
+			crawlFuncs,
+			"templates/crawl.tmpl",
+			"templates/crawl_monitor.tmpl",
+			"templates/crawl_formats.tmpl",
+		),
+		index:      clone(nil, "templates/index.tmpl"),
+		network:    clone(nil, "templates/network.tmpl"),
+		peerDetail: clone(nil, "templates/peer_detail.tmpl"),
+		config: clone(
+			nil,
+			"templates/config.tmpl",
+			"templates/toasts.tmpl",
+			"templates/crawl_formats.tmpl",
+		),
 		logs:        clone(nil, "templates/logs.tmpl", "templates/logs_table.tmpl"),
 		security:    clone(nil, "templates/security.tmpl", "templates/toasts.tmpl"),
 		performance: clone(nil, "templates/performance.tmpl"),
 		yagorank:    clone(nil, "templates/yagorank.tmpl", "templates/toasts.tmpl"),
 		restart:     clone(nil, "templates/restart.tmpl"),
 		backup:      clone(nil, "templates/backup.tmpl"),
-		autocrawler: clone(nil, "templates/autocrawler.tmpl"),
 		portal:      clone(nil, "templates/portal.tmpl"),
 	}
 }
 
 func (c *Console) registerRoutes(assets fs.FS) {
-	c.mux.Handle("GET /admin/assets/", assetHandler(assets))
+	c.mux.Handle("GET /admin/assets/", assetHandler(assets, embeddedAdminAssetCatalog))
 	if c.searchSuggest != nil {
 		c.mux.Handle("GET /admin/search/suggest", c.searchSuggest)
 	}
 	c.mux.HandleFunc("GET /admin/{$}", handleRoot)
 	c.mux.HandleFunc("GET "+overviewPath, c.handleOverview)
 	c.mux.HandleFunc("GET "+overviewMetricsPath, c.handleOverviewMetrics)
+	c.mux.HandleFunc("GET "+systemMonitorPath, c.handleSystemMonitor)
 	c.mux.HandleFunc("GET "+searchPath, c.handleSearch)
 	c.mux.HandleFunc("GET "+crawlPath, c.handleCrawl)
 	c.mux.HandleFunc("POST "+crawlPath, c.handleCrawlStart)
@@ -551,15 +573,16 @@ func (c *Console) registerRoutes(assets fs.FS) {
 	c.mux.HandleFunc("POST "+seedlistRefreshPath, c.handleSeedlistRefresh)
 	c.mux.HandleFunc("GET "+configPath, c.handleConfig)
 	c.mux.HandleFunc("POST "+configPath, c.handleConfigUpdate)
+	c.mux.HandleFunc("POST "+configPath+"/formats", c.handleConfigFormats)
 	c.mux.HandleFunc("GET "+logsPath, c.handleLogs)
 	c.mux.HandleFunc("GET "+logsEventsPath, c.handleLogsEvents)
 	c.mux.HandleFunc("GET "+securityPath, c.handleSecurity)
 	c.mux.HandleFunc("POST "+securityPath, c.handleSecurityUpdate)
 	c.mux.HandleFunc("GET "+restartPath, c.handleRestartPage)
 	c.mux.HandleFunc("POST "+restartPath, c.handleRestartAction)
-	c.mux.HandleFunc("GET "+autocrawlerPath, c.handleAutocrawler)
-	c.mux.HandleFunc("POST "+autocrawlerPath, c.handleAutocrawlerUpdate)
-	c.mux.HandleFunc("POST "+autocrawlerPath+"/formats", c.handleAutocrawlerFormats)
+	c.mux.HandleFunc("GET "+autocrawlerPath, handleAutocrawlerRedirect)
+	c.mux.HandleFunc("POST "+autocrawlerPath, handleAutocrawlerRedirect)
+	c.mux.HandleFunc("POST "+autocrawlerPath+"/formats", handleAutocrawlerRedirect)
 	c.mux.HandleFunc("GET "+portalPath, c.handlePortal)
 	c.mux.HandleFunc("POST "+portalPath, c.handlePortalUpdate)
 	c.mux.HandleFunc("POST "+portalPath+"/design", c.handlePortalDesign)
@@ -581,7 +604,7 @@ func dynamicSection(path string) bool {
 	return path == overviewPath || path == searchPath || path == crawlPath ||
 		path == indexPath || path == networkPath || path == configPath ||
 		path == logsPath || path == securityPath || path == performancePath ||
-		path == yagorankPath || path == autocrawlerPath || path == activityPath ||
+		path == yagorankPath || path == activityPath ||
 		path == restartPath || path == portalPath || path == backupPath
 }
 
@@ -589,6 +612,9 @@ func dynamicSection(path string) bool {
 // public search portal's address for this request so the shared layout can link
 // to it without every page threading the value through its own data.
 func (c *Console) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if rejectAdminAssetAlias(w, r) {
+		return
+	}
 	ctx := context.WithValue(r.Context(), publicSearchHrefKey{}, c.publicSearchHref(r))
 	c.mux.ServeHTTP(w, r.WithContext(ctx))
 }
@@ -642,7 +668,18 @@ func publicSearchHrefFromContext(ctx context.Context) string {
 // force a field onto every page-data struct.
 type layoutEnvelope struct {
 	PublicSearchHref string
+	SystemMonitor    systemMonitorView
 	Data             any
+}
+
+func (c *Console) handleSystemMonitor(w http.ResponseWriter, r *http.Request) {
+	c.render(
+		r.Context(),
+		w,
+		c.tpl.placeholder,
+		"system-monitor",
+		buildSystemMonitorWithCrawler(c.perfHistory, c.crawlerFetchActivity),
+	)
 }
 
 func (c *Console) sectionHandler(path string) http.HandlerFunc {
@@ -904,11 +941,13 @@ func (c *Console) handleActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	activity := c.activity.Activity(r.Context())
 	c.render(r.Context(), w, c.tpl.activity, "layout", activityPageData{
 		AppName: appName, ActivePath: activityPath, Nav: navItems,
-		CSRF:     csrfToken(r),
-		Section:  sectionView{Heading: "Search activity", Available: true},
-		Activity: c.activity.Activity(r.Context()),
+		CSRF:       csrfToken(r),
+		Section:    sectionView{Heading: "Search activity", Available: true},
+		Activity:   activity,
+		Pagination: buildActivityPagination(activity.Entries, r.FormValue("apage")),
 	})
 }
 
@@ -1092,7 +1131,11 @@ func (c *Console) handleConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.render(r.Context(), w, c.tpl.config, "layout", c.configPage(r, "", ""))
+	notice := ""
+	if r.URL.Query().Get("saved") == "formats" {
+		notice = "Document format settings updated."
+	}
+	c.render(r.Context(), w, c.tpl.config, "layout", c.configPage(r, notice, ""))
 }
 
 func (c *Console) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
@@ -1218,8 +1261,8 @@ func (c *Console) configPage(r *http.Request, notice, errMsg string) configPageD
 	if c.settings != nil {
 		data.Editable = true
 		data.Settings = c.settings.Settings(r.Context())
-		data.SettingGroups = groupSettings(
-			withoutPortalCategory(withoutAutocrawlerKeys(data.Settings.Items)),
+		data.SettingGroups = configurationSettingGroups(
+			withoutPortalCategory(data.Settings.Items),
 		)
 	}
 	if c.binding != nil {
@@ -1227,6 +1270,7 @@ func (c *Console) configPage(r *http.Request, notice, errMsg string) configPageD
 		data.Bindings = c.binding.Bindings(r.Context())
 	}
 	data.CompactEnabled = c.compactor != nil
+	c.loadConfigFormats(r, &data)
 
 	return data
 }
@@ -1520,6 +1564,11 @@ func (c *Console) crawlPage(r *http.Request, form crawlForm) crawlPageData {
 			data.FormatsError = "Document format settings are unavailable."
 		} else {
 			data.Formats = &settings
+			data.FormatForm = &formatSettingsForm{
+				Action:   crawlPath + "/formats",
+				CSRF:     data.CSRF,
+				Settings: settings,
+			}
 		}
 	}
 	if c.schedules != nil {
@@ -1587,20 +1636,11 @@ func (c *Console) handleCrawlFormats(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	settings, err := formatSettingsFromRequest(r)
+	if err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 
 		return
-	}
-	settings := FormatSettings{
-		Text:     r.PostForm.Get("text") == "on",
-		XMLFeeds: r.PostForm.Get("xmlfeeds") == "on",
-		PDF:      r.PostForm.Get("pdf") == "on",
-		Office:   r.PostForm.Get("office") == "on",
-		Images:   r.PostForm.Get("images") == "on",
-		Audio:    r.PostForm.Get("audio") == "on",
-		Misc:     r.PostForm.Get("misc") == "on",
-		Archives: r.PostForm.Get("archives") == "on",
 	}
 	if err := c.crawlFormats.SaveFormats(r.Context(), settings); err != nil {
 		slog.WarnContext(r.Context(), "save crawl formats failed", slog.Any("error", err))
@@ -1786,6 +1826,7 @@ func (c *Console) renderPolicy(
 	if name == "layout" {
 		payload = layoutEnvelope{
 			PublicSearchHref: publicSearchHrefFromContext(ctx),
+			SystemMonitor:    buildSystemMonitorWithCrawler(c.perfHistory, c.crawlerFetchActivity),
 			Data:             data,
 		}
 	}
@@ -1807,12 +1848,26 @@ func writeHTMLHeadersPolicy(w http.ResponseWriter, policy string) {
 	header.Set("X-Content-Type-Options", "nosniff")
 }
 
-func assetHandler(assets fs.FS) http.Handler {
+func assetHandler(assets fs.FS, catalog adminAssetCatalog) http.Handler {
 	fileServer := http.StripPrefix("/admin/assets/", http.FileServerFS(assets))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", assetMaxAge)
+		name, canonical := canonicalAdminAssetName(r)
+		asset, found := catalog[name]
+		if !canonical || !found {
+			writeRejectedAdminAsset(w, r)
+
+			return
+		}
+		cacheControl, accepted := adminAssetCacheControl(r.URL.RawQuery, asset.revision)
+		if !accepted {
+			writeRejectedAdminAsset(w, r)
+
+			return
+		}
+		w.Header().Set("Cache-Control", cacheControl)
+		w.Header().Set("ETag", `"`+asset.revision+`"`)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		fileServer.ServeHTTP(w, r)
+		fileServer.ServeHTTP(adminAssetResponseWriter{ResponseWriter: w}, r)
 	})
 }

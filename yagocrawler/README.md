@@ -50,6 +50,13 @@ process's leases; heartbeat expiry and the node sweeper reassign them. Graceful
 shutdown naks active leases for prompt redelivery, and node startup requeues every
 persisted lease with a new lease identity.
 
+An order carries explicit normal or automatic-discovery priority. The node
+persists the two lanes and their shared admission sequence. With discovery
+priority enabled it selects at most three automatic-discovery orders before a
+waiting normal order; with the setting disabled it selects both lanes in exact
+global FIFO order. Priority survives lease expiry, requeue, and node restart,
+and the crawler does not infer it from a profile name.
+
 Progress reporting never blocks crawl execution. Each run publishes absolute
 snapshots into one bounded ordered per-run queue; adjacent running updates
 coalesce, only one RPC is active, and deterministic phases spread periodic
@@ -147,6 +154,16 @@ are carried as crawl request hints for later recrawl scheduling.
 Configuration comes from the environment (`YAGOCRAWLER_NODE_RPC_ADDR` is required;
 `YAGOCRAWLER_WORKER_ID` is an optional worker-name prefix, not a stable process
 identity;
+`YAGOCRAWLER_WORKERS` starts 4 page-fetch workers by default and accepts 1–256;
+the same bootstrap value belongs in the node environment, whose persisted Admin
+setting becomes authoritative for every connected process after heartbeat;
+`YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY` defaults to `true` in both service
+environments and gives explicit discovery work at most three due page dispatches
+before waiting normal work; a successful startup heartbeat applies the node's
+persisted value before order intake, while a failed one-second attempt retains this
+bootstrap until a periodic heartbeat succeeds;
+each heartbeat also reports the current number of occupied page-fetch worker jobs,
+where a job stays occupied through fetch, parsing, and result publication;
 `YAGOCRAWLER_ALLOW_PRIVATE_NETWORKS` opts into all LAN and private-network targets,
 while `YAGOCRAWLER_ALLOW_CIDRS` is a comma-separated list of private CIDRs to admit
 instead of opening all private space; loopback, link-local, and reserved ranges
@@ -159,6 +176,13 @@ draining terminal progress and closing both node connections. NAK redelivery
 keeps the same run identity; admitted progress phases therefore preserve the prior
 terminal state, the reopened running state, and the next terminal state in
 order instead of treating the retry as a late update.
+
+A live worker-count update stops new frontier intake and waits for the current
+page fetches to complete before replacing the worker group with the latest
+requested size. Several updates during that drain coalesce to the newest value.
+Shutdown keeps its separate grace deadline and may still cancel a fetch that
+outlives it. The count applies per crawler process; it never limits the number
+of admitted crawl runs or queued tasks.
 
 Outbound fetches, including the headless browser, are screened in-process at dial
 time against the connected IP address, so no external forward proxy is required;
@@ -182,9 +206,9 @@ sitelist expansion imports at most `YAGOCRAWLER_SITEMAP_URL_LIMIT` URLs per
 seed. The container image bundles Firefox ESR on a pinned Alpine runtime and
 runs as a non-root user. Its Go builder and Alpine runtime bases are pinned by
 SHA-256 digest. A build with
-`SOURCE_REVISION=$(git rev-parse HEAD) docker compose build yagocrawler` records
-that commit and the repository URL in the final image's OCI revision and source
-labels; an unstamped build records revision `unknown`.
+`SOURCE_REVISION=$(git rev-parse HEAD) make compose-images` records that commit
+and the repository URL in both final images' OCI revision and source labels; an
+unstamped build records revision `unknown`.
 
 The in-memory ready and scoring window has a fixed capacity shared fairly across
 active runs, so dispatch work never scans every admitted URL. URLs beyond that
@@ -223,8 +247,12 @@ When `YAGOCRAWLER_METRICS_ADDR` is set (for example `:9101`), the crawler serves
 Prometheus metrics at `/metrics` on that address: `yacy_crawler_jobs_active`,
 `yacy_crawler_fetches_total`, `yacy_crawler_fetch_failures_total`,
 `yacy_crawler_bytes_total`, `yacy_crawler_robots_denied_total`, and
-`yacy_crawler_ingest_batches_total`. When the variable is empty the crawler starts
-no metrics server and opens no port.
+`yacy_crawler_ingest_batches_total`, `yacy_crawler_host_backoffs_total`, and
+`yacy_crawler_browser_slot_acquisition_deadlines_total`. The last counter
+isolates browser-pool saturation: it advances only when a Firefox slot wait
+reaches its request deadline, not when an ordinary cancellation or crawler
+shutdown ends the wait. When the variable is empty the crawler starts no
+metrics server and opens no port.
 
 The message types both services exchange live in the standalone
 [`yagocrawlcontract`](../yagocrawlcontract/README.md) module, so neither service depends

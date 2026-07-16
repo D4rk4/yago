@@ -41,7 +41,24 @@ listener, behind the existing admin session guard:
   Carbon design tokens (color, type scale, spacing), so the console shares
   Carbon's visual language and stays consistent with the public portal without the
   `@carbon/react` runtime. IBM Plex is requested via a system-font fallback stack;
-  no font is fetched from an external host.
+  no font is fetched from an external host. An embedded Photon layer gives the
+  operator console a compact QNX-style desktop, bevel, titlebar, and control
+  treatment while retaining the Carbon-classed semantic markup. Buttons use one
+  raised face and a visibly sunken pressed state, and tabbed panels use a compact
+  contiguous strip whose selected tab joins the panel. A tab strip that cannot
+  fit stays inside its own horizontal scroller and reveals the selected tab, so
+  narrow pages do not overflow. Standalone console responses such as node restart
+  load that same revisioned layer. The right shelf keeps a flat route list and a
+  compact system monitor fed by the existing ten-second bounded metric sampler.
+  It shows process CPU, process RSS relative to host RAM, host
+  used/total/available memory, vault storage use/quota, and live busy crawler
+  fetch-worker slots when the crawler runtime is enabled; unavailable
+  observations remain explicit.
+  The flat shelf uses the pinned local Haiku icon subset recorded in ADR-0049,
+  with accessible text labels and no runtime asset request outside the node.
+  Tables with column headers use a
+  QNX list treatment, while headerless property grids use row rules. Both share
+  one continuous outer bevel instead of per-cell top shadows.
 - Interactivity is layered on with a single vendored, pinned `htmx.min.js`
   embedded via `go:embed` — partial updates and navigation without a full page
   reload — and every page degrades to a working plain-HTML form/link when
@@ -49,7 +66,10 @@ listener, behind the existing admin session guard:
   binary; there is no npm, Vite, or React.
 - All assets (CSS, htmx, templates) are embedded in the Go binary; the console is
   served from the same process that owns the data, so handlers read internal state
-  directly instead of round-tripping through a JSON API.
+  directly instead of round-tripping through a JSON API. Template asset URLs carry
+  the current content revision and are immutable only when the canonical path and
+  revision match. Unversioned canonical URLs revalidate, while stale revisions and
+  path aliases return a non-cacheable not-found response.
 - `make verify` stays Go-only; there is no separate frontend toolchain.
 
 ## Consequences

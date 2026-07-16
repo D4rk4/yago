@@ -24,7 +24,7 @@ func (w *failingLandingWriter) Write([]byte) (int, error) {
 func (w *failingLandingWriter) WriteHeader(int) {}
 
 func TestNewEndpointReturnsLandingHandler(t *testing.T) {
-	handler := NewEndpoint("2026.7")
+	handler := NewEndpoint("v0.0.8")
 
 	if _, ok := handler.(landingEndpoint); !ok {
 		t.Fatalf("handler type = %T, want landingEndpoint", handler)
@@ -35,7 +35,7 @@ func TestLandingEndpointServesHTML(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 
-	landingEndpoint{version: "2026.7"}.ServeHTTP(rec, req)
+	landingEndpoint{version: "v0.0.8"}.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -44,7 +44,7 @@ func TestLandingEndpointServesHTML(t *testing.T) {
 		t.Errorf("content type = %q, want %q", got, landingPageContentType)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"YagoSeek", "2026.7", "RWI", "github.com/D4rk4/yago/issues"} {
+	for _, want := range []string{"YagoSeek", "v0.0.8", "RWI", "github.com/D4rk4/yago/issues"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q", want)
 		}

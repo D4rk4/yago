@@ -26,6 +26,29 @@ type fakeOrderConsumer struct {
 	wait         func()
 }
 
+type resizingCrawlWorker struct {
+	runs    chan int
+	release chan struct{}
+	calls   int
+}
+
+func (w *resizingCrawlWorker) RunWorkers(
+	acceptCtx,
+	fetchCtx context.Context,
+	workers int,
+) {
+	w.calls++
+	w.runs <- workers
+	<-acceptCtx.Done()
+	if w.calls == 1 {
+		select {
+		case <-fetchCtx.Done():
+			return
+		case <-w.release:
+		}
+	}
+}
+
 func (fakeOrderConsumer) Run(ctx context.Context) { <-ctx.Done() }
 
 func (c fakeOrderConsumer) CancelActiveRuns() {
@@ -103,5 +126,50 @@ func TestSuperviseCrawlCancelsRunsAndWaitsForSettlement(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("supervisor did not return after order settlement")
+	}
+}
+
+func TestSuperviseCrawlResizesAfterInflightFetchesDrain(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	control := newWorkerConcurrency(1)
+	worker := &resizingCrawlWorker{
+		runs:    make(chan int, 3),
+		release: make(chan struct{}),
+	}
+	done := make(chan struct{})
+	go func() {
+		superviseCrawlWithConcurrency(
+			ctx,
+			worker,
+			fakeOrderConsumer{},
+			control,
+			time.Second,
+		)
+		close(done)
+	}()
+	if got := <-worker.runs; got != 1 {
+		t.Fatalf("initial workers = %d, want 1", got)
+	}
+	control.Set(3)
+	control.Set(5)
+	select {
+	case got := <-worker.runs:
+		t.Fatalf("workers restarted at %d before in-flight work drained", got)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(worker.release)
+	select {
+	case got := <-worker.runs:
+		if got != 5 {
+			t.Fatalf("resized workers = %d, want latest value 5", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("workers did not restart after in-flight work drained")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("resizable supervisor did not stop")
 	}
 }

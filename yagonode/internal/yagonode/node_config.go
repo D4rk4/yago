@@ -297,16 +297,11 @@ type swarmSeedConfig struct {
 }
 
 const (
-	defaultSwarmSeedDepth    = 1
-	defaultSwarmSeedMaxPages = 20
+	defaultSwarmSeedDepth    = 5
+	defaultSwarmSeedMaxPages = 250
 	maxSwarmSeedDepth        = 8
 )
 
-// seedCrawlOptions carries the per-crawl toggles the autocrawler's automatic
-// crawls (swarm greedy-learning and web-fallback discovery) honor, mirroring
-// the manual crawler's options so both discovery paths obey the same fetch
-// policy. AllowQueryURLs and IgnoreTLSAuthority default on to match the manual
-// crawler defaults; the rest stay off until an operator opts in.
 type seedCrawlOptions struct {
 	AllowQueryURLs      bool
 	IgnoreTLSAuthority  bool
@@ -318,17 +313,17 @@ type seedCrawlOptions struct {
 	RecrawlInterval time.Duration
 }
 
-// defaultSeedCrawlOptions returns the autocrawler's shipped crawl policy.
 func defaultSeedCrawlOptions() seedCrawlOptions {
 	return seedCrawlOptions{
 		AllowQueryURLs:     true,
 		IgnoreTLSAuthority: true,
+		DisableBrowser:     true,
 		RecrawlInterval:    yagocrawlcontract.DefaultRecrawlInterval,
 	}
 }
 
 func loadSwarmSeedConfig(getenv func(string) string) (swarmSeedConfig, error) {
-	enabled, err := boolEnv(getenv, envSwarmSeedCrawl, false)
+	enabled, err := boolEnv(getenv, envSwarmSeedCrawl, true)
 	if err != nil {
 		return swarmSeedConfig{}, fmt.Errorf("%s: %w", envSwarmSeedCrawl, err)
 	}

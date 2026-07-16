@@ -23,14 +23,16 @@ const (
 	// cancel takes visible effect within a few seconds rather than up to half a
 	// minute; the heartbeat is a cheap unary call and more frequent lease renewal
 	// only makes reclaim more reliable.
-	DefaultHeartbeatInterval = 5 * time.Second
-	DefaultAckTimeout        = 5 * time.Second
+	DefaultHeartbeatInterval       = 5 * time.Second
+	DefaultAckTimeout              = 5 * time.Second
+	DefaultStartupHeartbeatTimeout = time.Second
 )
 
 var (
-	orderStreamRetryWait   = DefaultOrderRetryWait
-	orderHeartbeatInterval = DefaultHeartbeatInterval
-	orderAckTimeout        = DefaultAckTimeout
+	orderStreamRetryWait         = DefaultOrderRetryWait
+	orderHeartbeatInterval       = DefaultHeartbeatInterval
+	orderAckTimeout              = DefaultAckTimeout
+	orderStartupHeartbeatTimeout = DefaultStartupHeartbeatTimeout
 )
 
 // OrderStreamer is the slice of the node's CrawlExchange client the receiver
@@ -68,10 +70,29 @@ func NewGRPCOrderReceiver(
 	client OrderStreamer,
 	workerID string,
 	control ControlHandler,
+	options ...GRPCOrderReceiverOption,
 ) *GRPCOrderReceiver {
+	config := grpcOrderReceiverConfig{}
+	for _, apply := range options {
+		apply(&config)
+	}
+	heartbeat := heartbeatDelivery{
+		client:        client,
+		workerID:      workerID,
+		control:       control,
+		activeFetches: config.activeFetches,
+	}
 	out := make(chan CrawlOrderDelivery)
+	startupCtx, cancelStartup := context.WithTimeout(ctx, orderStartupHeartbeatTimeout)
+	heartbeat.deliver(startupCtx)
+	cancelStartup()
+	if ctx.Err() != nil {
+		close(out)
+
+		return &GRPCOrderReceiver{out: out}
+	}
 	go streamCrawlOrders(ctx, client, workerID, out, orderStreamRetryWait)
-	go heartbeatOrders(ctx, client, workerID, orderHeartbeatInterval, control)
+	go periodicHeartbeats(ctx, heartbeat, orderHeartbeatInterval)
 
 	return &GRPCOrderReceiver{out: out}
 }
@@ -103,12 +124,10 @@ func streamCrawlOrders(
 	}
 }
 
-func heartbeatOrders(
+func periodicHeartbeats(
 	ctx context.Context,
-	client OrderStreamer,
-	workerID string,
+	heartbeat heartbeatDelivery,
 	interval time.Duration,
-	control ControlHandler,
 ) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -117,13 +136,7 @@ func heartbeatOrders(
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			result, err := client.Heartbeat(ctx, &crawlrpc.WorkerHeartbeat{WorkerId: workerID})
-			if err != nil {
-				slog.WarnContext(ctx, msgHeartbeatFailed, slog.Any("error", err))
-
-				continue
-			}
-			dispatchDirectives(ctx, control, result.GetDirectives())
+			heartbeat.deliver(ctx)
 		}
 	}
 }

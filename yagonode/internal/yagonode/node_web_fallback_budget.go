@@ -57,7 +57,7 @@ func withWebFallbackExactStageBudget(
 	return webFallbackExactStageBudgetSearcher{
 		inner:     inner,
 		permit:    webFallbackPermit(config.Privacy),
-		budget:    webFallbackExactStageBudget,
+		budget:    webFallbackPrimaryStageBudget(config),
 		grace:     webFallbackExactStageCancellationGrace,
 		admission: processWebFallbackExactStageAdmission,
 		panicLog:  slog.ErrorContext,

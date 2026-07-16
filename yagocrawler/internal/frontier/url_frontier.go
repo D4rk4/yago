@@ -45,18 +45,20 @@ type Frontier struct {
 		crawladmission.AdmissionProfile,
 	) []frontierCandidate
 
-	mu                sync.Mutex
-	settlements       sync.WaitGroup
-	state             *frontierState
-	inflight          map[string]int
-	paused            map[string]struct{}
-	controlSeen       map[string]time.Time
-	cancelRuns        map[string]int
-	readyPerRun       map[uuid.UUID]int
-	dispatchOrder     map[uuid.UUID]uint64
-	nextDispatchOrder uint64
-	readyOrder        map[uuid.UUID]uint64
-	nextReadyOrder    uint64
+	mu                           sync.Mutex
+	settlements                  sync.WaitGroup
+	state                        *frontierState
+	inflight                     map[string]int
+	paused                       map[string]struct{}
+	controlSeen                  map[string]time.Time
+	cancelRuns                   map[string]int
+	readyPerRun                  map[uuid.UUID]int
+	dispatchOrder                map[uuid.UUID]uint64
+	nextDispatchOrder            uint64
+	readyOrder                   map[uuid.UUID]uint64
+	nextReadyOrder               uint64
+	prioritizeAutomaticDiscovery bool
+	automaticDiscoveryBurst      int
 	// rate throttles a run to a page budget: rateInterval holds the minimum gap
 	// between the run's dispatches (an explicit zero entry lifts the throttle),
 	// and rateNextDue the earliest time its next job may dispatch, both keyed by
@@ -132,6 +134,7 @@ type crawlRun struct {
 	pages           int
 	budgetExceeded  bool
 	cancelled       bool
+	priority        yagocrawlcontract.CrawlOrderPriority
 	hostFailures    map[string]uint8
 	retiredHosts    map[string]struct{}
 }
@@ -158,16 +161,17 @@ func NewFrontier(capacity int, pace CrawlPace, opts ...Option) *Frontier {
 			tally:      noopRunTally{},
 			cancelled:  make(map[string]struct{}),
 		},
-		inflight:       make(map[string]int),
-		paused:         make(map[string]struct{}),
-		controlSeen:    make(map[string]time.Time),
-		cancelRuns:     make(map[string]int),
-		readyPerRun:    make(map[uuid.UUID]int),
-		dispatchOrder:  make(map[uuid.UUID]uint64),
-		readyOrder:     make(map[uuid.UUID]uint64),
-		rateInterval:   make(map[string]time.Duration),
-		rateNextDue:    make(map[string]time.Time),
-		pagesPerMinute: make(map[string]uint32),
+		inflight:                     make(map[string]int),
+		paused:                       make(map[string]struct{}),
+		controlSeen:                  make(map[string]time.Time),
+		cancelRuns:                   make(map[string]int),
+		readyPerRun:                  make(map[uuid.UUID]int),
+		dispatchOrder:                make(map[uuid.UUID]uint64),
+		readyOrder:                   make(map[uuid.UUID]uint64),
+		rateInterval:                 make(map[string]time.Duration),
+		rateNextDue:                  make(map[string]time.Time),
+		pagesPerMinute:               make(map[string]uint32),
+		prioritizeAutomaticDiscovery: true,
 	}
 	for _, opt := range opts {
 		opt(frontier)
@@ -190,19 +194,19 @@ func (f *Frontier) Release() {
 	f.wake()
 }
 
-func (f *Frontier) SeedRun(
+func (f *Frontier) seedRun(
 	ctx context.Context,
-	requests []yagocrawlcontract.CrawlRequest,
-	provenance []byte,
+	seed CrawlRunSeed,
 	profile crawladmission.AdmissionProfile,
 	finish func(succeeded bool),
 ) SeededRun {
-	candidates := f.prepareSeeds(ctx, requests, provenance, profile)
+	candidates := f.prepareSeeds(ctx, seed.Requests, seed.Provenance, profile)
 	runID := uuid.New()
 
 	f.mu.Lock()
-	f.state.beginRun(runID, provenance, profile, finish)
-	provenanceKey := string(provenance)
+	f.state.beginRun(runID, seed.Provenance, profile, finish)
+	f.state.runs[runID].priority = normalizeCrawlOrderPriority(seed.Priority)
+	provenanceKey := string(seed.Provenance)
 	delete(f.controlSeen, provenanceKey)
 	if _, cancelled := f.state.cancelled[provenanceKey]; cancelled {
 		f.state.runs[runID].cancelled = true
@@ -502,10 +506,11 @@ func (f *Frontier) recordRateVisitLocked(provenance []byte, at time.Time) {
 	}
 }
 
-func (f *Frontier) nextDue(now time.Time) (crawljob.CrawlJob, int, time.Duration, bool) {
+func (f *Frontier) nextDue(now time.Time) readySelection {
 	var soonest time.Duration
-	bestIndex := -1
-	bestScore := 0.0
+	all := readyCandidate{index: -1}
+	normal := readyCandidate{index: -1}
+	automatic := readyCandidate{index: -1}
 	for i, job := range f.state.ready {
 		due, eligible := f.jobDueLocked(job, now)
 		if !eligible {
@@ -514,8 +519,11 @@ func (f *Frontier) nextDue(now time.Time) (crawljob.CrawlJob, int, time.Duration
 		wait := due.Sub(now)
 		if wait <= 0 {
 			score := f.jobValueLocked(job)
-			if f.preferReadyJobLocked(job, score, bestIndex, bestScore) {
-				bestIndex, bestScore = i, score
+			all = f.preferredReadyCandidate(all, i, job, score)
+			if f.automaticDiscoveryRunLocked(job.RunID) {
+				automatic = f.preferredReadyCandidate(automatic, i, job, score)
+			} else {
+				normal = f.preferredReadyCandidate(normal, i, job, score)
 			}
 
 			continue
@@ -524,11 +532,17 @@ func (f *Frontier) nextDue(now time.Time) (crawljob.CrawlJob, int, time.Duration
 			soonest = wait
 		}
 	}
-	if bestIndex >= 0 {
-		return f.state.ready[bestIndex], bestIndex, 0, true
+	selected, contended := f.selectReadyCandidate(all, normal, automatic)
+	if selected.index >= 0 {
+		return readySelection{
+			job:       f.state.ready[selected.index],
+			index:     selected.index,
+			due:       true,
+			contended: contended,
+		}
 	}
 
-	return crawljob.CrawlJob{}, 0, soonest, false
+	return readySelection{wait: soonest}
 }
 
 func (f *Frontier) jobDueLocked(

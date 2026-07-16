@@ -77,13 +77,17 @@ func TestActivityPageRendersPerMode(t *testing.T) {
 }
 
 func activityConsoleGet(t *testing.T, console http.Handler) string {
+	return activityConsoleGetAt(t, console, "/admin/activity")
+}
+
+func activityConsoleGetAt(t *testing.T, console http.Handler, target string) string {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	console.ServeHTTP(rec, httptest.NewRequestWithContext(
-		t.Context(), http.MethodGet, "/admin/activity", nil,
+		t.Context(), http.MethodGet, target, nil,
 	))
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /admin/activity = %d", rec.Code)
+		t.Fatalf("GET %s = %d", target, rec.Code)
 	}
 
 	return rec.Body.String()

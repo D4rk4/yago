@@ -58,6 +58,7 @@ func TestConsoleConfigRendersEditableSettings(t *testing.T) {
 		`role="tablist"`, `id="tab-search"`, `aria-controls="panel-search"`,
 		`name="key"`, "Public search portal", `class="cds-setting-row"`,
 		`name="value:portal.enabled"`, `value="false"`, `name="csrf_token"`,
+		`name="reset" value="portal.enabled"`, `formnovalidate`,
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("editable settings missing %q", want)
@@ -137,7 +138,7 @@ func TestConsoleConfigTabRendersOneFormWithOneSave(t *testing.T) {
 	if got.status != http.StatusOK {
 		t.Fatalf("status %d", got.status)
 	}
-	if n := strings.Count(got.body, `action="/admin/configuration"`); n != 1 {
+	if n := strings.Count(got.body, `action="/admin/configuration#panel-search"`); n != 1 {
 		t.Fatalf("settings forms = %d, want 1 (one form per tab)", n)
 	}
 	if n := strings.Count(got.body, `>Save</button>`); n != 1 {
@@ -184,6 +185,9 @@ func TestConsoleConfigRendersBooleanSettingAsCheckbox(t *testing.T) {
 	}
 	if strings.Contains(got.body, "<select") {
 		t.Fatal("a boolean setting must render a checkbox, not a dropdown")
+	}
+	if strings.Contains(got.body, `name="reset"`) {
+		t.Fatal("a setting without an override must not render Reset")
 	}
 }
 
@@ -419,7 +423,6 @@ func TestRuntimeSettingsReadFailureRendersUnavailable(t *testing.T) {
 			}),
 		},
 		{path: "/admin/portal", console: New(Options{Settings: settings})},
-		{path: "/admin/autocrawler", console: New(Options{Settings: settings})},
 	}
 	for _, page := range pages {
 		got := do(t, page.console, page.path)

@@ -48,7 +48,8 @@ func TestRestartingPageKeepsStrictCSPWithoutInlineStyle(t *testing.T) {
 		t.Fatalf("restarting page contains inline style: %s", page.body)
 	}
 	for _, expected := range []string{
-		`<link rel="stylesheet" href="/admin/assets/carbon.css">`,
+		`<link rel="stylesheet" href="` + mustAdminAssetReferences(assetFS)["carbon.css"] + `">`,
+		`<link rel="stylesheet" href="` + mustAdminAssetReferences(assetFS)["photon.css"] + `">`,
 		`class="cds-restarting-page"`,
 		`class="cds-restarting-card"`,
 	} {
@@ -75,6 +76,25 @@ func TestPasswordFormDeclaresUsernameAssociation(t *testing.T) {
 	} {
 		if !strings.Contains(page.body, expected) {
 			t.Fatalf("password form missing %q", expected)
+		}
+	}
+}
+
+func TestConfigurationTabsHonorPanelHashes(t *testing.T) {
+	asset := do(t, New(Options{}), "/admin/assets/tabs.js")
+	for _, want := range []string{
+		`function reveal(list, tab)`,
+		`tab.offsetLeft`,
+		`tab.offsetWidth + 6`,
+		`list.scrollLeft = end - list.clientWidth`,
+		`function hashIndex(panels)`,
+		`window.location.hash.slice(1)`,
+		`return 0;`,
+		`window.addEventListener("hashchange"`,
+		`data-tabs-wired`,
+	} {
+		if !strings.Contains(asset.body, want) {
+			t.Fatalf("tabs.js missing hash contract %q", want)
 		}
 	}
 }

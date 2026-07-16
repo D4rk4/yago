@@ -5,6 +5,45 @@ import (
 	"time"
 )
 
+func TestAutocrawlerCatalogShippedProfile(t *testing.T) {
+	t.Parallel()
+
+	config, err := loadNodeConfig(envFrom(map[string]string{
+		envPeerHash: "0123456789AB",
+		envPeerName: "node",
+	}))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	definitions := indexSettingDefinitions()
+	want := map[string]string{
+		"swarm.seed.enabled":                 "true",
+		"swarm.seed.depth":                   "5",
+		"swarm.seed.max_pages":               "250",
+		"web.fallback.seed_crawl":            "false",
+		"web.fallback.seed_depth":            "5",
+		"web.fallback.seed_max_pages":        "250",
+		"autocrawler.crawl.query_urls":       "true",
+		"autocrawler.crawl.tls_insecure":     "true",
+		"autocrawler.crawl.ignore_robots":    "false",
+		"autocrawler.crawl.no_browser":       "true",
+		"autocrawler.crawl.follow_nofollow":  "false",
+		"autocrawler.crawl.recrawl_interval": "30d",
+	}
+	for key, expected := range want {
+		definition, ok := definitions[key]
+		if !ok {
+			t.Fatalf("setting %q missing from catalog", key)
+		}
+		if got := definition.defaultValue(config); got != expected {
+			t.Fatalf("%s default = %q, want %q", key, got, expected)
+		}
+	}
+	if got := definitions["swarm.seed.depth"].description; got != "How many link hops each swarm-surfaced URL is crawled (0 crawls only the URL itself)." {
+		t.Fatalf("swarm seed depth description = %q", got)
+	}
+}
+
 // TestAutocrawlerCrawlOptionCatalog covers the five per-crawl toggles the
 // autocrawler page exposes: their defaults, boolean normalization, and that
 // apply writes the matching AutocrawlerCrawl field.
@@ -28,7 +67,7 @@ func TestAutocrawlerCrawlOptionCatalog(t *testing.T) {
 		{"autocrawler.crawl.ignore_robots", "false", func(c nodeConfig) bool {
 			return c.AutocrawlerCrawl.IgnoreRobots
 		}},
-		{"autocrawler.crawl.no_browser", "false", func(c nodeConfig) bool {
+		{"autocrawler.crawl.no_browser", "true", func(c nodeConfig) bool {
 			return c.AutocrawlerCrawl.DisableBrowser
 		}},
 		{"autocrawler.crawl.follow_nofollow", "false", func(c nodeConfig) bool {

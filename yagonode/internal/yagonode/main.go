@@ -51,16 +51,10 @@ const (
 	shutdownForcedWait      = 5 * time.Second
 )
 
-// buildVersion is yago's own calendar build version (YYYY.M), a brand identity
-// kept separate from the numeric YaCy protocol version so the two evolve
-// independently. It is a var, not a const, so a release build can stamp a precise
-// version through -ldflags "-X ...yagonode.buildVersion=<ver>" (see the
-// Dockerfile); left unstamped it reports the calendar default.
-var buildVersion = "2026.7"
+var buildVersion = "2026.07.16-dev"
 
-// Version returns the build version stamped into this binary: the calendar
-// default, or the precise value a release stamps via -ldflags. It is what
-// `yago-node --version` reports.
+// Version returns the product build identity stamped into this binary. It is
+// what `yago-node --version` reports.
 func Version() string { return buildVersion }
 
 // userAgent brands this node's outbound requests as yago while declaring the YaCy
@@ -188,7 +182,11 @@ func bootNodeWithEventDrain(
 	ctx, restart := newRestartController(ctx)
 	configureSetupWizard(authService, sources.settings, config, restart.Trigger)
 	sources.restart = restart.Trigger
-	historySampler := metrichistory.New(obs.endpoints.Registry(), performanceHistoryCapacity)
+	historySampler := metrichistory.New(
+		obs.endpoints.Registry(),
+		performanceHistoryCapacity,
+		currentHostMemory,
+	)
 	defer startPerformanceHistorySampler(ctx, historySampler)()
 	sources.perfHistory = newPerformanceHistorySource(historySampler)
 
@@ -203,6 +201,7 @@ func bootNodeWithEventDrain(
 			peer:             obs.peer,
 			search:           obs.search,
 			crawl:            obs.crawl,
+			indexWrites:      obs.indexWrites,
 			crawlRuns:        obs.crawlRuns,
 			recorder:         obs.recorder,
 			searchAuthorizer: searchScopeAuthorizerFor(config, authService),

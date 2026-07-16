@@ -95,9 +95,11 @@ func applyCandidateEvaluations(
 ) ([]string, []ResultExplanation) {
 	identifiers := make([]string, len(results))
 	slots := make([]int, len(candidates))
+	slotRelevance := make([]float64, len(candidates))
 	byIdentifier := make(map[string]rankingCandidate, len(candidates))
 	for index, candidate := range candidates {
 		slots[index] = candidate.originalIndex
+		slotRelevance[index] = searchcore.DiversityRelevance(candidate.result)
 		byIdentifier[candidate.documentIdentifier] = candidate
 	}
 	var explanations []ResultExplanation
@@ -108,7 +110,7 @@ func applyCandidateEvaluations(
 		candidate := byIdentifier[evaluation.documentIdentifier]
 		result := candidate.result
 		result.Score = evaluation.score
-		result = searchcore.WithDiversityRelevance(result, evaluation.score)
+		result = searchcore.WithDiversityRelevance(result, slotRelevance[index])
 		position := slots[index]
 		results[position] = result
 		identifiers[position] = evaluation.documentIdentifier

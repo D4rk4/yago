@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/D4rk4/yago/yagocrawler/internal/crawlermetrics"
@@ -24,11 +25,46 @@ func scrapeMetrics(t *testing.T, metrics *crawlermetrics.Metrics) string {
 	return string(body)
 }
 
+func TestMetricsTracksConcurrentActiveFetches(t *testing.T) {
+	metrics := crawlermetrics.New()
+	const workers = 64
+	started := make(chan struct{}, workers)
+	release := make(chan struct{})
+	var group sync.WaitGroup
+	group.Add(workers)
+	for range workers {
+		go func() {
+			defer group.Done()
+			metrics.JobStarted()
+			started <- struct{}{}
+			<-release
+			metrics.JobFinished()
+		}()
+	}
+	for range workers {
+		<-started
+	}
+	if active := metrics.ActiveFetchWorkerJobs(); active != workers {
+		t.Fatalf("concurrent active fetches = %d, want %d", active, workers)
+	}
+	close(release)
+	group.Wait()
+	if active := metrics.ActiveFetchWorkerJobs(); active != 0 {
+		t.Fatalf("finished active fetches = %d, want 0", active)
+	}
+}
+
 func TestMetricsExposeCrawlerSeries(t *testing.T) {
 	metrics := crawlermetrics.New()
+	if active := metrics.ActiveFetchWorkerJobs(); active != 0 {
+		t.Fatalf("initial active fetches = %d, want 0", active)
+	}
 	metrics.JobStarted()
 	metrics.JobStarted()
 	metrics.JobFinished()
+	if active := metrics.ActiveFetchWorkerJobs(); active != 1 {
+		t.Fatalf("active fetches = %d, want 1", active)
+	}
 	metrics.FetchAttempted()
 	metrics.FetchAttempted()
 	metrics.FetchSucceeded(1500)

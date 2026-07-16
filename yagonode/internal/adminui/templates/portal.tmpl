@@ -38,6 +38,7 @@
             {{else}}
             <input class="cds-input" type="text" id="portal-{{.Key}}" name="value:{{.Key}}" value="{{.Value}}" autocomplete="off">
             {{end}}
+            {{if .Overridden}}<button class="cds-btn cds-btn--ghost cds-setting-row__reset" type="submit" name="reset" value="{{.Key}}" formnovalidate aria-label="Reset {{.Title}} to the environment default">Reset</button>{{end}}
           </span>
         </div>
         {{end}}
@@ -62,20 +63,20 @@
   </section>
 </div>
 {{if .DesignSearch}}
-<link rel="stylesheet" href="/admin/assets/vendor/codemirror.min.css">
-<link rel="stylesheet" href="/admin/assets/vendor/grapes.min.css">
-<link rel="stylesheet" href="/admin/assets/portal_designer.css">
-<script src="/admin/assets/vendor/codemirror.min.js" defer></script>
-<script src="/admin/assets/vendor/cm-xml.min.js" defer></script>
-<script src="/admin/assets/vendor/cm-javascript.min.js" defer></script>
-<script src="/admin/assets/vendor/cm-css.min.js" defer></script>
-<script src="/admin/assets/vendor/cm-htmlmixed.min.js" defer></script>
-<script src="/admin/assets/vendor/cm-multiplex.min.js" defer></script>
-<script src="/admin/assets/vendor/cm-simple.min.js" defer></script>
-<script src="/admin/assets/vendor/cm-handlebars.min.js" defer></script>
-<script src="/admin/assets/vendor/grapes.min.js" defer></script>
-<script src="/admin/assets/vendor/grapesjs-preset-webpage.min.js" defer></script>
-<script src="/admin/assets/portal_designer.js?v=4" defer></script>
+<link rel="stylesheet" href="{{asset "vendor/codemirror.min.css"}}">
+<link rel="stylesheet" href="{{asset "vendor/grapes.min.css"}}">
+<link rel="stylesheet" href="{{asset "portal_designer.css"}}">
+<script src="{{asset "vendor/codemirror.min.js"}}" defer></script>
+<script src="{{asset "vendor/cm-xml.min.js"}}" defer></script>
+<script src="{{asset "vendor/cm-javascript.min.js"}}" defer></script>
+<script src="{{asset "vendor/cm-css.min.js"}}" defer></script>
+<script src="{{asset "vendor/cm-htmlmixed.min.js"}}" defer></script>
+<script src="{{asset "vendor/cm-multiplex.min.js"}}" defer></script>
+<script src="{{asset "vendor/cm-simple.min.js"}}" defer></script>
+<script src="{{asset "vendor/cm-handlebars.min.js"}}" defer></script>
+<script src="{{asset "vendor/grapes.min.js"}}" defer></script>
+<script src="{{asset "vendor/grapesjs-preset-webpage.min.js"}}" defer></script>
+<script src="{{asset "portal_designer.js"}}" defer></script>
 {{end}}
 {{end}}
 

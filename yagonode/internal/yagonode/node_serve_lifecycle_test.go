@@ -83,7 +83,7 @@ func TestStartCrawlScheduleLoopBalancesWaitGroup(t *testing.T) {
 // sampler and returns only after its goroutine exited, so bootNode's deferred
 // stop guarantees no registry gather can run once the vault is closed.
 func TestStartPerformanceHistorySamplerStopsAndJoins(t *testing.T) {
-	sampler := metrichistory.New(prometheus.NewRegistry(), 2)
+	sampler := metrichistory.New(prometheus.NewRegistry(), 2, nil)
 	stop := startPerformanceHistorySampler(context.Background(), sampler)
 	stop()
 }

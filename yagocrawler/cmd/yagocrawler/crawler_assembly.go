@@ -142,12 +142,20 @@ func assembleFrontier(
 		frontier.WithMaxPagesPerRun(crawl.MaxPagesPerRun),
 		frontier.WithDefaultRunRate(crawl.RunPagesPerMinute),
 		frontier.WithRunTally(tally),
+		frontier.WithAutomaticDiscoveryPriority(crawl.PrioritizeAutomaticDiscovery),
 	)
 }
 
 var newCrawlerAdaptivePace = crawldelay.NewAdaptivePace
 
 func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSource) error {
+	return runServiceWithMetrics(ctx, cfg, source, crawlermetrics.New())
+}
+
+func runServiceWithMetrics(
+	ctx context.Context, cfg ServiceConfig, source pagefetch.PageSource,
+	metrics *crawlermetrics.Metrics,
+) error {
 	ctx, restart := newRestartController(ctx)
 
 	controlExchange, controlCloser, err := newCrawlerExchange(cfg.NodeRPCAddr)
@@ -164,7 +172,6 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 
 	emitter := ingest.NewBatchEmitter(ingest.NewGRPCIngestPublisher(ingestExchange))
 
-	metrics := crawlermetrics.New()
 	metricsCloser, err := startCrawlerMetrics(ctx, cfg.MetricsAddr, metrics.Handler())
 	if err != nil {
 		return fmt.Errorf("start crawler metrics: %w", err)
@@ -182,16 +189,13 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	}
 	tally := runtally.New()
 	frontier := assembleFrontier(crawl, pace, tally)
+	workerConcurrency := newWorkerConcurrency(crawl.Workers)
 	receiverCtx, cancelReceiver := context.WithCancel(ctx)
 	defer cancelReceiver()
+	control := assembleCrawlerControlHandler(restart.Trigger, workerConcurrency, frontier)
 	orders := crawlorder.NewGRPCOrderReceiver(
-		receiverCtx,
-		controlExchange,
-		cfg.WorkerID,
-		crawlorder.NewRestartControlHandler(
-			restart.Trigger,
-			crawlorder.NewFrontierControlHandler(frontier),
-		),
+		receiverCtx, controlExchange, cfg.WorkerID, control,
+		crawlorder.WithHeartbeatActiveFetches(metrics.ActiveFetchWorkerJobs),
 	)
 
 	guard := yagoegress.NewGuard(
@@ -223,7 +227,10 @@ func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSou
 	).WithProgressReporter(progress).
 		WithRunTally(tally)
 
-	runCrawlerLifecycle(ctx, worker, consumer, progress, cfg)
+	lifecycle := crawlerLifecycle{
+		worker: worker, consumer: consumer, progress: progress, concurrency: workerConcurrency,
+	}
+	runCrawlerLifecycle(ctx, lifecycle, cfg)
 
 	return restart.Wrap(nil)
 }

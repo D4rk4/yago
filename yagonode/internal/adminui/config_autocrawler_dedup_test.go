@@ -5,61 +5,46 @@ import (
 	"testing"
 )
 
-// The Autocrawler page owns the greedy-learning and web-seeding settings; the
-// flat Configuration sheet must not duplicate them, while genuine swarm and
-// web-fallback settings still surface there.
-func TestConfigExcludesAutocrawlerOwnedKeys(t *testing.T) {
-	t.Parallel()
-
+func TestConfigRelocatesAutomaticDiscoveryKeysIntoOneCrawlerFieldset(t *testing.T) {
 	view := SettingsView{Items: []SettingItem{
 		{Key: "swarm.seed.depth", Title: "Autocrawler crawl depth", Category: "Swarm"},
-		{Key: "swarm.seed.max_pages", Title: "Autocrawler pages per host", Category: "Swarm"},
-		{
-			Key:      "swarm.morphology.enabled",
-			Title:    "Swarm morphology",
-			Category: "Swarm",
-			Boolean:  true,
-		},
-		{
-			Key:      "web.fallback.seed_crawl",
-			Title:    "Web-discovery seeding",
-			Category: "Web fallback",
-			Boolean:  true,
-		},
+		{Key: "swarm.morphology.enabled", Title: "Swarm morphology", Category: "Swarm"},
+		{Key: "web.fallback.seed_crawl", Title: "Web-discovery crawling", Category: "Web fallback"},
 		{Key: "web.fallback.timeout", Title: "Web fallback timeout", Category: "Web fallback"},
-		{
-			Key:      "autocrawler.crawl.ignore_robots",
-			Title:    "Ignore robots",
-			Category: "Crawler",
-			Boolean:  true,
-		},
-		{
-			Key:      "crawl.ingest.quality_gate",
-			Title:    "Ingest quality gate",
-			Category: "Crawler",
-			Boolean:  true,
-		},
+		{Key: "autocrawler.crawl.ignore_robots", Title: "Ignore robots", Category: "Crawler"},
+		{Key: "crawl.ingest.quality_gate", Title: "Ingest quality gate", Category: "Crawler"},
 	}}
-	console := New(
-		Options{Config: fakeConfig{view: ConfigView{}}, Settings: &fakeSettings{view: view}},
-	)
-
-	body := do(t, console, configPath).body
-	for _, gone := range []string{
-		"swarm.seed.depth", "Autocrawler crawl depth",
-		"swarm.seed.max_pages", "Autocrawler pages per host",
-		"web.fallback.seed_crawl", "autocrawler.crawl.ignore_robots",
+	body := do(t, New(Options{
+		Config: fakeConfig{}, Settings: &fakeSettings{view: view},
+	}), configPath).body
+	for _, key := range []string{
+		"swarm.seed.depth", "web.fallback.seed_crawl", "autocrawler.crawl.ignore_robots",
 	} {
-		if strings.Contains(body, gone) {
-			t.Fatalf("Configuration must not duplicate autocrawler-owned key %q", gone)
+		if count := strings.Count(body, `name="key" value="`+key+`"`); count != 1 {
+			t.Fatalf("automatic setting %q rendered %d times, want once", key, count)
 		}
 	}
-	for _, kept := range []string{
-		"swarm.morphology.enabled", "Swarm morphology",
-		"web.fallback.timeout", "crawl.ingest.quality_gate",
+	crawlerStart := strings.Index(body, `id="panel-crawler"`)
+	if crawlerStart < 0 {
+		t.Fatal("Crawler panel is missing")
+	}
+	crawlerEnd := strings.Index(body[crawlerStart:], `</section>`)
+	if crawlerEnd < 0 {
+		t.Fatal("Crawler panel does not close")
+	}
+	crawler := body[crawlerStart : crawlerStart+crawlerEnd]
+	for _, want := range []string{
+		">Automatic discovery</legend>", "swarm.seed.depth",
+		"web.fallback.seed_crawl", "autocrawler.crawl.ignore_robots",
+		">Crawler</legend>", "crawl.ingest.quality_gate",
 	} {
+		if !strings.Contains(crawler, want) {
+			t.Fatalf("Crawler panel missing %q", want)
+		}
+	}
+	for _, kept := range []string{"swarm.morphology.enabled", "web.fallback.timeout"} {
 		if !strings.Contains(body, kept) {
-			t.Fatalf("Configuration dropped a genuine setting %q", kept)
+			t.Fatalf("Configuration dropped genuine setting %q", kept)
 		}
 	}
 }

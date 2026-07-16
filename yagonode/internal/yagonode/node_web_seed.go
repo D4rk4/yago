@@ -92,6 +92,7 @@ func (s *webCrawlSeeder) Seed(ctx context.Context, urls []string) {
 		}
 		order := yagocrawlcontract.CrawlOrder{
 			Provenance: mintProvenance(),
+			Priority:   yagocrawlcontract.CrawlOrderPriorityAutomaticDiscovery,
 			Profile:    s.profile,
 			Requests: []yagocrawlcontract.CrawlRequest{{
 				URL:           target,

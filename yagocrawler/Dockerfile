@@ -26,9 +26,11 @@ COPY . .
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
+    set -eu; \
+    printf '%s\n' "$VERSION" | grep -Eq '^(v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)|[0-9]{4}\.[0-9]{2}\.[0-9]{2}-dev)$'; \
     GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build \
-        -ldflags="-s -w ${VERSION:+-X main.version=${VERSION}}" \
+        -ldflags="-s -w -X main.version=${VERSION}" \
         -o /out/yagocrawler \
         ./yagocrawler/cmd/yagocrawler
 

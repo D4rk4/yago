@@ -209,6 +209,7 @@ func TestConsoleCrawlMonitorLaysControlsOnOneLine(t *testing.T) {
 	got := do(t, console, "/admin/crawl/monitor")
 	for _, want := range []string{
 		`class="cds-control-row cds-control-row--crawl-actions"`,
+		`class="cds-crawl-actions-cell"`,
 		`class="cds-input cds-input--rate"`,
 		`for="crawl-rate-run-abc"`,
 		`id="crawl-rate-run-abc"`,
@@ -226,6 +227,7 @@ func TestConsoleCrawlMonitorLaysControlsOnOneLine(t *testing.T) {
 	for _, want := range []string{
 		".cds-control-row {\n  display: flex;\n  flex-wrap: wrap;",
 		".cds-control-row--crawl-actions {\n  flex-wrap: nowrap;\n  min-width: max-content;\n  gap: var(--cds-spacing-03);\n}",
+		".cds-crawl-actions-cell { width: 1%; white-space: nowrap; }",
 		".cds-control-row--crawl-actions .cds-inline-form { flex: 0 0 auto; }",
 		".cds-control-row--crawl-actions .cds-btn {\n  min-height: 2rem;\n  padding: 0 var(--cds-spacing-03);\n}",
 		".cds-control-row--crawl-actions .cds-input--rate {\n  width: 4rem;\n  height: 2rem;\n  padding: 0 var(--cds-spacing-03);\n}",

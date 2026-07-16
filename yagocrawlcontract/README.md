@@ -24,6 +24,12 @@ node <----------------------------------------------- crawler
 
 `CrawlOrder` carries crawl work from the node to crawler instances. The order includes
 the crawl profile and seed requests needed to start or continue a crawl.
+Its optional priority identifies automatic-discovery work explicitly; an absent
+or unknown value is normal work. Queue policy belongs to the node and the crawler
+does not derive priority from a profile name. A current crawler retains that
+metadata on its run and gives at most three due automatic-discovery pages to its
+fetch workers before a due normal page. Selection remains work-conserving, and
+existing run fairness and value scoring apply within each class.
 Each seed request has a mode. Empty mode and `url` mean a normal page URL.
 `sitemap` means an XML sitemap or sitemap index. `sitelist` means a plain text
 URL list. Crawlers expand sitemap and sitelist starts into normal URL requests
@@ -42,6 +48,28 @@ side effects and before acknowledging the submission.
 Multiple crawler processes register distinct worker identities, share the durable
 order queue, and publish results to one node. Order settlement and ingest replies
 remain bound to the crawler call that initiated them.
+
+The node may return a `set_workers` directive with a bounded per-process
+page-fetch concurrency. A current crawler applies it after draining its active
+fetch group. A crawler that predates the directive ignores the unknown enum and
+continues with its environment bootstrap; a current crawler connected to an
+older node receives no directive and also keeps that bootstrap value.
+
+A current crawler includes the optional `active_fetches` field in each worker
+heartbeat. The value is the number of occupied page-fetch worker jobs from job
+start through fetch, parsing, and result publication. An explicit zero is a
+measured idle crawler; an absent value identifies a crawler that does not report
+this measurement. The node counts only registered order-stream worker identities
+and removes their measurement after the last matching stream disconnects. Older
+nodes ignore this additive field.
+
+The node may also return `set_automatic_discovery_priority`. The crawler makes
+one heartbeat attempt bounded to one second before opening its order stream, so
+a successful response applies the persisted node policy before any order enters
+the frontier.
+If that attempt fails, the crawler retains its environment bootstrap until a
+periodic heartbeat succeeds. Existing crawlers ignore the additive directive;
+current crawlers connected to older nodes retain their bootstrap policy.
 
 ## Provenance
 
@@ -99,3 +127,17 @@ an order cannot safely override process-wide browser identity.
 Raw HTML bodies, binary image bodies, media indexing, snapshots, vocabulary
 scraping, country and IP filters, HTTP caching, direct document loading, and
 onward crawl redistribution are outside this contract.
+
+## Upgrade and rollback
+
+The priority field and worker directive are additive. Existing JSON orders omit
+priority and therefore remain normal; protobuf decoders preserve the existing
+field numbers and ignore the new directive kind when unsupported. Every pending
+JSON payload remains in the established `crawlorders` bucket. Additive secondary
+indexes contain only order keys, so an older node ignores priority but still
+sees and drains every order in global FIFO order. When the current node returns,
+a persisted watermark indexes orders admitted by the older binary and stale
+index keys for already consumed orders are removed during selection. The
+priority of an unsettled lease created by the older node is recovered from its
+retained order payload. The intermediate split-payload development format is
+migrated at startup.

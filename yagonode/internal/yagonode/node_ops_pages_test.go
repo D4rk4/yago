@@ -21,7 +21,7 @@ func TestPerformanceHistorySourceAdaptsSampler(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	requests := prometheus.NewCounter(prometheus.CounterOpts{Name: "http_requests_total"})
 	registry.MustRegister(requests)
-	sampler := metrichistory.New(registry, 4)
+	sampler := metrichistory.New(registry, 4, nil)
 	source := newPerformanceHistorySource(sampler)
 
 	sampler.Sample()
@@ -48,6 +48,25 @@ func TestPerformanceHistorySourceAdaptsSampler(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("request series not adapted")
+	}
+}
+
+func TestPerformanceHistoryKindMapsOperationalSeries(t *testing.T) {
+	t.Parallel()
+
+	wants := map[string]adminui.HistorySeriesKind{
+		metrichistory.SeriesProcessCPU:          adminui.HistorySeriesProcessCPU,
+		metrichistory.SeriesProcessMemory:       adminui.HistorySeriesProcessMemory,
+		metrichistory.SeriesHostMemoryTotal:     adminui.HistorySeriesHostMemoryTotal,
+		metrichistory.SeriesHostMemoryAvailable: adminui.HistorySeriesHostMemoryAvailable,
+		metrichistory.SeriesStorageUse:          adminui.HistorySeriesStorageUse,
+		metrichistory.SeriesStorageCap:          adminui.HistorySeriesStorageCapacity,
+		metrichistory.SeriesRequests:            adminui.HistorySeriesGeneral,
+	}
+	for name, want := range wants {
+		if got := performanceHistoryKind(name); got != want {
+			t.Errorf("%s kind = %d, want %d", name, got, want)
+		}
 	}
 }
 

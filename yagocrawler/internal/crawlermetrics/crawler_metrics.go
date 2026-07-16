@@ -5,20 +5,23 @@ package crawlermetrics
 
 import (
 	"net/http"
+	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Metrics struct {
-	registry      *prometheus.Registry
-	jobsActive    prometheus.Gauge
-	fetches       prometheus.Counter
-	fetchFailures prometheus.Counter
-	hostBackoffs  prometheus.Counter
-	bytes         prometheus.Counter
-	robotsDenied  prometheus.Counter
-	ingestBatches prometheus.Counter
+	registry                        *prometheus.Registry
+	jobsActive                      prometheus.Gauge
+	fetches                         prometheus.Counter
+	fetchFailures                   prometheus.Counter
+	hostBackoffs                    prometheus.Counter
+	bytes                           prometheus.Counter
+	robotsDenied                    prometheus.Counter
+	ingestBatches                   prometheus.Counter
+	browserSlotAcquisitionDeadlines prometheus.Counter
+	activeFetchWorkerJobs           atomic.Uint32
 }
 
 func New() *Metrics {
@@ -51,19 +54,31 @@ func New() *Metrics {
 		Name: "yacy_crawler_host_backoffs_total",
 		Help: "Hosts backed off after a 429/503 or Retry-After throttle signal.",
 	})
+	browserSlotAcquisitionDeadlines := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "yacy_crawler_browser_slot_acquisition_deadlines_total",
+		Help: "Firefox browser slot acquisition waits ended by a context deadline.",
+	})
 	registry.MustRegister(
-		jobsActive, fetches, fetchFailures, bytes, robotsDenied, ingestBatches, hostBackoffs,
+		jobsActive,
+		fetches,
+		fetchFailures,
+		bytes,
+		robotsDenied,
+		ingestBatches,
+		hostBackoffs,
+		browserSlotAcquisitionDeadlines,
 	)
 
 	return &Metrics{
-		registry:      registry,
-		jobsActive:    jobsActive,
-		fetches:       fetches,
-		fetchFailures: fetchFailures,
-		bytes:         bytes,
-		robotsDenied:  robotsDenied,
-		ingestBatches: ingestBatches,
-		hostBackoffs:  hostBackoffs,
+		registry:                        registry,
+		jobsActive:                      jobsActive,
+		fetches:                         fetches,
+		fetchFailures:                   fetchFailures,
+		bytes:                           bytes,
+		robotsDenied:                    robotsDenied,
+		ingestBatches:                   ingestBatches,
+		hostBackoffs:                    hostBackoffs,
+		browserSlotAcquisitionDeadlines: browserSlotAcquisitionDeadlines,
 	}
 }
 
@@ -72,13 +87,27 @@ func (m *Metrics) ObserveHostBackoff() {
 	m.hostBackoffs.Inc()
 }
 
+func (m *Metrics) ObserveBrowserSlotAcquisitionDeadline() {
+	m.browserSlotAcquisitionDeadlines.Inc()
+}
+
 func (m *Metrics) Handler() http.Handler {
 	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
 }
 
-func (m *Metrics) JobStarted() { m.jobsActive.Inc() }
+func (m *Metrics) JobStarted() {
+	m.activeFetchWorkerJobs.Add(1)
+	m.jobsActive.Inc()
+}
 
-func (m *Metrics) JobFinished() { m.jobsActive.Dec() }
+func (m *Metrics) JobFinished() {
+	m.jobsActive.Dec()
+	m.activeFetchWorkerJobs.Add(^uint32(0))
+}
+
+func (m *Metrics) ActiveFetchWorkerJobs() uint32 {
+	return m.activeFetchWorkerJobs.Load()
+}
 
 func (m *Metrics) FetchAttempted() { m.fetches.Inc() }
 

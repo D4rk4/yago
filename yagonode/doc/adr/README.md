@@ -67,3 +67,5 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0046](0046-vendor-font-awesome-for-grapesjs-icons.md) | Vendor Font Awesome for GrapesJS legacy controls | Accepted |
 | [0047](0047-morphology-and-positional-ranking-evidence.md) | Separate morphology recall from positional ranking evidence | Accepted |
 | [0048](0048-bounded-google-yandex-ranking-research-disposition.md) | Adopt only bounded and independently justified ranking evidence | Accepted |
+| [0049](0049-vendor-haiku-icons-for-admin-shelf.md) | Vendor Haiku icons for the Admin shelf | Accepted |
+| [0050](0050-attest-release-artifacts.md) | Attest release artifacts with GitHub-hosted provenance | Accepted |

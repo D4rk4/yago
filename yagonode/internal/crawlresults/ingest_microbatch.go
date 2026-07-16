@@ -347,6 +347,19 @@ func (c *IngestConsumer) indexDocuments(
 	ctx context.Context,
 	docs []documentstore.Document,
 ) error {
+	started := time.Now()
+	err := c.writeSearchIndexDocuments(ctx, docs)
+	if c.indexWrites != nil {
+		c.indexWrites.ObserveSearchIndexWrite(time.Since(started), len(docs), err != nil)
+	}
+
+	return err
+}
+
+func (c *IngestConsumer) writeSearchIndexDocuments(
+	ctx context.Context,
+	docs []documentstore.Document,
+) error {
 	if bulk, ok := c.index.(searchindex.BatchIndexer); ok {
 		//nolint:wrapcheck // the caller labels the failure for redelivery.
 		return bulk.IndexBatch(ctx, docs)

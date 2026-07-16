@@ -1,0 +1,44 @@
+{{define "system-monitor"}}
+<section class="cds-system-monitor" id="system-monitor" hx-get="/admin/system-monitor"
+         hx-trigger="every 10s" hx-swap="outerHTML" aria-labelledby="system-monitor-title">
+  <h2 class="cds-system-monitor__title" id="system-monitor-title"><img src="{{asset "icons/utilities-system-monitor.svg"}}" width="16" height="16" alt="">System Monitor</h2>
+  <div class="cds-system-monitor__readings">
+    {{if .CrawlerFetchVisible}}<div class="cds-system-monitor__reading">
+      <span class="cds-system-monitor__label">Crawler fetch workers</span>
+      {{if .CrawlerFetchAvailable}}
+      <span class="cds-system-monitor__value">{{.CrawlerFetchText}}</span>
+      <meter class="cds-system-monitor__meter" min="0" max="{{.CrawlerFetchMaximum}}" value="{{.CrawlerFetchValue}}" aria-label="Active crawler fetch workers">{{.CrawlerFetchText}}</meter>
+      {{else}}<span class="cds-system-monitor__value">Unavailable</span>{{end}}
+    </div>{{end}}
+    <div class="cds-system-monitor__reading">
+      <span class="cds-system-monitor__label">Process CPU</span>
+      {{if .CPUAvailable}}
+      <span class="cds-system-monitor__value">{{.CPUText}}</span>
+      <meter class="cds-system-monitor__meter" min="0" max="{{.CPUMaximum}}" value="{{.CPUValue}}" aria-label="Process CPU usage">{{.CPUText}}</meter>
+      {{else}}<span class="cds-system-monitor__value">Unavailable</span>{{end}}
+    </div>
+    <div class="cds-system-monitor__reading">
+      <span class="cds-system-monitor__label">Process memory</span>
+      {{if .ProcessMemoryAvailable}}
+      <span class="cds-system-monitor__value">{{.ProcessMemoryText}}</span>
+      <meter class="cds-system-monitor__meter" min="0" max="{{.ProcessMemoryMaximum}}" value="{{.ProcessMemoryValue}}" aria-label="Process resident memory usage">{{.ProcessMemoryText}}</meter>
+      {{else}}<span class="cds-system-monitor__value">Unavailable</span>{{end}}
+    </div>
+    <div class="cds-system-monitor__reading">
+      <span class="cds-system-monitor__label">Host memory</span>
+      {{if .HostMemoryAvailable}}
+      <span class="cds-system-monitor__value">{{.HostMemoryText}}</span>
+      <meter class="cds-system-monitor__meter" min="0" max="{{.HostMemoryMaximum}}" value="{{.HostMemoryValue}}" aria-label="Host memory usage">{{.HostMemoryText}}</meter>
+      {{else}}<span class="cds-system-monitor__value">Unavailable</span>{{end}}
+    </div>
+    <div class="cds-system-monitor__reading">
+      <span class="cds-system-monitor__label">Data storage</span>
+      {{if .StorageAvailable}}
+      <span class="cds-system-monitor__value">{{.StorageText}}</span>
+      {{if .StorageBounded}}<meter class="cds-system-monitor__meter" min="0" max="{{.StorageMaximum}}" value="{{.StorageValue}}" aria-label="Data storage usage">{{.StorageText}}</meter>{{end}}
+      {{else}}<span class="cds-system-monitor__value">Unavailable</span>{{end}}
+    </div>
+  </div>
+  <div class="cds-system-monitor__observed">Sample: {{if .Observed}}<time datetime="{{.ObservedAt}}">{{.ObservedAt}}</time>{{else}}Unavailable{{end}}</div>
+</section>
+{{end}}

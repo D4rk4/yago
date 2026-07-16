@@ -54,14 +54,12 @@ func TestNewCrawlSeederAppliesSeedCrawlOptions(t *testing.T) {
 	assertProfileHonorsOptions(t, web.profile, options)
 }
 
-// TestDefaultSeedCrawlOptions pins the shipped autocrawler crawl policy: query
-// URLs and lax TLS on, the rest off, and the default recrawl cadence so seeded
-// crawls schedule a recrawl instead of indexing each URL forever.
 func TestDefaultSeedCrawlOptions(t *testing.T) {
 	got := defaultSeedCrawlOptions()
 	want := seedCrawlOptions{
 		AllowQueryURLs:     true,
 		IgnoreTLSAuthority: true,
+		DisableBrowser:     true,
 		RecrawlInterval:    yagocrawlcontract.DefaultRecrawlInterval,
 	}
 	if got != want {

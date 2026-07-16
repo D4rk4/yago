@@ -256,11 +256,15 @@ func TestLogoutFormClearsSession(t *testing.T) {
 	}
 
 	rec := postForm(surface, PathLogoutForm, url.Values{}, cookie)
-	if loc := rec.Header().Get("Location"); loc != PathLoginPage+"?notice=out" {
-		t.Fatalf("location = %q, want out", loc)
+	if loc := rec.Header().Get("Location"); loc != PathLoginPage {
+		t.Fatalf("location = %q, want clean login page", loc)
 	}
 	cleared := cookieNamed(rec)
 	if cleared == nil || cleared.MaxAge >= 0 {
 		t.Fatalf("session cookie not cleared: %#v", cleared)
+	}
+	page := doRequest(surface, http.MethodGet, rec.Header().Get("Location"), "")
+	if strings.Contains(page.Body.String(), "signed out") {
+		t.Fatalf("logout rendered a session notice: %s", page.Body.String())
 	}
 }

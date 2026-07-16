@@ -27,12 +27,28 @@ func superviseCrawl(
 	workers int,
 	grace time.Duration,
 ) {
+	superviseCrawlWithConcurrency(
+		ctx,
+		worker,
+		consumer,
+		newWorkerConcurrency(workers),
+		grace,
+	)
+}
+
+func superviseCrawlWithConcurrency(
+	ctx context.Context,
+	worker crawlWorker,
+	consumer orderConsumer,
+	workerConcurrency *workerConcurrency,
+	grace time.Duration,
+) {
 	fetchCtx, cancelFetch := context.WithCancel(context.Background())
 	defer cancelFetch()
 
 	workersDone := make(chan struct{})
 	go func() {
-		worker.RunWorkers(ctx, fetchCtx, workers)
+		runResizableWorkers(ctx, fetchCtx, worker, workerConcurrency)
 		close(workersDone)
 	}()
 	consumerDone := make(chan struct{})
@@ -52,4 +68,32 @@ func superviseCrawl(
 		<-workersDone
 	}
 	consumer.WaitForSettlements()
+}
+
+func runResizableWorkers(
+	ctx context.Context,
+	fetchCtx context.Context,
+	worker crawlWorker,
+	workerConcurrency *workerConcurrency,
+) {
+	for ctx.Err() == nil {
+		workerConcurrency.DrainChanges()
+		acceptCtx, cancelAccept := context.WithCancel(ctx)
+		runDone := make(chan struct{})
+		go func(workers int) {
+			worker.RunWorkers(acceptCtx, fetchCtx, workers)
+			close(runDone)
+		}(workerConcurrency.Current())
+
+		select {
+		case <-ctx.Done():
+			cancelAccept()
+			<-runDone
+
+			return
+		case <-workerConcurrency.Changes():
+			cancelAccept()
+			<-runDone
+		}
+	}
 }

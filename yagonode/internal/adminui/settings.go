@@ -40,7 +40,13 @@ type SettingsView struct {
 
 // SettingGroup is a category of runtime settings, rendered as one tab.
 type SettingGroup struct {
-	ID    string
+	ID        string
+	Title     string
+	Items     []SettingItem
+	Fieldsets []SettingFieldset
+}
+
+type SettingFieldset struct {
 	Title string
 	Items []SettingItem
 }
@@ -78,6 +84,7 @@ func groupSettings(items []SettingItem) []SettingGroup {
 		if bucket, ok := byCategory[category]; ok {
 			groups = append(groups, SettingGroup{
 				ID: slugify(category), Title: category, Items: bucket,
+				Fieldsets: []SettingFieldset{{Title: category, Items: bucket}},
 			})
 			emitted[category] = true
 		}

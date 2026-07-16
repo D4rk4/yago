@@ -26,7 +26,7 @@ func TestLoadNodeConfigReadsSwarmSeedSettings(t *testing.T) {
 	}
 }
 
-func TestLoadNodeConfigSwarmSeedDefaultsOff(t *testing.T) {
+func TestLoadNodeConfigSwarmSeedDefaults(t *testing.T) {
 	config, err := loadNodeConfig(envFrom(map[string]string{
 		envPeerHash: "0123456789AB",
 		envPeerName: "node",
@@ -34,7 +34,7 @@ func TestLoadNodeConfigSwarmSeedDefaultsOff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if config.SwarmSeed.Enabled {
+	if !config.SwarmSeed.Enabled {
 		t.Fatalf("SwarmSeed = %#v", config.SwarmSeed)
 	}
 	if config.SwarmSeed.SeedDepth != defaultSwarmSeedDepth ||

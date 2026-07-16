@@ -48,9 +48,50 @@ The registry publishes:
   results from the crawl fleet (`crawl_ingest_batches_total`,
   `crawl_ingest_deferrals_total`, `crawl_ingest_content_bytes_total`,
   `crawl_ingest_urls_total`, `crawl_ingest_postings_total`).
+- **Crawl search-index writes** — successful documents, failed write attempts,
+  and one duration observation per Bleve batch or fallback write attempt
+  (`crawl_search_index_documents_total`,
+  `crawl_search_index_write_failures_total`,
+  `crawl_search_index_write_duration_seconds`). A failed attempt contributes no
+  successful document count, and these series carry no URL or error labels.
 
 ## Registration
 
 Every collector registers on the shared registry at startup. A test constructs
 all collectors on one registry and gathers it, so a duplicate metric name is
 caught as a build-time regression rather than a startup panic in production.
+
+## Admin history and System Monitor
+
+The Admin console keeps a volatile ninety-point ring sampled every ten seconds.
+It derives request, error, latency, DHT, queue, process CPU, process RSS, host
+memory, and storage series from one registry gathering plus one `sysinfo` host
+memory snapshot per interval. The initial gathering runs at sampler startup to
+seed counter baselines; the first current System Monitor reading therefore
+appears after about ten seconds. Console requests and ten-second HTMX refreshes
+read the bounded ring and do not gather metrics or inspect the host directly.
+
+The host-memory display pairs `sysinfo` total RAM with Linux
+`/proc/meminfo` `MemAvailable`, the kernel estimate of memory available to new
+applications without swapping. Its used value is `total - available`, so
+reclaimable page cache is not presented as memory pressure. The parser reads at
+most 1 MiB, accepts one decimal `MemAvailable` value in `kB`, rejects malformed,
+duplicate, overflowing, or internally inconsistent values, and falls back to
+the conservative `sysinfo` free-RAM value only when the field or file is absent.
+Process RSS and host-memory meters use total host RAM as their maximum, while
+their text retains the actual bounded values. Missing, stale, non-finite, or
+invalid observations appear as `Unavailable`. This history is lost at restart;
+a Prometheus server remains the durable history source.
+
+When the node crawler runtime is enabled, the monitor also reads the broker's
+concurrency-safe heartbeat snapshot. It reports busy fetch-worker jobs against
+the effective maximum fetch concurrency per connected crawler. A worker slot
+stays busy through page fetch, parsing, and result publication, so the numerator
+and configured denominator describe the same bounded pipeline resource. An
+enabled runtime with no connected crawler hides the row because no worker
+capacity exists to measure; a mixed or older connected fleet that has not
+reported the optional measurement reports `Unavailable`. Multiple crawlers use
+their aggregate capacity and retain the crawler count and per-crawler limit in
+text. Disabling the crawler runtime also removes this row. This live value is
+not retained in the ten-second history and does not trigger a metrics gathering
+or host scan.

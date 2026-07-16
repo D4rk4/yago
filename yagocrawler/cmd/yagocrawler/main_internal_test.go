@@ -5,10 +5,13 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/D4rk4/yago/yagocrawler/internal/crawlermetrics"
 	"github.com/D4rk4/yago/yagocrawler/internal/firefoxfetch"
 	"github.com/D4rk4/yago/yagocrawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yagoegress"
@@ -112,11 +115,17 @@ func TestRunClosesBrowserOnSuccess(t *testing.T) {
 	restoreMainSeams(t)
 	closed := false
 	newCrawlerBrowserFetcher = func(
-		firefoxfetch.BrowserLaunch, yagoegress.Guard,
+		_ firefoxfetch.BrowserLaunch, _ yagoegress.Guard,
+		_ ...func(),
 	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
 		return &firefoxfetch.BrowserPageFetcher{}, func() { closed = true }, nil
 	}
-	runCrawlerService = func(context.Context, ServiceConfig, pagefetch.PageSource) error {
+	runCrawlerService = func(
+		context.Context,
+		ServiceConfig,
+		pagefetch.PageSource,
+		*crawlermetrics.Metrics,
+	) error {
 		return nil
 	}
 
@@ -128,15 +137,67 @@ func TestRunClosesBrowserOnSuccess(t *testing.T) {
 	}
 }
 
+func TestRunWiresBrowserSlotAcquisitionDeadlineToServiceMetrics(t *testing.T) {
+	restoreMainSeams(t)
+	var observeBrowserSlotAcquisitionDeadline func()
+	newCrawlerBrowserFetcher = func(
+		_ firefoxfetch.BrowserLaunch,
+		_ yagoegress.Guard,
+		observers ...func(),
+	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
+		if len(observers) != 1 || observers[0] == nil {
+			t.Fatalf("browser slot acquisition observers = %d, want one", len(observers))
+		}
+		observeBrowserSlotAcquisitionDeadline = observers[0]
+
+		return &firefoxfetch.BrowserPageFetcher{}, func() {}, nil
+	}
+	runCrawlerService = func(
+		_ context.Context,
+		_ ServiceConfig,
+		_ pagefetch.PageSource,
+		metrics *crawlermetrics.Metrics,
+	) error {
+		observeBrowserSlotAcquisitionDeadline()
+		request := httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodGet,
+			"/metrics",
+			nil,
+		)
+		response := httptest.NewRecorder()
+		metrics.Handler().ServeHTTP(response, request)
+		body := response.Body.String()
+		if !strings.Contains(
+			body,
+			"yacy_crawler_browser_slot_acquisition_deadlines_total 1",
+		) {
+			t.Fatalf("browser slot acquisition deadline metric missing:\n%s", body)
+		}
+
+		return nil
+	}
+
+	if err := run(context.Background(), minimalServiceConfig(t)); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+}
+
 func TestRunUsesOneUniqueWorkerIdentityPerProcessInvocation(t *testing.T) {
 	restoreMainSeams(t)
 	newCrawlerBrowserFetcher = func(
-		firefoxfetch.BrowserLaunch, yagoegress.Guard,
+		_ firefoxfetch.BrowserLaunch, _ yagoegress.Guard,
+		_ ...func(),
 	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
 		return &firefoxfetch.BrowserPageFetcher{}, func() {}, nil
 	}
 	var workerIDs []string
-	runCrawlerService = func(_ context.Context, cfg ServiceConfig, _ pagefetch.PageSource) error {
+	runCrawlerService = func(
+		_ context.Context,
+		cfg ServiceConfig,
+		_ pagefetch.PageSource,
+		_ *crawlermetrics.Metrics,
+	) error {
 		workerIDs = append(workerIDs, cfg.WorkerID)
 
 		return nil
@@ -161,11 +222,17 @@ func TestRunClosesBrowserOnServiceError(t *testing.T) {
 	sentinel := errors.New("service failed")
 	closed := false
 	newCrawlerBrowserFetcher = func(
-		firefoxfetch.BrowserLaunch, yagoegress.Guard,
+		_ firefoxfetch.BrowserLaunch, _ yagoegress.Guard,
+		_ ...func(),
 	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
 		return &firefoxfetch.BrowserPageFetcher{}, func() { closed = true }, nil
 	}
-	runCrawlerService = func(context.Context, ServiceConfig, pagefetch.PageSource) error {
+	runCrawlerService = func(
+		context.Context,
+		ServiceConfig,
+		pagefetch.PageSource,
+		*crawlermetrics.Metrics,
+	) error {
 		return sentinel
 	}
 
@@ -182,7 +249,8 @@ func TestRunReturnsBrowserStartError(t *testing.T) {
 	restoreMainSeams(t)
 	sentinel := errors.New("browser start failed")
 	newCrawlerBrowserFetcher = func(
-		firefoxfetch.BrowserLaunch, yagoegress.Guard,
+		_ firefoxfetch.BrowserLaunch, _ yagoegress.Guard,
+		_ ...func(),
 	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
 		return nil, nil, sentinel
 	}
@@ -203,11 +271,17 @@ func TestRunWarnsOnChromiumBrowserPath(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
 	newCrawlerBrowserFetcher = func(
-		firefoxfetch.BrowserLaunch, yagoegress.Guard,
+		_ firefoxfetch.BrowserLaunch, _ yagoegress.Guard,
+		_ ...func(),
 	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
 		return &firefoxfetch.BrowserPageFetcher{}, func() {}, nil
 	}
-	runCrawlerService = func(context.Context, ServiceConfig, pagefetch.PageSource) error {
+	runCrawlerService = func(
+		context.Context,
+		ServiceConfig,
+		pagefetch.PageSource,
+		*crawlermetrics.Metrics,
+	) error {
 		return nil
 	}
 

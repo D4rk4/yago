@@ -6,3 +6,7 @@ func WithDiversityRelevance(result Result, relevance float64) Result {
 
 	return result
 }
+
+func DiversityRelevance(result Result) float64 {
+	return resultDiversityRelevance(result)
+}

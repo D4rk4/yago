@@ -50,7 +50,11 @@ func buildCrawlRuntime(
 
 	runs := crawlruns.New(0)
 	broker, err := openCrawlBroker(
-		crawlbroker.Config{ListenAddr: config.ListenAddr},
+		crawlbroker.Config{
+			ListenAddr:                        config.ListenAddr,
+			FetchWorkers:                      config.FetchWorkers,
+			DisableAutomaticDiscoveryPriority: !config.PrioritizeAutomaticDiscovery,
+		},
 		storageVault,
 		runs,
 	)

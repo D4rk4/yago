@@ -5,7 +5,7 @@ package landing
 import "net/http"
 
 // NewEndpoint builds the landing handler, displaying the given human-facing build
-// version (e.g. "2026.7") when it is non-empty.
+// version (for example, "v0.0.8") when it is non-empty.
 func NewEndpoint(version string) http.Handler {
 	return landingEndpoint{version: version}
 }

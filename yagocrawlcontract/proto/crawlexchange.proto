@@ -55,6 +55,7 @@ message OrderAckResult {}
 
 message WorkerHeartbeat {
   string worker_id = 1;
+  optional uint32 active_fetches = 2;
 }
 
 // CrawlControlKind is a directive the node pushes to a worker to steer a run it is
@@ -69,6 +70,8 @@ enum CrawlControlKind {
   // RESTART asks the whole worker to shut down gracefully so its supervisor
   // brings it back up; run_id is ignored.
   CRAWL_CONTROL_KIND_RESTART = 5;
+  CRAWL_CONTROL_KIND_SET_WORKERS = 6;
+  CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY = 7;
 }
 
 // CrawlControlDirective steers one run identified by its provenance token, or the
@@ -78,6 +81,8 @@ message CrawlControlDirective {
   CrawlControlKind kind = 1;
   bytes run_id = 2;
   uint32 pages_per_minute = 3;
+  uint32 fetch_workers = 4;
+  bool prioritize_automatic_discovery = 5;
 }
 
 // WorkerHeartbeatResult returns any control directives the node has queued for the

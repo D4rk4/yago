@@ -27,35 +27,36 @@ func (f *Frontier) claimNext(
 	}
 	f.demoteControlBlockedReadyLocked()
 	f.refillReadyLocked()
-	next, index, wait, due := f.nextDue(now)
-	if due {
-		f.claimReadyLocked(next, index, now)
+	selection := f.nextDue(now)
+	if selection.due {
+		f.claimReadyLocked(selection, now)
 
-		return next, 0, takeClaimed
+		return selection.job, 0, takeClaimed
 	}
 	if f.hasPendingReadyCandidateLocked() {
 		pendingWait := f.rebuildReadyForDispatchLocked(now)
-		next, index, rebuiltWait, rebuiltDue := f.nextDue(now)
-		wait = earlierWait(wait, earlierWait(pendingWait, rebuiltWait))
-		if rebuiltDue {
-			f.claimReadyLocked(next, index, now)
+		rebuilt := f.nextDue(now)
+		selection.wait = earlierWait(selection.wait, earlierWait(pendingWait, rebuilt.wait))
+		if rebuilt.due {
+			f.claimReadyLocked(rebuilt, now)
 
-			return next, 0, takeClaimed
+			return rebuilt.job, 0, takeClaimed
 		}
 	}
 	if f.closing && len(f.state.ready) == 0 {
 		return crawljob.CrawlJob{}, 0, takeClosed
 	}
 
-	return crawljob.CrawlJob{}, wait, takeWaiting
+	return crawljob.CrawlJob{}, selection.wait, takeWaiting
 }
 
-func (f *Frontier) claimReadyLocked(job crawljob.CrawlJob, index int, now time.Time) {
-	f.pace.Visited(job, now)
-	f.recordRateVisitLocked(job.Provenance, now)
-	f.acquireHost(job.URL)
+func (f *Frontier) claimReadyLocked(selection readySelection, now time.Time) {
+	f.pace.Visited(selection.job, now)
+	f.recordRateVisitLocked(selection.job.Provenance, now)
+	f.acquireHost(selection.job.URL)
 	f.nextDispatchOrder++
-	f.dispatchOrder[job.RunID] = f.nextDispatchOrder
-	f.removeReadyAtLocked(index)
+	f.dispatchOrder[selection.job.RunID] = f.nextDispatchOrder
+	f.recordAutomaticDiscoveryDispatchLocked(selection.job, selection.contended)
+	f.removeReadyAtLocked(selection.index)
 	f.refillReadyLocked()
 }

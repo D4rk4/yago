@@ -13,8 +13,21 @@ type HistoryPoint struct {
 	Value float64
 }
 
+type HistorySeriesKind uint8
+
+const (
+	HistorySeriesGeneral HistorySeriesKind = iota
+	HistorySeriesProcessCPU
+	HistorySeriesProcessMemory
+	HistorySeriesHostMemoryTotal
+	HistorySeriesHostMemoryAvailable
+	HistorySeriesStorageUse
+	HistorySeriesStorageCapacity
+)
+
 // HistorySeries is one metric's recent history, oldest point first.
 type HistorySeries struct {
+	Kind   HistorySeriesKind
 	Name   string
 	Unit   string
 	Points []HistoryPoint
@@ -56,10 +69,10 @@ func performanceHistory(source PerformanceHistorySource) []historyView {
 		latest := series.Points[len(series.Points)-1]
 		views = append(views, historyView{
 			Name:       series.Name,
-			Unit:       series.Unit,
-			Latest:     formatHistoryValue(latest.Value),
+			Unit:       historyDisplayUnit(series.Unit),
+			Latest:     formatHistoryMeasurement(latest.Value, series.Unit),
 			ObservedAt: latest.At.UTC().Format(time.RFC3339),
-			Peak:       formatHistoryValue(peakValue(series.Points)),
+			Peak:       formatHistoryMeasurement(peakValue(series.Points), series.Unit),
 			Window: series.Points[len(series.Points)-1].At.
 				Sub(series.Points[0].At).Round(time.Second).String(),
 			SVG:     sparklineSVG(series.Points),
@@ -68,6 +81,24 @@ func performanceHistory(source PerformanceHistorySource) []historyView {
 	}
 
 	return views
+}
+
+func formatHistoryMeasurement(value float64, unit string) string {
+	if unit == "bytes" {
+		if bytes, valid := systemMonitorBytes(value); valid {
+			return formatByteSize(bytes)
+		}
+	}
+
+	return formatHistoryValue(value)
+}
+
+func historyDisplayUnit(unit string) string {
+	if unit == "bytes" {
+		return ""
+	}
+
+	return unit
 }
 
 func peakValue(points []HistoryPoint) float64 {

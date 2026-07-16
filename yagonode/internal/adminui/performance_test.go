@@ -57,7 +57,7 @@ func TestConsolePerformanceRendersUnknownMeasurementsAsUnavailable(t *testing.T)
 	if got.status != http.StatusOK {
 		t.Fatalf("status %d", got.status)
 	}
-	if strings.Count(got.body, ">Unavailable<") != 4 {
+	if strings.Count(mainRegion(t, got.body), ">Unavailable<") != 4 {
 		t.Fatalf("unknown measurements must render unavailable: %s", got.body)
 	}
 	if strings.Contains(got.body, ">Full<") {

@@ -396,12 +396,12 @@ func TestSeedCandidatesStayUndispatchableUntilAdmissionCompletes(t *testing.T) {
 		},
 		profile,
 	))
-	if _, _, _, due := frontier.nextDue(time.Now()); due {
+	if frontier.nextDue(time.Now()).due {
 		frontier.mu.Unlock()
 		t.Fatal("seed candidate became dispatchable before seed admission completed")
 	}
 	frontier.state.runs[runID].seeding = false
-	if _, _, _, due := frontier.nextDue(time.Now()); !due {
+	if !frontier.nextDue(time.Now()).due {
 		frontier.mu.Unlock()
 		t.Fatal("seed candidate remained withheld after seed admission completed")
 	}

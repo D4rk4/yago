@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/D4rk4/yago/yagonode/internal/memvault"
+	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
 func TestOpenWiresProgressSink(t *testing.T) {
@@ -22,6 +23,41 @@ func TestOpenWiresProgressSink(t *testing.T) {
 
 	if broker.Orders == nil || broker.Ingest == nil {
 		t.Fatal("broker ports must be wired")
+	}
+}
+
+func TestOpenAppliesDisabledAutomaticDiscoveryPriority(t *testing.T) {
+	v, err := memvault.Open(0)
+	if err != nil {
+		t.Fatalf("memvault: %v", err)
+	}
+	t.Cleanup(func() { _ = v.Close() })
+
+	broker, err := Open(Config{
+		ListenAddr:                        "127.0.0.1:0",
+		DisableAutomaticDiscoveryPriority: true,
+	}, v, nil)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(broker.Close)
+	publishOrders(t, broker.Orders, testOrder("normal"), automaticOrder("automatic"))
+	if got := leaseOrderName(t, broker.Orders); got != "normal" {
+		t.Fatalf("disabled broker leased %q, want FIFO normal", got)
+	}
+}
+
+func TestOpenSurfacesPriorityIndexReconciliationFailure(t *testing.T) {
+	engine := newScriptedEngine()
+	engine.buckets[seqBucket] = map[string][]byte{
+		string(priorityIndexFormatKey): {1},
+	}
+	v, err := vault.New(engine)
+	if err != nil {
+		t.Fatalf("vault: %v", err)
+	}
+	if _, err := Open(Config{ListenAddr: "127.0.0.1:0"}, v, nil); err == nil {
+		t.Fatal("expected priority index reconciliation failure")
 	}
 }
 

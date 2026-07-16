@@ -65,8 +65,8 @@ func TestAuthMessageHelpers(t *testing.T) {
 	if loginNoticeMessage("created") == "" {
 		t.Fatal("created notice empty")
 	}
-	if loginNoticeMessage("out") == "" {
-		t.Fatal("out notice empty")
+	if loginNoticeMessage("out") != "" {
+		t.Fatal("logout notice remained visible")
 	}
 	if loginNoticeMessage("bogus") != "" {
 		t.Fatal("unknown notice produced a message")

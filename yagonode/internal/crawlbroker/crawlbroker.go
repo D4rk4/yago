@@ -22,8 +22,10 @@ import (
 const msgSweepFailed = "crawl lease sweep failed"
 
 type Config struct {
-	ListenAddr string
-	LeaseTTL   time.Duration
+	ListenAddr                        string
+	LeaseTTL                          time.Duration
+	FetchWorkers                      int
+	DisableAutomaticDiscoveryPriority bool
 }
 
 type CrawlBroker struct {
@@ -57,8 +59,16 @@ func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker
 	if err != nil {
 		return nil, err
 	}
+	if cfg.DisableAutomaticDiscoveryPriority {
+		queue.SetAutomaticDiscoveryPriority(false)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	if err := queue.reconcilePriorityIndexes(ctx); err != nil {
+		cancel()
+
+		return nil, err
+	}
 	if err := queue.requeueAllLeases(ctx); err != nil {
 		cancel()
 
@@ -73,7 +83,14 @@ func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker
 
 	ingest := newIngestReceiver()
 	server := newGRPCServer()
-	exchange := newExchangeServer(queue, ingest.out)
+	fetchWorkers := cfg.FetchWorkers
+	if fetchWorkers <= 0 {
+		fetchWorkers = yagocrawlcontract.DefaultFetchWorkerConcurrency
+	}
+	exchange := newExchangeServer(queue, ingest.out, crawlerControlDefaults{
+		fetchWorkers:                 uint32(fetchWorkers),
+		prioritizeAutomaticDiscovery: !cfg.DisableAutomaticDiscoveryPriority,
+	})
 	exchange.beginIngest = ingest.beginIngest
 	if progress != nil {
 		exchange.progress = progress

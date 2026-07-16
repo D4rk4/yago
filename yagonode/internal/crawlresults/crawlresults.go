@@ -121,6 +121,7 @@ type IngestConsumer struct {
 	reservedAnchors   documentstore.ReservedOutboundAnchorReceiver
 	reservedDocuments documentstore.ReservedCanonicalDocumentDirectory
 	index             searchindex.SearchIndex
+	indexWrites       SearchIndexWriteObserver
 	urls              urlmeta.URLReceiver
 	postings          rwi.PostingReceiver
 	observer          IngestObserver
@@ -172,6 +173,7 @@ func NewIngestConsumerWithIndex(
 		reservedAnchors:   reservedAnchors,
 		reservedDocuments: reservedDocuments,
 		index:             index,
+		indexWrites:       noopSearchIndexWriteObserver{},
 		urls:              urls,
 		postings:          postings,
 		observer:          noopIngestObserver{},

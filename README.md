@@ -74,6 +74,10 @@ its binaries (`yago-node`, `yagocrawler`).
   bounded lexical evidence and RM3, deterministic peer RRF, persistent date,
   anchor, authority, quality, safety, duplicate-cluster, and reputation signals,
   followed by a signed linear LambdaRank or bounded histogram LambdaMART model.
+  In a mixed-source result set, learned inference reorders locally stored
+  documents only within their fused local slots and preserves each slot's
+  bounded relevance scale for final diversity, rather than comparing raw model
+  scores with peer or web scores.
   Query-clustered and chronological holdouts gate atomic promotion; authenticated
   Team Draft compares complete rankings online, while confidence-filtered
   FairPairs outcomes provide implicit relevance evidence.
@@ -189,8 +193,11 @@ its binaries (`yago-node`, `yagocrawler`).
   deletion, and redirect cleanup share one complete page-lineage owner, so a
   concurrent re-index cannot leave or erase only the document, anchors,
   duplicate cluster, full-text row, postings, or URL metadata.
-- Autocrawler: swarm greedy-learning and web-fallback seeding fill a young
-  index automatically, fully tunable from the console.
+- Automatic discovery: enabled swarm greedy-learning uses a depth-5,
+  250-page-per-host HTTP-fast-path profile; web-discovery crawling stays opt-in
+  with the same ready profile. Explicit discovery orders receive fair priority
+  in the durable queue, and every profile and document-format control lives in
+  Configuration → Crawler.
 
 ### 🎨 A public portal your users can keep
 
@@ -210,13 +217,14 @@ its binaries (`yago-node`, `yagocrawler`).
 - Server-rendered (htmx-enhanced, no SPA, no CDN — every asset self-hosted),
   with two visual themes and full no-JS degradation.
 - Sections: Overview, Search (with suggestions), Activity, Public portal
-  (settings + design tabs), Autocrawler, Crawler (dispatch, live monitor,
+  (settings + design tabs), Crawler (dispatch, live monitor,
   pause/resume/rate control, health), Network (peers, seedlists, news,
   blocking, and the complete sortable roster paged at exactly 20 peers), Index
   (browse, delete, blacklist, export, schema), Performance
   (live tiles **and sampled history sparklines**), Backup & restore,
   Configuration (runtime settings with checkboxes, batch save, per-setting
-  reset), Security (Argon2id admin login, session management, scoped API
+  reset, Crawler/Automatic discovery/Document formats fieldsets, and live
+  per-process fetch concurrency), Security (Argon2id admin login, session management, scoped API
   keys), Logs (filterable events), Restart (node and crawler fleet, can be
   disabled by config).
 - Overview and Index use the authoritative local Bleve document count. Overview
@@ -225,13 +233,15 @@ its binaries (`yago-node`, `yagocrawler`).
   totals and health use the complete snapshot, and each running row keeps its
   controls plus the effective pages-per-minute value together.
 - First-run **setup wizard**, CSRF everywhere, strict CSP, login rate
-  limiting, and a config-events audit trail.
+  limiting, and a config-events audit trail. The no-JavaScript login leaves the
+  account name empty and shows only bounded public node status; individual
+  unavailable system facts degrade independently.
 
 ### 📦 Operations without surprises
 
 - One static binary per role; Docker/Compose on the shared `/opt/yago`
   layout, hardened systemd units, and Debian packages built by a tag-driven
-  release pipeline with generated notes.
+  release pipeline with a verified human-authored engineering memo.
 - Docker builds pin every builder and runtime base by digest. The node and
   crawler images carry OCI source and revision labels when the caller supplies
   `SOURCE_REVISION`, so two images can be traced to the same source commit.
@@ -286,6 +296,7 @@ Requirements: Docker (or Podman); for source builds, Go 1.26.
 ```sh
 export YAGO_SEARCH_API_KEY='replace-with-a-long-random-secret'
 cp docker-compose.yml.example docker-compose.yml
+make compose-images
 docker compose up -d
 ```
 

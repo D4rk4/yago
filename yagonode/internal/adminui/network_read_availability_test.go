@@ -10,9 +10,9 @@ import (
 func TestConsoleNetworkRosterReadErrorIsUnavailable(t *testing.T) {
 	t.Parallel()
 
-	body := do(t, New(Options{Network: fakeNetwork{snap: NetworkStatus{
+	body := mainRegion(t, do(t, New(Options{Network: fakeNetwork{snap: NetworkStatus{
 		Available: true,
-	}}}), "/admin/network").body
+	}}}), "/admin/network").body)
 	if strings.Count(body, ">Unavailable<") != 2 ||
 		!strings.Contains(body, "Peer roster is unavailable.") {
 		t.Fatalf("failed roster read did not render unavailable facts: %s", body)
@@ -44,7 +44,10 @@ func TestConsoleSeedlistDistinguishesUnavailableFromNever(t *testing.T) {
 		Available: true, RosterAvailable: true,
 		Seedlists: []SeedlistEntry{{URL: "https://unavailable.example/seed.txt"}},
 	}
-	body := do(t, New(Options{Network: fakeNetwork{snap: unavailable}}), "/admin/network").body
+	body := mainRegion(
+		t,
+		do(t, New(Options{Network: fakeNetwork{snap: unavailable}}), "/admin/network").body,
+	)
 	if !strings.Contains(body, "Unavailable") || strings.Contains(body, "never") {
 		t.Fatalf("unavailable seedlist status rendered as import history: %s", body)
 	}
@@ -55,7 +58,10 @@ func TestConsoleSeedlistDistinguishesUnavailableFromNever(t *testing.T) {
 			URL: "https://never.example/seed.txt", StatusKnown: true,
 		}},
 	}
-	body = do(t, New(Options{Network: fakeNetwork{snap: never}}), "/admin/network").body
+	body = mainRegion(
+		t,
+		do(t, New(Options{Network: fakeNetwork{snap: never}}), "/admin/network").body,
+	)
 	if !strings.Contains(body, "never") || strings.Contains(body, ">Unavailable<") {
 		t.Fatalf("known empty seedlist history rendered as unavailable: %s", body)
 	}

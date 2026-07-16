@@ -1,0 +1,17 @@
+{{define "crawl-formats"}}
+<form class="cds-settings-form" method="post" action="{{.Action}}" hx-boost="false">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <fieldset class="cds-fieldset">
+    <legend class="cds-legend">Document formats</legend>
+    <div class="cds-setting-row"><span class="cds-setting-row__label"><label for="format-text">Text (txt, tex, csv, rtf, msg)</label></span><span class="cds-setting-row__control"><label class="cds-checkbox"><input id="format-text" type="checkbox" name="text"{{if .Settings.Text}} checked{{end}}> Enabled</label></span></div>
+    <div class="cds-setting-row"><span class="cds-setting-row__label"><label for="format-xmlfeeds">XML &amp; feeds (xml, rss, atom)</label></span><span class="cds-setting-row__control"><label class="cds-checkbox"><input id="format-xmlfeeds" type="checkbox" name="xmlfeeds"{{if .Settings.XMLFeeds}} checked{{end}}> Enabled</label></span></div>
+    <div class="cds-setting-row"><span class="cds-setting-row__label"><label for="format-pdf">PDF &amp; PostScript</label></span><span class="cds-setting-row__control"><label class="cds-checkbox"><input id="format-pdf" type="checkbox" name="pdf"{{if .Settings.PDF}} checked{{end}}> Enabled</label></span></div>
+    <div class="cds-setting-row"><span class="cds-setting-row__label"><label for="format-office">Office (OOXML, OpenDocument, legacy Office, Visio, FreeMind)</label></span><span class="cds-setting-row__control"><label class="cds-checkbox"><input id="format-office" type="checkbox" name="office"{{if .Settings.Office}} checked{{end}}> Enabled</label></span></div>
+    <div class="cds-setting-row"><span class="cds-setting-row__label"><label for="format-images">Images (metadata only, no OCR)</label></span><span class="cds-setting-row__control"><label class="cds-checkbox"><input id="format-images" type="checkbox" name="images"{{if .Settings.Images}} checked{{end}}> Enabled</label></span></div>
+    <div class="cds-setting-row"><span class="cds-setting-row__label"><label for="format-audio">Audio (tags only, no transcription)</label></span><span class="cds-setting-row__control"><label class="cds-checkbox"><input id="format-audio" type="checkbox" name="audio"{{if .Settings.Audio}} checked{{end}}> Enabled</label></span></div>
+    <div class="cds-setting-row"><span class="cds-setting-row__label"><label for="format-misc">vCard, torrent, APK</label></span><span class="cds-setting-row__control"><label class="cds-checkbox"><input id="format-misc" type="checkbox" name="misc"{{if .Settings.Misc}} checked{{end}}> Enabled</label></span></div>
+    <div class="cds-setting-row"><span class="cds-setting-row__label"><label for="format-archives">Archives (zip, jar, epub, tar, gz, bz2, xz) — security risk</label></span><span class="cds-setting-row__control"><label class="cds-checkbox"><input id="format-archives" type="checkbox" name="archives"{{if .Settings.Archives}} checked{{end}}> Enabled</label></span></div>
+  </fieldset>
+  <button class="cds-btn" type="submit">Save format settings</button>
+</form>
+{{end}}

@@ -36,8 +36,8 @@ const (
 	defaultWebFallbackTimeout      = 10 * time.Second
 	defaultWebFallbackSafeSearch   = "moderate"
 	defaultWebFallbackCacheTTL     = 5 * time.Minute
-	defaultWebFallbackSeedDepth    = 1
-	defaultWebFallbackSeedMaxPages = 20
+	defaultWebFallbackSeedDepth    = 5
+	defaultWebFallbackSeedMaxPages = 250
 	minWebFallbackResults          = 1
 	maxWebFallbackResults          = 20
 	maxWebFallbackSeedDepth        = 8

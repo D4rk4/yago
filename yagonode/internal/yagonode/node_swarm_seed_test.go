@@ -99,6 +99,9 @@ func TestNewCrawlSeederAppliesAutocrawlerProfileBounds(t *testing.T) {
 	if len(queue.orders) != 1 {
 		t.Fatalf("published %d orders, want 1", len(queue.orders))
 	}
+	if queue.orders[0].Priority != yagocrawlcontract.CrawlOrderPriorityAutomaticDiscovery {
+		t.Fatalf("order priority = %q, want automatic discovery", queue.orders[0].Priority)
+	}
 	profile := queue.orders[0].Profile
 	if profile.MaxDepth != 3 || profile.MaxPagesPerHost != 75 {
 		t.Fatalf("autocrawler profile bounds = depth %d / %d pages, want 3 / 75",

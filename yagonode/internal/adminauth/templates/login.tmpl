@@ -4,23 +4,49 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Sign in — yago admin</title>
+<title>Sign in — YaGo Admin</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="stylesheet" href="/admin/auth.css">
+<link rel="stylesheet" href="{{.Stylesheet}}">
 </head>
-<body>
-<div class="card">
-  <h1 class="brand"><b>yago</b> admin</h1>
-  {{if .Notice}}<div class="notice" role="status">{{.Notice}}</div>{{end}}
-  {{if .Error}}<div class="err" role="alert">{{.Error}}</div>{{end}}
-  <form method="post" action="/admin/login">
-    <label for="u">Username</label>
-    <input id="u" name="username" autocomplete="username" autofocus required>
-    <label for="p">Password</label>
-    <input id="p" name="password" type="password" autocomplete="current-password" required>
-    <button type="submit">Sign in</button>
-  </form>
-  <div class="foot">yago — free software under the GNU AGPL v3.</div>
-</div>
+<body class="login-page">
+<main class="login-shell">
+  <h1 class="sr-only">Sign in to YaGo Admin</h1>
+  <section class="login-brand" aria-label="YaGo">
+    <div class="login-brand__mark"><span>Ya</span><b>Go</b></div>
+    <div class="login-brand__product">peer-to-peer search</div>
+  </section>
+  <header class="login-product" aria-label="Product">
+    <strong>YaGo Search</strong>
+    <span>OpenSource Search Engine</span>
+  </header>
+  <section class="login-dialog" aria-label="Administrator sign in">
+    <div class="login-dialog__content">
+      {{if .Notice}}<div class="notice" role="status">{{.Notice}}</div>{{end}}
+      {{if .Error}}<div class="err" role="alert">{{.Error}}</div>{{end}}
+      <form class="login-form" method="post" action="/admin/login">
+        <div class="login-form__row">
+          <label for="u">Login:</label>
+          <input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required>
+        </div>
+        <div class="login-form__row login-form__row--password">
+          <label for="p">Password:</label>
+          <input id="p" name="password" type="password" autocomplete="current-password" required>
+          <button type="submit" aria-label="Sign in">GO</button>
+        </div>
+      </form>
+    </div>
+  </section>
+  <aside class="login-status" aria-label="Node status">
+    <h2>{{.LoginNodeStatus.NodeName}}</h2>
+    <dl>
+      <div><dt>Swarm address</dt><dd>{{.LoginNodeStatus.SwarmAddress}}</dd></div>
+      <div><dt>Processors</dt><dd><span>{{.LoginNodeStatus.ProcessorModel}}</span><span>{{.LoginNodeStatus.ProcessorCount}}</span></dd></div>
+      <div><dt>Memory</dt><dd>{{.LoginNodeStatus.MemoryCapacity}}</dd></div>
+      <div><dt>Data storage free</dt><dd>{{.LoginNodeStatus.DataFreeSpace}}</dd></div>
+    </dl>
+    <div class="login-status__release">YaGo {{.LoginNodeStatus.Version}}</div>
+    <div>Node uptime: {{.LoginNodeStatus.Uptime}}</div>
+  </aside>
+</main>
 </body>
 </html>{{end}}

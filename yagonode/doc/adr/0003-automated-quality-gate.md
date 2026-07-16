@@ -16,9 +16,10 @@ coverage, and that behaves identically on every machine.
 ## Decision
 
 `make verify` is the single gate. It runs across `yagonode`, `yagocrawler`,
-`yagocrawlcontract`, `yagomodel`, `yagoproto`, and `yagoegress`: a formatting check, `go vet`,
-lint, an architecture-boundary check, race-enabled tests, exact coverage, and a build. A change
-is not done until it is green.
+`yagocrawlcontract`, `yagomodel`, `yagoproto`, and `yagoegress`: a non-mutating
+`go mod tidy -diff` check, formatting, `go vet`, lint, an architecture-boundary
+check, race-enabled tests, exact coverage, and a build. A change is not done
+until it is green.
 
 - **Boundaries** are checked by `go-arch-lint` (`.go-arch-lint.yml`, version 3), which declares
   the `api`, `core`, `infrastructure`, and `cmd` components and the allowed dependencies
@@ -38,6 +39,11 @@ is not done until it is green.
 Both tools are pinned with platform checksums in `tools/tools.lock`, so `make verify` runs the
 recorded versions from `.toolchain/bin` regardless of `PATH`, per the version-pinning rule in
 `AGENTS.md`.
+
+The module check runs the Go toolchain declared by the workspace and fails when
+either `go.mod` or `go.sum` is not the deterministic result of `go mod tidy`.
+`make tidy` remains the explicit mutating repair command; verification never
+rewrites the worktree.
 
 ## Consequences
 

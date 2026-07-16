@@ -5,11 +5,16 @@ import (
 	"log/slog"
 )
 
+type crawlerLifecycle struct {
+	worker      crawlWorker
+	consumer    orderConsumer
+	progress    crawlerProgressCloser
+	concurrency *workerConcurrency
+}
+
 func runCrawlerLifecycle(
 	ctx context.Context,
-	worker crawlWorker,
-	consumer orderConsumer,
-	progress crawlerProgressCloser,
+	lifecycle crawlerLifecycle,
 	config ServiceConfig,
 ) {
 	slog.InfoContext(ctx, "crawler started",
@@ -17,7 +22,13 @@ func runCrawlerLifecycle(
 		slog.String("workerId", config.WorkerID),
 		slog.Int("workers", config.Crawl.Workers),
 	)
-	superviseCrawl(ctx, worker, consumer, config.Crawl.Workers, config.ShutdownGrace)
-	closeCrawlerProgress(ctx, progress, config.ShutdownGrace)
+	superviseCrawlWithConcurrency(
+		ctx,
+		lifecycle.worker,
+		lifecycle.consumer,
+		lifecycle.concurrency,
+		config.ShutdownGrace,
+	)
+	closeCrawlerProgress(ctx, lifecycle.progress, config.ShutdownGrace)
 	slog.InfoContext(ctx, "crawler stopped")
 }

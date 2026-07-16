@@ -5,7 +5,7 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
@@ -18,8 +18,33 @@ jobs:
 
       - name: Verify tag belongs to main
         run: |
+          printf '%s\n' "$GITHUB_REF_NAME" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           git fetch --no-tags origin main:refs/remotes/origin/main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Verify human-authored release notes
+        run: |
+          notes="doc/releases/${GITHUB_REF_NAME}.md"
+          test -f "$notes"
+          test "$(grep -c '^<!--more-->$' "$notes")" -eq 1
+          test "$(sed -n '1p' "$notes")" = '## Abstract'
+          abstract_words=$(awk '
+            /^<!--more-->$/ { print words; found = 1; exit }
+            NR > 1 { words += NF }
+            END { if (!found) exit 1 }
+          ' "$notes")
+          test "$abstract_words" -ge 1
+          test "$abstract_words" -le 120
+          grep '^## ' "$notes" > /tmp/release-headings
+          diff -u - /tmp/release-headings <<'EOF'
+          ## Abstract
+          ## Release identity
+          ## Changes
+          ## Compatibility
+          ## Upgrade and rollback
+          ## Verification
+          ## Known limitations
+          EOF
 
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
@@ -41,6 +66,11 @@ jobs:
   build:
     needs: verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     strategy:
       matrix:
         goarch: [amd64, arm64]
@@ -58,7 +88,7 @@ jobs:
           CGO_ENABLED: "0"
           GOARCH: ${{ matrix.goarch }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${GITHUB_REF_NAME}"
           node_pkg="github.com/D4rk4/yago/yagonode/internal/yagonode"
           mkdir -p dist/${GOARCH}
           go build -trimpath -ldflags="-s -w -X ${node_pkg}.buildVersion=${version}" \
@@ -68,8 +98,8 @@ jobs:
 
       - name: Package tarball
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          tar -czf "dist/yago_${version}_linux_${{ matrix.goarch }}.tar.gz" \
+          package_version="${GITHUB_REF_NAME#v}"
+          tar -czf "dist/yago_${package_version}_linux_${{ matrix.goarch }}.tar.gz" \
             -C dist/${{ matrix.goarch }} yago-node yagocrawler \
             -C ../.. deploy/install.sh deploy/systemd doc/backup-restore.md
 
@@ -94,8 +124,8 @@ jobs:
                 test "$(dpkg-query -W -f="\${Version}" yago)" = "$2"
                 dpkg-query -W -f="\${Depends}" yago | grep -q ca-certificates
                 dpkg-query -W -f="\${Recommends}" yago | grep -q firefox
-                test "$(/opt/yago/bin/yago-node --version)" = "yago-node $2"
-                test "$(/opt/yago/bin/yagocrawler --version)" = "yago-crawler $2"
+                test "$(/opt/yago/bin/yago-node --version)" = "yago-node v$2"
+                test "$(/opt/yago/bin/yagocrawler --version)" = "yago-crawler v$2"
                 dpkg -P yago >/dev/null
                 test -d /opt/yago/data
                 echo "  OK ${1##*/}"
@@ -125,14 +155,22 @@ jobs:
                 test "$(rpm -q --qf "%{VERSION}" yago)" = "$2"
                 rpm -q --requires yago | grep -q ca-certificates
                 rpm -q --recommends yago | grep -q firefox
-                test "$(/opt/yago/bin/yago-node --version)" = "yago-node $2"
-                test "$(/opt/yago/bin/yagocrawler --version)" = "yago-crawler $2"
+                test "$(/opt/yago/bin/yago-node --version)" = "yago-node v$2"
+                test "$(/opt/yago/bin/yagocrawler --version)" = "yago-crawler v$2"
                 rpm -e yago
                 test -d /opt/yago/data
                 echo "  OK ${1##*/}"
               ' sh "$rpm_path" "$version"
             echo "::endgroup::"
           done
+
+      - name: Attest release artifacts
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
 
       - name: Upload artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -146,6 +184,9 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      attestations: read
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -158,22 +199,22 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Generate release notes from commits
+      - name: Verify artifact attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          previous=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
-          {
-            echo "## Changes"
-            echo
-            if [ -n "$previous" ]; then
-              git log --format='- %s' "${previous}..${GITHUB_REF_NAME}" | grep -v '^- Co-Authored' || true
-            else
-              git log --format='- %s' "${GITHUB_REF_NAME}" | grep -v '^- Co-Authored' | head -500
-            fi
-          } > notes.md
+          for artifact in dist/*; do
+            gh attestation verify "$artifact" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --source-ref "$GITHUB_REF" \
+              --source-digest "$GITHUB_SHA"
+          done
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
-            --title "$GITHUB_REF_NAME" --notes-file notes.md
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "doc/releases/${GITHUB_REF_NAME}.md"

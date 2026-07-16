@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -9,8 +11,11 @@ func TestDefaultUserAgentCarriesBuildVersion(t *testing.T) {
 	if version == "" {
 		t.Fatal("build version must not be empty")
 	}
-	if version == "0.1" {
-		t.Fatal("build version must be the calendar brand version, not the old stub")
+	versionPattern := regexp.MustCompile(
+		`^(?:v[0-9]+\.[0-9]+\.[0-9]+|[0-9]{4}\.[0-9]{2}\.[0-9]{2}-dev)$`,
+	)
+	if !versionPattern.MatchString(version) {
+		t.Fatalf("build version %q must use vN.N.N or YYYY.MM.DD-dev", version)
 	}
 	want := "yago-crawler/" + version + " (+https://github.com/D4rk4/yago/)"
 	if DefaultUserAgent != want {
@@ -18,6 +23,27 @@ func TestDefaultUserAgentCarriesBuildVersion(t *testing.T) {
 	}
 	if !strings.Contains(DefaultUserAgent, version) {
 		t.Fatalf("user agent %q does not carry the version", DefaultUserAgent)
+	}
+}
+
+func TestCrawlerContainerRequiresCallerStampedBuildIdentity(t *testing.T) {
+	contents, err := os.ReadFile("../../Dockerfile")
+	if err != nil {
+		t.Fatalf("read Dockerfile: %v", err)
+	}
+	text := string(contents)
+	for _, required := range []string{
+		`ARG VERSION=`,
+		`set -eu;`,
+		`[0-9]{4}\.[0-9]{2}\.[0-9]{2}-dev`,
+		`main.version=${VERSION}`,
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("Dockerfile missing %q", required)
+		}
+	}
+	if strings.Contains(text, `date -u`) {
+		t.Fatal("Dockerfile derives a cacheable build date internally")
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -28,9 +29,10 @@ var (
 // bytes to redeliver, the owning worker, and the deadline past which the lease
 // is reclaimable.
 type leaseRecord struct {
-	OrderData         []byte `json:"order"`
-	WorkerID          string `json:"worker"`
-	ExpiresAtUnixNano int64  `json:"expires"`
+	OrderData         []byte                               `json:"order"`
+	Priority          yagocrawlcontract.CrawlOrderPriority `json:"priority,omitempty"`
+	WorkerID          string                               `json:"worker"`
+	ExpiresAtUnixNano int64                                `json:"expires"`
 }
 
 type leaseRecordCodec struct{}
@@ -91,30 +93,35 @@ func (q *DurableOrderQueue) leasePop(
 		return nil, "", false, err
 	}
 
-	var data []byte
-	var key vault.Key
+	var selected pendingOrderHead
 	found := false
 	err = q.vault.Update(ctx, func(tx *vault.Txn) error {
-		data = nil
-		key = nil
+		selected = pendingOrderHead{}
 		found = false
-		if err := q.orders.Scan(tx, nil, func(k vault.Key, v []byte) (bool, error) {
-			key = k
-			data = append([]byte(nil), v...)
-			found = true
-
-			return false, nil
-		}); err != nil {
-			return fmt.Errorf("scan crawl orders: %w", err)
+		var updateBurst bool
+		var nextBurst uint64
+		selected, nextBurst, updateBurst, err = q.selectPendingOrder(tx)
+		if err != nil {
+			return err
 		}
-		if !found {
+		found = selected.found
+		if !selected.found {
 			return nil
 		}
-		if _, err := q.orders.Delete(tx, key); err != nil {
+		if updateBurst {
+			if err := q.seq.Put(tx, priorityBurstKey, nextBurst); err != nil {
+				return fmt.Errorf("store automatic crawl burst: %w", err)
+			}
+		}
+		if _, err := q.orders.Delete(tx, selected.key); err != nil {
 			return fmt.Errorf("delete crawl order: %w", err)
 		}
+		if _, err := selected.index.Delete(tx, selected.key); err != nil {
+			return fmt.Errorf("delete crawl order priority: %w", err)
+		}
 		record := leaseRecord{
-			OrderData:         data,
+			OrderData:         selected.data,
+			Priority:          orderPriority(selected.automatic),
 			WorkerID:          workerID,
 			ExpiresAtUnixNano: nowFunc().Add(q.leaseTTL).UnixNano(),
 		}
@@ -128,7 +135,7 @@ func (q *DurableOrderQueue) leasePop(
 		return nil, "", false, fmt.Errorf("lease crawl order: %w", err)
 	}
 
-	return data, leaseID, found, nil
+	return selected.data, leaseID, found, nil
 }
 
 // ackLease settles a lease by deleting the order. Acking an unknown lease is a
@@ -162,7 +169,8 @@ func (q *DurableOrderQueue) requeueLease(ctx context.Context, leaseID string) er
 		if _, err := q.leases.Delete(tx, vault.Key(leaseID)); err != nil {
 			return fmt.Errorf("delete crawl lease: %w", err)
 		}
-		if _, err := q.enqueueTx(tx, record.OrderData); err != nil {
+		priority := persistedOrderPriority(record.OrderData, record.Priority)
+		if _, err := q.enqueueTx(tx, record.OrderData, priority); err != nil {
 			return err
 		}
 		requeued = true
@@ -264,10 +272,15 @@ func (q *DurableOrderQueue) requeueLeasesMatching(
 		requeued = false
 		var keys []vault.Key
 		var payloads [][]byte
+		var priorities []yagocrawlcontract.CrawlOrderPriority
 		if err := q.leases.Scan(tx, nil, func(k vault.Key, record leaseRecord) (bool, error) {
 			if match(record) {
 				keys = append(keys, k)
 				payloads = append(payloads, record.OrderData)
+				priorities = append(
+					priorities,
+					persistedOrderPriority(record.OrderData, record.Priority),
+				)
 			}
 
 			return true, nil
@@ -278,7 +291,7 @@ func (q *DurableOrderQueue) requeueLeasesMatching(
 			if _, err := q.leases.Delete(tx, key); err != nil {
 				return fmt.Errorf("delete crawl lease: %w", err)
 			}
-			if _, err := q.enqueueTx(tx, payloads[i]); err != nil {
+			if _, err := q.enqueueTx(tx, payloads[i], priorities[i]); err != nil {
 				return err
 			}
 			requeued = true

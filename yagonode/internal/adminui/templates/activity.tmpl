@@ -27,13 +27,13 @@
   </table>
 </div>
 {{end}}
-<h2 class="cds-h2">Recent searches</h2>
+<h2 id="recent-searches" class="cds-h2">Recent searches</h2>
 <div class="cds-scroll-x">
   <table class="cds-table">
     <thead><tr><th scope="col">Time (UTC)</th>{{if eq .Activity.Mode "full"}}<th scope="col">Query</th>{{end}}<th scope="col">Length</th><th scope="col">Terms</th><th scope="col">Search-window upper bound</th><th scope="col">Took</th><th scope="col">Scope</th></tr></thead>
     <tbody>
       {{$full := eq .Activity.Mode "full"}}
-      {{range .Activity.Entries}}
+      {{range .Pagination.Entries}}
       <tr>
         <td class="cds-mono">{{.Time}}</td>
         {{if $full}}<td>{{.Query}}</td>{{end}}
@@ -49,4 +49,13 @@
     </tbody>
   </table>
 </div>
+{{with .Pagination}}
+{{if gt .Pages 1}}
+<nav class="cds-pager" aria-label="Search activity pages">
+  {{if .HasPrev}}<a rel="prev" href="{{.PrevURL}}">‹ Previous</a>{{end}}
+  <span class="cds-muted">Page {{.Page}} of {{.Pages}} · recent searches {{.Start}}–{{.End}} of {{.Total}}</span>
+  {{if .HasNext}}<a rel="next" href="{{.NextURL}}">Next ›</a>{{end}}
+</nav>
+{{end}}
+{{end}}
 {{end}}

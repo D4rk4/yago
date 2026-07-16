@@ -164,6 +164,12 @@ dependence, content quality, temporal authority, federation support, or a small
 cross-family relevance-quality set. A tree can use multiple features from its
 selected family, preserving bounded, inspectable interactions.
 
+Federated serving evaluates only locally stored candidates until representative
+peer and web judgments exist. The model permutes those documents among the local
+slots established by reciprocal-rank fusion. Each selected document inherits the
+bounded pre-model relevance of its destination slot for final MMR diversity, so
+an arbitrary raw model scale cannot promote or demote peer and web slots.
+
 The vault stores the active revision and eight rollback revisions. Status and
 snapshot are read as one atomic catalog view. Promotion uses compare-and-swap
 activation, so a model cannot replace an incumbent that changed during training.

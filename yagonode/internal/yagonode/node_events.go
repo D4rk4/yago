@@ -21,6 +21,7 @@ type runtimeObservability struct {
 	peer         *metrics.PeerMetrics
 	search       *metrics.SearchMetrics
 	crawl        *metrics.CrawlMetrics
+	indexWrites  *metrics.SearchIndexWriteMetrics
 	crawlRuns    *metrics.CrawlRunMetrics
 	saturation   *metrics.SaturationMetrics
 	recorder     *events.Recorder
@@ -55,6 +56,7 @@ func provisionObservability(
 		saturation:   saturation,
 		search:       metrics.NewSearchMetrics(endpoints.Registry()),
 		crawl:        metrics.NewCrawlMetrics(endpoints.Registry()),
+		indexWrites:  metrics.NewSearchIndexWriteMetrics(endpoints.Registry()),
 		crawlRuns:    metrics.NewCrawlRunMetrics(endpoints.Registry()),
 		recorder:     recorder,
 		persistence:  persistence,

@@ -1,6 +1,10 @@
 package yagonode
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
+)
 
 func TestLoadCrawlConfigDefaultsToLoopbackWhenUnset(t *testing.T) {
 	cfg, err := loadCrawlConfig(func(string) string { return "" })
@@ -15,6 +19,13 @@ func TestLoadCrawlConfigDefaultsToLoopbackWhenUnset(t *testing.T) {
 	}
 	if !cfg.QualityGate {
 		t.Fatal("quality gate must default on")
+	}
+	if cfg.FetchWorkers != yagocrawlcontract.DefaultFetchWorkerConcurrency {
+		t.Fatalf("fetch workers = %d, want %d", cfg.FetchWorkers,
+			yagocrawlcontract.DefaultFetchWorkerConcurrency)
+	}
+	if !cfg.PrioritizeAutomaticDiscovery {
+		t.Fatal("automatic discovery priority must default on")
 	}
 }
 
@@ -52,5 +63,31 @@ func TestLoadCrawlConfigRejectsBadQualityGateValue(t *testing.T) {
 	env := map[string]string{envIngestQualityGate: "maybe"}
 	if _, err := loadCrawlConfig(func(k string) string { return env[k] }); err == nil {
 		t.Fatal("expected bad bool error")
+	}
+}
+
+func TestLoadCrawlConfigReadsCrawlerRuntimeSettings(t *testing.T) {
+	env := map[string]string{
+		envCrawlerWorkers:               "20",
+		envPrioritizeAutomaticDiscovery: "false",
+	}
+	config, err := loadCrawlConfig(func(key string) string { return env[key] })
+	if err != nil {
+		t.Fatalf("load crawl config: %v", err)
+	}
+	if config.FetchWorkers != 20 || config.PrioritizeAutomaticDiscovery {
+		t.Fatalf("crawler runtime settings = %+v", config)
+	}
+}
+
+func TestLoadCrawlConfigRejectsInvalidCrawlerRuntimeSettings(t *testing.T) {
+	for key, value := range map[string]string{
+		envCrawlerWorkers:               "257",
+		envPrioritizeAutomaticDiscovery: "sometimes",
+	} {
+		env := map[string]string{key: value}
+		if _, err := loadCrawlConfig(func(name string) string { return env[name] }); err == nil {
+			t.Fatalf("expected %s=%q to fail", key, value)
+		}
 	}
 }
