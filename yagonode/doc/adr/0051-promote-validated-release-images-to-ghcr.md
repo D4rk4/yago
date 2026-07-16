@@ -59,39 +59,42 @@ both the semantic-version tag and its recorded digest for both products.
 
 ## Historical release container backfill
 
-Release v0.0.10 uses a temporary `workflow_dispatch` path from `main` because
-the workflow stored in its historical tag cannot react to a trigger added
-later. The path has no caller-supplied release selection. It accepts only
+Release v0.0.10 used a temporary `workflow_dispatch` path from `main` because
+the workflow stored in its historical tag could not react to a trigger added
+later. The path had no caller-supplied release selection. It accepted only
 release ID 355175485, tag `v0.0.10`, ref `refs/tags/v0.0.10`, annotated tag
 object `09ca7be1b1e5065155111479c9213bd0566801d8`, and source commit
-`9bcc0bde61364c8248fba7f452c19f2446c72898`. It verifies the published release
+`9bcc0bde61364c8248fba7f452c19f2446c72898`. It verified the published release
 record, both Git objects, and main ancestry before checking out the historical
-source. Package construction and GitHub Release creation remain disabled. The
+source. Package construction and GitHub Release creation remained disabled. The
 second attempt of backfill run 29520082413 completed `make verify` and both
-native container jobs; the repair path pins that validation attempt, its workflow commit, successful job
-identities, and unexpired checksum-protected image artifacts. Publication and
-evidence tooling come from the current workflow-definition commit.
+native container jobs; the repair path pinned that validation attempt, its
+workflow commit, successful job identities, and unexpired checksum-protected
+image artifacts. Publication and evidence tooling came from the final repair
+workflow-definition commit.
 
-The backfill attestation certificate truthfully identifies the current
+The successful backfill attestation certificate truthfully identifies the
 `refs/heads/main` workflow invocation and its workflow-definition commit. Each
-manifest receives GitHub's standard SLSA provenance with the supported GitHub
+manifest received GitHub's standard SLSA provenance with the supported GitHub
 Actions workflow build type and a separate project-specific identity
 attestation containing the exact release, tag object, historical source,
-current workflow, and completed validation run. Verification first constrains
+current workflow, and completed validation run. Verification first constrained
 both signed certificates to the current workflow ref, source commit, signer
 workflow, and hosted runner. It then checks the standard provenance subject,
-workflow, builder, and invocation and the complete identity predicate. It never
-represents the current workflow invocation as a historical tag event.
+workflow, builder, and invocation and the complete identity predicate. It did
+not represent the current workflow invocation as a historical tag event.
 
 The project-specific predicate type is the immutable workflow-commit permalink
 of `doc/release-container-identity-v1.md`. Keeping the type URI within GitHub's
 accepted length bound is part of the release-workflow contract.
 
-The backfill does not rebuild packages, recreate the GitHub Release, move the
+The backfill did not rebuild packages, recreate the GitHub Release, move the
 tag, replace an existing release manifest, or create a mutable alias. The
-release memo receives a clearly dated factual correction only after public
+release memo received a clearly dated factual correction only after public
 pulls, digests, platforms, labels, versions, and attestations have been
-verified; the temporary dispatch path is then removed.
+verified. Run 29525608480 completed those gates at workflow commit
+`fc40ab5bb62de50b060a82874919c49ad429652f`; the temporary dispatch path was
+then removed, leaving tag pushes as the only release trigger.
 
 ## Considered alternatives
 

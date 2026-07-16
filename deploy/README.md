@@ -282,17 +282,16 @@ separate from the six GitHub Release file assets.
 The complete `vX.Y.Z` tag is the only operator-facing image reference;
 immutable `vX.Y.Z-amd64` and `vX.Y.Z-arm64` staging references exist only to
 compose the manifest list. CI does not create `latest`, major-only, minor-only, branch,
-or date aliases. The one-time v0.0.10 backfill uses a `workflow_dispatch` run
-from `main` with its release ID, tag, tag ref, annotated tag object, and source
-commit fixed in the workflow. It verifies that identity and main ancestry,
-then checks out the historical source while package construction and GitHub
-Release creation remain disabled. It cannot move the tag, replace an existing
-release manifest, rebuild package assets, or recreate the GitHub Release. Its
-repair path consumes only the pinned successful native-validation artifacts
-from its first run. Standard GitHub Actions provenance records the current
-workflow invocation, while a separate signed identity predicate records the
-historical release, tag object, source, and validation run. Build development images locally with
-`make compose-images`.
+or date aliases. The one-time v0.0.10 backfill used a temporary
+`workflow_dispatch` run from `main`. It was fixed to the exact release ID, tag
+ref, tag object, source commit, successful validation jobs, and image artifact
+digests. Package construction and GitHub Release creation remained disabled;
+the path could not move the tag, replace an existing manifest, rebuild package
+assets, or recreate the release. Standard GitHub Actions provenance recorded
+the repair invocation, while a separate signed identity predicate recorded the
+historical release and validation. The temporary trigger was removed after
+public pulls and both evidence types passed. Build development images locally
+with `make compose-images`.
 
 ## Published container images
 

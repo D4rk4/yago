@@ -111,54 +111,42 @@ set -- v0.0.10 "$SOURCE_REVISION" "$ARCHIVE_DIRECTORY"
 . ../../../deploy/publish-release-containers.sh
 `
 
-func TestReleaseContainerBackfillIsBoundToImmutableV0010(t *testing.T) {
+func TestReleaseWorkflowHasOnlyTagPushTrigger(t *testing.T) {
 	contents, err := os.ReadFile("../../../.github/workflows/release.yml")
 	if err != nil {
 		t.Fatalf("read release workflow: %v", err)
 	}
 	text := string(contents)
 	for _, required := range []string{
-		`workflow_dispatch:`,
-		"permissions:\n  actions: read\n  contents: read",
-		"permissions:\n      actions: read\n      contents: read\n      packages: write",
-		`RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && 'v0.0.10' || github.ref_name }}`,
-		`RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && 'refs/tags/v0.0.10' || github.ref }}`,
-		`RELEASE_TAG_OBJECT: ${{ github.event_name == 'workflow_dispatch' && '09ca7be1b1e5065155111479c9213bd0566801d8' || '' }}`,
-		`RELEASE_SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && '9bcc0bde61364c8248fba7f452c19f2446c72898' || github.sha }}`,
-		`BACKFILL_VALIDATION_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && '29520082413' || '' }}`,
-		`BACKFILL_VALIDATION_SHA: ${{ github.event_name == 'workflow_dispatch' && '0873557bc6b77f04457e9a65114154cc618c991c' || '' }}`,
-		`test "$GITHUB_REF" = refs/heads/main`,
-		`test "$GITHUB_SHA" = "$GITHUB_WORKFLOW_SHA"`,
-		`gh api "/repos/${GITHUB_REPOSITORY}/releases/355175485"`,
-		`git fetch --force origin "$RELEASE_REF:$RELEASE_REF"`,
-		`test "$(git cat-file -t "$RELEASE_TAG")" = tag`,
-		`test "$(git rev-parse "$RELEASE_TAG")" = "$RELEASE_TAG_OBJECT"`,
-		`test "$(git rev-parse "${RELEASE_TAG}^{}")" = "$RELEASE_SOURCE_SHA"`,
-		`git merge-base --is-ancestor "$RELEASE_SOURCE_SHA" origin/main`,
+		"on:\n  push:\n    tags: [\"v*\"]",
+		`RELEASE_TAG: ${{ github.ref_name }}`,
+		`RELEASE_REF: ${{ github.ref }}`,
+		`RELEASE_SOURCE_SHA: ${{ github.sha }}`,
+		`test "$GITHUB_REF" = "$RELEASE_REF"`,
+		`test "$GITHUB_SHA" = "$RELEASE_SOURCE_SHA"`,
 		`ref: ${{ env.RELEASE_SOURCE_SHA }}`,
-		`Verify completed historical validation`,
-		`actions/runs/${BACKFILL_VALIDATION_RUN_ID}/attempts/2/jobs?per_page=100`,
-		`(.id == 87696337116) and (.name == "verify")`,
-		`(.id == 87698690209)`,
-		`(.id == 87698690511)`,
-		`(.id == 8384841304) and (.name == "release-containers-amd64")`,
-		`(.id == 8384836062) and (.name == "release-containers-arm64")`,
-		`(.total_count == 2) and (.artifacts | length == 2)`,
-		`sha256:2336bc9c48e684dd44c50ffe61ca11f6fa98a02fd647e20d7ba8515b8ff8c41f`,
-		`sha256:fe4fee5f2e5abb0fa0b281bb8530ac4b5e47ceba36063366c3fcc6440be7c201`,
-		`Download validated historical release containers`,
-		`artifact-ids: 8384841304,8384836062`,
-		`run-id: 29520082413`,
-		`always() && !cancelled() && needs.verify.result == 'success'`,
-		`if: github.event_name == 'workflow_dispatch'`,
-		`if: github.event_name == 'push'`,
+		`needs: [build, containers]`,
+		`group: release-container-publish-${{ github.ref }}`,
+		`needs: [build, container_publish]`,
 	} {
 		if !strings.Contains(text, required) {
-			t.Fatalf("release backfill guard missing %q", required)
+			t.Fatalf("release tag workflow guard missing %q", required)
 		}
 	}
-	if strings.Contains(text, `types: [edited]`) {
-		t.Fatal("release backfill depends on an event handled by the historical tag workflow")
+	for _, forbidden := range []string{
+		`workflow_dispatch`,
+		`types: [edited]`,
+		`BACKFILL_`,
+		`RELEASE_TAG_OBJECT`,
+		`historical`,
+		`v0.0.10`,
+		`355175485`,
+		`8384841304`,
+		`actions: read`,
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("release workflow retains temporary trigger evidence %q", forbidden)
+		}
 	}
 }
 
@@ -225,52 +213,45 @@ func TestReleaseContainerPublicationAttestsExactVersionManifests(t *testing.T) {
 	}
 }
 
-func TestHistoricalReleaseContainerPublicationBindsIdentityAndEvidence(t *testing.T) {
-	contents, err := os.ReadFile("../../../.github/workflows/release.yml")
+func TestReleaseV0010RecordsCompletedContainerBackfill(t *testing.T) {
+	contents, err := os.ReadFile("../../../doc/releases/v0.0.10.md")
 	if err != nil {
-		t.Fatalf("read release workflow: %v", err)
+		t.Fatalf("read release memo: %v", err)
 	}
 	text := string(contents)
-	publishStart := strings.Index(text, "\n  container_publish:\n")
-	if publishStart < 0 {
-		t.Fatal("release workflow does not define registry publication")
-	}
-	publishJob := text[publishStart:]
 	for _, required := range []string{
-		`Reverify historical release identity before publication`,
-		`test "$(printf '%s' "$release_json" | jq -r .published_at)" != null`,
-		`gh api "/repos/${GITHUB_REPOSITORY}/git/tags/${RELEASE_TAG_OBJECT}"`,
-		`test "$(printf '%s' "$tag_json" | jq -r .object.sha)" = "$RELEASE_SOURCE_SHA"`,
-		`git -C release-workflow ls-remote origin "$RELEASE_REF"`,
-		`Record historical release container identity`,
-		`historical-release-container-identity.json`,
-		`schemaVersion: 1`,
-		`runId: 29520082413`,
-		`definitionDigest: $validation_sha`,
-		`Attest historical node container provenance`,
-		`Attest historical crawler container provenance`,
-		`Attest historical node container identity`,
-		`Attest historical crawler container identity`,
-		`doc/release-container-identity-v1.md`,
-		`build_type="https://actions.github.io/buildtypes/workflow/v1"`,
-		`builder="https://github.com/${GITHUB_WORKFLOW_REF}"`,
-		`Verify historical manifest identities`,
+		`### Factual correction — 2026-07-16`,
+		`29525608480`,
+		`fc40ab5bb62de50b060a82874919c49ad429652f`,
+		`09ca7be1b1e5065155111479c9213bd0566801d8`,
+		`9bcc0bde61364c8248fba7f452c19f2446c72898`,
 		`sha256:b50c94fb17c498bbb185785efac9e03e9505384f7abb95ab8555f16a62d9f445`,
 		`sha256:82fc9336f3b7e2bf662ad978451df0410de08c64819ec6281d724580e58165cd`,
-		`Verify historical container manifest attestations`,
-		`--predicate-type https://slsa.dev/provenance/v1`,
-		`--predicate-type "$identity_type"`,
-		`--format json`,
-		`$statement.predicate.buildDefinition.externalParameters.workflow`,
-		`$statement.predicate.buildDefinition.internalParameters.github`,
-		`$statement.predicate.buildDefinition.resolvedDependencies[]`,
-		`$statement.predicate == {`,
-		`$statement.predicate.runDetails.builder.id == $builder`,
-		`$statement.predicate.runDetails.metadata.invocationId == $invocation`,
-		`group: release-container-publish-${{ github.event_name == 'workflow_dispatch' && 'refs/tags/v0.0.10' || github.ref }}`,
+		`sha256:ff5472dc9a2e9c936ee528ea7d3f743d811e66c8325b92f5935347f5306fe51c`,
+		`sha256:c3e8a2553456da6b1788b344d5f48660ae51d7d9b35166f18fbd815423ed1669`,
+		`sha256:cb0c8f216e4773d87da79a0e75885233a88abcc917c93a0d38064d9895d10802`,
+		`sha256:f5608032651e8e71e3979b4710822f8717afd6c6b823441200557a872477cfa4`,
+		`https://slsa.dev/provenance/v1`,
+		`doc/release-container-identity-v1.md`,
 	} {
-		if !strings.Contains(publishJob, required) {
-			t.Fatalf("historical release evidence guard missing %q", required)
+		if !strings.Contains(text, required) {
+			t.Fatalf("release correction missing %q", required)
+		}
+	}
+	schema, err := os.ReadFile("../../../doc/release-container-identity-v1.md")
+	if err != nil {
+		t.Fatalf("read historical identity schema: %v", err)
+	}
+	for _, required := range []string{
+		`# Release container identity v1`,
+		"`schemaVersion`: integer `1`",
+		"`release`:",
+		"`workflow`:",
+		"`validation`:",
+		"`manifests`:",
+	} {
+		if !strings.Contains(string(schema), required) {
+			t.Fatalf("historical identity schema missing %q", required)
 		}
 	}
 	identityType := "https://github.com/D4rk4/yago/blob/" + strings.Repeat(
@@ -279,11 +260,6 @@ func TestHistoricalReleaseContainerPublicationBindsIdentityAndEvidence(t *testin
 	) + "/doc/release-container-identity-v1.md"
 	if len(identityType) > 128 {
 		t.Fatalf("historical identity predicate type length = %d", len(identityType))
-	}
-	identity := strings.Index(publishJob, `Reverify historical release identity before publication`)
-	if strings.Index(publishJob, `Download validated historical release containers`) > identity ||
-		identity > strings.Index(publishJob, `Log in to GitHub Container Registry`) {
-		t.Fatal("release workflow does not reverify historical identity before publication")
 	}
 }
 
