@@ -181,8 +181,27 @@ jobs:
             dist/*.deb
             dist/*.rpm
 
+  containers:
+    needs: verify
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: amd64
+            runner: ubuntu-24.04
+          - architecture: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Build, smoke-test, and scan release containers
+        run: sh deploy/verify-release-containers.sh "$GITHUB_REF_NAME" "$GITHUB_SHA" "${{ matrix.architecture }}"
+
   release:
-    needs: build
+    needs: [build, containers]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -156,6 +156,96 @@ func TestReleaseWorkflowRequiresExactSemanticTag(t *testing.T) {
 	}
 }
 
+func TestReleaseContainerWorkflowBlocksPublication(t *testing.T) {
+	contents, err := os.ReadFile("../../../.github/workflows/release.yml")
+	if err != nil {
+		t.Fatalf("read release workflow: %v", err)
+	}
+	text := string(contents)
+	containerStart := strings.Index(text, "\n  containers:\n")
+	releaseStart := strings.Index(text, "\n  release:\n")
+	if containerStart < 0 || releaseStart <= containerStart {
+		t.Fatal("release workflow does not define containers before release")
+	}
+	containerJob := text[containerStart:releaseStart]
+	for _, required := range []string{
+		`needs: verify`,
+		`runner: ubuntu-24.04`,
+		`runner: ubuntu-24.04-arm`,
+		`architecture: amd64`,
+		`architecture: arm64`,
+		`sh deploy/verify-release-containers.sh "$GITHUB_REF_NAME" "$GITHUB_SHA"`,
+	} {
+		if !strings.Contains(containerJob, required) {
+			t.Fatalf("release container job missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		`docker push`,
+		`docker login`,
+		`--push`,
+		`upload-artifact`,
+		`actions/attest`,
+		`docker manifest`,
+		`skopeo copy`,
+		`oras push`,
+		`type=registry`,
+	} {
+		if strings.Contains(containerJob, forbidden) {
+			t.Fatalf("release container job contains publishing operation %q", forbidden)
+		}
+	}
+	if !strings.Contains(text[releaseStart:], `needs: [build, containers]`) {
+		t.Fatal("release publication does not depend on the container gate")
+	}
+}
+
+func TestReleaseContainerBuildGateStaysLocal(t *testing.T) {
+	script, err := os.ReadFile("../../../deploy/verify-release-containers.sh")
+	if err != nil {
+		t.Fatalf("read release container gate: %v", err)
+	}
+	scriptText := string(script)
+	for _, required := range []string{
+		`yago-node:${version}`,
+		`yago-crawler:${version}`,
+		`--platform "linux/${architecture}"`,
+		`--provenance=false`,
+		`SOURCE_REVISION=${source_revision}`,
+		`org.opencontainers.image.revision`,
+		`org.opencontainers.image.source`,
+		`/usr/bin/firefox-esr`,
+		`aquasec/trivy:0.72.0 image`,
+		`--image-src docker`,
+		`--scanners vuln,secret,misconfig`,
+		`--image-config-scanners secret,misconfig`,
+		`--exit-code 1`,
+		`--severity HIGH,CRITICAL`,
+	} {
+		if !strings.Contains(scriptText, required) {
+			t.Fatalf("release container gate missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		`docker push`,
+		`docker login`,
+		`--push`,
+		`upload-artifact`,
+		`actions/attest`,
+		`docker manifest`,
+		`skopeo copy`,
+		`oras push`,
+		`type=registry`,
+	} {
+		if strings.Contains(scriptText, forbidden) {
+			t.Fatalf("release container gate contains publishing operation %q", forbidden)
+		}
+	}
+	if strings.Count(scriptText, `--provenance=false`) != 2 {
+		t.Fatal("release container gate does not disable provenance for both builds")
+	}
+}
+
 func TestVerifyRejectsUntidyModules(t *testing.T) {
 	contents, err := os.ReadFile("../../../Makefile")
 	if err != nil {

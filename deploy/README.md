@@ -253,9 +253,16 @@ amd64 smoke tests; the release job verifies
 the downloaded artifact attestations before publication. Before tagging, commit the human-authored engineering memo as
 `doc/releases/vX.Y.Z.md`. The workflow verifies its Abstract length, read-more
 delimiter, and stable section order, then uses that exact memo for the GitHub
-Release; a missing or malformed memo stops publication. Container images are
-not published by CI; build them locally with `make compose-images` when a
-container deployment is wanted.
+Release; a missing or malformed memo stops publication. A blocking native
+Linux amd64/arm64 matrix builds both product containers with
+`VERSION=$GITHUB_REF_NAME` and `SOURCE_REVISION=$GITHUB_SHA`, verifies the
+Docker-reported architecture, OCI source and revision labels, exact binary
+versions, and bundled Firefox executable, then scans both images with Trivy
+0.72.0 for HIGH or CRITICAL vulnerabilities, secrets, and misconfigurations.
+The release job waits for every matrix member. These images are transient
+runner-local validation inputs: CI does not log in to a registry, push or
+upload them, create a registry manifest list, attest them, or attach them to the GitHub
+Release. Build deployment images locally with `make compose-images`.
 
 ## Container build provenance
 
@@ -264,8 +271,9 @@ SHA-256 digest. Base-image changes are therefore explicit source changes rather
 than mutable-tag resolution at build time. The readable tags remain beside the
 digests so operators can see the selected release.
 
-Set `SOURCE_REVISION` explicitly when building a source checkout. Compose passes
-it to both product images and each final image records it in the
+Release CI supplies `VERSION` and `SOURCE_REVISION` from the exact tag and
+source commit. Set `SOURCE_REVISION` explicitly when building another source
+checkout. Compose passes it to both product images and each final image records it in the
 `org.opencontainers.image.revision` label; the source repository is recorded in
 `org.opencontainers.image.source`.
 

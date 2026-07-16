@@ -248,6 +248,9 @@ its binaries (`yago-node`, `yagocrawler`).
 - Docker builds pin every builder and runtime base by digest. The node and
   crawler images carry OCI source and revision labels when the caller supplies
   `SOURCE_REVISION`, so two images can be traced to the same source commit.
+- Release tags build and smoke-test both product images natively on amd64 and
+  arm64, then reject HIGH or CRITICAL findings from the pinned Trivy image
+  scan. The runner-local images gate package publication but are not published.
 - Prometheus `/metrics` (RED/USE + saturation), burn-rate alert rules with an
   SLO doc, health/readiness endpoints, auth-gated pprof, trace-correlated
   structured logs (never secrets), and a durable event store fed through a
