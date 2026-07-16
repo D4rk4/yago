@@ -76,7 +76,7 @@ func TestStableWindowExtendsInBlocksAndReusesExpandedPrefix(t *testing.T) {
 	if page7.Results[0].Title != "result-60" {
 		t.Fatalf("page seven first = %q", page7.Results[0].Title)
 	}
-	if !reflect.DeepEqual(inner.limits, []int{sessionDepth, 100}) {
+	if !reflect.DeepEqual(inner.limits, []int{retrievalDepth(sessionDepth), retrievalDepth(100)}) {
 		t.Fatalf("search depths after page seven = %v", inner.limits)
 	}
 
@@ -87,7 +87,9 @@ func TestStableWindowExtendsInBlocksAndReusesExpandedPrefix(t *testing.T) {
 	if page50.Results[0].Title != "result-490" || page50.TotalResults != maxSessionDepth {
 		t.Fatalf("page fifty = total %d, first %q", page50.TotalResults, page50.Results[0].Title)
 	}
-	if !reflect.DeepEqual(inner.limits, []int{sessionDepth, 100, maxSessionDepth}) {
+	if !reflect.DeepEqual(inner.limits, []int{
+		retrievalDepth(sessionDepth), retrievalDepth(100), maxSessionDepth,
+	}) {
 		t.Fatalf("search depths after page fifty = %v", inner.limits)
 	}
 }
@@ -168,7 +170,7 @@ func TestStableWindowExtendsPastShortDeduplicatedWindows(t *testing.T) {
 		t.Fatal(err)
 	}
 	if page4.TotalResults != 120 || page4.Results[0].Title != "result-30" ||
-		!reflect.DeepEqual(inner.limits, []int{sessionDepth, 100}) {
+		!reflect.DeepEqual(inner.limits, []int{retrievalDepth(sessionDepth), retrievalDepth(100)}) {
 		t.Fatalf(
 			"page four = total %d, first %q, depths %v",
 			page4.TotalResults,
@@ -181,7 +183,10 @@ func TestStableWindowExtendsPastShortDeduplicatedWindows(t *testing.T) {
 		t.Fatal(err)
 	}
 	if page11.TotalResults != 120 || page11.Results[0].Title != "result-100" ||
-		!reflect.DeepEqual(inner.limits, []int{sessionDepth, 100, 150, 200, 250}) {
+		!reflect.DeepEqual(inner.limits, []int{
+			retrievalDepth(sessionDepth), retrievalDepth(100), retrievalDepth(150),
+			retrievalDepth(200), retrievalDepth(250),
+		}) {
 		t.Fatalf(
 			"page eleven = total %d, first %q, depths %v",
 			page11.TotalResults,
@@ -199,7 +204,9 @@ func TestStableWindowExtendsPastShortDeduplicatedWindows(t *testing.T) {
 		t.Fatal(err)
 	}
 	if directPage11.TotalResults != 120 || directPage11.Results[0].Title != "result-100" ||
-		!reflect.DeepEqual(directInner.limits, []int{150, 200, 250}) {
+		!reflect.DeepEqual(directInner.limits, []int{
+			retrievalDepth(150), retrievalDepth(200), retrievalDepth(250),
+		}) {
 		t.Fatalf(
 			"direct page eleven = total %d, first %q, depths %v",
 			directPage11.TotalResults,
@@ -246,7 +253,9 @@ func TestStableWindowCollapsesTotalWhenRefreshAddsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page6.TotalResults != sessionDepth || len(page6.Results) != 0 || inner.calls != 2 {
+	if page6.TotalResults != retrievalDepth(sessionDepth) || len(page6.Results) != 1 ||
+		page6.Availability.Materialized != retrievalDepth(sessionDepth) ||
+		!page6.Availability.Exhausted || inner.calls != 2 {
 		t.Fatalf(
 			"duplicate refresh = total %d, rows %d, calls %d",
 			page6.TotalResults,
@@ -421,8 +430,8 @@ func TestStableWindowAdvancesPastPreviouslySearchedDepth(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if entry.searchDepth != 150 || len(entry.results) != 150 ||
-		!reflect.DeepEqual(inner.limits, []int{150}) {
+	if entry.searchDepth != 150 || len(entry.results) != retrievalDepth(150) ||
+		!reflect.DeepEqual(inner.limits, []int{retrievalDepth(150)}) {
 		t.Fatalf(
 			"extended entry = depth %d, rows %d, calls %v",
 			entry.searchDepth,
@@ -439,7 +448,8 @@ func TestStableWindowAdvancesPastPreviouslySearchedDepth(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if entry.total != 50 || !reflect.DeepEqual(inner.limits, []int{150}) {
+	if entry.total != maxSessionDepth || entry.exhausted ||
+		!reflect.DeepEqual(inner.limits, []int{retrievalDepth(150)}) {
 		t.Fatalf("exhausted entry = total %d, calls %v", entry.total, inner.limits)
 	}
 }

@@ -29,6 +29,7 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 
 	searcher := &stubPortalSearcher{response: searchcore.Response{
 		TotalResults: 3,
+		Availability: searchcore.ResultAvailability{Materialized: 3, Exhausted: true},
 		Results: []searchcore.Result{
 			// A local hit in a global search carries the request source.
 			{
@@ -50,7 +51,8 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if results.TotalResults != 3 || len(results.Results) != 3 {
+	if results.TotalResults != 3 || len(results.Results) != 3 ||
+		results.Availability.Materialized != 3 || !results.Availability.Exhausted {
 		t.Fatalf("unexpected results: %+v", results)
 	}
 	if searcher.gotRequest.Offset != 20 || searcher.gotRequest.Limit != 10 {

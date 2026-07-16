@@ -76,6 +76,7 @@ func (imagePaginationSource) Search(
 	return SearchResults{
 		Query:        "go",
 		TotalResults: 100,
+		Availability: SearchAvailability{Materialized: 21},
 		Results: []SearchResult{{
 			Title: "Pictured",
 			URL:   "https://a.example/p.html",

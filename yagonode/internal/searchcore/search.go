@@ -160,6 +160,7 @@ type PartialFailure struct {
 type Response struct {
 	Request         Request
 	TotalResults    int
+	Availability    ResultAvailability
 	Results         []Result
 	PartialFailures []PartialFailure
 	// Recovered names the zero-result recovery step that produced these results

@@ -1,14 +1,17 @@
 package publicportal
 
-func canonicalPortalPage(requestedPage, shown, total int) (int, bool) {
+func canonicalPortalPage(requestedPage, shown, available int, exhausted bool) (int, bool) {
 	if requestedPage <= 1 {
 		return 1, false
 	}
+	if shown > 0 || !exhausted {
+		return requestedPage, false
+	}
 
 	lastPage := 0
-	if total > 0 {
-		lastPage = total / portalPageSize
-		if total%portalPageSize != 0 {
+	if available > 0 {
+		lastPage = available / portalPageSize
+		if available%portalPageSize != 0 {
 			lastPage++
 		}
 	}
@@ -18,9 +21,5 @@ func canonicalPortalPage(requestedPage, shown, total int) (int, bool) {
 	if requestedPage > lastPage {
 		return lastPage, true
 	}
-	if shown == 0 {
-		return 1, true
-	}
-
 	return requestedPage, false
 }

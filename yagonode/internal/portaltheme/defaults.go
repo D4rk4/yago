@@ -172,6 +172,7 @@ const defaultResultsBody = `<!doctype html>
   {{/if}}
   {{#if results.incomplete}}<p class="meta" role="status">Some enabled search sources were unavailable; {{#if results.results}}this result window may be incomplete.{{else}}no complete result set is available. Please try again.{{/if}}{{#if results.federationUnavailable}} Peer federation was unavailable for part of this search.{{/if}}{{#if results.peersFailed}} {{results.peersFailed}} identified peer response(s) failed.{{/if}}</p>{{/if}}
   <p class="meta" role="status">{{#if results.totalResults}}Up to {{formatNumber results.totalResults}} {{pluralize results.totalResults "result" "results"}} available in this search window{{else}}{{#if results.incomplete}}No results are currently available{{else}}0 results{{/if}}{{/if}} for “{{results.query}}”{{#if elapsed}} ({{elapsed}}){{/if}}.{{#if results.results}} On this page: {{results.localCount}} from this node · {{results.peerCount}} from peers · {{results.webCount}} from the web.{{/if}}</p>
+  {{#if results.unconfirmedPage}}<p class="meta" role="status">This page is beyond the confirmed result window. Retry the search or return to a previous page.</p>{{/if}}
   {{#if results.facets}}<div class="serp-grid"><aside class="facets" aria-label="Filter results">
   <details open>
   <summary>Filters</summary>
@@ -210,7 +211,7 @@ const defaultResultsBody = `<!doctype html>
     {{#if snippetHtml}}<p>{{{snippetHtml}}}</p>{{else}}{{#if snippet}}<p>{{snippet}}</p>{{/if}}{{/if}}
   </li>
   {{else}}
-  <p class="meta" role="status">Nothing found.</p>
+  {{#if results.unconfirmedPage}}{{else}}<p class="meta" role="status">Nothing found.</p>{{/if}}
   {{/each}}
   {{#if results.results}}</ul>{{/if}}
   {{/if}}

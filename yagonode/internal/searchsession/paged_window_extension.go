@@ -37,19 +37,19 @@ func (s *stableSearcher) extend(
 		s.refreshRetention(entry, retained)
 	}()
 	for req.Offset < entry.total &&
-		min(requestedEnd(req), entry.total) > len(entry.results) {
+		min(requestedLookaheadEnd(req), entry.total) > len(entry.results) {
 		targetDepth := requestedSearchDepth(req)
 		if targetDepth <= entry.searchDepth {
 			targetDepth = min(maxSessionDepth, entry.searchDepth+sessionDepth)
 		}
 		if targetDepth <= entry.searchDepth {
-			entry.total = len(entry.results)
+			entry.exhausted = false
 
 			return nil
 		}
 		deep := req
 		deep.Offset = 0
-		deep.Limit = targetDepth
+		deep.Limit = retrievalDepth(targetDepth)
 		resp, err := s.inner.Search(ctx, deep)
 		if err != nil {
 			return fmt.Errorf("search deeper window: %w", err)
@@ -59,24 +59,38 @@ func (s *stableSearcher) extend(
 		}
 		if incompleteRefresh(resp) {
 			entry.failures = mergedSessionFailures(entry.failures, resp.PartialFailures)
+			entry.exhausted = false
 
 			return nil
 		}
 		previousLength := len(entry.results)
-		entry.results = appendUnseen(entry.results, resp.Results, targetDepth)
+		entry.results = appendUnseen(entry.results, resp.Results, retrievalDepth(targetDepth))
 		entry.searchDepth = targetDepth
-		if resp.TotalResults <= len(resp.Results) || len(entry.results) == previousLength {
+		entry.failures = mergedSessionFailures(entry.failures, resp.PartialFailures)
+		if len(resp.PartialFailures) == 0 &&
+			(resp.TotalResults <= len(resp.Results) || len(entry.results) == previousLength) {
 			entry.total = len(entry.results)
+			entry.exhausted = true
+			entry.failures = nil
 
 			return nil
 		}
-		if len(resp.Results) > targetDepth {
-			resp.Results = resp.Results[:targetDepth]
+		entry.total = max(entry.total, len(entry.results), advertisedTotal(resp))
+		entry.exhausted = false
+		if len(resp.PartialFailures) > 0 || len(entry.results) == previousLength {
+			return nil
 		}
-		entry.total = max(len(entry.results), advertisedTotal(resp))
 	}
 
 	return nil
+}
+
+func retrievalDepth(searchDepth int) int {
+	if searchDepth >= maxSessionDepth {
+		return maxSessionDepth
+	}
+
+	return searchDepth + 1
 }
 
 func requestedEnd(req searchcore.Request) int {
@@ -89,6 +103,15 @@ func requestedEnd(req searchcore.Request) int {
 	}
 
 	return req.Offset + limit
+}
+
+func requestedLookaheadEnd(req searchcore.Request) int {
+	end := requestedEnd(req)
+	if end >= maxSessionDepth {
+		return maxSessionDepth
+	}
+
+	return end + 1
 }
 
 func boundedResults(results []searchcore.Result, depth int) []searchcore.Result {

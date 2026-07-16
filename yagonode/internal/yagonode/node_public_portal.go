@@ -105,6 +105,7 @@ func (s portalSource) Search(
 	out := publicportal.SearchResults{
 		Query:                 query,
 		TotalResults:          response.TotalResults,
+		Availability:          portalSearchAvailability(response),
 		PeersFailed:           peerSearchFailureTotal(response.PartialFailures),
 		FederationUnavailable: federationSearchUnavailable(response.PartialFailures),
 		Incomplete:            len(response.PartialFailures) > 0,

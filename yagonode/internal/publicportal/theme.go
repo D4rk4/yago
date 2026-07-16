@@ -66,6 +66,7 @@ func (d portalData) themeView() map[string]any {
 			"peersFailed":           d.Results.PeersFailed,
 			"federationUnavailable": d.Results.FederationUnavailable,
 			"incomplete":            d.Results.Incomplete,
+			"unconfirmedPage":       d.Results.UnconfirmedPage,
 			"recovered":             d.Results.Recovered,
 			"didYouMean":            d.Results.DidYouMean,
 			"didYouMeanUrl":         d.Results.DidYouMeanURL,

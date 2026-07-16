@@ -70,8 +70,12 @@ func TestStableWindowPagesFromOneSession(t *testing.T) {
 	if inner.calls != 1 {
 		t.Fatalf("inner searched %d times for three pages, want 1 session", inner.calls)
 	}
-	if len(inner.limits) != 1 || inner.limits[0] != sessionDepth {
-		t.Fatalf("initial candidate window = %v, want %d", inner.limits, sessionDepth)
+	if len(inner.limits) != 1 || inner.limits[0] != retrievalDepth(sessionDepth) {
+		t.Fatalf(
+			"initial candidate window = %v, want %d",
+			inner.limits,
+			retrievalDepth(sessionDepth),
+		)
 	}
 	if page1.TotalResults != 25 || page2.TotalResults != 25 {
 		t.Fatalf("total = %d, want the honest collected count", page1.TotalResults)

@@ -131,6 +131,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   {{end}}
   {{if .Incomplete}}<p class="meta" role="status">Some enabled search sources were unavailable; {{if .Results}}this result window may be incomplete.{{else}}no complete result set is available. Please try again.{{end}}{{if .FederationUnavailable}} Peer federation was unavailable for part of this search.{{end}}{{if .PeersFailed}} {{.PeersFailed}} identified peer response(s) failed.{{end}}</p>{{end}}
   <p class="meta" role="status">{{if .TotalResults}}Up to {{.TotalResults}} result(s) available in this search window{{else if .Incomplete}}No results are currently available{{else}}0 result(s){{end}} for “{{.Query}}”{{if $.Elapsed}} ({{$.Elapsed}}){{end}}.{{if .Results}} Showing {{$.ShownFrom}}–{{$.ShownTo}} on this page: {{.LocalCount}} from this node · {{.PeerCount}} from peers · {{.WebCount}} from the web.{{end}}</p>
+  {{if .UnconfirmedPage}}<p class="meta" role="status">This page is beyond the confirmed result window. Retry the search or return to a previous page.</p>{{end}}
   {{if .Hint}}<p class="meta" role="status">{{.Hint}}</p>{{end}}
   {{if .Facets}}<div class="serp-grid"><aside class="facets" aria-label="Filter results">
   <details open>
@@ -170,7 +171,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
     {{if .SnippetHTML}}<p>{{.SnippetHTML}}</p>{{else if .Snippet}}<p>{{.Snippet}}</p>{{end}}
   </li>
   {{else}}
-  <p class="meta" role="status">Nothing found.</p>
+  {{if not $.Results.UnconfirmedPage}}<p class="meta" role="status">Nothing found.</p>{{end}}
   {{end}}
   {{if .Results}}</ul>{{end}}
   {{end}}

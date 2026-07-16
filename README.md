@@ -69,7 +69,9 @@ its binaries (`yago-node`, `yagocrawler`).
   reuse an unexpired equivalent local session without extending its lifetime or
   recording a synthetic global success. Operational search-stage errors retain
   completed rows as a partial answer, and recent paging windows remain readable
-  while a deeper page is being extended.
+  while a deeper page is being extended. Portal navigation links only to the
+  materialized result prefix; an explicitly requested page is preserved until
+  a complete retrieval proves that it lies beyond the final page.
 - **[YagoRank](yagonode/doc/yagorank.md)** — strict and relaxed fielded BM25,
   bounded lexical evidence and RM3, deterministic peer RRF, persistent date,
   anchor, authority, quality, safety, duplicate-cluster, and reputation signals,

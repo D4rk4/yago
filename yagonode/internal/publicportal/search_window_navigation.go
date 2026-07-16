@@ -3,12 +3,13 @@ package publicportal
 import "net/http"
 
 type portalSearchWindow struct {
-	Query  string
-	Dom    string
-	Page   int
-	Offset int
-	Shown  int
-	Total  int
+	Query     string
+	Dom       string
+	Page      int
+	Offset    int
+	Shown     int
+	Available int
+	Exhausted bool
 }
 
 func redirectPortalSearchWindow(
@@ -16,7 +17,12 @@ func redirectPortalSearchWindow(
 	r *http.Request,
 	window portalSearchWindow,
 ) bool {
-	canonicalPage, redirect := canonicalPortalPage(window.Page, window.Shown, window.Total)
+	canonicalPage, redirect := canonicalPortalPage(
+		window.Page,
+		window.Shown,
+		window.Available,
+		window.Exhausted,
+	)
 	if !redirect {
 		return false
 	}

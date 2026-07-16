@@ -10,6 +10,7 @@ type sessionWindow struct {
 	results    []searchcore.Result
 	failures   []searchcore.PartialFailure
 	total      int
+	exhausted  bool
 	recovered  string
 	didYouMean string
 	facets     []searchcore.FacetGroup
@@ -20,6 +21,7 @@ func (e *session) replaceVisibleWindowLocked() {
 		results:    e.results,
 		failures:   e.failures,
 		total:      e.total,
+		exhausted:  e.exhausted,
 		recovered:  e.recovered,
 		didYouMean: e.didYouMean,
 		facets:     e.facets,
@@ -41,8 +43,12 @@ func (w *sessionWindow) respond(req searchcore.Request) searchcore.Response {
 	}
 
 	return searchcore.Response{
-		Request:         req,
-		TotalResults:    w.total,
+		Request:      req,
+		TotalResults: w.total,
+		Availability: searchcore.ResultAvailability{
+			Materialized: len(w.results),
+			Exhausted:    w.exhausted,
+		},
 		Results:         cloneSessionResults(w.results[start:end]),
 		PartialFailures: cloneSessionFailures(w.failures),
 		Recovered:       strings.Clone(w.recovered),

@@ -179,6 +179,7 @@ func TestPortalPaginationParsesPageIntoOffset(t *testing.T) {
 	source := &fakeSource{results: SearchResults{
 		Query:        "go",
 		TotalResults: 100,
+		Availability: SearchAvailability{Materialized: 21},
 		Results:      []SearchResult{{Title: "hit", URL: "http://a.example/1"}},
 	}}
 	if _, body := get(
@@ -203,6 +204,7 @@ func TestPortalPaginationRendersPrevAndNext(t *testing.T) {
 	source := &fakeSource{results: SearchResults{
 		Query:        "go",
 		TotalResults: 100,
+		Availability: SearchAvailability{Materialized: 21},
 		Results:      []SearchResult{{Title: "hit", URL: "http://a.example/1"}},
 	}}
 	_, body := get(t, New(source, false), "/?q=go&p=2")
@@ -241,7 +243,10 @@ func TestPortalPaginationClampsPage(t *testing.T) {
 		t.Fatalf("junk page offset = %d, want 0 (page 1)", junk.gotOffset)
 	}
 
-	over := &fakeSource{results: SearchResults{Query: "go", TotalResults: 5}}
+	over := &fakeSource{results: SearchResults{
+		Query: "go", TotalResults: 5,
+		Availability: SearchAvailability{Materialized: 5, Exhausted: true},
+	}}
 	req := httptest.NewRequestWithContext(
 		t.Context(),
 		http.MethodGet,
@@ -264,7 +269,10 @@ func TestPortalPaginationClampsPage(t *testing.T) {
 		t.Fatalf("over-max search calls = %d, want 1", over.calls)
 	}
 
-	computedLast := &fakeSource{results: SearchResults{Query: "go", TotalResults: 45}}
+	computedLast := &fakeSource{results: SearchResults{
+		Query: "go", TotalResults: 45,
+		Availability: SearchAvailability{Materialized: 45, Exhausted: true},
+	}}
 	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/?q=go&p=99999", nil)
 	recorder = httptest.NewRecorder()
 	New(computedLast, false).ServeHTTP(recorder, req)
@@ -276,21 +284,6 @@ func TestPortalPaginationClampsPage(t *testing.T) {
 			recorder.Header().Get("Location"),
 			http.StatusSeeOther,
 			"/?p=5&q=go",
-		)
-	}
-
-	emptyWindow := &fakeSource{results: SearchResults{Query: "go", TotalResults: 100}}
-	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/?q=go&p=3", nil)
-	recorder = httptest.NewRecorder()
-	New(emptyWindow, false).ServeHTTP(recorder, req)
-	if recorder.Code != http.StatusSeeOther ||
-		recorder.Header().Get("Location") != "/?p=1&q=go" {
-		t.Fatalf(
-			"empty-window redirect = %d %q, want %d %q",
-			recorder.Code,
-			recorder.Header().Get("Location"),
-			http.StatusSeeOther,
-			"/?p=1&q=go",
 		)
 	}
 }

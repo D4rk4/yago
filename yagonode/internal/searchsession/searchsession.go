@@ -33,6 +33,7 @@ type session struct {
 	results     []searchcore.Result
 	failures    []searchcore.PartialFailure
 	total       int
+	exhausted   bool
 	searchDepth int
 	recovered   string
 	didYouMean  string
@@ -90,9 +91,10 @@ func (s *stableSearcher) Search(
 		}
 	}
 
+	targetDepth := requestedSearchDepth(req)
 	deep := req
 	deep.Offset = 0
-	deep.Limit = requestedSearchDepth(req)
+	deep.Limit = retrievalDepth(targetDepth)
 	resp, err := s.inner.Search(ctx, deep)
 	if err != nil {
 		return searchcore.Response{}, fmt.Errorf("session search: %w", err)
@@ -107,7 +109,7 @@ func (s *stableSearcher) Search(
 
 		return resp, nil
 	}
-	stored := s.store(key, resp, deep.Limit)
+	stored := s.store(key, resp, targetDepth)
 	if req.Offset > 0 {
 		if err := s.extend(ctx, stored, req); err != nil {
 			return searchcore.Response{}, fmt.Errorf("extend new session search: %w", err)
@@ -146,12 +148,18 @@ func (s *stableSearcher) lookup(key string) (*session, bool) {
 func (s *stableSearcher) store(key string, resp searchcore.Response, searchDepth int) *session {
 	now := clock()
 	key = strings.Clone(key)
-	resp.Results = boundedResults(resp.Results, searchDepth)
+	resp.Results = boundedResults(resp.Results, retrievalDepth(searchDepth))
+	exhausted := len(resp.PartialFailures) == 0 && resp.TotalResults <= len(resp.Results)
+	total := advertisedTotal(resp)
+	if exhausted {
+		total = len(resp.Results)
+	}
 	entry := &session{
 		key:         key,
 		results:     resp.Results,
 		failures:    cloneSessionFailures(resp.PartialFailures),
-		total:       advertisedTotal(resp),
+		total:       total,
+		exhausted:   exhausted,
 		searchDepth: searchDepth,
 		recovered:   strings.Clone(resp.Recovered),
 		didYouMean:  strings.Clone(resp.DidYouMean),

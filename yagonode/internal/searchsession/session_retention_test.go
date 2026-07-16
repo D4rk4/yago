@@ -158,14 +158,14 @@ func TestStableWindowExtensionReconcilesRetainedBytes(t *testing.T) {
 	}
 	oneKey := sessionKey(searchcore.Request{Query: "one"})
 	twoKey := sessionKey(searchcore.Request{Query: "two"})
-	projectionResponse, err := inner.Search(ctx, searchcore.Request{Limit: 100})
+	projectionResponse, err := inner.Search(ctx, searchcore.Request{Limit: retrievalDepth(100)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	source := stable.sessions[oneKey]
 	projected := &session{
 		key:         source.key,
-		results:     appendUnseen(source.results, projectionResponse.Results, 100),
+		results:     appendUnseen(source.results, projectionResponse.Results, retrievalDepth(100)),
 		failures:    source.failures,
 		total:       source.total,
 		searchDepth: source.searchDepth,

@@ -73,12 +73,14 @@ type ResultImage struct {
 type SearchResults struct {
 	Query                 string
 	TotalResults          int
+	Availability          SearchAvailability
 	LocalCount            int
 	PeerCount             int
 	WebCount              int
 	PeersFailed           int
 	FederationUnavailable bool
 	Incomplete            bool
+	UnconfirmedPage       bool
 	Results               []SearchResult
 	// Recovered marks results found by the zero-result fuzzy retry, so the page
 	// says these are close matches rather than exact ones.
@@ -280,11 +282,15 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			window := portalSearchWindow{
 				Query: query, Dom: dom, Page: page, Offset: offset,
-				Shown: len(results.Results), Total: results.TotalResults,
+				Shown:     len(results.Results),
+				Available: results.Availability.Materialized,
+				Exhausted: results.Availability.Exhausted,
 			}
 			if redirectPortalSearchWindow(w, r, window) {
 				return
 			}
+			results.UnconfirmedPage = page > 1 && len(results.Results) == 0 &&
+				!results.Availability.Exhausted
 			data.Submitted = true
 			data.Results = results
 			if shown := len(results.Results); shown > 0 {
@@ -384,28 +390,59 @@ func parsePortalPage(raw string) int {
 // covers and the page cap has not been reached; a previous link appears past the
 // first page.
 func newPagination(window portalSearchWindow) pagination {
+	available := window.Available
+	if window.Shown > 0 {
+		available = max(available, window.Offset+window.Shown)
+	}
+	lastMaterialized := materializedLastPage(available)
+	previousPage := window.Page - 1
+	if window.Page > lastMaterialized {
+		previousPage = max(1, lastMaterialized)
+	}
+	if previousPage < 1 {
+		previousPage = 1
+	}
 	nav := pagination{
 		Page:    window.Page,
 		HasPrev: window.Page > 1,
-		HasNext: window.Offset+window.Shown < window.Total && window.Page < portalMaxPage,
+		HasNext: window.Offset+window.Shown < available && window.Page < portalMaxPage,
 	}
 	if nav.HasPrev {
-		nav.PrevURL = portalPageURL(window.Query, window.Dom, window.Page-1)
+		nav.PrevURL = portalPageURL(window.Query, window.Dom, previousPage)
 	}
 	if nav.HasNext {
 		nav.NextURL = portalPageURL(window.Query, window.Dom, window.Page+1)
 	}
-	nav.Pages = numberedPages(window.Query, window.Dom, window.Page, window.Total)
+	nav.Pages = numberedPages(
+		window.Query,
+		window.Dom,
+		window.Page,
+		available,
+		window.Exhausted,
+	)
 
 	return nav
 }
 
 // numberedPages builds up to pagerWindow page links centered on the current
 // page, bounded by the honest total and the portal's page cap.
-func numberedPages(query, dom string, page, total int) []pageLink {
-	last := (total + portalPageSize - 1) / portalPageSize
+func numberedPages(query, dom string, page, available int, exhausted bool) []pageLink {
+	last := materializedLastPage(available)
 	if last > portalMaxPage {
 		last = portalMaxPage
+	}
+	if !exhausted && page > last {
+		start := max(1, last-pagerWindow+2)
+		pages := make([]pageLink, 0, pagerWindow)
+		for number := start; number <= last; number++ {
+			pages = append(pages, pageLink{
+				Number: number,
+				URL:    portalPageURL(query, dom, number),
+			})
+		}
+		pages = append(pages, pageLink{Number: page, Current: true})
+
+		return pages
 	}
 	if last <= 1 {
 		return nil
@@ -427,6 +464,10 @@ func numberedPages(query, dom string, page, total int) []pageLink {
 	}
 
 	return pages
+}
+
+func materializedLastPage(available int) int {
+	return (available + portalPageSize - 1) / portalPageSize
 }
 
 func portalPageURL(query, dom string, page int) string {
