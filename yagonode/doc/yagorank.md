@@ -312,6 +312,9 @@ YagoRank has no runtime network dependency. Training and inference are in-proces
 and CPU-only. Candidate windows, documents, tokens, features, histogram bins,
 tree count, depth, snapshots, click tokens, replay state, peers, and network-group
 influence are bounded. Search remains functional with no learned or safety model.
+Completed click-impression work returns its bounded admission slot before the
+terminal outcome is visible; shutdown still waits for outcome delivery or
+abandonment before closing ranking storage.
 
 ## Code map
 

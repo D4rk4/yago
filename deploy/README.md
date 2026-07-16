@@ -288,8 +288,10 @@ commit fixed in the workflow. It verifies that identity and main ancestry,
 then checks out the historical source while package construction and GitHub
 Release creation remain disabled. It cannot move the tag, replace an existing
 release manifest, rebuild package assets, or recreate the GitHub Release. Its
-evidence records the current workflow invocation and tooling separately from
-the historical tag source. Build development images locally with
+repair path consumes only the pinned successful native-validation artifacts
+from its first run. Standard GitHub Actions provenance records the current
+workflow invocation, while a separate signed identity predicate records the
+historical release, tag object, source, and validation run. Build development images locally with
 `make compose-images`.
 
 ## Published container images
@@ -360,14 +362,16 @@ Constrain normal release verification to `refs/tags/$version` and the commit
 resolved from that tag, as shown in the Debian package example. A historical
 backfill is different: its certificate truthfully names the current
 `refs/heads/main` workflow invocation and workflow-definition commit. Verify
-those certificate fields, then require the signed SLSA v1 predicate to contain
-the historical `git+https://github.com/D4rk4/yago@refs/tags/v0.0.10` resolved
-dependency with source commit
-`9bcc0bde61364c8248fba7f452c19f2446c72898`, the exact release fields, subject
-digest, builder, and invocation. Use the workflow run, workflow-definition
-commit, and manifest-list digests recorded in the release's dated factual
-correction. An attestation establishes provenance, not image safety, and does
-not replace the native smoke tests, Trivy policy, or runtime health checks.
+those certificate fields for both attestations. Require the standard SLSA v1
+predicate to use `https://actions.github.io/buildtypes/workflow/v1` and match
+the subject, current workflow, builder, and invocation. Separately require the
+project-specific historical-release identity predicate to match release ID
+355175485, tag `v0.0.10`, tag object
+`09ca7be1b1e5065155111479c9213bd0566801d8`, source commit
+`9bcc0bde61364c8248fba7f452c19f2446c72898`, and the validation run recorded in
+the release's dated factual correction. An attestation establishes provenance,
+not image safety, and does not replace the native smoke tests, Trivy policy, or
+runtime health checks.
 
 ## Container build provenance
 

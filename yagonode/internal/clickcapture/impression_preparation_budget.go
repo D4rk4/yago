@@ -148,9 +148,12 @@ func (l *impressionPreparationLifecycle) admit() error {
 func (l *impressionPreparationLifecycle) runImpressionPreparation(
 	task impressionPreparationTask,
 ) {
-	defer l.release()
+	releaseAdmission := sync.OnceFunc(func() { <-l.admission })
+	defer l.workers.Done()
+	defer releaseAdmission()
 	plan, err := task.prepare()
 	if err != nil {
+		releaseAdmission()
 		select {
 		case task.completed <- impressionPreparationOutcome{err: err}:
 		case <-task.abandoned:
@@ -173,6 +176,7 @@ func (l *impressionPreparationLifecycle) runImpressionPreparation(
 	}
 	err = plan.persist(task.persistenceContext)
 	l.finishPersistence(plan.prepared.Token, persistence, err, true)
+	releaseAdmission()
 	select {
 	case task.completed <- impressionPreparationOutcome{prepared: plan.prepared, err: err}:
 	case <-task.abandoned:
@@ -184,11 +188,6 @@ func (l *impressionPreparationLifecycle) runImpressionPreparation(
 			)
 		}
 	}
-}
-
-func (l *impressionPreparationLifecycle) release() {
-	<-l.admission
-	l.workers.Done()
 }
 
 func (l *impressionPreparationLifecycle) stop() {

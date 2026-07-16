@@ -175,7 +175,9 @@ its binaries (`yago-node`, `yagocrawler`).
   in-memory snapshot even after a completed search stage's context ends,
   and the request path waits at most 50 milliseconds for optional click-impression
   preparation while at most four retained impression tasks remain admitted and
-  are joined before storage closes. A click waits for its matching in-flight
+  are joined before storage closes. A finished task returns its admission slot
+  before its terminal outcome becomes observable, while shutdown still joins
+  outcome delivery or abandonment. A click waits for its matching in-flight
   impression commit, and a token whose late commit failed remains rejected until
   it expires.
 - Politeness and defense: robots.txt with a standards-compliant 500 KiB parsing

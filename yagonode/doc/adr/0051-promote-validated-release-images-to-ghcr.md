@@ -67,19 +67,32 @@ object `09ca7be1b1e5065155111479c9213bd0566801d8`, and source commit
 `9bcc0bde61364c8248fba7f452c19f2446c72898`. It verifies the published release
 record, both Git objects, and main ancestry before checking out the historical
 source. Package construction and GitHub Release creation remain disabled. The
-native container jobs build and scan the historical source while export,
-publication, and evidence tooling come from the workflow-definition commit.
+second attempt of backfill run 29520082413 completed `make verify` and both
+native container jobs; the repair path pins that validation attempt, its workflow commit, successful job
+identities, and unexpired checksum-protected image artifacts. Publication and
+evidence tooling come from the current workflow-definition commit.
 
 The backfill attestation certificate truthfully identifies the current
-`refs/heads/main` workflow invocation and its workflow-definition commit. A
-custom SLSA v1 predicate records the immutable historical tag source as a
-separate resolved dependency, including the exact release identity and tag
-object, and records current workflow tooling as another dependency. Verification
-first constrains the signed certificate to the current workflow ref, source
-commit, signer workflow, and hosted runner. It then checks the signed predicate's
-subject, release fields, historical dependency, workflow dependency, builder,
-and invocation. It never represents the current workflow invocation as a
-historical tag event.
+`refs/heads/main` workflow invocation and its workflow-definition commit. Each
+manifest receives GitHub's standard SLSA provenance with the supported GitHub
+Actions workflow build type and a separate project-specific identity
+attestation containing the exact release, tag object, historical source,
+current workflow, and completed validation run. Verification first constrains
+both signed certificates to the current workflow ref, source commit, signer
+workflow, and hosted runner. It then checks the standard provenance subject,
+workflow, builder, and invocation and the complete identity predicate. It never
+represents the current workflow invocation as a historical tag event.
+
+### Historical release container identity
+
+The project-specific predicate is a JSON object with `schemaVersion` 1. Its
+`release` object identifies the release ID, semantic-version tag, tag ref,
+annotated tag object, and peeled source commit. Its `workflow` object identifies
+the manual event, current source ref and commit, workflow ref, and workflow
+definition commit. Its `validation` object identifies the completed run and
+attempt plus exactly two GitHub artifact IDs, names, and API digests. Its
+`manifests` object records the node and crawler manifest-list digests. Every
+field is mandatory and verification compares the complete signed object.
 
 The backfill does not rebuild packages, recreate the GitHub Release, move the
 tag, replace an existing release manifest, or create a mutable alias. The
