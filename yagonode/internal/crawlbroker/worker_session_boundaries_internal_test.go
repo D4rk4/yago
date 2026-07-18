@@ -7,8 +7,6 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 func TestWorkerSessionRegistryRejectsAbsentAndStaleRegistrations(t *testing.T) {
@@ -91,16 +89,5 @@ func TestRecoveredOrderAndLeaseErrorsFenceStaleSession(t *testing.T) {
 		errors.New("session stopped"),
 	); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("cancelled session status = %v", status.Code(err))
-	}
-}
-
-func TestTerminalProgressWithoutOwnedRunIsIgnored(t *testing.T) {
-	server := newExchangeServer(memQueue(t), nil)
-	if err := server.recordCurrentProgress(t.Context(), yagocrawlcontract.CrawlRunProgress{
-		WorkerID: "worker",
-		RunID:    "missing",
-		State:    yagocrawlcontract.CrawlRunFinished,
-	}); err != nil {
-		t.Fatalf("unowned terminal progress error = %v", err)
 	}
 }

@@ -4,8 +4,6 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
 func TestLeaseRenewalDeduplicatesInputAndCommitsLiveLease(t *testing.T) {
@@ -103,20 +101,10 @@ func TestRenewalResponseDropsLeaseExpiredBeforeResponse(t *testing.T) {
 	}
 }
 
-func TestWorkerLeaseCapacityReportsCorruptLease(t *testing.T) {
+func TestWorkerLeaseCatalogReportsPersistedCorruptLease(t *testing.T) {
 	fixture := scriptedQueue(t)
 	fixture.engine.buckets[leaseBucket]["corrupt"] = []byte("{")
-	err := fixture.queue.vault.View(t.Context(), func(tx *vault.Txn) error {
-		_, err := fixture.queue.workerLeaseCapacityAvailable(
-			tx,
-			"worker",
-			testWorkerSessionID,
-			time.Now(),
-		)
-
-		return err
-	})
-	if err == nil {
+	if _, err := newDurableOrderQueue(fixture.queue.vault, time.Minute); err == nil {
 		t.Fatal("corrupt active lease was hidden")
 	}
 }

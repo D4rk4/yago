@@ -11,11 +11,12 @@ import (
 const maximumWorkerSessions = 4096
 
 type workerSession struct {
-	id         string
-	cancel     context.CancelFunc
-	connected  bool
-	lastSeen   time.Time
-	generation uint64
+	id             string
+	cancel         context.CancelFunc
+	connected      bool
+	lastSeen       time.Time
+	generation     uint64
+	deliveryCredit *workerSessionDeliveryCredit
 }
 
 type workerSessionEntry struct {
@@ -74,7 +75,7 @@ func (r *workerSessionRegistry) activate(
 	generation := r.nextGeneration.Add(1)
 	entry.current = workerSession{
 		id: workerSessionID, cancel: cancel, connected: true, lastSeen: r.now(),
-		generation: generation,
+		generation: generation, deliveryCredit: newWorkerSessionDeliveryCredit(),
 	}
 
 	return generation, nil
@@ -91,15 +92,21 @@ func (r *workerSessionRegistry) deactivate(
 	}
 	defer r.releaseRetention(entry)
 	entry.mutex.Lock()
-	defer entry.mutex.Unlock()
 	current := entry.current
 	if current.id != workerSessionID || current.generation != generation {
+		entry.mutex.Unlock()
+
 		return
 	}
+	deliveryCredit := current.deliveryCredit
 	current.cancel = nil
 	current.connected = false
 	current.lastSeen = r.now()
 	entry.current = current
+	entry.mutex.Unlock()
+	if deliveryCredit != nil {
+		deliveryCredit.stop()
+	}
 }
 
 func (r *workerSessionRegistry) whileCurrentRegistration(

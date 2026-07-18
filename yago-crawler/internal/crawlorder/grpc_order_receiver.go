@@ -8,6 +8,7 @@ import (
 
 	grpc "google.golang.org/grpc"
 
+	"github.com/D4rk4/yago/yago-crawler/internal/crawllease"
 	"github.com/D4rk4/yago/yago-crawler/internal/crawlsettlement"
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
@@ -250,14 +251,16 @@ func deliverOrderWithLeaseSession(
 	envelope crawlOrderDeliveryEnvelope,
 ) bool {
 	workerSessionID := ""
+	var leaseGrants *crawllease.GrantRegistry
 	if envelope.heartbeat != nil {
 		workerSessionID = envelope.heartbeat.workerSessionID
+		leaseGrants = envelope.heartbeat.leaseGrants
 	}
 	delivery := CrawlOrderDelivery{
 		LeaseID:       envelope.leaseID,
 		Order:         envelope.order,
 		OrderIdentity: envelope.orderIdentity,
-		Ack: settleLeaseForSession(
+		Ack: settleGrantedLease(settleLeaseForSession(
 			ctx,
 			envelope.client,
 			leasedOrderAcknowledgment{
@@ -265,8 +268,8 @@ func deliverOrderWithLeaseSession(
 				workerID:        envelope.workerID,
 				workerSessionID: workerSessionID,
 			},
-		),
-		Nak: settleLeaseForSession(
+		), envelope.leaseID, leaseGrants),
+		Nak: settleGrantedLease(settleLeaseForSession(
 			ctx,
 			envelope.client,
 			leasedOrderAcknowledgment{
@@ -275,8 +278,8 @@ func deliverOrderWithLeaseSession(
 				workerSessionID: workerSessionID,
 				requeue:         true,
 			},
-		),
-		Term: settleLeaseForSession(
+		), envelope.leaseID, leaseGrants),
+		Term: settleGrantedLease(settleLeaseForSession(
 			ctx,
 			envelope.client,
 			leasedOrderAcknowledgment{
@@ -284,7 +287,7 @@ func deliverOrderWithLeaseSession(
 				workerID:        envelope.workerID,
 				workerSessionID: workerSessionID,
 			},
-		),
+		), envelope.leaseID, leaseGrants),
 	}
 	if envelope.terminalSettlements != nil {
 		delivery.settleTerminal = func(

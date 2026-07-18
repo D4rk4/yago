@@ -3,6 +3,7 @@ package crawlorder
 import (
 	"context"
 	cryptorand "crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -148,7 +149,7 @@ func (q *progressDeliveryQueue) enqueue(ctx context.Context, report RunReport) {
 
 	if dropped {
 		slog.WarnContext(ctx, msgProgressReportDropped,
-			slog.String("runId", key),
+			slog.String("runId", hex.EncodeToString(report.Provenance)),
 			slog.String("state", string(report.State)),
 			slog.String("workerId", q.workerID))
 	}
@@ -332,7 +333,7 @@ func (q *progressDeliveryQueue) settle(delivery progressDelivery, deliveryErr er
 
 	if deliveryErr != nil && (warn || !delivery.terminal) {
 		slog.WarnContext(context.Background(), msgProgressReportFailed,
-			slog.String("runId", key),
+			slog.String("runId", hex.EncodeToString(delivery.report.Provenance)),
 			slog.String("state", string(delivery.report.State)),
 			slog.String("workerId", q.workerID),
 			slog.Any("error", deliveryErr))

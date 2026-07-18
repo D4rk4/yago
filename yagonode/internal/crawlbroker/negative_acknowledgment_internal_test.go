@@ -272,6 +272,13 @@ func newLiveDeferredOrderFixture(t *testing.T) liveDeferredOrderFixture {
 		)
 	}()
 	first := <-stream.sent
+	confirmTestWorkerLeases(
+		t,
+		server,
+		"worker",
+		testWorkerSessionID,
+		[]string{first.GetLeaseId()},
+	)
 	if _, err := server.AckOrder(t.Context(), &crawlrpc.OrderAck{
 		LeaseId: first.GetLeaseId(), Requeue: true,
 		WorkerId: "worker", WorkerSessionId: testWorkerSessionID,

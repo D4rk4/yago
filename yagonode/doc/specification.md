@@ -199,6 +199,12 @@ yago-admin-ui
   attempts. At the hard queue capacity, a terminal phase SHALL evict only an
   expendable singleton running phase; if every slot belongs to a protected phase
   chain, the new phase SHALL be logged and dropped without collapsing that chain.
+* After exact lease, worker, session, and run authorization, the node SHALL reuse
+  that authorized run target for control reconciliation and progress recording.
+  It SHALL NOT scan the complete lease bucket a second time for the same running
+  report. Human-facing run identities derived from byte provenance, including
+  crawler progress warnings, SHALL use lowercase hexadecimal text rather than raw
+  bytes.
 * Fetched and failed crawl progress SHALL be mutually exclusive terminal page
   outcomes. The Admin failure rate SHALL divide failed outcomes by fetched plus
   failed outcomes and SHALL remain bounded from zero through 100 percent.
@@ -364,13 +370,26 @@ yago-admin-ui
   Every crawler heartbeat RPC SHALL have a one-second client deadline. If an
   active lease is omitted, expires, or otherwise loses its local grant, the
   crawler SHALL cancel and reconnect its order stream so the same worker can
-  adopt the parked lease without waiting for another transport failure. The node
-  SHALL frame no more than 1,024 adopted leases as an ordered recovery batch whose
-  first message carries the complete lease-ID header. Before exposing the first
-  recovered order, the crawler SHALL validate and confirm the complete header in
-  one heartbeat. It SHALL then validate each streamed lease against the header,
-  require an exact final marker, and retain no complete batch of order payloads.
-  Unmarked replay from an older node SHALL retain per-order confirmation.
+  adopt the parked lease without waiting for another transport failure. An
+  ordinary delivery SHALL consume one session-scoped delivery credit after its
+  durable claim. The node SHALL NOT claim or send the next order for that session
+  until a successful heartbeat renews the current lease or a successful
+  session-authorized disposition proves receipt of and completes that exact
+  lease. The current crawler SHALL confirm an ordinary lease before decoding its
+  payload and SHALL reconnect if settlement of an undecodable payload fails. The
+  node SHALL hold neither a database transaction nor a worker-session registry
+  lock while awaiting confirmation.
+* One worker session SHALL retain at most 1,024 active leases. The node SHALL
+  partition adopted leases into ordered recovery batches of at most 16. The first
+  message of each batch SHALL carry that batch's complete lease-ID header, and the
+  node SHALL send no remainder of the batch until a successful heartbeat renews
+  every ID in the header. Before exposing the first recovered order, the crawler
+  SHALL validate the header and confirm only that batch. It SHALL then validate
+  each streamed lease against the header, require an exact final marker, and
+  retain no complete recovery set of order payloads. Periodic heartbeats SHALL
+  continue to carry the complete active lease set. A current crawler SHALL accept
+  the older single-batch shape up to the 1,024-lease contract ceiling; unmarked
+  replay from an older node SHALL retain per-order confirmation.
 * When its crawl runtime is enabled, the node SHALL keep crawl orders, priority
   indexes, idempotency, leases, settlement history, controls, and terminal-run
   delivery state in one atomic bbolt database at
@@ -378,6 +397,16 @@ yago-admin-ui
   sharded vault and SHALL NOT count toward `YAGO_STORAGE_QUOTA` or participate
   in main-vault eviction or compaction. Until a separate crawler-state limit is
   implemented, the file has no application byte cap.
+* Crawl-broker startup SHALL rebuild an in-memory active-lease catalog from the
+  durable lease bucket. Capacity checks SHALL use an O(1) worker/session lookup,
+  and committed claim, adoption, settlement, defer, and requeue transitions SHALL
+  update the catalog while the durable bucket remains authoritative across
+  restart.
+* The dedicated bbolt engine SHALL serialize write admission. An RPC waiting for
+  writer admission SHALL stop when its context ends, and an admitted write SHALL
+  check cancellation before its transaction callback and again before commit so
+  cancelled work rolls back. Provisioning that has no request context MAY wait
+  unboundedly. Read transactions retain their existing behavior.
 * The first dedicated-state startup SHALL retain-migrate one frozen version-1
   bucket set from the legacy node vault before listeners open. It SHALL copy at
   most 256 ordered rows per target transaction, commit each migration cursor

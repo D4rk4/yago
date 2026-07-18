@@ -39,12 +39,17 @@ func (q *DurableOrderQueue) requeueLeaseChunk(
 	q.leaseMutation.Lock()
 	defer q.leaseMutation.Unlock()
 	requeued := false
+	removed := make([]leaseRecord, 0, len(keys))
 	err := q.vault.Update(ctx, func(tx *vault.Txn) error {
 		requeued = false
+		removed = removed[:0]
 		for _, key := range keys {
-			changed, err := q.requeueLeaseTx(tx, key, match)
+			record, changed, err := q.requeueLeaseTx(tx, key, match)
 			if err != nil {
 				return err
+			}
+			if changed {
+				removed = append(removed, record)
 			}
 			requeued = requeued || changed
 		}
@@ -54,6 +59,9 @@ func (q *DurableOrderQueue) requeueLeaseChunk(
 	if err != nil {
 		return false, fmt.Errorf("commit crawl lease requeue: %w", err)
 	}
+	for _, record := range removed {
+		q.workerLeases.remove(record)
+	}
 
 	return requeued, nil
 }
@@ -62,27 +70,27 @@ func (q *DurableOrderQueue) requeueLeaseTx(
 	tx *vault.Txn,
 	key vault.Key,
 	match func(leaseRecord) bool,
-) (bool, error) {
+) (leaseRecord, bool, error) {
 	record, found, err := q.leases.Get(tx, key)
 	if err != nil {
-		return false, fmt.Errorf("read crawl lease: %w", err)
+		return leaseRecord{}, false, fmt.Errorf("read crawl lease: %w", err)
 	}
 	if !found || !match(record) {
-		return false, nil
+		return leaseRecord{}, false, nil
 	}
 	if _, err := q.leases.Delete(tx, key); err != nil {
-		return false, fmt.Errorf("delete crawl lease: %w", err)
+		return leaseRecord{}, false, fmt.Errorf("delete crawl lease: %w", err)
 	}
 	if _, err := q.enqueueTx(
 		tx,
 		record.OrderData,
 		persistedOrderPriority(record.OrderData, record.Priority),
 	); err != nil {
-		return false, err
+		return leaseRecord{}, false, err
 	}
 	if err := q.recordLeaseSettlement(tx, string(key), leaseSettlementRequeued); err != nil {
-		return false, err
+		return leaseRecord{}, false, err
 	}
 
-	return true, nil
+	return record, true, nil
 }

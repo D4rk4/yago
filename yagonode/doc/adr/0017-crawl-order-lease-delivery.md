@@ -38,8 +38,9 @@ leases alive with heartbeats.
   still-pending requeue, while late valid token confirmation remains idempotent.
   The crawler retries transient settlement failures with bounded exponential delay
   while heartbeats remain live; shutdown gives settlement a detached five-second
-  window and retains unresolved checkpoint-affined work. `Heartbeat` extends the
-  deadline on every lease held by a worker.
+  window and retains unresolved checkpoint-affined work. Periodic `Heartbeat`
+  calls extend the complete active lease set, while delivery confirmation calls
+  may target only the newly received lease or recovery batch.
 - A stream reconnect for the same stable crawler identity atomically adopts,
   renews, and replays that worker's session-aware leases with their existing lease
   ids before it receives new FIFO work. Every process uses a fresh session
@@ -49,6 +50,31 @@ leases alive with heartbeats.
   active lease, the crawler cancels its otherwise healthy order stream and
   reconnects, so the same worker immediately adopts the parked lease instead of
   waiting for an unrelated transport failure.
+- Each ordinary order consumes one session-scoped delivery credit after its
+  durable claim. The node registers the expected lease before sending it and does
+  not claim or send the next order until a successful heartbeat renews that
+  lease. A successful session-authorized disposition of the exact lease is also
+  sufficient receipt evidence, so a malformed payload or an idempotent legacy
+  settlement cannot strand the credit. The current crawler confirms an ordinary
+  lease before decoding its payload. The confirmation wait holds neither the
+  worker-session registry mutex nor a database transaction.
+- A reconnect may adopt at most 1,024 active leases, but the node frames recovery
+  as ordered batches of at most 16. It sends the header-bearing first frame, waits
+  for a targeted heartbeat that renews every lease ID in that header, and only
+  then sends the batch remainder. The crawler confirms the batch before exposing
+  its first order. Periodic heartbeats continue to report the complete active set.
+- The broker rebuilds an in-memory worker/session lease-capacity catalog from the
+  durable lease bucket when it opens. A capacity check is O(1); successful claim,
+  adoption, settlement, defer, and requeue transitions update the catalog only
+  after the corresponding durable mutation commits.
+- Running progress verifies the exact lease, worker, session, and run once. That
+  authorized run target is reused for control reconciliation and recording, so
+  the report does not scan the complete lease bucket again. Human-facing run IDs
+  derived from provenance bytes use lowercase hexadecimal text.
+- The dedicated bbolt engine serializes writer admission with a context-aware
+  token. A cancelled waiter does not enter bbolt, and an admitted update checks
+  cancellation before its callback and before commit so stale RPC work rolls
+  back.
 - A background sweeper reclaims deferred and legacy sessionless leases whose
   deadline has passed. Requeue uses a
   2.5-second sweep cadence under the default lease lifetime, avoiding both immediate
@@ -87,9 +113,10 @@ leases alive with heartbeats.
   A stale replay within that process is acknowledged again without starting a
   duplicate run, including when the first acknowledgement response was lost.
 - The `CrawlExchange` contract carries a lease id on each order, stable worker
-  and process-session identities, the exact active lease set in heartbeats, and
-  the `AckOrder` and `Heartbeat` calls. This is the internal node-crawler control
-  plane, not the YaCy P2P wire, so extending it does not affect YaCy
+  and process-session identities, bounded lease-ID sets in heartbeats, and the
+  `AckOrder` and `Heartbeat` calls. Targeted delivery confirmation and complete
+  periodic renewal use the same existing field. This is the internal node-crawler
+  control plane, not the YaCy P2P wire, so extending it does not affect YaCy
   compatibility. Node and crawler binaries must be upgraded as a matched pair.
 - The lease deadline, heartbeat cadence, and heartbeat request timeout are
   internal defaults rather than operator configuration for now. Both heartbeat

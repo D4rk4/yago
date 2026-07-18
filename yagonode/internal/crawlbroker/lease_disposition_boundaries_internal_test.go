@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -40,28 +39,6 @@ func TestRunControlCompletionRejectsUnreadableOrConflictingSettlement(t *testing
 			t.Fatalf("conflicting completion error = %v", err)
 		}
 	})
-}
-
-func TestPendingRunControlIsNotReassignedWithoutOwnedLease(t *testing.T) {
-	queue := memQueue(t)
-	ledger, err := newPersistentControlDirectiveLedger(queue.vault)
-	if err != nil {
-		t.Fatalf("open control ledger: %v", err)
-	}
-	if _, err := ledger.Enqueue(t.Context(), "previous", yagocrawlcontract.CrawlControlDirective{
-		RunID: testOrderRunID,
-	}); err != nil {
-		t.Fatalf("enqueue control: %v", err)
-	}
-	ownership, err := ledger.ReassignRunIfLeaseOwned(
-		t.Context(),
-		queue,
-		"worker",
-		testOrderRunID,
-	)
-	if err != nil || ownership != runLeaseUnclaimed {
-		t.Fatalf("ownership=%v error=%v", ownership, err)
-	}
 }
 
 func TestLeaseDispositionRejectsWrongOwnerAndPreservesControlFailures(t *testing.T) {
@@ -166,19 +143,19 @@ func TestLeaseSweepAndClaimSurfaceInterleavingFailures(t *testing.T) {
 		}
 	})
 
-	t.Run("capacity scan", func(t *testing.T) {
+	t.Run("capacity catalog", func(t *testing.T) {
 		fixture := scriptedQueue(t)
 		if err := fixture.queue.Publish(t.Context(), testOrder("claim-capacity")); err != nil {
 			t.Fatalf("publish order: %v", err)
 		}
-		fixture.engine.buckets[leaseBucket]["corrupt"] = []byte("{")
-		if _, _, err := fixture.queue.claimPendingOrder(
+		fixture.engine.scanErrors[leaseBucket] = errors.New("scan failed")
+		_, _, found, err := fixture.queue.leasePopForSession(
 			t.Context(),
-			"new-lease",
 			"worker",
 			testWorkerSessionID,
-		); err == nil {
-			t.Fatal("capacity scan failure was hidden")
+		)
+		if err != nil || !found {
+			t.Fatalf("catalog-backed claim found=%t error=%v", found, err)
 		}
 	})
 
@@ -186,7 +163,7 @@ func TestLeaseSweepAndClaimSurfaceInterleavingFailures(t *testing.T) {
 		fixture := scriptedQueue(t)
 		fixture.engine.buckets[leaseBucket]["corrupt"] = []byte("{")
 		if err := fixture.queue.vault.Update(t.Context(), func(tx *vault.Txn) error {
-			_, err := fixture.queue.requeueLeaseTx(
+			_, _, err := fixture.queue.requeueLeaseTx(
 				tx,
 				vault.Key("corrupt"),
 				func(leaseRecord) bool { return true },
@@ -198,7 +175,7 @@ func TestLeaseSweepAndClaimSurfaceInterleavingFailures(t *testing.T) {
 		}
 		delete(fixture.engine.buckets[leaseBucket], "corrupt")
 		if err := fixture.queue.vault.Update(t.Context(), func(tx *vault.Txn) error {
-			changed, err := fixture.queue.requeueLeaseTx(
+			_, changed, err := fixture.queue.requeueLeaseTx(
 				tx,
 				vault.Key("missing"),
 				func(leaseRecord) bool { return true },
@@ -212,13 +189,4 @@ func TestLeaseSweepAndClaimSurfaceInterleavingFailures(t *testing.T) {
 			t.Fatalf("missing requeue: %v", err)
 		}
 	})
-}
-
-func TestTerminalOwnershipRejectsAnotherWorker(t *testing.T) {
-	queue := memQueue(t)
-	leaseOne(t, queue, "another-owner", "other-worker")
-	owned, err := queue.terminalProgressOwnedBy(t.Context(), "worker", testOrderRunID)
-	if err != nil || owned {
-		t.Fatalf("owned=%v error=%v", owned, err)
-	}
 }

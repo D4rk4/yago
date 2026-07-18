@@ -62,6 +62,7 @@ func (s *exchangeServer) Heartbeat(
 
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	s.sessions.confirmDeliveries(workerID, workerSessionID, renewed)
 
 	policy := s.control.StoragePressurePolicy()
 	reservedFree := policy.ReservedFreeBytes

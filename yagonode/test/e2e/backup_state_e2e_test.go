@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -474,7 +475,8 @@ func requireBackupCrawlState(
 		t.Fatalf("connect restored crawl broker: %v", err)
 	}
 	defer func() { _ = connection.Close() }()
-	stream, err := crawlrpc.NewCrawlExchangeClient(connection).StreamOrders(
+	client := crawlrpc.NewCrawlExchangeClient(connection)
+	stream, err := client.StreamOrders(
 		ctx,
 		&crawlrpc.WorkerRegistration{
 			WorkerId:        "backup-restore-worker",
@@ -495,6 +497,20 @@ func requireBackupCrawlState(
 		}
 		if order.Profile.Name != profile {
 			t.Fatalf("restored order %d profile = %q, want %q", index, order.Profile.Name, profile)
+		}
+		heartbeat, heartbeatErr := client.Heartbeat(
+			ctx,
+			&crawlrpc.WorkerHeartbeat{
+				WorkerId:        "backup-restore-worker",
+				WorkerSessionId: "backup-restore-session",
+				ActiveLeaseIds:  []string{message.GetLeaseId()},
+			},
+		)
+		if heartbeatErr != nil {
+			t.Fatalf("confirm restored order %d: %v", index, heartbeatErr)
+		}
+		if !slices.Contains(heartbeat.GetRenewedLeaseIds(), message.GetLeaseId()) {
+			t.Fatalf("restored order %d lease was not renewed: %+v", index, heartbeat)
 		}
 	}
 	recent := runs.Recent()

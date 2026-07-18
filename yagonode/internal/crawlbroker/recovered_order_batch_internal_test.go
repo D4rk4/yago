@@ -26,6 +26,13 @@ func TestRecoveredOrderStreamFramesOneBatch(t *testing.T) {
 		t.Fatalf("activate worker session: %v", err)
 	}
 	stream := &fakeOrderStream{ctx: context.Background()}
+	stream.onSend = func() {
+		server.sessions.confirmDeliveries(
+			"worker",
+			"session",
+			[]string{"lease-a", "lease-b", "lease-c"},
+		)
+	}
 	orders := []leasedCrawlOrder{
 		{LeaseID: "lease-a", OrderData: []byte("a")},
 		{LeaseID: "lease-b", OrderData: []byte("b")},

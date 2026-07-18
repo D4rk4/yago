@@ -12,6 +12,8 @@ import (
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 )
 
+const maximumRecoveredOrderDeliveryBatch = 16
+
 func (s *exchangeServer) streamRecoveredOrders(
 	stream crawlrpc.CrawlExchange_StreamOrdersServer,
 	workerID string,
@@ -22,9 +24,41 @@ func (s *exchangeServer) streamRecoveredOrders(
 	if len(orders) > yagocrawlcontract.MaximumHeartbeatActiveLeases {
 		return status.Error(codes.ResourceExhausted, "recovered crawl lease capacity exceeded")
 	}
+	for start := 0; start < len(orders); start += maximumRecoveredOrderDeliveryBatch {
+		end := min(start+maximumRecoveredOrderDeliveryBatch, len(orders))
+		if err := s.streamRecoveredOrderBatch(
+			stream,
+			workerID,
+			workerSessionID,
+			generation,
+			orders[start:end],
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *exchangeServer) streamRecoveredOrderBatch(
+	stream crawlrpc.CrawlExchange_StreamOrdersServer,
+	workerID string,
+	workerSessionID string,
+	generation uint64,
+	orders []leasedCrawlOrder,
+) error {
 	recoveredLeaseIDs := make([]string, len(orders))
 	for index, order := range orders {
 		recoveredLeaseIDs[index] = order.LeaseID
+	}
+	confirmation, err := s.sessions.expectDeliveryConfirmation(
+		workerID,
+		workerSessionID,
+		generation,
+		recoveredLeaseIDs,
+	)
+	if err != nil {
+		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 	for index, order := range orders {
 		if err := s.sessions.whileCurrentRegistration(
@@ -46,6 +80,11 @@ func (s *exchangeServer) streamRecoveredOrders(
 		}
 		if err := stream.Send(message); err != nil {
 			return fmt.Errorf("send recovered crawl order: %w", err)
+		}
+		if index == 0 {
+			if err := confirmation.wait(stream.Context()); err != nil {
+				return streamLeaseError(stream.Context(), stream.Context(), err)
+			}
 		}
 	}
 
@@ -69,10 +108,22 @@ func (s *exchangeServer) streamNewOrders(
 		if err != nil {
 			return streamLeaseError(ctx, stream.Context(), err)
 		}
+		confirmation, err := s.sessions.expectDeliveryConfirmation(
+			workerID,
+			workerSessionID,
+			generation,
+			[]string{leaseID},
+		)
+		if err != nil {
+			return streamLeaseError(ctx, stream.Context(), err)
+		}
 		if err := stream.Send(
 			&crawlrpc.CrawlOrderMessage{OrderJson: data, LeaseId: leaseID},
 		); err != nil {
 			return fmt.Errorf("send crawl order: %w", err)
+		}
+		if err := confirmation.wait(ctx); err != nil {
+			return streamLeaseError(ctx, stream.Context(), err)
 		}
 	}
 }

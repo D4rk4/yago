@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/D4rk4/yago/yago-crawler/internal/crawllease"
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
@@ -222,6 +225,50 @@ func TestRecoveredMalformedOrderConfirmsThenSettles(t *testing.T) {
 	}
 	if active := heartbeat.leaseGrants.ActiveLeaseIDs(); len(active) != 0 {
 		t.Fatalf("malformed recovered grants = %v", active)
+	}
+}
+
+func TestRecoveredMalformedSettlementFailureRevokesConfirmedGrant(t *testing.T) {
+	registry := crawllease.NewGrantRegistry(t.Context(), 1)
+	leaseID := "malformed-recovered-failure"
+	confirmTestGrant(t, registry, leaseID)
+	grantContext, found := registry.Context(leaseID)
+	if !found {
+		t.Fatal("malformed failure grant context is missing")
+	}
+	client := &fakeStreamer{
+		ctx:         t.Context(),
+		ackErr:      status.Error(codes.InvalidArgument, "settlement rejected"),
+		renewActive: true,
+		leaseTTL:    time.Minute,
+	}
+	heartbeat := &heartbeatDelivery{
+		client:          client,
+		workerID:        "worker",
+		workerSessionID: "session",
+		acknowledgments: &controlAcknowledgments{},
+		leaseGrants:     registry,
+	}
+	drainOrderStreamWithLeaseSession(t.Context(), crawlOrderStreamDrain{
+		client: client,
+		stream: &fakeOrderStream{ctx: t.Context(), results: []recvResult{{
+			msg: &crawlrpc.CrawlOrderMessage{
+				OrderJson:         []byte("{"),
+				LeaseId:           leaseID,
+				Recovered:         true,
+				RecoveredBatchEnd: true,
+				RecoveredLeaseIds: []string{leaseID},
+			},
+		}}},
+		out:       make(chan CrawlOrderDelivery, 1),
+		workerID:  "worker",
+		heartbeat: heartbeat,
+	})
+	if active := registry.ActiveLeaseIDs(); len(active) != 0 {
+		t.Fatalf("failed malformed settlement retained grants = %v", active)
+	}
+	if cause := context.Cause(grantContext); !errors.Is(cause, crawllease.ErrLeaseLost) {
+		t.Fatalf("failed malformed settlement grant cause = %v", cause)
 	}
 }
 

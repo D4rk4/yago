@@ -15,30 +15,36 @@ func (q *DurableOrderQueue) prepareTerminalLeaseSettlementTx(
 	leaseID string,
 	request terminalLeaseRequest,
 	want leaseSettlementRecord,
-) (leaseSettlementRecord, error) {
+) (leaseSettlementRecord, leaseRecord, bool, error) {
 	record, found, err := q.leases.Get(tx, vault.Key(leaseID))
 	if err != nil {
-		return leaseSettlementRecord{}, fmt.Errorf("read crawl lease: %w", err)
+		return leaseSettlementRecord{}, leaseRecord{}, false, fmt.Errorf(
+			"read crawl lease: %w",
+			err,
+		)
 	}
 	if !found || record.Deferred {
-		return q.requireTerminalLeaseSettlement(tx, leaseID, want)
+		settlement, err := q.requireTerminalLeaseSettlement(tx, leaseID, want)
+
+		return settlement, leaseRecord{}, false, err
 	}
 	if !liveLeaseOwnedBy(record, request.WorkerID, request.WorkerSessionID, nowFunc()) {
-		return leaseSettlementRecord{}, errLeaseLost
+		return leaseSettlementRecord{}, leaseRecord{}, false, errLeaseLost
 	}
 	identity := sha256.Sum256(record.OrderData)
 	if !bytes.Equal(identity[:], request.OrderIdentity) {
-		return leaseSettlementRecord{}, errLeaseDispositionConflict
+		return leaseSettlementRecord{}, leaseRecord{}, false, errLeaseDispositionConflict
 	}
 	want, err = terminalSettlementWithOrder(want, record.OrderData)
 	if err != nil {
-		return leaseSettlementRecord{}, err
+		return leaseSettlementRecord{}, leaseRecord{}, false, err
 	}
 	if err := q.applyTerminalLeaseDispositionTx(tx, leaseID, request, want, record); err != nil {
-		return leaseSettlementRecord{}, err
+		return leaseSettlementRecord{}, leaseRecord{}, false, err
 	}
+	settlement, err := q.recordTerminalLeaseSettlement(tx, leaseID, want)
 
-	return q.recordTerminalLeaseSettlement(tx, leaseID, want)
+	return settlement, record, err == nil, err
 }
 
 func terminalSettlementWithOrder(

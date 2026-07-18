@@ -44,6 +44,8 @@ func (q *DurableOrderQueue) deferLeaseLocked(
 	workerSessionID string,
 	requireOwner bool,
 ) error {
+	var removed leaseRecord
+	removedFound := false
 	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
 		record, ok, err := q.leases.Get(tx, vault.Key(leaseID))
 		if err != nil {
@@ -59,6 +61,8 @@ func (q *DurableOrderQueue) deferLeaseLocked(
 
 			return errLeaseDispositionConflict
 		}
+		removed = record
+		removedFound = true
 		if requireOwner && !liveLeaseOwnedBy(
 			record,
 			workerID,
@@ -80,6 +84,9 @@ func (q *DurableOrderQueue) deferLeaseLocked(
 		return nil
 	}); err != nil {
 		return fmt.Errorf("nak crawl lease: %w", err)
+	}
+	if removedFound {
+		q.workerLeases.remove(removed)
 	}
 
 	return nil

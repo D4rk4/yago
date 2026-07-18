@@ -55,12 +55,30 @@ leases, and leaves them available for immediate or delayed same-worker adoption
 from the same data directory. Heartbeat calls have a one-second deadline. An
 omitted or expired active lease cancels the current order stream and forces a
 same-worker reconnect, so a delayed heartbeat cannot leave parked work waiting
-indefinitely on an otherwise healthy stream. Reconnect replay carries one ordered
-header for at most 1,024 adopted lease IDs. The crawler validates and confirms the
-whole header with one heartbeat before exposing its first order, then validates
-and delivers each payload as it arrives. A 1,024-order replay therefore performs
-one lease-confirmation RPC with 1,024 lease lookups instead of 1,024 RPCs with
-524,800 cumulative lookups, without retaining every order payload in memory.
+indefinitely on an otherwise healthy stream. Each ordinary delivery is confirmed
+with a heartbeat that targets its lease; the node does not claim or send another
+order for that session until the renewal succeeds. Confirmation occurs before the
+payload is decoded, so an undecodable order remains a tracked grant until its
+settlement succeeds or the stream reconnects. The node also accepts a successful
+session-authorized disposition of that exact lease as receipt evidence, preventing
+legacy malformed-order handling from stranding delivery credit. Reconnect replay
+retains the 1,024-active-lease safety ceiling but frames adopted work as ordered
+batches of at most 16. The first frame carries that batch's complete lease-ID
+header. The crawler validates and confirms only those IDs before exposing the
+first order, and the node waits for that confirmation before sending the batch
+remainder.
+Subsequent payloads must match the header and final marker. Periodic heartbeats
+still carry the complete active lease set, and a current crawler continues to
+accept the older single-batch recovery shape. Order payloads are never retained
+as one complete recovery set. A settlement attempt protects its grant from local
+expiry and from an omitted response to a heartbeat already in flight, while full
+heartbeats continue carrying the grant so a live node lease is renewed. A final
+failure restores omission and expiry handling immediately. Concurrent attempts
+retain protection until the last one fails. A successful ordinary settlement
+removes its local grant without reporting lease loss. A rich terminal settlement
+does the same as soon as its first-phase confirmation token is durably recorded,
+before the final confirmation RPC, so neither path cancels an otherwise healthy
+order stream.
 
 An order carries explicit normal or automatic-discovery priority. The node
 persists the two lanes and their shared admission sequence. With discovery
@@ -72,6 +90,10 @@ and the crawler does not infer it from a profile name.
 Running progress never blocks crawl execution. Absolute snapshots use one bounded
 ordered per-run queue; adjacent running updates coalesce, only one RPC is active,
 and deterministic phases spread reports instead of synchronizing 20 or more runs.
+The node authorizes a progress report through its exact lease, worker, session,
+and run once, then reuses that verified run target for control reconciliation and
+recording instead of scanning every active lease again. Crawler progress warnings
+render the byte provenance as a lowercase hexadecimal `runId`, never as raw text.
 Terminal progress follows a separate durable outbox. It is committed with the
 exact order identity, lease, session, tally, rate, and disposition before network
 delivery; at most 64 rows await delivery and four workers reconcile them. The node
@@ -84,6 +106,15 @@ override, the crawler default, or zero for unlimited dispatch. The node can
 therefore display the active rate without guessing the worker's configuration.
 Its Crawler monitor combines runs from every profile, renders exactly 20 rows per
 page, and keeps totals and health based on the complete snapshot.
+
+The node rebuilds an in-memory worker/session active-lease catalog from the
+durable lease bucket when the crawl broker opens. Successful claim, adoption,
+settlement, defer, and requeue transitions update it after commit, so capacity
+admission is O(1) and does not rescan every lease for each streamed order. The
+dedicated bbolt engine serializes writers through context-aware admission. A
+cancelled RPC can stop while queued, and cancellation is checked again before the
+transaction callback and before commit so stale work rolls back. Delivery-credit
+waits hold neither that writer admission nor the worker-session registry lock.
 
 Because an order can therefore be delivered more than once, each admitted page
 receives an observation ID and UTC observation time that survive frontier replay;

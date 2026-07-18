@@ -91,8 +91,7 @@ func TestOpenReturnsControlCompletionReplayError(t *testing.T) {
 }
 
 func TestOpenSurfacesExpiredLeaseReclaimError(t *testing.T) {
-	engine := newScriptedEngine()
-	engine.scanErrors[leaseBucket] = errors.New("scan failed")
+	engine := &leaseSweepFailureEngine{scriptedEngine: newScriptedEngine()}
 	v, err := vault.New(engine)
 	if err != nil {
 		t.Fatalf("vault.New: %v", err)
@@ -101,6 +100,37 @@ func TestOpenSurfacesExpiredLeaseReclaimError(t *testing.T) {
 	if _, err := Open(Config{ListenAddr: "127.0.0.1:0"}, v, nil); err == nil {
 		t.Fatal("expected lease reclaim error")
 	}
+}
+
+func TestOpenSurfacesWorkerLeaseCatalogError(t *testing.T) {
+	engine := newScriptedEngine()
+	engine.scanErrors[leaseBucket] = errors.New("scan failed")
+	v, err := vault.New(engine)
+	if err != nil {
+		t.Fatalf("vault.New: %v", err)
+	}
+
+	if _, err := Open(Config{ListenAddr: "127.0.0.1:0"}, v, nil); err == nil {
+		t.Fatal("expected worker lease catalog error")
+	}
+}
+
+type leaseSweepFailureEngine struct {
+	*scriptedEngine
+	views int
+}
+
+func (engine *leaseSweepFailureEngine) View(
+	ctx context.Context,
+	read func(vault.EngineTxn) error,
+) error {
+	err := engine.scriptedEngine.View(ctx, read)
+	engine.views++
+	if err == nil && engine.views == 1 {
+		engine.scanErrors[leaseBucket] = errors.New("scan failed")
+	}
+
+	return err
 }
 
 func TestOpenRequeuesOnlyExpiredLeasesAndPreservesWorkerReplay(t *testing.T) {

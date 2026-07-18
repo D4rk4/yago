@@ -29,8 +29,15 @@ func TestStreamOrdersReplaysWorkerLeaseBeforePendingOrder(t *testing.T) {
 	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
 	ctx, cancel := context.WithCancel(context.Background())
 	sends := 0
+	var heartbeatErr error
 	stream := &fakeOrderStream{ctx: ctx, onSend: func() {
 		sends++
+		if sends == 1 {
+			_, heartbeatErr = server.Heartbeat(t.Context(), &crawlrpc.WorkerHeartbeat{
+				WorkerId: "worker-a", WorkerSessionId: testWorkerSessionID,
+				ActiveLeaseIds: []string{leaseID},
+			})
+		}
 		if sends == 2 {
 			cancel()
 		}
@@ -38,6 +45,9 @@ func TestStreamOrdersReplaysWorkerLeaseBeforePendingOrder(t *testing.T) {
 	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{
 		WorkerId: "worker-a", WorkerSessionId: testWorkerSessionID,
 	}, stream)
+	if heartbeatErr != nil {
+		t.Fatalf("confirm recovered lease: %v", heartbeatErr)
+	}
 
 	if len(stream.sent) != 2 {
 		t.Fatalf("sent %d orders, want replay and pending order", len(stream.sent))

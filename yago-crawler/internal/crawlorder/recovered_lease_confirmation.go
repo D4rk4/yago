@@ -24,7 +24,7 @@ func (d heartbeatDelivery) confirmRecoveredLeases(
 	if d.acknowledgments != nil {
 		acknowledged = d.acknowledgments.snapshot()
 	}
-	result, err := d.exchange(ctx, acknowledged)
+	result, err := d.exchangeForLeases(ctx, acknowledged, leaseIDs)
 	if err != nil {
 		for _, leaseID := range added {
 			d.leaseGrants.Revoke(leaseID)
@@ -39,7 +39,7 @@ func (d heartbeatDelivery) confirmRecoveredLeases(
 	applied := d.dispatchDirectives(ctx, result)
 	if d.acknowledgments != nil && len(applied) > 0 {
 		d.acknowledgments.add(applied)
-		d.confirmApplied(ctx)
+		d.confirmAppliedForLeases(ctx, leaseIDs)
 	}
 	for _, leaseID := range leaseIDs {
 		if !d.leaseGrants.Confirmed(leaseID) {

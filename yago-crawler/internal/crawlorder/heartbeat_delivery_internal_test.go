@@ -57,6 +57,20 @@ type serializedHeartbeatClient struct {
 	continued chan struct{}
 }
 
+type observedHeartbeatOperation struct {
+	mutex     sync.Mutex
+	attempted chan struct{}
+}
+
+func (operation *observedHeartbeatOperation) Lock() {
+	operation.attempted <- struct{}{}
+	operation.mutex.Lock()
+}
+
+func (operation *observedHeartbeatOperation) Unlock() {
+	operation.mutex.Unlock()
+}
+
 func (c *serializedHeartbeatClient) Heartbeat(
 	context.Context,
 	*crawlrpc.WorkerHeartbeat,
@@ -81,20 +95,18 @@ func TestHeartbeatOperationsAreSerialized(t *testing.T) {
 		entered:      make(chan struct{}, 2),
 		continued:    make(chan struct{}, 2),
 	}
-	delivery := heartbeatDelivery{client: client, workerID: "worker", operation: &sync.Mutex{}}
+	operation := &observedHeartbeatOperation{attempted: make(chan struct{}, 2)}
+	delivery := heartbeatDelivery{client: client, workerID: "worker", operation: operation}
 	done := make(chan struct{}, 2)
 	go func() { delivery.deliver(t.Context()); done <- struct{}{} }()
+	awaitHeartbeatOperationAttempt(t, operation.attempted)
 	go func() { delivery.deliver(t.Context()); done <- struct{}{} }()
 	select {
 	case <-client.entered:
 	case <-time.After(time.Second):
 		t.Fatal("first heartbeat did not start")
 	}
-	select {
-	case <-client.entered:
-		t.Fatal("second heartbeat overlapped the first")
-	case <-time.After(25 * time.Millisecond):
-	}
+	awaitHeartbeatOperationAttempt(t, operation.attempted)
 	client.continued <- struct{}{}
 	select {
 	case <-client.entered:
@@ -114,6 +126,15 @@ func TestHeartbeatOperationsAreSerialized(t *testing.T) {
 	client.mu.Unlock()
 	if maximum != 1 {
 		t.Fatalf("maximum concurrent heartbeats = %d, want 1", maximum)
+	}
+}
+
+func awaitHeartbeatOperationAttempt(t *testing.T, attempted <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-attempted:
+	case <-time.After(time.Second):
+		t.Fatal("heartbeat operation was not attempted")
 	}
 }
 

@@ -41,7 +41,7 @@ func (s *exchangeServer) ReportProgress(
 	}
 	defer release()
 	progress := progressFromReport(report)
-	if err := s.recordCurrentProgress(ctx, progress); err != nil {
+	if err := s.recordAuthorizedProgress(ctx, progress); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 

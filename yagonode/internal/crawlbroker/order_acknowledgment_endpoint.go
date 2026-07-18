@@ -36,6 +36,7 @@ func (s *exchangeServer) AckOrder(
 
 			return nil, status.Error(codes.Internal, err.Error())
 		}
+		s.sessions.confirmDisposition(workerID, workerSessionID, leaseID)
 
 		return &crawlrpc.OrderAckResult{ConfirmationToken: confirmationToken}, nil
 	}
@@ -63,6 +64,7 @@ func (s *exchangeServer) AckOrder(
 		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	s.sessions.confirmDisposition(workerID, workerSessionID, leaseID)
 
 	return &crawlrpc.OrderAckResult{}, nil
 }

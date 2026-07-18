@@ -97,14 +97,24 @@ func (q *DurableOrderQueue) prepareTerminalLeaseSettlement(
 	defer q.leaseMutation.Unlock()
 	want := terminalSettlementRecord(request)
 	var settlement leaseSettlementRecord
+	var removed leaseRecord
+	removedFound := false
 	err := q.vault.Update(ctx, func(tx *vault.Txn) error {
 		var err error
-		settlement, err = q.prepareTerminalLeaseSettlementTx(tx, leaseID, request, want)
+		settlement, removed, removedFound, err = q.prepareTerminalLeaseSettlementTx(
+			tx,
+			leaseID,
+			request,
+			want,
+		)
 
 		return err
 	})
 	if err != nil {
 		return leaseSettlementRecord{}, fmt.Errorf("settle terminal crawl lease: %w", err)
+	}
+	if removedFound {
+		q.workerLeases.remove(removed)
 	}
 	q.signal()
 

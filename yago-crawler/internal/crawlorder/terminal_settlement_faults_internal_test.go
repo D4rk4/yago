@@ -285,16 +285,6 @@ func TestTerminalSettlementDurableLookupFailsClosed(t *testing.T) {
 
 func TestTerminalSettlementSessionRebindingHandlesDisappearanceAndFailure(t *testing.T) {
 	definition := terminalSettlementScenarioDefinition()
-	registry := crawllease.NewGrantRegistry(t.Context(), 1)
-	if err := registry.Track(definition.LeaseID); err != nil {
-		t.Fatal(err)
-	}
-	registry.Renew(
-		time.Now(),
-		time.Hour,
-		[]string{definition.LeaseID},
-		[]string{definition.LeaseID},
-	)
 	definition.Phase = crawlsettlement.AwaitingAcknowledgment
 	definition.WorkerSessionID = "previous-session"
 	fault := errors.New("rebind write failed")
@@ -326,12 +316,28 @@ func TestTerminalSettlementSessionRebindingHandlesDisappearanceAndFailure(t *tes
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			registry := crawllease.NewGrantRegistry(t.Context(), 1)
+			if err := registry.Track(definition.LeaseID); err != nil {
+				t.Fatal(err)
+			}
+			registry.Renew(
+				time.Now(),
+				time.Hour,
+				[]string{definition.LeaseID},
+				[]string{definition.LeaseID},
+			)
 			outbox := &terminalSettlementOutboxScenario{rebind: test.rebind}
 			relay := newTerminalSettlementRelay(&terminalAcknowledgmentClient{}, outbox)
 			relay.bindWorkerLeaseSession(definition.WorkerID, "replacement-session", registry)
 			err := relay.advance(t.Context(), definition)
 			if (err != nil) != test.wantErr {
 				t.Fatalf("terminal rebind error = %v, want error %t", err, test.wantErr)
+			}
+			if test.wantErr != registry.Confirmed(definition.LeaseID) {
+				t.Fatalf(
+					"terminal rebind retained grant = %t",
+					registry.Confirmed(definition.LeaseID),
+				)
 			}
 		})
 	}

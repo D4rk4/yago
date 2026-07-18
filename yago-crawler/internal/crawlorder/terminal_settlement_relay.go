@@ -139,7 +139,18 @@ func (relay *terminalSettlementRelay) advanceWithDelivery(
 	ctx context.Context,
 	settlement crawlsettlement.Settlement,
 	deliver terminalSettlementDelivery,
-) error {
+) (advanceError error) {
+	leaseGrants := relay.session.leaseGrants
+	protected := leaseGrants != nil && leaseGrants.BeginSettlement(settlement.LeaseID)
+	if leaseGrants != nil {
+		defer func() {
+			if advanceError == nil {
+				leaseGrants.Settle(settlement.LeaseID)
+			} else if protected {
+				leaseGrants.SettlementFailed(settlement.LeaseID)
+			}
+		}()
+	}
 	relay.mutex.Lock()
 	if current := relay.inFlight[settlement.LeaseID]; current != nil {
 		relay.mutex.Unlock()
@@ -174,6 +185,12 @@ func (relay *terminalSettlementRelay) advanceExclusive(
 	}
 	if !found {
 		return nil
+	}
+	if settlement.Phase == crawlsettlement.AcknowledgedDeleting ||
+		settlement.Phase == crawlsettlement.Confirming {
+		if relay.session.leaseGrants != nil {
+			relay.session.leaseGrants.Settle(settlement.LeaseID)
+		}
 	}
 	settlement, err = relay.acknowledgeTerminalSettlement(ctx, settlement, deliver)
 	if err != nil {
@@ -252,6 +269,9 @@ func (relay *terminalSettlementRelay) acknowledgeTerminalSettlement(
 			"record terminal crawl acknowledgment: %w",
 			err,
 		)
+	}
+	if relay.session.leaseGrants != nil {
+		relay.session.leaseGrants.Settle(settlement.LeaseID)
 	}
 	settlement.Phase = crawlsettlement.AcknowledgedDeleting
 	settlement.ConfirmationToken = append([]byte(nil), token...)

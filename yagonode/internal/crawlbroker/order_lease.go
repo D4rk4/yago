@@ -96,6 +96,9 @@ func (q *DurableOrderQueue) leasePopForSession(
 ) ([]byte, string, bool, error) {
 	q.leaseMutation.Lock()
 	defer q.leaseMutation.Unlock()
+	if !q.workerLeaseCapacityAvailable(workerID, workerSessionID) {
+		return nil, "", false, nil
+	}
 	leaseID, err := newLeaseID()
 	if err != nil {
 		return nil, "", false, fmt.Errorf("create crawl lease identity: %w", err)
@@ -158,9 +161,11 @@ func (q *DurableOrderQueue) ackLeaseWithTargetLocked(
 	requireOwner bool,
 ) (leaseControlTarget, error) {
 	var target leaseControlTarget
+	var removed leaseRecord
+	removedFound := false
 	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
 		var err error
-		target, err = q.acknowledgeLeaseTx(
+		target, removed, removedFound, err = q.acknowledgeLeaseTx(
 			tx,
 			leaseID,
 			workerID,
@@ -171,6 +176,9 @@ func (q *DurableOrderQueue) ackLeaseWithTargetLocked(
 		return err
 	}); err != nil {
 		return leaseControlTarget{}, fmt.Errorf("ack crawl lease: %w", err)
+	}
+	if removedFound {
+		q.workerLeases.remove(removed)
 	}
 
 	return target, nil

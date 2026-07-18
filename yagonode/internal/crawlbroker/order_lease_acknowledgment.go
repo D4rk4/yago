@@ -12,29 +12,31 @@ func (q *DurableOrderQueue) acknowledgeLeaseTx(
 	workerID string,
 	workerSessionID string,
 	requireOwner bool,
-) (leaseControlTarget, error) {
+) (leaseControlTarget, leaseRecord, bool, error) {
 	record, found, err := q.leases.Get(tx, vault.Key(leaseID))
 	if err != nil {
-		return leaseControlTarget{}, fmt.Errorf("read crawl lease: %w", err)
+		return leaseControlTarget{}, leaseRecord{}, false, fmt.Errorf("read crawl lease: %w", err)
 	}
 	if !found {
-		return q.acknowledgedLeaseTargetTx(tx, leaseID)
+		target, err := q.acknowledgedLeaseTargetTx(tx, leaseID)
+
+		return target, leaseRecord{}, false, err
 	}
 	if record.Deferred {
-		return leaseControlTarget{}, errLeaseDispositionConflict
+		return leaseControlTarget{}, leaseRecord{}, false, errLeaseDispositionConflict
 	}
 	if requireOwner && !liveLeaseOwnedBy(record, workerID, workerSessionID, nowFunc()) {
-		return leaseControlTarget{}, errLeaseLost
+		return leaseControlTarget{}, leaseRecord{}, false, errLeaseLost
 	}
 	target, err := controlTargetFromLease(record)
 	if err != nil {
-		return leaseControlTarget{}, err
+		return leaseControlTarget{}, leaseRecord{}, false, err
 	}
 	if err := q.persistAcknowledgedLeaseTx(tx, leaseID, target); err != nil {
-		return leaseControlTarget{}, err
+		return leaseControlTarget{}, leaseRecord{}, false, err
 	}
 
-	return target, nil
+	return target, record, true, nil
 }
 
 func (q *DurableOrderQueue) acknowledgedLeaseTargetTx(

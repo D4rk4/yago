@@ -66,6 +66,7 @@ type DurableOrderQueue struct {
 	seq                      *vault.Collection[uint64]
 	keys                     *vault.Collection[uint64]
 	leases                   *vault.Collection[leaseRecord]
+	workerLeases             *workerLeaseCatalog
 	leaseSettlements         *vault.Collection[leaseSettlementRecord]
 	leaseSettlementOrder     *vault.Collection[[]byte]
 	leaseSettlementExpiry    *vault.Collection[[]byte]
@@ -112,6 +113,14 @@ func newDurableOrderQueue(
 		leaseTTL:                 leaseTTL,
 		notify:                   make(chan struct{}, 1),
 		extendedAt:               map[string]time.Time{},
+	}
+	queue.workerLeases, err = loadWorkerLeaseCatalog(
+		context.Background(),
+		v,
+		collections.leases,
+	)
+	if err != nil {
+		return nil, err
 	}
 	if len(admissions) > 0 {
 		queue.growthAdmission = admissions[0]

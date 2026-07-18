@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/D4rk4/yago/yago-crawler/internal/crawllease"
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 )
@@ -63,9 +64,15 @@ func receiveOrdinaryOrder(
 
 		return false
 	}
-	delivery, valid := decodeCrawlOrderMessage(ctx, drain, message)
+	if drain.heartbeat != nil && !drain.heartbeat.confirmLease(ctx, message.GetLeaseId()) {
+		return false
+	}
+	delivery, valid, err := decodeCrawlOrderMessage(ctx, drain, message)
+	if err != nil {
+		return false
+	}
 
-	return !valid || confirmAndDeliverCrawlOrder(ctx, drain, delivery)
+	return !valid || deliverOrderWithLeaseSession(ctx, delivery)
 }
 
 func receiveRecoveredOrder(
@@ -88,7 +95,10 @@ func receiveRecoveredOrder(
 		!drain.heartbeat.confirmRecoveredLeases(ctx, recovered.leaseIDs) {
 		return false
 	}
-	delivery, valid := decodeCrawlOrderMessage(ctx, drain, message)
+	delivery, valid, err := decodeCrawlOrderMessage(ctx, drain, message)
+	if err != nil {
+		return false
+	}
 	if valid && !deliverOrderWithLeaseSession(ctx, delivery) {
 		return false
 	}
@@ -170,7 +180,7 @@ func decodeCrawlOrderMessage(
 	ctx context.Context,
 	drain crawlOrderStreamDrain,
 	message *crawlrpc.CrawlOrderMessage,
-) (crawlOrderDeliveryEnvelope, bool) {
+) (crawlOrderDeliveryEnvelope, bool, error) {
 	order, err := yagocrawlcontract.UnmarshalCrawlOrder(message.GetOrderJson())
 	if err != nil {
 		slog.WarnContext(ctx, msgOrderDecodeFailed, slog.Any("error", err))
@@ -178,18 +188,25 @@ func decodeCrawlOrderMessage(
 		if drain.heartbeat != nil {
 			workerSessionID = drain.heartbeat.workerSessionID
 		}
-		settleMalformedOrderForSession(
+		var leaseGrants *crawllease.GrantRegistry
+		if drain.heartbeat != nil {
+			leaseGrants = drain.heartbeat.leaseGrants
+		}
+		err = settleMalformedOrderForSession(
 			ctx,
 			drain.client,
-			message.GetLeaseId(),
-			drain.workerID,
-			workerSessionID,
+			leasedOrderAcknowledgment{
+				leaseID:         message.GetLeaseId(),
+				workerID:        drain.workerID,
+				workerSessionID: workerSessionID,
+			},
+			leaseGrants,
 		)
-		if drain.heartbeat != nil && drain.heartbeat.leaseGrants != nil {
-			drain.heartbeat.leaseGrants.Revoke(message.GetLeaseId())
+		if err != nil && leaseGrants != nil {
+			leaseGrants.Revoke(message.GetLeaseId())
 		}
 
-		return crawlOrderDeliveryEnvelope{}, false
+		return crawlOrderDeliveryEnvelope{}, false, err
 	}
 
 	return crawlOrderDeliveryEnvelope{
@@ -201,17 +218,5 @@ func decodeCrawlOrderMessage(
 		workerID:            drain.workerID,
 		terminalSettlements: drain.terminalSettlements,
 		heartbeat:           drain.heartbeat,
-	}, true
-}
-
-func confirmAndDeliverCrawlOrder(
-	ctx context.Context,
-	drain crawlOrderStreamDrain,
-	delivery crawlOrderDeliveryEnvelope,
-) bool {
-	if drain.heartbeat != nil && !drain.heartbeat.confirmLease(ctx, delivery.leaseID) {
-		return false
-	}
-
-	return deliverOrderWithLeaseSession(ctx, delivery)
+	}, true, nil
 }

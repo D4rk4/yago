@@ -143,6 +143,7 @@ func (q *DurableOrderQueue) adoptWorkerSession(
 	if err != nil {
 		return nil, fmt.Errorf("adopt worker crawl leases: %w", err)
 	}
+	q.workerLeases.reassignWorker(workerID, workerSessionID, len(leases))
 
 	return leases, nil
 }

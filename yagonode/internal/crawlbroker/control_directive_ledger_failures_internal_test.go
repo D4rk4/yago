@@ -160,4 +160,21 @@ func TestPersistentControlLedgerRunReconciliationFailures(t *testing.T) {
 			t.Fatal("expected terminal run delete failure")
 		}
 	})
+	t.Run("transaction replay scan", func(t *testing.T) {
+		ledger, engine := persistentControlLedgerFixture(t)
+		if _, err := ledger.Enqueue(
+			t.Context(),
+			"worker",
+			yagocrawlcontract.CrawlControlDirective{RunID: "ab"},
+		); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		engine.replayNext = true
+		engine.betweenReplay = func() {
+			engine.scanErrors[controlDirectiveBucket] = errors.New("scan failed")
+		}
+		if err := ledger.ReconcileRun(t.Context(), "other", "ab", false); err == nil {
+			t.Fatal("expected replayed run scan failure")
+		}
+	})
 }

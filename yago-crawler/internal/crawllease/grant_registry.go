@@ -16,6 +16,7 @@ type grant struct {
 	expiresAt time.Time
 	renewedAt time.Time
 	confirmed bool
+	settling  grantSettlement
 }
 
 type GrantRegistry struct {
@@ -97,25 +98,14 @@ func (r *GrantRegistry) Renew(
 		if !exists {
 			continue
 		}
-		if current.confirmed && requestStarted.Before(current.renewedAt) {
-			continue
-		}
 		_, accepted := renewedSet[leaseID]
-		if !accepted || timeToLive <= 0 || !deadline.After(now) ||
-			current.confirmed && !requestStarted.Before(current.expiresAt) {
+		switch current.applyRenewal(requestStarted, deadline, now, accepted, timeToLive) {
+		case grantRenewalLost:
 			r.loseLocked(leaseID, current)
 			availabilityChanged = true
 			leaseLost = true
-
-			continue
-		}
-		if !current.confirmed {
+		case grantRenewalConfirmed:
 			availabilityChanged = true
-		}
-		current.confirmed = true
-		current.renewedAt = requestStarted
-		if deadline.After(current.expiresAt) {
-			current.expiresAt = deadline
 		}
 	}
 	expired := r.expireLocked(now)
@@ -204,7 +194,7 @@ func (r *GrantRegistry) nextExpiry() time.Duration {
 	r.expireAndSignalLocked(now)
 	var earliest time.Time
 	for _, current := range r.grants {
-		if !current.confirmed {
+		if !current.confirmed || current.settling.active() {
 			continue
 		}
 		if earliest.IsZero() || current.expiresAt.Before(earliest) {
@@ -234,7 +224,8 @@ func (r *GrantRegistry) expireAndSignalLocked(now time.Time) {
 func (r *GrantRegistry) expireLocked(now time.Time) bool {
 	changed := false
 	for leaseID, current := range r.grants {
-		if current.confirmed && !current.expiresAt.After(now) {
+		if current.confirmed && !current.settling.active() &&
+			!current.expiresAt.After(now) {
 			r.loseLocked(leaseID, current)
 			changed = true
 		}

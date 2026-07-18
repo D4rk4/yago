@@ -61,47 +61,6 @@ func (l *persistentControlDirectiveLedger) ReconcileRun(
 	return nil
 }
 
-func (l *persistentControlDirectiveLedger) ReassignRunIfLeaseOwned(
-	ctx context.Context,
-	queue *DurableOrderQueue,
-	workerID string,
-	runID string,
-) (runLeaseOwnership, error) {
-	if runID == "" {
-		return runLeaseUnclaimed, nil
-	}
-	pending, err := l.runDirectivePending(ctx, runID)
-	if err != nil {
-		return runLeaseUnclaimed, err
-	}
-	if !pending {
-		return queue.runLeaseOwnership(ctx, workerID, runID)
-	}
-	if queue.vault != l.storage {
-		return runLeaseUnclaimed, fmt.Errorf(
-			"reassign crawl control run: storage identity mismatch",
-		)
-	}
-	ownership := runLeaseUnclaimed
-	err = l.storage.Update(ctx, func(tx *vault.Txn) error {
-		var err error
-		ownership, err = queue.runLeaseOwnershipTx(tx, workerID, runID)
-		if err != nil {
-			return fmt.Errorf("verify crawl run lease owner: %w", err)
-		}
-		if ownership != runLeaseOwnedByWorker {
-			return nil
-		}
-
-		return l.reconcileRunTx(tx, workerID, runID, false)
-	})
-	if err != nil {
-		return runLeaseUnclaimed, fmt.Errorf("reassign crawl control run: %w", err)
-	}
-
-	return ownership, nil
-}
-
 func (l *persistentControlDirectiveLedger) runDirectivePending(
 	ctx context.Context,
 	runID string,

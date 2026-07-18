@@ -694,27 +694,39 @@ func TestGRPCOrderReceiverTerminatesUndecodableOrders(t *testing.T) {
 	drainUntilClosed(t, receiver)
 }
 
-func TestGRPCOrderReceiverContinuesAfterMalformedSettlementFailure(t *testing.T) {
+func TestGRPCOrderReceiverReconnectsAfterMalformedSettlementFailure(t *testing.T) {
+	fastRetry(t)
 	ctx, cancel := context.WithCancel(context.Background())
+	registry := crawllease.NewGrantRegistry(ctx, 1)
 	client := &fakeStreamer{
-		ctx:    ctx,
-		ackErr: status.Error(codes.InvalidArgument, "settlement rejected"),
-		attempts: []streamAttempt{{results: []recvResult{
-			{msg: &crawlrpc.CrawlOrderMessage{
-				OrderJson: []byte("not json"),
-				LeaseId:   "lease-malformed",
-			}},
-			orderResult(t, "good"),
-		}}},
+		ctx:         ctx,
+		ackErr:      status.Error(codes.InvalidArgument, "settlement rejected"),
+		renewActive: true,
+		leaseTTL:    time.Minute,
+		attempts: []streamAttempt{
+			{results: []recvResult{{msg: &crawlrpc.CrawlOrderMessage{
+				OrderJson: []byte("not json"), LeaseId: "lease-malformed",
+			}}}},
+			{results: []recvResult{orderResult(t, "good")}},
+		},
 	}
 
-	receiver := NewGRPCOrderReceiver(ctx, client, "worker-1", nil)
+	receiver := NewGRPCOrderReceiver(
+		ctx,
+		client,
+		"worker-1",
+		nil,
+		WithWorkerLeaseSession("session", registry),
+	)
 	if got := awaitOrder(t, receiver).Order.Profile.Name; got != "good" {
 		t.Fatalf("order = %q, want good", got)
 	}
 	if calls := client.acknowledgementCalls(); len(calls) != 1 ||
 		calls[0].GetLeaseId() != "lease-malformed" {
 		t.Fatalf("malformed order settlement calls = %+v", calls)
+	}
+	if registrations := client.workerRegistrations(); len(registrations) < 2 {
+		t.Fatalf("order stream registrations = %d, want reconnect", len(registrations))
 	}
 	cancel()
 	drainUntilClosed(t, receiver)

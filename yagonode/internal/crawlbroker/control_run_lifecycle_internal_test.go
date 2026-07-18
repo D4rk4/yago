@@ -20,9 +20,12 @@ func TestPersistentControlDirectiveFollowsRunLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open control registry: %v", err)
 	}
-	queue, err := newDurableOrderQueue(storage, DefaultLeaseTTL)
-	if err != nil {
-		t.Fatalf("open order queue: %v", err)
+	if err := registry.reassignAuthorizedRun(
+		t.Context(),
+		"new-worker",
+		"missing",
+	); err != nil {
+		t.Fatalf("ignore missing run directive: %v", err)
 	}
 	registry.register("old-worker")
 	if !registry.Enqueue("old-worker", yagocrawlcontract.CrawlControlDirective{
@@ -37,10 +40,8 @@ func TestPersistentControlDirectiveFollowsRunLifecycle(t *testing.T) {
 	}) {
 		t.Fatal("enqueue other run directive")
 	}
-	leaseOne(t, queue, "owned", "new-worker")
-	if _, err := registry.ReassignRunIfLeaseOwned(
+	if err := registry.reassignAuthorizedRun(
 		t.Context(),
-		queue,
 		"new-worker",
 		runID,
 	); err != nil {

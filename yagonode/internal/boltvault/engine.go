@@ -20,6 +20,7 @@ import (
 type engine struct {
 	db         *bolt.DB
 	quotaBytes int64
+	writes     writerAdmission
 }
 
 func (*engine) AtomicUpdates() bool { return true }
@@ -64,6 +65,9 @@ func open(
 }
 
 func (e *engine) Provision(name vault.Name) error {
+	e.writes.acquireUnbounded()
+	defer e.writes.release()
+
 	if err := e.db.Update(func(tx *bolt.Tx) error {
 		if _, createErr := tx.CreateBucketIfNotExists([]byte(name)); createErr != nil {
 			return fmt.Errorf("create bucket: %w", createErr)
@@ -77,9 +81,24 @@ func (e *engine) Provision(name vault.Name) error {
 	return nil
 }
 
-func (e *engine) Update(_ context.Context, fn func(vault.EngineTxn) error) error {
+func (e *engine) Update(ctx context.Context, fn func(vault.EngineTxn) error) error {
+	if err := e.writes.acquire(ctx); err != nil {
+		return err
+	}
+	defer e.writes.release()
+
 	if err := e.db.Update(func(tx *bolt.Tx) error {
-		return fn(boltTxn{tx: tx, writable: true})
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context: %w", err)
+		}
+		if err := fn(boltTxn{tx: tx, writable: true}); err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context: %w", err)
+		}
+
+		return nil
 	}); err != nil {
 		if storageAtCapacityError(err) {
 			return vault.ErrAtCapacity
