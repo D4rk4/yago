@@ -429,16 +429,18 @@ and arm64:
 - `ghcr.io/d4rk4/yago-node:vX.Y.Z`;
 - `ghcr.io/d4rk4/yago-crawler:vX.Y.Z`.
 
-Images published with the repository `GITHUB_TOKEN` and OCI source label inherit
-repository access permissions, not visibility. A new personal-account package
-starts private. Before publishing a new package name, configure the
+GitHub documents both a private default for first personal-account packages and
+repository-visibility inheritance for packages created by a `GITHUB_TOKEN`
+workflow. Observed anonymous registry access is authoritative. Before publishing
+a new package name, configure the
 `release-container-public-visibility` environment with an owner as a required
 reviewer and allow self-review. The authenticated publication job creates and
 attests the exact manifest; the next job remains pending at that protected
-environment. The owner opens the environment URL, changes the package to Public
-through Package settings, and approves the pending deployment. Public visibility
-is irreversible. The package REST and GraphQL APIs expose no supported visibility
-mutation.
+environment. Test the exact package tag without registry credentials. If it
+remains private, the owner changes it to Public through Package settings;
+otherwise no visibility change is required. Approve the pending deployment only
+after anonymous access is observed. Public visibility is irreversible. The
+package REST and GraphQL APIs expose no supported visibility mutation.
 
 The approved job uses an empty Docker credential directory to pull both the
 exact tag and its digest before it can succeed. Remove the environment's
@@ -464,13 +466,15 @@ jq -n --argjson reviewer_id "$reviewer_id" '{
   --input -
 ```
 
-After authenticated publication finishes, change the new package to Public at
-the settings URL shown by the pending environment, then approve that pending
-deployment. Querying `repos/D4rk4/yago/actions/runs/RUN_ID/pending_deployments`
-returns the environment ID for an API approval when desired. After the workflow
-and its anonymous checks succeed, update the same environment with an empty
-`reviewers` array; later releases retain the deployment record without waiting
-for a redundant visibility action.
+After authenticated publication finishes, test the exact tag with an empty
+Docker credential directory. Change the package to Public at the settings URL
+shown by the pending environment only if that test reports it private. Approve
+the pending deployment only after the anonymous tag resolves. Querying
+`repos/D4rk4/yago/actions/runs/RUN_ID/pending_deployments` returns the environment
+ID for an API approval when desired. After the workflow independently verifies
+the tag and digest, update the same environment with an empty `reviewers` array;
+later releases retain the deployment record without waiting for a redundant
+public-state action.
 
 After that gate passes, select the exact version and verify the embedded product
 identity before use:

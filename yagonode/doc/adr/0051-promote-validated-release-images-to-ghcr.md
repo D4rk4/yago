@@ -16,10 +16,12 @@ operators without one portable release reference. A moving tag such as
 `latest` would also let a historical backfill change what an existing deployment
 selects.
 
-Packages published with the repository `GITHUB_TOKEN` and linked by their OCI
-source label inherit repository access permissions, not visibility. A new
-personal-account package starts private, and GitHub exposes its visibility only
-through the package settings UI.
+GitHub documents both a private default for first personal-account packages and
+repository-visibility inheritance for packages created by a repository
+`GITHUB_TOKEN` workflow. The registry's observed anonymous response is therefore
+the authoritative public-state signal. GitHub exposes no supported REST or
+GraphQL package-visibility mutation; a package that remains private is changed
+only through its settings UI.
 Container attestations identify the published manifest digest, release source,
 and workflow that published it; they do not make the image safe or make the
 workflow definition part of an older tagged tree.
@@ -56,9 +58,10 @@ the source repository through image configuration metadata. Publication and
 attestation finish before a separate public-verification job. When a release
 introduces a package name, the repository's
 `release-container-public-visibility` environment has an owner reviewer; the
-job waits there while the owner makes the package public through Package
-settings, then proceeds only after approval. Anonymous tag and digest pulls are
-the authoritative visibility gate.
+job waits there while the owner tests the exact tag without credentials. The
+owner changes Package settings only if the package remains private and approves
+only after anonymous access is observed. Anonymous tag and digest pulls are the
+authoritative visibility gate.
 Publication is serialized per release ref. Authorization, network, server, and
 ambiguous registry failures stop the job instead of being treated as a missing
 tag. A retry accepts an existing architecture tag only when its image identity,
@@ -122,11 +125,13 @@ gates.
 Operators receive one exact-version reference per product and may pin the
 manifest-list digest for deployment. The release workflow now depends on GitHub
 Actions, workflow artifacts, GHCR, OIDC, and GitHub's attestation service.
-Repository linkage does not change package visibility. GitHub exposes that
-change through package settings; the package REST and GraphQL surfaces do not
-provide a supported visibility mutation for this workflow. A protected
-environment keeps first-package public verification pending rather than failed
-until the one-time owner action is complete. Registry provenance binds a digest to recorded
+GitHub's documented defaults do not replace observed anonymous verification.
+Package settings provide the required manual path only when a package remains
+private; the package REST and GraphQL surfaces do not provide a supported
+visibility mutation for this workflow. A protected environment keeps
+first-package public verification pending rather than failed until the owner
+confirms anonymous access and performs a settings change only when needed.
+Registry provenance binds a digest to recorded
 build evidence but does not replace source review, Trivy policy, runtime
 hardening, backups, or post-deployment health checks. No runtime dependency,
 listener, service, environment variable, storage format, or YaCy wire behavior
