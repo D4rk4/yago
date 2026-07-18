@@ -136,10 +136,13 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           deb="/out/yago_${version}_amd64.deb"
+          dpkg-deb --fsys-tarfile "dist/yago_${version}_amd64.deb" | \
+            tar -xOf - ./usr/share/doc/yago/CJK_DICTIONARY_NOTICES.txt | \
+            cmp - yagonode/internal/searchindex/CJK_DICTIONARY_NOTICES.txt
           for img in debian:12 debian:13 ubuntu:24.04 ubuntu:latest; do
             echo "::group::smoke ${img}"
             docker run --rm -e DEBIAN_FRONTEND=noninteractive \
-              -v "$PWD/dist:/out:ro" "$img" sh -eu -c '
+              -v "$PWD/dist:/out:ro" "$img" sh -eux -c '
                 apt-get update -qq >/dev/null
                 apt-get install -y -qq --no-install-recommends "$1" >/dev/null
                 id yago
@@ -169,7 +172,7 @@ jobs:
                 dpkg -i "$1" >/dev/null
                 grep -qx "YAGO_CRAWLER_WORKERS=31" /opt/yago/etc/yago-crawler.env
                 test ! -e /opt/yago/etc/yagocrawler.env
-                test -s /usr/share/doc/yago/CJK_DICTIONARY_NOTICES.txt
+                dpkg-query -L yago | grep -qx /usr/share/doc/yago/CJK_DICTIONARY_NOTICES.txt
                 dpkg -P yago >/dev/null
                 test -d /opt/yago/data
                 echo "  OK ${1##*/}"
@@ -193,7 +196,7 @@ jobs:
           rpm_path="/out/yago-${version}-1.x86_64.rpm"
           for img in fedora:latest rockylinux:9; do
             echo "::group::smoke ${img}"
-            docker run --rm -v "$PWD/dist:/out:ro" "$img" sh -eu -c '
+            docker run --rm -v "$PWD/dist:/out:ro" "$img" sh -eux -c '
                 dnf install -y -q --setopt=install_weak_deps=False "$1" >/dev/null
                 id yago
                 test "$(rpm -q --qf "%{VERSION}" yago)" = "$2"
@@ -290,6 +293,9 @@ jobs:
     needs: [build, containers]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    outputs:
+      node_digest: ${{ steps.publish.outputs.node_digest }}
+      crawler_digest: ${{ steps.publish.outputs.crawler_digest }}
     concurrency:
       group: release-container-publish-${{ github.ref }}
       cancel-in-progress: false
@@ -358,14 +364,30 @@ jobs:
               --deny-self-hosted-runners
           done
 
+  container_public_verify:
+    needs: container_publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: release-container-public-visibility
+      url: https://github.com/users/D4rk4/packages/container/yago-crawler/settings
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release workflow tooling
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: release-workflow
+
       - name: Verify public release containers without credentials
         env:
-          NODE_DIGEST: ${{ steps.publish.outputs.node_digest }}
-          CRAWLER_DIGEST: ${{ steps.publish.outputs.crawler_digest }}
+          NODE_DIGEST: ${{ needs.container_publish.outputs.node_digest }}
+          CRAWLER_DIGEST: ${{ needs.container_publish.outputs.crawler_digest }}
         run: sh release-workflow/deploy/verify-public-release-containers.sh "$RELEASE_TAG" "$RELEASE_SOURCE_SHA" "$NODE_DIGEST" "$CRAWLER_DIGEST"
 
   release:
-    needs: [build, container_publish]
+    needs: [build, container_public_verify]
     runs-on: ubuntu-latest
     permissions:
       contents: write

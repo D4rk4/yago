@@ -5,7 +5,7 @@ The node is configured through environment variables.
 > **Environment naming:** the node variables below were renamed from the `YACY_`
 > prefix to `YAGO_`. For one release, an unset `YAGO_` variable falls back to its
 > legacy `YACY_` name and logs a one-time deprecation warning. Crawler variables
-> use `YAGO_CRAWLER_` exclusively. The v0.0.11 package migration rewrites
+> use `YAGO_CRAWLER_` exclusively. The v0.0.12 package migration rewrites
 > line-leading `YAGOCRAWLER_` keys in the legacy package-managed environment file;
 > the runtime provides no fallback for that spelling or the earlier
 > `YACYCRAWLER_` spelling.

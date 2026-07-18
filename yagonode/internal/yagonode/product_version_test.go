@@ -201,8 +201,8 @@ func TestReleaseContainerWorkflowSeparatesValidationFromRegistryPublication(t *t
 			t.Fatalf("release container job contains publishing operation %q", forbidden)
 		}
 	}
-	if !strings.Contains(text[releaseStart:], `needs: [build, container_publish]`) {
-		t.Fatal("release publication does not depend on registry publication")
+	if !strings.Contains(text[releaseStart:], `needs: [build, container_public_verify]`) {
+		t.Fatal("release publication does not depend on public registry verification")
 	}
 }
 

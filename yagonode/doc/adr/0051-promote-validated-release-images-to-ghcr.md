@@ -17,7 +17,9 @@ operators without one portable release reference. A moving tag such as
 selects.
 
 Packages published with the repository `GITHUB_TOKEN` and linked by their OCI
-source label are expected to inherit the public repository's visibility.
+source label inherit repository access permissions, not visibility. A new
+personal-account package starts private, and GitHub exposes its visibility only
+through the package settings UI.
 Container attestations identify the published manifest digest, release source,
 and workflow that published it; they do not make the image safe or make the
 workflow definition part of an older tagged tree.
@@ -35,7 +37,8 @@ The public packages are:
 - `ghcr.io/d4rk4/yago-node:vX.Y.Z`;
 - `ghcr.io/d4rk4/yago-crawler:vX.Y.Z`.
 
-The crawler repository name applies from v0.0.11. The immutable v0.0.10
+The crawler repository name applies from v0.0.12. The unpublished v0.0.11 tag
+did not publish a final registry manifest. The immutable v0.0.10
 backfill remains at its historical `ghcr.io/d4rk4/yagocrawler:v0.0.10`
 identity and is neither moved nor republished.
 
@@ -49,10 +52,13 @@ exporter preserves Docker Schema 2 manifests rather than OCI root annotations.
 The workflow attaches GitHub-hosted provenance to each final manifest-list
 digest, verifies the attestation and child membership, and makes release
 publication depend on the complete registry gate. The packages are linked to
-the source repository through image configuration metadata. Anonymous tag and
-digest pulls are the authoritative visibility gate; if inheritance does not
-make a package public, an owner changes visibility in the package settings
-before retrying the gate.
+the source repository through image configuration metadata. Publication and
+attestation finish before a separate public-verification job. When a release
+introduces a package name, the repository's
+`release-container-public-visibility` environment has an owner reviewer; the
+job waits there while the owner makes the package public through Package
+settings, then proceeds only after approval. Anonymous tag and digest pulls are
+the authoritative visibility gate.
 Publication is serialized per release ref. Authorization, network, server, and
 ambiguous registry failures stop the job instead of being treated as a missing
 tag. A retry accepts an existing architecture tag only when its image identity,
@@ -116,10 +122,11 @@ gates.
 Operators receive one exact-version reference per product and may pin the
 manifest-list digest for deployment. The release workflow now depends on GitHub
 Actions, workflow artifacts, GHCR, OIDC, and GitHub's attestation service.
-Publication expects repository-linked visibility inheritance but still proves
-anonymous access. GitHub exposes package visibility through package settings;
-the package REST and GraphQL surfaces do not provide a supported visibility
-mutation for this workflow. Registry provenance binds a digest to recorded
+Repository linkage does not change package visibility. GitHub exposes that
+change through package settings; the package REST and GraphQL surfaces do not
+provide a supported visibility mutation for this workflow. A protected
+environment keeps first-package public verification pending rather than failed
+until the one-time owner action is complete. Registry provenance binds a digest to recorded
 build evidence but does not replace source review, Trivy policy, runtime
 hardening, backups, or post-deployment health checks. No runtime dependency,
 listener, service, environment variable, storage format, or YaCy wire behavior

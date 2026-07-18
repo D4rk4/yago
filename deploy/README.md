@@ -114,7 +114,7 @@ binaries or install the matched package, start the node, wait for readiness, and
 then start the crawler. The stable crawler identity and frontier checkpoint must
 remain on the same `YAGO_DATA_DIR` volume.
 
-The v0.0.11 crawler runtime rename is an installation boundary. Take a generic
+The v0.0.12 crawler runtime rename is an installation boundary. Take a generic
 backup with the tooling from the currently installed release, then leave both
 services stopped for package installation. The pre-install migration removes
 the superseded unit registration and executable, rewrites the former crawler
@@ -340,6 +340,13 @@ gh attestation verify "/tmp/yago-release/yago_${version#v}_amd64.deb" \
   --source-digest "$source_digest"
 ```
 
+The release gate compares the notice bytes inside the Debian archive with the
+pinned source before distribution smoke tests. Minimal container images may set
+a dpkg `path-exclude` for `/usr/share/doc/*`; their smoke test validates the
+package manifest instead of requiring dpkg to materialize a file that local
+policy deliberately excludes. Traced package-smoke shells identify the exact
+failed assertion.
+
 ### `yagoseek.dev` production exception
 
 The operator policy for deployments performed as `root@yagoseek.dev` skips a
@@ -422,16 +429,48 @@ and arm64:
 - `ghcr.io/d4rk4/yago-node:vX.Y.Z`;
 - `ghcr.io/d4rk4/yago-crawler:vX.Y.Z`.
 
-Images published with the repository `GITHUB_TOKEN` and OCI source label are
-expected to inherit the public repository's visibility. The publication gate
-uses an empty Docker credential directory to pull both the exact tag and its
-digest before it can succeed. If inheritance does not make a package public,
-an owner must change visibility through the package settings UI and retry; the
-package REST and GraphQL APIs do not expose a supported visibility mutation.
+Images published with the repository `GITHUB_TOKEN` and OCI source label inherit
+repository access permissions, not visibility. A new personal-account package
+starts private. Before publishing a new package name, configure the
+`release-container-public-visibility` environment with an owner as a required
+reviewer and allow self-review. The authenticated publication job creates and
+attests the exact manifest; the next job remains pending at that protected
+environment. The owner opens the environment URL, changes the package to Public
+through Package settings, and approves the pending deployment. Public visibility
+is irreversible. The package REST and GraphQL APIs expose no supported visibility
+mutation.
+
+The approved job uses an empty Docker credential directory to pull both the
+exact tag and its digest before it can succeed. Remove the environment's
+one-time required-reviewer rule only after that anonymous gate proves the new
+package public. Existing public package names need no visibility change.
 A retry accepts an existing architecture tag or manifest list only when its
 image identity, labels, platforms, and child digests match the validated
 archives; registry authorization, network, and server failures stop publication
 rather than being interpreted as a missing tag.
+
+Create the one-time environment protection before pushing the tag that first
+uses a package name:
+
+```sh
+reviewer_id=$(gh api user --jq .id)
+jq -n --argjson reviewer_id "$reviewer_id" '{
+  wait_timer: 0,
+  prevent_self_review: false,
+  reviewers: [{type: "User", id: $reviewer_id}],
+  deployment_branch_policy: null
+}' | gh api --method PUT \
+  repos/D4rk4/yago/environments/release-container-public-visibility \
+  --input -
+```
+
+After authenticated publication finishes, change the new package to Public at
+the settings URL shown by the pending environment, then approve that pending
+deployment. Querying `repos/D4rk4/yago/actions/runs/RUN_ID/pending_deployments`
+returns the environment ID for an API approval when desired. After the workflow
+and its anonymous checks succeed, update the same environment with an empty
+`reviewers` array; later releases retain the deployment record without waiting
+for a redundant visibility action.
 
 After that gate passes, select the exact version and verify the embedded product
 identity before use:

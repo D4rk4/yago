@@ -127,7 +127,7 @@ func TestReleaseWorkflowHasOnlyTagPushTrigger(t *testing.T) {
 		`ref: ${{ env.RELEASE_SOURCE_SHA }}`,
 		`needs: [build, containers]`,
 		`group: release-container-publish-${{ github.ref }}`,
-		`needs: [build, container_publish]`,
+		`needs: [build, container_public_verify]`,
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("release tag workflow guard missing %q", required)
