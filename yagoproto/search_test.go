@@ -1,10 +1,12 @@
 package yagoproto_test
 
 import (
+	"errors"
 	"math"
 	"net/url"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -161,6 +163,44 @@ func TestParseSearchRequestRejectsBadFields(t *testing.T) {
 		if _, err := yagoproto.ParseSearchRequest(t.Context(), form); err == nil {
 			t.Fatalf("ParseSearchRequest(%v) should fail", form)
 		}
+	}
+}
+
+func TestParseSearchRequestBoundsHashFields(t *testing.T) {
+	hash := sampleHash(t, "alpha").String()
+	for _, item := range []struct {
+		field string
+		limit int
+	}{
+		{field: yagoproto.FieldQuery, limit: yagoproto.MaximumSearchTermHashes},
+		{field: yagoproto.FieldExclude, limit: yagoproto.MaximumSearchTermHashes},
+		{field: yagoproto.FieldAbstracts, limit: yagoproto.MaximumSearchTermHashes},
+		{field: yagoproto.FieldURLs, limit: yagoproto.MaximumSearchURLHashes},
+	} {
+		t.Run(item.field, func(t *testing.T) {
+			if _, err := yagoproto.ParseSearchRequest(
+				t.Context(),
+				url.Values{item.field: {strings.Repeat(hash, item.limit)}},
+			); err != nil {
+				t.Fatalf("parse boundary: %v", err)
+			}
+			if _, err := yagoproto.ParseSearchRequest(
+				t.Context(),
+				url.Values{item.field: {strings.Repeat(hash, item.limit+1)}},
+			); !errors.Is(err, yagoproto.ErrBadField) {
+				t.Fatalf("error = %v, want bad field", err)
+			}
+		})
+	}
+}
+
+func TestParseSearchRequestRejectsExtremeHashFieldBeforeExpansion(t *testing.T) {
+	raw := strings.Repeat(sampleHash(t, "alpha").String(), 100_000)
+	if _, err := yagoproto.ParseSearchRequest(
+		t.Context(),
+		url.Values{yagoproto.FieldQuery: {raw}},
+	); !errors.Is(err, yagoproto.ErrBadField) {
+		t.Fatalf("error = %v, want bad field", err)
 	}
 }
 

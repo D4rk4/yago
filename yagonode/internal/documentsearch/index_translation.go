@@ -12,6 +12,7 @@ const msgAppearanceDiscarded = "rwi search posting discarded"
 type termAppearance struct {
 	documentIdentifier   yagomodel.Hash
 	documentLocation     yagomodel.URLHash
+	posting              yagomodel.RWIPosting
 	occurrences          uint64
 	textPosition         uint64
 	language             string
@@ -47,6 +48,7 @@ func translateAppearance(
 	appearance := termAppearance{
 		documentIdentifier: location.Hash(),
 		documentLocation:   location,
+		posting:            posting,
 		occurrences:        occurrences,
 		textPosition:       textPosition,
 		language:           posting.Properties[yagomodel.ColLanguage],

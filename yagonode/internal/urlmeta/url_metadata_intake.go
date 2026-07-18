@@ -26,6 +26,9 @@ func (i urlIntake) Receive(
 	}
 	atCapacity, err := i.vault.AtCapacity(ctx)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return Receipt{Busy: true}, nil
+		}
 		return Receipt{}, fmt.Errorf("check capacity: %w", err)
 	}
 	if atCapacity {
@@ -46,12 +49,19 @@ func (i urlIntake) Receive(
 		return Receipt{Busy: true}, nil
 	}
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return Receipt{Busy: true}, nil
+		}
 		return Receipt{}, fmt.Errorf("store urls: %w", err)
 	}
 	logURLRowDiscards(ctx, discards)
 	logURLObserverFailures(ctx, observerFailures)
 
-	return Receipt{Double: len(existing), ErrorURL: rejected}, nil
+	return Receipt{
+		Double:      len(existing),
+		ExistingURL: existing,
+		ErrorURL:    rejected,
+	}, nil
 }
 
 func (i urlIntake) store(
@@ -87,7 +97,8 @@ func (i urlIntake) store(
 			continue
 		}
 		if err := i.collection.Put(tx, key, row); err != nil {
-			if errors.Is(err, vault.ErrContended) {
+			if errors.Is(err, vault.ErrCollectionMutationIncomplete) ||
+				errors.Is(err, vault.ErrContended) {
 				return nil, nil, nil, nil, fmt.Errorf("store url metadata: %w", err)
 			}
 			rejected = append(rejected, hash.Hash())

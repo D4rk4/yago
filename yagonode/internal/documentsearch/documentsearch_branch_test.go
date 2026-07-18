@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -354,5 +356,37 @@ func TestMountSearchServesRoute(t *testing.T) {
 	}
 	if _, ok := msg[yagoproto.FieldLinkCount]; ok {
 		t.Fatalf("body exposes internal linkcount field: %v", msg)
+	}
+}
+
+func TestMountSearchRejectsOversizedTermsBeforeIndexScan(t *testing.T) {
+	mux := http.NewServeMux()
+	MountSearch(
+		httpguard.NewWireRouter(mux, httpguard.WireGate{
+			Guard:   httpguard.NewRequestGuard(4096, time.Second),
+			Respond: httpguard.NewWireResponder(searchWireStatus{}),
+			Address: httpguard.NewClientAddressResolver(nil),
+		}),
+		searchIdentity(),
+		SearchConfig{
+			Index: fakeScanner{err: errors.New("index must not be called")},
+		},
+	)
+	query := url.Values{
+		yagoproto.FieldNetworkName: {"freeworld"},
+		yagoproto.FieldQuery: {
+			strings.Repeat(hashFor("term").String(), yagoproto.MaximumSearchTermHashes+1),
+		},
+	}
+	rec := httptest.NewRecorder()
+	httpReq := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		yagoproto.PathSearch+"?"+query.Encode(),
+		nil,
+	)
+	mux.ServeHTTP(rec, httpReq)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
 	}
 }

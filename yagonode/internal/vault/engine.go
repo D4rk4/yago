@@ -5,7 +5,10 @@ import (
 	"errors"
 )
 
-var ErrAtCapacity = errors.New("vault at capacity")
+var (
+	ErrAtCapacity                   = errors.New("vault at capacity")
+	ErrCollectionMutationIncomplete = errors.New("collection mutation incomplete")
+)
 
 // ErrContended marks a write aborted by shard contention. The engine retries
 // the whole update when the update callback RETURNS

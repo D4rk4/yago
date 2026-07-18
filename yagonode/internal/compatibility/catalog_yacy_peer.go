@@ -2,6 +2,8 @@ package compatibility
 
 import "github.com/D4rk4/yago/yagoproto"
 
+const defaultYaCyAuthenticationScope = "The default freeworld and same-name network path is implemented. Controlled private-network salted-magic-sim authentication is not configured end to end."
+
 var yacyPeerSurfaceSpecs = []surfaceSpec{
 	{
 		Name:    "Peer liveness handshake",
@@ -32,36 +34,41 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:    yagoproto.PathTransferRWI,
 		Methods: methods(yagoproto.TransferRWIEndpointMethods),
 		State:   Implemented,
-		Behavior: "Checks the YaCy network unit and required transfer fields before intake, accepts RWI postings " +
-			"durably before acknowledgement, and reports missing URL metadata with YaCy transferRWI fields.",
+		Behavior: "Checks the YaCy network name and required transfer fields before intake, accepts at most 1,000 RWI postings " +
+			"durably before acknowledgement, reports missing URL metadata, returns HTTP 200 too high load when the admission gate is saturated, " +
+			"and returns HTTP 200 busy with a millisecond pause for an oversized transfer or pre-commit storage and context pressure.",
 		Evidence: []string{
 			"yagonode/internal/rwi/*_test.go",
 			"yagonode/test/fixtures/yacywire/transfer-rwi-*",
 		},
+		Notes: defaultYaCyAuthenticationScope,
 	},
 	{
 		Name:    "Inbound URL metadata transfer",
 		Path:    yagoproto.PathTransferURL,
 		Methods: methods(yagoproto.TransferURLEndpointMethods),
 		State:   Implemented,
-		Behavior: "Checks the YaCy network unit before target handling, accepts URL metadata rows, reconciles RWI " +
-			"references, and returns YaCy transferURL result fields.",
+		Behavior: "Checks the YaCy network name before target handling, accepts at most 1,000 URL metadata rows, reconciles current-process unknown RWI " +
+			"references without synchronous lookup reads, and returns HTTP 200 YaCy transferURL backpressure before an uncommitted timeout can become a transport failure.",
 		Evidence: []string{
 			"yagonode/internal/urlmeta/*_test.go",
 			"yagonode/test/fixtures/yacywire/transfer-url-*",
 		},
+		Notes: defaultYaCyAuthenticationScope,
 	},
 	{
 		Name:    "Remote RWI search",
 		Path:    yagoproto.PathSearch,
 		Methods: methods(yagoproto.SearchEndpointMethods),
 		State:   Implemented,
-		Behavior: "Serves key-value YaCy remote search responses with count, joincount, resource rows, " +
-			"indexcount, and indexabstract metadata from local RWI storage.",
+		Behavior: "Serves key-value YaCy remote search responses with count, joincount, resource rows carrying a transient fixed-order wi WordReferenceRow, " +
+			"indexcount, and indexabstract metadata from local RWI storage; term hashes are capped at 32 and URL hashes at 128.",
 		Evidence: []string{
 			"yagonode/internal/documentsearch/*_test.go",
 			"yagonode/test/fixtures/yacywire/search-*",
+			"yagonode/test/e2e/interop_matrix_e2e_test.go",
 		},
+		Notes: defaultYaCyAuthenticationScope,
 	},
 	{
 		Name:    "Plain seed list",
@@ -172,7 +179,7 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:     yagoproto.PathCrawlReceipt,
 		Methods:  methods(yagoproto.CrawlReceiptEndpointMethods),
 		State:    Partial,
-		Behavior: "Accepts the YaCy crawl receipt wire shape, returns no delay field on network-auth failure, and returns YaCy's rejected-receipt retry delay for same-network malformed or wrong target hashes while remote crawl execution is disabled.",
+		Behavior: "Accepts the YaCy crawl receipt wire shape and returns delay 3600 for a foreign network, malformed or wrong target hashes, and addressed receipts while remote crawl execution is disabled.",
 		Evidence: []string{
 			"yagonode/internal/crawling/*_test.go",
 			"yagoproto/crawl_receipt_test.go",

@@ -21,6 +21,7 @@ type TransferRWIRequest struct {
 	wordCountPresent  bool
 	entryCountPresent bool
 	indexesPresent    bool
+	indexesOverflow   bool
 }
 
 type TransferRWIResponse struct {
@@ -75,7 +76,7 @@ func ParseTransferRWIRequest(ctx context.Context, form url.Values) (TransferRWIR
 		return TransferRWIRequest{}, err
 	}
 
-	req.Indexes = parseRWILines(ctx, form.Get(FieldIndexes))
+	req.Indexes, req.indexesOverflow = parseRWILines(ctx, form.Get(FieldIndexes))
 
 	return req, nil
 }
@@ -90,6 +91,12 @@ func (r TransferRWIRequest) MissingEntryCountField() bool {
 
 func (r TransferRWIRequest) MissingIndexesField() bool {
 	return !r.indexesPresent && len(r.Indexes) == 0
+}
+
+func (r TransferRWIRequest) ExceedsEntryLimit() bool {
+	return r.indexesOverflow ||
+		r.EntryCount > MaximumTransferEntries ||
+		len(r.Indexes) > MaximumTransferEntries
 }
 
 func (r TransferRWIResponse) Encode() yagomodel.Message {
@@ -146,26 +153,27 @@ func encodeRWILines(entries []yagomodel.RWIPosting) string {
 	return strings.Join(lines, "\n")
 }
 
-const maxRWIEntries = 1000
-
-func parseRWILines(ctx context.Context, raw string) []yagomodel.RWIPosting {
+func parseRWILines(ctx context.Context, raw string) ([]yagomodel.RWIPosting, bool) {
 	if raw == "" {
-		return nil
+		return nil, false
 	}
 
 	var entries []yagomodel.RWIPosting
+	lines := 0
 	for line := range strings.SplitSeq(raw, "\n") {
 		line = strings.TrimRight(line, "\r")
 		if line == "" {
 			continue
 		}
-		if len(entries) >= maxRWIEntries {
+		lines++
+		if lines > MaximumTransferEntries {
 			slog.WarnContext(
 				ctx,
 				"transfer rwi posting limit reached",
-				slog.Int("limit", maxRWIEntries),
+				slog.Int("limit", MaximumTransferEntries),
 			)
-			break
+
+			return entries, true
 		}
 
 		entry, err := yagomodel.ParseRWIPosting(line)
@@ -182,5 +190,5 @@ func parseRWILines(ctx context.Context, raw string) []yagomodel.RWIPosting {
 		entries = append(entries, entry)
 	}
 
-	return entries
+	return entries, false
 }

@@ -63,8 +63,7 @@ func TestPeerGrowthReceiversReturnBusyUnderPressure(t *testing.T) {
 	if receipt, err := postingReceiver.Receive(
 		t.Context(),
 		[]yagomodel.RWIPosting{{}},
-	); err != nil || !receipt.Busy ||
-		receipt.Pause != receiveBusyPauseSecs {
+	); err != nil || !receipt.Busy || receipt.Pause != 30_000 {
 		t.Fatalf("posting pressure receipt = %+v, %v", receipt, err)
 	}
 	urls := &recordingURLGrowthReceiver{}

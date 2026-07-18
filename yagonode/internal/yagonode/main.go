@@ -17,6 +17,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
 	"github.com/D4rk4/yago/yagonode/internal/shardvault"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
+	"github.com/D4rk4/yago/yagoproto"
 )
 
 const (
@@ -28,8 +29,8 @@ const (
 	// deliberately: the protocol version must never be overridden at build time.
 	version = "1.941"
 
-	receiveBatchCap      = 1000
-	receiveBusyPauseSecs = 30
+	receiveBatchCap              = yagoproto.MaximumTransferEntries
+	receiveBusyPauseMilliseconds = 30_000
 	// dhtInboundTransferSlots bounds concurrent inbound transferRWI/transferURL
 	// intake, and inboundRemoteSearchSlots bounds concurrent /yacy/search.html
 	// serving; excess requests are shed with protocol-level busy answers.
@@ -302,6 +303,7 @@ func serve(
 	startPeerPresenceLoops(ctx, &background, assembled)
 	startRedirectPurge(ctx, &background, assembled)
 	startCrawlScheduleLoop(ctx, &background, assembled)
+	startTransferTallyFlush(ctx, &background, assembled.transferTally)
 	go func() {
 		defer background.Done()
 		runEvictionLoop(ctx, assembled.sweeper, evictionMetrics)
@@ -333,7 +335,7 @@ func serve(
 			runDHTOutboundLoop(ctx, assembled.dht)
 		}()
 	}
-	defer background.Wait()
+	defer awaitBackgroundAndDrainTransferTally(&background, assembled.transferTally)
 	defer stopPeerReputation(cancel, assembled.peerEvents)
 
 	errs := make(chan error, len(servers))

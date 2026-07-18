@@ -35,8 +35,34 @@ func TestCatalogIncludesCurrentPeerProtocolSurfaces(t *testing.T) {
 		!slices.Contains(paths[yagoproto.PathTransferRWI].Methods, "POST") {
 		t.Fatalf("transferRWI surface = %#v", paths[yagoproto.PathTransferRWI])
 	}
+	if !strings.Contains(paths[yagoproto.PathTransferRWI].Behavior, "1,000") ||
+		!strings.Contains(paths[yagoproto.PathTransferRWI].Behavior, "too high load") ||
+		!strings.Contains(paths[yagoproto.PathTransferRWI].Behavior, "busy") ||
+		!strings.Contains(paths[yagoproto.PathTransferRWI].Behavior, "millisecond pause") {
+		t.Fatalf("transferRWI bounds = %#v", paths[yagoproto.PathTransferRWI])
+	}
+	if !strings.Contains(paths[yagoproto.PathSearch].Behavior, "wi WordReferenceRow") {
+		t.Fatalf("remote search interop = %#v", paths[yagoproto.PathSearch])
+	}
+	for _, path := range []string{
+		yagoproto.PathTransferRWI,
+		yagoproto.PathTransferURL,
+		yagoproto.PathSearch,
+	} {
+		if !strings.Contains(paths[path].Notes, "default freeworld and same-name") ||
+			!strings.Contains(
+				paths[path].Notes,
+				"salted-magic-sim authentication is not configured end to end",
+			) {
+			t.Fatalf("%s authentication scope = %#v", path, paths[path])
+		}
+	}
 	if paths[yagoproto.PathCrawlURLs].State != Partial {
 		t.Fatalf("crawl urls state = %q, want partial", paths[yagoproto.PathCrawlURLs].State)
+	}
+	if !strings.Contains(paths[yagoproto.PathCrawlReceipt].Behavior, "foreign network") ||
+		!strings.Contains(paths[yagoproto.PathCrawlReceipt].Behavior, "delay 3600") {
+		t.Fatalf("crawl receipt delay = %#v", paths[yagoproto.PathCrawlReceipt])
 	}
 }
 

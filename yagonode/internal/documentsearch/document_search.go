@@ -50,6 +50,7 @@ func (s searcher) search(ctx context.Context, criteria searchCriteria) (searchRe
 	if err != nil {
 		return searchResult{}, fmt.Errorf("rows by hash: %w", err)
 	}
+	resources = resourcesWithWordReferences(resources, matchingEveryTerm)
 
 	report, err := s.reportMatches(ctx, criteria, wanted)
 	if err != nil {

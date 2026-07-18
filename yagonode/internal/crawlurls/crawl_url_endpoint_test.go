@@ -243,6 +243,28 @@ func TestURLHashListReturnsLocalMetadataAndResolvedReferrer(t *testing.T) {
 	}
 }
 
+func TestURLHashListRejectsOversizedInputBeforeDirectoryLookup(t *testing.T) {
+	directory := &recordingURLDirectory{}
+	endpoint := newEndpoint(localIdentity(), directory, nil)
+	response, err := endpoint.Serve(t.Context(), yagoproto.CrawlURLRequest{
+		NetworkName: "freeworld",
+		Call:        yagoproto.CrawlURLCallURLHashList,
+		Hashes: strings.Repeat(
+			hashA.String(),
+			yagoproto.MaximumCrawlURLHashes+1,
+		),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(directory.calls) != 0 {
+		t.Fatalf("directory calls = %d, want none", len(directory.calls))
+	}
+	if !strings.Contains(response.Body, yagoproto.CrawlURLResponseRejected) {
+		t.Fatalf("body = %q, want rejected response", response.Body)
+	}
+}
+
 func TestURLHashListReturnsOKWhenNoHashesAreRequested(t *testing.T) {
 	dir := &recordingURLDirectory{}
 	endpoint := newEndpoint(localIdentity(), dir, nil)

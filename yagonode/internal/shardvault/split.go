@@ -177,6 +177,10 @@ func movesTo(name vault.Name, key vault.Key, level, n int) bool {
 	return int(wide) == n //nolint:gosec // wide < 2^(level+1) ≤ 2·maxShards.
 }
 
+func movesDuringSplit(name vault.Name, key vault.Key, level, n int) bool {
+	return name != vault.Name(collectionLengthChangesBucket) && movesTo(name, key, level, n)
+}
+
 // copyMovedRecords copies every bucket of src into dst, carrying the records
 // that move to shard n. Every bucket is created in dst (even with no moving
 // record) so a later write routing there finds it provisioned. The destination
@@ -196,7 +200,7 @@ func copyMovedRecords(ctx context.Context, src, dst *bolt.DB, level, n int) erro
 			}
 
 			return sb.ForEach(func(k, v []byte) error {
-				if !movesTo(vault.Name(name), k, level, n) {
+				if !movesDuringSplit(vault.Name(name), k, level, n) {
 					return nil
 				}
 
@@ -331,7 +335,7 @@ func deleteMovedBatch(src *bolt.DB, name []byte, level, n int, seek []byte) ([]b
 		var batch [][]byte
 		var span int64
 		for k, v := seekStart(cursor, seek); k != nil; k, v = cursor.Next() {
-			if !movesTo(vault.Name(name), k, level, n) {
+			if !movesDuringSplit(vault.Name(name), k, level, n) {
 				continue
 			}
 			batch = append(batch, append([]byte{}, k...))

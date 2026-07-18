@@ -12,14 +12,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/urlmeta"
 )
 
-type inboundURLReferenceMatcher interface {
-	ReferencedURLs(ctx context.Context, urls []yagomodel.Hash) ([]yagomodel.Hash, error)
-}
-
-type inboundURLMissingChecker interface {
-	MissingURLs(ctx context.Context, urls []yagomodel.Hash) ([]yagomodel.Hash, error)
-}
-
 func observeDHTInboundStorage(
 	storage nodeStorage,
 	observer *metrics.DHTInboundMetrics,
@@ -28,28 +20,30 @@ func observeDHTInboundStorage(
 	if observer == nil && tally == nil {
 		return storage
 	}
+	reconciliation := newDHTInboundReconciliation(maximumPendingDHTInboundURLs)
 	storage.postingReceiver = dhtInboundPostingReceiver{
-		next:     storage.postingReceiver,
-		observer: observer,
-		tally:    tally,
-		now:      time.Now,
+		next:           storage.postingReceiver,
+		observer:       observer,
+		tally:          tally,
+		reconciliation: reconciliation,
+		now:            time.Now,
 	}
 	storage.urlReceiver = dhtInboundURLReceiver{
-		next:       storage.urlReceiver,
-		missing:    storage.urlDirectory,
-		references: storage.references,
-		observer:   observer,
-		tally:      tally,
+		next:           storage.urlReceiver,
+		observer:       observer,
+		tally:          tally,
+		reconciliation: reconciliation,
 	}
 
 	return storage
 }
 
 type dhtInboundPostingReceiver struct {
-	next     rwi.PostingReceiver
-	observer *metrics.DHTInboundMetrics
-	tally    *transfertally.Tally
-	now      func() time.Time
+	next           rwi.PostingReceiver
+	observer       *metrics.DHTInboundMetrics
+	tally          *transfertally.Tally
+	reconciliation *dhtInboundReconciliation
+	now            func() time.Time
 }
 
 func (r dhtInboundPostingReceiver) Receive(
@@ -70,6 +64,7 @@ func (r dhtInboundPostingReceiver) Receive(
 	}
 	result.ReceivedPostings = len(entries)
 	result.UnknownURLs = len(receipt.UnknownURL)
+	r.reconciliation.note(receipt.UnknownURL)
 	r.observeRWI(result)
 	if r.tally != nil {
 		tallyTransfer(ctx, r.tally.AddReceivedWords, result.ReceivedPostings)
@@ -85,19 +80,17 @@ func (r dhtInboundPostingReceiver) observeRWI(result metrics.DHTInboundRWIResult
 }
 
 type dhtInboundURLReceiver struct {
-	next       urlmeta.URLReceiver
-	missing    inboundURLMissingChecker
-	references inboundURLReferenceMatcher
-	observer   *metrics.DHTInboundMetrics
-	tally      *transfertally.Tally
+	next           urlmeta.URLReceiver
+	observer       *metrics.DHTInboundMetrics
+	tally          *transfertally.Tally
+	reconciliation *dhtInboundReconciliation
 }
 
 func (r dhtInboundURLReceiver) Receive(
 	ctx context.Context,
 	rows []yagomodel.URIMetadataRow,
 ) (urlmeta.Receipt, error) {
-	hashes, invalid := urlRowHashes(rows)
-	reconcileCandidates := r.reconcileCandidates(ctx, hashes)
+	invalid := invalidURLRowCount(rows)
 	receipt, err := r.next.Receive(ctx, rows)
 	if err != nil || receipt.Busy {
 		r.observeURL(metrics.DHTInboundURLResult{RejectedRows: len(rows)})
@@ -110,10 +103,11 @@ func (r dhtInboundURLReceiver) Receive(
 
 	rejected := invalid + len(receipt.ErrorURL)
 	received := len(rows) - rejected
+	reconciled := r.reconciliation.resolve(rows, receipt.ErrorURL, receipt.ExistingURL)
 	r.observeURL(metrics.DHTInboundURLResult{
 		ReceivedRows:   received,
 		RejectedRows:   rejected,
-		ReconciledRows: reconciledURLRows(reconcileCandidates, receipt.ErrorURL),
+		ReconciledRows: reconciled,
 	})
 	if r.tally != nil {
 		tallyTransfer(ctx, r.tally.AddReceivedURLs, received)
@@ -128,53 +122,13 @@ func (r dhtInboundURLReceiver) observeURL(result metrics.DHTInboundURLResult) {
 	}
 }
 
-func (r dhtInboundURLReceiver) reconcileCandidates(
-	ctx context.Context,
-	hashes []yagomodel.Hash,
-) []yagomodel.Hash {
-	if r.missing == nil || r.references == nil {
-		return nil
-	}
-	missing, err := r.missing.MissingURLs(ctx, hashes)
-	if err != nil {
-		return nil
-	}
-	referenced, err := r.references.ReferencedURLs(ctx, missing)
-	if err != nil {
-		return nil
-	}
-
-	return referenced
-}
-
-func urlRowHashes(rows []yagomodel.URIMetadataRow) ([]yagomodel.Hash, int) {
-	hashes := make([]yagomodel.Hash, 0, len(rows))
+func invalidURLRowCount(rows []yagomodel.URIMetadataRow) int {
 	var invalid int
 	for _, row := range rows {
-		hash, err := row.URLHash()
-		if err != nil {
+		if _, err := row.URLHash(); err != nil {
 			invalid++
-
-			continue
 		}
-		hashes = append(hashes, hash.Hash())
 	}
 
-	return hashes, invalid
-}
-
-func reconciledURLRows(candidates, rejected []yagomodel.Hash) int {
-	rejectedSet := make(map[yagomodel.Hash]struct{}, len(rejected))
-	for _, hash := range rejected {
-		rejectedSet[hash] = struct{}{}
-	}
-	reconciled := 0
-	for _, hash := range candidates {
-		if _, ok := rejectedSet[hash]; ok {
-			continue
-		}
-		reconciled++
-	}
-
-	return reconciled
+	return invalid
 }

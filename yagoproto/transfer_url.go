@@ -2,6 +2,7 @@ package yagoproto
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/url"
 
@@ -41,6 +42,15 @@ func ParseTransferURLRequest(ctx context.Context, form url.Values) (TransferURLR
 	if err != nil {
 		return TransferURLRequest{}, err
 	}
+	if urlCount > MaximumTransferEntries {
+		return TransferURLRequest{}, fmt.Errorf(
+			"%w: %s=%d exceeds %d",
+			ErrBadField,
+			FieldURLCount,
+			urlCount,
+			MaximumTransferEntries,
+		)
+	}
 
 	req := TransferURLRequest{
 		NetworkName: form.Get(FieldNetworkName),
@@ -58,6 +68,9 @@ func ParseTransferURLRequest(ctx context.Context, form url.Values) (TransferURLR
 	}
 
 	for i := 0; i < req.URLCount; i++ {
+		if err := ctx.Err(); err != nil {
+			return TransferURLRequest{}, fmt.Errorf("transferURL request: %w", err)
+		}
 		raw := form.Get(indexedKey(prefixURL, i))
 		if raw == "" {
 			slog.WarnContext(

@@ -79,3 +79,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0058](0058-use-negotiated-analyzer-recall-for-yago-peers.md) | Use negotiated analyzer recall for cooperating Yago peers | Accepted |
 | [0059](0059-use-snowball-rules-for-bounded-surface-generation.md) | Use Snowball rules for bounded surface generation | Accepted |
 | [0060](0060-admit-managed-growth-by-filesystem-reserve.md) | Admit managed growth by filesystem reserve | Accepted |
+| [0061](0061-record-collection-length-on-record-shards.md) | Record collection length changes on record shards | Accepted |

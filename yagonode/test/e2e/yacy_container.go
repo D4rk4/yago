@@ -13,7 +13,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-const defaultYaCyImage = "docker.io/yacy/yacy_search_server:latest"
+const defaultYaCyImage = "docker.io/yacy/yacy_search_server@sha256:4225dd07b605347b62ff1fbfa0268217aa79ba2d29bdb0a76d5366d4267398da"
 
 func startYaCy(
 	t *testing.T,
@@ -22,7 +22,7 @@ func startYaCy(
 	networkName, alias string,
 ) (testcontainers.Container, string) {
 	t.Helper()
-	image := os.Getenv("YAGO_YAGO_IMAGE")
+	image := os.Getenv("YAGO_YACY_IMAGE")
 	if image == "" {
 		image = defaultYaCyImage
 	}

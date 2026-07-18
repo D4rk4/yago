@@ -2,8 +2,11 @@ package yagoproto_test
 
 import (
 	"context"
+	"errors"
+	"math"
 	"net/url"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -135,6 +138,56 @@ func TestParseTransferURLRequestSkipsBadDeclaredURL(t *testing.T) {
 	}
 	if len(req.URLs) != 1 {
 		t.Fatalf("URLs = %d, want 1 (bad url1 skipped)", len(req.URLs))
+	}
+}
+
+func TestParseTransferURLRequestBoundsDeclaredRows(t *testing.T) {
+	iam := sampleHash(t, "alpha").String()
+	youAre := sampleHash(t, "beta").String()
+	row := sampleURLRow(t, "url-a").String()
+	form := url.Values{
+		yagoproto.FieldIam:      {iam},
+		yagoproto.FieldYouAre:   {youAre},
+		yagoproto.FieldURLCount: {strconv.Itoa(yagoproto.MaximumTransferEntries)},
+	}
+	for index := range yagoproto.MaximumTransferEntries {
+		form.Set("url"+strconv.Itoa(index), row)
+	}
+	request, err := yagoproto.ParseTransferURLRequest(t.Context(), form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(request.URLs) != yagoproto.MaximumTransferEntries {
+		t.Fatalf("URLs = %d, want %d", len(request.URLs), yagoproto.MaximumTransferEntries)
+	}
+
+	form = url.Values{
+		yagoproto.FieldIam:      {iam},
+		yagoproto.FieldYouAre:   {youAre},
+		yagoproto.FieldURLCount: {strconv.Itoa(math.MaxInt)},
+	}
+	if _, err := yagoproto.ParseTransferURLRequest(t.Context(), form); !errors.Is(
+		err,
+		yagoproto.ErrBadField,
+	) {
+		t.Fatalf("error = %v, want bad field", err)
+	}
+}
+
+func TestParseTransferURLRequestHonorsContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	form := url.Values{
+		yagoproto.FieldIam:      {sampleHash(t, "alpha").String()},
+		yagoproto.FieldYouAre:   {sampleHash(t, "beta").String()},
+		yagoproto.FieldURLCount: {"1"},
+		"url0":                  {sampleURLRow(t, "url-a").String()},
+	}
+	if _, err := yagoproto.ParseTransferURLRequest(ctx, form); !errors.Is(
+		err,
+		context.Canceled,
+	) {
+		t.Fatalf("error = %v, want context canceled", err)
 	}
 }
 

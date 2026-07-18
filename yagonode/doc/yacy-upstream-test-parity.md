@@ -59,7 +59,9 @@ tests in the matching `yagonode/internal/*` packages, derived from upstream
 servlet sources and observed responses.
 
 Functional end-to-end compatibility is proven by the live interop matrix in
-`yagonode/test/e2e` against a real `yacy/yacy_search_server` container:
+`yagonode/test/e2e` against the pinned stock-Java image
+`docker.io/yacy/yacy_search_server@sha256:4225dd07b605347b62ff1fbfa0268217aa79ba2d29bdb0a76d5366d4267398da`.
+`YAGO_YACY_IMAGE` can select another explicitly pinned test image.
 
 - `TestRealYaCyPromotesNodeToSenior`: mutual hello with the full advertised
   seed DNA; the Java peer back-pings this node and publishes it as a senior.
@@ -70,7 +72,23 @@ Functional end-to-end compatibility is proven by the live interop matrix in
   upstream defaults, which a many-container test host always does.
 - `TestNodeDistributesRWIToRealYaCy`: this node runs its outbound DHT gates,
   selects the Java peer, and hands off stored RWI and URL metadata through the
-  two-phase transferRWI/transferURL exchange until the Java index grows.
+  two-phase transferRWI/transferURL exchange. The test waits for the unique RWI
+  row and then requires `/yacy/urls.xml` to return the exact transferred URL
+  GUID, so index growth alone cannot satisfy the proof.
 - `TestGlobalSearchFindsRealYaCyResults`: a global search on this node fans
   out to the Java peer over `/yacy/search.html` and returns a document that
   only the Java peer has indexed.
+- `TestRealYaCyGlobalSearchFindsYagoRWI`: a Java global search returns a
+  Yago-only RWI document from this node. The response carries the transient
+  enhanced-base64, fixed-order 20-column `wi` row required by the stock Java
+  consumer without modifying stored URL metadata.
+
+The matrix covers the default `freeworld` unit and same-name peers. Controlled
+private networks requiring Java YaCy's `salted-magic-sim` calculation remain
+unsupported.
+
+Yago computes URL hashes without DNS. Stock Java YaCy can classify an
+unresolvable hostname under an unrecognized top-level domain as local and
+produce a different URL hash. The exact-GUID live transfer fixture therefore
+uses a recognized public top-level domain. Resolving DNS during hashing would
+make identity depend on network state and is not adopted.

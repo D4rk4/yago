@@ -33,7 +33,7 @@ func seedNodeIndex(
 	lines := make([]string, len(words))
 	for i, word := range words {
 		lines[i] = fmt.Sprintf(
-			"%s{c=1,h=%s,x=2,z=AAAAAA}",
+			"%s{c=1,h=%s,t=1,x=2,z=AAAAAA}",
 			yagomodel.WordHash(word),
 			urlHash,
 		)

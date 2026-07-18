@@ -17,16 +17,25 @@ A receiver that wants YaCy peers to treat it as DHT-capable needs:
    requires `youare` and tolerates a missing `iam` field; per-word
    `rwiurlcount` uses `env=<wordhash>`;
 5. `transferRWI.html` enforcing `network.unit.name`, required transfer fields,
-   and `youare`, accepting `wordHash{row}` entries, and reporting missing URL
-   hashes with `unknownURL`;
+   and `youare`, accepting at most 1,000 declared and actual `wordHash{row}`
+   entries, and reporting missing URL hashes with `unknownURL`;
 6. `transferURL.html` enforcing `network.unit.name` before target handling and
-   accepting indexed `url0..urlN` metadata rows;
+   parsing at most 1,000 declared `url0..urlN` metadata rows and rejecting a
+   larger count before per-row allocation;
 7. `search.html` returning `joincount`, `count`, and `resourceN` rows when remote
-   search is supported.
+   search is supported. Required, excluded, and requested-abstract fields retain
+   at most 32 hashes each, and the URL allowlist retains at most 128 hashes. Each
+   resource response copy carries an enhanced-base64 `wi` with the complete
+   fixed-order 20-column `WordReferenceRow`; stored URL metadata is unchanged.
 
 To receive index transfer, the seed `Flags` field must set bit 2
 (`FLAG_ACCEPT_REMOTE_INDEX`). Without that bit, YaCy's sender-side DHT target
 selection skips the peer even if its `PeerType` is `senior`.
+
+Network-unit authentication currently interoperates with the default
+`freeworld` unit and same-name peers. Controlled private networks that require
+Java YaCy's `salted-magic-sim` calculation are unsupported because that
+credential flow is not wired end to end.
 
 Public `resource=global` search uses YaCy DHT positions but draws candidates from
 the known senior-peer roster, including peers that have not completed an inbound
@@ -44,13 +53,30 @@ selection reuses a context-aware 4,096-peer/16 MiB candidate snapshot and
 invalidates it on roster mutations, so query traffic does not rescan the entire
 persistent roster.
 
-Inbound DHT transfer metrics are exposed on the ops listener. The RWI receiver
-publishes `yacy_rwi_received_postings_total`,
+Inbound DHT transfer metrics are exposed on the ops listener and observe only
+traffic accepted through the YaCy wire endpoints. Local crawler ingest and
+local index writes do not increment them. The RWI receiver publishes
+`yacy_rwi_received_postings_total`,
 `yacy_rwi_rejected_postings_total`, `yacy_rwi_unknown_url_total`, and
 `yacy_rwi_ingest_duration_seconds`. The URL metadata receiver publishes
 `yacy_url_metadata_received_total`, `yacy_url_metadata_rejected_total`, and
-`yacy_url_metadata_reconciled_total`. A URL row is reconciled when metadata
-arrives for a URL hash already referenced by stored RWI postings.
+`yacy_url_metadata_reconciled_total`. A URL identity is reconciled once when at
+least one newly stored metadata row arrives while its hash remains in a
+process-local 65,536-entry FIFO observation set populated by accepted RWI rows.
+An already-existing identity releases pending state without incrementing, while
+a rejected identity remains pending for retry. The set is a bounded metric
+correlation aid, not durable index state: FIFO eviction or restart can omit a
+reconciliation increment but cannot change accepted postings or metadata.
+
+The peer seed's cumulative sent and received word and URL tallies include
+current in-memory observations. Observations coalesce for one second, then each
+changed counter uses an independent single-record transaction. If a later
+counter fails, only it and the not-yet-attempted counters remain pending, so an
+already committed counter is not replayed. Graceful shutdown drains after HTTP
+and background transfer producers quiesce, using a fresh five-second context; a
+failed flush remains pending for a later attempt. A process or host crash can
+lose all pending observations since the last successful counter flush, including
+more than one interval when storage failures persist.
 
 YaCy promotes a requester to `senior` or `principal` only after a successful
 callback to the requester's advertised `/yacy/query.html?object=rwicount`. A
@@ -150,7 +176,12 @@ sender loads the matching local URL metadata rows and posts them to
 strings such as `not authentified`, `missing wordc`, `missing entryc`, and
 `missing indexes` before RWI intake. The URL receiver preserves upstream
 network-auth failure behavior by returning no transferURL result fields before
-target handling.
+target handling. RWI gate saturation returns the parseable HTTP 200
+`too high load` answer. RWI row-count, storage, cancellation, or pre-commit
+deadline pressure returns HTTP 200 `busy`, whose `pause` is expressed in
+milliseconds. After URL parsing succeeds, runtime pressure uses that endpoint's
+HTTP 200 not-granted answer. A declared URL count above 1,000 is rejected before
+allocating per-row storage.
 
 Before enqueue, the Go sender selects a bounded set of stored RWI postings in
 one storage update, journals the selected rows for restart recovery, and removes
@@ -192,8 +223,21 @@ dequeues the largest buffered chunk first. The Go exchange queue preserves that
 batch shape. The runtime scheduler feeds an empty outbound queue from stored RWI
 selections. A two-local-Go-node integration test covers stored RWI selection,
 `transferRWI.html`, `unknownURL`, `transferURL.html`, sender deletion, and
-receiver durability. Remaining dispatcher work is end-to-end Java YaCy interop
-distribution tests.
+receiver durability. Live stock-Java tests additionally prove Java-to-Yago
+transfer, Yago-to-Java two-phase distribution, and Java global search of a
+Yago-only RWI result (`TestRealYaCyTransfersRWIToFleet`,
+`TestNodeDistributesRWIToRealYaCy`, and
+`TestRealYaCyGlobalSearchFindsYagoRWI`). They default to
+`docker.io/yacy/yacy_search_server@sha256:4225dd07b605347b62ff1fbfa0268217aa79ba2d29bdb0a76d5366d4267398da`;
+`YAGO_YACY_IMAGE` can select another explicitly pinned test image.
+
+Yago computes a URL identity without a DNS lookup. Stock Java YaCy can classify
+an unresolvable hostname under an unrecognized top-level domain as local, which
+changes the domain flag in its URL hash. Cross-peer identities therefore match
+for the recognized public-domain fixtures covered by the live matrix, while an
+unresolvable synthetic hostname under an unknown top-level domain can differ.
+Adding DNS to the hashing path would make identity depend on transient network
+state and is deliberately avoided.
 
 ---
 

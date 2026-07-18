@@ -192,7 +192,7 @@ func openScriptedRWI(
 	index, receiver, purger, err := Open(
 		storage,
 		urls,
-		Config{BatchCap: 10, PauseSeconds: 5, AcceptRemoteIndex: true},
+		Config{BatchCap: 10, PauseMilliseconds: 5000, AcceptRemoteIndex: true},
 		observers...)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -257,7 +257,7 @@ func TestEmptyIntakeDoesNotAccessClosedVault(t *testing.T) {
 	}
 }
 
-func TestIntakeReturnsContextErrorInsideBatch(t *testing.T) {
+func TestIntakeMapsContextErrorBeforeCommitToBusy(t *testing.T) {
 	h := openHarness(t, 0, 100)
 	ctx := &errAfterContext{
 		Context:   context.Background(),
@@ -265,14 +265,32 @@ func TestIntakeReturnsContextErrorInsideBatch(t *testing.T) {
 		err:       context.Canceled,
 	}
 
-	if _, err := h.rwi.Receiver.Receive(
+	receipt, err := h.rwi.Receiver.Receive(
 		ctx,
 		[]yagomodel.RWIPosting{posting("w1", "u1")},
-	); !errors.Is(
-		err,
-		context.Canceled,
-	) {
-		t.Fatalf("Receive error = %v, want context.Canceled", err)
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Busy || receipt.Pause != 5000 {
+		t.Fatalf("receipt = %+v, want busy pause 5000", receipt)
+	}
+}
+
+func TestIntakeMapsCanceledCapacityCheckToBusy(t *testing.T) {
+	h := openHarness(t, 1, 100)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	receipt, err := h.rwi.Receiver.Receive(
+		ctx,
+		[]yagomodel.RWIPosting{posting("w1", "u1")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Busy || receipt.Pause != 5000 {
+		t.Fatalf("receipt = %+v, want busy pause 5000", receipt)
 	}
 }
 
@@ -294,8 +312,8 @@ func TestIntakeMapsVaultCapacityDuringStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !receipt.Busy || receipt.Pause != 5 {
-		t.Fatalf("receipt = %+v, want busy pause 5", receipt)
+	if !receipt.Busy || receipt.Pause != 5000 {
+		t.Fatalf("receipt = %+v, want busy pause 5000", receipt)
 	}
 }
 
@@ -330,6 +348,20 @@ func TestIntakeReturnsMissingURLError(t *testing.T) {
 		[]yagomodel.RWIPosting{posting("w1", "u1")},
 	); err == nil {
 		t.Fatal("expected missing URL error")
+	}
+}
+
+func TestIntakeKeepsPostCommitContextError(t *testing.T) {
+	_, _, receiver, _, _ := openScriptedRWI(
+		t,
+		fakeURLDirectory{err: context.DeadlineExceeded},
+	)
+
+	if _, err := receiver.Receive(
+		t.Context(),
+		[]yagomodel.RWIPosting{posting("w1", "u1")},
+	); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want context deadline after commit", err)
 	}
 }
 
@@ -494,7 +526,7 @@ func TestMountTransferRWIServesRoute(t *testing.T) {
 		localIdentity(),
 		fakePostingReceiver{},
 		nil,
-		Config{BatchCap: 10, PauseSeconds: 5, AcceptRemoteIndex: true},
+		Config{BatchCap: 10, PauseMilliseconds: 5000, AcceptRemoteIndex: true},
 	)
 	req := yagoproto.TransferRWIRequest{
 		NetworkName: "freeworld",
@@ -512,6 +544,60 @@ func TestMountTransferRWIServesRoute(t *testing.T) {
 	mux.ServeHTTP(rec, httpReq)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMountTransferRWIMapsUncommittedDeadlineToBusy(t *testing.T) {
+	_, index, receiver, _, engine := openScriptedRWI(t, fakeURLDirectory{})
+	engine.putErrors[PostingsBucket] = context.DeadlineExceeded
+	mux := http.NewServeMux()
+	MountTransferRWI(
+		httpguard.NewWireRouter(mux, httpguard.WireGate{
+			Guard:   httpguard.NewRequestGuard(4096, time.Second),
+			Respond: httpguard.NewWireResponder(rwiWireStatus{}),
+			Address: httpguard.NewClientAddressResolver(nil),
+		}),
+		localIdentity(),
+		receiver,
+		nil,
+		Config{BatchCap: 10, PauseMilliseconds: 5000, AcceptRemoteIndex: true},
+	)
+	req := yagoproto.TransferRWIRequest{
+		NetworkName: "freeworld",
+		YouAre:      localIdentity().Hash,
+		Iam:         yagomodel.WordHash("sender"),
+		WordCount:   1,
+		EntryCount:  1,
+		Indexes:     []yagomodel.RWIPosting{posting("w1", "u1")},
+	}
+	rec := httptest.NewRecorder()
+	httpReq := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		yagoproto.PathTransferRWI+"?"+req.Form().Encode(),
+		nil,
+	)
+	mux.ServeHTTP(rec, httpReq)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	message, err := yagomodel.ParseMessage(rec.Body.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := yagoproto.ParseTransferRWIResponse(message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Result != yagoproto.ResultBusy || response.Pause != 5000 {
+		t.Fatalf("response = %+v, want busy pause 5000", response)
+	}
+	count, err := index.RWICount(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("RWI count = %d, want no committed posting", count)
 	}
 }
 

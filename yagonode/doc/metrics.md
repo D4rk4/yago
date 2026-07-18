@@ -50,7 +50,13 @@ The registry publishes:
 - **Eviction** — URLs and postings purged under quota pressure and sweeps that
   failed (`eviction_*_total`).
 - **DHT** — inbound and outbound postings, batches and failures for the
-  distributed index exchange.
+  distributed index exchange. Inbound series observe only accepted YaCy wire
+  endpoint traffic; local crawler ingest and local index writes do not affect
+  them. RWI-to-URL reconciliation uses a process-local, non-durable 65,536-hash
+  FIFO observation set. A newly stored identity increments once, an
+  already-existing identity releases pending state without incrementing, and a
+  rejected identity remains pending for retry. Eviction or restart can omit a
+  correlation increment, but never changes accepted storage.
 - **Peers** — connected-peer counts and probe outcomes.
 - **Authentication** — admin authentication failures.
 - **Queue depths** — the crawl and index backlog read live from the DHT gate
@@ -70,6 +76,17 @@ The registry publishes:
   `crawl_search_index_write_failures_total`,
   `crawl_search_index_write_duration_seconds`). A failed attempt contributes no
   successful document count, and these series carry no URL or error labels.
+
+The DHT Prometheus series are separate from the cumulative sent/received word
+and URL values advertised in the peer seed. Seed tallies include unflushed
+in-memory observations and coalesce them for one second. Each changed counter
+then uses an independent single-record transaction, so a later failure retains
+only that counter and the not-yet-attempted counters without replaying committed
+values. Graceful shutdown drains after HTTP and background transfer producers
+quiesce, using a fresh five-second context. A failed flush remains visible in
+the live seed totals and is retried on a later cycle. A process or host crash can
+lose all pending observations since the last successful counter flush, including
+more than one interval when storage failures persist.
 
 ## Registration
 

@@ -78,7 +78,7 @@ yago-admin-ui
 * The node SHALL be reachable through one stable public endpoint.
 * The node SHALL support peer discovery and peer liveness exchange.
 * The node SHALL rotate its next peer news publication into the advertised seed news attribute once per announcement cycle and SHALL accept valid same-network news attachments from arriving peer seeds into its incoming news queue.
-* The node SHALL report cumulative counts of words and URLs sent to and received from peers in its advertised seed statistics, and those totals SHALL survive restarts.
+* The node SHALL report cumulative counts of words and URLs sent to and received from peers in its advertised seed statistics. Current values SHALL include unflushed observations. A periodic worker SHALL attempt persistence on a one-second cadence, with each changed counter using an independent single-record transaction. A failed counter update SHALL retain that counter and every not-yet-attempted counter without replaying a committed counter. A graceful stop SHALL drain after HTTP and background transfer producers quiesce, using a fresh bounded context. Persisted totals SHALL survive restart. A process or host crash MAY lose every pending observation since the last successful counter flush, including observations retained across repeated storage failures.
 * The node SHALL reject peer-liveness callers that present this node's peer hash or advertised endpoint as their own identity.
 * The node SHALL announce in peer-liveness responses only its own seed and peers obtained from
   configured seedlists, and SHALL NOT redistribute peers self-reported in inbound requests.
@@ -86,7 +86,25 @@ yago-admin-ui
   peers at random.
 * The node SHALL receive inbound DHT RWI postings.
 * The node SHALL receive URL metadata associated with RWI postings.
-* The node SHALL preserve YaCy network-unit authentication behavior for inbound DHT transfer endpoints.
+* The node SHALL preserve YaCy network-unit authentication behavior for the
+  default `freeworld` unit and peers configured with the same network name.
+  Controlled networks requiring Java YaCy's `salted-magic-sim` calculation are
+  unsupported and SHALL NOT be reported as compatible.
+* Each inbound RWI or URL-metadata transfer SHALL retain no more than 1,000
+  rows. Saturated RWI admission SHALL return the parseable YaCy HTTP 200
+  `too high load` response. An oversized RWI request or RWI storage,
+  cancellation, or pre-commit deadline pressure SHALL return HTTP 200 `busy`
+  whose `pause` is expressed in milliseconds. A declared URL count above 1,000
+  SHALL fail before per-row allocation; after successful parsing, URL admission,
+  storage, cancellation, or pre-commit deadline pressure SHALL return the
+  endpoint's HTTP 200 not-granted response.
+* Inbound DHT transfer metrics SHALL observe only YaCy wire endpoint traffic;
+  local crawl and index writes SHALL NOT affect them. RWI-to-URL metric
+  reconciliation SHALL use a process-local non-durable FIFO set of at most
+  65,536 URL hashes. A newly stored identity SHALL increment the metric once,
+  an already-existing identity SHALL release its pending observation without an
+  increment, and a rejected identity SHALL remain pending for retry. Eviction or
+  restart MAY omit a correlation increment but SHALL NOT affect accepted storage.
 * The node SHALL distribute stored RWI postings and URL metadata to compatible peers when configured.
 * The node SHALL verify its DHT reachability through a YaCy-compatible RWI capacity self-test before outbound DHT distribution.
 * The node SHALL choose outbound DHT transfer targets using YaCy DHT ring ordering and advertised remote-index capability.
@@ -97,6 +115,11 @@ yago-admin-ui
   it SHALL return HTTP 200 with a measured `searchtime`, an empty result set, and
   no partial `indexcount` or `indexabstract`; caller-owned cancellation and
   deadlines SHALL remain errors.
+* A remote RWI search request SHALL retain at most 32 required hashes, 32
+  excluded hashes, 32 requested abstract hashes, and 128 URL hashes. Every
+  returned resource copy SHALL carry an enhanced-base64 `wi` containing the
+  complete fixed-order 20-column YaCy `WordReferenceRow` property form. The
+  node SHALL NOT persist that response-only field into URL metadata.
 * The node SHALL serve local search requests through YaCy-compatible search surfaces.
 * The node SHALL expose YaCy-compatible public search JSON, RSS, HTML, OpenSearch description, and suggestion subsets backed by local full-text search and DHT-selected reachable-peer search where applicable.
 * The node SHALL support federated search across local and DHT-selected reachable peer results, using YaCy index abstracts for multi-term remote result conjunctions, filtering remote targets by advertised RWI inventory, and balancing redundant DHT candidates randomly. Global peer-query hashing SHALL preserve every nonblank parsed term because the wire boundary has no reliable document language for language-specific function-word decisions. When swarm morphology is enabled, a multiword query SHALL retain one exact conjunctive primary request. Its bounded abstract recovery MAY address corpus-observed forms and regular forms verified by supported Snowball-rule analyzers, SHALL union forms within each original query requirement, SHALL intersect across every original requirement, and SHALL use the original query for evidence and ranking. It SHALL retain at most 12 forms per requirement, 20 forms across the request, and two peers per form. Candidate generation SHALL NOT claim to identify a single query language. It SHALL retain every applicable rule-backed analyzer identity even when its stem is unchanged or equal to another analyzer's stem, SHALL round-robin proposals across those identities under a 2,048-attempt cap, and SHALL retain a proposal only when its proposing analyzer maps it back to that analyzer's query stem. Duplicate surfaces SHALL collect their distinct verifying analyzer identities. One global order SHALL prefer distinct-analyzer agreement, shorter edit distance and length difference, greater retained prefix and rule support, analyzer priority, and lexical order; the original form SHALL remain first and the result SHALL contain no more than 12 surfaces in total. Rule-based generation SHALL accept only terms from four through 32 Unicode runes and SHALL return only the normalized base form outside that range. After intersection, each peer's metadata requests SHALL use a deterministic greedy cover of terms proven by that peer's own abstract to admit the selected URL set; disjoint term-to-URL sets MAY require more than one request to that peer, and every request SHALL carry only URLs admitted under its exact sent term hash. Primary, abstract, and metadata work SHALL share the existing aggregate remote deadline, actual-attempt ceiling, and response, metadata-row, and abstract-entry budgets. A resource-producing request to a cooperating Yago peer MAY additionally use its negotiated wire requirements, whose hash multiset SHALL match that exact primary wire request, for one strict analyzer-backed candidate search inside the same peer request. A requester MAY map a validated single-word variant ordinal back to its original ranking requirement only through its own one-to-one morphology plan; a peer SHALL NOT supply remapping data. That search SHALL retain at most 32 candidates, SHALL stop after 100 milliseconds, SHALL preserve every wire requirement, and SHALL NOT add a variant request or network round. Stock YaCy peers SHALL retain exact RWI behavior. The rule-derived supplement can address common regular siblings absent from the requester's corpus, but a suppletive or analyzer-unconnected form remains undiscoverable unless it was observed or a cooperating peer supplies analyzer recall.
@@ -293,6 +316,15 @@ yago-admin-ui
 * The node SHALL expose machine-readable compatibility status for implemented and missing YaCy surfaces.
 * The node SHALL allow operators to configure its storage quota.
 * Concurrent storage-capacity preflights SHALL share one successful live-byte observation for at most one second and SHALL compare it with the current quota on every call. Exact usage reads SHALL remain exact and SHALL refresh the shared observation. A newer exact observation SHALL supersede an older in-flight preflight, failures SHALL NOT be cached, and a cancelled waiter SHALL return promptly. The preflight is advisory; commit-time operating-system capacity failures SHALL remain final backpressure.
+* A sharded-vault collection length SHALL remain exact without making every
+  mutation write one shared counter shard. The retained legacy length SHALL be
+  the immutable upgrade base; each new insertion or removal SHALL commit its
+  monotonic length change on the record's physical shard. `Len` SHALL aggregate
+  that base and every current shard's additions and removals. Length-change rows
+  SHALL remain pinned during a linear-hash split, and the result SHALL remain
+  exact across restart and partial multi-shard retry. Opening a vault after such
+  writes with an older binary is an unsupported downgrade; rollback requires a
+  coordinated pre-upgrade backup.
 * The main-vault quota SHALL remain a soft admission and eviction target for
   logical live rows. It SHALL NOT be described as a filesystem or aggregate data
   limit and SHALL exclude Bleve, node and crawler checkpoint databases, allocated

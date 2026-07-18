@@ -91,8 +91,9 @@ func TestIntakePersistsAndReportsExisting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Intake duplicate: %v", err)
 	}
-	if receipt.Double != 1 {
-		t.Fatalf("duplicate Double = %d, want 1", receipt.Double)
+	if receipt.Double != 1 || len(receipt.ExistingURL) != 1 ||
+		receipt.ExistingURL[0] != rowHash(t, first) {
+		t.Fatalf("duplicate receipt = %+v, want exact existing URL", receipt)
 	}
 
 	count, err := module.Directory.Count(ctx)

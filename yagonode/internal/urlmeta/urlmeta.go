@@ -40,9 +40,10 @@ type URLMetadataObserver interface {
 }
 
 type Receipt struct {
-	Busy     bool
-	Double   int
-	ErrorURL []yagomodel.Hash
+	Busy        bool
+	Double      int
+	ExistingURL []yagomodel.Hash
+	ErrorURL    []yagomodel.Hash
 }
 
 type PurgeResult struct {

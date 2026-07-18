@@ -120,7 +120,10 @@ func openNodeStorage(
 	postings, postingReceiver, postingPurger, err := openRWIStorage(
 		vault,
 		urlDirectory,
-		rwi.Config{BatchCap: receiveBatchCap, PauseSeconds: receiveBusyPauseSecs},
+		rwi.Config{
+			BatchCap:          receiveBatchCap,
+			PauseMilliseconds: receiveBusyPauseMilliseconds,
+		},
 		references,
 	)
 	if err != nil {

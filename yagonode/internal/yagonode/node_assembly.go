@@ -103,6 +103,7 @@ type node struct {
 	theme           *portaltheme.Theme
 	peerEvents      *peerReputationObserver
 	storagePressure *yagocrawlcontract.StoragePressureGate
+	transferTally   *transfertally.Tally
 }
 
 type nodeTelemetry struct {
@@ -177,9 +178,8 @@ func assembleNode(
 		return node{}, err
 	}
 	report := newNodeStatusReport(identity, storage, roster, news, tally)
-	storage = observeDHTInboundStorage(storage, telemetry.dhtInbound, tally)
-	mux, router := newNodeWireMux(config, report)
-	mountNodeWireHandlers(router, identity, storage, telemetry.saturation, config)
+	wireObservation := nodeWireObservation{report: report, tally: tally}
+	mux, router := mountDHTObservedNodeWire(config, identity, storage, telemetry, wireObservation)
 	peerClient := nodePeerClient(config, client)
 	hostLinkSnapshot := hostlinks.NewSnapshotHolder()
 	exchange, err := assembleRuntimePeerExchange(peerExchange{
@@ -240,6 +240,7 @@ func assembleNode(
 		peerEvents:  surfaces.peerEvents,
 		corpusPass:  surfaces.corpusPass,
 		swarmMorph:  config.SwarmMorphology,
+		tally:       tally,
 	}, telemetry.toggles), nil
 }
 
@@ -470,6 +471,7 @@ type nodeParts struct {
 	theme       *portaltheme.Theme
 	peerEvents  *peerReputationObserver
 	corpusPass  *corpusSignalRefresh
+	tally       *transfertally.Tally
 }
 
 func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
@@ -537,6 +539,7 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 		identity:      parts.identity,
 		theme:         parts.theme,
 		peerEvents:    parts.peerEvents,
+		transferTally: parts.tally,
 	}
 }
 
@@ -603,7 +606,7 @@ func mountNodeProtocol(
 		transferGate,
 		rwi.Config{
 			BatchCap:          receiveBatchCap,
-			PauseSeconds:      receiveBusyPauseSecs,
+			PauseMilliseconds: receiveBusyPauseMilliseconds,
 			AcceptRemoteIndex: acceptRemoteIndex,
 		},
 	)

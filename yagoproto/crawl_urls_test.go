@@ -2,6 +2,7 @@ package yagoproto_test
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -82,6 +83,21 @@ func TestCrawlURLRequestHashListUsesYaCyLengthRule(t *testing.T) {
 
 	if _, ok := (yagoproto.CrawlURLRequest{Hashes: "short"}).HashList(); ok {
 		t.Fatal("HashList accepted non-multiple length")
+	}
+}
+
+func TestCrawlURLRequestHashListBoundsEntries(t *testing.T) {
+	hash := "ABCDEFGHIJKL"
+	hashes, ok := (yagoproto.CrawlURLRequest{
+		Hashes: strings.Repeat(hash, yagoproto.MaximumCrawlURLHashes),
+	}).HashList()
+	if !ok || len(hashes) != yagoproto.MaximumCrawlURLHashes {
+		t.Fatalf("boundary hashes = %d/%t", len(hashes), ok)
+	}
+	if hashes, ok := (yagoproto.CrawlURLRequest{
+		Hashes: strings.Repeat(hash, yagoproto.MaximumCrawlURLHashes+1),
+	}).HashList(); ok || hashes != nil {
+		t.Fatalf("oversized hashes = %d/%t, want rejected", len(hashes), ok)
 	}
 }
 

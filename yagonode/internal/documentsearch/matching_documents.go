@@ -44,6 +44,7 @@ func dedupeDocuments(appearances []termAppearance) map[yagomodel.Hash]matchedDoc
 		}
 		documents[appearance.documentIdentifier] = matchedDocument{
 			identifier:  appearance.documentIdentifier,
+			posting:     appearance.posting,
 			occurrences: appearance.occurrences,
 			minPosition: appearance.textPosition,
 			maxPosition: appearance.textPosition,

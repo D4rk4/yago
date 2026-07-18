@@ -47,8 +47,8 @@ type Receipt struct {
 }
 
 type Config struct {
-	BatchCap     int
-	PauseSeconds int
+	BatchCap          int
+	PauseMilliseconds int
 	// AcceptRemoteIndex mirrors the advertised accept-remote-index capability:
 	// with it off, inbound transfers answer not_granted the way YaCy's
 	// transferRWI does when allowReceiveIndex is disabled.
@@ -78,11 +78,11 @@ func Open(
 		observers:        watched,
 	}
 	intake := postingIntake{
-		vault:        vault,
-		postings:     postings,
-		observers:    watched,
-		urls:         urls,
-		pauseSeconds: cfg.PauseSeconds,
+		vault:             vault,
+		postings:          postings,
+		observers:         watched,
+		urls:              urls,
+		pauseMilliseconds: cfg.PauseMilliseconds,
 	}
 
 	return directory, intake, directory, nil
@@ -101,12 +101,12 @@ func MountTransferRWI(
 		yagoproto.TransferRWIEndpointMethods,
 		yagoproto.ParseTransferRWIRequest,
 		transferRWIEndpoint{
-			identity: identity,
-			intake:   receiver,
-			gate:     gate,
-			batchCap: cfg.BatchCap,
-			pause:    cfg.PauseSeconds,
-			accept:   cfg.AcceptRemoteIndex,
+			identity:          identity,
+			intake:            receiver,
+			gate:              gate,
+			batchCap:          cfg.BatchCap,
+			pauseMilliseconds: cfg.PauseMilliseconds,
+			accept:            cfg.AcceptRemoteIndex,
 		}.Serve,
 	)
 }

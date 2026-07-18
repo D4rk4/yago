@@ -32,7 +32,7 @@ const (
 	DefaultMinimumPeerAgeDays = 3
 	DefaultMinimumPeerRWIs    = 1
 	maxPartitionExponent      = 8
-	secondaryURLCap           = 128
+	secondaryURLCap           = yagoproto.MaximumSearchURLHashes
 	remoteSearchBodyCap       = 512 << 10
 )
 

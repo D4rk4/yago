@@ -15,12 +15,15 @@ import (
 )
 
 const (
-	outboundYaCyAlias = "yacy-out-e2e"
-	outboundNodeAlias = "node-out-e2e"
-	outboundNodeHash  = yagomodel.Hash("BCDEFGHIJKLM")
-	searchYaCyAlias   = "yacy-se-e2e"
-	searchNodeAlias   = "node-se-e2e"
-	searchNodeHash    = yagomodel.Hash("CDEFGHIJKLMN")
+	outboundYaCyAlias   = "yacy-out-e2e"
+	outboundNodeAlias   = "node-out-e2e"
+	outboundNodeHash    = yagomodel.Hash("BCDEFGHIJKLM")
+	searchYaCyAlias     = "yacy-se-e2e"
+	searchNodeAlias     = "node-se-e2e"
+	searchNodeHash      = yagomodel.Hash("CDEFGHIJKLMN")
+	javaSearchYaCyAlias = "yacy-js-e2e"
+	javaSearchNodeAlias = "node-js-e2e"
+	javaSearchNodeHash  = yagomodel.Hash("DEFGHIJKLMNO")
 )
 
 func buildOutboundWords() []string {
@@ -60,6 +63,11 @@ func TestNodeDistributesRWIToRealYaCy(t *testing.T) {
 	}})
 
 	words := buildOutboundWords()
+	const pageURL = "http://outbound.example.com/yago-dht-interop.txt"
+	urlHash, err := yagomodel.HashURL(pageURL)
+	if err != nil {
+		t.Fatalf("hash outbound URL: %v", err)
+	}
 	seedNodeIndex(
 		t,
 		ctx,
@@ -67,7 +75,7 @@ func TestNodeDistributesRWIToRealYaCy(t *testing.T) {
 		nodeURL,
 		outboundNodeHash,
 		words,
-		"http://outbound.example.invalid/doc.txt",
+		pageURL,
 	)
 
 	word := yagomodel.WordHash(words[0])
@@ -87,10 +95,21 @@ func TestNodeDistributesRWIToRealYaCy(t *testing.T) {
 			yagoproto.ObjectRWIURLCount,
 			word.String(),
 		)
-		return postingsOK && postings > 0
+		if !postingsOK || postings == 0 {
+			return false
+		}
+
+		return yaCyURLMetadataContains(
+			ctx,
+			probe,
+			yacyURL,
+			outboundNodeHash,
+			yacyHash,
+			urlHash.Hash(),
+		)
 	})
 	if !received {
-		t.Fatalf("real YaCy never stored transferred word %s", word)
+		t.Fatalf("real YaCy never stored transferred word %s and URL metadata %s", word, urlHash)
 	}
 }
 
@@ -134,5 +153,47 @@ func TestGlobalSearchFindsRealYaCyResults(t *testing.T) {
 			t.Logf("final global search response:\n%s", result.body)
 		}
 		t.Fatal("global search never returned the document indexed by real YaCy")
+	}
+}
+
+func TestRealYaCyGlobalSearchFindsYagoRWI(t *testing.T) {
+	ctx := context.Background()
+	probe := newHTTPProbe(t)
+
+	network := newHermeticNetwork(t, ctx)
+
+	_, yacyURL := startYaCy(t, ctx, probe, network.Name, javaSearchYaCyAlias)
+	_, nodeURL := startNode(t, ctx, probe, nodeConfig{
+		networkName: network.Name,
+		alias:       javaSearchNodeAlias,
+		hash:        javaSearchNodeHash,
+		seedlistURL: "http://" + javaSearchYaCyAlias + ":8090/yacy/seedlist.html",
+	})
+
+	tokens := []string{
+		"yagojavaremotesearchuniquetoken",
+		"yagojavaremotesearchsecondarytoken",
+	}
+	const pageURL = "http://java-search.example.com/document.txt"
+	seedNodeIndex(t, ctx, probe, nodeURL, javaSearchNodeHash, tokens, pageURL)
+	announceNodeSelfSeedToYaCy(t, ctx, probe, nodeURL, yacyURL, javaSearchNodeHash)
+	waitYaCySearchTarget(t, ctx, probe, yacyURL, javaSearchNodeHash, 45*time.Second)
+
+	searchURL := yacyURL + "/yacysearch.json?" + url.Values{
+		"query":          {strings.Join(tokens, " ")},
+		"resource":       {"global"},
+		"maximumRecords": {"10"},
+		"verify":         {"false"},
+	}.Encode()
+
+	found := waitForEvery(90*time.Second, 2*time.Second, func() bool {
+		result := probe.Get(ctx, searchURL)
+		return result.ok && strings.Contains(result.body, pageURL)
+	})
+	if !found {
+		if result := probe.Get(ctx, searchURL); result.ok {
+			t.Logf("final real YaCy global search response:\n%s", result.body)
+		}
+		t.Fatal("real YaCy global search never returned the document indexed by Yago")
 	}
 }

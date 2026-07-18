@@ -66,7 +66,21 @@ func concatHashes(hashes []yagomodel.Hash) string {
 }
 
 func splitSearchHashes(field, raw string) ([]yagomodel.Hash, error) {
-	var hashes []yagomodel.Hash
+	limit := MaximumSearchTermHashes
+	if field == FieldURLs {
+		limit = MaximumSearchURLHashes
+	}
+	count := len(raw) / yagomodel.HashLength
+	if count > limit {
+		return nil, fmt.Errorf(
+			"%w: %s contains %d hashes, maximum %d",
+			ErrBadField,
+			field,
+			count,
+			limit,
+		)
+	}
+	hashes := make([]yagomodel.Hash, 0, count)
 	for i := 0; i+yagomodel.HashLength <= len(raw); i += yagomodel.HashLength {
 		hash, err := parseHashField("search request", field, raw[i:i+yagomodel.HashLength])
 		if err != nil {

@@ -84,11 +84,12 @@ func ParseCrawlURLRequest(_ context.Context, form url.Values) (CrawlURLRequest, 
 }
 
 func (r CrawlURLRequest) HashList() ([]yagomodel.Hash, bool) {
-	if len(r.Hashes)%yagomodel.HashLength != 0 {
+	count := len(r.Hashes) / yagomodel.HashLength
+	if len(r.Hashes)%yagomodel.HashLength != 0 || count > MaximumCrawlURLHashes {
 		return nil, false
 	}
 
-	hashes := make([]yagomodel.Hash, 0, len(r.Hashes)/yagomodel.HashLength)
+	hashes := make([]yagomodel.Hash, 0, count)
 	for i := 0; i < len(r.Hashes); i += yagomodel.HashLength {
 		hashes = append(hashes, yagomodel.Hash(r.Hashes[i:i+yagomodel.HashLength]))
 	}

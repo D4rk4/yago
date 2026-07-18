@@ -86,11 +86,6 @@ func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery
 	c.absorbReservedTailGroup(ctx, append(tail, withDocs...), reservation)
 }
 
-// absorbTailGroup persists the group's URL metadata, stale sweeps, postings,
-// and recrawl schedule through one store call each — one durable commit per
-// touched shard instead of one per page (IO-AGG-01) — then acknowledges every
-// surviving delivery. Group-level failures redeliver the whole group, the same
-// coarsening the document group already accepts.
 func (c *IngestConsumer) absorbTailGroup(ctx context.Context, group []IngestDelivery) {
 	c.absorbReservedTailGroup(ctx, group, nil)
 }
@@ -136,7 +131,7 @@ func (c *IngestConsumer) absorbReservedTailGroup(
 	for _, delivery := range group {
 		postings = append(postings, delivery.Batch.Postings...)
 	}
-	postingReceipt, err := c.postings.Receive(ctx, postings)
+	postingReceipt, err := receivePostingChunks(ctx, c.postings, postings)
 	if err != nil {
 		c.redeliverGroup(ctx, group, "posting store", err)
 

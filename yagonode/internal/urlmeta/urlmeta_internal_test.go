@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -262,18 +263,36 @@ func TestIntakeMapsUpdateCapacityAndErrors(t *testing.T) {
 	}
 }
 
-func TestIntakeReturnsContextErrorInsideStore(t *testing.T) {
+func TestIntakeMapsContextErrorBeforeCommitToBusy(t *testing.T) {
 	module := openModule(t, 0)
 	ctx := &errAfterContext{Context: context.Background(), remaining: 2, err: context.Canceled}
 
-	if _, err := module.Receiver.Receive(
+	receipt, err := module.Receiver.Receive(
 		ctx,
 		[]yagomodel.URIMetadataRow{urlRow(t, "a")},
-	); !errors.Is(
-		err,
-		context.Canceled,
-	) {
-		t.Fatalf("Receive error = %v, want context.Canceled", err)
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Busy {
+		t.Fatalf("receipt = %+v, want busy", receipt)
+	}
+}
+
+func TestIntakeMapsCanceledCapacityCheckToBusy(t *testing.T) {
+	module := openModule(t, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	receipt, err := module.Receiver.Receive(
+		ctx,
+		[]yagomodel.URIMetadataRow{urlRow(t, "a")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Busy {
+		t.Fatalf("receipt = %+v, want busy", receipt)
 	}
 }
 
@@ -629,5 +648,90 @@ func TestMountTransferURLServesRoute(t *testing.T) {
 	mux.ServeHTTP(rec, httpReq)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMountTransferURLRejectsExtremeCountBeforeReceiver(t *testing.T) {
+	mux := http.NewServeMux()
+	MountTransferURL(
+		httpguard.NewWireRouter(mux, httpguard.WireGate{
+			Guard:   httpguard.NewRequestGuard(4096, time.Second),
+			Respond: httpguard.NewWireResponder(urlWireStatus{}),
+			Address: httpguard.NewClientAddressResolver(nil),
+		}),
+		localIdentity(),
+		failingURLReceiver{},
+		nil,
+		true,
+	)
+	req := yagoproto.TransferURLRequest{
+		NetworkName: "freeworld",
+		YouAre:      localIdentity().Hash,
+		Iam:         yagomodel.WordHash("sender"),
+		URLCount:    math.MaxInt,
+	}
+	rec := httptest.NewRecorder()
+	httpReq := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		yagoproto.PathTransferURL+"?"+req.Form().Encode(),
+		nil,
+	)
+	mux.ServeHTTP(rec, httpReq)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMountTransferURLMapsUncommittedDeadlineToNotGranted(t *testing.T) {
+	_, module, engine := openScriptedModule(t)
+	engine.updateErr = context.DeadlineExceeded
+	mux := http.NewServeMux()
+	MountTransferURL(
+		httpguard.NewWireRouter(mux, httpguard.WireGate{
+			Guard:   httpguard.NewRequestGuard(4096, time.Second),
+			Respond: httpguard.NewWireResponder(urlWireStatus{}),
+			Address: httpguard.NewClientAddressResolver(nil),
+		}),
+		localIdentity(),
+		module.Receiver,
+		nil,
+		true,
+	)
+	req := yagoproto.TransferURLRequest{
+		NetworkName: "freeworld",
+		YouAre:      localIdentity().Hash,
+		Iam:         yagomodel.WordHash("sender"),
+		URLCount:    1,
+		URLs:        []yagomodel.URIMetadataRow{urlRow(t, "a")},
+	}
+	rec := httptest.NewRecorder()
+	httpReq := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		yagoproto.PathTransferURL+"?"+req.Form().Encode(),
+		nil,
+	)
+	mux.ServeHTTP(rec, httpReq)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	message, err := yagomodel.ParseMessage(rec.Body.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := yagoproto.ParseTransferURLResponse(message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Result != yagoproto.ResultErrorNotGranted {
+		t.Fatalf("response = %+v, want error_not_granted", response)
+	}
+	count, err := module.Directory.Count(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("URL count = %d, want no committed row", count)
 	}
 }

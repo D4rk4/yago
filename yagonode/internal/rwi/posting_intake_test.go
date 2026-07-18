@@ -50,7 +50,7 @@ func openHarness(t *testing.T, quotaBytes int64, batchCap int) harness {
 	index, receiver, purger, err := Open(
 		v,
 		directory,
-		Config{BatchCap: batchCap, PauseSeconds: 5},
+		Config{BatchCap: batchCap, PauseMilliseconds: 5000},
 		observer,
 	)
 	if err != nil {
@@ -172,8 +172,8 @@ func TestIntakeBusyAtCapacity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Intake over capacity: %v", err)
 	}
-	if !receipt.Busy || receipt.Pause != 5 {
-		t.Fatalf("receipt = %+v, want Busy with pause 5", receipt)
+	if !receipt.Busy || receipt.Pause != 5000 {
+		t.Fatalf("receipt = %+v, want Busy with pause 5000", receipt)
 	}
 }
 

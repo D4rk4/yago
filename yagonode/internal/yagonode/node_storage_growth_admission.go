@@ -23,7 +23,7 @@ func (r admittedPostingReceiver) Receive(
 	entries []yagomodel.RWIPosting,
 ) (rwi.Receipt, error) {
 	if len(entries) > 0 && storageGrowthRejected(r.admission) {
-		return rwi.Receipt{Busy: true, Pause: receiveBusyPauseSecs}, nil
+		return rwi.Receipt{Busy: true, Pause: receiveBusyPauseMilliseconds}, nil
 	}
 	receipt, err := r.inner.Receive(ctx, entries)
 	if err != nil {

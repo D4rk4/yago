@@ -30,12 +30,12 @@ func missingFieldResult(
 }
 
 type transferRWIEndpoint struct {
-	identity nodeidentity.Identity
-	intake   PostingReceiver
-	gate     *httpguard.IntakeGate
-	batchCap int
-	pause    int
-	accept   bool
+	identity          nodeidentity.Identity
+	intake            PostingReceiver
+	gate              *httpguard.IntakeGate
+	batchCap          int
+	pauseMilliseconds int
+	accept            bool
 }
 
 func (e transferRWIEndpoint) Serve(
@@ -67,9 +67,9 @@ func (e transferRWIEndpoint) Serve(
 	// sender backs off and retries a smaller batch. A non-positive cap disables
 	// the limit. Local crawl ingest bypasses this endpoint and is never
 	// size-capped.
-	if e.batchCap > 0 && len(req.Indexes) > e.batchCap {
+	if req.ExceedsEntryLimit() || e.batchCap > 0 && len(req.Indexes) > e.batchCap {
 		resp.Result = yagoproto.ResultBusy
-		resp.Pause = e.pause
+		resp.Pause = e.pauseMilliseconds
 
 		return resp, nil
 	}

@@ -12,7 +12,7 @@ import (
 
 const (
 	QueryMatchEvidenceVersion        = 1
-	maximumQueryEvidenceTerms        = 32
+	maximumQueryEvidenceTerms        = MaximumSearchTermHashes
 	maximumQueryEvidenceTermBytes    = 256
 	maximumQueryEvidenceRequestBytes = 4 << 10
 	maximumResourceEvidenceBytes     = 16 << 10

@@ -108,19 +108,9 @@ func TestInboundReceiversCountReceivedTransfers(t *testing.T) {
 }
 
 func TestTallyTransferReportsStorageFailure(t *testing.T) {
-	v, err := memvault.Open(0)
-	if err != nil {
-		t.Fatalf("memvault.Open: %v", err)
-	}
-	tally, err := transfertally.Open(v)
-	if err != nil {
-		t.Fatalf("transfertally.Open: %v", err)
-	}
-	if err := v.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-
-	tallyTransfer(context.Background(), tally.AddSentWords, 1)
+	tallyTransfer(context.Background(), func(context.Context, int) error {
+		return context.Canceled
+	}, 1)
 }
 
 func TestReportedTransferTallyMapsTotals(t *testing.T) {

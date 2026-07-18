@@ -52,7 +52,11 @@ func (c *Collection[V]) Put(tx *Txn, key Key, val V) error {
 		return nil
 	}
 
-	return adjustLength(tx, c.name, 1)
+	if err := adjustLength(tx, c.name, key, 1); err != nil {
+		return fmt.Errorf("%w: %w", ErrCollectionMutationIncomplete, err)
+	}
+
+	return nil
 }
 
 func (c *Collection[V]) Delete(tx *Txn, key Key) (bool, error) {
@@ -67,7 +71,7 @@ func (c *Collection[V]) Delete(tx *Txn, key Key) (bool, error) {
 	if err := bucket.Delete(key); err != nil {
 		return false, fmt.Errorf("delete %s: %w", c.name, err)
 	}
-	if err := adjustLength(tx, c.name, -1); err != nil {
+	if err := adjustLength(tx, c.name, key, -1); err != nil {
 		return false, err
 	}
 

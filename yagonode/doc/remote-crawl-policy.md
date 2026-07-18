@@ -12,11 +12,10 @@ Remote crawl execution is disabled by default.
 `ok` and no crawl items. This tells compatible peers that the endpoint exists
 without giving them crawl work.
 
-`/yacy/crawlReceipt.html` accepts the YaCy wire shape. Network-auth failures
-produce no delay field. Same-network malformed or wrong target hashes return
-YaCy's rejected-receipt retry delay. Addressed receipts return the same delay
-while remote crawl execution is disabled. It does not create, schedule,
-continue, or acknowledge executable crawl work.
+`/yacy/crawlReceipt.html` accepts the YaCy wire shape. Foreign-network,
+malformed-target, wrong-target, and addressed rejections all return YaCy's retry
+delay of 3600 while remote crawl execution is disabled. It does not create,
+schedule, continue, or acknowledge executable crawl work.
 
 `/yacy/urls.xml?call=urlhashlist` remains available. It only returns URL
 metadata already stored by the node for requested URL hashes. It does not fetch

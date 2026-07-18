@@ -35,9 +35,9 @@ Status values:
 | --- | --- | --- | --- | --- |
 | Peer liveness handshake | `/yacy/hello.html` | GET, POST | implemented | Returns caller IP, caller peer type, own seed, and a bounded known seed list after rejecting self-pings and callers using this peer hash. |
 | RWI and URL count query | `/yacy/query.html` | GET, POST | implemented | Answers YaCy-compatible `rwicount`, per-word `rwiurlcount`, `lurlcount`, and zero-valued `wanted*` probes with target identity checks. |
-| Inbound RWI transfer | `/yacy/transferRWI.html` | POST | implemented | Checks the YaCy network unit and required transfer fields before intake, refuses with `not_granted` when the operator turned the accept-remote-index capability off (allowReceiveIndex parity), sheds intake with YaCy's "too high load" answer when all admission slots are busy, accepts RWI postings durably (batch-size and storage-capacity pressure answer busy with a pause), and reports missing URL metadata. |
-| Inbound URL metadata transfer | `/yacy/transferURL.html` | POST | implemented | Checks the YaCy network unit before target handling, refuses with `error_not_granted` when the operator turned the accept-remote-index capability off (allowReceiveIndex parity), sheds intake with the endpoint's not-granted answer when all admission slots are busy, accepts URL metadata, and reconciles RWI references. |
-| Remote RWI search | `/yacy/search.html` | GET, POST | implemented | Serves key-value YaCy remote search responses from local RWI storage (never Solr — see the swarm interop note below), clamps requested count to 10 and time to 3,000 milliseconds like YaCy, answers per-term `indexcount`/`indexabstract` when a peer requests abstracts (the multi-term index-abstract negotiation), and sheds concurrent floods with empty-but-valid responses. Its own search deadline also produces a parseable HTTP 200 empty answer with measured `searchtime` and no partial counts or abstracts, avoiding the HTTP 500 that would make a Java YaCy caller drop the interface; caller-owned cancellation remains an error. Outbound searches carry the node's current compact seed in `myseed`, as required by current YaCy peers. A wire-conformance test drives this route and feeds the raw body back through the same peer-response parser the outbound path uses, proving the output is consumable by a YaCy-compatible peer. |
+| Inbound RWI transfer | `/yacy/transferRWI.html` | POST | implemented | Checks the YaCy network unit and required transfer fields before intake, refuses with `not_granted` when the operator turned the accept-remote-index capability off (allowReceiveIndex parity), and accepts at most 1,000 declared and actual RWI rows. Admission-gate saturation returns YaCy's parseable HTTP 200 `too high load` answer. An oversized transfer or storage-capacity, cancellation, or pre-commit deadline pressure returns HTTP 200 `busy` with a millisecond `pause`, so a Java sender can retry without treating the endpoint as broken. Accepted rows are durable before acknowledgement, and the response reports missing URL metadata. |
+| Inbound URL metadata transfer | `/yacy/transferURL.html` | POST | implemented | Checks the YaCy network unit before target handling and refuses with `error_not_granted` when the operator turned the accept-remote-index capability off (allowReceiveIndex parity). It accepts at most 1,000 declared URL rows and rejects a larger count before allocating per-row storage. After successful parsing, admission, storage-capacity, cancellation, or pre-commit deadline pressure returns the endpoint's parseable HTTP 200 not-granted answer. Accepted rows are durable before acknowledgement. RWI-to-URL reconciliation metrics use a process-local 65,536-hash FIFO observation set: a newly stored identity increments once, an existing identity only releases pending state, and a rejected identity remains pending. Eviction or restart can omit a metric match but cannot change stored data. |
+| Remote RWI search | `/yacy/search.html` | GET, POST | implemented | Serves key-value YaCy remote search responses from local RWI storage (never Solr — see the swarm interop note below), clamps requested count to 10 and time to 3,000 milliseconds like YaCy, retains at most 32 required hashes, 32 excluded hashes, 32 requested abstract hashes, and 128 URL hashes, and sheds concurrent floods with empty-but-valid responses. Its own search deadline produces a parseable HTTP 200 empty answer with measured `searchtime` and no partial counts or abstracts; caller-owned cancellation remains an error. Resource rows carry an enhanced-base64 `wi` containing the complete fixed-order 20-column YaCy `WordReferenceRow` property form. The field is attached only to response copies and never persisted into URL metadata. Outbound searches carry the node's current compact seed in `myseed`. Wire-conformance and live stock-Java tests prove that compatible peers can parse and find these responses. |
 | Seed list | `/yacy/seedlist.html` | GET, POST | implemented | Serves own and confirmed reachable seeds in plain seed-list form with YaCy request filters — `my` (own seed only, YaCy containsKey semantics), `id`/`name`/`peername` single-seed selection, `node`, `me`, `minversion`, `maxcount`; configured bootstrap import accepts seed `UTC` offset and timestamp wire values. Inbound seeds are limited to 32 KiB, 128 properties, 128-byte keys, 8 KiB generic/news values, and a 256-byte name. Bootstrap retains at most 4,096 seeds/16 MiB, and search target selection reuses an owned 4,096-peer/16 MiB mutation-invalidated roster snapshot. |
 | Seed list JSON | `/yacy/seedlist.json` | GET, POST | implemented | Serves own and confirmed reachable seeds in JSON seed-list form with the same YaCy request filters as the plain seed list. |
 | Seed list XML | `/yacy/seedlist.xml` | GET, POST | implemented | Serves own and confirmed reachable seeds in XML seed-list form with the same YaCy request filters as the plain seed list. |
@@ -49,6 +49,11 @@ Status values:
 | Peer profile export | `/yacy/profile.html` | GET, POST | implemented | Serves the YaCy profile text shape (`key=value` lines, `\r` stripped and `\n` escaped, empty pairs dropped) from `YAGO_DATA_DIR/SETTINGS/profile.txt` parsed as Java properties. Four requests are admitted before form parsing. The source is limited to 1 MiB, parsing retains at most 1,024 properties and 1 MiB of owned keys and values, and encoding is capped at 2 MiB. Overflow returns the existing empty successful profile. A missing file also yields an empty profile in upstream (`profile.java` swallows the read error, verified against `source/net/yacy/htroot/yacy/profile.java`, 2026-07). |
 | Remote crawl URL feed | `/yacy/urls.xml` | GET, POST | partial | Serves the URL-hash metadata feed (resolving requested hashes to stored URL metadata) at parity, and answers the remote-crawl delegation feed with a well-formed empty document. The empty delegation feed is a deliberate consequence of the node not delegating crawl work to remote peers — the same remote-crawl scoping that keeps `/yacy/crawlReceipt.html` narrower — so bringing it to full parity is out of scope while remote crawl stays disabled, not unfinished work. |
 | Remote crawl receipt | `/yacy/crawlReceipt.html` | POST | partial | Accepts the wire shape and answers every rejection with YaCy's retry delay of 3600 — including a network-auth failure, matching upstream, which sets delay=3600 before the auth return (verified against `source/net/yacy/htroot/yacy/crawlReceipt.java`, 2026-07) — while remote crawl execution is disabled. Upstream's full delay matrix (9999 for Robinson/domain/blacklist rejections, 10 on a successful `fill` with fulltext store and delegated-URL cleanup) applies only to enabled remote crawl and stays out of scope with it. |
+
+Network-unit interoperability covers the default `freeworld` unit and peers
+configured with the same network name. Java YaCy's controlled-private
+`salted-magic-sim` authentication calculation is not wired end to end; a
+network that requires it is unsupported.
 
 ## Search Surfaces
 
@@ -76,14 +81,15 @@ never runs Solr/Lucene (ADR-0012). Interop is verified from both directions:
   container and confirms our `resource=global` search reaches that peer's
   `/yacy/search.html` with a valid `myseed`, retrieves the URL, and returns the
   hit whose exact query evidence is retained in the transferred URL metadata.
-- **A YaCy peer searches us (inbound).** `TestRemoteSearchWireResponseIsPeerConsumable`
-  (`yagonode/internal/documentsearch`) drives our real `/yacy/search.html` route
-  with a multi-word query and parses the raw wire body with the same
-  `yagoproto.ParseSearchResponse` reader used to consume other peers — asserting a
-  YaCy-compatible peer can parse our `searchtime`/`references`/`joincount`/`count`/
-  `resourceN`/`indexcount.<hash>`/`indexabstract.<hash>` response. This is
-  deterministic and runs in CI, so it guards the wire contract even where a live
-  YaCy container is unavailable.
+- **A real YaCy peer searches us (inbound).**
+  `TestRealYaCyGlobalSearchFindsYagoRWI` seeds this node's RWI and URL stores,
+  makes a stock Java peer run a global search, and requires it to return the
+  Yago-only document. The transient full `wi` row is the Java consumer's
+  ranking payload; stored metadata remains unchanged.
+- **The response stays parser-compatible without Docker.**
+  `TestRemoteSearchWireResponseIsPeerConsumable` (`yagonode/internal/documentsearch`)
+  drives `/yacy/search.html` with a multi-word query and parses the raw body with
+  the same `yagoproto.ParseSearchResponse` reader used for outbound peer replies.
 
 The divergence from upstream is that the remote-search answer is built from the
 RWI posting index and URL-metadata store, not Solr: our node keeps the YaCy RWI +
@@ -92,10 +98,9 @@ public full-text search uses the native Go backend. Solr-only request fields a
 current YaCy release may send (`prefer`, `filter`, `profile`, `author`,
 `collection`, `filetype`, `protocol`, `timezoneOffset`) are accepted and logged
 but do not steer the RWI search, so an interoperating peer's request never fails
-on them. To exercise the inbound direction against a live YaCy peer manually, run
-the `//go:build e2e` suite (it pulls `docker.io/yacy/yacy_search_server:latest`),
-which CI does not run because forcing an external peer's DHT to target this node
-for a given query hash is non-deterministic.
+on them. The live suite defaults to the pinned stock-Java image
+`docker.io/yacy/yacy_search_server@sha256:4225dd07b605347b62ff1fbfa0268217aa79ba2d29bdb0a76d5366d4267398da`;
+`YAGO_YACY_IMAGE` can select another explicitly pinned test image.
 
 ## Agent API Targets
 

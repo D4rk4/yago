@@ -41,10 +41,45 @@ func registerBucket(v *Vault, bucket Name) error {
 }
 
 func readLength(tx *Txn, bucket Name) (int, error) {
-	return decodeLength(tx.etx.Bucket(lengthBucket).Get(Key(bucket)))
+	base, err := decodeLength(tx.etx.Bucket(lengthBucket).Get(Key(bucket)))
+	if err != nil {
+		return 0, err
+	}
+	partitioned, ok := tx.etx.(partitionedCollectionLength)
+	if !ok {
+		return base, nil
+	}
+	additions, removals, err := partitioned.CollectionLengthChanges(bucket)
+	if err != nil {
+		return 0, fmt.Errorf("read partitioned length: %w", err)
+	}
+	if additions > int(^uint(0)>>1)-base {
+		return 0, errors.New("length counter overflow")
+	}
+	total := base + additions
+	if removals >= total {
+		return 0, nil
+	}
+
+	return total - removals, nil
 }
 
-func adjustLength(tx *Txn, bucket Name, delta int) error {
+func adjustLength(tx *Txn, bucket Name, key Key, delta int) error {
+	if partitioned, ok := tx.etx.(partitionedCollectionLength); ok {
+		if delta > 0 {
+			if err := partitioned.RecordCollectionAddition(bucket, key); err != nil {
+				return fmt.Errorf("record collection addition: %w", err)
+			}
+
+			return nil
+		}
+
+		if err := partitioned.RecordCollectionRemoval(bucket, key); err != nil {
+			return fmt.Errorf("record collection removal: %w", err)
+		}
+
+		return nil
+	}
 	lengths := tx.etx.Bucket(lengthBucket)
 	current, err := decodeLength(lengths.Get(Key(bucket)))
 	if err != nil {
@@ -52,6 +87,12 @@ func adjustLength(tx *Txn, bucket Name, delta int) error {
 	}
 
 	return putLength(lengths, Key(bucket), max(current+delta, 0))
+}
+
+type partitionedCollectionLength interface {
+	RecordCollectionAddition(Name, Key) error
+	RecordCollectionRemoval(Name, Key) error
+	CollectionLengthChanges(Name) (int, int, error)
 }
 
 func decodeLength(raw []byte) (int, error) {

@@ -2,6 +2,8 @@ package rwi
 
 import (
 	"context"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -10,11 +12,11 @@ import (
 
 func (h harness) endpoint() transferRWIEndpoint {
 	return transferRWIEndpoint{
-		identity: localIdentity(),
-		intake:   h.rwi.Receiver,
-		batchCap: h.batchCap,
-		pause:    5,
-		accept:   true,
+		identity:          localIdentity(),
+		intake:            h.rwi.Receiver,
+		batchCap:          h.batchCap,
+		pauseMilliseconds: 5000,
+		accept:            true,
 	}
 }
 
@@ -66,8 +68,8 @@ func TestTransferRWIReportsBusy(t *testing.T) {
 	if resp.Result != yagoproto.ResultBusy {
 		t.Fatalf("Result = %q, want busy", resp.Result)
 	}
-	if resp.Pause != 5 {
-		t.Fatalf("Pause = %d, want 5", resp.Pause)
+	if resp.Pause != 5000 {
+		t.Fatalf("Pause = %d, want 5000", resp.Pause)
 	}
 }
 
@@ -92,7 +94,7 @@ func TestTransferRWIRejectsOversizedBatch(t *testing.T) {
 	if resp.Result != yagoproto.ResultBusy {
 		t.Fatalf("Result = %q, want busy over transfer cap", resp.Result)
 	}
-	if resp.Pause != 5 {
+	if resp.Pause != 5000 {
 		t.Fatalf("Pause = %d, want configured backoff", resp.Pause)
 	}
 
@@ -102,6 +104,55 @@ func TestTransferRWIRejectsOversizedBatch(t *testing.T) {
 	}
 	if rwiCount != 0 {
 		t.Fatalf("RWICount = %d, want nothing stored for a rejected transfer", rwiCount)
+	}
+}
+
+func TestTransferRWIRejectsOversizedDeclaredBatchWithoutIntake(t *testing.T) {
+	h := openHarness(t, 0, yagoproto.MaximumTransferEntries)
+	response, err := h.endpoint().Serve(t.Context(), yagoproto.TransferRWIRequest{
+		NetworkName: "freeworld",
+		YouAre:      localIdentity().Hash,
+		WordCount:   1,
+		EntryCount:  yagoproto.MaximumTransferEntries + 1,
+		Indexes:     []yagomodel.RWIPosting{posting("w1", "u1")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Result != yagoproto.ResultBusy || response.Pause != 5000 {
+		t.Fatalf("response = %+v, want busy pause", response)
+	}
+	count, err := h.rwi.Index.RWICount(t.Context())
+	if err != nil || count != 0 {
+		t.Fatalf("stored rows = %d, %v", count, err)
+	}
+}
+
+func TestTransferRWIRejectsOversizedParsedPayloadWithoutIntake(t *testing.T) {
+	h := openHarness(t, 0, yagoproto.MaximumTransferEntries)
+	entry := posting("w1", "u1").String()
+	request, err := yagoproto.ParseTransferRWIRequest(t.Context(), url.Values{
+		yagoproto.FieldNetworkName: {"freeworld"},
+		yagoproto.FieldYouAre:      {localIdentity().Hash.String()},
+		yagoproto.FieldWordCount:   {"1"},
+		yagoproto.FieldEntryCount:  {"1000"},
+		yagoproto.FieldIndexes: {
+			strings.Repeat(entry+"\n", yagoproto.MaximumTransferEntries+1),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := h.endpoint().Serve(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Result != yagoproto.ResultBusy || response.Pause != 5000 {
+		t.Fatalf("response = %+v, want busy pause", response)
+	}
+	count, err := h.rwi.Index.RWICount(t.Context())
+	if err != nil || count != 0 {
+		t.Fatalf("stored rows = %d, %v", count, err)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 
 type matchedDocument struct {
 	identifier  yagomodel.Hash
+	posting     yagomodel.RWIPosting
 	occurrences uint64
 	minPosition uint64
 	maxPosition uint64

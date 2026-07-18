@@ -192,7 +192,7 @@ func TestParseTransferRWIRequestRejectsBadFields(t *testing.T) {
 	}
 }
 
-func TestParseTransferRWIRequestLimitsEntries(t *testing.T) {
+func TestParseTransferRWIRequestMarksExcessEntriesWithoutAcceptingTheTail(t *testing.T) {
 	posting := sampleRWIPosting(t, "alpha", "url-a").String()
 	lines := make([]string, 1001)
 	for i := range lines {
@@ -205,6 +205,22 @@ func TestParseTransferRWIRequestLimitsEntries(t *testing.T) {
 	}
 	if len(req.Indexes) != 1000 {
 		t.Fatalf("Indexes = %d, want 1000", len(req.Indexes))
+	}
+	if !req.ExceedsEntryLimit() {
+		t.Fatal("oversized payload was not marked")
+	}
+}
+
+func TestTransferRWIRequestMarksExcessDeclaredEntries(t *testing.T) {
+	req, err := yagoproto.ParseTransferRWIRequest(context.Background(), url.Values{
+		yagoproto.FieldEntryCount: {"1001"},
+		yagoproto.FieldIndexes:    {sampleRWIPosting(t, "alpha", "url-a").String()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !req.ExceedsEntryLimit() {
+		t.Fatal("oversized declared count was not marked")
 	}
 }
 
