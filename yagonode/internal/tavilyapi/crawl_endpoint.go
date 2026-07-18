@@ -2,7 +2,6 @@ package tavilyapi
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -18,19 +17,18 @@ const (
 
 const (
 	crawlDefaultDepth   = 1
-	crawlMaxDepth       = 3
+	crawlMaxDepth       = 5
 	crawlDefaultBreadth = 20
-	crawlMaxBreadth     = 100
+	crawlMaxBreadth     = 500
 	crawlDefaultLimit   = 50
 	crawlMaxLimit       = 200
 )
 
-// CrawledPage is one fetched page with its outgoing links, supplied by the
-// node's egress-guarded fetcher.
 type CrawledPage struct {
-	Title string
-	Text  string
-	Links []string
+	Title  string
+	Text   string
+	Links  []string
+	Images []string
 }
 
 // PageFetcher walks pages for /crawl and /map. A nil fetcher leaves the
@@ -39,21 +37,24 @@ type PageFetcher interface {
 	FetchPage(ctx context.Context, url string) (CrawledPage, error)
 }
 
-// CrawlRequest is the Tavily crawl/map request shape. The natural-language
-// instructions field is accepted and ignored — no model interprets it here.
 type CrawlRequest struct {
-	URL            string   `json:"url"`
-	MaxDepth       *int     `json:"max_depth,omitempty"`
-	MaxBreadth     *int     `json:"max_breadth,omitempty"`
-	Limit          *int     `json:"limit,omitempty"`
-	Instructions   string   `json:"instructions,omitempty"`
-	SelectPaths    []string `json:"select_paths,omitempty"`
-	SelectDomains  []string `json:"select_domains,omitempty"`
-	ExcludePaths   []string `json:"exclude_paths,omitempty"`
-	ExcludeDomains []string `json:"exclude_domains,omitempty"`
-	AllowExternal  bool     `json:"allow_external,omitempty"`
-	Format         string   `json:"format,omitempty"`
-	IncludeFavicon bool     `json:"include_favicon,omitempty"`
+	URL             string   `json:"url"`
+	MaxDepth        *int     `json:"max_depth,omitempty"`
+	MaxBreadth      *int     `json:"max_breadth,omitempty"`
+	Limit           *int     `json:"limit,omitempty"`
+	Instructions    string   `json:"instructions,omitempty"`
+	ChunksPerSource *int     `json:"chunks_per_source,omitempty"`
+	SelectPaths     []string `json:"select_paths,omitempty"`
+	SelectDomains   []string `json:"select_domains,omitempty"`
+	ExcludePaths    []string `json:"exclude_paths,omitempty"`
+	ExcludeDomains  []string `json:"exclude_domains,omitempty"`
+	AllowExternal   *bool    `json:"allow_external,omitempty"`
+	IncludeImages   bool     `json:"include_images,omitempty"`
+	ExtractDepth    string   `json:"extract_depth,omitempty"`
+	Format          string   `json:"format,omitempty"`
+	IncludeFavicon  bool     `json:"include_favicon,omitempty"`
+	Timeout         *float64 `json:"timeout,omitempty"`
+	IncludeUsage    bool     `json:"include_usage,omitempty"`
 }
 
 // CrawlResponse is the Tavily crawl response envelope.
@@ -61,22 +62,26 @@ type CrawlResponse struct {
 	BaseURL      string        `json:"base_url"`
 	Results      []CrawlResult `json:"results"`
 	ResponseTime float64       `json:"response_time"`
+	Usage        *SearchUsage  `json:"usage,omitempty"`
 	RequestID    string        `json:"request_id"`
 }
 
 // CrawlResult is one crawled page.
 type CrawlResult struct {
-	URL        string `json:"url"`
-	RawContent string `json:"raw_content"`
-	Favicon    string `json:"favicon,omitempty"`
+	URL           string   `json:"url"`
+	RawContent    string   `json:"raw_content"`
+	Images        []string `json:"images,omitempty"`
+	Favicon       string   `json:"favicon,omitempty"`
+	includeImages bool
 }
 
 // MapResponse is the Tavily map response envelope: discovered URLs only.
 type MapResponse struct {
-	BaseURL      string   `json:"base_url"`
-	Results      []string `json:"results"`
-	ResponseTime float64  `json:"response_time"`
-	RequestID    string   `json:"request_id"`
+	BaseURL      string       `json:"base_url"`
+	Results      []string     `json:"results"`
+	ResponseTime float64      `json:"response_time"`
+	Usage        *SearchUsage `json:"usage,omitempty"`
+	RequestID    string       `json:"request_id"`
 }
 
 type crawlEndpoint struct {
@@ -105,6 +110,7 @@ func MountCrawl(mux *http.ServeMux, access SearchAccessPolicy, fetcher PageFetch
 func (e crawlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := requestID(r)
 	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use POST", id)
 
 		return
@@ -148,8 +154,13 @@ func (e crawlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	workContext, cancelRequest := rawContentWorkContext(
+		r.Context(),
+		requestTimeout(req.Timeout, 150*time.Second),
+	)
+	defer cancelRequest()
 	start := e.now()
-	pages, baseURL, err := e.walk(r.Context(), req)
+	pages, baseURL, err := e.walk(workContext, req)
 	if err != nil {
 		status, code := rawContentResponseError(
 			err,
@@ -160,18 +171,9 @@ func (e crawlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	elapsed := e.now().Sub(start).Seconds()
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if e.mapOnly {
-		_ = json.NewEncoder(w).Encode(MapResponse{
-			BaseURL: baseURL, Results: pageURLs(pages), ResponseTime: elapsed, RequestID: id,
-		})
-
-		return
-	}
-	_ = json.NewEncoder(w).Encode(CrawlResponse{
-		BaseURL: baseURL, Results: pages, ResponseTime: elapsed, RequestID: id,
+	e.writeCrawlSuccess(w, crawlSuccessResponse{
+		request: req, pages: pages, baseURL: baseURL,
+		elapsed: e.now().Sub(start).Seconds(), requestID: id,
 	})
 }
 
@@ -181,9 +183,9 @@ func (e crawlEndpoint) walk(ctx context.Context, req CrawlRequest) ([]CrawlResul
 	if err != nil {
 		return nil, "", err
 	}
-	base, err := url.Parse(strings.TrimSpace(req.URL))
-	if err != nil || base.Host == "" || base.Scheme != "http" && base.Scheme != "https" {
-		return nil, "", badRequest("url must be absolute http(s)")
+	base, err := parseCrawlBaseURL(req.URL)
+	if err != nil {
+		return nil, "", err
 	}
 	baseURL := base.String()
 	if len(baseURL) > maximumRawContentURLBytes {
@@ -286,8 +288,9 @@ func (w *crawlWalker) retainResult(url string, page CrawledPage) (CrawlResult, e
 	if w.endpoint.mapOnly {
 		return CrawlResult{URL: url}, nil
 	}
-	content := page.Text
-	if strings.EqualFold(strings.TrimSpace(w.request.Format), "markdown") && page.Title != "" {
+	content := requestedCrawlContent(w.request, page.Text)
+	if strings.TrimSpace(w.request.Instructions) == "" &&
+		requestedContentFormat(w.request.Format) == "markdown" && page.Title != "" {
 		bounded, ok := boundedFetchedMarkdown(
 			FetchedContent{Title: page.Title, Text: page.Text},
 			maximumRawContentResponseBytes-w.budget.retained,
@@ -301,16 +304,22 @@ func (w *crawlWalker) retainResult(url string, page CrawledPage) (CrawlResult, e
 	if w.request.IncludeFavicon {
 		favicon = faviconURL(url)
 	}
+	images := []string(nil)
+	if w.request.IncludeImages {
+		images = boundedImageURLs(page.Images)
+	}
 	if !w.budget.reserve(
-		len(content)+len(favicon),
+		len(content)+len(favicon)+retainedStringSliceBytes(images),
 		rawContentResultJSONBytes+rawContentJSONStringBytes(url)+
-			rawContentJSONStringBytes(content)+rawContentJSONStringBytes(favicon),
+			rawContentJSONStringBytes(content)+rawContentJSONStringBytes(favicon)+
+			outputStringSliceBytes(images),
 	) {
 		return CrawlResult{}, errRawContentBudgetExceeded
 	}
 
 	return CrawlResult{
-		URL: url, RawContent: strings.Clone(content), Favicon: strings.Clone(favicon),
+		URL: url, RawContent: strings.Clone(content), Images: cloneStrings(images),
+		Favicon: strings.Clone(favicon), includeImages: w.request.IncludeImages,
 	}, nil
 }
 
@@ -358,7 +367,7 @@ func crawlBounds(req CrawlRequest) (crawlBoundsSet, error) {
 		limit:   crawlDefaultLimit,
 	}
 	if req.MaxDepth != nil {
-		if *req.MaxDepth < 0 || *req.MaxDepth > crawlMaxDepth {
+		if *req.MaxDepth < 1 || *req.MaxDepth > crawlMaxDepth {
 			return bounds, badRequest("max_depth out of range")
 		}
 		bounds.depth = *req.MaxDepth
@@ -370,10 +379,22 @@ func crawlBounds(req CrawlRequest) (crawlBoundsSet, error) {
 		bounds.breadth = *req.MaxBreadth
 	}
 	if req.Limit != nil {
-		if *req.Limit < 1 || *req.Limit > crawlMaxLimit {
+		if *req.Limit < 1 {
 			return bounds, badRequest("limit out of range")
 		}
-		bounds.limit = *req.Limit
+		bounds.limit = min(*req.Limit, crawlMaxLimit)
+	}
+	if err := validateExtractFormat(req.Format); err != nil {
+		return bounds, err
+	}
+	if err := validateExtractDepth(req.ExtractDepth); err != nil {
+		return bounds, err
+	}
+	if err := validateRelevantChunks(req.Instructions, req.ChunksPerSource); err != nil {
+		return bounds, err
+	}
+	if err := validateTimeout(req.Timeout, 10, 150); err != nil {
+		return bounds, err
 	}
 
 	return bounds, nil
@@ -390,7 +411,10 @@ type crawlFilters struct {
 }
 
 func newCrawlFilters(req CrawlRequest, base *url.URL) (crawlFilters, error) {
-	filters := crawlFilters{baseHost: base.Hostname(), allowExternal: req.AllowExternal}
+	filters := crawlFilters{
+		baseHost:      base.Hostname(),
+		allowExternal: req.AllowExternal == nil || *req.AllowExternal,
+	}
 	var err error
 	if filters.selectPaths, err = compilePatterns(req.SelectPaths, "select_paths"); err != nil {
 		return crawlFilters{}, err

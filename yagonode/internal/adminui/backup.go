@@ -41,9 +41,6 @@ type backupPageData struct {
 	SystemdRestore string
 }
 
-// handleBackup renders the Backup & restore page: a consistent backup requires
-// the node stopped (OPS-03), so the page arms the operator with the exact
-// offline script invocations instead of pretending an online copy is safe.
 func (c *Console) handleBackup(w http.ResponseWriter, r *http.Request) {
 	if c.backup == nil {
 		c.renderUnavailable(w, r, backupPath, "Backup & restore",
@@ -64,14 +61,14 @@ func (c *Console) handleBackup(w http.ResponseWriter, r *http.Request) {
 		data.DataDir = status.DataDir
 		data.Used = formatByteSize(status.UsedBytes)
 		data.Quota = formatStorageQuota(status.QuotaBytes)
-		data.DockerBackup = "deploy/backup.sh docker docker-compose.yml yago-node yago-data ./backups"
-		data.DockerRestore = "deploy/restore.sh docker docker-compose.yml yago-node yago-data ./backups/<archive>.tar.gz"
+		data.DockerBackup = "deploy/backup.sh docker docker-compose.yml yago-node yago_yago-data ./backups yago-crawler yago_yago-crawler-data"
+		data.DockerRestore = "deploy/restore.sh docker docker-compose.yml yago-node yago_yago-data ./backups/<archive>.tar.gz yago-crawler yago_yago-crawler-data"
 		data.SystemdBackup = fmt.Sprintf(
-			"deploy/backup.sh systemd yago-node %s ./backups",
+			"deploy/backup.sh systemd yago-node.service %s ./backups yago-crawler.service",
 			status.DataDir,
 		)
 		data.SystemdRestore = fmt.Sprintf(
-			"deploy/restore.sh systemd yago-node %s ./backups/<archive>.tar.gz",
+			"deploy/restore.sh systemd yago-node.service %s ./backups/<archive>.tar.gz yago-crawler.service",
 			status.DataDir,
 		)
 	}

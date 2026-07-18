@@ -20,11 +20,18 @@ var indexBleveRebuildBatch = func(
 func (b *BleveDiskIndex) rebuild(
 	ctx context.Context,
 	stored documentstore.StoredDocuments,
+	admissions ...BleveRebuildGrowthAdmission,
 ) error {
+	admission := firstBleveRebuildGrowthAdmission(admissions)
 	documents := make([]documentstore.Document, 0, bleveRebuildBatchDocuments)
 	flush := func() error {
 		if len(documents) == 0 {
 			return nil
+		}
+		if admission != nil {
+			if err := admission.CheckGrowth(); err != nil {
+				return fmt.Errorf("bleve rebuild growth admission: %w", err)
+			}
 		}
 		if err := indexBleveRebuildBatch(b, ctx, documents); err != nil {
 			return err

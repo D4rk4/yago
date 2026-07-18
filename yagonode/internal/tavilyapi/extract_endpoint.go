@@ -18,11 +18,15 @@ const (
 )
 
 type ExtractRequest struct {
-	URLs           urlList `json:"urls"`
-	ExtractDepth   string  `json:"extract_depth,omitempty"`
-	Format         string  `json:"format,omitempty"`
-	IncludeImages  bool    `json:"include_images,omitempty"`
-	IncludeFavicon bool    `json:"include_favicon,omitempty"`
+	URLs            urlList  `json:"urls"`
+	Query           string   `json:"query,omitempty"`
+	ChunksPerSource *int     `json:"chunks_per_source,omitempty"`
+	ExtractDepth    string   `json:"extract_depth,omitempty"`
+	Format          string   `json:"format,omitempty"`
+	IncludeImages   bool     `json:"include_images,omitempty"`
+	IncludeFavicon  bool     `json:"include_favicon,omitempty"`
+	Timeout         *float64 `json:"timeout,omitempty"`
+	IncludeUsage    bool     `json:"include_usage,omitempty"`
 }
 
 type urlList []string
@@ -48,14 +52,16 @@ type ExtractResponse struct {
 	Results       []ExtractResult  `json:"results"`
 	FailedResults []ExtractFailure `json:"failed_results"`
 	ResponseTime  float64          `json:"response_time"`
+	Usage         *SearchUsage     `json:"usage,omitempty"`
 	RequestID     string           `json:"request_id"`
 }
 
 type ExtractResult struct {
-	URL        string   `json:"url"`
-	RawContent string   `json:"raw_content"`
-	Images     []string `json:"images,omitempty"`
-	Favicon    string   `json:"favicon,omitempty"`
+	URL           string   `json:"url"`
+	RawContent    string   `json:"raw_content"`
+	Images        []string `json:"images,omitempty"`
+	Favicon       string   `json:"favicon,omitempty"`
+	includeImages bool
 }
 
 type ExtractFailure struct {
@@ -63,11 +69,10 @@ type ExtractFailure struct {
 	Error string `json:"error"`
 }
 
-// FetchedContent is the title and text a ContentFetcher extracted from a URL not
-// present in the index.
 type FetchedContent struct {
-	Title string
-	Text  string
+	Title  string
+	Text   string
+	Images []string
 }
 
 // ContentFetcher fetches and extracts a URL that is not in the index. It is
@@ -164,8 +169,18 @@ func (e extractEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	if err := validateExtractRequest(req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_extract_request", err.Error(), id)
 
-	resp, err := e.extractResponse(r.Context(), req, e.now(), id)
+		return
+	}
+	workContext, cancelRequest := rawContentWorkContext(
+		r.Context(),
+		requestTimeout(req.Timeout, defaultExtractTimeout(req.ExtractDepth)),
+	)
+	defer cancelRequest()
+
+	resp, err := e.extractResponse(workContext, req, e.now(), id)
 	if err != nil {
 		status, code := rawContentResponseError(
 			err,
@@ -188,10 +203,6 @@ func (e extractEndpoint) extractResponse(
 	start time.Time,
 	id string,
 ) (ExtractResponse, error) {
-	if err := validateExtractRequest(req); err != nil {
-		return ExtractResponse{}, err
-	}
-
 	budget := &rawContentBudget{
 		retained: rawContentEnvelopeBytes + len(id) +
 			len(req.URLs)*(rawContentExtractResultBytes+rawContentExtractFailureBytes),
@@ -216,6 +227,7 @@ func (e extractEndpoint) extractResponse(
 		Results:       results,
 		FailedResults: failures,
 		ResponseTime:  e.now().Sub(start).Seconds(),
+		Usage:         responseUsageEnabled(req.IncludeUsage),
 		RequestID:     id,
 	}, nil
 }
@@ -269,16 +281,17 @@ func retainDocumentExtractResult(
 	doc documentstore.Document,
 	budget *rawContentBudget,
 ) (ExtractResult, *ExtractFailure, error) {
-	raw := doc.ExtractedText
-	if strings.EqualFold(strings.TrimSpace(req.Format), "markdown") {
+	raw := requestedExtractContent(req, doc.ExtractedText)
+	if strings.TrimSpace(req.Query) == "" && requestedContentFormat(req.Format) == "markdown" {
 		var ok bool
 		raw, ok = boundedDocumentMarkdown(doc, maximumRawContentResponseBytes-budget.retained)
 		if !ok {
 			return rejectedExtractResult(budget, requestedURL)
 		}
 	}
-	images := make([]string, 0, maxResultImages)
+	var images []string
 	if req.IncludeImages {
+		images = make([]string, 0, maxResultImages)
 		for _, image := range doc.Images {
 			if len(images) >= maxResultImages {
 				break
@@ -298,8 +311,8 @@ func retainFetchedExtractResult(
 	content FetchedContent,
 	budget *rawContentBudget,
 ) (ExtractResult, *ExtractFailure, error) {
-	raw := content.Text
-	if strings.EqualFold(strings.TrimSpace(req.Format), "markdown") {
+	raw := requestedExtractContent(req, content.Text)
+	if strings.TrimSpace(req.Query) == "" && requestedContentFormat(req.Format) == "markdown" {
 		var ok bool
 		raw, ok = boundedFetchedMarkdown(content, maximumRawContentResponseBytes-budget.retained)
 		if !ok {
@@ -307,7 +320,12 @@ func retainFetchedExtractResult(
 		}
 	}
 
-	return retainExtractResult(budget, requestedURL, raw, nil, req.IncludeFavicon)
+	images := []string(nil)
+	if req.IncludeImages {
+		images = boundedImageURLs(content.Images)
+	}
+
+	return retainExtractResult(budget, requestedURL, raw, images, req.IncludeFavicon)
 }
 
 func retainExtractResult(
@@ -333,9 +351,10 @@ func retainExtractResult(
 		return rejectedExtractResult(budget, requestedURL)
 	}
 	result := ExtractResult{
-		URL:        strings.Clone(requestedURL),
-		RawContent: strings.Clone(raw),
-		Favicon:    strings.Clone(favicon),
+		URL:           strings.Clone(requestedURL),
+		RawContent:    strings.Clone(raw),
+		Favicon:       strings.Clone(favicon),
+		includeImages: images != nil,
 	}
 	if len(images) > 0 {
 		result.Images = make([]string, len(images))
@@ -399,6 +418,12 @@ func validateExtractRequest(req ExtractRequest) error {
 		return badRequest("urls must contain at most 20 entries")
 	}
 	if err := validateExtractDepth(req.ExtractDepth); err != nil {
+		return err
+	}
+	if err := validateRelevantChunks(req.Query, req.ChunksPerSource); err != nil {
+		return err
+	}
+	if err := validateTimeout(req.Timeout, 1, 60); err != nil {
 		return err
 	}
 

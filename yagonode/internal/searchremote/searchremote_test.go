@@ -161,8 +161,8 @@ func TestRemoteSearcherUsesIndexAbstractsForMultiTermSearch(t *testing.T) {
 		len(resp.PartialFailures) != 0 {
 		t.Fatalf("response = %#v", resp)
 	}
-	if requests := fixture.recordedRequests(); len(requests) != 5 {
-		t.Fatalf("request count = %d, want 5 (1 primary + 2 abstract + 2 secondary); requests=%v",
+	if requests := fixture.recordedRequests(); len(requests) != 4 {
+		t.Fatalf("request count = %d, want 4 (1 primary + 2 abstract + 1 secondary); requests=%v",
 			len(requests), requests)
 	}
 }

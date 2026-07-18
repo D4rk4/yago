@@ -2,11 +2,13 @@
 
 The node is configured through environment variables.
 
-> **Deprecation (yacy → yago rename):** the node variables below were renamed
-> from the `YACY_` prefix to `YAGO_`. For one release, an unset `YAGO_` variable
-> falls back to its legacy `YACY_` name and logs a one-time deprecation warning;
-> migrate to the `YAGO_` names. The crawler fleet worker's variables were renamed
-> from `YACYCRAWLER_` to `YAGOCRAWLER_` without a fallback.
+> **Environment naming:** the node variables below were renamed from the `YACY_`
+> prefix to `YAGO_`. For one release, an unset `YAGO_` variable falls back to its
+> legacy `YACY_` name and logs a one-time deprecation warning. Crawler variables
+> use `YAGO_CRAWLER_` exclusively. The v0.0.11 package migration rewrites
+> line-leading `YAGOCRAWLER_` keys in the legacy package-managed environment file;
+> the runtime provides no fallback for that spelling or the earlier
+> `YACYCRAWLER_` spelling.
 
 ## Runtime overrides
 
@@ -75,11 +77,44 @@ actually listens on — unless you pinned them explicitly with `YAGO_ADVERTISE_P
 or `YAGO_PUBLIC_SELF_TEST_URL`, which stay authoritative (set the latter when the
 peer listener is behind a reverse proxy or NAT and the external address differs).
 
+### Storage admission
+
+`YAGO_STORAGE_QUOTA` is the soft admission and eviction target for logical live
+rows in the main sharded vault. It excludes Bleve, `crawlbroker.db`, crawler
+frontier databases, bbolt free pages, open-but-deleted blocks, and temporary
+copies. It is not a filesystem quota.
+
+The node and crawler use independent filesystem free-space policies.
+`YAGO_STORAGE_RESERVED_FREE` and `YAGO_STORAGE_PRESSURE_HYSTERESIS` apply to
+gate-managed node growth. Their Admin keys are `storage.reserved_free` and
+`storage.pressure_hysteresis`. `YAGO_CRAWLER_STORAGE_RESERVED_FREE` and
+`YAGO_CRAWLER_STORAGE_PRESSURE_HYSTERESIS` bootstrap each crawler's policy; the
+matching Admin keys are `crawler.storage_reserved_free` and
+`crawler.storage_pressure_hysteresis`. The node sends live crawler-policy
+changes on worker heartbeats.
+
+Each process measures the filesystem containing its own `YAGO_DATA_DIR`.
+Measurement failure pauses admission. At or below the reserve, gate-managed node
+crawl/index ingestion pauses and crawler frontier growth plus fetch admission
+waits. Admission resumes only after free space reaches the reserve plus
+hysteresis. Deletion, eviction, settlement, and existing crawl-state recovery
+remain available where startup has otherwise completed. Large node compaction,
+shard-split, and legacy migration copies reserve operation-specific headroom
+after a fresh serialized measurement.
+
+These checks are advisory: ordinary writes can allocate after their preflight,
+and bounded bootstrap writes and storage-engine background work are not an
+aggregate transaction. Deleting bbolt rows may create reusable database pages
+without increasing operating-system free space. Free filesystem space or lower
+the applicable reserve and hysteresis when pressure persists. Use a filesystem
+or project quota, or a quota-capable volume, when an exact aggregate maximum is
+required.
+
 | Variable | Default | Description |
 | --- | --- | --- |
 | `LOG_LEVEL` | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARN`, or `ERROR`. |
 | `YAGO_PEER_BIRTH_DATE` | first start time | Optional peer birth date (`YYYYMMDD`, UTC) stored on the first start with a fresh data directory. Declare it when migrating an established peer identity or when private-network tests need an aged peer; YaCy peers skip DHT targets younger than three days. |
-| `YAGO_DATA_DIR` | `./data` | Where the node persists its data. New nodes use `yago-node.db`; existing `yacy-rwi.db` files are opened when no `yago-node.db` exists. The embedded full-text fallback index is `search.bleve` inside this directory. The YaCy-compatible peer profile file is `SETTINGS/profile.txt` inside this directory. Shared blacklist export reads `SETTINGS/yacy.conf` `BlackLists.Shared` and the referenced files under `LISTS/`. |
+| `YAGO_DATA_DIR` | `./data` | Where each process persists its data. The node uses `yago-node.db` (or an existing `yacy-rwi.db`), `search.bleve`, peer profile, shared-blacklist files, and `crawlbroker.db` for atomic crawler coordination. The crawler uses `crawler/frontier-v1.db` for exact restart recovery and its stable worker identity. Package services share `/opt/yago/data` under one OS user; the Docker images use separate volumes because their unprivileged UIDs differ. |
 | `YAGO_PEER_ADDR` | `:8090` | Listen address for the YaCy peer protocol. |
 | `YAGO_OPS_ADDR` | `:9090` | Listen address for `/health`, `/ready`, `/metrics`, and ops JSON endpoints. |
 | `YAGO_METRICS_ENABLED` | `true` | Serve the Prometheus `/metrics` endpoint. Set to `false` to unmount it (returns 404); the collectors still run. The endpoint is admin-authenticated regardless (it is not on the operations listener's public allowlist). See [metrics.md](metrics.md). |
@@ -104,12 +139,16 @@ peer listener is behind a reverse proxy or NAT and the external address differs)
 | `YAGO_DHT_MINIMUM_CONNECTED_PEERS` | `33` | Sender-side DHT gate: minimum connected peers before outbound distribution starts. Lower it only for private networks or controlled tests. |
 | `YAGO_DHT_MINIMUM_RWI_WORDS` | `100` | Sender-side DHT gate: minimum locally stored RWI words before outbound distribution starts. |
 | `YAGO_TRUSTED_PROXIES` | _(empty)_ | Comma-separated CIDRs or IPs of reverse proxies fronting the node. Set this when running behind a reverse proxy so peers are not told the proxy's address. |
-| `YAGO_STORAGE_QUOTA` | `1GB` | Storage quota, as a human-readable size (e.g. `512MB`, `1GB`, `20GB`). |
+| `YAGO_STORAGE_QUOTA` | `1GB` | Soft admission and eviction target for logical live main-vault rows, as a human-readable size. It excludes Bleve, crawl state, allocated free pages, and temporary copies. Admin key: `storage.quota`. |
+| `YAGO_STORAGE_RESERVED_FREE` | `1GB` | Filesystem free-space reserve for gate-managed node growth. Admin key: `storage.reserved_free`; applies live. |
+| `YAGO_STORAGE_PRESSURE_HYSTERESIS` | `256MB` | Additional free space above the node reserve required before gate-managed growth resumes. Admin key: `storage.pressure_hysteresis`; applies live. |
+| `YAGO_CRAWLER_STORAGE_RESERVED_FREE` | `1GB` | Filesystem free-space reserve bootstrapped by each crawler and sent live by the node. Admin key: `crawler.storage_reserved_free`. |
+| `YAGO_CRAWLER_STORAGE_PRESSURE_HYSTERESIS` | `256MB` | Additional free space above the crawler reserve required before frontier growth and fetch admission resume. Admin key: `crawler.storage_pressure_hysteresis`. |
 | `YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS` | `false` | Allow outbound connections to RFC 1918 and unique-local addresses. Enable only for LAN or private-network deployments; loopback, link-local, and reserved ranges stay blocked. |
 | `YAGO_EGRESS_ALLOW_CIDRS` | _(empty)_ | Comma-separated private CIDRs the egress guard admits even when `YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS` is false, so intranet mode reaches only named ranges instead of all private space. Only relaxes the private check: loopback, link-local (including the cloud metadata range), and reserved ranges stay blocked, so a non-private entry never grants access to them. |
 | `YAGO_SEARCH_API_KEY` | _(empty)_ | Optional legacy static bearer token for the Tavily-compatible `POST /search`, `POST /extract`, `POST /crawl`, and `POST /map` endpoints. Callers send `Authorization: Bearer <token>`. This local node credential is not a key for an external search service; the node uses no keyed external search API. Ignored when `YAGO_SEARCH_REQUIRE_API_KEY` is on. When neither this token nor scoped authorization is configured, the agent endpoints deny access. |
 | `YAGO_SEARCH_REQUIRE_API_KEY` | `false` | Require scoped API keys on the Tavily-compatible surface. When on, `POST /search`, `POST /extract`, `POST /crawl`, and `POST /map` accept only admin-minted API keys (`Authorization: Bearer <key>`): ordinary `/search` needs `search:read`, while raw-content search, extract, crawl, and map need `search:raw`. Missing/invalid keys return `401`, insufficient scope `403`, and rate-limited keys `429`. Takes precedence over `YAGO_SEARCH_API_KEY`; when neither scoped authorization nor a static key is configured, these endpoints deny access rather than becoming public. |
-| `YAGO_PUBLIC_SEARCH_UI_ENABLED` | `false` | Serve the anonymous public search portal on the public listener's root (`/`). Off by default; while off, the root serves the landing page and the portal is not mounted. When on, a minimal, server-rendered, no-JavaScript search page runs exact/morphological retrieval against the local index plus YaCy peers. An empty incomplete exact stage gets bounded local-exact rescue; an honest miss gets bounded local fuzzy recovery. The `enabled` DDGS mode runs only after the applicable local recovery also misses; `always` runs DDGS alongside local and swarm retrieval. It exposes only search — never admin APIs — and does not log the query text. Overridable live from the admin console (see Runtime overrides). |
+| `YAGO_PUBLIC_SEARCH_UI_ENABLED` | `false` | Serve the anonymous public search portal on the public listener's root (`/`). Off by default; while off, the root serves the landing page and the portal is not mounted. When on, a minimal, server-rendered, no-JavaScript search page runs exact/morphological retrieval against the local index plus YaCy peers. An empty incomplete exact stage gets bounded local-exact rescue; an honest miss gets bounded local fuzzy recovery. The `enabled` DDGS mode runs only after the applicable local recovery also misses; `always` runs DDGS alongside local and swarm retrieval. It exposes only search — never admin APIs — and logs query text only when the operator explicitly selects `YAGO_QUERY_LOG_MODE=full`; the default and aggregate modes omit it. Overridable live from the admin console (see Runtime overrides). |
 | `YAGO_HTTPS_REDIRECT` | `false` | Redirect plain-HTTP requests to the `https://` origin with a 308, preserving path and query. Off by default. TLS termination is expected in front (a reverse proxy sets `X-Forwarded-Proto`); loopback requests are never redirected. Overridable live from the admin console (see Runtime overrides). |
 | `YAGO_EXTRACT_FETCH_ENABLED` | `false` | Enable fetch-on-extract for `POST /extract`. Off by default, so an uncached URL is a controlled `failed_result` with no outbound request. When on, an uncached URL is fetched through the shared egress-guarded client (private networks stay default-denied — no SSRF) and its title and visible text are extracted. |
 | `YAGO_EXTRACT_FETCH_TIMEOUT` | `10s` | Per-request timeout for a fetch-on-extract fetch. |
@@ -119,7 +158,9 @@ peer listener is behind a reverse proxy or NAT and the external address differs)
 | `YAGO_ADMIN_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the operations surface. Empty denies all cross-origin requests. Use `*` to echo any origin (required for a credentialed admin UI on an unknown origin, but broad). |
 | `YAGO_SEARCH_CORS_ORIGINS` | _(empty)_ | Comma-separated origin allowlist for cross-origin browser requests to the public search endpoints on the public listener. Empty denies all cross-origin requests; `*` allows any origin without credentials. |
 | `YAGO_SEARCH_REMOTE_PEER_TIMEOUT` | `1200ms` | Maximum contribution time for one YaCy peer inside an interactive search. |
-| `YAGO_SEARCH_REMOTE_TIMEOUT` | `1300ms` | Aggregate YaCy peer fan-out budget. The public pipeline enforces a 1.8-second end-to-end deadline. Miss-triggered web fallback caps its complete exact local-plus-swarm and peer-evidence stage at 600ms so local recovery and the sequential provider retain time. `always` mode runs the provider concurrently and gives that primary stage up to 1400ms, so a cold local index can still publish its rows without extending the hard response boundary. Four remote branches may run process-wide; a branch retains that admission until peer fan-out actually returns even when its local answer has already been released. One query additionally shares fixed limits of 8 MiB response data, 1,024 metadata rows, and 8,192 abstract hashes across exact and morphology passes; at most 32 peer HTTP attempts run process-wide. These limits preserve partial swarm results and do not penalize a peer when local admission is saturated. |
+| `YAGO_SEARCH_REMOTE_TIMEOUT` | `1300ms` | Aggregate YaCy peer fan-out budget. The public pipeline enforces a 1.8-second end-to-end deadline. Public search endpoints admit no more than 16 concurrent requests; an admitted request waits for one of four outer pipeline slots only within that deadline instead of reporting a false miss during a short burst. An empty incomplete exact stage gets one local-exact retry inside the same boundary: 150 milliseconds for ordinary incomplete failures and 500 milliseconds only when the exact stage reports capacity exhaustion. The capacity-only retry may wait for its own four-slot admission within those 500 milliseconds; ordinary and fuzzy retry admission remains nonblocking. Miss-triggered web fallback caps its complete exact local-plus-swarm and peer-evidence stage at 600ms so local recovery and the sequential provider retain time. `always` mode runs the provider concurrently and gives that primary stage up to 1400ms, so a cold local index can still publish its rows without extending the hard response boundary. Four remote branches may run process-wide; a branch retains that admission until peer fan-out actually returns even when its local answer has already been released. One query additionally shares fixed limits of 8 MiB response data, 1,024 metadata rows, and 8,192 abstract hashes across exact and morphology passes; each query starts at most 32 peer HTTP attempts. Ordinary attempts share 32 process-wide slots; multiword speculative abstract jobs can consume at most 20 calls per query and additionally share eight process-wide morphology slots; single-word variants and metadata-cover calls use the total and ordinary process ceilings. Enabled multiword swarm morphology retains one exact primary request and adds an index-abstract plan with at most 12 corpus-observed or analyzer-verified generated forms per original requirement, 20 forms across the query, and two peers per form. It unions forms within a requirement and intersects across requirements, so work is linear and capped rather than Cartesian. These limits preserve partial swarm results and do not penalize a peer when local admission is saturated. |
+| `YAGO_PEER_SNIPPET_FETCH` | `true` | Permit bounded, egress-guarded body fetches for the first peer rows whose visible title, snippet, and decoded URL do not prove every query requirement. Admin setting: `search.peer.snippet_fetch`. |
+| `YAGO_SWARM_MORPHOLOGY` | `false` | Add bounded corpus-observed and analyzer-verified surface forms to YaCy swarm retrieval while preserving exact RWI wire hashes. Admin setting: `swarm.morphology.enabled`. |
 | `YAGO_WEB_FALLBACK_ENABLED` | `false` | Legacy on/off switch for optional DDGS web search, kept for compatibility. It is the default source for `YAGO_WEB_FALLBACK_PRIVACY` when that variable is unset (`true` -> `enabled`, `false` -> `disabled`). Prefer setting the mode directly. A local-only request never leaves the node. |
 | `YAGO_WEB_FALLBACK_PRIVACY` | _(from `ENABLED`)_ | Controls the `Web search fallback (DDGS)` Admin setting. `disabled` never sends a query; `explicit` requires request consent; `enabled` runs web search after exact local-plus-swarm and the applicable bounded local recovery miss; `always` starts bounded web retrieval alongside local and swarm for every eligible global query, then rank-fuses and deduplicates all completed results. Tavily `/search` opts in by contract. YaCy `resource=local` and admin `scope=local` never use the provider. Defaults to `disabled` unless legacy `YAGO_WEB_FALLBACK_ENABLED` is `true`. |
 | `YAGO_WEB_FALLBACK_PROVIDER` | `ddgs` | Selects the fallback provider family. Only the keyless `ddgs` metasearch is available; `YAGO_WEB_FALLBACK_BACKEND` chooses the engine within it. |
@@ -131,7 +172,7 @@ peer listener is behind a reverse proxy or NAT and the external address differs)
 | `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | When on (and crawling is enabled), URLs surfaced by the fallback are published as conservative crawl orders so the next identical query can be answered locally. Publishing runs after the search response through a process-wide two-work admission with a ten-second deadline; saturated admission skips optional seed work. URLs already in the document store are skipped, and the durable queue deduplicates by URL. No effect when crawling is disabled. |
 | `YAGO_WEB_FALLBACK_SEED_DEPTH` | `5` | Crawl depth for web-discovery orders when web-discovery crawling is enabled (0–8). |
 | `YAGO_WEB_FALLBACK_SEED_MAX_PAGES` | `250` | Per-host page cap for web-discovery crawl orders when enabled. |
-| `YAGO_QUERY_LOG_MODE` | `off` | How much of a search query is written to the node's logs. `off` records nothing; `aggregate` records only the query length and result count (never the text); `full` records the query text. The default keeps queries out of the logs. |
+| `YAGO_QUERY_LOG_MODE` | `off` | How much of a search query is written to the node's logs. `off` records nothing; `aggregate` records the query length and result count but never the text; `full` records the query text. In either enabled mode, an incomplete response also records `partialFailures` and at most eight ordered unique `failureSources`. The default keeps queries out of the logs. |
 | `YAGO_INDEX_REMOTE_RESULTS` | `true` | Cache the metadata of results returned by peers into the local index after a swarm search, mirroring YaCy's `addResultsToLocalIndex`, so a later query for the same content is answered locally without re-fetching. Metadata only (title, snippet, URL — no crawl); a URL already in the store is never overwritten, so a locally crawled full page is preserved. Writes run off the request path, are limited to two concurrent operations with a 30-second deadline, and are skipped while that bounded admission is saturated. Set to `false` to leave the index unchanged by searches (a node that indexes only what it crawls). |
 | `YAGO_PEER_HTTPS_PREFERRED` | `false` | Prefer HTTPS for outbound YaCy peer-protocol calls (hello, remote search, transferRWI/transferURL, back-ping) to peers that advertise an SSL port and the SSL seed flag, mirroring YaCy's `network.unit.protocol.https.preferred`. A failed HTTPS transport attempt retries the same peer over plain HTTP, YaCy-style. Peer certificates in the wild are self-signed, so certificate verification is disabled for the peer-protocol client only — peer authenticity on the YaCy wire comes from protocol-level checks (target hash, network name, hello magic), not PKI — and the egress guard still applies. |
 | `YAGO_SEARCH_LINKS_NEW_TAB` | `false` | Open result links on the public portal, admin console search, and /yacysearch.html in a new tab. Off by default per NN/G guidance (opening new tabs breaks the back button and takes control from the user); when on, links carry `rel="noopener noreferrer nofollow"` and an accessible "opens in new tab" indicator (visible ↗ plus screen-reader text). |
@@ -148,11 +189,13 @@ federation and external-provider egress are separate controls.
 **Query logging (`YAGO_QUERY_LOG_MODE`).** A single decorator wraps the composed
 searcher, so every search surface — the human portal, the YaCy-compatible
 endpoints, and the Tavily `POST /search` drop-in — is covered by one setting.
-`off` (default) records nothing, `aggregate` records only the query length and
-the result count, and `full` records the query text. The aggregate mode never
-writes the query text, so it can be used for volume metrics without retaining
-what people searched for. Web-provider outage diagnostics use stable failure
-categories and never include the provider request URL or submitted query.
+`off` (default) records nothing. `aggregate` records the query length and result
+count but never the query text; when the response is incomplete, it also records
+the total partial-failure count and at most eight ordered unique failure sources.
+`full` records the same operational fields plus the query text. Aggregate mode
+can therefore diagnose which bounded search stage failed without retaining what
+people searched for. Web-provider outage diagnostics never include the provider
+request URL.
 
 **External web-search egress (`YAGO_WEB_FALLBACK_PRIVACY`).** The node can consult
 an external keyless metasearch provider. The provider necessarily receives the
@@ -259,10 +302,20 @@ the path requires, is rate limited per key, and needs no CSRF token. Scopes are
 `admin:read` (read-only operations such as `/metrics`), `admin:write` (state
 changes and key management), `crawl:write` (`POST /crawl`), and `search:read` /
 `search:raw`, which gate the public Tavily-compatible search API when
-`YAGO_SEARCH_REQUIRE_API_KEY` is on. `GET
-/api/admin/v1/auth/api-keys` lists key metadata and last-used time without the
-secret, and `DELETE /api/admin/v1/auth/api-keys/{id}` revokes a key. API-key
-lookup and last-used persistence share a 32-slot process-wide nonblocking gate.
+`YAGO_SEARCH_REQUIRE_API_KEY` is on. `GET /api/admin/v1/auth/api-keys` lists key
+metadata and last-used time without the secret. It uses bounded keyset paging:
+`cursor` is the exclusive identifier of the last key from the preceding page,
+and `limit` defaults to 256 and accepts values from 1 through 256. When
+continuation is required, or when `cursor` or `limit` is supplied explicitly,
+the response reports the full store `total`; `nextCursor` and `truncated`
+identify another page. A default request against a store of at most 256 keys
+retains the earlier keys-only response shape. Legacy stores above the current
+256-key creation cap remain readable and can be drained with paged `GET` and
+`DELETE /api/admin/v1/auth/api-keys/{id}` requests; the cap blocks new creation
+rather than hiding existing records. Admin → Security uses 20-row pages with
+Previous/Next navigation, retains at most 256 validated prior cursors, and keeps
+a recovery path when deletion leaves a cursor on an empty page. API-key lookup
+and last-used persistence share a 32-slot process-wide nonblocking gate.
 Saturation or authentication storage failure returns `503` with `Retry-After: 1`;
 per-key throttling returns `429` with the same header. Last-used time is written
 only after the request passes the per-key limiter. Prometheus
@@ -307,6 +360,15 @@ separate Crawler, Automatic discovery, and Document formats fieldsets. The
 legacy `/admin/autocrawler` URLs redirect to this tab and do not keep a second
 settings surface.
 
+`YAGO_CRAWLER_MAX_PAGES_PER_RUN` bootstraps a 50,000-page whole-run budget in
+both the node and crawler. The node records the effective value in every new
+manual, scheduled, swarm-discovery, and web-discovery profile; recrawls retain
+the profile value under which the URL was first scheduled. Configuration →
+Crawler changes the default live for subsequent tasks, and the manual crawl
+form can override it per task. A value of `0` is deliberately unlimited.
+Payloads created before this field existed omit it and use the crawler's
+bootstrap value, so queued legacy work remains decoder-compatible.
+
 Automatic-discovery orders carry explicit priority metadata. With
 `YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY=true`, the durable queue selects at
 most three discovery orders before a waiting normal order, and each crawler
@@ -344,7 +406,8 @@ a poison retry loop.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `YAGO_CRAWL_RPC_ADDR` | `127.0.0.1:9091` | Address the node serves the crawl gRPC endpoint on. `off` disables crawling; use an explicit bind such as `:9091` for remote workers. |
-| `YAGOCRAWLER_WORKERS` | `4` | Bootstrap page-fetch concurrency for each connected crawler process (1–256). Keep the same bootstrap value in the crawler environment. The persisted Configuration → Crawler value is sent over heartbeat and becomes authoritative after connection; it limits neither crawl runs nor queued tasks. |
+| `YAGO_CRAWLER_WORKERS` | `4` | Bootstrap page-fetch concurrency for each connected crawler process (1–256). Keep the same bootstrap value in the crawler environment. The persisted Configuration → Crawler value is sent over heartbeat and becomes authoritative after connection; it limits neither crawl runs nor queued tasks. |
+| `YAGO_CRAWLER_MAX_PAGES_PER_RUN` | `50000` | Bootstrap whole-run page budget in both node and crawler environments. The node stamps the current Configuration → Crawler value into each new task profile; the crawler value is the fallback for legacy profiles that omit the additive field. `0` is unlimited. Existing and recrawl profiles retain their recorded value. |
 | `YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY` | `true` | Bootstrap in both node and crawler environments. Gives explicit swarm and web-discovery work bounded three-order and three-page priority. `false` preserves exact global FIFO order leasing and disables class preference in crawler page dispatch. The one-second startup heartbeat is authoritative when successful; later heartbeat changes apply live. |
 
 A worker-count change pauses new page intake in each connected crawler, lets its

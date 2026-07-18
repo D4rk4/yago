@@ -11,8 +11,12 @@ import (
 )
 
 type recordingProgressSink struct {
-	last yagocrawlcontract.CrawlRunProgress
-	n    int
+	last        yagocrawlcontract.CrawlRunProgress
+	identity    []byte
+	n           int
+	terminalErr error
+	confirmErr  error
+	confirmN    int
 }
 
 func (s *recordingProgressSink) Record(_ context.Context, p yagocrawlcontract.CrawlRunProgress) {
@@ -20,19 +24,47 @@ func (s *recordingProgressSink) Record(_ context.Context, p yagocrawlcontract.Cr
 	s.n++
 }
 
+func (s *recordingProgressSink) RecordTerminal(
+	_ context.Context,
+	identity []byte,
+	progress yagocrawlcontract.CrawlRunProgress,
+) error {
+	if s.terminalErr != nil {
+		return s.terminalErr
+	}
+	s.identity = append([]byte(nil), identity...)
+	s.Record(context.Background(), progress)
+
+	return nil
+}
+
+func (s *recordingProgressSink) ConfirmTerminalDelivery(context.Context, []byte) error {
+	if s.confirmErr != nil {
+		return s.confirmErr
+	}
+	s.confirmN++
+
+	return nil
+}
+
 func TestReportProgressTranslatesAndForwards(t *testing.T) {
 	sink := &recordingProgressSink{}
-	server := newExchangeServer(memQueue(t), make(chan crawlresults.IngestDelivery))
+	queue := memQueue(t)
+	leaseID := leaseOneForSession(t, queue, "progress", "worker-1", testWorkerSessionID)
+	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
+	activateTestWorkerSession(t, server, "worker-1", testWorkerSessionID)
 	server.progress = sink
 
-	runID := []byte{0xde, 0xad, 0xbe, 0xef}
+	runID := []byte("admin")
 	pagesPerMinute := uint32(30)
 	_, err := server.ReportProgress(context.Background(), &crawlrpc.CrawlProgressReport{
-		WorkerId:      "worker-1",
-		RunId:         runID,
-		ProfileHandle: "h",
-		ProfileName:   "docs",
-		State:         crawlrpc.CrawlRunState_CRAWL_RUN_STATE_FINISHED,
+		WorkerId:        "worker-1",
+		WorkerSessionId: testWorkerSessionID,
+		LeaseId:         leaseID,
+		RunId:           runID,
+		ProfileHandle:   "h",
+		ProfileName:     "docs",
+		State:           crawlrpc.CrawlRunState_CRAWL_RUN_STATE_FINISHED,
 		Tally: &crawlrpc.CrawlRunTally{
 			Fetched: 5, Indexed: 4, Failed: 1, RobotsDenied: 2, Duplicates: 3, Pending: 6,
 		},
@@ -74,6 +106,27 @@ func TestProgressFromReportPreservesUnknownRate(t *testing.T) {
 	}
 }
 
+func TestRunningProgressRecordsForCurrentLeaseOwner(t *testing.T) {
+	queue := memQueue(t)
+	leaseID := leaseOneForSession(t, queue, "running-progress", "worker", testWorkerSessionID)
+	sink := &recordingProgressSink{}
+	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
+	server.progress = sink
+	activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
+	if _, err := server.ReportProgress(t.Context(), &crawlrpc.CrawlProgressReport{
+		WorkerId:        "worker",
+		WorkerSessionId: testWorkerSessionID,
+		LeaseId:         leaseID,
+		RunId:           []byte("admin"),
+		State:           crawlrpc.CrawlRunState_CRAWL_RUN_STATE_RUNNING,
+	}); err != nil {
+		t.Fatalf("report running progress: %v", err)
+	}
+	if sink.n != 1 || sink.last.State != yagocrawlcontract.CrawlRunRunning {
+		t.Fatalf("running progress = %d/%+v", sink.n, sink.last)
+	}
+}
+
 func TestRunStateFromProtoMapsAllStates(t *testing.T) {
 	cases := map[crawlrpc.CrawlRunState]yagocrawlcontract.CrawlRunState{
 		crawlrpc.CrawlRunState_CRAWL_RUN_STATE_RUNNING:     yagocrawlcontract.CrawlRunRunning,
@@ -95,5 +148,16 @@ func TestTallyFromProtoNilSafe(t *testing.T) {
 }
 
 func TestNoopProgressSinkRecords(t *testing.T) {
-	noopProgressSink{}.Record(context.Background(), yagocrawlcontract.CrawlRunProgress{RunID: "x"})
+	sink := noopProgressSink{}
+	sink.Record(context.Background(), yagocrawlcontract.CrawlRunProgress{RunID: "x"})
+	if err := sink.RecordTerminal(
+		context.Background(),
+		make([]byte, 32),
+		yagocrawlcontract.CrawlRunProgress{RunID: "x"},
+	); err != nil {
+		t.Fatalf("record terminal: %v", err)
+	}
+	if err := sink.ConfirmTerminalDelivery(context.Background(), make([]byte, 32)); err != nil {
+		t.Fatalf("confirm terminal: %v", err)
+	}
 }

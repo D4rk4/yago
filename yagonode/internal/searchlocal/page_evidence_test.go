@@ -3,10 +3,13 @@ package searchlocal
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
+	"github.com/D4rk4/yago/yagonode/internal/searchsession"
+	"github.com/D4rk4/yago/yagonode/internal/searchvisible"
 )
 
 type pageEvidenceInner struct {
@@ -24,6 +27,7 @@ func (p pageEvidenceInner) Search(
 type pageEvidenceSource struct {
 	req     searchindex.SearchRequest
 	results []searchindex.SearchResult
+	batches [][]searchindex.SearchResult
 	err     error
 	pending bool
 }
@@ -35,6 +39,7 @@ func (p *pageEvidenceSource) SearchEvidence(
 ) ([]searchindex.SearchResult, error) {
 	p.req = req
 	p.results = append([]searchindex.SearchResult(nil), results...)
+	p.batches = append(p.batches, append([]searchindex.SearchResult(nil), results...))
 	if p.err != nil {
 		return nil, p.err
 	}
@@ -43,6 +48,7 @@ func (p *pageEvidenceSource) SearchEvidence(
 	}
 	for index := range results {
 		results[index].Snippet = "передача полномочий"
+		results[index].BodyQueryMatches = []searchindex.TextQueryMatch{{Start: 12, End: 32}}
 		results[index].EvidenceReady = true
 	}
 
@@ -59,7 +65,7 @@ func TestPageEvidenceEnrichesOnlyPendingLocalRows(t *testing.T) {
 			},
 			{
 				DocumentID: "ready", Source: searchcore.SourceLocal,
-				Snippet: "ready", EvidenceReady: true,
+				Snippet: "ready", EvidenceReady: true, BodyQueryMatches: []searchcore.QueryMatch{},
 			},
 			{DocumentID: "peer", Source: searchcore.SourceRemote, Snippet: "peer"},
 		},
@@ -83,6 +89,47 @@ func TestPageEvidenceEnrichesOnlyPendingLocalRows(t *testing.T) {
 	if len(matches) != 1 ||
 		response.Results[0].Snippet[matches[0].Start:matches[0].End] != "полномочий" {
 		t.Fatalf("query matches = %#v", matches)
+	}
+	if len(response.Results[0].BodyQueryMatches) != 1 ||
+		response.Results[0].BodyQueryMatches[0] != (searchcore.QueryMatch{Start: 12, End: 32}) {
+		t.Fatalf("body query matches = %#v", response.Results[0].BodyQueryMatches)
+	}
+}
+
+func TestPageEvidenceHydratesVisibleOnlyRowsFromLaterStablePage(t *testing.T) {
+	results := make([]searchcore.Result, 20)
+	for index := range results {
+		results[index] = searchcore.Result{
+			DocumentID: "document-" + strconv.Itoa(index),
+			Source:     searchcore.SourceLocal,
+			URL:        "https://example.test/" + strconv.Itoa(index),
+			Snippet:    "alpha",
+		}
+	}
+	source := &pageEvidenceSource{}
+	stable := searchsession.NewStableWindow(searchvisible.NewVisibleEvidenceSearcher(
+		pageEvidenceInner{
+			response: searchcore.Response{TotalResults: len(results), Results: results},
+		},
+	))
+	searcher := NewPageEvidenceSearcher(stable, source)
+	request := searchcore.Request{Query: "alpha", Terms: []string{"alpha"}, Limit: 10}
+	first, err := searcher.Search(t.Context(), request)
+	if err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	request.Offset = 10
+	second, err := searcher.Search(t.Context(), request)
+	if err != nil {
+		t.Fatalf("second page: %v", err)
+	}
+	if len(source.batches) != 2 || len(source.batches[0]) != 10 || len(source.batches[1]) != 10 ||
+		source.batches[1][0].DocumentID != "document-10" {
+		t.Fatalf("evidence batches = %#v", source.batches)
+	}
+	if len(first.Results) != 10 || len(second.Results) != 10 ||
+		first.Results[0].BodyQueryMatches == nil || second.Results[0].BodyQueryMatches == nil {
+		t.Fatalf("page evidence first=%#v second=%#v", first.Results, second.Results)
 	}
 }
 

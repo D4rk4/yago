@@ -15,7 +15,7 @@ failures, bytes downloaded, robots denials, active jobs, or how many ingest
 batches it published. The CRAWL-07 roadmap task requires those `yacy_crawler_*` metrics so
 multiple workers and backpressure behaviour can be observed.
 
-The crawler module (`yagocrawler`) did not previously depend on
+The crawler module (`yago-crawler`) did not previously depend on
 `prometheus/client_golang`; the dependency lived only in the node module.
 
 ## Decision
@@ -27,7 +27,7 @@ the same version the node uses, rather than inventing a second metrics format.
   its own `prometheus.Registry` and serves them in the Prometheus text exposition
   format.
 - The crawler exposes `/metrics` on an optional listener configured by
-  `YAGOCRAWLER_METRICS_ADDR`; when the variable is empty the crawler starts no
+  `YAGO_CRAWLER_METRICS_ADDR`; when the variable is empty the crawler starts no
   metrics server and only collects in memory, so the default deployment opens no
   new port.
 - Fetch, byte, failure, ingest, and active-job counts are observed from the
@@ -37,8 +37,8 @@ the same version the node uses, rather than inventing a second metrics format.
 ## Consequences
 
 - `github.com/prometheus/client_golang` and its transitive dependencies are now
-  pinned in `yagocrawler/go.mod` as well as `yagonode/go.mod`.
+  pinned in `yago-crawler/go.mod` as well as `yagonode/go.mod`.
 - Crawler metrics aggregate in the same Prometheus server as node metrics and
   share the `yacy_` naming convention already used by node series.
 - The crawler gains an optional HTTP listener; it stays closed unless
-  `YAGOCRAWLER_METRICS_ADDR` is set, keeping the worker headless by default.
+  `YAGO_CRAWLER_METRICS_ADDR` is set, keeping the worker headless by default.

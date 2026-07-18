@@ -14,9 +14,11 @@ import (
 )
 
 type searchEndpoint struct {
-	identity nodeidentity.Identity
-	searcher searcher
-	gate     *httpguard.IntakeGate
+	identity       nodeidentity.Identity
+	searcher       searcher
+	gate           *httpguard.IntakeGate
+	analyzerRecall negotiatedAnalyzerRecallSource
+	evidence       queryMatchEvidenceSource
 }
 
 func (e searchEndpoint) Serve(
@@ -66,6 +68,12 @@ func (e searchEndpoint) Serve(
 				return yagoproto.SearchResponse{}, fmt.Errorf("search: %w", err)
 			}
 		} else {
+			result, err = e.analyzerRecall.merge(searchCtx, req, result)
+			if err != nil {
+				slog.DebugContext(ctx, msgNegotiatedAnalyzerRecallUnavailable,
+					slog.Any("error", err),
+				)
+			}
 			resp.SearchTime = int(result.searchDuration / time.Millisecond)
 			resp.References = strings.Join(result.topics, ",")
 			resp.JoinCount = result.totalDocumentsMatchingEveryTerm
@@ -73,6 +81,8 @@ func (e searchEndpoint) Serve(
 			resp.Resources = result.resources
 			resp.IndexCount = result.totalMatchesPerTerm
 			resp.IndexAbstract = result.documentsMatchingEachReportedTerm
+			resp.ResourceEvidence = e.evidence.resources(searchCtx, req, result.resources)
+			resp.SearchTime = int(time.Since(searchStarted) / time.Millisecond)
 		}
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -81,6 +82,9 @@ func TestAckLeaseDeletesLease(t *testing.T) {
 	if err := queue.ackLease(context.Background(), leaseID); err != nil {
 		t.Fatalf("ack: %v", err)
 	}
+	if err := queue.ackLease(context.Background(), leaseID); err != nil {
+		t.Fatalf("duplicate ack: %v", err)
+	}
 	if _, ok := leaseRecordFor(t, queue, leaseID); ok {
 		t.Fatal("lease was not deleted by ack")
 	}
@@ -89,8 +93,13 @@ func TestAckLeaseDeletesLease(t *testing.T) {
 	}
 }
 
-func TestAckLeaseUnknownIsNoop(t *testing.T) {
-	if err := memQueue(t).ackLease(context.Background(), "missing"); err != nil {
+func TestAckLeaseUnknownIsRejected(t *testing.T) {
+	if err := memQueue(
+		t,
+	).ackLease(context.Background(), "missing"); !errors.Is(
+		err,
+		errLeaseDispositionConflict,
+	) {
 		t.Fatalf("ack unknown lease: %v", err)
 	}
 }
@@ -104,50 +113,89 @@ func TestAckLeaseSurfacesDeleteError(t *testing.T) {
 	}
 }
 
-func TestRequeueLeaseReturnsOrderToPending(t *testing.T) {
-	queue := memQueue(t)
-	leaseID := leaseOne(t, queue, "again", "w1")
-	if err := queue.requeueLease(context.Background(), leaseID); err != nil {
-		t.Fatalf("requeue: %v", err)
+func TestAckLeaseSurfacesReadAndSettlementErrors(t *testing.T) {
+	readFail := scriptedQueue(t)
+	readLeaseID := leaseOne(t, readFail.queue, "read", "w1")
+	readFail.engine.buckets[leaseBucket][readLeaseID] = []byte("not json")
+	if err := readFail.queue.ackLease(t.Context(), readLeaseID); err == nil {
+		t.Fatal("expected ack to surface a lease read error")
 	}
-	if _, ok := leaseRecordFor(t, queue, leaseID); ok {
-		t.Fatal("lease still present after requeue")
-	}
-	if n := pendingCount(t, queue); n != 1 {
-		t.Fatalf("pending = %d, want 1 after requeue", n)
+
+	settlementFail := scriptedQueue(t)
+	settlementLeaseID := leaseOne(t, settlementFail.queue, "settlement", "w1")
+	settlementFail.engine.putErrors[leaseSettlementBucket] = errors.New("put failed")
+	if err := settlementFail.queue.ackLease(t.Context(), settlementLeaseID); err == nil {
+		t.Fatal("expected ack to surface a settlement error")
 	}
 }
 
-func TestRequeueLeaseUnknownIsNoop(t *testing.T) {
+func TestDeferredLeaseReturnsOrderToPendingAfterRetryDeadline(t *testing.T) {
+	set := withClock(t)
+	base := time.Unix(900, 0)
+	set(base)
 	queue := memQueue(t)
-	if err := queue.requeueLease(context.Background(), "missing"); err != nil {
-		t.Fatalf("requeue unknown lease: %v", err)
+	leaseID := leaseOne(t, queue, "again", "w1")
+	if err := queue.deferLease(context.Background(), leaseID); err != nil {
+		t.Fatalf("defer: %v", err)
+	}
+	record, ok := leaseRecordFor(t, queue, leaseID)
+	if !ok || record.WorkerID != "" || !record.Deferred {
+		t.Fatalf("deferred lease = %#v/%v, want retained without an owner", record, ok)
+	}
+	if record.ExpiresAtUnixNano != base.Add(negativeAcknowledgmentRetryDelay).UnixNano() {
+		t.Fatalf("retry deadline = %d, want fixed delay", record.ExpiresAtUnixNano)
+	}
+	if n := pendingCount(t, queue); n != 0 {
+		t.Fatalf("pending = %d, want 0 before retry deadline", n)
+	}
+	set(base.Add(negativeAcknowledgmentRetryDelay))
+	if err := queue.sweepExpired(context.Background()); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if _, ok := leaseRecordFor(t, queue, leaseID); ok {
+		t.Fatal("deferred lease remained after retry deadline")
+	}
+	if n := pendingCount(t, queue); n != 1 {
+		t.Fatalf("pending = %d, want 1 after retry deadline", n)
+	}
+}
+
+func TestDeferLeaseUnknownIsRejected(t *testing.T) {
+	queue := memQueue(t)
+	if err := queue.deferLease(
+		context.Background(),
+		"missing",
+	); !errors.Is(
+		err,
+		errLeaseDispositionConflict,
+	) {
+		t.Fatalf("defer unknown lease: %v", err)
 	}
 	if n := pendingCount(t, queue); n != 0 {
 		t.Fatalf("pending = %d, want 0", n)
 	}
 }
 
-func TestRequeueLeaseSurfacesErrors(t *testing.T) {
+func TestDeferLeaseSurfacesErrors(t *testing.T) {
 	getFail := scriptedQueue(t)
 	leaseID := leaseOne(t, getFail.queue, "g", "w1")
 	getFail.engine.buckets[leaseBucket][leaseID] = []byte("not json")
-	if err := getFail.queue.requeueLease(context.Background(), leaseID); err == nil {
-		t.Fatal("expected requeue to surface a lease decode error")
+	if err := getFail.queue.deferLease(context.Background(), leaseID); err == nil {
+		t.Fatal("expected defer to surface a lease decode error")
 	}
 
-	deleteFail := scriptedQueue(t)
-	deleteLease := leaseOne(t, deleteFail.queue, "d", "w1")
-	deleteFail.engine.deleteErrors[leaseBucket] = errors.New("delete failed")
-	if err := deleteFail.queue.requeueLease(context.Background(), deleteLease); err == nil {
-		t.Fatal("expected requeue to surface a delete error")
+	putFail := scriptedQueue(t)
+	putLease := leaseOne(t, putFail.queue, "p", "w1")
+	putFail.engine.putErrors[leaseBucket] = errors.New("put failed")
+	if err := putFail.queue.deferLease(context.Background(), putLease); err == nil {
+		t.Fatal("expected defer to surface a lease update error")
 	}
 
-	enqueueFail := scriptedQueue(t)
-	enqueueLease := leaseOne(t, enqueueFail.queue, "e", "w1")
-	enqueueFail.engine.putErrors[seqBucket] = errors.New("seq put failed")
-	if err := enqueueFail.queue.requeueLease(context.Background(), enqueueLease); err == nil {
-		t.Fatal("expected requeue to surface an enqueue error")
+	settlementFail := scriptedQueue(t)
+	settlementLease := leaseOne(t, settlementFail.queue, "s", "w1")
+	settlementFail.engine.putErrors[leaseSettlementBucket] = errors.New("put failed")
+	if err := settlementFail.queue.deferLease(context.Background(), settlementLease); err == nil {
+		t.Fatal("expected defer to surface a settlement error")
 	}
 }
 
@@ -247,37 +295,121 @@ func TestHeartbeatWithoutLeasesRemovesWorkerGate(t *testing.T) {
 	}
 }
 
-func TestRequeueAllLeasesReturnsEverything(t *testing.T) {
-	queue := memQueue(t)
-	_ = leaseOne(t, queue, "a", "w1")
-	_ = leaseOne(t, queue, "b", "w2")
-	if err := queue.requeueAllLeases(context.Background()); err != nil {
-		t.Fatalf("requeue all: %v", err)
-	}
-	if n := pendingCount(t, queue); n != 2 {
-		t.Fatalf("pending = %d, want 2 after reclaim", n)
-	}
-}
-
 func TestRequeueLeasesMatchingSurfacesErrors(t *testing.T) {
 	scanFail := scriptedQueue(t)
 	scanFail.engine.scanErrors[leaseBucket] = errors.New("scan failed")
-	if err := scanFail.queue.requeueAllLeases(context.Background()); err == nil {
+	if err := scanFail.queue.sweepExpired(context.Background()); err == nil {
 		t.Fatal("expected reclaim to surface a scan error")
 	}
 
+	set := withClock(t)
+	set(time.Unix(1000, 0))
 	deleteFail := scriptedQueue(t)
 	_ = leaseOne(t, deleteFail.queue, "d", "w1")
+	set(time.Unix(2000, 0))
 	deleteFail.engine.deleteErrors[leaseBucket] = errors.New("delete failed")
-	if err := deleteFail.queue.requeueAllLeases(context.Background()); err == nil {
+	if err := deleteFail.queue.sweepExpired(context.Background()); err == nil {
 		t.Fatal("expected reclaim to surface a delete error")
 	}
 
+	set(time.Unix(1000, 0))
 	enqueueFail := scriptedQueue(t)
 	_ = leaseOne(t, enqueueFail.queue, "e", "w1")
+	set(time.Unix(2000, 0))
 	enqueueFail.engine.putErrors[orderBucket] = errors.New("orders put failed")
-	if err := enqueueFail.queue.requeueAllLeases(context.Background()); err == nil {
+	if err := enqueueFail.queue.sweepExpired(context.Background()); err == nil {
 		t.Fatal("expected reclaim to surface an enqueue error")
+	}
+
+	set(time.Unix(1000, 0))
+	settlementFail := scriptedQueue(t)
+	_ = leaseOne(t, settlementFail.queue, "s", "w1")
+	set(time.Unix(2000, 0))
+	settlementFail.engine.putErrors[leaseSettlementBucket] = errors.New("settlement put failed")
+	if err := settlementFail.queue.sweepExpired(context.Background()); err == nil {
+		t.Fatal("expected reclaim to surface a settlement error")
+	}
+}
+
+func TestSweepExpiredMovesBoundedChunksAndAllowsLeaseRenewal(t *testing.T) {
+	set := withClock(t)
+	base := time.Unix(2_700, 0)
+	set(base)
+	queue := memQueue(t)
+	queue.leaseTTL = time.Minute
+	expired := maximumLeaseRequeueChunk + 44
+	for index := range expired {
+		leaseOne(
+			t,
+			queue,
+			fmt.Sprintf("expired-%d", index),
+			"expired-worker",
+		)
+	}
+	set(base.Add(time.Minute))
+	liveLeaseID := leaseOneForSession(
+		t,
+		queue,
+		"live",
+		"live-worker",
+		"live-session",
+	)
+	firstChunk := make(chan struct{})
+	continueSweep := make(chan struct{})
+	var once sync.Once
+	previousHook := afterLeaseRequeueChunk
+	t.Cleanup(func() { afterLeaseRequeueChunk = previousHook })
+	afterLeaseRequeueChunk = func() {
+		once.Do(func() {
+			close(firstChunk)
+			<-continueSweep
+		})
+	}
+	sweepDone := make(chan error, 1)
+	go func() { sweepDone <- queue.sweepExpired(t.Context()) }()
+	select {
+	case <-firstChunk:
+	case <-time.After(time.Second):
+		close(continueSweep)
+		t.Fatal("sweep did not complete its first chunk")
+	}
+	renewDone := make(chan error, 1)
+	go func() {
+		renewed, _, err := queue.renewLeases(
+			t.Context(),
+			"live-worker",
+			"live-session",
+			[]string{liveLeaseID},
+		)
+		if err == nil && (len(renewed) != 1 || renewed[0] != liveLeaseID) {
+			err = fmt.Errorf("renewed leases = %v", renewed)
+		}
+		renewDone <- err
+	}()
+	select {
+	case err := <-renewDone:
+		if err != nil {
+			close(continueSweep)
+			t.Fatalf("interleaved renewal: %v", err)
+		}
+	case <-time.After(time.Second):
+		close(continueSweep)
+		t.Fatal("lease renewal could not interleave between sweep chunks")
+	}
+	close(continueSweep)
+	select {
+	case err := <-sweepDone:
+		if err != nil {
+			t.Fatalf("sweep expired chunks: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("chunked sweep did not finish")
+	}
+	if pendingCount(t, queue) != expired {
+		t.Fatalf("pending expired orders = %d, want %d", pendingCount(t, queue), expired)
+	}
+	if _, found := leaseRecordFor(t, queue, liveLeaseID); !found {
+		t.Fatal("interleaved live lease was swept")
 	}
 }
 

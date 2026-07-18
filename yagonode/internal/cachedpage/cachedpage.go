@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
+	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
 // Path is the cached-copy endpoint; URLFor builds links to it.
@@ -51,17 +52,27 @@ type cachedView struct {
 
 type endpoint struct {
 	documents documentstore.DocumentDirectory
+	passages  searchcore.DocumentPassageSearcher
 	admission *cachedPageAdmission
 }
 
 // Mount serves GET /cached?u=<url> from the stored document directory. A nil
 // directory leaves the route unmounted so the link target 404s cleanly.
-func Mount(mux *http.ServeMux, documents documentstore.DocumentDirectory) {
+func Mount(
+	mux *http.ServeMux,
+	documents documentstore.DocumentDirectory,
+	passageSources ...searchcore.DocumentPassageSearcher,
+) {
 	if documents == nil {
 		return
 	}
+	var passages searchcore.DocumentPassageSearcher
+	if len(passageSources) > 0 {
+		passages = passageSources[0]
+	}
 	mux.Handle("GET "+Path, endpoint{
 		documents: documents,
+		passages:  passages,
 		admission: newCachedPageAdmission(maximumConcurrentCachedPages),
 	})
 }
@@ -86,6 +97,11 @@ func (e endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
+	if passageParametersPresent(r.URL.Query()) {
+		e.serveDocumentPassage(w, r, rawURL)
+
+		return
+	}
 	doc, found, err := e.documents.Document(r.Context(), rawURL)
 	if err != nil {
 		slog.WarnContext(r.Context(), "cached copy lookup failed", slog.Any("error", err))

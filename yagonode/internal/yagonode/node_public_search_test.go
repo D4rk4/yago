@@ -227,7 +227,11 @@ func TestNodePublicSearchInstallsRemoteResultCache(t *testing.T) {
 	if !ok {
 		t.Fatalf("searcher = %T, want a parsedQuerySearcher", searcher)
 	}
-	continuity, ok := parsed.inner.(searchsession.RecentSuccessSearcher)
+	effective, ok := parsed.inner.(effectiveWebFallbackRequestSearcher)
+	if !ok {
+		t.Fatalf("parsed inner = %T, want an effectiveWebFallbackRequestSearcher", parsed.inner)
+	}
+	continuity, ok := effective.inner.(searchsession.RecentSuccessSearcher)
 	if !ok {
 		t.Fatalf("parsed inner = %T, want a RecentSuccessSearcher", parsed.inner)
 	}

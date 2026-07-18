@@ -20,6 +20,9 @@ func (p CrawlProfile) Validate() error {
 			UnlimitedPagesPerHost,
 		)
 	}
+	if err := p.ValidateMaxPagesPerRun(); err != nil {
+		return err
+	}
 	if p.RecrawlIfOlder < 0 {
 		return fmt.Errorf("recrawlIfOlder must not be negative")
 	}
@@ -37,6 +40,14 @@ func (p CrawlProfile) Validate() error {
 	}
 
 	return validateURLPattern("indexMustNotMatch", p.IndexURLMustNotMatch)
+}
+
+func (p CrawlProfile) ValidateMaxPagesPerRun() error {
+	if p.MaxPagesPerRun != nil && *p.MaxPagesPerRun < 0 {
+		return fmt.Errorf("maxPagesPerRun must not be negative")
+	}
+
+	return nil
 }
 
 func validateURLPattern(field, pattern string) error {

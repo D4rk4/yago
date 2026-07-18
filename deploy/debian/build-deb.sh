@@ -8,7 +8,7 @@ set -eu
 
 version="${1:?version (e.g. 1.2.3)}"
 arch="${2:?dpkg arch (amd64|arm64)}"
-bindir="${3:?dir with yago-node + yagocrawler}"
+bindir="${3:?dir with yago-node + yago-crawler}"
 outdir="${4:?output dir}"
 
 root=$(mktemp -d)
@@ -17,12 +17,14 @@ here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 install -d "$root/opt/yago/bin" "$root/opt/yago/etc" "$root/lib/systemd/system" \
 	"$root/usr/share/doc/yago" "$root/DEBIAN"
-install -m 755 "$bindir/yago-node" "$bindir/yagocrawler" "$root/opt/yago/bin/"
+install -m 755 "$bindir/yago-node" "$bindir/yago-crawler" "$root/opt/yago/bin/"
 install -m 644 "$here/../systemd/yago-node.env.example" \
-	"$here/../systemd/yagocrawler.env.example" "$root/opt/yago/etc/"
+	"$here/../systemd/yago-crawler.env.example" "$root/opt/yago/etc/"
 install -m 644 "$here/../systemd/yago-node.service" \
-	"$here/../systemd/yagocrawler.service" "$root/lib/systemd/system/"
-install -m 644 "$here/../../doc/backup-restore.md" "$root/usr/share/doc/yago/"
+	"$here/../systemd/yago-crawler.service" "$root/lib/systemd/system/"
+install -m 644 "$here/../../doc/backup-restore.md" \
+	"$here/../../yagonode/internal/searchindex/CJK_DICTIONARY_NOTICES.txt" \
+	"$root/usr/share/doc/yago/"
 
 cat > "$root/DEBIAN/control" <<CONTROL
 Package: yago
@@ -41,6 +43,8 @@ Description: YagoSeek peer-to-peer search engine node and crawler
  package purge.
 CONTROL
 
+install -m 755 "$here/../migrate-crawler-installation.sh" "$root/DEBIAN/preinst"
+
 cat > "$root/DEBIAN/postinst" <<'POSTINST'
 #!/bin/sh
 set -eu
@@ -49,7 +53,7 @@ if ! getent passwd yago >/dev/null; then
 		--no-create-home --quiet yago
 fi
 install -d -m 750 -o yago -g yago /opt/yago/data /opt/yago/data/crawler
-for env in yago-node yagocrawler; do
+for env in yago-node yago-crawler; do
 	if [ ! -f "/opt/yago/etc/$env.env" ]; then
 		install -m 640 -g yago "/opt/yago/etc/$env.env.example" \
 			"/opt/yago/etc/$env.env"
@@ -57,7 +61,7 @@ for env in yago-node yagocrawler; do
 done
 if [ -d /run/systemd/system ]; then
 	systemctl daemon-reload
-	systemctl enable yago-node.service yagocrawler.service >/dev/null 2>&1 || true
+	systemctl enable yago-node.service yago-crawler.service >/dev/null 2>&1 || true
 fi
 POSTINST
 
@@ -65,8 +69,8 @@ cat > "$root/DEBIAN/prerm" <<'PRERM'
 #!/bin/sh
 set -eu
 if [ -d /run/systemd/system ]; then
-	systemctl stop yagocrawler.service yago-node.service 2>/dev/null || true
-	systemctl disable yagocrawler.service yago-node.service >/dev/null 2>&1 || true
+	systemctl stop yago-crawler.service yagocrawler.service yago-node.service 2>/dev/null || true
+	systemctl disable yago-crawler.service yagocrawler.service yago-node.service >/dev/null 2>&1 || true
 fi
 PRERM
 
@@ -76,14 +80,14 @@ set -eu
 # Data outlives the package on purpose: /opt/yago/data holds the operator's
 # index and the node identity. Purge removes the edited env files only.
 if [ "$1" = "purge" ]; then
-	rm -f /opt/yago/etc/yago-node.env /opt/yago/etc/yagocrawler.env
+	rm -f /opt/yago/etc/yago-node.env /opt/yago/etc/yago-crawler.env /opt/yago/etc/yagocrawler.env
 fi
 if [ -d /run/systemd/system ]; then
 	systemctl daemon-reload || true
 fi
 POSTRM
 
-chmod 755 "$root/DEBIAN/postinst" "$root/DEBIAN/prerm" "$root/DEBIAN/postrm"
+chmod 755 "$root/DEBIAN/preinst" "$root/DEBIAN/postinst" "$root/DEBIAN/prerm" "$root/DEBIAN/postrm"
 mkdir -p "$outdir"
 dpkg-deb --build --root-owner-group "$root" \
 	"$outdir/yago_${version}_${arch}.deb"

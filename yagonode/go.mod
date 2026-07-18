@@ -11,6 +11,8 @@ require (
 	github.com/abadojack/whatlanggo v1.0.1
 	github.com/blevesearch/bleve/v2 v2.6.0
 	github.com/blevesearch/bleve_index_api v1.3.11
+	github.com/blevesearch/snowballstem v0.9.0
+	github.com/blevesearch/vellum v1.2.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/klauspost/compress v1.18.6
 	github.com/mailgun/raymond/v2 v2.0.48
@@ -33,10 +35,8 @@ require (
 	github.com/blevesearch/mmap-go v1.2.0 // indirect
 	github.com/blevesearch/scorch_segment_api/v2 v2.4.7 // indirect
 	github.com/blevesearch/segment v0.9.1 // indirect
-	github.com/blevesearch/snowballstem v0.9.0 // indirect
 	github.com/blevesearch/stempel v0.2.0 // indirect
 	github.com/blevesearch/upsidedown_store_api v1.0.2 // indirect
-	github.com/blevesearch/vellum v1.2.0 // indirect
 	github.com/blevesearch/zapx/v11 v11.4.3 // indirect
 	github.com/blevesearch/zapx/v12 v12.4.3 // indirect
 	github.com/blevesearch/zapx/v13 v13.4.3 // indirect

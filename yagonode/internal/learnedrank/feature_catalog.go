@@ -76,7 +76,7 @@ func MapRankingEvidence(
 			knownSignals++
 		}
 	}
-	if knownSignals != len(evidence.Values()) {
+	if knownSignals != learnedRankingEvidenceCount(evidence) {
 		return rankfit.FeatureVector{}, false, fmt.Errorf(
 			"ranking evidence contains a signal outside the feature catalog",
 		)
@@ -87,6 +87,15 @@ func MapRankingEvidence(
 	}
 
 	return vector, knownSignals > 0, nil
+}
+
+func learnedRankingEvidenceCount(evidence searchcore.RankingEvidence) int {
+	count := len(evidence.Values())
+	if _, known := evidence.Value(searchcore.SignalWebRank); known {
+		count--
+	}
+
+	return count
 }
 
 func rankingFeatureIndex(name string) (int, bool) {

@@ -48,11 +48,7 @@ func TestSearchEndpointDoesNotMarkWebFallbackResults(t *testing.T) {
 	if got.Results[0].Title != "Web Result" {
 		t.Errorf("Tavily drop-in title must be unmarked, got %q", got.Results[0].Title)
 	}
-	if got.Results[0].Source != string(searchcore.SourceLocal) {
-		t.Errorf(
-			"Tavily result source = %q, want request scope %q",
-			got.Results[0].Source,
-			searchcore.SourceLocal,
-		)
+	if strings.Contains(rec.Body.String(), `"source"`) {
+		t.Errorf("Tavily result exposed provider metadata: %s", rec.Body.String())
 	}
 }

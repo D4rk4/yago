@@ -60,7 +60,7 @@ func (s interactiveBudgetSearcher) Search(
 	searchCtx, searchCancel := context.WithTimeout(hardCtx, s.budget-s.grace)
 	defer searchCancel()
 
-	release, err := s.admission.tryAcquire(searchCtx)
+	release, err := s.admission.acquire(searchCtx)
 	if err != nil {
 		return interactiveSearchFailure(ctx, req, searchcore.Response{}, err)
 	}

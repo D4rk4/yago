@@ -459,7 +459,7 @@ func responseHTMLItems(
 		if result.StoredLocally() {
 			// Only locally stored pages have a copy to show; local hits inside a
 			// global search carry SourceGlobal, so this must not test SourceLocal.
-			item.CachedURL = cachedpage.URLFor(result.URL)
+			item.CachedURL = cachedpage.URLForLocalResult(result, terms)
 		}
 		switch {
 		case result.FromWeb():

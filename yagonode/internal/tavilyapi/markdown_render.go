@@ -6,6 +6,8 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
 
+const maximumRelevantChunkRunes = 500
+
 // documentMarkdown renders best-effort markdown from a stored document: the
 // title becomes the top heading, extracted-text lines that match the page's
 // recorded headings render as second-level headings, existing list markers
@@ -49,7 +51,10 @@ func relevantChunks(text string, terms []string, limit int) string {
 	chunks := make([]string, 0, limit)
 	visitSentences(text, func(sentence string) bool {
 		if mentionsAnyTerm(strings.ToLower(sentence), terms) {
-			chunks = append(chunks, strings.Clone(sentence))
+			chunks = append(
+				chunks,
+				strings.Clone(clampRunes(sentence, maximumRelevantChunkRunes)),
+			)
 		}
 
 		return len(chunks) < limit

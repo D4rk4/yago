@@ -28,15 +28,24 @@ type remoteIndexCache struct {
 	receiver  documentstore.DocumentReceiver
 	index     searchindex.SearchIndex
 	now       func() time.Time
+	admission growthAdmission
 }
 
-func newRemoteIndexCache(storage nodeStorage) remoteIndexCache {
-	return remoteIndexCache{
+func newRemoteIndexCache(
+	storage nodeStorage,
+	admissions ...growthAdmission,
+) remoteIndexCache {
+	cache := remoteIndexCache{
 		directory: storage.documentDirectory,
 		receiver:  storage.documentReceiver,
 		index:     storage.searchIndex,
 		now:       time.Now,
 	}
+	if len(admissions) > 0 {
+		cache.admission = admissions[0]
+	}
+
+	return cache
 }
 
 func (c remoteIndexCache) store(ctx context.Context, results []searchcore.Result) {
@@ -51,8 +60,12 @@ func (c remoteIndexCache) store(ctx context.Context, results []searchcore.Result
 			// crawled full page is never replaced by a remote metadata stub.
 			continue
 		}
+		if c.admission != nil && c.admission.CheckGrowth() != nil {
+			return
+		}
 		doc := remoteResultDocument(result, c.now())
-		if _, err := c.receiver.Receive(ctx, []documentstore.Document{doc}); err != nil {
+		receipt, err := c.receiver.Receive(ctx, []documentstore.Document{doc})
+		if err != nil || receipt.Busy {
 			continue
 		}
 		// Index into the full-text backend so the cached document is searchable; it

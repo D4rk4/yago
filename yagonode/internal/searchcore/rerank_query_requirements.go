@@ -61,25 +61,39 @@ func rerankResultRequirements(
 	result Result,
 ) []rerankQueryRequirement {
 	requirements := allRerankQueryRequirements(req)
-	if result.EvidenceReady && len(result.FieldTermPositions) > 0 {
-		retained := map[string]struct{}{}
-		for _, terms := range result.FieldTermPositions {
-			for term := range terms {
-				retained[term] = struct{}{}
-			}
-		}
-		aligned := make([]rerankQueryRequirement, 0, len(requirements))
-		for _, requirement := range requirements {
-			if _, found := retained[requirement.term]; found {
-				aligned = append(aligned, requirement)
-			}
-		}
-		if len(aligned) > 0 {
+	if result.EvidenceReady && result.EvidenceRequirementOrdinals != nil {
+		aligned, complete := completeRerankRequirements(
+			requirements,
+			result.EvidenceRequirementOrdinals,
+		)
+		if complete {
 			return aligned
 		}
 	}
 
 	return fallbackRerankRequirements(requirements)
+}
+
+func completeRerankRequirements(
+	requirements []rerankQueryRequirement,
+	ordinals []int,
+) ([]rerankQueryRequirement, bool) {
+	byOrdinal := make(map[int]rerankQueryRequirement, len(requirements))
+	for _, requirement := range requirements {
+		byOrdinal[requirement.ordinal] = requirement
+	}
+	aligned := make([]rerankQueryRequirement, 0, len(ordinals))
+	previous := -1
+	for _, ordinal := range ordinals {
+		requirement, found := byOrdinal[ordinal]
+		if !found || ordinal <= previous {
+			return nil, false
+		}
+		aligned = append(aligned, requirement)
+		previous = ordinal
+	}
+
+	return aligned, true
 }
 
 func rerankRequirementTerms(requirements []rerankQueryRequirement) []string {

@@ -64,6 +64,13 @@ func TestValidateRejectsDangerousDefaults(t *testing.T) {
 			mutate: func(p *yagocrawlcontract.CrawlProfile) { p.MaxPagesPerHost = -2 },
 			want:   "maxPagesPerHost must be positive",
 		},
+		"negative pages per run": {
+			mutate: func(p *yagocrawlcontract.CrawlProfile) {
+				value := -1
+				p.MaxPagesPerRun = &value
+			},
+			want: "maxPagesPerRun must not be negative",
+		},
 		"negative recrawl": {
 			mutate: func(p *yagocrawlcontract.CrawlProfile) { p.RecrawlIfOlder = -1 },
 			want:   "recrawlIfOlder must not be negative",
@@ -98,6 +105,15 @@ func TestValidateRejectsDangerousDefaults(t *testing.T) {
 				t.Fatalf("Validate() = %v, want error containing %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestValidateAcceptsExplicitUnlimitedPagesPerRun(t *testing.T) {
+	profile := validatableProfile()
+	unlimited := 0
+	profile.MaxPagesPerRun = &unlimited
+	if err := profile.Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil", err)
 	}
 }
 

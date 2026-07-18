@@ -40,7 +40,9 @@ func (f extractContentFetcher) Fetch(
 		return tavilyapi.FetchedContent{}, fmt.Errorf("fetch on extract: %w", err)
 	}
 
-	return tavilyapi.FetchedContent{Title: content.Title, Text: content.Text}, nil
+	return tavilyapi.FetchedContent{
+		Title: content.Title, Text: content.Text, Images: content.Images,
+	}, nil
 }
 
 // FetchPage satisfies the crawl-page fetcher over the same guarded fetcher.
@@ -53,7 +55,9 @@ func (f extractContentFetcher) FetchPage(
 		return tavilyapi.CrawledPage{}, fmt.Errorf("fetch crawl page: %w", err)
 	}
 
-	return tavilyapi.CrawledPage{Title: page.Title, Text: page.Text, Links: page.Links}, nil
+	return tavilyapi.CrawledPage{
+		Title: page.Title, Text: page.Text, Links: page.Links, Images: page.Images,
+	}, nil
 }
 
 // crawlPageFetcher exposes the extract fetcher for /crawl and /map; a node

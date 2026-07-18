@@ -136,15 +136,7 @@ func rankingCandidates(
 	candidateWindow int,
 ) ([]rankingCandidate, error) {
 	candidates := make([]rankingCandidate, 0, min(len(results), candidateWindow))
-	localSlots := 0
-	for index, result := range results {
-		if !result.StoredLocally() {
-			continue
-		}
-		localSlots++
-		if localSlots > candidateWindow {
-			break
-		}
+	for index, result := range results[:min(len(results), candidateWindow)] {
 		features, known, err := MapRankingEvidence(result.Evidence)
 		if err != nil {
 			return nil, fmt.Errorf("candidate %d ranking evidence: %w", index+1, err)

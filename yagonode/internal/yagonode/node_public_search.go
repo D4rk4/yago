@@ -50,6 +50,7 @@ type publicSearchAssembly struct {
 	extractFetcher       tavilyapi.ContentFetcher
 	webFallback          webFallbackConfig
 	seedQueue            crawldispatch.CrawlOrderQueue
+	maxPagesPerRun       func() int
 	toggles              *runtimeToggles
 	queryLogMode         queryLogMode
 	activity             *searchactivity.Tracker
@@ -61,6 +62,7 @@ type publicSearchAssembly struct {
 	snippetEnricher      *snippetfetch.Enricher
 	remoteTimeouts       remoteSearchTimeouts
 	indexRemoteResults   bool
+	storageGrowth        growthAdmission
 	swarmMorphology      bool
 	wordForms            func() *wordforms.Expander
 	swarmSeed            swarmSeedConfig
@@ -182,6 +184,15 @@ func mountNodePublicSearch(
 	mux *http.ServeMux,
 	assembly publicSearchAssembly,
 ) (searchcore.Searcher, searchcore.Searcher) {
+	search, suggest, _ := mountNodePublicSearchWithExplanation(mux, assembly)
+
+	return search, suggest
+}
+
+func mountNodePublicSearchWithExplanation(
+	mux *http.ServeMux,
+	assembly publicSearchAssembly,
+) (searchcore.Searcher, searchcore.Searcher, searchcore.Searcher) {
 	siteicon.Mount(mux)
 	local := newLocalRankingSearcher(
 		assembly.storage.searchIndex,
@@ -196,25 +207,12 @@ func mountNodePublicSearch(
 			searchPostingsPerWord,
 		)
 	}
-	remote := searchremote.NewSearcher(searchremote.Config{
-		Client:                 remoteSearchClient(assembly),
-		NetworkName:            assembly.identity.NetworkName,
-		Peers:                  searchTargetPeers{roster: assembly.roster},
-		Redundancy:             assembly.dht.Redundancy,
-		MinimumPeerAgeDays:     assembly.dht.MinimumPeerAgeDays,
-		PartitionExponent:      assembly.dht.PartitionExponent,
-		RandomTargetIndex:      assembly.dhtSearchTargetIndex,
-		Weights:                remoteRankingWeights(assembly.rankingWeights),
-		PreferHTTPS:            assembly.peerHTTPSPreferred,
-		ExpandWord:             swarmMorphologyExpander(assembly),
-		PerPeerTimeout:         assembly.remoteTimeouts.perPeer,
-		OverallTimeout:         assembly.remoteTimeouts.overall,
-		ReputationSnapshots:    assembly.peerReputation,
-		ReputationObservations: assembly.peerObservations,
-		ReputationNetworkGroup: assembly.peerNetworkGroup,
-		SelfSeed:               assembly.selfSeed,
-	})
+	passages, _ := local.(searchcore.DocumentPassageSearcher)
+	remoteConfig := publicRemoteSearchConfig(assembly)
+	remote := searchremote.NewSearcher(remoteConfig)
+	diagnosticRemote := searchremote.NewSearcher(publicDiagnosticRemoteSearchConfig(assembly))
 	search := assemblePublicSearcher(local, remote, assembly)
+	explanation := assemblePublicExplanationSearcher(local, diagnosticRemote, assembly)
 	access := searchAccessPolicy(assembly)
 	// Autocomplete suggestions come from the local index alone (denylist applied,
 	// same as served results) so typeahead never fans out to the swarm or the web
@@ -224,7 +222,7 @@ func mountNodePublicSearch(
 		Enabled:  assembly.clickCapture,
 		Recorder: assembly.clickRecorder,
 	})
-	cachedpage.Mount(mux, assembly.storage.documentDirectory)
+	cachedpage.Mount(mux, assembly.storage.documentDirectory, passages)
 	faviconproxy.Mount(mux, assembly.client)
 	faviconproxy.MountImages(mux, assembly.client)
 	tavilyapi.Mount(
@@ -250,7 +248,7 @@ func mountNodePublicSearch(
 	publicrobots.Mount(mux, assembly.toggles.RobotsPolicy)
 	publicportal.SetGreetingProvider(assembly.toggles.PortalGreeting)
 
-	return search, suggestSource
+	return search, suggestSource, explanation
 }
 
 // swarmMorphologyExpander builds the single-word expansion function for the
@@ -261,7 +259,12 @@ func swarmMorphologyExpander(assembly publicSearchAssembly) func(string) []strin
 		return nil
 	}
 
-	return func(word string) []string { return assembly.wordForms().Variants(word) }
+	return func(word string) []string {
+		observed := assembly.wordForms().Variants(word)
+		generated := searchindex.GeneratedMorphologySurfaces(word)
+
+		return prioritizedSwarmMorphologyForms(observed, generated)
+	}
 }
 
 func assemblePublicSearcher(
@@ -269,36 +272,8 @@ func assemblePublicSearcher(
 	remote searchcore.Searcher,
 	assembly publicSearchAssembly,
 ) searchcore.Searcher {
-	// Pseudo-relevance feedback expands recall-poor local queries with terms
-	// mined from their own top results (RM3) before the swarm merge; peers run
-	// their own retrieval, so only the local searcher is wrapped.
-	localWithFeedback := searchcore.NewPseudoRelevanceSearcher(local)
-	merged := searchcore.NewSafeSearchSearcher(
-		searchcore.NewFederatedSearcher(
-			localWithFeedback,
-			withRemoteSearchRetention(remote),
-		),
-	)
-	enriched := snippetfetch.WithSnippetEnrichment(
-		merged,
-		assembly.snippetEnricher,
-		remoteTextEvidence,
-	)
-	admitted := withDenylistFilter(enriched, assembly.denylist)
-	budgetedExact := withWebFallbackExactStageBudget(admitted, assembly.webFallback)
-	localRetry := withDenylistFilter(
-		searchcore.NewSafeSearchSearcher(local),
-		assembly.denylist,
-	)
-	locallyRecovered := withLocalExactRecovery(budgetedExact, localRetry)
-	recovering := withZeroResultRecovery(
-		locallyRecovered,
-		localRetry,
-		assembly.spellCorrector,
-	)
-	fallback := searchcore.NewSafeSearchSearcher(withWebFallback(recovering, assembly))
-	filtered := withDenylistFilter(fallback, assembly.denylist)
-	ranked := assembleRankingStages(filtered, assembly)
+	retrieval := assemblePublicRetrievalSearcher(local, remote, assembly)
+	ranked := assembleRankingStages(retrieval, assembly)
 	// The session cache makes paging stable (YaCy SearchEventCache): page one
 	// runs one deep search, deeper pages slice the cached result list.
 	stable := searchsession.NewStableWindow(ranked)
@@ -310,7 +285,10 @@ func assemblePublicSearcher(
 	if assembly.indexRemoteResults && assembly.storage.searchIndex != nil {
 		// Cache swarm results into the local index (YaCy addResultsToLocalIndex),
 		// but only when the full-text backend is available to make them findable.
-		search = withRemoteIndexCache(search, newRemoteIndexCache(assembly.storage))
+		search = withRemoteIndexCache(
+			search,
+			newRemoteIndexCache(assembly.storage, assembly.storageGrowth),
+		)
 	}
 	if assembly.swarmSeed.Enabled && assembly.seedQueue != nil {
 		// Greedy learning (YaCy 1.5): crawl what swarm search surfaced, growing
@@ -328,6 +306,7 @@ func assemblePublicSearcher(
 					maxPages: assembly.swarmSeed.SeedMaxPages,
 					options:  assembly.autocrawlerCrawl,
 				},
+				assembly.maxPagesPerRun,
 			),
 		)
 	}
@@ -336,6 +315,7 @@ func assemblePublicSearcher(
 	search = searchsession.WithRecentSuccessOnIncompleteRefresh(search, stable)
 	search = withQueryLogging(search, assembly.queryLogMode, assembly.activity)
 	search = withSearchMetrics(search, assembly.searchMetrics)
+	search = withEffectiveWebFallbackRequest(search, assembly.webFallback)
 
 	return withParsedQuery(search)
 }
@@ -350,10 +330,7 @@ func assembleRankingStages(
 	inner searchcore.Searcher,
 	assembly publicSearchAssembly,
 ) searchcore.Searcher {
-	evidence := searchcore.NewLexicalEvidenceSearcherWithWeights(
-		inner,
-		lexicalRankingWeights(assembly.rankingWeights),
-	)
+	evidence := assembleRankingEvidenceStages(inner, assembly)
 	learned := learnedrank.NewSearcher(evidence, assembly.learnedRanker)
 
 	return searchcore.NewFinalRankingSearcher(learned)
@@ -452,8 +429,11 @@ func withWebFallback(
 			assembly.seedQueue,
 			assembly.storage.documentDirectory,
 			assembly.identity.Hash,
-			config,
-			assembly.autocrawlerCrawl,
+			webCrawlSeedProfile{
+				fallback:       config,
+				crawl:          assembly.autocrawlerCrawl,
+				maxPagesPerRun: assembly.maxPagesPerRun,
+			},
 		)))
 	}
 

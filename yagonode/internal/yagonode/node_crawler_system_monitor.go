@@ -27,10 +27,18 @@ func crawlerFetchActivityFromSnapshot(
 	snapshot crawlbroker.CrawlerRuntimeSnapshot,
 ) adminui.CrawlerFetchActivity {
 	return adminui.CrawlerFetchActivity{
-		ConnectedCrawlers:      snapshot.ConnectedCrawlers,
-		ActiveFetches:          snapshot.ActiveFetches,
-		FetchLimitPerCrawler:   snapshot.FetchLimitPerCrawler,
-		AggregateFetchCapacity: snapshot.AggregateFetchCapacity,
-		ActiveFetchesKnown:     snapshot.ActiveFetchesKnown,
+		ConnectedCrawlers:              snapshot.ConnectedCrawlers,
+		ActiveFetches:                  snapshot.ActiveFetches,
+		FetchLimitPerCrawler:           snapshot.FetchLimitPerCrawler,
+		AggregateFetchCapacity:         snapshot.AggregateFetchCapacity,
+		ActiveFetchesKnown:             snapshot.ActiveFetchesKnown,
+		StorageStatesKnown:             snapshot.StorageStatesKnown,
+		StorageReportedCrawlers:        snapshot.StorageReportedCrawlers,
+		StorageUnreportedCrawlers:      snapshot.StorageUnreportedCrawlers,
+		StoragePressured:               snapshot.StoragePressured,
+		StorageMeasurementsUnavailable: snapshot.StorageMeasurementsUnavailable,
+		MinimumStorageAvailableBytes:   snapshot.MinimumStorageAvailableBytes,
+		StorageReservedFreeBytes:       snapshot.StoragePressurePolicy.ReservedFreeBytes,
+		StoragePressureHysteresisBytes: snapshot.StoragePressurePolicy.RecoveryHysteresisBytes,
 	}
 }

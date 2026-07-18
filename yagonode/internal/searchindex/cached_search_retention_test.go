@@ -9,6 +9,8 @@ import (
 
 func TestRetainedSearchEntryBytesAccountsCompletePayload(t *testing.T) {
 	positions := make([]int, 2, 3)
+	matches := make([]TextQueryMatch, 1, 2)
+	matches[0] = TextQueryMatch{Start: 1, End: 2}
 	images := make([]ResultImage, 1, 2)
 	images[0] = ResultImage{URL: "x", Alt: "x"}
 	results := make([]SearchResult, 1, 2)
@@ -28,6 +30,7 @@ func TestRetainedSearchEntryBytesAccountsCompletePayload(t *testing.T) {
 		Analyzer:           "x",
 		ContentType:        "x",
 		Images:             images,
+		BodyQueryMatches:   matches,
 		FieldScores:        map[string]float64{"x": 1},
 		FieldTermPositions: map[string]map[string][]int{"x": {"x": positions}},
 	}
@@ -44,6 +47,7 @@ func TestRetainedSearchEntryBytesAccountsCompletePayload(t *testing.T) {
 	want += cap(results) * int(retainedSearchResultWidth)
 	want += 14
 	want += cap(images)*int(retainedSearchImageWidth) + 2
+	want += cap(matches) * int(retainedSearchQueryMatchWidth)
 	want += retainedSearchMapBytes + retainedSearchMapEntryBytes + 1
 	want += retainedSearchMapBytes + retainedSearchMapEntryBytes + 1
 	want += retainedSearchMapBytes + retainedSearchMapEntryBytes + 1
@@ -211,6 +215,7 @@ func TestCloneResultSetPreservesNilNestedCollections(t *testing.T) {
 		}},
 	})
 	if cloned.Facets[0].Terms != nil || cloned.Results[0].Images != nil ||
+		cloned.Results[0].BodyQueryMatches != nil ||
 		cloned.Results[0].FieldTermPositions["body"]["term"] != nil {
 		t.Fatalf("nil collections changed: %#v", cloned)
 	}

@@ -14,8 +14,8 @@
       <tr><th scope="row">Backend</th><td>{{if .Index.Backend}}{{.Index.Backend}}{{else}}Unavailable{{end}}</td></tr>
       <tr><th scope="row">Last updated</th><td>{{if .Index.UpdatedAt}}{{.Index.UpdatedAt}}{{else}}Not recorded{{end}}</td></tr>
       <tr><th scope="row">Search index on disk</th><td>{{if .Index.DiskSize}}{{.Index.DiskSize}}{{else}}Unavailable{{end}}</td></tr>
-      <tr><th scope="row">Data vault on disk</th><td>{{if .Index.VaultUsed}}{{.Index.VaultUsed}}{{else}}Unavailable{{end}}</td></tr>
-      <tr><th scope="row">Vault quota (maximum)</th><td>{{if .Index.VaultQuota}}{{.Index.VaultQuota}}{{else}}Unavailable{{end}}</td></tr>
+      <tr><th scope="row">Vault live data</th><td>{{if .Index.VaultUsed}}{{.Index.VaultUsed}}{{else}}Unavailable{{end}}</td></tr>
+      <tr><th scope="row">Vault soft admission quota</th><td>{{if .Index.VaultQuota}}{{.Index.VaultQuota}}{{else}}Unavailable{{end}}</td></tr>
     </tbody>
   </table>
 </div>

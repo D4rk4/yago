@@ -293,9 +293,13 @@ func coreResultWithQueryMatches(
 	}
 
 	return searchcore.Result{
-		DocumentID:           result.DocumentID,
-		Analyzer:             result.Analyzer,
-		EvidenceReady:        result.EvidenceReady,
+		DocumentID:    result.DocumentID,
+		Analyzer:      result.Analyzer,
+		EvidenceReady: result.EvidenceReady,
+		EvidenceRequirementOrdinals: append(
+			[]int{},
+			result.EvidenceRequirementOrdinals...,
+		),
 		Title:                result.Title,
 		URL:                  result.URL,
 		ClusterID:            result.ClusterID,
@@ -303,6 +307,7 @@ func coreResultWithQueryMatches(
 		DisplayURL:           displayURL(host, pathValue),
 		Snippet:              result.Snippet,
 		QueryMatches:         queryMatches,
+		BodyQueryMatches:     coreBodyQueryMatches(result.BodyQueryMatches),
 		Score:                result.Score,
 		Evidence:             localRankingEvidence(req, result),
 		Source:               req.Source,

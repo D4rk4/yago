@@ -130,6 +130,77 @@ func TestDispatchBuildsOrderFromOperatorInput(t *testing.T) {
 	if !order.Profile.FollowNoFollowLinks {
 		t.Fatal("followNoFollowLinks should be enabled")
 	}
+	if order.Profile.MaxPagesPerRun == nil ||
+		*order.Profile.MaxPagesPerRun != yagocrawlcontract.DefaultMaxPagesPerRun {
+		t.Fatalf("max pages per run = %v", order.Profile.MaxPagesPerRun)
+	}
+}
+
+func TestDispatchUsesLiveDefaultAndExplicitRunBudget(t *testing.T) {
+	queue := &recordingQueue{}
+	maximum := 321
+	mux := http.NewServeMux()
+	crawldispatch.MountCrawlDispatch(
+		mux,
+		initiator,
+		func() []byte { return []byte("token") },
+		queue,
+		crawldispatch.WithMaxPagesPerRun(func() int { return maximum }),
+	)
+
+	rec := post(t, mux, `{"seeds":["https://example.org/"],"maxPagesPerHost":-1}`)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("default status = %d; body=%s", rec.Code, rec.Body.String())
+	}
+	if queue.order.Profile.MaxPagesPerRun == nil || *queue.order.Profile.MaxPagesPerRun != 321 {
+		t.Fatalf("default max pages per run = %v, want 321", queue.order.Profile.MaxPagesPerRun)
+	}
+
+	maximum = 654
+	rec = post(t, mux, `{"seeds":["https://example.net/"],"maxPagesPerHost":-1}`)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("updated default status = %d; body=%s", rec.Code, rec.Body.String())
+	}
+	if queue.order.Profile.MaxPagesPerRun == nil || *queue.order.Profile.MaxPagesPerRun != 654 {
+		t.Fatalf("updated default max pages per run = %v, want 654",
+			queue.order.Profile.MaxPagesPerRun)
+	}
+
+	rec = post(t, mux, `{"seeds":["https://example.edu/"],"maxPagesPerHost":-1,"maxPagesPerRun":0}`)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("explicit status = %d; body=%s", rec.Code, rec.Body.String())
+	}
+	if queue.order.Profile.MaxPagesPerRun == nil || *queue.order.Profile.MaxPagesPerRun != 0 {
+		t.Fatalf("explicit max pages per run = %v, want zero", queue.order.Profile.MaxPagesPerRun)
+	}
+}
+
+func TestDispatcherRejectsInvalidDefaultRunBudgetSource(t *testing.T) {
+	dispatcher := crawldispatch.NewDispatcher(
+		initiator,
+		func() []byte { return []byte("token") },
+		&recordingQueue{},
+		crawldispatch.WithMaxPagesPerRun(func() int { return -1 }),
+	)
+	if got := dispatcher.MaxPagesPerRun(); got != yagocrawlcontract.DefaultMaxPagesPerRun {
+		t.Fatalf("max pages per run = %d, want %d", got,
+			yagocrawlcontract.DefaultMaxPagesPerRun)
+	}
+}
+
+func TestDispatchRejectsNegativeRunBudget(t *testing.T) {
+	queue := &recordingQueue{}
+	rec := post(
+		t,
+		mount(t, queue),
+		`{"seeds":["https://example.org/"],"maxPagesPerHost":-1,"maxPagesPerRun":-1}`,
+	)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if queue.published {
+		t.Fatal("order with negative run budget was published")
+	}
 }
 
 func TestDispatchBuildsOrderWithExplicitMatchAndRecrawl(t *testing.T) {

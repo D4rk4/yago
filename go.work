@@ -2,7 +2,7 @@ go 1.26
 
 use (
 	./yagocrawlcontract
-	./yagocrawler
+	./yago-crawler
 	./yagoegress
 	./yagomodel
 	./yagonode

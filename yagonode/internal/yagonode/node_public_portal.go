@@ -33,17 +33,6 @@ func newPortalSource(searcher searchcore.Searcher) portalSource {
 	return portalSource{searcher: searcher}
 }
 
-// cachedCopyURL links the node's stored copy for locally stored results; peer
-// and web-fallback hits have no stored page to show. Local hits in a global
-// search carry SourceGlobal, so this goes through Result.StoredLocally.
-func cachedCopyURL(result searchcore.Result) string {
-	if !result.StoredLocally() {
-		return ""
-	}
-
-	return cachedpage.URLFor(result.URL)
-}
-
 // portalImages proxies the page's extracted images for the image grid, so
 // pictured hosts never see the searcher before a click.
 func portalImages(result searchcore.Result) []publicportal.ResultImage {
@@ -146,7 +135,7 @@ func (s portalSource) Search(
 			Host:            result.Host,
 			Date:            result.DisplayDate(),
 			SizeName:        resultSizeName(result.Size),
-			CachedURL:       cachedCopyURL(result),
+			CachedURL:       cachedpage.URLForLocalResult(result, response.Request.Terms),
 			Provenance:      provenance,
 			FaviconURL:      resultFaviconURL(result),
 			Images:          portalImages(result),

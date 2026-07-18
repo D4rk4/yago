@@ -38,6 +38,7 @@ const (
 	SignalPeerSupport
 	SignalPeerReputation
 	SignalSourceCount
+	SignalWebRank
 	rankingSignalLimit
 )
 
@@ -149,4 +150,5 @@ var rankingSignalNames = [...]string{
 	"peer_support",
 	"peer_reputation",
 	"source_count",
+	"web_rank",
 }

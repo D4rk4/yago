@@ -1,0 +1,338 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+components:
+  crawljob:
+    in: internal/crawljob/**
+  weburl:
+    in: internal/weburl/**
+  crawlrun:
+    in: internal/crawlrun/**
+  sitemap:
+    in: internal/sitemap/**
+  crawlseed:
+    in: internal/crawlseed/**
+  boundedqueue:
+    in: internal/boundedqueue/**
+  pagefetch:
+    in: internal/pagefetch/**
+  httpfetch:
+    in: internal/httpfetch/**
+  firefoxfetch:
+    in: internal/firefoxfetch/**
+  botwall:
+    in: internal/botwall/**
+  publicweb:
+    in: internal/publicweb/**
+  robots:
+    in: internal/robots/**
+  crawldelay:
+    in: internal/crawldelay/**
+  crawllease:
+    in: internal/crawllease/**
+  crawlpace:
+    in: internal/crawlpace/**
+  crawlsettlement:
+    in: internal/crawlsettlement/**
+  crawlorder:
+    in: internal/crawlorder/**
+  crawladmission:
+    in: internal/crawladmission/**
+  urltrap:
+    in: internal/urltrap/**
+  frontier:
+    in: internal/frontier/**
+  frontiercheckpoint:
+    in: internal/frontiercheckpoint/**
+  pageparse:
+    in: internal/pageparse/**
+  formatparse:
+    in: internal/formatparse/**
+  stopwords:
+    in: internal/stopwords/**
+  pageindex:
+    in: internal/pageindex/**
+  ingest:
+    in: internal/ingest/**
+  pipeline:
+    in: internal/pipeline/**
+  runtally:
+    in: internal/runtally/**
+  crawlermetrics:
+    in: internal/crawlermetrics/**
+  crawlercmd:
+    in: cmd/yago-crawler/**
+
+vendors:
+  yagomodel:
+    in:
+      - github.com/D4rk4/yago/yagomodel
+      - github.com/D4rk4/yago/yagomodel/**
+  yagocrawlcontract:
+    in:
+      - github.com/D4rk4/yago/yagocrawlcontract
+      - github.com/D4rk4/yago/yagocrawlcontract/**
+  yagoegress:
+    in:
+      - github.com/D4rk4/yago/yagoegress
+      - github.com/D4rk4/yago/yagoegress/**
+  xnet-html:
+    in:
+      - golang.org/x/net/html
+      - golang.org/x/net/html/**
+  robotstxt:
+    in: github.com/temoto/robotstxt
+  golang-lru:
+    in: github.com/hashicorp/golang-lru/v2
+  singleflight:
+    in: golang.org/x/sync/singleflight
+  trafilatura:
+    in: github.com/markusmobius/go-trafilatura
+  whatlanggo:
+    in: github.com/RadhiFadlillah/whatlanggo
+  go-shiori-dom:
+    in: github.com/go-shiori/dom
+  google-uuid:
+    in: github.com/google/uuid
+  bbolt:
+    in: go.etcd.io/bbolt
+  grpc:
+    in:
+      - google.golang.org/grpc
+      - google.golang.org/grpc/**
+  protobuf:
+    in:
+      - google.golang.org/protobuf
+      - google.golang.org/protobuf/**
+  prometheus:
+    in:
+      - github.com/prometheus/client_golang/prometheus
+      - github.com/prometheus/client_golang/prometheus/**
+
+deps:
+  crawljob:
+    mayDependOn:
+      - crawljob
+    canUse:
+      - yagocrawlcontract
+      - google-uuid
+  weburl:
+    mayDependOn:
+      - weburl
+  crawlrun:
+    mayDependOn:
+      - crawlrun
+    canUse:
+      - google-uuid
+  sitemap:
+    mayDependOn:
+      - sitemap
+  crawlseed:
+    mayDependOn:
+      - crawlseed
+      - pagefetch
+      - sitemap
+      - weburl
+    canUse:
+      - yagocrawlcontract
+  boundedqueue:
+    mayDependOn:
+      - boundedqueue
+  pagefetch:
+    mayDependOn:
+      - pagefetch
+  httpfetch:
+    mayDependOn:
+      - httpfetch
+      - pagefetch
+  firefoxfetch:
+    mayDependOn:
+      - pagefetch
+    canUse:
+      - yagoegress
+  botwall:
+    mayDependOn:
+      - botwall
+      - pagefetch
+  publicweb:
+    mayDependOn:
+      - publicweb
+      - pagefetch
+    canUse:
+      - yagoegress
+  robots:
+    mayDependOn:
+      - robots
+      - pagefetch
+    canUse:
+      - robotstxt
+      - golang-lru
+      - singleflight
+  crawldelay:
+    mayDependOn:
+      - crawldelay
+      - crawljob
+      - crawlpace
+      - weburl
+    canUse:
+      - golang-lru
+  crawllease:
+    mayDependOn:
+      - crawllease
+    canUse:
+      - yagocrawlcontract
+  crawlpace:
+    mayDependOn:
+      - crawlpace
+  crawlsettlement:
+    mayDependOn:
+      - crawlsettlement
+    canUse:
+      - yagocrawlcontract
+  crawladmission:
+    mayDependOn:
+      - crawladmission
+      - formatparse
+      - urltrap
+      - weburl
+    canUse:
+      - yagocrawlcontract
+  urltrap:
+    mayDependOn:
+      - urltrap
+    canUse:
+      - yagomodel
+  frontier:
+    mayDependOn:
+      - frontier
+      - crawladmission
+      - crawldelay
+      - crawljob
+      - crawlpace
+      - crawlrun
+      - crawlsettlement
+      - frontiercheckpoint
+      - runtally
+      - weburl
+    canUse:
+      - yagocrawlcontract
+      - google-uuid
+  frontiercheckpoint:
+    mayDependOn:
+      - frontiercheckpoint
+      - crawlpace
+      - crawlsettlement
+    canUse:
+      - yagocrawlcontract
+      - google-uuid
+      - bbolt
+  pageparse:
+    mayDependOn:
+      - pageparse
+      - weburl
+    canUse:
+      - xnet-html
+      - trafilatura
+      - go-shiori-dom
+  formatparse:
+    mayDependOn:
+      - formatparse
+      - pageparse
+    canUse:
+      - yagocrawlcontract
+  stopwords:
+    mayDependOn:
+      - stopwords
+  pageindex:
+    mayDependOn:
+      - pageindex
+      - pageparse
+      - stopwords
+    canUse:
+      - yagocrawlcontract
+      - yagomodel
+      - whatlanggo
+  ingest:
+    mayDependOn:
+      - ingest
+      - boundedqueue
+      - crawllease
+    canUse:
+      - yagocrawlcontract
+      - yagomodel
+      - grpc
+      - protobuf
+  crawlorder:
+    mayDependOn:
+      - crawlorder
+      - boundedqueue
+      - crawladmission
+      - crawljob
+      - crawllease
+      - crawlsettlement
+      - frontier
+      - frontiercheckpoint
+      - runtally
+    canUse:
+      - yagocrawlcontract
+      - grpc
+      - protobuf
+  pipeline:
+    mayDependOn:
+      - pipeline
+      - crawljob
+      - crawllease
+      - formatparse
+      - ingest
+      - pagefetch
+      - pageindex
+      - pageparse
+      - robots
+      - weburl
+    canUse:
+      - yagocrawlcontract
+      - yagomodel
+  runtally:
+    mayDependOn:
+      - runtally
+    canUse:
+      - yagocrawlcontract
+  crawlermetrics:
+    mayDependOn:
+      - crawlermetrics
+    canUse:
+      - yagocrawlcontract
+      - prometheus
+  crawlercmd:
+    mayDependOn:
+      - botwall
+      - firefoxfetch
+      - crawldelay
+      - crawllease
+      - crawlpace
+      - crawlermetrics
+      - crawlorder
+      - crawlseed
+      - frontier
+      - frontiercheckpoint
+      - httpfetch
+      - ingest
+      - pagefetch
+      - pageindex
+      - pageparse
+      - pipeline
+      - publicweb
+      - robots
+      - runtally
+    canUse:
+      - yagocrawlcontract
+      - yagoegress
+      - grpc
+      - protobuf
+
+excludeFiles:
+  - "test/e2e"

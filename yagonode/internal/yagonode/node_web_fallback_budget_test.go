@@ -171,3 +171,19 @@ func TestWebFallbackExactStageDeadlineContinuesTheMissCascade(t *testing.T) {
 		t.Fatalf("response = %#v", response)
 	}
 }
+
+func TestWebFallbackExactStageDeadlineKeepsQueuedCompletion(t *testing.T) {
+	hardContext, cancel := context.WithCancel(t.Context())
+	cancel()
+	want := searchcore.Response{Results: []searchcore.Result{{
+		URL: "https://local.example/", Source: searchcore.SourceLocal,
+	}}}
+	outcomes := make(chan webFallbackExactStageOutcome, 1)
+	outcomes <- webFallbackExactStageOutcome{response: want}
+	response, err := completedOrExpiredWebFallbackExactStage(
+		t.Context(), hardContext, searchcore.Request{Query: "query"}, outcomes,
+	)
+	if err != nil || len(response.Results) != 1 || response.Results[0].URL != want.Results[0].URL {
+		t.Fatalf("response = %#v, error = %v", response, err)
+	}
+}

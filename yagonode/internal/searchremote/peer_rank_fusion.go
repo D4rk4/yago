@@ -28,6 +28,7 @@ func orderedPeerSearchResults(results []peerSearchResult) []peerSearchResult {
 
 func fusePeerRankings(peerRankings [][]searchcore.Result) []searchcore.Result {
 	fused := searchcore.FuseByReciprocalRank(peerRankings...)
+	fused = retainStrongestRemotePayloads(fused, peerRankings)
 	for index := range fused {
 		fused[index].Evidence = fused[index].Evidence.With(
 			searchcore.SignalPeerReputation,
@@ -48,6 +49,7 @@ func fuseWeightedPeerRankings(
 		return fusePeerRankings(peerRankings)
 	}
 	fused := searchcore.FuseByReciprocalRank(peerRankings...)
+	fused = retainStrongestRemotePayloads(fused, peerRankings)
 	weightedScores := make(map[string]float64, len(fused))
 	weightedSupport := make(map[string]float64, len(fused))
 	reputationNumerators := make(map[string]float64, len(fused))

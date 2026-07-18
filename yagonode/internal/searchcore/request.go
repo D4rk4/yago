@@ -5,7 +5,10 @@ import (
 	"regexp"
 )
 
-const DefaultPublicLimit = 10
+const (
+	DefaultPublicLimit         = 10
+	MaximumPublicResultHorizon = 500
+)
 
 func NormalizePublicRequest(req Request, limitCap int) (Request, error) {
 	var err error

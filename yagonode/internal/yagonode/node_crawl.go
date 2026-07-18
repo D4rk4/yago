@@ -4,17 +4,17 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagomodel"
-	"github.com/D4rk4/yago/yagonode/internal/contentquality"
 	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yagonode/internal/crawlformats"
 	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
 	"github.com/D4rk4/yago/yagonode/internal/crawlruns"
-	"github.com/D4rk4/yago/yagonode/internal/eviction"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/recrawlfrontier"
@@ -28,17 +28,24 @@ type crawlProcess interface {
 }
 
 type crawlRuntime struct {
-	broker    *crawlbroker.CrawlBroker
-	consumer  *crawlresults.IngestConsumer
-	runs      *crawlruns.Registry
-	frontier  *recrawlfrontier.Frontier
-	formats   *crawlformats.Store
-	initiator yagomodel.Hash
+	broker     *crawlbroker.CrawlBroker
+	state      *vault.Vault
+	ownsState  bool
+	statePath  string
+	consumer   *crawlresults.IngestConsumer
+	runs       *crawlruns.Registry
+	frontier   *recrawlfrontier.Frontier
+	formats    *crawlformats.Store
+	initiator  yagomodel.Hash
+	pageBudget *crawlRunPageBudget
 }
+
+const msgCrawlRuntimeStateCloseFailed = "crawl runtime state close failed"
 
 var openCrawlBroker = crawlbroker.Open
 
 func buildCrawlRuntime(
+	ctx context.Context,
 	config crawlConfig,
 	identity nodeidentity.Identity,
 	storage nodeStorage,
@@ -47,62 +54,31 @@ func buildCrawlRuntime(
 	if !config.Enabled() {
 		return nil, nil
 	}
-
-	runs := crawlruns.New(0)
-	broker, err := openCrawlBroker(
-		crawlbroker.Config{
-			ListenAddr:                        config.ListenAddr,
-			FetchWorkers:                      config.FetchWorkers,
-			DisableAutomaticDiscoveryPriority: !config.PrioritizeAutomaticDiscovery,
-		},
+	coordination, err := openCrawlCoordinationRuntime(ctx, config, storageVault)
+	if err != nil {
+		return nil, err
+	}
+	ingest, err := openCrawlIngestRuntime(
+		config,
+		storage,
 		storageVault,
-		runs,
+		coordination.broker,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("open crawl broker: %w", err)
-	}
-	observationHistory, err := crawlresults.OpenURLObservationHistory(storageVault)
-	if err != nil {
-		return nil, fmt.Errorf("open crawl observation history: %w", err)
-	}
-
-	frontier, err := recrawlfrontier.Open(storageVault)
-	if err != nil {
-		return nil, fmt.Errorf("open recrawl frontier: %w", err)
-	}
-	formats, err := crawlformats.Open(storageVault)
-	if err != nil {
-		return nil, fmt.Errorf("open crawl formats: %w", err)
-	}
-
-	consumer := crawlresults.NewIngestConsumerWithIndex(
-		broker.Ingest,
-		storage.documentReceiver,
-		storage.searchIndex,
-		storage.urlReceiver,
-		storage.postingReceiver,
-	)
-	consumer.OrderObservations(observationHistory)
-	consumer.RecordFetches(frontier)
-	consumer.CheckOwnership(frontier)
-	consumer.TrackContentClusters(storage.contentClusters)
-	evictor := eviction.NewEvictor(
-		storageVault, storage.postingPurger, storage.references, storage.urlEvictor,
-		storage.documentEvictor(), storage.urlDirectory,
-	)
-	consumer.PurgeURLs(evictor)
-	consumer.SweepStalePostings(evictor)
-	if config.QualityGate {
-		consumer.GateQuality(contentquality.RejectionRule)
+		return nil, coordination.openFailure(err)
 	}
 
 	return &crawlRuntime{
-		broker:    broker,
-		consumer:  consumer,
-		runs:      runs,
-		frontier:  frontier,
-		formats:   formats,
-		initiator: identity.Hash,
+		broker:     coordination.broker,
+		state:      coordination.state,
+		ownsState:  coordination.ownsState,
+		statePath:  config.StatePath,
+		consumer:   ingest.consumer,
+		runs:       coordination.runs,
+		frontier:   ingest.frontier,
+		formats:    ingest.formats,
+		initiator:  identity.Hash,
+		pageBudget: newCrawlRunPageBudget(config.MaxPagesPerRun),
 	}, nil
 }
 
@@ -118,7 +94,13 @@ func (r *crawlRuntime) dispatchQueue() crawldispatch.CrawlOrderQueue {
 }
 
 func (r *crawlRuntime) mountDispatch(mux *http.ServeMux) {
-	crawldispatch.MountCrawlDispatch(mux, r.initiator, mintProvenance, r.dispatchQueue())
+	crawldispatch.MountCrawlDispatch(
+		mux,
+		r.initiator,
+		mintProvenance,
+		r.dispatchQueue(),
+		crawldispatch.WithMaxPagesPerRun(r.MaxPagesPerRun),
+	)
 }
 
 func (r *crawlRuntime) observe(observer crawlresults.IngestObserver) {
@@ -169,7 +151,26 @@ func (r *crawlRuntime) crawlQueueDepth(ctx context.Context) (crawlbroker.QueueDe
 }
 
 func (r *crawlRuntime) dispatcher() *crawldispatch.Dispatcher {
-	return crawldispatch.NewDispatcher(r.initiator, mintProvenance, r.dispatchQueue())
+	return crawldispatch.NewDispatcher(
+		r.initiator,
+		mintProvenance,
+		r.dispatchQueue(),
+		crawldispatch.WithMaxPagesPerRun(r.MaxPagesPerRun),
+	)
+}
+
+func (r *crawlRuntime) MaxPagesPerRun() int {
+	if r == nil {
+		return yagocrawlcontract.DefaultMaxPagesPerRun
+	}
+
+	return r.pageBudget.MaxPagesPerRun()
+}
+
+func (r *crawlRuntime) SetMaxPagesPerRun(value int) {
+	if r != nil {
+		r.pageBudget.Set(value)
+	}
 }
 
 // recrawlSweeper builds the sweeper that drains the recrawl schedule, publishing
@@ -266,6 +267,13 @@ func (r *crawlRuntime) Run(ctx context.Context) {
 
 func (r *crawlRuntime) Close() {
 	r.broker.Close()
+	if err := closeOwnedCrawlRuntimeState(r.state, r.ownsState); err != nil {
+		slog.ErrorContext(
+			context.Background(),
+			msgCrawlRuntimeStateCloseFailed,
+			slog.Any("error", err),
+		)
+	}
 }
 
 func mintProvenance() []byte {

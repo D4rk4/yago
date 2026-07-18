@@ -17,7 +17,7 @@ import (
 
 const (
 	sessionDepth             = 50
-	maxSessionDepth          = 500
+	maxSessionDepth          = searchcore.MaximumPublicResultHorizon
 	sessionTTL               = 5 * time.Minute
 	maxSessions              = 128
 	sessionCacheMaximumBytes = 32 << 20

@@ -21,8 +21,14 @@ func newSecuritySource(service *adminauth.Service) *securitySource {
 	return &securitySource{service: service}
 }
 
-func (s *securitySource) Security(ctx context.Context) adminui.SecurityView {
-	infos, err := s.service.ListAPIKeys(ctx)
+func (s *securitySource) Security(
+	ctx context.Context,
+	request adminui.SecurityAPIKeyPageRequest,
+) adminui.SecurityView {
+	page, err := s.service.ListAPIKeyPage(ctx, adminauth.APIKeyPageRequest{
+		Cursor: request.Cursor,
+		Limit:  adminui.SecurityAPIKeyPageSize,
+	})
 	if err != nil {
 		return adminui.SecurityView{
 			ScopeGroups: securityScopeGroups(),
@@ -30,8 +36,8 @@ func (s *securitySource) Security(ctx context.Context) adminui.SecurityView {
 		}
 	}
 
-	items := make([]adminui.APIKeyItem, 0, len(infos))
-	for _, info := range infos {
+	items := make([]adminui.APIKeyItem, 0, len(page.Keys))
+	for _, info := range page.Keys {
 		scopes := scopeStrings(info.Scopes)
 		items = append(items, adminui.APIKeyItem{
 			ID:       info.ID,
@@ -43,7 +49,12 @@ func (s *securitySource) Security(ctx context.Context) adminui.SecurityView {
 		})
 	}
 
-	return adminui.SecurityView{Keys: items, ScopeGroups: securityScopeGroups()}
+	return adminui.SecurityView{
+		Keys:             items,
+		ScopeGroups:      securityScopeGroups(),
+		APIKeyTotal:      page.Total,
+		APIKeyNextCursor: page.NextCursor,
+	}
 }
 
 func (s *securitySource) MintAPIKey(
@@ -57,6 +68,9 @@ func (s *securitySource) MintAPIKey(
 	created, err := s.service.CreateAPIKey(ctx, mint.Label, mint.Scopes)
 	if errors.Is(err, adminauth.ErrInvalidScope) {
 		return adminui.APIKeyMintResult{Message: "The selected scopes are not valid."}, nil
+	}
+	if message, capacityReached := adminauth.APIKeyCapacityOperatorMessage(err); capacityReached {
+		return adminui.APIKeyMintResult{Message: message}, nil
 	}
 	if err != nil {
 		return adminui.APIKeyMintResult{}, wrapSecurityErr("create api key", err)

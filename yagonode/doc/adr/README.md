@@ -45,7 +45,7 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0024](0024-local-host-block-rank-signal.md) | Local host block-rank ranking signal | Accepted |
 | [0025](0025-sharded-compressed-vault-and-index.md) | Shard the vault and search index into bounded compressed files | Accepted |
 | [0026](0026-per-language-morphology-and-analyzer-routing.md) | Route documents to per-language analyzers for multilingual morphology | Accepted |
-| [0027](0027-swarm-morphological-query-expansion.md) | Expand single-word swarm queries into corpus-observed inflections | Accepted |
+| [0027](0027-swarm-morphological-query-expansion.md) | Expand swarm queries into bounded analyzer-consistent inflections | Accepted |
 | [0028](0028-local-morphology-followups-disposition.md) | Close the local-morphology and partial-word follow-ups as subsumed | Accepted |
 | [0029](0029-document-expansion-anchor-text-vs-doc2query.md) | Deliver document expansion via inbound anchor text; reject model-based doc2query | Accepted |
 | [0030](0030-optional-cpu-dense-retrieval-side.md) | Reject a CPU dense retrieval side for the current architecture | Superseded by [ADR-0048](0048-bounded-google-yandex-ranking-research-disposition.md) |
@@ -55,7 +55,7 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0034](0034-dead-page-removal-on-recrawl.md) | Remove a dead page from the index when a recrawl finds it permanently gone (404/410) | Accepted |
 | [0035](0035-learned-log-linear-ranking-yagorank.md) | Learned log-linear ranking (YagoRank): fit ranking weights to NDCG, add quality + unordered-SDM features | Superseded by [ADR-0043](0043-pure-go-evidence-learning-to-rank.md) |
 | [0036](0036-storage-usage-accounting-document-eviction-and-compaction.md) | Truthful storage accounting (live bytes), evict documents on purge, and periodic configurable compaction | Accepted |
-| [0037](0037-dynamic-shard-growth-linear-hashing.md) | Grow the shard pool dynamically by linear hashing as data accumulates; make the storage quota a live byte ceiling | Accepted |
+| [0037](0037-dynamic-shard-growth-linear-hashing.md) | Grow the shard pool dynamically by linear hashing as data accumulates; make the storage quota a live soft admission target | Accepted |
 | [0038](0038-bounded-loss-deferred-fsync.md) | Opt-in, restart-required deferred fsync (bbolt NoSync) with a staggered background flush that bounds the loss window | Accepted |
 | [0039](0039-binary-fuse-rwi-shard-filters.md) | Per-shard binary-fuse term filters skip RWI shards that provably lack a query term (adopts the xorfilter dependency) | Accepted |
 | [0040](0040-rwi-topk-pruning-not-maxscore.md) | Prune RWI top-k with bounded selection and reporting-gated scan early termination instead of the architecturally inapplicable MaxScore | Accepted |
@@ -70,3 +70,12 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0049](0049-vendor-haiku-icons-for-admin-shelf.md) | Vendor Haiku icons for the Admin shelf | Accepted |
 | [0050](0050-attest-release-artifacts.md) | Attest release artifacts with GitHub-hosted provenance | Accepted |
 | [0051](0051-promote-validated-release-images-to-ghcr.md) | Promote validated release images to attested GHCR manifest lists | Accepted |
+| [0052](0052-persist-crawler-frontier-checkpoints-with-bbolt.md) | Persist exact crawler frontier checkpoints with bbolt | Accepted |
+| [0053](0053-use-vellum-for-compact-cjk-lexicons.md) | Use vellum for compact CJK lexicons | Accepted |
+| [0054](0054-derive-chinese-segmentation-from-jieba.md) | Derive Chinese segmentation from the Jieba dictionary | Accepted |
+| [0055](0055-derive-japanese-segmentation-from-sudachidict-small.md) | Derive Japanese segmentation from SudachiDict Small | Accepted |
+| [0056](0056-derive-equal-width-chinese-conversion-from-opencc.md) | Derive equal-width Chinese conversion from OpenCC | Accepted |
+| [0057](0057-negotiate-cross-node-query-match-evidence.md) | Negotiate bounded cross-node query-match evidence | Accepted |
+| [0058](0058-use-negotiated-analyzer-recall-for-yago-peers.md) | Use negotiated analyzer recall for cooperating Yago peers | Accepted |
+| [0059](0059-use-snowball-rules-for-bounded-surface-generation.md) | Use Snowball rules for bounded surface generation | Accepted |
+| [0060](0060-admit-managed-growth-by-filesystem-reserve.md) | Admit managed growth by filesystem reserve | Accepted |

@@ -10,6 +10,7 @@ import (
 
 const (
 	settingKeyCrawlerFetchWorkers          = "crawler.fetch_workers"
+	settingKeyCrawlerMaxPagesPerRun        = "crawler.max_pages_per_run"
 	settingKeyPrioritizeAutomaticDiscovery = "crawler.prioritize_automatic_discovery"
 )
 
@@ -18,7 +19,7 @@ func crawlerRuntimeDefinitions() []settingDefinition {
 		{
 			key:         settingKeyCrawlerFetchWorkers,
 			title:       "Maximum fetch concurrency per crawler",
-			description: "Number of page-fetch workers in each connected yagocrawler process. This does not limit crawl tasks or runs.",
+			description: "Number of page-fetch workers in each connected yago-crawler process. This does not limit crawl tasks or runs.",
 			defaultValue: func(config nodeConfig) string {
 				return strconv.Itoa(config.Crawl.FetchWorkers)
 			},
@@ -31,6 +32,24 @@ func crawlerRuntimeDefinitions() []settingDefinition {
 			applyLive: func(toggles *runtimeToggles, value string) {
 				workers, _ := strconv.Atoi(value)
 				toggles.ApplyCrawlerFetchWorkers(workers)
+			},
+		},
+		{
+			key:         settingKeyCrawlerMaxPagesPerRun,
+			title:       "Maximum pages per crawl run",
+			description: "Default whole-run page budget for new manual, scheduled, recrawl, swarm-discovery, and web-discovery tasks. Zero is unlimited. Existing runs keep their profile budget.",
+			defaultValue: func(config nodeConfig) string {
+				return strconv.Itoa(config.Crawl.MaxPagesPerRun)
+			},
+			normalize: normalizeNonNegativeInt,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.Crawl.MaxPagesPerRun, _ = strconv.Atoi(value)
+
+				return config
+			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				maximum, _ := strconv.Atoi(value)
+				toggles.ApplyCrawlerMaxPagesPerRun(maximum)
 			},
 		},
 		{

@@ -16,7 +16,7 @@ set -eu
 
 version="${1:?version (e.g. 1.2.3)}"
 arch="${2:?arch (amd64|arm64)}"
-bindir="${3:?dir with yago-node + yagocrawler}"
+bindir="${3:?dir with yago-node + yago-crawler}"
 outdir="${4:?output dir}"
 
 case "$arch" in
@@ -45,7 +45,7 @@ Name:           yago
 Version:        %{yver}
 Release:        1
 Summary:        YagoSeek peer-to-peer search engine node and crawler
-License:        AGPL-3.0-or-later
+License:        AGPL-3.0-or-later AND Apache-2.0 AND MIT AND BSD-3-Clause
 URL:            https://github.com/D4rk4/yago
 AutoReqProv:    no
 Requires:       ca-certificates
@@ -61,34 +61,41 @@ parses pages. Data lives in /opt/yago/data and survives package removal.
 rm -rf %{buildroot}
 install -d -m 755 %{buildroot}/opt/yago/bin %{buildroot}/opt/yago/etc
 install -d -m 755 %{buildroot}%{_unitdir} %{buildroot}/usr/share/doc/yago
-install -m 755 %{ybin}/yago-node %{ybin}/yagocrawler %{buildroot}/opt/yago/bin/
+install -m 755 %{ybin}/yago-node %{ybin}/yago-crawler %{buildroot}/opt/yago/bin/
 install -m 644 %{ydeploy}/systemd/yago-node.env.example \
-	%{ydeploy}/systemd/yagocrawler.env.example %{buildroot}/opt/yago/etc/
+	%{ydeploy}/systemd/yago-crawler.env.example %{buildroot}/opt/yago/etc/
 install -m 644 %{ydeploy}/systemd/yago-node.service \
-	%{ydeploy}/systemd/yagocrawler.service %{buildroot}%{_unitdir}/
-install -m 644 %{yrepo}/doc/backup-restore.md %{buildroot}/usr/share/doc/yago/
+	%{ydeploy}/systemd/yago-crawler.service %{buildroot}%{_unitdir}/
+install -m 644 %{yrepo}/doc/backup-restore.md \
+	%{yrepo}/yagonode/internal/searchindex/CJK_DICTIONARY_NOTICES.txt \
+	%{buildroot}/usr/share/doc/yago/
 
 %files
 %dir /opt/yago
 %dir /opt/yago/bin
 %dir /opt/yago/etc
 /opt/yago/bin/yago-node
-/opt/yago/bin/yagocrawler
+/opt/yago/bin/yago-crawler
 /opt/yago/etc/yago-node.env.example
-/opt/yago/etc/yagocrawler.env.example
+/opt/yago/etc/yago-crawler.env.example
 %{_unitdir}/yago-node.service
-%{_unitdir}/yagocrawler.service
+%{_unitdir}/yago-crawler.service
 %dir /usr/share/doc/yago
 /usr/share/doc/yago/backup-restore.md
+/usr/share/doc/yago/CJK_DICTIONARY_NOTICES.txt
 
 %pre
 getent group yago >/dev/null || groupadd -r yago
 getent passwd yago >/dev/null || \
 	useradd -r -g yago -d /opt/yago/data -s /sbin/nologin -M yago
+SPEC
 
+tail -n +2 "$deploy/migrate-crawler-installation.sh" >>"$spec"
+
+cat >>"$spec" <<'SPEC'
 %post
 install -d -m 750 -o yago -g yago /opt/yago/data /opt/yago/data/crawler
-for env in yago-node yagocrawler; do
+for env in yago-node yago-crawler; do
 	if [ ! -f "/opt/yago/etc/$env.env" ]; then
 		install -m 640 -g yago "/opt/yago/etc/$env.env.example" \
 			"/opt/yago/etc/$env.env"
@@ -96,15 +103,15 @@ for env in yago-node yagocrawler; do
 done
 if [ -d /run/systemd/system ]; then
 	systemctl daemon-reload || true
-	systemctl enable yago-node.service yagocrawler.service >/dev/null 2>&1 || true
+	systemctl enable yago-node.service yago-crawler.service >/dev/null 2>&1 || true
 fi
 
 %preun
 # $1 is the count of this package left after the operation: 0 means a real
 # uninstall (not an upgrade), when the units should be stopped and disabled.
 if [ "$1" -eq 0 ] && [ -d /run/systemd/system ]; then
-	systemctl stop yagocrawler.service yago-node.service 2>/dev/null || true
-	systemctl disable yagocrawler.service yago-node.service >/dev/null 2>&1 || true
+	systemctl stop yago-crawler.service yagocrawler.service yago-node.service 2>/dev/null || true
+	systemctl disable yago-crawler.service yagocrawler.service yago-node.service >/dev/null 2>&1 || true
 fi
 
 %postun

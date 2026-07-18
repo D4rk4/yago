@@ -167,7 +167,11 @@ func (b *BleveMemoryIndex) Search(
 		b.multilingual,
 		b.analyzerScope,
 	))
+	scanAll := !req.CandidateOnly || req.WithFacets || hasPostFilters(req)
 	searchRequest.Size = len(b.documents)
+	if !scanAll {
+		searchRequest.Size = diskSearchSize(req.MaxResults, len(b.documents))
+	}
 	searchRequest.Explain = req.Explain || req.IncludeFieldScores
 	searchRequest.IncludeLocations = false
 	searchRequest.Fields = []string{documentAnalyzerField}
@@ -180,6 +184,9 @@ func (b *BleveMemoryIndex) Search(
 	facets := newFacetCollector(req.WithFacets)
 	total := 0
 	for _, hit := range result.Hits {
+		if !scanAll && len(results) >= req.MaxResults {
+			break
+		}
 		doc, found := b.documents[hit.ID]
 		if !found || !allowsDocument(doc, req) {
 			continue
@@ -193,6 +200,9 @@ func (b *BleveMemoryIndex) Search(
 			}
 			results = append(results, mapped)
 		}
+	}
+	if !scanAll {
+		total = bleveDocumentCount(result.Total)
 	}
 	rescoreStoredQuotedPhrasePrefix(results, req)
 	rescoreStoredProximity(results, req)
@@ -295,7 +305,7 @@ func fieldMatchWithAnalyzer(
 ) *blevequery.MatchQuery {
 	query := fieldMatch(field, text, boost)
 	if analyzer != "" {
-		query.Analyzer = analyzer
+		query.Analyzer = cjkQueryAnalyzer(analyzer)
 	}
 
 	return query

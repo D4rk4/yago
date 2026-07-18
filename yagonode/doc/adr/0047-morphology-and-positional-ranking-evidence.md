@@ -63,10 +63,11 @@ The relevant primary sources are:
    exact words in a fuzzy request can still provide exact evidence. A standard
    no-stem analyzer and a repeated identical raw requirement create no analyzer
    pair credit. A single unsegmented CJK requirement may contain several
-   required analyzer bigrams; a contiguous component chain contributes the same
-   lower `0.5` analyzer confidence. Adjacent exact CJK query words retain exact
-   confidence when their byte offsets touch, even though the overlapping bridge
-   bigram occupies an internal analyzer position.
+   analyzer-position groups, each containing unigram and bigram alternatives; a
+   coherent contiguous path contributes the same lower `0.5` analyzer confidence.
+   Adjacent exact CJK query words retain exact confidence when their byte offsets
+   touch, even though the overlapping bridge bigram occupies an internal analyzer
+   position.
 6. Relaxed-only candidates must independently pass a binary exact-surface
    quorum within one bounded field value. The quorum is an admission rule, not
    an IDF-, term-frequency-, or passage-selection score. An uninspected or
@@ -82,23 +83,28 @@ The relevant primary sources are:
    surface positions, each adjacent retained pair receives forward gap
    agreement `1 / (1 + abs(observedGap - originalGap))`; the best occurrence
    supplies the pair value, so repetition does not accumulate credit. Stored
-   positions are reused when available. Peer and web results fall back to exact
-   tokens in their visible title and snippet. A web row must visibly contain
-   every mixed alphanumeric identifier before its bounded term quorum is
-   considered. This small refinement does not alter the existing binary ordered
-   evidence.
+   positions are reused when available. Peer, web, and legacy-RWI rows analyze
+   bounded title, snippet, and decoded-URL text through one compatible registered
+   analyzer before ranking; structural matching is reserved for invalid input,
+   unavailable analyzer infrastructure, or an unfinished deadline-bounded row. A
+   web row must visibly contain every mixed alphanumeric identifier before its
+   bounded term quorum is considered. This small refinement does not alter the
+   existing binary ordered evidence.
 9. Exact and analyzer-equivalent confidence values remain fixed evidence policy.
    The bounded ordered, unordered, lexical-blend, and original-gap score
    coefficients belong to the persisted YagoRank profile and are independently
    tunable in the admin console. Learned evidence keeps its versioned schema and
    held-out relevance, safety, and p95 latency gates in
    [ADR-0043](0043-pure-go-evidence-learning-to-rank.md).
-10. Dictionary lemmatization is excluded from this architecture. It is not a
-   latency-neutral serving signal: it requires language-specific data,
-   licensing and dependency review, a changed index stream, a full reindex, and
-   representative multilingual judgments. Yandex MyStem is additionally
-   rejected because its [license](https://yandex.ru/legal/mystem/ru/) does not
-   permit using it to provide an analogous service.
+10. Dictionary lemmatization remains excluded from this architecture. The
+   optional Chinese and Japanese surface segments in ADR-0054 and ADR-0055 add
+   word boundaries, not lemmas, readings, or inflectional analysis. Full
+   lemmatization is not a latency-neutral serving signal: it requires additional
+   language-specific data, licensing and dependency review, a changed index
+   stream, a full reindex, and representative multilingual judgments. Yandex
+   MyStem is additionally rejected because its
+   [license](https://yandex.ru/legal/mystem/ru/) does not permit using it to
+   provide an analogous service.
 
 ## Cost and abuse bounds
 
@@ -133,12 +139,13 @@ kernels. The detailed engineering screen and its limits are recorded in
   filtering instead of receiving artificial adjacency credit.
 - Russian and other supported inflections can contribute bounded proximity
   without being represented as exact word forms.
-- Chinese, Japanese, and Korean query text can contribute contiguous CJK-bigram
-  evidence with or without whitespace. This is character-chain evidence, not
-  dictionary word segmentation, morphology, or Simplified/Traditional script
-  conversion. A one-character query is not guaranteed to match that character
-  inside a longer unsegmented run because the current index stores bigrams for
-  such runs.
+- Chinese, Japanese, and Korean query text contributes grouped unigram/bigram
+  evidence with or without whitespace. A coherent analyzer-position path is
+  required, so alternatives from scattered spans cannot assemble a false
+  contiguous chain. Chinese and Japanese dictionary segments are optional
+  ranking evidence, and equal-code-point Traditional/Simplified Chinese forms
+  share canonical terms; this remains bounded analysis rather than full
+  morphology.
 - Arabic uses bounded normalization and light stemming. Hebrew currently has
   normalized exact-word proximity but no morphology analyzer.
 - Irregular forms that the selected analyzer does not conflate are outside the

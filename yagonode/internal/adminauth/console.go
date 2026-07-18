@@ -17,6 +17,17 @@ type APIKeyInfo struct {
 	LastUsedAt time.Time
 }
 
+type APIKeyPageRequest struct {
+	Cursor string
+	Limit  int
+}
+
+type APIKeyPage struct {
+	Keys       []APIKeyInfo
+	NextCursor string
+	Total      int
+}
+
 // CreatedAPIKey is a freshly minted API key. Secret is the full key and is
 // available only at creation; it is never recoverable afterwards.
 type CreatedAPIKey struct {
@@ -60,6 +71,27 @@ func (s *Service) ListAPIKeys(ctx context.Context) ([]APIKeyInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list api keys: %w", err)
 	}
+
+	return publicAPIKeyInfos(infos), nil
+}
+
+func (s *Service) ListAPIKeyPage(
+	ctx context.Context,
+	request APIKeyPageRequest,
+) (APIKeyPage, error) {
+	page, err := s.apiKeys.page(ctx, request.Cursor, request.Limit)
+	if err != nil {
+		return APIKeyPage{}, fmt.Errorf("list api key page: %w", err)
+	}
+
+	return APIKeyPage{
+		Keys:       publicAPIKeyInfos(page.infos),
+		NextCursor: page.nextCursor,
+		Total:      page.total,
+	}, nil
+}
+
+func publicAPIKeyInfos(infos []apiKeyInfo) []APIKeyInfo {
 	out := make([]APIKeyInfo, 0, len(infos))
 	for _, info := range infos {
 		out = append(out, APIKeyInfo{
@@ -71,7 +103,7 @@ func (s *Service) ListAPIKeys(ctx context.Context) ([]APIKeyInfo, error) {
 		})
 	}
 
-	return out, nil
+	return out
 }
 
 // CreateAPIKey mints a new API key with the given label and scope names. The

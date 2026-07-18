@@ -21,7 +21,8 @@ func TestFeatureCatalogCoversRankingEvidenceInSignalOrder(t *testing.T) {
 		}
 	}
 	if searchcore.SignalSourceCount != rankingFeatureCount-1 ||
-		(searchcore.SignalSourceCount+1).Name() != "" {
+		searchcore.SignalWebRank.Name() != "web_rank" ||
+		(searchcore.SignalWebRank+1).Name() != "" {
 		t.Fatalf("feature catalog omits signal %d", len(definitions))
 	}
 	if definitions[2].Direction != rankfit.FeatureDecreasing ||
@@ -53,6 +54,11 @@ func TestMapRankingEvidencePreservesKnownValuesAndUnknownZeros(t *testing.T) {
 	if values[1] != 0 || len(values) != len(rankingFeatures) ||
 		!vector.Known(0) || !vector.Known(17) || vector.Known(1) {
 		t.Fatalf("unknown mapping = %v", values)
+	}
+	withDiagnosticRank := evidence.With(searchcore.SignalWebRank, 3)
+	vector, known, err = MapRankingEvidence(withDiagnosticRank)
+	if err != nil || !known || !reflect.DeepEqual(vector.Values(), values) {
+		t.Fatalf("diagnostic evidence mapping = %v, %v, %v", vector.Values(), known, err)
 	}
 
 	empty, known, err := MapRankingEvidence(searchcore.RankingEvidence{})

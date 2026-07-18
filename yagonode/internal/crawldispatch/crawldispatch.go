@@ -31,8 +31,9 @@ func MountCrawlDispatch(
 	initiator yagomodel.Hash,
 	mint ProvenanceMint,
 	queue CrawlOrderQueue,
+	options ...DispatcherOption,
 ) {
 	mux.Handle(PathCrawlDispatch, crawlDispatchEndpoint{
-		dispatcher: NewDispatcher(initiator, mint, queue),
+		dispatcher: NewDispatcher(initiator, mint, queue, options...),
 	})
 }

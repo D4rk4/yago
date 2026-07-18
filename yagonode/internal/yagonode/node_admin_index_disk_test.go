@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"context"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -81,6 +82,20 @@ func TestHumanBytes(t *testing.T) {
 	for input, want := range cases {
 		if got := humanBytes(input); got != want {
 			t.Fatalf("humanBytes(%d) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestHumanUnsignedBytes(t *testing.T) {
+	cases := map[uint64]string{
+		0:              "0 B",
+		512:            "512 B",
+		2048:           "2.0 KiB",
+		math.MaxUint64: "16.0 EiB",
+	}
+	for input, want := range cases {
+		if got := humanUnsignedBytes(input); got != want {
+			t.Fatalf("humanUnsignedBytes(%d) = %q, want %q", input, got, want)
 		}
 	}
 }

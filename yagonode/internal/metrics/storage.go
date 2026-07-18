@@ -26,14 +26,14 @@ func NewStorageMetrics(registry prometheus.Registerer, capacity StorageCapacity)
 	quota := prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
 			Name: "storage_quota_bytes",
-			Help: "Configured storage quota in bytes.",
+			Help: "Configured soft admission quota for logical live main-vault data in bytes; excludes Bleve, crawl state, allocated free pages, and temporary copies.",
 		},
 		func() float64 { return float64(capacity.QuotaBytes()) },
 	)
 	used := prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
 			Name: "storage_used_bytes",
-			Help: "Storage currently used in bytes.",
+			Help: "Logical live main-vault data in bytes; this is not filesystem allocation.",
 		},
 		func() float64 {
 			bytes, err := capacity.UsedBytes(context.Background())

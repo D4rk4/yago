@@ -45,6 +45,10 @@ func testDispatcher(queue crawldispatch.CrawlOrderQueue) *crawldispatch.Dispatch
 func TestCrawlSourceStartDispatches(t *testing.T) {
 	queue := &stubOrderQueue{}
 	source := newCrawlSource(testDispatcher(queue))
+	if got := source.MaxPagesPerRun(); got != yagocrawlcontract.DefaultMaxPagesPerRun {
+		t.Fatalf("source max pages per run = %d, want %d", got,
+			yagocrawlcontract.DefaultMaxPagesPerRun)
+	}
 
 	got, err := source.Start(context.Background(), adminui.CrawlStart{
 		Seeds:    []string{"http://a.example", "http://b.example"},
@@ -64,11 +68,16 @@ func TestCrawlSourceStartDispatches(t *testing.T) {
 	if queue.order.Profile.MaxPagesPerHost != yagocrawlcontract.UnlimitedPagesPerHost {
 		t.Fatalf("maxPagesPerHost = %d, want unlimited", queue.order.Profile.MaxPagesPerHost)
 	}
+	if queue.order.Profile.MaxPagesPerRun == nil ||
+		*queue.order.Profile.MaxPagesPerRun != yagocrawlcontract.DefaultMaxPagesPerRun {
+		t.Fatalf("maxPagesPerRun = %v", queue.order.Profile.MaxPagesPerRun)
+	}
 }
 
 func TestCrawlSourceStartAppliesExpertFields(t *testing.T) {
 	queue := &stubOrderQueue{}
 	source := newCrawlSource(testDispatcher(queue))
+	maximum := 900
 
 	if _, err := source.Start(context.Background(), adminui.CrawlStart{
 		Seeds:                []string{"http://a.example"},
@@ -80,6 +89,7 @@ func TestCrawlSourceStartAppliesExpertFields(t *testing.T) {
 		IndexURLMustMatch:    ".*",
 		IndexURLMustNotMatch: `.*/private/.*`,
 		MaxPagesPerHost:      50,
+		MaxPagesPerRun:       &maximum,
 		AllowQueryURLs:       true,
 		FollowNoFollowLinks:  true,
 		RecrawlIfOlder:       "24h",
@@ -91,6 +101,9 @@ func TestCrawlSourceStartAppliesExpertFields(t *testing.T) {
 	profile := queue.order.Profile
 	if profile.MaxPagesPerHost != 50 {
 		t.Fatalf("maxPagesPerHost = %d, want 50", profile.MaxPagesPerHost)
+	}
+	if profile.MaxPagesPerRun == nil || *profile.MaxPagesPerRun != 900 {
+		t.Fatalf("maxPagesPerRun = %v, want 900", profile.MaxPagesPerRun)
 	}
 	if profile.URLMustNotMatch != `.*\.pdf$` || profile.IndexURLMustNotMatch != `.*/private/.*` {
 		t.Fatalf("regex filters not applied: %+v", profile)

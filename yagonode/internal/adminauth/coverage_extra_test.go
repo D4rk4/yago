@@ -139,7 +139,7 @@ func TestSetupFormServerErrorOnCreate(t *testing.T) {
 	}
 }
 
-func TestAPIKeyAuthorizerUnavailableOnStoreError(t *testing.T) {
+func TestAPIKeyAuthorizerRemainsAvailableOnLastUsedStoreError(t *testing.T) {
 	service, engine := scriptedService(t)
 	created := createKey(t, service, ScopeSearchRead)
 	engine.putErr = errors.New("boom")
@@ -148,8 +148,8 @@ func TestAPIKeyAuthorizerUnavailableOnStoreError(t *testing.T) {
 		created.Key,
 		ScopeSearchRead,
 	)
-	if got != APIKeyUnavailable {
-		t.Fatalf("outcome = %v, want unavailable", got)
+	if got != APIKeyAuthorized {
+		t.Fatalf("outcome = %v, want authorized", got)
 	}
 }
 

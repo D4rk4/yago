@@ -85,31 +85,33 @@ type Request struct {
 }
 
 type Result struct {
-	DocumentID            string
-	Analyzer              string
-	EvidenceReady         bool
-	Title                 string
-	URL                   string
-	ClusterID             string
-	RepresentativeURL     string
-	DisplayURL            string
-	Snippet               string
-	QueryMatches          []QueryMatch
-	Score                 float64
-	Evidence              RankingEvidence
-	diversityRelevance    float64
-	diversityRelevanceSet bool
-	Source                Source
-	Host                  string
-	Path                  string
-	File                  string
-	ContentType           string
-	URLHash               string
-	Size                  int
-	Date                  string
-	DateConfidence        float64
-	ContentDomain         ContentDomain
-	Language              string
+	DocumentID                  string
+	Analyzer                    string
+	EvidenceReady               bool
+	EvidenceRequirementOrdinals []int
+	Title                       string
+	URL                         string
+	ClusterID                   string
+	RepresentativeURL           string
+	DisplayURL                  string
+	Snippet                     string
+	QueryMatches                []QueryMatch
+	BodyQueryMatches            []QueryMatch
+	Score                       float64
+	Evidence                    RankingEvidence
+	diversityRelevance          float64
+	diversityRelevanceSet       bool
+	Source                      Source
+	Host                        string
+	Path                        string
+	File                        string
+	ContentType                 string
+	URLHash                     string
+	Size                        int
+	Date                        string
+	DateConfidence              float64
+	ContentDomain               ContentDomain
+	Language                    string
 	// Author is the document's extracted author metadata (HTML meta author),
 	// surfaced for the yacysearch RSS dc:creator field; empty when the document
 	// carried none or for remote results that did not include it.
@@ -130,17 +132,10 @@ type Result struct {
 	SafetyRating         SafetyRating
 	ExplicitProbability  float64
 	SafetyConfidence     float64
-	// Proximity is the document's SDM unordered-window feature in [0,1] for local
-	// results, folded into the score by the ranking profile; zero for remote
-	// results, which carry no document text to scan.
-	Proximity float64
+	Proximity            float64
 	// FieldScores carries the per-field BM25 sub-score contributions when the
 	// searcher computed them (local results with explanation on); nil otherwise.
-	FieldScores map[string]float64
-	// FieldTermPositions maps each field to the 1-based positions of every matched
-	// query term for local results, letting the lexical reranker measure coverage
-	// and proximity over the document instead of the snippet; nil for remote
-	// results, which fall back to the snippet.
+	FieldScores        map[string]float64
 	FieldTermPositions map[string]map[string][]int
 	Explanation        string
 	// Images carries the page's extracted images for the image vertical.

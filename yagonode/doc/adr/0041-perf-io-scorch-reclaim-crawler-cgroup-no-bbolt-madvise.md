@@ -56,7 +56,7 @@ Ship the two parts that fit; do not add raw bbolt mmap madvise.
    shrinking the tier width would, which matters for an I/O-oriented change.
 
 2. **Crawler cgroup limits.** Add `MemoryHigh=60%`, `MemoryMax=85%`,
-   `TasksMax=4096`, and `CPUWeight=50` to the packaged `yagocrawler.service` to
+   `TasksMax=4096`, and `CPUWeight=50` to the packaged `yago-crawler.service` to
    bound headless-Firefox memory and task growth while giving the co-located node
    greater relative CPU weight. The
    percentages are relative to physical RAM (box-agnostic); `MemoryHigh` throttles

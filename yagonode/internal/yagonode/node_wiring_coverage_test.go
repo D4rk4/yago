@@ -63,6 +63,7 @@ func TestCrawlQueueDepthSurfacesBrokerError(t *testing.T) {
 		t.Fatalf("open storage: %v", err)
 	}
 	runtimeProcess, err := buildRuntimeCrawl(
+		context.Background(),
 		crawlConfig{ListenAddr: "127.0.0.1:0"},
 		nodeIdentity(testConfig(t)),
 		storage,

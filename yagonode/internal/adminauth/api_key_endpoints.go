@@ -33,7 +33,10 @@ type apiKeyView struct {
 }
 
 type listAPIKeysResponse struct {
-	Keys []apiKeyView `json:"keys"`
+	Keys       []apiKeyView `json:"keys"`
+	NextCursor string       `json:"nextCursor,omitempty"`
+	Truncated  bool         `json:"truncated,omitempty"`
+	Total      *int         `json:"total,omitempty"`
 }
 
 func mountAPIKeys(mux *http.ServeMux, service *Service) {
@@ -67,6 +70,11 @@ func (s *Service) createAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	created, err := s.apiKeys.create(r.Context(), req.Label, scopes)
 	if err != nil {
+		if message, capacityReached := APIKeyCapacityOperatorMessage(err); capacityReached {
+			writeError(w, http.StatusConflict, message)
+
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "could not create API key")
 
 		return
@@ -75,17 +83,31 @@ func (s *Service) createAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) listAPIKeys(w http.ResponseWriter, r *http.Request) {
-	keys, err := s.apiKeys.list(r.Context())
+	request, err := parseAPIKeyPageRequest(r.URL.Query())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+
+		return
+	}
+	page, err := s.ListAPIKeyPage(r.Context(), request)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list API keys")
 
 		return
 	}
-	views := make([]apiKeyView, 0, len(keys))
-	for _, key := range keys {
-		views = append(views, viewFromInfo(key))
+	views := make([]apiKeyView, 0, len(page.Keys))
+	for _, key := range page.Keys {
+		views = append(views, viewFromPublicInfo(key))
 	}
-	writeJSON(w, http.StatusOK, listAPIKeysResponse{Keys: views})
+	response := listAPIKeysResponse{
+		Keys:       views,
+		NextCursor: page.NextCursor,
+		Truncated:  page.NextCursor != "",
+	}
+	if page.NextCursor != "" || r.URL.Query().Has("cursor") || r.URL.Query().Has("limit") {
+		response.Total = &page.Total
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Service) handleAPIKeyRevoke(w http.ResponseWriter, r *http.Request) {
@@ -116,4 +138,14 @@ func viewFromInfo(info apiKeyInfo) apiKeyView {
 	}
 
 	return view
+}
+
+func viewFromPublicInfo(info APIKeyInfo) apiKeyView {
+	return viewFromInfo(apiKeyInfo{
+		ID:         info.ID,
+		Scopes:     info.Scopes,
+		Label:      info.Label,
+		CreatedAt:  info.CreatedAt,
+		LastUsedAt: info.LastUsedAt,
+	})
 }

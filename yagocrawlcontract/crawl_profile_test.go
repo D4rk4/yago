@@ -1,6 +1,7 @@
 package yagocrawlcontract_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
@@ -41,6 +42,56 @@ func TestDifferingRulesetsDifferHandle(t *testing.T) {
 
 	if a.Handle == b.Handle {
 		t.Errorf("differing rulesets shared handle %q", a.Handle)
+	}
+}
+
+func TestPageBudgetChangesHandleWithoutChangingLegacyHandle(t *testing.T) {
+	legacy := yagocrawlcontract.NewCrawlProfile(baseProfile())
+	raw := fmt.Sprintf(
+		"%s\x00%s\x00%d\x00%s\x00%d\x00%s\x00%s",
+		legacy.Name,
+		legacy.URLMustMatch,
+		legacy.MaxDepth,
+		legacy.URLMustNotMatch,
+		legacy.MaxPagesPerHost,
+		legacy.IndexURLMustMatch,
+		legacy.IndexURLMustNotMatch,
+	)
+	wantLegacy := yagomodel.YaCyHashBase64(raw)[:yagomodel.HashLength]
+	if legacy.Handle != wantLegacy {
+		t.Fatalf("legacy handle = %q, want %q", legacy.Handle, wantLegacy)
+	}
+	legacyAgain := yagocrawlcontract.NewCrawlProfile(baseProfile())
+	if legacy.Handle != legacyAgain.Handle {
+		t.Fatalf("legacy handles differ: %q and %q", legacy.Handle, legacyAgain.Handle)
+	}
+
+	limit := 500
+	bounded := baseProfile()
+	bounded.MaxPagesPerRun = &limit
+	bounded = yagocrawlcontract.NewCrawlProfile(bounded)
+	if bounded.Handle == legacy.Handle {
+		t.Fatalf("bounded profile reused legacy handle %q", bounded.Handle)
+	}
+
+	otherLimit := 501
+	other := baseProfile()
+	other.MaxPagesPerRun = &otherLimit
+	other = yagocrawlcontract.NewCrawlProfile(other)
+	if other.Handle == bounded.Handle {
+		t.Fatalf("different page budgets shared handle %q", bounded.Handle)
+	}
+}
+
+func TestEffectiveMaxPagesPerRunPrefersExplicitLimitAndBoundsFallback(t *testing.T) {
+	maximum := 321
+	profile := yagocrawlcontract.CrawlProfile{MaxPagesPerRun: &maximum}
+	if got := profile.EffectiveMaxPagesPerRun(654); got != maximum {
+		t.Fatalf("explicit maximum = %d, want %d", got, maximum)
+	}
+
+	if got := (yagocrawlcontract.CrawlProfile{}).EffectiveMaxPagesPerRun(-1); got != 0 {
+		t.Fatalf("negative fallback = %d, want zero", got)
 	}
 }
 

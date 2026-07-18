@@ -89,15 +89,14 @@ type SearchResponse struct {
 }
 
 type SearchResult struct {
-	Title         string   `json:"title"`
-	URL           string   `json:"url"`
-	Content       string   `json:"content"`
-	RawContent    *string  `json:"raw_content,omitempty"`
-	Score         float64  `json:"score"`
-	PublishedDate string   `json:"published_date,omitempty"`
-	Favicon       string   `json:"favicon,omitempty"`
-	Source        string   `json:"source,omitempty"`
-	Images        []string `json:"images,omitempty"`
+	Title         string  `json:"title"`
+	URL           string  `json:"url"`
+	Content       string  `json:"content"`
+	RawContent    *string `json:"raw_content"`
+	Score         float64 `json:"score"`
+	PublishedDate string  `json:"published_date,omitempty"`
+	Favicon       string  `json:"favicon,omitempty"`
+	Images        any     `json:"images,omitempty"`
 }
 
 type SearchImage struct {
@@ -109,18 +108,8 @@ type SearchUsage struct {
 	Credits int `json:"credits"`
 }
 
-// ErrorResponse carries both error envelopes: our structured error object and
-// Tavily's documented {"detail": {"error": "..."}} shape, so clients written
-// against either contract can read the failure message.
 type ErrorResponse struct {
-	Error     ErrorBody   `json:"error"`
-	Detail    ErrorDetail `json:"detail"`
-	RequestID string      `json:"request_id"`
-}
-
-type ErrorBody struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Detail ErrorDetail `json:"detail"`
 }
 
 // ErrorDetail is the Tavily-native error envelope body.
@@ -281,12 +270,16 @@ func (e searchEndpoint) searchResponse(
 		return SearchResponse{}, err
 	}
 	if coreReq.Limit == 0 {
+		results := []SearchResult{}
 		return SearchResponse{
-			Query:        strings.TrimSpace(req.Query),
-			Results:      []SearchResult{},
-			ResponseTime: e.now().Sub(start).Seconds(),
-			Usage:        responseUsage(req),
-			RequestID:    id,
+			Query:          coreReq.Query,
+			Answer:         responseAnswer(req, results),
+			Images:         responseImages(req, nil),
+			Results:        results,
+			ResponseTime:   e.now().Sub(start).Seconds(),
+			AutoParameters: responseAutoParameters(req),
+			Usage:          responseUsage(req),
+			RequestID:      id,
 		}, nil
 	}
 
@@ -310,6 +303,7 @@ func (e searchEndpoint) searchResponse(
 	if err != nil {
 		return SearchResponse{}, err
 	}
+	applyCanonicalRankScores(results)
 
 	return SearchResponse{
 		Query:          coreReq.Query,
@@ -317,7 +311,7 @@ func (e searchEndpoint) searchResponse(
 		Images:         responseImages(req, images),
 		Results:        results,
 		ResponseTime:   e.now().Sub(start).Seconds(),
-		AutoParameters: responseAutoParameters(req, coreReq),
+		AutoParameters: responseAutoParameters(req),
 		Usage:          responseUsage(req),
 		RequestID:      id,
 	}, nil
@@ -366,6 +360,9 @@ func coreRequest(req SearchRequest) (searchcore.Request, error) {
 		AllowWebFallback: true,
 		MinDate:          minDate,
 		MaxDate:          maxDate,
+	}
+	if source == searchcore.SourceGlobal {
+		coreReq.Verify = searchcore.VerifyIfExist
 	}
 	if limit == 0 {
 		coreReq.Limit = 0
@@ -424,13 +421,15 @@ func requestLimit(maxResults *int) (int, error) {
 }
 
 func sourceForDepth(depth string) (searchcore.Source, error) {
-	switch strings.ToLower(strings.TrimSpace(depth)) {
-	case "", "basic", "fast", "ultra-fast":
+	switch normalizedSearchDepth(depth) {
+	case "basic", "fast", "ultra-fast":
 		return searchcore.SourceLocal, nil
 	case "advanced":
 		return searchcore.SourceGlobal, nil
 	default:
-		return "", badRequest("unsupported search_depth")
+		return "", badRequest(
+			"Invalid search depth. Must be 'ultra-fast', 'fast', 'basic' or 'advanced'.",
+		)
 	}
 }
 
@@ -444,7 +443,7 @@ func validateRequestOptions(req SearchRequest) error {
 	if err := validateTimeRange(req.TimeRange); err != nil {
 		return err
 	}
-	if err := validateChunksPerSource(req.ChunksPerSource); err != nil {
+	if err := validateChunksPerSource(req.SearchDepth, req.ChunksPerSource); err != nil {
 		return err
 	}
 	if err := validateDateRange(req.StartDate, req.EndDate); err != nil {
@@ -452,6 +451,18 @@ func validateRequestOptions(req SearchRequest) error {
 	}
 	if err := validateCountry(req.Country); err != nil {
 		return err
+	}
+	if strings.TrimSpace(req.Country) != "" && normalizedTopic(req.Topic) != "general" {
+		return badRequest("country is available only when topic is general")
+	}
+	if req.SafeSearch && unsupportedSafeSearchDepth(req.SearchDepth) {
+		return badRequest("safe_search is not supported for fast or ultra-fast search depth")
+	}
+	if len(req.IncludeDomains) > maximumIncludeDomains {
+		return badRequest("include_domains must contain at most 300 domains")
+	}
+	if len(req.ExcludeDomains) > maximumExcludeDomains {
+		return badRequest("exclude_domains must contain at most 150 domains")
 	}
 	for _, domain := range append(req.IncludeDomains, req.ExcludeDomains...) {
 		if normalizeDomain(domain) == "" {
@@ -462,9 +473,12 @@ func validateRequestOptions(req SearchRequest) error {
 	return nil
 }
 
-func validateChunksPerSource(value *int) error {
+func validateChunksPerSource(depth string, value *int) error {
 	if value == nil {
 		return nil
+	}
+	if normalizedSearchDepth(depth) != "advanced" {
+		return badRequest("chunks_per_source is available only when search_depth is advanced")
 	}
 	if *value < 1 || *value > 3 {
 		return badRequest("chunks_per_source must be between 1 and 3")
@@ -474,12 +488,21 @@ func validateChunksPerSource(value *int) error {
 }
 
 func validateTopic(topic string) error {
-	switch strings.ToLower(strings.TrimSpace(topic)) {
+	switch normalizedTopic(topic) {
 	case "", "general", "news", "finance":
 		return nil
 	default:
 		return badRequest("unsupported topic")
 	}
+}
+
+func normalizedTopic(topic string) string {
+	normalized := strings.ToLower(strings.TrimSpace(topic))
+	if normalized == "" {
+		return "general"
+	}
+
+	return normalized
 }
 
 func validateTimeRange(value string) error {
@@ -518,18 +541,6 @@ func parseOptionalDate(value, field string) (time.Time, error) {
 	}
 
 	return parsed, nil
-}
-
-func validateCountry(value string) error {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
-	if len([]rune(value)) > 64 || strings.ContainsAny(value, "\r\n\t") {
-		return badRequest("country must be a country name")
-	}
-
-	return nil
 }
 
 func (e searchEndpoint) responseResults(
@@ -584,7 +595,7 @@ func (e searchEndpoint) responseResult(
 ) (SearchResult, []SearchImage, bool, error) {
 	content := result.Snippet
 	var raw *string
-	var resultImages []string
+	resultImages := emptySearchResultImages(req)
 	var imageDetails []SearchImage
 	doc, found, err := e.document(ctx, result.URL)
 	if err != nil {
@@ -618,9 +629,8 @@ func (e searchEndpoint) responseResult(
 		Content:       content,
 		RawContent:    raw,
 		Score:         result.Score,
-		PublishedDate: result.Date,
+		PublishedDate: responsePublishedDate(req, result.Date),
 		Favicon:       responseFavicon(req, result.URL),
-		Source:        string(coreReq.Source),
 		Images:        resultImages,
 	}, imageDetails, true, nil
 }
@@ -778,7 +788,7 @@ func responseImages(req SearchRequest, images []SearchImage) any {
 func resultImagesFromDocument(
 	req SearchRequest,
 	doc documentstore.Document,
-) ([]string, []SearchImage) {
+) (any, []SearchImage) {
 	if !req.IncludeImages {
 		return nil, nil
 	}
@@ -799,7 +809,22 @@ func resultImagesFromDocument(
 		images = append(images, item)
 	}
 
+	if req.IncludeImageDescriptions {
+		return images, images
+	}
+
 	return urls, images
+}
+
+func emptySearchResultImages(req SearchRequest) any {
+	if !req.IncludeImages {
+		return nil
+	}
+	if req.IncludeImageDescriptions {
+		return []SearchImage{}
+	}
+
+	return []string{}
 }
 
 func appendResponseImages(out, in []SearchImage) []SearchImage {
@@ -813,10 +838,7 @@ func appendResponseImages(out, in []SearchImage) []SearchImage {
 	return out
 }
 
-func responseAutoParameters(
-	req SearchRequest,
-	coreReq searchcore.Request,
-) map[string]string {
+func responseAutoParameters(req SearchRequest) map[string]string {
 	if !req.AutoParameters {
 		return nil
 	}
@@ -824,24 +846,16 @@ func responseAutoParameters(
 	if topic == "" {
 		topic = "general"
 	}
-	depth := strings.ToLower(strings.TrimSpace(req.SearchDepth))
-	if depth == "" {
-		depth = "basic"
-	}
+	depth := normalizedSearchDepth(req.SearchDepth)
 
 	return map[string]string{
 		"topic":        topic,
 		"search_depth": depth,
-		"source":       string(coreReq.Source),
 	}
 }
 
 func responseUsage(req SearchRequest) *SearchUsage {
-	if !req.IncludeUsage {
-		return nil
-	}
-
-	return &SearchUsage{Credits: 0}
+	return responseUsageEnabled(req.IncludeUsage)
 }
 
 func responseFavicon(req SearchRequest, rawURL string) string {
@@ -956,7 +970,7 @@ func (m *rawContentMode) UnmarshalJSON(raw []byte) error {
 	var enabled bool
 	if err := json.Unmarshal(raw, &enabled); err == nil {
 		if enabled {
-			*m = "true"
+			*m = "markdown"
 		} else {
 			*m = "false"
 		}
@@ -968,8 +982,11 @@ func (m *rawContentMode) UnmarshalJSON(raw []byte) error {
 		return fmt.Errorf("include_raw_content: %w", err)
 	}
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", "false", "true", "markdown", "text":
+	case "", "false", "markdown", "text":
 		*m = rawContentMode(strings.ToLower(strings.TrimSpace(value)))
+		return nil
+	case "true":
+		*m = "markdown"
 		return nil
 	default:
 		return badRequest("unsupported include_raw_content")
@@ -1013,16 +1030,11 @@ func generatedRequestID() string {
 	)
 }
 
-func writeError(w http.ResponseWriter, status int, code, message, requestID string) {
+func writeError(w http.ResponseWriter, status int, _ string, message, _ string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(ErrorResponse{
-		Error: ErrorBody{
-			Code:    code,
-			Message: message,
-		},
-		Detail:    ErrorDetail{Error: message},
-		RequestID: requestID,
+		Detail: ErrorDetail{Error: message},
 	})
 }
 

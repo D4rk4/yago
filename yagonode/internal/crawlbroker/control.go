@@ -1,41 +1,54 @@
 package crawlbroker
 
 import (
+	"context"
 	"encoding/hex"
 	"sync"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 )
 
-// ControlRegistry queues control directives per worker until the worker's next
-// heartbeat drains them. It is the node's side of the crawl control plane: the
-// admin surface enqueues a directive for the worker running a target run, and the
-// heartbeat handler delivers it.
 type ControlRegistry struct {
 	mu                            sync.Mutex
-	pending                       map[string][]yagocrawlcontract.CrawlControlDirective
+	directives                    controlDirectiveLedger
 	fetchWorkers                  uint32
 	fetchWorkersSet               bool
 	prioritizeAutomaticDiscovery  bool
 	automaticDiscoveryPrioritySet bool
 	// workers counts the live StreamOrders connections per worker id so a
 	// broadcast (RestartWorkers) reaches exactly the crawlers attached now.
-	workers       map[string]int
-	activeFetches map[string]uint32
+	workers               map[string]int
+	activeFetches         map[string]crawlerActiveFetches
+	storageStates         map[string]crawlerStorageState
+	initialized           map[string]bool
+	storagePressurePolicy yagocrawlcontract.StoragePressurePolicy
+	now                   func() time.Time
 }
 
 func newControlRegistry(defaults ...crawlerControlDefaults) *ControlRegistry {
+	return newControlRegistryWithLedger(newMemoryControlDirectiveLedger(), defaults...)
+}
+
+func newControlRegistryWithLedger(
+	directives controlDirectiveLedger,
+	defaults ...crawlerControlDefaults,
+) *ControlRegistry {
 	registry := &ControlRegistry{
-		pending:       make(map[string][]yagocrawlcontract.CrawlControlDirective),
+		directives:    directives,
 		workers:       make(map[string]int),
-		activeFetches: make(map[string]uint32),
+		activeFetches: make(map[string]crawlerActiveFetches),
+		storageStates: make(map[string]crawlerStorageState),
+		initialized:   make(map[string]bool),
+		now:           time.Now,
 	}
 	if len(defaults) > 0 {
 		registry.fetchWorkers = defaults[0].fetchWorkers
 		registry.fetchWorkersSet = defaults[0].fetchWorkers > 0
 		registry.prioritizeAutomaticDiscovery = defaults[0].prioritizeAutomaticDiscovery
 		registry.automaticDiscoveryPrioritySet = true
+		registry.storagePressurePolicy = defaults[0].storagePressurePolicy
 	}
 
 	return registry
@@ -53,7 +66,10 @@ func (r *ControlRegistry) register(workerID string) {
 	r.workers[workerID]++
 	if r.workers[workerID] == 1 {
 		delete(r.activeFetches, workerID)
-		r.pending[workerID] = append(r.pending[workerID], r.initialDirectivesLocked()...)
+		delete(r.storageStates, workerID)
+		if !r.initialized[workerID] {
+			r.initialized[workerID] = r.ensureInitialLocked(context.Background(), workerID) == nil
+		}
 	}
 }
 
@@ -70,11 +86,16 @@ func (r *ControlRegistry) SetFetchWorkers(fetchWorkers int) int {
 	defer r.mu.Unlock()
 	r.fetchWorkers = uint32(fetchWorkers)
 	r.fetchWorkersSet = true
+	signalled := 0
 	for workerID := range r.workers {
-		r.pending[workerID] = append(r.pending[workerID], directive)
+		if r.enqueueLocked(workerID, directive) {
+			signalled++
+		} else {
+			r.initialized[workerID] = false
+		}
 	}
 
-	return len(r.workers)
+	return signalled
 }
 
 func (r *ControlRegistry) unregister(workerID string) bool {
@@ -87,8 +108,9 @@ func (r *ControlRegistry) unregister(workerID string) bool {
 
 	if r.workers[workerID] <= 1 {
 		delete(r.workers, workerID)
-		delete(r.pending, workerID)
 		delete(r.activeFetches, workerID)
+		delete(r.storageStates, workerID)
+		delete(r.initialized, workerID)
 
 		return true
 	}
@@ -97,21 +119,20 @@ func (r *ControlRegistry) unregister(workerID string) bool {
 	return false
 }
 
-// RestartWorkers queues a restart directive for every connected worker and
-// returns how many were signalled. Each directive is one-shot: a worker drains
-// it on its next heartbeat, shuts down, and reconnects without it, so the
-// broadcast does not loop.
 func (r *ControlRegistry) RestartWorkers() int {
 	restart := yagocrawlcontract.CrawlControlDirective{Kind: yagocrawlcontract.CrawlControlRestart}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	signalled := 0
 	for workerID := range r.workers {
-		r.pending[workerID] = append(r.pending[workerID], restart)
+		if r.enqueueLocked(workerID, restart) {
+			signalled++
+		}
 	}
 
-	return len(r.workers)
+	return signalled
 }
 
 // Enqueue queues a directive for a worker; it is delivered on the worker's next
@@ -126,24 +147,23 @@ func (r *ControlRegistry) Enqueue(
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.workers[workerID] == 0 {
+	if !validControlDirective(directive) {
+		return false
+	}
+	if r.workers[workerID] == 0 && directive.RunID == "" {
 		return false
 	}
 
-	r.pending[workerID] = append(r.pending[workerID], directive)
-
-	return true
+	return r.enqueueLocked(workerID, directive)
 }
 
-// drain returns and clears the directives queued for a worker.
-func (r *ControlRegistry) drain(workerID string) []yagocrawlcontract.CrawlControlDirective {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (r *ControlRegistry) enqueueLocked(
+	workerID string,
+	directive yagocrawlcontract.CrawlControlDirective,
+) bool {
+	_, err := r.directives.Enqueue(context.Background(), workerID, directive)
 
-	directives := r.pending[workerID]
-	delete(r.pending, workerID)
-
-	return directives
+	return err == nil
 }
 
 func directivesToProto(
@@ -172,6 +192,7 @@ func directiveToProto(
 	}
 
 	return &crawlrpc.CrawlControlDirective{
+		DirectiveId:                  directive.DirectiveID,
 		Kind:                         controlKindToProto(directive.Kind),
 		RunId:                        runID,
 		PagesPerMinute:               directive.PagesPerMinute,

@@ -15,9 +15,8 @@ import (
 
 const (
 	// minVariantLen skips short words where a shared stem is too weak a signal.
-	minVariantLen = 4
-	// maxVariants bounds the fan-out a single term can cause in the swarm search.
-	maxVariants = 6
+	minVariantLen   = 4
+	MaximumVariants = 6
 	// maxFormsPerStem caps how many surface forms a stem retains, keeping the most
 	// frequent ones.
 	maxFormsPerStem = 8
@@ -95,7 +94,7 @@ func topForms(forms []countedForm) []string {
 // normalizeVariants puts the original word first, drops blanks and duplicates,
 // and caps the result.
 func normalizeVariants(word string, extra []string) []string {
-	out := make([]string, 0, maxVariants)
+	out := make([]string, 0, MaximumVariants)
 	seen := map[string]bool{}
 	for _, candidate := range append([]string{word}, extra...) {
 		candidate = strings.TrimSpace(candidate)
@@ -104,7 +103,7 @@ func normalizeVariants(word string, extra []string) []string {
 		}
 		seen[candidate] = true
 		out = append(out, candidate)
-		if len(out) == maxVariants {
+		if len(out) == MaximumVariants {
 			break
 		}
 	}

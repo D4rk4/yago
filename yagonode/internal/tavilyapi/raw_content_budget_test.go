@@ -274,8 +274,8 @@ func TestRawSearchAndCrawlDetachRetainedFields(t *testing.T) {
 	raw := fields[3]
 	item := SearchResult{
 		Title: fields[0], URL: fields[1], Content: fields[2], RawContent: &raw,
-		PublishedDate: fields[4], Favicon: fields[5], Source: fields[6],
-		Images: []string{fields[7]},
+		PublishedDate: fields[4], Favicon: fields[5],
+		Images: []SearchImage{{URL: fields[7], Description: fields[8]}},
 	}
 	retained, images, err := retainRawSearchResult(
 		newRawSearchResultBudget(1),
@@ -285,6 +285,10 @@ func TestRawSearchAndCrawlDetachRetainedFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("retain search result: %v", err)
 	}
+	retainedResultImages, ok := retained.Images.([]SearchImage)
+	if !ok || len(retainedResultImages) != 1 {
+		t.Fatalf("retained result images = %#v", retained.Images)
+	}
 	retainedFields := []string{
 		retained.Title,
 		retained.URL,
@@ -292,20 +296,32 @@ func TestRawSearchAndCrawlDetachRetainedFields(t *testing.T) {
 		*retained.RawContent,
 		retained.PublishedDate,
 		retained.Favicon,
-		retained.Source,
-		retained.Images[0],
+		retainedResultImages[0].URL,
+		retainedResultImages[0].Description,
 		images[0].URL,
 		images[0].Description,
 	}
 	sourceFields := []string{
 		fields[0], fields[1], fields[2], fields[3], fields[4],
-		fields[5], fields[6], fields[7], fields[7], fields[8],
+		fields[5], fields[7], fields[8], fields[7], fields[8],
 	}
 	for index := range retainedFields {
 		if retainedStringAddress(retainedFields[index]) ==
 			retainedStringAddress(sourceFields[index]) {
 			t.Fatalf("search field %d retained source backing storage", index)
 		}
+	}
+	stringImageItem := SearchResult{Images: []string{fields[7]}}
+	retainedStringImageItem, _, err := retainRawSearchResult(
+		newRawSearchResultBudget(1), stringImageItem, nil,
+	)
+	if err != nil {
+		t.Fatalf("retain string search image: %v", err)
+	}
+	retainedStringImages, ok := retainedStringImageItem.Images.([]string)
+	if !ok || len(retainedStringImages) != 1 ||
+		retainedStringAddress(retainedStringImages[0]) == retainedStringAddress(fields[7]) {
+		t.Fatalf("retained string images = %#v", retainedStringImageItem.Images)
 	}
 	crawlURL, ok := retainCrawlURL(&rawContentBudget{}, fields[1])
 	if !ok || retainedStringAddress(crawlURL) == retainedStringAddress(fields[1]) {
@@ -317,12 +333,12 @@ func maximumSearchRawTextBytes(item SearchResult) int {
 	budget := newRawSearchResultBudget(1)
 	retained := maximumRawContentResponseBytes - budget.retained -
 		len(item.Title) - len(item.URL) - len(item.Content) - len(item.PublishedDate) -
-		len(item.Favicon) - len(item.Source)
+		len(item.Favicon)
 	output := maximumRawContentResponseBytes - budget.output -
 		rawContentResultJSONBytes - rawContentJSONStringBytes(item.Title) -
 		rawContentJSONStringBytes(item.URL) - rawContentJSONStringBytes(item.Content) -
 		rawContentJSONStringBytes(item.PublishedDate) -
-		rawContentJSONStringBytes(item.Favicon) - rawContentJSONStringBytes(item.Source) - 2
+		rawContentJSONStringBytes(item.Favicon) - 2
 
 	return min(retained, output)
 }

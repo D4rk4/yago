@@ -194,7 +194,7 @@ func TestDurableOrderQueueFIFO(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"a", "b", "c"} {
-		data, _, err := queue.leaseNext(ctx, "worker")
+		data, err := queue.leaseNext(ctx)
 		if err != nil {
 			t.Fatalf("dequeue: %v", err)
 		}
@@ -225,7 +225,7 @@ func TestPublishOnceIsIdempotent(t *testing.T) {
 	}
 
 	for _, want := range []string{"x", "z"} {
-		data, _, err := queue.leaseNext(ctx, "worker")
+		data, err := queue.leaseNext(ctx)
 		if err != nil {
 			t.Fatalf("dequeue: %v", err)
 		}
@@ -262,7 +262,7 @@ func TestDurableOrderQueueDequeueBlocksThenWakes(t *testing.T) {
 
 	got := make(chan string, 1)
 	go func() {
-		data, _, err := queue.leaseNext(ctx, "worker")
+		data, err := queue.leaseNext(ctx)
 		if err != nil {
 			got <- "error"
 
@@ -293,7 +293,7 @@ func TestDurableOrderQueueDequeueCancelledWhileBlocked(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, _, err := queue.leaseNext(ctx, "worker")
+		_, err := queue.leaseNext(ctx)
 		done <- err
 	}()
 
@@ -313,7 +313,7 @@ func TestDurableOrderQueueDequeueHonorsContext(t *testing.T) {
 	queue := memQueue(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, _, err := queue.leaseNext(ctx, "worker"); err == nil {
+	if _, err := queue.leaseNext(ctx); err == nil {
 		t.Fatal("expected dequeue to fail on cancelled context")
 	}
 }
@@ -345,7 +345,9 @@ func TestSequenceCodecRejectsBadLength(t *testing.T) {
 func TestNewDurableOrderQueueRegisterErrors(t *testing.T) {
 	for _, bucket := range []vault.Name{
 		orderBucket, normalOrderIndexBucket, automaticOrderIndexBucket,
-		seqBucket, idempotencyBucket, leaseBucket,
+		seqBucket, idempotencyBucket, leaseBucket, leaseSettlementBucket,
+		leaseSettlementOrderBucket, leaseSettlementExpiryBucket, leaseControlTargetBucket,
+		completedLeaseControlTargetBucket, terminalSettlementSecretBucket,
 	} {
 		engine := newScriptedEngine()
 		engine.provisionErrors[bucket] = errors.New("provision failed")

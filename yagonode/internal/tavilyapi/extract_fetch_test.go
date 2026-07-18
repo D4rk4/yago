@@ -3,6 +3,8 @@ package tavilyapi
 import (
 	"context"
 	"errors"
+	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -33,7 +35,7 @@ func TestExtractFetchesUncachedURL(t *testing.T) {
 	if len(resp.Results) != 1 || len(resp.FailedResults) != 0 {
 		t.Fatalf("results=%d failed=%d", len(resp.Results), len(resp.FailedResults))
 	}
-	if resp.Results[0].RawContent != "Body text" {
+	if resp.Results[0].RawContent != "# T\n\nBody text" {
 		t.Fatalf("raw = %q", resp.Results[0].RawContent)
 	}
 	if fetcher.gotURL == "" {
@@ -142,5 +144,48 @@ func TestExtractFetchIncludesFavicon(t *testing.T) {
 	if len(resp.Results) != 1 ||
 		resp.Results[0].Favicon != "https://fresh.example/favicon.ico" {
 		t.Fatalf("favicon = %#v, want the derived favicon URL", resp.Results)
+	}
+}
+
+func TestExtractFetchIncludesImages(t *testing.T) {
+	fetcher := &stubContentFetcher{content: FetchedContent{
+		Title: "T", Text: "Body", Images: []string{"https://fresh.example/image.png"},
+	}}
+	handler := NewExtractEndpointWithFetcher(
+		&fakeDocuments{},
+		SearchAccessPolicy{BearerToken: extractTestKey},
+		fetcher,
+	)
+
+	resp := decodeExtract(
+		t,
+		postExtract(
+			t,
+			handler,
+			`{"urls":"https://fresh.example/","include_images":true}`,
+			extractTestKey,
+		),
+	)
+	if len(resp.Results) != 1 || len(resp.Results[0].Images) != 1 ||
+		resp.Results[0].Images[0] != "https://fresh.example/image.png" {
+		t.Fatalf("results = %#v", resp.Results)
+	}
+}
+
+func TestExtractFetchRequestedEmptyImagesArePresent(t *testing.T) {
+	fetcher := &stubContentFetcher{content: FetchedContent{Title: "T", Text: "Body"}}
+	handler := NewExtractEndpointWithFetcher(
+		&fakeDocuments{},
+		SearchAccessPolicy{BearerToken: extractTestKey},
+		fetcher,
+	)
+	rec := postExtract(
+		t,
+		handler,
+		`{"urls":"https://fresh.example/","include_images":true}`,
+		extractTestKey,
+	)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"images":[]`) {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }

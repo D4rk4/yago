@@ -165,6 +165,31 @@ func TestUsedBytesReturnsClosedDatabaseError(t *testing.T) {
 	}
 }
 
+func TestBucketProvisionedReportsPresenceCancellationAndClosedDatabase(t *testing.T) {
+	db := openTestBolt(t)
+	engine := &engine{db: db}
+	present, err := engine.BucketProvisioned(context.Background(), vault.Name("bucket"))
+	if err != nil || !present {
+		t.Fatalf("provisioned bucket presence=%t error=%v", present, err)
+	}
+	present, err = engine.BucketProvisioned(context.Background(), vault.Name("absent"))
+	if err != nil || present {
+		t.Fatalf("absent bucket presence=%t error=%v", present, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = engine.BucketProvisioned(ctx, vault.Name("bucket"))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled bucket presence error = %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close database: %v", err)
+	}
+	if _, err := engine.BucketProvisioned(context.Background(), vault.Name("bucket")); err == nil {
+		t.Fatal("closed database bucket inspection succeeded")
+	}
+}
+
 func TestBoltBucketRejectsReadOnlyMutation(t *testing.T) {
 	db := openTestBolt(t)
 	if err := db.View(func(tx *bolt.Tx) error {

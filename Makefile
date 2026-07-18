@@ -1,5 +1,5 @@
 GO ?= go
-MODULES := yagonode yagomodel yagoproto yagocrawlcontract yagoegress yagocrawler
+MODULES := yagonode yagomodel yagoproto yagocrawlcontract yagoegress yago-crawler
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 100
 COVER_EXCLUDE := /internal/vaulttest/|/test/e2e/|/crawlrpc/
@@ -142,15 +142,15 @@ e2e-crawler-image:
 	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build \
 		--build-arg SOURCE_REVISION=$(SOURCE_REVISION) \
 		--build-arg VERSION=$(PRODUCT_VERSION) \
-		-f yagocrawler/Dockerfile -t $(E2E_CRAWLER_IMAGE) .
+		-f yago-crawler/Dockerfile -t $(E2E_CRAWLER_IMAGE) .
 
 e2e-node:
 	cd yagonode/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YAGO_NODE_IMAGE=$(E2E_NODE_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
 
 e2e-crawler:
-	cd yagocrawler/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) \
-		YAGOCRAWLER_IMAGE=$(E2E_CRAWLER_IMAGE) YAGO_NODE_IMAGE=$(E2E_NODE_IMAGE) \
+	cd yago-crawler/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) \
+		YAGO_CRAWLER_IMAGE=$(E2E_CRAWLER_IMAGE) YAGO_NODE_IMAGE=$(E2E_NODE_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
 
 e2e: e2e-node e2e-crawler

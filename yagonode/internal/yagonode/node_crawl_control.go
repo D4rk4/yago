@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	errUnknownCrawlRun    = errors.New("unknown crawl run")
-	errUnknownCrawlAction = errors.New("unknown crawl control action")
-	errCrawlWorkerOffline = errors.New("crawl worker is offline")
+	errUnknownCrawlRun         = errors.New("unknown crawl run")
+	errUnknownCrawlAction      = errors.New("unknown crawl control action")
+	errCrawlControlUnavailable = errors.New("crawl control unavailable")
 )
 
 // crawlControlRegistry returns the broker's control registry when the runtime is a
@@ -90,7 +90,7 @@ func (s *crawlControlSource) Control(ctx context.Context, req adminui.CrawlContr
 		RunID:          req.RunID,
 		PagesPerMinute: req.PagesPerMinute,
 	}) {
-		return fmt.Errorf("%w: %q", errCrawlWorkerOffline, worker)
+		return fmt.Errorf("%w: %q", errCrawlControlUnavailable, worker)
 	}
 	if kind == yagocrawlcontract.CrawlControlSetRate {
 		s.runs.SetRate(req.RunID, req.PagesPerMinute)

@@ -118,7 +118,10 @@ func TestPortalThemeAdminSurfacesStoreErrors(t *testing.T) {
 func TestCompactOnceLogsCompactError(t *testing.T) {
 	t.Parallel()
 	// A failing compactor takes the error path without panicking.
-	compactOnce(context.Background(), &stubCompactor{err: errors.New("boom")})
+	compactOnce(context.Background(), &stubCompactor{
+		headroom: 1,
+		err:      errors.New("boom"),
+	})
 }
 
 func TestCompactorSourceSurfacesCompactError(t *testing.T) {
@@ -216,6 +219,7 @@ func TestBuildCrawlRuntimeAppliesQualityGate(t *testing.T) {
 	}
 
 	runtime, err := buildCrawlRuntime(
+		context.Background(),
 		crawlConfig{ListenAddr: "127.0.0.1:0", QualityGate: true},
 		nodeIdentity(testConfig(t)),
 		storage,

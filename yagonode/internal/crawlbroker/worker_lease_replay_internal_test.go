@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
@@ -32,7 +35,9 @@ func TestStreamOrdersReplaysWorkerLeaseBeforePendingOrder(t *testing.T) {
 			cancel()
 		}
 	}}
-	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{WorkerId: "worker-a"}, stream)
+	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{
+		WorkerId: "worker-a", WorkerSessionId: testWorkerSessionID,
+	}, stream)
 
 	if len(stream.sent) != 2 {
 		t.Fatalf("sent %d orders, want replay and pending order", len(stream.sent))
@@ -72,7 +77,9 @@ func TestDisconnectedLeaseCannotMoveToAnotherWorkerBeforeExpiry(t *testing.T) {
 
 	aCtx, cancelA := context.WithCancel(context.Background())
 	aStream := &fakeOrderStream{ctx: aCtx, onSend: cancelA}
-	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{WorkerId: "worker-a"}, aStream)
+	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{
+		WorkerId: "worker-a", WorkerSessionId: testWorkerSessionID,
+	}, aStream)
 	leaseID := aStream.sent[0].GetLeaseId()
 
 	parked := signalOnQueueWait(t)
@@ -81,7 +88,9 @@ func TestDisconnectedLeaseCannotMoveToAnotherWorkerBeforeExpiry(t *testing.T) {
 	bDone := make(chan error, 1)
 	go func() {
 		bDone <- server.StreamOrders(
-			&crawlrpc.WorkerRegistration{WorkerId: "worker-b"},
+			&crawlrpc.WorkerRegistration{
+				WorkerId: "worker-b", WorkerSessionId: testWorkerSessionID,
+			},
 			bStream,
 		)
 	}()
@@ -96,7 +105,9 @@ func TestDisconnectedLeaseCannotMoveToAnotherWorkerBeforeExpiry(t *testing.T) {
 
 	reconnectCtx, cancelReconnect := context.WithCancel(context.Background())
 	reconnect := &fakeOrderStream{ctx: reconnectCtx, onSend: cancelReconnect}
-	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{WorkerId: "worker-a"}, reconnect)
+	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{
+		WorkerId: "worker-a", WorkerSessionId: testWorkerSessionID,
+	}, reconnect)
 	if len(reconnect.sent) != 1 || reconnect.sent[0].GetLeaseId() != leaseID {
 		t.Fatalf("A reconnect leases = %#v, want same lease %q", reconnect.sent, leaseID)
 	}
@@ -112,7 +123,7 @@ func TestDisconnectedLeaseCannotMoveToAnotherWorkerBeforeExpiry(t *testing.T) {
 	}
 }
 
-func TestExpiredLeaseMovesToAnotherWorkerExactlyOnce(t *testing.T) {
+func TestExpiredCheckpointLeaseResumesOnlyOnOwningWorker(t *testing.T) {
 	set := withClock(t)
 	base := time.Unix(6000, 0)
 	set(base)
@@ -125,16 +136,20 @@ func TestExpiredLeaseMovesToAnotherWorkerExactlyOnce(t *testing.T) {
 
 	aCtx, cancelA := context.WithCancel(context.Background())
 	aStream := &fakeOrderStream{ctx: aCtx, onSend: cancelA}
-	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{WorkerId: "worker-a"}, aStream)
+	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{
+		WorkerId: "worker-a", WorkerSessionId: testWorkerSessionID,
+	}, aStream)
 	oldLeaseID := aStream.sent[0].GetLeaseId()
 
 	parked := signalOnQueueWait(t)
 	bCtx, cancelB := context.WithCancel(context.Background())
-	bStream := &fakeOrderStream{ctx: bCtx, onSend: cancelB}
+	bStream := &fakeOrderStream{ctx: bCtx}
 	bDone := make(chan error, 1)
 	go func() {
 		bDone <- server.StreamOrders(
-			&crawlrpc.WorkerRegistration{WorkerId: "worker-b"},
+			&crawlrpc.WorkerRegistration{
+				WorkerId: "worker-b", WorkerSessionId: testWorkerSessionID,
+			},
 			bStream,
 		)
 	}()
@@ -147,28 +162,41 @@ func TestExpiredLeaseMovesToAnotherWorkerExactlyOnce(t *testing.T) {
 	if err := queue.sweepExpired(context.Background()); err != nil {
 		t.Fatalf("sweep expired lease: %v", err)
 	}
+	if _, found := leaseRecordFor(t, queue, oldLeaseID); !found {
+		t.Fatal("owner-affined lease was removed after expiry")
+	}
+	if n := pendingCount(t, queue); n != 0 {
+		t.Fatalf("pending = %d, want owner-affined lease parked", n)
+	}
+	reconnectContext, cancelReconnect := context.WithCancel(context.Background())
+	reconnect := &fakeOrderStream{ctx: reconnectContext, onSend: cancelReconnect}
+	if err := server.StreamOrders(
+		&crawlrpc.WorkerRegistration{
+			WorkerId: "worker-a", WorkerSessionId: "restarted-session",
+		},
+		reconnect,
+	); status.Code(err) != codes.Canceled {
+		t.Fatalf("owner reconnect status = %v, want Canceled", status.Code(err))
+	}
+	if len(reconnect.sent) != 1 || reconnect.sent[0].GetLeaseId() != oldLeaseID {
+		t.Fatalf("owner reconnect leases = %#v, want %q", reconnect.sent, oldLeaseID)
+	}
+	cancelB()
 	select {
 	case <-bDone:
 	case <-time.After(time.Second):
-		t.Fatal("worker B did not receive expired work")
+		t.Fatal("worker B stream did not stop")
 	}
-	if len(bStream.sent) != 1 {
-		t.Fatalf("worker B received %d orders, want 1", len(bStream.sent))
-	}
-	if bStream.sent[0].GetLeaseId() == oldLeaseID {
-		t.Fatal("globally reassigned order retained the expired lease id")
-	}
-	if _, ok := leaseRecordFor(t, queue, oldLeaseID); ok {
-		t.Fatal("expired lease remains after reassignment")
-	}
-	if n := pendingCount(t, queue); n != 0 {
-		t.Fatalf("pending = %d, want reassigned order leased once", n)
+	if len(bStream.sent) != 0 {
+		t.Fatalf("worker B received %d owner-affined orders", len(bStream.sent))
 	}
 	if err := queue.sweepExpired(context.Background()); err != nil {
 		t.Fatalf("second sweep: %v", err)
 	}
-	if n := pendingCount(t, queue); n != 0 {
-		t.Fatalf("pending after second sweep = %d, want 0", n)
+	record, found := leaseRecordFor(t, queue, oldLeaseID)
+	if !found || record.WorkerID != "worker-a" ||
+		record.WorkerSessionID != "restarted-session" {
+		t.Fatalf("resumed lease = %#v/%v", record, found)
 	}
 }
 
@@ -288,7 +316,9 @@ func TestStreamOrdersKeepsLeaseWhenReplaySendFails(t *testing.T) {
 	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
 	stream := &fakeOrderStream{ctx: context.Background(), sendErr: errors.New("stream broken")}
 	if err := server.StreamOrders(
-		&crawlrpc.WorkerRegistration{WorkerId: "worker-a"},
+		&crawlrpc.WorkerRegistration{
+			WorkerId: "worker-a", WorkerSessionId: testWorkerSessionID,
+		},
 		stream,
 	); err == nil {
 		t.Fatal("expected replay send error")

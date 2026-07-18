@@ -25,9 +25,37 @@ func reliableLanguageAnalyzer(code string, text string) string {
 }
 
 func scriptQualifiedLanguageAnalyzer(code string, text string) (string, bool) {
-	if normalizedLanguageCode(code) != "ku" {
+	switch normalizedLanguageCode(code) {
+	case "zh":
+		return cjkChineseTextAnalyzer, containsScript(text, unicode.Han)
+	case "ja":
+		return cjkJapaneseTextAnalyzer, containsAnyScript(
+			text,
+			unicode.Han,
+			unicode.Hiragana,
+			unicode.Katakana,
+		)
+	case "ko":
+		return cjkKoreanTextAnalyzer, containsScript(text, unicode.Hangul)
+	case "ku":
+		return reliableLanguageAnalyzer(code, text), true
+	default:
 		return "", false
 	}
+}
 
-	return reliableLanguageAnalyzer(code, text), true
+func containsScript(text string, script *unicode.RangeTable) bool {
+	return containsAnyScript(text, script)
+}
+
+func containsAnyScript(text string, scripts ...*unicode.RangeTable) bool {
+	for _, character := range text {
+		for _, script := range scripts {
+			if unicode.Is(script, character) {
+				return true
+			}
+		}
+	}
+
+	return false
 }

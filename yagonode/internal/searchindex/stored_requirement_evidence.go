@@ -12,6 +12,24 @@ func (f *storedFieldEvidence) addMatches(
 	location *search.Location,
 	surface string,
 ) {
+	f.addAnalyzedMatches(matcher, matched, location)
+	f.addRawMatch(matcher, matched, location, surface)
+	f.addExactMatch(matcher, matched, location, surface)
+}
+
+func (f *storedFieldEvidence) addAnalyzedMatches(
+	matcher *storedEvidenceMatcher,
+	matched []int,
+	location *search.Location,
+) {
+	if isCJKAnalyzer(matcher.name) && matcher.name != "cjk" {
+		for _, targetIndex := range matched {
+			f.targetTerms[targetIndex] = appendStoredLocation(
+				f.targetTerms[targetIndex],
+				location,
+			)
+		}
+	}
 	for matchedIndex, targetIndex := range matched {
 		target := matcher.targets[targetIndex]
 		if matchedAnalyzedRequirementSeen(
@@ -27,13 +45,24 @@ func (f *storedFieldEvidence) addMatches(
 		)
 		f.latest[target.requirement] = location
 	}
+}
 
+func (f *storedFieldEvidence) addRawMatch(
+	matcher *storedEvidenceMatcher,
+	matched []int,
+	location *search.Location,
+	surface string,
+) {
 	target, found := f.selectRawRequirement(matcher, matched, surface)
-	if found {
-		f.requirementTerms[target.raw] = appendStoredLocation(
-			f.requirementTerms[target.raw],
-			location,
-		)
+	if !found {
+		return
+	}
+	f.requirementTerms[target.raw] = appendStoredLocation(
+		f.requirementTerms[target.raw],
+		location,
+	)
+	f.latestRaw[target.rawRequirement] = location
+	if !isCJKAnalyzer(matcher.name) || matcher.name == "cjk" {
 		for _, targetIndex := range matched {
 			if matcher.targets[targetIndex].rawRequirement == target.rawRequirement {
 				f.targetTerms[targetIndex] = appendStoredLocation(
@@ -42,9 +71,15 @@ func (f *storedFieldEvidence) addMatches(
 				)
 			}
 		}
-		f.latestRaw[target.rawRequirement] = location
 	}
+}
 
+func (f *storedFieldEvidence) addExactMatch(
+	matcher *storedEvidenceMatcher,
+	matched []int,
+	location *search.Location,
+	surface string,
+) {
 	surface = strings.TrimSpace(surface)
 	for _, targetIndex := range matched {
 		target := matcher.targets[targetIndex]

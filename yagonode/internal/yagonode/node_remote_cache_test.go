@@ -138,6 +138,7 @@ func (fakeDocDirectory) Count(context.Context) (int, error) { return 0, nil }
 
 type fakeDocReceiver struct {
 	err      error
+	busy     bool
 	received []documentstore.Document
 }
 
@@ -147,7 +148,7 @@ func (f *fakeDocReceiver) Receive(
 ) (documentstore.Receipt, error) {
 	f.received = append(f.received, docs...)
 
-	return documentstore.Receipt{}, f.err
+	return documentstore.Receipt{Busy: f.busy}, f.err
 }
 
 type recordingIndex struct {
@@ -212,6 +213,56 @@ func TestRemoteIndexCacheSkipsOnReceiveError(t *testing.T) {
 	}
 	if len(index.indexed) != 0 {
 		t.Fatalf("indexed %d documents, want none when the store write failed", len(index.indexed))
+	}
+}
+
+func TestRemoteIndexCacheSkipsBusyAndStoragePressure(t *testing.T) {
+	pressure := &nodeGrowthAdmission{err: errors.New("pressure")}
+	receiver := &fakeDocReceiver{}
+	index := &recordingIndex{}
+	cache := remoteIndexCache{
+		directory: fakeDocDirectory{}, receiver: receiver, index: index,
+		now: func() time.Time { return time.Unix(1, 0) }, admission: pressure,
+	}
+	results := []searchcore.Result{{URL: "https://peer.example.net/pressure"}}
+	cache.store(t.Context(), results)
+	if len(receiver.received) != 0 || len(index.indexed) != 0 {
+		t.Fatal("storage pressure allowed remote cache growth")
+	}
+	pressure.err = nil
+	receiver.busy = true
+	cache.store(t.Context(), results)
+	if len(receiver.received) != 1 || len(index.indexed) != 0 {
+		t.Fatal("busy document receiver allowed remote index growth")
+	}
+}
+
+func TestRemoteIndexCacheDoesNotRejectNoOpRowsUnderStoragePressure(t *testing.T) {
+	pressure := &nodeGrowthAdmission{err: errors.New("pressure")}
+	cache := remoteIndexCache{
+		directory: fakeDocDirectory{found: true},
+		receiver:  &fakeDocReceiver{},
+		index:     &recordingIndex{},
+		now:       func() time.Time { return time.Unix(1, 0) },
+		admission: pressure,
+	}
+	cache.store(t.Context(), []searchcore.Result{
+		{URL: " "},
+		{URL: "https://peer.example.net/already-stored"},
+	})
+	if pressure.calls != 0 {
+		t.Fatalf("no-op remote rows used %d storage admissions", pressure.calls)
+	}
+}
+
+func TestNewRemoteIndexCacheCarriesOptionalAdmission(t *testing.T) {
+	storage := nodeStorage{}
+	if cache := newRemoteIndexCache(storage); cache.admission != nil {
+		t.Fatal("default remote cache has growth admission")
+	}
+	admission := &nodeGrowthAdmission{}
+	if cache := newRemoteIndexCache(storage, admission); cache.admission != admission {
+		t.Fatal("remote cache lost growth admission")
 	}
 }
 

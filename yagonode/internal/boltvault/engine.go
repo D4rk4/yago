@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	bolt "go.etcd.io/bbolt"
 
@@ -21,19 +22,38 @@ type engine struct {
 	quotaBytes int64
 }
 
+func (*engine) AtomicUpdates() bool { return true }
+
 var newVault = vault.New
 
 func Open(path string, quotaBytes int64) (*vault.Vault, error) {
+	return open(path, quotaBytes, nil)
+}
+
+func OpenWithLockTimeout(path string, timeout time.Duration) (*vault.Vault, error) {
+	if timeout <= 0 {
+		return nil, fmt.Errorf("open storage: timeout must be positive")
+	}
+
+	return open(path, 0, &bolt.Options{Timeout: timeout})
+}
+
+func open(
+	path string,
+	quotaBytes int64,
+	options *bolt.Options,
+) (*vault.Vault, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return nil, fmt.Errorf("create storage directory: %w", err)
 	}
 
-	db, err := bolt.Open(path, 0o600, nil)
+	db, err := bolt.Open(path, 0o600, options)
 	if err != nil {
 		return nil, fmt.Errorf("open storage: %w", err)
 	}
 
-	vaulted, err := newVault(&engine{db: db, quotaBytes: quotaBytes})
+	storageEngine := &engine{db: db, quotaBytes: quotaBytes}
+	vaulted, err := newVault(storageEngine)
 	if err != nil {
 		_ = db.Close()
 

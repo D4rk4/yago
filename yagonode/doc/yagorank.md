@@ -8,9 +8,11 @@ ranking.
 
 ## Serving pipeline
 
-Serving, explanation, and training use the same bounded local candidate stages:
-local retrieval, bounded RM3 feedback, then lexical evidence construction. Every
-search follows these stages:
+Serving, local explanation, and training share the bounded local retrieval, RM3,
+and lexical-evidence stages. Global explanation shares the production local,
+peer, web, recovery, analyzer-evidence, and fusion path, then invokes the same
+bounded learned and final ranking stages without creating a paging session,
+remote-index write, or crawl seed. Every search follows these stages:
 
 1. Build a candidate window from strict all-term fielded BM25. Queries with at
    least three distinct terms also run a relaxed branch requiring the ceiling of
@@ -23,16 +25,29 @@ search follows these stages:
    documents, 256 tokens per document, and three expansion terms that occur in
    at least two feedback documents and does not reduce either branch's term-coverage rule.
    Final lexical ranking requests capped stored positions for its leading local
-   window and uses them when available. Peer and web rows, which carry no stored
-   positions, fall back to bounded Unicode word-form evidence in their visible
-   title and snippet. The fallback retains combining sequences, requires
-   bounded token tails, recognizes boundary-delimited literal identifiers, and
-   permits intra-token terms for unsegmented scripts. Local HTML snippets mark
+   window and uses them when available. Immediately before that ranking pass,
+   up to the first 500 peer, web, and legacy-RWI rows without authoritative
+   evidence are analyzed over bounded visible title, snippet, and decoded-URL
+   text while the request context remains live. A
+   compatible language hint selects the registered analyzer; otherwise the
+   row's dominant script selects it. The analyzer publishes positions under at
+   most 32 raw query requirements, with 64 positions per field and requirement,
+   and at most 128 validated snippet spans. Local results also retain
+   at most 128 absolute stored-body spans from the same bounded evidence pass,
+   and a local cached-copy link with body evidence addresses an analyzer-backed
+   passage through `/cached` with `u`, `analyzer`, repeated `terms`, `start`, and
+   `end`. The byte offsets anchor an exact valid UTF-8 range of at most 8 KiB;
+   the cached surface adds at most 256 source runes on each available side,
+   returns at most 2,048 runes overall, and reports analyzer spans relative to
+   that returned text. Local HTML snippets mark
    authoritative offsets produced by the result's indexed language analyzer;
-   peer and web snippets use the same bounded visible-text fallback as their
-   lexical evidence. The peer profile scorer prepares title and decoded-URL
-   tokens once per row; web URLs remain admission evidence. Explain and `near`
-   requests use the same bounded position path.
+   peer, web, and legacy-RWI snippets use their selected visible-text analyzer.
+   Empty analyzer evidence remains authoritative. Invalid or empty visible text,
+   unavailable analyzer infrastructure, and rows not completed before
+   cancellation or deadline retain the structural visible-text fallback. The
+   peer profile scorer prepares title and decoded-URL tokens once per row; web
+   URLs remain admission evidence. Explain and `near` requests use the same
+   bounded position path.
 2. Merge local and YaCy peer lists deterministically. A peer contributes one
    list regardless of response timing. Persistent peer reliability adjusts its
    RRF contribution, while IPv4 `/24` and IPv6 `/48` influence caps limit a
@@ -48,13 +63,12 @@ search follows these stages:
    mask distinguishes an observed zero from missing evidence. Missing values do
    not affect robust normalization or a linear score, and an explanation marks
    them as unknown and unused.
-4. Apply the active learned model to at most 100 locally stored candidates.
-   Federated and web-fallback rows keep their fusion order because the training
-   set contains no representative federated evidence. A node without an active
-   model keeps the complete lexical ranking path. Global search requests at
-   least twice the learned window from the merged list and scans it only until
-   the bounded local window is collected; peer and web slots are not consumed
-   as local model capacity.
+4. Apply the active learned model to at most the first 100 fused candidates,
+   regardless of local, peer, or web provenance. Missing evidence retains the
+   model format's explicit missing-value semantics. A node without an active
+   model keeps the complete lexical ranking path. Global search requests only
+   the same bounded learned window required by local serving; learned inference
+   causes no additional provider request or candidate over-fetch.
 5. Apply safety policy, persistent content-cluster consolidation, MMR, host
    crowding, requested date ordering, and paging once. Similar unclustered
    results are not deleted.
@@ -65,9 +79,12 @@ and clears stale generations immediately after an index mutation. Paging
 sessions structurally include every result- or policy-affecting request field
 except offset and limit; their byte-aware LRU retains at most 128 sessions and
 32 MiB. Both caches serve an oversized result once without retaining it. Cached
-strings, facets, maps, positions, and media values are deeply detached before
-retention and delivery. Disk post-filters and facets traverse matching documents
-with a bounded identifier cursor and retain only a bounded score top-k, so an
+strings, facets, maps, positions, and media values in the index cache are deeply
+detached before retention and delivery. Paging sessions receive the final
+ranking payload: snippet and body spans are detached and retained, while
+ranking-only field positions are discarded. Disk post-filters and facets
+traverse matching documents with a bounded identifier cursor and retain only a
+bounded score top-k, so an
 eligible tail and counts beyond 1,000 matches remain visible without unbounded
 memory. Candidate-only disk scans read a stored size-bounded projection instead
 of full document bodies; selected evidence may still load the leading ten full
@@ -171,11 +188,12 @@ dependence, content quality, temporal authority, federation support, or a small
 cross-family relevance-quality set. A tree can use multiple features from its
 selected family, preserving bounded, inspectable interactions.
 
-Federated serving evaluates only locally stored candidates until representative
-peer and web judgments exist. The model permutes those documents among the local
-slots established by reciprocal-rank fusion. Each selected document inherits the
-bounded pre-model relevance of its destination slot for final MMR diversity, so
-an arbitrary raw model scale cannot promote or demote peer and web slots.
+Federated serving evaluates the bounded fused top window across local, peer, and
+web provenance. The fixed feature catalog already includes local and remote
+ranks, source support, and peer reputation, while absent evidence stays missing
+instead of becoming an invented numeric value. Each selected document inherits
+the bounded pre-model relevance of its destination slot for final MMR diversity,
+so an arbitrary raw model scale cannot compete with the unscored tail.
 
 The vault stores the active revision and eight rollback revisions. Status and
 snapshot are read as one atomic catalog view. Promotion uses compare-and-swap
@@ -269,6 +287,15 @@ availability, held-out gain and confidence, split sizes, and promotion reasons.
 It can train the linear or histogram model, roll back one revision, and edit the
 vault-backed trusted-domain list and TrustRank blend.
 
+The Search Explain panel accepts local or global scope. Admin Search hands its
+query and scope to this panel. Local scope retains custom profile previews;
+global scope uses the active live profile and normal 1.8-second interactive
+budget. Each row reports human-facing `local`, `peer`, or `web` provenance,
+retrieval and final scores, field and raw evidence, reciprocal-rank branch
+contributions, partial failures, learned feature contributions, and histogram
+tree paths. The JSON request field `scope` defaults to `local`; `global` enables
+the federated path. Custom request weights are local-only.
+
 The same console edits all 13 operator-safe live lexical coefficients from one
 catalog:
 
@@ -301,7 +328,7 @@ The admin JSON endpoints are:
 | `/api/admin/v1/search/ranking/model/rollback` | POST | Roll back the active ranking model |
 | `/api/admin/v1/search/ranking/trust` | GET, PUT | Read or replace trusted domains and TrustRank blend |
 | `/api/admin/v1/search/judgments` | GET, POST, DELETE | Manage curated qrels |
-| `/api/admin/v1/search/explain` | POST | Inspect retrieval, learned contributions, tree paths, and final ranks |
+| `/api/admin/v1/search/explain` | POST | Inspect local or global retrieval/fusion, learned contributions, tree paths, and final ranks |
 | `/api/admin/v1/search/safety/model` | GET | Read content-safety model status |
 | `/api/admin/v1/search/safety/model/train` | POST | Train and activate a bounded safety model |
 | `/api/admin/v1/search/safety/model/rollback` | POST | Roll back the safety model |

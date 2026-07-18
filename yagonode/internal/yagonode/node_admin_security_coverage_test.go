@@ -33,7 +33,7 @@ func TestSecuritySourceSurfacesBackendErrors(t *testing.T) {
 	source := closedSecuritySource(t)
 	ctx := context.Background()
 
-	if view := source.Security(ctx); view.Error == "" {
+	if view := source.Security(ctx, adminui.SecurityAPIKeyPageRequest{}); view.Error == "" {
 		t.Fatal("Security should report an error when the store is unavailable")
 	}
 	if _, err := source.MintAPIKey(ctx, adminui.APIKeyMint{

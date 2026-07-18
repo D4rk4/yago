@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -30,6 +31,9 @@ func parseByteSize(raw string) (int64, error) {
 		}
 		if value < 0 {
 			return 0, fmt.Errorf("invalid size %q: must not be negative", raw)
+		}
+		if value > math.MaxInt64/unit.factor {
+			return 0, fmt.Errorf("invalid size %q: exceeds supported range", raw)
 		}
 
 		return value * unit.factor, nil

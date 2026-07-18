@@ -77,6 +77,9 @@ jobs:
       - name: Verify
         run: make verify
 
+      - name: Verify crawler installation migration
+        run: sh deploy/test-crawler-installation-migration.sh
+
   build:
     needs: verify
     runs-on: ubuntu-latest
@@ -107,15 +110,20 @@ jobs:
           mkdir -p dist/${GOARCH}
           go build -trimpath -ldflags="-s -w -X ${node_pkg}.buildVersion=${version}" \
             -o dist/${GOARCH}/yago-node ./yagonode/cmd/yago-node
-          (cd yagocrawler && go build -trimpath -ldflags="-s -w -X main.version=${version}" \
-            -o ../dist/${GOARCH}/yagocrawler ./cmd/yagocrawler)
+          (cd yago-crawler && go build -trimpath -ldflags="-s -w -X main.version=${version}" \
+            -o ../dist/${GOARCH}/yago-crawler ./cmd/yago-crawler)
 
       - name: Package tarball
         run: |
           package_version="${GITHUB_REF_NAME#v}"
+          install -d "dist/${{ matrix.goarch }}/doc"
+          install -m 644 yagonode/internal/searchindex/CJK_DICTIONARY_NOTICES.txt \
+            "dist/${{ matrix.goarch }}/doc/CJK_DICTIONARY_NOTICES.txt"
           tar -czf "dist/yago_${package_version}_linux_${{ matrix.goarch }}.tar.gz" \
-            -C dist/${{ matrix.goarch }} yago-node yagocrawler \
-            -C ../.. deploy/install.sh deploy/systemd doc/backup-restore.md
+            -C dist/${{ matrix.goarch }} yago-node yago-crawler doc/CJK_DICTIONARY_NOTICES.txt \
+            -C ../.. deploy/install.sh deploy/migrate-crawler-installation.sh deploy/systemd doc/backup-restore.md
+          tar -tzf "dist/yago_${package_version}_linux_${{ matrix.goarch }}.tar.gz" | \
+            grep -qx 'doc/CJK_DICTIONARY_NOTICES.txt'
 
       - name: Build .deb
         run: |
@@ -139,7 +147,29 @@ jobs:
                 dpkg-query -W -f="\${Depends}" yago | grep -q ca-certificates
                 dpkg-query -W -f="\${Recommends}" yago | grep -q firefox
                 test "$(/opt/yago/bin/yago-node --version)" = "yago-node v$2"
-                test "$(/opt/yago/bin/yagocrawler --version)" = "yago-crawler v$2"
+                test "$(/opt/yago/bin/yago-crawler --version)" = "yago-crawler v$2"
+                test -f /lib/systemd/system/yago-crawler.service
+                test -f /opt/yago/etc/yago-crawler.env
+                test ! -e /opt/yago/bin/yagocrawler
+                test ! -e /lib/systemd/system/yagocrawler.service
+                rm -f /opt/yago/etc/yago-crawler.env
+                printf "%s\n" "YAGOCRAWLER_WORKERS=17" > /opt/yago/etc/yagocrawler.env
+                install -d /etc/systemd/system/multi-user.target.wants
+                touch /opt/yago/bin/yagocrawler /etc/systemd/system/yagocrawler.service
+                ln -s ../yagocrawler.service \
+                  /etc/systemd/system/multi-user.target.wants/yagocrawler.service
+                dpkg -i "$1" >/dev/null
+                grep -qx "YAGO_CRAWLER_WORKERS=17" /opt/yago/etc/yago-crawler.env
+                test ! -e /opt/yago/etc/yagocrawler.env
+                test ! -e /opt/yago/bin/yagocrawler
+                test ! -e /etc/systemd/system/yagocrawler.service
+                test ! -L /etc/systemd/system/multi-user.target.wants/yagocrawler.service
+                printf "%s\n" "YAGO_CRAWLER_WORKERS=31" > /opt/yago/etc/yago-crawler.env
+                printf "%s\n" "YAGOCRAWLER_WORKERS=99" > /opt/yago/etc/yagocrawler.env
+                dpkg -i "$1" >/dev/null
+                grep -qx "YAGO_CRAWLER_WORKERS=31" /opt/yago/etc/yago-crawler.env
+                test ! -e /opt/yago/etc/yagocrawler.env
+                test -s /usr/share/doc/yago/CJK_DICTIONARY_NOTICES.txt
                 dpkg -P yago >/dev/null
                 test -d /opt/yago/data
                 echo "  OK ${1##*/}"
@@ -170,7 +200,29 @@ jobs:
                 rpm -q --requires yago | grep -q ca-certificates
                 rpm -q --recommends yago | grep -q firefox
                 test "$(/opt/yago/bin/yago-node --version)" = "yago-node v$2"
-                test "$(/opt/yago/bin/yagocrawler --version)" = "yago-crawler v$2"
+                test "$(/opt/yago/bin/yago-crawler --version)" = "yago-crawler v$2"
+                test -f /usr/lib/systemd/system/yago-crawler.service
+                test -f /opt/yago/etc/yago-crawler.env
+                test ! -e /opt/yago/bin/yagocrawler
+                test ! -e /usr/lib/systemd/system/yagocrawler.service
+                rm -f /opt/yago/etc/yago-crawler.env
+                printf "%s\n" "YAGOCRAWLER_WORKERS=17" > /opt/yago/etc/yagocrawler.env
+                install -d /etc/systemd/system/multi-user.target.wants
+                touch /opt/yago/bin/yagocrawler /etc/systemd/system/yagocrawler.service
+                ln -s ../yagocrawler.service \
+                  /etc/systemd/system/multi-user.target.wants/yagocrawler.service
+                rpm -U --replacepkgs "$1" >/dev/null
+                grep -qx "YAGO_CRAWLER_WORKERS=17" /opt/yago/etc/yago-crawler.env
+                test ! -e /opt/yago/etc/yagocrawler.env
+                test ! -e /opt/yago/bin/yagocrawler
+                test ! -e /etc/systemd/system/yagocrawler.service
+                test ! -L /etc/systemd/system/multi-user.target.wants/yagocrawler.service
+                printf "%s\n" "YAGO_CRAWLER_WORKERS=31" > /opt/yago/etc/yago-crawler.env
+                printf "%s\n" "YAGOCRAWLER_WORKERS=99" > /opt/yago/etc/yagocrawler.env
+                rpm -U --replacepkgs "$1" >/dev/null
+                grep -qx "YAGO_CRAWLER_WORKERS=31" /opt/yago/etc/yago-crawler.env
+                test ! -e /opt/yago/etc/yagocrawler.env
+                test -s /usr/share/doc/yago/CJK_DICTIONARY_NOTICES.txt
                 rpm -e yago
                 test -d /opt/yago/data
                 echo "  OK ${1##*/}"
@@ -281,7 +333,7 @@ jobs:
       - name: Attest crawler container manifest
         uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763
         with:
-          subject-name: ghcr.io/d4rk4/yagocrawler
+          subject-name: ghcr.io/d4rk4/yago-crawler
           subject-digest: ${{ steps.publish.outputs.crawler_digest }}
           push-to-registry: true
           create-storage-record: false
@@ -295,7 +347,7 @@ jobs:
         run: |
           for subject in \
             "oci://ghcr.io/d4rk4/yago-node@${NODE_DIGEST}" \
-            "oci://ghcr.io/d4rk4/yagocrawler@${CRAWLER_DIGEST}"; do
+            "oci://ghcr.io/d4rk4/yago-crawler@${CRAWLER_DIGEST}"; do
             gh attestation verify "$subject" \
               --bundle-from-oci \
               --repo "$GITHUB_REPOSITORY" \

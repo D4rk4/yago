@@ -20,20 +20,18 @@ func retainRawSearchResult(
 	images []SearchImage,
 ) (SearchResult, []SearchImage, error) {
 	retained := len(item.Title) + len(item.URL) + len(item.Content) +
-		len(item.PublishedDate) + len(item.Favicon) + len(item.Source) +
-		len(item.Images)*rawContentStringHeaderBytes
+		len(item.PublishedDate) + len(item.Favicon)
 	output := rawContentResultJSONBytes + rawContentJSONStringBytes(item.Title) +
 		rawContentJSONStringBytes(item.URL) + rawContentJSONStringBytes(item.Content) +
 		rawContentJSONStringBytes(item.PublishedDate) +
-		rawContentJSONStringBytes(item.Favicon) + rawContentJSONStringBytes(item.Source)
+		rawContentJSONStringBytes(item.Favicon)
 	if item.RawContent != nil {
 		retained += len(*item.RawContent)
 		output += rawContentJSONStringBytes(*item.RawContent)
 	}
-	for _, image := range item.Images {
-		retained += len(image)
-		output += rawContentJSONStringBytes(image)
-	}
+	imageRetained, imageOutput := retainedSearchResultImages(item.Images)
+	retained += imageRetained
+	output += imageOutput
 	for _, image := range images {
 		retained += len(image.URL) + len(image.Description)
 		output += rawContentJSONStringBytes(image.URL) +
@@ -47,18 +45,11 @@ func retainRawSearchResult(
 	item.Content = strings.Clone(item.Content)
 	item.PublishedDate = strings.Clone(item.PublishedDate)
 	item.Favicon = strings.Clone(item.Favicon)
-	item.Source = strings.Clone(item.Source)
 	if item.RawContent != nil {
 		raw := strings.Clone(*item.RawContent)
 		item.RawContent = &raw
 	}
-	if len(item.Images) > 0 {
-		retainedImages := make([]string, len(item.Images))
-		for index, image := range item.Images {
-			retainedImages[index] = strings.Clone(image)
-		}
-		item.Images = retainedImages
-	}
+	item.Images = cloneSearchResultImages(item.Images)
 	retainedImages := make([]SearchImage, len(images))
 	for index, image := range images {
 		retainedImages[index] = SearchImage{

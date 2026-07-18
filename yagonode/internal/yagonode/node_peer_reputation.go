@@ -35,19 +35,21 @@ type peerReputationBatchLedger interface {
 }
 
 type peerReputationObserver struct {
-	ledger       peerReputationBatchLedger
-	sequence     atomic.Uint64
-	snapshot     atomic.Pointer[peerreputation.Snapshot]
-	queue        chan []peerreputation.Observation
-	cancel       context.CancelFunc
-	done         chan struct{}
-	shutdownDone chan struct{}
-	admission    sync.RWMutex
-	shutdown     sync.Once
-	closed       bool
-	refresh      <-chan time.Time
-	stopRefresh  func()
-	shutdownWait time.Duration
+	ledger          peerReputationBatchLedger
+	sequence        atomic.Uint64
+	snapshot        atomic.Pointer[peerreputation.Snapshot]
+	queue           chan []peerreputation.Observation
+	cancel          context.CancelFunc
+	done            chan struct{}
+	shutdownDone    chan struct{}
+	admission       sync.RWMutex
+	shutdown        sync.Once
+	closed          bool
+	refresh         <-chan time.Time
+	stopRefresh     func()
+	shutdownWait    time.Duration
+	growthAdmission growthAdmission
+	pressureWarning atomic.Bool
 }
 
 func newPeerReputationObserver(
@@ -104,6 +106,20 @@ func (observer *peerReputationObserver) Observe(
 ) {
 	if observer == nil || len(observations) == 0 {
 		return
+	}
+	if observer.growthAdmission != nil {
+		if err := observer.growthAdmission.CheckGrowth(); err != nil {
+			if observer.pressureWarning.CompareAndSwap(false, true) {
+				slog.WarnContext(
+					ctx,
+					peerReputationUpdateFailedMessage,
+					slog.String("reason", "storage pressure"),
+				)
+			}
+
+			return
+		}
+		observer.pressureWarning.Store(false)
 	}
 	observer.admission.RLock()
 	defer observer.admission.RUnlock()

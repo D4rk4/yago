@@ -15,15 +15,18 @@ func TestCrawlerFetchActivitySourcePreservesRuntimeSnapshot(t *testing.T) {
 	}
 
 	activity := crawlerFetchActivityFromSnapshot(crawlbroker.CrawlerRuntimeSnapshot{
-		ConnectedCrawlers:      3,
-		ActiveFetches:          7,
-		ActiveFetchesKnown:     true,
-		FetchLimitPerCrawler:   4,
-		AggregateFetchCapacity: 12,
+		ConnectedCrawlers:         3,
+		ActiveFetches:             7,
+		ActiveFetchesKnown:        true,
+		FetchLimitPerCrawler:      4,
+		AggregateFetchCapacity:    12,
+		StorageReportedCrawlers:   2,
+		StorageUnreportedCrawlers: 1,
 	})
 	if activity.ConnectedCrawlers != 3 || activity.ActiveFetches != 7 ||
 		!activity.ActiveFetchesKnown || activity.FetchLimitPerCrawler != 4 ||
-		activity.AggregateFetchCapacity != 12 {
+		activity.AggregateFetchCapacity != 12 || activity.StorageReportedCrawlers != 2 ||
+		activity.StorageUnreportedCrawlers != 1 {
 		t.Fatalf("crawler fetch activity = %+v", activity)
 	}
 }

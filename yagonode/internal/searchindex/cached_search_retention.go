@@ -19,6 +19,7 @@ var (
 	retainedSearchFacetGroupWidth  = reflect.TypeOf(FacetGroup{}).Size()
 	retainedSearchFacetTermWidth   = reflect.TypeOf(FacetTerm{}).Size()
 	retainedSearchPositionWidth    = reflect.TypeOf(int(0)).Size()
+	retainedSearchQueryMatchWidth  = reflect.TypeOf(TextQueryMatch{}).Size()
 )
 
 func retainedSearchEntryBytes(entry *cachedSearchEntry) int {
@@ -74,6 +75,13 @@ func retainedSearchResultBytes(retained int, result SearchResult) int {
 	retained = retainedSearchAdd(
 		retained,
 		retainedSearchProduct(cap(result.Images), retainedSearchImageWidth),
+	)
+	retained = retainedSearchAdd(
+		retained,
+		retainedSearchProduct(
+			cap(result.BodyQueryMatches),
+			retainedSearchQueryMatchWidth,
+		),
 	)
 	for _, image := range result.Images {
 		retained = retainedSearchStrings(retained, image.URL, image.Alt)

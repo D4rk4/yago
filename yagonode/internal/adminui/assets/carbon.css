@@ -491,3 +491,4 @@ select:focus-visible, [tabindex]:focus-visible {
 .cds-metric__unit { font-size: 0.8rem; font-weight: 400; color: var(--cds-text-secondary, #525252); }
 .cds-metric__value--small { font-size: 0.95rem; word-break: break-all; }
 .cds-code { background: var(--cds-layer, #f4f4f4); border: 1px solid var(--cds-border-subtle, #e0e0e0); padding: 0.6rem 0.8rem; font-size: 0.85rem; overflow-x: auto; }
+.cds-code--bounded-explain { max-height: 20rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }

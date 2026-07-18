@@ -27,8 +27,15 @@ type runtimeToggles struct {
 	// boot to vault.SetQuota and holds a func(int64); a storage.quota admin change
 	// flows through it so the new ceiling applies without a restart (ADR-0037 D).
 	storageQuota               atomic.Value
+	storageReservedFree        atomic.Int64
+	storagePressureRecovery    atomic.Int64
+	storagePressurePolicy      atomic.Value
 	crawlerFetchWorkers        atomic.Value
+	crawlerMaxPagesPerRun      atomic.Value
 	automaticDiscoveryPriority atomic.Value
+	crawlerStorageReservedFree atomic.Int64
+	crawlerStorageRecovery     atomic.Int64
+	crawlerStoragePolicy       atomic.Value
 }
 
 func newRuntimeToggles(config nodeConfig) *runtimeToggles {
@@ -40,6 +47,10 @@ func newRuntimeToggles(config nodeConfig) *runtimeToggles {
 	toggles.greeting.Store(config.PortalGreeting)
 	toggles.compaction.Store(int64(config.StorageCompaction))
 	toggles.autosplit.Store(config.StorageAutosplit)
+	toggles.storageReservedFree.Store(config.StorageReservedFreeBytes)
+	toggles.storagePressureRecovery.Store(config.StoragePressureRecoveryBytes)
+	toggles.crawlerStorageReservedFree.Store(config.Crawl.StorageReservedFreeBytes)
+	toggles.crawlerStorageRecovery.Store(config.Crawl.StoragePressureRecoveryBytes)
 
 	return toggles
 }

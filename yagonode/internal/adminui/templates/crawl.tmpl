@@ -68,6 +68,10 @@
       <input class="cds-input" type="number" id="maxPagesPerHost" name="maxPagesPerHost" min="0" value="{{.Form.MaxPagesPerHost}}">
     </div>
     <div class="cds-field">
+      <label class="cds-label" for="maxPagesPerRun">Maximum pages for this crawl run (0 = unlimited)</label>
+      <input class="cds-input" type="number" id="maxPagesPerRun" name="maxPagesPerRun" min="0" value="{{.Form.MaxPagesPerRun}}">
+    </div>
+    <div class="cds-field">
       <label class="cds-label" for="crawlDelay">Crawl delay per host (blank = each crawler's configured default)</label>
       <input class="cds-input" type="text" id="crawlDelay" name="crawlDelay" value="{{.Form.CrawlDelay}}" autocomplete="off" placeholder="crawler default">
     </div>

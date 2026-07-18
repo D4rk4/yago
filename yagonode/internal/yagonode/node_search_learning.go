@@ -35,6 +35,7 @@ var (
 func openSearchLearningStores(
 	ctx context.Context,
 	storage *vault.Vault,
+	admissions ...growthAdmission,
 ) (searchLearningStores, error) {
 	judgmentStore, err := judgments.Open(storage)
 	if err != nil {
@@ -44,6 +45,11 @@ func openSearchLearningStores(
 	if err != nil {
 		return searchLearningStores{}, fmt.Errorf("open search clicks: %w", err)
 	}
+	var admission growthAdmission
+	if len(admissions) > 0 {
+		admission = admissions[0]
+	}
+	clickStore.AdmitImpressionGrowth(admission)
 	models, err := rankingmodel.Open(ctx, storage, learnedrank.DefaultCandidateWindow)
 	if err != nil {
 		return searchLearningStores{}, fmt.Errorf("open ranking models: %w", err)
@@ -71,6 +77,7 @@ func openSearchLearningStores(
 	if err != nil {
 		return searchLearningStores{}, fmt.Errorf("open peer reputation observations: %w", err)
 	}
+	peerEvents.growthAdmission = admission
 
 	return searchLearningStores{
 		judgments:  judgmentStore,

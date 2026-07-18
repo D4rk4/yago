@@ -119,6 +119,7 @@ func applyOpsPageOptions(
 ) {
 	options.PerformanceHistory = sources.perfHistory
 	options.Backup = newBackupStatusSource(assembled.vault, config.DataDir)
+	options.StoragePressure = newStoragePressureStatusSource(assembled.storagePressure)
 	gateRestartControls(options, config.AdminRestartEnabled)
 }
 

@@ -43,10 +43,6 @@ func filterDenylistedResponse(
 	resp searchcore.Response,
 	deny denylistSnapshotter,
 ) searchcore.Response {
-	if deny == nil {
-		return resp
-	}
-
 	snapshot := deny.Snapshot()
 	if snapshot.IsEmpty() {
 		return resp

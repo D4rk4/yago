@@ -5,6 +5,7 @@ package adminui
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -106,11 +107,13 @@ var navItems = []NavItem{
 type Options struct {
 	Overview             OverviewSource
 	Search               SearchSource
+	SearchExplanation    SearchExplanationSource
 	Activity             ActivitySource
 	Crawl                CrawlSource
 	CrawlFormats         CrawlFormatsSource
 	Monitor              CrawlMonitorSource
 	CrawlerFetchActivity CrawlerFetchActivitySource
+	StoragePressure      StoragePressureStatusSource
 	Schedules            CrawlScheduleSource
 	Control              CrawlControlSource
 	Index                IndexSource
@@ -213,6 +216,7 @@ type searchPageData struct {
 	Pagination     SearchPagination
 	NewTab         bool
 	SuggestEnabled bool
+	ExplainURL     string
 }
 
 type crawlForm struct {
@@ -226,6 +230,7 @@ type crawlForm struct {
 	IndexURLMustMatch        string
 	IndexURLMustNotMatch     string
 	MaxPagesPerHost          int
+	MaxPagesPerRun           int
 	AllowQueryURLs           bool
 	FollowNoFollowLinks      bool
 	NoindexCanonicalMismatch bool
@@ -327,6 +332,7 @@ type securityPageData struct {
 	Username   string
 	Section    sectionView
 	Security   SecurityView
+	Pagination SecurityAPIKeyPagination
 	Minted     *MintedAPIKey
 	Notice     string
 	Error      string
@@ -393,12 +399,14 @@ type Console struct {
 	sections             map[string]sectionView
 	overview             OverviewSource
 	search               SearchSource
+	searchExplanation    SearchExplanationSource
 	activity             ActivitySource
 	searchNewTab         bool
 	crawl                CrawlSource
 	crawlFormats         CrawlFormatsSource
 	monitor              CrawlMonitorSource
 	crawlerFetchActivity CrawlerFetchActivitySource
+	storagePressure      StoragePressureStatusSource
 	schedules            CrawlScheduleSource
 	control              CrawlControlSource
 	index                IndexSource
@@ -444,6 +452,7 @@ func New(opts Options) *Console {
 		sections:             defaultSections(),
 		overview:             opts.Overview,
 		search:               opts.Search,
+		searchExplanation:    opts.SearchExplanation,
 		activity:             opts.Activity,
 		searchNewTab:         opts.SearchLinksNewTab,
 		searchSuggest:        opts.SearchSuggest,
@@ -451,6 +460,7 @@ func New(opts Options) *Console {
 		crawlFormats:         opts.CrawlFormats,
 		monitor:              opts.Monitor,
 		crawlerFetchActivity: opts.CrawlerFetchActivity,
+		storagePressure:      opts.StoragePressure,
 		schedules:            opts.Schedules,
 		control:              opts.Control,
 		index:                opts.Index,
@@ -678,7 +688,7 @@ func (c *Console) handleSystemMonitor(w http.ResponseWriter, r *http.Request) {
 		w,
 		c.tpl.placeholder,
 		"system-monitor",
-		buildSystemMonitorWithCrawler(c.perfHistory, c.crawlerFetchActivity),
+		buildSystemMonitorWithCrawler(c.perfHistory, c.crawlerFetchActivity, c.storagePressure),
 	)
 }
 
@@ -1178,7 +1188,12 @@ func (c *Console) handleConfigCompact(w http.ResponseWriter, r *http.Request) {
 	result, err := c.compactor.Compact(r.Context())
 	if err != nil {
 		slog.WarnContext(r.Context(), "admin storage compaction failed", slog.Any("error", err))
-		errMsg = "Compaction failed."
+		var operatorError CompactionOperatorError
+		if errors.As(err, &operatorError) {
+			errMsg = operatorError.CompactionOperatorMessage()
+		} else {
+			errMsg = "Compaction failed."
+		}
 	} else {
 		notice = compactionNotice(result)
 	}
@@ -1389,15 +1404,22 @@ func (c *Console) securityPage(
 	minted *MintedAPIKey,
 ) securityPageData {
 	username, _ := adminauth.PrincipalFromContext(r.Context())
+	cursor := r.URL.Query().Get(securityAccessCursorParameter)
+	security := c.security.Security(r.Context(), SecurityAPIKeyPageRequest{Cursor: cursor})
 
 	return securityPageData{
 		AppName: appName, ActivePath: securityPath, Nav: navItems,
 		CSRF: csrfToken(r), Username: username,
 		Section:  sectionView{Heading: "Security", Available: true},
-		Security: c.security.Security(r.Context()),
-		Minted:   minted,
-		Notice:   notice,
-		Error:    errMsg,
+		Security: security,
+		Pagination: buildSecurityAPIKeyPagination(
+			security,
+			cursor,
+			r.URL.Query().Get(securityAccessHistoryParameter),
+		),
+		Minted: minted,
+		Notice: notice,
+		Error:  errMsg,
 	}
 }
 
@@ -1418,6 +1440,9 @@ func (c *Console) handleSearch(w http.ResponseWriter, r *http.Request) {
 		Query:   query, Global: global,
 		NewTab:         c.searchNewTab,
 		SuggestEnabled: c.searchSuggest != nil,
+	}
+	if query != "" && c.searchExplanation != nil {
+		data.ExplainURL = searchExplanationURL(query, global)
 	}
 
 	if query != "" {
@@ -1490,7 +1515,7 @@ func (c *Console) handleCrawl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.render(r.Context(), w, c.tpl.crawl, "layout", c.crawlPage(r, defaultCrawlForm()))
+	c.render(r.Context(), w, c.tpl.crawl, "layout", c.crawlPage(r, defaultCrawlFormFor(c.crawl)))
 }
 
 func (c *Console) handleCrawlStart(w http.ResponseWriter, r *http.Request) {
@@ -1522,6 +1547,7 @@ func (c *Console) handleCrawlStart(w http.ResponseWriter, r *http.Request) {
 		IndexURLMustMatch:        form.IndexURLMustMatch,
 		IndexURLMustNotMatch:     form.IndexURLMustNotMatch,
 		MaxPagesPerHost:          form.MaxPagesPerHost,
+		MaxPagesPerRun:           &form.MaxPagesPerRun,
 		AllowQueryURLs:           form.AllowQueryURLs,
 		FollowNoFollowLinks:      form.FollowNoFollowLinks,
 		NoindexCanonicalMismatch: form.NoindexCanonicalMismatch,
@@ -1620,7 +1646,7 @@ func (c *Console) handleCrawlSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		data := c.crawlPage(r, defaultCrawlForm())
+		data := c.crawlPage(r, defaultCrawlFormFor(c.crawl))
 		data.ScheduleError = err.Error()
 		c.render(ctx, w, c.tpl.crawl, "layout", data)
 
@@ -1644,7 +1670,7 @@ func (c *Console) handleCrawlFormats(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := c.crawlFormats.SaveFormats(r.Context(), settings); err != nil {
 		slog.WarnContext(r.Context(), "save crawl formats failed", slog.Any("error", err))
-		data := c.crawlPage(r, defaultCrawlForm())
+		data := c.crawlPage(r, defaultCrawlFormFor(c.crawl))
 		data.FormatsNote = "Saving format settings failed."
 		c.render(r.Context(), w, c.tpl.crawl, "layout", data)
 
@@ -1734,6 +1760,7 @@ func defaultCrawlForm() crawlForm {
 	// enough that a strict default silently empties operator crawls.
 	return crawlForm{
 		Mode: "url", Scope: "domain", MaxDepth: 3,
+		MaxPagesPerRun:     yagocrawlcontract.DefaultMaxPagesPerRun,
 		AllowQueryURLs:     true,
 		IgnoreTLSAuthority: true,
 		RecrawlIfOlder: yagocrawlcontract.FormatRecrawlInterval(
@@ -1742,9 +1769,19 @@ func defaultCrawlForm() crawlForm {
 	}
 }
 
+func defaultCrawlFormFor(source CrawlSource) crawlForm {
+	form := defaultCrawlForm()
+	if defaults, ok := source.(interface{ MaxPagesPerRun() int }); ok {
+		form.MaxPagesPerRun = defaults.MaxPagesPerRun()
+	}
+
+	return form
+}
+
 func parseCrawlForm(r *http.Request) crawlForm {
 	depth, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("maxDepth")))
 	maxPages, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("maxPagesPerHost")))
+	maxPagesPerRun, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("maxPagesPerRun")))
 
 	return crawlForm{
 		Name:                     strings.TrimSpace(r.PostFormValue("name")),
@@ -1757,6 +1794,7 @@ func parseCrawlForm(r *http.Request) crawlForm {
 		IndexURLMustMatch:        strings.TrimSpace(r.PostFormValue("indexMustMatch")),
 		IndexURLMustNotMatch:     strings.TrimSpace(r.PostFormValue("indexMustNotMatch")),
 		MaxPagesPerHost:          maxPages,
+		MaxPagesPerRun:           maxPagesPerRun,
 		AllowQueryURLs:           r.PostFormValue("allowQueryURLs") == "on",
 		FollowNoFollowLinks:      r.PostFormValue("followNoFollowLinks") == "on",
 		NoindexCanonicalMismatch: r.PostFormValue("noindexCanonicalMismatch") == "on",
@@ -1826,8 +1864,12 @@ func (c *Console) renderPolicy(
 	if name == "layout" {
 		payload = layoutEnvelope{
 			PublicSearchHref: publicSearchHrefFromContext(ctx),
-			SystemMonitor:    buildSystemMonitorWithCrawler(c.perfHistory, c.crawlerFetchActivity),
-			Data:             data,
+			SystemMonitor: buildSystemMonitorWithCrawler(
+				c.perfHistory,
+				c.crawlerFetchActivity,
+				c.storagePressure,
+			),
+			Data: data,
 		}
 	}
 	if err := tpl.ExecuteTemplate(w, name, payload); err != nil {

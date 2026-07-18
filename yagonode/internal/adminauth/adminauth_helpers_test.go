@@ -54,6 +54,7 @@ type scriptedEngine struct {
 	buckets   map[vault.Name]map[string][]byte
 	putErr    error
 	deleteErr error
+	pageErr   error
 }
 
 func newScriptedEngine() *scriptedEngine {
@@ -147,6 +148,31 @@ func (b scriptedBucket) Scan(prefix vault.Key, fn func(vault.Key, []byte) (bool,
 	}
 
 	return nil
+}
+
+func (b scriptedBucket) ReadPageAfter(after vault.Key, limit int) (vault.BucketPage, error) {
+	if b.engine.pageErr != nil {
+		return vault.BucketPage{}, b.engine.pageErr
+	}
+	ordered := make([]string, 0, len(b.data))
+	for key := range b.data {
+		if string(after) == "" || key > string(after) {
+			ordered = append(ordered, key)
+		}
+	}
+	sort.Strings(ordered)
+	page := vault.BucketPage{More: len(ordered) > limit}
+	if len(ordered) > limit {
+		ordered = ordered[:limit]
+	}
+	for _, key := range ordered {
+		page.Entries = append(page.Entries, vault.BucketPageEntry{
+			Key:   vault.Key(key),
+			Value: b.data[key],
+		})
+	}
+
+	return page, nil
 }
 
 func injectAdmin(t *testing.T, engine *scriptedEngine, username, password string) {

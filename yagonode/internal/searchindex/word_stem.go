@@ -38,8 +38,12 @@ func StemWord(word string) string {
 	if word == "" {
 		return ""
 	}
-	analyzerName := queryAnalyzers(word)[0]
-	if analyzerName == standardTextAnalyzer || analyzerName == "cjk" {
+
+	return stemWordWithAnalyzer(word, queryAnalyzers(word)[0])
+}
+
+func stemWordWithAnalyzer(word string, analyzerName string) string {
+	if analyzerName == standardTextAnalyzer || isCJKAnalyzer(analyzerName) {
 		return normalizedUnstemmedWord(word, analyzerName)
 	}
 	indexMapping := loadStemmingMapping()

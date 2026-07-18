@@ -28,6 +28,10 @@ func storedEvidenceAnalyzer(name string) analysis.Analyzer {
 	return analyzer
 }
 
+func storedRequirementAnalyzer(name string) analysis.Analyzer {
+	return storedEvidenceAnalyzer(cjkQueryAnalyzer(name))
+}
+
 func storedQuotedPhrasePreference(
 	locations search.FieldTermLocationMap,
 	phrases []string,

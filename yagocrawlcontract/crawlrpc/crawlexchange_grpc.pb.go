@@ -41,21 +41,12 @@ type CrawlExchangeClient interface {
 	// in a durable leased state, tagged with a lease id, until the worker acks it
 	// or the lease expires, at which point it is redelivered.
 	StreamOrders(ctx context.Context, in *WorkerRegistration, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CrawlOrderMessage], error)
-	// AckOrder settles a leased order: a plain ack deletes it, and an ack with
-	// requeue returns it to the pending queue for another worker.
 	AckOrder(ctx context.Context, in *OrderAck, opts ...grpc.CallOption) (*OrderAckResult, error)
-	// Heartbeat extends the lease deadline on every order currently leased to the
-	// worker, so a live worker keeps its in-flight orders from being redelivered.
 	Heartbeat(ctx context.Context, in *WorkerHeartbeat, opts ...grpc.CallOption) (*WorkerHeartbeatResult, error)
 	// SubmitIngest hands one ingest batch to the node and blocks until the node
 	// absorbs it. The node returns an error when its ingest pipeline is saturated
 	// so the crawler retries, which is the backpressure signal.
 	SubmitIngest(ctx context.Context, in *IngestBatchMessage, opts ...grpc.CallOption) (*IngestAck, error)
-	// ReportProgress lets a worker report the lifecycle and cumulative outcome
-	// tallies of a run it is executing, keyed by the order provenance token, so the
-	// node can surface active crawls, their counters, and their results without
-	// owning the worker's in-memory frontier. Reports carry absolute tallies, so a
-	// lost report is corrected by the next one.
 	ReportProgress(ctx context.Context, in *CrawlProgressReport, opts ...grpc.CallOption) (*CrawlProgressAck, error)
 }
 
@@ -141,21 +132,12 @@ type CrawlExchangeServer interface {
 	// in a durable leased state, tagged with a lease id, until the worker acks it
 	// or the lease expires, at which point it is redelivered.
 	StreamOrders(*WorkerRegistration, grpc.ServerStreamingServer[CrawlOrderMessage]) error
-	// AckOrder settles a leased order: a plain ack deletes it, and an ack with
-	// requeue returns it to the pending queue for another worker.
 	AckOrder(context.Context, *OrderAck) (*OrderAckResult, error)
-	// Heartbeat extends the lease deadline on every order currently leased to the
-	// worker, so a live worker keeps its in-flight orders from being redelivered.
 	Heartbeat(context.Context, *WorkerHeartbeat) (*WorkerHeartbeatResult, error)
 	// SubmitIngest hands one ingest batch to the node and blocks until the node
 	// absorbs it. The node returns an error when its ingest pipeline is saturated
 	// so the crawler retries, which is the backpressure signal.
 	SubmitIngest(context.Context, *IngestBatchMessage) (*IngestAck, error)
-	// ReportProgress lets a worker report the lifecycle and cumulative outcome
-	// tallies of a run it is executing, keyed by the order provenance token, so the
-	// node can surface active crawls, their counters, and their results without
-	// owning the worker's in-memory frontier. Reports carry absolute tallies, so a
-	// lost report is corrected by the next one.
 	ReportProgress(context.Context, *CrawlProgressReport) (*CrawlProgressAck, error)
 	mustEmbedUnimplementedCrawlExchangeServer()
 }

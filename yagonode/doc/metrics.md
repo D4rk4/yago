@@ -30,7 +30,23 @@ The registry publishes:
 - **HTTP requests** — per-endpoint request counts, latencies and error classes
   for the served surfaces.
 - **Storage** — configured quota and bytes currently used
-  (`storage_quota_bytes`, `storage_used_bytes`).
+  (`storage_quota_bytes`, `storage_used_bytes`). These values are the main
+  vault's soft target and logical live rows; they exclude Bleve, crawl state,
+  allocated free pages, and temporary copies. Filesystem-pressure series expose
+  available bytes, reserve, hysteresis, active pressure, measurement
+  availability, rejected gate-managed growth, and measurement failures
+  (`storage_filesystem_available_bytes`, `storage_reserved_free_bytes`,
+  `storage_pressure_hysteresis_bytes`, `storage_pressure`,
+  `storage_pressure_measurement_available`, `storage_growth_rejections_total`,
+  `storage_pressure_measurement_failures_total`).
+- **Crawler control storage** — live bbolt use and allocated database-file size
+  for `${YAGO_DATA_DIR}/crawlbroker.db`
+  (`crawl_broker_state_used_bytes`, `crawl_broker_state_file_bytes`). These
+  collectors exist only while the node crawl runtime owns the dedicated file;
+  a measurement failure reports `NaN`. The file is outside
+  `YAGO_STORAGE_QUOTA`, main-vault eviction, and main-vault compaction and
+  currently has no separate byte cap. Alert on the allocated-file gauge and
+  filesystem free space; bbolt may keep free pages after live rows are deleted.
 - **Eviction** — URLs and postings purged under quota pressure and sweeps that
   failed (`eviction_*_total`).
 - **DHT** — inbound and outbound postings, batches and failures for the
@@ -90,8 +106,9 @@ stays busy through page fetch, parsing, and result publication, so the numerator
 and configured denominator describe the same bounded pipeline resource. An
 enabled runtime with no connected crawler hides the row because no worker
 capacity exists to measure; a mixed or older connected fleet that has not
-reported the optional measurement reports `Unavailable`. Multiple crawlers use
-their aggregate capacity and retain the crawler count and per-crawler limit in
-text. Disabling the crawler runtime also removes this row. This live value is
-not retained in the ten-second history and does not trigger a metrics gathering
-or host scan.
+reported the optional measurement reports `Unavailable`. A report expires after
+three normal heartbeat intervals, so a connected stream with missed heartbeats
+cannot preserve stale utilization. Multiple crawlers use their aggregate
+capacity and retain the crawler count and per-crawler limit in text. Disabling
+the crawler runtime also removes this row. This live value is not retained in
+the ten-second history and does not trigger a metrics gathering or host scan.

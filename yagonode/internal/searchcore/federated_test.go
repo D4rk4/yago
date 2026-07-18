@@ -370,13 +370,20 @@ func TestDrainRemoteOutcomeKeepsQueuedCompletion(t *testing.T) {
 	outcomes := make(chan searchOutcome, 1)
 	want := searchOutcome{resp: Response{Results: []Result{{URL: "https://peer.example/"}}}}
 	outcomes <- want
-	got, ready := drainRemoteOutcome(outcomes)
+	got, ready := remoteOutcomeAfterCancellation(outcomes, Response{Results: []Result{{
+		URL: "https://local.example/",
+	}}})
 	if !ready || len(got.resp.Results) != 1 ||
 		got.resp.Results[0].URL != want.resp.Results[0].URL {
 		t.Fatalf("outcome = %#v, ready = %v", got, ready)
 	}
-	if got, ready = drainRemoteOutcome(outcomes); ready || len(got.resp.Results) != 0 {
+	if got, ready = availableRemoteOutcome(outcomes); ready || len(got.resp.Results) != 0 {
 		t.Fatalf("empty outcome = %#v, ready = %v", got, ready)
+	}
+	outcomes <- want
+	if got, ready = drainRemoteOutcome(outcomes); !ready ||
+		len(got.resp.Results) != 1 || got.resp.Results[0].URL != want.resp.Results[0].URL {
+		t.Fatalf("drained outcome = %#v, ready = %v", got, ready)
 	}
 }
 

@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/clickcapture"
 	"github.com/D4rk4/yago/yagonode/internal/crawling"
@@ -39,6 +42,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchactivity"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
+	"github.com/D4rk4/yago/yagonode/internal/searchlocal"
 	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
 	"github.com/D4rk4/yago/yagonode/internal/tavilyapi"
 	"github.com/D4rk4/yago/yagonode/internal/transfertally"
@@ -49,55 +53,56 @@ import (
 )
 
 type node struct {
-	peerMux        *http.ServeMux
-	publicMux      http.Handler
-	readiness      http.Handler
-	indexStats     http.Handler
-	searchExplain  http.Handler
-	searchRanking  http.Handler
-	searchTune     http.Handler
-	searchModel    http.Handler
-	searchTrain    http.Handler
-	searchRollback http.Handler
-	safetyModel    http.Handler
-	safetyTrain    http.Handler
-	safetyRollback http.Handler
-	judgmentsAPI   http.Handler
-	hostTrustAPI   http.Handler
-	rankingConsole adminui.RankingSource
-	report         nodestatus.Report
-	searcher       searchcore.Searcher
-	suggest        searchcore.Searcher
-	index          searchindex.SearchIndex
-	docScan        documentstore.StoredDocuments
-	redirectPurge  redirectCorpusPurge
-	activity       *searchactivity.Tracker
-	schedules      *crawlschedule.Store
-	hostRank       *hostrank.Holder
-	hostTrust      *hosttrust.Catalog
-	spell          *spellcheck.Holder
-	wordForms      *wordforms.Holder
-	swarmMorph     bool
-	corpusPass     *corpusSignalRefresh
-	indexAdmin     *indexAdminController
-	postings       rwi.PostingIndex
-	urlDirectory   urlmeta.URLDirectory
-	roster         peerroster.Roster
-	news           *peernews.Pool
-	sweeper        eviction.Sweeper
-	announcer      peerannouncement.Announcer
-	lanBeacon      *landiscovery.Beacon
-	crawl          crawlProcess
-	dht            dhtOutboundProcess
-	vault          *vault.Vault
-	toggles        *runtimeToggles
-	client         *http.Client
-	peerBlock      *peerblock.Store
-	denylist       *urldenylist.Store
-	clicks         *clickcapture.Store
-	identity       nodeidentity.Identity
-	theme          *portaltheme.Theme
-	peerEvents     *peerReputationObserver
+	peerMux         *http.ServeMux
+	publicMux       http.Handler
+	readiness       http.Handler
+	indexStats      http.Handler
+	searchExplain   *searchExplainEndpoint
+	searchRanking   http.Handler
+	searchTune      http.Handler
+	searchModel     http.Handler
+	searchTrain     http.Handler
+	searchRollback  http.Handler
+	safetyModel     http.Handler
+	safetyTrain     http.Handler
+	safetyRollback  http.Handler
+	judgmentsAPI    http.Handler
+	hostTrustAPI    http.Handler
+	rankingConsole  adminui.RankingSource
+	report          nodestatus.Report
+	searcher        searchcore.Searcher
+	suggest         searchcore.Searcher
+	index           searchindex.SearchIndex
+	docScan         documentstore.StoredDocuments
+	redirectPurge   redirectCorpusPurge
+	activity        *searchactivity.Tracker
+	schedules       *crawlschedule.Store
+	hostRank        *hostrank.Holder
+	hostTrust       *hosttrust.Catalog
+	spell           *spellcheck.Holder
+	wordForms       *wordforms.Holder
+	swarmMorph      bool
+	corpusPass      *corpusSignalRefresh
+	indexAdmin      *indexAdminController
+	postings        rwi.PostingIndex
+	urlDirectory    urlmeta.URLDirectory
+	roster          peerroster.Roster
+	news            *peernews.Pool
+	sweeper         eviction.Sweeper
+	announcer       peerannouncement.Announcer
+	lanBeacon       *landiscovery.Beacon
+	crawl           crawlProcess
+	dht             dhtOutboundProcess
+	vault           *vault.Vault
+	toggles         *runtimeToggles
+	client          *http.Client
+	peerBlock       *peerblock.Store
+	denylist        *urldenylist.Store
+	clicks          *clickcapture.Store
+	identity        nodeidentity.Identity
+	theme           *portaltheme.Theme
+	peerEvents      *peerReputationObserver
+	storagePressure *yagocrawlcontract.StoragePressureGate
 }
 
 type nodeTelemetry struct {
@@ -112,6 +117,8 @@ type nodeTelemetry struct {
 	searchAuthorizer tavilyapi.ScopeAuthorizer
 	toggles          *runtimeToggles
 	saturation       *metrics.SaturationMetrics
+	registry         prometheus.Registerer
+	storagePressure  *yagocrawlcontract.StoragePressureGate
 }
 
 var (
@@ -124,12 +131,13 @@ var (
 	}
 	buildRuntimeDHTOutbound = buildDHTOutboundRuntime
 	buildRuntimeCrawl       = func(
+		ctx context.Context,
 		config crawlConfig,
 		identity nodeidentity.Identity,
 		storage nodeStorage,
 		storageVault *vault.Vault,
 	) (crawlProcess, error) {
-		runtime, err := buildCrawlRuntime(config, identity, storage, storageVault)
+		runtime, err := buildCrawlRuntime(ctx, config, identity, storage, storageVault)
 		if runtime == nil || err != nil {
 			return nil, err
 		}
@@ -159,10 +167,11 @@ func assembleNode(
 	client *http.Client,
 	telemetry nodeTelemetry,
 ) (node, error) {
-	identity, storage, err := openNodeCore(ctx, config, vault)
+	identity, storage, err := openNodeCore(ctx, config, vault, telemetry.storagePressure)
 	if err != nil {
 		return node{}, err
 	}
+	storage = storageWithGrowthAdmission(storage, telemetry.storagePressure)
 	roster, news, tally, blocks, err := openPeerStores(vault, telemetry.peer)
 	if err != nil {
 		return node{}, err
@@ -198,38 +207,39 @@ func assembleNode(
 		return node{}, err
 	}
 	return newAssembledNode(nodeParts{
-		mux:        mux,
-		publicMux:  surfaces.publicMux,
-		storage:    storage,
-		announcer:  exchange.announcer,
-		lanBeacon:  buildLANBeacon(config, identity, exchange.announcer),
-		crawl:      surfaces.crawl,
-		dht:        surfaces.dht,
-		report:     report,
-		searcher:   surfaces.searcher,
-		suggest:    surfaces.suggest,
-		roster:     roster,
-		news:       news,
-		vault:      vault,
-		client:     client,
-		peerBlock:  blocks,
-		denylist:   surfaces.denylist,
-		activity:   surfaces.activity,
-		schedules:  surfaces.schedules,
-		theme:      surfaces.theme,
-		identity:   identity,
-		ranking:    surfaces.ranking,
-		hostRank:   surfaces.hostRank,
-		spell:      surfaces.spell,
-		wordForms:  surfaces.wordForms,
-		judgments:  surfaces.judgments,
-		clicks:     surfaces.clicks,
-		models:     surfaces.models,
-		safety:     surfaces.safety,
-		hostTrust:  surfaces.trust,
-		peerEvents: surfaces.peerEvents,
-		corpusPass: surfaces.corpusPass,
-		swarmMorph: config.SwarmMorphology,
+		mux:         mux,
+		publicMux:   surfaces.publicMux,
+		storage:     storage,
+		announcer:   exchange.announcer,
+		lanBeacon:   buildLANBeacon(config, identity, exchange.announcer),
+		crawl:       surfaces.crawl,
+		dht:         surfaces.dht,
+		report:      report,
+		searcher:    surfaces.searcher,
+		suggest:     surfaces.suggest,
+		explanation: surfaces.explanation,
+		roster:      roster,
+		news:        news,
+		vault:       vault,
+		client:      client,
+		peerBlock:   blocks,
+		denylist:    surfaces.denylist,
+		activity:    surfaces.activity,
+		schedules:   surfaces.schedules,
+		theme:       surfaces.theme,
+		identity:    identity,
+		ranking:     surfaces.ranking,
+		hostRank:    surfaces.hostRank,
+		spell:       surfaces.spell,
+		wordForms:   surfaces.wordForms,
+		judgments:   surfaces.judgments,
+		clicks:      surfaces.clicks,
+		models:      surfaces.models,
+		safety:      surfaces.safety,
+		hostTrust:   surfaces.trust,
+		peerEvents:  surfaces.peerEvents,
+		corpusPass:  surfaces.corpusPass,
+		swarmMorph:  config.SwarmMorphology,
 	}, telemetry.toggles), nil
 }
 
@@ -261,41 +271,53 @@ type assembleSurfacesInput struct {
 }
 
 type nodeSurfaces struct {
-	crawl      crawlProcess
-	dht        dhtOutboundProcess
-	searcher   searchcore.Searcher
-	suggest    searchcore.Searcher
-	publicMux  http.Handler
-	ranking    *rankingprofile.Holder
-	hostRank   *hostrank.Holder
-	spell      *spellcheck.Holder
-	wordForms  *wordforms.Holder
-	denylist   *urldenylist.Store
-	judgments  *judgments.Store
-	clicks     *clickcapture.Store
-	models     *rankingmodel.Catalog
-	safety     *safetymodel.Catalog
-	trust      *hosttrust.Catalog
-	activity   *searchactivity.Tracker
-	schedules  *crawlschedule.Store
-	theme      *portaltheme.Theme
-	peerEvents *peerReputationObserver
-	corpusPass *corpusSignalRefresh
+	crawl       crawlProcess
+	dht         dhtOutboundProcess
+	searcher    searchcore.Searcher
+	suggest     searchcore.Searcher
+	explanation searchcore.Searcher
+	publicMux   http.Handler
+	ranking     *rankingprofile.Holder
+	hostRank    *hostrank.Holder
+	spell       *spellcheck.Holder
+	wordForms   *wordforms.Holder
+	denylist    *urldenylist.Store
+	judgments   *judgments.Store
+	clicks      *clickcapture.Store
+	models      *rankingmodel.Catalog
+	safety      *safetymodel.Catalog
+	trust       *hosttrust.Catalog
+	activity    *searchactivity.Tracker
+	schedules   *crawlschedule.Store
+	theme       *portaltheme.Theme
+	peerEvents  *peerReputationObserver
+	corpusPass  *corpusSignalRefresh
 }
 
 func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
-	runtime, err := buildRuntimeCrawl(in.config.Crawl, in.identity, in.storage, in.vault)
+	runtime, err := buildRuntimeCrawl(in.ctx, in.config.Crawl, in.identity, in.storage, in.vault)
 	if err != nil {
 		return nodeSurfaces{}, err
 	}
+	closeRuntime := true
+	defer func() {
+		if closeRuntime && runtime != nil {
+			runtime.Close()
+		}
+	}()
 	attachCrawlMetrics(runtime, in.telemetry.crawl)
+	attachCrawlStateMetrics(runtime, in.telemetry.registry)
 	attachSearchIndexWriteMetrics(runtime, in.telemetry.indexWrites)
 	attachCrawlRunObserver(runtime, in.telemetry.crawlRuns, in.telemetry.recorder)
 	ranking, denylist, schedules, err := openSurfaceStores(in.ctx, in.vault)
 	if err != nil {
 		return nodeSurfaces{}, err
 	}
-	learning, err := openSearchLearningStores(in.ctx, in.vault)
+	learning, err := openSearchLearningStores(
+		in.ctx,
+		in.vault,
+		in.telemetry.storagePressure,
+	)
 	if err != nil {
 		return nodeSurfaces{}, err
 	}
@@ -309,51 +331,41 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	searchLimiter := publicratelimit.NewLimiter(searchRateTiers(in.config.SearchRate))
 	activityTracker := searchactivity.New(searchactivity.Mode(in.config.QueryLogMode))
 	corpusSignals := newCorpusSignalSet(in, learning)
-	searcher, suggest := mountNodePublicSearch(publicMux, newPublicSearchAssembly(
-		in,
-		publicSearchParts{
-			runtime:    runtime,
-			ranking:    ranking,
-			denylist:   denylist,
-			activity:   activityTracker,
-			hostRank:   corpusSignals.authority,
-			spell:      corpusSignals.spelling,
-			words:      corpusSignals.wordForms,
-			theme:      theme,
-			clicks:     learning.clicks,
-			models:     learning.models,
-			reputation: learning.reputation,
-			peerEvents: learning.peerEvents,
-			admission:  newTavilySearchAdmission(searchLimiter),
-		},
-	))
+	searcher, suggest, explanation := mountSurfacePublicSearch(surfacePublicSearchInput{
+		mux: publicMux, assembly: in, runtime: runtime, ranking: ranking,
+		denylist: denylist, activity: activityTracker, signals: corpusSignals,
+		theme: theme, learning: learning,
+		admission: newTavilySearchAdmission(searchLimiter),
+	})
 	dht := buildSurfaceDHT(in, runtime)
 	searchAccess := searchAccessPolicy(publicSearchAssembly{
 		searchAuthorizer: in.telemetry.searchAuthorizer,
 		searchAPIKey:     in.config.SearchAPIKey,
 	})
 	limitedPublic := publicratelimit.Wrap(publicMux, searchLimiter, searchAccess.AuthenticatedRead)
+	closeRuntime = false
 	return nodeSurfaces{
-		crawl:      runtime,
-		dht:        dht,
-		searcher:   searcher,
-		suggest:    suggest,
-		publicMux:  limitedPublic,
-		theme:      theme,
-		ranking:    ranking,
-		hostRank:   corpusSignals.authority,
-		spell:      corpusSignals.spelling,
-		wordForms:  corpusSignals.wordForms,
-		denylist:   denylist,
-		activity:   activityTracker,
-		schedules:  schedules,
-		judgments:  learning.judgments,
-		clicks:     learning.clicks,
-		models:     learning.models,
-		safety:     learning.safety,
-		trust:      learning.trust,
-		peerEvents: learning.peerEvents,
-		corpusPass: corpusSignals.refresh,
+		crawl:       runtime,
+		dht:         dht,
+		searcher:    searcher,
+		suggest:     suggest,
+		explanation: explanation,
+		publicMux:   limitedPublic,
+		theme:       theme,
+		ranking:     ranking,
+		hostRank:    corpusSignals.authority,
+		spell:       corpusSignals.spelling,
+		wordForms:   corpusSignals.wordForms,
+		denylist:    denylist,
+		activity:    activityTracker,
+		schedules:   schedules,
+		judgments:   learning.judgments,
+		clicks:      learning.clicks,
+		models:      learning.models,
+		safety:      learning.safety,
+		trust:       learning.trust,
+		peerEvents:  learning.peerEvents,
+		corpusPass:  corpusSignals.refresh,
 	}, nil
 }
 
@@ -397,6 +409,7 @@ func newPublicSearchAssembly(
 		extractFetcher:      buildExtractFetcher(in.config, in.client),
 		webFallback:         in.config.WebFallback,
 		seedQueue:           crawlOrderQueue(parts.runtime),
+		maxPagesPerRun:      crawlPageBudgetSource(parts.runtime),
 		toggles:             in.toggles,
 		queryLogMode:        in.config.QueryLogMode,
 		activity:            parts.activity,
@@ -406,6 +419,7 @@ func newPublicSearchAssembly(
 		snippetEnricher:     buildSnippetEnricher(in.config, in.client),
 		remoteTimeouts:      configRemoteTimeouts(in.config),
 		indexRemoteResults:  in.config.IndexRemoteResults,
+		storageGrowth:       in.telemetry.storagePressure,
 		swarmMorphology:     in.config.SwarmMorphology,
 		swarmSeed:           in.config.SwarmSeed,
 		autocrawlerCrawl:    in.config.AutocrawlerCrawl,
@@ -423,38 +437,39 @@ func newPublicSearchAssembly(
 }
 
 type nodeParts struct {
-	mux        *http.ServeMux
-	publicMux  http.Handler
-	storage    nodeStorage
-	announcer  peerannouncement.Announcer
-	lanBeacon  *landiscovery.Beacon
-	crawl      crawlProcess
-	dht        dhtOutboundProcess
-	report     nodestatus.Report
-	searcher   searchcore.Searcher
-	suggest    searchcore.Searcher
-	roster     peerroster.Roster
-	news       *peernews.Pool
-	vault      *vault.Vault
-	client     *http.Client
-	peerBlock  *peerblock.Store
-	denylist   *urldenylist.Store
-	activity   *searchactivity.Tracker
-	schedules  *crawlschedule.Store
-	identity   nodeidentity.Identity
-	ranking    *rankingprofile.Holder
-	hostRank   *hostrank.Holder
-	hostTrust  *hosttrust.Catalog
-	spell      *spellcheck.Holder
-	wordForms  *wordforms.Holder
-	judgments  *judgments.Store
-	clicks     *clickcapture.Store
-	models     *rankingmodel.Catalog
-	safety     *safetymodel.Catalog
-	swarmMorph bool
-	theme      *portaltheme.Theme
-	peerEvents *peerReputationObserver
-	corpusPass *corpusSignalRefresh
+	mux         *http.ServeMux
+	publicMux   http.Handler
+	storage     nodeStorage
+	announcer   peerannouncement.Announcer
+	lanBeacon   *landiscovery.Beacon
+	crawl       crawlProcess
+	dht         dhtOutboundProcess
+	report      nodestatus.Report
+	searcher    searchcore.Searcher
+	suggest     searchcore.Searcher
+	explanation searchcore.Searcher
+	roster      peerroster.Roster
+	news        *peernews.Pool
+	vault       *vault.Vault
+	client      *http.Client
+	peerBlock   *peerblock.Store
+	denylist    *urldenylist.Store
+	activity    *searchactivity.Tracker
+	schedules   *crawlschedule.Store
+	identity    nodeidentity.Identity
+	ranking     *rankingprofile.Holder
+	hostRank    *hostrank.Holder
+	hostTrust   *hosttrust.Catalog
+	spell       *spellcheck.Holder
+	wordForms   *wordforms.Holder
+	judgments   *judgments.Store
+	clicks      *clickcapture.Store
+	models      *rankingmodel.Catalog
+	safety      *safetymodel.Catalog
+	swarmMorph  bool
+	theme       *portaltheme.Theme
+	peerEvents  *peerReputationObserver
+	corpusPass  *corpusSignalRefresh
 }
 
 func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
@@ -470,7 +485,7 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 			parts.hostRank.Current,
 			parts.models.Ranker(),
 			parts.denylist,
-		),
+		).withGlobal(parts.explanation),
 		searchRanking:  newSearchRankingEndpoint(parts.ranking),
 		searchTune:     newSearchRankingTuneEndpoint(rankingRuntime.tuner),
 		searchModel:    newSearchRankingModelEndpoint(parts.models),
@@ -601,6 +616,9 @@ func mountNodeProtocol(
 	documentsearch.MountSearch(router, identity, documentsearch.SearchConfig{
 		Index:          storage.postings,
 		Documents:      storage.urlDirectory,
+		DocumentStore:  storage.documentDirectory,
+		AnalyzerSearch: searchlocal.NewSearcher(storage.searchIndex),
+		Evidence:       searchIndexQueryMatchEvidenceAnalyzer{},
 		MatchesPerTerm: searchPostingsPerWord,
 		Gate: httpguard.NewObservedIntakeGate(
 			inboundRemoteSearchSlots,
@@ -628,12 +646,13 @@ func openNodeCore(
 	ctx context.Context,
 	config nodeConfig,
 	vault *vault.Vault,
+	admissions ...growthAdmission,
 ) (nodeidentity.Identity, nodeStorage, error) {
 	identity, err := nodeIdentityWithBirthDate(ctx, config, vault)
 	if err != nil {
 		return nodeidentity.Identity{}, nodeStorage{}, err
 	}
-	storage, err := openRuntimeNodeStorage(vault, config.SearchIndexPath)
+	storage, err := openRuntimeNodeStorage(vault, config.SearchIndexPath, admissions...)
 	if err != nil {
 		return nodeidentity.Identity{}, nodeStorage{}, err
 	}

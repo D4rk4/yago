@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -129,23 +130,33 @@ func TestAutomaticDiscoveryBurstSurvivesQueueReopen(t *testing.T) {
 	}
 }
 
-func TestAutomaticDiscoveryPrioritySurvivesLeaseRequeue(t *testing.T) {
+func TestAutomaticDiscoveryPrioritySurvivesDeferredLease(t *testing.T) {
+	set := withClock(t)
+	base := time.Unix(900, 0)
+	set(base)
 	queue := memQueue(t)
 	publishOrders(t, queue, automaticOrder("automatic"))
 	_, leaseID, ok, err := queue.leasePop(context.Background(), "worker")
 	if err != nil || !ok {
 		t.Fatalf("lease automatic: ok=%v err=%v", ok, err)
 	}
-	if err := queue.requeueLease(context.Background(), leaseID); err != nil {
-		t.Fatalf("requeue automatic: %v", err)
+	if err := queue.deferLease(context.Background(), leaseID); err != nil {
+		t.Fatalf("defer automatic: %v", err)
+	}
+	set(base.Add(negativeAcknowledgmentRetryDelay))
+	if err := queue.sweepExpired(context.Background()); err != nil {
+		t.Fatalf("release automatic: %v", err)
 	}
 	publishOrders(t, queue, testOrder("normal"))
 	if got := leaseOrderName(t, queue); got != "automatic" {
-		t.Fatalf("leased %q, want requeued automatic order", got)
+		t.Fatalf("leased %q, want deferred automatic order", got)
 	}
 }
 
 func TestAutomaticDiscoveryPriorityRecoversFromLegacyLeasePayload(t *testing.T) {
+	set := withClock(t)
+	base := time.Unix(900, 0)
+	set(base)
 	queue := memQueue(t)
 	publishOrders(t, queue, automaticOrder("automatic"))
 	_, leaseID, ok, err := queue.leasePop(context.Background(), "worker")
@@ -169,8 +180,12 @@ func TestAutomaticDiscoveryPriorityRecoversFromLegacyLeasePayload(t *testing.T) 
 	}); err != nil {
 		t.Fatalf("prepare legacy lease: %v", err)
 	}
-	if err := queue.requeueLease(context.Background(), leaseID); err != nil {
-		t.Fatalf("requeue legacy lease: %v", err)
+	if err := queue.deferLease(context.Background(), leaseID); err != nil {
+		t.Fatalf("defer legacy lease: %v", err)
+	}
+	set(base.Add(negativeAcknowledgmentRetryDelay))
+	if err := queue.sweepExpired(context.Background()); err != nil {
+		t.Fatalf("release legacy lease: %v", err)
 	}
 	publishOrders(t, queue, testOrder("normal"))
 	if got := leaseOrderName(t, queue); got != "automatic" {
@@ -178,23 +193,27 @@ func TestAutomaticDiscoveryPriorityRecoversFromLegacyLeasePayload(t *testing.T) 
 	}
 }
 
-func TestAutomaticDiscoveryPrioritySurvivesStartupLeaseReplay(t *testing.T) {
+func TestAutomaticDiscoveryPrioritySurvivesExpiredLeaseRequeue(t *testing.T) {
+	set := withClock(t)
+	base := time.Unix(1000, 0)
+	set(base)
 	queue := memQueue(t)
 	publishOrders(t, queue, automaticOrder("automatic"))
 	_, _, ok, err := queue.leasePop(t.Context(), "worker")
 	if err != nil || !ok {
 		t.Fatalf("lease automatic: ok=%v err=%v", ok, err)
 	}
-	if err := queue.requeueAllLeases(t.Context()); err != nil {
-		t.Fatalf("requeue startup leases: %v", err)
+	set(base.Add(DefaultLeaseTTL))
+	if err := queue.sweepExpired(t.Context()); err != nil {
+		t.Fatalf("requeue expired leases: %v", err)
 	}
 	publishOrders(t, queue, testOrder("normal"))
 	if got := leaseOrderName(t, queue); got != "automatic" {
-		t.Fatalf("leased %q, want replayed automatic order", got)
+		t.Fatalf("leased %q, want requeued automatic order", got)
 	}
 }
 
-func TestAutomaticDiscoveryPriorityRecoversDuringLegacyStartupLeaseReplay(t *testing.T) {
+func TestAutomaticDiscoveryPriorityRecoversDuringLegacyExpiredLeaseRequeue(t *testing.T) {
 	queue := memQueue(t)
 	data, err := yagocrawlcontract.MarshalCrawlOrder(automaticOrder("automatic"))
 	if err != nil {
@@ -210,14 +229,14 @@ func TestAutomaticDiscoveryPriorityRecoversDuringLegacyStartupLeaseReplay(t *tes
 
 		return nil
 	}); err != nil {
-		t.Fatalf("prepare legacy startup lease: %v", err)
+		t.Fatalf("prepare legacy lease: %v", err)
 	}
-	if err := queue.requeueAllLeases(t.Context()); err != nil {
-		t.Fatalf("requeue legacy startup lease: %v", err)
+	if err := queue.sweepExpired(t.Context()); err != nil {
+		t.Fatalf("requeue legacy expired lease: %v", err)
 	}
 	publishOrders(t, queue, testOrder("normal"))
 	if got := leaseOrderName(t, queue); got != "automatic" {
-		t.Fatalf("leased %q, want automatic priority recovered during startup", got)
+		t.Fatalf("leased %q, want automatic priority recovered during requeue", got)
 	}
 }
 

@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
 // TestSearchWireShapeMatchesTavilyDefaults pins the raw JSON contract a real
@@ -27,10 +29,16 @@ func TestSearchWireShapeMatchesTavilyDefaults(t *testing.T) {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	for _, want := range []string{`"answer":null`, `"images":[]`, `"follow_up_questions":null`} {
+	for _, want := range []string{
+		`"answer":null`, `"images":[]`, `"follow_up_questions":null`,
+		`"raw_content":null`,
+	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("response missing %s: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `"source"`) || strings.Contains(body, `"published_date"`) {
+		t.Fatalf("default response exposed non-reference result fields: %s", body)
 	}
 
 	rec = httptest.NewRecorder()
@@ -38,20 +46,23 @@ func TestSearchWireShapeMatchesTavilyDefaults(t *testing.T) {
 		t.Context(),
 		http.MethodPost,
 		PathSearch,
-		strings.NewReader(`{"query":"golang","include_images":true}`),
+		strings.NewReader(
+			`{"query":"golang","include_images":true,"include_image_descriptions":true}`,
+		),
 	)
 	req.Header.Set("Authorization", "Bearer "+searchTestKey)
 	endpoint.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"images":["https://example.org/image.png"]`) {
-		t.Fatalf("images without descriptions must be URL strings: %s", rec.Body.String())
+	if !strings.Contains(
+		rec.Body.String(),
+		`"images":[{"url":"https://example.org/image.png","description":"Document image"}]`,
+	) {
+		t.Fatalf("described images must be objects: %s", rec.Body.String())
 	}
 }
 
-// TestSearchErrorCarriesTavilyDetailEnvelope pins the documented Tavily error
-// envelope {"detail":{"error":...}} alongside our structured error object.
 func TestSearchErrorCarriesTavilyDetailEnvelope(t *testing.T) {
 	endpoint, _, _ := richSearchEndpoint()
 
@@ -69,5 +80,27 @@ func TestSearchErrorCarriesTavilyDetailEnvelope(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"detail":{"error":"query is required"}`) {
 		t.Fatalf("missing Tavily detail envelope: %s", rec.Body.String())
+	}
+	if rec.Body.String() != "{\"detail\":{\"error\":\"query is required\"}}\n" {
+		t.Fatalf("unexpected error fields: %s", rec.Body.String())
+	}
+}
+
+func TestSearchRequestedEmptyImagesArePresent(t *testing.T) {
+	search := &fakeSearcher{response: searchcore.Response{Results: []searchcore.Result{{
+		Title: "No image", URL: "https://no-image.example/", Snippet: "golang content",
+	}}}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		PathSearch,
+		strings.NewReader(`{"query":"golang","include_images":true}`),
+	)
+	req.Header.Set("Authorization", "Bearer "+searchTestKey)
+	newTestSearchEndpoint(search, nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK ||
+		strings.Count(rec.Body.String(), `"images":[]`) != 2 {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }

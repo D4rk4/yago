@@ -15,8 +15,9 @@ import (
 func TestWorkerHeartbeatActiveFetchesPreservesExplicitZero(t *testing.T) {
 	zero := uint32(0)
 	wire, err := proto.Marshal(&crawlrpc.WorkerHeartbeat{
-		WorkerId:      "current",
-		ActiveFetches: &zero,
+		WorkerId:                 "current",
+		ActiveFetches:            &zero,
+		AcknowledgedDirectiveIds: []uint64{4, 9},
 	})
 	if err != nil {
 		t.Fatalf("marshal current heartbeat: %v", err)
@@ -31,6 +32,9 @@ func TestWorkerHeartbeatActiveFetchesPreservesExplicitZero(t *testing.T) {
 			decoded.ActiveFetches,
 			decoded.GetActiveFetches(),
 		)
+	}
+	if got := decoded.GetAcknowledgedDirectiveIds(); len(got) != 2 || got[0] != 4 || got[1] != 9 {
+		t.Fatalf("decoded directive acknowledgments = %v, want [4 9]", got)
 	}
 }
 
@@ -52,8 +56,9 @@ func TestLegacyWorkerHeartbeatDecoderIgnoresActiveFetches(t *testing.T) {
 	descriptor := legacyWorkerHeartbeatDescriptor(t)
 	active := uint32(2)
 	wire, err := proto.Marshal(&crawlrpc.WorkerHeartbeat{
-		WorkerId:      "current",
-		ActiveFetches: &active,
+		WorkerId:                 "current",
+		ActiveFetches:            &active,
+		AcknowledgedDirectiveIds: []uint64{12},
 	})
 	if err != nil {
 		t.Fatalf("marshal current heartbeat: %v", err)
@@ -65,6 +70,85 @@ func TestLegacyWorkerHeartbeatDecoderIgnoresActiveFetches(t *testing.T) {
 	workerField := descriptor.Fields().ByNumber(1)
 	if got := legacy.Get(workerField).String(); got != "current" {
 		t.Fatalf("legacy worker id = %q, want current", got)
+	}
+}
+
+func TestControlDirectiveIdentityRoundTrips(t *testing.T) {
+	wire, err := proto.Marshal(&crawlrpc.CrawlControlDirective{DirectiveId: 73})
+	if err != nil {
+		t.Fatalf("marshal directive: %v", err)
+	}
+	decoded := &crawlrpc.CrawlControlDirective{}
+	if err := proto.Unmarshal(wire, decoded); err != nil {
+		t.Fatalf("unmarshal directive: %v", err)
+	}
+	if decoded.GetDirectiveId() != 73 {
+		t.Fatalf("directive id = %d, want 73", decoded.GetDirectiveId())
+	}
+}
+
+func TestWorkerHeartbeatStoragePressurePreservesExplicitZero(t *testing.T) {
+	zero := uint64(0)
+	available := false
+	pressured := true
+	wire, err := proto.Marshal(&crawlrpc.WorkerHeartbeat{
+		StorageAvailableBytes:       &zero,
+		StorageMeasurementAvailable: &available,
+		StoragePressure:             &pressured,
+	})
+	if err != nil {
+		t.Fatalf("marshal storage heartbeat: %v", err)
+	}
+	decoded := &crawlrpc.WorkerHeartbeat{}
+	if err := proto.Unmarshal(wire, decoded); err != nil {
+		t.Fatalf("unmarshal storage heartbeat: %v", err)
+	}
+	if decoded.StorageAvailableBytes == nil ||
+		decoded.StorageMeasurementAvailable == nil ||
+		decoded.StoragePressure == nil || decoded.GetStorageAvailableBytes() != 0 ||
+		decoded.GetStorageMeasurementAvailable() || !decoded.GetStoragePressure() {
+		t.Fatalf("decoded storage heartbeat = %+v", decoded)
+	}
+	legacy := dynamicpb.NewMessage(legacyWorkerHeartbeatDescriptor(t))
+	if err := proto.Unmarshal(wire, legacy); err != nil {
+		t.Fatalf("legacy heartbeat rejected storage fields: %v", err)
+	}
+}
+
+func TestWorkerHeartbeatResultStoragePolicyIsAdditiveAndOptional(t *testing.T) {
+	zero := uint64(0)
+	wire, err := proto.Marshal(&crawlrpc.WorkerHeartbeatResult{
+		StorageReservedFreeBytes:       &zero,
+		StoragePressureHysteresisBytes: &zero,
+	})
+	if err != nil {
+		t.Fatalf("marshal storage policy: %v", err)
+	}
+	decoded := &crawlrpc.WorkerHeartbeatResult{}
+	if err := proto.Unmarshal(wire, decoded); err != nil {
+		t.Fatalf("unmarshal storage policy: %v", err)
+	}
+	if decoded.StorageReservedFreeBytes == nil ||
+		decoded.StoragePressureHysteresisBytes == nil {
+		t.Fatalf("explicit zero policy lost presence: %+v", decoded)
+	}
+	legacy := dynamicpb.NewMessage(emptyLegacyMessageDescriptor(t, "WorkerHeartbeatResult"))
+	if err := proto.Unmarshal(wire, legacy); err != nil {
+		t.Fatalf("legacy result rejected storage policy: %v", err)
+	}
+	legacyWire, err := proto.Marshal(dynamicpb.NewMessage(
+		emptyLegacyMessageDescriptor(t, "WorkerHeartbeatResult"),
+	))
+	if err != nil {
+		t.Fatalf("marshal legacy result: %v", err)
+	}
+	legacyDecoded := &crawlrpc.WorkerHeartbeatResult{}
+	if err := proto.Unmarshal(legacyWire, legacyDecoded); err != nil {
+		t.Fatalf("current result rejected legacy wire: %v", err)
+	}
+	if legacyDecoded.StorageReservedFreeBytes != nil ||
+		legacyDecoded.StoragePressureHysteresisBytes != nil {
+		t.Fatalf("legacy result invented policy presence: %+v", legacyDecoded)
 	}
 }
 
@@ -89,4 +173,22 @@ func legacyWorkerHeartbeatDescriptor(t *testing.T) protoreflect.MessageDescripto
 	}
 
 	return file.Messages().ByName("WorkerHeartbeat")
+}
+
+func emptyLegacyMessageDescriptor(
+	t *testing.T,
+	name string,
+) protoreflect.MessageDescriptor {
+	t.Helper()
+	file, err := protodesc.NewFile(&descriptorpb.FileDescriptorProto{
+		Syntax:      proto.String("proto3"),
+		Name:        proto.String("legacy_empty.proto"),
+		Package:     proto.String("compat"),
+		MessageType: []*descriptorpb.DescriptorProto{{Name: proto.String(name)}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("legacy empty descriptor: %v", err)
+	}
+
+	return file.Messages().ByName(protoreflect.Name(name))
 }

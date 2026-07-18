@@ -15,10 +15,14 @@ var errCapability = errors.New("capability failure")
 // success and error branches of Vault.Compact/Vault.GrowShards can be driven.
 type capableEngine struct {
 	*doubleEngine
-	compactResult vault.CompactResult
-	compactErr    error
-	growSplits    int
-	growErr       error
+	compactResult   vault.CompactResult
+	compactErr      error
+	compactSpace    uint64
+	compactSpaceErr error
+	growSplits      int
+	growErr         error
+	growthSpace     uint64
+	growthSpaceErr  error
 }
 
 func (e *capableEngine) Compact(context.Context) (vault.CompactResult, error) {
@@ -27,6 +31,14 @@ func (e *capableEngine) Compact(context.Context) (vault.CompactResult, error) {
 
 func (e *capableEngine) GrowShards(context.Context, int) (int, error) {
 	return e.growSplits, e.growErr
+}
+
+func (e *capableEngine) CompactionHeadroom(context.Context) (uint64, error) {
+	return e.compactSpace, e.compactSpaceErr
+}
+
+func (e *capableEngine) ShardGrowthHeadroom(context.Context) (uint64, error) {
+	return e.growthSpace, e.growthSpaceErr
 }
 
 func openCapable(t *testing.T, engine *capableEngine) *vault.Vault {
@@ -125,5 +137,38 @@ func TestVaultGrowShardsCoversAllBranches(t *testing.T) {
 	failing := openCapable(t, &capableEngine{growErr: errCapability})
 	if _, err := failing.GrowShards(ctx, 4); err == nil {
 		t.Fatal("GrowShards with an engine error succeeded, want error")
+	}
+}
+
+func TestVaultMaintenanceHeadroomCapabilities(t *testing.T) {
+	ctx := context.Background()
+	var nilVault *vault.Vault
+	if _, err := nilVault.CompactionHeadroom(ctx); err == nil {
+		t.Fatal("nil compaction headroom succeeded")
+	}
+	if _, err := openClosedDouble(t).ShardGrowthHeadroom(ctx); err == nil {
+		t.Fatal("closed shard growth headroom succeeded")
+	}
+	plain := openLiveDouble(t)
+	if got, err := plain.CompactionHeadroom(ctx); err != nil || got != 0 {
+		t.Fatalf("plain compaction headroom=%d error=%v", got, err)
+	}
+	if got, err := plain.ShardGrowthHeadroom(ctx); err != nil || got != 0 {
+		t.Fatalf("plain growth headroom=%d error=%v", got, err)
+	}
+	capable := openCapable(t, &capableEngine{compactSpace: 7, growthSpace: 11})
+	if got, err := capable.CompactionHeadroom(ctx); err != nil || got != 7 {
+		t.Fatalf("compaction headroom=%d error=%v", got, err)
+	}
+	if got, err := capable.ShardGrowthHeadroom(ctx); err != nil || got != 11 {
+		t.Fatalf("growth headroom=%d error=%v", got, err)
+	}
+	compactFailure := openCapable(t, &capableEngine{compactSpaceErr: errCapability})
+	if _, err := compactFailure.CompactionHeadroom(ctx); !errors.Is(err, errCapability) {
+		t.Fatalf("compaction headroom error=%v", err)
+	}
+	growthFailure := openCapable(t, &capableEngine{growthSpaceErr: errCapability})
+	if _, err := growthFailure.ShardGrowthHeadroom(ctx); !errors.Is(err, errCapability) {
+		t.Fatalf("growth headroom error=%v", err)
 	}
 }

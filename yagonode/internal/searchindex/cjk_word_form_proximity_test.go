@@ -237,7 +237,8 @@ func TestCJKWidthVariantsRetrieveWithStoredEvidence(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Search: %v", err)
 			}
-			if len(result.Results) != 1 || result.Results[0].Analyzer != "cjk" ||
+			if len(result.Results) != 1 ||
+				result.Results[0].Analyzer != cjkChineseTextAnalyzer ||
 				result.Results[0].Proximity != analyzerVariantPairConfidence ||
 				result.Results[0].OrderedProximity != analyzerVariantPairConfidence {
 				t.Fatalf("width CJK result = %#v", result.Results)
@@ -359,7 +360,7 @@ func assertCJKExactRecall(
 			if result.Total != 1 || len(result.Results) != 1 {
 				t.Fatalf("CJK recall = %#v", result)
 			}
-			if result.Results[0].Analyzer != "cjk" ||
+			if result.Results[0].Analyzer != cjkChineseTextAnalyzer ||
 				result.Results[0].Proximity == 0 ||
 				result.Results[0].OrderedProximity == 0 {
 				t.Fatalf("CJK result evidence = %#v", result.Results[0])

@@ -32,3 +32,7 @@ type CompactionResult struct {
 type Compactor interface {
 	Compact(ctx context.Context) (CompactionResult, error)
 }
+
+type CompactionOperatorError interface {
+	CompactionOperatorMessage() string
+}

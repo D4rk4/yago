@@ -171,35 +171,30 @@ func TestInteractiveSearchBudgetReturnsBeforeUncooperativeWorkStops(t *testing.T
 		t.Fatal("uncooperative work stopped before release")
 	default:
 	}
-	busy, err := searcher.Search(t.Context(), searchcore.Request{Query: "busy"})
-	if err != nil || busy.Request.Query != "busy" ||
-		len(busy.PartialFailures) != 1 ||
-		busy.PartialFailures[0].Reason != interactiveSearchCapacityFailure ||
-		inner.calls.Load() != 1 {
-		t.Fatalf("busy search = %#v, %v, calls %d", busy, err, inner.calls.Load())
+	busyResult := make(chan interactiveSearchOutcome, 1)
+	go func() {
+		response, err := searcher.Search(t.Context(), searchcore.Request{Query: "busy"})
+		busyResult <- interactiveSearchOutcome{response: response, err: err}
+	}()
+	select {
+	case outcome := <-busyResult:
+		t.Fatalf("saturated search did not wait: %#v, %v", outcome.response, outcome.err)
+	case <-time.After(10 * time.Millisecond):
 	}
-
 	close(inner.release)
-	deadline := time.Now().Add(time.Second)
-	for {
-		response, searchErr := searcher.Search(
-			t.Context(),
-			searchcore.Request{Query: "next"},
-		)
-		if searchErr != nil && !errors.Is(searchErr, errInteractiveSearchCapacity) {
-			t.Fatalf("search after release: %v", searchErr)
+	select {
+	case outcome := <-busyResult:
+		if outcome.err != nil || outcome.response.Request.Query != "busy" ||
+			len(outcome.response.PartialFailures) != 0 || inner.calls.Load() != 2 {
+			t.Fatalf(
+				"search after release = %#v, %v, calls %d",
+				outcome.response,
+				outcome.err,
+				inner.calls.Load(),
+			)
 		}
-		if len(response.PartialFailures) == 0 {
-			if response.Request.Query != "next" || inner.calls.Load() != 2 {
-				t.Fatalf("search after release = %#v, calls %d", response, inner.calls.Load())
-			}
-
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("completed work did not release search admission")
-		}
-		runtime.Gosched()
+	case <-time.After(time.Second):
+		t.Fatal("waiting search did not acquire released admission")
 	}
 }
 
@@ -265,6 +260,23 @@ func TestInteractiveSearchBudgetClassifiesErrorsAndPreservesPanics(t *testing.T)
 	_, _ = interactiveBudgetFixture(
 		panicSearcher{failure: wantPanic}, time.Second,
 	).Search(t.Context(), searchcore.Request{})
+}
+
+func TestInteractiveSearchBudgetClassifiesNestedCapacityFailure(t *testing.T) {
+	response, err := interactiveBudgetFixture(
+		errorInteractiveSearch{
+			err: fmt.Errorf("exact recovery: %w", errInteractiveSearchCapacity),
+		},
+		time.Second,
+	).Search(t.Context(), searchcore.Request{Query: "saturated"})
+	if err != nil || response.Request.Query != "saturated" ||
+		len(response.PartialFailures) != 1 ||
+		response.PartialFailures[0] != (searchcore.PartialFailure{
+			Source: interactiveSearchFailureSource,
+			Reason: interactiveSearchCapacityFailure,
+		}) {
+		t.Fatalf("capacity failure = %#v, %v", response, err)
+	}
 }
 
 func TestInteractiveSearchBudgetContainsPanicAfterDeadline(t *testing.T) {

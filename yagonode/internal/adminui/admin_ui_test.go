@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 type fakeSearch struct {
@@ -1169,15 +1171,24 @@ func TestLayoutOmitsSignOutWithoutCSRF(t *testing.T) {
 }
 
 type fakeCrawl struct {
-	got    CrawlStart
-	result CrawlDispatch
-	err    error
+	got            CrawlStart
+	result         CrawlDispatch
+	err            error
+	maxPagesPerRun *int
 }
 
 func (f *fakeCrawl) Start(_ context.Context, start CrawlStart) (CrawlDispatch, error) {
 	f.got = start
 
 	return f.result, f.err
+}
+
+func (f *fakeCrawl) MaxPagesPerRun() int {
+	if f.maxPagesPerRun == nil {
+		return yagocrawlcontract.DefaultMaxPagesPerRun
+	}
+
+	return *f.maxPagesPerRun
 }
 
 func doPost(t *testing.T, console *Console, path string, form url.Values) capture {
@@ -1220,10 +1231,18 @@ func TestConsoleCrawlRendersForm(t *testing.T) {
 	if got.status != http.StatusOK {
 		t.Fatalf("status %d", got.status)
 	}
-	for _, want := range []string{`name="seeds"`, `action="/admin/crawl"`, `name="csrf_token"`, `name="maxDepth"`} {
+	for _, want := range []string{`name="seeds"`, `action="/admin/crawl"`, `name="csrf_token"`, `name="maxDepth"`, `name="maxPagesPerRun"`, `value="50000"`} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("crawl form missing %q", want)
 		}
+	}
+}
+
+func TestConsoleCrawlRendersCurrentRunBudget(t *testing.T) {
+	maximum := 321
+	got := do(t, New(Options{Crawl: &fakeCrawl{maxPagesPerRun: &maximum}}), "/admin/crawl")
+	if !strings.Contains(got.body, `name="maxPagesPerRun" min="0" value="321"`) {
+		t.Fatalf("crawl form missing current run budget: %s", got.body)
 	}
 }
 
@@ -1325,6 +1344,7 @@ func TestConsoleCrawlStartPassesExpertFields(t *testing.T) {
 		"indexMustMatch":      {".*"},
 		"indexMustNotMatch":   {`.*/private/.*`},
 		"maxPagesPerHost":     {"50"},
+		"maxPagesPerRun":      {"1000"},
 		"crawlDelay":          {"2s"},
 		"recrawlIfOlder":      {"24h"},
 		"allowQueryURLs":      {"on"},
@@ -1343,6 +1363,8 @@ func TestConsoleCrawlStartPassesExpertFields(t *testing.T) {
 		t.Fatalf("indexMustNotMatch = %q", crawl.got.IndexURLMustNotMatch)
 	case crawl.got.MaxPagesPerHost != 50:
 		t.Fatalf("maxPagesPerHost = %d", crawl.got.MaxPagesPerHost)
+	case crawl.got.MaxPagesPerRun == nil || *crawl.got.MaxPagesPerRun != 1000:
+		t.Fatalf("maxPagesPerRun = %v", crawl.got.MaxPagesPerRun)
 	case !crawl.got.AllowQueryURLs || !crawl.got.FollowNoFollowLinks:
 		t.Fatalf("checkboxes not captured: %+v", crawl.got)
 	case crawl.got.RecrawlIfOlder != "24h" || crawl.got.CrawlDelay != "2s":

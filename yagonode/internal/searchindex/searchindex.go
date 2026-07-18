@@ -22,6 +22,13 @@ type SearchEvidenceSource interface {
 	) ([]SearchResult, error)
 }
 
+type DocumentPassageSource interface {
+	DocumentPassage(
+		ctx context.Context,
+		req DocumentPassageRequest,
+	) (DocumentPassage, bool, error)
+}
+
 type SearchRequest struct {
 	Query              string
 	ExcludeTerms       []string
@@ -104,24 +111,26 @@ type SearchResult struct {
 	Keywords string
 	// Publisher is the document's extracted publisher metadata
 	// (doc.Metadata["publisher"]), surfaced for the yacysearch RSS dc:publisher field.
-	Publisher            string
-	Language             string
-	Quality              float64
-	QualityKnown         bool
-	SpamRisk             float64
-	FunctionWordFraction float64
-	SymbolFraction       float64
-	AlphabeticFraction   float64
-	UniqueTokenFraction  float64
-	Analyzer             string
-	EvidenceReady        bool
-	SafetyRating         documentstore.SafetyRating
-	ExplicitProbability  float64
-	SafetyConfidence     float64
-	StrictScore          float64
-	StrictRank           int
-	RelaxedScore         float64
-	RelaxedRank          int
+	Publisher                   string
+	Language                    string
+	Quality                     float64
+	QualityKnown                bool
+	SpamRisk                    float64
+	FunctionWordFraction        float64
+	SymbolFraction              float64
+	AlphabeticFraction          float64
+	UniqueTokenFraction         float64
+	Analyzer                    string
+	EvidenceReady               bool
+	EvidenceRequirementOrdinals []int
+	BodyQueryMatches            []TextQueryMatch
+	SafetyRating                documentstore.SafetyRating
+	ExplicitProbability         float64
+	SafetyConfidence            float64
+	StrictScore                 float64
+	StrictRank                  int
+	RelaxedScore                float64
+	RelaxedRank                 int
 	// Proximity is the SDM unordered-window feature in [0,1]: the fraction of
 	// adjacent query-word pairs that co-occur within a small token window of the
 	// document text, computed at result mapping (query-dependent); the searcher

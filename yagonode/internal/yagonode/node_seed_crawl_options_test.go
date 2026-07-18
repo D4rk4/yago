@@ -48,8 +48,10 @@ func TestNewCrawlSeederAppliesSeedCrawlOptions(t *testing.T) {
 		nullCrawlQueue{},
 		countingDirectory{},
 		yagomodel.Hash("node"),
-		webFallbackConfig{SeedDepth: 1, SeedMaxPages: 5},
-		options,
+		webCrawlSeedProfile{
+			fallback: webFallbackConfig{SeedDepth: 1, SeedMaxPages: 5},
+			crawl:    options,
+		},
 	)
 	assertProfileHonorsOptions(t, web.profile, options)
 }

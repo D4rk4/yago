@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -10,10 +11,16 @@ import (
 )
 
 type stubCompactor struct {
-	mu     sync.Mutex
-	calls  int
-	result vault.CompactResult
-	err    error
+	mu          sync.Mutex
+	calls       int
+	result      vault.CompactResult
+	err         error
+	headroom    uint64
+	headroomErr error
+}
+
+func (s *stubCompactor) CompactionHeadroom(context.Context) (uint64, error) {
+	return s.headroom, s.headroomErr
 }
 
 func (s *stubCompactor) Compact(context.Context) (vault.CompactResult, error) {
@@ -69,8 +76,12 @@ func TestAdvanceCompaction(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			store := &stubCompactor{}
-			got := advanceCompaction(context.Background(), store, tc.interval, tc.last, tc.now)
+			store := &stubCompactor{headroom: 1}
+			got := advanceCompaction(context.Background(), store, compactionWindow{
+				interval: tc.interval,
+				last:     tc.last,
+				now:      tc.now,
+			})
 			if !got.Equal(tc.wantLast) {
 				t.Fatalf("baseline = %v, want %v", got, tc.wantLast)
 			}
@@ -85,7 +96,10 @@ func TestRunCompactionLoopCompactsOncePerInterval(t *testing.T) {
 	ticks := make(chan time.Time)
 	defer swapCompactionTicks(ticks)()
 
-	store := &stubCompactor{result: vault.CompactResult{ShardsCompacted: 1, BytesReclaimed: 4096}}
+	store := &stubCompactor{
+		headroom: 1,
+		result:   vault.CompactResult{ShardsCompacted: 1, BytesReclaimed: 4096},
+	}
 	toggles := &runtimeToggles{}
 	toggles.SetCompactionInterval(time.Hour)
 
@@ -110,6 +124,58 @@ func TestRunCompactionLoopCompactsOncePerInterval(t *testing.T) {
 
 	cancel()
 	<-done
+}
+
+func TestCompactionDefersAndRetriesWhenTemporaryCopyDoesNotFit(t *testing.T) {
+	base := time.Unix(1_000_000, 0)
+	store := &stubCompactor{headroom: 8 << 30}
+	admission := &nodeGrowthAdmission{err: errors.New("insufficient headroom")}
+	last := advanceCompaction(
+		t.Context(),
+		store,
+		compactionWindow{
+			interval: time.Hour,
+			last:     base,
+			now:      base.Add(time.Hour),
+		},
+		admission,
+	)
+	if !last.Equal(base) || store.count() != 0 || admission.requiredHeadroom != 8<<30 {
+		t.Fatalf(
+			"deferred baseline=%v calls=%d headroom=%d",
+			last,
+			store.count(),
+			admission.requiredHeadroom,
+		)
+	}
+	admission.err = nil
+	last = advanceCompaction(
+		t.Context(),
+		store,
+		compactionWindow{
+			interval: time.Hour,
+			last:     last,
+			now:      base.Add(time.Hour + time.Minute),
+		},
+		admission,
+	)
+	if !last.Equal(base.Add(time.Hour+time.Minute)) || store.count() != 1 {
+		t.Fatalf("retried baseline=%v calls=%d", last, store.count())
+	}
+}
+
+func TestCompactOnceSkipsEmptyCompactionSource(t *testing.T) {
+	store := &stubCompactor{}
+	if completed := compactOnce(t.Context(), store); !completed || store.count() != 0 {
+		t.Fatalf("empty compaction completed=%t calls=%d", completed, store.count())
+	}
+}
+
+func TestCompactOnceDefersWhenHeadroomCannotBeMeasured(t *testing.T) {
+	store := &stubCompactor{headroomErr: errors.New("measurement failed")}
+	if completed := compactOnce(t.Context(), store); completed || store.count() != 0 {
+		t.Fatalf("unmeasured compaction completed=%t calls=%d", completed, store.count())
+	}
 }
 
 func TestRunCompactionLoopSkipsWhenDisabled(t *testing.T) {

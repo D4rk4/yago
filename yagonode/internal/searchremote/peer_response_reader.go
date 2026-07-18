@@ -18,6 +18,7 @@ func (s searcher) sendRemoteSearchWithinLimit(
 	peer yagomodel.Seed,
 	searchReq yagoproto.SearchRequest,
 	responseBodyLimit int,
+	callBudgets ...*outboundCallBudget,
 ) (yagoproto.SearchResponse, int, error) {
 	if s.selfSeed != nil {
 		searchReq.MySeed = yagomodel.Some(s.selfSeed(ctx))
@@ -39,6 +40,7 @@ func (s searcher) sendRemoteSearchWithinLimit(
 			target,
 			searchReq,
 			responseBodyLimit-responseBytes,
+			callBudgets...,
 		)
 		responseBytes += readBytes
 		if err == nil {
@@ -58,6 +60,7 @@ func (s searcher) sendRemoteSearchToWithinLimit(
 	target *url.URL,
 	searchReq yagoproto.SearchRequest,
 	responseBodyLimit int,
+	callBudgets ...*outboundCallBudget,
 ) (yagoproto.SearchResponse, int, error) {
 	target.RawQuery = searchReq.Form().Encode()
 
@@ -71,6 +74,9 @@ func (s searcher) sendRemoteSearchToWithinLimit(
 	}
 	if trace, ok := tracectx.FromContext(ctx); ok {
 		httpReq.Header.Set(tracectx.Header, trace.Child().Header())
+	}
+	if !acquireOutboundCall(callBudgets...) {
+		return yagoproto.SearchResponse{}, 0, errRemoteSearchBudgetExhausted
 	}
 	release, err := enterRemoteSearchAdmission(ctx, s.remoteSearchAdmission())
 	if err != nil {

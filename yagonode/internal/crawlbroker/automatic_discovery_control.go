@@ -1,10 +1,16 @@
 package crawlbroker
 
-import "github.com/D4rk4/yago/yagocrawlcontract"
+import (
+	"context"
+	"fmt"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
+)
 
 type crawlerControlDefaults struct {
 	fetchWorkers                 uint32
 	prioritizeAutomaticDiscovery bool
+	storagePressurePolicy        yagocrawlcontract.StoragePressurePolicy
 }
 
 func (r *ControlRegistry) SetAutomaticDiscoveryPriority(enabled bool) int {
@@ -16,11 +22,16 @@ func (r *ControlRegistry) SetAutomaticDiscoveryPriority(enabled bool) int {
 	defer r.mu.Unlock()
 	r.prioritizeAutomaticDiscovery = enabled
 	r.automaticDiscoveryPrioritySet = true
+	signalled := 0
 	for workerID := range r.workers {
-		r.pending[workerID] = append(r.pending[workerID], directive)
+		if r.enqueueLocked(workerID, directive) {
+			signalled++
+		} else {
+			r.initialized[workerID] = false
+		}
 	}
 
-	return len(r.workers)
+	return signalled
 }
 
 func (r *ControlRegistry) initialDirectivesLocked() []yagocrawlcontract.CrawlControlDirective {
@@ -41,17 +52,54 @@ func (r *ControlRegistry) initialDirectivesLocked() []yagocrawlcontract.CrawlCon
 	return directives
 }
 
-func (r *ControlRegistry) drainForHeartbeat(
+func (r *ControlRegistry) ensureInitialLocked(
+	ctx context.Context,
 	workerID string,
-) []yagocrawlcontract.CrawlControlDirective {
+) error {
+	pending, err := r.directives.Exchange(ctx, workerID, nil)
+	if err != nil {
+		return fmt.Errorf("read initial crawl control directives: %w", err)
+	}
+	for _, wanted := range r.initialDirectivesLocked() {
+		present := false
+		for _, existing := range pending {
+			existing.DirectiveID = 0
+			if existing == wanted {
+				present = true
+
+				break
+			}
+		}
+		if present {
+			continue
+		}
+		if _, err := r.directives.Enqueue(ctx, workerID, wanted); err != nil {
+			return fmt.Errorf("enqueue initial crawl control directive: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (r *ControlRegistry) deliverForHeartbeat(
+	ctx context.Context,
+	workerID string,
+	acknowledged []uint64,
+) ([]yagocrawlcontract.CrawlControlDirective, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	directives := r.pending[workerID]
-	delete(r.pending, workerID)
-	if r.workers[workerID] == 0 {
-		directives = append(directives, r.initialDirectivesLocked()...)
+	if !r.initialized[workerID] {
+		if err := r.ensureInitialLocked(ctx, workerID); err != nil {
+			return nil, err
+		}
+		r.initialized[workerID] = true
 	}
 
-	return directives
+	directives, err := r.directives.Exchange(ctx, workerID, acknowledged)
+	if err != nil {
+		return nil, fmt.Errorf("exchange crawl control directives: %w", err)
+	}
+
+	return directives, nil
 }

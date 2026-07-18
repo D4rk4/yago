@@ -28,12 +28,13 @@ const (
 )
 
 type recoveryBudgetSearcher struct {
-	inner     searchcore.Searcher
-	budget    time.Duration
-	grace     time.Duration
-	admission *interactiveSearchAdmission
-	panicLog  func(context.Context, string, ...any)
-	profile   recoveryStageProfile
+	inner            searchcore.Searcher
+	budget           time.Duration
+	grace            time.Duration
+	admission        *interactiveSearchAdmission
+	waitForAdmission bool
+	panicLog         func(context.Context, string, ...any)
+	profile          recoveryStageProfile
 }
 
 type recoveryStageProfile struct {
@@ -75,10 +76,17 @@ func (s recoveryBudgetSearcher) Search(
 	stageContext, stageCancel := context.WithTimeout(hardContext, stageBudget)
 	defer stageCancel()
 
-	release, err := s.admission.tryAcquire(stageContext)
+	acquire := s.admission.tryAcquire
+	if s.waitForAdmission {
+		acquire = s.admission.acquire
+	}
+	release, err := acquire(stageContext)
 	if err != nil {
 		if errors.Is(err, errInteractiveSearchCapacity) {
 			return recoverySearchFailure(req, profile, profile.capacityFailure), nil
+		}
+		if errors.Is(err, context.DeadlineExceeded) && context.Cause(ctx) == nil {
+			return recoverySearchFailure(req, profile, profile.timeoutFailure), nil
 		}
 
 		return searchcore.Response{}, fmt.Errorf("%s admission: %w", profile.operation, err)

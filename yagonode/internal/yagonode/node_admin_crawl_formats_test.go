@@ -52,6 +52,7 @@ func TestBuildCrawlRuntimeFormatsOpenError(t *testing.T) {
 	v := ctrlVault(t, engine)
 
 	_, err := buildRuntimeCrawl(
+		context.Background(),
 		crawlConfig{ListenAddr: "127.0.0.1:0"},
 		nodeIdentity(testConfig(t)),
 		nodeStorage{},

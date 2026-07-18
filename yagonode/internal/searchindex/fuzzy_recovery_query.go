@@ -18,35 +18,66 @@ func fuzzyRecoveryQuery(
 	if !analyzerScope {
 		return strictFuzzyRecoveryQuery(req, analyzers, weights)
 	}
-	branches := []blevequery.Query{strictFuzzyRecoveryQuery(
+	standard := strictFuzzyRecoveryQuery(
 		req,
 		[]string{standardTextAnalyzer},
 		weights,
-	)}
-	for _, analyzer := range analyzers {
-		terms := requirableTermsForAnalyzer(queryTermWords(req), analyzer)
-		if len(terms) == 0 {
-			continue
-		}
-		required := make([]blevequery.Query, 0, len(terms)+1)
-		required = append(required, analyzerScopeClause(analyzer))
-		for _, term := range terms {
-			required = append(
-				required,
-				fuzzyCrossFieldTermClauseForAnalyzer(term, analyzer, weights),
+	)
+	branches := []blevequery.Query{standard}
+	branchAnalyzers, equivalentAnalyzers := requirementAnalyzerBranches(req, analyzers)
+	if len(equivalentAnalyzers) > 0 {
+		branch, found := fuzzyAnalyzerBranch(
+			req,
+			standardTextAnalyzer,
+			equivalentAnalyzerScopeClause(equivalentAnalyzers),
+			weights,
+		)
+		if found {
+			branches = appendEquivalentAnalyzerBranch(
+				branches,
+				branch,
+				len(equivalentAnalyzers),
 			)
 		}
-		branch := required[0]
-		if len(required) > 1 {
-			branch = bleve.NewConjunctionQuery(required...)
+	}
+	for _, analyzer := range branchAnalyzers {
+		branch, found := fuzzyAnalyzerBranch(
+			req,
+			analyzer,
+			analyzerScopeClause(analyzer),
+			weights,
+		)
+		if found {
+			branches = append(branches, branch)
 		}
-		branches = append(branches, branch)
 	}
 	if len(branches) == 1 {
 		return branches[0]
 	}
 
 	return bleve.NewDisjunctionQuery(branches...)
+}
+
+func fuzzyAnalyzerBranch(
+	req SearchRequest,
+	analyzer string,
+	scope blevequery.Query,
+	weights RankingWeights,
+) (blevequery.Query, bool) {
+	terms := requirableTermsForAnalyzer(queryTermWords(req), analyzer)
+	if len(terms) == 0 {
+		return nil, false
+	}
+	required := make([]blevequery.Query, 0, len(terms)+1)
+	required = append(required, scope)
+	for _, term := range terms {
+		required = append(
+			required,
+			fuzzyCrossFieldTermClauseForAnalyzer(term, analyzer, weights),
+		)
+	}
+
+	return bleve.NewConjunctionQuery(required...), true
 }
 
 func strictFuzzyRecoveryQuery(

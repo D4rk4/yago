@@ -201,38 +201,45 @@ func TestStableInputTiesAndIdentityFallbacks(t *testing.T) {
 	}
 }
 
-func TestRerankLeavesFederatedCandidatesInFusionSlots(t *testing.T) {
-	ranker, err := NewRanker(4)
+func TestRerankCoversTheBoundedFusedCandidateWindow(t *testing.T) {
+	ranker, err := NewRanker(3)
 	if err != nil {
 		t.Fatalf("NewRanker: %v", err)
 	}
 	if err := ranker.Activate(mustSnapshot(
 		t,
-		"local-only",
+		"fused-window",
 		mustLinearModel(t, linearWeights(map[int]float64{0: 1})),
 	)); err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
 	localLow := rankingResult("local-low", 1, 1)
 	localLow.Source = searchcore.SourceGlobal
-	remote := rankingResult("remote", 100, 2)
+	remote := rankingResult("remote", 3, 2)
 	remote.Source = searchcore.SourceRemote
-	localHigh := rankingResult("local-high", 3, 3)
-	localHigh.Source = searchcore.SourceGlobal
-	web := rankingResult("web", 100, 4)
+	web := rankingResult("web", 5, 3)
 	web.Source = searchcore.SourceWeb
+	tail := rankingResult("tail", math.MaxFloat64, 4)
+	tail.Source = searchcore.SourceRemote
 	outcome, err := ranker.Rerank(
-		searchcore.Request{Source: searchcore.SourceGlobal},
-		[]searchcore.Result{localLow, remote, localHigh, web},
+		searchcore.Request{Source: searchcore.SourceGlobal, Explain: true},
+		[]searchcore.Result{localLow, remote, web, tail},
 	)
 	if err != nil {
 		t.Fatalf("Rerank: %v", err)
 	}
 	if got := resultURLs(outcome.Results); !reflect.DeepEqual(
 		got,
-		[]string{"local-high", "remote", "local-low", "web"},
-	) || outcome.Results[1].Score != 2 || outcome.Results[3].Score != 4 {
+		[]string{"web", "remote", "local-low", "tail"},
+	) || outcome.Results[3].Score != 4 || len(outcome.Explanations) != 3 {
 		t.Fatalf("federated order = %v, %#v", got, outcome.Results)
+	}
+	if got := []string{
+		outcome.Explanations[0].Identity,
+		outcome.Explanations[1].Identity,
+		outcome.Explanations[2].Identity,
+	}; !reflect.DeepEqual(got, []string{"url:web", "url:remote", "url:local-low"}) {
+		t.Fatalf("federated explanations = %v", got)
 	}
 }
 

@@ -58,14 +58,7 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 		remoteOutcome <- searchOutcome{resp: resp, err: err}
 	}()
 	localResp, localErr := s.local.Search(ctx, window)
-	var remote searchOutcome
-	remoteReady := false
-	select {
-	case remote = <-remoteOutcome:
-		remoteReady = true
-	case <-ctx.Done():
-		remote, remoteReady = drainRemoteOutcome(remoteOutcome)
-	}
+	remote, remoteReady := awaitRemoteOutcome(ctx, remoteOutcome, localResp)
 	if !remoteReady {
 		remote.err = context.Cause(ctx)
 	}

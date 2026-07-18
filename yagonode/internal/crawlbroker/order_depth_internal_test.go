@@ -38,7 +38,7 @@ func TestDurableOrderQueueDepthCountsPendingAndLeased(t *testing.T) {
 		t.Fatalf("pending depth = %+v, want 3 pending", depth)
 	}
 
-	if _, _, err := queue.leaseNext(ctx, "worker"); err != nil {
+	if _, err := queue.leaseNext(ctx); err != nil {
 		t.Fatalf("lease: %v", err)
 	}
 

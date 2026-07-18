@@ -19,6 +19,15 @@ func (acceptingCrawlControl) Enqueue(
 	return true
 }
 
+type rejectingCrawlControl struct{}
+
+func (rejectingCrawlControl) Enqueue(
+	string,
+	yagocrawlcontract.CrawlControlDirective,
+) bool {
+	return false
+}
+
 func controlSourceWithRun(t *testing.T, runID, workerID string) *crawlControlSource {
 	t.Helper()
 	runtime := liveCrawlRuntime(t)
@@ -165,17 +174,30 @@ func restartControlSource(
 	return newCrawlControlSource(runtime.runRegistry(), acceptingCrawlControl{}, restarter)
 }
 
-func TestCrawlControlSourceRejectsOfflineWorker(t *testing.T) {
+func TestCrawlControlSourceQueuesRunControlForOfflineWorker(t *testing.T) {
 	runtime := liveCrawlRuntime(t)
 	runtime.runRegistry().Record(context.Background(), yagocrawlcontract.CrawlRunProgress{
 		RunID: "ab", WorkerID: "offline-worker", State: yagocrawlcontract.CrawlRunRunning,
 	})
 	source := newCrawlControlSource(runtime.runRegistry(), runtime.controlRegistry(), nil)
+	if err := source.Control(context.Background(), adminui.CrawlControlRequest{
+		RunID: "ab", Action: "pause",
+	}); err != nil {
+		t.Fatalf("queue offline run control: %v", err)
+	}
+}
+
+func TestCrawlControlSourceReportsRunControlPersistenceFailure(t *testing.T) {
+	runtime := liveCrawlRuntime(t)
+	runtime.runRegistry().Record(context.Background(), yagocrawlcontract.CrawlRunProgress{
+		RunID: "ab", WorkerID: "worker-1", State: yagocrawlcontract.CrawlRunRunning,
+	})
+	source := newCrawlControlSource(runtime.runRegistry(), rejectingCrawlControl{}, nil)
 	err := source.Control(context.Background(), adminui.CrawlControlRequest{
 		RunID: "ab", Action: "pause",
 	})
-	if !errors.Is(err, errCrawlWorkerOffline) {
-		t.Fatalf("error = %v, want errCrawlWorkerOffline", err)
+	if !errors.Is(err, errCrawlControlUnavailable) {
+		t.Fatalf("control rejection error = %v", err)
 	}
 }
 

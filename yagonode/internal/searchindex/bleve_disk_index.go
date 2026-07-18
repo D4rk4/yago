@@ -109,6 +109,7 @@ func NewBleveDiskIndex(
 	path string,
 	directory documentstore.DocumentDirectory,
 	stored documentstore.StoredDocuments,
+	rebuildAdmissions ...BleveRebuildGrowthAdmission,
 ) (*BleveDiskIndex, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -142,7 +143,7 @@ func NewBleveDiskIndex(
 		now:              time.Now,
 	}
 	if rebuild && stored != nil {
-		if err := out.rebuild(ctx, stored); err != nil {
+		if err := out.rebuild(ctx, stored, rebuildAdmissions...); err != nil {
 			closeBleveShards(shards)
 
 			return nil, err

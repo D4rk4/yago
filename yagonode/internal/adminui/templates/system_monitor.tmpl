@@ -10,6 +10,14 @@
       <meter class="cds-system-monitor__meter" min="0" max="{{.CrawlerFetchMaximum}}" value="{{.CrawlerFetchValue}}" aria-label="Active crawler fetch workers">{{.CrawlerFetchText}}</meter>
       {{else}}<span class="cds-system-monitor__value">Unavailable</span>{{end}}
     </div>{{end}}
+    {{if .CrawlerStorageVisible}}<div class="cds-system-monitor__reading">
+      <span class="cds-system-monitor__label">Crawler storage reserve</span>
+      <span class="cds-system-monitor__value">{{.CrawlerStorageText}}</span>
+    </div>{{end}}
+    {{if .NodeStoragePressureVisible}}<div class="cds-system-monitor__reading">
+      <span class="cds-system-monitor__label">Node filesystem reserve</span>
+      <span class="cds-system-monitor__value">{{.NodeStoragePressureText}}</span>
+    </div>{{end}}
     <div class="cds-system-monitor__reading">
       <span class="cds-system-monitor__label">Process CPU</span>
       {{if .CPUAvailable}}
@@ -32,10 +40,10 @@
       {{else}}<span class="cds-system-monitor__value">Unavailable</span>{{end}}
     </div>
     <div class="cds-system-monitor__reading">
-      <span class="cds-system-monitor__label">Data storage</span>
+      <span class="cds-system-monitor__label">Main-vault live data</span>
       {{if .StorageAvailable}}
       <span class="cds-system-monitor__value">{{.StorageText}}</span>
-      {{if .StorageBounded}}<meter class="cds-system-monitor__meter" min="0" max="{{.StorageMaximum}}" value="{{.StorageValue}}" aria-label="Data storage usage">{{.StorageText}}</meter>{{end}}
+      {{if .StorageBounded}}<meter class="cds-system-monitor__meter" min="0" max="{{.StorageMaximum}}" value="{{.StorageValue}}" aria-label="Main-vault logical live data versus soft admission quota">{{.StorageText}}</meter>{{end}}
       {{else}}<span class="cds-system-monitor__value">Unavailable</span>{{end}}
     </div>
   </div>

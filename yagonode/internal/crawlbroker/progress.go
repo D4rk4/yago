@@ -13,11 +13,29 @@ import (
 // the gRPC contract.
 type ProgressSink interface {
 	Record(ctx context.Context, progress yagocrawlcontract.CrawlRunProgress)
+	RecordTerminal(
+		ctx context.Context,
+		orderIdentity []byte,
+		progress yagocrawlcontract.CrawlRunProgress,
+	) error
+	ConfirmTerminalDelivery(ctx context.Context, orderIdentity []byte) error
 }
 
 type noopProgressSink struct{}
 
 func (noopProgressSink) Record(context.Context, yagocrawlcontract.CrawlRunProgress) {}
+
+func (noopProgressSink) RecordTerminal(
+	context.Context,
+	[]byte,
+	yagocrawlcontract.CrawlRunProgress,
+) error {
+	return nil
+}
+
+func (noopProgressSink) ConfirmTerminalDelivery(context.Context, []byte) error {
+	return nil
+}
 
 func progressFromReport(report *crawlrpc.CrawlProgressReport) yagocrawlcontract.CrawlRunProgress {
 	return yagocrawlcontract.CrawlRunProgress{

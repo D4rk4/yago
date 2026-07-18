@@ -40,9 +40,9 @@ YagoRank uses a bounded in-process pipeline:
    explain, and `near` consumers request capped stored-document positions for
    their bounded local windows. Peer and web rows fall back to visible title and
    snippet evidence. Ordinary retrieval issues no Bleve phrase or location query. Local and YaCy peer lists
-   use deterministic RRF. Global serving retrieves at least twice the learned
-   window from the merged list and scans only until its bounded local candidate
-   window is full, preserving peer and web slots.
+   use deterministic RRF. Learned serving evaluates the leading bounded fused
+   window regardless of local, peer, or web provenance and does not over-fetch
+   candidates solely to fill a provenance-specific model quota.
 2. Crawl and peer evidence is persisted before search: lifecycle dates, inbound
    anchors, content quality and safety, exact and near-duplicate clusters,
    registrable-domain authority, and decayed peer reputation.
@@ -92,9 +92,11 @@ YagoRank uses a bounded in-process pipeline:
    Wilson interval excludes an even click split after the minimum evidence
    threshold becomes an implicit qrel. Legacy pointwise aggregates are not
    qrels, and curated judgments replace implicit evidence for the same query.
-8. Learned scoring applies only to locally stored candidates until representative
-   federated training evidence exists. Safety, persistent cluster consolidation,
-   MMR, host crowding, date order, and paging run once afterward.
+8. Learned scoring applies to the leading bounded fused candidate window across
+   local, peer, and web provenance. Missing evidence remains explicitly missing,
+   and every selected document inherits the pre-model relevance of its
+   destination slot for later diversity. Safety, persistent cluster
+   consolidation, MMR, host crowding, date order, and paging run once afterward.
 
 Coordinate ascent remains available for profile-weight preview and cold-start
 diagnosis. A node without an active learned snapshot follows the complete

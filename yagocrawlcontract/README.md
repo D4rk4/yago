@@ -15,7 +15,7 @@ The contract has a leased work flow and a feedback-bearing ingest flow:
 ```text
           WorkerRegistration + CrawlOrderDelivery(lease ID)
 node --------------------------------------------------> crawler
-     <---------------- AckOrder/NAK + Heartbeat + progress
+     <---------- AckOrder (ACK/NAK/TERM) + Heartbeat + progress
 
           SubmitIngest(IngestBatch)
 node <----------------------------------------------- crawler
@@ -89,8 +89,10 @@ recrawl policy remains a crawler/frontier decision.
 ## Backpressure
 
 Every streamed order has a durable lease ID. `AckOrder` deletes completed work;
-the same call with requeue semantics naks unfinished work. `Heartbeat` renews the
-leases held by one registered worker, and `ReportProgress` carries run tallies.
+the same call with requeue semantics naks retryable work, while terminate
+semantics delete operator-cancelled or permanently invalid work. `Heartbeat`
+renews the leases held by one registered worker, and `ReportProgress` carries run
+tallies.
 The node can durably enqueue more orders than a crawler currently has in its
 frontier; crawler saturation is handled by lease ownership rather than by
 blocking order creation. Each progress report carries the run's effective
@@ -98,10 +100,25 @@ pages-per-minute limit, including the crawler default and an explicit zero for
 unlimited dispatch, so the node does not infer worker configuration.
 
 Invalid order modes, URLs, profiles, deterministic fetch responses, and malformed
-seed documents terminate the lease. Network, server, throttle, timeout, and
-cancellation failures requeue it. Settlement calls are idempotent: a live crawler
-retries transient ACK/NAK failures, while shutdown stops after a bounded detached
-attempt so the lease can expire after heartbeats stop.
+seed documents terminate the lease. An operator cancellation is also terminal.
+Network, server, throttle, timeout, and interrupted expansion failures NAK the
+lease into a durable five-second retry delay. Legacy settlement calls are
+idempotent for a fixed 24-hour retry horizon: a duplicate terminal ACK succeeds,
+while a stale ACK after NAK or expiry is rejected. Rich terminal progress remains
+durable through delivery and run-control completion. Once finalized, it keeps the
+same 24-hour confirmation window; expiry atomically applies a still-pending
+requeue and late valid token confirmation remains idempotent. A live crawler
+retries transient settlement failures, while shutdown stops after a bounded
+detached attempt and retains unfinished checkpoint state for same-worker
+adoption. An expired session-aware lease stays bound to that stable worker;
+deferred and legacy sessionless leases remain globally requeueable. The crawler
+bounds every heartbeat call to one second and treats an omitted or expired active
+lease as an order-stream reconnect signal, allowing immediate same-worker
+adoption even when the old stream had no transport failure. The node frames at
+most 1,024 adopted leases as one ordered recovery batch. Its first message carries
+the complete lease-ID header, and the crawler confirms that header with one
+heartbeat before exposing the first recovered order. This keeps replay work
+linear while retaining per-order streaming and bounded memory.
 
 `SubmitIngest` is unary, so acceptance or retryable backpressure returns directly
 to the crawler that submitted the batch. There is no shared feedback topic.
@@ -141,3 +158,15 @@ index keys for already consumed orders are removed during selection. The
 priority of an unsettled lease created by the older node is recovered from its
 retained order payload. The intermediate split-payload development format is
 migrated at startup.
+
+The process-session, active-lease, recovered-order framing, lease-bound
+ingest/progress, rich terminal settlement, and confirmation-token fields are
+additive on the protobuf wire. An older crawler ignores the recovery markers and
+retains per-order lease confirmation; a current crawler receiving unmarked replay
+from an older node does the same. The current node still requires a valid
+process-session identity before accepting a crawler stream or lease mutation. A
+crawler that predates that identity is therefore rejected by a current node.
+Upgrade the node and every crawler from one release as a coordinated operation:
+stop crawlers first, replace both binaries, start and verify the node, then start
+crawlers. Rollback requires the matching node broker and crawler checkpoint
+backup and the same start order.

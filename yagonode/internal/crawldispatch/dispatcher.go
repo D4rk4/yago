@@ -34,10 +34,11 @@ func (e *DispatchError) Unwrap() error { return e.Err }
 // the most recent request per profile handle so a finished or failed run can
 // be restarted from the monitor without re-entering the form.
 type Dispatcher struct {
-	initiator yagomodel.Hash
-	mint      ProvenanceMint
-	queue     CrawlOrderQueue
-	now       func() time.Time
+	initiator      yagomodel.Hash
+	mint           ProvenanceMint
+	queue          CrawlOrderQueue
+	now            func() time.Time
+	maxPagesPerRun func() int
 
 	mu           sync.Mutex
 	lastByHandle map[string]OperatorRequest
@@ -48,14 +49,20 @@ func NewDispatcher(
 	initiator yagomodel.Hash,
 	mint ProvenanceMint,
 	queue CrawlOrderQueue,
+	options ...DispatcherOption,
 ) *Dispatcher {
-	return &Dispatcher{
+	dispatcher := &Dispatcher{
 		initiator:    initiator,
 		mint:         mint,
 		queue:        queue,
 		now:          time.Now,
 		lastByHandle: map[string]OperatorRequest{},
 	}
+	for _, option := range options {
+		option(dispatcher)
+	}
+
+	return dispatcher
 }
 
 // ErrNoRestartableOrder marks a restart for a profile this dispatcher never
@@ -85,7 +92,7 @@ func (d *Dispatcher) Dispatch(
 	req OperatorRequest,
 	key string,
 ) (Accepted, error) {
-	order, err := req.order(d.initiator, d.mint(), d.now())
+	order, err := req.order(d.initiator, d.mint(), d.now(), d.MaxPagesPerRun())
 	if err != nil {
 		return Accepted{}, &DispatchError{Err: err}
 	}

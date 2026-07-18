@@ -39,6 +39,7 @@ type Registry struct {
 	capacity  int
 	now       func() time.Time
 	observers []func(run Run, newlyTerminal bool, active int)
+	terminal  *terminalDeliveryLedger
 }
 
 func isTerminal(state yagocrawlcontract.CrawlRunState) bool {
@@ -57,6 +58,7 @@ func New(capacity int) *Registry {
 		runs:     make(map[string]Run, capacity),
 		capacity: capacity,
 		now:      time.Now,
+		terminal: newTerminalDeliveryLedger(),
 	}
 }
 

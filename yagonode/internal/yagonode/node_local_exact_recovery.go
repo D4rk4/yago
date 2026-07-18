@@ -30,7 +30,10 @@ func (s localExactRecoverySearcher) Search(
 	if len(response.Results) > 0 || !hasExactStageFailure(response) {
 		return response, nil
 	}
-	recovered, recoveryErr := withLocalExactRecoveryBudget(s.local).Search(ctx, req)
+	recovered, recoveryErr := withLocalExactRecoveryBudgetForFailure(
+		s.local,
+		response,
+	).Search(ctx, req)
 	if recoveryErr != nil {
 		return response, fmt.Errorf("local exact recovery: %w", recoveryErr)
 	}

@@ -11,11 +11,17 @@ import (
 
 func TestHTMLEndpointLinksCachedCopyAndFormats(t *testing.T) {
 	search := &fakeSearch{response: searchcore.Response{
-		TotalResults: 2,
+		TotalResults: 4,
+		Request:      searchcore.Request{Terms: []string{"go"}},
 		Results: []searchcore.Result{
 			// A local hit inside a global search carries the request source, so
 			// the cached link must key off StoredLocally, not SourceLocal.
-			{Title: "Local", URL: "https://a.example/x", Source: searchcore.SourceGlobal},
+			{
+				DocumentID: "https://a.example/x", Analyzer: "en",
+				Title: "Local", URL: "https://a.example/x", Source: searchcore.SourceGlobal,
+				BodyQueryMatches: []searchcore.QueryMatch{{Start: 10, End: 14}},
+			},
+			{Title: "Plain", URL: "https://d.example/plain", Source: searchcore.SourceGlobal},
 			{Title: "Remote", URL: "https://b.example/y", Source: searchcore.SourceRemote},
 			{Title: "External", URL: "https://c.example/z", Source: searchcore.SourceWeb},
 		},
@@ -30,8 +36,14 @@ func TestHTMLEndpointLinksCachedCopyAndFormats(t *testing.T) {
 	htmlEndpoint{search: search, suggestions: newRecentQueries()}.ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	if !strings.Contains(body, `href="/cached?u=https%3A%2F%2Fa.example%2Fx">cached`) {
+	if !strings.Contains(
+		body,
+		`href="/cached?analyzer=en&amp;end=14&amp;start=10&amp;terms=go&amp;u=https%3A%2F%2Fa.example%2Fx">cached`,
+	) {
 		t.Fatalf("local result missing cached link: %s", body)
+	}
+	if !strings.Contains(body, `href="/cached?u=https%3A%2F%2Fd.example%2Fplain">cached`) {
+		t.Fatalf("plain local result missing cached link: %s", body)
 	}
 	if strings.Contains(body, "cached?u=https%3A%2F%2Fb.example%2Fy") {
 		t.Fatal("remote result must not link a cached copy")

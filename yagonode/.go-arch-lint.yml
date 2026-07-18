@@ -146,6 +146,8 @@ components:
     in: internal/searchindex/**
   searchlocal:
     in: internal/searchlocal/**
+  searchvisible:
+    in: internal/searchvisible/**
   spellcheck:
     in: internal/spellcheck/**
   rankingprofile:
@@ -251,6 +253,12 @@ vendors:
       - github.com/blevesearch/bleve/v2
       - github.com/blevesearch/bleve/v2/**
       - github.com/blevesearch/bleve_index_api
+  vellum:
+    in: github.com/blevesearch/vellum
+  snowballstem:
+    in:
+      - github.com/blevesearch/snowballstem
+      - github.com/blevesearch/snowballstem/**
   whatlanggo:
     in: github.com/abadojack/whatlanggo
   prometheus:
@@ -543,6 +551,9 @@ deps:
       - httpguard
       - nodeidentity
       - filetypeclass
+      - searchindex
+      - searchlocal
+      - searchremote
     canUse:
       - yagomodel
       - yagoproto
@@ -616,6 +627,8 @@ deps:
       - bleve
       - xxhash
       - whatlanggo
+      - vellum
+      - snowballstem
   searchlocal:
     mayDependOn:
       - searchlocal
@@ -626,8 +639,15 @@ deps:
       - documentstore
       - hostrank
       - filetypeclass
+      - searchsession
+      - searchvisible
     canUse:
       - yagomodel
+  searchvisible:
+    mayDependOn:
+      - searchvisible
+      - searchcore
+      - searchindex
   rankingprofile:
     mayDependOn:
       - rankingprofile
@@ -715,6 +735,9 @@ deps:
       - dhttarget
       - tracectx
       - peerreputation
+      - searchsession
+      - searchvisible
+      - wordforms
     canUse:
       - yagomodel
       - yagoproto
@@ -813,6 +836,10 @@ deps:
     mayDependOn:
       - cachedpage
       - documentstore
+      - searchcore
+      - searchindex
+      - searchlocal
+      - snippetmark
   faviconproxy:
     mayDependOn:
       - faviconproxy
@@ -861,6 +888,8 @@ deps:
       - crawlresults
       - vault
       - memvault
+      - boltvault
+      - crawlruns
     canUse:
       - yagocrawlcontract
       - yagomodel
@@ -868,6 +897,8 @@ deps:
   crawlruns:
     mayDependOn:
       - crawlruns
+      - boltvault
+      - vault
     canUse:
       - yagocrawlcontract
       - protobuf
@@ -965,6 +996,7 @@ deps:
       - modifierhint
       - searchindex
       - searchlocal
+      - searchvisible
       - judgments
       - clickcapture
       - rankfit

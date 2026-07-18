@@ -112,6 +112,6 @@ var searchSurfaceSpecs = []surfaceSpec{
 		State: Unsupported,
 		Behavior: "Deliberate non-goal (operator decision, 2026-07): upstream YaCy grew an MCP " +
 			"JSON-RPC search server and OpenAI/Ollama proxy endpoints, but this node's agent " +
-			"surface is the Tavily-compatible /search and /extract API, one agent protocol kept simple.",
+			"surface is the Tavily-compatible /search, /extract, /crawl, and /map API, one agent protocol kept simple.",
 	},
 }

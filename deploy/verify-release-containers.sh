@@ -26,13 +26,33 @@ DOCKER_BUILDKIT=1 docker build \
 	--provenance=false \
 	--build-arg "VERSION=${version}" \
 	--build-arg "SOURCE_REVISION=${source_revision}" \
-	-f yagocrawler/Dockerfile \
+	-f yago-crawler/Dockerfile \
 	-t "$crawler_image" \
 	.
 
 test "$(docker run --rm "$node_image" --version)" = "yago-node ${version}"
 test "$(docker run --rm "$crawler_image" --version)" = "yago-crawler ${version}"
 docker run --rm --entrypoint /usr/bin/firefox-esr "$crawler_image" --version >/dev/null 2>&1
+
+node_notice_container=""
+node_notice_directory=$(mktemp -d)
+remove_node_notice_audit() {
+	if [ -n "$node_notice_container" ]; then
+		docker rm -f "$node_notice_container" >/dev/null 2>&1 || true
+	fi
+	rm -rf "$node_notice_directory"
+}
+trap remove_node_notice_audit EXIT
+node_notice_container=$(docker create "$node_image")
+docker cp \
+	"$node_notice_container:/usr/share/doc/yago/CJK_DICTIONARY_NOTICES.txt" \
+	"$node_notice_directory/CJK_DICTIONARY_NOTICES.txt"
+docker rm "$node_notice_container" >/dev/null
+node_notice_container=""
+cmp yagonode/internal/searchindex/CJK_DICTIONARY_NOTICES.txt \
+	"$node_notice_directory/CJK_DICTIONARY_NOTICES.txt"
+remove_node_notice_audit
+trap - EXIT
 
 for image in "$node_image" "$crawler_image"; do
 	test "$(docker image inspect --format '{{ .Architecture }}' "$image")" = "$architecture"

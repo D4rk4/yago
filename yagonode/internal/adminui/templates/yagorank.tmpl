@@ -3,6 +3,111 @@
 <h1 class="cds-h1">YagoRank</h1>
 {{template "toasts" .}}
 <p class="cds-muted">This page exposes every operator-safe live scoring coefficient. Candidate and evidence windows, the quoted-phrase cap, analyzer confidence, relaxed quorum, RM3 blend, RRF, remote calibration, MMR and per-site caps, and safety and abuse gates remain fixed policy rather than manual controls.</p>
+{{if .ExplainAvailable}}
+<section class="cds-settings-form" aria-labelledby="search-explain-heading">
+  <h2 class="cds-h2" id="search-explain-heading">Search explain</h2>
+  <p class="cds-muted">Preview the bounded local or federated result order using the active retrieval profile and learned model. Global scope runs the enabled local, peer, and web branches under the normal interactive budget without storing a search session or seeding crawl work.</p>
+  <form class="cds-search-form" method="get" action="/admin/yagorank" role="search">
+    <div class="cds-field">
+      <label class="cds-label" for="explain-q">Query</label>
+      <input class="cds-input" type="search" id="explain-q" name="q" value="{{.ExplainQuery}}" autocomplete="off" required>
+    </div>
+    <fieldset class="cds-field">
+      <legend class="cds-label">Scope</legend>
+      <label class="cds-radio"><input type="radio" name="scope" value="global"{{if .ExplainGlobal}} checked{{end}}> All enabled sources</label>
+      <label class="cds-radio"><input type="radio" name="scope" value="local"{{if not .ExplainGlobal}} checked{{end}}> Local index only</label>
+    </fieldset>
+    <button class="cds-btn" type="submit">Explain ranking</button>
+  </form>
+  {{if .SearchURL}}<p><a href="{{.SearchURL}}">Open this query in Search</a></p>{{end}}
+  {{if .ExplanationError}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.ExplanationError}}</div>{{end}}
+  {{with .Explanation}}
+  <p class="cds-muted">{{len .Results}} bounded final result{{if ne (len .Results) 1}}s{{end}} for “{{.Query}}” · {{if .Global}}all enabled sources{{else}}local index{{end}}{{if .ModelRevision}} · learned model <span class="cds-mono">{{.ModelRevision}}</span> ({{.ModelKind}}){{else}} · no active learned model{{end}}.</p>
+  {{range .PartialFailures}}<div class="cds-inline-notification" role="status">Partial failure: {{.}}</div>{{end}}
+  {{if .Results}}
+  <div class="cds-scroll-x" role="region" aria-label="Search explanation results" tabindex="0">
+  <table class="cds-table">
+    <thead><tr><th scope="col">Final rank</th><th scope="col">Source</th><th scope="col">URL</th><th scope="col">Retrieval score</th><th scope="col">Final score</th><th scope="col">Evidence</th></tr></thead>
+    <tbody>
+    {{range .Results}}
+      <tr>
+        <td class="cds-mono">{{.FinalRank}}</td>
+        <td><span class="cds-tag cds-tag--debug">{{.Source}}</span></td>
+        <td><a href="{{.URL}}" rel="noreferrer nofollow">{{.URL}}</a></td>
+        <td class="cds-mono">{{printf "%.6f" .RetrievalScore}}</td>
+        <td class="cds-mono">{{printf "%.6f" .Score}}</td>
+        <td>
+          <details class="cds-expert">
+            <summary>Retrieval and learned contributions</summary>
+            <h3>Retrieval evidence</h3>
+            <table class="cds-table">
+              <thead><tr><th scope="col">Signal</th><th scope="col">Known</th><th scope="col">Value</th></tr></thead>
+              <tbody>
+                <tr><td>Content quality</td><td>{{if .QualityKnown}}yes{{else}}no{{end}}</td><td class="cds-mono">{{if .QualityKnown}}{{printf "%.6f" .Quality}}{{else}}—{{end}}</td></tr>
+                <tr><td>Spam risk</td><td>{{if .SpamRiskKnown}}yes{{else}}no{{end}}</td><td class="cds-mono">{{if .SpamRiskKnown}}{{printf "%.6f" .SpamRisk}}{{else}}—{{end}}</td></tr>
+                <tr><td>Function-word share</td><td>{{if .FunctionWordKnown}}yes{{else}}no{{end}}</td><td class="cds-mono">{{if .FunctionWordKnown}}{{printf "%.6f" .FunctionWordShare}}{{else}}—{{end}}</td></tr>
+                <tr><td>Symbol share</td><td>{{if .SymbolKnown}}yes{{else}}no{{end}}</td><td class="cds-mono">{{if .SymbolKnown}}{{printf "%.6f" .SymbolShare}}{{else}}—{{end}}</td></tr>
+                <tr><td>Alphabetic share</td><td>{{if .AlphabeticKnown}}yes{{else}}no{{end}}</td><td class="cds-mono">{{if .AlphabeticKnown}}{{printf "%.6f" .AlphabeticShare}}{{else}}—{{end}}</td></tr>
+                <tr><td>Unique-token share</td><td>{{if .UniqueTokenKnown}}yes{{else}}no{{end}}</td><td class="cds-mono">{{if .UniqueTokenKnown}}{{printf "%.6f" .UniqueTokenShare}}{{else}}—{{end}}</td></tr>
+                <tr><td>Proximity</td><td>{{if .ProximityKnown}}yes{{else}}no{{end}}</td><td class="cds-mono">{{if .ProximityKnown}}{{printf "%.6f" .Proximity}}{{else}}—{{end}}</td></tr>
+              </tbody>
+            </table>
+            {{if .FieldContributions}}
+            <h3>Field contributions</h3>
+            <table class="cds-table">
+              <thead><tr><th scope="col">Field</th><th scope="col">Score</th></tr></thead>
+              <tbody>{{range .FieldContributions}}<tr><td>{{.Name}}</td><td class="cds-mono">{{printf "%.6f" .Score}}</td></tr>{{end}}</tbody>
+            </table>
+            {{end}}
+            {{if .Evidence}}
+            <h3>Ranking signals</h3>
+            <table class="cds-table">
+              <thead><tr><th scope="col">Signal</th><th scope="col">Value</th></tr></thead>
+              <tbody>{{range .Evidence}}<tr><td>{{.Name}}</td><td class="cds-mono">{{printf "%.6f" .Value}}</td></tr>{{end}}</tbody>
+            </table>
+            {{end}}
+            {{if .Fusion}}
+            <h3>Reciprocal-rank fusion</h3>
+            <table class="cds-table">
+              <thead><tr><th scope="col">Branch</th><th scope="col">Rank</th><th scope="col">Contribution</th></tr></thead>
+              <tbody>{{range .Fusion}}<tr><td>{{.Branch}}</td><td class="cds-mono">{{.Rank}}</td><td class="cds-mono">{{printf "%.6f" .Contribution}}</td></tr>{{end}}</tbody>
+            </table>
+            {{end}}
+            {{if .RetrievalDiagnostic}}<h3>Retrieval diagnostic</h3><pre class="cds-code cds-code--bounded-explain">{{.RetrievalDiagnostic}}</pre>{{end}}
+            {{with .Learned}}
+            <h3>Learned contribution</h3>
+            <table class="cds-table">
+              <thead><tr><th scope="col">Original rank</th><th scope="col">Model rank</th><th scope="col">Final rank</th><th scope="col">Original score</th><th scope="col">Model score</th></tr></thead>
+              <tbody><tr><td>{{.OriginalRank}}</td><td>{{.ModelRank}}</td><td>{{.FinalRank}}</td><td class="cds-mono">{{printf "%.6f" .OriginalScore}}</td><td class="cds-mono">{{printf "%.6f" .Score}}</td></tr></tbody>
+            </table>
+            {{if .Signals}}
+            <h3>Learned signals</h3>
+            <table class="cds-table">
+              <thead><tr><th scope="col">Signal</th><th scope="col">Known</th><th scope="col">Used</th><th scope="col">Value</th><th scope="col">Normalized</th><th scope="col">Weight</th><th scope="col">Contribution</th></tr></thead>
+              <tbody>{{range .Signals}}<tr><td>{{.Name}}</td><td>{{if .Known}}yes{{else}}no{{end}}</td><td>{{if .Used}}yes{{else}}no{{end}}</td><td class="cds-mono">{{printf "%.6f" .Value}}</td><td class="cds-mono">{{printf "%.6f" .NormalizedValue}}</td><td class="cds-mono">{{printf "%.6f" .Weight}}</td><td class="cds-mono">{{printf "%+.6f" .Contribution}}</td></tr>{{end}}</tbody>
+            </table>
+            {{end}}
+            {{range .Trees}}
+            <details class="cds-expert">
+              <summary>Tree {{.Index}} · {{.InteractionGroup}} · contribution {{printf "%+.6f" .Contribution}}</summary>
+              <table class="cds-table">
+                <thead><tr><th scope="col">Signal</th><th scope="col">Known</th><th scope="col">Value</th><th scope="col">Threshold</th><th scope="col">Decision</th></tr></thead>
+                <tbody>{{range .Decisions}}<tr><td>{{.Name}}</td><td>{{if .Known}}yes{{else}}no{{end}}</td><td class="cds-mono">{{printf "%.6f" .NormalizedValue}}</td><td class="cds-mono">{{printf "%.6f" .Threshold}}</td><td>{{if .TerminatedMissing}}missing value stopped tree{{else if .WentLeft}}left{{else}}right{{end}}</td></tr>{{end}}</tbody>
+              </table>
+            </details>
+            {{end}}
+            {{end}}
+          </details>
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}<div class="cds-empty" role="status">No results.</div>{{end}}
+  {{end}}
+</section>
+{{end}}
 {{if .LearnedModel}}
 <section class="cds-settings-form" aria-labelledby="learned-model-heading">
   <h2 class="cds-h2" id="learned-model-heading">Learned model</h2>

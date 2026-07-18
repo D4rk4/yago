@@ -1,4 +1,4 @@
-# 0037. Dynamic shard growth by linear hashing; storage quota as a live ceiling
+# 0037. Dynamic shard growth by linear hashing; live soft admission quota
 
 Date: 2026-07-09
 
@@ -49,8 +49,8 @@ local split, not a global reshuffle.
 ## Decision
 
 Grow the shard pool dynamically as data accumulates — driven by fill, not by the
-quota — and make the quota a live byte ceiling fully decoupled from the layout.
-Four slices, behind this ADR.
+quota — and make the quota a live soft admission and eviction target fully
+decoupled from the layout. Four slices sit behind this ADR.
 
 ### A. Linear hashing: routing generalized, existing vaults unchanged
 
@@ -117,24 +117,32 @@ This slice also drops the quota→count coupling: a new vault starts at the
 `minShards` = 8 concurrency floor regardless of quota and `shardCountForQuota`
 is removed, since the fill trigger now sizes the pool.
 
-### D. Quota becomes a live ceiling
+### D. Quota becomes a live soft admission target
 
 With the layout fill-driven, the quota no longer touches sharding. `engine`'s
 `quotaBytes` becomes an `atomic.Int64` behind a `SetQuotaBytes`, and `vault.Vault`
 gains `SetQuota`. After `loadRuntimeSettings` applies the `storage.quota`
 override at boot, the node calls `vault.SetQuota(config.StorageQuotaByte)`; the
 eviction sweep and `AtCapacity` already read `QuotaBytes()` live each cycle, so
-the new ceiling takes effect immediately — no restart, no reshard — and the
+the new target takes effect immediately — no restart, no reshard — and the
 Overview reads the live figure. The env-before-settings ordering (defect 1)
-dissolves: a mutable post-open quota makes applying the override after settings
+dissolves: a mutable post-open target makes applying the override after settings
 load correct by construction.
+
+The target accounts for logical live rows in the main sharded vault. It is not
+a filesystem or aggregate data-root quota: Bleve, the node crawl database, the
+crawler frontier, allocated free pages, open-but-deleted blocks, and temporary
+split, compaction, migration, and merge copies are outside it. Capacity checks
+are advisory preflights and may race ordinary writes. Exact aggregate
+enforcement belongs to an operator-provisioned filesystem or project quota, or
+a quota-capable volume.
 
 ## Consequences
 
 - The shard pool grows with the corpus. A node that boots at the 8-shard floor
   on the 1 GB default and is later given 768 GB splits toward ~128 shards as it
   fills — no operator action, no data migration, no reshard tool.
-- The admin `storage.quota` finally works, and applies live.
+- The admin `storage.quota` soft target works and applies live.
 - Growth briefly quiesces the engine per split — one at a time, bounded, the same
   trade-off compaction already makes and documents; `storage.autosplit off`
   freezes the layout for operators who want a fixed `N`.

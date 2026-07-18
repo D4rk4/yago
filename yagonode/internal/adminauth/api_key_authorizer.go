@@ -63,9 +63,7 @@ func (a *APIKeyAuthorizer) Authorize(
 
 		return APIKeyThrottled
 	}
-	if err := a.keys.touchLastUsed(ctx, info.ID); err != nil {
-		return APIKeyUnavailable
-	}
+	a.keys.recordLastUsedBestEffort(ctx, info)
 	if !info.hasScope(required) {
 		a.observer.APIKeyForbidden()
 

@@ -77,6 +77,7 @@ func extendedSettingDefinitions() []settingDefinition {
 	definitions = append(definitions, remoteSearchDefinitions()...)
 	definitions = append(definitions, webFallbackDefinitions()...)
 	definitions = append(definitions, extendedGrowthDefinitions()...)
+	definitions = append(definitions, storagePressureDefinitions()...)
 
 	definitions = append(definitions, autocrawlerDefinitions()...)
 	definitions = append(definitions, webDiscoveryDefinitions()...)
@@ -493,7 +494,7 @@ func extendedGrowthDefinitions() []settingDefinition {
 		{
 			key:          "swarm.morphology.enabled",
 			title:        "Swarm morphology",
-			description:  "Search peers for inflected forms of a single-word query (more recall, more peer round-trips).",
+			description:  "Search peers for bounded inflected forms within each query requirement (more recall, more peer round-trips).",
 			options:      boolSettingOptions(),
 			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.SwarmMorphology) },
 			normalize:    normalizeSettingBool,

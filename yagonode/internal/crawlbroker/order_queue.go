@@ -59,61 +59,62 @@ func (sequenceCodec) Decode(raw []byte) (uint64, error) {
 // to a worker; a lease is settled by an ack, requeued by a nak, and reclaimed
 // when it expires without a heartbeat.
 type DurableOrderQueue struct {
-	vault               *vault.Vault
-	orders              *vault.Collection[[]byte]
-	normalOrderIndex    *vault.Collection[[]byte]
-	automaticOrderIndex *vault.Collection[[]byte]
-	seq                 *vault.Collection[uint64]
-	keys                *vault.Collection[uint64]
-	leases              *vault.Collection[leaseRecord]
-	leaseTTL            time.Duration
-	notify              chan struct{}
-	prioritizeAutomatic atomic.Bool
+	vault                    *vault.Vault
+	orders                   *vault.Collection[[]byte]
+	normalOrderIndex         *vault.Collection[[]byte]
+	automaticOrderIndex      *vault.Collection[[]byte]
+	seq                      *vault.Collection[uint64]
+	keys                     *vault.Collection[uint64]
+	leases                   *vault.Collection[leaseRecord]
+	leaseSettlements         *vault.Collection[leaseSettlementRecord]
+	leaseSettlementOrder     *vault.Collection[[]byte]
+	leaseSettlementExpiry    *vault.Collection[[]byte]
+	leaseControlTargets      *vault.Collection[leaseControlTarget]
+	completedControlTargets  *vault.Collection[leaseControlTarget]
+	terminalSettlementSecret []byte
+	leaseTTL                 time.Duration
+	notify                   chan struct{}
+	prioritizeAutomatic      atomic.Bool
 	// extendedAt remembers when each worker's leases were last durably
 	// extended, so frequent heartbeats (they also carry control directives, so
 	// their cadence is short) skip the per-beat fsync and only refresh the
 	// durable deadlines every leaseTTL/4 (IO-AGG-02).
-	mu         sync.Mutex
-	extendedAt map[string]time.Time
+	mu              sync.Mutex
+	extendedAt      map[string]time.Time
+	leaseMutation   sync.RWMutex
+	growthAdmission GrowthAdmission
 }
 
-func newDurableOrderQueue(v *vault.Vault, leaseTTL time.Duration) (*DurableOrderQueue, error) {
-	orders, err := vault.Register(v, orderBucket, orderCodec{})
+func newDurableOrderQueue(
+	v *vault.Vault,
+	leaseTTL time.Duration,
+	admissions ...GrowthAdmission,
+) (*DurableOrderQueue, error) {
+	collections, err := registerOrderQueueCollections(v)
 	if err != nil {
-		return nil, fmt.Errorf("register crawl order queue: %w", err)
-	}
-	normalOrderIndex, err := vault.Register(v, normalOrderIndexBucket, orderCodec{})
-	if err != nil {
-		return nil, fmt.Errorf("register normal crawl order index: %w", err)
-	}
-	automaticOrderIndex, err := vault.Register(v, automaticOrderIndexBucket, orderCodec{})
-	if err != nil {
-		return nil, fmt.Errorf("register automatic crawl order index: %w", err)
-	}
-	seq, err := vault.Register(v, seqBucket, sequenceCodec{})
-	if err != nil {
-		return nil, fmt.Errorf("register crawl order sequence: %w", err)
-	}
-	keys, err := vault.Register(v, idempotencyBucket, sequenceCodec{})
-	if err != nil {
-		return nil, fmt.Errorf("register crawl order idempotency keys: %w", err)
-	}
-	leases, err := vault.Register(v, leaseBucket, leaseRecordCodec{})
-	if err != nil {
-		return nil, fmt.Errorf("register crawl order leases: %w", err)
+		return nil, err
 	}
 
 	queue := &DurableOrderQueue{
-		vault:               v,
-		orders:              orders,
-		normalOrderIndex:    normalOrderIndex,
-		automaticOrderIndex: automaticOrderIndex,
-		seq:                 seq,
-		keys:                keys,
-		leases:              leases,
-		leaseTTL:            leaseTTL,
-		notify:              make(chan struct{}, 1),
-		extendedAt:          map[string]time.Time{},
+		vault:                    v,
+		orders:                   collections.orders,
+		normalOrderIndex:         collections.normalOrderIndex,
+		automaticOrderIndex:      collections.automaticOrderIndex,
+		seq:                      collections.sequence,
+		keys:                     collections.idempotencyKeys,
+		leases:                   collections.leases,
+		leaseSettlements:         collections.leaseSettlements,
+		leaseSettlementOrder:     collections.leaseSettlementOrder,
+		leaseSettlementExpiry:    collections.leaseSettlementExpiry,
+		leaseControlTargets:      collections.leaseControlTargets,
+		completedControlTargets:  collections.completedControlTargets,
+		terminalSettlementSecret: collections.terminalSettlementSecret,
+		leaseTTL:                 leaseTTL,
+		notify:                   make(chan struct{}, 1),
+		extendedAt:               map[string]time.Time{},
+	}
+	if len(admissions) > 0 {
+		queue.growthAdmission = admissions[0]
 	}
 	queue.prioritizeAutomatic.Store(true)
 
@@ -141,8 +142,15 @@ func (q *DurableOrderQueue) PublishOnce(
 	if err != nil {
 		return false, fmt.Errorf("encode crawl order: %w", err)
 	}
+	duplicate, err := q.admitOrderGrowth(ctx, key)
+	if err != nil {
+		return false, fmt.Errorf("enqueue crawl order: %w", err)
+	}
+	if duplicate {
+		return true, nil
+	}
 
-	duplicate := false
+	duplicate = false
 	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
 		if key != "" {
 			_, seen, err := q.keys.Get(tx, vault.Key(key))

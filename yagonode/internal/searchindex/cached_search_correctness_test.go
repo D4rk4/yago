@@ -206,8 +206,10 @@ func TestCachedSearchIndexPreservesFacetsAndNestedMutationIsolation(t *testing.T
 			Terms: []FacetTerm{{Term: "example.org", Count: 2}},
 		}},
 		Results: []SearchResult{{
-			URL:         "https://example.org/",
-			FieldScores: map[string]float64{"body": 1.5},
+			URL:                         "https://example.org/",
+			EvidenceRequirementOrdinals: []int{0, 2},
+			BodyQueryMatches:            []TextQueryMatch{{Start: 2, End: 4}},
+			FieldScores:                 map[string]float64{"body": 1.5},
 			FieldTermPositions: map[string]map[string][]int{
 				"body":  {"golang": {2, 4}},
 				"title": nil,
@@ -400,6 +402,8 @@ func mutateCachedResult(set SearchResultSet) {
 	set.Facets[0].Name = "changed"
 	set.Facets[0].Terms[0] = FacetTerm{Term: "changed", Count: 99}
 	set.Results[0].URL = "https://changed.example/"
+	set.Results[0].BodyQueryMatches[0].Start = 99
+	set.Results[0].EvidenceRequirementOrdinals[0] = 99
 	set.Results[0].FieldScores["body"] = 99
 	set.Results[0].FieldTermPositions["body"]["golang"][0] = 99
 	set.Results[0].FieldTermPositions["body"]["new"] = []int{99}
@@ -416,7 +420,10 @@ func assertOriginalCachedResult(t *testing.T, set SearchResultSet) {
 		t.Fatalf("facets = %#v", set.Facets)
 	}
 	result := set.Results[0]
-	if result.URL != "https://example.org/" || result.FieldScores["body"] != 1.5 ||
+	if result.URL != "https://example.org/" ||
+		!reflect.DeepEqual(result.EvidenceRequirementOrdinals, []int{0, 2}) ||
+		!reflect.DeepEqual(result.BodyQueryMatches, []TextQueryMatch{{Start: 2, End: 4}}) ||
+		result.FieldScores["body"] != 1.5 ||
 		!reflect.DeepEqual(result.FieldTermPositions["body"]["golang"], []int{2, 4}) ||
 		len(result.FieldTermPositions["body"]) != 1 || result.FieldTermPositions["title"] != nil ||
 		!reflect.DeepEqual(result.Images, []ResultImage{{

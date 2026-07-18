@@ -37,12 +37,20 @@ func (c *IngestConsumer) Run(ctx context.Context) {
 }
 
 func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
+	release, authorized := authorizeIngestDelivery(ctx, delivery)
+	if !authorized {
+		return
+	}
+	defer release()
 	if delivery.Batch.Removed {
 		c.absorbRemoval(ctx, delivery)
 
 		return
 	}
 	if !c.passesGates(ctx, delivery) {
+		return
+	}
+	if !c.admitStorageGrowth(ctx, []IngestDelivery{delivery}) {
 		return
 	}
 	current := c.beginObservations(ctx, []IngestDelivery{delivery})

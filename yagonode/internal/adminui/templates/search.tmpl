@@ -29,6 +29,7 @@
   </fieldset>
   <button class="cds-btn" type="submit">Search</button>
 </form>
+{{if .ExplainURL}}<p><a href="{{.ExplainURL}}">Explain this ranking in YagoRank</a></p>{{end}}
 {{if .Error}}
 <div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>
 {{else if .Submitted}}

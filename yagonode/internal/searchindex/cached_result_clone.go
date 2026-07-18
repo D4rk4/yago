@@ -35,6 +35,10 @@ func cloneSearchResults(results []SearchResult) []SearchResult {
 		cloneSearchResultStrings(&cloned[index])
 		cloned[index].FieldScores = cloneFieldScores(result.FieldScores)
 		cloned[index].FieldTermPositions = cloneFieldTermPositions(result.FieldTermPositions)
+		cloned[index].EvidenceRequirementOrdinals = cloneValues(
+			result.EvidenceRequirementOrdinals,
+		)
+		cloned[index].BodyQueryMatches = cloneValues(result.BodyQueryMatches)
 		cloned[index].Images = cloneResultImages(result.Images)
 	}
 

@@ -23,7 +23,10 @@ func TestPageEvidenceSkipsSourceWithoutPendingLocalRows(t *testing.T) {
 	searcher := NewPageEvidenceSearcher(pageEvidenceInner{response: searchcore.Response{
 		Results: []searchcore.Result{
 			{DocumentID: "remote", Source: searchcore.SourceRemote},
-			{DocumentID: "ready", Source: searchcore.SourceLocal, EvidenceReady: true},
+			{
+				DocumentID: "ready", Source: searchcore.SourceLocal, EvidenceReady: true,
+				BodyQueryMatches: []searchcore.QueryMatch{},
+			},
 			{Source: searchcore.SourceLocal},
 		},
 	}}, rejectingPageEvidenceSource{})

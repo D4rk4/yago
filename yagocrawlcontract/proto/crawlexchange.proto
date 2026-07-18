@@ -16,12 +16,8 @@ service CrawlExchange {
   // or the lease expires, at which point it is redelivered.
   rpc StreamOrders(WorkerRegistration) returns (stream CrawlOrderMessage);
 
-  // AckOrder settles a leased order: a plain ack deletes it, and an ack with
-  // requeue returns it to the pending queue for another worker.
   rpc AckOrder(OrderAck) returns (OrderAckResult);
 
-  // Heartbeat extends the lease deadline on every order currently leased to the
-  // worker, so a live worker keeps its in-flight orders from being redelivered.
   rpc Heartbeat(WorkerHeartbeat) returns (WorkerHeartbeatResult);
 
   // SubmitIngest hands one ingest batch to the node and blocks until the node
@@ -29,33 +25,47 @@ service CrawlExchange {
   // so the crawler retries, which is the backpressure signal.
   rpc SubmitIngest(IngestBatchMessage) returns (IngestAck);
 
-  // ReportProgress lets a worker report the lifecycle and cumulative outcome
-  // tallies of a run it is executing, keyed by the order provenance token, so the
-  // node can surface active crawls, their counters, and their results without
-  // owning the worker's in-memory frontier. Reports carry absolute tallies, so a
-  // lost report is corrected by the next one.
   rpc ReportProgress(CrawlProgressReport) returns (CrawlProgressAck);
 }
 
 message WorkerRegistration {
   string worker_id = 1;
+  string worker_session_id = 2;
 }
 
 message CrawlOrderMessage {
   bytes order_json = 1;
   string lease_id = 2;
+  bool recovered = 3;
+  bool recovered_batch_end = 4;
+  repeated string recovered_lease_ids = 5;
 }
 
 message OrderAck {
   string lease_id = 1;
   bool requeue = 2;
+  bytes order_identity = 3;
+  string worker_id = 4;
+  CrawlRunState terminal_state = 5;
+  CrawlRunTally terminal_tally = 6;
+  optional uint32 pages_per_minute = 7;
+  string worker_session_id = 8;
+  bytes confirmation_token = 9;
 }
 
-message OrderAckResult {}
+message OrderAckResult {
+  bytes confirmation_token = 1;
+}
 
 message WorkerHeartbeat {
   string worker_id = 1;
   optional uint32 active_fetches = 2;
+  repeated uint64 acknowledged_directive_ids = 3;
+  repeated string active_lease_ids = 4;
+  string worker_session_id = 5;
+  optional uint64 storage_available_bytes = 6;
+  optional bool storage_pressure = 7;
+  optional bool storage_measurement_available = 8;
 }
 
 // CrawlControlKind is a directive the node pushes to a worker to steer a run it is
@@ -83,17 +93,22 @@ message CrawlControlDirective {
   uint32 pages_per_minute = 3;
   uint32 fetch_workers = 4;
   bool prioritize_automatic_discovery = 5;
+  uint64 directive_id = 6;
 }
 
-// WorkerHeartbeatResult returns any control directives the node has queued for the
-// worker since its last heartbeat, so control rides the existing lease-keepalive
-// without a new stream.
 message WorkerHeartbeatResult {
   repeated CrawlControlDirective directives = 1;
+  repeated string renewed_lease_ids = 2;
+  uint64 lease_ttl_milliseconds = 3;
+  optional uint64 storage_reserved_free_bytes = 4;
+  optional uint64 storage_pressure_hysteresis_bytes = 5;
 }
 
 message IngestBatchMessage {
   bytes batch_json = 1;
+  string lease_id = 2;
+  string worker_id = 3;
+  string worker_session_id = 4;
 }
 
 message IngestAck {}
@@ -122,6 +137,8 @@ message CrawlProgressReport {
   CrawlRunState state = 5;
   CrawlRunTally tally = 6;
   optional uint32 pages_per_minute = 7;
+  string lease_id = 8;
+  string worker_session_id = 9;
 }
 
 message CrawlProgressAck {}

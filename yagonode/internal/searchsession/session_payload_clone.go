@@ -42,6 +42,7 @@ func cloneSessionResult(result searchcore.Result) searchcore.Result {
 	result.Explanation = strings.Clone(result.Explanation)
 	result.Images = cloneSessionImages(result.Images)
 	result.QueryMatches = cloneSessionQueryMatches(result.QueryMatches)
+	result.BodyQueryMatches = cloneSessionQueryMatches(result.BodyQueryMatches)
 	result.FieldScores = cloneSessionScores(result.FieldScores)
 	result.FieldTermPositions = cloneSessionPositions(result.FieldTermPositions)
 

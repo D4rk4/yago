@@ -21,9 +21,12 @@ const (
 )
 
 var (
-	nowFunc    = time.Now
-	newLeaseID = randomLeaseID
+	nowFunc                = time.Now
+	newLeaseID             = randomLeaseID
+	afterLeaseRequeueChunk = func() {}
 )
+
+const maximumLeaseRequeueChunk = 256
 
 // leaseRecord is the durable state of an order leased to a worker: the order
 // bytes to redeliver, the owning worker, and the deadline past which the lease
@@ -32,14 +35,14 @@ type leaseRecord struct {
 	OrderData         []byte                               `json:"order"`
 	Priority          yagocrawlcontract.CrawlOrderPriority `json:"priority,omitempty"`
 	WorkerID          string                               `json:"worker"`
+	WorkerSessionID   string                               `json:"session,omitempty"`
+	Deferred          bool                                 `json:"deferred,omitempty"`
 	ExpiresAtUnixNano int64                                `json:"expires"`
 }
 
 type leaseRecordCodec struct{}
 
 func (leaseRecordCodec) Encode(v leaseRecord) ([]byte, error) {
-	// leaseRecord holds only []byte, string and int64 fields, so json.Marshal
-	// cannot fail; the error result exists only to satisfy the codec interface.
 	raw, _ := json.Marshal(v)
 
 	return raw, nil
@@ -61,25 +64,20 @@ func randomLeaseID() (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
-// leaseNext blocks until a pending order is available, then leases it to
-// workerID and returns the order bytes with its lease id.
-func (q *DurableOrderQueue) leaseNext(
-	ctx context.Context,
-	workerID string,
-) ([]byte, string, error) {
+func (q *DurableOrderQueue) leaseNext(ctx context.Context) ([]byte, error) {
 	for {
-		data, leaseID, ok, err := q.leasePop(ctx, workerID)
+		data, _, ok, err := q.leasePop(ctx, "worker")
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
 		if ok {
-			return data, leaseID, nil
+			return data, nil
 		}
 		beforeQueueWait()
 		select {
 		case <-q.notify:
 		case <-ctx.Done():
-			return nil, "", fmt.Errorf("await crawl order: %w", ctx.Err())
+			return nil, fmt.Errorf("await crawl order: %w", ctx.Err())
 		}
 	}
 }
@@ -88,49 +86,21 @@ func (q *DurableOrderQueue) leasePop(
 	ctx context.Context,
 	workerID string,
 ) ([]byte, string, bool, error) {
+	return q.leasePopForSession(ctx, workerID, "")
+}
+
+func (q *DurableOrderQueue) leasePopForSession(
+	ctx context.Context,
+	workerID string,
+	workerSessionID string,
+) ([]byte, string, bool, error) {
+	q.leaseMutation.Lock()
+	defer q.leaseMutation.Unlock()
 	leaseID, err := newLeaseID()
 	if err != nil {
-		return nil, "", false, err
+		return nil, "", false, fmt.Errorf("create crawl lease identity: %w", err)
 	}
-
-	var selected pendingOrderHead
-	found := false
-	err = q.vault.Update(ctx, func(tx *vault.Txn) error {
-		selected = pendingOrderHead{}
-		found = false
-		var updateBurst bool
-		var nextBurst uint64
-		selected, nextBurst, updateBurst, err = q.selectPendingOrder(tx)
-		if err != nil {
-			return err
-		}
-		found = selected.found
-		if !selected.found {
-			return nil
-		}
-		if updateBurst {
-			if err := q.seq.Put(tx, priorityBurstKey, nextBurst); err != nil {
-				return fmt.Errorf("store automatic crawl burst: %w", err)
-			}
-		}
-		if _, err := q.orders.Delete(tx, selected.key); err != nil {
-			return fmt.Errorf("delete crawl order: %w", err)
-		}
-		if _, err := selected.index.Delete(tx, selected.key); err != nil {
-			return fmt.Errorf("delete crawl order priority: %w", err)
-		}
-		record := leaseRecord{
-			OrderData:         selected.data,
-			Priority:          orderPriority(selected.automatic),
-			WorkerID:          workerID,
-			ExpiresAtUnixNano: nowFunc().Add(q.leaseTTL).UnixNano(),
-		}
-		if err := q.leases.Put(tx, vault.Key(leaseID), record); err != nil {
-			return fmt.Errorf("store crawl lease: %w", err)
-		}
-
-		return nil
-	})
+	selected, found, err := q.claimPendingOrder(ctx, leaseID, workerID, workerSessionID)
 	if err != nil {
 		return nil, "", false, fmt.Errorf("lease crawl order: %w", err)
 	}
@@ -138,62 +108,77 @@ func (q *DurableOrderQueue) leasePop(
 	return selected.data, leaseID, found, nil
 }
 
-// ackLease settles a lease by deleting the order. Acking an unknown lease is a
-// no-op so a duplicate ack is harmless.
 func (q *DurableOrderQueue) ackLease(ctx context.Context, leaseID string) error {
-	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
-		if _, err := q.leases.Delete(tx, vault.Key(leaseID)); err != nil {
-			return fmt.Errorf("delete crawl lease: %w", err)
-		}
+	_, err := q.ackLeaseWithTarget(ctx, leaseID)
 
-		return nil
-	}); err != nil {
-		return fmt.Errorf("ack crawl lease: %w", err)
-	}
-
-	return nil
+	return err
 }
 
-// requeueLease returns a leased order to the pending queue. Requeuing an unknown
-// lease is a no-op.
-func (q *DurableOrderQueue) requeueLease(ctx context.Context, leaseID string) error {
-	requeued := false
-	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
-		record, ok, err := q.leases.Get(tx, vault.Key(leaseID))
-		if err != nil {
-			return fmt.Errorf("read crawl lease: %w", err)
-		}
-		if !ok {
-			return nil
-		}
-		if _, err := q.leases.Delete(tx, vault.Key(leaseID)); err != nil {
-			return fmt.Errorf("delete crawl lease: %w", err)
-		}
-		priority := persistedOrderPriority(record.OrderData, record.Priority)
-		if _, err := q.enqueueTx(tx, record.OrderData, priority); err != nil {
-			return err
-		}
-		requeued = true
-
-		return nil
-	}); err != nil {
-		return fmt.Errorf("requeue crawl lease: %w", err)
-	}
-	if requeued {
+func (q *DurableOrderQueue) ackLeaseWithTarget(
+	ctx context.Context,
+	leaseID string,
+) (leaseControlTarget, error) {
+	q.leaseMutation.Lock()
+	defer q.leaseMutation.Unlock()
+	target, err := q.ackLeaseWithTargetLocked(ctx, leaseID, "", "", false)
+	if err == nil {
 		q.signal()
 	}
 
-	return nil
+	return target, err
 }
 
-// heartbeat extends the deadline on every lease held by workerID. Durable
-// extension runs at most every leaseTTL/4: heartbeats arrive every few seconds
-// (they also deliver control directives), and rewriting the lease records with
-// an fsync per beat is what fsync-bound storage feels (IO-AGG-02). The skipped
-// beats stay safe — a worker's durable deadline is never closer than
-// 3/4·leaseTTL when a beat is skipped, so a dead worker is still reclaimed
-// within one TTL of its last durable extension.
+func (q *DurableOrderQueue) ackLeaseWithOwner(
+	ctx context.Context,
+	leaseID string,
+	workerID string,
+	workerSessionID string,
+) (leaseControlTarget, error) {
+	q.leaseMutation.Lock()
+	defer q.leaseMutation.Unlock()
+	target, err := q.ackLeaseWithTargetLocked(
+		ctx,
+		leaseID,
+		workerID,
+		workerSessionID,
+		true,
+	)
+	if err == nil {
+		q.signal()
+	}
+
+	return target, err
+}
+
+func (q *DurableOrderQueue) ackLeaseWithTargetLocked(
+	ctx context.Context,
+	leaseID string,
+	workerID string,
+	workerSessionID string,
+	requireOwner bool,
+) (leaseControlTarget, error) {
+	var target leaseControlTarget
+	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
+		var err error
+		target, err = q.acknowledgeLeaseTx(
+			tx,
+			leaseID,
+			workerID,
+			workerSessionID,
+			requireOwner,
+		)
+
+		return err
+	}); err != nil {
+		return leaseControlTarget{}, fmt.Errorf("ack crawl lease: %w", err)
+	}
+
+	return target, nil
+}
+
 func (q *DurableOrderQueue) heartbeat(ctx context.Context, workerID string) error {
+	q.leaseMutation.Lock()
+	defer q.leaseMutation.Unlock()
 	now := nowFunc()
 	q.mu.Lock()
 	last, seen := q.extendedAt[workerID]
@@ -240,12 +225,15 @@ func (q *DurableOrderQueue) heartbeat(ctx context.Context, workerID string) erro
 	return nil
 }
 
-// sweepExpired returns every lease past its deadline to the pending queue.
 func (q *DurableOrderQueue) sweepExpired(ctx context.Context) error {
 	now := nowFunc()
 	if err := q.requeueLeasesMatching(ctx, func(record leaseRecord) bool {
-		return record.ExpiresAtUnixNano <= now.UnixNano()
+		return record.ExpiresAtUnixNano <= now.UnixNano() &&
+			!leaseRetainsCheckpointAffinity(record)
 	}); err != nil {
+		return err
+	}
+	if err := q.expireLeaseSettlements(ctx, now); err != nil {
 		return err
 	}
 	q.mu.Lock()
@@ -259,50 +247,27 @@ func (q *DurableOrderQueue) sweepExpired(ctx context.Context) error {
 	return nil
 }
 
-func (q *DurableOrderQueue) requeueAllLeases(ctx context.Context) error {
-	return q.requeueLeasesMatching(ctx, func(leaseRecord) bool { return true })
-}
-
 func (q *DurableOrderQueue) requeueLeasesMatching(
 	ctx context.Context,
 	match func(leaseRecord) bool,
 ) error {
-	requeued := false
-	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
-		requeued = false
-		var keys []vault.Key
-		var payloads [][]byte
-		var priorities []yagocrawlcontract.CrawlOrderPriority
-		if err := q.leases.Scan(tx, nil, func(k vault.Key, record leaseRecord) (bool, error) {
-			if match(record) {
-				keys = append(keys, k)
-				payloads = append(payloads, record.OrderData)
-				priorities = append(
-					priorities,
-					persistedOrderPriority(record.OrderData, record.Priority),
-				)
-			}
-
-			return true, nil
-		}); err != nil {
-			return fmt.Errorf("scan crawl leases: %w", err)
-		}
-		for i, key := range keys {
-			if _, err := q.leases.Delete(tx, key); err != nil {
-				return fmt.Errorf("delete crawl lease: %w", err)
-			}
-			if _, err := q.enqueueTx(tx, payloads[i], priorities[i]); err != nil {
-				return err
-			}
-			requeued = true
-		}
-
-		return nil
-	}); err != nil {
-		return fmt.Errorf("requeue crawl leases: %w", err)
+	keys, err := q.matchingLeaseKeys(ctx, match)
+	if err != nil {
+		return err
 	}
-	if requeued {
-		q.signal()
+	for offset := 0; offset < len(keys); offset += maximumLeaseRequeueChunk {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("requeue crawl leases: %w", err)
+		}
+		limit := min(offset+maximumLeaseRequeueChunk, len(keys))
+		requeued, err := q.requeueLeaseChunk(ctx, keys[offset:limit], match)
+		if err != nil {
+			return fmt.Errorf("requeue crawl leases: %w", err)
+		}
+		if requeued {
+			q.signal()
+		}
+		afterLeaseRequeueChunk()
 	}
 
 	return nil

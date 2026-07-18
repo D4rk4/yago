@@ -15,6 +15,16 @@ type fakeCompactor struct {
 	calls  int
 }
 
+type compactionOperatorError struct{}
+
+func (compactionOperatorError) Error() string {
+	return "headroom"
+}
+
+func (compactionOperatorError) CompactionOperatorMessage() string {
+	return "Free space or lower the reserve, then retry."
+}
+
 func (f *fakeCompactor) Compact(context.Context) (CompactionResult, error) {
 	f.calls++
 
@@ -112,6 +122,17 @@ func TestConfigCompactShowsError(t *testing.T) {
 	got := doPost(t, configWithStorage(compactor), configPath, url.Values{"form": {"compact"}})
 	if got.status != http.StatusOK || !strings.Contains(got.body, "Compaction failed.") {
 		t.Fatalf("status %d, missing failure toast", got.status)
+	}
+}
+
+func TestConfigCompactShowsOperatorHeadroomError(t *testing.T) {
+	t.Parallel()
+
+	compactor := &fakeCompactor{err: compactionOperatorError{}}
+	got := doPost(t, configWithStorage(compactor), configPath, url.Values{"form": {"compact"}})
+	if got.status != http.StatusOK ||
+		!strings.Contains(got.body, "Free space or lower the reserve, then retry.") {
+		t.Fatalf("status %d, missing headroom guidance", got.status)
 	}
 }
 

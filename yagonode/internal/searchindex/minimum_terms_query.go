@@ -16,24 +16,38 @@ func minimumTermsQuery(
 	}
 	branchRequest := req
 	branchRequest.ExpansionTerms = nil
-	branches := []blevequery.Query{strictMinimumTermsQuery(
+	standard := strictMinimumTermsQuery(
 		branchRequest,
 		[]string{standardTextAnalyzer},
 		weights,
-	)}
-	for _, analyzer := range analyzers {
-		terms := requirableTermsForAnalyzer(queryTermWords(req), analyzer)
-		if len(terms) == 0 {
-			continue
+	)
+	branches := []blevequery.Query{standard}
+	branchAnalyzers, equivalentAnalyzers := requirementAnalyzerBranches(req, analyzers)
+	if len(equivalentAnalyzers) > 0 {
+		branch, found := minimumTermsAnalyzerBranch(
+			req,
+			standardTextAnalyzer,
+			equivalentAnalyzerScopeClause(equivalentAnalyzers),
+			weights,
+		)
+		if found {
+			branches = appendEquivalentAnalyzerBranch(
+				branches,
+				branch,
+				len(equivalentAnalyzers),
+			)
 		}
-		minimum := minimumTermRequirement(req, len(terms))
-		matches := queryWithMinimumTerms(terms, minimum, func(term string) blevequery.Query {
-			return crossFieldTermClauseForAnalyzer(term, analyzer, weights, 1)
-		})
-		branches = append(branches, bleve.NewConjunctionQuery(
+	}
+	for _, analyzer := range branchAnalyzers {
+		branch, found := minimumTermsAnalyzerBranch(
+			req,
+			analyzer,
 			analyzerScopeClause(analyzer),
-			matches,
-		))
+			weights,
+		)
+		if found {
+			branches = append(branches, branch)
+		}
 	}
 	main := branches[0]
 	if len(branches) > 1 {
@@ -49,6 +63,24 @@ func minimumTermsQuery(
 	}
 
 	return query
+}
+
+func minimumTermsAnalyzerBranch(
+	req SearchRequest,
+	analyzer string,
+	scope blevequery.Query,
+	weights RankingWeights,
+) (blevequery.Query, bool) {
+	terms := requirableTermsForAnalyzer(queryTermWords(req), analyzer)
+	if len(terms) == 0 {
+		return nil, false
+	}
+	minimum := minimumTermRequirement(req, len(terms))
+	matches := queryWithMinimumTerms(terms, minimum, func(term string) blevequery.Query {
+		return crossFieldTermClauseForAnalyzer(term, analyzer, weights)
+	})
+
+	return bleve.NewConjunctionQuery(scope, matches), true
 }
 
 func strictMinimumTermsQuery(

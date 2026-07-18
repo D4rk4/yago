@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
@@ -28,11 +29,12 @@ func TestCrawlerRuntimeSnapshotTracksUniqueConnectedWorkers(t *testing.T) {
 	registry.register("worker-2")
 	registry.recordActiveFetches("worker-2", activeFetchReport(3))
 	if got := registry.RuntimeSnapshot(); got != (CrawlerRuntimeSnapshot{
-		ConnectedCrawlers:      2,
-		ActiveFetches:          3,
-		ActiveFetchesKnown:     true,
-		FetchLimitPerCrawler:   4,
-		AggregateFetchCapacity: 8,
+		ConnectedCrawlers:         2,
+		ActiveFetches:             3,
+		ActiveFetchesKnown:        true,
+		FetchLimitPerCrawler:      4,
+		AggregateFetchCapacity:    8,
+		StorageUnreportedCrawlers: 2,
 	}) {
 		t.Fatalf("connected runtime snapshot = %+v", got)
 	}
@@ -43,11 +45,12 @@ func TestCrawlerRuntimeSnapshotTracksUniqueConnectedWorkers(t *testing.T) {
 	}
 	registry.unregister("worker-1")
 	if got := registry.RuntimeSnapshot(); got != (CrawlerRuntimeSnapshot{
-		ConnectedCrawlers:      1,
-		ActiveFetches:          3,
-		ActiveFetchesKnown:     true,
-		FetchLimitPerCrawler:   4,
-		AggregateFetchCapacity: 4,
+		ConnectedCrawlers:         1,
+		ActiveFetches:             3,
+		ActiveFetchesKnown:        true,
+		FetchLimitPerCrawler:      4,
+		AggregateFetchCapacity:    4,
+		StorageUnreportedCrawlers: 1,
 	}) {
 		t.Fatalf("disconnected runtime snapshot = %+v", got)
 	}
@@ -80,6 +83,30 @@ func TestCrawlerRuntimeSnapshotDistinguishesLegacyAndZeroReports(t *testing.T) {
 	registry.recordActiveFetches("offline", activeFetchReport(1))
 	if got := registry.RuntimeSnapshot(); got.ConnectedCrawlers != 2 || got.ActiveFetchesKnown {
 		t.Fatalf("offline heartbeat changed snapshot: %+v", got)
+	}
+}
+
+func TestCrawlerRuntimeSnapshotExpiresMissedFetchHeartbeats(t *testing.T) {
+	registry := newControlRegistry(crawlerControlDefaults{fetchWorkers: 4})
+	base := time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC)
+	now := base
+	registry.now = func() time.Time { return now }
+	registry.register("worker")
+	registry.recordActiveFetches("worker", activeFetchReport(3))
+	if got := registry.RuntimeSnapshot(); !got.ActiveFetchesKnown || got.ActiveFetches != 3 {
+		t.Fatalf("current fetch report snapshot = %+v", got)
+	}
+	now = base.Add(crawlerHeartbeatReportLifetime)
+	if got := registry.RuntimeSnapshot(); !got.ActiveFetchesKnown || got.ActiveFetches != 3 {
+		t.Fatalf("boundary fetch report snapshot = %+v", got)
+	}
+	now = now.Add(time.Nanosecond)
+	if got := registry.RuntimeSnapshot(); got.ActiveFetchesKnown || got.ActiveFetches != 0 {
+		t.Fatalf("stale fetch report snapshot = %+v", got)
+	}
+	registry.recordActiveFetches("worker", activeFetchReport(1))
+	if got := registry.RuntimeSnapshot(); !got.ActiveFetchesKnown || got.ActiveFetches != 1 {
+		t.Fatalf("recovered fetch report snapshot = %+v", got)
 	}
 }
 
@@ -129,9 +156,11 @@ func TestExchangeHeartbeatRecordsOnlyConnectedCrawlerActivity(t *testing.T) {
 		make(chan crawlresults.IngestDelivery),
 		crawlerControlDefaults{fetchWorkers: 4},
 	)
+	activateTestWorkerSession(t, server, "startup", testWorkerSessionID)
 	if _, err := server.Heartbeat(t.Context(), &crawlrpc.WorkerHeartbeat{
-		WorkerId:      "startup",
-		ActiveFetches: activeFetchReport(3),
+		WorkerId:        "startup",
+		WorkerSessionId: testWorkerSessionID,
+		ActiveFetches:   activeFetchReport(3),
 	}); err != nil {
 		t.Fatalf("startup heartbeat: %v", err)
 	}
@@ -141,9 +170,12 @@ func TestExchangeHeartbeatRecordsOnlyConnectedCrawlerActivity(t *testing.T) {
 	}
 
 	server.control.register("worker")
+	activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
 	if _, err := server.Heartbeat(
 		context.Background(),
-		&crawlrpc.WorkerHeartbeat{WorkerId: "worker"},
+		&crawlrpc.WorkerHeartbeat{
+			WorkerId: "worker", WorkerSessionId: testWorkerSessionID,
+		},
 	); err != nil {
 		t.Fatalf("legacy heartbeat: %v", err)
 	}
@@ -151,8 +183,9 @@ func TestExchangeHeartbeatRecordsOnlyConnectedCrawlerActivity(t *testing.T) {
 		t.Fatalf("legacy heartbeat reported known activity: %+v", got)
 	}
 	if _, err := server.Heartbeat(t.Context(), &crawlrpc.WorkerHeartbeat{
-		WorkerId:      "worker",
-		ActiveFetches: activeFetchReport(0),
+		WorkerId:        "worker",
+		WorkerSessionId: testWorkerSessionID,
+		ActiveFetches:   activeFetchReport(0),
 	}); err != nil {
 		t.Fatalf("current heartbeat: %v", err)
 	}

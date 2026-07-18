@@ -17,7 +17,7 @@ Search API, YaCy-compatible endpoints, or a themeable public portal — all
 administered from a server-rendered console that works without JavaScript.
 
 **YagoSeek** is the product; **`yago`** is the toolkit — the Go workspace and
-its binaries (`yago-node`, `yagocrawler`).
+its binaries (`yago-node`, `yago-crawler`).
 
 - Project home: https://yagoseek.dev/ · docs: https://docs.yagoseek.dev/
 - Source: https://github.com/D4rk4/yago/ — importable as `github.com/D4rk4/yago`
@@ -76,10 +76,10 @@ its binaries (`yago-node`, `yagocrawler`).
   bounded lexical evidence and RM3, deterministic peer RRF, persistent date,
   anchor, authority, quality, safety, duplicate-cluster, and reputation signals,
   followed by a signed linear LambdaRank or bounded histogram LambdaMART model.
-  In a mixed-source result set, learned inference reorders locally stored
-  documents only within their fused local slots and preserves each slot's
-  bounded relevance scale for final diversity, rather than comparing raw model
-  scores with peer or web scores.
+  In a mixed-source result set, learned inference reorders the bounded fused
+  top window across local, peer, and web provenance. Each selected document
+  inherits its destination slot's bounded relevance scale for final diversity,
+  so raw model scores do not compete with the unscored tail.
   Query-clustered and chronological holdouts gate atomic promotion; authenticated
   Team Draft compares complete rankings online, while confidence-filtered
   FairPairs outcomes provide implicit relevance evidence.
@@ -88,25 +88,46 @@ its binaries (`yago-node`, `yagocrawler`).
   proximity, lexical blend, and original-gap agreement. Latency windows,
   evidence-confidence rules, safety gates, and learned-model weights remain
   evaluated policy rather than unchecked runtime knobs.
+  Its Search Explain panel traces bounded local or global retrieval with
+  `local`, `peer`, and `web` provenance, reciprocal-rank contributions, partial
+  failures, field evidence, learned signals, and tree paths without adding a
+  second provider call.
   Pure Go, CPU-only, no external API, sidecar, model runtime, or YaCy wire change.
 - **Language-aware lexical search**: documents route to bounded per-language
   analyzers. Supported inflectional analyzers contribute lower-confidence
   word-form proximity below exact wording; Arabic receives normalization and
-  light stemming, Chinese/Japanese/Korean use contiguous CJK bigrams, and
-  Hebrew currently keeps Unicode-normalized exact-word proximity without a
-  morphology analyzer. CJK does not convert Simplified and Traditional text,
-  and a single-character query is not guaranteed to match that character
-  inside a longer unsegmented run. Single-word swarm queries can expand into
-  corpus-observed inflections, and zero-result typo recovery uses bounded
-  analyzer-consistent edit distance without document-wide character grams.
+  light stemming, and Chinese/Japanese/Korean use mandatory character unigrams
+  plus overlapping bigrams. Chinese and Japanese add optional dictionary word
+  terms, while equal-length Traditional/Simplified Chinese forms share
+  canonical index terms without changing source byte offsets. Dictionary terms
+  improve ranking but never gate recall. Hebrew keeps Unicode-normalized
+  exact-word proximity without a morphology analyzer. Swarm queries can expand into
+  corpus-observed inflections plus bounded forms verified by the supported
+  Snowball-rule analyzers; multiword retrieval unions sibling forms within each term and
+  intersects across terms without Cartesian peer fan-out. A selected
+  cooperating Yago peer can also use the negotiated original requirements for one
+  strict bounded analyzer-backed candidate search inside the existing request, so
+  a remote-only sibling inflection does not require a second network round.
+  Stock YaCy peers remain exact-RWI compatible: every candidate is still an
+  ordinary surface hash. Rule-derived forms cover common regular inflections
+  absent from the local corpus; analyzer-unconnected irregular
+  forms remain outside that compatible bounded expansion.
+  Zero-result typo recovery uses bounded analyzer-consistent edit distance
+  without document-wide character grams.
 - YaCy query operators (`site:`, `inurl:`, `filetype:`, `language:`, `tld:`,
   `author:`, `"phrase"`, `-not`, `near`, `/date`), facet sidebar, content
   verticals (images/audio/video/apps with a lightbox grid), spell-check
   ("did you mean"), zero-result fuzzy recovery, query-term-highlighted
   snippets, anchor-text document expansion, and an explainable ranking API.
-  Local snippets use query-match offsets from the indexed language analyzer;
-  peer, web, and legacy RWI snippets use bounded Unicode word-form evidence,
-  preserving punctuation-bearing identifiers and unsegmented-script terms.
+  Local snippets and stored-body passages use query-match offsets from the
+  indexed language analyzer. A local result with stored-body evidence links its
+  cached copy to the matching analyzer-backed range plus bounded surrounding
+  context through `/cached`; the
+  ordinary full cached-copy link remains available from that passage. Up to the
+  first 500 peer, web, and legacy RWI rows run the same bounded analyzer-backed
+  visible-field evidence pass while the request context remains live. Invalid
+  or empty visible text, unavailable analyzer infrastructure, and rows not
+  completed before cancellation or deadline retain bounded structural matching.
   Local and swarm retrieval use parsed bare terms; eligible web search receives
   the bounded original operator-bearing query and verifies supported structured
   constraints again on returned rows.
@@ -117,13 +138,20 @@ its binaries (`yago-node`, `yagocrawler`).
 - **Tavily-compatible `/search`, `/extract`, `/crawl`, and `/map`** with API
   keys and scopes. Raw-content work has fixed concurrency, time, fetch, and
   response-memory budgets, while ordinary search stays on the low-cost path.
+  `basic`, `fast`, and `ultra-fast` use local retrieval; `advanced` shares the
+  root portal's canonical global ranking for equivalent requests. Default
+  results include `raw_content: null`, errors contain only `detail.error`, and
+  raw-content requests retain YaGo's stricter 30-second and 200-page safety
+  limits.
 
 ### 🕷️ A crawler built for the hostile web
 
-- Separate `yagocrawler` worker(s) connected over dedicated control and ingest
+- Separate `yago-crawler` worker(s) connected over dedicated control and ingest
   gRPC channels with durable leased orders, nonblocking coalesced progress
-  reports, and backpressured at-least-once ingest — restart anything, lose
-  nothing. Run-report phases are staggered across concurrent crawls; terminal
+  reports, and backpressured at-least-once ingest. A restart on the same durable
+  data volume retains committed pages and replays only work whose outcome was
+  not committed; at-least-once delivery can repeat an in-flight page. Run-report
+  phases are staggered across concurrent crawls; terminal
   snapshots admitted to the bounded queue receive delivery priority, retry, and
   graceful-shutdown drain attempts, while admitted same-ID NAK phases retain
   their ordered lifecycle. Saturation drops a new phase only after expendable
@@ -134,17 +162,38 @@ its binaries (`yago-node`, `yagocrawler`).
   remain exact and refresh that observation. The node coalesces at most 16 ready
   ingest deliveries for shared vault and Bleve commits, waiting no more than a
   cancel-aware 2 milliseconds for a partial group.
+- **Atomic node-side crawl control**: `yago-node` keeps its order queue, leases,
+  settlements, controls, and terminal-run delivery state in
+  `${YAGO_DATA_DIR}/crawlbroker.db`. One bbolt transaction can therefore move a
+  lifecycle across all of its indexes. The first enabled crawl-runtime startup
+  copies a frozen version-1 state set from the legacy node vault without deleting
+  the source, and an interrupted copy resumes before listeners open. The
+  dedicated file is outside `YAGO_STORAGE_QUOTA` and main-vault compaction and
+  currently has no separate byte cap; `/metrics` exposes its live and allocated
+  bytes. A rollback must restore one coordinated stopped node-and-crawler backup,
+  because deleting only the dedicated file or downgrading in place can resurrect
+  the retained stale cutover state.
 - **Format coverage beyond HTML**: PDF, DOCX/XLSX/PPTX, legacy DOC/XLS/PPT,
-  ODT/ODS/ODP, RTF, EPUB, plain text/CSV/Markdown — parsed with stdlib-first
+  ODT/ODS/ODP, RTF, EPUB, plain text/CSV, and Markdown (`.md`, `.markdown`,
+  `text/markdown`, and `text/x-markdown`) — parsed with stdlib-first
   parsers and validated against real files. PDF extraction follows Page
   `/Contents` and page-reachable Form streams instead of indexing decoded image,
-  font, or container payloads. One document shares a 32 MiB decoded-stream budget and a
-  1 MiB UTF-8 text limit; an already-indexed PDF needs one recrawl to replace
-  old extracted text.
+  font, or container payloads. Embedded `/ToUnicode` mappings take precedence;
+  a bounded simple-font fallback resolves named, inline, or indirect `/Encoding`
+  dictionaries, applies `/BaseEncoding` and single-byte `/Differences`, and maps
+  standard glyph names to Unicode. Unknown or untrusted mappings produce no text
+  instead of raw glyph-code noise. One document shares a 32 MiB decoded-stream
+  budget and a 1 MiB UTF-8 text limit, and no OCR is performed. Synthetic
+  regressions mirror malformed and custom-encoding shapes without redistributing
+  external PDFs. The live Cisco ENCS document is a verification-only case; its
+  previously stored garbage text requires one normal recrawl after upgrade.
 - **Two-tier fetching**: fast HTTP first, headless-browser fallback (headless
   Firefox over Marionette, a lazy pool of at most two long-lived processes) for
-  bot-walled and JavaScript-rendered pages, both behind a dial-time SSRF egress guard;
-  per-profile toggles for robots, TLS authority, and browser use.
+  browser-resolvable status or bot-wall rejections and successful HTML app shells
+  whose executable scripts are paired with insufficient extracted static text.
+  Usable static HTML is fetched once, non-HTML never opens a browser, and the
+  per-profile browser opt-out remains authoritative. Both paths stay behind the
+  dial-time SSRF egress guard.
 - **Legacy-web text correctness**: browser-compatible charset decoding handles
   Windows-1251 and other WHATWG encodings, while bounded content-language
   detection keeps documents, facets, RWI postings, and URL metadata aligned.
@@ -168,7 +217,9 @@ its binaries (`yago-node`, `yagocrawler`).
   host-link snapshots have process-wide byte or admission limits. `/metrics`
   exposes Go heap plus process RSS for pre-OOM alerts. Interactive searches have
   a hard 1.8-second response deadline and four process-wide outer execution
-  slots. Endpoint-owned deadline, capacity, and operational failures are carried
+  slots. Up to 16 admitted HTTP searches wait for an outer slot only inside that
+  deadline, and an exact-stage capacity retry may wait for its rescue slot for at
+  most 500 milliseconds. Endpoint-owned deadline, capacity, and operational failures are carried
   as partial evidence instead of replacing completed rows with an unavailable
   page; an unexpired successful session may instead be served with the current
   failure evidence, and timed-out work retains its slot until it exits.
@@ -192,7 +243,8 @@ its binaries (`yago-node`, `yagocrawler`).
   resets the evidence, and URL-specific rejections do not penalize a healthy
   host. A single-host run then finishes while a multi-host run continues,
   persistent near-duplicate clustering, crawl-trap defense, per-host and
-  per-run page budgets, boilerplate extraction, and a deterministic
+  per-run page budgets carried by each task profile and editable live in Admin
+  Configuration (with a manual per-task override), boilerplate extraction, and a deterministic
   content-quality gate.
 - **A living index**: a default 30-day recrawl cadence refreshes pages, and a
   recrawl that finds a page permanently gone (404/410) tombstones it out of
@@ -257,7 +309,7 @@ its binaries (`yago-node`, `yagocrawler`).
   scan. Their validated configuration and root-filesystem identities are
   promoted without a rebuild into public, provenance-attested
   multi-architecture manifest lists at `ghcr.io/d4rk4/yago-node:vX.Y.Z` and
-  `ghcr.io/d4rk4/yagocrawler:vX.Y.Z`. Releases publish no `latest` or shortened
+  `ghcr.io/d4rk4/yago-crawler:vX.Y.Z`. Releases publish no `latest` or shortened
   version alias; deployments can pin the recorded manifest-list digest.
 - Prometheus `/metrics` (RED/USE + saturation), burn-rate alert rules with an
   SLO doc, health/readiness endpoints, auth-gated pprof, trace-correlated
@@ -344,7 +396,11 @@ peer identity on first run. The variables you are most likely to touch:
 | `YAGO_PUBLIC_ADDR` | `:8080` | public listener; `off` runs a pure peer node |
 | `YAGO_PUBLIC_SEARCH_UI_ENABLED` | `false` | serve the portal at the public root |
 | `YAGO_CRAWL_RPC_ADDR` | `127.0.0.1:9091` | crawler integration listener; `off` disables it and `:9091` admits remote workers |
-| `YAGO_STORAGE_QUOTA` | `1GB` | storage cap; eviction keeps the node inside it |
+| `YAGO_STORAGE_QUOTA` | `1GB` | soft admission and eviction target for logical live main-vault data; it excludes Bleve, crawl state, allocated free pages, and temporary copies |
+| `YAGO_STORAGE_RESERVED_FREE` | `1GB` | filesystem free-space reserve for gate-managed node growth admissions |
+| `YAGO_STORAGE_PRESSURE_HYSTERESIS` | `256MB` | additional free space required before gate-managed node growth admissions resume |
+| `YAGO_CRAWLER_STORAGE_RESERVED_FREE` | `1GB` | filesystem free-space reserve sent to and bootstrapped by crawler workers |
+| `YAGO_CRAWLER_STORAGE_PRESSURE_HYSTERESIS` | `256MB` | additional free space required before crawler frontier growth and fetch admission resume |
 
 The full reference — every variable and its default — is
 [doc/configuration.md](yagonode/doc/configuration.md). Bare-metal installs get
@@ -356,7 +412,7 @@ hardened systemd units and Debian packages under [deploy/](deploy/).
 
 ```mermaid
 flowchart LR
-    subgraph crawler ["yagocrawler (0..n workers)"]
+    subgraph crawler ["yago-crawler (0..n workers)"]
         F["fetch: HTTP + headless browser"] --> P["parse: HTML, PDF, Office, eBooks"]
         P --> I["index artifacts"]
     end
@@ -377,7 +433,7 @@ flowchart LR
 | Module | Purpose |
 | --- | --- |
 | `yagonode` | the peer daemon: protocol endpoints, vaults, search surfaces, portal, admin console, metrics |
-| `yagocrawler` | the optional crawler worker: fetch, parse, and emit ingest batches |
+| `yago-crawler` | the optional crawler worker: fetch, parse, and emit ingest batches |
 | `yagocrawlcontract` | the shared node↔crawler data model and gRPC contract |
 | `yagomodel` / `yagoproto` | the YaCy wire model and protocol helpers — reusable on their own |
 | `yagoegress` | the shared dial-time SSRF egress guard |

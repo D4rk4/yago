@@ -11,9 +11,10 @@ import (
 // Page is a fetched HTML page with its outgoing links, the shape the
 // Tavily-compatible /crawl and /map endpoints walk.
 type Page struct {
-	Title string
-	Text  string
-	Links []string
+	Title  string
+	Text   string
+	Links  []string
+	Images []string
 }
 
 const pageMaxLinks = 200
@@ -28,9 +29,10 @@ func (f *Fetcher) FetchPage(ctx context.Context, rawURL string) (Page, error) {
 	content := extract(doc)
 
 	return Page{
-		Title: content.Title,
-		Text:  content.Text,
-		Links: collectLinks(doc, rawURL),
+		Title:  content.Title,
+		Text:   content.Text,
+		Links:  collectLinks(doc, rawURL),
+		Images: collectImages(doc, rawURL),
 	}, nil
 }
 

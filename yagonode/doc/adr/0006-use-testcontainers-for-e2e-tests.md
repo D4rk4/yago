@@ -20,7 +20,7 @@ Docker daemon, and must never run as part of the standard quality gate.
 ## Decision
 
 Use `github.com/testcontainers/testcontainers-go` in two isolated Go modules,
-`yagonode/test/e2e` and `yagocrawler/test/e2e`, behind the `e2e` build tag and a dedicated
+`yagonode/test/e2e` and `yago-crawler/test/e2e`, behind the `e2e` build tag and a dedicated
 `make e2e` target. The node module manages native-node fleets and a real YaCy server. The crawler
 module manages the node, crawler, and deterministic origin fixtures used for crawl and ingest
 workflows.
@@ -29,7 +29,7 @@ Both modules are isolated from the production modules so testcontainers and its 
 client dependencies never enter the runtime dependency graph, the `make verify` gate, or the
 architecture linter scope. The node module imports only published model and protocol boundaries for
 wire encoding and parsing. Product processes under test run as containers built from
-`yagonode/Dockerfile` and `yagocrawler/Dockerfile`.
+`yagonode/Dockerfile` and `yago-crawler/Dockerfile`.
 
 The crawler module includes a successful learned-ranking promotion workflow. It ingests 66
 documents for 22 query clusters through the node's crawl transport, stores graded judgments, and

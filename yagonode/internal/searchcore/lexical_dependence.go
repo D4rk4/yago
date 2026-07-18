@@ -17,6 +17,9 @@ func lexicalDependenceComponents(
 
 		return coverage, proximity, ordered, gapAgreement
 	}
+	if result.EvidenceReady {
+		return 0, 0, 0, 0
+	}
 	text := result.Title + " " + result.Snippet
 	coverage, proximity = lexicalTextComponents(text, terms)
 	ordered, gapAgreement := orderedTextEvidence(text, requirements)

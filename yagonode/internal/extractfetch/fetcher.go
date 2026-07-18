@@ -18,11 +18,10 @@ const (
 		"+https://github.com/D4rk4/yago)"
 )
 
-// Content is the text extracted from a fetched HTML page. Image extraction is
-// intentionally omitted from the fetch-on-extract subset.
 type Content struct {
-	Title string
-	Text  string
+	Title  string
+	Text   string
+	Images []string
 }
 
 // Fetcher retrieves a URL through a caller-supplied HTTP client and extracts its
@@ -50,7 +49,10 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL string) (Content, error) {
 		return Content{}, err
 	}
 
-	return extract(doc), nil
+	content := extract(doc)
+	content.Images = collectImages(doc, rawURL)
+
+	return content, nil
 }
 
 // fetchDocument retrieves and parses the URL under the fetcher's bounds.

@@ -9,9 +9,10 @@ either `implemented` (served with tests) or carries a recorded `partial` /
 `unsupported` decision — none is unfinished work. The surfaces that remain
 `partial` are narrower by deliberate scoping, not pending: remote crawl execution
 is disabled for SSRF safety (so `/yacy/crawlReceipt.html` and the `/yacy/urls.xml`
-delegation feed stay minimal), fetch-on-extract is likewise disabled (`/extract`),
-the Tavily-compatible `/search` synthesizes no LLM answer and does not steer by
-date, and `/crawl` dispatch depends on crawler integration being configured.
+delegation feed stay minimal), live fetch-on-extract is operator-controlled and
+disabled by default, Tavily answers are deterministic extraction rather than
+model generation, and admin crawl dispatch depends on crawler integration being
+configured.
 
 The ops listener exposes the same status as JSON:
 
@@ -61,7 +62,7 @@ Status values:
 | XML suggestions | `/suggest.xml` | GET | implemented | Serves the YaCy-compatible `SearchSuggestion` XML from the same index-title + recent-query source, honouring `count`/`timeout` and setting the open CORS header upstream sends. |
 | Solr select compatibility | `/solr/select` | GET, POST | unsupported | Not mounted (upstream also serves `/solr/collection1/select`, `/solr/webgraph/select`, and the two `admin/luke` handlers — none are targets). Solr query compatibility is dropped; local full-text search uses the native Go backend (see `doc/adr/0012-use-bleve-for-embedded-full-text-fallback.md`). |
 | GSA search compatibility | `/gsa/searchresult` | GET | unsupported | Not mounted, and no longer a target: upstream removed GSA support on 2020-12-12 ("dropped GSA support"; the servlet survives only in the separate YaCy Grid project), so there is no live surface to be compatible with. |
-| MCP and OpenAI-compatible AI surfaces | `/tools*`, `/v1/*`, `/api/tags` | — | unsupported | Deliberate non-goal (operator decision, 2026-07): upstream grew an MCP JSON-RPC search server and OpenAI/Ollama proxy endpoints, but this node's agent surface is the Tavily-compatible `/search`+`/extract` API — one agent protocol, kept simple. |
+| MCP and OpenAI-compatible AI surfaces | `/tools*`, `/v1/*`, `/api/tags` | — | unsupported | Deliberate non-goal (operator decision, 2026-07): upstream grew an MCP JSON-RPC search server and OpenAI/Ollama proxy endpoints, but this node's agent surface is the Tavily-compatible `/search`, `/extract`, `/crawl`, and `/map` API — one agent protocol, kept simple. |
 | Full embedded Solr API | `/solr/*` | GET, POST | unsupported | Full Solr server compatibility is not a Go peer target. No Solr subset is planned. |
 
 ### Swarm remote-search interop (no-Solr divergence)
@@ -99,17 +100,18 @@ for a given query hash is non-deterministic.
 ## Agent API Targets
 
 Every Tavily-compatible JSON request body is limited to 64 KiB. A larger body
-returns HTTP 413 in the same request-ID-bearing JSON error envelope as other
-API failures. Authenticated raw-content work across search, extract, crawl, and
-map admits four requests process-wide, runs for at most 30 seconds per request,
-and limits both retained data and encoded output to 16 MiB.
+returns HTTP 413. Successful responses carry `request_id`; every error body is
+exactly `{"detail":{"error":"..."}}` and carries neither a request ID nor a
+Yago error object. Authenticated raw-content work across search, extract, crawl,
+and map admits four requests process-wide, runs for at most 30 seconds per
+request, and limits both retained data and encoded output to 16 MiB.
 
 | Surface | Path | Methods | Status | Behavior |
 | --- | --- | --- | --- | --- |
-| Tavily-compatible search | `/search` | POST | partial | Serves a Tavily-like response over the shared search core; accepts current search contract fields, ignores unknown fields for forward compatibility, requires a static or scoped bearer credential, returns request IDs and JSON error envelopes, returns stored page image metadata when `include_images` is requested, uses local full-text search for basic/fast depths, and includes DHT-selected peer search for `search_depth=advanced`. The response shape mirrors real Tavily payloads (audited against docs.tavily.com, 2026-07): `answer`, `images`, and `follow_up_questions` are always present, the top-level `images` array holds URL strings unless descriptions are requested, errors carry Tavily's `{"detail": {"error": ...}}` envelope alongside the structured error, and DDGS rows carry no provider marker. A completed local branch survives a swarm deadline. An empty incomplete exact stage receives bounded local-exact rescue instead of fuzzy recovery; an honest exact miss receives bounded fuzzy recovery. Under privacy `explicit` or `enabled`, only a miss from the selected local path continues to the keyless provider, including local-fuzzy-then-web behavior for basic depth; `always` starts the provider alongside local and swarm retrieval and merges completed results; `disabled` never installs it. A classified infrastructure- or provider-incomplete refresh may reuse an unexpired nonempty session without extending its TTL, including equivalent local coverage for an incomplete global request without storing a synthetic global session; an endpoint-owned operational failure preserves any completed response, while cancellation or a deadline inherited from the caller retains the Tavily error envelope. Raw-content responses use the shared raw-work gate and aggregate response budget; ordinary search does not. |
-| Tavily-compatible extract | `/extract` | POST | partial | Returns stored page content for one URL or a bounded URL list and requires a credential with raw scope. When fetch-on-extract is enabled, an indexed miss uses the egress-guarded HTTP fetcher; the configured 2 MiB default is clamped to a 4 MiB hard HTML limit and an over-limit page is rejected rather than truncated. Individual fetch failures become bounded `failed_results` where possible. |
-| Tavily-compatible crawl | `/crawl` | POST | partial | Performs an authenticated, egress-guarded, breadth/depth/result-bounded crawl of at most 200 page attempts. It retains bounded cloned result fields, enforces the shared raw-work deadline and response budget, and requires raw scope. |
-| Tavily-compatible map | `/map` | POST | partial | Uses the same authenticated bounded walk as `/crawl` but retains only cloned discovered URLs. Frontier, seen set, fetch attempts, and returned URLs are capped by the request result limit, at most 200. |
+| Tavily-compatible search | `/search` | POST | partial | Defaults to five results. `basic`, `fast`, and `ultra-fast` use local retrieval with `verify=false`; `advanced` uses global local-plus-peer retrieval with `verify=ifexist`. A default result contains `title`, `url`, `content`, `raw_content:null`, and a bounded score that decreases with served rank; it never exposes Yago provenance. `published_date` is news-only and normalized to `YYYY-MM-DD`; favicon and image fields appear only when requested, with URL strings or `{url,description}` entries according to the image-description flag. `max_results` accepts 0 through 20, advanced-only `chunks_per_source` accepts 1 through 3, include/exclude domain lists accept at most 300/150 entries, `country` is validated and general-only, and `safe_search` is rejected for fast depths. With click-capture exposure randomization disabled, equivalent root-portal and Tavily `advanced` requests preserve the same canonical URL order after deduplication. Equivalence requires the same query, parsed filters, false safe-search policy, result limit, and effective web consent. Tavily `basic` and `fast` correspond to the YaCy local surface; the root portal has no local mode. |
+| Tavily-compatible extract | `/extract` | POST | partial | Accepts one URL or at most 20 URLs, defaults to basic Markdown extraction, and requires raw scope. `chunks_per_source` accepts 1 through 5 only with a query; request timeout accepts 1 through 60 seconds and defaults to 10 seconds for basic or 30 seconds for advanced. Stored content is preferred. Operator-enabled live misses use the egress guard, 4 MiB page ceiling, and bounded failure rows. Requested images and local synthetic `{credits:0}` usage follow their flags. |
+| Tavily-compatible crawl | `/crawl` | POST | partial | Performs an authenticated egress-guarded walk with default depth 1, breadth 20, limit 50, and external links allowed. Depth accepts 1 through 5, breadth 1 through 500, and any positive limit is accepted but retention is clipped to YaGo's 200-page cap. Query-like instructions select bounded lexical chunks when `chunks_per_source` is 1 through 5; they do not guide traversal. Crawl accepts a 10-through-150-second timeout but remains subject to YaGo's 30-second hard deadline. |
+| Tavily-compatible map | `/map` | POST | partial | Uses the crawl walk but retains discovered URLs without page text. It shares crawl defaults, bounds, authentication, and the 200-page/30-second YaGo limits. Instructions are accepted but do not alter discovery. |
 
 ## Admin And Operations
 
@@ -123,7 +125,7 @@ and limits both retained data and encoded output to 16 MiB.
 | Recent events | `/api/admin/v1/events` | GET | implemented | Serves recent structured node events newest-first from a bounded in-memory ring, each with a UTC time, severity, category, name, and message; an optional `limit` bounds the count and a non-positive or non-numeric `limit` is rejected with `400`. A bounded asynchronous queue persists events without blocking request or crawl-progress paths. Shutdown drains admitted writes for up to five seconds; on expiry service shutdown proceeds, while storage close waits for writer quiescence. Recent events survive restart. Requires a valid admin session or an API key with the `admin:read` scope. |
 | DHT gate report | `/api/admin/v1/network/dht/gates` | GET | implemented | Serves outbound DHT gate state, configuration, and gate results. Requires a valid admin session or an API key with the `admin:read` scope. |
 | Search index stats | `/api/admin/v1/index/stats` | GET | implemented | Serves local search backend availability, backend name, indexed document count, and last index update time. Requires a valid admin session or an API key with the `admin:read` scope. |
-| Search ranking explain | `/api/admin/v1/search/explain` | POST | implemented | Runs the same local candidate, field-evidence, learned-model, denylist, and final-ranking stages as serving, then returns bounded retrieval diagnostics, learned signal/tree contributions, model revision, and final ranks without saving weights. Requires a valid admin session with a CSRF token, or an API key with the `search:read` scope. |
+| Search ranking explain | `/api/admin/v1/search/explain` | POST | implemented | Explains bounded local or global search. Local scope accepts optional preview weights. Global scope shares the active local, peer, web, recovery, analyzer-evidence, and reciprocal-rank fusion path, then returns human-facing provenance, retrieval and final scores, structured fusion contributions, partial failures, learned signal/tree contributions, model revision, and final ranks without saving a paging session, remote result, or crawl seed. Requires a valid admin session with a CSRF token, or an API key with the `search:read` scope. |
 | Search ranking trusted domains | `/api/admin/v1/search/ranking/trust` | GET, PUT | implemented | Reads or atomically replaces the persistent operator-curated host trust policy used by domain authority. The policy accepts a blend from 0 through 1 and at most 256 canonical domains or IP hosts; replacing it triggers an immediate authority refresh. GET requires a valid admin session or an API key with the `admin:read` scope. PUT requires a valid admin session with a CSRF token, or an API key with the `admin:write` scope. |
 | Crawl dispatch | `/crawl` | POST | partial | Publishes local crawl orders only when crawler integration is configured; supports `startMode` values `url`, `sitemap`, and `sitelist`; validates the crawl profile before publishing, rejecting an impossible URL regex or an out-of-range depth, pages-per-host, or duration with `400`. Requires a valid admin session with a CSRF token, or an API key with the `crawl:write` scope. |
 | Compatibility report | `/api/admin/v1/compatibility` | GET | implemented | Serves the machine-readable compatibility catalog. Requires a valid admin session or an API key with the `admin:read` scope. |
@@ -147,7 +149,9 @@ including all `/yacy/*` peer traffic, are unaffected. The operations listener
 admin surface can be kept on loopback behind a reverse proxy while P2P stays
 public.
 
-Carbon UI pages, richer admin APIs, full Java YaCy page parity, GSA
-compatibility, Tavily answer generation, image ranking/search, real usage
-accounting, hashed API key storage, scopes, per-key rate limits, optional upstream
-Tavily, and fetch-on-extract for uncached URLs remain planned work.
+Full Java YaCy page parity, GSA compatibility, model-generated answers,
+semantic chunk reranking, model-guided crawl, image ranking/search, real credit
+accounting, and an optional upstream Tavily provider are not implemented.
+`auto_parameters` normalizes reported topic/depth without intent inference;
+`country` does not add a geographic boost, `finance` has no dedicated vertical,
+and basic, fast, and ultra-fast currently share one local retrieval plan.

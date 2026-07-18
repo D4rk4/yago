@@ -85,16 +85,18 @@ func (s queryLoggingSearcher) record(
 	resp searchcore.Response,
 ) {
 	if s.mode == queryLogFull {
-		s.logger.InfoContext(ctx, "search query",
-			slog.String("query", req.Query),
-			slog.Int("results", resp.TotalResults),
+		s.logger.InfoContext(
+			ctx,
+			"search query",
+			queryLogAttributes(req, resp, true)...,
 		)
 
 		return
 	}
 
-	s.logger.InfoContext(ctx, "search query",
-		slog.Int("queryLength", len(req.Query)),
-		slog.Int("results", resp.TotalResults),
+	s.logger.InfoContext(
+		ctx,
+		"search query",
+		queryLogAttributes(req, resp, false)...,
 	)
 }

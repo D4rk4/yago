@@ -35,13 +35,10 @@ import (
 
 const standardTextAnalyzer = "standard_text"
 
-// stemmingAnalyzers lists the bleve language analyzers a document may be routed
-// to, keyed by the analyzer name used both in the field mappings and as the
-// document's TypeField value. "cjk" bigram-segments the uninflected CJK
-// languages; the rest are Snowball or custom stemmers.
 func stemmingAnalyzers() []string {
 	return []string{
-		"ar", "cjk", "ckb", "da", "de", "es", "fa", "fi", "fr", "hi", "hr",
+		"ar", cjkChineseTextAnalyzer, cjkJapaneseTextAnalyzer, cjkKoreanTextAnalyzer,
+		"ckb", "da", "de", "es", "fa", "fi", "fr", "hi", "hr",
 		"hu", "it", "nl", "no", "pl", "pt", "ro", "ru", "sv", "tr",
 		searchTextAnalyzer,
 	}
@@ -53,17 +50,17 @@ func documentAnalyzers() []string {
 	return append(stemmingAnalyzers(), standardTextAnalyzer)
 }
 
-// languageToAnalyzer maps an ISO 639-1 language code to the analyzer that best
-// normalizes it. Serbian and Bosnian share Croatian's Serbo-Croatian stemmer;
-// Chinese, Japanese, and Korean share the CJK bigram analyzer; a language with
-// no bleve analyzer (Hebrew, Thai, ...) falls through to the standard analyzer.
 func languageToAnalyzer(code string) string {
 	code = normalizedLanguageCode(code)
 	switch code {
 	case "sr", "bs":
 		return "hr"
-	case "zh", "ja", "ko":
-		return "cjk"
+	case "zh":
+		return cjkChineseTextAnalyzer
+	case "ja":
+		return cjkJapaneseTextAnalyzer
+	case "ko":
+		return cjkKoreanTextAnalyzer
 	case "en":
 		return searchTextAnalyzer
 	}
@@ -147,8 +144,12 @@ func scriptAnalyzers(script *unicode.RangeTable) []string {
 		}
 	case unicode.Arabic:
 		return []string{"ar", "fa", "ckb"}
-	case unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul:
-		return []string{"cjk"}
+	case unicode.Han:
+		return []string{cjkChineseTextAnalyzer, cjkJapaneseTextAnalyzer}
+	case unicode.Hiragana, unicode.Katakana:
+		return []string{cjkJapaneseTextAnalyzer}
+	case unicode.Hangul:
+		return []string{cjkKoreanTextAnalyzer}
 	case unicode.Devanagari:
 		return []string{"hi"}
 	}

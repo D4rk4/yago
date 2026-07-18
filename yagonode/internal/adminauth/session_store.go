@@ -63,19 +63,32 @@ func (s *sessionStore) create(ctx context.Context, username string) (session, er
 	if err != nil {
 		return session{}, err
 	}
+	now := s.now()
 	record := sessionRecord{
 		Username:  username,
 		CSRFToken: csrf,
-		ExpiresAt: s.now().Add(s.ttl),
+		ExpiresAt: now.Add(s.ttl),
 	}
-	if err := s.vault.Update(ctx, func(tx *vault.Txn) error {
-		if err := s.records.Put(tx, vault.Key(hashToken(token)), record); err != nil {
-			return fmt.Errorf("store session record: %w", err)
-		}
+	admitted := false
+	for !admitted {
+		if err := s.vault.Update(ctx, func(tx *vault.Txn) error {
+			admitted = false
+			ready, err := s.prepareSessionCapacity(tx, now)
+			if err != nil {
+				return err
+			}
+			if !ready {
+				return nil
+			}
+			if err := s.records.Put(tx, vault.Key(hashToken(token)), record); err != nil {
+				return fmt.Errorf("store session record: %w", err)
+			}
+			admitted = true
 
-		return nil
-	}); err != nil {
-		return session{}, fmt.Errorf("update admin sessions: %w", err)
+			return nil
+		}); err != nil {
+			return session{}, fmt.Errorf("update admin sessions: %w", err)
+		}
 	}
 
 	return session{

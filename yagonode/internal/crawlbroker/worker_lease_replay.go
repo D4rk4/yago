@@ -16,6 +16,8 @@ func (q *DurableOrderQueue) leasedOrdersForWorker(
 	ctx context.Context,
 	workerID string,
 ) ([]leasedCrawlOrder, error) {
+	q.leaseMutation.Lock()
+	defer q.leaseMutation.Unlock()
 	var leasedOrders []leasedCrawlOrder
 	now := nowFunc()
 	deadline := now.Add(q.leaseTTL).UnixNano()

@@ -5,7 +5,7 @@
 both per tag, amd64 + arm64); `deploy/backup.sh` / `deploy/restore.sh` cover
 disaster recovery (doc/backup-restore.md).
 
-The same `yago-node` and `yagocrawler` binaries that run under Docker also run
+The same `yago-node` and `yago-crawler` binaries that run under Docker also run
 directly on a Linux host, managed by systemd and installed from a Debian
 package. This directory holds the reference systemd units and environment files;
 `docker-compose.yml.example` is the equivalent reference for the container
@@ -17,18 +17,49 @@ The Debian package and the systemd units share one layout:
 
 | Path | Contents |
 | --- | --- |
-| `/opt/yago/bin` | the `yago-node` and `yagocrawler` binaries |
+| `/opt/yago/bin` | the `yago-node` and `yago-crawler` binaries |
 | `/opt/yago/etc` | the environment files below |
-| `/opt/yago/data` | durable node state (indexes and vaults) |
+| `/opt/yago/data` | durable node state and crawler frontier checkpoints |
+| `/opt/yago/data/crawlbroker.db` | atomic node-side crawl queue, lease, settlement, control, and terminal-run state |
+| `/opt/yago/data/crawler/frontier-v1.db` | crawler-side frontier, visited set, observations, stable worker identity, and terminal outbox |
 
 The package creates a system `yago` user that owns `/opt/yago/data`. Removing the
-package leaves that directory intact.
+package leaves that directory intact. Both systemd services set
+`YAGO_DATA_DIR=/opt/yago/data`, so a package upgrade preserves unfinished crawl
+work together with the node's broker queue and indexes.
+
+The node creates `crawlbroker.db` only when its crawl runtime is enabled. It is
+a dedicated bbolt database, not part of the sharded main vault:
+`YAGO_STORAGE_QUOTA`, main-vault eviction, and main-vault compaction do not
+limit or shrink it. It currently has no separate byte cap. Monitor
+`crawl_broker_state_used_bytes` for live database use and
+`crawl_broker_state_file_bytes` for the allocated file size; bbolt can retain
+free pages, so the latter is the disk-capacity signal.
+
+`YAGO_STORAGE_RESERVED_FREE` and `YAGO_STORAGE_PRESSURE_HYSTERESIS` control the
+node's filesystem-pressure admission gate. The corresponding
+`YAGO_CRAWLER_STORAGE_RESERVED_FREE` and
+`YAGO_CRAWLER_STORAGE_PRESSURE_HYSTERESIS` values control each crawler data
+volume and are also sent by the node after a current crawler heartbeat. The
+defaults are 1 GB reserved and 256 MB recovery hysteresis. These controls pause
+gate-managed crawl and index ingestion; they are not a filesystem quota.
+Deleting bbolt rows can leave reusable pages inside `crawlbroker.db` or
+`frontier-v1.db` without increasing operating-system free space. If pressure
+persists, free filesystem space or lower the applicable reserve and hysteresis.
+Use a filesystem/project quota or a quota-capable volume for a hard aggregate
+boundary.
 
 The crawler creates throwaway Firefox profiles in its private process temporary
-directory. They are not durable state. `YAGOCRAWLER_WORKER_ID` is likewise a display-name prefix;
-each crawler process appends a random suffix so simultaneous workers never share
-a lease identity. `YAGOCRAWLER_MAX_PAGES_PER_RUN` bounds lossless pending work per
-run at 50,000 pages by default; `0` removes that safety bound.
+directory. They are not durable state. Its frontier checkpoint is durable and
+lives under `YAGO_DATA_DIR`. `YAGO_CRAWLER_MAX_PAGES_PER_RUN` bootstraps a
+50,000-page whole-run budget in both services; the node records the current
+Admin Configuration value in each new crawl profile, while the crawler value
+remains the fallback for queued legacy profiles. `0` removes that safety bound.
+
+The container images use different unprivileged identities: UID 65532 for the
+node and UID 65534 for the crawler. Docker Compose therefore mounts separate
+`yago-data` and `yago-crawler-data` named volumes at `/opt/yago/data` inside the
+respective containers. Do not mount one writable volume into both containers.
 
 ## Package dependencies
 
@@ -40,7 +71,7 @@ package dependencies rather than bundled:
 - `firefox-esr` on Debian (or `firefox` on Ubuntu/Fedora) — the crawler's
   slow-path browser, driven headless over Marionette. The container image
   bundles `firefox-esr`; a host install discovers the OS browser on `PATH`, while
-  `YAGOCRAWLER_BROWSER_PATH` can pin a non-standard location. The crawler still runs without it, serving
+  `YAGO_CRAWLER_BROWSER_PATH` can pin a non-standard location. The crawler still runs without it, serving
   only the HTTP fast path, so it is a recommended, not a required, dependency. A
   browser path left pointing at Chromium/Chrome — a leftover from before the
   crawler moved to Firefox — is ignored with a startup warning, and the crawler
@@ -51,9 +82,9 @@ package dependencies rather than bundled:
 
 `deploy/install.sh` performs the whole layout: it creates the `yago` system
 user, the `/opt/yago/{bin,etc,data}` tree with correct ownership, copies the
-binaries and env examples (never overwriting an edited env), installs the
-units, and enables them when systemd is running. Idempotent — re-run it for
-upgrades:
+binaries, environment examples, and CJK dictionary notices (never overwriting
+an edited environment), installs the units, and enables them when systemd is
+running. It is idempotent:
 
 ```sh
 sudo deploy/install.sh <dir-with-binaries>
@@ -62,37 +93,121 @@ sudo deploy/install.sh <dir-with-binaries>
 Or by hand:
 
 ```sh
-sudo cp yago-node yagocrawler /opt/yago/bin/
-sudo cp deploy/systemd/yago-node.service deploy/systemd/yagocrawler.service /etc/systemd/system/
+sudo cp yago-node yago-crawler /opt/yago/bin/
+sudo cp deploy/systemd/yago-node.service deploy/systemd/yago-crawler.service /etc/systemd/system/
 sudo cp deploy/systemd/yago-node.env.example /opt/yago/etc/yago-node.env
-sudo cp deploy/systemd/yagocrawler.env.example /opt/yago/etc/yagocrawler.env
+sudo cp deploy/systemd/yago-crawler.env.example /opt/yago/etc/yago-crawler.env
 # edit the two env files, then:
 sudo systemctl daemon-reload
 sudo systemctl enable --now yago-node
-sudo systemctl enable --now yagocrawler   # optional crawler worker
+sudo systemctl enable --now yago-crawler   # optional crawler worker
 ```
+
+## Coordinated node-crawler upgrades
+
+The node and crawler control protocol requires the worker, process session, and
+active lease identities introduced with persistent frontier recovery. A current
+node rejects an older crawler that omits its session identity, and a current
+crawler cannot safely infer lease ownership from an older heartbeat response.
+Do not run mixed versions. Stop the crawler before the node, replace both
+binaries or install the matched package, start the node, wait for readiness, and
+then start the crawler. The stable crawler identity and frontier checkpoint must
+remain on the same `YAGO_DATA_DIR` volume.
+
+The v0.0.11 crawler runtime rename is an installation boundary. Take a generic
+backup with the tooling from the currently installed release, then leave both
+services stopped for package installation. The pre-install migration removes
+the superseded unit registration and executable, rewrites the former crawler
+environment variable prefix into `YAGO_CRAWLER_*`, and preserves the edited
+values in `/opt/yago/etc/yago-crawler.env`. If that canonical file already
+exists, it remains authoritative. Start only `yago-node.service` and
+`yago-crawler.service` after installation; there is no compatibility alias.
+
+On the first current startup with crawling enabled, the node opens
+`${YAGO_DATA_DIR}/crawlbroker.db` and copies one frozen version-1 set of broker
+and terminal-run buckets from the legacy main vault before opening listeners.
+The copy commits resumable 256-row pages, verifies source and target, and leaves
+the legacy rows unchanged. A conflict or verification failure stops startup.
+The file lock wait is bounded to five seconds; a timeout normally means another
+node still has the same data directory open. Do not start a second node against
+that directory.
+
+After the migration marker commits, the dedicated file is authoritative and the
+retained legacy rows are only a stale cutover copy. They continue to occupy main
+vault quota but are not kept in sync. Do not delete only `crawlbroker.db` to
+retry an upgrade, and do not install an older node over the upgraded data tree:
+either path can import or operate on the stale copy and resurrect already
+settled work. The migration also cannot repair a cross-bucket transition that
+was already inconsistent in the historical sharded state. Rollback means stop
+the crawler and node, restore their complete matching pre-upgrade data, install
+the matching older binaries, start the node, verify readiness, and then start
+the crawler.
+
+For an ordinary restart, graceful node shutdown closes the broker before the
+dedicated file. A crash restart sees only committed bbolt transactions. A
+crawler reconnecting with the stable identity from the same data volume adopts
+its session-aware leases; deferred and legacy sessionless leases retain their
+expiry-and-requeue behavior. Its separate frontier does not fetch a page whose
+outcome committed before the stop, while an unfinished outcome remains eligible
+for replay.
+
+## Backup and restore
+
+A consistent backup must quiesce the crawler frontier, the node's dedicated
+`crawlbroker.db`, and the main node vault at the same time. `deploy/backup.sh`
+records which services are running, stops only those services with the crawler
+before the node, and restarts only that original set with the node before the
+crawler. Docker mode archives both named volumes into one file; systemd mode
+archives their shared `/opt/yago/data` directory. A copy or required restart
+failure makes backup fail visibly, and the crawler is not started after a node
+restart failure. Restore follows the same state-preserving stop/start order and
+resets each Docker volume to its image UID. Before stopping a service, restore
+validates and stages the complete archive, rejects links, special files, unsafe
+paths, and an unexpected flat/dual-volume layout. Replacement is
+rollback-protected. Systemd restore rejects relative, missing, root, and
+top-level operating-system data paths and preserves the target directory's
+owner and mode.
+
+```sh
+deploy/backup.sh docker docker-compose.yml \
+  yago-node yago_yago-data /srv/backups \
+  yago-crawler yago_yago-crawler-data
+deploy/backup.sh systemd \
+  yago-node.service /opt/yago/data /srv/backups yago-crawler.service
+```
+
+Compose volume names include the project prefix by default; confirm them with
+`docker volume ls`. The complete restore commands and historical flat-archive
+compatibility are documented in `doc/backup-restore.md`.
+
+Restore the complete node tree and crawler checkpoint from the same archive.
+Restoring only the main vault, only `crawlbroker.db`, or only the crawler volume
+can combine a pending order, lease, settlement, and page frontier from different
+moments. Start the restored node first and verify `/ready`; only then start the
+crawler so it can adopt its retained session-aware leases against the matching
+broker state.
 
 ## The browser sandbox on bare metal
 
 Headless Firefox has its own content-process sandbox. It needs unprivileged user
 namespaces, which the container image and most current Linux hosts (Ubuntu
 23.10+, AppArmor userns restrictions) do not grant, so the crawler defaults to
-`YAGOCRAWLER_BROWSER_SANDBOX=false` and launches Firefox with the content sandbox
+`YAGO_CRAWLER_BROWSER_SANDBOX=false` and launches Firefox with the content sandbox
 disabled (`MOZ_DISABLE_CONTENT_SANDBOX=1`). On bare metal the systemd unit is the
 isolation boundary — it runs the crawler as an unprivileged user with
 `NoNewPrivileges`, a private `/tmp`, and a read-only system — and the crawler is
 already egress-guarded against private networks.
 
 An operator on a host that supports the browser sandbox can opt back in by
-setting `YAGOCRAWLER_BROWSER_SANDBOX=true` **and** relaxing the unit
+setting `YAGO_CRAWLER_BROWSER_SANDBOX=true` **and** relaxing the unit
 (`NoNewPrivileges=no`, and allow user namespaces); Firefox cannot start its
 content sandbox under `NoNewPrivileges`.
 
 ## Crawler resource limits
 
-`YAGOCRAWLER_WORKERS` is a bootstrap value in both service environment files
+`YAGO_CRAWLER_WORKERS` is a bootstrap value in both service environment files
 and must be kept equal. It is the exact number of page-fetch workers in each
-connected `yagocrawler` process, not a crawl-run or task limit, and accepts
+connected `yago-crawler` process, not a crawl-run or task limit, and accepts
 values from 1 through 256. After a crawler's first heartbeat, the persisted
 Configuration → Crawler value on `yago-node` becomes authoritative and is sent
 to every connected crawler. A live resize stops new page intake, lets the
@@ -118,9 +233,10 @@ priority but continues to drain the complete queue in global FIFO order. After
 returning to the current package, startup indexes the orders admitted by the
 older node and selection removes stale keys for orders consumed while downgraded.
 An unsettled lease created while downgraded recovers its class from the retained
-order payload.
+order payload. This storage compatibility does not make a live mixed-version
+node/crawler pair supported; use the coordinated upgrade sequence above.
 
-`yagocrawler.service` applies cgroup controls to bound headless-Firefox memory
+`yago-crawler.service` applies cgroup controls to bound headless-Firefox memory
 and task growth while giving the co-located node greater relative CPU weight:
 `MemoryHigh=60%` applies reclaim pressure (it throttles, never kills), and
 `MemoryMax=85%` confines its out-of-memory selection to the crawler cgroup. A
@@ -137,7 +253,7 @@ to physical RAM, so they scale to any box. Tune them per host with a drop-in rat
 shipped unit:
 
 ```
-systemctl edit yagocrawler
+systemctl edit yago-crawler
 # [Service]
 # MemoryHigh=2G
 # MemoryMax=3G
@@ -181,12 +297,13 @@ an interrupted attempt, so a partial index is never served. Rebuild writes use
 16-document batches to limit transient segment memory, but startup downtime,
 merge I/O, and temporary disk use still scale with the stored corpus.
 
-For a bare-metal package upgrade, back up the data directory, stop both services,
-install the published package, and start `yago-node` first while watching its
-journal, RSS, and free disk space. Start `yagocrawler` only after the node is
-ready. Do not use the normal restart window for a mapping-changing release until
-the same corpus size has been timed on representative storage and the maintenance
-window covers the measured rebuild.
+For a bare-metal package upgrade, use the stopped two-service backup so the
+crawler frontier and node broker queue share one recovery point, install the
+published package, and start `yago-node` first while watching its journal, RSS,
+and free disk space. Start `yago-crawler` only after the node is ready. Do not use
+the normal restart window for a mapping-changing release until the same corpus
+size has been timed on representative storage and the maintenance window covers
+the measured rebuild.
 
 The append-ordered document layout is a forward-compatible upgrade, not an
 in-place downgrade format. An older binary ignores documents admitted into the
@@ -230,7 +347,7 @@ new pre-upgrade backup to keep the outage bounded. Retain every existing archive
 under `/opt/yago/backups` unchanged; do not delete, replace, prune, or reuse one
 as staging space. Download the release package under
 `/opt/yago/releases/vX.Y.Z`, verify its attestation and package identity there,
-stop `yagocrawler` and `yago-node`, install the package, then start and verify the
+stop `yago-crawler` and `yago-node`, install the package, then start and verify the
 node before starting the crawler. This target-specific exception accepts less
 rollback coverage and does not change the generic backup requirement for any
 other host.
@@ -254,12 +371,16 @@ Pushing a `v*` tag whose commit belongs to `main` runs
 `.github/workflows/release.yml`: `make verify` gates the release, binaries build
 for amd64 and arm64 (CGO off, trimmed) with the tag
 stamped in as the canonical `vN.N.N` product version (`yago-node --version` /
-`yagocrawler --version` report it), each arch ships as a tarball (binaries + install.sh +
-units + backup doc), a `.deb`, and an `.rpm`. The amd64 `.deb` is smoke-installed
+`yago-crawler --version` report it), each arch ships as a tarball (binaries + install.sh +
+units + backup doc + CJK dictionary notices), a `.deb`, and an `.rpm`. Debian,
+RPM, and node-container distributions install the same notices under
+`/usr/share/doc/yago`. The amd64 `.deb` is smoke-installed
 across Debian 12/13 and Ubuntu 24.04 + `ubuntu:latest`, and the amd64 `.rpm`
 across Fedora and Rocky 9 — each run checks the declared dependencies resolve,
 both binaries report the stamped version, and package removal keeps
-`/opt/yago/data`. Every tarball, Debian package, and RPM package receives
+`/opt/yago/data`. The package smoke matrix also exercises both an environment
+migration and an interrupted migration where the canonical file wins. Every
+tarball, Debian package, and RPM package receives
 Sigstore-signed GitHub provenance after package construction and the applicable
 amd64 smoke tests; the release job verifies
 the downloaded artifact attestations before publication. Before tagging, commit the human-authored engineering memo as
@@ -299,7 +420,7 @@ Every container release publishes these public manifest lists for Linux amd64
 and arm64:
 
 - `ghcr.io/d4rk4/yago-node:vX.Y.Z`;
-- `ghcr.io/d4rk4/yagocrawler:vX.Y.Z`.
+- `ghcr.io/d4rk4/yago-crawler:vX.Y.Z`.
 
 Images published with the repository `GITHUB_TOKEN` and OCI source label are
 expected to inherit the public repository's visibility. The publication gate
@@ -318,7 +439,7 @@ identity before use:
 ```sh
 version=vX.Y.Z
 node_image=ghcr.io/d4rk4/yago-node
-crawler_image=ghcr.io/d4rk4/yagocrawler
+crawler_image=ghcr.io/d4rk4/yago-crawler
 docker pull "$node_image:$version"
 docker pull "$crawler_image:$version"
 test "$(docker run --rm "$node_image:$version" --version)" = "yago-node $version"
@@ -332,7 +453,7 @@ part of future selection, then verify its GitHub-hosted provenance:
 ```sh
 version=vX.Y.Z
 node_image=ghcr.io/d4rk4/yago-node
-crawler_image=ghcr.io/d4rk4/yagocrawler
+crawler_image=ghcr.io/d4rk4/yago-crawler
 source_digest=$(gh api "repos/D4rk4/yago/commits/$version" --jq .sha)
 workflow_digest=$source_digest
 node_digest=sha256:replace-with-the-recorded-node-manifest-digest
@@ -388,7 +509,7 @@ checkout. Compose passes it to both product images and each final image records 
 ```sh
 SOURCE_REVISION=$(git rev-parse HEAD) make compose-images
 docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }} {{ index .Config.Labels "org.opencontainers.image.source" }}' yago-node:latest
-docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }} {{ index .Config.Labels "org.opencontainers.image.source" }}' yagocrawler:latest
+docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }} {{ index .Config.Labels "org.opencontainers.image.source" }}' yago-crawler:latest
 ```
 
 The default revision is `unknown`, which makes an omitted caller stamp visible
@@ -415,10 +536,10 @@ SOURCE_REVISION=$(git rev-parse HEAD) VERSION=$(git describe --tags --exact-matc
 ## Container layout migration (OPS-04)
 
 Since the `/opt/yago` layout landed, the container images use the same tree as
-the deb/systemd deployments: the binaries live in `/opt/yago/bin`, the node's
-mutable state in `/opt/yago/data` (`YAGO_DATA_DIR` default), and
-operator-managed config files in `/opt/yago/etc`; both data and etc are
-declared volumes. The crawler container is stateless and only moves its binary.
+the deb/systemd deployments: binaries live in `/opt/yago/bin`, mutable state in
+`/opt/yago/data` (`YAGO_DATA_DIR`), and node operator configuration in
+`/opt/yago/etc`. The node declares data and configuration volumes. The crawler
+declares its own writable data volume for persistent frontier checkpoints.
 
 Migrating a deployment created before this layout (volume mounted at `/data`):
 
@@ -429,5 +550,10 @@ Migrating a deployment created before this layout (volume mounted at `/data`):
 - **Alternative:** keep the old `/data` target and set `YAGO_DATA_DIR=/data` in
   the container environment.
 
+Existing crawler containers had no durable volume. Before upgrading, let the
+old crawler stop cleanly, then create or attach the separate
+`yago-crawler-data:/opt/yago/data` volume shown in the Compose example. There is
+no historical crawler checkpoint to migrate from a stateless container.
+
 Custom entrypoint paths must switch from `/usr/local/bin/yago-node` and
-`/usr/local/bin/yagocrawler` to `/opt/yago/bin/{yago-node,yagocrawler}`.
+custom legacy entrypoints to `/opt/yago/bin/{yago-node,yago-crawler}`.

@@ -18,9 +18,13 @@ import (
 )
 
 type IngestDelivery struct {
-	Batch yagocrawlcontract.IngestBatch
-	Ack   func(context.Context) error
-	Nak   func(context.Context) error
+	Batch              yagocrawlcontract.IngestBatch
+	Ack                func(context.Context) error
+	Nak                func(context.Context) error
+	ValidateMutation   func(context.Context) error
+	BeginMutation      func(context.Context) (func(), error)
+	BeginMutationGroup func(context.Context) (context.Context, func())
+	LeaseLost          func(context.Context) error
 }
 
 type IngestStream interface {
@@ -132,12 +136,21 @@ type IngestConsumer struct {
 	clusters          ContentClusters
 	safety            ContentSafetyClassifier
 	observations      observationHistory
+	growthAdmission   GrowthAdmission
 	// quality names the rule a document's text violates, "" for indexable text;
 	// nil skips the gate.
 	quality func(text string) string
 	// hashURL derives a tombstone's URL hash; a field so a test can force the
 	// (otherwise unreachable) hashing failure.
 	hashURL func(string) (yagomodel.URLHash, error)
+}
+
+type GrowthAdmission interface {
+	CheckGrowth() error
+}
+
+func (c *IngestConsumer) AdmitGrowth(admission GrowthAdmission) {
+	c.growthAdmission = admission
 }
 
 type ContentSafetyClassifier interface {

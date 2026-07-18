@@ -30,6 +30,7 @@ type OperatorRequest struct {
 	// NOINDEX_WHEN_CANONICAL_UNEQUAL_URL parity).
 	NoindexCanonicalMismatch bool   `json:"noindexCanonicalMismatch"`
 	MaxPagesPerHost          int    `json:"maxPagesPerHost"`
+	MaxPagesPerRun           *int   `json:"maxPagesPerRun,omitempty"`
 	RecrawlIfOlder           string `json:"recrawlIfOlder"`
 	CrawlDelay               string `json:"crawlDelay"`
 }
@@ -45,6 +46,7 @@ func (r OperatorRequest) order(
 	initiator yagomodel.Hash,
 	provenance []byte,
 	now time.Time,
+	defaultMaxPagesPerRun int,
 ) (yagocrawlcontract.CrawlOrder, error) {
 	if len(r.Seeds) == 0 {
 		return yagocrawlcontract.CrawlOrder{}, fmt.Errorf("at least one seed url is required")
@@ -69,6 +71,10 @@ func (r OperatorRequest) order(
 		return yagocrawlcontract.CrawlOrder{}, fmt.Errorf("crawlDelay: %w", err)
 	}
 
+	maxPagesPerRun := r.MaxPagesPerRun
+	if maxPagesPerRun == nil {
+		maxPagesPerRun = &defaultMaxPagesPerRun
+	}
 	profile := yagocrawlcontract.NewCrawlProfile(yagocrawlcontract.CrawlProfile{
 		Name:                     r.Name,
 		Scope:                    scope,
@@ -84,6 +90,7 @@ func (r OperatorRequest) order(
 		FollowNoFollowLinks:      r.FollowNoFollowLinks,
 		NoindexCanonicalMismatch: r.NoindexCanonicalMismatch,
 		MaxPagesPerHost:          r.MaxPagesPerHost,
+		MaxPagesPerRun:           maxPagesPerRun,
 		RecrawlIfOlder:           recrawl,
 		CrawlDelay:               delay,
 	})

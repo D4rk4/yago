@@ -34,7 +34,7 @@ func (s pageEvidenceSearcher) Search(
 	}
 	candidates := make([]searchindex.SearchResult, 0, len(response.Results))
 	for _, result := range response.Results {
-		if !result.StoredLocally() || result.EvidenceReady ||
+		if !result.StoredLocally() || result.BodyQueryMatches != nil ||
 			result.DocumentID == "" {
 			continue
 		}
@@ -67,6 +67,9 @@ func (s pageEvidenceSearcher) Search(
 		}
 		response.Results[index].Snippet = result.Snippet
 		response.Results[index].QueryMatches = queryMatches.result(result)
+		response.Results[index].BodyQueryMatches = coreBodyQueryMatches(
+			result.BodyQueryMatches,
+		)
 		response.Results[index].EvidenceReady = result.EvidenceReady
 	}
 

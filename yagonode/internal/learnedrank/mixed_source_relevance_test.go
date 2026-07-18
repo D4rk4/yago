@@ -6,7 +6,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
-func TestLearnedLocalOrderKeepsFederatedSlotRelevanceScale(t *testing.T) {
+func TestKnownCandidateOrderKeepsDestinationRelevanceAcrossMissingEvidence(t *testing.T) {
 	ranker, err := NewRanker(4)
 	if err != nil {
 		t.Fatal(err)

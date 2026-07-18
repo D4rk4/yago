@@ -35,4 +35,4 @@ verify_public_release_container() {
 }
 
 verify_public_release_container ghcr.io/d4rk4/yago-node "$node_digest" "yago-node ${version}"
-verify_public_release_container ghcr.io/d4rk4/yagocrawler "$crawler_digest" "yago-crawler ${version}"
+verify_public_release_container ghcr.io/d4rk4/yago-crawler "$crawler_digest" "yago-crawler ${version}"

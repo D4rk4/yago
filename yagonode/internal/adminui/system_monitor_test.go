@@ -200,6 +200,8 @@ func TestSystemMonitorRendersLiveShelfAndFragment(t *testing.T) {
 		`12.0 GiB / 16.0 GiB · 4.0 GiB available`,
 		`aria-label="Process resident memory usage"`,
 		`aria-label="Host memory usage"`,
+		`Main-vault live data`,
+		`aria-label="Main-vault logical live data versus soft admission quota"`,
 		`2.0 GiB / 8.0 GiB`,
 		`datetime="2026-07-16T09:08:07Z"`,
 		mustAdminAssetReferences(assetFS)["photon_shell.css"],

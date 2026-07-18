@@ -81,3 +81,18 @@ func humanBytes(n int64) string {
 
 	return fmt.Sprintf("%.1f %s", value/bytesPerUnit, units[unit])
 }
+
+func humanUnsignedBytes(n uint64) string {
+	if n < bytesPerUnit {
+		return fmt.Sprintf("%d B", n)
+	}
+	value := float64(n)
+	units := []string{"KiB", "MiB", "GiB", "TiB", "PiB", "EiB"}
+	unit := 0
+	for value >= bytesPerUnit*bytesPerUnit && unit < len(units)-1 {
+		value /= bytesPerUnit
+		unit++
+	}
+
+	return fmt.Sprintf("%.1f %s", value/bytesPerUnit, units[unit])
+}

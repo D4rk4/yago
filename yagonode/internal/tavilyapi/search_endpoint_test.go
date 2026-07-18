@@ -156,7 +156,8 @@ func TestSearchEndpointSafeSearchImagesRequireGeneralEvidence(t *testing.T) {
 				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 			}
 			got := decodeSearchResponse(t, rec)
-			if len(got.Results) != 1 || len(got.Results[0].Images) != test.wantImages {
+			if len(got.Results) != 1 ||
+				len(searchResultImageURLs(t, got.Results[0].Images)) != test.wantImages {
 				t.Fatalf("results = %#v, want %d images", got.Results, test.wantImages)
 			}
 			encodedImages, err := json.Marshal(got.Images)
@@ -226,22 +227,20 @@ func assertRichSearchResponse(
 		got.Results[0].Content != "Document text with enough local content for an agent response." ||
 		got.Results[0].RawContent == nil ||
 		*got.Results[0].RawContent != "Document text with enough local content for an agent response." ||
-		got.Results[0].Score != 9.5 ||
-		got.Results[0].PublishedDate != "2026-07-02" ||
+		got.Results[0].Score != 1 ||
+		got.Results[0].PublishedDate != "" ||
 		got.Results[0].Favicon != "https://example.org/favicon.ico" ||
-		got.Results[0].Source != "global" ||
 		got.ResponseTime != 0.25 ||
 		got.RequestID != "request-123" ||
 		got.Answer == nil ||
 		*got.Answer != "" ||
 		got.FollowUpQuestions != nil ||
-		len(got.Results[0].Images) != 1 ||
-		got.Results[0].Images[0] != "https://example.org/image.png" ||
+		len(searchResultImageDetails(t, got.Results[0].Images)) != 1 ||
 		got.Usage == nil ||
 		got.Usage.Credits != 0 ||
 		got.AutoParameters["topic"] != "general" ||
 		got.AutoParameters["search_depth"] != "advanced" ||
-		got.AutoParameters["source"] != "global" {
+		len(got.AutoParameters) != 2 {
 		t.Fatalf("response = %#v", got)
 	}
 	// The images field arrives as []SearchImage in-process and as decoded JSON
@@ -257,6 +256,7 @@ func assertRichSearchResponse(
 		t.Fatalf("images = %#v, want one described image object (%v)", got.Images, err)
 	}
 	if search.got.Source != searchcore.SourceGlobal ||
+		search.got.Verify != searchcore.VerifyIfExist ||
 		search.got.Limit != 2 ||
 		!search.got.AllowWebFallback ||
 		!search.got.SafeSearch ||
@@ -290,6 +290,7 @@ func TestSearchEndpointDefaultsToLocalAndMetadataSnippet(t *testing.T) {
 	}
 	got := decodeSearchResponse(t, rec)
 	if search.got.Source != searchcore.SourceLocal ||
+		search.got.Verify != searchcore.VerifyFalse ||
 		search.got.Limit != defaultMaxResults ||
 		!search.got.AllowWebFallback ||
 		got.Results[0].Content != "metadata snippet" ||
@@ -380,8 +381,12 @@ func TestSearchEndpointHandlesEmptyResultLimit(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(got.Results) != limit || got.ResponseTime != 1 {
+	if len(got.Results) != limit || got.ResponseTime != 1 ||
+		got.Answer != nil || got.FollowUpQuestions != nil || got.Images == nil {
 		t.Fatalf("response = %#v", got)
+	}
+	if images, ok := got.Images.([]any); !ok || len(images) != 0 {
+		t.Fatalf("images = %#v, want empty array", got.Images)
 	}
 }
 
@@ -447,7 +452,7 @@ func TestSearchEndpointRequiresConfiguredBearerToken(t *testing.T) {
 				t.Fatalf("search calls = %d", search.calls)
 			}
 			if tc.code == http.StatusUnauthorized {
-				assertUnauthorizedResponse(t, rec, tc.name)
+				assertUnauthorizedResponse(t, rec)
 			}
 		})
 	}
@@ -456,7 +461,6 @@ func TestSearchEndpointRequiresConfiguredBearerToken(t *testing.T) {
 func assertUnauthorizedResponse(
 	t *testing.T,
 	rec *httptest.ResponseRecorder,
-	requestID string,
 ) {
 	t.Helper()
 
@@ -467,10 +471,12 @@ func assertUnauthorizedResponse(
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode error response: %v", err)
 	}
-	if got.Error.Code != "unauthorized" ||
-		got.Error.Message != "missing or invalid bearer token" ||
-		got.RequestID != requestID {
+	if got.Detail.Error != "missing or invalid bearer token" {
 		t.Fatalf("error response = %#v", got)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil || len(envelope) != 1 {
+		t.Fatalf("wire error response = %#v (%v)", envelope, err)
 	}
 }
 
@@ -539,6 +545,7 @@ type badRequestCase struct {
 func badRequestCases() []badRequestCase {
 	out := badRequestProtocolCases()
 	out = append(out, badRequestOptionCases()...)
+	out = append(out, badRequestSearchPolicyCases()...)
 	out = append(out, badRequestModeCases()...)
 
 	return out
@@ -574,7 +581,13 @@ func badRequestOptionCases() []badRequestCase {
 		{
 			name:   "chunks",
 			method: http.MethodPost,
-			body:   `{"query":"go","chunks_per_source":4}`,
+			body:   `{"query":"go","search_depth":"advanced","chunks_per_source":4}`,
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "chunks require advanced",
+			method: http.MethodPost,
+			body:   `{"query":"go","search_depth":"basic","chunks_per_source":2}`,
 			code:   http.StatusBadRequest,
 		},
 		{
@@ -607,10 +620,33 @@ func badRequestOptionCases() []badRequestCase {
 			body:   `{"query":"go","start_date":"2026-07-03","end_date":"2026-07-02"}`,
 			code:   http.StatusBadRequest,
 		},
+	}
+}
+
+func badRequestSearchPolicyCases() []badRequestCase {
+	return []badRequestCase{
 		{
 			name:   "country",
 			method: http.MethodPost,
-			body:   "{\"query\":\"go\",\"country\":\"bad\\ncountry\"}",
+			body:   `{"query":"go","country":"atlantis"}`,
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "country topic",
+			method: http.MethodPost,
+			body:   `{"query":"go","country":"united states","topic":"news"}`,
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "safe fast",
+			method: http.MethodPost,
+			body:   `{"query":"go","safe_search":true,"search_depth":"fast"}`,
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "safe ultra fast",
+			method: http.MethodPost,
+			body:   `{"query":"go","safe_search":true,"search_depth":"ultra-fast"}`,
 			code:   http.StatusBadRequest,
 		},
 		{
@@ -729,6 +765,53 @@ func TestSearchDepthAndValidationHelpers(t *testing.T) {
 	}
 }
 
+func TestSearchReferenceValidationBounds(t *testing.T) {
+	includeDomains := make([]string, maximumIncludeDomains+1)
+	for index := range includeDomains {
+		includeDomains[index] = "include.example"
+	}
+	if err := validateRequestOptions(SearchRequest{IncludeDomains: includeDomains}); err == nil {
+		t.Fatal("include_domains above reference maximum accepted")
+	}
+	excludeDomains := make([]string, maximumExcludeDomains+1)
+	for index := range excludeDomains {
+		excludeDomains[index] = "exclude.example"
+	}
+	if err := validateRequestOptions(SearchRequest{ExcludeDomains: excludeDomains}); err == nil {
+		t.Fatal("exclude_domains above reference maximum accepted")
+	}
+	if err := validateRequestOptions(SearchRequest{Country: "united states"}); err != nil {
+		t.Fatalf("reference country rejected: %v", err)
+	}
+	if err := validateRequestOptions(SearchRequest{Country: "United States"}); err == nil {
+		t.Fatal("non-reference country spelling accepted")
+	}
+}
+
+func TestSearchPublishedDateIsNewsOnly(t *testing.T) {
+	if got := responsePublishedDate(SearchRequest{}, "2026-07-02"); got != "" {
+		t.Fatalf("general published_date = %q", got)
+	}
+	for raw, want := range map[string]string{
+		"20260702":   "2026-07-02",
+		"2026-07-02": "2026-07-02",
+		"unknown":    "",
+	} {
+		if got := responsePublishedDate(SearchRequest{Topic: "news"}, raw); got != want {
+			t.Fatalf("news published_date(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+func TestCanonicalRankScoresAreBoundedAndMonotone(t *testing.T) {
+	results := []SearchResult{{Score: 0.1}, {Score: 8}, {Score: 1}}
+	applyCanonicalRankScores(results)
+	if results[0].Score != 1 || results[1].Score != 2.0/3.0 ||
+		results[2].Score != 1.0/3.0 {
+		t.Fatalf("scores = %#v", results)
+	}
+}
+
 func TestDomainHelpers(t *testing.T) {
 	if !domainMatches("docs.example.org", ".example.org") ||
 		domainMatches("example.net", "example.org") ||
@@ -765,8 +848,11 @@ func TestSnippetAndModeHelpers(t *testing.T) {
 	if err := json.Unmarshal([]byte(`"markdown"`), &raw); err != nil || !raw.Enabled() {
 		t.Fatalf("raw mode = %q, %v", raw, err)
 	}
-	if err := json.Unmarshal([]byte(`true`), &raw); err != nil || !raw.Enabled() {
+	if err := json.Unmarshal([]byte(`true`), &raw); err != nil || raw != "markdown" {
 		t.Fatalf("raw true mode = %q, %v", raw, err)
+	}
+	if err := json.Unmarshal([]byte(`"true"`), &raw); err != nil || raw != "markdown" {
+		t.Fatalf("raw string true mode = %q, %v", raw, err)
 	}
 	if err := json.Unmarshal([]byte(`false`), &raw); err != nil || raw.Enabled() {
 		t.Fatalf("raw false mode = %q, %v", raw, err)
@@ -776,7 +862,7 @@ func TestSnippetAndModeHelpers(t *testing.T) {
 func TestResponseOptionHelpers(t *testing.T) {
 	if responseAnswer(SearchRequest{}, nil) != nil ||
 		responseUsage(SearchRequest{}) != nil ||
-		responseAutoParameters(SearchRequest{}, searchcore.Request{}) != nil {
+		responseAutoParameters(SearchRequest{}) != nil {
 		t.Fatal("disabled response option mismatch")
 	}
 	if off, ok := responseImages(SearchRequest{}, nil).([]string); !ok || len(off) != 0 {
@@ -796,11 +882,10 @@ func TestResponseOptionHelpers(t *testing.T) {
 	}
 	defaultAuto := responseAutoParameters(
 		SearchRequest{AutoParameters: true},
-		searchcore.Request{Source: searchcore.SourceLocal},
 	)
 	if defaultAuto["topic"] != "general" ||
 		defaultAuto["search_depth"] != "basic" ||
-		defaultAuto["source"] != "local" {
+		len(defaultAuto) != 2 {
 		t.Fatalf("default auto parameters = %#v", defaultAuto)
 	}
 	if responseFavicon(SearchRequest{IncludeFavicon: true}, "ftp://example.org") != "" {
@@ -825,25 +910,25 @@ func TestImageResponseHelpers(t *testing.T) {
 			{URL: "https://example.org/f.png", AltText: "F"},
 		},
 	}
-	urls, images := resultImagesFromDocument(
+	described, images := resultImagesFromDocument(
 		SearchRequest{IncludeImages: true, IncludeImageDescriptions: true},
 		doc,
 	)
-	if len(urls) != maxResultImages ||
+	if len(searchResultImageDetails(t, described)) != maxResultImages ||
 		len(images) != maxResultImages ||
 		images[0].Description != "A" {
-		t.Fatalf("images urls=%#v details=%#v", urls, images)
+		t.Fatalf("images described=%#v details=%#v", described, images)
 	}
 	_, withoutDescriptions := resultImagesFromDocument(SearchRequest{IncludeImages: true}, doc)
 	if withoutDescriptions[0].Description != "" {
 		t.Fatalf("unexpected description = %#v", withoutDescriptions[0])
 	}
-	if urls, images := resultImagesFromDocument(
+	if resultImages, images := resultImagesFromDocument(
 		SearchRequest{},
 		doc,
-	); urls != nil ||
+	); resultImages != nil ||
 		images != nil {
-		t.Fatalf("disabled images urls=%#v details=%#v", urls, images)
+		t.Fatalf("disabled images result=%#v details=%#v", resultImages, images)
 	}
 	out := make([]SearchImage, maxResponseImages-1)
 	got := appendResponseImages(out, []SearchImage{
@@ -898,4 +983,32 @@ func decodeSearchResponse(t *testing.T, rec *httptest.ResponseRecorder) SearchRe
 	}
 
 	return got
+}
+
+func searchResultImageURLs(t *testing.T, value any) []string {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal result images: %v", err)
+	}
+	var images []string
+	if err := json.Unmarshal(raw, &images); err != nil {
+		t.Fatalf("decode result image URLs: %v", err)
+	}
+
+	return images
+}
+
+func searchResultImageDetails(t *testing.T, value any) []SearchImage {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal result images: %v", err)
+	}
+	var images []SearchImage
+	if err := json.Unmarshal(raw, &images); err != nil {
+		t.Fatalf("decode described result images: %v", err)
+	}
+
+	return images
 }

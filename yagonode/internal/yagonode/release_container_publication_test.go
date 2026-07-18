@@ -58,7 +58,7 @@ docker() {
 		*source*) printf 'https://github.com/D4rk4/yago\n' ;;
 		*Id*)
 			case "$5" in
-			*yago-crawler*|*yagocrawler*) printf 'sha256:crawler-%s\n' "$architecture" ;;
+			*yago-crawler*) printf 'sha256:crawler-%s\n' "$architecture" ;;
 			*) printf 'sha256:node-%s\n' "$architecture" ;;
 			esac
 			;;
@@ -82,7 +82,7 @@ docker() {
 				printf '%s linux amd64 \n' "$NODE_AMD64_DIGEST"
 				printf '%s linux arm64 \n' "$NODE_ARM64_DIGEST"
 				;;
-			*yagocrawler*)
+			*yago-crawler*)
 				printf '%s linux amd64 \n' "$CRAWLER_AMD64_DIGEST"
 				printf '%s linux arm64 \n' "$CRAWLER_ARM64_DIGEST"
 				;;
@@ -93,10 +93,10 @@ docker() {
 			case "$reference" in
 			*yago-node:v0.0.10-amd64) printf '%s\n' "$NODE_AMD64_DIGEST" ;;
 			*yago-node:v0.0.10-arm64) printf '%s\n' "$NODE_ARM64_DIGEST" ;;
-			*yagocrawler:v0.0.10-amd64) printf '%s\n' "$CRAWLER_AMD64_DIGEST" ;;
-			*yagocrawler:v0.0.10-arm64) printf '%s\n' "$CRAWLER_ARM64_DIGEST" ;;
+			*yago-crawler:v0.0.10-amd64) printf '%s\n' "$CRAWLER_AMD64_DIGEST" ;;
+			*yago-crawler:v0.0.10-arm64) printf '%s\n' "$CRAWLER_ARM64_DIGEST" ;;
 			*yago-node:v0.0.10) printf '%s\n' "$NODE_DIGEST" ;;
-			*yagocrawler:v0.0.10) printf '%s\n' "$CRAWLER_DIGEST" ;;
+			*yago-crawler:v0.0.10) printf '%s\n' "$CRAWLER_DIGEST" ;;
 			*) return 82 ;;
 			esac
 			;;
@@ -176,7 +176,7 @@ func TestReleaseContainerPublicationAttestsExactVersionManifests(t *testing.T) {
 		`docker login ghcr.io`,
 		`publish-release-containers.sh`,
 		`subject-name: ghcr.io/d4rk4/yago-node`,
-		`subject-name: ghcr.io/d4rk4/yagocrawler`,
+		`subject-name: ghcr.io/d4rk4/yago-crawler`,
 		`push-to-registry: true`,
 		`create-storage-record: false`,
 		`--bundle-from-oci`,
@@ -289,7 +289,7 @@ func TestReleaseContainerPromotionUsesValidatedArchivesWithoutRebuild(t *testing
 		`docker load --input`,
 		`docker push`,
 		`ghcr.io/d4rk4/yago-node`,
-		`ghcr.io/d4rk4/yagocrawler`,
+		`ghcr.io/d4rk4/yago-crawler`,
 		`docker buildx imagetools create`,
 		`release_reference_state`,
 		`cannot determine release container reference state`,

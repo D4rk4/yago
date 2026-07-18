@@ -338,10 +338,13 @@ func TestExactStageDeadlinePreservesCompletedLocalResults(t *testing.T) {
 	webFallbackExactStageBudget = 20 * time.Millisecond
 	t.Cleanup(func() { webFallbackExactStageBudget = previous })
 
+	release := make(chan struct{})
+	finished := make(chan struct{}, 1)
+	remote := &productionShapeUncooperativeSwarm{release: release, finished: finished}
 	searcher := withWebFallbackExactStageBudget(
 		searchcore.NewFederatedSearcher(
 			productionShapeLocalHit{},
-			productionShapeEvidenceFreeSwarm{},
+			remote,
 		),
 		webFallbackConfig{
 			Privacy:  webFallbackPrivacyEnabled,
@@ -351,6 +354,12 @@ func TestExactStageDeadlinePreservesCompletedLocalResults(t *testing.T) {
 	response, err := searcher.Search(t.Context(), searchcore.Request{
 		Query: "needle term", Source: searchcore.SourceGlobal, Limit: 10,
 	})
+	close(release)
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("remote search did not finish")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -19,6 +19,8 @@ const MatchAll = ".*"
 
 const UnlimitedPagesPerHost = -1
 
+const DefaultMaxPagesPerRun = 50_000
+
 type CrawlProfile struct {
 	Handle               string
 	Name                 string
@@ -51,6 +53,7 @@ type CrawlProfile struct {
 	// plain-HTML corpora can opt out.
 	DisableBrowser  bool
 	MaxPagesPerHost int
+	MaxPagesPerRun  *int `json:",omitempty"`
 	RecrawlIfOlder  time.Duration
 	CrawlDelay      time.Duration
 	// Formats selects which document format families the crawler parses and
@@ -105,5 +108,15 @@ func (p CrawlProfile) ComputeHandle() string {
 		p.Name, p.URLMustMatch, p.MaxDepth, p.URLMustNotMatch, p.MaxPagesPerHost,
 		p.IndexURLMustMatch, p.IndexURLMustNotMatch,
 	)
+	if p.MaxPagesPerRun != nil {
+		raw += fmt.Sprintf("\x00%d", *p.MaxPagesPerRun)
+	}
 	return yagomodel.YaCyHashBase64(raw)[:yagomodel.HashLength]
+}
+
+func (p CrawlProfile) EffectiveMaxPagesPerRun(fallback int) int {
+	if p.MaxPagesPerRun != nil {
+		return *p.MaxPagesPerRun
+	}
+	return max(0, fallback)
 }

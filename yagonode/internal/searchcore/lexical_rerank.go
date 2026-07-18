@@ -206,6 +206,9 @@ func lexicalComponents(result Result, terms []string) (float64, float64) {
 	); ok {
 		return coverage, proximity
 	}
+	if result.EvidenceReady {
+		return 0, 0
+	}
 
 	return lexicalTextComponents(result.Title+" "+result.Snippet, terms)
 }

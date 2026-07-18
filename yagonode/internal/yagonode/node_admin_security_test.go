@@ -40,7 +40,7 @@ func TestSecuritySourceMintListRevoke(t *testing.T) {
 		t.Fatalf("mint result = %+v", mint)
 	}
 
-	view := source.Security(ctx)
+	view := source.Security(ctx, adminui.SecurityAPIKeyPageRequest{})
 	if view.Error != "" || len(view.Keys) != 1 {
 		t.Fatalf("security view = %+v", view)
 	}
@@ -59,8 +59,50 @@ func TestSecuritySourceMintListRevoke(t *testing.T) {
 	if !revoke.OK {
 		t.Fatalf("revoke result = %+v", revoke)
 	}
-	if after := source.Security(ctx); len(after.Keys) != 0 {
+	if after := source.Security(ctx, adminui.SecurityAPIKeyPageRequest{}); len(after.Keys) != 0 {
 		t.Fatalf("key survived revoke: %+v", after.Keys)
+	}
+}
+
+func TestSecuritySourceUsesTwentyKeyCursorPages(t *testing.T) {
+	source := newTestSecuritySource(t)
+	ctx := context.Background()
+	for index := 0; index < 25; index++ {
+		result, err := source.MintAPIKey(ctx, adminui.APIKeyMint{
+			Label:  "paged",
+			Scopes: []string{"admin:read"},
+		})
+		if err != nil || !result.OK {
+			t.Fatalf("mint %d = %+v, %v", index, result, err)
+		}
+	}
+	first := source.Security(ctx, adminui.SecurityAPIKeyPageRequest{})
+	if len(first.Keys) != adminui.SecurityAPIKeyPageSize || first.APIKeyTotal != 25 ||
+		first.APIKeyNextCursor == "" {
+		t.Fatalf("first page = %+v", first)
+	}
+	second := source.Security(ctx, adminui.SecurityAPIKeyPageRequest{
+		Cursor: first.APIKeyNextCursor,
+	})
+	if len(second.Keys) != 5 || second.APIKeyTotal != 25 || second.APIKeyNextCursor != "" {
+		t.Fatalf("second page = %+v", second)
+	}
+	seen := make(map[string]struct{}, 25)
+	for _, key := range append(first.Keys, second.Keys...) {
+		if _, duplicate := seen[key.ID]; duplicate {
+			t.Fatalf("duplicate key %q", key.ID)
+		}
+		seen[key.ID] = struct{}{}
+	}
+}
+
+func TestSecuritySourceRejectsMalformedPageCursor(t *testing.T) {
+	view := newTestSecuritySource(t).Security(
+		context.Background(),
+		adminui.SecurityAPIKeyPageRequest{Cursor: "bad"},
+	)
+	if view.Error == "" || len(view.Keys) != 0 {
+		t.Fatalf("invalid cursor view = %+v", view)
 	}
 }
 
@@ -87,6 +129,27 @@ func TestSecuritySourceMintRejectsUnknownScope(t *testing.T) {
 	if result.OK {
 		t.Fatal("expected a rejection for an unknown scope")
 	}
+}
+
+func TestSecuritySourceMintReportsAPIKeyCapacity(t *testing.T) {
+	source := newTestSecuritySource(t)
+	for attempt := 0; attempt < 1024; attempt++ {
+		result, err := source.MintAPIKey(context.Background(), adminui.APIKeyMint{
+			Label:  "bounded",
+			Scopes: []string{"admin:read"},
+		})
+		if err != nil {
+			t.Fatalf("mint attempt %d: %v", attempt, err)
+		}
+		if result.Message == "API key limit reached; revoke an existing key" {
+			if result.OK || result.Created != nil {
+				t.Fatalf("capacity result = %+v", result)
+			}
+
+			return
+		}
+	}
+	t.Fatal("API key capacity was not reached within the bounded test window")
 }
 
 func TestSecuritySourceRevokeRejectsEmptyID(t *testing.T) {

@@ -56,7 +56,7 @@ func TestSearchJSONRequestBodyBoundary(t *testing.T) {
 
 		newTestSearchEndpoint(&fakeSearcher{}, nil).ServeHTTP(recorder, request)
 
-		assertRequestTooLarge(t, recorder, "chunked-overflow")
+		assertRequestTooLarge(t, recorder)
 	})
 }
 
@@ -162,7 +162,7 @@ func TestSiblingJSONEndpointsRejectOversizedBodies(t *testing.T) {
 
 			test.handler.ServeHTTP(recorder, request)
 
-			assertRequestTooLarge(t, recorder, test.name)
+			assertRequestTooLarge(t, recorder)
 		})
 	}
 }
@@ -177,7 +177,6 @@ func searchRequestBody(size int) string {
 func assertRequestTooLarge(
 	t *testing.T,
 	recorder *httptest.ResponseRecorder,
-	requestID string,
 ) {
 	t.Helper()
 	if recorder.Code != http.StatusRequestEntityTooLarge {
@@ -187,10 +186,11 @@ func assertRequestTooLarge(
 	if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if envelope.Error.Code != requestTooLargeErrorCode ||
-		envelope.Error.Message != requestTooLargeErrorMessage ||
-		envelope.Detail.Error != requestTooLargeErrorMessage ||
-		envelope.RequestID != requestID {
+	if envelope.Detail.Error != requestTooLargeErrorMessage {
 		t.Fatalf("response = %#v", envelope)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &wire); err != nil || len(wire) != 1 {
+		t.Fatalf("wire response = %#v (%v)", wire, err)
 	}
 }

@@ -59,8 +59,29 @@ func (f *reciprocalRankFusion) addRankedList(list []Result) {
 		seen[key] = struct{}{}
 		result = reciprocalRankResult(result, rank)
 		f.mergeResult(key, result)
-		f.weights[key] += 1.0 / float64(rrfK+rank+1)
+		f.weights[key] += ReciprocalRankContribution(rank + 1)
 	}
+}
+
+func ReciprocalRankContribution(rank int) float64 {
+	if rank <= 0 {
+		return 0
+	}
+
+	return 1.0 / float64(rrfK+rank)
+}
+
+func RankFromReciprocalContribution(contribution float64) (int, bool) {
+	if contribution > ReciprocalRankContribution(1) ||
+		contribution < ReciprocalRankContribution(MaximumPublicResultHorizon) {
+		return 0, false
+	}
+	rank := int(1/contribution - rrfK + 0.5)
+	if rank <= 0 || contribution != ReciprocalRankContribution(rank) {
+		return 0, false
+	}
+
+	return rank, true
 }
 
 func (f *reciprocalRankFusion) mergeResult(key string, result Result) {
@@ -95,9 +116,15 @@ func reciprocalRankResult(result Result, rank int) Result {
 
 		return result
 	}
-	if result.StoredLocally() {
-		result.Evidence = result.Evidence.With(SignalLocalRank, float64(rank+1))
+	if result.FromWeb() {
+		return resultWithRankEvidence(result, SignalWebRank, rank)
 	}
+
+	return resultWithRankEvidence(result, SignalLocalRank, rank)
+}
+
+func resultWithRankEvidence(result Result, signal RankingSignal, rank int) Result {
+	result.Evidence = result.Evidence.With(signal, float64(rank+1))
 
 	return result
 }

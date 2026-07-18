@@ -25,6 +25,7 @@ const (
 // is empty. PagesPerMinute carries the cap for a CrawlControlSetRate directive and
 // is ignored otherwise.
 type CrawlControlDirective struct {
+	DirectiveID                  uint64
 	Kind                         CrawlControlKind
 	RunID                        string
 	PagesPerMinute               uint32

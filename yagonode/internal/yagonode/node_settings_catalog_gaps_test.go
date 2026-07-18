@@ -181,7 +181,7 @@ func TestFormatByteSizeRendersUnits(t *testing.T) {
 	if got := formatByteSize(50 << 30); got != "50GB" {
 		t.Fatalf("50GB = %q", got)
 	}
-	if got := formatByteSize(1536); got != "1536" {
+	if got := formatByteSize(1536); got != "1536B" {
 		t.Fatalf("odd size = %q", got)
 	}
 }

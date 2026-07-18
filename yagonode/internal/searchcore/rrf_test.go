@@ -90,4 +90,52 @@ func TestFuseByReciprocalRankDoesNotMarkWebResultsAsLocal(t *testing.T) {
 	if _, known := fused[0].Evidence.Value(SignalLocalRank); known {
 		t.Fatalf("web result has local rank: %#v", fused[0])
 	}
+	if rank, known := fused[0].Evidence.Value(SignalWebRank); !known || rank != 1 {
+		t.Fatalf("web result rank = %v/%v", rank, known)
+	}
+}
+
+func TestFuseByReciprocalRankRetainsWebRankForLocalDuplicate(t *testing.T) {
+	shared := "https://shared.example/"
+	fused := FuseByReciprocalRank(
+		[]Result{
+			{URL: "https://local.example/", Source: SourceLocal},
+			{URL: shared, Source: SourceLocal},
+		},
+		[]Result{{URL: shared, Source: SourceWeb}},
+	)
+	if len(fused) != 2 || fused[0].URL != shared || fused[0].Source != SourceLocal {
+		t.Fatalf("fused = %#v", fused)
+	}
+	for signal, want := range map[RankingSignal]float64{
+		SignalLocalRank:   2,
+		SignalWebRank:     1,
+		SignalSourceCount: 2,
+	} {
+		if value, known := fused[0].Evidence.Value(signal); !known || value != want {
+			t.Fatalf("%s = %v/%v, want %v", signal.Name(), value, known, want)
+		}
+	}
+}
+
+func TestReciprocalRankContributionRoundTrip(t *testing.T) {
+	for _, rank := range []int{1, 10, 500} {
+		contribution := ReciprocalRankContribution(rank)
+		got, ok := RankFromReciprocalContribution(contribution)
+		if !ok || got != rank {
+			t.Fatalf("rank %d round trip = %d, %t", rank, got, ok)
+		}
+	}
+	if ReciprocalRankContribution(0) != 0 {
+		t.Fatal("nonpositive rank produced a contribution")
+	}
+	for _, contribution := range []float64{0, -1, 0.5, 0.000001} {
+		if rank, ok := RankFromReciprocalContribution(contribution); ok || rank != 0 {
+			t.Fatalf("invalid contribution %v produced rank %d", contribution, rank)
+		}
+	}
+	betweenRanks := (ReciprocalRankContribution(1) + ReciprocalRankContribution(2)) / 2
+	if rank, ok := RankFromReciprocalContribution(betweenRanks); ok || rank != 0 {
+		t.Fatalf("inexact contribution %v produced rank %d", betweenRanks, rank)
+	}
 }

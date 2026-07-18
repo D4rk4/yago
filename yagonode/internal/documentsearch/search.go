@@ -3,9 +3,11 @@
 package documentsearch
 
 import (
+	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
+	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/urlmeta"
 	"github.com/D4rk4/yago/yagoproto"
 )
@@ -15,6 +17,9 @@ import (
 type SearchConfig struct {
 	Index          rwi.PostingIndex
 	Documents      urlmeta.URLDirectory
+	DocumentStore  documentstore.DocumentDirectory
+	AnalyzerSearch searchcore.Searcher
+	Evidence       QueryMatchEvidenceAnalyzer
 	MatchesPerTerm int
 	Gate           *httpguard.IntakeGate
 }
@@ -32,6 +37,14 @@ func MountSearch(
 			matchesPerTerm: config.MatchesPerTerm,
 		},
 		gate: config.Gate,
+		analyzerRecall: negotiatedAnalyzerRecallSource{
+			searcher:  config.AnalyzerSearch,
+			documents: config.Documents,
+		},
+		evidence: queryMatchEvidenceSource{
+			documents: config.DocumentStore,
+			analyzer:  config.Evidence,
+		},
 	}
 
 	httpguard.Mount(

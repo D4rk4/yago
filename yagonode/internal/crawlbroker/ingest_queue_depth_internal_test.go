@@ -12,18 +12,22 @@ import (
 
 func TestIngestReceiverTracksWaitingAndActiveDelivery(t *testing.T) {
 	receiver := newIngestReceiver()
-	server := newExchangeServer(nil, receiver.out)
+	queue := memQueue(t)
+	server := newExchangeServer(queue, receiver.out)
 	server.beginIngest = receiver.beginIngest
 	data, err := yagocrawlcontract.MarshalIngestBatch(yagocrawlcontract.IngestBatch{
-		SourceURL: "https://example.org/page",
+		SourceURL: "https://example.org/page", Provenance: []byte("admin"),
 	})
 	if err != nil {
 		t.Fatalf("marshal ingest: %v", err)
 	}
+	leaseID := leaseOneForSession(t, queue, "depth", "worker", testWorkerSessionID)
+	activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
 	done := make(chan error, 1)
 	go func() {
 		_, submitErr := server.SubmitIngest(context.Background(), &crawlrpc.IngestBatchMessage{
-			BatchJson: data,
+			BatchJson: data, LeaseId: leaseID,
+			WorkerId: "worker", WorkerSessionId: testWorkerSessionID,
 		})
 		done <- submitErr
 	}()
@@ -46,18 +50,24 @@ func TestIngestReceiverTracksWaitingAndActiveDelivery(t *testing.T) {
 
 func TestIngestReceiverReleasesCancelledWaitingDelivery(t *testing.T) {
 	receiver := newIngestReceiver()
-	server := newExchangeServer(nil, receiver.out)
+	queue := memQueue(t)
+	server := newExchangeServer(queue, receiver.out)
 	server.beginIngest = receiver.beginIngest
 	data, err := yagocrawlcontract.MarshalIngestBatch(yagocrawlcontract.IngestBatch{
-		SourceURL: "https://example.org/page",
+		SourceURL: "https://example.org/page", Provenance: []byte("admin"),
 	})
 	if err != nil {
 		t.Fatalf("marshal ingest: %v", err)
 	}
+	leaseID := leaseOneForSession(t, queue, "cancel-depth", "worker", testWorkerSessionID)
+	activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		_, submitErr := server.SubmitIngest(ctx, &crawlrpc.IngestBatchMessage{BatchJson: data})
+		_, submitErr := server.SubmitIngest(ctx, &crawlrpc.IngestBatchMessage{
+			BatchJson: data, LeaseId: leaseID,
+			WorkerId: "worker", WorkerSessionId: testWorkerSessionID,
+		})
 		done <- submitErr
 	}()
 

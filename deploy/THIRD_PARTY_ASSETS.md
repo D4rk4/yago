@@ -1,4 +1,4 @@
-# Vendored third-party web assets
+# Distributed third-party assets
 
 The admin console serves every browser asset from its own origin (the admin CSP
 is `script-src 'self'`; no CDN). Each vendored code or style file carries its
@@ -26,3 +26,19 @@ The `assets/vendor/` directory is excluded from Semgrep static analysis via the
 repository `.semgrepignore`: the pinned upstream bundles are minified foreign
 code whose audit findings are not actionable here. First-party asset files are
 scanned as usual.
+
+## Generated search data
+
+The node binary contains mechanically transformed, lazy-loaded CJK search data.
+Its full redistribution notices are retained in
+`yagonode/internal/searchindex/CJK_DICTIONARY_NOTICES.txt`; generation rules,
+source and output checksums, and alternatives are recorded separately in
+ADR-0054, ADR-0055, and ADR-0056. Release tarballs carry the notice under
+`doc/`; Debian, RPM, and node-container distributions install the identical
+file as `/usr/share/doc/yago/CJK_DICTIONARY_NOTICES.txt`.
+
+| Data | Version | License | Generated use |
+| --- | --- | --- | --- |
+| Jieba `dict.txt` | `v0.42.1` (`1e20c89b66f56c9301b0feed211733ffaa1bd72a`) | MIT | Bounded Chinese surface-form FST |
+| SudachiDict Small | `v20260428` (`3ae9201a0ab8ccdc9d048904f0902cd162f22d19`) | Apache-2.0; bundled UniDic terms under a permissive three-clause notice | Bounded Japanese surface-form FST |
+| OpenCC dictionary tables | `v0.3.13` (`eec5c563bc3271ddc2d3a4438d798f560d4187a2`) | Apache-2.0 | Equal-code-point Traditional-to-Simplified FST |

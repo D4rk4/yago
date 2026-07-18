@@ -46,7 +46,9 @@ func TestStreamOrdersDeliversQueuedOrder(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	stream := &fakeOrderStream{ctx: ctx, onSend: cancel}
-	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{WorkerId: "w1"}, stream)
+	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{
+		WorkerId: "w1", WorkerSessionId: testWorkerSessionID,
+	}, stream)
 
 	if len(stream.sent) != 1 {
 		t.Fatalf("sent %d orders, want 1", len(stream.sent))
@@ -69,7 +71,9 @@ func TestStreamOrdersKeepsLeaseOnSendError(t *testing.T) {
 
 	stream := &fakeOrderStream{ctx: context.Background(), sendErr: errors.New("stream broken")}
 	if err := server.StreamOrders(
-		&crawlrpc.WorkerRegistration{WorkerId: "w1"},
+		&crawlrpc.WorkerRegistration{
+			WorkerId: "w1", WorkerSessionId: testWorkerSessionID,
+		},
 		stream,
 	); err == nil {
 		t.Fatal("expected send error")
@@ -93,10 +97,27 @@ func TestStreamOrdersReturnsWhenContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := server.StreamOrders(
-		&crawlrpc.WorkerRegistration{WorkerId: "w1"},
+		&crawlrpc.WorkerRegistration{
+			WorkerId: "w1", WorkerSessionId: testWorkerSessionID,
+		},
 		&fakeOrderStream{ctx: ctx},
 	); err == nil {
 		t.Fatal("expected cancellation error")
+	}
+}
+
+func TestStreamOrdersReturnsLiveStorageFailureAsInternal(t *testing.T) {
+	fixture := scriptedQueue(t)
+	fixture.engine.buckets[seqBucket][string(priorityBurstKey)] = []byte{1}
+	server := newExchangeServer(fixture.queue, make(chan crawlresults.IngestDelivery))
+	err := server.StreamOrders(
+		&crawlrpc.WorkerRegistration{
+			WorkerId: "w1", WorkerSessionId: testWorkerSessionID,
+		},
+		&fakeOrderStream{ctx: context.Background()},
+	)
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("live storage stream status = %v, want Internal", status.Code(err))
 	}
 }
 
@@ -109,7 +130,9 @@ func TestStreamOrdersKeepsInFlightLeaseOnDisconnect(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	stream := &fakeOrderStream{ctx: ctx, onSend: cancel}
-	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{WorkerId: "w1"}, stream)
+	_ = server.StreamOrders(&crawlrpc.WorkerRegistration{
+		WorkerId: "w1", WorkerSessionId: testWorkerSessionID,
+	}, stream)
 	if len(stream.sent) != 1 {
 		t.Fatalf("sent %d orders, want the order delivered before the drop", len(stream.sent))
 	}
@@ -166,13 +189,29 @@ func TestStreamOrdersRejectsEmptyWorkerID(t *testing.T) {
 
 func TestSubmitIngestAbsorbsBatch(t *testing.T) {
 	out := make(chan crawlresults.IngestDelivery)
-	server := newExchangeServer(memQueue(t), out)
+	queue := memQueue(t)
+	server := newExchangeServer(queue, out)
+	msg := ingestMessage(t, "https://example.org/a")
+	authorizeIngestMessage(t, server, msg, "ingest-a")
 	go func() {
 		delivery := <-out
-		_ = delivery.Ack(context.Background())
+		if err := delivery.ValidateMutation(context.Background()); err != nil {
+			_ = delivery.LeaseLost(context.Background())
+
+			return
+		}
+		groupContext, releaseGroup := delivery.BeginMutationGroup(context.Background())
+		release, err := delivery.BeginMutation(groupContext)
+		if err == nil {
+			release()
+			releaseGroup()
+			_ = delivery.Ack(context.Background())
+		} else {
+			releaseGroup()
+			_ = delivery.LeaseLost(context.Background())
+		}
 	}()
 
-	msg := ingestMessage(t, "https://example.org/a")
 	if _, err := server.SubmitIngest(context.Background(), msg); err != nil {
 		t.Fatalf("submit ingest: %v", err)
 	}
@@ -180,13 +219,20 @@ func TestSubmitIngestAbsorbsBatch(t *testing.T) {
 
 func TestSubmitIngestReportsSaturation(t *testing.T) {
 	out := make(chan crawlresults.IngestDelivery)
-	server := newExchangeServer(memQueue(t), out)
+	queue := memQueue(t)
+	server := newExchangeServer(queue, out)
+	msg := ingestMessage(t, "https://example.org/b")
+	authorizeIngestMessage(t, server, msg, "ingest-b")
 	go func() {
 		delivery := <-out
-		_ = delivery.Nak(context.Background())
+		release, err := delivery.BeginMutation(context.Background())
+		if err == nil {
+			release()
+			_ = delivery.Nak(context.Background())
+		}
 	}()
 
-	_, err := server.SubmitIngest(context.Background(), ingestMessage(t, "https://example.org/b"))
+	_, err := server.SubmitIngest(context.Background(), msg)
 	if status.Code(err) != codes.Unavailable {
 		t.Fatalf("error = %v, want Unavailable", err)
 	}
@@ -207,20 +253,25 @@ func TestSubmitIngestReturnsWhenContextCancelledBeforeDelivery(t *testing.T) {
 	server := newExchangeServer(memQueue(t), make(chan crawlresults.IngestDelivery))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := server.SubmitIngest(ctx, ingestMessage(t, "https://example.org/c")); err == nil {
+	msg := ingestMessage(t, "https://example.org/c")
+	authorizeIngestMessage(t, server, msg, "ingest-c")
+	if _, err := server.SubmitIngest(ctx, msg); err == nil {
 		t.Fatal("expected cancellation error before delivery")
 	}
 }
 
 func TestSubmitIngestReturnsWhenContextCancelledAwaitingResult(t *testing.T) {
 	out := make(chan crawlresults.IngestDelivery)
-	server := newExchangeServer(memQueue(t), out)
+	queue := memQueue(t)
+	server := newExchangeServer(queue, out)
+	msg := ingestMessage(t, "https://example.org/d")
+	authorizeIngestMessage(t, server, msg, "ingest-d")
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-out
 		cancel()
 	}()
-	if _, err := server.SubmitIngest(ctx, ingestMessage(t, "https://example.org/d")); err == nil {
+	if _, err := server.SubmitIngest(ctx, msg); err == nil {
 		t.Fatal("expected cancellation error awaiting result")
 	}
 }
@@ -228,7 +279,7 @@ func TestSubmitIngestReturnsWhenContextCancelledAwaitingResult(t *testing.T) {
 func ingestMessage(t *testing.T, sourceURL string) *crawlrpc.IngestBatchMessage {
 	t.Helper()
 	data, err := yagocrawlcontract.MarshalIngestBatch(
-		yagocrawlcontract.IngestBatch{SourceURL: sourceURL},
+		yagocrawlcontract.IngestBatch{SourceURL: sourceURL, Provenance: []byte("admin")},
 	)
 	if err != nil {
 		t.Fatalf("marshal batch: %v", err)
@@ -237,13 +288,34 @@ func ingestMessage(t *testing.T, sourceURL string) *crawlrpc.IngestBatchMessage 
 	return &crawlrpc.IngestBatchMessage{BatchJson: data}
 }
 
+func authorizeIngestMessage(
+	t *testing.T,
+	server *exchangeServer,
+	message *crawlrpc.IngestBatchMessage,
+	name string,
+) {
+	t.Helper()
+	message.LeaseId = leaseOneForSession(
+		t,
+		server.queue,
+		name,
+		"worker",
+		testWorkerSessionID,
+	)
+	message.WorkerId = "worker"
+	message.WorkerSessionId = testWorkerSessionID
+	activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
+}
+
 func TestAckOrderAcksLease(t *testing.T) {
 	queue := memQueue(t)
-	leaseID := leaseOne(t, queue, "ack", "w1")
+	leaseID := leaseOneForSession(t, queue, "ack", "w1", testWorkerSessionID)
 	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
 	if _, err := server.AckOrder(
 		context.Background(),
-		&crawlrpc.OrderAck{LeaseId: leaseID},
+		&crawlrpc.OrderAck{
+			LeaseId: leaseID, WorkerId: "w1", WorkerSessionId: testWorkerSessionID,
+		},
 	); err != nil {
 		t.Fatalf("ack order: %v", err)
 	}
@@ -252,18 +324,29 @@ func TestAckOrderAcksLease(t *testing.T) {
 	}
 }
 
-func TestAckOrderRequeuesLease(t *testing.T) {
+func TestAckOrderDefersLease(t *testing.T) {
+	set := withClock(t)
+	base := time.Unix(900, 0)
+	set(base)
 	queue := memQueue(t)
-	leaseID := leaseOne(t, queue, "nak", "w1")
+	leaseID := leaseOneForSession(t, queue, "nak", "w1", testWorkerSessionID)
 	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
 	if _, err := server.AckOrder(
 		context.Background(),
-		&crawlrpc.OrderAck{LeaseId: leaseID, Requeue: true},
+		&crawlrpc.OrderAck{
+			LeaseId: leaseID, Requeue: true,
+			WorkerId: "w1", WorkerSessionId: testWorkerSessionID,
+		},
 	); err != nil {
 		t.Fatalf("nak order: %v", err)
 	}
-	if n := pendingCount(t, queue); n != 1 {
-		t.Fatalf("pending = %d, want 1 after nak", n)
+	if n := pendingCount(t, queue); n != 0 {
+		t.Fatalf("pending = %d, want 0 during nak backoff", n)
+	}
+	record, ok := leaseRecordFor(t, queue, leaseID)
+	if !ok || record.WorkerID != "" ||
+		record.ExpiresAtUnixNano != base.Add(negativeAcknowledgmentRetryDelay).UnixNano() {
+		t.Fatalf("deferred lease = %#v/%v", record, ok)
 	}
 }
 
@@ -275,12 +358,24 @@ func TestAckOrderRejectsEmptyLease(t *testing.T) {
 	}
 }
 
+func TestAckOrderRejectsUnavailableLeaseDisposition(t *testing.T) {
+	server := newExchangeServer(memQueue(t), make(chan crawlresults.IngestDelivery))
+	_, err := server.AckOrder(context.Background(), &crawlrpc.OrderAck{
+		LeaseId: "missing", WorkerId: "w1", WorkerSessionId: testWorkerSessionID,
+	})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("error = %v, want FailedPrecondition", err)
+	}
+}
+
 func TestAckOrderSurfacesInternalError(t *testing.T) {
 	fixture := scriptedQueue(t)
-	leaseID := leaseOne(t, fixture.queue, "boom", "w1")
+	leaseID := leaseOneForSession(t, fixture.queue, "boom", "w1", testWorkerSessionID)
 	fixture.engine.deleteErrors[leaseBucket] = errors.New("delete failed")
 	server := newExchangeServer(fixture.queue, make(chan crawlresults.IngestDelivery))
-	_, err := server.AckOrder(context.Background(), &crawlrpc.OrderAck{LeaseId: leaseID})
+	_, err := server.AckOrder(context.Background(), &crawlrpc.OrderAck{
+		LeaseId: leaseID, WorkerId: "w1", WorkerSessionId: testWorkerSessionID,
+	})
 	if status.Code(err) != codes.Internal {
 		t.Fatalf("error = %v, want Internal", err)
 	}
@@ -288,9 +383,12 @@ func TestAckOrderSurfacesInternalError(t *testing.T) {
 
 func TestHeartbeatSettlesLeases(t *testing.T) {
 	server := newExchangeServer(memQueue(t), make(chan crawlresults.IngestDelivery))
+	activateTestWorkerSession(t, server, "w1", testWorkerSessionID)
 	if _, err := server.Heartbeat(
 		context.Background(),
-		&crawlrpc.WorkerHeartbeat{WorkerId: "w1"},
+		&crawlrpc.WorkerHeartbeat{
+			WorkerId: "w1", WorkerSessionId: testWorkerSessionID,
+		},
 	); err != nil {
 		t.Fatalf("heartbeat: %v", err)
 	}
@@ -306,9 +404,14 @@ func TestHeartbeatRejectsEmptyWorkerID(t *testing.T) {
 
 func TestHeartbeatSurfacesInternalError(t *testing.T) {
 	fixture := scriptedQueue(t)
-	fixture.engine.scanErrors[leaseBucket] = errors.New("scan failed")
 	server := newExchangeServer(fixture.queue, make(chan crawlresults.IngestDelivery))
-	_, err := server.Heartbeat(context.Background(), &crawlrpc.WorkerHeartbeat{WorkerId: "w1"})
+	activateTestWorkerSession(t, server, "w1", testWorkerSessionID)
+	leaseID := leaseOneForSession(t, fixture.queue, "heartbeat", "w1", testWorkerSessionID)
+	fixture.engine.buckets[leaseBucket][leaseID] = []byte("{")
+	_, err := server.Heartbeat(context.Background(), &crawlrpc.WorkerHeartbeat{
+		WorkerId: "w1", WorkerSessionId: testWorkerSessionID,
+		ActiveLeaseIds: []string{leaseID},
+	})
 	if status.Code(err) != codes.Internal {
 		t.Fatalf("error = %v, want Internal", err)
 	}

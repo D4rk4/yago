@@ -93,11 +93,10 @@ func TestQueryPeerJobsReducesResourcesAsTheyArriveWithinSharedBudget(t *testing.
 	)
 	defer secondServer.Close()
 
-	budget := &remoteQueryBudget{
-		responseBytesRemaining:   1 << 20,
-		resultEntriesRemaining:   3,
-		abstractEntriesRemaining: 1,
-	}
+	budget := newRemoteQueryBudget()
+	budget.responseBytesRemaining = 1 << 20
+	budget.resultEntriesRemaining = 3
+	budget.abstractEntriesRemaining = 1
 	remote := searcher{
 		client:         firstServer.Client(),
 		concurrency:    2,
@@ -156,11 +155,10 @@ func TestTermAbstractsReducesCompletionOrderIndependently(t *testing.T) {
 	thirdServer := abstractResponseServer(t, termB, thirdEncoded, func() {})
 	defer thirdServer.Close()
 
-	budget := &remoteQueryBudget{
-		responseBytesRemaining:   1 << 20,
-		resultEntriesRemaining:   1,
-		abstractEntriesRemaining: 5,
-	}
+	budget := newRemoteQueryBudget()
+	budget.responseBytesRemaining = 1 << 20
+	budget.resultEntriesRemaining = 1
+	budget.abstractEntriesRemaining = 5
 	remote := searcher{
 		client:         firstServer.Client(),
 		concurrency:    3,

@@ -18,6 +18,7 @@ type CrawlStart struct {
 	IndexURLMustMatch    string
 	IndexURLMustNotMatch string
 	MaxPagesPerHost      int
+	MaxPagesPerRun       *int
 	AllowQueryURLs       bool
 	FollowNoFollowLinks  bool
 	// NoindexCanonicalMismatch skips indexing pages whose rel=canonical points

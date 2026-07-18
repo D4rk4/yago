@@ -5,7 +5,6 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -66,9 +65,10 @@ type createdAPIKey struct {
 }
 
 type apiKeyStore struct {
-	vault   *vault.Vault
-	records *vault.Collection[apiKeyRecord]
-	now     func() time.Time
+	vault            *vault.Vault
+	records          *vault.Collection[apiKeyRecord]
+	now              func() time.Time
+	lastUsedRecorder apiKeyLastUsedRecorder
 }
 
 func newAPIKeyStore(storage *vault.Vault, now func() time.Time) (*apiKeyStore, error) {
@@ -100,6 +100,13 @@ func (s *apiKeyStore) create(
 		CreatedAt:  s.now(),
 	}
 	if err := s.vault.Update(ctx, func(tx *vault.Txn) error {
+		length, err := s.records.Len(tx)
+		if err != nil {
+			return fmt.Errorf("measure api key records: %w", err)
+		}
+		if length >= maximumAPIKeys {
+			return errAPIKeyCapacityReached
+		}
 		if err := s.records.Put(tx, vault.Key(id), record); err != nil {
 			return fmt.Errorf("store api key record: %w", err)
 		}
@@ -150,7 +157,9 @@ func (s *apiKeyStore) authenticate(
 	return infoFromRecord(id, record), true, nil
 }
 
-func (s *apiKeyStore) touchLastUsed(ctx context.Context, id string) error {
+func (s *apiKeyStore) touchLastUsed(ctx context.Context, id string) (bool, error) {
+	now := s.now()
+	foundRecord := false
 	if err := s.vault.Update(ctx, func(tx *vault.Txn) error {
 		record, found, err := s.records.Get(tx, vault.Key(id))
 		if err != nil {
@@ -159,39 +168,33 @@ func (s *apiKeyStore) touchLastUsed(ctx context.Context, id string) error {
 		if !found {
 			return nil
 		}
-		record.LastUsedAt = s.now()
+		foundRecord = true
+		if !apiKeyLastUsedRefreshDue(record.LastUsedAt, now) {
+			return nil
+		}
+		record.LastUsedAt = now
 		if err := s.records.Put(tx, vault.Key(id), record); err != nil {
 			return fmt.Errorf("touch api key record: %w", err)
 		}
 
 		return nil
 	}); err != nil {
-		return fmt.Errorf("update api keys: %w", err)
+		return false, fmt.Errorf("update api keys: %w", err)
 	}
 
-	return nil
+	return foundRecord, nil
 }
 
 func (s *apiKeyStore) list(ctx context.Context) ([]apiKeyInfo, error) {
-	var infos []apiKeyInfo
-	if err := s.vault.View(ctx, func(tx *vault.Txn) error {
-		return s.records.Scan(tx, nil, func(key vault.Key, record apiKeyRecord) (bool, error) {
-			infos = append(infos, infoFromRecord(string(key), record))
-
-			return true, nil
-		})
-	}); err != nil {
-		return nil, fmt.Errorf("view api keys: %w", err)
+	page, err := s.page(ctx, "", maximumAPIKeys)
+	if err != nil {
+		return nil, err
 	}
-	sort.Slice(infos, func(i, j int) bool {
-		if infos[i].CreatedAt.Equal(infos[j].CreatedAt) {
-			return infos[i].ID < infos[j].ID
-		}
+	if page.nextCursor != "" {
+		return nil, errAPIKeyCompatibilityListingTruncated
+	}
 
-		return infos[i].CreatedAt.Before(infos[j].CreatedAt)
-	})
-
-	return infos, nil
+	return page.infos, nil
 }
 
 func (s *apiKeyStore) delete(ctx context.Context, id string) (bool, error) {
@@ -207,6 +210,7 @@ func (s *apiKeyStore) delete(ctx context.Context, id string) (bool, error) {
 	}); err != nil {
 		return false, fmt.Errorf("update api keys: %w", err)
 	}
+	s.lastUsedRecorder.forget(id)
 
 	return deleted, nil
 }

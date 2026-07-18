@@ -39,7 +39,7 @@ func TestExpanderGroupsSurfaceFormsByStem(t *testing.T) {
 	if slices.Contains(got, "unrelated") {
 		t.Fatalf("cross-stem form leaked: %v", got)
 	}
-	if len(got) > maxVariants {
+	if len(got) > MaximumVariants {
 		t.Fatalf("over the cap: %v", got)
 	}
 }
@@ -71,7 +71,7 @@ func TestExpanderFrequencyOrderAndCap(t *testing.T) {
 	}
 	expander := New(vocabulary, stem)
 	got := expander.Variants("formaaaquery")
-	if len(got) > maxVariants {
+	if len(got) > MaximumVariants {
 		t.Fatalf("variants exceed the cap: %v", got)
 	}
 }

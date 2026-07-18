@@ -33,9 +33,16 @@ var localExactRecoveryProfile = recoveryStageProfile{
 }
 
 func withLocalExactRecoveryBudget(inner searchcore.Searcher) searchcore.Searcher {
+	return newLocalExactRecoveryBudget(inner, localExactRecoveryBudget)
+}
+
+func newLocalExactRecoveryBudget(
+	inner searchcore.Searcher,
+	budget time.Duration,
+) recoveryBudgetSearcher {
 	return recoveryBudgetSearcher{
 		inner:     inner,
-		budget:    localExactRecoveryBudget,
+		budget:    budget,
 		grace:     localExactRecoveryCancellationGrace,
 		admission: processLocalExactRecoveryAdmission,
 		panicLog:  slog.ErrorContext,

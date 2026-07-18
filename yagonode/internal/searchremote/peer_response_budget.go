@@ -31,6 +31,8 @@ type remoteQueryBudget struct {
 	decodedBytesRemaining    int
 	resultEntriesRemaining   int
 	abstractEntriesRemaining int
+	peerCalls                *outboundCallBudget
+	morphologyCalls          *outboundCallBudget
 }
 
 type peerResourceReduction struct {
@@ -52,6 +54,7 @@ type termAbstractReduction struct {
 	outcomes        []peerAbstractOutcome
 	entryLimits     []int
 	abstracts       map[yagomodel.Hash]map[yagomodel.Hash]struct{}
+	catalog         termAbstractCatalog
 	responseBytes   int
 	retainedEntries int
 }
@@ -62,6 +65,8 @@ func newRemoteQueryBudget() *remoteQueryBudget {
 		decodedBytesRemaining:    remoteQueryDecodedByteBudget,
 		resultEntriesRemaining:   remoteQueryResultEntryBudget,
 		abstractEntriesRemaining: remoteQueryAbstractEntryBudget,
+		peerCalls:                newOutboundCallBudget(remoteQueryPeerCallBudget),
+		morphologyCalls:          newOutboundCallBudget(remoteMorphologyPeerCallBudget),
 	}
 }
 
@@ -166,6 +171,7 @@ func (s searcher) queryPeerJobsWithinBudget(
 	requests []peerSearchJob,
 	budget *remoteQueryBudget,
 ) []peerSearchResult {
+	requests = peerJobsWithinCallBudget(requests, budget)
 	limited := peerJobsWithResponseLimits(requests, budget.responseBytesRemaining)
 	reduction := peerResourceReduction{
 		results: make([]peerSearchResult, len(limited)),
@@ -201,6 +207,10 @@ func retainedResourceResponse(
 	return yagoproto.SearchResponse{
 		Count:     response.Count,
 		Resources: detachedMetadataRows(response.Resources[:retained]),
+		ResourceEvidence: retainedQueryMatchEvidence(
+			response.ResourceEvidence,
+			response.Resources[:retained],
+		),
 	}
 }
 
@@ -224,7 +234,26 @@ func (s searcher) termAbstractsWithinBudget(
 	reputation *reputationSession,
 	budget *remoteQueryBudget,
 ) (map[yagomodel.Hash]map[yagomodel.Hash]struct{}, []searchcore.PartialFailure) {
+	catalog, failures := s.termAbstractCatalogWithinBudget(
+		ctx,
+		req,
+		targets,
+		reputation,
+		budget,
+	)
+
+	return catalog.terms, failures
+}
+
+func (s searcher) termAbstractCatalogWithinBudget(
+	ctx context.Context,
+	req searchcore.Request,
+	targets []termPeerTargets,
+	reputation *reputationSession,
+	budget *remoteQueryBudget,
+) (termAbstractCatalog, []searchcore.PartialFailure) {
 	requests := abstractSearchJobs(req, targets, s.networkName, s.perPeerTimeout)
+	requests = peerJobsWithinCallBudget(requests, budget)
 	limited := peerJobsWithResponseLimits(requests, budget.responseBytesRemaining)
 	reduction := termAbstractReduction{
 		outcomes: make([]peerAbstractOutcome, len(limited)),
@@ -234,6 +263,11 @@ func (s searcher) termAbstractsWithinBudget(
 			budget.abstractEntriesRemaining,
 		),
 		abstracts: make(map[yagomodel.Hash]map[yagomodel.Hash]struct{}, len(targets)),
+		catalog: termAbstractCatalog{
+			peerTerms: make(
+				map[string]map[yagomodel.Hash]map[yagomodel.Hash]struct{},
+			),
+		},
 	}
 	s.reducePeerJobs(ctx, limited, reduction.accept)
 	budget.responseBytesRemaining -= reduction.responseBytes
@@ -260,6 +294,7 @@ func (reduction *termAbstractReduction) accept(completion peerSearchCompletion) 
 			)
 			outcome.abstractErr = err
 			if err == nil {
+				reduction.catalog.admit(result.term, result.peer, urls)
 				if reduction.abstracts[result.term] == nil {
 					reduction.abstracts[result.term] = map[yagomodel.Hash]struct{}{}
 				}
@@ -279,7 +314,7 @@ func (reduction *termAbstractReduction) accept(completion peerSearchCompletion) 
 func (reduction *termAbstractReduction) finish(
 	targets []termPeerTargets,
 	reputation *reputationSession,
-) (map[yagomodel.Hash]map[yagomodel.Hash]struct{}, []searchcore.PartialFailure) {
+) (termAbstractCatalog, []searchcore.PartialFailure) {
 	successes := make(map[yagomodel.Hash]int, len(targets))
 	var failures []searchcore.PartialFailure
 	for _, outcome := range reduction.outcomes {
@@ -305,7 +340,9 @@ func (reduction *termAbstractReduction) finish(
 		}
 	}
 
-	return reduction.abstracts, failures
+	reduction.catalog.terms = reduction.abstracts
+
+	return reduction.catalog, failures
 }
 
 func recordPeerFailure(

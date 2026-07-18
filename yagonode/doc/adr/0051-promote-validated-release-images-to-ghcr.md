@@ -33,7 +33,11 @@ multi-architecture manifest list per product.
 The public packages are:
 
 - `ghcr.io/d4rk4/yago-node:vX.Y.Z`;
-- `ghcr.io/d4rk4/yagocrawler:vX.Y.Z`.
+- `ghcr.io/d4rk4/yago-crawler:vX.Y.Z`.
+
+The crawler repository name applies from v0.0.11. The immutable v0.0.10
+backfill remains at its historical `ghcr.io/d4rk4/yagocrawler:v0.0.10`
+identity and is neither moved nor republished.
 
 Only the complete semantic-version tag is an operator-facing image tag.
 Architecture-suffixed immutable references may stage the two child manifests,

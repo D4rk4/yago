@@ -103,15 +103,24 @@ func (s webFallbackExactStageBudgetSearcher) Search(
 
 	select {
 	case outcome := <-outcomes:
-		if outcome.failure != nil {
-			panic(outcome.failure)
-		}
-		if outcome.err == nil {
-			return outcome.response, nil
-		}
-
-		return webFallbackExactStageResult(ctx, req, outcome.response, outcome.err)
+		return completedWebFallbackExactStage(ctx, req, outcome)
 	case <-hardContext.Done():
+		return completedOrExpiredWebFallbackExactStage(
+			ctx, hardContext, req, outcomes,
+		)
+	}
+}
+
+func completedOrExpiredWebFallbackExactStage(
+	ctx context.Context,
+	hardContext context.Context,
+	req searchcore.Request,
+	outcomes <-chan webFallbackExactStageOutcome,
+) (searchcore.Response, error) {
+	select {
+	case outcome := <-outcomes:
+		return completedWebFallbackExactStage(ctx, req, outcome)
+	default:
 		return webFallbackExactStageResult(
 			ctx,
 			req,
@@ -119,6 +128,21 @@ func (s webFallbackExactStageBudgetSearcher) Search(
 			context.Cause(hardContext),
 		)
 	}
+}
+
+func completedWebFallbackExactStage(
+	ctx context.Context,
+	req searchcore.Request,
+	outcome webFallbackExactStageOutcome,
+) (searchcore.Response, error) {
+	if outcome.failure != nil {
+		panic(outcome.failure)
+	}
+	if outcome.err == nil {
+		return outcome.response, nil
+	}
+
+	return webFallbackExactStageResult(ctx, req, outcome.response, outcome.err)
 }
 
 func webFallbackExactStageResult(

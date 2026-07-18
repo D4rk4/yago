@@ -84,6 +84,12 @@ type yagorankPageData struct {
 	LearnedModel                *learnedModelStatusView
 	TrainOutcome                *LearnedModelTrainOutcome
 	HostTrust                   *hostTrustStatusView
+	ExplainAvailable            bool
+	ExplainQuery                string
+	ExplainGlobal               bool
+	Explanation                 *SearchExplanation
+	ExplanationError            string
+	SearchURL                   string
 	Notice                      string
 	Error                       string
 }
@@ -91,12 +97,17 @@ type yagorankPageData struct {
 // yagorankView carries the variable parts of a YagoRank render: the weights to
 // show in the inputs, an optional tune preview, and the toast messages.
 type yagorankView struct {
-	weights      []RankingWeight
-	tune         *RankingTuneResult
-	trainOutcome *LearnedModelTrainOutcome
-	trust        *hostTrustStatusView
-	notice       string
-	errMsg       string
+	weights       []RankingWeight
+	tune          *RankingTuneResult
+	trainOutcome  *LearnedModelTrainOutcome
+	trust         *hostTrustStatusView
+	explainQuery  string
+	explainGlobal bool
+	explanation   *SearchExplanation
+	explainError  string
+	searchURL     string
+	notice        string
+	errMsg        string
 }
 
 func (c *Console) handleYagoRank(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +117,7 @@ func (c *Console) handleYagoRank(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.renderYagoRank(w, r, yagorankView{weights: c.ranking.Profile(r.Context()).Weights})
+	c.renderYagoRank(w, r, c.yagoRankSearchExplanation(r))
 }
 
 func (c *Console) handleYagoRankAction(w http.ResponseWriter, r *http.Request) {
@@ -205,6 +216,12 @@ func (c *Console) renderYagoRank(w http.ResponseWriter, r *http.Request, view ya
 		LearnedModel:                learnedModelStatus(r.Context(), c.ranking),
 		TrainOutcome:                view.trainOutcome,
 		HostTrust:                   hostTrustStatus(r.Context(), c.ranking, view.trust),
+		ExplainAvailable:            c.searchExplanation != nil,
+		ExplainQuery:                view.explainQuery,
+		ExplainGlobal:               view.explainGlobal,
+		Explanation:                 view.explanation,
+		ExplanationError:            view.explainError,
+		SearchURL:                   view.searchURL,
 		Notice:                      view.notice,
 		Error:                       view.errMsg,
 	})

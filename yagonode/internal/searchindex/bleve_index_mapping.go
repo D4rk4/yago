@@ -53,6 +53,9 @@ var newSearchIndexMapping = func() (*mapping.IndexMappingImpl, error) {
 	if err := registerUnicodeNormalizer(indexMapping); err != nil {
 		return nil, err
 	}
+	if err := registerCJKDictionaryAnalyzers(indexMapping); err != nil {
+		return nil, err
+	}
 	if err := registerStandardTextAnalyzer(indexMapping); err != nil {
 		return nil, fmt.Errorf("register standard analyzer: %w", err)
 	}
@@ -183,7 +186,8 @@ func supportsStoredCandidateProjection(index bleve.Index) bool {
 
 func shardMappingIsCurrent(index bleve.Index) bool {
 	return supportsMultilingualAnalyzers(index) && supportsAnalyzerScope(index) &&
-		supportsStoredCandidateProjection(index)
+		supportsStoredCandidateProjection(index) &&
+		supportsCJKDictionaryAnalyzers(index.Mapping())
 }
 
 var registerUnicodeNormalizer = func(indexMapping *mapping.IndexMappingImpl) error {

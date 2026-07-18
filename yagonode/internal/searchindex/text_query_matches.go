@@ -6,6 +6,8 @@ import (
 	"github.com/blevesearch/bleve/v2/analysis"
 )
 
+const maximumAnalyzedQueryMatches = 128
+
 type TextQueryMatch struct {
 	Start int
 	End   int
@@ -19,7 +21,8 @@ type AnalyzedQueryTerms struct {
 
 func NewAnalyzedQueryTerms(terms []string, analyzerName string) AnalyzedQueryTerms {
 	analyzer := storedEvidenceAnalyzer(analyzerName)
-	if len(terms) == 0 || analyzer == nil {
+	requirementAnalyzer := storedRequirementAnalyzer(analyzerName)
+	if len(terms) == 0 || analyzer == nil || requirementAnalyzer == nil {
 		return AnalyzedQueryTerms{}
 	}
 	targets := make(map[string]struct{}, len(terms))
@@ -28,7 +31,7 @@ func NewAnalyzedQueryTerms(terms []string, analyzerName string) AnalyzedQueryTer
 		if term == "" {
 			continue
 		}
-		for _, token := range analyzer.Analyze([]byte(term)) {
+		for _, token := range requirementAnalyzer.Analyze([]byte(term)) {
 			targets[string(token.Term)] = struct{}{}
 		}
 	}
@@ -50,6 +53,9 @@ func (query AnalyzedQueryTerms) TextMatches(text string) []TextQueryMatch {
 			continue
 		}
 		matches = append(matches, TextQueryMatch{Start: token.Start, End: token.End})
+		if len(matches) == maximumAnalyzedQueryMatches {
+			break
+		}
 	}
 	return matches
 }

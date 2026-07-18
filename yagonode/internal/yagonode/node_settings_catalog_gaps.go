@@ -27,7 +27,7 @@ func storageAndAccessDefinitions() []settingDefinition {
 		{
 			key:         "storage.quota",
 			title:       "Storage quota",
-			description: "Disk budget for the vault and index (e.g. 50GB); eviction starts when usage crosses it. The 1GB default is only safe for trials.",
+			description: "Logical live-data budget for the sharded vault (e.g. 50GB); eviction starts when tracked vault data crosses it. This does not cap the full data directory or search index.",
 			defaultValue: func(config nodeConfig) string {
 				return formatByteSize(config.StorageQuotaByte)
 			},
@@ -601,7 +601,7 @@ func formatByteSize(size int64) string {
 		}
 	}
 
-	return strconv.FormatInt(size, 10)
+	return strconv.FormatInt(size, 10) + "B"
 }
 
 // formatPrefixes joins CIDR prefixes back into the comma list operators type.

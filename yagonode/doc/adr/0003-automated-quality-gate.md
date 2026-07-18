@@ -15,7 +15,7 @@ coverage, and that behaves identically on every machine.
 
 ## Decision
 
-`make verify` is the single gate. It runs across `yagonode`, `yagocrawler`,
+`make verify` is the single gate. It runs across `yagonode`, `yago-crawler`,
 `yagocrawlcontract`, `yagomodel`, `yagoproto`, and `yagoegress`: a non-mutating
 `go mod tidy -diff` check, formatting, `go vet`, lint, an architecture-boundary
 check, race-enabled tests, exact coverage, and a build. A change is not done

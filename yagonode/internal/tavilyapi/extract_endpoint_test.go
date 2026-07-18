@@ -97,8 +97,8 @@ func TestExtractRejectsInvalidJSON(t *testing.T) {
 	}
 	var envelope ErrorResponse
 	_ = json.Unmarshal(rec.Body.Bytes(), &envelope)
-	if envelope.Error.Code != "invalid_extract_request" {
-		t.Fatalf("code = %q", envelope.Error.Code)
+	if envelope.Detail.Error != "invalid extract request" {
+		t.Fatalf("detail = %q", envelope.Detail.Error)
 	}
 }
 
@@ -109,8 +109,8 @@ func TestExtractRejectsNonStringURLs(t *testing.T) {
 	}
 	var envelope ErrorResponse
 	_ = json.Unmarshal(rec.Body.Bytes(), &envelope)
-	if !strings.Contains(envelope.Error.Message, "urls must be") {
-		t.Fatalf("message = %q", envelope.Error.Message)
+	if !strings.Contains(envelope.Detail.Error, "urls must be") {
+		t.Fatalf("message = %q", envelope.Detail.Error)
 	}
 }
 
@@ -149,7 +149,7 @@ func TestExtractReturnsCachedContent(t *testing.T) {
 		t.Fatalf("results=%d failed=%d", len(resp.Results), len(resp.FailedResults))
 	}
 	if resp.Results[0].URL != "http://ex.com/a" ||
-		resp.Results[0].RawContent != "the quick brown fox" {
+		resp.Results[0].RawContent != "# Fox\n\nthe quick brown fox" {
 		t.Fatalf("unexpected result: %+v", resp.Results[0])
 	}
 	if resp.RequestID == "" {
@@ -287,8 +287,17 @@ func TestExtractOmitsImagesWhenDocumentHasNone(t *testing.T) {
 			extractTestKey,
 		),
 	)
-	if resp.Results[0].Images != nil {
-		t.Fatalf("images = %v, want nil", resp.Results[0].Images)
+	if len(resp.Results[0].Images) != 0 ||
+		!strings.Contains(
+			postExtract(
+				t,
+				extractHandler(rows),
+				`{"urls":"http://ex.com/a","include_images":true}`,
+				extractTestKey,
+			).Body.String(),
+			`"images":[]`,
+		) {
+		t.Fatalf("images = %v, want an empty wire array", resp.Results[0].Images)
 	}
 }
 

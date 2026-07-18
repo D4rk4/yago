@@ -67,11 +67,12 @@ func buildOpsMux(
 	seedStatus, seedRefresh := seedImportSources(assembled, config, recorder)
 	blocks := assembledPeerBlocks(assembled)
 	options := adminui.Options{
-		Overview:    newOverviewSource(assembled.report).withLocalIndex(assembled.index),
-		Search:      newSearchSource(assembled.searcher),
-		Activity:    newActivitySource(assembled.activity),
-		IndexExport: newIndexExporter(assembled.docScan),
-		Index:       opsIndexSource(config, assembled),
+		Overview:          newOverviewSource(assembled.report).withLocalIndex(assembled.index),
+		Search:            newSearchSource(assembled.searcher),
+		SearchExplanation: assembled.searchExplain,
+		Activity:          newActivitySource(assembled.activity),
+		IndexExport:       newIndexExporter(assembled.docScan),
+		Index:             opsIndexSource(config, assembled),
 		Network: newNetworkSource(
 			assembled.dht.gateStatus,
 			assembled.roster,
@@ -164,7 +165,7 @@ func applyIndexAdminOptions(options *adminui.Options, assembled node) {
 	if assembled.denylist != nil {
 		options.Blacklist = newBlacklistController(assembled.denylist)
 	}
-	options.Compactor = newCompactorSource(assembled.vault)
+	options.Compactor = newCompactorSource(assembled.vault, assembled.storagePressure)
 }
 
 // assembledPeerBlocks returns the peer-block store as an interface, preserving a

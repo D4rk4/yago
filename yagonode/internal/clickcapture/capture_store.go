@@ -126,10 +126,11 @@ func (evidenceCodec) Decode(raw []byte) (QueryEvidence, error) {
 }
 
 type Store struct {
-	vault        *vault.Vault
-	records      *vault.Collection[QueryEvidence]
-	issuer       *Issuer
-	preparations *impressionPreparationLifecycle
+	vault            *vault.Vault
+	records          *vault.Collection[QueryEvidence]
+	issuer           *Issuer
+	preparations     *impressionPreparationLifecycle
+	impressionGrowth ImpressionGrowthAdmission
 }
 
 func Open(v *vault.Vault) (*Store, error) {
@@ -170,6 +171,9 @@ func (s *Store) PrepareImpression(
 	query string,
 	candidates []Candidate,
 ) (PreparedImpression, error) {
+	if err := s.admitImpressionGrowth(); err != nil {
+		return PreparedImpression{}, err
+	}
 	return s.preparations.prepareWithinBudget(ctx, func() (impressionPreparation, error) {
 		seed, err := s.issuer.experimentSeed()
 		if err != nil {
@@ -203,6 +207,9 @@ func (s *Store) PrepareTeamDraft(
 	secondary DraftRanking,
 	limit int,
 ) (PreparedImpression, error) {
+	if err := s.admitImpressionGrowth(); err != nil {
+		return PreparedImpression{}, err
+	}
 	return s.preparations.prepareWithinBudget(ctx, func() (impressionPreparation, error) {
 		seed, err := s.issuer.experimentSeed()
 		if err != nil {

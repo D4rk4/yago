@@ -32,7 +32,7 @@ func TestCrawlEndpointRejectsOversizedAggregateBeforeSuccessHeader(t *testing.T)
 	result := httptest.NewRecorder()
 	endpoint.ServeHTTP(result, request)
 	if result.Code != http.StatusRequestEntityTooLarge ||
-		!strings.Contains(result.Body.String(), "raw_content_too_large") {
+		!strings.Contains(result.Body.String(), "raw content response exceeds resource limit") {
 		t.Fatalf("result=%d body=%s", result.Code, result.Body.String())
 	}
 }
@@ -60,7 +60,7 @@ func TestRawSearchRejectsOversizedAggregate(t *testing.T) {
 		`{"query":"raw","max_results":2,"include_raw_content":true}`,
 	)
 	if result.Code != http.StatusRequestEntityTooLarge || search.calls != 1 ||
-		!strings.Contains(result.Body.String(), "raw_content_too_large") {
+		!strings.Contains(result.Body.String(), "raw content response exceeds resource limit") {
 		t.Fatalf("result=%d calls=%d body=%s", result.Code, search.calls, result.Body.String())
 	}
 }
@@ -92,7 +92,7 @@ func TestExtractEndpointRejectsExhaustedAggregateBeforeSuccessHeader(t *testing.
 	result := httptest.NewRecorder()
 	endpoint.ServeHTTP(result, request)
 	if result.Code != http.StatusRequestEntityTooLarge ||
-		!strings.Contains(result.Body.String(), "raw_content_too_large") {
+		!strings.Contains(result.Body.String(), "raw content response exceeds resource limit") {
 		t.Fatalf("result=%d body=%s", result.Code, result.Body.String())
 	}
 }

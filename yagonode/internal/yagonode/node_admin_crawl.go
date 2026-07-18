@@ -32,6 +32,7 @@ func (s *crawlSource) Start(
 		IndexURLMustMatch:        start.IndexURLMustMatch,
 		IndexURLMustNotMatch:     start.IndexURLMustNotMatch,
 		MaxPagesPerHost:          pagesPerHostOrUnlimited(start.MaxPagesPerHost),
+		MaxPagesPerRun:           start.MaxPagesPerRun,
 		AllowQueryURLs:           start.AllowQueryURLs,
 		FollowNoFollowLinks:      start.FollowNoFollowLinks,
 		NoindexCanonicalMismatch: start.NoindexCanonicalMismatch,
@@ -50,6 +51,10 @@ func (s *crawlSource) Start(
 		Seeds:         accepted.Seeds,
 		Duplicate:     accepted.Duplicate,
 	}, nil
+}
+
+func (s *crawlSource) MaxPagesPerRun() int {
+	return s.dispatcher.MaxPagesPerRun()
 }
 
 // pagesPerHostOrUnlimited treats a blank or non-positive per-host cap as unlimited,

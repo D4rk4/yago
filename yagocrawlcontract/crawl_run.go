@@ -22,9 +22,6 @@ type CrawlRunTally struct {
 	Pending      uint64
 }
 
-// CrawlRunProgress is a worker's report about one run, keyed by the hex-encoded
-// order provenance token so the node and the worker agree on the run identity
-// without the node owning the worker's in-memory frontier.
 type CrawlRunProgress struct {
 	RunID          string
 	WorkerID       string

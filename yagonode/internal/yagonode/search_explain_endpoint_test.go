@@ -115,6 +115,8 @@ func TestSearchExplainEndpointReturnsScoredResults(t *testing.T) {
 				AlphabeticFraction:   0.8,
 				UniqueTokenFraction:  0.6,
 				Proximity:            0.5,
+				StrictRank:           1,
+				StrictScore:          2.5,
 				Explanation:          "score 2.5",
 				FieldScores:          map[string]float64{"title": 1.5, "body": 1.0},
 			},
@@ -145,7 +147,7 @@ func TestSearchExplainEndpointReturnsScoredResults(t *testing.T) {
 	}
 	if len(resp.Results) != 1 ||
 		resp.Results[0].Explanation != "score 2.5" ||
-		resp.Weights.Title != 5 {
+		resp.Weights.Title != 5 || resp.Scope != searchcore.SourceLocal {
 		t.Fatalf("response = %#v", resp)
 	}
 	if resp.Results[0].FieldScores["title"] != 1.5 {
@@ -154,15 +156,25 @@ func TestSearchExplainEndpointReturnsScoredResults(t *testing.T) {
 	if resp.Results[0].Quality != 0.7 {
 		t.Fatalf("quality prior not surfaced: %v", resp.Results[0].Quality)
 	}
-	if !resp.Results[0].QualityKnown || resp.Results[0].SpamRisk != 0.2 ||
+	if !resp.Results[0].QualityKnown || !resp.Results[0].SpamRiskKnown ||
+		!resp.Results[0].FunctionWordKnown || !resp.Results[0].SymbolKnown ||
+		!resp.Results[0].AlphabeticKnown || !resp.Results[0].UniqueTokenKnown ||
+		resp.Results[0].SpamRisk != 0.2 ||
 		resp.Results[0].FunctionWordFraction != 0.3 ||
 		resp.Results[0].SymbolFraction != 0.1 ||
 		resp.Results[0].AlphabeticFraction != 0.8 ||
 		resp.Results[0].UniqueTokenFraction != 0.6 {
 		t.Fatalf("quality diagnostics not surfaced: %#v", resp.Results[0])
 	}
-	if resp.Results[0].Proximity != 0.5 {
+	if !resp.Results[0].ProximityKnown || resp.Results[0].Proximity != 0.5 {
 		t.Fatalf("proximity feature not surfaced: %v", resp.Results[0].Proximity)
+	}
+	strictRank := false
+	for _, signal := range resp.Results[0].Evidence {
+		strictRank = strictRank || signal == (searchExplainSignal{Name: "strict_rank", Value: 1})
+	}
+	if !strictRank {
+		t.Fatalf("ranking evidence not surfaced: %#v", resp.Results[0].Evidence)
 	}
 	if resp.Results[0].Score <= 2.5 {
 		t.Fatalf("production priors not applied to score: %v", resp.Results[0].Score)

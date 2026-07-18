@@ -33,26 +33,32 @@ type seedProfile struct {
 // skips URLs already in the document store and relies on the durable queue's
 // idempotency (keyed by URL) to avoid re-seeding a recently queued URL.
 type webCrawlSeeder struct {
-	queue     crawldispatch.CrawlOrderQueue
-	documents documentstore.DocumentDirectory
-	initiator yagomodel.Hash
-	profile   yagocrawlcontract.CrawlProfile
-	now       func() time.Time
+	queue          crawldispatch.CrawlOrderQueue
+	documents      documentstore.DocumentDirectory
+	initiator      yagomodel.Hash
+	profile        yagocrawlcontract.CrawlProfile
+	maxPagesPerRun func() int
+	now            func() time.Time
+}
+
+type webCrawlSeedProfile struct {
+	fallback       webFallbackConfig
+	crawl          seedCrawlOptions
+	maxPagesPerRun func() int
 }
 
 func newWebCrawlSeeder(
 	queue crawldispatch.CrawlOrderQueue,
 	documents documentstore.DocumentDirectory,
 	initiator yagomodel.Hash,
-	config webFallbackConfig,
-	options seedCrawlOptions,
+	seed webCrawlSeedProfile,
 ) *webCrawlSeeder {
 	return newCrawlSeeder(queue, documents, initiator, seedProfile{
 		name:     webSeedProfileName,
-		depth:    config.SeedDepth,
-		maxPages: config.SeedMaxPages,
-		options:  options,
-	})
+		depth:    seed.fallback.SeedDepth,
+		maxPages: seed.fallback.SeedMaxPages,
+		options:  seed.crawl,
+	}, seed.maxPagesPerRun)
 }
 
 func newCrawlSeeder(
@@ -60,6 +66,7 @@ func newCrawlSeeder(
 	documents documentstore.DocumentDirectory,
 	initiator yagomodel.Hash,
 	seed seedProfile,
+	maxPagesPerRun ...func() int,
 ) *webCrawlSeeder {
 	profile := yagocrawlcontract.NewCrawlProfile(yagocrawlcontract.CrawlProfile{
 		Name:                seed.name,
@@ -76,11 +83,12 @@ func newCrawlSeeder(
 	})
 
 	return &webCrawlSeeder{
-		queue:     queue,
-		documents: documents,
-		initiator: initiator,
-		profile:   profile,
-		now:       time.Now,
+		queue:          queue,
+		documents:      documents,
+		initiator:      initiator,
+		profile:        profile,
+		maxPagesPerRun: selectMaxPagesPerRunSource(maxPagesPerRun),
+		now:            time.Now,
 	}
 }
 
@@ -90,14 +98,18 @@ func (s *webCrawlSeeder) Seed(ctx context.Context, urls []string) {
 		if target == "" || s.stored(ctx, target) {
 			continue
 		}
+		profile := s.profile
+		maximum := s.maxPagesPerRun()
+		profile.MaxPagesPerRun = &maximum
+		profile = yagocrawlcontract.NewCrawlProfile(profile)
 		order := yagocrawlcontract.CrawlOrder{
 			Provenance: mintProvenance(),
 			Priority:   yagocrawlcontract.CrawlOrderPriorityAutomaticDiscovery,
-			Profile:    s.profile,
+			Profile:    profile,
 			Requests: []yagocrawlcontract.CrawlRequest{{
 				URL:           target,
 				Mode:          yagocrawlcontract.CrawlRequestModeURL,
-				ProfileHandle: s.profile.Handle,
+				ProfileHandle: profile.Handle,
 				Initiator:     s.initiator,
 				AppDate:       s.now(),
 			}},
@@ -105,6 +117,21 @@ func (s *webCrawlSeeder) Seed(ctx context.Context, urls []string) {
 		if _, err := s.queue.PublishOnce(ctx, target, order); err != nil {
 			slog.DebugContext(ctx, msgWebSeedFailed, slog.Any("error", err))
 		}
+	}
+}
+
+func selectMaxPagesPerRunSource(sources []func() int) func() int {
+	if len(sources) == 0 || sources[0] == nil {
+		return func() int { return yagocrawlcontract.DefaultMaxPagesPerRun }
+	}
+
+	return func() int {
+		value := sources[0]()
+		if value < 0 {
+			return yagocrawlcontract.DefaultMaxPagesPerRun
+		}
+
+		return value
 	}
 }
 

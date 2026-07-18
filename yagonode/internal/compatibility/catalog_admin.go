@@ -86,9 +86,12 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Path:     "/api/admin/v1/search/explain",
 		Methods:  []string{"POST"},
 		State:    Implemented,
-		Behavior: "Previews a local search query under caller-supplied ranking weights and returns each result's score and Bleve score explanation without saving the weights; missing weights fall back to the default profile and non-finite or negative weights are rejected with 400.",
-		Evidence: []string{"yagonode/internal/yagonode/search_explain_endpoint_test.go"},
-		Notes:    "Requires a valid admin session with a CSRF token, or an API key with the search:read scope.",
+		Behavior: "Explains a bounded local or global search query. Local scope accepts caller-supplied ranking weights; global scope shares the active local, peer, web, recovery, analyzer-evidence, and reciprocal-rank fusion path. Results include human-facing provenance, retrieval and final scores, structured fusion contributions, partial failures, learned signal and tree contributions, model identity, and final rank without saving a paging session, remote result, or crawl seed. Missing weights use the live profile; invalid weights or scope return 400.",
+		Evidence: []string{
+			"yagonode/internal/yagonode/search_explain_endpoint_test.go",
+			"yagonode/internal/yagonode/search_explain_global_test.go",
+		},
+		Notes: "Requires a valid admin session with a CSRF token, or an API key with the search:read scope.",
 	},
 	{
 		Name:     "Search ranking trusted domains",

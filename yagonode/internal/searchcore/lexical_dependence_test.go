@@ -180,7 +180,8 @@ func TestLexicalDependenceUsesMouseForGamingQueryDistance(t *testing.T) {
 func TestResultAnalyzerRequirementsPreserveDroppedTermDistance(t *testing.T) {
 	req := Request{Terms: []string{"can", "am", "rover"}}
 	result := Result{
-		EvidenceReady: true,
+		EvidenceReady:               true,
+		EvidenceRequirementOrdinals: []int{0, 2},
 		FieldTermPositions: bodyPositions(map[string][]int{
 			"can":   {1},
 			"rover": {3},
@@ -200,27 +201,30 @@ func TestResultAnalyzerRequirementsPreserveDroppedTermDistance(t *testing.T) {
 func TestAnalyzerAlignedEvidenceDemotesHigherRetrievalRank(t *testing.T) {
 	results := []Result{
 		{
-			URL:           "far",
-			Score:         1,
-			EvidenceReady: true,
+			URL:                         "far",
+			Score:                       1,
+			EvidenceReady:               true,
+			EvidenceRequirementOrdinals: []int{0, 2},
 			FieldTermPositions: bodyPositions(map[string][]int{
 				"can":   {1},
 				"rover": {30},
 			}),
 		},
 		{
-			URL:           "tight",
-			Score:         0.99,
-			EvidenceReady: true,
+			URL:                         "tight",
+			Score:                       0.99,
+			EvidenceReady:               true,
+			EvidenceRequirementOrdinals: []int{0, 2},
 			FieldTermPositions: bodyPositions(map[string][]int{
 				"can":   {1},
 				"rover": {3},
 			}),
 		},
 		{
-			URL:           "reversed",
-			Score:         0.98,
-			EvidenceReady: true,
+			URL:                         "reversed",
+			Score:                       0.98,
+			EvidenceReady:               true,
+			EvidenceRequirementOrdinals: []int{0, 2},
 			FieldTermPositions: bodyPositions(map[string][]int{
 				"can":   {3},
 				"rover": {1},

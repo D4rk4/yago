@@ -26,6 +26,8 @@ func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery
 
 		return
 	}
+	group, releases := authorizeIngestGroup(ctx, group)
+	defer releaseIngestGroup(releases)
 
 	admitted := make([]IngestDelivery, 0, len(group))
 	for _, delivery := range group {
@@ -34,16 +36,22 @@ func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery
 		}
 	}
 	admitted = coalesceIngestDeliveries(admitted)
-	admitted = c.beginObservations(ctx, admitted)
-
 	regular := make([]IngestDelivery, 0, len(admitted))
+	removals := make([]IngestDelivery, 0, len(admitted))
 	for _, delivery := range admitted {
 		if delivery.Batch.Removed {
-			c.purgeRemoval(ctx, delivery)
+			removals = append(removals, delivery)
 			continue
 		}
 		regular = append(regular, delivery)
 	}
+	for _, delivery := range c.beginObservations(ctx, removals) {
+		c.purgeRemoval(ctx, delivery)
+	}
+	if !c.admitStorageGrowth(ctx, regular) {
+		return
+	}
+	regular = c.beginObservations(ctx, regular)
 	reservation, err := c.reserveIngestDocumentLineages(ctx, regular)
 	if err != nil {
 		c.redeliverGroup(ctx, regular, "document lineage reservation", err)

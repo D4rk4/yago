@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
-	"github.com/D4rk4/yago/yagonode/internal/metrichistory"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
 	"github.com/D4rk4/yago/yagonode/internal/shardvault"
@@ -108,7 +107,10 @@ func run() error {
 		return fmt.Errorf("load node config: %w", err)
 	}
 
-	config.Crawl, err = loadCrawlConfig(getenv)
+	config.Crawl, err = loadRuntimeCrawlConfig(
+		getenv,
+		config.DataDir,
+	)
 	if err != nil {
 		return fmt.Errorf("load crawl config: %w", err)
 	}
@@ -117,6 +119,13 @@ func run() error {
 
 	client := newRuntimeEgressClient(config)
 
+	if err := preflightLegacyVaultMigration(
+		config.StoragePath,
+		config.DataDir,
+		nodeStoragePressurePolicy(config),
+	); err != nil {
+		return fmt.Errorf("preflight storage: %w", err)
+	}
 	storageVault, err := openRuntimeVault(config.StoragePath, config.StorageQuotaByte)
 	if err != nil {
 		return fmt.Errorf("open storage: %w", err)
@@ -168,6 +177,8 @@ func bootNodeWithEventDrain(
 	storageVault.SetQuota(config.StorageQuotaByte)
 	storageVault.SetDeferredFsync(config.StorageDeferFsync)
 	storageVault.SetReadDeferBudget(config.StorageReadDefer)
+	storagePressure := newNodeStoragePressure(config, toggles, obs.endpoints)
+	config.Crawl.GrowthAdmission = storagePressure
 	if err := validateNodeBinds(config); err != nil {
 		return eventDrain, fmt.Errorf("validate listen addresses: %w", err)
 	}
@@ -182,13 +193,7 @@ func bootNodeWithEventDrain(
 	ctx, restart := newRestartController(ctx)
 	configureSetupWizard(authService, sources.settings, config, restart.Trigger)
 	sources.restart = restart.Trigger
-	historySampler := metrichistory.New(
-		obs.endpoints.Registry(),
-		performanceHistoryCapacity,
-		currentHostMemory,
-	)
-	defer startPerformanceHistorySampler(ctx, historySampler)()
-	sources.perfHistory = newPerformanceHistorySource(historySampler)
+	defer attachPerformanceHistory(ctx, obs.endpoints, &sources)()
 
 	assembled, err := assembleRuntimeNode(
 		ctx,
@@ -207,11 +212,14 @@ func bootNodeWithEventDrain(
 			searchAuthorizer: searchScopeAuthorizerFor(config, authService),
 			toggles:          toggles,
 			saturation:       obs.saturation,
+			registry:         obs.endpoints.Registry(),
+			storagePressure:  storagePressure,
 		},
 	)
 	if err != nil {
 		return eventDrain, fmt.Errorf("assemble node: %w", err)
 	}
+	assembled.storagePressure = storagePressure
 	defer assembled.clicks.StopImpressionPreparations()
 
 	opsMux := buildOpsMux(obs.endpoints, config, assembled, obs.recorder, sources)
@@ -370,11 +378,21 @@ func startMaintenanceLoops(ctx context.Context, background *sync.WaitGroup, asse
 	background.Add(3)
 	go func() {
 		defer background.Done()
-		runCompactionLoop(ctx, assembled.vault, assembled.toggles)
+		runCompactionLoop(
+			ctx,
+			assembled.vault,
+			assembled.toggles,
+			assembled.storagePressure,
+		)
 	}()
 	go func() {
 		defer background.Done()
-		runShardGrowthLoop(ctx, assembled.vault, assembled.toggles)
+		runShardGrowthLoop(
+			ctx,
+			assembled.vault,
+			assembled.toggles,
+			assembled.storagePressure,
+		)
 	}()
 	go func() {
 		defer background.Done()

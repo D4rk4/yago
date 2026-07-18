@@ -40,6 +40,7 @@ func TestRetainedSessionBytesAccountsCompletePayload(t *testing.T) {
 		Explanation:        "x",
 		Images:             images,
 		QueryMatches:       matches,
+		BodyQueryMatches:   matches,
 		FieldScores:        map[string]float64{"x": 1},
 		FieldTermPositions: map[string]map[string][]int{"x": {"x": positions}},
 	}
@@ -59,6 +60,7 @@ func TestRetainedSessionBytesAccountsCompletePayload(t *testing.T) {
 	want += cap(results) * int(retainedResultWidth)
 	want += 21
 	want += cap(images)*int(retainedResultImageWidth) + 2
+	want += cap(matches) * int(retainedQueryMatchWidth)
 	want += cap(matches) * int(retainedQueryMatchWidth)
 	want += retainedMapBytes + retainedMapEntryBytes + 1
 	want += retainedMapBytes + retainedMapEntryBytes + 1

@@ -69,6 +69,7 @@ func TestCrawlWalksBoundedSameSite(t *testing.T) {
 		"url":"https://site.example/",
 		"max_depth":1,
 		"exclude_paths":["^/private"],
+		"allow_external":false,
 		"format":"markdown",
 		"include_favicon":true
 	}`)
@@ -110,8 +111,7 @@ func TestCrawlWalksBoundedSameSite(t *testing.T) {
 }
 
 func TestCrawlOptionsAndErrors(t *testing.T) {
-	// allow_external follows off-site links.
-	rec := doCrawl(t, PathCrawl, `{"url":"https://site.example/","allow_external":true}`)
+	rec := doCrawl(t, PathCrawl, `{"url":"https://site.example/"}`)
 	var resp CrawlResponse
 	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
 	found := false
@@ -137,6 +137,7 @@ func TestCrawlOptionsAndErrors(t *testing.T) {
 		`{"url":"https://site.example/","max_depth":9}`:        "max_depth",
 		`{"url":"https://site.example/","max_breadth":0}`:      "max_breadth",
 		`{"url":"https://site.example/","limit":0}`:            "limit",
+		`{"url":"https://site.example/","format":"html"}`:      "format",
 		`{"url":"https://site.example/","select_paths":["("]}`: "select_paths",
 		`not json`: "invalid JSON",
 	} {
@@ -240,8 +241,9 @@ func TestCrawlWalkEdgeBranches(t *testing.T) {
 	}
 
 	// select_domains scopes hosts; bad patterns in the remaining fields fail.
+	allowExternal := true
 	entries, _, err = endpoint.walk(t.Context(), CrawlRequest{
-		URL: "https://site.example/", AllowExternal: true,
+		URL: "https://site.example/", AllowExternal: &allowExternal,
 		SelectDomains: []string{"^other\\."},
 	})
 	if err != nil {

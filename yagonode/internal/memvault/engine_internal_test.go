@@ -68,6 +68,26 @@ func TestEngineSetQuotaBytes(t *testing.T) {
 	}
 }
 
+func TestBucketProvisionedReportsPresenceAndCancellation(t *testing.T) {
+	engine := &engine{buckets: map[vault.Name]map[string][]byte{
+		vault.Name("present"): {},
+	}}
+	present, err := engine.BucketProvisioned(context.Background(), vault.Name("present"))
+	if err != nil || !present {
+		t.Fatalf("provisioned bucket presence=%t error=%v", present, err)
+	}
+	present, err = engine.BucketProvisioned(context.Background(), vault.Name("absent"))
+	if err != nil || present {
+		t.Fatalf("absent bucket presence=%t error=%v", present, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = engine.BucketProvisioned(ctx, vault.Name("present"))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled bucket presence error = %v", err)
+	}
+}
+
 func TestSnapshotCopiesValues(t *testing.T) {
 	source := map[vault.Name]map[string][]byte{
 		vault.Name("bucket"): {"key": []byte("value")},

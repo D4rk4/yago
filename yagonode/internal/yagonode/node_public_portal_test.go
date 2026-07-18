@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"testing"
 
+	"github.com/D4rk4/yago/yagonode/internal/publicportal"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
@@ -30,11 +32,22 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 	searcher := &stubPortalSearcher{response: searchcore.Response{
 		TotalResults: 3,
 		Availability: searchcore.ResultAvailability{Materialized: 3, Exhausted: true},
+		Request:      searchcore.Request{Terms: []string{"internet", "company"}},
 		Results: []searchcore.Result{
 			// A local hit in a global search carries the request source.
 			{
-				Title: "local", URL: "http://a/1", DisplayURL: "a/1",
-				Host: "a", Language: "en", Source: searchcore.SourceGlobal,
+				DocumentID: "http://a/1",
+				Analyzer:   "en",
+				Title:      "local",
+				URL:        "http://a/1",
+				DisplayURL: "a/1",
+				Host:       "a",
+				Language:   "en",
+				Source:     searchcore.SourceGlobal,
+				BodyQueryMatches: []searchcore.QueryMatch{
+					{Start: 100, End: 108},
+					{Start: 109, End: 116},
+				},
 			},
 			{
 				Title: "web", URL: "http://b/2", DisplayURL: "b/2",
@@ -51,6 +64,17 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
+	assertPortalSearchWindow(t, searcher, results)
+	assertPortalSearchProvenance(t, results)
+	assertPortalSearchCachedLinks(t, results)
+}
+
+func assertPortalSearchWindow(
+	t *testing.T,
+	searcher *stubPortalSearcher,
+	results publicportal.SearchResults,
+) {
+	t.Helper()
 	if results.TotalResults != 3 || len(results.Results) != 3 ||
 		results.Availability.Materialized != 3 || !results.Availability.Exhausted {
 		t.Fatalf("unexpected results: %+v", results)
@@ -77,6 +101,10 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 			t.Fatalf("derived facet scope = %q", facet.Scope)
 		}
 	}
+}
+
+func assertPortalSearchProvenance(t *testing.T, results publicportal.SearchResults) {
+	t.Helper()
 	if results.LocalCount != 1 || results.WebCount != 1 || results.PeerCount != 1 {
 		t.Fatalf("provenance counts = %d/%d/%d, want 1/1/1",
 			results.LocalCount, results.PeerCount, results.WebCount)
@@ -89,8 +117,18 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 			results.Results[1].Provenance,
 			results.Results[2].Provenance)
 	}
+}
+
+func assertPortalSearchCachedLinks(t *testing.T, results publicportal.SearchResults) {
+	t.Helper()
 	if results.Results[0].CachedURL == "" {
 		t.Fatal("locally stored result must carry a cached link (global-source local hit)")
+	}
+	cachedURL, err := url.Parse(results.Results[0].CachedURL)
+	if err != nil || cachedURL.Query().Get("analyzer") != "en" ||
+		cachedURL.Query().Get("start") != "100" || cachedURL.Query().Get("end") != "116" ||
+		len(cachedURL.Query()["terms"]) != 2 {
+		t.Fatalf("portal passage URL=%q error=%v", results.Results[0].CachedURL, err)
 	}
 	if results.Results[1].CachedURL != "" || results.Results[2].CachedURL != "" {
 		t.Fatal("web and peer results must not carry cached links")

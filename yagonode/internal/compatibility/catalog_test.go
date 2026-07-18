@@ -2,6 +2,7 @@ package compatibility
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagoproto"
@@ -39,6 +40,39 @@ func TestCatalogIncludesCurrentPeerProtocolSurfaces(t *testing.T) {
 	}
 }
 
+func TestCatalogDescribesCurrentTavilyContract(t *testing.T) {
+	report := Catalog()
+	wantBehavior := map[string][]string{
+		"/search":  {"canonical root-portal order", "errors carry only detail.error"},
+		"/extract": {"at most 20 URLs", "raw-scope authentication"},
+		"/crawl":   {"200-page", "30-second"},
+		"/map":     {"without page content", "raw-work limits"},
+	}
+	for _, surface := range report.Surfaces {
+		if surface.Area != areaAgentAPI {
+			continue
+		}
+		phrases, ok := wantBehavior[surface.Path]
+		if !ok {
+			continue
+		}
+		for _, phrase := range phrases {
+			if !strings.Contains(surface.Behavior, phrase) {
+				t.Fatalf(
+					"%s behavior %q does not contain %q",
+					surface.Path,
+					surface.Behavior,
+					phrase,
+				)
+			}
+		}
+		delete(wantBehavior, surface.Path)
+	}
+	if len(wantBehavior) != 0 {
+		t.Fatalf("catalog is missing Tavily surfaces: %v", wantBehavior)
+	}
+}
+
 func TestCatalogIncludesPlannedCompatibilityGaps(t *testing.T) {
 	report := Catalog()
 	paths := map[string]Surface{}
@@ -49,7 +83,7 @@ func TestCatalogIncludesPlannedCompatibilityGaps(t *testing.T) {
 	if got := paths["/gsa/searchresult"]; got.State != Unsupported {
 		t.Fatalf("gsa state = %q, want unsupported (removed upstream)", got.State)
 	}
-	for _, path := range []string{"/search", "/extract"} {
+	for _, path := range []string{"/search", "/extract", "/crawl", "/map"} {
 		if got := paths[path]; got.State != Partial {
 			t.Fatalf("%s state = %q, want partial", path, got.State)
 		}

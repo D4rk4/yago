@@ -52,20 +52,31 @@ var (
 		ctx context.Context,
 		path string,
 		documents documentstore.DocumentDirectory,
+		rebuildAdmissions ...searchindex.BleveRebuildGrowthAdmission,
 	) (searchindex.SearchIndex, error) {
 		stored, _ := documents.(documentstore.StoredDocuments)
 		if strings.TrimSpace(path) == "" {
 			return searchindex.NewBleveMemoryIndex(ctx, stored)
 		}
 
-		return searchindex.NewBleveDiskIndex(ctx, path, documents, stored)
+		return searchindex.NewBleveDiskIndex(
+			ctx,
+			path,
+			documents,
+			stored,
+			rebuildAdmissions...,
+		)
 	}
 	openURLMetadata   = urlmeta.Open
 	openURLReferences = urlreferences.Open
 	openRWIStorage    = rwi.Open
 )
 
-func openNodeStorage(vault *vault.Vault, searchIndexPath string) (nodeStorage, error) {
+func openNodeStorage(
+	vault *vault.Vault,
+	searchIndexPath string,
+	admissions ...growthAdmission,
+) (nodeStorage, error) {
 	documentDirectory, documentReceiver, err := openDocuments(vault)
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("document storage: %w", err)
@@ -75,7 +86,16 @@ func openNodeStorage(vault *vault.Vault, searchIndexPath string) (nodeStorage, e
 		return nodeStorage{}, fmt.Errorf("content clusters: %w", err)
 	}
 
-	searchIndex, err := openSearchIndex(context.Background(), searchIndexPath, documentDirectory)
+	var rebuildAdmission searchindex.BleveRebuildGrowthAdmission
+	if len(admissions) > 0 {
+		rebuildAdmission = admissions[0]
+	}
+	searchIndex, err := openSearchIndex(
+		context.Background(),
+		searchIndexPath,
+		documentDirectory,
+		rebuildAdmission,
+	)
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("search index: %w", err)
 	}

@@ -30,6 +30,8 @@ const (
 	envPublicSelfTestURL   = "YAGO_PUBLIC_SELF_TEST_URL"
 	envDataDir             = "YAGO_DATA_DIR"
 	envStorageQuota        = "YAGO_STORAGE_QUOTA"
+	envStorageReservedFree = "YAGO_STORAGE_RESERVED_FREE"
+	envStorageHysteresis   = "YAGO_STORAGE_PRESSURE_HYSTERESIS"
 	envStorageCompaction   = "YAGO_STORAGE_COMPACTION_INTERVAL"
 	envStorageAutosplit    = "YAGO_STORAGE_AUTOSPLIT"
 	envStorageDeferFsync   = "YAGO_STORAGE_DEFER_FSYNC"
@@ -72,6 +74,8 @@ const (
 	defaultPublicAddr       = ":8080"
 	defaultDataDir          = "./data"
 	defaultQuota            = "1GB"
+	defaultReservedFree     = "1GB"
+	defaultPressureRecovery = "256MB"
 	defaultAnnounceInterval = 10 * time.Minute
 	defaultGreetsPerCycle   = 16
 
@@ -96,79 +100,72 @@ type nodeConfig struct {
 	Flags               yagomodel.Flags
 	// Seed capability flags advertised to the swarm (YaCy Seed.java bits). Flags is
 	// rebuilt from these by configSeedFlags whenever a runtime override lands.
-	AdvertiseDirectConnect bool
-	AdvertiseRemoteIndex   bool
-	AdvertiseRootNode      bool
-	AdvertiseSSLAvailable  bool
-	PeerAddr               string
-	OpsAddr                string
-	PublicAddr             string
-	StoragePath            string
-	SearchIndexPath        string
-	StorageQuotaByte       int64
-	StorageCompaction      time.Duration
-	StorageReadDefer       time.Duration
-	StorageAutosplit       bool
-	StorageDeferFsync      bool
-	TrustedProxies         []*net.IPNet
-	EgressAllowLAN         bool
-	EgressAllowedCIDRs     []netip.Prefix
-	SeedlistURLs           []string
-	AnnounceInterval       time.Duration
-	GreetsPerCycle         int
-	SearchAPIKey           string
-	SearchRequireAPIKey    bool
-	PublicSearchUIEnabled  bool
-	SearchLinksNewTab      bool
-	SearchClickCapture     bool
-	HTTPSRedirect          bool
-	PublicBaseURL          string
-	QueryLogMode           queryLogMode
-	MetricsEnabled         bool
-	AdminRestartEnabled    bool
-	IndexRemoteResults     bool
-	SwarmMorphology        bool
-	PeerSnippetFetch       bool
-	RemotePeerTimeout      time.Duration
-	RemoteTimeout          time.Duration
-	RobotsPolicy           string
-	PortalGreeting         string
-	SearchRate             publicratelimit.Tiers
-	LANDiscovery           bool
-	PeerHTTPSPreferred     bool
-	SwarmSeed              swarmSeedConfig
-	AutocrawlerCrawl       seedCrawlOptions
-	DeclaredBirthDate      time.Time
-	Crawl                  crawlConfig
-	Admin                  adminConfig
-	CrossOrigin            crossOriginConfig
-	DHT                    dhtDistributionConfig
-	WebFallback            webFallbackConfig
-	ExtractFetch           extractFetchConfig
+	AdvertiseDirectConnect       bool
+	AdvertiseRemoteIndex         bool
+	AdvertiseRootNode            bool
+	AdvertiseSSLAvailable        bool
+	PeerAddr                     string
+	OpsAddr                      string
+	PublicAddr                   string
+	StoragePath                  string
+	SearchIndexPath              string
+	StorageQuotaByte             int64
+	StorageReservedFreeBytes     int64
+	StoragePressureRecoveryBytes int64
+	StorageCompaction            time.Duration
+	StorageReadDefer             time.Duration
+	StorageAutosplit             bool
+	StorageDeferFsync            bool
+	TrustedProxies               []*net.IPNet
+	EgressAllowLAN               bool
+	EgressAllowedCIDRs           []netip.Prefix
+	SeedlistURLs                 []string
+	AnnounceInterval             time.Duration
+	GreetsPerCycle               int
+	SearchAPIKey                 string
+	SearchRequireAPIKey          bool
+	PublicSearchUIEnabled        bool
+	SearchLinksNewTab            bool
+	SearchClickCapture           bool
+	HTTPSRedirect                bool
+	PublicBaseURL                string
+	QueryLogMode                 queryLogMode
+	MetricsEnabled               bool
+	AdminRestartEnabled          bool
+	IndexRemoteResults           bool
+	SwarmMorphology              bool
+	PeerSnippetFetch             bool
+	RemotePeerTimeout            time.Duration
+	RemoteTimeout                time.Duration
+	RobotsPolicy                 string
+	PortalGreeting               string
+	SearchRate                   publicratelimit.Tiers
+	LANDiscovery                 bool
+	PeerHTTPSPreferred           bool
+	SwarmSeed                    swarmSeedConfig
+	AutocrawlerCrawl             seedCrawlOptions
+	DeclaredBirthDate            time.Time
+	Crawl                        crawlConfig
+	Admin                        adminConfig
+	CrossOrigin                  crossOriginConfig
+	DHT                          dhtDistributionConfig
+	WebFallback                  webFallbackConfig
+	ExtractFetch                 extractFetchConfig
 }
 
 type configuredNodeData struct {
-	directory       string
-	databasePath    string
-	searchIndexPath string
-	quotaByte       int64
-	compaction      time.Duration
-	readDefer       time.Duration
+	directory             string
+	databasePath          string
+	searchIndexPath       string
+	quotaByte             int64
+	reservedFreeBytes     int64
+	pressureRecoveryBytes int64
+	compaction            time.Duration
+	readDefer             time.Duration
 }
 
 func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
-	hash, err := optionalPeerHash(getenv)
-	if err != nil {
-		return nodeConfig{}, err
-	}
-	peerAddr := envWithDefault(getenv, envPeerAddr, defaultPeerAddr)
-	seedlistURLs := splitList(getenv(envSeedlistURLs))
-	announceInterval, greetsPerCycle, err := announceCadence(getenv)
-	if err != nil {
-		return nodeConfig{}, err
-	}
-
-	adv, err := loadPeerAdvertisement(getenv, peerAddr, len(seedlistURLs) > 0)
+	network, err := loadNodeNetworkBootstrap(getenv)
 	if err != nil {
 		return nodeConfig{}, err
 	}
@@ -189,53 +186,59 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	}
 
 	return nodeConfig{
-		Hash:                  hash,
-		NetworkName:           envWithDefault(getenv, envNetworkName, yagoproto.DefaultNetwork),
-		Name:                  strings.TrimSpace(getenv(envPeerName)),
-		DataDir:               data.directory,
-		AdvertiseHost:         adv.host,
-		AdvertisePort:         adv.port,
-		AdvertisePortPinned:   adv.portPinned,
-		PublicSelfTestURL:     adv.selfTestURL,
-		SelfTestURLPinned:     adv.selfTestPinned,
-		PeerAddr:              peerAddr,
-		OpsAddr:               envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
-		PublicAddr:            publicListenerAddr(getenv),
-		StoragePath:           data.databasePath,
-		SearchIndexPath:       data.searchIndexPath,
-		StorageQuotaByte:      data.quotaByte,
-		StorageCompaction:     data.compaction,
-		StorageReadDefer:      data.readDefer,
-		StorageAutosplit:      derived.storageAutosplit,
-		StorageDeferFsync:     derived.storageDeferFsync,
-		TrustedProxies:        proxies,
-		EgressAllowLAN:        egressAllowLAN,
-		EgressAllowedCIDRs:    egressAllowedCIDRs,
-		SeedlistURLs:          seedlistURLs,
-		AnnounceInterval:      announceInterval,
-		GreetsPerCycle:        greetsPerCycle,
-		SearchAPIKey:          strings.TrimSpace(getenv(envSearchAccessToken)),
-		SearchRequireAPIKey:   derived.requireAPIKey,
-		PublicSearchUIEnabled: derived.publicSearchUI,
-		SearchLinksNewTab:     derived.searchLinksNewTab,
-		SearchClickCapture:    derived.searchClickCapture,
-		HTTPSRedirect:         derived.httpsRedirect,
-		PublicBaseURL:         derived.publicBaseURL,
-		QueryLogMode:          derived.queryLogMode,
-		MetricsEnabled:        derived.metricsEnabled,
-		AdminRestartEnabled:   derived.adminRestartEnabled,
-		IndexRemoteResults:    derived.indexRemoteResults,
-		SwarmMorphology:       derived.swarmMorphology,
-		PeerSnippetFetch:      derived.peerSnippetFetch,
-		RemotePeerTimeout:     derived.remotePeerTimeout,
-		RemoteTimeout:         derived.remoteTimeout,
-		PeerHTTPSPreferred:    derived.peerHTTPSPreferred,
-		SwarmSeed:             derived.swarmSeed,
-		AutocrawlerCrawl:      defaultSeedCrawlOptions(),
-		DeclaredBirthDate:     derived.birthDate,
-		DHT:                   derived.dht,
-		WebFallback:           derived.webFallback,
-		ExtractFetch:          derived.extractFetch,
+		Hash: network.hash,
+		NetworkName: envWithDefault(
+			getenv,
+			envNetworkName,
+			yagoproto.DefaultNetwork,
+		),
+		Name:                         strings.TrimSpace(getenv(envPeerName)),
+		DataDir:                      data.directory,
+		AdvertiseHost:                network.advertisement.host,
+		AdvertisePort:                network.advertisement.port,
+		AdvertisePortPinned:          network.advertisement.portPinned,
+		PublicSelfTestURL:            network.advertisement.selfTestURL,
+		SelfTestURLPinned:            network.advertisement.selfTestPinned,
+		PeerAddr:                     network.peerAddress,
+		OpsAddr:                      envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
+		PublicAddr:                   publicListenerAddr(getenv),
+		StoragePath:                  data.databasePath,
+		SearchIndexPath:              data.searchIndexPath,
+		StorageQuotaByte:             data.quotaByte,
+		StorageReservedFreeBytes:     data.reservedFreeBytes,
+		StoragePressureRecoveryBytes: data.pressureRecoveryBytes,
+		StorageCompaction:            data.compaction,
+		StorageReadDefer:             data.readDefer,
+		StorageAutosplit:             derived.storageAutosplit,
+		StorageDeferFsync:            derived.storageDeferFsync,
+		TrustedProxies:               proxies,
+		EgressAllowLAN:               egressAllowLAN,
+		EgressAllowedCIDRs:           egressAllowedCIDRs,
+		SeedlistURLs:                 network.seedlistURLs,
+		AnnounceInterval:             network.announceInterval,
+		GreetsPerCycle:               network.greetsPerCycle,
+		SearchAPIKey:                 strings.TrimSpace(getenv(envSearchAccessToken)),
+		SearchRequireAPIKey:          derived.requireAPIKey,
+		PublicSearchUIEnabled:        derived.publicSearchUI,
+		SearchLinksNewTab:            derived.searchLinksNewTab,
+		SearchClickCapture:           derived.searchClickCapture,
+		HTTPSRedirect:                derived.httpsRedirect,
+		PublicBaseURL:                derived.publicBaseURL,
+		QueryLogMode:                 derived.queryLogMode,
+		MetricsEnabled:               derived.metricsEnabled,
+		AdminRestartEnabled:          derived.adminRestartEnabled,
+		IndexRemoteResults:           derived.indexRemoteResults,
+		SwarmMorphology:              derived.swarmMorphology,
+		PeerSnippetFetch:             derived.peerSnippetFetch,
+		RemotePeerTimeout:            derived.remotePeerTimeout,
+		RemoteTimeout:                derived.remoteTimeout,
+		PeerHTTPSPreferred:           derived.peerHTTPSPreferred,
+		SwarmSeed:                    derived.swarmSeed,
+		AutocrawlerCrawl:             defaultSeedCrawlOptions(),
+		DeclaredBirthDate:            derived.birthDate,
+		DHT:                          derived.dht,
+		WebFallback:                  derived.webFallback,
+		ExtractFetch:                 derived.extractFetch,
 	}.withCapabilities(getenv)
 }
 
@@ -570,6 +573,22 @@ func loadConfiguredNodeData(getenv func(string) string) (configuredNodeData, err
 	if err != nil {
 		return configuredNodeData{}, fmt.Errorf("%s: %w", envStorageQuota, err)
 	}
+	reservedFree, err := parseByteSize(envWithDefault(
+		getenv,
+		envStorageReservedFree,
+		defaultReservedFree,
+	))
+	if err != nil {
+		return configuredNodeData{}, fmt.Errorf("%s: %w", envStorageReservedFree, err)
+	}
+	pressureRecovery, err := parseByteSize(envWithDefault(
+		getenv,
+		envStorageHysteresis,
+		defaultPressureRecovery,
+	))
+	if err != nil {
+		return configuredNodeData{}, fmt.Errorf("%s: %w", envStorageHysteresis, err)
+	}
 
 	compaction, err := storageCompactionInterval(getenv)
 	if err != nil {
@@ -582,12 +601,14 @@ func loadConfiguredNodeData(getenv func(string) string) (configuredNodeData, err
 	}
 
 	return configuredNodeData{
-		directory:       directory,
-		databasePath:    configuredDatabasePath(directory),
-		searchIndexPath: filepath.Join(directory, searchIndexDirName),
-		quotaByte:       quota,
-		compaction:      compaction,
-		readDefer:       readDefer,
+		directory:             directory,
+		databasePath:          configuredDatabasePath(directory),
+		searchIndexPath:       filepath.Join(directory, searchIndexDirName),
+		quotaByte:             quota,
+		reservedFreeBytes:     reservedFree,
+		pressureRecoveryBytes: pressureRecovery,
+		compaction:            compaction,
+		readDefer:             readDefer,
 	}, nil
 }
 

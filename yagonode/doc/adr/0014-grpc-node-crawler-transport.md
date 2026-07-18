@@ -20,9 +20,10 @@ log beside a durable node is redundant operational surface.
 The seam's committed properties still hold and must be preserved:
 
 - **Fan-in**: many registered crawlers feed one node and share its durable order queue.
-- **Explicit settlement**: leased orders remain durable until ACK, NAK, expiry, or startup reclaim.
+- **Explicit settlement**: leased orders remain durable until ACK or NAK;
+  sessionless and deliberately deferred work additionally supports expiry requeue.
 - **Backpressure**: a saturated node slows the submitting crawler rather than dropping ingest.
-- **Independent lifecycles**: crawlers are disposable; queued orders survive a node restart.
+- **Independent lifecycles**: crawler processes are replaceable from their durable data directory; queued orders survive a node restart.
 - **One swap point**: the node keeps the `CrawlOrderQueue` and ingest-stream ports the inner
   packages consume; only the edge adapter changes.
 
@@ -38,8 +39,14 @@ as opaque `bytes`.
 
 Durability moves into the node. Orders are enqueued in a FIFO backed by the node's store,
 keyed by a monotonic sequence, and move into durable worker leases when streamed. An ACK
-deletes the order; a NAK, deadline expiry, or node startup returns it to the FIFO. Backpressure
-is the unary ingest call itself: temporary pipeline or storage saturation returns
+deletes the order; a NAK clears its worker and assigns a durable five-second retry deadline
+instead of making it immediately visible. The lease sweeper returns NAKed and legacy
+sessionless work to the FIFO after its deadline. A session-aware unfinished lease remains
+parked for its stable worker even after that deadline, so a replacement using the same data
+directory can adopt, renew, and replay it without another worker restarting the traversal.
+Node startup preserves that ownership and performs ordinary expiry only for requeueable
+records. Backpressure is the
+unary ingest call itself: temporary pipeline or storage saturation returns
 `Unavailable`, which the crawler retries with a jittered exponential delay. Ingest JSON is
 bounded below the 4 MiB gRPC message ceiling. The crawler also retries `ResourceExhausted`
 from older nodes that used it for application saturation; the current crawler fits the
@@ -64,7 +71,7 @@ removes, with no offsetting simplicity once the queue already lives in the node.
 ## Consequences
 
 The crawler no longer needs a broker address; it dials the node's crawl RPC endpoint
-(`YAGOCRAWLER_NODE_RPC_ADDR`), and the node listens on `YAGO_CRAWL_RPC_ADDR`. gRPC and protobuf
+(`YAGO_CRAWLER_NODE_RPC_ADDR`), and the node listens on `YAGO_CRAWL_RPC_ADDR`. gRPC and protobuf
 become runtime dependencies of the node, the crawler, and the contract module; NATS is dropped
 from all three. ADR-0017 makes order delivery at-least-once through durable leases and worker
 heartbeats. Ingest keeps its at-least-once guarantee through the blocking call, durable

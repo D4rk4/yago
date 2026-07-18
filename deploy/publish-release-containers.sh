@@ -10,7 +10,7 @@ printf '%s\n' "$source_revision" | grep -Eq '^[0-9a-f]{40}$'
 test -d "$archive_directory"
 
 node_repository="ghcr.io/d4rk4/yago-node"
-crawler_repository="ghcr.io/d4rk4/yagocrawler"
+crawler_repository="ghcr.io/d4rk4/yago-crawler"
 
 release_reference_state() {
 	reference="$1"

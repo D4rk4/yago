@@ -90,7 +90,7 @@ func TestAPIKeyStoreAuthenticateSucceedsWithoutTouchingLastUsed(t *testing.T) {
 	if !info.LastUsedAt.IsZero() {
 		t.Fatalf("LastUsedAt = %v, want zero", info.LastUsedAt)
 	}
-	if err := store.touchLastUsed(context.Background(), created.ID); err != nil {
+	if _, err := store.touchLastUsed(context.Background(), created.ID); err != nil {
 		t.Fatalf("touchLastUsed: %v", err)
 	}
 	infos, err := store.list(context.Background())
@@ -157,14 +157,14 @@ func TestAPIKeyStoreTouchLastUsedSurfacesPutError(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 	engine.putErr = errors.New("disk full")
-	if err := store.touchLastUsed(context.Background(), created.ID); err == nil {
+	if _, err := store.touchLastUsed(context.Background(), created.ID); err == nil {
 		t.Fatal("touchLastUsed should surface the write error")
 	}
 }
 
 func TestAPIKeyStoreTouchLastUsedIgnoresRevokedKey(t *testing.T) {
 	store, _, _ := newTestKeyStore(t)
-	if err := store.touchLastUsed(context.Background(), "missing"); err != nil {
+	if found, err := store.touchLastUsed(context.Background(), "missing"); err != nil || found {
 		t.Fatalf("touchLastUsed: %v", err)
 	}
 }
@@ -176,7 +176,7 @@ func TestAPIKeyStoreTouchLastUsedSurfacesDecodeError(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 	engine.buckets[adminAPIKeysBucket][created.ID] = []byte("{corrupt")
-	if err := store.touchLastUsed(context.Background(), created.ID); err == nil {
+	if _, err := store.touchLastUsed(context.Background(), created.ID); err == nil {
 		t.Fatal("touchLastUsed should surface the decode error")
 	}
 }

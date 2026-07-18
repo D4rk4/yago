@@ -26,6 +26,8 @@ type Config struct {
 	LeaseTTL                          time.Duration
 	FetchWorkers                      int
 	DisableAutomaticDiscoveryPriority bool
+	StoragePressurePolicy             yagocrawlcontract.StoragePressurePolicy
+	GrowthAdmission                   GrowthAdmission
 }
 
 type CrawlBroker struct {
@@ -55,7 +57,7 @@ func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker
 	if leaseTTL <= 0 {
 		leaseTTL = DefaultLeaseTTL
 	}
-	queue, err := newDurableOrderQueue(storage, leaseTTL)
+	queue, err := newDurableOrderQueue(storage, leaseTTL, cfg.GrowthAdmission)
 	if err != nil {
 		return nil, err
 	}
@@ -69,10 +71,29 @@ func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker
 
 		return nil, err
 	}
-	if err := queue.requeueAllLeases(ctx); err != nil {
+	if err := queue.sweepExpired(ctx); err != nil {
 		cancel()
 
-		return nil, fmt.Errorf("reclaim crawl leases: %w", err)
+		return nil, fmt.Errorf("reclaim expired crawl leases: %w", err)
+	}
+	fetchWorkers := cfg.FetchWorkers
+	if fetchWorkers <= 0 {
+		fetchWorkers = yagocrawlcontract.DefaultFetchWorkerConcurrency
+	}
+	control, err := newPersistentControlRegistry(storage, crawlerControlDefaults{
+		fetchWorkers:                 uint32(fetchWorkers),
+		prioritizeAutomaticDiscovery: !cfg.DisableAutomaticDiscoveryPriority,
+		storagePressurePolicy:        cfg.StoragePressurePolicy,
+	})
+	if err != nil {
+		cancel()
+
+		return nil, fmt.Errorf("open crawl control registry: %w", err)
+	}
+	if err := queue.replayRunControlCompletions(ctx, control); err != nil {
+		cancel()
+
+		return nil, fmt.Errorf("replay crawl run control completions: %w", err)
 	}
 	listener, err := listenCrawlRPC(cfg.ListenAddr)
 	if err != nil {
@@ -83,14 +104,8 @@ func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker
 
 	ingest := newIngestReceiver()
 	server := newGRPCServer()
-	fetchWorkers := cfg.FetchWorkers
-	if fetchWorkers <= 0 {
-		fetchWorkers = yagocrawlcontract.DefaultFetchWorkerConcurrency
-	}
-	exchange := newExchangeServer(queue, ingest.out, crawlerControlDefaults{
-		fetchWorkers:                 uint32(fetchWorkers),
-		prioritizeAutomaticDiscovery: !cfg.DisableAutomaticDiscoveryPriority,
-	})
+	exchange := newExchangeServer(queue, ingest.out)
+	exchange.control = control
 	exchange.beginIngest = ingest.beginIngest
 	if progress != nil {
 		exchange.progress = progress
@@ -98,7 +113,7 @@ func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker
 	crawlrpc.RegisterCrawlExchangeServer(server, exchange)
 	go func() { _ = server.Serve(listener) }()
 
-	sweep := time.NewTicker(max(leaseTTL/4, time.Second))
+	sweep := time.NewTicker(leaseSweepInterval(leaseTTL))
 	go sweepLeases(ctx, queue, sweep.C)
 
 	return &CrawlBroker{
@@ -113,9 +128,18 @@ func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker
 }
 
 func (b *CrawlBroker) Close() {
-	b.cancel()
-	b.sweep.Stop()
-	b.server.Stop()
+	if b == nil {
+		return
+	}
+	if b.cancel != nil {
+		b.cancel()
+	}
+	if b.sweep != nil {
+		b.sweep.Stop()
+	}
+	if b.server != nil {
+		b.server.Stop()
+	}
 }
 
 func sweepLeases(ctx context.Context, queue *DurableOrderQueue, tick <-chan time.Time) {

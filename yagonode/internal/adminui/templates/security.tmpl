@@ -10,7 +10,7 @@
 </div>
 {{end}}
 
-<h2 class="cds-h2">API keys</h2>
+<h2 id="api-keys" class="cds-h2">API keys</h2>
 <p class="cds-muted">Keys authenticate programmatic access. Only the key identifier and scopes are stored; the secret is shown once at creation.</p>
 {{if .Security.Error}}
 {{else if .Security.Keys}}
@@ -39,8 +39,17 @@
   </tbody>
 </table>
 </div>
+{{else if gt .Security.APIKeyTotal 0}}
+<p class="cds-empty">No API keys on this page.</p>
 {{else}}
 <p class="cds-empty">No API keys yet.</p>
+{{end}}
+{{if and (not .Security.Error) (or .Pagination.HasPrev .Pagination.HasNext)}}
+<nav class="cds-pager" aria-label="API key pages">
+  {{if .Pagination.HasPrev}}<a rel="prev" href="{{.Pagination.PrevURL}}">‹ Previous</a>{{end}}
+  <span class="cds-muted">Showing {{.Pagination.Shown}} of {{.Pagination.Total}} stored API keys</span>
+  {{if .Pagination.HasNext}}<a rel="next" href="{{.Pagination.NextURL}}">Next ›</a>{{end}}
+</nav>
 {{end}}
 
 {{range $index, $group := .Security.ScopeGroups}}

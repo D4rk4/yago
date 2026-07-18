@@ -22,9 +22,17 @@ type fakeSecurity struct {
 	lastMint     APIKeyMint
 	lastRevoke   APIKeyRevoke
 	lastChange   PasswordChange
+	lastPage     SecurityAPIKeyPageRequest
 }
 
-func (f *fakeSecurity) Security(context.Context) SecurityView { return f.view }
+func (f *fakeSecurity) Security(
+	_ context.Context,
+	page SecurityAPIKeyPageRequest,
+) SecurityView {
+	f.lastPage = page
+
+	return f.view
+}
 
 func (f *fakeSecurity) MintAPIKey(
 	_ context.Context,
@@ -65,6 +73,7 @@ func securityViewWithKey() SecurityView {
 			Scopes:  []string{"search:read"},
 			Created: "2026-01-01T00:00:00Z",
 		}},
+		APIKeyTotal: 1,
 		ScopeGroups: []ScopeGroup{
 			{
 				Title:       "Node API key",
@@ -77,6 +86,69 @@ func securityViewWithKey() SecurityView {
 				Scopes:      []ScopeOption{{Value: "search:read", Label: "search:read"}},
 			},
 		},
+	}
+}
+
+func TestConsoleSecurityRendersBoundedCursorNavigation(t *testing.T) {
+	t.Parallel()
+
+	const (
+		previousCursor = "AAAAAAAAAAAAAAAA"
+		currentCursor  = "AAAAAAAAAAAAAAAB"
+		nextCursor     = "AAAAAAAAAAAAAAAC"
+	)
+	security := &fakeSecurity{view: securityViewWithKey()}
+	security.view.APIKeyTotal = 45
+	security.view.APIKeyNextCursor = nextCursor
+	console := New(Options{Security: security})
+
+	first := do(t, console, "/admin/security")
+	for _, want := range []string{
+		"Showing 1 of 45 stored API keys",
+		"Next ›",
+		`aria-label="API key pages"`,
+		"key_cursor=" + nextCursor,
+	} {
+		if !strings.Contains(first.body, want) {
+			t.Fatalf("first page missing %q", want)
+		}
+	}
+	if strings.Contains(first.body, "‹ Previous") {
+		t.Fatal("first page rendered Previous")
+	}
+
+	second := do(
+		t,
+		console,
+		"/admin/security?key_cursor="+currentCursor+"&key_history="+previousCursor,
+	)
+	if security.lastPage.Cursor != currentCursor {
+		t.Fatalf("forwarded cursor = %q", security.lastPage.Cursor)
+	}
+	for _, want := range []string{
+		"‹ Previous",
+		"Next ›",
+		"key_cursor=" + previousCursor,
+		"key_history=" + previousCursor + "%2C" + currentCursor,
+	} {
+		if !strings.Contains(second.body, want) {
+			t.Fatalf("second page missing %q", want)
+		}
+	}
+}
+
+func TestConsoleSecurityEmptyStaleCursorKeepsRecoveryNavigation(t *testing.T) {
+	t.Parallel()
+
+	security := &fakeSecurity{view: SecurityView{APIKeyTotal: 7}}
+	got := do(t, New(Options{Security: security}), "/admin/security?key_cursor=AAAAAAAAAAAAAAAA")
+	for _, want := range []string{"No API keys on this page.", "‹ Previous", "Showing 0 of 7"} {
+		if !strings.Contains(got.body, want) {
+			t.Fatalf("stale cursor page missing %q", want)
+		}
+	}
+	if strings.Contains(got.body, "No API keys yet.") {
+		t.Fatal("stale cursor page claimed the store was empty")
 	}
 }
 

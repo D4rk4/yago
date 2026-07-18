@@ -2,6 +2,8 @@ package adminui
 
 import "context"
 
+const SecurityAPIKeyPageSize = 20
+
 // ScopeOption is an assignable API-key scope offered on the mint form.
 type ScopeOption struct {
 	Value string
@@ -37,9 +39,15 @@ type MintedAPIKey struct {
 
 // SecurityView is the rendered state of the Security section.
 type SecurityView struct {
-	Keys        []APIKeyItem
-	ScopeGroups []ScopeGroup
-	Error       string
+	Keys             []APIKeyItem
+	ScopeGroups      []ScopeGroup
+	APIKeyTotal      int
+	APIKeyNextCursor string
+	Error            string
+}
+
+type SecurityAPIKeyPageRequest struct {
+	Cursor string
 }
 
 // APIKeyMint is a request to create an API key.
@@ -83,7 +91,7 @@ type PasswordChangeResult struct {
 // SecuritySource backs the Security section: API-key management and the admin
 // password change. A nil source renders the section as unavailable.
 type SecuritySource interface {
-	Security(ctx context.Context) SecurityView
+	Security(ctx context.Context, page SecurityAPIKeyPageRequest) SecurityView
 	MintAPIKey(ctx context.Context, mint APIKeyMint) (APIKeyMintResult, error)
 	RevokeAPIKey(ctx context.Context, revoke APIKeyRevoke) (APIKeyRevokeResult, error)
 	ChangePassword(ctx context.Context, change PasswordChange) (PasswordChangeResult, error)

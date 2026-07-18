@@ -13,7 +13,7 @@ WORKDIR /src
 COPY go.work go.work.sum ./
 COPY yagonode/go.mod yagonode/go.sum yagonode/
 COPY yagocrawlcontract/go.mod yagocrawlcontract/
-COPY yagocrawler/go.mod yagocrawler/
+COPY yago-crawler/go.mod yago-crawler/
 COPY yagoegress/go.mod yagoegress/
 COPY yagomodel/go.mod yagomodel/
 COPY yagoproto/go.mod yagoproto/
@@ -34,7 +34,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -o /out/yago-node \
         ./yagonode/cmd/yago-node
 
-RUN mkdir -p /out/data
+RUN mkdir -p /out/data /out/doc && \
+    install -m 0644 yagonode/internal/searchindex/CJK_DICTIONARY_NOTICES.txt \
+        /out/doc/CJK_DICTIONARY_NOTICES.txt
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:b7bb25d9f7c31d2bdd1982feb4dafcaf137703c7075dbe2febb41c24212b946f
 
@@ -50,6 +52,7 @@ ENV YAGO_DATA_DIR=/opt/yago/data \
 COPY --from=build --chown=nonroot:nonroot /out/data /opt/yago/data
 COPY --from=build --chown=nonroot:nonroot /out/data /opt/yago/etc
 COPY --from=build /out/yago-node /opt/yago/bin/yago-node
+COPY --from=build /out/doc/CJK_DICTIONARY_NOTICES.txt /usr/share/doc/yago/CJK_DICTIONARY_NOTICES.txt
 
 ARG SOURCE_REVISION=unknown
 

@@ -34,17 +34,20 @@ type SearchRequest struct {
 	Collection       string
 	FileType         string
 	Protocol         string
+	EvidenceVersion  int
+	EvidenceTerms    []string
 }
 
 type SearchResponse struct {
 	ResponseHeader
-	SearchTime    int
-	References    string
-	JoinCount     int
-	Count         int
-	Resources     []yagomodel.URIMetadataRow
-	IndexCount    map[yagomodel.Hash]int
-	IndexAbstract map[yagomodel.Hash]string
+	SearchTime       int
+	References       string
+	JoinCount        int
+	Count            int
+	Resources        []yagomodel.URIMetadataRow
+	IndexCount       map[yagomodel.Hash]int
+	IndexAbstract    map[yagomodel.Hash]string
+	ResourceEvidence map[yagomodel.Hash]QueryMatchEvidence
 }
 
 const maximumParsedSearchResources = 1024
@@ -78,6 +81,7 @@ func (r SearchRequest) Form() url.Values {
 	putString(form, FieldCollection, r.Collection)
 	putString(form, FieldFileType, r.FileType)
 	putString(form, FieldProtocol, r.Protocol)
+	appendQueryEvidenceRequest(form, r.EvidenceVersion, r.EvidenceTerms)
 
 	return form
 }
@@ -109,6 +113,7 @@ func ParseSearchRequest(ctx context.Context, form url.Values) (SearchRequest, er
 		FileType:         form.Get(FieldFileType),
 		Protocol:         form.Get(FieldProtocol),
 	}
+	req.EvidenceVersion, req.EvidenceTerms = parseQueryEvidenceRequest(form)
 
 	if raw := form.Get(FieldMySeed); raw != "" {
 		seed, err := decodeSeed(ctx, raw)
@@ -212,6 +217,7 @@ func (r SearchResponse) Encode() yagomodel.Message {
 	for hash, abstract := range r.IndexAbstract {
 		setString(msg, prefixIndexAbstract+hash.String(), abstract)
 	}
+	encodeResourceEvidence(msg, r.Resources, r.ResourceEvidence)
 
 	return msg
 }
@@ -240,6 +246,7 @@ func ParseSearchResponse(m yagomodel.Message) (SearchResponse, error) {
 	}
 
 	resp.Resources = parseSearchResources(m, resp.Count)
+	resp.ResourceEvidence = parseResourceEvidence(m, resp.Resources)
 
 	if resp.IndexCount, resp.IndexAbstract, err = parseSearchIndexes(m); err != nil {
 		return SearchResponse{}, err

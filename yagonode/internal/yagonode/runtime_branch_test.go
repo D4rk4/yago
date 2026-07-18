@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -370,6 +371,20 @@ func TestRunReturnsStageErrors(t *testing.T) {
 		openRuntimeVault = func(string, int64) (*vault.Vault, error) { return nil, sentinel }
 		if err := run(); !errors.Is(err, sentinel) {
 			t.Fatalf("run error = %v, want %v", err, sentinel)
+		}
+	})
+
+	t.Run("storage preflight", func(t *testing.T) {
+		restoreMainSeams(t)
+		setValidRunEnv(t)
+		directory := t.TempDir()
+		t.Setenv(envDataDir, directory)
+		storagePath := filepath.Join(directory, storageFileName)
+		if err := os.Symlink(storageFileName, storagePath); err != nil {
+			t.Fatalf("create storage symlink loop: %v", err)
+		}
+		if err := run(); err == nil || !strings.Contains(err.Error(), "preflight storage") {
+			t.Fatalf("storage preflight error = %v", err)
 		}
 	})
 
@@ -815,6 +830,7 @@ func TestOpenNodeStorageReturnsSearchIndexOpenError(t *testing.T) {
 		context.Context,
 		string,
 		documentstore.DocumentDirectory,
+		...searchindex.BleveRebuildGrowthAdmission,
 	) (searchindex.SearchIndex, error) {
 		return nil, sentinel
 	}
@@ -864,7 +880,11 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 
 	t.Run("storage", func(t *testing.T) {
 		restoreAssemblySeams(t)
-		openRuntimeNodeStorage = func(*vault.Vault, string) (nodeStorage, error) {
+		openRuntimeNodeStorage = func(
+			*vault.Vault,
+			string,
+			...growthAdmission,
+		) (nodeStorage, error) {
 			return nodeStorage{}, sentinel
 		}
 		_, err := assembleNode(
@@ -909,6 +929,7 @@ func TestAssembleNodeReturnsSetupErrors(t *testing.T) {
 			return peerExchangeRuntime{announcer: fakeAnnouncer{}}, nil
 		}
 		buildRuntimeCrawl = func(
+			context.Context,
 			crawlConfig,
 			nodeidentity.Identity,
 			nodeStorage,
@@ -1046,6 +1067,7 @@ func TestBuildCrawlRuntimeReturnsBrokerError(t *testing.T) {
 		return nil, sentinel
 	}
 	_, err := buildCrawlRuntime(
+		context.Background(),
 		crawlConfig{ListenAddr: "127.0.0.1:0"},
 		nodeIdentity(testConfig(t)),
 		nodeStorage{},
@@ -1066,6 +1088,7 @@ func TestBuildCrawlRuntimeReturnsObservationHistoryError(t *testing.T) {
 		return &crawlbroker.CrawlBroker{}, nil
 	}
 	_, err := buildCrawlRuntime(
+		context.Background(),
 		crawlConfig{ListenAddr: "127.0.0.1:0"},
 		nodeIdentity(testConfig(t)),
 		nodeStorage{},

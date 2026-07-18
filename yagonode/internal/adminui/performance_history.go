@@ -117,7 +117,13 @@ func formatHistoryValue(value float64) string {
 		return fmt.Sprintf("%d", int64(value))
 	}
 
-	return strings.TrimRight(fmt.Sprintf("%.2f", value), "0")
+	formatted := strings.TrimRight(fmt.Sprintf("%.2f", value), "0")
+	formatted = strings.TrimSuffix(formatted, ".")
+	if formatted == "-0" {
+		return "0"
+	}
+
+	return formatted
 }
 
 // sparklineSVG draws the series as a polyline normalized into a fixed viewBox.

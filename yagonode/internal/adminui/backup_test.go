@@ -31,16 +31,31 @@ func TestBackupPageRendersStatusAndScriptCommands(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Backup &amp; restore",
+		"Node data directory",
+		"Main-vault logical live data",
+		"Main-vault soft admission quota",
+		"stops the crawler before the node",
+		"starts the node before the crawler",
+		"crawler checkpoint",
 		"/opt/yago/data",
 		"1.5 KiB",
 		"2.0 GiB",
-		"deploy/backup.sh docker docker-compose.yml yago-node yago-data ./backups",
-		"deploy/backup.sh systemd yago-node /opt/yago/data ./backups",
-		"deploy/restore.sh systemd yago-node /opt/yago/data",
+		"deploy/backup.sh docker docker-compose.yml yago-node yago_yago-data ./backups yago-crawler yago_yago-crawler-data",
+		"deploy/backup.sh systemd yago-node.service /opt/yago/data ./backups yago-crawler.service",
+		"deploy/restore.sh systemd yago-node.service /opt/yago/data",
 		"doc/backup-restore.md",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Errorf("backup page missing %q", want)
+		}
+	}
+	for _, stale := range []string{
+		"volatile queues are deliberately excluded",
+		"a backup stops the node for the copy",
+		"requires the node stopped",
+	} {
+		if strings.Contains(got.body, stale) {
+			t.Errorf("backup page retains stale claim %q", stale)
 		}
 	}
 }
@@ -54,8 +69,8 @@ func TestBackupPageSurfacesStatusFailure(t *testing.T) {
 		t.Fatal("status failure must be surfaced")
 	}
 	for _, falseFact := range []string{
-		"Storage used",
-		"Storage quota",
+		"Main-vault logical live data",
+		"Main-vault soft admission quota",
 		"deploy/backup.sh",
 		"deploy/restore.sh",
 	} {
@@ -73,9 +88,9 @@ func TestBackupPageDistinguishesZeroUsageFromUnlimitedQuota(t *testing.T) {
 	}}})
 	got := do(t, console, "/admin/backup")
 	for _, want := range []string{
-		`<div class="cds-metric__label">Storage used</div>
+		`<div class="cds-metric__label">Main-vault logical live data</div>
     <div class="cds-metric__value">0 B</div>`,
-		`<div class="cds-metric__label">Storage quota</div>
+		`<div class="cds-metric__label">Main-vault soft admission quota</div>
     <div class="cds-metric__value">unlimited</div>`,
 	} {
 		if !strings.Contains(got.body, want) {

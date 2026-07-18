@@ -128,6 +128,10 @@ func retainedResultBytes(retained int, result searchcore.Result) int {
 		retained,
 		retainedProduct(cap(result.QueryMatches), retainedQueryMatchWidth),
 	)
+	retained = retainedAdd(
+		retained,
+		retainedProduct(cap(result.BodyQueryMatches), retainedQueryMatchWidth),
+	)
 	retained = retainedStringScores(retained, result.FieldScores)
 	retained = retainedTermPositions(retained, result.FieldTermPositions)
 
