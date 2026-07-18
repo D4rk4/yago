@@ -147,6 +147,13 @@ yago-admin-ui
 * Shared-blacklist export SHALL admit at most four requests before form parsing and SHALL share a 16 MiB aggregate budget across configuration input, owned list names, list input, and encoded output. Peer-profile export SHALL admit at most four requests, read at most 1 MiB, retain at most 1,024 properties and 1 MiB of owned property data, and encode at most 2 MiB. Either route SHALL return its compatible empty success response instead of partial data after overflow or cancellation.
 * The node SHALL export a YaCy-compatible host-link index counted from stored document outlinks per source host, bounded during the shared background corpus pass, retained in its atomic checkpoint, and served from an immutable snapshot without scanning document storage in a peer request.
 * The node SHALL run configured crawl jobs and ingest crawler-produced documents, metadata, and postings.
+* Before crawler ingest performs any storage side effect, the node SHALL
+  snapshot-authorize the exact worker, process session, lease, and run under the
+  lease-mutation boundary. It SHALL release that boundary before document,
+  search-index, URL-metadata, posting, stale-sweep, or recrawl storage begins. A
+  failed snapshot SHALL reject the submission before storage. A successful
+  snapshot SHALL be the linearization point for the idempotent absorption and
+  SHALL NOT retain a lease lock while storage completes.
 * The crawler SHALL use separate gRPC connections for control traffic and bulk
   ingest. Orders, heartbeats, settlement, and progress SHALL NOT share the
   transport connection used for ingest payloads.
@@ -177,6 +184,14 @@ yago-admin-ui
   drain the current fetch group, and apply the latest requested size without a
   process restart. This setting SHALL NOT be described or enforced as a limit on
   crawl runs or queued tasks.
+* The node SHALL expose a separate live 1–256 active-crawl-task limit per
+  connected crawler process, defaulting to 32. The crawler SHALL hold one slot
+  from prepared-order admission through terminal completion. Excess ordinary
+  and recovered orders SHALL wait without activating another frontier or
+  periodic progress reporter. Increasing the value SHALL wake waiting work;
+  decreasing it SHALL preserve already active tasks and block replacements until
+  occupancy falls below the new limit. This setting SHALL remain independent of
+  page-fetch workers, per-run rate, host politeness, and queued order capacity.
 * A current crawler heartbeat SHALL carry optional presence for its number of
   occupied page-fetch worker jobs from job start through fetch, parsing, and
   result publication. An explicit zero SHALL remain distinguishable from an
@@ -191,8 +206,10 @@ yago-admin-ui
   field, and current nodes SHALL treat an omitted measurement as unknown.
 * Crawl progress submission SHALL be nonblocking and ordered by run phase.
   Periodic phases SHALL be distributed across the reporting interval, at most
-  one progress RPC SHALL run per worker, adjacent running snapshots MAY
-  coalesce, ready terminal heads SHALL take priority, and terminal snapshots
+  one progress RPC SHALL run per worker, an in-flight generation SHALL remain
+  immutable, and later adjacent running snapshots for the same run MAY coalesce
+  into one pending replacement. Ready terminal heads SHALL take priority, a
+  replacement SHALL NOT bypass another ready run, and terminal snapshots
   admitted to the queue SHALL retry with bounded jittered backoff. A NAK
   redelivery MAY reopen the same run identity, and admitted phases SHALL retain
   their `terminal → running → terminal` order through graceful-shutdown drain
@@ -202,9 +219,17 @@ yago-admin-ui
 * After exact lease, worker, session, and run authorization, the node SHALL reuse
   that authorized run target for control reconciliation and progress recording.
   It SHALL NOT scan the complete lease bucket a second time for the same running
-  report. Human-facing run identities derived from byte provenance, including
+  report. It SHALL cache the successful worker assignment for that active run,
+  skip persistent directive reconciliation for later reports from the same
+  worker, reconcile a worker migration before replacing the assignment, and
+  remove the assignment only after successful run completion. Human-facing run
+  identities derived from byte provenance, including
   crawler progress warnings, SHALL use lowercase hexadecimal text rather than raw
   bytes.
+* The node crawl-run registry SHALL retain every active run. Its configured
+  capacity SHALL bound only recent terminal history. Active-run accounting SHALL
+  update with each accepted state transition without scanning the registry, and
+  terminal eviction SHALL be deterministic by update time and run identity.
 * Fetched and failed crawl progress SHALL be mutually exclusive terminal page
   outcomes. The Admin failure rate SHALL divide failed outcomes by fetched plus
   failed outcomes and SHALL remain bounded from zero through 100 percent.
@@ -379,17 +404,25 @@ yago-admin-ui
   payload and SHALL reconnect if settlement of an undecodable payload fails. The
   node SHALL hold neither a database transaction nor a worker-session registry
   lock while awaiting confirmation.
-* One worker session SHALL retain at most 1,024 active leases. The node SHALL
-  partition adopted leases into ordered recovery batches of at most 16. The first
-  message of each batch SHALL carry that batch's complete lease-ID header, and the
-  node SHALL send no remainder of the batch until a successful heartbeat renews
-  every ID in the header. Before exposing the first recovered order, the crawler
-  SHALL validate the header and confirm only that batch. It SHALL then validate
-  each streamed lease against the header, require an exact final marker, and
-  retain no complete recovery set of order payloads. Periodic heartbeats SHALL
-  continue to carry the complete active lease set. A current crawler SHALL accept
-  the older single-batch shape up to the 1,024-lease contract ceiling; unmarked
-  replay from an older node SHALL retain per-order confirmation.
+* One worker session SHALL retain at most 1,024 active leases. The first recovery
+  frame SHALL declare the complete adopted-session lease manifest exactly once.
+  The node SHALL partition that manifest into ordered recovery batches of at most
+  16 and SHALL send no remainder of a batch until a successful targeted heartbeat
+  renews exactly every lease in that batch. The crawler SHALL retain the declared
+  manifest independently of current batch payloads, accept every later batch as a
+  nonrepeating subset, reject undeclared or repeated leases, require exact manifest
+  completion before ordinary streaming, and retain no complete recovery set of
+  order payloads. An ordinary frame SHALL close the recovery prefix permanently
+  for that stream.
+* A current heartbeat SHALL carry optional presence that distinguishes delivery
+  confirmation from lease keepalive. Explicit false SHALL renew its submitted
+  active set without releasing delivery credit. Explicit true SHALL release only
+  an expected delivery whose renewed lease set matches exactly. An absent marker
+  SHALL retain the legacy subset-confirmation rule for older crawlers. Periodic
+  heartbeats SHALL continue to carry the complete active lease set with explicit
+  false. A current crawler SHALL accept the older single-batch or unmarked replay
+  shape up to the 1,024-lease contract ceiling, and an older node SHALL ignore the
+  additive marker and manifest fields.
 * When its crawl runtime is enabled, the node SHALL keep crawl orders, priority
   indexes, idempotency, leases, settlement history, controls, and terminal-run
   delivery state in one atomic bbolt database at

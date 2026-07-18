@@ -132,6 +132,7 @@ func (r *Registry) RecordTerminal(
 		delete(r.terminal.records, removed.Run.RunID)
 		delete(r.terminal.owners, string(removed.Identity))
 	}
+	r.reconcileRunActivityLocked(runExisted, previousRun, run)
 	r.runs[progress.RunID] = run
 	r.evictLocked()
 	newlyTerminal := !runExisted || !isTerminal(previousRun.State)

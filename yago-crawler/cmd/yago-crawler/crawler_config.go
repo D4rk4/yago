@@ -17,6 +17,7 @@ const (
 	EnvDataDir                      = "YAGO_DATA_DIR"
 	EnvWorkerID                     = "YAGO_CRAWLER_WORKER_ID"
 	EnvWorkers                      = "YAGO_CRAWLER_WORKERS"
+	EnvMaxActiveRuns                = "YAGO_CRAWLER_MAX_ACTIVE_RUNS"
 	EnvPrioritizeAutomaticDiscovery = "YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY"
 	EnvMaxHostConcurrency           = "YAGO_CRAWLER_MAX_HOST_CONCURRENCY"
 	EnvMaxDepth                     = "YAGO_CRAWLER_MAX_DEPTH"
@@ -68,6 +69,7 @@ var DefaultUserAgent = "yago-crawler/" + version + " (+https://github.com/D4rk4/
 
 type CrawlConfig struct {
 	Workers                      int
+	MaxActiveRuns                int
 	PrioritizeAutomaticDiscovery bool
 	JobQueueSize                 int
 	MaxBodyBytes                 int64
@@ -94,6 +96,7 @@ type CrawlConfig struct {
 func DefaultCrawlConfig() CrawlConfig {
 	return CrawlConfig{
 		Workers:                      yagocrawlcontract.DefaultFetchWorkerConcurrency,
+		MaxActiveRuns:                yagocrawlcontract.DefaultActiveCrawlRunConcurrency,
 		PrioritizeAutomaticDiscovery: true,
 		JobQueueSize:                 256,
 		MaxBodyBytes:                 DefaultMaxBodyBytes,

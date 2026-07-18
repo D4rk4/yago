@@ -63,7 +63,7 @@ func (d heartbeatDelivery) confirmLease(ctx context.Context, leaseID string) boo
 		acknowledged = d.acknowledgments.snapshot()
 	}
 	confirmedLeaseIDs := []string{leaseID}
-	result, err := d.exchangeForLeases(ctx, acknowledged, confirmedLeaseIDs)
+	result, err := d.exchangeForLeases(ctx, acknowledged, confirmedLeaseIDs, true)
 	if err != nil {
 		d.leaseGrants.Revoke(leaseID)
 		slog.WarnContext(ctx, msgHeartbeatFailed, slog.Any("error", err))
@@ -76,7 +76,7 @@ func (d heartbeatDelivery) confirmLease(ctx context.Context, leaseID string) boo
 	applied := d.dispatchDirectives(ctx, result)
 	if d.acknowledgments != nil && len(applied) > 0 {
 		d.acknowledgments.add(applied)
-		d.confirmAppliedForLeases(ctx, confirmedLeaseIDs)
+		d.confirmAppliedForLeases(ctx, confirmedLeaseIDs, true)
 	}
 	if !d.leaseGrants.Confirmed(leaseID) {
 		d.leaseGrants.Revoke(leaseID)
@@ -96,16 +96,17 @@ func (d heartbeatDelivery) exchange(
 		activeLeases = d.leaseGrants.ActiveLeaseIDs()
 	}
 
-	return d.exchangeForLeases(ctx, acknowledged, activeLeases)
+	return d.exchangeForLeases(ctx, acknowledged, activeLeases, false)
 }
 
 func (d heartbeatDelivery) confirmApplied(ctx context.Context) {
-	d.confirmAppliedForLeases(ctx, nil)
+	d.confirmAppliedForLeases(ctx, nil, false)
 }
 
 func (d heartbeatDelivery) confirmAppliedForLeases(
 	ctx context.Context,
 	leaseIDs []string,
+	confirmDeliveries bool,
 ) {
 	acknowledgmentContext, cancel := context.WithTimeout(
 		context.WithoutCancel(ctx),
@@ -117,7 +118,12 @@ func (d heartbeatDelivery) confirmAppliedForLeases(
 	if leaseIDs == nil {
 		_, err = d.exchange(acknowledgmentContext, acknowledged)
 	} else {
-		_, err = d.exchangeForLeases(acknowledgmentContext, acknowledged, leaseIDs)
+		_, err = d.exchangeForLeases(
+			acknowledgmentContext,
+			acknowledged,
+			leaseIDs,
+			confirmDeliveries,
+		)
 	}
 	if err != nil {
 		slog.WarnContext(ctx, msgHeartbeatFailed, slog.Any("error", err))

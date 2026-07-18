@@ -47,8 +47,33 @@ func TestWorkerHeartbeatReadsLegacyWireAsUnknownActivity(t *testing.T) {
 	if err := proto.Unmarshal(wire, decoded); err != nil {
 		t.Fatalf("unmarshal legacy heartbeat: %v", err)
 	}
-	if decoded.GetWorkerId() != "legacy" || decoded.ActiveFetches != nil {
+	if decoded.GetWorkerId() != "legacy" || decoded.ActiveFetches != nil ||
+		decoded.ConfirmActiveLeaseDeliveries != nil {
 		t.Fatalf("decoded legacy heartbeat = %+v", decoded)
+	}
+}
+
+func TestWorkerHeartbeatDeliveryConfirmationPreservesPresence(t *testing.T) {
+	for _, confirmation := range []bool{false, true} {
+		wire, err := proto.Marshal(&crawlrpc.WorkerHeartbeat{
+			WorkerId:                     "current",
+			ConfirmActiveLeaseDeliveries: &confirmation,
+		})
+		if err != nil {
+			t.Fatalf("marshal delivery confirmation %v: %v", confirmation, err)
+		}
+		decoded := &crawlrpc.WorkerHeartbeat{}
+		if err := proto.Unmarshal(wire, decoded); err != nil {
+			t.Fatalf("unmarshal delivery confirmation %v: %v", confirmation, err)
+		}
+		if decoded.ConfirmActiveLeaseDeliveries == nil ||
+			decoded.GetConfirmActiveLeaseDeliveries() != confirmation {
+			t.Fatalf("decoded delivery confirmation = %+v", decoded)
+		}
+		legacy := dynamicpb.NewMessage(legacyWorkerHeartbeatDescriptor(t))
+		if err := proto.Unmarshal(wire, legacy); err != nil {
+			t.Fatalf("legacy decoder rejected delivery confirmation: %v", err)
+		}
 	}
 }
 
@@ -74,7 +99,11 @@ func TestLegacyWorkerHeartbeatDecoderIgnoresActiveFetches(t *testing.T) {
 }
 
 func TestControlDirectiveIdentityRoundTrips(t *testing.T) {
-	wire, err := proto.Marshal(&crawlrpc.CrawlControlDirective{DirectiveId: 73})
+	wire, err := proto.Marshal(&crawlrpc.CrawlControlDirective{
+		DirectiveId:       73,
+		Kind:              crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS,
+		MaximumActiveRuns: 37,
+	})
 	if err != nil {
 		t.Fatalf("marshal directive: %v", err)
 	}
@@ -82,8 +111,10 @@ func TestControlDirectiveIdentityRoundTrips(t *testing.T) {
 	if err := proto.Unmarshal(wire, decoded); err != nil {
 		t.Fatalf("unmarshal directive: %v", err)
 	}
-	if decoded.GetDirectiveId() != 73 {
-		t.Fatalf("directive id = %d, want 73", decoded.GetDirectiveId())
+	if decoded.GetDirectiveId() != 73 ||
+		decoded.GetKind() != crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS ||
+		decoded.GetMaximumActiveRuns() != 37 {
+		t.Fatalf("directive = %+v, want id 73 and active runs 37", decoded)
 	}
 }
 

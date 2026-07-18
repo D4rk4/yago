@@ -67,6 +67,7 @@ func (c *CrawlOrderConsumer) resolveActiveClaim(
 func (c *CrawlOrderConsumer) seedPreparedCrawlOrder(
 	ctx context.Context,
 	prepared preparedCrawlOrder,
+	releaseActiveRun func(),
 ) {
 	c.restoreRecoveredTally(prepared.order.Provenance, prepared.recovery)
 	reporter := newRunProgressReporter()
@@ -85,6 +86,7 @@ func (c *CrawlOrderConsumer) seedPreparedCrawlOrder(
 		prepared.profile,
 		func(succeeded bool) {
 			<-initialReported
+			defer releaseActiveRun()
 			finish(succeeded)
 		},
 	)

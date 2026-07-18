@@ -92,10 +92,22 @@ func dispatchCrawlWithDepth(
 	seed string,
 	depth int,
 ) string {
+	return dispatchNamedCrawl(t, ctx, opsURL, session, combinedCrawlName, seed, depth)
+}
+
+func dispatchNamedCrawl(
+	t *testing.T,
+	ctx context.Context,
+	opsURL string,
+	session adminSession,
+	name string,
+	seed string,
+	depth int,
+) string {
 	t.Helper()
 	body := fmt.Sprintf(
 		`{"name":%q,"seeds":[%q],"scope":"domain","maxDepth":%d,"maxPagesPerHost":-1}`,
-		combinedCrawlName,
+		name,
 		seed,
 		depth,
 	)

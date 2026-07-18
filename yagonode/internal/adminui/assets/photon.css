@@ -317,6 +317,8 @@ hr {
 }
 
 .cds-settings-form { max-width: 28rem; }
+.cds-search-explain { min-width: 0; max-width: 100%; margin-bottom: var(--cds-spacing-07); }
+.cds-search-explain > .cds-scroll-x > .cds-table { min-width: 46rem; }
 .cds-settings-form .cds-fieldset {
   display: grid;
   grid-template-columns: minmax(10rem, 1fr) minmax(7rem, 14rem);

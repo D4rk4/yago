@@ -167,6 +167,12 @@ The receiving node coalesces at most 16 ready deliveries for grouped document,
 Bleve, metadata, posting, stale-sweep, and recrawl commits. A partial group waits
 at most two milliseconds and stops waiting immediately when its context is
 cancelled, so batching cannot create an unbounded ingest delay.
+Before those storage operations begin, the node snapshots the submitting
+worker, process session, exact lease, and run authorization under its short
+lease-mutation boundary. It releases that boundary before document or index
+storage. Once authorized, the idempotent ingest absorption completes against
+that snapshot even if the lease changes later; a stale submission is rejected
+before its first storage side effect.
 
 HTML is decoded to UTF-8 with browser-compatible WHATWG encoding labels from
 the HTTP `Content-Type` and early HTML metadata. Before one page becomes a
@@ -235,6 +241,11 @@ schema and stable-identity bootstrap writes are outside this advisory gate;
 `YAGO_CRAWLER_WORKERS` starts 4 page-fetch workers by default and accepts 1–256;
 the same bootstrap value belongs in the node environment, whose persisted Admin
 setting becomes authoritative for every connected process after heartbeat;
+`YAGO_CRAWLER_MAX_ACTIVE_RUNS` defaults to 32 and accepts 1–256; it bounds the
+distinct crawl tasks whose prepared orders, frontiers, and progress reporters
+may remain active in each process, independently of page-fetch concurrency. The
+same bootstrap value belongs in the node environment, and the live
+`crawler.max_active_runs` Admin setting becomes authoritative after heartbeat;
 `YAGO_CRAWLER_RUN_PAGES_PER_MINUTE` defaults to 30 and limits each active run
 independently, with per-host crawl delay and concurrency applying additional
 politeness; there is no separate process-wide or fleet-wide pages-per-second
@@ -259,7 +270,13 @@ identity adopts that session-aware lease before or after its deadline; expiry
 does not release it to another worker. Deferred and legacy sessionless leases
 retain ordinary expiry and global requeue. The crawler waits for already-staged
 terminal settlements before closing both node connections. Replay keeps the same
-run identity, observation IDs, absolute tally, and remaining frontier.
+run identity, observation IDs, absolute tally, and remaining frontier. The first
+recovery frame declares the complete adopted-lease manifest, and later batches
+of at most 16 must be nonrepeating subsets of it. A keepalive retains the full
+set without granting delivery credit; an explicit targeted heartbeat confirms
+only the current batch. The crawler rejects an incomplete manifest, an unknown
+or repeated lease, recovery after ordinary streaming begins, or ordinary work
+before the declared recovery prefix is complete.
 
 Deleting frontier rows may leave reusable pages inside `frontier-v1.db` without
 increasing operating-system free space. If pressure persists, free space on the
@@ -275,6 +292,13 @@ requested size. Several updates during that drain coalesce to the newest value.
 Shutdown keeps its separate grace deadline and may still cancel a fetch that
 outlives it. The count applies per crawler process; it never limits the number
 of admitted crawl runs or queued tasks.
+
+A live active-task update changes a separate completion-driven admission gate.
+Increasing it wakes waiting orders. Decreasing it does not cancel or preempt an
+already admitted task; existing tasks finish normally, and new prepared orders
+wait until occupancy falls below the new limit. An active-task slot is held from
+prepared-order admission through the matching terminal completion callback, so
+waiting orders do not activate another frontier or periodic progress reporter.
 
 Outbound fetches, including the headless browser, are screened in-process at dial
 time against the connected IP address, so no external forward proxy is required;
@@ -343,7 +367,12 @@ fallbacks and browser attempts within one page job do not inflate the numerator.
 Each admitted run publishes its initial running snapshot with the immutable
 seeded queue depth before terminal settlement may report completion. Later
 running snapshots read the live pending depth, and no running snapshot can follow
-the terminal state.
+the terminal state. Progress transport keeps the current in-flight generation
+immutable. New running snapshots for the same run coalesce into its latest
+pending replacement, while ready terminal reports take priority and other ready
+runs receive service before that replacement. The bounded queue may therefore
+omit intermediate running values, but it preserves phase chains and protects an
+in-flight attempt from tail eviction.
 Host availability is tracked separately from that display tally. Connection,
 DNS, timeout, 403, 408, 429, and server failures back off only their host; a
 served representation accepted for parsing resets the consecutive-failure
@@ -381,7 +410,10 @@ session-fenced control plane requires a process-session identity that older
 crawlers do not send. Stop every crawler before replacing the node, replace both
 binaries, start and verify the node, and only then start the crawlers. A remote
 crawler host follows the same order and must retain or transfer its own
-`YAGO_DATA_DIR`.
+`YAGO_DATA_DIR`. The recovered-session manifest, explicit delivery-confirmation
+marker, and active-task directive are additive protobuf fields. Older decoders
+ignore them, and an absent confirmation marker retains the legacy subset rule,
+but mixed-version operation is not a supported deployment mode.
 
 Rollback is also coordinated. Stop the crawlers before the node, restore the
 matching stopped backup of the node broker and every crawler checkpoint, install
@@ -392,6 +424,9 @@ not open a checkpoint created by a newer crawler with an older binary.
 
 - A checkpoint is local to its `YAGO_DATA_DIR`; moving an unexpired lease to a
   different crawler host requires transferring or sharing that directory.
+- Active-task admission is per crawler process and completion-driven. It does not
+  preempt a long-running task or impose a fleet-wide task or pages-per-second
+  ceiling.
 - Feeding sitemap `lastmod` into persistent frontier recrawl scheduling is still
   planned; discovery from explicit sitemap or sitelist starts and from `robots.txt`
   `Sitemap:` directives (the `robots` start mode) is implemented.

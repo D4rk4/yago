@@ -13,7 +13,7 @@ import (
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 )
 
-func TestLegacyCrawlOrderDecoderIgnoresRecoveryFraming(t *testing.T) {
+func TestLegacyCrawlOrderDecoderIgnoresSessionManifest(t *testing.T) {
 	descriptor := legacyCrawlOrderMessageDescriptor(t)
 	wire, err := proto.Marshal(&crawlrpc.CrawlOrderMessage{
 		OrderJson:         []byte("order"),
@@ -21,6 +21,10 @@ func TestLegacyCrawlOrderDecoderIgnoresRecoveryFraming(t *testing.T) {
 		Recovered:         true,
 		RecoveredBatchEnd: true,
 		RecoveredLeaseIds: []string{"lease-a"},
+		RecoveredSessionLeaseIds: []string{
+			"lease-a",
+			"lease-b",
+		},
 	})
 	if err != nil {
 		t.Fatalf("marshal recovered crawl order: %v", err)
@@ -35,6 +39,14 @@ func TestLegacyCrawlOrderDecoderIgnoresRecoveryFraming(t *testing.T) {
 	}
 	if got := legacy.Get(descriptor.Fields().ByNumber(2)).String(); got != "lease-a" {
 		t.Fatalf("legacy lease id = %q", got)
+	}
+	if !legacy.Get(descriptor.Fields().ByNumber(3)).Bool() ||
+		!legacy.Get(descriptor.Fields().ByNumber(4)).Bool() {
+		t.Fatalf("legacy recovery flags = %+v", legacy)
+	}
+	legacyBatch := legacy.Get(descriptor.Fields().ByNumber(5)).List()
+	if legacyBatch.Len() != 1 || legacyBatch.Get(0).String() != "lease-a" {
+		t.Fatalf("legacy recovery batch = %v", legacyBatch)
 	}
 }
 
@@ -53,7 +65,8 @@ func TestCurrentCrawlOrderDecoderTreatsLegacyWireAsOrdinary(t *testing.T) {
 	}
 	if !bytes.Equal(current.GetOrderJson(), []byte("order")) ||
 		current.GetLeaseId() != "lease-a" || current.GetRecovered() ||
-		current.GetRecoveredBatchEnd() || len(current.GetRecoveredLeaseIds()) != 0 {
+		current.GetRecoveredBatchEnd() || len(current.GetRecoveredLeaseIds()) != 0 ||
+		len(current.GetRecoveredSessionLeaseIds()) != 0 {
 		t.Fatalf("current legacy crawl order = %+v", current)
 	}
 }
@@ -77,6 +90,24 @@ func legacyCrawlOrderMessageDescriptor(t *testing.T) protoreflect.MessageDescrip
 					Name:   proto.String("lease_id"),
 					Number: proto.Int32(2),
 					Label:  descriptorpb.FieldDescriptorProto_LABEL_OPTIONAL.Enum(),
+					Type:   descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum(),
+				},
+				{
+					Name:   proto.String("recovered"),
+					Number: proto.Int32(3),
+					Label:  descriptorpb.FieldDescriptorProto_LABEL_OPTIONAL.Enum(),
+					Type:   descriptorpb.FieldDescriptorProto_TYPE_BOOL.Enum(),
+				},
+				{
+					Name:   proto.String("recovered_batch_end"),
+					Number: proto.Int32(4),
+					Label:  descriptorpb.FieldDescriptorProto_LABEL_OPTIONAL.Enum(),
+					Type:   descriptorpb.FieldDescriptorProto_TYPE_BOOL.Enum(),
+				},
+				{
+					Name:   proto.String("recovered_lease_ids"),
+					Number: proto.Int32(5),
+					Label:  descriptorpb.FieldDescriptorProto_LABEL_REPEATED.Enum(),
 					Type:   descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum(),
 				},
 			},

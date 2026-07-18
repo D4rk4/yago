@@ -29,20 +29,21 @@ type recoveredOrderReplay struct {
 
 func drainCrawlOrderMessages(ctx context.Context, drain crawlOrderStreamDrain) {
 	var recovered recoveredOrderReplay
+	var sessionManifest recoveredSessionManifest
 	for {
 		message, err := drain.stream.Recv()
 		if err != nil {
-			logOrderStreamEnd(ctx, err, recovered.active())
+			logOrderStreamEnd(ctx, err, recovered.active() || sessionManifest.pending())
 
 			return
 		}
 		if message.GetRecovered() {
-			if !receiveRecoveredOrder(ctx, drain, &recovered, message) {
+			if !receiveRecoveredOrder(ctx, drain, &recovered, &sessionManifest, message) {
 				return
 			}
 			continue
 		}
-		if !receiveOrdinaryOrder(ctx, drain, recovered, message) {
+		if !receiveOrdinaryOrder(ctx, drain, recovered, &sessionManifest, message) {
 			return
 		}
 	}
@@ -52,10 +53,13 @@ func receiveOrdinaryOrder(
 	ctx context.Context,
 	drain crawlOrderStreamDrain,
 	recovered recoveredOrderReplay,
+	sessionManifest *recoveredSessionManifest,
 	message *crawlrpc.CrawlOrderMessage,
 ) bool {
 	if recovered.active() || message.GetRecoveredBatchEnd() ||
-		len(message.GetRecoveredLeaseIds()) > 0 {
+		len(message.GetRecoveredLeaseIds()) > 0 ||
+		len(message.GetRecoveredSessionLeaseIds()) > 0 ||
+		!sessionManifest.acceptOrdinary() {
 		slog.WarnContext(
 			ctx,
 			msgOrderStreamReceiveFailed,
@@ -79,6 +83,7 @@ func receiveRecoveredOrder(
 	ctx context.Context,
 	drain crawlOrderStreamDrain,
 	recovered *recoveredOrderReplay,
+	sessionManifest *recoveredSessionManifest,
 	message *crawlrpc.CrawlOrderMessage,
 ) bool {
 	started, finished, err := recovered.accept(message)
@@ -91,9 +96,30 @@ func receiveRecoveredOrder(
 
 		return false
 	}
-	if started && drain.heartbeat != nil &&
-		!drain.heartbeat.confirmRecoveredLeases(ctx, recovered.leaseIDs) {
+	confirmationLeaseIDs, err := sessionManifest.acceptFrame(
+		started,
+		recovered.leaseIDs,
+		message.GetRecoveredSessionLeaseIds(),
+	)
+	if err != nil {
+		slog.WarnContext(
+			ctx,
+			msgOrderStreamReceiveFailed,
+			slog.Any("error", err),
+		)
+
 		return false
+	}
+	if started && drain.heartbeat != nil {
+		if len(message.GetRecoveredSessionLeaseIds()) > len(recovered.leaseIDs) {
+			if !drain.heartbeat.retainRecoveredLeases(ctx, confirmationLeaseIDs) {
+				return false
+			}
+			confirmationLeaseIDs = recovered.leaseIDs
+		}
+		if !drain.heartbeat.confirmRecoveredLeases(ctx, confirmationLeaseIDs) {
+			return false
+		}
 	}
 	delivery, valid, err := decodeCrawlOrderMessage(ctx, drain, message)
 	if err != nil {

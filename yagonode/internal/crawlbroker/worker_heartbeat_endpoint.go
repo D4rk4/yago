@@ -62,7 +62,11 @@ func (s *exchangeServer) Heartbeat(
 
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	s.sessions.confirmDeliveries(workerID, workerSessionID, renewed)
+	if req.ConfirmActiveLeaseDeliveries == nil {
+		s.sessions.confirmDeliveries(workerID, workerSessionID, renewed)
+	} else if req.GetConfirmActiveLeaseDeliveries() {
+		s.sessions.confirmExactDeliveries(workerID, workerSessionID, renewed)
+	}
 
 	policy := s.control.StoragePressurePolicy()
 	reservedFree := policy.ReservedFreeBytes

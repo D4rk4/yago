@@ -39,6 +39,7 @@ type CrawlOrderConsumer struct {
 	tally           RunTallySource
 	active          *activeOrders
 	growthAdmission GrowthAdmission
+	activeRuns      *ActiveRunAdmission
 }
 
 type GrowthAdmission interface {
@@ -49,6 +50,14 @@ func (c *CrawlOrderConsumer) WithGrowthAdmission(
 	admission GrowthAdmission,
 ) *CrawlOrderConsumer {
 	c.growthAdmission = admission
+
+	return c
+}
+
+func (c *CrawlOrderConsumer) WithActiveRunAdmission(
+	admission *ActiveRunAdmission,
+) *CrawlOrderConsumer {
+	c.activeRuns = admission
 
 	return c
 }
@@ -156,6 +165,16 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 	if !prepared {
 		return
 	}
+	releaseActiveRun := func() {}
+	if c.activeRuns != nil {
+		var admitted bool
+		releaseActiveRun, admitted = c.activeRuns.acquire(ctx)
+		if !admitted {
+			c.retainOrder(ctx, order, delivery)
+
+			return
+		}
+	}
 	c.seedPreparedCrawlOrder(ctx, preparedCrawlOrder{
 		order:    order,
 		delivery: delivery,
@@ -163,7 +182,7 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 		recovery: recovery,
 		profile:  profile,
 		requests: requests,
-	})
+	}, releaseActiveRun)
 }
 
 func (c *CrawlOrderConsumer) finishRun(

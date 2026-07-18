@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/boltvault"
 	"github.com/D4rk4/yago/yagonode/internal/memvault"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -26,6 +27,13 @@ func TestOpenServesAndCloses(t *testing.T) {
 	}
 	if broker.Orders == nil || broker.Ingest == nil {
 		t.Fatal("broker ports must be wired")
+	}
+	if maximum := broker.Control.MaximumActiveRuns(); maximum != yagocrawlcontract.DefaultActiveCrawlRunConcurrency {
+		t.Fatalf(
+			"default maximum active runs = %d, want %d",
+			maximum,
+			yagocrawlcontract.DefaultActiveCrawlRunConcurrency,
+		)
 	}
 	broker.Close()
 }

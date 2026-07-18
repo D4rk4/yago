@@ -25,6 +25,13 @@ func TestLoadCrawlConfigDefaultsToLoopbackWhenUnset(t *testing.T) {
 		t.Fatalf("fetch workers = %d, want %d", cfg.FetchWorkers,
 			yagocrawlcontract.DefaultFetchWorkerConcurrency)
 	}
+	if cfg.MaxActiveRuns != yagocrawlcontract.DefaultActiveCrawlRunConcurrency {
+		t.Fatalf(
+			"maximum active runs = %d, want %d",
+			cfg.MaxActiveRuns,
+			yagocrawlcontract.DefaultActiveCrawlRunConcurrency,
+		)
+	}
 	if cfg.MaxPagesPerRun != yagocrawlcontract.DefaultMaxPagesPerRun {
 		t.Fatalf("max pages per run = %d, want %d", cfg.MaxPagesPerRun,
 			yagocrawlcontract.DefaultMaxPagesPerRun)
@@ -89,6 +96,7 @@ func TestLoadCrawlConfigRejectsBadQualityGateValue(t *testing.T) {
 func TestLoadCrawlConfigReadsCrawlerRuntimeSettings(t *testing.T) {
 	env := map[string]string{
 		envCrawlerWorkers:               "20",
+		envCrawlerMaxActiveRuns:         "37",
 		envCrawlerMaxPagesPerRun:        "1234",
 		envPrioritizeAutomaticDiscovery: "false",
 	}
@@ -96,14 +104,18 @@ func TestLoadCrawlConfigReadsCrawlerRuntimeSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load crawl config: %v", err)
 	}
-	if config.FetchWorkers != 20 || config.MaxPagesPerRun != 1234 ||
+	if config.FetchWorkers != 20 || config.MaxActiveRuns != 37 ||
+		config.MaxPagesPerRun != 1234 ||
 		config.PrioritizeAutomaticDiscovery {
 		t.Fatalf("crawler runtime settings = %+v", config)
 	}
 }
 
 func TestLoadCrawlConfigDoesNotReadJoinedLegacyCrawlerEnvironmentName(t *testing.T) {
-	env := map[string]string{"YAGO" + "CRAWLER_WORKERS": "20"}
+	env := map[string]string{
+		"YAGO" + "CRAWLER_WORKERS":         "20",
+		"YAGO" + "CRAWLER_MAX_ACTIVE_RUNS": "64",
+	}
 	config, err := loadCrawlConfig(func(key string) string { return env[key] })
 	if err != nil {
 		t.Fatalf("load crawl config: %v", err)
@@ -112,11 +124,19 @@ func TestLoadCrawlConfigDoesNotReadJoinedLegacyCrawlerEnvironmentName(t *testing
 		t.Fatalf("fetch workers = %d, want default %d",
 			config.FetchWorkers, yagocrawlcontract.DefaultFetchWorkerConcurrency)
 	}
+	if config.MaxActiveRuns != yagocrawlcontract.DefaultActiveCrawlRunConcurrency {
+		t.Fatalf(
+			"maximum active runs = %d, want default %d",
+			config.MaxActiveRuns,
+			yagocrawlcontract.DefaultActiveCrawlRunConcurrency,
+		)
+	}
 }
 
 func TestLoadCrawlConfigRejectsInvalidCrawlerRuntimeSettings(t *testing.T) {
 	for key, value := range map[string]string{
 		envCrawlerWorkers:               "257",
+		envCrawlerMaxActiveRuns:         "257",
 		envCrawlerMaxPagesPerRun:        "-1",
 		envPrioritizeAutomaticDiscovery: "sometimes",
 	} {

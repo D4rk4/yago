@@ -15,11 +15,14 @@ type ControlRegistry struct {
 	directives                    controlDirectiveLedger
 	fetchWorkers                  uint32
 	fetchWorkersSet               bool
+	maximumActiveRuns             uint32
+	maximumActiveRunsSet          bool
 	prioritizeAutomaticDiscovery  bool
 	automaticDiscoveryPrioritySet bool
 	// workers counts the live StreamOrders connections per worker id so a
 	// broadcast (RestartWorkers) reaches exactly the crawlers attached now.
 	workers               map[string]int
+	runWorkers            map[string]string
 	activeFetches         map[string]crawlerActiveFetches
 	storageStates         map[string]crawlerStorageState
 	initialized           map[string]bool
@@ -38,6 +41,7 @@ func newControlRegistryWithLedger(
 	registry := &ControlRegistry{
 		directives:    directives,
 		workers:       make(map[string]int),
+		runWorkers:    make(map[string]string),
 		activeFetches: make(map[string]crawlerActiveFetches),
 		storageStates: make(map[string]crawlerStorageState),
 		initialized:   make(map[string]bool),
@@ -46,6 +50,8 @@ func newControlRegistryWithLedger(
 	if len(defaults) > 0 {
 		registry.fetchWorkers = defaults[0].fetchWorkers
 		registry.fetchWorkersSet = defaults[0].fetchWorkers > 0
+		registry.maximumActiveRuns = defaults[0].maximumActiveRuns
+		registry.maximumActiveRunsSet = defaults[0].maximumActiveRuns > 0
 		registry.prioritizeAutomaticDiscovery = defaults[0].prioritizeAutomaticDiscovery
 		registry.automaticDiscoveryPrioritySet = true
 		registry.storagePressurePolicy = defaults[0].storagePressurePolicy
@@ -135,8 +141,8 @@ func (r *ControlRegistry) RestartWorkers() int {
 	return signalled
 }
 
-// Enqueue queues a directive for a worker; it is delivered on the worker's next
-// heartbeat. A blank worker id is ignored, since there is no heartbeat to carry it.
+// Enqueue queues a directive for its current run worker or the supplied worker.
+// A blank worker id is ignored, since there is no heartbeat to carry it.
 func (r *ControlRegistry) Enqueue(
 	workerID string,
 	directive yagocrawlcontract.CrawlControlDirective,
@@ -150,11 +156,15 @@ func (r *ControlRegistry) Enqueue(
 	if !validControlDirective(directive) {
 		return false
 	}
-	if r.workers[workerID] == 0 && directive.RunID == "" {
+	targetWorkerID := workerID
+	if assignedWorkerID := r.runWorkers[directive.RunID]; assignedWorkerID != "" {
+		targetWorkerID = assignedWorkerID
+	}
+	if r.workers[targetWorkerID] == 0 && directive.RunID == "" {
 		return false
 	}
 
-	return r.enqueueLocked(workerID, directive)
+	return r.enqueueLocked(targetWorkerID, directive)
 }
 
 func (r *ControlRegistry) enqueueLocked(
@@ -197,6 +207,7 @@ func directiveToProto(
 		RunId:                        runID,
 		PagesPerMinute:               directive.PagesPerMinute,
 		FetchWorkers:                 directive.FetchWorkers,
+		MaximumActiveRuns:            directive.MaximumActiveRuns,
 		PrioritizeAutomaticDiscovery: directive.PrioritizeAutomaticDiscovery,
 	}
 }
@@ -215,6 +226,8 @@ func controlKindToProto(kind yagocrawlcontract.CrawlControlKind) crawlrpc.CrawlC
 		return crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESTART
 	case yagocrawlcontract.CrawlControlSetWorkers:
 		return crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_WORKERS
+	case yagocrawlcontract.CrawlControlSetActiveRuns:
+		return crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS
 	case yagocrawlcontract.CrawlControlSetAutomaticDiscoveryPriority:
 		return crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY
 	default:

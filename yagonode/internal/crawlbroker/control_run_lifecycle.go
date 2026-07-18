@@ -15,6 +15,7 @@ func (r *ControlRegistry) CompleteRun(
 	if err := r.directives.ReconcileRun(ctx, target.WorkerID, target.RunID, true); err != nil {
 		return fmt.Errorf("complete crawl control run: %w", err)
 	}
+	delete(r.runWorkers, target.RunID)
 
 	return nil
 }

@@ -20,11 +20,13 @@ const (
 	restartPendingPath      = "/pending-restart.html"
 	restartPendingStartPath = "/pending-restart-start"
 	restartOriginReadyPath  = "/restart-ready.html"
+	restartManifestHoldPath = "/manifest-hold.html"
 )
 
 type restartOrigin struct {
-	seedURL   string
-	container testcontainers.Container
+	seedURL     string
+	manifestURL string
+	container   testcontainers.Container
 }
 
 func startRestartOrigin(t *testing.T, ctx context.Context, networkName string) restartOrigin {
@@ -36,6 +38,10 @@ func startRestartOrigin(t *testing.T, ctx context.Context, networkName string) r
 	)
 	pendingPage := fmt.Sprintf(
 		`<!doctype html><html><head><title>Recovered pending page</title></head><body><p>%s</p></body></html>`,
+		restartIndexableText(4800),
+	)
+	manifestPage := fmt.Sprintf(
+		`<!doctype html><html><head><title>Recovery manifest hold</title></head><body><p>%s</p></body></html>`,
 		restartIndexableText(4800),
 	)
 	nginxConfiguration := `events {}
@@ -55,6 +61,9 @@ http {
     location = /pending-restart-start {
       internal;
       return 204;
+    }
+    location = /manifest-hold.html {
+      limit_rate 1;
     }
   }
 }`
@@ -86,6 +95,11 @@ http {
 					ContainerFilePath: "/usr/share/nginx/html" + restartOriginReadyPath,
 					FileMode:          0o644,
 				},
+				{
+					Reader:            strings.NewReader(manifestPage),
+					ContainerFilePath: "/usr/share/nginx/html" + restartManifestHoldPath,
+					FileMode:          0o644,
+				},
 			},
 			WaitingFor: wait.ForHTTP(restartOriginReadyPath).WithStartupTimeout(time.Minute),
 		},
@@ -97,8 +111,9 @@ http {
 	dumpLogsOnFailure(t, "restart-origin", container)
 
 	return restartOrigin{
-		seedURL:   "http://" + restartOriginAlias + restartSeedPath,
-		container: container,
+		seedURL:     "http://" + restartOriginAlias + restartSeedPath,
+		manifestURL: "http://" + restartOriginAlias + restartManifestHoldPath,
+		container:   container,
 	}
 }
 

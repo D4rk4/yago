@@ -54,12 +54,21 @@ func TestRecoveredOrderStreamFramesOneBatch(t *testing.T) {
 		if !message.GetRecovered() || message.GetRecoveredBatchEnd() != (index == len(orders)-1) {
 			t.Fatalf("recovered frame %d = %+v", index, message)
 		}
-		if index == 0 {
+		switch {
+		case index == 0:
 			if len(message.GetRecoveredLeaseIds()) != len(orders) {
 				t.Fatalf("recovered lease header = %v", message.GetRecoveredLeaseIds())
 			}
-		} else if len(message.GetRecoveredLeaseIds()) != 0 {
+			if len(message.GetRecoveredSessionLeaseIds()) != len(orders) {
+				t.Fatalf(
+					"recovered session lease header = %v",
+					message.GetRecoveredSessionLeaseIds(),
+				)
+			}
+		case len(message.GetRecoveredLeaseIds()) != 0:
 			t.Fatalf("repeated recovered lease header at frame %d", index)
+		case len(message.GetRecoveredSessionLeaseIds()) != 0:
+			t.Fatalf("repeated recovered session header at frame %d", index)
 		}
 	}
 	if err := server.streamRecoveredOrders(

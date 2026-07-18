@@ -390,6 +390,21 @@ a successful response applies the persisted node value before intake. If that
 attempt fails, the environment bootstrap is the only available policy until a
 periodic heartbeat succeeds and applies the authoritative node value live.
 
+`crawler.max_active_runs` is the per-process active-task workbench. It defaults
+to 32, accepts 1–256, and is independent of `crawler.fetch_workers`. A task holds
+one slot from prepared-order admission through terminal completion; additional
+ordinary or recovered tasks wait without activating another frontier or periodic
+progress reporter. Increasing the value wakes waiting work. Decreasing it lets
+already active tasks finish and admits no replacement until occupancy is below
+the new limit. The environment bootstrap and Admin value must be configured in
+the node and crawler together.
+
+On reconnect, the node declares the complete adopted-lease manifest once and
+streams it in confirmed batches of at most 16. Periodic heartbeats keep every
+active lease alive but do not confirm unseen deliveries; a targeted heartbeat
+must explicitly confirm the current lease or batch. This protocol is automatic
+and has no separate operator timing control.
+
 Accepting an untrusted certificate authority preserves encryption but does not
 authenticate the remote server and permits an on-path endpoint to substitute
 content. Disable this option when indexing requires verified server identity.
@@ -407,6 +422,7 @@ a poison retry loop.
 | --- | --- | --- |
 | `YAGO_CRAWL_RPC_ADDR` | `127.0.0.1:9091` | Address the node serves the crawl gRPC endpoint on. `off` disables crawling; use an explicit bind such as `:9091` for remote workers. |
 | `YAGO_CRAWLER_WORKERS` | `4` | Bootstrap page-fetch concurrency for each connected crawler process (1–256). Keep the same bootstrap value in the crawler environment. The persisted Configuration → Crawler value is sent over heartbeat and becomes authoritative after connection; it limits neither crawl runs nor queued tasks. |
+| `YAGO_CRAWLER_MAX_ACTIVE_RUNS` | `32` | Bootstrap active crawl-task limit for each connected crawler process (1–256). Admin key: `crawler.max_active_runs`; it applies live after heartbeat and is independent of page-fetch workers. Excess ordinary and recovered tasks wait without activating frontier or progress work. |
 | `YAGO_CRAWLER_MAX_PAGES_PER_RUN` | `50000` | Bootstrap whole-run page budget in both node and crawler environments. The node stamps the current Configuration → Crawler value into each new task profile; the crawler value is the fallback for legacy profiles that omit the additive field. `0` is unlimited. Existing and recrawl profiles retain their recorded value. |
 | `YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY` | `true` | Bootstrap in both node and crawler environments. Gives explicit swarm and web-discovery work bounded three-order and three-page priority. `false` preserves exact global FIFO order leasing and disables class preference in crawler page dispatch. The one-second startup heartbeat is authoritative when successful; later heartbeat changes apply live. |
 
@@ -415,3 +431,8 @@ active page fetches finish, and starts the latest requested worker group without
 restarting the process. The value applies independently to every crawler
 process; aggregate fleet concurrency is therefore this value multiplied by the
 number of connected processes.
+
+An active-task-limit change does not resize page-fetch workers and does not
+cancel active tasks. It changes only subsequent task admission in each crawler
+process. Aggregate fleet task capacity is the per-process value multiplied by
+the number of connected crawler processes.

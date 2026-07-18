@@ -53,3 +53,39 @@ func TestCrawlerRuntimeSettingsAreLiveAndBounded(t *testing.T) {
 			liveWorkers, livePageBudget, livePriority)
 	}
 }
+
+func TestMaximumActiveCrawlTaskSettingIsLiveAndBounded(t *testing.T) {
+	definition := indexSettingDefinitions()[settingKeyCrawlerMaximumActiveRuns]
+	if definition.restartRequired() {
+		t.Fatal("maximum active crawl tasks must apply live")
+	}
+	for _, value := range []string{"0", "257", "many"} {
+		if _, err := definition.normalize(value); err == nil {
+			t.Fatalf("active-run concurrency %q was accepted", value)
+		}
+	}
+	if normalized, err := definition.normalize(" 32 "); err != nil || normalized != "32" {
+		t.Fatalf("normalize active runs = %q/%v, want 32/nil", normalized, err)
+	}
+	baseline := nodeConfig{Crawl: crawlConfig{MaxActiveRuns: 32}}
+	if value := definition.defaultValue(baseline); value != "32" {
+		t.Fatalf("default active-run concurrency = %q, want 32", value)
+	}
+	config := definition.apply(nodeConfig{}, "37")
+	if config.Crawl.MaxActiveRuns != 37 {
+		t.Fatalf("applied active-run concurrency = %d, want 37", config.Crawl.MaxActiveRuns)
+	}
+	overridden := applyRuntimeSettingOverrides(baseline, map[string]string{
+		settingKeyCrawlerMaximumActiveRuns: "37",
+	})
+	if overridden.Crawl.MaxActiveRuns != 37 {
+		t.Fatalf("stored active-run concurrency = %d, want 37", overridden.Crawl.MaxActiveRuns)
+	}
+	toggles := newRuntimeToggles(nodeConfig{})
+	liveMaximum := 0
+	toggles.SetCrawlerMaximumActiveRunsSink(func(value int) { liveMaximum = value })
+	definition.applyLive(toggles, "37")
+	if liveMaximum != 37 {
+		t.Fatalf("live active-run concurrency = %d, want 37", liveMaximum)
+	}
+}

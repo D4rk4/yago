@@ -21,6 +21,13 @@ func TestDefaultCrawlConfig(t *testing.T) {
 	if !cfg.PrioritizeAutomaticDiscovery {
 		t.Error("automatic discovery priority must default on")
 	}
+	if cfg.MaxActiveRuns != yagocrawlcontract.DefaultActiveCrawlRunConcurrency {
+		t.Errorf(
+			"maximum active runs = %d, want %d",
+			cfg.MaxActiveRuns,
+			yagocrawlcontract.DefaultActiveCrawlRunConcurrency,
+		)
+	}
 	if cfg.MaxRedirects != DefaultMaxRedirects {
 		t.Errorf("redirects = %d", cfg.MaxRedirects)
 	}
@@ -59,6 +66,29 @@ func TestLoadServiceConfigBoundsFetchWorkers(t *testing.T) {
 	if config.Crawl.Workers != yagocrawlcontract.MaximumFetchWorkerConcurrency {
 		t.Fatalf("workers = %d, want %d", config.Crawl.Workers,
 			yagocrawlcontract.MaximumFetchWorkerConcurrency)
+	}
+}
+
+func TestLoadServiceConfigBoundsMaximumActiveRuns(t *testing.T) {
+	if _, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNodeRPCAddr:   "node:9091",
+		EnvMaxActiveRuns: "257",
+	})); err == nil {
+		t.Fatal("expected excessive active-run concurrency to fail")
+	}
+	config, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNodeRPCAddr:   "node:9091",
+		EnvMaxActiveRuns: "256",
+	}))
+	if err != nil {
+		t.Fatalf("load maximum active-run concurrency: %v", err)
+	}
+	if config.Crawl.MaxActiveRuns != yagocrawlcontract.MaximumActiveCrawlRunConcurrency {
+		t.Fatalf(
+			"maximum active runs = %d, want %d",
+			config.Crawl.MaxActiveRuns,
+			yagocrawlcontract.MaximumActiveCrawlRunConcurrency,
+		)
 	}
 }
 
@@ -218,8 +248,13 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	if !cfg.EgressAllowLAN {
 		t.Error("EgressAllowLAN = false, want true")
 	}
-	if cfg.Crawl.Workers != 3 || cfg.Crawl.MaxDepth != 5 {
-		t.Errorf("workers/depth = %d %d", cfg.Crawl.Workers, cfg.Crawl.MaxDepth)
+	if cfg.Crawl.Workers != 3 || cfg.Crawl.MaxActiveRuns != 19 || cfg.Crawl.MaxDepth != 5 {
+		t.Errorf(
+			"workers/active runs/depth = %d %d %d",
+			cfg.Crawl.Workers,
+			cfg.Crawl.MaxActiveRuns,
+			cfg.Crawl.MaxDepth,
+		)
 	}
 	if cfg.Crawl.PrioritizeAutomaticDiscovery {
 		t.Error("automatic discovery priority = true, want false override")
@@ -259,6 +294,7 @@ func overrideServiceEnvironment() map[string]string {
 		EnvShutdownGrace:                "5s",
 		EnvEgressAllowLAN:               "true",
 		EnvWorkers:                      "3",
+		EnvMaxActiveRuns:                "19",
 		EnvPrioritizeAutomaticDiscovery: "false",
 		EnvMaxHostConcurrency:           "6",
 		EnvMaxDepth:                     "5",
@@ -281,6 +317,7 @@ func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 	base := map[string]string{EnvNodeRPCAddr: "node:9091"}
 	cases := map[string]string{
 		EnvWorkers:         "0",
+		EnvMaxActiveRuns:   "0",
 		EnvMaxDepth:        "abc",
 		EnvMaxPagesPerRun:  "-5",
 		EnvCrawlDelay:      "-1s",
@@ -314,6 +351,7 @@ func TestLoadServiceConfigRejectsParseErrors(t *testing.T) {
 		EnvMaxRedirects:                 "not-a-number",
 		EnvSitemapURLLimit:              "not-a-number",
 		EnvMaxHostConcurrency:           "not-a-number",
+		EnvMaxActiveRuns:                "not-a-number",
 		EnvBrowserSandbox:               "not-a-bool",
 		EnvBrowserFailureThreshold:      "not-a-number",
 		EnvPrioritizeAutomaticDiscovery: "not-a-bool",

@@ -8,15 +8,19 @@ import (
 func assembleCrawlerControlHandler(
 	restart func(),
 	concurrency *workerConcurrency,
+	resizeActiveRuns func(int),
 	crawlFrontier *frontier.Frontier,
 ) crawlorder.ControlHandler {
 	return crawlorder.NewRestartControlHandler(
 		restart,
 		crawlorder.NewWorkerConcurrencyControlHandler(
 			concurrency.Set,
-			crawlorder.NewAutomaticDiscoveryPriorityControlHandler(
-				crawlFrontier.SetAutomaticDiscoveryPriority,
-				crawlorder.NewFrontierControlHandler(crawlFrontier),
+			crawlorder.NewActiveRunControlHandler(
+				resizeActiveRuns,
+				crawlorder.NewAutomaticDiscoveryPriorityControlHandler(
+					crawlFrontier.SetAutomaticDiscoveryPriority,
+					crawlorder.NewFrontierControlHandler(crawlFrontier),
+				),
 			),
 		),
 	)

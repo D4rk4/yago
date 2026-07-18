@@ -181,9 +181,12 @@ func runServiceWithMetrics(
 		growthAdmission: storagePressure,
 	})
 	workerConcurrency := newWorkerConcurrency(crawl.Workers)
+	activeRuns := crawlorder.NewActiveRunAdmission(crawl.MaxActiveRuns)
 	receiverCtx, cancelReceiver := context.WithCancel(ctx)
 	defer cancelReceiver()
-	control := assembleCrawlerControlHandler(restart.Trigger, workerConcurrency, frontier)
+	control := assembleCrawlerControlHandler(
+		restart.Trigger, workerConcurrency, activeRuns.Resize, frontier,
+	)
 	orders := crawlorder.NewGRPCOrderReceiver(
 		receiverCtx, nodeRPC.control, cfg.WorkerID, control,
 		crawlorder.WithHeartbeatActiveFetches(metrics.ActiveFetchWorkerJobs),
@@ -206,6 +209,7 @@ func runServiceWithMetrics(
 		frontier:        frontier,
 		orders:          orders,
 		concurrency:     workerConcurrency,
+		activeRuns:      activeRuns,
 		emitter:         emitter,
 		growthAdmission: storagePressure,
 	}).lifecycle(cfg, source, metrics)

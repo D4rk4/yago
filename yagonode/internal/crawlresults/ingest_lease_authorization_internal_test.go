@@ -39,6 +39,63 @@ func TestAuthorizeIngestDeliveryRejectsLeaseLossBeforeMutation(t *testing.T) {
 	}
 }
 
+func TestAuthorizeIngestDeliveryPrefersLeaseSnapshot(t *testing.T) {
+	authorizedSnapshots := 0
+	legacyMutations := 0
+	delivery := IngestDelivery{
+		AuthorizeLeaseSnapshot: func(context.Context) error {
+			authorizedSnapshots++
+
+			return nil
+		},
+		BeginMutation: func(context.Context) (func(), error) {
+			legacyMutations++
+
+			return func() {}, nil
+		},
+	}
+	release, authorized := authorizeIngestDelivery(t.Context(), delivery)
+	release()
+	if !authorized || authorizedSnapshots != 1 || legacyMutations != 0 {
+		t.Fatalf(
+			"authorization = %v snapshots=%d legacy=%d",
+			authorized,
+			authorizedSnapshots,
+			legacyMutations,
+		)
+	}
+}
+
+func TestAuthorizeIngestDeliveryRejectsStaleLeaseSnapshot(t *testing.T) {
+	leaseLost := 0
+	legacyMutations := 0
+	delivery := IngestDelivery{
+		AuthorizeLeaseSnapshot: func(context.Context) error {
+			return errors.New("stale snapshot")
+		},
+		BeginMutation: func(context.Context) (func(), error) {
+			legacyMutations++
+
+			return func() {}, nil
+		},
+		LeaseLost: func(context.Context) error {
+			leaseLost++
+
+			return nil
+		},
+	}
+	release, authorized := authorizeIngestDelivery(t.Context(), delivery)
+	release()
+	if authorized || leaseLost != 1 || legacyMutations != 0 {
+		t.Fatalf(
+			"authorization = %v leaseLost=%d legacy=%d",
+			authorized,
+			leaseLost,
+			legacyMutations,
+		)
+	}
+}
+
 func TestAuthorizeIngestGroupRetainsOnlyLiveLeases(t *testing.T) {
 	released := 0
 	lost := 0
@@ -121,6 +178,45 @@ func TestAuthorizeIngestGroupHoldsOneSharedMutationFence(t *testing.T) {
 		if events[index] != want[index] {
 			t.Fatalf("events = %v, want %v", events, want)
 		}
+	}
+}
+
+func TestAuthorizeIngestGroupUsesLeaseSnapshotsWithoutMutationFence(t *testing.T) {
+	groupOpened := false
+	legacyMutations := 0
+	authorizedSnapshots := 0
+	delivery := func() IngestDelivery {
+		return IngestDelivery{
+			AuthorizeLeaseSnapshot: func(context.Context) error {
+				authorizedSnapshots++
+
+				return nil
+			},
+			BeginMutation: func(context.Context) (func(), error) {
+				legacyMutations++
+
+				return func() {}, nil
+			},
+		}
+	}
+	first := delivery()
+	first.BeginMutationGroup = func(ctx context.Context) (context.Context, func()) {
+		groupOpened = true
+
+		return ctx, func() {}
+	}
+	authorized, releases := authorizeIngestGroup(t.Context(), []IngestDelivery{first, delivery()})
+	releaseIngestGroup(releases)
+	if len(authorized) != 2 || len(releases) != 2 || groupOpened ||
+		authorizedSnapshots != 2 || legacyMutations != 0 {
+		t.Fatalf(
+			"authorized/releases/group/snapshots/legacy = %d/%d/%t/%d/%d",
+			len(authorized),
+			len(releases),
+			groupOpened,
+			authorizedSnapshots,
+			legacyMutations,
+		)
 	}
 }
 

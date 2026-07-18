@@ -17,6 +17,7 @@ const (
 	// supervisor brings it back up; RunID is ignored since it targets the process.
 	CrawlControlRestart                       CrawlControlKind = "restart"
 	CrawlControlSetWorkers                    CrawlControlKind = "set_workers"
+	CrawlControlSetActiveRuns                 CrawlControlKind = "set_active_runs"
 	CrawlControlSetAutomaticDiscoveryPriority CrawlControlKind = "set_automatic_discovery_priority"
 )
 
@@ -30,5 +31,6 @@ type CrawlControlDirective struct {
 	RunID                        string
 	PagesPerMinute               uint32
 	FetchWorkers                 uint32
+	MaximumActiveRuns            uint32
 	PrioritizeAutomaticDiscovery bool
 }

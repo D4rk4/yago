@@ -23,6 +23,7 @@ type crawlerExecution struct {
 	frontier        *frontier.Frontier
 	orders          *crawlorder.GRPCOrderReceiver
 	concurrency     *workerConcurrency
+	activeRuns      *crawlorder.ActiveRunAdmission
 	emitter         ingest.BatchEmitter
 	growthAdmission interface {
 		WaitForGrowth(context.Context) bool
@@ -68,7 +69,8 @@ func (execution crawlerExecution) lifecycle(
 		newCrawlRequestExpander(client, cfg.Crawl, guard),
 	).WithProgressReporter(progress).
 		WithRunTally(execution.tally).
-		WithGrowthAdmission(execution.growthAdmission)
+		WithGrowthAdmission(execution.growthAdmission).
+		WithActiveRunAdmission(execution.activeRuns)
 
 	return crawlerLifecycle{
 		worker:      worker,

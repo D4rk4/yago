@@ -30,16 +30,16 @@ type Run struct {
 	RateKnown      bool
 }
 
-// Registry is a bounded table of crawl runs keyed by run id, safe for concurrent
-// use. Records arrive from worker progress reports; the oldest-updated run is
-// evicted once the table exceeds its capacity.
+// Registry is a concurrent crawl-run table that retains every active run and
+// bounds only recent terminal history by capacity.
 type Registry struct {
-	mu        sync.Mutex
-	runs      map[string]Run
-	capacity  int
-	now       func() time.Time
-	observers []func(run Run, newlyTerminal bool, active int)
-	terminal  *terminalDeliveryLedger
+	mu         sync.Mutex
+	runs       map[string]Run
+	capacity   int
+	activeRuns int
+	now        func() time.Time
+	observers  []func(run Run, newlyTerminal bool, active int)
+	terminal   *terminalDeliveryLedger
 }
 
 func isTerminal(state yagocrawlcontract.CrawlRunState) bool {
@@ -47,8 +47,8 @@ func isTerminal(state yagocrawlcontract.CrawlRunState) bool {
 		state == yagocrawlcontract.CrawlRunCancelled
 }
 
-// New builds a registry holding at most capacity runs, defaulting a non-positive
-// capacity to a sensible bound.
+// New builds a registry whose capacity bounds recent terminal history and
+// defaults a non-positive capacity to a sensible bound.
 func New(capacity int) *Registry {
 	if capacity <= 0 {
 		capacity = defaultCapacity
@@ -89,6 +89,7 @@ func (r *Registry) Record(_ context.Context, progress yagocrawlcontract.CrawlRun
 		run.RateKnown = true
 	}
 	run.Updated = now
+	r.reconcileRunActivityLocked(existed, prev, run)
 	r.runs[progress.RunID] = run
 
 	r.evictLocked()
@@ -128,14 +129,7 @@ func (r *Registry) AddObserver(observe func(run Run, newlyTerminal bool, active 
 }
 
 func (r *Registry) activeCountLocked() int {
-	active := 0
-	for _, run := range r.runs {
-		if !isTerminal(run.State) {
-			active++
-		}
-	}
-
-	return active
+	return r.activeRuns
 }
 
 // Recent returns the runs newest-updated first, breaking ties by run id.
@@ -164,20 +158,4 @@ func (r *Registry) Len() int {
 	defer r.mu.Unlock()
 
 	return len(r.runs)
-}
-
-func (r *Registry) evictLocked() {
-	for len(r.runs) > r.capacity {
-		var oldestID string
-		var oldest time.Time
-		first := true
-		for id, run := range r.runs {
-			if first || run.Updated.Before(oldest) {
-				oldestID = id
-				oldest = run.Updated
-				first = false
-			}
-		}
-		delete(r.runs, oldestID)
-	}
 }

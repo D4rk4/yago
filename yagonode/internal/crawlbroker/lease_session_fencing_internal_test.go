@@ -114,8 +114,7 @@ func assertSupersededSessionIngestRejected(t *testing.T, fixture workerSessionSu
 		staleDone <- submitErr
 	}()
 	staleDelivery := <-fixture.ingest
-	if release, err := staleDelivery.BeginMutation(t.Context()); err == nil {
-		release()
+	if err := staleDelivery.AuthorizeLeaseSnapshot(t.Context()); err == nil {
 		t.Fatal("superseded ingest mutation was authorized")
 	}
 	if err := staleDelivery.LeaseLost(t.Context()); err != nil {
@@ -135,11 +134,9 @@ func assertCurrentSessionIngestAccepted(t *testing.T, fixture workerSessionSuper
 		currentDone <- submitErr
 	}()
 	currentDelivery := <-fixture.ingest
-	release, err := currentDelivery.BeginMutation(t.Context())
-	if err != nil {
+	if err := currentDelivery.AuthorizeLeaseSnapshot(t.Context()); err != nil {
 		t.Fatalf("authorize current ingest: %v", err)
 	}
-	release()
 	if err := currentDelivery.Ack(t.Context()); err != nil {
 		t.Fatalf("ack current ingest: %v", err)
 	}

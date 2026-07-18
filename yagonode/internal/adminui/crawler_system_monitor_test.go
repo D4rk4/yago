@@ -146,3 +146,35 @@ func TestCrawlerSystemMonitorRendersEnabledAndDisabledStates(t *testing.T) {
 		t.Fatalf("unknown crawler monitor state = %s", unknown.body)
 	}
 }
+
+func TestCrawlerSystemMonitorKeepsFetchMeterAlongsideNodeReserve(t *testing.T) {
+	t.Parallel()
+
+	body := do(t, New(Options{
+		CrawlerFetchActivity: fixedCrawlerFetchActivity{
+			activity: CrawlerFetchActivity{
+				ConnectedCrawlers:      1,
+				ActiveFetches:          3,
+				FetchLimitPerCrawler:   4,
+				AggregateFetchCapacity: 4,
+				ActiveFetchesKnown:     true,
+			},
+		},
+		StoragePressure: fixedStoragePressureStatus{status: StoragePressureStatus{
+			MeasurementAvailable: true,
+			AvailableBytes:       8 << 30,
+			ReservedFreeBytes:    1 << 30,
+		}},
+	}), systemMonitorPath).body
+	for _, want := range []string{
+		">Crawler fetch workers<",
+		"3 active of 4",
+		`max="4" value="3" aria-label="Active crawler fetch workers"`,
+		">Node filesystem reserve<",
+		"8.0 GiB available · reserve 1.0 GiB",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("combined crawler and node monitor missing %q: %s", want, body)
+		}
+	}
+}

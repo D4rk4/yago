@@ -17,6 +17,7 @@ func (d heartbeatDelivery) exchangeForLeases(
 	ctx context.Context,
 	acknowledged []uint64,
 	activeLeaseIDs []string,
+	confirmDeliveries bool,
 ) (*crawlrpc.WorkerHeartbeatResult, error) {
 	requestStarted := time.Now()
 	heartbeatCtx, cancelHeartbeat := boundedHeartbeatContext(ctx)
@@ -28,6 +29,7 @@ func (d heartbeatDelivery) exchangeForLeases(
 		activeLeaseIDs,
 		acknowledged...,
 	)
+	heartbeat.ConfirmActiveLeaseDeliveries = &confirmDeliveries
 	if d.storageSnapshot != nil {
 		snapshot := d.storageSnapshot()
 		available := snapshot.AvailableBytes

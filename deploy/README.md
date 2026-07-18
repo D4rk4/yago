@@ -109,6 +109,9 @@ The node and crawler control protocol requires the worker, process session, and
 active lease identities introduced with persistent frontier recovery. A current
 node rejects an older crawler that omits its session identity, and a current
 crawler cannot safely infer lease ownership from an older heartbeat response.
+Recovered-session manifests, explicit delivery-confirmation presence, and the
+live active-task directive are additive for decoder compatibility, but they do
+not make mixed-version operation a supported deployment.
 Do not run mixed versions. Stop the crawler before the node, replace both
 binaries or install the matched package, start the node, wait for readiness, and
 then start the crawler. The stable crawler identity and frontier checkpoint must
@@ -149,7 +152,10 @@ crawler reconnecting with the stable identity from the same data volume adopts
 its session-aware leases; deferred and legacy sessionless leases retain their
 expiry-and-requeue behavior. Its separate frontier does not fetch a page whose
 outcome committed before the stop, while an unfinished outcome remains eligible
-for replay.
+for replay. Recovery declares the complete adopted-lease manifest once, confirms
+ordered batches of at most 16, and does not begin ordinary delivery until the
+manifest is complete. Periodic full-set heartbeats keep leases alive without
+confirming an unseen batch.
 
 ## Backup and restore
 
@@ -215,6 +221,17 @@ current in-flight fetches finish, and then starts the requested worker group;
 the crawler process does not restart. With several crawler processes the value
 applies independently to each process, so aggregate fetch concurrency is the
 per-process setting multiplied by the number of connected processes.
+
+`YAGO_CRAWLER_MAX_ACTIVE_RUNS` is a separate bootstrap value in both service
+environment files and must also be kept equal. It defaults to 32 and accepts
+1–256. After heartbeat, the persisted `crawler.max_active_runs` value from
+Configuration → Crawler is authoritative for every connected process. A slot is
+held from prepared-order admission through terminal completion, so excess
+ordinary and recovered tasks wait without activating another frontier or
+periodic progress reporter. Increasing the value wakes waiting work. Decreasing
+it does not cancel active tasks; replacements wait until occupancy falls below
+the new limit. The limit is per process, independent of page-fetch workers, and
+does not impose a fleet-wide task or pages-per-second ceiling.
 
 Both service environment files bootstrap
 `YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY=true` and must be kept equal.

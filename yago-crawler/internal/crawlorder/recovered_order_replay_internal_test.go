@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"testing"
 	"time"
 
@@ -14,6 +15,11 @@ import (
 	"github.com/D4rk4/yago/yago-crawler/internal/crawllease"
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
+)
+
+const (
+	maximumRecoveredOrderFixtureBatch = 16
+	maximumRecoveredReplayFixture     = 20
 )
 
 func TestRecoveredOrderReplayUsesOneBoundedHeartbeat(t *testing.T) {
@@ -58,6 +64,264 @@ func TestRecoveredOrderReplayUsesOneBoundedHeartbeat(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRecoveredOrderReplayRenewsSessionManifestBeforeBoundedBatches(t *testing.T) {
+	const total = maximumRecoveredReplayFixture
+	results := recoveredOrderResults(t, total)
+	leaseIDs := make([]string, total)
+	for index := range total {
+		leaseIDs[index] = results[index].msg.GetLeaseId()
+		results[index].msg.RecoveredBatchEnd = index == maximumRecoveredOrderFixtureBatch-1 ||
+			index == total-1
+		results[index].msg.RecoveredLeaseIds = nil
+	}
+	results[0].msg.RecoveredLeaseIds = leaseIDs[:maximumRecoveredOrderFixtureBatch]
+	results[0].msg.RecoveredSessionLeaseIds = leaseIDs
+	results[maximumRecoveredOrderFixtureBatch].msg.RecoveredLeaseIds = leaseIDs[maximumRecoveredOrderFixtureBatch:]
+
+	registry := crawllease.NewGrantRegistry(
+		t.Context(),
+		yagocrawlcontract.MaximumHeartbeatActiveLeases,
+	)
+	client := &fakeStreamer{ctx: t.Context(), renewActive: true, leaseTTL: time.Minute}
+	out := make(chan CrawlOrderDelivery, total)
+	drainOrderStreamWithLeaseSession(t.Context(), crawlOrderStreamDrain{
+		client:   client,
+		stream:   &fakeOrderStream{ctx: t.Context(), results: results},
+		out:      out,
+		workerID: "worker",
+		heartbeat: &heartbeatDelivery{
+			client: client, workerID: "worker", workerSessionID: "session",
+			acknowledgments: &controlAcknowledgments{}, leaseGrants: registry,
+		},
+	})
+	if len(out) != total {
+		t.Fatalf("session replay deliveries = %d, want %d", len(out), total)
+	}
+	requests := client.heartbeatRequests()
+	if len(requests) != 3 {
+		t.Fatalf("session replay heartbeats = %d, want 3", len(requests))
+	}
+	if requests[0].ConfirmActiveLeaseDeliveries == nil ||
+		requests[0].GetConfirmActiveLeaseDeliveries() ||
+		requests[1].ConfirmActiveLeaseDeliveries == nil ||
+		!requests[1].GetConfirmActiveLeaseDeliveries() ||
+		requests[2].ConfirmActiveLeaseDeliveries == nil ||
+		!requests[2].GetConfirmActiveLeaseDeliveries() {
+		t.Fatalf("session replay confirmation modes = %+v", requests)
+	}
+	if !slices.Equal(requests[0].GetActiveLeaseIds(), leaseIDs) ||
+		!slices.Equal(
+			requests[1].GetActiveLeaseIds(),
+			leaseIDs[:maximumRecoveredOrderFixtureBatch],
+		) ||
+		!slices.Equal(
+			requests[2].GetActiveLeaseIds(),
+			leaseIDs[maximumRecoveredOrderFixtureBatch:],
+		) {
+		t.Fatalf(
+			"session replay heartbeat leases = %v / %v / %v",
+			requests[0].GetActiveLeaseIds(),
+			requests[1].GetActiveLeaseIds(),
+			requests[2].GetActiveLeaseIds(),
+		)
+	}
+}
+
+func TestRecoveredOrderReplayStopsWhenSessionManifestKeepaliveFails(t *testing.T) {
+	results := recoveredOrderResults(t, maximumRecoveredReplayFixture)
+	leaseIDs := make([]string, maximumRecoveredReplayFixture)
+	for index := range maximumRecoveredReplayFixture {
+		leaseIDs[index] = results[index].msg.GetLeaseId()
+		results[index].msg.RecoveredBatchEnd = index == maximumRecoveredOrderFixtureBatch-1 ||
+			index == maximumRecoveredReplayFixture-1
+		results[index].msg.RecoveredLeaseIds = nil
+	}
+	results[0].msg.RecoveredLeaseIds = leaseIDs[:maximumRecoveredOrderFixtureBatch]
+	results[0].msg.RecoveredSessionLeaseIds = leaseIDs
+	results[maximumRecoveredOrderFixtureBatch].msg.RecoveredLeaseIds = leaseIDs[maximumRecoveredOrderFixtureBatch:]
+	registry := crawllease.NewGrantRegistry(
+		t.Context(),
+		yagocrawlcontract.MaximumHeartbeatActiveLeases,
+	)
+	client := &fakeStreamer{ctx: t.Context(), beatErr: errors.New("keepalive failed")}
+	out := make(chan CrawlOrderDelivery, maximumRecoveredReplayFixture)
+	drainOrderStreamWithLeaseSession(t.Context(), crawlOrderStreamDrain{
+		client: client,
+		stream: &fakeOrderStream{ctx: t.Context(), results: results},
+		out:    out,
+		heartbeat: &heartbeatDelivery{
+			client: client, workerID: "worker", workerSessionID: "session",
+			acknowledgments: &controlAcknowledgments{}, leaseGrants: registry,
+		},
+	})
+	if len(out) != 0 || client.beatCallCount() != 1 ||
+		len(registry.ActiveLeaseIDs()) != 0 {
+		t.Fatalf(
+			"failed manifest keepalive deliveries/heartbeats/grants = %d/%d/%v",
+			len(out),
+			client.beatCallCount(),
+			registry.ActiveLeaseIDs(),
+		)
+	}
+}
+
+func TestRecoveredOrderReplayRejectsInvalidSessionManifest(t *testing.T) {
+	batchLeaseIDs := []string{"recovered-first", "recovered-second"}
+	orderData := orderResult(t, "recovered-session-manifest").msg.GetOrderJson()
+	oversizedLeaseIDs := make([]string, yagocrawlcontract.MaximumHeartbeatActiveLeases+1)
+	for index := range oversizedLeaseIDs {
+		oversizedLeaseIDs[index] = fmt.Sprintf("recovered-overflow-%d", index)
+	}
+	tests := recoveredSessionManifestHeaderCases(orderData, batchLeaseIDs, oversizedLeaseIDs)
+	tests = append(tests, recoveredSessionManifestSequenceCases(t, orderData, batchLeaseIDs)...)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			out := make(chan CrawlOrderDelivery, len(test.results))
+			drainOrderStreamWithLeaseSession(t.Context(), crawlOrderStreamDrain{
+				client: &fakeStreamer{ctx: t.Context()},
+				stream: &fakeOrderStream{ctx: t.Context(), results: test.results},
+				out:    out,
+			})
+			if len(out) != test.deliveredPart {
+				t.Fatalf(
+					"validated session manifest prefix = %d, want %d",
+					len(out),
+					test.deliveredPart,
+				)
+			}
+		})
+	}
+}
+
+type recoveredSessionManifestCase struct {
+	name          string
+	results       []recvResult
+	deliveredPart int
+}
+
+func recoveredSessionManifestHeaderCases(
+	orderData []byte,
+	batchLeaseIDs []string,
+	oversizedLeaseIDs []string,
+) []recoveredSessionManifestCase {
+	return []recoveredSessionManifestCase{
+		{
+			name: "batch lease absent from session manifest",
+			results: []recvResult{recoveredManifestResult(
+				orderData, batchLeaseIDs[0], batchLeaseIDs[:1], batchLeaseIDs[1:],
+			)},
+		},
+		{
+			name: "duplicate session lease",
+			results: []recvResult{recoveredManifestResult(
+				orderData,
+				batchLeaseIDs[0],
+				batchLeaseIDs[:1],
+				[]string{batchLeaseIDs[0], batchLeaseIDs[0]},
+			)},
+		},
+		{
+			name: "oversized session manifest",
+			results: []recvResult{recoveredManifestResult(
+				orderData, batchLeaseIDs[0], batchLeaseIDs[:1], oversizedLeaseIDs,
+			)},
+		},
+	}
+}
+
+func recoveredSessionManifestSequenceCases(
+	t *testing.T,
+	orderData []byte,
+	batchLeaseIDs []string,
+) []recoveredSessionManifestCase {
+	t.Helper()
+	firstOpen := recoveredManifestResult(
+		orderData, batchLeaseIDs[0], batchLeaseIDs, batchLeaseIDs,
+	)
+	firstOpen.msg.RecoveredBatchEnd = false
+	firstPartial := recoveredManifestResult(
+		orderData, batchLeaseIDs[0], batchLeaseIDs[:1], batchLeaseIDs,
+	)
+	firstComplete := recoveredManifestResult(
+		orderData, batchLeaseIDs[0], batchLeaseIDs[:1], batchLeaseIDs[:1],
+	)
+	return []recoveredSessionManifestCase{
+		{
+			name: "manifest repeated after first frame",
+			results: []recvResult{
+				firstOpen,
+				recoveredManifestResult(
+					orderData, batchLeaseIDs[1], nil, batchLeaseIDs,
+				),
+			}, deliveredPart: 1,
+		},
+		{
+			name: "later batch lease absent from manifest",
+			results: []recvResult{
+				firstPartial,
+				recoveredManifestResult(
+					orderData, "recovered-third", []string{"recovered-third"}, nil,
+				),
+			}, deliveredPart: 1,
+		},
+		{
+			name: "later batch repeats consumed lease",
+			results: []recvResult{
+				firstPartial,
+				recoveredManifestResult(
+					orderData, batchLeaseIDs[0], batchLeaseIDs[:1], nil,
+				),
+			}, deliveredPart: 1,
+		},
+		{
+			name: "ordinary order precedes manifest completion",
+			results: []recvResult{
+				firstPartial, orderResult(t, "ordinary-before-manifest-completion"),
+			}, deliveredPart: 1,
+		},
+		{
+			name: "recovery resumes after ordinary delivery",
+			results: []recvResult{
+				orderResult(t, "ordinary-before-recovery"),
+				recoveredManifestResult(
+					orderData, batchLeaseIDs[0], batchLeaseIDs[:1], nil,
+				),
+			}, deliveredPart: 1,
+		},
+		{
+			name: "manifest completion permits ordinary delivery",
+			results: []recvResult{
+				firstComplete, orderResult(t, "ordinary-after-manifest-completion"), {err: io.EOF},
+			}, deliveredPart: 2,
+		},
+		{
+			name: "recovery exceeds completed manifest",
+			results: []recvResult{
+				firstComplete,
+				recoveredManifestResult(
+					orderData, batchLeaseIDs[1], batchLeaseIDs[1:], nil,
+				),
+			}, deliveredPart: 1,
+		},
+	}
+}
+
+func recoveredManifestResult(
+	orderData []byte,
+	leaseID string,
+	batchLeaseIDs []string,
+	sessionLeaseIDs []string,
+) recvResult {
+	return recvResult{msg: &crawlrpc.CrawlOrderMessage{
+		OrderJson:                orderData,
+		LeaseId:                  leaseID,
+		Recovered:                true,
+		RecoveredBatchEnd:        true,
+		RecoveredLeaseIds:        batchLeaseIDs,
+		RecoveredSessionLeaseIds: sessionLeaseIDs,
+	}}
 }
 
 func TestRecoveredOrderReplayRejectsBrokenBatchBoundaries(t *testing.T) {

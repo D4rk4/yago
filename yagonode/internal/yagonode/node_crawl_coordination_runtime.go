@@ -45,6 +45,7 @@ func openCrawlCoordinationRuntime(
 		crawlbroker.Config{
 			ListenAddr:                        config.ListenAddr,
 			FetchWorkers:                      config.FetchWorkers,
+			MaximumActiveRuns:                 config.MaxActiveRuns,
 			DisableAutomaticDiscoveryPriority: !config.PrioritizeAutomaticDiscovery,
 			StoragePressurePolicy:             crawlerStoragePressurePolicy(config),
 			GrowthAdmission:                   config.GrowthAdmission,

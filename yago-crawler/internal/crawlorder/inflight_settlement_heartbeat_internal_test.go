@@ -269,6 +269,7 @@ func receiveRecoveredMalformedOrder(
 		leaseIDs: []string{liveLeaseID, malformedLeaseID},
 		next:     1,
 	}
+	sessionManifest := recoveredSessionManifest{seenFrame: true}
 	received := make(chan bool, 1)
 	go func() {
 		received <- receiveRecoveredOrder(
@@ -278,6 +279,7 @@ func receiveRecoveredMalformedOrder(
 				workerID: "worker", heartbeat: heartbeat,
 			},
 			&recovered,
+			&sessionManifest,
 			&crawlrpc.CrawlOrderMessage{
 				OrderJson: []byte("{"), LeaseId: malformedLeaseID,
 				Recovered: true, RecoveredBatchEnd: true,

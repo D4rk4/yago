@@ -195,19 +195,14 @@ func TestSubmitIngestAbsorbsBatch(t *testing.T) {
 	authorizeIngestMessage(t, server, msg, "ingest-a")
 	go func() {
 		delivery := <-out
-		if err := delivery.ValidateMutation(context.Background()); err != nil {
+		if delivery.BeginMutation != nil || delivery.BeginMutationGroup != nil {
 			_ = delivery.LeaseLost(context.Background())
 
 			return
 		}
-		groupContext, releaseGroup := delivery.BeginMutationGroup(context.Background())
-		release, err := delivery.BeginMutation(groupContext)
-		if err == nil {
-			release()
-			releaseGroup()
+		if err := delivery.AuthorizeLeaseSnapshot(context.Background()); err == nil {
 			_ = delivery.Ack(context.Background())
 		} else {
-			releaseGroup()
 			_ = delivery.LeaseLost(context.Background())
 		}
 	}()
@@ -225,9 +220,7 @@ func TestSubmitIngestReportsSaturation(t *testing.T) {
 	authorizeIngestMessage(t, server, msg, "ingest-b")
 	go func() {
 		delivery := <-out
-		release, err := delivery.BeginMutation(context.Background())
-		if err == nil {
-			release()
+		if err := delivery.AuthorizeLeaseSnapshot(context.Background()); err == nil {
 			_ = delivery.Nak(context.Background())
 		}
 	}()

@@ -40,6 +40,75 @@ func TestWorkerSessionDeliveryCreditBoundaries(t *testing.T) {
 	}
 }
 
+func TestWorkerSessionDeliveryCreditRequiresExactHeartbeatSet(t *testing.T) {
+	credit := newWorkerSessionDeliveryCredit()
+	confirmation, err := credit.expect([]string{"current-a", "current-b"})
+	if err != nil {
+		t.Fatalf("expect bounded delivery confirmation: %v", err)
+	}
+	credit.confirmExact([]string{"current-a", "current-b", "unseen-next-batch"})
+	assertDeliveryCreditHeld(t, confirmation)
+	credit.confirmExact([]string{"current-a", "current-b"})
+	assertDeliveryCreditReleased(t, confirmation)
+}
+
+func TestHeartbeatDeliveryConfirmationModeIsExplicitAndCompatible(t *testing.T) {
+	queue := memQueue(t)
+	expectedLeaseID := leaseOneForSession(
+		t,
+		queue,
+		"expected-explicit-confirmation",
+		"worker",
+		testWorkerSessionID,
+	)
+	extraLeaseID := leaseOneForSession(
+		t,
+		queue,
+		"extra-explicit-confirmation",
+		"worker",
+		testWorkerSessionID,
+	)
+	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
+	activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
+	confirmation := expectSettlementCredit(t, server, expectedLeaseID)
+	keepalive := false
+	confirm := true
+	for _, request := range []*crawlrpc.WorkerHeartbeat{
+		{
+			WorkerId: "worker", WorkerSessionId: testWorkerSessionID,
+			ActiveLeaseIds:               []string{expectedLeaseID, extraLeaseID},
+			ConfirmActiveLeaseDeliveries: &keepalive,
+		},
+		{
+			WorkerId: "worker", WorkerSessionId: testWorkerSessionID,
+			ActiveLeaseIds:               []string{expectedLeaseID, extraLeaseID},
+			ConfirmActiveLeaseDeliveries: &confirm,
+		},
+	} {
+		if _, err := server.Heartbeat(t.Context(), request); err != nil {
+			t.Fatalf("nonconfirming heartbeat: %v", err)
+		}
+		assertDeliveryCreditHeld(t, confirmation)
+	}
+	if _, err := server.Heartbeat(t.Context(), &crawlrpc.WorkerHeartbeat{
+		WorkerId: "worker", WorkerSessionId: testWorkerSessionID,
+		ActiveLeaseIds:               []string{expectedLeaseID},
+		ConfirmActiveLeaseDeliveries: &confirm,
+	}); err != nil {
+		t.Fatalf("exact confirming heartbeat: %v", err)
+	}
+	assertDeliveryCreditReleased(t, confirmation)
+
+	legacyConfirmation := expectSettlementCredit(t, server, extraLeaseID)
+	if _, err := server.Heartbeat(t.Context(), &crawlrpc.WorkerHeartbeat{
+		WorkerId: "worker", WorkerSessionId: testWorkerSessionID,
+		ActiveLeaseIds: []string{expectedLeaseID, extraLeaseID},
+	}); err != nil {
+		t.Fatalf("legacy confirming heartbeat: %v", err)
+	}
+	assertDeliveryCreditReleased(t, legacyConfirmation)
+}
+
 func TestWorkerSessionDeliveryCreditFencesMissingAndStaleSessions(t *testing.T) {
 	registry := newWorkerSessionRegistry(1)
 	if _, err := registry.expectDeliveryConfirmation(
@@ -153,11 +222,40 @@ func TestOrdinaryOrderDeliveryWaitsForCurrentLeaseHeartbeat(t *testing.T) {
 
 func TestRecoveredOrderDeliveryUsesConfirmedBoundedBatches(t *testing.T) {
 	fixture := startRecoveredDelivery(t, maximumRecoveredOrderDeliveryBatch+3)
-	firstBatch := receiveRecoveredBatchHeader(t, fixture, maximumRecoveredOrderDeliveryBatch)
-	confirmRecoveredBatchFrames(t, fixture, firstBatch, firstBatch, true)
-	secondBatch := receiveRecoveredBatchHeader(t, fixture, 3)
-	active := append(append([]string(nil), firstBatch...), secondBatch...)
-	confirmRecoveredBatchFrames(t, fixture, secondBatch, active, false)
+	firstHeader := receiveRecoveredBatchHeader(t, fixture, maximumRecoveredOrderDeliveryBatch)
+	firstBatch := firstHeader.GetRecoveredLeaseIds()
+	sessionLeaseIDs := firstHeader.GetRecoveredSessionLeaseIds()
+	if len(sessionLeaseIDs) != maximumRecoveredOrderDeliveryBatch+3 {
+		t.Fatalf(
+			"recovered session manifest = %d, want %d",
+			len(sessionLeaseIDs),
+			maximumRecoveredOrderDeliveryBatch+3,
+		)
+	}
+	heartbeatTestWorkerLeases(t, fixture.server, testWorkerLeaseHeartbeat{
+		workerID:          fixture.workerID,
+		workerSessionID:   fixture.workerSessionID,
+		leaseIDs:          sessionLeaseIDs,
+		confirmDeliveries: false,
+	})
+	assertCreditOrderUnavailable(t, fixture.stream.sent)
+	confirmRecoveredBatchFrames(t, fixture, firstBatch, true)
+	secondHeader := receiveRecoveredBatchHeader(t, fixture, 3)
+	secondBatch := secondHeader.GetRecoveredLeaseIds()
+	if len(secondHeader.GetRecoveredSessionLeaseIds()) != 0 {
+		t.Fatalf(
+			"repeated recovered session manifest = %v",
+			secondHeader.GetRecoveredSessionLeaseIds(),
+		)
+	}
+	heartbeatTestWorkerLeases(t, fixture.server, testWorkerLeaseHeartbeat{
+		workerID:          fixture.workerID,
+		workerSessionID:   fixture.workerSessionID,
+		leaseIDs:          sessionLeaseIDs,
+		confirmDeliveries: false,
+	})
+	assertCreditOrderUnavailable(t, fixture.stream.sent)
+	confirmRecoveredBatchFrames(t, fixture, secondBatch, false)
 	waitForRecoveredDeliveryCompletion(t, fixture.done)
 }
 
@@ -217,7 +315,7 @@ func receiveRecoveredBatchHeader(
 	t *testing.T,
 	fixture *recoveredDeliveryFixture,
 	want int,
-) []string {
+) *crawlrpc.CrawlOrderMessage {
 	t.Helper()
 	first := receiveCreditOrder(t, fixture.stream.sent)
 	waitForDeliveryConfirmation(t, fixture.waitStarted)
@@ -227,24 +325,22 @@ func receiveRecoveredBatchHeader(
 	}
 	assertCreditOrderUnavailable(t, fixture.stream.sent)
 
-	return batch
+	return first
 }
 
 func confirmRecoveredBatchFrames(
 	t *testing.T,
 	fixture *recoveredDeliveryFixture,
 	batch []string,
-	active []string,
 	rejectRepeatedHeader bool,
 ) {
 	t.Helper()
-	confirmTestWorkerLeases(
-		t,
-		fixture.server,
-		fixture.workerID,
-		fixture.workerSessionID,
-		active,
-	)
+	heartbeatTestWorkerLeases(t, fixture.server, testWorkerLeaseHeartbeat{
+		workerID:          fixture.workerID,
+		workerSessionID:   fixture.workerSessionID,
+		leaseIDs:          batch,
+		confirmDeliveries: true,
+	})
 	for index := 1; index < len(batch); index++ {
 		message := receiveCreditOrder(t, fixture.stream.sent)
 		if message.GetRecoveredBatchEnd() != (index == len(batch)-1) {
@@ -413,5 +509,30 @@ func confirmTestWorkerLeases(
 		WorkerId: workerID, WorkerSessionId: workerSessionID, ActiveLeaseIds: leaseIDs,
 	}); err != nil {
 		t.Fatalf("confirm crawl order deliveries: %v", err)
+	}
+}
+
+type testWorkerLeaseHeartbeat struct {
+	workerID          string
+	workerSessionID   string
+	leaseIDs          []string
+	confirmDeliveries bool
+}
+
+func heartbeatTestWorkerLeases(
+	t *testing.T,
+	server *exchangeServer,
+	heartbeat testWorkerLeaseHeartbeat,
+) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if _, err := server.Heartbeat(ctx, &crawlrpc.WorkerHeartbeat{
+		WorkerId:                     heartbeat.workerID,
+		WorkerSessionId:              heartbeat.workerSessionID,
+		ActiveLeaseIds:               heartbeat.leaseIDs,
+		ConfirmActiveLeaseDeliveries: &heartbeat.confirmDeliveries,
+	}); err != nil {
+		t.Fatalf("heartbeat crawl order deliveries: %v", err)
 	}
 }

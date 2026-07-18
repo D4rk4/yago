@@ -12,6 +12,7 @@ import (
 const (
 	envCrawlRPCAddr                 = "YAGO_CRAWL_RPC_ADDR"
 	envCrawlerWorkers               = "YAGO_CRAWLER_WORKERS"
+	envCrawlerMaxActiveRuns         = "YAGO_CRAWLER_MAX_ACTIVE_RUNS"
 	envCrawlerMaxPagesPerRun        = "YAGO_CRAWLER_MAX_PAGES_PER_RUN"
 	envPrioritizeAutomaticDiscovery = "YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY"
 	envCrawlerStorageReservedFree   = "YAGO_CRAWLER_STORAGE_RESERVED_FREE"
@@ -25,6 +26,7 @@ const (
 type crawlConfig struct {
 	ListenAddr                   string
 	FetchWorkers                 int
+	MaxActiveRuns                int
 	MaxPagesPerRun               int
 	PrioritizeAutomaticDiscovery bool
 	StorageReservedFreeBytes     int64
@@ -51,6 +53,16 @@ func loadCrawlConfig(getenv func(string) string) (crawlConfig, error) {
 		yagocrawlcontract.DefaultFetchWorkerConcurrency,
 		1,
 		yagocrawlcontract.MaximumFetchWorkerConcurrency,
+	)
+	if err != nil {
+		return crawlConfig{}, err
+	}
+	maximumActiveRuns, err := intRangeEnv(
+		getenv,
+		envCrawlerMaxActiveRuns,
+		yagocrawlcontract.DefaultActiveCrawlRunConcurrency,
+		1,
+		yagocrawlcontract.MaximumActiveCrawlRunConcurrency,
 	)
 	if err != nil {
 		return crawlConfig{}, err
@@ -92,6 +104,7 @@ func loadCrawlConfig(getenv func(string) string) (crawlConfig, error) {
 	return crawlConfig{
 		ListenAddr:                   crawlRPCListenAddr(getenv),
 		FetchWorkers:                 fetchWorkers,
+		MaxActiveRuns:                maximumActiveRuns,
 		MaxPagesPerRun:               maxPagesPerRun,
 		PrioritizeAutomaticDiscovery: prioritizeAutomaticDiscovery,
 		StorageReservedFreeBytes:     storageReservedFree,

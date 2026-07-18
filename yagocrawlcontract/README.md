@@ -43,7 +43,11 @@ deliveries and recognize a committed retry after an acknowledgement is lost.
 Older batches without those fields remain accepted: observation time falls back
 to `Document.FetchedAt`, and the node derives a stable identity from the batch.
 The node persists the latest completed observation per source URL after ingest
-side effects and before acknowledging the submission.
+side effects and before acknowledging the submission. Before those side effects,
+it snapshots the exact worker, process-session, lease, and run authorization and
+releases the lease-mutation boundary. A stale submission is rejected before
+storage; a successful snapshot authorizes the idempotent absorption without
+holding a lease lock across document or index storage.
 
 Multiple crawler processes register distinct worker identities, share the durable
 order queue, and publish results to one node. Order settlement and ingest replies
@@ -54,6 +58,13 @@ page-fetch concurrency. A current crawler applies it after draining its active
 fetch group. A crawler that predates the directive ignores the unknown enum and
 continues with its environment bootstrap; a current crawler connected to an
 older node receives no directive and also keeps that bootstrap value.
+
+The independent `set_active_runs` directive carries the maximum distinct crawl
+tasks one crawler process may keep active. The default is 32 and the valid range
+is 1–256. A slot spans prepared-order admission through terminal completion;
+waiting ordinary and recovered orders do not activate another frontier or
+progress reporter. A lower live value does not preempt an existing task. Older
+decoders ignore the directive and retain their environment bootstrap.
 
 A current crawler includes the optional `active_fetches` field in each worker
 heartbeat. The value is the number of occupied page-fetch worker jobs from job
@@ -115,10 +126,26 @@ deferred and legacy sessionless leases remain globally requeueable. The crawler
 bounds every heartbeat call to one second and treats an omitted or expired active
 lease as an order-stream reconnect signal, allowing immediate same-worker
 adoption even when the old stream had no transport failure. The node frames at
-most 1,024 adopted leases as one ordered recovery batch. Its first message carries
-the complete lease-ID header, and the crawler confirms that header with one
-heartbeat before exposing the first recovered order. This keeps replay work
-linear while retaining per-order streaming and bounded memory.
+most 1,024 adopted leases. Its first recovery frame declares the complete session
+lease manifest once, then carries the first ordered batch of at most 16. Every
+later batch must be a nonrepeating subset of that manifest. The crawler confirms
+exactly the current batch before exposing its first order and requires complete
+manifest consumption before ordinary streaming. This keeps replay work linear
+while retaining per-order payload streaming and bounded memory.
+
+`WorkerHeartbeat.confirm_active_lease_deliveries` has optional presence. A
+current periodic heartbeat sends false: it renews the complete active set but
+cannot release unseen delivery credit. A targeted confirmation sends true and
+must renew exactly the currently expected lease or recovery batch. An absent
+field retains the earlier subset-confirmation behavior for an older crawler.
+An older node ignores the field. `CrawlOrderMessage` field 6 carries the complete
+recovered-session manifest; the existing field 5 remains the current batch.
+
+Progress delivery is bounded per worker. One in-flight generation is immutable;
+later running state for that run may coalesce into one pending replacement, due
+terminal reports take priority, and another ready run is served before the
+replacement. Intermediate running values may therefore be omitted, while phase
+chains and terminal settlement remain ordered.
 
 `SubmitIngest` is unary, so acceptance or retryable backpressure returns directly
 to the crawler that submitted the batch. There is no shared feedback topic.
@@ -161,11 +188,14 @@ migrated at startup.
 
 The process-session, active-lease, recovered-order framing, lease-bound
 ingest/progress, rich terminal settlement, and confirmation-token fields are
-additive on the protobuf wire. An older crawler ignores the recovery markers and
-retains per-order lease confirmation; a current crawler receiving unmarked replay
-from an older node does the same. The current node still requires a valid
-process-session identity before accepting a crawler stream or lease mutation. A
-crawler that predates that identity is therefore rejected by a current node.
+additive on the protobuf wire. The recovered-session manifest is field 6 of
+`CrawlOrderMessage`; the optional explicit delivery-credit marker is field 9 of
+`WorkerHeartbeat`; `set_active_runs` is enum value 8 and its directive value is
+field 7. An older crawler ignores these additions and retains legacy subset or
+per-order confirmation; a current crawler receiving unmarked replay from an
+older node does the same. The current node still requires a valid process-session
+identity before accepting a crawler stream or lease mutation. A crawler that
+predates that identity is therefore rejected by a current node.
 Upgrade the node and every crawler from one release as a coordinated operation:
 stop crawlers first, replace both binaries, start and verify the node, then start
 crawlers. Rollback requires the matching node broker and crawler checkpoint

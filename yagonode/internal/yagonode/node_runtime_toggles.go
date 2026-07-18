@@ -31,6 +31,7 @@ type runtimeToggles struct {
 	storagePressureRecovery    atomic.Int64
 	storagePressurePolicy      atomic.Value
 	crawlerFetchWorkers        atomic.Value
+	crawlerMaximumActiveRuns   atomic.Value
 	crawlerMaxPagesPerRun      atomic.Value
 	automaticDiscoveryPriority atomic.Value
 	crawlerStorageReservedFree atomic.Int64

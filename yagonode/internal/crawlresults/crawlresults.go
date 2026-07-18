@@ -18,13 +18,14 @@ import (
 )
 
 type IngestDelivery struct {
-	Batch              yagocrawlcontract.IngestBatch
-	Ack                func(context.Context) error
-	Nak                func(context.Context) error
-	ValidateMutation   func(context.Context) error
-	BeginMutation      func(context.Context) (func(), error)
-	BeginMutationGroup func(context.Context) (context.Context, func())
-	LeaseLost          func(context.Context) error
+	Batch                  yagocrawlcontract.IngestBatch
+	Ack                    func(context.Context) error
+	Nak                    func(context.Context) error
+	ValidateMutation       func(context.Context) error
+	AuthorizeLeaseSnapshot func(context.Context) error
+	BeginMutation          func(context.Context) (func(), error)
+	BeginMutationGroup     func(context.Context) (context.Context, func())
+	LeaseLost              func(context.Context) error
 }
 
 type IngestStream interface {

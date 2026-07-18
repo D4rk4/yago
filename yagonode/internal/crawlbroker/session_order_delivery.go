@@ -14,6 +14,17 @@ import (
 
 const maximumRecoveredOrderDeliveryBatch = 16
 
+type recoveredOrderDeliverySession struct {
+	workerID        string
+	workerSessionID string
+	generation      uint64
+}
+
+type recoveredOrderDeliveryBatch struct {
+	orders          []leasedCrawlOrder
+	sessionLeaseIDs []string
+}
+
 func (s *exchangeServer) streamRecoveredOrders(
 	stream crawlrpc.CrawlExchange_StreamOrdersServer,
 	workerID string,
@@ -24,14 +35,28 @@ func (s *exchangeServer) streamRecoveredOrders(
 	if len(orders) > yagocrawlcontract.MaximumHeartbeatActiveLeases {
 		return status.Error(codes.ResourceExhausted, "recovered crawl lease capacity exceeded")
 	}
+	recoveredSessionLeaseIDs := make([]string, len(orders))
+	for index, order := range orders {
+		recoveredSessionLeaseIDs[index] = order.LeaseID
+	}
+	deliverySession := recoveredOrderDeliverySession{
+		workerID:        workerID,
+		workerSessionID: workerSessionID,
+		generation:      generation,
+	}
 	for start := 0; start < len(orders); start += maximumRecoveredOrderDeliveryBatch {
 		end := min(start+maximumRecoveredOrderDeliveryBatch, len(orders))
+		var sessionLeaseIDs []string
+		if start == 0 {
+			sessionLeaseIDs = recoveredSessionLeaseIDs
+		}
 		if err := s.streamRecoveredOrderBatch(
 			stream,
-			workerID,
-			workerSessionID,
-			generation,
-			orders[start:end],
+			deliverySession,
+			recoveredOrderDeliveryBatch{
+				orders:          orders[start:end],
+				sessionLeaseIDs: sessionLeaseIDs,
+			},
 		); err != nil {
 			return err
 		}
@@ -42,29 +67,27 @@ func (s *exchangeServer) streamRecoveredOrders(
 
 func (s *exchangeServer) streamRecoveredOrderBatch(
 	stream crawlrpc.CrawlExchange_StreamOrdersServer,
-	workerID string,
-	workerSessionID string,
-	generation uint64,
-	orders []leasedCrawlOrder,
+	deliverySession recoveredOrderDeliverySession,
+	deliveryBatch recoveredOrderDeliveryBatch,
 ) error {
-	recoveredLeaseIDs := make([]string, len(orders))
-	for index, order := range orders {
+	recoveredLeaseIDs := make([]string, len(deliveryBatch.orders))
+	for index, order := range deliveryBatch.orders {
 		recoveredLeaseIDs[index] = order.LeaseID
 	}
 	confirmation, err := s.sessions.expectDeliveryConfirmation(
-		workerID,
-		workerSessionID,
-		generation,
+		deliverySession.workerID,
+		deliverySession.workerSessionID,
+		deliverySession.generation,
 		recoveredLeaseIDs,
 	)
 	if err != nil {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
-	for index, order := range orders {
+	for index, order := range deliveryBatch.orders {
 		if err := s.sessions.whileCurrentRegistration(
-			workerID,
-			workerSessionID,
-			generation,
+			deliverySession.workerID,
+			deliverySession.workerSessionID,
+			deliverySession.generation,
 			func() error { return nil },
 		); err != nil {
 			return status.Error(codes.FailedPrecondition, err.Error())
@@ -73,10 +96,11 @@ func (s *exchangeServer) streamRecoveredOrderBatch(
 			OrderJson:         order.OrderData,
 			LeaseId:           order.LeaseID,
 			Recovered:         true,
-			RecoveredBatchEnd: index == len(orders)-1,
+			RecoveredBatchEnd: index == len(deliveryBatch.orders)-1,
 		}
 		if index == 0 {
 			message.RecoveredLeaseIds = recoveredLeaseIDs
+			message.RecoveredSessionLeaseIds = deliveryBatch.sessionLeaseIDs
 		}
 		if err := stream.Send(message); err != nil {
 			return fmt.Errorf("send recovered crawl order: %w", err)

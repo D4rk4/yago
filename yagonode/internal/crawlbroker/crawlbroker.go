@@ -25,6 +25,7 @@ type Config struct {
 	ListenAddr                        string
 	LeaseTTL                          time.Duration
 	FetchWorkers                      int
+	MaximumActiveRuns                 int
 	DisableAutomaticDiscoveryPriority bool
 	StoragePressurePolicy             yagocrawlcontract.StoragePressurePolicy
 	GrowthAdmission                   GrowthAdmission
@@ -80,8 +81,13 @@ func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker
 	if fetchWorkers <= 0 {
 		fetchWorkers = yagocrawlcontract.DefaultFetchWorkerConcurrency
 	}
+	maximumActiveRuns := cfg.MaximumActiveRuns
+	if maximumActiveRuns <= 0 {
+		maximumActiveRuns = yagocrawlcontract.DefaultActiveCrawlRunConcurrency
+	}
 	control, err := newPersistentControlRegistry(storage, crawlerControlDefaults{
 		fetchWorkers:                 uint32(fetchWorkers),
+		maximumActiveRuns:            uint32(maximumActiveRuns),
 		prioritizeAutomaticDiscovery: !cfg.DisableAutomaticDiscoveryPriority,
 		storagePressurePolicy:        cfg.StoragePressurePolicy,
 	})

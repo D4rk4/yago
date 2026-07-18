@@ -102,6 +102,13 @@ func TestControlRegistryReportsBroadcastStorageFailures(t *testing.T) {
 		t.Fatal("fetch worker failure retained initialized state")
 	}
 	registry.initialized["worker"] = true
+	if signalled := registry.SetMaximumActiveRuns(32); signalled != 0 {
+		t.Fatalf("active-run failures signalled = %d, want 0", signalled)
+	}
+	if registry.initialized["worker"] {
+		t.Fatal("active-run failure retained initialized state")
+	}
+	registry.initialized["worker"] = true
 	if signalled := registry.SetAutomaticDiscoveryPriority(true); signalled != 0 {
 		t.Fatalf("priority failures signalled = %d, want 0", signalled)
 	}

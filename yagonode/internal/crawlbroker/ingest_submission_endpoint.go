@@ -47,23 +47,20 @@ func (s *exchangeServer) SubmitIngest(
 		Batch: batch,
 		Ack:   func(context.Context) error { finish(); result <- nil; return nil },
 		Nak:   func(context.Context) error { finish(); result <- errIngestDeferred; return nil },
-		ValidateMutation: func(context.Context) error {
+		AuthorizeLeaseSnapshot: func(mutationContext context.Context) error {
 			if !s.sessions.current(authorization.WorkerID, authorization.WorkerSessionID) {
 				return errLeaseLost
 			}
+			release, mutationErr := s.queue.beginAuthorizedLeaseMutation(
+				mutationContext,
+				authorization,
+			)
+			if mutationErr != nil {
+				return mutationErr
+			}
+			release()
 
 			return nil
-		},
-		BeginMutationGroup: func(mutationContext context.Context) (context.Context, func()) {
-			return s.queue.beginAuthorizedLeaseMutationGroup(mutationContext)
-		},
-		BeginMutation: func(mutationContext context.Context) (func(), error) {
-			if !s.queue.authorizedLeaseMutationGroup(mutationContext) &&
-				!s.sessions.current(authorization.WorkerID, authorization.WorkerSessionID) {
-				return nil, errLeaseLost
-			}
-
-			return s.queue.beginAuthorizedLeaseMutation(mutationContext, authorization)
 		},
 		LeaseLost: func(context.Context) error {
 			finish()

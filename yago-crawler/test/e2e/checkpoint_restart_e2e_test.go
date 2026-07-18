@@ -4,11 +4,61 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestRecoveredSessionManifestReleasesOrdinaryDelivery(t *testing.T) {
+	ctx := context.Background()
+	network := newNetwork(t, ctx)
+	origin := startRestartOrigin(t, ctx, network.Name)
+	node := startNodeBroker(t, ctx, network.Name)
+	crawler := startCrawlerForNode(t, ctx, network.Name)
+	session := adminLogin(t, ctx, node.opsURL)
+	for index := range 20 {
+		dispatchNamedCrawl(
+			t,
+			ctx,
+			node.opsURL,
+			session,
+			fmt.Sprintf("manifest-recovery-%02d", index),
+			fmt.Sprintf("%s?run=%02d", origin.manifestURL, index),
+			0,
+		)
+	}
+	if !waitFor(30*time.Second, func() bool {
+		monitor, ok := crawlMonitorBody(ctx, node.opsURL, session)
+
+		return ok && strings.Contains(monitor, "0 pending, 20 leased")
+	}) {
+		monitor, _ := crawlMonitorBody(ctx, node.opsURL, session)
+		t.Fatalf("recovery manifest fixture was not fully leased: %s", monitor)
+	}
+	crashContainer(t, ctx, crawler)
+	if err := crawler.Start(ctx); err != nil {
+		t.Fatalf("restart manifest crawler: %v", err)
+	}
+	dispatchNamedCrawl(
+		t,
+		ctx,
+		node.opsURL,
+		session,
+		"ordinary-after-recovery-manifest",
+		origin.seedURL+"?ordinary=1",
+		0,
+	)
+	if !waitFor(30*time.Second, func() bool {
+		monitor, ok := crawlMonitorBody(ctx, node.opsURL, session)
+
+		return ok && strings.Contains(monitor, "0 pending")
+	}) {
+		monitor, _ := crawlMonitorBody(ctx, node.opsURL, session)
+		t.Fatalf("ordinary order remained behind recovered manifest: %s", monitor)
+	}
+}
 
 func TestNodeAndCrawlerRestartResumeUnfinishedFrontier(t *testing.T) {
 	ctx := context.Background()

@@ -4,7 +4,7 @@
 {{template "toasts" .}}
 <p class="cds-muted">This page exposes every operator-safe live scoring coefficient. Candidate and evidence windows, the quoted-phrase cap, analyzer confidence, relaxed quorum, RM3 blend, RRF, remote calibration, MMR and per-site caps, and safety and abuse gates remain fixed policy rather than manual controls.</p>
 {{if .ExplainAvailable}}
-<section class="cds-settings-form" aria-labelledby="search-explain-heading">
+<section class="cds-search-explain" aria-labelledby="search-explain-heading">
   <h2 class="cds-h2" id="search-explain-heading">Search explain</h2>
   <p class="cds-muted">Preview the bounded local or federated result order using the active retrieval profile and learned model. Global scope runs the enabled local, peer, and web branches under the normal interactive budget without storing a search session or seeding crawl work.</p>
   <form class="cds-search-form" method="get" action="/admin/yagorank" role="search">

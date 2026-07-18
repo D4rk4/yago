@@ -23,6 +23,21 @@ func (t *runtimeToggles) ApplyCrawlerFetchWorkers(workers int) {
 	}
 }
 
+func (t *runtimeToggles) SetCrawlerMaximumActiveRunsSink(sink func(int)) {
+	if t != nil && sink != nil {
+		t.crawlerMaximumActiveRuns.Store(sink)
+	}
+}
+
+func (t *runtimeToggles) ApplyCrawlerMaximumActiveRuns(maximum int) {
+	if t == nil {
+		return
+	}
+	if sink, ok := t.crawlerMaximumActiveRuns.Load().(func(int)); ok {
+		sink(maximum)
+	}
+}
+
 func (t *runtimeToggles) SetCrawlerMaxPagesPerRunSink(sink func(int)) {
 	if t != nil && sink != nil {
 		t.crawlerMaxPagesPerRun.Store(sink)
@@ -62,6 +77,9 @@ func attachCrawlRuntimeSettings(runtime crawlProcess, toggles *runtimeToggles) {
 	queue := source.automaticDiscoveryQueue()
 	toggles.SetCrawlerFetchWorkersSink(func(workers int) {
 		control.SetFetchWorkers(workers)
+	})
+	toggles.SetCrawlerMaximumActiveRunsSink(func(maximum int) {
+		control.SetMaximumActiveRuns(maximum)
 	})
 	toggles.SetCrawlerMaxPagesPerRunSink(source.SetMaxPagesPerRun)
 	toggles.SetCrawlerStoragePressureSink(control.SetStoragePressurePolicy)

@@ -39,6 +39,7 @@ message CrawlOrderMessage {
   bool recovered = 3;
   bool recovered_batch_end = 4;
   repeated string recovered_lease_ids = 5;
+  repeated string recovered_session_lease_ids = 6;
 }
 
 message OrderAck {
@@ -66,6 +67,7 @@ message WorkerHeartbeat {
   optional uint64 storage_available_bytes = 6;
   optional bool storage_pressure = 7;
   optional bool storage_measurement_available = 8;
+  optional bool confirm_active_lease_deliveries = 9;
 }
 
 // CrawlControlKind is a directive the node pushes to a worker to steer a run it is
@@ -82,6 +84,7 @@ enum CrawlControlKind {
   CRAWL_CONTROL_KIND_RESTART = 5;
   CRAWL_CONTROL_KIND_SET_WORKERS = 6;
   CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY = 7;
+  CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS = 8;
 }
 
 // CrawlControlDirective steers one run identified by its provenance token, or the
@@ -94,6 +97,7 @@ message CrawlControlDirective {
   uint32 fetch_workers = 4;
   bool prioritize_automatic_discovery = 5;
   uint64 directive_id = 6;
+  uint32 maximum_active_runs = 7;
 }
 
 message WorkerHeartbeatResult {

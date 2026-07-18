@@ -9,6 +9,7 @@ import (
 
 type crawlerControlDefaults struct {
 	fetchWorkers                 uint32
+	maximumActiveRuns            uint32
 	prioritizeAutomaticDiscovery bool
 	storagePressurePolicy        yagocrawlcontract.StoragePressurePolicy
 }
@@ -35,11 +36,17 @@ func (r *ControlRegistry) SetAutomaticDiscoveryPriority(enabled bool) int {
 }
 
 func (r *ControlRegistry) initialDirectivesLocked() []yagocrawlcontract.CrawlControlDirective {
-	directives := make([]yagocrawlcontract.CrawlControlDirective, 0, 2)
+	directives := make([]yagocrawlcontract.CrawlControlDirective, 0, 3)
 	if r.fetchWorkersSet {
 		directives = append(directives, yagocrawlcontract.CrawlControlDirective{
 			Kind:         yagocrawlcontract.CrawlControlSetWorkers,
 			FetchWorkers: r.fetchWorkers,
+		})
+	}
+	if r.maximumActiveRunsSet {
+		directives = append(directives, yagocrawlcontract.CrawlControlDirective{
+			Kind:              yagocrawlcontract.CrawlControlSetActiveRuns,
+			MaximumActiveRuns: r.maximumActiveRuns,
 		})
 	}
 	if r.automaticDiscoveryPrioritySet {

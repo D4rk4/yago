@@ -53,6 +53,17 @@ func (c *workerSessionDeliveryCredit) expect(
 }
 
 func (c *workerSessionDeliveryCredit) confirm(renewedLeaseIDs []string) {
+	c.confirmRenewed(renewedLeaseIDs, false)
+}
+
+func (c *workerSessionDeliveryCredit) confirmExact(renewedLeaseIDs []string) {
+	c.confirmRenewed(renewedLeaseIDs, true)
+}
+
+func (c *workerSessionDeliveryCredit) confirmRenewed(
+	renewedLeaseIDs []string,
+	exact bool,
+) {
 	renewed := make(map[string]struct{}, len(renewedLeaseIDs))
 	for _, leaseID := range renewedLeaseIDs {
 		renewed[leaseID] = struct{}{}
@@ -60,6 +71,9 @@ func (c *workerSessionDeliveryCredit) confirm(renewedLeaseIDs []string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	if c.pending == nil {
+		return
+	}
+	if exact && len(renewed) != len(c.pending.expectedLeaseIDs) {
 		return
 	}
 	for leaseID := range c.pending.expectedLeaseIDs {
@@ -129,6 +143,23 @@ func (r *workerSessionRegistry) confirmDeliveries(
 	workerSessionID string,
 	renewedLeaseIDs []string,
 ) {
+	r.confirmDeliveriesWithMode(workerID, workerSessionID, renewedLeaseIDs, false)
+}
+
+func (r *workerSessionRegistry) confirmExactDeliveries(
+	workerID string,
+	workerSessionID string,
+	renewedLeaseIDs []string,
+) {
+	r.confirmDeliveriesWithMode(workerID, workerSessionID, renewedLeaseIDs, true)
+}
+
+func (r *workerSessionRegistry) confirmDeliveriesWithMode(
+	workerID string,
+	workerSessionID string,
+	renewedLeaseIDs []string,
+	exact bool,
+) {
 	entry, err := r.retain(workerID, false)
 	if err != nil {
 		return
@@ -143,5 +174,5 @@ func (r *workerSessionRegistry) confirmDeliveries(
 	}
 	credit := current.deliveryCredit
 	entry.mutex.Unlock()
-	credit.confirm(renewedLeaseIDs)
+	credit.confirmRenewed(renewedLeaseIDs, exact)
 }

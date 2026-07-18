@@ -78,7 +78,7 @@ func TestProgressAndIngestRejectInvalidLeaseSurfaces(t *testing.T) {
 		delivery := <-ingest
 		deactivateTestWorkerSession(t, server, testWorkerSessionID)
 		activateTestWorkerSession(t, server, "worker", "replacement-session")
-		if err := delivery.ValidateMutation(t.Context()); !errors.Is(err, errLeaseLost) {
+		if err := delivery.AuthorizeLeaseSnapshot(t.Context()); !errors.Is(err, errLeaseLost) {
 			t.Fatalf("validation error = %v", err)
 		}
 		if err := delivery.LeaseLost(t.Context()); err != nil {

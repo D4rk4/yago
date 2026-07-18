@@ -35,6 +35,15 @@ func authorizeValidatedIngestDelivery(
 	ctx context.Context,
 	delivery IngestDelivery,
 ) (func(), bool) {
+	if delivery.AuthorizeLeaseSnapshot != nil {
+		if err := delivery.AuthorizeLeaseSnapshot(ctx); err != nil {
+			rejectIngestAuthorization(ctx, delivery, err)
+
+			return func() {}, false
+		}
+
+		return func() {}, true
+	}
 	if delivery.BeginMutation == nil {
 		return func() {}, true
 	}
@@ -75,7 +84,7 @@ func authorizeIngestGroup(
 	}
 	authorized := make([]IngestDelivery, 0, len(candidates))
 	releases := make([]func(), 0, len(candidates)+1)
-	if len(candidates) > 1 && candidates[0].BeginMutationGroup != nil {
+	if usesLegacyMutationGroup(candidates) && candidates[0].BeginMutationGroup != nil {
 		var release func()
 		ctx, release = candidates[0].BeginMutationGroup(ctx)
 		releases = append(releases, release)
@@ -90,6 +99,19 @@ func authorizeIngestGroup(
 	}
 
 	return authorized, releases
+}
+
+func usesLegacyMutationGroup(deliveries []IngestDelivery) bool {
+	if len(deliveries) < 2 {
+		return false
+	}
+	for _, delivery := range deliveries {
+		if delivery.AuthorizeLeaseSnapshot != nil {
+			return false
+		}
+	}
+
+	return true
 }
 
 func releaseIngestGroup(releases []func()) {

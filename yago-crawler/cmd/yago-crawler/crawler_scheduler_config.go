@@ -22,6 +22,22 @@ func loadCrawlSchedulerConfig(
 		)
 	}
 	crawl.Workers = workers
+	maximumActiveRuns, err := envPositiveInt(
+		getenv,
+		EnvMaxActiveRuns,
+		crawl.MaxActiveRuns,
+	)
+	if err != nil {
+		return CrawlConfig{}, err
+	}
+	if maximumActiveRuns > yagocrawlcontract.MaximumActiveCrawlRunConcurrency {
+		return CrawlConfig{}, fmt.Errorf(
+			"%s: must not exceed %d",
+			EnvMaxActiveRuns,
+			yagocrawlcontract.MaximumActiveCrawlRunConcurrency,
+		)
+	}
+	crawl.MaxActiveRuns = maximumActiveRuns
 
 	priority, err := envBool(
 		getenv,

@@ -23,6 +23,9 @@ func validControlDirective(directive yagocrawlcontract.CrawlControlDirective) bo
 	case yagocrawlcontract.CrawlControlSetWorkers:
 		return directive.RunID == "" && directive.FetchWorkers >= 1 &&
 			directive.FetchWorkers <= yagocrawlcontract.MaximumFetchWorkerConcurrency
+	case yagocrawlcontract.CrawlControlSetActiveRuns:
+		return directive.RunID == "" && directive.MaximumActiveRuns >= 1 &&
+			directive.MaximumActiveRuns <= yagocrawlcontract.MaximumActiveCrawlRunConcurrency
 	case yagocrawlcontract.CrawlControlSetAutomaticDiscoveryPriority:
 		return directive.RunID == ""
 	default:

@@ -37,6 +37,7 @@ const (
 	CrawlControlKind_CRAWL_CONTROL_KIND_RESTART                          CrawlControlKind = 5
 	CrawlControlKind_CRAWL_CONTROL_KIND_SET_WORKERS                      CrawlControlKind = 6
 	CrawlControlKind_CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY CrawlControlKind = 7
+	CrawlControlKind_CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS                  CrawlControlKind = 8
 )
 
 // Enum value maps for CrawlControlKind.
@@ -50,6 +51,7 @@ var (
 		5: "CRAWL_CONTROL_KIND_RESTART",
 		6: "CRAWL_CONTROL_KIND_SET_WORKERS",
 		7: "CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY",
+		8: "CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS",
 	}
 	CrawlControlKind_value = map[string]int32{
 		"CRAWL_CONTROL_KIND_UNSPECIFIED":                      0,
@@ -60,6 +62,7 @@ var (
 		"CRAWL_CONTROL_KIND_RESTART":                          5,
 		"CRAWL_CONTROL_KIND_SET_WORKERS":                      6,
 		"CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY": 7,
+		"CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS":                  8,
 	}
 )
 
@@ -195,14 +198,15 @@ func (x *WorkerRegistration) GetWorkerSessionId() string {
 }
 
 type CrawlOrderMessage struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	OrderJson         []byte                 `protobuf:"bytes,1,opt,name=order_json,json=orderJson,proto3" json:"order_json,omitempty"`
-	LeaseId           string                 `protobuf:"bytes,2,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
-	Recovered         bool                   `protobuf:"varint,3,opt,name=recovered,proto3" json:"recovered,omitempty"`
-	RecoveredBatchEnd bool                   `protobuf:"varint,4,opt,name=recovered_batch_end,json=recoveredBatchEnd,proto3" json:"recovered_batch_end,omitempty"`
-	RecoveredLeaseIds []string               `protobuf:"bytes,5,rep,name=recovered_lease_ids,json=recoveredLeaseIds,proto3" json:"recovered_lease_ids,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                    protoimpl.MessageState `protogen:"open.v1"`
+	OrderJson                []byte                 `protobuf:"bytes,1,opt,name=order_json,json=orderJson,proto3" json:"order_json,omitempty"`
+	LeaseId                  string                 `protobuf:"bytes,2,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
+	Recovered                bool                   `protobuf:"varint,3,opt,name=recovered,proto3" json:"recovered,omitempty"`
+	RecoveredBatchEnd        bool                   `protobuf:"varint,4,opt,name=recovered_batch_end,json=recoveredBatchEnd,proto3" json:"recovered_batch_end,omitempty"`
+	RecoveredLeaseIds        []string               `protobuf:"bytes,5,rep,name=recovered_lease_ids,json=recoveredLeaseIds,proto3" json:"recovered_lease_ids,omitempty"`
+	RecoveredSessionLeaseIds []string               `protobuf:"bytes,6,rep,name=recovered_session_lease_ids,json=recoveredSessionLeaseIds,proto3" json:"recovered_session_lease_ids,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *CrawlOrderMessage) Reset() {
@@ -266,6 +270,13 @@ func (x *CrawlOrderMessage) GetRecoveredBatchEnd() bool {
 func (x *CrawlOrderMessage) GetRecoveredLeaseIds() []string {
 	if x != nil {
 		return x.RecoveredLeaseIds
+	}
+	return nil
+}
+
+func (x *CrawlOrderMessage) GetRecoveredSessionLeaseIds() []string {
+	if x != nil {
+		return x.RecoveredSessionLeaseIds
 	}
 	return nil
 }
@@ -423,17 +434,18 @@ func (x *OrderAckResult) GetConfirmationToken() []byte {
 }
 
 type WorkerHeartbeat struct {
-	state                       protoimpl.MessageState `protogen:"open.v1"`
-	WorkerId                    string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
-	ActiveFetches               *uint32                `protobuf:"varint,2,opt,name=active_fetches,json=activeFetches,proto3,oneof" json:"active_fetches,omitempty"`
-	AcknowledgedDirectiveIds    []uint64               `protobuf:"varint,3,rep,packed,name=acknowledged_directive_ids,json=acknowledgedDirectiveIds,proto3" json:"acknowledged_directive_ids,omitempty"`
-	ActiveLeaseIds              []string               `protobuf:"bytes,4,rep,name=active_lease_ids,json=activeLeaseIds,proto3" json:"active_lease_ids,omitempty"`
-	WorkerSessionId             string                 `protobuf:"bytes,5,opt,name=worker_session_id,json=workerSessionId,proto3" json:"worker_session_id,omitempty"`
-	StorageAvailableBytes       *uint64                `protobuf:"varint,6,opt,name=storage_available_bytes,json=storageAvailableBytes,proto3,oneof" json:"storage_available_bytes,omitempty"`
-	StoragePressure             *bool                  `protobuf:"varint,7,opt,name=storage_pressure,json=storagePressure,proto3,oneof" json:"storage_pressure,omitempty"`
-	StorageMeasurementAvailable *bool                  `protobuf:"varint,8,opt,name=storage_measurement_available,json=storageMeasurementAvailable,proto3,oneof" json:"storage_measurement_available,omitempty"`
-	unknownFields               protoimpl.UnknownFields
-	sizeCache                   protoimpl.SizeCache
+	state                        protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId                     string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	ActiveFetches                *uint32                `protobuf:"varint,2,opt,name=active_fetches,json=activeFetches,proto3,oneof" json:"active_fetches,omitempty"`
+	AcknowledgedDirectiveIds     []uint64               `protobuf:"varint,3,rep,packed,name=acknowledged_directive_ids,json=acknowledgedDirectiveIds,proto3" json:"acknowledged_directive_ids,omitempty"`
+	ActiveLeaseIds               []string               `protobuf:"bytes,4,rep,name=active_lease_ids,json=activeLeaseIds,proto3" json:"active_lease_ids,omitempty"`
+	WorkerSessionId              string                 `protobuf:"bytes,5,opt,name=worker_session_id,json=workerSessionId,proto3" json:"worker_session_id,omitempty"`
+	StorageAvailableBytes        *uint64                `protobuf:"varint,6,opt,name=storage_available_bytes,json=storageAvailableBytes,proto3,oneof" json:"storage_available_bytes,omitempty"`
+	StoragePressure              *bool                  `protobuf:"varint,7,opt,name=storage_pressure,json=storagePressure,proto3,oneof" json:"storage_pressure,omitempty"`
+	StorageMeasurementAvailable  *bool                  `protobuf:"varint,8,opt,name=storage_measurement_available,json=storageMeasurementAvailable,proto3,oneof" json:"storage_measurement_available,omitempty"`
+	ConfirmActiveLeaseDeliveries *bool                  `protobuf:"varint,9,opt,name=confirm_active_lease_deliveries,json=confirmActiveLeaseDeliveries,proto3,oneof" json:"confirm_active_lease_deliveries,omitempty"`
+	unknownFields                protoimpl.UnknownFields
+	sizeCache                    protoimpl.SizeCache
 }
 
 func (x *WorkerHeartbeat) Reset() {
@@ -522,6 +534,13 @@ func (x *WorkerHeartbeat) GetStorageMeasurementAvailable() bool {
 	return false
 }
 
+func (x *WorkerHeartbeat) GetConfirmActiveLeaseDeliveries() bool {
+	if x != nil && x.ConfirmActiveLeaseDeliveries != nil {
+		return *x.ConfirmActiveLeaseDeliveries
+	}
+	return false
+}
+
 // CrawlControlDirective steers one run identified by its provenance token, or the
 // whole worker when run_id is empty. pages_per_minute carries the cap for
 // set_rate directives and is ignored otherwise.
@@ -533,6 +552,7 @@ type CrawlControlDirective struct {
 	FetchWorkers                 uint32                 `protobuf:"varint,4,opt,name=fetch_workers,json=fetchWorkers,proto3" json:"fetch_workers,omitempty"`
 	PrioritizeAutomaticDiscovery bool                   `protobuf:"varint,5,opt,name=prioritize_automatic_discovery,json=prioritizeAutomaticDiscovery,proto3" json:"prioritize_automatic_discovery,omitempty"`
 	DirectiveId                  uint64                 `protobuf:"varint,6,opt,name=directive_id,json=directiveId,proto3" json:"directive_id,omitempty"`
+	MaximumActiveRuns            uint32                 `protobuf:"varint,7,opt,name=maximum_active_runs,json=maximumActiveRuns,proto3" json:"maximum_active_runs,omitempty"`
 	unknownFields                protoimpl.UnknownFields
 	sizeCache                    protoimpl.SizeCache
 }
@@ -605,6 +625,13 @@ func (x *CrawlControlDirective) GetPrioritizeAutomaticDiscovery() bool {
 func (x *CrawlControlDirective) GetDirectiveId() uint64 {
 	if x != nil {
 		return x.DirectiveId
+	}
+	return 0
+}
+
+func (x *CrawlControlDirective) GetMaximumActiveRuns() uint32 {
+	if x != nil {
+		return x.MaximumActiveRuns
 	}
 	return 0
 }
@@ -1024,14 +1051,15 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x13crawlexchange.proto\x12\fyacycrawl.v1\"]\n" +
 	"\x12WorkerRegistration\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12*\n" +
-	"\x11worker_session_id\x18\x02 \x01(\tR\x0fworkerSessionId\"\xcb\x01\n" +
+	"\x11worker_session_id\x18\x02 \x01(\tR\x0fworkerSessionId\"\x8a\x02\n" +
 	"\x11CrawlOrderMessage\x12\x1d\n" +
 	"\n" +
 	"order_json\x18\x01 \x01(\fR\torderJson\x12\x19\n" +
 	"\blease_id\x18\x02 \x01(\tR\aleaseId\x12\x1c\n" +
 	"\trecovered\x18\x03 \x01(\bR\trecovered\x12.\n" +
 	"\x13recovered_batch_end\x18\x04 \x01(\bR\x11recoveredBatchEnd\x12.\n" +
-	"\x13recovered_lease_ids\x18\x05 \x03(\tR\x11recoveredLeaseIds\"\xaa\x03\n" +
+	"\x13recovered_lease_ids\x18\x05 \x03(\tR\x11recoveredLeaseIds\x12=\n" +
+	"\x1brecovered_session_lease_ids\x18\x06 \x03(\tR\x18recoveredSessionLeaseIds\"\xaa\x03\n" +
 	"\bOrderAck\x12\x19\n" +
 	"\blease_id\x18\x01 \x01(\tR\aleaseId\x12\x18\n" +
 	"\arequeue\x18\x02 \x01(\bR\arequeue\x12%\n" +
@@ -1044,7 +1072,7 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x12confirmation_token\x18\t \x01(\fR\x11confirmationTokenB\x13\n" +
 	"\x11_pages_per_minute\"?\n" +
 	"\x0eOrderAckResult\x12-\n" +
-	"\x12confirmation_token\x18\x01 \x01(\fR\x11confirmationToken\"\x8a\x04\n" +
+	"\x12confirmation_token\x18\x01 \x01(\fR\x11confirmationToken\"\xfa\x04\n" +
 	"\x0fWorkerHeartbeat\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12*\n" +
 	"\x0eactive_fetches\x18\x02 \x01(\rH\x00R\ractiveFetches\x88\x01\x01\x12<\n" +
@@ -1053,18 +1081,21 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x11worker_session_id\x18\x05 \x01(\tR\x0fworkerSessionId\x12;\n" +
 	"\x17storage_available_bytes\x18\x06 \x01(\x04H\x01R\x15storageAvailableBytes\x88\x01\x01\x12.\n" +
 	"\x10storage_pressure\x18\a \x01(\bH\x02R\x0fstoragePressure\x88\x01\x01\x12G\n" +
-	"\x1dstorage_measurement_available\x18\b \x01(\bH\x03R\x1bstorageMeasurementAvailable\x88\x01\x01B\x11\n" +
+	"\x1dstorage_measurement_available\x18\b \x01(\bH\x03R\x1bstorageMeasurementAvailable\x88\x01\x01\x12J\n" +
+	"\x1fconfirm_active_lease_deliveries\x18\t \x01(\bH\x04R\x1cconfirmActiveLeaseDeliveries\x88\x01\x01B\x11\n" +
 	"\x0f_active_fetchesB\x1a\n" +
 	"\x18_storage_available_bytesB\x13\n" +
 	"\x11_storage_pressureB \n" +
-	"\x1e_storage_measurement_available\"\x9a\x02\n" +
+	"\x1e_storage_measurement_availableB\"\n" +
+	" _confirm_active_lease_deliveries\"\xca\x02\n" +
 	"\x15CrawlControlDirective\x122\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1e.yacycrawl.v1.CrawlControlKindR\x04kind\x12\x15\n" +
 	"\x06run_id\x18\x02 \x01(\fR\x05runId\x12(\n" +
 	"\x10pages_per_minute\x18\x03 \x01(\rR\x0epagesPerMinute\x12#\n" +
 	"\rfetch_workers\x18\x04 \x01(\rR\ffetchWorkers\x12D\n" +
 	"\x1eprioritize_automatic_discovery\x18\x05 \x01(\bR\x1cprioritizeAutomaticDiscovery\x12!\n" +
-	"\fdirective_id\x18\x06 \x01(\x04R\vdirectiveId\"\x98\x03\n" +
+	"\fdirective_id\x18\x06 \x01(\x04R\vdirectiveId\x12.\n" +
+	"\x13maximum_active_runs\x18\a \x01(\rR\x11maximumActiveRuns\"\x98\x03\n" +
 	"\x15WorkerHeartbeatResult\x12C\n" +
 	"\n" +
 	"directives\x18\x01 \x03(\v2#.yacycrawl.v1.CrawlControlDirectiveR\n" +
@@ -1102,7 +1133,7 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\blease_id\x18\b \x01(\tR\aleaseId\x12*\n" +
 	"\x11worker_session_id\x18\t \x01(\tR\x0fworkerSessionIdB\x13\n" +
 	"\x11_pages_per_minute\"\x12\n" +
-	"\x10CrawlProgressAck*\xb0\x02\n" +
+	"\x10CrawlProgressAck*\xd8\x02\n" +
 	"\x10CrawlControlKind\x12\"\n" +
 	"\x1eCRAWL_CONTROL_KIND_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18CRAWL_CONTROL_KIND_PAUSE\x10\x01\x12\x1d\n" +
@@ -1111,7 +1142,8 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x1bCRAWL_CONTROL_KIND_SET_RATE\x10\x04\x12\x1e\n" +
 	"\x1aCRAWL_CONTROL_KIND_RESTART\x10\x05\x12\"\n" +
 	"\x1eCRAWL_CONTROL_KIND_SET_WORKERS\x10\x06\x127\n" +
-	"3CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY\x10\a*\x8a\x01\n" +
+	"3CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY\x10\a\x12&\n" +
+	"\"CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS\x10\b*\x8a\x01\n" +
 	"\rCrawlRunState\x12\x1f\n" +
 	"\x1bCRAWL_RUN_STATE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17CRAWL_RUN_STATE_RUNNING\x10\x01\x12\x1c\n" +

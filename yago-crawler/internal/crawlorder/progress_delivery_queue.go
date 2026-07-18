@@ -53,14 +53,15 @@ type progressDeliveryQueue struct {
 	leaseGrants     *crawllease.GrantRegistry
 	policy          progressDeliveryPolicy
 
-	mu      sync.Mutex
-	pending map[string][]progressDelivery
-	queued  int
-	version uint64
-	closed  bool
-	signal  chan struct{}
-	done    chan struct{}
-	cancel  context.CancelFunc
+	mu              sync.Mutex
+	pending         map[string][]progressDelivery
+	queued          int
+	version         uint64
+	inFlightVersion uint64
+	closed          bool
+	signal          chan struct{}
+	done            chan struct{}
+	cancel          context.CancelFunc
 }
 
 func defaultProgressDeliveryPolicy() progressDeliveryPolicy {
@@ -110,7 +111,8 @@ func (q *progressDeliveryQueue) enqueue(ctx context.Context, report RunReport) {
 		return
 	}
 	sequence := q.pending[key]
-	if len(sequence) > 0 && sequence[len(sequence)-1].terminal == terminal {
+	if len(sequence) > 0 && sequence[len(sequence)-1].terminal == terminal &&
+		sequence[len(sequence)-1].version != q.inFlightVersion {
 		q.version++
 		sequence[len(sequence)-1] = progressDelivery{
 			report:    report,
@@ -259,9 +261,11 @@ func (q *progressDeliveryQueue) next() (progressDelivery, time.Duration, bool, b
 		}
 	}
 	if foundTerminal {
+		q.inFlightVersion = readyTerminal.version
 		return readyTerminal, 0, true, false
 	}
 	if foundRunning {
+		q.inFlightVersion = readyRunning.version
 		return readyRunning, 0, true, false
 	}
 
@@ -307,6 +311,9 @@ func (q *progressDeliveryQueue) settle(delivery progressDelivery, deliveryErr er
 	warn := false
 
 	q.mu.Lock()
+	if q.inFlightVersion == delivery.version {
+		q.inFlightVersion = 0
+	}
 	sequence, exists := q.pending[key]
 	if exists && sequence[0].version == delivery.version {
 		current := sequence[0]
@@ -357,7 +364,12 @@ func (q *progressDeliveryQueue) evictExpendableRunningTailLocked() {
 	}
 	if expendableFound {
 		q.queued--
-		delete(q.pending, selectedKey)
+		sequence := q.pending[selectedKey]
+		if len(sequence) == 1 {
+			delete(q.pending, selectedKey)
+		} else {
+			q.pending[selectedKey] = sequence[:len(sequence)-1]
+		}
 	}
 }
 
@@ -371,7 +383,13 @@ func (q *progressDeliveryQueue) removeHeadLocked(
 
 		return
 	}
-	q.pending[key] = sequence[1:]
+	remaining := sequence[1:]
+	if !remaining[0].terminal {
+		replacement := remaining[0]
+		replacement.due = time.Now()
+		remaining[0] = replacement
+	}
+	q.pending[key] = remaining
 }
 
 func (q *progressDeliveryQueue) signalLocked() {

@@ -33,6 +33,10 @@ func automaticDiscoverySettingsView() SettingsView {
 			Key: "crawler.fetch_workers", Title: "Maximum fetch concurrency per crawler",
 			Value: "4", Category: "Crawler",
 		},
+		{
+			Key: "crawler.max_active_runs", Title: "Maximum active crawl tasks",
+			Value: "32", Category: "Crawler",
+		},
 	}}
 }
 
@@ -66,6 +70,7 @@ func TestConfigurationCrawlerOwnsAutomaticDiscoveryAndFormats(t *testing.T) {
 		`name="value:swarm.seed.enabled"`, `name="value:web.fallback.seed_crawl"`,
 		`name="value:crawler.prioritize_automatic_discovery"`,
 		`>Crawler</legend>`, `name="value:crawler.fetch_workers"`,
+		`name="value:crawler.max_active_runs"`,
 		`>Document formats</legend>`, `action="/admin/configuration/formats#panel-crawler"`,
 		`name="text" checked`, `name="pdf" checked`, `name="archives"`,
 	} {
@@ -93,6 +98,25 @@ func TestConfigurationCrawlerSavesAutomaticDiscoverySetting(t *testing.T) {
 	}
 	if change := settings.changes[0]; change.Key != "crawler.prioritize_automatic_discovery" ||
 		change.Value != "false" {
+		t.Fatalf("saved change = %+v", change)
+	}
+}
+
+func TestConfigurationCrawlerSavesMaximumActiveTasks(t *testing.T) {
+	settings := &fakeSettings{
+		view:   automaticDiscoverySettingsView(),
+		result: SettingsResult{OK: true, Message: "Saved."},
+	}
+	console := New(Options{Config: fakeConfig{}, Settings: settings})
+	got := doPost(t, console, configPath, url.Values{
+		"key":                           {"crawler.max_active_runs"},
+		"value:crawler.max_active_runs": {"37"},
+	})
+	if got.status != http.StatusOK || len(settings.changes) != 1 {
+		t.Fatalf("save = status %d changes %+v", got.status, settings.changes)
+	}
+	if change := settings.changes[0]; change.Key != "crawler.max_active_runs" ||
+		change.Value != "37" {
 		t.Fatalf("saved change = %+v", change)
 	}
 }

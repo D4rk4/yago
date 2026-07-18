@@ -140,7 +140,7 @@ func TestRegistryRecentBreaksUpdatedTiesByRunID(t *testing.T) {
 	}
 }
 
-func TestRegistryEvictsOldestOverCapacity(t *testing.T) {
+func TestRegistryEvictsOldestTerminalOverCapacity(t *testing.T) {
 	reg := New(2)
 	base := time.Unix(3000, 0)
 	tick := base
@@ -149,7 +149,9 @@ func TestRegistryEvictsOldestOverCapacity(t *testing.T) {
 
 	for i, id := range []string{"a", "b", "c"} {
 		tick = base.Add(time.Duration(i) * time.Second)
-		reg.Record(ctx, yagocrawlcontract.CrawlRunProgress{RunID: id})
+		reg.Record(ctx, yagocrawlcontract.CrawlRunProgress{
+			RunID: id, State: yagocrawlcontract.CrawlRunFinished,
+		})
 	}
 
 	if reg.Len() != 2 {
