@@ -3,6 +3,8 @@
 package crawling
 
 import (
+	"context"
+
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagoproto"
@@ -10,15 +12,36 @@ import (
 
 type LocalPeer interface {
 	NetworkMatches(network string) bool
+	AuthenticatesAddress(network string, youare yagomodel.Hash, key, iam, magic string) bool
 	Addresses(network string, youare yagomodel.Hash) bool
 }
 
-func MountCrawlReceipt(router httpguard.WireRouter, local LocalPeer) {
+type ReceiptProcessor interface {
+	ProcessReceipt(
+		context.Context,
+		yagoproto.CrawlReceiptRequest,
+	) (yagoproto.CrawlReceiptResponse, error)
+}
+
+func MountCrawlReceipt(
+	router httpguard.WireRouter,
+	local LocalPeer,
+	processors ...ReceiptProcessor,
+) {
+	var endpoint func(
+		context.Context,
+		yagoproto.CrawlReceiptRequest,
+	) (yagoproto.CrawlReceiptResponse, error)
+	if len(processors) > 0 && processors[0] != nil {
+		endpoint = enabledCrawlReceiptEndpoint{local: local, processor: processors[0]}.Serve
+	} else {
+		endpoint = disabledCrawlReceiptEndpoint{local: local}.Serve
+	}
 	httpguard.Mount(
 		router,
 		yagoproto.PathCrawlReceipt,
 		yagoproto.CrawlReceiptEndpointMethods,
 		yagoproto.ParseCrawlReceiptRequest,
-		disabledCrawlReceiptEndpoint{local: local}.Serve,
+		endpoint,
 	)
 }

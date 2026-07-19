@@ -69,6 +69,7 @@ func TestMetricsExposeCrawlerSeries(t *testing.T) {
 	metrics.FetchAttempted()
 	metrics.FetchSucceeded(1500)
 	metrics.FetchFailed()
+	metrics.ParseFailed()
 	metrics.RobotsDenied()
 	metrics.IngestPublished()
 	metrics.ObserveHostBackoff()
@@ -79,6 +80,7 @@ func TestMetricsExposeCrawlerSeries(t *testing.T) {
 		"yacy_crawler_fetches_total 2",
 		"yacy_crawler_bytes_total 1500",
 		"yacy_crawler_fetch_failures_total 1",
+		"yacy_crawler_parse_failures_total 1",
 		"yacy_crawler_robots_denied_total 1",
 		"yacy_crawler_ingest_batches_total 1",
 		"yacy_crawler_host_backoffs_total 1",

@@ -356,6 +356,7 @@ func terminalSettlementAcknowledgment(
 		WorkerSessionId: settlement.WorkerSessionID,
 		TerminalState:   protoRunState(settlement.State),
 		TerminalTally:   protoRunTally(settlement.Tally),
+		RecentOutcomes:  protoCrawlURLOutcomes(settlement.RecentOutcomes),
 	}
 	if settlement.RateKnown {
 		rate := settlement.PagesPerMinute

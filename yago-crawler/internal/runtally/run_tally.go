@@ -6,6 +6,7 @@ package runtally
 
 import (
 	"sync"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 )
@@ -14,12 +15,20 @@ import (
 // workers processing different runs (and the same run across workers) all record
 // into it while a run is in flight.
 type Tally struct {
-	mu    sync.Mutex
-	byRun map[string]yagocrawlcontract.CrawlRunTally
+	mu       sync.Mutex
+	byRun    map[string]yagocrawlcontract.CrawlRunTally
+	outcomes map[string]yagocrawlcontract.CrawlURLOutcomeHistory
+	sequence map[string]uint64
+	now      func() time.Time
 }
 
 func New() *Tally {
-	return &Tally{byRun: make(map[string]yagocrawlcontract.CrawlRunTally)}
+	return &Tally{
+		byRun:    make(map[string]yagocrawlcontract.CrawlRunTally),
+		outcomes: make(map[string]yagocrawlcontract.CrawlURLOutcomeHistory),
+		sequence: make(map[string]uint64),
+		now:      time.Now,
+	}
 }
 
 func (t *Tally) Commit(provenance []byte, delta yagocrawlcontract.CrawlRunTally) {
@@ -59,5 +68,8 @@ func (t *Tally) Snapshot(provenance []byte) yagocrawlcontract.CrawlRunTally {
 func (t *Tally) Forget(provenance []byte) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	delete(t.byRun, string(provenance))
+	key := string(provenance)
+	delete(t.byRun, key)
+	delete(t.outcomes, key)
+	delete(t.sequence, key)
 }

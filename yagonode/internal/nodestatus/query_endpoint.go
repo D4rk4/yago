@@ -34,7 +34,13 @@ func (e queryEndpoint) Serve(
 ) (yagoproto.QueryResponse, error) {
 	resp := yagoproto.QueryResponse{Response: yagoproto.QueryResponseRejected}
 
-	if e.identity.Addresses(req.NetworkName, req.YouAre) {
+	if e.identity.AuthenticatesAddress(
+		req.NetworkName,
+		req.YouAre,
+		req.Key,
+		req.Iam.String(),
+		req.MagicMD5,
+	) {
 		count, supported, err := e.count(ctx, req)
 		if err != nil {
 			return yagoproto.QueryResponse{}, fmt.Errorf("%s: %w", msgCountFailed, err)

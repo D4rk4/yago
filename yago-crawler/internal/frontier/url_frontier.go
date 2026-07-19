@@ -78,6 +78,7 @@ type Frontier struct {
 	checkpointFailure     error
 	checkpointShutdown    func()
 	growthAdmission       GrowthAdmission
+	urlDenylist           URLDenylist
 }
 
 // Option configures a Frontier at construction.

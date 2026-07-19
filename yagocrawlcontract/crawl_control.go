@@ -18,6 +18,8 @@ const (
 	CrawlControlRestart                       CrawlControlKind = "restart"
 	CrawlControlSetWorkers                    CrawlControlKind = "set_workers"
 	CrawlControlSetActiveRuns                 CrawlControlKind = "set_active_runs"
+	CrawlControlSetProcessRate                CrawlControlKind = "set_process_rate"
+	CrawlControlSetMaximumRedirects           CrawlControlKind = "set_maximum_redirects"
 	CrawlControlSetAutomaticDiscoveryPriority CrawlControlKind = "set_automatic_discovery_priority"
 )
 
@@ -32,5 +34,7 @@ type CrawlControlDirective struct {
 	PagesPerMinute               uint32
 	FetchWorkers                 uint32
 	MaximumActiveRuns            uint32
+	ProcessPagesPerSecond        uint32
+	MaximumRedirects             uint32
 	PrioritizeAutomaticDiscovery bool
 }

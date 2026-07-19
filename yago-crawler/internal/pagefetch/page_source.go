@@ -19,6 +19,7 @@ var ErrUnsupportedContentType = fmt.Errorf("unsupported content type: %w", ErrPa
 
 type FetchedPage struct {
 	URL          *url.URL
+	HTTPStatus   uint32
 	ContentType  string
 	Body         []byte
 	LastModified time.Time

@@ -285,6 +285,8 @@ func (q *progressDeliveryQueue) deliver(ctx context.Context, delivery progressDe
 	}
 	callCtx, cancel := context.WithTimeout(ctx, q.policy.rpcTimeout)
 	pagesPerMinute := delivery.report.PagesPerMinute
+	maxPagesPerHost := int64(delivery.report.MaxPagesPerHost)
+	maxPagesPerRun := progressRunPageLimit(delivery.report.MaxPagesPerRun)
 	_, err := q.client.ReportProgress(callCtx, &crawlrpc.CrawlProgressReport{
 		WorkerId:        q.workerID,
 		RunId:           delivery.report.Provenance,
@@ -292,9 +294,12 @@ func (q *progressDeliveryQueue) deliver(ctx context.Context, delivery progressDe
 		ProfileName:     delivery.report.ProfileName,
 		State:           protoRunState(delivery.report.State),
 		Tally:           protoRunTally(delivery.report.Tally),
+		RecentOutcomes:  protoCrawlURLOutcomes(delivery.report.RecentOutcomes),
 		PagesPerMinute:  &pagesPerMinute,
 		LeaseId:         delivery.report.LeaseID,
 		WorkerSessionId: q.workerSessionID,
+		MaxPagesPerHost: &maxPagesPerHost,
+		MaxPagesPerRun:  &maxPagesPerRun,
 	})
 	cancel()
 	if status.Code(err) == codes.FailedPrecondition {
@@ -304,6 +309,14 @@ func (q *progressDeliveryQueue) deliver(ctx context.Context, delivery progressDe
 		err = crawllease.ErrLeaseLost
 	}
 	q.settle(delivery, err)
+}
+
+func progressRunPageLimit(value int) uint64 {
+	if value < 0 {
+		return 0
+	}
+
+	return uint64(value)
 }
 
 func (q *progressDeliveryQueue) settle(delivery progressDelivery, deliveryErr error) {

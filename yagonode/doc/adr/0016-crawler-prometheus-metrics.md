@@ -26,10 +26,11 @@ the same version the node uses, rather than inventing a second metrics format.
 - A crawler-owned collector registers the `yacy_crawler_*` gauges and counters on
   its own `prometheus.Registry` and serves them in the Prometheus text exposition
   format.
-- The crawler exposes `/metrics` on an optional listener configured by
-  `YAGO_CRAWLER_METRICS_ADDR`; when the variable is empty the crawler starts no
-  metrics server and only collects in memory, so the default deployment opens no
-  new port.
+- The crawler exposes `/metrics` on an optional loopback IP-literal listener
+  configured by `YAGO_CRAWLER_METRICS_ADDR`; wildcard and non-loopback listeners
+  are rejected. When the variable is empty the crawler starts no metrics server
+  and only collects in memory, so the default deployment opens no new port. A
+  trusted tunnel or proxy provides any required remote scrape.
 - Fetch, byte, failure, ingest, and active-job counts are observed from the
   pipeline through a small observer seam, and robots denials from the robots
   admission fetcher, so those packages do not import the metrics collector.

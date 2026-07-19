@@ -671,6 +671,12 @@ func unsafeCheckpointSnapshotMutations(
 			},
 		},
 		checkpointSnapshotMutation{
+			name: "budget discarded pages",
+			mutate: func(snapshot *frontiercheckpoint.Snapshot) {
+				snapshot.BudgetDiscardedPages = 1
+			},
+		},
+		checkpointSnapshotMutation{
 			name: "empty host",
 			mutate: func(snapshot *frontiercheckpoint.Snapshot) {
 				snapshot.HostStates[""] = frontiercheckpoint.HostState{}

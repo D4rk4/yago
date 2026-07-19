@@ -12,6 +12,7 @@ type terminalCrawlOrderDisposition struct {
 	disposition    crawlOrderDisposition
 	state          yagocrawlcontract.CrawlRunState
 	tally          yagocrawlcontract.CrawlRunTally
+	recentOutcomes yagocrawlcontract.CrawlURLOutcomeHistory
 	pagesPerMinute uint32
 }
 
@@ -34,6 +35,7 @@ func settleTerminalCrawlOrder(
 		Disposition:    settlement.disposition,
 		State:          settlement.state,
 		Tally:          settlement.tally,
+		RecentOutcomes: settlement.recentOutcomes,
 		PagesPerMinute: settlement.pagesPerMinute,
 		RateKnown:      true,
 	})

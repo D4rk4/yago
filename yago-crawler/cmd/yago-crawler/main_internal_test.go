@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,6 +24,13 @@ func restoreMainSeams(t *testing.T) {
 	savedRunConfiguredCrawler := runConfiguredCrawler
 	savedBrowserFetcher := newCrawlerBrowserFetcher
 	savedRunCrawlerService := runCrawlerService
+	savedSynchronizePolicy := synchronizeCrawlerRuntimePolicy
+	synchronizeCrawlerRuntimePolicy = func(
+		_ context.Context,
+		config ServiceConfig,
+	) (ServiceConfig, error) {
+		return config, nil
+	}
 	t.Cleanup(func() {
 		exitProcess = savedExitProcess
 		loadCrawlerServiceConfig = savedLoadConfig
@@ -32,6 +38,7 @@ func restoreMainSeams(t *testing.T) {
 		runConfiguredCrawler = savedRunConfiguredCrawler
 		newCrawlerBrowserFetcher = savedBrowserFetcher
 		runCrawlerService = savedRunCrawlerService
+		synchronizeCrawlerRuntimePolicy = savedSynchronizePolicy
 	})
 }
 
@@ -115,10 +122,12 @@ func TestStartReturnsSuccessCode(t *testing.T) {
 func TestRunClosesBrowserOnSuccess(t *testing.T) {
 	restoreMainSeams(t)
 	closed := false
+	configuredRedirects := -1
 	newCrawlerBrowserFetcher = func(
-		_ firefoxfetch.BrowserLaunch, _ yagoegress.Guard,
+		launch firefoxfetch.BrowserLaunch, _ yagoegress.Guard,
 		_ ...func(),
 	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
+		configuredRedirects = launch.MaxRedirects
 		return &firefoxfetch.BrowserPageFetcher{}, func() { closed = true }, nil
 	}
 	runCrawlerService = func(
@@ -135,6 +144,38 @@ func TestRunClosesBrowserOnSuccess(t *testing.T) {
 	}
 	if !closed {
 		t.Fatal("browser cleanup was not called")
+	}
+	if configuredRedirects != DefaultMaxRedirects {
+		t.Fatalf("browser redirect limit = %d, want %d", configuredRedirects, DefaultMaxRedirects)
+	}
+}
+
+func TestRunReturnsRuntimePolicySynchronizationError(t *testing.T) {
+	restoreMainSeams(t)
+	sentinel := errors.New("runtime policy unavailable")
+	synchronizeCrawlerRuntimePolicy = func(
+		context.Context,
+		ServiceConfig,
+	) (ServiceConfig, error) {
+		return ServiceConfig{}, sentinel
+	}
+	browserStarted := false
+	newCrawlerBrowserFetcher = func(
+		firefoxfetch.BrowserLaunch,
+		yagoegress.Guard,
+		...func(),
+	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
+		browserStarted = true
+
+		return nil, nil, errors.New("unexpected browser start")
+	}
+
+	err := run(t.Context(), minimalServiceConfig(t))
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("error = %v, want runtime policy failure", err)
+	}
+	if browserStarted {
+		t.Fatal("browser started before runtime policy synchronization")
 	}
 }
 
@@ -258,41 +299,6 @@ func TestRunReturnsBrowserStartError(t *testing.T) {
 
 	if err := run(context.Background(), minimalServiceConfig(t)); !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
-	}
-}
-
-func TestRunWarnsOnChromiumBrowserPath(t *testing.T) {
-	restoreMainSeams(t)
-
-	var logs bytes.Buffer
-	previous := slog.Default()
-	slog.SetDefault(
-		slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})),
-	)
-	t.Cleanup(func() { slog.SetDefault(previous) })
-
-	newCrawlerBrowserFetcher = func(
-		_ firefoxfetch.BrowserLaunch, _ yagoegress.Guard,
-		_ ...func(),
-	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
-		return &firefoxfetch.BrowserPageFetcher{}, func() {}, nil
-	}
-	runCrawlerService = func(
-		context.Context,
-		ServiceConfig,
-		pagefetch.PageSource,
-		*crawlermetrics.Metrics,
-	) error {
-		return nil
-	}
-
-	cfg := minimalServiceConfig(t)
-	cfg.Crawl.BrowserPath = "/usr/bin/chromium"
-	if err := run(context.Background(), cfg); err != nil {
-		t.Fatalf("run: %v", err)
-	}
-	if !strings.Contains(logs.String(), "non-Firefox browser path") {
-		t.Fatalf("want a chromium browser-path warning, got: %s", logs.String())
 	}
 }
 

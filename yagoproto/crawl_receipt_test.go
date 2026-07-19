@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -93,5 +94,43 @@ func TestParseCrawlReceiptResponseRejectsBadDelay(t *testing.T) {
 	msg := yagomodel.Message{yagoproto.FieldDelay: "later"}
 	if _, err := yagoproto.ParseCrawlReceiptResponse(msg); err == nil {
 		t.Fatal("expected error for non-numeric delay")
+	}
+}
+
+func TestCrawlReceiptResultVocabulary(t *testing.T) {
+	t.Parallel()
+
+	for _, result := range []string{
+		yagoproto.CrawlReceiptResultUnavailable,
+		yagoproto.CrawlReceiptResultException,
+		yagoproto.CrawlReceiptResultRobot,
+		yagoproto.CrawlReceiptResultRejected,
+		yagoproto.CrawlReceiptResultDequeue,
+		yagoproto.CrawlReceiptResultFill,
+		yagoproto.CrawlReceiptResultUpdate,
+		yagoproto.CrawlReceiptResultKnown,
+		yagoproto.CrawlReceiptResultStale,
+	} {
+		if !yagoproto.ValidCrawlReceiptResult(result) {
+			t.Errorf("result %q rejected", result)
+		}
+	}
+	if yagoproto.ValidCrawlReceiptResult("ok") {
+		t.Fatal("unknown result accepted")
+	}
+}
+
+func TestParseCrawlReceiptRequestBoundsWireFields(t *testing.T) {
+	t.Parallel()
+
+	for field, maximum := range map[string]int{
+		yagoproto.FieldResult:    yagoproto.MaximumCrawlReceiptResultBytes,
+		yagoproto.FieldReason:    yagoproto.MaximumCrawlReceiptReasonBytes,
+		yagoproto.FieldLURLEntry: yagoproto.MaximumCrawlReceiptMetadataBytes,
+	} {
+		form := url.Values{field: {strings.Repeat("x", maximum+1)}}
+		if _, err := yagoproto.ParseCrawlReceiptRequest(t.Context(), form); err == nil {
+			t.Errorf("oversized %s accepted", field)
+		}
 	}
 }

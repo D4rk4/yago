@@ -38,20 +38,24 @@ const (
 	CrawlControlKind_CRAWL_CONTROL_KIND_SET_WORKERS                      CrawlControlKind = 6
 	CrawlControlKind_CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY CrawlControlKind = 7
 	CrawlControlKind_CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS                  CrawlControlKind = 8
+	CrawlControlKind_CRAWL_CONTROL_KIND_SET_PROCESS_RATE                 CrawlControlKind = 9
+	CrawlControlKind_CRAWL_CONTROL_KIND_SET_MAXIMUM_REDIRECTS            CrawlControlKind = 10
 )
 
 // Enum value maps for CrawlControlKind.
 var (
 	CrawlControlKind_name = map[int32]string{
-		0: "CRAWL_CONTROL_KIND_UNSPECIFIED",
-		1: "CRAWL_CONTROL_KIND_PAUSE",
-		2: "CRAWL_CONTROL_KIND_RESUME",
-		3: "CRAWL_CONTROL_KIND_CANCEL",
-		4: "CRAWL_CONTROL_KIND_SET_RATE",
-		5: "CRAWL_CONTROL_KIND_RESTART",
-		6: "CRAWL_CONTROL_KIND_SET_WORKERS",
-		7: "CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY",
-		8: "CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS",
+		0:  "CRAWL_CONTROL_KIND_UNSPECIFIED",
+		1:  "CRAWL_CONTROL_KIND_PAUSE",
+		2:  "CRAWL_CONTROL_KIND_RESUME",
+		3:  "CRAWL_CONTROL_KIND_CANCEL",
+		4:  "CRAWL_CONTROL_KIND_SET_RATE",
+		5:  "CRAWL_CONTROL_KIND_RESTART",
+		6:  "CRAWL_CONTROL_KIND_SET_WORKERS",
+		7:  "CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY",
+		8:  "CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS",
+		9:  "CRAWL_CONTROL_KIND_SET_PROCESS_RATE",
+		10: "CRAWL_CONTROL_KIND_SET_MAXIMUM_REDIRECTS",
 	}
 	CrawlControlKind_value = map[string]int32{
 		"CRAWL_CONTROL_KIND_UNSPECIFIED":                      0,
@@ -63,6 +67,8 @@ var (
 		"CRAWL_CONTROL_KIND_SET_WORKERS":                      6,
 		"CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY": 7,
 		"CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS":                  8,
+		"CRAWL_CONTROL_KIND_SET_PROCESS_RATE":                 9,
+		"CRAWL_CONTROL_KIND_SET_MAXIMUM_REDIRECTS":            10,
 	}
 )
 
@@ -146,11 +152,12 @@ func (CrawlRunState) EnumDescriptor() ([]byte, []int) {
 }
 
 type WorkerRegistration struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	WorkerId        string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
-	WorkerSessionId string                 `protobuf:"bytes,2,opt,name=worker_session_id,json=workerSessionId,proto3" json:"worker_session_id,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId         string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	WorkerSessionId  string                 `protobuf:"bytes,2,opt,name=worker_session_id,json=workerSessionId,proto3" json:"worker_session_id,omitempty"`
+	FetchStartLeases bool                   `protobuf:"varint,3,opt,name=fetch_start_leases,json=fetchStartLeases,proto3" json:"fetch_start_leases,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *WorkerRegistration) Reset() {
@@ -197,6 +204,197 @@ func (x *WorkerRegistration) GetWorkerSessionId() string {
 	return ""
 }
 
+func (x *WorkerRegistration) GetFetchStartLeases() bool {
+	if x != nil {
+		return x.FetchStartLeases
+	}
+	return false
+}
+
+type FetchStartLeaseRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId          string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	WorkerSessionId   string                 `protobuf:"bytes,2,opt,name=worker_session_id,json=workerSessionId,proto3" json:"worker_session_id,omitempty"`
+	Sequence          uint64                 `protobuf:"varint,3,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	MaximumPermits    uint32                 `protobuf:"varint,4,opt,name=maximum_permits,json=maximumPermits,proto3" json:"maximum_permits,omitempty"`
+	CompletedSequence *uint64                `protobuf:"varint,5,opt,name=completed_sequence,json=completedSequence,proto3,oneof" json:"completed_sequence,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *FetchStartLeaseRequest) Reset() {
+	*x = FetchStartLeaseRequest{}
+	mi := &file_crawlexchange_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FetchStartLeaseRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FetchStartLeaseRequest) ProtoMessage() {}
+
+func (x *FetchStartLeaseRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_crawlexchange_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FetchStartLeaseRequest.ProtoReflect.Descriptor instead.
+func (*FetchStartLeaseRequest) Descriptor() ([]byte, []int) {
+	return file_crawlexchange_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *FetchStartLeaseRequest) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *FetchStartLeaseRequest) GetWorkerSessionId() string {
+	if x != nil {
+		return x.WorkerSessionId
+	}
+	return ""
+}
+
+func (x *FetchStartLeaseRequest) GetSequence() uint64 {
+	if x != nil {
+		return x.Sequence
+	}
+	return 0
+}
+
+func (x *FetchStartLeaseRequest) GetMaximumPermits() uint32 {
+	if x != nil {
+		return x.MaximumPermits
+	}
+	return 0
+}
+
+func (x *FetchStartLeaseRequest) GetCompletedSequence() uint64 {
+	if x != nil && x.CompletedSequence != nil {
+		return *x.CompletedSequence
+	}
+	return 0
+}
+
+type FetchStartLeaseDecision struct {
+	state                             protoimpl.MessageState `protogen:"open.v1"`
+	Granted                           bool                   `protobuf:"varint,1,opt,name=granted,proto3" json:"granted,omitempty"`
+	Sequence                          uint64                 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Permits                           uint32                 `protobuf:"varint,3,opt,name=permits,proto3" json:"permits,omitempty"`
+	FirstPermitOpensAfterNanoseconds  int64                  `protobuf:"zigzag64,4,opt,name=first_permit_opens_after_nanoseconds,json=firstPermitOpensAfterNanoseconds,proto3" json:"first_permit_opens_after_nanoseconds,omitempty"`
+	FirstPermitClosesAfterNanoseconds int64                  `protobuf:"zigzag64,5,opt,name=first_permit_closes_after_nanoseconds,json=firstPermitClosesAfterNanoseconds,proto3" json:"first_permit_closes_after_nanoseconds,omitempty"`
+	PermitIntervalNanoseconds         int64                  `protobuf:"varint,6,opt,name=permit_interval_nanoseconds,json=permitIntervalNanoseconds,proto3" json:"permit_interval_nanoseconds,omitempty"`
+	RetryAfterNanoseconds             int64                  `protobuf:"varint,7,opt,name=retry_after_nanoseconds,json=retryAfterNanoseconds,proto3" json:"retry_after_nanoseconds,omitempty"`
+	PolicyGeneration                  uint64                 `protobuf:"varint,8,opt,name=policy_generation,json=policyGeneration,proto3" json:"policy_generation,omitempty"`
+	Unlimited                         bool                   `protobuf:"varint,9,opt,name=unlimited,proto3" json:"unlimited,omitempty"`
+	unknownFields                     protoimpl.UnknownFields
+	sizeCache                         protoimpl.SizeCache
+}
+
+func (x *FetchStartLeaseDecision) Reset() {
+	*x = FetchStartLeaseDecision{}
+	mi := &file_crawlexchange_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FetchStartLeaseDecision) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FetchStartLeaseDecision) ProtoMessage() {}
+
+func (x *FetchStartLeaseDecision) ProtoReflect() protoreflect.Message {
+	mi := &file_crawlexchange_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FetchStartLeaseDecision.ProtoReflect.Descriptor instead.
+func (*FetchStartLeaseDecision) Descriptor() ([]byte, []int) {
+	return file_crawlexchange_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *FetchStartLeaseDecision) GetGranted() bool {
+	if x != nil {
+		return x.Granted
+	}
+	return false
+}
+
+func (x *FetchStartLeaseDecision) GetSequence() uint64 {
+	if x != nil {
+		return x.Sequence
+	}
+	return 0
+}
+
+func (x *FetchStartLeaseDecision) GetPermits() uint32 {
+	if x != nil {
+		return x.Permits
+	}
+	return 0
+}
+
+func (x *FetchStartLeaseDecision) GetFirstPermitOpensAfterNanoseconds() int64 {
+	if x != nil {
+		return x.FirstPermitOpensAfterNanoseconds
+	}
+	return 0
+}
+
+func (x *FetchStartLeaseDecision) GetFirstPermitClosesAfterNanoseconds() int64 {
+	if x != nil {
+		return x.FirstPermitClosesAfterNanoseconds
+	}
+	return 0
+}
+
+func (x *FetchStartLeaseDecision) GetPermitIntervalNanoseconds() int64 {
+	if x != nil {
+		return x.PermitIntervalNanoseconds
+	}
+	return 0
+}
+
+func (x *FetchStartLeaseDecision) GetRetryAfterNanoseconds() int64 {
+	if x != nil {
+		return x.RetryAfterNanoseconds
+	}
+	return 0
+}
+
+func (x *FetchStartLeaseDecision) GetPolicyGeneration() uint64 {
+	if x != nil {
+		return x.PolicyGeneration
+	}
+	return 0
+}
+
+func (x *FetchStartLeaseDecision) GetUnlimited() bool {
+	if x != nil {
+		return x.Unlimited
+	}
+	return false
+}
+
 type CrawlOrderMessage struct {
 	state                    protoimpl.MessageState `protogen:"open.v1"`
 	OrderJson                []byte                 `protobuf:"bytes,1,opt,name=order_json,json=orderJson,proto3" json:"order_json,omitempty"`
@@ -211,7 +409,7 @@ type CrawlOrderMessage struct {
 
 func (x *CrawlOrderMessage) Reset() {
 	*x = CrawlOrderMessage{}
-	mi := &file_crawlexchange_proto_msgTypes[1]
+	mi := &file_crawlexchange_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -223,7 +421,7 @@ func (x *CrawlOrderMessage) String() string {
 func (*CrawlOrderMessage) ProtoMessage() {}
 
 func (x *CrawlOrderMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_crawlexchange_proto_msgTypes[1]
+	mi := &file_crawlexchange_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -236,7 +434,7 @@ func (x *CrawlOrderMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CrawlOrderMessage.ProtoReflect.Descriptor instead.
 func (*CrawlOrderMessage) Descriptor() ([]byte, []int) {
-	return file_crawlexchange_proto_rawDescGZIP(), []int{1}
+	return file_crawlexchange_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CrawlOrderMessage) GetOrderJson() []byte {
@@ -292,13 +490,14 @@ type OrderAck struct {
 	PagesPerMinute    *uint32                `protobuf:"varint,7,opt,name=pages_per_minute,json=pagesPerMinute,proto3,oneof" json:"pages_per_minute,omitempty"`
 	WorkerSessionId   string                 `protobuf:"bytes,8,opt,name=worker_session_id,json=workerSessionId,proto3" json:"worker_session_id,omitempty"`
 	ConfirmationToken []byte                 `protobuf:"bytes,9,opt,name=confirmation_token,json=confirmationToken,proto3" json:"confirmation_token,omitempty"`
+	RecentOutcomes    []*CrawlURLOutcome     `protobuf:"bytes,10,rep,name=recent_outcomes,json=recentOutcomes,proto3" json:"recent_outcomes,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
 func (x *OrderAck) Reset() {
 	*x = OrderAck{}
-	mi := &file_crawlexchange_proto_msgTypes[2]
+	mi := &file_crawlexchange_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -310,7 +509,7 @@ func (x *OrderAck) String() string {
 func (*OrderAck) ProtoMessage() {}
 
 func (x *OrderAck) ProtoReflect() protoreflect.Message {
-	mi := &file_crawlexchange_proto_msgTypes[2]
+	mi := &file_crawlexchange_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -323,7 +522,7 @@ func (x *OrderAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderAck.ProtoReflect.Descriptor instead.
 func (*OrderAck) Descriptor() ([]byte, []int) {
-	return file_crawlexchange_proto_rawDescGZIP(), []int{2}
+	return file_crawlexchange_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *OrderAck) GetLeaseId() string {
@@ -389,6 +588,13 @@ func (x *OrderAck) GetConfirmationToken() []byte {
 	return nil
 }
 
+func (x *OrderAck) GetRecentOutcomes() []*CrawlURLOutcome {
+	if x != nil {
+		return x.RecentOutcomes
+	}
+	return nil
+}
+
 type OrderAckResult struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	ConfirmationToken []byte                 `protobuf:"bytes,1,opt,name=confirmation_token,json=confirmationToken,proto3" json:"confirmation_token,omitempty"`
@@ -398,7 +604,7 @@ type OrderAckResult struct {
 
 func (x *OrderAckResult) Reset() {
 	*x = OrderAckResult{}
-	mi := &file_crawlexchange_proto_msgTypes[3]
+	mi := &file_crawlexchange_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -410,7 +616,7 @@ func (x *OrderAckResult) String() string {
 func (*OrderAckResult) ProtoMessage() {}
 
 func (x *OrderAckResult) ProtoReflect() protoreflect.Message {
-	mi := &file_crawlexchange_proto_msgTypes[3]
+	mi := &file_crawlexchange_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -423,7 +629,7 @@ func (x *OrderAckResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderAckResult.ProtoReflect.Descriptor instead.
 func (*OrderAckResult) Descriptor() ([]byte, []int) {
-	return file_crawlexchange_proto_rawDescGZIP(), []int{3}
+	return file_crawlexchange_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *OrderAckResult) GetConfirmationToken() []byte {
@@ -444,13 +650,15 @@ type WorkerHeartbeat struct {
 	StoragePressure              *bool                  `protobuf:"varint,7,opt,name=storage_pressure,json=storagePressure,proto3,oneof" json:"storage_pressure,omitempty"`
 	StorageMeasurementAvailable  *bool                  `protobuf:"varint,8,opt,name=storage_measurement_available,json=storageMeasurementAvailable,proto3,oneof" json:"storage_measurement_available,omitempty"`
 	ConfirmActiveLeaseDeliveries *bool                  `protobuf:"varint,9,opt,name=confirm_active_lease_deliveries,json=confirmActiveLeaseDeliveries,proto3,oneof" json:"confirm_active_lease_deliveries,omitempty"`
+	UrlDenylistRevision          []byte                 `protobuf:"bytes,10,opt,name=url_denylist_revision,json=urlDenylistRevision,proto3" json:"url_denylist_revision,omitempty"`
+	UrlDenylistBootstrap         bool                   `protobuf:"varint,11,opt,name=url_denylist_bootstrap,json=urlDenylistBootstrap,proto3" json:"url_denylist_bootstrap,omitempty"`
 	unknownFields                protoimpl.UnknownFields
 	sizeCache                    protoimpl.SizeCache
 }
 
 func (x *WorkerHeartbeat) Reset() {
 	*x = WorkerHeartbeat{}
-	mi := &file_crawlexchange_proto_msgTypes[4]
+	mi := &file_crawlexchange_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -462,7 +670,7 @@ func (x *WorkerHeartbeat) String() string {
 func (*WorkerHeartbeat) ProtoMessage() {}
 
 func (x *WorkerHeartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_crawlexchange_proto_msgTypes[4]
+	mi := &file_crawlexchange_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -475,7 +683,7 @@ func (x *WorkerHeartbeat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerHeartbeat.ProtoReflect.Descriptor instead.
 func (*WorkerHeartbeat) Descriptor() ([]byte, []int) {
-	return file_crawlexchange_proto_rawDescGZIP(), []int{4}
+	return file_crawlexchange_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *WorkerHeartbeat) GetWorkerId() string {
@@ -541,6 +749,20 @@ func (x *WorkerHeartbeat) GetConfirmActiveLeaseDeliveries() bool {
 	return false
 }
 
+func (x *WorkerHeartbeat) GetUrlDenylistRevision() []byte {
+	if x != nil {
+		return x.UrlDenylistRevision
+	}
+	return nil
+}
+
+func (x *WorkerHeartbeat) GetUrlDenylistBootstrap() bool {
+	if x != nil {
+		return x.UrlDenylistBootstrap
+	}
+	return false
+}
+
 // CrawlControlDirective steers one run identified by its provenance token, or the
 // whole worker when run_id is empty. pages_per_minute carries the cap for
 // set_rate directives and is ignored otherwise.
@@ -553,13 +775,15 @@ type CrawlControlDirective struct {
 	PrioritizeAutomaticDiscovery bool                   `protobuf:"varint,5,opt,name=prioritize_automatic_discovery,json=prioritizeAutomaticDiscovery,proto3" json:"prioritize_automatic_discovery,omitempty"`
 	DirectiveId                  uint64                 `protobuf:"varint,6,opt,name=directive_id,json=directiveId,proto3" json:"directive_id,omitempty"`
 	MaximumActiveRuns            uint32                 `protobuf:"varint,7,opt,name=maximum_active_runs,json=maximumActiveRuns,proto3" json:"maximum_active_runs,omitempty"`
+	ProcessPagesPerSecond        uint32                 `protobuf:"varint,8,opt,name=process_pages_per_second,json=processPagesPerSecond,proto3" json:"process_pages_per_second,omitempty"`
+	MaximumRedirects             uint32                 `protobuf:"varint,9,opt,name=maximum_redirects,json=maximumRedirects,proto3" json:"maximum_redirects,omitempty"`
 	unknownFields                protoimpl.UnknownFields
 	sizeCache                    protoimpl.SizeCache
 }
 
 func (x *CrawlControlDirective) Reset() {
 	*x = CrawlControlDirective{}
-	mi := &file_crawlexchange_proto_msgTypes[5]
+	mi := &file_crawlexchange_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -571,7 +795,7 @@ func (x *CrawlControlDirective) String() string {
 func (*CrawlControlDirective) ProtoMessage() {}
 
 func (x *CrawlControlDirective) ProtoReflect() protoreflect.Message {
-	mi := &file_crawlexchange_proto_msgTypes[5]
+	mi := &file_crawlexchange_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -584,7 +808,7 @@ func (x *CrawlControlDirective) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CrawlControlDirective.ProtoReflect.Descriptor instead.
 func (*CrawlControlDirective) Descriptor() ([]byte, []int) {
-	return file_crawlexchange_proto_rawDescGZIP(), []int{5}
+	return file_crawlexchange_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CrawlControlDirective) GetKind() CrawlControlKind {
@@ -636,6 +860,20 @@ func (x *CrawlControlDirective) GetMaximumActiveRuns() uint32 {
 	return 0
 }
 
+func (x *CrawlControlDirective) GetProcessPagesPerSecond() uint32 {
+	if x != nil {
+		return x.ProcessPagesPerSecond
+	}
+	return 0
+}
+
+func (x *CrawlControlDirective) GetMaximumRedirects() uint32 {
+	if x != nil {
+		return x.MaximumRedirects
+	}
+	return 0
+}
+
 type WorkerHeartbeatResult struct {
 	state                          protoimpl.MessageState   `protogen:"open.v1"`
 	Directives                     []*CrawlControlDirective `protobuf:"bytes,1,rep,name=directives,proto3" json:"directives,omitempty"`
@@ -643,13 +881,15 @@ type WorkerHeartbeatResult struct {
 	LeaseTtlMilliseconds           uint64                   `protobuf:"varint,3,opt,name=lease_ttl_milliseconds,json=leaseTtlMilliseconds,proto3" json:"lease_ttl_milliseconds,omitempty"`
 	StorageReservedFreeBytes       *uint64                  `protobuf:"varint,4,opt,name=storage_reserved_free_bytes,json=storageReservedFreeBytes,proto3,oneof" json:"storage_reserved_free_bytes,omitempty"`
 	StoragePressureHysteresisBytes *uint64                  `protobuf:"varint,5,opt,name=storage_pressure_hysteresis_bytes,json=storagePressureHysteresisBytes,proto3,oneof" json:"storage_pressure_hysteresis_bytes,omitempty"`
+	UrlDenylist                    *CrawlURLDenylist        `protobuf:"bytes,6,opt,name=url_denylist,json=urlDenylist,proto3" json:"url_denylist,omitempty"`
+	RuntimePolicy                  *CrawlerRuntimePolicy    `protobuf:"bytes,7,opt,name=runtime_policy,json=runtimePolicy,proto3" json:"runtime_policy,omitempty"`
 	unknownFields                  protoimpl.UnknownFields
 	sizeCache                      protoimpl.SizeCache
 }
 
 func (x *WorkerHeartbeatResult) Reset() {
 	*x = WorkerHeartbeatResult{}
-	mi := &file_crawlexchange_proto_msgTypes[6]
+	mi := &file_crawlexchange_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -661,7 +901,7 @@ func (x *WorkerHeartbeatResult) String() string {
 func (*WorkerHeartbeatResult) ProtoMessage() {}
 
 func (x *WorkerHeartbeatResult) ProtoReflect() protoreflect.Message {
-	mi := &file_crawlexchange_proto_msgTypes[6]
+	mi := &file_crawlexchange_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -674,7 +914,7 @@ func (x *WorkerHeartbeatResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerHeartbeatResult.ProtoReflect.Descriptor instead.
 func (*WorkerHeartbeatResult) Descriptor() ([]byte, []int) {
-	return file_crawlexchange_proto_rawDescGZIP(), []int{6}
+	return file_crawlexchange_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *WorkerHeartbeatResult) GetDirectives() []*CrawlControlDirective {
@@ -712,6 +952,296 @@ func (x *WorkerHeartbeatResult) GetStoragePressureHysteresisBytes() uint64 {
 	return 0
 }
 
+func (x *WorkerHeartbeatResult) GetUrlDenylist() *CrawlURLDenylist {
+	if x != nil {
+		return x.UrlDenylist
+	}
+	return nil
+}
+
+func (x *WorkerHeartbeatResult) GetRuntimePolicy() *CrawlerRuntimePolicy {
+	if x != nil {
+		return x.RuntimePolicy
+	}
+	return nil
+}
+
+type CrawlerRuntimePolicyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CrawlerRuntimePolicyRequest) Reset() {
+	*x = CrawlerRuntimePolicyRequest{}
+	mi := &file_crawlexchange_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CrawlerRuntimePolicyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CrawlerRuntimePolicyRequest) ProtoMessage() {}
+
+func (x *CrawlerRuntimePolicyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_crawlexchange_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CrawlerRuntimePolicyRequest.ProtoReflect.Descriptor instead.
+func (*CrawlerRuntimePolicyRequest) Descriptor() ([]byte, []int) {
+	return file_crawlexchange_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *CrawlerRuntimePolicyRequest) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+type CrawlerRuntimePolicy struct {
+	state                      protoimpl.MessageState `protogen:"open.v1"`
+	AllowPrivateNetworks       bool                   `protobuf:"varint,1,opt,name=allow_private_networks,json=allowPrivateNetworks,proto3" json:"allow_private_networks,omitempty"`
+	AllowedPrivateCidrs        []string               `protobuf:"bytes,2,rep,name=allowed_private_cidrs,json=allowedPrivateCidrs,proto3" json:"allowed_private_cidrs,omitempty"`
+	BrowserFailureThreshold    uint32                 `protobuf:"varint,3,opt,name=browser_failure_threshold,json=browserFailureThreshold,proto3" json:"browser_failure_threshold,omitempty"`
+	ConnectTimeoutMilliseconds uint64                 `protobuf:"varint,4,opt,name=connect_timeout_milliseconds,json=connectTimeoutMilliseconds,proto3" json:"connect_timeout_milliseconds,omitempty"`
+	CrawlDelayMilliseconds     uint64                 `protobuf:"varint,5,opt,name=crawl_delay_milliseconds,json=crawlDelayMilliseconds,proto3" json:"crawl_delay_milliseconds,omitempty"`
+	HeaderTimeoutMilliseconds  uint64                 `protobuf:"varint,6,opt,name=header_timeout_milliseconds,json=headerTimeoutMilliseconds,proto3" json:"header_timeout_milliseconds,omitempty"`
+	MaximumDepth               uint32                 `protobuf:"varint,7,opt,name=maximum_depth,json=maximumDepth,proto3" json:"maximum_depth,omitempty"`
+	MaximumHostConcurrency     uint32                 `protobuf:"varint,8,opt,name=maximum_host_concurrency,json=maximumHostConcurrency,proto3" json:"maximum_host_concurrency,omitempty"`
+	RequestTimeoutMilliseconds uint64                 `protobuf:"varint,9,opt,name=request_timeout_milliseconds,json=requestTimeoutMilliseconds,proto3" json:"request_timeout_milliseconds,omitempty"`
+	RunPagesPerMinute          uint32                 `protobuf:"varint,10,opt,name=run_pages_per_minute,json=runPagesPerMinute,proto3" json:"run_pages_per_minute,omitempty"`
+	SitemapUrlLimit            uint32                 `protobuf:"varint,11,opt,name=sitemap_url_limit,json=sitemapUrlLimit,proto3" json:"sitemap_url_limit,omitempty"`
+	TlsTimeoutMilliseconds     uint64                 `protobuf:"varint,12,opt,name=tls_timeout_milliseconds,json=tlsTimeoutMilliseconds,proto3" json:"tls_timeout_milliseconds,omitempty"`
+	ShutdownGraceMilliseconds  uint64                 `protobuf:"varint,13,opt,name=shutdown_grace_milliseconds,json=shutdownGraceMilliseconds,proto3" json:"shutdown_grace_milliseconds,omitempty"`
+	UserAgent                  string                 `protobuf:"bytes,14,opt,name=user_agent,json=userAgent,proto3" json:"user_agent,omitempty"`
+	BrowserSandbox             *bool                  `protobuf:"varint,15,opt,name=browser_sandbox,json=browserSandbox,proto3,oneof" json:"browser_sandbox,omitempty"`
+	BrowserPath                *string                `protobuf:"bytes,16,opt,name=browser_path,json=browserPath,proto3,oneof" json:"browser_path,omitempty"`
+	MetricsAddress             *string                `protobuf:"bytes,17,opt,name=metrics_address,json=metricsAddress,proto3,oneof" json:"metrics_address,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
+}
+
+func (x *CrawlerRuntimePolicy) Reset() {
+	*x = CrawlerRuntimePolicy{}
+	mi := &file_crawlexchange_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CrawlerRuntimePolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CrawlerRuntimePolicy) ProtoMessage() {}
+
+func (x *CrawlerRuntimePolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_crawlexchange_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CrawlerRuntimePolicy.ProtoReflect.Descriptor instead.
+func (*CrawlerRuntimePolicy) Descriptor() ([]byte, []int) {
+	return file_crawlexchange_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *CrawlerRuntimePolicy) GetAllowPrivateNetworks() bool {
+	if x != nil {
+		return x.AllowPrivateNetworks
+	}
+	return false
+}
+
+func (x *CrawlerRuntimePolicy) GetAllowedPrivateCidrs() []string {
+	if x != nil {
+		return x.AllowedPrivateCidrs
+	}
+	return nil
+}
+
+func (x *CrawlerRuntimePolicy) GetBrowserFailureThreshold() uint32 {
+	if x != nil {
+		return x.BrowserFailureThreshold
+	}
+	return 0
+}
+
+func (x *CrawlerRuntimePolicy) GetConnectTimeoutMilliseconds() uint64 {
+	if x != nil {
+		return x.ConnectTimeoutMilliseconds
+	}
+	return 0
+}
+
+func (x *CrawlerRuntimePolicy) GetCrawlDelayMilliseconds() uint64 {
+	if x != nil {
+		return x.CrawlDelayMilliseconds
+	}
+	return 0
+}
+
+func (x *CrawlerRuntimePolicy) GetHeaderTimeoutMilliseconds() uint64 {
+	if x != nil {
+		return x.HeaderTimeoutMilliseconds
+	}
+	return 0
+}
+
+func (x *CrawlerRuntimePolicy) GetMaximumDepth() uint32 {
+	if x != nil {
+		return x.MaximumDepth
+	}
+	return 0
+}
+
+func (x *CrawlerRuntimePolicy) GetMaximumHostConcurrency() uint32 {
+	if x != nil {
+		return x.MaximumHostConcurrency
+	}
+	return 0
+}
+
+func (x *CrawlerRuntimePolicy) GetRequestTimeoutMilliseconds() uint64 {
+	if x != nil {
+		return x.RequestTimeoutMilliseconds
+	}
+	return 0
+}
+
+func (x *CrawlerRuntimePolicy) GetRunPagesPerMinute() uint32 {
+	if x != nil {
+		return x.RunPagesPerMinute
+	}
+	return 0
+}
+
+func (x *CrawlerRuntimePolicy) GetSitemapUrlLimit() uint32 {
+	if x != nil {
+		return x.SitemapUrlLimit
+	}
+	return 0
+}
+
+func (x *CrawlerRuntimePolicy) GetTlsTimeoutMilliseconds() uint64 {
+	if x != nil {
+		return x.TlsTimeoutMilliseconds
+	}
+	return 0
+}
+
+func (x *CrawlerRuntimePolicy) GetShutdownGraceMilliseconds() uint64 {
+	if x != nil {
+		return x.ShutdownGraceMilliseconds
+	}
+	return 0
+}
+
+func (x *CrawlerRuntimePolicy) GetUserAgent() string {
+	if x != nil {
+		return x.UserAgent
+	}
+	return ""
+}
+
+func (x *CrawlerRuntimePolicy) GetBrowserSandbox() bool {
+	if x != nil && x.BrowserSandbox != nil {
+		return *x.BrowserSandbox
+	}
+	return false
+}
+
+func (x *CrawlerRuntimePolicy) GetBrowserPath() string {
+	if x != nil && x.BrowserPath != nil {
+		return *x.BrowserPath
+	}
+	return ""
+}
+
+func (x *CrawlerRuntimePolicy) GetMetricsAddress() string {
+	if x != nil && x.MetricsAddress != nil {
+		return *x.MetricsAddress
+	}
+	return ""
+}
+
+type CrawlURLDenylist struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Revision      []byte                 `protobuf:"bytes,1,opt,name=revision,proto3" json:"revision,omitempty"`
+	ExactUrls     []string               `protobuf:"bytes,2,rep,name=exact_urls,json=exactUrls,proto3" json:"exact_urls,omitempty"`
+	Domains       []string               `protobuf:"bytes,3,rep,name=domains,proto3" json:"domains,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CrawlURLDenylist) Reset() {
+	*x = CrawlURLDenylist{}
+	mi := &file_crawlexchange_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CrawlURLDenylist) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CrawlURLDenylist) ProtoMessage() {}
+
+func (x *CrawlURLDenylist) ProtoReflect() protoreflect.Message {
+	mi := &file_crawlexchange_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CrawlURLDenylist.ProtoReflect.Descriptor instead.
+func (*CrawlURLDenylist) Descriptor() ([]byte, []int) {
+	return file_crawlexchange_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *CrawlURLDenylist) GetRevision() []byte {
+	if x != nil {
+		return x.Revision
+	}
+	return nil
+}
+
+func (x *CrawlURLDenylist) GetExactUrls() []string {
+	if x != nil {
+		return x.ExactUrls
+	}
+	return nil
+}
+
+func (x *CrawlURLDenylist) GetDomains() []string {
+	if x != nil {
+		return x.Domains
+	}
+	return nil
+}
+
 type IngestBatchMessage struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	BatchJson       []byte                 `protobuf:"bytes,1,opt,name=batch_json,json=batchJson,proto3" json:"batch_json,omitempty"`
@@ -724,7 +1254,7 @@ type IngestBatchMessage struct {
 
 func (x *IngestBatchMessage) Reset() {
 	*x = IngestBatchMessage{}
-	mi := &file_crawlexchange_proto_msgTypes[7]
+	mi := &file_crawlexchange_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -736,7 +1266,7 @@ func (x *IngestBatchMessage) String() string {
 func (*IngestBatchMessage) ProtoMessage() {}
 
 func (x *IngestBatchMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_crawlexchange_proto_msgTypes[7]
+	mi := &file_crawlexchange_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -749,7 +1279,7 @@ func (x *IngestBatchMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IngestBatchMessage.ProtoReflect.Descriptor instead.
 func (*IngestBatchMessage) Descriptor() ([]byte, []int) {
-	return file_crawlexchange_proto_rawDescGZIP(), []int{7}
+	return file_crawlexchange_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *IngestBatchMessage) GetBatchJson() []byte {
@@ -788,7 +1318,7 @@ type IngestAck struct {
 
 func (x *IngestAck) Reset() {
 	*x = IngestAck{}
-	mi := &file_crawlexchange_proto_msgTypes[8]
+	mi := &file_crawlexchange_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -800,7 +1330,7 @@ func (x *IngestAck) String() string {
 func (*IngestAck) ProtoMessage() {}
 
 func (x *IngestAck) ProtoReflect() protoreflect.Message {
-	mi := &file_crawlexchange_proto_msgTypes[8]
+	mi := &file_crawlexchange_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -813,7 +1343,7 @@ func (x *IngestAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IngestAck.ProtoReflect.Descriptor instead.
 func (*IngestAck) Descriptor() ([]byte, []int) {
-	return file_crawlexchange_proto_rawDescGZIP(), []int{8}
+	return file_crawlexchange_proto_rawDescGZIP(), []int{13}
 }
 
 type CrawlRunTally struct {
@@ -830,7 +1360,7 @@ type CrawlRunTally struct {
 
 func (x *CrawlRunTally) Reset() {
 	*x = CrawlRunTally{}
-	mi := &file_crawlexchange_proto_msgTypes[9]
+	mi := &file_crawlexchange_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -842,7 +1372,7 @@ func (x *CrawlRunTally) String() string {
 func (*CrawlRunTally) ProtoMessage() {}
 
 func (x *CrawlRunTally) ProtoReflect() protoreflect.Message {
-	mi := &file_crawlexchange_proto_msgTypes[9]
+	mi := &file_crawlexchange_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -855,7 +1385,7 @@ func (x *CrawlRunTally) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CrawlRunTally.ProtoReflect.Descriptor instead.
 func (*CrawlRunTally) Descriptor() ([]byte, []int) {
-	return file_crawlexchange_proto_rawDescGZIP(), []int{9}
+	return file_crawlexchange_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CrawlRunTally) GetFetched() uint64 {
@@ -900,6 +1430,90 @@ func (x *CrawlRunTally) GetPending() uint64 {
 	return 0
 }
 
+type CrawlURLOutcome struct {
+	state                      protoimpl.MessageState `protogen:"open.v1"`
+	Sequence                   uint64                 `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Url                        string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	OutcomeClass               string                 `protobuf:"bytes,3,opt,name=outcome_class,json=outcomeClass,proto3" json:"outcome_class,omitempty"`
+	ObservedAtUnixMilliseconds int64                  `protobuf:"varint,4,opt,name=observed_at_unix_milliseconds,json=observedAtUnixMilliseconds,proto3" json:"observed_at_unix_milliseconds,omitempty"`
+	HttpStatus                 uint32                 `protobuf:"varint,5,opt,name=http_status,json=httpStatus,proto3" json:"http_status,omitempty"`
+	Reason                     string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
+}
+
+func (x *CrawlURLOutcome) Reset() {
+	*x = CrawlURLOutcome{}
+	mi := &file_crawlexchange_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CrawlURLOutcome) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CrawlURLOutcome) ProtoMessage() {}
+
+func (x *CrawlURLOutcome) ProtoReflect() protoreflect.Message {
+	mi := &file_crawlexchange_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CrawlURLOutcome.ProtoReflect.Descriptor instead.
+func (*CrawlURLOutcome) Descriptor() ([]byte, []int) {
+	return file_crawlexchange_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *CrawlURLOutcome) GetSequence() uint64 {
+	if x != nil {
+		return x.Sequence
+	}
+	return 0
+}
+
+func (x *CrawlURLOutcome) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *CrawlURLOutcome) GetOutcomeClass() string {
+	if x != nil {
+		return x.OutcomeClass
+	}
+	return ""
+}
+
+func (x *CrawlURLOutcome) GetObservedAtUnixMilliseconds() int64 {
+	if x != nil {
+		return x.ObservedAtUnixMilliseconds
+	}
+	return 0
+}
+
+func (x *CrawlURLOutcome) GetHttpStatus() uint32 {
+	if x != nil {
+		return x.HttpStatus
+	}
+	return 0
+}
+
+func (x *CrawlURLOutcome) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
 type CrawlProgressReport struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	WorkerId        string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
@@ -911,13 +1525,16 @@ type CrawlProgressReport struct {
 	PagesPerMinute  *uint32                `protobuf:"varint,7,opt,name=pages_per_minute,json=pagesPerMinute,proto3,oneof" json:"pages_per_minute,omitempty"`
 	LeaseId         string                 `protobuf:"bytes,8,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
 	WorkerSessionId string                 `protobuf:"bytes,9,opt,name=worker_session_id,json=workerSessionId,proto3" json:"worker_session_id,omitempty"`
+	RecentOutcomes  []*CrawlURLOutcome     `protobuf:"bytes,10,rep,name=recent_outcomes,json=recentOutcomes,proto3" json:"recent_outcomes,omitempty"`
+	MaxPagesPerHost *int64                 `protobuf:"varint,11,opt,name=max_pages_per_host,json=maxPagesPerHost,proto3,oneof" json:"max_pages_per_host,omitempty"`
+	MaxPagesPerRun  *uint64                `protobuf:"varint,12,opt,name=max_pages_per_run,json=maxPagesPerRun,proto3,oneof" json:"max_pages_per_run,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
 
 func (x *CrawlProgressReport) Reset() {
 	*x = CrawlProgressReport{}
-	mi := &file_crawlexchange_proto_msgTypes[10]
+	mi := &file_crawlexchange_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -929,7 +1546,7 @@ func (x *CrawlProgressReport) String() string {
 func (*CrawlProgressReport) ProtoMessage() {}
 
 func (x *CrawlProgressReport) ProtoReflect() protoreflect.Message {
-	mi := &file_crawlexchange_proto_msgTypes[10]
+	mi := &file_crawlexchange_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -942,7 +1559,7 @@ func (x *CrawlProgressReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CrawlProgressReport.ProtoReflect.Descriptor instead.
 func (*CrawlProgressReport) Descriptor() ([]byte, []int) {
-	return file_crawlexchange_proto_rawDescGZIP(), []int{10}
+	return file_crawlexchange_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CrawlProgressReport) GetWorkerId() string {
@@ -1008,6 +1625,27 @@ func (x *CrawlProgressReport) GetWorkerSessionId() string {
 	return ""
 }
 
+func (x *CrawlProgressReport) GetRecentOutcomes() []*CrawlURLOutcome {
+	if x != nil {
+		return x.RecentOutcomes
+	}
+	return nil
+}
+
+func (x *CrawlProgressReport) GetMaxPagesPerHost() int64 {
+	if x != nil && x.MaxPagesPerHost != nil {
+		return *x.MaxPagesPerHost
+	}
+	return 0
+}
+
+func (x *CrawlProgressReport) GetMaxPagesPerRun() uint64 {
+	if x != nil && x.MaxPagesPerRun != nil {
+		return *x.MaxPagesPerRun
+	}
+	return 0
+}
+
 type CrawlProgressAck struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -1016,7 +1654,7 @@ type CrawlProgressAck struct {
 
 func (x *CrawlProgressAck) Reset() {
 	*x = CrawlProgressAck{}
-	mi := &file_crawlexchange_proto_msgTypes[11]
+	mi := &file_crawlexchange_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1028,7 +1666,7 @@ func (x *CrawlProgressAck) String() string {
 func (*CrawlProgressAck) ProtoMessage() {}
 
 func (x *CrawlProgressAck) ProtoReflect() protoreflect.Message {
-	mi := &file_crawlexchange_proto_msgTypes[11]
+	mi := &file_crawlexchange_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1041,17 +1679,35 @@ func (x *CrawlProgressAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CrawlProgressAck.ProtoReflect.Descriptor instead.
 func (*CrawlProgressAck) Descriptor() ([]byte, []int) {
-	return file_crawlexchange_proto_rawDescGZIP(), []int{11}
+	return file_crawlexchange_proto_rawDescGZIP(), []int{17}
 }
 
 var File_crawlexchange_proto protoreflect.FileDescriptor
 
 const file_crawlexchange_proto_rawDesc = "" +
 	"\n" +
-	"\x13crawlexchange.proto\x12\fyacycrawl.v1\"]\n" +
+	"\x13crawlexchange.proto\x12\fyacycrawl.v1\"\x8b\x01\n" +
 	"\x12WorkerRegistration\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12*\n" +
-	"\x11worker_session_id\x18\x02 \x01(\tR\x0fworkerSessionId\"\x8a\x02\n" +
+	"\x11worker_session_id\x18\x02 \x01(\tR\x0fworkerSessionId\x12,\n" +
+	"\x12fetch_start_leases\x18\x03 \x01(\bR\x10fetchStartLeases\"\xf1\x01\n" +
+	"\x16FetchStartLeaseRequest\x12\x1b\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12*\n" +
+	"\x11worker_session_id\x18\x02 \x01(\tR\x0fworkerSessionId\x12\x1a\n" +
+	"\bsequence\x18\x03 \x01(\x04R\bsequence\x12'\n" +
+	"\x0fmaximum_permits\x18\x04 \x01(\rR\x0emaximumPermits\x122\n" +
+	"\x12completed_sequence\x18\x05 \x01(\x04H\x00R\x11completedSequence\x88\x01\x01B\x15\n" +
+	"\x13_completed_sequence\"\xce\x03\n" +
+	"\x17FetchStartLeaseDecision\x12\x18\n" +
+	"\agranted\x18\x01 \x01(\bR\agranted\x12\x1a\n" +
+	"\bsequence\x18\x02 \x01(\x04R\bsequence\x12\x18\n" +
+	"\apermits\x18\x03 \x01(\rR\apermits\x12N\n" +
+	"$first_permit_opens_after_nanoseconds\x18\x04 \x01(\x12R firstPermitOpensAfterNanoseconds\x12P\n" +
+	"%first_permit_closes_after_nanoseconds\x18\x05 \x01(\x12R!firstPermitClosesAfterNanoseconds\x12>\n" +
+	"\x1bpermit_interval_nanoseconds\x18\x06 \x01(\x03R\x19permitIntervalNanoseconds\x126\n" +
+	"\x17retry_after_nanoseconds\x18\a \x01(\x03R\x15retryAfterNanoseconds\x12+\n" +
+	"\x11policy_generation\x18\b \x01(\x04R\x10policyGeneration\x12\x1c\n" +
+	"\tunlimited\x18\t \x01(\bR\tunlimited\"\x8a\x02\n" +
 	"\x11CrawlOrderMessage\x12\x1d\n" +
 	"\n" +
 	"order_json\x18\x01 \x01(\fR\torderJson\x12\x19\n" +
@@ -1059,7 +1715,7 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\trecovered\x18\x03 \x01(\bR\trecovered\x12.\n" +
 	"\x13recovered_batch_end\x18\x04 \x01(\bR\x11recoveredBatchEnd\x12.\n" +
 	"\x13recovered_lease_ids\x18\x05 \x03(\tR\x11recoveredLeaseIds\x12=\n" +
-	"\x1brecovered_session_lease_ids\x18\x06 \x03(\tR\x18recoveredSessionLeaseIds\"\xaa\x03\n" +
+	"\x1brecovered_session_lease_ids\x18\x06 \x03(\tR\x18recoveredSessionLeaseIds\"\xf2\x03\n" +
 	"\bOrderAck\x12\x19\n" +
 	"\blease_id\x18\x01 \x01(\tR\aleaseId\x12\x18\n" +
 	"\arequeue\x18\x02 \x01(\bR\arequeue\x12%\n" +
@@ -1069,10 +1725,12 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x0eterminal_tally\x18\x06 \x01(\v2\x1b.yacycrawl.v1.CrawlRunTallyR\rterminalTally\x12-\n" +
 	"\x10pages_per_minute\x18\a \x01(\rH\x00R\x0epagesPerMinute\x88\x01\x01\x12*\n" +
 	"\x11worker_session_id\x18\b \x01(\tR\x0fworkerSessionId\x12-\n" +
-	"\x12confirmation_token\x18\t \x01(\fR\x11confirmationTokenB\x13\n" +
+	"\x12confirmation_token\x18\t \x01(\fR\x11confirmationToken\x12F\n" +
+	"\x0frecent_outcomes\x18\n" +
+	" \x03(\v2\x1d.yacycrawl.v1.CrawlURLOutcomeR\x0erecentOutcomesB\x13\n" +
 	"\x11_pages_per_minute\"?\n" +
 	"\x0eOrderAckResult\x12-\n" +
-	"\x12confirmation_token\x18\x01 \x01(\fR\x11confirmationToken\"\xfa\x04\n" +
+	"\x12confirmation_token\x18\x01 \x01(\fR\x11confirmationToken\"\xe4\x05\n" +
 	"\x0fWorkerHeartbeat\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12*\n" +
 	"\x0eactive_fetches\x18\x02 \x01(\rH\x00R\ractiveFetches\x88\x01\x01\x12<\n" +
@@ -1082,12 +1740,15 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x17storage_available_bytes\x18\x06 \x01(\x04H\x01R\x15storageAvailableBytes\x88\x01\x01\x12.\n" +
 	"\x10storage_pressure\x18\a \x01(\bH\x02R\x0fstoragePressure\x88\x01\x01\x12G\n" +
 	"\x1dstorage_measurement_available\x18\b \x01(\bH\x03R\x1bstorageMeasurementAvailable\x88\x01\x01\x12J\n" +
-	"\x1fconfirm_active_lease_deliveries\x18\t \x01(\bH\x04R\x1cconfirmActiveLeaseDeliveries\x88\x01\x01B\x11\n" +
+	"\x1fconfirm_active_lease_deliveries\x18\t \x01(\bH\x04R\x1cconfirmActiveLeaseDeliveries\x88\x01\x01\x122\n" +
+	"\x15url_denylist_revision\x18\n" +
+	" \x01(\fR\x13urlDenylistRevision\x124\n" +
+	"\x16url_denylist_bootstrap\x18\v \x01(\bR\x14urlDenylistBootstrapB\x11\n" +
 	"\x0f_active_fetchesB\x1a\n" +
 	"\x18_storage_available_bytesB\x13\n" +
 	"\x11_storage_pressureB \n" +
 	"\x1e_storage_measurement_availableB\"\n" +
-	" _confirm_active_lease_deliveries\"\xca\x02\n" +
+	" _confirm_active_lease_deliveries\"\xb0\x03\n" +
 	"\x15CrawlControlDirective\x122\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1e.yacycrawl.v1.CrawlControlKindR\x04kind\x12\x15\n" +
 	"\x06run_id\x18\x02 \x01(\fR\x05runId\x12(\n" +
@@ -1095,7 +1756,9 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\rfetch_workers\x18\x04 \x01(\rR\ffetchWorkers\x12D\n" +
 	"\x1eprioritize_automatic_discovery\x18\x05 \x01(\bR\x1cprioritizeAutomaticDiscovery\x12!\n" +
 	"\fdirective_id\x18\x06 \x01(\x04R\vdirectiveId\x12.\n" +
-	"\x13maximum_active_runs\x18\a \x01(\rR\x11maximumActiveRuns\"\x98\x03\n" +
+	"\x13maximum_active_runs\x18\a \x01(\rR\x11maximumActiveRuns\x127\n" +
+	"\x18process_pages_per_second\x18\b \x01(\rR\x15processPagesPerSecond\x12+\n" +
+	"\x11maximum_redirects\x18\t \x01(\rR\x10maximumRedirects\"\xa6\x04\n" +
 	"\x15WorkerHeartbeatResult\x12C\n" +
 	"\n" +
 	"directives\x18\x01 \x03(\v2#.yacycrawl.v1.CrawlControlDirectiveR\n" +
@@ -1103,9 +1766,41 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x11renewed_lease_ids\x18\x02 \x03(\tR\x0frenewedLeaseIds\x124\n" +
 	"\x16lease_ttl_milliseconds\x18\x03 \x01(\x04R\x14leaseTtlMilliseconds\x12B\n" +
 	"\x1bstorage_reserved_free_bytes\x18\x04 \x01(\x04H\x00R\x18storageReservedFreeBytes\x88\x01\x01\x12N\n" +
-	"!storage_pressure_hysteresis_bytes\x18\x05 \x01(\x04H\x01R\x1estoragePressureHysteresisBytes\x88\x01\x01B\x1e\n" +
+	"!storage_pressure_hysteresis_bytes\x18\x05 \x01(\x04H\x01R\x1estoragePressureHysteresisBytes\x88\x01\x01\x12A\n" +
+	"\furl_denylist\x18\x06 \x01(\v2\x1e.yacycrawl.v1.CrawlURLDenylistR\vurlDenylist\x12I\n" +
+	"\x0eruntime_policy\x18\a \x01(\v2\".yacycrawl.v1.CrawlerRuntimePolicyR\rruntimePolicyB\x1e\n" +
 	"\x1c_storage_reserved_free_bytesB$\n" +
-	"\"_storage_pressure_hysteresis_bytes\"\x97\x01\n" +
+	"\"_storage_pressure_hysteresis_bytes\":\n" +
+	"\x1bCrawlerRuntimePolicyRequest\x12\x1b\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\"\xcc\a\n" +
+	"\x14CrawlerRuntimePolicy\x124\n" +
+	"\x16allow_private_networks\x18\x01 \x01(\bR\x14allowPrivateNetworks\x122\n" +
+	"\x15allowed_private_cidrs\x18\x02 \x03(\tR\x13allowedPrivateCidrs\x12:\n" +
+	"\x19browser_failure_threshold\x18\x03 \x01(\rR\x17browserFailureThreshold\x12@\n" +
+	"\x1cconnect_timeout_milliseconds\x18\x04 \x01(\x04R\x1aconnectTimeoutMilliseconds\x128\n" +
+	"\x18crawl_delay_milliseconds\x18\x05 \x01(\x04R\x16crawlDelayMilliseconds\x12>\n" +
+	"\x1bheader_timeout_milliseconds\x18\x06 \x01(\x04R\x19headerTimeoutMilliseconds\x12#\n" +
+	"\rmaximum_depth\x18\a \x01(\rR\fmaximumDepth\x128\n" +
+	"\x18maximum_host_concurrency\x18\b \x01(\rR\x16maximumHostConcurrency\x12@\n" +
+	"\x1crequest_timeout_milliseconds\x18\t \x01(\x04R\x1arequestTimeoutMilliseconds\x12/\n" +
+	"\x14run_pages_per_minute\x18\n" +
+	" \x01(\rR\x11runPagesPerMinute\x12*\n" +
+	"\x11sitemap_url_limit\x18\v \x01(\rR\x0fsitemapUrlLimit\x128\n" +
+	"\x18tls_timeout_milliseconds\x18\f \x01(\x04R\x16tlsTimeoutMilliseconds\x12>\n" +
+	"\x1bshutdown_grace_milliseconds\x18\r \x01(\x04R\x19shutdownGraceMilliseconds\x12\x1d\n" +
+	"\n" +
+	"user_agent\x18\x0e \x01(\tR\tuserAgent\x12,\n" +
+	"\x0fbrowser_sandbox\x18\x0f \x01(\bH\x00R\x0ebrowserSandbox\x88\x01\x01\x12&\n" +
+	"\fbrowser_path\x18\x10 \x01(\tH\x01R\vbrowserPath\x88\x01\x01\x12,\n" +
+	"\x0fmetrics_address\x18\x11 \x01(\tH\x02R\x0emetricsAddress\x88\x01\x01B\x12\n" +
+	"\x10_browser_sandboxB\x0f\n" +
+	"\r_browser_pathB\x12\n" +
+	"\x10_metrics_address\"g\n" +
+	"\x10CrawlURLDenylist\x12\x1a\n" +
+	"\brevision\x18\x01 \x01(\fR\brevision\x12\x1d\n" +
+	"\n" +
+	"exact_urls\x18\x02 \x03(\tR\texactUrls\x12\x18\n" +
+	"\adomains\x18\x03 \x03(\tR\adomains\"\x97\x01\n" +
 	"\x12IngestBatchMessage\x12\x1d\n" +
 	"\n" +
 	"batch_json\x18\x01 \x01(\fR\tbatchJson\x12\x19\n" +
@@ -1121,7 +1816,15 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\n" +
 	"duplicates\x18\x05 \x01(\x04R\n" +
 	"duplicates\x12\x18\n" +
-	"\apending\x18\x06 \x01(\x04R\apending\"\x84\x03\n" +
+	"\apending\x18\x06 \x01(\x04R\apending\"\xe0\x01\n" +
+	"\x0fCrawlURLOutcome\x12\x1a\n" +
+	"\bsequence\x18\x01 \x01(\x04R\bsequence\x12\x10\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\x12#\n" +
+	"\routcome_class\x18\x03 \x01(\tR\foutcomeClass\x12A\n" +
+	"\x1dobserved_at_unix_milliseconds\x18\x04 \x01(\x03R\x1aobservedAtUnixMilliseconds\x12\x1f\n" +
+	"\vhttp_status\x18\x05 \x01(\rR\n" +
+	"httpStatus\x12\x16\n" +
+	"\x06reason\x18\x06 \x01(\tR\x06reason\"\xdb\x04\n" +
 	"\x13CrawlProgressReport\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x15\n" +
 	"\x06run_id\x18\x02 \x01(\fR\x05runId\x12%\n" +
@@ -1131,9 +1834,15 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x05tally\x18\x06 \x01(\v2\x1b.yacycrawl.v1.CrawlRunTallyR\x05tally\x12-\n" +
 	"\x10pages_per_minute\x18\a \x01(\rH\x00R\x0epagesPerMinute\x88\x01\x01\x12\x19\n" +
 	"\blease_id\x18\b \x01(\tR\aleaseId\x12*\n" +
-	"\x11worker_session_id\x18\t \x01(\tR\x0fworkerSessionIdB\x13\n" +
-	"\x11_pages_per_minute\"\x12\n" +
-	"\x10CrawlProgressAck*\xd8\x02\n" +
+	"\x11worker_session_id\x18\t \x01(\tR\x0fworkerSessionId\x12F\n" +
+	"\x0frecent_outcomes\x18\n" +
+	" \x03(\v2\x1d.yacycrawl.v1.CrawlURLOutcomeR\x0erecentOutcomes\x120\n" +
+	"\x12max_pages_per_host\x18\v \x01(\x03H\x01R\x0fmaxPagesPerHost\x88\x01\x01\x12.\n" +
+	"\x11max_pages_per_run\x18\f \x01(\x04H\x02R\x0emaxPagesPerRun\x88\x01\x01B\x13\n" +
+	"\x11_pages_per_minuteB\x15\n" +
+	"\x13_max_pages_per_hostB\x14\n" +
+	"\x12_max_pages_per_run\"\x12\n" +
+	"\x10CrawlProgressAck*\xaf\x03\n" +
 	"\x10CrawlControlKind\x12\"\n" +
 	"\x1eCRAWL_CONTROL_KIND_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18CRAWL_CONTROL_KIND_PAUSE\x10\x01\x12\x1d\n" +
@@ -1143,16 +1852,21 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x1aCRAWL_CONTROL_KIND_RESTART\x10\x05\x12\"\n" +
 	"\x1eCRAWL_CONTROL_KIND_SET_WORKERS\x10\x06\x127\n" +
 	"3CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY\x10\a\x12&\n" +
-	"\"CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS\x10\b*\x8a\x01\n" +
+	"\"CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS\x10\b\x12'\n" +
+	"#CRAWL_CONTROL_KIND_SET_PROCESS_RATE\x10\t\x12,\n" +
+	"(CRAWL_CONTROL_KIND_SET_MAXIMUM_REDIRECTS\x10\n" +
+	"*\x8a\x01\n" +
 	"\rCrawlRunState\x12\x1f\n" +
 	"\x1bCRAWL_RUN_STATE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17CRAWL_RUN_STATE_RUNNING\x10\x01\x12\x1c\n" +
 	"\x18CRAWL_RUN_STATE_FINISHED\x10\x02\x12\x1d\n" +
-	"\x19CRAWL_RUN_STATE_CANCELLED\x10\x032\x97\x03\n" +
+	"\x19CRAWL_RUN_STATE_CANCELLED\x10\x032\xdc\x04\n" +
 	"\rCrawlExchange\x12S\n" +
 	"\fStreamOrders\x12 .yacycrawl.v1.WorkerRegistration\x1a\x1f.yacycrawl.v1.CrawlOrderMessage0\x01\x12@\n" +
 	"\bAckOrder\x12\x16.yacycrawl.v1.OrderAck\x1a\x1c.yacycrawl.v1.OrderAckResult\x12O\n" +
-	"\tHeartbeat\x12\x1d.yacycrawl.v1.WorkerHeartbeat\x1a#.yacycrawl.v1.WorkerHeartbeatResult\x12I\n" +
+	"\tHeartbeat\x12\x1d.yacycrawl.v1.WorkerHeartbeat\x1a#.yacycrawl.v1.WorkerHeartbeatResult\x12b\n" +
+	"\x11ReadRuntimePolicy\x12).yacycrawl.v1.CrawlerRuntimePolicyRequest\x1a\".yacycrawl.v1.CrawlerRuntimePolicy\x12_\n" +
+	"\x10LeaseFetchStarts\x12$.yacycrawl.v1.FetchStartLeaseRequest\x1a%.yacycrawl.v1.FetchStartLeaseDecision\x12I\n" +
 	"\fSubmitIngest\x12 .yacycrawl.v1.IngestBatchMessage\x1a\x17.yacycrawl.v1.IngestAck\x12S\n" +
 	"\x0eReportProgress\x12!.yacycrawl.v1.CrawlProgressReport\x1a\x1e.yacycrawl.v1.CrawlProgressAckB2Z0github.com/D4rk4/yago/yagocrawlcontract/crawlrpcb\x06proto3"
 
@@ -1169,45 +1883,59 @@ func file_crawlexchange_proto_rawDescGZIP() []byte {
 }
 
 var file_crawlexchange_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_crawlexchange_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_crawlexchange_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_crawlexchange_proto_goTypes = []any{
-	(CrawlControlKind)(0),         // 0: yacycrawl.v1.CrawlControlKind
-	(CrawlRunState)(0),            // 1: yacycrawl.v1.CrawlRunState
-	(*WorkerRegistration)(nil),    // 2: yacycrawl.v1.WorkerRegistration
-	(*CrawlOrderMessage)(nil),     // 3: yacycrawl.v1.CrawlOrderMessage
-	(*OrderAck)(nil),              // 4: yacycrawl.v1.OrderAck
-	(*OrderAckResult)(nil),        // 5: yacycrawl.v1.OrderAckResult
-	(*WorkerHeartbeat)(nil),       // 6: yacycrawl.v1.WorkerHeartbeat
-	(*CrawlControlDirective)(nil), // 7: yacycrawl.v1.CrawlControlDirective
-	(*WorkerHeartbeatResult)(nil), // 8: yacycrawl.v1.WorkerHeartbeatResult
-	(*IngestBatchMessage)(nil),    // 9: yacycrawl.v1.IngestBatchMessage
-	(*IngestAck)(nil),             // 10: yacycrawl.v1.IngestAck
-	(*CrawlRunTally)(nil),         // 11: yacycrawl.v1.CrawlRunTally
-	(*CrawlProgressReport)(nil),   // 12: yacycrawl.v1.CrawlProgressReport
-	(*CrawlProgressAck)(nil),      // 13: yacycrawl.v1.CrawlProgressAck
+	(CrawlControlKind)(0),               // 0: yacycrawl.v1.CrawlControlKind
+	(CrawlRunState)(0),                  // 1: yacycrawl.v1.CrawlRunState
+	(*WorkerRegistration)(nil),          // 2: yacycrawl.v1.WorkerRegistration
+	(*FetchStartLeaseRequest)(nil),      // 3: yacycrawl.v1.FetchStartLeaseRequest
+	(*FetchStartLeaseDecision)(nil),     // 4: yacycrawl.v1.FetchStartLeaseDecision
+	(*CrawlOrderMessage)(nil),           // 5: yacycrawl.v1.CrawlOrderMessage
+	(*OrderAck)(nil),                    // 6: yacycrawl.v1.OrderAck
+	(*OrderAckResult)(nil),              // 7: yacycrawl.v1.OrderAckResult
+	(*WorkerHeartbeat)(nil),             // 8: yacycrawl.v1.WorkerHeartbeat
+	(*CrawlControlDirective)(nil),       // 9: yacycrawl.v1.CrawlControlDirective
+	(*WorkerHeartbeatResult)(nil),       // 10: yacycrawl.v1.WorkerHeartbeatResult
+	(*CrawlerRuntimePolicyRequest)(nil), // 11: yacycrawl.v1.CrawlerRuntimePolicyRequest
+	(*CrawlerRuntimePolicy)(nil),        // 12: yacycrawl.v1.CrawlerRuntimePolicy
+	(*CrawlURLDenylist)(nil),            // 13: yacycrawl.v1.CrawlURLDenylist
+	(*IngestBatchMessage)(nil),          // 14: yacycrawl.v1.IngestBatchMessage
+	(*IngestAck)(nil),                   // 15: yacycrawl.v1.IngestAck
+	(*CrawlRunTally)(nil),               // 16: yacycrawl.v1.CrawlRunTally
+	(*CrawlURLOutcome)(nil),             // 17: yacycrawl.v1.CrawlURLOutcome
+	(*CrawlProgressReport)(nil),         // 18: yacycrawl.v1.CrawlProgressReport
+	(*CrawlProgressAck)(nil),            // 19: yacycrawl.v1.CrawlProgressAck
 }
 var file_crawlexchange_proto_depIdxs = []int32{
 	1,  // 0: yacycrawl.v1.OrderAck.terminal_state:type_name -> yacycrawl.v1.CrawlRunState
-	11, // 1: yacycrawl.v1.OrderAck.terminal_tally:type_name -> yacycrawl.v1.CrawlRunTally
-	0,  // 2: yacycrawl.v1.CrawlControlDirective.kind:type_name -> yacycrawl.v1.CrawlControlKind
-	7,  // 3: yacycrawl.v1.WorkerHeartbeatResult.directives:type_name -> yacycrawl.v1.CrawlControlDirective
-	1,  // 4: yacycrawl.v1.CrawlProgressReport.state:type_name -> yacycrawl.v1.CrawlRunState
-	11, // 5: yacycrawl.v1.CrawlProgressReport.tally:type_name -> yacycrawl.v1.CrawlRunTally
-	2,  // 6: yacycrawl.v1.CrawlExchange.StreamOrders:input_type -> yacycrawl.v1.WorkerRegistration
-	4,  // 7: yacycrawl.v1.CrawlExchange.AckOrder:input_type -> yacycrawl.v1.OrderAck
-	6,  // 8: yacycrawl.v1.CrawlExchange.Heartbeat:input_type -> yacycrawl.v1.WorkerHeartbeat
-	9,  // 9: yacycrawl.v1.CrawlExchange.SubmitIngest:input_type -> yacycrawl.v1.IngestBatchMessage
-	12, // 10: yacycrawl.v1.CrawlExchange.ReportProgress:input_type -> yacycrawl.v1.CrawlProgressReport
-	3,  // 11: yacycrawl.v1.CrawlExchange.StreamOrders:output_type -> yacycrawl.v1.CrawlOrderMessage
-	5,  // 12: yacycrawl.v1.CrawlExchange.AckOrder:output_type -> yacycrawl.v1.OrderAckResult
-	8,  // 13: yacycrawl.v1.CrawlExchange.Heartbeat:output_type -> yacycrawl.v1.WorkerHeartbeatResult
-	10, // 14: yacycrawl.v1.CrawlExchange.SubmitIngest:output_type -> yacycrawl.v1.IngestAck
-	13, // 15: yacycrawl.v1.CrawlExchange.ReportProgress:output_type -> yacycrawl.v1.CrawlProgressAck
-	11, // [11:16] is the sub-list for method output_type
-	6,  // [6:11] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	16, // 1: yacycrawl.v1.OrderAck.terminal_tally:type_name -> yacycrawl.v1.CrawlRunTally
+	17, // 2: yacycrawl.v1.OrderAck.recent_outcomes:type_name -> yacycrawl.v1.CrawlURLOutcome
+	0,  // 3: yacycrawl.v1.CrawlControlDirective.kind:type_name -> yacycrawl.v1.CrawlControlKind
+	9,  // 4: yacycrawl.v1.WorkerHeartbeatResult.directives:type_name -> yacycrawl.v1.CrawlControlDirective
+	13, // 5: yacycrawl.v1.WorkerHeartbeatResult.url_denylist:type_name -> yacycrawl.v1.CrawlURLDenylist
+	12, // 6: yacycrawl.v1.WorkerHeartbeatResult.runtime_policy:type_name -> yacycrawl.v1.CrawlerRuntimePolicy
+	1,  // 7: yacycrawl.v1.CrawlProgressReport.state:type_name -> yacycrawl.v1.CrawlRunState
+	16, // 8: yacycrawl.v1.CrawlProgressReport.tally:type_name -> yacycrawl.v1.CrawlRunTally
+	17, // 9: yacycrawl.v1.CrawlProgressReport.recent_outcomes:type_name -> yacycrawl.v1.CrawlURLOutcome
+	2,  // 10: yacycrawl.v1.CrawlExchange.StreamOrders:input_type -> yacycrawl.v1.WorkerRegistration
+	6,  // 11: yacycrawl.v1.CrawlExchange.AckOrder:input_type -> yacycrawl.v1.OrderAck
+	8,  // 12: yacycrawl.v1.CrawlExchange.Heartbeat:input_type -> yacycrawl.v1.WorkerHeartbeat
+	11, // 13: yacycrawl.v1.CrawlExchange.ReadRuntimePolicy:input_type -> yacycrawl.v1.CrawlerRuntimePolicyRequest
+	3,  // 14: yacycrawl.v1.CrawlExchange.LeaseFetchStarts:input_type -> yacycrawl.v1.FetchStartLeaseRequest
+	14, // 15: yacycrawl.v1.CrawlExchange.SubmitIngest:input_type -> yacycrawl.v1.IngestBatchMessage
+	18, // 16: yacycrawl.v1.CrawlExchange.ReportProgress:input_type -> yacycrawl.v1.CrawlProgressReport
+	5,  // 17: yacycrawl.v1.CrawlExchange.StreamOrders:output_type -> yacycrawl.v1.CrawlOrderMessage
+	7,  // 18: yacycrawl.v1.CrawlExchange.AckOrder:output_type -> yacycrawl.v1.OrderAckResult
+	10, // 19: yacycrawl.v1.CrawlExchange.Heartbeat:output_type -> yacycrawl.v1.WorkerHeartbeatResult
+	12, // 20: yacycrawl.v1.CrawlExchange.ReadRuntimePolicy:output_type -> yacycrawl.v1.CrawlerRuntimePolicy
+	4,  // 21: yacycrawl.v1.CrawlExchange.LeaseFetchStarts:output_type -> yacycrawl.v1.FetchStartLeaseDecision
+	15, // 22: yacycrawl.v1.CrawlExchange.SubmitIngest:output_type -> yacycrawl.v1.IngestAck
+	19, // 23: yacycrawl.v1.CrawlExchange.ReportProgress:output_type -> yacycrawl.v1.CrawlProgressAck
+	17, // [17:24] is the sub-list for method output_type
+	10, // [10:17] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_crawlexchange_proto_init() }
@@ -1215,17 +1943,19 @@ func file_crawlexchange_proto_init() {
 	if File_crawlexchange_proto != nil {
 		return
 	}
-	file_crawlexchange_proto_msgTypes[2].OneofWrappers = []any{}
+	file_crawlexchange_proto_msgTypes[1].OneofWrappers = []any{}
 	file_crawlexchange_proto_msgTypes[4].OneofWrappers = []any{}
 	file_crawlexchange_proto_msgTypes[6].OneofWrappers = []any{}
+	file_crawlexchange_proto_msgTypes[8].OneofWrappers = []any{}
 	file_crawlexchange_proto_msgTypes[10].OneofWrappers = []any{}
+	file_crawlexchange_proto_msgTypes[16].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_crawlexchange_proto_rawDesc), len(file_crawlexchange_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   12,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

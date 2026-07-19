@@ -26,9 +26,13 @@ func (s *FallbackPageSource) Fetch(
 		if s.renderNeeded == nil || !s.renderNeeded(page) || browserFallbackDisabled(ctx) {
 			return page, nil
 		}
+		primaryHTTPStatus := page.HTTPStatus
 		page, err = s.fallback.Fetch(ctx, target)
 		if err != nil {
 			return FetchedPage{}, fmt.Errorf("fallback fetch after static HTML: %w", err)
+		}
+		if page.HTTPStatus == 0 {
+			page.HTTPStatus = primaryHTTPStatus
 		}
 
 		return page, nil

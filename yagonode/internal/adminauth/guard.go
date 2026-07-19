@@ -87,6 +87,28 @@ func (s *Service) guardSession(w http.ResponseWriter, r *http.Request, next http
 
 		return
 	}
+	rotated, changed, err := s.sessions.rotate(r.Context(), cookie.Value, record)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "authentication failed")
+
+		return
+	}
+	if changed {
+		record = sessionRecord{
+			Username: rotated.Username, CSRFToken: rotated.CSRFToken,
+			ExpiresAt: rotated.ExpiresAt,
+		}
+		http.SetCookie(
+			w,
+			sessionCookie(
+				sessionCookieName,
+				"/",
+				rotated.Token,
+				r.TLS != nil,
+				rotated.ExpiresAt,
+			),
+		)
+	}
 
 	next.ServeHTTP(w, r.WithContext(contextWithSession(r.Context(), record)))
 }

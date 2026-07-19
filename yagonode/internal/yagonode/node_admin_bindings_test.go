@@ -86,17 +86,21 @@ func TestBindingSourceReportsDisabledOptionalListener(t *testing.T) {
 
 	source, _, _ := newTestBindingSource(t, nodeConfig{PeerAddr: ":8090", OpsAddr: ":9090"})
 	view := source.Bindings(context.Background())
+	found := make(map[string]bool)
 	for _, item := range view.Items {
-		if item.Key != bindKeyPublic {
+		if item.Key != bindKeyPublic && item.Key != bindKeyCrawler {
 			continue
 		}
-		if item.ListenerEnabled || item.Host != "" || item.Port != "" {
-			t.Fatalf("disabled public listener = %+v", item)
+		if item.ListenerEnabled || !item.CanDisable || item.Host != "" || item.Port != "" {
+			t.Fatalf("disabled optional listener = %+v", item)
 		}
-
-		return
+		found[item.Key] = true
 	}
-	t.Fatal("public bind item not present")
+	for _, key := range []string{bindKeyPublic, bindKeyCrawler} {
+		if !found[key] {
+			t.Fatalf("optional bind item %q not present", key)
+		}
+	}
 }
 
 func TestBindingSourceReportsStoredOverride(t *testing.T) {
@@ -213,6 +217,9 @@ func TestBindingSourceUpdateRejectsForeignHost(t *testing.T) {
 	if result.OK {
 		t.Fatal("bind to a non-local address accepted; lockout guardrail failed")
 	}
+	if result.Message != bindingInvalidAddressMessage {
+		t.Fatalf("foreign-host message = %q", result.Message)
+	}
 	if _, set, _ := store.Get(ctx, bindKeyOps); set {
 		t.Fatal("rejected bind was stored")
 	}
@@ -233,6 +240,9 @@ func TestBindingSourceUpdateRejectsBadPort(t *testing.T) {
 	if result.OK {
 		t.Fatal("out-of-range port accepted")
 	}
+	if result.Message != bindingInvalidAddressMessage {
+		t.Fatalf("bad-port message = %q", result.Message)
+	}
 }
 
 func TestBindingSourceUpdateRejectsUnknownSurface(t *testing.T) {
@@ -249,5 +259,8 @@ func TestBindingSourceUpdateRejectsUnknownSurface(t *testing.T) {
 	}
 	if result.OK {
 		t.Fatal("unknown surface accepted")
+	}
+	if result.Message != bindingUnknownSurfaceMessage {
+		t.Fatalf("unknown-surface message = %q", result.Message)
 	}
 }

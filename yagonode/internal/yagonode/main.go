@@ -71,11 +71,12 @@ var (
 		return shardvault.OpenAt(path, quotaBytes,
 			shardvault.WithWordFilter(rwi.PostingsBucket, yagomodel.HashLength))
 	}
-	assembleRuntimeNode = assembleNode
-	serveRuntimeNode    = serve
-	listenAndServeHTTP  = func(server *http.Server) error { return server.ListenAndServe() }
-	shutdownHTTPServer  = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
-	closeHTTPServer     = func(server *http.Server) error { return server.Close() }
+	assembleRuntimeNode      = assembleNode
+	buildRuntimeEgressClient = newRuntimeEgressClient
+	serveRuntimeNode         = serve
+	listenAndServeHTTP       = func(server *http.Server) error { return server.ListenAndServe() }
+	shutdownHTTPServer       = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
+	closeHTTPServer          = func(server *http.Server) error { return server.Close() }
 )
 
 func Main() {
@@ -116,9 +117,10 @@ func run() error {
 		return fmt.Errorf("load crawl config: %w", err)
 	}
 	config.Admin = loadAdminConfig(getenv)
-	config.CrossOrigin = loadCrossOriginConfig(getenv)
-
-	client := newRuntimeEgressClient(config)
+	config.CrossOrigin, err = loadCrossOriginConfig(getenv)
+	if err != nil {
+		return fmt.Errorf("load cross-origin config: %w", err)
+	}
 
 	if err := preflightLegacyVaultMigration(
 		config.StoragePath,
@@ -137,7 +139,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	eventDrain, err = bootNodeWithEventDrain(ctx, config, storageVault, client)
+	eventDrain, err = bootNodeWithEventDrain(ctx, config, storageVault)
 
 	return err
 }
@@ -151,9 +153,8 @@ func bootNode(
 	ctx context.Context,
 	config nodeConfig,
 	storageVault *vault.Vault,
-	client *http.Client,
 ) error {
-	_, err := bootNodeWithEventDrain(ctx, config, storageVault, client)
+	_, err := bootNodeWithEventDrain(ctx, config, storageVault)
 
 	return err
 }
@@ -162,7 +163,6 @@ func bootNodeWithEventDrain(
 	ctx context.Context,
 	config nodeConfig,
 	storageVault *vault.Vault,
-	client *http.Client,
 ) (<-chan struct{}, error) {
 	obs, err := provisionObservability(ctx, storageVault)
 	if err != nil {
@@ -175,6 +175,8 @@ func bootNodeWithEventDrain(
 	if err != nil {
 		return eventDrain, err
 	}
+	client := buildRuntimeEgressClient(config)
+	attachRuntimeLogging(toggles)
 	storageVault.SetQuota(config.StorageQuotaByte)
 	storageVault.SetDeferredFsync(config.StorageDeferFsync)
 	storageVault.SetReadDeferBudget(config.StorageReadDefer)
@@ -209,6 +211,7 @@ func bootNodeWithEventDrain(
 			crawl:            obs.crawl,
 			indexWrites:      obs.indexWrites,
 			crawlRuns:        obs.crawlRuns,
+			remoteCrawl:      obs.remoteCrawl,
 			recorder:         obs.recorder,
 			searchAuthorizer: searchScopeAuthorizerFor(config, authService),
 			toggles:          toggles,

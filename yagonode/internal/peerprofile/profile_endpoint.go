@@ -24,7 +24,7 @@ func (e endpoint) Serve(
 	req yagoproto.ProfileRequest,
 ) (httpguard.RawResponse, error) {
 	resp := httpguard.RawResponse{ContentType: profileContentType}
-	if !e.identity.NetworkMatches(req.NetworkName) {
+	if !e.identity.Authenticates(req.NetworkName, req.Key, req.Iam, req.MagicMD5) {
 		return resp, nil
 	}
 

@@ -6,19 +6,10 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/publicratelimit"
 )
-
-// This file closes the CFG-02 parity gaps the operator review found: every
-// behavior-controlling environment variable gains a matching runtime admin
-// setting. Deliberately env-only (identity and boot-time facts, not behavior):
-// YAGO_PEER_HASH, YAGO_NETWORK_NAME, YAGO_DATA_DIR, YAGO_PEER_BIRTH_DATE,
-// YAGO_ADVERTISE_PORT and the listener addresses (the Listen-addresses UI
-// covers those), YAGO_PUBLIC_SELF_TEST_URL; secrets (admin credentials, API
-// keys) stay out of the catalog by design.
 
 // storageAndAccessDefinitions covers the storage quota and the agent-API
 // access requirement.
@@ -27,11 +18,11 @@ func storageAndAccessDefinitions() []settingDefinition {
 		{
 			key:         "storage.quota",
 			title:       "Storage quota",
-			description: "Logical live-data budget for the sharded vault (e.g. 50GB); eviction starts when tracked vault data crosses it. This does not cap the full data directory or search index.",
+			description: "Logical live-data budget for the sharded vault (e.g. 50GB); 0B disables quota eviction. This does not cap the full data directory or search index.",
 			defaultValue: func(config nodeConfig) string {
 				return formatByteSize(config.StorageQuotaByte)
 			},
-			normalize: normalizeSettingByteSize,
+			normalize: normalizeStorageQuota,
 			apply: func(config nodeConfig, value string) nodeConfig {
 				config.StorageQuotaByte, _ = parseByteSize(value)
 
@@ -169,9 +160,13 @@ func swarmPresenceDefinitions() []settingDefinition {
 			title:        "Announce interval",
 			description:  "How often this node greets peers to stay visible (e.g. 10m).",
 			defaultValue: func(config nodeConfig) string { return config.AnnounceInterval.String() },
-			normalize:    normalizeSettingLongDuration,
+			normalize:    normalizeAnnouncementInterval,
 			apply: func(config nodeConfig, value string) nodeConfig {
-				config.AnnounceInterval, _ = time.ParseDuration(value)
+				config.AnnounceInterval, _ = parseDurationRange(
+					value,
+					minimumAnnounceInterval,
+					maximumAnnounceInterval,
+				)
 
 				return config
 			},
@@ -181,7 +176,9 @@ func swarmPresenceDefinitions() []settingDefinition {
 			title:        "Greets per announce cycle",
 			description:  "How many peers each announce cycle contacts.",
 			defaultValue: func(config nodeConfig) string { return strconv.Itoa(config.GreetsPerCycle) },
-			normalize:    normalizePositiveInt,
+			normalize: func(raw string) (string, error) {
+				return normalizeBoundedInteger(raw, 1, maximumGreetsPerCycle)
+			},
 			apply: func(config nodeConfig, value string) nodeConfig {
 				config.GreetsPerCycle, _ = strconv.Atoi(value)
 
@@ -191,12 +188,6 @@ func swarmPresenceDefinitions() []settingDefinition {
 	}
 }
 
-// seedCapabilityDefinitions surfaces the swarm capability flags this node
-// advertises in its seed (Configuration → Network & peers). Editing a flag
-// re-derives the advertised bitfield; the change reaches the swarm on the next
-// restart, when the seed identity is rebuilt. Accept-remote-crawl is
-// intentionally absent: remote crawl execution is disabled for SSRF safety, so
-// the node never advertises it.
 func seedCapabilityDefinitions() []settingDefinition {
 	return []settingDefinition{
 		{
@@ -323,14 +314,18 @@ func boolSettingDefinition(
 
 func dhtTuningDefinitions() []settingDefinition {
 	return []settingDefinition{
+		dhtPartitionGeometryDefinition(),
 		{
 			key:          "dht.interval",
 			title:        "DHT distribution interval",
 			description:  "Pause between DHT distribution cycles (e.g. 1m).",
 			defaultValue: func(config nodeConfig) string { return config.DHT.Interval.String() },
-			normalize:    normalizeSettingLongDuration,
+			normalize:    normalizeDHTDistributionInterval,
 			apply: func(config nodeConfig, value string) nodeConfig {
-				config.DHT.Interval, _ = time.ParseDuration(value)
+				config.DHT.Interval, _ = parseDurationMinimum(
+					value,
+					minimumDHTDistributionInterval,
+				)
 
 				return config
 			},
@@ -340,7 +335,7 @@ func dhtTuningDefinitions() []settingDefinition {
 			title:        "DHT redundancy",
 			description:  "How many peers receive each index entry.",
 			defaultValue: func(config nodeConfig) string { return strconv.Itoa(config.DHT.Redundancy) },
-			normalize:    normalizePositiveInt,
+			normalize:    normalizeDHTRedundancy,
 			apply: func(config nodeConfig, value string) nodeConfig {
 				config.DHT.Redundancy, _ = strconv.Atoi(value)
 
@@ -352,7 +347,7 @@ func dhtTuningDefinitions() []settingDefinition {
 			title:        "Minimum peer age (days)",
 			description:  "Ignore peers younger than this when picking DHT targets.",
 			defaultValue: func(config nodeConfig) string { return strconv.Itoa(config.DHT.MinimumPeerAgeDays) },
-			normalize:    normalizeNonNegativeInt,
+			normalize:    normalizeDHTMinimumPeerAge,
 			apply: func(config nodeConfig, value string) nodeConfig {
 				config.DHT.MinimumPeerAgeDays, _ = strconv.Atoi(value)
 
@@ -364,7 +359,7 @@ func dhtTuningDefinitions() []settingDefinition {
 			title:        "Minimum connected peers",
 			description:  "Hold DHT distribution until at least this many peers are reachable.",
 			defaultValue: func(config nodeConfig) string { return strconv.Itoa(config.DHT.Gates.MinimumConnectedPeer) },
-			normalize:    normalizeNonNegativeInt,
+			normalize:    normalizePositiveInt,
 			apply: func(config nodeConfig, value string) nodeConfig {
 				config.DHT.Gates.MinimumConnectedPeer, _ = strconv.Atoi(value)
 
@@ -376,7 +371,7 @@ func dhtTuningDefinitions() []settingDefinition {
 			title:        "Minimum indexed words",
 			description:  "Hold DHT distribution until the local index holds at least this many words.",
 			defaultValue: func(config nodeConfig) string { return strconv.Itoa(config.DHT.Gates.MinimumRWIWord) },
-			normalize:    normalizeNonNegativeInt,
+			normalize:    normalizePositiveInt,
 			apply: func(config nodeConfig, value string) nodeConfig {
 				config.DHT.Gates.MinimumRWIWord, _ = strconv.Atoi(value)
 
@@ -395,9 +390,9 @@ func webFallbackTuningDefinitions() []settingDefinition {
 			title:        "Web fallback max results",
 			description:  "How many web results one fallback query may return.",
 			defaultValue: func(config nodeConfig) string { return strconv.Itoa(config.WebFallback.MaxResults) },
-			normalize:    normalizePositiveInt,
+			normalize:    normalizeWebFallbackMaxResults,
 			apply: func(config nodeConfig, value string) nodeConfig {
-				config.WebFallback.MaxResults, _ = strconv.Atoi(value)
+				config.WebFallback.MaxResults, _ = parseWebFallbackMaxResults(value)
 
 				return config
 			},
@@ -407,9 +402,9 @@ func webFallbackTuningDefinitions() []settingDefinition {
 			title:        "Web fallback timeout",
 			description:  "Budget for one web-engine request (e.g. 10s).",
 			defaultValue: func(config nodeConfig) string { return config.WebFallback.Timeout.String() },
-			normalize:    normalizeSettingDuration,
+			normalize:    normalizeOutboundRequestTimeout,
 			apply: func(config nodeConfig, value string) nodeConfig {
-				config.WebFallback.Timeout, _ = time.ParseDuration(value)
+				config.WebFallback.Timeout, _ = parseOutboundRequestTimeout(value)
 
 				return config
 			},
@@ -419,9 +414,9 @@ func webFallbackTuningDefinitions() []settingDefinition {
 			title:        "Web fallback cache TTL",
 			description:  "How long an answered web query is served from cache (e.g. 5m).",
 			defaultValue: func(config nodeConfig) string { return config.WebFallback.CacheTTL.String() },
-			normalize:    normalizeSettingLongDuration,
+			normalize:    normalizeWebFallbackCacheTTL,
 			apply: func(config nodeConfig, value string) nodeConfig {
-				config.WebFallback.CacheTTL, _ = time.ParseDuration(value)
+				config.WebFallback.CacheTTL, _ = parseWebFallbackCacheTTL(value)
 
 				return config
 			},
@@ -436,7 +431,7 @@ func webFallbackTuningDefinitions() []settingDefinition {
 				{value: "strict", label: "Strict"},
 			},
 			defaultValue: func(config nodeConfig) string { return config.WebFallback.SafeSearch },
-			normalize:    normalizeSafeSearch,
+			normalize:    normalizeWebFallbackSafeSearch,
 			apply: func(config nodeConfig, value string) nodeConfig {
 				config.WebFallback.SafeSearch = value
 
@@ -448,9 +443,9 @@ func webFallbackTuningDefinitions() []settingDefinition {
 			title:        "Extract fetch timeout",
 			description:  "Budget for one live page fetch on the extract API (e.g. 10s).",
 			defaultValue: func(config nodeConfig) string { return config.ExtractFetch.Timeout.String() },
-			normalize:    normalizeSettingDuration,
+			normalize:    normalizeOutboundRequestTimeout,
 			apply: func(config nodeConfig, value string) nodeConfig {
-				config.ExtractFetch.Timeout, _ = time.ParseDuration(value)
+				config.ExtractFetch.Timeout, _ = parseOutboundRequestTimeout(value)
 
 				return config
 			},
@@ -460,9 +455,9 @@ func webFallbackTuningDefinitions() []settingDefinition {
 			title:        "Extract fetch size cap",
 			description:  "Largest page body the extract API will download, in bytes.",
 			defaultValue: func(config nodeConfig) string { return strconv.FormatInt(config.ExtractFetch.MaxBytes, 10) },
-			normalize:    normalizePositiveInt,
+			normalize:    normalizeExtractFetchResponseBytes,
 			apply: func(config nodeConfig, value string) nodeConfig {
-				config.ExtractFetch.MaxBytes, _ = strconv.ParseInt(value, 10, 64)
+				config.ExtractFetch.MaxBytes, _ = parseExtractFetchResponseBytes(value)
 
 				return config
 			},
@@ -478,7 +473,7 @@ func perimeterDefinitions() []settingDefinition {
 		boolSettingDefinition(
 			"security.egress.allow_private",
 			"Allow egress to private networks",
-			"Let outbound fetches reach RFC1918/loopback addresses. Leave off unless this node must crawl an intranet.",
+			"Let outbound fetches reach RFC1918 and IPv6 unique-local addresses. Loopback, link-local, metadata, carrier-grade NAT, multicast, and reserved ranges remain blocked.",
 			func(c nodeConfig) bool { return c.EgressAllowLAN },
 			func(c *nodeConfig, v bool) { c.EgressAllowLAN = v },
 		),
@@ -487,9 +482,9 @@ func perimeterDefinitions() []settingDefinition {
 			title:        "Egress allow-list CIDRs",
 			description:  "Comma-separated private CIDRs outbound fetches may reach even with the private-network guard on.",
 			defaultValue: func(config nodeConfig) string { return formatPrefixes(config.EgressAllowedCIDRs) },
-			normalize:    normalizeCIDRList,
+			normalize:    normalizeEgressAllowCIDRs,
 			apply: func(config nodeConfig, value string) nodeConfig {
-				config.EgressAllowedCIDRs, _ = parseEgressAllowCIDRs(value)
+				config.EgressAllowedCIDRs = egressAllowCIDRsFromCanonical(value)
 
 				return config
 			},
@@ -511,7 +506,7 @@ func perimeterDefinitions() []settingDefinition {
 			title:        "Admin CORS origins",
 			description:  "Comma-separated origins allowed to call the admin API cross-origin; empty disables CORS.",
 			defaultValue: func(config nodeConfig) string { return strings.Join(config.CrossOrigin.AdminOrigins, ",") },
-			normalize:    normalizeSettingLine,
+			normalize:    normalizeCrossOriginList,
 			apply: func(config nodeConfig, value string) nodeConfig {
 				config.CrossOrigin.AdminOrigins = splitList(value)
 
@@ -523,7 +518,7 @@ func perimeterDefinitions() []settingDefinition {
 			title:        "Search CORS origins",
 			description:  "Comma-separated origins allowed to call the search API cross-origin; empty disables CORS.",
 			defaultValue: func(config nodeConfig) string { return strings.Join(config.CrossOrigin.SearchOrigins, ",") },
-			normalize:    normalizeSettingLine,
+			normalize:    normalizeCrossOriginList,
 			apply: func(config nodeConfig, value string) nodeConfig {
 				config.CrossOrigin.SearchOrigins = splitList(value)
 
@@ -541,38 +536,6 @@ func normalizeNonNegativeInt(raw string) (string, error) {
 	}
 
 	return strconv.Itoa(value), nil
-}
-
-// normalizeSettingLongDuration accepts durations for slow cycles (announce,
-// DHT, caches): thirty seconds to a week.
-func normalizeSettingLongDuration(raw string) (string, error) {
-	value, err := time.ParseDuration(strings.TrimSpace(raw))
-	if err != nil || value < 30*time.Second || value > 7*24*time.Hour {
-		return "", fmt.Errorf("value must be a duration between 30s and 168h")
-	}
-
-	return value.String(), nil
-}
-
-// normalizeSettingByteSize accepts human-readable sizes of at least 100MB —
-// smaller quotas evict the vault into uselessness.
-func normalizeSettingByteSize(raw string) (string, error) {
-	size, err := parseByteSize(strings.TrimSpace(raw))
-	if err != nil || size < 100<<20 {
-		return "", fmt.Errorf("value must be a size of at least 100MB (e.g. 50GB)")
-	}
-
-	return strings.ToUpper(strings.TrimSpace(raw)), nil
-}
-
-func normalizeSafeSearch(raw string) (string, error) {
-	value := strings.ToLower(strings.TrimSpace(raw))
-	switch value {
-	case "off", "moderate", "strict":
-		return value, nil
-	default:
-		return "", fmt.Errorf("value must be off, moderate, or strict")
-	}
 }
 
 // normalizeCIDRList validates a comma-separated CIDR list through the same

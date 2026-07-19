@@ -57,45 +57,9 @@ func (r OperatorRequest) order(
 		return yagocrawlcontract.CrawlOrder{}, fmt.Errorf("unknown crawl startMode %q", r.StartMode)
 	}
 
-	scope, ok := crawlScopeByName[r.Scope]
-	if !ok {
-		return yagocrawlcontract.CrawlOrder{}, fmt.Errorf("unknown crawl scope %q", r.Scope)
-	}
-
-	recrawl, err := yagocrawlcontract.ParseRecrawlInterval(r.RecrawlIfOlder)
+	profile, err := r.Profile(defaultMaxPagesPerRun)
 	if err != nil {
-		return yagocrawlcontract.CrawlOrder{}, fmt.Errorf("recrawlIfOlder: %w", err)
-	}
-	delay, err := optionalDuration(r.CrawlDelay)
-	if err != nil {
-		return yagocrawlcontract.CrawlOrder{}, fmt.Errorf("crawlDelay: %w", err)
-	}
-
-	maxPagesPerRun := r.MaxPagesPerRun
-	if maxPagesPerRun == nil {
-		maxPagesPerRun = &defaultMaxPagesPerRun
-	}
-	profile := yagocrawlcontract.NewCrawlProfile(yagocrawlcontract.CrawlProfile{
-		Name:                     r.Name,
-		Scope:                    scope,
-		URLMustMatch:             matchOrAll(r.URLMustMatch),
-		URLMustNotMatch:          r.URLMustNotMatch,
-		IndexURLMustMatch:        matchOrAll(r.IndexURLMustMatch),
-		IndexURLMustNotMatch:     r.IndexURLMustNotMatch,
-		MaxDepth:                 r.MaxDepth,
-		AllowQueryURLs:           r.AllowQueryURLs,
-		IgnoreTLSAuthority:       r.IgnoreTLSAuthority,
-		IgnoreRobots:             r.IgnoreRobots,
-		DisableBrowser:           r.DisableBrowser,
-		FollowNoFollowLinks:      r.FollowNoFollowLinks,
-		NoindexCanonicalMismatch: r.NoindexCanonicalMismatch,
-		MaxPagesPerHost:          r.MaxPagesPerHost,
-		MaxPagesPerRun:           maxPagesPerRun,
-		RecrawlIfOlder:           recrawl,
-		CrawlDelay:               delay,
-	})
-	if err := profile.Validate(); err != nil {
-		return yagocrawlcontract.CrawlOrder{}, fmt.Errorf("invalid crawl profile: %w", err)
+		return yagocrawlcontract.CrawlOrder{}, err
 	}
 
 	requests := make([]yagocrawlcontract.CrawlRequest, 0, len(r.Seeds))

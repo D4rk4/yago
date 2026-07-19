@@ -26,10 +26,15 @@ func (s *exchangeServer) StreamOrders(
 		workerID,
 		workerSessionID,
 		cancelSession,
+		reg.GetFetchStartLeases(),
 	)
 	if err != nil {
 		if errors.Is(err, errWorkerSessionActive) {
 			return status.Error(codes.AlreadyExists, err.Error())
+		}
+		if errors.Is(err, errFleetFetchPolicyInvalid) ||
+			errors.Is(err, errFleetFetchCapabilityRequired) {
+			return status.Error(codes.FailedPrecondition, err.Error())
 		}
 		return status.Error(codes.Internal, err.Error())
 	}
@@ -57,6 +62,9 @@ func (s *exchangeServer) releaseWorkerSession(
 	workerSessionID string,
 	generation uint64,
 ) {
-	s.sessions.deactivate(workerID, workerSessionID, generation)
+	deactivated := s.sessions.deactivate(workerID, workerSessionID, generation)
+	if deactivated && s.fetchStarts != nil {
+		s.fetchStarts.DeactivateSession(workerID, workerSessionID)
+	}
 	s.releaseWorker(workerID)
 }

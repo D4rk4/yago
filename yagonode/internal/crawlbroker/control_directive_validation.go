@@ -26,6 +26,12 @@ func validControlDirective(directive yagocrawlcontract.CrawlControlDirective) bo
 	case yagocrawlcontract.CrawlControlSetActiveRuns:
 		return directive.RunID == "" && directive.MaximumActiveRuns >= 1 &&
 			directive.MaximumActiveRuns <= yagocrawlcontract.MaximumActiveCrawlRunConcurrency
+	case yagocrawlcontract.CrawlControlSetProcessRate:
+		return directive.RunID == "" &&
+			directive.ProcessPagesPerSecond <= yagocrawlcontract.MaximumProcessPagesPerSecond
+	case yagocrawlcontract.CrawlControlSetMaximumRedirects:
+		return directive.RunID == "" &&
+			directive.MaximumRedirects <= yagocrawlcontract.MaximumPageRedirects
 	case yagocrawlcontract.CrawlControlSetAutomaticDiscoveryPriority:
 		return directive.RunID == ""
 	default:

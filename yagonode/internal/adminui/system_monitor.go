@@ -10,38 +10,30 @@ import (
 const systemMonitorPath = "/admin/system-monitor"
 
 type systemMonitorView struct {
-	CrawlerFetchVisible          bool
-	CrawlerFetchAvailable        bool
-	CrawlerFetchValue            int
-	CrawlerFetchMaximum          int
-	CrawlerFetchText             string
-	CrawlerStorageVisible        bool
-	CrawlerStorageAvailable      bool
-	CrawlerStoragePressured      bool
-	CrawlerStorageText           string
-	NodeStoragePressureVisible   bool
-	NodeStoragePressureAvailable bool
-	NodeStoragePressured         bool
-	NodeStoragePressureText      string
-	CPUAvailable                 bool
-	CPUValue                     float64
-	CPUMaximum                   float64
-	CPUText                      string
-	ProcessMemoryAvailable       bool
-	ProcessMemoryValue           int64
-	ProcessMemoryMaximum         int64
-	ProcessMemoryText            string
-	HostMemoryAvailable          bool
-	HostMemoryValue              int64
-	HostMemoryMaximum            int64
-	HostMemoryText               string
-	StorageAvailable             bool
-	StorageBounded               bool
-	StorageValue                 int64
-	StorageMaximum               int64
-	StorageText                  string
-	Observed                     bool
-	ObservedAt                   string
+	CrawlerFetchVisible    bool
+	CrawlerFetchAvailable  bool
+	CrawlerFetchValue      int
+	CrawlerFetchMaximum    int
+	CrawlerFetchText       string
+	CPUAvailable           bool
+	CPUValue               float64
+	CPUMaximum             float64
+	CPUText                string
+	ProcessMemoryAvailable bool
+	ProcessMemoryValue     int64
+	ProcessMemoryMaximum   int64
+	ProcessMemoryText      string
+	HostMemoryAvailable    bool
+	HostMemoryValue        int64
+	HostMemoryMaximum      int64
+	HostMemoryText         string
+	StorageAvailable       bool
+	StorageBounded         bool
+	StorageValue           int64
+	StorageMaximum         int64
+	StorageText            string
+	Observed               bool
+	ObservedAt             string
 }
 
 func buildSystemMonitor(source PerformanceHistorySource) systemMonitorView {
@@ -51,14 +43,8 @@ func buildSystemMonitor(source PerformanceHistorySource) systemMonitorView {
 func buildSystemMonitorWithCrawler(
 	source PerformanceHistorySource,
 	crawler CrawlerFetchActivitySource,
-	storage ...StoragePressureStatusSource,
 ) systemMonitorView {
-	view := applyCrawlerFetchActivity(buildSystemMonitor(source), crawler)
-	if len(storage) > 0 {
-		view = applyStoragePressureStatus(view, storage[0])
-	}
-
-	return view
+	return applyCrawlerFetchActivity(buildSystemMonitor(source), crawler)
 }
 
 func buildSystemMonitorForProcessors(

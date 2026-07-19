@@ -41,6 +41,7 @@ func terminalSettlementRecord(request terminalLeaseRequest) leaseSettlementRecor
 			WorkerID:       request.WorkerID,
 			State:          request.State,
 			Tally:          request.Tally,
+			RecentOutcomes: request.RecentOutcomes,
 			PagesPerMinute: request.Rate,
 			RateKnown:      request.RateKnown,
 		},

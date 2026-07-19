@@ -10,7 +10,6 @@ import (
 const (
 	logCrawlReceiptRejected        = "crawl receipt rejected"
 	crawlReceiptRejectReasonKey    = "reason"
-	crawlReceiptRejectWrongTarget  = "wrong_target"
 	crawlReceiptRejectDisabled     = "remote_crawl_disabled"
 	disabledCrawlReceiptRetryDelay = 3600
 )
@@ -23,17 +22,13 @@ func (e disabledCrawlReceiptEndpoint) Serve(
 	ctx context.Context,
 	req yagoproto.CrawlReceiptRequest,
 ) (yagoproto.CrawlReceiptResponse, error) {
-	if e.local == nil || !e.local.NetworkMatches(req.NetworkName) {
-		return yagoproto.CrawlReceiptResponse{Delay: disabledCrawlReceiptRetryDelay}, nil
-	}
-
-	if !e.local.Addresses(req.NetworkName, req.YouAre) {
-		slog.DebugContext(
-			ctx,
-			logCrawlReceiptRejected,
-			slog.String(crawlReceiptRejectReasonKey, crawlReceiptRejectWrongTarget),
-		)
-
+	if e.local == nil || !e.local.AuthenticatesAddress(
+		req.NetworkName,
+		req.YouAre,
+		req.Key,
+		req.Iam.String(),
+		req.MagicMD5,
+	) {
 		return yagoproto.CrawlReceiptResponse{Delay: disabledCrawlReceiptRetryDelay}, nil
 	}
 

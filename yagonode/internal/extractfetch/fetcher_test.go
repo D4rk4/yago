@@ -84,11 +84,18 @@ func TestFetcherRejectsResponseSizePlusOne(t *testing.T) {
 	}
 }
 
-func TestFetcherClampsConfiguredResponseSize(t *testing.T) {
-	if got := New(nil, 0, maximumFetchResponseBytes).maxBytes; got != maximumFetchResponseBytes {
+func TestFetcherRejectsConfiguredResponseSizeAboveCeiling(t *testing.T) {
+	if got := New(nil, 0, MaximumResponseBytes).maxBytes; got != MaximumResponseBytes {
 		t.Fatalf("exact maximum = %d", got)
 	}
-	if got := New(nil, 0, maximumFetchResponseBytes+1).maxBytes; got != maximumFetchResponseBytes {
-		t.Fatalf("maximum plus one = %d", got)
+	rejected := false
+	func() {
+		defer func() {
+			rejected = recover() != nil
+		}()
+		New(nil, 0, MaximumResponseBytes+1)
+	}()
+	if !rejected {
+		t.Fatal("maximum plus one was not rejected")
 	}
 }

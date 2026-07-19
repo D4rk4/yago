@@ -18,16 +18,20 @@ const defaultCapacity = 256
 // Run is the node's view of one crawl run, updated from worker progress reports
 // and stamped with the node clock so the console can order runs by recency.
 type Run struct {
-	RunID          string
-	WorkerID       string
-	ProfileHandle  string
-	ProfileName    string
-	State          yagocrawlcontract.CrawlRunState
-	Tally          yagocrawlcontract.CrawlRunTally
-	FirstSeen      time.Time
-	Updated        time.Time
-	PagesPerMinute uint32
-	RateKnown      bool
+	RunID           string
+	WorkerID        string
+	ProfileHandle   string
+	ProfileName     string
+	State           yagocrawlcontract.CrawlRunState
+	Tally           yagocrawlcontract.CrawlRunTally
+	RecentOutcomes  yagocrawlcontract.CrawlURLOutcomeHistory
+	FirstSeen       time.Time
+	Updated         time.Time
+	PagesPerMinute  uint32
+	RateKnown       bool
+	MaxPagesPerHost int
+	MaxPagesPerRun  int
+	LimitsKnown     bool
 }
 
 // Registry is a concurrent crawl-run table that retains every active run and
@@ -84,9 +88,15 @@ func (r *Registry) Record(_ context.Context, progress yagocrawlcontract.CrawlRun
 	run.ProfileName = progress.ProfileName
 	run.State = progress.State
 	run.Tally = progress.Tally
+	run.RecentOutcomes = run.RecentOutcomes.Merge(progress.RecentOutcomes)
 	if progress.RateKnown {
 		run.PagesPerMinute = progress.PagesPerMinute
 		run.RateKnown = true
+	}
+	if progress.LimitsKnown {
+		run.MaxPagesPerHost = progress.MaxPagesPerHost
+		run.MaxPagesPerRun = progress.MaxPagesPerRun
+		run.LimitsKnown = true
 	}
 	run.Updated = now
 	r.reconcileRunActivityLocked(existed, prev, run)
@@ -158,4 +168,13 @@ func (r *Registry) Len() int {
 	defer r.mu.Unlock()
 
 	return len(r.runs)
+}
+
+func (r *Registry) Run(runID string) (Run, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	run, found := r.runs[runID]
+
+	return run, found
 }

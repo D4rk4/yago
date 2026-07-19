@@ -8,17 +8,41 @@
     <div class="cds-metric__value">{{.Index.Documents}}</div>
   </section>
 </div>
+{{end}}
+{{if or .Index.Available .StorageStatus.NodeVisible .StorageStatus.CrawlerVisible}}
 <div class="cds-tile">
   <table class="cds-table">
     <tbody>
+      {{if .Index.Available}}
       <tr><th scope="row">Backend</th><td>{{if .Index.Backend}}{{.Index.Backend}}{{else}}Unavailable{{end}}</td></tr>
       <tr><th scope="row">Last updated</th><td>{{if .Index.UpdatedAt}}{{.Index.UpdatedAt}}{{else}}Not recorded{{end}}</td></tr>
       <tr><th scope="row">Search index on disk</th><td>{{if .Index.DiskSize}}{{.Index.DiskSize}}{{else}}Unavailable{{end}}</td></tr>
       <tr><th scope="row">Vault live data</th><td>{{if .Index.VaultUsed}}{{.Index.VaultUsed}}{{else}}Unavailable{{end}}</td></tr>
       <tr><th scope="row">Vault soft admission quota</th><td>{{if .Index.VaultQuota}}{{.Index.VaultQuota}}{{else}}Unavailable{{end}}</td></tr>
+      {{end}}
+      {{if .StorageStatus.NodeVisible}}<tr><th scope="row">Node filesystem reserve</th><td>{{.StorageStatus.NodeText}}{{if .StorageStatus.NodePressured}} <span class="cds-tag cds-tag--error">pressure active</span>{{end}}</td></tr>{{end}}
+      {{if .StorageStatus.CrawlerVisible}}<tr><th scope="row">Crawler storage reserve</th><td>{{.StorageStatus.CrawlerText}}{{if .StorageStatus.CrawlerPressured}} <span class="cds-tag cds-tag--error">pressure active</span>{{end}}</td></tr>{{end}}
     </tbody>
   </table>
 </div>
+{{end}}
+{{if .Index.Available}}
+{{if .RebuildEnabled}}
+<h2 class="cds-h2">Index maintenance</h2>
+<p class="cds-muted">Schedule a full rebuild from the document store. The active index remains untouched until the next node restart.</p>
+{{if .RebuildNotice}}<div class="cds-inline-notification" role="status">{{.RebuildNotice}}</div>{{end}}
+{{if .RebuildError}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.RebuildError}}</div>{{end}}
+{{if .RebuildStatusError}}
+<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.RebuildStatusError}}</div>
+{{else if .RebuildPending}}
+<div class="cds-inline-notification" role="status">A full search-index rebuild is scheduled for the next node restart.</div>
+{{else}}
+<form method="post" action="/admin/index/rebuild" hx-confirm="Schedule a full search-index rebuild for the next node restart?">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <button class="cds-btn" type="submit">Schedule full rebuild</button>
+</form>
+{{end}}
+{{end}}
 {{if .TermEnabled}}
 <h2 class="cds-h2">Term browser</h2>
 <p class="cds-muted">Look up how many postings a term has in the reverse word index and a sample of the documents that carry it.</p>
@@ -78,6 +102,7 @@
   <a class="cds-btn cds-btn--ghost" href="/admin/index">Clear</a>
 </form>
 {{$del := .DeleteEnabled}}
+{{$detail := .DocumentDetailEnabled}}
 {{$csrf := .CSRF}}
 {{if and $del .DocDomain}}
 <form class="cds-actions" method="post" action="/admin/index/delete"
@@ -97,7 +122,7 @@
 {{end}}
 <div class="cds-scroll-x">
   <table class="cds-table">
-    <thead><tr><th scope="col">URL</th><th scope="col">Title</th><th scope="col">Type</th><th scope="col">Lang</th><th scope="col">Indexed</th>{{if $del}}<th scope="col">Action</th>{{end}}</tr></thead>
+    <thead><tr><th scope="col">URL</th><th scope="col">Title</th><th scope="col">Type</th><th scope="col">Lang</th><th scope="col">Indexed</th>{{if or $del $detail}}<th scope="col">Action</th>{{end}}</tr></thead>
     <tbody>
       {{range .Documents.Documents}}
       <tr>
@@ -106,8 +131,10 @@
         <td>{{if .ContentType}}{{.ContentType}}{{else}}—{{end}}</td>
         <td>{{if .Language}}{{.Language}}{{else}}—{{end}}</td>
         <td>{{if .IndexedAt}}{{.IndexedAt}}{{else}}—{{end}}</td>
-        {{if $del}}
+        {{if or $del $detail}}
         <td>
+          {{if and $detail .Key}}<a class="cds-btn cds-btn--ghost" href="/admin/index/document?url={{urlquery .Key}}">Inspect</a>{{end}}
+          {{if $del}}
           <form method="post" action="/admin/index/delete"
                 hx-confirm="Delete this document from the index? This cannot be undone.">
             <input type="hidden" name="csrf_token" value="{{$csrf}}">
@@ -115,6 +142,7 @@
             <input type="hidden" name="url" value="{{.Key}}">
             <button class="cds-btn cds-btn--danger cds-btn--ghost" type="submit">Delete</button>
           </form>
+          {{end}}
         </td>
         {{end}}
       </tr>

@@ -165,6 +165,8 @@ func directiveFromProto(
 		PagesPerMinute:               directive.GetPagesPerMinute(),
 		FetchWorkers:                 directive.GetFetchWorkers(),
 		MaximumActiveRuns:            directive.GetMaximumActiveRuns(),
+		ProcessPagesPerSecond:        directive.GetProcessPagesPerSecond(),
+		MaximumRedirects:             directive.GetMaximumRedirects(),
 		PrioritizeAutomaticDiscovery: directive.GetPrioritizeAutomaticDiscovery(),
 	}
 }
@@ -185,6 +187,10 @@ func controlKindFromProto(kind crawlrpc.CrawlControlKind) yagocrawlcontract.Craw
 		return yagocrawlcontract.CrawlControlSetWorkers
 	case crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS:
 		return yagocrawlcontract.CrawlControlSetActiveRuns
+	case crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_PROCESS_RATE:
+		return yagocrawlcontract.CrawlControlSetProcessRate
+	case crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_MAXIMUM_REDIRECTS:
+		return yagocrawlcontract.CrawlControlSetMaximumRedirects
 	case crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY:
 		return yagocrawlcontract.CrawlControlSetAutomaticDiscoveryPriority
 	default:

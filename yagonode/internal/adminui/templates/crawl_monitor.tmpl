@@ -2,7 +2,7 @@
 <div id="crawl-monitor" hx-get="{{.Pagination.RefreshURL}}" hx-trigger="every 5s"
      hx-swap="outerHTML" role="region" aria-label="Crawl monitor">
   <h2 class="cds-h2">Crawl monitor</h2>
-  <p class="cds-muted">Run totals and rates cover the crawl tasks currently retained in this monitor.</p>
+  <p class="cds-muted">Run totals, immutable effective caps, and rates cover the crawl tasks currently retained in this monitor. Fetched counts accepted response bodies; the failed count additionally includes fetch or processing failures, so one page can increment both after parsing fails.</p>
   <p>
     <button class="cds-btn cds-btn--ghost" type="button"
             hx-get="{{.Pagination.RefreshURL}}" hx-target="#crawl-monitor" hx-swap="outerHTML">Refresh</button>
@@ -64,6 +64,8 @@
           <th scope="col">Robots</th>
           <th scope="col">Duplicates</th>
           <th scope="col">Pending</th>
+          <th scope="col">Whole-run max (pages)</th>
+          <th scope="col">Per-host max (pages)</th>
           <th scope="col">Runtime</th>
           {{if .Controllable}}<th scope="col">Actions</th>{{end}}
         </tr>
@@ -72,7 +74,7 @@
         {{$root := .}}
         {{range .Pagination.Runs}}
         <tr>
-          <td>{{.Profile}}</td>
+          <td>{{if $root.Details}}<a href="/admin/crawl/run?runId={{.RunID}}">{{.Profile}}</a>{{else}}{{.Profile}}{{end}}</td>
           <td><span class="cds-tag{{with stateTag .State}} cds-tag--{{.}}{{end}}">{{.State}}</span></td>
           <td class="cds-mono">{{.Fetched}}</td>
           <td class="cds-mono">{{.Indexed}}</td>
@@ -80,6 +82,8 @@
           <td class="cds-mono">{{.RobotsDenied}}</td>
           <td class="cds-mono">{{.Duplicates}}</td>
           <td class="cds-mono">{{.Pending}}</td>
+          <td class="cds-mono">{{.MaxPagesPerRun}}</td>
+          <td class="cds-mono">{{.MaxPagesPerHost}}</td>
           <td class="cds-mono">{{.Runtime}}</td>
           {{if $root.Controllable}}
           <td class="cds-crawl-actions-cell">
@@ -123,7 +127,7 @@
           {{end}}
         </tr>
         {{else}}
-        <tr><td colspan="{{if .Controllable}}10{{else}}9{{end}}">No crawl runs observed yet.</td></tr>
+        <tr><td colspan="{{if .Controllable}}12{{else}}11{{end}}">No crawl runs observed yet.</td></tr>
         {{end}}
       </tbody>
     </table>

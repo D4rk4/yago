@@ -5,7 +5,7 @@ submenu structure, and this node's admin console with its settings catalog —
 then a functional diff. YaCy source at commit of 2026-07 (AI-fork of
 yacy_search_server; AI Lab pages ignored as fork-specific).
 
-## Gaps being closed (in priority order)
+## Closed gaps (implementation order)
 
 | # | YaCy source | Gap | Our slice |
 |---|---|---|---|
@@ -15,7 +15,7 @@ yacy_search_server; AI Lab pages ignored as fork-specific).
 | UI-18 | IndexExport_p | No index export. | Export indexed URLs (text / CSV / JSONL) filtered by domain/query from the Index section. |
 | UI-19 | Automation_p (recorded API calls + recurring schedule) | Crawls are one-shot; no recurring re-crawl. | "Crawl schedules": saved crawl profiles re-dispatched on an interval. |
 | UI-20 | SearchAccessRate_p | Public rate limits exist (YaCy parity, task 100) but are hard-coded — no admin setting. | `search.rate.*` settings in the catalog. |
-| UI-21 | ConfigPortal_p (branding subset) | Portal has no operator branding. | `portal.greeting` (+ optional logo URL) settings rendered on the portal. |
+| UI-21 | ConfigPortal_p (branding subset) | Portal had no operator branding. | `portal.greeting` setting rendered on the portal. |
 
 ## Covered already (no action)
 
@@ -50,12 +50,13 @@ delete); Load_RSS ≈ crawler's native feed parsing (FMT-03).
   images (OPS-05/06); self-updating binaries fight the package manager.
 - **ConfigProperties_p raw key editor**: our catalog is typed and validated
   end-to-end; a raw editor would bypass exactly that safety.
-- **Skins/языки UI (ConfigAppearance/Language), search-page field toggles**:
+- **Skins/UI languages (ConfigAppearance/Language), search-page field toggles**:
   single accessible Carbon theme is a product decision; localization is a
   separate track.
 - **UPnP toggle** (ConfigBasic): NAT traversal is an engine feature, not an
   admin gap; tracked in the networking backlog.
-- **RemoteCrawl_p** (accept remote crawl jobs): wire surface exists as an
-  explicit disabled stub — enabling swarm-delegated crawling is a protocol
-  decision, not a console one.
+- **RemoteCrawl_p** (accept remote crawl jobs): the earlier disabled-stub
+  assessment is superseded. Secure opt-in controlled-network admission,
+  authenticated staging, quotas, denylist enforcement, and typed Admin settings
+  are implemented; remote crawl remains disabled by default.
 - **AI Lab** (LLM/RAG/chat pages): fork-specific, out of scope.

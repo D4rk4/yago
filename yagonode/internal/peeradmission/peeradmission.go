@@ -25,11 +25,12 @@ type NewsIntake interface {
 }
 
 type HelloExchange struct {
-	Status       RuntimeStatus
-	Reachability ReachableRoster
-	Client       *http.Client
-	News         NewsIntake
-	PreferHTTPS  bool
+	Status        RuntimeStatus
+	Reachability  ReachableRoster
+	Client        *http.Client
+	News          NewsIntake
+	PreferHTTPS   bool
+	NetworkAccess yagoproto.NetworkAccess
 }
 
 func MountHello(
@@ -43,9 +44,11 @@ func MountHello(
 		yagoproto.HelloEndpointMethods,
 		yagoproto.ParseHelloRequest,
 		helloEndpoint{
-			identity:     identity,
-			status:       exchange.Status,
-			probe:        newCallerBackPing(exchange.Client, exchange.PreferHTTPS),
+			identity: identity,
+			status:   exchange.Status,
+			probe: newCallerBackPing(
+				exchange.Client, exchange.PreferHTTPS, exchange.NetworkAccess,
+			),
 			reachability: exchange.Reachability,
 			news:         exchange.News,
 		}.Serve,

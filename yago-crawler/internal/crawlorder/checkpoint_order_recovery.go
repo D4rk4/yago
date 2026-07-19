@@ -82,6 +82,7 @@ func (c *CrawlOrderConsumer) settleRecoveredOrder(
 		state = yagocrawlcontract.CrawlRunCancelled
 	}
 	tally := c.recoveredRunTally(order.Provenance, recovery, 0)
+	recentOutcomes := c.recentRunOutcomes(order.Provenance)
 	if delivery.settleTerminal == nil {
 		c.reportRunTally(
 			context.WithoutCancel(ctx),
@@ -113,6 +114,7 @@ func (c *CrawlOrderConsumer) settleRecoveredOrder(
 					disposition:    disposition,
 					state:          state,
 					tally:          tally,
+					recentOutcomes: recentOutcomes,
 					pagesPerMinute: c.frontier.EffectivePagesPerMinute(order.Provenance),
 				},
 			)

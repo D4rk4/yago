@@ -93,6 +93,66 @@ func TestPeerGreeterLearnsTypeAndKnownSeeds(t *testing.T) {
 	}
 }
 
+func TestPeerGreeterSignsControlledNetworkRequest(t *testing.T) {
+	self := callerSeed(t, "self", "203.0.113.9")
+	access := yagoproto.NetworkAccess{
+		NetworkName: "private",
+		Mode:        yagoproto.NetworkAuthenticationSaltedMagic,
+		Essentials:  "shared-secret",
+	}
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			if err := request.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			verifier := access
+			verifier.Self = self.Hash
+			if !verifier.Authorizes(request.PostForm) ||
+				request.PostForm.Get(yagoproto.FieldIam) != self.Hash.String() {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+
+				return
+			}
+			response := yagoproto.HelloResponse{
+				YourIP: "203.0.113.9", YourType: yagomodel.PeerSenior,
+				Seeds: []yagomodel.Seed{self},
+			}
+			_, _ = strings.NewReader(response.Encode().Encode()).WriteTo(w)
+		}),
+	)
+	defer server.Close()
+
+	result, err := newHTTPPeerGreeter(server.Client(), "private", false, access).Greet(
+		t.Context(),
+		serverSeed(t, server),
+		self,
+		0,
+	)
+	if err != nil || result.YourType != yagomodel.PeerSenior {
+		t.Fatalf("controlled greet = %+v, %v", result, err)
+	}
+}
+
+func TestPeerGreeterSurfacesSigningFailure(t *testing.T) {
+	sentinel := errors.New("signing failed")
+	greeter := newHTTPPeerGreeter(
+		http.DefaultClient,
+		"private",
+		false,
+		yagoproto.NetworkAccess{Mode: yagoproto.NetworkAuthenticationSaltedMagic},
+	)
+	greeter.signForm = func(yagoproto.NetworkAccess, url.Values) error { return sentinel }
+	_, err := greeter.Greet(
+		t.Context(),
+		callerSeed(t, "target", "203.0.113.1"),
+		callerSeed(t, "self", "203.0.113.9"),
+		0,
+	)
+	if !errors.Is(err, sentinel) || !errors.Is(err, errGreetFailed) {
+		t.Fatalf("greet signing error = %v", err)
+	}
+}
+
 func TestPeerGreeterRejectsNon200(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "nope", http.StatusServiceUnavailable)

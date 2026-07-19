@@ -54,6 +54,26 @@ func buildConfigView(config nodeConfig) adminui.ConfigView {
 			},
 		}},
 		{Title: "Network policy", Settings: []adminui.ConfigSetting{
+			{
+				Name:  "YaCy network authentication",
+				Value: string(config.NetworkAuthenticationMode),
+			},
+			{
+				Name:  "Shared network secret",
+				Value: redactedSecret(config.NetworkAuthenticationSecret),
+			},
+			{
+				Name:  "Remote crawl delegation",
+				Value: enabledDisabled(config.RemoteCrawl.Enabled),
+			},
+			{
+				Name:  "Remote crawl trusted peers",
+				Value: fmt.Sprintf("%d", len(config.RemoteCrawl.TrustedPeers)),
+			},
+			{
+				Name:  "Remote crawl destinations",
+				Value: fmt.Sprintf("%d", len(config.RemoteCrawl.AllowedDestinations)),
+			},
 			{Name: "Egress allows LAN", Value: yesNo(config.EgressAllowLAN)},
 			{
 				Name:  "Egress allow-list entries",

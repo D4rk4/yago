@@ -42,6 +42,12 @@ func TestAutocrawlerCatalogShippedProfile(t *testing.T) {
 	if got := definitions["swarm.seed.depth"].description; got != "How many link hops each swarm-surfaced URL is crawled (0 crawls only the URL itself)." {
 		t.Fatalf("swarm seed depth description = %q", got)
 	}
+	if got := definitions["swarm.seed.max_pages"].title; got != "Autocrawler pages per task" {
+		t.Fatalf("swarm seed page title = %q", got)
+	}
+	if got := definitions["web.fallback.seed_max_pages"].title; got != "Web-discovery pages per task" {
+		t.Fatalf("web seed page title = %q", got)
+	}
 }
 
 // TestAutocrawlerCrawlOptionCatalog covers the five per-crawl toggles the

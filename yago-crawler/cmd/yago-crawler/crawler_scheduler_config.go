@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 )
@@ -22,6 +24,17 @@ func loadCrawlSchedulerConfig(
 		)
 	}
 	crawl.Workers = workers
+	processPagesPerSecondRaw := strings.TrimSpace(getenv(EnvProcessPagesPerSecond))
+	if processPagesPerSecondRaw == "" {
+		processPagesPerSecondRaw = strconv.FormatUint(uint64(crawl.ProcessPagesPerSecond), 10)
+	}
+	processPagesPerSecond, err := yagocrawlcontract.ParseProcessPagesPerSecond(
+		processPagesPerSecondRaw,
+	)
+	if err != nil {
+		return CrawlConfig{}, fmt.Errorf("%s: %w", EnvProcessPagesPerSecond, err)
+	}
+	crawl.ProcessPagesPerSecond = processPagesPerSecond
 	maximumActiveRuns, err := envPositiveInt(
 		getenv,
 		EnvMaxActiveRuns,

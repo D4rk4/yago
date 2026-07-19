@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 )
 
@@ -22,12 +23,14 @@ func flattenConfig(view adminui.ConfigView) string {
 
 func TestBuildConfigViewRedactsSecrets(t *testing.T) {
 	flat := flattenConfig(buildConfigView(nodeConfig{
-		Name:         "peer-1",
-		SearchAPIKey: "super-secret-key",
-		Admin:        adminConfig{Username: "root", Password: "hunter2"},
+		Name:                        "peer-1",
+		SearchAPIKey:                "super-secret-key",
+		NetworkAuthenticationSecret: "network-secret",
+		Admin:                       adminConfig{Username: "root", Password: "hunter2"},
 	}))
 
-	if strings.Contains(flat, "super-secret-key") || strings.Contains(flat, "hunter2") {
+	if strings.Contains(flat, "super-secret-key") || strings.Contains(flat, "hunter2") ||
+		strings.Contains(flat, "network-secret") {
 		t.Fatal("secrets must never appear in the config view")
 	}
 	if !strings.Contains(flat, "Configured") {
@@ -49,6 +52,27 @@ func TestBuildConfigViewMarksUnsetValues(t *testing.T) {
 	}
 	if !strings.Contains(flat, "Unlimited") {
 		t.Fatal("expected a zero storage quota to render as Unlimited")
+	}
+}
+
+func TestBuildConfigViewShowsRemoteCrawlPolicyWithoutPeerDetails(t *testing.T) {
+	flat := flattenConfig(buildConfigView(nodeConfig{
+		RemoteCrawl: remoteCrawlConfig{
+			Enabled: true,
+			TrustedPeers: []yagomodel.Hash{
+				"AAAAAAAAAAAA",
+				"BBBBBBBBBBBB",
+			},
+			AllowedDestinations: []string{"example.com"},
+		},
+	}))
+	if !strings.Contains(flat, "Remote crawl delegationEnabled") ||
+		!strings.Contains(flat, "Remote crawl trusted peers2") ||
+		!strings.Contains(flat, "Remote crawl destinations1") {
+		t.Fatalf("remote crawl config view = %q", flat)
+	}
+	if strings.Contains(flat, "AAAAAAAAAAAA") || strings.Contains(flat, "example.com") {
+		t.Fatalf("remote crawl policy details leaked into config view: %q", flat)
 	}
 }
 

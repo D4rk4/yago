@@ -53,17 +53,24 @@ func (s *settingsSource) settingItem(
 		}
 	}
 
+	displayValue := value
+	if definition.sensitive {
+		displayValue = ""
+	}
+
 	return adminui.SettingItem{
 		Key:             definition.key,
 		Title:           definition.title,
 		Description:     definition.description,
-		Value:           value,
+		Value:           displayValue,
 		Overridden:      overridden,
 		RestartRequired: definition.restartRequired(),
 		PendingRestart: definition.restartRequired() &&
 			value != definition.defaultValue(s.startupConfig),
-		Options:  adminSettingOptions(definition.options),
-		Category: settingCategory(definition.key),
-		Boolean:  isBooleanSettingOptions(definition.options),
+		Options:    adminSettingOptions(definition.options),
+		Category:   settingCategory(definition.key),
+		Boolean:    isBooleanSettingOptions(definition.options),
+		Sensitive:  definition.sensitive,
+		Configured: definition.sensitive && value != "",
 	}, nil
 }

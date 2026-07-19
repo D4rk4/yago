@@ -226,6 +226,7 @@ func restoreMainSeams(t *testing.T) {
 	oldRunNode := runNode
 	oldOpenRuntimeVault := openRuntimeVault
 	oldAssembleRuntimeNode := assembleRuntimeNode
+	oldBuildRuntimeEgressClient := buildRuntimeEgressClient
 	oldServeRuntimeNode := serveRuntimeNode
 	oldListenAndServeHTTP := listenAndServeHTTP
 	oldShutdownHTTPServer := shutdownHTTPServer
@@ -235,6 +236,7 @@ func restoreMainSeams(t *testing.T) {
 		runNode = oldRunNode
 		openRuntimeVault = oldOpenRuntimeVault
 		assembleRuntimeNode = oldAssembleRuntimeNode
+		buildRuntimeEgressClient = oldBuildRuntimeEgressClient
 		serveRuntimeNode = oldServeRuntimeNode
 		listenAndServeHTTP = oldListenAndServeHTTP
 		shutdownHTTPServer = oldShutdownHTTPServer

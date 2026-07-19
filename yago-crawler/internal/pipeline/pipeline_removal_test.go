@@ -111,8 +111,9 @@ func TestPipelineMarksDeliveryFailedOnRemovalEmitError(t *testing.T) {
 		pageindex.NewIndexBuilder(),
 		emitter,
 	)
-	if done := runOneJob(t, p, frontier); done.outcome.Failed != 1 {
-		t.Fatalf("removal failure tally = %+v, want one failed page", done.outcome)
+	if done := runOneJob(t, p, frontier); done.outcome.Failed != 1 ||
+		done.reason != "document removal delivery failed" {
+		t.Fatalf("removal failure outcome = %+v %q", done.outcome, done.reason)
 	}
 }
 

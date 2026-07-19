@@ -109,6 +109,26 @@ type fakeURLs struct {
 	beforePurge func() error
 }
 
+type postingOnlyCandidates struct {
+	urls  []yagomodel.Hash
+	err   error
+	calls int
+}
+
+func (s *postingOnlyCandidates) PostingOnlyURLs(
+	context.Context,
+	int,
+) ([]yagomodel.Hash, error) {
+	s.calls++
+	if s.err != nil {
+		return nil, s.err
+	}
+	urls := s.urls
+	s.urls = nil
+
+	return urls, nil
+}
+
 func (f *fakeURLs) StalestURLs(_ context.Context, limit int) ([]yagomodel.Hash, error) {
 	if f.selectErr != nil {
 		return nil, f.selectErr
@@ -272,6 +292,56 @@ func TestSweepNoopWithoutBatch(t *testing.T) {
 	}
 	if result != (eviction.Result{}) {
 		t.Fatalf("result = %+v, want empty", result)
+	}
+}
+
+func TestSweepPurgesPostingOnlyURLsWhenMetadataCandidatesAreExhausted(t *testing.T) {
+	vault := openVault(t, 1)
+	postings := &fakePostings{}
+	urls := &fakeURLs{noDelete: true}
+	candidates := &postingOnlyCandidates{urls: hashes(1)}
+	sweeper := eviction.NewSweeper(
+		vault,
+		postings,
+		fakeReferences{word: yagomodel.WordHash("w")},
+		urls,
+		nil,
+		nil,
+		urls,
+		eviction.Config{
+			TargetFraction: 1,
+			BatchSize:      2,
+			PostingOnly:    candidates,
+		},
+	)
+	result, err := sweeper.Sweep(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.URLsDeleted != 0 || result.PostingsDeleted != 1 || candidates.calls != 2 {
+		t.Fatalf("result = %+v, candidate calls = %d", result, candidates.calls)
+	}
+}
+
+func TestSweepReportsPostingOnlySelectionError(t *testing.T) {
+	want := errors.New("posting scan failed")
+	urls := &fakeURLs{}
+	_, err := eviction.NewSweeper(
+		openVault(t, 1),
+		&fakePostings{},
+		fakeReferences{},
+		urls,
+		nil,
+		nil,
+		urls,
+		eviction.Config{
+			TargetFraction: 1,
+			BatchSize:      1,
+			PostingOnly:    &postingOnlyCandidates{err: want},
+		},
+	).Sweep(context.Background())
+	if !errors.Is(err, want) {
+		t.Fatalf("error = %v", err)
 	}
 }
 

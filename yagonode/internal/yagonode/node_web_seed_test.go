@@ -72,7 +72,7 @@ func TestWebCrawlSeederPublishesUnknownURLs(t *testing.T) {
 		t.Errorf("profile = %#v", order.Profile)
 	}
 	if order.Profile.MaxPagesPerRun == nil ||
-		*order.Profile.MaxPagesPerRun != yagocrawlcontract.DefaultMaxPagesPerRun {
+		*order.Profile.MaxPagesPerRun != 20 {
 		t.Fatalf("max pages per run = %v", order.Profile.MaxPagesPerRun)
 	}
 	if order.Requests[0].Mode != yagocrawlcontract.CrawlRequestModeURL {
@@ -82,7 +82,7 @@ func TestWebCrawlSeederPublishesUnknownURLs(t *testing.T) {
 
 func TestWebCrawlSeederReadsCurrentRunBudget(t *testing.T) {
 	queue := &fakeCrawlQueue{}
-	maximum := 123
+	maximum := 12
 	seeder := newWebCrawlSeeder(
 		queue,
 		fakeSeedDocuments{stored: map[string]bool{}},
@@ -93,13 +93,13 @@ func TestWebCrawlSeederReadsCurrentRunBudget(t *testing.T) {
 		},
 	)
 	seeder.Seed(context.Background(), []string{"https://one.example/"})
-	maximum = 456
+	maximum = 7
 	seeder.Seed(context.Background(), []string{"https://two.example/"})
 
 	if len(queue.orders) != 2 {
 		t.Fatalf("orders = %d, want 2", len(queue.orders))
 	}
-	for index, want := range []int{123, 456} {
+	for index, want := range []int{12, 7} {
 		profile := queue.orders[index].Profile
 		if profile.MaxPagesPerRun == nil || *profile.MaxPagesPerRun != want {
 			t.Fatalf("order %d max pages per run = %v, want %d",
@@ -108,6 +108,16 @@ func TestWebCrawlSeederReadsCurrentRunBudget(t *testing.T) {
 	}
 	if queue.orders[0].Profile.Handle == queue.orders[1].Profile.Handle {
 		t.Fatalf("different run budgets shared profile handle %q", queue.orders[0].Profile.Handle)
+	}
+}
+
+func TestAutomaticDiscoveryPageLimitKeepsTaskCapWhenCrawlerIsUnlimited(t *testing.T) {
+	t.Parallel()
+
+	for _, crawlerMaximum := range []int{0, 20, 50000} {
+		if got := automaticDiscoveryPageLimit(20, crawlerMaximum); got != 20 {
+			t.Fatalf("limit with crawler maximum %d = %d, want 20", crawlerMaximum, got)
+		}
 	}
 }
 

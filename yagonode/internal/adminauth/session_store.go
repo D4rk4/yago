@@ -15,6 +15,7 @@ type sessionRecord struct {
 	Username  string    `json:"username"`
 	CSRFToken string    `json:"csrfToken"`
 	ExpiresAt time.Time `json:"expiresAt"`
+	RenewAt   time.Time `json:"renewAt,omitempty"`
 }
 
 type sessionRecordCodec struct{}
@@ -38,6 +39,7 @@ type sessionStore struct {
 	vault   *vault.Vault
 	records *vault.Collection[sessionRecord]
 	ttl     time.Duration
+	renewal time.Duration
 	now     func() time.Time
 }
 
@@ -51,7 +53,9 @@ func newSessionStore(
 		return nil, fmt.Errorf("register admin sessions: %w", err)
 	}
 
-	return &sessionStore{vault: storage, records: records, ttl: ttl, now: now}, nil
+	return &sessionStore{
+		vault: storage, records: records, ttl: ttl, renewal: sessionRenewalInterval(ttl), now: now,
+	}, nil
 }
 
 func (s *sessionStore) create(ctx context.Context, username string) (session, error) {
@@ -68,6 +72,7 @@ func (s *sessionStore) create(ctx context.Context, username string) (session, er
 		Username:  username,
 		CSRFToken: csrf,
 		ExpiresAt: now.Add(s.ttl),
+		RenewAt:   now.Add(s.renewal),
 	}
 	admitted := false
 	for !admitted {
@@ -97,6 +102,70 @@ func (s *sessionStore) create(ctx context.Context, username string) (session, er
 		CSRFToken: record.CSRFToken,
 		ExpiresAt: record.ExpiresAt,
 	}, nil
+}
+
+func sessionRenewalInterval(ttl time.Duration) time.Duration {
+	const maximum = time.Hour
+	interval := ttl / 2
+	if interval > maximum {
+		return maximum
+	}
+
+	return interval
+}
+
+func (s *sessionStore) rotate(
+	ctx context.Context,
+	token string,
+	record sessionRecord,
+) (session, bool, error) {
+	now := s.now()
+	if !record.RenewAt.IsZero() && now.Before(record.RenewAt) {
+		return session{}, false, nil
+	}
+	if !now.Before(record.ExpiresAt) {
+		return session{}, false, nil
+	}
+
+	replacement, err := newRandomToken(sessionTokenBytes)
+	if err != nil {
+		return session{}, false, err
+	}
+	expected := record
+	record.RenewAt = now.Add(s.renewal)
+	if record.RenewAt.After(record.ExpiresAt) {
+		record.RenewAt = record.ExpiresAt
+	}
+
+	rotated := false
+	if err := s.vault.Update(ctx, func(tx *vault.Txn) error {
+		current, found, err := s.records.Get(tx, vault.Key(hashToken(token)))
+		if err != nil {
+			return fmt.Errorf("read session for rotation: %w", err)
+		}
+		if !found || current != expected {
+			return nil
+		}
+		if err := s.records.Put(tx, vault.Key(hashToken(replacement)), record); err != nil {
+			return fmt.Errorf("store rotated session: %w", err)
+		}
+		if _, err := s.records.Delete(tx, vault.Key(hashToken(token))); err != nil {
+			return fmt.Errorf("delete replaced session: %w", err)
+		}
+		rotated = true
+
+		return nil
+	}); err != nil {
+		return session{}, false, fmt.Errorf("rotate admin session: %w", err)
+	}
+	if !rotated {
+		return session{}, false, nil
+	}
+
+	return session{
+		Token: replacement, Username: record.Username, CSRFToken: record.CSRFToken,
+		ExpiresAt: record.ExpiresAt,
+	}, true, nil
 }
 
 func (s *sessionStore) lookup(ctx context.Context, token string) (sessionRecord, bool, error) {

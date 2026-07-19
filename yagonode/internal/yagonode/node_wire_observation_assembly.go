@@ -4,8 +4,10 @@ import (
 	"net/http"
 
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
+	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/nodestatus"
+	"github.com/D4rk4/yago/yagonode/internal/remotecrawl"
 	"github.com/D4rk4/yago/yagonode/internal/transfertally"
 )
 
@@ -14,20 +16,37 @@ type nodeWireObservation struct {
 	tally  *transfertally.Tally
 }
 
+type dhtObservedNodeWireInput struct {
+	config      nodeConfig
+	identity    nodeidentity.Identity
+	storage     nodeStorage
+	telemetry   nodeTelemetry
+	observation nodeWireObservation
+	remoteCrawl *remotecrawl.Broker
+}
+
+type nodeWireHandlerAssembly struct {
+	router      httpguard.WireRouter
+	identity    nodeidentity.Identity
+	storage     nodeStorage
+	saturation  *metrics.SaturationMetrics
+	config      nodeConfig
+	remoteCrawl *remotecrawl.Broker
+}
+
 func mountDHTObservedNodeWire(
-	config nodeConfig,
-	identity nodeidentity.Identity,
-	storage nodeStorage,
-	telemetry nodeTelemetry,
-	observation nodeWireObservation,
+	in dhtObservedNodeWireInput,
 ) (*http.ServeMux, httpguard.WireRouter) {
 	wireStorage := observeDHTInboundStorage(
-		storage,
-		telemetry.dhtInbound,
-		observation.tally,
+		in.storage,
+		in.telemetry.dhtInbound,
+		in.observation.tally,
 	)
-	mux, router := newNodeWireMux(config, observation.report)
-	mountNodeWireHandlers(router, identity, wireStorage, telemetry.saturation, config)
+	mux, router := newNodeWireMux(in.config, in.observation.report)
+	mountNodeWireHandlers(nodeWireHandlerAssembly{
+		router: router, identity: in.identity, storage: wireStorage,
+		saturation: in.telemetry.saturation, config: in.config, remoteCrawl: in.remoteCrawl,
+	})
 
 	return mux, router
 }

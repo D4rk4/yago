@@ -388,16 +388,14 @@ func TestOpenMarionetteSessionErrorsFromCommands(t *testing.T) {
 }
 
 func TestFirefoxBinaryFindsBinaryOnPath(t *testing.T) {
-	restore := firefoxBinaries
-	t.Cleanup(func() { firefoxBinaries = restore })
-	firefoxBinaries = []string{"sh"}
-
-	got, err := firefoxBinary("")
+	got, err := firefoxBinary(BrowserLaunch{executableResolver: func(string, bool) (string, error) {
+		return "/usr/bin/firefox-esr", nil
+	}})
 	if err != nil {
 		t.Fatalf("firefoxBinary: %v", err)
 	}
-	if !strings.HasSuffix(got, "sh") {
-		t.Fatalf("binary = %q, want a resolved sh path", got)
+	if got != "/usr/bin/firefox-esr" {
+		t.Fatalf("binary = %q, want a resolved Firefox path", got)
 	}
 }
 
@@ -433,7 +431,7 @@ func TestLaunchFirefoxRejectsCanceledContext(t *testing.T) {
 	cancel()
 	if _, err := launchFirefox(
 		ctx,
-		BrowserLaunch{ExecPath: "/bin/true"},
+		testFirefoxLaunch("/bin/true"),
 		"",
 	); !errors.Is(
 		err,
@@ -457,7 +455,7 @@ func TestLaunchFirefoxRemovesProfileWhenCanceledAfterCreation(t *testing.T) {
 	}
 	if _, err := launchFirefox(
 		ctx,
-		BrowserLaunch{ExecPath: "/bin/true"},
+		testFirefoxLaunch("/bin/true"),
 		"",
 	); !errors.Is(
 		err,
@@ -473,7 +471,7 @@ func TestLaunchFirefoxRemovesProfileWhenCanceledAfterCreation(t *testing.T) {
 func TestLaunchFirefoxErrorsWhenProfileFails(t *testing.T) {
 	if _, err := launchFirefox(
 		t.Context(),
-		BrowserLaunch{ExecPath: "/bin/true"},
+		testFirefoxLaunch("/bin/true"),
 		"http://no-port-here",
 	); err == nil || !strings.Contains(err.Error(), "port") {
 		t.Fatalf("error = %v, want a profile/proxy failure", err)
@@ -483,7 +481,7 @@ func TestLaunchFirefoxErrorsWhenProfileFails(t *testing.T) {
 func TestLaunchFirefoxErrorsWhenSpawnFails(t *testing.T) {
 	if _, err := launchFirefox(
 		t.Context(),
-		BrowserLaunch{ExecPath: "/nonexistent/yago-firefox-xyz"},
+		testFirefoxLaunch("/nonexistent/yago-firefox-xyz"),
 		"",
 	); err == nil || !strings.Contains(err.Error(), "start firefox") {
 		t.Fatalf("error = %v, want a start-firefox failure", err)
@@ -497,7 +495,7 @@ func TestLaunchFirefoxErrorsWhenSessionFails(t *testing.T) {
 
 	if _, err := launchFirefox(
 		t.Context(),
-		BrowserLaunch{ExecPath: "/bin/true"},
+		testFirefoxLaunch("/bin/true"),
 		"",
 	); err == nil || !strings.Contains(err.Error(), "firefox stderr") {
 		t.Fatalf("error = %v, want a session failure", err)
@@ -509,9 +507,11 @@ func TestLaunchFirefoxReturnsSessionOnSuccess(t *testing.T) {
 	t.Cleanup(func() { spawnFirefox = restore })
 	spawnFirefox = fakeSpawn(t, greetingResponder)
 
+	launch := testFirefoxLaunch("/bin/true")
+	launch.Timeout = time.Second
 	session, err := launchFirefox(
 		t.Context(),
-		BrowserLaunch{ExecPath: "/bin/true", Timeout: time.Second},
+		launch,
 		"",
 	)
 	if err != nil {
@@ -541,9 +541,11 @@ func TestStartFirefoxSessionReturnsSession(t *testing.T) {
 	t.Cleanup(func() { spawnFirefox = restore })
 	spawnFirefox = fakeSpawn(t, greetingResponder)
 
+	launch := testFirefoxLaunch("/bin/true")
+	launch.Timeout = time.Second
 	session, err := startFirefoxSession(
 		t.Context(),
-		BrowserLaunch{ExecPath: "/bin/true", Timeout: time.Second},
+		launch,
 		"",
 	)
 	if err != nil {
@@ -575,7 +577,7 @@ func TestLaunchFirefoxErrorsWhenPortReservationFails(t *testing.T) {
 	t.Cleanup(func() { listenLoopback = restore })
 	listenLoopback = func() (net.Listener, error) { return nil, errFakeListen }
 
-	if _, err := launchFirefox(t.Context(), BrowserLaunch{ExecPath: "/bin/true"}, ""); err == nil ||
+	if _, err := launchFirefox(t.Context(), testFirefoxLaunch("/bin/true"), ""); err == nil ||
 		!strings.Contains(err.Error(), "reserve marionette port") {
 		t.Fatalf("error = %v, want a reserve-marionette-port failure", err)
 	}

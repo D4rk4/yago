@@ -44,26 +44,10 @@ func (s *bindingSource) UpdateBinding(
 ) (adminui.BindResult, error) {
 	def, ok := indexBindDefinitions()[change.Key]
 	if !ok {
-		return adminui.BindResult{Message: "Unknown surface."}, nil
+		return adminui.BindResult{Message: bindingUnknownSurfaceMessage}, nil
 	}
 
-	addr, ok := s.validatedBindAddr(change)
-	if !ok {
-		return adminui.BindResult{
-			Message: "Choose a listed interface address and a port between 1 and 65535.",
-		}, nil
-	}
-
-	if err := s.store.Set(ctx, def.key, addr); err != nil {
-		return adminui.BindResult{}, fmt.Errorf("store bind %q: %w", def.key, err)
-	}
-
-	s.record(def, addr)
-
-	return adminui.BindResult{
-		OK:      true,
-		Message: def.title + " will bind to " + addr + " after the next restart.",
-	}, nil
+	return s.applyBindingChange(ctx, def, change)
 }
 
 func (s *bindingSource) validatedBindAddr(change adminui.BindChange) (string, bool) {

@@ -1,0 +1,37 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / <a href="/admin/crawl#crawl-monitor">Crawler</a> / Run</nav>
+<h1 class="cds-h1">Crawl run</h1>
+{{if .Error}}
+<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>
+{{else}}
+<dl class="cds-kv-list">
+  <div><dt>Profile</dt><dd>{{.Detail.Run.Profile}}</dd></div>
+  <div><dt>Run ID</dt><dd><code>{{.Detail.Run.RunID}}</code></dd></div>
+  <div><dt>Worker</dt><dd><code>{{.Detail.Run.Worker}}</code></dd></div>
+  <div><dt>State</dt><dd>{{.Detail.Run.State}}</dd></div>
+  <div><dt>Whole-run maximum (pages)</dt><dd>{{.Detail.Run.MaxPagesPerRun}}</dd></div>
+  <div><dt>Per-host maximum (pages)</dt><dd>{{.Detail.Run.MaxPagesPerHost}}</dd></div>
+  <div><dt>Runtime</dt><dd>{{.Detail.Run.Runtime}}</dd></div>
+</dl>
+<h2 class="cds-h2">Recent URL outcomes</h2>
+<p class="cds-muted">The most recent bounded terminal outcome history reported by the crawler. Each URL has one terminal class. Aggregate counters are not mutually exclusive: fetched counts accepted response bodies, while the failed count additionally includes fetch or processing failures, so one page can increment both after parsing fails. The failure rate uses failed / (fetched + failed) and cannot exceed 100%. This history contains no page body or raw parser error.</p>
+<div class="cds-scroll-x" role="region" aria-label="Recent crawl URL outcomes" tabindex="0">
+  <table class="cds-table">
+    <thead><tr><th scope="col">Observed (UTC)</th><th scope="col">Outcome</th><th scope="col">URL</th><th scope="col">HTTP</th><th scope="col">Reason</th></tr></thead>
+    <tbody>
+      {{range .Detail.Outcomes}}
+      <tr>
+        <td class="cds-mono">{{.ObservedAt}}</td>
+        <td>{{.Class}}</td>
+        <td><a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.URL}}</a></td>
+        <td class="cds-mono">{{.HTTPStatus}}</td>
+        <td>{{.Reason}}</td>
+      </tr>
+      {{else}}
+      <tr><td colspan="5">No URL outcomes have been reported for this run yet.</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+{{end}}

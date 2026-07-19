@@ -147,17 +147,21 @@ func TestCrawlerSystemMonitorRendersEnabledAndDisabledStates(t *testing.T) {
 	}
 }
 
-func TestCrawlerSystemMonitorKeepsFetchMeterAlongsideNodeReserve(t *testing.T) {
+func TestCrawlerSystemMonitorMovesStorageReservesToIndex(t *testing.T) {
 	t.Parallel()
 
-	body := do(t, New(Options{
+	options := Options{
+		Index: fakeIndex{snap: IndexStats{Available: true}},
 		CrawlerFetchActivity: fixedCrawlerFetchActivity{
 			activity: CrawlerFetchActivity{
-				ConnectedCrawlers:      1,
-				ActiveFetches:          3,
-				FetchLimitPerCrawler:   4,
-				AggregateFetchCapacity: 4,
-				ActiveFetchesKnown:     true,
+				ConnectedCrawlers:            1,
+				ActiveFetches:                3,
+				FetchLimitPerCrawler:         4,
+				AggregateFetchCapacity:       4,
+				ActiveFetchesKnown:           true,
+				StorageStatesKnown:           true,
+				MinimumStorageAvailableBytes: 6 << 30,
+				StorageReservedFreeBytes:     2 << 30,
 			},
 		},
 		StoragePressure: fixedStoragePressureStatus{status: StoragePressureStatus{
@@ -165,16 +169,75 @@ func TestCrawlerSystemMonitorKeepsFetchMeterAlongsideNodeReserve(t *testing.T) {
 			AvailableBytes:       8 << 30,
 			ReservedFreeBytes:    1 << 30,
 		}},
-	}), systemMonitorPath).body
+	}
+	monitor := do(t, New(options), systemMonitorPath).body
 	for _, want := range []string{
 		">Crawler fetch workers<",
 		"3 active of 4",
 		`max="4" value="3" aria-label="Active crawler fetch workers"`,
+	} {
+		if !strings.Contains(monitor, want) {
+			t.Fatalf("crawler monitor missing %q: %s", want, monitor)
+		}
+	}
+	for _, unwanted := range []string{"Crawler storage reserve", "Node filesystem reserve"} {
+		if strings.Contains(monitor, unwanted) {
+			t.Fatalf("system monitor retained %q: %s", unwanted, monitor)
+		}
+	}
+
+	index := do(t, New(options), indexPath).body
+	for _, want := range []string{
 		">Node filesystem reserve<",
 		"8.0 GiB available · reserve 1.0 GiB",
+		">Crawler storage reserve<",
+		"6.0 GiB minimum available · reserve 2.0 GiB",
 	} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("combined crawler and node monitor missing %q: %s", want, body)
+		if !strings.Contains(index, want) {
+			t.Fatalf("index storage status missing %q: %s", want, index)
+		}
+	}
+}
+
+func TestIndexKeepsStorageReservesVisibleWhileSearchBackendStarts(t *testing.T) {
+	t.Parallel()
+
+	options := Options{
+		Index: fakeIndex{},
+		CrawlerFetchActivity: fixedCrawlerFetchActivity{
+			activity: CrawlerFetchActivity{
+				ConnectedCrawlers:            1,
+				FetchLimitPerCrawler:         4,
+				AggregateFetchCapacity:       4,
+				ActiveFetchesKnown:           true,
+				StorageStatesKnown:           true,
+				MinimumStorageAvailableBytes: 6 << 30,
+				StorageReservedFreeBytes:     2 << 30,
+			},
+		},
+		StoragePressure: fixedStoragePressureStatus{status: StoragePressureStatus{
+			MeasurementAvailable: true,
+			AvailableBytes:       8 << 30,
+			ReservedFreeBytes:    1 << 30,
+		}},
+	}
+	index := do(t, New(options), indexPath).body
+	for _, want := range []string{
+		">Node filesystem reserve<",
+		"8.0 GiB available · reserve 1.0 GiB",
+		">Crawler storage reserve<",
+		"6.0 GiB minimum available · reserve 2.0 GiB",
+		"The search index is not available.",
+	} {
+		if !strings.Contains(index, want) {
+			t.Fatalf("starting Index page missing %q: %s", want, index)
+		}
+	}
+
+	monitor := do(t, New(options), systemMonitorPath).body
+	for _, unwanted := range []string{"Crawler storage reserve", "Node filesystem reserve"} {
+		if strings.Contains(monitor, unwanted) {
+			t.Fatalf("system monitor retained %q while Index starts: %s", unwanted, monitor)
 		}
 	}
 }

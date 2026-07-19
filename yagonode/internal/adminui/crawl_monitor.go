@@ -8,19 +8,21 @@ import (
 // CrawlRunView is one row of the crawl monitor: a run the node currently knows
 // about, with its per-outcome tally and how long it has been running.
 type CrawlRunView struct {
-	RunID          string
-	Profile        string
-	Worker         string
-	State          string
-	Fetched        uint64
-	Indexed        uint64
-	Failed         uint64
-	RobotsDenied   uint64
-	Duplicates     uint64
-	Pending        uint64
-	Runtime        string
-	PagesPerMinute uint32
-	RateKnown      bool
+	RunID           string
+	Profile         string
+	Worker          string
+	State           string
+	Fetched         uint64
+	Indexed         uint64
+	Failed          uint64
+	RobotsDenied    uint64
+	Duplicates      uint64
+	Pending         uint64
+	Runtime         string
+	PagesPerMinute  uint32
+	RateKnown       bool
+	MaxPagesPerHost string
+	MaxPagesPerRun  string
 }
 
 // CrawlTotals is the crawl results/rejections rollup across the known runs: the

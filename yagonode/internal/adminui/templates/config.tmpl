@@ -5,7 +5,7 @@
 <p class="cds-muted">The node's settings, grouped into tabs. Runtime overrides are stored on the node and layer over the environment defaults; unset settings fall back to the environment.</p>
 {{if .Settings.Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Settings.Error}}</div>{{end}}
 <div class="cds-tabs" data-tabs>
-  <div class="cds-tablist" role="tablist" aria-label="Configuration sections">
+  <div class="cds-tablist" role="tablist" aria-label="Configuration sections" data-allow-horizontal-overflow>
     {{if .Editable}}{{range .SettingGroups}}<button type="button" role="tab" class="cds-tab" id="tab-{{.ID}}" aria-controls="panel-{{.ID}}" aria-selected="false">{{.Title}}</button>
     {{end}}{{end}}{{if .Bindable}}<button type="button" role="tab" class="cds-tab" id="tab-listen" aria-controls="panel-listen" aria-selected="false">Listen addresses</button>
     {{end}}<button type="button" role="tab" class="cds-tab" id="tab-effective" aria-controls="panel-effective" aria-selected="false">Startup snapshot</button>
@@ -27,7 +27,9 @@
             {{if .PendingRestart}}<span class="cds-tag cds-tag--warn">pending restart</span>{{end}}
           </span>
           <span class="cds-setting-row__control">
-            {{if .Boolean}}
+            {{if .Sensitive}}
+            <input class="cds-input" type="password" id="setting-{{.Key}}" name="value:{{.Key}}" value="" autocomplete="new-password" placeholder="{{if .Configured}}Configured; leave blank to keep{{else}}Not configured{{end}}">
+            {{else if .Boolean}}
             <input type="hidden" name="bool:{{.Key}}" value="1">
             <label class="cds-checkbox"><input type="checkbox" id="setting-{{.Key}}" name="value:{{.Key}}" value="true"{{if eq .Value "true"}} checked{{end}}> Enabled</label>
             {{else if .Options}}
@@ -69,11 +71,11 @@
 
   {{if .Bindable}}
   <section class="cds-tabpanel" role="tabpanel" id="panel-listen" aria-labelledby="tab-listen">
-    <h2 class="cds-h2 cds-tabpanel__heading">Listen addresses</h2>
+    <h2 class="cds-h2 cds-tabpanel__heading" data-allow-horizontal-overflow>Listen addresses</h2>
     <p class="cds-muted">Choose the interface and port each listener binds to. Changes take effect after a node restart. Loopback and “all interfaces” are always offered so you cannot lock yourself out of the admin console.</p>
     {{if .Bindings.Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Bindings.Error}}</div>{{end}}
     {{range .Bindings.Items}}
-    <form class="cds-form" method="post" action="/admin/configuration" hx-boost="false">
+    <form class="cds-form" method="post" action="/admin/configuration#panel-listen" hx-boost="false">
       <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
       <input type="hidden" name="form" value="binding">
       <input type="hidden" name="key" value="{{.Key}}">
@@ -90,7 +92,11 @@
         <label class="cds-label" for="bind-port-{{.Key}}">Port</label>
         <input class="cds-input" type="number" id="bind-port-{{.Key}}" name="port" min="1" max="65535" value="{{.Port}}">
       </div>
-      <button class="cds-btn" type="submit">Save</button>
+      <div class="cds-actions">
+        <button class="cds-btn" type="submit" name="binding_action" value="set">Save</button>
+        {{if and .CanDisable .ListenerEnabled}}<button class="cds-btn cds-btn--ghost" type="submit" name="binding_action" value="disable" formnovalidate>Disable</button>{{end}}
+        {{if .Overridden}}<button class="cds-btn cds-btn--ghost" type="submit" name="binding_action" value="reset" formnovalidate aria-label="Reset {{.Title}} to the environment address">Reset</button>{{end}}
+      </div>
     </form>
     {{end}}
   </section>

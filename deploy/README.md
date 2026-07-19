@@ -54,7 +54,10 @@ directory. They are not durable state. Its frontier checkpoint is durable and
 lives under `YAGO_DATA_DIR`. `YAGO_CRAWLER_MAX_PAGES_PER_RUN` bootstraps a
 50,000-page whole-run budget in both services; the node records the current
 Admin Configuration value in each new crawl profile, while the crawler value
-remains the fallback for queued legacy profiles. `0` removes that safety bound.
+remains the fallback for queued legacy profiles. `0` removes this general bound
+for manual profiles, but it does not remove the dedicated swarm or web-discovery
+task cap. A legacy automatic checkpoint derives that cap from its positive
+per-host ceiling and trims excess pending work idempotently during recovery.
 
 The container images use different unprivileged identities: UID 65532 for the
 node and UID 65534 for the crawler. Docker Compose therefore mounts separate
@@ -70,13 +73,17 @@ package dependencies rather than bundled:
   trust store; there is no baked-in certificate bundle on bare metal.
 - `firefox-esr` on Debian (or `firefox` on Ubuntu/Fedora) — the crawler's
   slow-path browser, driven headless over Marionette. The container image
-  bundles `firefox-esr`; a host install discovers the OS browser on `PATH`, while
-  `YAGO_CRAWLER_BROWSER_PATH` can pin a non-standard location. The crawler still runs without it, serving
-  only the HTTP fast path, so it is a recommended, not a required, dependency. A
-  browser path left pointing at Chromium/Chrome — a leftover from before the
-  crawler moved to Firefox — is ignored with a startup warning, and the crawler
-  discovers Firefox on `PATH` instead, since the slow path is driven over
-  Firefox-only Marionette.
+  bundles `firefox-esr`; a host install discovers `firefox-esr` and then `firefox`
+  on `PATH`, while `YAGO_CRAWLER_BROWSER_PATH` can pin an absolute non-standard
+  location whose exact basename is `firefox-esr` or `firefox`. Keep the same
+  bootstrap in the node and crawler environments; Configuration → Crawler
+  persists and delivers the authoritative value. Before browser assembly and
+  again immediately before each spawn, the crawler requires every resolved
+  executable-chain component to be root-owned and not group- or other-writable,
+  and requires the final regular file to be executable by the crawler identity
+  without set-user-ID or set-group-ID bits. An empty setting with no discoverable
+  Firefox remains nonfatal: the crawler continues on the HTTP fast path and
+  reports browser fallback unavailable only when that slow path is needed.
 
 ## Install and run
 
@@ -157,6 +164,50 @@ ordered batches of at most 16, and does not begin ordinary delivery until the
 manifest is complete. Periodic full-set heartbeats keep leases alive without
 confirming an unseen batch.
 
+## Secure YaCy remote crawl delegation
+
+Remote crawl delegation is disabled by default on Docker, systemd, and package
+installs. Enabling it requires one complete controlled-network policy:
+
+- `YAGO_NETWORK_AUTHENTICATION=salted-magic-sim` and a nonempty
+  `YAGO_NETWORK_AUTHENTICATION_SECRET`;
+- `YAGO_REMOTE_CRAWL_TRUSTED_PEERS` with 1–256 exact 12-character peer hashes;
+- `YAGO_REMOTE_CRAWL_ALLOWED_DESTINATIONS` with 1–256 exact domains or IP prefixes,
+  excluding address-family wildcard prefixes;
+- `YAGO_REMOTE_CRAWL_ENABLED=true`.
+
+The remaining bootstrap controls are
+`YAGO_REMOTE_CRAWL_REQUESTS_PER_MINUTE=60`,
+`YAGO_REMOTE_CRAWL_OUTSTANDING_PER_PEER=10`,
+`YAGO_REMOTE_CRAWL_LEASE_TTL=10m`, and
+`YAGO_REMOTE_CRAWL_QUEUE_CAPACITY=1000`. Configuration → Swarm exposes the same
+seven remote-crawl values, stores overrides in the node vault, validates the
+complete policy before accepting an enable or security downgrade, and applies
+them after the next restart. The environment is only the bootstrap default.
+
+The node copies eligible URLs from locally accepted crawl orders into a separate
+durable delegation queue without delaying or removing the local order. This
+preserves local work when DNS, storage, peer, or queue admission fails. It also
+means a local crawler and a trusted peer may fetch the same URL; normal URL and
+content reconciliation handles that intentional duplication.
+
+Delegation is limited to one URL per item and never grants a crawl profile or
+follow-up depth. Feed requests return at most 100 URLs inside a 1–20 second
+request budget. Only HTTP and HTTPS default ports are accepted. Exact destination
+policy and every DNS answer are revalidated when work is staged, leased, and
+receipted; loopback, link-local, multicast, unspecified, metadata, and other
+reserved destinations remain denied. Receipt fields, decoded metadata, and URL
+length are bounded, and only an unexpired peer-and-URL-matching `fill` receipt can
+commit metadata. Other valid YaCy outcomes requeue the URL, and a receipt cannot
+create or extend work.
+
+Queue, lease, and per-peer request-rate state survive node restart. Every
+decision is reported through the `remote_crawl_decisions_total` metric and
+stable structured logs. Only warning and security outcomes enter the durable
+Admin event history, so normal accepted traffic cannot evict actionable events.
+The seed remote-crawl capability flag is advertised only while the complete
+policy is active.
+
 ## Backup and restore
 
 A consistent backup must quiesce the crawler frontier, the node's dedicated
@@ -198,16 +249,21 @@ broker state.
 Headless Firefox has its own content-process sandbox. It needs unprivileged user
 namespaces, which the container image and most current Linux hosts (Ubuntu
 23.10+, AppArmor userns restrictions) do not grant, so the crawler defaults to
-`YAGO_CRAWLER_BROWSER_SANDBOX=false` and launches Firefox with the content sandbox
-disabled (`MOZ_DISABLE_CONTENT_SANDBOX=1`). On bare metal the systemd unit is the
+`YAGO_CRAWLER_BROWSER_SANDBOX=false` in both service environments and launches
+Firefox with the content sandbox disabled (`MOZ_DISABLE_CONTENT_SANDBOX=1`). On bare metal the systemd unit is the
 isolation boundary — it runs the crawler as an unprivileged user with
 `NoNewPrivileges`, a private `/tmp`, and a read-only system — and the crawler is
 already egress-guarded against private networks.
 
-An operator on a host that supports the browser sandbox can opt back in by
-setting `YAGO_CRAWLER_BROWSER_SANDBOX=true` **and** relaxing the unit
-(`NoNewPrivileges=no`, and allow user namespaces); Firefox cannot start its
-content sandbox under `NoNewPrivileges`.
+An operator on a host that supports the browser sandbox can opt back in with the
+persisted Configuration → Crawler “Firefox content sandbox” setting, or by
+setting `YAGO_CRAWLER_BROWSER_SANDBOX=true` in both service environments before
+the first start, **and** relaxing the unit (`NoNewPrivileges=no`, and allow user
+namespaces); Firefox cannot start its content sandbox under `NoNewPrivileges`.
+A live change lets an active render finish, retires each pooled Firefox session,
+and uses the new value before that slot's next render. An immediately older
+policy-capable node omits the optional field, so the crawler retains its own
+bootstrap or already effective value instead of treating omission as `false`.
 
 ## Crawler resource limits
 
@@ -222,6 +278,28 @@ the crawler process does not restart. With several crawler processes the value
 applies independently to each process, so aggregate fetch concurrency is the
 per-process setting multiplied by the number of connected processes.
 
+`YAGO_CRAWLER_MAX_PAGES_PER_SECOND` is a bootstrap value in both service
+environment files and must be kept equal. It defaults to 10 and accepts
+0–1,000,000, where zero is unlimited. The persisted
+`crawler.max_pages_per_second` value from Configuration → Crawler becomes
+authoritative after heartbeat and changes live. The node leases strict relative
+start windows from one non-bursting fleet schedule shared by every connected
+crawler process and active task. Each window spans the smaller of one rate
+interval and 250 milliseconds. A crawler conservatively intersects it with the
+request send and response receive times; a round trip that consumes the complete
+window retries without a catch-up burst. Each crawler retains the same value as
+a local process smoother; per-run pace, per-host concurrency, robots crawl delay,
+and the per-process worker limit remain additional bounds. Zero disables both
+rate limits. A finite rate requires node and crawler binaries that support
+fetch-start leases; an older peer fails closed instead of bypassing the fleet
+ceiling.
+
+`YAGO_CRAWLER_MAX_REDIRECTS` is a bootstrap value in both service environment
+files and must be kept equal. It defaults to 10 and accepts 0–1,000, where zero
+rejects the first redirect. The persisted `crawler.max_redirects` value applies
+live to guarded HTTP clients. Existing Firefox sessions close and lazily
+relaunch with the new browser redirect limit before the next render.
+
 `YAGO_CRAWLER_MAX_ACTIVE_RUNS` is a separate bootstrap value in both service
 environment files and must also be kept equal. It defaults to 32 and accepts
 1–256. After heartbeat, the persisted `crawler.max_active_runs` value from
@@ -231,7 +309,25 @@ ordinary and recovered tasks wait without activating another frontier or
 periodic progress reporter. Increasing the value wakes waiting work. Decreasing
 it does not cancel active tasks; replacements wait until occupancy falls below
 the new limit. The limit is per process, independent of page-fetch workers, and
-does not impose a fleet-wide task or pages-per-second ceiling.
+does not impose a fleet-wide task ceiling. The separate fetch-start lease
+schedule enforces the fleet-wide pages-per-second ceiling.
+
+The crawler private-network policy, Firefox executable and content sandbox,
+browser failure threshold, loopback metrics listener, HTTP phase and
+whole-request timeouts, default crawl delay, maximum depth and per-host
+concurrency, per-run default rate, sitemap limit, shutdown grace, and HTTP
+User-Agent are also bootstrapped in both service environments. The node's
+persisted Configuration → Crawler values are authoritative. Each crawler reads
+the typed policy before assembling its fetch stack. A sandbox-only change
+relaunches pooled browsers lazily before their next render; another changed
+policy received on a later heartbeat triggers a graceful automatic crawler
+restart. The sandbox, browser-path, and metrics-address fields are optional on
+the wire; their absence preserves the crawler's current values when an
+immediately older policy-capable node omits them. A current node sends all three
+fields explicitly and is authoritative. An older node without the additive
+policy RPC leaves the crawler environment values in effect. Private CIDR
+exceptions accept only RFC 1918 and IPv6 ULA subnets and never admit loopback,
+link-local, metadata, carrier-grade NAT, multicast, or reserved ranges.
 
 Both service environment files bootstrap
 `YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY=true` and must be kept equal.
@@ -506,9 +602,10 @@ test "$(docker run --rm "$node_image:$version" --version)" = "yago-node $version
 test "$(docker run --rm "$crawler_image:$version" --version)" = "yago-crawler $version"
 ```
 
-The release memo and GHCR package page record each multi-architecture
-manifest-list digest. Pin that digest for a deployment so a tag lookup is not
-part of future selection, then verify its GitHub-hosted provenance:
+The release memo records each immutable image tag. The completed workflow output
+and GHCR package page record each multi-architecture manifest-list digest. Pin
+that digest for a deployment so a tag lookup is not part of future selection,
+then verify its GitHub-hosted provenance:
 
 ```sh
 version=vX.Y.Z

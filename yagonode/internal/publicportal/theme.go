@@ -110,6 +110,7 @@ func hitView(hit SearchResult) map[string]any {
 		"provenanceLabel": provenanceLabel(hit.Provenance),
 		"faviconUrl":      hit.FaviconURL,
 		"images":          images,
+		"reasons":         hit.Reasons,
 	}
 }
 

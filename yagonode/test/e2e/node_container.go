@@ -48,7 +48,7 @@ func startNode(
 		"YAGO_ADVERTISE_HOST":                cfg.alias,
 		"YAGO_ADVERTISE_PORT":                nodeContainerPort,
 		"YAGO_DATA_DIR":                      "/tmp/data",
-		"YAGO_ANNOUNCE_INTERVAL":             "10s",
+		"YAGO_ANNOUNCE_INTERVAL":             "30s",
 		"YAGO_GREETS_PER_CYCLE":              strconv.Itoa(dhtMinConnectedPeers + 8),
 		"YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS": "true",
 		"LOG_LEVEL":                          "debug",

@@ -33,7 +33,7 @@ func envByteSize(
 		}
 		digits := strings.TrimSpace(strings.TrimSuffix(raw, unit.suffix))
 		value, err := strconv.ParseUint(digits, 10, 64)
-		if err != nil || value > math.MaxUint64/unit.factor {
+		if err != nil || value > math.MaxInt64/unit.factor {
 			return 0, fmt.Errorf("%s: invalid byte size %q", key, raw)
 		}
 

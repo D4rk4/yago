@@ -346,12 +346,24 @@ func (c *IngestConsumer) recordFetch(ctx context.Context, batch yagocrawlcontrac
 		batch.Document.FetchedAt.IsZero() {
 		return
 	}
-	if err := c.recorder.RecordFetch(
-		ctx,
-		batch.SourceURL,
-		batch.ProfileHandle,
-		batch.Document.FetchedAt,
-	); err != nil {
+	var err error
+	if recorder, ok := c.recorder.(sourceModifiedFetchRecorder); ok {
+		err = recorder.RecordFetchWithSourceModified(
+			ctx,
+			batch.SourceURL,
+			batch.ProfileHandle,
+			batch.Document.FetchedAt,
+			batch.SourceModifiedAt,
+		)
+	} else {
+		err = c.recorder.RecordFetch(
+			ctx,
+			batch.SourceURL,
+			batch.ProfileHandle,
+			batch.Document.FetchedAt,
+		)
+	}
+	if err != nil {
 		slog.WarnContext(ctx, msgRecrawlRecordFailed,
 			slog.String("sourceUrl", batch.SourceURL), slog.Any("error", err))
 	}

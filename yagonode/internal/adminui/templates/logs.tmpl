@@ -3,7 +3,7 @@
 <h1 class="cds-h1">Logs</h1>
 <form class="cds-form cds-form--inline" method="get" action="/admin/logs" hx-boost="false"
       hx-get="/admin/logs/events" hx-target="#logs-table" hx-swap="outerHTML"
-      hx-trigger="input changed delay:300ms from:#logs-q, change from:#severity, change from:#category">
+      hx-trigger="input changed delay:300ms from:#logs-q, change from:#severity, change from:#category, change from:#logs-from, change from:#logs-to">
   <div class="cds-field">
     <label class="cds-label" for="severity">Severity</label>
     <select class="cds-input" id="severity" name="severity">
@@ -24,6 +24,14 @@
     <label class="cds-label" for="logs-q">Contains</label>
     <input class="cds-input" type="search" id="logs-q" name="q" value="{{.Logs.Query}}"
            placeholder="message, event, category" autocomplete="off">
+  </div>
+  <div class="cds-field">
+    <label class="cds-label" for="logs-from">From (UTC)</label>
+    <input class="cds-input" type="datetime-local" id="logs-from" name="from" value="{{.Logs.From}}" step="1">
+  </div>
+  <div class="cds-field">
+    <label class="cds-label" for="logs-to">To (UTC)</label>
+    <input class="cds-input" type="datetime-local" id="logs-to" name="to" value="{{.Logs.To}}" step="1">
   </div>
   <button class="cds-btn" type="submit">Filter</button>
   <a class="cds-btn cds-btn--ghost" href="/admin/logs">Clear</a>

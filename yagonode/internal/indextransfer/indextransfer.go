@@ -26,6 +26,8 @@ type HTTPPeerWriter struct {
 	networkName string
 	self        yagomodel.Seed
 	preferHTTPS bool
+	access      yagoproto.NetworkAccess
+	signForm    func(url.Values) error
 }
 
 var (
@@ -48,9 +50,16 @@ func NewHTTPPeerWriter(
 	networkName string,
 	self yagomodel.Seed,
 	preferHTTPS bool,
+	access ...yagoproto.NetworkAccess,
 ) HTTPPeerWriter {
 	if client == nil {
 		client = http.DefaultClient
+	}
+
+	configured := yagoproto.NetworkAccess{NetworkName: networkName, Self: self.Hash}
+	if len(access) != 0 {
+		configured = access[0]
+		configured.Self = self.Hash
 	}
 
 	return HTTPPeerWriter{
@@ -58,6 +67,8 @@ func NewHTTPPeerWriter(
 		networkName: networkName,
 		self:        self,
 		preferHTTPS: preferHTTPS,
+		access:      configured,
+		signForm:    configured.Sign,
 	}
 }
 
@@ -79,13 +90,18 @@ func (w HTTPPeerWriter) TransferRWI(
 		Indexes:     postings,
 	}
 
+	form := req.Form()
+	if err := w.sign(form); err != nil {
+		return yagoproto.TransferRWIResponse{}, err
+	}
+
 	return postTransfer(
 		transferPost[yagoproto.TransferRWIResponse]{
 			ctx:         ctx,
 			client:      w.client,
 			peer:        peer,
 			path:        yagoproto.PathTransferRWI,
-			form:        req.Form(),
+			form:        form,
 			parse:       yagoproto.ParseTransferRWIResponse,
 			preferHTTPS: w.preferHTTPS,
 		},
@@ -105,17 +121,33 @@ func (w HTTPPeerWriter) TransferURL(
 		URLs:        rows,
 	}
 
+	form := req.Form()
+	if err := w.sign(form); err != nil {
+		return yagoproto.TransferURLResponse{}, err
+	}
+
 	return postTransfer(
 		transferPost[yagoproto.TransferURLResponse]{
 			ctx:         ctx,
 			client:      w.client,
 			peer:        peer,
 			path:        yagoproto.PathTransferURL,
-			form:        req.Form(),
+			form:        form,
 			parse:       yagoproto.ParseTransferURLResponse,
 			preferHTTPS: w.preferHTTPS,
 		},
 	)
+}
+
+func (w HTTPPeerWriter) sign(form url.Values) error {
+	if w.access.Mode != yagoproto.NetworkAuthenticationSaltedMagic {
+		return nil
+	}
+	if err := w.signForm(form); err != nil {
+		return fmt.Errorf("%w: %w", errTransferFailed, err)
+	}
+
+	return nil
 }
 
 func postTransfer[T any](post transferPost[T]) (T, error) {

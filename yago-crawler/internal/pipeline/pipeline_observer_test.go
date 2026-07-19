@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/D4rk4/yago/yago-crawler/internal/crawljob"
 	"github.com/D4rk4/yago/yago-crawler/internal/ingest"
 	"github.com/D4rk4/yago/yago-crawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yago-crawler/internal/pageindex"
@@ -21,6 +22,7 @@ type countingPipelineObserver struct {
 	fetchAttempted  int
 	fetchSucceeded  int
 	fetchFailed     int
+	parseFailed     int
 	ingestPublished int
 	bytes           int
 }
@@ -29,6 +31,7 @@ func (c *countingPipelineObserver) JobStarted()      { c.jobStarted++ }
 func (c *countingPipelineObserver) JobFinished()     { c.jobFinished++ }
 func (c *countingPipelineObserver) FetchAttempted()  { c.fetchAttempted++ }
 func (c *countingPipelineObserver) FetchFailed()     { c.fetchFailed++ }
+func (c *countingPipelineObserver) ParseFailed()     { c.parseFailed++ }
 func (c *countingPipelineObserver) IngestPublished() { c.ingestPublished++ }
 
 func (c *countingPipelineObserver) FetchSucceeded(bytes int) {
@@ -108,6 +111,43 @@ func TestPipelineObserverCountsRejectedFetchAsFailed(t *testing.T) {
 
 	if observer.fetchAttempted != 1 || observer.fetchFailed != 1 {
 		t.Fatalf("observer = %#v, want the rejected fetch counted as failed", observer)
+	}
+}
+
+func TestPipelineObserverCountsFetchedBodiesThatDoNotParse(t *testing.T) {
+	frontier := newRecordingFrontier()
+	observer := &countingPipelineObserver{}
+	p := pipeline.NewPipeline(
+		frontier,
+		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			target, err := url.Parse("https://example.com/broken.pdf")
+			if err != nil {
+				t.Fatalf("parse target: %v", err)
+			}
+
+			return pagefetch.FetchedPage{
+				URL: target, ContentType: "application/pdf", Body: []byte("not a pdf"),
+			}, nil
+		}),
+		pageindex.NewIndexBuilder(),
+		okEmitter(),
+		pipeline.WithObserver(observer),
+	)
+
+	done := runJob(t, p, frontier, crawljob.CrawlJob{
+		URL: "https://example.com/broken.pdf", ProfileHandle: "h", Index: true,
+		Formats: yagocrawlcontract.FormatToggles{PDF: true},
+	})
+
+	if observer.fetchSucceeded != 1 || observer.parseFailed != 1 ||
+		observer.fetchFailed != 0 || observer.ingestPublished != 0 {
+		t.Fatalf("observer = %#v", observer)
+	}
+	if done.outcome.Fetched != 1 || done.outcome.Failed != 1 || done.outcome.Indexed != 0 {
+		t.Fatalf("unparseable outcome = %+v", done.outcome)
+	}
+	if done.reason != "content parser produced no indexable document" {
+		t.Fatalf("unparseable reason = %q", done.reason)
 	}
 }
 

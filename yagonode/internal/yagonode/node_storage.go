@@ -38,6 +38,7 @@ type nodeStorage struct {
 	staleness         urlmetastaleness.StalenessRanking
 	references        urlreferences.ReferenceProjection
 	postings          rwi.PostingIndex
+	postingPages      rwi.PostingPageSource
 	outboundPostings  rwi.OutboundPostingStore
 	postingReceiver   rwi.PostingReceiver
 	postingPurger     rwi.PostingPurger
@@ -86,15 +87,11 @@ func openNodeStorage(
 		return nodeStorage{}, fmt.Errorf("content clusters: %w", err)
 	}
 
-	var rebuildAdmission searchindex.BleveRebuildGrowthAdmission
-	if len(admissions) > 0 {
-		rebuildAdmission = admissions[0]
-	}
 	searchIndex, err := openSearchIndex(
 		context.Background(),
 		searchIndexPath,
 		documentDirectory,
-		rebuildAdmission,
+		nodeStorageRebuildAdmission(admissions),
 	)
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("search index: %w", err)
@@ -136,6 +133,7 @@ func openNodeStorage(
 	if _, err := outboundPostings.RecoverOutbound(context.Background()); err != nil {
 		return nodeStorage{}, fmt.Errorf("recover outbound rwi: %w", err)
 	}
+	postingPages, _ := postings.(rwi.PostingPageSource)
 
 	return nodeStorage{
 		documentDirectory: documentDirectory,
@@ -148,9 +146,20 @@ func openNodeStorage(
 		staleness:         staleness,
 		references:        references,
 		postings:          postings,
+		postingPages:      postingPages,
 		outboundPostings:  outboundPostings,
 		postingReceiver:   postingReceiver,
 		postingPurger:     postingPurger,
 		contentClusters:   contentClusters,
 	}, nil
+}
+
+func nodeStorageRebuildAdmission(
+	admissions []growthAdmission,
+) searchindex.BleveRebuildGrowthAdmission {
+	if len(admissions) == 0 {
+		return nil
+	}
+
+	return admissions[0]
 }

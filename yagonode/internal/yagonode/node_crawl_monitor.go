@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
@@ -83,18 +84,42 @@ func crawlRunView(run crawlruns.Run, now time.Time) adminui.CrawlRunView {
 	}
 
 	return adminui.CrawlRunView{
-		RunID:          run.RunID,
-		Profile:        crawlRunLabel(run),
-		Worker:         run.WorkerID,
-		State:          string(run.State),
-		Fetched:        run.Tally.Fetched,
-		Indexed:        run.Tally.Indexed,
-		Failed:         run.Tally.Failed,
-		RobotsDenied:   run.Tally.RobotsDenied,
-		Duplicates:     run.Tally.Duplicates,
-		Pending:        run.Tally.Pending,
-		Runtime:        runtime.Round(time.Second).String(),
-		PagesPerMinute: run.PagesPerMinute,
-		RateKnown:      run.RateKnown,
+		RunID:           run.RunID,
+		Profile:         crawlRunLabel(run),
+		Worker:          run.WorkerID,
+		State:           string(run.State),
+		Fetched:         run.Tally.Fetched,
+		Indexed:         run.Tally.Indexed,
+		Failed:          run.Tally.Failed,
+		RobotsDenied:    run.Tally.RobotsDenied,
+		Duplicates:      run.Tally.Duplicates,
+		Pending:         run.Tally.Pending,
+		Runtime:         runtime.Round(time.Second).String(),
+		PagesPerMinute:  run.PagesPerMinute,
+		RateKnown:       run.RateKnown,
+		MaxPagesPerHost: crawlRunPerHostLimit(run),
+		MaxPagesPerRun:  crawlRunWholeLimit(run),
 	}
+}
+
+func crawlRunPerHostLimit(run crawlruns.Run) string {
+	if !run.LimitsKnown {
+		return "Unavailable"
+	}
+	if run.MaxPagesPerHost == yagocrawlcontract.UnlimitedPagesPerHost {
+		return "Unlimited"
+	}
+
+	return strconv.Itoa(run.MaxPagesPerHost)
+}
+
+func crawlRunWholeLimit(run crawlruns.Run) string {
+	if !run.LimitsKnown {
+		return "Unavailable"
+	}
+	if run.MaxPagesPerRun == 0 {
+		return "Unlimited"
+	}
+
+	return strconv.Itoa(run.MaxPagesPerRun)
 }

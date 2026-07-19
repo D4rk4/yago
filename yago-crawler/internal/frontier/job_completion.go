@@ -12,6 +12,15 @@ func (f *Frontier) Done(
 	work crawljob.CrawlJob,
 	outcome yagocrawlcontract.CrawlRunTally,
 ) {
+	f.completePage(work, outcome, 0, "")
+}
+
+func (f *Frontier) completePage(
+	work crawljob.CrawlJob,
+	outcome yagocrawlcontract.CrawlRunTally,
+	httpStatus uint32,
+	reason string,
+) {
 	run, durable := f.acquireRunDurability(work.RunID)
 	if f.abandonStaleLeaseJob(work, run, durable) {
 		return
@@ -39,6 +48,7 @@ func (f *Frontier) Done(
 		run.releaseBoundedResidentPage(work.URL)
 	}
 	f.state.tally.Commit(work.Provenance, outcome)
+	recordPageOutcome(f.state.tally, work, outcome, httpStatus, reason)
 	f.releaseHost(work.URL)
 	if durable {
 		f.finishRunDurabilityLocked(work.RunID, run, checkpointErr)

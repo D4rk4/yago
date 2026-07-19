@@ -8,10 +8,13 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/D4rk4/yago/yagoegress"
 )
 
 func TestStartGuardedForwardProxyReportsListenError(t *testing.T) {
@@ -89,6 +92,57 @@ func TestForwardProxyReturnsBadGatewayWhenDialFails(t *testing.T) {
 	handler.forward(recorder, request)
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", recorder.Code)
+	}
+}
+
+func TestForwardProxyRejectsPrivateRebindingTargetAtDialTime(t *testing.T) {
+	guard := yagoegress.NewGuard(false)
+	dialer := &net.Dialer{Control: guard.DialControl}
+	dial := yagoegress.PreferIPv4(
+		func(context.Context, string) ([]netip.Addr, error) {
+			return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
+		},
+		dialer.DialContext,
+	)
+	proxy, err := startGuardedForwardProxy(dialFunc(dial))
+	if err != nil {
+		t.Fatalf("start proxy: %v", err)
+	}
+	defer proxy.Close()
+
+	proxyURL, err := url.Parse(proxy.url)
+	if err != nil {
+		t.Fatalf("parse proxy url: %v", err)
+	}
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
+	request, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://rebound.example/private",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("request through proxy: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", response.StatusCode)
+	}
+
+	connectRecorder := httptest.NewRecorder()
+	connectRequest := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodConnect,
+		"http://rebound.example:443",
+		nil,
+	)
+	(&forwardProxyHandler{dial: dialFunc(dial)}).tunnel(connectRecorder, connectRequest)
+	if connectRecorder.Code != http.StatusBadGateway {
+		t.Fatalf("connect status = %d, want 502", connectRecorder.Code)
 	}
 }
 

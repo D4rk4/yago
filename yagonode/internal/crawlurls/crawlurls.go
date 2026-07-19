@@ -2,6 +2,7 @@ package crawlurls
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -10,12 +11,19 @@ import (
 	"github.com/D4rk4/yago/yagoproto"
 )
 
+var ErrRemoteCrawlRejected = errors.New("remote crawl request rejected")
+
 type URLDirectory interface {
 	RowsByHash(context.Context, []yagomodel.Hash) ([]yagomodel.URIMetadataRow, error)
 }
 
 type RemoteCrawlURLs interface {
-	URLsForRemoteCrawl(context.Context, int, time.Duration) ([]RemoteCrawlURL, error)
+	URLsForRemoteCrawl(
+		context.Context,
+		yagomodel.Hash,
+		int,
+		time.Duration,
+	) ([]RemoteCrawlURL, error)
 }
 
 type RemoteCrawlURL struct {
@@ -30,6 +38,7 @@ type DisabledRemoteCrawlURLs struct{}
 
 func (DisabledRemoteCrawlURLs) URLsForRemoteCrawl(
 	context.Context,
+	yagomodel.Hash,
 	int,
 	time.Duration,
 ) ([]RemoteCrawlURL, error) {

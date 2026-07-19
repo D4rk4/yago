@@ -2,15 +2,34 @@ package yagoproto
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 
 	"github.com/D4rk4/yago/yagomodel"
+)
+
+const (
+	CrawlReceiptResultUnavailable = "unavailable"
+	CrawlReceiptResultException   = "exception"
+	CrawlReceiptResultRobot       = "robot"
+	CrawlReceiptResultRejected    = "rejected"
+	CrawlReceiptResultDequeue     = "dequeue"
+	CrawlReceiptResultFill        = "fill"
+	CrawlReceiptResultUpdate      = "update"
+	CrawlReceiptResultKnown       = "known"
+	CrawlReceiptResultStale       = "stale"
+
+	MaximumCrawlReceiptResultBytes   = 32
+	MaximumCrawlReceiptReasonBytes   = 1024
+	MaximumCrawlReceiptMetadataBytes = 256 << 10
 )
 
 type CrawlReceiptRequest struct {
 	NetworkName string
 	Iam         yagomodel.Hash
 	YouAre      yagomodel.Hash
+	Key         string
+	MagicMD5    string
 	Result      string
 	Reason      string
 	LURLEntry   string
@@ -26,6 +45,8 @@ func (r CrawlReceiptRequest) Form() url.Values {
 	putString(form, FieldNetworkName, r.NetworkName)
 	putString(form, FieldIam, r.Iam.String())
 	putString(form, FieldYouAre, r.YouAre.String())
+	putString(form, FieldKey, r.Key)
+	putString(form, FieldMagicMD5, r.MagicMD5)
 	putString(form, FieldResult, r.Result)
 	putString(form, FieldReason, r.Reason)
 	putString(form, FieldLURLEntry, r.LURLEntry)
@@ -34,8 +55,19 @@ func (r CrawlReceiptRequest) Form() url.Values {
 }
 
 func ParseCrawlReceiptRequest(_ context.Context, form url.Values) (CrawlReceiptRequest, error) {
+	if len(form.Get(FieldResult)) > MaximumCrawlReceiptResultBytes {
+		return CrawlReceiptRequest{}, fmt.Errorf("%s exceeds maximum length", FieldResult)
+	}
+	if len(form.Get(FieldReason)) > MaximumCrawlReceiptReasonBytes {
+		return CrawlReceiptRequest{}, fmt.Errorf("%s exceeds maximum length", FieldReason)
+	}
+	if len(form.Get(FieldLURLEntry)) > MaximumCrawlReceiptMetadataBytes {
+		return CrawlReceiptRequest{}, fmt.Errorf("%s exceeds maximum length", FieldLURLEntry)
+	}
 	req := CrawlReceiptRequest{
 		NetworkName: form.Get(FieldNetworkName),
+		Key:         form.Get(FieldKey),
+		MagicMD5:    form.Get(FieldMagicMD5),
 		Result:      form.Get(FieldResult),
 		Reason:      form.Get(FieldReason),
 		LURLEntry:   form.Get(FieldLURLEntry),
@@ -54,6 +86,23 @@ func ParseCrawlReceiptRequest(_ context.Context, form url.Values) (CrawlReceiptR
 	}
 
 	return req, nil
+}
+
+func ValidCrawlReceiptResult(result string) bool {
+	switch result {
+	case CrawlReceiptResultUnavailable,
+		CrawlReceiptResultException,
+		CrawlReceiptResultRobot,
+		CrawlReceiptResultRejected,
+		CrawlReceiptResultDequeue,
+		CrawlReceiptResultFill,
+		CrawlReceiptResultUpdate,
+		CrawlReceiptResultKnown,
+		CrawlReceiptResultStale:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r CrawlReceiptResponse) Encode() yagomodel.Message {

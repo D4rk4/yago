@@ -19,6 +19,7 @@ import (
 type Config struct {
 	TargetFraction float64
 	BatchSize      int
+	PostingOnly    PostingOnlyURLSource
 }
 
 type Result struct {
@@ -68,15 +69,16 @@ func NewSweeper(
 	cfg Config,
 ) Sweeper {
 	return quotaSweeper{
-		vault:      vault,
-		postings:   postings,
-		references: references,
-		urls:       urls,
-		documents:  documents,
-		resolver:   resolver,
-		stale:      stale,
-		target:     cfg.TargetFraction,
-		batch:      cfg.BatchSize,
+		vault:       vault,
+		postings:    postings,
+		references:  references,
+		urls:        urls,
+		documents:   documents,
+		resolver:    resolver,
+		stale:       stale,
+		target:      cfg.TargetFraction,
+		batch:       cfg.BatchSize,
+		postingOnly: cfg.PostingOnly,
 	}
 }
 

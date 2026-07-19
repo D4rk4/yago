@@ -26,6 +26,9 @@
   .result a.title:hover { text-decoration: underline; }
   .result .url { color: #178a3a; font-size: 0.8rem; word-break: break-all; }
   .result p { margin: 0.2rem 0 0; color: #333333; font-size: 0.9rem; }
+  .result details { margin-top: 0.25rem; color: #525252; font-size: 0.78rem; }
+  .result details summary { cursor: pointer; }
+  .result details ul { margin: 0.25rem 0 0; padding-left: 1.2rem; }
   .ophelp { margin-top: 0.75rem; font-size: 0.85rem; color: #555; text-align: left; display: inline-block; }
 .ophelp ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
 .ophelp code { background: #f2f2f2; padding: 0 0.25rem; }
@@ -169,6 +172,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
     <a class="title" href="{{.URL}}"{{if $.ClickCapture}} data-p="{{.Position}}" data-i="{{.URLIdentity}}"{{end}}{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span class="sr-only"> (opens in new tab)</span>{{end}}</a>
     <div class="url">{{if .DisplayURL}}{{.DisplayURL}}{{else}}{{.URL}}{{end}}{{if .Provenance}} · <span class="prov prov-{{.Provenance}}">{{.Provenance}}</span>{{end}}{{if .Date}} · {{.Date}}{{end}}{{if .SizeName}} · {{.SizeName}}{{end}}{{if .CachedURL}} · <a href="{{.CachedURL}}">cached</a>{{end}}</div>
     {{if .SnippetHTML}}<p>{{.SnippetHTML}}</p>{{else if .Snippet}}<p>{{.Snippet}}</p>{{end}}
+    {{if .Reasons}}<details><summary>Why this result?</summary><ul>{{range .Reasons}}<li>{{.}}</li>{{end}}</ul></details>{{end}}
   </li>
   {{else}}
   {{if not $.Results.UnconfirmedPage}}<p class="meta" role="status">Nothing found.</p>{{end}}

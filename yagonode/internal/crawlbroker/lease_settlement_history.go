@@ -185,6 +185,7 @@ func sameTerminalLeaseSettlement(left, right leaseSettlementRecord) bool {
 		left.Progress.WorkerID == right.Progress.WorkerID &&
 		left.WorkerSessionID == right.WorkerSessionID &&
 		left.Progress.State == right.Progress.State && left.Progress.Tally == right.Progress.Tally &&
+		left.Progress.RecentOutcomes == right.Progress.RecentOutcomes &&
 		left.Progress.PagesPerMinute == right.Progress.PagesPerMinute &&
 		left.Progress.RateKnown == right.Progress.RateKnown
 }

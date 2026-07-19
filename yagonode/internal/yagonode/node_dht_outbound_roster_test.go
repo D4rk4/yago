@@ -8,6 +8,7 @@ import (
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/dhtexchange"
+	"github.com/D4rk4/yago/yagonode/internal/events"
 	"github.com/D4rk4/yago/yagonode/internal/indextransfer"
 	"github.com/D4rk4/yago/yagoproto"
 )
@@ -160,6 +161,7 @@ func TestDHTOutboundRosterCycleQuarantinesPeerOnRepeatedFailure(t *testing.T) {
 	peer := yagomodel.Hash("BBBBBBBBBBBB")
 	sentinel := errors.New("distribution failed")
 	roster := &recordingDHTRoster{}
+	recorder := events.NewRecorder(4)
 	at := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	receipt, err := (dhtOutboundRosterCycle{
 		cycle: &scriptedDHTOutboundCycle{
@@ -179,6 +181,7 @@ func TestDHTOutboundRosterCycleQuarantinesPeerOnRepeatedFailure(t *testing.T) {
 			err: sentinel,
 		},
 		roster: roster,
+		events: recorder,
 	}).RunOnce(context.Background())
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("RunOnce error = %v, want %v", err, sentinel)
@@ -188,6 +191,14 @@ func TestDHTOutboundRosterCycleQuarantinesPeerOnRepeatedFailure(t *testing.T) {
 		roster.unreachable[0] != peer ||
 		len(roster.reachable) != 0 {
 		t.Fatalf("receipt/roster = %#v/%#v", receipt, roster)
+	}
+	recent := recorder.Recent(1)
+	if len(recent) != 1 ||
+		recent[0].Category != events.CategoryDHT ||
+		recent[0].Severity != events.SeverityWarn ||
+		recent[0].Name != "dht.peer.quarantined" ||
+		recent[0].Message != "peer BBBBBBBBBBBB quarantined after 3 failures until 2026-07-02T13:00:00Z" {
+		t.Fatalf("events = %#v", recent)
 	}
 }
 

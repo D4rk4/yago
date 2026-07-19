@@ -10,6 +10,7 @@ func TestCrawlerEnvironmentNamesUseCanonicalPrefix(t *testing.T) {
 		EnvNodeRPCAddr,
 		EnvWorkerID,
 		EnvWorkers,
+		EnvProcessPagesPerSecond,
 		EnvMaxActiveRuns,
 		EnvPrioritizeAutomaticDiscovery,
 		EnvMaxHostConcurrency,

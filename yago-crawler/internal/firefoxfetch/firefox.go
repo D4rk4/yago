@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -48,7 +47,7 @@ func launchFirefox(
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("launch firefox: %w", err)
 	}
-	binary, err := firefoxBinary(launch.ExecPath)
+	binary, err := firefoxBinary(launch)
 	if err != nil {
 		return nil, err
 	}
@@ -61,6 +60,7 @@ func launchFirefox(
 		ProxyURL:       proxyURL,
 		UserAgent:      launch.UserAgent,
 		Sandbox:        launch.Sandbox,
+		MaxRedirects:   launch.MaxRedirects,
 	})
 	if err != nil {
 		return nil, err
@@ -283,27 +283,8 @@ func killFirefox(cmd *exec.Cmd, exited <-chan struct{}) {
 	}
 }
 
-func firefoxBinary(execPath string) (string, error) {
-	if execPath != "" && !LooksLikeChromium(execPath) {
-		return execPath, nil
-	}
-	for _, name := range firefoxBinaries {
-		if path, err := exec.LookPath(name); err == nil {
-			return path, nil
-		}
-	}
-	return "", fmt.Errorf("locate firefox: none of %v found on PATH", firefoxBinaries)
-}
-
-// LooksLikeChromium reports whether execPath names a Chromium- or Chrome-family
-// binary rather than Firefox. The crawler's slow path drives the browser over
-// Marionette, which only Firefox speaks, so a Chromium path is a
-// misconfiguration — most often a browser path left set from before the crawler
-// moved to Firefox — and firefoxBinary discards it in favor of Firefox on PATH.
-func LooksLikeChromium(execPath string) bool {
-	base := strings.ToLower(filepath.Base(execPath))
-
-	return strings.Contains(base, "chromium") || strings.Contains(base, "chrome")
+func firefoxBinary(launch BrowserLaunch) (string, error) {
+	return launch.firefoxExecutable(true)
 }
 
 // firefoxEnv derives the child environment: it forces headless mode, drops

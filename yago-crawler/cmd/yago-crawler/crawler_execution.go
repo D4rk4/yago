@@ -4,8 +4,11 @@ import (
 	"context"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/crawldelay"
+	"github.com/D4rk4/yago/yago-crawler/internal/crawldenylist"
 	"github.com/D4rk4/yago/yago-crawler/internal/crawlermetrics"
 	"github.com/D4rk4/yago/yago-crawler/internal/crawlorder"
+	"github.com/D4rk4/yago/yago-crawler/internal/fetchrate"
+	"github.com/D4rk4/yago/yago-crawler/internal/fleetfetchstart"
 	"github.com/D4rk4/yago/yago-crawler/internal/frontier"
 	"github.com/D4rk4/yago/yago-crawler/internal/ingest"
 	"github.com/D4rk4/yago/yago-crawler/internal/pagefetch"
@@ -24,7 +27,10 @@ type crawlerExecution struct {
 	orders          *crawlorder.GRPCOrderReceiver
 	concurrency     *workerConcurrency
 	activeRuns      *crawlorder.ActiveRunAdmission
+	fetchBudget     *fetchrate.ProcessBudget
+	fleetAdmission  *fleetfetchstart.Admission
 	emitter         ingest.BatchEmitter
+	urlDenylist     *crawldenylist.Denylist
 	growthAdmission interface {
 		WaitForGrowth(context.Context) bool
 	}
@@ -44,6 +50,7 @@ func (execution crawlerExecution) lifecycle(
 	if err != nil {
 		return crawlerLifecycle{}, err
 	}
+	chains = applyCrawlURLDenylist(chains, execution.urlDenylist)
 	worker := pipeline.NewPipeline(
 		execution.frontier,
 		chains.verifying,
@@ -54,6 +61,10 @@ func (execution crawlerExecution) lifecycle(
 		pipeline.WithRobotsIgnoringFetchers(chains.verifyingDirect, chains.insecureDirect),
 		pipeline.WithHostLoadFeedback(execution.pace),
 		pipeline.WithLeaseGrants(execution.checkpoint.leaseGrants),
+		pipeline.WithFetchStartAdmission(newOrderedCrawlerFetchStartAdmission(
+			execution.fetchBudget,
+			execution.fleetAdmission,
+		)),
 	)
 	progress := crawlorder.NewGRPCProgressReporter(
 		execution.nodeRPC.control,
@@ -66,9 +77,10 @@ func (execution crawlerExecution) lifecycle(
 	consumer := crawlorder.NewCrawlOrderConsumer(
 		execution.orders,
 		execution.frontier,
-		newCrawlRequestExpander(client, cfg.Crawl, guard),
+		newCrawlRequestExpander(client, cfg.Crawl, guard, execution.urlDenylist),
 	).WithProgressReporter(progress).
 		WithRunTally(execution.tally).
+		WithMaximumDepth(cfg.Crawl.MaxDepth).
 		WithGrowthAdmission(execution.growthAdmission).
 		WithActiveRunAdmission(execution.activeRuns)
 

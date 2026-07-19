@@ -31,7 +31,13 @@ func (e endpoint) Serve(
 	req yagoproto.MessageRequest,
 ) (yagoproto.MessageResponse, error) {
 	resp := rejectedResponse()
-	if !e.identity.Addresses(req.NetworkName, req.YouAre) {
+	if !e.identity.AuthenticatesAddress(
+		req.NetworkName,
+		req.YouAre,
+		req.Key,
+		req.Iam.String(),
+		req.MagicMD5,
+	) {
 		return resp, nil
 	}
 

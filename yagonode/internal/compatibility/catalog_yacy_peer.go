@@ -2,7 +2,7 @@ package compatibility
 
 import "github.com/D4rk4/yago/yagoproto"
 
-const defaultYaCyAuthenticationScope = "The default freeworld and same-name network path is implemented. Controlled private-network salted-magic-sim authentication is not configured end to end."
+const defaultYaCyAuthenticationScope = "The default freeworld and same-name network path is implemented. Controlled private networks may select salted-magic-sim with one nonempty shared secret for outbound signing and inbound validation."
 
 var yacyPeerSurfaceSpecs = []surfaceSpec{
 	{
@@ -170,21 +170,27 @@ var yacyPeerSurfaceSpecs = []surfaceSpec{
 		Path:     yagoproto.PathCrawlURLs,
 		Methods:  methods(yagoproto.CrawlURLEndpointMethods),
 		State:    Partial,
-		Behavior: "Serves URL-hash metadata feeds and safe empty remote-crawl feeds while remote crawl execution is disabled.",
-		Evidence: []string{"yagonode/internal/crawlurls/*_test.go", "yagoproto/crawl_urls_test.go"},
-		Notes:    "Remote crawl work is disabled by default for SSRF safety.",
+		Behavior: "Serves URL-hash metadata feeds and an empty remote-crawl feed by default. A complete salted-magic-sim, trusted-peer, and destination-allowlist policy leases at most 100 durable single-URL items per request, with bounded per-peer rate, outstanding leases, expiry, and pending requeue across restart.",
+		Evidence: []string{
+			"yagonode/internal/crawlurls/*_test.go",
+			"yagonode/internal/remotecrawl/*_test.go",
+			"yagonode/internal/yagonode/node_remote_crawl*_test.go",
+			"yagoproto/crawl_urls_test.go",
+		},
+		Notes: "Default-deny delegation copies only locally accepted URL orders, never removes local work, and remains intentionally narrower than Java YaCy's unrestricted local crawler coupling.",
 	},
 	{
 		Name:     "Remote crawl receipt",
 		Path:     yagoproto.PathCrawlReceipt,
 		Methods:  methods(yagoproto.CrawlReceiptEndpointMethods),
 		State:    Partial,
-		Behavior: "Accepts the YaCy crawl receipt wire shape and returns delay 3600 for a foreign network, malformed or wrong target hashes, and addressed receipts while remote crawl execution is disabled.",
+		Behavior: "Accepts the bounded YaCy crawl receipt shape. Disabled, authentication, malformed, mismatched, expired, and valid non-fill outcomes return delay 3600; destination-policy rejection returns 9999; an unexpired trusted peer-and-URL-matching fill stores bounded URL metadata, removes the lease, and returns 10. A receipt cannot create or extend work.",
 		Evidence: []string{
 			"yagonode/internal/crawling/*_test.go",
+			"yagonode/internal/remotecrawl/*_test.go",
 			"yagoproto/crawl_receipt_test.go",
 		},
-		Notes: "Remote crawl work is disabled by default for SSRF safety.",
+		Notes: "Enabled receipts require salted-magic-sim, a nonempty secret, the exact trusted leasing peer, and destination revalidation; remote bodies, profiles, redirects, and follow-up depth are not delegated.",
 	},
 }
 

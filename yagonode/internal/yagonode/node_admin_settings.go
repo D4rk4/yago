@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/events"
@@ -47,6 +48,17 @@ func loadRuntimeSettings(
 	envConfig.WebFallback.Privacy = effectiveWebFallbackPrivacy(envConfig.WebFallback)
 	config = applyRuntimeSettingOverrides(config, overrides)
 	config.WebFallback.Privacy = effectiveWebFallbackPrivacy(config.WebFallback)
+	if !validNetworkAuthentication(config) {
+		return consoleAdminSources{}, nil, config, fmt.Errorf(
+			"load runtime settings: network authentication requires a shared secret",
+		)
+	}
+	if err := validateRemoteCrawlConfig(config); err != nil {
+		return consoleAdminSources{}, nil, config, fmt.Errorf(
+			"load runtime settings: %w",
+			err,
+		)
+	}
 	config = applyBindOverrides(config, overrides)
 	startupSettings := config
 	config, err = resolvePeerIdentity(ctx, storage, config)
@@ -70,6 +82,7 @@ func loadRuntimeSettings(
 // setting against its environment default, persists overrides, and records a
 // config event on every change.
 type settingsSource struct {
+	mu            sync.Mutex
 	store         *settingsstore.Store
 	definitions   []settingDefinition
 	envConfig     nodeConfig
@@ -123,7 +136,8 @@ func settingCategory(key string) string {
 		return "Search"
 	case strings.HasPrefix(key, "storage."):
 		return "Storage"
-	case strings.HasPrefix(key, "swarm."):
+	case strings.HasPrefix(key, "swarm."),
+		strings.HasPrefix(key, "dht."):
 		return "Swarm"
 	case strings.HasPrefix(key, "network."),
 		strings.HasPrefix(key, "peer.advertise."):
@@ -135,6 +149,8 @@ func settingCategory(key string) string {
 	case strings.HasPrefix(key, "extract."):
 		return "Extraction"
 	case strings.HasPrefix(key, "metrics."):
+		return "Monitoring"
+	case strings.HasPrefix(key, "logging."):
 		return "Monitoring"
 	case strings.HasPrefix(key, "portal."),
 		strings.HasPrefix(key, "web.robots."),
@@ -150,6 +166,9 @@ func (s *settingsSource) Update(
 	ctx context.Context,
 	change adminui.SettingsChange,
 ) (adminui.SettingsResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	def, ok := s.definition(change.Key)
 	if !ok {
 		return adminui.SettingsResult{Message: "Unknown setting."}, nil
@@ -176,11 +195,33 @@ func (s *settingsSource) set(
 	if def.key == settingKeyWebFallbackPrivacy {
 		stored = encodeWebFallbackSetting(webFallbackPrivacy(value))
 	}
+	valid, err := s.validNetworkAuthenticationChange(ctx, def.key, stored, false)
+	if err != nil {
+		return adminui.SettingsResult{}, err
+	}
+	if !valid {
+		return adminui.SettingsResult{
+			Message: "Network authentication requires a shared secret.",
+		}, nil
+	}
+	valid, err = s.validRemoteCrawlChange(ctx, def.key, stored, false)
+	if err != nil {
+		return adminui.SettingsResult{}, err
+	}
+	if !valid {
+		return adminui.SettingsResult{
+			Message: "Remote crawl requires salted-magic authentication, trusted peers, and allowed destinations.",
+		}, nil
+	}
 	if err := s.store.Set(ctx, def.key, stored); err != nil {
 		return adminui.SettingsResult{}, fmt.Errorf("store setting %q: %w", def.key, err)
 	}
 	s.applyLive(def, value)
-	s.record(def, "set to "+value)
+	detail := "set to " + value
+	if def.sensitive {
+		detail = "updated"
+	}
+	s.record(def, detail)
 
 	return adminui.SettingsResult{
 		OK:              true,
@@ -193,6 +234,24 @@ func (s *settingsSource) reset(
 	ctx context.Context,
 	def settingDefinition,
 ) (adminui.SettingsResult, error) {
+	valid, err := s.validNetworkAuthenticationChange(ctx, def.key, "", true)
+	if err != nil {
+		return adminui.SettingsResult{}, err
+	}
+	if !valid {
+		return adminui.SettingsResult{
+			Message: "Network authentication requires a shared secret.",
+		}, nil
+	}
+	valid, err = s.validRemoteCrawlChange(ctx, def.key, "", true)
+	if err != nil {
+		return adminui.SettingsResult{}, err
+	}
+	if !valid {
+		return adminui.SettingsResult{
+			Message: "Remote crawl requires salted-magic authentication, trusted peers, and allowed destinations.",
+		}, nil
+	}
 	if def.key == settingKeyWebFallbackPrivacy {
 		if err := s.store.Set(ctx, def.key, webFallbackSettingEnvironment); err != nil {
 			return adminui.SettingsResult{}, fmt.Errorf("clear setting %q: %w", def.key, err)
@@ -208,6 +267,50 @@ func (s *settingsSource) reset(
 		Message:         def.title + " reset to the environment default.",
 		RestartRequired: def.restartRequired(),
 	}, nil
+}
+
+func (s *settingsSource) validNetworkAuthenticationChange(
+	ctx context.Context,
+	key string,
+	value string,
+	reset bool,
+) (bool, error) {
+	if key != settingKeyNetworkAuthenticationMode &&
+		key != settingKeyNetworkAuthenticationSecret {
+		return true, nil
+	}
+	overrides, err := s.store.All(ctx)
+	if err != nil {
+		return false, fmt.Errorf("load runtime settings: %w", err)
+	}
+	if reset {
+		delete(overrides, key)
+	} else {
+		overrides[key] = value
+	}
+	candidate := applyRuntimeSettingOverrides(s.envConfig, overrides)
+
+	return validNetworkAuthentication(candidate), nil
+}
+
+func (s *settingsSource) validRemoteCrawlChange(
+	ctx context.Context,
+	key string,
+	value string,
+	reset bool,
+) (bool, error) {
+	overrides, err := s.store.All(ctx)
+	if err != nil {
+		return false, fmt.Errorf("load runtime settings: %w", err)
+	}
+	if reset {
+		delete(overrides, key)
+	} else {
+		overrides[key] = value
+	}
+	candidate := applyRuntimeSettingOverrides(s.envConfig, overrides)
+
+	return validateRemoteCrawlConfig(candidate) == nil, nil
 }
 
 func (s *settingsSource) definition(key string) (settingDefinition, bool) {

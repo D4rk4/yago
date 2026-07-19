@@ -128,6 +128,36 @@ func (b scriptedBucket) Scan(prefix vault.Key, fn func(vault.Key, []byte) (bool,
 	return nil
 }
 
+func (b scriptedBucket) ReadPageAfter(
+	after vault.Key,
+	limit int,
+) (vault.BucketPage, error) {
+	if err := b.engine.scanErrors[b.name]; err != nil {
+		return vault.BucketPage{}, err
+	}
+	keys := make([]string, 0, len(b.engine.buckets[b.name]))
+	for key := range b.engine.buckets[b.name] {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	page := vault.BucketPage{Entries: make([]vault.BucketPageEntry, 0, limit)}
+	for _, key := range keys {
+		if bytes.Compare([]byte(key), after) <= 0 {
+			continue
+		}
+		if len(page.Entries) == limit {
+			page.More = true
+
+			break
+		}
+		page.Entries = append(page.Entries, vault.BucketPageEntry{
+			Key: vault.Key(key), Value: append([]byte(nil), b.engine.buckets[b.name][key]...),
+		})
+	}
+
+	return page, nil
+}
+
 type fakeURLDirectory struct {
 	err error
 }

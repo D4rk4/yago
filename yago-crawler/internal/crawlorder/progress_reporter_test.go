@@ -47,11 +47,13 @@ func TestConsumerReportsRunLifecycle(t *testing.T) {
 	defer cancel()
 	go consumer.Run(ctx)
 
+	maximum := 900
 	profile := yagocrawlcontract.NewCrawlProfile(yagocrawlcontract.CrawlProfile{
 		Name:            "Example",
 		Scope:           yagocrawlcontract.ScopeDomain,
 		URLMustMatch:    yagocrawlcontract.MatchAll,
-		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+		MaxPagesPerHost: 250,
+		MaxPagesPerRun:  &maximum,
 	})
 	acked := make(chan struct{})
 	delivery := crawlorder.CrawlOrderDelivery{
@@ -89,7 +91,8 @@ func TestConsumerReportsRunLifecycle(t *testing.T) {
 		string(reports[0].Provenance) != "run-1" ||
 		reports[0].ProfileName != "Example" ||
 		reports[0].Tally.Pending != 1 ||
-		reports[0].PagesPerMinute != 30 {
+		reports[0].PagesPerMinute != 30 ||
+		reports[0].MaxPagesPerHost != 250 || reports[0].MaxPagesPerRun != 900 {
 		t.Fatalf("first report = %+v, want running run-1 pending 1", reports[0])
 	}
 	if reports[1].State != yagocrawlcontract.CrawlRunFinished {
@@ -230,14 +233,31 @@ func (c *fakeProgressClient) ReportProgress(
 func TestGRPCProgressReporterMapsReportToProto(t *testing.T) {
 	client := &fakeProgressClient{reported: make(chan struct{}, 1)}
 	reporter := crawlorder.NewGRPCProgressReporter(client, "worker-9")
+	outcomes, err := yagocrawlcontract.NewCrawlURLOutcomeHistory(
+		[]yagocrawlcontract.CrawlURLOutcome{
+			{
+				Sequence:   1,
+				URL:        "https://example.com/",
+				Class:      yagocrawlcontract.CrawlURLOutcomeIndexed,
+				ObservedAt: time.Unix(100, 0).UTC(),
+				Reason:     "",
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	reporter.ReportRun(context.Background(), crawlorder.RunReport{
-		Provenance:     []byte("run-1"),
-		ProfileHandle:  "h1",
-		ProfileName:    "Profile One",
-		State:          yagocrawlcontract.CrawlRunFinished,
-		Tally:          yagocrawlcontract.CrawlRunTally{Fetched: 3, Indexed: 2, Pending: 1},
-		PagesPerMinute: 45,
+		Provenance:      []byte("run-1"),
+		ProfileHandle:   "h1",
+		ProfileName:     "Profile One",
+		State:           yagocrawlcontract.CrawlRunFinished,
+		Tally:           yagocrawlcontract.CrawlRunTally{Fetched: 3, Indexed: 2, Pending: 1},
+		PagesPerMinute:  45,
+		MaxPagesPerHost: 250,
+		MaxPagesPerRun:  700,
+		RecentOutcomes:  outcomes,
 	})
 
 	select {
@@ -267,6 +287,40 @@ func TestGRPCProgressReporterMapsReportToProto(t *testing.T) {
 	}
 	if got.PagesPerMinute == nil || got.GetPagesPerMinute() != 45 {
 		t.Fatalf("pages per minute = %v, want known 45", got.PagesPerMinute)
+	}
+	if got.MaxPagesPerHost == nil || got.GetMaxPagesPerHost() != 250 ||
+		got.MaxPagesPerRun == nil || got.GetMaxPagesPerRun() != 700 {
+		t.Fatalf("run limits = %v/%v", got.MaxPagesPerHost, got.MaxPagesPerRun)
+	}
+	if len(got.GetRecentOutcomes()) != 1 ||
+		got.GetRecentOutcomes()[0].GetUrl() != "https://example.com/" ||
+		got.GetRecentOutcomes()[0].GetOutcomeClass() != "indexed" {
+		t.Fatalf("recent outcomes = %+v", got.GetRecentOutcomes())
+	}
+	if err := reporter.Close(t.Context()); err != nil {
+		t.Fatalf("close reporter: %v", err)
+	}
+}
+
+func TestGRPCProgressReporterNormalizesNegativeRunLimit(t *testing.T) {
+	client := &fakeProgressClient{reported: make(chan struct{}, 1)}
+	reporter := crawlorder.NewGRPCProgressReporter(client, "worker-negative-limit")
+	reporter.ReportRun(t.Context(), crawlorder.RunReport{
+		Provenance:     []byte("negative-limit"),
+		State:          yagocrawlcontract.CrawlRunRunning,
+		MaxPagesPerRun: -1,
+	})
+
+	select {
+	case <-client.reported:
+	case <-time.After(time.Second):
+		t.Fatal("no report sent")
+	}
+	client.mu.Lock()
+	got := client.last
+	client.mu.Unlock()
+	if got == nil || got.MaxPagesPerRun == nil || got.GetMaxPagesPerRun() != 0 {
+		t.Fatalf("maximum pages per run = %v, want present zero", got)
 	}
 	if err := reporter.Close(t.Context()); err != nil {
 		t.Fatalf("close reporter: %v", err)

@@ -94,7 +94,6 @@ func TestBootJoinsRetainedImpressionsBeforeReturning(t *testing.T) {
 			t.Context(),
 			config,
 			storageVault,
-			&http.Client{},
 		)
 	}()
 	select {

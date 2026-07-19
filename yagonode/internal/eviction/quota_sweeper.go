@@ -15,15 +15,16 @@ import (
 )
 
 type quotaSweeper struct {
-	vault      *vault.Vault
-	postings   rwi.PostingPurger
-	references urlreferences.ReferenceQuery
-	urls       urlmeta.URLEvictor
-	documents  DocumentEvictor
-	resolver   URLResolver
-	stale      urlmetastaleness.StaleURLSource
-	target     float64
-	batch      int
+	vault       *vault.Vault
+	postings    rwi.PostingPurger
+	references  urlreferences.ReferenceQuery
+	urls        urlmeta.URLEvictor
+	documents   DocumentEvictor
+	resolver    URLResolver
+	stale       urlmetastaleness.StaleURLSource
+	postingOnly PostingOnlyURLSource
+	target      float64
+	batch       int
 }
 
 func (s quotaSweeper) Sweep(ctx context.Context) (Result, error) {
@@ -43,25 +44,55 @@ func (s quotaSweeper) Sweep(ctx context.Context) (Result, error) {
 			return total, nil
 		}
 
-		candidates, err := s.stale.StalestURLs(ctx, s.batch)
+		batchSelection, err := s.nextEvictionBatch(ctx)
 		if err != nil {
-			return total, fmt.Errorf("select stale urls: %w", err)
+			return total, err
 		}
-		if len(candidates) == 0 {
+		if len(batchSelection.urls) == 0 {
 			return total, nil
 		}
 
-		batch, err := s.purge(ctx, candidates)
+		batch, err := s.purge(ctx, batchSelection.urls)
 		if err != nil {
 			return total, err
 		}
 		total.URLsDeleted += batch.URLsDeleted
 		total.PostingsDeleted += batch.PostingsDeleted
 		total.DocumentsDeleted += batch.DocumentsDeleted
-		if batch.URLsDeleted == 0 {
+		if batchSelection.stalled(batch) {
 			return total, nil
 		}
 	}
+}
+
+type evictionBatchSelection struct {
+	urls        []yagomodel.Hash
+	postingOnly bool
+}
+
+func (selection evictionBatchSelection) stalled(result Result) bool {
+	if selection.postingOnly {
+		return result.PostingsDeleted == 0
+	}
+
+	return result.URLsDeleted == 0
+}
+
+func (s quotaSweeper) nextEvictionBatch(ctx context.Context) (evictionBatchSelection, error) {
+	candidates, err := s.stale.StalestURLs(ctx, s.batch)
+	if err != nil {
+		return evictionBatchSelection{}, fmt.Errorf("select stale urls: %w", err)
+	}
+	if len(candidates) > 0 || s.postingOnly == nil {
+		return evictionBatchSelection{urls: candidates}, nil
+	}
+
+	candidates, err = s.postingOnly.PostingOnlyURLs(ctx, s.batch)
+	if err != nil {
+		return evictionBatchSelection{}, fmt.Errorf("select posting-only urls: %w", err)
+	}
+
+	return evictionBatchSelection{urls: candidates, postingOnly: len(candidates) > 0}, nil
 }
 
 func (s quotaSweeper) purge(ctx context.Context, urls []yagomodel.Hash) (Result, error) {

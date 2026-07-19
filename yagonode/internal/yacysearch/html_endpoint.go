@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/cachedpage"
+	"github.com/D4rk4/yago/yagonode/internal/resultreason"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagoproto"
 )
@@ -86,6 +87,7 @@ type htmlSearchItem struct {
 	Provenance  string
 	Rank        int
 	Identity    string
+	Reasons     []string
 }
 
 var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!doctype html>
@@ -152,6 +154,7 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 <h2><a href="{{.URL}}"{{if $.ClickCapture}} data-p="{{.Rank}}" data-i="{{.Identity}}"{{end}}{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{.Title}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"> (opens in new tab)</span>{{end}}</a></h2>
 <p>{{.Description}}</p>
 <p>{{.DisplayURL}}{{if .Provenance}} [{{.Provenance}}]{{end}} {{.SizeName}} {{.Date}}{{if .CachedURL}} <a href="{{.CachedURL}}">cached</a>{{end}}</p>
+{{if .Reasons}}<details><summary>Why this result?</summary><ul>{{range .Reasons}}<li>{{.}}</li>{{end}}</ul></details>{{end}}
 </li>
 {{end}}
 </ol>
@@ -455,6 +458,7 @@ func responseHTMLItems(
 			Description: highlightedResultSnippet(result, terms),
 			Date:        result.DisplayDate(),
 			SizeName:    sizeName(result.Size),
+			Reasons:     resultreason.For(result),
 		}
 		if result.StoredLocally() {
 			// Only locally stored pages have a copy to show; local hits inside a

@@ -20,8 +20,31 @@ func (s searcher) sendRemoteSearchWithinLimit(
 	responseBodyLimit int,
 	callBudgets ...*outboundCallBudget,
 ) (yagoproto.SearchResponse, int, error) {
+	var self yagomodel.Seed
 	if s.selfSeed != nil {
-		searchReq.MySeed = yagomodel.Some(s.selfSeed(ctx))
+		self = s.selfSeed(ctx)
+		searchReq.MySeed = yagomodel.Some(self)
+	}
+	if s.access.Mode == yagoproto.NetworkAuthenticationSaltedMagic {
+		if self.Hash == "" {
+			return yagoproto.SearchResponse{}, 0, fmt.Errorf(
+				"%w: missing self identity",
+				errRemoteSearchFailed,
+			)
+		}
+		access := s.access
+		access.Self = self.Hash
+		form := searchReq.Form()
+		if err := s.signNetworkForm(access, form); err != nil {
+			return yagoproto.SearchResponse{}, 0, fmt.Errorf(
+				"%w: %w",
+				errRemoteSearchFailed,
+				err,
+			)
+		}
+		searchReq.Iam = form.Get(yagoproto.FieldIam)
+		searchReq.Key = form.Get(yagoproto.FieldKey)
+		searchReq.MagicMD5 = form.Get(yagoproto.FieldMagicMD5)
 	}
 	targets, err := peer.ProtocolEndpoints(yagoproto.PathSearch, s.preferHTTPS)
 	if err != nil {
@@ -44,6 +67,7 @@ func (s searcher) sendRemoteSearchWithinLimit(
 		)
 		responseBytes += readBytes
 		if err == nil {
+			s.observeReceivedResponse(ctx, response)
 			return response, responseBytes, nil
 		}
 		lastErr = err

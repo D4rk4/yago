@@ -23,9 +23,10 @@ import (
 // image.
 type crawlExchange struct {
 	crawlrpc.UnimplementedCrawlExchangeServer
-	orders   chan *crawlrpc.CrawlOrderMessage
-	ingested chan yagocrawlcontract.IngestBatch
-	acked    chan *crawlrpc.OrderAck
+	orders      chan *crawlrpc.CrawlOrderMessage
+	ingested    chan yagocrawlcontract.IngestBatch
+	acked       chan *crawlrpc.OrderAck
+	urlDenylist yagocrawlcontract.CrawlURLDenylist
 }
 
 func (e *crawlExchange) StreamOrders(
@@ -86,6 +87,23 @@ func (e *crawlExchange) Heartbeat(
 	return &crawlrpc.WorkerHeartbeatResult{
 		RenewedLeaseIds:      append([]string(nil), request.GetActiveLeaseIds()...),
 		LeaseTtlMilliseconds: uint64(time.Minute / time.Millisecond),
+		UrlDenylist: &crawlrpc.CrawlURLDenylist{
+			Revision:  append([]byte(nil), e.urlDenylist.Revision...),
+			ExactUrls: append([]string(nil), e.urlDenylist.ExactURLs...),
+			Domains:   append([]string(nil), e.urlDenylist.Domains...),
+		},
+	}, nil
+}
+
+func (e *crawlExchange) LeaseFetchStarts(
+	_ context.Context,
+	request *crawlrpc.FetchStartLeaseRequest,
+) (*crawlrpc.FetchStartLeaseDecision, error) {
+	return &crawlrpc.FetchStartLeaseDecision{
+		Granted:   true,
+		Sequence:  request.GetSequence(),
+		Permits:   request.GetMaximumPermits(),
+		Unlimited: true,
 	}, nil
 }
 
@@ -112,14 +130,19 @@ func (e *crawlExchange) awaitIngest(t *testing.T) yagocrawlcontract.IngestBatch 
 
 func startExchange(t *testing.T) (int, *crawlExchange) {
 	t.Helper()
+	urlDenylist, err := yagocrawlcontract.NewCrawlURLDenylist(nil, nil)
+	if err != nil {
+		t.Fatalf("create empty crawl URL denylist: %v", err)
+	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen crawl exchange: %v", err)
 	}
 	exchange := &crawlExchange{
-		orders:   make(chan *crawlrpc.CrawlOrderMessage, 16),
-		ingested: make(chan yagocrawlcontract.IngestBatch, 16),
-		acked:    make(chan *crawlrpc.OrderAck, 16),
+		orders:      make(chan *crawlrpc.CrawlOrderMessage, 16),
+		ingested:    make(chan yagocrawlcontract.IngestBatch, 16),
+		acked:       make(chan *crawlrpc.OrderAck, 16),
+		urlDenylist: urlDenylist,
 	}
 	// nosemgrep: go.grpc.security.grpc-server-insecure-connection.grpc-server-insecure-connection -- host-side e2e stand-in on loopback; matches the node's insecure internal transport (ADR-0014).
 	server := grpc.NewServer()

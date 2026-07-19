@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
+	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -17,14 +18,14 @@ func (NoSharedBlacklists) SharedList(context.Context, string) string {
 	return ""
 }
 
-func Mount(router httpguard.WireRouter, networkName string, blacklists Blacklists) {
+func Mount(router httpguard.WireRouter, identity nodeidentity.Identity, blacklists Blacklists) {
 	httpguard.MountRawWithAdmission(
 		router,
 		httpguard.RawRouteAdmission[yagoproto.ListRequest]{
 			Path:      yagoproto.PathList,
 			Methods:   yagoproto.ListEndpointMethods,
 			Parse:     yagoproto.ParseListRequest,
-			Serve:     endpoint{networkName: networkName, blacklists: blacklists}.Serve,
+			Serve:     endpoint{identity: identity, blacklists: blacklists}.Serve,
 			Admission: httpguard.NewIntakeGate(maximumConcurrentSharedBlacklist),
 		},
 	)

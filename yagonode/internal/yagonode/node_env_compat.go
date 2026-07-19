@@ -3,12 +3,6 @@ package yagonode
 import (
 	"context"
 	"log/slog"
-	"strings"
-)
-
-const (
-	legacyEnvPrefix  = "YACY_"
-	currentEnvPrefix = "YAGO_"
 )
 
 // withLegacyEnvAliases wraps getenv so an unset YAGO_* variable falls back to its
@@ -23,12 +17,10 @@ func withLegacyEnvAliases(getenv func(string) string) func(string) string {
 			return value
 		}
 
-		suffix, ok := strings.CutPrefix(name, currentEnvPrefix)
+		legacy, ok := legacyNodeEnvironmentAliases[name]
 		if !ok {
 			return ""
 		}
-
-		legacy := legacyEnvPrefix + suffix
 		value := getenv(legacy)
 		if value == "" {
 			return ""

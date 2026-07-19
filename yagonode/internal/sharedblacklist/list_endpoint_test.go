@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
+	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -48,7 +49,10 @@ func sharedBlacklistEndpointRequest() yagoproto.ListRequest {
 
 func TestListExportsSharedBlacklistEntries(t *testing.T) {
 	blacklists := &recordingBlacklists{}
-	resp, err := endpoint{networkName: "freeworld", blacklists: blacklists}.Serve(
+	resp, err := endpoint{
+		identity:   nodeidentity.Identity{NetworkName: "freeworld"},
+		blacklists: blacklists,
+	}.Serve(
 		t.Context(),
 		yagoproto.ListRequest{
 			NetworkName: "freeworld",
@@ -74,7 +78,10 @@ func TestListExportsSharedBlacklistEntries(t *testing.T) {
 func TestListEndpointBoundsAndOwnsProviderBody(t *testing.T) {
 	exactBody := strings.Repeat("x", maximumSharedBlacklistAggregateBytes)
 	exact := &fixedSharedBlacklists{body: exactBody}
-	response, err := endpoint{networkName: "freeworld", blacklists: exact}.Serve(
+	response, err := endpoint{
+		identity:   nodeidentity.Identity{NetworkName: "freeworld"},
+		blacklists: exact,
+	}.Serve(
 		t.Context(),
 		sharedBlacklistEndpointRequest(),
 	)
@@ -85,7 +92,10 @@ func TestListEndpointBoundsAndOwnsProviderBody(t *testing.T) {
 	overflow := &fixedSharedBlacklists{
 		body: strings.Repeat("x", maximumSharedBlacklistAggregateBytes+1),
 	}
-	response, err = endpoint{networkName: "freeworld", blacklists: overflow}.Serve(
+	response, err = endpoint{
+		identity:   nodeidentity.Identity{NetworkName: "freeworld"},
+		blacklists: overflow,
+	}.Serve(
 		t.Context(),
 		sharedBlacklistEndpointRequest(),
 	)
@@ -104,7 +114,10 @@ func retainedSharedBlacklistSubstring(t *testing.T) string {
 	backing := strings.Repeat("x", maximumSharedBlacklistAggregateBytes*2)
 	substring := backing[:16]
 	provider := &fixedSharedBlacklists{body: substring}
-	response, err := endpoint{networkName: "freeworld", blacklists: provider}.Serve(
+	response, err := endpoint{
+		identity:   nodeidentity.Identity{NetworkName: "freeworld"},
+		blacklists: provider,
+	}.Serve(
 		t.Context(),
 		sharedBlacklistEndpointRequest(),
 	)
@@ -131,7 +144,10 @@ func TestListEndpointDetachesShortProviderSubstring(t *testing.T) {
 
 func TestListIgnoresUnsupportedColumn(t *testing.T) {
 	blacklists := &recordingBlacklists{}
-	resp, err := endpoint{networkName: "freeworld", blacklists: blacklists}.Serve(
+	resp, err := endpoint{
+		identity:   nodeidentity.Identity{NetworkName: "freeworld"},
+		blacklists: blacklists,
+	}.Serve(
 		t.Context(),
 		yagoproto.ListRequest{
 			NetworkName: "freeworld",
@@ -153,7 +169,10 @@ func TestListIgnoresUnsupportedColumn(t *testing.T) {
 
 func TestListRejectsForeignNetwork(t *testing.T) {
 	blacklists := &recordingBlacklists{}
-	resp, err := endpoint{networkName: "freeworld", blacklists: blacklists}.Serve(
+	resp, err := endpoint{
+		identity:   nodeidentity.Identity{NetworkName: "freeworld"},
+		blacklists: blacklists,
+	}.Serve(
 		t.Context(),
 		yagoproto.ListRequest{
 			NetworkName: "othernet",
@@ -187,7 +206,7 @@ func TestMountServesSharedBlacklistRoute(t *testing.T) {
 		Address: httpguard.NewClientAddressResolver(nil),
 	})
 	blacklists := &recordingBlacklists{}
-	Mount(router, "freeworld", blacklists)
+	Mount(router, nodeidentity.Identity{NetworkName: "freeworld"}, blacklists)
 	form := yagoproto.ListRequest{
 		NetworkName: "freeworld",
 		Column:      yagoproto.ListColumnBlack,

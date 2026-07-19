@@ -66,6 +66,13 @@ func buildOpsMux(
 	mountOpsExtras(opsMux, assembled)
 	seedStatus, seedRefresh := seedImportSources(assembled, config, recorder)
 	blocks := assembledPeerBlocks(assembled)
+	network := newNetworkSource(
+		assembled.dht.gateStatus,
+		assembled.roster,
+		config.SeedlistURLs,
+		seedStatus,
+		blocks,
+	).withSelf(assembled.report)
 	options := adminui.Options{
 		Overview:          newOverviewSource(assembled.report).withLocalIndex(assembled.index),
 		Search:            newSearchSource(assembled.searcher),
@@ -73,13 +80,9 @@ func buildOpsMux(
 		Activity:          newActivitySource(assembled.activity),
 		IndexExport:       newIndexExporter(assembled.docScan),
 		Index:             opsIndexSource(config, assembled),
-		Network: newNetworkSource(
-			assembled.dht.gateStatus,
-			assembled.roster,
-			config.SeedlistURLs,
-			seedStatus,
-			blocks,
-		).withSelf(assembled.report),
+		IndexRebuild:      newIndexRebuildScheduler(config.SearchIndexPath, recorder),
+		Network:           network,
+		NetworkSelfTest:   newNetworkSelfTester(network, recorder),
 		Config:            newConfigSource(config),
 		Settings:          sources.settings,
 		PublicSearch:      newAdminPublicSearchStatusSource(assembled.toggles, config),
@@ -111,6 +114,7 @@ func buildOpsMux(
 		options.PeerNews = newPeerNewsSource(assembled.news)
 	}
 	applyCrawlAdminOptions(&options, assembled, crawlDepth)
+	applySavedCrawlProfileAdminOptions(&options, assembled, recorder)
 	opsMux.Handle(adminui.BasePath, adminui.New(options))
 	opsMux.Handle("/{$}", http.RedirectHandler(adminui.BasePath, http.StatusFound))
 	recorder.Record(events.SeverityInfo, events.CategoryConfig, "node.started", "node started")
@@ -158,6 +162,7 @@ func seedImportSources(
 func applyIndexAdminOptions(options *adminui.Options, assembled node) {
 	if assembled.docScan != nil {
 		options.Documents = newDocumentBrowseSource(assembled.docScan)
+		options.DocumentDetail = documentDetailAdmin(assembled.docScan)
 	}
 	if assembled.indexAdmin != nil {
 		options.IndexAdmin = assembled.indexAdmin

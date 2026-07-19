@@ -37,7 +37,10 @@ before frontier admission.
 
 `IngestBatch` carries references back to the node for one fetched page: document
 content metadata, bounded image metadata, RWI postings, URL metadata, and the
-attribution data needed by the node. Live pages and removal tombstones carry a
+attribution data needed by the node. A fetched page also carries the sitemap
+source-modification hint that entered its persistent frontier so the node can
+update the durable recrawl schedule without re-parsing the original seed. Live
+pages and removal tombstones carry a
 stable observation ID and UTC observation time so the node can order separate
 deliveries and recognize a committed retry after an acknowledgement is lost.
 Older batches without those fields remain accepted: observation time falls back
@@ -66,6 +69,34 @@ waiting ordinary and recovered orders do not activate another frontier or
 progress reporter. A lower live value does not preempt an existing task. Older
 decoders ignore the directive and retain their environment bootstrap.
 
+The independent `set_process_rate` directive carries the fleet-wide page-fetch
+start rate. The default is 10 per second and the valid range is 0–1,000,000,
+where zero is unlimited. Every crawler retains it as a local non-bursting
+smoother. Before each page fetch, a current crawler also obtains a
+`LeaseFetchStarts` permit from the node's single fleet schedule. Permit windows
+are server-relative, span the smaller of one rate interval and the
+250-millisecond reservation horizon, and are never reclaimed after expiry. The
+crawler intersects the relative opening with response receipt and the relative
+closing with request send. Round-trip time below the span remains usable; equal
+or greater round-trip time yields an empty window that is discarded and retried
+without catch-up bursting. Requests batch only context-live fetch demand and
+remain bounded by the live per-process worker concurrency. Worker concurrency,
+per-run pace, and per-host politeness remain additional limits.
+
+`WorkerRegistration.fetch_start_leases` advertises this capability. A finite
+node rejects an order stream that omits it. Changing from unlimited to finite,
+or reducing a finite rate, fences every current stream so cached permits cannot
+cross the policy generation; a finite increase retains capable streams and
+fences only an incapable one. A current crawler connected to an older node uses
+local unlimited behavior only when the configured rate is zero. At a finite
+rate it waits fail-closed until a compatible node session is available.
+
+The independent `set_maximum_redirects` directive carries the redirect-hop limit
+for both HTTP and browser page fetches. The default is 10 and the valid range is
+0–1,000, where zero rejects the first redirect. HTTP fetchers read a live change
+immediately. Existing browser sessions close and lazily relaunch before the next
+render so the browser's own redirect limit converges to the directive.
+
 A current crawler includes the optional `active_fetches` field in each worker
 heartbeat. The value is the number of occupied page-fetch worker jobs from job
 start through fetch, parsing, and result publication. An explicit zero is a
@@ -82,6 +113,39 @@ If that attempt fails, the crawler retains its environment bootstrap until a
 periodic heartbeat succeeds. Existing crawlers ignore the additive directive;
 current crawlers connected to older nodes retain their bootstrap policy.
 
+`ReadRuntimePolicy` returns the node's complete typed crawler fetch policy before
+the crawler assembles its HTTP, browser, scheduler, and shutdown components. The
+same policy is field 7 of every ordinary `WorkerHeartbeatResult`, so a connected
+crawler can detect a persisted Admin change. It covers private-network access
+and private CIDR exceptions, the Firefox executable and content sandbox, browser
+failure threshold, the crawler metrics listener, connect/crawl-delay/header/request/TLS/shutdown durations,
+maximum depth and per-host concurrency, default per-run rate, sitemap expansion
+limit, and User-Agent. Every value is bounded by the shared contract. A browser
+path is empty or an absolute clean path whose exact basename is `firefox` or
+`firefox-esr`; a metrics address is empty or a loopback IP-literal listener.
+Filesystem ownership, mutability, executable, and set-ID trust checks remain a
+crawler-local responsibility rather than a node or wire concern. Private CIDR
+exceptions accept only RFC 1918 and IPv6 ULA subnets; they never admit
+loopback, link-local, metadata, carrier-grade NAT, multicast, or reserved ranges.
+The sandbox, browser-path, and metrics-address fields are optional on the wire.
+Their absence preserves a current crawler's bootstrap or already effective values
+when it talks to the immediately previous policy-capable node; a current node sends
+them explicitly and is authoritative. A sandbox-only live change retires pooled browser sessions after
+their active render and relaunches them before the next render, while other
+policy changes request a graceful crawler restart. An older node returns
+`Unimplemented`, and the current crawler then retains its environment bootstrap.
+An older crawler ignores the additive heartbeat field.
+
+The durable Index URL/domain denylist crosses the same heartbeat boundary as a
+separate revisioned policy. A crawler requests the complete snapshot before it
+opens an order stream and then sends its current 32-byte revision with ordinary
+heartbeats; the node omits unchanged policy bodies. The contract accepts at most
+4,096 exact-URL and domain entries, 1 MiB of encoded policy, 2,048 bytes per URL,
+and 253 bytes per domain. Canonical ordering and the SHA-256 revision bind the
+body exactly. A missing or invalid bootstrap policy fails closed, while a later
+invalid update cannot replace the crawler's last valid snapshot. The additive
+heartbeat fields are ignored by older decoders and introduce no YaCy wire field.
+
 ## Provenance
 
 `Provenance` is an opaque node-owned token. The crawler never inspects or changes it;
@@ -95,7 +159,10 @@ requested crawls use the same message shape.
 
 `LastModified` on a crawl request is a scheduling hint carried from sitemap
 `lastmod` values. It does not make the crawler trust page freshness by itself;
-recrawl policy remains a crawler/frontier decision.
+the crawler preserves it through checkpoint and ingest, and the node's persistent
+recrawl scheduler accepts only non-future hints. A hint may advance scheduling
+within the profile cadence, but stale or unchanged values do not create an
+immediate loop.
 
 ## Backpressure
 
@@ -103,7 +170,14 @@ Every streamed order has a durable lease ID. `AckOrder` deletes completed work;
 the same call with requeue semantics naks retryable work, while terminate
 semantics delete operator-cancelled or permanently invalid work. `Heartbeat`
 renews the leases held by one registered worker, and `ReportProgress` carries run
-tallies.
+tallies. Current reports also carry a bounded history of at most 64 recent URL
+outcomes and the immutable effective whole-run and per-host page maxima as two
+separate optional values. The two maxima are present together or absent together;
+absence means unavailable legacy evidence rather than zero. Every retained URL
+has one terminal class, while aggregate fetched and failed counters are deliberately
+not mutually exclusive because a fetched representation can fail later processing.
+Outcome URLs are limited to 2,048 bytes, stable reasons to 160 bytes, and neither
+page content nor raw provider or parser errors cross the control plane.
 The node can durably enqueue more orders than a crawler currently has in its
 frontier; crawler saturation is handled by lease ownership rather than by
 blocking order creation. Each progress report carries the run's effective
@@ -191,12 +265,28 @@ ingest/progress, rich terminal settlement, and confirmation-token fields are
 additive on the protobuf wire. The recovered-session manifest is field 6 of
 `CrawlOrderMessage`; the optional explicit delivery-credit marker is field 9 of
 `WorkerHeartbeat`; `set_active_runs` is enum value 8 and its directive value is
-field 7. An older crawler ignores these additions and retains legacy subset or
+field 7; `set_process_rate` is enum value 9 and its value is field 8;
+`set_maximum_redirects` is enum value 10 and its value is field 9. An older
+crawler ignores these additions and retains legacy subset or
 per-order confirmation; a current crawler receiving unmarked replay from an
 older node does the same. The current node still requires a valid process-session
 identity before accepting a crawler stream or lease mutation. A crawler that
 predates that identity is therefore rejected by a current node.
+The bounded recent URL outcome history is additive field 10 on both
+`CrawlProgressReport` and `OrderAck`. The paired optional per-host and whole-run
+maxima are fields 11 and 12 on `CrawlProgressReport`. Older protobuf decoders
+ignore them. `ReadRuntimePolicy`, its request and response messages, and
+`WorkerHeartbeatResult.runtime_policy` field 7 are additive. A terminal
+settlement derives the immutable maxima from the
+authoritative leased order instead of trusting terminal client fields.
+`WorkerRegistration.fetch_start_leases` field 3, `FetchStartLeaseRequest`,
+`FetchStartLeaseDecision`, and the unary `LeaseFetchStarts` method are also
+additive and retain all prior field numbers. Older decoders ignore these wire
+additions, but that compatibility does not weaken finite-rate policy: a current
+node rejects an incapable crawler stream, and a current crawler at a finite
+rate waits fail-closed when an older node lacks the method. Mixed-version
+operation is permitted only while the rate is explicitly zero.
 Upgrade the node and every crawler from one release as a coordinated operation:
-stop crawlers first, replace both binaries, start and verify the node, then start
-crawlers. Rollback requires the matching node broker and crawler checkpoint
-backup and the same start order.
+the shipped finite default makes this mandatory. Stop crawlers first, replace
+both binaries, start and verify the node, then start crawlers. Rollback requires
+the matching node broker and crawler checkpoint backup and the same start order.

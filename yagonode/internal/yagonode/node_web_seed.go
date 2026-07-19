@@ -37,7 +37,8 @@ type webCrawlSeeder struct {
 	documents      documentstore.DocumentDirectory
 	initiator      yagomodel.Hash
 	profile        yagocrawlcontract.CrawlProfile
-	maxPagesPerRun func() int
+	maximumPages   int
+	crawlerMaximum func() int
 	now            func() time.Time
 }
 
@@ -87,7 +88,8 @@ func newCrawlSeeder(
 		documents:      documents,
 		initiator:      initiator,
 		profile:        profile,
-		maxPagesPerRun: selectMaxPagesPerRunSource(maxPagesPerRun),
+		maximumPages:   seed.maxPages,
+		crawlerMaximum: selectMaxPagesPerRunSource(maxPagesPerRun),
 		now:            time.Now,
 	}
 }
@@ -99,7 +101,10 @@ func (s *webCrawlSeeder) Seed(ctx context.Context, urls []string) {
 			continue
 		}
 		profile := s.profile
-		maximum := s.maxPagesPerRun()
+		maximum := automaticDiscoveryPageLimit(
+			s.maximumPages,
+			s.crawlerMaximum(),
+		)
 		profile.MaxPagesPerRun = &maximum
 		profile = yagocrawlcontract.NewCrawlProfile(profile)
 		order := yagocrawlcontract.CrawlOrder{

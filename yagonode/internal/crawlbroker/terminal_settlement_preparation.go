@@ -58,6 +58,14 @@ func terminalSettlementWithOrder(
 	settlement.Progress.RunID = hex.EncodeToString(order.Provenance)
 	settlement.Progress.ProfileHandle = order.Profile.Handle
 	settlement.Progress.ProfileName = order.Profile.Name
+	settlement.Progress.MaxPagesPerHost = order.Profile.MaxPagesPerHost
+	if settlement.Progress.MaxPagesPerHost == 0 {
+		settlement.Progress.MaxPagesPerHost = yagocrawlcontract.UnlimitedPagesPerHost
+	}
+	settlement.Progress.MaxPagesPerRun = order.EffectiveMaxPagesPerRun(
+		yagocrawlcontract.DefaultMaxPagesPerRun,
+	)
+	settlement.Progress.LimitsKnown = true
 	if err := validateTerminalLeaseDefinition(
 		settlement.OrderIdentity,
 		settlement.Progress,

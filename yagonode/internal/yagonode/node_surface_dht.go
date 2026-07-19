@@ -13,7 +13,8 @@ func buildSurfaceDHT(in assembleSurfacesInput, runtime crawlProcess) dhtOutbound
 			next:  in.telemetry.dhtOutbound,
 			tally: in.tally,
 		},
-		crawl: crawlQueueDepthSource{probe: crawlQueueProbe(runtime)},
-		index: indexQueueDepthSource{probe: indexQueueProbe(runtime)},
+		events: in.telemetry.recorder,
+		crawl:  crawlQueueDepthSource{probe: crawlQueueProbe(runtime)},
+		index:  indexQueueDepthSource{probe: indexQueueProbe(runtime)},
 	})
 }

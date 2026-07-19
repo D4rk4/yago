@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
+	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -97,7 +98,7 @@ func sharedBlacklistHandler(
 		Guard:   httpguard.NewRequestGuard(1024, 5*time.Second),
 		Address: httpguard.NewClientAddressResolver(nil),
 	})
-	Mount(router, "freeworld", blacklists)
+	Mount(router, nodeidentity.Identity{NetworkName: "freeworld"}, blacklists)
 
 	return mux
 }

@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	defaultMaxBytes           int64 = 2 << 20
-	maximumFetchResponseBytes int64 = 4 << 20
-	fetchUserAgent                  = "Mozilla/5.0 (compatible; yago-extract/1.0; " +
+	defaultMaxBytes      int64 = 2 << 20
+	MaximumResponseBytes int64 = 4 << 20
+	fetchUserAgent             = "Mozilla/5.0 (compatible; yago-extract/1.0; " +
 		"+https://github.com/D4rk4/yago)"
 )
 
@@ -38,7 +38,9 @@ func New(client *http.Client, timeout time.Duration, maxBytes int64) *Fetcher {
 	if maxBytes <= 0 {
 		maxBytes = defaultMaxBytes
 	}
-	maxBytes = min(maxBytes, maximumFetchResponseBytes)
+	if maxBytes > MaximumResponseBytes {
+		panic(fmt.Sprintf("extract response limit exceeds %d bytes", MaximumResponseBytes))
+	}
 
 	return &Fetcher{client: client, maxBytes: maxBytes, timeout: timeout}
 }

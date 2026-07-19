@@ -2,12 +2,12 @@ package yagonode
 
 import (
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -131,12 +131,15 @@ type nodeConfig struct {
 	PublicBaseURL                string
 	QueryLogMode                 queryLogMode
 	MetricsEnabled               bool
+	LoggingLevel                 slog.Level
 	AdminRestartEnabled          bool
 	IndexRemoteResults           bool
 	SwarmMorphology              bool
 	PeerSnippetFetch             bool
 	RemotePeerTimeout            time.Duration
 	RemoteTimeout                time.Duration
+	NetworkAuthenticationMode    yagoproto.NetworkAuthenticationMode
+	NetworkAuthenticationSecret  string
 	RobotsPolicy                 string
 	PortalGreeting               string
 	SearchRate                   publicratelimit.Tiers
@@ -151,6 +154,7 @@ type nodeConfig struct {
 	DHT                          dhtDistributionConfig
 	WebFallback                  webFallbackConfig
 	ExtractFetch                 extractFetchConfig
+	RemoteCrawl                  remoteCrawlConfig
 }
 
 type configuredNodeData struct {
@@ -162,6 +166,20 @@ type configuredNodeData struct {
 	pressureRecoveryBytes int64
 	compaction            time.Duration
 	readDefer             time.Duration
+}
+
+type nodeConfigComposition struct {
+	getenv                func(string) string
+	network               nodeNetworkBootstrap
+	data                  configuredNodeData
+	trustedProxies        []*net.IPNet
+	egressAllowLAN        bool
+	egressAllowedCIDRs    []netip.Prefix
+	derived               derivedConfigs
+	networkAuthentication networkAuthenticationConfig
+	remoteCrawl           remoteCrawlConfig
+	peerName              string
+	networkName           string
 }
 
 func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
@@ -184,62 +202,45 @@ func loadNodeConfig(getenv func(string) string) (nodeConfig, error) {
 	if err != nil {
 		return nodeConfig{}, err
 	}
+	networkAuthentication, err := loadNetworkAuthentication(getenv)
+	if err != nil {
+		return nodeConfig{}, err
+	}
+	remoteCrawl, err := loadRemoteCrawlConfig(getenv)
+	if err != nil {
+		return nodeConfig{}, err
+	}
+	peerName, err := parsePeerName(getenv(envPeerName))
+	if err != nil {
+		return nodeConfig{}, fmt.Errorf("%s: %w", envPeerName, err)
+	}
+	networkName := getenv(envNetworkName)
+	if strings.Trim(networkName, " ") == "" {
+		networkName = yagoproto.DefaultNetwork
+	}
+	networkName, err = normalizeNetworkName(networkName)
+	if err != nil {
+		return nodeConfig{}, fmt.Errorf("%s: %w", envNetworkName, err)
+	}
 
-	return nodeConfig{
-		Hash: network.hash,
-		NetworkName: envWithDefault(
-			getenv,
-			envNetworkName,
-			yagoproto.DefaultNetwork,
-		),
-		Name:                         strings.TrimSpace(getenv(envPeerName)),
-		DataDir:                      data.directory,
-		AdvertiseHost:                network.advertisement.host,
-		AdvertisePort:                network.advertisement.port,
-		AdvertisePortPinned:          network.advertisement.portPinned,
-		PublicSelfTestURL:            network.advertisement.selfTestURL,
-		SelfTestURLPinned:            network.advertisement.selfTestPinned,
-		PeerAddr:                     network.peerAddress,
-		OpsAddr:                      envWithDefault(getenv, envOpsAddr, defaultOpsAddr),
-		PublicAddr:                   publicListenerAddr(getenv),
-		StoragePath:                  data.databasePath,
-		SearchIndexPath:              data.searchIndexPath,
-		StorageQuotaByte:             data.quotaByte,
-		StorageReservedFreeBytes:     data.reservedFreeBytes,
-		StoragePressureRecoveryBytes: data.pressureRecoveryBytes,
-		StorageCompaction:            data.compaction,
-		StorageReadDefer:             data.readDefer,
-		StorageAutosplit:             derived.storageAutosplit,
-		StorageDeferFsync:            derived.storageDeferFsync,
-		TrustedProxies:               proxies,
-		EgressAllowLAN:               egressAllowLAN,
-		EgressAllowedCIDRs:           egressAllowedCIDRs,
-		SeedlistURLs:                 network.seedlistURLs,
-		AnnounceInterval:             network.announceInterval,
-		GreetsPerCycle:               network.greetsPerCycle,
-		SearchAPIKey:                 strings.TrimSpace(getenv(envSearchAccessToken)),
-		SearchRequireAPIKey:          derived.requireAPIKey,
-		PublicSearchUIEnabled:        derived.publicSearchUI,
-		SearchLinksNewTab:            derived.searchLinksNewTab,
-		SearchClickCapture:           derived.searchClickCapture,
-		HTTPSRedirect:                derived.httpsRedirect,
-		PublicBaseURL:                derived.publicBaseURL,
-		QueryLogMode:                 derived.queryLogMode,
-		MetricsEnabled:               derived.metricsEnabled,
-		AdminRestartEnabled:          derived.adminRestartEnabled,
-		IndexRemoteResults:           derived.indexRemoteResults,
-		SwarmMorphology:              derived.swarmMorphology,
-		PeerSnippetFetch:             derived.peerSnippetFetch,
-		RemotePeerTimeout:            derived.remotePeerTimeout,
-		RemoteTimeout:                derived.remoteTimeout,
-		PeerHTTPSPreferred:           derived.peerHTTPSPreferred,
-		SwarmSeed:                    derived.swarmSeed,
-		AutocrawlerCrawl:             defaultSeedCrawlOptions(),
-		DeclaredBirthDate:            derived.birthDate,
-		DHT:                          derived.dht,
-		WebFallback:                  derived.webFallback,
-		ExtractFetch:                 derived.extractFetch,
-	}.withCapabilities(getenv)
+	config := composeNodeConfig(nodeConfigComposition{
+		getenv:                getenv,
+		network:               network,
+		data:                  data,
+		trustedProxies:        proxies,
+		egressAllowLAN:        egressAllowLAN,
+		egressAllowedCIDRs:    egressAllowedCIDRs,
+		derived:               derived,
+		networkAuthentication: networkAuthentication,
+		remoteCrawl:           remoteCrawl,
+		peerName:              peerName,
+		networkName:           networkName,
+	})
+	if err := validateRemoteCrawlConfig(config); err != nil {
+		return nodeConfig{}, err
+	}
+
+	return config.withCapabilities(getenv)
 }
 
 // withCapabilities loads the operator's seed capability toggles from the
@@ -258,6 +259,7 @@ func (c nodeConfig) withCapabilities(
 	c.AdvertiseRemoteIndex = caps.remoteIndex
 	c.AdvertiseRootNode = caps.rootNode
 	c.AdvertiseSSLAvailable = caps.sslAvailable
+	c.Flags = c.Flags.Set(yagomodel.FlagAcceptRemoteCrawl, c.RemoteCrawl.Enabled)
 	return c, nil
 }
 
@@ -271,11 +273,13 @@ type derivedConfigs struct {
 	publicBaseURL       string
 	queryLogMode        queryLogMode
 	metricsEnabled      bool
+	loggingLevel        slog.Level
 	adminRestartEnabled bool
 	indexRemoteResults  bool
 	swarmMorphology     bool
 	peerSnippetFetch    bool
 	peerHTTPSPreferred  bool
+	lanDiscovery        bool
 	searchLinksNewTab   bool
 	searchClickCapture  bool
 	storageAutosplit    bool
@@ -369,9 +373,9 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	if err != nil {
 		return derivedConfigs{}, fmt.Errorf("%s: %w", envPublicBaseURL, err)
 	}
-	queryLog, err := parseQueryLogMode(getenv(envQueryLogMode))
+	logging, err := loadLoggingBootstrap(getenv)
 	if err != nil {
-		return derivedConfigs{}, fmt.Errorf("%s: %w", envQueryLogMode, err)
+		return derivedConfigs{}, err
 	}
 	extractFetch, err := loadExtractFetchConfig(getenv)
 	if err != nil {
@@ -381,15 +385,25 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	if err != nil {
 		return derivedConfigs{}, err
 	}
-	remotePeerTimeout, err := durationEnv(
-		getenv, envRemotePeerTimeout, searchremote.DefaultPerPeerTimeout,
+	remotePeerTimeout, err := durationRangeEnv(
+		getenv,
+		envRemotePeerTimeout,
+		searchremote.DefaultPerPeerTimeout,
+		minimumInteractiveSearchTimeout,
+		maximumInteractiveSearchTimeout,
 	)
 	if err != nil {
-		return derivedConfigs{}, fmt.Errorf("%s: %w", envRemotePeerTimeout, err)
+		return derivedConfigs{}, err
 	}
-	remoteTimeout, err := durationEnv(getenv, envRemoteTimeout, searchremote.DefaultOverallTimeout)
+	remoteTimeout, err := durationRangeEnv(
+		getenv,
+		envRemoteTimeout,
+		searchremote.DefaultOverallTimeout,
+		minimumInteractiveSearchTimeout,
+		maximumInteractiveSearchTimeout,
+	)
 	if err != nil {
-		return derivedConfigs{}, fmt.Errorf("%s: %w", envRemoteTimeout, err)
+		return derivedConfigs{}, err
 	}
 	toggles, err := loadDerivedBoolToggles(getenv)
 	if err != nil {
@@ -404,13 +418,15 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 		publicSearchUI:      toggles.publicSearchUI,
 		httpsRedirect:       toggles.httpsRedirect,
 		publicBaseURL:       publicBaseURL,
-		queryLogMode:        queryLog,
+		queryLogMode:        logging.queryMode,
 		metricsEnabled:      toggles.metricsEnabled,
+		loggingLevel:        logging.level,
 		adminRestartEnabled: toggles.adminRestartEnabled,
 		indexRemoteResults:  toggles.indexRemoteResults,
 		swarmMorphology:     toggles.swarmMorphology,
 		peerSnippetFetch:    toggles.peerSnippetFetch,
 		peerHTTPSPreferred:  toggles.peerHTTPSPreferred,
+		lanDiscovery:        toggles.lanDiscovery,
 		searchLinksNewTab:   toggles.searchLinksNewTab,
 		searchClickCapture:  toggles.searchClickCapture,
 		storageAutosplit:    toggles.storageAutosplit,
@@ -432,6 +448,7 @@ type derivedBoolToggles struct {
 	adminRestartEnabled bool
 	indexRemoteResults  bool
 	peerHTTPSPreferred  bool
+	lanDiscovery        bool
 	swarmMorphology     bool
 	searchLinksNewTab   bool
 	searchClickCapture  bool
@@ -465,11 +482,13 @@ func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, err
 	if err != nil {
 		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envIndexRemoteResults, err)
 	}
-	// Default matches YaCy's network.unit.protocol.https.preferred=false: peers
-	// advertising the SSL flag get https-first with a plain-http retry when on.
 	peerHTTPSPreferred, err := boolEnv(getenv, envPeerHTTPSPreferred, false)
 	if err != nil {
 		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envPeerHTTPSPreferred, err)
+	}
+	lanDiscovery, err := boolEnv(getenv, envLANDiscovery, false)
+	if err != nil {
+		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envLANDiscovery, err)
 	}
 	// Off by default: expanding a single-word swarm query into surface variants
 	// multiplies the peer fan-out, so operators opt in when recall matters more
@@ -510,6 +529,7 @@ func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, err
 		adminRestartEnabled: adminRestartEnabled,
 		indexRemoteResults:  indexRemoteResults,
 		peerHTTPSPreferred:  peerHTTPSPreferred,
+		lanDiscovery:        lanDiscovery,
 		swarmMorphology:     swarmMorphology,
 		peerSnippetFetch:    peerSnippetFetch,
 		searchLinksNewTab:   searchLinksNewTab,
@@ -627,21 +647,14 @@ func configuredDatabasePath(directory string) string {
 }
 
 func publicSelfTestURL(getenv func(string) string, peerAddr string) (*url.URL, error) {
-	raw := strings.TrimSpace(getenv(envPublicSelfTestURL))
-	if raw == "" {
-		return localSelfTestURL(peerAddr)
-	}
-
-	parsed, err := url.Parse(raw)
+	value, err := normalizeOptionalPublicSelfTestURL(getenv(envPublicSelfTestURL))
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", envPublicSelfTestURL, err)
 	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return nil, fmt.Errorf("%s: scheme must be http or https", envPublicSelfTestURL)
+	if value == "" {
+		return localSelfTestURL(peerAddr)
 	}
-	if parsed.Host == "" {
-		return nil, fmt.Errorf("%s: host must be set", envPublicSelfTestURL)
-	}
+	parsed, _ := url.Parse(value)
 
 	return parsed, nil
 }
@@ -672,9 +685,12 @@ func announceCadence(getenv func(string) string) (time.Duration, int, error) {
 }
 
 func greetsPerCycle(getenv func(string) string) (int, error) {
-	return positiveInt(
+	return intRangeEnv(
+		getenv,
 		envGreetsPerCycle,
-		envWithDefault(getenv, envGreetsPerCycle, strconv.Itoa(defaultGreetsPerCycle)),
+		defaultGreetsPerCycle,
+		1,
+		maximumGreetsPerCycle,
 	)
 }
 
@@ -715,20 +731,13 @@ func storageReadDeferBudget(getenv func(string) string) (time.Duration, error) {
 }
 
 func announceInterval(getenv func(string) string) (time.Duration, error) {
-	raw := strings.TrimSpace(getenv(envAnnounceInterval))
-	if raw == "" {
-		return defaultAnnounceInterval, nil
-	}
-
-	interval, err := time.ParseDuration(raw)
-	if err != nil {
-		return 0, fmt.Errorf("%s: %w", envAnnounceInterval, err)
-	}
-	if interval <= 0 {
-		return 0, fmt.Errorf("%s: must be positive", envAnnounceInterval)
-	}
-
-	return interval, nil
+	return durationRangeEnv(
+		getenv,
+		envAnnounceInterval,
+		defaultAnnounceInterval,
+		minimumAnnounceInterval,
+		maximumAnnounceInterval,
+	)
 }
 
 func splitList(raw string) []string {
@@ -749,16 +758,21 @@ func splitList(raw string) []string {
 // NAT or Docker (set YAGO_ADVERTISE_HOST then), and the DHT self-test demotes an
 // unreachable self; detection never fails, so a node that cannot guess an
 // address still starts rather than refusing to boot.
-func advertiseHost(getenv func(string) string, announcing bool) string {
+func advertiseHost(getenv func(string) string, announcing bool) (string, error) {
 	host := strings.TrimSpace(getenv(envAdvertiseHost))
 	if host != "" {
-		return host
+		value, err := parseAdvertiseHost(host)
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", envAdvertiseHost, err)
+		}
+
+		return value, nil
 	}
 	if !announcing {
-		return ""
+		return "", nil
 	}
 
-	return detectAdvertiseHost(net.InterfaceAddrs)
+	return detectAdvertiseHost(net.InterfaceAddrs), nil
 }
 
 // detectAdvertiseHost returns the first non-loopback IPv4 address the machine
@@ -803,7 +817,10 @@ func loadPeerAdvertisement(
 	peerAddr string,
 	announcing bool,
 ) (peerAdvertisement, error) {
-	host := advertiseHost(getenv, announcing)
+	host, err := advertiseHost(getenv, announcing)
+	if err != nil {
+		return peerAdvertisement{}, err
+	}
 	port, err := advertisePort(getenv, peerAddr)
 	if err != nil {
 		return peerAdvertisement{}, err
@@ -824,7 +841,12 @@ func loadPeerAdvertisement(
 
 func advertisePort(getenv func(string) string, peerAddr string) (int, error) {
 	if raw := strings.TrimSpace(getenv(envAdvertisePort)); raw != "" {
-		return positiveInt(envAdvertisePort, raw)
+		port, err := parseBindPort(raw)
+		if err != nil {
+			return 0, fmt.Errorf("%s: %w", envAdvertisePort, err)
+		}
+
+		return port, nil
 	}
 
 	_, portPart, err := net.SplitHostPort(peerAddr)
@@ -832,7 +854,12 @@ func advertisePort(getenv func(string) string, peerAddr string) (int, error) {
 		return 0, fmt.Errorf("%s: %w", envPeerAddr, err)
 	}
 
-	return positiveInt(envPeerAddr, portPart)
+	port, err := parseBindPort(portPart)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", envPeerAddr, err)
+	}
+
+	return port, nil
 }
 
 // publicListenerAddr resolves the dedicated public search listener's address. It
@@ -891,10 +918,6 @@ func loadSeedCapabilities(getenv func(string) string) (seedCapabilities, error) 
 	}, nil
 }
 
-// flags renders the capability set as the YaCy seed flag bitfield.
-// FlagAcceptRemoteCrawl deliberately stays clear: remote crawl execution is
-// disabled for SSRF safety (see doc/remote-crawl-policy.md), and advertising a
-// capability the crawlReceipt endpoint rejects would break the swarm contract.
 func (c seedCapabilities) flags() yagomodel.Flags {
 	flags := yagomodel.ZeroFlags()
 	flags = flags.Set(yagomodel.FlagDirectConnect, c.directConnect)
@@ -908,12 +931,14 @@ func (c seedCapabilities) flags() yagomodel.Flags {
 // configSeedFlags rebuilds the advertised seed flags from a config's capability
 // toggles, so a runtime override to any toggle re-derives the bitfield.
 func configSeedFlags(config nodeConfig) yagomodel.Flags {
-	return seedCapabilities{
+	flags := seedCapabilities{
 		directConnect: config.AdvertiseDirectConnect,
 		remoteIndex:   config.AdvertiseRemoteIndex,
 		rootNode:      config.AdvertiseRootNode,
 		sslAvailable:  config.AdvertiseSSLAvailable,
 	}.flags()
+
+	return flags.Set(yagomodel.FlagAcceptRemoteCrawl, config.RemoteCrawl.Enabled)
 }
 
 // optionalPeerHash parses the peer hash from the environment when set. An empty
@@ -931,18 +956,6 @@ func optionalPeerHash(getenv func(string) string) (yagomodel.Hash, error) {
 	}
 
 	return hash, nil
-}
-
-func positiveInt(key, raw string) (int, error) {
-	value, err := strconv.Atoi(raw)
-	if err != nil {
-		return 0, fmt.Errorf("%s: %w", key, err)
-	}
-	if value <= 0 {
-		return 0, fmt.Errorf("%s: must be positive", key)
-	}
-
-	return value, nil
 }
 
 func envWithDefault(getenv func(string) string, key, fallback string) string {

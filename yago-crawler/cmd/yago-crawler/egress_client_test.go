@@ -129,6 +129,28 @@ func TestLimitedRedirectPolicyCanBlockFirstRedirect(t *testing.T) {
 	}
 }
 
+func TestRedirectPolicyAppliesLiveLimit(t *testing.T) {
+	limit := newRedirectLimit(2)
+	policy := dynamicRedirectPolicy(limit)
+	request, err := http.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"https://example.org/next",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	previous := []*http.Request{request, request}
+	if err := policy(request, previous); err != nil {
+		t.Fatalf("two redirects under initial limit: %v", err)
+	}
+	limit.Set(1)
+	if err := policy(request, previous); !errors.Is(err, errRedirectLimitReached) {
+		t.Fatalf("live redirect limit error = %v", err)
+	}
+}
+
 func TestBuildEgressClientHTTP1SynthesizesTLSWhenCloneHasNone(t *testing.T) {
 	saved := cloneBaseTransport
 	t.Cleanup(func() { cloneBaseTransport = saved })

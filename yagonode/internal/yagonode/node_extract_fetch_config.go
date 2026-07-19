@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -10,8 +11,8 @@ const (
 	envExtractFetchTimeout  = "YAGO_EXTRACT_FETCH_TIMEOUT"
 	envExtractFetchMaxBytes = "YAGO_EXTRACT_FETCH_MAX_BYTES"
 
-	defaultExtractFetchTimeout      = 10 * time.Second
-	defaultExtractFetchMaxBytes int = 2 << 20
+	defaultExtractFetchTimeout        = 10 * time.Second
+	defaultExtractFetchMaxBytes int64 = 2 << 20
 )
 
 // extractFetchConfig holds the optional fetch-on-extract settings for the
@@ -28,11 +29,19 @@ func loadExtractFetchConfig(getenv func(string) string) (extractFetchConfig, err
 	if err != nil {
 		return extractFetchConfig{}, fmt.Errorf("%s: %w", envExtractFetchEnabled, err)
 	}
-	timeout, err := durationEnv(getenv, envExtractFetchTimeout, defaultExtractFetchTimeout)
+	timeout, err := parseOutboundRequestTimeout(envWithDefault(
+		getenv,
+		envExtractFetchTimeout,
+		defaultExtractFetchTimeout.String(),
+	))
 	if err != nil {
 		return extractFetchConfig{}, fmt.Errorf("%s: %w", envExtractFetchTimeout, err)
 	}
-	maxBytes, err := intAtLeastEnv(getenv, envExtractFetchMaxBytes, defaultExtractFetchMaxBytes, 1)
+	maxBytes, err := parseExtractFetchResponseBytes(envWithDefault(
+		getenv,
+		envExtractFetchMaxBytes,
+		strconv.FormatInt(defaultExtractFetchMaxBytes, 10),
+	))
 	if err != nil {
 		return extractFetchConfig{}, fmt.Errorf("%s: %w", envExtractFetchMaxBytes, err)
 	}
@@ -40,6 +49,6 @@ func loadExtractFetchConfig(getenv func(string) string) (extractFetchConfig, err
 	return extractFetchConfig{
 		Enabled:  enabled,
 		Timeout:  timeout,
-		MaxBytes: int64(maxBytes),
+		MaxBytes: maxBytes,
 	}, nil
 }

@@ -47,6 +47,11 @@ untouched.
 Refusing postings remains only as the safety valve for genuine disk exhaustion, when eviction cannot free
 space fast enough to durably retain a new record.
 
+If the normal metadata-backed candidate path is exhausted while usage remains above its target, the
+sweeper uses a separate posting-only fallback. One pass inspects at most 4,096 stored postings from a
+retained cursor and selects only URL hashes that have no URL-metadata row. Purging still removes the
+complete posting lineage for that URL; metadata-backed URLs remain on the freshness path.
+
 ## Considered alternatives
 
 Store-forever then refuse, the prior behavior, was rejected because it freezes the node at its first fill
@@ -66,10 +71,10 @@ distinct capability with its own policy seam.
 
 ## Known limitations
 
-Candidate selection ranks URLs by the freshness recorded in their stored metadata, so a URL that has
-postings but no stored metadata row is never chosen and its postings are never reclaimed by the freshness
-sweep. Postings normally arrive with their metadata, so this is an edge case; reclaiming posting-only
-URLs needs a separate selection path that scans postings rather than metadata, left as a follow-up.
+Posting-only recovery is bounded rather than exhaustive in one pass and can require several sweeps to
+cross the target. A pass that finds posting-only candidates but deletes no posting stops instead of
+spinning. This fallback does not change the freshness order for metadata-backed URLs. Eviction-time
+redistribution remains future work.
 
 ## Consequences
 

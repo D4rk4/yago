@@ -31,8 +31,9 @@ func claimRankingPromotionLease(
 ) rankingPromotionLease {
 	t.Helper()
 	stream, err := client.StreamOrders(ctx, &crawlrpc.WorkerRegistration{
-		WorkerId:        rankingPromotionWorkerID,
-		WorkerSessionId: rankingPromotionSessionID,
+		WorkerId:         rankingPromotionWorkerID,
+		WorkerSessionId:  rankingPromotionSessionID,
+		FetchStartLeases: true,
 	})
 	if err != nil {
 		t.Fatalf("stream ranking crawl order: %v", err)

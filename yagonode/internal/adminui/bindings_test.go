@@ -52,7 +52,9 @@ func TestConsoleConfigRendersBindEditor(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Listen addresses", "Peer protocol (P2P)", `name="host"`,
-		`name="port"`, `value="binding"`, "127.0.0.1 (loopback)",
+		`name="port"`, `value="binding"`, `name="binding_action" value="set"`,
+		`name="csrf_token"`, `action="/admin/configuration#panel-listen"`,
+		`hx-boost="false"`, `data-allow-horizontal-overflow`, "127.0.0.1 (loopback)",
 		"Current desired listener: all interfaces, port 8090.",
 	} {
 		if !strings.Contains(got.body, want) {
@@ -112,11 +114,68 @@ func TestConsoleConfigBindUpdateApplies(t *testing.T) {
 		t.Fatalf("UpdateBinding called %d times, want 1", binding.calls)
 	}
 	if binding.change.Key != "bind.peer" || binding.change.Host != "127.0.0.1" ||
-		binding.change.Port != "8091" {
+		binding.change.Port != "8091" || binding.change.Action != BindActionSet {
 		t.Fatalf("unexpected change %+v", binding.change)
 	}
 	if !strings.Contains(got.body, "after the next restart") {
 		t.Fatal("bind result message not shown")
+	}
+}
+
+func TestConsoleConfigBindingActionsUseTheSameNoJavaScriptForm(t *testing.T) {
+	t.Parallel()
+
+	view := BindingsView{Items: []BindItem{{
+		Key:             "bind.public",
+		Title:           "Public search",
+		Port:            "8080",
+		ListenerEnabled: true,
+		CanDisable:      true,
+		Overridden:      true,
+		Interfaces:      []BindInterface{{Value: "", Label: "All interfaces"}},
+	}}}
+	binding := &fakeBinding{view: view, result: BindResult{OK: true, Message: "Updated."}}
+	console := New(Options{Config: fakeConfig{view: ConfigView{}}, Binding: binding})
+	body := do(t, console, "/admin/configuration").body
+	for _, want := range []string{
+		`name="binding_action" value="set"`,
+		`name="binding_action" value="disable" formnovalidate`,
+		`name="binding_action" value="reset" formnovalidate`,
+		`aria-label="Reset Public search to the environment address"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("binding form missing %q", want)
+		}
+	}
+
+	for _, action := range []BindAction{BindActionDisable, BindActionReset} {
+		got := doPost(t, console, "/admin/configuration", url.Values{
+			"form":           {"binding"},
+			"key":            {"bind.public"},
+			"binding_action": {string(action)},
+		})
+		if got.status != http.StatusOK || binding.change.Action != action {
+			t.Fatalf("action %q = status %d change %+v", action, got.status, binding.change)
+		}
+	}
+}
+
+func TestConsoleConfigBindingPreservesUnknownTypedAction(t *testing.T) {
+	t.Parallel()
+
+	binding := &fakeBinding{view: peerBindingView(), result: BindResult{
+		Message: "Unknown binding action.",
+	}}
+	body := doPost(t, New(Options{
+		Config: fakeConfig{view: ConfigView{}}, Binding: binding,
+	}), "/admin/configuration", url.Values{
+		"form":           {"binding"},
+		"key":            {"bind.peer"},
+		"binding_action": {"future-action"},
+	}).body
+	if binding.change.Action != BindAction("future-action") ||
+		!strings.Contains(body, "Unknown binding action.") {
+		t.Fatalf("unknown action = %+v body=%s", binding.change, body)
 	}
 }
 

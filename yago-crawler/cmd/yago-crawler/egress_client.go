@@ -80,15 +80,25 @@ func buildEgressClient(
 		transport.TLSClientConfig.NextProtos = []string{"http/1.1"}
 	}
 
+	redirects := config.redirectLimit
+	if redirects == nil {
+		redirects = newRedirectLimit(config.MaxRedirects)
+	}
+
 	return &http.Client{
 		Timeout:       config.RequestTimeout,
 		Transport:     transport,
-		CheckRedirect: limitedRedirectPolicy(config.MaxRedirects),
+		CheckRedirect: dynamicRedirectPolicy(redirects),
 	}
 }
 
 func limitedRedirectPolicy(maxRedirects int) func(*http.Request, []*http.Request) error {
+	return dynamicRedirectPolicy(newRedirectLimit(maxRedirects))
+}
+
+func dynamicRedirectPolicy(limit *redirectLimit) func(*http.Request, []*http.Request) error {
 	return func(_ *http.Request, previous []*http.Request) error {
+		maxRedirects := limit.Current()
 		if len(previous) > maxRedirects {
 			return fmt.Errorf(
 				"%w: attempted %d redirects, limit %d",

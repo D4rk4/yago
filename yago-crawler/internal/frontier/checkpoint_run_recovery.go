@@ -87,6 +87,13 @@ func validateCheckpointSnapshot(
 			frontiercheckpoint.ErrCorruptCheckpoint,
 		)
 	}
+	if snapshot.Counters.Pages < snapshot.Counters.Pending ||
+		snapshot.BudgetDiscardedPages > snapshot.Counters.Pages-snapshot.Counters.Pending {
+		return fmt.Errorf(
+			"%w: run page budget accounting is invalid",
+			frontiercheckpoint.ErrCorruptCheckpoint,
+		)
+	}
 	if snapshot.RecoveryBounded &&
 		(snapshot.RecoveryCursor > snapshot.RecoveryUpper ||
 			snapshot.RecoveryComplete != (snapshot.RecoveryCursor == snapshot.RecoveryUpper) ||

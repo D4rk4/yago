@@ -40,6 +40,8 @@ func TestDirectiveFromProtoMapsKinds(t *testing.T) {
 		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_RESTART:                          yagocrawlcontract.CrawlControlRestart,
 		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_WORKERS:                      yagocrawlcontract.CrawlControlSetWorkers,
 		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS:                  yagocrawlcontract.CrawlControlSetActiveRuns,
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_PROCESS_RATE:                 yagocrawlcontract.CrawlControlSetProcessRate,
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_MAXIMUM_REDIRECTS:            yagocrawlcontract.CrawlControlSetMaximumRedirects,
 		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY: yagocrawlcontract.CrawlControlSetAutomaticDiscoveryPriority,
 		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_UNSPECIFIED: yagocrawlcontract.CrawlControlKind(
 			"",
@@ -60,6 +62,8 @@ func TestDirectiveFromProtoEncodesRunID(t *testing.T) {
 		PagesPerMinute:               30,
 		FetchWorkers:                 7,
 		MaximumActiveRuns:            37,
+		ProcessPagesPerSecond:        23,
+		MaximumRedirects:             7,
 		PrioritizeAutomaticDiscovery: true,
 	})
 	if directive.Kind != yagocrawlcontract.CrawlControlSetRate {
@@ -79,6 +83,12 @@ func TestDirectiveFromProtoEncodesRunID(t *testing.T) {
 	}
 	if directive.MaximumActiveRuns != 37 {
 		t.Fatalf("maximum active runs = %d, want 37", directive.MaximumActiveRuns)
+	}
+	if directive.ProcessPagesPerSecond != 23 {
+		t.Fatalf("process pages per second = %d, want 23", directive.ProcessPagesPerSecond)
+	}
+	if directive.MaximumRedirects != 7 {
+		t.Fatalf("maximum redirects = %d, want 7", directive.MaximumRedirects)
 	}
 	if !directive.PrioritizeAutomaticDiscovery {
 		t.Fatal("automatic discovery priority = false, want true")

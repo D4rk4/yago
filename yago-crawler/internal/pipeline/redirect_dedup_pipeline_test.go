@@ -54,6 +54,9 @@ func TestPipelineSkipsRedirectToVisitedTarget(t *testing.T) {
 	if done.outcome.Failed != 0 {
 		t.Error("a duplicate redirect target must not mark the job delivery-failed")
 	}
+	if done.reason != "redirect target was not admitted" {
+		t.Fatalf("redirect outcome reason = %q", done.reason)
+	}
 	if emitted != 0 {
 		t.Errorf("emitted = %d, want 0", emitted)
 	}

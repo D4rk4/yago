@@ -147,8 +147,24 @@ func TestProgressDeliveryCoalescesWithoutBlockingRunCompletion(t *testing.T) {
 		State:      yagocrawlcontract.CrawlRunRunning,
 		Tally:      yagocrawlcontract.CrawlRunTally{Indexed: 4},
 	})
+	closed := make(chan error, 1)
+	go func() { closed <- queue.close(t.Context()) }()
+	deadline := time.After(time.Second)
+	for {
+		queue.mu.Lock()
+		closing := queue.closed
+		queue.mu.Unlock()
+		if closing {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("progress queue did not enter closing state")
+		case <-time.After(time.Millisecond):
+		}
+	}
 	close(gate)
-	if err := queue.close(t.Context()); err != nil {
+	if err := <-closed; err != nil {
 		t.Fatalf("close queue: %v", err)
 	}
 	calls, maxActive := client.snapshot()

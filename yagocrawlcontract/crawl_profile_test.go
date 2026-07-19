@@ -95,6 +95,19 @@ func TestEffectiveMaxPagesPerRunPrefersExplicitLimitAndBoundsFallback(t *testing
 	}
 }
 
+func TestValidCrawlRunLimitsDistinguishesWholeRunAndPerHostBounds(t *testing.T) {
+	for _, limits := range [][2]int{{yagocrawlcontract.UnlimitedPagesPerHost, 0}, {250, 900}} {
+		if !yagocrawlcontract.ValidCrawlRunLimits(limits[0], limits[1]) {
+			t.Fatalf("valid limits rejected: %v", limits)
+		}
+	}
+	for _, limits := range [][2]int{{0, 900}, {-2, 900}, {250, -1}} {
+		if yagocrawlcontract.ValidCrawlRunLimits(limits[0], limits[1]) {
+			t.Fatalf("invalid limits accepted: %v", limits)
+		}
+	}
+}
+
 func TestNonRulesetFieldsDoNotChangeHandle(t *testing.T) {
 	a := yagocrawlcontract.NewCrawlProfile(baseProfile())
 

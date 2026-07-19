@@ -1,6 +1,7 @@
 package yagonode
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -18,11 +19,20 @@ type crossOriginConfig struct {
 	SearchOrigins []string
 }
 
-func loadCrossOriginConfig(getenv func(string) string) crossOriginConfig {
-	return crossOriginConfig{
-		AdminOrigins:  splitList(getenv(envAdminCORSOrigins)),
-		SearchOrigins: splitList(getenv(envSearchCORSOrigins)),
+func loadCrossOriginConfig(getenv func(string) string) (crossOriginConfig, error) {
+	adminOrigins, err := parseCrossOriginList(getenv(envAdminCORSOrigins))
+	if err != nil {
+		return crossOriginConfig{}, fmt.Errorf("%s: %w", envAdminCORSOrigins, err)
 	}
+	searchOrigins, err := parseCrossOriginList(getenv(envSearchCORSOrigins))
+	if err != nil {
+		return crossOriginConfig{}, fmt.Errorf("%s: %w", envSearchCORSOrigins, err)
+	}
+
+	return crossOriginConfig{
+		AdminOrigins:  adminOrigins,
+		SearchOrigins: searchOrigins,
+	}, nil
 }
 
 // wrapAdminCORS fronts the operations handler with a credentialed, default-deny

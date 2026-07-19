@@ -24,10 +24,14 @@ func TestPipelineRunTallyCountsSuccessfulPage(t *testing.T) {
 		okEmitter(),
 	)
 
-	tally := runOneJob(t, p, frontier).outcome
+	done := runOneJob(t, p, frontier)
+	tally := done.outcome
 
 	if tally.Fetched != 1 || tally.Indexed != 1 || tally.Failed != 0 {
 		t.Fatalf("tally = %#v, want fetched 1 indexed 1 failed 0", tally)
+	}
+	if done.httpStatus != 200 {
+		t.Fatalf("HTTP status = %d, want 200", done.httpStatus)
 	}
 }
 
@@ -42,10 +46,17 @@ func TestPipelineRunTallyCountsHardFailure(t *testing.T) {
 		okEmitter(),
 	)
 
-	tally := runOneJob(t, p, frontier).outcome
+	done := runOneJob(t, p, frontier)
+	tally := done.outcome
 
 	if tally.Failed != 1 || tally.Fetched != 0 || tally.Indexed != 0 {
 		t.Fatalf("tally = %#v, want failed 1", tally)
+	}
+	if done.reason != "page fetch failed" {
+		t.Fatalf("fetch failure reason = %q", done.reason)
+	}
+	if done.httpStatus != 0 {
+		t.Fatalf("HTTP status = %d, want unavailable", done.httpStatus)
 	}
 }
 
@@ -85,9 +96,13 @@ func TestPipelineRunTallyCountsRobotsDenial(t *testing.T) {
 		okEmitter(),
 	)
 
-	tally := runOneJob(t, p, frontier).outcome
+	done := runOneJob(t, p, frontier)
+	tally := done.outcome
 
 	if tally.RobotsDenied != 1 || tally.Failed != 0 || tally.Fetched != 0 {
 		t.Fatalf("tally = %#v, want robotsDenied 1 and no failure", tally)
+	}
+	if done.reason != "robots.txt denied the fetch" {
+		t.Fatalf("robots denial reason = %q", done.reason)
 	}
 }

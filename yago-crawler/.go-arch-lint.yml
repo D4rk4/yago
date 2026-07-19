@@ -40,6 +40,12 @@ components:
     in: internal/crawlsettlement/**
   crawlorder:
     in: internal/crawlorder/**
+  crawldenylist:
+    in: internal/crawldenylist/**
+  fetchrate:
+    in: internal/fetchrate/**
+  fleetfetchstart:
+    in: internal/fleetfetchstart/**
   crawladmission:
     in: internal/crawladmission/**
   urltrap:
@@ -153,6 +159,7 @@ deps:
     mayDependOn:
       - pagefetch
     canUse:
+      - yagocrawlcontract
       - yagoegress
   botwall:
     mayDependOn:
@@ -271,6 +278,7 @@ deps:
       - crawlorder
       - boundedqueue
       - crawladmission
+      - crawldenylist
       - crawljob
       - crawllease
       - crawlsettlement
@@ -281,6 +289,23 @@ deps:
       - yagocrawlcontract
       - grpc
       - protobuf
+  crawldenylist:
+    mayDependOn:
+      - crawldenylist
+      - pagefetch
+    canUse:
+      - yagocrawlcontract
+  fetchrate:
+    mayDependOn:
+      - fetchrate
+    canUse:
+      - yagocrawlcontract
+  fleetfetchstart:
+    mayDependOn:
+      - fleetfetchstart
+    canUse:
+      - yagocrawlcontract
+      - grpc
   pipeline:
     mayDependOn:
       - pipeline
@@ -312,6 +337,7 @@ deps:
       - botwall
       - firefoxfetch
       - crawldelay
+      - crawldenylist
       - crawllease
       - crawlpace
       - crawlermetrics
@@ -319,6 +345,8 @@ deps:
       - crawlseed
       - frontier
       - frontiercheckpoint
+      - fetchrate
+      - fleetfetchstart
       - httpfetch
       - ingest
       - pagefetch

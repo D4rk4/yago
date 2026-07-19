@@ -1,6 +1,9 @@
 package main
 
-import "github.com/D4rk4/yago/yago-crawler/internal/frontier"
+import (
+	"github.com/D4rk4/yago/yago-crawler/internal/crawldenylist"
+	"github.com/D4rk4/yago/yago-crawler/internal/frontier"
+)
 
 type crawlFrontierState struct {
 	pace            frontier.CrawlPace
@@ -8,6 +11,7 @@ type crawlFrontierState struct {
 	checkpoint      frontier.Checkpoint
 	shutdown        func()
 	growthAdmission frontier.GrowthAdmission
+	urlDenylist     *crawldenylist.Denylist
 }
 
 func newCrawlFrontier(crawl CrawlConfig, state crawlFrontierState) *frontier.Frontier {
@@ -22,5 +26,6 @@ func newCrawlFrontier(crawl CrawlConfig, state crawlFrontierState) *frontier.Fro
 		frontier.WithCheckpoint(state.checkpoint),
 		frontier.WithCheckpointFailureShutdown(state.shutdown),
 		frontier.WithGrowthAdmission(state.growthAdmission),
+		frontier.WithURLDenylist(state.urlDenylist),
 	)
 }

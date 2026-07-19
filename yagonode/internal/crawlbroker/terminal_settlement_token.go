@@ -25,7 +25,10 @@ func loadTerminalSettlementSecret(
 ) ([]byte, error) {
 	var secret []byte
 	err := storage.Update(context.Background(), func(transaction *vault.Txn) error {
-		persisted, found, _ := secrets.Get(transaction, terminalSettlementSecretKey)
+		persisted, found, err := secrets.Get(transaction, terminalSettlementSecretKey)
+		if err != nil {
+			return fmt.Errorf("read terminal settlement secret: %w", err)
+		}
 		if found {
 			if len(persisted) != sha256.Size {
 				return fmt.Errorf("read terminal settlement secret: invalid length")
@@ -81,6 +84,17 @@ func terminalSettlementToken(
 		digest.Write([]byte{1})
 	} else {
 		digest.Write([]byte{0})
+	}
+	for _, outcome := range request.RecentOutcomes.Chronological() {
+		binary.BigEndian.PutUint64(encoded[:], outcome.Sequence)
+		digest.Write(encoded[:])
+		writeTerminalTokenBytes(digest, []byte(outcome.URL))
+		writeTerminalTokenBytes(digest, []byte(outcome.Class))
+		binary.BigEndian.PutUint64(encoded[:], uint64(outcome.ObservedAt.UnixMilli()))
+		digest.Write(encoded[:])
+		binary.BigEndian.PutUint64(encoded[:], uint64(outcome.HTTPStatus))
+		digest.Write(encoded[:])
+		writeTerminalTokenBytes(digest, []byte(outcome.Reason))
 	}
 
 	return digest.Sum(nil)

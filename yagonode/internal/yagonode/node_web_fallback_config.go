@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -60,6 +61,12 @@ type webFallbackConfig struct {
 	SeedMaxPages int
 }
 
+type webFallbackSeedConfig struct {
+	enabled  bool
+	depth    int
+	maxPages int
+}
+
 // loadWebFallbackPrivacy resolves the web-fallback privacy mode. When the mode is
 // unset it falls back to the legacy YAGO_WEB_FALLBACK_ENABLED flag (enabled ->
 // "enabled", otherwise "disabled") so existing deployments keep their behaviour.
@@ -76,15 +83,12 @@ func loadWebFallbackPrivacy(
 		return webFallbackPrivacyDisabled, nil
 	}
 
-	switch webFallbackPrivacy(raw) {
-	case webFallbackPrivacyDisabled,
-		webFallbackPrivacyExplicit,
-		webFallbackPrivacyEnabled,
-		webFallbackPrivacyAlways:
-		return webFallbackPrivacy(raw), nil
-	default:
-		return "", fmt.Errorf("%s: unknown mode %q", envWebFallbackPrivacy, raw)
+	privacy, err := parseWebFallbackPrivacy(raw)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", envWebFallbackPrivacy, err)
 	}
+
+	return privacy, nil
 }
 
 func loadWebFallbackConfig(getenv func(string) string) (webFallbackConfig, error) {
@@ -100,55 +104,90 @@ func loadWebFallbackConfig(getenv func(string) string) (webFallbackConfig, error
 	if err != nil {
 		return webFallbackConfig{}, err
 	}
-	maxResults, err := intRangeEnv(
-		getenv, envWebFallbackMaxResults,
-		defaultWebFallbackMaxResults, minWebFallbackResults, maxWebFallbackResults,
-	)
+	if err := validateLegacyWebFallbackProvider(getenv(envWebFallbackProvider)); err != nil {
+		return webFallbackConfig{}, fmt.Errorf("%s: %w", envWebFallbackProvider, err)
+	}
+	backend, err := parseWebFallbackBackend(envWithDefault(
+		getenv,
+		envWebFallbackBackend,
+		defaultWebFallbackBackend,
+	))
+	if err != nil {
+		return webFallbackConfig{}, fmt.Errorf("%s: %w", envWebFallbackBackend, err)
+	}
+	maxResults, err := parseWebFallbackMaxResults(envWithDefault(
+		getenv,
+		envWebFallbackMaxResults,
+		strconv.Itoa(defaultWebFallbackMaxResults),
+	))
 	if err != nil {
 		return webFallbackConfig{}, fmt.Errorf("%s: %w", envWebFallbackMaxResults, err)
 	}
-	timeout, err := durationEnv(getenv, envWebFallbackTimeout, defaultWebFallbackTimeout)
+	timeout, err := parseOutboundRequestTimeout(envWithDefault(
+		getenv,
+		envWebFallbackTimeout,
+		defaultWebFallbackTimeout.String(),
+	))
 	if err != nil {
 		return webFallbackConfig{}, fmt.Errorf("%s: %w", envWebFallbackTimeout, err)
 	}
-	cacheTTL, err := durationEnv(getenv, envWebFallbackCacheTTL, defaultWebFallbackCacheTTL)
+	safeSearch, err := parseWebFallbackSafeSearch(envWithDefault(
+		getenv,
+		envWebFallbackSafeSearch,
+		defaultWebFallbackSafeSearch,
+	))
+	if err != nil {
+		return webFallbackConfig{}, fmt.Errorf("%s: %w", envWebFallbackSafeSearch, err)
+	}
+	cacheTTL, err := parseWebFallbackCacheTTL(envWithDefault(
+		getenv,
+		envWebFallbackCacheTTL,
+		defaultWebFallbackCacheTTL.String(),
+	))
 	if err != nil {
 		return webFallbackConfig{}, fmt.Errorf("%s: %w", envWebFallbackCacheTTL, err)
 	}
-	seedCrawl, err := boolEnv(getenv, envWebFallbackSeedCrawl, false)
+	seed, err := loadWebFallbackSeedConfig(getenv)
 	if err != nil {
-		return webFallbackConfig{}, fmt.Errorf("%s: %w", envWebFallbackSeedCrawl, err)
+		return webFallbackConfig{}, err
 	}
-	seedDepth, err := intRangeEnv(
+
+	return webFallbackConfig{
+		Enabled:      enabled,
+		Privacy:      privacy,
+		Trigger:      trigger,
+		Provider:     webFallbackProviderDDGS,
+		Backend:      backend,
+		MaxResults:   maxResults,
+		Timeout:      timeout,
+		SafeSearch:   safeSearch,
+		CacheTTL:     cacheTTL,
+		SeedCrawl:    seed.enabled,
+		SeedDepth:    seed.depth,
+		SeedMaxPages: seed.maxPages,
+	}, nil
+}
+
+func loadWebFallbackSeedConfig(
+	getenv func(string) string,
+) (webFallbackSeedConfig, error) {
+	enabled, err := boolEnv(getenv, envWebFallbackSeedCrawl, false)
+	if err != nil {
+		return webFallbackSeedConfig{}, fmt.Errorf("%s: %w", envWebFallbackSeedCrawl, err)
+	}
+	depth, err := intRangeEnv(
 		getenv, envWebFallbackSeedDepth,
 		defaultWebFallbackSeedDepth, 0, maxWebFallbackSeedDepth,
 	)
 	if err != nil {
-		return webFallbackConfig{}, fmt.Errorf("%s: %w", envWebFallbackSeedDepth, err)
+		return webFallbackSeedConfig{}, fmt.Errorf("%s: %w", envWebFallbackSeedDepth, err)
 	}
-	seedMaxPages, err := intAtLeastEnv(
+	maxPages, err := intAtLeastEnv(
 		getenv, envWebFallbackSeedMaxPage, defaultWebFallbackSeedMaxPages, 1,
 	)
 	if err != nil {
-		return webFallbackConfig{}, fmt.Errorf("%s: %w", envWebFallbackSeedMaxPage, err)
+		return webFallbackSeedConfig{}, fmt.Errorf("%s: %w", envWebFallbackSeedMaxPage, err)
 	}
 
-	return webFallbackConfig{
-		Enabled:    enabled,
-		Privacy:    privacy,
-		Trigger:    trigger,
-		Provider:   envWithDefault(getenv, envWebFallbackProvider, webFallbackProviderDDGS),
-		Backend:    envWithDefault(getenv, envWebFallbackBackend, defaultWebFallbackBackend),
-		MaxResults: maxResults,
-		Timeout:    timeout,
-		SafeSearch: envWithDefault(
-			getenv,
-			envWebFallbackSafeSearch,
-			defaultWebFallbackSafeSearch,
-		),
-		CacheTTL:     cacheTTL,
-		SeedCrawl:    seedCrawl,
-		SeedDepth:    seedDepth,
-		SeedMaxPages: seedMaxPages,
-	}, nil
+	return webFallbackSeedConfig{enabled: enabled, depth: depth, maxPages: maxPages}, nil
 }

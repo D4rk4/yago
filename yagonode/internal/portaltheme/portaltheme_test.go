@@ -345,7 +345,15 @@ func TestThemeDefaultBodiesParseAndRender(t *testing.T) {
 		"free software under the GNU AGPL v3",
 		"body { font-family: Arial, Helvetica, sans-serif;",
 		`<a href="/yacysearch.rss?query=cats">RSS</a>`,
+		"Why this result?",
+		"The query matched the title.",
 	})
+	assertDefaultImageGrid(t, theme)
+	assertDefaultSearchPage(t, theme)
+}
+
+func assertDefaultImageGrid(t *testing.T, theme *portaltheme.Theme) {
+	t.Helper()
 	imageView := resultsView()
 	imageView["imageVertical"] = true
 	grid, ok := theme.Render(context.Background(), portaltheme.PageResults, imageView)
@@ -358,7 +366,10 @@ func TestThemeDefaultBodiesParseAndRender(t *testing.T) {
 		`<div class="lightbox" id="img-0-0">`,
 		`From <a href="https://example.com/a" rel="noreferrer nofollow">First hit</a>`,
 	})
+}
 
+func assertDefaultSearchPage(t *testing.T, theme *portaltheme.Theme) {
+	t.Helper()
 	home, ok := theme.Render(context.Background(), portaltheme.PageSearch, map[string]any{
 		"brand":           "my node",
 		"openSearchTitle": "my node search",
@@ -465,6 +476,7 @@ func resultsView() map[string]any {
 					"provenanceLabel": "local",
 					"date":            "2026-07-01",
 					"cachedUrl":       "/cache?u=1",
+					"reasons":         []string{"The query matched the title."},
 					"images": []map[string]any{
 						{
 							"proxyUrl": "/img?u=1",

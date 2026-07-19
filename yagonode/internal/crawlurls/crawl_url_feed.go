@@ -216,5 +216,9 @@ func metadataPubDate(row yagomodel.URIMetadataRow) string {
 }
 
 func formatYaCyShortSecond(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+
 	return t.UTC().Format(yacyShortSecondLayout)
 }

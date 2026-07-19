@@ -59,6 +59,194 @@ func TestFirefoxPoolRendersOnTwoSessionsConcurrently(t *testing.T) {
 	pool.close()
 }
 
+func TestFirefoxPoolRelaunchesSessionsAfterRedirectLimitChange(t *testing.T) {
+	var launches []int
+	var sessions []*fakeSession
+	pool := newFirefoxPool(
+		BrowserLaunch{Sessions: 1, MaxRedirects: 10},
+		"http://proxy.example",
+		func(_ context.Context, launch BrowserLaunch, _ string) (browserSession, error) {
+			launches = append(launches, launch.MaxRedirects)
+			session := &fakeSession{
+				aliveVal:   true,
+				renderFunc: staticRender("https://example.org/"),
+			}
+			sessions = append(sessions, session)
+
+			return session, nil
+		},
+	)
+	defer pool.close()
+	fetcher := &BrowserPageFetcher{pool: pool}
+	if _, err := pool.render(t.Context(), "https://example.org/first"); err != nil {
+		t.Fatalf("initial render: %v", err)
+	}
+	fetcher.SetMaxRedirects(10)
+	if _, err := pool.render(t.Context(), "https://example.org/same"); err != nil {
+		t.Fatalf("render after unchanged redirect limit: %v", err)
+	}
+	if len(launches) != 1 || sessions[0].closed != 0 {
+		t.Fatalf("unchanged redirect limit restarted browser: %v/%d", launches, sessions[0].closed)
+	}
+	pool.setMaxRedirects(-1)
+	pool.managers[0].setMaxRedirects(-1)
+	fetcher.SetMaxRedirects(2)
+	if len(sessions) != 1 || sessions[0].closed != 0 {
+		t.Fatalf("old browser sessions = %+v", sessions)
+	}
+	if _, err := pool.render(t.Context(), "https://example.org/second"); err != nil {
+		t.Fatalf("render after redirect update: %v", err)
+	}
+	if sessions[0].closed != 1 {
+		t.Fatalf("old browser session closed %d times, want once", sessions[0].closed)
+	}
+	if len(launches) != 2 || launches[0] != 10 || launches[1] != 2 {
+		t.Fatalf("browser redirect limits = %v, want [10 2]", launches)
+	}
+}
+
+func TestFirefoxPoolRelaunchesSessionsAfterSandboxChange(t *testing.T) {
+	var launches []bool
+	var sessions []*fakeSession
+	pool := newFirefoxPool(
+		BrowserLaunch{Sessions: 1, Sandbox: true},
+		"http://proxy.example",
+		func(_ context.Context, launch BrowserLaunch, _ string) (browserSession, error) {
+			launches = append(launches, launch.Sandbox)
+			session := &fakeSession{
+				aliveVal:   true,
+				renderFunc: staticRender("https://example.org/"),
+			}
+			sessions = append(sessions, session)
+
+			return session, nil
+		},
+	)
+	defer pool.close()
+	fetcher := &BrowserPageFetcher{pool: pool}
+	if _, err := pool.render(t.Context(), "https://example.org/first"); err != nil {
+		t.Fatalf("initial render: %v", err)
+	}
+	fetcher.SetSandbox(true)
+	if _, err := pool.render(t.Context(), "https://example.org/same"); err != nil {
+		t.Fatalf("render after unchanged sandbox: %v", err)
+	}
+	if len(launches) != 1 || sessions[0].closed != 0 {
+		t.Fatalf("unchanged sandbox restarted browser: %v/%d", launches, sessions[0].closed)
+	}
+	fetcher.SetSandbox(false)
+	if len(sessions) != 1 || sessions[0].closed != 0 {
+		t.Fatalf("browser closed before its next render: %+v", sessions)
+	}
+	if _, err := pool.render(t.Context(), "https://example.org/second"); err != nil {
+		t.Fatalf("render after sandbox update: %v", err)
+	}
+	if sessions[0].closed != 1 {
+		t.Fatalf("old browser session closed %d times, want once", sessions[0].closed)
+	}
+	if len(launches) != 2 || !launches[0] || launches[1] {
+		t.Fatalf("browser sandbox launches = %v, want [true false]", launches)
+	}
+}
+
+func TestFirefoxPoolSandboxChangeDoesNotWaitForActiveRender(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	pool := newFirefoxPool(
+		BrowserLaunch{Sessions: 1},
+		"http://proxy.example",
+		func(context.Context, BrowserLaunch, string) (browserSession, error) {
+			return &fakeSession{
+				aliveVal: true,
+				renderFunc: func(
+					context.Context,
+					string,
+					time.Duration,
+				) (renderedPage, error) {
+					close(started)
+					<-release
+
+					return renderedPage{url: "https://example.org/"}, nil
+				},
+			}, nil
+		},
+	)
+	defer pool.close()
+	rendered := make(chan error, 1)
+	go func() {
+		_, err := pool.render(t.Context(), "https://example.org/")
+		rendered <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("browser render did not start")
+	}
+	updated := make(chan struct{})
+	go func() {
+		pool.setSandbox(true)
+		close(updated)
+	}()
+	select {
+	case <-updated:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("sandbox update waited for the active browser render")
+	}
+	close(release)
+	if err := <-rendered; err != nil {
+		t.Fatalf("active render: %v", err)
+	}
+}
+
+func TestFirefoxPoolRedirectLimitChangeDoesNotWaitForActiveRender(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	pool := newFirefoxPool(
+		BrowserLaunch{Sessions: 1, MaxRedirects: 10},
+		"http://proxy.example",
+		func(context.Context, BrowserLaunch, string) (browserSession, error) {
+			return &fakeSession{
+				aliveVal: true,
+				renderFunc: func(
+					context.Context,
+					string,
+					time.Duration,
+				) (renderedPage, error) {
+					close(started)
+					<-release
+
+					return renderedPage{url: "https://example.org/"}, nil
+				},
+			}, nil
+		},
+	)
+	defer pool.close()
+	rendered := make(chan error, 1)
+	go func() {
+		_, err := pool.render(t.Context(), "https://example.org/")
+		rendered <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("browser render did not start")
+	}
+	updated := make(chan struct{})
+	go func() {
+		pool.setMaxRedirects(2)
+		close(updated)
+	}()
+	select {
+	case <-updated:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("redirect update waited for the active browser render")
+	}
+	close(release)
+	if err := <-rendered; err != nil {
+		t.Fatalf("active render: %v", err)
+	}
+}
+
 func TestFirefoxPoolHonorsContextWhileAllSessionsAreBusy(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})

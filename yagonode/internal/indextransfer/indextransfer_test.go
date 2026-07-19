@@ -271,6 +271,70 @@ func TestTransferURLPostsYaCyFormAndParsesResponse(t *testing.T) {
 	}
 }
 
+func TestTransferURLSignsControlledNetworkRequest(t *testing.T) {
+	self := yagomodel.Seed{Hash: hashOf(t, "self")}
+	access := yagoproto.NetworkAccess{
+		NetworkName: "private",
+		Mode:        yagoproto.NetworkAuthenticationSaltedMagic,
+		Essentials:  "shared-secret",
+	}
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			if err := request.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			verifier := access
+			verifier.Self = self.Hash
+			if !verifier.Authorizes(request.PostForm) ||
+				request.PostForm.Get(yagoproto.FieldIam) != self.Hash.String() {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+
+				return
+			}
+			response := yagoproto.TransferURLResponse{
+				Result: yagoproto.TransferURLResult(yagoproto.ResultOK),
+			}
+			_, _ = strings.NewReader(response.Encode().Encode()).WriteTo(w)
+		}),
+	)
+	defer server.Close()
+
+	response, err := NewHTTPPeerWriter(
+		server.Client(),
+		"private",
+		self,
+		false,
+		access,
+	).TransferURL(t.Context(), serverSeed(t, server), nil)
+	if err != nil || response.Result != yagoproto.TransferURLResult(yagoproto.ResultOK) {
+		t.Fatalf("controlled URL transfer = %+v, %v", response, err)
+	}
+}
+
+func TestTransfersSurfaceControlledNetworkSigningFailure(t *testing.T) {
+	sentinel := errors.New("signing failed")
+	writer := NewHTTPPeerWriter(
+		http.DefaultClient,
+		"private",
+		yagomodel.Seed{Hash: hashOf(t, "self")},
+		false,
+		yagoproto.NetworkAccess{Mode: yagoproto.NetworkAuthenticationSaltedMagic},
+	)
+	writer.signForm = func(url.Values) error { return sentinel }
+	peer := yagomodel.Seed{}
+	if _, err := writer.TransferRWI(
+		t.Context(),
+		peer,
+		[]yagomodel.RWIPosting{postingOf(t, "word", "url")},
+	); !errors.Is(err, sentinel) || !errors.Is(err, errTransferFailed) {
+		t.Fatalf("RWI signing error = %v", err)
+	}
+	if _, err := writer.TransferURL(t.Context(), peer, nil); !errors.Is(err, sentinel) ||
+		!errors.Is(err, errTransferFailed) {
+		t.Fatalf("URL signing error = %v", err)
+	}
+}
+
 func TestTransferRejectsUnreachablePeer(t *testing.T) {
 	t.Parallel()
 

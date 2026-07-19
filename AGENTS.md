@@ -6,7 +6,7 @@ Workspace instructions: This root `AGENTS.md` is the single canonical agent inst
 
 Project direction: `yago` is not a literal port of Java YaCy, Solr, Lucene, or Kelondro internals. Preserve YaCy wire protocol compatibility and observable peer behavior, keep RWI as the YaCy P2P exchange format, and build a modern Go search/crawler/P2P stack around explicit component boundaries. Java, Solr, Lucene, Kelondro, and servlet-style YaCy UI must not become required internal runtime dependencies.
 
-Search architecture rule: RWI is a compatibility and exchange layer, not the primary local search engine. Local search must move toward a document store plus a full-text search backend abstraction. Use RWI for YaCy-compatible exchange, DHT behavior, and protocol interop; do not rely on RWI as the only local index for snippets, phrase/proximity, Tavily-compatible raw content, answer generation, or semantic reranking.
+Search architecture rule: RWI is a compatibility and exchange layer, not the primary local search engine. Local search uses the document store plus the full-text search backend abstraction. Use RWI for YaCy-compatible exchange, DHT behavior, and protocol interop; do not rely on RWI as the only local index for snippets, phrase/proximity, Tavily-compatible raw content, answer generation, or semantic reranking.
 
 Target runtime architecture:
 
@@ -16,14 +16,12 @@ yago-node
   - peer roster, seedlists, liveness, DHT inbound/outbound
   - RWI vault + URL metadata vault
   - P2P policy, quotas, metrics
-
-yago-searchd
-  - local full-text index
-  - search backend: embedded Bleve (pure Go), tuned for web search
+  - embedded Bleve full-text index behind SearchIndex
   - document store
   - snippets, phrase/proximity, filters, facets
-  - Tavily-compatible POST /search
-  - YaCy-compatible /yacysearch.json and /yacysearch.rss adapter
+  - Tavily-compatible /search, /extract, /crawl, and /map
+  - YaCy-compatible public search adapters and portal
+  - server-rendered Carbon-token admin console with htmx
 
 yago-crawler
   - persistent crawl frontier
@@ -32,14 +30,9 @@ yago-crawler
   - robots.txt, sitemap, canonicalization, politeness
   - content extraction and deduplication
   - emits DocumentIngest + RWI postings + URL metadata
-
-yago-admin-ui
-  - React/Next.js or Vite React
-  - IBM Carbon UI framework
-  - admin functionality comparable to original YaCy categories
 ```
 
-Architecture Agent: Owns boundaries between `yago-node`, `yago-searchd`, `yago-crawler`, and `yago-admin-ui`; prevents Solr/Kelondro/Java YaCy storage and servlet UI assumptions from becoming internal dependencies; defines interfaces between node/search/crawler/document store/admin APIs; plans migration from the current RWI node to a complete search appliance.
+Architecture Agent: Owns the internal node/search/document-store/admin boundaries inside `yago-node` and the transport boundary to `yago-crawler`; prevents Solr/Kelondro/Java YaCy storage and servlet UI assumptions from becoming internal dependencies; keeps those components separable through narrow Go interfaces. A new runtime service boundary requires an explicit ADR and synchronized Docker, systemd, and package topology changes.
 
 P2P Compatibility Agent: Owns `/yacy/hello.html`, seedlists, peer liveness, `/yacy/query.html`, `/yacy/transferRWI.html`, `/yacy/transferURL.html`, `/yacy/search.html`, `/yacy/urls.xml`, inbound transfer, outbound DHT scheduler, batching, retry, peer selection, peer reputation, rate limits, and the compatibility matrix against Java YaCy. Legacy YaCy P2P compatibility must remain stable even if native `yago-v2` P2P is introduced later.
 
@@ -56,7 +49,7 @@ type SearchIndex interface {
 }
 ```
 
-Document Store Agent: Owns storage for canonical URL, normalized URL, title, headings, extracted text, optional raw HTML/WARC reference, language, content type, fetch status, fetch timestamps, content hash, outlinks, inlinks/anchor text when available, and metadata for snippets and Tavily `raw_content`. Without a document store, high-quality snippets, phrase search, Tavily-compatible `include_raw_content`, answer generation, and semantic reranking are not achievable.
+Document Store Agent: Owns storage for canonical URL, normalized URL, title, headings, extracted text, optional raw HTML/WARC reference, language, content type, fetch status, fetch timestamps, content hash, outlinks, inlinks/anchor text when available, and metadata for snippets and Tavily `raw_content`. Keep high-quality snippets, phrase search, Tavily-compatible `include_raw_content`, answer generation, and semantic reranking on this boundary rather than reconstructing them from RWI metadata.
 
 Tavily API Agent: Owns Tavily-compatible `POST /search`, `/extract`, `/crawl`, and `/map`. A default `/search` result always carries `raw_content`, using JSON null when raw content was not requested; it never carries provider provenance. `published_date` is news-only, optional image and favicon keys follow their request flags, and every error body is exactly a detail-only Tavily envelope. Minimum search request fields are `query`, `search_depth`, `max_results`, `include_answer`, `include_raw_content`, `include_domains`, `exclude_domains`, `topic`, `time_range`, and `safe_search`. Provider order is local full-text, optional local semantic/vector, yago/yacy peers, then an optional admin-toggled DDGS web-search provider. `Enabled on search miss` invokes DDGS only after exact/morphological local-plus-federated retrieval and the applicable bounded local recovery produce no result: local-exact rescue for an empty incomplete stage, or local fuzzy recovery after an honest miss. `Always` invokes DDGS in parallel with local and federated search. Internal provenance remains `ddgs`; every human-facing source tag is exactly `web`, never `[ddgs]` or `ddgs`; Tavily-compatible responses do not add a provider marker. Discovered web URLs may optionally be seeded to the crawler. There is no outbound upstream Tavily provider. Do not turn Tavily API into a simple proxy.
 
@@ -66,7 +59,7 @@ Crawler Agent: Owns a production-grade crawler with persistent frontier, states 
 
 Security Agent: Owns SSRF protection, denial of private CIDR/localhost/link-local/multicast/metadata IPs, DNS rebinding protection, crawl sandboxing, max body size, max redirects, allowed schemes, API auth, admin auth, remote crawl default-deny, peer quotas, and spam/index poisoning protections.
 
-Admin UI Agent: Owns IBM Carbon admin UI. UI categories should be comparable to original YaCy administration without copying the legacy servlet UI: Search console, Crawl profiles, Crawl queue, P2P network, Peer details, Seedlists, DHT transfer in/out, Index/storage, Document browser, Search backend status, Tavily-compatible API settings, Security settings, Remote crawl policy, Metrics/performance, Logs/events, and Configuration. Use IBM Carbon with React via Next.js or Vite, and prefer a typed API client generated from OpenAPI when practical.
+Admin UI Agent: Owns the server-rendered IBM Carbon-token admin UI with htmx progressive enhancement. UI categories should be comparable to original YaCy administration without copying the legacy servlet UI: Search console, Crawl profiles, Crawl queue, P2P network, Peer details, Seedlists, DHT transfer in/out, Index/storage, Document browser, Search backend status, Tavily-compatible API settings, Security settings, Remote crawl policy, Metrics/performance, Logs/events, and Configuration. Keep every form usable without JavaScript and read internal state through narrow typed sources instead of introducing a client SPA or unstable JSON coupling.
 
 Observability Agent: Owns `/health`, `/ready`, Prometheus metrics, structured logs, tracing if practical, crawl queue depth, fetch rate, index rate, search latency, P2P transfer success/failure, peer reputation metrics, storage usage, and compaction stats.
 
@@ -86,7 +79,7 @@ Settings parity: Every environment variable that controls node or crawler behavi
 
 Continuity: Maintain one workspace ledger in `CONTINUITY.md`. At the start of every assistant turn, read it, update it with the current goal, constraints, decisions, progress state, and important tool outcomes, then continue the work. Keep it short: facts only, bullets preferred, uncertainty marked `UNCONFIRMED`. Keep `functions.update_plan` for short-term execution scaffolding and `CONTINUITY.md` for durable session state. Replies start with a brief Ledger Snapshot containing Goal, Now/Next, and Open Questions. The ledger keeps these headings: Goal (incl. success criteria), Constraints/Assumptions, Key decisions, State, Done, Now, Next, Open questions, Working set (files/ids/commands).
 
-Жди EOF, а если ты его не видишь, значит файл неполный.
+Wait for EOF; if you cannot see it, the file is incomplete.
 
 Feature catalog: Maintain `FEATURES.md` in the workspace root. It describes project capabilities side by side across `yagonode`, `yago-crawler`, `yagocrawlcontract`, `yagomodel`, and `yagoproto` where relevant. When adding a feature or changing behavior, update the affected capability, surface, status, behavior summary, and relevant files/tests.
 
@@ -104,7 +97,7 @@ Single source of truth: Do not duplicate facts in comments, errors, logs, or sim
 
 Documentation: Each doc is self-contained, concise, plain-language, and user-facing. Links are for navigation only. Avoid cross-doc dependencies, duplicate facts, jargon, implementation details, and rationale. Behavior changes update the relevant module README, `yagonode/doc/`, `FEATURES.md`, and `CONTINUITY.md`; update a root README if one is introduced. Any change to the deployed surface — ports, listeners, service topology, images, or the environment variables a node or crawler reads — must also update `docker-compose.yml.example` (its `ports`, `services`, and `environment` blocks) and the `deploy/systemd/` unit and env-file examples in the same change; these are the canonical deployment references and are kept in sync, never left to drift.
 
-Deployment targets: The `yago-node` and `yago-crawler` binaries must run identically under Docker, systemd on bare metal, and a Debian `.deb` install; see `deploy/README.md`. Do not hardcode a single deployment's assumptions into runtime code. Container-only choices — the bundled firefox-esr browser path, a disabled Firefox content sandbox, and the container filesystem layout — are not defaults baked into the binary; every one is selected through configuration/environment with a default that starts on all targets (a bare domain and its `www.` variant, `YAGO_CRAWLER_BROWSER_PATH` empty for PATH discovery, `YAGO_CRAWLER_BROWSER_SANDBOX` off) and an override for the target that differs. Runtime state lives under an operator-chosen directory (`YAGO_DATA_DIR`), never a fixed container path. Trust roots, the browser binary, and other host facilities come from the OS on bare metal (installed as package dependencies) and from image contents under Docker; the binary discovers them through the environment, it does not assume either. Any new deployment-specific behavior lands as configuration with a cross-target-safe default and is documented for Docker, systemd, and `.deb` together.
+Deployment targets: The `yago-node` and `yago-crawler` binaries must run identically under Docker, systemd on bare metal, and a Debian `.deb` install; see `deploy/README.md`. Do not hardcode a single deployment's assumptions into runtime code. Container-only choices — the bundled firefox-esr browser path, a disabled Firefox content sandbox, and the container filesystem layout — are not defaults baked into the binary; every one is selected through configuration/environment with a default that starts on all targets (a bare domain and its `www.` variant, `YAGO_CRAWLER_BROWSER_PATH` empty for PATH discovery, `YAGO_CRAWLER_BROWSER_SANDBOX` off) and an override for the target that differs. Runtime state lives under an operator-chosen directory (`YAGO_DATA_DIR`), never a fixed container path. Trust roots, the browser binary, and other host facilities come from the OS on bare metal (installed as package dependencies) and from image contents under Docker; the binary discovers them through the environment, it does not assume either. A nonempty browser path must name Firefox or Firefox ESR through a root-owned path whose symlink target and every replaceable ancestor are not group- or other-writable, and the crawler revalidates that trust boundary immediately before each launch. The unauthenticated crawler metrics listener is loopback-only; remote scraping uses a trusted local proxy. Any new deployment-specific behavior lands as configuration with a cross-target-safe default and is documented for Docker, systemd, and `.deb` together.
 
 Release procedure: A release ships exactly what is on `main`, so land and feature-close every change first (tests, `make verify`, Dockerized scans, `FEATURES.md` and docs, commit, push). Then cut the release in strict order. First, tag the released `main` commit with a semantic-version `vX.Y.Z` tag and push the tag — that tag push is the only new-release trigger. The single CI workflow `.github/workflows/release.yml` fires on `v*` tags, runs `make verify`, then builds the `yago-node` and `yago-crawler` binaries for Linux `amd64` and `arm64` with the complete tag injected via ldflags (`GITHUB_REF_NAME`, including its leading `v`), while package metadata uses the numeric part, and publishes the `.deb`, `.rpm`, and tarball artifacts on the GitHub Release through `deploy/debian/build-deb.sh` and `deploy/rpm/build-rpm.sh`. A blocking native Linux `amd64`/`arm64` matrix also builds both product containers from the tagged source with exact version and source-revision identity, smoke-tests their architecture, labels, binaries, and bundled browser, and rejects HIGH or CRITICAL Trivy 0.72.0 vulnerability, secret, or misconfiguration findings. The native jobs export those exact validated images as short-lived workflow artifacts; a separate job verifies them again, publishes one Linux amd64/arm64 multi-architecture manifest list per product to GitHub Packages as `ghcr.io/d4rk4/yago-node:vX.Y.Z` and `ghcr.io/d4rk4/yago-crawler:vX.Y.Z`, and attaches and verifies GitHub-hosted provenance for each final manifest-list digest before the GitHub Release is published. The complete immutable semantic-version tag is the only operator-facing image tag; architecture-suffixed immutable staging references may exist, but never publish `latest`, major-only, minor-only, branch, or date aliases. The packages must be explicitly public and pass anonymous exact-version and digest pulls before the release is considered complete. The GitHub Release assets and GitHub Packages container images are separate distribution surfaces.
 
@@ -135,6 +128,8 @@ Semantic behavior: Do not fix search, crawl routing, ranking, evidence selection
 Testing: Code lands with tests, written in the same change as the code they exercise — never deferred to a follow-up. Pure documentation/configuration changes need lightweight validation only. For code changes, run focused tests first when useful, then `make verify`. Record exact commands and results in `CONTINUITY.md` and the final response. If a test cannot be added or run, state the concrete reason and residual risk.
 
 UI validation: Always start a local instance for every UI change and verify the rendered result with screenshots in both Chrome or Chromium and Firefox. Automated markup or handler tests do not replace this visual cross-browser check.
+
+Shelf stability: Do not add navigation items, monitor rows, metrics, or controls to the Admin shelf without explicit operator approval. Filesystem reserve and storage-pressure facts belong on the Index page, not in the shelf System Monitor.
 
 Coverage: If coverage drops, first remove or refactor code. Find uncovered statements/branches and ask whether they should exist. Delete dead or defensive-only code, collapse unexercised branches, or replace several paths with one covered path. Add tests only for required behavior. Filler tests written only to raise coverage fail the change.
 

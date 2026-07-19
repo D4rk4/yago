@@ -143,7 +143,11 @@ func assertTerminalOrderProgressRecorded(t *testing.T, fixture exactTerminalAckn
 	t.Helper()
 	if fixture.sink.n != 1 || fixture.sink.last.WorkerID != "worker" ||
 		fixture.sink.last.Tally.Fetched != 3 || !fixture.sink.last.RateKnown ||
-		fixture.sink.last.PagesPerMinute != 30 {
+		fixture.sink.last.PagesPerMinute != 30 ||
+		fixture.sink.last.ProfileName != "terminal-exact" ||
+		!fixture.sink.last.LimitsKnown ||
+		fixture.sink.last.MaxPagesPerHost != yagocrawlcontract.UnlimitedPagesPerHost ||
+		fixture.sink.last.MaxPagesPerRun != yagocrawlcontract.DefaultMaxPagesPerRun {
 		t.Fatalf("terminal progress = %d/%+v", fixture.sink.n, fixture.sink.last)
 	}
 	if _, found := leaseRecordFor(t, fixture.queue, fixture.leaseID); found {
@@ -302,6 +306,7 @@ func TestTerminalOrderAcknowledgmentRejectsIncompleteDefinitions(t *testing.T) {
 		copyTerminalOrderAcknowledgment(valid),
 		copyTerminalOrderAcknowledgment(valid),
 		copyTerminalOrderAcknowledgment(valid),
+		copyTerminalOrderAcknowledgment(valid),
 	}
 	cases[1].OrderIdentity = []byte("short")
 	cases[2].WorkerId = ""
@@ -314,6 +319,7 @@ func TestTerminalOrderAcknowledgmentRejectsIncompleteDefinitions(t *testing.T) {
 		"s",
 		yagocrawlcontract.MaximumCrawlerSessionIdentityBytes+1,
 	)
+	cases[9].RecentOutcomes = []*crawlrpc.CrawlURLOutcome{nil}
 	for index, request := range cases {
 		server := newExchangeServer(queue, nil)
 		if _, err := server.AckOrder(

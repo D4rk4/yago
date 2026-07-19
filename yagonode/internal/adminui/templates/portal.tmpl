@@ -27,7 +27,9 @@
             {{if .Overridden}}<span class="cds-tag cds-tag--info">overridden</span>{{end}}
           </span>
           <span class="cds-setting-row__control">
-            {{if .Boolean}}
+            {{if .Sensitive}}
+            <input class="cds-input" type="password" id="portal-{{.Key}}" name="value:{{.Key}}" value="" autocomplete="new-password" placeholder="{{if .Configured}}Configured; leave blank to keep{{else}}Not configured{{end}}">
+            {{else if .Boolean}}
             <input type="hidden" name="bool:{{.Key}}" value="1">
             <label class="cds-checkbox"><input type="checkbox" id="portal-{{.Key}}" name="value:{{.Key}}" value="true"{{if eq .Value "true"}} checked{{end}}> Enabled</label>
             {{else if .Options}}

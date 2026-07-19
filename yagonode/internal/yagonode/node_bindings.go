@@ -29,9 +29,10 @@ type bindDefinition struct {
 }
 
 const (
-	bindKeyPeer   = "bind.peer"
-	bindKeyOps    = "bind.ops"
-	bindKeyPublic = "bind.public"
+	bindKeyCrawler = "bind.crawler"
+	bindKeyPeer    = "bind.peer"
+	bindKeyOps     = "bind.ops"
+	bindKeyPublic  = "bind.public"
 )
 
 func bindDefinitions() []bindDefinition {
@@ -55,6 +56,18 @@ func bindDefinitions() []bindDefinition {
 			current:     func(config nodeConfig) string { return config.PublicAddr },
 			apply: func(config nodeConfig, addr string) nodeConfig {
 				config.PublicAddr = addr
+
+				return config
+			},
+		},
+		{
+			key:         bindKeyCrawler,
+			title:       "Crawler exchange (gRPC)",
+			description: "The crawler order, progress, ingest, and fleet-control listener.",
+			optional:    true,
+			current:     func(config nodeConfig) string { return config.Crawl.ListenAddr },
+			apply: func(config nodeConfig, addr string) nodeConfig {
+				config.Crawl.ListenAddr = addr
 
 				return config
 			},
@@ -93,11 +106,11 @@ func applyBindOverrides(config nodeConfig, overrides map[string]string) nodeConf
 		if !ok {
 			continue
 		}
-		host, port, err := splitBindAddr(raw)
+		address, err := parseBindOverride(def, raw)
 		if err != nil {
 			continue
 		}
-		config = def.apply(config, formatBindAddr(host, port))
+		config = def.apply(config, address)
 	}
 
 	return realignPeerDerivedConfig(config)
@@ -124,9 +137,6 @@ func realignPeerDerivedConfig(config nodeConfig) nodeConfig {
 	return config
 }
 
-// validateNodeBinds rejects malformed listen addresses at boot. An optional
-// surface (the public search listener) with an empty address is disabled, not
-// misconfigured, so it is skipped.
 func validateNodeBinds(config nodeConfig) error {
 	for _, def := range bindDefinitions() {
 		addr := def.current(config)

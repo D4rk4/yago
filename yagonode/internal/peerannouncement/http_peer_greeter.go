@@ -30,6 +30,8 @@ type httpPeerGreeter struct {
 	client      *http.Client
 	networkName string
 	preferHTTPS bool
+	access      yagoproto.NetworkAccess
+	signForm    func(yagoproto.NetworkAccess, url.Values) error
 }
 
 var (
@@ -41,8 +43,17 @@ func newHTTPPeerGreeter(
 	client *http.Client,
 	networkName string,
 	preferHTTPS bool,
+	access ...yagoproto.NetworkAccess,
 ) httpPeerGreeter {
-	return httpPeerGreeter{client: client, networkName: networkName, preferHTTPS: preferHTTPS}
+	configured := yagoproto.NetworkAccess{NetworkName: networkName}
+	if len(access) != 0 {
+		configured = access[0]
+	}
+
+	return httpPeerGreeter{
+		client: client, networkName: networkName, preferHTTPS: preferHTTPS, access: configured,
+		signForm: yagoproto.NetworkAccess.Sign,
+	}
 }
 
 func (g httpPeerGreeter) Greet(
@@ -62,7 +73,15 @@ func (g httpPeerGreeter) Greet(
 		Count:       count,
 		Iam:         self.Hash,
 	}
-	form := request.Form().Encode()
+	formValues := request.Form()
+	if g.access.Mode == yagoproto.NetworkAuthenticationSaltedMagic {
+		access := g.access
+		access.Self = self.Hash
+		if err := g.signForm(access, formValues); err != nil {
+			return greetResult{}, fmt.Errorf("%w: %w", errGreetFailed, err)
+		}
+	}
+	form := formValues.Encode()
 
 	var lastErr error
 	for _, endpoint := range endpoints {

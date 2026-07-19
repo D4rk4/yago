@@ -18,6 +18,7 @@ type BindItem struct {
 	Host            string
 	Port            string
 	ListenerEnabled bool
+	CanDisable      bool
 	Overridden      bool
 	Interfaces      []BindInterface
 }
@@ -32,10 +33,19 @@ type BindingsView struct {
 
 // BindChange is a submitted change to one surface's listen address.
 type BindChange struct {
-	Key  string
-	Host string
-	Port string
+	Key    string
+	Host   string
+	Port   string
+	Action BindAction
 }
+
+type BindAction string
+
+const (
+	BindActionSet     BindAction = "set"
+	BindActionDisable BindAction = "disable"
+	BindActionReset   BindAction = "reset"
+)
 
 // BindResult reports the outcome of a bind change. OK is false for a rejected
 // change, in which case Message is a display-safe reason.

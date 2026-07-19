@@ -23,7 +23,7 @@ import (
 )
 
 func TestFirefoxFetchesRealPagesThroughOneProcess(t *testing.T) {
-	if _, err := firefoxBinary(""); err != nil {
+	if _, err := firefoxBinary(BrowserLaunch{}); err != nil {
 		t.Skipf("no firefox binary: %v", err)
 	}
 

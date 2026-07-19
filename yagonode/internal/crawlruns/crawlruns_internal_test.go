@@ -18,7 +18,8 @@ func TestRegistryRecordUpsertsAndPreservesFirstSeen(t *testing.T) {
 
 	reg.Record(ctx, yagocrawlcontract.CrawlRunProgress{
 		RunID: "a", ProfileName: "docs", State: yagocrawlcontract.CrawlRunRunning,
-		Tally: yagocrawlcontract.CrawlRunTally{Fetched: 2},
+		Tally:           yagocrawlcontract.CrawlRunTally{Fetched: 2},
+		MaxPagesPerHost: 250, MaxPagesPerRun: 900, LimitsKnown: true,
 	})
 	tick = base.Add(time.Minute)
 	reg.Record(ctx, yagocrawlcontract.CrawlRunProgress{
@@ -40,6 +41,28 @@ func TestRegistryRecordUpsertsAndPreservesFirstSeen(t *testing.T) {
 	if run.State != yagocrawlcontract.CrawlRunFinished ||
 		run.Tally.Fetched != 5 || run.Tally.Indexed != 4 {
 		t.Fatalf("run = %+v, want finished snapshot", run)
+	}
+	if !run.LimitsKnown || run.MaxPagesPerHost != 250 || run.MaxPagesPerRun != 900 {
+		t.Fatalf("preserved run limits = %+v", run)
+	}
+	loaded, found := reg.Run("a")
+	if !found || !reflect.DeepEqual(loaded, run) {
+		t.Fatalf("loaded run = %+v/%t", loaded, found)
+	}
+	if _, found := reg.Run("missing"); found {
+		t.Fatal("missing run was reported present")
+	}
+}
+
+func TestTerminalRunKeepsAuthoritativeEffectiveLimits(t *testing.T) {
+	now := time.Unix(200, 0).UTC()
+	run := terminalRunFromProgress(yagocrawlcontract.CrawlRunProgress{
+		RunID: "terminal", State: yagocrawlcontract.CrawlRunFinished,
+		MaxPagesPerHost: 250, MaxPagesPerRun: 900, LimitsKnown: true,
+	}, Run{}, false, now)
+	if !run.LimitsKnown || run.MaxPagesPerHost != 250 || run.MaxPagesPerRun != 900 ||
+		!run.FirstSeen.Equal(now) || !run.Updated.Equal(now) {
+		t.Fatalf("terminal run = %+v", run)
 	}
 }
 

@@ -21,12 +21,17 @@ func (c *CrawlOrderConsumer) reportRunTally(
 		leaseID = leaseIDs[0]
 	}
 	c.progress.ReportRun(ctx, RunReport{
-		Provenance:     order.Provenance,
-		LeaseID:        leaseID,
-		ProfileHandle:  order.Profile.Handle,
-		ProfileName:    order.Profile.Name,
-		State:          state,
-		Tally:          tally,
-		PagesPerMinute: c.frontier.EffectivePagesPerMinute(order.Provenance),
+		Provenance:      order.Provenance,
+		LeaseID:         leaseID,
+		ProfileHandle:   order.Profile.Handle,
+		ProfileName:     order.Profile.Name,
+		State:           state,
+		Tally:           tally,
+		RecentOutcomes:  c.recentRunOutcomes(order.Provenance),
+		PagesPerMinute:  c.frontier.EffectivePagesPerMinute(order.Provenance),
+		MaxPagesPerHost: order.Profile.MaxPagesPerHost,
+		MaxPagesPerRun: order.EffectiveMaxPagesPerRun(
+			yagocrawlcontract.DefaultMaxPagesPerRun,
+		),
 	})
 }

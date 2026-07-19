@@ -58,7 +58,11 @@ func (c *CrawlOrderConsumer) compileCrawlOrder(
 
 		return crawladmission.AdmissionProfile{}, false
 	}
-	profile, err := crawladmission.CompileProfile(order.Profile)
+	profileDefinition := order.Profile
+	if c.maximumDepth > 0 && profileDefinition.MaxDepth > c.maximumDepth {
+		profileDefinition.MaxDepth = c.maximumDepth
+	}
+	profile, err := crawladmission.CompileProfile(profileDefinition)
 	if err != nil {
 		slog.WarnContext(
 			ctx,

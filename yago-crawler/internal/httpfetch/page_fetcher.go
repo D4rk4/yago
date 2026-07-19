@@ -97,6 +97,7 @@ func (f *PageFetcher) Fetch(
 	}
 	return pagefetch.FetchedPage{
 		URL:          finalURL,
+		HTTPStatus:   uint32(response.StatusCode),
 		ContentType:  contentType,
 		Body:         body,
 		LastModified: responseLastModified(response.Header.Get("Last-Modified")),

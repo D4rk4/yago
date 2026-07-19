@@ -92,6 +92,8 @@ components:
     in: internal/metrichistory/**
   crawling:
     in: internal/crawling/**
+  crawlprofilelibrary:
+    in: internal/crawlprofilelibrary/**
   crawlurls:
     in: internal/crawlurls/**
   dhttarget:
@@ -162,6 +164,8 @@ components:
     in: internal/rankingtrain/**
   recrawlfrontier:
     in: internal/recrawlfrontier/**
+  remotecrawl:
+    in: internal/remotecrawl/**
   searchremote:
     in: internal/searchremote/**
   tracectx:
@@ -184,6 +188,8 @@ components:
     in: internal/tavilyapi/**
   yacysearch:
     in: internal/yacysearch/**
+  resultreason:
+    in: internal/resultreason/**
   snippetmark:
     in: internal/snippetmark/**
   websearch:
@@ -413,6 +419,7 @@ deps:
       - hostlinks
       - hostlinkgraph
       - httpguard
+      - nodeidentity
     canUse:
       - yagoproto
   peermessage:
@@ -443,6 +450,7 @@ deps:
     mayDependOn:
       - sharedblacklist
       - httpguard
+      - nodeidentity
     canUse:
       - yagoproto
   bootstrap:
@@ -471,6 +479,13 @@ deps:
     canUse:
       - yagomodel
       - yagoproto
+  crawlprofilelibrary:
+    mayDependOn:
+      - crawlprofilelibrary
+      - vault
+      - memvault
+    canUse:
+      - yagocrawlcontract
   crawlurls:
     mayDependOn:
       - crawlurls
@@ -705,6 +720,19 @@ deps:
     canUse:
       - yagomodel
       - yagocrawlcontract
+  remotecrawl:
+    mayDependOn:
+      - remotecrawl
+      - crawlurls
+      - urlmeta
+      - vault
+      - memvault
+      - boltvault
+    canUse:
+      - yagocrawlcontract
+      - yagoegress
+      - yagomodel
+      - yagoproto
   crawlschedule:
     mayDependOn:
       - crawlschedule
@@ -752,8 +780,13 @@ deps:
       - searchcore
       - snippetmark
       - cachedpage
+      - resultreason
     canUse:
       - yagoproto
+  resultreason:
+    mayDependOn:
+      - resultreason
+      - searchcore
   snippetmark:
     mayDependOn:
       - snippetmark
@@ -796,6 +829,7 @@ deps:
       - metrics
       - eviction
       - dhtexchange
+      - remotecrawl
     canUse:
       - yagomodel
       - yagocrawlcontract
@@ -989,6 +1023,7 @@ deps:
       - crawlbroker
       - crawlruns
       - recrawlfrontier
+      - remotecrawl
       - adminauth
       - crossorigin
       - compatibility
@@ -1010,10 +1045,12 @@ deps:
       - rankingprofile
       - tavilyapi
       - yacysearch
+      - resultreason
       - websearch
       - extractfetch
       - snippetmark
       - landiscovery
+      - crawlprofilelibrary
     canUse:
       - yagocrawlcontract
       - yagoegress
@@ -1021,6 +1058,7 @@ deps:
       - yagoproto
       - prometheus
       - grpc
+      - xnet
   cmd:
     mayDependOn:
       - yagonode

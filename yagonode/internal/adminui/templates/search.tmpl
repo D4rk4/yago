@@ -27,6 +27,26 @@
       Local index only
     </label>
   </fieldset>
+  <fieldset class="cds-fieldset">
+    <legend class="cds-legend">Filters</legend>
+    <div class="cds-form cds-form--inline">
+      <div class="cds-field">
+        <label class="cds-label" for="contentdom">Content domain</label>
+        <select class="cds-input" id="contentdom" name="contentdom">
+          {{$domain := .Filters.ContentDomain}}
+          {{range .ContentDomains}}<option value="{{.Value}}"{{if or (eq .Value $domain) (and (eq $domain "") (eq .Value "text"))}} selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+      </div>
+      <div class="cds-field">
+        <label class="cds-label" for="language">Language</label>
+        <input class="cds-input" type="text" id="language" name="language" value="{{.Filters.Language}}" placeholder="for example, en or ru" autocomplete="off">
+      </div>
+      <div class="cds-field">
+        <label class="cds-label" for="sitehost">Site host</label>
+        <input class="cds-input" type="text" id="sitehost" name="sitehost" value="{{.Filters.SiteHost}}" placeholder="example.org" autocomplete="off">
+      </div>
+    </div>
+  </fieldset>
   <button class="cds-btn" type="submit">Search</button>
 </form>
 {{if .ExplainURL}}<p><a href="{{.ExplainURL}}">Explain this ranking in YagoRank</a></p>{{end}}

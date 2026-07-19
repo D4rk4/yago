@@ -18,7 +18,10 @@ func (e *searchExplainEndpoint) Explain(
 	if global {
 		scope = searchcore.SourceGlobal
 	}
-	response, _, err := e.explanation(ctx, searchExplainRequest{Query: query, Scope: scope})
+	response, _, err := e.observedExplanation(
+		ctx,
+		searchExplainRequest{Query: query, Scope: scope},
+	)
 	if err != nil {
 		return adminui.SearchExplanation{}, err
 	}

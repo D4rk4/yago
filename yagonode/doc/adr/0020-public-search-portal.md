@@ -1,10 +1,14 @@
-# 20. Public search portal as a progressively-enhanced surface separate from the admin SPA
+# 20. Public search portal as a progressively-enhanced surface separate from the admin console
 
 Date: 2026-07-03
 
 ## Status
 
 Accepted
+
+ADR-0022 supersedes every React-SPA assumption about the admin console below.
+The public portal decision remains current: it is a separate server-rendered,
+progressively enhanced surface.
 
 ## Context
 
@@ -47,6 +51,11 @@ rather than as part of the admin React SPA:
   for query logging.
 - It renders DDGS results with visible web provenance and explains that the
   external provider received the query (ADR-0019).
+- Each result exposes a "Why this result?" disclosure with at most six reasons
+  from the same bounded source and ranking evidence already attached to the
+  result. The built-in portal, default operator results theme, and
+  `/yacysearch.html` share that source. Rendering reasons does not run another
+  search, call a provider, or change the ranking.
 
 ## Consequences
 

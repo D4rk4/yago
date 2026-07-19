@@ -76,6 +76,10 @@ The registry publishes:
   `crawl_search_index_write_failures_total`,
   `crawl_search_index_write_duration_seconds`). A failed attempt contributes no
   successful document count, and these series carry no URL or error labels.
+- **Remote crawl** — opt-in YaCy delegation decisions by the fixed `action` and
+  `outcome` vocabulary (`remote_crawl_decisions_total`). A decision with items
+  advances by its bounded item count; a rejection or empty decision advances by
+  one. Peer hashes, URLs, and errors are never metric labels.
 
 The DHT Prometheus series are separate from the cumulative sent/received word
 and URL values advertised in the peer seed. Seed tallies include unflushed

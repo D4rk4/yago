@@ -28,6 +28,10 @@ func TestDefaultCrawlConfig(t *testing.T) {
 			yagocrawlcontract.DefaultActiveCrawlRunConcurrency,
 		)
 	}
+	if cfg.ProcessPagesPerSecond != yagocrawlcontract.DefaultProcessPagesPerSecond {
+		t.Errorf("process pages per second = %d, want %d", cfg.ProcessPagesPerSecond,
+			yagocrawlcontract.DefaultProcessPagesPerSecond)
+	}
 	if cfg.MaxRedirects != DefaultMaxRedirects {
 		t.Errorf("redirects = %d", cfg.MaxRedirects)
 	}
@@ -201,6 +205,10 @@ func TestLoadServiceConfigDefaults(t *testing.T) {
 		t.Errorf("run pages per minute = %d, want %d",
 			cfg.Crawl.RunPagesPerMinute, DefaultRunPagesPerMinute)
 	}
+	if cfg.Crawl.ProcessPagesPerSecond != yagocrawlcontract.DefaultProcessPagesPerSecond {
+		t.Errorf("process pages per second = %d, want %d", cfg.Crawl.ProcessPagesPerSecond,
+			yagocrawlcontract.DefaultProcessPagesPerSecond)
+	}
 	if cfg.Crawl.RequestTimeout != DefaultRequestTimeout ||
 		cfg.Crawl.ConnectTimeout != DefaultConnectTimeout ||
 		cfg.Crawl.TLSTimeout != DefaultTLSTimeout ||
@@ -224,6 +232,12 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
+	assertCrawlerServiceOverrides(t, cfg)
+	assertCrawlerBehaviorOverrides(t, cfg.Crawl)
+}
+
+func assertCrawlerServiceOverrides(t *testing.T, cfg ServiceConfig) {
+	t.Helper()
 	if cfg.Crawl.BrowserPath != "/usr/bin/firefox-esr" {
 		t.Errorf("browser path = %q, want /usr/bin/firefox-esr", cfg.Crawl.BrowserPath)
 	}
@@ -248,40 +262,47 @@ func TestLoadServiceConfigOverrides(t *testing.T) {
 	if !cfg.EgressAllowLAN {
 		t.Error("EgressAllowLAN = false, want true")
 	}
-	if cfg.Crawl.Workers != 3 || cfg.Crawl.MaxActiveRuns != 19 || cfg.Crawl.MaxDepth != 5 {
+}
+
+func assertCrawlerBehaviorOverrides(t *testing.T, crawl CrawlConfig) {
+	t.Helper()
+	if crawl.Workers != 3 || crawl.MaxActiveRuns != 19 || crawl.MaxDepth != 5 {
 		t.Errorf(
 			"workers/active runs/depth = %d %d %d",
-			cfg.Crawl.Workers,
-			cfg.Crawl.MaxActiveRuns,
-			cfg.Crawl.MaxDepth,
+			crawl.Workers,
+			crawl.MaxActiveRuns,
+			crawl.MaxDepth,
 		)
 	}
-	if cfg.Crawl.PrioritizeAutomaticDiscovery {
+	if crawl.PrioritizeAutomaticDiscovery {
 		t.Error("automatic discovery priority = true, want false override")
 	}
-	if cfg.Crawl.MaxPagesPerRun != 12345 {
-		t.Errorf("max pages per run = %d, want 12345", cfg.Crawl.MaxPagesPerRun)
+	if crawl.ProcessPagesPerSecond != 17 {
+		t.Errorf("process pages per second = %d, want 17", crawl.ProcessPagesPerSecond)
 	}
-	if cfg.Crawl.MaxHostConcurrency != 6 {
-		t.Errorf("max host concurrency = %d, want 6", cfg.Crawl.MaxHostConcurrency)
+	if crawl.MaxPagesPerRun != 12345 {
+		t.Errorf("max pages per run = %d, want 12345", crawl.MaxPagesPerRun)
 	}
-	if cfg.Crawl.CrawlDelay != 250*time.Millisecond {
-		t.Errorf("delay = %v", cfg.Crawl.CrawlDelay)
+	if crawl.MaxHostConcurrency != 6 {
+		t.Errorf("max host concurrency = %d, want 6", crawl.MaxHostConcurrency)
 	}
-	if cfg.Crawl.UserAgent != "test-agent" {
-		t.Errorf("user agent = %q", cfg.Crawl.UserAgent)
+	if crawl.CrawlDelay != 250*time.Millisecond {
+		t.Errorf("delay = %v", crawl.CrawlDelay)
 	}
-	if cfg.Crawl.MaxRedirects != 2 {
-		t.Errorf("redirects = %d", cfg.Crawl.MaxRedirects)
+	if crawl.UserAgent != "test-agent" {
+		t.Errorf("user agent = %q", crawl.UserAgent)
 	}
-	if cfg.Crawl.SitemapURLLimit != 9 {
-		t.Errorf("sitemap URL limit = %d", cfg.Crawl.SitemapURLLimit)
+	if crawl.MaxRedirects != 2 {
+		t.Errorf("redirects = %d", crawl.MaxRedirects)
 	}
-	if cfg.Crawl.RequestTimeout != 20*time.Second ||
-		cfg.Crawl.ConnectTimeout != 4*time.Second ||
-		cfg.Crawl.TLSTimeout != 3*time.Second ||
-		cfg.Crawl.HeaderTimeout != 2*time.Second {
-		t.Errorf("timeouts = %+v", cfg.Crawl)
+	if crawl.SitemapURLLimit != 9 {
+		t.Errorf("sitemap URL limit = %d", crawl.SitemapURLLimit)
+	}
+	if crawl.RequestTimeout != 20*time.Second ||
+		crawl.ConnectTimeout != 4*time.Second ||
+		crawl.TLSTimeout != 3*time.Second ||
+		crawl.HeaderTimeout != 2*time.Second {
+		t.Errorf("timeouts = %+v", crawl)
 	}
 }
 
@@ -294,6 +315,7 @@ func overrideServiceEnvironment() map[string]string {
 		EnvShutdownGrace:                "5s",
 		EnvEgressAllowLAN:               "true",
 		EnvWorkers:                      "3",
+		EnvProcessPagesPerSecond:        "17",
 		EnvMaxActiveRuns:                "19",
 		EnvPrioritizeAutomaticDiscovery: "false",
 		EnvMaxHostConcurrency:           "6",
@@ -316,17 +338,21 @@ func overrideServiceEnvironment() map[string]string {
 func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 	base := map[string]string{EnvNodeRPCAddr: "node:9091"}
 	cases := map[string]string{
-		EnvWorkers:         "0",
-		EnvMaxActiveRuns:   "0",
-		EnvMaxDepth:        "abc",
-		EnvMaxPagesPerRun:  "-5",
-		EnvCrawlDelay:      "-1s",
-		EnvMaxRedirects:    "-1",
-		EnvRequestTimeout:  "0s",
-		EnvConnectTimeout:  "0s",
-		EnvTLSTimeout:      "0s",
-		EnvHeaderTimeout:   "0s",
-		EnvSitemapURLLimit: "0",
+		EnvWorkers:               "0",
+		EnvProcessPagesPerSecond: "-1",
+		EnvMaxActiveRuns:         "0",
+		EnvMaxDepth:              "abc",
+		EnvMaxPagesPerRun:        "-5",
+		EnvCrawlDelay:            "-1s",
+		EnvMaxRedirects:          "-1",
+		EnvRequestTimeout:        "0s",
+		EnvConnectTimeout:        "0s",
+		EnvTLSTimeout:            "0s",
+		EnvHeaderTimeout:         "0s",
+		EnvSitemapURLLimit:       "0",
+		EnvMetricsAddr:           "localhost:9101",
+		EnvBrowserPath:           "firefox-esr",
+		EnvWorkerID:              "crawler\n7",
 	}
 	for key, bad := range cases {
 		env := map[string]string{}
@@ -337,6 +363,42 @@ func TestLoadServiceConfigRejectsInvalidValues(t *testing.T) {
 		if _, err := LoadServiceConfig(envFrom(env)); err == nil {
 			t.Errorf("%s=%q: expected error", key, bad)
 		}
+	}
+}
+
+func TestLoadServiceConfigRejectsSchedulerValuesAboveContractBounds(t *testing.T) {
+	for key, value := range map[string]string{
+		EnvWorkers:                 "257",
+		EnvProcessPagesPerSecond:   "1000001",
+		EnvMaxActiveRuns:           "257",
+		EnvMaxRedirects:            "1001",
+		EnvBrowserFailureThreshold: "1001",
+		EnvMaxDepth:                "65",
+		EnvMaxHostConcurrency:      "257",
+		EnvRunPagesPerMinute:       "1000001",
+		EnvSitemapURLLimit:         "1000001",
+		EnvCrawlDelay:              "1h1ms",
+		EnvConnectTimeout:          "2m1ms",
+		EnvHeaderTimeout:           "2m1ms",
+		EnvRequestTimeout:          "10m1ms",
+		EnvTLSTimeout:              "2m1ms",
+		EnvShutdownGrace:           "5m1ms",
+		EnvUserAgent:               "bad\nagent",
+		EnvEgressAllowCIDRs:        "127.0.0.0/8",
+	} {
+		env := map[string]string{EnvNodeRPCAddr: "node:9091", key: value}
+		if _, err := LoadServiceConfig(envFrom(env)); err == nil {
+			t.Fatalf("expected %s=%s to fail", key, value)
+		}
+	}
+}
+
+func TestLoadServiceConfigRejectsRunRateIntegerWrap(t *testing.T) {
+	if _, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNodeRPCAddr:       "node:9091",
+		EnvRunPagesPerMinute: "4294967296",
+	})); err == nil {
+		t.Fatal("run rate above uint32 range was accepted as unlimited")
 	}
 }
 
@@ -351,6 +413,7 @@ func TestLoadServiceConfigRejectsParseErrors(t *testing.T) {
 		EnvMaxRedirects:                 "not-a-number",
 		EnvSitemapURLLimit:              "not-a-number",
 		EnvMaxHostConcurrency:           "not-a-number",
+		EnvProcessPagesPerSecond:        "not-a-number",
 		EnvMaxActiveRuns:                "not-a-number",
 		EnvBrowserSandbox:               "not-a-bool",
 		EnvBrowserFailureThreshold:      "not-a-number",

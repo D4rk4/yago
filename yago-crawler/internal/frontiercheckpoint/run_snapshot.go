@@ -47,18 +47,19 @@ func (checkpoint *FrontierCheckpoint) Load(
 
 func snapshotFromRecord(record runRecord) Snapshot {
 	return Snapshot{
-		Visited:       make(map[string]struct{}),
-		Counters:      Counters{Pages: record.Pages, Pending: record.Pending},
-		HostStates:    make(map[string]HostState),
-		OrderIdentity: append([]byte(nil), record.OrderIdentity...),
-		Priority:      record.Priority,
-		Failed:        record.Failed,
-		Seeding:       record.Seeding,
-		Completed:     record.Completed,
-		Tally:         record.Tally,
-		SeedManifest:  record.SeedManifest,
-		SeedCursor:    record.SeedCursor,
-		SeedLength:    record.SeedLength,
+		Visited:              make(map[string]struct{}),
+		Counters:             Counters{Pages: record.Pages, Pending: record.Pending},
+		BudgetDiscardedPages: record.BudgetDiscardedPages,
+		HostStates:           make(map[string]HostState),
+		OrderIdentity:        append([]byte(nil), record.OrderIdentity...),
+		Priority:             record.Priority,
+		Failed:               record.Failed,
+		Seeding:              record.Seeding,
+		Completed:            record.Completed,
+		Tally:                record.Tally,
+		SeedManifest:         record.SeedManifest,
+		SeedCursor:           record.SeedCursor,
+		SeedLength:           record.SeedLength,
 		Control: RunControl{
 			Paused:         record.Paused,
 			Cancelled:      record.Cancelled,
@@ -200,6 +201,9 @@ func validateSnapshot(snapshot Snapshot) error {
 	}
 	if snapshot.Counters.Pages < snapshot.Counters.Pending {
 		return fmt.Errorf("%w: page total is smaller than pending total", ErrCorruptCheckpoint)
+	}
+	if snapshot.BudgetDiscardedPages > snapshot.Counters.Pages-snapshot.Counters.Pending {
+		return fmt.Errorf("%w: budget-discarded pages exceed consumed pages", ErrCorruptCheckpoint)
 	}
 	if snapshot.SeedCursor > snapshot.SeedLength ||
 		snapshot.SeedLength != uint64(len(snapshot.SeedPages)) ||

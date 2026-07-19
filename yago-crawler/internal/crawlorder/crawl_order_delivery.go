@@ -20,6 +20,7 @@ type terminalRunSettlement struct {
 	Disposition    crawlOrderDisposition
 	State          yagocrawlcontract.CrawlRunState
 	Tally          yagocrawlcontract.CrawlRunTally
+	RecentOutcomes yagocrawlcontract.CrawlURLOutcomeHistory
 	PagesPerMinute uint32
 	RateKnown      bool
 }

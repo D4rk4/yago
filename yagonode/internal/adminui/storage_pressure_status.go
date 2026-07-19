@@ -14,30 +14,30 @@ type StoragePressureStatusSource interface {
 	StoragePressureStatus() StoragePressureStatus
 }
 
-func applyStoragePressureStatus(
-	view systemMonitorView,
+func applyIndexNodeStorageStatus(
+	view indexStorageStatus,
 	source StoragePressureStatusSource,
-) systemMonitorView {
+) indexStorageStatus {
 	if source == nil {
 		return view
 	}
 	status := source.StoragePressureStatus()
-	view.NodeStoragePressureVisible = true
-	view.NodeStoragePressured = status.Pressured
+	view.NodeVisible = true
+	view.NodePressured = status.Pressured
 	if !status.MeasurementAvailable {
-		view.NodeStoragePressureText = "Measurement unavailable · gate-managed crawl/index ingestion paused · free filesystem space or lower reserve and recovery margin; bbolt deletion may only create reusable internal pages"
+		view.NodeText = "Measurement unavailable · gate-managed crawl/index ingestion paused · free filesystem space or lower reserve and recovery margin; bbolt deletion may only create reusable internal pages"
 
 		return view
 	}
-	view.NodeStoragePressureAvailable = true
-	view.NodeStoragePressureText = storagePressureBytes(status.AvailableBytes) +
+	view.NodeAvailable = true
+	view.NodeText = storagePressureBytes(status.AvailableBytes) +
 		" available · reserve " + storagePressureBytes(status.ReservedFreeBytes)
 	if status.PressureHysteresisBytes > 0 {
-		view.NodeStoragePressureText += " + " +
+		view.NodeText += " + " +
 			storagePressureBytes(status.PressureHysteresisBytes) + " recovery margin"
 	}
 	if status.Pressured {
-		view.NodeStoragePressureText += " · gate-managed crawl/index ingestion paused · free filesystem space or lower reserve and recovery margin; bbolt deletion may only create reusable internal pages"
+		view.NodeText += " · gate-managed crawl/index ingestion paused · free filesystem space or lower reserve and recovery margin; bbolt deletion may only create reusable internal pages"
 	}
 
 	return view

@@ -17,6 +17,7 @@ type terminalLeaseRequest struct {
 	WorkerSessionID   string
 	State             yagocrawlcontract.CrawlRunState
 	Tally             yagocrawlcontract.CrawlRunTally
+	RecentOutcomes    yagocrawlcontract.CrawlURLOutcomeHistory
 	Rate              uint32
 	RateKnown         bool
 	ConfirmationToken []byte
@@ -28,7 +29,8 @@ func terminalLeaseRequestFromProto(
 	rich := len(acknowledgment.GetOrderIdentity()) != 0 ||
 		acknowledgment.GetTerminalState() != crawlrpc.CrawlRunState_CRAWL_RUN_STATE_UNSPECIFIED ||
 		acknowledgment.GetTerminalTally() != nil || acknowledgment.PagesPerMinute != nil ||
-		len(acknowledgment.GetConfirmationToken()) != 0
+		len(acknowledgment.GetConfirmationToken()) != 0 ||
+		len(acknowledgment.GetRecentOutcomes()) != 0
 	if !rich {
 		return terminalLeaseRequest{}, false, nil
 	}
@@ -47,6 +49,14 @@ func terminalLeaseRequestFromProto(
 		RateKnown:         acknowledgment.PagesPerMinute != nil,
 		ConfirmationToken: append([]byte(nil), acknowledgment.GetConfirmationToken()...),
 	}
+	outcomes, err := crawlURLOutcomeHistoryFromProto(
+		acknowledgment.GetRecentOutcomes(),
+		request.WorkerSessionID,
+	)
+	if err != nil {
+		return terminalLeaseRequest{}, true, err
+	}
+	request.RecentOutcomes = outcomes
 	if acknowledgment.GetRequeue() {
 		request.Outcome = leaseSettlementRequeued
 	}
@@ -54,6 +64,7 @@ func terminalLeaseRequestFromProto(
 		len(request.OrderIdentity) != sha256.Size ||
 		!validCrawlerLeaseIdentity(request.WorkerID, request.WorkerSessionID) ||
 		acknowledgment.GetTerminalTally() == nil || request.Tally.Pending != 0 ||
+		!request.RecentOutcomes.Valid() ||
 		len(request.ConfirmationToken) != 0 && len(request.ConfirmationToken) != sha256.Size {
 		return terminalLeaseRequest{}, true, fmt.Errorf("invalid terminal crawl lease definition")
 	}
@@ -80,6 +91,10 @@ func validateTerminalLeaseDefinition(
 ) error {
 	if len(orderIdentity) != sha256.Size || progress.WorkerID == "" || progress.RunID == "" ||
 		progress.Tally.Pending != 0 ||
+		progress.LimitsKnown && !yagocrawlcontract.ValidCrawlRunLimits(
+			progress.MaxPagesPerHost,
+			progress.MaxPagesPerRun,
+		) ||
 		progress.State != yagocrawlcontract.CrawlRunFinished &&
 			progress.State != yagocrawlcontract.CrawlRunCancelled {
 		return fmt.Errorf("invalid terminal crawl lease definition")

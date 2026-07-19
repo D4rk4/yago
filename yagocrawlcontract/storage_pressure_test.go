@@ -290,6 +290,8 @@ func TestStoragePressureWaitRefreshesUntilRecovery(t *testing.T) {
 func TestStoragePressureWaitersShareCachedMeasurements(t *testing.T) {
 	var calls atomic.Uint64
 	var available atomic.Uint64
+	var elapsedNanoseconds atomic.Int64
+	startedAt := time.Unix(1, 0)
 	gate := newStoragePressureGate(
 		"data",
 		StoragePressurePolicy{ReservedFreeBytes: 1},
@@ -298,7 +300,9 @@ func TestStoragePressureWaitersShareCachedMeasurements(t *testing.T) {
 
 			return available.Load(), nil
 		},
-		time.Now,
+		func() time.Time {
+			return startedAt.Add(time.Duration(elapsedNanoseconds.Load()))
+		},
 		10*time.Millisecond,
 	)
 	if err := gate.CheckGrowth(); !errors.Is(err, ErrStoragePressure) {
@@ -311,15 +315,15 @@ func TestStoragePressureWaitersShareCachedMeasurements(t *testing.T) {
 	for range waiters {
 		go func() { results <- gate.WaitForGrowth(ctx) }()
 	}
-	time.Sleep(15 * time.Millisecond)
 	available.Store(2)
+	elapsedNanoseconds.Store(int64(11 * time.Millisecond))
 	for range waiters {
 		if !<-results {
 			t.Fatal("recovered waiter rejected growth")
 		}
 	}
-	if measured := calls.Load(); measured > 5 {
-		t.Fatalf("shared waiters made %d availability measurements", measured)
+	if measured := calls.Load(); measured != 2 {
+		t.Fatalf("shared waiters made %d availability measurements, want 2", measured)
 	}
 }
 

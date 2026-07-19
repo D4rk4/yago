@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/memvault"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -58,6 +59,21 @@ func TestOpenSurfacesPriorityIndexReconciliationFailure(t *testing.T) {
 	}
 	if _, err := Open(Config{ListenAddr: "127.0.0.1:0"}, v, nil); err == nil {
 		t.Fatal("expected priority index reconciliation failure")
+	}
+}
+
+func TestOpenRejectsInvalidCrawlerRuntimePolicy(t *testing.T) {
+	storage, err := memvault.Open(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = storage.Close() })
+	policy := yagocrawlcontract.DefaultCrawlerRuntimePolicy()
+	policy.MaximumDepth = 0
+	if _, err := Open(Config{
+		ListenAddr: "127.0.0.1:0", RuntimePolicy: policy,
+	}, storage, nil); err == nil {
+		t.Fatal("invalid crawler runtime policy was accepted by broker")
 	}
 }
 

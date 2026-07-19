@@ -23,6 +23,7 @@ type runtimeObservability struct {
 	crawl        *metrics.CrawlMetrics
 	indexWrites  *metrics.SearchIndexWriteMetrics
 	crawlRuns    *metrics.CrawlRunMetrics
+	remoteCrawl  *metrics.RemoteCrawlMetrics
 	saturation   *metrics.SaturationMetrics
 	recorder     *events.Recorder
 	persistence  *eventPersistence
@@ -58,6 +59,7 @@ func provisionObservability(
 		crawl:        metrics.NewCrawlMetrics(endpoints.Registry()),
 		indexWrites:  metrics.NewSearchIndexWriteMetrics(endpoints.Registry()),
 		crawlRuns:    metrics.NewCrawlRunMetrics(endpoints.Registry()),
+		remoteCrawl:  metrics.NewRemoteCrawlMetrics(endpoints.Registry()),
 		recorder:     recorder,
 		persistence:  persistence,
 		authObserver: authObserverFanOut{authMetrics, authEventObserver{recorder: recorder}},

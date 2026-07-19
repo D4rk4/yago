@@ -8,10 +8,11 @@ import (
 // SearchQuery is an admin-console search request. Offset and Limit carry the
 // requested result window so the console can page through matches.
 type SearchQuery struct {
-	Query  string
-	Global bool
-	Offset int
-	Limit  int
+	Query   string
+	Global  bool
+	Filters SearchFilters
+	Offset  int
+	Limit   int
 }
 
 // SearchPagination carries the prev/next navigation for a results page. The URLs

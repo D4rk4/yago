@@ -40,6 +40,7 @@ type CrawlOrderConsumer struct {
 	active          *activeOrders
 	growthAdmission GrowthAdmission
 	activeRuns      *ActiveRunAdmission
+	maximumDepth    int
 }
 
 type GrowthAdmission interface {
@@ -204,6 +205,7 @@ func (c *CrawlOrderConsumer) finishRun(
 			state = yagocrawlcontract.CrawlRunCancelled
 		}
 		terminalTally := c.runTally(order.Provenance, 0)
+		terminalOutcomes := c.recentRunOutcomes(order.Provenance)
 		if !suspended && !startedDuringShutdown && delivery.settleTerminal == nil {
 			c.reportRunTally(
 				context.WithoutCancel(ctx),
@@ -247,6 +249,7 @@ func (c *CrawlOrderConsumer) finishRun(
 						disposition:    disposition,
 						state:          state,
 						tally:          terminalTally,
+						recentOutcomes: terminalOutcomes,
 						pagesPerMinute: c.frontier.EffectivePagesPerMinute(order.Provenance),
 					},
 				)

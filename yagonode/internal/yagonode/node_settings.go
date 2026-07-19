@@ -15,10 +15,6 @@ type settingOption struct {
 	label string
 }
 
-// settingDefinition describes one operator-overridable runtime setting: how it
-// reads from the environment default, how a submitted value is normalized and
-// validated, and how a stored override layers onto the boot configuration. The
-// whitelist deliberately excludes secrets, which are never stored here.
 type settingDefinition struct {
 	key          string
 	title        string
@@ -28,6 +24,7 @@ type settingDefinition struct {
 	normalize    func(raw string) (string, error)
 	apply        func(config nodeConfig, value string) nodeConfig
 	applyLive    func(toggles *runtimeToggles, value string)
+	sensitive    bool
 }
 
 // restartRequired reports whether a change to this setting only takes effect
@@ -156,6 +153,8 @@ func publicSurfaceDefinitions() []settingDefinition {
 // live-appliable core plus the extended environment settings.
 func allRuntimeSettingDefinitions() []settingDefinition {
 	definitions := append(runtimeSettingDefinitions(), publicSurfaceDefinitions()...)
+	definitions = append(definitions, networkAuthenticationSettingDefinitions()...)
+	definitions = append(definitions, remoteCrawlSettingDefinitions()...)
 
 	return append(definitions, extendedSettingDefinitions()...)
 }
@@ -176,7 +175,7 @@ func formatSettingBool(value bool) string {
 }
 
 func normalizeSettingBool(raw string) (string, error) {
-	parsed, err := strconv.ParseBool(raw)
+	parsed, err := strconv.ParseBool(strings.TrimSpace(raw))
 	if err != nil {
 		return "", fmt.Errorf("invalid boolean %q: %w", raw, err)
 	}

@@ -103,9 +103,10 @@ func TestNewCrawlSeederAppliesAutocrawlerProfileBounds(t *testing.T) {
 		t.Fatalf("order priority = %q, want automatic discovery", queue.orders[0].Priority)
 	}
 	profile := queue.orders[0].Profile
-	if profile.MaxDepth != 3 || profile.MaxPagesPerHost != 75 {
-		t.Fatalf("autocrawler profile bounds = depth %d / %d pages, want 3 / 75",
-			profile.MaxDepth, profile.MaxPagesPerHost)
+	if profile.MaxDepth != 3 || profile.MaxPagesPerHost != 75 ||
+		profile.MaxPagesPerRun == nil || *profile.MaxPagesPerRun != 75 {
+		t.Fatalf("autocrawler profile bounds = depth %d / host %d / run %v",
+			profile.MaxDepth, profile.MaxPagesPerHost, profile.MaxPagesPerRun)
 	}
 }
 

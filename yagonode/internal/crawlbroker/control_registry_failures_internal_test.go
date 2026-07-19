@@ -102,6 +102,20 @@ func TestControlRegistryReportsBroadcastStorageFailures(t *testing.T) {
 		t.Fatal("fetch worker failure retained initialized state")
 	}
 	registry.initialized["worker"] = true
+	if signalled := registry.SetProcessPagesPerSecond(10); signalled != 0 {
+		t.Fatalf("process-rate failures signalled = %d, want 0", signalled)
+	}
+	if registry.initialized["worker"] {
+		t.Fatal("process-rate failure retained initialized state")
+	}
+	registry.initialized["worker"] = true
+	if signalled := registry.SetMaximumRedirects(10); signalled != 0 {
+		t.Fatalf("maximum-redirect failures signalled = %d, want 0", signalled)
+	}
+	if registry.initialized["worker"] {
+		t.Fatal("maximum-redirect failure retained initialized state")
+	}
+	registry.initialized["worker"] = true
 	if signalled := registry.SetMaximumActiveRuns(32); signalled != 0 {
 		t.Fatalf("active-run failures signalled = %d, want 0", signalled)
 	}

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 )
@@ -22,7 +21,7 @@ func extendedSettingDefinitions() []settingDefinition {
 			title:        "Peer name",
 			description:  "The name advertised to the swarm (empty keeps the generated name).",
 			defaultValue: func(config nodeConfig) string { return config.Name },
-			normalize:    normalizeSettingLine,
+			normalize:    parsePeerName,
 			apply: func(config nodeConfig, value string) nodeConfig {
 				config.Name = value
 
@@ -34,7 +33,7 @@ func extendedSettingDefinitions() []settingDefinition {
 			title:        "Advertised host",
 			description:  "Public host peers should dial (empty keeps autodetection).",
 			defaultValue: func(config nodeConfig) string { return config.AdvertiseHost },
-			normalize:    normalizeSettingLine,
+			normalize:    parseAdvertiseHost,
 			apply: func(config nodeConfig, value string) nodeConfig {
 				config.AdvertiseHost = value
 
@@ -45,13 +44,13 @@ func extendedSettingDefinitions() []settingDefinition {
 			key:   "network.seedlists",
 			title: "Seedlist URLs",
 			description: "Comma-separated seedlist URLs imported at startup " +
-				"(empty keeps the built-in defaults).",
+				"(empty disables seedlist bootstrap imports).",
 			defaultValue: func(config nodeConfig) string {
 				return strings.Join(config.SeedlistURLs, ",")
 			},
-			normalize: normalizeSettingLine,
+			normalize: normalizeSeedlistURLs,
 			apply: func(config nodeConfig, value string) nodeConfig {
-				config.SeedlistURLs = splitList(value)
+				config.SeedlistURLs, _ = parseSeedlistURLs(value)
 
 				return config
 			},
@@ -71,18 +70,24 @@ func extendedSettingDefinitions() []settingDefinition {
 		},
 	}...)
 	definitions = append(definitions, searchSurfaceDefinitions()...)
+	definitions = append(definitions, loggingLevelDefinitions()...)
 	definitions = append(definitions, extendedTelemetryDefinitions()...)
 	definitions = append(definitions, seedCapabilityDefinitions()...)
 	definitions = append(definitions, networkDiscoveryDefinitions()...)
+	definitions = append(definitions, networkNameDefinitions()...)
+	definitions = append(definitions, networkAdvertisementDefinitions()...)
 	definitions = append(definitions, remoteSearchDefinitions()...)
 	definitions = append(definitions, webFallbackDefinitions()...)
 	definitions = append(definitions, extendedGrowthDefinitions()...)
 	definitions = append(definitions, storagePressureDefinitions()...)
+	definitions = append(definitions, storageReadDeferDefinitions()...)
+	definitions = append(definitions, adminOperationsDefinitions()...)
 
 	definitions = append(definitions, autocrawlerDefinitions()...)
 	definitions = append(definitions, webDiscoveryDefinitions()...)
 	definitions = append(definitions, autocrawlerCrawlOptionDefinitions()...)
 	definitions = append(definitions, crawlerRuntimeDefinitions()...)
+	definitions = append(definitions, crawlerRuntimePolicyDefinitions()...)
 
 	return append(definitions, parityGapDefinitions()...)
 }
@@ -165,8 +170,8 @@ func webDiscoveryDefinitions() []settingDefinition {
 		},
 		{
 			key:          "web.fallback.seed_max_pages",
-			title:        "Web-discovery pages per host",
-			description:  "Cap on how many pages the autocrawler fetches per host for each web-surfaced URL.",
+			title:        "Web-discovery pages per task",
+			description:  "Whole-run page cap for each web-surfaced crawl task. The global crawler run cap may reduce it further.",
 			defaultValue: func(config nodeConfig) string { return strconv.Itoa(config.WebFallback.SeedMaxPages) },
 			normalize:    normalizePositiveInt,
 			apply: func(config nodeConfig, value string) nodeConfig {
@@ -196,8 +201,8 @@ func autocrawlerDefinitions() []settingDefinition {
 		},
 		{
 			key:          "swarm.seed.max_pages",
-			title:        "Autocrawler pages per host",
-			description:  "Cap on how many pages the autocrawler fetches per host for each seeded URL.",
+			title:        "Autocrawler pages per task",
+			description:  "Whole-run page cap for each swarm-surfaced crawl task. The global crawler run cap may reduce it further.",
 			defaultValue: func(config nodeConfig) string { return strconv.Itoa(config.SwarmSeed.SeedMaxPages) },
 			normalize:    normalizePositiveInt,
 			apply: func(config nodeConfig, value string) nodeConfig {
@@ -358,9 +363,9 @@ func remoteSearchDefinitions() []settingDefinition {
 			title:        "Swarm per-peer timeout",
 			description:  "How long one peer may take to contribute to an interactive swarm search.",
 			defaultValue: func(config nodeConfig) string { return config.RemotePeerTimeout.String() },
-			normalize:    normalizeSettingDuration,
+			normalize:    normalizeOutboundRequestTimeout,
 			apply: func(config nodeConfig, value string) nodeConfig {
-				config.RemotePeerTimeout, _ = time.ParseDuration(value)
+				config.RemotePeerTimeout, _ = parseOutboundRequestTimeout(value)
 
 				return config
 			},
@@ -370,9 +375,9 @@ func remoteSearchDefinitions() []settingDefinition {
 			title:        "Swarm overall timeout",
 			description:  "Budget for the whole peer fan-out inside the interactive response deadline.",
 			defaultValue: func(config nodeConfig) string { return config.RemoteTimeout.String() },
-			normalize:    normalizeSettingDuration,
+			normalize:    normalizeOutboundRequestTimeout,
 			apply: func(config nodeConfig, value string) nodeConfig {
-				config.RemoteTimeout, _ = time.ParseDuration(value)
+				config.RemoteTimeout, _ = parseOutboundRequestTimeout(value)
 
 				return config
 			},
@@ -395,17 +400,7 @@ func webFallbackDefinitions() []settingDefinition {
 				{value: string(webFallbackPrivacyAlways), label: "Always"},
 			},
 			defaultValue: func(config nodeConfig) string { return string(config.WebFallback.Privacy) },
-			normalize: func(raw string) (string, error) {
-				switch webFallbackPrivacy(strings.TrimSpace(strings.ToLower(raw))) {
-				case webFallbackPrivacyDisabled,
-					webFallbackPrivacyExplicit,
-					webFallbackPrivacyEnabled,
-					webFallbackPrivacyAlways:
-					return strings.TrimSpace(strings.ToLower(raw)), nil
-				default:
-					return "", fmt.Errorf("invalid web fallback privacy")
-				}
-			},
+			normalize:    normalizeWebFallbackPrivacy,
 			apply: func(config nodeConfig, value string) nodeConfig {
 				config.WebFallback.Privacy = webFallbackPrivacy(value)
 
@@ -434,19 +429,6 @@ func webFallbackDefinitions() []settingDefinition {
 	}...)
 
 	return definitions
-}
-
-// normalizeWebFallbackBackend accepts the engine selectors the websearch
-// backend resolver understands, so a runtime edit cannot select an engine
-// list the fallback would silently collapse to the default.
-func normalizeWebFallbackBackend(raw string) (string, error) {
-	value := strings.TrimSpace(strings.ToLower(raw))
-	switch value {
-	case "auto", "ddg", "duckduckgo", "brave", "mojeek", "bing":
-		return value, nil
-	default:
-		return "", fmt.Errorf("invalid web fallback backend")
-	}
 }
 
 // extendedGrowthDefinitions holds the index-growth and fetch knobs.
@@ -520,16 +502,6 @@ func extendedGrowthDefinitions() []settingDefinition {
 	}
 }
 
-// normalizeSettingLine trims a free-form single-line value.
-func normalizeSettingLine(raw string) (string, error) {
-	raw = strings.TrimSpace(raw)
-	if strings.ContainsAny(raw, "\r\n") {
-		return "", fmt.Errorf("value must be a single line")
-	}
-
-	return raw, nil
-}
-
 // normalizePositiveInt validates a positive integer setting.
 func normalizePositiveInt(raw string) (string, error) {
 	value, err := strconv.Atoi(strings.TrimSpace(raw))
@@ -538,17 +510,6 @@ func normalizePositiveInt(raw string) (string, error) {
 	}
 
 	return strconv.Itoa(value), nil
-}
-
-// normalizeSettingDuration accepts a positive Go duration between 100ms and
-// two minutes, the sane window for a per-query network budget.
-func normalizeSettingDuration(raw string) (string, error) {
-	value, err := time.ParseDuration(strings.TrimSpace(raw))
-	if err != nil || value < 100*time.Millisecond || value > 2*time.Minute {
-		return "", fmt.Errorf("value must be a duration between 100ms and 2m")
-	}
-
-	return value.String(), nil
 }
 
 // normalizeSwarmSeedDepth accepts a crawl depth within the loader's bounds so a

@@ -66,12 +66,13 @@ func startNodeBroker(t *testing.T, ctx context.Context, networkName string) node
 					AddDate(0, 0, -1).
 					UTC().
 					Format("20060102"),
-				"YAGO_DATA_DIR":                      "/opt/yago/data",
-				"YAGO_CRAWL_RPC_ADDR":                nodeCrawlRPCEnv,
-				"YAGO_ADMIN_USER":                    nodeAdminUser,
-				"YAGO_ADMIN_PASSWORD":                nodeAdminPass,
-				"YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS": "true",
-				"LOG_LEVEL":                          "info",
+				"YAGO_DATA_DIR":                       "/opt/yago/data",
+				"YAGO_CRAWL_RPC_ADDR":                 nodeCrawlRPCEnv,
+				"YAGO_ADMIN_USER":                     nodeAdminUser,
+				"YAGO_ADMIN_PASSWORD":                 nodeAdminPass,
+				"YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS":  "true",
+				"YAGO_CRAWLER_ALLOW_PRIVATE_NETWORKS": "true",
+				"LOG_LEVEL":                           "info",
 			},
 			Tmpfs: map[string]string{"/tmp": "rw,mode=1777"},
 			HostConfigModifier: func(hostConfig *dockercontainer.HostConfig) {

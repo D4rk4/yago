@@ -15,6 +15,8 @@ func TestControlDirectiveValidation(t *testing.T) {
 		{Kind: yagocrawlcontract.CrawlControlRestart},
 		{Kind: yagocrawlcontract.CrawlControlSetWorkers, FetchWorkers: 1},
 		{Kind: yagocrawlcontract.CrawlControlSetActiveRuns, MaximumActiveRuns: 1},
+		{Kind: yagocrawlcontract.CrawlControlSetProcessRate, ProcessPagesPerSecond: 0},
+		{Kind: yagocrawlcontract.CrawlControlSetMaximumRedirects, MaximumRedirects: 0},
 		{Kind: yagocrawlcontract.CrawlControlSetAutomaticDiscoveryPriority},
 	}
 	for _, directive := range valid {
@@ -35,6 +37,14 @@ func TestControlDirectiveValidation(t *testing.T) {
 		{
 			Kind:              yagocrawlcontract.CrawlControlSetActiveRuns,
 			MaximumActiveRuns: yagocrawlcontract.MaximumActiveCrawlRunConcurrency + 1,
+		},
+		{
+			Kind:                  yagocrawlcontract.CrawlControlSetProcessRate,
+			ProcessPagesPerSecond: yagocrawlcontract.MaximumProcessPagesPerSecond + 1,
+		},
+		{
+			Kind:             yagocrawlcontract.CrawlControlSetMaximumRedirects,
+			MaximumRedirects: yagocrawlcontract.MaximumPageRedirects + 1,
 		},
 		{Kind: yagocrawlcontract.CrawlControlSetAutomaticDiscoveryPriority, RunID: "ab"},
 		{Kind: yagocrawlcontract.CrawlControlKind("unknown")},

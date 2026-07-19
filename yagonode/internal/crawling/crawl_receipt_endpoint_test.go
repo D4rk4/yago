@@ -2,6 +2,7 @@ package crawling
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,11 +26,40 @@ func (mountedReceiptStatus) Uptime(context.Context) int {
 
 type localPeer struct{}
 
+type recordingReceiptProcessor struct {
+	request yagoproto.CrawlReceiptRequest
+	calls   int
+	err     error
+}
+
+func (p *recordingReceiptProcessor) ProcessReceipt(
+	_ context.Context,
+	request yagoproto.CrawlReceiptRequest,
+) (yagoproto.CrawlReceiptResponse, error) {
+	p.request = request
+	p.calls++
+	if p.err != nil {
+		return yagoproto.CrawlReceiptResponse{}, p.err
+	}
+
+	return yagoproto.CrawlReceiptResponse{Delay: 10}, nil
+}
+
 func (localPeer) NetworkMatches(network string) bool {
 	return network == "freeworld"
 }
 
 func (localPeer) Addresses(network string, youare yagomodel.Hash) bool {
+	return network == "freeworld" && youare == yagomodel.WordHash("self")
+}
+
+func (localPeer) AuthenticatesAddress(
+	network string,
+	youare yagomodel.Hash,
+	_ string,
+	_ string,
+	_ string,
+) bool {
 	return network == "freeworld" && youare == yagomodel.WordHash("self")
 }
 
@@ -72,6 +102,48 @@ func TestCrawlReceiptDelaysWrongTarget(t *testing.T) {
 	}
 	if resp.Delay != disabledCrawlReceiptRetryDelay {
 		t.Fatalf("Delay = %d, want retry delay", resp.Delay)
+	}
+}
+
+func TestEnabledCrawlReceiptAuthenticatesBeforeProcessing(t *testing.T) {
+	processor := &recordingReceiptProcessor{}
+	endpoint := enabledCrawlReceiptEndpoint{local: localPeer{}, processor: processor}
+	accepted := yagoproto.CrawlReceiptRequest{
+		NetworkName: "freeworld",
+		Iam:         yagomodel.WordHash("caller"),
+		YouAre:      yagomodel.WordHash("self"),
+	}
+	response, err := endpoint.Serve(t.Context(), accepted)
+	if err != nil || response.Delay != 10 || processor.calls != 1 ||
+		processor.request.Iam != accepted.Iam {
+		t.Fatalf(
+			"accepted receipt = %+v, %v, calls=%d request=%+v",
+			response,
+			err,
+			processor.calls,
+			processor.request,
+		)
+	}
+	accepted.YouAre = yagomodel.WordHash("other")
+	response, err = endpoint.Serve(t.Context(), accepted)
+	if err != nil || response.Delay != disabledCrawlReceiptRetryDelay || processor.calls != 1 {
+		t.Fatalf("rejected receipt = %+v, %v, calls=%d", response, err, processor.calls)
+	}
+}
+
+func TestEnabledCrawlReceiptWrapsProcessingFailure(t *testing.T) {
+	processingFailure := errors.New("processing failure")
+	processor := &recordingReceiptProcessor{err: processingFailure}
+	endpoint := enabledCrawlReceiptEndpoint{local: localPeer{}, processor: processor}
+	request := yagoproto.CrawlReceiptRequest{
+		NetworkName: "freeworld",
+		Iam:         yagomodel.WordHash("caller"),
+		YouAre:      yagomodel.WordHash("self"),
+	}
+
+	_, err := endpoint.Serve(t.Context(), request)
+	if !errors.Is(err, processingFailure) {
+		t.Fatalf("Serve error = %v, want processing failure", err)
 	}
 }
 
@@ -136,6 +208,44 @@ func TestMountCrawlReceiptServesRoute(t *testing.T) {
 	}
 	if resp.Delay != disabledCrawlReceiptRetryDelay {
 		t.Fatalf("Delay = %d, want retry delay", resp.Delay)
+	}
+}
+
+func TestMountCrawlReceiptWiresEnabledProcessor(t *testing.T) {
+	mux := http.NewServeMux()
+	router := httpguard.NewWireRouter(mux, httpguard.WireGate{
+		Guard:   httpguard.NewRequestGuard(1024, time.Second),
+		Respond: httpguard.NewWireResponder(mountedReceiptStatus{}),
+		Address: httpguard.NewClientAddressResolver(nil),
+	})
+	processor := &recordingReceiptProcessor{}
+	MountCrawlReceipt(router, localPeer{}, processor)
+	form := yagoproto.CrawlReceiptRequest{
+		NetworkName: "freeworld",
+		Iam:         yagomodel.WordHash("caller"),
+		YouAre:      yagomodel.WordHash("self"),
+	}.Form()
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		yagoproto.PathCrawlReceipt,
+		strings.NewReader(form.Encode()),
+	)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK || processor.calls != 1 {
+		t.Fatalf("mounted enabled receipt = status %d calls %d", recorder.Code, processor.calls)
+	}
+	message, err := yagomodel.ParseMessage(recorder.Body.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := yagoproto.ParseCrawlReceiptResponse(message)
+	if err != nil || response.Delay != 10 {
+		t.Fatalf("mounted enabled response = %+v, %v", response, err)
 	}
 }
 

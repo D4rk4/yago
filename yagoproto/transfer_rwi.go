@@ -17,6 +17,7 @@ type TransferRWIRequest struct {
 	EntryCount  int
 	Indexes     []yagomodel.RWIPosting
 	Key         string
+	MagicMD5    string
 
 	wordCountPresent  bool
 	entryCountPresent bool
@@ -41,6 +42,7 @@ func (r TransferRWIRequest) Form() url.Values {
 	putInt(form, FieldEntryCount, r.EntryCount)
 	form.Set(FieldIndexes, encodeRWILines(r.Indexes))
 	putString(form, FieldKey, r.Key)
+	putString(form, FieldMagicMD5, r.MagicMD5)
 
 	return form
 }
@@ -61,6 +63,7 @@ func ParseTransferRWIRequest(ctx context.Context, form url.Values) (TransferRWIR
 		WordCount:   wordCount,
 		EntryCount:  entryCount,
 		Key:         form.Get(FieldKey),
+		MagicMD5:    form.Get(FieldMagicMD5),
 	}
 	_, req.wordCountPresent = form[FieldWordCount]
 	_, req.entryCountPresent = form[FieldEntryCount]

@@ -1,6 +1,7 @@
 package yagonode
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -21,7 +22,10 @@ func loadNodeNetworkBootstrap(getenv func(string) string) (nodeNetworkBootstrap,
 		return nodeNetworkBootstrap{}, err
 	}
 	peerAddress := envWithDefault(getenv, envPeerAddr, defaultPeerAddr)
-	seedlistURLs := splitList(getenv(envSeedlistURLs))
+	seedlistURLs, err := parseSeedlistURLs(getenv(envSeedlistURLs))
+	if err != nil {
+		return nodeNetworkBootstrap{}, fmt.Errorf("%s: %w", envSeedlistURLs, err)
+	}
 	announceInterval, greetsPerCycle, err := announceCadence(getenv)
 	if err != nil {
 		return nodeNetworkBootstrap{}, err

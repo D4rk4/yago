@@ -30,11 +30,6 @@ type seedImportRecorder interface {
 	Record(ctx context.Context, url string, seeds int, importErr error) error
 }
 
-// eventRecorder records a structured node event.
-type eventRecorder interface {
-	Record(severity events.Severity, category events.Category, name, message string)
-}
-
 // seedlistRefreshSource re-imports a configured seed list on operator demand,
 // feeding the discovered seeds to the roster and recording the outcome both in
 // the durable status store and the event log.
@@ -42,7 +37,7 @@ type seedlistRefreshSource struct {
 	importer seedlistImporter
 	roster   seedlistRosterSink
 	store    seedImportRecorder
-	events   eventRecorder
+	events   nodeEventRecorder
 	allowed  map[string]struct{}
 }
 
@@ -50,7 +45,7 @@ func newSeedlistRefreshSource(
 	importer seedlistImporter,
 	roster seedlistRosterSink,
 	store seedImportRecorder,
-	recorder eventRecorder,
+	recorder nodeEventRecorder,
 	urls []string,
 ) seedlistRefreshSource {
 	allowed := make(map[string]struct{}, len(urls))

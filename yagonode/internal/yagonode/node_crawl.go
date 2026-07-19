@@ -28,16 +28,17 @@ type crawlProcess interface {
 }
 
 type crawlRuntime struct {
-	broker     *crawlbroker.CrawlBroker
-	state      *vault.Vault
-	ownsState  bool
-	statePath  string
-	consumer   *crawlresults.IngestConsumer
-	runs       *crawlruns.Registry
-	frontier   *recrawlfrontier.Frontier
-	formats    *crawlformats.Store
-	initiator  yagomodel.Hash
-	pageBudget *crawlRunPageBudget
+	broker      *crawlbroker.CrawlBroker
+	state       *vault.Vault
+	ownsState   bool
+	statePath   string
+	consumer    *crawlresults.IngestConsumer
+	runs        *crawlruns.Registry
+	frontier    *recrawlfrontier.Frontier
+	formats     *crawlformats.Store
+	initiator   yagomodel.Hash
+	pageBudget  *crawlRunPageBudget
+	remoteCrawl remoteCrawlOrderObserver
 }
 
 const msgCrawlRuntimeStateCloseFailed = "crawl runtime state close failed"
@@ -87,10 +88,19 @@ func buildCrawlRuntime(
 func (r *crawlRuntime) dispatchQueue() crawldispatch.CrawlOrderQueue {
 	// Format toggles are stamped first so the recorded recrawl profile carries
 	// them too and re-dispatched URLs parse the same families.
-	return profileRecordingQueue{
+	var queue crawldispatch.CrawlOrderQueue = profileRecordingQueue{
 		inner:    formatStampingQueue{inner: r.broker.Orders, formats: r.formats},
 		frontier: r.frontier,
 	}
+	if r.remoteCrawl != nil {
+		queue = remoteCrawlObservedOrderQueue{inner: queue, observer: r.remoteCrawl}
+	}
+
+	return queue
+}
+
+func (r *crawlRuntime) useRemoteCrawlObserver(observer remoteCrawlOrderObserver) {
+	r.remoteCrawl = observer
 }
 
 func (r *crawlRuntime) mountDispatch(mux *http.ServeMux) {
@@ -179,7 +189,7 @@ func (r *crawlRuntime) SetMaxPagesPerRun(value int) {
 func (r *crawlRuntime) recrawlSweeper() recrawlSweeper {
 	return recrawlSweeper{
 		frontier:  r.frontier,
-		publisher: r.broker.Orders,
+		publisher: keylessCrawlOrderPublisher{queue: r.dispatchQueue()},
 		initiator: r.initiator,
 		mint:      mintProvenance,
 		now:       time.Now,

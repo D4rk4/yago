@@ -37,6 +37,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/publicratelimit"
 	"github.com/D4rk4/yago/yagonode/internal/rankingmodel"
 	"github.com/D4rk4/yago/yagonode/internal/rankingprofile"
+	"github.com/D4rk4/yago/yagonode/internal/remotecrawl"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
 	"github.com/D4rk4/yago/yagonode/internal/safetymodel"
 	"github.com/D4rk4/yago/yagonode/internal/searchactivity"
@@ -114,6 +115,7 @@ type nodeTelemetry struct {
 	crawl            *metrics.CrawlMetrics
 	indexWrites      *metrics.SearchIndexWriteMetrics
 	crawlRuns        *metrics.CrawlRunMetrics
+	remoteCrawl      *metrics.RemoteCrawlMetrics
 	recorder         *events.Recorder
 	searchAuthorizer tavilyapi.ScopeAuthorizer
 	toggles          *runtimeToggles
@@ -173,13 +175,26 @@ func assembleNode(
 		return node{}, err
 	}
 	storage = storageWithGrowthAdmission(storage, telemetry.storagePressure)
+	remoteCrawl, err := remotecrawl.Open(
+		config.RemoteCrawl.brokerConfig(),
+		vault,
+		storage.urlReceiver,
+		telemetry.remoteCrawl,
+		remoteCrawlEventObserver{recorder: telemetry.recorder},
+	)
+	if err != nil {
+		return node{}, fmt.Errorf("open remote crawl delegation: %w", err)
+	}
 	roster, news, tally, blocks, err := openPeerStores(vault, telemetry.peer)
 	if err != nil {
 		return node{}, err
 	}
 	report := newNodeStatusReport(identity, storage, roster, news, tally)
 	wireObservation := nodeWireObservation{report: report, tally: tally}
-	mux, router := mountDHTObservedNodeWire(config, identity, storage, telemetry, wireObservation)
+	mux, router := mountDHTObservedNodeWire(dhtObservedNodeWireInput{
+		config: config, identity: identity, storage: storage,
+		telemetry: telemetry, observation: wireObservation, remoteCrawl: remoteCrawl,
+	})
 	peerClient := nodePeerClient(config, client)
 	hostLinkSnapshot := hostlinks.NewSnapshotHolder()
 	exchange, err := assembleRuntimePeerExchange(peerExchange{
@@ -201,47 +216,17 @@ func assembleNode(
 		ctx: ctx, config: config, vault: vault, client: client,
 		peerClient: peerClient, storage: storage, roster: roster, identity: identity,
 		report: report, tally: tally, telemetry: telemetry, toggles: telemetry.toggles,
-		hostLinks: hostLinkSnapshot,
+		hostLinks:   hostLinkSnapshot,
+		remoteCrawl: remoteCrawl,
 	})
 	if err != nil {
 		return node{}, err
 	}
-	return newAssembledNode(nodeParts{
-		mux:         mux,
-		publicMux:   surfaces.publicMux,
-		storage:     storage,
-		announcer:   exchange.announcer,
-		lanBeacon:   buildLANBeacon(config, identity, exchange.announcer),
-		crawl:       surfaces.crawl,
-		dht:         surfaces.dht,
-		report:      report,
-		searcher:    surfaces.searcher,
-		suggest:     surfaces.suggest,
-		explanation: surfaces.explanation,
-		roster:      roster,
-		news:        news,
-		vault:       vault,
-		client:      client,
-		peerBlock:   blocks,
-		denylist:    surfaces.denylist,
-		activity:    surfaces.activity,
-		schedules:   surfaces.schedules,
-		theme:       surfaces.theme,
-		identity:    identity,
-		ranking:     surfaces.ranking,
-		hostRank:    surfaces.hostRank,
-		spell:       surfaces.spell,
-		wordForms:   surfaces.wordForms,
-		judgments:   surfaces.judgments,
-		clicks:      surfaces.clicks,
-		models:      surfaces.models,
-		safety:      surfaces.safety,
-		hostTrust:   surfaces.trust,
-		peerEvents:  surfaces.peerEvents,
-		corpusPass:  surfaces.corpusPass,
-		swarmMorph:  config.SwarmMorphology,
-		tally:       tally,
-	}, telemetry.toggles), nil
+	return completeNodeAssembly(nodeAssemblyCompletion{
+		config: config, telemetry: telemetry, identity: identity, storage: storage,
+		mux: mux, exchange: exchange, surfaces: surfaces, report: report,
+		roster: roster, news: news, blocks: blocks, vault: vault, client: client, tally: tally,
+	}), nil
 }
 
 // nodePeerClient picks the client for peer-protocol calls: a client tolerant
@@ -256,19 +241,20 @@ func nodePeerClient(config nodeConfig, client *http.Client) *http.Client {
 }
 
 type assembleSurfacesInput struct {
-	ctx        context.Context
-	config     nodeConfig
-	vault      *vault.Vault
-	client     *http.Client
-	peerClient *http.Client
-	storage    nodeStorage
-	roster     peerroster.Roster
-	identity   nodeidentity.Identity
-	report     nodestatus.Report
-	tally      *transfertally.Tally
-	telemetry  nodeTelemetry
-	toggles    *runtimeToggles
-	hostLinks  *hostlinks.SnapshotHolder
+	ctx         context.Context
+	config      nodeConfig
+	vault       *vault.Vault
+	client      *http.Client
+	peerClient  *http.Client
+	storage     nodeStorage
+	roster      peerroster.Roster
+	identity    nodeidentity.Identity
+	report      nodestatus.Report
+	tally       *transfertally.Tally
+	telemetry   nodeTelemetry
+	toggles     *runtimeToggles
+	hostLinks   *hostlinks.SnapshotHolder
+	remoteCrawl *remotecrawl.Broker
 }
 
 type nodeSurfaces struct {
@@ -310,15 +296,20 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	attachCrawlStateMetrics(runtime, in.telemetry.registry)
 	attachSearchIndexWriteMetrics(runtime, in.telemetry.indexWrites)
 	attachCrawlRunObserver(runtime, in.telemetry.crawlRuns, in.telemetry.recorder)
+	attachRemoteCrawlOrders(
+		runtime,
+		newRemoteCrawlBrokerOrderStager(
+			in.ctx,
+			in.remoteCrawl,
+			in.config.RemoteCrawl.QueueCapacity,
+		),
+	)
 	ranking, denylist, schedules, err := openSurfaceStores(in.ctx, in.vault)
 	if err != nil {
 		return nodeSurfaces{}, err
 	}
-	learning, err := openSearchLearningStores(
-		in.ctx,
-		in.vault,
-		in.telemetry.storagePressure,
-	)
+	attachCrawlURLDenylist(runtime, denylist)
+	learning, err := openSearchLearningStores(in.ctx, in.vault, in.telemetry.storagePressure)
 	if err != nil {
 		return nodeSurfaces{}, err
 	}
@@ -394,46 +385,47 @@ func newPublicSearchAssembly(
 	parts publicSearchParts,
 ) publicSearchAssembly {
 	return publicSearchAssembly{
-		storage:             in.storage,
-		hostRank:            parts.hostRank.Current,
-		spellCorrector:      parts.spell.Current,
-		wordForms:           parts.words.Current,
-		roster:              in.roster,
-		identity:            in.identity,
-		dht:                 in.config.DHT,
-		client:              in.client,
-		peerClient:          in.peerClient,
-		peerHTTPSPreferred:  in.config.PeerHTTPSPreferred,
-		searchAPIKey:        in.config.SearchAPIKey,
-		searchAuthorizer:    in.telemetry.searchAuthorizer,
-		searchAdmission:     parts.admission,
-		extractFetcher:      buildExtractFetcher(in.config, in.client),
-		webFallback:         in.config.WebFallback,
-		seedQueue:           crawlOrderQueue(parts.runtime),
-		maxPagesPerRun:      crawlPageBudgetSource(parts.runtime),
-		toggles:             in.toggles,
-		queryLogMode:        in.config.QueryLogMode,
-		activity:            parts.activity,
-		searchMetrics:       in.telemetry.search,
-		rankingWeights:      parts.ranking.Current,
-		denylist:            parts.denylist,
-		snippetEnricher:     buildSnippetEnricher(in.config, in.client),
-		remoteTimeouts:      configRemoteTimeouts(in.config),
-		indexRemoteResults:  in.config.IndexRemoteResults,
-		storageGrowth:       in.telemetry.storagePressure,
-		swarmMorphology:     in.config.SwarmMorphology,
-		swarmSeed:           in.config.SwarmSeed,
-		autocrawlerCrawl:    in.config.AutocrawlerCrawl,
-		linksNewTab:         in.config.SearchLinksNewTab,
-		clickCapture:        in.config.SearchClickCapture,
-		clickRecorder:       newClickCaptureAdapter(parts.clicks, parts.models.Ranker()),
-		portalClickRecorder: newPortalClickCaptureAdapter(parts.clicks, parts.models.Ranker()),
-		learnedRanker:       parts.models.Ranker(),
-		peerReputation:      parts.reputation,
-		peerObservations:    parts.peerEvents,
-		peerNetworkGroup:    peerReputationNetworkGroup,
-		selfSeed:            in.report.SelfSeed,
-		theme:               parts.theme,
+		storage:                in.storage,
+		hostRank:               parts.hostRank.Current,
+		spellCorrector:         parts.spell.Current,
+		wordForms:              parts.words.Current,
+		roster:                 in.roster,
+		identity:               in.identity,
+		dht:                    in.config.DHT,
+		client:                 in.client,
+		peerClient:             in.peerClient,
+		peerHTTPSPreferred:     in.config.PeerHTTPSPreferred,
+		searchAPIKey:           in.config.SearchAPIKey,
+		searchAuthorizer:       in.telemetry.searchAuthorizer,
+		searchAdmission:        parts.admission,
+		extractFetcher:         buildExtractFetcher(in.config, in.client),
+		webFallback:            in.config.WebFallback,
+		seedQueue:              crawlOrderQueue(parts.runtime),
+		maxPagesPerRun:         crawlPageBudgetSource(parts.runtime),
+		toggles:                in.toggles,
+		queryLogMode:           in.config.QueryLogMode,
+		activity:               parts.activity,
+		searchMetrics:          in.telemetry.search,
+		rankingWeights:         parts.ranking.Current,
+		denylist:               parts.denylist,
+		snippetEnricher:        buildSnippetEnricher(in.config, in.client),
+		remoteTimeouts:         configRemoteTimeouts(in.config),
+		indexRemoteResults:     in.config.IndexRemoteResults,
+		storageGrowth:          in.telemetry.storagePressure,
+		swarmMorphology:        in.config.SwarmMorphology,
+		swarmSeed:              in.config.SwarmSeed,
+		autocrawlerCrawl:       in.config.AutocrawlerCrawl,
+		linksNewTab:            in.config.SearchLinksNewTab,
+		clickCapture:           in.config.SearchClickCapture,
+		clickRecorder:          newClickCaptureAdapter(parts.clicks, parts.models.Ranker()),
+		portalClickRecorder:    newPortalClickCaptureAdapter(parts.clicks, parts.models.Ranker()),
+		learnedRanker:          parts.models.Ranker(),
+		peerReputation:         parts.reputation,
+		peerObservations:       parts.peerEvents,
+		peerNetworkGroup:       peerReputationNetworkGroup,
+		selfSeed:               in.report.SelfSeed,
+		observeRemoteResources: remoteSearchResourceTally(in.tally),
+		theme:                  parts.theme,
 	}
 }
 
@@ -472,6 +464,7 @@ type nodeParts struct {
 	peerEvents  *peerReputationObserver
 	corpusPass  *corpusSignalRefresh
 	tally       *transfertally.Tally
+	events      *events.Recorder
 }
 
 func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
@@ -487,7 +480,7 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 			parts.hostRank.Current,
 			parts.models.Ranker(),
 			parts.denylist,
-		).withGlobal(parts.explanation),
+		).withGlobal(parts.explanation).withEvents(parts.events),
 		searchRanking:  newSearchRankingEndpoint(parts.ranking),
 		searchTune:     newSearchRankingTuneEndpoint(rankingRuntime.tuner),
 		searchModel:    newSearchRankingModelEndpoint(parts.models),
@@ -562,23 +555,32 @@ func newRuntimeWireGate(
 // crawl-compatibility routes on the peer router in one step. acceptRemoteIndex
 // mirrors the advertised capability into the DHT-in transfer endpoints.
 func mountNodeWireHandlers(
-	router httpguard.WireRouter,
-	identity nodeidentity.Identity,
-	storage nodeStorage,
-	saturation *metrics.SaturationMetrics,
-	config nodeConfig,
+	in nodeWireHandlerAssembly,
 ) {
-	mountNodeProtocol(router, identity, storage, saturation, config.AdvertiseRemoteIndex)
-	mountNodeCrawlCompatibility(router, identity, storage)
+	mountNodeProtocol(
+		in.router,
+		in.identity,
+		in.storage,
+		in.saturation,
+		in.config.AdvertiseRemoteIndex,
+	)
+	mountNodeCrawlCompatibility(in.router, in.identity, in.storage, in.remoteCrawl)
 }
 
 func mountNodeCrawlCompatibility(
 	router httpguard.WireRouter,
 	identity nodeidentity.Identity,
 	storage nodeStorage,
+	remoteCrawl *remotecrawl.Broker,
 ) {
-	crawling.MountCrawlReceipt(router, identity)
-	crawlurls.Mount(router, identity, storage.urlDirectory, crawlurls.DisabledRemoteCrawlURLs{})
+	if remoteCrawl == nil {
+		crawling.MountCrawlReceipt(router, identity)
+		crawlurls.Mount(router, identity, storage.urlDirectory, crawlurls.DisabledRemoteCrawlURLs{})
+
+		return
+	}
+	crawling.MountCrawlReceipt(router, identity, remoteCrawl)
+	crawlurls.Mount(router, identity, storage.urlDirectory, remoteCrawl)
 }
 
 func mountNodeProtocol(
@@ -639,7 +641,14 @@ func newStorageSweeper(vault *vault.Vault, storage nodeStorage) eviction.Sweeper
 		storage.documentEvictor(),
 		storage.urlDirectory,
 		storage.staleness,
-		eviction.Config{TargetFraction: evictionTargetFraction, BatchSize: evictionBatch},
+		eviction.Config{
+			TargetFraction: evictionTargetFraction,
+			BatchSize:      evictionBatch,
+			PostingOnly: eviction.NewPostingOnlyURLSource(
+				storage.postingPages,
+				storage.urlDirectory,
+			),
+		},
 	)
 }
 

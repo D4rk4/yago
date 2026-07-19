@@ -24,10 +24,11 @@ const (
 
 // scheduleRecord is one URL's recrawl state, keyed by its URL hash.
 type scheduleRecord struct {
-	URL           string
-	ProfileHandle string
-	Interval      time.Duration
-	NextDueAt     time.Time
+	URL              string
+	ProfileHandle    string
+	Interval         time.Duration
+	NextDueAt        time.Time
+	SourceModifiedAt time.Time
 }
 
 type recordCodec struct{}
@@ -112,11 +113,17 @@ func (f *Frontier) Observe(
 	interval time.Duration,
 	fetchedAt time.Time,
 ) error {
+	return f.observe(ctx, fetchObservation{
+		url:           url,
+		profileHandle: profileHandle,
+		interval:      interval,
+		fetchedAt:     fetchedAt,
+	})
+}
+
+func (f *Frontier) observe(ctx context.Context, observation fetchObservation) error {
 	if err := f.vault.Update(ctx, func(tx *vault.Txn) error {
-		return f.observeInTx(tx, fetchObservation{
-			url: url, profileHandle: profileHandle,
-			interval: interval, fetchedAt: fetchedAt,
-		})
+		return f.observeInTx(tx, observation)
 	}); err != nil {
 		return fmt.Errorf("observe recrawl url: %w", err)
 	}
@@ -127,10 +134,11 @@ func (f *Frontier) Observe(
 // fetchObservation is one fetch to schedule, carried into a shared transaction so a
 // whole ingest micro-batch commits its recrawl schedule once (IO-AGG-01).
 type fetchObservation struct {
-	url           string
-	profileHandle string
-	interval      time.Duration
-	fetchedAt     time.Time
+	url              string
+	profileHandle    string
+	interval         time.Duration
+	fetchedAt        time.Time
+	sourceModifiedAt time.Time
 }
 
 // observeInTx applies one fetch observation inside the caller's transaction.
@@ -140,7 +148,8 @@ func (f *Frontier) observeInTx(tx *vault.Txn, obs fetchObservation) error {
 	hash, _ := yagomodel.HashURL(obs.url)
 	key := vault.Key(string(hash))
 
-	if err := f.clearDue(tx, key); err != nil {
+	existing, found, err := f.clearDue(tx, key)
+	if err != nil {
 		return err
 	}
 	if obs.interval <= 0 {
@@ -151,12 +160,53 @@ func (f *Frontier) observeInTx(tx *vault.Txn, obs fetchObservation) error {
 		return nil
 	}
 
+	nextDueAt, sourceModifiedAt := nextRecrawlDue(
+		existing,
+		found,
+		obs.fetchedAt,
+		obs.sourceModifiedAt,
+		obs.interval,
+	)
+
 	return f.schedule(tx, key, scheduleRecord{
-		URL:           obs.url,
-		ProfileHandle: obs.profileHandle,
-		Interval:      obs.interval,
-		NextDueAt:     obs.fetchedAt.Add(obs.interval).UTC(),
+		URL:              obs.url,
+		ProfileHandle:    obs.profileHandle,
+		Interval:         obs.interval,
+		NextDueAt:        nextDueAt,
+		SourceModifiedAt: sourceModifiedAt,
 	})
+}
+
+func nextRecrawlDue(
+	existing scheduleRecord,
+	found bool,
+	fetchedAt time.Time,
+	sourceModifiedAt time.Time,
+	interval time.Duration,
+) (time.Time, time.Time) {
+	nextDueAt := fetchedAt.Add(interval).UTC()
+	storedSourceModifiedAt := existing.SourceModifiedAt
+	if sourceModifiedAt.IsZero() || sourceModifiedAt.After(fetchedAt) {
+		return nextDueAt, storedSourceModifiedAt
+	}
+	sourceModifiedAt = sourceModifiedAt.UTC()
+	if storedSourceModifiedAt.IsZero() || sourceModifiedAt.After(storedSourceModifiedAt) {
+		storedSourceModifiedAt = sourceModifiedAt
+	}
+	signalDueAt := sourceModifiedAt.Add(interval).UTC()
+	if signalDueAt.After(fetchedAt) && signalDueAt.Before(nextDueAt) {
+		nextDueAt = signalDueAt
+	}
+	if found && !existing.SourceModifiedAt.IsZero() &&
+		sourceModifiedAt.After(existing.SourceModifiedAt) {
+		changeInterval := sourceModifiedAt.Sub(existing.SourceModifiedAt)
+		adaptiveDueAt := fetchedAt.Add(changeInterval).UTC()
+		if adaptiveDueAt.Before(nextDueAt) {
+			nextDueAt = adaptiveDueAt
+		}
+	}
+
+	return nextDueAt, storedSourceModifiedAt
 }
 
 // ClaimDue returns up to limit URLs whose next-due time is at or before now,
@@ -242,19 +292,22 @@ func (f *Frontier) collectDue(tx *vault.Txn, now time.Time, limit int) ([]dueEnt
 
 // clearDue removes the url's current due-index entry (if any), using its stored
 // next-due time so a stale index key is not orphaned when the schedule changes.
-func (f *Frontier) clearDue(tx *vault.Txn, key vault.Key) error {
+func (f *Frontier) clearDue(
+	tx *vault.Txn,
+	key vault.Key,
+) (scheduleRecord, bool, error) {
 	existing, found, err := f.records.Get(tx, key)
 	if err != nil {
-		return fmt.Errorf("read recrawl record: %w", err)
+		return scheduleRecord{}, false, fmt.Errorf("read recrawl record: %w", err)
 	}
 	if !found {
-		return nil
+		return scheduleRecord{}, false, nil
 	}
 	if _, err := f.due.Delete(tx, dueKey(existing.NextDueAt, string(key))); err != nil {
-		return fmt.Errorf("drop recrawl due entry: %w", err)
+		return scheduleRecord{}, false, fmt.Errorf("drop recrawl due entry: %w", err)
 	}
 
-	return nil
+	return existing, true, nil
 }
 
 func (f *Frontier) schedule(tx *vault.Txn, key vault.Key, record scheduleRecord) error {

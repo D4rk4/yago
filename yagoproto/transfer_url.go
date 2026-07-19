@@ -15,6 +15,8 @@ type TransferURLRequest struct {
 	YouAre      yagomodel.Hash
 	URLCount    int
 	URLs        []yagomodel.URIMetadataRow
+	Key         string
+	MagicMD5    string
 }
 
 type TransferURLResponse struct {
@@ -30,6 +32,8 @@ func (r TransferURLRequest) Form() url.Values {
 	putString(form, FieldIam, r.Iam.String())
 	putString(form, FieldYouAre, r.YouAre.String())
 	putInt(form, FieldURLCount, r.URLCount)
+	putString(form, FieldKey, r.Key)
+	putString(form, FieldMagicMD5, r.MagicMD5)
 	for i, row := range r.URLs {
 		putString(form, indexedKey(prefixURL, i), row.String())
 	}
@@ -55,6 +59,8 @@ func ParseTransferURLRequest(ctx context.Context, form url.Values) (TransferURLR
 	req := TransferURLRequest{
 		NetworkName: form.Get(FieldNetworkName),
 		URLCount:    urlCount,
+		Key:         form.Get(FieldKey),
+		MagicMD5:    form.Get(FieldMagicMD5),
 	}
 
 	req.Iam, err = parseHashField("transferURL request", FieldIam, form.Get(FieldIam))

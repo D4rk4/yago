@@ -40,10 +40,11 @@ func loadDHTDistributionConfig(getenv func(string) string) (dhtDistributionConfi
 	if err != nil {
 		return dhtDistributionConfig{}, err
 	}
-	interval, err := durationEnv(
+	interval, err := durationMinimumEnv(
 		getenv,
 		envDHTDistributionInterval,
 		defaultDHTDistributionInterval,
+		minimumDHTDistributionInterval,
 	)
 	if err != nil {
 		return dhtDistributionConfig{}, err

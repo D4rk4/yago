@@ -162,9 +162,7 @@ func TestRunNodeProvisionObservabilityError(t *testing.T) {
 	v := ctrlVault(t, engine)
 	config := testConfig(t)
 
-	if err := bootNode(
-		context.Background(), config, v, newRuntimeEgressClient(config),
-	); err == nil {
+	if err := bootNode(context.Background(), config, v); err == nil {
 		t.Fatal("bootNode should surface the observability provisioning error")
 	}
 }
@@ -175,9 +173,7 @@ func TestRunNodeLoadRuntimeSettingsError(t *testing.T) {
 	v := ctrlVault(t, engine)
 	config := testConfig(t)
 
-	if err := bootNode(
-		context.Background(), config, v, newRuntimeEgressClient(config),
-	); err == nil {
+	if err := bootNode(context.Background(), config, v); err == nil {
 		t.Fatal("bootNode should surface the runtime-settings load error")
 	}
 }
@@ -199,9 +195,7 @@ func TestRunNodeValidateBindsError(t *testing.T) {
 	config := testConfig(t)
 	config.PeerAddr = "invalid-bind-without-port"
 
-	if err := bootNode(
-		context.Background(), config, v, newRuntimeEgressClient(config),
-	); err == nil {
+	if err := bootNode(context.Background(), config, v); err == nil {
 		t.Fatal("bootNode should reject an invalid listen address")
 	}
 }

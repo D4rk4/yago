@@ -25,20 +25,24 @@ type Config struct {
 	ListenAddr                        string
 	LeaseTTL                          time.Duration
 	FetchWorkers                      int
+	ProcessPagesPerSecond             int
+	MaximumRedirects                  int
 	MaximumActiveRuns                 int
 	DisableAutomaticDiscoveryPriority bool
 	StoragePressurePolicy             yagocrawlcontract.StoragePressurePolicy
+	RuntimePolicy                     yagocrawlcontract.CrawlerRuntimePolicy
 	GrowthAdmission                   GrowthAdmission
 }
 
 type CrawlBroker struct {
-	Orders   *DurableOrderQueue
-	Ingest   *IngestReceiver
-	Control  *ControlRegistry
-	server   *grpc.Server
-	listener net.Listener
-	sweep    *time.Ticker
-	cancel   context.CancelFunc
+	Orders      *DurableOrderQueue
+	Ingest      *IngestReceiver
+	Control     *ControlRegistry
+	urlDenylist *crawlURLDenylistDelivery
+	server      *grpc.Server
+	listener    net.Listener
+	sweep       *time.Ticker
+	cancel      context.CancelFunc
 }
 
 var (
@@ -51,13 +55,11 @@ var (
 			yagocrawlcontract.MaximumIngestMessageBytes,
 		))
 	}
+	prepareCrawlExchange = newExchangeServerChecked
 )
 
 func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker, error) {
-	leaseTTL := cfg.LeaseTTL
-	if leaseTTL <= 0 {
-		leaseTTL = DefaultLeaseTTL
-	}
+	leaseTTL := effectiveCrawlLeaseTTL(cfg.LeaseTTL)
 	queue, err := newDurableOrderQueue(storage, leaseTTL, cfg.GrowthAdmission)
 	if err != nil {
 		return nil, err
@@ -77,20 +79,13 @@ func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker
 
 		return nil, fmt.Errorf("reclaim expired crawl leases: %w", err)
 	}
-	fetchWorkers := cfg.FetchWorkers
-	if fetchWorkers <= 0 {
-		fetchWorkers = yagocrawlcontract.DefaultFetchWorkerConcurrency
+	controlDefaults, err := crawlerControlDefaultsFor(cfg)
+	if err != nil {
+		cancel()
+
+		return nil, err
 	}
-	maximumActiveRuns := cfg.MaximumActiveRuns
-	if maximumActiveRuns <= 0 {
-		maximumActiveRuns = yagocrawlcontract.DefaultActiveCrawlRunConcurrency
-	}
-	control, err := newPersistentControlRegistry(storage, crawlerControlDefaults{
-		fetchWorkers:                 uint32(fetchWorkers),
-		maximumActiveRuns:            uint32(maximumActiveRuns),
-		prioritizeAutomaticDiscovery: !cfg.DisableAutomaticDiscoveryPriority,
-		storagePressurePolicy:        cfg.StoragePressurePolicy,
-	})
+	control, err := newPersistentControlRegistry(storage, controlDefaults)
 	if err != nil {
 		cancel()
 
@@ -110,12 +105,22 @@ func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker
 
 	ingest := newIngestReceiver()
 	server := newGRPCServer()
-	exchange := newExchangeServer(queue, ingest.out)
-	exchange.control = control
-	exchange.beginIngest = ingest.beginIngest
-	if progress != nil {
-		exchange.progress = progress
+	exchange, err := prepareCrawlExchange(queue, ingest.out, controlDefaults)
+	if err != nil {
+		_ = listener.Close()
+		cancel()
+
+		return nil, fmt.Errorf("configure crawl fetch-start schedule: %w", err)
 	}
+	if err := exchange.bindControl(control); err != nil {
+		_ = listener.Close()
+		cancel()
+
+		return nil, fmt.Errorf("bind crawl fetch-start authority: %w", err)
+	}
+	exchange.urlDenylist.SetSource(nil)
+	exchange.beginIngest = ingest.beginIngest
+	bindCrawlProgressSink(exchange, progress)
 	crawlrpc.RegisterCrawlExchangeServer(server, exchange)
 	go func() { _ = server.Serve(listener) }()
 
@@ -123,14 +128,33 @@ func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker
 	go sweepLeases(ctx, queue, sweep.C)
 
 	return &CrawlBroker{
-		Orders:   queue,
-		Ingest:   ingest,
-		Control:  exchange.control,
-		server:   server,
-		listener: listener,
-		sweep:    sweep,
-		cancel:   cancel,
+		Orders:      queue,
+		Ingest:      ingest,
+		Control:     exchange.control,
+		urlDenylist: exchange.urlDenylist,
+		server:      server,
+		listener:    listener,
+		sweep:       sweep,
+		cancel:      cancel,
 	}, nil
+}
+
+func effectiveCrawlLeaseTTL(configured time.Duration) time.Duration {
+	if configured <= 0 {
+		return DefaultLeaseTTL
+	}
+
+	return configured
+}
+
+func bindCrawlProgressSink(exchange *exchangeServer, progress ProgressSink) {
+	if progress != nil {
+		exchange.progress = progress
+	}
+}
+
+func (b *CrawlBroker) SetURLDenylistSource(source CrawlURLDenylistSource) {
+	b.urlDenylist.SetSource(source)
 }
 
 func (b *CrawlBroker) Close() {

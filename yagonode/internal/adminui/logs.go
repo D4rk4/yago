@@ -27,12 +27,15 @@ var logSeverities = []string{"debug", "info", "warn", "error"}
 // active filter and the category vocabulary, so the filter form and the
 // htmx-refresh URL both stay consistent with what the operator selected.
 type logsView struct {
-	Entries    []LogEntry
-	Severity   string
-	Category   string
-	Query      string
-	Severities []string
-	Categories []string
+	Entries     []LogEntry
+	Severity    string
+	Category    string
+	Query       string
+	From        string
+	To          string
+	FilterError string
+	Severities  []string
+	Categories  []string
 }
 
 // filterLogEntries keeps the entries matching the active severity and category

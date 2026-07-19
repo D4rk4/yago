@@ -23,7 +23,12 @@ func (e transferURLEndpoint) Serve(
 ) (yagoproto.TransferURLResponse, error) {
 	resp := yagoproto.TransferURLResponse{}
 
-	if !e.identity.NetworkMatches(req.NetworkName) {
+	if !e.identity.Authenticates(
+		req.NetworkName,
+		req.Key,
+		req.Iam.String(),
+		req.MagicMD5,
+	) {
 		return resp, nil
 	}
 	// The operator turned the accept-remote-index capability off: refuse the

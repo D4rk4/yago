@@ -134,13 +134,17 @@ func TestExtendedSettingValidation(t *testing.T) {
 		t.Fatalf("privacy normalize = %q %v", normalized, err)
 	}
 
-	// No secret ever appears in the catalog.
-	for key := range byKey {
+	for key, definition := range byKey {
 		lower := strings.ToLower(key)
 		if strings.Contains(lower, "password") || strings.Contains(lower, "key") ||
 			strings.Contains(lower, "secret") || strings.Contains(lower, "token") {
-			t.Fatalf("secret-looking setting exposed: %s", key)
+			if !definition.sensitive {
+				t.Fatalf("secret-looking setting is not protected: %s", key)
+			}
 		}
+	}
+	if !byKey[settingKeyNetworkAuthenticationSecret].sensitive {
+		t.Fatal("shared network secret must be protected")
 	}
 
 	// Extended settings without live hooks require a restart.

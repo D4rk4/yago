@@ -3,7 +3,8 @@ package main
 import (
 	"fmt"
 	"net/netip"
-	"strings"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 const EnvEgressAllowCIDRs = "YAGO_CRAWLER_ALLOW_CIDRS"
@@ -13,20 +14,9 @@ const EnvEgressAllowCIDRs = "YAGO_CRAWLER_ALLOW_CIDRS"
 // intranet crawl can reach named internal ranges without opening all of RFC 1918
 // and unique-local space. An empty value keeps the default private denial.
 func parseEgressAllowCIDRs(raw string) ([]netip.Prefix, error) {
-	prefixes := make([]netip.Prefix, 0)
-	for _, item := range strings.Split(raw, ",") {
-		trimmed := strings.TrimSpace(item)
-		if trimmed == "" {
-			continue
-		}
-		prefix, err := netip.ParsePrefix(trimmed)
-		if err != nil {
-			return nil, fmt.Errorf("parse cidr %q: %w", trimmed, err)
-		}
-		prefixes = append(prefixes, prefix.Masked())
-	}
-	if len(prefixes) == 0 {
-		return nil, nil
+	prefixes, err := yagocrawlcontract.ParseCrawlerPrivateCIDRs(raw)
+	if err != nil {
+		return nil, fmt.Errorf("parse crawler egress CIDRs: %w", err)
 	}
 
 	return prefixes, nil

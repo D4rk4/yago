@@ -56,11 +56,12 @@ type Pipeline struct {
 	insecureDirect pagefetch.PageSource
 	// loadFeedback hears each host's throttle signals and successes so the
 	// politeness pace can back off and recover; nil discards the signals.
-	loadFeedback HostLoadFeedback
-	index        pageindex.IndexBuilder
-	emitter      ingest.BatchEmitter
-	observer     Observer
-	leaseGrants  *crawllease.GrantRegistry
+	loadFeedback        HostLoadFeedback
+	index               pageindex.IndexBuilder
+	emitter             ingest.BatchEmitter
+	observer            Observer
+	leaseGrants         *crawllease.GrantRegistry
+	fetchStartAdmission FetchStartAdmission
 }
 
 func NewPipeline(
@@ -206,6 +207,11 @@ func (p *Pipeline) fetchJob(
 	target *url.URL,
 	outcome *yagocrawlcontract.CrawlRunTally,
 ) (pagefetch.FetchedPage, error) {
+	if p.fetchStartAdmission != nil {
+		if err := p.fetchStartAdmission.Wait(ctx); err != nil {
+			return pagefetch.FetchedPage{}, fmt.Errorf("fetch admission: %w", err)
+		}
+	}
 	p.observer.FetchAttempted()
 	if job.DisableBrowser {
 		ctx = pagefetch.WithoutBrowserFallback(ctx)
@@ -231,6 +237,8 @@ func (p *Pipeline) fetchJob(
 func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	p.observer.JobStarted()
 	outcome := yagocrawlcontract.CrawlRunTally{}
+	outcomeReason := ""
+	outcomeHTTPStatus := uint32(0)
 	abandoned := false
 	defer func() {
 		if abandoned {
@@ -238,7 +246,7 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 
 			return
 		}
-		p.frontier.Done(job, outcome)
+		completePage(p.frontier, job, outcome, outcomeHTTPStatus, outcomeReason)
 	}()
 	defer p.observer.JobFinished()
 	slog.DebugContext(ctx, msgJobFetching,
@@ -248,20 +256,25 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	target, ok := weburl.ParseBase(job.URL)
 	if !ok {
 		outcome.Failed++
+		outcomeReason = crawlURLInvalidReason
 
 		return fmt.Errorf("parse url: %s", job.URL)
 	}
 	fetched, err := p.fetchJob(ctx, job, target, &outcome)
 	if err != nil {
+		outcomeHTTPStatus = pageOutcomeHTTPStatus(err)
+		outcomeReason = fetchOutcomeReason(err)
 		removalErr := p.emitRemovalIfGone(ctx, job, err)
 		abandoned = ctx.Err() != nil || errors.Is(removalErr, crawllease.ErrLeaseLost)
 		if removalErr != nil {
+			outcomeReason = pageProcessingFailureReason(removalErr)
 			return errors.Join(err, removalErr)
 		}
 
 		return err
 	}
-	err = p.processFetchedPage(ctx, job, fetched, &outcome)
+	outcomeHTTPStatus = fetched.HTTPStatus
+	outcomeReason, err = p.processFetchedPage(ctx, job, fetched, &outcome)
 	abandoned = err != nil && (ctx.Err() != nil || errors.Is(err, crawllease.ErrLeaseLost))
 	if err != nil && !abandoned {
 		outcome.Failed++
@@ -275,18 +288,17 @@ func (p *Pipeline) processFetchedPage(
 	job crawljob.CrawlJob,
 	fetched pagefetch.FetchedPage,
 	outcome *yagocrawlcontract.CrawlRunTally,
-) error {
+) (string, error) {
 	p.recordHostFetchSuccess(ctx, job)
 	if !p.redirectAdmitted(ctx, job, fetched.URL.String()) {
 		outcome.Duplicates++
 
-		return nil
+		return redirectNotAdmittedReason, nil
 	}
 	if !formatparse.Accepts(fetched.URL.String(), fetched.ContentType, job.Formats) {
 		p.observer.FetchFailed()
-		outcome.Failed++
 
-		return fmt.Errorf(
+		return unsupportedContentReason, fmt.Errorf(
 			"content type %q: %w",
 			fetched.ContentType,
 			pagefetch.ErrUnsupportedContentType,
@@ -300,6 +312,14 @@ func (p *Pipeline) processFetchedPage(
 		fetched.Body,
 		job.Formats,
 	)
+	if !parsed {
+		observeParseFailure(p.observer)
+		outcome.Failed++
+	}
+	outcomeReason := ""
+	if !parsed {
+		outcomeReason = contentParserNoDocumentReason
+	}
 	page = pageWithSourceDate(page, fetched.LastModified, job.SourceModifiedAt)
 	slog.DebugContext(ctx, msgPageCrawled,
 		slog.String("url", page.URL),
@@ -313,19 +333,32 @@ func (p *Pipeline) processFetchedPage(
 			slog.String("source", directives.noindexSource),
 		)
 
-		return nil
+		if outcomeReason == "" {
+			outcomeReason = pageDirectivesNoindexReason
+		}
+
+		return outcomeReason, nil
 	}
-	if !job.Index || !parsed {
+	if !job.Index {
 		slog.DebugContext(ctx, msgPageNotIndexed, slog.String("url", page.URL))
 
-		return nil
+		return crawlProfileIndexDisabledReason, nil
+	}
+	if !parsed {
+		slog.DebugContext(ctx, msgPageNotIndexed, slog.String("url", page.URL))
+
+		return outcomeReason, nil
 	}
 	err := p.indexAndEmit(ctx, job, page, fetched.ContentType)
 	if err == nil {
 		outcome.Indexed++
 	}
 
-	return err
+	if err != nil {
+		outcomeReason = pageProcessingFailureReason(err)
+	}
+
+	return outcomeReason, err
 }
 
 // redirectAdmitted applies the run's visited-set to a job's post-redirect
@@ -396,18 +429,19 @@ func (p *Pipeline) emitRemovalIfGone(ctx context.Context, job crawljob.CrawlJob,
 	if emitErr := p.emitter.EmitRemoval(
 		ctx,
 		ingest.Envelope{
-			SourceURL:     job.URL,
-			Provenance:    job.Provenance,
-			ProfileHandle: job.ProfileHandle,
-			ObservationID: job.ObservationID,
-			ObservedAt:    job.ObservedAt,
+			SourceURL:        job.URL,
+			Provenance:       job.Provenance,
+			ProfileHandle:    job.ProfileHandle,
+			ObservationID:    job.ObservationID,
+			ObservedAt:       job.ObservedAt,
+			SourceModifiedAt: job.SourceModifiedAt,
 		},
 	); emitErr != nil {
 		slog.WarnContext(ctx, "crawl page removal emit failed",
 			slog.String("url", job.URL),
 			slog.Any("error", emitErr))
 
-		return fmt.Errorf("emit removal: %w", emitErr)
+		return fmt.Errorf("%w: %w", errDocumentRemovalIngestFailure, emitErr)
 	}
 	slog.DebugContext(ctx, "crawl dead page tombstoned",
 		slog.String("url", job.URL),
@@ -425,7 +459,7 @@ func (p *Pipeline) indexAndEmit(
 	stats := pageindex.BuildPageStats(page)
 	artifacts, err := p.index.Build(page, stats)
 	if err != nil {
-		return fmt.Errorf("index: %w", err)
+		return fmt.Errorf("%w: %w", errDocumentIndexFailure, err)
 	}
 	artifacts.Document.ContentType = contentType
 	artifacts.Document.FetchedAt = time.Now().UTC()
@@ -435,14 +469,15 @@ func (p *Pipeline) indexAndEmit(
 		artifacts.Postings,
 		artifacts.Metadata,
 		ingest.Envelope{
-			SourceURL:     page.URL,
-			Provenance:    job.Provenance,
-			ProfileHandle: job.ProfileHandle,
-			ObservationID: job.ObservationID,
-			ObservedAt:    job.ObservedAt,
+			SourceURL:        page.URL,
+			Provenance:       job.Provenance,
+			ProfileHandle:    job.ProfileHandle,
+			ObservationID:    job.ObservationID,
+			ObservedAt:       job.ObservedAt,
+			SourceModifiedAt: job.SourceModifiedAt,
 		},
 	); err != nil {
-		return fmt.Errorf("emit: %w", err)
+		return fmt.Errorf("%w: %w", errDocumentIngestFailure, err)
 	}
 	p.observer.IngestPublished()
 

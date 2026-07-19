@@ -118,6 +118,52 @@ func TestControlDirectiveIdentityRoundTrips(t *testing.T) {
 	}
 }
 
+func TestProcessRateDirectiveIsAdditive(t *testing.T) {
+	wire, err := proto.Marshal(&crawlrpc.CrawlControlDirective{
+		Kind:                  crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_PROCESS_RATE,
+		ProcessPagesPerSecond: 27,
+	})
+	if err != nil {
+		t.Fatalf("marshal process rate: %v", err)
+	}
+	decoded := &crawlrpc.CrawlControlDirective{}
+	if err := proto.Unmarshal(wire, decoded); err != nil {
+		t.Fatalf("unmarshal process rate: %v", err)
+	}
+	if decoded.GetKind() !=
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_PROCESS_RATE ||
+		decoded.GetProcessPagesPerSecond() != 27 {
+		t.Fatalf("process rate directive = %+v", decoded)
+	}
+	legacy := dynamicpb.NewMessage(emptyLegacyMessageDescriptor(t, "CrawlControlDirective"))
+	if err := proto.Unmarshal(wire, legacy); err != nil {
+		t.Fatalf("legacy directive rejected additive process rate: %v", err)
+	}
+}
+
+func TestMaximumRedirectsDirectiveIsAdditive(t *testing.T) {
+	wire, err := proto.Marshal(&crawlrpc.CrawlControlDirective{
+		Kind:             crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_MAXIMUM_REDIRECTS,
+		MaximumRedirects: 7,
+	})
+	if err != nil {
+		t.Fatalf("marshal maximum redirects: %v", err)
+	}
+	decoded := &crawlrpc.CrawlControlDirective{}
+	if err := proto.Unmarshal(wire, decoded); err != nil {
+		t.Fatalf("unmarshal maximum redirects: %v", err)
+	}
+	if decoded.GetKind() !=
+		crawlrpc.CrawlControlKind_CRAWL_CONTROL_KIND_SET_MAXIMUM_REDIRECTS ||
+		decoded.GetMaximumRedirects() != 7 {
+		t.Fatalf("maximum redirects directive = %+v", decoded)
+	}
+	legacy := dynamicpb.NewMessage(emptyLegacyMessageDescriptor(t, "CrawlControlDirective"))
+	if err := proto.Unmarshal(wire, legacy); err != nil {
+		t.Fatalf("legacy directive rejected additive maximum redirects: %v", err)
+	}
+}
+
 func TestWorkerHeartbeatStoragePressurePreservesExplicitZero(t *testing.T) {
 	zero := uint64(0)
 	available := false
@@ -180,6 +226,44 @@ func TestWorkerHeartbeatResultStoragePolicyIsAdditiveAndOptional(t *testing.T) {
 	if legacyDecoded.StorageReservedFreeBytes != nil ||
 		legacyDecoded.StoragePressureHysteresisBytes != nil {
 		t.Fatalf("legacy result invented policy presence: %+v", legacyDecoded)
+	}
+}
+
+func TestWorkerHeartbeatURLDenylistFieldsAreAdditive(t *testing.T) {
+	revision := make([]byte, 32)
+	revision[0] = 7
+	wire, err := proto.Marshal(&crawlrpc.WorkerHeartbeat{
+		WorkerId: "current", UrlDenylistRevision: revision, UrlDenylistBootstrap: true,
+	})
+	if err != nil {
+		t.Fatalf("marshal URL denylist heartbeat: %v", err)
+	}
+	decoded := &crawlrpc.WorkerHeartbeat{}
+	if err := proto.Unmarshal(wire, decoded); err != nil {
+		t.Fatalf("unmarshal URL denylist heartbeat: %v", err)
+	}
+	if !decoded.GetUrlDenylistBootstrap() ||
+		!proto.Equal(decoded, &crawlrpc.WorkerHeartbeat{
+			WorkerId: "current", UrlDenylistRevision: revision, UrlDenylistBootstrap: true,
+		}) {
+		t.Fatalf("decoded URL denylist heartbeat = %+v", decoded)
+	}
+	legacy := dynamicpb.NewMessage(legacyWorkerHeartbeatDescriptor(t))
+	if err := proto.Unmarshal(wire, legacy); err != nil {
+		t.Fatalf("legacy heartbeat rejected URL denylist fields: %v", err)
+	}
+	resultWire, err := proto.Marshal(&crawlrpc.WorkerHeartbeatResult{
+		UrlDenylist: &crawlrpc.CrawlURLDenylist{
+			Revision: revision, ExactUrls: []string{"https://blocked.example/"},
+			Domains: []string{"denied.example"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal URL denylist result: %v", err)
+	}
+	legacyResult := dynamicpb.NewMessage(emptyLegacyMessageDescriptor(t, "WorkerHeartbeatResult"))
+	if err := proto.Unmarshal(resultWire, legacyResult); err != nil {
+		t.Fatalf("legacy result rejected URL denylist policy: %v", err)
 	}
 }
 

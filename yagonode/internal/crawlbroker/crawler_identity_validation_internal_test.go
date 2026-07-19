@@ -18,7 +18,7 @@ type invalidCrawlerIdentity struct {
 	sessionID string
 }
 
-func TestOversizedCrawlerIdentitiesAreRejectedBeforeMutation(t *testing.T) {
+func TestInvalidCrawlerIdentitiesAreRejectedBeforeMutation(t *testing.T) {
 	identities := []invalidCrawlerIdentity{
 		{
 			name: "worker",
@@ -36,6 +36,8 @@ func TestOversizedCrawlerIdentitiesAreRejectedBeforeMutation(t *testing.T) {
 				yagocrawlcontract.MaximumCrawlerSessionIdentityBytes+1,
 			),
 		},
+		{name: "worker-control", workerID: "worker\u2028line", sessionID: "session"},
+		{name: "session-format", workerID: "worker", sessionID: "session\u200bhidden"},
 	}
 	for _, identity := range identities {
 		t.Run(identity.name+"/stream", func(t *testing.T) {

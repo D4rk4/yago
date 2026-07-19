@@ -38,7 +38,12 @@ func (e searchEndpoint) Serve(
 	}
 	defer release()
 
-	if e.identity.NetworkMatches(req.NetworkName) {
+	if e.identity.Authenticates(
+		req.NetworkName,
+		req.Key,
+		req.Iam,
+		req.MagicMD5,
+	) {
 		criteria, err := searchCriteriaFromRequest(req)
 		if err != nil {
 			return yagoproto.SearchResponse{}, fmt.Errorf("search criteria: %w", err)

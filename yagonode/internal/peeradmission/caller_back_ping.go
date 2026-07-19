@@ -5,20 +5,39 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
-const backPingMaxBodyBytes int64 = 64 << 10
+const (
+	backPingMaxBodyBytes                 int64 = 64 << 10
+	callerBackPingUnreachableMessage           = "caller back-ping unreachable"
+	callerBackPingBodyCloseFailedMessage       = "caller back-ping body close failed"
+)
 
 type callerBackPing struct {
 	client      *http.Client
 	preferHTTPS bool
+	access      yagoproto.NetworkAccess
+	signForm    func(yagoproto.NetworkAccess, url.Values) error
 }
 
-func newCallerBackPing(client *http.Client, preferHTTPS bool) callerBackPing {
-	return callerBackPing{client: client, preferHTTPS: preferHTTPS}
+func newCallerBackPing(
+	client *http.Client,
+	preferHTTPS bool,
+	access ...yagoproto.NetworkAccess,
+) callerBackPing {
+	var configured yagoproto.NetworkAccess
+	if len(access) != 0 {
+		configured = access[0]
+	}
+
+	return callerBackPing{
+		client: client, preferHTTPS: preferHTTPS, access: configured,
+		signForm: yagoproto.NetworkAccess.Sign,
+	}
 }
 
 var _ callerReachabilityProbe = callerBackPing{}
@@ -33,7 +52,7 @@ func (p callerBackPing) Reachable(
 ) bool {
 	targets, err := caller.ProtocolEndpoints(yagoproto.PathQuery, p.preferHTTPS)
 	if err != nil {
-		slog.DebugContext(ctx, "caller back-ping unreachable", slog.Any("error", err))
+		slog.DebugContext(ctx, callerBackPingUnreachableMessage, slog.Any("error", err))
 
 		return false
 	}
@@ -44,7 +63,18 @@ func (p callerBackPing) Reachable(
 		Iam:         self,
 		Object:      yagoproto.ObjectRWICount,
 	}
-	rawQuery := query.Form().Encode()
+	form := query.Form()
+	if p.access.Mode == yagoproto.NetworkAuthenticationSaltedMagic {
+		access := p.access
+		access.NetworkName = networkName
+		access.Self = self
+		if err := p.signForm(access, form); err != nil {
+			slog.DebugContext(ctx, callerBackPingUnreachableMessage, slog.Any("error", err))
+
+			return false
+		}
+	}
+	rawQuery := form.Encode()
 
 	// A reachability probe passes when any candidate scheme answers, so walk
 	// the https-first candidates until one connects.
@@ -53,7 +83,7 @@ func (p callerBackPing) Reachable(
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 		resp, err := p.client.Do(req)
 		if err != nil {
-			slog.DebugContext(ctx, "caller back-ping unreachable", slog.Any("error", err))
+			slog.DebugContext(ctx, callerBackPingUnreachableMessage, slog.Any("error", err))
 
 			continue
 		}
@@ -72,26 +102,30 @@ func (p callerBackPing) confirmClose(ctx context.Context, resp *http.Response) b
 
 func (p callerBackPing) confirms(ctx context.Context, resp *http.Response) bool {
 	if resp.StatusCode != http.StatusOK {
-		slog.DebugContext(ctx, "caller back-ping unreachable", slog.Int("status", resp.StatusCode))
+		slog.DebugContext(
+			ctx,
+			callerBackPingUnreachableMessage,
+			slog.Int("status", resp.StatusCode),
+		)
 
 		return false
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, backPingMaxBodyBytes))
 	if err != nil {
-		slog.DebugContext(ctx, "caller back-ping unreachable", slog.Any("error", err))
+		slog.DebugContext(ctx, callerBackPingUnreachableMessage, slog.Any("error", err))
 
 		return false
 	}
 
 	msg, err := parseBackPingMessage(string(body))
 	if err != nil {
-		slog.DebugContext(ctx, "caller back-ping unreachable", slog.Any("error", err))
+		slog.DebugContext(ctx, callerBackPingUnreachableMessage, slog.Any("error", err))
 
 		return false
 	}
 	if _, err := yagoproto.ParseQueryResponse(msg); err != nil {
-		slog.DebugContext(ctx, "caller back-ping unreachable", slog.Any("error", err))
+		slog.DebugContext(ctx, callerBackPingUnreachableMessage, slog.Any("error", err))
 
 		return false
 	}
@@ -101,6 +135,6 @@ func (p callerBackPing) confirms(ctx context.Context, resp *http.Response) bool 
 
 func (p callerBackPing) close(ctx context.Context, body io.Closer) {
 	if err := body.Close(); err != nil {
-		slog.WarnContext(ctx, "caller back-ping body close failed", slog.Any("error", err))
+		slog.WarnContext(ctx, callerBackPingBodyCloseFailedMessage, slog.Any("error", err))
 	}
 }

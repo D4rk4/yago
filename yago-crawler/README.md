@@ -26,7 +26,7 @@ not stored or shipped by default.
 flowchart LR
     node["yago-node<br/>(Pi-class, always-on)"]
     crawler["yago-crawler<br/>(powerful host, on-demand)"]
-    node <-->|control: orders, heartbeat, settlement, progress| crawler
+    node <-->|control: orders, policy, permits, denylist, heartbeat, settlement, progress| crawler
     crawler -- "ingest channel: documents + references" --> node
 ```
 
@@ -34,10 +34,11 @@ flowchart LR
 
 The crawler is a long-running, order-driven service. It opens separate control
 and ingest connections to the node's crawl gRPC endpoint on startup and then
-idles until work arrives. The control connection carries orders, heartbeats,
-settlement, and progress; the ingest connection carries document/RWI/URL metadata
-batches. A large ingest call therefore cannot queue lease or progress traffic on
-the same transport.
+idles until work arrives. The control connection carries runtime-policy reads,
+orders, fleet fetch-start permits, revisioned denylist delivery, heartbeats,
+settlement, and progress; the ingest connection carries document/RWI/URL
+metadata batches. A large ingest call therefore cannot queue lease or progress
+traffic on the same transport.
 
 Multiple crawler instances can each stream orders from the node to load-balance,
 and the node's blocking ingest call applies backpressure when it
@@ -221,12 +222,17 @@ resolver, throttling, timeout, and server failures nak the leased order for
 redelivery. Deterministic public-web admission and SSRF-policy rejections, invalid
 seed modes or URLs, deterministic client responses, and malformed sitemap content
 terminate the poison order instead of retrying forever. Sitemap `lastmod` values
-are carried as crawl request hints for later recrawl scheduling.
+are carried through the persistent frontier and ingest boundary into the node's
+durable recrawl scheduler. A valid non-future hint can advance the next fetch
+within the profile cadence; advancing observations can learn a shorter change
+interval, while future, stale, and unchanged values cannot create an immediate
+recrawl loop.
 
 Configuration comes from the environment (`YAGO_CRAWLER_NODE_RPC_ADDR` is required;
 `YAGO_DATA_DIR` defaults to `./data` and contains `crawler/frontier-v1.db`;
-`YAGO_CRAWLER_WORKER_ID` is an optional display prefix for the stable identity
-stored in that checkpoint;
+`YAGO_CRAWLER_WORKER_ID` is an optional one-line display prefix of at most 219
+bytes for the stable identity stored in that checkpoint; the crawler appends a
+hyphen and UUID within the 256-byte wire limit;
 `YAGO_CRAWLER_STORAGE_RESERVED_FREE` defaults to 1 GiB and
 `YAGO_CRAWLER_STORAGE_PRESSURE_HYSTERESIS` defaults to 256 MiB. The crawler
 measures the filesystem containing its data directory, fails closed when that
@@ -241,6 +247,18 @@ schema and stable-identity bootstrap writes are outside this advisory gate;
 `YAGO_CRAWLER_WORKERS` starts 4 page-fetch workers by default and accepts 1–256;
 the same bootstrap value belongs in the node environment, whose persisted Admin
 setting becomes authoritative for every connected process after heartbeat;
+`YAGO_CRAWLER_MAX_PAGES_PER_SECOND` defaults to 10 page-fetch starts per second
+for the complete connected crawler fleet and accepts 0–1,000,000, where zero is
+unlimited; the same bootstrap value belongs in the node environment, and the
+live `crawler.max_pages_per_second` Admin setting becomes authoritative after
+heartbeat. The node grants strict relative start windows from one non-bursting
+schedule. Each window spans the smaller of one rate interval and the
+250-millisecond reservation horizon. The crawler intersects it with the request
+send and response receive times: round-trip time below that span remains usable,
+while an equal or greater round-trip leaves no permit and retries slowly without
+bursting. The crawler keeps the same value as a local process smoother and
+requests only demand-backed permit batches bounded by its live worker
+concurrency. Per-run and per-host limits continue to apply independently;
 `YAGO_CRAWLER_MAX_ACTIVE_RUNS` defaults to 32 and accepts 1–256; it bounds the
 distinct crawl tasks whose prepared orders, frontiers, and progress reporters
 may remain active in each process, independently of page-fetch concurrency. The
@@ -248,8 +266,7 @@ same bootstrap value belongs in the node environment, and the live
 `crawler.max_active_runs` Admin setting becomes authoritative after heartbeat;
 `YAGO_CRAWLER_RUN_PAGES_PER_MINUTE` defaults to 30 and limits each active run
 independently, with per-host crawl delay and concurrency applying additional
-politeness; there is no separate process-wide or fleet-wide pages-per-second
-ceiling, so aggregate throughput is the sum of the runs and crawler processes;
+politeness;
 `YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY` defaults to `true` in both service
 environments and gives explicit discovery work at most three due page dispatches
 before waiting normal work; a successful startup heartbeat applies the node's
@@ -260,7 +277,29 @@ where a job stays occupied through fetch, parsing, and result publication;
 `YAGO_CRAWLER_ALLOW_PRIVATE_NETWORKS` opts into all LAN and private-network targets,
 while `YAGO_CRAWLER_ALLOW_CIDRS` is a comma-separated list of private CIDRs to admit
 instead of opening all private space; loopback, link-local, and reserved ranges
-stay blocked either way). The service runs until it receives `SIGINT` or
+stay blocked either way). The same bootstrap values for the private-network
+policy, Firefox executable and content sandbox, browser failure threshold,
+loopback metrics listener, origin timeouts, crawl delay, depth, per-host
+concurrency, per-run default rate, sitemap limit, shutdown grace, and HTTP
+User-Agent belong in both service environments. Before assembling its fetch
+stack, the crawler reads the node's typed authoritative policy. A sandbox-only
+heartbeat change lets an active render finish and retires the affected Firefox
+session before that slot's next render; every other policy change requests a
+graceful automatic restart. The optional sandbox, browser-path, and
+metrics-address fields keep their current bootstrap values when the immediately
+previous policy-capable node omits them. An older node without that additive RPC
+leaves the environment bootstrap in use.
+
+The Index URL/domain denylist is also authoritative crawler policy. Before the
+order stream opens, the crawler obtains one bounded revisioned snapshot from the
+node and fails closed until it has a valid policy. Heartbeats transfer a new
+snapshot only when its revision changes, and an invalid later delivery cannot
+replace the last valid snapshot. Exact URLs and domain suffixes are rejected
+before seed or discovered-link frontier admission and around every HTTP,
+sitemap, and browser fetch, including its final redirected URL. This reuses the
+existing Index policy and introduces no crawler environment variable.
+
+The service runs until it receives `SIGINT` or
 `SIGTERM`, then shuts down gracefully: it stops pulling new jobs but lets
 in-flight page fetches finish, waiting up to `YAGO_CRAWLER_SHUTDOWN_GRACE`
 (default `10s`) before aborting any still running. It detaches queued local work
@@ -319,9 +358,27 @@ or a successful HTML document has executable JavaScript but its bounded main-tex
 extraction contains neither four terms nor sixteen letters or digits. Scriptless
 and non-HTML responses, JSON data scripts, usable static HTML, and profiles that
 disable browser rendering keep their single fast-path fetch. This removes a
-global render convoy without launching one browser per crawl worker. The HTTP fast path
-follows at most `YAGO_CRAWLER_MAX_REDIRECTS` redirect hops and uses explicit
-request, connect, TLS, and response-header timeout budgets. Sitemap and
+global render convoy without launching one browser per crawl worker. The HTTP
+fast path and Firefox fallback follow at most `YAGO_CRAWLER_MAX_REDIRECTS`
+redirect hops and use explicit request, connect, TLS, and response-header timeout
+budgets. The default is 10, zero rejects the first redirect, and the node's
+persisted `crawler.max_redirects` setting applies live after heartbeat. Guarded
+HTTP clients read the new limit immediately; Firefox sessions close and lazily
+relaunch with the new limit before the next render. The persisted
+`crawler.browser_sandbox` setting follows the same session boundary: it changes
+Firefox's next launch without interrupting an active render. The bootstrap
+`YAGO_CRAWLER_BROWSER_SANDBOX` value defaults to `false` in both service
+environments and remains in effect when an older node omits the optional policy
+field. An empty `YAGO_CRAWLER_BROWSER_PATH` discovers optional `firefox-esr`,
+then `firefox`, through `PATH`; a nonempty value names an absolute launcher with
+exactly one of those basenames. The crawler resolves and validates a discovered
+or configured launcher before browser assembly and immediately before every
+spawn. The original path, symlinks, resolved executable, and every replaceable
+ancestor must be root-owned and not group- or other-writable; the target must be a
+regular, non-set-ID executable available to the crawler identity. An unsafe or
+missing explicit path fails startup. Empty discovery with no installed Firefox
+keeps the HTTP fast path operational and reports an error only when a page needs
+the browser fallback. Sitemap and
 sitelist expansion imports at most `YAGO_CRAWLER_SITEMAP_URL_LIMIT` URLs per
 seed. The container image bundles Firefox ESR on a pinned Alpine runtime and
 runs as a non-root user. Its Go builder and Alpine runtime bases are pinned by
@@ -361,9 +418,22 @@ checkpoint. An expired session-aware lease remains parked for that stable worker
 so a different worker cannot restart the traversal from an unrelated data
 directory; deferred and legacy sessionless leases still requeue normally.
 
-Fetched and failed progress tallies are mutually exclusive terminal page
-outcomes, so the Admin failure rate is failed / (fetched + failed); HTTP protocol
-fallbacks and browser attempts within one page job do not inflate the numerator.
+Fetched progress counts accepted response bodies. Failed progress counts fetch
+failures and later processing failures, so an unparseable response increments
+both fetched and failed. The Admin failure rate is failed / (fetched + failed),
+which remains bounded at 100%; HTTP protocol fallbacks and browser attempts
+within one page job do not inflate the numerator. Recent per-URL outcomes retain
+at most 64 entries and expose only bounded URLs, outcome classes, timestamps,
+status codes when available, and stable operator reasons. They never carry page
+content or raw parser errors. Each retained URL has one terminal class: fetched,
+indexed, failed, robots denied, duplicate, or skipped. These per-URL classes are
+mutually exclusive even though the aggregate fetched and failed counters are not.
+Stable reasons distinguish URL parsing, fetch and robots rejection, unsupported
+content, parsing, indexing, ingest delivery, page directives, profile policy,
+redirect admission, and document removal without exposing provider errors.
+Progress also reports the immutable effective whole-run maximum and per-host
+maximum as separate values. An unlimited value is explicit; an older or incomplete
+report remains unavailable rather than being presented as zero.
 Each admitted run publishes its initial running snapshot with the immutable
 seeded queue depth before terminal settlement may report completion. Later
 running snapshots read the live pending depth, and no running snapshot can follow
@@ -385,10 +455,12 @@ operator cancellation, or permanent egress-policy rejection never retires a
 healthy host. Expected URL-specific, robots, and unsupported-format outcomes log
 at debug; actionable failures remain warnings.
 
-When `YAGO_CRAWLER_METRICS_ADDR` is set (for example `:9101`), the crawler serves
+When `YAGO_CRAWLER_METRICS_ADDR` is set to a loopback IP-literal listener (for
+example `127.0.0.1:9101` or `[::1]:9101`), the crawler serves
 Prometheus metrics at `/metrics` on that address: `yacy_crawler_jobs_active`,
 `yacy_crawler_fetches_total`, `yacy_crawler_fetch_failures_total`,
-`yacy_crawler_bytes_total`, `yacy_crawler_robots_denied_total`, and
+`yacy_crawler_parse_failures_total`, `yacy_crawler_bytes_total`,
+`yacy_crawler_robots_denied_total`,
 `yacy_crawler_ingest_batches_total`, `yacy_crawler_host_backoffs_total`, and
 `yacy_crawler_browser_slot_acquisition_deadlines_total`, plus filesystem
 availability, reserve, hysteresis, pressure, measurement availability, rejected
@@ -396,8 +468,14 @@ growth, and measurement-failure storage series under
 `yacy_crawler_storage_*`. The browser-slot counter
 isolates browser-pool saturation: it advances only when a Firefox slot wait
 reaches its request deadline, not when an ordinary cancellation or crawler
-shutdown ends the wait. When the variable is empty the crawler starts no
-metrics server and opens no port.
+shutdown ends the wait. The parse-failure counter advances when a fetched body
+cannot produce an indexable document through any enabled parser; it is separate
+from transport fetch failures. When the value is empty the crawler starts no
+metrics server and opens no port. Wildcard and non-loopback listeners are
+rejected; a trusted tunnel or proxy must mediate a remote scrape. The environment
+value bootstraps both services;
+Configuration → Crawler persists the authoritative value, delivers it before
+assembly, and gracefully restarts connected crawlers after a change.
 
 The message types both services exchange live in the standalone
 [`yagocrawlcontract`](../yagocrawlcontract/README.md) module, so neither service depends
@@ -425,13 +503,14 @@ not open a checkpoint created by a newer crawler with an older binary.
 - A checkpoint is local to its `YAGO_DATA_DIR`; moving an unexpired lease to a
   different crawler host requires transferring or sharing that directory.
 - Active-task admission is per crawler process and completion-driven. It does not
-  preempt a long-running task or impose a fleet-wide task or pages-per-second
-  ceiling.
-- Feeding sitemap `lastmod` into persistent frontier recrawl scheduling is still
-  planned; discovery from explicit sitemap or sitelist starts and from `robots.txt`
-  `Sitemap:` directives (the `robots` start mode) is implemented.
-- Browser-level redirect interception is still planned; the current public-web
-  admission check, HTTP redirect cap, HTTP timeout budgets, and HTTP final-URL check are
-  application-layer guards plus proxy defense in depth.
+  preempt a long-running task or impose a fleet-wide task ceiling. The separate
+  fetch-start lease schedule provides the fleet-wide fetch-rate ceiling.
+- Sitemap `lastmod` is an untrusted scheduling hint, not proof that content
+  changed. A valid non-future hint can advance the next persistent recrawl within
+  the profile cadence, and successive advancing hints can learn a shorter change
+  interval. Future, stale, and unchanged values never create immediate loops.
+- Browser redirect interception is bounded by the same live maximum as the HTTP
+  fast path. Public-web admission, timeout budgets, final-URL checks, and the
+  guarded browser proxy remain defense in depth.
 - Bot-wall handling remains a minimal heuristic, not hardened production
   behavior.

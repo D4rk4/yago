@@ -51,11 +51,15 @@ func TestApplyBindOverridesReplacesListenAddress(t *testing.T) {
 	t.Parallel()
 
 	config := applyBindOverrides(
-		nodeConfig{PeerAddr: ":8090", OpsAddr: ":9090", PublicAddr: ":8080"},
+		nodeConfig{
+			PeerAddr: ":8090", OpsAddr: ":9090", PublicAddr: ":8080",
+			Crawl: crawlConfig{ListenAddr: ":9091"},
+		},
 		map[string]string{
-			bindKeyPeer:   "127.0.0.1:8091",
-			bindKeyOps:    "0.0.0.0:9191",
-			bindKeyPublic: "127.0.0.1:8081",
+			bindKeyPeer:    "127.0.0.1:8091",
+			bindKeyOps:     "0.0.0.0:9191",
+			bindKeyPublic:  "127.0.0.1:8081",
+			bindKeyCrawler: "127.0.0.1:9092",
 		},
 	)
 	if config.PeerAddr != "127.0.0.1:8091" {
@@ -66,6 +70,9 @@ func TestApplyBindOverridesReplacesListenAddress(t *testing.T) {
 	}
 	if config.PublicAddr != "127.0.0.1:8081" {
 		t.Fatalf("PublicAddr = %q, want 127.0.0.1:8081", config.PublicAddr)
+	}
+	if config.Crawl.ListenAddr != "127.0.0.1:9092" {
+		t.Fatalf("Crawl.ListenAddr = %q, want 127.0.0.1:9092", config.Crawl.ListenAddr)
 	}
 }
 
@@ -78,6 +85,48 @@ func TestApplyBindOverridesIgnoresMalformed(t *testing.T) {
 	)
 	if config.PeerAddr != ":8090" {
 		t.Fatalf("PeerAddr = %q, want the environment default :8090", config.PeerAddr)
+	}
+}
+
+func TestApplyBindOverridesDisablesOptionalListeners(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		key      string
+		disabled func(nodeConfig) bool
+	}{
+		{
+			name: "public search", key: bindKeyPublic,
+			disabled: func(config nodeConfig) bool { return config.PublicAddr == "" },
+		},
+		{
+			name: "crawler exchange", key: bindKeyCrawler,
+			disabled: func(config nodeConfig) bool { return config.Crawl.ListenAddr == "" },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			config := applyBindOverrides(
+				nodeConfig{
+					PeerAddr: ":8090", OpsAddr: ":9090", PublicAddr: ":8080",
+					Crawl: crawlConfig{ListenAddr: ":9091"},
+				},
+				map[string]string{tc.key: disabledBindOverride},
+			)
+			if !tc.disabled(config) {
+				t.Fatalf("%s remains enabled: %+v", tc.name, config)
+			}
+		})
+	}
+
+	config := applyBindOverrides(
+		nodeConfig{PeerAddr: ":8090", OpsAddr: ":9090", PublicAddr: ":8080"},
+		map[string]string{bindKeyPeer: disabledBindOverride},
+	)
+	if config.PeerAddr != ":8090" {
+		t.Fatalf("PeerAddr = %q, want environment value", config.PeerAddr)
 	}
 }
 
@@ -122,12 +171,18 @@ func TestValidateNodeBinds(t *testing.T) {
 	t.Parallel()
 
 	if err := validateNodeBinds(
-		nodeConfig{PeerAddr: ":8090", OpsAddr: "127.0.0.1:9090", PublicAddr: ":8080"},
+		nodeConfig{
+			PeerAddr: ":8090", OpsAddr: "127.0.0.1:9090", PublicAddr: ":8080",
+			Crawl: crawlConfig{ListenAddr: "127.0.0.1:9091"},
+		},
 	); err != nil {
 		t.Fatalf("valid binds rejected: %v", err)
 	}
 	if err := validateNodeBinds(
-		nodeConfig{PeerAddr: ":8090", OpsAddr: ":9090", PublicAddr: ""},
+		nodeConfig{
+			PeerAddr: ":8090", OpsAddr: ":9090", PublicAddr: "",
+			Crawl: crawlConfig{ListenAddr: ""},
+		},
 	); err != nil {
 		t.Fatalf("disabled (empty) public bind rejected: %v", err)
 	}
@@ -138,6 +193,11 @@ func TestValidateNodeBinds(t *testing.T) {
 		nodeConfig{PeerAddr: ":8090", OpsAddr: ":9090", PublicAddr: "bogus"},
 	); err == nil {
 		t.Fatal("malformed public bind accepted")
+	}
+	if err := validateNodeBinds(nodeConfig{
+		PeerAddr: ":8090", OpsAddr: ":9090", Crawl: crawlConfig{ListenAddr: "bogus"},
+	}); err == nil {
+		t.Fatal("malformed crawler bind accepted")
 	}
 }
 

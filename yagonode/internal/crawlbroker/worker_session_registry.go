@@ -11,12 +11,13 @@ import (
 const maximumWorkerSessions = 4096
 
 type workerSession struct {
-	id             string
-	cancel         context.CancelFunc
-	connected      bool
-	lastSeen       time.Time
-	generation     uint64
-	deliveryCredit *workerSessionDeliveryCredit
+	id               string
+	cancel           context.CancelFunc
+	connected        bool
+	lastSeen         time.Time
+	generation       uint64
+	fetchStartLeases bool
+	deliveryCredit   *workerSessionDeliveryCredit
 }
 
 type workerSessionEntry struct {
@@ -55,6 +56,7 @@ func (r *workerSessionRegistry) activate(
 	workerSessionID string,
 	cancel context.CancelFunc,
 	adopt func() error,
+	fetchStartLeaseValues ...bool,
 ) (uint64, error) {
 	if !validCrawlerLeaseIdentity(workerID, workerSessionID) {
 		return 0, fmt.Errorf("invalid worker session identity")
@@ -73,22 +75,63 @@ func (r *workerSessionRegistry) activate(
 		return 0, err
 	}
 	generation := r.nextGeneration.Add(1)
+	fetchStartLeases := len(fetchStartLeaseValues) > 0 && fetchStartLeaseValues[0]
 	entry.current = workerSession{
 		id: workerSessionID, cancel: cancel, connected: true, lastSeen: r.now(),
-		generation: generation, deliveryCredit: newWorkerSessionDeliveryCredit(),
+		generation: generation, fetchStartLeases: fetchStartLeases,
+		deliveryCredit: newWorkerSessionDeliveryCredit(),
 	}
 
 	return generation, nil
+}
+
+func (r *workerSessionRegistry) disconnectWithoutFetchStartLeases() int {
+	return r.disconnectWorkerSessions(func(session workerSession) bool {
+		return !session.fetchStartLeases
+	})
+}
+
+func (r *workerSessionRegistry) disconnectActiveSessions() {
+	r.disconnectWorkerSessions(func(workerSession) bool {
+		return true
+	})
+}
+
+func (r *workerSessionRegistry) disconnectWorkerSessions(
+	disconnect func(workerSession) bool,
+) int {
+	r.mutex.Lock()
+	entries := make([]*workerSessionEntry, 0, len(r.sessions))
+	for _, entry := range r.sessions {
+		entry.references++
+		entries = append(entries, entry)
+	}
+	r.mutex.Unlock()
+	cancellations := make([]context.CancelFunc, 0, len(entries))
+	for _, entry := range entries {
+		entry.mutex.Lock()
+		current := entry.current
+		if current.connected && disconnect(current) && current.cancel != nil {
+			cancellations = append(cancellations, current.cancel)
+		}
+		entry.mutex.Unlock()
+		r.releaseRetention(entry)
+	}
+	for _, cancel := range cancellations {
+		cancel()
+	}
+
+	return len(cancellations)
 }
 
 func (r *workerSessionRegistry) deactivate(
 	workerID string,
 	workerSessionID string,
 	generation uint64,
-) {
+) bool {
 	entry, err := r.retain(workerID, false)
 	if err != nil {
-		return
+		return false
 	}
 	defer r.releaseRetention(entry)
 	entry.mutex.Lock()
@@ -96,7 +139,7 @@ func (r *workerSessionRegistry) deactivate(
 	if current.id != workerSessionID || current.generation != generation {
 		entry.mutex.Unlock()
 
-		return
+		return false
 	}
 	deliveryCredit := current.deliveryCredit
 	current.cancel = nil
@@ -107,6 +150,8 @@ func (r *workerSessionRegistry) deactivate(
 	if deliveryCredit != nil {
 		deliveryCredit.stop()
 	}
+
+	return true
 }
 
 func (r *workerSessionRegistry) whileCurrentRegistration(

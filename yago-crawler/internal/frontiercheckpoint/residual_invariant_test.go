@@ -53,6 +53,19 @@ func TestBoundedRecoveryRejectsPendingAndSeedStorageMismatch(t *testing.T) {
 			t.Fatalf("bounded pending mismatch error = %v", err)
 		}
 	})
+	t.Run("budget discarded pages", func(t *testing.T) {
+		checkpoint, provenance, _ := admittedCheckpoint(t)
+		mutateRunRecord(t, checkpoint, provenance, func(record *runRecord) {
+			record.BudgetDiscardedPages = 1
+		})
+		if _, err := checkpoint.LoadBounded(
+			testContext,
+			provenance,
+			1,
+		); !errors.Is(err, ErrCorruptCheckpoint) {
+			t.Fatalf("bounded page budget accounting error = %v", err)
+		}
+	})
 	t.Run("missing manifest bucket", func(t *testing.T) {
 		checkpoint := openTestCheckpoint(t, testCheckpointPath(t))
 		provenance := []byte("bounded-missing-manifest")

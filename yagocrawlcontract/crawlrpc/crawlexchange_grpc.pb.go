@@ -19,11 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	CrawlExchange_StreamOrders_FullMethodName   = "/yacycrawl.v1.CrawlExchange/StreamOrders"
-	CrawlExchange_AckOrder_FullMethodName       = "/yacycrawl.v1.CrawlExchange/AckOrder"
-	CrawlExchange_Heartbeat_FullMethodName      = "/yacycrawl.v1.CrawlExchange/Heartbeat"
-	CrawlExchange_SubmitIngest_FullMethodName   = "/yacycrawl.v1.CrawlExchange/SubmitIngest"
-	CrawlExchange_ReportProgress_FullMethodName = "/yacycrawl.v1.CrawlExchange/ReportProgress"
+	CrawlExchange_StreamOrders_FullMethodName      = "/yacycrawl.v1.CrawlExchange/StreamOrders"
+	CrawlExchange_AckOrder_FullMethodName          = "/yacycrawl.v1.CrawlExchange/AckOrder"
+	CrawlExchange_Heartbeat_FullMethodName         = "/yacycrawl.v1.CrawlExchange/Heartbeat"
+	CrawlExchange_ReadRuntimePolicy_FullMethodName = "/yacycrawl.v1.CrawlExchange/ReadRuntimePolicy"
+	CrawlExchange_LeaseFetchStarts_FullMethodName  = "/yacycrawl.v1.CrawlExchange/LeaseFetchStarts"
+	CrawlExchange_SubmitIngest_FullMethodName      = "/yacycrawl.v1.CrawlExchange/SubmitIngest"
+	CrawlExchange_ReportProgress_FullMethodName    = "/yacycrawl.v1.CrawlExchange/ReportProgress"
 )
 
 // CrawlExchangeClient is the client API for CrawlExchange service.
@@ -43,6 +45,8 @@ type CrawlExchangeClient interface {
 	StreamOrders(ctx context.Context, in *WorkerRegistration, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CrawlOrderMessage], error)
 	AckOrder(ctx context.Context, in *OrderAck, opts ...grpc.CallOption) (*OrderAckResult, error)
 	Heartbeat(ctx context.Context, in *WorkerHeartbeat, opts ...grpc.CallOption) (*WorkerHeartbeatResult, error)
+	ReadRuntimePolicy(ctx context.Context, in *CrawlerRuntimePolicyRequest, opts ...grpc.CallOption) (*CrawlerRuntimePolicy, error)
+	LeaseFetchStarts(ctx context.Context, in *FetchStartLeaseRequest, opts ...grpc.CallOption) (*FetchStartLeaseDecision, error)
 	// SubmitIngest hands one ingest batch to the node and blocks until the node
 	// absorbs it. The node returns an error when its ingest pipeline is saturated
 	// so the crawler retries, which is the backpressure signal.
@@ -97,6 +101,26 @@ func (c *crawlExchangeClient) Heartbeat(ctx context.Context, in *WorkerHeartbeat
 	return out, nil
 }
 
+func (c *crawlExchangeClient) ReadRuntimePolicy(ctx context.Context, in *CrawlerRuntimePolicyRequest, opts ...grpc.CallOption) (*CrawlerRuntimePolicy, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CrawlerRuntimePolicy)
+	err := c.cc.Invoke(ctx, CrawlExchange_ReadRuntimePolicy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *crawlExchangeClient) LeaseFetchStarts(ctx context.Context, in *FetchStartLeaseRequest, opts ...grpc.CallOption) (*FetchStartLeaseDecision, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FetchStartLeaseDecision)
+	err := c.cc.Invoke(ctx, CrawlExchange_LeaseFetchStarts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *crawlExchangeClient) SubmitIngest(ctx context.Context, in *IngestBatchMessage, opts ...grpc.CallOption) (*IngestAck, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(IngestAck)
@@ -134,6 +158,8 @@ type CrawlExchangeServer interface {
 	StreamOrders(*WorkerRegistration, grpc.ServerStreamingServer[CrawlOrderMessage]) error
 	AckOrder(context.Context, *OrderAck) (*OrderAckResult, error)
 	Heartbeat(context.Context, *WorkerHeartbeat) (*WorkerHeartbeatResult, error)
+	ReadRuntimePolicy(context.Context, *CrawlerRuntimePolicyRequest) (*CrawlerRuntimePolicy, error)
+	LeaseFetchStarts(context.Context, *FetchStartLeaseRequest) (*FetchStartLeaseDecision, error)
 	// SubmitIngest hands one ingest batch to the node and blocks until the node
 	// absorbs it. The node returns an error when its ingest pipeline is saturated
 	// so the crawler retries, which is the backpressure signal.
@@ -157,6 +183,12 @@ func (UnimplementedCrawlExchangeServer) AckOrder(context.Context, *OrderAck) (*O
 }
 func (UnimplementedCrawlExchangeServer) Heartbeat(context.Context, *WorkerHeartbeat) (*WorkerHeartbeatResult, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Heartbeat not implemented")
+}
+func (UnimplementedCrawlExchangeServer) ReadRuntimePolicy(context.Context, *CrawlerRuntimePolicyRequest) (*CrawlerRuntimePolicy, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReadRuntimePolicy not implemented")
+}
+func (UnimplementedCrawlExchangeServer) LeaseFetchStarts(context.Context, *FetchStartLeaseRequest) (*FetchStartLeaseDecision, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LeaseFetchStarts not implemented")
 }
 func (UnimplementedCrawlExchangeServer) SubmitIngest(context.Context, *IngestBatchMessage) (*IngestAck, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitIngest not implemented")
@@ -232,6 +264,42 @@ func _CrawlExchange_Heartbeat_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CrawlExchange_ReadRuntimePolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CrawlerRuntimePolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CrawlExchangeServer).ReadRuntimePolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CrawlExchange_ReadRuntimePolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CrawlExchangeServer).ReadRuntimePolicy(ctx, req.(*CrawlerRuntimePolicyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CrawlExchange_LeaseFetchStarts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FetchStartLeaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CrawlExchangeServer).LeaseFetchStarts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CrawlExchange_LeaseFetchStarts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CrawlExchangeServer).LeaseFetchStarts(ctx, req.(*FetchStartLeaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _CrawlExchange_SubmitIngest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IngestBatchMessage)
 	if err := dec(in); err != nil {
@@ -282,6 +350,14 @@ var CrawlExchange_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Heartbeat",
 			Handler:    _CrawlExchange_Heartbeat_Handler,
+		},
+		{
+			MethodName: "ReadRuntimePolicy",
+			Handler:    _CrawlExchange_ReadRuntimePolicy_Handler,
+		},
+		{
+			MethodName: "LeaseFetchStarts",
+			Handler:    _CrawlExchange_LeaseFetchStarts_Handler,
 		},
 		{
 			MethodName: "SubmitIngest",

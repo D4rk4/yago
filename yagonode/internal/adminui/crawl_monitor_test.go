@@ -34,16 +34,18 @@ func (f *fakeControl) Control(_ context.Context, req CrawlControlRequest) error 
 func sampleMonitor() CrawlMonitor {
 	return CrawlMonitor{
 		Runs: []CrawlRunView{{
-			RunID:          "run-abc",
-			Profile:        "news-crawl",
-			State:          "running",
-			Fetched:        12,
-			Indexed:        9,
-			Failed:         1,
-			Pending:        4,
-			Runtime:        "2m0s",
-			PagesPerMinute: 30,
-			RateKnown:      true,
+			RunID:           "run-abc",
+			Profile:         "news-crawl",
+			State:           "running",
+			Fetched:         12,
+			Indexed:         9,
+			Failed:          1,
+			Pending:         4,
+			Runtime:         "2m0s",
+			PagesPerMinute:  30,
+			RateKnown:       true,
+			MaxPagesPerHost: "250",
+			MaxPagesPerRun:  "900",
 		}},
 		Totals: CrawlTotals{
 			Fetched:      12,
@@ -69,6 +71,8 @@ func TestConsoleCrawlRendersMonitor(t *testing.T) {
 	for _, want := range []string{
 		"Crawl monitor", "news-crawl", "cds-tag--info", "7 pending, 2 leased",
 		"Crawl results and rejections", "Robots-denied", "currently retained in this monitor",
+		"Whole-run max (pages)", "Per-host max (pages)", ">900<", ">250<",
+		"one page can increment both",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("crawl page missing %q", want)

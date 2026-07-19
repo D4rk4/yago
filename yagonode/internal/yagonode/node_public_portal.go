@@ -12,6 +12,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/faviconproxy"
 	"github.com/D4rk4/yago/yagonode/internal/modifierhint"
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
+	"github.com/D4rk4/yago/yagonode/internal/resultreason"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
@@ -143,6 +144,7 @@ func (s portalSource) Search(
 			ClusterIdentity: clusterIdentity,
 			Position:        response.Request.Offset + index + 1,
 			LexicalPosition: lexicalPositions[index],
+			Reasons:         resultreason.For(result),
 		})
 	}
 

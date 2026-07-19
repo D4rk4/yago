@@ -11,14 +11,13 @@ import (
 
 	"github.com/D4rk4/yago/yago-crawler/internal/botwall"
 	"github.com/D4rk4/yago/yago-crawler/internal/crawldelay"
+	"github.com/D4rk4/yago/yago-crawler/internal/crawldenylist"
 	"github.com/D4rk4/yago/yago-crawler/internal/crawlermetrics"
-	"github.com/D4rk4/yago/yago-crawler/internal/crawlorder"
 	"github.com/D4rk4/yago/yago-crawler/internal/crawlseed"
 	"github.com/D4rk4/yago/yago-crawler/internal/httpfetch"
 	"github.com/D4rk4/yago/yago-crawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yago-crawler/internal/publicweb"
 	"github.com/D4rk4/yago/yago-crawler/internal/robots"
-	"github.com/D4rk4/yago/yago-crawler/internal/runtally"
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 	"github.com/D4rk4/yago/yagoegress"
@@ -168,68 +167,47 @@ func runServiceWithMetrics(
 	defer func() { _ = metricsCloser.Close() }()
 
 	crawl := cfg.Crawl
-	pace, err := assembleCrawlerPace(ctx, crawl, checkpointSession.checkpoint, metrics)
+	redirects := newRedirectLimit(crawl.MaxRedirects)
+	crawl.redirectLimit = redirects
+	cfg.Crawl = crawl
+	receiverCtx, cancelReceiver := context.WithCancel(ctx)
+	defer cancelReceiver()
+	execution, err := assembleCrawlerExecution(crawlerExecutionStart{
+		context:          receiverCtx,
+		config:           cfg,
+		source:           source,
+		metrics:          metrics,
+		checkpoint:       checkpointSession,
+		nodeRPC:          nodeRPC,
+		emitter:          emitter,
+		growthAdmission:  storagePressure,
+		restart:          restart.Trigger,
+		shutdown:         stopService,
+		maximumRedirects: redirects,
+	})
 	if err != nil {
 		return err
 	}
-	tally := runtally.New()
-	frontier := newCrawlFrontier(crawl, crawlFrontierState{
-		pace:            pace,
-		tally:           tally,
-		checkpoint:      checkpointSession.checkpoint,
-		shutdown:        stopService,
-		growthAdmission: storagePressure,
-	})
-	workerConcurrency := newWorkerConcurrency(crawl.Workers)
-	activeRuns := crawlorder.NewActiveRunAdmission(crawl.MaxActiveRuns)
-	receiverCtx, cancelReceiver := context.WithCancel(ctx)
-	defer cancelReceiver()
-	control := assembleCrawlerControlHandler(
-		restart.Trigger, workerConcurrency, activeRuns.Resize, frontier,
-	)
-	orders := crawlorder.NewGRPCOrderReceiver(
-		receiverCtx, nodeRPC.control, cfg.WorkerID, control,
-		crawlorder.WithHeartbeatActiveFetches(metrics.ActiveFetchWorkerJobs),
-		crawlorder.WithHeartbeatStoragePressure(
-			storagePressure.Snapshot,
-			storagePressure.SetPolicy,
-		),
-		crawlorder.WithTerminalSettlementOutbox(checkpointSession.checkpoint),
-		crawlorder.WithWorkerLeaseSession(
-			checkpointSession.workerSessionID,
-			checkpointSession.leaseGrants,
-		),
-	)
-
-	lifecycle, err := (crawlerExecution{
-		checkpoint:      checkpointSession,
-		nodeRPC:         nodeRPC,
-		pace:            pace,
-		tally:           tally,
-		frontier:        frontier,
-		orders:          orders,
-		concurrency:     workerConcurrency,
-		activeRuns:      activeRuns,
-		emitter:         emitter,
-		growthAdmission: storagePressure,
-	}).lifecycle(cfg, source, metrics)
+	lifecycle, err := execution.lifecycle(cfg, source, metrics)
 	if err != nil {
 		return err
 	}
 	runCrawlerLifecycle(ctx, lifecycle, cfg)
 
-	return restart.Wrap(frontier.CheckpointFailure())
+	return restart.Wrap(execution.frontier.CheckpointFailure())
 }
 
 func newCrawlRequestExpander(
 	client *http.Client,
 	crawl CrawlConfig,
 	guard yagoegress.Guard,
+	urlDenylist *crawldenylist.Denylist,
 ) *crawlseed.Expander {
 	seedSource := newCrawlerPublicWebAdmissionFetcher(
 		newCrawlerSeedSource(client, crawl.UserAgent, crawl.MaxBodyBytes),
 		nil,
 		guard,
 	)
+	seedSource = crawldenylist.NewAdmissionFetcher(seedSource, urlDenylist)
 	return crawlseed.NewExpander(seedSource, crawl.SitemapURLLimit)
 }

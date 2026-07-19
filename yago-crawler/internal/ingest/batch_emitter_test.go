@@ -32,11 +32,12 @@ func TestBatchEmitterAssemblesEnvelope(t *testing.T) {
 		FetchedAt:     fetchedAt,
 	}
 	envelope := ingest.Envelope{
-		SourceURL:     "http://example.com/",
-		Provenance:    []byte("peer"),
-		ProfileHandle: "handle",
-		ObservationID: "stable-observation",
-		ObservedAt:    fetchedAt.Add(-time.Hour),
+		SourceURL:        "http://example.com/",
+		Provenance:       []byte("peer"),
+		ProfileHandle:    "handle",
+		ObservationID:    "stable-observation",
+		ObservedAt:       fetchedAt.Add(-time.Hour),
+		SourceModifiedAt: fetchedAt.Add(-2 * time.Hour),
 	}
 
 	if err := emitter.Emit(
@@ -70,6 +71,10 @@ func TestBatchEmitterAssemblesEnvelope(t *testing.T) {
 	}
 	if !batch.ObservedAt.Equal(envelope.ObservedAt) || batch.ObservedAt.Location() != time.UTC {
 		t.Errorf("observed at = %v, want %v in UTC", batch.ObservedAt, envelope.ObservedAt)
+	}
+	if !batch.SourceModifiedAt.Equal(envelope.SourceModifiedAt) {
+		t.Errorf("source modified at = %v, want %v", batch.SourceModifiedAt,
+			envelope.SourceModifiedAt)
 	}
 }
 

@@ -26,12 +26,20 @@ func (s searchSource) Search(
 		source = searchcore.SourceGlobal
 	}
 
-	response, err := s.searcher.Search(ctx, searchcore.Request{
-		Query:  query.Query,
-		Source: source,
-		Offset: query.Offset,
-		Limit:  query.Limit,
-	})
+	request, err := searchcore.NormalizePublicRequest(searchcore.Request{
+		Query:         query.Query,
+		Source:        source,
+		Offset:        query.Offset,
+		Limit:         query.Limit,
+		ContentDomain: searchcore.ContentDomain(query.Filters.ContentDomain),
+		Language:      query.Filters.Language,
+		SiteHost:      query.Filters.SiteHost,
+	}, query.Limit)
+	if err != nil {
+		return adminui.SearchResults{}, fmt.Errorf("admin search request: %w", err)
+	}
+
+	response, err := s.searcher.Search(ctx, request)
 	if err != nil {
 		return adminui.SearchResults{}, fmt.Errorf("admin search: %w", err)
 	}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/bootstrap"
+	"github.com/D4rk4/yago/yagoproto"
 )
 
 type SelfSeed interface {
@@ -42,6 +43,7 @@ type Config struct {
 	Observer       Observer
 	News           PeerNews
 	PreferHTTPS    bool
+	NetworkAccess  yagoproto.NetworkAccess
 }
 
 func New(
@@ -56,8 +58,10 @@ func New(
 		self:           self,
 		seeds:          seeds,
 		roster:         roster,
-		greeter:        newHTTPPeerGreeter(cfg.Client, cfg.NetworkName, cfg.PreferHTTPS),
-		observer:       cfg.Observer,
-		news:           cfg.News,
+		greeter: newHTTPPeerGreeter(
+			cfg.Client, cfg.NetworkName, cfg.PreferHTTPS, cfg.NetworkAccess,
+		),
+		observer: cfg.Observer,
+		news:     cfg.News,
 	}
 }

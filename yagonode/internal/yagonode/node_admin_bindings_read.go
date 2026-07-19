@@ -40,10 +40,11 @@ func (s *bindingSource) bindingItem(
 	options []adminui.BindInterface,
 	overrides map[string]string,
 ) (adminui.BindItem, error) {
-	address := definition.current(s.envConfig)
+	environmentAddress := definition.current(s.envConfig)
+	address := environmentAddress
 	overridden := false
 	if stored, set := overrides[definition.key]; set {
-		host, port, err := splitBindAddr(stored)
+		resolved, err := parseBindOverride(definition, stored)
 		if err != nil {
 			return adminui.BindItem{}, fmt.Errorf(
 				"decode stored bind %q: %w",
@@ -51,16 +52,31 @@ func (s *bindingSource) bindingItem(
 				err,
 			)
 		}
-		address, overridden = formatBindAddr(host, port), true
+		address, overridden = resolved, true
 	}
 	if definition.optional && address == "" {
-		return adminui.BindItem{
+		item := adminui.BindItem{
 			Key:         definition.key,
 			Title:       definition.title,
 			Description: definition.description,
+			CanDisable:  true,
 			Overridden:  overridden,
 			Interfaces:  options,
-		}, nil
+		}
+		if overridden && environmentAddress != "" {
+			host, port, err := splitBindAddr(environmentAddress)
+			if err != nil {
+				return adminui.BindItem{}, fmt.Errorf(
+					"decode configured bind %q: %w",
+					definition.key,
+					err,
+				)
+			}
+			item.Host = host
+			item.Port = fmt.Sprintf("%d", port)
+		}
+
+		return item, nil
 	}
 
 	host, port, err := splitBindAddr(address)
@@ -79,6 +95,7 @@ func (s *bindingSource) bindingItem(
 		Host:            host,
 		Port:            fmt.Sprintf("%d", port),
 		ListenerEnabled: true,
+		CanDisable:      definition.optional,
 		Overridden:      overridden,
 		Interfaces:      options,
 	}, nil

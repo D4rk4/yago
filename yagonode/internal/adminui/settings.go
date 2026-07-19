@@ -12,11 +12,6 @@ type SettingOption struct {
 	Label string
 }
 
-// SettingItem is one operator-overridable runtime setting shown in the
-// Configuration section's editable surface. Value is the effective value
-// (override when present, otherwise the environment-derived default). Category
-// groups related settings into a tab on the console; an empty category falls
-// into "General".
 type SettingItem struct {
 	Key             string
 	Title           string
@@ -27,6 +22,8 @@ type SettingItem struct {
 	PendingRestart  bool
 	Options         []SettingOption
 	Category        string
+	Sensitive       bool
+	Configured      bool
 	// Boolean marks an Enabled/Disabled setting so the console renders it as a
 	// checkbox rather than a two-option dropdown.
 	Boolean bool

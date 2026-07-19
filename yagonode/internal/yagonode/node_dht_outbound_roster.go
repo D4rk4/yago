@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/dhtexchange"
+	"github.com/D4rk4/yago/yagonode/internal/events"
 	"github.com/D4rk4/yago/yagonode/internal/indextransfer"
 )
 
@@ -14,6 +16,7 @@ const (
 	dhtOutboundPeerConfirmedMessage   = "dht outbound peer confirmed"
 	dhtOutboundHandoffRejectedMessage = "dht outbound handoff rejected"
 	dhtOutboundPeerQuarantinedMessage = "dht outbound peer quarantined"
+	dhtOutboundPeerQuarantinedEvent   = "dht.peer.quarantined"
 )
 
 type dhtOutboundPeerRoster interface {
@@ -24,6 +27,7 @@ type dhtOutboundPeerRoster interface {
 type dhtOutboundRosterCycle struct {
 	cycle  dhtOutboundCycle
 	roster dhtOutboundPeerRoster
+	events nodeEventRecorder
 }
 
 func (c dhtOutboundRosterCycle) RunOnce(
@@ -70,6 +74,19 @@ func (c dhtOutboundRosterCycle) observe(
 			slog.Int("failures", receipt.Retry.Failures),
 			slog.Time("until", receipt.Retry.QuarantineUntil),
 		)
+		if c.events != nil {
+			c.events.Record(
+				events.SeverityWarn,
+				events.CategoryDHT,
+				dhtOutboundPeerQuarantinedEvent,
+				fmt.Sprintf(
+					"peer %s quarantined after %d failures until %s",
+					peer,
+					receipt.Retry.Failures,
+					receipt.Retry.QuarantineUntil.UTC().Format(time.RFC3339),
+				),
+			)
+		}
 	}
 }
 

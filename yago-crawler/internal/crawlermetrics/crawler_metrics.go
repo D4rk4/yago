@@ -16,6 +16,7 @@ type Metrics struct {
 	jobsActive                      prometheus.Gauge
 	fetches                         prometheus.Counter
 	fetchFailures                   prometheus.Counter
+	parseFailures                   prometheus.Counter
 	hostBackoffs                    prometheus.Counter
 	bytes                           prometheus.Counter
 	robotsDenied                    prometheus.Counter
@@ -37,6 +38,10 @@ func New() *Metrics {
 	fetchFailures := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "yacy_crawler_fetch_failures_total",
 		Help: "Page fetch attempts that failed for reasons other than a policy rejection.",
+	})
+	parseFailures := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "yacy_crawler_parse_failures_total",
+		Help: "Fetched page bodies that no enabled parser could decode.",
 	})
 	bytes := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "yacy_crawler_bytes_total",
@@ -62,6 +67,7 @@ func New() *Metrics {
 		jobsActive,
 		fetches,
 		fetchFailures,
+		parseFailures,
 		bytes,
 		robotsDenied,
 		ingestBatches,
@@ -74,6 +80,7 @@ func New() *Metrics {
 		jobsActive:                      jobsActive,
 		fetches:                         fetches,
 		fetchFailures:                   fetchFailures,
+		parseFailures:                   parseFailures,
 		bytes:                           bytes,
 		robotsDenied:                    robotsDenied,
 		ingestBatches:                   ingestBatches,
@@ -114,6 +121,8 @@ func (m *Metrics) FetchAttempted() { m.fetches.Inc() }
 func (m *Metrics) FetchSucceeded(count int) { m.bytes.Add(float64(count)) }
 
 func (m *Metrics) FetchFailed() { m.fetchFailures.Inc() }
+
+func (m *Metrics) ParseFailed() { m.parseFailures.Inc() }
 
 func (m *Metrics) RobotsDenied() { m.robotsDenied.Inc() }
 

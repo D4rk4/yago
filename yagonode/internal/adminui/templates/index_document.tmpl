@@ -1,0 +1,83 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / <a href="/admin/index">Index</a> / Document</nav>
+<h1 class="cds-h1">Document detail</h1>
+<p><a class="cds-btn cds-btn--ghost" href="/admin/index">← Back to document browser</a></p>
+<div class="cds-scroll-x">
+  <table class="cds-table">
+    <tbody>
+      <tr><th scope="row">Display URL</th><td class="cds-mono">{{if .Document.URL}}{{.Document.URL}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Normalized URL</th><td class="cds-mono">{{if .Document.NormalizedURL}}{{.Document.NormalizedURL}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Canonical URL</th><td class="cds-mono">{{if .Document.CanonicalURL}}{{.Document.CanonicalURL}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Representative URL</th><td class="cds-mono">{{if .Document.RepresentativeURL}}{{.Document.RepresentativeURL}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Title</th><td>{{if .Document.Title}}{{.Document.Title}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Content type</th><td>{{if .Document.ContentType}}{{.Document.ContentType}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Language</th><td>{{if .Document.Language}}{{.Document.Language}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Fetch status</th><td>{{if .Document.FetchStatus}}{{.Document.FetchStatus}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Fetched</th><td>{{if .Document.FetchedAt}}{{.Document.FetchedAt}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Indexed</th><td>{{if .Document.IndexedAt}}{{.Document.IndexedAt}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Published</th><td>{{if .Document.PublishedAt}}{{.Document.PublishedAt}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Modified</th><td>{{if .Document.ModifiedAt}}{{.Document.ModifiedAt}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">First seen</th><td>{{if .Document.FirstSeenAt}}{{.Document.FirstSeenAt}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Content changed</th><td>{{if .Document.ContentChangedAt}}{{.Document.ContentChangedAt}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Date evidence</th><td>{{printf "%.4f" .Document.DateConfidence}}{{if .Document.DateSource}} · {{.Document.DateSource}}{{end}}</td></tr>
+      <tr><th scope="row">Content hash</th><td class="cds-mono">{{if .Document.ContentHash}}{{.Document.ContentHash}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Cluster</th><td class="cds-mono">{{if .Document.ClusterID}}{{.Document.ClusterID}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Raw-content reference</th><td class="cds-mono">{{if .Document.RawContentReference}}{{.Document.RawContentReference}}{{else}}—{{end}}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 class="cds-h2">Content evidence</h2>
+<div class="cds-scroll-x">
+  <table class="cds-table">
+    <thead><tr><th scope="col">Signal</th><th scope="col">Value</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Quality</th><td>{{if .Document.Quality.Known}}{{printf "%.4f" .Document.Quality.Score}}{{else}}unknown{{end}}</td></tr>
+      <tr><th scope="row">Function-word fraction</th><td>{{if .Document.Quality.Known}}{{printf "%.4f" .Document.Quality.FunctionWordFraction}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Symbol fraction</th><td>{{if .Document.Quality.Known}}{{printf "%.4f" .Document.Quality.SymbolFraction}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Alphabetic fraction</th><td>{{if .Document.Quality.Known}}{{printf "%.4f" .Document.Quality.AlphabeticFraction}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Unique-token fraction</th><td>{{if .Document.Quality.Known}}{{printf "%.4f" .Document.Quality.UniqueTokenFraction}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Spam risk</th><td>{{if .Document.Quality.Known}}{{printf "%.4f" .Document.Quality.SpamRisk}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Safety rating</th><td>{{.Document.Safety.Rating}}</td></tr>
+      <tr><th scope="row">Explicit probability</th><td>{{printf "%.4f" .Document.Safety.ExplicitProbability}}</td></tr>
+      <tr><th scope="row">Safety confidence</th><td>{{printf "%.4f" .Document.Safety.Confidence}}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 class="cds-h2">Stored content preview</h2>
+<p class="cds-muted">{{.Document.ContentBytes}} stored byte(s).{{if .Document.ContentPreviewTruncated}} The preview is truncated to its operator-display limit.{{end}}</p>
+{{if .Document.ContentPreview}}<pre class="cds-code cds-code--bounded-explain">{{.Document.ContentPreview}}</pre>{{else}}<div class="cds-empty" role="status">No extracted content is stored.</div>{{end}}
+
+<h2 class="cds-h2">Headings</h2>
+<p class="cds-muted">Showing {{len .Document.Headings}} of {{.Document.HeadingsTotal}}.</p>
+{{if .Document.Headings}}<ol>{{range .Document.Headings}}<li>{{.}}</li>{{end}}</ol>{{else}}<div class="cds-empty" role="status">No headings stored.</div>{{end}}
+
+<h2 class="cds-h2">Metadata</h2>
+<p class="cds-muted">Showing {{len .Document.Metadata}} of {{.Document.MetadataTotal}}.</p>
+{{if .Document.Metadata}}
+<div class="cds-scroll-x"><table class="cds-table"><thead><tr><th scope="col">Name</th><th scope="col">Value</th></tr></thead><tbody>{{range .Document.Metadata}}<tr><th scope="row" class="cds-mono">{{.Name}}</th><td>{{.Value}}</td></tr>{{end}}</tbody></table></div>
+{{else}}<div class="cds-empty" role="status">No metadata stored.</div>{{end}}
+
+<h2 class="cds-h2">Outlinks</h2>
+<p class="cds-muted">Showing {{len .Document.Outlinks}} of {{.Document.OutlinksTotal}}.</p>
+{{if .Document.Outlinks}}<ul>{{range .Document.Outlinks}}<li class="cds-mono">{{.}}</li>{{end}}</ul>{{else}}<div class="cds-empty" role="status">No outlinks stored.</div>{{end}}
+
+<h2 class="cds-h2">Inbound anchors</h2>
+<p class="cds-muted">Showing {{len .Document.Inlinks}} of {{.Document.InlinksTotal}}.</p>
+{{if .Document.Inlinks}}
+<div class="cds-scroll-x"><table class="cds-table"><thead><tr><th scope="col">Source</th><th scope="col">Anchor text</th><th scope="col">Relations</th></tr></thead><tbody>{{range .Document.Inlinks}}<tr><td class="cds-mono">{{.URL}}</td><td>{{.Text}}</td><td>{{if .NoFollow}}nofollow {{end}}{{if .UserGenerated}}ugc {{end}}{{if .Sponsored}}sponsored{{end}}</td></tr>{{end}}</tbody></table></div>
+{{else}}<div class="cds-empty" role="status">No inbound anchors stored.</div>{{end}}
+
+<h2 class="cds-h2">Outbound anchors</h2>
+<p class="cds-muted">Showing {{len .Document.OutboundAnchors}} of {{.Document.OutboundAnchorsTotal}}.</p>
+{{if .Document.OutboundAnchors}}
+<div class="cds-scroll-x"><table class="cds-table"><thead><tr><th scope="col">Target</th><th scope="col">Anchor text</th><th scope="col">Relations</th></tr></thead><tbody>{{range .Document.OutboundAnchors}}<tr><td class="cds-mono">{{.URL}}</td><td>{{.Text}}</td><td>{{if .NoFollow}}nofollow {{end}}{{if .UserGenerated}}ugc {{end}}{{if .Sponsored}}sponsored{{end}}</td></tr>{{end}}</tbody></table></div>
+{{else}}<div class="cds-empty" role="status">No outbound anchors stored.</div>{{end}}
+
+<h2 class="cds-h2">Images</h2>
+<p class="cds-muted">Showing {{len .Document.Images}} of {{.Document.ImagesTotal}}.</p>
+{{if .Document.Images}}
+<div class="cds-scroll-x"><table class="cds-table"><thead><tr><th scope="col">URL</th><th scope="col">Alternative text</th></tr></thead><tbody>{{range .Document.Images}}<tr><td class="cds-mono">{{.URL}}</td><td>{{.AltText}}</td></tr>{{end}}</tbody></table></div>
+{{else}}<div class="cds-empty" role="status">No images stored.</div>{{end}}
+{{end}}

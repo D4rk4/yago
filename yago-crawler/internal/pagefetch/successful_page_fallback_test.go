@@ -11,7 +11,9 @@ import (
 
 func TestBrowserFallbackPageSourceRendersSuccessfulShell(t *testing.T) {
 	target := exampleURL(t)
-	primary := pagefetch.FetchedPage{URL: target, ContentType: "text/html", Body: []byte("shell")}
+	primary := pagefetch.FetchedPage{
+		URL: target, HTTPStatus: 200, ContentType: "text/html", Body: []byte("shell"),
+	}
 	rendered := pagefetch.FetchedPage{
 		URL:         target,
 		ContentType: "text/html",
@@ -34,6 +36,29 @@ func TestBrowserFallbackPageSourceRendersSuccessfulShell(t *testing.T) {
 	}
 	if string(page.Body) != "rendered" || browserCalls != 1 {
 		t.Fatalf("page/browser calls = %q/%d", page.Body, browserCalls)
+	}
+	if page.HTTPStatus != 200 {
+		t.Fatalf("HTTP status = %d, want preserved primary status", page.HTTPStatus)
+	}
+}
+
+func TestBrowserFallbackPageSourceKeepsRenderedHTTPStatus(t *testing.T) {
+	target := exampleURL(t)
+	source := pagefetch.NewBrowserFallbackPageSource(
+		sourceFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			return pagefetch.FetchedPage{URL: target, HTTPStatus: 200, Body: []byte("shell")}, nil
+		}),
+		sourceFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			return pagefetch.FetchedPage{URL: target, HTTPStatus: 204}, nil
+		}),
+		func(pagefetch.FetchedPage) bool { return true },
+	)
+	page, err := source.Fetch(t.Context(), target)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if page.HTTPStatus != 204 {
+		t.Fatalf("HTTP status = %d, want rendered response status", page.HTTPStatus)
 	}
 }
 

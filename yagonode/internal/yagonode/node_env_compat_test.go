@@ -36,3 +36,38 @@ func TestWithLegacyEnvAliasesPassesThroughNonPrefixedNames(t *testing.T) {
 		t.Fatalf("passthrough value = %q, want /root", got)
 	}
 }
+
+func TestWithLegacyEnvAliasesRejectsInventedCrawlerName(t *testing.T) {
+	env := map[string]string{"YACY_CRAWLER_WORKERS": "99"}
+	getenv := withLegacyEnvAliases(func(name string) string { return env[name] })
+
+	if got := getenv("YAGO_CRAWLER_WORKERS"); got != "" {
+		t.Fatalf("crawler fallback value = %q, want empty", got)
+	}
+	env["YAGO_CRAWLER_WORKERS"] = "4"
+	if got := getenv("YAGO_CRAWLER_WORKERS"); got != "4" {
+		t.Fatalf("canonical crawler value = %q, want 4", got)
+	}
+}
+
+func TestWithLegacyEnvAliasesRejectsFuturePrefixMatches(t *testing.T) {
+	env := map[string]string{"YACY_WEB_FALLBACK_PRIVACY": "always"}
+	getenv := withLegacyEnvAliases(func(name string) string { return env[name] })
+
+	if got := getenv("YAGO_WEB_FALLBACK_PRIVACY"); got != "" {
+		t.Fatalf("future fallback value = %q, want empty", got)
+	}
+}
+
+func TestLegacyEnvironmentAliasesAreExactHistoricalPairs(t *testing.T) {
+	if len(legacyNodeEnvironmentAliases) != 28 {
+		t.Fatalf("legacy alias count = %d, want 28", len(legacyNodeEnvironmentAliases))
+	}
+	for current, legacy := range legacyNodeEnvironmentAliases {
+		env := map[string]string{legacy: current}
+		getenv := withLegacyEnvAliases(func(name string) string { return env[name] })
+		if got := getenv(current); got != current {
+			t.Fatalf("%s fallback = %q, want %q", current, got, current)
+		}
+	}
+}

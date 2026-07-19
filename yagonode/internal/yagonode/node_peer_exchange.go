@@ -121,20 +121,21 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 		p.router,
 		p.identity,
 		peeradmission.HelloExchange{
-			Status:       peeringStatus{report: p.report, networkName: p.config.NetworkName},
-			Reachability: p.roster,
-			Client:       p.client,
-			News:         p.news,
-			PreferHTTPS:  p.config.PeerHTTPSPreferred,
+			Status:        peeringStatus{report: p.report, networkName: p.config.NetworkName},
+			Reachability:  p.roster,
+			Client:        p.client,
+			News:          p.news,
+			PreferHTTPS:   p.config.PeerHTTPSPreferred,
+			NetworkAccess: p.identity.NetworkAccess(),
 		},
 	)
 	seedlist.Mount(p.router, p.report, p.roster)
-	hostlinks.Mount(p.router, p.config.NetworkName, p.report, p.host)
+	hostlinks.Mount(p.router, p.identity, p.report, p.host)
 	peermessage.Mount(p.router, p.identity, mailbox)
 	peerprofile.Mount(p.router, p.identity, peerprofile.NewProfileFile(p.config.DataDir))
 	sharedblacklist.Mount(
 		p.router,
-		p.config.NetworkName,
+		p.identity,
 		sharedblacklist.NewFileBlacklists(p.config.DataDir),
 	)
 
@@ -148,6 +149,7 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 				Observer:       announceObserver,
 				News:           p.news,
 				PreferHTTPS:    p.config.PeerHTTPSPreferred,
+				NetworkAccess:  p.identity.NetworkAccess(),
 			},
 			p.report,
 			bootstrap.NewObserved(p.client, p.config.SeedlistURLs, seedObserver),

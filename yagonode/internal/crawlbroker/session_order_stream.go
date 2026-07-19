@@ -10,6 +10,7 @@ func (s *exchangeServer) activateWorkerSession(
 	workerID string,
 	workerSessionID string,
 	cancel context.CancelFunc,
+	fetchStartLeaseValues ...bool,
 ) ([]leasedCrawlOrder, uint64, error) {
 	var leased []leasedCrawlOrder
 	generation, err := s.sessions.activate(workerID, workerSessionID, cancel, func() error {
@@ -17,9 +18,26 @@ func (s *exchangeServer) activateWorkerSession(
 		leased, err = s.queue.adoptWorkerSession(ctx, workerID, workerSessionID)
 
 		return err
-	})
+	}, fetchStartLeaseValues...)
+	if err != nil {
+		return nil, 0, err
+	}
+	s.fetchPolicy.Lock()
+	defer s.fetchPolicy.Unlock()
+	if s.fetchStarts == nil {
+		s.sessions.deactivate(workerID, workerSessionID, generation)
 
-	return leased, generation, err
+		return nil, 0, errFleetFetchPolicyInvalid
+	}
+	fetchStartLeases := len(fetchStartLeaseValues) > 0 && fetchStartLeaseValues[0]
+	if s.fetchStarts.Snapshot().PagesPerSecond > 0 && !fetchStartLeases {
+		s.sessions.deactivate(workerID, workerSessionID, generation)
+
+		return nil, 0, errFleetFetchCapabilityRequired
+	}
+	s.fetchStarts.replaceSession(workerID, workerSessionID)
+
+	return leased, generation, nil
 }
 
 func (s *exchangeServer) leaseNextForSession(

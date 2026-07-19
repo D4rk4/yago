@@ -73,6 +73,58 @@ func TestCallerBackPingConfirmsValidQueryResponse(t *testing.T) {
 	}
 }
 
+func TestCallerBackPingSignsControlledNetworkRequest(t *testing.T) {
+	self := hashFor("self")
+	access := yagoproto.NetworkAccess{
+		NetworkName: "private",
+		Mode:        yagoproto.NetworkAuthenticationSaltedMagic,
+		Essentials:  "shared-secret",
+	}
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			verifier := access
+			verifier.Self = self
+			if !verifier.Authorizes(request.URL.Query()) ||
+				request.URL.Query().Get(yagoproto.FieldIam) != self.String() {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+
+				return
+			}
+			response := yagoproto.QueryResponse{Response: 3}
+			_, _ = strings.NewReader(response.Encode().Encode()).WriteTo(w)
+		}),
+	)
+	defer server.Close()
+
+	probe := newCallerBackPing(server.Client(), false, access)
+	if !probe.Reachable(t.Context(), serverSeed(t, server.URL), self, "private") {
+		t.Fatal("controlled caller back-ping was not reachable")
+	}
+}
+
+func TestCallerBackPingRejectsSigningFailure(t *testing.T) {
+	probe := newCallerBackPing(
+		&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Fatal("signing failure reached HTTP transport")
+
+			return nil, nil
+		})},
+		false,
+		yagoproto.NetworkAccess{Mode: yagoproto.NetworkAuthenticationSaltedMagic},
+	)
+	probe.signForm = func(yagoproto.NetworkAccess, url.Values) error {
+		return errors.New("signing failed")
+	}
+	if probe.Reachable(
+		t.Context(),
+		callerSeed(t, "peer", "203.0.113.1", 8090),
+		hashFor("self"),
+		"private",
+	) {
+		t.Fatal("signing failure was reported reachable")
+	}
+}
+
 func TestCallerBackPingRejectsErrorStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)

@@ -10,6 +10,9 @@ import (
 
 type SearchRequest struct {
 	NetworkName      string
+	Iam              string
+	Key              string
+	MagicMD5         string
 	MySeed           yagomodel.Optional[yagomodel.Seed]
 	Query            []yagomodel.Hash
 	Exclude          []yagomodel.Hash
@@ -55,6 +58,9 @@ const maximumParsedSearchResources = 1024
 func (r SearchRequest) Form() url.Values {
 	form := url.Values{}
 	putString(form, FieldNetworkName, r.NetworkName)
+	putString(form, FieldIam, r.Iam)
+	putString(form, FieldKey, r.Key)
+	putString(form, FieldMagicMD5, r.MagicMD5)
 	if seed, ok := r.MySeed.Get(); ok {
 		putString(form, FieldMySeed, yagomodel.EncodeCompactWireForm(seed.String()))
 	}
@@ -94,6 +100,9 @@ func ParseSearchRequest(ctx context.Context, form url.Values) (SearchRequest, er
 
 	req := SearchRequest{
 		NetworkName:      form.Get(FieldNetworkName),
+		Iam:              form.Get(FieldIam),
+		Key:              form.Get(FieldKey),
+		MagicMD5:         form.Get(FieldMagicMD5),
 		Count:            counts.count,
 		Time:             counts.time,
 		MaxDist:          counts.maxDist,

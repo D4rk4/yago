@@ -39,6 +39,7 @@ type dhtOutboundRuntimeAssembly struct {
 	roster       peerroster.Roster
 	client       *http.Client
 	observer     dhtexchange.DistributionObserver
+	events       nodeEventRecorder
 	reachability publicReachability
 	crawl        crawlQueueDepthSource
 	index        indexQueueDepthSource
@@ -46,6 +47,7 @@ type dhtOutboundRuntimeAssembly struct {
 
 func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundProcess {
 	self := assembly.report.SelfSeed(assembly.ctx)
+	access := configuredNetworkAccess(assembly.config, self.Hash)
 	reachability := assembly.reachability
 	if reachability == nil {
 		reachability = newPublicEndpointSelfTest(
@@ -53,6 +55,7 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 			assembly.config.NetworkName,
 			self.Hash,
 			assembly.config.PublicSelfTestURL,
+			access,
 		)
 	}
 	gateSource := dhtGateStateSource{
@@ -68,6 +71,7 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 		assembly.config.NetworkName,
 		self,
 		assembly.config.PeerHTTPSPreferred,
+		access,
 	)
 	queue := dhtexchange.NewOutboundQueue()
 	feeder := dhtexchange.NewOutboundFeeder(
@@ -90,6 +94,7 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 			assembly.config.NetworkName,
 			self,
 			assembly.config.PeerHTTPSPreferred,
+			access,
 		),
 		indextransfer.NewHandoff(writer, assembly.nodeStorage.urlDirectory),
 		dhtOutboundRWIWords{postings: assembly.nodeStorage.outboundPostings},
@@ -108,7 +113,9 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 	}
 
 	return dhtOutboundProcess{
-		cycle:      dhtOutboundRosterCycle{cycle: scheduler, roster: assembly.roster},
+		cycle: dhtOutboundRosterCycle{
+			cycle: scheduler, roster: assembly.roster, events: assembly.events,
+		},
 		interval:   assembly.config.DHT.Interval,
 		gates:      newDHTGateStatusEndpoint(gateStatus),
 		gateStatus: gateStatus,

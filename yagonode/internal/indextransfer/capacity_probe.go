@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagoproto"
@@ -20,6 +21,8 @@ type RemoteRWICountProbe struct {
 	networkName string
 	self        yagomodel.Seed
 	preferHTTPS bool
+	access      yagoproto.NetworkAccess
+	signForm    func(url.Values) error
 }
 
 func NewRemoteRWICountProbe(
@@ -27,9 +30,16 @@ func NewRemoteRWICountProbe(
 	networkName string,
 	self yagomodel.Seed,
 	preferHTTPS bool,
+	access ...yagoproto.NetworkAccess,
 ) RemoteRWICountProbe {
 	if client == nil {
 		client = http.DefaultClient
+	}
+
+	configured := yagoproto.NetworkAccess{NetworkName: networkName, Self: self.Hash}
+	if len(access) != 0 {
+		configured = access[0]
+		configured.Self = self.Hash
 	}
 
 	return RemoteRWICountProbe{
@@ -37,6 +47,8 @@ func NewRemoteRWICountProbe(
 		networkName: networkName,
 		self:        self,
 		preferHTTPS: preferHTTPS,
+		access:      configured,
+		signForm:    configured.Sign,
 	}
 }
 
@@ -44,18 +56,24 @@ func (p RemoteRWICountProbe) RWICount(
 	ctx context.Context,
 	peer yagomodel.Seed,
 ) (int, error) {
+	form := yagoproto.QueryRequest{
+		NetworkName: p.networkName,
+		YouAre:      peer.Hash,
+		Iam:         p.self.Hash,
+		Object:      yagoproto.ObjectRWICount,
+	}.Form()
+	if p.access.Mode == yagoproto.NetworkAuthenticationSaltedMagic {
+		if err := p.signForm(form); err != nil {
+			return 0, fmt.Errorf("%w: %w", errCapacityProbeFailed, err)
+		}
+	}
 	resp, err := postTransfer(
 		transferPost[yagoproto.QueryResponse]{
-			ctx:    ctx,
-			client: p.client,
-			peer:   peer,
-			path:   yagoproto.PathQuery,
-			form: yagoproto.QueryRequest{
-				NetworkName: p.networkName,
-				YouAre:      peer.Hash,
-				Iam:         p.self.Hash,
-				Object:      yagoproto.ObjectRWICount,
-			}.Form(),
+			ctx:         ctx,
+			client:      p.client,
+			peer:        peer,
+			path:        yagoproto.PathQuery,
+			form:        form,
 			parse:       yagoproto.ParseQueryResponse,
 			preferHTTPS: p.preferHTTPS,
 		},

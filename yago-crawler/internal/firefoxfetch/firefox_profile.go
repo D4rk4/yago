@@ -18,6 +18,7 @@ type firefoxProfile struct {
 	ProxyURL       string
 	UserAgent      string
 	Sandbox        bool
+	MaxRedirects   int
 }
 
 // writeFirefoxProfile creates a temporary profile directory whose user.js binds
@@ -59,6 +60,7 @@ func firefoxUserJS(profile firefoxProfile) (string, error) {
 	}
 
 	pref("marionette.port", profile.MarionettePort)
+	pref("network.http.redirection-limit", max(0, profile.MaxRedirects))
 
 	if profile.ProxyURL != "" {
 		host, port, err := proxyHostPort(profile.ProxyURL)
@@ -111,11 +113,15 @@ func firefoxUserJS(profile firefoxProfile) (string, error) {
 	pref("extensions.getAddons.cache.enabled", false)
 	// One content process is enough for a single serialized navigation and keeps
 	// the process tree small on the crawler host.
+	writeFirefoxProcessPreferences(pref)
+
+	return b.String(), nil
+}
+
+func writeFirefoxProcessPreferences(pref func(string, any)) {
 	pref("fission.autostart", false)
 	pref("dom.ipc.processCount", 1)
 	pref("browser.cache.disk.enable", false)
-
-	return b.String(), nil
 }
 
 func proxyHostPort(proxyURL string) (string, int, error) {

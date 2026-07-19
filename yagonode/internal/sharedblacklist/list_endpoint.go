@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
+	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -13,15 +14,15 @@ const (
 )
 
 type endpoint struct {
-	networkName string
-	blacklists  Blacklists
+	identity   nodeidentity.Identity
+	blacklists Blacklists
 }
 
 func (e endpoint) Serve(
 	ctx context.Context,
 	req yagoproto.ListRequest,
 ) (httpguard.RawResponse, error) {
-	if yagoproto.NetworkUnit(req.NetworkName) != yagoproto.NetworkUnit(e.networkName) {
+	if !e.identity.Authenticates(req.NetworkName, req.Key, req.Iam, req.MagicMD5) {
 		return httpguard.RawResponse{ContentType: listContentType}, nil
 	}
 

@@ -6,10 +6,6 @@ import (
 	"math"
 	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
-	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 )
 
@@ -19,54 +15,28 @@ func (d heartbeatDelivery) exchangeForLeases(
 	activeLeaseIDs []string,
 	confirmDeliveries bool,
 ) (*crawlrpc.WorkerHeartbeatResult, error) {
+	if d.urlDenylist != nil && !d.urlDenylist.Ready() {
+		return d.exchangeURLDenylistBootstrap(ctx)
+	}
 	requestStarted := time.Now()
 	heartbeatCtx, cancelHeartbeat := boundedHeartbeatContext(ctx)
 	defer cancelHeartbeat()
-	heartbeat := workerSessionHeartbeat(
-		d.workerID,
-		d.workerSessionID,
-		d.activeFetches,
-		activeLeaseIDs,
-		acknowledged...,
-	)
-	heartbeat.ConfirmActiveLeaseDeliveries = &confirmDeliveries
-	if d.storageSnapshot != nil {
-		snapshot := d.storageSnapshot()
-		available := snapshot.AvailableBytes
-		pressured := snapshot.Pressured
-		measurementAvailable := snapshot.MeasurementAvailable
-		heartbeat.StorageAvailableBytes = &available
-		heartbeat.StoragePressure = &pressured
-		heartbeat.StorageMeasurementAvailable = &measurementAvailable
-	}
+	heartbeat := d.leaseHeartbeat(activeLeaseIDs, acknowledged, confirmDeliveries)
 	result, err := d.client.Heartbeat(heartbeatCtx, heartbeat)
 	if err != nil {
-		if d.leaseGrants != nil && status.Code(err) == codes.FailedPrecondition {
-			for _, leaseID := range d.leaseGrants.ActiveLeaseIDs() {
-				d.leaseGrants.Reject(leaseID)
-			}
-		}
+		d.rejectLeasesAfterHeartbeatError(err)
 
 		return nil, fmt.Errorf("deliver crawler heartbeat: %w", err)
 	}
-	if d.storagePolicy != nil && result.StorageReservedFreeBytes != nil &&
-		result.StoragePressureHysteresisBytes != nil {
-		d.storagePolicy(yagocrawlcontract.StoragePressurePolicy{
-			ReservedFreeBytes:       result.GetStorageReservedFreeBytes(),
-			RecoveryHysteresisBytes: result.GetStoragePressureHysteresisBytes(),
-		})
+	if err := d.applyURLDenylist(result); err != nil {
+		return nil, err
 	}
-	if d.leaseGrants != nil {
-		leaseTTL, err := heartbeatLeaseTTL(result.GetLeaseTtlMilliseconds())
-		if err != nil {
-			return nil, err
-		}
-		d.leaseGrants.Renew(
-			requestStarted,
-			leaseTTL,
-			activeLeaseIDs,
-			result.GetRenewedLeaseIds(),
-		)
+	if err := d.applyHeartbeatRuntimePolicy(result); err != nil {
+		return nil, err
+	}
+	d.applyHeartbeatStoragePolicy(result)
+	if err := d.renewHeartbeatLeases(requestStarted, activeLeaseIDs, result); err != nil {
+		return nil, err
 	}
 
 	return result, nil

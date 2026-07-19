@@ -58,6 +58,7 @@ type SearchResult struct {
 	ClusterIdentity string
 	Position        int
 	LexicalPosition int
+	Reasons         []string
 }
 
 // ResultImage is one image-grid cell: the proxied thumbnail and its source page.

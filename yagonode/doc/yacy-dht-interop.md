@@ -32,10 +32,12 @@ To receive index transfer, the seed `Flags` field must set bit 2
 (`FLAG_ACCEPT_REMOTE_INDEX`). Without that bit, YaCy's sender-side DHT target
 selection skips the peer even if its `PeerType` is `senior`.
 
-Network-unit authentication currently interoperates with the default
-`freeworld` unit and same-name peers. Controlled private networks that require
-Java YaCy's `salted-magic-sim` calculation are unsupported because that
-credential flow is not wired end to end.
+Network-unit authentication interoperates with the default `freeworld` unit and
+same-name peers. Controlled private networks may select Java YaCy's
+`salted-magic-sim` calculation with one nonempty shared secret. In that mode the
+node signs outbound peer requests with a fresh bounded salt and validates
+inbound requests against the authenticated peer identity. Every participating
+peer must use the same mode and secret.
 
 Public `resource=global` search uses YaCy DHT positions but draws candidates from
 the known senior-peer roster, including peers that have not completed an inbound

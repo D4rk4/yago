@@ -34,6 +34,14 @@ func automaticDiscoverySettingsView() SettingsView {
 			Value: "4", Category: "Crawler",
 		},
 		{
+			Key: "crawler.max_pages_per_second", Title: "Maximum fleet-wide fetch-start rate",
+			Value: "10", Category: "Crawler",
+		},
+		{
+			Key: "crawler.max_redirects", Title: "Maximum redirects per page",
+			Value: "10", Category: "Crawler",
+		},
+		{
 			Key: "crawler.max_active_runs", Title: "Maximum active crawl tasks",
 			Value: "32", Category: "Crawler",
 		},
@@ -70,6 +78,8 @@ func TestConfigurationCrawlerOwnsAutomaticDiscoveryAndFormats(t *testing.T) {
 		`name="value:swarm.seed.enabled"`, `name="value:web.fallback.seed_crawl"`,
 		`name="value:crawler.prioritize_automatic_discovery"`,
 		`>Crawler</legend>`, `name="value:crawler.fetch_workers"`,
+		`name="value:crawler.max_pages_per_second"`,
+		`name="value:crawler.max_redirects"`,
 		`name="value:crawler.max_active_runs"`,
 		`>Document formats</legend>`, `action="/admin/configuration/formats#panel-crawler"`,
 		`name="text" checked`, `name="pdf" checked`, `name="archives"`,
@@ -80,6 +90,44 @@ func TestConfigurationCrawlerOwnsAutomaticDiscoveryAndFormats(t *testing.T) {
 	}
 	if strings.Contains(got.body, `cds-nav__label">Autocrawler</span>`) {
 		t.Fatal("obsolete Autocrawler navigation entry is still rendered")
+	}
+}
+
+func TestConfigurationCrawlerSavesMaximumRedirectsPerPage(t *testing.T) {
+	settings := &fakeSettings{
+		view:   automaticDiscoverySettingsView(),
+		result: SettingsResult{OK: true, Message: "Saved."},
+	}
+	console := New(Options{Config: fakeConfig{}, Settings: settings})
+	got := doPost(t, console, configPath, url.Values{
+		"key":                         {"crawler.max_redirects"},
+		"value:crawler.max_redirects": {"7"},
+	})
+	if got.status != http.StatusOK || len(settings.changes) != 1 {
+		t.Fatalf("save = status %d changes %+v", got.status, settings.changes)
+	}
+	if change := settings.changes[0]; change.Key != "crawler.max_redirects" ||
+		change.Value != "7" {
+		t.Fatalf("saved change = %+v", change)
+	}
+}
+
+func TestConfigurationCrawlerSavesMaximumFleetWideFetchStartRate(t *testing.T) {
+	settings := &fakeSettings{
+		view:   automaticDiscoverySettingsView(),
+		result: SettingsResult{OK: true, Message: "Saved."},
+	}
+	console := New(Options{Config: fakeConfig{}, Settings: settings})
+	got := doPost(t, console, configPath, url.Values{
+		"key":                                {"crawler.max_pages_per_second"},
+		"value:crawler.max_pages_per_second": {"23"},
+	})
+	if got.status != http.StatusOK || len(settings.changes) != 1 {
+		t.Fatalf("save = status %d changes %+v", got.status, settings.changes)
+	}
+	if change := settings.changes[0]; change.Key != "crawler.max_pages_per_second" ||
+		change.Value != "23" {
+		t.Fatalf("saved change = %+v", change)
 	}
 }
 

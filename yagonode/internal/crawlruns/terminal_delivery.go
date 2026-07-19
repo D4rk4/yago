@@ -423,9 +423,15 @@ func terminalRunFromProgress(
 	run.ProfileName = progress.ProfileName
 	run.State = progress.State
 	run.Tally = progress.Tally
+	run.RecentOutcomes = run.RecentOutcomes.Merge(progress.RecentOutcomes)
 	if progress.RateKnown {
 		run.PagesPerMinute = progress.PagesPerMinute
 		run.RateKnown = true
+	}
+	if progress.LimitsKnown {
+		run.MaxPagesPerHost = progress.MaxPagesPerHost
+		run.MaxPagesPerRun = progress.MaxPagesPerRun
+		run.LimitsKnown = true
 	}
 	run.Updated = now
 
@@ -437,7 +443,11 @@ func validateTerminalProgress(
 	progress yagocrawlcontract.CrawlRunProgress,
 ) error {
 	if len(identity) != sha256.Size || progress.RunID == "" || !isTerminal(progress.State) ||
-		progress.Tally.Pending != 0 {
+		progress.Tally.Pending != 0 || !progress.RecentOutcomes.Valid() ||
+		progress.LimitsKnown && !yagocrawlcontract.ValidCrawlRunLimits(
+			progress.MaxPagesPerHost,
+			progress.MaxPagesPerRun,
+		) {
 		return fmt.Errorf("invalid terminal crawl progress delivery")
 	}
 
@@ -454,10 +464,14 @@ func validateTerminalDeliveryRecord(record terminalDeliveryRecord) error {
 		record.Run.ProfileName != record.Progress.ProfileName ||
 		record.Run.State != record.Progress.State ||
 		record.Run.Tally != record.Progress.Tally ||
+		!record.Run.RecentOutcomes.Valid() ||
 		record.Run.FirstSeen.IsZero() ||
 		record.Run.Updated.IsZero() ||
 		record.Progress.RateKnown && (!record.Run.RateKnown ||
-			record.Run.PagesPerMinute != record.Progress.PagesPerMinute) {
+			record.Run.PagesPerMinute != record.Progress.PagesPerMinute) ||
+		record.Progress.LimitsKnown && (!record.Run.LimitsKnown ||
+			record.Run.MaxPagesPerHost != record.Progress.MaxPagesPerHost ||
+			record.Run.MaxPagesPerRun != record.Progress.MaxPagesPerRun) {
 		return fmt.Errorf("invalid terminal crawl progress delivery")
 	}
 

@@ -65,6 +65,7 @@ type crawlOrderStreamSession struct {
 	retryWait           time.Duration
 	terminalSettlements *terminalSettlementRelay
 	heartbeat           *heartbeatDelivery
+	fetchStartSession   FetchStartSession
 }
 
 type crawlOrderStreamDrain struct {
@@ -99,19 +100,22 @@ func NewGRPCOrderReceiver(
 		apply(&config)
 	}
 	heartbeat := heartbeatDelivery{
-		client:          client,
-		workerID:        workerID,
-		workerSessionID: config.workerSessionID,
-		control:         control,
-		activeFetches:   config.activeFetches,
-		acknowledgments: &controlAcknowledgments{},
-		leaseGrants:     config.leaseGrants,
-		operation:       &sync.Mutex{},
-		storageSnapshot: config.storageSnapshot,
-		storagePolicy:   config.storagePolicy,
+		client:              client,
+		workerID:            workerID,
+		workerSessionID:     config.workerSessionID,
+		control:             control,
+		activeFetches:       config.activeFetches,
+		acknowledgments:     &controlAcknowledgments{},
+		leaseGrants:         config.leaseGrants,
+		operation:           &sync.Mutex{},
+		storageSnapshot:     config.storageSnapshot,
+		storagePolicy:       config.storagePolicy,
+		urlDenylist:         config.urlDenylist,
+		runtimePolicy:       config.runtimePolicy,
+		runtimePolicySource: config.runtimePolicySource,
 	}
 	out := make(chan CrawlOrderDelivery)
-	if config.leaseGrants == nil {
+	if config.leaseGrants == nil || config.urlDenylist != nil {
 		startupCtx, cancelStartup := context.WithTimeout(ctx, orderStartupHeartbeatTimeout)
 		heartbeat.deliver(startupCtx)
 		cancelStartup()
@@ -141,6 +145,7 @@ func NewGRPCOrderReceiver(
 		retryWait:           orderStreamRetryWait,
 		terminalSettlements: terminalSettlements,
 		heartbeat:           &heartbeat,
+		fetchStartSession:   config.fetchStartSession,
 	})
 	go periodicHeartbeats(ctx, heartbeat, orderHeartbeatInterval)
 
@@ -171,6 +176,11 @@ func streamCrawlOrdersWithLeaseSession(
 	session crawlOrderStreamSession,
 ) {
 	defer close(session.out)
+	if session.heartbeat != nil && session.heartbeat.urlDenylist != nil &&
+		!session.heartbeat.urlDenylist.Ready() &&
+		!session.heartbeat.urlDenylist.Wait(ctx) {
+		return
+	}
 	for {
 		workerSessionID := ""
 		if session.heartbeat != nil {
@@ -178,12 +188,19 @@ func streamCrawlOrdersWithLeaseSession(
 		}
 		streamCtx, finishStreamAttempt := orderStreamAttemptContext(ctx, session.heartbeat)
 		stream, err := session.client.StreamOrders(streamCtx, &crawlrpc.WorkerRegistration{
-			WorkerId:        session.workerID,
-			WorkerSessionId: workerSessionID,
+			WorkerId:         session.workerID,
+			WorkerSessionId:  workerSessionID,
+			FetchStartLeases: session.fetchStartSession != nil,
 		})
 		if err != nil {
+			if session.fetchStartSession != nil {
+				session.fetchStartSession.Disconnected()
+			}
 			slog.WarnContext(ctx, msgOrderStreamReconnect, slog.Any("error", err))
 		} else {
+			if session.fetchStartSession != nil {
+				session.fetchStartSession.Connected()
+			}
 			drainOrderStreamWithLeaseSession(ctx, crawlOrderStreamDrain{
 				client:              session.client,
 				stream:              stream,
@@ -192,6 +209,9 @@ func streamCrawlOrdersWithLeaseSession(
 				terminalSettlements: session.terminalSettlements,
 				heartbeat:           session.heartbeat,
 			})
+			if session.fetchStartSession != nil {
+				session.fetchStartSession.Disconnected()
+			}
 		}
 		finishStreamAttempt()
 		select {
@@ -310,6 +330,7 @@ func deliverOrderWithLeaseSession(
 					Outcome:         outcome,
 					State:           terminal.State,
 					Tally:           terminal.Tally,
+					RecentOutcomes:  terminal.RecentOutcomes,
 					PagesPerMinute:  terminal.PagesPerMinute,
 					RateKnown:       terminal.RateKnown,
 				},

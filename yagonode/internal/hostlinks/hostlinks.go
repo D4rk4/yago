@@ -5,6 +5,7 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/hostlinkgraph"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
+	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -42,7 +43,7 @@ func (NoIncomingHostLinks) IncomingHostLinks(context.Context) Graph {
 
 func Mount(
 	router httpguard.WireRouter,
-	networkName string,
+	identity nodeidentity.Identity,
 	status RuntimeStatus,
 	links IncomingHostLinks,
 ) {
@@ -52,7 +53,7 @@ func Mount(
 			Path:      yagoproto.PathIndex,
 			Methods:   yagoproto.IndexEndpointMethods,
 			Parse:     yagoproto.ParseIndexRequest,
-			Serve:     endpoint{networkName: networkName, status: status, links: links}.Serve,
+			Serve:     endpoint{identity: identity, status: status, links: links}.Serve,
 			Admission: httpguard.NewIntakeGate(maximumConcurrentIndexResponses),
 		},
 	)

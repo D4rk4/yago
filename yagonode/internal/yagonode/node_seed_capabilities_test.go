@@ -31,7 +31,6 @@ func TestSeedCapabilityFlagsDefaults(t *testing.T) {
 		t.Errorf("defaults: root=%v ssl=%v, want both false",
 			config.AdvertiseRootNode, config.AdvertiseSSLAvailable)
 	}
-	// Historical advertisement preserved; remote crawl never advertised (disabled).
 	assertFlagBits(t, config.Flags, map[int]bool{
 		yagomodel.FlagDirectConnect:     true,
 		yagomodel.FlagAcceptRemoteIndex: true,
@@ -133,7 +132,7 @@ func TestSeedCapabilitySettingsLiveInNetworkTabAndApply(t *testing.T) {
 			t.Errorf("%s: apply(true) did not set flag bit %d", tc.key, tc.bit)
 		}
 		if updated.Flags.Get(yagomodel.FlagAcceptRemoteCrawl) {
-			t.Errorf("%s: apply must never advertise remote crawl", tc.key)
+			t.Errorf("%s: unrelated setting enabled remote crawl", tc.key)
 		}
 	}
 }

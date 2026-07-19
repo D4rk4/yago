@@ -49,4 +49,14 @@ func TestBindingSourceHandlesInterfaceAndStoreErrors(t *testing.T) {
 	}); err == nil {
 		t.Fatal("UpdateBinding should surface the store error")
 	}
+	if _, err := src.UpdateBinding(ctx, adminui.BindChange{
+		Key: bindKeyPublic, Action: adminui.BindActionDisable,
+	}); err == nil {
+		t.Fatal("Disable should surface the store error")
+	}
+	if _, err := src.UpdateBinding(ctx, adminui.BindChange{
+		Key: bindKeyOps, Action: adminui.BindActionReset,
+	}); err == nil {
+		t.Fatal("Reset should surface the store error")
+	}
 }

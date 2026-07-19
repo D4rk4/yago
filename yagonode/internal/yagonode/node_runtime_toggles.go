@@ -1,9 +1,11 @@
 package yagonode
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/publicrobots"
 )
 
@@ -26,18 +28,27 @@ type runtimeToggles struct {
 	// storageQuota carries a new disk-budget ceiling to the vault. It is wired at
 	// boot to vault.SetQuota and holds a func(int64); a storage.quota admin change
 	// flows through it so the new ceiling applies without a restart (ADR-0037 D).
-	storageQuota               atomic.Value
-	storageReservedFree        atomic.Int64
-	storagePressureRecovery    atomic.Int64
-	storagePressurePolicy      atomic.Value
-	crawlerFetchWorkers        atomic.Value
-	crawlerMaximumActiveRuns   atomic.Value
-	crawlerMaxPagesPerRun      atomic.Value
-	automaticDiscoveryPriority atomic.Value
-	crawlerStorageReservedFree atomic.Int64
-	crawlerStorageRecovery     atomic.Int64
-	crawlerStoragePolicy       atomic.Value
+	storageQuota                 atomic.Value
+	storageReservedFree          atomic.Int64
+	storagePressureRecovery      atomic.Int64
+	storagePressurePolicy        atomic.Value
+	crawlerFetchWorkers          atomic.Value
+	crawlerProcessPagesPerSecond atomic.Value
+	crawlerMaximumRedirects      atomic.Value
+	crawlerMaximumActiveRuns     atomic.Value
+	crawlerMaxPagesPerRun        atomic.Value
+	automaticDiscoveryPriority   atomic.Value
+	crawlerStorageReservedFree   atomic.Int64
+	crawlerStorageRecovery       atomic.Int64
+	crawlerStoragePolicy         atomic.Value
+	crawlerRuntimePolicyMu       sync.Mutex
+	crawlerRuntimePolicy         yagocrawlcontract.CrawlerRuntimePolicy
+	crawlerRuntimePolicySink     atomic.Value
+	loggingLevel                 atomic.Int64
+	loggingLevelSink             atomic.Value
 }
+
+type crawlerRuntimePolicySink func(yagocrawlcontract.CrawlerRuntimePolicy) bool
 
 func newRuntimeToggles(config nodeConfig) *runtimeToggles {
 	toggles := &runtimeToggles{}
@@ -52,8 +63,44 @@ func newRuntimeToggles(config nodeConfig) *runtimeToggles {
 	toggles.storagePressureRecovery.Store(config.StoragePressureRecoveryBytes)
 	toggles.crawlerStorageReservedFree.Store(config.Crawl.StorageReservedFreeBytes)
 	toggles.crawlerStorageRecovery.Store(config.Crawl.StoragePressureRecoveryBytes)
+	toggles.crawlerRuntimePolicy = config.Crawl.RuntimePolicy
+	toggles.loggingLevel.Store(int64(config.LoggingLevel))
 
 	return toggles
+}
+
+func (t *runtimeToggles) SetCrawlerRuntimePolicySink(
+	sink crawlerRuntimePolicySink,
+) {
+	if t == nil || sink == nil {
+		return
+	}
+	t.crawlerRuntimePolicySink.Store(sink)
+	t.crawlerRuntimePolicyMu.Lock()
+	policy := t.crawlerRuntimePolicy
+	t.crawlerRuntimePolicyMu.Unlock()
+	sink(policy)
+}
+
+func (t *runtimeToggles) UpdateCrawlerRuntimePolicy(
+	update func(*yagocrawlcontract.CrawlerRuntimePolicy),
+) {
+	if t == nil || update == nil {
+		return
+	}
+	t.crawlerRuntimePolicyMu.Lock()
+	policy := t.crawlerRuntimePolicy
+	update(&policy)
+	if policy.Validate() != nil {
+		t.crawlerRuntimePolicyMu.Unlock()
+
+		return
+	}
+	t.crawlerRuntimePolicy = policy
+	t.crawlerRuntimePolicyMu.Unlock()
+	if sink, ok := t.crawlerRuntimePolicySink.Load().(crawlerRuntimePolicySink); ok {
+		sink(policy)
+	}
 }
 
 // CompactionInterval is the live storage-compaction cadence (0 = off).

@@ -25,6 +25,14 @@ func TestLoadCrawlConfigDefaultsToLoopbackWhenUnset(t *testing.T) {
 		t.Fatalf("fetch workers = %d, want %d", cfg.FetchWorkers,
 			yagocrawlcontract.DefaultFetchWorkerConcurrency)
 	}
+	if cfg.ProcessPagesPerSecond != yagocrawlcontract.DefaultProcessPagesPerSecond {
+		t.Fatalf("process pages per second = %d, want %d", cfg.ProcessPagesPerSecond,
+			yagocrawlcontract.DefaultProcessPagesPerSecond)
+	}
+	if cfg.MaximumRedirects != yagocrawlcontract.DefaultMaximumPageRedirects {
+		t.Fatalf("maximum redirects = %d, want %d", cfg.MaximumRedirects,
+			yagocrawlcontract.DefaultMaximumPageRedirects)
+	}
 	if cfg.MaxActiveRuns != yagocrawlcontract.DefaultActiveCrawlRunConcurrency {
 		t.Fatalf(
 			"maximum active runs = %d, want %d",
@@ -38,6 +46,18 @@ func TestLoadCrawlConfigDefaultsToLoopbackWhenUnset(t *testing.T) {
 	}
 	if !cfg.PrioritizeAutomaticDiscovery {
 		t.Fatal("automatic discovery priority must default on")
+	}
+}
+
+func TestLoadCrawlConfigRejectsInvalidRuntimePolicy(t *testing.T) {
+	if _, err := loadCrawlConfig(func(key string) string {
+		if key == envCrawlerRequestTimeout {
+			return "soon"
+		}
+
+		return ""
+	}); err == nil {
+		t.Fatal("invalid crawler runtime policy accepted")
 	}
 }
 
@@ -96,6 +116,8 @@ func TestLoadCrawlConfigRejectsBadQualityGateValue(t *testing.T) {
 func TestLoadCrawlConfigReadsCrawlerRuntimeSettings(t *testing.T) {
 	env := map[string]string{
 		envCrawlerWorkers:               "20",
+		envCrawlerProcessPagesPerSecond: "23",
+		envCrawlerMaximumRedirects:      "7",
 		envCrawlerMaxActiveRuns:         "37",
 		envCrawlerMaxPagesPerRun:        "1234",
 		envPrioritizeAutomaticDiscovery: "false",
@@ -104,7 +126,9 @@ func TestLoadCrawlConfigReadsCrawlerRuntimeSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load crawl config: %v", err)
 	}
-	if config.FetchWorkers != 20 || config.MaxActiveRuns != 37 ||
+	if config.FetchWorkers != 20 || config.ProcessPagesPerSecond != 23 ||
+		config.MaximumRedirects != 7 ||
+		config.MaxActiveRuns != 37 ||
 		config.MaxPagesPerRun != 1234 ||
 		config.PrioritizeAutomaticDiscovery {
 		t.Fatalf("crawler runtime settings = %+v", config)
@@ -136,6 +160,8 @@ func TestLoadCrawlConfigDoesNotReadJoinedLegacyCrawlerEnvironmentName(t *testing
 func TestLoadCrawlConfigRejectsInvalidCrawlerRuntimeSettings(t *testing.T) {
 	for key, value := range map[string]string{
 		envCrawlerWorkers:               "257",
+		envCrawlerProcessPagesPerSecond: "1000001",
+		envCrawlerMaximumRedirects:      "1001",
 		envCrawlerMaxActiveRuns:         "257",
 		envCrawlerMaxPagesPerRun:        "-1",
 		envPrioritizeAutomaticDiscovery: "sometimes",

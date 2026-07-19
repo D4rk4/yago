@@ -39,8 +39,11 @@ func TestCrawlMonitorSourceSnapshot(t *testing.T) {
 		Tally: yagocrawlcontract.CrawlRunTally{
 			Fetched: 5, Indexed: 4, Failed: 1, RobotsDenied: 2, Duplicates: 3, Pending: 6,
 		},
-		PagesPerMinute: 30,
-		RateKnown:      true,
+		PagesPerMinute:  30,
+		RateKnown:       true,
+		MaxPagesPerHost: 250,
+		MaxPagesPerRun:  900,
+		LimitsKnown:     true,
 	})
 	recordRun(reg, yagocrawlcontract.CrawlRunProgress{
 		RunID:       "r2",
@@ -72,8 +75,24 @@ func TestCrawlMonitorSourceSnapshot(t *testing.T) {
 	if run.PagesPerMinute != 30 || !run.RateKnown {
 		t.Fatalf("run view rate = %d/%v, want known 30", run.PagesPerMinute, run.RateKnown)
 	}
+	if run.MaxPagesPerHost != "250" || run.MaxPagesPerRun != "900" {
+		t.Fatalf("run limits = %q/%q", run.MaxPagesPerHost, run.MaxPagesPerRun)
+	}
 	if !monitor.QueueAvailable || monitor.QueuePending != 3 || monitor.QueueLeased != 1 {
 		t.Fatalf("queue = %d/%d, want 3/1", monitor.QueuePending, monitor.QueueLeased)
+	}
+}
+
+func TestCrawlRunViewFormatsUnlimitedAndUnavailableLimits(t *testing.T) {
+	unlimited := crawlRunView(crawlruns.Run{
+		LimitsKnown: true, MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	}, time.Now())
+	if unlimited.MaxPagesPerHost != "Unlimited" || unlimited.MaxPagesPerRun != "Unlimited" {
+		t.Fatalf("unlimited limits = %q/%q", unlimited.MaxPagesPerHost, unlimited.MaxPagesPerRun)
+	}
+	unknown := crawlRunView(crawlruns.Run{}, time.Now())
+	if unknown.MaxPagesPerHost != "Unavailable" || unknown.MaxPagesPerRun != "Unavailable" {
+		t.Fatalf("unknown limits = %q/%q", unknown.MaxPagesPerHost, unknown.MaxPagesPerRun)
 	}
 }
 

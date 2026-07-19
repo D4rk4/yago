@@ -52,7 +52,7 @@ func TestCatalogIncludesCurrentPeerProtocolSurfaces(t *testing.T) {
 		if !strings.Contains(paths[path].Notes, "default freeworld and same-name") ||
 			!strings.Contains(
 				paths[path].Notes,
-				"salted-magic-sim authentication is not configured end to end",
+				"salted-magic-sim with one nonempty shared secret",
 			) {
 			t.Fatalf("%s authentication scope = %#v", path, paths[path])
 		}
@@ -60,8 +60,14 @@ func TestCatalogIncludesCurrentPeerProtocolSurfaces(t *testing.T) {
 	if paths[yagoproto.PathCrawlURLs].State != Partial {
 		t.Fatalf("crawl urls state = %q, want partial", paths[yagoproto.PathCrawlURLs].State)
 	}
-	if !strings.Contains(paths[yagoproto.PathCrawlReceipt].Behavior, "foreign network") ||
-		!strings.Contains(paths[yagoproto.PathCrawlReceipt].Behavior, "delay 3600") {
+	if !strings.Contains(paths[yagoproto.PathCrawlURLs].Behavior, "durable single-URL") ||
+		!strings.Contains(paths[yagoproto.PathCrawlURLs].Behavior, "salted-magic-sim") {
+		t.Fatalf("remote crawl URL policy = %#v", paths[yagoproto.PathCrawlURLs])
+	}
+	if !strings.Contains(paths[yagoproto.PathCrawlReceipt].Behavior, "delay 3600") ||
+		!strings.Contains(paths[yagoproto.PathCrawlReceipt].Behavior, "returns 9999") ||
+		!strings.Contains(paths[yagoproto.PathCrawlReceipt].Behavior, "returns 10") ||
+		!strings.Contains(paths[yagoproto.PathCrawlReceipt].Behavior, "cannot create or extend") {
 		t.Fatalf("crawl receipt delay = %#v", paths[yagoproto.PathCrawlReceipt])
 	}
 }

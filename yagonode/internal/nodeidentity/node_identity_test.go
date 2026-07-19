@@ -1,10 +1,12 @@
 package nodeidentity
 
 import (
+	"net/url"
 	"testing"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagoproto"
 )
 
 func TestIdentityUptimeRoundsDownToMinutes(t *testing.T) {
@@ -48,5 +50,39 @@ func TestIdentityAddressesNetworkAndHash(t *testing.T) {
 	}
 	if identity.Addresses("other", hash) {
 		t.Fatal("identity should reject a different network")
+	}
+}
+
+func TestIdentityAuthenticatesConfiguredNetwork(t *testing.T) {
+	identity := Identity{
+		Hash:                     yagomodel.WordHash("self"),
+		NetworkName:              "private",
+		AuthenticationMode:       yagoproto.NetworkAuthenticationSaltedMagic,
+		AuthenticationEssentials: "shared-secret",
+	}
+	form := url.Values{}
+	identity.NetworkAccess().SignWithSalt(form, "salt1234")
+
+	if !identity.Authenticates(
+		form.Get(yagoproto.FieldNetworkName),
+		form.Get(yagoproto.FieldKey),
+		form.Get(yagoproto.FieldIam),
+		form.Get(yagoproto.FieldMagicMD5),
+	) {
+		t.Fatal("signed network request was not authenticated")
+	}
+	if identity.Authenticates("other", "", "", "") {
+		t.Fatal("foreign network request was authenticated")
+	}
+}
+
+func TestIdentityAuthenticatesAddressAndTargetTogether(t *testing.T) {
+	self := yagomodel.WordHash("self")
+	identity := Identity{Hash: self, NetworkName: yagoproto.DefaultNetwork}
+	if !identity.AuthenticatesAddress("", self, "", "", "") {
+		t.Fatal("matching uncontrolled request was rejected")
+	}
+	if identity.AuthenticatesAddress("", yagomodel.WordHash("other"), "", "", "") {
+		t.Fatal("request addressed to another node was authenticated")
 	}
 }

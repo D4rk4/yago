@@ -44,7 +44,12 @@ func (e transferRWIEndpoint) Serve(
 ) (yagoproto.TransferRWIResponse, error) {
 	resp := yagoproto.TransferRWIResponse{Pause: transferRWIDefaultPause}
 
-	if !e.identity.NetworkMatches(req.NetworkName) {
+	if !e.identity.Authenticates(
+		req.NetworkName,
+		req.Key,
+		req.Iam.String(),
+		req.MagicMD5,
+	) {
 		resp.Result = yagoproto.ResultNotAuthentified
 
 		return resp, nil

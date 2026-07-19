@@ -10,8 +10,50 @@
   {{if .Duplicate}}Existing crawl request recognized under profile <code>{{.ProfileHandle}}</code>; no new seeds were enqueued.{{else}}Crawl accepted: {{.Seeds}} seed(s) queued under profile <code>{{.ProfileHandle}}</code>.{{end}}
 </div>
 {{end}}
+{{if .ProfilesOn}}
+<h2 class="cds-h2">Saved crawl profiles</h2>
+<p class="cds-muted">Reusable profiles contain crawl behavior, not seed URLs. Creating, updating, or deleting one affects future dispatches only; active runs keep their dispatched profile.</p>
+{{if .ProfileError}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.ProfileError}}</div>{{end}}
+{{if .SavedProfiles}}
+<form class="cds-form cds-form--inline" method="get" action="/admin/crawl">
+  <div class="cds-field">
+    <label class="cds-label" for="saved-profile">Saved profile</label>
+    <select class="cds-input" id="saved-profile" name="profile" required>
+      <option value="">Select a profile</option>
+      {{$selected := .SelectedProfileID}}
+      {{range .SavedProfiles}}<option value="{{.ID}}"{{if eq .ID $selected}} selected{{end}}>{{.Name}}</option>{{end}}
+    </select>
+  </div>
+  <button class="cds-btn cds-btn--ghost" type="submit">Apply to form</button>
+</form>
+<div class="cds-scroll-x" role="region" aria-label="Saved crawl profiles" tabindex="0">
+  <table class="cds-table">
+    <thead><tr><th scope="col">Name</th><th scope="col">Scope</th><th scope="col">Depth</th><th scope="col">Updated (UTC)</th><th scope="col">Actions</th></tr></thead>
+    <tbody>
+      {{$csrf := .CSRF}}
+      {{range .SavedProfiles}}
+      <tr>
+        <th scope="row">{{.Name}}</th><td>{{.Scope}}</td><td class="cds-mono">{{.MaxDepth}}</td><td class="cds-mono">{{.UpdatedAt}}</td>
+        <td>
+          <a class="cds-btn cds-btn--ghost" href="/admin/crawl?profile={{.ID}}">Use</a>
+          <form method="post" action="/admin/crawl/profile" class="cds-inline-form">
+            <input type="hidden" name="csrf_token" value="{{$csrf}}">
+            <input type="hidden" name="profileId" value="{{.ID}}">
+            <button class="cds-btn cds-btn--danger" type="submit" name="action" value="delete">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<p class="cds-muted">No saved crawl profiles.</p>
+{{end}}
+{{end}}
 <form class="cds-form" method="post" action="/admin/crawl" hx-boost="false">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  {{if .SelectedProfileID}}<input type="hidden" name="profileId" value="{{.SelectedProfileID}}">{{end}}
   <div class="cds-field">
     <label class="cds-label" for="seeds">Seed URLs (one per line)</label>
     <textarea class="cds-input cds-textarea" id="seeds" name="seeds" rows="4" autocomplete="off" required>{{.Form.Seeds}}</textarea>
@@ -90,7 +132,17 @@
       <label class="cds-label"><input type="checkbox" name="noindexCanonicalMismatch"{{if .Form.NoindexCanonicalMismatch}} checked{{end}}> Do not index pages whose rel=canonical points elsewhere</label>
     </div>
   </details>
-  <button class="cds-btn" type="submit">Start crawl</button>
+  <div class="cds-control-row">
+    <button class="cds-btn" type="submit">Start crawl</button>
+    {{if .ProfilesOn}}
+    <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="create"
+            formaction="/admin/crawl/profile" formnovalidate>Save as new profile</button>
+    {{if .SelectedProfileID}}
+    <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="update"
+            formaction="/admin/crawl/profile" formnovalidate>Update saved profile</button>
+    {{end}}
+    {{end}}
+  </div>
 </form>
 
 {{if .FormatsOn}}

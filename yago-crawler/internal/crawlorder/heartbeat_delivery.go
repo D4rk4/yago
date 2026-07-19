@@ -5,22 +5,26 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/D4rk4/yago/yago-crawler/internal/crawldenylist"
 	"github.com/D4rk4/yago/yago-crawler/internal/crawllease"
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 )
 
 type heartbeatDelivery struct {
-	client          OrderStreamer
-	workerID        string
-	workerSessionID string
-	control         ControlHandler
-	activeFetches   func() uint32
-	acknowledgments *controlAcknowledgments
-	leaseGrants     *crawllease.GrantRegistry
-	operation       sync.Locker
-	storageSnapshot func() yagocrawlcontract.StoragePressureSnapshot
-	storagePolicy   func(yagocrawlcontract.StoragePressurePolicy)
+	client              OrderStreamer
+	workerID            string
+	workerSessionID     string
+	control             ControlHandler
+	activeFetches       func() uint32
+	acknowledgments     *controlAcknowledgments
+	leaseGrants         *crawllease.GrantRegistry
+	operation           sync.Locker
+	storageSnapshot     func() yagocrawlcontract.StoragePressureSnapshot
+	storagePolicy       func(yagocrawlcontract.StoragePressurePolicy)
+	urlDenylist         *crawldenylist.Denylist
+	runtimePolicy       func(yagocrawlcontract.CrawlerRuntimePolicy)
+	runtimePolicySource func() yagocrawlcontract.CrawlerRuntimePolicy
 }
 
 func (d heartbeatDelivery) deliver(ctx context.Context) {

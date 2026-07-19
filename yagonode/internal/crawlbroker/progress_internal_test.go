@@ -5,6 +5,9 @@ import (
 	"encoding/hex"
 	"testing"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
@@ -57,6 +60,8 @@ func TestReportProgressTranslatesAndForwards(t *testing.T) {
 
 	runID := []byte("admin")
 	pagesPerMinute := uint32(30)
+	maxPagesPerHost := int64(250)
+	maxPagesPerRun := uint64(900)
 	_, err := server.ReportProgress(context.Background(), &crawlrpc.CrawlProgressReport{
 		WorkerId:        "worker-1",
 		WorkerSessionId: testWorkerSessionID,
@@ -68,7 +73,9 @@ func TestReportProgressTranslatesAndForwards(t *testing.T) {
 		Tally: &crawlrpc.CrawlRunTally{
 			Fetched: 5, Indexed: 4, Failed: 1, RobotsDenied: 2, Duplicates: 3, Pending: 6,
 		},
-		PagesPerMinute: &pagesPerMinute,
+		PagesPerMinute:  &pagesPerMinute,
+		MaxPagesPerHost: &maxPagesPerHost,
+		MaxPagesPerRun:  &maxPagesPerRun,
 	})
 	if err != nil {
 		t.Fatalf("report: %v", err)
@@ -94,6 +101,77 @@ func TestReportProgressTranslatesAndForwards(t *testing.T) {
 	}
 	if !got.RateKnown || got.PagesPerMinute != 30 {
 		t.Fatalf("rate = %d/%v, want known 30", got.PagesPerMinute, got.RateKnown)
+	}
+	if !got.LimitsKnown || got.MaxPagesPerHost != 250 || got.MaxPagesPerRun != 900 {
+		t.Fatalf("limits = %d/%d/%v", got.MaxPagesPerHost, got.MaxPagesPerRun, got.LimitsKnown)
+	}
+}
+
+func TestReportProgressRejectsIncompleteAndInvalidRunLimits(t *testing.T) {
+	queue := memQueue(t)
+	leaseID := leaseOneForSession(t, queue, "progress-limits", "worker", testWorkerSessionID)
+	server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
+	activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
+	maximum := uint64(10)
+	request := &crawlrpc.CrawlProgressReport{
+		WorkerId: "worker", WorkerSessionId: testWorkerSessionID,
+		LeaseId: leaseID, RunId: []byte("run"), MaxPagesPerRun: &maximum,
+	}
+	if _, err := server.ReportProgress(t.Context(), request); err == nil {
+		t.Fatal("incomplete run limits were accepted")
+	}
+	perHost := int64(0)
+	request.MaxPagesPerHost = &perHost
+	if _, err := server.ReportProgress(t.Context(), request); err == nil {
+		t.Fatal("zero per-host limit was accepted")
+	}
+}
+
+func TestReportProgressRejectsInvalidWireEvidence(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*crawlrpc.CrawlProgressReport)
+	}{
+		{
+			name: "URL outcome",
+			mutate: func(report *crawlrpc.CrawlProgressReport) {
+				report.RecentOutcomes = []*crawlrpc.CrawlURLOutcome{nil}
+			},
+		},
+		{
+			name: "run limits",
+			mutate: func(report *crawlrpc.CrawlProgressReport) {
+				maximum := uint64(10)
+				report.MaxPagesPerRun = &maximum
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			queue := memQueue(t)
+			leaseID := leaseOneForSession(
+				t,
+				queue,
+				"invalid-wire-evidence-"+test.name,
+				"worker",
+				testWorkerSessionID,
+			)
+			server := newExchangeServer(queue, make(chan crawlresults.IngestDelivery))
+			activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
+			report := &crawlrpc.CrawlProgressReport{
+				WorkerId: "worker", WorkerSessionId: testWorkerSessionID,
+				LeaseId: leaseID, RunId: []byte("admin"),
+			}
+			test.mutate(report)
+			if _, err := server.ReportProgress(
+				t.Context(),
+				report,
+			); status.Code(
+				err,
+			) != codes.InvalidArgument {
+				t.Fatalf("invalid wire evidence status = %v", status.Code(err))
+			}
+		})
 	}
 }
 

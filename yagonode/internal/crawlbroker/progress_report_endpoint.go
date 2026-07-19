@@ -40,7 +40,25 @@ func (s *exchangeServer) ReportProgress(
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	defer release()
+	outcomes, err := crawlURLOutcomeHistoryFromProto(
+		report.GetRecentOutcomes(),
+		report.GetWorkerSessionId(),
+	)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	maxPagesPerHost, maxPagesPerRun, limitsKnown, err := crawlRunLimitsFromProto(
+		report.MaxPagesPerHost,
+		report.MaxPagesPerRun,
+	)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 	progress := progressFromReport(report)
+	progress.RecentOutcomes = outcomes
+	progress.MaxPagesPerHost = maxPagesPerHost
+	progress.MaxPagesPerRun = maxPagesPerRun
+	progress.LimitsKnown = limitsKnown
 	if err := s.recordAuthorizedProgress(ctx, progress); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

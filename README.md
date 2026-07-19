@@ -20,7 +20,8 @@ administered from a server-rendered console that works without JavaScript.
 its binaries (`yago-node`, `yago-crawler`).
 
 - Project home: https://yagoseek.dev/ · docs: https://docs.yagoseek.dev/
-- Source: https://github.com/D4rk4/yago/ — importable as `github.com/D4rk4/yago`
+- Source: https://github.com/D4rk4/yago/ — the importable Go modules are listed
+  in [`go.work`](go.work)
 
 > [!WARNING]
 > **Alpha software.** Everything described below is implemented, covered by
@@ -40,8 +41,14 @@ its binaries (`yago-node`, `yago-crawler`).
   (HTML/JSON/XML), inbound and outbound RWI/URL-metadata DHT transfers with
   sender-side gates, remote RWI search, host-link index, peer messages,
   profiles, and shared blacklists — interoperable with the Java YaCy network.
+- Stock-Java interoperability is exercised in both directions. A wire handoff
+  accepts at most 1,000 rows and returns parseable YaCy HTTP 200 overload
+  responses instead of silently acknowledging an unprocessed tail. Remote
+  result copies carry the transient `wi` WordReferenceRow evidence required by
+  current Java peers, and accepted remote-search resources contribute to the
+  advertised received-word and received-URL totals.
 - **Swarm participation**: seedlist bootstrap, peer roster with birth-date
-  promotion, LAN discovery, peer news, per-peer blocking, and a DHT gates
+  promotion, LAN discovery, peer news, per-peer blocking, and the DHT gates
   dashboard showing exactly why a transfer would or would not fire.
 - Deliberate divergences are documented, not hidden — see
   [compatibility.md](yagonode/doc/compatibility.md).
@@ -51,8 +58,9 @@ its binaries (`yago-node`, `yago-crawler`).
 - Local index (sharded [Bleve](https://blevesearch.com/)) + federated swarm
   fan-out + optional operator-enabled web search. The provider is off by default,
   local-only requests never reach it, and the single **Web search fallback
-  (DDGS)** mode selector chooses consent-only, miss-only, or always-parallel
-  local/peer/web retrieval. Human-facing surfaces call external results `web`,
+  (DDGS)** selector offers `Disabled`, `Only when requested`, `Enabled on search
+  miss`, and `Always`; the last mode starts web retrieval alongside local and
+  swarm retrieval. Human-facing surfaces call external results `web`,
   YaCy HTML marks them `[web]`, and Tavily-compatible responses keep their
   standard shape without a provider field. A hyphen or dash inside an ordinary query word
   separates searchable words across local and web retrieval, while a leading
@@ -162,6 +170,24 @@ its binaries (`yago-node`, `yago-crawler`).
   remain exact and refresh that observation. The node coalesces at most 16 ready
   ingest deliveries for shared vault and Bleve commits, waiting no more than a
   cancel-aware 2 milliseconds for a partial group.
+- One live `crawler.max_pages_per_second` ceiling controls page-fetch starts
+  across every connected crawler process and active run. It defaults to 10 per
+  second; `0` is unlimited. The node leases non-bursting start windows, while
+  per-process smoothing, per-run pace, worker concurrency, and per-host
+  politeness remain additional limits. A finite ceiling fails closed unless
+  both the node and crawler support fetch-start leases, so upgrade them
+  together.
+- Configuration → Crawler is authoritative for the typed crawler runtime policy;
+  environment variables are bootstrap defaults. The policy includes the live
+  redirect limit, depth ceiling, host concurrency, crawl delay, fetch timings,
+  browser behavior, and shutdown grace. A change that cannot be applied in
+  place requests a graceful crawler restart; a browser-sandbox-only change
+  retires each Firefox session after its active render. A configured or
+  discovered Firefox launcher must resolve through root-owned, non-writable
+  path chains to a regular non-set-ID executable available to the crawler; the
+  crawler checks this before assembly and again before every spawn. Its optional
+  unauthenticated metrics listener accepts loopback IP literals only; remote
+  scraping uses a trusted local tunnel or proxy.
 - **Atomic node-side crawl control**: `yago-node` keeps its order queue, leases,
   settlements, controls, and terminal-run delivery state in
   `${YAGO_DATA_DIR}/crawlbroker.db`. One bbolt transaction can therefore move a
@@ -172,7 +198,10 @@ its binaries (`yago-node`, `yago-crawler`).
   currently has no separate byte cap; `/metrics` exposes its live and allocated
   bytes. A rollback must restore one coordinated stopped node-and-crawler backup,
   because deleting only the dedicated file or downgrading in place can resurrect
-  the retained stale cutover state.
+  the retained stale cutover state. The sharded collection-length layout is also
+  forward-compatible only: after current binaries record new mutations, an older
+  binary cannot reconstruct exact lengths from the legacy counter and must not
+  open the same data directory.
 - **Format coverage beyond HTML**: PDF, DOCX/XLSX/PPTX, legacy DOC/XLS/PPT,
   ODT/ODS/ODP, RTF, EPUB, plain text/CSV, and Markdown (`.md`, `.markdown`,
   `text/markdown`, and `text/x-markdown`) — parsed with stdlib-first
@@ -241,8 +270,10 @@ its binaries (`yago-node`, `yago-crawler`).
   authoritative response media types can decide. Five consecutive typed availability
   failures retire only that host's remaining URLs in the current run; a success
   resets the evidence, and URL-specific rejections do not penalize a healthy
-  host. A single-host run then finishes while a multi-host run continues,
-  persistent near-duplicate clustering, crawl-trap defense, per-host and
+  host. A single-host run then finishes while a multi-host run continues. The
+  Index URL/domain denylist is revisioned to every connected crawler and
+  enforced before frontier admission and around each fetch. Further safeguards
+  include persistent near-duplicate clustering, crawl-trap defense, per-host and
   per-run page budgets carried by each task profile and editable live in Admin
   Configuration (with a manual per-task override), boilerplate extraction, and a deterministic
   content-quality gate.
@@ -252,11 +283,18 @@ its binaries (`yago-node`, `yago-crawler`).
   deletion, and redirect cleanup share one complete page-lineage owner, so a
   concurrent re-index cannot leave or erase only the document, anchors,
   duplicate cluster, full-text row, postings, or URL metadata.
+  A valid, non-future sitemap `lastmod` can advance the next visit within the
+  profile cadence; stale, future, unchanged, or malformed hints cannot create a
+  recrawl loop.
 - Automatic discovery: enabled swarm greedy-learning uses a depth-5,
-  250-page-per-host HTTP-fast-path profile; web-discovery crawling stays opt-in
-  with the same ready profile. Explicit discovery orders receive fair priority
-  in the durable queue, and every profile and document-format control lives in
-  Configuration → Crawler.
+  250-page-per-task HTTP-fast-path profile; web-discovery crawling stays opt-in
+  with the same ready profile. The same value remains the per-host ceiling, and
+  a lower positive global run cap can reduce either automatic task. Explicit
+  discovery orders receive fair priority in the durable queue, and every
+  profile and document-format control lives in Configuration → Crawler. On
+  recovery, a legacy automatic checkpoint that exceeds the visible cap drops
+  the newest excess pending pages in bounded, idempotent batches while retaining
+  completed totals, visited history, and the oldest pending work.
 
 ### 🎨 A public portal your users can keep
 
@@ -265,6 +303,10 @@ its binaries (`yago-node`, `yago-crawler`).
   advertised on every landing and results page so Firefox can offer it as a
   search engine, including when an older saved default theme is active, plus
   RSS/JSON output for every query.
+- Every portal and `/yacysearch.html` result carries up to six bounded
+  human-readable ranking reasons derived from evidence already computed for that
+  request. They do not run a second retrieval, call another provider, or alter
+  result order.
 - **Operator-themeable end to end**: the search and results pages are
   Handlebars templates editable from the console — visually with a light
   GrapesJS editor that previews the shared portal CSS, or as code with
@@ -274,18 +316,23 @@ its binaries (`yago-node`, `yago-crawler`).
 ### 🛠️ An admin console with everything in one place
 
 - Server-rendered (htmx-enhanced, no SPA, no CDN — every asset self-hosted),
-  with two visual themes and full no-JS degradation.
+  with one Neutrino-inspired visual system and full no-JS degradation.
 - Sections: Overview, Search (with suggestions), Activity, Public portal
-  (settings + design tabs), Crawler (dispatch, live monitor,
-  pause/resume/rate control, health), Network (peers, seedlists, news,
-  blocking, and the complete sortable roster paged at exactly 20 peers), Index
-  (browse, delete, blacklist, export, schema), Performance
+  (settings + design tabs), Crawler (dispatch, saved profiles, live monitor,
+  per-run detail with up to 64 recent URL outcomes, pause/resume/rate control,
+  health), Network (peers, seedlists, news,
+  blocking, an explicit public-endpoint self-test, and the complete sortable
+  roster paged at exactly 20 peers), Index (browse, bounded per-document stored
+  evidence, node/crawler storage-reserve status, delete, blacklist, export,
+  schema, and safe next-restart rebuild scheduling), Performance
   (live tiles **and sampled history sparklines**), Backup & restore,
   Configuration (runtime settings with checkboxes, batch save, per-setting
   reset, Crawler/Automatic discovery/Document formats fieldsets, and live
-  per-process fetch concurrency), Security (Argon2id admin login, session management, scoped API
-  keys), Logs (filterable events), Restart (node and crawler fleet, can be
-  disabled by config).
+  per-process active-task and fetch-worker limits plus the fleet-wide
+  fetch-start ceiling),
+  Security (Argon2id admin login, session management, scoped API keys), Logs
+  (filterable events with bounded UTC `from`/`to` ranges), Restart (node and
+  crawler fleet, can be disabled by config).
 - Overview and Index use the authoritative local Bleve document count. Overview
   separately labels YaCy URL metadata records because those populations can
   differ. The Crawler monitor combines every profile in one 20-row-paged view;
@@ -294,13 +341,17 @@ its binaries (`yago-node`, `yago-crawler`).
 - First-run **setup wizard**, CSRF everywhere, strict CSP, login rate
   limiting, and a config-events audit trail. The no-JavaScript login leaves the
   account name empty and shows only bounded public node status; individual
-  unavailable system facts degrade independently.
+  unavailable system facts degrade independently. An active session receives a
+  new unpredictable cookie token after the earlier of one hour or half its
+  configured lifetime; rotation preserves the CSRF token and absolute expiry
+  and atomically invalidates the old token.
 
 ### 📦 Operations without surprises
 
 - One static binary per role; Docker/Compose on the shared `/opt/yago`
-  layout, hardened systemd units, and Debian packages built by a tag-driven
-  release pipeline with a verified human-authored engineering memo.
+  layout, hardened systemd units, and tarballs plus Debian and RPM packages
+  built by a tag-driven release pipeline with a verified human-authored
+  engineering memo.
 - Docker builds pin every builder and runtime base by digest. The node and
   crawler images carry OCI source and revision labels when the caller supplies
   `SOURCE_REVISION`, so two images can be traced to the same source commit.
@@ -325,7 +376,13 @@ its binaries (`yago-node`, `yago-crawler`).
   storage usage and hands you the exact commands.
 - Storage: a sharded, compressed, quota-bounded vault (bbolt + zstd) where
   losing one shard file loses 1/N of the keyspace, never the store; shard
-  integrity checks and index-orphan healing run at startup.
+  integrity checks and index-orphan healing run at startup. Exact collection
+  length deltas are recorded on each record's physical shard instead of one
+  global writer hotspot, grouped crawler postings commit in retryable chunks of
+  at most 8,192, and DHT transfer tallies are coalesced before persistence. If
+  normal stale-URL eviction cannot reach the soft quota target, a bounded
+  posting scan can reclaim posting-only lineages that have no URL-metadata row
+  without selecting metadata-backed URLs through that fallback.
 - Outbound traffic is screened in-process at dial time: private networks,
   loopback, link-local, and the cloud metadata range are blocked by default,
   with explicit CIDR allowlists (`YAGO_EGRESS_ALLOW_CIDRS`) when you need
@@ -340,8 +397,8 @@ against upstream YaCy (audited against `yacy/yacy_search_server`):
 
 | Status | Count | Meaning |
 | --- | ---: | --- |
-| ✅ implemented | 30 | wire-compatible, tested against fixtures captured from Java YaCy |
-| 🟡 partial | 5 | interoperable core with documented, by-design divergences |
+| ✅ implemented | 31 | implemented and tested for the documented behavior |
+| 🟡 partial | 7 | interoperable core with documented, by-design divergences |
 | ⛔ unsupported | 5 | deliberate non-goals (embedded Solr API ×2, Java admin page clones, removed GSA servlet, MCP/OpenAI AI surfaces) |
 
 Highlights: `hello`, `query`, `transferRWI`, `transferURL`, remote `search`,
@@ -351,7 +408,13 @@ seed lists, `idx.json`, `list.html`, `message.html`, `profile.html`,
 peers. The admin plane is deliberately different (Argon2id sessions plus
 scoped API keys instead of digest auth) — plain YaCy *search* clients are
 unaffected. Remote crawl for the swarm is answered but disabled by default
-([policy](yagonode/doc/remote-crawl-policy.md)).
+and can be enabled only on a controlled network using Java-compatible
+`salted-magic-sim` authentication, a nonempty shared secret, and exact
+trusted-peer and destination allowlists. It delegates bounded URL-only work,
+not bodies, profiles, redirects, or follow-up depth, so it remains deliberately
+partial rather than full remote-crawler parity
+([policy](yagonode/doc/remote-crawl-policy.md)). The public `freeworld` mode
+remains the default.
 
 ---
 
@@ -392,10 +455,15 @@ peer identity on first run. The variables you are most likely to touch:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `YAGO_DATA_DIR` | `/opt/yago/data` (container) | all persistent state — index, vault, identity |
-| `YAGO_SEEDLIST_URLS` | example list | YaCy seedlists to bootstrap the swarm from |
+| `YAGO_SEEDLIST_URLS` | _(empty)_ | YaCy seedlists to bootstrap the swarm from; the setup wizard can offer public seeds |
+| `YAGO_NETWORK_NAME` | `freeworld` | restart-required YaCy network unit; Configuration → Network & peers persists the operator override |
 | `YAGO_PUBLIC_ADDR` | `:8080` | public listener; `off` runs a pure peer node |
 | `YAGO_PUBLIC_SEARCH_UI_ENABLED` | `false` | serve the portal at the public root |
 | `YAGO_CRAWL_RPC_ADDR` | `127.0.0.1:9091` | crawler integration listener; `off` disables it and `:9091` admits remote workers |
+| `YAGO_CRAWLER_MAX_PAGES_PER_SECOND` | `10` | bootstrap in both services for one page-fetch start ceiling across the complete connected crawler fleet; `0` is unlimited, finite operation requires current node and crawler versions, and the Admin value becomes authoritative |
+| `YAGO_CRAWLER_MAX_REDIRECTS` | `10` | bootstrap in both services for the live HTTP and browser redirect-hop ceiling; `0` rejects the first redirect, and the Admin value becomes authoritative |
+| `YAGO_CRAWLER_BROWSER_PATH` | _(PATH discovery)_ | bootstrap in both services for an optional absolute `firefox` or `firefox-esr` launcher; the persisted Crawler policy is delivered before assembly, and the crawler rechecks its trusted path before every spawn |
+| `YAGO_CRAWLER_METRICS_ADDR` | _(disabled)_ | bootstrap in both services for an optional loopback-only crawler metrics listener; the persisted Crawler value is delivered before listener assembly, and remote scraping requires a trusted local tunnel or proxy |
 | `YAGO_STORAGE_QUOTA` | `1GB` | soft admission and eviction target for logical live main-vault data; it excludes Bleve, crawl state, allocated free pages, and temporary copies |
 | `YAGO_STORAGE_RESERVED_FREE` | `1GB` | filesystem free-space reserve for gate-managed node growth admissions |
 | `YAGO_STORAGE_PRESSURE_HYSTERESIS` | `256MB` | additional free space required before gate-managed node growth admissions resume |
@@ -423,7 +491,7 @@ flowchart LR
         S["search core<br/>RRF + MMR + morphology"]
     end
     I -- "ingest gRPC channel (at-least-once)" --> B --> V --> X --> S
-    B <-->|control gRPC: orders · heartbeat · settlement · progress| F
+    B <-->|control gRPC: orders · runtime policy · fetch permits · heartbeat · settlement · progress| F
     S --> PEER["peer listener :8090<br/>YaCy RWI/DHT"]
     S --> PUB["public listener :8080<br/>portal · yacysearch · Tavily API"]
     S --> OPS["ops listener :9090<br/>admin console · metrics"]
@@ -471,7 +539,7 @@ result.
 | [metrics.md](yagonode/doc/metrics.md) · [slo.md](doc/slo.md) | observability and alerting |
 | [backup-restore.md](doc/backup-restore.md) | the offline backup/restore procedure |
 | [yacy-dht-interop.md](yagonode/doc/yacy-dht-interop.md) | how DHT transfer selection works |
-| [remote-crawl-policy.md](yagonode/doc/remote-crawl-policy.md) | why remote crawl is off by default |
+| [remote-crawl-policy.md](yagonode/doc/remote-crawl-policy.md) | default-deny remote crawl, trust, destination, lease, and receipt policy |
 | [ADR index](yagonode/doc/adr/README.md) | every architecture decision, including the no-gos |
 
 ## 🤝 Credits

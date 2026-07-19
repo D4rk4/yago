@@ -36,46 +36,47 @@ import (
 )
 
 type publicSearchAssembly struct {
-	storage              nodeStorage
-	roster               peerroster.Roster
-	identity             nodeidentity.Identity
-	dht                  dhtDistributionConfig
-	client               *http.Client
-	peerClient           *http.Client
-	peerHTTPSPreferred   bool
-	dhtSearchTargetIndex func(int) (int, error)
-	searchAPIKey         string
-	searchAuthorizer     tavilyapi.ScopeAuthorizer
-	searchAdmission      tavilyapi.SearchAdmission
-	extractFetcher       tavilyapi.ContentFetcher
-	webFallback          webFallbackConfig
-	seedQueue            crawldispatch.CrawlOrderQueue
-	maxPagesPerRun       func() int
-	toggles              *runtimeToggles
-	queryLogMode         queryLogMode
-	activity             *searchactivity.Tracker
-	searchMetrics        *metrics.SearchMetrics
-	rankingWeights       func() searchindex.RankingWeights
-	hostRank             func() hostrank.AuthorityTable
-	spellCorrector       func() *spellcheck.Corrector
-	denylist             denylistSnapshotter
-	snippetEnricher      *snippetfetch.Enricher
-	remoteTimeouts       remoteSearchTimeouts
-	indexRemoteResults   bool
-	storageGrowth        growthAdmission
-	swarmMorphology      bool
-	wordForms            func() *wordforms.Expander
-	swarmSeed            swarmSeedConfig
-	autocrawlerCrawl     seedCrawlOptions
-	linksNewTab          bool
-	clickCapture         bool
-	clickRecorder        yacysearch.ImpressionRecorder
-	portalClickRecorder  publicportal.ImpressionRecorder
-	learnedRanker        *learnedrank.Ranker
-	peerReputation       searchremote.ReputationSnapshotSource
-	peerObservations     searchremote.ReputationObservationSink
-	peerNetworkGroup     searchremote.ReputationNetworkGroup
-	selfSeed             func(context.Context) yagomodel.Seed
+	storage                nodeStorage
+	roster                 peerroster.Roster
+	identity               nodeidentity.Identity
+	dht                    dhtDistributionConfig
+	client                 *http.Client
+	peerClient             *http.Client
+	peerHTTPSPreferred     bool
+	dhtSearchTargetIndex   func(int) (int, error)
+	searchAPIKey           string
+	searchAuthorizer       tavilyapi.ScopeAuthorizer
+	searchAdmission        tavilyapi.SearchAdmission
+	extractFetcher         tavilyapi.ContentFetcher
+	webFallback            webFallbackConfig
+	seedQueue              crawldispatch.CrawlOrderQueue
+	maxPagesPerRun         func() int
+	toggles                *runtimeToggles
+	queryLogMode           queryLogMode
+	activity               *searchactivity.Tracker
+	searchMetrics          *metrics.SearchMetrics
+	rankingWeights         func() searchindex.RankingWeights
+	hostRank               func() hostrank.AuthorityTable
+	spellCorrector         func() *spellcheck.Corrector
+	denylist               denylistSnapshotter
+	snippetEnricher        *snippetfetch.Enricher
+	remoteTimeouts         remoteSearchTimeouts
+	indexRemoteResults     bool
+	storageGrowth          growthAdmission
+	swarmMorphology        bool
+	wordForms              func() *wordforms.Expander
+	swarmSeed              swarmSeedConfig
+	autocrawlerCrawl       seedCrawlOptions
+	linksNewTab            bool
+	clickCapture           bool
+	clickRecorder          yacysearch.ImpressionRecorder
+	portalClickRecorder    publicportal.ImpressionRecorder
+	learnedRanker          *learnedrank.Ranker
+	peerReputation         searchremote.ReputationSnapshotSource
+	peerObservations       searchremote.ReputationObservationSink
+	peerNetworkGroup       searchremote.ReputationNetworkGroup
+	selfSeed               func(context.Context) yagomodel.Seed
+	observeRemoteResources func(context.Context, int)
 	// theme carries the operator portal theme (ADR-0033) into the portal
 	// mount; nil keeps the built-in render only.
 	theme *portaltheme.Theme

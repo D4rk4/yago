@@ -8,15 +8,16 @@ import (
 	"strings"
 
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
+	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
 const indexContentType = "application/json; charset=UTF-8"
 
 type endpoint struct {
-	networkName string
-	status      RuntimeStatus
-	links       IncomingHostLinks
+	identity nodeidentity.Identity
+	status   RuntimeStatus
+	links    IncomingHostLinks
 }
 
 type indexResponse struct {
@@ -55,7 +56,7 @@ func (e endpoint) Serve(
 }
 
 func (e endpoint) accepts(req yagoproto.IndexRequest) bool {
-	if yagoproto.NetworkUnit(req.NetworkName) != yagoproto.NetworkUnit(e.networkName) {
+	if !e.identity.Authenticates(req.NetworkName, req.Key, req.Iam, req.MagicMD5) {
 		return false
 	}
 

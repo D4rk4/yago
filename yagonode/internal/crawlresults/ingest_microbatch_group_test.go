@@ -152,6 +152,46 @@ type batchGroupRecorder struct {
 	mu         sync.Mutex
 	batchCalls int
 	batchErr   error
+	modified   []time.Time
+}
+
+type legacyBatchGroupRecorder struct {
+	batchCalls int
+}
+
+func (r *legacyBatchGroupRecorder) RecordFetch(
+	context.Context,
+	string,
+	string,
+	time.Time,
+) error {
+	return nil
+}
+
+func (r *legacyBatchGroupRecorder) RecordFetches(
+	context.Context,
+	[]string,
+	[]string,
+	[]time.Time,
+) error {
+	r.batchCalls++
+
+	return nil
+}
+
+func (r *batchGroupRecorder) RecordFetchesWithSourceModified(
+	_ context.Context,
+	_ []string,
+	_ []string,
+	_ []time.Time,
+	modified []time.Time,
+) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.batchCalls++
+	r.modified = append([]time.Time(nil), modified...)
+
+	return r.batchErr
 }
 
 func (r *batchGroupRecorder) RecordFetch(context.Context, string, string, time.Time) error {
@@ -432,7 +472,9 @@ func TestGroupRecordsFetchesInOneBatchAndToleratesFailure(t *testing.T) {
 
 	var wg sync.WaitGroup
 	counter := &settleCounter{}
-	stream.out <- groupDelivery(fetchDocBatch("https://example.org/a"), &wg, counter, nil)
+	fetched := fetchDocBatch("https://example.org/a")
+	fetched.SourceModifiedAt = fetched.Document.FetchedAt.Add(-time.Hour)
+	stream.out <- groupDelivery(fetched, &wg, counter, nil)
 	stream.out <- groupDelivery(metaOnlyBatch("https://example.org/b"), &wg, counter, nil)
 	drainGroup(consumer, &wg)
 
@@ -441,6 +483,29 @@ func TestGroupRecordsFetchesInOneBatchAndToleratesFailure(t *testing.T) {
 	}
 	if recorder.calls() != 1 {
 		t.Fatalf("batch record calls = %d, want 1", recorder.calls())
+	}
+	if len(recorder.modified) != 1 ||
+		!recorder.modified[0].Equal(fetched.SourceModifiedAt) {
+		t.Fatalf("batch source-modified hints = %v, want %v",
+			recorder.modified, fetched.SourceModifiedAt)
+	}
+}
+
+func TestGroupRetainsLegacyBatchFetchRecorder(t *testing.T) {
+	recorder := &legacyBatchGroupRecorder{}
+	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery, 2)}
+	consumer := crawlresults.NewIngestConsumer(
+		stream, &batchRecordingReceiver{}, &recordingURLReceiver{}, &recordingPostingReceiver{},
+	)
+	consumer.RecordFetches(recorder)
+
+	var wg sync.WaitGroup
+	counter := &settleCounter{}
+	stream.out <- groupDelivery(fetchDocBatch("https://example.org/legacy"), &wg, counter, nil)
+	stream.out <- groupDelivery(metaOnlyBatch("https://example.org/metadata"), &wg, counter, nil)
+	drainGroup(consumer, &wg)
+	if recorder.batchCalls != 1 {
+		t.Fatalf("legacy batch recorder calls = %d, want 1", recorder.batchCalls)
 	}
 }
 

@@ -56,6 +56,9 @@ func TestPageFetcherReturnsHTMLPage(t *testing.T) {
 	if page.URL.String() != server.URL {
 		t.Fatalf("url = %q", page.URL)
 	}
+	if page.HTTPStatus != http.StatusOK {
+		t.Fatalf("HTTP status = %d", page.HTTPStatus)
+	}
 	if page.ContentType != "text/html; charset=utf-8" {
 		t.Fatalf("content type = %q", page.ContentType)
 	}

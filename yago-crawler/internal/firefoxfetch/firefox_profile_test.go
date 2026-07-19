@@ -13,6 +13,7 @@ func TestFirefoxUserJSBindsMarionetteProxyAndAgent(t *testing.T) {
 		ProxyURL:       "http://127.0.0.1:4750",
 		UserAgent:      "yago-crawler/1.0",
 		Sandbox:        false,
+		MaxRedirects:   7,
 	})
 	if err != nil {
 		t.Fatalf("user.js: %v", err)
@@ -27,6 +28,7 @@ func TestFirefoxUserJSBindsMarionetteProxyAndAgent(t *testing.T) {
 		`user_pref("network.proxy.ssl_port", 4750);`,
 		`user_pref("network.proxy.no_proxies_on", "");`,
 		`user_pref("general.useragent.override", "yago-crawler/1.0");`,
+		`user_pref("network.http.redirection-limit", 7);`,
 		// Sandbox off drops the content-process sandbox.
 		`user_pref("security.sandbox.content.level", 0);`,
 		// Background chatter silenced.
@@ -37,6 +39,16 @@ func TestFirefoxUserJSBindsMarionetteProxyAndAgent(t *testing.T) {
 		if !strings.Contains(js, want) {
 			t.Errorf("user.js missing pref:\n  %s", want)
 		}
+	}
+}
+
+func TestFirefoxUserJSClampsNegativeRedirectLimit(t *testing.T) {
+	js, err := firefoxUserJS(firefoxProfile{MarionettePort: 2828, MaxRedirects: -1})
+	if err != nil {
+		t.Fatalf("user.js: %v", err)
+	}
+	if !strings.Contains(js, `user_pref("network.http.redirection-limit", 0);`) {
+		t.Fatalf("user.js missing zero redirect limit:\n%s", js)
 	}
 }
 

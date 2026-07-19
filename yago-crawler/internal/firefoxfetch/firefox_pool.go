@@ -152,3 +152,18 @@ func (p *firefoxPool) close() {
 		}
 	})
 }
+
+func (p *firefoxPool) setMaxRedirects(maximum int) {
+	if p == nil || maximum < 0 {
+		return
+	}
+	for _, manager := range p.managers {
+		manager.setMaxRedirects(maximum)
+	}
+}
+
+func (p *firefoxPool) setSandbox(enabled bool) {
+	for _, manager := range p.managers {
+		manager.setSandbox(enabled)
+	}
+}

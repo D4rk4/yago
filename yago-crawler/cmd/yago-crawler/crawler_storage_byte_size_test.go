@@ -28,17 +28,23 @@ func TestCrawlerByteSizeParsing(t *testing.T) {
 			t.Fatalf("parse %q = %d, %v, want %d", test.raw, got, err, test.want)
 		}
 	}
-	for _, raw := range []string{"12", "XB", "not-a-numberB", "18446744073709551615TB"} {
+	for _, raw := range []string{
+		"12",
+		"XB",
+		"not-a-numberB",
+		"18446744073709551615TB",
+		"9223372036854775808B",
+	} {
 		if _, err := envByteSize(func(string) string { return raw }, "STORAGE", 0); err == nil {
 			t.Fatalf("invalid byte size %q accepted", raw)
 		}
 	}
 	maximumBytes, err := envByteSize(
-		func(string) string { return "18446744073709551615B" },
+		func(string) string { return "9223372036854775807B" },
 		"STORAGE",
 		0,
 	)
-	if err != nil || maximumBytes != math.MaxUint64 {
+	if err != nil || maximumBytes != math.MaxInt64 {
 		t.Fatalf("maximum bytes = %d, %v", maximumBytes, err)
 	}
 }

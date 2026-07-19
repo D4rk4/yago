@@ -1,6 +1,7 @@
 package crawlorder
 
 import (
+	"github.com/D4rk4/yago/yago-crawler/internal/crawldenylist"
 	"github.com/D4rk4/yago/yago-crawler/internal/crawllease"
 	"github.com/D4rk4/yago/yago-crawler/internal/crawlsettlement"
 	"github.com/D4rk4/yago/yagocrawlcontract"
@@ -14,6 +15,16 @@ type grpcOrderReceiverConfig struct {
 	leaseGrants         *crawllease.GrantRegistry
 	storageSnapshot     func() yagocrawlcontract.StoragePressureSnapshot
 	storagePolicy       func(yagocrawlcontract.StoragePressurePolicy)
+	urlDenylist         *crawldenylist.Denylist
+	runtimePolicy       func(yagocrawlcontract.CrawlerRuntimePolicy)
+	runtimePolicySource func() yagocrawlcontract.CrawlerRuntimePolicy
+	fetchStartSession   FetchStartSession
+}
+
+func WithURLDenylist(denylist *crawldenylist.Denylist) GRPCOrderReceiverOption {
+	return func(config *grpcOrderReceiverConfig) {
+		config.urlDenylist = denylist
+	}
 }
 
 type GRPCOrderReceiverOption func(*grpcOrderReceiverConfig)
@@ -31,6 +42,16 @@ func WithHeartbeatStoragePressure(
 	return func(config *grpcOrderReceiverConfig) {
 		config.storageSnapshot = snapshot
 		config.storagePolicy = apply
+	}
+}
+
+func WithHeartbeatRuntimePolicy(
+	effective func() yagocrawlcontract.CrawlerRuntimePolicy,
+	apply func(yagocrawlcontract.CrawlerRuntimePolicy),
+) GRPCOrderReceiverOption {
+	return func(config *grpcOrderReceiverConfig) {
+		config.runtimePolicySource = effective
+		config.runtimePolicy = apply
 	}
 }
 

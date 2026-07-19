@@ -37,14 +37,17 @@ sustained for minutes, not on single spikes.
 
 ## Crawl health (OPS-09)
 
-The crawl monitor derives Olston & Najork's crawl-health signals from the run
-tallies once a sample reaches 100 fetched pages: **harvest rate**
-(indexed/fetched — how much fetch effort became index entries), **duplicate
-rate** (the spider-trap smell; a warning names the run when a running crawl
-exceeds 30 % duplicates), and **failure rate** (a blocking or dead host flags
-above 50 %). Index freshness is read from Prometheus as
-`rate(crawl_documents_indexed[1h])` against the queue depths — a full
-age-of-index gauge would need a corpus scan and stays a follow-up.
+The crawl monitor derives bounded crawl-health signals from each run tally.
+After 100 fetched pages, **harvest rate** is indexed/fetched and a running run
+below 20 percent is identified as a possible spider trap or junk source. Link
+redundancy is duplicates/(duplicates+fetched+failed+robots-denied); it remains
+informational and high duplicate volume alone does not trigger a warning. After
+100 aggregate fetched-plus-failed outcomes, **failure rate** is
+failed/(fetched+failed); a running run above 50 percent identifies one or more
+blocking or unavailable hosts. Every rendered share stays within 0–100 percent.
+Indexing activity is read from Prometheus as
+`rate(crawl_search_index_documents_total[1h])` against the queue depths. A full
+age-of-index gauge would require a corpus scan and remains a follow-up.
 
 ## Internal tracing (OPS-10)
 

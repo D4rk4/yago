@@ -20,6 +20,10 @@ service CrawlExchange {
 
   rpc Heartbeat(WorkerHeartbeat) returns (WorkerHeartbeatResult);
 
+  rpc ReadRuntimePolicy(CrawlerRuntimePolicyRequest) returns (CrawlerRuntimePolicy);
+
+  rpc LeaseFetchStarts(FetchStartLeaseRequest) returns (FetchStartLeaseDecision);
+
   // SubmitIngest hands one ingest batch to the node and blocks until the node
   // absorbs it. The node returns an error when its ingest pipeline is saturated
   // so the crawler retries, which is the backpressure signal.
@@ -31,6 +35,27 @@ service CrawlExchange {
 message WorkerRegistration {
   string worker_id = 1;
   string worker_session_id = 2;
+  bool fetch_start_leases = 3;
+}
+
+message FetchStartLeaseRequest {
+  string worker_id = 1;
+  string worker_session_id = 2;
+  uint64 sequence = 3;
+  uint32 maximum_permits = 4;
+  optional uint64 completed_sequence = 5;
+}
+
+message FetchStartLeaseDecision {
+  bool granted = 1;
+  uint64 sequence = 2;
+  uint32 permits = 3;
+  sint64 first_permit_opens_after_nanoseconds = 4;
+  sint64 first_permit_closes_after_nanoseconds = 5;
+  int64 permit_interval_nanoseconds = 6;
+  int64 retry_after_nanoseconds = 7;
+  uint64 policy_generation = 8;
+  bool unlimited = 9;
 }
 
 message CrawlOrderMessage {
@@ -52,6 +77,7 @@ message OrderAck {
   optional uint32 pages_per_minute = 7;
   string worker_session_id = 8;
   bytes confirmation_token = 9;
+  repeated CrawlURLOutcome recent_outcomes = 10;
 }
 
 message OrderAckResult {
@@ -68,6 +94,8 @@ message WorkerHeartbeat {
   optional bool storage_pressure = 7;
   optional bool storage_measurement_available = 8;
   optional bool confirm_active_lease_deliveries = 9;
+  bytes url_denylist_revision = 10;
+  bool url_denylist_bootstrap = 11;
 }
 
 // CrawlControlKind is a directive the node pushes to a worker to steer a run it is
@@ -85,6 +113,8 @@ enum CrawlControlKind {
   CRAWL_CONTROL_KIND_SET_WORKERS = 6;
   CRAWL_CONTROL_KIND_SET_AUTOMATIC_DISCOVERY_PRIORITY = 7;
   CRAWL_CONTROL_KIND_SET_ACTIVE_RUNS = 8;
+  CRAWL_CONTROL_KIND_SET_PROCESS_RATE = 9;
+  CRAWL_CONTROL_KIND_SET_MAXIMUM_REDIRECTS = 10;
 }
 
 // CrawlControlDirective steers one run identified by its provenance token, or the
@@ -98,6 +128,8 @@ message CrawlControlDirective {
   bool prioritize_automatic_discovery = 5;
   uint64 directive_id = 6;
   uint32 maximum_active_runs = 7;
+  uint32 process_pages_per_second = 8;
+  uint32 maximum_redirects = 9;
 }
 
 message WorkerHeartbeatResult {
@@ -106,6 +138,38 @@ message WorkerHeartbeatResult {
   uint64 lease_ttl_milliseconds = 3;
   optional uint64 storage_reserved_free_bytes = 4;
   optional uint64 storage_pressure_hysteresis_bytes = 5;
+  CrawlURLDenylist url_denylist = 6;
+  CrawlerRuntimePolicy runtime_policy = 7;
+}
+
+message CrawlerRuntimePolicyRequest {
+  string worker_id = 1;
+}
+
+message CrawlerRuntimePolicy {
+  bool allow_private_networks = 1;
+  repeated string allowed_private_cidrs = 2;
+  uint32 browser_failure_threshold = 3;
+  uint64 connect_timeout_milliseconds = 4;
+  uint64 crawl_delay_milliseconds = 5;
+  uint64 header_timeout_milliseconds = 6;
+  uint32 maximum_depth = 7;
+  uint32 maximum_host_concurrency = 8;
+  uint64 request_timeout_milliseconds = 9;
+  uint32 run_pages_per_minute = 10;
+  uint32 sitemap_url_limit = 11;
+  uint64 tls_timeout_milliseconds = 12;
+  uint64 shutdown_grace_milliseconds = 13;
+  string user_agent = 14;
+  optional bool browser_sandbox = 15;
+  optional string browser_path = 16;
+  optional string metrics_address = 17;
+}
+
+message CrawlURLDenylist {
+  bytes revision = 1;
+  repeated string exact_urls = 2;
+  repeated string domains = 3;
 }
 
 message IngestBatchMessage {
@@ -133,6 +197,15 @@ message CrawlRunTally {
   uint64 pending = 6;
 }
 
+message CrawlURLOutcome {
+  uint64 sequence = 1;
+  string url = 2;
+  string outcome_class = 3;
+  int64 observed_at_unix_milliseconds = 4;
+  uint32 http_status = 5;
+  string reason = 6;
+}
+
 message CrawlProgressReport {
   string worker_id = 1;
   bytes run_id = 2;
@@ -143,6 +216,9 @@ message CrawlProgressReport {
   optional uint32 pages_per_minute = 7;
   string lease_id = 8;
   string worker_session_id = 9;
+  repeated CrawlURLOutcome recent_outcomes = 10;
+  optional int64 max_pages_per_host = 11;
+  optional uint64 max_pages_per_run = 12;
 }
 
 message CrawlProgressAck {}

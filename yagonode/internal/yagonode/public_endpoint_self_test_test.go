@@ -201,13 +201,39 @@ func TestPublicEndpointSelfTestBuildsQueryURL(t *testing.T) {
 		mustURL(t, "https://peer.example/base/"),
 	)
 
-	got := probe.queryURL()
+	got, err := probe.queryURL()
+	if err != nil {
+		t.Fatalf("query URL: %v", err)
+	}
 
 	if got.Scheme != "https" ||
 		got.Host != "peer.example" ||
 		got.Path != "/base/yacy/query.html" ||
 		got.Query().Get(yagoproto.FieldObject) != string(yagoproto.ObjectRWICount) {
 		t.Fatalf("query URL = %s", got.String())
+	}
+}
+
+func TestPublicEndpointSelfTestRejectsSigningFailure(t *testing.T) {
+	t.Parallel()
+
+	probe := newPublicEndpointSelfTest(
+		nil,
+		"controlled",
+		yagomodel.Hash("AAAAAAAAAAAA"),
+		mustURL(t, "https://peer.example/"),
+		yagoproto.NetworkAccess{
+			Mode:       yagoproto.NetworkAuthenticationSaltedMagic,
+			Essentials: "shared",
+		},
+	)
+	want := errors.New("entropy unavailable")
+	probe.sign = func(url.Values) error { return want }
+	if _, err := probe.queryURL(); !errors.Is(err, want) {
+		t.Fatalf("query signing failure = %v", err)
+	}
+	if probe.Reachable(t.Context()) {
+		t.Fatal("signing failure reported a reachable endpoint")
 	}
 }
 

@@ -35,6 +35,42 @@ type fakeExchange struct {
 	streamContext chan context.Context
 	streamDone    chan struct{}
 	streamErr     error
+	runtimePolicy *crawlrpc.CrawlerRuntimePolicy
+	runtimeError  error
+}
+
+func (f *fakeExchange) ReadRuntimePolicy(
+	_ context.Context,
+	_ *crawlrpc.CrawlerRuntimePolicyRequest,
+	_ ...grpc.CallOption,
+) (*crawlrpc.CrawlerRuntimePolicy, error) {
+	if f.runtimeError != nil {
+		return nil, f.runtimeError
+	}
+	if f.runtimePolicy != nil {
+		return f.runtimePolicy, nil
+	}
+	policy, err := yagocrawlcontract.CrawlerRuntimePolicyToProto(
+		yagocrawlcontract.DefaultCrawlerRuntimePolicy(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("encode default crawler runtime policy: %w", err)
+	}
+
+	return policy, nil
+}
+
+func (f *fakeExchange) LeaseFetchStarts(
+	_ context.Context,
+	request *crawlrpc.FetchStartLeaseRequest,
+	_ ...grpc.CallOption,
+) (*crawlrpc.FetchStartLeaseDecision, error) {
+	return &crawlrpc.FetchStartLeaseDecision{
+		Granted:   true,
+		Sequence:  request.GetSequence(),
+		Permits:   request.GetMaximumPermits(),
+		Unlimited: true,
+	}, nil
 }
 
 type crawlerRobotsRoundTrip func(*http.Request) (*http.Response, error)
@@ -119,9 +155,16 @@ func (f *fakeExchange) Heartbeat(
 	heartbeat *crawlrpc.WorkerHeartbeat,
 	_ ...grpc.CallOption,
 ) (*crawlrpc.WorkerHeartbeatResult, error) {
+	policy, err := yagocrawlcontract.NewCrawlURLDenylist(nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create empty crawl URL denylist: %w", err)
+	}
 	return &crawlrpc.WorkerHeartbeatResult{
 		RenewedLeaseIds:      append([]string(nil), heartbeat.GetActiveLeaseIds()...),
 		LeaseTtlMilliseconds: uint64((2 * time.Minute) / time.Millisecond),
+		UrlDenylist: &crawlrpc.CrawlURLDenylist{
+			Revision: policy.Revision,
+		},
 	}, nil
 }
 

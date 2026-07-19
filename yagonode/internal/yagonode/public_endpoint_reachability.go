@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,7 +13,11 @@ import (
 	"github.com/D4rk4/yago/yagoproto"
 )
 
-const publicSelfTestMaxBodyBytes int64 = 64 << 10
+const (
+	publicSelfTestMaxBodyBytes            int64 = 64 << 10
+	publicEndpointSelfTestFailedMessage         = "public endpoint self-test failed"
+	publicEndpointSelfTestRejectedMessage       = "public endpoint self-test rejected"
+)
 
 type publicReachability interface {
 	Reachable(ctx context.Context) bool
@@ -23,6 +28,8 @@ type publicEndpointSelfTest struct {
 	networkName string
 	self        yagomodel.Hash
 	base        *url.URL
+	access      yagoproto.NetworkAccess
+	sign        func(url.Values) error
 }
 
 func newPublicEndpointSelfTest(
@@ -30,9 +37,16 @@ func newPublicEndpointSelfTest(
 	networkName string,
 	self yagomodel.Hash,
 	base *url.URL,
+	access ...yagoproto.NetworkAccess,
 ) publicEndpointSelfTest {
 	if client == nil {
 		client = http.DefaultClient
+	}
+
+	configured := yagoproto.NetworkAccess{NetworkName: networkName, Self: self}
+	if len(access) != 0 {
+		configured = access[0]
+		configured.Self = self
 	}
 
 	return publicEndpointSelfTest{
@@ -40,6 +54,8 @@ func newPublicEndpointSelfTest(
 		networkName: networkName,
 		self:        self,
 		base:        base,
+		access:      configured,
+		sign:        configured.Sign,
 	}
 }
 
@@ -48,16 +64,21 @@ func (p publicEndpointSelfTest) Reachable(ctx context.Context) bool {
 		return false
 	}
 
-	target := p.queryURL()
+	target, err := p.queryURL()
+	if err != nil {
+		slog.DebugContext(ctx, publicEndpointSelfTestFailedMessage, slog.Any("error", err))
+
+		return false
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
-		slog.DebugContext(ctx, "public endpoint self-test failed", slog.Any("error", err))
+		slog.DebugContext(ctx, publicEndpointSelfTestFailedMessage, slog.Any("error", err))
 
 		return false
 	}
 	resp, err := p.client.Do(req)
 	if err != nil {
-		slog.DebugContext(ctx, "public endpoint self-test failed", slog.Any("error", err))
+		slog.DebugContext(ctx, publicEndpointSelfTestFailedMessage, slog.Any("error", err))
 
 		return false
 	}
@@ -66,16 +87,22 @@ func (p publicEndpointSelfTest) Reachable(ctx context.Context) bool {
 	return p.confirm(ctx, resp)
 }
 
-func (p publicEndpointSelfTest) queryURL() url.URL {
+func (p publicEndpointSelfTest) queryURL() (url.URL, error) {
 	target := *p.base
 	target.Path = joinPublicSelfTestPath(p.base.Path, yagoproto.PathQuery)
-	target.RawQuery = yagoproto.QueryRequest{
+	form := yagoproto.QueryRequest{
 		NetworkName: p.networkName,
 		YouAre:      p.self,
 		Object:      yagoproto.ObjectRWICount,
-	}.Form().Encode()
+	}.Form()
+	if p.access.Mode == yagoproto.NetworkAuthenticationSaltedMagic {
+		if err := p.sign(form); err != nil {
+			return url.URL{}, fmt.Errorf("sign public endpoint self-test: %w", err)
+		}
+	}
+	target.RawQuery = form.Encode()
 
-	return target
+	return target, nil
 }
 
 func joinPublicSelfTestPath(prefix, path string) string {
@@ -86,7 +113,7 @@ func (p publicEndpointSelfTest) confirm(ctx context.Context, resp *http.Response
 	if resp.StatusCode != http.StatusOK {
 		slog.DebugContext(
 			ctx,
-			"public endpoint self-test failed",
+			publicEndpointSelfTestFailedMessage,
 			slog.Int("status", resp.StatusCode),
 		)
 
@@ -95,7 +122,7 @@ func (p publicEndpointSelfTest) confirm(ctx context.Context, resp *http.Response
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, publicSelfTestMaxBodyBytes))
 	if err != nil {
-		slog.DebugContext(ctx, "public endpoint self-test failed", slog.Any("error", err))
+		slog.DebugContext(ctx, publicEndpointSelfTestFailedMessage, slog.Any("error", err))
 
 		return false
 	}
@@ -103,19 +130,19 @@ func (p publicEndpointSelfTest) confirm(ctx context.Context, resp *http.Response
 	msg, _ := yagomodel.ParseMessage(string(body))
 	parsed, err := yagoproto.ParseQueryResponse(msg)
 	if err != nil {
-		slog.DebugContext(ctx, "public endpoint self-test failed", slog.Any("error", err))
+		slog.DebugContext(ctx, publicEndpointSelfTestFailedMessage, slog.Any("error", err))
 
 		return false
 	}
 	if parsed.Response == yagoproto.QueryResponseRejected {
-		slog.DebugContext(ctx, "public endpoint self-test rejected")
+		slog.DebugContext(ctx, publicEndpointSelfTestRejectedMessage)
 
 		return false
 	}
 	if parsed.Response < 0 {
 		slog.DebugContext(
 			ctx,
-			"public endpoint self-test failed",
+			publicEndpointSelfTestFailedMessage,
 			slog.Int("response", parsed.Response),
 		)
 

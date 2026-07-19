@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/pagefetch"
@@ -35,6 +36,7 @@ type BrowserPageFetcher struct {
 	render   pageRenderer
 	timeout  time.Duration
 	maxBytes int64
+	pool     *firefoxPool
 }
 
 // BrowserLaunch selects how the slow-path browser is launched so the crawler
@@ -45,14 +47,16 @@ type BrowserPageFetcher struct {
 // hosts that restrict unprivileged user namespaces cannot start it, and an
 // operator on a host that supports it opts back in.
 type BrowserLaunch struct {
-	UserAgent        string
-	Timeout          time.Duration
-	MaxBytes         int64
-	ExecPath         string
-	Sandbox          bool
-	Sessions         int
-	FailureThreshold int
-	FailureCooldown  time.Duration
+	UserAgent          string
+	Timeout            time.Duration
+	MaxBytes           int64
+	ExecPath           string
+	Sandbox            bool
+	Sessions           int
+	FailureThreshold   int
+	FailureCooldown    time.Duration
+	MaxRedirects       int
+	executableResolver func(string, bool) (string, error)
 }
 
 func NewBrowserPageFetcher(
@@ -60,6 +64,11 @@ func NewBrowserPageFetcher(
 	guard yagoegress.Guard,
 	observeBrowserSlotAcquisitionDeadline ...func(),
 ) (*BrowserPageFetcher, func(), error) {
+	executablePath, err := launch.firefoxExecutable(false)
+	if err != nil {
+		return nil, nil, err
+	}
+	launch.ExecPath = executablePath
 	proxy, err := startGuardedForwardProxy(
 		dialFunc(yagoegress.PreferIPv4(nil, (&net.Dialer{Control: guard.DialControl}).DialContext)),
 	)
@@ -76,6 +85,7 @@ func NewBrowserPageFetcher(
 		render:   pool.render,
 		timeout:  launch.Timeout,
 		maxBytes: launch.MaxBytes,
+		pool:     pool,
 	}
 	closeFetcher := func() {
 		pool.close()
@@ -83,6 +93,30 @@ func NewBrowserPageFetcher(
 	}
 
 	return fetcher, closeFetcher, nil
+}
+
+func (launch BrowserLaunch) firefoxExecutable(required bool) (string, error) {
+	if launch.executableResolver != nil {
+		return launch.executableResolver(launch.ExecPath, required)
+	}
+
+	return resolveTrustedFirefoxExecutable(
+		launch.ExecPath,
+		required,
+		operatingSystemFirefoxExecutableFilesystem(),
+	)
+}
+
+func (f *BrowserPageFetcher) SetMaxRedirects(maximum int) {
+	if f != nil && f.pool != nil {
+		f.pool.setMaxRedirects(maximum)
+	}
+}
+
+func (f *BrowserPageFetcher) SetSandbox(enabled bool) {
+	if f != nil && f.pool != nil {
+		f.pool.setSandbox(enabled)
+	}
 }
 
 // browserSession is one live browser the manager drives: navigate-and-extract,
@@ -122,11 +156,18 @@ type firefoxManager struct {
 	closed     bool
 	failures   int
 	retryAfter time.Time
+
+	maximumRedirects atomic.Int64
+	redirectUpdate   atomic.Bool
+	sandbox          atomic.Bool
+	sandboxUpdate    atomic.Bool
 }
 
 func (m *firefoxManager) render(ctx context.Context, rawURL string) (renderedPage, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.applyMaxRedirects()
+	m.applySandbox()
 	if m.closed {
 		return renderedPage{}, fmt.Errorf("firefox session pool closed: %w", context.Canceled)
 	}
@@ -214,6 +255,49 @@ func (m *firefoxManager) close() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.closed = true
+	if m.session != nil {
+		m.session.close()
+		m.session = nil
+	}
+}
+
+func (m *firefoxManager) setMaxRedirects(maximum int) {
+	if maximum < 0 {
+		return
+	}
+	m.maximumRedirects.Store(int64(maximum))
+	m.redirectUpdate.Store(true)
+}
+
+func (m *firefoxManager) applyMaxRedirects() {
+	if !m.redirectUpdate.Swap(false) {
+		return
+	}
+	maximum := int(m.maximumRedirects.Load())
+	if m.launch.MaxRedirects == maximum {
+		return
+	}
+	m.launch.MaxRedirects = maximum
+	if m.session != nil {
+		m.session.close()
+		m.session = nil
+	}
+}
+
+func (m *firefoxManager) setSandbox(enabled bool) {
+	m.sandbox.Store(enabled)
+	m.sandboxUpdate.Store(true)
+}
+
+func (m *firefoxManager) applySandbox() {
+	if !m.sandboxUpdate.Swap(false) {
+		return
+	}
+	enabled := m.sandbox.Load()
+	if m.launch.Sandbox == enabled {
+		return
+	}
+	m.launch.Sandbox = enabled
 	if m.session != nil {
 		m.session.close()
 		m.session = nil

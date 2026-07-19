@@ -27,6 +27,7 @@ type searchExplainEndpoint struct {
 	ranker    *learnedrank.Ranker
 	deny      denylistSnapshotter
 	execution searchExplanationExecutionBudget
+	events    nodeEventRecorder
 }
 
 type searchExplainRequest struct {
@@ -121,7 +122,7 @@ func (e searchExplainEndpoint) response(r *http.Request) (searchExplainResponse,
 		return searchExplainResponse{}, http.StatusBadRequest, fmt.Errorf("decode request: %w", err)
 	}
 
-	return e.explanation(r.Context(), request)
+	return e.observedExplanation(r.Context(), request)
 }
 
 func (e searchExplainEndpoint) explanation(

@@ -209,6 +209,7 @@ const defaultResultsBody = `<!doctype html>
     <a class="title" href="{{url}}"{{#if ../newTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{/if}}>{{#if title}}{{title}}{{else}}{{url}}{{/if}}{{#if ../newTab}}<span aria-hidden="true"> ↗</span><span class="sr-only"> (opens in new tab)</span>{{/if}}</a>
     <div class="url">{{#if displayUrl}}{{displayUrl}}{{else}}{{url}}{{/if}}{{#if provenance}} · <span class="prov prov-{{provenance}}">{{provenance}}</span>{{/if}}{{#if date}} · {{date}}{{/if}}{{#if sizeName}} · {{sizeName}}{{/if}}{{#if cachedUrl}} · <a href="{{cachedUrl}}">cached</a>{{/if}}</div>
     {{#if snippetHtml}}<p>{{{snippetHtml}}}</p>{{else}}{{#if snippet}}<p>{{snippet}}</p>{{/if}}{{/if}}
+    {{#if reasons}}<details><summary>Why this result?</summary><ul>{{#each reasons}}<li>{{this}}</li>{{/each}}</ul></details>{{/if}}
   </li>
   {{else}}
   {{#if results.unconfirmedPage}}{{else}}<p class="meta" role="status">Nothing found.</p>{{/if}}
@@ -253,6 +254,9 @@ form.search { margin: 1.5rem 0; }
 .result a.title:hover { text-decoration: underline; }
 .result .url { color: #178a3a; font-size: 0.8rem; word-break: break-all; }
 .result p { margin: 0.2rem 0 0; color: #333333; font-size: 0.9rem; }
+.result details { margin-top: 0.25rem; color: #525252; font-size: 0.78rem; }
+.result details summary { cursor: pointer; }
+.result details ul { margin: 0.25rem 0 0; padding-left: 1.2rem; }
 .ophelp { margin-top: 0.75rem; font-size: 0.85rem; color: #555; text-align: left; display: inline-block; }
 .ophelp ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
 .ophelp code { background: #f2f2f2; padding: 0 0.25rem; }

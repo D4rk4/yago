@@ -60,6 +60,10 @@ func (f *Frontier) prepareRunCheckpoint(
 	if err != nil {
 		return runCheckpointPreparation{}, err
 	}
+	snapshot, err = f.enforceRecoveredRunPageBudget(ctx, seed, profile, snapshot, persistent)
+	if err != nil {
+		return runCheckpointPreparation{}, err
+	}
 
 	return runCheckpointPreparation{
 		candidates: candidates,
@@ -75,6 +79,12 @@ func (f *Frontier) activateSeedRun(
 	finish func(bool),
 	preparation runCheckpointPreparation,
 ) {
+	order := yagocrawlcontract.CrawlOrder{
+		Priority: seed.Priority,
+		Profile:  profile.Profile,
+	}
+	maximum := order.EffectiveMaxPagesPerRun(f.state.maxPagesPerRun)
+	profile.Profile.MaxPagesPerRun = &maximum
 	f.controlOrder.Lock()
 	f.mu.Lock()
 	f.state.beginRun(runID, seed.Provenance, profile, finish)

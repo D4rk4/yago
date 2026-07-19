@@ -59,6 +59,7 @@ type runRecord struct {
 	NextSequence           uint64                               `json:"next_sequence"`
 	Pages                  uint64                               `json:"pages"`
 	Pending                uint64                               `json:"pending"`
+	BudgetDiscardedPages   uint64                               `json:"budget_discarded_pages,omitempty"`
 	Failed                 bool                                 `json:"failed"`
 	Seeding                bool                                 `json:"seeding"`
 	Completed              bool                                 `json:"completed"`

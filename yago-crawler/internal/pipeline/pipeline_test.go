@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,8 +20,10 @@ import (
 )
 
 type doneCall struct {
-	work    crawljob.CrawlJob
-	outcome yagocrawlcontract.CrawlRunTally
+	work       crawljob.CrawlJob
+	outcome    yagocrawlcontract.CrawlRunTally
+	httpStatus uint32
+	reason     string
 }
 
 type recordingFrontier struct {
@@ -105,6 +108,25 @@ func (f *recordingFrontier) Done(
 	f.done <- doneCall{work: work, outcome: outcome}
 }
 
+func (f *recordingFrontier) DoneWithReason(
+	work crawljob.CrawlJob,
+	outcome yagocrawlcontract.CrawlRunTally,
+	reason string,
+) {
+	f.done <- doneCall{work: work, outcome: outcome, reason: reason}
+}
+
+func (f *recordingFrontier) DoneWithPageOutcome(
+	work crawljob.CrawlJob,
+	outcome yagocrawlcontract.CrawlRunTally,
+	httpStatus uint32,
+	reason string,
+) {
+	f.done <- doneCall{
+		work: work, outcome: outcome, httpStatus: httpStatus, reason: reason,
+	}
+}
+
 func (f *recordingFrontier) Abandon(work crawljob.CrawlJob) {
 	f.abandoned <- work
 }
@@ -164,6 +186,7 @@ func htmlPage() pagefetch.FetchedPage {
 	target, _ := url.Parse("https://example.com/")
 	return pagefetch.FetchedPage{
 		URL:         target,
+		HTTPStatus:  200,
 		ContentType: "text/html",
 		Body:        []byte(`<html><body><a href="/next">go</a> words here</body></html>`),
 	}
@@ -218,6 +241,7 @@ func runJob(
 func TestPipelineDeliversIngestBatch(t *testing.T) {
 	frontier := newRecordingFrontier()
 	emitted := make(chan yagocrawlcontract.DocumentIngest, 1)
+	sourceModifiedAt := time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)
 	p := pipeline.NewPipeline(
 		frontier,
 		fetchFunc(
@@ -235,12 +259,20 @@ func TestPipelineDeliversIngestBatch(t *testing.T) {
 				if e.SourceURL != "https://example.com/" {
 					t.Errorf("envelope source = %q", e.SourceURL)
 				}
+				if !e.SourceModifiedAt.Equal(sourceModifiedAt) {
+					t.Errorf("envelope source modification = %v", e.SourceModifiedAt)
+				}
 				emitted <- document
 				return nil
 			},
 		),
 	)
-	runOneJob(t, p, frontier)
+	runJob(t, p, frontier, crawljob.CrawlJob{
+		URL:              "https://example.com/",
+		ProfileHandle:    "h",
+		Index:            true,
+		SourceModifiedAt: sourceModifiedAt,
+	})
 	select {
 	case document := <-emitted:
 		if document.NormalizedURL != "https://example.com/" {
@@ -312,7 +344,10 @@ func TestPipelineFollowsButDoesNotIndexNonIndexablePage(t *testing.T) {
 	go p.RunWorkers(ctx, ctx, 1)
 	frontier.jobs <- crawljob.CrawlJob{URL: "https://example.com/", ProfileHandle: "h", Index: false}
 	select {
-	case <-frontier.done:
+	case done := <-frontier.done:
+		if done.reason != "crawl profile disabled indexing" {
+			t.Fatalf("non-indexing reason = %q", done.reason)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("job never reached Done")
 	}
@@ -362,6 +397,67 @@ func TestPipelineFinishesJobOnFetchError(t *testing.T) {
 	runOneJob(t, p, frontier)
 }
 
+func TestPipelineRecordsStableInvalidURLAndUnsupportedContentReasons(t *testing.T) {
+	invalidFrontier := newRecordingFrontier()
+	invalidPipeline := pipeline.NewPipeline(
+		invalidFrontier,
+		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			t.Fatal("invalid URL reached fetch")
+
+			return pagefetch.FetchedPage{}, nil
+		}),
+		pageindex.NewIndexBuilder(),
+		okEmitter(),
+	)
+	invalid := runJob(t, invalidPipeline, invalidFrontier, crawljob.CrawlJob{URL: "://bad"})
+	if invalid.outcome.Failed != 1 || invalid.reason != "crawl URL could not be parsed" {
+		t.Fatalf("invalid URL outcome = %+v %q", invalid.outcome, invalid.reason)
+	}
+
+	unsupportedFrontier := newRecordingFrontier()
+	unsupportedPipeline := pipeline.NewPipeline(
+		unsupportedFrontier,
+		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			target, err := url.Parse("https://example.com/archive.zip")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			return pagefetch.FetchedPage{
+				URL: target, ContentType: "application/zip", Body: []byte("archive"),
+			}, nil
+		}),
+		pageindex.NewIndexBuilder(),
+		okEmitter(),
+	)
+	unsupported := runJob(t, unsupportedPipeline, unsupportedFrontier, crawljob.CrawlJob{
+		URL: "https://example.com/archive.zip", Index: true,
+	})
+	if unsupported.outcome.Failed != 1 ||
+		unsupported.reason != "content type is not enabled for this crawl" {
+		t.Fatalf("unsupported outcome = %+v %q", unsupported.outcome, unsupported.reason)
+	}
+
+	rejectedFrontier := newRecordingFrontier()
+	rejectedPipeline := pipeline.NewPipeline(
+		rejectedFrontier,
+		fetchFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+			return pagefetch.FetchedPage{}, fmt.Errorf(
+				"provider detail: %w",
+				pagefetch.ErrUnsupportedContentType,
+			)
+		}),
+		pageindex.NewIndexBuilder(),
+		okEmitter(),
+	)
+	rejected := runOneJob(t, rejectedPipeline, rejectedFrontier)
+	if rejected.outcome.Failed != 1 ||
+		rejected.reason != "content type is not enabled for this crawl" ||
+		strings.Contains(rejected.reason, "provider detail") {
+		t.Fatalf("rejected content outcome = %+v %q", rejected.outcome, rejected.reason)
+	}
+}
+
 func TestPipelineMarksJobFailedOnEmitError(t *testing.T) {
 	frontier := newRecordingFrontier()
 	p := pipeline.NewPipeline(
@@ -376,7 +472,8 @@ func TestPipelineMarksJobFailedOnEmitError(t *testing.T) {
 			},
 		),
 	)
-	if done := runOneJob(t, p, frontier); done.outcome.Failed == 0 {
+	if done := runOneJob(t, p, frontier); done.outcome.Failed != 1 ||
+		done.reason != "document ingest delivery failed" {
 		t.Error("emit failure should mark the job as delivery-failed so the order naks")
 	}
 }
@@ -398,7 +495,10 @@ func TestPipelineFinishesJobOnIndexError(t *testing.T) {
 			},
 		),
 	)
-	runOneJob(t, p, frontier)
+	if done := runOneJob(t, p, frontier); done.outcome.Failed != 1 ||
+		done.reason != "document indexing failed" {
+		t.Fatalf("index failure outcome = %+v %q", done.outcome, done.reason)
+	}
 }
 
 func TestPipelineStopsWhenJobsClose(t *testing.T) {

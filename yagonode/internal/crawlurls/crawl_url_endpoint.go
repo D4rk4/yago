@@ -2,6 +2,7 @@ package crawlurls
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -44,7 +45,7 @@ func (e endpoint) Serve(
 	req yagoproto.CrawlURLRequest,
 ) (httpguard.RawResponse, error) {
 	feed := e.rejectedFeed()
-	if !e.identity.NetworkMatches(req.NetworkName) {
+	if !e.identity.Authenticates(req.NetworkName, req.Key, req.Iam, req.MagicMD5) {
 		return feed.response(), nil
 	}
 
@@ -63,19 +64,56 @@ func (e endpoint) serveRemoteCrawl(
 	req yagoproto.CrawlURLRequest,
 	feed crawlURLFeed,
 ) (httpguard.RawResponse, error) {
-	items, err := e.remote.URLsForRemoteCrawl(
+	peer, valid := remoteCrawlPeer(req.Iam)
+	if !valid {
+		return feed.response(), nil
+	}
+	selection := e.selectRemoteCrawlURLs(
 		ctx,
+		peer,
 		remoteURLCount(req.Count),
 		remoteURLTimeout(req.Time),
 	)
-	if err != nil {
-		return httpguard.RawResponse{}, fmt.Errorf("remote crawl urls: %w", err)
+	if selection.failure != nil {
+		return httpguard.RawResponse{}, selection.failure
+	}
+	if !selection.accepted {
+		return feed.response(), nil
 	}
 
 	feed.Response = yagoproto.CrawlURLResponseOK
-	feed.Items = remoteCrawlItems(items)
+	feed.Items = remoteCrawlItems(selection.items)
 
 	return feed.response(), nil
+}
+
+func remoteCrawlPeer(raw string) (yagomodel.Hash, bool) {
+	peer, err := yagomodel.ParseHash(raw)
+
+	return peer, err == nil
+}
+
+type remoteCrawlSelection struct {
+	items    []RemoteCrawlURL
+	accepted bool
+	failure  error
+}
+
+func (e endpoint) selectRemoteCrawlURLs(
+	ctx context.Context,
+	peer yagomodel.Hash,
+	count int,
+	wait time.Duration,
+) remoteCrawlSelection {
+	items, err := e.remote.URLsForRemoteCrawl(ctx, peer, count, wait)
+	if errors.Is(err, ErrRemoteCrawlRejected) {
+		return remoteCrawlSelection{}
+	}
+	if err != nil {
+		return remoteCrawlSelection{failure: fmt.Errorf("remote crawl urls: %w", err)}
+	}
+
+	return remoteCrawlSelection{items: items, accepted: true}
 }
 
 func (e endpoint) serveURLHashList(

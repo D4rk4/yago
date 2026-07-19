@@ -44,6 +44,7 @@ func (r *recordingURLDirectory) RowsByHash(
 type recordingRemoteCrawlURLs struct {
 	items   []RemoteCrawlURL
 	err     error
+	peer    yagomodel.Hash
 	limit   int
 	timeout time.Duration
 	called  bool
@@ -51,10 +52,12 @@ type recordingRemoteCrawlURLs struct {
 
 func (r *recordingRemoteCrawlURLs) URLsForRemoteCrawl(
 	_ context.Context,
+	peer yagomodel.Hash,
 	limit int,
 	timeout time.Duration,
 ) ([]RemoteCrawlURL, error) {
 	r.called = true
+	r.peer = peer
 	r.limit = limit
 	r.timeout = timeout
 
@@ -64,6 +67,7 @@ func (r *recordingRemoteCrawlURLs) URLsForRemoteCrawl(
 func TestDisabledRemoteCrawlURLsReturnsNoWork(t *testing.T) {
 	items, err := DisabledRemoteCrawlURLs{}.URLsForRemoteCrawl(
 		t.Context(),
+		hashA,
 		remoteDefaultCount,
 		remoteDefaultTime*time.Millisecond,
 	)
@@ -81,6 +85,7 @@ func TestRemoteCrawlReturnsEmptySuccessByDefault(t *testing.T) {
 
 	resp, err := endpoint.Serve(t.Context(), yagoproto.CrawlURLRequest{
 		NetworkName: "freeworld",
+		Iam:         hashA.String(),
 		Call:        yagoproto.CrawlURLCallRemoteCrawl,
 	})
 	if err != nil {
@@ -113,6 +118,7 @@ func TestRemoteCrawlPassesClampedLimitsAndRendersItems(t *testing.T) {
 
 	resp, err := endpoint.Serve(t.Context(), yagoproto.CrawlURLRequest{
 		NetworkName: "freeworld",
+		Iam:         hashA.String(),
 		Call:        yagoproto.CrawlURLCallRemoteCrawl,
 		Count:       yagomodel.Some(200),
 		Time:        yagomodel.Some(500),
@@ -121,8 +127,15 @@ func TestRemoteCrawlPassesClampedLimitsAndRendersItems(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !remote.called || remote.limit != remoteMaxCount || remote.timeout != time.Second {
-		t.Fatalf("remote call = %v %d %v", remote.called, remote.limit, remote.timeout)
+	if !remote.called || remote.peer != hashA || remote.limit != remoteMaxCount ||
+		remote.timeout != time.Second {
+		t.Fatalf(
+			"remote call = %v %q %d %v",
+			remote.called,
+			remote.peer,
+			remote.limit,
+			remote.timeout,
+		)
 	}
 	for _, want := range []string{
 		"<link>https://example.com/?a=1&amp;b=2</link>",
@@ -137,6 +150,13 @@ func TestRemoteCrawlPassesClampedLimitsAndRendersItems(t *testing.T) {
 	}
 }
 
+func TestRemoteCrawlLeavesUnknownPublicationDateEmpty(t *testing.T) {
+	items := remoteCrawlItems([]RemoteCrawlURL{{Link: "https://example.com/"}})
+	if len(items) != 1 || items[0].PubDate != "" {
+		t.Fatalf("remote crawl items = %+v", items)
+	}
+}
+
 func TestRemoteCrawlSurfacesRemoteFailure(t *testing.T) {
 	want := errors.New("frontier unavailable")
 	endpoint := newEndpoint(
@@ -148,11 +168,32 @@ func TestRemoteCrawlSurfacesRemoteFailure(t *testing.T) {
 
 	_, err := endpoint.Serve(t.Context(), yagoproto.CrawlURLRequest{
 		NetworkName: "freeworld",
+		Iam:         hashA.String(),
 		Call:        yagoproto.CrawlURLCallRemoteCrawl,
 	})
 
 	if !errors.Is(err, want) {
 		t.Fatalf("err = %v, want %v", err, want)
+	}
+}
+
+func TestRemoteCrawlRendersPolicyRejectionWithoutInternalFailure(t *testing.T) {
+	endpoint := newEndpoint(
+		localIdentity(),
+		&recordingURLDirectory{},
+		&recordingRemoteCrawlURLs{err: ErrRemoteCrawlRejected},
+	)
+	endpoint.now = fixedNow
+	response, err := endpoint.Serve(t.Context(), yagoproto.CrawlURLRequest{
+		NetworkName: "freeworld",
+		Iam:         hashA.String(),
+		Call:        yagoproto.CrawlURLCallRemoteCrawl,
+	})
+	if err != nil || !strings.Contains(
+		response.Body,
+		"<response>"+yagoproto.CrawlURLResponseRejected+"</response>",
+	) {
+		t.Fatalf("policy rejection = %q, %v", response.Body, err)
 	}
 }
 
@@ -167,6 +208,7 @@ func TestCrawlURLRejectsForeignNetworkAndUnknownCall(t *testing.T) {
 	for _, req := range []yagoproto.CrawlURLRequest{
 		{NetworkName: "other", Call: yagoproto.CrawlURLCallRemoteCrawl},
 		{NetworkName: "freeworld", Call: "unknown"},
+		{NetworkName: "freeworld", Call: yagoproto.CrawlURLCallRemoteCrawl, Iam: "invalid"},
 	} {
 		resp, err := endpoint.Serve(t.Context(), req)
 		if err != nil {

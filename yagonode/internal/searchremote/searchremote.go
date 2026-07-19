@@ -74,6 +74,8 @@ type Config struct {
 	ReputationClock              func() time.Time
 	SelfSeed                     func(context.Context) yagomodel.Seed
 	ExpandWord                   func(string) []string
+	NetworkAccess                yagoproto.NetworkAccess
+	ObserveReceivedResources     func(context.Context, int)
 }
 
 type searcher struct {
@@ -98,6 +100,9 @@ type searcher struct {
 	maximumNetworkGroupInfluence float64
 	reputationClock              func() time.Time
 	selfSeed                     func(context.Context) yagomodel.Seed
+	access                       yagoproto.NetworkAccess
+	signNetworkForm              func(yagoproto.NetworkAccess, url.Values) error
+	observeReceivedResources     func(context.Context, int)
 	fetchAdmission               chan struct{}
 	morphologyAdmission          chan struct{}
 }
@@ -160,8 +165,11 @@ func NewSearcher(config Config) searchcore.Searcher {
 		maximumNetworkGroupInfluence: maximumGroupInfluenceOrDefault(
 			config.MaximumNetworkGroupInfluence,
 		),
-		reputationClock: reputationClockOrDefault(config.ReputationClock),
-		selfSeed:        config.SelfSeed,
+		reputationClock:          reputationClockOrDefault(config.ReputationClock),
+		selfSeed:                 config.SelfSeed,
+		access:                   config.NetworkAccess,
+		signNetworkForm:          yagoproto.NetworkAccess.Sign,
+		observeReceivedResources: config.ObserveReceivedResources,
 	}
 }
 

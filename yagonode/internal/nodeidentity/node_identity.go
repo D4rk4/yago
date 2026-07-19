@@ -4,6 +4,7 @@
 package nodeidentity
 
 import (
+	"net/url"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -11,15 +12,17 @@ import (
 )
 
 type Identity struct {
-	Hash        yagomodel.Hash
-	NetworkName string
-	Name        string
-	Host        string
-	Port        int
-	Flags       yagomodel.Flags
-	Version     string
-	Start       time.Time
-	BirthDate   time.Time
+	Hash                     yagomodel.Hash
+	NetworkName              string
+	Name                     string
+	Host                     string
+	Port                     int
+	Flags                    yagomodel.Flags
+	Version                  string
+	Start                    time.Time
+	BirthDate                time.Time
+	AuthenticationMode       yagoproto.NetworkAuthenticationMode
+	AuthenticationEssentials string
 }
 
 func (id Identity) Uptime(now time.Time) int {
@@ -39,4 +42,32 @@ func (id Identity) NetworkMatches(network string) bool {
 
 func (id Identity) Addresses(network string, youare yagomodel.Hash) bool {
 	return id.NetworkMatches(network) && youare == id.Hash
+}
+
+func (id Identity) Authenticates(network, key, iam, magic string) bool {
+	return id.NetworkAccess().Authorizes(url.Values{
+		yagoproto.FieldNetworkName: {network},
+		yagoproto.FieldKey:         {key},
+		yagoproto.FieldIam:         {iam},
+		yagoproto.FieldMagicMD5:    {magic},
+	})
+}
+
+func (id Identity) NetworkAccess() yagoproto.NetworkAccess {
+	return yagoproto.NetworkAccess{
+		NetworkName: id.NetworkName,
+		Mode:        id.AuthenticationMode,
+		Essentials:  id.AuthenticationEssentials,
+		Self:        id.Hash,
+	}
+}
+
+func (id Identity) AuthenticatesAddress(
+	network string,
+	youare yagomodel.Hash,
+	key string,
+	iam string,
+	magic string,
+) bool {
+	return youare == id.Hash && id.Authenticates(network, key, iam, magic)
 }

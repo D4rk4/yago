@@ -79,6 +79,20 @@ func (f *Frontier) RecordFetch(
 	url, profileHandle string,
 	fetchedAt time.Time,
 ) error {
+	return f.RecordFetchWithSourceModified(
+		ctx,
+		url,
+		profileHandle,
+		fetchedAt,
+		time.Time{},
+	)
+}
+
+func (f *Frontier) RecordFetchWithSourceModified(
+	ctx context.Context,
+	url, profileHandle string,
+	fetchedAt, sourceModifiedAt time.Time,
+) error {
 	profile, found, err := f.ProfileByHandle(ctx, profileHandle)
 	if err != nil {
 		return fmt.Errorf("record fetch: %w", err)
@@ -86,7 +100,13 @@ func (f *Frontier) RecordFetch(
 	if !found {
 		return nil
 	}
-	if err := f.Observe(ctx, url, profileHandle, profile.RecrawlIfOlder, fetchedAt); err != nil {
+	if err := f.observe(ctx, fetchObservation{
+		url:              url,
+		profileHandle:    profileHandle,
+		interval:         profile.RecrawlIfOlder,
+		fetchedAt:        fetchedAt,
+		sourceModifiedAt: sourceModifiedAt,
+	}); err != nil {
 		return fmt.Errorf("record fetch: %w", err)
 	}
 
@@ -103,38 +123,40 @@ func (f *Frontier) RecordFetches(
 	urls, profileHandles []string,
 	fetchedAt []time.Time,
 ) error {
-	if len(urls) != len(profileHandles) || len(urls) != len(fetchedAt) {
-		return fmt.Errorf("record fetches: mismatched slice lengths")
-	}
-	intervals := make(map[string]time.Duration, len(profileHandles))
-	known := make(map[string]bool, len(profileHandles))
-	for _, handle := range profileHandles {
-		if _, seen := known[handle]; seen {
-			continue
-		}
-		profile, found, err := f.ProfileByHandle(ctx, handle)
-		if err != nil {
-			return fmt.Errorf("record fetches: %w", err)
-		}
-		known[handle] = found
-		intervals[handle] = profile.RecrawlIfOlder
-	}
+	return f.RecordFetchesWithSourceModified(
+		ctx,
+		urls,
+		profileHandles,
+		fetchedAt,
+		nil,
+	)
+}
 
-	if err := f.vault.Update(ctx, func(tx *vault.Txn) error {
-		for i, url := range urls {
-			if !known[profileHandles[i]] {
-				continue
-			}
-			if err := f.observeInTx(tx, fetchObservation{
-				url: url, profileHandle: profileHandles[i],
-				interval: intervals[profileHandles[i]], fetchedAt: fetchedAt[i],
-			}); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}); err != nil {
+func (f *Frontier) RecordFetchesWithSourceModified(
+	ctx context.Context,
+	urls, profileHandles []string,
+	fetchedAt, sourceModifiedAt []time.Time,
+) error {
+	if err := validateFetchBatchLengths(
+		urls,
+		profileHandles,
+		fetchedAt,
+		sourceModifiedAt,
+	); err != nil {
+		return err
+	}
+	profiles, err := f.fetchBatchProfiles(ctx, profileHandles)
+	if err != nil {
+		return err
+	}
+	observations := fetchBatchObservations(
+		urls,
+		profileHandles,
+		fetchedAt,
+		sourceModifiedAt,
+		profiles,
+	)
+	if err := f.recordFetchBatch(ctx, observations); err != nil {
 		return fmt.Errorf("record fetches: %w", err)
 	}
 

@@ -37,6 +37,7 @@ type Settlement struct {
 	Outcome           Outcome
 	State             yagocrawlcontract.CrawlRunState
 	Tally             yagocrawlcontract.CrawlRunTally
+	RecentOutcomes    yagocrawlcontract.CrawlURLOutcomeHistory
 	PagesPerMinute    uint32
 	RateKnown         bool
 	Phase             Phase
@@ -63,7 +64,8 @@ func Validate(settlement Settlement) bool {
 		(settlement.Outcome == Delete || settlement.Outcome == Requeue) &&
 		(settlement.State == yagocrawlcontract.CrawlRunFinished ||
 			settlement.State == yagocrawlcontract.CrawlRunCancelled) &&
-		settlement.Tally.Pending == 0 && validPhase(settlement)
+		settlement.Tally.Pending == 0 && settlement.RecentOutcomes.Valid() &&
+		validPhase(settlement)
 }
 
 func validPhase(settlement Settlement) bool {
@@ -83,6 +85,7 @@ func SameDefinition(left, right Settlement) bool {
 		left.WorkerID == right.WorkerID && left.WorkerSessionID == right.WorkerSessionID &&
 		left.Outcome == right.Outcome &&
 		left.State == right.State && left.Tally == right.Tally &&
+		left.RecentOutcomes == right.RecentOutcomes &&
 		left.PagesPerMinute == right.PagesPerMinute && left.RateKnown == right.RateKnown
 }
 

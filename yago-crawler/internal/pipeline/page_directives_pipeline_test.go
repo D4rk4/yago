@@ -104,9 +104,12 @@ func TestPipelineHonorsPageRobotsDirectives(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			emitted := 0
 			frontier, p := directivesPipeline(tc, &emitted)
-			runJob(t, p, frontier, tc.job)
+			done := runJob(t, p, frontier, tc.job)
 			if got := emitted > 0; got != tc.wantEmit {
 				t.Errorf("emitted = %v, want %v", got, tc.wantEmit)
+			}
+			if !tc.wantEmit && done.reason != "page directives disabled indexing" {
+				t.Errorf("noindex reason = %q", done.reason)
 			}
 			if len(frontier.submitted) != tc.wantSubmits {
 				t.Errorf("submitted = %d sets, want %d", len(frontier.submitted), tc.wantSubmits)

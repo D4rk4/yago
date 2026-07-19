@@ -7,13 +7,16 @@ import (
 )
 
 type RunReport struct {
-	Provenance     []byte
-	LeaseID        string
-	ProfileHandle  string
-	ProfileName    string
-	State          yagocrawlcontract.CrawlRunState
-	Tally          yagocrawlcontract.CrawlRunTally
-	PagesPerMinute uint32
+	Provenance      []byte
+	LeaseID         string
+	ProfileHandle   string
+	ProfileName     string
+	State           yagocrawlcontract.CrawlRunState
+	Tally           yagocrawlcontract.CrawlRunTally
+	RecentOutcomes  yagocrawlcontract.CrawlURLOutcomeHistory
+	PagesPerMinute  uint32
+	MaxPagesPerHost int
+	MaxPagesPerRun  int
 }
 
 type ProgressReporter interface {

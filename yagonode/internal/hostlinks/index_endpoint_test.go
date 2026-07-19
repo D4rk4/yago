@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
+	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -45,9 +46,9 @@ func TestIndexDefaultsForUnsupportedObject(t *testing.T) {
 	links := &recordingLinks{}
 
 	resp, err := endpoint{
-		networkName: "freeworld",
-		status:      fixedStatus{},
-		links:       links,
+		identity: nodeidentity.Identity{NetworkName: "freeworld"},
+		status:   fixedStatus{},
+		links:    links,
 	}.Serve(t.Context(), yagoproto.IndexRequest{Object: "other"})
 	if err != nil {
 		t.Fatal(err)
@@ -87,9 +88,9 @@ func TestIndexExportsHostReferences(t *testing.T) {
 	}
 
 	resp, err := endpoint{
-		networkName: "freeworld",
-		status:      fixedStatus{},
-		links:       links,
+		identity: nodeidentity.Identity{NetworkName: "freeworld"},
+		status:   fixedStatus{},
+		links:    links,
 	}.Serve(t.Context(), yagoproto.IndexRequest{Object: yagoproto.IndexObjectHost})
 	if err != nil {
 		t.Fatal(err)
@@ -146,9 +147,9 @@ func TestIndexReturnsJSONEncodingError(t *testing.T) {
 	}
 
 	_, err := endpoint{
-		networkName: "freeworld",
-		status:      fixedStatus{},
-		links:       links,
+		identity: nodeidentity.Identity{NetworkName: "freeworld"},
+		status:   fixedStatus{},
+		links:    links,
 	}.Serve(t.Context(), yagoproto.IndexRequest{Object: yagoproto.IndexObjectHost})
 	if err == nil {
 		t.Fatal("expected JSON encoding error")
@@ -159,9 +160,9 @@ func TestIndexRejectsForeignNetwork(t *testing.T) {
 	links := &recordingLinks{}
 
 	resp, err := endpoint{
-		networkName: "freeworld",
-		status:      fixedStatus{},
-		links:       links,
+		identity: nodeidentity.Identity{NetworkName: "freeworld"},
+		status:   fixedStatus{},
+		links:    links,
 	}.Serve(t.Context(), yagoproto.IndexRequest{
 		NetworkName: "othernet",
 		Object:      yagoproto.IndexObjectHost,
@@ -200,7 +201,7 @@ func TestMountServesHostIndexRoute(t *testing.T) {
 	links := &recordingLinks{
 		graph: Graph{LinkedHosts: []LinkedHost{{HostHash: "target"}}},
 	}
-	Mount(router, "freeworld", fixedStatus{}, links)
+	Mount(router, nodeidentity.Identity{NetworkName: "freeworld"}, fixedStatus{}, links)
 	form := yagoproto.IndexRequest{
 		NetworkName: "freeworld",
 		Object:      yagoproto.IndexObjectHost,

@@ -86,11 +86,20 @@ DHT targets are returned as partial-failure metadata instead of turning the
 whole public search request into an HTTP error.
 
 The crawl URL feed endpoint `/yacy/urls.xml` returns YaCy's RSS-like XML shape.
-`call=remotecrawl` currently returns `ok` with no items because remote crawl
-delegation is disabled by default. `/yacy/crawlReceipt.html` accepts the YaCy
-wire shape and returns YaCy's delay of 3600 for foreign-network,
-malformed-target, wrong-target, and addressed rejections while remote crawl is
-disabled.
+`call=remotecrawl` returns `ok` with no items by default. An explicitly enabled
+controlled-network policy requires `salted-magic-sim`, a shared secret, exact
+trusted peer hashes, and exact domain or IP-prefix destinations. It leases at
+most 100 durable single-URL items to the authenticated trusted `iam`, inside the
+request's clamped 1–20 second budget. Per-peer request windows, outstanding
+leases, expiry, and pending requeue survive restart.
+
+`/yacy/crawlReceipt.html` accepts the bounded YaCy wire shape. Disabled,
+authentication, malformed, mismatched, expired, and valid non-fill outcomes
+return delay `3600`; destination-policy rejection returns `9999`; an unexpired
+peer-and-URL-matching `fill` stores the bounded URL metadata, removes the lease,
+and returns `10`. The accepted result vocabulary is `unavailable`, `exception`,
+`robot`, `rejected`, `dequeue`, `fill`, `update`, `known`, and `stale`. A receipt
+cannot create or extend work.
 `call=urlhashlist` accepts concatenated 12-byte URL hashes and returns the
 locally stored metadata rows it knows. The execution policy is documented in
 [Remote Crawl Policy](remote-crawl-policy.md).

@@ -369,6 +369,9 @@ func validateBoundedRunRecord(
 	if record.Pages < record.Pending {
 		return fmt.Errorf("%w: page total is smaller than pending total", ErrCorruptCheckpoint)
 	}
+	if record.BudgetDiscardedPages > record.Pages-record.Pending {
+		return fmt.Errorf("%w: budget-discarded pages exceed consumed pages", ErrCorruptCheckpoint)
+	}
 	if err := validateBoundedSeedRecord(transaction, prefix, record); err != nil {
 		return err
 	}

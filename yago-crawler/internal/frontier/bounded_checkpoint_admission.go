@@ -105,6 +105,9 @@ func (f *Frontier) acceptWithAdmissionWindowLocked(
 	window *boundedAdmissionWindow,
 ) (bool, bool) {
 	candidate := admission.page
+	if f.urlDenied(candidate.normURL) {
+		return false, false
+	}
 	if run == nil || !run.boundedRecovery {
 		return f.acceptLocked(ctx, runID, candidate)
 	}

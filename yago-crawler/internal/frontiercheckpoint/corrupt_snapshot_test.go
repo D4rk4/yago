@@ -217,6 +217,9 @@ func TestLoadRejectsInconsistentRunCounters(t *testing.T) {
 	}{
 		{name: "pending rows", mutate: func(record *runRecord) { record.Pending = 2 }},
 		{name: "page total", mutate: func(record *runRecord) { record.Pages = 0 }},
+		{name: "budget discarded pages", mutate: func(record *runRecord) {
+			record.BudgetDiscardedPages = 1
+		}},
 		{name: "completion", mutate: func(record *runRecord) { record.Completed = true }},
 	}
 	for _, testCase := range cases {

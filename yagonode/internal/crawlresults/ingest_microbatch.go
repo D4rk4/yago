@@ -251,8 +251,9 @@ type fetchBatchRecorder interface {
 // group. Like recordFetch it is best-effort: a failure is logged, never
 // propagated, so it cannot fail an ingest that already stored its data.
 func (c *IngestConsumer) recordFetchGroup(ctx context.Context, group []IngestDelivery) {
+	hintedRecorder, hinted := c.recorder.(sourceModifiedFetchBatchRecorder)
 	recorder, batched := c.recorder.(fetchBatchRecorder)
-	if !batched {
+	if !hinted && !batched {
 		for _, delivery := range group {
 			c.recordFetch(ctx, delivery.Batch)
 		}
@@ -262,6 +263,7 @@ func (c *IngestConsumer) recordFetchGroup(ctx context.Context, group []IngestDel
 	urls := make([]string, 0, len(group))
 	handles := make([]string, 0, len(group))
 	fetched := make([]time.Time, 0, len(group))
+	modified := make([]time.Time, 0, len(group))
 	for _, delivery := range group {
 		batch := delivery.Batch
 		if batch.SourceURL == "" ||
@@ -272,11 +274,24 @@ func (c *IngestConsumer) recordFetchGroup(ctx context.Context, group []IngestDel
 		urls = append(urls, batch.SourceURL)
 		handles = append(handles, batch.ProfileHandle)
 		fetched = append(fetched, batch.Document.FetchedAt)
+		modified = append(modified, batch.SourceModifiedAt)
 	}
 	if len(urls) == 0 {
 		return
 	}
-	if err := recorder.RecordFetches(ctx, urls, handles, fetched); err != nil {
+	var err error
+	if hinted {
+		err = hintedRecorder.RecordFetchesWithSourceModified(
+			ctx,
+			urls,
+			handles,
+			fetched,
+			modified,
+		)
+	} else {
+		err = recorder.RecordFetches(ctx, urls, handles, fetched)
+	}
+	if err != nil {
 		slog.WarnContext(ctx, msgRecrawlRecordFailed, slog.Any("error", err))
 	}
 }

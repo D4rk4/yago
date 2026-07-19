@@ -117,6 +117,25 @@ func TestParityGapSettingsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPrivateEgressSettingDescriptionKeepsSpecialRangesBlocked(t *testing.T) {
+	definition := indexSettingDefinitions()["security.egress.allow_private"]
+	for _, required := range []string{
+		"RFC1918",
+		"IPv6 unique-local",
+		"Loopback",
+		"link-local",
+		"metadata",
+		"carrier-grade NAT",
+		"multicast",
+		"reserved",
+		"remain blocked",
+	} {
+		if !strings.Contains(definition.description, required) {
+			t.Errorf("description %q does not contain %q", definition.description, required)
+		}
+	}
+}
+
 func TestStorageCompactionIntervalSetting(t *testing.T) {
 	t.Parallel()
 
@@ -158,9 +177,9 @@ func TestStorageCompactionIntervalSetting(t *testing.T) {
 
 func TestParityGapNormalizersReject(t *testing.T) {
 	rejects := map[string][2]string{
-		"storage.quota":             {"", "10MB"},
+		"storage.quota":             {"", "-1B"},
 		"network.announce.interval": {"5s", "200h"},
-		"dht.min_peer_age_days":     {"-1", "x"},
+		"dht.min_peer_age_days":     {"-2", "x"},
 		"web.fallback.safesearch":   {"maximum", ""},
 		"security.trusted_proxies":  {"not-a-cidr", "10.0.0.0/8,zzz"},
 	}

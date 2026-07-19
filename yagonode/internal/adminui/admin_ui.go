@@ -42,15 +42,20 @@ const (
 	crawlMonitorPath    = "/admin/crawl/monitor"
 	crawlControlPath    = "/admin/crawl/control"
 	crawlSchedulePath   = "/admin/crawl/schedule"
+	crawlProfilePath    = "/admin/crawl/profile"
+	crawlRunPath        = "/admin/crawl/run"
 	configPath          = "/admin/configuration"
 	indexPath           = "/admin/index"
+	indexDocumentPath   = "/admin/index/document"
 	indexDeletePath     = "/admin/index/delete"
+	indexRebuildPath    = "/admin/index/rebuild"
 	blacklistPath       = "/admin/index/blacklist"
 	blacklistTestPath   = "/admin/index/blacklist/test"
 	blacklistExportPath = "/admin/index/blacklist/export"
 	blacklistImportPath = "/admin/index/blacklist/import"
 	indexExportPath     = "/admin/index/export"
 	networkPath         = "/admin/network"
+	networkSelfTestPath = "/admin/network/public-endpoint/test"
 	networkPeerPath     = "/admin/network/peer"
 	peerBlockPath       = "/admin/network/peer/block"
 	seedlistRefreshPath = "/admin/network/seedlist/refresh"
@@ -115,14 +120,19 @@ type Options struct {
 	CrawlerFetchActivity CrawlerFetchActivitySource
 	StoragePressure      StoragePressureStatusSource
 	Schedules            CrawlScheduleSource
+	SavedCrawlProfiles   SavedCrawlProfileSource
+	CrawlRunDetails      CrawlRunDetailSource
 	Control              CrawlControlSource
 	Index                IndexSource
 	Documents            DocumentBrowserSource
+	DocumentDetail       DocumentDetailSource
 	IndexAdmin           IndexAdminSource
+	IndexRebuild         IndexRebuildScheduler
 	Blacklist            BlacklistSource
 	IndexExport          IndexExporter
 	Compactor            Compactor
 	Network              NetworkSource
+	NetworkSelfTest      NetworkSelfTester
 	Config               ConfigSource
 	Settings             SettingsSource
 	PublicSearch         PublicSearchStatusSource
@@ -174,22 +184,25 @@ type sectionView struct {
 }
 
 type pageData struct {
-	AppName           string
-	ActivePath        string
-	Nav               []NavItem
-	CSRF              string
-	Section           sectionView
-	Overview          Overview
-	Index             IndexStats
-	Network           NetworkStatus
-	PeerTable         PeerTableView
-	PeerLinks         bool
-	PeerNews          []PeerNewsItem
-	PeerNewsEnabled   bool
-	PeerNewsAvailable bool
-	SeedlistRefresh   bool
-	Config            ConfigView
-	Logs              []LogEntry
+	AppName                string
+	ActivePath             string
+	Nav                    []NavItem
+	CSRF                   string
+	Section                sectionView
+	Overview               Overview
+	Index                  IndexStats
+	Network                NetworkStatus
+	NetworkSelfTestEnabled bool
+	NetworkSelfTestNotice  string
+	NetworkSelfTestError   string
+	PeerTable              PeerTableView
+	PeerLinks              bool
+	PeerNews               []PeerNewsItem
+	PeerNewsEnabled        bool
+	PeerNewsAvailable      bool
+	SeedlistRefresh        bool
+	Config                 ConfigView
+	Logs                   []LogEntry
 }
 
 type peerDetailPageData struct {
@@ -210,6 +223,8 @@ type searchPageData struct {
 	Section        sectionView
 	Query          string
 	Global         bool
+	Filters        SearchFilters
+	ContentDomains []searchContentDomainOption
 	Submitted      bool
 	Error          string
 	Results        SearchResults
@@ -261,9 +276,23 @@ type crawlPageData struct {
 	// FormatsNote flashes the outcome of a formats save.
 	FormatsNote string
 	// Schedules lists the recurring crawls; nil source hides the block.
-	Schedules     []CrawlScheduleView
-	SchedulesOn   bool
-	ScheduleError string
+	Schedules         []CrawlScheduleView
+	SchedulesOn       bool
+	ScheduleError     string
+	SavedProfiles     []SavedCrawlProfileView
+	ProfilesOn        bool
+	ProfileError      string
+	SelectedProfileID string
+}
+
+type crawlRunPageData struct {
+	AppName    string
+	ActivePath string
+	Nav        []NavItem
+	CSRF       string
+	Section    sectionView
+	Detail     CrawlRunDetail
+	Error      string
 }
 
 // crawlMonitorView wraps the crawl monitor snapshot with the per-request data the
@@ -274,6 +303,7 @@ type crawlMonitorView struct {
 	Health       CrawlHealth
 	CSRF         string
 	Controllable bool
+	Details      bool
 }
 
 type configPageData struct {
@@ -303,25 +333,32 @@ type configPageData struct {
 }
 
 type indexPageData struct {
-	AppName          string
-	ActivePath       string
-	Nav              []NavItem
-	CSRF             string
-	Section          sectionView
-	Index            IndexStats
-	TermEnabled      bool
-	TermQueried      bool
-	Term             TermReport
-	Schema           []SchemaGroup
-	DocsEnabled      bool
-	Documents        DocumentPage
-	DocQuery         string
-	DocDomain        string
-	DeleteEnabled    bool
-	BlacklistEnabled bool
-	Blacklist        []BlacklistEntry
-	BlacklistError   bool
-	BlacklistProbe   string
+	AppName               string
+	ActivePath            string
+	Nav                   []NavItem
+	CSRF                  string
+	Section               sectionView
+	Index                 IndexStats
+	TermEnabled           bool
+	TermQueried           bool
+	Term                  TermReport
+	Schema                []SchemaGroup
+	DocsEnabled           bool
+	DocumentDetailEnabled bool
+	Documents             DocumentPage
+	DocQuery              string
+	DocDomain             string
+	DeleteEnabled         bool
+	RebuildEnabled        bool
+	RebuildPending        bool
+	RebuildStatusError    string
+	RebuildNotice         string
+	RebuildError          string
+	StorageStatus         indexStorageStatus
+	BlacklistEnabled      bool
+	Blacklist             []BlacklistEntry
+	BlacklistError        bool
+	BlacklistProbe        string
 }
 
 type securityPageData struct {
@@ -374,22 +411,24 @@ func csrfToken(r *http.Request) string {
 }
 
 type templates struct {
-	placeholder *template.Template
-	overview    *template.Template
-	search      *template.Template
-	activity    *template.Template
-	crawl       *template.Template
-	index       *template.Template
-	network     *template.Template
-	peerDetail  *template.Template
-	config      *template.Template
-	logs        *template.Template
-	security    *template.Template
-	performance *template.Template
-	yagorank    *template.Template
-	restart     *template.Template
-	backup      *template.Template
-	portal      *template.Template
+	placeholder   *template.Template
+	overview      *template.Template
+	search        *template.Template
+	activity      *template.Template
+	crawl         *template.Template
+	crawlRun      *template.Template
+	index         *template.Template
+	indexDocument *template.Template
+	network       *template.Template
+	peerDetail    *template.Template
+	config        *template.Template
+	logs          *template.Template
+	security      *template.Template
+	performance   *template.Template
+	yagorank      *template.Template
+	restart       *template.Template
+	backup        *template.Template
+	portal        *template.Template
 }
 
 // Console is the server-rendered admin console handler.
@@ -405,17 +444,22 @@ type Console struct {
 	crawl                CrawlSource
 	crawlFormats         CrawlFormatsSource
 	monitor              CrawlMonitorSource
+	savedCrawlProfiles   SavedCrawlProfileSource
+	crawlRunDetails      CrawlRunDetailSource
 	crawlerFetchActivity CrawlerFetchActivitySource
 	storagePressure      StoragePressureStatusSource
 	schedules            CrawlScheduleSource
 	control              CrawlControlSource
 	index                IndexSource
 	documents            DocumentBrowserSource
+	documentDetail       DocumentDetailSource
 	indexAdmin           IndexAdminSource
+	indexRebuild         IndexRebuildScheduler
 	blacklist            BlacklistSource
 	indexExport          IndexExporter
 	compactor            Compactor
 	network              NetworkSource
+	networkSelfTest      NetworkSelfTester
 	config               ConfigSource
 	settings             SettingsSource
 	publicSearch         PublicSearchStatusSource
@@ -462,14 +506,19 @@ func New(opts Options) *Console {
 		crawlerFetchActivity: opts.CrawlerFetchActivity,
 		storagePressure:      opts.StoragePressure,
 		schedules:            opts.Schedules,
+		savedCrawlProfiles:   opts.SavedCrawlProfiles,
+		crawlRunDetails:      opts.CrawlRunDetails,
 		control:              opts.Control,
 		index:                opts.Index,
 		documents:            opts.Documents,
+		documentDetail:       opts.DocumentDetail,
 		indexAdmin:           opts.IndexAdmin,
+		indexRebuild:         opts.IndexRebuild,
 		blacklist:            opts.Blacklist,
 		indexExport:          opts.IndexExport,
 		compactor:            opts.Compactor,
 		network:              opts.Network,
+		networkSelfTest:      opts.NetworkSelfTest,
 		config:               opts.Config,
 		settings:             opts.Settings,
 		publicSearch:         opts.PublicSearch,
@@ -535,9 +584,11 @@ func buildTemplates() templates {
 			"templates/crawl_monitor.tmpl",
 			"templates/crawl_formats.tmpl",
 		),
-		index:      clone(nil, "templates/index.tmpl"),
-		network:    clone(nil, "templates/network.tmpl"),
-		peerDetail: clone(nil, "templates/peer_detail.tmpl"),
+		crawlRun:      clone(nil, "templates/crawl_run.tmpl"),
+		index:         clone(nil, "templates/index.tmpl"),
+		indexDocument: clone(nil, "templates/index_document.tmpl"),
+		network:       clone(nil, "templates/network.tmpl"),
+		peerDetail:    clone(nil, "templates/peer_detail.tmpl"),
 		config: clone(
 			nil,
 			"templates/config.tmpl",
@@ -555,59 +606,11 @@ func buildTemplates() templates {
 }
 
 func (c *Console) registerRoutes(assets fs.FS) {
-	c.mux.Handle("GET /admin/assets/", assetHandler(assets, embeddedAdminAssetCatalog))
-	if c.searchSuggest != nil {
-		c.mux.Handle("GET /admin/search/suggest", c.searchSuggest)
-	}
-	c.mux.HandleFunc("GET /admin/{$}", handleRoot)
-	c.mux.HandleFunc("GET "+overviewPath, c.handleOverview)
-	c.mux.HandleFunc("GET "+overviewMetricsPath, c.handleOverviewMetrics)
-	c.mux.HandleFunc("GET "+systemMonitorPath, c.handleSystemMonitor)
-	c.mux.HandleFunc("GET "+searchPath, c.handleSearch)
-	c.mux.HandleFunc("GET "+crawlPath, c.handleCrawl)
-	c.mux.HandleFunc("POST "+crawlPath, c.handleCrawlStart)
-	c.mux.HandleFunc("POST "+crawlPath+"/formats", c.handleCrawlFormats)
-	c.mux.HandleFunc("POST "+crawlSchedulePath, c.handleCrawlSchedule)
-	c.mux.HandleFunc("GET "+crawlMonitorPath, c.handleCrawlMonitor)
-	c.mux.HandleFunc("POST "+crawlControlPath, c.handleCrawlControl)
-	c.mux.HandleFunc("GET "+indexPath, c.handleIndex)
-	c.mux.HandleFunc("POST "+indexDeletePath, c.handleIndexDelete)
-	c.mux.HandleFunc("POST "+blacklistPath, c.handleBlacklist)
-	c.mux.HandleFunc("GET "+blacklistTestPath, c.handleBlacklistTest)
-	c.mux.HandleFunc("GET "+blacklistExportPath, c.handleBlacklistExport)
-	c.mux.HandleFunc("POST "+blacklistImportPath, c.handleBlacklistImport)
-	c.mux.HandleFunc("GET "+indexExportPath, c.handleIndexExport)
-	c.mux.HandleFunc("GET "+networkPath, c.handleNetwork)
-	c.mux.HandleFunc("GET "+networkPeerPath, c.handleNetworkPeer)
-	c.mux.HandleFunc("POST "+peerBlockPath, c.handlePeerBlock)
-	c.mux.HandleFunc("POST "+seedlistRefreshPath, c.handleSeedlistRefresh)
-	c.mux.HandleFunc("GET "+configPath, c.handleConfig)
-	c.mux.HandleFunc("POST "+configPath, c.handleConfigUpdate)
-	c.mux.HandleFunc("POST "+configPath+"/formats", c.handleConfigFormats)
-	c.mux.HandleFunc("GET "+logsPath, c.handleLogs)
-	c.mux.HandleFunc("GET "+logsEventsPath, c.handleLogsEvents)
-	c.mux.HandleFunc("GET "+securityPath, c.handleSecurity)
-	c.mux.HandleFunc("POST "+securityPath, c.handleSecurityUpdate)
-	c.mux.HandleFunc("GET "+restartPath, c.handleRestartPage)
-	c.mux.HandleFunc("POST "+restartPath, c.handleRestartAction)
-	c.mux.HandleFunc("GET "+autocrawlerPath, handleAutocrawlerRedirect)
-	c.mux.HandleFunc("POST "+autocrawlerPath, handleAutocrawlerRedirect)
-	c.mux.HandleFunc("POST "+autocrawlerPath+"/formats", handleAutocrawlerRedirect)
-	c.mux.HandleFunc("GET "+portalPath, c.handlePortal)
-	c.mux.HandleFunc("POST "+portalPath, c.handlePortalUpdate)
-	c.mux.HandleFunc("POST "+portalPath+"/design", c.handlePortalDesign)
-	c.mux.HandleFunc("GET "+performancePath, c.handlePerformance)
-	c.mux.HandleFunc("GET "+yagorankPath, c.handleYagoRank)
-	c.mux.HandleFunc("POST "+yagorankPath, c.handleYagoRankAction)
-	c.mux.HandleFunc("GET "+backupPath, c.handleBackup)
-	c.mux.HandleFunc("GET "+activityPath, c.handleActivity)
-
-	for _, item := range navItems {
-		if dynamicSection(item.Path) {
-			continue
-		}
-		c.mux.HandleFunc("GET "+item.Path, c.sectionHandler(item.Path))
-	}
+	c.registerAssetAndSearchRoutes(assets)
+	c.registerCrawlRoutes()
+	c.registerIndexAndNetworkRoutes()
+	c.registerOperatorRoutes()
+	c.registerStaticSectionRoutes()
 }
 
 func dynamicSection(path string) bool {
@@ -688,7 +691,7 @@ func (c *Console) handleSystemMonitor(w http.ResponseWriter, r *http.Request) {
 		w,
 		c.tpl.placeholder,
 		"system-monitor",
-		buildSystemMonitorWithCrawler(c.perfHistory, c.crawlerFetchActivity, c.storagePressure),
+		buildSystemMonitorWithCrawler(c.perfHistory, c.crawlerFetchActivity),
 	)
 }
 
@@ -740,6 +743,8 @@ func (c *Console) handleIndex(w http.ResponseWriter, r *http.Request) {
 // indexNotes carries one-shot messages the Index page shows after an action.
 type indexNotes struct {
 	BlacklistProbe string
+	RebuildNotice  string
+	RebuildError   string
 }
 
 func (c *Console) renderIndexPage(w http.ResponseWriter, r *http.Request, notes indexNotes) {
@@ -751,10 +756,25 @@ func (c *Console) renderIndexPage(w http.ResponseWriter, r *http.Request, notes 
 
 	data := indexPageData{
 		AppName: appName, ActivePath: indexPath, Nav: navItems,
-		CSRF:    csrfToken(r),
-		Section: sectionView{Heading: "Index", Available: true},
-		Index:   c.index.Index(r.Context()),
-		Schema:  c.schema,
+		CSRF:                  csrfToken(r),
+		Section:               sectionView{Heading: "Index", Available: true},
+		Index:                 c.index.Index(r.Context()),
+		Schema:                c.schema,
+		DocumentDetailEnabled: c.documentDetail != nil,
+		RebuildEnabled:        c.indexRebuild != nil,
+		RebuildNotice:         notes.RebuildNotice,
+		RebuildError:          notes.RebuildError,
+		StorageStatus: buildIndexStorageStatus(
+			c.crawlerFetchActivity,
+			c.storagePressure,
+		),
+	}
+	if c.indexRebuild != nil {
+		pending, err := c.indexRebuild.RebuildPending(r.Context())
+		data.RebuildPending = pending
+		if err != nil {
+			data.RebuildStatusError = "Rebuild status is unavailable."
+		}
 	}
 	if c.terms != nil {
 		data.TermEnabled = true
@@ -1009,14 +1029,26 @@ func (c *Console) logsView(r *http.Request) logsView {
 	severity := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("severity")))
 	category := strings.TrimSpace(r.URL.Query().Get("category"))
 	needle := strings.TrimSpace(r.URL.Query().Get("q"))
+	fromValue := strings.TrimSpace(r.URL.Query().Get("from"))
+	toValue := strings.TrimSpace(r.URL.Query().Get("to"))
+	timeRange, filterError := validatedLogTimeRange(fromValue, toValue)
+	filtered := filterLogEntries(entries, severity, category, needle)
+	if filterError == "" {
+		filtered = filterLogEntriesInTimeRange(filtered, timeRange)
+	} else {
+		filtered = nil
+	}
 
 	return logsView{
-		Entries:    filterLogEntries(entries, severity, category, needle),
-		Severity:   severity,
-		Category:   category,
-		Query:      needle,
-		Severities: logSeverities,
-		Categories: distinctLogCategories(entries),
+		Entries:     filtered,
+		Severity:    severity,
+		Category:    category,
+		Query:       needle,
+		From:        fromValue,
+		To:          toValue,
+		FilterError: filterError,
+		Severities:  logSeverities,
+		Categories:  distinctLogCategories(entries),
 	}
 }
 
@@ -1028,6 +1060,10 @@ func (c *Console) handleNetwork(w http.ResponseWriter, r *http.Request) {
 	}
 
 	status := c.network.Network(r.Context())
+	selfTest := networkSelfTestPageFromContext(r.Context())
+	if selfTest.status != nil {
+		status = *selfTest.status
+	}
 	peerNews, peerNewsAvailable := c.peerNewsSnapshot(r.Context())
 	query := r.URL.Query()
 	peerTable := buildPeerTable(
@@ -1039,15 +1075,18 @@ func (c *Console) handleNetwork(w http.ResponseWriter, r *http.Request) {
 
 	c.render(r.Context(), w, c.tpl.network, "layout", pageData{
 		AppName: appName, ActivePath: networkPath, Nav: navItems,
-		CSRF:              csrfToken(r),
-		Section:           sectionView{Heading: "Network", Available: true},
-		Network:           status,
-		PeerTable:         peerTable,
-		PeerLinks:         c.peerDetail != nil,
-		PeerNews:          peerNews,
-		PeerNewsEnabled:   c.peerNews != nil,
-		PeerNewsAvailable: peerNewsAvailable,
-		SeedlistRefresh:   c.seedlistRefresh != nil,
+		CSRF:                   csrfToken(r),
+		Section:                sectionView{Heading: "Network", Available: true},
+		Network:                status,
+		NetworkSelfTestEnabled: c.networkSelfTest != nil,
+		NetworkSelfTestNotice:  selfTest.notice,
+		NetworkSelfTestError:   selfTest.err,
+		PeerTable:              peerTable,
+		PeerLinks:              c.peerDetail != nil,
+		PeerNews:               peerNews,
+		PeerNewsEnabled:        c.peerNews != nil,
+		PeerNewsAvailable:      peerNewsAvailable,
+		SeedlistRefresh:        c.seedlistRefresh != nil,
 	})
 }
 
@@ -1241,10 +1280,16 @@ func bindingOutcome(result BindResult, err error) (notice, errMsg string) {
 }
 
 func parseBindChange(r *http.Request) BindChange {
+	action := BindAction(strings.TrimSpace(r.PostFormValue("binding_action")))
+	if action == "" {
+		action = BindActionSet
+	}
+
 	return BindChange{
-		Key:  strings.TrimSpace(r.PostFormValue("key")),
-		Host: strings.TrimSpace(r.PostFormValue("host")),
-		Port: strings.TrimSpace(r.PostFormValue("port")),
+		Key:    strings.TrimSpace(r.PostFormValue("key")),
+		Host:   strings.TrimSpace(r.PostFormValue("host")),
+		Port:   strings.TrimSpace(r.PostFormValue("port")),
+		Action: action,
 	}
 }
 
@@ -1432,12 +1477,14 @@ func (c *Console) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	global := r.URL.Query().Get("scope") != "local"
+	filters := searchFiltersFromValues(r.URL.Query())
 	page := parseSearchPage(r.URL.Query().Get("p"))
 	data := searchPageData{
 		AppName: appName, ActivePath: searchPath, Nav: navItems,
 		CSRF:    csrfToken(r),
 		Section: sectionView{Heading: "Search", Available: true},
-		Query:   query, Global: global,
+		Query:   query, Global: global, Filters: filters,
+		ContentDomains: searchContentDomainOptions,
 		NewTab:         c.searchNewTab,
 		SuggestEnabled: c.searchSuggest != nil,
 	}
@@ -1449,7 +1496,8 @@ func (c *Console) handleSearch(w http.ResponseWriter, r *http.Request) {
 		data.Submitted = true
 		offset := (page - 1) * adminSearchPageSize
 		results, err := c.search.Search(r.Context(), SearchQuery{
-			Query: query, Global: global, Offset: offset, Limit: adminSearchPageSize,
+			Query: query, Global: global, Filters: filters,
+			Offset: offset, Limit: adminSearchPageSize,
 		})
 		if err != nil {
 			slog.WarnContext(r.Context(), "admin search failed", slog.Any("error", err))
@@ -1460,14 +1508,15 @@ func (c *Console) handleSearch(w http.ResponseWriter, r *http.Request) {
 				len(results.Results),
 				results.TotalResults,
 			); redirect {
-				redirectAdminSearchPage(w, query, global, canonicalPage)
+				redirectFilteredAdminSearchPage(w, query, global, filters, canonicalPage)
 
 				return
 			}
 			data.Results = results
-			data.Pagination = newSearchPagination(
-				query, global, page, len(results.Results), results.TotalResults,
-			)
+			data.Pagination = newSearchPagination(searchPaginationWindow{
+				query: query, global: global, filters: filters, page: page,
+				shown: len(results.Results), total: results.TotalResults,
+			})
 		}
 	}
 
@@ -1491,21 +1540,42 @@ func parseSearchPage(raw string) int {
 // newSearchPagination decides which navigation links to show. A next link
 // appears only while more results remain than the current window covers and the
 // page cap is not reached; a previous link appears past the first page.
-func newSearchPagination(query string, global bool, page, shown, total int) SearchPagination {
-	offset := (page - 1) * adminSearchPageSize
+func newSearchPagination(
+	window searchPaginationWindow,
+) SearchPagination {
+	offset := (window.page - 1) * adminSearchPageSize
 	nav := SearchPagination{
-		Page:    page,
-		HasPrev: page > 1,
-		HasNext: offset+shown < total && page < adminSearchMaxPage,
+		Page:    window.page,
+		HasPrev: window.page > 1,
+		HasNext: offset+window.shown < window.total && window.page < adminSearchMaxPage,
 	}
 	if nav.HasPrev {
-		nav.PrevURL = adminSearchPageURL(query, global, page-1)
+		nav.PrevURL = filteredAdminSearchPageURL(
+			window.query,
+			window.global,
+			window.filters,
+			window.page-1,
+		)
 	}
 	if nav.HasNext {
-		nav.NextURL = adminSearchPageURL(query, global, page+1)
+		nav.NextURL = filteredAdminSearchPageURL(
+			window.query,
+			window.global,
+			window.filters,
+			window.page+1,
+		)
 	}
 
 	return nav
+}
+
+type searchPaginationWindow struct {
+	query   string
+	global  bool
+	filters SearchFilters
+	page    int
+	shown   int
+	total   int
 }
 
 func (c *Console) handleCrawl(w http.ResponseWriter, r *http.Request) {
@@ -1515,7 +1585,12 @@ func (c *Console) handleCrawl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.render(r.Context(), w, c.tpl.crawl, "layout", c.crawlPage(r, defaultCrawlFormFor(c.crawl)))
+	form, err := c.selectedSavedCrawlForm(r)
+	data := c.crawlPage(r, form)
+	if err != nil {
+		data.ProfileError = err.Error()
+	}
+	c.render(r.Context(), w, c.tpl.crawl, "layout", data)
 }
 
 func (c *Console) handleCrawlStart(w http.ResponseWriter, r *http.Request) {
@@ -1611,6 +1686,16 @@ func (c *Console) crawlPage(r *http.Request, form crawlForm) crawlPageData {
 			data.Schedules = schedules
 		}
 	}
+	if c.savedCrawlProfiles != nil {
+		data.ProfilesOn = true
+		data.SelectedProfileID = strings.TrimSpace(r.FormValue("profile"))
+		profiles, err := c.savedCrawlProfiles.Profiles(r.Context())
+		if err != nil {
+			data.ProfileError = "Saved crawl profiles are unavailable."
+		} else {
+			data.SavedProfiles = profiles
+		}
+	}
 
 	return data
 }
@@ -1696,6 +1781,7 @@ func (c *Console) crawlMonitorView(r *http.Request) *crawlMonitorView {
 		Health:       crawlHealth(monitor),
 		CSRF:         csrfToken(r),
 		Controllable: c.control != nil,
+		Details:      c.crawlRunDetails != nil,
 	}
 }
 
@@ -1867,7 +1953,6 @@ func (c *Console) renderPolicy(
 			SystemMonitor: buildSystemMonitorWithCrawler(
 				c.perfHistory,
 				c.crawlerFetchActivity,
-				c.storagePressure,
 			),
 			Data: data,
 		}

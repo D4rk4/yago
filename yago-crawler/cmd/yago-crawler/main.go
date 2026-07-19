@@ -74,20 +74,13 @@ func printVersion(args []string, out io.Writer) bool {
 }
 
 func run(ctx context.Context, cfg ServiceConfig) error {
+	var err error
+	cfg, err = synchronizeCrawlerRuntimePolicy(ctx, cfg)
+	if err != nil {
+		return err
+	}
 	crawl := cfg.Crawl
 	metrics := crawlermetrics.New()
-	if firefoxfetch.LooksLikeChromium(crawl.BrowserPath) {
-		slog.WarnContext(
-			ctx,
-			"ignoring a non-Firefox browser path; the crawler slow path needs Firefox over Marionette",
-			slog.String("browserPath", crawl.BrowserPath),
-			slog.String("env", "YAGO_CRAWLER_BROWSER_PATH"),
-			slog.String(
-				"action",
-				"discovering Firefox on PATH; set it to firefox-esr or leave it empty",
-			),
-		)
-	}
 	fetcher, closeBrowser, err := newCrawlerBrowserFetcher(
 		firefoxfetch.BrowserLaunch{
 			UserAgent:        crawl.UserAgent,
@@ -96,6 +89,7 @@ func run(ctx context.Context, cfg ServiceConfig) error {
 			ExecPath:         crawl.BrowserPath,
 			Sandbox:          crawl.BrowserSandbox,
 			FailureThreshold: crawl.BrowserFailureThreshold,
+			MaxRedirects:     crawl.MaxRedirects,
 		},
 		yagoegress.NewGuard(
 			cfg.EgressAllowLAN,

@@ -131,25 +131,26 @@ type PageHostProgress struct {
 }
 
 type Snapshot struct {
-	Visited          map[string]struct{}
-	Counters         Counters
-	HostStates       map[string]HostState
-	Outstanding      []Page
-	RecoveryBounded  bool
-	RecoveryCursor   uint64
-	RecoveryUpper    uint64
-	RecoveryComplete bool
-	OrderIdentity    []byte
-	Priority         yagocrawlcontract.CrawlOrderPriority
-	Failed           bool
-	Seeding          bool
-	Completed        bool
-	Control          RunControl
-	Tally            yagocrawlcontract.CrawlRunTally
-	SeedManifest     bool
-	SeedPages        []Page
-	SeedCursor       uint64
-	SeedLength       uint64
+	Visited              map[string]struct{}
+	Counters             Counters
+	BudgetDiscardedPages uint64
+	HostStates           map[string]HostState
+	Outstanding          []Page
+	RecoveryBounded      bool
+	RecoveryCursor       uint64
+	RecoveryUpper        uint64
+	RecoveryComplete     bool
+	OrderIdentity        []byte
+	Priority             yagocrawlcontract.CrawlOrderPriority
+	Failed               bool
+	Seeding              bool
+	Completed            bool
+	Control              RunControl
+	Tally                yagocrawlcontract.CrawlRunTally
+	SeedManifest         bool
+	SeedPages            []Page
+	SeedCursor           uint64
+	SeedLength           uint64
 }
 
 type RecoveryPageBatch struct {

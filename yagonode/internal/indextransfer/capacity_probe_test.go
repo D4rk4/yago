@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -69,6 +70,61 @@ func TestRemoteRWICountProbePostsYaCyQueryAndParsesResponse(t *testing.T) {
 	}
 	if count != 321 {
 		t.Fatalf("count = %d, want 321", count)
+	}
+}
+
+func TestRemoteRWICountProbeSignsControlledNetworkRequest(t *testing.T) {
+	self := yagomodel.Seed{Hash: hashOf(t, "self")}
+	access := yagoproto.NetworkAccess{
+		NetworkName: "private",
+		Mode:        yagoproto.NetworkAuthenticationSaltedMagic,
+		Essentials:  "shared-secret",
+	}
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			if err := request.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			verifier := access
+			verifier.Self = self.Hash
+			if !verifier.Authorizes(request.PostForm) ||
+				request.PostForm.Get(yagoproto.FieldIam) != self.Hash.String() {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+
+				return
+			}
+			_, _ = strings.NewReader(yagoproto.QueryResponse{Response: 7}.Encode().Encode()).
+				WriteTo(w)
+		}),
+	)
+	defer server.Close()
+
+	count, err := NewRemoteRWICountProbe(
+		server.Client(),
+		"private",
+		self,
+		false,
+		access,
+	).RWICount(t.Context(), serverSeed(t, server))
+	if err != nil || count != 7 {
+		t.Fatalf("controlled capacity probe = %d, %v", count, err)
+	}
+}
+
+func TestRemoteRWICountProbeSurfacesSigningFailure(t *testing.T) {
+	sentinel := errors.New("signing failed")
+	probe := NewRemoteRWICountProbe(
+		http.DefaultClient,
+		"private",
+		yagomodel.Seed{Hash: hashOf(t, "self")},
+		false,
+		yagoproto.NetworkAccess{Mode: yagoproto.NetworkAuthenticationSaltedMagic},
+	)
+	probe.signForm = func(url.Values) error { return sentinel }
+
+	_, err := probe.RWICount(t.Context(), yagomodel.Seed{})
+	if !errors.Is(err, sentinel) || !errors.Is(err, errCapacityProbeFailed) {
+		t.Fatalf("capacity signing error = %v", err)
 	}
 }
 
