@@ -27,7 +27,7 @@ type scriptedRecoverySearcher struct {
 }
 
 type deadlineRecoverySearcher struct {
-	canceled bool
+	canceled chan struct{}
 }
 
 func (s *deadlineRecoverySearcher) Search(
@@ -38,7 +38,7 @@ func (s *deadlineRecoverySearcher) Search(
 		return searchcore.Response{Request: req}, nil
 	}
 	<-ctx.Done()
-	s.canceled = true
+	close(s.canceled)
 
 	return searchcore.Response{}, fmt.Errorf("recovery deadline: %w", ctx.Err())
 }
@@ -142,7 +142,7 @@ func TestRecoveryStopsAtItsBudget(t *testing.T) {
 	recoverySearchBudget = 10 * time.Millisecond
 	t.Cleanup(func() { recoverySearchBudget = previous })
 
-	inner := &deadlineRecoverySearcher{}
+	inner := &deadlineRecoverySearcher{canceled: make(chan struct{})}
 	response, err := withZeroResultRecovery(inner, inner, nil).Search(
 		t.Context(),
 		searchcore.Request{Query: "missing", Terms: []string{"missing"}},
@@ -150,8 +150,9 @@ func TestRecoveryStopsAtItsBudget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if !inner.canceled || len(response.Results) != 0 {
-		t.Fatalf("budgeted recovery = canceled %v response %#v", inner.canceled, response)
+	<-inner.canceled
+	if len(response.Results) != 0 {
+		t.Fatalf("budgeted recovery response = %#v", response)
 	}
 }
 
