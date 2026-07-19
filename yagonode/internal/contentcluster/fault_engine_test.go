@@ -153,6 +153,18 @@ func (e *clusterFaultEngine) deleteRaw(name vault.Name, key vault.Key) {
 	delete(e.buckets[name], string(key))
 }
 
+func (e *clusterFaultEngine) loseShard(shard int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for name, bucket := range e.buckets {
+		for key := range bucket {
+			if e.route(name, vault.Key(key)) == shard {
+				delete(bucket, key)
+			}
+		}
+	}
+}
+
 func (e *clusterFaultEngine) failRelaxedUpdateAfter(offset int, committedShards int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()

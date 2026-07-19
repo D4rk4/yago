@@ -152,8 +152,9 @@ func TestPublicLookupFailures(t *testing.T) {
 			Evidence{URL: "https://a.example", ContentHash: "hash", Text: "short"},
 		)
 		engine.deleteRaw(clusterBucketName, vault.Key(assignment.ClusterID))
-		if _, _, err := index.Lookup(t.Context(), "https://a.example"); err == nil {
-			t.Fatal("missing lookup cluster succeeded")
+		got, found, err := index.Lookup(t.Context(), "https://a.example")
+		if err != nil || found || got != (Assignment{}) {
+			t.Fatalf("missing lookup cluster = %#v/%v/%v", got, found, err)
 		}
 	})
 }
@@ -169,8 +170,12 @@ func TestReplaceInternalFailures(t *testing.T) {
 			} else {
 				engine.deleteRaw(clusterBucketName, vault.Key(assignment.ClusterID))
 			}
-			if _, err := index.Replace(t.Context(), valid); err == nil {
-				t.Fatalf("existing cluster corrupt=%v succeeded", corrupt)
+			got, err := index.Replace(t.Context(), valid)
+			if corrupt && err == nil {
+				t.Fatal("corrupt existing cluster succeeded")
+			}
+			if !corrupt && (err != nil || got.ClusterID != assignment.ClusterID) {
+				t.Fatalf("missing existing cluster repair = %#v/%v", got, err)
 			}
 		}
 	})
@@ -241,8 +246,9 @@ func TestDetachClusterReadFailures(t *testing.T) {
 		evidence := Evidence{URL: "https://a.example", ContentHash: "hash", Text: "short"}
 		assignment := replaceEvidence(t, index, evidence)
 		engine.deleteRaw(clusterBucketName, vault.Key(assignment.ClusterID))
-		if _, err := index.Delete(t.Context(), evidence.URL); err == nil {
-			t.Fatal("missing detached cluster succeeded")
+		deleted, err := index.Delete(t.Context(), evidence.URL)
+		if err != nil || !deleted {
+			t.Fatalf("missing detached cluster deletion = %v/%v", deleted, err)
 		}
 	})
 	t.Run("cluster delete", func(t *testing.T) {

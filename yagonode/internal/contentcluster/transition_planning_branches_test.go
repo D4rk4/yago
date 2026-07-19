@@ -69,7 +69,7 @@ func TestPlannedExactCandidatesCoverErrorsAndCapacity(t *testing.T) {
 				tx,
 				t.Context(),
 				prepared,
-				[]fingerprintRecord{record},
+				replacementBatchProjection{current: []fingerprintRecord{record}},
 				candidateSelection{},
 			)
 
@@ -96,7 +96,7 @@ func TestPlannedExactCandidatesCoverErrorsAndCapacity(t *testing.T) {
 				tx,
 				t.Context(),
 				prepared,
-				[]fingerprintRecord{record},
+				replacementBatchProjection{current: []fingerprintRecord{record}},
 				candidateSelection{},
 			)
 			if selection.found {
@@ -125,7 +125,7 @@ func TestPlannedNearCandidateReportsClusterFailure(t *testing.T) {
 			tx,
 			t.Context(),
 			prepared,
-			[]fingerprintRecord{broken},
+			replacementBatchProjection{current: []fingerprintRecord{broken}},
 			candidateSelection{},
 		)
 
@@ -157,7 +157,9 @@ func TestPlannedNearCandidateSelectsSimilarEvidence(t *testing.T) {
 			tx,
 			t.Context(),
 			prepared,
-			[]fingerprintRecord{{URL: prepared.URL}, distant, near},
+			replacementBatchProjection{
+				current: []fingerprintRecord{{URL: prepared.URL}, distant, near},
+			},
 			candidateSelection{},
 		)
 		if !selection.found || selection.candidate.record.URL != near.URL {
@@ -190,7 +192,7 @@ func TestPlannedNearCandidateRespectsClusterCapacity(t *testing.T) {
 			tx,
 			t.Context(),
 			prepared,
-			[]fingerprintRecord{record},
+			replacementBatchProjection{current: []fingerprintRecord{record}},
 			candidateSelection{},
 		)
 		if selection.found {
@@ -229,7 +231,7 @@ func TestPlannedClusterAvailabilityReportsCorruptionAndExistingMember(t *testing
 			t.Context(),
 			"broken",
 			"https://member.example",
-			nil,
+			replacementBatchProjection{},
 		)
 
 		return err
@@ -244,10 +246,10 @@ func TestPlannedClusterAvailabilityReportsCorruptionAndExistingMember(t *testing
 			t.Context(),
 			"planned",
 			"https://member.example",
-			[]fingerprintRecord{{
+			replacementBatchProjection{current: []fingerprintRecord{{
 				URL:       "https://member.example",
 				ClusterID: "planned",
-			}},
+			}}},
 		)
 		if !available {
 			t.Fatal("existing planned member was unavailable")
@@ -318,11 +320,11 @@ func TestPlannedClusterIDPropagatesExactAndNearCandidateFailures(t *testing.T) {
 				tx,
 				t.Context(),
 				prepared,
-				[]fingerprintRecord{{
+				replacementBatchProjection{current: []fingerprintRecord{{
 					URL:         "https://planned-exact-id.example",
 					ContentHash: prepared.ContentHash,
 					ClusterID:   "broken",
-				}},
+				}}},
 			)
 
 			return err
@@ -339,13 +341,13 @@ func TestPlannedClusterIDPropagatesExactAndNearCandidateFailures(t *testing.T) {
 				tx,
 				t.Context(),
 				prepared,
-				[]fingerprintRecord{{
+				replacementBatchProjection{current: []fingerprintRecord{{
 					URL:         "https://planned-near-id.example",
 					ContentHash: "near",
 					ClusterID:   "broken",
 					Fingerprint: prepared.Fingerprint,
 					Shingles:    prepared.Shingles,
-				}},
+				}}},
 			)
 
 			return err
@@ -386,7 +388,12 @@ func TestPlannedClusterIDChecksAvailabilityContextAfterMatch(t *testing.T) {
 			cancelAt: cancelAt,
 		}
 		_ = index.vault.View(t.Context(), func(tx *vault.Txn) error {
-			_, err := index.plannedClusterID(tx, ctx, prepared, nil)
+			_, err := index.plannedClusterID(
+				tx,
+				ctx,
+				prepared,
+				replacementBatchProjection{},
+			)
 
 			return err
 		})

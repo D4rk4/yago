@@ -17,22 +17,6 @@ type candidateMatch struct {
 	distance   int
 }
 
-func (i *Index) publishedAssignment(
-	tx *vault.Txn,
-	ctx context.Context,
-	clusterID string,
-) (Assignment, error) {
-	cluster, found, err := i.publishedCluster(tx, ctx, clusterID)
-	if err != nil {
-		return Assignment{}, fmt.Errorf("read existing content cluster: %w", err)
-	}
-	if !found {
-		return Assignment{}, fmt.Errorf("content cluster %q is missing", clusterID)
-	}
-
-	return assignmentFrom(cluster), nil
-}
-
 func (i *Index) findMatch(
 	tx *vault.Txn,
 	ctx context.Context,
@@ -127,7 +111,7 @@ func (i *Index) candidate(
 	if !exists || record.URL == prepared.URL {
 		return candidateMatch{}, false, nil
 	}
-	cluster, exists, err := i.publishedCluster(tx, ctx, record.ClusterID)
+	cluster, exists, err := i.publishedRecordCluster(tx, ctx, record)
 	if err != nil {
 		return candidateMatch{}, false, fmt.Errorf("read candidate content cluster: %w", err)
 	}

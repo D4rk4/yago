@@ -148,9 +148,13 @@ func (i *Index) planDeletion(
 		if !exists {
 			return nil
 		}
-		previousAssignment, err := i.publishedAssignment(tx, ctx, previous.ClusterID)
+		cluster, published, err := i.publishedRecordCluster(tx, ctx, previous)
 		if err != nil {
 			return err
+		}
+		var previousAssignment Assignment
+		if published {
+			previousAssignment = assignmentFrom(cluster)
 		}
 		var priorAffected []string
 		if len(pending) > 0 {
@@ -185,7 +189,7 @@ func deletionFromTransition(
 ) EvidenceDeletion {
 	return EvidenceDeletion{
 		Previous:           transition.PreviousAssignment,
-		PreviousFound:      transition.PreviousFound,
+		PreviousFound:      transitionPreviousAssignmentFound(transition),
 		Deleted:            transition.PreviousFound,
 		Replay:             replay,
 		AffectedClusterIDs: transition.affectedClusterIDs(),

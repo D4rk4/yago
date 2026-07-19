@@ -283,6 +283,11 @@ its binaries (`yago-node`, `yago-crawler`).
   deletion, and redirect cleanup share one complete page-lineage owner, so a
   concurrent re-index cannot leave or erase only the document, anchors,
   duplicate cluster, full-text row, postings, or URL metadata.
+  On the next reingest or removal, a retained duplicate fingerprint repairs or
+  clears a derived cluster row that is missing or no longer lists its URL. The
+  bounded repair touches only that URL and its affected clusters, so healthy
+  ingest performs no cluster-wide scan and one structural orphan cannot force
+  the rest of its ingest group to retry.
   A valid, non-future sitemap `lastmod` can advance the next visit within the
   profile cadence; stale, future, unchanged, or malformed hints cannot create a
   recrawl loop.

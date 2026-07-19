@@ -104,8 +104,13 @@ from normal reads. URL metadata remains the last hash-to-URL recovery aid for a
 legacy hash-only retry. These rules make a crash or a returned error retryable,
 but they do not claim one transaction across the document store, Bleve, content
 clusters, anchors, RWI, and URL metadata. Cross-shard vault atomicity remains
-relaxed by ADR-0025. Missing documents and repeated deletions remain idempotent
-no-ops.
+relaxed by ADR-0025. A retained URL fingerprint remains sufficient to begin
+deletion when its derived cluster projection is absent or does not contain that
+URL. The transition exposes no previous assignment, removes the fingerprint and
+its candidate postings, carries the retained cluster identity for affected
+representative refresh, and keeps malformed stored rows as errors. Structural
+absence alone does not abort the wider lineage deletion. Missing documents and
+repeated deletions remain idempotent no-ops.
 
 ### C. Periodic, configurable compaction returns freed pages to the OS
 

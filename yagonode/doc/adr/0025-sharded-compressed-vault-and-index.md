@@ -63,8 +63,13 @@ module graph as indirect dependencies of bleve:
    Cross-shard atomicity is relaxed by design. A feature that spans shards
    writes durable rows before a separate visibility marker, or retains its
    prior identity as a replay marker until dependent index work completes.
-   Retries reconcile partial state from the same crawl observation; re-crawl
-   and DHT redistribution remain the wider systemic repair, as in YaCy.
+   Retries reconcile partial state from the same crawl observation. Content
+   clustering also uses a retained published URL fingerprint as point-repair
+   evidence: a later replacement or deletion restores or clears a missing or
+   member-omitting cluster projection through the ordinary transition while
+   holding the existing reservations, without scanning the cluster collection.
+   Re-crawl and DHT redistribution remain the wider systemic repair when no
+   point evidence survives, as in YaCy.
 2. **Value compression in shardvault**: one shared `zstd.Encoder` at
    `SpeedFastest`; a one-byte format tag distinguishes raw from compressed
    values; values under 64 bytes or saving less than one eighth stay raw with

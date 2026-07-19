@@ -161,6 +161,13 @@ representative by canonical declaration, quality, authority, and URL order.
 The committed canonical document, including merged lifecycle dates and inbound
 anchors, is the exact value sent to clustering and the search index.
 
+Published URL fingerprints are the point-repair source for derived cluster
+membership. When a later replacement or lineage deletion finds the projection
+missing or not listing that URL, the ordinary durable transition restores or
+clears the affected membership under the existing reservations. Healthy ingest
+and search perform no cluster-wide repair scan; until the URL is touched, an
+incomplete projection remains absent from cluster lookup and candidate matching.
+
 ## Learned models
 
 Two pure-Go model families are available:

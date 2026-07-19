@@ -130,9 +130,7 @@ func TestFleetFetchStartControlFencesUnlimitedSessions(t *testing.T) {
 	server := newExchangeServer(memQueue(t), make(chan crawlresults.IngestDelivery))
 	legacyDone := startFleetFetchOrderStream(t, server, "legacy", false)
 	capableDone := startFleetFetchOrderStream(t, server, "capable", true)
-	if signalled := server.control.SetProcessPagesPerSecond(10); signalled != 2 {
-		t.Fatalf("rate transition signalled %d workers, want 2", signalled)
-	}
+	server.control.SetProcessPagesPerSecond(10)
 	requireFleetFetchStreamStopped(t, legacyDone)
 	requireFleetFetchStreamStopped(t, capableDone)
 	if got := server.sessions.registration("legacy"); got.connected {

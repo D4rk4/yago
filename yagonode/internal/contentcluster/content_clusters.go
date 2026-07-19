@@ -180,12 +180,12 @@ func (i *Index) Lookup(ctx context.Context, url string) (Assignment, bool, error
 		if !exists {
 			return nil
 		}
-		cluster, exists, readErr := i.publishedCluster(tx, ctx, record.ClusterID)
+		cluster, exists, readErr := i.publishedRecordCluster(tx, ctx, record)
 		if readErr != nil {
 			return fmt.Errorf("read content cluster: %w", readErr)
 		}
 		if !exists {
-			return fmt.Errorf("content cluster %q is missing", record.ClusterID)
+			return nil
 		}
 		assignment = assignmentFrom(cluster)
 		found = true

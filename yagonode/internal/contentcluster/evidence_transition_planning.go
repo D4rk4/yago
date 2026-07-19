@@ -20,7 +20,10 @@ func (i *Index) planReplacements(
 	plans := make([]fingerprintTransition, 0, len(prepared))
 	outputs := make([]EvidenceReplacement, len(prepared))
 	err := i.vault.View(ctx, func(tx *vault.Txn) error {
-		planned := make([]fingerprintRecord, 0, len(prepared))
+		planned := replacementBatchProjection{
+			current:  make([]fingerprintRecord, 0, len(prepared)),
+			previous: make([]fingerprintRecord, 0, len(prepared)),
+		}
 		for position, item := range prepared {
 			if err := ctx.Err(); err != nil {
 				return fmt.Errorf("plan fingerprint transition: %w", err)
@@ -37,9 +40,17 @@ func (i *Index) planReplacements(
 			}
 			if persist {
 				plans = append(plans, transition)
+				if transition.PreviousFound {
+					planned.previous = append(planned.previous, transition.Previous)
+				}
+			} else if output.Replay && pendingByURL[item.URL].PreviousFound {
+				planned.previous = append(
+					planned.previous,
+					pendingByURL[item.URL].Previous,
+				)
 			}
 			outputs[position] = output
-			planned = append(planned, record)
+			planned.current = append(planned.current, record)
 		}
 
 		return nil
@@ -56,7 +67,7 @@ func (i *Index) planReplacement(
 	ctx context.Context,
 	prepared preparedEvidence,
 	pending fingerprintTransition,
-	planned []fingerprintRecord,
+	planned replacementBatchProjection,
 ) (fingerprintTransition, EvidenceReplacement, fingerprintRecord, bool, error) {
 	pendingFound := pending.Token != ""
 	if pendingFound && pending.CurrentFound && sameEvidence(pending.Current, prepared) {
@@ -68,11 +79,16 @@ func (i *Index) planReplacement(
 		return fingerprintTransition{}, EvidenceReplacement{}, fingerprintRecord{}, false,
 			fmt.Errorf("read replaced content fingerprint: %w", err)
 	}
-	if previousFound && sameEvidence(previous, prepared) {
-		assignment, err := i.publishedAssignment(tx, ctx, previous.ClusterID)
+	var previousCluster clusterRecord
+	var previousPublished bool
+	if previousFound {
+		previousCluster, previousPublished, err = i.publishedRecordCluster(tx, ctx, previous)
 		if err != nil {
 			return fingerprintTransition{}, EvidenceReplacement{}, fingerprintRecord{}, false, err
 		}
+	}
+	if previousFound && sameEvidence(previous, prepared) && previousPublished {
+		assignment := assignmentFrom(previousCluster)
 		output := EvidenceReplacement{
 			Previous:           assignment,
 			PreviousFound:      true,
@@ -82,28 +98,46 @@ func (i *Index) planReplacement(
 
 		return fingerprintTransition{}, output, previous, false, nil
 	}
-	clusterID, err := i.plannedClusterID(tx, ctx, prepared, planned)
+	if previousFound && !previousPublished && sameClusterContent(previous, prepared) {
+		current := recordFrom(
+			prepared,
+			i.recoveredMembershipClusterID(
+				previous,
+				previousCluster,
+				planned,
+			),
+		)
+		transition := newReplacementTransition(
+			previous,
+			true,
+			Assignment{},
+			current,
+			pending,
+		)
+
+		return transition, replacementFromTransition(transition, pendingFound),
+			current, true, nil
+	}
+	clusterID, err := i.plannedClusterID(
+		tx,
+		ctx,
+		prepared,
+		planned,
+	)
 	if err != nil {
 		return fingerprintTransition{}, EvidenceReplacement{}, fingerprintRecord{}, false, err
 	}
 	current := recordFrom(prepared, clusterID)
-	transition := fingerprintTransition{
-		Token:         newEvidenceFinalization(prepared.URL).token,
-		URL:           prepared.URL,
-		Previous:      previous,
-		PreviousFound: previousFound,
-		Current:       current,
-		CurrentFound:  true,
+	var previousAssignment Assignment
+	if previousPublished {
+		previousAssignment = assignmentFrom(previousCluster)
 	}
-	if previousFound {
-		transition.PreviousAssignment, err = i.publishedAssignment(tx, ctx, previous.ClusterID)
-		if err != nil {
-			return fingerprintTransition{}, EvidenceReplacement{}, fingerprintRecord{}, false, err
-		}
-	}
-	transition.AffectedClusterIDs = mergeAffectedClusterIDs(
-		pending.AffectedClusterIDs,
-		[]string{previous.ClusterID, current.ClusterID},
+	transition := newReplacementTransition(
+		previous,
+		previousFound,
+		previousAssignment,
+		current,
+		pending,
 	)
 
 	return transition, replacementFromTransition(transition, pendingFound), current, true, nil
@@ -113,7 +147,7 @@ func (i *Index) plannedClusterID(
 	tx *vault.Txn,
 	ctx context.Context,
 	prepared preparedEvidence,
-	planned []fingerprintRecord,
+	planned replacementBatchProjection,
 ) (string, error) {
 	existing, found, err := i.findMatch(tx, ctx, prepared)
 	if err != nil {
@@ -172,10 +206,10 @@ func (i *Index) bestPlannedExactCandidate(
 	tx *vault.Txn,
 	ctx context.Context,
 	prepared preparedEvidence,
-	planned []fingerprintRecord,
+	planned replacementBatchProjection,
 	selection candidateSelection,
 ) (candidateSelection, error) {
-	for _, record := range planned {
+	for _, record := range planned.current {
 		if record.URL == prepared.URL || record.ContentHash != prepared.ContentHash {
 			continue
 		}
@@ -210,10 +244,10 @@ func (i *Index) bestPlannedNearCandidate(
 	tx *vault.Txn,
 	ctx context.Context,
 	prepared preparedEvidence,
-	planned []fingerprintRecord,
+	planned replacementBatchProjection,
 	selection candidateSelection,
 ) (candidateSelection, error) {
-	for _, record := range planned {
+	for _, record := range planned.current {
 		if record.URL == prepared.URL {
 			continue
 		}
@@ -253,23 +287,20 @@ func (i *Index) plannedClusterAvailable(
 	ctx context.Context,
 	clusterID string,
 	url string,
-	planned []fingerprintRecord,
+	planned replacementBatchProjection,
 ) (bool, error) {
-	members := make(map[string]struct{}, i.limits.MaximumClusterMembers)
 	cluster, found, err := i.publishedCluster(tx, ctx, clusterID)
 	if err != nil {
 		return false, err
 	}
-	if found {
-		for _, member := range cluster.Members {
-			members[member] = struct{}{}
-		}
+	if !found {
+		cluster = clusterRecord{ID: clusterID}
 	}
-	for _, record := range planned {
-		if record.ClusterID == clusterID {
-			members[record.URL] = struct{}{}
-		}
-	}
+	members := clusterMembershipAfterEarlierPlans(
+		cluster,
+		clusterID,
+		planned,
+	)
 	if _, found := members[url]; found {
 		return true, nil
 	}
@@ -287,7 +318,7 @@ func replacementFromTransition(
 ) EvidenceReplacement {
 	return EvidenceReplacement{
 		Previous:           transition.PreviousAssignment,
-		PreviousFound:      transition.PreviousFound,
+		PreviousFound:      transitionPreviousAssignmentFound(transition),
 		Current:            transition.CurrentAssignment,
 		Replay:             replay,
 		AffectedClusterIDs: transition.affectedClusterIDs(),
@@ -314,11 +345,18 @@ func (i *Index) completeReplacementOutputs(
 			if !found || transition.Token != outputs[position].Finalization.token {
 				return fmt.Errorf("fingerprint transition changed before completion")
 			}
-			assignment, err := i.publishedAssignment(tx, ctx, transition.Current.ClusterID)
+			cluster, published, err := i.publishedRecordCluster(tx, ctx, transition.Current)
 			if err != nil {
 				return err
 			}
-			outputs[position].Current = assignment
+			if !published {
+				return fmt.Errorf(
+					"content cluster %q does not publish %q",
+					transition.Current.ClusterID,
+					transition.Current.URL,
+				)
+			}
+			outputs[position].Current = assignmentFrom(cluster)
 		}
 
 		return nil
